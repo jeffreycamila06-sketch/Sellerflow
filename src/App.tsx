@@ -4,18 +4,30 @@ import { supabase } from "./supabase";
 export default function App() {
   const [email, setEmail] = useState("");
   const [user, setUser] = useState<any>(null);
-  const [showProfile, setShowProfile] = useState(false);
-  const [language, setLanguage] = useState("English");
+  const [page, setPage] = useState("sales");
+
+  const [orders, setOrders] = useState<any[]>([]);
+  const [customerName, setCustomerName] = useState("");
+  const [product, setProduct] = useState("");
+  const [amount, setAmount] = useState("");
 
   useEffect(() => {
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
       setUser(session?.user || null);
+    });
+
+    supabase.auth.getUser().then(({ data }: any ) => {
+      setUser(data.user);
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (user) fetchOrders();
+  }, [user]);
 
   const login = async () => {
     const { error } = await supabase.auth.signInWithOtp({
@@ -31,6 +43,69 @@ export default function App() {
     await supabase.auth.signOut();
     setUser(null);
   };
+
+  const fetchOrders = async () => {
+    const { data, error } = await supabase
+      .from("orders")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) return alert(error.message);
+    setOrders(data || []);
+  };
+
+  const addOrder = async () => {
+    if (!customerName || !product) {
+      alert("Please enter customer and product.");
+      return;
+    }
+
+    const { error } = await supabase.from("orders").insert({
+      user_id: user.id,
+      customer_name: customerName,
+      product,
+      status: "Pending",
+      total_amount: Number(amount || 0),
+    });
+
+    if (error) return alert(error.message);
+
+    setCustomerName("");
+    setProduct("");
+    setAmount("");
+    fetchOrders();
+  };
+
+  const autoCreateOrder = async () => {
+    const comment = prompt("Paste live comment. Example: mine tshirt red 2pcs");
+    if (!comment) return;
+
+    const { error } = await supabase.from("orders").insert({
+      user_id: user.id,
+      customer_name: "Live Customer",
+      product: comment,
+      status: "Pending",
+      total_amount: 0,
+    });
+
+    if (error) return alert(error.message);
+
+    fetchOrders();
+    setPage("orders");
+  };
+
+  const deleteOrder = async (id: number) => {
+    const { error } = await supabase.from("orders").delete().eq("id", id);
+    if (error) return alert(error.message);
+    fetchOrders();
+  };
+
+  const totalSales = orders.reduce(
+    (sum, order) => sum + Number(order.total_amount || 0),
+    0
+  );
+
+  const uniqueCustomers = [...new Set(orders.map((o) => o.customer_name))];
 
   if (!user) {
     return (
@@ -50,123 +125,244 @@ export default function App() {
     );
   }
 
+  const renderPage = () => {
+    if (page === "sales") {
+      return (
+        <>
+          <h1 style={styles.title}>📊 Sales Report</h1>
+
+          <div style={styles.statsRow}>
+            <div style={styles.statCard}>
+              <h2>{orders.length}</h2>
+              <p>Total Orders</p>
+            </div>
+
+            <div style={styles.statCard}>
+              <h2>{uniqueCustomers.length}</h2>
+              <p>Customers</p>
+            </div>
+
+            <div style={styles.statCard}>
+              <h2>{totalSales}</h2>
+              <p>Total Sales</p>
+            </div>
+          </div>
+
+          <div style={styles.contentRow}>
+            <div style={styles.postCard}>
+              <h2>Recent Activity</h2>
+              {orders.slice(0, 5).map((order) => (
+                <div key={order.id} style={styles.activityItem}>
+                  <b>{order.customer_name}</b> ordered {order.product}
+                </div>
+              ))}
+              {orders.length === 0 && <p>No activity yet.</p>}
+            </div>
+
+            <div style={styles.liveBox}>
+              <h2>Livestream Presets</h2>
+              <p>Prepare products and create orders faster during live selling.</p>
+
+              <button style={styles.orangeBtn}>⚙ General settings</button>
+              <button style={styles.blueBtn} onClick={autoCreateOrder}>
+                📄 Auto create order
+              </button>
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    if (page === "orders") {
+      return (
+        <>
+          <h1 style={styles.title}>📦 Orders</h1>
+
+          <div style={styles.formBox}>
+            <input
+              style={styles.formInput}
+              placeholder="Customer name"
+              value={customerName}
+              onChange={(e) => setCustomerName(e.target.value)}
+            />
+
+            <input
+              style={styles.formInput}
+              placeholder="Product"
+              value={product}
+              onChange={(e) => setProduct(e.target.value)}
+            />
+
+            <input
+              style={styles.formInput}
+              placeholder="Amount"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+
+            <button style={styles.orangeBtn} onClick={addOrder}>
+              Add Order
+            </button>
+          </div>
+
+          <div style={styles.card}>
+            <h2>Orders</h2>
+
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th>Customer</th>
+                  <th>Product</th>
+                  <th>Status</th>
+                  <th>Amount</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {orders.map((order) => (
+                  <tr key={order.id}>
+                    <td>{order.customer_name}</td>
+                    <td>{order.product}</td>
+                    <td>{order.status}</td>
+                    <td>{order.total_amount}</td>
+                    <td>
+                      <button
+                        style={styles.deleteBtn}
+                        onClick={() => deleteOrder(order.id)}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {orders.length === 0 && <p>No orders yet.</p>}
+          </div>
+        </>
+      );
+    }
+
+    if (page === "customers") {
+      return (
+        <>
+          <h1 style={styles.title}>👥 Customers</h1>
+
+          <div style={styles.card}>
+            {uniqueCustomers.map((customer) => (
+              <div key={customer} style={styles.customerItem}>
+                👤 {customer}
+              </div>
+            ))}
+
+            {uniqueCustomers.length === 0 && <p>No customers yet.</p>}
+          </div>
+        </>
+      );
+    }
+
+    if (page === "livestream") {
+      return (
+        <>
+          <h1 style={styles.title}>🎥 Livestream Presets</h1>
+
+          <div style={styles.card}>
+            <h2>Default Live Selling Preset</h2>
+            <p>Use this to prepare products before going live.</p>
+
+            <button style={styles.orangeBtn}>⚙ General settings</button>
+            <button style={styles.blueBtn} onClick={autoCreateOrder}>
+              📄 Auto create order
+            </button>
+          </div>
+        </>
+      );
+    }
+
+    if (page === "printer") {
+      return (
+        <>
+          <h1 style={styles.title}>🖨 Printer Setup</h1>
+
+          <div style={styles.card}>
+            <p>Printer Status: Not connected</p>
+            <button style={styles.blueBtn}>Test Print</button>
+          </div>
+        </>
+      );
+    }
+
+    if (page === "subscription") {
+      return (
+        <>
+          <h1 style={styles.title}>💳 Subscription</h1>
+
+          <div style={styles.card}>
+            <h2>Free Plan</h2>
+            <p>Subscription Expiry: June 12, 2026</p>
+            <button style={styles.orangeBtn}>Upgrade $10/month</button>
+          </div>
+        </>
+      );
+    }
+
+    return null;
+  };
+
   return (
     <div style={styles.app}>
-      <aside style={styles.sidebar}>
-        <h2 style={styles.logo}>🚀 SellerFlow</h2>
+      <div style={styles.sidebar}>
+        <h1 style={styles.logo}>🚀 SellerFlow</h1>
 
-        <div style={styles.navItem}>▦ Report</div>
-        <div style={styles.navActive}>↗ Sales</div>
-        <div style={styles.navItem}>📄 Orders</div>
-        <div style={styles.navItem}>👥 Customers</div>
+        <button style={styles.menuBtn} onClick={() => setPage("sales")}>
+          📊 Sales Report
+        </button>
 
-        <div style={styles.navGroup}>
-          <div style={styles.navItem}>⚙️ Settings</div>
-          <div style={styles.subItem}>🖨️ Printer Setup</div>
-        </div>
+        <button style={styles.menuBtn} onClick={() => setPage("orders")}>
+          📦 Orders
+        </button>
+
+        <button style={styles.menuBtn} onClick={() => setPage("customers")}>
+          👥 Customers
+        </button>
+
+        <button style={styles.menuBtn} onClick={() => setPage("livestream")}>
+          🎥 Livestream
+        </button>
+
+        <button style={styles.menuBtn} onClick={() => setPage("printer")}>
+          🖨 Printer Setup
+        </button>
+
+        <button style={styles.menuBtn} onClick={() => setPage("subscription")}>
+          💳 Subscription
+        </button>
 
         <button style={styles.logoutBtn} onClick={logout}>
           Logout
         </button>
-      </aside>
+      </div>
 
-      <main style={styles.main}>
+      <div style={styles.main}>
         <div style={styles.topBar}>
-          <div style={styles.shopBadge}>🛍️ Seller flow</div>
-
-          <div style={styles.topRight}>
-            <select
-              style={styles.languageBox}
-              value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-            >
-              <option>English</option>
-              <option>Filipino</option>
-              <option>Chinese</option>
-              <option>veitnam</option>
-            </select>
-
-            <button
-              style={styles.profileCircle}
-              onClick={() => setShowProfile(!showProfile)}
-            >
-              {user.email?.[0]?.toUpperCase() || "U"}
-            </button>
-
-            {showProfile && (
-              <div style={styles.profilePopup}>
-                <h3>Profile</h3>
-                <p>{user.email}</p>
-                <p>
-                  <b>Plan:</b> Free Trial
-                </p>
-                <p>
-                  <b>Subscription Expiry:</b> June 12, 2026
-                </p>
-                <button style={styles.upgradeBtn}>Upgrade Plan</button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div style={styles.searchRow}>
           <input
             style={styles.search}
             placeholder="Search TikTok account or FB page"
           />
-          <button style={styles.filterBtn}>🔎</button>
-          <button style={styles.filterBtn}>🔽</button>
+
+          <select style={styles.language}>
+            <option>English</option>
+            <option>Filipino</option>
+            <option>Chinese</option>
+          </select>
+
+          <div style={styles.profileCircle}>JC</div>
         </div>
 
-        <div style={styles.contentGrid}>
-          <section>
-            <div style={styles.postCard}>
-              <div style={styles.postHeader}>
-                <div>
-                  <b>Budget Ukay</b>
-                  <p style={styles.smallText}>🕒 10/12/2024 21:39:19</p>
-                </div>
-                <span>•••</span>
-              </div>
-
-              <p>
-                Thank you so much grabe kayo na mismo naghahanap samen maraming
-                maraming salamat.
-              </p>
-
-              <div style={styles.imageBox}>
-                <h2>Wala kana live now sis?</h2>
-                <h2>Thank you so much ❤️</h2>
-              </div>
-
-              <div style={styles.postStats}>
-                <span>👍 0</span>
-                <span>💬 0</span>
-                <span>↗ 0</span>
-                <span>📋 0</span>
-                <b>Details ❯</b>
-              </div>
-            </div>
-          </section>
-
-          <aside style={styles.presetBox}>
-            <h2>Livestream Presets</h2>
-
-            <div style={styles.presetCard}>
-              <div style={styles.mascot}>🤖</div>
-              <p>
-                Be prepared for a better livestream. Set up products and make
-                time notifications to customers.
-              </p>
-
-              <div style={styles.presetButtons}>
-                <button style={styles.orangeBtn}>⚙️ General settings</button>
-                <button style={styles.cyanBtn}>📋 Auto create order</button>
-              </div>
-            </div>
-          </aside>
-        </div>
-      </main>
+        <div style={styles.pageContainer}>{renderPage()}</div>
+      </div>
     </div>
   );
 }
@@ -185,53 +381,35 @@ const styles: any = {
 
   app: {
     width: "100vw",
-    height:"100vh",
-    overflow: "hidden",
+    height: "100vh",
     display: "flex",
-    background: "linear-gradient(to right, #1f2937, #d1d5db)",
+    overflow: "hidden",
     fontFamily: "Arial",
-    color: "#111827",
+    background: "linear-gradient(to right, #2f3542, #d1d5db)",
   },
 
   sidebar: {
-    width: 240,
+    width: 190,
     background: "white",
     padding: 20,
     display: "flex",
     flexDirection: "column",
     gap: 12,
-    borderRight: "1px solid #ddd",
   },
 
   logo: {
+    fontSize: 22,
     marginBottom: 20,
   },
 
-  navItem: {
-    padding: 14,
-    borderRadius: 12,
-    fontSize: 18,
+  menuBtn: {
+    padding: 13,
+    border: "none",
+    borderRadius: 10,
+    background: "#f1f2f6",
     cursor: "pointer",
-  },
-
-  navActive: {
-    padding: 14,
-    borderRadius: 12,
-    fontSize: 18,
-    cursor: "pointer",
-    background: "#dbe8ff",
-    color: "#2563eb",
-    fontWeight: "bold",
-  },
-
-  navGroup: {
-    marginTop: 10,
-  },
-
-  subItem: {
-    marginLeft: 25,
-    padding: 10,
-    color: "#475569",
+    fontSize: 14,
+    textAlign: "left",
   },
 
   logoutBtn: {
@@ -246,194 +424,156 @@ const styles: any = {
 
   main: {
     flex: 1,
-    hieght: "100vh",
-    overflowY: "auto",
-    padding: 28,
-    position: "relative",
+    display: "flex",
+    flexDirection: "column",
   },
 
   topBar: {
-    background: "white",
-    borderRadius: 8,
-    padding: 16,
+    height: 70,
     display: "flex",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
     alignItems: "center",
-    marginBottom: 25,
-    border: "1px solid #d1d5db",
-  },
-
-  shopBadge: {
-    fontWeight: "bold",
-    fontSize: 18,
-  },
-
-  topRight: {
-    position: "relative",
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-  },
-
-  languageBox: {
-    padding: "10px 12px",
-    borderRadius: 999,
-    border: "1px solid #d1d5db",
-    background: "white",
-    cursor: "pointer",
-  },
-
-  profileCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: "50%",
-    border: "none",
-    background: "#2563eb",
-    color: "white",
-    fontWeight: "bold",
-    fontSize: 18,
-    cursor: "pointer",
-  },
-
-  profilePopup: {
-    position: "absolute",
-    top: 55,
-    right: 0,
-    width: 280,
-    background: "white",
-    border: "1px solid #d1d5db",
-    borderRadius: 12,
-    padding: 16,
-    boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
-    zIndex: 10,
-  },
-
-  upgradeBtn: {
-    width: "100%",
-    padding: 10,
-    borderRadius: 8,
-    border: "none",
-    background: "#22c55e",
-    color: "white",
-    cursor: "pointer",
-    fontWeight: "bold",
-  },
-
-  searchRow: {
-    display: "flex",
-    gap: 12,
-    marginBottom: 25,
+    gap: 15,
+    padding: "0 25px",
   },
 
   search: {
     flex: 1,
-    padding: 16,
-    borderRadius: 8,
-    border: "1px solid #d1d5db",
-    fontSize: 18,
-  },
-
-  filterBtn: {
-    padding: "0 18px",
+    padding: 14,
+    borderRadius: 10,
     border: "none",
-    borderRadius: 8,
-    background: "white",
-    fontSize: 20,
-    cursor: "pointer",
+    fontSize: 15,
   },
 
-  contentGrid: {
-    display: "grid",
-    gridTemplateColumns: "2fr 1fr",
-    gap: 25,
+  language: {
+    padding: 10,
+    borderRadius: 8,
+    border: "none",
+  },
+
+  profileCircle: {
+    width: 45,
+    height: 45,
+    borderRadius: "50%",
+    background: "#111827",
+    color: "white",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: "bold",
+  },
+
+  pageContainer: {
+    flex: 1,
+    padding: 25,
+    overflowY: "auto",
+  },
+
+  title: {
+    color: "white",
+  },
+
+  statsRow: {
+    display: "flex",
+    gap: 20,
+    marginBottom: 25,
+  },
+
+  statCard: {
+    background: "white",
+    padding: 20,
+    borderRadius: 12,
+    minWidth: 180,
+  },
+
+  contentRow: {
+    display: "flex",
+    gap: 20,
   },
 
   postCard: {
+    flex: 1,
     background: "white",
-    borderRadius: 8,
-    padding: 24,
-    boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-  },
-
-  postHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    fontSize: 20,
-  },
-
-  smallText: {
-    margin: 0,
-    color: "#64748b",
-    fontSize: 13,
-  },
-
-  imageBox: {
-    marginTop: 20,
-    background: "#f8fafc",
-    height: 260,
-    borderRadius: 8,
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "center",
-    paddingLeft: 40,
-    color: "#111827",
-    border: "1px solid #eee",
-  },
-
-  postStats: {
-    marginTop: 18,
-    display: "flex",
-    justifyContent: "space-between",
-    fontSize: 18,
-  },
-
-  presetBox: {
-    background: "white",
-    borderRadius: 8,
-    padding: 18,
-    height: "fit-content",
-    border: "1px solid #d1d5db",
-  },
-
-  presetCard: {
-    marginTop: 20,
-    background: "#fff",
-    border: "1px solid #e5e7eb",
+    borderRadius: 15,
     padding: 20,
-    borderRadius: 8,
-    fontSize: 18,
   },
 
-  mascot: {
-    fontSize: 55,
+  liveBox: {
+    width: 300,
+    background: "white",
+    borderRadius: 15,
+    padding: 20,
+    height: "fit-content",
   },
 
-  presetButtons: {
+  card: {
+    background: "white",
+    padding: 20,
+    borderRadius: 12,
+    marginBottom: 15,
+  },
+
+  formBox: {
     display: "flex",
-    gap: 12,
-    marginTop: 20,
+    gap: 10,
+    background: "white",
+    padding: 15,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+
+  formInput: {
+    padding: 12,
+    borderRadius: 8,
+    border: "1px solid #ddd",
+  },
+
+  table: {
+    width: "100%",
+    borderCollapse: "collapse",
   },
 
   orangeBtn: {
-    flex: 1,
-    padding: 14,
+    padding: 12,
     border: "none",
     borderRadius: 8,
-    background: "#f97316",
+    background: "#ff9f43",
     color: "white",
+    cursor: "pointer",
     fontWeight: "bold",
+    marginTop: 10,
+  },
+
+  blueBtn: {
+    padding: 12,
+    border: "none",
+    borderRadius: 8,
+    background: "#3742fa",
+    color: "white",
+    cursor: "pointer",
+    fontWeight: "bold",
+    marginTop: 10,
+  },
+
+  deleteBtn: {
+    padding: 8,
+    border: "none",
+    borderRadius: 6,
+    background: "#ef4444",
+    color: "white",
     cursor: "pointer",
   },
 
-  cyanBtn: {
-    flex: 1,
-    padding: 14,
-    border: "none",
+  customerItem: {
+    padding: 12,
+    background: "#f1f2f6",
     borderRadius: 8,
-    background: "#22c7d9",
-    color: "white",
-    fontWeight: "bold",
-    cursor: "pointer",
+    marginBottom: 10,
+  },
+
+  activityItem: {
+    padding: 12,
+    borderBottom: "1px solid #e5e7eb",
   },
 
   input: {
@@ -442,14 +582,5 @@ const styles: any = {
     borderRadius: 8,
     border: "none",
     outline: "none",
-  },
-
-  blueBtn: {
-    padding: "12px 20px",
-    borderRadius: 8,
-    border: "none",
-    background: "#00A8FF",
-    color: "white",
-    cursor: "pointer",
   },
 };
