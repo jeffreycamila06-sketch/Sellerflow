@@ -1,3 +1,5 @@
+import { saveOrderToDatabase, saveCustomerToDatabase } from "./db";
+
 import { useState, useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 import "./App.css";
@@ -732,7 +734,42 @@ export default function App(){
   useEffect(()=>{
     if(!user)return;
     const s = io("http://localhost:3001");
-    s.on("comment",(d:Comment)=>{setComments(p=>[...p,d]);if(d.isBuy&&d.buyerData)setSelBuyer(d.buyerData);setTimeout(()=>feedRef.current?.scrollTo({top:feedRef.current.scrollHeight,behavior:"smooth"}),50);});
+    s.on("comment", async (d: Comment) => {
+
+      setComments((p) => [...p, d]);
+    
+      if (d.isBuy && d.buyerData) {
+    
+        setSelBuyer(d.buyerData);
+    
+        await saveOrderToDatabase({
+          customer_name: d.name,
+          product: d.comment,
+          total_amount: 380,
+          status: "Pending",
+        });
+        console.log("Saving customer now:", d.name);
+
+        const customerResult = await saveCustomerToDatabase({
+          name: d.name,
+          handle: d.handle,
+          platform: d.platform,
+          total_orders: 1,
+          total_spent: 380,
+        });
+        console.log("Customer result:", customerResult);
+        
+        
+      }
+    
+      setTimeout(() => {
+        feedRef.current?.scrollTo({
+          top: 999999,
+          behavior: "smooth",
+        });
+      }, 50);
+    
+    });
     s.on("buyers_updated",({buyers:b,totalOrders:to}:{buyers:Buyer[];totalOrders:number})=>{
       setBuyers(b);setTotOrd(to);setTotRev(b.reduce((s,x)=>s+x.totalSpent,0));
       const ords=b.flatMap(x=>x.orders.map(o=>({...o,handle:x.handle,name:x.name,bNum:x.num,platform:x.platform,status:"New",date:new Date().toISOString().slice(0,10)})));
