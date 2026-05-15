@@ -51,3 +51,16 @@ export async function saveCustomerToDatabase(customer: {
   console.log("Customer saved to Supabase:", data);
   return { success: true, data };
 }
+export async function getCustomersFromDatabase() {
+  const { data, error } = await supabase
+    .from("customers")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("Load customers error:", error.message);
+    return [];
+  }
+
+  return data || [];
+}

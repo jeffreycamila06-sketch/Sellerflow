@@ -1,5 +1,6 @@
 import { saveOrderToDatabase, saveCustomerToDatabase } from "./db";
 
+
 import { useState, useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 import "./App.css";
@@ -749,6 +750,54 @@ export default function App(){
           status: "Pending",
         });
         console.log("Saving customer now:", d.name);
+        setBuyers(prev => {
+          const exists = prev.find(b => b.handle === d.buyerData!.handle);
+          if (exists) {
+            const updated = prev.map(b =>
+              b.handle === d.buyerData!.handle
+                ? {
+                    ...b,
+                    orders: [...b.orders, ...d.buyerData!.orders],
+                    totalOrders: b.totalOrders + d.buyerData!.totalOrders,
+                    totalSpent: b.totalSpent + d.buyerData!.totalSpent,
+                  }
+                : b
+            );
+          
+            const selected = updated.find(b => b.handle === d.buyerData!.handle);
+            if (selected) setSelBuyer(selected);
+          
+            return updated;
+          }
+          
+          setSelBuyer(d.buyerData!);
+          return [...prev, d.buyerData!];
+          
+        
+          setAllOrders(prev => {
+            const newOrders = d.buyerData!.orders.map(o => ({
+              ...o,
+              handle: d.handle,
+              name: d.name,
+              bNum: d.buyerData!.num,
+              platform: d.platform,
+              status: "New",
+              date: new Date().toISOString().slice(0, 10),
+            }));
+            const next = [...prev, ...newOrders];
+            LS.set("sf_orders", next);
+            return next;
+          });
+          
+          
+          const next = [...prev, ...newOrders];
+          LS.set("sf_orders", next);
+          return next;
+        });
+        
+        setTotOrd(prev => prev + d.buyerData!.totalOrders);
+        setTotRev(prev => prev + d.buyerData!.totalSpent);
+        
 
         const customerResult = await saveCustomerToDatabase({
           name: d.name,
@@ -757,9 +806,12 @@ export default function App(){
           total_orders: 1,
           total_spent: 380,
         });
+        
+       
+        
         console.log("Customer result:", customerResult);
         
-        
+
       }
     
       setTimeout(() => {
@@ -969,8 +1021,7 @@ export default function App(){
         {page==="orders"&&<Orders orders={allOrders} setOrders={setAllOrders} cur={settings.currency} t={t}/>}
         {page==="products"&&<Products cur={settings.currency} t={t}/>}
         {page==="customers"&&<Customers buyers={buyers} cur={settings.currency} t={t}/>}
-        {page==="print"&&<PrintPage buyers={buyers} cur={settings.currency} storeName={user.profile.storeName||"SellerFlow"} settings={settings} t={t}/>}
-        {page==="sales"&&<Sales orders={allOrders} buyers={buyers} cur={settings.currency} t={t}/>}
+        {page==="customers"&&<Customers buyers={dbCustomers} cur={settings.currency} t={t}/>}        {page==="sales"&&<Sales orders={allOrders} buyers={buyers} cur={settings.currency} t={t}/>}
         {page==="settings"&&<SettingsPage user={user} settings={settings} onSaveProfile={handleSaveProfile} onSaveSettings={handleSaveSettings} onSavePw={handleSavePw} t={t}/>}
         {page==="subscription"&&<SubPage user={user} onActivate={handleActivate} t={t}/>}
         {page==="support"&&<Support user={user} t={t}/>}
