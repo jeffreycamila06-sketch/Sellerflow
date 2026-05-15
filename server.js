@@ -6,6 +6,8 @@ import { Server } from "socket.io";
 
 const app = express();
 const server = http.createServer(app);
+const TEST_COMMENT_TOKEN = process.env.TEST_COMMENT_TOKEN || "";
+
 
 const io = new Server(server, {
   cors: {
@@ -130,6 +132,13 @@ async function connectTikTok(username, res) {
 }
 
 app.get("/test-comment", (req, res) => {
+  if (TEST_COMMENT_TOKEN && req.query.token !== TEST_COMMENT_TOKEN) {
+    return res.status(401).json({
+      success: false,
+      error: "Invalid test comment token",
+    });
+  }
+
   console.log("Maria Reyes: mine blue blouse");
   console.log("ORDER DETECTED 🚀");
 
