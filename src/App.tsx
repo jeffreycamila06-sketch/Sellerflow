@@ -734,7 +734,8 @@ export default function App(){
 
   useEffect(()=>{
     if(!user)return;
-    const s = io("http://localhost:3001");
+    const s = io(SERVER);
+
     s.on("comment", async (d: Comment) => {
 
       setComments((p) => [...p, d]);
@@ -772,7 +773,8 @@ export default function App(){
           
           setSelBuyer(d.buyerData!);
           return [...prev, d.buyerData!];
-          
+        });
+
         
           setAllOrders(prev => {
             const newOrders = d.buyerData!.orders.map(o => ({
@@ -784,16 +786,13 @@ export default function App(){
               status: "New",
               date: new Date().toISOString().slice(0, 10),
             }));
+          
             const next = [...prev, ...newOrders];
             LS.set("sf_orders", next);
             return next;
           });
           
-          
-          const next = [...prev, ...newOrders];
-          LS.set("sf_orders", next);
-          return next;
-        });
+
         
         setTotOrd(prev => prev + d.buyerData!.totalOrders);
         setTotRev(prev => prev + d.buyerData!.totalSpent);
@@ -810,27 +809,68 @@ export default function App(){
        
         
         console.log("Customer result:", customerResult);
-        
-
       }
-    
+
       setTimeout(() => {
         feedRef.current?.scrollTo({
           top: 999999,
           behavior: "smooth",
         });
       }, 50);
-    
     });
-    s.on("buyers_updated",({buyers:b,totalOrders:to}:{buyers:Buyer[];totalOrders:number})=>{
-      setBuyers(b);setTotOrd(to);setTotRev(b.reduce((s,x)=>s+x.totalSpent,0));
-      const ords=b.flatMap(x=>x.orders.map(o=>({...o,handle:x.handle,name:x.name,bNum:x.num,platform:x.platform,status:"New",date:new Date().toISOString().slice(0,10)})));
-      setAllOrders(ords);LS.set("sf_orders",ords);
+
+    s.on("buyers_updated", ({ buyers: b, totalOrders: to }: { buyers: Buyer[]; totalOrders: number }) => {
+      setBuyers(b);
+      setTotOrd(to);
+      setTotRev(b.reduce((sum, buyer) => sum + buyer.totalSpent, 0));
+
+      const ords = b.flatMap(buyer =>
+        buyer.orders.map(order => ({
+          ...order,
+          handle: buyer.handle,
+          name: buyer.name,
+          bNum: buyer.num,
+          platform: buyer.platform,
+          status: "New",
+          date: new Date().toISOString().slice(0, 10),
+        }))
+      );
+
+      setAllOrders(ords);
+      LS.set("sf_orders", ords);
     });
-    s.on("platform_status",({platform:p,connected:c}:{platform:string;connected:boolean})=>{if(p==="TikTok")setTtOn(c);if(p==="Facebook")setFbOn(c);});
-    s.on("session_state",({buyers:b,totalOrders:to}:{buyers:Buyer[];totalOrders:number})=>{setBuyers(b);setTotOrd(to);});
-    return()=>{s.disconnect();};
-  },[user]);
+
+    s.on("platform_status", ({ platform: p, connected: c }: { platform: string; connected: boolean }) => {
+      if (p === "TikTok") setTtOn(c);
+      if (p === "Facebook") setFbOn(c);
+    });
+
+    s.on("session_state", ({ buyers: b, totalOrders: to }: { buyers: Buyer[]; totalOrders: number }) => {
+      setBuyers(b);
+      setTotOrd(to);
+      setTotRev(b.reduce((sum, buyer) => sum + buyer.totalSpent, 0));
+
+      const ords = b.flatMap(buyer =>
+        buyer.orders.map(order => ({
+          ...order,
+          handle: buyer.handle,
+          name: buyer.name,
+          bNum: buyer.num,
+          platform: buyer.platform,
+          status: "New",
+          date: new Date().toISOString().slice(0, 10),
+        }))
+      );
+
+      setAllOrders(ords);
+      LS.set("sf_orders", ords);
+    });
+
+    return () => {
+      s.disconnect();
+    };
+  }, [user]);
+
 
   function saveUser(u:User){setUser(u);LS.set("sf_users",LS.get<User[]>("sf_users",[]).map(x=>x.email===u.email?u:x));}
   function handleLogin(u:User){setUser(u);setPage("dashboard");}
