@@ -21,6 +21,13 @@ let tiktokConnection = null;
 app.get("/", (req, res) => {
   res.send("SellerFlow TikTok Server Running 🚀");
 });
+app.get("/health", (_req, res) => {
+  res.json({
+    ok: true,
+    service: "sellerflow-live-server",
+  });
+});
+
 
 app.get("/connect-live/:username", async (req, res) => {
   return connectTikTok(req.params.username, res);
