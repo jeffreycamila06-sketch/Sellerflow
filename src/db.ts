@@ -35,18 +35,20 @@ export async function saveCustomerToDatabase(customer: {
   total_orders: number;
   total_spent: number;
 }) {
-  const { data: existing, error: findError } = await supabase
-    .from("customers")
-    .select("*")
-    .eq("handle", customer.handle)
-    .maybeSingle();
+  async function updateExistingCustomer() {
+    const { data: existing, error: findError } = await supabase
+      .from("customers")
+      .select("*")
+      .eq("handle", customer.handle)
+      .maybeSingle();
 
-  if (findError) {
-    console.error("Find customer error:", findError.message);
-    return { success: false, error: findError };
-  }
+    if (findError) {
+      console.error("Find customer error:", findError.message);
+      return { success: false, error: findError };
+    }
 
-  if (existing) {
+    if (!existing) return null;
+
     const { data, error } = await supabase
       .from("customers")
       .update({
@@ -60,13 +62,15 @@ export async function saveCustomerToDatabase(customer: {
 
     if (error) {
       console.error("Update customer error:", error.message);
-      alert("Customer DB update error: " + error.message);
       return { success: false, error };
     }
 
     console.log("Customer updated in Supabase:", data);
     return { success: true, data };
   }
+
+  const updated = await updateExistingCustomer();
+  if (updated) return updated;
 
   const { data, error } = await supabase
     .from("customers")
@@ -82,6 +86,10 @@ export async function saveCustomerToDatabase(customer: {
     .select();
 
   if (error) {
+    if (error.code === "23505") {
+      return await updateExistingCustomer();
+    }
+
     console.error("Supabase save customer error:", error.message);
     alert("Customer DB error: " + error.message);
     return { success: false, error };
