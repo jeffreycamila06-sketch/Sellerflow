@@ -905,6 +905,9 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
               {settingsDirty?"Not saved":"Saved"}
             </span>
           </div>
+          <div className="printer-tools-row">
+            <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat" download>Printer Shortcut</a>
+          </div>
           <Fg label={t.printer_type}>
             <select value={sets.printerType} onChange={e=>setSets(s=>({...s,printerType:e.target.value as "usb"|"bluetooth"}))}>
               <option value="usb">{t.printer_usb}</option>
