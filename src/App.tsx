@@ -1101,31 +1101,45 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
         <div className="table-card">
           <div className="table-title">Payment / Support Messages ({msgs.length})</div>
           <div className="admin-table-wrap">
-            <div className="admin-table-scroll" ref={paymentsTableRef}>
-              <table className="tbl">
-                <thead><tr><th>User</th><th>Message</th><th>Status</th><th></th></tr></thead>
-                <tbody>
-                  {filteredMsgs.length===0&&<tr><td colSpan={4} style={{textAlign:"center",padding:24,color:"#888"}}>{msgs.length===0?"No messages yet.":"No messages found."}</td></tr>}
-                  {[...filteredMsgs].reverse().map(m=>(
-                    <tr key={m.id}>
-                      <td><strong>{m.name}</strong><div className="muted" style={{fontSize:11}}>{m.email}</div></td>
-                      <td><div><strong>{m.subject}</strong></div><div className="muted" style={{fontSize:11}}>{m.message.slice(0,90)}{m.message.length>90?"...":""}</div></td>
-                      <td><Badge label={m.status} color={m.status==="approved"?"green":m.status==="rejected"?"red":"amber"}/></td>
-                      <td>
-                        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                          <button className="tbl-btn ed" onClick={()=>{updateMsg(m.id,"approved");approve(m.email,"pro");}}>Approve</button>
-                          <button className="tbl-btn dl" onClick={()=>updateMsg(m.id,"rejected")}>Reject</button>
-                          <button className="tbl-btn ed" onClick={()=>copy(m.email,"Email")}>Copy email</button>
-                        </div>
-                        <div className="admin-reply-box">
-                          <textarea rows={2} value={replyDrafts[m.id] ?? m.adminReply ?? ""} onChange={e=>setReplyDrafts(s=>({...s,[m.id]:e.target.value}))} placeholder="Reply to seller complaint..."/>
-                          <button className="tbl-btn ed" onClick={()=>replyToSeller(m)}>{m.adminReply?"Update reply":"Reply"}</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="admin-table-scroll support-chat-scroll" ref={paymentsTableRef}>
+              {filteredMsgs.length===0&&<div style={{textAlign:"center",padding:24,color:"#888"}}>{msgs.length===0?"No messages yet.":"No messages found."}</div>}
+              {[...filteredMsgs].reverse().map(m=>(
+                <div key={m.id} className="support-thread">
+                  <div className="support-thread-head">
+                    <div>
+                      <strong>{m.name}</strong>
+                      <span>{m.email}</span>
+                    </div>
+                    <Badge label={m.status} color={m.status==="approved"?"green":m.status==="rejected"?"red":"amber"}/>
+                  </div>
+                  <div className="support-chat-row seller">
+                    <div className="support-avatar">{ini(m.name||m.email)}</div>
+                    <div className="support-bubble seller">
+                      <strong>{m.subject}</strong>
+                      <p>{m.message}</p>
+                      <span>{new Date(m.timestamp).toLocaleString()} {m.hasProof?" · Proof attached":""}</span>
+                    </div>
+                  </div>
+                  {m.adminReply&&(
+                    <div className="support-chat-row admin">
+                      <div className="support-bubble admin">
+                        <strong>Admin reply</strong>
+                        <p>{m.adminReply}</p>
+                        {m.repliedAt&&<span>{new Date(m.repliedAt).toLocaleString()}</span>}
+                      </div>
+                    </div>
+                  )}
+                  <div className="support-actions">
+                    <button className="tbl-btn ed" onClick={()=>{updateMsg(m.id,"approved");approve(m.email,"pro");}}>Approve</button>
+                    <button className="tbl-btn dl" onClick={()=>updateMsg(m.id,"rejected")}>Reject</button>
+                    <button className="tbl-btn ed" onClick={()=>copy(m.email,"Email")}>Copy email</button>
+                  </div>
+                  <div className="messenger-reply">
+                    <textarea rows={2} value={replyDrafts[m.id] ?? m.adminReply ?? ""} onChange={e=>setReplyDrafts(s=>({...s,[m.id]:e.target.value}))} placeholder="Type a reply like Messenger..."/>
+                    <button className="tbl-btn ed" onClick={()=>replyToSeller(m)}>{m.adminReply?"Update reply":"Send reply"}</button>
+                  </div>
+                </div>
+              ))}
             </div>
             <div className="admin-scroll-tools"><button onClick={()=>scrollBox(paymentsTableRef.current,"up")}>⌃</button><button onClick={()=>scrollBox(paymentsTableRef.current,"down")}>⌄</button></div>
           </div>
