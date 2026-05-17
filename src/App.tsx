@@ -8,6 +8,7 @@ import {
   listUsers,
   saveAuditLog,
   saveSupportMessage,
+  updateSupportReply,
   updateSupportStatus,
   upsertUser,
 } from "./accountDb";
@@ -29,7 +30,7 @@ interface Buyer { handle:string; name:string; platform:string; num:number; order
 interface Comment { handle:string; name:string; comment:string; platform:"TikTok"|"Facebook"; isBuy:boolean; buyerNum:number|null; buyerData:Buyer|null; time:string; avatar?:string; timestamp?:string; }
 interface Product { id:number; name:string; sku:string; price:number; stock:number; platform:string; status:string; }
 interface Settings { autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"usb"|"bluetooth"; stickerSize:string; }
-interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; timestamp:string; status:"pending"|"approved"|"rejected"; }
+interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; timestamp:string; status:"pending"|"approved"|"rejected"; adminReply?:string; repliedAt?:string; }
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
 const LS = {
@@ -699,6 +700,13 @@ function Support({user,t}:{user:User;t:T}){
                   </div>
                   <div style={{fontSize:11,color:"#888",marginBottom:4}}>{new Date(m.timestamp).toLocaleDateString()} {m.hasProof?"📎 Proof attached":""}</div>
                   <div style={{fontSize:12,color:"#5F5E5A"}}>{m.message.slice(0,120)}{m.message.length>120?"...":""}</div>
+                  {m.adminReply&&(
+                    <div className="support-admin-reply">
+                      <strong>Admin reply</strong>
+                      <div>{m.adminReply}</div>
+                      {m.repliedAt&&<span>{new Date(m.repliedAt).toLocaleString()}</span>}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -721,6 +729,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
   const [editOriginalEmail,setEditOriginalEmail]=useState("");
   const [editSeller,setEditSeller]=useState({email:"",newPassword:"",fullName:"",storeName:"",phone:"",tiktok:"",facebook:""});
   const [adminSearch,setAdminSearch]=useState("");
+  const [replyDrafts,setReplyDrafts]=useState<Record<string,string>>({});
   const [copied,setCopied]=useState("");
   const usersTableRef=useRef<HTMLDivElement>(null);
   const paymentsTableRef=useRef<HTMLDivElement>(null);
@@ -742,6 +751,21 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
     await updateSupportStatus(id,status);
     const msg=msgs.find(m=>m.id===id);
     if(msg)await logAction(status==="approved"?"approved payment/support":"rejected payment/support",msg.email,msg.subject);
+  }
+
+  async function replyToSeller(message:SupportMsg){
+    const reply=(replyDrafts[message.id] ?? message.adminReply ?? "").trim();
+    if(!reply){setCopied("Write a reply first");return;}
+    const repliedAt=new Date().toISOString();
+    const next=msgs.map(m=>m.id===message.id?{...m,adminReply:reply,repliedAt}:m);
+    setMsgs(next);
+    try{
+      await updateSupportReply(message.id,reply);
+      await logAction("replied to support",message.email,message.subject);
+      setCopied("Reply sent to seller");
+    }catch(error){
+      setCopied(`Reply failed: ${error instanceof Error?error.message:"Unknown error"}`);
+    }
   }
 
   function approve(email:string,plan:Plan){
@@ -957,8 +981,8 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
     ]));
   }
   function exportPayments(){
-    csvDL(`sellerflow-payments-support-${dayStamp}.csv`,["Name","Email","Subject","Message","Proof","Status","Timestamp"],filteredMsgs.map(m=>[
-      m.name,m.email,m.subject,m.message,m.hasProof?"yes":"no",m.status,m.timestamp
+    csvDL(`sellerflow-payments-support-${dayStamp}.csv`,["Name","Email","Subject","Message","Admin Reply","Proof","Status","Timestamp","Replied At"],filteredMsgs.map(m=>[
+      m.name,m.email,m.subject,m.message,m.adminReply||"",m.hasProof?"yes":"no",m.status,m.timestamp,m.repliedAt||""
     ]));
   }
   function exportAudit(){
@@ -1080,6 +1104,10 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
                           <button className="tbl-btn ed" onClick={()=>{updateMsg(m.id,"approved");approve(m.email,"pro");}}>Approve</button>
                           <button className="tbl-btn dl" onClick={()=>updateMsg(m.id,"rejected")}>Reject</button>
                           <button className="tbl-btn ed" onClick={()=>copy(m.email,"Email")}>Copy email</button>
+                        </div>
+                        <div className="admin-reply-box">
+                          <textarea rows={2} value={replyDrafts[m.id] ?? m.adminReply ?? ""} onChange={e=>setReplyDrafts(s=>({...s,[m.id]:e.target.value}))} placeholder="Reply to seller complaint..."/>
+                          <button className="tbl-btn ed" onClick={()=>replyToSeller(m)}>{m.adminReply?"Update reply":"Reply"}</button>
                         </div>
                       </td>
                     </tr>

@@ -30,6 +30,8 @@ export interface AccountSupportMsg {
   hasProof: boolean;
   timestamp: string;
   status: "pending" | "approved" | "rejected";
+  adminReply?: string;
+  repliedAt?: string;
 }
 
 export interface AccountAuditLog {
@@ -101,6 +103,8 @@ function rowToSupport(row: Record<string, any>): AccountSupportMsg {
     hasProof: Boolean(row.has_proof),
     timestamp: row.created_at || new Date().toISOString(),
     status: row.status || "pending",
+    adminReply: row.admin_reply || "",
+    repliedAt: row.replied_at || "",
   };
 }
 
@@ -272,6 +276,26 @@ export async function updateSupportStatus(id: string, status: AccountSupportMsg[
 
   if (error) {
     console.error("Update support message error:", error.message);
+  }
+}
+
+export async function updateSupportReply(id: string, adminReply: string): Promise<void> {
+  const repliedAt = new Date().toISOString();
+  const localMessages = localGet<AccountSupportMsg[]>("sf_support", []).map((m) =>
+    m.id === id ? { ...m, adminReply, repliedAt } : m
+  );
+  localSet("sf_support", localMessages);
+
+  if (!isSupabaseConfigured || !supabase) return;
+
+  const { error } = await supabase
+    .from("support_messages")
+    .update({ admin_reply: adminReply, replied_at: repliedAt })
+    .eq("id", id);
+
+  if (error) {
+    console.error("Update support reply error:", error.message);
+    throw new Error(`${error.message} (${supabaseConfigHint})`);
   }
 }
 

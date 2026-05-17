@@ -23,8 +23,13 @@ create table if not exists public.support_messages (
   message text not null default '',
   has_proof boolean not null default false,
   status text not null default 'pending',
+  admin_reply text not null default '',
+  replied_at timestamptz,
   created_at timestamptz not null default now()
 );
+
+alter table public.support_messages add column if not exists admin_reply text not null default '';
+alter table public.support_messages add column if not exists replied_at timestamptz;
 
 create table if not exists public.audit_logs (
   id uuid primary key default gen_random_uuid(),
