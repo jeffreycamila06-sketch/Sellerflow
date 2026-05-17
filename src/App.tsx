@@ -725,6 +725,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
   const usersTableRef=useRef<HTMLDivElement>(null);
   const paymentsTableRef=useRef<HTMLDivElement>(null);
   const auditTableRef=useRef<HTMLDivElement>(null);
+  const adminPageRef=useRef<HTMLDivElement>(null);
 
   async function refresh(){
     setUsers(await listUsers());
@@ -925,6 +926,12 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
     el?.scrollBy({top:dir==="up"?-220:220,behavior:"smooth"});
   }
 
+  function scrollAdminPage(dir:"up"|"down"){
+    const el=adminPageRef.current;
+    if(!el)return;
+    el.scrollTo({top:dir==="up"?0:el.scrollHeight,behavior:"smooth"});
+  }
+
   const q=adminSearch.trim().toLowerCase();
   const filteredUsers=users.filter(u=>!q||[
     u.email,u.profile.fullName,u.profile.storeName,u.profile.phone,u.profile.tiktok,u.profile.facebook,u.plan,isAdminEmail(u.email)?"admin":"seller"
@@ -970,8 +977,12 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
   }
 
   return(
-    <div className="subpage">
+    <div className="subpage admin-page" ref={adminPageRef}>
       {copied&&<Toast msg={copied} onDone={()=>setCopied("")}/>}
+      <div className="admin-page-scroll-tools">
+        <button onClick={()=>scrollAdminPage("up")} title="Go to top">^</button>
+        <button onClick={()=>scrollAdminPage("down")} title="Go to bottom">v</button>
+      </div>
       <div className="subpage-hd">
         <div>
           <h2>Admin</h2>

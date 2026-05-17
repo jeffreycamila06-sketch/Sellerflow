@@ -199,6 +199,10 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .admin-exportbar{display:flex;gap:8px;flex-wrap:wrap}
 .admin-exportbar .btn-out{padding:7px 12px}
 .admin-summary-grid{grid-template-columns:repeat(5,1fr)}
+.admin-page{position:relative}
+.admin-page-scroll-tools{position:fixed;right:18px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:10px;z-index:20}
+.admin-page-scroll-tools button{width:34px;height:34px;border:none;border-radius:10px;background:#7F77DD;color:#fff;font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 8px 22px rgba(38,33,92,.18)}
+.admin-page-scroll-tools button:hover{background:#534AB7}
 .admin-table-wrap{position:relative}
 .admin-table-scroll{max-height:305px;overflow:auto;scroll-behavior:smooth;padding-right:38px}
 .admin-table-scroll.audit{max-height:260px}
