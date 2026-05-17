@@ -280,9 +280,11 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .printer-preview-box{border:1px solid #E4E2DC;border-radius:10px;background:#FAFAF7;padding:10px;display:flex;flex-direction:column;align-items:center;gap:8px}
 .printer-preview-title{align-self:stretch;font-size:11px;font-weight:700;color:#26215C;text-transform:uppercase;letter-spacing:.04em}
 .printer-preview-slip{width:min(240px,100%);min-height:210px;background:#fff;border:1px solid #252525;border-radius:2px;padding:10px 12px;color:#111;font-family:monospace;box-shadow:0 8px 18px rgba(38,33,92,.08);transition:font-size .15s}
-.printer-preview-brand{display:flex;align-items:center;justify-content:center;gap:5px;font-family:Arial,sans-serif}
+.printer-preview-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.printer-preview-brand{display:flex;align-items:center;justify-content:flex-start;gap:5px;font-family:Arial,sans-serif}
 .printer-preview-brand strong{font-size:1.1em;color:#26215C}.printer-preview-brand span:not(.printer-preview-logo){color:#7F77DD}
 .printer-preview-logo{width:22px;height:22px;border-radius:5px;background:#7F77DD;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800}
+.printer-preview-qr{object-fit:contain;border:1px solid #ddd;padding:1px;background:#fff;flex-shrink:0}
 .printer-preview-store,.printer-preview-session{text-align:center;color:#777;font-size:.9em;margin-top:5px}
 .printer-preview-line{height:1px;background:#111;margin:7px 0}
 .printer-preview-buyer{text-align:center;background:#EEEDFE;border:1px solid #AFA9EC;border-radius:7px;padding:6px 5px;display:flex;flex-direction:column;gap:2px}
