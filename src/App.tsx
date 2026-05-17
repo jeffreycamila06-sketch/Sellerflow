@@ -1113,6 +1113,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
   const [adminSearch,setAdminSearch]=useState("");
   const [replyDrafts,setReplyDrafts]=useState<Record<string,string>>({});
   const [selectedSupportEmail,setSelectedSupportEmail]=useState("");
+  const [expandedAdminBox,setExpandedAdminBox]=useState<""|"overview"|"create"|"users"|"payments">("");
   const [copied,setCopied]=useState("");
   const usersTableRef=useRef<HTMLDivElement>(null);
   const paymentsTableRef=useRef<HTMLDivElement>(null);
@@ -1429,6 +1430,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
   const todayOrders=LS.get<LiveOrder[]>("sf_orders",[]).filter(o=>o.date===todayIso);
   const allStoredOrders=LS.get<LiveOrder[]>("sf_orders",[]);
   const dayStamp=new Date().toISOString().slice(0,10);
+  const expandedTitles={"":"Admin",overview:"Overview",create:"Create Seller",users:"Users",payments:"Payment / Support"};
 
   function exportUsers(){
     csvDL(`sellerflow-users-${dayStamp}.csv`,["Email","Role","Plan","Plan Status","Days Left","Connected Accounts","Full Name","Store Name","Phone","TikTok","Facebook"],filteredUsers.map(u=>[
@@ -1479,23 +1481,29 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
         {adminSearch&&<button className="admin-search-clear" onClick={()=>setAdminSearch("")}>Clear</button>}
       </div>
 
-      <div className="admin-exportbar">
+      <div className="admin-exportbar admin-compact">
         <button className="btn-out" onClick={exportUsers}>Export Users CSV</button>
         <button className="btn-out" onClick={exportPayments}>Export Payments CSV</button>
         <button className="btn-out" onClick={exportAudit}>Export Audit CSV</button>
         <button className="btn-out" onClick={exportOrders}>Export Orders CSV</button>
       </div>
 
-      <div className="grid4 admin-summary-grid">
-        <div className="mstat"><div className="ms-l">Sellers</div><div className="ms-v">{sellerUsers.length}</div></div>
-        <div className="mstat"><div className="ms-l">Active</div><div className="ms-v" style={{color:"#1D9E75"}}>{activeSellers.length}</div></div>
-        <div className="mstat"><div className="ms-l">Expired</div><div className="ms-v" style={{color:"#A32D2D"}}>{expiredSellers.length}</div></div>
-        <div className="mstat"><div className="ms-l">Pending Payments</div><div className="ms-v" style={{color:"#BA7517"}}>{pendingPayments.length}</div></div>
-        <div className="mstat"><div className="ms-l">Today Orders</div><div className="ms-v" style={{color:"#534AB7"}}>{todayOrders.length}</div></div>
-        <div className="mstat"><div className="ms-l">Expiring Soon</div><div className="ms-v" style={{color:"#BA7517"}}>{expiringSoonSellers.length}</div></div>
+      <div className="admin-quick-grid">
+        <button className="admin-action-card" onDoubleClick={()=>setExpandedAdminBox("overview")}>
+          <div className="ms-l">Overview</div><div className="ms-v">{sellerUsers.length}</div><span>{activeSellers.length} active, {expiredSellers.length} expired</span>
+        </button>
+        <button className="admin-action-card" onDoubleClick={()=>setExpandedAdminBox("create")}>
+          <div className="ms-l">Create Seller</div><div className="ms-v">+</div><span>Add a seller account fast</span>
+        </button>
+        <button className="admin-action-card" onDoubleClick={()=>setExpandedAdminBox("users")}>
+          <div className="ms-l">Users</div><div className="ms-v">{filteredUsers.length}</div><span>Plans, accounts, admin tools</span>
+        </button>
+        <button className="admin-action-card" onDoubleClick={()=>setExpandedAdminBox("payments")}>
+          <div className="ms-l">Payments</div><div className="ms-v" style={{color:"#BA7517"}}>{pendingPayments.length}</div><span>{unreadSupportCount} new support messages</span>
+        </button>
       </div>
 
-      <div className="table-card" style={{marginBottom:16}}>
+      <div className="table-card admin-compact-card" style={{marginBottom:12}} onDoubleClick={()=>setExpandedAdminBox("overview")}>
         <div className="table-title">Plan Monitoring ({planMonitorUsers.length})</div>
         <div className="admin-table-wrap">
           <div className="admin-table-scroll">
@@ -1524,7 +1532,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
         </div>
       </div>
 
-      <div className="scard" style={{marginBottom:16}}>
+      <div className="scard admin-compact-card" style={{marginBottom:12}} onDoubleClick={()=>setExpandedAdminBox("create")}>
         <div className="scard-title">Create Seller Account</div>
         <div className="grid4">
           <Fg label="Email"><input value={newSeller.email} onChange={e=>setNewSeller(s=>({...s,email:e.target.value}))} placeholder="seller@email.com"/></Fg>
@@ -1535,8 +1543,8 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
         <button className="btn-purple" style={{marginTop:10}} onClick={createSeller}>Create seller</button>
       </div>
 
-      <div className="grid2">
-        <div className="table-card">
+      <div className="grid2 admin-box-grid">
+        <div className="table-card admin-compact-card" onDoubleClick={()=>setExpandedAdminBox("users")}>
           <div className="table-title">Users ({users.length})</div>
           <div className="admin-table-wrap">
             <div className="admin-table-scroll" ref={usersTableRef}>
@@ -1570,11 +1578,11 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
                 </tbody>
               </table>
             </div>
-            <div className="admin-scroll-tools"><button onClick={()=>scrollBox(usersTableRef.current,"up")}>⌃</button><button onClick={()=>scrollBox(usersTableRef.current,"down")}>⌄</button></div>
+            <div className="admin-scroll-tools"><button onClick={()=>scrollBox(usersTableRef.current,"up")}>^</button><button onClick={()=>scrollBox(usersTableRef.current,"down")}>v</button></div>
           </div>
         </div>
 
-        <div className="table-card">
+        <div className="table-card admin-compact-card" onDoubleClick={()=>setExpandedAdminBox("payments")}>
           <div className="table-title support-title">
             <span>Payment / Support Messages ({msgs.length})</span>
             {unreadSupportCount>0&&<span className="support-new-badge">{unreadSupportCount>9?"9+":unreadSupportCount} new</span>}
@@ -1675,7 +1683,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
                 </div>
               ))}
             </div>
-            <div className="admin-scroll-tools"><button onClick={()=>scrollBox(paymentsTableRef.current,"up")}>⌃</button><button onClick={()=>scrollBox(paymentsTableRef.current,"down")}>⌄</button></div>
+            <div className="admin-scroll-tools"><button onClick={()=>scrollBox(paymentsTableRef.current,"up")}>^</button><button onClick={()=>scrollBox(paymentsTableRef.current,"down")}>v</button></div>
           </div>
         </div>
       </div>
@@ -1699,9 +1707,48 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
               </tbody>
             </table>
           </div>
-          <div className="admin-scroll-tools"><button onClick={()=>scrollBox(auditTableRef.current,"up")}>⌃</button><button onClick={()=>scrollBox(auditTableRef.current,"down")}>⌄</button></div>
+          <div className="admin-scroll-tools"><button onClick={()=>scrollBox(auditTableRef.current,"up")}>^</button><button onClick={()=>scrollBox(auditTableRef.current,"down")}>v</button></div>
         </div>
       </div>
+      {expandedAdminBox&&(
+        <div className="admin-fullscreen-panel">
+          <div className="admin-fullscreen-head">
+            <button className="btn-out" onClick={()=>setExpandedAdminBox("")}>Back</button>
+            <div><h2>{expandedTitles[expandedAdminBox]}</h2><p>Double-click opened this admin box.</p></div>
+          </div>
+          <div className="admin-fullscreen-body">
+            {expandedAdminBox==="overview"&&<div className="admin-fullscreen-grid">
+              <div className="mstat"><div className="ms-l">Sellers</div><div className="ms-v">{sellerUsers.length}</div></div>
+              <div className="mstat"><div className="ms-l">Active</div><div className="ms-v" style={{color:"#14966F"}}>{activeSellers.length}</div></div>
+              <div className="mstat"><div className="ms-l">Expired</div><div className="ms-v" style={{color:"#A32D2D"}}>{expiredSellers.length}</div></div>
+              <div className="mstat"><div className="ms-l">Today Orders</div><div className="ms-v">{todayOrders.length}</div></div>
+            </div>}
+            {expandedAdminBox==="create"&&<div className="scard admin-fullscreen-create">
+              <div className="scard-title">Create Seller Account</div>
+              <div className="grid4">
+                <Fg label="Email"><input value={newSeller.email} onChange={e=>setNewSeller(s=>({...s,email:e.target.value}))} placeholder="seller@email.com"/></Fg>
+                <Fg label="Temporary password"><input type="password" value={newSeller.password} onChange={e=>setNewSeller(s=>({...s,password:e.target.value}))} placeholder="Minimum 6 chars"/></Fg>
+                <Fg label="Full name"><input value={newSeller.fullName} onChange={e=>setNewSeller(s=>({...s,fullName:e.target.value}))} placeholder="Seller name"/></Fg>
+                <Fg label="Store name"><input value={newSeller.storeName} onChange={e=>setNewSeller(s=>({...s,storeName:e.target.value}))} placeholder="Store name"/></Fg>
+              </div>
+              <button className="btn-purple" onClick={createSeller}>Create seller</button>
+            </div>}
+            {expandedAdminBox==="users"&&<div className="table-card admin-fullscreen-table">
+              <div className="table-title">Users ({filteredUsers.length})</div>
+              <table className="tbl"><thead><tr><th>Email</th><th>Role</th><th>Plan</th><th>Days</th><th>Accounts</th></tr></thead><tbody>
+                {filteredUsers.map(u=><tr key={"expanded-"+u.email}><td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td><td><Badge label={isAdminEmail(u.email)?"Admin":"Seller"} color={isAdminEmail(u.email)?"amber":"gray"}/></td><td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td><td>{dLeft(u.planExpiry)}</td><td>{registeredAccountCount(u)} / {maxAcc(u.plan)}</td></tr>)}
+              </tbody></table>
+            </div>}
+            {expandedAdminBox==="payments"&&<div className="admin-fullscreen-messages">
+              {supportConversations.map(c=><button key={"expanded-support-"+c.email} className={"support-thread messenger-thread-head "+(c.unread>0?"has-new":"")} onClick={()=>setSelectedSupportEmail(c.email)}>
+                <div className="support-avatar big">{ini(c.name||c.email)}</div>
+                <div className="support-convo-meta"><div className="support-convo-top"><strong>{c.name||c.email}</strong><span>{new Date(c.latest.timestamp).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}</span></div><div className="support-convo-sub"><span>{c.latest.adminReply?"You: "+c.latest.adminReply:c.latest.message}</span>{c.unread>0&&<b>{c.unread>9?"9+":c.unread} new</b>}</div><div className="muted" style={{fontSize:10}}>{c.email}</div></div>
+                {c.unread>0&&<span className="support-unread-dot"/>}
+              </button>)}
+            </div>}
+          </div>
+        </div>
+      )}
       {editOriginalEmail&&(
         <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setEditOriginalEmail("")}>
           <div className="modal" style={{maxWidth:620}}>

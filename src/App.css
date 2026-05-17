@@ -252,6 +252,26 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .admin-refresh-group{display:flex;align-items:center;gap:8px}
 .admin-refresh-group span{font-size:11px;color:#888780;background:#F1EFE8;border-radius:999px;padding:5px 10px;white-space:nowrap}
 .admin-summary-grid{grid-template-columns:repeat(5,1fr)}
+.admin-compact{gap:6px}
+.admin-quick-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.admin-action-card{min-height:64px;border:1px solid var(--sf-border,#E4E2DC);border-radius:10px;background:#fff;text-align:left;padding:10px 14px;cursor:pointer;box-shadow:0 10px 24px rgba(38,33,92,.06);transition:transform .15s,border-color .15s,box-shadow .15s}
+.admin-action-card:hover{border-color:#C7C1F7;transform:translateY(-1px);box-shadow:0 14px 30px rgba(38,33,92,.1)}
+.admin-action-card span{display:block;color:#77736B;font-size:11px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.admin-compact-card{box-shadow:0 8px 22px rgba(38,33,92,.06)}
+.admin-compact-card .table-title,.admin-compact-card .scard-title{min-height:32px;padding:8px 14px}
+.admin-compact-card .tbl th{padding:7px 12px}
+.admin-compact-card .tbl td{height:38px;padding:7px 12px}
+.admin-box-grid{align-items:start;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.admin-fullscreen-panel{position:fixed;inset:0;z-index:900;background:#F4F2EC;padding:18px 22px;overflow:auto}
+.admin-fullscreen-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:14px;background:rgba(244,242,236,.96);border-bottom:1px solid #E4E2DC;padding:0 0 12px;margin-bottom:14px;backdrop-filter:blur(10px)}
+.admin-fullscreen-head h2{font-size:24px;color:#26215C;margin:0}
+.admin-fullscreen-head p{font-size:12px;color:#888780;margin-top:2px}
+.admin-fullscreen-body{display:flex;flex-direction:column;gap:14px;min-height:calc(100vh - 92px)}
+.admin-fullscreen-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.admin-fullscreen-create{padding:18px}
+.admin-fullscreen-create .btn-purple{align-self:flex-start;min-width:220px;margin-top:4px}
+.admin-fullscreen-table{overflow:auto}
+.admin-fullscreen-messages{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .admin-page{position:relative}
 .admin-page-scroll-tools{position:fixed;right:18px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:10px;z-index:20}
 .admin-page-scroll-tools button{width:34px;height:34px;border:none;border-radius:10px;background:#7F77DD;color:#fff;font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 8px 22px rgba(38,33,92,.18)}
@@ -585,4 +605,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .payment-box{padding:10px;border-radius:9px}
   .payment-detail{font-size:12px;gap:6px;padding:5px 0}
   .support-payment-card form{gap:8px!important}
+  .admin-quick-grid,.admin-fullscreen-grid,.admin-fullscreen-messages{grid-template-columns:1fr}
+  .admin-box-grid{grid-template-columns:1fr}
+  .admin-fullscreen-panel{padding:14px}
+  .admin-fullscreen-head h2{font-size:20px}
 }
