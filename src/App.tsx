@@ -29,7 +29,7 @@ interface LiveOrder { orderNum:number; item:string; qty:number; price:number; to
 interface Buyer { handle:string; name:string; platform:string; num:number; orders:LiveOrder[]; totalSpent:number; totalOrders:number; }
 interface Comment { handle:string; name:string; comment:string; platform:"TikTok"|"Facebook"; isBuy:boolean; buyerNum:number|null; buyerData:Buyer|null; time:string; avatar?:string; timestamp?:string; }
 interface Product { id:number; name:string; sku:string; price:number; stock:number; platform:string; status:string; }
-interface Settings { autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"usb"|"bluetooth"; stickerSize:string; }
+interface Settings { autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"usb"|"bluetooth"; stickerSize:string; printStoreName:boolean; printBuyerNumber:boolean; printBuyerUsername:boolean; printOrderItems:boolean; printTotal:boolean; printAutoClose:boolean; }
 interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; timestamp:string; status:"pending"|"approved"|"rejected"|"resolved"; adminReply?:string; repliedAt?:string; }
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
@@ -40,7 +40,7 @@ const LS = {
 };
 
 const SERVER = import.meta.env.VITE_SERVER_URL || "http://localhost:3001";
-const DEF_SETTINGS: Settings = { autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"₱", paperSize:"100x60mm", printerType:"usb", stickerSize:"100x60mm" };
+const DEF_SETTINGS: Settings = { autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"₱", paperSize:"100x60mm", printerType:"usb", stickerSize:"100x60mm", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true };
 const LANG_OPTS: {code:Lang;label:string}[] = [{code:"en",label:"🇺🇸 EN"},{code:"fil",label:"🇵🇭 FIL"},{code:"zh",label:"🇨🇳 中文"},{code:"vi",label:"🇻🇳 VI"}];
 const CURRENCIES = [{v:"₱",l:"₱ PHP"},{v:"$",l:"$ USD"},{v:"NT$",l:"NT$ NTD"},{v:"¥",l:"¥ CNY"},{v:"฿",l:"฿ THB"},{v:"₫",l:"₫ VND"}];
 
@@ -87,7 +87,9 @@ function Fg({label,children}:{label:string;children:React.ReactNode}){
   return <div className="fg"><label>{label}</label>{children}</div>;
 }
 
-function printSlip(buyer:Buyer,cur:string,storeName:string,size:string){
+function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Settings|string){
+  const cfg:Settings=typeof printSettings==="string"?{...DEF_SETTINGS,stickerSize:printSettings}:printSettings;
+  const size=cfg.stickerSize;
   const sess=new Date().toLocaleDateString("en-PH",{month:"long",day:"numeric",year:"numeric"});
   const color=nc(buyer.num);
   const [w,h]=size.split("x").map(Number);
@@ -96,13 +98,13 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,size:string){
   const oHtml=buyer.orders.map(o=>`<div style="border-left:2px solid #7F77DD;padding-left:6px;margin-bottom:5px"><div style="font-size:9px;color:#888">${o.time} — #SF${o.orderNum}</div><div style="font-size:10px;font-weight:700">${o.item}</div><div style="font-size:9px;color:#555">x${o.qty} — ${cur}${o.total.toLocaleString()}</div></div>`).join("");
   const win=window.open("","_blank",`width=${pw+40},height=700`);
   if(!win){alert("Allow popups to print slips!");return;}
+  if(cfg.printAutoClose)win.onafterprint=()=>win.close();
   win.document.write(`<!DOCTYPE html><html><head><title>Slip #${buyer.num}</title><style>@page{size:${size.replace("x","mm ")}mm;margin:4mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:monospace;width:${w}mm;font-size:10px;color:#000}.logo{display:flex;align-items:center;gap:5px;justify-content:center;margin-bottom:7px}.li{width:22px;height:22px;background:#7F77DD;border-radius:5px;display:flex;align-items:center;justify-content:center}.lt{font-family:sans-serif;font-size:13px}.ls{font-weight:700;color:#26215C}.lf{color:#7F77DD}hr{border:none;border-top:1.5px solid #000;margin:6px 0}.dash{border-top:1px dashed #aaa;margin:5px 0}.nb{text-align:center;background:#EEEDFE;border-radius:7px;padding:6px 0 4px;margin-bottom:7px;border:1px solid #AFA9EC}.nl{font-size:8px;color:#534AB7;font-family:sans-serif;letter-spacing:.5px}.nn{font-size:46px;font-weight:700;font-family:sans-serif;line-height:1;color:${color}}.na{font-size:12px;font-weight:700;font-family:sans-serif;color:#26215C}.nh{font-size:9px;color:#7F77DD}.sl{font-size:8px;color:#888;text-align:center;margin-bottom:5px}.ot{font-size:8px;font-family:sans-serif;color:#888;margin-bottom:4px}.tr{display:flex;justify-content:space-between}.tl{font-size:9px;color:#888}.tv{font-family:sans-serif;font-size:15px;font-weight:700}.ft{text-align:center;font-size:8px;color:#aaa;margin-top:6px;line-height:1.5}@media print{body{margin:0}}</style></head><body>
   <div class="logo"><div class="li"><svg width="14" height="14" viewBox="0 0 18 18"><path d="M4 6 Q4 3 7 3 L11 3 Q14 3 14 6 Q14 9 11 9.5 L7 10.5 Q4 10.5 4 13 Q4 15 7 15 L11 15 Q14 15 14 13" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/></svg></div><div class="lt"><span class="ls">Seller</span><span class="lf">Flow</span></div></div>
-  <div style="text-align:center;font-size:9px;color:#888;margin-bottom:5px">${storeName}</div>
-  <hr><div class="nb"><div class="nl">BUYER NUMBER</div><div class="nn">#${buyer.num}</div><div class="na">${buyer.name}</div><div class="nh">@${buyer.handle}</div></div>
-  <div class="sl">Session: ${sess}</div><div class="ot">Orders today (${buyer.orders.length})</div>
-  ${oHtml}<div class="dash"></div>
-  <div class="tr"><span class="tl">TOTAL TODAY</span><span class="tv">${cur}${buyer.totalSpent.toLocaleString()}</span></div>
+  ${cfg.printStoreName?`<div style="text-align:center;font-size:9px;color:#888;margin-bottom:5px">${storeName}</div>`:""}
+  <hr><div class="nb">${cfg.printBuyerNumber?`<div class="nl">BUYER NUMBER</div><div class="nn">#${buyer.num}</div>`:""}<div class="na">${buyer.name}</div>${cfg.printBuyerUsername?`<div class="nh">@${buyer.handle}</div>`:""}</div>
+  <div class="sl">Session: ${sess}</div>${cfg.printOrderItems?`<div class="ot">Orders today (${buyer.orders.length})</div>${oHtml}`:""}
+  ${cfg.printTotal?`<div class="dash"></div><div class="tr"><span class="tl">TOTAL TODAY</span><span class="tv">${cur}${buyer.totalSpent.toLocaleString()}</span></div>`:""}
   <div class="dash"></div><div class="ft">Thank you!<br>SellerFlow · sellerflow.app</div>
   </body></html>`);
   win.document.close();
@@ -465,13 +467,13 @@ function Customers({buyers,cur,t}:{buyers:Buyer[];cur:string;t:T}){
 // ═══════════════════════════════════════════════════════════════════
 function PrintPage({buyers,cur,storeName,settings,t}:{buyers:Buyer[];cur:string;storeName:string;settings:Settings;t:T}){
   const [toast,setToast]=useState("");
-  function doPrint(b:Buyer){printSlip(b,cur,storeName,settings.stickerSize);setToast(`${t.printing_for} ${b.name}...`);}
+  function doPrint(b:Buyer){printSlip(b,cur,storeName,settings);}
   return(
     <div className="subpage">
       {toast&&<Toast msg={toast} onDone={()=>setToast("")}/>}
       <div className="subpage-hd">
         <div><h2>{t.nav_print}</h2><p>{t.print_sub}</p></div>
-        <button className="btn-purple" onClick={()=>{buyers.forEach(b=>doPrint(b));setToast(`${t.printing} ${buyers.length} ${t.slips_word}...`);}}>🖨 {t.print_all} ({buyers.length})</button>
+        <button className="btn-purple" onClick={()=>buyers.forEach(b=>doPrint(b))}>🖨 {t.print_all} ({buyers.length})</button>
       </div>
       <div className="notice-box" style={{background:"#EEF",border:"1px solid #AFA9EC",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#534AB7",marginBottom:4}}>
         {settings.printerType==="bluetooth"?`📡 ${t.printer_bt_note}`:`🔌 ${t.printer_usb_note}`}
@@ -620,6 +622,17 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
               <option value="60x40">60x40mm</option>
             </select>
           </Fg>
+          <div className="scard-title" style={{marginTop:10}}>Printer output</div>
+          {([
+            ["printStoreName","Store name"],
+            ["printBuyerNumber","Buyer number"],
+            ["printBuyerUsername","TikTok / username"],
+            ["printOrderItems","Order items"],
+            ["printTotal","Total amount"],
+            ["printAutoClose","Close print tab after printing"],
+          ] as [keyof Settings,string][]).map(([k,label])=>(
+            <div key={k} className="tog-row"><span>{label}</span><div onClick={()=>setSets(s=>({...s,[k]:!s[k]}))} className={`tog ${sets[k]?"on":""}`}/></div>
+          ))}
           <div style={{padding:"8px 10px",background:"#F5F4FF",borderRadius:8,fontSize:12,color:"#534AB7",lineHeight:1.5,marginTop:4}}>
             {sets.printerType==="bluetooth"?t.printer_bt_note:t.printer_usb_note}
           </div>
@@ -1361,7 +1374,7 @@ export default function App(){
   function setLang(l:Lang){setLangState(l);try{localStorage.setItem("sf_lang",JSON.stringify(l));}catch{}}
 
   const [user,setUser]=useState<User|null>(()=>{const e=LS.get<string>("sf_session","");if(!e)return null;const u=LS.get<User[]>("sf_users",[]).find(u=>u.email===e)||null;return u?asAdminPlan(u):null;});
-  const [settings,setSettingsState]=useState<Settings>(()=>LS.get("sf_settings",DEF_SETTINGS));
+  const [settings,setSettingsState]=useState<Settings>(()=>({...DEF_SETTINGS,...LS.get<Partial<Settings>>("sf_settings",{})}));
   const [page,setPage]=useState<Page>("dashboard");
   const [comments,setComments]=useState<Comment[]>([]);
   const [buyers,setBuyers]=useState<Buyer[]>([]);
@@ -1510,15 +1523,16 @@ export default function App(){
     });
 
     if(print){
-      printSlip(nextBuyer,settings.currency,user?.profile.storeName||"SellerFlow",settings.stickerSize||"100x60");
+      printSlip(nextBuyer,settings.currency,user?.profile.storeName||"SellerFlow",settings);
+    }else{
+      setToast(`Order created for ${c.name||c.handle}`);
     }
-    setToast(`Order created for ${c.name||c.handle}`);
   }
   function reprintLatestForComment(c:Comment){
     const b=buyers.find(x=>x.handle===c.handle);
     if(!b){void createOrderFromComment(c,{print:true});return;}
     setSelBuyer(b);
-    printSlip(b,settings.currency,user?.profile.storeName||"SellerFlow",settings.stickerSize||"100x60");
+    printSlip(b,settings.currency,user?.profile.storeName||"SellerFlow",settings);
   }
   function copyText(text:string,label:string){
     navigator.clipboard?.writeText(text);
@@ -1696,7 +1710,7 @@ export default function App(){
                   </div>
                 )}
               </div>
-              {selBuyer&&<button className="print-again-btn" onClick={()=>printSlip(selBuyer,settings.currency,user.profile.storeName||"SellerFlow",settings.stickerSize||"100x60")}>{t.print_again}</button>}
+              {selBuyer&&<button className="print-again-btn" onClick={()=>printSlip(selBuyer,settings.currency,user.profile.storeName||"SellerFlow",settings)}>{t.print_again}</button>}
             </section>
           </div>
         )}
@@ -1720,7 +1734,7 @@ export default function App(){
                       <td><Badge label={b.platform} color={b.platform==="TikTok"?"purple":"green"}/></td>
                       <td>{b.totalOrders}</td>
                       <td><strong style={{color:"#534AB7"}}>{settings.currency}{b.totalSpent.toLocaleString()}</strong></td>
-                      <td><button onClick={()=>{setSelBuyer(b);setPage("dashboard");printSlip(b,settings.currency,user.profile.storeName||"SellerFlow",settings.stickerSize||"100x60");}} style={{padding:"5px 12px",background:"#7F77DD",color:"#fff",border:"none",borderRadius:7,fontSize:11,cursor:"pointer"}}>🖨 Print</button></td>
+                      <td><button onClick={()=>{setSelBuyer(b);setPage("dashboard");printSlip(b,settings.currency,user.profile.storeName||"SellerFlow",settings);}} style={{padding:"5px 12px",background:"#7F77DD",color:"#fff",border:"none",borderRadius:7,fontSize:11,cursor:"pointer"}}>🖨 Print</button></td>
                     </tr>
                   ))}
                 </tbody>
