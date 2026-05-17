@@ -911,6 +911,7 @@ export default function App(){
 
   // Check trial expiry
   const accountLocked=!!user&&!isAdminUser(user)&&(user.planStatus==="expired"||dLeft(user.planExpiry)===0);
+  const showAccountLock=accountLocked&&page!=="subscription"&&page!=="support";
 
   useEffect(()=>{
     if(!user)return;
@@ -1058,7 +1059,7 @@ export default function App(){
   return(
     <div className="app" onClick={()=>{setShowProf(false);setOpenCommentMenu(null);}}>
       {toast&&<Toast msg={toast} onDone={()=>setToast("")}/>}
-      {accountLocked&&<TrialExpiredWall t={t} onUpgrade={()=>{setPage("subscription");}}/>}
+      {showAccountLock&&<TrialExpiredWall t={t} onUpgrade={()=>{setPage("subscription");}}/>}
 
       {/* SIDEBAR */}
       <aside className="sidebar">
