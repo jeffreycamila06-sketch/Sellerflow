@@ -218,14 +218,19 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .admin-reply-box textarea{min-height:48px;font-size:11px;resize:vertical}
 .support-chat-scroll{padding:12px 42px 12px 12px;background:#FAFAF8;display:flex;flex-direction:column;gap:10px}
 .support-thread{background:#fff;border:1px solid #E4E2DC;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.support-thread.list-only{padding:6px 8px}
+.support-thread.chat-open{min-height:280px}
 .support-thread.has-new{border-color:#7F77DD;box-shadow:0 8px 22px rgba(83,74,183,.12)}
 .support-thread-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;border-bottom:1px solid #F1EFE8;padding-bottom:8px}
+.support-thread-head.messenger-thread-head{width:100%;border:none;background:transparent;text-align:left;cursor:pointer;padding:4px}
+.support-thread.chat-open .support-thread-head.messenger-thread-head{cursor:default}
 .support-thread-head strong{display:block;font-size:12px;color:#26215C}
 .support-thread-head span{display:block;font-size:10px;color:#888780;margin-top:2px}
 .support-title{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .support-new-badge{background:#E83A3A;color:#fff;border-radius:999px;padding:3px 8px;font-size:10px;font-weight:700}
 .messenger-thread-head{align-items:center;border-bottom:none;padding-bottom:4px}
 .support-avatar.big{width:42px;height:42px;font-size:13px}
+.support-thread.list-only .support-avatar.big{width:34px;height:34px;font-size:11px}
 .support-convo-meta{flex:1;min-width:0}
 .support-convo-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .support-convo-top strong{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -236,6 +241,7 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .support-unread-dot{width:10px;height:10px;border-radius:50%;background:#1C73FF;box-shadow:0 0 0 4px rgba(28,115,255,.12);flex-shrink:0}
 .support-conversation-body{display:flex;flex-direction:column;gap:10px}
 .support-message-block{border-top:1px solid #F1EFE8;padding-top:8px;display:flex;flex-direction:column;gap:8px}
+.support-back-btn{align-self:flex-start;margin-bottom:2px}
 .support-chat-row{display:flex;gap:8px;align-items:flex-end}
 .support-chat-row.admin{justify-content:flex-end}
 .support-avatar{width:28px;height:28px;border-radius:50%;background:#7F77DD;color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}

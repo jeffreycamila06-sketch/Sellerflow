@@ -735,6 +735,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
   const [editSeller,setEditSeller]=useState({email:"",newPassword:"",fullName:"",storeName:"",phone:"",tiktok:"",facebook:""});
   const [adminSearch,setAdminSearch]=useState("");
   const [replyDrafts,setReplyDrafts]=useState<Record<string,string>>({});
+  const [selectedSupportEmail,setSelectedSupportEmail]=useState("");
   const [copied,setCopied]=useState("");
   const usersTableRef=useRef<HTMLDivElement>(null);
   const paymentsTableRef=useRef<HTMLDivElement>(null);
@@ -1122,9 +1123,10 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
           <div className="admin-table-wrap">
             <div className="admin-table-scroll support-chat-scroll" ref={paymentsTableRef}>
               {filteredMsgs.length===0&&<div style={{textAlign:"center",padding:24,color:"#888"}}>{msgs.length===0?"No messages yet.":"No messages found."}</div>}
-              {supportConversations.map(c=>(
-                <div key={c.email} className={`support-thread ${c.unread>0?"has-new":""}`}>
-                  <div className="support-thread-head messenger-thread-head">
+              {supportConversations.filter(c=>!selectedSupportEmail||c.email.toLowerCase()===selectedSupportEmail.toLowerCase()).map(c=>(
+                <div key={c.email} className={`support-thread ${c.unread>0?"has-new":""} ${selectedSupportEmail?"chat-open":"list-only"}`}>
+                  {selectedSupportEmail&&<button className="tbl-btn ed support-back-btn" onClick={()=>setSelectedSupportEmail("")}>Back to messages</button>}
+                  <button className="support-thread-head messenger-thread-head" onClick={()=>!selectedSupportEmail&&setSelectedSupportEmail(c.email)}>
                     <div className="support-avatar big">{ini(c.name||c.email)}</div>
                     <div className="support-convo-meta">
                       <div className="support-convo-top">
@@ -1138,8 +1140,8 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
                       <div className="muted" style={{fontSize:10}}>{c.email}</div>
                     </div>
                     {c.unread>0&&<span className="support-unread-dot"/>}
-                  </div>
-                  <div className="support-conversation-body">
+                  </button>
+                  {selectedSupportEmail&&<div className="support-conversation-body">
                     {c.messages.map(m=>(
                       <div key={m.id} className="support-message-block">
                         <div className="support-chat-row seller">
@@ -1171,7 +1173,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
                         </div>
                       </div>
                     ))}
-                  </div>
+                  </div>}
                 </div>
               ))}
               {false&&[...filteredMsgs].reverse().map(m=>(
