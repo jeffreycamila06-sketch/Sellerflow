@@ -1028,7 +1028,7 @@ export default function App(){
         <div className="nav-sec-lbl">{t.nav_analytics}</div>
         {navItems.slice(6).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={`nav-it ${page===id?"on":""}`}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
         <button onClick={()=>setPage("support")} className={`nav-it ${page==="support"?"on":""}`}><span className="nav-ic">💬</span><span className="nav-lb">Support</span></button>
-        {isAdminUser(user)&&<button onClick={()=>setPage("admin")} className={`nav-it ${page==="admin"?"on":""}`}><span className="nav-ic">ADMIN</span><span className="nav-lb">Admin</span></button>}
+        {isAdminUser(user)&&<button onClick={()=>setPage("admin")} className={`nav-it ${page==="admin"?"on":""}`}><span className="nav-ic">👑</span><span className="nav-lb">Admin</span></button>}
         <button onClick={()=>setPage("settings")} className={`nav-it ${page==="settings"?"on":""}`} style={{marginTop:"auto"}}><span className="nav-ic">⚙️</span><span className="nav-lb">{t.nav_settings}</span></button>
         <div className="trial-box">
           <div className="trial-row"><span className="trial-pill">{pName(user.plan,t)}</span><span className="trial-exp">{days}d {t.days_remaining}</span></div>
