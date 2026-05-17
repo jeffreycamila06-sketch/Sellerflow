@@ -972,6 +972,22 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
   const filteredMsgs=msgs.filter(m=>!q||[
     m.name,m.email,m.subject,m.message,m.status
   ].some(v=>String(v||"").toLowerCase().includes(q)));
+  const supportConversations=Object.values(filteredMsgs.reduce<Record<string,{email:string;name:string;messages:SupportMsg[];latest:SupportMsg;unread:number}>>((acc,m)=>{
+    const key=m.email.toLowerCase();
+    const isUnread=m.status==="pending"&&!m.adminReply;
+    if(!acc[key]){
+      acc[key]={email:m.email,name:m.name,messages:[m],latest:m,unread:isUnread?1:0};
+      return acc;
+    }
+    acc[key].messages.push(m);
+    acc[key].unread+=isUnread?1:0;
+    if(new Date(m.timestamp).getTime()>new Date(acc[key].latest.timestamp).getTime())acc[key].latest=m;
+    return acc;
+  },{})).map(c=>({
+    ...c,
+    messages:[...c.messages].sort((a,b)=>new Date(a.timestamp).getTime()-new Date(b.timestamp).getTime()),
+  })).sort((a,b)=>new Date(b.latest.timestamp).getTime()-new Date(a.latest.timestamp).getTime());
+  const unreadSupportCount=supportConversations.reduce((sum,c)=>sum+c.unread,0);
   const filteredAuditLogs=auditLogs.filter(log=>!q||[
     log.actorEmail,log.action,log.targetEmail,log.details,log.timestamp
   ].some(v=>String(v||"").toLowerCase().includes(q)));
@@ -1099,11 +1115,66 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
         </div>
 
         <div className="table-card">
-          <div className="table-title">Payment / Support Messages ({msgs.length})</div>
+          <div className="table-title support-title">
+            <span>Payment / Support Messages ({msgs.length})</span>
+            {unreadSupportCount>0&&<span className="support-new-badge">{unreadSupportCount>9?"9+":unreadSupportCount} new</span>}
+          </div>
           <div className="admin-table-wrap">
             <div className="admin-table-scroll support-chat-scroll" ref={paymentsTableRef}>
               {filteredMsgs.length===0&&<div style={{textAlign:"center",padding:24,color:"#888"}}>{msgs.length===0?"No messages yet.":"No messages found."}</div>}
-              {[...filteredMsgs].reverse().map(m=>(
+              {supportConversations.map(c=>(
+                <div key={c.email} className={`support-thread ${c.unread>0?"has-new":""}`}>
+                  <div className="support-thread-head messenger-thread-head">
+                    <div className="support-avatar big">{ini(c.name||c.email)}</div>
+                    <div className="support-convo-meta">
+                      <div className="support-convo-top">
+                        <strong>{c.name||c.email}</strong>
+                        <span>{new Date(c.latest.timestamp).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}</span>
+                      </div>
+                      <div className="support-convo-sub">
+                        <span>{c.latest.adminReply?`You: ${c.latest.adminReply}`:c.latest.message}</span>
+                        {c.unread>0&&<b>{c.unread>9?"9+":c.unread} new message{c.unread>1?"s":""}</b>}
+                      </div>
+                      <div className="muted" style={{fontSize:10}}>{c.email}</div>
+                    </div>
+                    {c.unread>0&&<span className="support-unread-dot"/>}
+                  </div>
+                  <div className="support-conversation-body">
+                    {c.messages.map(m=>(
+                      <div key={m.id} className="support-message-block">
+                        <div className="support-chat-row seller">
+                          <div className="support-avatar">{ini(m.name||m.email)}</div>
+                          <div className="support-bubble seller">
+                            <strong>{m.subject}</strong>
+                            <p>{m.message}</p>
+                            <span>{new Date(m.timestamp).toLocaleString()} {m.hasProof?" - Proof attached":""}</span>
+                          </div>
+                        </div>
+                        {m.adminReply&&(
+                          <div className="support-chat-row admin">
+                            <div className="support-bubble admin">
+                              <strong>Admin reply</strong>
+                              <p>{m.adminReply}</p>
+                              {m.repliedAt&&<span>{new Date(m.repliedAt).toLocaleString()}</span>}
+                            </div>
+                          </div>
+                        )}
+                        <div className="support-actions">
+                          <Badge label={m.status} color={m.status==="approved"?"green":m.status==="rejected"?"red":"amber"}/>
+                          <button className="tbl-btn ed" onClick={()=>{updateMsg(m.id,"approved");approve(m.email,"pro");}}>Approve</button>
+                          <button className="tbl-btn dl" onClick={()=>updateMsg(m.id,"rejected")}>Reject</button>
+                          <button className="tbl-btn ed" onClick={()=>copy(m.email,"Email")}>Copy email</button>
+                        </div>
+                        <div className="messenger-reply">
+                          <textarea rows={2} value={replyDrafts[m.id] ?? m.adminReply ?? ""} onChange={e=>setReplyDrafts(s=>({...s,[m.id]:e.target.value}))} placeholder="Type a reply like Messenger..."/>
+                          <button className="tbl-btn ed" onClick={()=>replyToSeller(m)}>{m.adminReply?"Update reply":"Send reply"}</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              {false&&[...filteredMsgs].reverse().map(m=>(
                 <div key={m.id} className="support-thread">
                   <div className="support-thread-head">
                     <div>
