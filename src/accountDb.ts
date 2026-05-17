@@ -28,6 +28,7 @@ export interface AccountSupportMsg {
   subject: string;
   message: string;
   hasProof: boolean;
+  proofImage?: string;
   timestamp: string;
   status: "pending" | "approved" | "rejected" | "resolved";
   adminReply?: string;
@@ -93,14 +94,38 @@ function userToRow(user: AccountUser) {
   };
 }
 
+const PROOF_MARKER = "[[SELLERFLOW_PROOF_IMAGE:";
+const PROOF_END = "]]";
+
+function decodeSupportMessage(rawMessage: string) {
+  const markerIndex = rawMessage.indexOf(PROOF_MARKER);
+  if (markerIndex === -1) return { message: rawMessage, proofImage: "" };
+
+  const imageStart = markerIndex + PROOF_MARKER.length;
+  const endIndex = rawMessage.indexOf(PROOF_END, imageStart);
+  if (endIndex === -1) return { message: rawMessage, proofImage: "" };
+
+  return {
+    message: rawMessage.slice(0, markerIndex).trimEnd(),
+    proofImage: rawMessage.slice(imageStart, endIndex),
+  };
+}
+
+function encodeSupportMessage(message: AccountSupportMsg) {
+  if (!message.proofImage) return message.message;
+  return `${message.message}\n\n${PROOF_MARKER}${message.proofImage}${PROOF_END}`;
+}
+
 function rowToSupport(row: Record<string, any>): AccountSupportMsg {
+  const decoded = decodeSupportMessage(row.message || "");
   return {
     id: String(row.id),
     name: row.name || "",
     email: row.email || "",
     subject: row.subject || "",
-    message: row.message || "",
-    hasProof: Boolean(row.has_proof),
+    message: decoded.message,
+    hasProof: Boolean(row.has_proof || decoded.proofImage),
+    proofImage: decoded.proofImage,
     timestamp: row.created_at || new Date().toISOString(),
     status: row.status || "pending",
     adminReply: row.admin_reply || "",
@@ -246,8 +271,8 @@ export async function saveSupportMessage(message: AccountSupportMsg): Promise<Ac
       name: message.name,
       email: message.email.toLowerCase(),
       subject: message.subject,
-      message: message.message,
-      has_proof: message.hasProof,
+      message: encodeSupportMessage(message),
+      has_proof: message.hasProof || Boolean(message.proofImage),
       status: message.status,
       admin_reply: message.adminReply || null,
       replied_at: message.repliedAt || null,

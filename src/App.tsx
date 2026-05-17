@@ -30,7 +30,7 @@ interface Buyer { handle:string; name:string; platform:string; num:number; order
 interface Comment { handle:string; name:string; comment:string; platform:"TikTok"|"Facebook"; isBuy:boolean; buyerNum:number|null; buyerData:Buyer|null; time:string; avatar?:string; timestamp?:string; }
 interface Product { id:number; name:string; sku:string; price:number; stock:number; platform:string; status:string; }
 interface Settings { autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"usb"|"bluetooth"; stickerSize:string; printStoreName:boolean; printBuyerNumber:boolean; printBuyerUsername:boolean; printOrderItems:boolean; printTotal:boolean; printAutoClose:boolean; printQrCode:boolean; printQrUrl:string; printQrScale:number; printLabelScale:number; printLogoScale:number; printStoreScale:number; printBuyerNumberScale:number; printBuyerNameScale:number; printUsernameScale:number; printOrderScale:number; printTotalScale:number; }
-interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; timestamp:string; status:"pending"|"approved"|"rejected"|"resolved"; adminReply?:string; repliedAt?:string; }
+interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; proofImage?:string; timestamp:string; status:"pending"|"approved"|"rejected"|"resolved"; adminReply?:string; repliedAt?:string; }
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
 const LS = {
@@ -85,6 +85,28 @@ function Toast({msg,onDone}:{msg:string;onDone:()=>void}){
 }
 function Fg({label,children}:{label:string;children:React.ReactNode}){
   return <div className="fg"><label>{label}</label>{children}</div>;
+}
+
+function readProofImage(file:File|null):Promise<string>{
+  return new Promise((resolve,reject)=>{
+    if(!file){resolve("");return;}
+    const img=new Image();
+    const url=URL.createObjectURL(file);
+    img.onload=()=>{
+      const maxSize=1200;
+      const scale=Math.min(1,maxSize/Math.max(img.width,img.height));
+      const canvas=document.createElement("canvas");
+      canvas.width=Math.max(1,Math.round(img.width*scale));
+      canvas.height=Math.max(1,Math.round(img.height*scale));
+      const ctx=canvas.getContext("2d");
+      if(!ctx){URL.revokeObjectURL(url);reject(new Error("Cannot prepare proof image"));return;}
+      ctx.drawImage(img,0,0,canvas.width,canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL("image/jpeg",0.78));
+    };
+    img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error("Cannot read proof image"));};
+    img.src=url;
+  });
 }
 
 function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Settings|string){
@@ -741,8 +763,9 @@ function Support({user,t}:{user:User;t:T}){
   const [readIds,setReadIds]=useState<string[]>(()=>LS.get<string[]>(supportReadKey(user.email),[]));
   async function send(e:React.FormEvent){
     e.preventDefault();
-    const sm:SupportMsg={id:Date.now().toString(),name,email,subject,message:msg,hasProof:!!file,timestamp:new Date().toISOString(),status:"pending"};
     try{
+      const proofImage=await readProofImage(file);
+      const sm:SupportMsg={id:Date.now().toString(),name,email,subject,message:msg,hasProof:!!proofImage,proofImage,timestamp:new Date().toISOString(),status:"pending"};
       await saveSupportMessage(sm);
       setSent(true);setMsg("");setFile(null);
     }catch(error){
@@ -802,6 +825,7 @@ function Support({user,t}:{user:User;t:T}){
               <Fg label={t.support_msg}><textarea value={msg} onChange={e=>setMsg(e.target.value)} rows={4} required style={{resize:"vertical"}}/></Fg>
               <Fg label={t.support_attach}>
                 <input type="file" accept="image/*" onChange={e=>setFile(e.target.files?.[0]||null)} style={{fontSize:12}}/>
+                {file&&<div className="support-proof-preview">Proof selected: {file.name}</div>}
               </Fg>
               <button type="submit" className="btn-purple">{t.support_send}</button>
             </form>
@@ -831,6 +855,7 @@ function Support({user,t}:{user:User;t:T}){
                     <div className="support-bubble seller">
                       <strong>{selectedMsg.subject}</strong>
                       <p>{selectedMsg.message}</p>
+                      {selectedMsg.proofImage&&<a href={selectedMsg.proofImage} target="_blank" rel="noreferrer"><img className="support-proof-img" src={selectedMsg.proofImage} alt="Payment proof" /></a>}
                       <span>{new Date(selectedMsg.timestamp).toLocaleString()} {selectedMsg.hasProof?" - Proof attached":""}</span>
                     </div>
                   </div>
@@ -1381,6 +1406,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
                           <div className="support-bubble seller">
                             <strong>{m.subject}</strong>
                             <p>{m.message}</p>
+                            {m.proofImage&&<a href={m.proofImage} target="_blank" rel="noreferrer"><img className="support-proof-img" src={m.proofImage} alt="Payment proof" /></a>}
                             <span>{new Date(m.timestamp).toLocaleString()} {m.hasProof?" - Proof attached":""}</span>
                           </div>
                         </div>

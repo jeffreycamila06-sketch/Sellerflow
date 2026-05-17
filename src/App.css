@@ -256,6 +256,9 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .support-bubble strong{display:block;font-size:12px;margin-bottom:4px}
 .support-bubble p{margin:0;white-space:pre-wrap}
 .support-bubble span{display:block;font-size:10px;opacity:.72;margin-top:5px}
+.support-proof-img{display:block;width:100%;max-width:240px;max-height:240px;object-fit:contain;margin-top:8px;border-radius:10px;border:1px solid rgba(38,33,92,.14);background:#fff;cursor:zoom-in}
+.support-proof-img.compact{max-width:160px;max-height:160px}
+.support-proof-preview{font-size:11px;color:#26215C;background:#F5F4FF;border:1px solid #D8D3FF;border-radius:8px;padding:6px 8px;margin-top:6px}
 .support-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .messenger-reply{display:flex;gap:8px;align-items:flex-start;border-top:1px solid #F1EFE8;padding-top:8px}
 .messenger-reply textarea{min-height:46px;font-size:12px;resize:vertical;border-radius:12px}
@@ -500,6 +503,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .support-chat-row .support-avatar{width:24px;height:24px;font-size:9px}
   .support-bubble{max-width:88%;padding:8px 10px;font-size:12px;border-radius:12px}
   .support-bubble strong{font-size:11px}
+  .support-proof-img{max-width:190px;max-height:190px}
   .support-actions{justify-content:flex-start}
   .payment-box{padding:10px;border-radius:9px}
   .payment-detail{font-size:12px;gap:6px;padding:5px 0}
