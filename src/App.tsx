@@ -41,7 +41,7 @@ const dLeft=(e:string)=>Math.max(0,Math.ceil((new Date(e).getTime()-Date.now())/
 const maxAcc=(p:Plan)=>({trial:1,basic:1,pro:3,master:5}[p]);
 const OWNER_EMAIL=(import.meta.env.VITE_OWNER_EMAIL||"admin@sellerflow.app").trim().toLowerCase();
 const ENV_ADMIN_EMAILS=(import.meta.env.VITE_ADMIN_EMAILS||OWNER_EMAIL).split(",").map((e:string)=>e.trim().toLowerCase()).filter(Boolean);
-const adminEmails=()=>Array.from(new Set([...ENV_ADMIN_EMAILS,...LS.get<string[]>("sf_admin_emails",[]).map(e=>e.trim().toLowerCase())].filter(Boolean)));
+const adminEmails=()=>Array.from(new Set([OWNER_EMAIL,...ENV_ADMIN_EMAILS,...LS.get<string[]>("sf_admin_emails",[]).map(e=>e.trim().toLowerCase())].filter(Boolean)));
 const isAdminEmail=(email:string)=>adminEmails().includes(email.trim().toLowerCase());
 const rememberAdminEmail=(email:string)=>LS.set("sf_admin_emails",Array.from(new Set([...LS.get<string[]>("sf_admin_emails",[]),email.trim().toLowerCase()].filter(Boolean))));
 const forgetAdminEmail=(email:string)=>LS.set("sf_admin_emails",LS.get<string[]>("sf_admin_emails",[]).filter(e=>e.trim().toLowerCase()!==email.trim().toLowerCase()));
