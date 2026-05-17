@@ -435,7 +435,15 @@ function Orders({orders,setOrders,cur,t}:{orders:LiveOrder[];setOrders:(o:LiveOr
 // ═══════════════════════════════════════════════════════════════════
 function Customers({buyers,cur,t}:{buyers:Buyer[];cur:string;t:T}){
   const [q,setQ]=useState("");
-  const filtered=buyers.filter(b=>b.name.toLowerCase().includes(q.toLowerCase())||b.handle.toLowerCase().includes(q.toLowerCase()));
+  const query=q.trim().toLowerCase();
+  const filtered=buyers.filter(b=>{
+    if(!query)return true;
+    return b.name.toLowerCase().includes(query)
+      || b.handle.toLowerCase().includes(query)
+      || b.platform.toLowerCase().includes(query)
+      || String(b.num).includes(query)
+      || b.orders.some(o=>o.item.toLowerCase().includes(query)||o.time.toLowerCase().includes(query)||String(o.orderNum).includes(query));
+  });
   return(
     <div className="subpage">
       <div className="subpage-hd">
@@ -1449,11 +1457,18 @@ export default function App(){
   const [user,setUser]=useState<User|null>(()=>{const e=LS.get<string>("sf_session","");if(!e)return null;const u=LS.get<User[]>("sf_users",[]).find(u=>u.email===e)||null;return u?asAdminPlan(u):null;});
   const [settings,setSettingsState]=useState<Settings>(()=>({...DEF_SETTINGS,...LS.get<Partial<Settings>>("sf_settings",{})}));
   const [page,setPage]=useState<Page>("dashboard");
-  const [comments,setComments]=useState<Comment[]>([]);
-  const [buyers,setBuyers]=useState<Buyer[]>([]);
+  const [comments,setComments]=useState<Comment[]>(()=>LS.get<Comment[]>("sf_comments",[]));
+  const [buyers,setBuyers]=useState<Buyer[]>(()=>LS.get<Buyer[]>("sf_buyers",[]));
   const [allOrders,setAllOrders]=useState<LiveOrder[]>(()=>LS.get("sf_orders",[]));
   const [selBuyer,setSelBuyer]=useState<Buyer|null>(null);
-  const [totOrd,setTotOrd]=useState(0);const [totRev,setTotRev]=useState(0);
+  const [totOrd,setTotOrd]=useState(()=>{
+    const storedOrders=LS.get<LiveOrder[]>("sf_orders",[]);
+    return storedOrders.length||LS.get<Buyer[]>("sf_buyers",[]).reduce((s,b)=>s+b.totalOrders,0);
+  });
+  const [totRev,setTotRev]=useState(()=>{
+    const storedOrders=LS.get<LiveOrder[]>("sf_orders",[]);
+    return storedOrders.length?storedOrders.reduce((s,o)=>s+o.total,0):LS.get<Buyer[]>("sf_buyers",[]).reduce((s,b)=>s+b.totalSpent,0);
+  });
   const [ttOn,setTtOn]=useState(false);const [fbOn,setFbOn]=useState(false);
   const [showConn,setShowConn]=useState(false);const [showProf,setShowProf]=useState(false);
   const [printed,setPrinted]=useState<Set<number>>(new Set());
@@ -1462,6 +1477,12 @@ export default function App(){
   const [toast,setToast]=useState("");
   const feedRef=useRef<HTMLDivElement>(null);
   const today=new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"});
+  function saveBuyerMemory(next:Buyer[]){
+    setBuyers(next);
+    LS.set("sf_buyers",next);
+    setTotOrd(next.reduce((s,b)=>s+b.totalOrders,0));
+    setTotRev(next.reduce((s,b)=>s+b.totalSpent,0));
+  }
 
   // Check trial expiry
   const accountLocked=!!user&&!isAdminUser(user)&&(user.planStatus==="expired"||dLeft(user.planExpiry)===0);
@@ -1471,7 +1492,11 @@ export default function App(){
     if(!user)return;
     const s = io(SERVER);
     s.on("comment", (d: Comment) => {
-      setComments((p) => [...p, d]);
+      setComments((p) => {
+        const next=[...p,d].slice(-500);
+        LS.set("sf_comments",next);
+        return next;
+      });
 
       setTimeout(() => {
         feedRef.current?.scrollTo({
@@ -1482,13 +1507,14 @@ export default function App(){
     
     });
     s.on("buyers_updated",({buyers:b,totalOrders:to}:{buyers:Buyer[];totalOrders:number})=>{
-      setBuyers(b);setTotOrd(to);setTotRev(b.reduce((s,x)=>s+x.totalSpent,0));
+      saveBuyerMemory(b);setTotOrd(to);
       const ords=b.flatMap(x=>x.orders.map(o=>({...o,handle:x.handle,name:x.name,bNum:x.num,platform:x.platform,status:"New",date:new Date().toISOString().slice(0,10)})));
       setAllOrders(ords);LS.set("sf_orders",ords);
     });
     s.on("platform_status",({platform:p,connected:c}:{platform:string;connected:boolean})=>{if(p==="TikTok")setTtOn(c);if(p==="Facebook")setFbOn(c);});
     s.on("session_state",({buyers:b,totalOrders:to}:{buyers:Buyer[];totalOrders:number})=>{
-      setBuyers(b);setTotOrd(to);setTotRev(b.reduce((s,x)=>s+x.totalSpent,0));
+      if(!b.length&&!to)return;
+      saveBuyerMemory(b);setTotOrd(to);
       const ords=b.flatMap(x=>x.orders.map(o=>({...o,handle:x.handle,name:x.name,bNum:x.num,platform:x.platform,status:"New",date:new Date().toISOString().slice(0,10)})));
       setAllOrders(ords);LS.set("sf_orders",ords);
     });
@@ -1575,11 +1601,10 @@ export default function App(){
       ? {...existing,name:c.name||existing.name,orders:[...existing.orders,order],totalOrders:existing.totalOrders+1,totalSpent:existing.totalSpent+order.total}
       : {handle:c.handle,name:c.name||c.handle,platform:c.platform,num:buyerNum,orders:[order],totalOrders:1,totalSpent:order.total};
 
-    setBuyers(prev=>existing?prev.map(b=>b.handle===c.handle?nextBuyer:b):[...prev,nextBuyer]);
+    const nextBuyers=existing?buyers.map(b=>b.handle===c.handle?nextBuyer:b):[...buyers,nextBuyer];
+    saveBuyerMemory(nextBuyers);
     setSelBuyer(nextBuyer);
     setAllOrders(prev=>{const next=[...prev,order];LS.set("sf_orders",next);return next;});
-    setTotOrd(prev=>prev+1);
-    setTotRev(prev=>prev+order.total);
 
     await saveOrderToDatabase({
       customer_name:c.name||c.handle,
