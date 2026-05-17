@@ -720,7 +720,11 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
   const [newSeller,setNewSeller]=useState({email:"",password:"123456",fullName:"",storeName:""});
   const [editOriginalEmail,setEditOriginalEmail]=useState("");
   const [editSeller,setEditSeller]=useState({email:"",newPassword:"",fullName:"",storeName:"",phone:"",tiktok:"",facebook:""});
+  const [adminSearch,setAdminSearch]=useState("");
   const [copied,setCopied]=useState("");
+  const usersTableRef=useRef<HTMLDivElement>(null);
+  const paymentsTableRef=useRef<HTMLDivElement>(null);
+  const auditTableRef=useRef<HTMLDivElement>(null);
 
   async function refresh(){
     setUsers(await listUsers());
@@ -917,6 +921,21 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
     setTimeout(()=>setCopied(""),1800);
   }
 
+  function scrollBox(el:HTMLDivElement|null,dir:"up"|"down"){
+    el?.scrollBy({top:dir==="up"?-220:220,behavior:"smooth"});
+  }
+
+  const q=adminSearch.trim().toLowerCase();
+  const filteredUsers=users.filter(u=>!q||[
+    u.email,u.profile.fullName,u.profile.storeName,u.profile.phone,u.profile.tiktok,u.profile.facebook,u.plan,isAdminEmail(u.email)?"admin":"seller"
+  ].some(v=>String(v||"").toLowerCase().includes(q)));
+  const filteredMsgs=msgs.filter(m=>!q||[
+    m.name,m.email,m.subject,m.message,m.status
+  ].some(v=>String(v||"").toLowerCase().includes(q)));
+  const filteredAuditLogs=auditLogs.filter(log=>!q||[
+    log.actorEmail,log.action,log.targetEmail,log.details,log.timestamp
+  ].some(v=>String(v||"").toLowerCase().includes(q)));
+
   if(!isAdminUser(currentUser)){
     return <div className="subpage"><div className="auth-err">Admin only.</div></div>;
   }
@@ -930,6 +949,12 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
           <p>Owner: {OWNER_EMAIL} · Admins: {admins.length}</p>
         </div>
         <button className="btn-out" onClick={refresh}>Refresh</button>
+      </div>
+
+      <div className="admin-searchbar">
+        <span className="admin-search-ic">⌕</span>
+        <input value={adminSearch} onChange={e=>setAdminSearch(e.target.value)} placeholder="Search users, payments, audit log"/>
+        {adminSearch&&<button className="admin-search-clear" onClick={()=>setAdminSearch("")}>Clear</button>}
       </div>
 
       <div className="scard" style={{marginBottom:16}}>
@@ -946,78 +971,93 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
       <div className="grid2">
         <div className="table-card">
           <div className="table-title">Users ({users.length})</div>
-          <table className="tbl">
-            <thead><tr><th>Email</th><th>Role</th><th>Plan</th><th>Days</th><th>Accounts</th><th></th></tr></thead>
-            <tbody>
-              {users.length===0&&<tr><td colSpan={6} style={{textAlign:"center",padding:24,color:"#888"}}>No users yet.</td></tr>}
-              {users.map(u=>(
-                <tr key={u.email}>
-                  <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>
-                  <td><Badge label={isAdminEmail(u.email)?"Admin":"Seller"} color={isAdminEmail(u.email)?"amber":"gray"}/></td>
-                  <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
-                  <td>{dLeft(u.planExpiry)}</td>
-                  <td>{u.connectedAccounts.length}</td>
-                  <td>
-                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                      <button className="tbl-btn ed" onClick={()=>openEditSeller(u)}>Edit</button>
-                      <button className="tbl-btn ed" onClick={()=>resetPassword(u.email)}>Reset PW</button>
-                      <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"trial")}>Trial</button>
-                      <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"basic")}>Basic</button>
-                      <button className="tbl-btn ed" onClick={()=>approve(u.email,"pro")}>Pro</button>
-                      <button className="tbl-btn ed" onClick={()=>approve(u.email,"master")}>Master</button>
-                      <button className="tbl-btn dl" onClick={()=>setPlan(u.email,u.plan,"expired")}>Expire</button>
-                      {!isAdminEmail(u.email)
-                        ? <><button className="tbl-btn ed" onClick={()=>makeAdmin(u.email)}>Make Admin</button><button className="tbl-btn dl" onClick={()=>removeSeller(u.email)}>Delete</button></>
-                        : <button className="tbl-btn dl" onClick={()=>removeAdmin(u.email)}>Remove Admin</button>}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="admin-table-wrap">
+            <div className="admin-table-scroll" ref={usersTableRef}>
+              <table className="tbl">
+                <thead><tr><th>Email</th><th>Role</th><th>Plan</th><th>Days</th><th>Accounts</th><th></th></tr></thead>
+                <tbody>
+                  {filteredUsers.length===0&&<tr><td colSpan={6} style={{textAlign:"center",padding:24,color:"#888"}}>{users.length===0?"No users yet.":"No users found."}</td></tr>}
+                  {filteredUsers.map(u=>(
+                    <tr key={u.email}>
+                      <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>
+                      <td><Badge label={isAdminEmail(u.email)?"Admin":"Seller"} color={isAdminEmail(u.email)?"amber":"gray"}/></td>
+                      <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
+                      <td>{dLeft(u.planExpiry)}</td>
+                      <td>{u.connectedAccounts.length}</td>
+                      <td>
+                        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                          <button className="tbl-btn ed" onClick={()=>openEditSeller(u)}>Edit</button>
+                          <button className="tbl-btn ed" onClick={()=>resetPassword(u.email)}>Reset PW</button>
+                          <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"trial")}>Trial</button>
+                          <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"basic")}>Basic</button>
+                          <button className="tbl-btn ed" onClick={()=>approve(u.email,"pro")}>Pro</button>
+                          <button className="tbl-btn ed" onClick={()=>approve(u.email,"master")}>Master</button>
+                          <button className="tbl-btn dl" onClick={()=>setPlan(u.email,u.plan,"expired")}>Expire</button>
+                          {!isAdminEmail(u.email)
+                            ? <><button className="tbl-btn ed" onClick={()=>makeAdmin(u.email)}>Make Admin</button><button className="tbl-btn dl" onClick={()=>removeSeller(u.email)}>Delete</button></>
+                            : <button className="tbl-btn dl" onClick={()=>removeAdmin(u.email)}>Remove Admin</button>}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="admin-scroll-tools"><button onClick={()=>scrollBox(usersTableRef.current,"up")}>⌃</button><button onClick={()=>scrollBox(usersTableRef.current,"down")}>⌄</button></div>
+          </div>
         </div>
 
         <div className="table-card">
           <div className="table-title">Payment / Support Messages ({msgs.length})</div>
-          <table className="tbl">
-            <thead><tr><th>User</th><th>Message</th><th>Status</th><th></th></tr></thead>
-            <tbody>
-              {msgs.length===0&&<tr><td colSpan={4} style={{textAlign:"center",padding:24,color:"#888"}}>No messages yet.</td></tr>}
-              {[...msgs].reverse().map(m=>(
-                <tr key={m.id}>
-                  <td><strong>{m.name}</strong><div className="muted" style={{fontSize:11}}>{m.email}</div></td>
-                  <td><div><strong>{m.subject}</strong></div><div className="muted" style={{fontSize:11}}>{m.message.slice(0,90)}{m.message.length>90?"...":""}</div></td>
-                  <td><Badge label={m.status} color={m.status==="approved"?"green":m.status==="rejected"?"red":"amber"}/></td>
-                  <td>
-                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                      <button className="tbl-btn ed" onClick={()=>{updateMsg(m.id,"approved");approve(m.email,"pro");}}>Approve</button>
-                      <button className="tbl-btn dl" onClick={()=>updateMsg(m.id,"rejected")}>Reject</button>
-                      <button className="tbl-btn ed" onClick={()=>copy(m.email,"Email")}>Copy email</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="admin-table-wrap">
+            <div className="admin-table-scroll" ref={paymentsTableRef}>
+              <table className="tbl">
+                <thead><tr><th>User</th><th>Message</th><th>Status</th><th></th></tr></thead>
+                <tbody>
+                  {filteredMsgs.length===0&&<tr><td colSpan={4} style={{textAlign:"center",padding:24,color:"#888"}}>{msgs.length===0?"No messages yet.":"No messages found."}</td></tr>}
+                  {[...filteredMsgs].reverse().map(m=>(
+                    <tr key={m.id}>
+                      <td><strong>{m.name}</strong><div className="muted" style={{fontSize:11}}>{m.email}</div></td>
+                      <td><div><strong>{m.subject}</strong></div><div className="muted" style={{fontSize:11}}>{m.message.slice(0,90)}{m.message.length>90?"...":""}</div></td>
+                      <td><Badge label={m.status} color={m.status==="approved"?"green":m.status==="rejected"?"red":"amber"}/></td>
+                      <td>
+                        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                          <button className="tbl-btn ed" onClick={()=>{updateMsg(m.id,"approved");approve(m.email,"pro");}}>Approve</button>
+                          <button className="tbl-btn dl" onClick={()=>updateMsg(m.id,"rejected")}>Reject</button>
+                          <button className="tbl-btn ed" onClick={()=>copy(m.email,"Email")}>Copy email</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="admin-scroll-tools"><button onClick={()=>scrollBox(paymentsTableRef.current,"up")}>⌃</button><button onClick={()=>scrollBox(paymentsTableRef.current,"down")}>⌄</button></div>
+          </div>
         </div>
       </div>
       <div className="table-card">
         <div className="table-title">Audit Log ({auditLogs.length})</div>
-        <table className="tbl">
-          <thead><tr><th>Time</th><th>Admin</th><th>Action</th><th>Target</th><th>Details</th></tr></thead>
-          <tbody>
-            {auditLogs.length===0&&<tr><td colSpan={5} style={{textAlign:"center",padding:24,color:"#888"}}>No admin activity yet.</td></tr>}
-            {auditLogs.map(log=>(
-              <tr key={log.id}>
-                <td className="muted" style={{whiteSpace:"nowrap"}}>{new Date(log.timestamp).toLocaleString()}</td>
-                <td><strong>{log.actorEmail}</strong></td>
-                <td><Badge label={log.action} color={log.action.includes("delete")||log.action.includes("reject")?"red":log.action.includes("approve")||log.action.includes("created")?"green":"purple"}/></td>
-                <td>{log.targetEmail}</td>
-                <td className="muted">{log.details}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="admin-table-wrap">
+          <div className="admin-table-scroll audit" ref={auditTableRef}>
+            <table className="tbl">
+              <thead><tr><th>Time</th><th>Admin</th><th>Action</th><th>Target</th><th>Details</th></tr></thead>
+              <tbody>
+                {filteredAuditLogs.length===0&&<tr><td colSpan={5} style={{textAlign:"center",padding:24,color:"#888"}}>{auditLogs.length===0?"No admin activity yet.":"No audit records found."}</td></tr>}
+                {filteredAuditLogs.map(log=>(
+                  <tr key={log.id}>
+                    <td className="muted" style={{whiteSpace:"nowrap"}}>{new Date(log.timestamp).toLocaleString()}</td>
+                    <td><strong>{log.actorEmail}</strong></td>
+                    <td><Badge label={log.action} color={log.action.includes("delete")||log.action.includes("reject")?"red":log.action.includes("approve")||log.action.includes("created")?"green":"purple"}/></td>
+                    <td>{log.targetEmail}</td>
+                    <td className="muted">{log.details}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="admin-scroll-tools"><button onClick={()=>scrollBox(auditTableRef.current,"up")}>⌃</button><button onClick={()=>scrollBox(auditTableRef.current,"down")}>⌄</button></div>
+        </div>
       </div>
       {editOriginalEmail&&(
         <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setEditOriginalEmail("")}>
