@@ -2112,6 +2112,7 @@ export default function App(){
 
   const isLive=ttOn||fbOn;
   const days=dLeft(user.planExpiry);
+  const showMobileBack=["settings","subscription","support","admin"].includes(page);
   const navItems:[Page,string,string][]=[
     ["dashboard","⚡",t.nav_live],["miners","🏅",t.nav_miners],["orders","🛒",t.nav_orders],
     ["products","📦",t.nav_products],["customers","👥",t.nav_customers],["print","🖨️",t.nav_print],["sales","📊",t.nav_sales],
@@ -2143,7 +2144,8 @@ export default function App(){
 
       {/* MAIN */}
       <main className="main">
-        <header className="topbar">
+        <header className={`topbar ${showMobileBack?"has-mobile-back":""}`}>
+          {showMobileBack&&<button className="mobile-page-back" onClick={()=>setPage("dashboard")}>Back</button>}
           <div className={`live-pill ${isLive?"live":"off"}`}><span className="live-dot"/> {isLive?t.live_status:t.offline_status}</div>
           <button onClick={()=>{setConnectTab("TikTok");setShowConn(true);}} className={`plat-btn ${ttOn?"on":""}`}>TikTok {ttOn?"✓":""}</button>
           <button onClick={()=>{setConnectTab("Facebook");setShowConn(true);}} className={`plat-btn ${fbOn?"on":""}`}>Facebook {fbOn?"✓":""}</button>
