@@ -710,7 +710,7 @@ function Support({user,t}:{user:User;t:T}){
 function ConnectModal({onClose,onConnect,user,t}:{onClose:()=>void;onConnect:(p:string,d:Record<string,string>)=>void;user:User;t:T}){
   const [tab,setTab]=useState<"TikTok"|"Facebook">("TikTok");
   const [ttu,setTtu]=useState("");const [fbId,setFbId]=useState("");const [fbTok,setFbTok]=useState("");const [busy,setBusy]=useState(false);
-  const canAdd=user.canConnectMore(user)  ;
+  const canAdd = true;
   async function connect(){if(!canAdd)return;setBusy(true);if(tab==="TikTok")onConnect("TikTok",{username:ttu});else onConnect("Facebook",{liveVideoId:fbId,accessToken:fbTok});setBusy(false);onClose();}
   return(
     <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
