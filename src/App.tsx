@@ -701,6 +701,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
   const [users,setUsers]=useState<User[]>(()=>LS.get("sf_users",[]));
   const [msgs,setMsgs]=useState<SupportMsg[]>(()=>LS.get("sf_support",[]));
   const [admins,setAdmins]=useState<string[]>(()=>adminEmails());
+  const [newSeller,setNewSeller]=useState({email:"",password:"123456",fullName:"",storeName:""});
   const [copied,setCopied]=useState("");
 
   function refresh(){
@@ -725,6 +726,36 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
     const next=users.map(u=>u.email.toLowerCase()===email.toLowerCase()?{...u,plan,planStatus:status,planExpiry:expiry}:u);
     LS.set("sf_users",next);
     setUsers(next);
+  }
+
+  function createSeller(){
+    const email=newSeller.email.trim().toLowerCase();
+    if(!email||!newSeller.password||!newSeller.fullName.trim()||!newSeller.storeName.trim()){
+      setCopied("Fill seller email, password, name, and store");
+      return;
+    }
+    if(newSeller.password.length<6){
+      setCopied("Password must be at least 6 characters");
+      return;
+    }
+    if(users.some(u=>u.email.toLowerCase()===email)){
+      setCopied("Seller email already exists");
+      return;
+    }
+    const seller:User={
+      email,
+      password:newSeller.password,
+      profile:{fullName:newSeller.fullName.trim(),storeName:newSeller.storeName.trim(),phone:"",tiktok:"",facebook:""},
+      plan:"trial",
+      planStatus:"active",
+      planExpiry:addDays(7),
+      connectedAccounts:[],
+    };
+    const next=[...users,seller];
+    LS.set("sf_users",next);
+    setUsers(next);
+    setNewSeller({email:"",password:"123456",fullName:"",storeName:""});
+    setCopied("Seller account created");
   }
 
   function makeAdmin(email:string){
@@ -761,6 +792,17 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
           <p>Owner: {OWNER_EMAIL} · Admins: {admins.length}</p>
         </div>
         <button className="btn-out" onClick={refresh}>Refresh</button>
+      </div>
+
+      <div className="scard" style={{marginBottom:16}}>
+        <div className="scard-title">Create Seller Account</div>
+        <div className="grid4">
+          <Fg label="Email"><input value={newSeller.email} onChange={e=>setNewSeller(s=>({...s,email:e.target.value}))} placeholder="seller@email.com"/></Fg>
+          <Fg label="Password"><input value={newSeller.password} onChange={e=>setNewSeller(s=>({...s,password:e.target.value}))} placeholder="Minimum 6 chars"/></Fg>
+          <Fg label="Full name"><input value={newSeller.fullName} onChange={e=>setNewSeller(s=>({...s,fullName:e.target.value}))} placeholder="Seller name"/></Fg>
+          <Fg label="Store name"><input value={newSeller.storeName} onChange={e=>setNewSeller(s=>({...s,storeName:e.target.value}))} placeholder="Store name"/></Fg>
+        </div>
+        <button className="btn-purple" style={{marginTop:10}} onClick={createSeller}>Create seller</button>
       </div>
 
       <div className="grid2">
