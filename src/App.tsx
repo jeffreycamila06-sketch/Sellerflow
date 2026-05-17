@@ -58,6 +58,7 @@ const adminEmails=()=>Array.from(new Set([OWNER_EMAIL,...ENV_ADMIN_EMAILS,...LS.
 const isAdminEmail=(email:string)=>adminEmails().includes(email.trim().toLowerCase());
 const rememberAdminEmail=(email:string)=>LS.set("sf_admin_emails",Array.from(new Set([...LS.get<string[]>("sf_admin_emails",[]),email.trim().toLowerCase()].filter(Boolean))));
 const forgetAdminEmail=(email:string)=>LS.set("sf_admin_emails",LS.get<string[]>("sf_admin_emails",[]).filter(e=>e.trim().toLowerCase()!==email.trim().toLowerCase()));
+const supportReadKey=(email:string)=>`sf_support_read_${email.trim().toLowerCase()}`;
 const isAdminUser=(u:User|null)=>!!u&&isAdminEmail(u.email);
 const canConnectMore=(u:User)=>isAdminUser(u)||u.connectedAccounts.length<maxAcc(u.plan);
 const asAdminPlan=(u:User)=>isAdminUser(u)?{...u,plan:"master" as Plan,planStatus:"active" as PlanStatus,planExpiry:addMonths(120)}:u;
@@ -642,6 +643,8 @@ function Support({user,t}:{user:User;t:T}){
   const [msg,setMsg]=useState("");
   const [file,setFile]=useState<File|null>(null);
   const [sent,setSent]=useState(false);
+  const [selectedMsgId,setSelectedMsgId]=useState("");
+  const [readIds,setReadIds]=useState<string[]>(()=>LS.get<string[]>(supportReadKey(user.email),[]));
   async function send(e:React.FormEvent){
     e.preventDefault();
     const sm:SupportMsg={id:Date.now().toString(),name,email,subject,message:msg,hasProof:!!file,timestamp:new Date().toISOString(),status:"pending"};
@@ -659,6 +662,22 @@ function Support({user,t}:{user:User;t:T}){
     const timer=window.setInterval(refreshSupport,10000);
     return()=>window.clearInterval(timer);
   },[user.email,sent]);
+  const sellerMessages=[...prev].sort((a,b)=>{
+    const au=a.adminReply&&!readIds.includes(a.id)?1:0;
+    const bu=b.adminReply&&!readIds.includes(b.id)?1:0;
+    if(au!==bu)return bu-au;
+    return new Date(b.timestamp).getTime()-new Date(a.timestamp).getTime();
+  });
+  const selectedMsg=sellerMessages.find(m=>m.id===selectedMsgId);
+  const unreadReplies=sellerMessages.filter(m=>m.adminReply&&!readIds.includes(m.id)).length;
+  function openSellerMessage(m:SupportMsg){
+    setSelectedMsgId(m.id);
+    if(m.adminReply&&!readIds.includes(m.id)){
+      const next=[...readIds,m.id];
+      setReadIds(next);
+      LS.set(supportReadKey(user.email),next);
+    }
+  }
   return(
     <div className="subpage">
       <div className="subpage-hd"><div><h2>{t.support_title}</h2><p>{t.support_sub}</p></div></div>
@@ -694,9 +713,48 @@ function Support({user,t}:{user:User;t:T}){
           )}
         </div>
         <div className="scard">
-          <div className="scard-title">My messages ({prev.length})</div>
+          <div className="scard-title support-title"><span>My messages ({prev.length})</span>{unreadReplies>0&&<span className="support-new-badge">{unreadReplies>9?"9+":unreadReplies} new</span>}</div>
+          {prev.length>0&&(
+            <div className="seller-support-box">
+              {!selectedMsg&&sellerMessages.map(m=>{
+                const unread=!!m.adminReply&&!readIds.includes(m.id);
+                return <button key={m.id} className={`seller-message-row ${unread?"has-new":""}`} onClick={()=>openSellerMessage(m)}>
+                  <div className="support-avatar">{ini(m.subject)}</div>
+                  <div className="support-convo-meta">
+                    <div className="support-convo-top"><strong>{m.subject}</strong><span>{new Date(m.timestamp).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}</span></div>
+                    <div className="support-convo-sub"><span>{m.adminReply?`Admin: ${m.adminReply}`:m.message}</span>{unread&&<b>new reply</b>}</div>
+                  </div>
+                  <Badge label={m.status==="approved"?"Approved":m.status==="rejected"?"Rejected":"Pending"} color={m.status==="approved"?"green":m.status==="rejected"?"red":"amber"}/>
+                  {unread&&<span className="support-unread-dot"/>}
+                </button>;
+              })}
+              {selectedMsg&&(
+                <div className="support-thread chat-open">
+                  <button className="tbl-btn ed support-back-btn" onClick={()=>setSelectedMsgId("")}>Back to messages</button>
+                  <div className="support-chat-row seller">
+                    <div className="support-avatar">{ini(user.profile.fullName||user.email)}</div>
+                    <div className="support-bubble seller">
+                      <strong>{selectedMsg.subject}</strong>
+                      <p>{selectedMsg.message}</p>
+                      <span>{new Date(selectedMsg.timestamp).toLocaleString()} {selectedMsg.hasProof?" - Proof attached":""}</span>
+                    </div>
+                  </div>
+                  {selectedMsg.adminReply&&(
+                    <div className="support-chat-row admin">
+                      <div className="support-bubble admin">
+                        <strong>Admin reply</strong>
+                        <p>{selectedMsg.adminReply}</p>
+                        {selectedMsg.repliedAt&&<span>{new Date(selectedMsg.repliedAt).toLocaleString()}</span>}
+                      </div>
+                    </div>
+                  )}
+                  <div className="support-actions"><Badge label={selectedMsg.status==="approved"?"Approved":selectedMsg.status==="rejected"?"Rejected":"Pending"} color={selectedMsg.status==="approved"?"green":selectedMsg.status==="rejected"?"red":"amber"}/></div>
+                </div>
+              )}
+            </div>
+          )}
           {prev.length===0?<div style={{color:"#888",fontSize:12,padding:"20px 0"}}>No messages sent yet.</div>:(
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <div style={{display:"none",flexDirection:"column",gap:8}}>
               {[...prev].reverse().map(m=>(
                 <div key={m.id} style={{background:"var(--color-background-secondary,#F9F9F7)",borderRadius:8,padding:10,border:"0.5px solid #E4E2DC"}}>
                   <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
@@ -1357,9 +1415,14 @@ export default function App(){
   },[]);
 
   useEffect(()=>{
-    if(!user||!isAdminUser(user)){setSupportUnreadCount(0);return;}
+    if(!user){setSupportUnreadCount(0);return;}
     const refreshSupportBadge=()=>void listSupportMessages().then(ms=>{
-      setSupportUnreadCount(ms.filter(m=>m.status==="pending"&&!m.adminReply).length);
+      if(isAdminUser(user)){
+        setSupportUnreadCount(ms.filter(m=>m.status==="pending"&&!m.adminReply).length);
+        return;
+      }
+      const read=LS.get<string[]>(supportReadKey(user.email),[]);
+      setSupportUnreadCount(ms.filter(m=>m.email.toLowerCase()===user.email.toLowerCase()&&m.adminReply&&!read.includes(m.id)).length);
     });
     refreshSupportBadge();
     const timer=window.setInterval(refreshSupportBadge,10000);
@@ -1501,7 +1564,7 @@ export default function App(){
         {navItems.slice(3,6).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={`nav-it ${page===id?"on":""}`}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
         <div className="nav-sec-lbl">{t.nav_analytics}</div>
         {navItems.slice(6).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={`nav-it ${page===id?"on":""}`}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
-        <button onClick={()=>setPage("support")} className={`nav-it ${page==="support"?"on":""}`}><span className="nav-ic">💬</span><span className="nav-lb">Support</span>{isAdminUser(user)&&supportUnreadCount>0&&<span className="nav-alert-badge">{supportUnreadCount>9?"9+":supportUnreadCount}</span>}</button>
+        <button onClick={()=>setPage("support")} className={`nav-it ${page==="support"?"on":""}`}><span className="nav-ic">💬</span><span className="nav-lb">Support</span>{supportUnreadCount>0&&<span className="nav-alert-badge">{supportUnreadCount>9?"9+":supportUnreadCount}</span>}</button>
         {isAdminUser(user)&&<button onClick={()=>setPage("admin")} className={`nav-it ${page==="admin"?"on":""}`}><span className="nav-ic">👑</span><span className="nav-lb">Admin</span>{supportUnreadCount>0&&<span className="nav-alert-badge">{supportUnreadCount>9?"9+":supportUnreadCount}</span>}</button>}
         <button onClick={()=>setPage("settings")} className={`nav-it ${page==="settings"?"on":""}`} style={{marginTop:"auto"}}><span className="nav-ic">⚙️</span><span className="nav-lb">{t.nav_settings}</span></button>
         <div className="trial-box">

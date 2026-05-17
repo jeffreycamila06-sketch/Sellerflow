@@ -243,6 +243,10 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .support-conversation-body{display:flex;flex-direction:column;gap:10px}
 .support-message-block{border-top:1px solid #F1EFE8;padding-top:8px;display:flex;flex-direction:column;gap:8px}
 .support-back-btn{align-self:flex-start;margin-bottom:2px}
+.seller-support-box{display:flex;flex-direction:column;gap:8px}
+.seller-message-row{width:100%;display:flex;align-items:center;gap:9px;padding:8px;border:1px solid #E4E2DC;border-radius:10px;background:#fff;text-align:left;cursor:pointer}
+.seller-message-row:hover{background:#F5F4FF;border-color:#D8D3FF}
+.seller-message-row.has-new{border-color:#7F77DD;box-shadow:0 8px 22px rgba(83,74,183,.12)}
 .support-chat-row{display:flex;gap:8px;align-items:flex-end}
 .support-chat-row.admin{justify-content:flex-end}
 .support-avatar{width:28px;height:28px;border-radius:50%;background:#7F77DD;color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
