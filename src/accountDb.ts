@@ -159,6 +159,7 @@ export async function upsertUser(user: AccountUser): Promise<AccountUser> {
 
   if (error) {
     console.error("Save user error:", error.message);
+    throw new Error(error.message);
   }
 
   return cleanUser;
@@ -212,7 +213,7 @@ export async function saveSupportMessage(message: AccountSupportMsg): Promise<Ac
 
   if (error) {
     console.error("Save support message error:", error.message);
-    return message;
+    throw new Error(error.message);
   }
 
   return rowToSupport(data);

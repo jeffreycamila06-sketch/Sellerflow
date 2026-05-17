@@ -640,8 +640,12 @@ function Support({user,t}:{user:User;t:T}){
   async function send(e:React.FormEvent){
     e.preventDefault();
     const sm:SupportMsg={id:Date.now().toString(),name,email,subject,message:msg,hasProof:!!file,timestamp:new Date().toISOString(),status:"pending"};
-    await saveSupportMessage(sm);
-    setSent(true);setMsg("");setFile(null);
+    try{
+      await saveSupportMessage(sm);
+      setSent(true);setMsg("");setFile(null);
+    }catch(error){
+      alert(`Support message was not saved to Supabase: ${error instanceof Error?error.message:"Unknown error"}`);
+    }
   }
   const [prev,setPrev]=useState<SupportMsg[]>(()=>LS.get<SupportMsg[]>("sf_support",[]).filter(m=>m.email.toLowerCase()===user.email.toLowerCase()));
   useEffect(()=>{void listSupportMessages().then(ms=>setPrev(ms.filter(m=>m.email.toLowerCase()===user.email.toLowerCase())));},[user.email,sent]);
@@ -765,9 +769,13 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
     const next=[...users,seller];
     LS.set("sf_users",next);
     setUsers(next);
-    await upsertUser(seller);
-    setNewSeller({email:"",password:"123456",fullName:"",storeName:""});
-    setCopied("Seller account created");
+    try{
+      await upsertUser(seller);
+      setNewSeller({email:"",password:"123456",fullName:"",storeName:""});
+      setCopied("Seller account created");
+    }catch(error){
+      setCopied(`Supabase save failed: ${error instanceof Error?error.message:"Unknown error"}`);
+    }
   }
 
   async function makeAdmin(email:string){
