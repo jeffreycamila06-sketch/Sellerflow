@@ -249,6 +249,8 @@ export async function saveSupportMessage(message: AccountSupportMsg): Promise<Ac
       message: message.message,
       has_proof: message.hasProof,
       status: message.status,
+      admin_reply: message.adminReply || null,
+      replied_at: message.repliedAt || null,
     })
     .select()
     .single();

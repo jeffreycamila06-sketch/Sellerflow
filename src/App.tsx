@@ -896,10 +896,50 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
   const adminPageRef=useRef<HTMLDivElement>(null);
 
   async function refresh(){
-    setUsers(await listUsers());
+    const freshUsers=await listUsers();
+    setUsers(freshUsers);
+    await sendAutomaticPlanNotices(freshUsers);
     setMsgs(await listSupportMessages());
     setAuditLogs(await listAuditLogs());
     setAdmins(adminEmails());
+  }
+
+  async function sendAutomaticPlanNotices(sourceUsers:User[]){
+    const sentKeys=LS.get<string[]>("sf_plan_notice_sent",[]);
+    const nextSent=new Set(sentKeys);
+    const todayKey=new Date().toISOString().slice(0,10);
+    const notices:SupportMsg[]=[];
+    for(const seller of sourceUsers){
+      if(isAdminEmail(seller.email))continue;
+      const days=dLeft(seller.planExpiry);
+      const warnDays=seller.plan==="trial"?3:5;
+      const noticeType=seller.planStatus==="expired"||days===0?"expired":days===warnDays?"warning":"";
+      if(!noticeType)continue;
+      const key=`${seller.email.toLowerCase()}|${seller.plan}|${seller.planExpiry}|${noticeType}`;
+      if(nextSent.has(key))continue;
+      nextSent.add(key);
+      const planLabel=pName(seller.plan,t);
+      const expiryDate=new Date(seller.planExpiry).toLocaleDateString();
+      const adminReply=noticeType==="warning"
+        ? `Automatic message from SellerFlow Admin: Your ${planLabel} plan will expire in ${days} day${days===1?"":"s"} on ${expiryDate}. Please send payment proof or upgrade before it expires.`
+        : `Automatic message from SellerFlow Admin: Your ${planLabel} plan expired today. Please upgrade or send payment proof to continue using SellerFlow.`;
+      notices.push({
+        id:`plan-${noticeType}-${seller.email}-${todayKey}`,
+        name:seller.profile.fullName||seller.profile.storeName||seller.email,
+        email:seller.email,
+        subject:noticeType==="warning"?"Plan expiration reminder":"Plan expired notice",
+        message:"Automatic plan notice",
+        hasProof:false,
+        timestamp:new Date().toISOString(),
+        status:"approved",
+        adminReply,
+        repliedAt:new Date().toISOString(),
+      });
+    }
+    if(!notices.length)return;
+    LS.set("sf_plan_notice_sent",Array.from(nextSent));
+    await Promise.all(notices.map(n=>saveSupportMessage(n).catch(error=>console.error("Auto plan notice failed:",error))));
+    setCopied(`${notices.length} automatic plan message${notices.length===1?"":"s"} sent`);
   }
 
   useEffect(()=>{
@@ -1153,6 +1193,10 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
   const sellerUsers=users.filter(u=>!isAdminEmail(u.email));
   const activeSellers=sellerUsers.filter(u=>u.planStatus==="active"&&dLeft(u.planExpiry)>0);
   const expiredSellers=sellerUsers.filter(u=>u.planStatus==="expired"||dLeft(u.planExpiry)===0);
+  const planMonitorUsers=sellerUsers
+    .filter(u=>u.planStatus==="expired"||dLeft(u.planExpiry)<=(u.plan==="trial"?3:5))
+    .sort((a,b)=>dLeft(a.planExpiry)-dLeft(b.planExpiry));
+  const expiringSoonSellers=planMonitorUsers.filter(u=>u.planStatus!=="expired"&&dLeft(u.planExpiry)>0);
   const pendingPayments=msgs.filter(m=>m.status==="pending");
   const todayIso=new Date().toISOString().slice(0,10);
   const todayOrders=LS.get<LiveOrder[]>("sf_orders",[]).filter(o=>o.date===todayIso);
@@ -1221,6 +1265,36 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
         <div className="mstat"><div className="ms-l">Expired</div><div className="ms-v" style={{color:"#A32D2D"}}>{expiredSellers.length}</div></div>
         <div className="mstat"><div className="ms-l">Pending Payments</div><div className="ms-v" style={{color:"#BA7517"}}>{pendingPayments.length}</div></div>
         <div className="mstat"><div className="ms-l">Today Orders</div><div className="ms-v" style={{color:"#534AB7"}}>{todayOrders.length}</div></div>
+        <div className="mstat"><div className="ms-l">Expiring Soon</div><div className="ms-v" style={{color:"#BA7517"}}>{expiringSoonSellers.length}</div></div>
+      </div>
+
+      <div className="table-card" style={{marginBottom:16}}>
+        <div className="table-title">Plan Monitoring ({planMonitorUsers.length})</div>
+        <div className="admin-table-wrap">
+          <div className="admin-table-scroll">
+            <table className="tbl">
+              <thead><tr><th>Seller</th><th>Plan</th><th>Days</th><th>Status</th><th>Auto message</th><th></th></tr></thead>
+              <tbody>
+                {planMonitorUsers.length===0&&<tr><td colSpan={6} style={{textAlign:"center",padding:24,color:"#888"}}>No sellers expiring soon.</td></tr>}
+                {planMonitorUsers.map(u=>{
+                  const days=dLeft(u.planExpiry);
+                  const expired=u.planStatus==="expired"||days===0;
+                  const warnDays=u.plan==="trial"?3:5;
+                  return(
+                    <tr key={`monitor-${u.email}`}>
+                      <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>
+                      <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
+                      <td>{days}</td>
+                      <td><Badge label={expired?"Expired":"Expiring"} color={expired?"red":"amber"}/></td>
+                      <td className="muted">{expired?"Sent on expiry day":`Sends ${warnDays} days before expiry`}</td>
+                      <td><button className="tbl-btn ed" onClick={()=>approve(u.email,u.plan==="trial"?"basic":u.plan)}>Extend / approve</button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       <div className="scard" style={{marginBottom:16}}>
