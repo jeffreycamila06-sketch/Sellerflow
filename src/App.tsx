@@ -743,7 +743,11 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
     setAdmins(adminEmails());
   }
 
-  useEffect(()=>{void refresh();},[]);
+  useEffect(()=>{
+    void refresh();
+    const timer=window.setInterval(()=>{void refresh();},10000);
+    return()=>window.clearInterval(timer);
+  },[]);
 
   async function updateMsg(id:string,status:SupportMsg["status"]){
     const next=msgs.map(m=>m.id===id?{...m,status}:m);
@@ -1012,7 +1016,10 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
           <h2>Admin</h2>
           <p>Owner: {OWNER_EMAIL} · Admins: {admins.length}</p>
         </div>
-        <button className="btn-out" onClick={refresh}>Refresh</button>
+        <div className="admin-refresh-group">
+          <span>Auto refresh: 10s</span>
+          <button className="btn-out" onClick={refresh}>Refresh</button>
+        </div>
       </div>
 
       <div className="admin-searchbar">

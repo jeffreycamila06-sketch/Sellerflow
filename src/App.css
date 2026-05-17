@@ -198,6 +198,8 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .admin-search-clear:hover{background:#EEEDFE;color:#534AB7}
 .admin-exportbar{display:flex;gap:8px;flex-wrap:wrap}
 .admin-exportbar .btn-out{padding:7px 12px}
+.admin-refresh-group{display:flex;align-items:center;gap:8px}
+.admin-refresh-group span{font-size:11px;color:#888780;background:#F1EFE8;border-radius:999px;padding:5px 10px;white-space:nowrap}
 .admin-summary-grid{grid-template-columns:repeat(5,1fr)}
 .admin-page{position:relative}
 .admin-page-scroll-tools{position:fixed;right:18px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:10px;z-index:20}
