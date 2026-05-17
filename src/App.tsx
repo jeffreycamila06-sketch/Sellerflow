@@ -653,7 +653,12 @@ function Support({user,t}:{user:User;t:T}){
     }
   }
   const [prev,setPrev]=useState<SupportMsg[]>(()=>LS.get<SupportMsg[]>("sf_support",[]).filter(m=>m.email.toLowerCase()===user.email.toLowerCase()));
-  useEffect(()=>{void listSupportMessages().then(ms=>setPrev(ms.filter(m=>m.email.toLowerCase()===user.email.toLowerCase())));},[user.email,sent]);
+  useEffect(()=>{
+    const refreshSupport=()=>void listSupportMessages().then(ms=>setPrev(ms.filter(m=>m.email.toLowerCase()===user.email.toLowerCase())));
+    refreshSupport();
+    const timer=window.setInterval(refreshSupport,10000);
+    return()=>window.clearInterval(timer);
+  },[user.email,sent]);
   return(
     <div className="subpage">
       <div className="subpage-hd"><div><h2>{t.support_title}</h2><p>{t.support_sub}</p></div></div>
@@ -1254,7 +1259,10 @@ export default function App(){
   useEffect(()=>{
     const email=LS.get<string>("sf_session","");
     if(!email)return;
-    void findUser(email).then(u=>{if(u)setUser(asAdminPlan(u));});
+    const refreshSession=()=>void findUser(email).then(u=>{if(u)setUser(asAdminPlan(u));});
+    refreshSession();
+    const timer=window.setInterval(refreshSession,10000);
+    return()=>window.clearInterval(timer);
   },[]);
 
   function saveUser(u:User){
