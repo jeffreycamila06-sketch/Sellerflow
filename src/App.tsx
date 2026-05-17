@@ -40,6 +40,27 @@ const addDays=(n:number)=>{const d=new Date();d.setDate(d.getDate()+n);return d.
 const addMonths=(n:number)=>{const d=new Date();d.setMonth(d.getMonth()+n);return d.toISOString();};
 const dLeft=(e:string)=>Math.max(0,Math.ceil((new Date(e).getTime()-Date.now())/86400000));
 const maxAcc=(p:Plan)=>({trial:1,basic:1,pro:3,master:5}[p]);
+const ADMIN_EMAILS = (import.meta.env.VITE_ADMIN_EMAILS || "")
+  .split(",")
+  .map((e: string) => e.trim().toLowerCase())
+  .filter(Boolean);
+
+const isAdminUser = (u: User | null) =>
+  !!u && ADMIN_EMAILS.includes(u.email.toLowerCase());
+
+const canConnectMore = (u: User) =>
+  isAdminUser(u) || u.connectedAccounts.length < maxAcc(u.plan);
+
+const asAdminPlan = (u: User): User =>
+  isAdminUser(u)
+    ? {
+        ...u,
+        plan: "master",
+        planStatus: "active",
+        planExpiry: addMonths(120),
+      }
+    : u;
+
 const pName=(p:Plan,t:T)=>({trial:t.plan_trial,basic:t.plan_basic,pro:t.plan_pro,master:t.plan_master}[p]);
 const pColor=(p:Plan)=>({trial:"gray",basic:"green",pro:"purple",master:"amber"}[p] as "gray"|"green"|"purple"|"amber");
 const csvDL=(filename:string,headers:string[],rows:(string|number)[][])=>{
@@ -689,7 +710,7 @@ function Support({user,t}:{user:User;t:T}){
 function ConnectModal({onClose,onConnect,user,t}:{onClose:()=>void;onConnect:(p:string,d:Record<string,string>)=>void;user:User;t:T}){
   const [tab,setTab]=useState<"TikTok"|"Facebook">("TikTok");
   const [ttu,setTtu]=useState("");const [fbId,setFbId]=useState("");const [fbTok,setFbTok]=useState("");const [busy,setBusy]=useState(false);
-  const canAdd=user.connectedAccounts.length<maxAcc(user.plan);
+  const canAdd=user.canConnectMore(user)  ;
   async function connect(){if(!canAdd)return;setBusy(true);if(tab==="TikTok")onConnect("TikTok",{username:ttu});else onConnect("Facebook",{liveVideoId:fbId,accessToken:fbTok});setBusy(false);onClose();}
   return(
     <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
@@ -730,7 +751,13 @@ export default function App(){
   const today=new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"});
 
   // Check trial expiry
-  const trialExpired=user&&user.plan==="trial"&&user.planStatus==="active"&&dLeft(user.planExpiry)===0;
+  const trialExpired =
+  user &&
+  !isAdminUser(user) &&
+  user.plan === "trial" &&
+  user.planStatus === "active" &&
+  dLeft(user.planExpiry) === 0;
+
 
   useEffect(()=>{
     if(!user)return;
