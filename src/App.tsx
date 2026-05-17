@@ -1709,7 +1709,7 @@ export default function App(){
                     const orderCount=commentOrderCount(c);
                     return(
                       <div key={i} className="msg-row buy" onDoubleClick={()=>oneClick(c,i)}>
-                        <Av name={c.name||c.handle} image={c.avatar} size={48}/>
+                        <Av name={c.name||c.handle} image={c.avatar} size={42}/>
                         <div className="msg-bd">
                           <div className="msg-nm">
                             <strong>{c.name||c.handle}</strong>
