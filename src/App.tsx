@@ -1307,6 +1307,7 @@ export default function App(){
   const [showConn,setShowConn]=useState(false);const [showProf,setShowProf]=useState(false);
   const [printed,setPrinted]=useState<Set<number>>(new Set());
   const [openCommentMenu,setOpenCommentMenu]=useState<number|null>(null);
+  const [supportUnreadCount,setSupportUnreadCount]=useState(0);
   const [toast,setToast]=useState("");
   const feedRef=useRef<HTMLDivElement>(null);
   const today=new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"});
@@ -1351,6 +1352,16 @@ export default function App(){
     const timer=window.setInterval(refreshSession,10000);
     return()=>window.clearInterval(timer);
   },[]);
+
+  useEffect(()=>{
+    if(!user||!isAdminUser(user)){setSupportUnreadCount(0);return;}
+    const refreshSupportBadge=()=>void listSupportMessages().then(ms=>{
+      setSupportUnreadCount(ms.filter(m=>m.status==="pending"&&!m.adminReply).length);
+    });
+    refreshSupportBadge();
+    const timer=window.setInterval(refreshSupportBadge,10000);
+    return()=>window.clearInterval(timer);
+  },[user?.email]);
 
   function saveUser(u:User){
     const next=asAdminPlan(u);
@@ -1487,8 +1498,8 @@ export default function App(){
         {navItems.slice(3,6).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={`nav-it ${page===id?"on":""}`}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
         <div className="nav-sec-lbl">{t.nav_analytics}</div>
         {navItems.slice(6).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={`nav-it ${page===id?"on":""}`}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
-        <button onClick={()=>setPage("support")} className={`nav-it ${page==="support"?"on":""}`}><span className="nav-ic">💬</span><span className="nav-lb">Support</span></button>
-        {isAdminUser(user)&&<button onClick={()=>setPage("admin")} className={`nav-it ${page==="admin"?"on":""}`}><span className="nav-ic">👑</span><span className="nav-lb">Admin</span></button>}
+        <button onClick={()=>setPage("support")} className={`nav-it ${page==="support"?"on":""}`}><span className="nav-ic">💬</span><span className="nav-lb">Support</span>{isAdminUser(user)&&supportUnreadCount>0&&<span className="nav-alert-badge">{supportUnreadCount>9?"9+":supportUnreadCount}</span>}</button>
+        {isAdminUser(user)&&<button onClick={()=>setPage("admin")} className={`nav-it ${page==="admin"?"on":""}`}><span className="nav-ic">👑</span><span className="nav-lb">Admin</span>{supportUnreadCount>0&&<span className="nav-alert-badge">{supportUnreadCount>9?"9+":supportUnreadCount}</span>}</button>}
         <button onClick={()=>setPage("settings")} className={`nav-it ${page==="settings"?"on":""}`} style={{marginTop:"auto"}}><span className="nav-ic">⚙️</span><span className="nav-lb">{t.nav_settings}</span></button>
         <div className="trial-box">
           <div className="trial-row"><span className="trial-pill">{pName(user.plan,t)}</span><span className="trial-exp">{days}d {t.days_remaining}</span></div>

@@ -60,6 +60,7 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .nav-it.on{background:#EEEDFE;color:#534AB7;font-weight:500}
 .nav-ic{font-size:15px;flex-shrink:0}
 .nav-lb{font-size:12px}
+.nav-alert-badge{margin-left:auto;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:#E83A3A;color:#fff;font-size:10px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(232,58,58,.28)}
 .trial-box{margin:10px;background:#F5F4FF;border-radius:10px;padding:10px 12px;border:0.5px solid #AFA9EC}
 .trial-row{display:flex;align-items:center;gap:6px;margin-bottom:4px}
 .trial-pill{background:#EEEDFE;color:#534AB7;font-size:10px;padding:2px 7px;border-radius:20px;font-weight:500}
