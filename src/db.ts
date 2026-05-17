@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { isSupabaseConfigured, supabase } from "./supabase";
 
 export async function saveOrderToDatabase(order: {
   customer_name: string;
@@ -6,6 +6,11 @@ export async function saveOrderToDatabase(order: {
   total_amount: number;
   status?: string;
 }) {
+  if (!isSupabaseConfigured || !supabase) {
+    console.info("Supabase is not configured. Order kept in local app state.", order);
+    return { success: true, data: null, skipped: true };
+  }
+
   const { data, error } = await supabase
     .from("orders")
     .insert([
@@ -35,6 +40,11 @@ export async function saveCustomerToDatabase(customer: {
   total_orders: number;
   total_spent: number;
 }) {
+  if (!isSupabaseConfigured || !supabase) {
+    console.info("Supabase is not configured. Customer kept in local app state.", customer);
+    return { success: true, data: null, skipped: true };
+  }
+
   async function updateExistingCustomer() {
     const { data: existing, error: findError } = await supabase
       .from("customers")
@@ -100,6 +110,10 @@ export async function saveCustomerToDatabase(customer: {
 }
 
 export async function getCustomersFromDatabase() {
+  if (!isSupabaseConfigured || !supabase) {
+    return [];
+  }
+
   const { data, error } = await supabase
     .from("customers")
     .select("*")

@@ -1,4 +1,12 @@
 import { saveOrderToDatabase, saveCustomerToDatabase } from "./db";
+import {
+  findUser,
+  listSupportMessages,
+  listUsers,
+  saveSupportMessage,
+  updateSupportStatus,
+  upsertUser,
+} from "./accountDb";
 
 import { useState, useEffect, useRef } from "react";
 import { io } from "socket.io-client";
@@ -103,30 +111,29 @@ function Auth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:Lang;set
   const [email,setEmail]=useState("");const [pw,setPw]=useState("");const [cpw,setCpw]=useState("");
   const [fn,setFn]=useState("");const [sn,setSn]=useState("");
   const [showPw,setShowPw]=useState(false);const [err,setErr]=useState("");const [ok,setOk]=useState("");const [busy,setBusy]=useState(false);
-  const getUsers=():User[]=>LS.get("sf_users",[]);
-  function login(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);setTimeout(()=>{
-    const u=getUsers().find(u=>u.email.toLowerCase()===email.toLowerCase());
+  async function login(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);
+    const u=await findUser(email);
     if(!u){setErr(t.err_no_account);setBusy(false);return;}
     if(u.password!==pw){setErr(t.err_wrong_pw);setBusy(false);return;}
     LS.set("sf_session",u.email);onLogin(u);setBusy(false);
-  },400);}
-  function reg(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);setTimeout(()=>{
+  }
+  async function reg(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);
     if(!fn.trim()||!sn.trim()||!email.trim()||!pw){setErr(t.err_fill_all);setBusy(false);return;}
     if(pw.length<6){setErr(t.err_pw_short);setBusy(false);return;}
     if(pw!==cpw){setErr(t.err_pw_mismatch);setBusy(false);return;}
-    const users=getUsers();
-    if(users.find(u=>u.email.toLowerCase()===email.toLowerCase())){setErr(t.err_email_exists);setBusy(false);return;}
+    const users=await listUsers();
+    if(await findUser(email)){setErr(t.err_email_exists);setBusy(false);return;}
     const isFirstAccount=users.length===0;
-    const nu:User={email,password:pw,profile:{fullName:fn.trim(),storeName:sn.trim(),phone:"",tiktok:"",facebook:""},plan:isFirstAccount?"master":"trial",planStatus:"active",planExpiry:isFirstAccount?addMonths(120):addDays(7),connectedAccounts:[]};
-    LS.set("sf_users",[...users,nu]);
+    const nu:User={email:email.trim().toLowerCase(),password:pw,profile:{fullName:fn.trim(),storeName:sn.trim(),phone:"",tiktok:"",facebook:""},plan:isFirstAccount?"master":"trial",planStatus:"active",planExpiry:isFirstAccount?addMonths(120):addDays(7),connectedAccounts:[]};
+    await upsertUser(nu);
     if(isFirstAccount)rememberAdminEmail(email);
-    LS.set("sf_session",email);onLogin(nu);setBusy(false);
-  },400);}
-  function forgot(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);setTimeout(()=>{
-    const u=getUsers().find(u=>u.email.toLowerCase()===email.toLowerCase());
+    LS.set("sf_session",nu.email);onLogin(nu);setBusy(false);
+  }
+  async function forgot(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);
+    const u=await findUser(email);
     if(!u){setErr(t.err_no_account);setBusy(false);return;}
     setOk(`${t.reset_sent} ${email}`);setBusy(false);
-  },400);}
+  }
   const go=(m:"login"|"reg"|"forgot")=>{setMode(m);setErr("");setOk("");};
   return(
     <div className="auth-bg">
@@ -630,14 +637,14 @@ function Support({user,t}:{user:User;t:T}){
   const [msg,setMsg]=useState("");
   const [file,setFile]=useState<File|null>(null);
   const [sent,setSent]=useState(false);
-  function send(e:React.FormEvent){
+  async function send(e:React.FormEvent){
     e.preventDefault();
     const sm:SupportMsg={id:Date.now().toString(),name,email,subject,message:msg,hasProof:!!file,timestamp:new Date().toISOString(),status:"pending"};
-    const msgs=LS.get<SupportMsg[]>("sf_support",[]);
-    LS.set("sf_support",[...msgs,sm]);
+    await saveSupportMessage(sm);
     setSent(true);setMsg("");setFile(null);
   }
-  const prev=LS.get<SupportMsg[]>("sf_support",[]).filter(m=>m.email.toLowerCase()===user.email.toLowerCase());
+  const [prev,setPrev]=useState<SupportMsg[]>(()=>LS.get<SupportMsg[]>("sf_support",[]).filter(m=>m.email.toLowerCase()===user.email.toLowerCase()));
+  useEffect(()=>{void listSupportMessages().then(ms=>setPrev(ms.filter(m=>m.email.toLowerCase()===user.email.toLowerCase())));},[user.email,sent]);
   return(
     <div className="subpage">
       <div className="subpage-hd"><div><h2>{t.support_title}</h2><p>{t.support_sub}</p></div></div>
@@ -704,16 +711,18 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
   const [newSeller,setNewSeller]=useState({email:"",password:"123456",fullName:"",storeName:""});
   const [copied,setCopied]=useState("");
 
-  function refresh(){
-    setUsers(LS.get("sf_users",[]));
-    setMsgs(LS.get("sf_support",[]));
+  async function refresh(){
+    setUsers(await listUsers());
+    setMsgs(await listSupportMessages());
     setAdmins(adminEmails());
   }
 
-  function updateMsg(id:string,status:SupportMsg["status"]){
+  useEffect(()=>{void refresh();},[]);
+
+  async function updateMsg(id:string,status:SupportMsg["status"]){
     const next=msgs.map(m=>m.id===id?{...m,status}:m);
     setMsgs(next);
-    LS.set("sf_support",next);
+    await updateSupportStatus(id,status);
   }
 
   function approve(email:string,plan:Plan){
@@ -721,14 +730,16 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
     setTimeout(refresh,50);
   }
 
-  function setPlan(email:string,plan:Plan,status:PlanStatus="active"){
+  async function setPlan(email:string,plan:Plan,status:PlanStatus="active"){
     const expiry=status==="expired"?addDays(-1):plan==="trial"?addDays(7):addMonths(1);
     const next=users.map(u=>u.email.toLowerCase()===email.toLowerCase()?{...u,plan,planStatus:status,planExpiry:expiry}:u);
     LS.set("sf_users",next);
     setUsers(next);
+    const updated=next.find(u=>u.email.toLowerCase()===email.toLowerCase());
+    if(updated)await upsertUser(updated);
   }
 
-  function createSeller(){
+  async function createSeller(){
     const email=newSeller.email.trim().toLowerCase();
     if(!email||!newSeller.password||!newSeller.fullName.trim()||!newSeller.storeName.trim()){
       setCopied("Fill seller email, password, name, and store");
@@ -754,16 +765,19 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
     const next=[...users,seller];
     LS.set("sf_users",next);
     setUsers(next);
+    await upsertUser(seller);
     setNewSeller({email:"",password:"123456",fullName:"",storeName:""});
     setCopied("Seller account created");
   }
 
-  function makeAdmin(email:string){
+  async function makeAdmin(email:string){
     rememberAdminEmail(email);
     const next=users.map(u=>u.email.toLowerCase()===email.toLowerCase()?asAdminPlan(u):u);
     LS.set("sf_users",next);
     setUsers(next);
     setAdmins(adminEmails());
+    const updated=next.find(u=>u.email.toLowerCase()===email.toLowerCase());
+    if(updated)await upsertUser(updated);
   }
 
   function removeAdmin(email:string){
@@ -941,7 +955,18 @@ export default function App(){
     return()=>{s.disconnect();};
   },[user]);
 
-  function saveUser(u:User){const next=asAdminPlan(u);setUser(next);LS.set("sf_users",LS.get<User[]>("sf_users",[]).map(x=>x.email===next.email?next:x));}
+  useEffect(()=>{
+    const email=LS.get<string>("sf_session","");
+    if(!email)return;
+    void findUser(email).then(u=>{if(u)setUser(asAdminPlan(u));});
+  },[]);
+
+  function saveUser(u:User){
+    const next=asAdminPlan(u);
+    setUser(next);
+    LS.set("sf_users",LS.get<User[]>("sf_users",[]).map(x=>x.email===next.email?next:x));
+    void upsertUser(next);
+  }
   function handleLogin(u:User){setUser(asAdminPlan(u));setPage("dashboard");}
   function handleLogout(){LS.del("sf_session");setUser(null);setComments([]);setBuyers([]);setTotOrd(0);setTotRev(0);setSelBuyer(null);}
   function handleActivate(plan:Plan,status:PlanStatus,expiry:string){
@@ -957,6 +982,7 @@ export default function App(){
     const nextUsers=users.map(u=>u.email.toLowerCase()===email.toLowerCase()?{...u,plan,planStatus:"active" as PlanStatus,planExpiry:addMonths(1)}:u);
     LS.set("sf_users",nextUsers);
     const updated=nextUsers.find(u=>u.email.toLowerCase()===email.toLowerCase());
+    if(updated)void upsertUser(updated);
     if(updated&&user?.email.toLowerCase()===email.toLowerCase())setUser(asAdminPlan(updated));
     setToast(`${email} approved for ${plan}`);
   }
