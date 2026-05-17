@@ -680,10 +680,10 @@ function Support({user,t}:{user:User;t:T}){
     }
   }
   return(
-    <div className="subpage">
+    <div className="subpage support-page">
       <div className="subpage-hd"><div><h2>{t.support_title}</h2><p>{t.support_sub}</p></div></div>
-      <div className="grid2">
-        <div className="scard">
+      <div className="grid2 support-mobile-grid">
+        <div className="scard support-payment-card">
           <div className="scard-title">{t.payment_title}</div>
           <div className="payment-box" style={{marginBottom:12}}>
             <p style={{color:"#5F5E5A",fontSize:12,marginBottom:8}}>{t.payment_info}</p>
@@ -713,7 +713,7 @@ function Support({user,t}:{user:User;t:T}){
             </form>
           )}
         </div>
-        <div className="scard">
+        <div className="scard support-messages-card">
           <div className="scard-title support-title"><span>My messages ({prev.length})</span>{unreadReplies>0&&<span className="support-new-badge">{unreadReplies>9?"9+":unreadReplies} new</span>}</div>
           {prev.length>0&&(
             <div className="seller-support-box">

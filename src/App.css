@@ -459,4 +459,31 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .one-btn{justify-self:end;min-width:120px}
   .msg-nm strong,.msg-handle{font-size:14px}
   .msg-tx.buy{font-size:15px}
+  .support-page{padding:12px;gap:10px}
+  .support-page .subpage-hd h2{font-size:20px}
+  .support-page .subpage-hd p{font-size:11px;line-height:1.35}
+  .support-mobile-grid{display:flex;flex-direction:column;gap:10px}
+  .support-messages-card{order:1}
+  .support-payment-card{order:2}
+  .support-page .scard{padding:12px;border-radius:10px;gap:8px}
+  .support-page .scard-title{font-size:12px;padding-bottom:7px}
+  .seller-support-box{gap:6px}
+  .seller-message-row{padding:7px;gap:7px;border-radius:9px;align-items:flex-start}
+  .seller-message-row .support-avatar{width:26px;height:26px;font-size:9px}
+  .seller-message-row .support-convo-top{gap:6px}
+  .seller-message-row .support-convo-top strong{font-size:12px}
+  .seller-message-row .support-convo-top span{font-size:10px}
+  .seller-message-row .support-convo-sub{gap:5px;flex-wrap:wrap}
+  .seller-message-row .support-convo-sub span{font-size:11px;max-width:100%}
+  .seller-message-row .support-convo-sub b{font-size:10px}
+  .seller-message-row .support-unread-dot{width:8px;height:8px;box-shadow:0 0 0 3px rgba(28,115,255,.12);margin-top:8px}
+  .support-thread.chat-open{min-height:0;padding:8px}
+  .support-chat-row{gap:6px}
+  .support-chat-row .support-avatar{width:24px;height:24px;font-size:9px}
+  .support-bubble{max-width:88%;padding:8px 10px;font-size:12px;border-radius:12px}
+  .support-bubble strong{font-size:11px}
+  .support-actions{justify-content:flex-start}
+  .payment-box{padding:10px;border-radius:9px}
+  .payment-detail{font-size:12px;gap:6px;padding:5px 0}
+  .support-payment-card form{gap:8px!important}
 }
