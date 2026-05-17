@@ -1,4 +1,4 @@
-import { isSupabaseConfigured, supabase } from "./supabase";
+import { isSupabaseConfigured, supabase, supabaseConfigHint } from "./supabase";
 
 type Plan = "trial" | "basic" | "pro" | "master";
 type PlanStatus = "active" | "expired" | "pending";
@@ -159,7 +159,7 @@ export async function upsertUser(user: AccountUser): Promise<AccountUser> {
 
   if (error) {
     console.error("Save user error:", error.message);
-    throw new Error(error.message);
+    throw new Error(`${error.message} (${supabaseConfigHint})`);
   }
 
   return cleanUser;
@@ -213,7 +213,7 @@ export async function saveSupportMessage(message: AccountSupportMsg): Promise<Ac
 
   if (error) {
     console.error("Save support message error:", error.message);
-    throw new Error(error.message);
+    throw new Error(`${error.message} (${supabaseConfigHint})`);
   }
 
   return rowToSupport(data);

@@ -1,9 +1,19 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const cleanEnv = (value: string | undefined) => (value || "").trim().replace(/^["']|["']$/g, "");
+
+const supabaseUrl = cleanEnv(import.meta.env.VITE_SUPABASE_URL);
 const supabaseAnonKey =
-  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-  import.meta.env.VITE_SUPABASE_ANON_KEY;
+  cleanEnv(import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY) ||
+  cleanEnv(import.meta.env.VITE_SUPABASE_ANON_KEY);
+
+const supabaseKeySource = cleanEnv(import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY)
+  ? "publishable"
+  : cleanEnv(import.meta.env.VITE_SUPABASE_ANON_KEY)
+    ? "anon"
+    : "missing";
+
+export const supabaseConfigHint = `${supabaseKeySource}:${supabaseAnonKey ? `...${supabaseAnonKey.slice(-4)}` : "none"}`;
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
