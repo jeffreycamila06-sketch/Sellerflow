@@ -715,7 +715,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
   const [admins,setAdmins]=useState<string[]>(()=>adminEmails());
   const [newSeller,setNewSeller]=useState({email:"",password:"123456",fullName:"",storeName:""});
   const [editOriginalEmail,setEditOriginalEmail]=useState("");
-  const [editSeller,setEditSeller]=useState({email:"",password:"",fullName:"",storeName:"",phone:"",tiktok:"",facebook:""});
+  const [editSeller,setEditSeller]=useState({email:"",newPassword:"",fullName:"",storeName:"",phone:"",tiktok:"",facebook:""});
   const [copied,setCopied]=useState("");
 
   async function refresh(){
@@ -785,7 +785,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
     setEditOriginalEmail(user.email);
     setEditSeller({
       email:user.email,
-      password:user.password,
+      newPassword:"",
       fullName:user.profile.fullName,
       storeName:user.profile.storeName,
       phone:user.profile.phone,
@@ -802,12 +802,13 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
       setCopied("Seller not found");
       return;
     }
-    if(!email||!editSeller.password||!editSeller.fullName.trim()||!editSeller.storeName.trim()){
-      setCopied("Fill seller email, password, name, and store");
+    if(!email||!editSeller.fullName.trim()||!editSeller.storeName.trim()){
+      setCopied("Fill seller email, name, and store");
       return;
     }
-    if(editSeller.password.length<6){
-      setCopied("Password must be at least 6 characters");
+    const newPassword=editSeller.newPassword.trim();
+    if(newPassword&&newPassword.length<6){
+      setCopied("New password must be at least 6 characters");
       return;
     }
     if(email!==oldEmail&&users.some(u=>u.email.toLowerCase()===email)){
@@ -817,7 +818,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
     const updated:User={
       ...current,
       email,
-      password:editSeller.password,
+      password:newPassword||current.password,
       profile:{
         fullName:editSeller.fullName.trim(),
         storeName:editSeller.storeName.trim(),
@@ -912,7 +913,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
         <div className="scard-title">Create Seller Account</div>
         <div className="grid4">
           <Fg label="Email"><input value={newSeller.email} onChange={e=>setNewSeller(s=>({...s,email:e.target.value}))} placeholder="seller@email.com"/></Fg>
-          <Fg label="Password"><input value={newSeller.password} onChange={e=>setNewSeller(s=>({...s,password:e.target.value}))} placeholder="Minimum 6 chars"/></Fg>
+          <Fg label="Temporary password"><input type="password" value={newSeller.password} onChange={e=>setNewSeller(s=>({...s,password:e.target.value}))} placeholder="Minimum 6 chars"/></Fg>
           <Fg label="Full name"><input value={newSeller.fullName} onChange={e=>setNewSeller(s=>({...s,fullName:e.target.value}))} placeholder="Seller name"/></Fg>
           <Fg label="Store name"><input value={newSeller.storeName} onChange={e=>setNewSeller(s=>({...s,storeName:e.target.value}))} placeholder="Store name"/></Fg>
         </div>
@@ -984,7 +985,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
             <div className="modal-body">
               <div className="grid2">
                 <Fg label="Email"><input value={editSeller.email} onChange={e=>setEditSeller(s=>({...s,email:e.target.value}))}/></Fg>
-                <Fg label="Password"><input value={editSeller.password} onChange={e=>setEditSeller(s=>({...s,password:e.target.value}))}/></Fg>
+                <Fg label="New password (optional)"><input type="password" value={editSeller.newPassword} onChange={e=>setEditSeller(s=>({...s,newPassword:e.target.value}))} placeholder="Leave blank to keep current password"/></Fg>
                 <Fg label="Full name"><input value={editSeller.fullName} onChange={e=>setEditSeller(s=>({...s,fullName:e.target.value}))}/></Fg>
                 <Fg label="Store name"><input value={editSeller.storeName} onChange={e=>setEditSeller(s=>({...s,storeName:e.target.value}))}/></Fg>
                 <Fg label="Phone"><input value={editSeller.phone} onChange={e=>setEditSeller(s=>({...s,phone:e.target.value}))}/></Fg>
