@@ -764,7 +764,9 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
   const [sets,setSets]=useState<Settings>({...settings});
   const [op,setOp]=useState("");const [np,setNp]=useState("");const [cp,setCp]=useState("");
   const [toast,setToast]=useState("");const [pwErr,setPwErr]=useState("");
+  const [expandedSettingsBox,setExpandedSettingsBox]=useState<""|"profile"|"password"|"display"|"printer">("");
   const settingsDirty=JSON.stringify(sets)!==JSON.stringify(settings);
+  const settingsTitles={"":"Settings",profile:"Profile Information",password:"Change Password",display:"Display & Printing",printer:"Printer Settings"};
   const previewScale=(v:number|undefined,fallback=100)=>Math.max(60,Math.min(180,v||fallback))/100;
   const logoPreview=previewScale(sets.printLogoScale,sets.printLabelScale);
   const storePreview=previewScale(sets.printStoreScale,sets.printLabelScale);
@@ -825,8 +827,28 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
     <div className="subpage">
       {toast&&<Toast msg={toast} onDone={()=>setToast("")}/>}
       <div className="subpage-hd"><div><h2>{t.nav_settings}</h2><p>{t.settings_sub}</p></div></div>
-      <div className="grid2">
-        <form onSubmit={saveProf} className="scard">
+      <div className="settings-quick-grid">
+        <button className="admin-action-card" onDoubleClick={()=>setExpandedSettingsBox("profile")}>
+          <div className="ms-l">Profile</div><div className="ms-v">1</div><span>Name, store, TikTok and Facebook accounts</span>
+        </button>
+        <button className="admin-action-card" onDoubleClick={()=>setExpandedSettingsBox("password")}>
+          <div className="ms-l">Password</div><div className="ms-v">PW</div><span>Change seller login password</span>
+        </button>
+        <button className="admin-action-card" onDoubleClick={()=>setExpandedSettingsBox("display")}>
+          <div className="ms-l">Display</div><div className="ms-v">{sets.currency}</div><span>Currency, paper, notifications</span>
+        </button>
+        <button className="admin-action-card" onDoubleClick={()=>setExpandedSettingsBox("printer")}>
+          <div className="ms-l">Printer</div><div className="ms-v">{settingsDirty?"!":"OK"}</div><span>{settingsDirty?"Changes not saved":"Saved"} - output tools</span>
+        </button>
+      </div>
+      {expandedSettingsBox&&(
+        <div className="admin-fullscreen-panel">
+          <div className="admin-fullscreen-head">
+            <button className="btn-out" onClick={()=>setExpandedSettingsBox("")}>Back</button>
+            <div><h2>{settingsTitles[expandedSettingsBox]}</h2><p>Full settings page</p></div>
+          </div>
+          <div className={`grid2 settings-expanded settings-show-${expandedSettingsBox}`}>
+        <form onSubmit={saveProf} className="scard settings-section settings-section-profile">
           <div className="scard-title">{t.profile_section}</div>
           <Fg label={t.full_name}><input value={prof.fullName} onChange={e=>setProf(p=>({...p,fullName:e.target.value}))} required/></Fg>
           <Fg label={t.store_name}><input value={prof.storeName} onChange={e=>setProf(p=>({...p,storeName:e.target.value}))} required/></Fg>
@@ -836,7 +858,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
           {renderAccountSlots("facebook","Facebook page","Your Facebook Page",profFacebook,originalFacebook)}
           <button type="submit" className="btn-purple">{t.save_profile}</button>
         </form>
-        <form onSubmit={savePw} className="scard">
+        <form onSubmit={savePw} className="scard settings-section settings-section-password">
           <div className="scard-title">{t.pw_section}</div>
           {pwErr&&<div className="auth-err">⚠ {pwErr}</div>}
           <Fg label={t.current_pw}><input type="password" value={op} onChange={e=>setOp(e.target.value)} required/></Fg>
@@ -844,7 +866,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
           <Fg label={t.confirm_pw}><input type="password" value={cp} onChange={e=>setCp(e.target.value)} required/></Fg>
           <button type="submit" className="btn-purple">{t.update_pw}</button>
         </form>
-        <form onSubmit={saveSets} className="scard">
+        <form onSubmit={saveSets} className="scard settings-section settings-section-display">
           <div className="scard-title">{t.display_section}</div>
           <Fg label={t.currency_label}>
             <select value={sets.currency} onChange={e=>setSets(s=>({...s,currency:e.target.value}))}>
@@ -860,7 +882,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
           ))}
           <button type="submit" className="btn-purple" style={{marginTop:6}}>{t.save_settings}</button>
         </form>
-        <form onSubmit={saveSets} className="scard">
+        <form onSubmit={saveSets} className="scard settings-section settings-section-printer">
           <div className="scard-title" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
             <span>{t.printer_section}</span>
             <span style={{fontSize:11,fontWeight:600,color:settingsDirty?"#B45309":"#0F6E56",background:settingsDirty?"#FFF3CD":"#E1F5EE",borderRadius:999,padding:"3px 8px"}}>
@@ -943,7 +965,9 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
           <div className="tog-row"><div><div style={{fontWeight:500}}>TikTok Live</div><div style={{fontSize:11,color:"#888",whiteSpace:"pre-wrap"}}>{accountList(user.profile.tiktok).join(", ")||t.not_set}</div></div><Badge label={user.connectedAccounts.includes("TikTok")?t.connected_label:t.not_connected} color={user.connectedAccounts.includes("TikTok")?"green":"gray"}/></div>
           <div className="tog-row" style={{borderBottom:"none"}}><div><div style={{fontWeight:500}}>Facebook Live</div><div style={{fontSize:11,color:"#888",whiteSpace:"pre-wrap"}}>{accountList(user.profile.facebook).join(", ")||t.not_set}</div></div><Badge label={user.connectedAccounts.includes("Facebook")?t.connected_label:t.not_connected} color={user.connectedAccounts.includes("Facebook")?"green":"gray"}/></div>
         </form>
-      </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

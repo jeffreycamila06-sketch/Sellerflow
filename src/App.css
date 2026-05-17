@@ -368,6 +368,11 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .printer-preview-buyer small{font-size:.8em;color:#534AB7;font-family:Arial,sans-serif}.printer-preview-buyer b{line-height:1;color:#534AB7;font-family:Arial,sans-serif}.printer-preview-buyer strong{color:#26215C;font-family:Arial,sans-serif}.printer-preview-buyer em{font-style:normal;color:#7F77DD;font-size:.9em}
 .printer-preview-orders{margin-top:8px;display:flex;flex-direction:column;gap:5px}.printer-preview-orders small{font-size:.8em;color:#777;font-family:Arial,sans-serif}.printer-preview-orders div{border-left:2px solid #7F77DD;padding-left:6px;color:#444;font-size:.9em}.printer-preview-orders b{color:#111}
 .printer-preview-dash{border-top:1px dashed #aaa;margin:8px 0 5px}.printer-preview-total{display:flex;justify-content:space-between;gap:8px;align-items:center}.printer-preview-total span{font-size:.9em;color:#777}.printer-preview-total b{font-family:Arial,sans-serif;color:#111}
+.settings-quick-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.settings-expanded{grid-template-columns:1fr}
+.settings-expanded .settings-section{display:none}
+.settings-show-profile .settings-section-profile,.settings-show-password .settings-section-password,.settings-show-display .settings-section-display,.settings-show-printer .settings-section-printer{display:flex}
+.settings-expanded .settings-section{max-width:980px;width:100%;margin:0 auto}
 .tog-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:0.5px solid #F5F5F2;font-size:12px;font-weight:500;cursor:pointer}
 .tog{width:36px;height:20px;border-radius:10px;background:#D3D1C7;position:relative;flex-shrink:0;transition:background .2s;cursor:pointer}
 .tog.on{background:#7F77DD}
@@ -605,6 +610,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .payment-box{padding:10px;border-radius:9px}
   .payment-detail{font-size:12px;gap:6px;padding:5px 0}
   .support-payment-card form{gap:8px!important}
+  .settings-quick-grid{grid-template-columns:1fr}
   .admin-quick-grid,.admin-fullscreen-grid,.admin-fullscreen-messages{grid-template-columns:1fr}
   .admin-box-grid{grid-template-columns:1fr}
   .admin-fullscreen-panel{padding:14px}
