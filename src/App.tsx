@@ -1,5 +1,6 @@
 import { saveOrderToDatabase, saveCustomerToDatabase } from "./db";
 import {
+  deleteUser,
   findUser,
   listSupportMessages,
   listUsers,
@@ -713,6 +714,8 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
   const [msgs,setMsgs]=useState<SupportMsg[]>(()=>LS.get("sf_support",[]));
   const [admins,setAdmins]=useState<string[]>(()=>adminEmails());
   const [newSeller,setNewSeller]=useState({email:"",password:"123456",fullName:"",storeName:""});
+  const [editOriginalEmail,setEditOriginalEmail]=useState("");
+  const [editSeller,setEditSeller]=useState({email:"",password:"",fullName:"",storeName:"",phone:"",tiktok:"",facebook:""});
   const [copied,setCopied]=useState("");
 
   async function refresh(){
@@ -775,6 +778,95 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
       setCopied("Seller account created");
     }catch(error){
       setCopied(`Supabase save failed: ${error instanceof Error?error.message:"Unknown error"}`);
+    }
+  }
+
+  function openEditSeller(user:User){
+    setEditOriginalEmail(user.email);
+    setEditSeller({
+      email:user.email,
+      password:user.password,
+      fullName:user.profile.fullName,
+      storeName:user.profile.storeName,
+      phone:user.profile.phone,
+      tiktok:user.profile.tiktok,
+      facebook:user.profile.facebook,
+    });
+  }
+
+  async function saveEditSeller(){
+    const oldEmail=editOriginalEmail.trim().toLowerCase();
+    const email=editSeller.email.trim().toLowerCase();
+    const current=users.find(u=>u.email.toLowerCase()===oldEmail);
+    if(!current){
+      setCopied("Seller not found");
+      return;
+    }
+    if(!email||!editSeller.password||!editSeller.fullName.trim()||!editSeller.storeName.trim()){
+      setCopied("Fill seller email, password, name, and store");
+      return;
+    }
+    if(editSeller.password.length<6){
+      setCopied("Password must be at least 6 characters");
+      return;
+    }
+    if(email!==oldEmail&&users.some(u=>u.email.toLowerCase()===email)){
+      setCopied("Seller email already exists");
+      return;
+    }
+    const updated:User={
+      ...current,
+      email,
+      password:editSeller.password,
+      profile:{
+        fullName:editSeller.fullName.trim(),
+        storeName:editSeller.storeName.trim(),
+        phone:editSeller.phone.trim(),
+        tiktok:editSeller.tiktok.trim(),
+        facebook:editSeller.facebook.trim(),
+      },
+    };
+    const next=users.map(u=>u.email.toLowerCase()===oldEmail?updated:u);
+    LS.set("sf_users",next);
+    setUsers(next);
+    try{
+      await upsertUser(updated);
+      if(email!==oldEmail)await deleteUser(oldEmail);
+      setEditOriginalEmail("");
+      setCopied("Seller updated");
+    }catch(error){
+      setCopied(`Supabase save failed: ${error instanceof Error?error.message:"Unknown error"}`);
+    }
+  }
+
+  async function resetPassword(email:string){
+    if(!window.confirm(`Reset password for ${email} to 123456?`))return;
+    const next=users.map(u=>u.email.toLowerCase()===email.toLowerCase()?{...u,password:"123456"}:u);
+    LS.set("sf_users",next);
+    setUsers(next);
+    const updated=next.find(u=>u.email.toLowerCase()===email.toLowerCase());
+    try{
+      if(updated)await upsertUser(updated);
+      setCopied("Password reset to 123456");
+    }catch(error){
+      setCopied(`Supabase save failed: ${error instanceof Error?error.message:"Unknown error"}`);
+    }
+  }
+
+  async function removeSeller(email:string){
+    const cleanEmail=email.toLowerCase();
+    if(cleanEmail===OWNER_EMAIL){setCopied("Owner admin cannot be deleted");return;}
+    if(cleanEmail===currentUser.email.toLowerCase()){setCopied("You cannot delete yourself");return;}
+    if(isAdminEmail(email)){setCopied("Remove admin first before deleting");return;}
+    if(!window.confirm(`Delete seller ${email}? This cannot be undone.`))return;
+    const next=users.filter(u=>u.email.toLowerCase()!==cleanEmail);
+    LS.set("sf_users",next);
+    setUsers(next);
+    try{
+      await deleteUser(email);
+      setCopied("Seller deleted");
+    }catch(error){
+      setCopied(`Supabase delete failed: ${error instanceof Error?error.message:"Unknown error"}`);
     }
   }
 
@@ -843,13 +935,15 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
                   <td>{u.connectedAccounts.length}</td>
                   <td>
                     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                      <button className="tbl-btn ed" onClick={()=>openEditSeller(u)}>Edit</button>
+                      <button className="tbl-btn ed" onClick={()=>resetPassword(u.email)}>Reset PW</button>
                       <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"trial")}>Trial</button>
                       <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"basic")}>Basic</button>
                       <button className="tbl-btn ed" onClick={()=>approve(u.email,"pro")}>Pro</button>
                       <button className="tbl-btn ed" onClick={()=>approve(u.email,"master")}>Master</button>
                       <button className="tbl-btn dl" onClick={()=>setPlan(u.email,u.plan,"expired")}>Expire</button>
                       {!isAdminEmail(u.email)
-                        ? <button className="tbl-btn ed" onClick={()=>makeAdmin(u.email)}>Make Admin</button>
+                        ? <><button className="tbl-btn ed" onClick={()=>makeAdmin(u.email)}>Make Admin</button><button className="tbl-btn dl" onClick={()=>removeSeller(u.email)}>Delete</button></>
                         : <button className="tbl-btn dl" onClick={()=>removeAdmin(u.email)}>Remove Admin</button>}
                     </div>
                   </td>
@@ -883,6 +977,28 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
           </table>
         </div>
       </div>
+      {editOriginalEmail&&(
+        <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setEditOriginalEmail("")}>
+          <div className="modal" style={{maxWidth:620}}>
+            <div className="modal-hd"><span>Edit Seller</span><button onClick={()=>setEditOriginalEmail("")} className="modal-x">?</button></div>
+            <div className="modal-body">
+              <div className="grid2">
+                <Fg label="Email"><input value={editSeller.email} onChange={e=>setEditSeller(s=>({...s,email:e.target.value}))}/></Fg>
+                <Fg label="Password"><input value={editSeller.password} onChange={e=>setEditSeller(s=>({...s,password:e.target.value}))}/></Fg>
+                <Fg label="Full name"><input value={editSeller.fullName} onChange={e=>setEditSeller(s=>({...s,fullName:e.target.value}))}/></Fg>
+                <Fg label="Store name"><input value={editSeller.storeName} onChange={e=>setEditSeller(s=>({...s,storeName:e.target.value}))}/></Fg>
+                <Fg label="Phone"><input value={editSeller.phone} onChange={e=>setEditSeller(s=>({...s,phone:e.target.value}))}/></Fg>
+                <Fg label="TikTok"><input value={editSeller.tiktok} onChange={e=>setEditSeller(s=>({...s,tiktok:e.target.value}))}/></Fg>
+                <Fg label="Facebook"><input value={editSeller.facebook} onChange={e=>setEditSeller(s=>({...s,facebook:e.target.value}))}/></Fg>
+              </div>
+              <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:8}}>
+                <button className="btn-out" onClick={()=>setEditOriginalEmail("")}>Cancel</button>
+                <button className="btn-purple" onClick={saveEditSeller}>Save seller</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

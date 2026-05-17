@@ -165,6 +165,24 @@ export async function upsertUser(user: AccountUser): Promise<AccountUser> {
   return cleanUser;
 }
 
+export async function deleteUser(email: string): Promise<void> {
+  const cleanEmail = email.trim().toLowerCase();
+  const localUsers = localGet<AccountUser[]>("sf_users", []);
+  localSet("sf_users", localUsers.filter((u) => u.email.toLowerCase() !== cleanEmail));
+
+  if (!isSupabaseConfigured || !supabase) return;
+
+  const { error } = await supabase
+    .from("seller_users")
+    .delete()
+    .eq("email", cleanEmail);
+
+  if (error) {
+    console.error("Delete user error:", error.message);
+    throw new Error(`${error.message} (${supabaseConfigHint})`);
+  }
+}
+
 export async function listSupportMessages(): Promise<AccountSupportMsg[]> {
   const localMessages = localGet<AccountSupportMsg[]>("sf_support", []);
   if (!isSupabaseConfigured || !supabase) return localMessages;
