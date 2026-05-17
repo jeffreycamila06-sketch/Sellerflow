@@ -39,8 +39,13 @@ const addDays=(n:number)=>{const d=new Date();d.setDate(d.getDate()+n);return d.
 const addMonths=(n:number)=>{const d=new Date();d.setMonth(d.getMonth()+n);return d.toISOString();};
 const dLeft=(e:string)=>Math.max(0,Math.ceil((new Date(e).getTime()-Date.now())/86400000));
 const maxAcc=(p:Plan)=>({trial:1,basic:1,pro:3,master:5}[p]);
-const ADMIN_EMAILS=(import.meta.env.VITE_ADMIN_EMAILS||"admin@sellerflow.app").split(",").map((e:string)=>e.trim().toLowerCase()).filter(Boolean);
-const isAdminUser=(u:User|null)=>!!u&&ADMIN_EMAILS.includes(u.email.toLowerCase());
+const OWNER_EMAIL=(import.meta.env.VITE_OWNER_EMAIL||"admin@sellerflow.app").trim().toLowerCase();
+const ENV_ADMIN_EMAILS=(import.meta.env.VITE_ADMIN_EMAILS||OWNER_EMAIL).split(",").map((e:string)=>e.trim().toLowerCase()).filter(Boolean);
+const adminEmails=()=>Array.from(new Set([...ENV_ADMIN_EMAILS,...LS.get<string[]>("sf_admin_emails",[]).map(e=>e.trim().toLowerCase())].filter(Boolean)));
+const isAdminEmail=(email:string)=>adminEmails().includes(email.trim().toLowerCase());
+const rememberAdminEmail=(email:string)=>LS.set("sf_admin_emails",Array.from(new Set([...LS.get<string[]>("sf_admin_emails",[]),email.trim().toLowerCase()].filter(Boolean))));
+const forgetAdminEmail=(email:string)=>LS.set("sf_admin_emails",LS.get<string[]>("sf_admin_emails",[]).filter(e=>e.trim().toLowerCase()!==email.trim().toLowerCase()));
+const isAdminUser=(u:User|null)=>!!u&&isAdminEmail(u.email);
 const canConnectMore=(u:User)=>isAdminUser(u)||u.connectedAccounts.length<maxAcc(u.plan);
 const asAdminPlan=(u:User)=>isAdminUser(u)?{...u,plan:"master" as Plan,planStatus:"active" as PlanStatus,planExpiry:addMonths(120)}:u;
 const pName=(p:Plan,t:T)=>({trial:t.plan_trial,basic:t.plan_basic,pro:t.plan_pro,master:t.plan_master}[p]);
@@ -111,8 +116,11 @@ function Auth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:Lang;set
     if(pw!==cpw){setErr(t.err_pw_mismatch);setBusy(false);return;}
     const users=getUsers();
     if(users.find(u=>u.email.toLowerCase()===email.toLowerCase())){setErr(t.err_email_exists);setBusy(false);return;}
-    const nu:User={email,password:pw,profile:{fullName:fn.trim(),storeName:sn.trim(),phone:"",tiktok:"",facebook:""},plan:"trial",planStatus:"active",planExpiry:addDays(7),connectedAccounts:[]};
-    LS.set("sf_users",[...users,nu]);LS.set("sf_session",email);onLogin(nu);setBusy(false);
+    const isFirstAccount=users.length===0;
+    const nu:User={email,password:pw,profile:{fullName:fn.trim(),storeName:sn.trim(),phone:"",tiktok:"",facebook:""},plan:isFirstAccount?"master":"trial",planStatus:"active",planExpiry:isFirstAccount?addMonths(120):addDays(7),connectedAccounts:[]};
+    LS.set("sf_users",[...users,nu]);
+    if(isFirstAccount)rememberAdminEmail(email);
+    LS.set("sf_session",email);onLogin(nu);setBusy(false);
   },400);}
   function forgot(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);setTimeout(()=>{
     const u=getUsers().find(u=>u.email.toLowerCase()===email.toLowerCase());
@@ -692,11 +700,13 @@ function Support({user,t}:{user:User;t:T}){
 function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:string,plan:Plan)=>void;t:T}){
   const [users,setUsers]=useState<User[]>(()=>LS.get("sf_users",[]));
   const [msgs,setMsgs]=useState<SupportMsg[]>(()=>LS.get("sf_support",[]));
+  const [admins,setAdmins]=useState<string[]>(()=>adminEmails());
   const [copied,setCopied]=useState("");
 
   function refresh(){
     setUsers(LS.get("sf_users",[]));
     setMsgs(LS.get("sf_support",[]));
+    setAdmins(adminEmails());
   }
 
   function updateMsg(id:string,status:SupportMsg["status"]){
@@ -708,6 +718,28 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
   function approve(email:string,plan:Plan){
     onApprove(email,plan);
     setTimeout(refresh,50);
+  }
+
+  function setPlan(email:string,plan:Plan,status:PlanStatus="active"){
+    const expiry=status==="expired"?addDays(-1):plan==="trial"?addDays(7):addMonths(1);
+    const next=users.map(u=>u.email.toLowerCase()===email.toLowerCase()?{...u,plan,planStatus:status,planExpiry:expiry}:u);
+    LS.set("sf_users",next);
+    setUsers(next);
+  }
+
+  function makeAdmin(email:string){
+    rememberAdminEmail(email);
+    const next=users.map(u=>u.email.toLowerCase()===email.toLowerCase()?asAdminPlan(u):u);
+    LS.set("sf_users",next);
+    setUsers(next);
+    setAdmins(adminEmails());
+  }
+
+  function removeAdmin(email:string){
+    if(email.toLowerCase()===OWNER_EMAIL){setCopied("Owner admin cannot be removed");return;}
+    if(email.toLowerCase()===currentUser.email.toLowerCase()){setCopied("You cannot remove yourself");return;}
+    forgetAdminEmail(email);
+    setAdmins(adminEmails());
   }
 
   function copy(value:string,label:string){
@@ -726,7 +758,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
       <div className="subpage-hd">
         <div>
           <h2>Admin</h2>
-          <p>Manual payment approval and user plan control.</p>
+          <p>Owner: {OWNER_EMAIL} · Admins: {admins.length}</p>
         </div>
         <button className="btn-out" onClick={refresh}>Refresh</button>
       </div>
@@ -735,19 +767,26 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
         <div className="table-card">
           <div className="table-title">Users ({users.length})</div>
           <table className="tbl">
-            <thead><tr><th>Email</th><th>Plan</th><th>Days</th><th>Accounts</th><th></th></tr></thead>
+            <thead><tr><th>Email</th><th>Role</th><th>Plan</th><th>Days</th><th>Accounts</th><th></th></tr></thead>
             <tbody>
-              {users.length===0&&<tr><td colSpan={5} style={{textAlign:"center",padding:24,color:"#888"}}>No users yet.</td></tr>}
+              {users.length===0&&<tr><td colSpan={6} style={{textAlign:"center",padding:24,color:"#888"}}>No users yet.</td></tr>}
               {users.map(u=>(
                 <tr key={u.email}>
                   <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>
+                  <td><Badge label={isAdminEmail(u.email)?"Admin":"Seller"} color={isAdminEmail(u.email)?"amber":"gray"}/></td>
                   <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
                   <td>{dLeft(u.planExpiry)}</td>
                   <td>{u.connectedAccounts.length}</td>
                   <td>
                     <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                      <button className="tbl-btn ed" onClick={()=>approve(u.email,"pro")}>Approve Pro</button>
-                      <button className="tbl-btn ed" onClick={()=>approve(u.email,"master")}>Approve Master</button>
+                      <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"trial")}>Trial</button>
+                      <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"basic")}>Basic</button>
+                      <button className="tbl-btn ed" onClick={()=>approve(u.email,"pro")}>Pro</button>
+                      <button className="tbl-btn ed" onClick={()=>approve(u.email,"master")}>Master</button>
+                      <button className="tbl-btn dl" onClick={()=>setPlan(u.email,u.plan,"expired")}>Expire</button>
+                      {!isAdminEmail(u.email)
+                        ? <button className="tbl-btn ed" onClick={()=>makeAdmin(u.email)}>Make Admin</button>
+                        : <button className="tbl-btn dl" onClick={()=>removeAdmin(u.email)}>Remove Admin</button>}
                     </div>
                   </td>
                 </tr>
