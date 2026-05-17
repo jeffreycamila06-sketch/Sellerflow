@@ -255,6 +255,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
   const [fn,setFn]=useState("");const [sn,setSn]=useState("");
   const [showPw,setShowPw]=useState(false);const [err,setErr]=useState("");const [ok,setOk]=useState("");const [busy,setBusy]=useState(false);
   const [activeFeature,setActiveFeature]=useState(0);
+  const [activeFlow,setActiveFlow]=useState(0);
   const [openFaq,setOpenFaq]=useState(0);
   async function login(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);
     const u=await findUser(email);
@@ -288,6 +289,14 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
     {title:"Admin control center",body:"Manage sellers, plans, expiry dates, proof of payment, support replies, locked TikTok/Facebook accounts, and audit logs."},
     {title:"Printer output tools",body:"Adjust label size, QR code, logo, buyer number, username, order details, and receipt layout before printing."},
     {title:"Support messenger",body:"Sellers can send payment proof and complaints. Admin can reply in compact chat bubbles with unread notifications."},
+  ];
+  const flowItems=[
+    {title:"Admin",label:"Control plans and sellers",body:"Admin creates or edits sellers, approves payment proof, changes plans, resets passwords, locks registered platform accounts, and reviews audit logs."},
+    {title:"Live",label:"Capture buyer comments",body:"Seller connects TikTok or Facebook Live, then SellerFlow keeps every comment readable with time, username, platform, cart count, and 1-click action."},
+    {title:"Computer",label:"Work from one dashboard",body:"The dashboard keeps comments, buyer numbers, slip preview, miners list, sales, customers, and support in one compact workspace."},
+    {title:"Payment",label:"Proof and support chat",body:"Sellers send proof of payment or complaints. Admin sees each seller as a message bubble and can reply, approve, reject, or resolve."},
+    {title:"Full screen",label:"Readable during live selling",body:"The live feed uses compact rows for laptop or desktop so more comments fit on screen while keeping buttons readable."},
+    {title:"Big box",label:"Main order workspace",body:"The main center area is for fast work: search, create orders, print slips, reprint if printer fails, and keep buyer history saved."},
   ];
   const howSteps=[
     "Create a seller account or let the admin create one.",
@@ -355,6 +364,28 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
       <section id="home" className="public-hero">
         <div className="public-hero-copy"><span className="public-kicker">Livestream sales management</span><h1>Close live orders faster with SellerFlow</h1><p>SellerFlow helps live sellers capture comments, create orders, print buyer slips, remember customers, manage subscriptions, and handle support from one simple dashboard.</p><div className="public-hero-actions"><button className="public-primary" onClick={()=>{go("reg");jump("account")}}>Try free trial</button><button onClick={()=>jump("instructions")}>Read instructions</button></div><div className="public-metrics"><div><b>1-click</b><span>order printing</span></div><div><b>10s</b><span>support refresh</span></div><div><b>Live</b><span>TikTok and Facebook</span></div></div></div>
         <div className="public-device" aria-label="SellerFlow dashboard preview"><div className="device-top"><span/><span/><span/></div><div className="device-grid"><div className="device-sidebar"><b>SellerFlow</b><span>Live</span><span>Orders</span><span>Customers</span><span>Support</span></div><div className="device-main"><div className="device-stats"><span>Orders 20</span><span>Buyers 7</span><span>Revenue</span></div><div className="device-comment"><b>Maria - @maria_live</b><em>1-click</em><p>blue dress +1</p></div><div className="device-comment"><b>Hazel - @hazelshop</b><em>print</em><p>crop top mine</p></div><div className="device-slip"><strong>BUYER #12</strong><span>QR + printable slip</span></div></div></div></div>
+      </section>
+      <section id="workflow" className="public-section public-workflow">
+        <div className="public-section-head"><span>System map</span><h2>Everything connects in one selling workflow</h2><p>Click each area to learn what it does inside SellerFlow.</p></div>
+        <div className="workflow-board">
+          <div className="workflow-left">
+            {flowItems.slice(0,3).map((item,i)=><button key={item.title} className={activeFlow===i?"active":""} onClick={()=>setActiveFlow(i)}><strong>{item.title}</strong><span>{item.label}</span></button>)}
+          </div>
+          <button className="workflow-center" onClick={()=>setActiveFlow(5)}>
+            <span>SellerFlow workspace</span>
+            <strong>Live comments, orders, print slips, customers, sales, support</strong>
+            <em>Click to see the main order box</em>
+          </button>
+          <div className="workflow-right">
+            {flowItems.slice(3).map((item,i)=><button key={item.title} className={activeFlow===i+3?"active":""} onClick={()=>setActiveFlow(i+3)}><strong>{item.title}</strong><span>{item.label}</span></button>)}
+          </div>
+        </div>
+        <div className="workflow-detail">
+          <small>{flowItems[activeFlow].title}</small>
+          <h3>{flowItems[activeFlow].label}</h3>
+          <p>{flowItems[activeFlow].body}</p>
+          <button onClick={()=>jump(activeFlow===3?"support-info":activeFlow===0?"account":"features")}>Open related section</button>
+        </div>
       </section>
       <section id="features" className="public-section"><div className="public-section-head"><span>Features</span><h2>Built for live sellers who need speed and control</h2><p>Click each feature to see how it helps your shop during a live selling session.</p></div><div className="public-feature-layout"><div className="public-feature-list">{featureItems.map((f,i)=><button key={f.title} className={activeFeature===i?"active":""} onClick={()=>setActiveFeature(i)}><span>{i+1}</span><strong>{f.title}</strong></button>)}</div><div className="public-feature-detail"><small>Feature {activeFeature+1}</small><h3>{featureItems[activeFeature].title}</h3><p>{featureItems[activeFeature].body}</p><button onClick={()=>jump("instructions")}>Show me how to use it</button></div></div></section>
       <section id="instructions" className="public-section public-instructions"><div className="public-section-head"><span>Instructions</span><h2>How to use SellerFlow</h2><p>Simple daily workflow for sellers and admins.</p></div><div className="public-steps">{howSteps.map((step,i)=><button key={step} onClick={()=>i<2?jump("account"):jump("features")}><b>{i+1}</b><span>{step}</span></button>)}</div></section>
