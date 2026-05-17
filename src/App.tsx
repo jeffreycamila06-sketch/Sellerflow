@@ -556,6 +556,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
   const [sets,setSets]=useState<Settings>({...settings});
   const [op,setOp]=useState("");const [np,setNp]=useState("");const [cp,setCp]=useState("");
   const [toast,setToast]=useState("");const [pwErr,setPwErr]=useState("");
+  const settingsDirty=JSON.stringify(sets)!==JSON.stringify(settings);
   useEffect(()=>{setProf({...user.profile});},[user]);
   useEffect(()=>{setSets({...settings});},[settings]);
   function saveProf(e:React.FormEvent){e.preventDefault();onSaveProfile(prof);setToast(t.profile_saved);}
@@ -607,8 +608,13 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
           ))}
           <button type="submit" className="btn-purple" style={{marginTop:6}}>{t.save_settings}</button>
         </form>
-        <div className="scard">
-          <div className="scard-title">{t.printer_section}</div>
+        <form onSubmit={saveSets} className="scard">
+          <div className="scard-title" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+            <span>{t.printer_section}</span>
+            <span style={{fontSize:11,fontWeight:600,color:settingsDirty?"#B45309":"#0F6E56",background:settingsDirty?"#FFF3CD":"#E1F5EE",borderRadius:999,padding:"3px 8px"}}>
+              {settingsDirty?"Not saved":"Saved"}
+            </span>
+          </div>
           <Fg label={t.printer_type}>
             <select value={sets.printerType} onChange={e=>setSets(s=>({...s,printerType:e.target.value as "usb"|"bluetooth"}))}>
               <option value="usb">{t.printer_usb}</option>
@@ -636,11 +642,14 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
           <div style={{padding:"8px 10px",background:"#F5F4FF",borderRadius:8,fontSize:12,color:"#534AB7",lineHeight:1.5,marginTop:4}}>
             {sets.printerType==="bluetooth"?t.printer_bt_note:t.printer_usb_note}
           </div>
+          <button type="submit" className="btn-purple" style={{marginTop:10,width:"100%"}}>
+            Save printer settings
+          </button>
           <div className="scard-title" style={{marginTop:10}}>{t.platform_section}</div>
           <div style={{fontSize:12,color:"#888",marginBottom:8}}>{t.platform_hint}</div>
           <div className="tog-row"><div><div style={{fontWeight:500}}>TikTok Live</div><div style={{fontSize:11,color:"#888"}}>{user.profile.tiktok||t.not_set}</div></div><Badge label={user.connectedAccounts.includes("TikTok")?t.connected_label:t.not_connected} color={user.connectedAccounts.includes("TikTok")?"green":"gray"}/></div>
           <div className="tog-row" style={{borderBottom:"none"}}><div><div style={{fontWeight:500}}>Facebook Live</div><div style={{fontSize:11,color:"#888"}}>{user.profile.facebook||t.not_set}</div></div><Badge label={user.connectedAccounts.includes("Facebook")?t.connected_label:t.not_connected} color={user.connectedAccounts.includes("Facebook")?"green":"gray"}/></div>
-        </div>
+        </form>
       </div>
     </div>
   );
