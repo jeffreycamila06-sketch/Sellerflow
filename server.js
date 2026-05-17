@@ -110,6 +110,7 @@ async function connectTikTok(username, res) {
             }
           : null,
         time: new Date().toLocaleTimeString(),
+        timestamp: new Date().toISOString(),
       });
 
       if (isBuy) {
@@ -174,6 +175,7 @@ app.get("/test-comment", (req, res) => {
       ],
     },
     time: new Date().toLocaleTimeString(),
+    timestamp: new Date().toISOString(),
   });
 
   res.json({

@@ -1492,8 +1492,9 @@ export default function App(){
     if(!user)return;
     const s = io(SERVER);
     s.on("comment", (d: Comment) => {
+      const comment={...d,timestamp:d.timestamp||new Date().toISOString(),time:d.time||new Date().toLocaleTimeString()};
       setComments((p) => {
-        const next=[...p,d].slice(-500);
+        const next=[...p,comment].slice(-500);
         LS.set("sf_comments",next);
         return next;
       });
@@ -1642,7 +1643,7 @@ export default function App(){
   function commentStamp(c:Comment){
     const d=new Date(c.timestamp||Date.now());
     const date=d.toLocaleDateString("en-GB").replace(/\//g,".");
-    const time=c.time||d.toLocaleTimeString("en-GB",{hour12:false});
+    const time=c.timestamp?d.toLocaleTimeString("en-GB",{hour12:false}):(c.time||d.toLocaleTimeString("en-GB",{hour12:false}));
     return `${date} ${time}`;
   }
   function showBuyerFromComment(c:Comment){
@@ -1745,7 +1746,6 @@ export default function App(){
                           <div className="msg-tx buy">{c.comment||"Live comment"}</div>
                           <div className="msg-meta">
                             <span>{commentStamp(c)}</span>
-                            <button type="button" onClick={()=>setToast("Deposit note saved for this buyer")} className="deposit-link">Add deposit +</button>
                           </div>
                         </div>
                         <div className="msg-actions" onClick={e=>e.stopPropagation()}>
@@ -1761,7 +1761,7 @@ export default function App(){
                             </div>
                           )}
                           <div className="order-count" title="Orders created from this buyer">🛒 <span>({orderCount})</span></div>
-                          <button className={`one-btn ${printed.has(i)?"done":""}`} onClick={()=>oneClick(c,i)}>Create</button>
+                          <button className={`one-btn ${printed.has(i)?"done":""}`} onClick={()=>oneClick(c,i)}>1-click</button>
                         </div>
                       </div>
                     );
