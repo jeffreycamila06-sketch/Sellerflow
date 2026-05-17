@@ -1799,23 +1799,29 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
   );
 }
 
-function ConnectModal({onClose,onConnect,user,t}:{onClose:()=>void;onConnect:(p:string,d:Record<string,string>)=>void;user:User;t:T}){
-  const [tab,setTab]=useState<"TikTok"|"Facebook">("TikTok");
+function ConnectModal({onClose,onConnect,user,t,initialTab="TikTok"}:{onClose:()=>void;onConnect:(p:string,d:Record<string,string>)=>void;user:User;t:T;initialTab?:"TikTok"|"Facebook"}){
+  const [tab,setTab]=useState<"TikTok"|"Facebook">(initialTab);
   const [ttu,setTtu]=useState("");const [fbId,setFbId]=useState("");const [fbTok,setFbTok]=useState("");const [busy,setBusy]=useState(false);
-  const registeredTikTok=accountList(user.profile.tiktok);
-  const registeredFacebook=accountList(user.profile.facebook);
+  const registeredTikTok=accountList(user.profile.tiktok).slice(0,maxAcc(user.plan));
+  const registeredFacebook=accountList(user.profile.facebook).slice(0,maxAcc(user.plan));
+  const [selectedTikTok,setSelectedTikTok]=useState(registeredTikTok[0]||"");
+  const [selectedFacebook,setSelectedFacebook]=useState(registeredFacebook[0]||"");
   const registered=tab==="TikTok"?registeredTikTok:registeredFacebook;
   const canAdd=canConnectMore(user);
   const canUseExisting=registered.length>0;
   const canConnect=canUseExisting||canAdd;
-  const tiktokValue=registeredTikTok[0]||ttu;
-  const facebookValue=registeredFacebook[0]||fbId;
+  const tiktokValue=selectedTikTok||ttu;
+  const facebookValue=selectedFacebook||fbId;
   async function connect(){
     if(!canConnect)return;
     setBusy(true);
     if(tab==="TikTok")onConnect("TikTok",{username:tiktokValue});
     else onConnect("Facebook",{liveVideoId:facebookValue,accessToken:fbTok});
     setBusy(false);onClose();
+  }
+  function chooseRegistered(value:string){
+    if(tab==="TikTok")setSelectedTikTok(value);
+    else setSelectedFacebook(value);
   }
   return(
     <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
@@ -1824,7 +1830,24 @@ function ConnectModal({onClose,onConnect,user,t}:{onClose:()=>void;onConnect:(p:
         {!canConnect&&<div className="auth-err" style={{margin:"10px 16px 0"}}>⚠ {t.plan_limit}</div>}
         <div className="modal-tabs">{(["TikTok","Facebook"] as const).map(tb=><button key={tb} onClick={()=>setTab(tb)} className={`mtab ${tab===tb?"on":""}`}>{tb}</button>)}</div>
         <div className="modal-body">
-          {tab==="TikTok"?(<><div className="notice-box" style={{background:"#FFF8E1",border:"1px solid #F5DDA0",color:"#633806"}}>⚠ {t.tt_warning}</div><Fg label="TikTok username (without @)"><input value={tiktokValue} onChange={e=>setTtu(e.target.value)} placeholder="e.g. duonglily_0708" disabled={canUseExisting||!canAdd}/>{canUseExisting&&<div className="locked-account-note">Registered account is locked. Admin can change it.</div>}</Fg></>):(<><div className="notice-box" style={{background:"#E1F5EE",border:"1px solid #9FE1CB",color:"#0F6E56"}}>{t.fb_hint}</div><Fg label={t.fb_video_id}><input value={facebookValue} onChange={e=>setFbId(e.target.value)} disabled={canUseExisting||!canAdd}/>{canUseExisting&&<div className="locked-account-note">Registered page is locked. Admin can change it.</div>}</Fg><Fg label={t.fb_token}><input value={fbTok} onChange={e=>setFbTok(e.target.value)} type="password" disabled={!canConnect}/></Fg></>)}
+          {canUseExisting?(
+            <div className="registered-account-picker">
+              <div className="notice-box" style={{background:"#F5F4FF",border:"1px solid #D8D3FF",color:"#26215C"}}>
+                Select the registered {tab==="TikTok"?"TikTok account":"Facebook page"} for this live.
+              </div>
+              {registered.map(account=>(
+                <button
+                  key={account}
+                  type="button"
+                  className={`registered-account-btn ${account===(tab==="TikTok"?tiktokValue:facebookValue)?"on":""}`}
+                  onClick={()=>chooseRegistered(account)}
+                >
+                  <strong>{account}</strong>
+                  <span>{tab}</span>
+                </button>
+              ))}
+            </div>
+          ):tab==="TikTok"?(<><div className="notice-box" style={{background:"#FFF8E1",border:"1px solid #F5DDA0",color:"#633806"}}>??{t.tt_warning}</div><Fg label="TikTok username (without @)"><input value={tiktokValue} onChange={e=>setTtu(e.target.value)} placeholder="e.g. duonglily_0708" disabled={!canAdd}/></Fg></>):(<><div className="notice-box" style={{background:"#E1F5EE",border:"1px solid #9FE1CB",color:"#0F6E56"}}>{t.fb_hint}</div><Fg label={t.fb_video_id}><input value={facebookValue} onChange={e=>setFbId(e.target.value)} disabled={!canAdd}/></Fg><Fg label={t.fb_token}><input value={fbTok} onChange={e=>setFbTok(e.target.value)} type="password" disabled={!canConnect}/></Fg></>)}
           <button onClick={connect} disabled={busy||!canConnect} className="btn-purple" style={{width:"100%",padding:"10px 0",marginTop:4}}>{busy?t.connecting:canConnect?`${t.connect_btn} ${tab}`:t.upgrade_to_connect}</button>
         </div>
       </div>
@@ -1857,6 +1880,7 @@ export default function App(){
   });
   const [ttOn,setTtOn]=useState(false);const [fbOn,setFbOn]=useState(false);
   const [showConn,setShowConn]=useState(false);const [showProf,setShowProf]=useState(false);
+  const [connectTab,setConnectTab]=useState<"TikTok"|"Facebook">("TikTok");
   const [printed,setPrinted]=useState<Set<number>>(new Set());
   const [openCommentMenu,setOpenCommentMenu]=useState<number|null>(null);
   const [supportUnreadCount,setSupportUnreadCount]=useState(0);
@@ -2102,8 +2126,8 @@ export default function App(){
       <main className="main">
         <header className="topbar">
           <div className={`live-pill ${isLive?"live":"off"}`}><span className="live-dot"/> {isLive?t.live_status:t.offline_status}</div>
-          <button onClick={()=>setShowConn(true)} className={`plat-btn ${ttOn?"on":""}`}>TikTok {ttOn?"✓":""}</button>
-          <button onClick={()=>setShowConn(true)} className={`plat-btn ${fbOn?"on":""}`}>Facebook {fbOn?"✓":""}</button>
+          <button onClick={()=>{setConnectTab("TikTok");setShowConn(true);}} className={`plat-btn ${ttOn?"on":""}`}>TikTok {ttOn?"✓":""}</button>
+          <button onClick={()=>{setConnectTab("Facebook");setShowConn(true);}} className={`plat-btn ${fbOn?"on":""}`}>Facebook {fbOn?"✓":""}</button>
           <select value={lang} onChange={e=>setLang(e.target.value as Lang)} className="lang-sel">
             {LANG_OPTS.map(l=><option key={l.code} value={l.code}>{l.label}</option>)}
           </select>
@@ -2259,7 +2283,7 @@ export default function App(){
         {page==="admin"&&<AdminPage currentUser={user} onApprove={handleAdminApprove} t={t}/>}
       </main>
 
-      {showConn&&<ConnectModal onClose={()=>setShowConn(false)} onConnect={connectPlatform} user={user} t={t}/>}
+      {showConn&&<ConnectModal onClose={()=>setShowConn(false)} onConnect={connectPlatform} user={user} t={t} initialTab={connectTab}/>}
     </div>
   );
 }
