@@ -259,6 +259,10 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .support-proof-img{display:block;width:100%;max-width:240px;max-height:240px;object-fit:contain;margin-top:8px;border-radius:10px;border:1px solid rgba(38,33,92,.14);background:#fff;cursor:zoom-in}
 .support-proof-img.compact{max-width:160px;max-height:160px}
 .support-proof-preview{font-size:11px;color:#26215C;background:#F5F4FF;border:1px solid #D8D3FF;border-radius:8px;padding:6px 8px;margin-top:6px}
+.locked-account-group{border-top:1px solid #E4E2DC;margin-top:10px;padding-top:10px}
+.locked-account-title{font-size:12px;font-weight:700;color:#26215C;margin-bottom:8px}
+.locked-account-input:disabled{background:#F5F5F2;color:#5F5E5A;border-color:#D3D1C7}
+.locked-account-note{font-size:10px;color:#8A6A00;margin-top:4px}
 .support-actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .messenger-reply{display:flex;gap:8px;align-items:flex-start;border-top:1px solid #F1EFE8;padding-top:8px}
 .messenger-reply textarea{min-height:46px;font-size:12px;resize:vertical;border-radius:12px}

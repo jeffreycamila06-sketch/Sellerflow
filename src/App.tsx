@@ -52,6 +52,21 @@ const addDays=(n:number)=>{const d=new Date();d.setDate(d.getDate()+n);return d.
 const addMonths=(n:number)=>{const d=new Date();d.setMonth(d.getMonth()+n);return d.toISOString();};
 const dLeft=(e:string)=>Math.max(0,Math.ceil((new Date(e).getTime()-Date.now())/86400000));
 const maxAcc=(p:Plan)=>({trial:1,basic:1,pro:3,master:5}[p]);
+const accountList=(value:string)=>Array.from(new Set((value||"").split(/[,\n]/).map(v=>v.trim()).filter(Boolean)));
+const accountText=(values:string[])=>values.map(v=>v.trim()).filter(Boolean).join("\n");
+const accountSlots=(value:string,limit:number)=>{const slots=(value||"").split(/[,\n]/).map(v=>v.trim()).filter(Boolean).slice(0,limit);while(slots.length<limit)slots.push("");return slots;};
+const registeredAccountCount=(u:User)=>accountList(u.profile.tiktok).length+accountList(u.profile.facebook).length;
+const keepLockedAccounts=(original:string,next:string,limit:number)=>accountText(accountSlots(next,limit).map((value,index)=>accountSlots(original,limit)[index]||value));
+const fitProfileAccounts=(original:Profile,next:Profile,limit:number):Profile=>{
+  const lockedTikTok=accountList(original.tiktok);
+  const lockedFacebook=accountList(original.facebook);
+  const resultTikTok=[...lockedTikTok];
+  const resultFacebook=[...lockedFacebook];
+  let remaining=Math.max(0,limit-resultTikTok.length-resultFacebook.length);
+  for(const account of accountList(next.tiktok))if(remaining>0&&!resultTikTok.includes(account)){resultTikTok.push(account);remaining--;}
+  for(const account of accountList(next.facebook))if(remaining>0&&!resultFacebook.includes(account)){resultFacebook.push(account);remaining--;}
+  return {...next,tiktok:accountText(resultTikTok),facebook:accountText(resultFacebook)};
+};
 const OWNER_EMAIL=(import.meta.env.VITE_OWNER_EMAIL||"admin@sellerflow.app").trim().toLowerCase();
 const ENV_ADMIN_EMAILS=(import.meta.env.VITE_ADMIN_EMAILS||OWNER_EMAIL).split(",").map((e:string)=>e.trim().toLowerCase()).filter(Boolean);
 const adminEmails=()=>Array.from(new Set([OWNER_EMAIL,...ENV_ADMIN_EMAILS,...LS.get<string[]>("sf_admin_emails",[]).map(e=>e.trim().toLowerCase())].filter(Boolean)));
@@ -60,7 +75,7 @@ const rememberAdminEmail=(email:string)=>LS.set("sf_admin_emails",Array.from(new
 const forgetAdminEmail=(email:string)=>LS.set("sf_admin_emails",LS.get<string[]>("sf_admin_emails",[]).filter(e=>e.trim().toLowerCase()!==email.trim().toLowerCase()));
 const supportReadKey=(email:string)=>`sf_support_read_${email.trim().toLowerCase()}`;
 const isAdminUser=(u:User|null)=>!!u&&isAdminEmail(u.email);
-const canConnectMore=(u:User)=>isAdminUser(u)||u.connectedAccounts.length<maxAcc(u.plan);
+const canConnectMore=(u:User)=>isAdminUser(u)||registeredAccountCount(u)<maxAcc(u.plan);
 const asAdminPlan=(u:User)=>isAdminUser(u)?{...u,plan:"master" as Plan,planStatus:"active" as PlanStatus,planExpiry:addMonths(120)}:u;
 const pName=(p:Plan,t:T)=>({trial:t.plan_trial,basic:t.plan_basic,pro:t.plan_pro,master:t.plan_master}[p]);
 const pColor=(p:Plan)=>({trial:"gray",basic:"green",pro:"purple",master:"amber"}[p] as "gray"|"green"|"purple"|"amber");
@@ -612,6 +627,39 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
   const qrSrc=`https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=0&data=${encodeURIComponent(qrUrl)}`;
   useEffect(()=>{setProf({...user.profile});},[user]);
   useEffect(()=>{setSets({...settings});},[settings]);
+  const accountLimit=maxAcc(user.plan);
+  const originalTikTok=accountSlots(user.profile.tiktok,accountLimit);
+  const originalFacebook=accountSlots(user.profile.facebook,accountLimit);
+  const profTikTok=accountSlots(prof.tiktok,accountLimit);
+  const profFacebook=accountSlots(prof.facebook,accountLimit);
+  const currentTotal=accountList(prof.tiktok).length+accountList(prof.facebook).length;
+  const changeAccount=(platform:"tiktok"|"facebook",index:number,value:string)=>{
+    const field=platform;
+    const slots=accountSlots(prof[field],accountLimit);
+    slots[index]=value;
+    setProf(p=>({...p,[field]:accountText(slots)}));
+  };
+  const renderAccountSlots=(platform:"tiktok"|"facebook",label:string,placeholder:string,values:string[],original:string[])=>(
+    <div className="locked-account-group">
+      <div className="locked-account-title">{label}</div>
+      {values.map((value,index)=>{
+        const locked=Boolean(original[index]);
+        const limitReached=!value&&!locked&&currentTotal>=accountLimit;
+        return(
+          <Fg key={`${platform}-${index}`} label={`${label} ${index+1}`}>
+            <input
+              value={value}
+              onChange={e=>changeAccount(platform,index,e.target.value)}
+              placeholder={limitReached?"Plan account limit reached":placeholder}
+              disabled={locked||limitReached}
+              className={locked?"locked-account-input":""}
+            />
+            {locked&&<div className="locked-account-note">Locked. Admin can change this account.</div>}
+          </Fg>
+        );
+      })}
+    </div>
+  );
   function saveProf(e:React.FormEvent){e.preventDefault();onSaveProfile(prof);setToast(t.profile_saved);}
   function saveSets(e:React.FormEvent){e.preventDefault();onSaveSettings(sets);setToast(t.settings_saved);}
   function savePw(e:React.FormEvent){
@@ -633,8 +681,8 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
           <Fg label={t.store_name}><input value={prof.storeName} onChange={e=>setProf(p=>({...p,storeName:e.target.value}))} required/></Fg>
           <Fg label={t.email_label}><input value={user.email} disabled style={{background:"#F5F5F2",color:"#888"}}/></Fg>
           <Fg label={t.phone_label}><input value={prof.phone} onChange={e=>setProf(p=>({...p,phone:e.target.value}))} placeholder="+63 912 345 6789"/></Fg>
-          <Fg label={t.tiktok_user}><input value={prof.tiktok} onChange={e=>setProf(p=>({...p,tiktok:e.target.value}))} placeholder="@yourusername"/></Fg>
-          <Fg label={t.fb_page}><input value={prof.facebook} onChange={e=>setProf(p=>({...p,facebook:e.target.value}))} placeholder="Your Facebook Page"/></Fg>
+          {renderAccountSlots("tiktok","TikTok account","@yourusername",profTikTok,originalTikTok)}
+          {renderAccountSlots("facebook","Facebook page","Your Facebook Page",profFacebook,originalFacebook)}
           <button type="submit" className="btn-purple">{t.save_profile}</button>
         </form>
         <form onSubmit={savePw} className="scard">
@@ -741,8 +789,8 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
           </button>
           <div className="scard-title" style={{marginTop:10}}>{t.platform_section}</div>
           <div style={{fontSize:12,color:"#888",marginBottom:8}}>{t.platform_hint}</div>
-          <div className="tog-row"><div><div style={{fontWeight:500}}>TikTok Live</div><div style={{fontSize:11,color:"#888"}}>{user.profile.tiktok||t.not_set}</div></div><Badge label={user.connectedAccounts.includes("TikTok")?t.connected_label:t.not_connected} color={user.connectedAccounts.includes("TikTok")?"green":"gray"}/></div>
-          <div className="tog-row" style={{borderBottom:"none"}}><div><div style={{fontWeight:500}}>Facebook Live</div><div style={{fontSize:11,color:"#888"}}>{user.profile.facebook||t.not_set}</div></div><Badge label={user.connectedAccounts.includes("Facebook")?t.connected_label:t.not_connected} color={user.connectedAccounts.includes("Facebook")?"green":"gray"}/></div>
+          <div className="tog-row"><div><div style={{fontWeight:500}}>TikTok Live</div><div style={{fontSize:11,color:"#888",whiteSpace:"pre-wrap"}}>{accountList(user.profile.tiktok).join(", ")||t.not_set}</div></div><Badge label={user.connectedAccounts.includes("TikTok")?t.connected_label:t.not_connected} color={user.connectedAccounts.includes("TikTok")?"green":"gray"}/></div>
+          <div className="tog-row" style={{borderBottom:"none"}}><div><div style={{fontWeight:500}}>Facebook Live</div><div style={{fontSize:11,color:"#888",whiteSpace:"pre-wrap"}}>{accountList(user.profile.facebook).join(", ")||t.not_set}</div></div><Badge label={user.connectedAccounts.includes("Facebook")?t.connected_label:t.not_connected} color={user.connectedAccounts.includes("Facebook")?"green":"gray"}/></div>
         </form>
       </div>
     </div>
@@ -1090,6 +1138,9 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
       setCopied("Seller email already exists");
       return;
     }
+    const editLimit=maxAcc(current.plan);
+    const editTikTok=accountList(editSeller.tiktok).slice(0,editLimit);
+    const editFacebook=accountList(editSeller.facebook).slice(0,Math.max(0,editLimit-editTikTok.length));
     const updated:User={
       ...current,
       email,
@@ -1098,8 +1149,8 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
         fullName:editSeller.fullName.trim(),
         storeName:editSeller.storeName.trim(),
         phone:editSeller.phone.trim(),
-        tiktok:editSeller.tiktok.trim(),
-        facebook:editSeller.facebook.trim(),
+        tiktok:accountText(editTikTok),
+        facebook:accountText(editFacebook),
       },
     };
     const next=users.map(u=>u.email.toLowerCase()===oldEmail?updated:u);
@@ -1230,7 +1281,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
 
   function exportUsers(){
     csvDL(`sellerflow-users-${dayStamp}.csv`,["Email","Role","Plan","Plan Status","Days Left","Connected Accounts","Full Name","Store Name","Phone","TikTok","Facebook"],filteredUsers.map(u=>[
-      u.email,isAdminEmail(u.email)?"Admin":"Seller",pName(u.plan,t),u.planStatus,dLeft(u.planExpiry),u.connectedAccounts.length,u.profile.fullName,u.profile.storeName,u.profile.phone,u.profile.tiktok,u.profile.facebook
+      u.email,isAdminEmail(u.email)?"Admin":"Seller",pName(u.plan,t),u.planStatus,dLeft(u.planExpiry),registeredAccountCount(u),u.profile.fullName,u.profile.storeName,u.profile.phone,u.profile.tiktok,u.profile.facebook
     ]));
   }
   function exportPayments(){
@@ -1348,7 +1399,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
                       <td><Badge label={isAdminEmail(u.email)?"Admin":"Seller"} color={isAdminEmail(u.email)?"amber":"gray"}/></td>
                       <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
                       <td>{dLeft(u.planExpiry)}</td>
-                      <td>{u.connectedAccounts.length}</td>
+                      <td>{registeredAccountCount(u)} / {maxAcc(u.plan)}</td>
                       <td>
                         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                           <button className="tbl-btn ed" onClick={()=>openEditSeller(u)}>Edit</button>
@@ -1511,8 +1562,8 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
                 <Fg label="Full name"><input value={editSeller.fullName} onChange={e=>setEditSeller(s=>({...s,fullName:e.target.value}))}/></Fg>
                 <Fg label="Store name"><input value={editSeller.storeName} onChange={e=>setEditSeller(s=>({...s,storeName:e.target.value}))}/></Fg>
                 <Fg label="Phone"><input value={editSeller.phone} onChange={e=>setEditSeller(s=>({...s,phone:e.target.value}))}/></Fg>
-                <Fg label="TikTok"><input value={editSeller.tiktok} onChange={e=>setEditSeller(s=>({...s,tiktok:e.target.value}))}/></Fg>
-                <Fg label="Facebook"><input value={editSeller.facebook} onChange={e=>setEditSeller(s=>({...s,facebook:e.target.value}))}/></Fg>
+                <Fg label="TikTok accounts"><textarea rows={3} value={editSeller.tiktok} onChange={e=>setEditSeller(s=>({...s,tiktok:e.target.value}))} placeholder="One account per line"/></Fg>
+                <Fg label="Facebook pages"><textarea rows={3} value={editSeller.facebook} onChange={e=>setEditSeller(s=>({...s,facebook:e.target.value}))} placeholder="One page per line"/></Fg>
               </div>
               <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:8}}>
                 <button className="btn-out" onClick={()=>setEditOriginalEmail("")}>Cancel</button>
@@ -1529,17 +1580,30 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
 function ConnectModal({onClose,onConnect,user,t}:{onClose:()=>void;onConnect:(p:string,d:Record<string,string>)=>void;user:User;t:T}){
   const [tab,setTab]=useState<"TikTok"|"Facebook">("TikTok");
   const [ttu,setTtu]=useState("");const [fbId,setFbId]=useState("");const [fbTok,setFbTok]=useState("");const [busy,setBusy]=useState(false);
+  const registeredTikTok=accountList(user.profile.tiktok);
+  const registeredFacebook=accountList(user.profile.facebook);
+  const registered=tab==="TikTok"?registeredTikTok:registeredFacebook;
   const canAdd=canConnectMore(user);
-  async function connect(){if(!canAdd)return;setBusy(true);if(tab==="TikTok")onConnect("TikTok",{username:ttu});else onConnect("Facebook",{liveVideoId:fbId,accessToken:fbTok});setBusy(false);onClose();}
+  const canUseExisting=registered.length>0;
+  const canConnect=canUseExisting||canAdd;
+  const tiktokValue=registeredTikTok[0]||ttu;
+  const facebookValue=registeredFacebook[0]||fbId;
+  async function connect(){
+    if(!canConnect)return;
+    setBusy(true);
+    if(tab==="TikTok")onConnect("TikTok",{username:tiktokValue});
+    else onConnect("Facebook",{liveVideoId:facebookValue,accessToken:fbTok});
+    setBusy(false);onClose();
+  }
   return(
     <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div className="modal">
         <div className="modal-hd"><span>{t.connect_title}</span><button onClick={onClose} className="modal-x">×</button></div>
-        {!canAdd&&<div className="auth-err" style={{margin:"10px 16px 0"}}>⚠ {t.plan_limit}</div>}
+        {!canConnect&&<div className="auth-err" style={{margin:"10px 16px 0"}}>⚠ {t.plan_limit}</div>}
         <div className="modal-tabs">{(["TikTok","Facebook"] as const).map(tb=><button key={tb} onClick={()=>setTab(tb)} className={`mtab ${tab===tb?"on":""}`}>{tb}</button>)}</div>
         <div className="modal-body">
-          {tab==="TikTok"?(<><div className="notice-box" style={{background:"#FFF8E1",border:"1px solid #F5DDA0",color:"#633806"}}>⚠ {t.tt_warning}</div><Fg label="TikTok username (without @)"><input value={ttu} onChange={e=>setTtu(e.target.value)} placeholder="e.g. duonglily_0708" disabled={!canAdd}/></Fg></>):(<><div className="notice-box" style={{background:"#E1F5EE",border:"1px solid #9FE1CB",color:"#0F6E56"}}>{t.fb_hint}</div><Fg label={t.fb_video_id}><input value={fbId} onChange={e=>setFbId(e.target.value)} disabled={!canAdd}/></Fg><Fg label={t.fb_token}><input value={fbTok} onChange={e=>setFbTok(e.target.value)} type="password" disabled={!canAdd}/></Fg></>)}
-          <button onClick={connect} disabled={busy||!canAdd} className="btn-purple" style={{width:"100%",padding:"10px 0",marginTop:4}}>{busy?t.connecting:canAdd?`${t.connect_btn} ${tab}`:t.upgrade_to_connect}</button>
+          {tab==="TikTok"?(<><div className="notice-box" style={{background:"#FFF8E1",border:"1px solid #F5DDA0",color:"#633806"}}>⚠ {t.tt_warning}</div><Fg label="TikTok username (without @)"><input value={tiktokValue} onChange={e=>setTtu(e.target.value)} placeholder="e.g. duonglily_0708" disabled={canUseExisting||!canAdd}/>{canUseExisting&&<div className="locked-account-note">Registered account is locked. Admin can change it.</div>}</Fg></>):(<><div className="notice-box" style={{background:"#E1F5EE",border:"1px solid #9FE1CB",color:"#0F6E56"}}>{t.fb_hint}</div><Fg label={t.fb_video_id}><input value={facebookValue} onChange={e=>setFbId(e.target.value)} disabled={canUseExisting||!canAdd}/>{canUseExisting&&<div className="locked-account-note">Registered page is locked. Admin can change it.</div>}</Fg><Fg label={t.fb_token}><input value={fbTok} onChange={e=>setFbTok(e.target.value)} type="password" disabled={!canConnect}/></Fg></>)}
+          <button onClick={connect} disabled={busy||!canConnect} className="btn-purple" style={{width:"100%",padding:"10px 0",marginTop:4}}>{busy?t.connecting:canConnect?`${t.connect_btn} ${tab}`:t.upgrade_to_connect}</button>
         </div>
       </div>
     </div>
@@ -1659,7 +1723,16 @@ export default function App(){
     const u={...user,plan,planStatus:status,planExpiry:expiry};
     saveUser(u);setToast(`${pName(plan,t)} activated!`);setPage("dashboard");
   }
-  function handleSaveProfile(p:Profile){if(!user)return;saveUser({...user,profile:p});}
+  function handleSaveProfile(p:Profile){
+    if(!user)return;
+    const limit=maxAcc(user.plan);
+    const lockedProfile=isAdminUser(user)?p:fitProfileAccounts(user.profile,{
+      ...p,
+      tiktok:keepLockedAccounts(user.profile.tiktok,p.tiktok,limit),
+      facebook:keepLockedAccounts(user.profile.facebook,p.facebook,limit),
+    },limit);
+    saveUser({...user,profile:lockedProfile});
+  }
   function handleSaveSettings(s:Settings){setSettingsState(s);LS.set("sf_settings",s);}
   function handleSavePw(op:string,np:string):string{if(!user)return"No user";if(user.password!==op)return t.wrong_pw;saveUser({...user,password:np});return"";}
   function handleAdminApprove(email:string,plan:Plan){
@@ -1678,7 +1751,19 @@ export default function App(){
       const r=await fetch(`${SERVER}${ep}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       const j=await r.json();
       if(!j.success)setToast(`${t.conn_failed}: ${j.error}`);
-      else{setToast(`${t.conn_success} ${platform}!`);if(user){const u={...user,connectedAccounts:[...user.connectedAccounts.filter(a=>a!==platform),platform]};saveUser(u);}}
+      else{
+        setToast(`${t.conn_success} ${platform}!`);
+        if(user){
+          const cleanValue=(platform==="TikTok"?data.username:data.liveVideoId||user.profile.facebook||"").trim();
+          const field=platform==="TikTok"?"tiktok":"facebook";
+          const existing=accountList(user.profile[field]);
+          const nextProfile=cleanValue&&!existing.includes(cleanValue)&&registeredAccountCount(user)<maxAcc(user.plan)
+            ? {...user.profile,[field]:accountText([...existing,cleanValue])}
+            : user.profile;
+          const u={...user,profile:nextProfile,connectedAccounts:[...user.connectedAccounts.filter(a=>a!==platform),platform]};
+          saveUser(u);
+        }
+      }
     }catch{setToast(t.cant_reach);}
   }
   async function createOrderFromComment(c:Comment,{print=true}:{print?:boolean}={}){
