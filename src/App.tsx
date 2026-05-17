@@ -1,9 +1,12 @@
 import { saveOrderToDatabase, saveCustomerToDatabase } from "./db";
 import {
+  type AccountAuditLog,
   deleteUser,
   findUser,
+  listAuditLogs,
   listSupportMessages,
   listUsers,
+  saveAuditLog,
   saveSupportMessage,
   updateSupportStatus,
   upsertUser,
@@ -712,6 +715,7 @@ function Support({user,t}:{user:User;t:T}){
 function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:string,plan:Plan)=>void;t:T}){
   const [users,setUsers]=useState<User[]>(()=>LS.get("sf_users",[]));
   const [msgs,setMsgs]=useState<SupportMsg[]>(()=>LS.get("sf_support",[]));
+  const [auditLogs,setAuditLogs]=useState<AccountAuditLog[]>(()=>LS.get("sf_audit_logs",[]));
   const [admins,setAdmins]=useState<string[]>(()=>adminEmails());
   const [newSeller,setNewSeller]=useState({email:"",password:"123456",fullName:"",storeName:""});
   const [editOriginalEmail,setEditOriginalEmail]=useState("");
@@ -721,6 +725,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
   async function refresh(){
     setUsers(await listUsers());
     setMsgs(await listSupportMessages());
+    setAuditLogs(await listAuditLogs());
     setAdmins(adminEmails());
   }
 
@@ -730,11 +735,20 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
     const next=msgs.map(m=>m.id===id?{...m,status}:m);
     setMsgs(next);
     await updateSupportStatus(id,status);
+    const msg=msgs.find(m=>m.id===id);
+    if(msg)await logAction(status==="approved"?"approved payment/support":"rejected payment/support",msg.email,msg.subject);
   }
 
   function approve(email:string,plan:Plan){
     onApprove(email,plan);
+    void logAction("approved plan",email,`Plan changed to ${plan}`);
     setTimeout(refresh,50);
+  }
+
+  async function logAction(action:string,targetEmail:string,details:string){
+    const log={actorEmail:currentUser.email,action,targetEmail,details};
+    await saveAuditLog(log);
+    setAuditLogs(prev=>[{...log,id:Date.now().toString(),timestamp:new Date().toISOString()},...prev].slice(0,80));
   }
 
   async function setPlan(email:string,plan:Plan,status:PlanStatus="active"){
@@ -743,7 +757,10 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
     LS.set("sf_users",next);
     setUsers(next);
     const updated=next.find(u=>u.email.toLowerCase()===email.toLowerCase());
-    if(updated)await upsertUser(updated);
+    if(updated){
+      await upsertUser(updated);
+      await logAction(status==="expired"?"expired seller":"changed plan",email,`Plan ${plan}, status ${status}`);
+    }
   }
 
   async function createSeller(){
@@ -774,6 +791,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
     setUsers(next);
     try{
       await upsertUser(seller);
+      await logAction("created seller",email,`Store: ${seller.profile.storeName}`);
       setNewSeller({email:"",password:"123456",fullName:"",storeName:""});
       setCopied("Seller account created");
     }catch(error){
@@ -833,6 +851,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
     try{
       await upsertUser(updated);
       if(email!==oldEmail)await deleteUser(oldEmail);
+      await logAction("edited seller",email,`${oldEmail!==email?`Email changed from ${oldEmail}. `:""}${newPassword?"Password changed. ":""}Profile updated.`);
       setEditOriginalEmail("");
       setCopied("Seller updated");
     }catch(error){
@@ -848,6 +867,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
     const updated=next.find(u=>u.email.toLowerCase()===email.toLowerCase());
     try{
       if(updated)await upsertUser(updated);
+      await logAction("reset password",email,"Temporary password set to 123456");
       setCopied("Password reset to 123456");
     }catch(error){
       setCopied(`Supabase save failed: ${error instanceof Error?error.message:"Unknown error"}`);
@@ -865,6 +885,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
     setUsers(next);
     try{
       await deleteUser(email);
+      await logAction("deleted seller",email,"Seller account deleted");
       setCopied("Seller deleted");
     }catch(error){
       setCopied(`Supabase delete failed: ${error instanceof Error?error.message:"Unknown error"}`);
@@ -879,13 +900,15 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
     setAdmins(adminEmails());
     const updated=next.find(u=>u.email.toLowerCase()===email.toLowerCase());
     if(updated)await upsertUser(updated);
+    await logAction("made admin",email,"Seller promoted to admin");
   }
 
-  function removeAdmin(email:string){
+  async function removeAdmin(email:string){
     if(email.toLowerCase()===OWNER_EMAIL){setCopied("Owner admin cannot be removed");return;}
     if(email.toLowerCase()===currentUser.email.toLowerCase()){setCopied("You cannot remove yourself");return;}
     forgetAdminEmail(email);
     setAdmins(adminEmails());
+    await logAction("removed admin",email,"Admin access removed");
   }
 
   function copy(value:string,label:string){
@@ -977,6 +1000,24 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
             </tbody>
           </table>
         </div>
+      </div>
+      <div className="table-card">
+        <div className="table-title">Audit Log ({auditLogs.length})</div>
+        <table className="tbl">
+          <thead><tr><th>Time</th><th>Admin</th><th>Action</th><th>Target</th><th>Details</th></tr></thead>
+          <tbody>
+            {auditLogs.length===0&&<tr><td colSpan={5} style={{textAlign:"center",padding:24,color:"#888"}}>No admin activity yet.</td></tr>}
+            {auditLogs.map(log=>(
+              <tr key={log.id}>
+                <td className="muted" style={{whiteSpace:"nowrap"}}>{new Date(log.timestamp).toLocaleString()}</td>
+                <td><strong>{log.actorEmail}</strong></td>
+                <td><Badge label={log.action} color={log.action.includes("delete")||log.action.includes("reject")?"red":log.action.includes("approve")||log.action.includes("created")?"green":"purple"}/></td>
+                <td>{log.targetEmail}</td>
+                <td className="muted">{log.details}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
       {editOriginalEmail&&(
         <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setEditOriginalEmail("")}>

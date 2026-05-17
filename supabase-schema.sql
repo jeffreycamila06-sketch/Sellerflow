@@ -26,8 +26,18 @@ create table if not exists public.support_messages (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.audit_logs (
+  id uuid primary key default gen_random_uuid(),
+  actor_email text not null default '',
+  action text not null default '',
+  target_email text not null default '',
+  details text not null default '',
+  created_at timestamptz not null default now()
+);
+
 alter table public.seller_users enable row level security;
 alter table public.support_messages enable row level security;
+alter table public.audit_logs enable row level security;
 
 drop policy if exists "seller_users_anon_all" on public.seller_users;
 create policy "seller_users_anon_all"
@@ -40,6 +50,14 @@ with check (true);
 drop policy if exists "support_messages_anon_all" on public.support_messages;
 create policy "support_messages_anon_all"
 on public.support_messages
+for all
+to anon
+using (true)
+with check (true);
+
+drop policy if exists "audit_logs_anon_all" on public.audit_logs;
+create policy "audit_logs_anon_all"
+on public.audit_logs
 for all
 to anon
 using (true)

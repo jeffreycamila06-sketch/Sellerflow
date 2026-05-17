@@ -32,6 +32,15 @@ export interface AccountSupportMsg {
   status: "pending" | "approved" | "rejected";
 }
 
+export interface AccountAuditLog {
+  id: string;
+  actorEmail: string;
+  action: string;
+  targetEmail: string;
+  details: string;
+  timestamp: string;
+}
+
 const localGet = <T,>(key: string, fallback: T): T => {
   try {
     const value = localStorage.getItem(key);
@@ -92,6 +101,17 @@ function rowToSupport(row: Record<string, any>): AccountSupportMsg {
     hasProof: Boolean(row.has_proof),
     timestamp: row.created_at || new Date().toISOString(),
     status: row.status || "pending",
+  };
+}
+
+function rowToAudit(row: Record<string, any>): AccountAuditLog {
+  return {
+    id: String(row.id),
+    actorEmail: row.actor_email || "",
+    action: row.action || "",
+    targetEmail: row.target_email || "",
+    details: row.details || "",
+    timestamp: row.created_at || new Date().toISOString(),
   };
 }
 
@@ -252,5 +272,50 @@ export async function updateSupportStatus(id: string, status: AccountSupportMsg[
 
   if (error) {
     console.error("Update support message error:", error.message);
+  }
+}
+
+export async function listAuditLogs(): Promise<AccountAuditLog[]> {
+  const localLogs = localGet<AccountAuditLog[]>("sf_audit_logs", []);
+  if (!isSupabaseConfigured || !supabase) return localLogs;
+
+  const { data, error } = await supabase
+    .from("audit_logs")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(80);
+
+  if (error) {
+    console.error("Load audit logs error:", error.message);
+    return localLogs;
+  }
+
+  const logs = (data || []).map(rowToAudit);
+  localSet("sf_audit_logs", logs);
+  return logs;
+}
+
+export async function saveAuditLog(log: Omit<AccountAuditLog, "id" | "timestamp">): Promise<void> {
+  const nextLog: AccountAuditLog = {
+    ...log,
+    id: Date.now().toString(),
+    timestamp: new Date().toISOString(),
+  };
+  const localLogs = localGet<AccountAuditLog[]>("sf_audit_logs", []);
+  localSet("sf_audit_logs", [nextLog, ...localLogs].slice(0, 80));
+
+  if (!isSupabaseConfigured || !supabase) return;
+
+  const { error } = await supabase
+    .from("audit_logs")
+    .insert({
+      actor_email: log.actorEmail.toLowerCase(),
+      action: log.action,
+      target_email: log.targetEmail.toLowerCase(),
+      details: log.details,
+    });
+
+  if (error) {
+    console.error("Save audit log error:", error.message);
   }
 }
