@@ -30,7 +30,7 @@ interface Buyer { handle:string; name:string; platform:string; num:number; order
 interface Comment { handle:string; name:string; comment:string; platform:"TikTok"|"Facebook"; isBuy:boolean; buyerNum:number|null; buyerData:Buyer|null; time:string; avatar?:string; timestamp?:string; }
 interface Product { id:number; name:string; sku:string; price:number; stock:number; platform:string; status:string; }
 interface Settings { autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"usb"|"bluetooth"; stickerSize:string; }
-interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; timestamp:string; status:"pending"|"approved"|"rejected"; adminReply?:string; repliedAt?:string; }
+interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; timestamp:string; status:"pending"|"approved"|"rejected"|"resolved"; adminReply?:string; repliedAt?:string; }
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
 const LS = {
@@ -663,16 +663,17 @@ function Support({user,t}:{user:User;t:T}){
     return()=>window.clearInterval(timer);
   },[user.email,sent]);
   const sellerMessages=[...prev].sort((a,b)=>{
-    const au=a.adminReply&&!readIds.includes(a.id)?1:0;
-    const bu=b.adminReply&&!readIds.includes(b.id)?1:0;
+    const au=a.status!=="resolved"&&a.adminReply&&!readIds.includes(a.id)?1:0;
+    const bu=b.status!=="resolved"&&b.adminReply&&!readIds.includes(b.id)?1:0;
     if(au!==bu)return bu-au;
+    if((a.status==="resolved")!==(b.status==="resolved"))return a.status==="resolved"?1:-1;
     return new Date(b.timestamp).getTime()-new Date(a.timestamp).getTime();
   });
   const selectedMsg=sellerMessages.find(m=>m.id===selectedMsgId);
-  const unreadReplies=sellerMessages.filter(m=>m.adminReply&&!readIds.includes(m.id)).length;
+  const unreadReplies=sellerMessages.filter(m=>m.status!=="resolved"&&m.adminReply&&!readIds.includes(m.id)).length;
   function openSellerMessage(m:SupportMsg){
     setSelectedMsgId(m.id);
-    if(m.adminReply&&!readIds.includes(m.id)){
+    if(m.status!=="resolved"&&m.adminReply&&!readIds.includes(m.id)){
       const next=[...readIds,m.id];
       setReadIds(next);
       LS.set(supportReadKey(user.email),next);
@@ -724,7 +725,7 @@ function Support({user,t}:{user:User;t:T}){
                     <div className="support-convo-top"><strong>{m.subject}</strong><span>{new Date(m.timestamp).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}</span></div>
                     <div className="support-convo-sub"><span>{m.adminReply?`Admin: ${m.adminReply}`:m.message}</span>{unread&&<b>new reply</b>}</div>
                   </div>
-                  <Badge label={m.status==="approved"?"Approved":m.status==="rejected"?"Rejected":"Pending"} color={m.status==="approved"?"green":m.status==="rejected"?"red":"amber"}/>
+                  <Badge label={m.status==="approved"?"Approved":m.status==="rejected"?"Rejected":m.status==="resolved"?"Resolved":"Pending"} color={m.status==="approved"?"green":m.status==="rejected"?"red":m.status==="resolved"?"gray":"amber"}/>
                   {unread&&<span className="support-unread-dot"/>}
                 </button>;
               })}
@@ -748,7 +749,7 @@ function Support({user,t}:{user:User;t:T}){
                       </div>
                     </div>
                   )}
-                  <div className="support-actions"><Badge label={selectedMsg.status==="approved"?"Approved":selectedMsg.status==="rejected"?"Rejected":"Pending"} color={selectedMsg.status==="approved"?"green":selectedMsg.status==="rejected"?"red":"amber"}/></div>
+                  <div className="support-actions"><Badge label={selectedMsg.status==="approved"?"Approved":selectedMsg.status==="rejected"?"Rejected":selectedMsg.status==="resolved"?"Resolved":"Pending"} color={selectedMsg.status==="approved"?"green":selectedMsg.status==="rejected"?"red":selectedMsg.status==="resolved"?"gray":"amber"}/></div>
                 </div>
               )}
             </div>
@@ -759,7 +760,7 @@ function Support({user,t}:{user:User;t:T}){
                 <div key={m.id} style={{background:"var(--color-background-secondary,#F9F9F7)",borderRadius:8,padding:10,border:"0.5px solid #E4E2DC"}}>
                   <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
                     <strong style={{fontSize:12}}>{m.subject}</strong>
-                    <Badge label={m.status==="approved"?"Approved":m.status==="rejected"?"Rejected":"Pending"} color={m.status==="approved"?"green":m.status==="rejected"?"red":"amber"}/>
+                    <Badge label={m.status==="approved"?"Approved":m.status==="rejected"?"Rejected":m.status==="resolved"?"Resolved":"Pending"} color={m.status==="approved"?"green":m.status==="rejected"?"red":m.status==="resolved"?"gray":"amber"}/>
                   </div>
                   <div style={{fontSize:11,color:"#888",marginBottom:4}}>{new Date(m.timestamp).toLocaleDateString()} {m.hasProof?"📎 Proof attached":""}</div>
                   <div style={{fontSize:12,color:"#5F5E5A"}}>{m.message.slice(0,120)}{m.message.length>120?"...":""}</div>
@@ -818,7 +819,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
     setMsgs(next);
     await updateSupportStatus(id,status);
     const msg=msgs.find(m=>m.id===id);
-    if(msg)await logAction(status==="approved"?"approved payment/support":"rejected payment/support",msg.email,msg.subject);
+    if(msg)await logAction(status==="approved"?"approved payment/support":status==="resolved"?"resolved support":"rejected payment/support",msg.email,msg.subject);
   }
 
   async function replyToSeller(message:SupportMsg){
@@ -1045,8 +1046,10 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
   },{})).map(c=>({
     ...c,
     messages:[...c.messages].sort((a,b)=>new Date(a.timestamp).getTime()-new Date(b.timestamp).getTime()),
+    active:c.messages.some(m=>m.status!=="resolved"),
   })).sort((a,b)=>{
     if(a.unread!==b.unread)return b.unread-a.unread;
+    if(a.active!==b.active)return a.active?-1:1;
     return new Date(b.latest.timestamp).getTime()-new Date(a.latest.timestamp).getTime();
   });
   const unreadSupportCount=supportConversations.reduce((sum,c)=>sum+c.unread,0);
@@ -1223,9 +1226,10 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
                           </div>
                         )}
                         <div className="support-actions">
-                          <Badge label={m.status} color={m.status==="approved"?"green":m.status==="rejected"?"red":"amber"}/>
+                          <Badge label={m.status==="resolved"?"resolved":m.status} color={m.status==="approved"?"green":m.status==="rejected"?"red":m.status==="resolved"?"gray":"amber"}/>
                           <button className="tbl-btn ed" onClick={()=>{updateMsg(m.id,"approved");approve(m.email,"pro");}}>Approve</button>
                           <button className="tbl-btn dl" onClick={()=>updateMsg(m.id,"rejected")}>Reject</button>
+                          <button className="tbl-btn ed" onClick={()=>updateMsg(m.id,"resolved")}>Resolve</button>
                           <button className="tbl-btn ed" onClick={()=>copy(m.email,"Email")}>Copy email</button>
                         </div>
                         <div className="messenger-reply">

@@ -29,7 +29,7 @@ export interface AccountSupportMsg {
   message: string;
   hasProof: boolean;
   timestamp: string;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "approved" | "rejected" | "resolved";
   adminReply?: string;
   repliedAt?: string;
 }
