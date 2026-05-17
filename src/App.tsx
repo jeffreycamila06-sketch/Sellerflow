@@ -249,6 +249,126 @@ function Auth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:Lang;set
 // ═══════════════════════════════════════════════════════════════════
 // TRIAL EXPIRED WALL
 // ═══════════════════════════════════════════════════════════════════
+function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:Lang;setLang:(l:Lang)=>void}){
+  const [mode,setMode]=useState<"login"|"reg"|"forgot">("login");
+  const [email,setEmail]=useState("");const [pw,setPw]=useState("");const [cpw,setCpw]=useState("");
+  const [fn,setFn]=useState("");const [sn,setSn]=useState("");
+  const [showPw,setShowPw]=useState(false);const [err,setErr]=useState("");const [ok,setOk]=useState("");const [busy,setBusy]=useState(false);
+  const [activeFeature,setActiveFeature]=useState(0);
+  const [openFaq,setOpenFaq]=useState(0);
+  async function login(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);
+    const u=await findUser(email);
+    if(!u){setErr(t.err_no_account);setBusy(false);return;}
+    if(u.password!==pw){setErr(t.err_wrong_pw);setBusy(false);return;}
+    LS.set("sf_session",u.email);onLogin(u);setBusy(false);
+  }
+  async function reg(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);
+    if(!fn.trim()||!sn.trim()||!email.trim()||!pw){setErr(t.err_fill_all);setBusy(false);return;}
+    if(pw.length<6){setErr(t.err_pw_short);setBusy(false);return;}
+    if(pw!==cpw){setErr(t.err_pw_mismatch);setBusy(false);return;}
+    const users=await listUsers();
+    if(await findUser(email)){setErr(t.err_email_exists);setBusy(false);return;}
+    const isFirstAccount=users.length===0;
+    const nu:User={email:email.trim().toLowerCase(),password:pw,profile:{fullName:fn.trim(),storeName:sn.trim(),phone:"",tiktok:"",facebook:""},plan:isFirstAccount?"master":"trial",planStatus:"active",planExpiry:isFirstAccount?addMonths(120):addDays(7),connectedAccounts:[]};
+    await upsertUser(nu);
+    if(isFirstAccount)rememberAdminEmail(email);
+    LS.set("sf_session",nu.email);onLogin(nu);setBusy(false);
+  }
+  async function forgot(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);
+    const u=await findUser(email);
+    if(!u){setErr(t.err_no_account);setBusy(false);return;}
+    setOk(`${t.reset_sent} ${email}`);setBusy(false);
+  }
+  const go=(m:"login"|"reg"|"forgot")=>{setMode(m);setErr("");setOk("");};
+  const jump=(id:string)=>document.getElementById(id)?.scrollIntoView({behavior:"smooth",block:"start"});
+  const featureItems=[
+    {title:"Live comment capture",body:"Connect TikTok or Facebook Live and keep every buyer comment in one clean feed with name, username, profile initials, time, and platform."},
+    {title:"1-click order and print",body:"Click any comment to create an order and print the buyer slip immediately. Reprint is available when a printer misses a label."},
+    {title:"Buyer memory",body:"SellerFlow remembers customers, buyer numbers, order history, totals, and searchable customer records for future lives."},
+    {title:"Admin control center",body:"Manage sellers, plans, expiry dates, proof of payment, support replies, locked TikTok/Facebook accounts, and audit logs."},
+    {title:"Printer output tools",body:"Adjust label size, QR code, logo, buyer number, username, order details, and receipt layout before printing."},
+    {title:"Support messenger",body:"Sellers can send payment proof and complaints. Admin can reply in compact chat bubbles with unread notifications."},
+  ];
+  const howSteps=[
+    "Create a seller account or let the admin create one.",
+    "Register the TikTok account or Facebook page allowed by the seller plan.",
+    "Connect live stream from the top bar when selling starts.",
+    "Click 1-click on any buyer comment to create and print the order slip.",
+    "Use Customers, Orders, Print, Sales, and Support to review everything after the live.",
+  ];
+  const faqItems=[
+    ["Can sellers change their TikTok or Facebook account?","They can register the allowed account slots once. After saving, those accounts are locked and only admin can change them."],
+    ["What happens when a plan expires?","The seller can still open Support and Subscription, but selling tools are blocked until admin approves or upgrades the plan."],
+    ["Can I print without extra popups?","Yes. Turn on auto-print in Settings, adjust the printer output, then 1-click orders will print directly through the browser print flow."],
+    ["Where do payment proofs show?","Proof images appear inside the admin and seller support conversation bubbles so you can approve faster."],
+    ["Is the customer list searchable?","Yes. SellerFlow saves buyer/customer memory so sellers can search names, usernames, buyer numbers, orders, and totals."],
+    ["Who controls seller limits?","Admin controls plan, expiry, locked accounts, seller edits, password resets, and support approvals."],
+  ];
+  const accountForm=(
+    <div className="auth-card public-auth-card">
+      {mode==="login"&&<>
+        <h2>{t.login_title}</h2><p className="auth-sub">{t.login_sub}</p>
+        <form onSubmit={login} className="auth-form">
+          {err&&<div className="auth-err">Warning: {err}</div>}
+          <Fg label={t.email_field}><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@email.com" required autoFocus/></Fg>
+          <Fg label={t.pw_field}><div className="pw-wrap"><input type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="Password" required/><button type="button" onClick={()=>setShowPw(p=>!p)} className="pw-eye">{showPw?"Hide":"Show"}</button></div></Fg>
+          <div style={{textAlign:"right",marginBottom:4}}><button type="button" className="auth-link" onClick={()=>go("forgot")}>{t.forgot_link}</button></div>
+          <button type="submit" className="auth-btn" disabled={busy}>{busy?t.signing_in:t.sign_in_btn}</button>
+        </form>
+        <div className="auth-sw">{t.no_account} <button className="auth-link" onClick={()=>go("reg")}>{t.create_account}</button></div>
+      </>}
+      {mode==="reg"&&<>
+        <h2>{t.register_title}</h2><p className="auth-sub">{t.register_sub}</p>
+        <form onSubmit={reg} className="auth-form">
+          {err&&<div className="auth-err">Warning: {err}</div>}
+          <div className="auth-row2">
+            <Fg label={t.fname_field}><input value={fn} onChange={e=>setFn(e.target.value)} placeholder="Maria Reyes" required/></Fg>
+            <Fg label={t.sname_field}><input value={sn} onChange={e=>setSn(e.target.value)} placeholder="Maria's Shop" required/></Fg>
+          </div>
+          <Fg label={t.email_field}><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@email.com" required/></Fg>
+          <Fg label={t.pw_field}><div className="pw-wrap"><input type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="Min 6 chars" required/><button type="button" onClick={()=>setShowPw(p=>!p)} className="pw-eye">{showPw?"Hide":"Show"}</button></div></Fg>
+          <Fg label={t.confirm_field}><input type="password" value={cpw} onChange={e=>setCpw(e.target.value)} placeholder="Confirm password" required/></Fg>
+          <button type="submit" className="auth-btn" disabled={busy}>{busy?t.creating:t.start_trial_btn}</button>
+          <p className="auth-terms">{t.terms_text}</p>
+        </form>
+        <div className="auth-sw">{t.have_account} <button className="auth-link" onClick={()=>go("login")}>{t.sign_in_btn}</button></div>
+      </>}
+      {mode==="forgot"&&<>
+        <h2>{t.forgot_title}</h2><p className="auth-sub">{t.forgot_sub}</p>
+        <form onSubmit={forgot} className="auth-form">
+          {err&&<div className="auth-err">Warning: {err}</div>}
+          {ok&&<div className="auth-ok">Done: {ok}</div>}
+          <Fg label={t.email_field}><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@email.com" required autoFocus/></Fg>
+          <button type="submit" className="auth-btn" disabled={busy}>{busy?t.sending:t.send_reset}</button>
+        </form>
+        <div className="auth-sw"><button className="auth-link" onClick={()=>go("login")}>{t.back_login}</button></div>
+      </>}
+    </div>
+  );
+  return(
+    <div className="public-page">
+      <header className="public-nav">
+        <button className="public-brand" onClick={()=>jump("home")}><span className="public-logo">S</span><span>Seller<span>Flow</span></span></button>
+        <nav><button onClick={()=>jump("features")}>Features</button><button onClick={()=>jump("pricing")}>Price list</button><button onClick={()=>jump("instructions")}>How to use</button><button onClick={()=>jump("support-info")}>Support</button><button onClick={()=>jump("faq")}>FAQ</button></nav>
+        <div className="public-nav-actions"><select value={lang} onChange={e=>setLang(e.target.value as Lang)}>{LANG_OPTS.map(l=><option key={l.code} value={l.code}>{l.label}</option>)}</select><button onClick={()=>{go("login");jump("account")}}>Log in</button><button className="public-primary" onClick={()=>{go("reg");jump("account")}}>Register</button></div>
+      </header>
+      <section id="home" className="public-hero">
+        <div className="public-hero-copy"><span className="public-kicker">Livestream sales management</span><h1>Close live orders faster with SellerFlow</h1><p>SellerFlow helps live sellers capture comments, create orders, print buyer slips, remember customers, manage subscriptions, and handle support from one simple dashboard.</p><div className="public-hero-actions"><button className="public-primary" onClick={()=>{go("reg");jump("account")}}>Try free trial</button><button onClick={()=>jump("instructions")}>Read instructions</button></div><div className="public-metrics"><div><b>1-click</b><span>order printing</span></div><div><b>10s</b><span>support refresh</span></div><div><b>Live</b><span>TikTok and Facebook</span></div></div></div>
+        <div className="public-device" aria-label="SellerFlow dashboard preview"><div className="device-top"><span/><span/><span/></div><div className="device-grid"><div className="device-sidebar"><b>SellerFlow</b><span>Live</span><span>Orders</span><span>Customers</span><span>Support</span></div><div className="device-main"><div className="device-stats"><span>Orders 20</span><span>Buyers 7</span><span>Revenue</span></div><div className="device-comment"><b>Maria - @maria_live</b><em>1-click</em><p>blue dress +1</p></div><div className="device-comment"><b>Hazel - @hazelshop</b><em>print</em><p>crop top mine</p></div><div className="device-slip"><strong>BUYER #12</strong><span>QR + printable slip</span></div></div></div></div>
+      </section>
+      <section id="features" className="public-section"><div className="public-section-head"><span>Features</span><h2>Built for live sellers who need speed and control</h2><p>Click each feature to see how it helps your shop during a live selling session.</p></div><div className="public-feature-layout"><div className="public-feature-list">{featureItems.map((f,i)=><button key={f.title} className={activeFeature===i?"active":""} onClick={()=>setActiveFeature(i)}><span>{i+1}</span><strong>{f.title}</strong></button>)}</div><div className="public-feature-detail"><small>Feature {activeFeature+1}</small><h3>{featureItems[activeFeature].title}</h3><p>{featureItems[activeFeature].body}</p><button onClick={()=>jump("instructions")}>Show me how to use it</button></div></div></section>
+      <section id="instructions" className="public-section public-instructions"><div className="public-section-head"><span>Instructions</span><h2>How to use SellerFlow</h2><p>Simple daily workflow for sellers and admins.</p></div><div className="public-steps">{howSteps.map((step,i)=><button key={step} onClick={()=>i<2?jump("account"):jump("features")}><b>{i+1}</b><span>{step}</span></button>)}</div></section>
+      <section id="pricing" className="public-section"><div className="public-section-head"><span>Price list</span><h2>Choose the plan that fits the seller</h2><p>Plan account limits are controlled inside the app and do not need to be shown to customers on this page.</p></div><div className="public-pricing">{[["Free Trial","$0","7 days","Try the basic live selling workflow before upgrading."],["Basic","$10","month","For solo sellers who need live comments, orders, and printing."],["Pro","$19","month","For sellers managing more channels and stronger reporting."],["Master","$40","month","For teams that need admin control, support, and priority handling."]].map((p,i)=><button key={p[0]} onClick={()=>{go(i===0?"reg":"login");jump("account")}}><strong>{p[0]}</strong><b>{p[1]}</b><span>/{p[2]}</span><p>{p[3]}</p><em>{i===0?"Start free":"Select plan"}</em></button>)}</div></section>
+      <section id="support-info" className="public-section public-support-band"><div><span>Support</span><h2>Handle seller complaints like Messenger</h2><p>Every seller can send a payment proof or support issue. Admin receives a compact chat thread, can approve, reject, resolve, reply, and see unread notifications.</p></div><button onClick={()=>{go("login");jump("account")}}>Open seller account</button></section>
+      <section id="faq" className="public-section"><div className="public-section-head"><span>FAQ</span><h2>Frequently asked questions</h2><p>Click a question to expand the answer.</p></div><div className="public-faq">{faqItems.map((item,i)=><button key={item[0]} className={openFaq===i?"open":""} onClick={()=>setOpenFaq(openFaq===i?-1:i)}><div><span>{i+1}</span><strong>{item[0]}</strong><b>{openFaq===i?"-":"+"}</b></div>{openFaq===i&&<p>{item[1]}</p>}</button>)}</div></section>
+      <section id="account" className="public-account"><div className="public-account-copy"><span>Account access</span><h2>Start using SellerFlow</h2><p>Login if you already have a seller account. Register only if you are creating a new shop account.</p></div>{accountForm}</section>
+      <footer className="public-footer"><div><strong>SellerFlow</strong><p>Live selling order system for TikTok and Facebook sellers.</p></div><div><button onClick={()=>jump("features")}>Features</button><button onClick={()=>jump("instructions")}>Instructions</button><button onClick={()=>jump("pricing")}>Price list</button><button onClick={()=>jump("account")}>Login</button></div></footer>
+    </div>
+  );
+}
+
+void Auth;
+
 function TrialExpiredWall({t,onUpgrade}:{t:T;onUpgrade:()=>void}){
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(30,20,80,0.95)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999,flexDirection:"column",gap:20,padding:24}}>
@@ -1843,7 +1963,7 @@ export default function App(){
     void createOrderFromComment(c,{print:true});
   }
 
-  if(!user)return <Auth onLogin={handleLogin} t={t} lang={lang} setLang={setLang}/>;
+  if(!user)return <PublicAuth onLogin={handleLogin} t={t} lang={lang} setLang={setLang}/>;
 
   const isLive=ttOn||fbOn;
   const days=dLeft(user.planExpiry);
