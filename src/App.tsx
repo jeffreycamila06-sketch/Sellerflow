@@ -106,7 +106,7 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Setting
   const [w,h]=size.split("x").map(Number);
   const mmToPx=(mm:number)=>Math.round(mm*3.7795);
   const pw=mmToPx(w||100);
-  const oHtml=buyer.orders.map(o=>`<div style="border-left:2px solid #7F77DD;padding-left:6px;margin-bottom:5px"><div style="font-size:9px;color:#888">${o.time} — #SF${o.orderNum}</div><div style="font-size:10px;font-weight:700">${o.item}</div><div style="font-size:9px;color:#555">x${o.qty} — ${cur}${o.total.toLocaleString()}</div></div>`).join("");
+  const oHtml=buyer.orders.map(o=>`<div style="border-left:2px solid #7F77DD;padding-left:6px;margin-bottom:5px"><div style="font-size:9px;color:#888">${o.time} — #SF${o.orderNum}</div><div style="font-size:10px;font-weight:700">${o.item}</div><div style="font-size:9px;color:#555">x${o.qty}${o.total>0?` — ${cur}${o.total.toLocaleString()}`:""}</div></div>`).join("");
   const scaledOrderHtml=oHtml.replace(/font-size:9px/g,`font-size:${9*orderScale}px`).replace(/font-size:10px/g,`font-size:${10*orderScale}px`);
   const win=window.open("","_blank",`width=${pw+40},height=700`);
   if(!win){alert("Allow popups to print slips!");return;}
@@ -116,7 +116,7 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Setting
   ${cfg.printStoreName?`<div style="text-align:center;font-size:${9*storeScale}px;color:#888;margin-bottom:5px">${storeName}</div>`:""}
   <hr><div class="nb">${cfg.printBuyerNumber?`<div class="nl">BUYER NUMBER</div><div class="nn">#${buyer.num}</div>`:""}<div class="na">${buyer.name}</div>${cfg.printBuyerUsername?`<div class="nh">@${buyer.handle}</div>`:""}</div>
   <div class="sl">Session: ${sess}</div>${cfg.printOrderItems?`<div class="ot">Orders today (${buyer.orders.length})</div>${scaledOrderHtml}`:""}
-  ${cfg.printTotal?`<div class="dash"></div><div class="tr"><span class="tl">TOTAL TODAY</span><span class="tv">${cur}${buyer.totalSpent.toLocaleString()}</span></div>`:""}
+  ${cfg.printTotal?`<div class="dash"></div><div class="tr"><span class="tl">TOTAL TODAY</span><span class="tv">${buyer.totalSpent>0?`${cur}${buyer.totalSpent.toLocaleString()}`:""}</span></div>`:""}
   <div class="dash"></div><div class="ft">Thank you!<br>SellerFlow · sellerflow.app</div>
   </body></html>`);
   win.document.close();
@@ -1561,8 +1561,8 @@ export default function App(){
       orderNum:Date.now(),
       item:c.comment||"Live comment order",
       qty:1,
-      price:380,
-      total:380,
+      price:0,
+      total:0,
       time:c.time||new Date().toLocaleTimeString(),
       handle:c.handle,
       name:c.name||c.handle,
@@ -1759,7 +1759,7 @@ export default function App(){
                     <div key={b.handle} className={`buyer-row ${selBuyer?.handle===b.handle?"active":""}`} onClick={()=>setSelBuyer(b)}>
                       <div className="b-num" style={{background:nc(b.num)}}>{b.num}</div>
                       <div className="b-info"><div className="b-name">{b.name}</div><div className="b-handle">@{b.handle}</div></div>
-                      <div className="b-right"><div className="b-total">{settings.currency}{b.totalSpent.toLocaleString()}</div><div className="b-ords">{b.totalOrders}</div></div>
+                      <div className="b-right"><div className="b-total">{b.totalSpent>0?`${settings.currency}${b.totalSpent.toLocaleString()}`:""}</div><div className="b-ords">{b.totalOrders}</div></div>
                     </div>
                   ))}
                 </div>
@@ -1775,9 +1775,9 @@ export default function App(){
                     <div className="slip-nb"><div className="slip-nl">{t.buyer_number_label}</div><div className="slip-nn" style={{color:nc(selBuyer.num)}}>#{selBuyer.num}</div><div className="slip-na">{selBuyer.name}</div><div className="slip-nh">@{selBuyer.handle}</div></div>
                     <div className="slip-sess">{t.session}: {today}</div>
                     <div className="slip-ot">{t.orders_today} ({selBuyer.orders.length})</div>
-                    {selBuyer.orders.map((o,i)=><div key={i} className="slip-ob"><div className="slip-ot2">{o.time} — #SF{o.orderNum}</div><div className="slip-oi">{o.item}</div><div className="slip-od">x{o.qty} — {settings.currency}{o.total.toLocaleString()}</div></div>)}
+                    {selBuyer.orders.map((o,i)=><div key={i} className="slip-ob"><div className="slip-ot2">{o.time} — #SF{o.orderNum}</div><div className="slip-oi">{o.item}</div><div className="slip-od">x{o.qty}{o.total>0?` — ${settings.currency}${o.total.toLocaleString()}`:""}</div></div>)}
                     <div className="slip-dash"/>
-                    <div className="slip-tot"><span className="slip-tl">{t.total_today}</span><span className="slip-tv">{settings.currency}{selBuyer.totalSpent.toLocaleString()}</span></div>
+                    <div className="slip-tot"><span className="slip-tl">{t.total_today}</span><span className="slip-tv">{selBuyer.totalSpent>0?`${settings.currency}${selBuyer.totalSpent.toLocaleString()}`:""}</span></div>
                     <div className="slip-dash"/>
                     <div className="slip-ft">{t.thankyou}<br/>SellerFlow · sellerflow.app</div>
                   </div>
@@ -1806,7 +1806,7 @@ export default function App(){
                       <td className="mono" style={{color:"#7F77DD"}}>@{b.handle}</td>
                       <td><Badge label={b.platform} color={b.platform==="TikTok"?"purple":"green"}/></td>
                       <td>{b.totalOrders}</td>
-                      <td><strong style={{color:"#534AB7"}}>{settings.currency}{b.totalSpent.toLocaleString()}</strong></td>
+                      <td><strong style={{color:"#534AB7"}}>{b.totalSpent>0?`${settings.currency}${b.totalSpent.toLocaleString()}`:""}</strong></td>
                       <td><button onClick={()=>{setSelBuyer(b);setPage("dashboard");printSlip(b,settings.currency,user.profile.storeName||"SellerFlow",settings);}} style={{padding:"5px 12px",background:"#7F77DD",color:"#fff",border:"none",borderRadius:7,fontSize:11,cursor:"pointer"}}>🖨 Print</button></td>
                     </tr>
                   ))}
