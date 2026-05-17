@@ -935,6 +935,12 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
   const filteredAuditLogs=auditLogs.filter(log=>!q||[
     log.actorEmail,log.action,log.targetEmail,log.details,log.timestamp
   ].some(v=>String(v||"").toLowerCase().includes(q)));
+  const sellerUsers=users.filter(u=>!isAdminEmail(u.email));
+  const activeSellers=sellerUsers.filter(u=>u.planStatus==="active"&&dLeft(u.planExpiry)>0);
+  const expiredSellers=sellerUsers.filter(u=>u.planStatus==="expired"||dLeft(u.planExpiry)===0);
+  const pendingPayments=msgs.filter(m=>m.status==="pending");
+  const todayIso=new Date().toISOString().slice(0,10);
+  const todayOrders=LS.get<LiveOrder[]>("sf_orders",[]).filter(o=>o.date===todayIso);
 
   if(!isAdminUser(currentUser)){
     return <div className="subpage"><div className="auth-err">Admin only.</div></div>;
@@ -955,6 +961,14 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
         <span className="admin-search-ic">⌕</span>
         <input value={adminSearch} onChange={e=>setAdminSearch(e.target.value)} placeholder="Search users, payments, audit log"/>
         {adminSearch&&<button className="admin-search-clear" onClick={()=>setAdminSearch("")}>Clear</button>}
+      </div>
+
+      <div className="grid4 admin-summary-grid">
+        <div className="mstat"><div className="ms-l">Sellers</div><div className="ms-v">{sellerUsers.length}</div></div>
+        <div className="mstat"><div className="ms-l">Active</div><div className="ms-v" style={{color:"#1D9E75"}}>{activeSellers.length}</div></div>
+        <div className="mstat"><div className="ms-l">Expired</div><div className="ms-v" style={{color:"#A32D2D"}}>{expiredSellers.length}</div></div>
+        <div className="mstat"><div className="ms-l">Pending Payments</div><div className="ms-v" style={{color:"#BA7517"}}>{pendingPayments.length}</div></div>
+        <div className="mstat"><div className="ms-l">Today Orders</div><div className="ms-v" style={{color:"#534AB7"}}>{todayOrders.length}</div></div>
       </div>
 
       <div className="scard" style={{marginBottom:16}}>
