@@ -987,7 +987,10 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
   },{})).map(c=>({
     ...c,
     messages:[...c.messages].sort((a,b)=>new Date(a.timestamp).getTime()-new Date(b.timestamp).getTime()),
-  })).sort((a,b)=>new Date(b.latest.timestamp).getTime()-new Date(a.latest.timestamp).getTime());
+  })).sort((a,b)=>{
+    if(a.unread!==b.unread)return b.unread-a.unread;
+    return new Date(b.latest.timestamp).getTime()-new Date(a.latest.timestamp).getTime();
+  });
   const unreadSupportCount=supportConversations.reduce((sum,c)=>sum+c.unread,0);
   const filteredAuditLogs=auditLogs.filter(log=>!q||[
     log.actorEmail,log.action,log.targetEmail,log.details,log.timestamp
