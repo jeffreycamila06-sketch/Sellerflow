@@ -1,6 +1,5 @@
 import { saveOrderToDatabase, saveCustomerToDatabase } from "./db";
 
-
 import { useState, useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 import "./App.css";
@@ -9,13 +8,13 @@ import { TRANSLATIONS, type Lang, type T } from "./translations";
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Plan = "trial" | "basic" | "pro" | "master";
 type PlanStatus = "active" | "expired" | "pending";
-type Page = "dashboard"|"miners"|"orders"|"products"|"customers"|"print"|"sales"|"settings"|"subscription"|"support";
+type Page = "dashboard"|"miners"|"orders"|"products"|"customers"|"print"|"sales"|"settings"|"subscription"|"support"|"admin";
 
 interface Profile { fullName:string; storeName:string; phone:string; tiktok:string; facebook:string; }
 interface User { email:string; password:string; profile:Profile; plan:Plan; planStatus:PlanStatus; planExpiry:string; connectedAccounts:string[]; }
 interface LiveOrder { orderNum:number; item:string; qty:number; price:number; total:number; time:string; handle:string; name:string; bNum:number; platform:string; status:string; date:string; }
 interface Buyer { handle:string; name:string; platform:string; num:number; orders:LiveOrder[]; totalSpent:number; totalOrders:number; }
-interface Comment { handle:string; name:string; comment:string; platform:"TikTok"|"Facebook"; isBuy:boolean; buyerNum:number|null; buyerData:Buyer|null; time:string; }
+interface Comment { handle:string; name:string; comment:string; platform:"TikTok"|"Facebook"; isBuy:boolean; buyerNum:number|null; buyerData:Buyer|null; time:string; avatar?:string; timestamp?:string; }
 interface Product { id:number; name:string; sku:string; price:number; stock:number; platform:string; status:string; }
 interface Settings { autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"usb"|"bluetooth"; stickerSize:string; }
 interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; timestamp:string; status:"pending"|"approved"|"rejected"; }
@@ -28,7 +27,7 @@ const LS = {
 };
 
 const SERVER = import.meta.env.VITE_SERVER_URL || "http://localhost:3001";
-const DEF_SETTINGS: Settings = { autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"buy,mine,gusto,order,i want,bibilhin,我要,tôi muốn", currency:"₱", paperSize:"100x60mm", printerType:"usb", stickerSize:"100x60mm" };
+const DEF_SETTINGS: Settings = { autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"₱", paperSize:"100x60mm", printerType:"usb", stickerSize:"100x60mm" };
 const LANG_OPTS: {code:Lang;label:string}[] = [{code:"en",label:"🇺🇸 EN"},{code:"fil",label:"🇵🇭 FIL"},{code:"zh",label:"🇨🇳 中文"},{code:"vi",label:"🇻🇳 VI"}];
 const CURRENCIES = [{v:"₱",l:"₱ PHP"},{v:"$",l:"$ USD"},{v:"NT$",l:"NT$ NTD"},{v:"¥",l:"¥ CNY"},{v:"฿",l:"฿ THB"},{v:"₫",l:"₫ VND"}];
 
@@ -40,27 +39,10 @@ const addDays=(n:number)=>{const d=new Date();d.setDate(d.getDate()+n);return d.
 const addMonths=(n:number)=>{const d=new Date();d.setMonth(d.getMonth()+n);return d.toISOString();};
 const dLeft=(e:string)=>Math.max(0,Math.ceil((new Date(e).getTime()-Date.now())/86400000));
 const maxAcc=(p:Plan)=>({trial:1,basic:1,pro:3,master:5}[p]);
-const ADMIN_EMAILS = (import.meta.env.VITE_ADMIN_EMAILS || "")
-  .split(",")
-  .map((e: string) => e.trim().toLowerCase())
-  .filter(Boolean);
-
-const isAdminUser = (u: User | null) =>
-  !!u && ADMIN_EMAILS.includes(u.email.toLowerCase());
-
-const canConnectMore = (u: User) =>
-  isAdminUser(u) || u.connectedAccounts.length < maxAcc(u.plan);
-
-const asAdminPlan = (u: User): User =>
-  isAdminUser(u)
-    ? {
-        ...u,
-        plan: "master",
-        planStatus: "active",
-        planExpiry: addMonths(120),
-      }
-    : u;
-
+const ADMIN_EMAILS=(import.meta.env.VITE_ADMIN_EMAILS||"admin@sellerflow.app").split(",").map((e:string)=>e.trim().toLowerCase()).filter(Boolean);
+const isAdminUser=(u:User|null)=>!!u&&ADMIN_EMAILS.includes(u.email.toLowerCase());
+const canConnectMore=(u:User)=>isAdminUser(u)||u.connectedAccounts.length<maxAcc(u.plan);
+const asAdminPlan=(u:User)=>isAdminUser(u)?{...u,plan:"master" as Plan,planStatus:"active" as PlanStatus,planExpiry:addMonths(120)}:u;
 const pName=(p:Plan,t:T)=>({trial:t.plan_trial,basic:t.plan_basic,pro:t.plan_pro,master:t.plan_master}[p]);
 const pColor=(p:Plan)=>({trial:"gray",basic:"green",pro:"purple",master:"amber"}[p] as "gray"|"green"|"purple"|"amber");
 const csvDL=(filename:string,headers:string[],rows:(string|number)[][])=>{
@@ -68,8 +50,10 @@ const csvDL=(filename:string,headers:string[],rows:(string|number)[][])=>{
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download=filename;a.click();
 };
 
-function Av({name,size=32}:{name:string;size?:number}){
-  return <div style={{width:size,height:size,borderRadius:"50%",background:abg(name),color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.32,fontWeight:600,flexShrink:0}}>{ini(name)}</div>;
+function Av({name,size=32,image}:{name:string;size?:number;image?:string}){
+  return <div style={{width:size,height:size,borderRadius:"50%",background:abg(name),color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.32,fontWeight:600,flexShrink:0,overflow:"hidden"}}>
+    {image?<img src={image} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:ini(name)}
+  </div>;
 }
 function Badge({label,color}:{label:string;color:"purple"|"green"|"amber"|"red"|"blue"|"gray"}){
   const m:{[k:string]:[string,string]}={purple:["#EEEDFE","#534AB7"],green:["#E1F5EE","#0F6E56"],amber:["#FAEEDA","#633806"],red:["#FCEBEB","#A32D2D"],blue:["#E6F1FB","#185FA5"],gray:["#F1EFE8","#5F5E5A"]};
@@ -585,9 +569,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
           <button type="submit" className="btn-purple">{t.update_pw}</button>
         </form>
         <form onSubmit={saveSets} className="scard">
-          <div className="scard-title">{t.keywords_section}</div>
-          <Fg label={t.keywords_label}><input value={sets.keywords} onChange={e=>setSets(s=>({...s,keywords:e.target.value}))}/></Fg>
-          <div className="scard-title" style={{marginTop:10}}>{t.display_section}</div>
+          <div className="scard-title">{t.display_section}</div>
           <Fg label={t.currency_label}>
             <select value={sets.currency} onChange={e=>setSets(s=>({...s,currency:e.target.value}))}>
               {CURRENCIES.map(c=><option key={c.v} value={c.v}>{c.l}</option>)}
@@ -707,10 +689,105 @@ function Support({user,t}:{user:User;t:T}){
 // ═══════════════════════════════════════════════════════════════════
 // CONNECT MODAL
 // ═══════════════════════════════════════════════════════════════════
+function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:string,plan:Plan)=>void;t:T}){
+  const [users,setUsers]=useState<User[]>(()=>LS.get("sf_users",[]));
+  const [msgs,setMsgs]=useState<SupportMsg[]>(()=>LS.get("sf_support",[]));
+  const [copied,setCopied]=useState("");
+
+  function refresh(){
+    setUsers(LS.get("sf_users",[]));
+    setMsgs(LS.get("sf_support",[]));
+  }
+
+  function updateMsg(id:string,status:SupportMsg["status"]){
+    const next=msgs.map(m=>m.id===id?{...m,status}:m);
+    setMsgs(next);
+    LS.set("sf_support",next);
+  }
+
+  function approve(email:string,plan:Plan){
+    onApprove(email,plan);
+    setTimeout(refresh,50);
+  }
+
+  function copy(value:string,label:string){
+    navigator.clipboard?.writeText(value);
+    setCopied(`${label} copied`);
+    setTimeout(()=>setCopied(""),1800);
+  }
+
+  if(!isAdminUser(currentUser)){
+    return <div className="subpage"><div className="auth-err">Admin only.</div></div>;
+  }
+
+  return(
+    <div className="subpage">
+      {copied&&<Toast msg={copied} onDone={()=>setCopied("")}/>}
+      <div className="subpage-hd">
+        <div>
+          <h2>Admin</h2>
+          <p>Manual payment approval and user plan control.</p>
+        </div>
+        <button className="btn-out" onClick={refresh}>Refresh</button>
+      </div>
+
+      <div className="grid2">
+        <div className="table-card">
+          <div className="table-title">Users ({users.length})</div>
+          <table className="tbl">
+            <thead><tr><th>Email</th><th>Plan</th><th>Days</th><th>Accounts</th><th></th></tr></thead>
+            <tbody>
+              {users.length===0&&<tr><td colSpan={5} style={{textAlign:"center",padding:24,color:"#888"}}>No users yet.</td></tr>}
+              {users.map(u=>(
+                <tr key={u.email}>
+                  <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>
+                  <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
+                  <td>{dLeft(u.planExpiry)}</td>
+                  <td>{u.connectedAccounts.length}</td>
+                  <td>
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                      <button className="tbl-btn ed" onClick={()=>approve(u.email,"pro")}>Approve Pro</button>
+                      <button className="tbl-btn ed" onClick={()=>approve(u.email,"master")}>Approve Master</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="table-card">
+          <div className="table-title">Payment / Support Messages ({msgs.length})</div>
+          <table className="tbl">
+            <thead><tr><th>User</th><th>Message</th><th>Status</th><th></th></tr></thead>
+            <tbody>
+              {msgs.length===0&&<tr><td colSpan={4} style={{textAlign:"center",padding:24,color:"#888"}}>No messages yet.</td></tr>}
+              {[...msgs].reverse().map(m=>(
+                <tr key={m.id}>
+                  <td><strong>{m.name}</strong><div className="muted" style={{fontSize:11}}>{m.email}</div></td>
+                  <td><div><strong>{m.subject}</strong></div><div className="muted" style={{fontSize:11}}>{m.message.slice(0,90)}{m.message.length>90?"...":""}</div></td>
+                  <td><Badge label={m.status} color={m.status==="approved"?"green":m.status==="rejected"?"red":"amber"}/></td>
+                  <td>
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                      <button className="tbl-btn ed" onClick={()=>{updateMsg(m.id,"approved");approve(m.email,"pro");}}>Approve</button>
+                      <button className="tbl-btn dl" onClick={()=>updateMsg(m.id,"rejected")}>Reject</button>
+                      <button className="tbl-btn ed" onClick={()=>copy(m.email,"Email")}>Copy email</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ConnectModal({onClose,onConnect,user,t}:{onClose:()=>void;onConnect:(p:string,d:Record<string,string>)=>void;user:User;t:T}){
   const [tab,setTab]=useState<"TikTok"|"Facebook">("TikTok");
   const [ttu,setTtu]=useState("");const [fbId,setFbId]=useState("");const [fbTok,setFbTok]=useState("");const [busy,setBusy]=useState(false);
-  const canAdd = true;
+  const canAdd=canConnectMore(user);
   async function connect(){if(!canAdd)return;setBusy(true);if(tab==="TikTok")onConnect("TikTok",{username:ttu});else onConnect("Facebook",{liveVideoId:fbId,accessToken:fbTok});setBusy(false);onClose();}
   return(
     <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
@@ -735,7 +812,7 @@ export default function App(){
   const t=TRANSLATIONS[lang];
   function setLang(l:Lang){setLangState(l);try{localStorage.setItem("sf_lang",JSON.stringify(l));}catch{}}
 
-  const [user,setUser]=useState<User|null>(()=>{const e=LS.get<string>("sf_session","");if(!e)return null;return LS.get<User[]>("sf_users",[]).find(u=>u.email===e)||null;});
+  const [user,setUser]=useState<User|null>(()=>{const e=LS.get<string>("sf_session","");if(!e)return null;const u=LS.get<User[]>("sf_users",[]).find(u=>u.email===e)||null;return u?asAdminPlan(u):null;});
   const [settings,setSettingsState]=useState<Settings>(()=>LS.get("sf_settings",DEF_SETTINGS));
   const [page,setPage]=useState<Page>("dashboard");
   const [comments,setComments]=useState<Comment[]>([]);
@@ -746,97 +823,19 @@ export default function App(){
   const [ttOn,setTtOn]=useState(false);const [fbOn,setFbOn]=useState(false);
   const [showConn,setShowConn]=useState(false);const [showProf,setShowProf]=useState(false);
   const [printed,setPrinted]=useState<Set<number>>(new Set());
+  const [openCommentMenu,setOpenCommentMenu]=useState<number|null>(null);
   const [toast,setToast]=useState("");
   const feedRef=useRef<HTMLDivElement>(null);
   const today=new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"});
 
   // Check trial expiry
-  const trialExpired =
-  user &&
-  !isAdminUser(user) &&
-  user.plan === "trial" &&
-  user.planStatus === "active" &&
-  dLeft(user.planExpiry) === 0;
-
+  const trialExpired=user&&!isAdminUser(user)&&user.plan==="trial"&&user.planStatus==="active"&&dLeft(user.planExpiry)===0;
 
   useEffect(()=>{
     if(!user)return;
     const s = io(SERVER);
-
-    s.on("comment", async (d: Comment) => {
-
+    s.on("comment", (d: Comment) => {
       setComments((p) => [...p, d]);
-    
-      if (d.isBuy && d.buyerData) {
-    
-        setSelBuyer(d.buyerData);
-    
-        await saveOrderToDatabase({
-          customer_name: d.name,
-          product: d.comment,
-          total_amount: 380,
-          status: "Pending",
-        });
-        console.log("Saving customer now:", d.name);
-        setBuyers(prev => {
-          const exists = prev.find(b => b.handle === d.buyerData!.handle);
-          if (exists) {
-            const updated = prev.map(b =>
-              b.handle === d.buyerData!.handle
-                ? {
-                    ...b,
-                    orders: [...b.orders, ...d.buyerData!.orders],
-                    totalOrders: b.totalOrders + d.buyerData!.totalOrders,
-                    totalSpent: b.totalSpent + d.buyerData!.totalSpent,
-                  }
-                : b
-            );
-          
-            const selected = updated.find(b => b.handle === d.buyerData!.handle);
-            if (selected) setSelBuyer(selected);
-          
-            return updated;
-          }
-          
-          setSelBuyer(d.buyerData!);
-          return [...prev, d.buyerData!];
-        });
-
-        
-          setAllOrders(prev => {
-            const newOrders = d.buyerData!.orders.map(o => ({
-              ...o,
-              handle: d.handle,
-              name: d.name,
-              bNum: d.buyerData!.num,
-              platform: d.platform,
-              status: "New",
-              date: new Date().toISOString().slice(0, 10),
-            }));
-          
-            const next = [...prev, ...newOrders];
-            LS.set("sf_orders", next);
-            return next;
-          });
-          
-
-        
-        setTotOrd(prev => prev + d.buyerData!.totalOrders);
-        setTotRev(prev => prev + d.buyerData!.totalSpent);
-        
-
-        const customerResult = await saveCustomerToDatabase({
-          name: d.name,
-          handle: d.handle,
-          platform: d.platform,
-          total_orders: 1,
-          total_spent: 380,
-        });
-        
-       
-        
-        console.log("Customer result:", customerResult);
-      }
 
       setTimeout(() => {
         feedRef.current?.scrollTo({
@@ -844,63 +843,24 @@ export default function App(){
           behavior: "smooth",
         });
       }, 50);
+    
     });
-
-    s.on("buyers_updated", ({ buyers: b, totalOrders: to }: { buyers: Buyer[]; totalOrders: number }) => {
-      setBuyers(b);
-      setTotOrd(to);
-      setTotRev(b.reduce((sum, buyer) => sum + buyer.totalSpent, 0));
-
-      const ords = b.flatMap(buyer =>
-        buyer.orders.map(order => ({
-          ...order,
-          handle: buyer.handle,
-          name: buyer.name,
-          bNum: buyer.num,
-          platform: buyer.platform,
-          status: "New",
-          date: new Date().toISOString().slice(0, 10),
-        }))
-      );
-
-      setAllOrders(ords);
-      LS.set("sf_orders", ords);
+    s.on("buyers_updated",({buyers:b,totalOrders:to}:{buyers:Buyer[];totalOrders:number})=>{
+      setBuyers(b);setTotOrd(to);setTotRev(b.reduce((s,x)=>s+x.totalSpent,0));
+      const ords=b.flatMap(x=>x.orders.map(o=>({...o,handle:x.handle,name:x.name,bNum:x.num,platform:x.platform,status:"New",date:new Date().toISOString().slice(0,10)})));
+      setAllOrders(ords);LS.set("sf_orders",ords);
     });
-
-    s.on("platform_status", ({ platform: p, connected: c }: { platform: string; connected: boolean }) => {
-      if (p === "TikTok") setTtOn(c);
-      if (p === "Facebook") setFbOn(c);
+    s.on("platform_status",({platform:p,connected:c}:{platform:string;connected:boolean})=>{if(p==="TikTok")setTtOn(c);if(p==="Facebook")setFbOn(c);});
+    s.on("session_state",({buyers:b,totalOrders:to}:{buyers:Buyer[];totalOrders:number})=>{
+      setBuyers(b);setTotOrd(to);setTotRev(b.reduce((s,x)=>s+x.totalSpent,0));
+      const ords=b.flatMap(x=>x.orders.map(o=>({...o,handle:x.handle,name:x.name,bNum:x.num,platform:x.platform,status:"New",date:new Date().toISOString().slice(0,10)})));
+      setAllOrders(ords);LS.set("sf_orders",ords);
     });
+    return()=>{s.disconnect();};
+  },[user]);
 
-    s.on("session_state", ({ buyers: b, totalOrders: to }: { buyers: Buyer[]; totalOrders: number }) => {
-      setBuyers(b);
-      setTotOrd(to);
-      setTotRev(b.reduce((sum, buyer) => sum + buyer.totalSpent, 0));
-
-      const ords = b.flatMap(buyer =>
-        buyer.orders.map(order => ({
-          ...order,
-          handle: buyer.handle,
-          name: buyer.name,
-          bNum: buyer.num,
-          platform: buyer.platform,
-          status: "New",
-          date: new Date().toISOString().slice(0, 10),
-        }))
-      );
-
-      setAllOrders(ords);
-      LS.set("sf_orders", ords);
-    });
-
-    return () => {
-      s.disconnect();
-    };
-  }, [user]);
-
-
-  function saveUser(u:User){setUser(u);LS.set("sf_users",LS.get<User[]>("sf_users",[]).map(x=>x.email===u.email?u:x));}
-  function handleLogin(u:User){setUser(u);setPage("dashboard");}
+  function saveUser(u:User){const next=asAdminPlan(u);setUser(next);LS.set("sf_users",LS.get<User[]>("sf_users",[]).map(x=>x.email===next.email?next:x));}
+  function handleLogin(u:User){setUser(asAdminPlan(u));setPage("dashboard");}
   function handleLogout(){LS.del("sf_session");setUser(null);setComments([]);setBuyers([]);setTotOrd(0);setTotRev(0);setSelBuyer(null);}
   function handleActivate(plan:Plan,status:PlanStatus,expiry:string){
     if(!user)return;
@@ -910,6 +870,14 @@ export default function App(){
   function handleSaveProfile(p:Profile){if(!user)return;saveUser({...user,profile:p});}
   function handleSaveSettings(s:Settings){setSettingsState(s);LS.set("sf_settings",s);}
   function handleSavePw(op:string,np:string):string{if(!user)return"No user";if(user.password!==op)return t.wrong_pw;saveUser({...user,password:np});return"";}
+  function handleAdminApprove(email:string,plan:Plan){
+    const users=LS.get<User[]>("sf_users",[]);
+    const nextUsers=users.map(u=>u.email.toLowerCase()===email.toLowerCase()?{...u,plan,planStatus:"active" as PlanStatus,planExpiry:addMonths(1)}:u);
+    LS.set("sf_users",nextUsers);
+    const updated=nextUsers.find(u=>u.email.toLowerCase()===email.toLowerCase());
+    if(updated&&user?.email.toLowerCase()===email.toLowerCase())setUser(asAdminPlan(updated));
+    setToast(`${email} approved for ${plan}`);
+  }
   async function connectPlatform(platform:string,data:Record<string,string>){
     const ep=platform==="TikTok"?"/connect/tiktok":"/connect/facebook";
     const body=platform==="TikTok"?{username:data.username}:{liveVideoId:data.liveVideoId,accessToken:data.accessToken};
@@ -920,11 +888,81 @@ export default function App(){
       else{setToast(`${t.conn_success} ${platform}!`);if(user){const u={...user,connectedAccounts:[...user.connectedAccounts.filter(a=>a!==platform),platform]};saveUser(u);}}
     }catch{setToast(t.cant_reach);}
   }
+  async function createOrderFromComment(c:Comment,{print=true}:{print?:boolean}={}){
+    const existing=buyers.find(b=>b.handle===c.handle);
+    const buyerNum=existing?.num||buyers.length+1;
+    const order:LiveOrder={
+      orderNum:Date.now(),
+      item:c.comment||"Live comment order",
+      qty:1,
+      price:380,
+      total:380,
+      time:c.time||new Date().toLocaleTimeString(),
+      handle:c.handle,
+      name:c.name||c.handle,
+      bNum:buyerNum,
+      platform:c.platform,
+      status:"New",
+      date:new Date().toISOString().slice(0,10),
+    };
+    const nextBuyer:Buyer=existing
+      ? {...existing,name:c.name||existing.name,orders:[...existing.orders,order],totalOrders:existing.totalOrders+1,totalSpent:existing.totalSpent+order.total}
+      : {handle:c.handle,name:c.name||c.handle,platform:c.platform,num:buyerNum,orders:[order],totalOrders:1,totalSpent:order.total};
+
+    setBuyers(prev=>existing?prev.map(b=>b.handle===c.handle?nextBuyer:b):[...prev,nextBuyer]);
+    setSelBuyer(nextBuyer);
+    setAllOrders(prev=>{const next=[...prev,order];LS.set("sf_orders",next);return next;});
+    setTotOrd(prev=>prev+1);
+    setTotRev(prev=>prev+order.total);
+
+    await saveOrderToDatabase({
+      customer_name:c.name||c.handle,
+      product:c.comment||"Live comment order",
+      total_amount:order.total,
+      status:"Pending",
+    });
+    await saveCustomerToDatabase({
+      name:c.name||c.handle,
+      handle:c.handle,
+      platform:c.platform,
+      total_orders:1,
+      total_spent:order.total,
+    });
+
+    if(print){
+      printSlip(nextBuyer,settings.currency,user?.profile.storeName||"SellerFlow",settings.stickerSize||"100x60");
+    }
+    setToast(`Order created for ${c.name||c.handle}`);
+  }
+  function reprintLatestForComment(c:Comment){
+    const b=buyers.find(x=>x.handle===c.handle);
+    if(!b){void createOrderFromComment(c,{print:true});return;}
+    setSelBuyer(b);
+    printSlip(b,settings.currency,user?.profile.storeName||"SellerFlow",settings.stickerSize||"100x60");
+  }
+  function copyText(text:string,label:string){
+    navigator.clipboard?.writeText(text);
+    setToast(`${label} copied`);
+  }
+  function commentOrderCount(c:Comment){
+    return buyers.find(b=>b.handle===c.handle&&b.platform===c.platform)?.totalOrders||0;
+  }
+  function commentStamp(c:Comment){
+    const d=new Date(c.timestamp||Date.now());
+    const date=d.toLocaleDateString("en-GB").replace(/\//g,".");
+    const time=c.time||d.toLocaleTimeString("en-GB",{hour12:false});
+    return `${date} ${time}`;
+  }
+  function showBuyerFromComment(c:Comment){
+    const b=buyers.find(x=>x.handle===c.handle&&x.platform===c.platform);
+    if(!b){setToast("No orders yet for this buyer");return;}
+    setSelBuyer(b);
+    setPage("dashboard");
+    setToast(`Showing ${b.name}`);
+  }
   function oneClick(c:Comment,i:number){
-    if(!c.buyerData)return;
-    const b=buyers.find(x=>x.handle===c.handle)||c.buyerData;
-    setSelBuyer(b);setPrinted(p=>new Set(p).add(i));
-    if(settings.autoprint)printSlip(b,settings.currency,user?.profile.storeName||"SellerFlow",settings.stickerSize||"100x60");
+    setPrinted(p=>new Set(p).add(i));
+    void createOrderFromComment(c,{print:true});
   }
 
   if(!user)return <Auth onLogin={handleLogin} t={t} lang={lang} setLang={setLang}/>;
@@ -937,7 +975,7 @@ export default function App(){
   ];
 
   return(
-    <div className="app" onClick={()=>setShowProf(false)}>
+    <div className="app" onClick={()=>{setShowProf(false);setOpenCommentMenu(null);}}>
       {toast&&<Toast msg={toast} onDone={()=>setToast("")}/>}
       {trialExpired&&<TrialExpiredWall t={t} onUpgrade={()=>{setPage("subscription");}}/>}
 
@@ -951,6 +989,7 @@ export default function App(){
         <div className="nav-sec-lbl">{t.nav_analytics}</div>
         {navItems.slice(6).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={`nav-it ${page===id?"on":""}`}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
         <button onClick={()=>setPage("support")} className={`nav-it ${page==="support"?"on":""}`}><span className="nav-ic">💬</span><span className="nav-lb">Support</span></button>
+        {isAdminUser(user)&&<button onClick={()=>setPage("admin")} className={`nav-it ${page==="admin"?"on":""}`}><span className="nav-ic">ADMIN</span><span className="nav-lb">Admin</span></button>}
         <button onClick={()=>setPage("settings")} className={`nav-it ${page==="settings"?"on":""}`} style={{marginTop:"auto"}}><span className="nav-ic">⚙️</span><span className="nav-lb">{t.nav_settings}</span></button>
         <div className="trial-box">
           <div className="trial-row"><span className="trial-pill">{pName(user.plan,t)}</span><span className="trial-exp">{days}d {t.days_remaining}</span></div>
@@ -983,6 +1022,7 @@ export default function App(){
                 <div className="pd-row pd-cl" onClick={()=>{setPage("settings");setShowProf(false);}}><span>✏️</span><span>{t.edit_profile}</span></div>
                 <div className="pd-row pd-cl" onClick={()=>{setPage("subscription");setShowProf(false);}}><span>💎</span><span>Subscription</span></div>
                 <div className="pd-row pd-cl" onClick={()=>{setPage("support");setShowProf(false);}}><span>💬</span><span>Support</span></div>
+                {isAdminUser(user)&&<div className="pd-row pd-cl" onClick={()=>{setPage("admin");setShowProf(false);}}><span>ADMIN</span><span>Admin</span></div>}
                 <div className="pd-row pd-cl" style={{color:"#A32D2D"}} onClick={()=>{setShowProf(false);handleLogout();}}><span>🚪</span><span>{t.sign_out}</span></div>
               </div>
             )}
@@ -998,18 +1038,42 @@ export default function App(){
                 <div className="chat-hd">{t.comments_label}<span className="chat-sub">{comments.length} {t.received}</span></div>
                 <div className="chat-msgs" ref={feedRef}>
                   {comments.length===0&&<div className="feed-empty">{t.connect_prompt}</div>}
-                  {comments.map((c,i)=>(
-                    <div key={i} className={`msg-row ${c.isBuy?"buy":""}`}>
-                      {c.isBuy&&c.buyerNum?<div className="nbadge" style={{background:nc(c.buyerNum)}}>{c.buyerNum}</div>:<div style={{width:20,flexShrink:0}}/>}
-                      <Av name={c.handle} size={24}/>
-                      <div className="msg-bd">
-                        <div className="msg-nm">{c.handle}{c.buyerNum&&<span className="b-tag" style={{color:nc(c.buyerNum)}}>#{c.buyerNum}</span>}<span className={`p-tag ${c.platform.toLowerCase()}`}>{c.platform}</span></div>
-                        <div className={`msg-tx ${c.isBuy?"buy":""}`}>{c.comment}</div>
+                  {comments.map((c,i)=>{
+                    const orderCount=commentOrderCount(c);
+                    return(
+                      <div key={i} className="msg-row buy" onDoubleClick={()=>oneClick(c,i)}>
+                        <Av name={c.name||c.handle} image={c.avatar} size={48}/>
+                        <div className="msg-bd">
+                          <div className="msg-nm">
+                            <strong>{c.name||c.handle}</strong>
+                            <span className="msg-sep">-</span>
+                            <span className="msg-handle">{c.handle}</span>
+                            <span className={`p-tag ${c.platform.toLowerCase()}`}>{c.platform}</span>
+                          </div>
+                          <div className="msg-tx buy">{c.comment||"Live comment"}</div>
+                          <div className="msg-meta">
+                            <span>{commentStamp(c)}</span>
+                            <button type="button" onClick={()=>setToast("Deposit note saved for this buyer")} className="deposit-link">Add deposit +</button>
+                          </div>
+                        </div>
+                        <div className="msg-actions" onClick={e=>e.stopPropagation()}>
+                          <button className="comment-menu-btn" aria-label="Comment tools" onClick={()=>setOpenCommentMenu(openCommentMenu===i?null:i)}>...</button>
+                          {openCommentMenu===i&&(
+                            <div className="comment-menu">
+                              <button onClick={()=>{setOpenCommentMenu(null);void createOrderFromComment(c,{print:true});}}>Create order + print</button>
+                              <button onClick={()=>{setOpenCommentMenu(null);void createOrderFromComment(c,{print:false});}}>Create order only</button>
+                              <button onClick={()=>{setOpenCommentMenu(null);reprintLatestForComment(c);}}>Reprint latest slip</button>
+                              <button onClick={()=>{setOpenCommentMenu(null);showBuyerFromComment(c);}}>View buyer orders</button>
+                              <button onClick={()=>{setOpenCommentMenu(null);copyText(`@${c.handle}`,"Username");}}>Copy username</button>
+                              <button onClick={()=>{setOpenCommentMenu(null);copyText(c.comment,"Comment");}}>Copy comment</button>
+                            </div>
+                          )}
+                          <div className="order-count" title="Orders created from this buyer">🛒 <span>({orderCount})</span></div>
+                          <button className={`one-btn ${printed.has(i)?"done":""}`} onClick={()=>oneClick(c,i)}>Create</button>
+                        </div>
                       </div>
-                      <span className="msg-time">{c.time}</span>
-                      {c.isBuy&&<button className={`one-btn ${printed.has(i)?"done":""}`} onClick={()=>oneClick(c,i)} disabled={printed.has(i)}>{printed.has(i)?t.btn_printed:t.btn_1click}</button>}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
               <div className="stats-row">
@@ -1088,10 +1152,12 @@ export default function App(){
         {page==="orders"&&<Orders orders={allOrders} setOrders={setAllOrders} cur={settings.currency} t={t}/>}
         {page==="products"&&<Products cur={settings.currency} t={t}/>}
         {page==="customers"&&<Customers buyers={buyers} cur={settings.currency} t={t}/>}
-        {page==="customers"&&<Customers buyers={dbCustomers} cur={settings.currency} t={t}/>}        {page==="sales"&&<Sales orders={allOrders} buyers={buyers} cur={settings.currency} t={t}/>}
+        {page==="print"&&<PrintPage buyers={buyers} cur={settings.currency} storeName={user.profile.storeName||"SellerFlow"} settings={settings} t={t}/>}
+        {page==="sales"&&<Sales orders={allOrders} buyers={buyers} cur={settings.currency} t={t}/>}
         {page==="settings"&&<SettingsPage user={user} settings={settings} onSaveProfile={handleSaveProfile} onSaveSettings={handleSaveSettings} onSavePw={handleSavePw} t={t}/>}
         {page==="subscription"&&<SubPage user={user} onActivate={handleActivate} t={t}/>}
         {page==="support"&&<Support user={user} t={t}/>}
+        {page==="admin"&&<AdminPage currentUser={user} onApprove={handleAdminApprove} t={t}/>}
       </main>
 
       {showConn&&<ConnectModal onClose={()=>setShowConn(false)} onConnect={connectPlatform} user={user} t={t}/>}
