@@ -941,6 +941,29 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
   const pendingPayments=msgs.filter(m=>m.status==="pending");
   const todayIso=new Date().toISOString().slice(0,10);
   const todayOrders=LS.get<LiveOrder[]>("sf_orders",[]).filter(o=>o.date===todayIso);
+  const allStoredOrders=LS.get<LiveOrder[]>("sf_orders",[]);
+  const dayStamp=new Date().toISOString().slice(0,10);
+
+  function exportUsers(){
+    csvDL(`sellerflow-users-${dayStamp}.csv`,["Email","Role","Plan","Plan Status","Days Left","Connected Accounts","Full Name","Store Name","Phone","TikTok","Facebook"],filteredUsers.map(u=>[
+      u.email,isAdminEmail(u.email)?"Admin":"Seller",pName(u.plan,t),u.planStatus,dLeft(u.planExpiry),u.connectedAccounts.length,u.profile.fullName,u.profile.storeName,u.profile.phone,u.profile.tiktok,u.profile.facebook
+    ]));
+  }
+  function exportPayments(){
+    csvDL(`sellerflow-payments-support-${dayStamp}.csv`,["Name","Email","Subject","Message","Proof","Status","Timestamp"],filteredMsgs.map(m=>[
+      m.name,m.email,m.subject,m.message,m.hasProof?"yes":"no",m.status,m.timestamp
+    ]));
+  }
+  function exportAudit(){
+    csvDL(`sellerflow-audit-log-${dayStamp}.csv`,["Time","Admin","Action","Target","Details"],filteredAuditLogs.map(log=>[
+      log.timestamp,log.actorEmail,log.action,log.targetEmail,log.details
+    ]));
+  }
+  function exportOrders(){
+    csvDL(`sellerflow-orders-${dayStamp}.csv`,["Order","Buyer #","Name","Username","Item","Qty","Price","Total","Platform","Status","Date","Time"],allStoredOrders.map(o=>[
+      `#SF${o.orderNum}`,o.bNum,o.name,o.handle,o.item,o.qty,o.price,o.total,o.platform,o.status,o.date,o.time
+    ]));
+  }
 
   if(!isAdminUser(currentUser)){
     return <div className="subpage"><div className="auth-err">Admin only.</div></div>;
@@ -961,6 +984,13 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
         <span className="admin-search-ic">⌕</span>
         <input value={adminSearch} onChange={e=>setAdminSearch(e.target.value)} placeholder="Search users, payments, audit log"/>
         {adminSearch&&<button className="admin-search-clear" onClick={()=>setAdminSearch("")}>Clear</button>}
+      </div>
+
+      <div className="admin-exportbar">
+        <button className="btn-out" onClick={exportUsers}>Export Users CSV</button>
+        <button className="btn-out" onClick={exportPayments}>Export Payments CSV</button>
+        <button className="btn-out" onClick={exportAudit}>Export Audit CSV</button>
+        <button className="btn-out" onClick={exportOrders}>Export Orders CSV</button>
       </div>
 
       <div className="grid4 admin-summary-grid">
