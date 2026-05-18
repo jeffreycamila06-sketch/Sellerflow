@@ -742,10 +742,10 @@ function Products({cur,t}:{cur:string;t:T}){
 // ═══════════════════════════════════════════════════════════════════
 // ORDERS
 // ═══════════════════════════════════════════════════════════════════
-function Orders({orders,setOrders,cur,t}:{orders:LiveOrder[];setOrders:(o:LiveOrder[])=>void;cur:string;t:T}){
+function Orders({orders,setOrders,onPersist,cur,t}:{orders:LiveOrder[];setOrders:(o:LiveOrder[])=>void;onPersist?:(orders:LiveOrder[])=>void;cur:string;t:T}){
   const [filt,setFilt]=useState("all");const [q,setQ]=useState("");
   const filtered=orders.filter(o=>(filt==="all"||o.status.toLowerCase()===filt)&&(o.handle.includes(q)||o.item.toLowerCase().includes(q.toLowerCase())||o.name.toLowerCase().includes(q.toLowerCase())));
-  const upStat=(i:number,s:string)=>{const u=orders.map((o,idx)=>idx===i?{...o,status:s}:o);setOrders(u);LS.set("sf_orders",u);};
+  const upStat=(i:number,s:string)=>{const u=orders.map((o,idx)=>idx===i?{...o,status:s}:o);setOrders(u);onPersist?.(u);};
   const c={all:orders.length,new:orders.filter(o=>o.status==="New").length,printed:orders.filter(o=>o.status==="Printed").length,waiting:orders.filter(o=>o.status==="Waiting").length};
   return(
     <div className="subpage">
@@ -1362,7 +1362,7 @@ function Support({user,t}:{user:User;t:T}){
 // ═══════════════════════════════════════════════════════════════════
 // CONNECT MODAL
 // ═══════════════════════════════════════════════════════════════════
-function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:string,plan:Plan)=>void;t:T}){
+function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:(email:string,plan:Plan)=>void;orders:LiveOrder[];t:T}){
   const [users,setUsers]=useState<User[]>(()=>cleanUsers(arrLS<unknown>("sf_users")));
   const [msgs,setMsgs]=useState<SupportMsg[]>(()=>arrLS<SupportMsg>("sf_support"));
   const [auditLogs,setAuditLogs]=useState<AccountAuditLog[]>(()=>arrLS<AccountAuditLog>("sf_audit_logs"));
@@ -1687,8 +1687,8 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
   const expiringSoonSellers=planMonitorUsers.filter(u=>u.planStatus!=="expired"&&dLeft(u.planExpiry)>0);
   const pendingPayments=msgs.filter(m=>m.status==="pending");
   const todayIso=new Date().toISOString().slice(0,10);
-  const todayOrders=LS.get<LiveOrder[]>("sf_orders",[]).filter(o=>o.date===todayIso);
-  const allStoredOrders=LS.get<LiveOrder[]>("sf_orders",[]);
+  const todayOrders=orders.filter(o=>o.date===todayIso);
+  const allStoredOrders=orders;
   const dayStamp=new Date().toISOString().slice(0,10);
   const expandedTitles={"":"Admin",overview:"Overview",create:"Create Seller",users:"Users",payments:"Payment / Support"};
 
@@ -2094,32 +2094,34 @@ export default function App(){
   const initialSellerEmail=LS.get<string>("sf_session","");
   const [comments,setComments]=useState<Comment[]>(()=>sortCommentsNewest(cleanComments(LS.get<unknown[]>(sellerDataKey("sf_comments",initialSellerEmail),[]))).slice(0,LIVE_COMMENT_LIMIT));
   const [archivedComments,setArchivedComments]=useState<Comment[]>(()=>sortCommentsNewest(cleanComments(LS.get<unknown[]>(sellerDataKey("sf_comment_archive",initialSellerEmail),[]))).slice(0,COMMENT_ARCHIVE_LIMIT));
-  const [buyers,setBuyers]=useState<Buyer[]>(()=>arrLS<Buyer>("sf_buyers"));
-  const [allOrders,setAllOrders]=useState<LiveOrder[]>(()=>arrLS<LiveOrder>("sf_orders"));
+  const [buyers,setBuyers]=useState<Buyer[]>(()=>arrLS<Buyer>(sellerDataKey("sf_buyers",initialSellerEmail)));
+  const [allOrders,setAllOrders]=useState<LiveOrder[]>(()=>arrLS<LiveOrder>(sellerDataKey("sf_orders",initialSellerEmail)));
   const [selBuyer,setSelBuyer]=useState<Buyer|null>(null);
   const [totOrd,setTotOrd]=useState(()=>{
-    const storedOrders=arrLS<LiveOrder>("sf_orders");
-    return storedOrders.length||arrLS<Buyer>("sf_buyers").reduce((s,b)=>s+b.totalOrders,0);
+    const storedOrders=arrLS<LiveOrder>(sellerDataKey("sf_orders",initialSellerEmail));
+    return storedOrders.length||arrLS<Buyer>(sellerDataKey("sf_buyers",initialSellerEmail)).reduce((s,b)=>s+b.totalOrders,0);
   });
   const [totRev,setTotRev]=useState(()=>{
-    const storedOrders=arrLS<LiveOrder>("sf_orders");
-    return storedOrders.length?storedOrders.reduce((s,o)=>s+o.total,0):arrLS<Buyer>("sf_buyers").reduce((s,b)=>s+b.totalSpent,0);
+    const storedOrders=arrLS<LiveOrder>(sellerDataKey("sf_orders",initialSellerEmail));
+    return storedOrders.length?storedOrders.reduce((s,o)=>s+o.total,0):arrLS<Buyer>(sellerDataKey("sf_buyers",initialSellerEmail)).reduce((s,b)=>s+b.totalSpent,0);
   });
   const [ttOn,setTtOn]=useState(false);const [fbOn,setFbOn]=useState(false);
   const [activeLiveAccounts,setActiveLiveAccounts]=useState<{TikTok:string;Facebook:string}>({TikTok:"",Facebook:""});
   const activeLiveAccountsRef=useRef(activeLiveAccounts);
   const [showConn,setShowConn]=useState(false);const [showProf,setShowProf]=useState(false);
   const [connectTab,setConnectTab]=useState<"TikTok"|"Facebook">("TikTok");
-  const [printed,setPrinted]=useState<Set<string>>(new Set());
+  const [printed,setPrinted]=useState<Set<string>>(()=>new Set(arrLS<string>(sellerDataKey("sf_printed",initialSellerEmail))));
   const [openCommentMenu,setOpenCommentMenu]=useState<number|null>(null);
   const [supportUnreadCount,setSupportUnreadCount]=useState(0);
   const [toast,setToast]=useState("");
   const feedRef=useRef<HTMLDivElement>(null);
   const today=new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"});
   useEffect(()=>{activeLiveAccountsRef.current=activeLiveAccounts;},[activeLiveAccounts]);
+  const sellerMemoryEmail=()=>user?.email||initialSellerEmail;
+  const sellerMemoryKey=(base:string)=>sellerDataKey(base,sellerMemoryEmail());
   function saveBuyerMemory(next:Buyer[]){
     setBuyers(next);
-    LS.set("sf_buyers",next);
+    LS.set(sellerMemoryKey("sf_buyers"),next);
     setTotOrd(next.reduce((s,b)=>s+b.totalOrders,0));
     setTotRev(next.reduce((s,b)=>s+b.totalSpent,0));
   }
@@ -2154,8 +2156,19 @@ export default function App(){
     if(!user)return;
     const commentsKey=sellerDataKey("sf_comments",user.email);
     const archiveKey=sellerDataKey("sf_comment_archive",user.email);
+    const buyerKey=sellerDataKey("sf_buyers",user.email);
+    const orderKey=sellerDataKey("sf_orders",user.email);
+    const printedKey=sellerDataKey("sf_printed",user.email);
+    const nextBuyers=arrLS<Buyer>(buyerKey);
+    const nextOrders=arrLS<LiveOrder>(orderKey);
     setComments(sortCommentsNewest(cleanComments(LS.get<unknown[]>(commentsKey,[]))).slice(0,LIVE_COMMENT_LIMIT));
     setArchivedComments(sortCommentsNewest(cleanComments(LS.get<unknown[]>(archiveKey,[]))).slice(0,COMMENT_ARCHIVE_LIMIT));
+    setBuyers(nextBuyers);
+    setAllOrders(nextOrders);
+    setPrinted(new Set(arrLS<string>(printedKey)));
+    setSelBuyer(null);
+    setTotOrd(nextOrders.length||nextBuyers.reduce((s,b)=>s+b.totalOrders,0));
+    setTotRev(nextOrders.length?nextOrders.reduce((s,o)=>s+o.total,0):nextBuyers.reduce((s,b)=>s+b.totalSpent,0));
   },[user?.email]);
 
   useEffect(()=>{
@@ -2195,7 +2208,7 @@ export default function App(){
     s.on("buyers_updated",({buyers:b,totalOrders:to}:{buyers:Buyer[];totalOrders:number})=>{
       saveBuyerMemory(b);setTotOrd(to);
       const ords=b.flatMap(x=>x.orders.map(o=>({...o,handle:x.handle,name:x.name,bNum:x.num,platform:x.platform,status:"New",date:new Date().toISOString().slice(0,10)})));
-      setAllOrders(ords);LS.set("sf_orders",ords);
+      setAllOrders(ords);LS.set(sellerDataKey("sf_orders",user.email),ords);
     });
     s.on("platform_status",({platform:p,connected:c,sellerId:eventSellerId,username}:{platform:string;connected:boolean;sellerId?:string;username?:string})=>{
       if(eventSellerId&&eventSellerId!==sellerId)return;
@@ -2210,7 +2223,7 @@ export default function App(){
       if(!b.length&&!to)return;
       saveBuyerMemory(b);setTotOrd(to);
       const ords=b.flatMap(x=>x.orders.map(o=>({...o,handle:x.handle,name:x.name,bNum:x.num,platform:x.platform,status:"New",date:new Date().toISOString().slice(0,10)})));
-      setAllOrders(ords);LS.set("sf_orders",ords);
+      setAllOrders(ords);LS.set(sellerDataKey("sf_orders",user.email),ords);
     });
     return()=>{s.disconnect();};
   },[user?.email]);
@@ -2261,18 +2274,20 @@ export default function App(){
     void upsertUser(next);
   }
   function handleLogin(u:User){const safe=safeUser(u);if(safe){setUser(asAdminPlan(safe));setPage("dashboard");}}
-  function handleLogout(){LS.del("sf_session");setUser(null);setComments([]);setBuyers([]);setTotOrd(0);setTotRev(0);setSelBuyer(null);}
+  function handleLogout(){LS.del("sf_session");setUser(null);setComments([]);setBuyers([]);setAllOrders([]);setPrinted(new Set());setTotOrd(0);setTotRev(0);setSelBuyer(null);}
   async function handleDeleteAccount(){
     if(!user)return;
     const email=user.email;
     await deleteSupportMessagesForEmail(email);
     await deleteUser(email);
-    ["sf_session","sf_comments","sf_comment_archive","sf_buyers","sf_orders",sellerDataKey("sf_comments",email),sellerDataKey("sf_comment_archive",email),supportReadKey(email)].forEach(k=>LS.del(k));
+    ["sf_session","sf_comments","sf_comment_archive","sf_buyers","sf_orders",sellerDataKey("sf_comments",email),sellerDataKey("sf_comment_archive",email),sellerDataKey("sf_buyers",email),sellerDataKey("sf_orders",email),sellerDataKey("sf_printed",email),supportReadKey(email)].forEach(k=>LS.del(k));
     setShowProf(false);
     setPage("dashboard");
     setUser(null);
     setComments([]);
     setBuyers([]);
+    setAllOrders([]);
+    setPrinted(new Set());
     setTotOrd(0);
     setTotRev(0);
     setSelBuyer(null);
@@ -2354,7 +2369,7 @@ export default function App(){
     const nextBuyers=existing?buyers.map(b=>b.handle===c.handle?nextBuyer:b):[...buyers,nextBuyer];
     saveBuyerMemory(nextBuyers);
     setSelBuyer(nextBuyer);
-    setAllOrders(prev=>{const next=[...prev,order];LS.set("sf_orders",next);return next;});
+    setAllOrders(prev=>{const next=[...prev,order];LS.set(sellerMemoryKey("sf_orders"),next);return next;});
 
     await saveOrderToDatabase({
       customer_name:c.name||c.handle,
@@ -2407,7 +2422,12 @@ export default function App(){
     setToast(`Showing ${b.name}`);
   }
   function oneClick(c:Comment){
-    setPrinted(p=>new Set(p).add(commentKey(c)));
+    setPrinted(p=>{
+      const next=new Set(p);
+      next.add(commentKey(c));
+      LS.set(sellerMemoryKey("sf_printed"),Array.from(next));
+      return next;
+    });
     void createOrderFromComment(c,{print:true});
   }
 
@@ -2635,7 +2655,7 @@ export default function App(){
           </div>
         )}
 
-        {page==="orders"&&<Orders orders={allOrders} setOrders={setAllOrders} cur={settings.currency} t={t}/>}
+        {page==="orders"&&<Orders orders={allOrders} setOrders={setAllOrders} onPersist={orders=>LS.set(sellerMemoryKey("sf_orders"),orders)} cur={settings.currency} t={t}/>}
         {page==="products"&&<Products cur={settings.currency} t={t}/>}
         {page==="customers"&&<><Customers buyers={buyers} cur={settings.currency} t={t}/><CommentArchive comments={archivedComments}/></>}
         {page==="print"&&<PrintPage buyers={buyers} cur={settings.currency} storeName={user.profile.storeName||"SellerFlow"} settings={settings} t={t}/>}
@@ -2643,7 +2663,7 @@ export default function App(){
         {page==="settings"&&<SettingsPage user={user} settings={settings} onSaveProfile={handleSaveProfile} onSaveSettings={handleSaveSettings} onSavePw={handleSavePw} t={t}/>}
         {page==="subscription"&&<SubPage user={user} onActivate={handleActivate} t={t}/>}
         {page==="support"&&<Support user={user} t={t}/>}
-        {page==="admin"&&<AdminPage currentUser={user} onApprove={handleAdminApprove} t={t}/>}
+        {page==="admin"&&<AdminPage currentUser={user} onApprove={handleAdminApprove} orders={allOrders} t={t}/>}
         {page==="privacy"&&<LegalPage kind="privacy" onBack={()=>setPage("settings")}/>}
         {page==="terms"&&<LegalPage kind="terms" onBack={()=>setPage("settings")}/>}
         {page==="deleteAccount"&&<DeleteAccountPage user={user} onDelete={handleDeleteAccount} onCancel={()=>setPage("settings")}/>}
