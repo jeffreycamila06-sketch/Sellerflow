@@ -1028,6 +1028,22 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
   );
   function saveProf(e:React.FormEvent){e.preventDefault();onSaveProfile(prof);setToast(t.profile_saved);}
   function saveSets(e:React.FormEvent){e.preventDefault();onSaveSettings(sets);setToast(t.settings_saved);}
+  function testPrinter(){
+    const testBuyer:Buyer={
+      handle:"sellerflow_test",
+      name:"Test Buyer",
+      platform:"TikTok",
+      num:1,
+      totalOrders:2,
+      totalSpent:1240,
+      orders:[
+        {orderNum:1001,item:"Sample item",qty:1,price:620,total:620,time:new Date().toLocaleTimeString(),handle:"sellerflow_test",name:"Test Buyer",bNum:1,platform:"TikTok",status:"New",date:new Date().toISOString().slice(0,10)},
+        {orderNum:1002,item:"Printer check",qty:1,price:620,total:620,time:new Date().toLocaleTimeString(),handle:"sellerflow_test",name:"Test Buyer",bNum:1,platform:"TikTok",status:"New",date:new Date().toISOString().slice(0,10)},
+      ],
+    };
+    printSlip(testBuyer,sets.currency,user.profile.storeName||"SellerFlow",sets);
+    setToast("Printer test sent");
+  }
   function savePw(e:React.FormEvent){
     e.preventDefault();setPwErr("");
     if(np.length<6){setPwErr(t.pw_short);return;}
@@ -1111,6 +1127,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
               <Badge label={directPrintMode?"Ready":"Shortcut needed"} color={directPrintMode?"green":"amber"}/>
             </div>
             <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat?v=4" download>Printer Shortcut</a>
+            <button type="button" className="printer-test-btn" onClick={testPrinter}>Printer Test</button>
             <div className="printer-troubleshoot">
               <strong>Quick setup</strong>
               <ol>
