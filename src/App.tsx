@@ -148,6 +148,12 @@ const csvDL=(filename:string,headers:string[],rows:(string|number)[][])=>{
   const csv=[headers,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download=filename;a.click();
 };
+const jsonDL=(filename:string,data:unknown)=>{
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:"application/json"}));
+  a.download=filename;
+  a.click();
+};
 
 function Av({name,size=32,image}:{name:string;size?:number;image?:string}){
   return <div style={{width:size,height:size,borderRadius:"50%",background:abg(name),color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:size*0.32,fontWeight:600,flexShrink:0,overflow:"hidden"}}>
@@ -966,7 +972,7 @@ function Sales({orders,buyers,cur,t}:{orders:LiveOrder[];buyers:Buyer[];cur:stri
 // ═══════════════════════════════════════════════════════════════════
 // SETTINGS
 // ═══════════════════════════════════════════════════════════════════
-function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{user:User;settings:Settings;onSaveProfile:(p:Profile)=>void;onSaveSettings:(s:Settings)=>void;onSavePw:(o:string,n:string)=>string;t:T}){
+function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExportBackup,onClearLiveComments,t}:{user:User;settings:Settings;onSaveProfile:(p:Profile)=>void;onSaveSettings:(s:Settings)=>void;onSavePw:(o:string,n:string)=>string;onExportBackup:()=>void;onClearLiveComments:()=>void;t:T}){
   const [prof,setProf]=useState<Profile>({...user.profile});
   const [sets,setSets]=useState<Settings>({...settings});
   const [op,setOp]=useState("");const [np,setNp]=useState("");const [cp,setCp]=useState("");
@@ -1158,6 +1164,12 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
           {([["autoprint",t.auto_print],["soundAlert",t.sound_alert],["stockAlert",t.stock_alert],["dailyEmail",t.daily_email]] as [keyof Settings,string][]).map(([k,label])=>(
             <div key={k} className="tog-row"><span>{label}</span><div onClick={()=>setSets(s=>({...s,[k]:!s[k]}))} className={`tog ${sets[k]?"on":""}`}/></div>
           ))}
+          <div className="scard-title" style={{marginTop:10}}>Backup & recovery</div>
+          <div className="backup-actions">
+            <button type="button" className="btn-out" onClick={onExportBackup}>Export Seller Backup</button>
+            <button type="button" className="btn-out danger-lite" onClick={onClearLiveComments}>Clear Live Comments Only</button>
+          </div>
+          <div className="backup-note">Clear live comments keeps orders, customers, sales, and comment history archive.</div>
           <button type="submit" className="btn-purple" style={{marginTop:6}}>{t.save_settings}</button>
         </form>
         <form onSubmit={saveSets} className="scard settings-section settings-section-printer">
@@ -1788,6 +1800,23 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
       `#SF${o.orderNum}`,o.bNum,o.name,o.handle,o.item,o.qty,o.price,o.total,o.platform,o.status,o.date,o.time
     ]));
   }
+  function exportAdminBackup(){
+    jsonDL(`sellerflow-admin-backup-${dayStamp}.json`,{
+      exportedAt:new Date().toISOString(),
+      owner:OWNER_EMAIL,
+      users,
+      supportMessages:msgs,
+      auditLogs,
+      orders:allStoredOrders,
+      summary:{
+        sellers:sellerUsers.length,
+        active:activeSellers.length,
+        expired:expiredSellers.length,
+        pendingPayments:pendingPayments.length,
+        todayOrders:todayOrders.length,
+      },
+    });
+  }
 
   if(!isAdminUser(currentUser)){
     return <div className="subpage"><div className="auth-err">Admin only.</div></div>;
@@ -1822,6 +1851,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
         <button className="btn-out" onClick={exportPayments}>Export Payments CSV</button>
         <button className="btn-out" onClick={exportAudit}>Export Audit CSV</button>
         <button className="btn-out" onClick={exportOrders}>Export Orders CSV</button>
+        <button className="btn-out" onClick={exportAdminBackup}>Export Admin Backup</button>
       </div>
 
       <div className="admin-quick-grid">
@@ -2222,6 +2252,27 @@ export default function App(){
     archiveComments(cleanComments(LS.get<unknown[]>(commentsKey,[])));
     setComments([]);
     LS.set(commentsKey,[]);
+  }
+  function exportSellerBackup(){
+    if(!user)return;
+    const email=user.email;
+    jsonDL(`sellerflow-backup-${email}-${new Date().toISOString().slice(0,10)}.json`,{
+      exportedAt:new Date().toISOString(),
+      user,
+      settings,
+      liveComments:comments,
+      commentArchive:archivedComments,
+      buyers,
+      orders:allOrders,
+      printedCommentKeys:Array.from(printed),
+      totals:{orders:totOrd,revenue:totRev},
+    });
+    setToast("Seller backup exported");
+  }
+  function clearLiveCommentsOnly(){
+    if(!window.confirm("Clear live comments only? Orders, customers, sales, and history archive will stay saved."))return;
+    clearLiveCommentMemory();
+    setToast("Live comments cleared");
   }
 
   // Check trial expiry
@@ -2738,7 +2789,7 @@ export default function App(){
         {page==="customers"&&<><Customers buyers={buyers} cur={settings.currency} t={t}/><CommentArchive comments={archivedComments}/></>}
         {page==="print"&&<PrintPage buyers={buyers} cur={settings.currency} storeName={user.profile.storeName||"SellerFlow"} settings={settings} t={t}/>}
         {page==="sales"&&<Sales orders={allOrders} buyers={buyers} cur={settings.currency} t={t}/>}
-        {page==="settings"&&<SettingsPage user={user} settings={settings} onSaveProfile={handleSaveProfile} onSaveSettings={handleSaveSettings} onSavePw={handleSavePw} t={t}/>}
+        {page==="settings"&&<SettingsPage user={user} settings={settings} onSaveProfile={handleSaveProfile} onSaveSettings={handleSaveSettings} onSavePw={handleSavePw} onExportBackup={exportSellerBackup} onClearLiveComments={clearLiveCommentsOnly} t={t}/>}
         {page==="subscription"&&<SubPage user={user} onActivate={handleActivate} t={t}/>}
         {page==="support"&&<Support user={user} t={t}/>}
         {page==="admin"&&<AdminPage currentUser={user} onApprove={handleAdminApprove} orders={allOrders} t={t}/>}
