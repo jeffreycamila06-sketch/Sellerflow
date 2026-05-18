@@ -2255,7 +2255,7 @@ export default function App(){
                 <div className="chat-hd">{t.comments_label}<span className="chat-sub">{comments.length} {t.received}</span></div>
                 <div className="chat-msgs" ref={feedRef}>
                   {comments.length===0&&<div className="feed-empty">{t.connect_prompt}</div>}
-                  {comments.map((c)=>{
+                  {comments.map((c,i)=>{
                     const orderCount=commentOrderCount(c);
                     return(
                       <div key={commentKey(c)} className="msg-row buy" onDoubleClick={()=>oneClick(c)}>
