@@ -500,6 +500,12 @@ function SubPage({user,onActivate,t}:{user:User;onActivate:(plan:Plan,status:Pla
       setShowPay(true);
     }
   }
+  const minimalPlanFeatures=(plan:Plan)=>{
+    if(plan==="trial")return ["1 TikTok or Facebook page","Unlimited orders","Live comment feed","1-click printing"];
+    if(plan==="basic")return ["1 TikTok or Facebook page","Unlimited orders","Live comment feed","Customer list"];
+    if(plan==="pro")return ["Up to 3 channels","Unlimited orders","Multi-platform dashboard","Advanced analytics"];
+    return ["Up to 5 channels","Unlimited orders","Team access","Priority support"];
+  };
 
   return(
     <div className="subpage">
@@ -515,8 +521,9 @@ function SubPage({user,onActivate,t}:{user:User;onActivate:(plan:Plan,status:Pla
             <div className="plan-name">{p.name}</div>
             <div className="plan-price"><span className="plan-amt">{p.price}</span><span className="plan-period">{p.period}</span></div>
             <div className="plan-acc" style={{color:p.color}}>{p.acc}</div>
-            <div className="plan-desc">{p.desc}</div>
+            <div className="plan-desc minimal"></div>
             <div className="plan-feats">{p.features.map(f=><div key={f} className="plan-feat"><span style={{color:p.color}}>✓</span> {f}</div>)}</div>
+            <div className="plan-feats minimal">{minimalPlanFeatures(p.id).map(f=><div key={f} className="plan-feat"><span style={{color:p.color}}>✓</span> {f}</div>)}</div>
             <div className="plan-sel-btn" style={sel===p.id&&user.plan!==p.id?{background:p.color,borderColor:p.color,color:"#fff"}:{borderColor:p.color,color:p.color}}>
               {user.plan===p.id?t.plan_current:sel===p.id?t.plan_selected:t.plan_select}
             </div>
