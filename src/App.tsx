@@ -1975,6 +1975,10 @@ export default function App(){
     setTotOrd(next.reduce((s,b)=>s+b.totalOrders,0));
     setTotRev(next.reduce((s,b)=>s+b.totalSpent,0));
   }
+  function clearLiveCommentMemory(){
+    setComments([]);
+    LS.set("sf_comments",[]);
+  }
 
   // Check trial expiry
   const accountLocked=!!user&&!isAdminUser(user)&&(user.planStatus==="expired"||dLeft(user.planExpiry)===0);
@@ -2007,6 +2011,8 @@ export default function App(){
       setAllOrders(ords);LS.set("sf_orders",ords);
     });
     s.on("platform_status",({platform:p,connected:c}:{platform:string;connected:boolean})=>{if(p==="TikTok")setTtOn(c);if(p==="Facebook")setFbOn(c);});
+    s.on("live_session_started",clearLiveCommentMemory);
+    s.on("live_session_ended",clearLiveCommentMemory);
     s.on("session_state",({buyers:b,totalOrders:to}:{buyers:Buyer[];totalOrders:number})=>{
       if(!b.length&&!to)return;
       saveBuyerMemory(b);setTotOrd(to);

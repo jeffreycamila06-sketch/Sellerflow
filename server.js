@@ -63,6 +63,26 @@ async function connectTikTok(username, res) {
       platform: "TikTok",
       connected: true,
     });
+    io.emit("live_session_started", {
+      platform: "TikTok",
+      username,
+      timestamp: new Date().toISOString(),
+    });
+
+    const markTikTokDisconnected = () => {
+      io.emit("platform_status", {
+        platform: "TikTok",
+        connected: false,
+      });
+      io.emit("live_session_ended", {
+        platform: "TikTok",
+        username,
+        timestamp: new Date().toISOString(),
+      });
+    };
+
+    tiktokConnection.on("disconnected", markTikTokDisconnected);
+    tiktokConnection.on("streamEnd", markTikTokDisconnected);
 
     tiktokConnection.on("chat", (data) => {
       const comment = data.comment || "";
