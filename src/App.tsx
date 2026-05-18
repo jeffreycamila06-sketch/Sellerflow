@@ -985,6 +985,17 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
   const totalPreview=previewScale(sets.printTotalScale,sets.printLabelScale);
   const previewMove=(x:number|undefined,y:number|undefined)=>({transform:`translate(${(x||0)*1.8}px,${(y||0)*1.8}px)`});
   const stepSetting=(key:NumberSettingKey,delta:number)=>setSets(s=>({...s,[key]:Math.max(-40,Math.min(40,Number(s[key]||0)+delta))}));
+  const stepSize=(key:NumberSettingKey,delta:number)=>setSets(s=>({...s,[key]:Math.max(60,Math.min(180,Number(s[key]||100)+delta))}));
+  const sizeStep=(key:NumberSettingKey,label:string)=>(
+    <div key={key} className="position-step-row">
+      <span>{label}</span>
+      <div className="position-step-controls">
+        <button type="button" onClick={()=>stepSize(key,-5)}>-</button>
+        <b>{Number(sets[key]||100)}%</b>
+        <button type="button" onClick={()=>stepSize(key,5)}>+</button>
+      </div>
+    </div>
+  );
   const positionStep=(key:NumberSettingKey,label:string)=>(
     <div key={key} className="position-step-row">
       <span>{label}</span>
@@ -1219,11 +1230,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
             ["printUsernameScale","TikTok / username"],
             ["printOrderScale","Order items"],
             ["printTotalScale","Total amount"],
-          ] as [NumberSettingKey,string][]).map(([k,label])=>(
-            <Fg key={k} label={`${label} size (${Number(sets[k]||100)}%)`}>
-              <input type="range" min="60" max="180" step="5" value={Number(sets[k]||100)} onChange={e=>setSets(s=>({...s,[k]:Number(e.target.value)}))}/>
-            </Fg>
-          ))}
+          ] as [NumberSettingKey,string][]).map(([k,label])=>sizeStep(k,`${label} size`))}
           <div className="scard-title" style={{marginTop:10}}>Label position tools</div>
           <div className="position-step-grid">
             {([
