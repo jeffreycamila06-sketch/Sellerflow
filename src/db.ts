@@ -25,11 +25,9 @@ export async function saveOrderToDatabase(order: {
 
   if (error) {
     console.error("Supabase save order error:", error.message);
-    alert("Database error: " + error.message);
     return { success: false, error };
   }
 
-  console.log("Order saved to Supabase:", data);
   return { success: true, data };
 }
 
@@ -75,7 +73,6 @@ export async function saveCustomerToDatabase(customer: {
       return { success: false, error };
     }
 
-    console.log("Customer updated in Supabase:", data);
     return { success: true, data };
   }
 
@@ -101,11 +98,9 @@ export async function saveCustomerToDatabase(customer: {
     }
 
     console.error("Supabase save customer error:", error.message);
-    alert("Customer DB error: " + error.message);
     return { success: false, error };
   }
 
-  console.log("Customer saved to Supabase:", data);
   return { success: true, data };
 }
 

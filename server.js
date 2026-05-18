@@ -89,53 +89,17 @@ async function connectTikTok(username, res) {
       const name = data.nickname || data.uniqueId || "Unknown";
       const handle = data.uniqueId || "unknown";
 
-      console.log(`${name}: ${comment}`);
-
-      const keywords = ["mine", "buy", "order", "gusto", "bibilhin", "我要"];
-      const isBuy = keywords.some((word) =>
-        comment.toLowerCase().includes(word.toLowerCase())
-      );
-
       io.emit("comment", {
         handle,
         name,
         comment,
         platform: "TikTok",
-        isBuy,
-        buyerNum: isBuy ? 1 : null,
-        buyerData: isBuy
-          ? {
-              handle,
-              name,
-              platform: "TikTok",
-              num: 1,
-              totalSpent: 380,
-              totalOrders: 1,
-              orders: [
-                {
-                  orderNum: Date.now(),
-                  item: comment,
-                  qty: 1,
-                  price: 380,
-                  total: 380,
-                  time: new Date().toLocaleTimeString(),
-                  handle,
-                  name,
-                  bNum: 1,
-                  platform: "TikTok",
-                  status: "New",
-                  date: new Date().toISOString().slice(0, 10),
-                },
-              ],
-            }
-          : null,
+        isBuy: false,
+        buyerNum: null,
+        buyerData: null,
         time: new Date().toLocaleTimeString(),
         timestamp: new Date().toISOString(),
       });
-
-      if (isBuy) {
-        console.log("ORDER DETECTED 🚀");
-      }
     });
 
     return res.json({
@@ -160,40 +124,16 @@ app.get("/test-comment", (req, res) => {
     });
   }
 
-  console.log("Maria Reyes: mine blue blouse");
-  console.log("ORDER DETECTED 🚀");
+  console.log("Maria Reyes: test live comment");
 
   io.emit("comment", {
     handle: "maria_reyes",
     name: "Maria Reyes",
-    comment: "mine blue blouse",
+    comment: "test live comment",
     platform: "TikTok",
-    isBuy: true,
-    buyerNum: 1,
-    buyerData: {
-      handle: "maria_reyes",
-      name: "Maria Reyes",
-      platform: "TikTok",
-      num: 1,
-      totalSpent: 380,
-      totalOrders: 1,
-      orders: [
-        {
-          orderNum: Date.now(),
-          item: "Blue Blouse",
-          qty: 1,
-          price: 380,
-          total: 380,
-          time: new Date().toLocaleTimeString(),
-          handle: "maria_reyes",
-          name: "Maria Reyes",
-          bNum: 1,
-          platform: "TikTok",
-          status: "New",
-          date: new Date().toISOString().slice(0, 10),
-        },
-      ],
-    },
+    isBuy: false,
+    buyerNum: null,
+    buyerData: null,
     time: new Date().toLocaleTimeString(),
     timestamp: new Date().toISOString(),
   });
@@ -201,7 +141,7 @@ app.get("/test-comment", (req, res) => {
   res.json({
     success: true,
     message: "Fake TikTok comment received",
-    comment: "mine blue blouse",
+    comment: "test live comment",
   });
 });
 

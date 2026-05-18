@@ -205,7 +205,7 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Setting
   frame.style.opacity="0";
   document.body.appendChild(frame);
   const win=frame.contentWindow;
-  if(!win){frame.remove();alert("Printer was not ready. Try again.");return;}
+  if(!win){frame.remove();console.warn("Printer was not ready. Try again.");return;}
   win.onafterprint=()=>setTimeout(()=>frame.remove(),50);
   const doc=win.document;
   doc.open();
@@ -1115,6 +1115,7 @@ function Support({user,t}:{user:User;t:T}){
   const [msg,setMsg]=useState("");
   const [file,setFile]=useState<File|null>(null);
   const [sent,setSent]=useState(false);
+  const [supportError,setSupportError]=useState("");
   const [selectedMsgId,setSelectedMsgId]=useState("");
   const [readIds,setReadIds]=useState<string[]>(()=>arrLS<string>(supportReadKey(user.email)));
   async function send(e:React.FormEvent){
@@ -1123,9 +1124,10 @@ function Support({user,t}:{user:User;t:T}){
       const proofImage=await readProofImage(file);
       const sm:SupportMsg={id:Date.now().toString(),name,email,subject,message:msg,hasProof:!!proofImage,proofImage,timestamp:new Date().toISOString(),status:"pending"};
       await saveSupportMessage(sm);
+      setSupportError("");
       setSent(true);setMsg("");setFile(null);
     }catch(error){
-      alert(`Support message was not saved to Supabase: ${error instanceof Error?error.message:"Unknown error"}`);
+      setSupportError(`Support message was not saved: ${error instanceof Error?error.message:"Unknown error"}`);
     }
   }
   const [prev,setPrev]=useState<SupportMsg[]>(()=>arrLS<SupportMsg>("sf_support").filter(m=>m.email.toLowerCase()===user.email.toLowerCase()));
@@ -1183,6 +1185,7 @@ function Support({user,t}:{user:User;t:T}){
                 <input type="file" accept="image/*" onChange={e=>setFile(e.target.files?.[0]||null)} style={{fontSize:12}}/>
                 {file&&<div className="support-proof-preview">Proof selected: {file.name}</div>}
               </Fg>
+              {supportError&&<div className="auth-err">{supportError}</div>}
               <button type="submit" className="btn-purple">{t.support_send}</button>
             </form>
           )}
