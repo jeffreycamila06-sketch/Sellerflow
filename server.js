@@ -18,7 +18,49 @@ const io = new Server(server, {
 app.use(cors());
 app.use(express.json());
 
-let tiktokConnection = null;
+const tiktokConnections = new Map();
+
+function cleanSellerId(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9@._-]/g, "");
+}
+
+function sellerRoom(sellerId) {
+  return `seller:${cleanSellerId(sellerId)}`;
+}
+
+async function disconnectTikTokForSeller(sellerId) {
+  const key = cleanSellerId(sellerId);
+  const existing = tiktokConnections.get(key);
+  if (!existing) return;
+  try {
+    await existing.connection.disconnect();
+  } catch {}
+  tiktokConnections.delete(key);
+}
+
+io.on("connection", (socket) => {
+  socket.on("join_live_room", ({ sellerId, sessionId } = {}) => {
+    const cleanId = cleanSellerId(sellerId);
+    if (!cleanId) return;
+    socket.join(sellerRoom(cleanId));
+    socket.data.sellerId = cleanId;
+    socket.data.sessionId = String(sessionId || "");
+
+    const active = tiktokConnections.get(cleanId);
+    if (active) {
+      socket.emit("platform_status", {
+        platform: "TikTok",
+        connected: true,
+        sellerId: cleanId,
+        username: active.username,
+        sessionId: active.sessionId,
+      });
+    }
+  });
+});
 
 app.get("/", (req, res) => {
   res.send("SellerFlow TikTok Server Running 🚀");
@@ -32,14 +74,20 @@ app.get("/health", (_req, res) => {
 
 
 app.get("/connect-live/:username", async (req, res) => {
-  return connectTikTok(req.params.username, res);
+  return connectTikTok(req.params.username, res, {
+    sellerId: req.query.sellerId || req.params.username,
+    sessionId: req.query.sessionId || "",
+  });
 });
 
 app.post("/connect/tiktok", async (req, res) => {
-  return connectTikTok(req.body.username, res);
+  return connectTikTok(req.body.username, res, {
+    sellerId: req.body.sellerId,
+    sessionId: req.body.sessionId,
+  });
 });
 
-async function connectTikTok(username, res) {
+async function connectTikTok(username, res, meta = {}) {
   try {
     if (!username) {
       return res.status(400).json({
@@ -48,35 +96,53 @@ async function connectTikTok(username, res) {
       });
     }
 
-    if (tiktokConnection) {
-      try {
-        await tiktokConnection.disconnect();
-      } catch {}
+    const sellerId = cleanSellerId(meta.sellerId);
+    if (!sellerId) {
+      return res.status(400).json({
+        success: false,
+        error: "Seller account is required before connecting live",
+      });
     }
 
-    tiktokConnection = new WebcastPushConnection(username);
+    await disconnectTikTokForSeller(sellerId);
+
+    const sessionId = String(meta.sessionId || "");
+    const tiktokConnection = new WebcastPushConnection(username);
     await tiktokConnection.connect();
+    tiktokConnections.set(sellerId, { connection: tiktokConnection, username, sessionId });
 
-    console.log(`Connected to TikTok LIVE: ${username}`);
+    console.log(`Connected to TikTok LIVE: ${username} for ${sellerId}`);
 
-    io.emit("platform_status", {
+    io.to(sellerRoom(sellerId)).emit("platform_status", {
       platform: "TikTok",
       connected: true,
+      sellerId,
+      username,
+      sessionId,
     });
-    io.emit("live_session_started", {
+    io.to(sellerRoom(sellerId)).emit("live_session_started", {
       platform: "TikTok",
       username,
+      sellerId,
+      sessionId,
       timestamp: new Date().toISOString(),
     });
 
     const markTikTokDisconnected = () => {
-      io.emit("platform_status", {
+      const active = tiktokConnections.get(sellerId);
+      if (active?.connection === tiktokConnection) tiktokConnections.delete(sellerId);
+      io.to(sellerRoom(sellerId)).emit("platform_status", {
         platform: "TikTok",
         connected: false,
+        sellerId,
+        username,
+        sessionId,
       });
-      io.emit("live_session_ended", {
+      io.to(sellerRoom(sellerId)).emit("live_session_ended", {
         platform: "TikTok",
         username,
+        sellerId,
+        sessionId,
         timestamp: new Date().toISOString(),
       });
     };
@@ -89,11 +155,14 @@ async function connectTikTok(username, res) {
       const name = data.nickname || data.uniqueId || "Unknown";
       const handle = data.uniqueId || "unknown";
 
-      io.emit("comment", {
+      io.to(sellerRoom(sellerId)).emit("comment", {
         handle,
         name,
         comment,
         platform: "TikTok",
+        sellerId,
+        sessionId,
+        sourceUsername: username,
         isBuy: false,
         buyerNum: null,
         buyerData: null,
@@ -131,13 +200,24 @@ app.get("/test-comment", (req, res) => {
     });
   }
 
-  console.log("Maria Reyes: test live comment");
+  const sellerId = cleanSellerId(req.query.sellerId);
+  if (!sellerId) {
+    return res.status(400).json({
+      success: false,
+      error: "sellerId is required for test comments",
+    });
+  }
 
-  io.emit("comment", {
+  console.log(`Maria Reyes: test live comment for ${sellerId}`);
+
+  io.to(sellerRoom(sellerId)).emit("comment", {
     handle: "maria_reyes",
     name: "Maria Reyes",
     comment: "test live comment",
     platform: "TikTok",
+    sellerId,
+    sessionId: String(req.query.sessionId || ""),
+    sourceUsername: "test",
     isBuy: false,
     buyerNum: null,
     buyerData: null,

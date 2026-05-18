@@ -28,7 +28,7 @@ interface Profile { fullName:string; storeName:string; phone:string; tiktok:stri
 interface User { email:string; password:string; profile:Profile; plan:Plan; planStatus:PlanStatus; planExpiry:string; connectedAccounts:string[]; }
 interface LiveOrder { orderNum:number; item:string; qty:number; price:number; total:number; time:string; handle:string; name:string; bNum:number; platform:string; status:string; date:string; }
 interface Buyer { handle:string; name:string; platform:string; num:number; orders:LiveOrder[]; totalSpent:number; totalOrders:number; }
-interface Comment { handle:string; name:string; comment:string; platform:"TikTok"|"Facebook"; isBuy:boolean; buyerNum:number|null; buyerData:Buyer|null; time:string; avatar?:string; timestamp?:string; }
+interface Comment { handle:string; name:string; comment:string; platform:"TikTok"|"Facebook"; isBuy:boolean; buyerNum:number|null; buyerData:Buyer|null; time:string; avatar?:string; timestamp?:string; sellerId?:string; sessionId?:string; sourceUsername?:string; }
 interface Product { id:number; name:string; sku:string; price:number; stock:number; platform:string; status:string; }
 interface Settings { autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"usb"|"bluetooth"; stickerSize:string; printStoreName:boolean; printBuyerNumber:boolean; printBuyerUsername:boolean; printOrderItems:boolean; printTotal:boolean; printAutoClose:boolean; printQrCode:boolean; printQrUrl:string; printQrScale:number; printLabelScale:number; printLogoScale:number; printStoreScale:number; printBuyerNumberScale:number; printBuyerNameScale:number; printUsernameScale:number; printOrderScale:number; printTotalScale:number; }
 interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; proofImage?:string; timestamp:string; status:"pending"|"approved"|"rejected"|"resolved"; adminReply?:string; repliedAt?:string; }
@@ -49,6 +49,9 @@ const normalizeComment=(raw:unknown,index=0):Comment|null=>{
     time:String(c.time||new Date().toLocaleTimeString()),
     avatar:typeof c.avatar==="string"?c.avatar:undefined,
     timestamp:typeof c.timestamp==="string"&&c.timestamp?c.timestamp:undefined,
+    sellerId:typeof c.sellerId==="string"?c.sellerId.toLowerCase():undefined,
+    sessionId:typeof c.sessionId==="string"?c.sessionId:undefined,
+    sourceUsername:typeof c.sourceUsername==="string"?c.sourceUsername:undefined,
   };
 };
 const cleanComments=(list:unknown)=>Array.isArray(list)?list.map((c,i)=>normalizeComment(c,i)).filter((c):c is Comment=>!!c):[];
@@ -62,6 +65,15 @@ const LS = {
   del:(k:string)=>{try{localStorage.removeItem(k);}catch{}},
 };
 const arrLS=<X,>(key:string):X[]=>{const value=LS.get<unknown>(key,[]);return Array.isArray(value)?value as X[]:[];};
+const browserSessionId=()=>{
+  const existing=LS.get<string>("sf_browser_session","");
+  if(existing)return existing;
+  const next=`sf-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  LS.set("sf_browser_session",next);
+  return next;
+};
+const sellerIdOf=(email:string)=>email.trim().toLowerCase();
+const sellerDataKey=(base:string,email:string)=>email?`${base}:${sellerIdOf(email)}`:base;
 
 const SERVER = import.meta.env.VITE_SERVER_URL || "http://localhost:3001";
 const DEF_SETTINGS: Settings = { autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"₱", paperSize:"100x60mm", printerType:"usb", stickerSize:"100x60mm", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printQrCode:true, printQrUrl:"https://sellerflow-pi.vercel.app", printQrScale:100, printLabelScale:100, printLogoScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printTotalScale:100 };
@@ -2079,8 +2091,9 @@ export default function App(){
   const [user,setUser]=useState<User|null>(()=>{const e=LS.get<string>("sf_session","");if(!e)return null;const u=cleanUsers(arrLS<unknown>("sf_users")).find(u=>u.email===e)||null;return u?asAdminPlan(u):null;});
   const [settings,setSettingsState]=useState<Settings>(()=>({...DEF_SETTINGS,...LS.get<Partial<Settings>>("sf_settings",{})}));
   const [page,setPage]=useState<Page>("dashboard");
-  const [comments,setComments]=useState<Comment[]>(()=>sortCommentsNewest(cleanComments(LS.get<unknown[]>("sf_comments",[]))).slice(0,LIVE_COMMENT_LIMIT));
-  const [archivedComments,setArchivedComments]=useState<Comment[]>(()=>sortCommentsNewest(cleanComments(LS.get<unknown[]>("sf_comment_archive",[]))).slice(0,COMMENT_ARCHIVE_LIMIT));
+  const initialSellerEmail=LS.get<string>("sf_session","");
+  const [comments,setComments]=useState<Comment[]>(()=>sortCommentsNewest(cleanComments(LS.get<unknown[]>(sellerDataKey("sf_comments",initialSellerEmail),[]))).slice(0,LIVE_COMMENT_LIMIT));
+  const [archivedComments,setArchivedComments]=useState<Comment[]>(()=>sortCommentsNewest(cleanComments(LS.get<unknown[]>(sellerDataKey("sf_comment_archive",initialSellerEmail),[]))).slice(0,COMMENT_ARCHIVE_LIMIT));
   const [buyers,setBuyers]=useState<Buyer[]>(()=>arrLS<Buyer>("sf_buyers"));
   const [allOrders,setAllOrders]=useState<LiveOrder[]>(()=>arrLS<LiveOrder>("sf_orders"));
   const [selBuyer,setSelBuyer]=useState<Buyer|null>(null);
@@ -2094,6 +2107,7 @@ export default function App(){
   });
   const [ttOn,setTtOn]=useState(false);const [fbOn,setFbOn]=useState(false);
   const [activeLiveAccounts,setActiveLiveAccounts]=useState<{TikTok:string;Facebook:string}>({TikTok:"",Facebook:""});
+  const activeLiveAccountsRef=useRef(activeLiveAccounts);
   const [showConn,setShowConn]=useState(false);const [showProf,setShowProf]=useState(false);
   const [connectTab,setConnectTab]=useState<"TikTok"|"Facebook">("TikTok");
   const [printed,setPrinted]=useState<Set<string>>(new Set());
@@ -2102,6 +2116,7 @@ export default function App(){
   const [toast,setToast]=useState("");
   const feedRef=useRef<HTMLDivElement>(null);
   const today=new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"});
+  useEffect(()=>{activeLiveAccountsRef.current=activeLiveAccounts;},[activeLiveAccounts]);
   function saveBuyerMemory(next:Buyer[]){
     setBuyers(next);
     LS.set("sf_buyers",next);
@@ -2111,6 +2126,7 @@ export default function App(){
   function archiveComments(list:Comment[]){
     const clean=sortCommentsNewest(cleanComments(list));
     if(!clean.length)return;
+    const archiveKey=sellerDataKey("sf_comment_archive",user?.email||initialSellerEmail);
     setArchivedComments(prev=>{
       const seen=new Set<string>();
       const next=sortCommentsNewest([...clean,...prev]).filter(c=>{
@@ -2119,14 +2135,15 @@ export default function App(){
         seen.add(key);
         return true;
       }).slice(0,COMMENT_ARCHIVE_LIMIT);
-      LS.set("sf_comment_archive",next);
+      LS.set(archiveKey,next);
       return next;
     });
   }
   function clearLiveCommentMemory(){
-    archiveComments(cleanComments(LS.get<unknown[]>("sf_comments",[])));
+    const commentsKey=sellerDataKey("sf_comments",user?.email||initialSellerEmail);
+    archiveComments(cleanComments(LS.get<unknown[]>(commentsKey,[])));
     setComments([]);
-    LS.set("sf_comments",[]);
+    LS.set(commentsKey,[]);
   }
 
   // Check trial expiry
@@ -2135,16 +2152,35 @@ export default function App(){
 
   useEffect(()=>{
     if(!user)return;
+    const commentsKey=sellerDataKey("sf_comments",user.email);
+    const archiveKey=sellerDataKey("sf_comment_archive",user.email);
+    setComments(sortCommentsNewest(cleanComments(LS.get<unknown[]>(commentsKey,[]))).slice(0,LIVE_COMMENT_LIMIT));
+    setArchivedComments(sortCommentsNewest(cleanComments(LS.get<unknown[]>(archiveKey,[]))).slice(0,COMMENT_ARCHIVE_LIMIT));
+  },[user?.email]);
+
+  useEffect(()=>{
+    if(!user)return;
     const s = io(SERVER);
+    const sellerId=sellerIdOf(user.email);
+    const sessionId=browserSessionId();
+    const commentsKey=sellerDataKey("sf_comments",user.email);
+    const joinRoom=()=>s.emit("join_live_room",{sellerId,sessionId});
+    s.on("connect",joinRoom);
+    joinRoom();
     s.on("comment", (d: Comment) => {
       const incoming=normalizeComment(d);
       if(!incoming)return;
+      if(incoming.sellerId&&incoming.sellerId!==sellerId)return;
+      if(incoming.sourceUsername){
+        const selected=activeLiveAccountsRef.current[incoming.platform]?.trim().toLowerCase();
+        if(selected&&incoming.sourceUsername.trim().toLowerCase()!==selected)return;
+      }
       const comment={...incoming,timestamp:incoming.timestamp||new Date().toISOString(),time:incoming.time||new Date().toLocaleTimeString()};
       setComments((p) => {
         const merged=sortCommentsNewest([comment,...cleanComments(p)]);
         archiveComments(merged.slice(LIVE_COMMENT_LIMIT));
         const next=merged.slice(0,LIVE_COMMENT_LIMIT);
-        LS.set("sf_comments",next);
+        LS.set(commentsKey,next);
         return next;
       });
 
@@ -2161,12 +2197,15 @@ export default function App(){
       const ords=b.flatMap(x=>x.orders.map(o=>({...o,handle:x.handle,name:x.name,bNum:x.num,platform:x.platform,status:"New",date:new Date().toISOString().slice(0,10)})));
       setAllOrders(ords);LS.set("sf_orders",ords);
     });
-    s.on("platform_status",({platform:p,connected:c}:{platform:string;connected:boolean})=>{
+    s.on("platform_status",({platform:p,connected:c,sellerId:eventSellerId,username}:{platform:string;connected:boolean;sellerId?:string;username?:string})=>{
+      if(eventSellerId&&eventSellerId!==sellerId)return;
       if(p==="TikTok"){setTtOn(c);if(!c)setActiveLiveAccounts(a=>({...a,TikTok:""}));}
       if(p==="Facebook"){setFbOn(c);if(!c)setActiveLiveAccounts(a=>({...a,Facebook:""}));}
+      if(c&&p==="TikTok"&&username)setActiveLiveAccounts(a=>({...a,TikTok:username}));
+      if(c&&p==="Facebook"&&username)setActiveLiveAccounts(a=>({...a,Facebook:username}));
     });
-    s.on("live_session_started",clearLiveCommentMemory);
-    s.on("live_session_ended",()=>{clearLiveCommentMemory();setActiveLiveAccounts({TikTok:"",Facebook:""});setTtOn(false);setFbOn(false);});
+    s.on("live_session_started",({sellerId:eventSellerId}:{sellerId?:string}={})=>{if(!eventSellerId||eventSellerId===sellerId)clearLiveCommentMemory();});
+    s.on("live_session_ended",({sellerId:eventSellerId}:{sellerId?:string}={})=>{if(eventSellerId&&eventSellerId!==sellerId)return;clearLiveCommentMemory();setActiveLiveAccounts({TikTok:"",Facebook:""});setTtOn(false);setFbOn(false);});
     s.on("session_state",({buyers:b,totalOrders:to}:{buyers:Buyer[];totalOrders:number})=>{
       if(!b.length&&!to)return;
       saveBuyerMemory(b);setTotOrd(to);
@@ -2174,12 +2213,13 @@ export default function App(){
       setAllOrders(ords);LS.set("sf_orders",ords);
     });
     return()=>{s.disconnect();};
-  },[user]);
+  },[user?.email]);
 
   useEffect(()=>{
     if(!user)return;
+    const commentsKey=sellerDataKey("sf_comments",user.email);
     const refreshComments=()=>{
-      const stored=sortCommentsNewest(cleanComments(LS.get<unknown[]>("sf_comments",[]))).slice(0,LIVE_COMMENT_LIMIT);
+      const stored=sortCommentsNewest(cleanComments(LS.get<unknown[]>(commentsKey,[]))).slice(0,LIVE_COMMENT_LIMIT);
       setComments(prev=>{
         const same=prev.length===stored.length&&commentKey(prev[0])===commentKey(stored[0])&&commentKey(prev[prev.length-1])===commentKey(stored[stored.length-1]);
         return same?prev:stored;
@@ -2227,7 +2267,7 @@ export default function App(){
     const email=user.email;
     await deleteSupportMessagesForEmail(email);
     await deleteUser(email);
-    ["sf_session","sf_comments","sf_comment_archive","sf_buyers","sf_orders",supportReadKey(email)].forEach(k=>LS.del(k));
+    ["sf_session","sf_comments","sf_comment_archive","sf_buyers","sf_orders",sellerDataKey("sf_comments",email),sellerDataKey("sf_comment_archive",email),supportReadKey(email)].forEach(k=>LS.del(k));
     setShowProf(false);
     setPage("dashboard");
     setUser(null);
@@ -2265,7 +2305,8 @@ export default function App(){
   }
   async function connectPlatform(platform:"TikTok"|"Facebook",data:Record<string,string>){
     const ep=platform==="TikTok"?"/connect/tiktok":"/connect/facebook";
-    const body=platform==="TikTok"?{username:data.username}:{liveVideoId:data.liveVideoId,accessToken:data.accessToken};
+    const connectionMeta={sellerId:sellerIdOf(user.email),sessionId:browserSessionId()};
+    const body=platform==="TikTok"?{username:data.username,...connectionMeta}:{liveVideoId:data.liveVideoId,accessToken:data.accessToken,...connectionMeta};
     try{
       const r=await fetch(`${SERVER}${ep}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       const j=await r.json();
