@@ -2313,6 +2313,7 @@ export default function App(){
       const incoming=normalizeComment(d);
       if(!incoming)return;
       if(incoming.sellerId&&incoming.sellerId!==sellerId)return;
+      if(incoming.sessionId&&incoming.sessionId!==currentSessionId)return;
       if(incoming.sourceUsername){
         const selected=activeLiveAccountsRef.current[incoming.platform]?.trim().toLowerCase();
         if(selected&&incoming.sourceUsername.trim().toLowerCase()!==selected)return;
