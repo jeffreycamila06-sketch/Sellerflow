@@ -638,12 +638,12 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .admin-fullscreen-panel{padding:14px}
   .admin-fullscreen-head h2{font-size:20px}
   .main{padding-bottom:70px;background:#F5F6FA}
-  .topbar{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;padding:10px 12px;background:#fff;overflow:visible;box-shadow:0 2px 12px rgba(38,33,92,.08)}
+  .topbar{display:grid;grid-template-columns:minmax(82px,1fr) minmax(82px,1fr) minmax(78px,.9fr) 44px;gap:8px;padding:10px 12px;background:#fff;overflow:visible;box-shadow:0 2px 12px rgba(38,33,92,.08)}
   .topbar.has-mobile-back{position:sticky;padding-top:52px}
   .mobile-page-back{position:absolute;top:10px;left:12px;display:inline-flex;align-items:center;justify-content:center;height:34px;padding:0 14px;border:1px solid #D8D3FF;border-radius:10px;background:#fff;color:#534AB7;font-size:14px;font-weight:700;box-shadow:0 5px 16px rgba(38,33,92,.08)}
   .topbar .live-pill,.topbar .plat-btn{height:34px;min-width:0;justify-content:center;font-size:12px;padding:0 10px}
-  .topbar .lang-sel{grid-column:1 / 3;width:100%;height:34px;margin-left:0;text-align:center;background:#F7F6F1}
-  .topbar>div:last-child{grid-column:3;grid-row:2;align-self:center;justify-self:end}
+  .topbar .lang-sel,.topbar .session-txt{display:none}
+  .topbar>div:last-child{grid-column:4;grid-row:1;align-self:center;justify-self:end}
   .topbar .prof-av{width:40px;height:40px}
   .prof-drop{position:fixed;top:74px;right:10px;left:10px;width:auto}
   .dashboard{display:flex;flex-direction:row;gap:10px;padding:8px 10px 0;background:#F5F6FA;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
