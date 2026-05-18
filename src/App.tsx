@@ -959,6 +959,9 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
             <div className="printer-shortcut-note">
               Run this once, then open SellerFlow from the new desktop shortcut. Normal Chrome/Edge tabs will still show the print popup.
             </div>
+            <div className="printer-direct-note">
+              Direct print is active when using the SellerFlow Direct Print desktop shortcut. A print window may flash briefly, then it prints automatically.
+            </div>
           </div>
           <Fg label={t.printer_type}>
             <select value={sets.printerType} onChange={e=>setSets(s=>({...s,printerType:e.target.value as "usb"|"bluetooth"}))}>

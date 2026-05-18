@@ -39,6 +39,7 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .printer-shortcut-link:hover{background:#EEEDFE;color:#26215C}
 .printer-tools-row{display:grid;grid-template-columns:minmax(180px,260px);gap:8px;margin:8px 0 12px}
 .printer-shortcut-note{font-size:11px;line-height:1.4;color:#77756E;background:#FAF9F5;border:1px solid #E7E0D0;border-radius:8px;padding:8px 10px}
+.printer-direct-note{font-size:11px;line-height:1.4;color:#0F6E56;background:#E1F5EE;border:1px solid #BFE8DA;border-radius:8px;padding:8px 10px}
 .auth-link{background:none;border:none;color:#7F77DD;font-size:13px;cursor:pointer;font-weight:500;text-decoration:underline;padding:0}
 .auth-sw{margin-top:16px;text-align:center;font-size:13px;color:#888780}
 .auth-terms{font-size:11px;color:#B4B2A9;text-align:center}
