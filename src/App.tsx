@@ -875,6 +875,8 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
   const [op,setOp]=useState("");const [np,setNp]=useState("");const [cp,setCp]=useState("");
   const [toast,setToast]=useState("");const [pwErr,setPwErr]=useState("");
   const [expandedSettingsBox,setExpandedSettingsBox]=useState<""|"profile"|"password"|"display"|"printer">("");
+  const directPrintParam=new URLSearchParams(window.location.search).get("directPrint")==="1";
+  const [directPrintMode,setDirectPrintMode]=useState(()=>directPrintParam||LS.get<boolean>("sf_direct_print_mode",false));
   const settingsDirty=JSON.stringify(sets)!==JSON.stringify(settings);
   const settingsTitles={"":"Settings",profile:"Profile Information",password:"Change Password",display:"Display & Printing",printer:"Printer Settings"};
   const previewScale=(v:number|undefined,fallback=100)=>Math.max(60,Math.min(180,v||fallback))/100;
@@ -890,6 +892,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
   const qrSrc=`https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=0&data=${encodeURIComponent(qrUrl)}`;
   useEffect(()=>{setProf({...user.profile});},[user]);
   useEffect(()=>{setSets({...settings});},[settings]);
+  useEffect(()=>{if(directPrintParam){LS.set("sf_direct_print_mode",true);setDirectPrintMode(true);}},[directPrintParam]);
   const accountLimit=maxAcc(user.plan);
   const originalTikTok=accountSlots(user.profile.tiktok,accountLimit);
   const originalFacebook=accountSlots(user.profile.facebook,accountLimit);
@@ -1000,12 +1003,23 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
             </span>
           </div>
           <div className="printer-tools-row">
-            <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat?v=3" download>Printer Shortcut</a>
-            <div className="printer-shortcut-note">
-              Run this once, then open SellerFlow from the new desktop shortcut. Normal Chrome/Edge tabs will still show the print popup.
+            <div className={`printer-direct-status ${directPrintMode?"active":"inactive"}`}>
+              <div>
+                <strong>{directPrintMode?"Direct Print Active":"Direct Print Not Active"}</strong>
+                <span>{directPrintMode?"You opened SellerFlow with the desktop shortcut. 1-click can print directly.":"Open SellerFlow using the desktop shortcut to enable kiosk direct print."}</span>
+              </div>
+              <Badge label={directPrintMode?"Ready":"Shortcut needed"} color={directPrintMode?"green":"amber"}/>
             </div>
-            <div className="printer-direct-note">
-              Direct print is active when using the SellerFlow Direct Print desktop shortcut. A print window may flash briefly, then it prints automatically.
+            <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat?v=4" download>Printer Shortcut</a>
+            <div className="printer-troubleshoot">
+              <strong>Quick setup</strong>
+              <ol>
+                <li>Click Printer Shortcut and run it once.</li>
+                <li>Close normal Chrome/Edge tabs.</li>
+                <li>Open SellerFlow from the new SellerFlow Direct Print icon on the desktop.</li>
+                <li>Choose the printer once. After that, 1-click prints automatically.</li>
+              </ol>
+              <p>If the print screen stays open, you are probably using a normal browser tab or an old shortcut. Download Printer Shortcut again.</p>
             </div>
           </div>
           <Fg label={t.printer_type}>

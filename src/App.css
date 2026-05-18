@@ -37,9 +37,14 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .auth-btn:disabled{opacity:.7;cursor:not-allowed}
 .printer-shortcut-link{display:flex;align-items:center;justify-content:center;width:100%;padding:10px;border:1px solid #AFA9EC;border-radius:9px;color:#534AB7;background:#F4F2FF;font-size:13px;font-weight:700;text-decoration:none}
 .printer-shortcut-link:hover{background:#EEEDFE;color:#26215C}
-.printer-tools-row{display:grid;grid-template-columns:minmax(180px,260px);gap:8px;margin:8px 0 12px}
+.printer-tools-row{display:grid;grid-template-columns:1fr;gap:8px;margin:8px 0 12px}
 .printer-shortcut-note{font-size:11px;line-height:1.4;color:#77756E;background:#FAF9F5;border:1px solid #E7E0D0;border-radius:8px;padding:8px 10px}
 .printer-direct-note{font-size:11px;line-height:1.4;color:#0F6E56;background:#E1F5EE;border:1px solid #BFE8DA;border-radius:8px;padding:8px 10px}
+.printer-direct-status{display:flex;align-items:center;justify-content:space-between;gap:10px;border-radius:10px;padding:10px 12px;border:1px solid #E7E0D0;background:#FAF9F5}
+.printer-direct-status.active{background:#E1F5EE;border-color:#9FE1CB}.printer-direct-status.inactive{background:#FFF8E1;border-color:#F5DDA0}
+.printer-direct-status strong{display:block;font-size:13px;color:#26215C;margin-bottom:2px}.printer-direct-status span{display:block;font-size:11px;line-height:1.35;color:#5F5E5A}
+.printer-troubleshoot{font-size:11px;line-height:1.45;color:#5F5E5A;background:#fff;border:1px solid #E4E2DC;border-radius:10px;padding:10px 12px}
+.printer-troubleshoot strong{display:block;color:#26215C;margin-bottom:4px}.printer-troubleshoot ol{margin:0 0 6px 16px;padding:0}.printer-troubleshoot li{margin:2px 0}.printer-troubleshoot p{margin:0;color:#8A5A00}
 .auth-link{background:none;border:none;color:#7F77DD;font-size:13px;cursor:pointer;font-weight:500;text-decoration:underline;padding:0}
 .auth-sw{margin-top:16px;text-align:center;font-size:13px;color:#888780}
 .auth-terms{font-size:11px;color:#B4B2A9;text-align:center}

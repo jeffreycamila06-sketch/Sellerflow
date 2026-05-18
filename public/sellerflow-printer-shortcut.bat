@@ -1,6 +1,6 @@
 @echo off
 setlocal
-set "APP_URL=https://sellerflow-pi.vercel.app"
+set "APP_URL=https://sellerflow-pi.vercel.app/?directPrint=1"
 set "PS1=%TEMP%\sellerflow-printer-shortcut.ps1"
 
 > "%PS1%" echo $ErrorActionPreference = 'Stop'
@@ -54,6 +54,7 @@ set "PS1=%TEMP%\sellerflow-printer-shortcut.ps1"
 >> "%PS1%" echo Write-Host 'OK - SellerFlow Direct Print shortcut created on your Desktop.' -ForegroundColor Green
 >> "%PS1%" echo Write-Host 'IMPORTANT: Open SellerFlow using that desktop shortcut when selling.'
 >> "%PS1%" echo Write-Host 'Login once in that window, choose your default printer once, then 1-click can print directly.'
+>> "%PS1%" echo Write-Host 'SellerFlow Settings will show Direct Print Active when this shortcut is used.'
 >> "%PS1%" echo Write-Host ''
 >> "%PS1%" echo Write-Host ('Browser used: ' + $browser)
 >> "%PS1%" echo pause
