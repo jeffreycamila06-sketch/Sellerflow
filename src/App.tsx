@@ -101,6 +101,7 @@ const addDays=(n:number)=>{const d=new Date();d.setDate(d.getDate()+n);return d.
 const addMonths=(n:number)=>{const d=new Date();d.setMonth(d.getMonth()+n);return d.toISOString();};
 const dLeft=(e:string)=>Math.max(0,Math.ceil((new Date(e).getTime()-Date.now())/86400000));
 const maxAcc=(p:Plan)=>({trial:1,basic:1,pro:3,master:5}[p]);
+const LIVE_COMMENT_LIMIT=5000;
 const accountList=(value:string)=>Array.from(new Set((value||"").split(/[,\n]/).map(v=>v.trim()).filter(Boolean)));
 const accountText=(values:string[])=>values.map(v=>v.trim()).filter(Boolean).join("\n");
 const accountSlots=(value:string,limit:number)=>{const slots=(value||"").split(/[,\n]/).map(v=>v.trim()).filter(Boolean).slice(0,limit);while(slots.length<limit)slots.push("");return slots;};
@@ -1947,7 +1948,7 @@ export default function App(){
   const [user,setUser]=useState<User|null>(()=>{const e=LS.get<string>("sf_session","");if(!e)return null;const u=cleanUsers(arrLS<unknown>("sf_users")).find(u=>u.email===e)||null;return u?asAdminPlan(u):null;});
   const [settings,setSettingsState]=useState<Settings>(()=>({...DEF_SETTINGS,...LS.get<Partial<Settings>>("sf_settings",{})}));
   const [page,setPage]=useState<Page>("dashboard");
-  const [comments,setComments]=useState<Comment[]>(()=>sortCommentsNewest(cleanComments(LS.get<unknown[]>("sf_comments",[]))).slice(0,500));
+  const [comments,setComments]=useState<Comment[]>(()=>sortCommentsNewest(cleanComments(LS.get<unknown[]>("sf_comments",[]))).slice(0,LIVE_COMMENT_LIMIT));
   const [buyers,setBuyers]=useState<Buyer[]>(()=>arrLS<Buyer>("sf_buyers"));
   const [allOrders,setAllOrders]=useState<LiveOrder[]>(()=>arrLS<LiveOrder>("sf_orders"));
   const [selBuyer,setSelBuyer]=useState<Buyer|null>(null);
@@ -1987,7 +1988,7 @@ export default function App(){
       if(!incoming)return;
       const comment={...incoming,timestamp:incoming.timestamp||new Date().toISOString(),time:incoming.time||new Date().toLocaleTimeString()};
       setComments((p) => {
-        const next=sortCommentsNewest([comment,...cleanComments(p)]).slice(0,500);
+        const next=sortCommentsNewest([comment,...cleanComments(p)]).slice(0,LIVE_COMMENT_LIMIT);
         LS.set("sf_comments",next);
         return next;
       });
@@ -2018,7 +2019,7 @@ export default function App(){
   useEffect(()=>{
     if(!user)return;
     const refreshComments=()=>{
-      const stored=sortCommentsNewest(cleanComments(LS.get<unknown[]>("sf_comments",[]))).slice(0,500);
+      const stored=sortCommentsNewest(cleanComments(LS.get<unknown[]>("sf_comments",[]))).slice(0,LIVE_COMMENT_LIMIT);
       setComments(prev=>{
         const same=prev.length===stored.length&&commentKey(prev[0])===commentKey(stored[0])&&commentKey(prev[prev.length-1])===commentKey(stored[stored.length-1]);
         return same?prev:stored;
