@@ -2314,7 +2314,7 @@ export default function App(){
                 {user.profile.tiktok&&<div className="pd-row"><span>📱</span><span>{user.profile.tiktok} · TikTok</span></div>}
                 {user.profile.facebook&&<div className="pd-row"><span>📘</span><span>{user.profile.facebook} · FB</span></div>}
                 <div className="pd-div"/>
-                <div className="pd-row pd-cl" onClick={()=>{setPage("settings");setShowProf(false);}}><span>✏️</span><span>{t.edit_profile}</span></div>
+                <div className="pd-row pd-cl" onClick={()=>{setPage("settings");setShowProf(false);}}><span>⚙️</span><span>{t.nav_settings}</span></div>
                 <div className="pd-row pd-cl" onClick={()=>{setPage("subscription");setShowProf(false);}}><span>💎</span><span>Subscription</span></div>
                 <div className="pd-row pd-cl" onClick={()=>{setPage("support");setShowProf(false);}}><span>💬</span><span>Support</span></div>
                 {isAdminUser(user)&&<div className="pd-row pd-cl" onClick={()=>{setPage("admin");setShowProf(false);}}><span>ADMIN</span><span>Admin</span></div>}
