@@ -2375,13 +2375,13 @@ export default function App(){
               </div>
             </section>
             <section className="mobile-summary-col">
-              <div className="col-lbl">Summary</div>
+              <div className="col-lbl">Stats</div>
               <div className="mobile-summary-grid">
                 <div className="stat-c"><div className="stat-l">{t.orders_stat}</div><div className="stat-v">{totOrd}</div></div>
                 <div className="stat-c"><div className="stat-l">{t.revenue_stat}</div><div className="stat-v" style={{color:"#1D9E75"}}>{settings.currency}{totRev.toLocaleString()}</div></div>
                 <div className="stat-c"><div className="stat-l">{t.buyers_stat}</div><div className="stat-v" style={{color:"#534AB7"}}>{buyers.length}</div></div>
               </div>
-              <div className="mobile-swipe-hint">Swipe right for buyer numbers and slip preview</div>
+              <div className="mobile-swipe-hint">Swipe right: stats, buyer numbers, slip preview</div>
             </section>
             <section className="miners-col">
               <div className="col-lbl">{t.miners_label}<span style={{marginLeft:"auto",fontSize:11,color:"#888"}}>{buyers.length} {t.buyers_stat}</span></div>
