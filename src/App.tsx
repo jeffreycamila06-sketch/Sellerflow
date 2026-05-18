@@ -31,6 +31,8 @@ interface Comment { handle:string; name:string; comment:string; platform:"TikTok
 interface Product { id:number; name:string; sku:string; price:number; stock:number; platform:string; status:string; }
 interface Settings { autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"usb"|"bluetooth"; stickerSize:string; printStoreName:boolean; printBuyerNumber:boolean; printBuyerUsername:boolean; printOrderItems:boolean; printTotal:boolean; printAutoClose:boolean; printQrCode:boolean; printQrUrl:string; printQrScale:number; printLabelScale:number; printLogoScale:number; printStoreScale:number; printBuyerNumberScale:number; printBuyerNameScale:number; printUsernameScale:number; printOrderScale:number; printTotalScale:number; }
 interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; proofImage?:string; timestamp:string; status:"pending"|"approved"|"rejected"|"resolved"; adminReply?:string; repliedAt?:string; }
+const commentMs=(c:Comment)=>{const t=Date.parse(c.timestamp||"");return Number.isFinite(t)?t:0;};
+const sortCommentsNewest=(list:Comment[])=>[...list].sort((a,b)=>commentMs(b)-commentMs(a));
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
 const LS = {
@@ -1885,7 +1887,7 @@ export default function App(){
   const [user,setUser]=useState<User|null>(()=>{const e=LS.get<string>("sf_session","");if(!e)return null;const u=LS.get<User[]>("sf_users",[]).find(u=>u.email===e)||null;return u?asAdminPlan(u):null;});
   const [settings,setSettingsState]=useState<Settings>(()=>({...DEF_SETTINGS,...LS.get<Partial<Settings>>("sf_settings",{})}));
   const [page,setPage]=useState<Page>("dashboard");
-  const [comments,setComments]=useState<Comment[]>(()=>LS.get<Comment[]>("sf_comments",[]));
+  const [comments,setComments]=useState<Comment[]>(()=>sortCommentsNewest(LS.get<Comment[]>("sf_comments",[])).slice(0,500));
   const [buyers,setBuyers]=useState<Buyer[]>(()=>LS.get<Buyer[]>("sf_buyers",[]));
   const [allOrders,setAllOrders]=useState<LiveOrder[]>(()=>LS.get("sf_orders",[]));
   const [selBuyer,setSelBuyer]=useState<Buyer|null>(null);
@@ -1900,7 +1902,7 @@ export default function App(){
   const [ttOn,setTtOn]=useState(false);const [fbOn,setFbOn]=useState(false);
   const [showConn,setShowConn]=useState(false);const [showProf,setShowProf]=useState(false);
   const [connectTab,setConnectTab]=useState<"TikTok"|"Facebook">("TikTok");
-  const [printed,setPrinted]=useState<Set<number>>(new Set());
+  const [printed,setPrinted]=useState<Set<string>>(new Set());
   const [openCommentMenu,setOpenCommentMenu]=useState<number|null>(null);
   const [supportUnreadCount,setSupportUnreadCount]=useState(0);
   const [toast,setToast]=useState("");
@@ -1923,14 +1925,14 @@ export default function App(){
     s.on("comment", (d: Comment) => {
       const comment={...d,timestamp:d.timestamp||new Date().toISOString(),time:d.time||new Date().toLocaleTimeString()};
       setComments((p) => {
-        const next=[...p,comment].slice(-500);
+        const next=sortCommentsNewest([comment,...p]).slice(0,500);
         LS.set("sf_comments",next);
         return next;
       });
 
       setTimeout(() => {
         feedRef.current?.scrollTo({
-          top: 999999,
+          top: 0,
           behavior: "smooth",
         });
       }, 50);
@@ -1949,6 +1951,20 @@ export default function App(){
       setAllOrders(ords);LS.set("sf_orders",ords);
     });
     return()=>{s.disconnect();};
+  },[user]);
+
+  useEffect(()=>{
+    if(!user)return;
+    const refreshComments=()=>{
+      const stored=sortCommentsNewest(LS.get<Comment[]>("sf_comments",[])).slice(0,500);
+      setComments(prev=>{
+        const same=prev.length===stored.length&&prev[0]?.timestamp===stored[0]?.timestamp&&prev[prev.length-1]?.timestamp===stored[stored.length-1]?.timestamp;
+        return same?prev:stored;
+      });
+    };
+    refreshComments();
+    const timer=window.setInterval(refreshComments,3000);
+    return()=>window.clearInterval(timer);
   },[user]);
 
   useEffect(()=>{
@@ -2090,6 +2106,9 @@ export default function App(){
   function commentOrderCount(c:Comment){
     return buyers.find(b=>b.handle===c.handle&&b.platform===c.platform)?.totalOrders||0;
   }
+  function commentKey(c:Comment){
+    return `${c.platform}|${c.handle}|${c.timestamp||c.time}|${c.comment}`;
+  }
   function commentStamp(c:Comment){
     const d=new Date(c.timestamp||Date.now());
     const date=d.toLocaleDateString("en-GB").replace(/\//g,".");
@@ -2103,8 +2122,8 @@ export default function App(){
     setPage("dashboard");
     setToast(`Showing ${b.name}`);
   }
-  function oneClick(c:Comment,i:number){
-    setPrinted(p=>new Set(p).add(i));
+  function oneClick(c:Comment){
+    setPrinted(p=>new Set(p).add(commentKey(c)));
     void createOrderFromComment(c,{print:true});
   }
 
@@ -2183,10 +2202,10 @@ export default function App(){
                 <div className="chat-hd">{t.comments_label}<span className="chat-sub">{comments.length} {t.received}</span></div>
                 <div className="chat-msgs" ref={feedRef}>
                   {comments.length===0&&<div className="feed-empty">{t.connect_prompt}</div>}
-                  {comments.map((c,i)=>{
+                  {comments.map((c)=>{
                     const orderCount=commentOrderCount(c);
                     return(
-                      <div key={i} className="msg-row buy" onDoubleClick={()=>oneClick(c,i)}>
+                      <div key={commentKey(c)} className="msg-row buy" onDoubleClick={()=>oneClick(c)}>
                         <Av name={c.name||c.handle} image={c.avatar} size={42}/>
                         <div className="msg-bd">
                           <div className="msg-nm">
@@ -2213,7 +2232,7 @@ export default function App(){
                             </div>
                           )}
                           <div className="order-count" title="Orders created from this buyer">🛒 <span>({orderCount})</span></div>
-                          <button className={`one-btn ${printed.has(i)?"done":""}`} onClick={()=>oneClick(c,i)}>1-click</button>
+                          <button className={`one-btn ${printed.has(commentKey(c))?"done":""}`} onClick={()=>oneClick(c)}>1-click</button>
                         </div>
                       </div>
                     );
