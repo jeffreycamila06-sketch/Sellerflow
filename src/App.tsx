@@ -2265,6 +2265,8 @@ export default function App(){
     ["dashboard","⚡",t.nav_live],["miners","🏅",t.nav_miners],["orders","🛒",t.nav_orders],
     ["products","📦",t.nav_products],["customers","👥",t.nav_customers],["print","🖨️",t.nav_print],["sales","📊",t.nav_sales],
   ];
+  const mobileMainNav=new Set<Page>(["dashboard","orders","products","sales","settings"]);
+  const navClass=(id:Page)=>`nav-it ${page===id?"on":""} ${mobileMainNav.has(id)?"mobile-main-nav":""}`;
 
   return(
     <div className="app" onClick={()=>{setShowProf(false);setOpenCommentMenu(null);}}>
@@ -2275,14 +2277,14 @@ export default function App(){
       <aside className="sidebar">
         <div className="sb-logo"><div className="logo-ic"><svg width="16" height="16" viewBox="0 0 18 18"><path d="M4 6 Q4 3 7 3 L11 3 Q14 3 14 6 Q14 9 11 9.5 L7 10.5 Q4 10.5 4 13 Q4 15 7 15 L11 15 Q14 15 14 13" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/></svg></div><span className="logo-tx">Seller<span>Flow</span></span></div>
         <div className="nav-sec-lbl">{t.nav_live_section}</div>
-        {navItems.slice(0,3).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={`nav-it ${page===id?"on":""}`}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
+        {navItems.slice(0,3).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={navClass(id)}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
         <div className="nav-sec-lbl">{t.nav_manage}</div>
-        {navItems.slice(3,6).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={`nav-it ${page===id?"on":""}`}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
+        {navItems.slice(3,6).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={navClass(id)}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
         <div className="nav-sec-lbl">{t.nav_analytics}</div>
-        {navItems.slice(6).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={`nav-it ${page===id?"on":""}`}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
+        {navItems.slice(6).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={navClass(id)}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
         <button onClick={()=>setPage("support")} className={`nav-it ${page==="support"?"on":""}`}><span className="nav-ic">💬</span><span className="nav-lb">Support</span>{supportUnreadCount>0&&<span className="nav-alert-badge">{supportUnreadCount>9?"9+":supportUnreadCount}</span>}</button>
         {isAdminUser(user)&&<button onClick={()=>setPage("admin")} className={`nav-it ${page==="admin"?"on":""}`}><span className="nav-ic">👑</span><span className="nav-lb">Admin</span>{supportUnreadCount>0&&<span className="nav-alert-badge">{supportUnreadCount>9?"9+":supportUnreadCount}</span>}</button>}
-        <button onClick={()=>setPage("settings")} className={`nav-it ${page==="settings"?"on":""}`} style={{marginTop:"auto"}}><span className="nav-ic">⚙️</span><span className="nav-lb">{t.nav_settings}</span></button>
+        <button onClick={()=>setPage("settings")} className={navClass("settings")} style={{marginTop:"auto"}}><span className="nav-ic">⚙️</span><span className="nav-lb">{t.nav_settings}</span></button>
         <div className="trial-box">
           <div className="trial-row"><span className="trial-pill">{pName(user.plan,t)}</span><span className="trial-exp">{days}d {t.days_remaining}</span></div>
           <div className="trial-cd" style={{color:days<=2?"#A32D2D":"#26215C"}}>{days===0?t.expired_label:`${days} ${t.days_remaining}`}</div>
@@ -2418,6 +2420,21 @@ export default function App(){
                 )}
               </div>
               {selBuyer&&<button className="print-again-btn" onClick={()=>printSlip(selBuyer,settings.currency,user.profile.storeName||"SellerFlow",settings)}>{t.print_again}</button>}
+            </section>
+            <section className="mobile-tools-col">
+              <div className="col-lbl">Business tools</div>
+              <div className="mobile-tool-grid">
+                <button className="mobile-tool-card" onClick={()=>setPage("orders")}>
+                  <span>🛒</span><b>{t.nav_orders}</b><em>{totOrd} today</em>
+                </button>
+                <button className="mobile-tool-card" onClick={()=>setPage("products")}>
+                  <span>📦</span><b>{t.nav_products}</b><em>Manage items</em>
+                </button>
+                <button className="mobile-tool-card" onClick={()=>setPage("sales")}>
+                  <span>📊</span><b>{t.nav_sales}</b><em>{settings.currency}{totRev.toLocaleString()}</em>
+                </button>
+              </div>
+              <div className="mobile-swipe-hint">Use profile menu for account, subscription, support, and admin tools.</div>
             </section>
           </div>
         )}
