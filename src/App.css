@@ -403,6 +403,8 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .position-step-controls{display:flex;align-items:center;gap:8px;flex-shrink:0}
 .position-step-controls button{width:30px;height:28px;border:1px solid #AFA9EC;border-radius:8px;background:#F4F2FF;color:#534AB7;font-weight:800;cursor:pointer}
 .position-step-controls b{min-width:44px;text-align:center;color:#555;font-size:11px}
+.printer-reset-btn{align-self:stretch;padding:8px 12px;border:1px solid #AFA9EC;border-radius:8px;background:#fff;color:#534AB7;font-size:12px;font-weight:700;cursor:pointer}
+.printer-reset-btn:hover{background:#F4F2FF}
 .settings-quick-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .settings-expanded{grid-template-columns:1fr}
 .settings-expanded .settings-section{display:none}

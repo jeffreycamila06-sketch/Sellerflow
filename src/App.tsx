@@ -1049,6 +1049,39 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
     printSlip(testBuyer,sets.currency,user.profile.storeName||"SellerFlow",sets);
     setToast("Printer test sent");
   }
+  function resetPrinterLayout(){
+    setSets(s=>({
+      ...s,
+      printStoreName:DEF_SETTINGS.printStoreName,
+      printBuyerNumber:DEF_SETTINGS.printBuyerNumber,
+      printBuyerUsername:DEF_SETTINGS.printBuyerUsername,
+      printOrderItems:DEF_SETTINGS.printOrderItems,
+      printTotal:DEF_SETTINGS.printTotal,
+      printStoreScale:DEF_SETTINGS.printStoreScale,
+      printBuyerNumberScale:DEF_SETTINGS.printBuyerNumberScale,
+      printBuyerNameScale:DEF_SETTINGS.printBuyerNameScale,
+      printUsernameScale:DEF_SETTINGS.printUsernameScale,
+      printOrderScale:DEF_SETTINGS.printOrderScale,
+      printTotalScale:DEF_SETTINGS.printTotalScale,
+      printStoreX:DEF_SETTINGS.printStoreX,
+      printStoreY:DEF_SETTINGS.printStoreY,
+      printBuyerLabelX:DEF_SETTINGS.printBuyerLabelX,
+      printBuyerLabelY:DEF_SETTINGS.printBuyerLabelY,
+      printBuyerNumberX:DEF_SETTINGS.printBuyerNumberX,
+      printBuyerNumberY:DEF_SETTINGS.printBuyerNumberY,
+      printBuyerNameX:DEF_SETTINGS.printBuyerNameX,
+      printBuyerNameY:DEF_SETTINGS.printBuyerNameY,
+      printUsernameX:DEF_SETTINGS.printUsernameX,
+      printUsernameY:DEF_SETTINGS.printUsernameY,
+      printSessionX:DEF_SETTINGS.printSessionX,
+      printSessionY:DEF_SETTINGS.printSessionY,
+      printOrderX:DEF_SETTINGS.printOrderX,
+      printOrderY:DEF_SETTINGS.printOrderY,
+      printTotalX:DEF_SETTINGS.printTotalX,
+      printTotalY:DEF_SETTINGS.printTotalY,
+    }));
+    setToast("Printer layout reset");
+  }
   function savePw(e:React.FormEvent){
     e.preventDefault();setPwErr("");
     if(np.length<6){setPwErr(t.pw_short);return;}
@@ -1177,6 +1210,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
               </div>}
               {sets.printTotal&&<><div className="printer-preview-dash"/><div className="printer-preview-total" style={{fontSize:`${10*totalPreview}px`,...previewMove(sets.printTotalX,sets.printTotalY)}}><span>TOTAL TODAY</span><b>{sets.currency}1,240</b></div></>}
             </div>
+            <button type="button" className="printer-reset-btn" onClick={resetPrinterLayout}>Reset Printer Layout</button>
           </div>
           {([
             ["printStoreScale","Store name"],
