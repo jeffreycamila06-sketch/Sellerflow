@@ -2371,25 +2371,27 @@ export default function App(){
     setSelBuyer(nextBuyer);
     setAllOrders(prev=>{const next=[...prev,order];LS.set(sellerMemoryKey("sf_orders"),next);return next;});
 
-    await saveOrderToDatabase({
-      customer_name:c.name||c.handle,
-      product:c.comment||"Live comment order",
-      total_amount:order.total,
-      status:"Pending",
-    });
-    await saveCustomerToDatabase({
-      name:c.name||c.handle,
-      handle:c.handle,
-      platform:c.platform,
-      total_orders:1,
-      total_spent:order.total,
-    });
-
     if(print){
       printSlip(nextBuyer,settings.currency,user?.profile.storeName||"SellerFlow",settings);
     }else{
       setToast(`Order created for ${c.name||c.handle}`);
     }
+
+    void Promise.all([
+      saveOrderToDatabase({
+        customer_name:c.name||c.handle,
+        product:c.comment||"Live comment order",
+        total_amount:order.total,
+        status:"Pending",
+      }),
+      saveCustomerToDatabase({
+        name:c.name||c.handle,
+        handle:c.handle,
+        platform:c.platform,
+        total_orders:1,
+        total_spent:order.total,
+      }),
+    ]).catch(err=>console.warn("Background database save failed",err));
   }
   function reprintLatestForComment(c:Comment){
     const b=buyers.find(x=>x.handle===c.handle);
