@@ -42,6 +42,8 @@ set "PS1=%TEMP%\sellerflow-printer-shortcut.ps1"
 >> "%PS1%" echo $profile = Join-Path $env:LocalAppData 'SellerFlowPrintProfile'
 >> "%PS1%" echo New-Item -ItemType Directory -Force -Path $profile ^| Out-Null
 >> "%PS1%" echo $shortcutPath = Join-Path $desktop 'SellerFlow Direct Print.lnk'
+>> "%PS1%" echo $switchUrl = $appUrl + '^&sellerLogin=1'
+>> "%PS1%" echo $switchPath = Join-Path $desktop 'SellerFlow Switch Account.lnk'
 >> "%PS1%" echo $shell = New-Object -ComObject WScript.Shell
 >> "%PS1%" echo $shortcut = $shell.CreateShortcut($shortcutPath)
 >> "%PS1%" echo $shortcut.TargetPath = $browser
@@ -50,10 +52,18 @@ set "PS1=%TEMP%\sellerflow-printer-shortcut.ps1"
 >> "%PS1%" echo $shortcut.IconLocation = $browser
 >> "%PS1%" echo $shortcut.Description = 'Open SellerFlow with direct 1-click printing enabled'
 >> "%PS1%" echo $shortcut.Save()
+>> "%PS1%" echo $switchShortcut = $shell.CreateShortcut($switchPath)
+>> "%PS1%" echo $switchShortcut.TargetPath = $browser
+>> "%PS1%" echo $switchShortcut.Arguments = '--user-data-dir="' + $profile + '" --kiosk-printing --app="' + $switchUrl + '"'
+>> "%PS1%" echo $switchShortcut.WorkingDirectory = Split-Path $browser
+>> "%PS1%" echo $switchShortcut.IconLocation = $browser
+>> "%PS1%" echo $switchShortcut.Description = 'Open SellerFlow direct print and choose a different seller login'
+>> "%PS1%" echo $switchShortcut.Save()
 >> "%PS1%" echo Write-Host ''
->> "%PS1%" echo Write-Host 'OK - SellerFlow Direct Print shortcut created on your Desktop.' -ForegroundColor Green
+>> "%PS1%" echo Write-Host 'OK - SellerFlow Direct Print shortcuts created on your Desktop.' -ForegroundColor Green
 >> "%PS1%" echo Write-Host 'IMPORTANT: Open SellerFlow using that desktop shortcut when selling.'
 >> "%PS1%" echo Write-Host 'Login once in that window, choose your default printer once, then 1-click can print directly.'
+>> "%PS1%" echo Write-Host 'If it opens the wrong admin/seller account, open SellerFlow Switch Account once, then login again.'
 >> "%PS1%" echo Write-Host 'SellerFlow Settings will show Direct Print Active when this shortcut is used.'
 >> "%PS1%" echo Write-Host ''
 >> "%PS1%" echo Write-Host ('Browser used: ' + $browser)

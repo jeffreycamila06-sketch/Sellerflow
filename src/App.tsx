@@ -65,6 +65,17 @@ const LS = {
   set:(k:string,v:unknown)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}},
   del:(k:string)=>{try{localStorage.removeItem(k);}catch{}},
 };
+const FORCE_LOGIN_PARAMS=["sellerLogin","switchAccount","login"];
+const consumeForceLoginParam=()=>{
+  if(typeof window==="undefined")return false;
+  const url=new URL(window.location.href);
+  const shouldForce=FORCE_LOGIN_PARAMS.some(k=>url.searchParams.get(k)==="1"||url.searchParams.has(k));
+  if(!shouldForce)return false;
+  LS.del("sf_session");
+  FORCE_LOGIN_PARAMS.forEach(k=>url.searchParams.delete(k));
+  window.history.replaceState({},document.title,url.pathname+(url.search?url.search:"")+url.hash);
+  return true;
+};
 const arrLS=<X,>(key:string):X[]=>{const value=LS.get<unknown>(key,[]);return Array.isArray(value)?value as X[]:[];};
 const browserSessionId=()=>{
   const existing=LS.get<string>("sf_browser_session","");
@@ -308,7 +319,7 @@ function Auth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:Lang;set
               <Fg label={t.pw_field}><div className="pw-wrap"><input type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="Min 6 chars" required/><button type="button" onClick={()=>setShowPw(p=>!p)} className="pw-eye">{showPw?"🙈":"👁"}</button></div></Fg>
               <Fg label={t.confirm_field}><input type="password" value={cpw} onChange={e=>setCpw(e.target.value)} placeholder="••••••••" required/></Fg>
               <button type="submit" className="auth-btn" disabled={busy}>{busy?t.creating:t.start_trial_btn}</button>
-              <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat?v=3" download>Printer Shortcut</a>
+              <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat?v=5" download>Printer Shortcut</a>
               <p className="auth-terms">{t.terms_text}</p>
             </form>
             <div className="auth-sw">{t.have_account} <button className="auth-link" onClick={()=>go("login")}>{t.sign_in_btn} →</button></div>
@@ -431,7 +442,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
           <Fg label={t.pw_field}><div className="pw-wrap"><input type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="Min 6 chars" required/><button type="button" onClick={()=>setShowPw(p=>!p)} className="pw-eye">{showPw?"Hide":"Show"}</button></div></Fg>
           <Fg label={t.confirm_field}><input type="password" value={cpw} onChange={e=>setCpw(e.target.value)} placeholder="Confirm password" required/></Fg>
           <button type="submit" className="auth-btn" disabled={busy}>{busy?t.creating:t.start_trial_btn}</button>
-          <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat?v=3" download>Printer Shortcut</a>
+          <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat?v=5" download>Printer Shortcut</a>
           <p className="auth-terms">By creating an account, you agree to SellerFlow <button type="button" className="inline-link" onClick={()=>openLegal("terms")}>Terms</button> and <button type="button" className="inline-link" onClick={()=>openLegal("privacy")}>Privacy Policy</button>.</p>
         </form>
         <div className="auth-sw">{t.have_account} <button className="auth-link" onClick={()=>go("login")}>{t.sign_in_btn}</button></div>
@@ -1188,7 +1199,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
               </div>
               <Badge label={directPrintMode?"Ready":"Shortcut needed"} color={directPrintMode?"green":"amber"}/>
             </div>
-            <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat?v=4" download>Printer Shortcut</a>
+            <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat?v=5" download>Printer Shortcut</a>
             <button type="button" className="printer-test-btn" onClick={testPrinter}>Printer Test</button>
             <div className="printer-troubleshoot">
               <strong>Quick setup</strong>
@@ -1198,7 +1209,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
                 <li>Open SellerFlow from the new SellerFlow Direct Print icon on the desktop.</li>
                 <li>Choose the printer once. After that, 1-click prints automatically.</li>
               </ol>
-              <p>If the print screen stays open, you are probably using a normal browser tab or an old shortcut. Download Printer Shortcut again.</p>
+              <p>If it opens the wrong admin or seller account, open SellerFlow Switch Account once, then login again. If the print screen stays open, you are probably using a normal browser tab or an old shortcut.</p>
             </div>
           </div>
           <Fg label={t.printer_type}>
@@ -2195,7 +2206,8 @@ export default function App(){
   const t=TRANSLATIONS[lang]||TRANSLATIONS.en;
   function setLang(l:Lang){const next=safeLang(l);setLangState(next);try{localStorage.setItem("sf_lang",JSON.stringify(next));}catch{}}
 
-  const [user,setUser]=useState<User|null>(()=>{const e=LS.get<string>("sf_session","");if(!e)return null;const u=cleanUsers(arrLS<unknown>("sf_users")).find(u=>u.email===e)||null;return u?asAdminPlan(u):null;});
+  const forceLogin=consumeForceLoginParam();
+  const [user,setUser]=useState<User|null>(()=>{if(forceLogin)return null;const e=LS.get<string>("sf_session","");if(!e)return null;const u=cleanUsers(arrLS<unknown>("sf_users")).find(u=>u.email===e)||null;return u?asAdminPlan(u):null;});
   const [settings,setSettingsState]=useState<Settings>(()=>({...DEF_SETTINGS,...LS.get<Partial<Settings>>("sf_settings",{})}));
   const [page,setPage]=useState<Page>("dashboard");
   const initialSellerEmail=LS.get<string>("sf_session","");
