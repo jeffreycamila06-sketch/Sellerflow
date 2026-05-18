@@ -102,6 +102,7 @@ const addMonths=(n:number)=>{const d=new Date();d.setMonth(d.getMonth()+n);retur
 const dLeft=(e:string)=>Math.max(0,Math.ceil((new Date(e).getTime()-Date.now())/86400000));
 const maxAcc=(p:Plan)=>({trial:1,basic:1,pro:3,master:5}[p]);
 const LIVE_COMMENT_LIMIT=5000;
+const COMMENT_ARCHIVE_LIMIT=5000;
 const accountList=(value:string)=>Array.from(new Set((value||"").split(/[,\n]/).map(v=>v.trim()).filter(Boolean)));
 const accountText=(values:string[])=>values.map(v=>v.trim()).filter(Boolean).join("\n");
 const accountSlots=(value:string,limit:number)=>{const slots=(value||"").split(/[,\n]/).map(v=>v.trim()).filter(Boolean).slice(0,limit);while(slots.length<limit)slots.push("");return slots;};
@@ -746,6 +747,42 @@ function Customers({buyers,cur,t}:{buyers:Buyer[];cur:string;t:T}){
 // ═══════════════════════════════════════════════════════════════════
 // PRINT
 // ═══════════════════════════════════════════════════════════════════
+function CommentArchive({comments}:{comments:Comment[]}){
+  const [q,setQ]=useState("");
+  const query=q.trim().toLowerCase();
+  const filtered=comments.filter(c=>{
+    if(!query)return true;
+    return c.name.toLowerCase().includes(query)
+      || c.handle.toLowerCase().includes(query)
+      || c.comment.toLowerCase().includes(query)
+      || c.platform.toLowerCase().includes(query)
+      || c.time.toLowerCase().includes(query);
+  }).slice(0,80);
+  return(
+    <div className="table-card">
+      <div className="table-title" style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
+        <span>Comment archive ({comments.length})</span>
+        <input className="search-inp" style={{maxWidth:220}} value={q} onChange={e=>setQ(e.target.value)} placeholder="Search old comments..."/>
+      </div>
+      <table className="tbl">
+        <thead><tr><th>Name</th><th>Username</th><th>Platform</th><th>Comment</th><th>Time</th></tr></thead>
+        <tbody>
+          {filtered.length===0&&<tr><td colSpan={5} style={{textAlign:"center",padding:24,color:"#888"}}>No archived comments yet</td></tr>}
+          {filtered.map(c=>(
+            <tr key={`${c.platform}-${c.handle}-${c.timestamp||c.time}-${c.comment}`}>
+              <td><div style={{display:"flex",alignItems:"center",gap:8}}><Av name={c.name} size={26}/><strong>{c.name}</strong></div></td>
+              <td className="mono" style={{color:"#7F77DD"}}>@{c.handle}</td>
+              <td><Badge label={c.platform} color={c.platform==="TikTok"?"purple":"green"}/></td>
+              <td>{c.comment}</td>
+              <td className="muted">{c.timestamp?new Date(c.timestamp).toLocaleString():c.time}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function PrintPage({buyers,cur,storeName,settings,t}:{buyers:Buyer[];cur:string;storeName:string;settings:Settings;t:T}){
   const [toast,setToast]=useState("");
   function doPrint(b:Buyer){printSlip(b,cur,storeName,settings);}
@@ -1949,6 +1986,7 @@ export default function App(){
   const [settings,setSettingsState]=useState<Settings>(()=>({...DEF_SETTINGS,...LS.get<Partial<Settings>>("sf_settings",{})}));
   const [page,setPage]=useState<Page>("dashboard");
   const [comments,setComments]=useState<Comment[]>(()=>sortCommentsNewest(cleanComments(LS.get<unknown[]>("sf_comments",[]))).slice(0,LIVE_COMMENT_LIMIT));
+  const [archivedComments,setArchivedComments]=useState<Comment[]>(()=>sortCommentsNewest(cleanComments(LS.get<unknown[]>("sf_comment_archive",[]))).slice(0,COMMENT_ARCHIVE_LIMIT));
   const [buyers,setBuyers]=useState<Buyer[]>(()=>arrLS<Buyer>("sf_buyers"));
   const [allOrders,setAllOrders]=useState<LiveOrder[]>(()=>arrLS<LiveOrder>("sf_orders"));
   const [selBuyer,setSelBuyer]=useState<Buyer|null>(null);
@@ -1975,7 +2013,23 @@ export default function App(){
     setTotOrd(next.reduce((s,b)=>s+b.totalOrders,0));
     setTotRev(next.reduce((s,b)=>s+b.totalSpent,0));
   }
+  function archiveComments(list:Comment[]){
+    const clean=sortCommentsNewest(cleanComments(list));
+    if(!clean.length)return;
+    setArchivedComments(prev=>{
+      const seen=new Set<string>();
+      const next=sortCommentsNewest([...clean,...prev]).filter(c=>{
+        const key=commentKey(c);
+        if(seen.has(key))return false;
+        seen.add(key);
+        return true;
+      }).slice(0,COMMENT_ARCHIVE_LIMIT);
+      LS.set("sf_comment_archive",next);
+      return next;
+    });
+  }
   function clearLiveCommentMemory(){
+    archiveComments(cleanComments(LS.get<unknown[]>("sf_comments",[])));
     setComments([]);
     LS.set("sf_comments",[]);
   }
@@ -1992,7 +2046,9 @@ export default function App(){
       if(!incoming)return;
       const comment={...incoming,timestamp:incoming.timestamp||new Date().toISOString(),time:incoming.time||new Date().toLocaleTimeString()};
       setComments((p) => {
-        const next=sortCommentsNewest([comment,...cleanComments(p)]).slice(0,LIVE_COMMENT_LIMIT);
+        const merged=sortCommentsNewest([comment,...cleanComments(p)]);
+        archiveComments(merged.slice(LIVE_COMMENT_LIMIT));
+        const next=merged.slice(0,LIVE_COMMENT_LIMIT);
         LS.set("sf_comments",next);
         return next;
       });
@@ -2393,7 +2449,7 @@ export default function App(){
 
         {page==="orders"&&<Orders orders={allOrders} setOrders={setAllOrders} cur={settings.currency} t={t}/>}
         {page==="products"&&<Products cur={settings.currency} t={t}/>}
-        {page==="customers"&&<Customers buyers={buyers} cur={settings.currency} t={t}/>}
+        {page==="customers"&&<><Customers buyers={buyers} cur={settings.currency} t={t}/><CommentArchive comments={archivedComments}/></>}
         {page==="print"&&<PrintPage buyers={buyers} cur={settings.currency} storeName={user.profile.storeName||"SellerFlow"} settings={settings} t={t}/>}
         {page==="sales"&&<Sales orders={allOrders} buyers={buyers} cur={settings.currency} t={t}/>}
         {page==="settings"&&<SettingsPage user={user} settings={settings} onSaveProfile={handleSaveProfile} onSaveSettings={handleSaveSettings} onSavePw={handleSavePw} t={t}/>}
