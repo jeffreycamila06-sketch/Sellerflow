@@ -1689,17 +1689,6 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
         </div>
       </div>
 
-      <div className="scard admin-compact-card" style={{marginBottom:12}} onDoubleClick={()=>setExpandedAdminBox("create")}>
-        <div className="scard-title">Create Seller Account</div>
-        <div className="grid4">
-          <Fg label="Email"><input value={newSeller.email} onChange={e=>setNewSeller(s=>({...s,email:e.target.value}))} placeholder="seller@email.com"/></Fg>
-          <Fg label="Temporary password"><input type="password" value={newSeller.password} onChange={e=>setNewSeller(s=>({...s,password:e.target.value}))} placeholder="Minimum 6 chars"/></Fg>
-          <Fg label="Full name"><input value={newSeller.fullName} onChange={e=>setNewSeller(s=>({...s,fullName:e.target.value}))} placeholder="Seller name"/></Fg>
-          <Fg label="Store name"><input value={newSeller.storeName} onChange={e=>setNewSeller(s=>({...s,storeName:e.target.value}))} placeholder="Store name"/></Fg>
-        </div>
-        <button className="btn-purple" style={{marginTop:10}} onClick={createSeller}>Create seller</button>
-      </div>
-
       <div className="grid2 admin-box-grid">
         <div className="table-card admin-compact-card" onDoubleClick={()=>setExpandedAdminBox("users")}>
           <div className="table-title">Users ({users.length})</div>
