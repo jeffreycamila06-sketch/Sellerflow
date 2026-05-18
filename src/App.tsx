@@ -30,7 +30,7 @@ interface LiveOrder { orderNum:number; item:string; qty:number; price:number; to
 interface Buyer { handle:string; name:string; platform:string; num:number; orders:LiveOrder[]; totalSpent:number; totalOrders:number; }
 interface Comment { handle:string; name:string; comment:string; platform:"TikTok"|"Facebook"; isBuy:boolean; buyerNum:number|null; buyerData:Buyer|null; time:string; avatar?:string; timestamp?:string; sellerId?:string; sessionId?:string; sourceUsername?:string; }
 interface Product { id:number; name:string; sku:string; price:number; stock:number; platform:string; status:string; }
-interface Settings { autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"usb"|"bluetooth"; stickerSize:string; printStoreName:boolean; printBuyerNumber:boolean; printBuyerUsername:boolean; printOrderItems:boolean; printTotal:boolean; printAutoClose:boolean; printQrCode:boolean; printQrUrl:string; printQrScale:number; printLabelScale:number; printLogoScale:number; printStoreScale:number; printBuyerNumberScale:number; printBuyerNameScale:number; printUsernameScale:number; printOrderScale:number; printTotalScale:number; }
+interface Settings { autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"usb"|"bluetooth"; stickerSize:string; printStoreName:boolean; printBuyerNumber:boolean; printBuyerUsername:boolean; printOrderItems:boolean; printTotal:boolean; printAutoClose:boolean; printQrCode:boolean; printQrUrl:string; printQrScale:number; printLabelScale:number; printLogoScale:number; printStoreScale:number; printBuyerNumberScale:number; printBuyerNameScale:number; printUsernameScale:number; printOrderScale:number; printTotalScale:number; printLogoX:number; printLogoY:number; printStoreX:number; printStoreY:number; printBuyerBlockX:number; printBuyerBlockY:number; printQrX:number; printQrY:number; printSessionX:number; printSessionY:number; printFooterX:number; printFooterY:number; }
 interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; proofImage?:string; timestamp:string; status:"pending"|"approved"|"rejected"|"resolved"; adminReply?:string; repliedAt?:string; }
 const normalizeComment=(raw:unknown,index=0):Comment|null=>{
   if(!raw||typeof raw!=="object")return null;
@@ -76,7 +76,7 @@ const sellerIdOf=(email:string)=>email.trim().toLowerCase();
 const sellerDataKey=(base:string,email:string)=>email?`${base}:${sellerIdOf(email)}`:base;
 
 const SERVER = import.meta.env.VITE_SERVER_URL || "http://localhost:3001";
-const DEF_SETTINGS: Settings = { autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"₱", paperSize:"100x60mm", printerType:"usb", stickerSize:"100x60mm", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printQrCode:true, printQrUrl:"https://sellerflow-pi.vercel.app", printQrScale:100, printLabelScale:100, printLogoScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printTotalScale:100 };
+const DEF_SETTINGS: Settings = { autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"₱", paperSize:"100x60mm", printerType:"usb", stickerSize:"100x60mm", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printQrCode:true, printQrUrl:"https://sellerflow-pi.vercel.app", printQrScale:100, printLabelScale:100, printLogoScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printTotalScale:100, printLogoX:0, printLogoY:0, printStoreX:0, printStoreY:0, printBuyerBlockX:0, printBuyerBlockY:0, printQrX:0, printQrY:0, printSessionX:0, printSessionY:0, printFooterX:0, printFooterY:0 };
 const LANG_OPTS: {code:Lang;label:string}[] = [{code:"en",label:"🇺🇸 EN"},{code:"fil",label:"🇵🇭 FIL"},{code:"zh",label:"🇨🇳 中文"},{code:"vi",label:"🇻🇳 VI"},{code:"th",label:"🇹🇭 TH"},{code:"id",label:"🇮🇩 ID"}];
 const CURRENCIES = [{v:"₱",l:"₱ PHP"},{v:"$",l:"$ USD"},{v:"NT$",l:"NT$ NTD"},{v:"¥",l:"¥ CNY"},{v:"฿",l:"฿ THB"},{v:"₫",l:"₫ VND"}];
 
@@ -200,6 +200,7 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Setting
   const orderScale=scale(cfg.printOrderScale,cfg.printLabelScale);
   const totalScale=scale(cfg.printTotalScale,cfg.printLabelScale);
   const qrScale=scale(cfg.printQrScale,100);
+  const pos=(v:number|undefined)=>Math.max(-40,Math.min(40,v||0));
   const qrUrl=(cfg.printQrUrl||window.location.origin).trim();
   const qrSrc=`https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=0&data=${encodeURIComponent(qrUrl)}`;
   const sess=new Date().toLocaleDateString("en-PH",{month:"long",day:"numeric",year:"numeric"});
@@ -222,10 +223,10 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Setting
   win.onafterprint=()=>setTimeout(()=>frame.remove(),50);
   const doc=win.document;
   doc.open();
-  doc.write(`<!DOCTYPE html><html><head><title>Slip #${buyer.num}</title><style>@page{size:${size.replace("x","mm ")}mm;margin:4mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:monospace;width:${w}mm;font-size:10px;color:#000}.top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:7px}.logo{display:flex;align-items:center;gap:5px;justify-content:flex-start}.li{width:${22*logoScale}px;height:${22*logoScale}px;background:#7F77DD;border-radius:5px;display:flex;align-items:center;justify-content:center}.li svg{width:${14*logoScale}px;height:${14*logoScale}px}.lt{font-family:sans-serif;font-size:${13*logoScale}px}.ls{font-weight:700;color:#26215C}.lf{color:#7F77DD}.qr{width:${34*qrScale}px;height:${34*qrScale}px;object-fit:contain;border:1px solid #ddd;padding:1px}hr{border:none;border-top:1.5px solid #000;margin:6px 0}.dash{border-top:1px dashed #aaa;margin:5px 0}.nb{text-align:center;background:#EEEDFE;border-radius:7px;padding:6px 0 4px;margin-bottom:7px;border:1px solid #AFA9EC}.nl{font-size:${8*buyerNumberScale}px;color:#534AB7;font-family:sans-serif;letter-spacing:.5px}.nn{font-size:${46*buyerNumberScale}px;font-weight:700;font-family:sans-serif;line-height:1;color:${color}}.na{font-size:${12*buyerNameScale}px;font-weight:700;font-family:sans-serif;color:#26215C}.nh{font-size:${9*usernameScale}px;color:#7F77DD}.sl{font-size:8px;color:#888;text-align:center;margin-bottom:5px}.ot{font-size:${8*orderScale}px;font-family:sans-serif;color:#888;margin-bottom:4px}.tr{display:flex;justify-content:space-between}.tl{font-size:${9*totalScale}px;color:#888}.tv{font-family:sans-serif;font-size:${15*totalScale}px;font-weight:700}.ft{text-align:center;font-size:8px;color:#aaa;margin-top:6px;line-height:1.5}@media print{body{margin:0}}</style></head><body>
+  doc.write(`<!DOCTYPE html><html><head><title>Slip #${buyer.num}</title><style>@page{size:${size.replace("x","mm ")}mm;margin:4mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:monospace;width:${w}mm;font-size:10px;color:#000}.top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:7px;min-height:${34*Math.max(logoScale,qrScale)}px}.logo{display:flex;align-items:center;gap:5px;justify-content:flex-start;transform:translate(${pos(cfg.printLogoX)}mm,${pos(cfg.printLogoY)}mm)}.li{width:${22*logoScale}px;height:${22*logoScale}px;background:#7F77DD;border-radius:5px;display:flex;align-items:center;justify-content:center}.li svg{width:${14*logoScale}px;height:${14*logoScale}px}.lt{font-family:sans-serif;font-size:${13*logoScale}px}.ls{font-weight:700;color:#26215C}.lf{color:#7F77DD}.qr{width:${34*qrScale}px;height:${34*qrScale}px;object-fit:contain;border:1px solid #ddd;padding:1px;transform:translate(${pos(cfg.printQrX)}mm,${pos(cfg.printQrY)}mm)}.store{text-align:center;font-size:${9*storeScale}px;color:#888;margin-bottom:5px;transform:translate(${pos(cfg.printStoreX)}mm,${pos(cfg.printStoreY)}mm)}.dash{border-top:1px dashed #aaa;margin:5px 0}.nb{text-align:center;background:#EEEDFE;border-radius:7px;padding:6px 0 4px;margin-bottom:7px;border:1px solid #AFA9EC;transform:translate(${pos(cfg.printBuyerBlockX)}mm,${pos(cfg.printBuyerBlockY)}mm)}.nl{font-size:${8*buyerNumberScale}px;color:#534AB7;font-family:sans-serif;letter-spacing:.5px}.nn{font-size:${46*buyerNumberScale}px;font-weight:700;font-family:sans-serif;line-height:1;color:${color}}.na{font-size:${12*buyerNameScale}px;font-weight:700;font-family:sans-serif;color:#26215C}.nh{font-size:${9*usernameScale}px;color:#7F77DD}.sl{font-size:8px;color:#888;text-align:center;margin-bottom:5px;transform:translate(${pos(cfg.printSessionX)}mm,${pos(cfg.printSessionY)}mm)}.ot{font-size:${8*orderScale}px;font-family:sans-serif;color:#888;margin-bottom:4px}.tr{display:flex;justify-content:space-between}.tl{font-size:${9*totalScale}px;color:#888}.tv{font-family:sans-serif;font-size:${15*totalScale}px;font-weight:700}.ft{text-align:center;font-size:8px;color:#aaa;margin-top:6px;line-height:1.5;transform:translate(${pos(cfg.printFooterX)}mm,${pos(cfg.printFooterY)}mm)}@media print{body{margin:0}}</style></head><body>
   <div class="top"><div class="logo"><div class="li"><svg width="14" height="14" viewBox="0 0 18 18"><path d="M4 6 Q4 3 7 3 L11 3 Q14 3 14 6 Q14 9 11 9.5 L7 10.5 Q4 10.5 4 13 Q4 15 7 15 L11 15 Q14 15 14 13" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/></svg></div><div class="lt"><span class="ls">Seller</span><span class="lf">Flow</span></div></div>${cfg.printQrCode?`<img class="qr" src="${qrSrc}" alt="QR code">`:""}</div>
-  ${cfg.printStoreName?`<div style="text-align:center;font-size:${9*storeScale}px;color:#888;margin-bottom:5px">${storeName}</div>`:""}
-  <hr><div class="nb">${cfg.printBuyerNumber?`<div class="nl">BUYER NUMBER</div><div class="nn">#${buyer.num}</div>`:""}<div class="na">${buyer.name}</div>${cfg.printBuyerUsername?`<div class="nh">@${buyer.handle}</div>`:""}</div>
+  ${cfg.printStoreName?`<div class="store">${storeName}</div>`:""}
+  <div class="nb">${cfg.printBuyerNumber?`<div class="nl">BUYER NUMBER</div><div class="nn">#${buyer.num}</div>`:""}<div class="na">${buyer.name}</div>${cfg.printBuyerUsername?`<div class="nh">@${buyer.handle}</div>`:""}</div>
   <div class="sl">Session: ${sess}</div>${cfg.printOrderItems?`<div class="ot">Orders today (${buyer.orders.length})</div>${scaledOrderHtml}`:""}
   ${cfg.printTotal?`<div class="dash"></div><div class="tr"><span class="tl">TOTAL TODAY</span><span class="tv">${buyer.totalSpent>0?`${cur}${buyer.totalSpent.toLocaleString()}`:""}</span></div>`:""}
   <div class="dash"></div><div class="ft">Thank you!<br>SellerFlow · sellerflow.app</div>
@@ -988,6 +989,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
   const orderPreview=previewScale(sets.printOrderScale,sets.printLabelScale);
   const totalPreview=previewScale(sets.printTotalScale,sets.printLabelScale);
   const qrPreview=previewScale(sets.printQrScale,100);
+  const previewMove=(x:number|undefined,y:number|undefined)=>({transform:`translate(${(x||0)*1.8}px,${(y||0)*1.8}px)`});
   const qrUrl=(sets.printQrUrl||"https://sellerflow-pi.vercel.app").trim();
   const qrSrc=`https://api.qrserver.com/v1/create-qr-code/?size=160x160&margin=0&data=${encodeURIComponent(qrUrl)}`;
   useEffect(()=>{setProf({...user.profile});},[user]);
@@ -1156,23 +1158,23 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
             <div className="printer-preview-title">Print output preview</div>
             <div className="printer-preview-slip">
               <div className="printer-preview-head">
-                <div className="printer-preview-brand" style={{fontSize:`${10*logoPreview}px`}}><span className="printer-preview-logo" style={{width:`${22*logoPreview}px`,height:`${22*logoPreview}px`}}>S</span><strong>Seller<span>Flow</span></strong></div>
-                {sets.printQrCode&&<img className="printer-preview-qr" src={qrSrc} alt="QR code" style={{width:`${34*qrPreview}px`,height:`${34*qrPreview}px`}}/>}
+                <div className="printer-preview-brand" style={{fontSize:`${10*logoPreview}px`,...previewMove(sets.printLogoX,sets.printLogoY)}}><span className="printer-preview-logo" style={{width:`${22*logoPreview}px`,height:`${22*logoPreview}px`}}>S</span><strong>Seller<span>Flow</span></strong></div>
+                {sets.printQrCode&&<img className="printer-preview-qr" src={qrSrc} alt="QR code" style={{width:`${34*qrPreview}px`,height:`${34*qrPreview}px`,...previewMove(sets.printQrX,sets.printQrY)}}/>}
               </div>
-              {sets.printStoreName&&<div className="printer-preview-store" style={{fontSize:`${9*storePreview}px`}}>{user.profile.storeName||"My Store"}</div>}
-              <div className="printer-preview-line"/>
-              <div className="printer-preview-buyer">
+              {sets.printStoreName&&<div className="printer-preview-store" style={{fontSize:`${9*storePreview}px`,...previewMove(sets.printStoreX,sets.printStoreY)}}>{user.profile.storeName||"My Store"}</div>}
+              <div className="printer-preview-buyer" style={previewMove(sets.printBuyerBlockX,sets.printBuyerBlockY)}>
                 {sets.printBuyerNumber&&<><small style={{fontSize:`${8*buyerNumberPreview}px`}}>BUYER NUMBER</small><b style={{fontSize:`${38*buyerNumberPreview}px`}}>#12</b></>}
                 <strong style={{fontSize:`${12*buyerNamePreview}px`}}>Maria Santos</strong>
                 {sets.printBuyerUsername&&<em style={{fontSize:`${9*usernamePreview}px`}}>@maria_live</em>}
               </div>
-              <div className="printer-preview-session">Session: May 17, 2026</div>
+              <div className="printer-preview-session" style={previewMove(sets.printSessionX,sets.printSessionY)}>Session: May 17, 2026</div>
               {sets.printOrderItems&&<div className="printer-preview-orders" style={{fontSize:`${10*orderPreview}px`}}>
                 <small>Orders today (2)</small>
                 <div>12:21 PM - #SF1001<br/><b>Blue dress</b> x1</div>
                 <div>12:22 PM - #SF1002<br/><b>Crop top</b> x2</div>
               </div>}
               {sets.printTotal&&<><div className="printer-preview-dash"/><div className="printer-preview-total" style={{fontSize:`${10*totalPreview}px`}}><span>TOTAL TODAY</span><b>{sets.currency}1,240</b></div></>}
+              <div className="printer-preview-footer" style={previewMove(sets.printFooterX,sets.printFooterY)}>Thank you!<br/>SellerFlow - sellerflow.app</div>
             </div>
           </div>
           {([
@@ -1187,6 +1189,25 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
           ] as [keyof Settings,string][]).map(([k,label])=>(
             <Fg key={k} label={`${label} size (${Number(sets[k]||100)}%)`}>
               <input type="range" min="60" max="180" step="5" value={Number(sets[k]||100)} onChange={e=>setSets(s=>({...s,[k]:Number(e.target.value)}))}/>
+            </Fg>
+          ))}
+          <div className="scard-title" style={{marginTop:10}}>Label position tools</div>
+          {([
+            ["printLogoX","Logo left / right"],
+            ["printLogoY","Logo up / down"],
+            ["printStoreX","Seller name left / right"],
+            ["printStoreY","Seller name up / down"],
+            ["printBuyerBlockX","Buyer block left / right"],
+            ["printBuyerBlockY","Buyer block up / down"],
+            ["printQrX","QR left / right"],
+            ["printQrY","QR up / down"],
+            ["printSessionX","Date/session left / right"],
+            ["printSessionY","Date/session up / down"],
+            ["printFooterX","Footer left / right"],
+            ["printFooterY","Footer up / down"],
+          ] as [keyof Settings,string][]).map(([k,label])=>(
+            <Fg key={k} label={`${label} (${Number(sets[k]||0)}mm)`}>
+              <input type="range" min="-40" max="40" step="1" value={Number(sets[k]||0)} onChange={e=>setSets(s=>({...s,[k]:Number(e.target.value)}))}/>
             </Fg>
           ))}
           <Fg label="QR website link">

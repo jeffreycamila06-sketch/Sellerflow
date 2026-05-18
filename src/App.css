@@ -398,6 +398,7 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .printer-preview-buyer small{font-size:.8em;color:#534AB7;font-family:Arial,sans-serif}.printer-preview-buyer b{line-height:1;color:#534AB7;font-family:Arial,sans-serif}.printer-preview-buyer strong{color:#26215C;font-family:Arial,sans-serif}.printer-preview-buyer em{font-style:normal;color:#7F77DD;font-size:.9em}
 .printer-preview-orders{margin-top:8px;display:flex;flex-direction:column;gap:5px}.printer-preview-orders small{font-size:.8em;color:#777;font-family:Arial,sans-serif}.printer-preview-orders div{border-left:2px solid #7F77DD;padding-left:6px;color:#444;font-size:.9em}.printer-preview-orders b{color:#111}
 .printer-preview-dash{border-top:1px dashed #aaa;margin:8px 0 5px}.printer-preview-total{display:flex;justify-content:space-between;gap:8px;align-items:center}.printer-preview-total span{font-size:.9em;color:#777}.printer-preview-total b{font-family:Arial,sans-serif;color:#111}
+.printer-preview-footer{text-align:center;font-size:8px;color:#999;margin-top:8px;line-height:1.35}
 .settings-quick-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .settings-expanded{grid-template-columns:1fr}
 .settings-expanded .settings-section{display:none}
