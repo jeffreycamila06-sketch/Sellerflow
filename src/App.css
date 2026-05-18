@@ -238,6 +238,19 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 
 /* Subpages */
 .subpage{flex:1;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:14px}
+.legal-hd{align-items:center;justify-content:flex-start;gap:12px}
+.legal-card,.delete-card{max-width:860px;width:100%;align-self:center;line-height:1.6}
+.legal-card h3,.delete-card h3{margin:0 0 8px;color:#26215C}
+.legal-lead{margin:0 0 12px;color:#5F5E5A}
+.legal-section{padding:12px 0;border-top:0.5px solid #E4E2DC}
+.legal-section h4{margin:0 0 4px;color:#26215C;font-size:14px}
+.legal-section p,.delete-card p{margin:0;color:#5F5E5A;font-size:13px}
+.danger-label{display:block;margin-top:14px;margin-bottom:6px;font-size:12px;font-weight:600;color:#A32D2D}
+.danger-input{width:100%;border:0.5px solid #D3D1C7;border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:12px}
+.delete-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:12px}
+.danger-btn{border:none;background:#D94444;color:#fff;border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer}
+.danger-btn:disabled{opacity:.45;cursor:not-allowed}
+.inline-link{border:none;background:transparent;color:#534AB7;text-decoration:underline;padding:0;font:inherit;cursor:pointer}
 .subpage::-webkit-scrollbar{width:4px}
 .subpage::-webkit-scrollbar-thumb{background:#D3D1C7;border-radius:4px}
 .subpage-hd{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px}

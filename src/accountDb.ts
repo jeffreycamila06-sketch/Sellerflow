@@ -232,6 +232,26 @@ export async function deleteUser(email: string): Promise<void> {
   }
 }
 
+export async function deleteSupportMessagesForEmail(email: string): Promise<void> {
+  const cleanEmail = email.trim().toLowerCase();
+  const localMessages = localGet<AccountSupportMsg[]>("sf_support", []);
+  localSet(
+    "sf_support",
+    localMessages.filter((m) => m.email.toLowerCase() !== cleanEmail)
+  );
+
+  if (!isSupabaseConfigured || !supabase) return;
+
+  const { error } = await supabase
+    .from("support_messages")
+    .delete()
+    .eq("email", cleanEmail);
+
+  if (error) {
+    console.error("Delete support messages error:", error.message);
+  }
+}
+
 export async function listSupportMessages(): Promise<AccountSupportMsg[]> {
   const localMessages = localGet<AccountSupportMsg[]>("sf_support", []);
   if (!isSupabaseConfigured || !supabase) return localMessages;

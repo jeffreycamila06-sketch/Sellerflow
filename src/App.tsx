@@ -1,6 +1,7 @@
 import { saveOrderToDatabase, saveCustomerToDatabase } from "./db";
 import {
   type AccountAuditLog,
+  deleteSupportMessagesForEmail,
   deleteUser,
   findUser,
   listAuditLogs,
@@ -21,7 +22,7 @@ import { TRANSLATIONS, type Lang, type T } from "./translations";
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Plan = "trial" | "basic" | "pro" | "master";
 type PlanStatus = "active" | "expired" | "pending";
-type Page = "dashboard"|"miners"|"orders"|"products"|"customers"|"print"|"sales"|"settings"|"subscription"|"support"|"admin";
+type Page = "dashboard"|"miners"|"orders"|"products"|"customers"|"print"|"sales"|"settings"|"subscription"|"support"|"admin"|"privacy"|"terms"|"deleteAccount";
 
 interface Profile { fullName:string; storeName:string; phone:string; tiktok:string; facebook:string; }
 interface User { email:string; password:string; profile:Profile; plan:Plan; planStatus:PlanStatus; planExpiry:string; connectedAccounts:string[]; }
@@ -323,6 +324,10 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
   const [activeFeature,setActiveFeature]=useState(0);
   const [activeFlow,setActiveFlow]=useState(0);
   const [openFaq,setOpenFaq]=useState(0);
+  const [publicLegal,setPublicLegal]=useState<""|"privacy"|"terms">(()=>{
+    if(typeof window==="undefined")return "";
+    return window.location.hash==="#privacy"?"privacy":window.location.hash==="#terms"?"terms":"";
+  });
   async function login(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);
     const u=await findUser(email);
     if(!u){setErr(t.err_no_account);setBusy(false);return;}
@@ -348,6 +353,12 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
   }
   const go=(m:"login"|"reg"|"forgot")=>{setMode(m);setErr("");setOk("");};
   const jump=(id:string)=>document.getElementById(id)?.scrollIntoView({behavior:"smooth",block:"start"});
+  const openLegal=(kind:"privacy"|"terms")=>{window.location.hash=kind;setPublicLegal(kind);};
+  const closeLegal=()=>{
+    window.history.pushState("",document.title,window.location.pathname+window.location.search);
+    setPublicLegal("");
+  };
+  if(publicLegal)return <LegalPage kind={publicLegal} onBack={closeLegal}/>;
   const featureItems=[
     {title:"Live comment capture",body:"Connect TikTok or Facebook Live and keep every buyer comment in one clean feed with name, username, profile initials, time, and platform."},
     {title:"1-click order and print",body:"Click any comment to create an order and print the buyer slip immediately. Reprint is available when a printer misses a label."},
@@ -405,7 +416,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
           <Fg label={t.confirm_field}><input type="password" value={cpw} onChange={e=>setCpw(e.target.value)} placeholder="Confirm password" required/></Fg>
           <button type="submit" className="auth-btn" disabled={busy}>{busy?t.creating:t.start_trial_btn}</button>
           <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat?v=3" download>Printer Shortcut</a>
-          <p className="auth-terms">{t.terms_text}</p>
+          <p className="auth-terms">By creating an account, you agree to SellerFlow <button type="button" className="inline-link" onClick={()=>openLegal("terms")}>Terms</button> and <button type="button" className="inline-link" onClick={()=>openLegal("privacy")}>Privacy Policy</button>.</p>
         </form>
         <div className="auth-sw">{t.have_account} <button className="auth-link" onClick={()=>go("login")}>{t.sign_in_btn}</button></div>
       </>}
@@ -460,7 +471,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
       <section id="support-info" className="public-section public-support-band"><div><span>Support</span><h2>Handle seller complaints like Messenger</h2><p>Every seller can send a payment proof or support issue. Admin receives a compact chat thread, can approve, reject, resolve, reply, and see unread notifications.</p></div><button onClick={()=>{go("login");jump("account")}}>Open seller account</button></section>
       <section id="faq" className="public-section"><div className="public-section-head"><span>FAQ</span><h2>Frequently asked questions</h2><p>Click a question to expand the answer.</p></div><div className="public-faq">{faqItems.map((item,i)=><button key={item[0]} className={openFaq===i?"open":""} onClick={()=>setOpenFaq(openFaq===i?-1:i)}><div><span>{i+1}</span><strong>{item[0]}</strong><b>{openFaq===i?"-":"+"}</b></div>{openFaq===i&&<p>{item[1]}</p>}</button>)}</div></section>
       <section id="account" className="public-account"><div className="public-account-copy"><span>Account access</span><h2>Start using SellerFlow</h2><p>Login if you already have a seller account. Register only if you are creating a new shop account.</p></div>{accountForm}</section>
-      <footer className="public-footer"><div><strong>SellerFlow</strong><p>Live selling order system for TikTok and Facebook sellers.</p></div><div><button onClick={()=>jump("features")}>Features</button><button onClick={()=>jump("instructions")}>Instructions</button><button onClick={()=>jump("pricing")}>Price list</button><button onClick={()=>jump("account")}>Login</button></div></footer>
+      <footer className="public-footer"><div><strong>SellerFlow</strong><p>Live selling order system for TikTok and Facebook sellers.</p></div><div><button onClick={()=>jump("features")}>Features</button><button onClick={()=>jump("instructions")}>Instructions</button><button onClick={()=>jump("pricing")}>Price list</button><button onClick={()=>openLegal("privacy")}>Privacy</button><button onClick={()=>openLegal("terms")}>Terms</button><button onClick={()=>jump("account")}>Login</button></div></footer>
     </div>
   );
 }
@@ -481,6 +492,83 @@ function TrialExpiredWall({t,onUpgrade}:{t:T;onUpgrade:()=>void}){
 // ═══════════════════════════════════════════════════════════════════
 // SUBSCRIPTION PAGE
 // ═══════════════════════════════════════════════════════════════════
+function LegalPage({kind,onBack}:{kind:"privacy"|"terms";onBack:()=>void}){
+  const isPrivacy=kind==="privacy";
+  const title=isPrivacy?"Privacy Policy":"Terms of Service";
+  const subtitle=isPrivacy
+    ?"How SellerFlow collects, uses, protects, and deletes account information."
+    :"The rules for using SellerFlow as a live selling order and printing system.";
+  const sections=isPrivacy?[
+    {h:"Information we collect",p:"SellerFlow stores account details, shop profile, registered TikTok or Facebook accounts, settings, live comments, buyer/customer records, orders, support messages, and payment proof files you submit."},
+    {h:"How we use information",p:"We use this data to run the live comment feed, create orders, print slips, remember customers, manage subscriptions, answer support messages, and help admins protect seller accounts."},
+    {h:"Storage and service providers",p:"Data may be saved in the browser on the seller device and in our Supabase database. Hosting, database, live connection, and printing tools may process data only to provide SellerFlow."},
+    {h:"Sharing",p:"We do not sell seller or buyer data. We only share data when needed to operate the app, comply with law, prevent abuse, or support a seller request."},
+    {h:"Seller responsibility",p:"Sellers should only enter buyer information needed for orders and should follow their local privacy, tax, and selling rules."},
+    {h:"Delete account",p:"You can request deletion inside SellerFlow from Profile > Delete Account. Deleting removes the seller login and support messages for that email where possible. Some order or payment records may be retained when required for business, security, or legal reasons."},
+    {h:"Contact",p:"For privacy requests, contact admin@sellerflow.app."},
+  ]:[
+    {h:"Service purpose",p:"SellerFlow helps live sellers collect comments, create buyer numbers, manage orders, print slips, track customers, and communicate with admin support."},
+    {h:"Account rules",p:"You are responsible for keeping your login private. Registered TikTok and Facebook accounts may be locked based on your plan and can be changed by admin when needed."},
+    {h:"Subscriptions",p:"Plan access, expiry dates, account limits, payment approval, and support handling are managed by the SellerFlow admin account."},
+    {h:"Printing and live connections",p:"SellerFlow provides printing and live comment tools, but browser, printer, network, TikTok, and Facebook changes can affect availability. Sellers should test the printer before selling."},
+    {h:"Seller responsibility",p:"Sellers are responsible for products, prices, order accuracy, customer communication, refunds, taxes, and following platform rules."},
+    {h:"Acceptable use",p:"Do not use SellerFlow for fraud, spam, illegal products, abuse, unauthorized data collection, or attempts to break the app or other seller accounts."},
+    {h:"Changes and contact",p:"We may update these terms as SellerFlow improves. Questions can be sent to admin@sellerflow.app."},
+  ];
+  return(
+    <div className="subpage legal-page">
+      <div className="subpage-hd legal-hd">
+        <button className="btn-out" onClick={onBack}>Back</button>
+        <div><h2>{title}</h2><p>Last updated: May 18, 2026</p></div>
+      </div>
+      <div className="scard legal-card">
+        <h3>{title}</h3>
+        <p className="legal-lead">{subtitle}</p>
+        {sections.map(s=>(
+          <section key={s.h} className="legal-section">
+            <h4>{s.h}</h4>
+            <p>{s.p}</p>
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DeleteAccountPage({user,onDelete,onCancel}:{user:User;onDelete:()=>Promise<void>;onCancel:()=>void}){
+  const [confirm,setConfirm]=useState("");
+  const [busy,setBusy]=useState(false);
+  const [err,setErr]=useState("");
+  const canDelete=confirm.trim().toLowerCase()===user.email.toLowerCase();
+  async function submit(e:React.FormEvent){
+    e.preventDefault();
+    if(!canDelete)return;
+    setBusy(true);setErr("");
+    try{await onDelete();}
+    catch(error){setErr(error instanceof Error?error.message:"Delete failed. Please try again.");setBusy(false);}
+  }
+  return(
+    <div className="subpage delete-page">
+      <div className="subpage-hd legal-hd">
+        <button className="btn-out" onClick={onCancel}>Back</button>
+        <div><h2>Delete Account</h2><p>Remove this seller login from SellerFlow.</p></div>
+      </div>
+      <form className="scard delete-card" onSubmit={submit}>
+        <h3>Before deleting</h3>
+        <p>This will delete the seller account for <b>{user.email}</b>, sign out this browser, and remove support messages for this email where possible.</p>
+        <p>Order, buyer, payment, audit, or legal records may be kept if needed for business history, security, or law.</p>
+        <label className="danger-label">Type your email to confirm</label>
+        <input className="danger-input" value={confirm} onChange={e=>setConfirm(e.target.value)} placeholder={user.email}/>
+        {err&&<div className="auth-err">Warning: {err}</div>}
+        <div className="delete-actions">
+          <button type="button" className="btn-out" onClick={onCancel}>Cancel</button>
+          <button type="submit" className="danger-btn" disabled={!canDelete||busy}>{busy?"Deleting...":"Delete my account"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function SubPage({user,onActivate,t}:{user:User;onActivate:(plan:Plan,status:PlanStatus,expiry:string)=>void;t:T}){
   const [sel,setSel]=useState<Plan|null>(null);
   const [showPay,setShowPay]=useState(false);
@@ -2134,6 +2222,21 @@ export default function App(){
   }
   function handleLogin(u:User){const safe=safeUser(u);if(safe){setUser(asAdminPlan(safe));setPage("dashboard");}}
   function handleLogout(){LS.del("sf_session");setUser(null);setComments([]);setBuyers([]);setTotOrd(0);setTotRev(0);setSelBuyer(null);}
+  async function handleDeleteAccount(){
+    if(!user)return;
+    const email=user.email;
+    await deleteSupportMessagesForEmail(email);
+    await deleteUser(email);
+    ["sf_session","sf_comments","sf_comment_archive","sf_buyers","sf_orders",supportReadKey(email)].forEach(k=>LS.del(k));
+    setShowProf(false);
+    setPage("dashboard");
+    setUser(null);
+    setComments([]);
+    setBuyers([]);
+    setTotOrd(0);
+    setTotRev(0);
+    setSelBuyer(null);
+  }
   function handleActivate(plan:Plan,status:PlanStatus,expiry:string){
     if(!user)return;
     const u={...user,plan,planStatus:status,planExpiry:expiry};
@@ -2275,7 +2378,7 @@ export default function App(){
     return connected&&account?account:platform;
   };
   const days=dLeft(user.planExpiry);
-  const showMobileBack=["settings","subscription","support","admin"].includes(page);
+  const showMobileBack=["settings","subscription","support","admin","privacy","terms","deleteAccount"].includes(page);
   const navItems:[Page,string,string][]=[
     ["dashboard","⚡",t.nav_live],["miners","🏅",t.nav_miners],["orders","🛒",t.nav_orders],
     ["products","📦",t.nav_products],["customers","👥",t.nav_customers],["print","🖨️",t.nav_print],["sales","📊",t.nav_sales],
@@ -2338,6 +2441,9 @@ export default function App(){
                 <div className="pd-row pd-cl" onClick={()=>{setPage("settings");setShowProf(false);}}><span>⚙️</span><span>{t.nav_settings}</span></div>
                 <div className="pd-row pd-cl" onClick={()=>{setPage("subscription");setShowProf(false);}}><span>💎</span><span>Subscription</span></div>
                 <div className="pd-row pd-cl" onClick={()=>{setPage("support");setShowProf(false);}}><span>💬</span><span>Support</span></div>
+                <div className="pd-row pd-cl" onClick={()=>{setPage("privacy");setShowProf(false);}}><span>Privacy</span><span>Privacy Policy</span></div>
+                <div className="pd-row pd-cl" onClick={()=>{setPage("terms");setShowProf(false);}}><span>Terms</span><span>Terms of Service</span></div>
+                <div className="pd-row pd-cl" onClick={()=>{setPage("deleteAccount");setShowProf(false);}}><span>Delete</span><span>Delete Account</span></div>
                 {isAdminUser(user)&&<div className="pd-row pd-cl" onClick={()=>{setPage("admin");setShowProf(false);}}><span>ADMIN</span><span>Admin</span></div>}
                 <div className="pd-row pd-cl" style={{color:"#A32D2D"}} onClick={()=>{setShowProf(false);handleLogout();}}><span>🚪</span><span>{t.sign_out}</span></div>
               </div>
@@ -2497,6 +2603,9 @@ export default function App(){
         {page==="subscription"&&<SubPage user={user} onActivate={handleActivate} t={t}/>}
         {page==="support"&&<Support user={user} t={t}/>}
         {page==="admin"&&<AdminPage currentUser={user} onApprove={handleAdminApprove} t={t}/>}
+        {page==="privacy"&&<LegalPage kind="privacy" onBack={()=>setPage("settings")}/>}
+        {page==="terms"&&<LegalPage kind="terms" onBack={()=>setPage("settings")}/>}
+        {page==="deleteAccount"&&<DeleteAccountPage user={user} onDelete={handleDeleteAccount} onCancel={()=>setPage("settings")}/>}
       </main>
 
       {showConn&&<ConnectModal onClose={()=>setShowConn(false)} onConnect={connectPlatform} user={user} t={t} initialTab={connectTab}/>}
