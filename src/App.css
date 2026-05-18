@@ -140,6 +140,7 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .plat-btn{font-size:12px;padding:4px 12px;border-radius:20px;border:0.5px solid #D3D1C7;cursor:pointer;color:#5F5E5A;background:#fff;transition:all .15s}
 .plat-btn:hover{border-color:#7F77DD;color:#534AB7}
 .plat-btn.on{background:#7F77DD;color:#fff;border-color:#7F77DD}
+.plat-btn.active-account{max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lang-sel{font-size:12px;padding:4px 8px;border-radius:7px;border:0.5px solid #D3D1C7;background:#F5F5F2;color:#26215C;margin-left:auto}
 .session-txt{font-size:11px;color:#888780;white-space:nowrap;flex-shrink:0}
 .prof-av{width:32px;height:32px;border-radius:50%;background:#7F77DD;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #AFA9EC;cursor:pointer;flex-shrink:0;user-select:none}
@@ -641,7 +642,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .topbar{display:grid;grid-template-columns:minmax(82px,1fr) minmax(82px,1fr) minmax(78px,.9fr) 44px;gap:8px;padding:10px 12px;background:#fff;overflow:visible;box-shadow:0 2px 12px rgba(38,33,92,.08)}
   .topbar.has-mobile-back{position:sticky;padding-top:52px}
   .mobile-page-back{position:absolute;top:10px;left:12px;display:inline-flex;align-items:center;justify-content:center;height:34px;padding:0 14px;border:1px solid #D8D3FF;border-radius:10px;background:#fff;color:#534AB7;font-size:14px;font-weight:700;box-shadow:0 5px 16px rgba(38,33,92,.08)}
-  .topbar .live-pill,.topbar .plat-btn{height:34px;min-width:0;justify-content:center;font-size:12px;padding:0 10px}
+  .topbar .live-pill,.topbar .plat-btn{height:34px;min-width:0;justify-content:center;font-size:12px;padding:0 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .topbar .lang-sel,.topbar .session-txt{display:none}
   .topbar>div:last-child{grid-column:4;grid-row:1;align-self:center;justify-self:end}
   .topbar .prof-av{width:40px;height:40px}

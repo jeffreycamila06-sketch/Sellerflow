@@ -1921,7 +1921,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
   );
 }
 
-function ConnectModal({onClose,onConnect,user,t,initialTab="TikTok"}:{onClose:()=>void;onConnect:(p:string,d:Record<string,string>)=>void;user:User;t:T;initialTab?:"TikTok"|"Facebook"}){
+function ConnectModal({onClose,onConnect,user,t,initialTab="TikTok"}:{onClose:()=>void;onConnect:(p:"TikTok"|"Facebook",d:Record<string,string>)=>void;user:User;t:T;initialTab?:"TikTok"|"Facebook"}){
   const [tab,setTab]=useState<"TikTok"|"Facebook">(initialTab);
   const [ttu,setTtu]=useState("");const [fbId,setFbId]=useState("");const [fbTok,setFbTok]=useState("");const [busy,setBusy]=useState(false);
   const registeredTikTok=accountList(user.profile.tiktok).slice(0,maxAcc(user.plan));
@@ -2002,6 +2002,7 @@ export default function App(){
     return storedOrders.length?storedOrders.reduce((s,o)=>s+o.total,0):arrLS<Buyer>("sf_buyers").reduce((s,b)=>s+b.totalSpent,0);
   });
   const [ttOn,setTtOn]=useState(false);const [fbOn,setFbOn]=useState(false);
+  const [activeLiveAccounts,setActiveLiveAccounts]=useState<{TikTok:string;Facebook:string}>({TikTok:"",Facebook:""});
   const [showConn,setShowConn]=useState(false);const [showProf,setShowProf]=useState(false);
   const [connectTab,setConnectTab]=useState<"TikTok"|"Facebook">("TikTok");
   const [printed,setPrinted]=useState<Set<string>>(new Set());
@@ -2069,9 +2070,12 @@ export default function App(){
       const ords=b.flatMap(x=>x.orders.map(o=>({...o,handle:x.handle,name:x.name,bNum:x.num,platform:x.platform,status:"New",date:new Date().toISOString().slice(0,10)})));
       setAllOrders(ords);LS.set("sf_orders",ords);
     });
-    s.on("platform_status",({platform:p,connected:c}:{platform:string;connected:boolean})=>{if(p==="TikTok")setTtOn(c);if(p==="Facebook")setFbOn(c);});
+    s.on("platform_status",({platform:p,connected:c}:{platform:string;connected:boolean})=>{
+      if(p==="TikTok"){setTtOn(c);if(!c)setActiveLiveAccounts(a=>({...a,TikTok:""}));}
+      if(p==="Facebook"){setFbOn(c);if(!c)setActiveLiveAccounts(a=>({...a,Facebook:""}));}
+    });
     s.on("live_session_started",clearLiveCommentMemory);
-    s.on("live_session_ended",clearLiveCommentMemory);
+    s.on("live_session_ended",()=>{clearLiveCommentMemory();setActiveLiveAccounts({TikTok:"",Facebook:""});setTtOn(false);setFbOn(false);});
     s.on("session_state",({buyers:b,totalOrders:to}:{buyers:Buyer[];totalOrders:number})=>{
       if(!b.length&&!to)return;
       saveBuyerMemory(b);setTotOrd(to);
@@ -2153,7 +2157,7 @@ export default function App(){
     if(updated&&user?.email.toLowerCase()===email.toLowerCase())setUser(asAdminPlan(updated));
     setToast(`${email} approved for ${plan}`);
   }
-  async function connectPlatform(platform:string,data:Record<string,string>){
+  async function connectPlatform(platform:"TikTok"|"Facebook",data:Record<string,string>){
     const ep=platform==="TikTok"?"/connect/tiktok":"/connect/facebook";
     const body=platform==="TikTok"?{username:data.username}:{liveVideoId:data.liveVideoId,accessToken:data.accessToken};
     try{
@@ -2162,6 +2166,10 @@ export default function App(){
       if(!j.success)setToast(`${t.conn_failed}: ${j.error}`);
       else{
         setToast(`${t.conn_success} ${platform}!`);
+        setActiveLiveAccounts(a=>({
+          ...a,
+          [platform]: (platform==="TikTok"?data.username:data.liveVideoId||data.username||"").trim()
+        }));
         if(user){
           const cleanValue=(platform==="TikTok"?data.username:data.liveVideoId||user.profile.facebook||"").trim();
           const field=platform==="TikTok"?"tiktok":"facebook";
@@ -2259,6 +2267,10 @@ export default function App(){
   if(!user)return <PublicAuth onLogin={handleLogin} t={t} lang={lang} setLang={setLang}/>;
 
   const isLive=ttOn||fbOn;
+  const platformButtonLabel=(platform:"TikTok"|"Facebook",connected:boolean)=>{
+    const account=activeLiveAccounts[platform];
+    return connected&&account?account:platform;
+  };
   const days=dLeft(user.planExpiry);
   const showMobileBack=["settings","subscription","support","admin"].includes(page);
   const navItems:[Page,string,string][]=[
@@ -2297,8 +2309,8 @@ export default function App(){
         <header className={`topbar ${showMobileBack?"has-mobile-back":""}`}>
           {showMobileBack&&<button className="mobile-page-back" onClick={()=>setPage("dashboard")}>Back</button>}
           <div className={`live-pill ${isLive?"live":"off"}`}><span className="live-dot"/> {isLive?t.live_status:t.offline_status}</div>
-          <button onClick={()=>{setConnectTab("TikTok");setShowConn(true);}} className={`plat-btn ${ttOn?"on":""}`}>TikTok {ttOn?"✓":""}</button>
-          <button onClick={()=>{setConnectTab("Facebook");setShowConn(true);}} className={`plat-btn ${fbOn?"on":""}`}>Facebook {fbOn?"✓":""}</button>
+          <button onClick={()=>{setConnectTab("TikTok");setShowConn(true);}} className={`plat-btn ${ttOn?"on active-account":""}`} title={ttOn&&activeLiveAccounts.TikTok?`TikTok: ${activeLiveAccounts.TikTok}`:"TikTok"}>{platformButtonLabel("TikTok",ttOn)} {ttOn?"✓":""}</button>
+          <button onClick={()=>{setConnectTab("Facebook");setShowConn(true);}} className={`plat-btn ${fbOn?"on active-account":""}`} title={fbOn&&activeLiveAccounts.Facebook?`Facebook: ${activeLiveAccounts.Facebook}`:"Facebook"}>{platformButtonLabel("Facebook",fbOn)} {fbOn?"✓":""}</button>
           <select value={lang} onChange={e=>setLang(e.target.value as Lang)} className="lang-sel">
             {LANG_OPTS.map(l=><option key={l.code} value={l.code}>{l.label}</option>)}
           </select>
