@@ -31,7 +31,27 @@ interface Comment { handle:string; name:string; comment:string; platform:"TikTok
 interface Product { id:number; name:string; sku:string; price:number; stock:number; platform:string; status:string; }
 interface Settings { autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"usb"|"bluetooth"; stickerSize:string; printStoreName:boolean; printBuyerNumber:boolean; printBuyerUsername:boolean; printOrderItems:boolean; printTotal:boolean; printAutoClose:boolean; printQrCode:boolean; printQrUrl:string; printQrScale:number; printLabelScale:number; printLogoScale:number; printStoreScale:number; printBuyerNumberScale:number; printBuyerNameScale:number; printUsernameScale:number; printOrderScale:number; printTotalScale:number; }
 interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; proofImage?:string; timestamp:string; status:"pending"|"approved"|"rejected"|"resolved"; adminReply?:string; repliedAt?:string; }
-const commentMs=(c:Comment)=>{const t=Date.parse(c.timestamp||"");return Number.isFinite(t)?t:0;};
+const normalizeComment=(raw:unknown,index=0):Comment|null=>{
+  if(!raw||typeof raw!=="object")return null;
+  const c=raw as Partial<Comment>;
+  const handle=String(c.handle||c.name||`buyer-${index}`).trim();
+  if(!handle)return null;
+  const platform=c.platform==="Facebook"?"Facebook":"TikTok";
+  return {
+    handle,
+    name:String(c.name||handle),
+    comment:String(c.comment||""),
+    platform,
+    isBuy:!!c.isBuy,
+    buyerNum:typeof c.buyerNum==="number"?c.buyerNum:null,
+    buyerData:c.buyerData||null,
+    time:String(c.time||new Date().toLocaleTimeString()),
+    avatar:typeof c.avatar==="string"?c.avatar:undefined,
+    timestamp:typeof c.timestamp==="string"&&c.timestamp?c.timestamp:undefined,
+  };
+};
+const cleanComments=(list:unknown)=>Array.isArray(list)?list.map((c,i)=>normalizeComment(c,i)).filter((c):c is Comment=>!!c):[];
+const commentMs=(c:Comment)=>{const t=Date.parse(c?.timestamp||"");return Number.isFinite(t)?t:0;};
 const sortCommentsNewest=(list:Comment[])=>[...list].sort((a,b)=>commentMs(b)-commentMs(a));
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
@@ -1887,7 +1907,7 @@ export default function App(){
   const [user,setUser]=useState<User|null>(()=>{const e=LS.get<string>("sf_session","");if(!e)return null;const u=LS.get<User[]>("sf_users",[]).find(u=>u.email===e)||null;return u?asAdminPlan(u):null;});
   const [settings,setSettingsState]=useState<Settings>(()=>({...DEF_SETTINGS,...LS.get<Partial<Settings>>("sf_settings",{})}));
   const [page,setPage]=useState<Page>("dashboard");
-  const [comments,setComments]=useState<Comment[]>(()=>sortCommentsNewest(LS.get<Comment[]>("sf_comments",[])).slice(0,500));
+  const [comments,setComments]=useState<Comment[]>(()=>sortCommentsNewest(cleanComments(LS.get<unknown[]>("sf_comments",[]))).slice(0,500));
   const [buyers,setBuyers]=useState<Buyer[]>(()=>LS.get<Buyer[]>("sf_buyers",[]));
   const [allOrders,setAllOrders]=useState<LiveOrder[]>(()=>LS.get("sf_orders",[]));
   const [selBuyer,setSelBuyer]=useState<Buyer|null>(null);
@@ -1923,9 +1943,11 @@ export default function App(){
     if(!user)return;
     const s = io(SERVER);
     s.on("comment", (d: Comment) => {
-      const comment={...d,timestamp:d.timestamp||new Date().toISOString(),time:d.time||new Date().toLocaleTimeString()};
+      const incoming=normalizeComment(d);
+      if(!incoming)return;
+      const comment={...incoming,timestamp:incoming.timestamp||new Date().toISOString(),time:incoming.time||new Date().toLocaleTimeString()};
       setComments((p) => {
-        const next=sortCommentsNewest([comment,...p]).slice(0,500);
+        const next=sortCommentsNewest([comment,...cleanComments(p)]).slice(0,500);
         LS.set("sf_comments",next);
         return next;
       });
@@ -1956,9 +1978,9 @@ export default function App(){
   useEffect(()=>{
     if(!user)return;
     const refreshComments=()=>{
-      const stored=sortCommentsNewest(LS.get<Comment[]>("sf_comments",[])).slice(0,500);
+      const stored=sortCommentsNewest(cleanComments(LS.get<unknown[]>("sf_comments",[]))).slice(0,500);
       setComments(prev=>{
-        const same=prev.length===stored.length&&prev[0]?.timestamp===stored[0]?.timestamp&&prev[prev.length-1]?.timestamp===stored[stored.length-1]?.timestamp;
+        const same=prev.length===stored.length&&commentKey(prev[0])===commentKey(stored[0])&&commentKey(prev[prev.length-1])===commentKey(stored[stored.length-1]);
         return same?prev:stored;
       });
     };
@@ -2106,8 +2128,9 @@ export default function App(){
   function commentOrderCount(c:Comment){
     return buyers.find(b=>b.handle===c.handle&&b.platform===c.platform)?.totalOrders||0;
   }
-  function commentKey(c:Comment){
-    return `${c.platform}|${c.handle}|${c.timestamp||c.time}|${c.comment}`;
+  function commentKey(c:Comment|null|undefined){
+    if(!c)return "missing-comment";
+    return `${c.platform||"TikTok"}|${c.handle||"buyer"}|${c.timestamp||c.time||""}|${c.comment||""}`;
   }
   function commentStamp(c:Comment){
     const d=new Date(c.timestamp||Date.now());
