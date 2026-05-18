@@ -64,7 +64,7 @@ const arrLS=<X,>(key:string):X[]=>{const value=LS.get<unknown>(key,[]);return Ar
 
 const SERVER = import.meta.env.VITE_SERVER_URL || "http://localhost:3001";
 const DEF_SETTINGS: Settings = { autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"₱", paperSize:"100x60mm", printerType:"usb", stickerSize:"100x60mm", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printQrCode:true, printQrUrl:"https://sellerflow-pi.vercel.app", printQrScale:100, printLabelScale:100, printLogoScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printTotalScale:100 };
-const LANG_OPTS: {code:Lang;label:string}[] = [{code:"en",label:"🇺🇸 EN"},{code:"fil",label:"🇵🇭 FIL"},{code:"zh",label:"🇨🇳 中文"},{code:"vi",label:"🇻🇳 VI"}];
+const LANG_OPTS: {code:Lang;label:string}[] = [{code:"en",label:"🇺🇸 EN"},{code:"fil",label:"🇵🇭 FIL"},{code:"zh",label:"🇨🇳 中文"},{code:"vi",label:"🇻🇳 VI"},{code:"th",label:"🇹🇭 TH"},{code:"id",label:"🇮🇩 ID"}];
 const CURRENCIES = [{v:"₱",l:"₱ PHP"},{v:"$",l:"$ USD"},{v:"NT$",l:"NT$ NTD"},{v:"¥",l:"¥ CNY"},{v:"฿",l:"฿ THB"},{v:"₫",l:"₫ VND"}];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -2313,6 +2313,12 @@ export default function App(){
                 <div className="pd-row"><span>🏪</span><span>{user.profile.storeName}</span></div>
                 {user.profile.tiktok&&<div className="pd-row"><span>📱</span><span>{user.profile.tiktok} · TikTok</span></div>}
                 {user.profile.facebook&&<div className="pd-row"><span>📘</span><span>{user.profile.facebook} · FB</span></div>}
+                <div className="pd-row pd-lang-row">
+                  <span>🌐</span>
+                  <select value={lang} onChange={e=>setLang(e.target.value as Lang)} className="pd-lang-select">
+                    {LANG_OPTS.map(l=><option key={l.code} value={l.code}>{l.label}</option>)}
+                  </select>
+                </div>
                 <div className="pd-div"/>
                 <div className="pd-row pd-cl" onClick={()=>{setPage("settings");setShowProf(false);}}><span>⚙️</span><span>{t.nav_settings}</span></div>
                 <div className="pd-row pd-cl" onClick={()=>{setPage("subscription");setShowProf(false);}}><span>💎</span><span>Subscription</span></div>
