@@ -60,6 +60,7 @@ const LS = {
   set:(k:string,v:unknown)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}},
   del:(k:string)=>{try{localStorage.removeItem(k);}catch{}},
 };
+const arrLS=<X,>(key:string):X[]=>{const value=LS.get<unknown>(key,[]);return Array.isArray(value)?value as X[]:[];};
 
 const SERVER = import.meta.env.VITE_SERVER_URL || "http://localhost:3001";
 const DEF_SETTINGS: Settings = { autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"₱", paperSize:"100x60mm", printerType:"usb", stickerSize:"100x60mm", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printQrCode:true, printQrUrl:"https://sellerflow-pi.vercel.app", printQrScale:100, printLabelScale:100, printLogoScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printTotalScale:100 };
@@ -91,10 +92,10 @@ const fitProfileAccounts=(original:Profile,next:Profile,limit:number):Profile=>{
 };
 const OWNER_EMAIL=(import.meta.env.VITE_OWNER_EMAIL||"admin@sellerflow.app").trim().toLowerCase();
 const ENV_ADMIN_EMAILS=(import.meta.env.VITE_ADMIN_EMAILS||OWNER_EMAIL).split(",").map((e:string)=>e.trim().toLowerCase()).filter(Boolean);
-const adminEmails=()=>Array.from(new Set([OWNER_EMAIL,...ENV_ADMIN_EMAILS,...LS.get<string[]>("sf_admin_emails",[]).map(e=>e.trim().toLowerCase())].filter(Boolean)));
+const adminEmails=()=>Array.from(new Set([OWNER_EMAIL,...ENV_ADMIN_EMAILS,...arrLS<string>("sf_admin_emails").map(e=>e.trim().toLowerCase())].filter(Boolean)));
 const isAdminEmail=(email:string)=>adminEmails().includes(email.trim().toLowerCase());
-const rememberAdminEmail=(email:string)=>LS.set("sf_admin_emails",Array.from(new Set([...LS.get<string[]>("sf_admin_emails",[]),email.trim().toLowerCase()].filter(Boolean))));
-const forgetAdminEmail=(email:string)=>LS.set("sf_admin_emails",LS.get<string[]>("sf_admin_emails",[]).filter(e=>e.trim().toLowerCase()!==email.trim().toLowerCase()));
+const rememberAdminEmail=(email:string)=>LS.set("sf_admin_emails",Array.from(new Set([...arrLS<string>("sf_admin_emails"),email.trim().toLowerCase()].filter(Boolean))));
+const forgetAdminEmail=(email:string)=>LS.set("sf_admin_emails",arrLS<string>("sf_admin_emails").filter(e=>e.trim().toLowerCase()!==email.trim().toLowerCase()));
 const supportReadKey=(email:string)=>`sf_support_read_${email.trim().toLowerCase()}`;
 const isAdminUser=(u:User|null)=>!!u&&isAdminEmail(u.email);
 const canConnectMore=(u:User)=>isAdminUser(u)||registeredAccountCount(u)<maxAcc(u.plan);
@@ -1904,20 +1905,20 @@ export default function App(){
   const t=TRANSLATIONS[lang];
   function setLang(l:Lang){setLangState(l);try{localStorage.setItem("sf_lang",JSON.stringify(l));}catch{}}
 
-  const [user,setUser]=useState<User|null>(()=>{const e=LS.get<string>("sf_session","");if(!e)return null;const u=LS.get<User[]>("sf_users",[]).find(u=>u.email===e)||null;return u?asAdminPlan(u):null;});
+  const [user,setUser]=useState<User|null>(()=>{const e=LS.get<string>("sf_session","");if(!e)return null;const u=arrLS<User>("sf_users").find(u=>u.email===e)||null;return u?asAdminPlan(u):null;});
   const [settings,setSettingsState]=useState<Settings>(()=>({...DEF_SETTINGS,...LS.get<Partial<Settings>>("sf_settings",{})}));
   const [page,setPage]=useState<Page>("dashboard");
   const [comments,setComments]=useState<Comment[]>(()=>sortCommentsNewest(cleanComments(LS.get<unknown[]>("sf_comments",[]))).slice(0,500));
-  const [buyers,setBuyers]=useState<Buyer[]>(()=>LS.get<Buyer[]>("sf_buyers",[]));
-  const [allOrders,setAllOrders]=useState<LiveOrder[]>(()=>LS.get("sf_orders",[]));
+  const [buyers,setBuyers]=useState<Buyer[]>(()=>arrLS<Buyer>("sf_buyers"));
+  const [allOrders,setAllOrders]=useState<LiveOrder[]>(()=>arrLS<LiveOrder>("sf_orders"));
   const [selBuyer,setSelBuyer]=useState<Buyer|null>(null);
   const [totOrd,setTotOrd]=useState(()=>{
-    const storedOrders=LS.get<LiveOrder[]>("sf_orders",[]);
-    return storedOrders.length||LS.get<Buyer[]>("sf_buyers",[]).reduce((s,b)=>s+b.totalOrders,0);
+    const storedOrders=arrLS<LiveOrder>("sf_orders");
+    return storedOrders.length||arrLS<Buyer>("sf_buyers").reduce((s,b)=>s+b.totalOrders,0);
   });
   const [totRev,setTotRev]=useState(()=>{
-    const storedOrders=LS.get<LiveOrder[]>("sf_orders",[]);
-    return storedOrders.length?storedOrders.reduce((s,o)=>s+o.total,0):LS.get<Buyer[]>("sf_buyers",[]).reduce((s,b)=>s+b.totalSpent,0);
+    const storedOrders=arrLS<LiveOrder>("sf_orders");
+    return storedOrders.length?storedOrders.reduce((s,o)=>s+o.total,0):arrLS<Buyer>("sf_buyers").reduce((s,b)=>s+b.totalSpent,0);
   });
   const [ttOn,setTtOn]=useState(false);const [fbOn,setFbOn]=useState(false);
   const [showConn,setShowConn]=useState(false);const [showProf,setShowProf]=useState(false);
