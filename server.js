@@ -31,8 +31,19 @@ function sellerRoom(sellerId) {
   return `seller:${cleanSellerId(sellerId)}`;
 }
 
-async function disconnectTikTokForSeller(sellerId) {
-  const key = cleanSellerId(sellerId);
+function cleanAccountKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/^@+/, "")
+    .replace(/[^a-z0-9@._-]/g, "");
+}
+
+function liveKey(sellerId, platform, username) {
+  return `${cleanSellerId(sellerId)}:${platform}:${cleanAccountKey(username)}`;
+}
+
+async function disconnectTikTokConnection(key) {
   const existing = tiktokConnections.get(key);
   if (!existing) return;
   try {
@@ -49,8 +60,8 @@ io.on("connection", (socket) => {
     socket.data.sellerId = cleanId;
     socket.data.sessionId = String(sessionId || "");
 
-    const active = tiktokConnections.get(cleanId);
-    if (active) {
+    for (const active of tiktokConnections.values()) {
+      if (active.sellerId !== cleanId) continue;
       socket.emit("platform_status", {
         platform: "TikTok",
         connected: true,
@@ -104,12 +115,13 @@ async function connectTikTok(username, res, meta = {}) {
       });
     }
 
-    await disconnectTikTokForSeller(sellerId);
-
     const sessionId = String(meta.sessionId || "");
+    const key = liveKey(sellerId, "TikTok", username);
+    await disconnectTikTokConnection(key);
+
     const tiktokConnection = new WebcastPushConnection(username);
     await tiktokConnection.connect();
-    tiktokConnections.set(sellerId, { connection: tiktokConnection, username, sessionId });
+    tiktokConnections.set(key, { connection: tiktokConnection, username, sessionId, sellerId });
 
     console.log(`Connected to TikTok LIVE: ${username} for ${sellerId}`);
 
@@ -129,8 +141,8 @@ async function connectTikTok(username, res, meta = {}) {
     });
 
     const markTikTokDisconnected = () => {
-      const active = tiktokConnections.get(sellerId);
-      if (active?.connection === tiktokConnection) tiktokConnections.delete(sellerId);
+      const active = tiktokConnections.get(key);
+      if (active?.connection === tiktokConnection) tiktokConnections.delete(key);
       io.to(sellerRoom(sellerId)).emit("platform_status", {
         platform: "TikTok",
         connected: false,

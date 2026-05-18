@@ -75,6 +75,7 @@ const browserSessionId=()=>{
 };
 const sellerIdOf=(email:string)=>email.trim().toLowerCase();
 const sellerDataKey=(base:string,email:string)=>email?`${base}:${sellerIdOf(email)}`:base;
+const sellerLiveDataKey=(base:string,email:string,sessionId:string)=>email?`${base}:${sellerIdOf(email)}:${sessionId}`:base;
 
 const SERVER = import.meta.env.VITE_SERVER_URL || "http://localhost:3001";
 const DEF_SETTINGS: Settings = { autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"₱", paperSize:"100x60mm", printerType:"usb", stickerSize:"100x60mm", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printLabelScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printTotalScale:100, printStoreX:0, printStoreY:0, printBuyerLabelX:0, printBuyerLabelY:0, printBuyerNumberX:0, printBuyerNumberY:0, printBuyerNameX:0, printBuyerNameY:0, printUsernameX:0, printUsernameY:0, printSessionX:0, printSessionY:0, printOrderX:0, printOrderY:0, printTotalX:0, printTotalY:0 };
@@ -2198,25 +2199,26 @@ export default function App(){
   const [settings,setSettingsState]=useState<Settings>(()=>({...DEF_SETTINGS,...LS.get<Partial<Settings>>("sf_settings",{})}));
   const [page,setPage]=useState<Page>("dashboard");
   const initialSellerEmail=LS.get<string>("sf_session","");
-  const [comments,setComments]=useState<Comment[]>(()=>sortCommentsNewest(cleanComments(LS.get<unknown[]>(sellerDataKey("sf_comments",initialSellerEmail),[]))).slice(0,LIVE_COMMENT_LIMIT));
-  const [archivedComments,setArchivedComments]=useState<Comment[]>(()=>sortCommentsNewest(cleanComments(LS.get<unknown[]>(sellerDataKey("sf_comment_archive",initialSellerEmail),[]))).slice(0,COMMENT_ARCHIVE_LIMIT));
-  const [buyers,setBuyers]=useState<Buyer[]>(()=>arrLS<Buyer>(sellerDataKey("sf_buyers",initialSellerEmail)));
-  const [allOrders,setAllOrders]=useState<LiveOrder[]>(()=>arrLS<LiveOrder>(sellerDataKey("sf_orders",initialSellerEmail)));
+  const currentSessionId=browserSessionId();
+  const [comments,setComments]=useState<Comment[]>(()=>sortCommentsNewest(cleanComments(LS.get<unknown[]>(sellerLiveDataKey("sf_comments",initialSellerEmail,currentSessionId),[]))).slice(0,LIVE_COMMENT_LIMIT));
+  const [archivedComments,setArchivedComments]=useState<Comment[]>(()=>sortCommentsNewest(cleanComments(LS.get<unknown[]>(sellerLiveDataKey("sf_comment_archive",initialSellerEmail,currentSessionId),[]))).slice(0,COMMENT_ARCHIVE_LIMIT));
+  const [buyers,setBuyers]=useState<Buyer[]>(()=>arrLS<Buyer>(sellerLiveDataKey("sf_buyers",initialSellerEmail,currentSessionId)));
+  const [allOrders,setAllOrders]=useState<LiveOrder[]>(()=>arrLS<LiveOrder>(sellerLiveDataKey("sf_orders",initialSellerEmail,currentSessionId)));
   const [selBuyer,setSelBuyer]=useState<Buyer|null>(null);
   const [totOrd,setTotOrd]=useState(()=>{
-    const storedOrders=arrLS<LiveOrder>(sellerDataKey("sf_orders",initialSellerEmail));
-    return storedOrders.length||arrLS<Buyer>(sellerDataKey("sf_buyers",initialSellerEmail)).reduce((s,b)=>s+b.totalOrders,0);
+    const storedOrders=arrLS<LiveOrder>(sellerLiveDataKey("sf_orders",initialSellerEmail,currentSessionId));
+    return storedOrders.length||arrLS<Buyer>(sellerLiveDataKey("sf_buyers",initialSellerEmail,currentSessionId)).reduce((s,b)=>s+b.totalOrders,0);
   });
   const [totRev,setTotRev]=useState(()=>{
-    const storedOrders=arrLS<LiveOrder>(sellerDataKey("sf_orders",initialSellerEmail));
-    return storedOrders.length?storedOrders.reduce((s,o)=>s+o.total,0):arrLS<Buyer>(sellerDataKey("sf_buyers",initialSellerEmail)).reduce((s,b)=>s+b.totalSpent,0);
+    const storedOrders=arrLS<LiveOrder>(sellerLiveDataKey("sf_orders",initialSellerEmail,currentSessionId));
+    return storedOrders.length?storedOrders.reduce((s,o)=>s+o.total,0):arrLS<Buyer>(sellerLiveDataKey("sf_buyers",initialSellerEmail,currentSessionId)).reduce((s,b)=>s+b.totalSpent,0);
   });
   const [ttOn,setTtOn]=useState(false);const [fbOn,setFbOn]=useState(false);
   const [activeLiveAccounts,setActiveLiveAccounts]=useState<{TikTok:string;Facebook:string}>({TikTok:"",Facebook:""});
   const activeLiveAccountsRef=useRef(activeLiveAccounts);
   const [showConn,setShowConn]=useState(false);const [showProf,setShowProf]=useState(false);
   const [connectTab,setConnectTab]=useState<"TikTok"|"Facebook">("TikTok");
-  const [printed,setPrinted]=useState<Set<string>>(()=>new Set(arrLS<string>(sellerDataKey("sf_printed",initialSellerEmail))));
+  const [printed,setPrinted]=useState<Set<string>>(()=>new Set(arrLS<string>(sellerLiveDataKey("sf_printed",initialSellerEmail,currentSessionId))));
   const [openCommentMenu,setOpenCommentMenu]=useState<number|null>(null);
   const [supportUnreadCount,setSupportUnreadCount]=useState(0);
   const [toast,setToast]=useState("");
@@ -2224,7 +2226,7 @@ export default function App(){
   const today=new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"});
   useEffect(()=>{activeLiveAccountsRef.current=activeLiveAccounts;},[activeLiveAccounts]);
   const sellerMemoryEmail=()=>user?.email||initialSellerEmail;
-  const sellerMemoryKey=(base:string)=>sellerDataKey(base,sellerMemoryEmail());
+  const sellerMemoryKey=(base:string)=>sellerLiveDataKey(base,sellerMemoryEmail(),currentSessionId);
   function saveBuyerMemory(next:Buyer[]){
     setBuyers(next);
     LS.set(sellerMemoryKey("sf_buyers"),next);
@@ -2234,7 +2236,7 @@ export default function App(){
   function archiveComments(list:Comment[]){
     const clean=sortCommentsNewest(cleanComments(list));
     if(!clean.length)return;
-    const archiveKey=sellerDataKey("sf_comment_archive",user?.email||initialSellerEmail);
+    const archiveKey=sellerLiveDataKey("sf_comment_archive",user?.email||initialSellerEmail,currentSessionId);
     setArchivedComments(prev=>{
       const seen=new Set<string>();
       const next=sortCommentsNewest([...clean,...prev]).filter(c=>{
@@ -2248,7 +2250,7 @@ export default function App(){
     });
   }
   function clearLiveCommentMemory(){
-    const commentsKey=sellerDataKey("sf_comments",user?.email||initialSellerEmail);
+    const commentsKey=sellerLiveDataKey("sf_comments",user?.email||initialSellerEmail,currentSessionId);
     archiveComments(cleanComments(LS.get<unknown[]>(commentsKey,[])));
     setComments([]);
     LS.set(commentsKey,[]);
@@ -2281,11 +2283,11 @@ export default function App(){
 
   useEffect(()=>{
     if(!user)return;
-    const commentsKey=sellerDataKey("sf_comments",user.email);
-    const archiveKey=sellerDataKey("sf_comment_archive",user.email);
-    const buyerKey=sellerDataKey("sf_buyers",user.email);
-    const orderKey=sellerDataKey("sf_orders",user.email);
-    const printedKey=sellerDataKey("sf_printed",user.email);
+    const commentsKey=sellerLiveDataKey("sf_comments",user.email,currentSessionId);
+    const archiveKey=sellerLiveDataKey("sf_comment_archive",user.email,currentSessionId);
+    const buyerKey=sellerLiveDataKey("sf_buyers",user.email,currentSessionId);
+    const orderKey=sellerLiveDataKey("sf_orders",user.email,currentSessionId);
+    const printedKey=sellerLiveDataKey("sf_printed",user.email,currentSessionId);
     const nextBuyers=arrLS<Buyer>(buyerKey);
     const nextOrders=arrLS<LiveOrder>(orderKey);
     setComments(sortCommentsNewest(cleanComments(LS.get<unknown[]>(commentsKey,[]))).slice(0,LIVE_COMMENT_LIMIT));
@@ -2302,8 +2304,8 @@ export default function App(){
     if(!user)return;
     const s = io(SERVER);
     const sellerId=sellerIdOf(user.email);
-    const sessionId=browserSessionId();
-    const commentsKey=sellerDataKey("sf_comments",user.email);
+    const sessionId=currentSessionId;
+    const commentsKey=sellerLiveDataKey("sf_comments",user.email,currentSessionId);
     const joinRoom=()=>s.emit("join_live_room",{sellerId,sessionId});
     s.on("connect",joinRoom);
     joinRoom();
@@ -2332,32 +2334,35 @@ export default function App(){
       }, 50);
     
     });
-    s.on("buyers_updated",({buyers:b,totalOrders:to}:{buyers:Buyer[];totalOrders:number})=>{
+    s.on("buyers_updated",({buyers:b,totalOrders:to,sessionId:eventSessionId}:{buyers:Buyer[];totalOrders:number;sessionId?:string})=>{
+      if(eventSessionId&&eventSessionId!==currentSessionId)return;
       saveBuyerMemory(b);setTotOrd(to);
       const ords=b.flatMap(x=>x.orders.map(o=>({...o,handle:x.handle,name:x.name,bNum:x.num,platform:x.platform,status:"New",date:new Date().toISOString().slice(0,10)})));
-      setAllOrders(ords);LS.set(sellerDataKey("sf_orders",user.email),ords);
+      setAllOrders(ords);LS.set(sellerLiveDataKey("sf_orders",user.email,currentSessionId),ords);
     });
-    s.on("platform_status",({platform:p,connected:c,sellerId:eventSellerId,username}:{platform:string;connected:boolean;sellerId?:string;username?:string})=>{
+    s.on("platform_status",({platform:p,connected:c,sellerId:eventSellerId,username,sessionId:eventSessionId}:{platform:string;connected:boolean;sellerId?:string;username?:string;sessionId?:string})=>{
       if(eventSellerId&&eventSellerId!==sellerId)return;
+      if(eventSessionId&&eventSessionId!==currentSessionId)return;
       if(p==="TikTok"){setTtOn(c);if(!c)setActiveLiveAccounts(a=>({...a,TikTok:""}));}
       if(p==="Facebook"){setFbOn(c);if(!c)setActiveLiveAccounts(a=>({...a,Facebook:""}));}
       if(c&&p==="TikTok"&&username)setActiveLiveAccounts(a=>({...a,TikTok:username}));
       if(c&&p==="Facebook"&&username)setActiveLiveAccounts(a=>({...a,Facebook:username}));
     });
-    s.on("live_session_started",({sellerId:eventSellerId}:{sellerId?:string}={})=>{if(!eventSellerId||eventSellerId===sellerId)clearLiveCommentMemory();});
-    s.on("live_session_ended",({sellerId:eventSellerId}:{sellerId?:string}={})=>{if(eventSellerId&&eventSellerId!==sellerId)return;clearLiveCommentMemory();setActiveLiveAccounts({TikTok:"",Facebook:""});setTtOn(false);setFbOn(false);});
-    s.on("session_state",({buyers:b,totalOrders:to}:{buyers:Buyer[];totalOrders:number})=>{
+    s.on("live_session_started",({sellerId:eventSellerId,sessionId:eventSessionId}:{sellerId?:string;sessionId?:string}={})=>{if((!eventSellerId||eventSellerId===sellerId)&&(!eventSessionId||eventSessionId===currentSessionId))clearLiveCommentMemory();});
+    s.on("live_session_ended",({sellerId:eventSellerId,sessionId:eventSessionId}:{sellerId?:string;sessionId?:string}={})=>{if(eventSellerId&&eventSellerId!==sellerId)return;if(eventSessionId&&eventSessionId!==currentSessionId)return;clearLiveCommentMemory();setActiveLiveAccounts({TikTok:"",Facebook:""});setTtOn(false);setFbOn(false);});
+    s.on("session_state",({buyers:b,totalOrders:to,sessionId:eventSessionId}:{buyers:Buyer[];totalOrders:number;sessionId?:string})=>{
+      if(eventSessionId&&eventSessionId!==currentSessionId)return;
       if(!b.length&&!to)return;
       saveBuyerMemory(b);setTotOrd(to);
       const ords=b.flatMap(x=>x.orders.map(o=>({...o,handle:x.handle,name:x.name,bNum:x.num,platform:x.platform,status:"New",date:new Date().toISOString().slice(0,10)})));
-      setAllOrders(ords);LS.set(sellerDataKey("sf_orders",user.email),ords);
+      setAllOrders(ords);LS.set(sellerLiveDataKey("sf_orders",user.email,currentSessionId),ords);
     });
     return()=>{s.disconnect();};
   },[user?.email]);
 
   useEffect(()=>{
     if(!user)return;
-    const commentsKey=sellerDataKey("sf_comments",user.email);
+    const commentsKey=sellerLiveDataKey("sf_comments",user.email,currentSessionId);
     const refreshComments=()=>{
       const stored=sortCommentsNewest(cleanComments(LS.get<unknown[]>(commentsKey,[]))).slice(0,LIVE_COMMENT_LIMIT);
       setComments(prev=>{
@@ -2473,7 +2478,7 @@ export default function App(){
     }catch{setToast(t.cant_reach);}
   }
   async function createOrderFromComment(c:Comment,{print=true}:{print?:boolean}={}){
-    const existing=buyers.find(b=>b.handle===c.handle);
+    const existing=buyers.find(b=>b.handle===c.handle&&b.platform===c.platform);
     const buyerNum=existing?.num||buyers.length+1;
     const order:LiveOrder={
       orderNum:Date.now(),
@@ -2493,7 +2498,7 @@ export default function App(){
       ? {...existing,name:c.name||existing.name,orders:[...existing.orders,order],totalOrders:existing.totalOrders+1,totalSpent:existing.totalSpent+order.total}
       : {handle:c.handle,name:c.name||c.handle,platform:c.platform,num:buyerNum,orders:[order],totalOrders:1,totalSpent:order.total};
 
-    const nextBuyers=existing?buyers.map(b=>b.handle===c.handle?nextBuyer:b):[...buyers,nextBuyer];
+    const nextBuyers=existing?buyers.map(b=>b.handle===c.handle&&b.platform===c.platform?nextBuyer:b):[...buyers,nextBuyer];
     saveBuyerMemory(nextBuyers);
     setSelBuyer(nextBuyer);
     setAllOrders(prev=>{const next=[...prev,order];LS.set(sellerMemoryKey("sf_orders"),next);return next;});
@@ -2535,7 +2540,7 @@ export default function App(){
   }
   function commentKey(c:Comment|null|undefined){
     if(!c)return "missing-comment";
-    return `${c.platform||"TikTok"}|${c.handle||"buyer"}|${c.timestamp||c.time||""}|${c.comment||""}`;
+    return `${c.platform||"TikTok"}|${c.sourceUsername||""}|${c.sessionId||""}|${c.handle||"buyer"}|${c.timestamp||c.time||""}|${c.comment||""}`;
   }
   function commentStamp(c:Comment){
     const d=new Date(c.timestamp||Date.now());
