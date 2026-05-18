@@ -68,6 +68,32 @@ const LANG_OPTS: {code:Lang;label:string}[] = [{code:"en",label:"🇺🇸 EN"},{
 const CURRENCIES = [{v:"₱",l:"₱ PHP"},{v:"$",l:"$ USD"},{v:"NT$",l:"NT$ NTD"},{v:"¥",l:"¥ CNY"},{v:"฿",l:"฿ THB"},{v:"₫",l:"₫ VND"}];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+const safeLang=(value:unknown):Lang=>LANG_OPTS.some(l=>l.code===value)?value as Lang:"en";
+const safeProfile=(p:Partial<Profile>|undefined):Profile=>({
+  fullName:String(p?.fullName||""),
+  storeName:String(p?.storeName||""),
+  phone:String(p?.phone||""),
+  tiktok:String(p?.tiktok||""),
+  facebook:String(p?.facebook||""),
+});
+const safeUser=(raw:unknown):User|null=>{
+  if(!raw||typeof raw!=="object")return null;
+  const u=raw as Partial<User>;
+  const email=String(u.email||"").trim().toLowerCase();
+  if(!email)return null;
+  const plan:Plan=["trial","basic","pro","master"].includes(String(u.plan))?u.plan as Plan:"trial";
+  const planStatus:PlanStatus=["active","expired","pending"].includes(String(u.planStatus))?u.planStatus as PlanStatus:"active";
+  return {
+    email,
+    password:String(u.password||""),
+    profile:safeProfile(u.profile),
+    plan,
+    planStatus,
+    planExpiry:String(u.planExpiry||addDays(plan==="trial"?7:31)),
+    connectedAccounts:Array.isArray(u.connectedAccounts)?u.connectedAccounts.map(String):[],
+  };
+};
+const cleanUsers=(list:unknown)=>Array.isArray(list)?list.map(safeUser).filter((u):u is User=>!!u):[];
 const nc=(n:number)=>n===1?"#26215C":n<=3?"#534AB7":"#7F77DD";
 const ini=(s:string)=>s.split(/[\s_]/g).slice(0,2).map(w=>w[0]?.toUpperCase()).join("")||"??";
 const abg=(h:string)=>{const c=["#7F77DD","#1D9E75","#D85A30","#D4537E","#378ADD","#BA7517"];let x=0;for(const ch of h)x=(x*31+ch.charCodeAt(0))%c.length;return c[Math.abs(x)];};
@@ -1028,7 +1054,7 @@ function Support({user,t}:{user:User;t:T}){
   const [file,setFile]=useState<File|null>(null);
   const [sent,setSent]=useState(false);
   const [selectedMsgId,setSelectedMsgId]=useState("");
-  const [readIds,setReadIds]=useState<string[]>(()=>LS.get<string[]>(supportReadKey(user.email),[]));
+  const [readIds,setReadIds]=useState<string[]>(()=>arrLS<string>(supportReadKey(user.email)));
   async function send(e:React.FormEvent){
     e.preventDefault();
     try{
@@ -1040,7 +1066,7 @@ function Support({user,t}:{user:User;t:T}){
       alert(`Support message was not saved to Supabase: ${error instanceof Error?error.message:"Unknown error"}`);
     }
   }
-  const [prev,setPrev]=useState<SupportMsg[]>(()=>LS.get<SupportMsg[]>("sf_support",[]).filter(m=>m.email.toLowerCase()===user.email.toLowerCase()));
+  const [prev,setPrev]=useState<SupportMsg[]>(()=>arrLS<SupportMsg>("sf_support").filter(m=>m.email.toLowerCase()===user.email.toLowerCase()));
   useEffect(()=>{
     const refreshSupport=()=>void listSupportMessages().then(ms=>setPrev(ms.filter(m=>m.email.toLowerCase()===user.email.toLowerCase())));
     refreshSupport();
@@ -1172,9 +1198,9 @@ function Support({user,t}:{user:User;t:T}){
 // CONNECT MODAL
 // ═══════════════════════════════════════════════════════════════════
 function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:string,plan:Plan)=>void;t:T}){
-  const [users,setUsers]=useState<User[]>(()=>LS.get("sf_users",[]));
-  const [msgs,setMsgs]=useState<SupportMsg[]>(()=>LS.get("sf_support",[]));
-  const [auditLogs,setAuditLogs]=useState<AccountAuditLog[]>(()=>LS.get("sf_audit_logs",[]));
+  const [users,setUsers]=useState<User[]>(()=>cleanUsers(arrLS<unknown>("sf_users")));
+  const [msgs,setMsgs]=useState<SupportMsg[]>(()=>arrLS<SupportMsg>("sf_support"));
+  const [auditLogs,setAuditLogs]=useState<AccountAuditLog[]>(()=>arrLS<AccountAuditLog>("sf_audit_logs"));
   const [admins,setAdmins]=useState<string[]>(()=>adminEmails());
   const [newSeller,setNewSeller]=useState({email:"",password:"123456",fullName:"",storeName:""});
   const [editOriginalEmail,setEditOriginalEmail]=useState("");
@@ -1199,7 +1225,7 @@ function AdminPage({currentUser,onApprove,t}:{currentUser:User;onApprove:(email:
   }
 
   async function sendAutomaticPlanNotices(sourceUsers:User[]){
-    const sentKeys=LS.get<string[]>("sf_plan_notice_sent",[]);
+    const sentKeys=arrLS<string>("sf_plan_notice_sent");
     const nextSent=new Set(sentKeys);
     const todayKey=new Date().toISOString().slice(0,10);
     const notices:SupportMsg[]=[];
@@ -1904,11 +1930,11 @@ function ConnectModal({onClose,onConnect,user,t,initialTab="TikTok"}:{onClose:()
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════════
 export default function App(){
-  const [lang,setLangState]=useState<Lang>(()=>{try{return JSON.parse(localStorage.getItem("sf_lang")||'"en"') as Lang;}catch{return "en";}});
-  const t=TRANSLATIONS[lang];
-  function setLang(l:Lang){setLangState(l);try{localStorage.setItem("sf_lang",JSON.stringify(l));}catch{}}
+  const [lang,setLangState]=useState<Lang>(()=>{try{return safeLang(JSON.parse(localStorage.getItem("sf_lang")||'"en"'));}catch{return "en";}});
+  const t=TRANSLATIONS[lang]||TRANSLATIONS.en;
+  function setLang(l:Lang){const next=safeLang(l);setLangState(next);try{localStorage.setItem("sf_lang",JSON.stringify(next));}catch{}}
 
-  const [user,setUser]=useState<User|null>(()=>{const e=LS.get<string>("sf_session","");if(!e)return null;const u=arrLS<User>("sf_users").find(u=>u.email===e)||null;return u?asAdminPlan(u):null;});
+  const [user,setUser]=useState<User|null>(()=>{const e=LS.get<string>("sf_session","");if(!e)return null;const u=cleanUsers(arrLS<unknown>("sf_users")).find(u=>u.email===e)||null;return u?asAdminPlan(u):null;});
   const [settings,setSettingsState]=useState<Settings>(()=>({...DEF_SETTINGS,...LS.get<Partial<Settings>>("sf_settings",{})}));
   const [page,setPage]=useState<Page>("dashboard");
   const [comments,setComments]=useState<Comment[]>(()=>sortCommentsNewest(cleanComments(LS.get<unknown[]>("sf_comments",[]))).slice(0,500));
@@ -1996,7 +2022,7 @@ export default function App(){
   useEffect(()=>{
     const email=LS.get<string>("sf_session","");
     if(!email)return;
-    const refreshSession=()=>void findUser(email).then(u=>{if(u)setUser(asAdminPlan(u));});
+    const refreshSession=()=>void findUser(email).then(u=>{const safe=safeUser(u);if(safe)setUser(asAdminPlan(safe));});
     refreshSession();
     const timer=window.setInterval(refreshSession,10000);
     return()=>window.clearInterval(timer);
@@ -2009,7 +2035,7 @@ export default function App(){
         setSupportUnreadCount(ms.filter(m=>m.status==="pending"&&!m.adminReply).length);
         return;
       }
-      const read=LS.get<string[]>(supportReadKey(user.email),[]);
+      const read=arrLS<string>(supportReadKey(user.email));
       setSupportUnreadCount(ms.filter(m=>m.email.toLowerCase()===user.email.toLowerCase()&&m.adminReply&&!read.includes(m.id)).length);
     });
     refreshSupportBadge();
@@ -2020,10 +2046,10 @@ export default function App(){
   function saveUser(u:User){
     const next=asAdminPlan(u);
     setUser(next);
-    LS.set("sf_users",LS.get<User[]>("sf_users",[]).map(x=>x.email===next.email?next:x));
+    LS.set("sf_users",cleanUsers(arrLS<unknown>("sf_users")).map(x=>x.email===next.email?next:x));
     void upsertUser(next);
   }
-  function handleLogin(u:User){setUser(asAdminPlan(u));setPage("dashboard");}
+  function handleLogin(u:User){const safe=safeUser(u);if(safe){setUser(asAdminPlan(safe));setPage("dashboard");}}
   function handleLogout(){LS.del("sf_session");setUser(null);setComments([]);setBuyers([]);setTotOrd(0);setTotRev(0);setSelBuyer(null);}
   function handleActivate(plan:Plan,status:PlanStatus,expiry:string){
     if(!user)return;
@@ -2043,7 +2069,7 @@ export default function App(){
   function handleSaveSettings(s:Settings){setSettingsState(s);LS.set("sf_settings",s);}
   function handleSavePw(op:string,np:string):string{if(!user)return"No user";if(user.password!==op)return t.wrong_pw;saveUser({...user,password:np});return"";}
   function handleAdminApprove(email:string,plan:Plan){
-    const users=LS.get<User[]>("sf_users",[]);
+    const users=cleanUsers(arrLS<unknown>("sf_users"));
     const nextUsers=users.map(u=>u.email.toLowerCase()===email.toLowerCase()?{...u,plan,planStatus:"active" as PlanStatus,planExpiry:addMonths(1)}:u);
     LS.set("sf_users",nextUsers);
     const updated=nextUsers.find(u=>u.email.toLowerCase()===email.toLowerCase());
