@@ -117,6 +117,13 @@ async function connectTikTok(username, res) {
 }
 
 app.get("/test-comment", (req, res) => {
+  if (!TEST_COMMENT_TOKEN) {
+    return res.status(404).json({
+      success: false,
+      error: "Test comments are disabled",
+    });
+  }
+
   if (TEST_COMMENT_TOKEN && req.query.token !== TEST_COMMENT_TOKEN) {
     return res.status(401).json({
       success: false,
