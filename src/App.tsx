@@ -263,7 +263,7 @@ function Auth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:Lang;set
               <Fg label={t.pw_field}><div className="pw-wrap"><input type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="Min 6 chars" required/><button type="button" onClick={()=>setShowPw(p=>!p)} className="pw-eye">{showPw?"🙈":"👁"}</button></div></Fg>
               <Fg label={t.confirm_field}><input type="password" value={cpw} onChange={e=>setCpw(e.target.value)} placeholder="••••••••" required/></Fg>
               <button type="submit" className="auth-btn" disabled={busy}>{busy?t.creating:t.start_trial_btn}</button>
-              <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat" download>Printer Shortcut</a>
+              <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat?v=3" download>Printer Shortcut</a>
               <p className="auth-terms">{t.terms_text}</p>
             </form>
             <div className="auth-sw">{t.have_account} <button className="auth-link" onClick={()=>go("login")}>{t.sign_in_btn} →</button></div>
@@ -376,7 +376,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
           <Fg label={t.pw_field}><div className="pw-wrap"><input type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="Min 6 chars" required/><button type="button" onClick={()=>setShowPw(p=>!p)} className="pw-eye">{showPw?"Hide":"Show"}</button></div></Fg>
           <Fg label={t.confirm_field}><input type="password" value={cpw} onChange={e=>setCpw(e.target.value)} placeholder="Confirm password" required/></Fg>
           <button type="submit" className="auth-btn" disabled={busy}>{busy?t.creating:t.start_trial_btn}</button>
-          <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat" download>Printer Shortcut</a>
+          <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat?v=3" download>Printer Shortcut</a>
           <p className="auth-terms">{t.terms_text}</p>
         </form>
         <div className="auth-sw">{t.have_account} <button className="auth-link" onClick={()=>go("login")}>{t.sign_in_btn}</button></div>
@@ -929,7 +929,10 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,t}:{u
             </span>
           </div>
           <div className="printer-tools-row">
-            <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat" download>Printer Shortcut</a>
+            <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat?v=3" download>Printer Shortcut</a>
+            <div className="printer-shortcut-note">
+              Run this once, then open SellerFlow from the new desktop shortcut. Normal Chrome/Edge tabs will still show the print popup.
+            </div>
           </div>
           <Fg label={t.printer_type}>
             <select value={sets.printerType} onChange={e=>setSets(s=>({...s,printerType:e.target.value as "usb"|"bluetooth"}))}>
