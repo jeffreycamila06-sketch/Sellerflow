@@ -20,6 +20,8 @@ app.use(express.json());
 
 const tiktokConnections = new Map();
 const facebookConnections = new Map();
+const tiktokReconnectTimers = new Map();
+const manualTikTokDisconnects = new Set();
 
 function cleanSellerId(value) {
   return String(value || "")
@@ -44,13 +46,25 @@ function liveKey(sellerId, platform, username) {
   return `${cleanSellerId(sellerId)}:${platform}:${cleanAccountKey(username)}`;
 }
 
-async function disconnectTikTokConnection(key) {
+function clearTikTokReconnect(key) {
+  const timer = tiktokReconnectTimers.get(key);
+  if (timer) clearTimeout(timer);
+  tiktokReconnectTimers.delete(key);
+}
+
+async function disconnectTikTokConnection(key, { manual = false } = {}) {
   const existing = tiktokConnections.get(key);
-  if (!existing) return;
+  if (manual) clearTikTokReconnect(key);
+  if (!existing) {
+    manualTikTokDisconnects.delete(key);
+    return;
+  }
+  if (manual) manualTikTokDisconnects.add(key);
   try {
     await existing.connection.disconnect();
   } catch {}
   tiktokConnections.delete(key);
+  manualTikTokDisconnects.delete(key);
 }
 
 io.on("connection", (socket) => {
@@ -109,6 +123,43 @@ app.post("/connect/tiktok", async (req, res) => {
   });
 });
 
+app.post("/disconnect/tiktok", async (req, res) => {
+  const sellerId = cleanSellerId(req.body.sellerId);
+  const username = cleanAccountKey(req.body.username);
+  const sessionId = String(req.body.sessionId || "");
+
+  if (!sellerId || !username) {
+    return res.status(400).json({
+      success: false,
+      error: "Seller account and TikTok username are required",
+    });
+  }
+
+  const key = liveKey(sellerId, "TikTok", username);
+  await disconnectTikTokConnection(key, { manual: true });
+  clearTikTokReconnect(key);
+  emitTikTokStatus({
+    sellerId,
+    username,
+    sessionId,
+    connected: false,
+    reconnecting: false,
+    reason: "manual",
+  });
+  io.to(sellerRoom(sellerId)).emit("live_session_ended", {
+    platform: "TikTok",
+    username,
+    sellerId,
+    sessionId,
+    timestamp: new Date().toISOString(),
+  });
+
+  return res.json({
+    success: true,
+    message: `Disconnected TikTok LIVE: ${username}`,
+  });
+});
+
 app.post("/connect/facebook", (req, res) => {
   const sellerId = cleanSellerId(req.body.sellerId);
   const username = cleanAccountKey(req.body.username || req.body.liveVideoId || req.body.pageName);
@@ -152,6 +203,128 @@ app.post("/connect/facebook", (req, res) => {
   });
 });
 
+function emitTikTokStatus({ sellerId, username, sessionId, connected, reconnecting = false, reason = "" }) {
+  io.to(sellerRoom(sellerId)).emit("platform_status", {
+    platform: "TikTok",
+    connected,
+    reconnecting,
+    sellerId,
+    username,
+    sessionId,
+    reason,
+    nextRetryMs: reconnecting ? 10000 : 0,
+  });
+}
+
+function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "disconnected") {
+  if (tiktokReconnectTimers.has(key)) return;
+
+  emitTikTokStatus({
+    sellerId,
+    username,
+    sessionId,
+    connected: false,
+    reconnecting: true,
+    reason,
+  });
+
+  const timer = setTimeout(async () => {
+    tiktokReconnectTimers.delete(key);
+    try {
+      await startTikTokConnection(key, username, sellerId, sessionId, { emitStart: false });
+      console.log(`Reconnected TikTok LIVE: ${username} for ${sellerId}`);
+    } catch (error) {
+      console.log(`TikTok reconnect failed for ${username}: ${error.message}`);
+      scheduleTikTokReconnect(key, username, sellerId, sessionId, "retry_failed");
+    }
+  }, 10000);
+
+  tiktokReconnectTimers.set(key, timer);
+}
+
+function handleTikTokDisconnected(key, connection, reason = "disconnected", { reconnect = true } = {}) {
+  const active = tiktokConnections.get(key);
+  if (!active || active.connection !== connection) return;
+
+  tiktokConnections.delete(key);
+
+  if (manualTikTokDisconnects.has(key) || !reconnect) {
+    manualTikTokDisconnects.delete(key);
+    emitTikTokStatus({
+      sellerId: active.sellerId,
+      username: active.username,
+      sessionId: active.sessionId,
+      connected: false,
+      reconnecting: false,
+      reason: reconnect ? "manual" : reason,
+    });
+    io.to(sellerRoom(active.sellerId)).emit("live_session_ended", {
+      platform: "TikTok",
+      username: active.username,
+      sellerId: active.sellerId,
+      sessionId: active.sessionId,
+      timestamp: new Date().toISOString(),
+    });
+    return;
+  }
+
+  scheduleTikTokReconnect(key, active.username, active.sellerId, active.sessionId, reason);
+}
+
+async function startTikTokConnection(key, username, sellerId, sessionId, { emitStart = false } = {}) {
+  clearTikTokReconnect(key);
+
+  const tiktokConnection = new WebcastPushConnection(username);
+  await tiktokConnection.connect();
+  tiktokConnections.set(key, { connection: tiktokConnection, username, sessionId, sellerId });
+
+  console.log(`Connected to TikTok LIVE: ${username} for ${sellerId}`);
+
+  emitTikTokStatus({
+    sellerId,
+    username,
+    sessionId,
+    connected: true,
+    reconnecting: false,
+  });
+
+  if (emitStart) {
+    io.to(sellerRoom(sellerId)).emit("live_session_started", {
+      platform: "TikTok",
+      username,
+      sellerId,
+      sessionId,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  tiktokConnection.on("disconnected", () => handleTikTokDisconnected(key, tiktokConnection, "disconnected"));
+  tiktokConnection.on("streamEnd", () => handleTikTokDisconnected(key, tiktokConnection, "streamEnd", { reconnect: false }));
+
+  tiktokConnection.on("chat", (data) => {
+    const comment = data.comment || "";
+    const name = data.nickname || data.uniqueId || "Unknown";
+    const handle = data.uniqueId || "unknown";
+
+    io.to(sellerRoom(sellerId)).emit("comment", {
+      handle,
+      name,
+      comment,
+      platform: "TikTok",
+      sellerId,
+      sessionId,
+      sourceUsername: username,
+      isBuy: false,
+      buyerNum: null,
+      buyerData: null,
+      time: new Date().toLocaleTimeString(),
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  return tiktokConnection;
+}
+
 async function connectTikTok(username, res, meta = {}) {
   try {
     if (!username) {
@@ -171,71 +344,8 @@ async function connectTikTok(username, res, meta = {}) {
 
     const sessionId = String(meta.sessionId || "");
     const key = liveKey(sellerId, "TikTok", username);
-    await disconnectTikTokConnection(key);
-
-    const tiktokConnection = new WebcastPushConnection(username);
-    await tiktokConnection.connect();
-    tiktokConnections.set(key, { connection: tiktokConnection, username, sessionId, sellerId });
-
-    console.log(`Connected to TikTok LIVE: ${username} for ${sellerId}`);
-
-    io.to(sellerRoom(sellerId)).emit("platform_status", {
-      platform: "TikTok",
-      connected: true,
-      sellerId,
-      username,
-      sessionId,
-    });
-    io.to(sellerRoom(sellerId)).emit("live_session_started", {
-      platform: "TikTok",
-      username,
-      sellerId,
-      sessionId,
-      timestamp: new Date().toISOString(),
-    });
-
-    const markTikTokDisconnected = () => {
-      const active = tiktokConnections.get(key);
-      if (active?.connection === tiktokConnection) tiktokConnections.delete(key);
-      io.to(sellerRoom(sellerId)).emit("platform_status", {
-        platform: "TikTok",
-        connected: false,
-        sellerId,
-        username,
-        sessionId,
-      });
-      io.to(sellerRoom(sellerId)).emit("live_session_ended", {
-        platform: "TikTok",
-        username,
-        sellerId,
-        sessionId,
-        timestamp: new Date().toISOString(),
-      });
-    };
-
-    tiktokConnection.on("disconnected", markTikTokDisconnected);
-    tiktokConnection.on("streamEnd", markTikTokDisconnected);
-
-    tiktokConnection.on("chat", (data) => {
-      const comment = data.comment || "";
-      const name = data.nickname || data.uniqueId || "Unknown";
-      const handle = data.uniqueId || "unknown";
-
-      io.to(sellerRoom(sellerId)).emit("comment", {
-        handle,
-        name,
-        comment,
-        platform: "TikTok",
-        sellerId,
-        sessionId,
-        sourceUsername: username,
-        isBuy: false,
-        buyerNum: null,
-        buyerData: null,
-        time: new Date().toLocaleTimeString(),
-        timestamp: new Date().toISOString(),
-      });
-    });
+    await disconnectTikTokConnection(key, { manual: true });
+    await startTikTokConnection(key, username, sellerId, sessionId, { emitStart: true });
 
     return res.json({
       success: true,

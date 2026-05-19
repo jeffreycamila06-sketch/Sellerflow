@@ -2506,11 +2506,11 @@ export default function App(){
       const ords=b.flatMap(x=>x.orders.map(o=>({...o,handle:x.handle,name:x.name,bNum:x.num,platform:x.platform,status:"New",date:new Date().toISOString().slice(0,10)})));
       setAllOrders(ords);LS.set(sellerDailyDataKey("sf_orders",user.email,currentLiveDayId),ords);
     });
-    s.on("platform_status",({platform:p,connected:c,sellerId:eventSellerId,username,sessionId:eventSessionId}:{platform:string;connected:boolean;sellerId?:string;username?:string;sessionId?:string})=>{
+    s.on("platform_status",({platform:p,connected:c,reconnecting,sellerId:eventSellerId,username,sessionId:eventSessionId}:{platform:string;connected:boolean;reconnecting?:boolean;sellerId?:string;username?:string;sessionId?:string})=>{
       if(eventSellerId&&eventSellerId!==sellerId)return;
       if(eventSessionId&&eventSessionId!==currentSessionId)return;
-      if(p==="TikTok"){setTtOn(c);if(!c)setActiveLiveAccounts(a=>({...a,TikTok:""}));}
-      if(p==="Facebook"){setFbOn(c);if(!c)setActiveLiveAccounts(a=>({...a,Facebook:""}));}
+      if(p==="TikTok"){setTtOn(c);if(!c&&!reconnecting)setActiveLiveAccounts(a=>({...a,TikTok:""}));}
+      if(p==="Facebook"){setFbOn(c);if(!c&&!reconnecting)setActiveLiveAccounts(a=>({...a,Facebook:""}));}
       if(c&&p==="TikTok"&&username)setActiveLiveAccounts(a=>({...a,TikTok:username}));
       if(c&&p==="Facebook"&&username)setActiveLiveAccounts(a=>({...a,Facebook:username}));
     });
