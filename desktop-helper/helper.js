@@ -21,6 +21,7 @@ let captureState = {
   sent: 0,
   lastComment: "",
   lastError: "",
+  lastFound: 0,
 };
 const seenComments = new Set();
 
@@ -74,6 +75,7 @@ function pageHtml() {
       <div class="status">
 Status: <span class="${captureState.running ? "ok" : "bad"}">${captureState.running ? "Running" : "Stopped"}</span>
 Sent comments: ${captureState.sent}
+Found on page: ${captureState.lastFound}
 Last comment: ${captureState.lastComment || "-"}
 Last error: ${captureState.lastError || "-"}
       </div>
@@ -148,25 +150,84 @@ async function getTikTokPage() {
 }
 
 const scrapeExpression = `(() => {
+  const ignored = [
+    'welcome to tiktok live',
+    'creators must be',
+    'community guidelines',
+    'get coins',
+    'discover live',
+    'creator tools',
+    'suggested live creators',
+    'company',
+    'program',
+    'terms',
+    'comments off',
+    'joined',
+    'liked the live',
+    'followed the host'
+  ];
+  const clean = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+  const isCommentLike = (item) => {
+    const comment = clean(item.comment).toLowerCase();
+    if (!comment || comment.length > 500) return false;
+    if (ignored.some(word => comment.includes(word))) return false;
+    return item.name && item.comment && item.name !== item.comment;
+  };
+  const normalize = (name, comment, handle = '') => ({
+    name: clean(name) || clean(handle) || 'TikTok viewer',
+    handle: clean(handle || name).replace(/^@+/, '') || 'tiktok-viewer',
+    comment: clean(comment)
+  });
+  const parseTextBlock = (text) => {
+    const lines = String(text || '').split('\\n').map(clean).filter(Boolean);
+    if (lines.length < 2) return null;
+    const name = lines[0];
+    const comment = lines.slice(1).join(' ');
+    return normalize(name, comment, name);
+  };
   const selectors = [
     '[data-e2e="chat-message"]',
     '[data-e2e="comment-item"]',
+    '[data-e2e*="live-comment"]',
+    '[data-e2e*="live-chat"]',
+    '[class*="DivChatRoom"] div',
+    '[class*="DivComment"]',
     '[class*="DivChatMessage"]',
     '[class*="ChatMessage"]',
+    '[class*="LiveComment"]',
+    '[class*="CommentItem"]',
     'div[role="listitem"]'
   ];
-  const nodes = Array.from(new Set(selectors.flatMap(selector => Array.from(document.querySelectorAll(selector)))));
-  return nodes.slice(-80).map((node) => {
-    const text = (node.innerText || node.textContent || '').replace(/\\s+/g, ' ').trim();
+  const nodes = Array.from(new Set(selectors.flatMap(selector => Array.from(document.querySelectorAll(selector)))))
+    .filter(node => {
+      const rect = node.getBoundingClientRect?.();
+      if (!rect || rect.width < 40 || rect.height < 8) return false;
+      const text = node.innerText || node.textContent || '';
+      return text && text.length < 800;
+    });
+  const items = nodes.slice(-160).map((node) => {
+    const multiline = node.innerText || node.textContent || '';
+    const parsed = parseTextBlock(multiline);
+    if (parsed) return parsed;
+    const text = clean(multiline);
     const authorNode = node.querySelector('a[href*="/@"]') || node.querySelector('[data-e2e*="user"]') || node.querySelector('span');
-    const author = (authorNode?.innerText || authorNode?.textContent || '').replace(/\\s+/g, ' ').trim();
+    const author = clean(authorNode?.innerText || authorNode?.textContent || '');
     const href = authorNode?.getAttribute?.('href') || '';
     const handleMatch = href.match(/@([^/?]+)/);
     const handle = handleMatch ? handleMatch[1] : author;
     let comment = text;
     if (author && comment.startsWith(author)) comment = comment.slice(author.length).trim();
-    return { name: author || handle || 'TikTok viewer', handle: handle || author || 'tiktok-viewer', comment };
-  }).filter(item => item.comment && item.comment.length <= 500);
+    return normalize(author || handle, comment, handle || author);
+  }).filter(isCommentLike);
+  const unique = [];
+  const seen = new Set();
+  for (const item of items) {
+    const key = item.handle + '|' + item.comment;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(item);
+  }
+  return unique.slice(-80);
 })()`;
 
 async function readComments() {
@@ -209,6 +270,7 @@ async function tickCapture() {
   try {
     captureState.lastError = "";
     const comments = await readComments();
+    captureState.lastFound = comments.length;
     for (const item of comments) await sendComment(item);
   } catch (error) {
     captureState.lastError = error.message || String(error);
