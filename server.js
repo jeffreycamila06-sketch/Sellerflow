@@ -21,6 +21,7 @@ app.use(express.json());
 const tiktokConnections = new Map();
 const facebookConnections = new Map();
 const tiktokReconnectTimers = new Map();
+const tiktokWatchdogTimers = new Map();
 const manualTikTokDisconnects = new Set();
 
 function cleanSellerId(value) {
@@ -52,9 +53,16 @@ function clearTikTokReconnect(key) {
   tiktokReconnectTimers.delete(key);
 }
 
+function clearTikTokWatchdog(key) {
+  const timer = tiktokWatchdogTimers.get(key);
+  if (timer) clearInterval(timer);
+  tiktokWatchdogTimers.delete(key);
+}
+
 async function disconnectTikTokConnection(key, { manual = false } = {}) {
   const existing = tiktokConnections.get(key);
   if (manual) clearTikTokReconnect(key);
+  clearTikTokWatchdog(key);
   if (!existing) {
     manualTikTokDisconnects.delete(key);
     return;
@@ -247,6 +255,7 @@ function handleTikTokDisconnected(key, connection, reason = "disconnected", { re
   if (!active || active.connection !== connection) return;
 
   tiktokConnections.delete(key);
+  clearTikTokWatchdog(key);
 
   if (manualTikTokDisconnects.has(key) || !reconnect) {
     manualTikTokDisconnects.delete(key);
@@ -273,6 +282,7 @@ function handleTikTokDisconnected(key, connection, reason = "disconnected", { re
 
 async function startTikTokConnection(key, username, sellerId, sessionId, { emitStart = false } = {}) {
   clearTikTokReconnect(key);
+  clearTikTokWatchdog(key);
 
   const cleanUsername = cleanAccountKey(username);
   const tiktokConnection = new WebcastPushConnection(cleanUsername, {
@@ -280,7 +290,7 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
     fetchRoomInfoOnConnect: true,
   });
   const state = await tiktokConnection.connect();
-  tiktokConnections.set(key, { connection: tiktokConnection, username: cleanUsername, sessionId, sellerId, roomId: state?.roomId || "" });
+  tiktokConnections.set(key, { connection: tiktokConnection, username: cleanUsername, sessionId, sellerId, roomId: state?.roomId || "", lastCommentAt: Date.now() });
 
   console.log(`Connected to TikTok LIVE: ${cleanUsername} for ${sellerId} room ${state?.roomId || "unknown"}`);
 
@@ -306,10 +316,30 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
   tiktokConnection.on("disconnected", () => handleTikTokDisconnected(key, tiktokConnection, "disconnected"));
   tiktokConnection.on("streamEnd", () => handleTikTokDisconnected(key, tiktokConnection, "streamEnd", { reconnect: false }));
 
+  const watchdog = setInterval(() => {
+    const active = tiktokConnections.get(key);
+    if (!active || active.connection !== tiktokConnection) {
+      clearTikTokWatchdog(key);
+      return;
+    }
+
+    const staleForMs = Date.now() - (active.lastCommentAt || 0);
+    if (staleForMs < 30000) return;
+
+    console.log(`TikTok feed stale for ${cleanUsername}; reconnecting after ${Math.round(staleForMs / 1000)}s without comments`);
+    handleTikTokDisconnected(key, tiktokConnection, "stale_comments");
+    try {
+      tiktokConnection.disconnect();
+    } catch {}
+  }, 10000);
+  tiktokWatchdogTimers.set(key, watchdog);
+
   tiktokConnection.on("chat", (data) => {
     const comment = data.comment || "";
     const name = data.nickname || data.uniqueId || "Unknown";
     const handle = data.uniqueId || "unknown";
+    const active = tiktokConnections.get(key);
+    if (active?.connection === tiktokConnection) active.lastCommentAt = Date.now();
 
     io.to(sellerRoom(sellerId)).emit("comment", {
       handle,
