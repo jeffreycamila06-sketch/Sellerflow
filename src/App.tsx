@@ -104,6 +104,7 @@ const liveDayId=()=>{
   return `${y}-${m}-${day}`;
 };
 const sellerDailyDataKey=(base:string,email:string,dayId:string)=>email?`${base}:${sellerIdOf(email)}:${dayId}`:base;
+const cleanLiveAccount=(value:string)=>String(value||"").trim().replace(/^@+/,"").toLowerCase();
 const sellerDayOrSessionArray=<X,>(base:string,email:string,dayId:string,sessionId:string):X[]=>{
   const dailyKey=sellerDailyDataKey(base,email,dayId);
   const daily=arrLS<X>(dailyKey);
@@ -2480,8 +2481,8 @@ export default function App(){
       if(incoming.sellerId&&incoming.sellerId!==sellerId)return;
       if(incoming.sessionId&&incoming.sessionId!==currentSessionId)return;
       if(incoming.sourceUsername){
-        const selected=activeLiveAccountsRef.current[incoming.platform]?.trim().toLowerCase();
-        if(selected&&incoming.sourceUsername.trim().toLowerCase()!==selected)return;
+        const selected=cleanLiveAccount(activeLiveAccountsRef.current[incoming.platform]);
+        if(selected&&cleanLiveAccount(incoming.sourceUsername)!==selected)return;
       }
       const comment={...incoming,timestamp:incoming.timestamp||new Date().toISOString(),time:incoming.time||new Date().toLocaleTimeString()};
       setComments((p) => {
@@ -2619,9 +2620,10 @@ export default function App(){
   async function connectPlatform(platform:"TikTok"|"Facebook",data:Record<string,string>){
     const ep=platform==="TikTok"?"/connect/tiktok":"/connect/facebook";
     const connectionMeta={sellerId:sellerIdOf(user.email),sessionId:browserSessionId()};
+    const tiktokUsername=cleanLiveAccount(data.username||"");
     const facebookPage=(data.liveVideoId||data.username||"").trim();
     const body=platform==="TikTok"
-      ? {username:data.username,...connectionMeta}
+      ? {username:tiktokUsername,...connectionMeta}
       : {username:facebookPage,pageName:facebookPage,liveVideoId:facebookPage,accessToken:data.accessToken,...connectionMeta};
     try{
       const r=await fetch(`${SERVER}${ep}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
@@ -2629,12 +2631,13 @@ export default function App(){
       if(!j.success)setToast(`${t.conn_failed}: ${j.error}`);
       else{
         setToast(`${t.conn_success} ${platform}!`);
+        clearLiveCommentMemory();
         setActiveLiveAccounts(a=>({
           ...a,
-          [platform]: (platform==="TikTok"?data.username:data.liveVideoId||data.username||"").trim()
+          [platform]: platform==="TikTok"?tiktokUsername:facebookPage
         }));
         if(user){
-          const cleanValue=(platform==="TikTok"?data.username:data.liveVideoId||user.profile.facebook||"").trim();
+          const cleanValue=platform==="TikTok"?tiktokUsername:facebookPage;
           const field=platform==="TikTok"?"tiktok":"facebook";
           const existing=accountList(user.profile[field]);
           const nextProfile=cleanValue&&!existing.includes(cleanValue)&&registeredAccountCount(user)<maxAcc(user.plan)

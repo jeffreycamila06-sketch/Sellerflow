@@ -274,15 +274,19 @@ function handleTikTokDisconnected(key, connection, reason = "disconnected", { re
 async function startTikTokConnection(key, username, sellerId, sessionId, { emitStart = false } = {}) {
   clearTikTokReconnect(key);
 
-  const tiktokConnection = new WebcastPushConnection(username);
-  await tiktokConnection.connect();
-  tiktokConnections.set(key, { connection: tiktokConnection, username, sessionId, sellerId });
+  const cleanUsername = cleanAccountKey(username);
+  const tiktokConnection = new WebcastPushConnection(cleanUsername, {
+    processInitialData: false,
+    fetchRoomInfoOnConnect: true,
+  });
+  const state = await tiktokConnection.connect();
+  tiktokConnections.set(key, { connection: tiktokConnection, username: cleanUsername, sessionId, sellerId, roomId: state?.roomId || "" });
 
-  console.log(`Connected to TikTok LIVE: ${username} for ${sellerId}`);
+  console.log(`Connected to TikTok LIVE: ${cleanUsername} for ${sellerId} room ${state?.roomId || "unknown"}`);
 
   emitTikTokStatus({
     sellerId,
-    username,
+    username: cleanUsername,
     sessionId,
     connected: true,
     reconnecting: false,
@@ -291,9 +295,10 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
   if (emitStart) {
     io.to(sellerRoom(sellerId)).emit("live_session_started", {
       platform: "TikTok",
-      username,
+      username: cleanUsername,
       sellerId,
       sessionId,
+      roomId: state?.roomId || "",
       timestamp: new Date().toISOString(),
     });
   }
@@ -313,7 +318,8 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
       platform: "TikTok",
       sellerId,
       sessionId,
-      sourceUsername: username,
+      sourceUsername: cleanUsername,
+      roomId: state?.roomId || "",
       isBuy: false,
       buyerNum: null,
       buyerData: null,
@@ -343,13 +349,20 @@ async function connectTikTok(username, res, meta = {}) {
     }
 
     const sessionId = String(meta.sessionId || "");
-    const key = liveKey(sellerId, "TikTok", username);
+    const cleanUsername = cleanAccountKey(username);
+    if (!cleanUsername) {
+      return res.status(400).json({
+        success: false,
+        error: "TikTok username is required",
+      });
+    }
+    const key = liveKey(sellerId, "TikTok", cleanUsername);
     await disconnectTikTokConnection(key, { manual: true });
-    await startTikTokConnection(key, username, sellerId, sessionId, { emitStart: true });
+    await startTikTokConnection(key, cleanUsername, sellerId, sessionId, { emitStart: true });
 
     return res.json({
       success: true,
-      message: `Connected to TikTok LIVE: ${username}`,
+      message: `Connected to TikTok LIVE: ${cleanUsername}`,
     });
   } catch (error) {
     console.log(error);
