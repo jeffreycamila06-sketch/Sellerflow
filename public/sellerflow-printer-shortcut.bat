@@ -1,6 +1,6 @@
 @echo off
 setlocal
-set "APP_URL=https://sellerflow-pi.vercel.app/?directPrint=1"
+set "APP_URL=https://sellerflowlive.com/?directPrint=1"
 set "PS1=%TEMP%\sellerflow-printer-shortcut.ps1"
 
 > "%PS1%" echo $ErrorActionPreference = 'Stop'

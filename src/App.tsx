@@ -597,7 +597,7 @@ function LegalPage({kind,onBack}:{kind:"privacy"|"terms";onBack:()=>void}){
     {h:"Sharing",p:"We do not sell seller or buyer data. We only share data when needed to operate the app, comply with law, prevent abuse, or support a seller request."},
     {h:"Seller responsibility",p:"Sellers should only enter buyer information needed for orders and should follow their local privacy, tax, and selling rules."},
     {h:"Delete account",p:"You can request deletion inside SellerFlow from Profile > Delete Account. Deleting removes the seller login and support messages for that email where possible. Some order or payment records may be retained when required for business, security, or legal reasons."},
-    {h:"Contact",p:"For privacy requests, contact admin@sellerflow.app."},
+    {h:"Contact",p:"For privacy requests, contact SellerFlow through sellerflowlive.com."},
   ]:[
     {h:"Service purpose",p:"SellerFlow helps live sellers collect comments, create buyer numbers, manage orders, print slips, track customers, and communicate with admin support."},
     {h:"Account rules",p:"You are responsible for keeping your login private. Registered TikTok and Facebook accounts may be locked based on your plan and can be changed by admin when needed."},
@@ -605,7 +605,7 @@ function LegalPage({kind,onBack}:{kind:"privacy"|"terms";onBack:()=>void}){
     {h:"Printing and live connections",p:"SellerFlow provides printing and live comment tools, but browser, printer, network, TikTok, and Facebook changes can affect availability. Sellers should test the printer before selling."},
     {h:"Seller responsibility",p:"Sellers are responsible for products, prices, order accuracy, customer communication, refunds, taxes, and following platform rules."},
     {h:"Acceptable use",p:"Do not use SellerFlow for fraud, spam, illegal products, abuse, unauthorized data collection, or attempts to break the app or other seller accounts."},
-    {h:"Changes and contact",p:"We may update these terms as SellerFlow improves. Questions can be sent to admin@sellerflow.app."},
+    {h:"Changes and contact",p:"We may update these terms as SellerFlow improves. Questions can be sent through sellerflowlive.com."},
   ];
   return(
     <div className="subpage legal-page">
@@ -2884,7 +2884,7 @@ export default function App(){
                     <div className="slip-dash"/>
                     <div className="slip-tot"><span className="slip-tl">{t.total_today}</span><span className="slip-tv">{selBuyer.totalSpent>0?`${settings.currency}${selBuyer.totalSpent.toLocaleString()}`:""}</span></div>
                     <div className="slip-dash"/>
-                    <div className="slip-ft">{t.thankyou}<br/>SellerFlow · sellerflow.app</div>
+                    <div className="slip-ft"></div>
                   </div>
                 )}
               </div>
