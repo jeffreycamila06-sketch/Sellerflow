@@ -1,0 +1,24 @@
+{
+  "name": "sellerflow-mobile",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "android:init": "cap add android",
+    "android:sync": "cap sync android",
+    "android:open": "cap open android",
+    "android:debug": "cap sync android && cd android && gradlew assembleDebug",
+    "ios:init": "cap add ios",
+    "ios:sync": "cap sync ios",
+    "ios:open": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "latest",
+    "@capacitor/core": "latest",
+    "@capacitor/ios": "latest"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "latest",
+    "typescript": "latest"
+  }
+}
