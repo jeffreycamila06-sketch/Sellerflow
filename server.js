@@ -7,6 +7,7 @@ import { Server } from "socket.io";
 const app = express();
 const server = http.createServer(app);
 const TEST_COMMENT_TOKEN = process.env.TEST_COMMENT_TOKEN || "";
+const HELPER_COMMENT_TOKEN = process.env.HELPER_COMMENT_TOKEN || "";
 
 
 const io = new Server(server, {
@@ -222,6 +223,49 @@ app.post("/connect/facebook", (req, res) => {
   return res.json({
     success: true,
     message: `Connected to Facebook page: ${username}`,
+  });
+});
+
+app.post("/helper/comment", (req, res) => {
+  if (HELPER_COMMENT_TOKEN && req.body.token !== HELPER_COMMENT_TOKEN && req.headers["x-helper-token"] !== HELPER_COMMENT_TOKEN) {
+    return res.status(401).json({
+      success: false,
+      error: "Invalid helper token",
+    });
+  }
+
+  const sellerId = cleanSellerId(req.body.sellerId || req.body.email);
+  const sessionId = String(req.body.sessionId || "");
+  const sourceUsername = cleanAccountKey(req.body.sourceUsername || req.body.liveAccount || "");
+  const handle = cleanAccountKey(req.body.handle || req.body.username || "tiktok-viewer") || "tiktok-viewer";
+  const name = String(req.body.name || req.body.nickname || handle || "TikTok viewer").trim();
+  const comment = String(req.body.comment || req.body.text || "").trim();
+
+  if (!sellerId || !comment) {
+    return res.status(400).json({
+      success: false,
+      error: "sellerId and comment are required",
+    });
+  }
+
+  io.to(sellerRoom(sellerId)).emit("comment", {
+    handle,
+    name,
+    comment,
+    platform: "TikTok",
+    sellerId,
+    sessionId,
+    sourceUsername: sourceUsername || undefined,
+    roomId: "desktop-helper",
+    isBuy: false,
+    buyerNum: null,
+    buyerData: null,
+    time: new Date().toLocaleTimeString(),
+    timestamp: new Date().toISOString(),
+  });
+
+  return res.json({
+    success: true,
   });
 });
 
