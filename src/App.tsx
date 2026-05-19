@@ -33,6 +33,15 @@ interface Product { id:number; name:string; sku:string; price:number; stock:numb
 interface Settings { autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"usb"; stickerSize:string; printStoreName:boolean; printBuyerNumber:boolean; printBuyerUsername:boolean; printOrderItems:boolean; printTotal:boolean; printAutoClose:boolean; printLabelScale:number; printStoreScale:number; printBuyerNumberScale:number; printBuyerNameScale:number; printUsernameScale:number; printOrderScale:number; printTotalScale:number; printStoreX:number; printStoreY:number; printBuyerLabelX:number; printBuyerLabelY:number; printBuyerNumberX:number; printBuyerNumberY:number; printBuyerNameX:number; printBuyerNameY:number; printUsernameX:number; printUsernameY:number; printSessionX:number; printSessionY:number; printOrderX:number; printOrderY:number; printTotalX:number; printTotalY:number; }
 type NumberSettingKey = {[K in keyof Settings]: Settings[K] extends number ? K : never}[keyof Settings];
 interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; proofImage?:string; timestamp:string; status:"pending"|"approved"|"rejected"|"resolved"; adminReply?:string; repliedAt?:string; }
+interface NativePrinterPayload { type:"sellerflow.printSlip"; buyer:Buyer; currency:string; storeName:string; settings:Settings; sessionDate:string; createdAt:string; }
+
+declare global {
+  interface Window {
+    SellerFlowPrinter?: { printSlip?: (payload:NativePrinterPayload)=>void|Promise<void>; status?: ()=>string|Promise<string>; };
+    ReactNativeWebView?: { postMessage:(message:string)=>void };
+    Capacitor?: { Plugins?: { SellerFlowPrinter?: { printSlip:(payload:NativePrinterPayload)=>Promise<void> } } };
+  }
+}
 const normalizeComment=(raw:unknown,index=0):Comment|null=>{
   if(!raw||typeof raw!=="object")return null;
   const c=raw as Partial<Comment>;
@@ -207,6 +216,36 @@ function readProofImage(file:File|null):Promise<string>{
   });
 }
 
+function hasNativeMobilePrinter(){
+  if(typeof window==="undefined")return false;
+  return !!(
+    window.SellerFlowPrinter?.printSlip ||
+    window.Capacitor?.Plugins?.SellerFlowPrinter?.printSlip ||
+    window.ReactNativeWebView?.postMessage
+  );
+}
+
+function sendSlipToNativePrinter(payload:NativePrinterPayload){
+  if(typeof window==="undefined")return false;
+  try{
+    if(window.SellerFlowPrinter?.printSlip){
+      void window.SellerFlowPrinter.printSlip(payload);
+      return true;
+    }
+    if(window.Capacitor?.Plugins?.SellerFlowPrinter?.printSlip){
+      void window.Capacitor.Plugins.SellerFlowPrinter.printSlip(payload);
+      return true;
+    }
+    if(window.ReactNativeWebView?.postMessage){
+      window.ReactNativeWebView.postMessage(JSON.stringify(payload));
+      return true;
+    }
+  }catch(err){
+    console.warn("Native printer bridge failed; falling back to browser print.",err);
+  }
+  return false;
+}
+
 function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Settings|string){
   const cfg:Settings=typeof printSettings==="string"?{...DEF_SETTINGS,stickerSize:printSettings}:printSettings;
   const size=cfg.stickerSize;
@@ -219,6 +258,8 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Setting
   const totalScale=scale(cfg.printTotalScale,cfg.printLabelScale);
   const pos=(v:number|undefined)=>Math.max(-40,Math.min(40,v||0));
   const sess=new Date().toLocaleDateString("en-PH",{month:"long",day:"numeric",year:"numeric"});
+  const nativePayload:NativePrinterPayload={type:"sellerflow.printSlip",buyer,currency:cur,storeName,settings:cfg,sessionDate:sess,createdAt:new Date().toISOString()};
+  if(hasNativeMobilePrinter()&&sendSlipToNativePrinter(nativePayload))return;
   const color=nc(buyer.num);
   const [w]=size.split("x").map(Number);
   const oHtml=buyer.orders.map(o=>`<div style="border-left:2px solid #7F77DD;padding-left:6px;margin-bottom:5px"><div style="font-size:9px;color:#888">${o.time} — #SF${o.orderNum}</div><div style="font-size:10px;font-weight:700">${o.item}</div><div style="font-size:9px;color:#555">x${o.qty}${o.total>0?` — ${cur}${o.total.toLocaleString()}`:""}</div></div>`).join("");
@@ -1025,6 +1066,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   const usernamePreview=previewScale(sets.printUsernameScale,sets.printLabelScale);
   const orderPreview=previewScale(sets.printOrderScale,sets.printLabelScale);
   const totalPreview=previewScale(sets.printTotalScale,sets.printLabelScale);
+  const nativePrinterReady=hasNativeMobilePrinter();
   const previewMove=(x:number|undefined,y:number|undefined)=>({transform:`translate(${(x||0)*1.8}px,${(y||0)*1.8}px)`});
   const stepSetting=(key:NumberSettingKey,delta:number)=>setSets(s=>({...s,[key]:Math.max(-40,Math.min(40,Number(s[key]||0)+delta))}));
   const stepSize=(key:NumberSettingKey,delta:number)=>setSets(s=>({...s,[key]:Math.max(60,Math.min(180,Number(s[key]||100)+delta))}));
@@ -1333,10 +1375,10 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
             <div className="mobile-bt-copy">
               <div className="printer-direct-status active">
                 <div>
-                  <strong>Mobile App Printer Flow</strong>
-                  <span>Bluetooth printer tools will show on phone app only. Desktop website stays USB/Wired.</span>
+                  <strong>{nativePrinterReady?"Bluetooth Direct Print Ready":"Mobile App Printer Flow"}</strong>
+                  <span>{nativePrinterReady?"Native printer bridge detected. 1-click can send slips to the phone app Bluetooth printer.":"Bluetooth printer tools will show on phone app only. Desktop website stays USB/Wired."}</span>
                 </div>
-                <Badge label="Mobile only" color="green"/>
+                <Badge label={nativePrinterReady?"Bridge ready":"Mobile only"} color={nativePrinterReady?"green":"amber"}/>
               </div>
               <div className="mobile-bt-steps">
                 <strong>How seller will use it on phone</strong>
@@ -1351,7 +1393,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
                 <button type="button" className="btn-out" onClick={openMobileBluetoothGuide}>Pair Printer Guide</button>
                 <button type="button" className="printer-test-btn" onClick={testPrinter}>Test Mobile Print</button>
               </div>
-              <div className="backup-note">Silent Bluetooth printing needs the mobile app printer bridge. The website will not show Bluetooth tools so laptop sellers stay on normal direct print.</div>
+              <div className="backup-note">Silent Bluetooth printing is now wired to the mobile app bridge. If this page is opened in normal browser, it will safely keep using browser print.</div>
             </div>
             <div className="mobile-bt-preview">
               <div className="mobile-bt-phone">
