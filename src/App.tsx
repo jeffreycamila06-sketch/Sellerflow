@@ -1102,6 +1102,14 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
     printSlip(testBuyer,sets.currency,user.profile.storeName||"SellerFlow",sets);
     setToast("Printer test sent");
   }
+  function openBluetoothSettings(){
+    try{
+      window.location.href="ms-settings:bluetooth";
+      setToast("Opening Bluetooth settings");
+    }catch{
+      setToast("Open Windows Settings > Bluetooth & devices");
+    }
+  }
   function resetPrinterLayout(){
     setSets(s=>({
       ...s,
@@ -1242,6 +1250,24 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
               <option value="bluetooth">{t.printer_bt}</option>
             </select>
           </Fg>
+          {sets.printerType==="bluetooth"&&(
+            <div className="bluetooth-printer-card">
+              <div>
+                <strong>Bluetooth printer setup</strong>
+                <p>Pair the printer to this laptop first. Then choose that Bluetooth printer the first time the print window opens.</p>
+              </div>
+              <div className="bluetooth-printer-actions">
+                <button type="button" className="btn-out" onClick={openBluetoothSettings}>Open Bluetooth Settings</button>
+                <button type="button" className="printer-test-btn" onClick={testPrinter}>Test Bluetooth Print</button>
+              </div>
+              <ol>
+                <li>Turn on printer Bluetooth/pairing mode.</li>
+                <li>Pair it in Windows Bluetooth settings.</li>
+                <li>Run Printer Test and select the Bluetooth printer.</li>
+                <li>Use SellerFlow Direct Print after the printer is selected once.</li>
+              </ol>
+            </div>
+          )}
           <Fg label={t.printer_size}>
             <select value={sets.stickerSize} onChange={e=>setSets(s=>({...s,stickerSize:e.target.value}))}>
               <option value="100x60">100x60mm (Standard)</option>
