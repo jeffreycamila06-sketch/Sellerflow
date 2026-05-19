@@ -2598,7 +2598,10 @@ export default function App(){
   async function connectPlatform(platform:"TikTok"|"Facebook",data:Record<string,string>){
     const ep=platform==="TikTok"?"/connect/tiktok":"/connect/facebook";
     const connectionMeta={sellerId:sellerIdOf(user.email),sessionId:browserSessionId()};
-    const body=platform==="TikTok"?{username:data.username,...connectionMeta}:{liveVideoId:data.liveVideoId,accessToken:data.accessToken,...connectionMeta};
+    const facebookPage=(data.liveVideoId||data.username||"").trim();
+    const body=platform==="TikTok"
+      ? {username:data.username,...connectionMeta}
+      : {username:facebookPage,pageName:facebookPage,liveVideoId:facebookPage,accessToken:data.accessToken,...connectionMeta};
     try{
       const r=await fetch(`${SERVER}${ep}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       const j=await r.json();

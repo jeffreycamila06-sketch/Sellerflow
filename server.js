@@ -19,6 +19,7 @@ app.use(cors());
 app.use(express.json());
 
 const tiktokConnections = new Map();
+const facebookConnections = new Map();
 
 function cleanSellerId(value) {
   return String(value || "")
@@ -70,6 +71,16 @@ io.on("connection", (socket) => {
         sessionId: active.sessionId,
       });
     }
+    for (const active of facebookConnections.values()) {
+      if (active.sellerId !== cleanId) continue;
+      socket.emit("platform_status", {
+        platform: "Facebook",
+        connected: true,
+        sellerId: cleanId,
+        username: active.username,
+        sessionId: active.sessionId,
+      });
+    }
   });
 });
 
@@ -95,6 +106,49 @@ app.post("/connect/tiktok", async (req, res) => {
   return connectTikTok(req.body.username, res, {
     sellerId: req.body.sellerId,
     sessionId: req.body.sessionId,
+  });
+});
+
+app.post("/connect/facebook", (req, res) => {
+  const sellerId = cleanSellerId(req.body.sellerId);
+  const username = cleanAccountKey(req.body.username || req.body.liveVideoId || req.body.pageName);
+  const sessionId = String(req.body.sessionId || "");
+
+  if (!sellerId) {
+    return res.status(400).json({
+      success: false,
+      error: "Seller account is required before connecting live",
+    });
+  }
+
+  if (!username) {
+    return res.status(400).json({
+      success: false,
+      error: "Facebook page is required",
+    });
+  }
+
+  const key = liveKey(sellerId, "Facebook", username);
+  facebookConnections.set(key, { username, sessionId, sellerId });
+
+  io.to(sellerRoom(sellerId)).emit("platform_status", {
+    platform: "Facebook",
+    connected: true,
+    sellerId,
+    username,
+    sessionId,
+  });
+  io.to(sellerRoom(sellerId)).emit("live_session_started", {
+    platform: "Facebook",
+    username,
+    sellerId,
+    sessionId,
+    timestamp: new Date().toISOString(),
+  });
+
+  return res.json({
+    success: true,
+    message: `Connected to Facebook page: ${username}`,
   });
 });
 
@@ -220,16 +274,19 @@ app.get("/test-comment", (req, res) => {
     });
   }
 
-  console.log(`Maria Reyes: test live comment for ${sellerId}`);
+  const platform = String(req.query.platform || "TikTok").toLowerCase() === "facebook" ? "Facebook" : "TikTok";
+  const sourceUsername = cleanAccountKey(req.query.sourceUsername || req.query.username || "test");
+
+  console.log(`Maria Reyes: test ${platform} live comment for ${sellerId}`);
 
   io.to(sellerRoom(sellerId)).emit("comment", {
     handle: "maria_reyes",
     name: "Maria Reyes",
     comment: "test live comment",
-    platform: "TikTok",
+    platform,
     sellerId,
     sessionId: String(req.query.sessionId || ""),
-    sourceUsername: "test",
+    sourceUsername,
     isBuy: false,
     buyerNum: null,
     buyerData: null,
@@ -239,7 +296,7 @@ app.get("/test-comment", (req, res) => {
 
   res.json({
     success: true,
-    message: "Fake TikTok comment received",
+    message: `Fake ${platform} comment received`,
     comment: "test live comment",
   });
 });
