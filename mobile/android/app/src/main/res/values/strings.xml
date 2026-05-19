@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SellerFlow</string>
+    <string name="title_activity_main">SellerFlow</string>
+    <string name="package_name">com.sellerflow.live</string>
+    <string name="custom_url_scheme">com.sellerflow.live</string>
+</resources>

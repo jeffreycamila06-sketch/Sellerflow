@@ -1,0 +1,11 @@
+node_modules/
+.tools/
+
+android/.gradle/
+android/local.properties
+android/**/build/
+
+ios/App/Pods/
+ios/App/App.xcworkspace/
+ios/App/Podfile.lock
+ios/DerivedData/
