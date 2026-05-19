@@ -96,6 +96,22 @@ const browserSessionId=()=>{
 const sellerIdOf=(email:string)=>email.trim().toLowerCase();
 const sellerDataKey=(base:string,email:string)=>email?`${base}:${sellerIdOf(email)}`:base;
 const sellerLiveDataKey=(base:string,email:string,sessionId:string)=>email?`${base}:${sellerIdOf(email)}:${sessionId}`:base;
+const liveDayId=()=>{
+  const d=new Date();
+  const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,"0");
+  const day=String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+};
+const sellerDailyDataKey=(base:string,email:string,dayId:string)=>email?`${base}:${sellerIdOf(email)}:${dayId}`:base;
+const sellerDayOrSessionArray=<X,>(base:string,email:string,dayId:string,sessionId:string):X[]=>{
+  const dailyKey=sellerDailyDataKey(base,email,dayId);
+  const daily=arrLS<X>(dailyKey);
+  if(daily.length)return daily;
+  const legacy=arrLS<X>(sellerLiveDataKey(base,email,sessionId));
+  if(legacy.length)LS.set(dailyKey,legacy);
+  return legacy;
+};
 
 const SERVER = import.meta.env.VITE_SERVER_URL || "http://localhost:3001";
 const DEF_SETTINGS: Settings = { autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"₱", paperSize:"100x60mm", printerType:"usb", stickerSize:"100x60mm", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printLabelScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printTotalScale:100, printStoreX:0, printStoreY:0, printBuyerLabelX:0, printBuyerLabelY:0, printBuyerNumberX:0, printBuyerNumberY:0, printBuyerNameX:0, printBuyerNameY:0, printUsernameX:0, printUsernameY:0, printSessionX:0, printSessionY:0, printOrderX:0, printOrderY:0, printTotalX:0, printTotalY:0 };
@@ -2344,33 +2360,41 @@ export default function App(){
   const [page,setPage]=useState<Page>("dashboard");
   const initialSellerEmail=LS.get<string>("sf_session","");
   const currentSessionId=browserSessionId();
+  const [currentLiveDayId,setCurrentLiveDayId]=useState(()=>liveDayId());
   const [comments,setComments]=useState<Comment[]>(()=>sortCommentsNewest(cleanComments(LS.get<unknown[]>(sellerLiveDataKey("sf_comments",initialSellerEmail,currentSessionId),[]))).slice(0,LIVE_COMMENT_LIMIT));
   const [archivedComments,setArchivedComments]=useState<Comment[]>(()=>sortCommentsNewest(cleanComments(LS.get<unknown[]>(sellerLiveDataKey("sf_comment_archive",initialSellerEmail,currentSessionId),[]))).slice(0,COMMENT_ARCHIVE_LIMIT));
-  const [buyers,setBuyers]=useState<Buyer[]>(()=>arrLS<Buyer>(sellerLiveDataKey("sf_buyers",initialSellerEmail,currentSessionId)));
-  const [allOrders,setAllOrders]=useState<LiveOrder[]>(()=>arrLS<LiveOrder>(sellerLiveDataKey("sf_orders",initialSellerEmail,currentSessionId)));
+  const [buyers,setBuyers]=useState<Buyer[]>(()=>sellerDayOrSessionArray<Buyer>("sf_buyers",initialSellerEmail,currentLiveDayId,currentSessionId));
+  const [allOrders,setAllOrders]=useState<LiveOrder[]>(()=>sellerDayOrSessionArray<LiveOrder>("sf_orders",initialSellerEmail,currentLiveDayId,currentSessionId));
   const [selBuyer,setSelBuyer]=useState<Buyer|null>(null);
   const [totOrd,setTotOrd]=useState(()=>{
-    const storedOrders=arrLS<LiveOrder>(sellerLiveDataKey("sf_orders",initialSellerEmail,currentSessionId));
-    return storedOrders.length||arrLS<Buyer>(sellerLiveDataKey("sf_buyers",initialSellerEmail,currentSessionId)).reduce((s,b)=>s+b.totalOrders,0);
+    const storedOrders=sellerDayOrSessionArray<LiveOrder>("sf_orders",initialSellerEmail,currentLiveDayId,currentSessionId);
+    return storedOrders.length||sellerDayOrSessionArray<Buyer>("sf_buyers",initialSellerEmail,currentLiveDayId,currentSessionId).reduce((s,b)=>s+b.totalOrders,0);
   });
   const [totRev,setTotRev]=useState(()=>{
-    const storedOrders=arrLS<LiveOrder>(sellerLiveDataKey("sf_orders",initialSellerEmail,currentSessionId));
-    return storedOrders.length?storedOrders.reduce((s,o)=>s+o.total,0):arrLS<Buyer>(sellerLiveDataKey("sf_buyers",initialSellerEmail,currentSessionId)).reduce((s,b)=>s+b.totalSpent,0);
+    const storedOrders=sellerDayOrSessionArray<LiveOrder>("sf_orders",initialSellerEmail,currentLiveDayId,currentSessionId);
+    return storedOrders.length?storedOrders.reduce((s,o)=>s+o.total,0):sellerDayOrSessionArray<Buyer>("sf_buyers",initialSellerEmail,currentLiveDayId,currentSessionId).reduce((s,b)=>s+b.totalSpent,0);
   });
   const [ttOn,setTtOn]=useState(false);const [fbOn,setFbOn]=useState(false);
   const [activeLiveAccounts,setActiveLiveAccounts]=useState<{TikTok:string;Facebook:string}>({TikTok:"",Facebook:""});
   const activeLiveAccountsRef=useRef(activeLiveAccounts);
   const [showConn,setShowConn]=useState(false);const [showProf,setShowProf]=useState(false);
   const [connectTab,setConnectTab]=useState<"TikTok"|"Facebook">("TikTok");
-  const [printed,setPrinted]=useState<Set<string>>(()=>new Set(arrLS<string>(sellerLiveDataKey("sf_printed",initialSellerEmail,currentSessionId))));
+  const [printed,setPrinted]=useState<Set<string>>(()=>new Set(sellerDayOrSessionArray<string>("sf_printed",initialSellerEmail,currentLiveDayId,currentSessionId)));
   const [openCommentMenu,setOpenCommentMenu]=useState<number|null>(null);
   const [supportUnreadCount,setSupportUnreadCount]=useState(0);
   const [toast,setToast]=useState("");
   const feedRef=useRef<HTMLDivElement>(null);
   const today=new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"});
   useEffect(()=>{activeLiveAccountsRef.current=activeLiveAccounts;},[activeLiveAccounts]);
+  useEffect(()=>{
+    const timer=window.setInterval(()=>{
+      const next=liveDayId();
+      setCurrentLiveDayId(prev=>prev===next?prev:next);
+    },30000);
+    return()=>window.clearInterval(timer);
+  },[]);
   const sellerMemoryEmail=()=>user?.email||initialSellerEmail;
-  const sellerMemoryKey=(base:string)=>sellerLiveDataKey(base,sellerMemoryEmail(),currentSessionId);
+  const sellerMemoryKey=(base:string)=>sellerDailyDataKey(base,sellerMemoryEmail(),currentLiveDayId);
   function saveBuyerMemory(next:Buyer[]){
     setBuyers(next);
     LS.set(sellerMemoryKey("sf_buyers"),next);
@@ -2429,20 +2453,17 @@ export default function App(){
     if(!user)return;
     const commentsKey=sellerLiveDataKey("sf_comments",user.email,currentSessionId);
     const archiveKey=sellerLiveDataKey("sf_comment_archive",user.email,currentSessionId);
-    const buyerKey=sellerLiveDataKey("sf_buyers",user.email,currentSessionId);
-    const orderKey=sellerLiveDataKey("sf_orders",user.email,currentSessionId);
-    const printedKey=sellerLiveDataKey("sf_printed",user.email,currentSessionId);
-    const nextBuyers=arrLS<Buyer>(buyerKey);
-    const nextOrders=arrLS<LiveOrder>(orderKey);
+    const nextBuyers=sellerDayOrSessionArray<Buyer>("sf_buyers",user.email,currentLiveDayId,currentSessionId);
+    const nextOrders=sellerDayOrSessionArray<LiveOrder>("sf_orders",user.email,currentLiveDayId,currentSessionId);
     setComments(sortCommentsNewest(cleanComments(LS.get<unknown[]>(commentsKey,[]))).slice(0,LIVE_COMMENT_LIMIT));
     setArchivedComments(sortCommentsNewest(cleanComments(LS.get<unknown[]>(archiveKey,[]))).slice(0,COMMENT_ARCHIVE_LIMIT));
     setBuyers(nextBuyers);
     setAllOrders(nextOrders);
-    setPrinted(new Set(arrLS<string>(printedKey)));
+    setPrinted(new Set(sellerDayOrSessionArray<string>("sf_printed",user.email,currentLiveDayId,currentSessionId)));
     setSelBuyer(null);
     setTotOrd(nextOrders.length||nextBuyers.reduce((s,b)=>s+b.totalOrders,0));
     setTotRev(nextOrders.length?nextOrders.reduce((s,o)=>s+o.total,0):nextBuyers.reduce((s,b)=>s+b.totalSpent,0));
-  },[user?.email]);
+  },[user?.email,currentLiveDayId]);
 
   useEffect(()=>{
     if(!user)return;
@@ -2483,7 +2504,7 @@ export default function App(){
       if(eventSessionId&&eventSessionId!==currentSessionId)return;
       saveBuyerMemory(b);setTotOrd(to);
       const ords=b.flatMap(x=>x.orders.map(o=>({...o,handle:x.handle,name:x.name,bNum:x.num,platform:x.platform,status:"New",date:new Date().toISOString().slice(0,10)})));
-      setAllOrders(ords);LS.set(sellerLiveDataKey("sf_orders",user.email,currentSessionId),ords);
+      setAllOrders(ords);LS.set(sellerDailyDataKey("sf_orders",user.email,currentLiveDayId),ords);
     });
     s.on("platform_status",({platform:p,connected:c,sellerId:eventSellerId,username,sessionId:eventSessionId}:{platform:string;connected:boolean;sellerId?:string;username?:string;sessionId?:string})=>{
       if(eventSellerId&&eventSellerId!==sellerId)return;
@@ -2500,10 +2521,10 @@ export default function App(){
       if(!b.length&&!to)return;
       saveBuyerMemory(b);setTotOrd(to);
       const ords=b.flatMap(x=>x.orders.map(o=>({...o,handle:x.handle,name:x.name,bNum:x.num,platform:x.platform,status:"New",date:new Date().toISOString().slice(0,10)})));
-      setAllOrders(ords);LS.set(sellerLiveDataKey("sf_orders",user.email,currentSessionId),ords);
+      setAllOrders(ords);LS.set(sellerDailyDataKey("sf_orders",user.email,currentLiveDayId),ords);
     });
     return()=>{s.disconnect();};
-  },[user?.email]);
+  },[user?.email,currentLiveDayId]);
 
   useEffect(()=>{
     if(!user)return;
