@@ -2510,8 +2510,8 @@ export default function App(){
     s.on("platform_status",({platform:p,connected:c,reconnecting,sellerId:eventSellerId,username,sessionId:eventSessionId}:{platform:string;connected:boolean;reconnecting?:boolean;sellerId?:string;username?:string;sessionId?:string})=>{
       if(eventSellerId&&eventSellerId!==sellerId)return;
       if(eventSessionId&&eventSessionId!==currentSessionId)return;
-      if(p==="TikTok"){setTtOn(c);if(!c&&!reconnecting)setActiveLiveAccounts(a=>({...a,TikTok:""}));}
-      if(p==="Facebook"){setFbOn(c);if(!c&&!reconnecting)setActiveLiveAccounts(a=>({...a,Facebook:""}));}
+      if(p==="TikTok"){setTtOn(c||!!reconnecting);if(!c&&!reconnecting)setActiveLiveAccounts(a=>({...a,TikTok:""}));}
+      if(p==="Facebook"){setFbOn(c||!!reconnecting);if(!c&&!reconnecting)setActiveLiveAccounts(a=>({...a,Facebook:""}));}
       if(c&&p==="TikTok"&&username)setActiveLiveAccounts(a=>({...a,TikTok:username}));
       if(c&&p==="Facebook"&&username)setActiveLiveAccounts(a=>({...a,Facebook:username}));
     });

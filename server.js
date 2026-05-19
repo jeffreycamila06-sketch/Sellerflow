@@ -314,7 +314,7 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
   }
 
   tiktokConnection.on("disconnected", () => handleTikTokDisconnected(key, tiktokConnection, "disconnected"));
-  tiktokConnection.on("streamEnd", () => handleTikTokDisconnected(key, tiktokConnection, "streamEnd", { reconnect: false }));
+  tiktokConnection.on("streamEnd", () => handleTikTokDisconnected(key, tiktokConnection, "streamEnd"));
 
   const watchdog = setInterval(() => {
     const active = tiktokConnections.get(key);
