@@ -30,7 +30,7 @@ interface LiveOrder { orderNum:number; item:string; qty:number; price:number; to
 interface Buyer { handle:string; name:string; platform:string; num:number; orders:LiveOrder[]; totalSpent:number; totalOrders:number; }
 interface Comment { handle:string; name:string; comment:string; platform:"TikTok"|"Facebook"; isBuy:boolean; buyerNum:number|null; buyerData:Buyer|null; time:string; avatar?:string; timestamp?:string; sellerId?:string; sessionId?:string; sourceUsername?:string; }
 interface Product { id:number; name:string; sku:string; price:number; stock:number; platform:string; status:string; }
-interface Settings { autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"usb"|"bluetooth"; stickerSize:string; printStoreName:boolean; printBuyerNumber:boolean; printBuyerUsername:boolean; printOrderItems:boolean; printTotal:boolean; printAutoClose:boolean; printLabelScale:number; printStoreScale:number; printBuyerNumberScale:number; printBuyerNameScale:number; printUsernameScale:number; printOrderScale:number; printTotalScale:number; printStoreX:number; printStoreY:number; printBuyerLabelX:number; printBuyerLabelY:number; printBuyerNumberX:number; printBuyerNumberY:number; printBuyerNameX:number; printBuyerNameY:number; printUsernameX:number; printUsernameY:number; printSessionX:number; printSessionY:number; printOrderX:number; printOrderY:number; printTotalX:number; printTotalY:number; }
+interface Settings { autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"usb"; stickerSize:string; printStoreName:boolean; printBuyerNumber:boolean; printBuyerUsername:boolean; printOrderItems:boolean; printTotal:boolean; printAutoClose:boolean; printLabelScale:number; printStoreScale:number; printBuyerNumberScale:number; printBuyerNameScale:number; printUsernameScale:number; printOrderScale:number; printTotalScale:number; printStoreX:number; printStoreY:number; printBuyerLabelX:number; printBuyerLabelY:number; printBuyerNumberX:number; printBuyerNumberY:number; printBuyerNameX:number; printBuyerNameY:number; printUsernameX:number; printUsernameY:number; printSessionX:number; printSessionY:number; printOrderX:number; printOrderY:number; printTotalX:number; printTotalY:number; }
 type NumberSettingKey = {[K in keyof Settings]: Settings[K] extends number ? K : never}[keyof Settings];
 interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; proofImage?:string; timestamp:string; status:"pending"|"approved"|"rejected"|"resolved"; adminReply?:string; repliedAt?:string; }
 const normalizeComment=(raw:unknown,index=0):Comment|null=>{
@@ -933,7 +933,7 @@ function PrintPage({buyers,cur,storeName,settings,t}:{buyers:Buyer[];cur:string;
         <button className="btn-purple" onClick={()=>buyers.forEach(b=>doPrint(b))}>🖨 {t.print_all} ({buyers.length})</button>
       </div>
       <div className="notice-box" style={{background:"#EEF",border:"1px solid #AFA9EC",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#534AB7",marginBottom:4}}>
-        {settings.printerType==="bluetooth"?`📡 ${t.printer_bt_note}`:`🔌 ${t.printer_usb_note}`}
+        🔌 {t.printer_usb_note}
         &nbsp;· Sticker: {settings.stickerSize}mm
       </div>
       <div className="grid4" style={{gridTemplateColumns:"repeat(3,1fr)"}}>
@@ -1010,7 +1010,7 @@ function Sales({orders,buyers,cur,t}:{orders:LiveOrder[];buyers:Buyer[];cur:stri
 // ═══════════════════════════════════════════════════════════════════
 function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExportBackup,onClearLiveComments,t}:{user:User;settings:Settings;onSaveProfile:(p:Profile)=>void;onSaveSettings:(s:Settings)=>void;onSavePw:(o:string,n:string)=>string;onExportBackup:()=>void;onClearLiveComments:()=>void;t:T}){
   const [prof,setProf]=useState<Profile>({...user.profile});
-  const [sets,setSets]=useState<Settings>({...settings});
+  const [sets,setSets]=useState<Settings>({...settings,printerType:"usb"});
   const [op,setOp]=useState("");const [np,setNp]=useState("");const [cp,setCp]=useState("");
   const [toast,setToast]=useState("");const [pwErr,setPwErr]=useState("");
   const [expandedSettingsBox,setExpandedSettingsBox]=useState<""|"profile"|"password"|"display"|"printer">("");
@@ -1049,7 +1049,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
     </div>
   );
   useEffect(()=>{setProf({...user.profile});},[user]);
-  useEffect(()=>{setSets({...settings});},[settings]);
+  useEffect(()=>{setSets({...settings,printerType:"usb"});},[settings]);
   useEffect(()=>{if(directPrintParam){LS.set("sf_direct_print_mode",true);setDirectPrintMode(true);}},[directPrintParam]);
   const accountLimit=maxAcc(user.plan);
   const originalTikTok=accountSlots(user.profile.tiktok,accountLimit);
@@ -1101,14 +1101,6 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
     };
     printSlip(testBuyer,sets.currency,user.profile.storeName||"SellerFlow",sets);
     setToast("Printer test sent");
-  }
-  function openBluetoothSettings(){
-    try{
-      window.location.href="ms-settings:bluetooth";
-      setToast("Opening Bluetooth settings");
-    }catch{
-      setToast("Open Windows Settings > Bluetooth & devices");
-    }
   }
   function resetPrinterLayout(){
     setSets(s=>({
@@ -1245,29 +1237,10 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
             </div>
           </div>
           <Fg label={t.printer_type}>
-            <select value={sets.printerType} onChange={e=>setSets(s=>({...s,printerType:e.target.value as "usb"|"bluetooth"}))}>
+            <select value="usb" onChange={()=>setSets(s=>({...s,printerType:"usb"}))}>
               <option value="usb">{t.printer_usb}</option>
-              <option value="bluetooth">{t.printer_bt}</option>
             </select>
           </Fg>
-          {sets.printerType==="bluetooth"&&(
-            <div className="bluetooth-printer-card">
-              <div>
-                <strong>Bluetooth printer setup</strong>
-                <p>Pair the printer to this laptop first. Then choose that Bluetooth printer the first time the print window opens.</p>
-              </div>
-              <div className="bluetooth-printer-actions">
-                <button type="button" className="btn-out" onClick={openBluetoothSettings}>Open Bluetooth Settings</button>
-                <button type="button" className="printer-test-btn" onClick={testPrinter}>Test Bluetooth Print</button>
-              </div>
-              <ol>
-                <li>Turn on printer Bluetooth/pairing mode.</li>
-                <li>Pair it in Windows Bluetooth settings.</li>
-                <li>Run Printer Test and select the Bluetooth printer.</li>
-                <li>Use SellerFlow Direct Print after the printer is selected once.</li>
-              </ol>
-            </div>
-          )}
           <Fg label={t.printer_size}>
             <select value={sets.stickerSize} onChange={e=>setSets(s=>({...s,stickerSize:e.target.value}))}>
               <option value="100x60">100x60mm (Standard)</option>
@@ -1338,7 +1311,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
             <div key={k} className="tog-row"><span>{label}</span><div onClick={()=>setSets(s=>({...s,[k]:!s[k]}))} className={`tog ${sets[k]?"on":""}`}/></div>
           ))}
           <div style={{padding:"8px 10px",background:"#F5F4FF",borderRadius:8,fontSize:12,color:"#534AB7",lineHeight:1.5,marginTop:4}}>
-            {sets.printerType==="bluetooth"?t.printer_bt_note:t.printer_usb_note}
+            {t.printer_usb_note}
           </div>
           <button type="submit" className="btn-purple" style={{marginTop:10,width:"100%"}}>
             Save printer settings
@@ -2267,7 +2240,7 @@ export default function App(){
     const confirmed=window.sessionStorage.getItem("sf_account_gate_ok")===saved;
     return directMode&&!confirmed;
   });
-  const [settings,setSettingsState]=useState<Settings>(()=>({...DEF_SETTINGS,...LS.get<Partial<Settings>>("sf_settings",{})}));
+  const [settings,setSettingsState]=useState<Settings>(()=>({...DEF_SETTINGS,...LS.get<Partial<Settings>>("sf_settings",{}),printerType:"usb"}));
   const [page,setPage]=useState<Page>("dashboard");
   const initialSellerEmail=LS.get<string>("sf_session","");
   const currentSessionId=browserSessionId();

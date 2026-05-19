@@ -571,12 +571,6 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .search-inp,.fg input,.fg select,textarea{min-height:36px;border-color:var(--sf-border-strong);border-radius:7px}
 .btn-out{border-color:#C7C1F7;background:#fff}
 .toast{box-shadow:0 14px 40px rgba(0,0,0,.18)}
-.bluetooth-printer-card{border:1px solid #C7C1F7;background:#F7F6FF;border-radius:10px;padding:12px;margin:10px 0;display:grid;gap:10px;color:#26215C}
-.bluetooth-printer-card strong{font-size:13px}
-.bluetooth-printer-card p{font-size:12px;color:#6E687E;line-height:1.45;margin-top:3px}
-.bluetooth-printer-card ol{margin-left:18px;color:#4C4568;font-size:12px;line-height:1.55}
-.bluetooth-printer-actions{display:flex;gap:8px;flex-wrap:wrap}
-.bluetooth-printer-actions .btn-out,.bluetooth-printer-actions .printer-test-btn{min-height:34px}
 
 @media(max-width:1180px){
   .dashboard{display:grid;grid-template-columns:minmax(360px,1fr) 260px;grid-template-rows:minmax(0,1fr) 280px}
