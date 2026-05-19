@@ -667,10 +667,10 @@ function SubPage({user,onActivate,t}:{user:User;onActivate:(plan:Plan,status:Pla
   const [done,setDone]=useState(false);
   const days=dLeft(user.planExpiry);
   const plans=[
-    {id:"trial" as Plan,name:t.plan_trial,price:"$0",period:t.plan_7days,acc:t.plan_1acc,icon:"🎯",color:"#888780",desc:t.plan_trial_desc,features:t.plan_trial_features as string[]},
-    {id:"basic" as Plan,name:t.plan_basic,price:"$15",period:t.plan_month,acc:t.plan_1acc,icon:"⚡",color:"#1D9E75",desc:t.plan_basic_desc,features:t.plan_basic_features as string[]},
-    {id:"pro" as Plan,name:t.plan_pro,price:"$25",period:t.plan_month,acc:t.plan_3acc,icon:"🚀",color:"#7F77DD",badge:t.plan_popular,desc:t.plan_pro_desc,features:t.plan_pro_features as string[]},
-    {id:"master" as Plan,name:t.plan_master,price:"$40",period:t.plan_month,acc:t.plan_5acc,icon:"👑",color:"#D85A30",desc:t.plan_master_desc,features:t.plan_master_features as string[]},
+    {id:"trial" as Plan,name:t.plan_trial,price:"$0",period:t.plan_7days,color:"#7F77DD",desc:"Try the basic live selling workflow before upgrading."},
+    {id:"basic" as Plan,name:t.plan_basic,price:"$15",period:t.plan_month,color:"#7F77DD",desc:"For solo sellers who need live comments, orders, and printing."},
+    {id:"pro" as Plan,name:t.plan_pro,price:"$25",period:t.plan_month,color:"#7F77DD",badge:t.plan_popular,desc:"For sellers managing more channels and stronger reporting."},
+    {id:"master" as Plan,name:t.plan_master,price:"$40",period:t.plan_month,color:"#7F77DD",desc:"For teams that need admin control, support, and priority handling."},
   ] as const;
 
   function handleSelect(plan:Plan){
@@ -682,13 +682,6 @@ function SubPage({user,onActivate,t}:{user:User;onActivate:(plan:Plan,status:Pla
       setShowPay(true);
     }
   }
-  const minimalPlanFeatures=(plan:Plan)=>{
-    if(plan==="trial")return ["1 TikTok or Facebook page","Unlimited orders","Live comment feed","1-click printing"];
-    if(plan==="basic")return ["1 TikTok or Facebook page","Unlimited orders","Live comment feed","Customer list"];
-    if(plan==="pro")return ["Up to 3 channels","Unlimited orders","Multi-platform dashboard","Advanced analytics"];
-    return ["Up to 5 channels","Unlimited orders","Team access","Priority support"];
-  };
-
   return(
     <div className="subpage">
       <div className="subpage-hd"><div><h2>Subscription Plans</h2><p>{t.plan_current}: <Badge label={pName(user.plan,t)} color={pColor(user.plan)}/> · {days>0?`${days} ${t.days_remaining}`:t.expired_label}</p></div></div>
@@ -699,13 +692,9 @@ function SubPage({user,onActivate,t}:{user:User;onActivate:(plan:Plan,status:Pla
           <div key={p.id} className={`plan-card ${sel===p.id?"sel":""} ${user.plan===p.id?"cur":""}`} onClick={()=>handleSelect(p.id)}>
             {"badge" in p&&p.badge&&<div className="plan-badge">{p.badge}</div>}
             {user.plan===p.id&&<div className="plan-cur-badge">{t.plan_current}</div>}
-            <div className="plan-icon">{p.icon}</div>
             <div className="plan-name">{p.name}</div>
             <div className="plan-price"><span className="plan-amt">{p.price}</span><span className="plan-period">{p.period}</span></div>
-            <div className="plan-acc" style={{color:p.color}}>{p.acc}</div>
-            <div className="plan-desc minimal"></div>
-            <div className="plan-feats">{p.features.map(f=><div key={f} className="plan-feat"><span style={{color:p.color}}>✓</span> {f}</div>)}</div>
-            <div className="plan-feats minimal">{minimalPlanFeatures(p.id).map(f=><div key={f} className="plan-feat"><span style={{color:p.color}}>✓</span> {f}</div>)}</div>
+            <div className="plan-desc minimal">{p.desc}</div>
             <div className="plan-sel-btn" style={sel===p.id&&user.plan!==p.id?{background:p.color,borderColor:p.color,color:"#fff"}:{borderColor:p.color,color:p.color}}>
               {user.plan===p.id?t.plan_current:sel===p.id?t.plan_selected:t.plan_select}
             </div>
