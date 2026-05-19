@@ -1013,11 +1013,11 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   const [sets,setSets]=useState<Settings>({...settings,printerType:"usb"});
   const [op,setOp]=useState("");const [np,setNp]=useState("");const [cp,setCp]=useState("");
   const [toast,setToast]=useState("");const [pwErr,setPwErr]=useState("");
-  const [expandedSettingsBox,setExpandedSettingsBox]=useState<""|"profile"|"password"|"display"|"printer">("");
+  const [expandedSettingsBox,setExpandedSettingsBox]=useState<""|"profile"|"password"|"display"|"printer"|"mobilePrinter">("");
   const directPrintParam=new URLSearchParams(window.location.search).get("directPrint")==="1";
   const [directPrintMode,setDirectPrintMode]=useState(()=>directPrintParam||LS.get<boolean>("sf_direct_print_mode",false));
   const settingsDirty=JSON.stringify(sets)!==JSON.stringify(settings);
-  const settingsTitles={"":"Settings",profile:"Profile Information",password:"Change Password",display:"Display & Printing",printer:"Printer Settings"};
+  const settingsTitles={"":"Settings",profile:"Profile Information",password:"Change Password",display:"Display & Printing",printer:"Printer Settings",mobilePrinter:"Mobile Bluetooth Printer"};
   const previewScale=(v:number|undefined,fallback=100)=>Math.max(60,Math.min(180,v||fallback))/100;
   const storePreview=previewScale(sets.printStoreScale,sets.printLabelScale);
   const buyerNumberPreview=previewScale(sets.printBuyerNumberScale,120);
@@ -1102,6 +1102,9 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
     printSlip(testBuyer,sets.currency,user.profile.storeName||"SellerFlow",sets);
     setToast("Printer test sent");
   }
+  function openMobileBluetoothGuide(){
+    setToast("Open phone Bluetooth settings, pair printer, then come back to SellerFlow");
+  }
   function resetPrinterLayout(){
     setSets(s=>({
       ...s,
@@ -1159,6 +1162,9 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
         </button>
         <button className="admin-action-card" onDoubleClick={()=>setExpandedSettingsBox("printer")}>
           <div className="ms-l">Printer</div><div className="ms-v">{settingsDirty?"!":"OK"}</div><span>{settingsDirty?"Changes not saved":"Saved"} - output tools</span>
+        </button>
+        <button className="admin-action-card mobile-bluetooth-card" onDoubleClick={()=>setExpandedSettingsBox("mobilePrinter")}>
+          <div className="ms-l">Mobile Printer</div><div className="ms-v">BT</div><span>Bluetooth printer setup for phone app</span>
         </button>
       </div>
       {expandedSettingsBox&&(
@@ -1320,6 +1326,49 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
           <div style={{fontSize:12,color:"#888",marginBottom:8}}>{t.platform_hint}</div>
           <div className="tog-row"><div><div style={{fontWeight:500}}>TikTok Live</div><div style={{fontSize:11,color:"#888",whiteSpace:"pre-wrap"}}>{accountList(user.profile.tiktok).join(", ")||t.not_set}</div></div><Badge label={user.connectedAccounts.includes("TikTok")?t.connected_label:t.not_connected} color={user.connectedAccounts.includes("TikTok")?"green":"gray"}/></div>
           <div className="tog-row" style={{borderBottom:"none"}}><div><div style={{fontWeight:500}}>Facebook Live</div><div style={{fontSize:11,color:"#888",whiteSpace:"pre-wrap"}}>{accountList(user.profile.facebook).join(", ")||t.not_set}</div></div><Badge label={user.connectedAccounts.includes("Facebook")?t.connected_label:t.not_connected} color={user.connectedAccounts.includes("Facebook")?"green":"gray"}/></div>
+        </form>
+        <form onSubmit={saveSets} className="scard settings-section settings-section-mobile-printer">
+          <div className="scard-title">Mobile Bluetooth Printer</div>
+          <div className="mobile-bt-layout">
+            <div className="mobile-bt-copy">
+              <div className="printer-direct-status active">
+                <div>
+                  <strong>Mobile App Printer Flow</strong>
+                  <span>Bluetooth printer tools will show on phone app only. Desktop website stays USB/Wired.</span>
+                </div>
+                <Badge label="Mobile only" color="green"/>
+              </div>
+              <div className="mobile-bt-steps">
+                <strong>How seller will use it on phone</strong>
+                <ol>
+                  <li>Turn on the Bluetooth printer and pairing mode.</li>
+                  <li>Pair the printer in phone Bluetooth settings.</li>
+                  <li>Return to SellerFlow mobile app.</li>
+                  <li>Tap Test Print, then use 1-click during live selling.</li>
+                </ol>
+              </div>
+              <div className="mobile-bt-actions">
+                <button type="button" className="btn-out" onClick={openMobileBluetoothGuide}>Pair Printer Guide</button>
+                <button type="button" className="printer-test-btn" onClick={testPrinter}>Test Mobile Print</button>
+              </div>
+              <div className="backup-note">Silent Bluetooth printing needs the mobile app printer bridge. The website will not show Bluetooth tools so laptop sellers stay on normal direct print.</div>
+            </div>
+            <div className="mobile-bt-preview">
+              <div className="mobile-bt-phone">
+                <div className="mobile-bt-top"/>
+                <div className="mobile-bt-card">
+                  <b>Bluetooth Printer</b>
+                  <span>Phone app mode</span>
+                  <em>Ready after phone pairing</em>
+                </div>
+                <div className="mobile-bt-slip">
+                  <strong>BUYER #12</strong>
+                  <span>Maria Santos</span>
+                  <small>@maria_live</small>
+                </div>
+              </div>
+            </div>
+          </div>
         </form>
           </div>
         </div>

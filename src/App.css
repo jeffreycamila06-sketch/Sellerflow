@@ -408,8 +408,22 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .settings-quick-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .settings-expanded{grid-template-columns:1fr}
 .settings-expanded .settings-section{display:none}
-.settings-show-profile .settings-section-profile,.settings-show-password .settings-section-password,.settings-show-display .settings-section-display,.settings-show-printer .settings-section-printer{display:flex}
+.settings-show-profile .settings-section-profile,.settings-show-password .settings-section-password,.settings-show-display .settings-section-display,.settings-show-printer .settings-section-printer,.settings-show-mobilePrinter .settings-section-mobile-printer{display:flex}
 .settings-expanded .settings-section{max-width:980px;width:100%;margin:0 auto}
+.mobile-bluetooth-card,.settings-section-mobile-printer{display:none}
+.settings-show-mobilePrinter .settings-section-mobile-printer{display:none}
+.mobile-bt-layout{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:14px;align-items:start}
+.mobile-bt-copy{display:flex;flex-direction:column;gap:10px}
+.mobile-bt-preview{border:1px solid #E4E2DC;background:#FAFAF7;border-radius:12px;padding:12px;display:flex;justify-content:center}
+.mobile-bt-phone{width:210px;min-height:320px;border:8px solid #19172A;border-radius:28px;background:#F5F6FA;padding:14px 12px;box-shadow:0 12px 28px rgba(38,33,92,.12)}
+.mobile-bt-top{width:58px;height:8px;background:#19172A;border-radius:999px;margin:0 auto 18px}
+.mobile-bt-card{background:#fff;border:1px solid #E4E2DC;border-radius:14px;padding:14px;display:grid;gap:5px;color:#26215C;box-shadow:0 6px 16px rgba(38,33,92,.08)}
+.mobile-bt-card b{font-size:16px}.mobile-bt-card span{font-size:12px;color:#6E687E}.mobile-bt-card em{font-style:normal;color:#0F6E56;background:#E1F5EE;border-radius:999px;padding:4px 8px;font-size:11px;width:max-content}
+.mobile-bt-slip{margin-top:14px;background:#fff;border:1px dashed #AFA9EC;border-radius:12px;padding:18px 10px;text-align:center;display:grid;gap:4px;color:#26215C}
+.mobile-bt-slip strong{font-size:20px}.mobile-bt-slip span{font-weight:700}.mobile-bt-slip small{color:#7F77DD}
+.mobile-bt-steps{border:1px solid #E4E2DC;border-radius:10px;padding:12px;background:#fff;color:#26215C}
+.mobile-bt-steps strong{font-size:13px}.mobile-bt-steps ol{margin:8px 0 0 18px;font-size:12px;line-height:1.6;color:#5F5E5A}
+.mobile-bt-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .tog-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:0.5px solid #F5F5F2;font-size:12px;font-weight:500;cursor:pointer}
 .tog{width:36px;height:20px;border-radius:10px;background:#D3D1C7;position:relative;flex-shrink:0;transition:background .2s;cursor:pointer}
 .tog.on{background:#7F77DD}
@@ -660,6 +674,11 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .payment-detail{font-size:12px;gap:6px;padding:5px 0}
   .support-payment-card form{gap:8px!important}
   .settings-quick-grid{grid-template-columns:1fr}
+  .mobile-bluetooth-card{display:flex}
+  .settings-show-mobilePrinter .settings-section-mobile-printer{display:flex}
+  .mobile-bt-layout{grid-template-columns:1fr}
+  .mobile-bt-preview{order:-1}
+  .mobile-bt-actions{grid-template-columns:1fr}
   .position-step-grid{grid-template-columns:1fr}
   .admin-quick-grid,.admin-fullscreen-grid,.admin-fullscreen-messages{grid-template-columns:1fr}
   .admin-box-grid{grid-template-columns:1fr}
