@@ -505,6 +505,30 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
 
 void Auth;
 
+function AccountGate({user,onContinue,onSwitch}:{user:User;onContinue:()=>void;onSwitch:()=>void}){
+  return(
+    <div className="auth-page">
+      <div className="auth-card" style={{maxWidth:460}}>
+        <div className="auth-brand">
+          <div className="logo-ic"><svg width="16" height="16" viewBox="0 0 18 18"><path d="M4 6 Q4 3 7 3 L11 3 Q14 3 14 6 Q14 9 11 9.5 L7 10.5 Q4 10.5 4 13 Q4 15 7 15 L11 15 Q14 15 14 13" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/></svg></div>
+          <span>Seller<span>Flow</span></span>
+        </div>
+        <h2>Choose account</h2>
+        <p className="auth-sub">This browser remembers the last SellerFlow login. Confirm it first so Chrome or Edge will not open the wrong seller.</p>
+        <div className="pd-hd" style={{border:"1px solid #E4DED2",borderRadius:8,margin:"14px 0",padding:12}}>
+          <div className="pd-av">{ini(user.profile.fullName||user.email)}</div>
+          <div>
+            <div className="pd-name">{user.profile.fullName||user.email}</div>
+            <div className="pd-role">{user.email} · {pName(user.plan,TRANSLATIONS.en)}</div>
+          </div>
+        </div>
+        <button type="button" className="auth-btn" onClick={onContinue}>Continue as this account</button>
+        <button type="button" className="auth-link" style={{width:"100%",marginTop:14,textAlign:"center"}} onClick={onSwitch}>Use another account</button>
+      </div>
+    </div>
+  );
+}
+
 function TrialExpiredWall({t,onUpgrade}:{t:T;onUpgrade:()=>void}){
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(30,20,80,0.95)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999,flexDirection:"column",gap:20,padding:24}}>
@@ -2208,6 +2232,15 @@ export default function App(){
 
   const forceLogin=consumeForceLoginParam();
   const [user,setUser]=useState<User|null>(()=>{if(forceLogin)return null;const e=LS.get<string>("sf_session","");if(!e)return null;const u=cleanUsers(arrLS<unknown>("sf_users")).find(u=>u.email===e)||null;return u?asAdminPlan(u):null;});
+  const [accountGate,setAccountGate]=useState(()=>{
+    if(forceLogin||typeof window==="undefined")return false;
+    const saved=LS.get<string>("sf_session","");
+    if(!saved)return false;
+    const params=new URLSearchParams(window.location.search);
+    const directMode=params.get("directPrint")==="1"||LS.get<boolean>("sf_direct_print_mode",false);
+    const confirmed=window.sessionStorage.getItem("sf_account_gate_ok")===saved;
+    return directMode&&!confirmed;
+  });
   const [settings,setSettingsState]=useState<Settings>(()=>({...DEF_SETTINGS,...LS.get<Partial<Settings>>("sf_settings",{})}));
   const [page,setPage]=useState<Page>("dashboard");
   const initialSellerEmail=LS.get<string>("sf_session","");
@@ -2577,8 +2610,18 @@ export default function App(){
     });
     void createOrderFromComment(c,{print:true});
   }
+  function continueSavedAccount(){
+    if(user&&typeof window!=="undefined")window.sessionStorage.setItem("sf_account_gate_ok",user.email);
+    setAccountGate(false);
+  }
+  function switchAccount(){
+    if(typeof window!=="undefined")window.sessionStorage.removeItem("sf_account_gate_ok");
+    handleLogout();
+    setAccountGate(false);
+  }
 
   if(!user)return <PublicAuth onLogin={handleLogin} t={t} lang={lang} setLang={setLang}/>;
+  if(accountGate)return <AccountGate user={user} onContinue={continueSavedAccount} onSwitch={switchAccount}/>;
 
   const isLive=ttOn||fbOn;
   const platformButtonLabel=(platform:"TikTok"|"Facebook",connected:boolean)=>{
@@ -2653,6 +2696,7 @@ export default function App(){
                 <div className="pd-row pd-cl" onClick={()=>{setPage("terms");setShowProf(false);}}><span>Terms</span><span>Terms of Service</span></div>
                 <div className="pd-row pd-cl" onClick={()=>{setPage("deleteAccount");setShowProf(false);}}><span>Delete</span><span>Delete Account</span></div>
                 {isAdminUser(user)&&<div className="pd-row pd-cl" onClick={()=>{setPage("admin");setShowProf(false);}}><span>ADMIN</span><span>Admin</span></div>}
+                <div className="pd-row pd-cl" onClick={()=>{setShowProf(false);switchAccount();}}><span>Switch</span><span>Switch account</span></div>
                 <div className="pd-row pd-cl" style={{color:"#A32D2D"}} onClick={()=>{setShowProf(false);handleLogout();}}><span>🚪</span><span>{t.sign_out}</span></div>
               </div>
             )}
