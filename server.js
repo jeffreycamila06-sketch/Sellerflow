@@ -22,9 +22,10 @@ const tiktokConnections = new Map();
 const facebookConnections = new Map();
 const tiktokReconnectTimers = new Map();
 const tiktokReconnectAttempts = new Map();
+const tiktokReconnectTargets = new Map();
 const manualTikTokDisconnects = new Set();
-const TIKTOK_RECONNECT_RETRY_MS = 60000;
-const TIKTOK_MAX_RECONNECT_TRIES = 5;
+const TIKTOK_RECONNECT_RETRY_MS = 30000;
+const TIKTOK_MAX_RECONNECT_TRIES = 20;
 
 function cleanSellerId(value) {
   return String(value || "")
@@ -53,6 +54,7 @@ function clearTikTokReconnect(key) {
   const timer = tiktokReconnectTimers.get(key);
   if (timer) clearTimeout(timer);
   tiktokReconnectTimers.delete(key);
+  tiktokReconnectTargets.delete(key);
 }
 
 async function disconnectTikTokConnection(key, { manual = false } = {}) {
@@ -89,6 +91,19 @@ io.on("connection", (socket) => {
         sellerId: cleanId,
         username: active.username,
         sessionId: active.sessionId,
+      });
+    }
+    for (const target of tiktokReconnectTargets.values()) {
+      if (target.sellerId !== cleanId) continue;
+      socket.emit("platform_status", {
+        platform: "TikTok",
+        connected: false,
+        reconnecting: true,
+        sellerId: cleanId,
+        username: target.username,
+        sessionId: target.sessionId,
+        reason: target.reason,
+        nextRetryMs: TIKTOK_RECONNECT_RETRY_MS,
       });
     }
     for (const active of facebookConnections.values()) {
@@ -227,6 +242,7 @@ function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "d
   if (tiktokReconnectTimers.has(key)) return;
   const tries = (tiktokReconnectAttempts.get(key) || 0) + 1;
   tiktokReconnectAttempts.set(key, tries);
+  tiktokReconnectTargets.set(key, { username, sellerId, sessionId, reason });
 
   if (tries > TIKTOK_MAX_RECONNECT_TRIES) {
     console.log(`TikTok reconnect stopped for ${username}: max retry reached after ${reason}`);
@@ -238,6 +254,7 @@ function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "d
       reconnecting: false,
       reason: "rate_safe_stop",
     });
+    clearTikTokReconnect(key);
     return;
   }
 
@@ -257,11 +274,29 @@ function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "d
       console.log(`Reconnected TikTok LIVE: ${username} for ${sellerId}`);
     } catch (error) {
       console.log(`TikTok reconnect failed for ${username}: ${error.message}`);
+      if (isRateLimitError(error)) {
+        tiktokReconnectAttempts.delete(key);
+        clearTikTokReconnect(key);
+        emitTikTokStatus({
+          sellerId,
+          username,
+          sessionId,
+          connected: false,
+          reconnecting: false,
+          reason: "rate_limited",
+        });
+        return;
+      }
       scheduleTikTokReconnect(key, username, sellerId, sessionId, "retry_failed");
     }
   }, TIKTOK_RECONNECT_RETRY_MS);
 
   tiktokReconnectTimers.set(key, timer);
+}
+
+function isRateLimitError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return message.includes("rate_limit") || message.includes("rate limit") || message.includes("too many connections");
 }
 
 function handleTikTokDisconnected(key, connection, reason = "disconnected", { reconnect = true } = {}) {
