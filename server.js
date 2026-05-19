@@ -21,8 +21,10 @@ app.use(express.json());
 const tiktokConnections = new Map();
 const facebookConnections = new Map();
 const tiktokReconnectTimers = new Map();
-const tiktokWatchdogTimers = new Map();
+const tiktokReconnectAttempts = new Map();
 const manualTikTokDisconnects = new Set();
+const TIKTOK_RECONNECT_RETRY_MS = 60000;
+const TIKTOK_MAX_RECONNECT_TRIES = 5;
 
 function cleanSellerId(value) {
   return String(value || "")
@@ -53,16 +55,12 @@ function clearTikTokReconnect(key) {
   tiktokReconnectTimers.delete(key);
 }
 
-function clearTikTokWatchdog(key) {
-  const timer = tiktokWatchdogTimers.get(key);
-  if (timer) clearInterval(timer);
-  tiktokWatchdogTimers.delete(key);
-}
-
 async function disconnectTikTokConnection(key, { manual = false } = {}) {
   const existing = tiktokConnections.get(key);
-  if (manual) clearTikTokReconnect(key);
-  clearTikTokWatchdog(key);
+  if (manual) {
+    clearTikTokReconnect(key);
+    tiktokReconnectAttempts.delete(key);
+  }
   if (!existing) {
     manualTikTokDisconnects.delete(key);
     return;
@@ -146,6 +144,7 @@ app.post("/disconnect/tiktok", async (req, res) => {
   const key = liveKey(sellerId, "TikTok", username);
   await disconnectTikTokConnection(key, { manual: true });
   clearTikTokReconnect(key);
+  tiktokReconnectAttempts.delete(key);
   emitTikTokStatus({
     sellerId,
     username,
@@ -220,12 +219,27 @@ function emitTikTokStatus({ sellerId, username, sessionId, connected, reconnecti
     username,
     sessionId,
     reason,
-    nextRetryMs: reconnecting ? 10000 : 0,
+    nextRetryMs: reconnecting ? TIKTOK_RECONNECT_RETRY_MS : 0,
   });
 }
 
 function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "disconnected") {
   if (tiktokReconnectTimers.has(key)) return;
+  const tries = (tiktokReconnectAttempts.get(key) || 0) + 1;
+  tiktokReconnectAttempts.set(key, tries);
+
+  if (tries > TIKTOK_MAX_RECONNECT_TRIES) {
+    console.log(`TikTok reconnect stopped for ${username}: max retry reached after ${reason}`);
+    emitTikTokStatus({
+      sellerId,
+      username,
+      sessionId,
+      connected: false,
+      reconnecting: false,
+      reason: "rate_safe_stop",
+    });
+    return;
+  }
 
   emitTikTokStatus({
     sellerId,
@@ -245,7 +259,7 @@ function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "d
       console.log(`TikTok reconnect failed for ${username}: ${error.message}`);
       scheduleTikTokReconnect(key, username, sellerId, sessionId, "retry_failed");
     }
-  }, 10000);
+  }, TIKTOK_RECONNECT_RETRY_MS);
 
   tiktokReconnectTimers.set(key, timer);
 }
@@ -255,7 +269,6 @@ function handleTikTokDisconnected(key, connection, reason = "disconnected", { re
   if (!active || active.connection !== connection) return;
 
   tiktokConnections.delete(key);
-  clearTikTokWatchdog(key);
 
   if (manualTikTokDisconnects.has(key) || !reconnect) {
     manualTikTokDisconnects.delete(key);
@@ -282,7 +295,6 @@ function handleTikTokDisconnected(key, connection, reason = "disconnected", { re
 
 async function startTikTokConnection(key, username, sellerId, sessionId, { emitStart = false } = {}) {
   clearTikTokReconnect(key);
-  clearTikTokWatchdog(key);
 
   const cleanUsername = cleanAccountKey(username);
   const tiktokConnection = new WebcastPushConnection(cleanUsername, {
@@ -290,6 +302,7 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
     fetchRoomInfoOnConnect: true,
   });
   const state = await tiktokConnection.connect();
+  tiktokReconnectAttempts.delete(key);
   tiktokConnections.set(key, { connection: tiktokConnection, username: cleanUsername, sessionId, sellerId, roomId: state?.roomId || "", lastCommentAt: Date.now() });
 
   console.log(`Connected to TikTok LIVE: ${cleanUsername} for ${sellerId} room ${state?.roomId || "unknown"}`);
@@ -315,24 +328,6 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
 
   tiktokConnection.on("disconnected", () => handleTikTokDisconnected(key, tiktokConnection, "disconnected"));
   tiktokConnection.on("streamEnd", () => handleTikTokDisconnected(key, tiktokConnection, "streamEnd"));
-
-  const watchdog = setInterval(() => {
-    const active = tiktokConnections.get(key);
-    if (!active || active.connection !== tiktokConnection) {
-      clearTikTokWatchdog(key);
-      return;
-    }
-
-    const staleForMs = Date.now() - (active.lastCommentAt || 0);
-    if (staleForMs < 30000) return;
-
-    console.log(`TikTok feed stale for ${cleanUsername}; reconnecting after ${Math.round(staleForMs / 1000)}s without comments`);
-    handleTikTokDisconnected(key, tiktokConnection, "stale_comments");
-    try {
-      tiktokConnection.disconnect();
-    } catch {}
-  }, 10000);
-  tiktokWatchdogTimers.set(key, watchdog);
 
   tiktokConnection.on("chat", (data) => {
     const comment = data.comment || "";
