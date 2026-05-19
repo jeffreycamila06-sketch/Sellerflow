@@ -458,6 +458,12 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
     ["Is the customer list searchable?","Yes. SellerFlow saves buyer/customer memory so sellers can search names, usernames, buyer numbers, orders, and totals."],
     ["Who controls seller limits?","Admin controls plan, expiry, locked accounts, seller edits, password resets, and support approvals."],
   ];
+  const publicPlans=[
+    {name:"Free Trial",price:"$0",period:"7 days",desc:"Try SellerFlow before upgrading.",features:["1 TikTok / Facebook page","Can live stream 1 at a time","Unlimited orders"],action:"Start free trial"},
+    {name:"Basic",price:"$15",period:"month",desc:"For solo live sellers.",features:["1 TikTok / Facebook page","Can live stream 1 at a time","Unlimited orders"],action:"Select plan"},
+    {name:"Pro",price:"$25",period:"month",desc:"For sellers using more channels.",features:["3 TikTok / Facebook pages","Can live stream all at once","Unlimited orders"],action:"Select plan",popular:true},
+    {name:"Master",price:"$40",period:"month",desc:"For teams and power sellers.",features:["5 TikTok / Facebook pages","Can live stream all at once","Unlimited orders"],action:"Select plan"},
+  ];
   const accountForm=(
     <div className="auth-card public-auth-card">
       {mode==="login"&&<>
@@ -547,7 +553,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
       </section>
       <section id="features" className="public-section public-feature-band"><div className="public-section-head"><span>Features</span><h2>Everything live sellers need in one sharp workspace</h2><p>Clear tools for capturing comments, creating orders, printing slips, and tracking buyers without slowing down the live.</p></div><div className="public-feature-cards">{featureItems.map((f,i)=><button key={f.title} className={activeFeature===i?"active":""} onClick={()=>setActiveFeature(i)}><span>{String(i+1).padStart(2,"0")}</span><strong>{f.title}</strong><p>{f.body}</p></button>)}</div><div className="public-feature-detail premium"><small>Selected feature</small><h3>{featureItems[activeFeature].title}</h3><p>{featureItems[activeFeature].body}</p><button onClick={()=>jump("account")}>Try this workflow</button></div></section>
       <section id="instructions" className="public-section public-instructions"><div className="public-section-head"><span>Instructions</span><h2>How to use SellerFlow</h2><p>Simple daily workflow for sellers and admins.</p></div><div className="public-steps">{howSteps.map((step,i)=><button key={step} onClick={()=>i<2?jump("account"):jump("features")}><b>{i+1}</b><span>{step}</span></button>)}</div></section>
-      <section id="pricing" className="public-section"><div className="public-section-head"><span>Price list</span><h2>Choose the plan that fits the seller</h2><p>Unlock more possibilities for everything you need at the lowest price.</p></div><div className="public-pricing">{[["Free Trial","$0","7 days","Try the basic live selling workflow before upgrading."],["Basic","$15","month","For solo sellers who need live comments, orders, and printing."],["Pro","$25","month","For sellers managing more channels and stronger reporting."],["Master","$40","month","For teams that need admin control, support, and priority handling."]].map((p,i)=><button key={p[0]} onClick={()=>{go(i===0?"reg":"login");jump("account")}}><strong>{p[0]}</strong><b>{p[1]}</b><span>/{p[2]}</span><p>{p[3]}</p><em>{i===0?"Start free":"Select plan"}</em></button>)}</div></section>
+      <section id="pricing" className="public-section public-pricing-section"><div className="public-section-head"><span>Price list</span><h2>Choose the plan that fits the seller</h2><p>Unlock more possibilities for everything you need at the lowest price.</p></div><div className="public-pricing">{publicPlans.map((p,i)=><button key={p.name} className={p.popular?"popular":""} onClick={()=>{go(i===0?"reg":"login");jump("account")}}>{p.popular&&<small>Most popular</small>}<span className="pricing-icon">{i+1}</span><strong>{p.name}</strong><b>{p.price}</b><span className="pricing-period">/{p.period}</span><p>{p.desc}</p><ul>{p.features.map(f=><li key={f}>{f}</li>)}</ul><em>{p.action}</em></button>)}</div></section>
       <section id="support-info" className="public-section public-support-band"><div><span>Support</span><h2>Handle seller complaints like Messenger</h2><p>Every seller can send a payment proof or support issue. Admin receives a compact chat thread, can approve, reject, resolve, reply, and see unread notifications.</p></div><button onClick={()=>{go("login");jump("account")}}>Open seller account</button></section>
       <section id="faq" className="public-section"><div className="public-section-head"><span>FAQ</span><h2>Frequently asked questions</h2><p>Click a question to expand the answer.</p></div><div className="public-faq">{faqItems.map((item,i)=><button key={item[0]} className={openFaq===i?"open":""} onClick={()=>setOpenFaq(openFaq===i?-1:i)}><div><span>{i+1}</span><strong>{item[0]}</strong><b>{openFaq===i?"-":"+"}</b></div>{openFaq===i&&<p>{item[1]}</p>}</button>)}</div></section>
       <section id="account" className="public-account"><div className="public-account-copy"><span>Account access</span><h2>Start using SellerFlow</h2><p>Login if you already have a seller account. Register only if you are creating a new shop account.</p></div>{accountForm}</section>
@@ -679,10 +685,10 @@ function SubPage({user,onActivate,t}:{user:User;onActivate:(plan:Plan,status:Pla
   const [done,setDone]=useState(false);
   const days=dLeft(user.planExpiry);
   const plans=[
-    {id:"trial" as Plan,name:t.plan_trial,price:"$0",period:t.plan_7days,color:"#7F77DD",desc:"Try the basic live selling workflow before upgrading."},
-    {id:"basic" as Plan,name:t.plan_basic,price:"$15",period:t.plan_month,color:"#7F77DD",desc:"For solo sellers who need live comments, orders, and printing."},
-    {id:"pro" as Plan,name:t.plan_pro,price:"$25",period:t.plan_month,color:"#7F77DD",badge:t.plan_popular,desc:"For sellers managing more channels and stronger reporting."},
-    {id:"master" as Plan,name:t.plan_master,price:"$40",period:t.plan_month,color:"#7F77DD",desc:"For teams that need admin control, support, and priority handling."},
+    {id:"trial" as Plan,name:t.plan_trial,price:"$0",period:t.plan_7days,color:"#A855F7",desc:"Try SellerFlow before upgrading.",features:["1 TikTok / Facebook page","Can live stream 1 at a time","Unlimited orders"]},
+    {id:"basic" as Plan,name:t.plan_basic,price:"$15",period:t.plan_month,color:"#A855F7",desc:"For solo live sellers.",features:["1 TikTok / Facebook page","Can live stream 1 at a time","Unlimited orders"]},
+    {id:"pro" as Plan,name:t.plan_pro,price:"$25",period:t.plan_month,color:"#A855F7",badge:t.plan_popular,desc:"For sellers using more channels.",features:["3 TikTok / Facebook pages","Can live stream all at once","Unlimited orders"]},
+    {id:"master" as Plan,name:t.plan_master,price:"$40",period:t.plan_month,color:"#A855F7",desc:"For teams and power sellers.",features:["5 TikTok / Facebook pages","Can live stream all at once","Unlimited orders"]},
   ] as const;
 
   function handleSelect(plan:Plan){
@@ -707,6 +713,7 @@ function SubPage({user,onActivate,t}:{user:User;onActivate:(plan:Plan,status:Pla
             <div className="plan-name">{p.name}</div>
             <div className="plan-price"><span className="plan-amt">{p.price}</span><span className="plan-period">{p.period}</span></div>
             <div className="plan-desc minimal">{p.desc}</div>
+            <ul className="plan-feature-list">{p.features.map(f=><li key={f}>{f}</li>)}</ul>
             <div className="plan-sel-btn" style={sel===p.id&&user.plan!==p.id?{background:p.color,borderColor:p.color,color:"#fff"}:{borderColor:p.color,color:p.color}}>
               {user.plan===p.id?t.plan_current:sel===p.id?t.plan_selected:t.plan_select}
             </div>
