@@ -41,6 +41,10 @@ set "PS1=%TEMP%\SellerFlowLive-printer-shortcut.ps1"
 >> "%PS1%" echo $desktop = [Environment]::GetFolderPath('Desktop')
 >> "%PS1%" echo $profile = Join-Path $env:LocalAppData 'SellerFlowLivePrintProfile'
 >> "%PS1%" echo New-Item -ItemType Directory -Force -Path $profile ^| Out-Null
+>> "%PS1%" echo foreach($cacheName in @('Cache','Code Cache','GPUCache','Service Worker','DawnCache')) {
+>> "%PS1%" echo   $cachePath = Join-Path $profile $cacheName
+>> "%PS1%" echo   if(Test-Path $cachePath) { Remove-Item -LiteralPath $cachePath -Recurse -Force -ErrorAction SilentlyContinue }
+>> "%PS1%" echo }
 >> "%PS1%" echo $shortcutPath = Join-Path $desktop 'SellerFlowLive Direct Print.lnk'
 >> "%PS1%" echo $switchUrl = $appUrl + '^&sellerLogin=1'
 >> "%PS1%" echo $switchPath = Join-Path $desktop 'SellerFlowLive Switch Account.lnk'
