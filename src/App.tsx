@@ -280,7 +280,7 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Setting
   const doc=win.document;
   doc.open();
   doc.write(`<!DOCTYPE html><html><head><title>Slip #${buyer.num}</title><style>@page{size:${size.replace("x","mm ")}mm;margin:4mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:monospace;width:${w}mm;font-size:10px;color:#000}.top{display:flex;align-items:flex-start;justify-content:flex-start;gap:8px;margin-bottom:7px;min-height:30px}.logo{display:flex;align-items:center;gap:6px;justify-content:flex-start}.li{width:24px;height:24px;background:#7F77DD;border-radius:5px;display:flex;align-items:center;justify-content:center}.li svg{width:15px;height:15px}.lt{font-family:sans-serif;font-size:15px}.ls{font-weight:700;color:#26215C}.lf{color:#7F77DD}.store{text-align:center;font-size:${9*storeScale}px;color:#555;margin-bottom:5px;transform:translate(${pos(cfg.printStoreX)}mm,${pos(cfg.printStoreY)}mm)}.dash{border-top:1px dashed #aaa;margin:5px 0}.nb{text-align:center;background:#EEEDFE;border-radius:7px;padding:6px 0 4px;margin-bottom:7px;border:1px solid #AFA9EC}.nl{font-size:${8*buyerNumberScale}px;color:#534AB7;font-family:sans-serif;letter-spacing:.5px;transform:translate(${pos(cfg.printBuyerLabelX)}mm,${pos(cfg.printBuyerLabelY)}mm)}.nn{font-size:${46*buyerNumberScale}px;font-weight:700;font-family:sans-serif;line-height:1;color:${color};transform:translate(${pos(cfg.printBuyerNumberX)}mm,${pos(cfg.printBuyerNumberY)}mm)}.na{font-size:${12*buyerNameScale}px;font-weight:700;font-family:sans-serif;color:#26215C;transform:translate(${pos(cfg.printBuyerNameX)}mm,${pos(cfg.printBuyerNameY)}mm)}.nh{font-size:${9*usernameScale}px;color:#7F77DD;transform:translate(${pos(cfg.printUsernameX)}mm,${pos(cfg.printUsernameY)}mm)}.sl{font-size:8px;color:#888;text-align:center;margin-bottom:5px;transform:translate(${pos(cfg.printSessionX)}mm,${pos(cfg.printSessionY)}mm)}.ot{font-size:${8*orderScale}px;font-family:sans-serif;color:#888;margin-bottom:4px}.orders{transform:translate(${pos(cfg.printOrderX)}mm,${pos(cfg.printOrderY)}mm)}.tr{display:flex;justify-content:space-between;transform:translate(${pos(cfg.printTotalX)}mm,${pos(cfg.printTotalY)}mm)}.tl{font-size:${9*totalScale}px;color:#888}.tv{font-family:sans-serif;font-size:${15*totalScale}px;font-weight:700}@media print{body{margin:0}}</style></head><body>
-  <div class="top"><div class="logo"><div class="li"><svg width="14" height="14" viewBox="0 0 18 18"><path d="M4 6 Q4 3 7 3 L11 3 Q14 3 14 6 Q14 9 11 9.5 L7 10.5 Q4 10.5 4 13 Q4 15 7 15 L11 15 Q14 15 14 13" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/></svg></div><div class="lt"><span class="ls">Seller</span><span class="lf">Flow</span></div></div></div>
+  <div class="top"><div class="logo"><div class="li"><svg width="14" height="14" viewBox="0 0 18 18"><path d="M4 6 Q4 3 7 3 L11 3 Q14 3 14 6 Q14 9 11 9.5 L7 10.5 Q4 10.5 4 13 Q4 15 7 15 L11 15 Q14 15 14 13" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/></svg></div><div class="lt"><span class="ls">Seller</span><span class="lf">FlowLive</span></div></div></div>
   ${cfg.printStoreName?`<div class="store">${storeName}</div>`:""}
   <div class="nb">${cfg.printBuyerNumber?`<div class="nl">BUYER NUMBER</div><div class="nn">#${buyer.num}</div>`:""}<div class="na">${buyer.name}</div>${cfg.printBuyerUsername?`<div class="nh">@${buyer.handle}</div>`:""}</div>
   <div class="sl">Session: ${sess}</div>${cfg.printOrderItems?`<div class="orders"><div class="ot">Orders today (${buyer.orders.length})</div>${scaledOrderHtml}</div>`:""}
@@ -329,7 +329,7 @@ function Auth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:Lang;set
   return(
     <div className="auth-bg">
       <div className="auth-left">
-        <div className="auth-brand"><div className="auth-logo-ic"><svg width="26" height="26" viewBox="0 0 18 18"><path d="M4 6 Q4 3 7 3 L11 3 Q14 3 14 6 Q14 9 11 9.5 L7 10.5 Q4 10.5 4 13 Q4 15 7 15 L11 15 Q14 15 14 13" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/></svg></div><span className="auth-brand-name">Seller<span>Flow</span></span></div>
+        <div className="auth-brand"><div className="auth-logo-ic"><svg width="26" height="26" viewBox="0 0 18 18"><path d="M4 6 Q4 3 7 3 L11 3 Q14 3 14 6 Q14 9 11 9.5 L7 10.5 Q4 10.5 4 13 Q4 15 7 15 L11 15 Q14 15 14 13" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/></svg></div><span className="auth-brand-name">Seller<span>FlowLive</span></span></div>
         <div className="auth-hero"><h1 style={{whiteSpace:"pre-line"}}>{t.hero_title}</h1><p>{t.hero_sub}</p>
           <div className="auth-feats">{(t.hero_features as string[]).map(f=><div key={f} className="auth-feat"><span>✓</span>{f}</div>)}</div>
         </div>
@@ -437,7 +437,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
   ];
   const flowItems=[
     {title:"Admin",label:"Control plans and sellers",body:"Admin creates or edits sellers, approves payment proof, changes plans, resets passwords, locks registered platform accounts, and reviews audit logs."},
-    {title:"Live",label:"Capture buyer comments",body:"Seller connects TikTok or Facebook Live, then SellerFlow keeps every comment readable with time, username, platform, cart count, and 1-click action."},
+    {title:"Live",label:"Capture buyer comments",body:"Seller connects TikTok or Facebook Live, then SellerFlowLive keeps every comment readable with time, username, platform, cart count, and 1-click action."},
     {title:"Computer",label:"Work from one dashboard",body:"The dashboard keeps comments, buyer numbers, slip preview, miners list, sales, customers, and support in one compact workspace."},
     {title:"Payment",label:"Proof and support chat",body:"Sellers send proof of payment or complaints. Admin sees each seller as a message bubble and can reply, approve, reject, or resolve."},
     {title:"Full screen",label:"Readable during live selling",body:"The live feed uses compact rows for laptop or desktop so more comments fit on screen while keeping buttons readable."},
@@ -455,11 +455,11 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
     ["What happens when a plan expires?","The seller can still open Support and Subscription, but selling tools are blocked until admin approves or upgrades the plan."],
     ["Can I print without extra popups?","Yes. Turn on auto-print in Settings, adjust the printer output, then 1-click orders will print directly through the browser print flow."],
     ["Where do payment proofs show?","Proof images appear inside the admin and seller support conversation bubbles so you can approve faster."],
-    ["Is the customer list searchable?","Yes. SellerFlow saves buyer/customer memory so sellers can search names, usernames, buyer numbers, orders, and totals."],
+    ["Is the customer list searchable?","Yes. SellerFlowLive saves buyer/customer memory so sellers can search names, usernames, buyer numbers, orders, and totals."],
     ["Who controls seller limits?","Admin controls plan, expiry, locked accounts, seller edits, password resets, and support approvals."],
   ];
   const publicPlans=[
-    {name:"Free Trial",price:"$0",period:"7 days",desc:"Try SellerFlow before upgrading.",features:["1 TikTok / Facebook page","Can live stream 1 at a time","Unlimited orders"],action:"Start free trial"},
+    {name:"Free Trial",price:"$0",period:"7 days",desc:"Try SellerFlowLive before upgrading.",features:["1 TikTok / Facebook page","Can live stream 1 at a time","Unlimited orders"],action:"Start free trial"},
     {name:"Basic",price:"$15",period:"month",desc:"For solo live sellers.",features:["1 TikTok / Facebook page","Can live stream 1 at a time","Unlimited orders"],action:"Select plan"},
     {name:"Pro",price:"$25",period:"month",desc:"For sellers using more channels.",features:["3 TikTok / Facebook pages","Can live stream all at once","Unlimited orders"],action:"Select plan",popular:true},
     {name:"Master",price:"$40",period:"month",desc:"For teams and power sellers.",features:["5 TikTok / Facebook pages","Can live stream all at once","Unlimited orders"],action:"Select plan"},
@@ -490,7 +490,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
           <Fg label={t.confirm_field}><input type="password" value={cpw} onChange={e=>setCpw(e.target.value)} placeholder="Confirm password" required/></Fg>
           <button type="submit" className="auth-btn" disabled={busy}>{busy?t.creating:t.start_trial_btn}</button>
           <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat?v=5" download>Printer Shortcut</a>
-          <p className="auth-terms">By creating an account, you agree to SellerFlow <button type="button" className="inline-link" onClick={()=>openLegal("terms")}>Terms</button> and <button type="button" className="inline-link" onClick={()=>openLegal("privacy")}>Privacy Policy</button>.</p>
+          <p className="auth-terms">By creating an account, you agree to SellerFlowLive <button type="button" className="inline-link" onClick={()=>openLegal("terms")}>Terms</button> and <button type="button" className="inline-link" onClick={()=>openLegal("privacy")}>Privacy Policy</button>.</p>
         </form>
         <div className="auth-sw">{t.have_account} <button className="auth-link" onClick={()=>go("login")}>{t.sign_in_btn}</button></div>
       </>}
@@ -509,16 +509,16 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
   return(
     <div className="public-page">
       <header className="public-nav">
-        <button className="public-brand" onClick={()=>jump("home")}><span className="public-logo">S</span><span>Seller<span>Flow</span></span></button>
+        <button className="public-brand" onClick={()=>jump("home")}><span className="public-logo">S</span><span>Seller<span>FlowLive</span></span></button>
         <nav><button onClick={()=>jump("features")}>Features</button><button onClick={()=>jump("pricing")}>Price list</button><button onClick={()=>jump("instructions")}>How to use</button><button onClick={()=>jump("support-info")}>Support</button><button onClick={()=>jump("faq")}>FAQ</button></nav>
         <div className="public-nav-actions"><select value={lang} onChange={e=>setLang(e.target.value as Lang)}>{LANG_OPTS.map(l=><option key={l.code} value={l.code}>{l.label}</option>)}</select><button onClick={()=>{go("login");jump("account")}}>Log in</button><button className="public-primary" onClick={()=>{go("reg");jump("account")}}>Register</button></div>
       </header>
       <section id="home" className="public-hero">
         <div className="public-hero-copy"><span className="public-kicker">Premium live selling workspace</span><h1>Stop typing. Start selling.</h1><p>Capture live orders, manage buyers, and print receipts in one click.</p><div className="public-hero-actions"><button className="public-primary" onClick={()=>{go("reg");jump("account")}}>Try free trial</button><button onClick={()=>jump("instructions")}>See how it works</button></div><div className="public-metrics"><div><b>1-click</b><span>receipt printing</span></div><div><b>Live</b><span>comment capture</span></div><div><b>Smart</b><span>buyer database</span></div></div></div>
-        <div className="public-device" aria-label="SellerFlow dashboard preview">
+        <div className="public-device" aria-label="SellerFlowLive dashboard preview">
           <div className="device-top"><span/><span/><span/><em>SellerFlowLive dashboard</em></div>
           <div className="device-grid">
-            <div className="device-sidebar"><b>SellerFlow</b><span>Live feed</span><span>Orders</span><span>Customers</span><span>Analytics</span><span>Support</span></div>
+            <div className="device-sidebar"><b>SellerFlowLive</b><span>Live feed</span><span>Orders</span><span>Customers</span><span>Analytics</span><span>Support</span></div>
             <div className="device-main">
               <div className="device-command"><span>AI order desk</span><strong>Live comments become printable slips</strong><button>1-click print</button></div>
               <div className="device-stats"><span><b>94</b>Orders</span><span><b>28</b>Buyers</span><span><b>Fast</b>Print flow</span></div>
@@ -530,13 +530,13 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
         </div>
       </section>
       <section id="workflow" className="public-section public-workflow">
-        <div className="public-section-head"><span>System map</span><h2>Everything connects in one selling workflow</h2><p>Click each area to learn what it does inside SellerFlow.</p></div>
+        <div className="public-section-head"><span>System map</span><h2>Everything connects in one selling workflow</h2><p>Click each area to learn what it does inside SellerFlowLive.</p></div>
         <div className="workflow-board">
           <div className="workflow-left">
             {flowItems.slice(0,3).map((item,i)=><button key={item.title} className={activeFlow===i?"active":""} onClick={()=>setActiveFlow(i)}><strong>{item.title}</strong><span>{item.label}</span></button>)}
           </div>
           <button className="workflow-center" onClick={()=>setActiveFlow(5)}>
-            <span>SellerFlow workspace</span>
+            <span>SellerFlowLive workspace</span>
             <strong>Live comments, orders, print slips, customers, sales, support</strong>
             <em>Click to see the main order box</em>
           </button>
@@ -552,12 +552,12 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
         </div>
       </section>
       <section id="features" className="public-section public-feature-band"><div className="public-section-head"><span>Features</span><h2>Everything live sellers need in one sharp workspace</h2><p>Clear tools for capturing comments, creating orders, printing slips, and tracking buyers without slowing down the live.</p></div><div className="public-feature-cards">{featureItems.map((f,i)=><button key={f.title} className={activeFeature===i?"active":""} onClick={()=>setActiveFeature(i)}><span>{String(i+1).padStart(2,"0")}</span><strong>{f.title}</strong><p>{f.body}</p></button>)}</div><div className="public-feature-detail premium"><small>Selected feature</small><h3>{featureItems[activeFeature].title}</h3><p>{featureItems[activeFeature].body}</p><button onClick={()=>jump("account")}>Try this workflow</button></div></section>
-      <section id="instructions" className="public-section public-instructions"><div className="public-section-head"><span>Instructions</span><h2>How to use SellerFlow</h2><p>Simple daily workflow for sellers and admins.</p></div><div className="public-steps">{howSteps.map((step,i)=><button key={step} onClick={()=>i<2?jump("account"):jump("features")}><b>{i+1}</b><span>{step}</span></button>)}</div></section>
+      <section id="instructions" className="public-section public-instructions"><div className="public-section-head"><span>Instructions</span><h2>How to use SellerFlowLive</h2><p>Simple daily workflow for sellers and admins.</p></div><div className="public-steps">{howSteps.map((step,i)=><button key={step} onClick={()=>i<2?jump("account"):jump("features")}><b>{i+1}</b><span>{step}</span></button>)}</div></section>
       <section id="pricing" className="public-section public-pricing-section"><div className="public-section-head"><span>Price list</span><h2>Choose the plan that fits the seller</h2><p>Unlock more possibilities for everything you need at the lowest price.</p></div><div className="public-pricing">{publicPlans.map((p,i)=><button key={p.name} className={p.popular?"popular":""} onClick={()=>{go(i===0?"reg":"login");jump("account")}}>{p.popular&&<small>Most popular</small>}<span className="pricing-icon">{i+1}</span><strong>{p.name}</strong><b>{p.price}</b><span className="pricing-period">/{p.period}</span><p>{p.desc}</p><ul>{p.features.map(f=><li key={f}>{f}</li>)}</ul><em>{p.action}</em></button>)}</div></section>
       <section id="support-info" className="public-section public-support-band"><div><span>Support</span><h2>Handle seller complaints like Messenger</h2><p>Every seller can send a payment proof or support issue. Admin receives a compact chat thread, can approve, reject, resolve, reply, and see unread notifications.</p></div><button onClick={()=>{go("login");jump("account")}}>Open seller account</button></section>
       <section id="faq" className="public-section"><div className="public-section-head"><span>FAQ</span><h2>Frequently asked questions</h2><p>Click a question to expand the answer.</p></div><div className="public-faq">{faqItems.map((item,i)=><button key={item[0]} className={openFaq===i?"open":""} onClick={()=>setOpenFaq(openFaq===i?-1:i)}><div><span>{i+1}</span><strong>{item[0]}</strong><b>{openFaq===i?"-":"+"}</b></div>{openFaq===i&&<p>{item[1]}</p>}</button>)}</div></section>
-      <section id="account" className="public-account"><div className="public-account-copy"><span>Account access</span><h2>Start using SellerFlow</h2><p>Login if you already have a seller account. Register only if you are creating a new shop account.</p></div>{accountForm}</section>
-      <footer className="public-footer"><div><strong>SellerFlow</strong><p>Live selling order system for TikTok and Facebook sellers.</p></div><div><button onClick={()=>jump("features")}>Features</button><button onClick={()=>jump("instructions")}>Instructions</button><button onClick={()=>jump("pricing")}>Price list</button><button onClick={()=>openLegal("privacy")}>Privacy</button><button onClick={()=>openLegal("terms")}>Terms</button><button onClick={()=>jump("account")}>Login</button></div></footer>
+      <section id="account" className="public-account"><div className="public-account-copy"><span>Account access</span><h2>Start using SellerFlowLive</h2><p>Login if you already have a seller account. Register only if you are creating a new shop account.</p></div>{accountForm}</section>
+      <footer className="public-footer"><div><strong>SellerFlowLive</strong><p>Live selling order system for TikTok and Facebook sellers.</p></div><div><button onClick={()=>jump("features")}>Features</button><button onClick={()=>jump("instructions")}>Instructions</button><button onClick={()=>jump("pricing")}>Price list</button><button onClick={()=>openLegal("privacy")}>Privacy</button><button onClick={()=>openLegal("terms")}>Terms</button><button onClick={()=>jump("account")}>Login</button></div></footer>
     </div>
   );
 }
@@ -570,10 +570,10 @@ function AccountGate({user,onContinue,onSwitch}:{user:User;onContinue:()=>void;o
       <div className="auth-card" style={{maxWidth:460}}>
         <div className="auth-brand">
           <div className="logo-ic"><svg width="16" height="16" viewBox="0 0 18 18"><path d="M4 6 Q4 3 7 3 L11 3 Q14 3 14 6 Q14 9 11 9.5 L7 10.5 Q4 10.5 4 13 Q4 15 7 15 L11 15 Q14 15 14 13" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/></svg></div>
-          <span>Seller<span>Flow</span></span>
+          <span>Seller<span>FlowLive</span></span>
         </div>
         <h2>Choose account</h2>
-        <p className="auth-sub">This browser remembers the last SellerFlow login. Confirm it first so Chrome or Edge will not open the wrong seller.</p>
+        <p className="auth-sub">This browser remembers the last SellerFlowLive login. Confirm it first so Chrome or Edge will not open the wrong seller.</p>
         <div className="pd-hd" style={{border:"1px solid #E4DED2",borderRadius:8,margin:"14px 0",padding:12}}>
           <div className="pd-av">{ini(user.profile.fullName||user.email)}</div>
           <div>
@@ -606,24 +606,24 @@ function LegalPage({kind,onBack}:{kind:"privacy"|"terms";onBack:()=>void}){
   const isPrivacy=kind==="privacy";
   const title=isPrivacy?"Privacy Policy":"Terms of Service";
   const subtitle=isPrivacy
-    ?"How SellerFlow collects, uses, protects, and deletes account information."
-    :"The rules for using SellerFlow as a live selling order and printing system.";
+    ?"How SellerFlowLive collects, uses, protects, and deletes account information."
+    :"The rules for using SellerFlowLive as a live selling order and printing system.";
   const sections=isPrivacy?[
-    {h:"Information we collect",p:"SellerFlow stores account details, shop profile, registered TikTok or Facebook accounts, settings, live comments, buyer/customer records, orders, support messages, and payment proof files you submit."},
+    {h:"Information we collect",p:"SellerFlowLive stores account details, shop profile, registered TikTok or Facebook accounts, settings, live comments, buyer/customer records, orders, support messages, and payment proof files you submit."},
     {h:"How we use information",p:"We use this data to run the live comment feed, create orders, print slips, remember customers, manage subscriptions, answer support messages, and help admins protect seller accounts."},
-    {h:"Storage and service providers",p:"Data may be saved in the browser on the seller device and in our Supabase database. Hosting, database, live connection, and printing tools may process data only to provide SellerFlow."},
+    {h:"Storage and service providers",p:"Data may be saved in the browser on the seller device and in our Supabase database. Hosting, database, live connection, and printing tools may process data only to provide SellerFlowLive."},
     {h:"Sharing",p:"We do not sell seller or buyer data. We only share data when needed to operate the app, comply with law, prevent abuse, or support a seller request."},
     {h:"Seller responsibility",p:"Sellers should only enter buyer information needed for orders and should follow their local privacy, tax, and selling rules."},
-    {h:"Delete account",p:"You can request deletion inside SellerFlow from Profile > Delete Account. Deleting removes the seller login and support messages for that email where possible. Some order or payment records may be retained when required for business, security, or legal reasons."},
-    {h:"Contact",p:"For privacy requests, contact SellerFlow through sellerflowlive.com."},
+    {h:"Delete account",p:"You can request deletion inside SellerFlowLive from Profile > Delete Account. Deleting removes the seller login and support messages for that email where possible. Some order or payment records may be retained when required for business, security, or legal reasons."},
+    {h:"Contact",p:"For privacy requests, contact SellerFlowLive through sellerflowlive.com."},
   ]:[
-    {h:"Service purpose",p:"SellerFlow helps live sellers collect comments, create buyer numbers, manage orders, print slips, track customers, and communicate with admin support."},
+    {h:"Service purpose",p:"SellerFlowLive helps live sellers collect comments, create buyer numbers, manage orders, print slips, track customers, and communicate with admin support."},
     {h:"Account rules",p:"You are responsible for keeping your login private. Registered TikTok and Facebook accounts may be locked based on your plan and can be changed by admin when needed."},
-    {h:"Subscriptions",p:"Plan access, expiry dates, account limits, payment approval, and support handling are managed by the SellerFlow admin account."},
-    {h:"Printing and live connections",p:"SellerFlow provides printing and live comment tools, but browser, printer, network, TikTok, and Facebook changes can affect availability. Sellers should test the printer before selling."},
+    {h:"Subscriptions",p:"Plan access, expiry dates, account limits, payment approval, and support handling are managed by the SellerFlowLive admin account."},
+    {h:"Printing and live connections",p:"SellerFlowLive provides printing and live comment tools, but browser, printer, network, TikTok, and Facebook changes can affect availability. Sellers should test the printer before selling."},
     {h:"Seller responsibility",p:"Sellers are responsible for products, prices, order accuracy, customer communication, refunds, taxes, and following platform rules."},
-    {h:"Acceptable use",p:"Do not use SellerFlow for fraud, spam, illegal products, abuse, unauthorized data collection, or attempts to break the app or other seller accounts."},
-    {h:"Changes and contact",p:"We may update these terms as SellerFlow improves. Questions can be sent through sellerflowlive.com."},
+    {h:"Acceptable use",p:"Do not use SellerFlowLive for fraud, spam, illegal products, abuse, unauthorized data collection, or attempts to break the app or other seller accounts."},
+    {h:"Changes and contact",p:"We may update these terms as SellerFlowLive improves. Questions can be sent through sellerflowlive.com."},
   ];
   return(
     <div className="subpage legal-page">
@@ -661,7 +661,7 @@ function DeleteAccountPage({user,onDelete,onCancel}:{user:User;onDelete:()=>Prom
     <div className="subpage delete-page">
       <div className="subpage-hd legal-hd">
         <button className="btn-out" onClick={onCancel}>Back</button>
-        <div><h2>Delete Account</h2><p>Remove this seller login from SellerFlow.</p></div>
+        <div><h2>Delete Account</h2><p>Remove this seller login from SellerFlowLive.</p></div>
       </div>
       <form className="scard delete-card" onSubmit={submit}>
         <h3>Before deleting</h3>
@@ -685,7 +685,7 @@ function SubPage({user,onActivate,t}:{user:User;onActivate:(plan:Plan,status:Pla
   const [done,setDone]=useState(false);
   const days=dLeft(user.planExpiry);
   const plans=[
-    {id:"trial" as Plan,name:t.plan_trial,price:"$0",period:t.plan_7days,color:"#A855F7",desc:"Try SellerFlow before upgrading.",features:["1 TikTok / Facebook page","Can live stream 1 at a time","Unlimited orders"]},
+    {id:"trial" as Plan,name:t.plan_trial,price:"$0",period:t.plan_7days,color:"#A855F7",desc:"Try SellerFlowLive before upgrading.",features:["1 TikTok / Facebook page","Can live stream 1 at a time","Unlimited orders"]},
     {id:"basic" as Plan,name:t.plan_basic,price:"$15",period:t.plan_month,color:"#A855F7",desc:"For solo live sellers.",features:["1 TikTok / Facebook page","Can live stream 1 at a time","Unlimited orders"]},
     {id:"pro" as Plan,name:t.plan_pro,price:"$25",period:t.plan_month,color:"#A855F7",badge:t.plan_popular,desc:"For sellers using more channels.",features:["3 TikTok / Facebook pages","Can live stream all at once","Unlimited orders"]},
     {id:"master" as Plan,name:t.plan_master,price:"$40",period:t.plan_month,color:"#A855F7",desc:"For teams and power sellers.",features:["5 TikTok / Facebook pages","Can live stream all at once","Unlimited orders"]},
@@ -1149,11 +1149,11 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
         {orderNum:1002,item:"Printer check",qty:1,price:620,total:620,time:new Date().toLocaleTimeString(),handle:"sellerflow_test",name:"Test Buyer",bNum:1,platform:"TikTok",status:"New",date:new Date().toISOString().slice(0,10)},
       ],
     };
-    printSlip(testBuyer,sets.currency,user.profile.storeName||"SellerFlow",sets);
+    printSlip(testBuyer,sets.currency,user.profile.storeName||"SellerFlowLive",sets);
     setToast("Printer test sent");
   }
   function openMobileBluetoothGuide(){
-    setToast("Open phone Bluetooth settings, pair printer, then come back to SellerFlow");
+    setToast("Open phone Bluetooth settings, pair printer, then come back to SellerFlowLive");
   }
   function resetPrinterLayout(){
     setSets(s=>({
@@ -1275,7 +1275,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
             <div className={`printer-direct-status ${directPrintMode?"active":"inactive"}`}>
               <div>
                 <strong>{directPrintMode?"Direct Print Active":"Direct Print Not Active"}</strong>
-                <span>{directPrintMode?"You opened SellerFlow with the desktop shortcut. 1-click can print directly.":"Open SellerFlow using the desktop shortcut to enable kiosk direct print."}</span>
+                <span>{directPrintMode?"You opened SellerFlowLive with the desktop shortcut. 1-click can print directly.":"Open SellerFlowLive using the desktop shortcut to enable kiosk direct print."}</span>
               </div>
               <Badge label={directPrintMode?"Ready":"Shortcut needed"} color={directPrintMode?"green":"amber"}/>
             </div>
@@ -1286,10 +1286,10 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
               <ol>
                 <li>Click Printer Shortcut and run it once.</li>
                 <li>Close normal Chrome/Edge tabs.</li>
-                <li>Open SellerFlow from the new SellerFlow Direct Print icon on the desktop.</li>
+                <li>Open SellerFlowLive from the new SellerFlowLive Direct Print icon on the desktop.</li>
                 <li>Choose the printer once. After that, 1-click prints automatically.</li>
               </ol>
-              <p>If it opens the wrong admin or seller account, open SellerFlow Switch Account once, then login again. If the print screen stays open, you are probably using a normal browser tab or an old shortcut.</p>
+              <p>If it opens the wrong admin or seller account, open SellerFlowLive Switch Account once, then login again. If the print screen stays open, you are probably using a normal browser tab or an old shortcut.</p>
             </div>
           </div>
           <Fg label={t.printer_type}>
@@ -1308,7 +1308,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
             <div className="printer-preview-title">Print output preview</div>
             <div className="printer-preview-slip">
               <div className="printer-preview-head">
-                <div className="printer-preview-brand"><span className="printer-preview-logo">S</span><strong>Seller<span>Flow</span></strong></div>
+                <div className="printer-preview-brand"><span className="printer-preview-logo">S</span><strong>Seller<span>FlowLive</span></strong></div>
               </div>
               {sets.printStoreName&&<div className="printer-preview-store" style={{fontSize:`${9*storePreview}px`,...previewMove(sets.printStoreX,sets.printStoreY)}}>{user.profile.storeName||"My Store"}</div>}
               <div className="printer-preview-buyer">
@@ -1393,7 +1393,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
                 <ol>
                   <li>Turn on the Bluetooth printer and pairing mode.</li>
                   <li>Pair the printer in phone Bluetooth settings.</li>
-                  <li>Return to SellerFlow mobile app.</li>
+                  <li>Return to SellerFlowLive mobile app.</li>
                   <li>Tap Test Print, then use 1-click during live selling.</li>
                 </ol>
               </div>
@@ -1628,8 +1628,8 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
       const planLabel=pName(seller.plan,t);
       const expiryDate=new Date(seller.planExpiry).toLocaleDateString();
       const adminReply=noticeType==="warning"
-        ? `Automatic message from SellerFlow Admin: Your ${planLabel} plan will expire in ${days} day${days===1?"":"s"} on ${expiryDate}. Please send payment proof or upgrade before it expires.`
-        : `Automatic message from SellerFlow Admin: Your ${planLabel} plan expired today. Please upgrade or send payment proof to continue using SellerFlow.`;
+        ? `Automatic message from SellerFlowLive Admin: Your ${planLabel} plan will expire in ${days} day${days===1?"":"s"} on ${expiryDate}. Please send payment proof or upgrade before it expires.`
+        : `Automatic message from SellerFlowLive Admin: Your ${planLabel} plan expired today. Please upgrade or send payment proof to continue using SellerFlowLive.`;
       notices.push({
         id:`plan-${noticeType}-${seller.email}-${todayKey}`,
         name:seller.profile.fullName||seller.profile.storeName||seller.email,
@@ -2648,7 +2648,7 @@ export default function App(){
     setAllOrders(prev=>{const next=[...prev,order];LS.set(sellerMemoryKey("sf_orders"),next);return next;});
 
     if(print){
-      printSlip(nextBuyer,settings.currency,user?.profile.storeName||"SellerFlow",settings);
+      printSlip(nextBuyer,settings.currency,user?.profile.storeName||"SellerFlowLive",settings);
     }else{
       setToast(`Order created for ${c.name||c.handle}`);
     }
@@ -2673,7 +2673,7 @@ export default function App(){
     const b=buyers.find(x=>x.handle===c.handle);
     if(!b){void createOrderFromComment(c,{print:true});return;}
     setSelBuyer(b);
-    printSlip(b,settings.currency,user?.profile.storeName||"SellerFlow",settings);
+    printSlip(b,settings.currency,user?.profile.storeName||"SellerFlowLive",settings);
   }
   function copyText(text:string,label:string){
     navigator.clipboard?.writeText(text);
@@ -2742,7 +2742,7 @@ export default function App(){
 
       {/* SIDEBAR */}
       <aside className="sidebar">
-        <div className="sb-logo"><div className="logo-ic"><svg width="16" height="16" viewBox="0 0 18 18"><path d="M4 6 Q4 3 7 3 L11 3 Q14 3 14 6 Q14 9 11 9.5 L7 10.5 Q4 10.5 4 13 Q4 15 7 15 L11 15 Q14 15 14 13" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/></svg></div><span className="logo-tx">Seller<span>Flow</span></span></div>
+        <div className="sb-logo"><div className="logo-ic"><svg width="16" height="16" viewBox="0 0 18 18"><path d="M4 6 Q4 3 7 3 L11 3 Q14 3 14 6 Q14 9 11 9.5 L7 10.5 Q4 10.5 4 13 Q4 15 7 15 L11 15 Q14 15 14 13" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/></svg></div><span className="logo-tx">Seller<span>FlowLive</span></span></div>
         <div className="nav-sec-lbl">{t.nav_live_section}</div>
         {navItems.slice(0,3).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={navClass(id)}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
         <div className="nav-sec-lbl">{t.nav_manage}</div>
@@ -2883,7 +2883,7 @@ export default function App(){
               <div className="slip-wrap">
                 {!selBuyer?<div className="slip-empty"><div style={{fontSize:36,marginBottom:12}}>🖨️</div>{t.slip_empty}</div>:(
                   <div className="slip-paper">
-                    <div className="slip-logo"><div className="slip-logo-ic"><svg width="13" height="13" viewBox="0 0 18 18"><path d="M4 6 Q4 3 7 3 L11 3 Q14 3 14 6 Q14 9 11 9.5 L7 10.5 Q4 10.5 4 13 Q4 15 7 15 L11 15 Q14 15 14 13" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/></svg></div><span className="slip-s">Seller</span><span className="slip-f">Flow</span></div>
+                    <div className="slip-logo"><div className="slip-logo-ic"><svg width="13" height="13" viewBox="0 0 18 18"><path d="M4 6 Q4 3 7 3 L11 3 Q14 3 14 6 Q14 9 11 9.5 L7 10.5 Q4 10.5 4 13 Q4 15 7 15 L11 15 Q14 15 14 13" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/></svg></div><span className="slip-s">Seller</span><span className="slip-f">FlowLive</span></div>
                     <div className="slip-hr"/>
                     <div className="slip-nb"><div className="slip-nl">{t.buyer_number_label}</div><div className="slip-nn" style={{color:nc(selBuyer.num)}}>#{selBuyer.num}</div><div className="slip-na">{selBuyer.name}</div><div className="slip-nh">@{selBuyer.handle}</div></div>
                     <div className="slip-sess">{t.session}: {today}</div>
@@ -2896,7 +2896,7 @@ export default function App(){
                   </div>
                 )}
               </div>
-              {selBuyer&&<button className="print-again-btn" onClick={()=>printSlip(selBuyer,settings.currency,user.profile.storeName||"SellerFlow",settings)}>{t.print_again}</button>}
+              {selBuyer&&<button className="print-again-btn" onClick={()=>printSlip(selBuyer,settings.currency,user.profile.storeName||"SellerFlowLive",settings)}>{t.print_again}</button>}
             </section>
             <section className="mobile-tools-col">
               <div className="col-lbl">Business tools</div>
@@ -2935,7 +2935,7 @@ export default function App(){
                       <td><Badge label={b.platform} color={b.platform==="TikTok"?"purple":"green"}/></td>
                       <td>{b.totalOrders}</td>
                       <td><strong style={{color:"#534AB7"}}>{b.totalSpent>0?`${settings.currency}${b.totalSpent.toLocaleString()}`:""}</strong></td>
-                      <td><button onClick={()=>{setSelBuyer(b);setPage("dashboard");printSlip(b,settings.currency,user.profile.storeName||"SellerFlow",settings);}} style={{padding:"5px 12px",background:"#7F77DD",color:"#fff",border:"none",borderRadius:7,fontSize:11,cursor:"pointer"}}>🖨 Print</button></td>
+                      <td><button onClick={()=>{setSelBuyer(b);setPage("dashboard");printSlip(b,settings.currency,user.profile.storeName||"SellerFlowLive",settings);}} style={{padding:"5px 12px",background:"#7F77DD",color:"#fff",border:"none",borderRadius:7,fontSize:11,cursor:"pointer"}}>🖨 Print</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -2947,7 +2947,7 @@ export default function App(){
         {page==="orders"&&<Orders orders={allOrders} setOrders={setAllOrders} onPersist={orders=>LS.set(sellerMemoryKey("sf_orders"),orders)} cur={settings.currency} t={t}/>}
         {page==="products"&&<Products cur={settings.currency} t={t}/>}
         {page==="customers"&&<><Customers buyers={buyers} cur={settings.currency} t={t}/><CommentArchive comments={archivedComments}/></>}
-        {page==="print"&&<PrintPage buyers={buyers} cur={settings.currency} storeName={user.profile.storeName||"SellerFlow"} settings={settings} t={t}/>}
+        {page==="print"&&<PrintPage buyers={buyers} cur={settings.currency} storeName={user.profile.storeName||"SellerFlowLive"} settings={settings} t={t}/>}
         {page==="sales"&&<Sales orders={allOrders} buyers={buyers} cur={settings.currency} t={t}/>}
         {page==="settings"&&<SettingsPage user={user} settings={settings} onSaveProfile={handleSaveProfile} onSaveSettings={handleSaveSettings} onSavePw={handleSavePw} onExportBackup={exportSellerBackup} onClearLiveComments={clearLiveCommentsOnly} t={t}/>}
         {page==="subscription"&&<SubPage user={user} onActivate={handleActivate} t={t}/>}
