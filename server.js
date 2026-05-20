@@ -25,8 +25,12 @@ const tiktokReconnectAttempts = new Map();
 const manualTikTokDisconnects = new Set();
 const TIKTOK_RECONNECT_BASE_MS = 30000;
 const TIKTOK_RECONNECT_MAX_MS = 180000;
+const TIKTOK_RECONNECT_JITTER_MS = 30000;
+const TIKTOK_MAX_PARALLEL_RECONNECTS = 3;
 const TIKTOK_HEALTH_CHECK_MS = 30000;
 const TIKTOK_STALE_MS = 180000;
+let activeTikTokReconnects = 0;
+const pendingTikTokReconnects = [];
 
 function cleanSellerId(value) {
   return String(value || "")
@@ -55,6 +59,24 @@ function clearTikTokReconnect(key) {
   const timer = tiktokReconnectTimers.get(key);
   if (timer) clearTimeout(timer);
   tiktokReconnectTimers.delete(key);
+}
+
+function runQueuedTikTokReconnect(task) {
+  pendingTikTokReconnects.push(task);
+  drainTikTokReconnectQueue();
+}
+
+function drainTikTokReconnectQueue() {
+  while (activeTikTokReconnects < TIKTOK_MAX_PARALLEL_RECONNECTS && pendingTikTokReconnects.length) {
+    const task = pendingTikTokReconnects.shift();
+    activeTikTokReconnects += 1;
+    Promise.resolve()
+      .then(task)
+      .finally(() => {
+        activeTikTokReconnects = Math.max(0, activeTikTokReconnects - 1);
+        drainTikTokReconnectQueue();
+      });
+  }
 }
 
 function clearTikTokHealthTimer(active) {
@@ -246,7 +268,7 @@ app.post("/connect/facebook", (req, res) => {
   });
 });
 
-function emitTikTokStatus({ sellerId, username, sessionId, connected, reconnecting = false, reason = "" }) {
+function emitTikTokStatus({ sellerId, username, sessionId, connected, reconnecting = false, reason = "", nextRetryMs = 0 }) {
   io.to(sellerRoom(sellerId)).emit("platform_status", {
     platform: "TikTok",
     connected,
@@ -255,7 +277,7 @@ function emitTikTokStatus({ sellerId, username, sessionId, connected, reconnecti
     username,
     sessionId,
     reason,
-    nextRetryMs: reconnecting ? TIKTOK_RECONNECT_BASE_MS : 0,
+    nextRetryMs,
   });
 }
 
@@ -264,7 +286,9 @@ function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "d
 
   const attempt = (tiktokReconnectAttempts.get(key) || 0) + 1;
   tiktokReconnectAttempts.set(key, attempt);
-  const retryMs = Math.min(TIKTOK_RECONNECT_BASE_MS * attempt, TIKTOK_RECONNECT_MAX_MS);
+  const backoffMs = Math.min(TIKTOK_RECONNECT_BASE_MS * attempt, TIKTOK_RECONNECT_MAX_MS);
+  const jitterMs = Math.floor(Math.random() * TIKTOK_RECONNECT_JITTER_MS);
+  const retryMs = backoffMs + jitterMs;
 
   emitTikTokStatus({
     sellerId,
@@ -273,17 +297,20 @@ function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "d
     connected: true,
     reconnecting: true,
     reason,
+    nextRetryMs: retryMs,
   });
 
   const timer = setTimeout(async () => {
     tiktokReconnectTimers.delete(key);
-    try {
-      await startTikTokConnection(key, username, sellerId, sessionId, { emitStart: false });
-      console.log(`Reconnected TikTok LIVE: ${username} for ${sellerId}`);
-    } catch (error) {
-      console.log(`TikTok reconnect failed for ${username}: ${error.message}`);
-      scheduleTikTokReconnect(key, username, sellerId, sessionId, "retry_failed");
-    }
+    runQueuedTikTokReconnect(async () => {
+      try {
+        await startTikTokConnection(key, username, sellerId, sessionId, { emitStart: false });
+        console.log(`Reconnected TikTok LIVE: ${username} for ${sellerId}`);
+      } catch (error) {
+        console.log(`TikTok reconnect failed for ${username}: ${error.message}`);
+        scheduleTikTokReconnect(key, username, sellerId, sessionId, "retry_failed");
+      }
+    });
   }, retryMs);
 
   tiktokReconnectTimers.set(key, timer);
