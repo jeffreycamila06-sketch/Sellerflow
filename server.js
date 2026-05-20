@@ -394,10 +394,44 @@ app.post("/helper/comment", (req, res) => {
     time: new Date().toLocaleTimeString(),
     timestamp: new Date().toISOString(),
   });
+  emitHelperStatus({ sellerId, sessionId, sourceUsername });
 
   return res.json({
     success: true,
   });
+});
+
+function emitHelperStatus({ sellerId, sessionId = "", sourceUsername = "", active = true }) {
+  io.to(sellerRoom(sellerId)).emit("helper_status", {
+    platform: "TikTok",
+    connected: active,
+    sellerId,
+    sessionId,
+    sourceUsername: sourceUsername || undefined,
+    timestamp: new Date().toISOString(),
+  });
+}
+
+app.post("/helper/heartbeat", (req, res) => {
+  if (HELPER_COMMENT_TOKEN && req.body.token !== HELPER_COMMENT_TOKEN && req.headers["x-helper-token"] !== HELPER_COMMENT_TOKEN) {
+    return res.status(401).json({
+      success: false,
+      error: "Invalid helper token",
+    });
+  }
+
+  const sellerId = cleanSellerId(req.body.sellerId || req.body.email);
+  const sessionId = String(req.body.sessionId || "");
+  const sourceUsername = cleanAccountKey(req.body.sourceUsername || req.body.liveAccount || "");
+  if (!sellerId) {
+    return res.status(400).json({
+      success: false,
+      error: "sellerId is required",
+    });
+  }
+
+  emitHelperStatus({ sellerId, sessionId, sourceUsername, active: true });
+  return res.json({ success: true });
 });
 
 function emitTikTokStatus({ sellerId, username, sessionId, connected, reconnecting = false, reason = "" }) {

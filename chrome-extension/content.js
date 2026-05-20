@@ -11,6 +11,7 @@
   };
   let sent = 0;
   let found = 0;
+  let lastHeartbeatAt = 0;
   const seen = new Set();
 
   function clean(value) {
@@ -521,6 +522,22 @@
     sent += 1;
   }
 
+  async function sendHeartbeat() {
+    if (!settings.active || !settings.sellerId || !isLivePage()) return;
+    const now = Date.now();
+    if (now - lastHeartbeatAt < 10000) return;
+    lastHeartbeatAt = now;
+    await fetch(`${(settings.serverUrl || DEFAULT_SERVER_URL).replace(/\/$/, "")}/helper/heartbeat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sellerId: settings.sellerId,
+        liveAccount: detectLiveAccount() || "tiktok-live",
+        sourceUsername: detectLiveAccount() || "tiktok-live"
+      })
+    });
+  }
+
   async function tick() {
     try {
       if (!isLivePage()) {
@@ -536,6 +553,7 @@
         setStatus("Paused.");
         return;
       }
+      await sendHeartbeat();
       const comments = scrapeVisibleComments();
       found = comments.length;
       for (const item of comments) await sendComment(item);

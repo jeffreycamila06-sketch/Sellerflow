@@ -2460,8 +2460,10 @@ export default function App(){
     return storedOrders.length?storedOrders.reduce((s,o)=>s+o.total,0):cleanBuyers(sellerDayOrSessionArray<Buyer>("sf_buyers",initialSellerEmail,currentLiveDayId,currentSessionId)).reduce((s,b)=>s+b.totalSpent,0);
   });
   const [ttOn,setTtOn]=useState(false);const [fbOn,setFbOn]=useState(false);
+  const [grabberActive,setGrabberActive]=useState(false);
   const [activeLiveAccounts,setActiveLiveAccounts]=useState<{TikTok:string;Facebook:string}>({TikTok:"",Facebook:""});
   const activeLiveAccountsRef=useRef(activeLiveAccounts);
+  const grabberTimerRef=useRef<number|null>(null);
   const [showConn,setShowConn]=useState(false);const [showProf,setShowProf]=useState(false);
   const [connectTab,setConnectTab]=useState<"TikTok"|"Facebook">("TikTok");
   const [printed,setPrinted]=useState<Set<string>>(()=>new Set(sellerDayOrSessionArray<string>("sf_printed",initialSellerEmail,currentLiveDayId,currentSessionId)));
@@ -2603,8 +2605,16 @@ export default function App(){
       if(c&&p==="TikTok"&&username)setActiveLiveAccounts(a=>({...a,TikTok:username}));
       if(c&&p==="Facebook"&&username)setActiveLiveAccounts(a=>({...a,Facebook:username}));
     });
+    s.on("helper_status",({sellerId:eventSellerId,sessionId:eventSessionId,sourceUsername,connected}:{sellerId?:string;sessionId?:string;sourceUsername?:string;connected?:boolean})=>{
+      if(eventSellerId&&eventSellerId!==sellerId)return;
+      if(eventSessionId&&eventSessionId!==currentSessionId)return;
+      setGrabberActive(connected!==false);
+      if(sourceUsername)setActiveLiveAccounts(a=>({...a,TikTok:sourceUsername}));
+      if(grabberTimerRef.current)window.clearTimeout(grabberTimerRef.current);
+      grabberTimerRef.current=window.setTimeout(()=>setGrabberActive(false),30000);
+    });
     s.on("live_session_started",({sellerId:eventSellerId,sessionId:eventSessionId}:{sellerId?:string;sessionId?:string}={})=>{if((!eventSellerId||eventSellerId===sellerId)&&(!eventSessionId||eventSessionId===currentSessionId))clearLiveCommentMemory();});
-    s.on("live_session_ended",({sellerId:eventSellerId,sessionId:eventSessionId}:{sellerId?:string;sessionId?:string}={})=>{if(eventSellerId&&eventSellerId!==sellerId)return;if(eventSessionId&&eventSessionId!==currentSessionId)return;clearLiveCommentMemory();setActiveLiveAccounts({TikTok:"",Facebook:""});setTtOn(false);setFbOn(false);});
+    s.on("live_session_ended",({sellerId:eventSellerId,sessionId:eventSessionId}:{sellerId?:string;sessionId?:string}={})=>{if(eventSellerId&&eventSellerId!==sellerId)return;if(eventSessionId&&eventSessionId!==currentSessionId)return;clearLiveCommentMemory();setActiveLiveAccounts({TikTok:"",Facebook:""});setTtOn(false);setFbOn(false);setGrabberActive(false);});
     s.on("session_state",({buyers:b,totalOrders:to,sessionId:eventSessionId}:{buyers:Buyer[];totalOrders:number;sessionId?:string})=>{
       if(eventSessionId&&eventSessionId!==currentSessionId)return;
       if(!b.length&&!to)return;
@@ -2613,7 +2623,7 @@ export default function App(){
       const ords=cleanB.flatMap(x=>x.orders.map(o=>({...o,handle:x.handle,name:x.name,bNum:x.num,platform:x.platform,status:"New",date:new Date().toISOString().slice(0,10)})));
       setAllOrders(ords);LS.set(sellerDailyDataKey("sf_orders",user.email,currentLiveDayId),ords);
     });
-    return()=>{s.disconnect();};
+    return()=>{if(grabberTimerRef.current)window.clearTimeout(grabberTimerRef.current);s.disconnect();};
   },[user?.email,currentLiveDayId]);
 
   useEffect(()=>{
@@ -2852,7 +2862,9 @@ export default function App(){
   if(!user)return <PublicAuth onLogin={handleLogin} t={t} lang={lang} setLang={setLang}/>;
   if(accountGate)return <AccountGate user={user} onContinue={continueSavedAccount} onSwitch={switchAccount}/>;
 
-  const isLive=ttOn||fbOn;
+  const tikTokLive=ttOn||grabberActive;
+  const isLive=tikTokLive||fbOn;
+  const liveStatusText=grabberActive&&!ttOn&&!fbOn?"GRABBER ACTIVE":isLive?t.live_status:t.offline_status;
   const platformButtonLabel=(platform:"TikTok"|"Facebook",connected:boolean)=>{
     const account=activeLiveAccounts[platform];
     return connected&&account?account:platform;
@@ -2902,8 +2914,8 @@ export default function App(){
       <main className="main">
         <header className={`topbar ${showMobileBack?"has-mobile-back":""}`}>
           {showMobileBack&&<button className="mobile-page-back" onClick={()=>setPage("dashboard")}>Back</button>}
-          <div className={`live-pill ${isLive?"live":"off"}`}><span className="live-dot"/> {isLive?t.live_status:t.offline_status}</div>
-          <button onClick={()=>{setConnectTab("TikTok");setShowConn(true);}} className={`plat-btn ${ttOn?"on active-account":""}`} title={ttOn&&activeLiveAccounts.TikTok?`TikTok: ${activeLiveAccounts.TikTok}`:"TikTok"}>{platformButtonLabel("TikTok",ttOn)} {ttOn?"✓":""}</button>
+          <div className={`live-pill ${isLive?"live":"off"}`}><span className="live-dot"/> {liveStatusText}</div>
+          <button onClick={()=>{setConnectTab("TikTok");setShowConn(true);}} className={`plat-btn ${tikTokLive?"on active-account":""}`} title={tikTokLive&&activeLiveAccounts.TikTok?`TikTok: ${activeLiveAccounts.TikTok}`:"TikTok"}>{platformButtonLabel("TikTok",tikTokLive)} {tikTokLive?"✓":""}</button>
           <button onClick={()=>{setConnectTab("Facebook");setShowConn(true);}} className={`plat-btn ${fbOn?"on active-account":""}`} title={fbOn&&activeLiveAccounts.Facebook?`Facebook: ${activeLiveAccounts.Facebook}`:"Facebook"}>{platformButtonLabel("Facebook",fbOn)} {fbOn?"✓":""}</button>
           <select value={lang} onChange={e=>setLang(e.target.value as Lang)} className="lang-sel">
             {LANG_OPTS.map(l=><option key={l.code} value={l.code}>{l.label}</option>)}
