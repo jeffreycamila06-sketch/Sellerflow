@@ -21,7 +21,12 @@ app.use(express.json());
 const tiktokConnections = new Map();
 const facebookConnections = new Map();
 const tiktokReconnectTimers = new Map();
+const tiktokReconnectAttempts = new Map();
 const manualTikTokDisconnects = new Set();
+const TIKTOK_RECONNECT_BASE_MS = 30000;
+const TIKTOK_RECONNECT_MAX_MS = 180000;
+const TIKTOK_HEALTH_CHECK_MS = 30000;
+const TIKTOK_STALE_MS = 180000;
 
 function cleanSellerId(value) {
   return String(value || "")
@@ -52,6 +57,42 @@ function clearTikTokReconnect(key) {
   tiktokReconnectTimers.delete(key);
 }
 
+function clearTikTokHealthTimer(active) {
+  if (active?.healthTimer) clearInterval(active.healthTimer);
+}
+
+function touchTikTokConnection(key, connection, type = "event") {
+  const active = tiktokConnections.get(key);
+  if (!active || active.connection !== connection) return;
+  active.lastEventAt = Date.now();
+  if (type === "chat") active.lastCommentAt = active.lastEventAt;
+}
+
+function startTikTokHealthTimer(key, connection) {
+  const active = tiktokConnections.get(key);
+  if (!active || active.connection !== connection) return;
+
+  clearTikTokHealthTimer(active);
+  active.healthTimer = setInterval(() => {
+    const current = tiktokConnections.get(key);
+    if (!current || current.connection !== connection) {
+      clearInterval(active.healthTimer);
+      return;
+    }
+
+    const silentMs = Date.now() - (current.lastEventAt || current.startedAt || Date.now());
+    if (silentMs < TIKTOK_STALE_MS) return;
+
+    console.log(`TikTok health reconnect for ${current.username}: silent ${Math.round(silentMs / 1000)}s`);
+    clearTikTokHealthTimer(current);
+    tiktokConnections.delete(key);
+    try {
+      current.connection.disconnect();
+    } catch {}
+    scheduleTikTokReconnect(key, current.username, current.sellerId, current.sessionId, "silent_timeout");
+  }, TIKTOK_HEALTH_CHECK_MS);
+}
+
 async function disconnectTikTokConnection(key, { manual = false } = {}) {
   const existing = tiktokConnections.get(key);
   if (manual) clearTikTokReconnect(key);
@@ -60,10 +101,12 @@ async function disconnectTikTokConnection(key, { manual = false } = {}) {
     return;
   }
   if (manual) manualTikTokDisconnects.add(key);
+  clearTikTokHealthTimer(existing);
   try {
     await existing.connection.disconnect();
   } catch {}
   tiktokConnections.delete(key);
+  tiktokReconnectAttempts.delete(key);
   manualTikTokDisconnects.delete(key);
 }
 
@@ -212,18 +255,22 @@ function emitTikTokStatus({ sellerId, username, sessionId, connected, reconnecti
     username,
     sessionId,
     reason,
-    nextRetryMs: reconnecting ? 10000 : 0,
+    nextRetryMs: reconnecting ? TIKTOK_RECONNECT_BASE_MS : 0,
   });
 }
 
 function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "disconnected") {
   if (tiktokReconnectTimers.has(key)) return;
 
+  const attempt = (tiktokReconnectAttempts.get(key) || 0) + 1;
+  tiktokReconnectAttempts.set(key, attempt);
+  const retryMs = Math.min(TIKTOK_RECONNECT_BASE_MS * attempt, TIKTOK_RECONNECT_MAX_MS);
+
   emitTikTokStatus({
     sellerId,
     username,
     sessionId,
-    connected: false,
+    connected: true,
     reconnecting: true,
     reason,
   });
@@ -237,7 +284,7 @@ function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "d
       console.log(`TikTok reconnect failed for ${username}: ${error.message}`);
       scheduleTikTokReconnect(key, username, sellerId, sessionId, "retry_failed");
     }
-  }, 10000);
+  }, retryMs);
 
   tiktokReconnectTimers.set(key, timer);
 }
@@ -246,10 +293,12 @@ function handleTikTokDisconnected(key, connection, reason = "disconnected", { re
   const active = tiktokConnections.get(key);
   if (!active || active.connection !== connection) return;
 
+  clearTikTokHealthTimer(active);
   tiktokConnections.delete(key);
 
   if (manualTikTokDisconnects.has(key) || !reconnect) {
     manualTikTokDisconnects.delete(key);
+    tiktokReconnectAttempts.delete(key);
     emitTikTokStatus({
       sellerId: active.sellerId,
       username: active.username,
@@ -280,7 +329,19 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
     fetchRoomInfoOnConnect: true,
   });
   const state = await tiktokConnection.connect();
-  tiktokConnections.set(key, { connection: tiktokConnection, username: cleanUsername, sessionId, sellerId, roomId: state?.roomId || "" });
+  const now = Date.now();
+  tiktokReconnectAttempts.delete(key);
+  tiktokConnections.set(key, {
+    connection: tiktokConnection,
+    username: cleanUsername,
+    sessionId,
+    sellerId,
+    roomId: state?.roomId || "",
+    startedAt: now,
+    lastEventAt: now,
+    lastCommentAt: now,
+    healthTimer: null,
+  });
 
   console.log(`Connected to TikTok LIVE: ${cleanUsername} for ${sellerId} room ${state?.roomId || "unknown"}`);
 
@@ -305,8 +366,12 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
 
   tiktokConnection.on("disconnected", () => handleTikTokDisconnected(key, tiktokConnection, "disconnected"));
   tiktokConnection.on("streamEnd", () => handleTikTokDisconnected(key, tiktokConnection, "streamEnd", { reconnect: false }));
+  ["member", "like", "gift", "social", "emote", "envelope"].forEach((eventName) => {
+    tiktokConnection.on(eventName, () => touchTikTokConnection(key, tiktokConnection));
+  });
 
   tiktokConnection.on("chat", (data) => {
+    touchTikTokConnection(key, tiktokConnection, "chat");
     const comment = data.comment || "";
     const name = data.nickname || data.uniqueId || "Unknown";
     const handle = data.uniqueId || "unknown";
@@ -327,6 +392,8 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
       timestamp: new Date().toISOString(),
     });
   });
+
+  startTikTokHealthTimer(key, tiktokConnection);
 
   return tiktokConnection;
 }
