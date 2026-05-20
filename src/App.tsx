@@ -42,72 +42,11 @@ declare global {
     Capacitor?: { Plugins?: { SellerFlowPrinter?: { printSlip:(payload:NativePrinterPayload)=>Promise<void> } } };
   }
 }
-const compactLiveText=(value:unknown)=>String(value||"").replace(/\s+/g," ").trim().toLowerCase();
-const isViewerOrSystemLiveText=(value:unknown)=>{
-  const text=compactLiveText(value);
-  if(!text)return true;
-  const blocked=[
-    "welcome to tiktok live",
-    "community guidelines",
-    "creators must be",
-    "viewers must be",
-    "comments off",
-    "liked the live",
-    "joined",
-    "followed the host",
-    "suggested live creators",
-    "recommended live streams",
-    "discover live",
-    "creator tools",
-    "get coins",
-    "recharge",
-    "company",
-    "program",
-    "terms & policies",
-    "watch now",
-    "filtered to protect",
-    "send gifts",
-    "follow our community"
-  ];
-  return blocked.some(word=>text.includes(word));
-};
-const isBadLiveIdentity=(value:unknown)=>{
-  const text=compactLiveText(value);
-  if(!text||text.length<2||text.length>80)return true;
-  if(text==="viewers"||text==="viewer"||text==="tiktok-viewer")return true;
-  if(/\bviewers?\b/.test(text))return true;
-  if(/^[\s\d\-_.:]+$/.test(text))return true;
-  if(/^[\W_]+$/u.test(text))return true;
-  if(/^\d+\s*[-:]/.test(text))return true;
-  return isViewerOrSystemLiveText(text);
-};
-const isViewerNoisePayload=(payload:{name?:unknown;handle?:unknown;comment?:unknown})=>{
-  const name=String(payload.name||"").trim();
-  const handle=String(payload.handle||"").trim();
-  const comment=String(payload.comment||"").trim();
-  const joined=compactLiveText(`${name} ${handle} ${comment}`);
-  if(!comment)return true;
-  if(isBadLiveIdentity(name)||isBadLiveIdentity(handle))return true;
-  if(/\bviewers?\b/.test(joined))return true;
-  if(isViewerOrSystemLiveText(comment))return true;
-  if(/^\d+\s*[-:]\s*/.test(comment))return true;
-  if(/^[-_.:\s]+$/.test(comment))return true;
-  return false;
-};
 const normalizeComment=(raw:unknown,index=0):Comment|null=>{
   if(!raw||typeof raw!=="object")return null;
   const c=raw as Partial<Comment>;
   const handle=String(c.handle||c.name||`buyer-${index}`).trim();
   if(!handle)return null;
-  const rawName=String(c.name||handle).replace(/\s+/g," ").trim().toLowerCase();
-  const rawHandle=handle.replace(/\s+/g," ").trim().toLowerCase();
-  const rawComment=String(c.comment||"").replace(/\s+/g," ").trim().toLowerCase();
-  const rawJoined=`${rawName} ${rawHandle} ${rawComment}`;
-  if(isViewerNoisePayload({name:c.name||handle,handle,comment:c.comment||""}))return null;
-  if(!rawComment)return null;
-  if(/\bviewers?\b/.test(rawJoined)||rawHandle==="tiktok-viewer")return null;
-  if(/^[\s\d\-_.:]+$/.test(rawName)||/^[\s\d\-_.:]+$/.test(rawHandle))return null;
-  if(/^\d+\s*[-:]\s*/.test(rawName)||/^\d+\s*[-:]\s*/.test(rawComment))return null;
   const platform=c.platform==="Facebook"?"Facebook":"TikTok";
   return {
     handle,
@@ -126,29 +65,6 @@ const normalizeComment=(raw:unknown,index=0):Comment|null=>{
   };
 };
 const cleanComments=(list:unknown)=>Array.isArray(list)?list.map((c,i)=>normalizeComment(c,i)).filter((c):c is Comment=>!!c):[];
-const cleanBuyers=(list:unknown):Buyer[]=>Array.isArray(list)?(list as Buyer[]).filter(b=>!isViewerNoisePayload({name:b?.name,handle:b?.handle,comment:"buyer"})):[];
-const isBlockedLiveText=(c:Comment)=>{
-  if(isViewerNoisePayload(c))return true;
-  const name=String(c.name||"").trim().toLowerCase();
-  const handle=String(c.handle||"").trim().toLowerCase();
-  const comment=String(c.comment||"").trim().toLowerCase();
-  const joined=`${name} ${handle} ${comment}`;
-  if(!comment)return true;
-  const hasViewers=/\bviewers?\b/.test(joined);
-  const numericOrDashOnly=/^[\s\d\-_.:]+$/.test(name)||/^[\s\d\-_.:]+$/.test(handle);
-  const startsWithNumberDash=/^\d+\s*[-:]\s*/.test(name)||/^\d+\s*[-:]\s*/.test(comment);
-  if(hasViewers||numericOrDashOnly||startsWithNumberDash||handle==="tiktok-viewer")return true;
-  if(name==="viewers"||handle==="viewers")return true;
-  if(name.startsWith("viewers")||name.includes("viewers -"))return true;
-  if(/^\d+\s*[-–—]\s*/.test(comment))return true;
-  if(/^[-\s]*\d+\s*[-–—]\s*/.test(comment))return true;
-  if(/^\d+\s*$/.test(comment)&&joined.includes("viewers"))return true;
-  if(joined.includes("welcome to tiktok live"))return true;
-  if(joined.includes("community guidelines"))return true;
-  if(joined.includes("comments off")||joined.includes("filtered to protect"))return true;
-  if(/\bjoined\b/.test(joined)||joined.includes("liked the live"))return true;
-  return false;
-};
 const commentMs=(c:Comment)=>{const t=Date.parse(c?.timestamp||"");return Number.isFinite(t)?t:0;};
 const sortCommentsNewest=(list:Comment[])=>[...list].sort((a,b)=>commentMs(b)-commentMs(a));
 
@@ -951,7 +867,7 @@ function Orders({orders,setOrders,onPersist,cur,t}:{orders:LiveOrder[];setOrders
       </div>
       <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
         <div className="filter-tabs">
-          {([["all",t.filter_all],[""+ c.new,t.filter_new],["printed",t.filter_printed],["waiting",t.filter_waiting]] as [string,string][]).map(([v,l],i)=>{
+          {([["all",t.filter_all],[""+ c.new,t.filter_new],["printed",t.filter_printed],["waiting",t.filter_waiting]] as [string,string][]).map(([,l],i)=>{
             const key=["all","new","printed","waiting"][i];
             return <button key={key} onClick={()=>setFilt(key)} className={`ftab ${filt===key?"on":""}`}>{l} ({c[key as keyof typeof c]??c.all})</button>;
           })}
@@ -2008,7 +1924,6 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   const planMonitorUsers=sellerUsers
     .filter(u=>u.planStatus==="expired"||dLeft(u.planExpiry)<=(u.plan==="trial"?3:5))
     .sort((a,b)=>dLeft(a.planExpiry)-dLeft(b.planExpiry));
-  const expiringSoonSellers=planMonitorUsers.filter(u=>u.planStatus!=="expired"&&dLeft(u.planExpiry)>0);
   const pendingPayments=msgs.filter(m=>m.status==="pending");
   const todayIso=new Date().toISOString().slice(0,10);
   const todayOrders=orders.filter(o=>o.date===todayIso);
@@ -2448,27 +2363,24 @@ export default function App(){
   const [currentLiveDayId,setCurrentLiveDayId]=useState(()=>liveDayId());
   const [comments,setComments]=useState<Comment[]>(()=>sortCommentsNewest(cleanComments(LS.get<unknown[]>(sellerLiveDataKey("sf_comments",initialSellerEmail,currentSessionId),[]))).slice(0,LIVE_COMMENT_LIMIT));
   const [archivedComments,setArchivedComments]=useState<Comment[]>(()=>sortCommentsNewest(cleanComments(LS.get<unknown[]>(sellerLiveDataKey("sf_comment_archive",initialSellerEmail,currentSessionId),[]))).slice(0,COMMENT_ARCHIVE_LIMIT));
-  const [buyers,setBuyers]=useState<Buyer[]>(()=>cleanBuyers(sellerDayOrSessionArray<Buyer>("sf_buyers",initialSellerEmail,currentLiveDayId,currentSessionId)));
+  const [buyers,setBuyers]=useState<Buyer[]>(()=>sellerDayOrSessionArray<Buyer>("sf_buyers",initialSellerEmail,currentLiveDayId,currentSessionId));
   const [allOrders,setAllOrders]=useState<LiveOrder[]>(()=>sellerDayOrSessionArray<LiveOrder>("sf_orders",initialSellerEmail,currentLiveDayId,currentSessionId));
   const [selBuyer,setSelBuyer]=useState<Buyer|null>(null);
   const [totOrd,setTotOrd]=useState(()=>{
     const storedOrders=sellerDayOrSessionArray<LiveOrder>("sf_orders",initialSellerEmail,currentLiveDayId,currentSessionId);
-    return storedOrders.length||cleanBuyers(sellerDayOrSessionArray<Buyer>("sf_buyers",initialSellerEmail,currentLiveDayId,currentSessionId)).reduce((s,b)=>s+b.totalOrders,0);
+    return storedOrders.length||sellerDayOrSessionArray<Buyer>("sf_buyers",initialSellerEmail,currentLiveDayId,currentSessionId).reduce((s,b)=>s+b.totalOrders,0);
   });
   const [totRev,setTotRev]=useState(()=>{
     const storedOrders=sellerDayOrSessionArray<LiveOrder>("sf_orders",initialSellerEmail,currentLiveDayId,currentSessionId);
-    return storedOrders.length?storedOrders.reduce((s,o)=>s+o.total,0):cleanBuyers(sellerDayOrSessionArray<Buyer>("sf_buyers",initialSellerEmail,currentLiveDayId,currentSessionId)).reduce((s,b)=>s+b.totalSpent,0);
+    return storedOrders.length?storedOrders.reduce((s,o)=>s+o.total,0):sellerDayOrSessionArray<Buyer>("sf_buyers",initialSellerEmail,currentLiveDayId,currentSessionId).reduce((s,b)=>s+b.totalSpent,0);
   });
   const [ttOn,setTtOn]=useState(false);const [fbOn,setFbOn]=useState(false);
-  const [grabberActive,setGrabberActive]=useState(false);
   const [activeLiveAccounts,setActiveLiveAccounts]=useState<{TikTok:string;Facebook:string}>({TikTok:"",Facebook:""});
   const activeLiveAccountsRef=useRef(activeLiveAccounts);
-  const grabberTimerRef=useRef<number|null>(null);
   const [showConn,setShowConn]=useState(false);const [showProf,setShowProf]=useState(false);
   const [connectTab,setConnectTab]=useState<"TikTok"|"Facebook">("TikTok");
   const [printed,setPrinted]=useState<Set<string>>(()=>new Set(sellerDayOrSessionArray<string>("sf_printed",initialSellerEmail,currentLiveDayId,currentSessionId)));
   const [openCommentMenu,setOpenCommentMenu]=useState<number|null>(null);
-  const [minerSearch,setMinerSearch]=useState("");
   const [supportUnreadCount,setSupportUnreadCount]=useState(0);
   const [toast,setToast]=useState("");
   const feedRef=useRef<HTMLDivElement>(null);
@@ -2484,11 +2396,10 @@ export default function App(){
   const sellerMemoryEmail=()=>user?.email||initialSellerEmail;
   const sellerMemoryKey=(base:string)=>sellerDailyDataKey(base,sellerMemoryEmail(),currentLiveDayId);
   function saveBuyerMemory(next:Buyer[]){
-    const cleanNext=cleanBuyers(next);
-    setBuyers(cleanNext);
-    LS.set(sellerMemoryKey("sf_buyers"),cleanNext);
-    setTotOrd(cleanNext.reduce((s,b)=>s+b.totalOrders,0));
-    setTotRev(cleanNext.reduce((s,b)=>s+b.totalSpent,0));
+    setBuyers(next);
+    LS.set(sellerMemoryKey("sf_buyers"),next);
+    setTotOrd(next.reduce((s,b)=>s+b.totalOrders,0));
+    setTotRev(next.reduce((s,b)=>s+b.totalSpent,0));
   }
   function archiveComments(list:Comment[]){
     const clean=sortCommentsNewest(cleanComments(list));
@@ -2542,7 +2453,7 @@ export default function App(){
     if(!user)return;
     const commentsKey=sellerLiveDataKey("sf_comments",user.email,currentSessionId);
     const archiveKey=sellerLiveDataKey("sf_comment_archive",user.email,currentSessionId);
-    const nextBuyers=cleanBuyers(sellerDayOrSessionArray<Buyer>("sf_buyers",user.email,currentLiveDayId,currentSessionId));
+    const nextBuyers=sellerDayOrSessionArray<Buyer>("sf_buyers",user.email,currentLiveDayId,currentSessionId);
     const nextOrders=sellerDayOrSessionArray<LiveOrder>("sf_orders",user.email,currentLiveDayId,currentSessionId);
     setComments(sortCommentsNewest(cleanComments(LS.get<unknown[]>(commentsKey,[]))).slice(0,LIVE_COMMENT_LIMIT));
     setArchivedComments(sortCommentsNewest(cleanComments(LS.get<unknown[]>(archiveKey,[]))).slice(0,COMMENT_ARCHIVE_LIMIT));
@@ -2566,7 +2477,6 @@ export default function App(){
     s.on("comment", (d: Comment) => {
       const incoming=normalizeComment(d);
       if(!incoming)return;
-      if(isBlockedLiveText(incoming))return;
       if(incoming.sellerId&&incoming.sellerId!==sellerId)return;
       if(incoming.sessionId&&incoming.sessionId!==currentSessionId)return;
       if(incoming.sourceUsername){
@@ -2592,38 +2502,28 @@ export default function App(){
     });
     s.on("buyers_updated",({buyers:b,totalOrders:to,sessionId:eventSessionId}:{buyers:Buyer[];totalOrders:number;sessionId?:string})=>{
       if(eventSessionId&&eventSessionId!==currentSessionId)return;
-      const cleanB=cleanBuyers(b);
-      saveBuyerMemory(cleanB);setTotOrd(cleanB.reduce((s,x)=>s+x.totalOrders,0));
-      const ords=cleanB.flatMap(x=>x.orders.map(o=>({...o,handle:x.handle,name:x.name,bNum:x.num,platform:x.platform,status:"New",date:new Date().toISOString().slice(0,10)})));
+      saveBuyerMemory(b);setTotOrd(to);
+      const ords=b.flatMap(x=>x.orders.map(o=>({...o,handle:x.handle,name:x.name,bNum:x.num,platform:x.platform,status:"New",date:new Date().toISOString().slice(0,10)})));
       setAllOrders(ords);LS.set(sellerDailyDataKey("sf_orders",user.email,currentLiveDayId),ords);
     });
     s.on("platform_status",({platform:p,connected:c,reconnecting,sellerId:eventSellerId,username,sessionId:eventSessionId}:{platform:string;connected:boolean;reconnecting?:boolean;sellerId?:string;username?:string;sessionId?:string})=>{
       if(eventSellerId&&eventSellerId!==sellerId)return;
       if(eventSessionId&&eventSessionId!==currentSessionId)return;
-      if(p==="TikTok"){setTtOn(c||!!reconnecting);if(!c&&!reconnecting)setActiveLiveAccounts(a=>({...a,TikTok:""}));}
-      if(p==="Facebook"){setFbOn(c||!!reconnecting);if(!c&&!reconnecting)setActiveLiveAccounts(a=>({...a,Facebook:""}));}
+      if(p==="TikTok"){setTtOn(c);if(!c&&!reconnecting)setActiveLiveAccounts(a=>({...a,TikTok:""}));}
+      if(p==="Facebook"){setFbOn(c);if(!c&&!reconnecting)setActiveLiveAccounts(a=>({...a,Facebook:""}));}
       if(c&&p==="TikTok"&&username)setActiveLiveAccounts(a=>({...a,TikTok:username}));
       if(c&&p==="Facebook"&&username)setActiveLiveAccounts(a=>({...a,Facebook:username}));
     });
-    s.on("helper_status",({sellerId:eventSellerId,sessionId:eventSessionId,sourceUsername,connected}:{sellerId?:string;sessionId?:string;sourceUsername?:string;connected?:boolean})=>{
-      if(eventSellerId&&eventSellerId!==sellerId)return;
-      if(eventSessionId&&eventSessionId!==currentSessionId)return;
-      setGrabberActive(connected!==false);
-      if(sourceUsername)setActiveLiveAccounts(a=>({...a,TikTok:sourceUsername}));
-      if(grabberTimerRef.current)window.clearTimeout(grabberTimerRef.current);
-      grabberTimerRef.current=window.setTimeout(()=>setGrabberActive(false),30000);
-    });
     s.on("live_session_started",({sellerId:eventSellerId,sessionId:eventSessionId}:{sellerId?:string;sessionId?:string}={})=>{if((!eventSellerId||eventSellerId===sellerId)&&(!eventSessionId||eventSessionId===currentSessionId))clearLiveCommentMemory();});
-    s.on("live_session_ended",({sellerId:eventSellerId,sessionId:eventSessionId}:{sellerId?:string;sessionId?:string}={})=>{if(eventSellerId&&eventSellerId!==sellerId)return;if(eventSessionId&&eventSessionId!==currentSessionId)return;clearLiveCommentMemory();setActiveLiveAccounts({TikTok:"",Facebook:""});setTtOn(false);setFbOn(false);setGrabberActive(false);});
+    s.on("live_session_ended",({sellerId:eventSellerId,sessionId:eventSessionId}:{sellerId?:string;sessionId?:string}={})=>{if(eventSellerId&&eventSellerId!==sellerId)return;if(eventSessionId&&eventSessionId!==currentSessionId)return;clearLiveCommentMemory();setActiveLiveAccounts({TikTok:"",Facebook:""});setTtOn(false);setFbOn(false);});
     s.on("session_state",({buyers:b,totalOrders:to,sessionId:eventSessionId}:{buyers:Buyer[];totalOrders:number;sessionId?:string})=>{
       if(eventSessionId&&eventSessionId!==currentSessionId)return;
       if(!b.length&&!to)return;
-      const cleanB=cleanBuyers(b);
-      saveBuyerMemory(cleanB);setTotOrd(cleanB.reduce((s,x)=>s+x.totalOrders,0));
-      const ords=cleanB.flatMap(x=>x.orders.map(o=>({...o,handle:x.handle,name:x.name,bNum:x.num,platform:x.platform,status:"New",date:new Date().toISOString().slice(0,10)})));
+      saveBuyerMemory(b);setTotOrd(to);
+      const ords=b.flatMap(x=>x.orders.map(o=>({...o,handle:x.handle,name:x.name,bNum:x.num,platform:x.platform,status:"New",date:new Date().toISOString().slice(0,10)})));
       setAllOrders(ords);LS.set(sellerDailyDataKey("sf_orders",user.email,currentLiveDayId),ords);
     });
-    return()=>{if(grabberTimerRef.current)window.clearTimeout(grabberTimerRef.current);s.disconnect();};
+    return()=>{s.disconnect();};
   },[user?.email,currentLiveDayId]);
 
   useEffect(()=>{
@@ -2717,27 +2617,13 @@ export default function App(){
     setToast(`${email} approved for ${plan}`);
   }
   async function connectPlatform(platform:"TikTok"|"Facebook",data:Record<string,string>){
+    const ep=platform==="TikTok"?"/connect/tiktok":"/connect/facebook";
     const connectionMeta={sellerId:sellerIdOf(user.email),sessionId:browserSessionId()};
     const tiktokUsername=cleanLiveAccount(data.username||"");
     const facebookPage=(data.liveVideoId||data.username||"").trim();
-    if(platform==="TikTok"){
-      const cleanValue=tiktokUsername||"TikTok Grabber";
-      setTtOn(true);
-      clearLiveCommentMemory();
-      setActiveLiveAccounts(a=>({...a,TikTok:cleanValue}));
-      if(user){
-        const existing=accountList(user.profile.tiktok);
-        const nextProfile=tiktokUsername&&!existing.includes(tiktokUsername)&&registeredAccountCount(user)<maxAcc(user.plan)
-          ? {...user.profile,tiktok:accountText([...existing,tiktokUsername])}
-          : user.profile;
-        const u={...user,profile:nextProfile,connectedAccounts:[...user.connectedAccounts.filter(a=>a!==platform),platform]};
-        saveUser(u);
-      }
-      setToast("TikTok Grabber mode ready");
-      return;
-    }
-    const ep="/connect/facebook";
-    const body={username:facebookPage,pageName:facebookPage,liveVideoId:facebookPage,accessToken:data.accessToken,...connectionMeta};
+    const body=platform==="TikTok"
+      ? {username:tiktokUsername,...connectionMeta}
+      : {username:facebookPage,pageName:facebookPage,liveVideoId:facebookPage,accessToken:data.accessToken,...connectionMeta};
     try{
       const r=await fetch(`${SERVER}${ep}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
       const j=await r.json();
@@ -2862,9 +2748,7 @@ export default function App(){
   if(!user)return <PublicAuth onLogin={handleLogin} t={t} lang={lang} setLang={setLang}/>;
   if(accountGate)return <AccountGate user={user} onContinue={continueSavedAccount} onSwitch={switchAccount}/>;
 
-  const tikTokLive=ttOn||grabberActive;
-  const isLive=tikTokLive||fbOn;
-  const liveStatusText=grabberActive&&!ttOn&&!fbOn?"GRABBER ACTIVE":isLive?t.live_status:t.offline_status;
+  const isLive=ttOn||fbOn;
   const platformButtonLabel=(platform:"TikTok"|"Facebook",connected:boolean)=>{
     const account=activeLiveAccounts[platform];
     return connected&&account?account:platform;
@@ -2872,19 +2756,11 @@ export default function App(){
   const days=dLeft(user.planExpiry);
   const showMobileBack=["settings","subscription","support","admin","privacy","terms","deleteAccount"].includes(page);
   const navItems:[Page,string,string][]=[
-    ["dashboard","⚡",t.nav_live],["miners","🏅","Miner list"],["orders","🛒",t.nav_orders],
+    ["dashboard","⚡",t.nav_live],["miners","🏅",t.nav_miners],["orders","🛒",t.nav_orders],
     ["products","📦",t.nav_products],["customers","👥",t.nav_customers],["print","🖨️",t.nav_print],["sales","📊",t.nav_sales],
   ];
   const mobileMainNav=new Set<Page>(["dashboard","orders","products","sales","settings"]);
   const navClass=(id:Page)=>`nav-it ${page===id?"on":""} ${mobileMainNav.has(id)?"mobile-main-nav":""}`;
-  const minerQuery=minerSearch.trim().toLowerCase();
-  const visibleBuyers=buyers.filter(b=>{
-    if(!minerQuery)return true;
-    return String(b.num).includes(minerQuery)||
-      b.name.toLowerCase().includes(minerQuery)||
-      b.handle.toLowerCase().includes(minerQuery)||
-      b.platform.toLowerCase().includes(minerQuery);
-  });
 
   return(
     <div className="app" onClick={()=>{setShowProf(false);setOpenCommentMenu(null);}}>
@@ -2914,8 +2790,8 @@ export default function App(){
       <main className="main">
         <header className={`topbar ${showMobileBack?"has-mobile-back":""}`}>
           {showMobileBack&&<button className="mobile-page-back" onClick={()=>setPage("dashboard")}>Back</button>}
-          <div className={`live-pill ${isLive?"live":"off"}`}><span className="live-dot"/> {liveStatusText}</div>
-          <button onClick={()=>{setConnectTab("TikTok");setShowConn(true);}} className={`plat-btn ${tikTokLive?"on active-account":""}`} title={tikTokLive&&activeLiveAccounts.TikTok?`TikTok: ${activeLiveAccounts.TikTok}`:"TikTok"}>{platformButtonLabel("TikTok",tikTokLive)} {tikTokLive?"✓":""}</button>
+          <div className={`live-pill ${isLive?"live":"off"}`}><span className="live-dot"/> {isLive?t.live_status:t.offline_status}</div>
+          <button onClick={()=>{setConnectTab("TikTok");setShowConn(true);}} className={`plat-btn ${ttOn?"on active-account":""}`} title={ttOn&&activeLiveAccounts.TikTok?`TikTok: ${activeLiveAccounts.TikTok}`:"TikTok"}>{platformButtonLabel("TikTok",ttOn)} {ttOn?"✓":""}</button>
           <button onClick={()=>{setConnectTab("Facebook");setShowConn(true);}} className={`plat-btn ${fbOn?"on active-account":""}`} title={fbOn&&activeLiveAccounts.Facebook?`Facebook: ${activeLiveAccounts.Facebook}`:"Facebook"}>{platformButtonLabel("Facebook",fbOn)} {fbOn?"✓":""}</button>
           <select value={lang} onChange={e=>setLang(e.target.value as Lang)} className="lang-sel">
             {LANG_OPTS.map(l=><option key={l.code} value={l.code}>{l.label}</option>)}
@@ -3011,7 +2887,23 @@ export default function App(){
                 <div className="stat-c"><div className="stat-l">{t.revenue_stat}</div><div className="stat-v" style={{color:"#1D9E75"}}>{settings.currency}{totRev.toLocaleString()}</div></div>
                 <div className="stat-c"><div className="stat-l">{t.buyers_stat}</div><div className="stat-v" style={{color:"#534AB7"}}>{buyers.length}</div></div>
               </div>
-              <div className="mobile-swipe-hint">Swipe right: stats, slip preview, tools. Open Miner list from the side menu.</div>
+              <div className="mobile-swipe-hint">Swipe right: stats, buyer numbers, slip preview</div>
+            </section>
+            <section className="miners-col">
+              <div className="col-lbl">{t.miners_label}<span style={{marginLeft:"auto",fontSize:11,color:"#888"}}>{buyers.length} {t.buyers_stat}</span></div>
+              <div className="miners-wrap">
+                <div className="miners-hd"><span>{t.buyer_numbers}</span><span style={{fontSize:11,color:"#888"}}>{totOrd}</span></div>
+                <div className="miners-list">
+                  {buyers.length===0&&<div className="miners-empty">{t.no_orders}</div>}
+                  {buyers.map(b=>(
+                    <div key={b.handle} className={`buyer-row ${selBuyer?.handle===b.handle?"active":""}`} onClick={()=>setSelBuyer(b)}>
+                      <div className="b-num" style={{background:nc(b.num)}}>{b.num}</div>
+                      <div className="b-info"><div className="b-name">{b.name}</div><div className="b-handle">@{b.handle}</div></div>
+                      <div className="b-right"><div className="b-total">{b.totalSpent>0?`${settings.currency}${b.totalSpent.toLocaleString()}`:""}</div><div className="b-ords">{b.totalOrders}</div></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </section>
             <section className="slip-col">
               <div className="col-lbl">{t.slip_label}<span style={{marginLeft:"auto",fontSize:11,color:"#888"}}>{selBuyer?t.btn_printed:t.no_order_yet}</span></div>
@@ -3054,20 +2946,15 @@ export default function App(){
         {/* MINERS PAGE */}
         {page==="miners"&&(
           <div className="subpage">
-            <div className="subpage-hd"><div><h2>Miner list</h2><p>All buyers with permanent numbers. Search by name, username, or buyer number.</p></div>
-              <button className="btn-out" onClick={()=>csvDL("miners.csv",["#","Name","Username","Platform","Orders","Total"],visibleBuyers.map(b=>[b.num,b.name,`@${b.handle}`,b.platform,b.totalOrders,`${settings.currency}${b.totalSpent}`]))}>⬇ {t.export_csv}</button>
+            <div className="subpage-hd"><div><h2>{t.nav_miners}</h2><p>All buyers with permanent numbers</p></div>
+              <button className="btn-out" onClick={()=>csvDL("miners.csv",["#","Name","Username","Platform","Orders","Total"],buyers.map(b=>[b.num,b.name,`@${b.handle}`,b.platform,b.totalOrders,`${settings.currency}${b.totalSpent}`]))}>⬇ {t.export_csv}</button>
             </div>
             <div className="table-card">
-              <div className="table-tools">
-                <input className="search-inp" value={minerSearch} onChange={e=>setMinerSearch(e.target.value)} placeholder="Search miner, username, or buyer number..." />
-                <span className="table-count">{visibleBuyers.length} found</span>
-              </div>
               <table className="tbl">
                 <thead><tr><th>#</th><th>Name</th><th>Username</th><th>Platform</th><th>Orders</th><th>Total</th><th></th></tr></thead>
                 <tbody>
                   {buyers.length===0&&<tr><td colSpan={7} style={{textAlign:"center",padding:40,color:"#888"}}>No buyers yet</td></tr>}
-                  {buyers.length>0&&visibleBuyers.length===0&&<tr><td colSpan={7} style={{textAlign:"center",padding:40,color:"#888"}}>No miners found</td></tr>}
-                  {visibleBuyers.map(b=>(
+                  {buyers.map(b=>(
                     <tr key={b.handle}>
                       <td><div style={{width:28,height:28,borderRadius:"50%",background:nc(b.num),color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700}}>{b.num}</div></td>
                       <td><div style={{display:"flex",alignItems:"center",gap:8}}><Av name={b.name} size={28}/><strong>{b.name}</strong></div></td>
