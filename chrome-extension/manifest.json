@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "SellerFlowLive Grabber FIXED",
+  "description": "Reads visible TikTok LIVE comments and sends them to SellerFlowLive.",
+  "version": "1.0.1",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://www.tiktok.com/*",
+    "https://sellerflowlive.com/*",
+    "https://www.sellerflowlive.com/*",
+    "https://sellerflow-live-server.onrender.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://www.tiktok.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "SellerFlowLive TikTok Grabber"
+  }
+}

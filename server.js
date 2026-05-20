@@ -8,6 +8,7 @@ const app = express();
 const server = http.createServer(app);
 const TEST_COMMENT_TOKEN = process.env.TEST_COMMENT_TOKEN || "";
 const HELPER_COMMENT_TOKEN = process.env.HELPER_COMMENT_TOKEN || "";
+const ENABLE_DIRECT_TIKTOK = process.env.ENABLE_DIRECT_TIKTOK === "true";
 
 
 const io = new Server(server, {
@@ -47,6 +48,126 @@ function cleanAccountKey(value) {
     .replace(/[^a-z0-9@._-]/g, "");
 }
 
+function compactText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function isViewerOrSystemText(value) {
+  const text = compactText(value);
+  if (!text) return true;
+  const blocked = [
+    "welcome to tiktok live",
+    "community guidelines",
+    "creators must be",
+    "viewers must be",
+    "comments off",
+    "liked the live",
+    "joined",
+    "followed the host",
+    "suggested live creators",
+    "recommended live streams",
+    "discover live",
+    "creator tools",
+    "get coins",
+    "recharge",
+    "company",
+    "program",
+    "terms & policies",
+    "watch now",
+    "filtered to protect",
+    "send gifts",
+    "follow our community"
+  ];
+  return blocked.some((word) => text.includes(word));
+}
+
+function isBadIdentity(value) {
+  const text = compactText(value);
+  if (!text || text.length < 2 || text.length > 80) return true;
+  if (text === "viewers" || text === "viewer" || text === "tiktok-viewer") return true;
+  if (/\bviewers?\b/.test(text)) return true;
+  if (/^[\s\d\-_.:]+$/.test(text)) return true;
+  if (/^[\W_]+$/u.test(text)) return true;
+  if (/^\d+\s*[-:]/.test(text)) return true;
+  return isViewerOrSystemText(text);
+}
+
+function isViewerNoisePayload({ name = "", handle = "", comment = "" } = {}) {
+  const cleanName = String(name || "").trim();
+  const cleanHandle = String(handle || "").trim();
+  const cleanComment = String(comment || "").trim();
+  const joined = compactText(`${cleanName} ${cleanHandle} ${cleanComment}`);
+  if (!cleanComment) return true;
+  if (isBadIdentity(cleanName) || isBadIdentity(cleanHandle)) return true;
+  if (/\bviewers?\b/.test(joined)) return true;
+  if (isViewerOrSystemText(cleanComment)) return true;
+  if (/^\d+\s*[-:]\s*/.test(cleanComment)) return true;
+  if (/^[-_.:\s]+$/.test(cleanComment)) return true;
+  return false;
+}
+
+function isBadHelperComment({ name = "", handle = "", comment = "" } = {}) {
+  if (isViewerNoisePayload({ name, handle, comment })) return true;
+  const joined = `${name} ${handle} ${comment}`.replace(/\s+/g, " ").trim().toLowerCase();
+  const cleanName = String(name || "").trim();
+  const cleanHandle = String(handle || "").trim().toLowerCase();
+  const cleanComment = String(comment || "").trim();
+  const nameValue = cleanName.toLowerCase();
+  const commentValue = cleanComment.toLowerCase();
+  const handleValue = cleanHandle.toLowerCase();
+  const hasViewers = /\bviewers?\b/.test(joined);
+  const numericOrDashOnly = /^[\s\d\-_.:]+$/.test(cleanName) || /^[\s\d\-_.:]+$/.test(cleanHandle);
+  const startsWithNumberDash = /^\d+\s*[-:]\s*/.test(cleanName) || /^\d+\s*[-:]\s*/.test(cleanComment);
+  const looksLikeViewerPanelName =
+    nameValue === "viewers" ||
+    handleValue === "viewers" ||
+    nameValue.startsWith("viewers -") ||
+    handleValue === "tiktok-viewer";
+  if (looksLikeViewerPanelName || hasViewers || numericOrDashOnly || startsWithNumberDash) return true;
+  if (!cleanComment) return true;
+  if (nameValue === "viewers" || cleanHandle === "viewers") return true;
+  if (/^viewers?\b/i.test(cleanName)) return true;
+  if (/\bviewers?\s*[-–—]/i.test(cleanName)) return true;
+  if (/^\d+\s*[-–—]\s*/.test(cleanComment)) return true;
+  if (/^[-\s]*\d+\s*[-–—]\s*/.test(cleanComment)) return true;
+  if (/^\d+\s*$/.test(cleanComment) && /\bviewers?\b/.test(joined)) return true;
+  if (/^\d+\s+[\p{L}\p{N}_@.[\]\- ]{1,80}$/u.test(cleanComment) && /\bviewers?\b/.test(joined)) return true;
+  if (/^(viewers?|viewer)$/i.test(cleanName) || /^(viewers?|viewer)$/i.test(cleanHandle)) return true;
+  if (/^(new|send|more|recharge)$/i.test(commentValue)) return true;
+  if (/^(back|more|send|recharge)$/i.test(cleanName)) return true;
+  if (/^[-\s]*\d+\s*-/.test(cleanName)) return true;
+  if (/^(viewers?|viewer|new|live|more|send|recharge)$/i.test(cleanName)) return true;
+  if (/^(viewers?|viewer)$/i.test(cleanHandle)) return true;
+  if (/^[-–—.•·\s]+$/u.test(cleanName)) return true;
+  if (/^\d+$/.test(cleanName)) return true;
+  if (/^\d+\s*-\s*/.test(cleanComment) || /^[-–—]\s*\d+/.test(cleanComment)) return true;
+  const blocked = [
+    "welcome to tiktok live",
+    "community guidelines",
+    "comments off",
+    "liked the live",
+    "joined",
+    "suggested live creators",
+    "recommended live streams",
+    "discover live",
+    "creator tools",
+    "get coins",
+    "recharge",
+    "company",
+    "program",
+    "terms & policies",
+    "filtered to protect",
+    "have fun interacting",
+    "creators must be",
+    "viewers must be",
+    "send gifts",
+    "follow our community",
+    "pouch-life joined",
+    "viewers"
+  ];
+  return blocked.some((word) => joined.includes(word));
+}
+
 function liveKey(sellerId, platform, username) {
   return `${cleanSellerId(sellerId)}:${platform}:${cleanAccountKey(username)}`;
 }
@@ -84,28 +205,30 @@ io.on("connection", (socket) => {
     socket.data.sellerId = cleanId;
     socket.data.sessionId = String(sessionId || "");
 
-    for (const active of tiktokConnections.values()) {
-      if (active.sellerId !== cleanId) continue;
-      socket.emit("platform_status", {
-        platform: "TikTok",
-        connected: true,
-        sellerId: cleanId,
-        username: active.username,
-        sessionId: active.sessionId,
-      });
-    }
-    for (const target of tiktokReconnectTargets.values()) {
-      if (target.sellerId !== cleanId) continue;
-      socket.emit("platform_status", {
-        platform: "TikTok",
-        connected: false,
-        reconnecting: true,
-        sellerId: cleanId,
-        username: target.username,
-        sessionId: target.sessionId,
-        reason: target.reason,
-        nextRetryMs: TIKTOK_RECONNECT_RETRY_MS,
-      });
+    if (ENABLE_DIRECT_TIKTOK) {
+      for (const active of tiktokConnections.values()) {
+        if (active.sellerId !== cleanId) continue;
+        socket.emit("platform_status", {
+          platform: "TikTok",
+          connected: true,
+          sellerId: cleanId,
+          username: active.username,
+          sessionId: active.sessionId,
+        });
+      }
+      for (const target of tiktokReconnectTargets.values()) {
+        if (target.sellerId !== cleanId) continue;
+        socket.emit("platform_status", {
+          platform: "TikTok",
+          connected: false,
+          reconnecting: true,
+          sellerId: cleanId,
+          username: target.username,
+          sessionId: target.sessionId,
+          reason: target.reason,
+          nextRetryMs: TIKTOK_RECONNECT_RETRY_MS,
+        });
+      }
     }
     for (const active of facebookConnections.values()) {
       if (active.sellerId !== cleanId) continue;
@@ -248,6 +371,14 @@ app.post("/helper/comment", (req, res) => {
     });
   }
 
+  if (isBadHelperComment({ name, handle, comment })) {
+    return res.status(202).json({
+      success: true,
+      skipped: true,
+      reason: "Ignored TikTok page text",
+    });
+  }
+
   io.to(sellerRoom(sellerId)).emit("comment", {
     handle,
     name,
@@ -283,6 +414,12 @@ function emitTikTokStatus({ sellerId, username, sessionId, connected, reconnecti
 }
 
 function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "disconnected") {
+  if (!ENABLE_DIRECT_TIKTOK) {
+    clearTikTokReconnect(key);
+    tiktokReconnectAttempts.delete(key);
+    tiktokReconnectTargets.delete(key);
+    return;
+  }
   if (tiktokReconnectTimers.has(key)) return;
   const tries = (tiktokReconnectAttempts.get(key) || 0) + 1;
   tiktokReconnectAttempts.set(key, tries);
@@ -373,6 +510,9 @@ function handleTikTokDisconnected(key, connection, reason = "disconnected", { re
 }
 
 async function startTikTokConnection(key, username, sellerId, sessionId, { emitStart = false } = {}) {
+  if (!ENABLE_DIRECT_TIKTOK) {
+    throw new Error("Direct TikTok connector is disabled. Use the SellerFlowLive TikTok Grabber extension.");
+  }
   clearTikTokReconnect(key);
 
   const cleanUsername = cleanAccountKey(username);
@@ -414,6 +554,7 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
     const handle = data.uniqueId || "unknown";
     const active = tiktokConnections.get(key);
     if (active?.connection === tiktokConnection) active.lastCommentAt = Date.now();
+    if (isBadHelperComment({ name, handle, comment })) return;
 
     io.to(sellerRoom(sellerId)).emit("comment", {
       handle,
@@ -437,6 +578,14 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
 
 async function connectTikTok(username, res, meta = {}) {
   try {
+    if (!ENABLE_DIRECT_TIKTOK) {
+      return res.status(409).json({
+        success: false,
+        disabled: true,
+        error: "Direct TikTok connector is disabled. Use the SellerFlowLive TikTok Grabber extension.",
+      });
+    }
+
     if (!username) {
       return res.status(400).json({
         success: false,
