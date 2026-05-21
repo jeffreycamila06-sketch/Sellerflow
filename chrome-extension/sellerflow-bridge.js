@@ -39,6 +39,10 @@
     return email ? `${base}:${sellerIdOf(email)}:${sessionId}` : base;
   }
 
+  function sellerDailyDataKey(base, email, dayId) {
+    return email ? `${base}:${sellerIdOf(email)}:${dayId}` : base;
+  }
+
   function commentKey(comment) {
     return [
       comment.platform || "TikTok",
@@ -61,7 +65,6 @@
       buyerData: null,
       time: new Date().toLocaleTimeString(),
       timestamp: String(raw.timestamp || new Date().toISOString()),
-      sourceUsername: "browser-helper",
     };
   }
 
@@ -69,14 +72,22 @@
     const email = getJson("sf_session", "");
     if (!email) return false;
     const sessionId = browserSessionId();
-    const key = sellerLiveDataKey("sf_comments", email, sessionId);
-    const current = Array.isArray(getJson(key, [])) ? getJson(key, []) : [];
+    const keys = [
+      sellerLiveDataKey("sf_comments", email, sessionId),
+      sellerDailyDataKey("sf_comments", email, liveDayId()),
+    ];
     const comment = normalizeComment(raw);
     if (!comment) return false;
-    const seen = new Set(current.map(commentKey));
-    if (seen.has(commentKey(comment))) return true;
-    setJson(key, [comment, ...current].slice(0, LIVE_LIMIT));
-    window.dispatchEvent(new StorageEvent("storage", { key }));
+    const keyOfComment = commentKey(comment);
+    for (const key of keys) {
+      const current = Array.isArray(getJson(key, [])) ? getJson(key, []) : [];
+      const seen = new Set(current.map(commentKey));
+      if (!seen.has(keyOfComment)) {
+        setJson(key, [comment, ...current].slice(0, LIVE_LIMIT));
+      }
+      window.dispatchEvent(new StorageEvent("storage", { key }));
+    }
+    window.dispatchEvent(new CustomEvent("sellerflow-live-comment", { detail: comment }));
     return true;
   }
 

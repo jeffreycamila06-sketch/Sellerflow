@@ -3,6 +3,7 @@
     running: "sflc_running",
     position: "sflc_position",
     backendUrl: "sflc_backend_url",
+    collapsed: "sflc_collapsed",
   };
   const WIDGET_ID = "sellerflow-live-comment-widget";
   const COMMENT_SCAN_MS = 450;
@@ -18,6 +19,9 @@
   let backendInput;
   let startBtn;
   let stopBtn;
+  let toggleBtn;
+  let collapsed = true;
+  let wasDragged = false;
 
   function storageGet(keys) {
     return new Promise((resolve) => chrome.storage.local.get(keys, resolve));
@@ -75,6 +79,7 @@
   function isLikelyCommentText(text) {
     if (isSystemText(text)) return false;
     const lower = text.toLowerCase();
+    if (/^\d{2,8}$/.test(text)) return true;
     if (/^\d+(\.\d+)?[kKmM]?$/.test(text)) return false;
     if (/^[\u2665\s]+$/.test(text)) return false;
     if (["like", "likes", "follow", "share"].includes(lower)) return false;
@@ -197,9 +202,9 @@
       const sent = await sendComment(item);
       if (sent !== "failed") {
         sentCount += 1;
-        setStatus(sent === "queued" ? "Captured. Open SellerFlowLive tab to sync." : `Captured: ${item.comment.slice(0, 56)}`);
+        setStatus(sent === "queued" ? "Captured. Open/refresh SellerFlowLive tab to sync." : `Captured: ${item.comment.slice(0, 56)}`);
       } else {
-        setStatus("Cannot sync. Open SellerFlowLive tab or set backend URL.");
+        setStatus("Cannot sync. Open SellerFlowLive tab.");
       }
     }
     updateWidget();
@@ -212,6 +217,9 @@
   function updateWidget() {
     if (!widget) return;
     widget.classList.toggle("sflc-running", running);
+    widget.classList.toggle("sflc-collapsed", collapsed);
+    toggleBtn.textContent = collapsed ? "Show" : "Hide";
+    toggleBtn.title = collapsed ? "Show controls" : "Hide controls";
     startBtn.disabled = running;
     stopBtn.disabled = !running;
     countEl.textContent = `${sentCount} comments sent`;
@@ -238,14 +246,17 @@
 
   function makeDraggable(handle) {
     let dragging = false;
+    let moved = false;
     let startX = 0;
     let startY = 0;
     let startLeft = 0;
     let startTop = 0;
 
-    handle.addEventListener("mousedown", (event) => {
+    const beginDrag = (event) => {
       if (event.target.closest("button,input")) return;
       dragging = true;
+      moved = false;
+      wasDragged = false;
       const rect = widget.getBoundingClientRect();
       startX = event.clientX;
       startY = event.clientY;
@@ -255,27 +266,45 @@
       widget.style.bottom = "auto";
       widget.style.left = `${rect.left}px`;
       widget.style.top = `${rect.top}px`;
+      widget.setPointerCapture?.(event.pointerId);
       event.preventDefault();
-    });
+    };
 
-    window.addEventListener("mousemove", (event) => {
+    const moveDrag = (event) => {
       if (!dragging) return;
-      const nextLeft = Math.max(0, Math.min(window.innerWidth - widget.offsetWidth, startLeft + event.clientX - startX));
-      const nextTop = Math.max(0, Math.min(window.innerHeight - widget.offsetHeight, startTop + event.clientY - startY));
+      const deltaX = event.clientX - startX;
+      const deltaY = event.clientY - startY;
+      if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
+        moved = true;
+        wasDragged = true;
+      }
+      const nextLeft = Math.max(0, Math.min(window.innerWidth - widget.offsetWidth, startLeft + deltaX));
+      const nextTop = Math.max(0, Math.min(window.innerHeight - widget.offsetHeight, startTop + deltaY));
       widget.style.left = `${nextLeft}px`;
       widget.style.top = `${nextTop}px`;
-    });
+    };
 
-    window.addEventListener("mouseup", async () => {
+    const endDrag = async (event) => {
       if (!dragging) return;
       dragging = false;
+      widget.releasePointerCapture?.(event.pointerId);
       await storageSet({
         [STORAGE_KEYS.position]: {
           left: widget.style.left,
           top: widget.style.top,
         },
       });
-    });
+      if (moved) {
+        window.setTimeout(() => {
+          wasDragged = false;
+        }, 200);
+      }
+    };
+
+    handle.addEventListener("pointerdown", beginDrag);
+    window.addEventListener("pointermove", moveDrag);
+    window.addEventListener("pointerup", endDrag);
+    window.addEventListener("pointercancel", endDrag);
   }
 
   async function createWidget() {
@@ -286,6 +315,7 @@
       <div class="sflc-head">
         <div class="sflc-title">SellerFlow Live Comment</div>
         <div class="sflc-dot" aria-hidden="true"></div>
+        <button class="sflc-toggle" type="button" title="Show controls">Show</button>
       </div>
       <div class="sflc-body">
         <div class="sflc-status">Stopped</div>
@@ -303,12 +333,26 @@
     backendInput = widget.querySelector(".sflc-backend");
     startBtn = widget.querySelector(".sflc-start");
     stopBtn = widget.querySelector(".sflc-stop");
+    toggleBtn = widget.querySelector(".sflc-toggle");
     startBtn.addEventListener("click", start);
     stopBtn.addEventListener("click", stop);
+    toggleBtn.addEventListener("click", async () => {
+      if (wasDragged) return;
+      collapsed = !collapsed;
+      await storageSet({ [STORAGE_KEYS.collapsed]: collapsed });
+      updateWidget();
+    });
+    widget.addEventListener("dblclick", async (event) => {
+      if (event.target.closest("button,input")) return;
+      collapsed = !collapsed;
+      await storageSet({ [STORAGE_KEYS.collapsed]: collapsed });
+      updateWidget();
+    });
     backendInput.addEventListener("change", () => storageSet({ [STORAGE_KEYS.backendUrl]: cleanText(backendInput.value) }));
     makeDraggable(widget);
 
-    const saved = await storageGet([STORAGE_KEYS.running, STORAGE_KEYS.position, STORAGE_KEYS.backendUrl]);
+    const saved = await storageGet([STORAGE_KEYS.running, STORAGE_KEYS.position, STORAGE_KEYS.backendUrl, STORAGE_KEYS.collapsed]);
+    collapsed = saved[STORAGE_KEYS.collapsed] !== false;
     backendInput.value = saved[STORAGE_KEYS.backendUrl] || "";
     const position = saved[STORAGE_KEYS.position];
     if (position?.left && position?.top) {
