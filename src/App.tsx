@@ -2352,7 +2352,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   );
 }
 
-function ConnectModal({onClose,onConnect,user,t,initialTab="TikTok"}:{onClose:()=>void;onConnect:(p:"TikTok"|"Facebook",d:Record<string,string>)=>void;user:User;t:T;initialTab?:"TikTok"|"Facebook"}){
+function ConnectModal({onClose,onConnect,user,t,initialTab="TikTok"}:{onClose:()=>void;onConnect:(p:"TikTok"|"Facebook",d:Record<string,string>)=>Promise<void>|void;user:User;t:T;initialTab?:"TikTok"|"Facebook"}){
   const [tab,setTab]=useState<"TikTok"|"Facebook">(initialTab);
   const [ttu,setTtu]=useState("");const [fbId,setFbId]=useState("");const [fbTok,setFbTok]=useState("");const [busy,setBusy]=useState(false);
   const registeredTikTok=accountList(user.profile.tiktok).slice(0,maxAcc(user.plan));
@@ -2368,16 +2368,20 @@ function ConnectModal({onClose,onConnect,user,t,initialTab="TikTok"}:{onClose:()
   async function connect(){
     if(!canConnect)return;
     setBusy(true);
-    if(tab==="TikTok")onConnect("TikTok",{username:tiktokValue});
-    else onConnect("Facebook",{liveVideoId:facebookValue,accessToken:fbTok});
-    setBusy(false);onClose();
+    try{
+      if(tab==="TikTok")await onConnect("TikTok",{username:tiktokValue});
+      else await onConnect("Facebook",{liveVideoId:facebookValue,accessToken:fbTok});
+      onClose();
+    }finally{
+      setBusy(false);
+    }
   }
   function chooseRegistered(value:string){
     if(tab==="TikTok")setSelectedTikTok(value);
     else setSelectedFacebook(value);
   }
   return(
-    <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&!busy&&onClose()}>
       <div className="modal">
         <div className="modal-hd"><span>{t.connect_title}</span><button onClick={onClose} className="modal-x">×</button></div>
         {!canConnect&&<div className="auth-err" style={{margin:"10px 16px 0"}}>⚠ {t.plan_limit}</div>}

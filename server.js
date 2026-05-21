@@ -22,13 +22,16 @@ const tiktokConnections = new Map();
 const facebookConnections = new Map();
 const tiktokReconnectTimers = new Map();
 const tiktokReconnectAttempts = new Map();
+const tiktokConnectLocks = new Set();
+const tiktokRateLimitCooldowns = new Map();
 const manualTikTokDisconnects = new Set();
-const TIKTOK_RECONNECT_BASE_MS = 30000;
-const TIKTOK_RECONNECT_MAX_MS = 180000;
-const TIKTOK_RECONNECT_JITTER_MS = 30000;
-const TIKTOK_MAX_PARALLEL_RECONNECTS = 3;
-const TIKTOK_HEALTH_CHECK_MS = 30000;
-const TIKTOK_STALE_MS = 180000;
+const TIKTOK_RECONNECT_BASE_MS = 5 * 60 * 1000;
+const TIKTOK_RECONNECT_MAX_MS = 30 * 60 * 1000;
+const TIKTOK_RECONNECT_JITTER_MS = 60 * 1000;
+const TIKTOK_RATE_LIMIT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const TIKTOK_MAX_PARALLEL_RECONNECTS = 1;
+const TIKTOK_HEALTH_CHECK_MS = 60 * 1000;
+const TIKTOK_STALE_MS = 10 * 60 * 1000;
 let activeTikTokReconnects = 0;
 const pendingTikTokReconnects = [];
 
@@ -53,6 +56,38 @@ function cleanAccountKey(value) {
 
 function liveKey(sellerId, platform, username) {
   return `${cleanSellerId(sellerId)}:${platform}:${cleanAccountKey(username)}`;
+}
+
+function isTikTokRateLimitError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return message.includes("rate_limit") || message.includes("too many connections");
+}
+
+function rememberTikTokRateLimit(key, sellerId, username, sessionId, error) {
+  const retryAt = Date.now() + TIKTOK_RATE_LIMIT_COOLDOWN_MS;
+  tiktokRateLimitCooldowns.set(key, retryAt);
+  clearTikTokReconnect(key);
+  tiktokReconnectAttempts.delete(key);
+  emitTikTokStatus({
+    sellerId,
+    username,
+    sessionId,
+    connected: false,
+    reconnecting: false,
+    reason: "rate_limited",
+    nextRetryMs: TIKTOK_RATE_LIMIT_COOLDOWN_MS,
+  });
+  console.log(`TikTok rate limit cooldown for ${username} until ${new Date(retryAt).toISOString()}: ${error?.message || error}`);
+}
+
+function getTikTokCooldownMs(key) {
+  const retryAt = tiktokRateLimitCooldowns.get(key) || 0;
+  const remainingMs = retryAt - Date.now();
+  if (remainingMs <= 0) {
+    tiktokRateLimitCooldowns.delete(key);
+    return 0;
+  }
+  return remainingMs;
 }
 
 function clearTikTokReconnect(key) {
@@ -283,6 +318,19 @@ function emitTikTokStatus({ sellerId, username, sessionId, connected, reconnecti
 
 function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "disconnected") {
   if (tiktokReconnectTimers.has(key)) return;
+  const cooldownMs = getTikTokCooldownMs(key);
+  if (cooldownMs > 0) {
+    emitTikTokStatus({
+      sellerId,
+      username,
+      sessionId,
+      connected: false,
+      reconnecting: false,
+      reason: "rate_limited",
+      nextRetryMs: cooldownMs,
+    });
+    return;
+  }
 
   const attempt = (tiktokReconnectAttempts.get(key) || 0) + 1;
   tiktokReconnectAttempts.set(key, attempt);
@@ -308,6 +356,10 @@ function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "d
         console.log(`Reconnected TikTok LIVE: ${username} for ${sellerId}`);
       } catch (error) {
         console.log(`TikTok reconnect failed for ${username}: ${error.message}`);
+        if (isTikTokRateLimitError(error)) {
+          rememberTikTokRateLimit(key, sellerId, username, sessionId, error);
+          return;
+        }
         scheduleTikTokReconnect(key, username, sellerId, sessionId, "retry_failed");
       }
     });
@@ -426,6 +478,10 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
 }
 
 async function connectTikTok(username, res, meta = {}) {
+  let key = "";
+  let sellerId = "";
+  let sessionId = "";
+  let cleanUsername = "";
   try {
     if (!username) {
       return res.status(400).json({
@@ -434,7 +490,7 @@ async function connectTikTok(username, res, meta = {}) {
       });
     }
 
-    const sellerId = cleanSellerId(meta.sellerId);
+    sellerId = cleanSellerId(meta.sellerId);
     if (!sellerId) {
       return res.status(400).json({
         success: false,
@@ -442,15 +498,51 @@ async function connectTikTok(username, res, meta = {}) {
       });
     }
 
-    const sessionId = String(meta.sessionId || "");
-    const cleanUsername = cleanAccountKey(username);
+    sessionId = String(meta.sessionId || "");
+    cleanUsername = cleanAccountKey(username);
     if (!cleanUsername) {
       return res.status(400).json({
         success: false,
         error: "TikTok username is required",
       });
     }
-    const key = liveKey(sellerId, "TikTok", cleanUsername);
+    key = liveKey(sellerId, "TikTok", cleanUsername);
+    const cooldownMs = getTikTokCooldownMs(key);
+    if (cooldownMs > 0) {
+      return res.status(429).json({
+        success: false,
+        error: `TikTok connection is on cooldown after a rate limit. Try again in ${Math.ceil(cooldownMs / 60000)} minutes.`,
+        cooldownMs,
+      });
+    }
+
+    const existing = tiktokConnections.get(key);
+    if (existing) {
+      existing.sessionId = sessionId || existing.sessionId;
+      touchTikTokConnection(key, existing.connection);
+      emitTikTokStatus({
+        sellerId,
+        username: cleanUsername,
+        sessionId: existing.sessionId,
+        connected: true,
+        reconnecting: false,
+        reason: "already_connected",
+      });
+      return res.json({
+        success: true,
+        reused: true,
+        message: `TikTok LIVE already connected: ${cleanUsername}`,
+      });
+    }
+
+    if (tiktokConnectLocks.has(key)) {
+      return res.status(429).json({
+        success: false,
+        error: "TikTok connection is already starting. Please wait before trying again.",
+      });
+    }
+
+    tiktokConnectLocks.add(key);
     await disconnectTikTokConnection(key, { manual: true });
     await startTikTokConnection(key, cleanUsername, sellerId, sessionId, { emitStart: true });
 
@@ -460,11 +552,21 @@ async function connectTikTok(username, res, meta = {}) {
     });
   } catch (error) {
     console.log(error);
+    if (key && isTikTokRateLimitError(error)) {
+      rememberTikTokRateLimit(key, sellerId, cleanUsername, sessionId, error);
+      return res.status(429).json({
+        success: false,
+        error: `TikTok rate limit reached. Auto reconnect stopped for ${Math.round(TIKTOK_RATE_LIMIT_COOLDOWN_MS / 3600000)} hours.`,
+        cooldownMs: TIKTOK_RATE_LIMIT_COOLDOWN_MS,
+      });
+    }
 
     return res.status(500).json({
       success: false,
       error: error.message,
     });
+  } finally {
+    if (key) tiktokConnectLocks.delete(key);
   }
 }
 
