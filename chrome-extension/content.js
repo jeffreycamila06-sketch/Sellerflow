@@ -124,6 +124,15 @@
     return /[a-zA-Z0-9\u00c0-\uFFFF]/.test(text);
   }
 
+  function isNumericOnly(text) {
+    return /^\d{1,8}$/.test(cleanText(text));
+  }
+
+  function isLikelyNameOrHandle(text) {
+    const cleaned = cleanText(text).replace(/^@/, "");
+    return /^[a-zA-Z0-9._-]{2,32}$/.test(cleaned) && /[a-zA-Z_]/.test(cleaned);
+  }
+
   function visibleElements() {
     const rightSide = Array.from(document.querySelectorAll("div, section, aside")).filter((element) => {
       const rect = element.getBoundingClientRect();
@@ -158,7 +167,7 @@
     if (!lines.length) lines = [text];
     if (lines.length < 2 || lines.length > 6) return null;
 
-    const handleLine = lines.find((line) => /^@?[a-zA-Z0-9._-]{2,32}$/.test(line));
+    const handleLine = lines.find(isLikelyNameOrHandle);
     const nameLine = lines.find((line) => line !== handleLine && line.length <= 80 && !isLikelyCommentText(line)) || handleLine || "";
     const commentLine = [...lines].reverse().find((line) => line !== handleLine && line !== nameLine && isLikelyCommentText(line));
     const fallbackComment = "";
@@ -171,6 +180,7 @@
     if (hasViewerListText(`${handle} ${name} ${comment}`)) return null;
     if (hasGiftOrNotificationText(`${handle} ${name} ${comment}`)) return null;
     if (/^(viewer|tiktok viewer)$/i.test(handle) || /^(viewer|tiktok viewer)$/i.test(name)) return null;
+    if (isNumericOnly(comment) && (isNumericOnly(handle) || isNumericOnly(name) || !isLikelyNameOrHandle(handle))) return null;
     const key = `${handle}|${comment}|${Math.floor(Date.now() / 30000)}`;
     return { key, handle, name, comment };
   }

@@ -52,6 +52,7 @@ const normalizeComment=(raw:unknown,index=0):Comment|null=>{
   const joined=`${handle} ${name} ${comment}`.toLowerCase();
   if(joined.includes("tiktok viewer")||/^(viewer|tiktok viewer)$/i.test(handle)||/^(viewer|tiktok viewer)$/i.test(name))return null;
   if(/\bx\s*\d{1,3}\b/i.test(`${handle} ${name} ${comment}`)||/\bmost\s+sent\b/i.test(comment)||/\bsent\d+\b/i.test(comment)||joined.includes("shared the live")||joined.includes("sent a gift")||joined.includes("gift"))return null;
+  if(/^\d{1,8}$/.test(comment)&&(/^\d{1,8}$/.test(handle)||/^\d{1,8}$/.test(name)||!/^[a-zA-Z0-9._-]{2,32}$/.test(handle)||!/[a-zA-Z_]/.test(handle)))return null;
   if(!comment)return null;
   const platform=c.platform==="Facebook"?"Facebook":"TikTok";
   return {
