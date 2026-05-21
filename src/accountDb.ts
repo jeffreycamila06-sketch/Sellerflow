@@ -98,7 +98,6 @@ function userToRow(user: AccountUser) {
     plan: user.plan,
     plan_status: user.planStatus,
     plan_expiry: user.planExpiry,
-    trial_started_at: user.trialStartedAt || null,
     connected_accounts: user.connectedAccounts,
     updated_at: new Date().toISOString(),
   };
