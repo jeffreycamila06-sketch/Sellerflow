@@ -1771,9 +1771,9 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     setTimeout(refresh,50);
   }
 
-  function renderPlanDurationControl(){
+  function renderPlanDurationControl(compact=false){
     return(
-      <label className="admin-duration-control">
+      <label className={`admin-duration-control${compact?" month-select-only":""}`}>
         <span>Plan duration</span>
         <select value={adminPlanMonths} onChange={e=>setAdminPlanMonths(Number(e.target.value))}>
           {Array.from({length:12},(_,i)=>i+1).map(month=><option key={month} value={month}>{month} {month===1?"month":"months"}</option>)}
@@ -2133,10 +2133,8 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
 
       <div className="grid2 admin-box-grid">
         <div className="table-card admin-compact-card" onDoubleClick={()=>setExpandedAdminBox("users")}>
-          <div className="table-title table-title-tools">
-            <span>Users ({users.length})</span>
-            {renderPlanDurationControl()}
-          </div>
+          <div className="table-title">Users ({users.length})</div>
+          <div className="users-duration-strip">{renderPlanDurationControl(true)}</div>
           <div className="admin-table-wrap">
             <div className="admin-table-scroll" ref={usersTableRef}>
               <table className="tbl">
@@ -2288,10 +2286,8 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
               <button className="btn-purple" onClick={createSeller}>Create seller</button>
             </div>}
             {expandedAdminBox==="users"&&<div className="table-card admin-fullscreen-table">
-              <div className="table-title table-title-tools">
-                <span>Users ({filteredUsers.length})</span>
-                {renderPlanDurationControl()}
-              </div>
+              <div className="table-title">Users ({filteredUsers.length})</div>
+              <div className="users-duration-strip">{renderPlanDurationControl(true)}</div>
               <table className="tbl"><thead><tr><th>Email</th><th>Role</th><th>Plan</th><th>Days</th><th>Accounts</th><th>Actions</th></tr></thead><tbody>
                 {filteredUsers.map(u=><tr key={"expanded-"+u.email}>
                   <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>

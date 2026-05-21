@@ -297,6 +297,10 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .admin-duration-control{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #D3D1C7;border-radius:9px;padding:6px 8px;color:#26215C}
 .admin-duration-control span{font-size:11px;font-weight:800;color:#5F5E5A;text-transform:uppercase}
 .admin-duration-control select{height:32px;min-width:128px;border:1px solid #AFA9EC;border-radius:7px;background:#fff;color:#26215C;font-weight:700;padding:0 8px;cursor:pointer}
+.users-duration-strip{display:flex;justify-content:flex-end;align-items:center;padding:10px 16px;border-bottom:0.5px solid #E4E2DC;background:#fff}
+.admin-duration-control.month-select-only{border:0;background:transparent;border-radius:0;padding:0}
+.admin-duration-control.month-select-only span{display:none}
+.admin-duration-control.month-select-only select{height:38px;min-width:152px;border:2px solid #AFA9EC;border-radius:7px;background:#fff;color:#F27A1A;font-size:14px;font-weight:700;padding:0 34px 0 9px}
 .admin-row-actions{display:flex;gap:6px;flex-wrap:wrap}
 .admin-refresh-group{display:flex;align-items:center;gap:8px}
 .admin-refresh-group span{font-size:11px;color:#888780;background:#F1EFE8;border-radius:999px;padding:5px 10px;white-space:nowrap}
