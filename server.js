@@ -25,15 +25,15 @@ const tiktokReconnectAttempts = new Map();
 const tiktokConnectLocks = new Set();
 const tiktokRateLimitCooldowns = new Map();
 const manualTikTokDisconnects = new Set();
-const TIKTOK_RECONNECT_BASE_MS = 5 * 60 * 1000;
-const TIKTOK_RECONNECT_MAX_MS = 30 * 60 * 1000;
-const TIKTOK_RECONNECT_JITTER_MS = 60 * 1000;
+const TIKTOK_RECONNECT_BASE_MS = 15 * 1000;
+const TIKTOK_RECONNECT_MAX_MS = 5 * 60 * 1000;
+const TIKTOK_RECONNECT_JITTER_MS = 10 * 1000;
 const TIKTOK_RATE_LIMIT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const TIKTOK_MAX_PARALLEL_RECONNECTS = 1;
-const TIKTOK_HEALTH_CHECK_MS = 60 * 1000;
-const TIKTOK_STALE_MS = 10 * 60 * 1000;
-const TIKTOK_CHAT_STALE_MS = 3 * 60 * 1000;
-const TIKTOK_CHAT_WATCH_START_MS = 5 * 60 * 1000;
+const TIKTOK_HEALTH_CHECK_MS = 10 * 1000;
+const TIKTOK_STALE_MS = 45 * 1000;
+const TIKTOK_CHAT_STALE_MS = 30 * 1000;
+const TIKTOK_CHAT_WATCH_START_MS = 30 * 1000;
 let activeTikTokReconnects = 0;
 const pendingTikTokReconnects = [];
 
@@ -148,12 +148,20 @@ function startTikTokHealthTimer(key, connection) {
     if (eventIsFresh && !chatLooksStale) return;
 
     console.log(`TikTok health reconnect for ${current.username}: event silent ${Math.round(silentMs / 1000)}s, chat silent ${Math.round(chatSilentMs / 1000)}s`);
+    emitTikTokStatus({
+      sellerId: current.sellerId,
+      username: current.username,
+      sessionId: current.sessionId,
+      connected: false,
+      reconnecting: true,
+      reason: chatLooksStale ? "chat_stale" : "silent_timeout",
+    });
     clearTikTokHealthTimer(current);
     tiktokConnections.delete(key);
     try {
       current.connection.disconnect();
     } catch {}
-    scheduleTikTokReconnect(key, current.username, current.sellerId, current.sessionId, "silent_timeout");
+    scheduleTikTokReconnect(key, current.username, current.sellerId, current.sessionId, chatLooksStale ? "chat_stale" : "silent_timeout");
   }, TIKTOK_HEALTH_CHECK_MS);
 }
 
