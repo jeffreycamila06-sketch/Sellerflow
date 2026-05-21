@@ -124,6 +124,25 @@
     return /[a-zA-Z0-9\u00c0-\uFFFF]/.test(text);
   }
 
+  function isOrderLikeComment(text) {
+    const lower = cleanText(text).toLowerCase();
+    if (/^\d{1,8}$/.test(lower)) return true;
+    return [
+      "free",
+      "hm",
+      "how much",
+      "mine",
+      "order",
+      "avail",
+      "available",
+      "kuha",
+      "get",
+      "price",
+      "size",
+      "cod",
+    ].some((word) => lower === word || lower.startsWith(`${word} `));
+  }
+
   function isNumericOnly(text) {
     return /^\d{1,8}$/.test(cleanText(text));
   }
@@ -141,7 +160,7 @@
     if (hasViewerListText(cleaned) || hasGiftOrNotificationText(cleaned) || isSystemText(cleaned)) return false;
     if (/https?:\/\//i.test(cleaned)) return false;
     if (["new", "comments", "viewers"].includes(lower)) return false;
-    return /[a-zA-Z\u00c0-\uFFFF]/.test(cleaned);
+    return /[\p{L}_]/u.test(cleaned);
   }
 
   function visibleElements() {
@@ -178,11 +197,12 @@
     if (!lines.length) lines = [text];
     if (lines.length < 2 || lines.length > 6) return null;
 
-    const commentIndex = lines.findLastIndex((line) => isLikelyCommentText(line));
+    const orderCommentIndex = lines.findIndex((line) => isOrderLikeComment(line));
+    const commentIndex = orderCommentIndex >= 0 ? orderCommentIndex : lines.findLastIndex((line) => isLikelyCommentText(line));
     const commentLine = commentIndex >= 0 ? lines[commentIndex] : "";
-    const beforeComment = commentIndex > 0 ? lines.slice(0, commentIndex) : lines.slice(0, -1);
-    const handleLine = beforeComment.find(isLikelyNameOrHandle);
-    const nameLine = [...beforeComment].reverse().find(isLikelyDisplayName) || handleLine || "";
+    const identityLines = lines.filter((_, index) => index !== commentIndex);
+    const handleLine = identityLines.find(isLikelyNameOrHandle);
+    const nameLine = [...identityLines].reverse().find(isLikelyDisplayName) || handleLine || "";
     const fallbackComment = "";
     const comment = cleanText(commentLine || fallbackComment);
 

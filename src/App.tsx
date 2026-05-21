@@ -45,10 +45,20 @@ declare global {
 const normalizeComment=(raw:unknown,index=0):Comment|null=>{
   if(!raw||typeof raw!=="object")return null;
   const c=raw as Partial<Comment>;
-  const handle=String(c.handle||c.name||`buyer-${index}`).trim();
+  let handle=String(c.handle||c.name||`buyer-${index}`).trim();
   if(!handle)return null;
-  const name=String(c.name||handle).trim();
-  const comment=String(c.comment||"").trim();
+  let name=String(c.name||handle).trim();
+  let comment=String(c.comment||"").trim();
+  const orderLike=(value:string)=>{
+    const lower=value.trim().toLowerCase();
+    return /^\d{1,8}$/.test(lower)||["free","hm","how much","mine","order","avail","available","kuha","get","price","size","cod"].some(word=>lower===word||lower.startsWith(`${word} `));
+  };
+  if(orderLike(name)&&!orderLike(comment)&&/[\p{L}_]/u.test(comment)){
+    const realName=comment;
+    comment=name;
+    name=realName;
+    handle=/^[a-zA-Z0-9._-]{2,32}$/.test(realName)?realName:realName.replace(/\s+/g,"_").slice(0,32);
+  }
   const joined=`${handle} ${name} ${comment}`.toLowerCase();
   if(joined.includes("tiktok viewer")||/^(viewer|tiktok viewer)$/i.test(handle)||/^(viewer|tiktok viewer)$/i.test(name))return null;
   if(/\bx\s*\d{1,3}\b/i.test(`${handle} ${name} ${comment}`)||/\bmost\s+sent\b/i.test(comment)||/\bsent\d+\b/i.test(comment)||joined.includes("shared the live")||joined.includes("sent a gift")||joined.includes("gift"))return null;
