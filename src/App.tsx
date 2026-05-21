@@ -2079,7 +2079,6 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
       </div>
 
       <div className="admin-exportbar admin-compact">
-        {renderPlanDurationControl()}
         <button className="btn-out" onClick={exportUsers}>Export Users CSV</button>
         <button className="btn-out" onClick={exportPayments}>Export Payments CSV</button>
         <button className="btn-out" onClick={exportAudit}>Export Audit CSV</button>
