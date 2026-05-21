@@ -279,6 +279,7 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .ms-v{font-size:24px;font-weight:600;color:#26215C}
 .table-card{background:#fff;border:0.5px solid #E4E2DC;border-radius:12px;overflow:hidden}
 .table-title{padding:10px 16px;border-bottom:0.5px solid #E4E2DC;font-size:13px;font-weight:500;color:#26215C}
+.table-title-tools{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 .tbl{width:100%;border-collapse:collapse;font-size:12px}
 .tbl th{text-align:left;padding:9px 14px;color:#888780;font-weight:400;border-bottom:0.5px solid #E4E2DC;font-size:11px;background:#FAFAF8;white-space:nowrap}
 .tbl td{padding:10px 14px;color:#26215C;border-bottom:0.5px solid #F5F5F2;vertical-align:middle}
@@ -296,6 +297,7 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .admin-duration-control{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid #D3D1C7;border-radius:9px;padding:6px 8px;color:#26215C}
 .admin-duration-control span{font-size:11px;font-weight:800;color:#5F5E5A;text-transform:uppercase}
 .admin-duration-control select{height:32px;min-width:128px;border:1px solid #AFA9EC;border-radius:7px;background:#fff;color:#26215C;font-weight:700;padding:0 8px;cursor:pointer}
+.admin-row-actions{display:flex;gap:6px;flex-wrap:wrap}
 .admin-refresh-group{display:flex;align-items:center;gap:8px}
 .admin-refresh-group span{font-size:11px;color:#888780;background:#F1EFE8;border-radius:999px;padding:5px 10px;white-space:nowrap}
 .admin-summary-grid{grid-template-columns:repeat(5,1fr)}

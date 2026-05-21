@@ -1771,6 +1771,17 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     setTimeout(refresh,50);
   }
 
+  function renderPlanDurationControl(){
+    return(
+      <label className="admin-duration-control">
+        <span>Plan duration</span>
+        <select value={adminPlanMonths} onChange={e=>setAdminPlanMonths(Number(e.target.value))}>
+          {Array.from({length:12},(_,i)=>i+1).map(month=><option key={month} value={month}>{month} {month===1?"month":"months"}</option>)}
+        </select>
+      </label>
+    );
+  }
+
   async function logAction(action:string,targetEmail:string,details:string){
     const log={actorEmail:currentUser.email,action,targetEmail,details};
     await saveAuditLog(log);
@@ -2068,12 +2079,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
       </div>
 
       <div className="admin-exportbar admin-compact">
-        <label className="admin-duration-control">
-          <span>Plan duration</span>
-          <select value={adminPlanMonths} onChange={e=>setAdminPlanMonths(Number(e.target.value))}>
-            {Array.from({length:12},(_,i)=>i+1).map(month=><option key={month} value={month}>{month} {month===1?"month":"months"}</option>)}
-          </select>
-        </label>
+        {renderPlanDurationControl()}
         <button className="btn-out" onClick={exportUsers}>Export Users CSV</button>
         <button className="btn-out" onClick={exportPayments}>Export Payments CSV</button>
         <button className="btn-out" onClick={exportAudit}>Export Audit CSV</button>
@@ -2127,7 +2133,10 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
 
       <div className="grid2 admin-box-grid">
         <div className="table-card admin-compact-card" onDoubleClick={()=>setExpandedAdminBox("users")}>
-          <div className="table-title">Users ({users.length})</div>
+          <div className="table-title table-title-tools">
+            <span>Users ({users.length})</span>
+            {renderPlanDurationControl()}
+          </div>
           <div className="admin-table-wrap">
             <div className="admin-table-scroll" ref={usersTableRef}>
               <table className="tbl">
@@ -2279,9 +2288,32 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
               <button className="btn-purple" onClick={createSeller}>Create seller</button>
             </div>}
             {expandedAdminBox==="users"&&<div className="table-card admin-fullscreen-table">
-              <div className="table-title">Users ({filteredUsers.length})</div>
-              <table className="tbl"><thead><tr><th>Email</th><th>Role</th><th>Plan</th><th>Days</th><th>Accounts</th></tr></thead><tbody>
-                {filteredUsers.map(u=><tr key={"expanded-"+u.email}><td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td><td><Badge label={isAdminEmail(u.email)?"Admin":"Seller"} color={isAdminEmail(u.email)?"amber":"gray"}/></td><td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td><td>{dLeft(u.planExpiry)}</td><td>{registeredAccountCount(u)} / {maxAcc(u.plan)}</td></tr>)}
+              <div className="table-title table-title-tools">
+                <span>Users ({filteredUsers.length})</span>
+                {renderPlanDurationControl()}
+              </div>
+              <table className="tbl"><thead><tr><th>Email</th><th>Role</th><th>Plan</th><th>Days</th><th>Accounts</th><th>Actions</th></tr></thead><tbody>
+                {filteredUsers.map(u=><tr key={"expanded-"+u.email}>
+                  <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>
+                  <td><Badge label={isAdminEmail(u.email)?"Admin":"Seller"} color={isAdminEmail(u.email)?"amber":"gray"}/></td>
+                  <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
+                  <td>{dLeft(u.planExpiry)}</td>
+                  <td>{registeredAccountCount(u)} / {maxAcc(u.plan)}</td>
+                  <td>
+                    <div className="admin-row-actions">
+                      <button className="tbl-btn ed" onClick={()=>openEditSeller(u)}>Edit</button>
+                      <button className="tbl-btn ed" onClick={()=>resetPassword(u.email)}>Reset PW</button>
+                      <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"trial")}>Trial</button>
+                      <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"basic")}>Basic</button>
+                      <button className="tbl-btn ed" onClick={()=>approve(u.email,"pro")}>Pro</button>
+                      <button className="tbl-btn ed" onClick={()=>approve(u.email,"master")}>Master</button>
+                      <button className="tbl-btn dl" onClick={()=>setPlan(u.email,u.plan,"expired")}>Expire</button>
+                      {!isAdminEmail(u.email)
+                        ? <><button className="tbl-btn ed" onClick={()=>makeAdmin(u.email)}>Make Admin</button><button className="tbl-btn dl" onClick={()=>removeSeller(u.email)}>Delete</button></>
+                        : <button className="tbl-btn dl" onClick={()=>removeAdmin(u.email)}>Remove Admin</button>}
+                    </div>
+                  </td>
+                </tr>)}
               </tbody></table>
             </div>}
             {expandedAdminBox==="payments"&&<div className="admin-fullscreen-messages">
