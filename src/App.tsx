@@ -1680,7 +1680,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   const [replyDrafts,setReplyDrafts]=useState<Record<string,string>>({});
   const [selectedSupportEmail,setSelectedSupportEmail]=useState("");
   const [expandedAdminBox,setExpandedAdminBox]=useState<""|"overview"|"create"|"users"|"payments">("");
-  const [adminPlanMonths,setAdminPlanMonths]=useState(1);
+  const [adminUserPlanMonths,setAdminUserPlanMonths]=useState<Record<string,number>>({});
   const [copied,setCopied]=useState("");
   const usersTableRef=useRef<HTMLDivElement>(null);
   const paymentsTableRef=useRef<HTMLDivElement>(null);
@@ -1765,20 +1765,36 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     }
   }
 
-  function approve(email:string,plan:Plan){
-    onApprove(email,plan,adminPlanMonths);
-    void logAction("approved plan",email,`Plan changed to ${plan} for ${plan==="trial"?7:`${adminPlanMonths} month${adminPlanMonths===1?"":"s"}`}`);
+  function approve(email:string,plan:Plan,months=1){
+    onApprove(email,plan,months);
+    void logAction("approved plan",email,`Plan changed to ${plan} for ${plan==="trial"?7:`${months} month${months===1?"":"s"}`}`);
     setTimeout(refresh,50);
   }
 
-  function renderPlanDurationControl(compact=false){
+  function defaultMonthsForUser(user:User){
+    return Math.min(12,Math.max(1,Math.ceil(dLeft(user.planExpiry)/30)));
+  }
+
+  function monthsForUser(user:User){
+    return adminUserPlanMonths[user.email.toLowerCase()] ?? defaultMonthsForUser(user);
+  }
+
+  function setMonthsForUser(email:string,months:number){
+    setAdminUserPlanMonths(current=>({...current,[email.toLowerCase()]:months}));
+  }
+
+  function renderUserMonthsSelect(user:User){
+    const months=monthsForUser(user);
     return(
-      <label className={`admin-duration-control${compact?" month-select-only":""}`}>
-        <span>Plan duration</span>
-        <select value={adminPlanMonths} onChange={e=>setAdminPlanMonths(Number(e.target.value))}>
-          {Array.from({length:12},(_,i)=>i+1).map(month=><option key={month} value={month}>{month} {month===1?"month":"months"}</option>)}
-        </select>
-      </label>
+      <select
+        className="admin-user-month-select"
+        value={months}
+        onChange={e=>setMonthsForUser(user.email,Number(e.target.value))}
+        onClick={e=>e.stopPropagation()}
+        onDoubleClick={e=>e.stopPropagation()}
+      >
+        {Array.from({length:12},(_,i)=>i+1).map(month=><option key={month} value={month}>{month} {month===1?"month":"months"}</option>)}
+      </select>
     );
   }
 
@@ -1788,8 +1804,8 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     setAuditLogs(prev=>[{...log,id:Date.now().toString(),timestamp:new Date().toISOString()},...prev].slice(0,80));
   }
 
-  async function setPlan(email:string,plan:Plan,status:PlanStatus="active"){
-    const expiry=status==="expired"?addDays(-1):status==="pending"?new Date().toISOString():plan==="trial"?addDays(7):addMonths(adminPlanMonths);
+  async function setPlan(email:string,plan:Plan,status:PlanStatus="active",months=1){
+    const expiry=status==="expired"?addDays(-1):status==="pending"?new Date().toISOString():plan==="trial"?addDays(7):addMonths(months);
     const trialStartedAt=status==="active"&&plan==="trial"?new Date().toISOString():"";
     const next=users.map(u=>u.email.toLowerCase()===email.toLowerCase()?{...u,plan,planStatus:status,planExpiry:expiry,trialStartedAt}:u);
     LS.set("sf_users",next);
@@ -1797,7 +1813,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     const updated=next.find(u=>u.email.toLowerCase()===email.toLowerCase());
     if(updated){
       await upsertUser(updated);
-      await logAction(status==="expired"?"expired seller":"changed plan",email,`Plan ${plan}, status ${status}, duration ${plan==="trial"?7:`${adminPlanMonths} month${adminPlanMonths===1?"":"s"}`}`);
+      await logAction(status==="expired"?"expired seller":"changed plan",email,`Plan ${plan}, status ${status}, duration ${plan==="trial"?7:`${months} month${months===1?"":"s"}`}`);
     }
   }
 
@@ -2120,7 +2136,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                       <td>{days}</td>
                       <td><Badge label={expired?"Expired":"Expiring"} color={expired?"red":"amber"}/></td>
                       <td className="muted">{expired?"Sent on expiry day":`Sends ${warnDays} days before expiry`}</td>
-                      <td><button className="tbl-btn ed" onClick={()=>approve(u.email,u.plan==="trial"?"basic":u.plan)}>Extend / approve</button></td>
+                      <td><button className="tbl-btn ed" onClick={()=>approve(u.email,u.plan==="trial"?"basic":u.plan,monthsForUser(u))}>Extend / approve</button></td>
                     </tr>
                   );
                 })}
@@ -2133,28 +2149,28 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
       <div className="grid2 admin-box-grid">
         <div className="table-card admin-compact-card" onDoubleClick={()=>setExpandedAdminBox("users")}>
           <div className="table-title">Users ({users.length})</div>
-          <div className="users-duration-strip">{renderPlanDurationControl(true)}</div>
           <div className="admin-table-wrap">
             <div className="admin-table-scroll" ref={usersTableRef}>
               <table className="tbl">
-                <thead><tr><th>Email</th><th>Role</th><th>Plan</th><th>Days</th><th>Accounts</th><th></th></tr></thead>
+                <thead><tr><th>Email</th><th>Role</th><th>Plan</th><th>Days</th><th>Months</th><th>Accounts</th><th></th></tr></thead>
                 <tbody>
-                  {filteredUsers.length===0&&<tr><td colSpan={6} style={{textAlign:"center",padding:24,color:"#888"}}>{users.length===0?"No users yet.":"No users found."}</td></tr>}
+                  {filteredUsers.length===0&&<tr><td colSpan={7} style={{textAlign:"center",padding:24,color:"#888"}}>{users.length===0?"No users yet.":"No users found."}</td></tr>}
                   {filteredUsers.map(u=>(
                     <tr key={u.email}>
                       <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>
                       <td><Badge label={isAdminEmail(u.email)?"Admin":"Seller"} color={isAdminEmail(u.email)?"amber":"gray"}/></td>
                       <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
                       <td>{dLeft(u.planExpiry)}</td>
+                      <td>{renderUserMonthsSelect(u)}</td>
                       <td>{registeredAccountCount(u)} / {maxAcc(u.plan)}</td>
                       <td>
                         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                           <button className="tbl-btn ed" onClick={()=>openEditSeller(u)}>Edit</button>
                           <button className="tbl-btn ed" onClick={()=>resetPassword(u.email)}>Reset PW</button>
                           <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"trial")}>Trial</button>
-                          <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"basic")}>Basic</button>
-                          <button className="tbl-btn ed" onClick={()=>approve(u.email,"pro")}>Pro</button>
-                          <button className="tbl-btn ed" onClick={()=>approve(u.email,"master")}>Master</button>
+                          <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"basic","active",monthsForUser(u))}>Basic</button>
+                          <button className="tbl-btn ed" onClick={()=>approve(u.email,"pro",monthsForUser(u))}>Pro</button>
+                          <button className="tbl-btn ed" onClick={()=>approve(u.email,"master",monthsForUser(u))}>Master</button>
                           <button className="tbl-btn dl" onClick={()=>setPlan(u.email,u.plan,"expired")}>Expire</button>
                           {!isAdminEmail(u.email)
                             ? <><button className="tbl-btn ed" onClick={()=>makeAdmin(u.email)}>Make Admin</button><button className="tbl-btn dl" onClick={()=>removeSeller(u.email)}>Delete</button></>
@@ -2286,22 +2302,22 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
             </div>}
             {expandedAdminBox==="users"&&<div className="table-card admin-fullscreen-table">
               <div className="table-title">Users ({filteredUsers.length})</div>
-              <div className="users-duration-strip">{renderPlanDurationControl(true)}</div>
-              <table className="tbl"><thead><tr><th>Email</th><th>Role</th><th>Plan</th><th>Days</th><th>Accounts</th><th>Actions</th></tr></thead><tbody>
+              <table className="tbl"><thead><tr><th>Email</th><th>Role</th><th>Plan</th><th>Days</th><th>Months</th><th>Accounts</th><th>Actions</th></tr></thead><tbody>
                 {filteredUsers.map(u=><tr key={"expanded-"+u.email}>
                   <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>
                   <td><Badge label={isAdminEmail(u.email)?"Admin":"Seller"} color={isAdminEmail(u.email)?"amber":"gray"}/></td>
                   <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
                   <td>{dLeft(u.planExpiry)}</td>
+                  <td>{renderUserMonthsSelect(u)}</td>
                   <td>{registeredAccountCount(u)} / {maxAcc(u.plan)}</td>
                   <td>
                     <div className="admin-row-actions">
                       <button className="tbl-btn ed" onClick={()=>openEditSeller(u)}>Edit</button>
                       <button className="tbl-btn ed" onClick={()=>resetPassword(u.email)}>Reset PW</button>
                       <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"trial")}>Trial</button>
-                      <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"basic")}>Basic</button>
-                      <button className="tbl-btn ed" onClick={()=>approve(u.email,"pro")}>Pro</button>
-                      <button className="tbl-btn ed" onClick={()=>approve(u.email,"master")}>Master</button>
+                      <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"basic","active",monthsForUser(u))}>Basic</button>
+                      <button className="tbl-btn ed" onClick={()=>approve(u.email,"pro",monthsForUser(u))}>Pro</button>
+                      <button className="tbl-btn ed" onClick={()=>approve(u.email,"master",monthsForUser(u))}>Master</button>
                       <button className="tbl-btn dl" onClick={()=>setPlan(u.email,u.plan,"expired")}>Expire</button>
                       {!isAdminEmail(u.email)
                         ? <><button className="tbl-btn ed" onClick={()=>makeAdmin(u.email)}>Make Admin</button><button className="tbl-btn dl" onClick={()=>removeSeller(u.email)}>Delete</button></>
