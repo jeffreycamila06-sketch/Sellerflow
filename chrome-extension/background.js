@@ -1,6 +1,8 @@
 const APP_PORTS = new Set();
 const PENDING_KEY = "sflc_pending_comments";
+const HISTORY_KEY = "sflc_comment_history";
 const MAX_PENDING = 300;
+const MAX_HISTORY = 1000;
 
 function getPending() {
   return new Promise((resolve) => {
@@ -22,6 +24,30 @@ async function queueComment(comment) {
   await setPending(pending);
 }
 
+function getHistory() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([HISTORY_KEY], (result) => {
+      resolve(Array.isArray(result[HISTORY_KEY]) ? result[HISTORY_KEY] : []);
+    });
+  });
+}
+
+function setHistory(comments) {
+  return new Promise((resolve) => {
+    chrome.storage.local.set({ [HISTORY_KEY]: comments.slice(-MAX_HISTORY) }, resolve);
+  });
+}
+
+async function saveHistory(comment) {
+  const history = await getHistory();
+  const keyOf = (item) => [item.platform || "TikTok", item.handle || "", item.comment || "", item.timestamp || ""].join("|");
+  const nextKey = keyOf(comment);
+  if (!history.some((item) => keyOf(item) === nextKey)) {
+    history.push(comment);
+    await setHistory(history);
+  }
+}
+
 async function flushPending(port) {
   const pending = await getPending();
   if (!pending.length) return;
@@ -41,6 +67,7 @@ chrome.runtime.onConnect.addListener((port) => {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type !== "SFL_COMMENT" || !message.comment) return false;
   const comment = message.comment;
+  saveHistory(comment);
   if (APP_PORTS.size) {
     for (const port of APP_PORTS) {
       port.postMessage({ type: "SFL_COMMENT", comment });
