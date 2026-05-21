@@ -47,6 +47,20 @@
     );
   }
 
+  function hasGiftOrNotificationText(text) {
+    const normalized = cleanText(text);
+    const lower = normalized.toLowerCase();
+    return (
+      /\bx\s*\d{1,3}\b/i.test(normalized) ||
+      /\bmost\s+sent\b/i.test(normalized) ||
+      /\bsent\d+\b/i.test(normalized) ||
+      lower.includes("shared the live") ||
+      lower.includes("sent the live") ||
+      lower.includes("sent a gift") ||
+      lower.includes("gift")
+    );
+  }
+
   function isViewerListElement(element) {
     const rawText = String(element.innerText || element.textContent || "");
     if (hasViewerListText(rawText)) return true;
@@ -65,6 +79,7 @@
     const lower = text.toLowerCase();
     if (!text || text.length < 1) return true;
     if (text.length > 500) return true;
+    if (hasGiftOrNotificationText(text)) return true;
     return [
       "joined",
       "join",
@@ -131,6 +146,7 @@
     const rawText = String(element.innerText || element.textContent || "");
     const text = cleanText(rawText);
     if (hasViewerListText(rawText)) return null;
+    if (hasGiftOrNotificationText(rawText)) return null;
     if (!text || isSystemText(text)) return null;
 
     let lines = rawText
@@ -153,6 +169,7 @@
     const handle = cleanText(handleLine || nameLine).replace(/^@/, "") || "viewer";
     const name = cleanText(nameLine || handle) || handle;
     if (hasViewerListText(`${handle} ${name} ${comment}`)) return null;
+    if (hasGiftOrNotificationText(`${handle} ${name} ${comment}`)) return null;
     if (/^(viewer|tiktok viewer)$/i.test(handle) || /^(viewer|tiktok viewer)$/i.test(name)) return null;
     const key = `${handle}|${comment}|${Math.floor(Date.now() / 30000)}`;
     return { key, handle, name, comment };
