@@ -32,6 +32,8 @@ const TIKTOK_RATE_LIMIT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const TIKTOK_MAX_PARALLEL_RECONNECTS = 1;
 const TIKTOK_HEALTH_CHECK_MS = 60 * 1000;
 const TIKTOK_STALE_MS = 10 * 60 * 1000;
+const TIKTOK_CHAT_STALE_MS = 3 * 60 * 1000;
+const TIKTOK_CHAT_WATCH_START_MS = 5 * 60 * 1000;
 let activeTikTokReconnects = 0;
 const pendingTikTokReconnects = [];
 
@@ -137,10 +139,15 @@ function startTikTokHealthTimer(key, connection) {
       return;
     }
 
-    const silentMs = Date.now() - (current.lastEventAt || current.startedAt || Date.now());
-    if (silentMs < TIKTOK_STALE_MS) return;
+    const now = Date.now();
+    const connectionAgeMs = now - (current.startedAt || now);
+    const silentMs = now - (current.lastEventAt || current.startedAt || now);
+    const chatSilentMs = now - (current.lastCommentAt || current.startedAt || now);
+    const eventIsFresh = silentMs < TIKTOK_STALE_MS;
+    const chatLooksStale = connectionAgeMs >= TIKTOK_CHAT_WATCH_START_MS && chatSilentMs >= TIKTOK_CHAT_STALE_MS;
+    if (eventIsFresh && !chatLooksStale) return;
 
-    console.log(`TikTok health reconnect for ${current.username}: silent ${Math.round(silentMs / 1000)}s`);
+    console.log(`TikTok health reconnect for ${current.username}: event silent ${Math.round(silentMs / 1000)}s, chat silent ${Math.round(chatSilentMs / 1000)}s`);
     clearTikTokHealthTimer(current);
     tiktokConnections.delete(key);
     try {
@@ -342,7 +349,7 @@ function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "d
     sellerId,
     username,
     sessionId,
-    connected: true,
+    connected: false,
     reconnecting: true,
     reason,
     nextRetryMs: retryMs,
@@ -445,6 +452,15 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
 
   tiktokConnection.on("disconnected", () => handleTikTokDisconnected(key, tiktokConnection, "disconnected"));
   tiktokConnection.on("streamEnd", () => handleTikTokDisconnected(key, tiktokConnection, "streamEnd", { reconnect: false }));
+  tiktokConnection.on("error", (error) => {
+    console.log(`TikTok connection error for ${cleanUsername}: ${error?.message || error}`);
+    if (isTikTokRateLimitError(error)) {
+      rememberTikTokRateLimit(key, sellerId, cleanUsername, sessionId, error);
+      handleTikTokDisconnected(key, tiktokConnection, "rate_limited", { reconnect: false });
+      return;
+    }
+    handleTikTokDisconnected(key, tiktokConnection, "error");
+  });
   ["member", "like", "gift", "social", "emote", "envelope"].forEach((eventName) => {
     tiktokConnection.on(eventName, () => touchTikTokConnection(key, tiktokConnection));
   });
