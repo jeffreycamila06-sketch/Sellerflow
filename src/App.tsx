@@ -47,11 +47,16 @@ const normalizeComment=(raw:unknown,index=0):Comment|null=>{
   const c=raw as Partial<Comment>;
   const handle=String(c.handle||c.name||`buyer-${index}`).trim();
   if(!handle)return null;
+  const name=String(c.name||handle).trim();
+  const comment=String(c.comment||"").trim();
+  const joined=`${handle} ${name} ${comment}`.toLowerCase();
+  if(joined.includes("tiktok viewer")||/^(viewer|tiktok viewer)$/i.test(handle)||/^(viewer|tiktok viewer)$/i.test(name))return null;
+  if(!comment)return null;
   const platform=c.platform==="Facebook"?"Facebook":"TikTok";
   return {
     handle,
-    name:String(c.name||handle),
-    comment:String(c.comment||""),
+    name,
+    comment,
     platform,
     isBuy:!!c.isBuy,
     buyerNum:typeof c.buyerNum==="number"?c.buyerNum:null,

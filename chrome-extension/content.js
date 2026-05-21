@@ -38,6 +38,29 @@
       .trim();
   }
 
+  function hasViewerListText(text) {
+    const lower = cleanText(text).toLowerCase();
+    return (
+      lower.includes("tiktok viewer") ||
+      /^viewers\b/.test(lower) ||
+      /\bviewers\s*[·-]?\s*\d+/i.test(lower)
+    );
+  }
+
+  function isViewerListElement(element) {
+    const rawText = String(element.innerText || element.textContent || "");
+    if (hasViewerListText(rawText)) return true;
+    let parent = element.parentElement;
+    let depth = 0;
+    while (parent && depth < 3) {
+      const text = String(parent.innerText || parent.textContent || "");
+      if (hasViewerListText(text) && !/\btype\.\.\.|comment|comments\b/i.test(text)) return true;
+      parent = parent.parentElement;
+      depth += 1;
+    }
+    return false;
+  }
+
   function isSystemText(text) {
     const lower = text.toLowerCase();
     if (!text || text.length < 1) return true;
@@ -95,6 +118,7 @@
     const elements = roots.flatMap((root) => Array.from(root.querySelectorAll("div, span, p")));
     return elements.filter((element) => {
       if (widget && widget.contains(element)) return false;
+      if (isViewerListElement(element)) return false;
       const rect = element.getBoundingClientRect();
       const text = cleanText(element.innerText || element.textContent || "");
       if (!text || text.length > 220) return false;
@@ -106,6 +130,7 @@
   function extractFromElement(element) {
     const rawText = String(element.innerText || element.textContent || "");
     const text = cleanText(rawText);
+    if (hasViewerListText(rawText)) return null;
     if (!text || isSystemText(text)) return null;
 
     let lines = rawText
@@ -115,18 +140,20 @@
       .filter((line) => !isSystemText(line));
 
     if (!lines.length) lines = [text];
-    if (!lines.length || lines.length > 6) return null;
+    if (lines.length < 2 || lines.length > 6) return null;
 
     const handleLine = lines.find((line) => /^@?[a-zA-Z0-9._-]{2,32}$/.test(line));
-    const nameLine = lines.find((line) => line !== handleLine && line.length <= 80 && !isLikelyCommentText(line)) || handleLine || "TikTok viewer";
+    const nameLine = lines.find((line) => line !== handleLine && line.length <= 80 && !isLikelyCommentText(line)) || handleLine || "";
     const commentLine = [...lines].reverse().find((line) => line !== handleLine && line !== nameLine && isLikelyCommentText(line));
-    const fallbackComment = lines.length === 1 && isLikelyCommentText(lines[0]) ? lines[0] : "";
+    const fallbackComment = "";
     const comment = cleanText(commentLine || fallbackComment);
 
     if (!isLikelyCommentText(comment)) return null;
 
     const handle = cleanText(handleLine || nameLine).replace(/^@/, "") || "viewer";
     const name = cleanText(nameLine || handle) || handle;
+    if (hasViewerListText(`${handle} ${name} ${comment}`)) return null;
+    if (/^(viewer|tiktok viewer)$/i.test(handle) || /^(viewer|tiktok viewer)$/i.test(name)) return null;
     const key = `${handle}|${comment}|${Math.floor(Date.now() / 30000)}`;
     return { key, handle, name, comment };
   }
