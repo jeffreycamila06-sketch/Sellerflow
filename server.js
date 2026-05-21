@@ -31,9 +31,9 @@ const TIKTOK_RECONNECT_JITTER_MS = 10 * 1000;
 const TIKTOK_RATE_LIMIT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const TIKTOK_MAX_PARALLEL_RECONNECTS = 1;
 const TIKTOK_HEALTH_CHECK_MS = 10 * 1000;
-const TIKTOK_STALE_MS = 45 * 1000;
-const TIKTOK_CHAT_STALE_MS = 30 * 1000;
-const TIKTOK_CHAT_WATCH_START_MS = 30 * 1000;
+const TIKTOK_STALE_MS = 5 * 60 * 1000;
+const TIKTOK_CHAT_STALE_MS = 10 * 60 * 1000;
+const TIKTOK_CHAT_WATCH_START_MS = 2 * 60 * 1000;
 let activeTikTokReconnects = 0;
 const pendingTikTokReconnects = [];
 
@@ -674,7 +674,17 @@ app.post("/browser-helper/comment", (req, res) => {
     message: "Browser helper comment received",
   });
 });
+// Keep Render awake — i-lagay bago ang server.listen
+const RENDER_URL = process.env.RENDER_EXTERNAL_URL || "";
+if (RENDER_URL) {
+  setInterval(() => {
+    fetch(`${RENDER_URL}/health`)
+      .then(() => console.log("Keep-alive ping sent"))
+      .catch((err) => console.warn("Keep-alive failed:", err.message));
+  }, 840000); // every 14 minutes
+}
 
 server.listen(3001, () => {
   console.log("SellerFlow TikTok LIVE server running on port 3001");
 });
+
