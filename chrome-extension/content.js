@@ -66,7 +66,7 @@
     if (hasViewerListText(rawText)) return true;
     let parent = element.parentElement;
     let depth = 0;
-    while (parent && depth < 3) {
+    while (parent && depth < 8) {
       const text = String(parent.innerText || parent.textContent || "");
       if (hasViewerListText(text) && !/\btype\.\.\.|comment|comments\b/i.test(text)) return true;
       parent = parent.parentElement;
@@ -133,6 +133,17 @@
     return /^[a-zA-Z0-9._-]{2,32}$/.test(cleaned) && /[a-zA-Z_]/.test(cleaned);
   }
 
+  function isLikelyDisplayName(text) {
+    const cleaned = cleanText(text);
+    const lower = cleaned.toLowerCase();
+    if (!cleaned || cleaned.length > 80) return false;
+    if (isNumericOnly(cleaned)) return false;
+    if (hasViewerListText(cleaned) || hasGiftOrNotificationText(cleaned) || isSystemText(cleaned)) return false;
+    if (/https?:\/\//i.test(cleaned)) return false;
+    if (["new", "comments", "viewers"].includes(lower)) return false;
+    return /[a-zA-Z\u00c0-\uFFFF]/.test(cleaned);
+  }
+
   function visibleElements() {
     const rightSide = Array.from(document.querySelectorAll("div, section, aside")).filter((element) => {
       const rect = element.getBoundingClientRect();
@@ -167,9 +178,11 @@
     if (!lines.length) lines = [text];
     if (lines.length < 2 || lines.length > 6) return null;
 
-    const handleLine = lines.find(isLikelyNameOrHandle);
-    const nameLine = lines.find((line) => line !== handleLine && line.length <= 80 && !isLikelyCommentText(line)) || handleLine || "";
-    const commentLine = [...lines].reverse().find((line) => line !== handleLine && line !== nameLine && isLikelyCommentText(line));
+    const commentIndex = lines.findLastIndex((line) => isLikelyCommentText(line));
+    const commentLine = commentIndex >= 0 ? lines[commentIndex] : "";
+    const beforeComment = commentIndex > 0 ? lines.slice(0, commentIndex) : lines.slice(0, -1);
+    const handleLine = beforeComment.find(isLikelyNameOrHandle);
+    const nameLine = [...beforeComment].reverse().find(isLikelyDisplayName) || handleLine || "";
     const fallbackComment = "";
     const comment = cleanText(commentLine || fallbackComment);
 
@@ -180,7 +193,8 @@
     if (hasViewerListText(`${handle} ${name} ${comment}`)) return null;
     if (hasGiftOrNotificationText(`${handle} ${name} ${comment}`)) return null;
     if (/^(viewer|tiktok viewer)$/i.test(handle) || /^(viewer|tiktok viewer)$/i.test(name)) return null;
-    if (isNumericOnly(comment) && (isNumericOnly(handle) || isNumericOnly(name) || !isLikelyNameOrHandle(handle))) return null;
+    if (isNumericOnly(handle) || isNumericOnly(name) || !isLikelyDisplayName(name)) return null;
+    if (isNumericOnly(comment) && (isNumericOnly(handle) || isNumericOnly(name))) return null;
     const key = `${handle}|${comment}|${Math.floor(Date.now() / 30000)}`;
     return { key, handle, name, comment };
   }
