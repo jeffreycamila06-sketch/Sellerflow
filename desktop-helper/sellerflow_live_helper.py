@@ -15,6 +15,10 @@ from ctypes import wintypes
 HOST = "127.0.0.1"
 PORT = 8588
 MAGIC = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+HICON = ctypes.c_void_p
+HCURSOR = ctypes.c_void_p
+HBRUSH = ctypes.c_void_p
+HINSTANCE = ctypes.c_void_p
 
 
 class RawPrinter:
@@ -141,10 +145,10 @@ class SellerFlowHelper:
                 ("lpfnWndProc", WNDPROC),
                 ("cbClsExtra", ctypes.c_int),
                 ("cbWndExtra", ctypes.c_int),
-                ("hInstance", wintypes.HINSTANCE),
-                ("hIcon", wintypes.HICON),
-                ("hCursor", wintypes.HCURSOR),
-                ("hbrBackground", wintypes.HBRUSH),
+                ("hInstance", HINSTANCE),
+                ("hIcon", HICON),
+                ("hCursor", HCURSOR),
+                ("hbrBackground", HBRUSH),
                 ("lpszMenuName", wintypes.LPCWSTR),
                 ("lpszClassName", wintypes.LPCWSTR),
             ]
@@ -153,7 +157,7 @@ class SellerFlowHelper:
         wc.lpfnWndProc = self._wndproc_ref
         wc.hInstance = hinstance
         wc.hCursor = self.user32.LoadCursorW(None, 32512)
-        wc.hbrBackground = wintypes.HBRUSH(6)
+        wc.hbrBackground = HBRUSH(6)
         wc.lpszClassName = "SellerFlowLiveHelperWindow"
         self.user32.RegisterClassW(ctypes.byref(wc))
 
