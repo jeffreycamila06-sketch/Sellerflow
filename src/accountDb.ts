@@ -18,6 +18,7 @@ export interface AccountUser {
   plan: Plan;
   planStatus: PlanStatus;
   planExpiry: string;
+  trialStartedAt?: string;
   connectedAccounts: string[];
 }
 
@@ -56,24 +57,32 @@ const localGet = <T,>(key: string, fallback: T): T => {
 const localSet = (key: string, value: unknown) => {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-  } catch {}
+  } catch {
+    return;
+  }
 };
 
-function rowToUser(row: Record<string, any>): AccountUser {
+type SupabaseRow = Record<string, unknown>;
+
+const textValue = (value: unknown, fallback = "") => (typeof value === "string" ? value : fallback);
+const stringArrayValue = (value: unknown) => Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+
+function rowToUser(row: SupabaseRow): AccountUser {
   return {
-    email: row.email,
-    password: row.password,
+    email: textValue(row.email),
+    password: textValue(row.password),
     profile: {
-      fullName: row.full_name || "",
-      storeName: row.store_name || "",
-      phone: row.phone || "",
-      tiktok: row.tiktok || "",
-      facebook: row.facebook || "",
+      fullName: textValue(row.full_name),
+      storeName: textValue(row.store_name),
+      phone: textValue(row.phone),
+      tiktok: textValue(row.tiktok),
+      facebook: textValue(row.facebook),
     },
-    plan: row.plan || "trial",
-    planStatus: row.plan_status || "active",
-    planExpiry: row.plan_expiry || new Date().toISOString(),
-    connectedAccounts: row.connected_accounts || [],
+    plan: ["trial", "basic", "pro", "master"].includes(textValue(row.plan)) ? textValue(row.plan) as Plan : "trial",
+    planStatus: ["active", "expired", "pending"].includes(textValue(row.plan_status)) ? textValue(row.plan_status) as PlanStatus : "active",
+    planExpiry: textValue(row.plan_expiry, new Date().toISOString()),
+    trialStartedAt: textValue(row.trial_started_at),
+    connectedAccounts: stringArrayValue(row.connected_accounts),
   };
 }
 
@@ -89,6 +98,7 @@ function userToRow(user: AccountUser) {
     plan: user.plan,
     plan_status: user.planStatus,
     plan_expiry: user.planExpiry,
+    trial_started_at: user.trialStartedAt || null,
     connected_accounts: user.connectedAccounts,
     updated_at: new Date().toISOString(),
   };
@@ -116,31 +126,32 @@ function encodeSupportMessage(message: AccountSupportMsg) {
   return `${message.message}\n\n${PROOF_MARKER}${message.proofImage}${PROOF_END}`;
 }
 
-function rowToSupport(row: Record<string, any>): AccountSupportMsg {
-  const decoded = decodeSupportMessage(row.message || "");
+function rowToSupport(row: SupabaseRow): AccountSupportMsg {
+  const decoded = decodeSupportMessage(textValue(row.message));
+  const status = textValue(row.status);
   return {
     id: String(row.id),
-    name: row.name || "",
-    email: row.email || "",
-    subject: row.subject || "",
+    name: textValue(row.name),
+    email: textValue(row.email),
+    subject: textValue(row.subject),
     message: decoded.message,
     hasProof: Boolean(row.has_proof || decoded.proofImage),
     proofImage: decoded.proofImage,
-    timestamp: row.created_at || new Date().toISOString(),
-    status: row.status || "pending",
-    adminReply: row.admin_reply || "",
-    repliedAt: row.replied_at || "",
+    timestamp: textValue(row.created_at, new Date().toISOString()),
+    status: ["pending", "approved", "rejected", "resolved"].includes(status) ? status as AccountSupportMsg["status"] : "pending",
+    adminReply: textValue(row.admin_reply),
+    repliedAt: textValue(row.replied_at),
   };
 }
 
-function rowToAudit(row: Record<string, any>): AccountAuditLog {
+function rowToAudit(row: SupabaseRow): AccountAuditLog {
   return {
     id: String(row.id),
-    actorEmail: row.actor_email || "",
-    action: row.action || "",
-    targetEmail: row.target_email || "",
-    details: row.details || "",
-    timestamp: row.created_at || new Date().toISOString(),
+    actorEmail: textValue(row.actor_email),
+    action: textValue(row.action),
+    targetEmail: textValue(row.target_email),
+    details: textValue(row.details),
+    timestamp: textValue(row.created_at, new Date().toISOString()),
   };
 }
 

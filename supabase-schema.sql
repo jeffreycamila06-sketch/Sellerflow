@@ -10,10 +10,13 @@ create table if not exists public.seller_users (
   plan text not null default 'trial',
   plan_status text not null default 'active',
   plan_expiry timestamptz not null default (now() + interval '7 days'),
+  trial_started_at timestamptz,
   connected_accounts text[] not null default '{}',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.seller_users add column if not exists trial_started_at timestamptz;
 
 create table if not exists public.support_messages (
   id uuid primary key default gen_random_uuid(),

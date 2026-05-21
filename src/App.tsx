@@ -25,7 +25,7 @@ type PlanStatus = "active" | "expired" | "pending";
 type Page = "dashboard"|"miners"|"orders"|"products"|"customers"|"print"|"sales"|"settings"|"subscription"|"support"|"admin"|"privacy"|"terms"|"deleteAccount";
 
 interface Profile { fullName:string; storeName:string; phone:string; tiktok:string; facebook:string; }
-interface User { email:string; password:string; profile:Profile; plan:Plan; planStatus:PlanStatus; planExpiry:string; connectedAccounts:string[]; }
+interface User { email:string; password:string; profile:Profile; plan:Plan; planStatus:PlanStatus; planExpiry:string; trialStartedAt?:string; connectedAccounts:string[]; }
 interface LiveOrder { orderNum:number; item:string; qty:number; price:number; total:number; time:string; handle:string; name:string; bNum:number; platform:string; status:string; date:string; }
 interface Buyer { handle:string; name:string; platform:string; num:number; orders:LiveOrder[]; totalSpent:number; totalOrders:number; }
 interface Comment { handle:string; name:string; comment:string; platform:"TikTok"|"Facebook"; isBuy:boolean; buyerNum:number|null; buyerData:Buyer|null; time:string; avatar?:string; timestamp?:string; sellerId?:string; sessionId?:string; sourceUsername?:string; }
@@ -71,8 +71,8 @@ const sortCommentsNewest=(list:Comment[])=>[...list].sort((a,b)=>commentMs(b)-co
 // ─── Storage ──────────────────────────────────────────────────────────────────
 const LS = {
   get:<X,>(k:string,d:X):X=>{try{const v=localStorage.getItem(k);return v!==null?JSON.parse(v):d;}catch{return d;}},
-  set:(k:string,v:unknown)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}},
-  del:(k:string)=>{try{localStorage.removeItem(k);}catch{}},
+  set:(k:string,v:unknown)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{return;}},
+  del:(k:string)=>{try{localStorage.removeItem(k);}catch{return;}},
 };
 const FORCE_LOGIN_PARAMS=["sellerLogin","switchAccount","login"];
 const consumeForceLoginParam=()=>{
@@ -142,6 +142,7 @@ const safeUser=(raw:unknown):User|null=>{
     plan,
     planStatus,
     planExpiry:String(u.planExpiry||addDays(plan==="trial"?7:31)),
+    trialStartedAt:typeof u.trialStartedAt==="string"?u.trialStartedAt:"",
     connectedAccounts:Array.isArray(u.connectedAccounts)?u.connectedAccounts.map(String):[],
   };
 };
@@ -151,7 +152,14 @@ const ini=(s:string)=>s.split(/[\s_]/g).slice(0,2).map(w=>w[0]?.toUpperCase()).j
 const abg=(h:string)=>{const c=["#7F77DD","#1D9E75","#D85A30","#D4537E","#378ADD","#BA7517"];let x=0;for(const ch of h)x=(x*31+ch.charCodeAt(0))%c.length;return c[Math.abs(x)];};
 const addDays=(n:number)=>{const d=new Date();d.setDate(d.getDate()+n);return d.toISOString();};
 const addMonths=(n:number)=>{const d=new Date();d.setMonth(d.getMonth()+n);return d.toISOString();};
-const dLeft=(e:string)=>Math.max(0,Math.ceil((new Date(e).getTime()-Date.now())/86400000));
+const dLeft=(e:string,now=Date.now())=>Math.max(0,Math.ceil((new Date(e).getTime()-now)/86400000));
+const normalizePhone=(value:string)=>String(value||"").replace(/\D/g,"");
+const phoneDisplay=(value:string)=>String(value||"").trim();
+const phoneAlreadyRegistered=(phone:string,users:User[])=>{
+  const normalized=normalizePhone(phone);
+  if(normalized.length<8)return false;
+  return users.some(u=>normalizePhone(u.profile.phone)===normalized);
+};
 const maxAcc=(p:Plan)=>({trial:1,basic:1,pro:3,master:5}[p]);
 const LIVE_COMMENT_LIMIT=5000;
 const COMMENT_ARCHIVE_LIMIT=5000;
@@ -405,6 +413,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
   const [mode,setMode]=useState<"login"|"reg"|"forgot">("login");
   const [email,setEmail]=useState("");const [pw,setPw]=useState("");const [cpw,setCpw]=useState("");
   const [fn,setFn]=useState("");const [sn,setSn]=useState("");
+  const [phone,setPhone]=useState("");
   const [showPw,setShowPw]=useState(false);const [err,setErr]=useState("");const [ok,setOk]=useState("");const [busy,setBusy]=useState(false);
   const [activeFeature,setActiveFeature]=useState(0);
   const [activeFlow,setActiveFlow]=useState(0);
@@ -419,14 +428,26 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
     if(u.password!==pw){setErr(t.err_wrong_pw);setBusy(false);return;}
     LS.set("sf_session",u.email);onLogin(u);setBusy(false);
   }
-  async function reg(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);
+  async function reg(e:React.FormEvent){e.preventDefault();setErr("");setOk("");setBusy(true);
     if(!fn.trim()||!sn.trim()||!email.trim()||!pw){setErr(t.err_fill_all);setBusy(false);return;}
+    if(normalizePhone(phone).length<8){setErr("Enter a valid phone number for admin review.");setBusy(false);return;}
     if(pw.length<6){setErr(t.err_pw_short);setBusy(false);return;}
     if(pw!==cpw){setErr(t.err_pw_mismatch);setBusy(false);return;}
     const users=await listUsers();
     if(await findUser(email)){setErr(t.err_email_exists);setBusy(false);return;}
     const isFirstAccount=users.length===0;
-    const nu:User={email:email.trim().toLowerCase(),password:pw,profile:{fullName:fn.trim(),storeName:sn.trim(),phone:"",tiktok:"",facebook:""},plan:isFirstAccount?"master":"trial",planStatus:"active",planExpiry:isFirstAccount?addMonths(120):addDays(7),connectedAccounts:[]};
+    if(!isFirstAccount&&phoneAlreadyRegistered(phone,users)){setErr("This phone number is already registered. Please log in or contact support.");setBusy(false);return;}
+    const now=new Date().toISOString();
+    const nu:User={
+      email:email.trim().toLowerCase(),
+      password:pw,
+      profile:{fullName:fn.trim(),storeName:sn.trim(),phone:phoneDisplay(phone),tiktok:"",facebook:""},
+      plan:isFirstAccount?"master":"trial",
+      planStatus:isFirstAccount?"active":"pending",
+      planExpiry:isFirstAccount?addMonths(120):now,
+      trialStartedAt:isFirstAccount?now:"",
+      connectedAccounts:[],
+    };
     await upsertUser(nu);
     if(isFirstAccount)rememberAdminEmail(email);
     LS.set("sf_session",nu.email);onLogin(nu);setBusy(false);
@@ -498,15 +519,18 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
         <h2>{t.register_title}</h2><p className="auth-sub">{t.register_sub}</p>
         <form onSubmit={reg} className="auth-form">
           {err&&<div className="auth-err">Warning: {err}</div>}
+          {ok&&<div className="auth-ok">Done: {ok}</div>}
           <div className="auth-row2">
             <Fg label={t.fname_field}><input value={fn} onChange={e=>setFn(e.target.value)} placeholder="Maria Reyes" required/></Fg>
             <Fg label={t.sname_field}><input value={sn} onChange={e=>setSn(e.target.value)} placeholder="Maria's Shop" required/></Fg>
           </div>
           <Fg label={t.email_field}><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@email.com" required/></Fg>
+          <Fg label="Phone number"><input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="+63 912 345 6789" inputMode="tel" required/></Fg>
           <Fg label={t.pw_field}><div className="pw-wrap"><input type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="Min 6 chars" required/><button type="button" onClick={()=>setShowPw(p=>!p)} className="pw-eye">{showPw?"Hide":"Show"}</button></div></Fg>
           <Fg label={t.confirm_field}><input type="password" value={cpw} onChange={e=>setCpw(e.target.value)} placeholder="Confirm password" required/></Fg>
-          <button type="submit" className="auth-btn" disabled={busy}>{busy?t.creating:t.start_trial_btn}</button>
+          <button type="submit" className="auth-btn" disabled={busy}>{busy?"Submitting...":"Submit for admin approval"}</button>
           <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat?v=6" download>Printer Shortcut</a>
+          <p className="auth-terms">Your free trial starts only after admin approval.</p>
           <p className="auth-terms">By creating an account, you agree to SellerFlowLive <button type="button" className="inline-link" onClick={()=>openLegal("terms")}>Terms</button> and <button type="button" className="inline-link" onClick={()=>openLegal("privacy")}>Privacy Policy</button>.</p>
         </form>
         <div className="auth-sw">{t.have_account} <button className="auth-link" onClick={()=>go("login")}>{t.sign_in_btn}</button></div>
@@ -616,6 +640,23 @@ function TrialExpiredWall({t,onUpgrade}:{t:T;onUpgrade:()=>void}){
   );
 }
 
+function PendingApprovalWall({user,onLogout}:{user:User;onLogout:()=>void}){
+  return(
+    <div className="pending-approval">
+      <div className="pending-card">
+        <h2>Waiting for admin approval</h2>
+        <p>Your account was submitted successfully. The app will stay locked until admin approves your free trial.</p>
+        <p><strong>Trial countdown has not started yet.</strong> It starts only after approval.</p>
+        <p>{user.email}<br/>{user.profile.phone}</p>
+        <div className="pending-actions">
+          <button className="btn-out" onClick={onLogout}>Sign out</button>
+          <button className="auth-btn" onClick={()=>window.location.reload()}>Refresh status</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // SUBSCRIPTION PAGE
 // ═══════════════════════════════════════════════════════════════════
@@ -700,13 +741,20 @@ function SubPage({user,onActivate,t}:{user:User;onActivate:(plan:Plan,status:Pla
   const [sel,setSel]=useState<Plan|null>(null);
   const [showPay,setShowPay]=useState(false);
   const [done,setDone]=useState(false);
+  const [planMonths,setPlanMonths]=useState<Record<Exclude<Plan,"trial">,number>>({basic:1,pro:1,master:1});
   const days=dLeft(user.planExpiry);
+  const paidPlanPrices:Record<Exclude<Plan,"trial">,number>={basic:15,pro:25,master:40};
+  const monthOptions=Array.from({length:12},(_,i)=>i+1);
   const plans=[
-    {id:"trial" as Plan,name:t.plan_trial,price:"$0",period:"7 Days",color:"#A855F7",desc:"Perfect for new live sellers starting online selling.",features:["1 TikTok or Facebook Page","Live comment detection","Auto order capture","Basic order printing","Real-time customer comments","Easy setup in minutes"],bestFor:"New live sellers",action:"Start Free Trial"},
-    {id:"basic" as Plan,name:t.plan_basic,price:"$15",period:t.plan_month,color:"#A855F7",desc:"Best for solo live sellers who want faster order processing.",features:["1 TikTok or Facebook Page","Fast live comment detection","1-click order creation","Auto customer information capture","Instant printing support","Sales tracking dashboard","Order history storage","Basic customer support","Mobile & desktop friendly"],bestFor:"Small sellers & beginners",action:"Select Basic Plan"},
-    {id:"pro" as Plan,name:t.plan_pro,price:"$25",period:t.plan_month,color:"#A855F7",badge:t.plan_popular,desc:"For growing sellers managing multiple live pages.",features:["3 TikTok/Facebook Pages","Multi-page live streaming support","Can livestream all pages at once","Unlimited orders","Faster comment grabbing","Advanced sales analytics","Priority printing system","Customer management tools","Messenger-like support panel","Faster support response","Export reports","Smart live order workflow"],bestFor:"Full-time live sellers",action:"Upgrade to Pro"},
-    {id:"master" as Plan,name:t.plan_master,price:"$40",period:t.plan_month,color:"#A855F7",desc:"Built for teams, agencies, and large live-selling businesses.",features:["5 TikTok/Facebook Pages","Simultaneous multi-live support","Unlimited orders","Ultra-fast comment detection","Team/admin management","Priority customer support","Advanced reporting dashboard","Staff access control","Dedicated seller tools","Faster live processing","Premium support","Future feature access","Scalable for large operations"],bestFor:"Teams & high-volume sellers",action:"Go Master"},
+    {id:"trial" as Plan,name:t.plan_trial,basePrice:0,period:"7 Days",color:"#A855F7",desc:"Perfect for new live sellers starting online selling.",features:["1 TikTok or Facebook Page","Live comment detection","Auto order capture","Basic order printing","Real-time customer comments","Easy setup in minutes"],bestFor:"New live sellers",action:"Start Free Trial"},
+    {id:"basic" as Plan,name:t.plan_basic,basePrice:15,period:t.plan_month,color:"#A855F7",desc:"Best for solo live sellers who want faster order processing.",features:["1 TikTok or Facebook Page","Fast live comment detection","1-click order creation","Auto customer information capture","Instant printing support","Sales tracking dashboard","Order history storage","Basic customer support","Mobile & desktop friendly"],bestFor:"Small sellers & beginners",action:"Select Basic Plan"},
+    {id:"pro" as Plan,name:t.plan_pro,basePrice:25,period:t.plan_month,color:"#A855F7",badge:t.plan_popular,desc:"For growing sellers managing multiple live pages.",features:["3 TikTok/Facebook Pages","Multi-page live streaming support","Can livestream all pages at once","Unlimited orders","Faster comment grabbing","Advanced sales analytics","Priority printing system","Customer management tools","Messenger-like support panel","Faster support response","Export reports","Smart live order workflow"],bestFor:"Full-time live sellers",action:"Upgrade to Pro"},
+    {id:"master" as Plan,name:t.plan_master,basePrice:40,period:t.plan_month,color:"#A855F7",desc:"Built for teams, agencies, and large live-selling businesses.",features:["5 TikTok/Facebook Pages","Simultaneous multi-live support","Unlimited orders","Ultra-fast comment detection","Team/admin management","Priority customer support","Advanced reporting dashboard","Staff access control","Dedicated seller tools","Faster live processing","Premium support","Future feature access","Scalable for large operations"],bestFor:"Teams & high-volume sellers",action:"Go Master"},
   ] as const;
+  const selectedPaidPlan=sel&&sel!=="trial"?sel:null;
+  const selectedMonths=selectedPaidPlan?planMonths[selectedPaidPlan]:1;
+  const selectedTotal=selectedPaidPlan?paidPlanPrices[selectedPaidPlan]*selectedMonths:0;
+  const updateMonths=(plan:Exclude<Plan,"trial">,months:number)=>setPlanMonths(current=>({...current,[plan]:months}));
 
   function handleSelect(plan:Plan){
     setSel(plan);setDone(false);
@@ -728,7 +776,19 @@ function SubPage({user,onActivate,t}:{user:User;onActivate:(plan:Plan,status:Pla
             {"badge" in p&&p.badge&&<div className="plan-badge">{p.badge}</div>}
             {user.plan===p.id&&<div className="plan-cur-badge">{t.plan_current}</div>}
             <div className="plan-name">{p.name}</div>
-            <div className="plan-price"><span className="plan-amt">{p.price}</span><span className="plan-period">{p.period}</span></div>
+            <div className="plan-price">
+              <span className="plan-amt">{p.id==="trial"?"$0":`$${p.basePrice*planMonths[p.id]}`}</span>
+              <span className="plan-period">{p.id==="trial"?p.period:`/${planMonths[p.id]} ${planMonths[p.id]===1?"month":"months"}`}</span>
+            </div>
+            {p.id!=="trial"&&(
+              <div className="plan-duration" onClick={e=>e.stopPropagation()}>
+                <label>Duration</label>
+                <select value={planMonths[p.id as Exclude<Plan,"trial">]} onChange={e=>updateMonths(p.id as Exclude<Plan,"trial">,Number(e.target.value))}>
+                  {monthOptions.map(month=><option key={month} value={month}>{month} {month===1?"month":"months"}</option>)}
+                </select>
+                <span>${p.basePrice}/month</span>
+              </div>
+            )}
             <div className="plan-desc minimal">{p.desc}</div>
             <ul className="plan-feature-list">{p.features.map(f=><li key={f}>{f}</li>)}</ul>
             <div className="plan-best"><span>Best For</span><b>{p.bestFor}</b></div>
@@ -746,6 +806,10 @@ function SubPage({user,onActivate,t}:{user:User;onActivate:(plan:Plan,status:Pla
             <div className="modal-body" style={{gap:10}}>
               <div className="payment-box">
                 <p style={{marginBottom:10,color:"#5F5E5A"}}>{t.payment_info}</p>
+                <div className="payment-summary">
+                  <strong>{pName(sel,t)} - {selectedMonths} {selectedMonths===1?"month":"months"}</strong>
+                  <span>Total to pay: ${selectedTotal}</span>
+                </div>
                 <div className="payment-detail"><span>👤</span><span>{t.payment_account}</span></div>
                 <div className="payment-detail"><span>🔢</span><span>{t.payment_number}</span></div>
                 <div className="payment-detail"><span>🏦</span><span>{t.payment_bank}</span></div>
@@ -1116,9 +1180,11 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
       </div>
     </div>
   );
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(()=>{setProf({...user.profile});},[user]);
   useEffect(()=>{setSets({...settings,printerType:"usb"});},[settings]);
   useEffect(()=>{if(directPrintParam){LS.set("sf_direct_print_mode",true);setDirectPrintMode(true);}},[directPrintParam]);
+  /* eslint-enable react-hooks/set-state-in-effect */
   const accountLimit=maxAcc(user.plan);
   const originalTikTok=accountSlots(user.profile.tiktok,accountLimit);
   const originalFacebook=accountSlots(user.profile.facebook,accountLimit);
@@ -1602,7 +1668,7 @@ function Support({user,t}:{user:User;t:T}){
 // ═══════════════════════════════════════════════════════════════════
 // CONNECT MODAL
 // ═══════════════════════════════════════════════════════════════════
-function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:(email:string,plan:Plan)=>void;orders:LiveOrder[];t:T}){
+function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:(email:string,plan:Plan,months?:number)=>void;orders:LiveOrder[];t:T}){
   const [users,setUsers]=useState<User[]>(()=>cleanUsers(arrLS<unknown>("sf_users")));
   const [msgs,setMsgs]=useState<SupportMsg[]>(()=>arrLS<SupportMsg>("sf_support"));
   const [auditLogs,setAuditLogs]=useState<AccountAuditLog[]>(()=>arrLS<AccountAuditLog>("sf_audit_logs"));
@@ -1614,6 +1680,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   const [replyDrafts,setReplyDrafts]=useState<Record<string,string>>({});
   const [selectedSupportEmail,setSelectedSupportEmail]=useState("");
   const [expandedAdminBox,setExpandedAdminBox]=useState<""|"overview"|"create"|"users"|"payments">("");
+  const [adminPlanMonths,setAdminPlanMonths]=useState(1);
   const [copied,setCopied]=useState("");
   const usersTableRef=useRef<HTMLDivElement>(null);
   const paymentsTableRef=useRef<HTMLDivElement>(null);
@@ -1667,11 +1734,13 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     setCopied(`${notices.length} automatic plan message${notices.length===1?"":"s"} sent`);
   }
 
+  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(()=>{
     void refresh();
     const timer=window.setInterval(()=>{void refresh();},10000);
     return()=>window.clearInterval(timer);
   },[]);
+  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
   async function updateMsg(id:string,status:SupportMsg["status"]){
     const next=msgs.map(m=>m.id===id?{...m,status}:m);
@@ -1697,8 +1766,8 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   }
 
   function approve(email:string,plan:Plan){
-    onApprove(email,plan);
-    void logAction("approved plan",email,`Plan changed to ${plan}`);
+    onApprove(email,plan,adminPlanMonths);
+    void logAction("approved plan",email,`Plan changed to ${plan} for ${plan==="trial"?7:`${adminPlanMonths} month${adminPlanMonths===1?"":"s"}`}`);
     setTimeout(refresh,50);
   }
 
@@ -1709,14 +1778,15 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   }
 
   async function setPlan(email:string,plan:Plan,status:PlanStatus="active"){
-    const expiry=status==="expired"?addDays(-1):plan==="trial"?addDays(7):addMonths(1);
-    const next=users.map(u=>u.email.toLowerCase()===email.toLowerCase()?{...u,plan,planStatus:status,planExpiry:expiry}:u);
+    const expiry=status==="expired"?addDays(-1):status==="pending"?new Date().toISOString():plan==="trial"?addDays(7):addMonths(adminPlanMonths);
+    const trialStartedAt=status==="active"&&plan==="trial"?new Date().toISOString():"";
+    const next=users.map(u=>u.email.toLowerCase()===email.toLowerCase()?{...u,plan,planStatus:status,planExpiry:expiry,trialStartedAt}:u);
     LS.set("sf_users",next);
     setUsers(next);
     const updated=next.find(u=>u.email.toLowerCase()===email.toLowerCase());
     if(updated){
       await upsertUser(updated);
-      await logAction(status==="expired"?"expired seller":"changed plan",email,`Plan ${plan}, status ${status}`);
+      await logAction(status==="expired"?"expired seller":"changed plan",email,`Plan ${plan}, status ${status}, duration ${plan==="trial"?7:`${adminPlanMonths} month${adminPlanMonths===1?"":"s"}`}`);
     }
   }
 
@@ -1998,6 +2068,12 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
       </div>
 
       <div className="admin-exportbar admin-compact">
+        <label className="admin-duration-control">
+          <span>Plan duration</span>
+          <select value={adminPlanMonths} onChange={e=>setAdminPlanMonths(Number(e.target.value))}>
+            {Array.from({length:12},(_,i)=>i+1).map(month=><option key={month} value={month}>{month} {month===1?"month":"months"}</option>)}
+          </select>
+        </label>
         <button className="btn-out" onClick={exportUsers}>Export Users CSV</button>
         <button className="btn-out" onClick={exportPayments}>Export Payments CSV</button>
         <button className="btn-out" onClick={exportAudit}>Export Audit CSV</button>
@@ -2149,43 +2225,6 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                       </div>
                     ))}
                   </div>}
-                </div>
-              ))}
-              {false&&[...filteredMsgs].reverse().map(m=>(
-                <div key={m.id} className="support-thread">
-                  <div className="support-thread-head">
-                    <div>
-                      <strong>{m.name}</strong>
-                      <span>{m.email}</span>
-                    </div>
-                    <Badge label={m.status} color={m.status==="approved"?"green":m.status==="rejected"?"red":"amber"}/>
-                  </div>
-                  <div className="support-chat-row seller">
-                    <div className="support-avatar">{ini(m.name||m.email)}</div>
-                    <div className="support-bubble seller">
-                      <strong>{m.subject}</strong>
-                      <p>{m.message}</p>
-                      <span>{new Date(m.timestamp).toLocaleString()} {m.hasProof?" · Proof attached":""}</span>
-                    </div>
-                  </div>
-                  {m.adminReply&&(
-                    <div className="support-chat-row admin">
-                      <div className="support-bubble admin">
-                        <strong>Admin reply</strong>
-                        <p>{m.adminReply}</p>
-                        {m.repliedAt&&<span>{new Date(m.repliedAt).toLocaleString()}</span>}
-                      </div>
-                    </div>
-                  )}
-                  <div className="support-actions">
-                    <button className="tbl-btn ed" onClick={()=>{updateMsg(m.id,"approved");approve(m.email,"pro");}}>Approve</button>
-                    <button className="tbl-btn dl" onClick={()=>updateMsg(m.id,"rejected")}>Reject</button>
-                    <button className="tbl-btn ed" onClick={()=>copy(m.email,"Email")}>Copy email</button>
-                  </div>
-                  <div className="messenger-reply">
-                    <textarea rows={2} value={replyDrafts[m.id] ?? m.adminReply ?? ""} onChange={e=>setReplyDrafts(s=>({...s,[m.id]:e.target.value}))} placeholder="Type a reply like Messenger..."/>
-                    <button className="tbl-btn ed" onClick={()=>replyToSeller(m)}>{m.adminReply?"Update reply":"Send reply"}</button>
-                  </div>
                 </div>
               ))}
             </div>
@@ -2343,7 +2382,7 @@ function ConnectModal({onClose,onConnect,user,t,initialTab="TikTok"}:{onClose:()
 export default function App(){
   const [lang,setLangState]=useState<Lang>(()=>{try{return safeLang(JSON.parse(localStorage.getItem("sf_lang")||'"en"'));}catch{return "en";}});
   const t=TRANSLATIONS[lang]||TRANSLATIONS.en;
-  function setLang(l:Lang){const next=safeLang(l);setLangState(next);try{localStorage.setItem("sf_lang",JSON.stringify(next));}catch{}}
+  function setLang(l:Lang){const next=safeLang(l);setLangState(next);try{localStorage.setItem("sf_lang",JSON.stringify(next));}catch{return;}}
 
   const forceLogin=consumeForceLoginParam();
   const [user,setUser]=useState<User|null>(()=>{if(forceLogin)return null;const e=LS.get<string>("sf_session","");if(!e)return null;const u=cleanUsers(arrLS<unknown>("sf_users")).find(u=>u.email===e)||null;return u?asAdminPlan(u):null;});
@@ -2385,7 +2424,12 @@ export default function App(){
   const [toast,setToast]=useState("");
   const feedRef=useRef<HTMLDivElement>(null);
   const today=new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"});
+  const [nowTick,setNowTick]=useState(()=>Date.now());
   useEffect(()=>{activeLiveAccountsRef.current=activeLiveAccounts;},[activeLiveAccounts]);
+  useEffect(()=>{
+    const timer=window.setInterval(()=>setNowTick(Date.now()),60000);
+    return()=>window.clearInterval(timer);
+  },[]);
   useEffect(()=>{
     const timer=window.setInterval(()=>{
       const next=liveDayId();
@@ -2446,9 +2490,10 @@ export default function App(){
   }
 
   // Check trial expiry
-  const accountLocked=!!user&&!isAdminUser(user)&&(user.planStatus==="expired"||dLeft(user.planExpiry)===0);
+  const accountLocked=!!user&&!isAdminUser(user)&&(user.planStatus==="expired"||dLeft(user.planExpiry,nowTick)===0);
   const showAccountLock=accountLocked&&page!=="subscription"&&page!=="support";
 
+  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(()=>{
     if(!user)return;
     const commentsKey=sellerLiveDataKey("sf_comments",user.email,currentSessionId);
@@ -2464,7 +2509,9 @@ export default function App(){
     setTotOrd(nextOrders.length||nextBuyers.reduce((s,b)=>s+b.totalOrders,0));
     setTotRev(nextOrders.length?nextOrders.reduce((s,o)=>s+o.total,0):nextBuyers.reduce((s,b)=>s+b.totalSpent,0));
   },[user?.email,currentLiveDayId]);
+  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
+  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(()=>{
     if(!user)return;
     const s = io(SERVER);
@@ -2526,7 +2573,9 @@ export default function App(){
     });
     return()=>{s.disconnect();};
   },[user?.email,currentLiveDayId]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
+  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(()=>{
     if(!user)return;
     const commentsKey=sellerLiveDataKey("sf_comments",user.email,currentSessionId);
@@ -2541,6 +2590,7 @@ export default function App(){
     const timer=window.setInterval(refreshComments,3000);
     return()=>window.clearInterval(timer);
   },[user]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   useEffect(()=>{
     const email=LS.get<string>("sf_session","");
@@ -2551,6 +2601,7 @@ export default function App(){
     return()=>window.clearInterval(timer);
   },[]);
 
+  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(()=>{
     if(!user){setSupportUnreadCount(0);return;}
     const refreshSupportBadge=()=>void listSupportMessages().then(ms=>{
@@ -2565,6 +2616,7 @@ export default function App(){
     const timer=window.setInterval(refreshSupportBadge,10000);
     return()=>window.clearInterval(timer);
   },[user?.email]);
+  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
   function saveUser(u:User){
     const next=asAdminPlan(u);
@@ -2572,6 +2624,14 @@ export default function App(){
     LS.set("sf_users",cleanUsers(arrLS<unknown>("sf_users")).map(x=>x.email===next.email?next:x));
     void upsertUser(next);
   }
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(()=>{
+    if(!user||isAdminUser(user)||user.planStatus==="expired")return;
+    if(dLeft(user.planExpiry,nowTick)>0)return;
+    saveUser({...user,planStatus:"expired"});
+    setPage("subscription");
+  },[user,nowTick]);
+  /* eslint-enable react-hooks/set-state-in-effect */
   function handleLogin(u:User){const safe=safeUser(u);if(safe){setUser(asAdminPlan(safe));setPage("dashboard");}}
   function handleLogout(){LS.del("sf_session");setUser(null);setComments([]);setBuyers([]);setAllOrders([]);setPrinted(new Set());setTotOrd(0);setTotRev(0);setSelBuyer(null);}
   async function handleDeleteAccount(){
@@ -2608,14 +2668,15 @@ export default function App(){
   }
   function handleSaveSettings(s:Settings){setSettingsState(s);LS.set("sf_settings",s);}
   function handleSavePw(op:string,np:string):string{if(!user)return"No user";if(user.password!==op)return t.wrong_pw;saveUser({...user,password:np});return"";}
-  function handleAdminApprove(email:string,plan:Plan){
+  function handleAdminApprove(email:string,plan:Plan,months=1){
     const users=cleanUsers(arrLS<unknown>("sf_users"));
-    const nextUsers=users.map(u=>u.email.toLowerCase()===email.toLowerCase()?{...u,plan,planStatus:"active" as PlanStatus,planExpiry:addMonths(1)}:u);
+    const now=new Date().toISOString();
+    const nextUsers=users.map(u=>u.email.toLowerCase()===email.toLowerCase()?{...u,plan,planStatus:"active" as PlanStatus,planExpiry:plan==="trial"?addDays(7):addMonths(months),trialStartedAt:plan==="trial"?now:u.trialStartedAt}:u);
     LS.set("sf_users",nextUsers);
     const updated=nextUsers.find(u=>u.email.toLowerCase()===email.toLowerCase());
     if(updated)void upsertUser(updated);
     if(updated&&user?.email.toLowerCase()===email.toLowerCase())setUser(asAdminPlan(updated));
-    setToast(`${email} approved for ${plan}`);
+    setToast(`${email} approved for ${plan}${plan==="trial"?"":` (${months} month${months===1?"":"s"})`}`);
   }
   async function connectPlatform(platform:"TikTok"|"Facebook",data:Record<string,string>){
     const ep=platform==="TikTok"?"/connect/tiktok":"/connect/facebook";
@@ -2747,6 +2808,7 @@ export default function App(){
   }
 
   if(!user)return <PublicAuth onLogin={handleLogin} t={t} lang={lang} setLang={setLang}/>;
+  if(!isAdminUser(user)&&user.planStatus==="pending")return <PendingApprovalWall user={user} onLogout={handleLogout}/>;
   if(accountGate)return <AccountGate user={user} onContinue={continueSavedAccount} onSwitch={switchAccount}/>;
 
   const isLive=ttOn||fbOn;
