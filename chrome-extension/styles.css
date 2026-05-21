@@ -1,0 +1,97 @@
+#sellerflow-live-comment-widget {
+  position: fixed;
+  right: 22px;
+  bottom: 22px;
+  z-index: 2147483647;
+  width: 236px;
+  border: 1px solid #c7c1f7;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 18px 48px rgba(38, 33, 92, 0.22);
+  color: #26215c;
+  font-family: Arial, Helvetica, sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+
+#sellerflow-live-comment-widget.sflc-running {
+  border-color: #20c576;
+}
+
+.sflc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #f5f4ff;
+  cursor: move;
+}
+
+.sflc-title {
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.sflc-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #c9c6bd;
+  flex: 0 0 auto;
+}
+
+#sellerflow-live-comment-widget.sflc-running .sflc-dot {
+  background: #20c576;
+  box-shadow: 0 0 0 5px rgba(32, 197, 118, 0.14);
+}
+
+.sflc-body {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px 12px;
+}
+
+.sflc-status {
+  min-height: 16px;
+  color: #5f5e5a;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.sflc-count {
+  color: #26215c;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.sflc-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.sflc-btn {
+  height: 34px;
+  border: 0;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.sflc-start {
+  background: #20c576;
+  color: #ffffff;
+}
+
+.sflc-stop {
+  background: #fcebeb;
+  color: #a32d2d;
+}
+
+.sflc-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}

@@ -644,6 +644,37 @@ app.get("/test-comment", (req, res) => {
   });
 });
 
+app.post("/browser-helper/comment", (req, res) => {
+  const comment = String(req.body.comment || "").trim();
+  if (!comment) {
+    return res.status(400).json({
+      success: false,
+      error: "comment is required",
+    });
+  }
+
+  const handle = cleanAccountKey(req.body.handle || "viewer") || "viewer";
+  const name = String(req.body.name || handle || "TikTok viewer").trim();
+  const payload = {
+    handle,
+    name,
+    comment,
+    platform: "TikTok",
+    isBuy: false,
+    buyerNum: null,
+    buyerData: null,
+    time: new Date().toLocaleTimeString(),
+    timestamp: String(req.body.timestamp || new Date().toISOString()),
+  };
+
+  io.emit("comment", payload);
+
+  return res.json({
+    success: true,
+    message: "Browser helper comment received",
+  });
+});
+
 server.listen(3001, () => {
   console.log("SellerFlow TikTok LIVE server running on port 3001");
 });
