@@ -289,40 +289,7 @@ function sendSlipToNativePrinter(payload:NativePrinterPayload){
   return false;
 }
 
-const LOCAL_HELPER_WS="ws://127.0.0.1:8588";
-function sendPrintOrderToLocalHelper(payload:NativePrinterPayload,timeoutMs=1200):Promise<boolean>{
-  return new Promise(resolve=>{
-    if(typeof window==="undefined"||!("WebSocket" in window)){resolve(false);return;}
-    let settled=false;
-    let ws:WebSocket|null=null;
-    const finish=(ok:boolean)=>{
-      if(settled)return;
-      settled=true;
-      try{ws?.close();}catch{ /* ignore close errors */ }
-      resolve(ok);
-    };
-    const timer=window.setTimeout(()=>finish(false),timeoutMs);
-    try{
-      ws=new WebSocket(LOCAL_HELPER_WS);
-      ws.onopen=()=>{
-        ws?.send(JSON.stringify({type:"print_order",payload}));
-        window.setTimeout(()=>{window.clearTimeout(timer);finish(true);},350);
-      };
-      ws.onmessage=()=>{window.clearTimeout(timer);finish(true);};
-      ws.onerror=()=>{window.clearTimeout(timer);finish(false);};
-      ws.onclose=()=>{window.clearTimeout(timer);finish(false);};
-    }catch{
-      window.clearTimeout(timer);
-      finish(false);
-    }
-  });
-}
-
-async function testLocalHelperPrint(payload:NativePrinterPayload){
-  return sendPrintOrderToLocalHelper(payload,1800);
-}
-
-async function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Settings|string){
+function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Settings|string){
   const cfg:Settings=typeof printSettings==="string"?{...DEF_SETTINGS,stickerSize:printSettings}:printSettings;
   const size=cfg.stickerSize;
   const scale=(v:number|undefined,fallback=100)=>Math.max(60,Math.min(180,v||fallback))/100;
@@ -336,7 +303,6 @@ async function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:S
   const sess=new Date().toLocaleDateString("en-PH",{month:"long",day:"numeric",year:"numeric"});
   const nativePayload:NativePrinterPayload={type:"sellerflow.printSlip",buyer,currency:cur,storeName,settings:cfg,sessionDate:sess,createdAt:new Date().toISOString()};
   if(hasNativeMobilePrinter()&&sendSlipToNativePrinter(nativePayload))return;
-  if(await sendPrintOrderToLocalHelper(nativePayload))return;
   const color=nc(buyer.num);
   const [w]=size.split("x").map(Number);
   const oHtml=buyer.orders.map(o=>`<div style="border-left:2px solid #7F77DD;padding-left:6px;margin-bottom:5px"><div style="font-size:9px;color:#888">${o.time} — #SF${o.orderNum}</div><div style="font-size:10px;font-weight:700">${o.item}</div><div style="font-size:9px;color:#555">x${o.qty}${o.total>0?` — ${cur}${o.total.toLocaleString()}`:""}</div></div>`).join("");
@@ -1289,12 +1255,6 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
     printSlip(testBuyer,sets.currency,user.profile.storeName||"SellerFlowLive",sets);
     setToast("Printer test sent");
   }
-  async function testLocalHelper(){
-    const testBuyer=samplePrinterBuyer();
-    const payload:NativePrinterPayload={type:"sellerflow.printSlip",buyer:testBuyer,currency:sets.currency,storeName:user.profile.storeName||"SellerFlowLive",settings:sets,sessionDate:new Date().toLocaleDateString("en-PH",{month:"long",day:"numeric",year:"numeric"}),createdAt:new Date().toISOString()};
-    const ok=await testLocalHelperPrint(payload);
-    setToast(ok?"Local helper print_order sent":"Local helper not reachable at ws://127.0.0.1:8588");
-  }
   function openMobileBluetoothGuide(){
     setToast("Open phone Bluetooth settings, pair printer, then come back to SellerFlowLive");
   }
@@ -1423,17 +1383,16 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
               <Badge label={directPrintMode?"Ready":"Shortcut needed"} color={directPrintMode?"green":"amber"}/>
             </div>
             <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat?v=6" download>Printer Shortcut</a>
-            <button type="button" className="printer-helper-test-btn" onClick={testLocalHelper}>Local Helper Test</button>
             <button type="button" className="printer-test-btn" onClick={testPrinter}>Printer Test</button>
             <div className="printer-troubleshoot">
               <strong>Quick setup</strong>
               <ol>
-                <li>Open SellerFlowLive Helper on Windows.</li>
-                <li>Make sure it says SERVER RUNNING at ws://127.0.0.1:8588.</li>
-                <li>Click Local Helper Test to send sample print_order JSON.</li>
-                <li>When helper is running, 1-click sends orders directly to the thermal printer.</li>
+                <li>Click Printer Shortcut and run it once.</li>
+                <li>Close normal Chrome/Edge tabs.</li>
+                <li>Open SellerFlowLive from the new SellerFlowLive Direct Print icon on the desktop.</li>
+                <li>Choose the printer once. After that, 1-click prints automatically.</li>
               </ol>
-              <p>No WordPad is used by the helper. If it fails, check the helper logs for printer not found, WebSocket disconnected, or print failed.</p>
+              <p>If it opens the wrong admin or seller account, open SellerFlowLive Switch Account once, then login again. If the print screen stays open, you are probably using a normal browser tab or an old shortcut.</p>
             </div>
           </div>
           <Fg label={t.printer_type}>

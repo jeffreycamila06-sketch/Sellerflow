@@ -11,12 +11,6 @@ node_modules
 dist
 dist-ssr
 *.local
-desktop-helper/build/
-desktop-helper/dist/
-desktop-helper/installer-output/
-desktop-helper/*.spec
-desktop-helper/*.sed
-desktop-helper/SellerFlowLiveHelper.exe
 
 # Editor directories and files
 .vscode/*

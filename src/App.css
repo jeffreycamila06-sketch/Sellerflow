@@ -39,8 +39,6 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .printer-shortcut-link:hover{background:#EEEDFE;color:#26215C}
 .printer-test-btn{display:flex;align-items:center;justify-content:center;width:100%;padding:10px;border:1px solid #0F6E56;border-radius:9px;color:#0F6E56;background:#E1F5EE;font-size:13px;font-weight:700;cursor:pointer}
 .printer-test-btn:hover{background:#CFF0E4}
-.printer-helper-test-btn{display:flex;align-items:center;justify-content:center;width:100%;padding:10px;border:1px solid #534AB7;border-radius:9px;color:#fff;background:#7F77DD;font-size:13px;font-weight:700;cursor:pointer}
-.printer-helper-test-btn:hover{background:#534AB7}
 .printer-tools-row{display:grid;grid-template-columns:1fr;gap:8px;margin:8px 0 12px}
 .printer-shortcut-note{font-size:11px;line-height:1.4;color:#77756E;background:#FAF9F5;border:1px solid #E7E0D0;border-radius:8px;padding:8px 10px}
 .printer-direct-note{font-size:11px;line-height:1.4;color:#0F6E56;background:#E1F5EE;border:1px solid #BFE8DA;border-radius:8px;padding:8px 10px}
