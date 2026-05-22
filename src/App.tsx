@@ -2802,14 +2802,15 @@ export default function App(){
     const nextBuyer:Buyer=existing
       ? {...existing,name:c.name||existing.name,orders:[...existing.orders,order],totalOrders:existing.totalOrders+1,totalSpent:existing.totalSpent+order.total}
       : {handle:c.handle,name:c.name||c.handle,platform:c.platform,num:buyerNum,orders:[order],totalOrders:1,totalSpent:order.total};
+    const singleOrderBuyer:Buyer={...nextBuyer,orders:[order],totalOrders:1,totalSpent:order.total};
 
     const nextBuyers=existing?buyers.map(b=>b.handle===c.handle&&b.platform===c.platform?nextBuyer:b):[...buyers,nextBuyer];
     saveBuyerMemory(nextBuyers);
-    setSelBuyer(nextBuyer);
+    setSelBuyer(singleOrderBuyer);
     setAllOrders(prev=>{const next=[...prev,order];LS.set(sellerMemoryKey("sf_orders"),next);return next;});
 
     if(print){
-      printSlip(nextBuyer,settings.currency,user?.profile.storeName||"SellerFlowLive",settings);
+      printSlip(singleOrderBuyer,settings.currency,user?.profile.storeName||"SellerFlowLive",settings);
     }else{
       setToast(`Order created for ${c.name||c.handle}`);
     }
@@ -2831,10 +2832,12 @@ export default function App(){
     ]).catch(err=>console.warn("Background database save failed",err));
   }
   function reprintLatestForComment(c:Comment){
-    const b=buyers.find(x=>x.handle===c.handle);
+    const b=buyers.find(x=>x.handle===c.handle&&x.platform===c.platform);
     if(!b){void createOrderFromComment(c,{print:true});return;}
-    setSelBuyer(b);
-    printSlip(b,settings.currency,user?.profile.storeName||"SellerFlowLive",settings);
+    const matchingOrder=[...b.orders].reverse().find(o=>o.item===(c.comment||"Live comment order")&&(o.time===c.time||!c.time))||b.orders[b.orders.length-1];
+    const singleOrderBuyer:Buyer={...b,orders:matchingOrder?[matchingOrder]:[],totalOrders:matchingOrder?1:0,totalSpent:matchingOrder?.total||0};
+    setSelBuyer(singleOrderBuyer);
+    printSlip(singleOrderBuyer,settings.currency,user?.profile.storeName||"SellerFlowLive",settings);
   }
   function copyText(text:string,label:string){
     navigator.clipboard?.writeText(text);
