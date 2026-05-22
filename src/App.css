@@ -588,12 +588,12 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .deposit-link:hover{text-decoration:underline}
 .msg-time{font-size:10px;color:#9B968B}
 .msg-actions{display:grid;grid-template-columns:auto auto;grid-template-rows:auto auto;align-items:center;justify-items:end;gap:6px 10px;margin-left:auto;position:relative;min-width:174px}
-.comment-menu-btn{grid-column:2;width:56px;height:24px;border:none;background:#fff;color:#3058A8;border-radius:8px;cursor:pointer;font-weight:900;letter-spacing:5px;line-height:1;font-size:18px}
+.comment-menu-btn{grid-column:2;grid-row:1;width:56px;height:24px;border:none;background:#fff;color:#3058A8;border-radius:8px;cursor:pointer;font-weight:900;letter-spacing:5px;line-height:1;font-size:18px}
 .comment-menu-btn:hover{background:#E8F0FF}
 .comment-menu{position:absolute;right:0;top:30px;width:210px;background:#fff;border:1px solid #E4E2DC;border-radius:10px;box-shadow:0 14px 40px rgba(0,0,0,.16);padding:6px;z-index:30}
 .comment-menu button{display:block;width:100%;border:none;background:transparent;text-align:left;padding:9px 10px;border-radius:7px;font-size:12px;color:#26215C;cursor:pointer}
 .comment-menu button:hover{background:#F5F4FF;color:#534AB7}
-.order-count{grid-column:1;grid-row:2;color:#3058A8;font-size:18px;font-weight:800;display:flex;align-items:center;gap:4px}
+.order-count{grid-column:1;grid-row:1;color:#3058A8;font-size:18px;font-weight:800;display:flex;align-items:center;gap:4px}
 .order-count span{font-size:12px;color:#2F3B57}
 .one-btn{grid-column:2;grid-row:2;height:44px;min-width:100px;padding:0 16px;border-radius:7px;background:linear-gradient(180deg,#0750AF,#003E91);box-shadow:0 5px 12px rgba(0,62,145,.24);font-size:16px}
 .one-btn:hover:not(:disabled){background:linear-gradient(180deg,#06499F,#00357E)}
@@ -773,10 +773,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .msg-sep,.p-tag{display:none}
   .msg-tx.buy{font-size:13px;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   .msg-meta{font-size:10px;line-height:1.1;margin-top:2px}
-  .msg-actions{grid-column:auto;width:auto;min-width:0;grid-template-columns:1fr;grid-template-rows:18px 16px 34px;justify-items:end;align-items:center;gap:1px;margin:0}
-  .comment-menu-btn{grid-column:auto;grid-row:1;width:38px;height:18px;background:transparent;font-size:16px;letter-spacing:4px;padding:0}
-  .order-count{grid-column:auto;grid-row:2;font-size:11px;gap:2px;line-height:1}
-  .one-btn{grid-column:auto;grid-row:3;min-width:72px;height:34px;font-size:13px;border-radius:9px;padding:0 8px}
+  .msg-actions{grid-column:auto;width:auto;min-width:0;grid-template-columns:auto auto;grid-template-rows:18px 34px;justify-items:end;align-items:center;gap:1px 4px;margin:0}
+  .comment-menu-btn{grid-column:2;grid-row:1;width:38px;height:18px;background:transparent;font-size:16px;letter-spacing:4px;padding:0}
+  .order-count{grid-column:1;grid-row:1;font-size:11px;gap:2px;line-height:1}
+  .one-btn{grid-column:1 / 3;grid-row:2;min-width:72px;height:34px;font-size:13px;border-radius:9px;padding:0 8px}
   .mobile-tool-grid{display:grid;grid-template-columns:1fr;gap:10px}
   .mobile-tool-card{min-height:124px;border:1px solid #E4E2DC;background:#fff;border-radius:16px;box-shadow:0 6px 18px rgba(38,33,92,.07);padding:18px;text-align:left;display:flex;flex-direction:column;justify-content:center;gap:7px;color:#26215C}
   .mobile-tool-card span{font-size:28px;line-height:1}
