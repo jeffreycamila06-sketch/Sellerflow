@@ -2503,6 +2503,8 @@ export default function App(){
   const [connectTab,setConnectTab]=useState<"TikTok"|"Facebook">("TikTok");
   const [printed,setPrinted]=useState<Set<string>>(()=>new Set(sellerDayOrSessionArray<string>("sf_printed",initialSellerEmail,currentLiveDayId,currentSessionId)));
   const [openCommentMenu,setOpenCommentMenu]=useState<number|null>(null);
+  const [commentPrices,setCommentPrices]=useState<Record<string,string>>({});
+  const priceInputRefs=useRef<Record<string,HTMLInputElement|null>>({});
   const [supportUnreadCount,setSupportUnreadCount]=useState(0);
   const [toast,setToast]=useState("");
   const feedRef=useRef<HTMLDivElement>(null);
@@ -2799,15 +2801,15 @@ export default function App(){
       }
     }catch{setToast(t.cant_reach);}
   }
-  async function createOrderFromComment(c:Comment,{print=true}:{print?:boolean}={}){
+  async function createOrderFromComment(c:Comment,{print=true,price=0}:{print?:boolean;price?:number}={}){
     const existing=buyers.find(b=>b.handle===c.handle&&b.platform===c.platform);
     const buyerNum=existing?.num||buyers.length+1;
     const order:LiveOrder={
       orderNum:Date.now(),
       item:c.comment||"Live comment order",
       qty:1,
-      price:0,
-      total:0,
+      price,
+      total:price,
       time:c.time||new Date().toLocaleTimeString(),
       handle:c.handle,
       name:c.name||c.handle,
@@ -2880,14 +2882,20 @@ export default function App(){
     setPage("dashboard");
     setToast(`Showing ${b.name}`);
   }
-  function oneClick(c:Comment){
+  function oneClick(c:Comment,price=0){
     setPrinted(p=>{
       const next=new Set(p);
       next.add(commentKey(c));
       LS.set(sellerMemoryKey("sf_printed"),Array.from(next));
       return next;
     });
-    void createOrderFromComment(c,{print:true});
+    void createOrderFromComment(c,{print:true,price});
+  }
+  function submitCommentPrice(c:Comment){
+    const key=commentKey(c);
+    const price=Number(commentPrices[key]||0)||0;
+    oneClick(c,price);
+    setTimeout(()=>priceInputRefs.current[key]?.focus(),0);
   }
   function continueSavedAccount(){
     if(user&&typeof window!=="undefined")window.sessionStorage.setItem("sf_account_gate_ok",user.email);
@@ -2994,8 +3002,9 @@ export default function App(){
                   {comments.length===0&&<div className="feed-empty">{t.connect_prompt}</div>}
                   {comments.map((c,i)=>{
                     const orderCount=commentOrderCount(c);
+                    const cKey=commentKey(c);
                     return(
-                      <div key={commentKey(c)} className="msg-row buy" onDoubleClick={()=>oneClick(c)}>
+                      <div key={cKey} className="msg-row buy" onDoubleClick={()=>submitCommentPrice(c)}>
                         <Av name={c.name||c.handle} image={c.avatar} size={42}/>
                         <div className="msg-bd">
                           <div className="msg-nm">
@@ -3024,7 +3033,16 @@ export default function App(){
                             </div>
                           )}
                           <div className="order-count" title="Orders created from this buyer">🛒 <span>({orderCount})</span></div>
-                          <button className={`one-btn ${printed.has(commentKey(c))?"done":""}`} onClick={()=>oneClick(c)}>1-click</button>
+                          <input
+                            ref={el=>{priceInputRefs.current[cKey]=el;}}
+                            className="comment-price-input"
+                            inputMode="decimal"
+                            placeholder="Enter Price"
+                            value={commentPrices[cKey]||""}
+                            onChange={e=>setCommentPrices(p=>({...p,[cKey]:e.target.value.replace(/[^\d.]/g,"")}))}
+                            onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();submitCommentPrice(c);}}}
+                          />
+                          <button className={`one-btn ${printed.has(cKey)?"done":""}`} onClick={()=>submitCommentPrice(c)}>1-click</button>
                         </div>
                       </div>
                     );
