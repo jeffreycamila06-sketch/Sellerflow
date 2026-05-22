@@ -855,7 +855,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .cd-table-wrap{max-width:100%;overflow-x:auto}
 }
 
-@media (max-width:700px){
+@media (max-width:700px), (hover:none) and (pointer:coarse){
   html,body,#root,.app{width:100%;max-width:100%;min-height:100%;overflow-x:hidden}
   *,*::before,*::after{box-sizing:border-box}
   body{font-size:14px}
