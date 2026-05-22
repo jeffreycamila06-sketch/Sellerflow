@@ -32,7 +32,7 @@ interface Comment { handle:string; name:string; comment:string; platform:"TikTok
 interface Product { id:number; name:string; sku:string; price:number; stock:number; platform:string; status:string; }
 type ShippingStatus = "Pending"|"Ready"|"Shipped"|"Delivered"|"Returned";
 interface ShippingCustomer { username:string; name:string; phone:string; sevenCode:string; note:string; lastComment:string; firstSeen:string; status:ShippingStatus; isNew:boolean; }
-interface Settings { autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"usb"|"bluetooth"; stickerSize:string; printStoreName:boolean; printBuyerNumber:boolean; printBuyerUsername:boolean; printOrderItems:boolean; printTotal:boolean; printAutoClose:boolean; printLabelScale:number; printStoreScale:number; printBuyerNumberScale:number; printBuyerNameScale:number; printUsernameScale:number; printOrderScale:number; printCommentScale:number; printTotalScale:number; printStoreX:number; printStoreY:number; printBuyerLabelX:number; printBuyerLabelY:number; printBuyerNumberX:number; printBuyerNumberY:number; printBuyerNameX:number; printBuyerNameY:number; printUsernameX:number; printUsernameY:number; printSessionX:number; printSessionY:number; printOrderX:number; printOrderY:number; printTotalX:number; printTotalY:number; }
+interface Settings { darkMode:boolean; autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"usb"|"bluetooth"; stickerSize:string; printStoreName:boolean; printBuyerNumber:boolean; printBuyerUsername:boolean; printOrderItems:boolean; printTotal:boolean; printAutoClose:boolean; printLabelScale:number; printStoreScale:number; printBuyerNumberScale:number; printBuyerNameScale:number; printUsernameScale:number; printOrderScale:number; printCommentScale:number; printTotalScale:number; printStoreX:number; printStoreY:number; printBuyerLabelX:number; printBuyerLabelY:number; printBuyerNumberX:number; printBuyerNumberY:number; printBuyerNameX:number; printBuyerNameY:number; printUsernameX:number; printUsernameY:number; printSessionX:number; printSessionY:number; printOrderX:number; printOrderY:number; printTotalX:number; printTotalY:number; }
 type NumberSettingKey = {[K in keyof Settings]: Settings[K] extends number ? K : never}[keyof Settings];
 interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; proofImage?:string; timestamp:string; status:"pending"|"approved"|"rejected"|"resolved"; adminReply?:string; repliedAt?:string; }
 interface NativePrinterPayload { type:"sellerflow.printSlip"; buyer:Buyer; currency:string; storeName:string; settings:Settings; sessionDate:string; createdAt:string; }
@@ -135,7 +135,7 @@ const sellerDayOrSessionArray=<X,>(base:string,email:string,dayId:string,session
 };
 
 const SERVER = import.meta.env.VITE_SERVER_URL || "http://localhost:3001";
-const DEF_SETTINGS: Settings = { autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"", paperSize:"100x60mm", printerType:"usb", stickerSize:"100x60mm", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printLabelScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printCommentScale:100, printTotalScale:100, printStoreX:0, printStoreY:0, printBuyerLabelX:0, printBuyerLabelY:0, printBuyerNumberX:0, printBuyerNumberY:0, printBuyerNameX:0, printBuyerNameY:0, printUsernameX:0, printUsernameY:0, printSessionX:0, printSessionY:0, printOrderX:0, printOrderY:0, printTotalX:0, printTotalY:0 };
+const DEF_SETTINGS: Settings = { darkMode:true, autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"", paperSize:"100x60mm", printerType:"usb", stickerSize:"100x60mm", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printLabelScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printCommentScale:100, printTotalScale:100, printStoreX:0, printStoreY:0, printBuyerLabelX:0, printBuyerLabelY:0, printBuyerNumberX:0, printBuyerNumberY:0, printBuyerNameX:0, printBuyerNameY:0, printUsernameX:0, printUsernameY:0, printSessionX:0, printSessionY:0, printOrderX:0, printOrderY:0, printTotalX:0, printTotalY:0 };
 const LANG_OPTS: {code:Lang;label:string}[] = [{code:"en",label:"🇺🇸 EN"},{code:"fil",label:"🇵🇭 FIL"},{code:"zh",label:"🇨🇳 中文"},{code:"vi",label:"🇻🇳 VI"},{code:"th",label:"🇹🇭 TH"},{code:"id",label:"🇮🇩 ID"}];
 const CURRENCIES = [{v:"",l:"No symbol"},{v:"$",l:"$ USD"},{v:"NT$",l:"NT$ NTD"}];
 const cleanCurrency=(value:unknown)=>{
@@ -1487,6 +1487,13 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
         </form>
         <form onSubmit={saveSets} className="scard settings-section settings-section-display">
           <div className="scard-title">{t.display_section}</div>
+          <div className="tog-row theme-mode-toggle">
+            <span>
+              <strong>Dark mode skin</strong>
+              <small>{sets.darkMode?"Premium dark mobile theme":"Original regular color theme"}</small>
+            </span>
+            <div onClick={()=>setSets(s=>({...s,darkMode:!s.darkMode}))} className={`tog ${sets.darkMode?"on":""}`}/>
+          </div>
           <Fg label={t.currency_label}>
             <select value={sets.currency} onChange={e=>setSets(s=>({...s,currency:e.target.value}))}>
               {CURRENCIES.map(c=><option key={c.v} value={c.v}>{c.l}</option>)}
@@ -3072,7 +3079,7 @@ export default function App(){
   const navClass=(id:Page)=>`nav-it ${page===id?"on":""}`;
 
   return(
-    <div className="app" onClick={()=>{setShowProf(false);setOpenCommentMenu(null);}}>
+    <div className={`app ${settings.darkMode?"theme-dark":"theme-regular"}`} onClick={()=>{setShowProf(false);setOpenCommentMenu(null);}}>
       {toast&&<Toast msg={toast} onDone={()=>setToast("")}/>}
       {showAccountLock&&<TrialExpiredWall t={t} onUpgrade={()=>{setPage("subscription");}}/>}
 

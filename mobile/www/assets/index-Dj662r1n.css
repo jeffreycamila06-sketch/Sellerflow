@@ -499,6 +499,10 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .mobile-bt-steps strong{font-size:13px}.mobile-bt-steps ol{margin:8px 0 0 18px;font-size:12px;line-height:1.6;color:#5F5E5A}
 .mobile-bt-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .tog-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:0.5px solid #F5F5F2;font-size:12px;font-weight:500;cursor:pointer}
+.theme-mode-toggle{gap:14px;padding:12px 0}
+.theme-mode-toggle span{display:flex;flex-direction:column;gap:3px}
+.theme-mode-toggle strong{font-size:13px;color:inherit}
+.theme-mode-toggle small{font-size:11px;color:#77736A;font-weight:500}
 .tog{width:36px;height:20px;border-radius:10px;background:#D3D1C7;position:relative;flex-shrink:0;transition:background .2s;cursor:pointer}
 .tog.on{background:#7F77DD}
 .tog::after{content:'';position:absolute;width:14px;height:14px;background:#fff;border-radius:50%;top:3px;left:3px;transition:left .2s}
@@ -1578,4 +1582,207 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .feed-col::after{content:"1-click print saves time.\A Enter price then tap 1-click to print instantly.";white-space:pre-line;color:#BFA4FF;font-size:20px;line-height:1.35;border:1px solid var(--m-line);border-radius:16px;padding:28px 28px 28px 108px;min-height:120px;background:linear-gradient(135deg,rgba(20,23,41,.94),rgba(12,15,29,.96));box-shadow:0 14px 34px rgba(0,0,0,.26),inset 0 1px 0 rgba(255,255,255,.04)}
   .mobile-bottom-nav{gap:6px!important;padding:8px 14px calc(8px + env(safe-area-inset-bottom))!important;border-radius:16px 16px 0 0!important;background:rgba(12,14,26,.96)!important}
   .mobile-bottom-nav button{height:74px!important;border-radius:14px!important;font-size:13px!important;gap:4px!important}
+}
+
+@media (max-width:860px), (max-device-width:1200px), (max-width:1024px) and (hover:none) and (pointer:coarse){
+  .app.theme-regular{
+    background:#F5F3EF!important;
+    color:#26215C!important;
+  }
+  .app.theme-regular .main,
+  .app.theme-regular .dashboard,
+  .app.theme-regular .subpage{
+    background:#F5F3EF!important;
+    color:#26215C!important;
+  }
+  .app.theme-regular .topbar{
+    display:grid!important;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr) 56px!important;
+    align-items:center!important;
+    column-gap:8px!important;
+    row-gap:10px!important;
+    min-height:auto!important;
+    padding:12px 14px 10px!important;
+    background:#fff!important;
+    border-bottom:0.5px solid #E4E2DC!important;
+    box-shadow:0 6px 18px rgba(38,33,92,.07)!important;
+  }
+  .app.theme-regular .topbar::before,
+  .app.theme-regular .topbar::after{
+    content:none!important;
+    display:none!important;
+  }
+  .app.theme-regular .topbar .live-pill{display:none!important}
+  .app.theme-regular .topbar .plat-btn{
+    grid-row:1!important;
+    height:52px!important;
+    min-height:48px!important;
+    width:100%!important;
+    border:0.5px solid #AFA9EC!important;
+    border-radius:999px!important;
+    background:#fff!important;
+    color:#26215C!important;
+    font-size:16px!important;
+    font-weight:600!important;
+    box-shadow:none!important;
+  }
+  .app.theme-regular .topbar .plat-btn:nth-of-type(1){grid-column:1!important}
+  .app.theme-regular .topbar .plat-btn:nth-of-type(2){grid-column:2!important}
+  .app.theme-regular .topbar>div:last-child{grid-column:3!important;grid-row:1!important}
+  .app.theme-regular .topbar .prof-av{
+    width:52px!important;
+    height:52px!important;
+    border:0!important;
+    color:#fff!important;
+    font-size:16px!important;
+    box-shadow:0 7px 22px rgba(155,77,255,.32)!important;
+  }
+  .app.theme-regular .topbar .lang-sel{
+    grid-column:1!important;
+    grid-row:2!important;
+    justify-self:end!important;
+    width:112px!important;
+    height:40px!important;
+    min-height:40px!important;
+    border-radius:999px!important;
+    background:#F5F3EF!important;
+    color:#26215C!important;
+    border:0.5px solid #E4E2DC!important;
+  }
+  .app.theme-regular .topbar .session-txt{
+    grid-column:2 / 4!important;
+    grid-row:2!important;
+    display:block!important;
+    color:#5F5E5A!important;
+    font-size:14px!important;
+    white-space:nowrap!important;
+  }
+  .app.theme-regular .dashboard{
+    padding:12px 14px calc(92px + env(safe-area-inset-bottom))!important;
+    gap:14px!important;
+  }
+  .app.theme-regular .feed-col,
+  .app.theme-regular .subpage{
+    background:transparent!important;
+  }
+  .app.theme-regular .col-lbl{
+    padding:0 4px!important;
+    color:#5F5E5A!important;
+    font-size:17px!important;
+    font-weight:800!important;
+  }
+  .app.theme-regular .col-lbl span:not(.dot-pulse){
+    color:#77736A!important;
+    font-size:13px!important;
+    font-weight:600!important;
+  }
+  .app.theme-regular .chat-wrap,
+  .app.theme-regular .miners-wrap,
+  .app.theme-regular .slip-wrap,
+  .app.theme-regular .stat-c,
+  .app.theme-regular .mstat,
+  .app.theme-regular .scard,
+  .app.theme-regular .table-card{
+    background:#fff!important;
+    border:0.5px solid #E4E2DC!important;
+    color:#26215C!important;
+    box-shadow:0 6px 18px rgba(38,33,92,.07)!important;
+  }
+  .app.theme-regular .chat-hd,
+  .app.theme-regular .miners-hd,
+  .app.theme-regular .table-title,
+  .app.theme-regular .scard-title{
+    color:#26215C!important;
+    background:#FBFAF8!important;
+    border-color:#E4E2DC!important;
+  }
+  .app.theme-regular .chat-sub,
+  .app.theme-regular .msg-meta,
+  .app.theme-regular .msg-time{
+    color:#77736A!important;
+  }
+  .app.theme-regular .msg-row{
+    display:grid!important;
+    grid-template-columns:44px minmax(0,1fr)!important;
+    gap:10px!important;
+    margin:0 0 8px!important;
+    padding:12px!important;
+    border:0.5px solid #ECE8DF!important;
+    border-radius:14px!important;
+    background:#fff!important;
+    color:#26215C!important;
+    box-shadow:0 4px 12px rgba(38,33,92,.05)!important;
+  }
+  .app.theme-regular .msg-row>div:first-child{
+    width:44px!important;
+    height:44px!important;
+    font-size:14px!important;
+  }
+  .app.theme-regular .msg-bd{grid-column:2!important;grid-row:1!important}
+  .app.theme-regular .msg-nm strong,
+  .app.theme-regular .msg-handle,
+  .app.theme-regular .msg-tx.buy{
+    color:#05070D!important;
+    font-size:15px!important;
+  }
+  .app.theme-regular .msg-actions{
+    grid-column:1 / -1!important;
+    grid-row:auto!important;
+    grid-template-columns:minmax(0,1fr) minmax(118px,.48fr)!important;
+    gap:8px!important;
+  }
+  .app.theme-regular .comment-price-input{
+    height:48px!important;
+    min-height:48px!important;
+    border:0.5px solid #CFC8FF!important;
+    border-radius:12px!important;
+    background:#fff!important;
+    color:#26215C!important;
+    font-size:15px!important;
+  }
+  .app.theme-regular .one-btn{
+    height:48px!important;
+    min-height:48px!important;
+    border:0!important;
+    border-radius:12px!important;
+    background:#0752B8!important;
+    color:#fff!important;
+    font-size:16px!important;
+    box-shadow:0 8px 18px rgba(7,82,184,.22)!important;
+  }
+  .app.theme-regular .one-btn::before,
+  .app.theme-regular .feed-col::after{
+    content:none!important;
+    display:none!important;
+  }
+  .app.theme-regular .mobile-bottom-nav{
+    background:rgba(255,255,255,.96)!important;
+    border-top:0.5px solid #E4E2DC!important;
+    box-shadow:0 -8px 24px rgba(38,33,92,.08)!important;
+  }
+  .app.theme-regular .mobile-bottom-nav button{
+    color:#5F5E5A!important;
+    height:62px!important;
+    border-radius:14px!important;
+    font-size:11px!important;
+  }
+  .app.theme-regular .mobile-bottom-nav button.active{
+    color:#7C3AED!important;
+    background:#F1EAFE!important;
+    box-shadow:none!important;
+  }
+  .app.theme-regular .search-inp,
+  .app.theme-regular .fg input,
+  .app.theme-regular .fg select,
+  .app.theme-regular textarea,
+  .app.theme-regular .stat-sel,
+  .app.theme-regular .cd-search input,
+  .app.theme-regular .cd-filter-row select,
+  .app.theme-regular .cd-table input,
+  .app.theme-regular .cd-table select{
+    background:#fff!important;
+    color:#26215C!important;
+    border:0.5px solid #CFC8FF!important;
+  }
+  .app.theme-regular .theme-mode-toggle small{color:#77736A!important}
 }
