@@ -322,12 +322,16 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Setting
   win.onafterprint=()=>setTimeout(()=>frame.remove(),50);
   const doc=win.document;
   doc.open();
-  doc.write(`<!DOCTYPE html><html><head><title>Slip #${buyer.num}</title><style>@page{size:${size.replace("x","mm ")}mm;margin:4mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:monospace;width:${w}mm;font-size:10px;color:#000}.top{display:flex;align-items:flex-start;justify-content:flex-start;gap:8px;margin-bottom:7px;min-height:30px}.logo{display:flex;align-items:center;gap:6px;justify-content:flex-start}.li{width:24px;height:24px;background:#7F77DD;border-radius:5px;display:flex;align-items:center;justify-content:center}.li svg{width:15px;height:15px}.lt{font-family:sans-serif;font-size:15px}.ls{font-weight:700;color:#26215C}.lf{color:#7F77DD}.store{text-align:center;font-size:${9*storeScale}px;color:#555;margin-bottom:5px;transform:translate(${pos(cfg.printStoreX)}mm,${pos(cfg.printStoreY)}mm)}.dash{border-top:1px dashed #aaa;margin:5px 0}.nb{text-align:center;background:#EEEDFE;border-radius:7px;padding:6px 0 4px;margin-bottom:7px;border:1px solid #AFA9EC}.nl{font-size:${8*buyerNumberScale}px;color:#534AB7;font-family:sans-serif;letter-spacing:.5px;transform:translate(${pos(cfg.printBuyerLabelX)}mm,${pos(cfg.printBuyerLabelY)}mm)}.nn{font-size:${46*buyerNumberScale}px;font-weight:700;font-family:sans-serif;line-height:1;color:${color};transform:translate(${pos(cfg.printBuyerNumberX)}mm,${pos(cfg.printBuyerNumberY)}mm)}.na{font-size:${12*buyerNameScale}px;font-weight:700;font-family:sans-serif;color:#26215C;transform:translate(${pos(cfg.printBuyerNameX)}mm,${pos(cfg.printBuyerNameY)}mm)}.nh{font-size:${9*usernameScale}px;color:#7F77DD;transform:translate(${pos(cfg.printUsernameX)}mm,${pos(cfg.printUsernameY)}mm)}.sl{font-size:8px;color:#888;text-align:center;margin-bottom:5px;transform:translate(${pos(cfg.printSessionX)}mm,${pos(cfg.printSessionY)}mm)}.ot{font-size:${8*orderScale}px;font-family:sans-serif;color:#888;margin-bottom:4px}.orders{transform:translate(${pos(cfg.printOrderX)}mm,${pos(cfg.printOrderY)}mm)}.tr{display:flex;justify-content:space-between;transform:translate(${pos(cfg.printTotalX)}mm,${pos(cfg.printTotalY)}mm)}.tl{font-size:${9*totalScale}px;color:#888}.tv{font-family:sans-serif;font-size:${15*totalScale}px;font-weight:700}@media print{body{margin:0}}</style></head><body>
-  <div class="top"><div class="logo"><div class="li"><svg width="14" height="14" viewBox="0 0 18 18"><path d="M4 6 Q4 3 7 3 L11 3 Q14 3 14 6 Q14 9 11 9.5 L7 10.5 Q4 10.5 4 13 Q4 15 7 15 L11 15 Q14 15 14 13" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/></svg></div><div class="lt"><span class="ls">Seller</span><span class="lf">FlowLive</span></div></div></div>
-  ${cfg.printStoreName?`<div class="store">${storeName}</div>`:""}
-  <div class="nb">${cfg.printBuyerNumber?`<div class="nl">BUYER NUMBER</div><div class="nn">#${buyer.num}</div>`:""}<div class="na">${buyer.name}</div>${cfg.printBuyerUsername?`<div class="nh">@${buyer.handle}</div>`:""}</div>
-  <div class="sl">Session: ${sess}</div>${cfg.printOrderItems?`<div class="orders"><div class="ot">Orders today (${buyer.orders.length})</div>${scaledOrderHtml}</div>`:""}
-  ${cfg.printTotal?`<div class="dash"></div><div class="tr"><span class="tl">TOTAL TODAY</span><span class="tv">${buyer.totalSpent>0?`${cur}${buyer.totalSpent.toLocaleString()}`:""}</span></div>`:""}
+  doc.write(`<!DOCTYPE html><html><head><title>Slip #${buyer.num}</title><style>@page{size:${size.replace("x","mm ")}mm;margin:3mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;width:${w}mm;color:#000}.head{display:flex;align-items:flex-start;justify-content:space-between;gap:3mm;margin-bottom:2.5mm}.brand{font-size:${14*storeScale}px;font-weight:800;transform:translate(${pos(cfg.printStoreX)}mm,${pos(cfg.printStoreY)}mm)}.brand span{color:#7F77DD}.session{font-size:${12*totalScale}px;font-weight:800;text-align:right;transform:translate(${pos(cfg.printSessionX)}mm,${pos(cfg.printSessionY)}mm)}.grid{display:grid;grid-template-columns:52% 48%;gap:3mm;align-items:stretch}.left{display:flex;flex-direction:column;gap:1.5mm;padding-top:1mm}.seller{font-size:${13*storeScale}px;font-weight:800;line-height:1.1;transform:translate(${pos(cfg.printStoreX)}mm,${pos(cfg.printStoreY)}mm)}.line{font-size:${13*buyerNameScale}px;font-weight:800;line-height:1.1}.muted{font-size:${10*usernameScale}px;font-weight:700;color:#333}.buyer-num{font-size:${13*buyerNumberScale}px;color:${color};font-weight:900;transform:translate(${pos(cfg.printBuyerNumberX)}mm,${pos(cfg.printBuyerNumberY)}mm)}.buyer-name{transform:translate(${pos(cfg.printBuyerNameX)}mm,${pos(cfg.printBuyerNameY)}mm)}.username{transform:translate(${pos(cfg.printUsernameX)}mm,${pos(cfg.printUsernameY)}mm)}.order-box{border:2px solid #000;min-height:38mm;padding:3mm;transform:translate(${pos(cfg.printOrderX)}mm,${pos(cfg.printOrderY)}mm)}.order-title{font-size:${15*orderScale}px;font-weight:900;margin-bottom:2mm}.order-box [style]{border-left-color:#000!important}.total{border-top:1px dashed #777;margin-top:2mm;padding-top:1.5mm;display:flex;justify-content:space-between;gap:2mm;font-size:${11*totalScale}px;font-weight:800;transform:translate(${pos(cfg.printTotalX)}mm,${pos(cfg.printTotalY)}mm)}@media print{body{margin:0}}</style></head><body>
+  <div class="head"><div class="brand">Seller<span>FlowLive</span></div><div class="session">Session: ${sess}</div></div>
+  <div class="grid"><div class="left">
+  ${cfg.printStoreName?`<div class="seller">${storeName}</div>`:""}
+  ${cfg.printBuyerNumber?`<div class="line buyer-num">Buyer #${buyer.num}</div><div class="line">Customer #${buyer.num}</div>`:""}
+  <div class="line buyer-name">${buyer.name}</div>
+  ${cfg.printBuyerUsername?`<div class="muted username">@${buyer.handle}</div>`:""}
+  </div>
+  ${cfg.printOrderItems?`<div class="order-box"><div class="order-title">Order here</div>${scaledOrderHtml}${cfg.printTotal?`<div class="total"><span>Total</span><span>${buyer.totalSpent>0?`${cur}${buyer.totalSpent.toLocaleString()}`:""}</span></div>`:""}</div>`:""}
+  </div>
   </body></html>`);
   doc.close();
   setTimeout(()=>{
@@ -1412,20 +1416,22 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
             <div className="printer-preview-slip">
               <div className="printer-preview-head">
                 <div className="printer-preview-brand"><span className="printer-preview-logo">S</span><strong>Seller<span>FlowLive</span></strong></div>
+                <div className="printer-preview-session" style={previewMove(sets.printSessionX,sets.printSessionY)}>Session: May 22, 2026</div>
               </div>
-              {sets.printStoreName&&<div className="printer-preview-store" style={{fontSize:`${9*storePreview}px`,...previewMove(sets.printStoreX,sets.printStoreY)}}>{user.profile.storeName||"My Store"}</div>}
-              <div className="printer-preview-buyer">
-                {sets.printBuyerNumber&&<><small style={{fontSize:`${8*buyerNumberPreview}px`,...previewMove(sets.printBuyerLabelX,sets.printBuyerLabelY)}}>BUYER NUMBER</small><b style={{fontSize:`${38*buyerNumberPreview}px`,...previewMove(sets.printBuyerNumberX,sets.printBuyerNumberY)}}>#12</b></>}
-                <strong style={{fontSize:`${12*buyerNamePreview}px`,...previewMove(sets.printBuyerNameX,sets.printBuyerNameY)}}>Maria Santos</strong>
-                {sets.printBuyerUsername&&<em style={{fontSize:`${9*usernamePreview}px`,...previewMove(sets.printUsernameX,sets.printUsernameY)}}>@maria_live</em>}
+              <div className="printer-preview-grid">
+                <div className="printer-preview-left">
+                  {sets.printStoreName&&<strong style={{fontSize:`${13*storePreview}px`,...previewMove(sets.printStoreX,sets.printStoreY)}}>{user.profile.storeName||"Seller name"}</strong>}
+                  {sets.printBuyerNumber&&<><b style={{fontSize:`${13*buyerNumberPreview}px`,...previewMove(sets.printBuyerNumberX,sets.printBuyerNumberY)}}>Buyer #12</b><b>Customer #12</b></>}
+                  <b style={{fontSize:`${13*buyerNamePreview}px`,...previewMove(sets.printBuyerNameX,sets.printBuyerNameY)}}>Maria Santos</b>
+                  {sets.printBuyerUsername&&<em style={{fontSize:`${10*usernamePreview}px`,...previewMove(sets.printUsernameX,sets.printUsernameY)}}>@maria_live</em>}
+                </div>
+                {sets.printOrderItems&&<div className="printer-preview-order-box" style={{fontSize:`${10*orderPreview}px`,...previewMove(sets.printOrderX,sets.printOrderY)}}>
+                  <strong>Order here</strong>
+                  <div>12:21 PM - #SF1001<br/><b>Blue dress</b> x1</div>
+                  <div>12:22 PM - #SF1002<br/><b>Crop top</b> x2</div>
+                  {sets.printTotal&&<div className="printer-preview-total" style={{fontSize:`${10*totalPreview}px`,...previewMove(sets.printTotalX,sets.printTotalY)}}><span>Total</span><b>{sets.currency}1,240</b></div>}
+                </div>}
               </div>
-              <div className="printer-preview-session" style={previewMove(sets.printSessionX,sets.printSessionY)}>Session: May 17, 2026</div>
-              {sets.printOrderItems&&<div className="printer-preview-orders" style={{fontSize:`${10*orderPreview}px`,...previewMove(sets.printOrderX,sets.printOrderY)}}>
-                <small>Orders today (2)</small>
-                <div>12:21 PM - #SF1001<br/><b>Blue dress</b> x1</div>
-                <div>12:22 PM - #SF1002<br/><b>Crop top</b> x2</div>
-              </div>}
-              {sets.printTotal&&<><div className="printer-preview-dash"/><div className="printer-preview-total" style={{fontSize:`${10*totalPreview}px`,...previewMove(sets.printTotalX,sets.printTotalY)}}><span>TOTAL TODAY</span><b>{sets.currency}1,240</b></div></>}
             </div>
             <button type="button" className="printer-reset-btn" onClick={resetPrinterLayout}>Reset Printer Layout</button>
           </div>

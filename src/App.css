@@ -403,17 +403,20 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .scard-title{font-size:13px;font-weight:600;color:#26215C;padding-bottom:8px;border-bottom:0.5px solid #E4E2DC}
 .printer-preview-box{border:1px solid #E4E2DC;border-radius:10px;background:#FAFAF7;padding:10px;display:flex;flex-direction:column;align-items:center;gap:8px}
 .printer-preview-title{align-self:stretch;font-size:11px;font-weight:700;color:#26215C;text-transform:uppercase;letter-spacing:.04em}
-.printer-preview-slip{width:min(240px,100%);min-height:210px;background:#fff;border:1px solid #252525;border-radius:2px;padding:10px 12px;color:#111;font-family:monospace;box-shadow:0 8px 18px rgba(38,33,92,.08);transition:font-size .15s}
+.printer-preview-slip{width:min(360px,100%);min-height:170px;background:#fff;border:1px solid #252525;border-radius:2px;padding:10px 12px;color:#111;font-family:Arial,sans-serif;box-shadow:0 8px 18px rgba(38,33,92,.08);transition:font-size .15s}
 .printer-preview-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
 .printer-preview-brand{display:flex;align-items:center;justify-content:flex-start;gap:6px;font-family:Arial,sans-serif;font-size:15px}
 .printer-preview-brand strong{font-size:1em;color:#26215C}.printer-preview-brand span:not(.printer-preview-logo){color:#7F77DD}
 .printer-preview-logo{width:24px;height:24px;border-radius:5px;background:#7F77DD;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800}
-.printer-preview-store,.printer-preview-session{text-align:center;color:#777;font-size:.9em;margin-top:5px}
+.printer-preview-store,.printer-preview-session{text-align:right;color:#111;font-size:.9em;font-weight:800}
 .printer-preview-line{height:1px;background:#111;margin:7px 0}
 .printer-preview-buyer{text-align:center;background:#EEEDFE;border:1px solid #AFA9EC;border-radius:7px;padding:6px 5px;display:flex;flex-direction:column;gap:2px}
 .printer-preview-buyer small{font-size:.8em;color:#534AB7;font-family:Arial,sans-serif}.printer-preview-buyer b{line-height:1;color:#534AB7;font-family:Arial,sans-serif}.printer-preview-buyer strong{color:#26215C;font-family:Arial,sans-serif}.printer-preview-buyer em{font-style:normal;color:#7F77DD;font-size:.9em}
 .printer-preview-orders{margin-top:8px;display:flex;flex-direction:column;gap:5px}.printer-preview-orders small{font-size:.8em;color:#777;font-family:Arial,sans-serif}.printer-preview-orders div{border-left:2px solid #7F77DD;padding-left:6px;color:#444;font-size:.9em}.printer-preview-orders b{color:#111}
 .printer-preview-dash{border-top:1px dashed #aaa;margin:8px 0 5px}.printer-preview-total{display:flex;justify-content:space-between;gap:8px;align-items:center}.printer-preview-total span{font-size:.9em;color:#777}.printer-preview-total b{font-family:Arial,sans-serif;color:#111}
+.printer-preview-grid{display:grid;grid-template-columns:52% 48%;gap:10px;align-items:stretch;margin-top:10px}
+.printer-preview-left{display:flex;flex-direction:column;gap:5px;line-height:1.05}.printer-preview-left strong,.printer-preview-left b{font-weight:800;color:#111}.printer-preview-left em{font-style:normal;font-weight:700;color:#333}
+.printer-preview-order-box{border:2px solid #111;min-height:110px;padding:10px;display:flex;flex-direction:column;gap:6px;color:#111}.printer-preview-order-box>strong{font-size:1.35em}.printer-preview-order-box div:not(.printer-preview-total){border-left:2px solid #111;padding-left:6px;color:#333;font-size:.9em}.printer-preview-order-box b{color:#111}
 .position-step-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px}
 .position-step-row{display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:0.5px solid #F0EEE6;padding:8px 0;font-size:12px}
 .position-step-row span{font-weight:500;color:#26215C}
