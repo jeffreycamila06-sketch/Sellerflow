@@ -30,6 +30,8 @@ interface LiveOrder { orderNum:number; item:string; qty:number; price:number; to
 interface Buyer { handle:string; name:string; platform:string; num:number; orders:LiveOrder[]; totalSpent:number; totalOrders:number; }
 interface Comment { handle:string; name:string; comment:string; platform:"TikTok"|"Facebook"; isBuy:boolean; buyerNum:number|null; buyerData:Buyer|null; time:string; avatar?:string; timestamp?:string; sellerId?:string; sessionId?:string; sourceUsername?:string; }
 interface Product { id:number; name:string; sku:string; price:number; stock:number; platform:string; status:string; }
+type ShippingStatus = "Pending"|"Ready"|"Shipped"|"Delivered"|"Returned";
+interface ShippingCustomer { username:string; name:string; phone:string; sevenCode:string; note:string; lastComment:string; firstSeen:string; status:ShippingStatus; isNew:boolean; }
 interface Settings { autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"usb"; stickerSize:string; printStoreName:boolean; printBuyerNumber:boolean; printBuyerUsername:boolean; printOrderItems:boolean; printTotal:boolean; printAutoClose:boolean; printLabelScale:number; printStoreScale:number; printBuyerNumberScale:number; printBuyerNameScale:number; printUsernameScale:number; printOrderScale:number; printCommentScale:number; printTotalScale:number; printStoreX:number; printStoreY:number; printBuyerLabelX:number; printBuyerLabelY:number; printBuyerNumberX:number; printBuyerNumberY:number; printBuyerNameX:number; printBuyerNameY:number; printUsernameX:number; printUsernameY:number; printSessionX:number; printSessionY:number; printOrderX:number; printOrderY:number; printTotalX:number; printTotalY:number; }
 type NumberSettingKey = {[K in keyof Settings]: Settings[K] extends number ? K : never}[keyof Settings];
 interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; proofImage?:string; timestamp:string; status:"pending"|"approved"|"rejected"|"resolved"; adminReply?:string; repliedAt?:string; }
@@ -1042,11 +1044,95 @@ function Customers({buyers,cur,t}:{buyers:Buyer[];cur:string;t:T}){
 // ═══════════════════════════════════════════════════════════════════
 // PRINT
 // ═══════════════════════════════════════════════════════════════════
-function CustomerDataPage(){
+function CustomerDataPage({comments,onRefresh}:{comments:Comment[];onRefresh:()=>void}){
+  const storageKey="sf_shipping_customer_data";
+  const [records,setRecords]=useState<ShippingCustomer[]>(()=>arrLS<ShippingCustomer>(storageKey));
+  const [query,setQuery]=useState("");
+  const [statusFilter,setStatusFilter]=useState<"All"|ShippingStatus>("All");
+  const [sortKey,setSortKey]=useState<"newest"|"username"|"status">("newest");
+  const [page,setPage]=useState(1);
+  const [savedAt,setSavedAt]=useState("Saved");
+  const pageSize=12;
+  const esc=(v:string)=>String(v||"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch]||ch));
+  const readyStatus=(r:ShippingCustomer):ShippingStatus=>r.name.trim()&&r.phone.trim()&&r.sevenCode.trim()?"Ready":"Pending";
+  const persist=(next:ShippingCustomer[])=>{
+    const normalized=next.map(r=>{
+      const auto=readyStatus(r);
+      const locked=["Shipped","Delivered","Returned"].includes(r.status);
+      const status:ShippingStatus=locked?r.status:auto;
+      return {...r,status};
+    });
+    setRecords(normalized);
+    LS.set(storageKey,normalized);
+    setSavedAt(`Saved ${new Date().toLocaleTimeString()}`);
+  };
+  useEffect(()=>{
+    const tiktok=comments.filter(c=>c.platform==="TikTok"&&c.handle.trim());
+    if(!tiktok.length)return;
+    const timer=window.setTimeout(()=>setRecords(current=>{
+      const byUser=new Map(current.map(r=>[r.username.toLowerCase(),r]));
+      let changed=false;
+      for(const c of tiktok){
+        const username=c.handle.trim().replace(/^@/,"");
+        const key=username.toLowerCase();
+        if(byUser.has(key))continue;
+        byUser.set(key,{username,name:c.name||username,phone:"",sevenCode:"",note:"",lastComment:c.comment||"",firstSeen:c.timestamp||new Date().toISOString(),status:"Pending",isNew:true});
+        changed=true;
+      }
+      if(!changed)return current;
+      const next=Array.from(byUser.values()).sort((a,b)=>new Date(b.firstSeen).getTime()-new Date(a.firstSeen).getTime());
+      LS.set(storageKey,next);
+      setSavedAt(`Synced ${new Date().toLocaleTimeString()}`);
+      return next;
+    }),0);
+    return()=>window.clearTimeout(timer);
+  },[comments]);
+  const update=(username:string,patch:Partial<ShippingCustomer>)=>persist(records.map(r=>r.username===username?{...r,...patch,isNew:false}:r));
+  const copy=(text:string)=>navigator.clipboard?.writeText(text);
+  const printOne=(r:ShippingCustomer)=>{
+    const frame=document.createElement("iframe");
+    frame.style.position="fixed";frame.style.right="0";frame.style.bottom="0";frame.style.width="0";frame.style.height="0";frame.style.border="0";frame.style.opacity="0";
+    document.body.appendChild(frame);
+    const win=frame.contentWindow;if(!win){frame.remove();return;}
+    const doc=win.document;doc.open();
+    doc.write(`<!DOCTYPE html><html><head><title>${esc(r.username)} shipping</title><style>@page{size:100mm 60mm;margin:4mm}body{font-family:Arial,sans-serif;color:#000;margin:0}.brand{font-size:18px;font-weight:900;margin-bottom:4mm}.line{font-size:13px;margin:1.5mm 0}.label{font-size:10px;font-weight:900;text-transform:uppercase}.value{font-weight:900}.addr{font-size:17px;font-weight:900;line-height:1.15;margin-top:2mm}</style></head><body><div class="brand">SellerFlowLive Shipping</div><div class="line"><span class="label">Name</span><br/><span class="value">${esc(r.name)}</span></div><div class="line"><span class="label">Phone</span><br/><span class="value">${esc(r.phone)}</span></div><div class="line"><span class="label">7/11 Code</span><br/><span class="value">${esc(r.sevenCode)}</span></div><div class="line"><span class="label">TikTok</span><br/><span class="value">@${esc(r.username)}</span></div><div class="addr">${esc(r.note)}</div></body></html>`);
+    doc.close();setTimeout(()=>{win.focus();win.print();setTimeout(()=>frame.remove(),8000);},100);
+  };
+  const bulkPrint=()=>filtered.filter(r=>r.status==="Ready").forEach(printOne);
+  const exportRows=()=>csvDL(`shipping-customers-${new Date().toISOString().slice(0,10)}.csv`,["Username","Name","Phone","7/11 Code","Status","Last Comment","Note"],records.map(r=>[r.username,r.name,r.phone,r.sevenCode,r.status,r.lastComment,r.note]));
+  const filtered=records.filter(r=>{
+    const q=query.toLowerCase();
+    const matches=!q||[r.username,r.name,r.phone,r.sevenCode,r.lastComment,r.note].some(v=>v.toLowerCase().includes(q));
+    return matches&&(statusFilter==="All"||r.status===statusFilter);
+  }).sort((a,b)=>sortKey==="username"?a.username.localeCompare(b.username):sortKey==="status"?a.status.localeCompare(b.status):new Date(b.firstSeen).getTime()-new Date(a.firstSeen).getTime());
+  const pages=Math.max(1,Math.ceil(filtered.length/pageSize));
+  const pageRows=filtered.slice((Math.min(page,pages)-1)*pageSize,Math.min(page,pages)*pageSize);
   return(
     <div className="subpage">
       <div className="subpage-hd"><div><h2>Customer Data</h2><p>Collect shipping details, then print a shipping label fast.</p></div></div>
-      <div className="customer-data-black-panel"/>
+      <div className="customer-data-black-panel">
+        <div className="cd-toolbar">
+          <input value={query} onChange={e=>{setQuery(e.target.value);setPage(1);}} placeholder="Search username, name, phone, 7/11 code"/>
+          <select value={statusFilter} onChange={e=>{setStatusFilter(e.target.value as "All"|ShippingStatus);setPage(1);}}><option>All</option><option>Pending</option><option>Ready</option><option>Shipped</option><option>Delivered</option><option>Returned</option></select>
+          <select value={sortKey} onChange={e=>setSortKey(e.target.value as "newest"|"username"|"status")}><option value="newest">Newest</option><option value="username">Username</option><option value="status">Status</option></select>
+          <span>{savedAt}</span>
+        </div>
+        <div className="cd-table-wrap">
+          <table className="cd-table"><thead><tr><th>Buyer</th><th>Name</th><th>Phone</th><th>7/11 Code</th><th>Status</th><th>Actions</th></tr></thead><tbody>
+            {pageRows.length===0&&<tr><td colSpan={6} className="cd-empty">No new TikTok usernames yet</td></tr>}
+            {pageRows.map(r=><tr key={r.username}>
+              <td><strong>@{r.username}</strong>{r.isNew&&<b className="cd-new">New Buyer</b>}<small>{r.lastComment}</small></td>
+              <td><input value={r.name} onChange={e=>update(r.username,{name:e.target.value})}/></td>
+              <td><input value={r.phone} onChange={e=>update(r.username,{phone:e.target.value})} placeholder="Phone"/></td>
+              <td><input value={r.sevenCode} onChange={e=>update(r.username,{sevenCode:e.target.value})} placeholder="7/11 code"/></td>
+              <td><select value={r.status} onChange={e=>update(r.username,{status:e.target.value as ShippingStatus})}><option>Pending</option><option>Ready</option><option>Shipped</option><option>Delivered</option><option>Returned</option></select></td>
+              <td><div className="cd-actions"><button onClick={()=>copy(r.phone)}>Copy phone</button><button onClick={()=>copy(r.sevenCode)}>Copy 7/11</button><button onClick={()=>printOne(r)}>Open shipping</button><button onClick={()=>update(r.username,{status:"Shipped"})}>Mark shipped</button></div></td>
+            </tr>)}
+          </tbody></table>
+        </div>
+        <div className="cd-pager"><button disabled={page<=1} onClick={()=>setPage(p=>p-1)}>Prev</button><span>{Math.min(page,pages)} / {pages}</span><button disabled={page>=pages} onClick={()=>setPage(p=>p+1)}>Next</button></div>
+        <div className="cd-floating-tools"><button onClick={exportRows}>Export CSV</button><button onClick={()=>setSavedAt(`Synced ${new Date().toLocaleTimeString()}`)}>Sync Shipping</button><button onClick={onRefresh}>Refresh TikTok comments</button><button onClick={bulkPrint}>Open Printer Queue</button></div>
+      </div>
     </div>
   );
 }
@@ -3159,7 +3245,7 @@ export default function App(){
         {page==="orders"&&<Orders orders={allOrders} setOrders={setAllOrders} onPersist={orders=>LS.set(sellerMemoryKey("sf_orders"),orders)} cur={settings.currency} t={t}/>}
         {page==="products"&&<Products cur={settings.currency} t={t}/>}
         {page==="customers"&&<><Customers buyers={buyers} cur={settings.currency} t={t}/><CommentArchive comments={archivedComments}/></>}
-        {page==="customerData"&&<CustomerDataPage/>}
+        {page==="customerData"&&<CustomerDataPage comments={[...comments,...archivedComments]} onRefresh={()=>setCurrentLiveDayId(liveDayId())}/>}
         {page==="print"&&<PrintPage buyers={buyers} cur={settings.currency} storeName={user.profile.storeName||"SellerFlowLive"} settings={settings} t={t}/>}
         {page==="sales"&&<Sales orders={allOrders} buyers={buyers} cur={settings.currency} t={t}/>}
         {page==="settings"&&<SettingsPage user={user} settings={settings} onSaveProfile={handleSaveProfile} onSaveSettings={handleSaveSettings} onSavePw={handleSavePw} onExportBackup={exportSellerBackup} onClearLiveComments={clearLiveCommentsOnly} t={t}/>}
