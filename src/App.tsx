@@ -169,7 +169,7 @@ const nc=(n:number)=>n===1?"#26215C":n<=3?"#534AB7":"#7F77DD";
 const ini=(s:string)=>s.split(/[\s_]/g).slice(0,2).map(w=>w[0]?.toUpperCase()).join("")||"??";
 const abg=(h:string)=>{const c=["#7F77DD","#1D9E75","#D85A30","#D4537E","#378ADD","#BA7517"];let x=0;for(const ch of h)x=(x*31+ch.charCodeAt(0))%c.length;return c[Math.abs(x)];};
 const addDays=(n:number)=>{const d=new Date();d.setDate(d.getDate()+n);return d.toISOString();};
-const addMonths=(n:number)=>{const d=new Date();d.setMonth(d.getMonth()+n);return d.toISOString();};
+const addMonths=(n:number)=>addDays(Math.max(1,n)*30);
 const dLeft=(e:string,now=Date.now())=>Math.max(0,Math.ceil((new Date(e).getTime()-now)/86400000));
 const normalizePhone=(value:string)=>String(value||"").replace(/\D/g,"");
 const phoneDisplay=(value:string)=>String(value||"").trim();
@@ -1799,7 +1799,8 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   }
 
   function defaultMonthsForUser(user:User){
-    return Math.min(12,Math.max(1,Math.ceil(dLeft(user.planExpiry)/30)));
+    if(user.plan==="trial")return 1;
+    return Math.min(12,Math.max(1,Math.round(dLeft(user.planExpiry)/30)));
   }
 
   function monthsForUser(user:User){
@@ -1810,13 +1811,18 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     setAdminUserPlanMonths(current=>({...current,[email.toLowerCase()]:months}));
   }
 
+  function applyMonthsForUser(user:User,months:number){
+    setMonthsForUser(user.email,months);
+    if(user.plan!=="trial"&&user.planStatus==="active")void setPlan(user.email,user.plan,"active",months);
+  }
+
   function renderUserMonthsSelect(user:User){
     const months=monthsForUser(user);
     return(
       <select
         className="admin-user-month-select"
         value={months}
-        onChange={e=>setMonthsForUser(user.email,Number(e.target.value))}
+        onChange={e=>applyMonthsForUser(user,Number(e.target.value))}
         onClick={e=>e.stopPropagation()}
         onDoubleClick={e=>e.stopPropagation()}
       >
