@@ -5,7 +5,7 @@ const config: CapacitorConfig = {
   appName: "SellerFlow",
   webDir: "www",
   server: {
-    url: "https://sellerflowlive.com",
+    url: "https://www.sellerflowlive.com/?apk=20260523-dark-mobile",
     cleartext: false,
     androidScheme: "https"
   },
