@@ -485,6 +485,20 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .mobile-bt-steps{border:1px solid #E4E2DC;border-radius:10px;padding:12px;background:#fff;color:#26215C}
 .mobile-bt-steps strong{font-size:13px}.mobile-bt-steps ol{margin:8px 0 0 18px;font-size:12px;line-height:1.6;color:#5F5E5A}
 .mobile-bt-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mobile-printer-saved{display:grid;gap:3px;border:1px solid #9FE1CB;background:#E1F5EE;color:#0F3F31;border-radius:12px;padding:12px}
+.mobile-printer-saved span{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.06em;color:#0F6E56}
+.mobile-printer-saved strong{font-size:15px}.mobile-printer-saved small{font-size:11px;color:#37695B}
+.mobile-printer-actions{display:grid;grid-template-columns:1.2fr .8fr .8fr;gap:8px}
+.mobile-printer-actions button{min-height:44px}
+.mobile-printer-list{display:grid;gap:8px}
+.mobile-printer-empty{border:1px dashed #C8C1F4;background:#FAF9FF;color:#6E687E;border-radius:12px;padding:14px;font-size:12px;line-height:1.45;text-align:center}
+.mobile-printer-option{display:grid;grid-template-columns:44px minmax(0,1fr) auto;align-items:center;gap:10px;text-align:left;border:1px solid #E4E2DC;background:#fff;border-radius:13px;padding:10px;cursor:pointer;color:#26215C;box-shadow:0 6px 14px rgba(38,33,92,.06)}
+.mobile-printer-option:hover{border-color:#AFA9EC;background:#F8F7FF}
+.mobile-printer-option strong{display:block;font-size:13px;color:#26215C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mobile-printer-option span,.mobile-printer-option small{display:block;font-size:11px;color:#6E687E;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mobile-printer-type{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-size:11px;font-weight:900;color:#fff}
+.mobile-printer-type.bluetooth{background:linear-gradient(135deg,#7F77DD,#3B82F6)}
+.mobile-printer-type.lan{background:linear-gradient(135deg,#0F6E56,#10B981)}
 .tog-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:0.5px solid #F5F5F2;font-size:12px;font-weight:500;cursor:pointer}
 .theme-mode-toggle{gap:14px;padding:12px 0}
 .theme-mode-toggle span{display:flex;flex-direction:column;gap:3px}
@@ -1208,6 +1222,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .subpage-hd h2{font-size:21px;line-height:1.15}
   .subpage-hd p{font-size:12px;line-height:1.35}
   .grid4,.grid2,.plans-grid,.settings-quick-grid,.admin-quick-grid,.admin-fullscreen-grid,.admin-fullscreen-messages,.admin-box-grid,.auth-row2,.settings-expanded,.printer-preview-grid,.mobile-bt-layout,.position-step-grid{grid-template-columns:1fr!important}
+  .mobile-printer-actions{grid-template-columns:1fr!important}
+  .mobile-printer-option{grid-template-columns:40px minmax(0,1fr)!important}
+  .mobile-printer-option .badge{justify-self:start}
   .scard,.table-card,.auth-card,.plan-card,.settings-card,.mobile-tool-card{width:100%;max-width:100%;min-width:0}
   .table-card,.table-wrap{overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch}
   .tbl{min-width:640px}
@@ -1505,6 +1522,12 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .seller-message-row,.support-thread,.support-bubble,.payment-box{background:#121523!important;border:1px solid var(--m-line)!important;color:#fff!important}
   .support-bubble.admin{background:rgba(155,77,255,.18)!important}
   .support-bubble p,.support-convo-sub span,.payment-box p{color:#DAD8E8!important}
+  .mobile-printer-saved{background:rgba(16,185,129,.14)!important;border-color:rgba(45,212,191,.28)!important;color:#DFFCF5!important}
+  .mobile-printer-saved span,.mobile-printer-saved small{color:#8FF4D2!important}
+  .mobile-printer-empty{background:#111525!important;border-color:var(--m-line)!important;color:#A5A8BA!important}
+  .mobile-printer-option{background:#121523!important;border-color:var(--m-line)!important;color:#F8F7FF!important}
+  .mobile-printer-option strong{color:#fff!important}
+  .mobile-printer-option span,.mobile-printer-option small{color:#A5A8BA!important}
 
   .mobile-bottom-nav{
     grid-template-columns:repeat(5,minmax(0,1fr))!important;

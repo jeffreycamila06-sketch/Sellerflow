@@ -32,14 +32,16 @@ interface Comment { handle:string; name:string; comment:string; platform:"TikTok
 interface Product { id:number; name:string; sku:string; price:number; stock:number; platform:string; status:string; }
 type ShippingStatus = "Pending"|"Ready"|"Shipped"|"Delivered"|"Returned";
 interface ShippingCustomer { username:string; name:string; phone:string; sevenCode:string; note:string; lastComment:string; firstSeen:string; status:ShippingStatus; isNew:boolean; }
-interface Settings { darkMode:boolean; autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"usb"|"bluetooth"; stickerSize:string; printStoreName:boolean; printBuyerNumber:boolean; printBuyerUsername:boolean; printOrderItems:boolean; printTotal:boolean; printAutoClose:boolean; printLabelScale:number; printStoreScale:number; printBuyerNumberScale:number; printBuyerNameScale:number; printUsernameScale:number; printOrderScale:number; printCommentScale:number; printTotalScale:number; printStoreX:number; printStoreY:number; printBuyerLabelX:number; printBuyerLabelY:number; printBuyerNumberX:number; printBuyerNumberY:number; printBuyerNameX:number; printBuyerNameY:number; printUsernameX:number; printUsernameY:number; printSessionX:number; printSessionY:number; printOrderX:number; printOrderY:number; printTotalX:number; printTotalY:number; }
+interface Settings { darkMode:boolean; autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"auto"|"usb"|"bluetooth"|"lan"; stickerSize:string; printStoreName:boolean; printBuyerNumber:boolean; printBuyerUsername:boolean; printOrderItems:boolean; printTotal:boolean; printAutoClose:boolean; printLabelScale:number; printStoreScale:number; printBuyerNumberScale:number; printBuyerNameScale:number; printUsernameScale:number; printOrderScale:number; printCommentScale:number; printTotalScale:number; printStoreX:number; printStoreY:number; printBuyerLabelX:number; printBuyerLabelY:number; printBuyerNumberX:number; printBuyerNumberY:number; printBuyerNameX:number; printBuyerNameY:number; printUsernameX:number; printUsernameY:number; printSessionX:number; printSessionY:number; printOrderX:number; printOrderY:number; printTotalX:number; printTotalY:number; }
+interface MobilePrinterDevice { id:string; type:"bluetooth"|"lan"; name:string; address?:string; host?:string; port?:number; paired?:boolean; online?:boolean; signal?:number; distance?:string; hint?:string; }
+interface MobilePrinterResult { ok?:boolean; message?:string; online?:boolean; savedPrinter?:MobilePrinterDevice|null; printers?:MobilePrinterDevice[]; }
 type NumberSettingKey = {[K in keyof Settings]: Settings[K] extends number ? K : never}[keyof Settings];
 interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; proofImage?:string; timestamp:string; status:"pending"|"approved"|"rejected"|"resolved"; adminReply?:string; repliedAt?:string; }
 interface NativePrinterPayload { type:"sellerflow.printSlip"; buyer:Buyer; currency:string; storeName:string; settings:Settings; sessionDate:string; createdAt:string; }
 
 declare global {
   interface Window {
-    SellerFlowPrinter?: { printSlip?: (payload:NativePrinterPayload)=>void|string|Promise<void|string>; status?: ()=>string|Promise<string>; };
+    SellerFlowPrinter?: { printSlip?: (payload:NativePrinterPayload)=>void|string|Promise<void|string>; status?: ()=>string|Promise<string>; printerStatus?: ()=>string|Promise<string>; scanPrinters?: ()=>string|Promise<string>; connectPrinter?: (printer:MobilePrinterDevice|string)=>string|Promise<string>; testPrint?: ()=>string|Promise<string>; };
     ReactNativeWebView?: { postMessage:(message:string)=>void };
     Capacitor?: { Plugins?: { SellerFlowPrinter?: { printSlip:(payload:NativePrinterPayload)=>Promise<void|string> } } };
   }
@@ -135,7 +137,7 @@ const sellerDayOrSessionArray=<X,>(base:string,email:string,dayId:string,session
 };
 
 const SERVER = import.meta.env.VITE_SERVER_URL || "http://localhost:3001";
-const DEF_SETTINGS: Settings = { darkMode:true, autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"", paperSize:"100x60mm", printerType:"usb", stickerSize:"100x60mm", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printLabelScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printCommentScale:100, printTotalScale:100, printStoreX:0, printStoreY:0, printBuyerLabelX:0, printBuyerLabelY:0, printBuyerNumberX:0, printBuyerNumberY:0, printBuyerNameX:0, printBuyerNameY:0, printUsernameX:0, printUsernameY:0, printSessionX:0, printSessionY:0, printOrderX:0, printOrderY:0, printTotalX:0, printTotalY:0 };
+const DEF_SETTINGS: Settings = { darkMode:true, autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"", paperSize:"100x60mm", printerType:"auto", stickerSize:"100x60mm", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printLabelScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printCommentScale:100, printTotalScale:100, printStoreX:0, printStoreY:0, printBuyerLabelX:0, printBuyerLabelY:0, printBuyerNumberX:0, printBuyerNumberY:0, printBuyerNameX:0, printBuyerNameY:0, printUsernameX:0, printUsernameY:0, printSessionX:0, printSessionY:0, printOrderX:0, printOrderY:0, printTotalX:0, printTotalY:0 };
 const LANG_OPTS: {code:Lang;label:string}[] = [{code:"en",label:"🇺🇸 EN"},{code:"fil",label:"🇵🇭 FIL"},{code:"zh",label:"🇨🇳 中文"},{code:"vi",label:"🇻🇳 VI"},{code:"th",label:"🇹🇭 TH"},{code:"id",label:"🇮🇩 ID"}];
 const CURRENCIES = [{v:"",l:"No symbol"},{v:"$",l:"$ USD"},{v:"NT$",l:"NT$ NTD"}];
 const cleanCurrency=(value:unknown)=>{
@@ -272,6 +274,22 @@ function hasNativeMobilePrinter(){
     window.Capacitor?.Plugins?.SellerFlowPrinter?.printSlip ||
     window.ReactNativeWebView?.postMessage
   );
+}
+
+async function callMobilePrinterBridge(action:"scanPrinters"|"printerStatus"|"testPrint"|"connectPrinter",printer?:MobilePrinterDevice):Promise<MobilePrinterResult>{
+  if(typeof window==="undefined"||!window.SellerFlowPrinter)return {ok:false,message:"Open this inside the Android app to use phone printer scanning."};
+  const bridge=window.SellerFlowPrinter;
+  try{
+    const raw=action==="connectPrinter"
+      ? await bridge.connectPrinter?.(printer?JSON.stringify(printer):"")
+      : await bridge[action]?.();
+    if(typeof raw==="string"){
+      try{return JSON.parse(raw) as MobilePrinterResult;}catch{return {ok:/printed|ready|online|connected/i.test(raw),message:raw};}
+    }
+    return {ok:true,message:"Printer command sent"};
+  }catch(err){
+    return {ok:false,message:err instanceof Error?err.message:"Printer bridge failed"};
+  }
 }
 
 function sendSlipToNativePrinter(payload:NativePrinterPayload){
@@ -1314,6 +1332,9 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   const commentPreview=previewScale(sets.printCommentScale,sets.printLabelScale);
   const totalPreview=previewScale(sets.printTotalScale,sets.printLabelScale);
   const nativePrinterReady=hasNativeMobilePrinter();
+  const [mobilePrinterStatus,setMobilePrinterStatus]=useState<MobilePrinterResult>({ok:false,message:nativePrinterReady?"Tap Check Status":"Open Android app for printer scan"});
+  const [mobilePrinters,setMobilePrinters]=useState<MobilePrinterDevice[]>([]);
+  const [printerScanning,setPrinterScanning]=useState(false);
   const previewMove=(x:number|undefined,y:number|undefined)=>({transform:`translate(${(x||0)*1.8}px,${(y||0)*1.8}px)`});
   const stepSetting=(key:NumberSettingKey,delta:number)=>setSets(s=>({...s,[key]:Math.max(-40,Math.min(40,Number(s[key]||0)+delta))}));
   const stepSize=(key:NumberSettingKey,delta:number)=>setSets(s=>({...s,[key]:Math.max(60,Math.min(180,Number(s[key]||100)+delta))}));
@@ -1341,6 +1362,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   useEffect(()=>{setProf({...user.profile});},[user]);
   useEffect(()=>{setSets({...settings});},[settings]);
   useEffect(()=>{if(directPrintParam){LS.set("sf_direct_print_mode",true);setDirectPrintMode(true);}},[directPrintParam]);
+  useEffect(()=>{if(nativePrinterReady){void refreshMobilePrinterStatus();}},[nativePrinterReady]);
   /* eslint-enable react-hooks/set-state-in-effect */
   const accountLimit=maxAcc(user.plan);
   const originalTikTok=accountSlots(user.profile.tiktok,accountLimit);
@@ -1394,8 +1416,32 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
     printSlip(testBuyer,sets.currency,user.profile.storeName||"SellerFlowLive",sets);
     setToast("Printer test sent");
   }
+  async function refreshMobilePrinterStatus(){
+    const result=await callMobilePrinterBridge("printerStatus");
+    setMobilePrinterStatus(result);
+    return result;
+  }
+  async function scanMobilePrinters(){
+    setPrinterScanning(true);
+    const result=await callMobilePrinterBridge("scanPrinters");
+    setMobilePrinterStatus(result);
+    setMobilePrinters(result.printers||[]);
+    setPrinterScanning(false);
+    setToast(result.message||"Printer scan complete");
+  }
+  async function connectMobilePrinter(printer:MobilePrinterDevice){
+    const result=await callMobilePrinterBridge("connectPrinter",printer);
+    setMobilePrinterStatus(result);
+    if(result.savedPrinter)setMobilePrinters(list=>[result.savedPrinter as MobilePrinterDevice,...list.filter(p=>p.id!==result.savedPrinter?.id)]);
+    setToast(result.message||"Printer saved");
+  }
+  async function testMobilePrinter(){
+    const result=await callMobilePrinterBridge("testPrint");
+    setMobilePrinterStatus(result);
+    setToast(result.message||"Test print sent");
+  }
   function openMobileBluetoothGuide(){
-    setToast("Open phone Bluetooth settings, pair printer, then come back to SellerFlowLive");
+    setToast("Turn on printer, keep phone on same WiFi or Bluetooth nearby, then tap Scan Printers.");
   }
   function resetPrinterLayout(){
     setSets(s=>({
@@ -1544,8 +1590,10 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
           </div>
           <Fg label={t.printer_type}>
             <select value={sets.printerType} onChange={e=>setSets(s=>({...s,printerType:e.target.value as Settings["printerType"]}))}>
+              <option value="auto">Auto detect Bluetooth / LAN</option>
               <option value="usb">{t.printer_usb}</option>
               <option value="bluetooth">{t.printer_bt}</option>
+              <option value="lan">WiFi / LAN ESC-POS</option>
             </select>
           </Fg>
           <Fg label={t.printer_size}>
@@ -1632,38 +1680,64 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
           <div className="tog-row" style={{borderBottom:"none"}}><div><div style={{fontWeight:500}}>Facebook Live</div><div style={{fontSize:11,color:"#888",whiteSpace:"pre-wrap"}}>{accountList(user.profile.facebook).join(", ")||t.not_set}</div></div><Badge label={user.connectedAccounts.includes("Facebook")?t.connected_label:t.not_connected} color={user.connectedAccounts.includes("Facebook")?"green":"gray"}/></div>
         </form>
         <form onSubmit={saveSets} className="scard settings-section settings-section-mobile-printer">
-          <div className="scard-title">Mobile Bluetooth Printer</div>
+          <div className="scard-title">Plug-and-play Phone Printer</div>
           <div className="mobile-bt-layout">
             <div className="mobile-bt-copy">
-              <div className="printer-direct-status active">
+              <div className={`printer-direct-status ${mobilePrinterStatus.online?"active":"inactive"}`}>
                 <div>
-                  <strong>{nativePrinterReady?"Bluetooth Direct Print Ready":"Mobile App Printer Flow"}</strong>
-                  <span>{nativePrinterReady?"Native printer bridge detected. 1-click can send slips to the phone app Bluetooth printer.":"Bluetooth printer tools will show on phone app only. Desktop website stays USB/Wired."}</span>
+                  <strong>{mobilePrinterStatus.online?"Printer Online":nativePrinterReady?"Ready to scan printers":"Android app needed"}</strong>
+                  <span>{mobilePrinterStatus.message||"Scan Bluetooth and WiFi/LAN thermal printers, then tap one printer to save it."}</span>
                 </div>
-                <Badge label={nativePrinterReady?"Bridge ready":"Mobile only"} color={nativePrinterReady?"green":"amber"}/>
+                <Badge label={mobilePrinterStatus.online?"Online":nativePrinterReady?"Scan":"Mobile only"} color={mobilePrinterStatus.online?"green":"amber"}/>
+              </div>
+              {mobilePrinterStatus.savedPrinter&&(
+                <div className="mobile-printer-saved">
+                  <span>Saved printer</span>
+                  <strong>{mobilePrinterStatus.savedPrinter.name}</strong>
+                  <small>{mobilePrinterStatus.savedPrinter.type==="lan"?"WiFi/LAN":"Bluetooth"} {mobilePrinterStatus.savedPrinter.host||mobilePrinterStatus.savedPrinter.address||""}</small>
+                </div>
+              )}
+              <div className="mobile-printer-actions">
+                <button type="button" className="printer-test-btn" onClick={scanMobilePrinters} disabled={printerScanning}>{printerScanning?"Scanning nearby printers...":"Scan Printers"}</button>
+                <button type="button" className="btn-out" onClick={refreshMobilePrinterStatus}>Check Status</button>
+                <button type="button" className="printer-test-btn" onClick={testMobilePrinter}>Test Print</button>
+              </div>
+              <div className="mobile-printer-list">
+                {mobilePrinters.length===0&&<div className="mobile-printer-empty">No scanned printers yet. Turn printer on, connect phone to the same WiFi or keep Bluetooth printer nearby, then tap Scan Printers.</div>}
+                {mobilePrinters.map(printer=>(
+                  <button type="button" key={printer.id} className="mobile-printer-option" onClick={()=>connectMobilePrinter(printer)}>
+                    <div className={`mobile-printer-type ${printer.type}`}>{printer.type==="lan"?"WiFi":"BT"}</div>
+                    <div>
+                      <strong>{printer.name}</strong>
+                      <span>{printer.hint||"Thermal printer"} - {printer.distance||""}</span>
+                      <small>{printer.host||printer.address}</small>
+                    </div>
+                    <Badge label={printer.online||printer.paired?"Ready":"Nearby"} color={printer.online||printer.paired?"green":"purple"}/>
+                  </button>
+                ))}
               </div>
               <div className="mobile-bt-steps">
-                <strong>How seller will use it on phone</strong>
+                <strong>Simple seller setup</strong>
                 <ol>
-                  <li>Turn on the Bluetooth printer and pairing mode.</li>
-                  <li>Pair the printer in phone Bluetooth settings.</li>
-                  <li>Return to SellerFlowLive mobile app.</li>
-                  <li>Tap Test Print, then use 1-click during live selling.</li>
+                  <li>Turn on the thermal printer.</li>
+                  <li>For WiFi/LAN printer, connect phone to the same WiFi.</li>
+                  <li>For Bluetooth printer, keep it nearby and pair if Android asks.</li>
+                  <li>Tap Scan Printers, choose one printer, then Test Print.</li>
                 </ol>
               </div>
               <div className="mobile-bt-actions">
-                <button type="button" className="btn-out" onClick={openMobileBluetoothGuide}>Pair Printer Guide</button>
-                <button type="button" className="printer-test-btn" onClick={testPrinter}>Test Mobile Print</button>
+                <button type="button" className="btn-out" onClick={openMobileBluetoothGuide}>Setup Help</button>
+                <button type="button" className="btn-out" onClick={testPrinter}>Browser Fallback Test</button>
               </div>
-              <div className="backup-note">Silent Bluetooth printing is now wired to the mobile app bridge. If this page is opened in normal browser, it will safely keep using browser print.</div>
+              <div className="backup-note">SellerFlowLive auto-saves the selected printer and reconnects when it is online again. LAN scan checks ESC/POS port 9100 on the current WiFi.</div>
             </div>
             <div className="mobile-bt-preview">
               <div className="mobile-bt-phone">
                 <div className="mobile-bt-top"/>
                 <div className="mobile-bt-card">
-                  <b>Bluetooth Printer</b>
-                  <span>Phone app mode</span>
-                  <em>Ready after phone pairing</em>
+                  <b>Auto Printer</b>
+                  <span>Bluetooth or WiFi/LAN</span>
+                  <em>{mobilePrinterStatus.online?"Online":"Scan to connect"}</em>
                 </div>
                 <div className="mobile-bt-slip">
                   <strong>BUYER #12</strong>
