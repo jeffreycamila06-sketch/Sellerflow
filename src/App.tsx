@@ -3053,8 +3053,7 @@ export default function App(){
     ["dashboard","⚡",t.nav_live],["miners","🏅",t.nav_miners],["orders","🛒",t.nav_orders],
     ["products","📦",t.nav_products],["customers","👥",t.nav_customers],["customerData","📋","Customer Data"],["print","🖨️",t.nav_print],["sales","📊",t.nav_sales],
   ];
-  const mobileMainNav=new Set<Page>(["dashboard","orders","products","sales","settings"]);
-  const navClass=(id:Page)=>`nav-it ${page===id?"on":""} ${mobileMainNav.has(id)?"mobile-main-nav":""}`;
+  const navClass=(id:Page)=>`nav-it ${page===id?"on":""}`;
 
   return(
     <div className="app" onClick={()=>{setShowProf(false);setOpenCommentMenu(null);}}>
@@ -3291,6 +3290,28 @@ export default function App(){
         {page==="terms"&&<LegalPage kind="terms" onBack={()=>setPage("settings")}/>}
         {page==="deleteAccount"&&<DeleteAccountPage user={user} onDelete={handleDeleteAccount} onCancel={()=>setPage("settings")}/>}
       </main>
+
+      {user&&(
+        <nav className="mobile-bottom-nav">
+          <button className={page==="dashboard"?"active":""} onClick={()=>setPage("dashboard")}>
+            <span style={{fontSize:22}}>💬</span>
+            <span>Comments</span>
+          </button>
+          <button className={page==="orders"?"active":""} onClick={()=>setPage("orders")}>
+            <span style={{fontSize:22}}>🛒</span>
+            <span>Orders</span>
+          </button>
+          <button className={page==="sales"?"active":""} onClick={()=>setPage("sales")}>
+            <span style={{fontSize:22}}>📊</span>
+            <span>Sales</span>
+          </button>
+          <button className={page==="settings"?"active":""} onClick={()=>setPage("settings")}>
+            <span style={{fontSize:22}}>⚙️</span>
+            <span>Settings</span>
+            {supportUnreadCount>0&&<span className="mobile-nav-badge">{supportUnreadCount>9?"9+":supportUnreadCount}</span>}
+          </button>
+        </nav>
+      )}
 
       {showConn&&<ConnectModal onClose={()=>setShowConn(false)} onConnect={connectPlatform} user={user} t={t} initialTab={connectTab}/>}
     </div>
