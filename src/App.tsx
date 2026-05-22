@@ -1048,11 +1048,12 @@ function CustomerDataPage({comments,onRefresh}:{comments:Comment[];onRefresh:()=
   const storageKey="sf_shipping_customer_data";
   const [records,setRecords]=useState<ShippingCustomer[]>(()=>arrLS<ShippingCustomer>(storageKey));
   const [query,setQuery]=useState("");
+  const [columnFilters,setColumnFilters]=useState({username:"All",name:"All",phone:"All",sevenCode:"All"});
   const [statusFilter,setStatusFilter]=useState<"All"|ShippingStatus>("All");
   const [sortKey,setSortKey]=useState<"newest"|"username"|"status">("newest");
   const [page,setPage]=useState(1);
+  const [rowsPerPage,setRowsPerPage]=useState(10);
   const [savedAt,setSavedAt]=useState("Saved");
-  const pageSize=12;
   const esc=(v:string)=>String(v||"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch]||ch));
   const readyStatus=(r:ShippingCustomer):ShippingStatus=>r.name.trim()&&r.phone.trim()&&r.sevenCode.trim()?"Ready":"Pending";
   const persist=(next:ShippingCustomer[])=>{
@@ -1100,37 +1101,60 @@ function CustomerDataPage({comments,onRefresh}:{comments:Comment[];onRefresh:()=
   };
   const bulkPrint=()=>filtered.filter(r=>r.status==="Ready").forEach(printOne);
   const exportRows=()=>csvDL(`shipping-customers-${new Date().toISOString().slice(0,10)}.csv`,["Username","Name","Phone","7/11 Code","Status","Last Comment","Note"],records.map(r=>[r.username,r.name,r.phone,r.sevenCode,r.status,r.lastComment,r.note]));
+  const uniqueValues=(field:keyof Pick<ShippingCustomer,"username"|"name"|"phone"|"sevenCode">)=>["All",...Array.from(new Set(records.map(r=>r[field]).filter(Boolean))).sort()];
+  const resetFilters=()=>{setQuery("");setStatusFilter("All");setColumnFilters({username:"All",name:"All",phone:"All",sevenCode:"All"});setSortKey("newest");setPage(1);};
   const filtered=records.filter(r=>{
     const q=query.toLowerCase();
     const matches=!q||[r.username,r.name,r.phone,r.sevenCode,r.lastComment,r.note].some(v=>v.toLowerCase().includes(q));
-    return matches&&(statusFilter==="All"||r.status===statusFilter);
+    const columnMatch=(columnFilters.username==="All"||r.username===columnFilters.username)
+      &&(columnFilters.name==="All"||r.name===columnFilters.name)
+      &&(columnFilters.phone==="All"||r.phone===columnFilters.phone)
+      &&(columnFilters.sevenCode==="All"||r.sevenCode===columnFilters.sevenCode);
+    return matches&&columnMatch&&(statusFilter==="All"||r.status===statusFilter);
   }).sort((a,b)=>sortKey==="username"?a.username.localeCompare(b.username):sortKey==="status"?a.status.localeCompare(b.status):new Date(b.firstSeen).getTime()-new Date(a.firstSeen).getTime());
-  const pages=Math.max(1,Math.ceil(filtered.length/pageSize));
-  const pageRows=filtered.slice((Math.min(page,pages)-1)*pageSize,Math.min(page,pages)*pageSize);
+  const pages=Math.max(1,Math.ceil(filtered.length/rowsPerPage));
+  const currentPage=Math.min(page,pages);
+  const pageRows=filtered.slice((currentPage-1)*rowsPerPage,currentPage*rowsPerPage);
+  const firstRow=filtered.length?(currentPage-1)*rowsPerPage+1:0;
+  const lastRow=Math.min(currentPage*rowsPerPage,filtered.length);
+  const activeFilterCount=(query?1:0)+(statusFilter!=="All"?1:0)+Object.values(columnFilters).filter(v=>v!=="All").length;
   return(
     <div className="subpage">
       <div className="subpage-hd"><div><h2>Customer Data</h2><p>Collect shipping details, then print a shipping label fast.</p></div></div>
       <div className="customer-data-black-panel">
-        <div className="cd-toolbar">
-          <input value={query} onChange={e=>{setQuery(e.target.value);setPage(1);}} placeholder="Search username, name, phone, 7/11 code"/>
-          <select value={statusFilter} onChange={e=>{setStatusFilter(e.target.value as "All"|ShippingStatus);setPage(1);}}><option>All</option><option>Pending</option><option>Ready</option><option>Shipped</option><option>Delivered</option><option>Returned</option></select>
-          <select value={sortKey} onChange={e=>setSortKey(e.target.value as "newest"|"username"|"status")}><option value="newest">Newest</option><option value="username">Username</option><option value="status">Status</option></select>
-          <span>{savedAt}</span>
+        <div className="cd-topbar">
+          <div className="cd-search"><span>Search</span><input value={query} onChange={e=>{setQuery(e.target.value);setPage(1);}} placeholder="Search TikTok username, name, phone, 7/11 code..."/>{query&&<button onClick={()=>setQuery("")}>x</button>}</div>
+          <button className="cd-tool-btn">Filters <b>{activeFilterCount}</b></button>
+          <span className="cd-spacer"/>
+          <button className="cd-tool-btn" onClick={resetFilters}>Reset Filters</button>
+          <button className="cd-tool-btn" onClick={()=>setSavedAt("Columns saved")}>Columns</button>
+          <button className="cd-tool-btn" onClick={()=>setSortKey(sortKey==="newest"?"username":sortKey==="username"?"status":"newest")}>Sort</button>
+          <button className="cd-tool-btn" onClick={()=>setSavedAt(`View saved ${new Date().toLocaleTimeString()}`)}>Save View</button>
+        </div>
+        <div className="cd-filter-row">
+          <label>TikTok Username<select value={columnFilters.username} onChange={e=>{setColumnFilters(f=>({...f,username:e.target.value}));setPage(1);}}>{uniqueValues("username").map(v=><option key={v}>{v}</option>)}</select></label>
+          <label>Name<select value={columnFilters.name} onChange={e=>{setColumnFilters(f=>({...f,name:e.target.value}));setPage(1);}}>{uniqueValues("name").map(v=><option key={v}>{v}</option>)}</select></label>
+          <label>Phone Number<select value={columnFilters.phone} onChange={e=>{setColumnFilters(f=>({...f,phone:e.target.value}));setPage(1);}}>{uniqueValues("phone").map(v=><option key={v}>{v}</option>)}</select></label>
+          <label>7/11 Code<select value={columnFilters.sevenCode} onChange={e=>{setColumnFilters(f=>({...f,sevenCode:e.target.value}));setPage(1);}}>{uniqueValues("sevenCode").map(v=><option key={v}>{v}</option>)}</select></label>
+          <label>Status<select value={statusFilter} onChange={e=>{setStatusFilter(e.target.value as "All"|ShippingStatus);setPage(1);}}><option>All</option><option>Pending</option><option>Ready</option><option>Shipped</option><option>Delivered</option><option>Returned</option></select></label>
+          <label>Date Added<button type="button" className="cd-date-btn">Select date range</button></label>
+          <span className="cd-save-state">{savedAt}</span>
         </div>
         <div className="cd-table-wrap">
-          <table className="cd-table"><thead><tr><th>Buyer</th><th>Name</th><th>Phone</th><th>7/11 Code</th><th>Status</th><th>Actions</th></tr></thead><tbody>
-            {pageRows.length===0&&<tr><td colSpan={6} className="cd-empty">No new TikTok usernames yet</td></tr>}
+          <table className="cd-table"><thead><tr><th>TikTok Username</th><th>Name</th><th>Phone Number</th><th>7/11 Code</th><th>Status</th><th>Date Added</th><th>Actions</th></tr></thead><tbody>
+            {pageRows.length===0&&<tr><td colSpan={7} className="cd-empty">No new TikTok usernames yet</td></tr>}
             {pageRows.map(r=><tr key={r.username}>
               <td><strong>@{r.username}</strong>{r.isNew&&<b className="cd-new">New Buyer</b>}<small>{r.lastComment}</small></td>
               <td><input value={r.name} onChange={e=>update(r.username,{name:e.target.value})}/></td>
               <td><input value={r.phone} onChange={e=>update(r.username,{phone:e.target.value})} placeholder="Phone"/></td>
               <td><input value={r.sevenCode} onChange={e=>update(r.username,{sevenCode:e.target.value})} placeholder="7/11 code"/></td>
-              <td><select value={r.status} onChange={e=>update(r.username,{status:e.target.value as ShippingStatus})}><option>Pending</option><option>Ready</option><option>Shipped</option><option>Delivered</option><option>Returned</option></select></td>
-              <td><div className="cd-actions"><button onClick={()=>copy(r.phone)}>Copy phone</button><button onClick={()=>copy(r.sevenCode)}>Copy 7/11</button><button onClick={()=>printOne(r)}>Open shipping</button><button onClick={()=>update(r.username,{status:"Shipped"})}>Mark shipped</button></div></td>
+              <td><select className={`cd-status ${r.status.toLowerCase()}`} value={r.status} onChange={e=>update(r.username,{status:e.target.value as ShippingStatus})}><option>Pending</option><option>Ready</option><option>Shipped</option><option>Delivered</option><option>Returned</option></select></td>
+              <td>{new Date(r.firstSeen).toLocaleString()}</td>
+              <td><div className="cd-actions"><button onClick={()=>update(r.username,{isNew:false})}>Save</button><button onClick={()=>copy(r.phone)}>Copy phone</button><button onClick={()=>copy(r.sevenCode)}>Copy 7/11</button><button onClick={()=>printOne(r)}>Open shipping</button><button onClick={()=>update(r.username,{status:"Shipped"})}>Mark shipped</button></div></td>
             </tr>)}
           </tbody></table>
         </div>
-        <div className="cd-pager"><button disabled={page<=1} onClick={()=>setPage(p=>p-1)}>Prev</button><span>{Math.min(page,pages)} / {pages}</span><button disabled={page>=pages} onClick={()=>setPage(p=>p+1)}>Next</button></div>
+        <div className="cd-pager"><span>Showing {firstRow} to {lastRow} of {filtered.length} customers</span><label>Rows per page:<select value={rowsPerPage} onChange={e=>{setRowsPerPage(Number(e.target.value));setPage(1);}}><option>10</option><option>25</option><option>50</option></select></label><button disabled={page<=1} onClick={()=>setPage(p=>p-1)}>Prev</button>{Array.from({length:Math.min(5,pages)},(_,i)=>i+1).map(n=><button key={n} className={currentPage===n?"active":""} onClick={()=>setPage(n)}>{n}</button>)}{pages>5&&<span>...</span>}<button disabled={page>=pages} onClick={()=>setPage(p=>p+1)}>Next</button></div>
         <div className="cd-floating-tools"><button onClick={exportRows}>Export CSV</button><button onClick={()=>setSavedAt(`Synced ${new Date().toLocaleTimeString()}`)}>Sync Shipping</button><button onClick={onRefresh}>Refresh TikTok comments</button><button onClick={bulkPrint}>Open Printer Queue</button></div>
       </div>
     </div>
