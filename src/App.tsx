@@ -1696,7 +1696,8 @@ function Support({user,t}:{user:User;t:T}){
 // CONNECT MODAL
 // ═══════════════════════════════════════════════════════════════════
 function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:(email:string,plan:Plan,months?:number)=>void;orders:LiveOrder[];t:T}){
-  const [users,setUsers]=useState<User[]>(()=>cleanUsers(arrLS<unknown>("sf_users")));
+  const normalizeAdminUsers=(list:User[])=>list.map(u=>isAdminEmail(u.email)?asAdminPlan(u):u);
+  const [users,setUsers]=useState<User[]>(()=>normalizeAdminUsers(cleanUsers(arrLS<unknown>("sf_users"))));
   const [msgs,setMsgs]=useState<SupportMsg[]>(()=>arrLS<SupportMsg>("sf_support"));
   const [auditLogs,setAuditLogs]=useState<AccountAuditLog[]>(()=>arrLS<AccountAuditLog>("sf_audit_logs"));
   const [admins,setAdmins]=useState<string[]>(()=>adminEmails());
@@ -1715,7 +1716,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   const adminPageRef=useRef<HTMLDivElement>(null);
 
   async function refresh(){
-    const freshUsers=await listUsers();
+    const freshUsers=normalizeAdminUsers(await listUsers());
     setUsers(freshUsers);
     await sendAutomaticPlanNotices(freshUsers);
     setMsgs(await listSupportMessages());
