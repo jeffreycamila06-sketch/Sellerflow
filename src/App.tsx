@@ -39,9 +39,9 @@ interface NativePrinterPayload { type:"sellerflow.printSlip"; buyer:Buyer; curre
 
 declare global {
   interface Window {
-    SellerFlowPrinter?: { printSlip?: (payload:NativePrinterPayload)=>void|Promise<void>; status?: ()=>string|Promise<string>; };
+    SellerFlowPrinter?: { printSlip?: (payload:NativePrinterPayload)=>void|string|Promise<void|string>; status?: ()=>string|Promise<string>; };
     ReactNativeWebView?: { postMessage:(message:string)=>void };
-    Capacitor?: { Plugins?: { SellerFlowPrinter?: { printSlip:(payload:NativePrinterPayload)=>Promise<void> } } };
+    Capacitor?: { Plugins?: { SellerFlowPrinter?: { printSlip:(payload:NativePrinterPayload)=>Promise<void|string> } } };
   }
 }
 const normalizeComment=(raw:unknown,index=0):Comment|null=>{
@@ -272,13 +272,21 @@ function hasNativeMobilePrinter(){
 
 function sendSlipToNativePrinter(payload:NativePrinterPayload){
   if(typeof window==="undefined")return false;
+  const showNativePrinterResult=(result:void|string|Promise<void|string>)=>{
+    void Promise.resolve(result).then(msg=>{
+      if(typeof msg!=="string"||!msg.trim())return;
+      if(/printed to/i.test(msg))return;
+      console.warn(msg);
+      window.alert(msg);
+    }).catch(err=>console.warn("Native printer bridge failed.",err));
+  };
   try{
     if(window.SellerFlowPrinter?.printSlip){
-      void window.SellerFlowPrinter.printSlip(payload);
+      showNativePrinterResult(window.SellerFlowPrinter.printSlip(payload));
       return true;
     }
     if(window.Capacitor?.Plugins?.SellerFlowPrinter?.printSlip){
-      void window.Capacitor.Plugins.SellerFlowPrinter.printSlip(payload);
+      showNativePrinterResult(window.Capacitor.Plugins.SellerFlowPrinter.printSlip(payload));
       return true;
     }
     if(window.ReactNativeWebView?.postMessage){
