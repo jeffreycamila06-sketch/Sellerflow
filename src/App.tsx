@@ -2895,6 +2895,7 @@ export default function App(){
     const key=commentKey(c);
     const price=Number(commentPrices[key]||0)||0;
     oneClick(c,price);
+    setCommentPrices(p=>({...p,[key]:""}));
     setTimeout(()=>priceInputRefs.current[key]?.focus(),0);
   }
   function continueSavedAccount(){
