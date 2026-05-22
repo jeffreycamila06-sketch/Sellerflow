@@ -30,7 +30,7 @@ interface LiveOrder { orderNum:number; item:string; qty:number; price:number; to
 interface Buyer { handle:string; name:string; platform:string; num:number; orders:LiveOrder[]; totalSpent:number; totalOrders:number; }
 interface Comment { handle:string; name:string; comment:string; platform:"TikTok"|"Facebook"; isBuy:boolean; buyerNum:number|null; buyerData:Buyer|null; time:string; avatar?:string; timestamp?:string; sellerId?:string; sessionId?:string; sourceUsername?:string; }
 interface Product { id:number; name:string; sku:string; price:number; stock:number; platform:string; status:string; }
-interface Settings { autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"usb"; stickerSize:string; printStoreName:boolean; printBuyerNumber:boolean; printBuyerUsername:boolean; printOrderItems:boolean; printTotal:boolean; printAutoClose:boolean; printLabelScale:number; printStoreScale:number; printBuyerNumberScale:number; printBuyerNameScale:number; printUsernameScale:number; printOrderScale:number; printTotalScale:number; printStoreX:number; printStoreY:number; printBuyerLabelX:number; printBuyerLabelY:number; printBuyerNumberX:number; printBuyerNumberY:number; printBuyerNameX:number; printBuyerNameY:number; printUsernameX:number; printUsernameY:number; printSessionX:number; printSessionY:number; printOrderX:number; printOrderY:number; printTotalX:number; printTotalY:number; }
+interface Settings { autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"usb"; stickerSize:string; printStoreName:boolean; printBuyerNumber:boolean; printBuyerUsername:boolean; printOrderItems:boolean; printTotal:boolean; printAutoClose:boolean; printLabelScale:number; printStoreScale:number; printBuyerNumberScale:number; printBuyerNameScale:number; printUsernameScale:number; printOrderScale:number; printCommentScale:number; printTotalScale:number; printStoreX:number; printStoreY:number; printBuyerLabelX:number; printBuyerLabelY:number; printBuyerNumberX:number; printBuyerNumberY:number; printBuyerNameX:number; printBuyerNameY:number; printUsernameX:number; printUsernameY:number; printSessionX:number; printSessionY:number; printOrderX:number; printOrderY:number; printTotalX:number; printTotalY:number; }
 type NumberSettingKey = {[K in keyof Settings]: Settings[K] extends number ? K : never}[keyof Settings];
 interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; proofImage?:string; timestamp:string; status:"pending"|"approved"|"rejected"|"resolved"; adminReply?:string; repliedAt?:string; }
 interface NativePrinterPayload { type:"sellerflow.printSlip"; buyer:Buyer; currency:string; storeName:string; settings:Settings; sessionDate:string; createdAt:string; }
@@ -133,7 +133,7 @@ const sellerDayOrSessionArray=<X,>(base:string,email:string,dayId:string,session
 };
 
 const SERVER = import.meta.env.VITE_SERVER_URL || "http://localhost:3001";
-const DEF_SETTINGS: Settings = { autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"₱", paperSize:"100x60mm", printerType:"usb", stickerSize:"100x60mm", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printLabelScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printTotalScale:100, printStoreX:0, printStoreY:0, printBuyerLabelX:0, printBuyerLabelY:0, printBuyerNumberX:0, printBuyerNumberY:0, printBuyerNameX:0, printBuyerNameY:0, printUsernameX:0, printUsernameY:0, printSessionX:0, printSessionY:0, printOrderX:0, printOrderY:0, printTotalX:0, printTotalY:0 };
+const DEF_SETTINGS: Settings = { autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"₱", paperSize:"100x60mm", printerType:"usb", stickerSize:"100x60mm", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printLabelScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printCommentScale:100, printTotalScale:100, printStoreX:0, printStoreY:0, printBuyerLabelX:0, printBuyerLabelY:0, printBuyerNumberX:0, printBuyerNumberY:0, printBuyerNameX:0, printBuyerNameY:0, printUsernameX:0, printUsernameY:0, printSessionX:0, printSessionY:0, printOrderX:0, printOrderY:0, printTotalX:0, printTotalY:0 };
 const LANG_OPTS: {code:Lang;label:string}[] = [{code:"en",label:"🇺🇸 EN"},{code:"fil",label:"🇵🇭 FIL"},{code:"zh",label:"🇨🇳 中文"},{code:"vi",label:"🇻🇳 VI"},{code:"th",label:"🇹🇭 TH"},{code:"id",label:"🇮🇩 ID"}];
 const CURRENCIES = [{v:"₱",l:"₱ PHP"},{v:"$",l:"$ USD"},{v:"NT$",l:"NT$ NTD"},{v:"¥",l:"¥ CNY"},{v:"฿",l:"฿ THB"},{v:"₫",l:"₫ VND"}];
 
@@ -298,6 +298,7 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Setting
   const buyerNameScale=scale(cfg.printBuyerNameScale,cfg.printLabelScale);
   const usernameScale=scale(cfg.printUsernameScale,cfg.printLabelScale);
   const orderScale=scale(cfg.printOrderScale,cfg.printLabelScale);
+  const commentScale=scale(cfg.printCommentScale,cfg.printLabelScale);
   const totalScale=scale(cfg.printTotalScale,cfg.printLabelScale);
   const pos=(v:number|undefined)=>Math.max(-40,Math.min(40,v||0));
   const sess=new Date().toLocaleDateString("en-PH",{month:"long",day:"numeric",year:"numeric"});
@@ -305,8 +306,8 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Setting
   if(hasNativeMobilePrinter()&&sendSlipToNativePrinter(nativePayload))return;
   const color=nc(buyer.num);
   const [w]=size.split("x").map(Number);
-  const commentOnlyHtml=buyer.orders.map(o=>`<div style="border-left:2px solid #7F77DD;padding-left:6px;margin-bottom:5px"><div style="font-size:9px;color:#888">${o.time}</div><div style="font-size:10px;font-weight:700">${o.item}</div></div>`).join("");
-  const scaledOrderHtml=commentOnlyHtml.replace(/font-size:9px/g,`font-size:${9*orderScale}px`).replace(/font-size:10px/g,`font-size:${10*orderScale}px`);
+  const commentOnlyHtml=buyer.orders.map(o=>`<div class="order-entry"><div class="order-time">${o.time}</div><div class="order-comment">${o.item}</div></div>`).join("");
+  const scaledOrderHtml=commentOnlyHtml;
   const frame=document.createElement("iframe");
   frame.title=`Slip #${buyer.num}`;
   frame.style.position="fixed";
@@ -322,7 +323,7 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Setting
   win.onafterprint=()=>setTimeout(()=>frame.remove(),50);
   const doc=win.document;
   doc.open();
-  doc.write(`<!DOCTYPE html><html><head><title>Slip #${buyer.num}</title><style>@page{size:${size.replace("x","mm ")}mm;margin:3mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;width:${w}mm;color:#000}.head{display:flex;align-items:flex-start;justify-content:space-between;gap:3mm;margin-bottom:2.5mm}.brand{font-size:${14*storeScale}px;font-weight:800;transform:translate(${pos(cfg.printStoreX)}mm,${pos(cfg.printStoreY)}mm)}.brand span{color:#7F77DD}.session{font-size:${12*totalScale}px;font-weight:800;text-align:right;transform:translate(${pos(cfg.printSessionX)}mm,${pos(cfg.printSessionY)}mm)}.grid{display:grid;grid-template-columns:52% 48%;gap:3mm;align-items:start}.left{display:flex;flex-direction:column;gap:1.5mm;padding-top:1mm}.seller{font-size:${13*storeScale}px;font-weight:800;line-height:1.1;transform:translate(${pos(cfg.printStoreX)}mm,${pos(cfg.printStoreY)}mm)}.line{font-size:${13*buyerNameScale}px;font-weight:800;line-height:1.1}.muted{font-size:${10*usernameScale}px;font-weight:700;color:#333}.buyer-num{font-size:${13*buyerNumberScale}px;color:${color};font-weight:900;transform:translate(${pos(cfg.printBuyerNumberX)}mm,${pos(cfg.printBuyerNumberY)}mm)}.buyer-name{transform:translate(${pos(cfg.printBuyerNameX)}mm,${pos(cfg.printBuyerNameY)}mm)}.username{transform:translate(${pos(cfg.printUsernameX)}mm,${pos(cfg.printUsernameY)}mm)}.order-box{min-height:38mm;padding:0;transform:translate(${pos(cfg.printOrderX)}mm,${pos(cfg.printOrderY)}mm)}.order-title{font-size:${15*orderScale}px;font-weight:900;margin-bottom:2mm}.order-box [style]{border-left-color:#000!important}.total{border-top:1px dashed #777;margin-top:2mm;padding-top:1.5mm;display:flex;justify-content:space-between;gap:2mm;font-size:${11*totalScale}px;font-weight:800;transform:translate(${pos(cfg.printTotalX)}mm,${pos(cfg.printTotalY)}mm)}@media print{body{margin:0}}</style></head><body>
+  doc.write(`<!DOCTYPE html><html><head><title>Slip #${buyer.num}</title><style>@page{size:${size.replace("x","mm ")}mm;margin:3mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;width:${w}mm;color:#000}.head{display:flex;align-items:flex-start;justify-content:space-between;gap:3mm;margin-bottom:2.5mm}.brand{font-size:${14*storeScale}px;font-weight:800;transform:translate(${pos(cfg.printStoreX)}mm,${pos(cfg.printStoreY)}mm)}.brand span{color:#7F77DD}.session{font-size:${12*totalScale}px;font-weight:800;text-align:right;transform:translate(${pos(cfg.printSessionX)}mm,${pos(cfg.printSessionY)}mm)}.grid{display:grid;grid-template-columns:52% 48%;gap:3mm;align-items:start}.left{display:flex;flex-direction:column;gap:1.5mm;padding-top:1mm}.seller{font-size:${13*storeScale}px;font-weight:800;line-height:1.1;transform:translate(${pos(cfg.printStoreX)}mm,${pos(cfg.printStoreY)}mm)}.line{font-size:${13*buyerNameScale}px;font-weight:800;line-height:1.1}.muted{font-size:${10*usernameScale}px;font-weight:700;color:#333}.buyer-num{font-size:${13*buyerNumberScale}px;color:${color};font-weight:900;transform:translate(${pos(cfg.printBuyerNumberX)}mm,${pos(cfg.printBuyerNumberY)}mm)}.buyer-name{transform:translate(${pos(cfg.printBuyerNameX)}mm,${pos(cfg.printBuyerNameY)}mm)}.username{transform:translate(${pos(cfg.printUsernameX)}mm,${pos(cfg.printUsernameY)}mm)}.order-box{min-height:38mm;padding:0;transform:translate(${pos(cfg.printOrderX)}mm,${pos(cfg.printOrderY)}mm)}.order-title{font-size:${15*orderScale}px;font-weight:900;margin-bottom:2mm}.order-entry{border-left:2px solid #000;padding-left:2mm;margin-bottom:2mm}.order-time{font-size:${9*orderScale}px;color:#111;font-weight:500;line-height:1.1}.order-comment{font-size:${10*commentScale}px;font-weight:800;line-height:1.1;margin-top:.8mm}.total{border-top:1px dashed #777;margin-top:2mm;padding-top:1.5mm;display:flex;justify-content:space-between;gap:2mm;font-size:${11*totalScale}px;font-weight:800;transform:translate(${pos(cfg.printTotalX)}mm,${pos(cfg.printTotalY)}mm)}@media print{body{margin:0}}</style></head><body>
   <div class="head"><div class="brand">Seller<span>FlowLive</span></div><div class="session">Session: ${sess}</div></div>
   <div class="grid"><div class="left">
   ${cfg.printStoreName?`<div class="seller">${storeName}</div>`:""}
@@ -1177,6 +1178,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   const buyerNamePreview=previewScale(sets.printBuyerNameScale,sets.printLabelScale);
   const usernamePreview=previewScale(sets.printUsernameScale,sets.printLabelScale);
   const orderPreview=previewScale(sets.printOrderScale,sets.printLabelScale);
+  const commentPreview=previewScale(sets.printCommentScale,sets.printLabelScale);
   const totalPreview=previewScale(sets.printTotalScale,sets.printLabelScale);
   const nativePrinterReady=hasNativeMobilePrinter();
   const previewMove=(x:number|undefined,y:number|undefined)=>({transform:`translate(${(x||0)*1.8}px,${(y||0)*1.8}px)`});
@@ -1275,6 +1277,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
       printBuyerNameScale:DEF_SETTINGS.printBuyerNameScale,
       printUsernameScale:DEF_SETTINGS.printUsernameScale,
       printOrderScale:DEF_SETTINGS.printOrderScale,
+      printCommentScale:DEF_SETTINGS.printCommentScale,
       printTotalScale:DEF_SETTINGS.printTotalScale,
       printStoreX:DEF_SETTINGS.printStoreX,
       printStoreY:DEF_SETTINGS.printStoreY,
@@ -1425,10 +1428,10 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
                   <b style={{fontSize:`${13*buyerNamePreview}px`,...previewMove(sets.printBuyerNameX,sets.printBuyerNameY)}}>Maria Santos</b>
                   {sets.printBuyerUsername&&<em style={{fontSize:`${10*usernamePreview}px`,...previewMove(sets.printUsernameX,sets.printUsernameY)}}>@maria_live</em>}
                 </div>
-                {sets.printOrderItems&&<div className="printer-preview-order-box" style={{fontSize:`${10*orderPreview}px`,...previewMove(sets.printOrderX,sets.printOrderY)}}>
+                {sets.printOrderItems&&<div className="printer-preview-order-box" style={previewMove(sets.printOrderX,sets.printOrderY)}>
                   <strong>Order here</strong>
-                  <div>12:21 PM<br/><b>620</b></div>
-                  <div>12:22 PM<br/><b>150</b></div>
+                  <div><span style={{fontSize:`${9*orderPreview}px`}}>12:21 PM</span><b style={{fontSize:`${10*commentPreview}px`}}>620</b></div>
+                  <div><span style={{fontSize:`${9*orderPreview}px`}}>12:22 PM</span><b style={{fontSize:`${10*commentPreview}px`}}>150</b></div>
                   {sets.printTotal&&<div className="printer-preview-total" style={{fontSize:`${10*totalPreview}px`,...previewMove(sets.printTotalX,sets.printTotalY)}}><span>Total</span><b>{sets.currency}1,240</b></div>}
                 </div>}
               </div>
@@ -1440,7 +1443,8 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
             ["printBuyerNumberScale","Buyer number"],
             ["printBuyerNameScale","Buyer name"],
             ["printUsernameScale","TikTok / username"],
-            ["printOrderScale","Order items"],
+            ["printOrderScale","Order time"],
+            ["printCommentScale","Customer comment"],
             ["printTotalScale","Total amount"],
           ] as [NumberSettingKey,string][]).map(([k,label])=>sizeStep(k,`${label} size`))}
           <div className="scard-title" style={{marginTop:10}}>Label position tools</div>
