@@ -30,7 +30,6 @@ interface LiveOrder { orderNum:number; item:string; qty:number; price:number; to
 interface Buyer { handle:string; name:string; platform:string; num:number; orders:LiveOrder[]; totalSpent:number; totalOrders:number; }
 interface Comment { handle:string; name:string; comment:string; platform:"TikTok"|"Facebook"; isBuy:boolean; buyerNum:number|null; buyerData:Buyer|null; time:string; avatar?:string; timestamp?:string; sellerId?:string; sessionId?:string; sourceUsername?:string; }
 interface Product { id:number; name:string; sku:string; price:number; stock:number; platform:string; status:string; }
-interface ShippingCustomer { id:string; buyerNum:string; name:string; username:string; phone:string; address:string; item:string; note:string; createdAt:string; }
 interface Settings { autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"usb"; stickerSize:string; printStoreName:boolean; printBuyerNumber:boolean; printBuyerUsername:boolean; printOrderItems:boolean; printTotal:boolean; printAutoClose:boolean; printLabelScale:number; printStoreScale:number; printBuyerNumberScale:number; printBuyerNameScale:number; printUsernameScale:number; printOrderScale:number; printCommentScale:number; printTotalScale:number; printStoreX:number; printStoreY:number; printBuyerLabelX:number; printBuyerLabelY:number; printBuyerNumberX:number; printBuyerNumberY:number; printBuyerNameX:number; printBuyerNameY:number; printUsernameX:number; printUsernameY:number; printSessionX:number; printSessionY:number; printOrderX:number; printOrderY:number; printTotalX:number; printTotalY:number; }
 type NumberSettingKey = {[K in keyof Settings]: Settings[K] extends number ? K : never}[keyof Settings];
 interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; proofImage?:string; timestamp:string; status:"pending"|"approved"|"rejected"|"resolved"; adminReply?:string; repliedAt?:string; }
@@ -1043,50 +1042,11 @@ function Customers({buyers,cur,t}:{buyers:Buyer[];cur:string;t:T}){
 // ═══════════════════════════════════════════════════════════════════
 // PRINT
 // ═══════════════════════════════════════════════════════════════════
-function CustomerDataPage({buyers}:{buyers:Buyer[]}){
-  const [records,setRecords]=useState<ShippingCustomer[]>(()=>arrLS<ShippingCustomer>("sf_shipping_customers"));
-  const [form,setForm]=useState<ShippingCustomer>({id:"",buyerNum:"",name:"",username:"",phone:"",address:"",item:"",note:"",createdAt:""});
-  const saveRecords=(next:ShippingCustomer[])=>{setRecords(next);LS.set("sf_shipping_customers",next);};
-  const fillBuyer=(buyerNum:string)=>{
-    const b=buyers.find(x=>String(x.num)===buyerNum);
-    setForm(f=>({...f,buyerNum,name:b?.name||f.name,username:b?.handle||f.username,item:b?.orders[0]?.item||f.item}));
-  };
-  const submit=(e:React.FormEvent)=>{
-    e.preventDefault();
-    const row={...form,id:form.id||String(Date.now()),createdAt:form.createdAt||new Date().toISOString()};
-    const next=records.some(r=>r.id===row.id)?records.map(r=>r.id===row.id?row:r):[row,...records];
-    saveRecords(next);
-    setForm({id:"",buyerNum:"",name:"",username:"",phone:"",address:"",item:"",note:"",createdAt:""});
-  };
-  const printShipping=(r:ShippingCustomer)=>{
-    const frame=document.createElement("iframe");
-    frame.style.position="fixed";frame.style.right="0";frame.style.bottom="0";frame.style.width="0";frame.style.height="0";frame.style.border="0";frame.style.opacity="0";
-    document.body.appendChild(frame);
-    const win=frame.contentWindow;if(!win){frame.remove();return;}
-    const doc=win.document;doc.open();
-    doc.write(`<!DOCTYPE html><html><head><title>Shipping ${r.name}</title><style>@page{size:100mm 60mm;margin:4mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#000;margin:0}.brand{font-size:18px;font-weight:900;margin-bottom:5mm}.grid{display:grid;grid-template-columns:34mm 1fr;gap:2mm;font-size:11px}.label{font-weight:900}.value{font-weight:700}.addr{font-size:13px;font-weight:900;line-height:1.25}.note{margin-top:3mm;border-top:1px dashed #555;padding-top:2mm;font-size:10px}</style></head><body><div class="brand">SellerFlowLive Shipping</div><div class="grid"><div class="label">Buyer #</div><div class="value">${r.buyerNum}</div><div class="label">Name</div><div class="value">${r.name}</div><div class="label">Username</div><div class="value">@${r.username}</div><div class="label">Phone</div><div class="value">${r.phone}</div><div class="label">Item</div><div class="value">${r.item}</div><div class="label">Address</div><div class="addr">${r.address}</div></div>${r.note?`<div class="note">${r.note}</div>`:""}</body></html>`);
-    doc.close();setTimeout(()=>{win.focus();win.print();setTimeout(()=>frame.remove(),8000);},120);
-  };
+function CustomerDataPage(){
   return(
     <div className="subpage">
       <div className="subpage-hd"><div><h2>Customer Data</h2><p>Collect shipping details, then print a shipping label fast.</p></div></div>
-      <form onSubmit={submit} className="table-card" style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:12}}>
-        <Fg label="Buyer"><select value={form.buyerNum} onChange={e=>fillBuyer(e.target.value)}><option value="">Select buyer</option>{buyers.map(b=><option key={`${b.platform}-${b.handle}`} value={b.num}>#{b.num} {b.name}</option>)}</select></Fg>
-        <Fg label="Customer name"><input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="Customer name" required/></Fg>
-        <Fg label="TikTok username"><input value={form.username} onChange={e=>setForm(f=>({...f,username:e.target.value}))} placeholder="username"/></Fg>
-        <Fg label="Phone"><input value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value}))} placeholder="Phone number"/></Fg>
-        <Fg label="Order / item"><input value={form.item} onChange={e=>setForm(f=>({...f,item:e.target.value}))} placeholder="Order item"/></Fg>
-        <Fg label="Note"><input value={form.note} onChange={e=>setForm(f=>({...f,note:e.target.value}))} placeholder="Optional note"/></Fg>
-        <Fg label="Shipping address"><textarea rows={3} value={form.address} onChange={e=>setForm(f=>({...f,address:e.target.value}))} placeholder="Complete shipping address" required/></Fg>
-        <div style={{display:"flex",alignItems:"end",gap:8}}><button className="btn-purple" type="submit">Save customer data</button></div>
-      </form>
-      <div className="table-card">
-        <div className="table-title">Shipping customer data ({records.length})</div>
-        <table className="tbl"><thead><tr><th>Buyer</th><th>Name</th><th>Username</th><th>Phone</th><th>Address</th><th>Order</th><th>Print</th></tr></thead><tbody>
-          {records.length===0&&<tr><td colSpan={7} style={{textAlign:"center",padding:28,color:"#888"}}>No shipping data yet</td></tr>}
-          {records.map(r=><tr key={r.id}><td>#{r.buyerNum}</td><td><strong>{r.name}</strong></td><td className="mono">@{r.username}</td><td>{r.phone}</td><td>{r.address}</td><td>{r.item}</td><td><button className="tbl-btn ed" onClick={()=>printShipping(r)}>Print</button></td></tr>)}
-        </tbody></table>
-      </div>
+      <div className="customer-data-black-panel"/>
     </div>
   );
 }
@@ -3199,7 +3159,7 @@ export default function App(){
         {page==="orders"&&<Orders orders={allOrders} setOrders={setAllOrders} onPersist={orders=>LS.set(sellerMemoryKey("sf_orders"),orders)} cur={settings.currency} t={t}/>}
         {page==="products"&&<Products cur={settings.currency} t={t}/>}
         {page==="customers"&&<><Customers buyers={buyers} cur={settings.currency} t={t}/><CommentArchive comments={archivedComments}/></>}
-        {page==="customerData"&&<CustomerDataPage buyers={buyers}/>}
+        {page==="customerData"&&<CustomerDataPage/>}
         {page==="print"&&<PrintPage buyers={buyers} cur={settings.currency} storeName={user.profile.storeName||"SellerFlowLive"} settings={settings} t={t}/>}
         {page==="sales"&&<Sales orders={allOrders} buyers={buyers} cur={settings.currency} t={t}/>}
         {page==="settings"&&<SettingsPage user={user} settings={settings} onSaveProfile={handleSaveProfile} onSaveSettings={handleSaveSettings} onSavePw={handleSavePw} onExportBackup={exportSellerBackup} onClearLiveComments={clearLiveCommentsOnly} t={t}/>}
