@@ -2676,9 +2676,15 @@ export default function App(){
   /* eslint-enable react-hooks/exhaustive-deps */
 
   useEffect(()=>{
-    const email=LS.get<string>("sf_session","");
-    if(!email)return;
-    const refreshSession=()=>void findUser(email).then(u=>{const safe=safeUser(u);if(safe)setUser(asAdminPlan(safe));});
+    const refreshSession=()=>{
+      const email=LS.get<string>("sf_session","");
+      if(!email)return;
+      void findUser(email).then(u=>{
+        if(LS.get<string>("sf_session","")!==email)return;
+        const safe=safeUser(u);
+        if(safe)setUser(asAdminPlan(safe));
+      });
+    };
     refreshSession();
     const timer=window.setInterval(refreshSession,10000);
     return()=>window.clearInterval(timer);
@@ -2716,7 +2722,7 @@ export default function App(){
   },[user,nowTick]);
   /* eslint-enable react-hooks/set-state-in-effect */
   function handleLogin(u:User){const safe=safeUser(u);if(safe){setUser(asAdminPlan(safe));setPage("dashboard");}}
-  function handleLogout(){LS.del("sf_session");setUser(null);setComments([]);setBuyers([]);setAllOrders([]);setPrinted(new Set());setTotOrd(0);setTotRev(0);setSelBuyer(null);}
+  function handleLogout(){LS.del("sf_session");if(typeof window!=="undefined")window.sessionStorage.removeItem("sf_account_gate_ok");setUser(null);setComments([]);setBuyers([]);setAllOrders([]);setPrinted(new Set());setTotOrd(0);setTotRev(0);setSelBuyer(null);}
   async function handleDeleteAccount(){
     if(!user)return;
     const email=user.email;
