@@ -135,9 +135,13 @@ const sellerDayOrSessionArray=<X,>(base:string,email:string,dayId:string,session
 };
 
 const SERVER = import.meta.env.VITE_SERVER_URL || "http://localhost:3001";
-const DEF_SETTINGS: Settings = { autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"₱", paperSize:"100x60mm", printerType:"usb", stickerSize:"100x60mm", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printLabelScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printCommentScale:100, printTotalScale:100, printStoreX:0, printStoreY:0, printBuyerLabelX:0, printBuyerLabelY:0, printBuyerNumberX:0, printBuyerNumberY:0, printBuyerNameX:0, printBuyerNameY:0, printUsernameX:0, printUsernameY:0, printSessionX:0, printSessionY:0, printOrderX:0, printOrderY:0, printTotalX:0, printTotalY:0 };
+const DEF_SETTINGS: Settings = { autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"", paperSize:"100x60mm", printerType:"usb", stickerSize:"100x60mm", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printLabelScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printCommentScale:100, printTotalScale:100, printStoreX:0, printStoreY:0, printBuyerLabelX:0, printBuyerLabelY:0, printBuyerNumberX:0, printBuyerNumberY:0, printBuyerNameX:0, printBuyerNameY:0, printUsernameX:0, printUsernameY:0, printSessionX:0, printSessionY:0, printOrderX:0, printOrderY:0, printTotalX:0, printTotalY:0 };
 const LANG_OPTS: {code:Lang;label:string}[] = [{code:"en",label:"🇺🇸 EN"},{code:"fil",label:"🇵🇭 FIL"},{code:"zh",label:"🇨🇳 中文"},{code:"vi",label:"🇻🇳 VI"},{code:"th",label:"🇹🇭 TH"},{code:"id",label:"🇮🇩 ID"}];
-const CURRENCIES = [{v:"₱",l:"₱ PHP"},{v:"$",l:"$ USD"},{v:"NT$",l:"NT$ NTD"},{v:"¥",l:"¥ CNY"},{v:"฿",l:"฿ THB"},{v:"₫",l:"₫ VND"}];
+const CURRENCIES = [{v:"",l:"No symbol"},{v:"$",l:"$ USD"},{v:"NT$",l:"NT$ NTD"}];
+const cleanCurrency=(value:unknown)=>{
+  const currency=String(value||"").trim();
+  return currency.length===1&&currency.charCodeAt(0)===8369?"":currency;
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const safeLang=(value:unknown):Lang=>LANG_OPTS.some(l=>l.code===value)?value as Lang:"en";
@@ -2608,7 +2612,10 @@ export default function App(){
     const confirmed=window.sessionStorage.getItem("sf_account_gate_ok")===saved;
     return directMode&&!confirmed;
   });
-  const [settings,setSettingsState]=useState<Settings>(()=>({...DEF_SETTINGS,...LS.get<Partial<Settings>>("sf_settings",{})}));
+  const [settings,setSettingsState]=useState<Settings>(()=>{
+    const saved=LS.get<Partial<Settings>>("sf_settings",{});
+    return {...DEF_SETTINGS,...saved,currency:cleanCurrency(saved.currency)};
+  });
   const [page,setPage]=useState<Page>("dashboard");
   const initialSellerEmail=LS.get<string>("sf_session","");
   const currentSessionId=browserSessionId();
@@ -2888,7 +2895,11 @@ export default function App(){
     },limit);
     saveUser({...user,profile:lockedProfile});
   }
-  function handleSaveSettings(s:Settings){setSettingsState(s);LS.set("sf_settings",s);}
+  function handleSaveSettings(s:Settings){
+    const next={...s,currency:cleanCurrency(s.currency)};
+    setSettingsState(next);
+    LS.set("sf_settings",next);
+  }
   function handleSavePw(op:string,np:string):string{if(!user)return"No user";if(user.password!==op)return t.wrong_pw;saveUser({...user,password:np});return"";}
   function handleAdminApprove(email:string,plan:Plan,months=1){
     const users=cleanUsers(arrLS<unknown>("sf_users"));
