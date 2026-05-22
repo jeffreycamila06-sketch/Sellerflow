@@ -9,6 +9,7 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.webkit.JavascriptInterface;
+import android.webkit.WebSettings;
 import android.webkit.WebView;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.WebViewListener;
@@ -30,6 +31,10 @@ public class MainActivity extends BridgeActivity {
         super.onCreate(savedInstanceState);
         printerBridge = new SellerFlowPrinterBridge();
         if (bridge != null && bridge.getWebView() != null) {
+            WebView webView = bridge.getWebView();
+            webView.getSettings().setCacheMode(WebSettings.LOAD_NO_CACHE);
+            webView.clearCache(true);
+            webView.clearHistory();
             bridge.getWebView().addJavascriptInterface(printerBridge, "SellerFlowPrinterAndroid");
             bridge.addWebViewListener(new WebViewListener() {
                 @Override
