@@ -305,8 +305,8 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Setting
   if(hasNativeMobilePrinter()&&sendSlipToNativePrinter(nativePayload))return;
   const color=nc(buyer.num);
   const [w]=size.split("x").map(Number);
-  const oHtml=buyer.orders.map(o=>`<div style="border-left:2px solid #7F77DD;padding-left:6px;margin-bottom:5px"><div style="font-size:9px;color:#888">${o.time} — #SF${o.orderNum}</div><div style="font-size:10px;font-weight:700">${o.item}</div><div style="font-size:9px;color:#555">x${o.qty}${o.total>0?` — ${cur}${o.total.toLocaleString()}`:""}</div></div>`).join("");
-  const scaledOrderHtml=oHtml.replace(/font-size:9px/g,`font-size:${9*orderScale}px`).replace(/font-size:10px/g,`font-size:${10*orderScale}px`);
+  const commentOnlyHtml=buyer.orders.map(o=>`<div style="border-left:2px solid #7F77DD;padding-left:6px;margin-bottom:5px"><div style="font-size:9px;color:#888">${o.time}</div><div style="font-size:10px;font-weight:700">${o.item}</div></div>`).join("");
+  const scaledOrderHtml=commentOnlyHtml.replace(/font-size:9px/g,`font-size:${9*orderScale}px`).replace(/font-size:10px/g,`font-size:${10*orderScale}px`);
   const frame=document.createElement("iframe");
   frame.title=`Slip #${buyer.num}`;
   frame.style.position="fixed";
@@ -1427,8 +1427,8 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
                 </div>
                 {sets.printOrderItems&&<div className="printer-preview-order-box" style={{fontSize:`${10*orderPreview}px`,...previewMove(sets.printOrderX,sets.printOrderY)}}>
                   <strong>Order here</strong>
-                  <div>12:21 PM - #SF1001<br/><b>Blue dress</b> x1</div>
-                  <div>12:22 PM - #SF1002<br/><b>Crop top</b> x2</div>
+                  <div>12:21 PM<br/><b>620</b></div>
+                  <div>12:22 PM<br/><b>150</b></div>
                   {sets.printTotal&&<div className="printer-preview-total" style={{fontSize:`${10*totalPreview}px`,...previewMove(sets.printTotalX,sets.printTotalY)}}><span>Total</span><b>{sets.currency}1,240</b></div>}
                 </div>}
               </div>
