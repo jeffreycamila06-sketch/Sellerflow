@@ -2636,6 +2636,7 @@ export default function App(){
   const [commentPrices,setCommentPrices]=useState<Record<string,string>>({});
   const priceInputRefs=useRef<Record<string,HTMLInputElement|null>>({});
   const [supportUnreadCount,setSupportUnreadCount]=useState(0);
+  const [mobileMinerSearch,setMobileMinerSearch]=useState("");
   const [toast,setToast]=useState("");
   const feedRef=useRef<HTMLDivElement>(null);
   const today=new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"});
@@ -3043,6 +3044,10 @@ export default function App(){
   if(accountGate)return <AccountGate user={user} onContinue={continueSavedAccount} onSwitch={switchAccount}/>;
 
   const isLive=ttOn||fbOn;
+  const mobileMinerQuery=mobileMinerSearch.trim().toLowerCase();
+  const mobileMinerBuyers=mobileMinerQuery
+    ? buyers.filter(b=>b.name.toLowerCase().includes(mobileMinerQuery)||b.handle.toLowerCase().includes(mobileMinerQuery)||String(b.num).includes(mobileMinerQuery)||b.platform.toLowerCase().includes(mobileMinerQuery))
+    : buyers;
   const platformButtonLabel=(platform:"TikTok"|"Facebook",connected:boolean)=>{
     const account=activeLiveAccounts[platform];
     return connected&&account?account:platform;
@@ -3254,12 +3259,24 @@ export default function App(){
             <div className="subpage-hd"><div><h2>{t.nav_miners}</h2><p>All buyers with permanent numbers</p></div>
               <button className="btn-out" onClick={()=>csvDL("miners.csv",["#","Name","Username","Platform","Orders","Total"],buyers.map(b=>[b.num,b.name,`@${b.handle}`,b.platform,b.totalOrders,`${settings.currency}${b.totalSpent}`]))}>⬇ {t.export_csv}</button>
             </div>
+            <div className="grid4 miners-page-stats">
+              <div className="mstat"><div className="ms-l">Total Buyers</div><div className="ms-v">{buyers.length}</div></div>
+              <div className="mstat"><div className="ms-l">Total Orders</div><div className="ms-v">{totOrd}</div></div>
+              <div className="mstat"><div className="ms-l">Total Spent</div><div className="ms-v">{settings.currency}{totRev.toLocaleString()}</div></div>
+              <div className="mstat"><div className="ms-l">Platforms</div><div className="ms-v">{new Set(buyers.map(b=>b.platform)).size||0}</div></div>
+            </div>
+            <input
+              className="search-inp mobile-miner-search"
+              value={mobileMinerSearch}
+              onChange={e=>setMobileMinerSearch(e.target.value)}
+              placeholder="Search buyer..."
+            />
             <div className="table-card">
               <table className="tbl">
                 <thead><tr><th>#</th><th>Name</th><th>Username</th><th>Platform</th><th>Orders</th><th>Total</th><th></th></tr></thead>
                 <tbody>
-                  {buyers.length===0&&<tr><td colSpan={7} style={{textAlign:"center",padding:40,color:"#888"}}>No buyers yet</td></tr>}
-                  {buyers.map(b=>(
+                  {mobileMinerBuyers.length===0&&<tr><td colSpan={7} style={{textAlign:"center",padding:40,color:"#888"}}>No buyers yet</td></tr>}
+                  {mobileMinerBuyers.map(b=>(
                     <tr key={b.handle}>
                       <td><div style={{width:28,height:28,borderRadius:"50%",background:nc(b.num),color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700}}>{b.num}</div></td>
                       <td><div style={{display:"flex",alignItems:"center",gap:8}}><Av name={b.name} size={28}/><strong>{b.name}</strong></div></td>
@@ -3294,20 +3311,27 @@ export default function App(){
       {user&&(
         <nav className="mobile-bottom-nav">
           <button className={page==="dashboard"?"active":""} onClick={()=>setPage("dashboard")}>
-            <span style={{fontSize:22}}>💬</span>
-            <span>Comments</span>
+            <span style={{fontSize:22}}>⌂</span>
+            <span>Live</span>
+          </button>
+          <button className={page==="miners"?"active":""} onClick={()=>setPage("miners")}>
+            <span style={{fontSize:22}}>♙</span>
+            <span>Miners</span>
           </button>
           <button className={page==="orders"?"active":""} onClick={()=>setPage("orders")}>
-            <span style={{fontSize:22}}>🛒</span>
+            <span style={{fontSize:22}}>▤</span>
             <span>Orders</span>
           </button>
-          <button className={page==="sales"?"active":""} onClick={()=>setPage("sales")}>
-            <span style={{fontSize:22}}>📊</span>
-            <span>Sales</span>
+          <button className={page==="products"?"active":""} onClick={()=>setPage("products")}>
+            <span style={{fontSize:22}}>▣</span>
+            <span>Products</span>
           </button>
-          <button className={page==="settings"?"active":""} onClick={()=>setPage("settings")}>
-            <span style={{fontSize:22}}>⚙️</span>
-            <span>Settings</span>
+          <button
+            className={!["dashboard","miners","orders","products"].includes(page)?"active":""}
+            onClick={e=>{e.stopPropagation();setShowProf(p=>!p);}}
+          >
+            <span style={{fontSize:22}}>•••</span>
+            <span>More</span>
             {supportUnreadCount>0&&<span className="mobile-nav-badge">{supportUnreadCount>9?"9+":supportUnreadCount}</span>}
           </button>
         </nav>
