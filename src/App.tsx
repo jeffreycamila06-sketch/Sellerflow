@@ -1460,8 +1460,6 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
               ["printSessionY","Date/session up / down"],
               ["printOrderX","Order items left / right"],
               ["printOrderY","Order items up / down"],
-              ["printTotalX","Total left / right"],
-              ["printTotalY","Total up / down"],
             ] as [NumberSettingKey,string][]).map(([k,label])=>positionStep(k,label))}
           </div>
           <div className="scard-title" style={{marginTop:10}}>Printer output</div>
