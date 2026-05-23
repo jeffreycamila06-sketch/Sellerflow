@@ -744,16 +744,26 @@ app.post("/browser-helper/comment", (req, res) => {
 });
 // Keep Render awake — i-lagay bago ang server.listen
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL || "";
-if (RENDER_URL) {
-  setInterval(() => {
-    fetch(`${RENDER_URL}/health`)
-      .then(() => console.log("Keep-alive ping sent"))
-      .catch((err) => console.warn("Keep-alive failed:", err.message));
+let keepAliveTimer = null;
+if (RENDER_URL && typeof fetch === "function") {
+  keepAliveTimer = setInterval(() => {
+    try {
+      fetch(`${RENDER_URL}/health`)
+        .then(() => console.log("Keep-alive ping sent"))
+        .catch((err) => console.warn("Keep-alive failed:", err.message));
+    } catch (err) {
+      console.warn("Keep-alive failed:", err.message);
+    }
   }, 840000); // every 14 minutes
 }
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`SellerFlow TikTok LIVE server running on port ${PORT}`);
+});
+
+process.on("SIGTERM", () => {
+  if (keepAliveTimer) clearInterval(keepAliveTimer);
+  server.close(() => process.exit(0));
 });
 
