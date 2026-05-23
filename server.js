@@ -7,6 +7,7 @@ import { Server } from "socket.io";
 const app = express();
 const server = http.createServer(app);
 const TEST_COMMENT_TOKEN = process.env.TEST_COMMENT_TOKEN || "";
+const SF_SERVER_SECRET = process.env.SF_SERVER_SECRET || "";
 
 
 const io = new Server(server, {
@@ -17,6 +18,24 @@ const io = new Server(server, {
 
 app.use(cors());
 app.use(express.json());
+
+function requireServerToken(req, res, next) {
+  if (!SF_SERVER_SECRET) {
+    return res.status(500).json({
+      success: false,
+      error: "Server auth secret is not configured",
+    });
+  }
+  const token = String(req.get("x-sf-token") || "");
+  if (token !== SF_SERVER_SECRET) {
+    return res.status(401).json({
+      success: false,
+      error: "Unauthorized",
+    });
+  }
+  return next();
+}
+
 const TIKTOK_RECONNECT_BASE_MS = 60 * 1000;
 const TIKTOK_RECONNECT_MAX_MS = 30 * 60 * 1000;
 const TIKTOK_RECONNECT_JITTER_MS = 30 * 1000;
@@ -223,7 +242,7 @@ app.get("/connect-live/:username", async (req, res) => {
   });
 });
 
-app.post("/connect/tiktok", async (req, res) => {
+app.post("/connect/tiktok", requireServerToken, async (req, res) => {
   return connectTikTok(req.body.username, res, {
     sellerId: req.body.sellerId,
     sessionId: req.body.sessionId,
@@ -267,7 +286,7 @@ app.post("/disconnect/tiktok", async (req, res) => {
   });
 });
 
-app.post("/connect/facebook", (req, res) => {
+app.post("/connect/facebook", requireServerToken, (req, res) => {
   const sellerId = cleanSellerId(req.body.sellerId);
   const username = cleanAccountKey(req.body.username || req.body.liveVideoId || req.body.pageName);
   const sessionId = String(req.body.sessionId || "");
@@ -639,6 +658,14 @@ app.get("/test-comment", (req, res) => {
 });
 
 app.post("/browser-helper/comment", (req, res) => {
+  const sellerId = cleanSellerId(req.body.sellerId);
+  if (!sellerId) {
+    return res.status(400).json({
+      success: false,
+      error: "sellerId is required",
+    });
+  }
+
   const comment = String(req.body.comment || "").trim();
   if (!comment) {
     return res.status(400).json({
@@ -659,9 +686,10 @@ app.post("/browser-helper/comment", (req, res) => {
     buyerData: null,
     time: new Date().toLocaleTimeString(),
     timestamp: String(req.body.timestamp || new Date().toISOString()),
+    sellerId,
   };
 
-  io.emit("comment", payload);
+  io.to(sellerRoom(sellerId)).emit("comment", payload);
 
   return res.json({
     success: true,

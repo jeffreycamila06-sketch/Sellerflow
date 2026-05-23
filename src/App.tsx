@@ -219,10 +219,8 @@ const fitProfileAccounts=(original:Profile,next:Profile,limit:number):Profile=>{
 };
 const OWNER_EMAIL=(import.meta.env.VITE_OWNER_EMAIL||"admin@sellerflow.app").trim().toLowerCase();
 const ENV_ADMIN_EMAILS=(import.meta.env.VITE_ADMIN_EMAILS||OWNER_EMAIL).split(",").map((e:string)=>e.trim().toLowerCase()).filter(Boolean);
-const adminEmails=()=>Array.from(new Set([OWNER_EMAIL,...ENV_ADMIN_EMAILS,...arrLS<string>("sf_admin_emails").map(e=>e.trim().toLowerCase())].filter(Boolean)));
+const adminEmails=()=>Array.from(new Set([OWNER_EMAIL,...ENV_ADMIN_EMAILS].filter(Boolean)));
 const isAdminEmail=(email:string)=>adminEmails().includes(email.trim().toLowerCase());
-const rememberAdminEmail=(email:string)=>LS.set("sf_admin_emails",Array.from(new Set([...arrLS<string>("sf_admin_emails"),email.trim().toLowerCase()].filter(Boolean))));
-const forgetAdminEmail=(email:string)=>LS.set("sf_admin_emails",arrLS<string>("sf_admin_emails").filter(e=>e.trim().toLowerCase()!==email.trim().toLowerCase()));
 const supportReadKey=(email:string)=>`sf_support_read_${email.trim().toLowerCase()}`;
 const isAdminUser=(u:User|null)=>!!u&&isAdminEmail(u.email);
 const canConnectMore=(u:User)=>isAdminUser(u)||registeredAccountCount(u)<maxAcc(u.plan);
@@ -419,7 +417,6 @@ function Auth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:Lang;set
     const isFirstAccount=users.length===0;
     const nu:User={email:email.trim().toLowerCase(),password:await bcrypt.hash(pw,10),profile:{fullName:fn.trim(),storeName:sn.trim(),phone:"",tiktok:"",facebook:""},plan:isFirstAccount?"master":"trial",planStatus:"active",planExpiry:isFirstAccount?addMonths(120):addDays(7),connectedAccounts:[]};
     await upsertUser(nu);
-    if(isFirstAccount)rememberAdminEmail(email);
     LS.set("sf_session",nu.email);onLogin(nu);setBusy(false);
   }
   async function forgot(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);
@@ -529,7 +526,6 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
       connectedAccounts:[],
     };
     await upsertUser(nu);
-    if(isFirstAccount)rememberAdminEmail(email);
     LS.set("sf_session",nu.email);onLogin(nu);setBusy(false);
   }
   async function forgot(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);
@@ -2226,7 +2222,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   }
 
   async function makeAdmin(email:string){
-    rememberAdminEmail(email);
+    setCopied("Admin access is controlled by server environment emails");
     const next=users.map(u=>u.email.toLowerCase()===email.toLowerCase()?asAdminPlan(u):u);
     LS.set("sf_users",next);
     setUsers(next);
@@ -2239,8 +2235,8 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   async function removeAdmin(email:string){
     if(email.toLowerCase()===OWNER_EMAIL){setCopied("Owner admin cannot be removed");return;}
     if(email.toLowerCase()===currentUser.email.toLowerCase()){setCopied("You cannot remove yourself");return;}
-    forgetAdminEmail(email);
     setAdmins(adminEmails());
+    setCopied("Admin access is controlled by server environment emails");
     await logAction("removed admin",email,"Admin access removed");
   }
 
