@@ -32,9 +32,6 @@ const TIKTOK_RATE_LIMIT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const TIKTOK_MAX_PARALLEL_RECONNECTS = 1;
 const TIKTOK_HEALTH_CHECK_MS = 60 * 1000;
 const TIKTOK_STALE_MS = 10 * 60 * 1000;
-const TIKTOK_CHAT_WATCH_START_MS = 5 * 60 * 1000;
-const TIKTOK_CHAT_STALE_MS = 10 * 60 * 1000;
-const TIKTOK_CHAT_WATCH_START_MS = 2 * 60 * 1000;
 let activeTikTokReconnects = 0;
 const pendingTikTokReconnects = [];
 
