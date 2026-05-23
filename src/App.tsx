@@ -2857,7 +2857,7 @@ export default function App(){
   /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(()=>{
     if(!user)return;
-    const s = io(SERVER);
+    const s = io(SERVER,{path:"/socket.io/",transports:["websocket"]});
     const sellerId=sellerIdOf(user.email);
     const sessionId=currentSessionId;
     const commentsKey=sellerLiveDataKey("sf_comments",user.email,currentSessionId);
