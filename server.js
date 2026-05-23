@@ -12,6 +12,7 @@ const SF_SERVER_SECRET = process.env.SF_SERVER_SECRET || "";
 const allowedOrigins = new Set([
   "https://sellerflowlive.com",
   "https://www.sellerflowlive.com",
+  "https://sellerflow-live-server.onrender.com",
   "http://localhost:5173",
   "http://127.0.0.1:5173",
   "http://localhost:3000",
@@ -22,11 +23,20 @@ const allowedOrigins = new Set([
     .filter(Boolean),
 ]);
 
+function normalizeOrigin(origin) {
+  return String(origin || "").replace(/\/$/, "");
+}
+
+function isAllowedOrigin(origin) {
+  const normalized = normalizeOrigin(origin);
+  return !normalized || allowedOrigins.has(normalized);
+}
+
 function corsOrigin(origin, callback) {
-  if (!origin || allowedOrigins.has(origin)) {
+  if (isAllowedOrigin(origin)) {
     return callback(null, true);
   }
-  return callback(new Error(`Origin not allowed by CORS: ${origin}`));
+  return callback(null, false);
 }
 
 const corsOptions = {
@@ -39,6 +49,9 @@ const corsOptions = {
 const io = new Server(server, {
   path: "/socket.io/",
   transports: ["polling", "websocket"],
+  allowRequest: (req, callback) => {
+    callback(null, isAllowedOrigin(req.headers.origin));
+  },
   cors: {
     ...corsOptions,
     allowedHeaders: ["x-sf-token"],
