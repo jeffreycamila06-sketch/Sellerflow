@@ -1,4 +1,5 @@
 import { saveOrderToDatabase, saveCustomerToDatabase } from "./db";
+import bcrypt from "bcryptjs";
 import {
   type AccountAuditLog,
   deleteSupportMessagesForEmail,
@@ -144,6 +145,7 @@ const cleanCurrency=(value:unknown)=>{
   const currency=String(value||"").trim();
   return currency.length===1&&currency.charCodeAt(0)===8369?"":currency;
 };
+const esc=(value:unknown)=>String(value ?? "").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]||ch));
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const safeLang=(value:unknown):Lang=>LANG_OPTS.some(l=>l.code===value)?value as Lang:"en";
@@ -173,6 +175,18 @@ const safeUser=(raw:unknown):User|null=>{
   };
 };
 const cleanUsers=(list:unknown)=>Array.isArray(list)?list.map(safeUser).filter((u):u is User=>!!u):[];
+const isBcryptHash=(value:string)=>/^\$2[aby]\$\d{2}\$/.test(value);
+const bcryptHash=(password:string)=>bcrypt.hash(password,10);
+async function verifyUserPassword(user:User,password:string){
+  if(isBcryptHash(user.password))return bcrypt.compare(password,user.password);
+  return user.password===password;
+}
+async function migratePlaintextPassword(user:User,password:string){
+  if(isBcryptHash(user.password))return user;
+  const migrated={...user,password:await bcryptHash(password)};
+  await upsertUser(migrated);
+  return migrated;
+}
 const nc=(n:number)=>n===1?"#26215C":n<=3?"#534AB7":"#7F77DD";
 const ini=(s:string)=>s.split(/[\s_]/g).slice(0,2).map(w=>w[0]?.toUpperCase()).join("")||"??";
 const abg=(h:string)=>{const c=["#7F77DD","#1D9E75","#D85A30","#D4537E","#378ADD","#BA7517"];let x=0;for(const ch of h)x=(x*31+ch.charCodeAt(0))%c.length;return c[Math.abs(x)];};
@@ -338,10 +352,17 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Setting
   if(hasNativeMobilePrinter()&&sendSlipToNativePrinter(nativePayload))return;
   const color=nc(buyer.num);
   const [w]=size.split("x").map(Number);
-  const commentOnlyHtml=buyer.orders.map(o=>`<div class="order-entry"><div class="order-time">${o.time}</div><div class="order-comment">${o.item}</div></div>`).join("");
+  const safeSess=esc(sess);
+  const safeStoreName=esc(storeName);
+  const safeBuyerNum=esc(buyer.num);
+  const safeBuyerName=esc(buyer.name);
+  const safeBuyerHandle=esc(buyer.handle);
+  const safeCurrency=esc(cur);
+  const safeTotal=buyer.totalSpent>0?`${safeCurrency}${esc(buyer.totalSpent.toLocaleString())}`:"";
+  const commentOnlyHtml=buyer.orders.map(o=>`<div class="order-entry"><div class="order-time">${esc(o.time)}</div><div class="order-comment">${esc(o.item)}</div></div>`).join("");
   const scaledOrderHtml=commentOnlyHtml;
   const frame=document.createElement("iframe");
-  frame.title=`Slip #${buyer.num}`;
+  frame.title=`Slip #${safeBuyerNum}`;
   frame.style.position="fixed";
   frame.style.right="0";
   frame.style.bottom="0";
@@ -355,15 +376,15 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Setting
   win.onafterprint=()=>setTimeout(()=>frame.remove(),50);
   const doc=win.document;
   doc.open();
-  doc.write(`<!DOCTYPE html><html><head><title>Slip #${buyer.num}</title><style>@page{size:${size.replace("x","mm ")}mm;margin:3mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;width:${w}mm;color:#000}.head{display:flex;align-items:flex-start;justify-content:space-between;gap:3mm;margin-bottom:2.5mm}.brand{font-size:${14*storeScale}px;font-weight:800;transform:translate(${pos(cfg.printStoreX)}mm,${pos(cfg.printStoreY)}mm)}.brand span{color:#7F77DD}.session{font-size:${12*totalScale}px;font-weight:800;text-align:right;transform:translate(${pos(cfg.printSessionX)}mm,${pos(cfg.printSessionY)}mm)}.grid{display:grid;grid-template-columns:52% 48%;gap:3mm;align-items:start}.left{display:flex;flex-direction:column;gap:1.5mm;padding-top:1mm}.seller{font-size:${13*storeScale}px;font-weight:800;line-height:1.1;transform:translate(${pos(cfg.printStoreX)}mm,${pos(cfg.printStoreY)}mm)}.line{font-size:${13*buyerNameScale}px;font-weight:800;line-height:1.1}.muted{font-size:${10*usernameScale}px;font-weight:700;color:#333}.buyer-num{font-size:${13*buyerNumberScale}px;color:${color};font-weight:900;transform:translate(${pos(cfg.printBuyerNumberX)}mm,${pos(cfg.printBuyerNumberY)}mm)}.buyer-name{transform:translate(${pos(cfg.printBuyerNameX)}mm,${pos(cfg.printBuyerNameY)}mm)}.username{transform:translate(${pos(cfg.printUsernameX)}mm,${pos(cfg.printUsernameY)}mm)}.order-box{min-height:38mm;padding:0;transform:translate(${pos(cfg.printOrderX)}mm,${pos(cfg.printOrderY)}mm)}.order-title{font-size:${15*orderScale}px;font-weight:900;margin-bottom:2mm}.order-entry{border-left:2px solid #000;padding-left:2mm;margin-bottom:2mm}.order-time{font-size:${9*orderScale}px;color:#111;font-weight:500;line-height:1.1}.order-comment{font-size:${10*commentScale}px;font-weight:800;line-height:1.1;margin-top:.8mm}.total{border-top:1px dashed #777;margin-top:2mm;padding-top:1.5mm;display:flex;justify-content:space-between;gap:2mm;font-size:${11*totalScale}px;font-weight:800;transform:translate(${pos(cfg.printTotalX)}mm,${pos(cfg.printTotalY)}mm)}@media print{body{margin:0}}</style></head><body>
-  <div class="head"><div class="brand">Seller<span>FlowLive</span></div><div class="session">Session: ${sess}</div></div>
+  doc.write(`<!DOCTYPE html><html><head><title>Slip #${safeBuyerNum}</title><style>@page{size:${size.replace("x","mm ")}mm;margin:3mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;width:${w}mm;color:#000}.head{display:flex;align-items:flex-start;justify-content:space-between;gap:3mm;margin-bottom:2.5mm}.brand{font-size:${14*storeScale}px;font-weight:800;transform:translate(${pos(cfg.printStoreX)}mm,${pos(cfg.printStoreY)}mm)}.brand span{color:#7F77DD}.session{font-size:${12*totalScale}px;font-weight:800;text-align:right;transform:translate(${pos(cfg.printSessionX)}mm,${pos(cfg.printSessionY)}mm)}.grid{display:grid;grid-template-columns:52% 48%;gap:3mm;align-items:start}.left{display:flex;flex-direction:column;gap:1.5mm;padding-top:1mm}.seller{font-size:${13*storeScale}px;font-weight:800;line-height:1.1;transform:translate(${pos(cfg.printStoreX)}mm,${pos(cfg.printStoreY)}mm)}.line{font-size:${13*buyerNameScale}px;font-weight:800;line-height:1.1}.muted{font-size:${10*usernameScale}px;font-weight:700;color:#333}.buyer-num{font-size:${13*buyerNumberScale}px;color:${color};font-weight:900;transform:translate(${pos(cfg.printBuyerNumberX)}mm,${pos(cfg.printBuyerNumberY)}mm)}.buyer-name{transform:translate(${pos(cfg.printBuyerNameX)}mm,${pos(cfg.printBuyerNameY)}mm)}.username{transform:translate(${pos(cfg.printUsernameX)}mm,${pos(cfg.printUsernameY)}mm)}.order-box{min-height:38mm;padding:0;transform:translate(${pos(cfg.printOrderX)}mm,${pos(cfg.printOrderY)}mm)}.order-title{font-size:${15*orderScale}px;font-weight:900;margin-bottom:2mm}.order-entry{border-left:2px solid #000;padding-left:2mm;margin-bottom:2mm}.order-time{font-size:${9*orderScale}px;color:#111;font-weight:500;line-height:1.1}.order-comment{font-size:${10*commentScale}px;font-weight:800;line-height:1.1;margin-top:.8mm}.total{border-top:1px dashed #777;margin-top:2mm;padding-top:1.5mm;display:flex;justify-content:space-between;gap:2mm;font-size:${11*totalScale}px;font-weight:800;transform:translate(${pos(cfg.printTotalX)}mm,${pos(cfg.printTotalY)}mm)}@media print{body{margin:0}}</style></head><body>
+  <div class="head"><div class="brand">Seller<span>FlowLive</span></div><div class="session">Session: ${safeSess}</div></div>
   <div class="grid"><div class="left">
-  ${cfg.printStoreName?`<div class="seller">${storeName}</div>`:""}
-  ${cfg.printBuyerNumber?`<div class="line buyer-num">Buyer #${buyer.num}</div>`:""}
-  <div class="line buyer-name">${buyer.name}</div>
-  ${cfg.printBuyerUsername?`<div class="muted username">@${buyer.handle}</div>`:""}
+  ${cfg.printStoreName?`<div class="seller">${safeStoreName}</div>`:""}
+  ${cfg.printBuyerNumber?`<div class="line buyer-num">Buyer #${safeBuyerNum}</div>`:""}
+  <div class="line buyer-name">${safeBuyerName}</div>
+  ${cfg.printBuyerUsername?`<div class="muted username">@${safeBuyerHandle}</div>`:""}
   </div>
-  ${cfg.printOrderItems?`<div class="order-box"><div class="order-title">Order here</div>${scaledOrderHtml}${cfg.printTotal?`<div class="total"><span>Total</span><span>${buyer.totalSpent>0?`${cur}${buyer.totalSpent.toLocaleString()}`:""}</span></div>`:""}</div>`:""}
+  ${cfg.printOrderItems?`<div class="order-box"><div class="order-title">Order here</div>${scaledOrderHtml}${cfg.printTotal?`<div class="total"><span>Total</span><span>${safeTotal}</span></div>`:""}</div>`:""}
   </div>
   </body></html>`);
   doc.close();
@@ -385,8 +406,10 @@ function Auth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:Lang;set
   async function login(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);
     const u=await findUser(email);
     if(!u){setErr(t.err_no_account);setBusy(false);return;}
-    if(u.password!==pw){setErr(t.err_wrong_pw);setBusy(false);return;}
-    LS.set("sf_session",u.email);onLogin(u);setBusy(false);
+    const passwordOk=await verifyUserPassword(u,pw);
+    if(!passwordOk){setErr(t.err_wrong_pw);setBusy(false);return;}
+    const loginUser=await migratePlaintextPassword(u,pw);
+    LS.set("sf_session",loginUser.email);onLogin(loginUser);setBusy(false);
   }
   async function reg(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);
     if(!fn.trim()||!sn.trim()||!email.trim()||!pw){setErr(t.err_fill_all);setBusy(false);return;}
@@ -395,7 +418,7 @@ function Auth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:Lang;set
     const users=await listUsers();
     if(await findUser(email)){setErr(t.err_email_exists);setBusy(false);return;}
     const isFirstAccount=users.length===0;
-    const nu:User={email:email.trim().toLowerCase(),password:pw,profile:{fullName:fn.trim(),storeName:sn.trim(),phone:"",tiktok:"",facebook:""},plan:isFirstAccount?"master":"trial",planStatus:"active",planExpiry:isFirstAccount?addMonths(120):addDays(7),connectedAccounts:[]};
+    const nu:User={email:email.trim().toLowerCase(),password:await bcryptHash(pw),profile:{fullName:fn.trim(),storeName:sn.trim(),phone:"",tiktok:"",facebook:""},plan:isFirstAccount?"master":"trial",planStatus:"active",planExpiry:isFirstAccount?addMonths(120):addDays(7),connectedAccounts:[]};
     await upsertUser(nu);
     if(isFirstAccount)rememberAdminEmail(email);
     LS.set("sf_session",nu.email);onLogin(nu);setBusy(false);
@@ -481,8 +504,10 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
   async function login(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);
     const u=await findUser(email);
     if(!u){setErr(t.err_no_account);setBusy(false);return;}
-    if(u.password!==pw){setErr(t.err_wrong_pw);setBusy(false);return;}
-    LS.set("sf_session",u.email);onLogin(u);setBusy(false);
+    const passwordOk=await verifyUserPassword(u,pw);
+    if(!passwordOk){setErr(t.err_wrong_pw);setBusy(false);return;}
+    const loginUser=await migratePlaintextPassword(u,pw);
+    LS.set("sf_session",loginUser.email);onLogin(loginUser);setBusy(false);
   }
   async function reg(e:React.FormEvent){e.preventDefault();setErr("");setOk("");setBusy(true);
     if(!fn.trim()||!sn.trim()||!email.trim()||!pw){setErr(t.err_fill_all);setBusy(false);return;}
@@ -496,7 +521,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
     const now=new Date().toISOString();
     const nu:User={
       email:email.trim().toLowerCase(),
-      password:pw,
+      password:await bcryptHash(pw),
       profile:{fullName:fn.trim(),storeName:sn.trim(),phone:phoneDisplay(phone),tiktok:"",facebook:""},
       plan:isFirstAccount?"master":"trial",
       planStatus:isFirstAccount?"active":"pending",
@@ -1313,7 +1338,7 @@ function Sales({orders,buyers,cur,t}:{orders:LiveOrder[];buyers:Buyer[];cur:stri
 // ═══════════════════════════════════════════════════════════════════
 // SETTINGS
 // ═══════════════════════════════════════════════════════════════════
-function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExportBackup,onClearLiveComments,t}:{user:User;settings:Settings;onSaveProfile:(p:Profile)=>void;onSaveSettings:(s:Settings)=>void;onSavePw:(o:string,n:string)=>string;onExportBackup:()=>void;onClearLiveComments:()=>void;t:T}){
+function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExportBackup,onClearLiveComments,t}:{user:User;settings:Settings;onSaveProfile:(p:Profile)=>void;onSaveSettings:(s:Settings)=>void;onSavePw:(o:string,n:string)=>Promise<string>;onExportBackup:()=>void;onClearLiveComments:()=>void;t:T}){
   const [prof,setProf]=useState<Profile>({...user.profile});
   const [sets,setSets]=useState<Settings>({...settings});
   const [op,setOp]=useState("");const [np,setNp]=useState("");const [cp,setCp]=useState("");
@@ -1477,11 +1502,11 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
     }));
     setToast("Printer layout reset");
   }
-  function savePw(e:React.FormEvent){
+  async function savePw(e:React.FormEvent){
     e.preventDefault();setPwErr("");
     if(np.length<6){setPwErr(t.pw_short);return;}
     if(np!==cp){setPwErr(t.pw_mismatch);return;}
-    const err=onSavePw(op,np);
+    const err=await onSavePw(op,np);
     if(err){setPwErr(err);return;}
     setOp("");setNp("");setCp("");setToast(t.pw_changed);
   }
@@ -2084,7 +2109,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     }
     const seller:User={
       email,
-      password:newSeller.password,
+      password:await bcryptHash(newSeller.password),
       profile:{fullName:newSeller.fullName.trim(),storeName:newSeller.storeName.trim(),phone:"",tiktok:"",facebook:""},
       plan:"trial",
       planStatus:"active",
@@ -2144,7 +2169,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     const updated:User={
       ...current,
       email,
-      password:newPassword||current.password,
+      password:newPassword?await bcryptHash(newPassword):current.password,
       profile:{
         fullName:editSeller.fullName.trim(),
         storeName:editSeller.storeName.trim(),
@@ -2169,7 +2194,8 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
 
   async function resetPassword(email:string){
     if(!window.confirm(`Reset password for ${email} to 123456?`))return;
-    const next=users.map(u=>u.email.toLowerCase()===email.toLowerCase()?{...u,password:"123456"}:u);
+    const hashedPassword=await bcryptHash("123456");
+    const next=users.map(u=>u.email.toLowerCase()===email.toLowerCase()?{...u,password:hashedPassword}:u);
     LS.set("sf_users",next);
     setUsers(next);
     const updated=next.find(u=>u.email.toLowerCase()===email.toLowerCase());
@@ -2981,7 +3007,7 @@ export default function App(){
     setSettingsState(next);
     LS.set("sf_settings",next);
   }
-  function handleSavePw(op:string,np:string):string{if(!user)return"No user";if(user.password!==op)return t.wrong_pw;saveUser({...user,password:np});return"";}
+  async function handleSavePw(op:string,np:string):Promise<string>{if(!user)return"No user";if(!(await verifyUserPassword(user,op)))return t.wrong_pw;saveUser({...user,password:await bcryptHash(np)});return"";}
   function handleAdminApprove(email:string,plan:Plan,months=1){
     const users=cleanUsers(arrLS<unknown>("sf_users"));
     const now=new Date().toISOString();

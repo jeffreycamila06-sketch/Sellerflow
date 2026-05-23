@@ -18,7 +18,8 @@
     "react-dom": "^19.2.0",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
-    "tiktok-live-connector": "^2.1.1-beta1"
+    "tiktok-live-connector": "^2.1.1-beta1",
+    "bcryptjs": "^3.0.3"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -32,6 +33,7 @@
     "globals": "^17.6.0",
     "typescript": "^6.0.2",
     "typescript-eslint": "^8.59.2",
-    "vite": "^8.0.12"
+    "vite": "^8.0.12",
+    "@types/bcryptjs": "^3.0.0"
   }
 }
