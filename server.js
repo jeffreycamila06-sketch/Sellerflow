@@ -35,10 +35,13 @@ function isAllowedOrigin(origin) {
 const corsOptions = {
   origin: (origin, cb) => {
     const normalized = normalizeOrigin(origin || "");
-    if (!origin || allowedOrigins.has(normalized)) {
+    if (!origin) {
       return cb(null, true);
     }
-    return cb(new Error("Not allowed by CORS"));
+    if (allowedOrigins.has(normalized)) {
+      return cb(null, normalized);
+    }
+    return cb(null, false);
   },
   credentials: true,
   methods: ["GET", "POST", "OPTIONS"],
