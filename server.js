@@ -9,6 +9,10 @@ const server = http.createServer(app);
 const TEST_COMMENT_TOKEN = process.env.TEST_COMMENT_TOKEN || "";
 const SF_SERVER_SECRET = process.env.SF_SERVER_SECRET || "";
 
+function normalizeOrigin(origin) {
+  return String(origin || "").trim().replace(/\/$/, "");
+}
+
 const allowedOrigins = new Set([
   "https://sellerflowlive.com",
   "https://www.sellerflowlive.com",
@@ -19,13 +23,9 @@ const allowedOrigins = new Set([
   "http://127.0.0.1:3000",
   ...(process.env.CLIENT_ORIGIN || "")
     .split(",")
-    .map((origin) => origin.trim())
+    .map(normalizeOrigin)
     .filter(Boolean),
 ]);
-
-function normalizeOrigin(origin) {
-  return String(origin || "").replace(/\/$/, "");
-}
 
 function isAllowedOrigin(origin) {
   const normalized = normalizeOrigin(origin);
