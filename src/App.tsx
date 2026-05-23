@@ -176,14 +176,13 @@ const safeUser=(raw:unknown):User|null=>{
 };
 const cleanUsers=(list:unknown)=>Array.isArray(list)?list.map(safeUser).filter((u):u is User=>!!u):[];
 const isBcryptHash=(value:string)=>/^\$2[aby]\$\d{2}\$/.test(value);
-const bcryptHash=(password:string)=>bcrypt.hash(password,10);
 async function verifyUserPassword(user:User,password:string){
   if(isBcryptHash(user.password))return bcrypt.compare(password,user.password);
   return user.password===password;
 }
 async function migratePlaintextPassword(user:User,password:string){
   if(isBcryptHash(user.password))return user;
-  const migrated={...user,password:await bcryptHash(password)};
+  const migrated={...user,password:await bcrypt.hash(password,10)};
   await upsertUser(migrated);
   return migrated;
 }
@@ -418,7 +417,7 @@ function Auth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:Lang;set
     const users=await listUsers();
     if(await findUser(email)){setErr(t.err_email_exists);setBusy(false);return;}
     const isFirstAccount=users.length===0;
-    const nu:User={email:email.trim().toLowerCase(),password:await bcryptHash(pw),profile:{fullName:fn.trim(),storeName:sn.trim(),phone:"",tiktok:"",facebook:""},plan:isFirstAccount?"master":"trial",planStatus:"active",planExpiry:isFirstAccount?addMonths(120):addDays(7),connectedAccounts:[]};
+    const nu:User={email:email.trim().toLowerCase(),password:await bcrypt.hash(pw,10),profile:{fullName:fn.trim(),storeName:sn.trim(),phone:"",tiktok:"",facebook:""},plan:isFirstAccount?"master":"trial",planStatus:"active",planExpiry:isFirstAccount?addMonths(120):addDays(7),connectedAccounts:[]};
     await upsertUser(nu);
     if(isFirstAccount)rememberAdminEmail(email);
     LS.set("sf_session",nu.email);onLogin(nu);setBusy(false);
@@ -521,7 +520,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
     const now=new Date().toISOString();
     const nu:User={
       email:email.trim().toLowerCase(),
-      password:await bcryptHash(pw),
+      password:await bcrypt.hash(pw,10),
       profile:{fullName:fn.trim(),storeName:sn.trim(),phone:phoneDisplay(phone),tiktok:"",facebook:""},
       plan:isFirstAccount?"master":"trial",
       planStatus:isFirstAccount?"active":"pending",
@@ -2109,7 +2108,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     }
     const seller:User={
       email,
-      password:await bcryptHash(newSeller.password),
+      password:await bcrypt.hash(newSeller.password,10),
       profile:{fullName:newSeller.fullName.trim(),storeName:newSeller.storeName.trim(),phone:"",tiktok:"",facebook:""},
       plan:"trial",
       planStatus:"active",
@@ -2169,7 +2168,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     const updated:User={
       ...current,
       email,
-      password:newPassword?await bcryptHash(newPassword):current.password,
+      password:newPassword?await bcrypt.hash(newPassword,10):current.password,
       profile:{
         fullName:editSeller.fullName.trim(),
         storeName:editSeller.storeName.trim(),
@@ -2194,7 +2193,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
 
   async function resetPassword(email:string){
     if(!window.confirm(`Reset password for ${email} to 123456?`))return;
-    const hashedPassword=await bcryptHash("123456");
+    const hashedPassword=await bcrypt.hash("123456",10);
     const next=users.map(u=>u.email.toLowerCase()===email.toLowerCase()?{...u,password:hashedPassword}:u);
     LS.set("sf_users",next);
     setUsers(next);
@@ -3007,7 +3006,7 @@ export default function App(){
     setSettingsState(next);
     LS.set("sf_settings",next);
   }
-  async function handleSavePw(op:string,np:string):Promise<string>{if(!user)return"No user";if(!(await verifyUserPassword(user,op)))return t.wrong_pw;saveUser({...user,password:await bcryptHash(np)});return"";}
+  async function handleSavePw(op:string,np:string):Promise<string>{if(!user)return"No user";if(!(await verifyUserPassword(user,op)))return t.wrong_pw;saveUser({...user,password:await bcrypt.hash(np,10)});return"";}
   function handleAdminApprove(email:string,plan:Plan,months=1){
     const users=cleanUsers(arrLS<unknown>("sf_users"));
     const now=new Date().toISOString();
