@@ -419,6 +419,7 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
   const tiktokConnection = new WebcastPushConnection(cleanUsername, {
     processInitialData: false,
     fetchRoomInfoOnConnect: true,
+    sessionId: process.env.EULER_API_KEY,
   });
   const state = await tiktokConnection.connect();
   const now = Date.now();
