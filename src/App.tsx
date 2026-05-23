@@ -87,7 +87,21 @@ const normalizeComment=(raw:unknown,index=0):Comment|null=>{
     sourceUsername:typeof c.sourceUsername==="string"?c.sourceUsername:undefined,
   };
 };
-const cleanComments=(list:unknown)=>Array.isArray(list)?list.map((c,i)=>normalizeComment(c,i)).filter((c):c is Comment=>!!c):[];
+const commentKey=(c:Comment|null|undefined)=>{
+  if(!c)return "missing-comment";
+  return `${c.platform||"TikTok"}|${c.sourceUsername||""}|${c.sessionId||""}|${c.handle||"buyer"}|${c.timestamp||c.time||""}|${c.comment||""}`;
+};
+const cleanComments=(list:unknown)=>{
+  if(!Array.isArray(list))return [];
+  const seen=new Set<string>();
+  return list.map((c,i)=>normalizeComment(c,i)).filter((c):c is Comment=>{
+    if(!c)return false;
+    const key=commentKey(c);
+    if(seen.has(key))return false;
+    seen.add(key);
+    return true;
+  });
+};
 const commentMs=(c:Comment)=>{const t=Date.parse(c?.timestamp||"");return Number.isFinite(t)?t:0;};
 const sortCommentsNewest=(list:Comment[])=>[...list].sort((a,b)=>commentMs(b)-commentMs(a));
 
@@ -2857,7 +2871,7 @@ export default function App(){
       }
       const comment={...incoming,timestamp:incoming.timestamp||new Date().toISOString(),time:incoming.time||new Date().toLocaleTimeString()};
       setComments((p) => {
-        const merged=sortCommentsNewest([comment,...cleanComments(p)]);
+        const merged=sortCommentsNewest(cleanComments([comment,...p]));
         archiveComments(merged.slice(LIVE_COMMENT_LIMIT));
         const next=merged.slice(0,LIVE_COMMENT_LIMIT);
         LS.set(commentsKey,next);
@@ -2900,22 +2914,12 @@ export default function App(){
   },[user?.email,currentLiveDayId]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
-  /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(()=>{
     if(!user)return;
     const commentsKey=sellerLiveDataKey("sf_comments",user.email,currentSessionId);
-    const refreshComments=()=>{
-      const stored=sortCommentsNewest(cleanComments(LS.get<unknown[]>(commentsKey,[]))).slice(0,LIVE_COMMENT_LIMIT);
-      setComments(prev=>{
-        const same=prev.length===stored.length&&commentKey(prev[0])===commentKey(stored[0])&&commentKey(prev[prev.length-1])===commentKey(stored[stored.length-1]);
-        return same?prev:stored;
-      });
-    };
-    refreshComments();
-    const timer=window.setInterval(refreshComments,3000);
-    return()=>window.clearInterval(timer);
-  },[user]);
-  /* eslint-enable react-hooks/exhaustive-deps */
+    const stored=sortCommentsNewest(cleanComments(LS.get<unknown[]>(commentsKey,[]))).slice(0,LIVE_COMMENT_LIMIT);
+    setComments(stored);
+  },[user?.email,currentSessionId]);
 
   useEffect(()=>{
     const refreshSession=()=>{
@@ -3108,10 +3112,6 @@ export default function App(){
   }
   function commentOrderCount(c:Comment){
     return buyers.find(b=>b.handle===c.handle&&b.platform===c.platform)?.totalOrders||0;
-  }
-  function commentKey(c:Comment|null|undefined){
-    if(!c)return "missing-comment";
-    return `${c.platform||"TikTok"}|${c.sourceUsername||""}|${c.sessionId||""}|${c.handle||"buyer"}|${c.timestamp||c.time||""}|${c.comment||""}`;
   }
   function commentStamp(c:Comment){
     const d=new Date(c.timestamp||Date.now());

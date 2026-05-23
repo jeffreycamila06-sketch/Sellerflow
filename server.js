@@ -36,14 +36,15 @@ function requireServerToken(req, res, next) {
   return next();
 }
 
-const TIKTOK_RECONNECT_BASE_MS = 60 * 1000;
+const TIKTOK_RECONNECT_BASE_MS = 5 * 1000;
 const TIKTOK_RECONNECT_MAX_MS = 30 * 60 * 1000;
 const TIKTOK_RECONNECT_JITTER_MS = 30 * 1000;
 const TIKTOK_RATE_LIMIT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const TIKTOK_MAX_PARALLEL_RECONNECTS = 1;
+const TIKTOK_MAX_RECONNECT_QUEUE = 50;
 const TIKTOK_HEALTH_CHECK_MS = 60 * 1000;
-const TIKTOK_STALE_MS = 10 * 60 * 1000;
-const TIKTOK_CHAT_STALE_MS = 20 * 60 * 1000;
+const TIKTOK_STALE_MS = 18 * 60 * 1000;
+const TIKTOK_CHAT_STALE_MS = 35 * 60 * 1000;
 const TIKTOK_CHAT_WATCH_START_MS = 5 * 60 * 1000;
 let activeTikTokReconnects = 0;
 const pendingTikTokReconnects = [];
@@ -111,6 +112,9 @@ function clearTikTokReconnect(key) {
 
 function runQueuedTikTokReconnect(task) {
   pendingTikTokReconnects.push(task);
+  while (pendingTikTokReconnects.length > TIKTOK_MAX_RECONNECT_QUEUE) {
+    pendingTikTokReconnects.shift();
+  }
   drainTikTokReconnectQueue();
 }
 
@@ -203,9 +207,12 @@ io.on("connection", (socket) => {
 
     for (const active of tiktokConnections.values()) {
       if (active.sellerId !== cleanId) continue;
+      const silentMs = Date.now() - (active.lastEventAt || active.startedAt || 0);
+      const stale = silentMs >= TIKTOK_STALE_MS;
       socket.emit("platform_status", {
         platform: "TikTok",
-        connected: true,
+        connected: !stale,
+        stale,
         sellerId: cleanId,
         username: active.username,
         sessionId: active.sessionId,
