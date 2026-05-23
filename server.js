@@ -33,13 +33,18 @@ const corsOptions = {
   origin: corsOrigin,
   credentials: true,
   methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "x-sf-token"],
 };
 
 const io = new Server(server, {
-  cors: corsOptions,
+  cors: {
+    ...corsOptions,
+    allowedHeaders: ["x-sf-token"],
+  },
 });
 
 app.use(cors(corsOptions));
+app.options(/.*/, cors(corsOptions));
 app.use(express.json());
 
 function requireServerToken(req, res, next) {
