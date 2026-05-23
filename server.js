@@ -32,15 +32,14 @@ function isAllowedOrigin(origin) {
   return !normalized || allowedOrigins.has(normalized);
 }
 
-function corsOrigin(origin, callback) {
-  if (isAllowedOrigin(origin)) {
-    return callback(null, true);
-  }
-  return callback(null, false);
-}
-
 const corsOptions = {
-  origin: corsOrigin,
+  origin: (origin, cb) => {
+    const normalized = normalizeOrigin(origin || "");
+    if (!origin || allowedOrigins.has(normalized)) {
+      return cb(null, true);
+    }
+    return cb(new Error("Not allowed by CORS"));
+  },
   credentials: true,
   methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: ["Content-Type", "x-sf-token"],
@@ -52,10 +51,7 @@ const io = new Server(server, {
   allowRequest: (req, callback) => {
     callback(null, isAllowedOrigin(req.headers.origin));
   },
-  cors: {
-    ...corsOptions,
-    allowedHeaders: corsOptions.allowedHeaders,
-  },
+  cors: corsOptions,
 });
 
 app.use(cors(corsOptions));
