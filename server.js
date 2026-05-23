@@ -21,6 +21,9 @@ const allowedOrigins = new Set([
   "http://127.0.0.1:5173",
   "http://localhost:3000",
   "http://127.0.0.1:3000",
+  "capacitor://localhost",
+  "https://localhost",
+  "http://localhost",
   ...(process.env.CLIENT_ORIGIN || "")
     .split(",")
     .map(normalizeOrigin)
