@@ -9,14 +9,37 @@ const server = http.createServer(app);
 const TEST_COMMENT_TOKEN = process.env.TEST_COMMENT_TOKEN || "";
 const SF_SERVER_SECRET = process.env.SF_SERVER_SECRET || "";
 
+const allowedOrigins = new Set([
+  "https://sellerflowlive.com",
+  "https://www.sellerflowlive.com",
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+  ...(process.env.CLIENT_ORIGIN || "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+]);
+
+function corsOrigin(origin, callback) {
+  if (!origin || allowedOrigins.has(origin)) {
+    return callback(null, true);
+  }
+  return callback(new Error(`Origin not allowed by CORS: ${origin}`));
+}
+
+const corsOptions = {
+  origin: corsOrigin,
+  credentials: true,
+  methods: ["GET", "POST", "OPTIONS"],
+};
 
 const io = new Server(server, {
-  cors: {
-    origin: "*",
-  },
+  cors: corsOptions,
 });
 
-app.use(cors());
+app.use(cors(corsOptions));
 app.use(express.json());
 
 function requireServerToken(req, res, next) {
