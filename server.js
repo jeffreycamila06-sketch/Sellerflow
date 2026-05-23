@@ -37,6 +37,8 @@ const corsOptions = {
 };
 
 const io = new Server(server, {
+  path: "/socket.io/",
+  transports: ["polling", "websocket"],
   cors: {
     ...corsOptions,
     allowedHeaders: ["x-sf-token"],
