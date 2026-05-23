@@ -156,6 +156,7 @@ const DEFAULT_SERVER =
     ? "http://localhost:3001"
     : "https://sellerflow-live-server.onrender.com";
 const SERVER = String(import.meta.env.VITE_SERVER_URL || DEFAULT_SERVER).replace(/\/$/,"");
+const DEBUG_SOCKET = import.meta.env.DEV || import.meta.env.VITE_DEBUG_SOCKET === "true";
 const DEF_SETTINGS: Settings = { darkMode:true, autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"", paperSize:"100x60mm", printerType:"auto", stickerSize:"100x60mm", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printLabelScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printCommentScale:100, printTotalScale:100, printStoreX:0, printStoreY:0, printBuyerLabelX:0, printBuyerLabelY:0, printBuyerNumberX:0, printBuyerNumberY:0, printBuyerNameX:0, printBuyerNameY:0, printUsernameX:0, printUsernameY:0, printSessionX:0, printSessionY:0, printOrderX:0, printOrderY:0, printTotalX:0, printTotalY:0 };
 const LANG_OPTS: {code:Lang;label:string}[] = [{code:"en",label:"🇺🇸 EN"},{code:"fil",label:"🇵🇭 FIL"},{code:"zh",label:"🇨🇳 中文"},{code:"vi",label:"🇻🇳 VI"},{code:"th",label:"🇹🇭 TH"},{code:"id",label:"🇮🇩 ID"}];
 const CURRENCIES = [{v:"",l:"No symbol"},{v:"$",l:"$ USD"},{v:"NT$",l:"NT$ NTD"}];
@@ -2861,8 +2862,10 @@ export default function App(){
     const sellerId=sellerIdOf(user.email);
     const sessionId=currentSessionId;
     const commentsKey=sellerLiveDataKey("sf_comments",user.email,currentSessionId);
+    if(DEBUG_SOCKET)console.info("[SellerFlowLive] socket server",SERVER);
     const joinRoom=()=>s.emit("join_live_room",{sellerId,sessionId});
     s.on("connect",joinRoom);
+    s.on("connect_error",(err:Error)=>{if(DEBUG_SOCKET)console.warn("[SellerFlowLive] socket connect_error",{server:SERVER,message:err.message});});
     joinRoom();
     s.on("comment", (d: Comment) => {
       const incoming=normalizeComment(d);

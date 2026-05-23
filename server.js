@@ -54,7 +54,7 @@ const io = new Server(server, {
   },
   cors: {
     ...corsOptions,
-    allowedHeaders: ["x-sf-token"],
+    allowedHeaders: corsOptions.allowedHeaders,
   },
 });
 
