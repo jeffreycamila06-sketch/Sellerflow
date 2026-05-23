@@ -3030,7 +3030,16 @@ export default function App(){
       ? {username:tiktokUsername,...connectionMeta}
       : {username:facebookPage,pageName:facebookPage,liveVideoId:facebookPage,accessToken:data.accessToken,...connectionMeta};
     try{
-      const r=await fetch(`${SERVER}${ep}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      const r=await fetch(`${SERVER}${ep}`,{
+        method:"POST",
+        headers:{
+          "Content-Type":"application/json",
+          "x-sf-token":import.meta.env.VITE_SERVER_SECRET||"",
+        },
+        body:JSON.stringify(body)
+      });
+      if(r.status===401){setToast(`${t.conn_failed}: Unauthorized`);return;}
+      if(r.status===500){setToast(`${t.conn_failed}: Server secret missing`);return;}
       const j=await r.json();
       if(!j.success)setToast(`${t.conn_failed}: ${j.error}`);
       else{
