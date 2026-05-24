@@ -710,7 +710,7 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
     gap:10px!important;
   }
 
-  .feed-col{gap:10px!important;position:relative!important}
+  .feed-col{gap:10px!important;position:relative!important;min-height:calc(100dvh - 208px)!important}
   .mobile-summary-col,.miners-col,.slip-col,.mobile-tools-col{display:none!important}
 
   .col-lbl{
@@ -1630,10 +1630,11 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .mobile-summary-col,.miners-col,.slip-col,.mobile-tools-col{display:none!important}
   .col-lbl{padding:0 12px!important;font-size:18px!important;font-weight:900!important}
   .col-lbl span:not(.dot-pulse){color:var(--m-muted)!important;font-size:15px!important;font-weight:500!important}
-  .chat-wrap{border-radius:13px!important;overflow:hidden!important;background:linear-gradient(180deg,rgba(28,31,52,.76),rgba(16,18,31,.9))!important}
+  .chat-wrap{flex:1 1 auto!important;min-height:calc(100dvh - 270px)!important;border-radius:13px!important;overflow:hidden!important;background:linear-gradient(180deg,rgba(28,31,52,.76),rgba(16,18,31,.9))!important}
   .chat-hd{min-height:50px!important;padding:14px 16px!important;font-size:18px!important}
   .chat-sub{font-size:15px!important;font-weight:500!important}
-  .chat-msgs{padding:0!important;background:transparent!important}
+  .chat-msgs{flex:1 1 auto!important;min-height:0!important;padding:0!important;background:transparent!important}
+  .feed-empty{height:100%!important;min-height:calc(100dvh - 320px)!important;display:flex!important;align-items:center!important;justify-content:center!important}
   .msg-row{display:grid!important;grid-template-columns:48px minmax(0,1fr) 34px!important;grid-template-rows:auto auto!important;column-gap:10px!important;row-gap:14px!important;margin:0!important;padding:13px 14px 14px!important;border-left:0!important;border-right:0!important;border-radius:0!important;background:linear-gradient(135deg,rgba(25,28,48,.88),rgba(14,17,31,.94))!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.02)!important}
   .msg-row>div:first-child{grid-column:1!important;grid-row:1 / span 2!important;align-self:start!important;width:44px!important;height:44px!important;font-size:16px!important}
   .msg-bd{grid-column:2!important;grid-row:1!important;min-width:0!important;width:100%!important}
