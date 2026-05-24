@@ -3068,9 +3068,10 @@ export default function App(){
   async function createOrderFromComment(c:Comment,{print=true,price=0}:{print?:boolean;price?:number}={}){
     const existing=buyers.find(b=>b.handle===c.handle&&b.platform===c.platform);
     const buyerNum=existing?.num||buyers.length+1;
+    const orderItem=price>0?"Manual price order":(c.comment||"Live comment order");
     const order:LiveOrder={
       orderNum:Date.now(),
-      item:c.comment||"Live comment order",
+      item:orderItem,
       qty:1,
       price,
       total:price,
@@ -3101,7 +3102,7 @@ export default function App(){
     void Promise.all([
       saveOrderToDatabase({
         customer_name:c.name||c.handle,
-        product:c.comment||"Live comment order",
+        product:orderItem,
         total_amount:order.total,
         status:"Pending",
       }),
@@ -3117,7 +3118,7 @@ export default function App(){
   function reprintLatestForComment(c:Comment){
     const b=buyers.find(x=>x.handle===c.handle&&x.platform===c.platform);
     if(!b){void createOrderFromComment(c,{print:true});return;}
-    const matchingOrder=[...b.orders].reverse().find(o=>o.item===(c.comment||"Live comment order")&&(o.time===c.time||!c.time))||b.orders[b.orders.length-1];
+    const matchingOrder=[...b.orders].reverse().find(o=>(o.item===(c.comment||"Live comment order")||o.item==="Manual price order")&&(o.time===c.time||!c.time))||b.orders[b.orders.length-1];
     const singleOrderBuyer:Buyer={...b,orders:matchingOrder?[matchingOrder]:[],totalOrders:matchingOrder?1:0,totalSpent:matchingOrder?.total||0};
     setSelBuyer(singleOrderBuyer);
     printSlip(singleOrderBuyer,settings.currency,user?.profile.storeName||"SellerFlowLive",settings);
