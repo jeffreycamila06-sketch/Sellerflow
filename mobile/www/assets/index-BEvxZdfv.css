@@ -1637,7 +1637,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .chat-sub{font-size:15px!important;font-weight:500!important}
   .chat-msgs{flex:1 1 auto!important;min-height:0!important;padding:0!important;background:transparent!important}
   .feed-empty{height:100%!important;min-height:calc(100dvh - 274px)!important;display:flex!important;align-items:center!important;justify-content:center!important}
-  .msg-row{display:grid!important;grid-template-columns:48px minmax(0,1fr) 34px!important;grid-template-rows:auto auto!important;column-gap:10px!important;row-gap:18px!important;margin:0!important;padding:13px 14px 20px!important;border-left:0!important;border-right:0!important;border-radius:0!important;background:linear-gradient(135deg,rgba(25,28,48,.88),rgba(14,17,31,.94))!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.02)!important}
+  .msg-row{display:grid!important;grid-template-columns:48px minmax(0,1fr) 34px!important;grid-template-rows:auto auto!important;column-gap:10px!important;row-gap:0!important;margin:0!important;padding:13px 14px 10px!important;border-left:0!important;border-right:0!important;border-radius:0!important;background:linear-gradient(135deg,rgba(25,28,48,.88),rgba(14,17,31,.94))!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.02)!important}
   .msg-row>div:first-child{grid-column:1!important;grid-row:1 / span 2!important;align-self:start!important;width:44px!important;height:44px!important;font-size:16px!important}
   .msg-bd{grid-column:2!important;grid-row:1!important;min-width:0!important;width:100%!important}
   .msg-nm{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;align-items:center!important;gap:2px 6px!important;margin:0!important;min-height:0!important;line-height:1.12!important}
@@ -1647,7 +1647,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .p-tag{grid-column:2!important;grid-row:1 / span 2!important;align-self:center!important;padding:3px 7px!important;font-size:10px!important;border-radius:999px!important}
   .msg-tx.buy{margin-top:6px!important;color:#F7F6FF!important;font-size:15px!important;line-height:1.25!important;display:-webkit-box!important;-webkit-line-clamp:2!important;-webkit-box-orient:vertical!important;overflow:hidden!important}
   .msg-meta,.msg-time{margin-top:6px!important;color:#A5A8BA!important;font-size:12px!important}
-  .msg-actions{grid-column:1 / 4!important;grid-row:2!important;display:grid!important;grid-template-columns:118px 118px!important;gap:8px!important;align-items:center!important;justify-content:end!important;padding-top:16px!important}
+  .msg-actions{grid-column:1 / 4!important;grid-row:2!important;display:grid!important;grid-template-columns:118px 118px!important;gap:8px!important;align-items:center!important;justify-content:end!important;padding-top:0!important;transform:translateY(-18px)!important}
   .comment-menu-btn{position:absolute!important;top:-72px!important;right:0!important;width:32px!important;height:32px!important;min-width:32px!important;min-height:32px!important;background:transparent!important;color:#BFA4FF!important;font-size:17px!important}
   .order-count{display:none!important}
   .comment-price-input{grid-column:1!important;width:100%!important;max-width:none!important;height:36px!important;border-radius:9px!important;border:1px solid rgba(160,145,255,.22)!important;background:rgba(9,12,24,.72)!important;color:#fff!important;padding:0 10px!important;font-size:13px!important}
