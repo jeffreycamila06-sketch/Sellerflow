@@ -1,10 +1,12 @@
 import { saveOrderToDatabase, saveCustomerToDatabase } from "./db";
-import bcrypt from "bcryptjs";
+import { supabase } from "./supabase";
 import {
   type AccountAuditLog,
+  adminUpdatePlan,
+  createMyProfile,
   deleteSupportMessagesForEmail,
   deleteUser,
-  findUser,
+  getMyProfile,
   listAuditLogs,
   listSupportMessages,
   listUsers,
@@ -26,7 +28,8 @@ type PlanStatus = "active" | "expired" | "pending";
 type Page = "dashboard"|"miners"|"orders"|"products"|"customers"|"customerData"|"print"|"sales"|"settings"|"subscription"|"support"|"admin"|"privacy"|"terms"|"deleteAccount";
 
 interface Profile { fullName:string; storeName:string; phone:string; tiktok:string; facebook:string; }
-interface User { email:string; password:string; profile:Profile; plan:Plan; planStatus:PlanStatus; planExpiry:string; trialStartedAt?:string; connectedAccounts:string[]; }
+type Role = "seller" | "admin";
+interface User { authUserId?:string; email:string; profile:Profile; plan:Plan; planStatus:PlanStatus; planExpiry:string; trialStartedAt?:string; connectedAccounts:string[]; role?:Role; }
 interface LiveOrder { orderNum:number; item:string; qty:number; price:number; total:number; time:string; handle:string; name:string; bNum:number; platform:string; status:string; date:string; }
 interface Buyer { handle:string; name:string; platform:string; num:number; orders:LiveOrder[]; totalSpent:number; totalOrders:number; }
 interface Comment { handle:string; name:string; comment:string; platform:"TikTok"|"Facebook"; isBuy:boolean; buyerNum:number|null; buyerData:Buyer|null; time:string; avatar?:string; timestamp?:string; sellerId?:string; sessionId?:string; sourceUsername?:string; }
@@ -185,28 +188,17 @@ const safeUser=(raw:unknown):User|null=>{
   const plan:Plan=["trial","basic","pro","master"].includes(String(u.plan))?u.plan as Plan:"trial";
   const planStatus:PlanStatus=["active","expired","pending"].includes(String(u.planStatus))?u.planStatus as PlanStatus:"active";
   return {
+    authUserId:typeof u.authUserId==="string"?u.authUserId:undefined,
     email,
-    password:String(u.password||""),
     profile:safeProfile(u.profile),
     plan,
     planStatus,
     planExpiry:String(u.planExpiry||addDays(plan==="trial"?7:31)),
     trialStartedAt:typeof u.trialStartedAt==="string"?u.trialStartedAt:"",
     connectedAccounts:Array.isArray(u.connectedAccounts)?u.connectedAccounts.map(String):[],
+    role:u.role==="admin"?"admin":"seller",
   };
 };
-const cleanUsers=(list:unknown)=>Array.isArray(list)?list.map(safeUser).filter((u):u is User=>!!u):[];
-const isBcryptHash=(value:string)=>/^\$2[aby]\$\d{2}\$/.test(value);
-async function verifyUserPassword(user:User,password:string){
-  if(isBcryptHash(user.password))return bcrypt.compare(password,user.password);
-  return user.password===password;
-}
-async function migratePlaintextPassword(user:User,password:string){
-  if(isBcryptHash(user.password))return user;
-  const migrated={...user,password:await bcrypt.hash(password,10)};
-  await upsertUser(migrated);
-  return migrated;
-}
 const nc=(n:number)=>n===1?"#26215C":n<=3?"#534AB7":"#7F77DD";
 const ini=(s:string)=>s.split(/[\s_]/g).slice(0,2).map(w=>w[0]?.toUpperCase()).join("")||"??";
 const abg=(h:string)=>{const c=["#7F77DD","#1D9E75","#D85A30","#D4537E","#378ADD","#BA7517"];let x=0;for(const ch of h)x=(x*31+ch.charCodeAt(0))%c.length;return c[Math.abs(x)];};
@@ -215,11 +207,6 @@ const addMonths=(n:number)=>addDays(Math.max(1,n)*30);
 const dLeft=(e:string,now=Date.now())=>Math.max(0,Math.ceil((new Date(e).getTime()-now)/86400000));
 const normalizePhone=(value:string)=>String(value||"").replace(/\D/g,"");
 const phoneDisplay=(value:string)=>String(value||"").trim();
-const phoneAlreadyRegistered=(phone:string,users:User[])=>{
-  const normalized=normalizePhone(phone);
-  if(normalized.length<8)return false;
-  return users.some(u=>normalizePhone(u.profile.phone)===normalized);
-};
 const maxAcc=(p:Plan)=>({trial:1,basic:1,pro:3,master:5}[p]);
 const LIVE_COMMENT_LIMIT=5000;
 const COMMENT_ARCHIVE_LIMIT=5000;
@@ -239,29 +226,8 @@ const fitProfileAccounts=(original:Profile,next:Profile,limit:number):Profile=>{
   return {...next,tiktok:accountText(resultTikTok),facebook:accountText(resultFacebook)};
 };
 const OWNER_EMAIL=(import.meta.env.VITE_OWNER_EMAIL||"admin@sellerflow.app").trim().toLowerCase();
-const ENV_ADMIN_EMAILS=(import.meta.env.VITE_ADMIN_EMAILS||OWNER_EMAIL).split(",").map((e:string)=>e.trim().toLowerCase()).filter(Boolean);
-const adminEmails=()=>Array.from(new Set([OWNER_EMAIL,...ENV_ADMIN_EMAILS].filter(Boolean)));
-const isAdminEmail=(email:string)=>adminEmails().includes(email.trim().toLowerCase());
-const canBootstrapLocalOwner=()=>typeof window!=="undefined"&&["localhost","127.0.0.1"].includes(window.location.hostname);
-async function bootstrapLocalOwner(email:string,password:string){
-  const cleanEmail=email.trim().toLowerCase();
-  if(!canBootstrapLocalOwner()||!password||cleanEmail!==OWNER_EMAIL)return null;
-  const now=new Date().toISOString();
-  const owner:User={
-    email:cleanEmail,
-    password:await bcrypt.hash(password,10),
-    profile:{fullName:"SellerFlow Admin",storeName:"SellerFlowLive",phone:"",tiktok:"",facebook:""},
-    plan:"master",
-    planStatus:"active",
-    planExpiry:addMonths(120),
-    trialStartedAt:now,
-    connectedAccounts:[],
-  };
-  await upsertUser(owner);
-  return owner;
-}
 const supportReadKey=(email:string)=>`sf_support_read_${email.trim().toLowerCase()}`;
-const isAdminUser=(u:User|null)=>!!u&&isAdminEmail(u.email);
+const isAdminUser=(u:User|null)=>!!u&&u.role==="admin";
 const canConnectMore=(u:User)=>isAdminUser(u)||registeredAccountCount(u)<maxAcc(u.plan);
 const asAdminPlan=(u:User)=>isAdminUser(u)?{...u,plan:"master" as Plan,planStatus:"active" as PlanStatus,planExpiry:addMonths(120)}:u;
 const pName=(p:Plan,t:T)=>({trial:t.plan_trial,basic:t.plan_basic,pro:t.plan_pro,master:t.plan_master}[p]);
@@ -444,99 +410,7 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Setting
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// AUTH
-// ═══════════════════════════════════════════════════════════════════
-function Auth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:Lang;setLang:(l:Lang)=>void}){
-  const [mode,setMode]=useState<"login"|"reg"|"forgot">("login");
-  const [email,setEmail]=useState("");const [pw,setPw]=useState("");const [cpw,setCpw]=useState("");
-  const [fn,setFn]=useState("");const [sn,setSn]=useState("");
-  const [showPw,setShowPw]=useState(false);const [err,setErr]=useState("");const [ok,setOk]=useState("");const [busy,setBusy]=useState(false);
-  async function login(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);
-    const u=await findUser(email);
-    if(!u){
-      const owner=await bootstrapLocalOwner(email,pw);
-      if(owner){LS.set("sf_session",owner.email);onLogin(owner);setBusy(false);return;}
-      setErr(t.err_no_account);setBusy(false);return;
-    }
-    const passwordOk=await verifyUserPassword(u,pw);
-    if(!passwordOk){setErr(t.err_wrong_pw);setBusy(false);return;}
-    const loginUser=await migratePlaintextPassword(u,pw);
-    LS.set("sf_session",loginUser.email);onLogin(loginUser);setBusy(false);
-  }
-  async function reg(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);
-    if(!fn.trim()||!sn.trim()||!email.trim()||!pw){setErr(t.err_fill_all);setBusy(false);return;}
-    if(pw.length<6){setErr(t.err_pw_short);setBusy(false);return;}
-    if(pw!==cpw){setErr(t.err_pw_mismatch);setBusy(false);return;}
-    const users=await listUsers();
-    if(await findUser(email)){setErr(t.err_email_exists);setBusy(false);return;}
-    const isFirstAccount=users.length===0;
-    const nu:User={email:email.trim().toLowerCase(),password:await bcrypt.hash(pw,10),profile:{fullName:fn.trim(),storeName:sn.trim(),phone:"",tiktok:"",facebook:""},plan:isFirstAccount?"master":"trial",planStatus:"active",planExpiry:isFirstAccount?addMonths(120):addDays(7),connectedAccounts:[]};
-    await upsertUser(nu);
-    LS.set("sf_session",nu.email);onLogin(nu);setBusy(false);
-  }
-  async function forgot(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);
-    const u=await findUser(email);
-    if(!u){setErr(t.err_no_account);setBusy(false);return;}
-    setOk(`${t.reset_sent} ${email}`);setBusy(false);
-  }
-  const go=(m:"login"|"reg"|"forgot")=>{setMode(m);setErr("");setOk("");};
-  return(
-    <div className="auth-bg">
-      <div className="auth-left">
-        <div className="auth-brand"><div className="auth-logo-ic"><svg width="26" height="26" viewBox="0 0 18 18"><path d="M4 6 Q4 3 7 3 L11 3 Q14 3 14 6 Q14 9 11 9.5 L7 10.5 Q4 10.5 4 13 Q4 15 7 15 L11 15 Q14 15 14 13" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/></svg></div><span className="auth-brand-name">Seller<span>FlowLive</span></span></div>
-        <div className="auth-hero"><h1 style={{whiteSpace:"pre-line"}}>{t.hero_title}</h1><p>{t.hero_sub}</p>
-          <div className="auth-feats">{(t.hero_features as string[]).map(f=><div key={f} className="auth-feat"><span>✓</span>{f}</div>)}</div>
-        </div>
-        <div className="auth-lang-btns">{LANG_OPTS.map(l=><button key={l.code} onClick={()=>setLang(l.code)} className={`auth-lang-btn ${lang===l.code?"active":""}`}>{l.label}</button>)}</div>
-      </div>
-      <div className="auth-right">
-        <div className="auth-card">
-          {mode==="login"&&<>
-            <h2>{t.login_title}</h2><p className="auth-sub">{t.login_sub}</p>
-            <form onSubmit={login} className="auth-form">
-              {err&&<div className="auth-err">⚠ {err}</div>}
-              <Fg label={t.email_field}><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@email.com" required autoFocus/></Fg>
-              <Fg label={t.pw_field}><div className="pw-wrap"><input type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="••••••••" required/><button type="button" onClick={()=>setShowPw(p=>!p)} className="pw-eye">{showPw?"🙈":"👁"}</button></div></Fg>
-              <div style={{textAlign:"right",marginBottom:4}}><button type="button" className="auth-link" onClick={()=>go("forgot")}>{t.forgot_link}</button></div>
-              <button type="submit" className="auth-btn" disabled={busy}>{busy?t.signing_in:t.sign_in_btn}</button>
-            </form>
-            <div className="auth-sw">{t.no_account} <button className="auth-link" onClick={()=>go("reg")}>{t.create_account} →</button></div>
-          </>}
-          {mode==="reg"&&<>
-            <h2>{t.register_title}</h2><p className="auth-sub">{t.register_sub}</p>
-            <form onSubmit={reg} className="auth-form">
-              {err&&<div className="auth-err">⚠ {err}</div>}
-              <div className="auth-row2">
-                <Fg label={t.fname_field}><input value={fn} onChange={e=>setFn(e.target.value)} placeholder="Maria Reyes" required/></Fg>
-                <Fg label={t.sname_field}><input value={sn} onChange={e=>setSn(e.target.value)} placeholder="Maria's Shop" required/></Fg>
-              </div>
-              <Fg label={t.email_field}><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@email.com" required/></Fg>
-              <Fg label={t.pw_field}><div className="pw-wrap"><input type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="Min 6 chars" required/><button type="button" onClick={()=>setShowPw(p=>!p)} className="pw-eye">{showPw?"🙈":"👁"}</button></div></Fg>
-              <Fg label={t.confirm_field}><input type="password" value={cpw} onChange={e=>setCpw(e.target.value)} placeholder="••••••••" required/></Fg>
-              <button type="submit" className="auth-btn" disabled={busy}>{busy?t.creating:t.start_trial_btn}</button>
-              <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat?v=6" download>Printer Shortcut</a>
-              <p className="auth-terms">{t.terms_text}</p>
-            </form>
-            <div className="auth-sw">{t.have_account} <button className="auth-link" onClick={()=>go("login")}>{t.sign_in_btn} →</button></div>
-          </>}
-          {mode==="forgot"&&<>
-            <h2>{t.forgot_title}</h2><p className="auth-sub">{t.forgot_sub}</p>
-            <form onSubmit={forgot} className="auth-form">
-              {err&&<div className="auth-err">⚠ {err}</div>}
-              {ok&&<div className="auth-ok">✓ {ok}</div>}
-              <Fg label={t.email_field}><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@email.com" required autoFocus/></Fg>
-              <button type="submit" className="auth-btn" disabled={busy}>{busy?t.sending:t.send_reset}</button>
-            </form>
-            <div className="auth-sw"><button className="auth-link" onClick={()=>go("login")}>← {t.back_login}</button></div>
-          </>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// TRIAL EXPIRED WALL
+// AUTH (public landing + login / register / forgot via Supabase Auth)
 // ═══════════════════════════════════════════════════════════════════
 function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:Lang;setLang:(l:Lang)=>void}){
   const [mode,setMode]=useState<"login"|"reg"|"forgot">("login");
@@ -553,44 +427,47 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
     return window.location.hash==="#privacy"?"privacy":window.location.hash==="#terms"?"terms":"";
   });
   async function login(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);
-    const u=await findUser(email);
-    if(!u){
-      const owner=await bootstrapLocalOwner(email,pw);
-      if(owner){LS.set("sf_session",owner.email);onLogin(owner);setBusy(false);return;}
-      setErr(t.err_no_account);setBusy(false);return;
+    if(!supabase){setErr("Service is temporarily unavailable. Please try again later.");setBusy(false);return;}
+    const cleanEmail=email.trim().toLowerCase();
+    const {data,error}=await supabase.auth.signInWithPassword({email:cleanEmail,password:pw});
+    if(error||!data.user){setErr(t.err_wrong_pw);setBusy(false);return;}
+    let profile=await getMyProfile(data.user.id);
+    if(!profile){
+      // Auth account exists but has no profile row yet — create a minimal one.
+      try{profile=await createMyProfile(data.user.id,cleanEmail,{fullName:"",storeName:"",phone:"",tiktok:"",facebook:""});}
+      catch(err){setErr(err instanceof Error?err.message:"Could not load your profile.");setBusy(false);return;}
     }
-    const passwordOk=await verifyUserPassword(u,pw);
-    if(!passwordOk){setErr(t.err_wrong_pw);setBusy(false);return;}
-    const loginUser=await migratePlaintextPassword(u,pw);
-    LS.set("sf_session",loginUser.email);onLogin(loginUser);setBusy(false);
+    if(!profile){setErr("Could not load your profile. Please contact support.");setBusy(false);return;}
+    onLogin(profile);setBusy(false);
   }
   async function reg(e:React.FormEvent){e.preventDefault();setErr("");setOk("");setBusy(true);
     if(!fn.trim()||!sn.trim()||!email.trim()||!pw){setErr(t.err_fill_all);setBusy(false);return;}
     if(normalizePhone(phone).length<8){setErr("Enter a valid phone number for admin review.");setBusy(false);return;}
     if(pw.length<6){setErr(t.err_pw_short);setBusy(false);return;}
     if(pw!==cpw){setErr(t.err_pw_mismatch);setBusy(false);return;}
-    const users=await listUsers();
-    if(await findUser(email)){setErr(t.err_email_exists);setBusy(false);return;}
-    const isFirstAccount=users.length===0;
-    if(!isFirstAccount&&phoneAlreadyRegistered(phone,users)){setErr("This phone number is already registered. Please log in or contact support.");setBusy(false);return;}
-    const now=new Date().toISOString();
-    const nu:User={
-      email:email.trim().toLowerCase(),
-      password:await bcrypt.hash(pw,10),
-      profile:{fullName:fn.trim(),storeName:sn.trim(),phone:phoneDisplay(phone),tiktok:"",facebook:""},
-      plan:isFirstAccount?"master":"trial",
-      planStatus:isFirstAccount?"active":"pending",
-      planExpiry:isFirstAccount?addMonths(120):now,
-      trialStartedAt:isFirstAccount?now:"",
-      connectedAccounts:[],
-    };
-    await upsertUser(nu);
-    LS.set("sf_session",nu.email);onLogin(nu);setBusy(false);
+    if(!supabase){setErr("Service is temporarily unavailable. Please try again later.");setBusy(false);return;}
+    const cleanEmail=email.trim().toLowerCase();
+    const {data,error}=await supabase.auth.signUp({email:cleanEmail,password:pw});
+    if(error){setErr(/already|registered|exists/i.test(error.message)?t.err_email_exists:error.message);setBusy(false);return;}
+    if(!data.user){setErr("Registration failed. Please try again.");setBusy(false);return;}
+    if(!data.session){
+      // Email confirmation is enabled: no session yet, so we can't create the
+      // profile row (RLS needs auth.uid()). Ask the user to confirm + log in.
+      setOk("Account created. Please check your email to confirm, then log in.");setMode("login");setBusy(false);return;
+    }
+    let profile;
+    try{profile=await createMyProfile(data.user.id,cleanEmail,{fullName:fn.trim(),storeName:sn.trim(),phone:phoneDisplay(phone),tiktok:"",facebook:""});}
+    catch(err){setErr(err instanceof Error?err.message:"Could not create your profile.");setBusy(false);return;}
+    if(!profile){setErr("Could not create your profile. Please contact support.");setBusy(false);return;}
+    onLogin(profile);setBusy(false);
   }
-  async function forgot(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);
-    const u=await findUser(email);
-    if(!u){setErr(t.err_no_account);setBusy(false);return;}
-    setOk(`${t.reset_sent} ${email}`);setBusy(false);
+  async function forgot(e:React.FormEvent){e.preventDefault();setErr("");setOk("");setBusy(true);
+    if(!supabase){setErr("Service is temporarily unavailable. Please try again later.");setBusy(false);return;}
+    const cleanEmail=email.trim().toLowerCase();
+    const redirectTo=typeof window!=="undefined"?`${window.location.origin}/`:undefined;
+    const {error}=await supabase.auth.resetPasswordForEmail(cleanEmail,redirectTo?{redirectTo}:undefined);
+    if(error){setErr(error.message);setBusy(false);return;}
+    setOk(`${t.reset_sent} ${cleanEmail}`);setBusy(false);
   }
   const go=(m:"login"|"reg"|"forgot")=>{setMode(m);setErr("");setOk("");};
   const jump=(id:string)=>document.getElementById(id)?.scrollIntoView({behavior:"smooth",block:"start"});
@@ -738,8 +615,6 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
     </div>
   );
 }
-
-void Auth;
 
 function AccountGate({user,onContinue,onSwitch}:{user:User;onContinue:()=>void;onSwitch:()=>void}){
   return(
@@ -2020,11 +1895,11 @@ function Support({user,t}:{user:User;t:T}){
 // CONNECT MODAL
 // ═══════════════════════════════════════════════════════════════════
 function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:(email:string,plan:Plan,months?:number)=>void;orders:LiveOrder[];t:T}){
-  const normalizeAdminUsers=(list:User[])=>list.map(u=>isAdminEmail(u.email)?asAdminPlan(u):u);
-  const [users,setUsers]=useState<User[]>(()=>normalizeAdminUsers(cleanUsers(arrLS<unknown>("sf_users"))));
+  const normalizeAdminUsers=(list:User[])=>list.map(u=>u.role==="admin"?asAdminPlan(u):u);
+  const [users,setUsers]=useState<User[]>([]);
   const [msgs,setMsgs]=useState<SupportMsg[]>(()=>arrLS<SupportMsg>("sf_support"));
   const [auditLogs,setAuditLogs]=useState<AccountAuditLog[]>(()=>arrLS<AccountAuditLog>("sf_audit_logs"));
-  const [admins,setAdmins]=useState<string[]>(()=>adminEmails());
+  const [admins,setAdmins]=useState<string[]>([]);
   const [newSeller,setNewSeller]=useState({email:"",password:"123456",fullName:"",storeName:""});
   const [editOriginalEmail,setEditOriginalEmail]=useState("");
   const [editSeller,setEditSeller]=useState({email:"",newPassword:"",fullName:"",storeName:"",phone:"",tiktok:"",facebook:""});
@@ -2042,10 +1917,10 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   async function refresh(){
     const freshUsers=normalizeAdminUsers(await listUsers());
     setUsers(freshUsers);
+    setAdmins(freshUsers.filter(u=>u.role==="admin").map(u=>u.email));
     await sendAutomaticPlanNotices(freshUsers);
     setMsgs(await listSupportMessages());
     setAuditLogs(await listAuditLogs());
-    setAdmins(adminEmails());
   }
 
   async function sendAutomaticPlanNotices(sourceUsers:User[]){
@@ -2054,7 +1929,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     const todayKey=new Date().toISOString().slice(0,10);
     const notices:SupportMsg[]=[];
     for(const seller of sourceUsers){
-      if(isAdminEmail(seller.email))continue;
+      if(seller.role==="admin")continue;
       const days=dLeft(seller.planExpiry);
       const warnDays=seller.plan==="trial"?3:5;
       const noticeType=seller.planStatus==="expired"||days===0?"expired":days===warnDays?"warning":"";
@@ -2164,51 +2039,21 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
 
   async function setPlan(email:string,plan:Plan,status:PlanStatus="active",months=1){
     const expiry=status==="expired"?addDays(-1):status==="pending"?new Date().toISOString():plan==="trial"?addDays(7):addMonths(months);
-    const trialStartedAt=status==="active"&&plan==="trial"?new Date().toISOString():"";
-    const next=users.map(u=>u.email.toLowerCase()===email.toLowerCase()?{...u,plan,planStatus:status,planExpiry:expiry,trialStartedAt}:u);
-    LS.set("sf_users",next);
-    setUsers(next);
-    const updated=next.find(u=>u.email.toLowerCase()===email.toLowerCase());
-    if(updated){
-      await upsertUser(updated);
+    const trialStartedAt=status==="active"&&plan==="trial"?new Date().toISOString():null;
+    try{
+      await adminUpdatePlan(email,{plan,planStatus:status,planExpiry:expiry,trialStartedAt});
+      setUsers(prev=>prev.map(u=>u.email.toLowerCase()===email.toLowerCase()?{...u,plan,planStatus:status,planExpiry:expiry,trialStartedAt:trialStartedAt||""}:u));
       await logAction(status==="expired"?"expired seller":"changed plan",email,`Plan ${plan}, status ${status}, duration ${plan==="trial"?7:`${months} month${months===1?"":"s"}`}`);
+    }catch(error){
+      setCopied(`Update failed: ${error instanceof Error?error.message:"Unknown error"}`);
     }
   }
 
-  async function createSeller(){
-    const email=newSeller.email.trim().toLowerCase();
-    if(!email||!newSeller.password||!newSeller.fullName.trim()||!newSeller.storeName.trim()){
-      setCopied("Fill seller email, password, name, and store");
-      return;
-    }
-    if(newSeller.password.length<6){
-      setCopied("Password must be at least 6 characters");
-      return;
-    }
-    if(users.some(u=>u.email.toLowerCase()===email)){
-      setCopied("Seller email already exists");
-      return;
-    }
-    const seller:User={
-      email,
-      password:await bcrypt.hash(newSeller.password,10),
-      profile:{fullName:newSeller.fullName.trim(),storeName:newSeller.storeName.trim(),phone:"",tiktok:"",facebook:""},
-      plan:"trial",
-      planStatus:"active",
-      planExpiry:addDays(7),
-      connectedAccounts:[],
-    };
-    const next=[...users,seller];
-    LS.set("sf_users",next);
-    setUsers(next);
-    try{
-      await upsertUser(seller);
-      await logAction("created seller",email,`Store: ${seller.profile.storeName}`);
-      setNewSeller({email:"",password:"123456",fullName:"",storeName:""});
-      setCopied("Seller account created");
-    }catch(error){
-      setCopied(`Supabase save failed: ${error instanceof Error?error.message:"Unknown error"}`);
-    }
+  // Admin-created accounts require a server-side service_role call (a Supabase
+  // Auth user cannot be created with the public anon key). This is wired up in
+  // the backend step; for now sellers register themselves.
+  function createSeller(){
+    setCopied("Creating accounts here needs the secure server step (coming next). For now, ask the seller to register on the login page.");
   }
 
   function openEditSeller(user:User){
@@ -2226,23 +2071,21 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
 
   async function saveEditSeller(){
     const oldEmail=editOriginalEmail.trim().toLowerCase();
-    const email=editSeller.email.trim().toLowerCase();
     const current=users.find(u=>u.email.toLowerCase()===oldEmail);
     if(!current){
       setCopied("Seller not found");
       return;
     }
-    if(!email||!editSeller.fullName.trim()||!editSeller.storeName.trim()){
-      setCopied("Fill seller email, name, and store");
+    if(!editSeller.fullName.trim()||!editSeller.storeName.trim()){
+      setCopied("Fill seller name and store");
       return;
     }
-    const newPassword=editSeller.newPassword.trim();
-    if(newPassword&&newPassword.length<6){
-      setCopied("New password must be at least 6 characters");
+    if(editSeller.email.trim().toLowerCase()!==oldEmail){
+      setCopied("Changing a seller's email needs the secure server step (coming next).");
       return;
     }
-    if(email!==oldEmail&&users.some(u=>u.email.toLowerCase()===email)){
-      setCopied("Seller email already exists");
+    if(editSeller.newPassword.trim()){
+      setCopied('Use "Send reset email" to change a seller\'s password.');
       return;
     }
     const editLimit=maxAcc(current.plan);
@@ -2250,8 +2093,6 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     const editFacebook=accountList(editSeller.facebook).slice(0,Math.max(0,editLimit-editTikTok.length));
     const updated:User={
       ...current,
-      email,
-      password:newPassword?await bcrypt.hash(newPassword,10):current.password,
       profile:{
         fullName:editSeller.fullName.trim(),
         storeName:editSeller.storeName.trim(),
@@ -2260,13 +2101,10 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
         facebook:accountText(editFacebook),
       },
     };
-    const next=users.map(u=>u.email.toLowerCase()===oldEmail?updated:u);
-    LS.set("sf_users",next);
-    setUsers(next);
     try{
       await upsertUser(updated);
-      if(email!==oldEmail)await deleteUser(oldEmail);
-      await logAction("edited seller",email,`${oldEmail!==email?`Email changed from ${oldEmail}. `:""}${newPassword?"Password changed. ":""}Profile updated.`);
+      setUsers(prev=>prev.map(u=>u.email.toLowerCase()===oldEmail?updated:u));
+      await logAction("edited seller",oldEmail,"Profile updated.");
       setEditOriginalEmail("");
       setCopied("Seller updated");
     }catch(error){
@@ -2275,33 +2113,25 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   }
 
   async function resetPassword(email:string){
-    if(!window.confirm(`Reset password for ${email} to 123456?`))return;
-    const hashedPassword=await bcrypt.hash("123456",10);
-    const next=users.map(u=>u.email.toLowerCase()===email.toLowerCase()?{...u,password:hashedPassword}:u);
-    LS.set("sf_users",next);
-    setUsers(next);
-    const updated=next.find(u=>u.email.toLowerCase()===email.toLowerCase());
-    try{
-      if(updated)await upsertUser(updated);
-      await logAction("reset password",email,"Temporary password set to 123456");
-      setCopied("Password reset to 123456");
-    }catch(error){
-      setCopied(`Supabase save failed: ${error instanceof Error?error.message:"Unknown error"}`);
-    }
+    if(!supabase){setCopied("Service unavailable");return;}
+    if(!window.confirm(`Send a password reset email to ${email}?`))return;
+    const redirectTo=typeof window!=="undefined"?`${window.location.origin}/`:undefined;
+    const {error}=await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(),redirectTo?{redirectTo}:undefined);
+    if(error){setCopied(`Reset failed: ${error.message}`);return;}
+    await logAction("reset password",email,"Password reset email sent");
+    setCopied("Password reset email sent");
   }
 
   async function removeSeller(email:string){
     const cleanEmail=email.toLowerCase();
-    if(cleanEmail===OWNER_EMAIL){setCopied("Owner admin cannot be deleted");return;}
     if(cleanEmail===currentUser.email.toLowerCase()){setCopied("You cannot delete yourself");return;}
-    if(isAdminEmail(email)){setCopied("Remove admin first before deleting");return;}
-    if(!window.confirm(`Delete seller ${email}? This cannot be undone.`))return;
-    const next=users.filter(u=>u.email.toLowerCase()!==cleanEmail);
-    LS.set("sf_users",next);
-    setUsers(next);
+    const target=users.find(u=>u.email.toLowerCase()===cleanEmail);
+    if(target?.role==="admin"){setCopied("Remove admin role first before deleting");return;}
+    if(!window.confirm(`Delete seller ${email}? This removes their profile and access.`))return;
     try{
       await deleteUser(email);
-      await logAction("deleted seller",email,"Seller account deleted");
+      setUsers(prev=>prev.filter(u=>u.email.toLowerCase()!==cleanEmail));
+      await logAction("deleted seller",email,"Seller profile deleted");
       setCopied("Seller deleted");
     }catch(error){
       setCopied(`Supabase delete failed: ${error instanceof Error?error.message:"Unknown error"}`);
@@ -2309,22 +2139,29 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   }
 
   async function makeAdmin(email:string){
-    setCopied("Admin access is controlled by server environment emails");
-    const next=users.map(u=>u.email.toLowerCase()===email.toLowerCase()?asAdminPlan(u):u);
-    LS.set("sf_users",next);
-    setUsers(next);
-    setAdmins(adminEmails());
-    const updated=next.find(u=>u.email.toLowerCase()===email.toLowerCase());
-    if(updated)await upsertUser(updated);
-    await logAction("made admin",email,"Seller promoted to admin");
+    if(!window.confirm(`Promote ${email} to admin? They will be able to manage all sellers.`))return;
+    try{
+      await adminUpdatePlan(email,{role:"admin",plan:"master",planStatus:"active",planExpiry:addMonths(120)});
+      setUsers(prev=>prev.map(u=>u.email.toLowerCase()===email.toLowerCase()?{...u,role:"admin" as Role,plan:"master" as Plan,planStatus:"active" as PlanStatus,planExpiry:addMonths(120)}:u));
+      setAdmins(prev=>Array.from(new Set([...prev,email.toLowerCase()])));
+      await logAction("made admin",email,"Seller promoted to admin");
+      setCopied("Seller promoted to admin");
+    }catch(error){
+      setCopied(`Update failed: ${error instanceof Error?error.message:"Unknown error"}`);
+    }
   }
 
   async function removeAdmin(email:string){
-    if(email.toLowerCase()===OWNER_EMAIL){setCopied("Owner admin cannot be removed");return;}
     if(email.toLowerCase()===currentUser.email.toLowerCase()){setCopied("You cannot remove yourself");return;}
-    setAdmins(adminEmails());
-    setCopied("Admin access is controlled by server environment emails");
-    await logAction("removed admin",email,"Admin access removed");
+    try{
+      await adminUpdatePlan(email,{role:"seller"});
+      setUsers(prev=>prev.map(u=>u.email.toLowerCase()===email.toLowerCase()?{...u,role:"seller" as Role}:u));
+      setAdmins(prev=>prev.filter(e=>e!==email.toLowerCase()));
+      await logAction("removed admin",email,"Admin access removed");
+      setCopied("Admin access removed");
+    }catch(error){
+      setCopied(`Update failed: ${error instanceof Error?error.message:"Unknown error"}`);
+    }
   }
 
   function copy(value:string,label:string){
@@ -2345,7 +2182,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
 
   const q=adminSearch.trim().toLowerCase();
   const filteredUsers=users.filter(u=>!q||[
-    u.email,u.profile.fullName,u.profile.storeName,u.profile.phone,u.profile.tiktok,u.profile.facebook,u.plan,isAdminEmail(u.email)?"admin":"seller"
+    u.email,u.profile.fullName,u.profile.storeName,u.profile.phone,u.profile.tiktok,u.profile.facebook,u.plan,(u.role==="admin")?"admin":"seller"
   ].some(v=>String(v||"").toLowerCase().includes(q)));
   const filteredMsgs=msgs.filter(m=>!q||[
     m.name,m.email,m.subject,m.message,m.status
@@ -2374,7 +2211,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   const filteredAuditLogs=auditLogs.filter(log=>!q||[
     log.actorEmail,log.action,log.targetEmail,log.details,log.timestamp
   ].some(v=>String(v||"").toLowerCase().includes(q)));
-  const sellerUsers=users.filter(u=>!isAdminEmail(u.email));
+  const sellerUsers=users.filter(u=>!(u.role==="admin"));
   const activeSellers=sellerUsers.filter(u=>u.planStatus==="active"&&dLeft(u.planExpiry)>0);
   const expiredSellers=sellerUsers.filter(u=>u.planStatus==="expired"||dLeft(u.planExpiry)===0);
   const planMonitorUsers=sellerUsers
@@ -2389,7 +2226,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
 
   function exportUsers(){
     csvDL(`sellerflow-users-${dayStamp}.csv`,["Email","Role","Plan","Plan Status","Days Left","Connected Accounts","Full Name","Store Name","Phone","TikTok","Facebook"],filteredUsers.map(u=>[
-      u.email,isAdminEmail(u.email)?"Admin":"Seller",pName(u.plan,t),u.planStatus,dLeft(u.planExpiry),registeredAccountCount(u),u.profile.fullName,u.profile.storeName,u.profile.phone,u.profile.tiktok,u.profile.facebook
+      u.email,(u.role==="admin")?"Admin":"Seller",pName(u.plan,t),u.planStatus,dLeft(u.planExpiry),registeredAccountCount(u),u.profile.fullName,u.profile.storeName,u.profile.phone,u.profile.tiktok,u.profile.facebook
     ]));
   }
   function exportPayments(){
@@ -2517,7 +2354,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                   {filteredUsers.map(u=>(
                     <tr key={u.email}>
                       <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>
-                      <td><Badge label={isAdminEmail(u.email)?"Admin":"Seller"} color={isAdminEmail(u.email)?"amber":"gray"}/></td>
+                      <td><Badge label={(u.role==="admin")?"Admin":"Seller"} color={(u.role==="admin")?"amber":"gray"}/></td>
                       <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
                       <td>{dLeft(u.planExpiry)}</td>
                       <td>{renderUserMonthsSelect(u)}</td>
@@ -2531,7 +2368,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                           <button className="tbl-btn ed" onClick={()=>approve(u.email,"pro",monthsForUser(u))}>Pro</button>
                           <button className="tbl-btn ed" onClick={()=>approve(u.email,"master",monthsForUser(u))}>Master</button>
                           <button className="tbl-btn dl" onClick={()=>setPlan(u.email,u.plan,"expired")}>Expire</button>
-                          {!isAdminEmail(u.email)
+                          {!(u.role==="admin")
                             ? <><button className="tbl-btn ed" onClick={()=>makeAdmin(u.email)}>Make Admin</button><button className="tbl-btn dl" onClick={()=>removeSeller(u.email)}>Delete</button></>
                             : <button className="tbl-btn dl" onClick={()=>removeAdmin(u.email)}>Remove Admin</button>}
                         </div>
@@ -2664,7 +2501,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
               <table className="tbl"><thead><tr><th>Email</th><th>Role</th><th>Plan</th><th>Days</th><th>Months</th><th>Accounts</th><th>Actions</th></tr></thead><tbody>
                 {filteredUsers.map(u=><tr key={"expanded-"+u.email}>
                   <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>
-                  <td><Badge label={isAdminEmail(u.email)?"Admin":"Seller"} color={isAdminEmail(u.email)?"amber":"gray"}/></td>
+                  <td><Badge label={(u.role==="admin")?"Admin":"Seller"} color={(u.role==="admin")?"amber":"gray"}/></td>
                   <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
                   <td>{dLeft(u.planExpiry)}</td>
                   <td>{renderUserMonthsSelect(u)}</td>
@@ -2678,7 +2515,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                       <button className="tbl-btn ed" onClick={()=>approve(u.email,"pro",monthsForUser(u))}>Pro</button>
                       <button className="tbl-btn ed" onClick={()=>approve(u.email,"master",monthsForUser(u))}>Master</button>
                       <button className="tbl-btn dl" onClick={()=>setPlan(u.email,u.plan,"expired")}>Expire</button>
-                      {!isAdminEmail(u.email)
+                      {!(u.role==="admin")
                         ? <><button className="tbl-btn ed" onClick={()=>makeAdmin(u.email)}>Make Admin</button><button className="tbl-btn dl" onClick={()=>removeSeller(u.email)}>Delete</button></>
                         : <button className="tbl-btn dl" onClick={()=>removeAdmin(u.email)}>Remove Admin</button>}
                     </div>
@@ -2791,7 +2628,9 @@ export default function App(){
   function setLang(l:Lang){const next=safeLang(l);setLangState(next);try{localStorage.setItem("sf_lang",JSON.stringify(next));}catch{return;}}
 
   const forceLogin=consumeForceLoginParam();
-  const [user,setUser]=useState<User|null>(()=>{if(forceLogin)return null;const e=LS.get<string>("sf_session","");if(!e)return null;const u=cleanUsers(arrLS<unknown>("sf_users")).find(u=>u.email===e)||null;return u?asAdminPlan(u):null;});
+  // Optimistic hydration from the cached profile; the Supabase session check
+  // below confirms it and logs the user out if there is no valid session.
+  const [user,setUser]=useState<User|null>(()=>{if(forceLogin)return null;const cached=safeUser(LS.get<unknown>("sf_session_user",null));return cached?asAdminPlan(cached):null;});
   const [accountGate,setAccountGate]=useState(()=>{
     if(forceLogin||typeof window==="undefined")return false;
     const saved=LS.get<string>("sf_session","");
@@ -2997,19 +2836,31 @@ export default function App(){
   },[user?.email,currentSessionId]);
 
   useEffect(()=>{
-    const refreshSession=()=>{
-      const email=LS.get<string>("sf_session","");
-      if(!email)return;
-      void findUser(email).then(u=>{
-        if(LS.get<string>("sf_session","")!==email)return;
-        const safe=safeUser(u);
-        if(safe)setUser(asAdminPlan(safe));
-      });
+    if(!supabase)return;
+    let active=true;
+    const applySession=async(session:{user?:{id:string}}|null)=>{
+      if(!session?.user){
+        if(active){setUser(null);LS.del("sf_session");LS.del("sf_session_user");}
+        return;
+      }
+      const profile=await getMyProfile(session.user.id);
+      if(!active||!profile)return;
+      const next=asAdminPlan(profile);
+      setUser(next);
+      LS.set("sf_session",next.email);
+      LS.set("sf_session_user",next);
     };
-    refreshSession();
-    const timer=window.setInterval(refreshSession,10000);
-    return()=>window.clearInterval(timer);
-  },[]);
+    if(forceLogin){
+      void supabase.auth.signOut();
+    }else{
+      void supabase.auth.getSession().then(({data})=>{void applySession(data.session);});
+    }
+    const {data:authSub}=supabase.auth.onAuthStateChange((event,session)=>{
+      if(event==="SIGNED_OUT"){setUser(null);LS.del("sf_session");LS.del("sf_session_user");return;}
+      void applySession(session);
+    });
+    return()=>{active=false;authSub.subscription.unsubscribe();};
+  },[forceLogin]);
 
   /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(()=>{
@@ -3031,7 +2882,10 @@ export default function App(){
   function saveUser(u:User){
     const next=asAdminPlan(u);
     setUser(next);
-    LS.set("sf_users",cleanUsers(arrLS<unknown>("sf_users")).map(x=>x.email===next.email?next:x));
+    LS.set("sf_session",next.email);
+    LS.set("sf_session_user",next);
+    // Persists profile fields only; plan/role are server-controlled (triggers
+    // ignore seller-side changes to them).
     void upsertUser(next);
   }
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -3042,14 +2896,15 @@ export default function App(){
     setPage("subscription");
   },[user,nowTick]);
   /* eslint-enable react-hooks/set-state-in-effect */
-  function handleLogin(u:User){const safe=safeUser(u);if(safe){setUser(asAdminPlan(safe));setPage("dashboard");}}
-  function handleLogout(){LS.del("sf_session");if(typeof window!=="undefined")window.sessionStorage.removeItem("sf_account_gate_ok");setUser(null);setComments([]);setBuyers([]);setAllOrders([]);setPrinted(new Set());setTotOrd(0);setTotRev(0);setSelBuyer(null);}
+  function handleLogin(u:User){const safe=safeUser(u);if(safe){const next=asAdminPlan(safe);setUser(next);LS.set("sf_session",next.email);LS.set("sf_session_user",next);setPage("dashboard");}}
+  function handleLogout(){void supabase?.auth.signOut();LS.del("sf_session");LS.del("sf_session_user");if(typeof window!=="undefined")window.sessionStorage.removeItem("sf_account_gate_ok");setUser(null);setComments([]);setBuyers([]);setAllOrders([]);setPrinted(new Set());setTotOrd(0);setTotRev(0);setSelBuyer(null);}
   async function handleDeleteAccount(){
     if(!user)return;
     const email=user.email;
-    await deleteSupportMessagesForEmail(email);
-    await deleteUser(email);
-    ["sf_session","sf_comments","sf_comment_archive","sf_buyers","sf_orders",sellerDataKey("sf_comments",email),sellerDataKey("sf_comment_archive",email),sellerDataKey("sf_buyers",email),sellerDataKey("sf_orders",email),sellerDataKey("sf_printed",email),supportReadKey(email)].forEach(k=>LS.del(k));
+    try{await deleteSupportMessagesForEmail(email);}catch(err){console.error("Delete support messages failed:",err);}
+    try{await deleteUser(email);}catch(err){console.error("Delete profile failed:",err);}
+    void supabase?.auth.signOut();
+    ["sf_session","sf_session_user","sf_comments","sf_comment_archive","sf_buyers","sf_orders",sellerDataKey("sf_comments",email),sellerDataKey("sf_comment_archive",email),sellerDataKey("sf_buyers",email),sellerDataKey("sf_orders",email),sellerDataKey("sf_printed",email),supportReadKey(email)].forEach(k=>LS.del(k));
     setShowProf(false);
     setPage("dashboard");
     setUser(null);
@@ -3081,15 +2936,28 @@ export default function App(){
     setSettingsState(next);
     LS.set("sf_settings",next);
   }
-  async function handleSavePw(op:string,np:string):Promise<string>{if(!user)return"No user";if(!(await verifyUserPassword(user,op)))return t.wrong_pw;saveUser({...user,password:await bcrypt.hash(np,10)});return"";}
-  function handleAdminApprove(email:string,plan:Plan,months=1){
-    const users=cleanUsers(arrLS<unknown>("sf_users"));
+  async function handleSavePw(op:string,np:string):Promise<string>{
+    if(!user||!supabase)return"No user";
+    // Re-authenticate to confirm the current password, then update it.
+    const {error:verifyError}=await supabase.auth.signInWithPassword({email:user.email,password:op});
+    if(verifyError)return t.wrong_pw;
+    const {error}=await supabase.auth.updateUser({password:np});
+    if(error)return error.message;
+    return"";
+  }
+  async function handleAdminApprove(email:string,plan:Plan,months=1){
     const now=new Date().toISOString();
-    const nextUsers=users.map(u=>u.email.toLowerCase()===email.toLowerCase()?{...u,plan,planStatus:"active" as PlanStatus,planExpiry:plan==="trial"?addDays(7):addMonths(months),trialStartedAt:plan==="trial"?now:u.trialStartedAt}:u);
-    LS.set("sf_users",nextUsers);
-    const updated=nextUsers.find(u=>u.email.toLowerCase()===email.toLowerCase());
-    if(updated)void upsertUser(updated);
-    if(updated&&user?.email.toLowerCase()===email.toLowerCase())setUser(asAdminPlan(updated));
+    const planExpiry=plan==="trial"?addDays(7):addMonths(months);
+    const trialStartedAt=plan==="trial"?now:undefined;
+    try{
+      await adminUpdatePlan(email,{plan,planStatus:"active",planExpiry,...(trialStartedAt?{trialStartedAt}:{})});
+    }catch(err){
+      setToast(`Approve failed: ${err instanceof Error?err.message:"error"}`);return;
+    }
+    if(user&&user.email.toLowerCase()===email.toLowerCase()){
+      const next=asAdminPlan({...user,plan,planStatus:"active",planExpiry,trialStartedAt:trialStartedAt??user.trialStartedAt});
+      setUser(next);LS.set("sf_session_user",next);
+    }
     setToast(`${email} approved for ${plan}${plan==="trial"?"":` (${months} month${months===1?"":"s"})`}`);
   }
   async function connectPlatform(platform:"TikTok"|"Facebook",data:Record<string,string>){

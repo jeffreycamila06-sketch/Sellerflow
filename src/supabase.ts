@@ -18,5 +18,12 @@ export const supabaseConfigHint = `${supabaseKeySource}:${supabaseAnonKey ? `...
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
 export const supabase = isSupabaseConfigured
-  ? createClient(supabaseUrl, supabaseAnonKey)
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+        storageKey: "sf_supabase_auth",
+      },
+    })
   : null;

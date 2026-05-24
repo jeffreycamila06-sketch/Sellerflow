@@ -2,6 +2,7 @@ import { isSupabaseConfigured, supabase, supabaseConfigHint } from "./supabase";
 
 type Plan = "trial" | "basic" | "pro" | "master";
 type PlanStatus = "active" | "expired" | "pending";
+export type Role = "seller" | "admin";
 
 export interface AccountProfile {
   fullName: string;
@@ -12,14 +13,15 @@ export interface AccountProfile {
 }
 
 export interface AccountUser {
+  authUserId?: string;
   email: string;
-  password: string;
   profile: AccountProfile;
   plan: Plan;
   planStatus: PlanStatus;
   planExpiry: string;
   trialStartedAt?: string;
   connectedAccounts: string[];
+  role?: Role;
 }
 
 export interface AccountSupportMsg {
@@ -69,8 +71,8 @@ const stringArrayValue = (value: unknown) => Array.isArray(value) ? value.filter
 
 function rowToUser(row: SupabaseRow): AccountUser {
   return {
+    authUserId: textValue(row.auth_user_id),
     email: textValue(row.email),
-    password: textValue(row.password),
     profile: {
       fullName: textValue(row.full_name),
       storeName: textValue(row.store_name),
@@ -83,23 +85,33 @@ function rowToUser(row: SupabaseRow): AccountUser {
     planExpiry: textValue(row.plan_expiry, new Date().toISOString()),
     trialStartedAt: textValue(row.trial_started_at),
     connectedAccounts: stringArrayValue(row.connected_accounts),
+    role: textValue(row.role) === "admin" ? "admin" : "seller",
   };
 }
 
+// Columns a seller is allowed to change on their own profile. Server-side
+// triggers additionally protect role/plan/plan_status, but we never send those
+// from normal profile saves.
 function userToRow(user: AccountUser) {
   return {
-    email: user.email.toLowerCase(),
-    password: user.password,
     full_name: user.profile.fullName,
     store_name: user.profile.storeName,
     phone: user.profile.phone,
     tiktok: user.profile.tiktok,
     facebook: user.profile.facebook,
+    connected_accounts: user.connectedAccounts,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+// Plan/role fields, only applied when an admin updates another account.
+function planRow(user: AccountUser) {
+  return {
     plan: user.plan,
     plan_status: user.planStatus,
     plan_expiry: user.planExpiry,
-    connected_accounts: user.connectedAccounts,
-    updated_at: new Date().toISOString(),
+    trial_started_at: user.trialStartedAt || null,
+    role: user.role || "seller",
   };
 }
 
@@ -154,90 +166,135 @@ function rowToAudit(row: SupabaseRow): AccountAuditLog {
   };
 }
 
-export async function listUsers(): Promise<AccountUser[]> {
-  const localUsers = localGet<AccountUser[]>("sf_users", []);
-  if (!isSupabaseConfigured || !supabase) return localUsers;
+// Returns the signed-in user's own profile (RLS limits sellers to their row;
+// admins can also call listUsers to see everyone).
+export async function getMyProfile(authUserId: string): Promise<AccountUser | null> {
+  if (!isSupabaseConfigured || !supabase || !authUserId) return null;
 
   const { data, error } = await supabase
-    .from("seller_users")
+    .from("seller_profiles")
+    .select("*")
+    .eq("auth_user_id", authUserId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Load profile error:", error.message);
+    return null;
+  }
+  return data ? rowToUser(data) : null;
+}
+
+// Creates the profile row right after Supabase Auth sign-up. The database
+// trigger decides role/plan (first account = admin/master, others = pending
+// seller), so the client cannot self-promote.
+export async function createMyProfile(
+  authUserId: string,
+  email: string,
+  profile: AccountProfile,
+): Promise<AccountUser | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+
+  const { data, error } = await supabase
+    .from("seller_profiles")
+    .insert({
+      auth_user_id: authUserId,
+      email: email.trim().toLowerCase(),
+      full_name: profile.fullName,
+      store_name: profile.storeName,
+      phone: profile.phone,
+      tiktok: profile.tiktok,
+      facebook: profile.facebook,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    console.error("Create profile error:", error.message);
+    throw new Error(`${error.message} (${supabaseConfigHint})`);
+  }
+  return rowToUser(data);
+}
+
+// Admin-only: lists every seller profile. Sellers calling this only see their
+// own row because of RLS.
+export async function listUsers(): Promise<AccountUser[]> {
+  if (!isSupabaseConfigured || !supabase) return [];
+
+  const { data, error } = await supabase
+    .from("seller_profiles")
     .select("*")
     .order("created_at", { ascending: true });
 
   if (error) {
     console.error("Load users error:", error.message);
-    return localUsers;
+    return [];
   }
-
-  if ((!data || data.length === 0) && localUsers.length > 0) {
-    await Promise.all(localUsers.map((user) => upsertUser(user)));
-    return localUsers;
-  }
-
-  const users = (data || []).map(rowToUser);
-  localSet("sf_users", users);
-  return users;
+  return (data || []).map(rowToUser);
 }
 
-export async function findUser(email: string): Promise<AccountUser | null> {
-  const cleanEmail = email.trim().toLowerCase();
-  if (!isSupabaseConfigured || !supabase) {
-    return localGet<AccountUser[]>("sf_users", []).find((u) => u.email.toLowerCase() === cleanEmail) || null;
-  }
-
-  const { data, error } = await supabase
-    .from("seller_users")
-    .select("*")
-    .eq("email", cleanEmail)
-    .maybeSingle();
-
-  if (error) {
-    console.error("Find user error:", error.message);
-    return localGet<AccountUser[]>("sf_users", []).find((u) => u.email.toLowerCase() === cleanEmail) || null;
-  }
-
-  if (data) return rowToUser(data);
-
-  const localUser = localGet<AccountUser[]>("sf_users", []).find((u) => u.email.toLowerCase() === cleanEmail) || null;
-  if (localUser) await upsertUser(localUser);
-  return localUser;
-}
-
-export async function upsertUser(user: AccountUser): Promise<AccountUser> {
-  const cleanUser = { ...user, email: user.email.trim().toLowerCase() };
-  const localUsers = localGet<AccountUser[]>("sf_users", []);
-  localSet("sf_users", [
-    ...localUsers.filter((u) => u.email.toLowerCase() !== cleanUser.email),
-    cleanUser,
-  ]);
-
+// Saves profile changes. For a seller this only affects their own row (RLS),
+// and triggers protect role/plan. When an admin passes a row that includes
+// plan/role changes, those are applied too.
+export async function upsertUser(user: AccountUser, opts: { includePlan?: boolean } = {}): Promise<AccountUser> {
+  const cleanUser: AccountUser = { ...user, email: user.email.trim().toLowerCase() };
   if (!isSupabaseConfigured || !supabase) return cleanUser;
 
-  const { error } = await supabase
-    .from("seller_users")
-    .upsert(userToRow(cleanUser), { onConflict: "email" });
+  const row = opts.includePlan ? { ...userToRow(cleanUser), ...planRow(cleanUser) } : userToRow(cleanUser);
 
+  let query = supabase.from("seller_profiles").update(row);
+  query = cleanUser.authUserId
+    ? query.eq("auth_user_id", cleanUser.authUserId)
+    : query.eq("email", cleanUser.email);
+
+  const { error } = await query;
   if (error) {
     console.error("Save user error:", error.message);
     throw new Error(`${error.message} (${supabaseConfigHint})`);
   }
-
   return cleanUser;
 }
 
+// Admin-only: delete a seller's profile (revokes app access). Fully removing
+// the underlying Supabase Auth user requires a server-side service_role call
+// (handled in the backend step), not the browser anon key.
 export async function deleteUser(email: string): Promise<void> {
   const cleanEmail = email.trim().toLowerCase();
-  const localUsers = localGet<AccountUser[]>("sf_users", []);
-  localSet("sf_users", localUsers.filter((u) => u.email.toLowerCase() !== cleanEmail));
-
   if (!isSupabaseConfigured || !supabase) return;
 
   const { error } = await supabase
-    .from("seller_users")
+    .from("seller_profiles")
     .delete()
     .eq("email", cleanEmail);
 
   if (error) {
     console.error("Delete user error:", error.message);
+    throw new Error(`${error.message} (${supabaseConfigHint})`);
+  }
+}
+
+// Admin-only: change plan/role fields on another account by email. The
+// server-side trigger only honours these column changes when the caller is an
+// admin, so a regular seller calling this is silently ignored by the database.
+export async function adminUpdatePlan(
+  email: string,
+  patch: { plan?: Plan; planStatus?: PlanStatus; planExpiry?: string; trialStartedAt?: string | null; role?: Role },
+): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) return;
+
+  const row: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (patch.plan !== undefined) row.plan = patch.plan;
+  if (patch.planStatus !== undefined) row.plan_status = patch.planStatus;
+  if (patch.planExpiry !== undefined) row.plan_expiry = patch.planExpiry;
+  if (patch.trialStartedAt !== undefined) row.trial_started_at = patch.trialStartedAt;
+  if (patch.role !== undefined) row.role = patch.role;
+
+  const { error } = await supabase
+    .from("seller_profiles")
+    .update(row)
+    .eq("email", email.trim().toLowerCase());
+
+  if (error) {
+    console.error("Admin update plan error:", error.message);
     throw new Error(`${error.message} (${supabaseConfigHint})`);
   }
 }

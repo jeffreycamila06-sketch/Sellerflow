@@ -151,11 +151,16 @@ using (auth_user_id = auth.uid() or public.is_admin())
 with check (auth_user_id = auth.uid() or public.is_admin());
 
 drop policy if exists "seller_profiles_delete_admin" on public.seller_profiles;
-create policy "seller_profiles_delete_admin"
+drop policy if exists "seller_profiles_delete_own_or_admin" on public.seller_profiles;
+create policy "seller_profiles_delete_own_or_admin"
 on public.seller_profiles
 for delete
 to authenticated
-using (public.is_admin());
+using (auth_user_id = auth.uid() or public.is_admin());
+-- Note: deleting the profile row revokes app access. Fully removing the
+-- underlying auth.users record needs a server-side service_role call (added in
+-- the backend step); until then a self-deleted user could log back in and a
+-- fresh minimal profile would be created.
 
 -- Note: no policy is granted to the `anon` role, so logged-out/anon-key-only
 -- requests cannot read or write this table at all. This is the opposite of the
