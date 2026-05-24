@@ -2765,7 +2765,10 @@ export default function App(){
   /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(()=>{
     if(!user)return;
-    const s = io(SERVER,{path:"/socket.io/",transports:["websocket"]});
+    const s = io(SERVER,{path:"/socket.io/",transports:["websocket"],auth:(cb:(d:{token:string})=>void)=>{
+      if(!supabase){cb({token:""});return;}
+      supabase.auth.getSession().then(({data})=>cb({token:data.session?.access_token||""}));
+    }});
     const sellerId=sellerIdOf(user.email);
     const sessionId=currentSessionId;
     const commentsKey=sellerLiveDataKey("sf_comments",user.email,currentSessionId);
@@ -2969,11 +2972,12 @@ export default function App(){
       ? {username:tiktokUsername,...connectionMeta}
       : {username:facebookPage,pageName:facebookPage,liveVideoId:facebookPage,accessToken:data.accessToken,...connectionMeta};
     try{
+      const session=supabase?(await supabase.auth.getSession()).data.session:null;
       const r=await fetch(`${SERVER}${ep}`,{
         method:"POST",
         headers:{
           "Content-Type":"application/json",
-          "x-sf-token":import.meta.env.VITE_SERVER_SECRET||"",
+          Authorization:`Bearer ${session?.access_token||""}`,
         },
         body:JSON.stringify(body)
       });

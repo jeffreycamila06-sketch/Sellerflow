@@ -3,11 +3,16 @@ import cors from "cors";
 import { WebcastPushConnection } from "tiktok-live-connector";
 import http from "http";
 import { Server } from "socket.io";
+import { createClient } from "@supabase/supabase-js";
 
 const app = express();
 const server = http.createServer(app);
 const TEST_COMMENT_TOKEN = process.env.TEST_COMMENT_TOKEN || "";
-const SF_SERVER_SECRET = process.env.SF_SERVER_SECRET || "";
+const SUPABASE_URL = process.env.SUPABASE_URL || "";
+const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || "";
+const sb = (SUPABASE_URL && SUPABASE_KEY)
+  ? createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false, autoRefreshToken: false } })
+  : null;
 
 function normalizeOrigin(origin) {
   return String(origin || "").trim().replace(/\/$/, "");
@@ -48,7 +53,7 @@ const corsOptions = {
   },
   credentials: true,
   methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "x-sf-token"],
+  allowedHeaders: ["Content-Type", "Authorization"],
 };
 
 const io = new Server(server, {
@@ -64,20 +69,32 @@ app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
 app.use(express.json());
 
-function requireServerToken(req, res, next) {
-  if (!SF_SERVER_SECRET) {
+function bearerToken(req) {
+  const h = String(req.get("authorization") || "");
+  return h.toLowerCase().startsWith("bearer ") ? h.slice(7).trim() : "";
+}
+
+async function verifyToken(token) {
+  if (!sb || !token) return null;
+  const { data, error } = await sb.auth.getUser(token);
+  return error ? null : data.user;
+}
+
+async function requireAuth(req, res, next) {
+  if (!sb) {
     return res.status(500).json({
       success: false,
-      error: "Server auth secret is not configured",
+      error: "Server auth is not configured",
     });
   }
-  const token = String(req.get("x-sf-token") || "");
-  if (token !== SF_SERVER_SECRET) {
+  const user = await verifyToken(bearerToken(req));
+  if (!user) {
     return res.status(401).json({
       success: false,
       error: "Unauthorized",
     });
   }
+  req.sellerId = cleanSellerId(user.email);
   return next();
 }
 
@@ -249,12 +266,18 @@ async function disconnectTikTokConnection(key, { manual = false } = {}) {
   manualTikTokDisconnects.delete(key);
 }
 
+io.use(async (socket, next) => {
+  const user = await verifyToken(socket.handshake.auth?.token || "");
+  if (!user) return next(new Error("unauthorized"));
+  socket.data.sellerId = cleanSellerId(user.email);
+  next();
+});
+
 io.on("connection", (socket) => {
-  socket.on("join_live_room", ({ sellerId, sessionId } = {}) => {
-    const cleanId = cleanSellerId(sellerId);
+  socket.on("join_live_room", ({ sessionId } = {}) => {
+    const cleanId = socket.data.sellerId;
     if (!cleanId) return;
     socket.join(sellerRoom(cleanId));
-    socket.data.sellerId = cleanId;
     socket.data.sessionId = String(sessionId || "");
 
     for (const active of tiktokConnections.values()) {
@@ -294,22 +317,15 @@ app.get("/health", (_req, res) => {
 });
 
 
-app.get("/connect-live/:username", async (req, res) => {
-  return connectTikTok(req.params.username, res, {
-    sellerId: req.query.sellerId || req.params.username,
-    sessionId: req.query.sessionId || "",
-  });
-});
-
-app.post("/connect/tiktok", requireServerToken, async (req, res) => {
+app.post("/connect/tiktok", requireAuth, async (req, res) => {
   return connectTikTok(req.body.username, res, {
-    sellerId: req.body.sellerId,
+    sellerId: req.sellerId,
     sessionId: req.body.sessionId,
   });
 });
 
-app.post("/disconnect/tiktok", async (req, res) => {
-  const sellerId = cleanSellerId(req.body.sellerId);
+app.post("/disconnect/tiktok", requireAuth, async (req, res) => {
+  const sellerId = req.sellerId;
   const username = cleanAccountKey(req.body.username);
   const sessionId = String(req.body.sessionId || "");
 
@@ -345,8 +361,8 @@ app.post("/disconnect/tiktok", async (req, res) => {
   });
 });
 
-app.post("/connect/facebook", requireServerToken, (req, res) => {
-  const sellerId = cleanSellerId(req.body.sellerId);
+app.post("/connect/facebook", requireAuth, (req, res) => {
+  const sellerId = req.sellerId;
   const username = cleanAccountKey(req.body.username || req.body.liveVideoId || req.body.pageName);
   const sessionId = String(req.body.sessionId || "");
 
@@ -716,45 +732,6 @@ app.get("/test-comment", (req, res) => {
   });
 });
 
-app.post("/browser-helper/comment", (req, res) => {
-  const sellerId = cleanSellerId(req.body.sellerId);
-  if (!sellerId) {
-    return res.status(400).json({
-      success: false,
-      error: "sellerId is required",
-    });
-  }
-
-  const comment = String(req.body.comment || "").trim();
-  if (!comment) {
-    return res.status(400).json({
-      success: false,
-      error: "comment is required",
-    });
-  }
-
-  const handle = cleanAccountKey(req.body.handle || "viewer") || "viewer";
-  const name = String(req.body.name || handle || "TikTok viewer").trim();
-  const payload = {
-    handle,
-    name,
-    comment,
-    platform: "TikTok",
-    isBuy: false,
-    buyerNum: null,
-    buyerData: null,
-    time: new Date().toLocaleTimeString(),
-    timestamp: String(req.body.timestamp || new Date().toISOString()),
-    sellerId,
-  };
-
-  io.to(sellerRoom(sellerId)).emit("comment", payload);
-
-  return res.json({
-    success: true,
-    message: "Browser helper comment received",
-  });
-});
 // Keep Render awake — i-lagay bago ang server.listen
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL || "";
 let keepAliveTimer = null;
