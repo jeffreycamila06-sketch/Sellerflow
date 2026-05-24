@@ -50,6 +50,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        registerPlugin(SellerFlowPrinterPlugin.class);
         super.onCreate(savedInstanceState);
         printerBridge = new SellerFlowPrinterBridge();
         if (bridge != null && bridge.getWebView() != null) {
@@ -75,13 +76,26 @@ public class MainActivity extends BridgeActivity {
 
     private void injectPrinterBridge(WebView webView) {
         String js = "(function(){"
+            + "var cap=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.SellerFlowPrinter;"
             + "window.SellerFlowPrinter=window.SellerFlowPrinter||{};"
+            + "if(cap){"
+            + "window.SellerFlowPrinter.requestPermissions=function(){return cap.requestPermissions();};"
+            + "window.SellerFlowPrinter.listPairedPrinters=function(){return cap.listPairedPrinters();};"
+            + "window.SellerFlowPrinter.savePrinter=function(address){return cap.savePrinter({address:(typeof address==='string'?address:(address&&address.address)||'')});};"
+            + "window.SellerFlowPrinter.printSlip=function(payload){return cap.printSlip(payload);};"
+            + "window.SellerFlowPrinter.status=function(){return cap.listPairedPrinters();};"
+            + "window.SellerFlowPrinter.scanPrinters=function(){return cap.listPairedPrinters();};"
+            + "window.SellerFlowPrinter.connectPrinter=function(printer){var p=printer;if(typeof printer==='string'){try{p=JSON.parse(printer);}catch(e){p={address:printer};}}return cap.savePrinter({address:(p&&p.address)||p||''});};"
+            + "window.SellerFlowPrinter.printerStatus=function(){return cap.listPairedPrinters();};"
+            + "window.SellerFlowPrinter.testPrint=function(){return cap.printSlip({type:'sellerflow.printSlip',storeName:'SellerFlowLive',currency:'PHP',sessionDate:new Date().toISOString().slice(0,10),createdAt:new Date().toISOString(),buyer:{num:0,name:'Test Print',handle:'sellerflow',platform:'Android',orders:[{orderNum:1,item:'SellerFlowLive test print',qty:1,price:0,total:0,time:new Date().toLocaleString()}],totalSpent:0,totalOrders:1}});};"
+            + "}else{"
             + "window.SellerFlowPrinter.printSlip=function(payload){return window.SellerFlowPrinterAndroid.printSlip(JSON.stringify(payload));};"
             + "window.SellerFlowPrinter.status=function(){return window.SellerFlowPrinterAndroid.status();};"
             + "window.SellerFlowPrinter.scanPrinters=function(){return window.SellerFlowPrinterAndroid.scanPrinters();};"
             + "window.SellerFlowPrinter.connectPrinter=function(printer){return window.SellerFlowPrinterAndroid.connectPrinter(typeof printer==='string'?printer:JSON.stringify(printer));};"
             + "window.SellerFlowPrinter.printerStatus=function(){return window.SellerFlowPrinterAndroid.printerStatus();};"
             + "window.SellerFlowPrinter.testPrint=function(){return window.SellerFlowPrinterAndroid.testPrint();};"
+            + "}"
             + "})();";
         webView.post(() -> webView.evaluateJavascript(js, null));
     }
