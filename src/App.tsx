@@ -3169,19 +3169,20 @@ export default function App(){
     setPage("dashboard");
     setToast(`Showing ${b.name}`);
   }
-  function oneClick(c:Comment,price=0){
+  function oneClick(c:Comment){
     setPrinted(p=>{
       const next=new Set(p);
       next.add(commentKey(c));
       LS.set(sellerMemoryKey("sf_printed"),Array.from(next));
       return next;
     });
-    void createOrderFromComment(c,{print:true,price});
+    void createOrderFromComment(c,{print:true,price:0});
   }
   function submitCommentPrice(c:Comment){
     const key=commentKey(c);
     const price=Number(commentPrices[key]||0)||0;
-    oneClick(c,price);
+    if(price<=0){setToast(t.enter_price);return;}
+    void createOrderFromComment(c,{print:true,price});
     setCommentPrices(p=>({...p,[key]:""}));
     setTimeout(()=>priceInputRefs.current[key]?.focus(),0);
   }
@@ -3333,7 +3334,7 @@ export default function App(){
                             onChange={e=>setCommentPrices(p=>({...p,[cKey]:e.target.value.replace(/[^\d.]/g,"")}))}
                             onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();submitCommentPrice(c);}}}
                           />
-                          <button className={`one-btn ${printed.has(cKey)?"done":""}`} onClick={()=>submitCommentPrice(c)}>{t.btn_1click}</button>
+                          <button className={`one-btn ${printed.has(cKey)?"done":""}`} onClick={()=>oneClick(c)}>{t.btn_1click}</button>
                         </div>
                       </div>
                     );
