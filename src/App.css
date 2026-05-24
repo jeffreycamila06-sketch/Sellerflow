@@ -488,7 +488,9 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .mobile-printer-saved{display:grid;gap:3px;border:1px solid #9FE1CB;background:#E1F5EE;color:#0F3F31;border-radius:12px;padding:12px}
 .mobile-printer-saved span{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.06em;color:#0F6E56}
 .mobile-printer-saved strong{font-size:15px}.mobile-printer-saved small{font-size:11px;color:#37695B}
-.mobile-printer-actions{display:grid;grid-template-columns:1.2fr .8fr .8fr;gap:8px}
+.mobile-printer-lan-config{display:grid;grid-template-columns:minmax(0,1fr) 110px;gap:8px}
+.mobile-printer-lan-config .fg{margin:0}
+.mobile-printer-actions{display:grid;grid-template-columns:1.1fr .85fr .85fr .85fr;gap:8px}
 .mobile-printer-actions button{min-height:44px}
 .mobile-printer-list{display:grid;gap:8px}
 .mobile-printer-empty{border:1px dashed #C8C1F4;background:#FAF9FF;color:#6E687E;border-radius:12px;padding:14px;font-size:12px;line-height:1.45;text-align:center}
@@ -1240,7 +1242,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .subpage-hd h2{font-size:21px;line-height:1.15}
   .subpage-hd p{font-size:12px;line-height:1.35}
   .grid4,.grid2,.plans-grid,.settings-quick-grid,.admin-quick-grid,.admin-fullscreen-grid,.admin-fullscreen-messages,.admin-box-grid,.auth-row2,.settings-expanded,.printer-preview-grid,.mobile-bt-layout,.position-step-grid{grid-template-columns:1fr!important}
-  .mobile-printer-actions{grid-template-columns:1fr!important}
+  .mobile-printer-actions,.mobile-printer-lan-config{grid-template-columns:1fr!important}
   .mobile-printer-option{grid-template-columns:40px minmax(0,1fr)!important}
   .mobile-printer-option .badge{justify-self:start}
   .scard,.table-card,.auth-card,.plan-card,.settings-card,.mobile-tool-card{width:100%;max-width:100%;min-width:0}

@@ -35,16 +35,18 @@ type ShippingStatus = "Pending"|"Ready"|"Shipped"|"Delivered"|"Returned";
 interface ShippingCustomer { username:string; name:string; phone:string; sevenCode:string; note:string; lastComment:string; firstSeen:string; status:ShippingStatus; isNew:boolean; }
 interface Settings { darkMode:boolean; autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"auto"|"usb"|"bluetooth"|"lan"; stickerSize:string; printStoreName:boolean; printBuyerNumber:boolean; printBuyerUsername:boolean; printOrderItems:boolean; printTotal:boolean; printAutoClose:boolean; printLabelScale:number; printStoreScale:number; printBuyerNumberScale:number; printBuyerNameScale:number; printUsernameScale:number; printOrderScale:number; printCommentScale:number; printTotalScale:number; printStoreX:number; printStoreY:number; printBuyerLabelX:number; printBuyerLabelY:number; printBuyerNumberX:number; printBuyerNumberY:number; printBuyerNameX:number; printBuyerNameY:number; printUsernameX:number; printUsernameY:number; printSessionX:number; printSessionY:number; printOrderX:number; printOrderY:number; printTotalX:number; printTotalY:number; }
 interface MobilePrinterDevice { id:string; type:"bluetooth"|"lan"; name:string; address?:string; host?:string; port?:number; paired?:boolean; online?:boolean; signal?:number; distance?:string; hint?:string; }
-interface MobilePrinterResult { ok?:boolean; message?:string; online?:boolean; savedPrinter?:MobilePrinterDevice|null; printers?:MobilePrinterDevice[]; }
+interface MobilePrinterResult { ok?:boolean; message?:string; online?:boolean; host?:string; port?:number; savedPrinter?:MobilePrinterDevice|null; printers?:MobilePrinterDevice[]; }
+interface PrinterLanConfig { host:string; port?:number; }
+type PrinterBridgeReturn = void|string|MobilePrinterResult;
 type NumberSettingKey = {[K in keyof Settings]: Settings[K] extends number ? K : never}[keyof Settings];
 interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; proofImage?:string; timestamp:string; status:"pending"|"approved"|"rejected"|"resolved"; adminReply?:string; repliedAt?:string; }
 interface NativePrinterPayload { type:"sellerflow.printSlip"; buyer:Buyer; currency:string; storeName:string; settings:Settings; sessionDate:string; createdAt:string; }
 
 declare global {
   interface Window {
-    SellerFlowPrinter?: { printSlip?: (payload:NativePrinterPayload)=>void|string|Promise<void|string>; status?: ()=>string|Promise<string>; printerStatus?: ()=>string|Promise<string>; scanPrinters?: ()=>string|Promise<string>; connectPrinter?: (printer:MobilePrinterDevice|string)=>string|Promise<string>; testPrint?: ()=>string|Promise<string>; };
+    SellerFlowPrinter?: { printSlip?: (payload:NativePrinterPayload)=>PrinterBridgeReturn|Promise<PrinterBridgeReturn>; setPrinter?: (config:PrinterLanConfig)=>Promise<MobilePrinterResult>; getPrinter?: ()=>Promise<MobilePrinterResult>; testConnection?: (config:PrinterLanConfig)=>Promise<MobilePrinterResult>; status?: ()=>string|Promise<string>; printerStatus?: ()=>string|Promise<string|MobilePrinterResult>; scanPrinters?: ()=>string|Promise<string|MobilePrinterResult>; connectPrinter?: (printer:MobilePrinterDevice|string)=>string|Promise<string|MobilePrinterResult>; testPrint?: ()=>string|Promise<string|MobilePrinterResult>; };
     ReactNativeWebView?: { postMessage:(message:string)=>void };
-    Capacitor?: { Plugins?: { SellerFlowPrinter?: { printSlip:(payload:NativePrinterPayload)=>Promise<void|string> } } };
+    Capacitor?: { Plugins?: { SellerFlowPrinter?: { printSlip:(payload:NativePrinterPayload)=>Promise<PrinterBridgeReturn>; setPrinter?:(config:PrinterLanConfig)=>Promise<MobilePrinterResult>; getPrinter?:()=>Promise<MobilePrinterResult>; testConnection?:(config:PrinterLanConfig)=>Promise<MobilePrinterResult> } } };
   }
 }
 const normalizeComment=(raw:unknown,index=0):Comment|null=>{
@@ -324,26 +326,38 @@ function hasNativeMobilePrinter(){
   );
 }
 
-async function callMobilePrinterBridge(action:"scanPrinters"|"printerStatus"|"testPrint"|"connectPrinter",printer?:MobilePrinterDevice):Promise<MobilePrinterResult>{
+async function callMobilePrinterBridge(action:"scanPrinters"|"printerStatus"|"testPrint"|"connectPrinter"|"setPrinter"|"getPrinter"|"testConnection",printer?:MobilePrinterDevice|PrinterLanConfig):Promise<MobilePrinterResult>{
   if(typeof window==="undefined"||!window.SellerFlowPrinter)return {ok:false,message:"Open this inside the Android app to use phone printer scanning."};
   const bridge=window.SellerFlowPrinter;
   try{
-    const raw=action==="connectPrinter"
-      ? await bridge.connectPrinter?.(printer?JSON.stringify(printer):"")
-      : await bridge[action]?.();
+    let raw:unknown;
+    if(action==="setPrinter")raw=await bridge.setPrinter?.(printer as PrinterLanConfig);
+    else if(action==="getPrinter")raw=await bridge.getPrinter?.();
+    else if(action==="testConnection")raw=await bridge.testConnection?.(printer as PrinterLanConfig);
+    else if(action==="connectPrinter")raw=await bridge.connectPrinter?.(printer?JSON.stringify(printer):"");
+    else raw=await bridge[action]?.();
     if(typeof raw==="string"){
       try{return JSON.parse(raw) as MobilePrinterResult;}catch{return {ok:/printed|ready|online|connected/i.test(raw),message:raw};}
     }
+    if(raw&&typeof raw==="object")return raw as MobilePrinterResult;
     return {ok:true,message:"Printer command sent"};
   }catch(err){
-    return {ok:false,message:err instanceof Error?err.message:"Printer bridge failed"};
+    const e=err as {message?:string};
+    return {ok:false,message:e?.message||String(err)||"Printer bridge failed"};
   }
 }
 
 function sendSlipToNativePrinter(payload:NativePrinterPayload){
   if(typeof window==="undefined")return false;
-  const showNativePrinterResult=(result:void|string|Promise<void|string>)=>{
+  const showNativePrinterResult=(result:PrinterBridgeReturn|Promise<PrinterBridgeReturn>)=>{
     void Promise.resolve(result).then(msg=>{
+      if(msg&&typeof msg==="object"){
+        if(msg.ok)return;
+        const text=msg.message||"Native printer failed.";
+        console.warn(text);
+        window.alert(text);
+        return;
+      }
       if(typeof msg!=="string"||!msg.trim())return;
       if(/printed to/i.test(msg))return;
       console.warn(msg);
@@ -1387,7 +1401,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   const directPrintParam=new URLSearchParams(window.location.search).get("directPrint")==="1";
   const [directPrintMode,setDirectPrintMode]=useState(()=>directPrintParam||LS.get<boolean>("sf_direct_print_mode",false));
   const settingsDirty=JSON.stringify(sets)!==JSON.stringify(settings);
-  const settingsTitles={"":"Settings",profile:"Profile Information",password:"Change Password",display:"Display & Printing",printer:"Printer Settings",mobilePrinter:"Mobile Bluetooth Printer"};
+  const settingsTitles={"":"Settings",profile:"Profile Information",password:"Change Password",display:"Display & Printing",printer:"Printer Settings",mobilePrinter:"Mobile WiFi Printer"};
   const previewScale=(v:number|undefined,fallback=100)=>Math.max(60,Math.min(180,v||fallback))/100;
   const storePreview=previewScale(sets.printStoreScale,sets.printLabelScale);
   const buyerNumberPreview=previewScale(sets.printBuyerNumberScale,120);
@@ -1400,6 +1414,8 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   const [mobilePrinterStatus,setMobilePrinterStatus]=useState<MobilePrinterResult>({ok:false,message:nativePrinterReady?"Tap Check Status":"Open Android app for printer scan"});
   const [mobilePrinters,setMobilePrinters]=useState<MobilePrinterDevice[]>([]);
   const [printerScanning,setPrinterScanning]=useState(false);
+  const [lanPrinterHost,setLanPrinterHost]=useState("");
+  const [lanPrinterPort,setLanPrinterPort]=useState("9100");
   const previewMove=(x:number|undefined,y:number|undefined)=>({transform:`translate(${(x||0)*1.8}px,${(y||0)*1.8}px)`});
   const stepSetting=(key:NumberSettingKey,delta:number)=>setSets(s=>({...s,[key]:Math.max(-40,Math.min(40,Number(s[key]||0)+delta))}));
   const stepSize=(key:NumberSettingKey,delta:number)=>setSets(s=>({...s,[key]:Math.max(60,Math.min(180,Number(s[key]||100)+delta))}));
@@ -1482,31 +1498,48 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
     setToast("Printer test sent");
   }
   async function refreshMobilePrinterStatus(){
-    const result=await callMobilePrinterBridge("printerStatus");
+    const result=await callMobilePrinterBridge("getPrinter");
     setMobilePrinterStatus(result);
+    const saved=result.savedPrinter;
+    if(result.host||saved?.host)setLanPrinterHost(result.host||saved?.host||"");
+    if(result.port||saved?.port)setLanPrinterPort(String(result.port||saved?.port||9100));
     return result;
   }
   async function scanMobilePrinters(){
     setPrinterScanning(true);
-    const result=await callMobilePrinterBridge("scanPrinters");
+    const result=await callMobilePrinterBridge("getPrinter");
     setMobilePrinterStatus(result);
-    setMobilePrinters(result.printers||[]);
+    setMobilePrinters(result.savedPrinter&&result.savedPrinter.host?[result.savedPrinter]:[]);
     setPrinterScanning(false);
-    setToast(result.message||"Printer scan complete");
+    setToast(result.message||"Printer status checked");
   }
   async function connectMobilePrinter(printer:MobilePrinterDevice){
-    const result=await callMobilePrinterBridge("connectPrinter",printer);
+    const result=await callMobilePrinterBridge("setPrinter",{host:printer.host||"",port:printer.port||9100});
     setMobilePrinterStatus(result);
     if(result.savedPrinter)setMobilePrinters(list=>[result.savedPrinter as MobilePrinterDevice,...list.filter(p=>p.id!==result.savedPrinter?.id)]);
     setToast(result.message||"Printer saved");
   }
+  async function saveLanPrinter(){
+    const port=Math.max(1,Math.min(65535,Number(lanPrinterPort)||9100));
+    const result=await callMobilePrinterBridge("setPrinter",{host:lanPrinterHost.trim(),port});
+    setMobilePrinterStatus(result);
+    if(result.savedPrinter)setMobilePrinters([result.savedPrinter]);
+    setToast(result.message||"WiFi printer saved");
+  }
+  async function testLanPrinterConnection(){
+    const port=Math.max(1,Math.min(65535,Number(lanPrinterPort)||9100));
+    const result=await callMobilePrinterBridge("testConnection",{host:lanPrinterHost.trim(),port});
+    setMobilePrinterStatus(result);
+    if(result.ok)await saveLanPrinter();
+    else setToast(result.message||"Printer connection failed");
+  }
   async function testMobilePrinter(){
     const result=await callMobilePrinterBridge("testPrint");
     setMobilePrinterStatus(result);
-    setToast(result.message||"Test print sent");
+    setToast(result.ok?result.message||"Test printed":result.message||"Test print failed");
   }
   function openMobileBluetoothGuide(){
-    setToast("Turn on printer, keep phone on same WiFi or Bluetooth nearby, then tap Scan Printers.");
+    setToast("Turn on printer, connect phone to the same WiFi, then enter the printer IP and tap Test Connection.");
   }
   function resetPrinterLayout(){
     setSets(s=>({
@@ -1568,7 +1601,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
           <div className="ms-l">Printer</div><div className="ms-v">{settingsDirty?"!":"OK"}</div><span>{settingsDirty?"Changes not saved":"Saved"} - output tools</span>
         </button>
         <button className="admin-action-card mobile-bluetooth-card" onDoubleClick={()=>setExpandedSettingsBox("mobilePrinter")}>
-          <div className="ms-l">Mobile Printer</div><div className="ms-v">BT</div><span>Bluetooth printer setup for phone app</span>
+          <div className="ms-l">Mobile Printer</div><div className="ms-v">LAN</div><span>WiFi printer setup for phone app</span>
         </button>
       </div>
       {expandedSettingsBox&&(
@@ -1750,32 +1783,41 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
             <div className="mobile-bt-copy">
               <div className={`printer-direct-status ${mobilePrinterStatus.online?"active":"inactive"}`}>
                 <div>
-                  <strong>{mobilePrinterStatus.online?"Printer Online":nativePrinterReady?"Ready to scan printers":"Android app needed"}</strong>
-                  <span>{mobilePrinterStatus.message||"Scan Bluetooth and WiFi/LAN thermal printers, then tap one printer to save it."}</span>
+                  <strong>{mobilePrinterStatus.online?"Printer Online":nativePrinterReady?"Ready for WiFi printer":"Android app needed"}</strong>
+                  <span>{mobilePrinterStatus.message||"Enter the thermal printer IP address and test the TCP connection."}</span>
                 </div>
-                <Badge label={mobilePrinterStatus.online?"Online":nativePrinterReady?"Scan":"Mobile only"} color={mobilePrinterStatus.online?"green":"amber"}/>
+                <Badge label={mobilePrinterStatus.online?"Online":nativePrinterReady?"WiFi":"Mobile only"} color={mobilePrinterStatus.online?"green":"amber"}/>
               </div>
               {mobilePrinterStatus.savedPrinter&&(
                 <div className="mobile-printer-saved">
                   <span>Saved printer</span>
                   <strong>{mobilePrinterStatus.savedPrinter.name}</strong>
-                  <small>{mobilePrinterStatus.savedPrinter.type==="lan"?"WiFi/LAN":"Bluetooth"} {mobilePrinterStatus.savedPrinter.host||mobilePrinterStatus.savedPrinter.address||""}</small>
+                  <small>WiFi/LAN {mobilePrinterStatus.savedPrinter.host||""}:{mobilePrinterStatus.savedPrinter.port||9100}</small>
                 </div>
               )}
+              <div className="mobile-printer-lan-config">
+                <Fg label="Printer IP address">
+                  <input value={lanPrinterHost} onChange={e=>setLanPrinterHost(e.target.value)} placeholder="192.168.18.234" inputMode="decimal"/>
+                </Fg>
+                <Fg label="Port">
+                  <input value={lanPrinterPort} onChange={e=>setLanPrinterPort(e.target.value.replace(/[^\d]/g,""))} placeholder="9100" inputMode="numeric"/>
+                </Fg>
+              </div>
               <div className="mobile-printer-actions">
-                <button type="button" className="printer-test-btn" onClick={scanMobilePrinters} disabled={printerScanning}>{printerScanning?"Scanning nearby printers...":"Scan Printers"}</button>
+                <button type="button" className="printer-test-btn" onClick={testLanPrinterConnection}>Test Connection</button>
+                <button type="button" className="btn-out" onClick={saveLanPrinter}>Save Printer</button>
                 <button type="button" className="btn-out" onClick={refreshMobilePrinterStatus}>Check Status</button>
                 <button type="button" className="printer-test-btn" onClick={testMobilePrinter}>Test Print</button>
               </div>
               <div className="mobile-printer-list">
-                {mobilePrinters.length===0&&<div className="mobile-printer-empty">No scanned printers yet. Turn printer on, connect phone to the same WiFi or keep Bluetooth printer nearby, then tap Scan Printers.</div>}
+                {mobilePrinters.length===0&&<div className="mobile-printer-empty">No WiFi printer saved yet. Turn printer on, connect phone to the same WiFi, enter the printer IP, then tap Test Connection.</div>}
                 {mobilePrinters.map(printer=>(
                   <button type="button" key={printer.id} className="mobile-printer-option" onClick={()=>connectMobilePrinter(printer)}>
-                    <div className={`mobile-printer-type ${printer.type}`}>{printer.type==="lan"?"WiFi":"BT"}</div>
+                    <div className={`mobile-printer-type ${printer.type}`}>WiFi</div>
                     <div>
                       <strong>{printer.name}</strong>
-                      <span>{printer.hint||"Thermal printer"} - {printer.distance||""}</span>
-                      <small>{printer.host||printer.address}</small>
+                      <span>{printer.hint||"Raw TCP ESC/POS printer"}</span>
+                      <small>{printer.host}:{printer.port||9100}</small>
                     </div>
                     <Badge label={printer.online||printer.paired?"Ready":"Nearby"} color={printer.online||printer.paired?"green":"purple"}/>
                   </button>
@@ -1785,23 +1827,23 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
                 <strong>Simple seller setup</strong>
                 <ol>
                   <li>Turn on the thermal printer.</li>
-                  <li>For WiFi/LAN printer, connect phone to the same WiFi.</li>
-                  <li>For Bluetooth printer, keep it nearby and pair if Android asks.</li>
-                  <li>Tap Scan Printers, choose one printer, then Test Print.</li>
+                  <li>Connect phone and printer to the same WiFi.</li>
+                  <li>Enter printer IP address and port 9100.</li>
+                  <li>Tap Test Connection, then Test Print.</li>
                 </ol>
               </div>
               <div className="mobile-bt-actions">
                 <button type="button" className="btn-out" onClick={openMobileBluetoothGuide}>Setup Help</button>
                 <button type="button" className="btn-out" onClick={testPrinter}>Browser Fallback Test</button>
               </div>
-              <div className="backup-note">SellerFlowLive auto-saves the selected printer and reconnects when it is online again. LAN scan checks ESC/POS port 9100 on the current WiFi.</div>
+              <div className="backup-note">SellerFlowLive saves the WiFi printer IP in the Android app. Use port 9100 for most ESC/POS network printers.</div>
             </div>
             <div className="mobile-bt-preview">
               <div className="mobile-bt-phone">
                 <div className="mobile-bt-top"/>
                 <div className="mobile-bt-card">
                   <b>Auto Printer</b>
-                  <span>Bluetooth or WiFi/LAN</span>
+                  <span>WiFi/LAN TCP</span>
                   <em>{mobilePrinterStatus.online?"Online":"Scan to connect"}</em>
                 </div>
                 <div className="mobile-bt-slip">

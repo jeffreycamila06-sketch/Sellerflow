@@ -1,172 +1,119 @@
 package com.sellerflow.live;
 
-import android.Manifest;
-import android.annotation.SuppressLint;
-import android.bluetooth.BluetoothAdapter;
-import android.bluetooth.BluetoothDevice;
-import android.bluetooth.BluetoothSocket;
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.os.Build;
 import android.util.Log;
-import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
-import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
-import com.getcapacitor.annotation.Permission;
-import com.getcapacitor.annotation.PermissionCallback;
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.nio.charset.Charset;
-import java.util.Set;
-import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-@CapacitorPlugin(
-    name = "SellerFlowPrinter",
-    permissions = {
-        @Permission(
-            alias = "bluetooth",
-            strings = {
-                Manifest.permission.BLUETOOTH_CONNECT,
-                Manifest.permission.BLUETOOTH_SCAN
-            }
-        )
-    }
-)
+@CapacitorPlugin(name = "SellerFlowPrinter")
 public class SellerFlowPrinterPlugin extends Plugin {
     private static final String TAG = "SellerFlowPrinter";
-    private static final UUID SPP_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
     private static final String PREFS = "sellerflow_printer";
-    private static final String PREF_SELECTED_ADDRESS = "selected_printer_address";
-    private static final String PREF_SELECTED = "selected_printer";
-    private static final String DEFAULT_PRINTER_ADDRESS = "8C:C6:A4:D7:35:A1";
+    private static final String PREF_HOST = "lan_host";
+    private static final String PREF_PORT = "lan_port";
+    private static final int DEFAULT_PORT = 9100;
+    private static final int CONNECT_TIMEOUT_MS = 5000;
     private static final Charset PRINTER_CHARSET = Charset.forName("GBK");
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
     @PluginMethod
-    public void requestPermissions(PluginCall call) {
-        Log.i(TAG, "requestPermissions start");
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            resolveOk(call, "Bluetooth permission granted", null);
+    public void setPrinter(PluginCall call) {
+        String host = cleanHost(call.getString("host", ""));
+        int port = call.getInt("port", DEFAULT_PORT);
+        Log.i(TAG, "setPrinter host=" + host + " port=" + port);
+        if (host.isEmpty()) {
+            call.reject("Printer IP address is required", "HOST_REQUIRED");
             return;
         }
-        if (hasBluetoothPermission()) {
-            resolveOk(call, "Bluetooth permission granted", null);
+        if (port <= 0 || port > 65535) {
+            call.reject("Printer port must be between 1 and 65535", "PORT_INVALID");
             return;
         }
-        requestPermissionForAlias("bluetooth", call, "bluetoothPermsCallback");
-    }
-
-    @PermissionCallback
-    private void bluetoothPermsCallback(PluginCall call) {
-        if (hasBluetoothPermission()) {
-            Log.i(TAG, "requestPermissions granted");
-            resolveOk(call, "Bluetooth permission granted", null);
-        } else {
-            Log.w(TAG, "requestPermissions denied");
-            call.reject("Bluetooth permission denied", "PERMISSION_DENIED");
-        }
+        prefs().edit().putString(PREF_HOST, host).putInt(PREF_PORT, port).apply();
+        JSObject ret = printerConfig(host, port);
+        ret.put("ok", true);
+        ret.put("message", "Saved WiFi printer " + host + ":" + port);
+        call.resolve(ret);
     }
 
     @PluginMethod
-    public void listPairedPrinters(PluginCall call) {
-        Log.i(TAG, "listPairedPrinters start");
-        if (!hasBluetoothPermission()) {
-            call.reject("Bluetooth permission not granted. Call requestPermissions first.", "PERMISSION_REQUIRED");
-            return;
-        }
-        try {
-            BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
-            if (adapter == null) {
-                call.reject("Bluetooth is not available on this device", "BLUETOOTH_UNAVAILABLE");
-                return;
-            }
-            if (!adapter.isEnabled()) {
-                call.reject("Bluetooth is turned off", "BLUETOOTH_DISABLED");
-                return;
-            }
-
-            JSArray printers = new JSArray();
-            for (BluetoothDevice device : getBondedDevices(adapter)) {
-                printers.put(deviceToJson(device));
-            }
-
-            JSObject ret = new JSObject();
-            ret.put("ok", true);
-            ret.put("printers", printers);
-            ret.put("savedAddress", getSavedAddress());
-            ret.put("message", "Found " + printers.length() + " paired printer" + (printers.length() == 1 ? "" : "s"));
-            Log.i(TAG, "listPairedPrinters success count=" + printers.length());
-            call.resolve(ret);
-        } catch (Exception e) {
-            Log.e(TAG, "listPairedPrinters failed", e);
-            call.reject("List paired printers failed: " + e.getMessage(), "LIST_FAILED", e);
-        }
+    public void getPrinter(PluginCall call) {
+        String host = getSavedHost();
+        int port = getSavedPort();
+        Log.i(TAG, "getPrinter host=" + host + " port=" + port);
+        JSObject ret = printerConfig(host, port);
+        ret.put("ok", !host.isEmpty());
+        ret.put("message", host.isEmpty() ? "No WiFi printer saved" : "Saved WiFi printer " + host + ":" + port);
+        call.resolve(ret);
     }
 
     @PluginMethod
-    public void savePrinter(PluginCall call) {
-        String address = normalizeAddress(call.getString("address", ""));
-        Log.i(TAG, "savePrinter address=" + address);
-        if (address.isEmpty()) {
-            call.reject("Printer address is required", "ADDRESS_REQUIRED");
+    public void testConnection(PluginCall call) {
+        String host = cleanHost(call.getString("host", getSavedHost()));
+        int port = call.getInt("port", getSavedPort());
+        Log.i(TAG, "testConnection host=" + host + " port=" + port);
+        if (host.isEmpty()) {
+            call.reject("Printer IP address is required", "HOST_REQUIRED");
             return;
         }
-        try {
-            JSONObject saved = buildSavedPrinter(address);
-            prefs().edit()
-                .putString(PREF_SELECTED_ADDRESS, address)
-                .putString(PREF_SELECTED, saved.toString())
-                .apply();
-
-            JSObject ret = new JSObject();
-            ret.put("ok", true);
-            ret.put("address", address);
-            ret.put("savedPrinter", JSObject.fromJSONObject(saved));
-            ret.put("message", "Saved printer " + saved.optString("name", address));
-            call.resolve(ret);
-        } catch (Exception e) {
-            Log.e(TAG, "savePrinter failed", e);
-            call.reject("Save printer failed: " + e.getMessage(), "SAVE_FAILED", e);
+        if (port <= 0 || port > 65535) {
+            call.reject("Printer port must be between 1 and 65535", "PORT_INVALID");
+            return;
         }
+        executor.execute(() -> {
+            try {
+                openAndClose(host, port);
+                JSObject ret = printerConfig(host, port);
+                ret.put("ok", true);
+                ret.put("online", true);
+                ret.put("message", "Printer reachable at " + host + ":" + port);
+                Log.i(TAG, "testConnection success host=" + host + " port=" + port);
+                call.resolve(ret);
+            } catch (Exception e) {
+                Log.e(TAG, "testConnection failed host=" + host + " port=" + port, e);
+                call.reject("Printer unreachable at " + host + ":" + port + " - " + e.getMessage(), "CONNECTION_FAILED", e);
+            }
+        });
     }
 
     @PluginMethod
     public void printSlip(PluginCall call) {
-        Log.i(TAG, "printSlip start");
-        if (!hasBluetoothPermission()) {
-            call.reject("Bluetooth permission not granted. Call requestPermissions first.", "PERMISSION_REQUIRED");
+        String host = getSavedHost();
+        int port = getSavedPort();
+        Log.i(TAG, "printSlip start host=" + host + " port=" + port);
+        if (host.isEmpty()) {
+            call.reject("No WiFi printer saved. Enter printer IP and tap Test Connection first.", "PRINTER_NOT_SET");
             return;
         }
-
         final JSObject payload = call.getData();
         executor.execute(() -> {
             try {
-                String address = chooseAddress(payload);
-                if (address.isEmpty()) {
-                    throw new Exception("No saved printer address. Pair D520BT-Z, then save printer first.");
-                }
                 byte[] data = buildEscPosSlip(new JSONObject(payload.toString()));
-                writeBluetooth(address, data);
-
-                JSObject ret = new JSObject();
+                writeTcp(host, port, data);
+                JSObject ret = printerConfig(host, port);
                 ret.put("ok", true);
-                ret.put("address", address);
+                ret.put("online", true);
                 ret.put("bytes", data.length);
-                ret.put("message", "Printed to " + printerName(address));
-                Log.i(TAG, "printSlip success address=" + address + " bytes=" + data.length);
+                ret.put("message", "Printed to WiFi printer " + host + ":" + port);
+                Log.i(TAG, "printSlip success host=" + host + " port=" + port + " bytes=" + data.length);
                 call.resolve(ret);
             } catch (Exception e) {
-                Log.e(TAG, "printSlip failed", e);
-                call.reject("Print failed: " + e.getMessage(), "PRINT_FAILED", e);
+                Log.e(TAG, "printSlip failed host=" + host + " port=" + port, e);
+                call.reject("Print failed at " + host + ":" + port + " - " + e.getMessage(), "PRINT_FAILED", e);
             }
         });
     }
@@ -177,107 +124,59 @@ public class SellerFlowPrinterPlugin extends Plugin {
         executor.shutdownNow();
     }
 
-    private boolean hasBluetoothPermission() {
-        return Build.VERSION.SDK_INT < Build.VERSION_CODES.S
-            || getPermissionState("bluetooth") == PermissionState.GRANTED;
-    }
-
     private SharedPreferences prefs() {
         return getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
-    private String getSavedAddress() {
-        String address = prefs().getString(PREF_SELECTED_ADDRESS, "");
-        if (address != null && !address.trim().isEmpty()) return normalizeAddress(address);
-        String saved = prefs().getString(PREF_SELECTED, "");
-        if (saved == null || saved.trim().isEmpty()) return "";
-        try {
-            return normalizeAddress(new JSONObject(saved).optString("address", ""));
-        } catch (Exception ignored) {
-            return "";
+    private String getSavedHost() {
+        return cleanHost(prefs().getString(PREF_HOST, ""));
+    }
+
+    private int getSavedPort() {
+        return prefs().getInt(PREF_PORT, DEFAULT_PORT);
+    }
+
+    private String cleanHost(String host) {
+        return host == null ? "" : host.trim();
+    }
+
+    private JSObject printerConfig(String host, int port) {
+        JSObject ret = new JSObject();
+        ret.put("host", host);
+        ret.put("port", port);
+        ret.put("savedPrinter", savedPrinter(host, port));
+        return ret;
+    }
+
+    private JSObject savedPrinter(String host, int port) {
+        JSObject printer = new JSObject();
+        if (host == null || host.isEmpty()) return printer;
+        printer.put("id", "lan:" + host + ":" + port);
+        printer.put("type", "lan");
+        printer.put("name", "WiFi/LAN ESC-POS " + host);
+        printer.put("host", host);
+        printer.put("port", port);
+        printer.put("online", true);
+        printer.put("hint", "Raw TCP port " + port);
+        return printer;
+    }
+
+    private void openAndClose(String host, int port) throws Exception {
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MS);
         }
     }
 
-    private String chooseAddress(JSONObject payload) {
-        String address = getSavedAddress();
-        if (!address.isEmpty()) return address;
-        JSONObject settings = payload.optJSONObject("settings");
-        if (settings != null) {
-            address = normalizeAddress(settings.optString("printerAddress", ""));
-            if (!address.isEmpty()) return address;
-        }
-        return DEFAULT_PRINTER_ADDRESS;
-    }
-
-    private String normalizeAddress(String address) {
-        return address == null ? "" : address.trim().toUpperCase();
-    }
-
-    @SuppressLint("MissingPermission")
-    private Set<BluetoothDevice> getBondedDevices(BluetoothAdapter adapter) {
-        return adapter.getBondedDevices();
-    }
-
-    @SuppressLint("MissingPermission")
-    private JSObject deviceToJson(BluetoothDevice device) {
-        JSObject out = new JSObject();
-        out.put("id", "bluetooth:" + device.getAddress());
-        out.put("type", "bluetooth");
-        out.put("name", safeName(device));
-        out.put("address", device.getAddress());
-        out.put("paired", true);
-        out.put("online", true);
-        return out;
-    }
-
-    @SuppressLint("MissingPermission")
-    private JSONObject buildSavedPrinter(String address) throws Exception {
-        JSONObject out = new JSONObject();
-        out.put("id", "bluetooth:" + address);
-        out.put("type", "bluetooth");
-        out.put("name", printerName(address));
-        out.put("address", address);
-        out.put("paired", true);
-        out.put("online", true);
-        return out;
-    }
-
-    @SuppressLint("MissingPermission")
-    private String printerName(String address) {
-        try {
-            BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
-            if (adapter != null && hasBluetoothPermission()) {
-                for (BluetoothDevice device : getBondedDevices(adapter)) {
-                    if (address.equalsIgnoreCase(device.getAddress())) return safeName(device);
-                }
-            }
-        } catch (Exception ignored) {
-        }
-        return "D520BT-Z";
-    }
-
-    @SuppressLint("MissingPermission")
-    private String safeName(BluetoothDevice device) {
-        String name = device.getName();
-        return name == null || name.trim().isEmpty() ? "Bluetooth Printer" : name.trim();
-    }
-
-    @SuppressLint("MissingPermission")
-    private void writeBluetooth(String address, byte[] data) throws Exception {
-        Log.i(TAG, "writeBluetooth connecting address=" + address + " bytes=" + data.length);
-        BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
-        if (adapter == null) throw new Exception("Bluetooth is not available on this device");
-        if (!adapter.isEnabled()) throw new Exception("Bluetooth is turned off");
-
-        BluetoothDevice device = adapter.getRemoteDevice(address);
-        adapter.cancelDiscovery();
-        try (BluetoothSocket socket = device.createRfcommSocketToServiceRecord(SPP_UUID)) {
-            socket.connect();
+    private void writeTcp(String host, int port, byte[] data) throws Exception {
+        Log.i(TAG, "writeTcp connecting host=" + host + " port=" + port + " bytes=" + data.length);
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(host, port), CONNECT_TIMEOUT_MS);
+            socket.setSoTimeout(CONNECT_TIMEOUT_MS);
             OutputStream output = socket.getOutputStream();
             output.write(data);
             output.flush();
         }
-        Log.i(TAG, "writeBluetooth complete address=" + address);
+        Log.i(TAG, "writeTcp complete host=" + host + " port=" + port);
     }
 
     private byte[] buildEscPosSlip(JSONObject payload) throws Exception {
@@ -341,13 +240,6 @@ public class SellerFlowPrinterPlugin extends Plugin {
     private String money(double value) {
         if (Math.rint(value) == value) return String.valueOf((long) value);
         return String.format(java.util.Locale.US, "%.2f", value);
-    }
-
-    private void resolveOk(PluginCall call, String message, JSObject extra) {
-        JSObject ret = extra == null ? new JSObject() : extra;
-        ret.put("ok", true);
-        ret.put("message", message);
-        call.resolve(ret);
     }
 
     private static class EscPos {

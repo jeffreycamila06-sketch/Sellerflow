@@ -53,11 +53,25 @@ type NativePrinterPayload = {
 
 The Android native plugin should:
 
-1. Ask for Bluetooth permission.
-2. List paired Bluetooth printers.
-3. Save the selected printer.
-4. Receive the `sellerflow.printSlip` payload.
-5. Print the label using ESC/POS or the printer manufacturer's SDK.
+1. Save the WiFi/LAN printer IP address and raw TCP port.
+2. Test the printer connection with a native TCP socket.
+3. Receive the `sellerflow.printSlip` payload.
+4. Print the label using ESC/POS over raw TCP, usually port `9100`.
+
+## Android Methods
+
+```text
+window.SellerFlowPrinter.setPrinter({ host, port })
+window.SellerFlowPrinter.getPrinter()
+window.SellerFlowPrinter.testConnection({ host, port })
+window.SellerFlowPrinter.printSlip(payload)
+```
+
+The plugin is also exposed as:
+
+```text
+window.Capacitor.Plugins.SellerFlowPrinter
+```
 
 ## iPhone Note
 
