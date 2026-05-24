@@ -11,6 +11,12 @@ export async function saveOrderToDatabase(order: {
     return { success: true, data: null, skipped: true };
   }
 
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    console.error("Supabase save order error: no authenticated user");
+    return { success: false, error: new Error("Not authenticated") };
+  }
+
   const { data, error } = await supabase
     .from("orders")
     .insert([
@@ -19,6 +25,7 @@ export async function saveOrderToDatabase(order: {
         product: order.product,
         total_amount: order.total_amount,
         status: order.status || "Pending",
+        user_id: user.id,
       },
     ])
     .select();
@@ -43,10 +50,17 @@ export async function saveCustomerToDatabase(customer: {
     return { success: true, data: null, skipped: true };
   }
 
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    console.error("Supabase save customer error: no authenticated user");
+    return { success: false, error: new Error("Not authenticated") };
+  }
+
   async function updateExistingCustomer() {
-    const { data: existing, error: findError } = await supabase
+    const { data: existing, error: findError } = await supabase!
       .from("customers")
       .select("*")
+      .eq("user_id", user!.id)
       .eq("handle", customer.handle)
       .maybeSingle();
 
@@ -57,7 +71,7 @@ export async function saveCustomerToDatabase(customer: {
 
     if (!existing) return null;
 
-    const { data, error } = await supabase
+    const { data, error } = await supabase!
       .from("customers")
       .update({
         name: customer.name,
@@ -65,6 +79,7 @@ export async function saveCustomerToDatabase(customer: {
         total_orders: Number(existing.total_orders || 0) + customer.total_orders,
         total_spent: Number(existing.total_spent || 0) + customer.total_spent,
       })
+      .eq("user_id", user!.id)
       .eq("handle", customer.handle)
       .select();
 
@@ -88,6 +103,7 @@ export async function saveCustomerToDatabase(customer: {
         platform: customer.platform,
         total_orders: customer.total_orders,
         total_spent: customer.total_spent,
+        user_id: user.id,
       },
     ])
     .select();
