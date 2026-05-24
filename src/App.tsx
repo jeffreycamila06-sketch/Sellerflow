@@ -240,6 +240,24 @@ const OWNER_EMAIL=(import.meta.env.VITE_OWNER_EMAIL||"admin@sellerflow.app").tri
 const ENV_ADMIN_EMAILS=(import.meta.env.VITE_ADMIN_EMAILS||OWNER_EMAIL).split(",").map((e:string)=>e.trim().toLowerCase()).filter(Boolean);
 const adminEmails=()=>Array.from(new Set([OWNER_EMAIL,...ENV_ADMIN_EMAILS].filter(Boolean)));
 const isAdminEmail=(email:string)=>adminEmails().includes(email.trim().toLowerCase());
+const canBootstrapLocalOwner=()=>typeof window!=="undefined"&&["localhost","127.0.0.1"].includes(window.location.hostname);
+async function bootstrapLocalOwner(email:string,password:string){
+  const cleanEmail=email.trim().toLowerCase();
+  if(!canBootstrapLocalOwner()||!password||cleanEmail!==OWNER_EMAIL)return null;
+  const now=new Date().toISOString();
+  const owner:User={
+    email:cleanEmail,
+    password:await bcrypt.hash(password,10),
+    profile:{fullName:"SellerFlow Admin",storeName:"SellerFlowLive",phone:"",tiktok:"",facebook:""},
+    plan:"master",
+    planStatus:"active",
+    planExpiry:addMonths(120),
+    trialStartedAt:now,
+    connectedAccounts:[],
+  };
+  await upsertUser(owner);
+  return owner;
+}
 const supportReadKey=(email:string)=>`sf_support_read_${email.trim().toLowerCase()}`;
 const isAdminUser=(u:User|null)=>!!u&&isAdminEmail(u.email);
 const canConnectMore=(u:User)=>isAdminUser(u)||registeredAccountCount(u)<maxAcc(u.plan);
@@ -421,7 +439,11 @@ function Auth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:Lang;set
   const [showPw,setShowPw]=useState(false);const [err,setErr]=useState("");const [ok,setOk]=useState("");const [busy,setBusy]=useState(false);
   async function login(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);
     const u=await findUser(email);
-    if(!u){setErr(t.err_no_account);setBusy(false);return;}
+    if(!u){
+      const owner=await bootstrapLocalOwner(email,pw);
+      if(owner){LS.set("sf_session",owner.email);onLogin(owner);setBusy(false);return;}
+      setErr(t.err_no_account);setBusy(false);return;
+    }
     const passwordOk=await verifyUserPassword(u,pw);
     if(!passwordOk){setErr(t.err_wrong_pw);setBusy(false);return;}
     const loginUser=await migratePlaintextPassword(u,pw);
@@ -518,7 +540,11 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
   });
   async function login(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);
     const u=await findUser(email);
-    if(!u){setErr(t.err_no_account);setBusy(false);return;}
+    if(!u){
+      const owner=await bootstrapLocalOwner(email,pw);
+      if(owner){LS.set("sf_session",owner.email);onLogin(owner);setBusy(false);return;}
+      setErr(t.err_no_account);setBusy(false);return;
+    }
     const passwordOk=await verifyUserPassword(u,pw);
     if(!passwordOk){setErr(t.err_wrong_pw);setBusy(false);return;}
     const loginUser=await migratePlaintextPassword(u,pw);
