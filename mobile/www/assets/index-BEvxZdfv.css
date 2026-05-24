@@ -811,8 +811,8 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
     grid-column:2 / 4!important;
     grid-row:2!important;
     display:grid!important;
-    grid-template-columns:minmax(0,1fr) minmax(110px,.48fr)!important;
-    gap:10px!important;
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:8px!important;
     align-items:center!important;
   }
 
@@ -832,27 +832,27 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
     grid-column:1!important;
     width:100%!important;
     max-width:none!important;
-    height:46px!important;
-    border-radius:10px!important;
+    height:36px!important;
+    border-radius:9px!important;
     border:1px solid rgba(160,145,255,.22)!important;
     background:rgba(9,12,24,.72)!important;
     color:#fff!important;
-    padding:0 34px 0 14px!important;
-    font-size:15px!important;
+    padding:0 10px!important;
+    font-size:13px!important;
   }
 
-  .comment-price-input::placeholder{color:#969AB0!important;font-size:14px!important}
+  .comment-price-input::placeholder{color:#969AB0!important;font-size:12px!important}
 
   .one-btn{
     grid-column:2!important;
     width:100%!important;
-    min-width:100%!important;
-    height:46px!important;
-    border-radius:10px!important;
+    min-width:0!important;
+    height:36px!important;
+    border-radius:9px!important;
     border:2px solid rgba(184,80,255,.9)!important;
     background:rgba(9,12,24,.58)!important;
     color:#C887FF!important;
-    font-size:17px!important;
+    font-size:14px!important;
     font-weight:900!important;
     box-shadow:0 12px 28px rgba(123,63,255,.18)!important;
   }
@@ -1609,13 +1609,13 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .p-tag{grid-column:2!important;grid-row:1 / span 2!important;align-self:center!important;padding:3px 7px!important;font-size:10px!important;border-radius:999px!important}
   .msg-tx.buy{margin-top:6px!important;color:#F7F6FF!important;font-size:15px!important;line-height:1.25!important;display:-webkit-box!important;-webkit-line-clamp:2!important;-webkit-box-orient:vertical!important;overflow:hidden!important}
   .msg-meta,.msg-time{margin-top:6px!important;color:#A5A8BA!important;font-size:12px!important}
-  .msg-actions{grid-column:2 / 4!important;grid-row:2!important;display:grid!important;grid-template-columns:minmax(0,1fr) minmax(104px,.46fr)!important;gap:8px!important;align-items:center!important}
+  .msg-actions{grid-column:2 / 4!important;grid-row:2!important;display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important;align-items:center!important}
   .comment-menu-btn{position:absolute!important;top:-72px!important;right:0!important;width:32px!important;height:32px!important;min-width:32px!important;min-height:32px!important;background:transparent!important;color:#BFA4FF!important;font-size:17px!important}
   .order-count{display:none!important}
-  .comment-price-input{grid-column:1!important;width:100%!important;max-width:none!important;height:44px!important;border-radius:10px!important;border:1px solid rgba(160,145,255,.22)!important;background:rgba(9,12,24,.72)!important;color:#fff!important;padding:0 14px!important;font-size:14px!important}
-  .comment-price-input::placeholder{color:#969AB0!important;font-size:13px!important}
-  .one-btn{grid-column:2!important;width:100%!important;min-width:100%!important;height:44px!important;border-radius:10px!important;border:2px solid rgba(184,80,255,.9)!important;background:rgba(9,12,24,.58)!important;color:#C887FF!important;font-size:16px!important;font-weight:900!important;box-shadow:0 10px 22px rgba(123,63,255,.18)!important}
-  .one-btn::before{content:""!important;display:inline-block!important;width:9px!important;height:14px!important;margin-right:6px!important;background:#B974FF!important;clip-path:polygon(58% 0,8% 58%,42% 58%,28% 100%,92% 38%,57% 38%)!important;vertical-align:-2px!important}
+  .comment-price-input{grid-column:1!important;width:100%!important;max-width:none!important;height:36px!important;border-radius:9px!important;border:1px solid rgba(160,145,255,.22)!important;background:rgba(9,12,24,.72)!important;color:#fff!important;padding:0 10px!important;font-size:13px!important}
+  .comment-price-input::placeholder{color:#969AB0!important;font-size:12px!important}
+  .one-btn{grid-column:2!important;width:100%!important;min-width:0!important;height:36px!important;border-radius:9px!important;border:2px solid rgba(184,80,255,.9)!important;background:rgba(9,12,24,.58)!important;color:#C887FF!important;font-size:14px!important;font-weight:900!important;box-shadow:0 8px 18px rgba(123,63,255,.18)!important}
+  .one-btn::before{content:""!important;display:inline-block!important;width:7px!important;height:11px!important;margin-right:5px!important;background:#B974FF!important;clip-path:polygon(58% 0,8% 58%,42% 58%,28% 100%,92% 38%,57% 38%)!important;vertical-align:-1px!important}
   .feed-col::after{content:"1-click print saves time.\A Enter price then tap 1-click to print instantly.";white-space:pre-line;color:#BFA4FF;font-size:14px;line-height:1.3;border:1px solid var(--m-line);border-radius:13px;padding:16px 18px;min-height:74px;background:linear-gradient(135deg,rgba(20,23,41,.94),rgba(12,15,29,.96));box-shadow:0 14px 34px rgba(0,0,0,.26),inset 0 1px 0 rgba(255,255,255,.04)}
   .mobile-bottom-nav{gap:4px!important;padding:6px 10px calc(6px + env(safe-area-inset-bottom))!important;border-radius:14px 14px 0 0!important;background:rgba(12,14,26,.96)!important}
   .mobile-bottom-nav button{height:58px!important;border-radius:12px!important;font-size:11px!important;gap:3px!important}
