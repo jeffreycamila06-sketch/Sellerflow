@@ -3068,7 +3068,7 @@ export default function App(){
   async function createOrderFromComment(c:Comment,{print=true,price=0}:{print?:boolean;price?:number}={}){
     const existing=buyers.find(b=>b.handle===c.handle&&b.platform===c.platform);
     const buyerNum=existing?.num||buyers.length+1;
-    const orderItem=price>0?"Manual price order":(c.comment||"Live comment order");
+    const orderItem=price>0?String(price):(c.comment||"Live comment order");
     const order:LiveOrder={
       orderNum:Date.now(),
       item:orderItem,
