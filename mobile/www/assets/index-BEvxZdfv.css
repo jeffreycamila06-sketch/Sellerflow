@@ -1277,9 +1277,11 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .admin-fullscreen-panel{position:fixed;inset:0;width:100%;max-width:100%;overflow:auto;padding:14px 10px calc(84px + env(safe-area-inset-bottom));border-radius:0}
   .modal-card{width:calc(100vw - 20px);max-width:calc(100vw - 20px);max-height:calc(100dvh - 24px);overflow:auto}
   .toast{
-    left:12px!important;
-    right:12px!important;
-    bottom:calc(92px + env(safe-area-inset-bottom))!important;
+    left:14px!important;
+    right:14px!important;
+    bottom:calc(132px + env(safe-area-inset-bottom))!important;
+    transform:none!important;
+    width:auto!important;
     max-width:none!important;
     white-space:normal!important;
     text-align:center!important;
@@ -1595,9 +1597,11 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .mobile-bottom-nav button:active{transform:scale(.96)}
   .mobile-nav-badge{background:#FF3B6E!important}
   .toast{
-    left:12px!important;
-    right:12px!important;
-    bottom:calc(92px + env(safe-area-inset-bottom))!important;
+    left:14px!important;
+    right:14px!important;
+    bottom:calc(132px + env(safe-area-inset-bottom))!important;
+    transform:none!important;
+    width:auto!important;
     max-width:none!important;
     white-space:normal!important;
     text-align:center!important;
