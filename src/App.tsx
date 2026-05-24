@@ -3216,7 +3216,7 @@ export default function App(){
       {/* MAIN */}
       <main className="main">
         <header className={`topbar ${showMobileBack?"has-mobile-back":""}`}>
-          {showMobileBack&&<button className="mobile-page-back" onClick={()=>setPage("dashboard")}>Back</button>}
+          {showMobileBack&&<button className="mobile-page-back" onClick={()=>setPage("dashboard")}>{t.back_btn}</button>}
           <div className={`live-pill ${isLive?"live":"off"}`}><span className="live-dot"/> {isLive?t.live_status:t.offline_status}</div>
           <button onClick={()=>{setConnectTab("TikTok");setShowConn(true);}} className={`plat-btn ${ttOn?"on active-account":""}`} title={ttOn&&activeLiveAccounts.TikTok?`TikTok: ${activeLiveAccounts.TikTok}`:"TikTok"}>{platformButtonLabel("TikTok",ttOn)} {ttOn?"✓":""}</button>
           <button onClick={()=>{setConnectTab("Facebook");setShowConn(true);}} className={`plat-btn ${fbOn?"on active-account":""}`} title={fbOn&&activeLiveAccounts.Facebook?`Facebook: ${activeLiveAccounts.Facebook}`:"Facebook"}>{platformButtonLabel("Facebook",fbOn)} {fbOn?"✓":""}</button>
@@ -3242,13 +3242,13 @@ export default function App(){
                 </div>
                 <div className="pd-div"/>
                 <div className="pd-row pd-cl" onClick={()=>{setPage("settings");setShowProf(false);}}><span>⚙️</span><span>{t.nav_settings}</span></div>
-                <div className="pd-row pd-cl" onClick={()=>{setPage("subscription");setShowProf(false);}}><span>💎</span><span>Subscription</span></div>
-                <div className="pd-row pd-cl" onClick={()=>{setPage("support");setShowProf(false);}}><span>💬</span><span>Support</span></div>
-                <div className="pd-row pd-cl" onClick={()=>{setPage("privacy");setShowProf(false);}}><span>Privacy</span><span>Privacy Policy</span></div>
-                <div className="pd-row pd-cl" onClick={()=>{setPage("terms");setShowProf(false);}}><span>Terms</span><span>Terms of Service</span></div>
-                <div className="pd-row pd-cl" onClick={()=>{setPage("deleteAccount");setShowProf(false);}}><span>Delete</span><span>Delete Account</span></div>
-                {isAdminUser(user)&&<div className="pd-row pd-cl" onClick={()=>{setPage("admin");setShowProf(false);}}><span>ADMIN</span><span>Admin</span></div>}
-                <div className="pd-row pd-cl" onClick={()=>{setShowProf(false);switchAccount();}}><span>Switch</span><span>Switch account</span></div>
+                <div className="pd-row pd-cl" onClick={()=>{setPage("subscription");setShowProf(false);}}><span>💎</span><span>{t.subscription_label}</span></div>
+                <div className="pd-row pd-cl" onClick={()=>{setPage("support");setShowProf(false);}}><span>💬</span><span>{t.support_label}</span></div>
+                <div className="pd-row pd-cl" onClick={()=>{setPage("privacy");setShowProf(false);}}><span>{t.privacy_policy}</span><span>{t.privacy_policy}</span></div>
+                <div className="pd-row pd-cl" onClick={()=>{setPage("terms");setShowProf(false);}}><span>{t.terms_service}</span><span>{t.terms_service}</span></div>
+                <div className="pd-row pd-cl" onClick={()=>{setPage("deleteAccount");setShowProf(false);}}><span>{t.delete_account}</span><span>{t.delete_account}</span></div>
+                {isAdminUser(user)&&<div className="pd-row pd-cl" onClick={()=>{setPage("admin");setShowProf(false);}}><span>ADMIN</span><span>{t.admin_label}</span></div>}
+                <div className="pd-row pd-cl" onClick={()=>{setShowProf(false);switchAccount();}}><span>{t.switch_account}</span><span>{t.switch_account}</span></div>
                 <div className="pd-row pd-cl" style={{color:"#A32D2D"}} onClick={()=>{setShowProf(false);handleLogout();}}><span>🚪</span><span>{t.sign_out}</span></div>
               </div>
             )}
@@ -3279,34 +3279,34 @@ export default function App(){
                             </>}
                             <span className={`p-tag ${c.platform.toLowerCase()}`}>{c.platform}</span>
                           </div>
-                          <div className="msg-tx buy">{c.comment||"Live comment"}</div>
+                          <div className="msg-tx buy">{c.comment||t.live_comment_fallback}</div>
                           <div className="msg-meta">
                             <span>{commentStamp(c)}</span>
                           </div>
                         </div>
                         <div className="msg-actions" onClick={e=>e.stopPropagation()}>
-                          <button className="comment-menu-btn" aria-label="Comment tools" onClick={()=>setOpenCommentMenu(openCommentMenu===i?null:i)}>...</button>
+                          <button className="comment-menu-btn" aria-label={t.comment_tools} onClick={()=>setOpenCommentMenu(openCommentMenu===i?null:i)}>...</button>
                           {openCommentMenu===i&&(
                             <div className="comment-menu">
-                              <button onClick={()=>{setOpenCommentMenu(null);void createOrderFromComment(c,{print:true});}}>Create order + print</button>
-                              <button onClick={()=>{setOpenCommentMenu(null);void createOrderFromComment(c,{print:false});}}>Create order only</button>
-                              <button onClick={()=>{setOpenCommentMenu(null);reprintLatestForComment(c);}}>Reprint latest slip</button>
-                              <button onClick={()=>{setOpenCommentMenu(null);showBuyerFromComment(c);}}>View buyer orders</button>
-                              <button onClick={()=>{setOpenCommentMenu(null);copyText(`@${c.handle}`,"Username");}}>Copy username</button>
-                              <button onClick={()=>{setOpenCommentMenu(null);copyText(c.comment,"Comment");}}>Copy comment</button>
+                              <button onClick={()=>{setOpenCommentMenu(null);void createOrderFromComment(c,{print:true});}}>{t.create_order_print}</button>
+                              <button onClick={()=>{setOpenCommentMenu(null);void createOrderFromComment(c,{print:false});}}>{t.create_order_only}</button>
+                              <button onClick={()=>{setOpenCommentMenu(null);reprintLatestForComment(c);}}>{t.reprint_latest}</button>
+                              <button onClick={()=>{setOpenCommentMenu(null);showBuyerFromComment(c);}}>{t.view_buyer_orders}</button>
+                              <button onClick={()=>{setOpenCommentMenu(null);copyText(`@${c.handle}`,t.username_label);}}>{t.copy_username}</button>
+                              <button onClick={()=>{setOpenCommentMenu(null);copyText(c.comment,t.comment_label);}}>{t.copy_comment}</button>
                             </div>
                           )}
-                          <div className="order-count" title="Orders created from this buyer">🛒 <span>({orderCount})</span></div>
+                          <div className="order-count" title={t.orders_created_title}>🛒 <span>({orderCount})</span></div>
                           <input
                             ref={el=>{priceInputRefs.current[cKey]=el;}}
                             className="comment-price-input"
                             inputMode="decimal"
-                            placeholder="Enter Price"
+                            placeholder={t.enter_price}
                             value={commentPrices[cKey]||""}
                             onChange={e=>setCommentPrices(p=>({...p,[cKey]:e.target.value.replace(/[^\d.]/g,"")}))}
                             onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();submitCommentPrice(c);}}}
                           />
-                          <button className={`one-btn ${printed.has(cKey)?"done":""}`} onClick={()=>submitCommentPrice(c)}>1-click</button>
+                          <button className={`one-btn ${printed.has(cKey)?"done":""}`} onClick={()=>submitCommentPrice(c)}>{t.btn_1click}</button>
                         </div>
                       </div>
                     );
@@ -3320,13 +3320,13 @@ export default function App(){
               </div>
             </section>
             <section className="mobile-summary-col">
-              <div className="col-lbl">Stats</div>
+              <div className="col-lbl">{t.stats_label}</div>
               <div className="mobile-summary-grid">
                 <div className="stat-c"><div className="stat-l">{t.orders_stat}</div><div className="stat-v">{totOrd}</div></div>
                 <div className="stat-c"><div className="stat-l">{t.revenue_stat}</div><div className="stat-v" style={{color:"#1D9E75"}}>{settings.currency}{totRev.toLocaleString()}</div></div>
                 <div className="stat-c"><div className="stat-l">{t.buyers_stat}</div><div className="stat-v" style={{color:"#534AB7"}}>{buyers.length}</div></div>
               </div>
-              <div className="mobile-swipe-hint">Swipe right: stats, buyer numbers, slip preview</div>
+              <div className="mobile-swipe-hint">{t.mobile_swipe_hint}</div>
             </section>
             <section className="miners-col">
               <div className="col-lbl">{t.miners_label}<span style={{marginLeft:"auto",fontSize:11,color:"#888"}}>{buyers.length} {t.buyers_stat}</span></div>
@@ -3365,19 +3365,19 @@ export default function App(){
               {selBuyer&&<button className="print-again-btn" onClick={()=>printSlip(selBuyer,settings.currency,user.profile.storeName||"SellerFlowLive",settings)}>{t.print_again}</button>}
             </section>
             <section className="mobile-tools-col">
-              <div className="col-lbl">Business tools</div>
+              <div className="col-lbl">{t.business_tools}</div>
               <div className="mobile-tool-grid">
                 <button className="mobile-tool-card" onClick={()=>setPage("orders")}>
-                  <span>🛒</span><b>{t.nav_orders}</b><em>{totOrd} today</em>
+                  <span>🛒</span><b>{t.nav_orders}</b><em>{totOrd} {t.today_label}</em>
                 </button>
                 <button className="mobile-tool-card" onClick={()=>setPage("products")}>
-                  <span>📦</span><b>{t.nav_products}</b><em>Manage items</em>
+                  <span>📦</span><b>{t.nav_products}</b><em>{t.manage_items}</em>
                 </button>
                 <button className="mobile-tool-card" onClick={()=>setPage("sales")}>
                   <span>📊</span><b>{t.nav_sales}</b><em>{settings.currency}{totRev.toLocaleString()}</em>
                 </button>
               </div>
-              <div className="mobile-swipe-hint">Use profile menu for account, subscription, support, and admin tools.</div>
+              <div className="mobile-swipe-hint">{t.profile_menu_hint}</div>
             </section>
           </div>
         )}
@@ -3385,26 +3385,26 @@ export default function App(){
         {/* MINERS PAGE */}
         {page==="miners"&&(
           <div className="subpage">
-            <div className="subpage-hd"><div><h2>{t.nav_miners}</h2><p>All buyers with permanent numbers</p></div>
+            <div className="subpage-hd"><div><h2>{t.nav_miners}</h2><p>{t.miners_sub}</p></div>
               <button className="btn-out" onClick={()=>csvDL("miners.csv",["#","Name","Username","Platform","Orders","Total"],buyers.map(b=>[b.num,b.name,`@${b.handle}`,b.platform,b.totalOrders,`${settings.currency}${b.totalSpent}`]))}>⬇ {t.export_csv}</button>
             </div>
             <div className="grid4 miners-page-stats">
-              <div className="mstat"><div className="ms-l">Total Buyers</div><div className="ms-v">{buyers.length}</div></div>
-              <div className="mstat"><div className="ms-l">Total Orders</div><div className="ms-v">{totOrd}</div></div>
-              <div className="mstat"><div className="ms-l">Total Spent</div><div className="ms-v">{settings.currency}{totRev.toLocaleString()}</div></div>
-              <div className="mstat"><div className="ms-l">Platforms</div><div className="ms-v">{new Set(buyers.map(b=>b.platform)).size||0}</div></div>
+              <div className="mstat"><div className="ms-l">{t.total_buyers}</div><div className="ms-v">{buyers.length}</div></div>
+              <div className="mstat"><div className="ms-l">{t.total_orders}</div><div className="ms-v">{totOrd}</div></div>
+              <div className="mstat"><div className="ms-l">{t.total_spent_label}</div><div className="ms-v">{settings.currency}{totRev.toLocaleString()}</div></div>
+              <div className="mstat"><div className="ms-l">{t.platforms_label}</div><div className="ms-v">{new Set(buyers.map(b=>b.platform)).size||0}</div></div>
             </div>
             <input
               className="search-inp mobile-miner-search"
               value={mobileMinerSearch}
               onChange={e=>setMobileMinerSearch(e.target.value)}
-              placeholder="Search buyer..."
+              placeholder={t.search_buyer}
             />
             <div className="table-card">
               <table className="tbl">
-                <thead><tr><th>#</th><th>Name</th><th>Username</th><th>Platform</th><th>Orders</th><th>Total</th><th></th></tr></thead>
+                <thead><tr><th>#</th><th>{t.name_col}</th><th>{t.username_label}</th><th>{t.platform_label}</th><th>{t.orders_col}</th><th>{t.total_label}</th><th></th></tr></thead>
                 <tbody>
-                  {mobileMinerBuyers.length===0&&<tr><td colSpan={7} style={{textAlign:"center",padding:40,color:"#888"}}>No buyers yet</td></tr>}
+                  {mobileMinerBuyers.length===0&&<tr><td colSpan={7} style={{textAlign:"center",padding:40,color:"#888"}}>{t.no_buyers_yet}</td></tr>}
                   {mobileMinerBuyers.map(b=>(
                     <tr key={b.handle}>
                       <td><div style={{width:28,height:28,borderRadius:"50%",background:nc(b.num),color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700}}>{b.num}</div></td>
@@ -3413,7 +3413,7 @@ export default function App(){
                       <td><Badge label={b.platform} color={b.platform==="TikTok"?"purple":"green"}/></td>
                       <td>{b.totalOrders}</td>
                       <td><strong style={{color:"#534AB7"}}>{b.totalSpent>0?`${settings.currency}${b.totalSpent.toLocaleString()}`:""}</strong></td>
-                      <td><button onClick={()=>{setSelBuyer(b);setPage("dashboard");printSlip(b,settings.currency,user.profile.storeName||"SellerFlowLive",settings);}} style={{padding:"5px 12px",background:"#7F77DD",color:"#fff",border:"none",borderRadius:7,fontSize:11,cursor:"pointer"}}>🖨 Print</button></td>
+                      <td><button onClick={()=>{setSelBuyer(b);setPage("dashboard");printSlip(b,settings.currency,user.profile.storeName||"SellerFlowLive",settings);}} style={{padding:"5px 12px",background:"#7F77DD",color:"#fff",border:"none",borderRadius:7,fontSize:11,cursor:"pointer"}}>🖨 {t.print_label}</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -3441,26 +3441,26 @@ export default function App(){
         <nav className="mobile-bottom-nav">
           <button className={page==="dashboard"?"active":""} onClick={()=>setPage("dashboard")}>
             <span style={{fontSize:22}}>⌂</span>
-            <span>Live</span>
+            <span>{t.nav_live}</span>
           </button>
           <button className={page==="miners"?"active":""} onClick={()=>setPage("miners")}>
             <span style={{fontSize:22}}>♙</span>
-            <span>Miners</span>
+            <span>{t.nav_miners}</span>
           </button>
           <button className={page==="orders"?"active":""} onClick={()=>setPage("orders")}>
             <span style={{fontSize:22}}>▤</span>
-            <span>Orders</span>
+            <span>{t.nav_orders}</span>
           </button>
           <button className={page==="products"?"active":""} onClick={()=>setPage("products")}>
             <span style={{fontSize:22}}>▣</span>
-            <span>Products</span>
+            <span>{t.nav_products}</span>
           </button>
           <button
             className={!["dashboard","miners","orders","products"].includes(page)?"active":""}
             onClick={e=>{e.stopPropagation();setShowProf(p=>!p);}}
           >
             <span style={{fontSize:22}}>•••</span>
-            <span>More</span>
+            <span>{t.more_label}</span>
             {supportUnreadCount>0&&<span className="mobile-nav-badge">{supportUnreadCount>9?"9+":supportUnreadCount}</span>}
           </button>
         </nav>
