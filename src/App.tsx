@@ -3136,7 +3136,7 @@ export default function App(){
 
     const nextBuyers=existing?buyers.map(b=>b.handle===c.handle&&b.platform===c.platform?nextBuyer:b):[...buyers,nextBuyer];
     saveBuyerMemory(nextBuyers);
-    autoRegisterCustomer(c); // add buyer to Customer Data (status stays "Not Registered" until encoded)
+    try{autoRegisterCustomer(c);}catch(autoRegErr){console.warn("autoRegisterCustomer failed (non-fatal):",autoRegErr);} // never block order creation / printing
     setSelBuyer(singleOrderBuyer);
     setAllOrders(prev=>{const next=[...prev,order];LS.set(sellerMemoryKey("sf_orders"),next);return next;});
 
