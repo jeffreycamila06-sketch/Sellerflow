@@ -3249,8 +3249,8 @@ export default function App(){
         <div className="nav-sec-lbl">{t.nav_live_section}</div>
         {navItems.slice(0,3).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={navClass(id)}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
         <div className="nav-sec-lbl">{t.nav_manage}</div>
-        {navItems.slice(3,7).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={navClass(id)}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
-        <button onClick={()=>setPage("shipping")} className={navClass("shipping")}><span className="nav-ic">🚚</span><span className="nav-lb">Shipping</span></button>
+        {navItems.slice(3,7).filter(([id])=>isAdminUser(user)||id!=="customerData").map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={navClass(id)}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
+        {isAdminUser(user)&&<button onClick={()=>setPage("shipping")} className={navClass("shipping")}><span className="nav-ic">🚚</span><span className="nav-lb">Shipping</span></button>}
         <div className="nav-sec-lbl">{t.nav_analytics}</div>
         {navItems.slice(7).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={navClass(id)}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
         <button onClick={()=>setPage("support")} className={`nav-it ${page==="support"?"on":""}`}><span className="nav-ic">💬</span><span className="nav-lb">Support</span>{supportUnreadCount>0&&<span className="nav-alert-badge">{supportUnreadCount>9?"9+":supportUnreadCount}</span>}</button>
@@ -3294,7 +3294,7 @@ export default function App(){
                 <div className="pd-row pd-cl" onClick={()=>{setPage("settings");setShowProf(false);}}><span>⚙️</span><span>{t.nav_settings}</span></div>
                 <div className="pd-row pd-cl" onClick={()=>{setPage("subscription");setShowProf(false);}}><span>💎</span><span>{t.subscription_label}</span></div>
                 <div className="pd-row pd-cl" onClick={()=>{setPage("support");setShowProf(false);}}><span>💬</span><span>{t.support_label}</span></div>
-                <div className="pd-row pd-cl" onClick={()=>{setPage("shipping");setShowProf(false);}}><span>🚚</span><span>Shipping</span></div>
+                {isAdminUser(user)&&<div className="pd-row pd-cl" onClick={()=>{setPage("shipping");setShowProf(false);}}><span>🚚</span><span>Shipping</span></div>}
                 <div className="pd-row pd-cl" onClick={()=>{setPage("privacy");setShowProf(false);}}><span>{t.privacy_policy}</span><span>{t.privacy_policy}</span></div>
                 <div className="pd-row pd-cl" onClick={()=>{setPage("terms");setShowProf(false);}}><span>{t.terms_service}</span><span>{t.terms_service}</span></div>
                 <div className="pd-row pd-cl" onClick={()=>{setPage("deleteAccount");setShowProf(false);}}><span>{t.delete_account}</span><span>{t.delete_account}</span></div>
@@ -3476,10 +3476,10 @@ export default function App(){
         {page==="orders"&&<Orders orders={allOrders} setOrders={setAllOrders} onPersist={orders=>LS.set(sellerMemoryKey("sf_orders"),orders)} cur={settings.currency} t={t}/>}
         {page==="products"&&<Products cur={settings.currency} t={t}/>}
         {page==="customers"&&<><Customers buyers={buyers} cur={settings.currency} t={t}/><CommentArchive comments={archivedComments}/></>}
-        {page==="customerData"&&<CustomerDataPage user={user}/>}
+        {page==="customerData"&&isAdminUser(user)&&<CustomerDataPage user={user}/>}
         {page==="print"&&<PrintPage buyers={buyers} cur={settings.currency} storeName={user.profile.storeName||"SellerFlowLive"} settings={settings} t={t}/>}
         {page==="sales"&&<Sales orders={allOrders} buyers={buyers} cur={settings.currency} t={t}/>}
-        {page==="shipping"&&<Shipping user={user}/>}
+        {page==="shipping"&&isAdminUser(user)&&<Shipping user={user}/>}
         {page==="settings"&&<SettingsPage user={user} settings={settings} onSaveProfile={handleSaveProfile} onSaveSettings={handleSaveSettings} onSavePw={handleSavePw} onExportBackup={exportSellerBackup} onClearLiveComments={clearLiveCommentsOnly} t={t}/>}
         {page==="subscription"&&<SubPage user={user} onActivate={handleActivate} t={t}/>}
         {page==="support"&&<Support user={user} t={t}/>}
