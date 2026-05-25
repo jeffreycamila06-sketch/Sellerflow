@@ -25,7 +25,7 @@ import { TRANSLATIONS, type Lang, type T } from "./translations";
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Plan = "trial" | "basic" | "pro" | "master";
 type PlanStatus = "active" | "expired" | "pending";
-type Page = "dashboard"|"miners"|"orders"|"products"|"customers"|"customerData"|"print"|"sales"|"settings"|"subscription"|"support"|"admin"|"privacy"|"terms"|"deleteAccount";
+type Page = "dashboard"|"miners"|"orders"|"products"|"customers"|"customerData"|"print"|"sales"|"shipping"|"settings"|"subscription"|"support"|"admin"|"privacy"|"terms"|"deleteAccount";
 
 interface Profile { fullName:string; storeName:string; phone:string; tiktok:string; facebook:string; }
 type Role = "seller" | "admin";
@@ -35,7 +35,7 @@ interface Buyer { handle:string; name:string; platform:string; num:number; order
 interface Comment { handle:string; name:string; comment:string; platform:"TikTok"|"Facebook"; isBuy:boolean; buyerNum:number|null; buyerData:Buyer|null; time:string; avatar?:string; timestamp?:string; sellerId?:string; sessionId?:string; sourceUsername?:string; }
 interface Product { id:number; name:string; sku:string; price:number; stock:number; platform:string; status:string; }
 type ShippingStatus = "Pending"|"Ready"|"Shipped"|"Delivered"|"Returned";
-interface ShippingCustomer { username:string; name:string; phone:string; sevenCode:string; note:string; lastComment:string; firstSeen:string; status:ShippingStatus; isNew:boolean; }
+interface ShippingCustomer { username:string; name:string; phone:string; sevenCode:string; note:string; lastComment:string; firstSeen:string; status:ShippingStatus; isNew:boolean; num?:number; }
 interface Settings { darkMode:boolean; autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"auto"|"usb"|"bluetooth"|"lan"; stickerSize:string; printStoreName:boolean; printBuyerNumber:boolean; printBuyerUsername:boolean; printOrderItems:boolean; printTotal:boolean; printAutoClose:boolean; printLabelScale:number; printStoreScale:number; printBuyerNumberScale:number; printBuyerNameScale:number; printUsernameScale:number; printOrderScale:number; printCommentScale:number; printTotalScale:number; printStoreX:number; printStoreY:number; printBuyerLabelX:number; printBuyerLabelY:number; printBuyerNumberX:number; printBuyerNumberY:number; printBuyerNameX:number; printBuyerNameY:number; printUsernameX:number; printUsernameY:number; printSessionX:number; printSessionY:number; printOrderX:number; printOrderY:number; printTotalX:number; printTotalY:number; }
 interface MobilePrinterDevice { id:string; type:"bluetooth"|"lan"; name:string; address?:string; host?:string; port?:number; paired?:boolean; online?:boolean; signal?:number; distance?:string; hint?:string; }
 interface MobilePrinterResult { ok?:boolean; message?:string; online?:boolean; host?:string; port?:number; savedPrinter?:MobilePrinterDevice|null; printers?:MobilePrinterDevice[]; }
@@ -137,6 +137,7 @@ const browserSessionId=()=>{
 };
 const sellerIdOf=(email:string)=>email.trim().toLowerCase();
 const sellerDataKey=(base:string,email:string)=>email?`${base}:${sellerIdOf(email)}`:base;
+const custDataKey=(email:string)=>sellerDataKey("sf_shipping_customer_data",email);
 const sellerLiveDataKey=(base:string,email:string,sessionId:string)=>email?`${base}:${sellerIdOf(email)}:${sessionId}`:base;
 const liveDayId=()=>{
   const d=new Date();
@@ -974,6 +975,136 @@ function Orders({orders,setOrders,onPersist,cur,t}:{orders:LiveOrder[];setOrders
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// SHIPPING — 7-ELEVEN MyShip (賣貨便/交貨便) bulk import export
+// ═══════════════════════════════════════════════════════════════════
+interface ShipRec { id:string; name:string; phone:string; store:string; product:string; price:string; fee:string; }
+const SHIP_MAX=500;
+const SHIP_TEMP="常溫"; // temperature is always normal/room temp for every record
+// Official 7-ELEVEN MyShip "Order Import Validation" header row, columns A–J.
+// IMPORTANT: this must match the official template EXACTLY or 7-11 rejects the
+// file. Verify against the official template before relying on a real import.
+const MYSHIP_HEADERS=["取件人姓名","取件人手機","取件門市","溫層","商品","訂單金額","運費金額","買家下訂日期","商品備註","其他資訊 (FB/LINE/IG帳號)"];
+
+function Shipping({user}:{user:User}){
+  const storeKey=sellerDataKey("sf_shipping",user.email);
+  const [list,setList]=useState<ShipRec[]>(()=>arrLS<ShipRec>(storeKey));
+  // Registered customers come from Customer Data (name, phone, 7/11 code encoded once).
+  const [customers]=useState<ShippingCustomer[]>(()=>arrLS<ShippingCustomer>(custDataKey(user.email)).filter(c=>c.name.trim()&&c.phone.trim()&&/^\d{6}$/.test(c.sevenCode.trim())));
+  const [sel,setSel]=useState("");
+  const [product,setProduct]=useState("CLOTHING");
+  const [price,setPrice]=useState("");
+  const [fee,setFee]=useState("38");
+  const [err,setErr]=useState("");
+  const [msg,setMsg]=useState("");
+  const selected=customers.find(c=>c.username===sel)||null;
+
+  const persist=(next:ShipRec[])=>{setList(next);LS.set(storeKey,next);};
+
+  function add(e:React.FormEvent){
+    e.preventDefault();
+    setErr("");setMsg("");
+    if(list.length>=SHIP_MAX){setErr(`Limit reached: ${SHIP_MAX} records per file. Export, then start a new list.`);return;}
+    if(!selected){setErr("Select a registered customer first.");return;}
+    const pr=product.trim(),pc=price.trim(),fe=fee.trim();
+    if(!pr){setErr("Product is required.");return;}
+    if(pc===""||isNaN(Number(pc))||Number(pc)<0){setErr("Enter a valid price (0 or more).");return;}
+    if(fe===""||isNaN(Number(fe))||Number(fe)<0){setErr("Enter a valid shipping fee (0 or more).");return;}
+    const rec:ShipRec={id:`${Date.now()}-${Math.random().toString(36).slice(2,7)}`,name:selected.name,phone:selected.phone,store:selected.sevenCode,product:pr,price:pc,fee:fe};
+    persist([...list,rec]);
+    setSel("");setPrice(""); // keep product + fee defaults for fast repeat entry
+    setMsg(`Added ${selected.name}. ${list.length+1} / ${SHIP_MAX} records.`);
+  }
+
+  function remove(id:string){persist(list.filter(r=>r.id!==id));setMsg("");}
+  function clearAll(){if(list.length&&window.confirm("Remove all shipping records from this list?")){persist([]);setMsg("");}}
+
+  async function exportXlsx(){
+    setErr("");setMsg("");
+    if(!list.length){setErr("Add at least one order before exporting.");return;}
+    try{
+      const XLSX=await import("xlsx");
+      // phone + store kept as text (preserve leading zeros); amounts as numbers; H/I/J blank.
+      const rows=list.map(r=>[r.name,r.phone,r.store,SHIP_TEMP,r.product,Number(r.price),Number(r.fee),"","",""]);
+      const ws=XLSX.utils.aoa_to_sheet([MYSHIP_HEADERS,...rows]);
+      const wb=XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb,ws,"Sheet1");
+      XLSX.writeFile(wb,`myship-${new Date().toISOString().slice(0,10)}.xlsx`);
+      setMsg(`Exported ${list.length} record(s) to Excel.`);
+    }catch(error){
+      setErr(`Export failed: ${error instanceof Error?error.message:"unknown error"}`);
+    }
+  }
+
+  return(
+    <div className="subpage">
+      <div className="subpage-hd">
+        <div><h2>Shipping</h2><p>Pick a registered customer, add the price, then export the 7-ELEVEN MyShip (賣貨便) file (max {SHIP_MAX} per file).</p></div>
+        <button className="btn-out" onClick={exportXlsx} disabled={!list.length}>⬇ Export Excel (.xlsx)</button>
+      </div>
+      <div className="grid4">
+        <div className="mstat"><div className="ms-l">In this file</div><div className="ms-v">{list.length}</div></div>
+        <div className="mstat"><div className="ms-l">Remaining</div><div className="ms-v" style={{color:list.length>=SHIP_MAX?"#A32D2D":"#1D9E75"}}>{SHIP_MAX-list.length}</div></div>
+        <div className="mstat"><div className="ms-l">Registered customers</div><div className="ms-v">{customers.length}</div></div>
+        <div className="mstat"><div className="ms-l">Temperature (溫層)</div><div className="ms-v" style={{fontSize:18}}>{SHIP_TEMP}</div></div>
+      </div>
+
+      <div className="table-card" style={{padding:16,marginTop:12}}>
+        {customers.length===0?(
+          <p style={{margin:0,color:"#888",fontSize:13}}>No registered customers yet. Open <strong>Customer Data</strong>, tap a buyer's TikTok username, and encode their Name, Phone and 7/11 code. Registered customers appear here automatically — then you only add the price.</p>
+        ):(
+        <form onSubmit={add}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12}}>
+            <Fg label="Customer (registered) *">
+              <select value={sel} onChange={e=>{setSel(e.target.value);setMsg("");setErr("");}}>
+                <option value="">Select a customer…</option>
+                {customers.map(c=><option key={c.username} value={c.username}>@{c.username} — {c.name}</option>)}
+              </select>
+            </Fg>
+            <Fg label="Product 商品 *"><input value={product} onChange={e=>setProduct(e.target.value)} placeholder="CLOTHING"/></Fg>
+            <Fg label="Price 訂單金額 * (manual)"><input value={price} onChange={e=>setPrice(e.target.value.replace(/[^\d.]/g,""))} inputMode="decimal" placeholder="0"/></Fg>
+            <Fg label="Shipping fee 運費金額 *"><input value={fee} onChange={e=>setFee(e.target.value.replace(/[^\d.]/g,""))} inputMode="decimal" placeholder="38"/></Fg>
+          </div>
+          {selected&&<div style={{marginTop:10,fontSize:12,color:"#666"}}>Shipping to <strong>{selected.name}</strong> · {selected.phone} · 7/11 {selected.sevenCode} · 溫層 {SHIP_TEMP}</div>}
+          <div style={{display:"flex",alignItems:"center",gap:10,marginTop:12,flexWrap:"wrap"}}>
+            <button type="submit" className="btn-purple" disabled={list.length>=SHIP_MAX}>+ Add to list</button>
+            <span style={{fontSize:11,color:"#888"}}>Name, phone and 7/11 code come from Customer Data. 溫層 is {SHIP_TEMP} automatically. Set price to 0 for free.</span>
+          </div>
+        </form>
+        )}
+        {err&&<p style={{color:"#A32D2D",fontSize:13,marginTop:10,marginBottom:0}}>{err}</p>}
+        {msg&&!err&&<p style={{color:"#1D9E75",fontSize:13,marginTop:10,marginBottom:0}}>{msg}</p>}
+      </div>
+
+      <div style={{display:"flex",alignItems:"center",gap:8,marginTop:14}}>
+        <strong style={{fontSize:13}}>List ({list.length}/{SHIP_MAX})</strong>
+        {list.length>0&&<button className="btn-out" style={{marginLeft:"auto"}} onClick={clearAll}>Clear list</button>}
+      </div>
+      <div className="table-card" style={{marginTop:8}}>
+        <table className="tbl">
+          <thead><tr><th>#</th><th>Name 取件人姓名</th><th>Phone 取件人手機</th><th>Store 取件門市</th><th>溫層</th><th>Product 商品</th><th>訂單金額</th><th>運費金額</th><th></th></tr></thead>
+          <tbody>
+            {list.length===0&&<tr><td colSpan={9} style={{textAlign:"center",padding:32,color:"#888"}}>No orders added yet.</td></tr>}
+            {list.map((r,i)=>(
+              <tr key={r.id}>
+                <td className="muted">{i+1}</td>
+                <td><strong>{r.name}</strong></td>
+                <td className="mono">{r.phone}</td>
+                <td className="mono">{r.store}</td>
+                <td>{SHIP_TEMP}</td>
+                <td>{r.product}</td>
+                <td>{r.price}</td>
+                <td>{r.fee}</td>
+                <td><button className="btn-out" style={{padding:"3px 10px",fontSize:11}} onClick={()=>remove(r.id)}>Remove</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // CUSTOMERS
 // ═══════════════════════════════════════════════════════════════════
 function Customers({buyers,cur,t}:{buyers:Buyer[];cur:string;t:T}){
@@ -1028,119 +1159,83 @@ function Customers({buyers,cur,t}:{buyers:Buyer[];cur:string;t:T}){
 // ═══════════════════════════════════════════════════════════════════
 // PRINT
 // ═══════════════════════════════════════════════════════════════════
-function CustomerDataPage({comments,onRefresh}:{comments:Comment[];onRefresh:()=>void}){
-  const storageKey="sf_shipping_customer_data";
-  const [records,setRecords]=useState<ShippingCustomer[]>(()=>arrLS<ShippingCustomer>(storageKey));
+function CustomerDataPage({user}:{user:User}){
+  const key=custDataKey(user.email);
+  const [records,setRecords]=useState<ShippingCustomer[]>(()=>arrLS<ShippingCustomer>(key));
   const [query,setQuery]=useState("");
-  const [columnFilters,setColumnFilters]=useState({username:"All",name:"All",phone:"All",sevenCode:"All"});
-  const [statusFilter,setStatusFilter]=useState<"All"|ShippingStatus>("All");
-  const [sortKey,setSortKey]=useState<"newest"|"username"|"status">("newest");
-  const [page,setPage]=useState(1);
-  const [rowsPerPage,setRowsPerPage]=useState(10);
-  const [savedAt,setSavedAt]=useState("Saved");
-  const esc=(v:string)=>String(v||"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[ch]||ch));
-  const readyStatus=(r:ShippingCustomer):ShippingStatus=>r.name.trim()&&r.phone.trim()&&r.sevenCode.trim()?"Ready":"Pending";
-  const persist=(next:ShippingCustomer[])=>{
-    const normalized=next.map(r=>{
-      const auto=readyStatus(r);
-      const locked=["Shipped","Delivered","Returned"].includes(r.status);
-      const status:ShippingStatus=locked?r.status:auto;
-      return {...r,status};
-    });
-    setRecords(normalized);
-    LS.set(storageKey,normalized);
-    setSavedAt(`Saved ${new Date().toLocaleTimeString()}`);
-  };
-  useEffect(()=>{
-    const tiktok=comments.filter(c=>c.platform==="TikTok"&&c.handle.trim());
-    if(!tiktok.length)return;
-    const timer=window.setTimeout(()=>setRecords(current=>{
-      const byUser=new Map(current.map(r=>[r.username.toLowerCase(),r]));
-      let changed=false;
-      for(const c of tiktok){
-        const username=c.handle.trim().replace(/^@/,"");
-        const key=username.toLowerCase();
-        if(byUser.has(key))continue;
-        byUser.set(key,{username,name:c.name||username,phone:"",sevenCode:"",note:"",lastComment:c.comment||"",firstSeen:c.timestamp||new Date().toISOString(),status:"Pending",isNew:true});
-        changed=true;
-      }
-      if(!changed)return current;
-      const next=Array.from(byUser.values()).sort((a,b)=>new Date(b.firstSeen).getTime()-new Date(a.firstSeen).getTime());
-      LS.set(storageKey,next);
-      setSavedAt(`Synced ${new Date().toLocaleTimeString()}`);
-      return next;
-    }),0);
-    return()=>window.clearTimeout(timer);
-  },[comments]);
-  const update=(username:string,patch:Partial<ShippingCustomer>)=>persist(records.map(r=>r.username===username?{...r,...patch,isNew:false}:r));
-  const copy=(text:string)=>navigator.clipboard?.writeText(text);
-  const printOne=(r:ShippingCustomer)=>{
-    const frame=document.createElement("iframe");
-    frame.style.position="fixed";frame.style.right="0";frame.style.bottom="0";frame.style.width="0";frame.style.height="0";frame.style.border="0";frame.style.opacity="0";
-    document.body.appendChild(frame);
-    const win=frame.contentWindow;if(!win){frame.remove();return;}
-    const doc=win.document;doc.open();
-    doc.write(`<!DOCTYPE html><html><head><title>${esc(r.username)} shipping</title><style>@page{size:100mm 60mm;margin:4mm}body{font-family:Arial,sans-serif;color:#000;margin:0}.brand{font-size:18px;font-weight:900;margin-bottom:4mm}.line{font-size:13px;margin:1.5mm 0}.label{font-size:10px;font-weight:900;text-transform:uppercase}.value{font-weight:900}.addr{font-size:17px;font-weight:900;line-height:1.15;margin-top:2mm}</style></head><body><div class="brand">SellerFlowLive Shipping</div><div class="line"><span class="label">Name</span><br/><span class="value">${esc(r.name)}</span></div><div class="line"><span class="label">Phone</span><br/><span class="value">${esc(r.phone)}</span></div><div class="line"><span class="label">7/11 Code</span><br/><span class="value">${esc(r.sevenCode)}</span></div><div class="line"><span class="label">TikTok</span><br/><span class="value">@${esc(r.username)}</span></div><div class="addr">${esc(r.note)}</div></body></html>`);
-    doc.close();setTimeout(()=>{win.focus();win.print();setTimeout(()=>frame.remove(),8000);},100);
-  };
-  const bulkPrint=()=>filtered.filter(r=>r.status==="Ready").forEach(printOne);
-  const exportRows=()=>csvDL(`shipping-customers-${new Date().toISOString().slice(0,10)}.csv`,["Username","Name","Phone","7/11 Code","Status","Last Comment","Note"],records.map(r=>[r.username,r.name,r.phone,r.sevenCode,r.status,r.lastComment,r.note]));
-  const uniqueValues=(field:keyof Pick<ShippingCustomer,"username"|"name"|"phone"|"sevenCode">)=>["All",...Array.from(new Set(records.map(r=>r[field]).filter(Boolean))).sort()];
-  const resetFilters=()=>{setQuery("");setStatusFilter("All");setColumnFilters({username:"All",name:"All",phone:"All",sevenCode:"All"});setSortKey("newest");setPage(1);};
-  const filtered=records.filter(r=>{
-    const q=query.toLowerCase();
-    const matches=!q||[r.username,r.name,r.phone,r.sevenCode,r.lastComment,r.note].some(v=>v.toLowerCase().includes(q));
-    const columnMatch=(columnFilters.username==="All"||r.username===columnFilters.username)
-      &&(columnFilters.name==="All"||r.name===columnFilters.name)
-      &&(columnFilters.phone==="All"||r.phone===columnFilters.phone)
-      &&(columnFilters.sevenCode==="All"||r.sevenCode===columnFilters.sevenCode);
-    return matches&&columnMatch&&(statusFilter==="All"||r.status===statusFilter);
-  }).sort((a,b)=>sortKey==="username"?a.username.localeCompare(b.username):sortKey==="status"?a.status.localeCompare(b.status):new Date(b.firstSeen).getTime()-new Date(a.firstSeen).getTime());
-  const pages=Math.max(1,Math.ceil(filtered.length/rowsPerPage));
-  const currentPage=Math.min(page,pages);
-  const pageRows=filtered.slice((currentPage-1)*rowsPerPage,currentPage*rowsPerPage);
-  const firstRow=filtered.length?(currentPage-1)*rowsPerPage+1:0;
-  const lastRow=Math.min(currentPage*rowsPerPage,filtered.length);
-  const activeFilterCount=(query?1:0)+(statusFilter!=="All"?1:0)+Object.values(columnFilters).filter(v=>v!=="All").length;
+  const [editUser,setEditUser]=useState<string|null>(null);
+  const [form,setForm]=useState({name:"",phone:"",sevenCode:""});
+  const [err,setErr]=useState("");
+  const persist=(next:ShippingCustomer[])=>{setRecords(next);LS.set(key,next);};
+  const regStatus=(r:ShippingCustomer):"Registered"|"Pending"|"Not Registered"=>
+    (r.name.trim()&&r.phone.trim()&&/^\d{6}$/.test(r.sevenCode.trim()))?"Registered":(r.phone.trim()||r.sevenCode.trim())?"Pending":"Not Registered";
+  const statusColor=(s:string):"green"|"amber"|"gray"=>s==="Registered"?"green":s==="Pending"?"amber":"gray";
+  const openEncode=(r:ShippingCustomer)=>{setEditUser(r.username);setForm({name:r.name,phone:r.phone,sevenCode:r.sevenCode});setErr("");};
+  function saveEncode(e:React.FormEvent){
+    e.preventDefault();
+    const name=form.name.trim(),phone=form.phone.trim(),sevenCode=form.sevenCode.trim();
+    if(!name){setErr("Name is required.");return;}
+    if(!phone){setErr("Phone is required.");return;}
+    if(!/^\d{6}$/.test(sevenCode)){setErr("7/11 code must be exactly 6 digits.");return;}
+    persist(records.map(r=>r.username===editUser?{...r,name,phone,sevenCode,isNew:false}:r));
+    setEditUser(null);
+  }
+  const q=query.trim().toLowerCase();
+  const filtered=records
+    .filter(r=>!q||[r.username,r.name,r.phone,r.sevenCode].some(v=>v.toLowerCase().includes(q)))
+    .sort((a,b)=>(a.num||0)-(b.num||0));
+  const total=records.length;
+  const registered=records.filter(r=>regStatus(r)==="Registered").length;
+  const pending=records.filter(r=>regStatus(r)==="Pending").length;
+  const needEncoding=records.filter(r=>regStatus(r)==="Not Registered").length;
+  const editing=records.find(r=>r.username===editUser)||null;
   return(
     <div className="subpage">
-      <div className="subpage-hd"><div><h2>Customer Data</h2><p>Collect shipping details, then print a shipping label fast.</p></div></div>
-      <div className="customer-data-black-panel">
-        <div className="cd-topbar">
-          <div className="cd-search"><span>Search</span><input value={query} onChange={e=>{setQuery(e.target.value);setPage(1);}} placeholder="Search TikTok username, name, phone, 7/11 code..."/>{query&&<button onClick={()=>setQuery("")}>x</button>}</div>
-          <button className="cd-tool-btn">Filters <b>{activeFilterCount}</b></button>
-          <span className="cd-spacer"/>
-          <button className="cd-tool-btn" onClick={resetFilters}>Reset Filters</button>
-          <button className="cd-tool-btn" onClick={()=>setSavedAt("Columns saved")}>Columns</button>
-          <button className="cd-tool-btn" onClick={()=>setSortKey(sortKey==="newest"?"username":sortKey==="username"?"status":"newest")}>Sort</button>
-          <button className="cd-tool-btn" onClick={()=>setSavedAt(`View saved ${new Date().toLocaleTimeString()}`)}>Save View</button>
-        </div>
-        <div className="cd-filter-row">
-          <label>TikTok Username<select value={columnFilters.username} onChange={e=>{setColumnFilters(f=>({...f,username:e.target.value}));setPage(1);}}>{uniqueValues("username").map(v=><option key={v}>{v}</option>)}</select></label>
-          <label>Name<select value={columnFilters.name} onChange={e=>{setColumnFilters(f=>({...f,name:e.target.value}));setPage(1);}}>{uniqueValues("name").map(v=><option key={v}>{v}</option>)}</select></label>
-          <label>Phone Number<select value={columnFilters.phone} onChange={e=>{setColumnFilters(f=>({...f,phone:e.target.value}));setPage(1);}}>{uniqueValues("phone").map(v=><option key={v}>{v}</option>)}</select></label>
-          <label>7/11 Code<select value={columnFilters.sevenCode} onChange={e=>{setColumnFilters(f=>({...f,sevenCode:e.target.value}));setPage(1);}}>{uniqueValues("sevenCode").map(v=><option key={v}>{v}</option>)}</select></label>
-          <label>Status<select value={statusFilter} onChange={e=>{setStatusFilter(e.target.value as "All"|ShippingStatus);setPage(1);}}><option>All</option><option>Pending</option><option>Ready</option><option>Shipped</option><option>Delivered</option><option>Returned</option></select></label>
-          <label>Date Added<button type="button" className="cd-date-btn">Select date range</button></label>
-          <span className="cd-save-state">{savedAt}</span>
-        </div>
-        <div className="cd-table-wrap">
-          <table className="cd-table"><thead><tr><th>TikTok Username</th><th>Name</th><th>Phone Number</th><th>7/11 Code</th><th>Status</th><th>Date Added</th><th>Actions</th></tr></thead><tbody>
-            {pageRows.length===0&&<tr><td colSpan={7} className="cd-empty">No new TikTok usernames yet</td></tr>}
-            {pageRows.map(r=><tr key={r.username}>
-              <td><strong>@{r.username}</strong>{r.isNew&&<b className="cd-new">New Buyer</b>}<small>{r.lastComment}</small></td>
-              <td><input value={r.name} onChange={e=>update(r.username,{name:e.target.value})}/></td>
-              <td><input value={r.phone} onChange={e=>update(r.username,{phone:e.target.value})} placeholder="Phone"/></td>
-              <td><input value={r.sevenCode} onChange={e=>update(r.username,{sevenCode:e.target.value})} placeholder="7/11 code"/></td>
-              <td><select className={`cd-status ${r.status.toLowerCase()}`} value={r.status} onChange={e=>update(r.username,{status:e.target.value as ShippingStatus})}><option>Pending</option><option>Ready</option><option>Shipped</option><option>Delivered</option><option>Returned</option></select></td>
-              <td>{new Date(r.firstSeen).toLocaleString()}</td>
-              <td><div className="cd-actions"><button onClick={()=>update(r.username,{isNew:false})}>Save</button><button onClick={()=>copy(r.phone)}>Copy phone</button><button onClick={()=>copy(r.sevenCode)}>Copy 7/11</button><button onClick={()=>printOne(r)}>Open shipping</button><button onClick={()=>update(r.username,{status:"Shipped"})}>Mark shipped</button></div></td>
-            </tr>)}
-          </tbody></table>
-        </div>
-        <div className="cd-pager"><span>Showing {firstRow} to {lastRow} of {filtered.length} customers</span><label>Rows per page:<select value={rowsPerPage} onChange={e=>{setRowsPerPage(Number(e.target.value));setPage(1);}}><option>10</option><option>25</option><option>50</option></select></label><button disabled={page<=1} onClick={()=>setPage(p=>p-1)}>Prev</button>{Array.from({length:Math.min(5,pages)},(_,i)=>i+1).map(n=><button key={n} className={currentPage===n?"active":""} onClick={()=>setPage(n)}>{n}</button>)}{pages>5&&<span>...</span>}<button disabled={page>=pages} onClick={()=>setPage(p=>p+1)}>Next</button></div>
-        <div className="cd-floating-tools"><button onClick={exportRows}>Export CSV</button><button onClick={()=>setSavedAt(`Synced ${new Date().toLocaleTimeString()}`)}>Sync Shipping</button><button onClick={onRefresh}>Refresh TikTok comments</button><button onClick={bulkPrint}>Open Printer Queue</button></div>
+      <div className="subpage-hd">
+        <div><h2>Customer Data</h2><p>Buyers are added automatically from Live. Tap a TikTok username to encode Name, Phone and 7/11 code once — then they are ready in Shipping.</p></div>
       </div>
+      <div className="grid4">
+        <div className="mstat"><div className="ms-l">Total Customers</div><div className="ms-v">{total}</div></div>
+        <div className="mstat"><div className="ms-l">Unique Registered</div><div className="ms-v" style={{color:"#1D9E75"}}>{registered}</div></div>
+        <div className="mstat"><div className="ms-l">Pending</div><div className="ms-v" style={{color:"#BA7517"}}>{pending}</div></div>
+        <div className="mstat"><div className="ms-l">Need Encoding</div><div className="ms-v" style={{color:"#A32D2D"}}>{needEncoding}</div></div>
+      </div>
+      <input placeholder="Search username, name, phone, 7/11 code..." value={query} onChange={e=>setQuery(e.target.value)} className="search-inp" style={{maxWidth:320}}/>
+      <div className="table-card">
+        <table className="tbl">
+          <thead><tr><th>#</th><th>TikTok username</th><th>Name</th><th>Phone number</th><th>7/11 code</th><th>Status</th></tr></thead>
+          <tbody>
+            {filtered.length===0&&<tr><td colSpan={6} style={{textAlign:"center",padding:32,color:"#888"}}>No customers yet. Buyers are added here automatically when you 1-click or set a price on the Live page.</td></tr>}
+            {filtered.map((r,i)=>{const s=regStatus(r);return(
+              <tr key={r.username}>
+                <td className="muted">{r.num??i+1}</td>
+                <td><button type="button" className="inline-link" onClick={()=>openEncode(r)}>@{r.username}</button>{r.isNew&&s==="Not Registered"&&<>{" "}<Badge label="New" color="purple"/></>}</td>
+                <td>{r.name||<span className="muted">—</span>}</td>
+                <td className="mono">{r.phone||<span className="muted">—</span>}</td>
+                <td className="mono">{r.sevenCode||<span className="muted">—</span>}</td>
+                <td><Badge label={s} color={statusColor(s)}/></td>
+              </tr>
+            );})}
+          </tbody>
+        </table>
+      </div>
+      {editing&&(
+        <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setEditUser(null)}>
+          <div className="modal" style={{maxWidth:420}}>
+            <div className="modal-hd"><span>Encode Customer · @{editing.username}</span><button onClick={()=>setEditUser(null)} className="modal-x">×</button></div>
+            <form onSubmit={saveEncode} className="modal-body">
+              <Fg label="Name 取件人姓名 *"><input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} autoFocus/></Fg>
+              <Fg label="Phone number 取件人手機 *"><input value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value.replace(/[^\d]/g,"")}))} inputMode="numeric" placeholder="09xxxxxxxx"/></Fg>
+              <Fg label="7/11 code 取件門市 (6 digits) *"><input value={form.sevenCode} onChange={e=>setForm(f=>({...f,sevenCode:e.target.value.replace(/[^\d]/g,"").slice(0,6)}))} inputMode="numeric" placeholder="123456"/></Fg>
+              {err&&<p style={{color:"#A32D2D",fontSize:13,margin:"4px 0 0"}}>{err}</p>}
+              <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:8}}>
+                <button type="button" className="btn-out" onClick={()=>setEditUser(null)}>Cancel</button>
+                <button type="submit" className="btn-purple">Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -3005,6 +3100,17 @@ export default function App(){
       }
     }catch{setToast(t.cant_reach);}
   }
+  function autoRegisterCustomer(c:Comment){
+    if(!user)return;
+    const username=String(c.handle||"").trim().replace(/^@/,"");
+    if(!username)return;
+    const key=custDataKey(user.email);
+    const cur=arrLS<ShippingCustomer>(key);
+    if(cur.some(r=>r.username.toLowerCase()===username.toLowerCase()))return;
+    const num=cur.reduce((m,r)=>Math.max(m,r.num||0),0)+1;
+    const rec:ShippingCustomer={username,name:c.name||username,phone:"",sevenCode:"",note:"",lastComment:"",firstSeen:new Date().toISOString(),status:"Pending",isNew:true,num};
+    LS.set(key,[...cur,rec]);
+  }
   async function createOrderFromComment(c:Comment,{print=true,price=0}:{print?:boolean;price?:number}={}){
     const existing=buyers.find(b=>b.handle===c.handle&&b.platform===c.platform);
     const buyerNum=existing?.num||buyers.length+1;
@@ -3030,6 +3136,7 @@ export default function App(){
 
     const nextBuyers=existing?buyers.map(b=>b.handle===c.handle&&b.platform===c.platform?nextBuyer:b):[...buyers,nextBuyer];
     saveBuyerMemory(nextBuyers);
+    try{autoRegisterCustomer(c);}catch(autoRegErr){console.warn("autoRegisterCustomer failed (non-fatal):",autoRegErr);} // never block order creation / printing
     setSelBuyer(singleOrderBuyer);
     setAllOrders(prev=>{const next=[...prev,order];LS.set(sellerMemoryKey("sf_orders"),next);return next;});
 
@@ -3124,7 +3231,7 @@ export default function App(){
     return connected&&account?account:platform;
   };
   const days=dLeft(user.planExpiry);
-  const showMobileBack=["settings","subscription","support","admin","privacy","terms","deleteAccount"].includes(page);
+  const showMobileBack=["settings","subscription","support","admin","privacy","terms","deleteAccount","shipping"].includes(page);
   const navItems:[Page,string,string][]=[
     ["dashboard","⚡",t.nav_live],["miners","🏅",t.nav_miners],["orders","🛒",t.nav_orders],
     ["products","📦",t.nav_products],["customers","👥",t.nav_customers],["customerData","📋","Customer Data"],["print","🖨️",t.nav_print],["sales","📊",t.nav_sales],
@@ -3143,6 +3250,7 @@ export default function App(){
         {navItems.slice(0,3).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={navClass(id)}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
         <div className="nav-sec-lbl">{t.nav_manage}</div>
         {navItems.slice(3,7).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={navClass(id)}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
+        <button onClick={()=>setPage("shipping")} className={navClass("shipping")}><span className="nav-ic">🚚</span><span className="nav-lb">Shipping</span></button>
         <div className="nav-sec-lbl">{t.nav_analytics}</div>
         {navItems.slice(7).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={navClass(id)}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
         <button onClick={()=>setPage("support")} className={`nav-it ${page==="support"?"on":""}`}><span className="nav-ic">💬</span><span className="nav-lb">Support</span>{supportUnreadCount>0&&<span className="nav-alert-badge">{supportUnreadCount>9?"9+":supportUnreadCount}</span>}</button>
@@ -3186,6 +3294,7 @@ export default function App(){
                 <div className="pd-row pd-cl" onClick={()=>{setPage("settings");setShowProf(false);}}><span>⚙️</span><span>{t.nav_settings}</span></div>
                 <div className="pd-row pd-cl" onClick={()=>{setPage("subscription");setShowProf(false);}}><span>💎</span><span>{t.subscription_label}</span></div>
                 <div className="pd-row pd-cl" onClick={()=>{setPage("support");setShowProf(false);}}><span>💬</span><span>{t.support_label}</span></div>
+                <div className="pd-row pd-cl" onClick={()=>{setPage("shipping");setShowProf(false);}}><span>🚚</span><span>Shipping</span></div>
                 <div className="pd-row pd-cl" onClick={()=>{setPage("privacy");setShowProf(false);}}><span>{t.privacy_policy}</span><span>{t.privacy_policy}</span></div>
                 <div className="pd-row pd-cl" onClick={()=>{setPage("terms");setShowProf(false);}}><span>{t.terms_service}</span><span>{t.terms_service}</span></div>
                 <div className="pd-row pd-cl" onClick={()=>{setPage("deleteAccount");setShowProf(false);}}><span>{t.delete_account}</span><span>{t.delete_account}</span></div>
@@ -3367,9 +3476,10 @@ export default function App(){
         {page==="orders"&&<Orders orders={allOrders} setOrders={setAllOrders} onPersist={orders=>LS.set(sellerMemoryKey("sf_orders"),orders)} cur={settings.currency} t={t}/>}
         {page==="products"&&<Products cur={settings.currency} t={t}/>}
         {page==="customers"&&<><Customers buyers={buyers} cur={settings.currency} t={t}/><CommentArchive comments={archivedComments}/></>}
-        {page==="customerData"&&<CustomerDataPage comments={[...comments,...archivedComments]} onRefresh={()=>setCurrentLiveDayId(liveDayId())}/>}
+        {page==="customerData"&&<CustomerDataPage user={user}/>}
         {page==="print"&&<PrintPage buyers={buyers} cur={settings.currency} storeName={user.profile.storeName||"SellerFlowLive"} settings={settings} t={t}/>}
         {page==="sales"&&<Sales orders={allOrders} buyers={buyers} cur={settings.currency} t={t}/>}
+        {page==="shipping"&&<Shipping user={user}/>}
         {page==="settings"&&<SettingsPage user={user} settings={settings} onSaveProfile={handleSaveProfile} onSaveSettings={handleSaveSettings} onSavePw={handleSavePw} onExportBackup={exportSellerBackup} onClearLiveComments={clearLiveCommentsOnly} t={t}/>}
         {page==="subscription"&&<SubPage user={user} onActivate={handleActivate} t={t}/>}
         {page==="support"&&<Support user={user} t={t}/>}
