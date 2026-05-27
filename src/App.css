@@ -322,6 +322,35 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .admin-fullscreen-create .btn-purple{align-self:flex-start;min-width:220px;margin-top:4px}
 .admin-fullscreen-table{overflow:auto}
 .admin-fullscreen-messages{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+/* Expanded Payment/Support = Messenger desktop layout (SellerFlow palette) */
+.admin-messenger{display:grid;grid-template-columns:320px minmax(0,1fr);grid-template-rows:minmax(0,1fr);gap:14px;flex:1;min-height:0}
+.admin-messenger-list{display:flex;flex-direction:column;min-height:0;border:1px solid #E4E2DC;border-radius:14px;background:#FBFAF7;overflow:hidden}
+.admin-messenger-search{display:flex;gap:6px;padding:10px;border-bottom:1px solid #E4E2DC}
+.admin-messenger-search input{flex:1;min-width:0}
+.admin-messenger-listhd{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 12px;font-size:12px;font-weight:700;color:#26215C;border-bottom:1px solid #E4E2DC}
+.admin-messenger-threads{flex:1;min-height:0;overflow-y:auto;padding:8px;display:flex;flex-direction:column;gap:4px}
+.admin-messenger-threads .support-thread.list-only{cursor:pointer}
+.admin-messenger-threads .support-thread.list-only.is-active{opacity:1;background:#EEEDFE;border-color:#7F77DD}
+.admin-messenger-chat{display:flex;flex-direction:column;min-height:0;border:1px solid #E4E2DC;border-radius:14px;background:#fff;overflow:hidden}
+.admin-messenger-chat-head{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid #E4E2DC}
+.admin-messenger-chat-meta{display:flex;flex-direction:column}
+.admin-messenger-chat-meta strong{font-size:14px;color:#26215C}
+.admin-messenger-chat-email{font-size:11px;margin-left:auto}
+.admin-messenger-body{flex:1;min-height:0;max-height:none;overflow-y:auto;padding:14px}
+.admin-messenger-empty{margin:auto;padding:40px 20px;text-align:center;color:#888780;font-size:13px}
+.admin-messenger-back{display:none}
+@media (max-width:860px), (max-device-width:1200px), (max-width:1024px) and (hover:none) and (pointer:coarse){
+  .admin-messenger{grid-template-columns:1fr;grid-template-rows:minmax(0,1fr)}
+  .admin-messenger-back{display:inline-flex}
+  .admin-messenger.has-selection .admin-messenger-list{display:none}
+  .admin-messenger:not(.has-selection) .admin-messenger-chat{display:none}
+  .admin-messenger-list,.admin-messenger-chat{background:#121523;border-color:var(--m-line)}
+  .admin-messenger-search,.admin-messenger-listhd,.admin-messenger-chat-head{border-color:var(--m-line)}
+  .admin-messenger-listhd,.admin-messenger-chat-meta strong{color:#F8F7FF}
+  .admin-messenger-empty{color:#A5A8BA}
+  .admin-messenger-threads .support-thread.list-only.is-active{background:rgba(127,119,221,.2);border-color:#7F77DD}
+  .support-thread.list-only.has-new{background:rgba(127,119,221,.12)!important}
+}
 .admin-page{position:relative}
 .admin-page-scroll-tools{position:fixed;right:18px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:10px;z-index:20}
 .admin-page-scroll-tools button{width:34px;height:34px;border:none;border-radius:10px;background:#7F77DD;color:#fff;font-size:16px;font-weight:700;cursor:pointer;box-shadow:0 8px 22px rgba(38,33,92,.18)}
@@ -342,6 +371,11 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .support-thread.list-only{padding:6px 8px}
 .support-thread.chat-open{min-height:280px}
 .support-thread.has-new{border-color:#7F77DD;box-shadow:0 8px 22px rgba(83,74,183,.12)}
+/* Conversation list (Chats): unread stands out, read is muted */
+.support-thread.list-only .support-convo-top strong{font-weight:600}
+.support-thread.list-only.has-new .support-convo-top strong{font-weight:800}
+.support-thread.list-only:not(.has-new){opacity:.62}
+.support-thread.list-only.has-new{background:#F5F4FF}
 .support-thread-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;border-bottom:1px solid #F1EFE8;padding-bottom:8px}
 .support-thread-head.messenger-thread-head{width:100%;border:none;background:transparent;text-align:left;cursor:pointer;padding:4px}
 .support-thread.chat-open .support-thread-head.messenger-thread-head{cursor:default}
