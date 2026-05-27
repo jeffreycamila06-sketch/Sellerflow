@@ -1944,6 +1944,10 @@ function Support({user,t}:{user:User;t:T}){
             <div style={{color:"#888",fontSize:12,padding:"20px 0"}}>No messages yet. Send your first message using the form on the left.</div>
           ):(
             <>
+              <div className="support-chat-header">
+                <div className="support-avatar big">{ini("SellerFlowLive")}</div>
+                <div><strong>SellerFlowLive Support</strong><span className="chat-active"><span className="chat-active-dot"/>Active</span></div>
+              </div>
               <div className="seller-support-box support-conversation-body">
                 {conversation.map(m=>(
                   <div key={m.id} className="support-message-block">
@@ -2495,6 +2499,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                         {c.unread>0&&<b>{c.unread>9?"9+":c.unread} new message{c.unread>1?"s":""}</b>}
                       </div>
                       <div className="muted" style={{fontSize:10}}>{c.email}</div>
+                      {selectedSupportEmail&&<span className="chat-active"><span className="chat-active-dot"/>Active</span>}
                     </div>
                     {c.unread>0&&<span className="support-unread-dot"/>}
                   </button>

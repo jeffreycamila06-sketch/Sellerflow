@@ -385,6 +385,22 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .messenger-reply{display:flex;gap:8px;align-items:flex-start;border-top:1px solid #F1EFE8;padding-top:8px}
 .messenger-reply textarea{min-height:46px;font-size:12px;resize:vertical;border-radius:12px}
 .messenger-reply button{margin-top:2px}
+/* ===== Messenger-style Support (LAYOUT only — SellerFlow palette, no new colors) ===== */
+.support-chat-header{display:flex;align-items:center;gap:10px;padding:4px 2px 10px;border-bottom:1px solid #F1EFE8;margin-bottom:4px}
+.support-chat-header strong{display:block;font-size:13px;color:#26215C;line-height:1.15}
+.chat-active{display:inline-flex;align-items:center;gap:5px;font-size:10px;color:#1D9E75;font-weight:700;margin-top:2px}
+.chat-active-dot{width:8px;height:8px;border-radius:50%;background:#1D9E75;box-shadow:0 0 0 2px rgba(29,158,117,.18);flex-shrink:0}
+/* On the seller's own Support page, the seller is "me": my messages right + purple, admin left + neutral */
+.support-page .support-chat-row.seller{justify-content:flex-end}
+.support-page .support-chat-row.admin{justify-content:flex-start}
+.support-page .support-bubble.seller{background:#7F77DD;color:#fff;border-bottom-right-radius:4px;border-bottom-left-radius:16px}
+.support-page .support-bubble.seller strong,.support-page .support-bubble.seller span{color:#fff}
+.support-page .support-bubble.admin{background:#F1EFE8;color:#26215C;border-bottom-left-radius:4px;border-bottom-right-radius:16px}
+.support-page .support-bubble.admin strong{color:#26215C}
+/* Messenger pill composer (keeps the existing fields + send functionality) */
+.messenger-reply textarea{border-radius:18px;padding:10px 14px}
+.messenger-reply button{border-radius:18px;align-self:flex-end}
+.support-page>.support-mobile-grid .support-messages-card textarea{border-radius:18px}
 .support-admin-reply{margin-top:8px;padding:8px 10px;background:#EEEDFE;border:1px solid #D8D3FF;border-radius:8px;color:#26215C;font-size:12px;line-height:1.4}
 .support-admin-reply strong{display:block;color:#534AB7;margin-bottom:4px}
 .support-admin-reply span{display:block;margin-top:5px;color:#888780;font-size:10px}
@@ -1554,6 +1570,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .seller-message-row,.support-thread,.support-bubble,.payment-box{background:#121523!important;border:1px solid var(--m-line)!important;color:#fff!important}
   .support-bubble.admin{background:rgba(155,77,255,.18)!important}
   .support-bubble p,.support-convo-sub span,.payment-box p{color:#DAD8E8!important}
+  /* Seller page: flip so the seller (me) bubble is the purple accent and admin is neutral dark */
+  .support-page .support-bubble.seller{background:rgba(155,77,255,.18)!important;color:#fff!important}
+  .support-page .support-bubble.admin{background:#121523!important;color:#DAD8E8!important}
   .mobile-printer-saved{background:rgba(16,185,129,.14)!important;border-color:rgba(45,212,191,.28)!important;color:#DFFCF5!important}
   .mobile-printer-saved span,.mobile-printer-saved small{color:#8FF4D2!important}
   .mobile-printer-empty{background:#111525!important;border-color:var(--m-line)!important;color:#A5A8BA!important}
