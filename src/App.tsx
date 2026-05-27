@@ -1873,8 +1873,8 @@ function Support({user,t}:{user:User;t:T}){
     return new Date(b.timestamp).getTime()-new Date(a.timestamp).getTime();
   });
   const unreadReplies=sellerMessages.filter(m=>m.status!=="resolved"&&m.adminReply&&!readIds.includes(m.id)).length;
-  const conversation=[...prev].sort((a,b)=>new Date(a.timestamp).getTime()-new Date(b.timestamp).getTime());
-  const latest=conversation[conversation.length-1];
+  const conversation=[...prev].sort((a,b)=>new Date(b.timestamp).getTime()-new Date(a.timestamp).getTime()); // newest first (top)
+  const latest=conversation[0];
   // Viewing the conversation marks any admin replies as read (Messenger-style).
   useEffect(()=>{
     const unreadIds=sellerMessages.filter(m=>m.adminReply&&!readIds.includes(m.id)).map(m=>m.id);
@@ -2290,7 +2290,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     return acc;
   },{})).map(c=>({
     ...c,
-    messages:[...c.messages].sort((a,b)=>new Date(a.timestamp).getTime()-new Date(b.timestamp).getTime()),
+    messages:[...c.messages].sort((a,b)=>new Date(b.timestamp).getTime()-new Date(a.timestamp).getTime()), // newest first (top)
     active:c.messages.some(m=>m.status!=="resolved"),
   })).sort((a,b)=>{
     if(a.unread!==b.unread)return b.unread-a.unread;
