@@ -987,7 +987,7 @@ const SHIP_TEMP="常溫"; // temperature is always normal/room temp for every re
 // file. Verify against the official template before relying on a real import.
 const MYSHIP_HEADERS=["取件人姓名","取件人手機","取件門市","溫層","商品","訂單金額","運費金額","買家下訂日期","商品備註","其他資訊 (FB/LINE/IG帳號)"];
 
-function Shipping({user}:{user:User}){
+function Shipping({user,t}:{user:User;t:T}){
   const storeKey=sellerDataKey("sf_shipping",user.email);
   const [list,setList]=useState<ShipRec[]>(()=>arrLS<ShipRec>(storeKey));
   // Registered customers come from Customer Data (name, phone, 7/11 code encoded once).
@@ -1023,6 +1023,8 @@ function Shipping({user}:{user:User}){
   async function exportXlsx(){
     setErr("");setMsg("");
     if(!list.length){setErr("Add at least one order before exporting.");return;}
+    // 7-11/OpenPoint requires a real Name in every row — block export if any are still blank.
+    if(list.some(r=>!r.name.trim())){setErr(t.ship_export_no_name);return;}
     try{
       const XLSX=await import("xlsx");
       // phone + store kept as text (preserve leading zeros); amounts as numbers; H/I/J blank.
@@ -1166,20 +1168,22 @@ function CustomerDataPage({user}:{user:User}){
   const [records,setRecords]=useState<ShippingCustomer[]>(()=>arrLS<ShippingCustomer>(key));
   const [query,setQuery]=useState("");
   const [editUser,setEditUser]=useState<string|null>(null);
-  const [form,setForm]=useState({name:"",phone:"",sevenCode:""});
+  const [form,setForm]=useState({username:"",name:"",phone:"",sevenCode:""});
   const [err,setErr]=useState("");
   const persist=(next:ShippingCustomer[])=>{setRecords(next);LS.set(key,next);};
   const regStatus=(r:ShippingCustomer):"Registered"|"Pending"|"Not Registered"=>
     (r.name.trim()&&r.phone.trim()&&/^\d{6}$/.test(r.sevenCode.trim()))?"Registered":(r.phone.trim()||r.sevenCode.trim())?"Pending":"Not Registered";
   const statusColor=(s:string):"green"|"amber"|"gray"=>s==="Registered"?"green":s==="Pending"?"amber":"gray";
-  const openEncode=(r:ShippingCustomer)=>{setEditUser(r.username);setForm({name:r.name,phone:r.phone,sevenCode:r.sevenCode});setErr("");};
+  const openEncode=(r:ShippingCustomer)=>{setEditUser(r.username);setForm({username:r.username,name:r.name,phone:r.phone,sevenCode:r.sevenCode});setErr("");};
   function saveEncode(e:React.FormEvent){
     e.preventDefault();
-    const name=form.name.trim(),phone=form.phone.trim(),sevenCode=form.sevenCode.trim();
+    const username=form.username.trim().replace(/^@/,""),name=form.name.trim(),phone=form.phone.trim(),sevenCode=form.sevenCode.trim();
+    if(!username){setErr("Username (TikTok / FB handle) is required.");return;}
+    if(records.some(r=>r.username!==editUser&&r.username.toLowerCase()===username.toLowerCase())){setErr("Another customer already uses that username.");return;}
     if(!name){setErr("Name is required.");return;}
     if(!phone){setErr("Phone is required.");return;}
     if(!/^\d{6}$/.test(sevenCode)){setErr("7/11 code must be exactly 6 digits.");return;}
-    persist(records.map(r=>r.username===editUser?{...r,name,phone,sevenCode,isNew:false}:r));
+    persist(records.map(r=>r.username===editUser?{...r,username,name,phone,sevenCode,isNew:false}:r));
     setEditUser(null);
   }
   const q=query.trim().toLowerCase();
@@ -1226,7 +1230,8 @@ function CustomerDataPage({user}:{user:User}){
           <div className="modal" style={{maxWidth:420}}>
             <div className="modal-hd"><span>Encode Customer · @{editing.username}</span><button onClick={()=>setEditUser(null)} className="modal-x">×</button></div>
             <form onSubmit={saveEncode} className="modal-body">
-              <Fg label="Name 取件人姓名 *"><input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} autoFocus/></Fg>
+              <Fg label="Username TikTok / FB 帳號 *"><input value={form.username} onChange={e=>setForm(f=>({...f,username:e.target.value}))} placeholder="mine301520"/></Fg>
+              <Fg label="Name 取件人姓名 (real name) *"><input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="錢蘭 / Maria Santos" autoFocus/></Fg>
               <Fg label="Phone number 取件人手機 *"><input value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value.replace(/[^\d]/g,"")}))} inputMode="numeric" placeholder="09xxxxxxxx"/></Fg>
               <Fg label="7/11 code 取件門市 (6 digits) *"><input value={form.sevenCode} onChange={e=>setForm(f=>({...f,sevenCode:e.target.value.replace(/[^\d]/g,"").slice(0,6)}))} inputMode="numeric" placeholder="123456"/></Fg>
               {err&&<p style={{color:"#A32D2D",fontSize:13,margin:"4px 0 0"}}>{err}</p>}
@@ -3268,7 +3273,9 @@ export default function App(){
     const cur=arrLS<ShippingCustomer>(key);
     if(cur.some(r=>r.username.toLowerCase()===username.toLowerCase()))return;
     const num=cur.reduce((m,r)=>Math.max(m,r.num||0),0)+1;
-    const rec:ShippingCustomer={username,name:c.name||username,phone:"",sevenCode:"",note:"",lastComment:"",firstSeen:new Date().toISOString(),status:"Pending",isNew:true,num};
+    // Name is left blank on purpose: 7-11/OpenPoint needs the customer's REAL name, not the TikTok/FB handle.
+    // Admin encodes the real Name in Customer Data before shipping. Username keeps the handle.
+    const rec:ShippingCustomer={username,name:"",phone:"",sevenCode:"",note:"",lastComment:"",firstSeen:new Date().toISOString(),status:"Pending",isNew:true,num};
     LS.set(key,[...cur,rec]);
   }
   async function createOrderFromComment(c:Comment,{print=true,price=0}:{print?:boolean;price?:number}={}){
@@ -3639,7 +3646,7 @@ export default function App(){
         {page==="customerData"&&isAdminUser(user)&&<CustomerDataPage user={user}/>}
         {page==="print"&&<PrintPage buyers={buyers} cur={settings.currency} storeName={user.profile.storeName||"SellerFlowLive"} settings={settings} t={t}/>}
         {page==="sales"&&<Sales orders={allOrders} buyers={buyers} cur={settings.currency} t={t}/>}
-        {page==="shipping"&&isAdminUser(user)&&<Shipping user={user}/>}
+        {page==="shipping"&&isAdminUser(user)&&<Shipping user={user} t={t}/>}
         {page==="settings"&&<SettingsPage user={user} settings={settings} onSaveProfile={handleSaveProfile} onSaveSettings={handleSaveSettings} onSavePw={handleSavePw} onExportBackup={exportSellerBackup} onClearLiveComments={clearLiveCommentsOnly} t={t}/>}
         {page==="subscription"&&<SubPage user={user} onActivate={handleActivate} t={t}/>}
         {page==="support"&&<Support user={user} t={t}/>}

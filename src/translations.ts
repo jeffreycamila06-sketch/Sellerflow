@@ -175,6 +175,7 @@ const BASE_TRANSLATIONS = {
     bot_label:"SellerFlow Auto-help",
     bot_welcome:"Hi! 👋 I'm SellerFlow Auto-help. Tap a question below for an instant answer — no waiting.",
     bot_notice:"Question not on the list? Type it below — it goes straight to admin.",
+    ship_export_no_name:"Can't export a customer with no Name. Please encode the real name before shipping.",
     bot_faq:[
       {q:"How do I connect TikTok / Facebook?",a:"On the Live page, click the TikTok or Facebook button to connect your live session. Comments load once you're connected. Depending on your plan you can connect 1–5 accounts (Trial=1, Basic=1, Pro=3, Master=5)."},
       {q:"Why aren't any comments showing?",a:"Make sure you're connected to your TikTok or Facebook live session and that you're actually LIVE (broadcasting). When you're connected and LIVE, comments should appear in real time."},
@@ -340,6 +341,7 @@ const BASE_TRANSLATIONS = {
     bot_label:"SellerFlow Auto-help",
     bot_welcome:"Kumusta! 👋 Ako ang SellerFlow Auto-help. Pumili ng tanong sa ibaba para sa mabilis na sagot — walang hintay.",
     bot_notice:"Wala dito ang tanong mo? I-type sa baba — pupunta kay admin.",
+    ship_export_no_name:"Hindi pwedeng i-export ang customer na walang Name. Mag-encode muna ng real name bago i-ship.",
     bot_faq:[
       {q:"Paano mag-connect ng TikTok / Facebook?",a:"Sa Live page, i-click ang TikTok o Facebook button para i-connect ang live session mo. Maglo-load ang comments kapag connected. Depende sa plan, pwede kang mag-connect ng 1-5 accounts (Trial=1, Basic=1, Pro=3, Master=5)."},
       {q:"Bakit walang lumalabas na comments?",a:"Siguraduhing connected ka sa TikTok o Facebook live session, at LIVE ka talaga (nagbo-broadcast). Kapag connected at LIVE, dapat lumabas ang comments in real time."},
@@ -505,6 +507,7 @@ const BASE_TRANSLATIONS = {
     bot_label:"SellerFlow Auto-help",
     bot_welcome:"你好！👋 我是 SellerFlow 自助客服。点击下方的问题即可立即获得答案，无需等待。",
     bot_notice:"没有你的问题？在下方输入 — 会直接发送给管理员。",
+    ship_export_no_name:"无法导出没有姓名的客户。请先填写真实姓名再出货。",
     bot_faq:[
       {q:"如何连接 TikTok / Facebook？",a:"在直播页面，点击 TikTok 或 Facebook 按钮来连接你的直播。连接后评论就会加载。根据套餐，你可以连接 1–5 个账号（试用=1，基础=1，专业=3，大师=5）。"},
       {q:"为什么没有评论显示？",a:"请确认你已连接到 TikTok 或 Facebook 直播，并且你确实正在直播（正在播出）。连接并开始直播后，评论应会实时显示。"},
@@ -670,6 +673,7 @@ const BASE_TRANSLATIONS = {
     bot_label:"SellerFlow Auto-help",
     bot_welcome:"Xin chào! 👋 Tôi là SellerFlow Auto-help. Chọn một câu hỏi bên dưới để nhận câu trả lời ngay — không cần chờ.",
     bot_notice:"Không thấy câu hỏi của bạn? Nhập bên dưới — sẽ gửi thẳng đến admin.",
+    ship_export_no_name:"Không thể xuất khách hàng chưa có Tên. Vui lòng nhập tên thật trước khi giao hàng.",
     bot_faq:[
       {q:"Làm sao để kết nối TikTok / Facebook?",a:"Trên trang Live, nhấn nút TikTok hoặc Facebook để kết nối phiên live của bạn. Bình luận sẽ tải khi đã kết nối. Tùy theo gói, bạn có thể kết nối 1–5 tài khoản (Dùng thử=1, Basic=1, Pro=3, Master=5)."},
       {q:"Vì sao không có bình luận hiển thị?",a:"Hãy chắc chắn bạn đã kết nối với phiên live TikTok hoặc Facebook và bạn đang thực sự LIVE (đang phát). Khi đã kết nối và đang LIVE, bình luận sẽ hiển thị theo thời gian thực."},
@@ -754,6 +758,7 @@ const THAI_TRANSLATIONS: T = {
   bot_label:"SellerFlow Auto-help",
   bot_welcome:"สวัสดี! 👋 ฉันคือ SellerFlow Auto-help เลือกคำถามด้านล่างเพื่อรับคำตอบทันที — ไม่ต้องรอ",
   bot_notice:"ไม่มีคำถามของคุณที่นี่ใช่ไหม? พิมพ์ด้านล่าง — จะส่งถึงแอดมินโดยตรง",
+  ship_export_no_name:"ไม่สามารถส่งออกลูกค้าที่ไม่มีชื่อได้ กรุณากรอกชื่อจริงก่อนจัดส่ง",
   bot_faq:[
     {q:"เชื่อมต่อ TikTok / Facebook อย่างไร?",a:"ในหน้า Live ให้กดปุ่ม TikTok หรือ Facebook เพื่อเชื่อมต่อไลฟ์ของคุณ คอมเมนต์จะโหลดเมื่อเชื่อมต่อแล้ว ขึ้นอยู่กับแพ็กเกจ คุณเชื่อมต่อได้ 1–5 บัญชี (ทดลอง=1, Basic=1, Pro=3, Master=5)"},
     {q:"ทำไมไม่มีคอมเมนต์แสดงขึ้นมา?",a:"ตรวจสอบว่าคุณเชื่อมต่อกับไลฟ์ TikTok หรือ Facebook แล้ว และกำลังไลฟ์อยู่จริง (กำลังถ่ายทอดสด) เมื่อเชื่อมต่อและกำลังไลฟ์ คอมเมนต์ควรแสดงแบบเรียลไทม์"},
@@ -835,6 +840,7 @@ const INDONESIAN_TRANSLATIONS: T = {
   bot_label:"SellerFlow Auto-help",
   bot_welcome:"Halo! 👋 Saya SellerFlow Auto-help. Pilih pertanyaan di bawah untuk jawaban instan — tanpa menunggu.",
   bot_notice:"Pertanyaan tidak ada di daftar? Ketik di bawah — langsung dikirim ke admin.",
+  ship_export_no_name:"Tidak bisa mengekspor pelanggan tanpa Nama. Mohon isi nama asli sebelum pengiriman.",
   bot_faq:[
     {q:"Bagaimana cara menghubungkan TikTok / Facebook?",a:"Di halaman Live, klik tombol TikTok atau Facebook untuk menghubungkan sesi live Anda. Komentar dimuat setelah terhubung. Tergantung paket, Anda bisa menghubungkan 1–5 akun (Trial=1, Basic=1, Pro=3, Master=5)."},
     {q:"Kenapa tidak ada komentar yang muncul?",a:"Pastikan Anda terhubung ke sesi live TikTok atau Facebook, dan Anda benar-benar sedang LIVE (menyiarkan). Saat terhubung dan LIVE, komentar akan muncul secara real-time."},
