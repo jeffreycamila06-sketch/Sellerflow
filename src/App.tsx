@@ -1843,8 +1843,10 @@ function Support({user,t}:{user:User;t:T}){
   const [file,setFile]=useState<File|null>(null);
   const [sent,setSent]=useState(false);
   const [supportError,setSupportError]=useState("");
-  const [selectedMsgId,setSelectedMsgId]=useState("");
+  const [followUp,setFollowUp]=useState("");
+  const [followBusy,setFollowBusy]=useState(false);
   const [readIds,setReadIds]=useState<string[]>(()=>arrLS<string>(supportReadKey(user.email)));
+  const convoRef=useRef<HTMLDivElement>(null);
   async function send(e:React.FormEvent){
     e.preventDefault();
     try{
@@ -1871,15 +1873,35 @@ function Support({user,t}:{user:User;t:T}){
     if((a.status==="resolved")!==(b.status==="resolved"))return a.status==="resolved"?1:-1;
     return new Date(b.timestamp).getTime()-new Date(a.timestamp).getTime();
   });
-  const selectedMsg=sellerMessages.find(m=>m.id===selectedMsgId);
   const unreadReplies=sellerMessages.filter(m=>m.status!=="resolved"&&m.adminReply&&!readIds.includes(m.id)).length;
-  function openSellerMessage(m:SupportMsg){
-    setSelectedMsgId(m.id);
-    if(m.status!=="resolved"&&m.adminReply&&!readIds.includes(m.id)){
-      const next=[...readIds,m.id];
-      setReadIds(next);
-      LS.set(supportReadKey(user.email),next);
-    }
+  const conversation=[...prev].sort((a,b)=>new Date(a.timestamp).getTime()-new Date(b.timestamp).getTime()); // oldest first (top), newest at bottom
+  const latest=conversation[conversation.length-1];
+  // Viewing the conversation marks any admin replies as read (Messenger-style).
+  useEffect(()=>{
+    const unreadIds=sellerMessages.filter(m=>m.adminReply&&!readIds.includes(m.id)).map(m=>m.id);
+    if(unreadIds.length){const next=[...readIds,...unreadIds];setReadIds(next);LS.set(supportReadKey(user.email),next);}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[prev]);
+  useEffect(()=>{
+    const el=convoRef.current;
+    if(el)el.scrollTop=el.scrollHeight; // auto-scroll to newest message (bottom)
+  },[prev]);
+  async function sendFollowUp(e:React.FormEvent){
+    e.preventDefault();
+    const text=followUp.trim();
+    if(!text)return;
+    setFollowBusy(true);
+    try{
+      const lastSubject=latest?.subject||subject||"Follow-up";
+      const sm:SupportMsg={id:Date.now().toString(),name,email,subject:lastSubject,message:text,hasProof:false,timestamp:new Date().toISOString(),status:"pending"};
+      await saveSupportMessage(sm);
+      setSupportError("");
+      setFollowUp("");
+      const ms=await listSupportMessages();
+      setPrev(ms.filter(m=>m.email.toLowerCase()===user.email.toLowerCase()));
+    }catch(error){
+      setSupportError(`Message not sent: ${error instanceof Error?error.message:"Unknown error"}`);
+    }finally{setFollowBusy(false);}
   }
   return(
     <div className="subpage support-page">
@@ -1918,67 +1940,49 @@ function Support({user,t}:{user:User;t:T}){
           )}
         </div>
         <div className="scard support-messages-card">
-          <div className="scard-title support-title"><span>My messages ({prev.length})</span>{unreadReplies>0&&<span className="support-new-badge">{unreadReplies>9?"9+":unreadReplies} new</span>}</div>
-          {prev.length>0&&(
-            <div className="seller-support-box">
-              {!selectedMsg&&sellerMessages.map(m=>{
-                const unread=!!m.adminReply&&!readIds.includes(m.id);
-                return <button key={m.id} className={`seller-message-row ${unread?"has-new":""}`} onClick={()=>openSellerMessage(m)}>
-                  <div className="support-avatar">{ini(m.subject)}</div>
-                  <div className="support-convo-meta">
-                    <div className="support-convo-top"><strong>{m.subject}</strong><span>{new Date(m.timestamp).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}</span></div>
-                    <div className="support-convo-sub"><span>{m.adminReply?`Admin: ${m.adminReply}`:m.message}</span>{unread&&<b>new reply</b>}</div>
-                  </div>
-                  <Badge label={m.status==="approved"?"Approved":m.status==="rejected"?"Rejected":m.status==="resolved"?"Resolved":"Pending"} color={m.status==="approved"?"green":m.status==="rejected"?"red":m.status==="resolved"?"gray":"amber"}/>
-                  {unread&&<span className="support-unread-dot"/>}
-                </button>;
-              })}
-              {selectedMsg&&(
-                <div className="support-thread chat-open">
-                  <button className="tbl-btn ed support-back-btn" onClick={()=>setSelectedMsgId("")}>Back to messages</button>
-                  <div className="support-chat-row seller">
-                    <div className="support-avatar">{ini(user.profile.fullName||user.email)}</div>
-                    <div className="support-bubble seller">
-                      <strong>{selectedMsg.subject}</strong>
-                      <p>{selectedMsg.message}</p>
-                      {selectedMsg.proofImage&&<a href={selectedMsg.proofImage} target="_blank" rel="noreferrer"><img className="support-proof-img" src={selectedMsg.proofImage} alt="Payment proof" /></a>}
-                      <span>{new Date(selectedMsg.timestamp).toLocaleString()} {selectedMsg.hasProof?" - Proof attached":""}</span>
-                    </div>
-                  </div>
-                  {selectedMsg.adminReply&&(
-                    <div className="support-chat-row admin">
-                      <div className="support-bubble admin">
-                        <strong>Admin reply</strong>
-                        <p>{selectedMsg.adminReply}</p>
-                        {selectedMsg.repliedAt&&<span>{new Date(selectedMsg.repliedAt).toLocaleString()}</span>}
+          <div className="scard-title support-title">
+            <span>My messages ({prev.length})</span>
+            {latest&&<Badge label={latest.status==="approved"?"Approved":latest.status==="rejected"?"Rejected":latest.status==="resolved"?"Resolved":"Pending"} color={latest.status==="approved"?"green":latest.status==="rejected"?"red":latest.status==="resolved"?"gray":"amber"}/>}
+            {unreadReplies>0&&<span className="support-new-badge">{unreadReplies>9?"9+":unreadReplies} new</span>}
+          </div>
+          {prev.length===0?(
+            <div style={{color:"#888",fontSize:12,padding:"20px 0"}}>No messages yet. Send your first message using the form on the left.</div>
+          ):(
+            <>
+              <div className="support-chat-header">
+                <div className="support-avatar big">{ini("SellerFlowLive")}</div>
+                <div><strong>SellerFlowLive Support</strong><span className="chat-active"><span className="chat-active-dot"/>Active</span></div>
+              </div>
+              <div className="seller-support-box support-conversation-body" ref={convoRef}>
+                {conversation.map(m=>(
+                  <div key={m.id} className="support-message-block">
+                    <div className="support-chat-row seller">
+                      <div className="support-avatar">{ini(user.profile.fullName||user.email)}</div>
+                      <div className="support-bubble seller">
+                        {m.subject&&<strong>{m.subject}</strong>}
+                        <p>{m.message}</p>
+                        {m.proofImage&&<a href={m.proofImage} target="_blank" rel="noreferrer"><img className="support-proof-img" src={m.proofImage} alt="Payment proof" /></a>}
+                        <span>{new Date(m.timestamp).toLocaleString()}{m.hasProof?" - Proof attached":""}</span>
                       </div>
                     </div>
-                  )}
-                  <div className="support-actions"><Badge label={selectedMsg.status==="approved"?"Approved":selectedMsg.status==="rejected"?"Rejected":selectedMsg.status==="resolved"?"Resolved":"Pending"} color={selectedMsg.status==="approved"?"green":selectedMsg.status==="rejected"?"red":selectedMsg.status==="resolved"?"gray":"amber"}/></div>
-                </div>
-              )}
-            </div>
-          )}
-          {prev.length===0?<div style={{color:"#888",fontSize:12,padding:"20px 0"}}>No messages sent yet.</div>:(
-            <div style={{display:"none",flexDirection:"column",gap:8}}>
-              {[...prev].reverse().map(m=>(
-                <div key={m.id} style={{background:"var(--color-background-secondary,#F9F9F7)",borderRadius:8,padding:10,border:"0.5px solid #E4E2DC"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                    <strong style={{fontSize:12}}>{m.subject}</strong>
-                    <Badge label={m.status==="approved"?"Approved":m.status==="rejected"?"Rejected":m.status==="resolved"?"Resolved":"Pending"} color={m.status==="approved"?"green":m.status==="rejected"?"red":m.status==="resolved"?"gray":"amber"}/>
+                    {m.adminReply&&(
+                      <div className="support-chat-row admin">
+                        <div className="support-bubble admin">
+                          <strong>Admin</strong>
+                          <p>{m.adminReply}</p>
+                          {m.repliedAt&&<span>{new Date(m.repliedAt).toLocaleString()}</span>}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div style={{fontSize:11,color:"#888",marginBottom:4}}>{new Date(m.timestamp).toLocaleDateString()} {m.hasProof?"📎 Proof attached":""}</div>
-                  <div style={{fontSize:12,color:"#5F5E5A"}}>{m.message.slice(0,120)}{m.message.length>120?"...":""}</div>
-                  {m.adminReply&&(
-                    <div className="support-admin-reply">
-                      <strong>Admin reply</strong>
-                      <div>{m.adminReply}</div>
-                      {m.repliedAt&&<span>{new Date(m.repliedAt).toLocaleString()}</span>}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+              <form onSubmit={sendFollowUp} className="messenger-reply" style={{marginTop:10}}>
+                <textarea rows={2} value={followUp} onChange={e=>setFollowUp(e.target.value)} placeholder="Type your message..." style={{flex:1,resize:"vertical"}}/>
+                <button type="submit" className="btn-purple" disabled={followBusy||!followUp.trim()}>{followBusy?"Sending...":"Send"}</button>
+              </form>
+              {supportError&&<div className="auth-err" style={{marginTop:8}}>{supportError}</div>}
+            </>
           )}
         </div>
       </div>
@@ -2008,6 +2012,11 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   const paymentsTableRef=useRef<HTMLDivElement>(null);
   const auditTableRef=useRef<HTMLDivElement>(null);
   const adminPageRef=useRef<HTMLDivElement>(null);
+  useEffect(()=>{
+    if(!selectedSupportEmail)return;
+    const el=paymentsTableRef.current;
+    if(el)el.scrollTop=el.scrollHeight; // auto-scroll admin conversation to newest (bottom)
+  },[selectedSupportEmail,msgs]);
 
   async function refresh(){
     const freshUsers=normalizeAdminUsers(await listUsers());
@@ -2295,7 +2304,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     return acc;
   },{})).map(c=>({
     ...c,
-    messages:[...c.messages].sort((a,b)=>new Date(a.timestamp).getTime()-new Date(b.timestamp).getTime()),
+    messages:[...c.messages].sort((a,b)=>new Date(a.timestamp).getTime()-new Date(b.timestamp).getTime()), // oldest first (top), newest at bottom
     active:c.messages.some(m=>m.status!=="resolved"),
   })).sort((a,b)=>{
     if(a.unread!==b.unread)return b.unread-a.unread;
@@ -2500,6 +2509,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                         {c.unread>0&&<b>{c.unread>9?"9+":c.unread} new message{c.unread>1?"s":""}</b>}
                       </div>
                       <div className="muted" style={{fontSize:10}}>{c.email}</div>
+                      {selectedSupportEmail&&<span className="chat-active"><span className="chat-active-dot"/>Active</span>}
                     </div>
                     {c.unread>0&&<span className="support-unread-dot"/>}
                   </button>
