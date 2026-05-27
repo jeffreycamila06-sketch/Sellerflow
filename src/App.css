@@ -337,6 +337,8 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .admin-messenger-chat-meta strong{font-size:14px;color:#26215C}
 .admin-messenger-chat-email{font-size:11px;margin-left:auto}
 .admin-messenger-body{flex:1;min-height:0;max-height:none;overflow-y:auto;padding:14px}
+.admin-messenger-composer{flex-shrink:0;margin:0;padding:12px 14px;border-top:1px solid #E4E2DC;background:#FBFAF7}
+.admin-messenger-composer textarea{flex:1}
 .admin-messenger-empty{margin:auto;padding:40px 20px;text-align:center;color:#888780;font-size:13px}
 .admin-messenger-back{display:none}
 @media (max-width:860px), (max-device-width:1200px), (max-width:1024px) and (hover:none) and (pointer:coarse){
@@ -345,7 +347,8 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
   .admin-messenger.has-selection .admin-messenger-list{display:none}
   .admin-messenger:not(.has-selection) .admin-messenger-chat{display:none}
   .admin-messenger-list,.admin-messenger-chat{background:#121523;border-color:var(--m-line)}
-  .admin-messenger-search,.admin-messenger-listhd,.admin-messenger-chat-head{border-color:var(--m-line)}
+  .admin-messenger-search,.admin-messenger-listhd,.admin-messenger-chat-head,.admin-messenger-composer{border-color:var(--m-line)}
+  .admin-messenger-composer{background:#121523}
   .admin-messenger-listhd,.admin-messenger-chat-meta strong{color:#F8F7FF}
   .admin-messenger-empty{color:#A5A8BA}
   .admin-messenger-threads .support-thread.list-only.is-active{background:rgba(127,119,221,.2);border-color:#7F77DD}

@@ -2662,6 +2662,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                 {(()=>{
                   const c=supportConversations.find(x=>x.email.toLowerCase()===selectedSupportEmail.toLowerCase());
                   if(!c)return <div className="admin-messenger-empty">Select a conversation from the left to read and reply.</div>;
+                  const last=c.messages[c.messages.length-1];
                   return <>
                     <div className="admin-messenger-chat-head">
                       <button className="btn-out admin-messenger-back" onClick={()=>setSelectedSupportEmail("")}>← Chats</button>
@@ -2700,12 +2701,12 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                             <button className="tbl-btn ed" onClick={()=>updateMsg(m.id,"resolved")}>Resolve</button>
                             <button className="tbl-btn ed" onClick={()=>copy(m.email,"Email")}>Copy email</button>
                           </div>
-                          <div className="messenger-reply">
-                            <textarea rows={2} value={replyDrafts[m.id] ?? m.adminReply ?? ""} onChange={e=>setReplyDrafts(s=>({...s,[m.id]:e.target.value}))} placeholder="Type a reply like Messenger..."/>
-                            <button className="tbl-btn ed" onClick={()=>replyToSeller(m)}>{m.adminReply?"Update reply":"Send reply"}</button>
-                          </div>
                         </div>
                       ))}
+                    </div>
+                    <div className="messenger-reply admin-messenger-composer">
+                      <textarea rows={2} value={replyDrafts[last.id] ?? last.adminReply ?? ""} onChange={e=>setReplyDrafts(s=>({...s,[last.id]:e.target.value}))} placeholder={`Reply to ${c.name||c.email}...`}/>
+                      <button className="tbl-btn ed" onClick={()=>replyToSeller(last)}>{last.adminReply?"Update reply":"Send reply"}</button>
                     </div>
                   </>;
                 })()}
