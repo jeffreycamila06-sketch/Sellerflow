@@ -2005,18 +2005,31 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   const [adminSearch,setAdminSearch]=useState("");
   const [replyDrafts,setReplyDrafts]=useState<Record<string,string>>({});
   const [selectedSupportEmail,setSelectedSupportEmail]=useState("");
-  const [expandedAdminBox,setExpandedAdminBox]=useState<""|"overview"|"create"|"users"|"payments">("");
+  const adminSupportReadKey=`sf_admin_support_read_${currentUser.email.trim().toLowerCase()}`;
+  const [supportReadIds,setSupportReadIds]=useState<string[]>(()=>arrLS<string>(adminSupportReadKey));
+  function openConversation(email:string){
+    const ids=msgs.filter(m=>m.email.toLowerCase()===email.toLowerCase()).map(m=>m.id);
+    setSupportReadIds(prev=>{const next=Array.from(new Set([...prev,...ids]));LS.set(adminSupportReadKey,next);return next;});
+    setSelectedSupportEmail(email);
+  }
+  const [expandedAdminBox,setExpandedAdminBox]=useState<""|"overview"|"create"|"users"|"payments"|"planmonitor"|"audit">("");
   const [adminUserPlanMonths,setAdminUserPlanMonths]=useState<Record<string,number>>({});
   const [copied,setCopied]=useState("");
   const usersTableRef=useRef<HTMLDivElement>(null);
   const paymentsTableRef=useRef<HTMLDivElement>(null);
   const auditTableRef=useRef<HTMLDivElement>(null);
   const adminPageRef=useRef<HTMLDivElement>(null);
+  const expandedChatRef=useRef<HTMLDivElement>(null);
   useEffect(()=>{
     if(!selectedSupportEmail)return;
     const el=paymentsTableRef.current;
     if(el)el.scrollTop=el.scrollHeight; // auto-scroll admin conversation to newest (bottom)
   },[selectedSupportEmail,msgs]);
+  useEffect(()=>{
+    if(expandedAdminBox!=="payments"||!selectedSupportEmail)return;
+    const el=expandedChatRef.current;
+    if(el)el.scrollTop=el.scrollHeight; // expanded two-panel chat: scroll to newest (bottom)
+  },[expandedAdminBox,selectedSupportEmail,msgs]);
 
   async function refresh(){
     const freshUsers=normalizeAdminUsers(await listUsers());
@@ -2293,7 +2306,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   ].some(v=>String(v||"").toLowerCase().includes(q)));
   const supportConversations=Object.values(filteredMsgs.reduce<Record<string,{email:string;name:string;messages:SupportMsg[];latest:SupportMsg;unread:number}>>((acc,m)=>{
     const key=m.email.toLowerCase();
-    const isUnread=m.status==="pending"&&!m.adminReply;
+    const isUnread=m.status==="pending"&&!m.adminReply&&!supportReadIds.includes(m.id);
     if(!acc[key]){
       acc[key]={email:m.email,name:m.name,messages:[m],latest:m,unread:isUnread?1:0};
       return acc;
@@ -2326,7 +2339,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   const todayOrders=orders.filter(o=>o.date===todayIso);
   const allStoredOrders=orders;
   const dayStamp=new Date().toISOString().slice(0,10);
-  const expandedTitles={"":"Admin",overview:"Overview",create:"Create Seller",users:"Users",payments:"Payment / Support"};
+  const expandedTitles={"":"Admin",overview:"Overview",create:"Create Seller",users:"Users",payments:"Payment / Support",planmonitor:"Plan Monitoring",audit:"Audit Log"};
 
   function exportUsers(){
     csvDL(`sellerflow-users-${dayStamp}.csv`,["Email","Role","Plan","Plan Status","Days Left","Connected Accounts","Full Name","Store Name","Phone","TikTok","Facebook"],filteredUsers.map(u=>[
@@ -2409,46 +2422,10 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
         <button className="admin-action-card" onDoubleClick={()=>setExpandedAdminBox("create")}>
           <div className="ms-l">Create Seller</div><div className="ms-v">+</div><span>Add a seller account fast</span>
         </button>
-        <button className="admin-action-card" onDoubleClick={()=>setExpandedAdminBox("users")}>
-          <div className="ms-l">Users</div><div className="ms-v">{filteredUsers.length}</div><span>Plans, accounts, admin tools</span>
-        </button>
-        <button className="admin-action-card" onDoubleClick={()=>setExpandedAdminBox("payments")}>
-          <div className="ms-l">Payments</div><div className="ms-v" style={{color:"#BA7517"}}>{pendingPayments.length}</div><span>{unreadSupportCount} new support messages</span>
-        </button>
       </div>
 
-      <div className="table-card admin-compact-card" style={{marginBottom:12}} onDoubleClick={()=>setExpandedAdminBox("overview")}>
-        <div className="table-title">Plan Monitoring ({planMonitorUsers.length})</div>
-        <div className="admin-table-wrap">
-          <div className="admin-table-scroll">
-            <table className="tbl">
-              <thead><tr><th>Seller</th><th>Plan</th><th>Days</th><th>Status</th><th>Auto message</th><th></th></tr></thead>
-              <tbody>
-                {planMonitorUsers.length===0&&<tr><td colSpan={6} style={{textAlign:"center",padding:24,color:"#888"}}>No sellers expiring soon.</td></tr>}
-                {planMonitorUsers.map(u=>{
-                  const days=dLeft(u.planExpiry);
-                  const expired=u.planStatus==="expired"||days===0;
-                  const warnDays=u.plan==="trial"?3:5;
-                  return(
-                    <tr key={`monitor-${u.email}`}>
-                      <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>
-                      <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
-                      <td>{days}</td>
-                      <td><Badge label={expired?"Expired":"Expiring"} color={expired?"red":"amber"}/></td>
-                      <td className="muted">{expired?"Sent on expiry day":`Sends ${warnDays} days before expiry`}</td>
-                      <td><button className="tbl-btn ed" onClick={()=>approve(u.email,u.plan==="trial"?"basic":u.plan,monthsForUser(u))}>Extend / approve</button></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid2 admin-box-grid">
-        <div className="table-card admin-compact-card" onDoubleClick={()=>setExpandedAdminBox("users")}>
-          <div className="table-title">Users ({users.length})</div>
+      <div className="table-card admin-compact-card" style={{marginBottom:12}} onDoubleClick={()=>setExpandedAdminBox("users")}>
+          <div className="table-title admin-expandable-title">Users ({users.length})<span className="expand-hint">⤢ double-click to expand</span></div>
           <div className="admin-table-wrap">
             <div className="admin-table-scroll" ref={usersTableRef}>
               <table className="tbl">
@@ -2486,10 +2463,12 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
           </div>
         </div>
 
-        <div className="table-card admin-compact-card" onDoubleClick={()=>setExpandedAdminBox("payments")}>
+      <div className="table-card admin-compact-card" style={{marginBottom:12}} onDoubleClick={()=>setExpandedAdminBox("payments")}>
           <div className="table-title support-title">
             <span>Payment / Support Messages ({msgs.length})</span>
-            {unreadSupportCount>0&&<span className="support-new-badge">{unreadSupportCount>9?"9+":unreadSupportCount} new</span>}
+            <Badge label={`${pendingPayments.length} pending`} color="amber"/>
+            {unreadSupportCount>0&&<span className="support-new-badge">{unreadSupportCount>9?"9+":unreadSupportCount} unread</span>}
+            <span className="expand-hint">⤢ double-click to expand</span>
           </div>
           <div className="admin-table-wrap">
             <div className="admin-table-scroll support-chat-scroll" ref={paymentsTableRef}>
@@ -2497,7 +2476,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
               {supportConversations.filter(c=>!selectedSupportEmail||c.email.toLowerCase()===selectedSupportEmail.toLowerCase()).map(c=>(
                 <div key={c.email} className={`support-thread ${c.unread>0?"has-new":""} ${selectedSupportEmail?"chat-open":"list-only"}`}>
                   {selectedSupportEmail&&<button className="tbl-btn ed support-back-btn" onClick={()=>setSelectedSupportEmail("")}>Back to messages</button>}
-                  <button className="support-thread-head messenger-thread-head" onClick={()=>!selectedSupportEmail&&setSelectedSupportEmail(c.email)}>
+                  <button className="support-thread-head messenger-thread-head" onClick={()=>!selectedSupportEmail&&openConversation(c.email)}>
                     <div className="support-avatar big">{ini(c.name||c.email)}</div>
                     <div className="support-convo-meta">
                       <div className="support-convo-top">
@@ -2554,9 +2533,38 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
             <div className="admin-scroll-tools"><button onClick={()=>scrollBox(paymentsTableRef.current,"up")}>^</button><button onClick={()=>scrollBox(paymentsTableRef.current,"down")}>v</button></div>
           </div>
         </div>
+
+      <div className="table-card admin-compact-card" style={{marginBottom:12}} onDoubleClick={()=>setExpandedAdminBox("planmonitor")}>
+        <div className="table-title admin-expandable-title">Plan Monitoring ({planMonitorUsers.length})<span className="expand-hint">⤢ double-click to expand</span></div>
+        <div className="admin-table-wrap">
+          <div className="admin-table-scroll">
+            <table className="tbl">
+              <thead><tr><th>Seller</th><th>Plan</th><th>Days</th><th>Status</th><th>Auto message</th><th></th></tr></thead>
+              <tbody>
+                {planMonitorUsers.length===0&&<tr><td colSpan={6} style={{textAlign:"center",padding:24,color:"#888"}}>No sellers expiring soon.</td></tr>}
+                {planMonitorUsers.map(u=>{
+                  const days=dLeft(u.planExpiry);
+                  const expired=u.planStatus==="expired"||days===0;
+                  const warnDays=u.plan==="trial"?3:5;
+                  return(
+                    <tr key={`monitor-${u.email}`}>
+                      <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>
+                      <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
+                      <td>{days}</td>
+                      <td><Badge label={expired?"Expired":"Expiring"} color={expired?"red":"amber"}/></td>
+                      <td className="muted">{expired?"Sent on expiry day":`Sends ${warnDays} days before expiry`}</td>
+                      <td><button className="tbl-btn ed" onClick={()=>approve(u.email,u.plan==="trial"?"basic":u.plan,monthsForUser(u))}>Extend / approve</button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
-      <div className="table-card">
-        <div className="table-title">Audit Log ({auditLogs.length})</div>
+
+      <div className="table-card admin-compact-card" onDoubleClick={()=>setExpandedAdminBox("audit")}>
+        <div className="table-title admin-expandable-title">Audit Log ({auditLogs.length})<span className="expand-hint">⤢ double-click to expand</span></div>
         <div className="admin-table-wrap">
           <div className="admin-table-scroll audit" ref={auditTableRef}>
             <table className="tbl">
@@ -2628,12 +2636,117 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                 </tr>)}
               </tbody></table>
             </div>}
-            {expandedAdminBox==="payments"&&<div className="admin-fullscreen-messages">
-              {supportConversations.map(c=><button key={"expanded-support-"+c.email} className={"support-thread messenger-thread-head "+(c.unread>0?"has-new":"")} onClick={()=>setSelectedSupportEmail(c.email)}>
-                <div className="support-avatar big">{ini(c.name||c.email)}</div>
-                <div className="support-convo-meta"><div className="support-convo-top"><strong>{c.name||c.email}</strong><span>{new Date(c.latest.timestamp).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}</span></div><div className="support-convo-sub"><span>{c.latest.adminReply?"You: "+c.latest.adminReply:c.latest.message}</span>{c.unread>0&&<b>{c.unread>9?"9+":c.unread} new</b>}</div><div className="muted" style={{fontSize:10}}>{c.email}</div></div>
-                {c.unread>0&&<span className="support-unread-dot"/>}
-              </button>)}
+            {expandedAdminBox==="payments"&&<div className={`admin-messenger ${selectedSupportEmail?"has-selection":""}`}>
+              <div className="admin-messenger-list">
+                <div className="admin-messenger-search">
+                  <input value={adminSearch} onChange={e=>setAdminSearch(e.target.value)} placeholder="Search name or email"/>
+                  {adminSearch&&<button className="admin-search-clear" onClick={()=>setAdminSearch("")}>Clear</button>}
+                </div>
+                <div className="admin-messenger-listhd"><span>Chats</span>{unreadSupportCount>0&&<span className="support-new-badge">{unreadSupportCount>9?"9+":unreadSupportCount} unread</span>}</div>
+                <div className="admin-messenger-threads">
+                  {supportConversations.length===0&&<div style={{textAlign:"center",padding:24,color:"#888"}}>{msgs.length===0?"No messages yet.":"No messages found."}</div>}
+                  {supportConversations.map(c=>(
+                    <button key={"mlist-"+c.email} className={`support-thread list-only messenger-thread-head ${c.unread>0?"has-new":""} ${selectedSupportEmail.toLowerCase()===c.email.toLowerCase()?"is-active":""}`} onClick={()=>openConversation(c.email)}>
+                      <div className="support-avatar big">{ini(c.name||c.email)}</div>
+                      <div className="support-convo-meta">
+                        <div className="support-convo-top"><strong>{c.name||c.email}</strong><span>{new Date(c.latest.timestamp).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}</span></div>
+                        <div className="support-convo-sub"><span>{c.latest.adminReply?`You: ${c.latest.adminReply}`:c.latest.message}</span>{c.unread>0&&<b>{c.unread>9?"9+":c.unread} unread</b>}</div>
+                        <div className="muted" style={{fontSize:10}}>{c.email}</div>
+                      </div>
+                      {c.unread>0&&<span className="support-unread-dot"/>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="admin-messenger-chat">
+                {(()=>{
+                  const c=supportConversations.find(x=>x.email.toLowerCase()===selectedSupportEmail.toLowerCase());
+                  if(!c)return <div className="admin-messenger-empty">Select a conversation from the left to read and reply.</div>;
+                  const last=c.messages[c.messages.length-1];
+                  return <>
+                    <div className="admin-messenger-chat-head">
+                      <button className="btn-out admin-messenger-back" onClick={()=>setSelectedSupportEmail("")}>← Chats</button>
+                      <div className="support-avatar big">{ini(c.name||c.email)}</div>
+                      <div className="admin-messenger-chat-meta">
+                        <strong>{c.name||c.email}</strong>
+                        <span className="chat-active"><span className="chat-active-dot"/>Active</span>
+                      </div>
+                      <span className="muted admin-messenger-chat-email">{c.email}</span>
+                    </div>
+                    <div className="support-conversation-body admin-messenger-body" ref={expandedChatRef}>
+                      {c.messages.map(m=>(
+                        <div key={"exp-"+m.id} className="support-message-block">
+                          <div className="support-chat-row seller">
+                            <div className="support-avatar">{ini(m.name||m.email)}</div>
+                            <div className="support-bubble seller">
+                              <strong>{m.subject}</strong>
+                              <p>{m.message}</p>
+                              {m.proofImage&&<a href={m.proofImage} target="_blank" rel="noreferrer"><img className="support-proof-img" src={m.proofImage} alt="Payment proof" /></a>}
+                              <span>{new Date(m.timestamp).toLocaleString()} {m.hasProof?" - Proof attached":""}</span>
+                            </div>
+                          </div>
+                          {m.adminReply&&(
+                            <div className="support-chat-row admin">
+                              <div className="support-bubble admin">
+                                <strong>Admin reply</strong>
+                                <p>{m.adminReply}</p>
+                                {m.repliedAt&&<span>{new Date(m.repliedAt).toLocaleString()}</span>}
+                              </div>
+                            </div>
+                          )}
+                          <div className="support-actions">
+                            <Badge label={m.status==="resolved"?"resolved":m.status} color={m.status==="approved"?"green":m.status==="rejected"?"red":m.status==="resolved"?"gray":"amber"}/>
+                            <button className="tbl-btn ed" onClick={()=>{updateMsg(m.id,"approved");approve(m.email,"pro");}}>Approve</button>
+                            <button className="tbl-btn dl" onClick={()=>updateMsg(m.id,"rejected")}>Reject</button>
+                            <button className="tbl-btn ed" onClick={()=>updateMsg(m.id,"resolved")}>Resolve</button>
+                            <button className="tbl-btn ed" onClick={()=>copy(m.email,"Email")}>Copy email</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="messenger-reply admin-messenger-composer">
+                      <textarea rows={2} value={replyDrafts[last.id] ?? last.adminReply ?? ""} onChange={e=>setReplyDrafts(s=>({...s,[last.id]:e.target.value}))} placeholder={`Reply to ${c.name||c.email}...`}/>
+                      <button className="tbl-btn ed" onClick={()=>replyToSeller(last)}>{last.adminReply?"Update reply":"Send reply"}</button>
+                    </div>
+                  </>;
+                })()}
+              </div>
+            </div>}
+            {expandedAdminBox==="planmonitor"&&<div className="table-card admin-fullscreen-table">
+              <div className="table-title">Plan Monitoring ({planMonitorUsers.length})</div>
+              <table className="tbl"><thead><tr><th>Seller</th><th>Plan</th><th>Days</th><th>Status</th><th>Auto message</th><th></th></tr></thead><tbody>
+                {planMonitorUsers.length===0&&<tr><td colSpan={6} style={{textAlign:"center",padding:24,color:"#888"}}>No sellers expiring soon.</td></tr>}
+                {planMonitorUsers.map(u=>{
+                  const days=dLeft(u.planExpiry);
+                  const expired=u.planStatus==="expired"||days===0;
+                  const warnDays=u.plan==="trial"?3:5;
+                  return(
+                    <tr key={`expanded-monitor-${u.email}`}>
+                      <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>
+                      <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
+                      <td>{days}</td>
+                      <td><Badge label={expired?"Expired":"Expiring"} color={expired?"red":"amber"}/></td>
+                      <td className="muted">{expired?"Sent on expiry day":`Sends ${warnDays} days before expiry`}</td>
+                      <td><button className="tbl-btn ed" onClick={()=>approve(u.email,u.plan==="trial"?"basic":u.plan,monthsForUser(u))}>Extend / approve</button></td>
+                    </tr>
+                  );
+                })}
+              </tbody></table>
+            </div>}
+            {expandedAdminBox==="audit"&&<div className="table-card admin-fullscreen-table">
+              <div className="table-title">Audit Log ({auditLogs.length})</div>
+              <table className="tbl"><thead><tr><th>Time</th><th>Admin</th><th>Action</th><th>Target</th><th>Details</th></tr></thead><tbody>
+                {filteredAuditLogs.length===0&&<tr><td colSpan={5} style={{textAlign:"center",padding:24,color:"#888"}}>{auditLogs.length===0?"No admin activity yet.":"No audit records found."}</td></tr>}
+                {filteredAuditLogs.map(log=>(
+                  <tr key={"expanded-"+log.id}>
+                    <td className="muted" style={{whiteSpace:"nowrap"}}>{new Date(log.timestamp).toLocaleString()}</td>
+                    <td><strong>{log.actorEmail}</strong></td>
+                    <td><Badge label={log.action} color={log.action.includes("delete")||log.action.includes("reject")?"red":log.action.includes("approve")||log.action.includes("created")?"green":"purple"}/></td>
+                    <td>{log.targetEmail}</td>
+                    <td className="muted">{log.details}</td>
+                  </tr>
+                ))}
+              </tbody></table>
             </div>}
           </div>
         </div>
