@@ -361,7 +361,7 @@ export async function saveSupportMessage(message: AccountSupportMsg): Promise<Ac
       message: encodeSupportMessage(message),
       has_proof: message.hasProof || Boolean(message.proofImage),
       status: message.status,
-      admin_reply: message.adminReply || null,
+      admin_reply: message.adminReply || "", // column is NOT NULL DEFAULT '' — send "" (no reply yet), never null
       replied_at: message.repliedAt || null,
     })
     .select()
