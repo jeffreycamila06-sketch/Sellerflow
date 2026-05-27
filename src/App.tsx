@@ -2005,7 +2005,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   const [adminSearch,setAdminSearch]=useState("");
   const [replyDrafts,setReplyDrafts]=useState<Record<string,string>>({});
   const [selectedSupportEmail,setSelectedSupportEmail]=useState("");
-  const [expandedAdminBox,setExpandedAdminBox]=useState<""|"overview"|"create"|"users"|"payments">("");
+  const [expandedAdminBox,setExpandedAdminBox]=useState<""|"overview"|"create"|"users"|"payments"|"planmonitor"|"audit">("");
   const [adminUserPlanMonths,setAdminUserPlanMonths]=useState<Record<string,number>>({});
   const [copied,setCopied]=useState("");
   const usersTableRef=useRef<HTMLDivElement>(null);
@@ -2326,7 +2326,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   const todayOrders=orders.filter(o=>o.date===todayIso);
   const allStoredOrders=orders;
   const dayStamp=new Date().toISOString().slice(0,10);
-  const expandedTitles={"":"Admin",overview:"Overview",create:"Create Seller",users:"Users",payments:"Payment / Support"};
+  const expandedTitles={"":"Admin",overview:"Overview",create:"Create Seller",users:"Users",payments:"Payment / Support",planmonitor:"Plan Monitoring",audit:"Audit Log"};
 
   function exportUsers(){
     csvDL(`sellerflow-users-${dayStamp}.csv`,["Email","Role","Plan","Plan Status","Days Left","Connected Accounts","Full Name","Store Name","Phone","TikTok","Facebook"],filteredUsers.map(u=>[
@@ -2411,38 +2411,8 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
         </button>
       </div>
 
-      <div className="table-card admin-compact-card" style={{marginBottom:12}} onDoubleClick={()=>setExpandedAdminBox("overview")}>
-        <div className="table-title">Plan Monitoring ({planMonitorUsers.length})</div>
-        <div className="admin-table-wrap">
-          <div className="admin-table-scroll">
-            <table className="tbl">
-              <thead><tr><th>Seller</th><th>Plan</th><th>Days</th><th>Status</th><th>Auto message</th><th></th></tr></thead>
-              <tbody>
-                {planMonitorUsers.length===0&&<tr><td colSpan={6} style={{textAlign:"center",padding:24,color:"#888"}}>No sellers expiring soon.</td></tr>}
-                {planMonitorUsers.map(u=>{
-                  const days=dLeft(u.planExpiry);
-                  const expired=u.planStatus==="expired"||days===0;
-                  const warnDays=u.plan==="trial"?3:5;
-                  return(
-                    <tr key={`monitor-${u.email}`}>
-                      <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>
-                      <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
-                      <td>{days}</td>
-                      <td><Badge label={expired?"Expired":"Expiring"} color={expired?"red":"amber"}/></td>
-                      <td className="muted">{expired?"Sent on expiry day":`Sends ${warnDays} days before expiry`}</td>
-                      <td><button className="tbl-btn ed" onClick={()=>approve(u.email,u.plan==="trial"?"basic":u.plan,monthsForUser(u))}>Extend / approve</button></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid2 admin-box-grid">
-        <div className="table-card admin-compact-card" onDoubleClick={()=>setExpandedAdminBox("users")}>
-          <div className="table-title">Users ({users.length})</div>
+      <div className="table-card admin-compact-card" style={{marginBottom:12}} onDoubleClick={()=>setExpandedAdminBox("users")}>
+          <div className="table-title admin-expandable-title">Users ({users.length})<span className="expand-hint">⤢ double-click to expand</span></div>
           <div className="admin-table-wrap">
             <div className="admin-table-scroll" ref={usersTableRef}>
               <table className="tbl">
@@ -2480,11 +2450,12 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
           </div>
         </div>
 
-        <div className="table-card admin-compact-card" onDoubleClick={()=>setExpandedAdminBox("payments")}>
+      <div className="table-card admin-compact-card" style={{marginBottom:12}} onDoubleClick={()=>setExpandedAdminBox("payments")}>
           <div className="table-title support-title">
             <span>Payment / Support Messages ({msgs.length})</span>
             <Badge label={`${pendingPayments.length} pending`} color="amber"/>
             {unreadSupportCount>0&&<span className="support-new-badge">{unreadSupportCount>9?"9+":unreadSupportCount} new</span>}
+            <span className="expand-hint">⤢ double-click to expand</span>
           </div>
           <div className="admin-table-wrap">
             <div className="admin-table-scroll support-chat-scroll" ref={paymentsTableRef}>
@@ -2549,9 +2520,38 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
             <div className="admin-scroll-tools"><button onClick={()=>scrollBox(paymentsTableRef.current,"up")}>^</button><button onClick={()=>scrollBox(paymentsTableRef.current,"down")}>v</button></div>
           </div>
         </div>
+
+      <div className="table-card admin-compact-card" style={{marginBottom:12}} onDoubleClick={()=>setExpandedAdminBox("planmonitor")}>
+        <div className="table-title admin-expandable-title">Plan Monitoring ({planMonitorUsers.length})<span className="expand-hint">⤢ double-click to expand</span></div>
+        <div className="admin-table-wrap">
+          <div className="admin-table-scroll">
+            <table className="tbl">
+              <thead><tr><th>Seller</th><th>Plan</th><th>Days</th><th>Status</th><th>Auto message</th><th></th></tr></thead>
+              <tbody>
+                {planMonitorUsers.length===0&&<tr><td colSpan={6} style={{textAlign:"center",padding:24,color:"#888"}}>No sellers expiring soon.</td></tr>}
+                {planMonitorUsers.map(u=>{
+                  const days=dLeft(u.planExpiry);
+                  const expired=u.planStatus==="expired"||days===0;
+                  const warnDays=u.plan==="trial"?3:5;
+                  return(
+                    <tr key={`monitor-${u.email}`}>
+                      <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>
+                      <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
+                      <td>{days}</td>
+                      <td><Badge label={expired?"Expired":"Expiring"} color={expired?"red":"amber"}/></td>
+                      <td className="muted">{expired?"Sent on expiry day":`Sends ${warnDays} days before expiry`}</td>
+                      <td><button className="tbl-btn ed" onClick={()=>approve(u.email,u.plan==="trial"?"basic":u.plan,monthsForUser(u))}>Extend / approve</button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
-      <div className="table-card">
-        <div className="table-title">Audit Log ({auditLogs.length})</div>
+
+      <div className="table-card admin-compact-card" onDoubleClick={()=>setExpandedAdminBox("audit")}>
+        <div className="table-title admin-expandable-title">Audit Log ({auditLogs.length})<span className="expand-hint">⤢ double-click to expand</span></div>
         <div className="admin-table-wrap">
           <div className="admin-table-scroll audit" ref={auditTableRef}>
             <table className="tbl">
@@ -2629,6 +2629,42 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                 <div className="support-convo-meta"><div className="support-convo-top"><strong>{c.name||c.email}</strong><span>{new Date(c.latest.timestamp).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}</span></div><div className="support-convo-sub"><span>{c.latest.adminReply?"You: "+c.latest.adminReply:c.latest.message}</span>{c.unread>0&&<b>{c.unread>9?"9+":c.unread} new</b>}</div><div className="muted" style={{fontSize:10}}>{c.email}</div></div>
                 {c.unread>0&&<span className="support-unread-dot"/>}
               </button>)}
+            </div>}
+            {expandedAdminBox==="planmonitor"&&<div className="table-card admin-fullscreen-table">
+              <div className="table-title">Plan Monitoring ({planMonitorUsers.length})</div>
+              <table className="tbl"><thead><tr><th>Seller</th><th>Plan</th><th>Days</th><th>Status</th><th>Auto message</th><th></th></tr></thead><tbody>
+                {planMonitorUsers.length===0&&<tr><td colSpan={6} style={{textAlign:"center",padding:24,color:"#888"}}>No sellers expiring soon.</td></tr>}
+                {planMonitorUsers.map(u=>{
+                  const days=dLeft(u.planExpiry);
+                  const expired=u.planStatus==="expired"||days===0;
+                  const warnDays=u.plan==="trial"?3:5;
+                  return(
+                    <tr key={`expanded-monitor-${u.email}`}>
+                      <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>
+                      <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
+                      <td>{days}</td>
+                      <td><Badge label={expired?"Expired":"Expiring"} color={expired?"red":"amber"}/></td>
+                      <td className="muted">{expired?"Sent on expiry day":`Sends ${warnDays} days before expiry`}</td>
+                      <td><button className="tbl-btn ed" onClick={()=>approve(u.email,u.plan==="trial"?"basic":u.plan,monthsForUser(u))}>Extend / approve</button></td>
+                    </tr>
+                  );
+                })}
+              </tbody></table>
+            </div>}
+            {expandedAdminBox==="audit"&&<div className="table-card admin-fullscreen-table">
+              <div className="table-title">Audit Log ({auditLogs.length})</div>
+              <table className="tbl"><thead><tr><th>Time</th><th>Admin</th><th>Action</th><th>Target</th><th>Details</th></tr></thead><tbody>
+                {filteredAuditLogs.length===0&&<tr><td colSpan={5} style={{textAlign:"center",padding:24,color:"#888"}}>{auditLogs.length===0?"No admin activity yet.":"No audit records found."}</td></tr>}
+                {filteredAuditLogs.map(log=>(
+                  <tr key={"expanded-"+log.id}>
+                    <td className="muted" style={{whiteSpace:"nowrap"}}>{new Date(log.timestamp).toLocaleString()}</td>
+                    <td><strong>{log.actorEmail}</strong></td>
+                    <td><Badge label={log.action} color={log.action.includes("delete")||log.action.includes("reject")?"red":log.action.includes("approve")||log.action.includes("created")?"green":"purple"}/></td>
+                    <td>{log.targetEmail}</td>
+                    <td className="muted">{log.details}</td>
+                  </tr>
+                ))}
+              </tbody></table>
             </div>}
           </div>
         </div>
