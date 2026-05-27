@@ -401,6 +401,8 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .messenger-reply textarea{border-radius:18px;padding:10px 14px}
 .messenger-reply button{border-radius:18px;align-self:flex-end}
 .support-page>.support-mobile-grid .support-messages-card textarea{border-radius:18px}
+/* Customer conversation scrolls (newest at bottom); composer stays pinned below it */
+.support-page .support-conversation-body{max-height:50vh;overflow-y:auto;padding-right:4px}
 .support-admin-reply{margin-top:8px;padding:8px 10px;background:#EEEDFE;border:1px solid #D8D3FF;border-radius:8px;color:#26215C;font-size:12px;line-height:1.4}
 .support-admin-reply strong{display:block;color:#534AB7;margin-bottom:4px}
 .support-admin-reply span{display:block;margin-top:5px;color:#888780;font-size:10px}

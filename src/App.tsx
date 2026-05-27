@@ -1846,6 +1846,7 @@ function Support({user,t}:{user:User;t:T}){
   const [followUp,setFollowUp]=useState("");
   const [followBusy,setFollowBusy]=useState(false);
   const [readIds,setReadIds]=useState<string[]>(()=>arrLS<string>(supportReadKey(user.email)));
+  const convoRef=useRef<HTMLDivElement>(null);
   async function send(e:React.FormEvent){
     e.preventDefault();
     try{
@@ -1873,13 +1874,17 @@ function Support({user,t}:{user:User;t:T}){
     return new Date(b.timestamp).getTime()-new Date(a.timestamp).getTime();
   });
   const unreadReplies=sellerMessages.filter(m=>m.status!=="resolved"&&m.adminReply&&!readIds.includes(m.id)).length;
-  const conversation=[...prev].sort((a,b)=>new Date(b.timestamp).getTime()-new Date(a.timestamp).getTime()); // newest first (top)
-  const latest=conversation[0];
+  const conversation=[...prev].sort((a,b)=>new Date(a.timestamp).getTime()-new Date(b.timestamp).getTime()); // oldest first (top), newest at bottom
+  const latest=conversation[conversation.length-1];
   // Viewing the conversation marks any admin replies as read (Messenger-style).
   useEffect(()=>{
     const unreadIds=sellerMessages.filter(m=>m.adminReply&&!readIds.includes(m.id)).map(m=>m.id);
     if(unreadIds.length){const next=[...readIds,...unreadIds];setReadIds(next);LS.set(supportReadKey(user.email),next);}
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[prev]);
+  useEffect(()=>{
+    const el=convoRef.current;
+    if(el)el.scrollTop=el.scrollHeight; // auto-scroll to newest message (bottom)
   },[prev]);
   async function sendFollowUp(e:React.FormEvent){
     e.preventDefault();
@@ -1948,7 +1953,7 @@ function Support({user,t}:{user:User;t:T}){
                 <div className="support-avatar big">{ini("SellerFlowLive")}</div>
                 <div><strong>SellerFlowLive Support</strong><span className="chat-active"><span className="chat-active-dot"/>Active</span></div>
               </div>
-              <div className="seller-support-box support-conversation-body">
+              <div className="seller-support-box support-conversation-body" ref={convoRef}>
                 {conversation.map(m=>(
                   <div key={m.id} className="support-message-block">
                     <div className="support-chat-row seller">
@@ -2007,6 +2012,11 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   const paymentsTableRef=useRef<HTMLDivElement>(null);
   const auditTableRef=useRef<HTMLDivElement>(null);
   const adminPageRef=useRef<HTMLDivElement>(null);
+  useEffect(()=>{
+    if(!selectedSupportEmail)return;
+    const el=paymentsTableRef.current;
+    if(el)el.scrollTop=el.scrollHeight; // auto-scroll admin conversation to newest (bottom)
+  },[selectedSupportEmail,msgs]);
 
   async function refresh(){
     const freshUsers=normalizeAdminUsers(await listUsers());
@@ -2294,7 +2304,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     return acc;
   },{})).map(c=>({
     ...c,
-    messages:[...c.messages].sort((a,b)=>new Date(b.timestamp).getTime()-new Date(a.timestamp).getTime()), // newest first (top)
+    messages:[...c.messages].sort((a,b)=>new Date(a.timestamp).getTime()-new Date(b.timestamp).getTime()), // oldest first (top), newest at bottom
     active:c.messages.some(m=>m.status!=="resolved"),
   })).sort((a,b)=>{
     if(a.unread!==b.unread)return b.unread-a.unread;
