@@ -445,6 +445,17 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .support-admin-reply{margin-top:8px;padding:8px 10px;background:#EEEDFE;border:1px solid #D8D3FF;border-radius:8px;color:#26215C;font-size:12px;line-height:1.4}
 .support-admin-reply strong{display:block;color:#534AB7;margin-bottom:4px}
 .support-admin-reply span{display:block;margin-top:5px;color:#888780;font-size:10px}
+/* ===== FAQ Auto-help bot (customer Support) — SellerFlow palette, light + dark ===== */
+.sf-bot{display:flex;flex-direction:column;gap:10px;margin:2px 0 14px;padding-bottom:14px;border-bottom:1px solid #F1EFE8}
+.sf-bot-avatar{background:linear-gradient(135deg,#7C3AED,#18B981);font-size:14px}
+.sf-bot .support-bubble.admin.sf-bot-bubble{border-left:3px solid #18B981}
+.sf-bot-name{color:#18B981!important;font-size:11px;letter-spacing:.01em}
+.sf-bot-chips{display:flex;flex-direction:column;gap:7px}
+.sf-bot-chip{display:flex;align-items:center;gap:9px;width:100%;text-align:left;padding:9px 12px;border:1px solid #D8D3FF;border-radius:12px;background:#fff;color:#26215C;font-size:12px;font-weight:600;cursor:pointer;transition:background .15s,border-color .15s,transform .05s}
+.sf-bot-chip:hover{background:#F5F4FF;border-color:#7C3AED}
+.sf-bot-chip:active{transform:scale(.99)}
+.sf-bot-chip-ico{font-size:15px;flex-shrink:0;width:20px;text-align:center}
+.sf-bot-notice{margin:0;font-size:11px;color:#706582;line-height:1.45;background:#F5F4FF;border:1px dashed #C6B8F1;border-radius:10px;padding:8px 11px}
 .filter-tabs{display:flex;gap:6px;flex-wrap:wrap}
 .ftab{font-size:12px;padding:5px 14px;border-radius:20px;border:0.5px solid #D3D1C7;cursor:pointer;color:#5F5E5A;background:#fff;transition:all .15s}
 .ftab:hover{border-color:#7F77DD;color:#534AB7}
@@ -1614,6 +1625,12 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   /* Seller page: flip so the seller (me) bubble is the purple accent and admin is neutral dark */
   .support-page .support-bubble.seller{background:rgba(155,77,255,.18)!important;color:#fff!important}
   .support-page .support-bubble.admin{background:#121523!important;color:#DAD8E8!important}
+  /* FAQ Auto-help bot — dark */
+  .sf-bot{border-bottom-color:var(--m-line)!important}
+  .sf-bot .support-bubble.admin.sf-bot-bubble{background:#121523!important;color:#DAD8E8!important;border:1px solid var(--m-line)!important;border-left:3px solid #18B981!important}
+  .sf-bot-chip{background:#121523!important;border-color:var(--m-line)!important;color:#F8F7FF!important}
+  .sf-bot-chip:hover{background:#1B1F33!important;border-color:#9B4DFF!important}
+  .sf-bot-notice{background:#111525!important;border-color:var(--m-line)!important;color:#A5A8BA!important}
   .mobile-printer-saved{background:rgba(16,185,129,.14)!important;border-color:rgba(45,212,191,.28)!important;color:#DFFCF5!important}
   .mobile-printer-saved span,.mobile-printer-saved small{color:#8FF4D2!important}
   .mobile-printer-empty{background:#111525!important;border-color:var(--m-line)!important;color:#A5A8BA!important}

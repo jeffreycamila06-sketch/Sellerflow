@@ -165,6 +165,8 @@ const SERVER = String(import.meta.env.VITE_SERVER_URL || DEFAULT_SERVER).replace
 const DEBUG_SOCKET = import.meta.env.DEV || import.meta.env.VITE_DEBUG_SOCKET === "true";
 const DEF_SETTINGS: Settings = { darkMode:true, autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"", paperSize:"100x60mm", printerType:"auto", stickerSize:"100x60mm", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printLabelScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printCommentScale:100, printTotalScale:100, printStoreX:0, printStoreY:0, printBuyerLabelX:0, printBuyerLabelY:0, printBuyerNumberX:0, printBuyerNumberY:0, printBuyerNameX:0, printBuyerNameY:0, printUsernameX:0, printUsernameY:0, printSessionX:0, printSessionY:0, printOrderX:0, printOrderY:0, printTotalX:0, printTotalY:0 };
 const LANG_OPTS: {code:Lang;label:string}[] = [{code:"en",label:"🇺🇸 EN"},{code:"fil",label:"🇵🇭 FIL"},{code:"zh",label:"🇨🇳 中文"},{code:"vi",label:"🇻🇳 VI"},{code:"th",label:"🇹🇭 TH"},{code:"id",label:"🇮🇩 ID"}];
+// Icons for the 6 Support FAQ-bot questions, in the fixed order they appear in every language's bot_faq
+const BOT_FAQ_ICONS=["🔗","💬","🛒","🖨️","💳","🔑"];
 const CURRENCIES = [{v:"",l:"No symbol"},{v:"$",l:"$ USD"},{v:"NT$",l:"NT$ NTD"}];
 const cleanCurrency=(value:unknown)=>{
   const currency=String(value||"").trim();
@@ -1847,6 +1849,9 @@ function Support({user,t}:{user:User;t:T}){
   const [followBusy,setFollowBusy]=useState(false);
   const [readIds,setReadIds]=useState<string[]>(()=>arrLS<string>(supportReadKey(user.email)));
   const convoRef=useRef<HTMLDivElement>(null);
+  // FAQ Auto-help bot: clicking a question reveals its answer instantly, fully client-side (no API, no admin).
+  const [botMsgs,setBotMsgs]=useState<{q:string;a:string}[]>([]);
+  const askBot=(f:{q:string;a:string})=>setBotMsgs(prev=>[...prev,f]);
   async function send(e:React.FormEvent){
     e.preventDefault();
     try{
@@ -1945,9 +1950,41 @@ function Support({user,t}:{user:User;t:T}){
             {latest&&<Badge label={latest.status==="approved"?"Approved":latest.status==="rejected"?"Rejected":latest.status==="resolved"?"Resolved":"Pending"} color={latest.status==="approved"?"green":latest.status==="rejected"?"red":latest.status==="resolved"?"gray":"amber"}/>}
             {unreadReplies>0&&<span className="support-new-badge">{unreadReplies>9?"9+":unreadReplies} new</span>}
           </div>
-          {prev.length===0?(
-            <div style={{color:"#888",fontSize:12,padding:"20px 0"}}>No messages yet. Send your first message using the form on the left.</div>
-          ):(
+          {/* FAQ Auto-help bot — always visible, instant client-side answers (no API, no cost) */}
+          <div className="sf-bot">
+            <div className="support-chat-row admin">
+              <div className="support-avatar sf-bot-avatar" aria-hidden="true">🤖</div>
+              <div className="support-bubble admin sf-bot-bubble">
+                <strong className="sf-bot-name">🤖 {t.bot_label}</strong>
+                <p>{t.bot_welcome}</p>
+              </div>
+            </div>
+            {botMsgs.map((m,i)=>(
+              <div key={i} className="support-message-block">
+                <div className="support-chat-row seller">
+                  <div className="support-avatar">{ini(user.profile.fullName||user.email)}</div>
+                  <div className="support-bubble seller"><p>{m.q}</p></div>
+                </div>
+                <div className="support-chat-row admin">
+                  <div className="support-avatar sf-bot-avatar" aria-hidden="true">🤖</div>
+                  <div className="support-bubble admin sf-bot-bubble">
+                    <strong className="sf-bot-name">🤖 {t.bot_label}</strong>
+                    <p>{m.a}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+            <div className="sf-bot-chips">
+              {t.bot_faq.map((f,i)=>(
+                <button type="button" key={i} className="sf-bot-chip" onClick={()=>askBot(f)}>
+                  <span className="sf-bot-chip-ico" aria-hidden="true">{BOT_FAQ_ICONS[i]||"❓"}</span>
+                  <span>{f.q}</span>
+                </button>
+              ))}
+            </div>
+            <p className="sf-bot-notice">{t.bot_notice}</p>
+          </div>
+          {prev.length>0&&(
             <>
               <div className="support-chat-header">
                 <div className="support-avatar big">{ini("SellerFlowLive")}</div>
@@ -1977,13 +2014,13 @@ function Support({user,t}:{user:User;t:T}){
                   </div>
                 ))}
               </div>
-              <form onSubmit={sendFollowUp} className="messenger-reply" style={{marginTop:10}}>
-                <textarea rows={2} value={followUp} onChange={e=>setFollowUp(e.target.value)} placeholder="Type your message..." style={{flex:1,resize:"vertical"}}/>
-                <button type="submit" className="btn-purple" disabled={followBusy||!followUp.trim()}>{followBusy?"Sending...":"Send"}</button>
-              </form>
-              {supportError&&<div className="auth-err" style={{marginTop:8}}>{supportError}</div>}
             </>
           )}
+          <form onSubmit={sendFollowUp} className="messenger-reply" style={{marginTop:10}}>
+            <textarea rows={2} value={followUp} onChange={e=>setFollowUp(e.target.value)} placeholder="Type your message..." style={{flex:1,resize:"vertical"}}/>
+            <button type="submit" className="btn-purple" disabled={followBusy||!followUp.trim()}>{followBusy?"Sending...":"Send"}</button>
+          </form>
+          {supportError&&<div className="auth-err" style={{marginTop:8}}>{supportError}</div>}
         </div>
       </div>
     </div>

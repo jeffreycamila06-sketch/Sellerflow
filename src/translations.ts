@@ -171,6 +171,18 @@ const BASE_TRANSLATIONS = {
     miners_sub:"All buyers with permanent numbers", total_buyers:"Total Buyers", total_orders:"Total Orders",
     total_spent_label:"Total Spent", platforms_label:"Platforms", search_buyer:"Search buyer...",
     no_buyers_yet:"No buyers yet", name_col:"Name", print_label:"Print", more_label:"More",
+    // FAQ Auto-help bot (customer Support)
+    bot_label:"SellerFlow Auto-help",
+    bot_welcome:"Hi! 👋 I'm SellerFlow Auto-help. Tap a question below for an instant answer — no waiting.",
+    bot_notice:"Question not on the list? Type it below — it goes straight to admin.",
+    bot_faq:[
+      {q:"How do I connect TikTok / Facebook?",a:"On the Live page, click the TikTok or Facebook button to connect your live session. Comments load once you're connected. Depending on your plan you can connect 1–5 accounts (Trial=1, Basic=1, Pro=3, Master=5)."},
+      {q:"Why aren't any comments showing?",a:"Make sure you're connected to your TikTok or Facebook live session and that you're actually LIVE (broadcasting). When you're connected and LIVE, comments should appear in real time."},
+      {q:"How do I create an order (1-click)?",a:"In the Live comments, click the buyer's username and enter the price — the order is created automatically and the customer is registered. For shipping, the customer appears in the Customer Data section (admin-only)."},
+      {q:"How do I set up a WiFi printer?",a:"Go to Settings → Printer and enter the WiFi printer's IP address and port (default 9100). Test the connection and do a test print. Your phone/device and the printer must be on the same WiFi. Use 80mm thermal paper. Note: setup differs on phone vs laptop — follow the correct method."},
+      {q:"How much is the subscription, and is there a free trial?",a:"There is a 7-day FREE TRIAL (it starts once admin approves your account). After that you need to subscribe: Basic = $15/month (1 account), Pro = $25/month (3 accounts), Master = $40/month (5 accounts)."},
+      {q:"Login / password issues",a:'To log in, use your email and password. If you forgot your password, click the "Forgot password?" link on the login page to reset it yourself. For any other issue, type below for admin support.'},
+    ],
   },
   fil: {
     nav_live:"Live", nav_miners:"Miners", nav_orders:"Mga Order", nav_products:"Produkto",
@@ -324,6 +336,18 @@ const BASE_TRANSLATIONS = {
     miners_sub:"Lahat ng buyer na may permanenteng numero", total_buyers:"Kabuuang Buyer", total_orders:"Kabuuang Order",
     total_spent_label:"Kabuuang Gastos", platforms_label:"Mga Platform", search_buyer:"Maghanap ng buyer...",
     no_buyers_yet:"Wala pang buyer", name_col:"Pangalan", print_label:"I-print", more_label:"Iba pa",
+    // FAQ Auto-help bot (customer Support)
+    bot_label:"SellerFlow Auto-help",
+    bot_welcome:"Kumusta! 👋 Ako ang SellerFlow Auto-help. Pumili ng tanong sa ibaba para sa mabilis na sagot — walang hintay.",
+    bot_notice:"Wala dito ang tanong mo? I-type sa baba — pupunta kay admin.",
+    bot_faq:[
+      {q:"Paano mag-connect ng TikTok / Facebook?",a:"Sa Live page, i-click ang TikTok o Facebook button para i-connect ang live session mo. Maglo-load ang comments kapag connected. Depende sa plan, pwede kang mag-connect ng 1-5 accounts (Trial=1, Basic=1, Pro=3, Master=5)."},
+      {q:"Bakit walang lumalabas na comments?",a:"Siguraduhing connected ka sa TikTok o Facebook live session, at LIVE ka talaga (nagbo-broadcast). Kapag connected at LIVE, dapat lumabas ang comments in real time."},
+      {q:"Paano mag-create ng order (1-click)?",a:"Sa Live comments, i-click ang username ng buyer at ilagay ang price — automatic na magagawa ang order at maire-register ang customer. Para sa shipping, makikita ang customer sa Customer Data section (admin-only)."},
+      {q:"Paano mag-setup ng WiFi printer?",a:"Pumunta sa Settings → Printer, ilagay ang WiFi printer IP address at port (default 9100). I-test ang connection at test print. Dapat nasa parehong WiFi ang phone/device at printer. Gumagamit ng 80mm thermal paper. Note: magkaiba ang setup sa phone vs laptop — sundin ang tamang paraan."},
+      {q:"Magkano ang subscription at may free trial ba?",a:"May 7-day FREE TRIAL (magsisimula kapag na-approve ng admin ang account mo). Pagkatapos, kailangan mag-subscribe: Basic = $15/buwan (1 account), Pro = $25/buwan (3 accounts), Master = $40/buwan (5 accounts)."},
+      {q:"Login / password issues",a:'Para sa login, gamitin ang email at password mo. Kung nakalimutan ang password, i-click ang "Forgot password?" link sa login page para makapagbago ka mismo. Kung may iba pang issue, mag-type sa baba para sa admin support.'},
+    ],
   },
   zh: {
     nav_live:"直播", nav_miners:"买家", nav_orders:"订单", nav_products:"产品",
@@ -477,6 +501,18 @@ const BASE_TRANSLATIONS = {
     miners_sub:"所有拥有固定编号的买家", total_buyers:"买家总数", total_orders:"订单总数",
     total_spent_label:"消费总额", platforms_label:"平台", search_buyer:"搜索买家...",
     no_buyers_yet:"暂无买家", name_col:"姓名", print_label:"打印", more_label:"更多",
+    // FAQ Auto-help bot (customer Support)
+    bot_label:"SellerFlow Auto-help",
+    bot_welcome:"你好！👋 我是 SellerFlow 自助客服。点击下方的问题即可立即获得答案，无需等待。",
+    bot_notice:"没有你的问题？在下方输入 — 会直接发送给管理员。",
+    bot_faq:[
+      {q:"如何连接 TikTok / Facebook？",a:"在直播页面，点击 TikTok 或 Facebook 按钮来连接你的直播。连接后评论就会加载。根据套餐，你可以连接 1–5 个账号（试用=1，基础=1，专业=3，大师=5）。"},
+      {q:"为什么没有评论显示？",a:"请确认你已连接到 TikTok 或 Facebook 直播，并且你确实正在直播（正在播出）。连接并开始直播后，评论应会实时显示。"},
+      {q:"如何创建订单（一键）？",a:"在直播评论中，点击买家的用户名并输入价格 — 订单会自动创建，客户也会被登记。关于发货，客户会显示在“客户数据”（Customer Data）区域（仅管理员可见）。"},
+      {q:"如何设置 WiFi 打印机？",a:"进入 设置 → 打印机，输入 WiFi 打印机的 IP 地址和端口（默认 9100）。测试连接并进行测试打印。手机/设备和打印机必须在同一个 WiFi 网络中。使用 80mm 热敏纸。注意：手机和笔记本电脑的设置不同 — 请按正确方法操作。"},
+      {q:"订阅多少钱？有免费试用吗？",a:"有 7 天免费试用（在管理员批准你的账号后开始）。之后需要订阅：基础版 = $15/月（1 个账号），专业版 = $25/月（3 个账号），大师版 = $40/月（5 个账号）。"},
+      {q:"登录 / 密码问题",a:'登录时请使用你的邮箱和密码。如果忘记密码，点击登录页面的 "Forgot password?" 链接即可自行重置。如有其他问题，请在下方输入以联系管理员支持。'},
+    ],
   },
   vi: {
     nav_live:"Trực tiếp", nav_miners:"Người mua", nav_orders:"Đơn hàng", nav_products:"Sản phẩm",
@@ -630,6 +666,18 @@ const BASE_TRANSLATIONS = {
     miners_sub:"Tất cả người mua có số cố định", total_buyers:"Tổng người mua", total_orders:"Tổng đơn",
     total_spent_label:"Tổng chi", platforms_label:"Nền tảng", search_buyer:"Tìm người mua...",
     no_buyers_yet:"Chưa có người mua", name_col:"Tên", print_label:"In", more_label:"Thêm",
+    // FAQ Auto-help bot (customer Support)
+    bot_label:"SellerFlow Auto-help",
+    bot_welcome:"Xin chào! 👋 Tôi là SellerFlow Auto-help. Chọn một câu hỏi bên dưới để nhận câu trả lời ngay — không cần chờ.",
+    bot_notice:"Không thấy câu hỏi của bạn? Nhập bên dưới — sẽ gửi thẳng đến admin.",
+    bot_faq:[
+      {q:"Làm sao để kết nối TikTok / Facebook?",a:"Trên trang Live, nhấn nút TikTok hoặc Facebook để kết nối phiên live của bạn. Bình luận sẽ tải khi đã kết nối. Tùy theo gói, bạn có thể kết nối 1–5 tài khoản (Dùng thử=1, Basic=1, Pro=3, Master=5)."},
+      {q:"Vì sao không có bình luận hiển thị?",a:"Hãy chắc chắn bạn đã kết nối với phiên live TikTok hoặc Facebook và bạn đang thực sự LIVE (đang phát). Khi đã kết nối và đang LIVE, bình luận sẽ hiển thị theo thời gian thực."},
+      {q:"Làm sao để tạo đơn hàng (1-click)?",a:"Trong phần bình luận Live, nhấn vào tên người mua và nhập giá — đơn hàng được tạo tự động và khách hàng được đăng ký. Về giao hàng, khách hàng sẽ xuất hiện trong mục Customer Data (chỉ admin)."},
+      {q:"Làm sao để cài đặt máy in WiFi?",a:"Vào Settings → Printer, nhập địa chỉ IP và cổng của máy in WiFi (mặc định 9100). Kiểm tra kết nối và in thử. Điện thoại/thiết bị và máy in phải cùng một mạng WiFi. Dùng giấy nhiệt 80mm. Lưu ý: cách cài trên điện thoại và laptop khác nhau — hãy làm theo đúng cách."},
+      {q:"Giá đăng ký bao nhiêu, có dùng thử miễn phí không?",a:"Có bản DÙNG THỬ MIỄN PHÍ 7 ngày (bắt đầu khi admin duyệt tài khoản của bạn). Sau đó bạn cần đăng ký: Basic = $15/tháng (1 tài khoản), Pro = $25/tháng (3 tài khoản), Master = $40/tháng (5 tài khoản)."},
+      {q:"Vấn đề đăng nhập / mật khẩu",a:'Để đăng nhập, dùng email và mật khẩu của bạn. Nếu quên mật khẩu, nhấn liên kết "Forgot password?" trên trang đăng nhập để tự đặt lại. Nếu có vấn đề khác, hãy nhập bên dưới để được admin hỗ trợ.'},
+    ],
   },
 };
 
@@ -702,6 +750,18 @@ const THAI_TRANSLATIONS: T = {
   hero_sub:"แดชบอร์ดสำหรับผู้ขาย TikTok และ Facebook Live พร้อมคอมเมนต์ ออเดอร์ และพิมพ์สลิปในที่เดียว",
   hero_features:["พิมพ์ 1-click","เลขผู้ซื้ออัตโนมัติ","TikTok + Facebook Live","รองรับหลายภาษา","ส่งออก CSV","พิมพ์ USB / Bluetooth"],
   edit_profile:"ตั้งค่า",
+  // FAQ Auto-help bot (customer Support)
+  bot_label:"SellerFlow Auto-help",
+  bot_welcome:"สวัสดี! 👋 ฉันคือ SellerFlow Auto-help เลือกคำถามด้านล่างเพื่อรับคำตอบทันที — ไม่ต้องรอ",
+  bot_notice:"ไม่มีคำถามของคุณที่นี่ใช่ไหม? พิมพ์ด้านล่าง — จะส่งถึงแอดมินโดยตรง",
+  bot_faq:[
+    {q:"เชื่อมต่อ TikTok / Facebook อย่างไร?",a:"ในหน้า Live ให้กดปุ่ม TikTok หรือ Facebook เพื่อเชื่อมต่อไลฟ์ของคุณ คอมเมนต์จะโหลดเมื่อเชื่อมต่อแล้ว ขึ้นอยู่กับแพ็กเกจ คุณเชื่อมต่อได้ 1–5 บัญชี (ทดลอง=1, Basic=1, Pro=3, Master=5)"},
+    {q:"ทำไมไม่มีคอมเมนต์แสดงขึ้นมา?",a:"ตรวจสอบว่าคุณเชื่อมต่อกับไลฟ์ TikTok หรือ Facebook แล้ว และกำลังไลฟ์อยู่จริง (กำลังถ่ายทอดสด) เมื่อเชื่อมต่อและกำลังไลฟ์ คอมเมนต์ควรแสดงแบบเรียลไทม์"},
+    {q:"สร้างออเดอร์ (1-click) อย่างไร?",a:"ในคอมเมนต์ไลฟ์ ให้กดที่ชื่อผู้ใช้ของผู้ซื้อแล้วใส่ราคา — ระบบจะสร้างออเดอร์อัตโนมัติและบันทึกลูกค้าให้ สำหรับการจัดส่ง ลูกค้าจะปรากฏในส่วน Customer Data (เฉพาะแอดมิน)"},
+    {q:"ตั้งค่าเครื่องพิมพ์ WiFi อย่างไร?",a:"ไปที่ Settings → Printer ใส่ IP address และพอร์ตของเครื่องพิมพ์ WiFi (ค่าเริ่มต้น 9100) ทดสอบการเชื่อมต่อและทดลองพิมพ์ โทรศัพท์/อุปกรณ์และเครื่องพิมพ์ต้องอยู่ใน WiFi เดียวกัน ใช้กระดาษความร้อน 80 มม. หมายเหตุ: การตั้งค่าบนโทรศัพท์กับแล็ปท็อปต่างกัน — ทำตามวิธีที่ถูกต้อง"},
+    {q:"ค่าสมัครสมาชิกเท่าไร และมีทดลองใช้ฟรีไหม?",a:"มีทดลองใช้ฟรี 7 วัน (เริ่มเมื่อแอดมินอนุมัติบัญชีของคุณ) หลังจากนั้นต้องสมัครสมาชิก: Basic = $15/เดือน (1 บัญชี), Pro = $25/เดือน (3 บัญชี), Master = $40/เดือน (5 บัญชี)"},
+    {q:"ปัญหาการเข้าสู่ระบบ / รหัสผ่าน",a:'สำหรับการเข้าสู่ระบบ ใช้อีเมลและรหัสผ่านของคุณ หากลืมรหัสผ่าน ให้กดลิงก์ "Forgot password?" ในหน้าเข้าสู่ระบบเพื่อรีเซ็ตด้วยตัวเอง หากมีปัญหาอื่น ให้พิมพ์ด้านล่างเพื่อขอความช่วยเหลือจากแอดมิน'},
+  ],
 };
 
 const INDONESIAN_TRANSLATIONS: T = {
@@ -771,6 +831,18 @@ const INDONESIAN_TRANSLATIONS: T = {
   hero_sub:"Dashboard untuk penjual TikTok dan Facebook Live dengan komentar, pesanan, dan cetak slip dalam satu tempat",
   hero_features:["Cetak 1-click","Nomor pembeli otomatis","TikTok + Facebook Live","Dukungan banyak bahasa","Ekspor CSV","Cetak USB / Bluetooth"],
   edit_profile:"Pengaturan",
+  // FAQ Auto-help bot (customer Support)
+  bot_label:"SellerFlow Auto-help",
+  bot_welcome:"Halo! 👋 Saya SellerFlow Auto-help. Pilih pertanyaan di bawah untuk jawaban instan — tanpa menunggu.",
+  bot_notice:"Pertanyaan tidak ada di daftar? Ketik di bawah — langsung dikirim ke admin.",
+  bot_faq:[
+    {q:"Bagaimana cara menghubungkan TikTok / Facebook?",a:"Di halaman Live, klik tombol TikTok atau Facebook untuk menghubungkan sesi live Anda. Komentar dimuat setelah terhubung. Tergantung paket, Anda bisa menghubungkan 1–5 akun (Trial=1, Basic=1, Pro=3, Master=5)."},
+    {q:"Kenapa tidak ada komentar yang muncul?",a:"Pastikan Anda terhubung ke sesi live TikTok atau Facebook, dan Anda benar-benar sedang LIVE (menyiarkan). Saat terhubung dan LIVE, komentar akan muncul secara real-time."},
+    {q:"Bagaimana cara membuat pesanan (1-click)?",a:"Di komentar Live, klik username pembeli dan masukkan harga — pesanan dibuat otomatis dan pelanggan terdaftar. Untuk pengiriman, pelanggan muncul di bagian Customer Data (khusus admin)."},
+    {q:"Bagaimana cara mengatur printer WiFi?",a:"Buka Settings → Printer, masukkan alamat IP dan port printer WiFi (default 9100). Tes koneksi dan tes cetak. Ponsel/perangkat dan printer harus berada di WiFi yang sama. Gunakan kertas termal 80mm. Catatan: pengaturan di ponsel dan laptop berbeda — ikuti cara yang benar."},
+    {q:"Berapa biaya langganan, dan apakah ada uji coba gratis?",a:"Ada UJI COBA GRATIS 7 hari (dimulai setelah admin menyetujui akun Anda). Setelah itu, Anda perlu berlangganan: Basic = $15/bulan (1 akun), Pro = $25/bulan (3 akun), Master = $40/bulan (5 akun)."},
+    {q:"Masalah login / kata sandi",a:'Untuk masuk, gunakan email dan kata sandi Anda. Jika lupa kata sandi, klik tautan "Forgot password?" di halaman login untuk meresetnya sendiri. Untuk masalah lain, ketik di bawah untuk dukungan admin.'},
+  ],
 };
 
 export const TRANSLATIONS: Record<Lang,T> = {
