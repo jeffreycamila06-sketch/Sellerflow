@@ -2409,12 +2409,6 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
         <button className="admin-action-card" onDoubleClick={()=>setExpandedAdminBox("create")}>
           <div className="ms-l">Create Seller</div><div className="ms-v">+</div><span>Add a seller account fast</span>
         </button>
-        <button className="admin-action-card" onDoubleClick={()=>setExpandedAdminBox("users")}>
-          <div className="ms-l">Users</div><div className="ms-v">{filteredUsers.length}</div><span>Plans, accounts, admin tools</span>
-        </button>
-        <button className="admin-action-card" onDoubleClick={()=>setExpandedAdminBox("payments")}>
-          <div className="ms-l">Payments</div><div className="ms-v" style={{color:"#BA7517"}}>{pendingPayments.length}</div><span>{unreadSupportCount} new support messages</span>
-        </button>
       </div>
 
       <div className="table-card admin-compact-card" style={{marginBottom:12}} onDoubleClick={()=>setExpandedAdminBox("overview")}>
@@ -2489,6 +2483,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
         <div className="table-card admin-compact-card" onDoubleClick={()=>setExpandedAdminBox("payments")}>
           <div className="table-title support-title">
             <span>Payment / Support Messages ({msgs.length})</span>
+            <Badge label={`${pendingPayments.length} pending`} color="amber"/>
             {unreadSupportCount>0&&<span className="support-new-badge">{unreadSupportCount>9?"9+":unreadSupportCount} new</span>}
           </div>
           <div className="admin-table-wrap">
