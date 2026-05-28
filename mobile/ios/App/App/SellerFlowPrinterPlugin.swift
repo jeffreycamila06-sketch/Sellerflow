@@ -1,0 +1,413 @@
+// SellerFlowPrinterPlugin.swift
+//
+// iOS counterpart to mobile/android/.../SellerFlowPrinterPlugin.java.
+// WiFi-only (BLE printing on iOS is gated by MFi). Targets ESC/POS thermal
+// printers reachable over raw TCP, default port 9100.
+//
+// Mirrors the Android Capacitor plugin contract exactly so the existing web
+// code in src/App.tsx (window.SellerFlowPrinter / window.Capacitor.Plugins.
+// SellerFlowPrinter) works without any platform branching.
+
+import Capacitor
+import Foundation
+import Network
+import WebKit
+
+@objc(SellerFlowPrinterPlugin)
+public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "SellerFlowPrinterPlugin"
+    public let jsName = "SellerFlowPrinter"
+    public let pluginMethods: [CAPPluginMethod] = [
+        CAPPluginMethod(name: "setPrinter", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getPrinter", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "testConnection", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "printSlip", returnType: CAPPluginReturnPromise),
+    ]
+
+    private let defaults = UserDefaults.standard
+    private let hostKey = "sellerflow_lan_host"
+    private let portKey = "sellerflow_lan_port"
+    private let defaultPort = 9100
+    private let connectTimeoutMs = 5000
+
+    // MARK: - load(): inject window.SellerFlowPrinter JS shim
+    //
+    // Mirrors mobile/android/.../MainActivity.injectPrinterBridge. The web
+    // checks `window.SellerFlowPrinter?.printSlip` before routing to native;
+    // this shim makes that check pass on iOS by wiring the global to the
+    // Capacitor plugin.
+    override public func load() {
+        super.load()
+        guard let webView = self.bridge?.webView else { return }
+        let userScript = WKUserScript(
+            source: SellerFlowPrinterPlugin.bridgeShimJS,
+            injectionTime: .atDocumentEnd,
+            forMainFrameOnly: false
+        )
+        webView.configuration.userContentController.addUserScript(userScript)
+        // Also evaluate once now in case the page is already loaded
+        DispatchQueue.main.async {
+            webView.evaluateJavaScript(SellerFlowPrinterPlugin.bridgeShimJS, completionHandler: nil)
+        }
+    }
+
+    private static let bridgeShimJS = """
+    (function(){
+      var cap = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SellerFlowPrinter;
+      if (!cap) return;
+      window.SellerFlowPrinter = window.SellerFlowPrinter || {};
+      window.SellerFlowPrinter.setPrinter = function(c){ return cap.setPrinter(c || {}); };
+      window.SellerFlowPrinter.getPrinter = function(){ return cap.getPrinter(); };
+      window.SellerFlowPrinter.testConnection = function(c){ return cap.testConnection(c || {}); };
+      window.SellerFlowPrinter.printSlip = function(p){ return cap.printSlip(p); };
+      window.SellerFlowPrinter.status = function(){ return cap.getPrinter(); };
+      window.SellerFlowPrinter.printerStatus = function(){ return cap.getPrinter(); };
+      window.SellerFlowPrinter.scanPrinters = function(){ return cap.getPrinter(); };
+      window.SellerFlowPrinter.connectPrinter = function(printer){
+        var p = printer;
+        if (typeof printer === 'string') { try { p = JSON.parse(printer); } catch(e) { p = { host: printer }; } }
+        return cap.setPrinter({ host: (p && p.host) || p || '', port: (p && p.port) || 9100 });
+      };
+      window.SellerFlowPrinter.testPrint = function(){
+        return cap.printSlip({
+          type: 'sellerflow.printSlip',
+          storeName: 'SellerFlowLive',
+          currency: 'PHP',
+          sessionDate: new Date().toISOString().slice(0,10),
+          createdAt: new Date().toISOString(),
+          buyer: {
+            num: 0, name: 'Test Print', handle: 'sellerflow', platform: 'iOS',
+            orders: [{ orderNum: 1, item: 'SellerFlowLive test print', qty: 1, price: 0, total: 0, time: new Date().toLocaleString() }],
+            totalSpent: 0, totalOrders: 1
+          }
+        });
+      };
+    })();
+    """
+
+    // MARK: - Plugin methods
+
+    @objc func setPrinter(_ call: CAPPluginCall) {
+        let host = cleanHost(call.getString("host", ""))
+        let port = call.getInt("port", defaultPort)
+        if host.isEmpty {
+            call.reject("Printer IP address is required", "HOST_REQUIRED")
+            return
+        }
+        if port <= 0 || port > 65535 {
+            call.reject("Printer port must be between 1 and 65535", "PORT_INVALID")
+            return
+        }
+        defaults.set(host, forKey: hostKey)
+        defaults.set(port, forKey: portKey)
+        var ret = printerConfig(host: host, port: port)
+        ret["ok"] = true
+        ret["message"] = "Saved WiFi printer \(host):\(port)"
+        call.resolve(ret)
+    }
+
+    @objc func getPrinter(_ call: CAPPluginCall) {
+        let host = savedHost()
+        let port = savedPort()
+        var ret = printerConfig(host: host, port: port)
+        ret["ok"] = !host.isEmpty
+        ret["message"] = host.isEmpty ? "No WiFi printer saved" : "Saved WiFi printer \(host):\(port)"
+        call.resolve(ret)
+    }
+
+    @objc func testConnection(_ call: CAPPluginCall) {
+        let host = cleanHost(call.getString("host", savedHost()))
+        let port = call.getInt("port", savedPort())
+        if host.isEmpty {
+            call.reject("Printer IP address is required", "HOST_REQUIRED")
+            return
+        }
+        if port <= 0 || port > 65535 {
+            call.reject("Printer port must be between 1 and 65535", "PORT_INVALID")
+            return
+        }
+        openTCP(host: host, port: port, data: nil) { [weak self] error in
+            guard let self = self else { return }
+            if let error = error {
+                call.reject("Printer unreachable at \(host):\(port) - \(error)", "CONNECTION_FAILED")
+            } else {
+                var ret = self.printerConfig(host: host, port: port)
+                ret["ok"] = true
+                ret["online"] = true
+                ret["message"] = "Printer reachable at \(host):\(port)"
+                call.resolve(ret)
+            }
+        }
+    }
+
+    @objc func printSlip(_ call: CAPPluginCall) {
+        let host = savedHost()
+        let port = savedPort()
+        if host.isEmpty {
+            call.reject("No WiFi printer saved. Enter printer IP and tap Test Connection first.", "PRINTER_NOT_SET")
+            return
+        }
+        let buyer = call.getObject("buyer") ?? [:]
+        let storeName = call.getString("storeName") ?? "SellerFlowLive"
+        let currency = call.getString("currency") ?? "PHP"
+        let sessionDate = call.getString("sessionDate") ?? ""
+        let createdAt = call.getString("createdAt") ?? ""
+
+        let data = buildEscPosSlip(
+            buyer: buyer,
+            storeName: storeName,
+            currency: currency,
+            sessionDate: sessionDate,
+            createdAt: createdAt
+        )
+
+        openTCP(host: host, port: port, data: data) { [weak self] error in
+            guard let self = self else { return }
+            if let error = error {
+                call.reject("Print failed at \(host):\(port) - \(error)", "PRINT_FAILED")
+            } else {
+                var ret = self.printerConfig(host: host, port: port)
+                ret["ok"] = true
+                ret["online"] = true
+                ret["bytes"] = data.count
+                ret["message"] = "Printed to WiFi printer \(host):\(port)"
+                call.resolve(ret)
+            }
+        }
+    }
+
+    // MARK: - Helpers: persistence + config dict
+
+    private func cleanHost(_ host: String) -> String {
+        return host.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func savedHost() -> String {
+        return cleanHost(defaults.string(forKey: hostKey) ?? "")
+    }
+
+    private func savedPort() -> Int {
+        let p = defaults.integer(forKey: portKey)
+        return p > 0 ? p : defaultPort
+    }
+
+    private func printerConfig(host: String, port: Int) -> [String: Any] {
+        var ret: [String: Any] = ["host": host, "port": port]
+        ret["savedPrinter"] = savedPrinterDict(host: host, port: port)
+        return ret
+    }
+
+    private func savedPrinterDict(host: String, port: Int) -> [String: Any] {
+        guard !host.isEmpty else { return [:] }
+        return [
+            "id": "lan:\(host):\(port)",
+            "type": "lan",
+            "name": "WiFi/LAN ESC-POS \(host)",
+            "host": host,
+            "port": port,
+            "online": true,
+            "hint": "Raw TCP port \(port)"
+        ]
+    }
+
+    // MARK: - TCP open (test or send)
+
+    private func openTCP(host: String, port: Int, data: Data?, completion: @escaping (String?) -> Void) {
+        guard port > 0 && port <= 65535, let nwPort = NWEndpoint.Port(rawValue: UInt16(port)) else {
+            completion("Invalid port")
+            return
+        }
+        let nwHost = NWEndpoint.Host(host)
+        let conn = NWConnection(host: nwHost, port: nwPort, using: .tcp)
+        let lock = NSLock()
+        var finished = false
+
+        func finish(_ err: String?) {
+            lock.lock()
+            defer { lock.unlock() }
+            if finished { return }
+            finished = true
+            conn.cancel()
+            DispatchQueue.main.async {
+                completion(err)
+            }
+        }
+
+        conn.stateUpdateHandler = { state in
+            switch state {
+            case .ready:
+                if let data = data, !data.isEmpty {
+                    conn.send(content: data, completion: .contentProcessed({ err in
+                        if let err = err {
+                            finish("send failed: \(err.localizedDescription)")
+                        } else {
+                            finish(nil)
+                        }
+                    }))
+                } else {
+                    finish(nil) // test-only path: connect, then close
+                }
+            case .failed(let err):
+                finish(err.localizedDescription)
+            case .waiting(let err):
+                // Common cause: NSLocalNetworkUsageDescription missing / user denied permission
+                finish("waiting: \(err.localizedDescription)")
+            default:
+                break
+            }
+        }
+
+        DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(connectTimeoutMs)) {
+            finish("connect timeout (\(self.connectTimeoutMs)ms)")
+        }
+
+        conn.start(queue: DispatchQueue.global(qos: .userInitiated))
+    }
+
+    // MARK: - DEBUG ONLY: direct-call test print (no Capacitor / JS involvement)
+    //
+    // Lets a temporary in-app button exercise the printer before any TS/web
+    // changes are deployed. This entire block is removed before release.
+
+    #if DEBUG
+    public func debugTestPrint(
+        host: String,
+        port: Int,
+        message: String,
+        completion: @escaping (Bool, String) -> Void
+    ) {
+        let trimmedHost = cleanHost(host)
+        if trimmedHost.isEmpty {
+            completion(false, "Printer IP is required")
+            return
+        }
+        if port <= 0 || port > 65535 {
+            completion(false, "Port must be 1-65535")
+            return
+        }
+        // Step 1: test reachability with no payload
+        openTCP(host: trimmedHost, port: port, data: nil) { [weak self] err in
+            if let err = err {
+                completion(false, "Connect failed: \(err)")
+                return
+            }
+            // Step 2: build a minimal ESC/POS slip and send it
+            guard let self = self else { return }
+            let bytes = self.buildDebugTestSlip(message: message)
+            self.openTCP(host: trimmedHost, port: port, data: bytes) { sendErr in
+                if let sendErr = sendErr {
+                    completion(false, "Send failed: \(sendErr)")
+                } else {
+                    completion(true, "Printed \(bytes.count) bytes to \(trimmedHost):\(port)")
+                }
+            }
+        }
+    }
+
+    private func buildDebugTestSlip(message: String) -> Data {
+        var out = Data()
+        func raw(_ bs: [UInt8]) { out.append(contentsOf: bs) }
+        func text(_ s: String) {
+            let cfEnc = CFStringEncoding(CFStringEncodings.GB_18030_2000.rawValue)
+            let nsEnc = CFStringConvertEncodingToNSStringEncoding(cfEnc)
+            if let d = (s as NSString).data(using: nsEnc) {
+                out.append(d)
+            } else if let d = s.data(using: .utf8) {
+                out.append(d)
+            }
+            out.append(0x0A)
+        }
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        raw([0x1B, 0x40])           // init
+        raw([0x1B, 0x61, 0x01])     // center
+        raw([0x1B, 0x45, 0x01])     // bold on
+        text("SellerFlow iOS")
+        text("DEBUG TEST PRINT")
+        raw([0x1B, 0x45, 0x00])     // bold off
+        text("--------------------------------")
+        raw([0x1B, 0x61, 0x00])     // left
+        text(message)
+        text(timestamp)
+        text("Swift Network.framework TCP")
+        raw([0x1B, 0x64, 0x04])     // feed 4 lines
+        raw([0x1D, 0x56, 0x42, 0x00]) // cut
+        return out
+    }
+    #endif
+
+    // MARK: - ESC/POS builder (mirrors Android EscPos opcodes byte-for-byte)
+
+    private func buildEscPosSlip(
+        buyer: [String: Any],
+        storeName: String,
+        currency: String,
+        sessionDate: String,
+        createdAt: String
+    ) -> Data {
+        var out = Data()
+        func raw(_ bs: [UInt8]) { out.append(contentsOf: bs) }
+        func text(_ s: String) {
+            // GBK encoding to match Android printer charset (Chinese thermal printers)
+            let cfEnc = CFStringEncoding(CFStringEncodings.GB_18030_2000.rawValue)
+            let nsEnc = CFStringConvertEncodingToNSStringEncoding(cfEnc)
+            if let d = (s as NSString).data(using: nsEnc) {
+                out.append(d)
+            } else if let d = s.data(using: .utf8) {
+                out.append(d) // fallback
+            }
+            out.append(0x0A)
+        }
+        func line() { text("--------------------------------") }
+        func bold(_ on: Bool) { raw([0x1B, 0x45, on ? 0x01 : 0x00]) }
+        func alignLeft() { raw([0x1B, 0x61, 0x00]) }
+        func alignCenter() { raw([0x1B, 0x61, 0x01]) }
+        func feed(_ n: Int) { raw([0x1B, 0x64, UInt8(max(1, min(n, 8)))]) }
+        func cut() { raw([0x1D, 0x56, 0x42, 0x00]) }
+        func money(_ v: Double) -> String {
+            return floor(v) == v ? String(Int(v)) : String(format: "%.2f", v)
+        }
+
+        // init
+        raw([0x1B, 0x40])
+        alignCenter()
+        bold(true); text(storeName); bold(false)
+        text("SellerFlowLive")
+        line()
+        alignLeft()
+        let buyerNum = (buyer["num"] as? Int) ?? (buyer["bNum"] as? Int) ?? 0
+        text("Buyer #\(buyerNum)")
+        text("Name: \((buyer["name"] as? String) ?? "")")
+        text("Handle: \((buyer["handle"] as? String) ?? "")")
+        text("Platform: \((buyer["platform"] as? String) ?? "")")
+        text("Session: \(sessionDate)")
+        line()
+
+        let orders = (buyer["orders"] as? [[String: Any]]) ?? []
+        if !orders.isEmpty {
+            for (i, order) in orders.enumerated() {
+                bold(true); text("Order #\((order["orderNum"] as? Int) ?? (i + 1))"); bold(false)
+                text((order["item"] as? String) ?? "")
+                text("Qty: \((order["qty"] as? Int) ?? 1)")
+                let price = (order["price"] as? Double) ?? Double((order["price"] as? Int) ?? 0)
+                let total = (order["total"] as? Double) ?? Double((order["total"] as? Int) ?? 0)
+                if price > 0 { text("Price: \(currency) \(money(price))") }
+                if total > 0 { text("Total: \(currency) \(money(total))") }
+                if let t = order["time"] as? String, !t.isEmpty { text(t) }
+                line()
+            }
+        } else {
+            text("Order:")
+            text((buyer["lastComment"] as? String) ?? (buyer["comment"] as? String) ?? "")
+            line()
+        }
+
+        let totalSpent = (buyer["totalSpent"] as? Double) ?? Double((buyer["totalSpent"] as? Int) ?? 0)
+        if totalSpent > 0 {
+            bold(true); text("TOTAL: \(currency) \(money(totalSpent))"); bold(false)
+        }
+        text("Created: \(createdAt)")
+        feed(4)
+        cut()
+        return out
+    }
+}
