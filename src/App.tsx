@@ -1021,7 +1021,8 @@ const taipeiDayId=()=>{
 
 const shipmentsKey=(email:string)=>sellerDataKey("sf_shipments",email);
 const shipmentsMigrationFlagKey=(email:string)=>sellerDataKey("sf_shipments_migrated",email);
-const legacyShippingKey=(email:string)=>sellerDataKey("sf_shipping",email);
+// Legacy ephemeral key `sf_shipping:{email}` from the pre-redesign flat list
+// is intentionally left untouched in localStorage as a recovery backup.
 
 function nextDailyNum(list:Shipment[],dayId:string){
   return list.reduce((m,s)=>s.dayId===dayId&&s.num>m?s.num:m,0)+1;
@@ -1033,53 +1034,48 @@ function findOpenShipment(list:Shipment[],username:string,dayId:string){
 function shipmentSubtotal(s:Shipment){return s.orders.reduce((sum,o)=>sum+(Number(o.price)||0),0);}
 function shipmentGrandTotal(s:Shipment){return shipmentSubtotal(s)+(Number(s.fee)||0);}
 
-// One-time migration: read legacy `sf_shipping:{email}` (flat ShipRec[]) once,
-// group into Shipment objects for today's dayId. The legacy key is NEVER
-// touched — stays as untouched backup. Flag stops re-runs.
+// One-time migration helper. SAFETY: auto-import is intentionally disabled —
+// the legacy `sf_shipping:{email}` ephemeral list could surface unexpected
+// rows as TODAY's shipments for an active user, which would confuse them.
+// The legacy key is preserved untouched as a backup; if a user needs to
+// recover pending pre-merge work, read `sf_shipping:{seller}` in DevTools
+// and re-enter manually. Setting the flag here prevents any future
+// auto-import attempt even if this function is re-enabled later.
 function migrateLegacyShipping(email:string):Shipment[]{
-  const flagKey=shipmentsMigrationFlagKey(email);
-  if(LS.get<boolean>(flagKey,false))return [];
-  LS.set(flagKey,true);
-  const legacy=arrLS<{id?:string;name?:string;phone?:string;store?:string;product?:string;price?:string;fee?:string}>(legacyShippingKey(email));
-  if(!legacy.length)return [];
-  const dayId=taipeiDayId();
-  const groups=new Map<string,Shipment>();
-  let num=0;
-  for(const r of legacy){
-    const name=String(r.name||"").trim();
-    const phone=String(r.phone||"").trim();
-    const store=String(r.store||"").trim();
-    const k=`${name.toLowerCase()}|${phone}|${store}`;
-    let s=groups.get(k);
-    if(!s){
-      num+=1;
-      s={
-        id:`mig-${Date.now()}-${Math.random().toString(36).slice(2,7)}-${num}`,
-        buyerUsername:(name||`buyer-${num}`).toLowerCase().replace(/\s+/g,"_"),
-        dayId,num,name,phone,store,
-        fee:String(r.fee||SHIP_DEFAULT_FEE),
-        status:"open",
-        createdAt:new Date().toISOString(),
-        orders:[],
-      };
-      groups.set(k,s);
-    }
-    s.orders.push({id:`mig-o-${Date.now()}-${Math.random().toString(36).slice(2,7)}-${s.orders.length}`,product:String(r.product||""),price:String(r.price||"0")});
-  }
-  return Array.from(groups.values());
+  try{
+    const flagKey=shipmentsMigrationFlagKey(email);
+    if(!LS.get<boolean>(flagKey,false))LS.set(flagKey,true);
+  }catch{/* localStorage unavailable — fail silent, defaults still work */}
+  return [];
+}
+
+// Defensive shape check: silently skip any corrupted localStorage rows
+// (partial writes, manual edits, stale schemas) instead of crashing the page.
+function isValidShipment(s:unknown):s is Shipment{
+  if(!s||typeof s!=="object")return false;
+  const r=s as Partial<Shipment>;
+  return typeof r.id==="string"
+    && typeof r.buyerUsername==="string"
+    && typeof r.dayId==="string"
+    && typeof r.num==="number"
+    && typeof r.name==="string"
+    && typeof r.phone==="string"
+    && typeof r.store==="string"
+    && typeof r.fee==="string"
+    && (r.status==="open"||r.status==="shipped")
+    && Array.isArray(r.orders);
 }
 
 function Shipping({user,t}:{user:User;t:T}){
   const sKey=shipmentsKey(user.email);
   const [shipments,setShipments]=useState<Shipment[]>(()=>{
-    const existing=arrLS<Shipment>(sKey);
-    const migrated=migrateLegacyShipping(user.email);
-    if(migrated.length){
-      const combined=[...existing,...migrated];
-      LS.set(sKey,combined);
-      return combined;
+    try{
+      migrateLegacyShipping(user.email);
+      return arrLS<Shipment>(sKey).filter(isValidShipment);
+    }catch(e){
+      console.warn("[Shipping] init failed, starting empty:",e);
+      return [];
     }
-    return existing;
   });
   const [customers]=useState<ShippingCustomer[]>(()=>arrLS<ShippingCustomer>(custDataKey(user.email)).filter(c=>c.name.trim()&&c.phone.trim()&&/^\d{6}$/.test(c.sevenCode.trim())));
   const [sel,setSel]=useState("");
