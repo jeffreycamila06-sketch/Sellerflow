@@ -296,7 +296,7 @@ function hasNativeMobilePrinter(){
 }
 
 async function callMobilePrinterBridge(action:"scanPrinters"|"printerStatus"|"testPrint"|"connectPrinter"|"setPrinter"|"getPrinter"|"testConnection",printer?:MobilePrinterDevice|PrinterLanConfig):Promise<MobilePrinterResult>{
-  if(typeof window==="undefined"||!window.SellerFlowPrinter)return {ok:false,message:"Open this inside the Android app to use phone printer scanning."};
+  if(typeof window==="undefined"||!window.SellerFlowPrinter)return {ok:false,message:"Open this inside the SellerFlow mobile app to use phone printer scanning."};
   const bridge=window.SellerFlowPrinter;
   try{
     let raw:unknown;
@@ -1388,7 +1388,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   const commentPreview=previewScale(sets.printCommentScale,sets.printLabelScale);
   const totalPreview=previewScale(sets.printTotalScale,sets.printLabelScale);
   const nativePrinterReady=hasNativeMobilePrinter();
-  const [mobilePrinterStatus,setMobilePrinterStatus]=useState<MobilePrinterResult>({ok:false,message:nativePrinterReady?"Tap Check Status":"Open Android app for printer scan"});
+  const [mobilePrinterStatus,setMobilePrinterStatus]=useState<MobilePrinterResult>({ok:false,message:nativePrinterReady?"Tap Check Status":"Open SellerFlow mobile app for printer scan"});
   const [mobilePrinters,setMobilePrinters]=useState<MobilePrinterDevice[]>([]);
   const [printerScanning,setPrinterScanning]=useState(false);
   const [lanPrinterHost,setLanPrinterHost]=useState("");
@@ -1760,7 +1760,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
             <div className="mobile-bt-copy">
               <div className={`printer-direct-status ${mobilePrinterStatus.online?"active":"inactive"}`}>
                 <div>
-                  <strong>{mobilePrinterStatus.online?"Printer Online":nativePrinterReady?"Ready for WiFi printer":"Android app needed"}</strong>
+                  <strong>{mobilePrinterStatus.online?"Printer Online":nativePrinterReady?"Ready for WiFi printer":"SellerFlow mobile app needed"}</strong>
                   <span>{mobilePrinterStatus.message||"Enter the thermal printer IP address and test the TCP connection."}</span>
                 </div>
                 <Badge label={mobilePrinterStatus.online?"Online":nativePrinterReady?"WiFi":"Mobile only"} color={mobilePrinterStatus.online?"green":"amber"}/>
@@ -1813,7 +1813,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
                 <button type="button" className="btn-out" onClick={openMobileBluetoothGuide}>Setup Help</button>
                 <button type="button" className="btn-out" onClick={testPrinter}>Browser Fallback Test</button>
               </div>
-              <div className="backup-note">SellerFlowLive saves the WiFi printer IP in the Android app. Use port 9100 for most ESC/POS network printers.</div>
+              <div className="backup-note">SellerFlowLive saves the WiFi printer IP in the mobile app. Use port 9100 for most ESC/POS network printers.</div>
             </div>
             <div className="mobile-bt-preview">
               <div className="mobile-bt-phone">
