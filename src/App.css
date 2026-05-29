@@ -1097,7 +1097,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .public-steps button{min-height:0}
   .public-support-band{margin:16px;padding:26px;flex-direction:column;align-items:flex-start}
   .public-footer{flex-direction:column;padding:28px 16px}
-  body{overflow:auto}
+  body{overflow-x:hidden;overflow-y:auto}
   #root,.app{height:auto;min-height:100vh}
   .app{display:block}
   .sidebar{position:fixed;left:0;right:0;bottom:0;top:auto;z-index:80;width:100%;height:66px;display:flex;align-items:center;gap:4px;overflow-x:auto;overflow-y:hidden;border-right:none;border-top:1px solid var(--sf-border);border-bottom:none;padding:6px 8px calc(6px + env(safe-area-inset-bottom));background:rgba(255,255,255,.96);backdrop-filter:blur(12px);box-shadow:0 -10px 28px rgba(38,33,92,.12)}
@@ -2059,6 +2059,15 @@ body.platform-ios .admin-scroll-tools button {
   min-height: 0;
   max-width: 40px;
   max-height: 40px;
+}
+
+/* --- iOS safety net: prevent body-level horizontal overflow at any viewport.
+ *     Complements the universal mobile fix at line 1100 (which is scoped to
+ *     @media (max-width:860px)). This rule covers iOS at viewports the mobile
+ *     query doesn't reach (e.g., iPhone landscape, iPad), so future iOS-only
+ *     rendering quirks can't trigger a horizontal body scroll. ---------- */
+body.platform-ios {
+  overflow-x: hidden;
 }
 
 /* ============================================================================
