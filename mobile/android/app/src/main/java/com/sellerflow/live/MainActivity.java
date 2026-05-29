@@ -530,33 +530,41 @@ public class MainActivity extends BridgeActivity {
             esc.init();
             esc.alignLeft();
             esc.bold(true);
-            esc.text("SellerFlowLive");
-            if (!sessionDate.isEmpty()) esc.text("Session: " + sessionDate);
+            esc.text("SellerFlowLive");                                  // normal -- header
+            if (!sessionDate.isEmpty()) esc.text("Session: " + sessionDate); // normal -- header info
             esc.feed();
-            esc.text(storeName);
+            esc.text(storeName);                                         // normal -- header
+
+            esc.setCharSize(SellerFlowPrinterPlugin.ESC_POS_IMPORTANT_SIZE);  // === 3x BLOCK ===
             esc.text("Buyer #" + buyerNum);
             esc.text(buyerName);
             if (!handle.isEmpty()) esc.text("@" + handle);
+            esc.setCharSize(0x00);                                       // === END 3x ===
+
             esc.feed();
-            esc.text("Order here");
+            esc.text("Order here");                                      // normal -- subtitle
             esc.bold(false);
             for (int i = 0; i < orders.length(); i++) {
                 JSONObject order = orders.optJSONObject(i);
                 if (order == null) continue;
                 String time = order.optString("time", "");
                 String item = order.optString("item", "");
-                if (!time.isEmpty()) esc.text(time);
+                if (!time.isEmpty()) esc.text(time);                     // normal -- timestamp
                 if (!item.isEmpty()) {
+                    esc.setCharSize(SellerFlowPrinterPlugin.ESC_POS_IMPORTANT_SIZE);  // === 3x ===
                     esc.bold(true);
                     esc.text(item);
                     esc.bold(false);
+                    esc.setCharSize(0x00);                               // === END 3x ===
                 }
             }
             if (printTotal && total > 0) {
                 esc.feed();
+                esc.setCharSize(SellerFlowPrinterPlugin.ESC_POS_IMPORTANT_SIZE);      // === 3x ===
                 esc.bold(true);
                 esc.text("Total: " + currency + total);
                 esc.bold(false);
+                esc.setCharSize(0x00);                                   // === END 3x ===
             }
             esc.feed(4);
             esc.cut();
@@ -572,6 +580,9 @@ public class MainActivity extends BridgeActivity {
         void alignLeft() { raw(0x1B, 0x61, 0x00); }
         void alignCenter() { raw(0x1B, 0x61, 0x01); }
         void bold(boolean on) { raw(0x1B, 0x45, on ? 0x01 : 0x00); }
+        // GS ! n -- character size. Use SellerFlowPrinterPlugin.ESC_POS_IMPORTANT_SIZE
+        // for prominent fields, 0x00 to return to normal.
+        void setCharSize(int size) { raw(0x1D, 0x21, size); }
         void feed() { raw(0x0A); }
         void feed(int lines) { for (int i = 0; i < lines; i++) feed(); }
         void cut() { raw(0x1D, 0x56, 0x42, 0x00); }
