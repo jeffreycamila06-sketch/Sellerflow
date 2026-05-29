@@ -23,7 +23,7 @@
     "react-dom": "^19.2.0",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
-    "tiktok-live-connector": "^2.1.1-beta1",
+    "tiktok-live-connector": "2.1.1-beta1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
