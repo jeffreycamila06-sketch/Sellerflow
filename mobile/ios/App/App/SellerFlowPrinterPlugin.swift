@@ -311,6 +311,15 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         // GS ! n -- character size. Use Self.ESC_POS_IMPORTANT_SIZE for prominent
         // fields, 0x00 to return to normal. Mirrors Android's EscPos.setCharSize.
         func setCharSize(_ size: UInt8) { raw([0x1D, 0x21, size]) }
+        // Defensive integer parse for JSON values arriving from JS. NSNumber bridges
+        // to either Int or Double depending on encoding; "as? Int" alone fails
+        // silently on Double-encoded integers (e.g. 1.0). Tries Int, then Double,
+        // then falls back to NSNumber.intValue for safety.
+        func asInt(_ v: Any?) -> Int? {
+            if let i = v as? Int { return i }
+            if let d = v as? Double { return Int(d) }
+            return (v as? NSNumber)?.intValue
+        }
         func money(_ v: Double) -> String {
             return floor(v) == v ? String(Int(v)) : String(format: "%.2f", v)
         }
@@ -324,7 +333,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         alignLeft()
 
         setCharSize(Self.ESC_POS_IMPORTANT_SIZE)                 // === 2x BLOCK ===
-        let buyerNum = (buyer["num"] as? Int) ?? (buyer["bNum"] as? Int) ?? 0
+        let buyerNum = asInt(buyer["num"]) ?? asInt(buyer["bNum"]) ?? 0
         text("Buyer #\(buyerNum)")
         text("Name: \((buyer["name"] as? String) ?? "")")
         text("Handle: \((buyer["handle"] as? String) ?? "")")
@@ -338,9 +347,9 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         if !orders.isEmpty {
             for (i, order) in orders.enumerated() {
                 setCharSize(Self.ESC_POS_IMPORTANT_SIZE)             // === 2x BLOCK ===
-                bold(true); text("Order #\((order["orderNum"] as? Int) ?? (i + 1))"); bold(false)
+                bold(true); text("Order #\(asInt(order["orderNum"]) ?? (i + 1))"); bold(false)
                 text((order["item"] as? String) ?? "")
-                text("Qty: \((order["qty"] as? Int) ?? 1)")
+                text("Qty: \(asInt(order["qty"]) ?? 1)")
                 let price = (order["price"] as? Double) ?? Double((order["price"] as? Int) ?? 0)
                 let total = (order["total"] as? Double) ?? Double((order["total"] as? Int) ?? 0)
                 if price > 0 { text("Price: \(currency) \(money(price))") }

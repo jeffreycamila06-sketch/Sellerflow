@@ -535,11 +535,11 @@ public class MainActivity extends BridgeActivity {
             esc.feed();
             esc.text(storeName);                                         // normal -- header
 
-            esc.setCharSize(SellerFlowPrinterPlugin.ESC_POS_IMPORTANT_SIZE);  // === 3x BLOCK ===
+            esc.setCharSize(SellerFlowPrinterPlugin.ESC_POS_IMPORTANT_SIZE);  // === IMPORTANT ===
             esc.text("Buyer #" + buyerNum);
             esc.text(buyerName);
             if (!handle.isEmpty()) esc.text("@" + handle);
-            esc.setCharSize(0x00);                                       // === END 3x ===
+            esc.setCharSize(0x00);                                       // === END IMPORTANT ===
 
             esc.feed();
             esc.text("Order here");                                      // normal -- subtitle
@@ -551,20 +551,20 @@ public class MainActivity extends BridgeActivity {
                 String item = order.optString("item", "");
                 if (!time.isEmpty()) esc.text(time);                     // normal -- timestamp
                 if (!item.isEmpty()) {
-                    esc.setCharSize(SellerFlowPrinterPlugin.ESC_POS_IMPORTANT_SIZE);  // === 3x ===
+                    esc.setCharSize(SellerFlowPrinterPlugin.ESC_POS_IMPORTANT_SIZE);  // === IMPORTANT ===
                     esc.bold(true);
                     esc.text(item);
                     esc.bold(false);
-                    esc.setCharSize(0x00);                               // === END 3x ===
+                    esc.setCharSize(0x00);                               // === END IMPORTANT ===
                 }
             }
             if (printTotal && total > 0) {
                 esc.feed();
-                esc.setCharSize(SellerFlowPrinterPlugin.ESC_POS_IMPORTANT_SIZE);      // === 3x ===
+                esc.setCharSize(SellerFlowPrinterPlugin.ESC_POS_IMPORTANT_SIZE);      // === IMPORTANT ===
                 esc.bold(true);
                 esc.text("Total: " + currency + total);
                 esc.bold(false);
-                esc.setCharSize(0x00);                                   // === END 3x ===
+                esc.setCharSize(0x00);                                   // === END IMPORTANT ===
             }
             esc.feed(4);
             esc.cut();

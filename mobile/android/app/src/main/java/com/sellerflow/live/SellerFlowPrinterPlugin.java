@@ -212,11 +212,11 @@ public class SellerFlowPrinterPlugin extends Plugin {
         out.line();                                                     // normal -- divider
         out.alignLeft();
 
-        out.setCharSize(ESC_POS_IMPORTANT_SIZE);                        // === 3x BLOCK ===
+        out.setCharSize(ESC_POS_IMPORTANT_SIZE);                        // === IMPORTANT ===
         out.text("Buyer #" + buyer.optInt("num", buyer.optInt("bNum", 0)));
         out.text("Name: " + buyer.optString("name", ""));
         out.text("Handle: " + buyer.optString("handle", ""));
-        out.setCharSize(0x00);                                          // === END 3x ===
+        out.setCharSize(0x00);                                          // === END IMPORTANT ===
 
         out.text("Platform: " + buyer.optString("platform", ""));       // normal -- header info
         out.text("Session: " + payload.optString("sessionDate", ""));   // normal -- header info
@@ -227,7 +227,7 @@ public class SellerFlowPrinterPlugin extends Plugin {
                 JSONObject order = orders.optJSONObject(i);
                 if (order == null) continue;
 
-                out.setCharSize(ESC_POS_IMPORTANT_SIZE);                // === 3x BLOCK ===
+                out.setCharSize(ESC_POS_IMPORTANT_SIZE);                // === IMPORTANT ===
                 out.bold(true);
                 out.text("Order #" + order.optInt("orderNum", i + 1));
                 out.bold(false);
@@ -237,27 +237,27 @@ public class SellerFlowPrinterPlugin extends Plugin {
                 double total = order.optDouble("total", price);
                 if (price > 0) out.text("Price: " + currency + " " + money(price));
                 if (total > 0) out.text("Total: " + currency + " " + money(total));
-                out.setCharSize(0x00);                                  // === END 3x ===
+                out.setCharSize(0x00);                                  // === END IMPORTANT ===
 
                 String time = order.optString("time", "");
                 if (!time.isEmpty()) out.text(time);                    // normal -- timestamp
                 out.line();                                             // normal -- divider
             }
         } else {
-            out.setCharSize(ESC_POS_IMPORTANT_SIZE);                    // === 3x BLOCK ===
+            out.setCharSize(ESC_POS_IMPORTANT_SIZE);                    // === IMPORTANT ===
             out.text("Order:");
             out.text(buyer.optString("lastComment", buyer.optString("comment", "")));
-            out.setCharSize(0x00);                                      // === END 3x ===
+            out.setCharSize(0x00);                                      // === END IMPORTANT ===
             out.line();
         }
 
         double totalSpent = buyer.optDouble("totalSpent", 0);
         if (totalSpent > 0) {
-            out.setCharSize(ESC_POS_IMPORTANT_SIZE);                    // === 3x BLOCK ===
+            out.setCharSize(ESC_POS_IMPORTANT_SIZE);                    // === IMPORTANT ===
             out.bold(true);
             out.text("TOTAL: " + currency + " " + money(totalSpent));
             out.bold(false);
-            out.setCharSize(0x00);                                      // === END 3x ===
+            out.setCharSize(0x00);                                      // === END IMPORTANT ===
         }
         out.text("Created: " + payload.optString("createdAt", ""));     // normal -- timestamp
         out.feed(4);
