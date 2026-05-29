@@ -3,6 +3,20 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.tsx";
 
+// iOS HIG styling hook. Adds body.platform-ios when running on:
+//   - Capacitor iOS app  (Capacitor.getPlatform() === "ios")
+//   - Mac Safari Responsive Design Mode with ?ios=1 in URL (dev testing)
+// Android, web (desktop), and regular iPhone Safari are unaffected: the
+// class is never added, so the .platform-ios-scoped CSS rules in App.css
+// don't match and apply nothing.
+if (typeof window !== "undefined" && typeof document !== "undefined" && document.body) {
+  const cap = (window as { Capacitor?: { getPlatform?: () => string } }).Capacitor;
+  const forced = new URLSearchParams(window.location.search).has("ios");
+  if (cap?.getPlatform?.() === "ios" || forced) {
+    document.body.classList.add("platform-ios");
+  }
+}
+
 class AppErrorBoundary extends Component<{children:ReactNode},{hasError:boolean;message:string}> {
   state={hasError:false,message:""};
   static getDerivedStateFromError(error:unknown){

@@ -1928,3 +1928,117 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   }
   .app.theme-regular .theme-mode-toggle small{color:#77736A!important}
 }
+
+/* ============================================================================
+ * iOS HIG (Apple Human Interface Guidelines) — additive, scoped to .platform-ios
+ *
+ * Activated only when body.platform-ios class is set, which src/main.tsx adds:
+ *   - Inside Capacitor iOS app (Capacitor.getPlatform() === "ios")
+ *   - In Mac Safari Responsive Design Mode with ?ios=1 (dev testing)
+ *
+ * Android, web (desktop), and regular iPhone Safari (no ?ios param) do NOT
+ * receive the class, so the CSS engine finds no matching ancestor and applies
+ * zero rules. The bytes below are inert on those targets.
+ *
+ * To remove this entire block: delete everything between the ===== fences.
+ * ============================================================================ */
+
+/* --- Apple system font (HIG: SF Pro / SF Pro Text) ------------------------ */
+body.platform-ios,
+body.platform-ios input,
+body.platform-ios textarea,
+body.platform-ios select,
+body.platform-ios button {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* --- HIG: 17pt minimum body text. Also prevents iOS Safari auto-zoom
+ *     when focusing form inputs (any input < 16px triggers the zoom). ----- */
+body.platform-ios {
+  font-size: 17px;
+  line-height: 1.4;
+}
+body.platform-ios input,
+body.platform-ios textarea,
+body.platform-ios select {
+  font-size: 17px;
+}
+
+/* --- Use 100dvh instead of 100vh (iOS Safari/WKWebView 100vh counts URL
+ *     bar so containers overflow the visible area). Override the existing
+ *     100vh rules without removing them (they still apply on Android/web). */
+body.platform-ios {
+  height: 100dvh;
+}
+body.platform-ios .auth-bg,
+body.platform-ios .pending-approval,
+body.platform-ios .public-page {
+  height: 100dvh;
+  min-height: 100dvh;
+}
+
+/* --- HIG: 44pt minimum tap target on every interactive control ----------- */
+body.platform-ios button,
+body.platform-ios [role="button"],
+body.platform-ios .btn-purple,
+body.platform-ios .btn-out,
+body.platform-ios .auth-btn,
+body.platform-ios .auth-lang-btn,
+body.platform-ios .printer-test-btn,
+body.platform-ios .printer-reset-btn,
+body.platform-ios .printer-shortcut-link {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* --- HIG: cap oversized buttons/icons (addresses the "too large on iPhone"
+ *     feedback). Caps at 48pt = HIG 44pt minimum + small breathing room. -- */
+body.platform-ios .admin-page-scroll-tools button,
+body.platform-ios .admin-scroll-tools button,
+body.platform-ios .pricing-icon,
+body.platform-ios .support-avatar.big,
+body.platform-ios .auth-logo-ic {
+  max-height: 48px;
+  max-width: 48px;
+}
+body.platform-ios .btn-purple,
+body.platform-ios .btn-out,
+body.platform-ios .auth-btn,
+body.platform-ios .printer-test-btn,
+body.platform-ios .printer-reset-btn,
+body.platform-ios .printer-shortcut-link {
+  max-height: 48px;
+}
+
+/* --- Safe area insets: notch / Dynamic Island (top) + home indicator
+ *     (bottom). max(env(...), Npx) keeps the existing padding floor so
+ *     non-notched devices don't lose padding. --------------------------- */
+body.platform-ios .topbar,
+body.platform-ios .public-nav,
+body.platform-ios .subpage-hd {
+  padding-top: max(env(safe-area-inset-top), 8px);
+}
+body.platform-ios .subpage,
+body.platform-ios .auth-page,
+body.platform-ios .pending-approval,
+body.platform-ios .public-page {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* --- HIG: 8pt grid for tight paddings on cards/modals -------------------- */
+body.platform-ios .scard,
+body.platform-ios .table-card,
+body.platform-ios .admin-action-card,
+body.platform-ios .auth-card,
+body.platform-ios .pending-card,
+body.platform-ios .modal,
+body.platform-ios .modal-body {
+  padding: 16px; /* 8 × 2 */
+}
+
+/* ============================================================================
+ * end iOS HIG block
+ * ============================================================================ */
