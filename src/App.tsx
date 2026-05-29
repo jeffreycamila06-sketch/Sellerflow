@@ -2041,7 +2041,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   const [msgs,setMsgs]=useState<SupportMsg[]>(()=>arrLS<SupportMsg>("sf_support"));
   const [auditLogs,setAuditLogs]=useState<AccountAuditLog[]>(()=>arrLS<AccountAuditLog>("sf_audit_logs"));
   const [admins,setAdmins]=useState<string[]>([]);
-  const [newSeller,setNewSeller]=useState({email:"",password:"123456",fullName:"",storeName:""});
+  const [newSeller,setNewSeller]=useState({email:"",password:"",fullName:"",storeName:""});
   const [editOriginalEmail,setEditOriginalEmail]=useState("");
   const [editSeller,setEditSeller]=useState({email:"",newPassword:"",fullName:"",storeName:"",phone:"",tiktok:"",facebook:""});
   const [adminSearch,setAdminSearch]=useState("");
