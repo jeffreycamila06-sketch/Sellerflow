@@ -2039,6 +2039,28 @@ body.platform-ios .modal-body {
   padding: 16px; /* 8 × 2 */
 }
 
+/* --- M2: Compact utility buttons stay at their natural size (override the
+ *     generic 44pt min above). HIG explicitly allows below-44pt for in-context
+ *     utility controls like password show/hide or modal close. ----------- */
+body.platform-ios .pw-eye,
+body.platform-ios .modal-x {
+  min-width: 0;
+  min-height: 0;
+}
+
+/* --- M3: Floating admin scroll-tool buttons stay at their natural compact
+ *     size (~34px / ~28px). The generic 44pt min was making them larger than
+ *     before this iOS work began -- the opposite of the "icons too large"
+ *     complaint that motivated this whole pass. Tightening max to 40px keeps
+ *     them tidy. ----------------------------------------------------------- */
+body.platform-ios .admin-page-scroll-tools button,
+body.platform-ios .admin-scroll-tools button {
+  min-width: 0;
+  min-height: 0;
+  max-width: 40px;
+  max-height: 40px;
+}
+
 /* ============================================================================
  * end iOS HIG block
  * ============================================================================ */
