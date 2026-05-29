@@ -28,6 +28,21 @@ public class SellerFlowPrinterPlugin extends Plugin {
     private static final int CONNECT_TIMEOUT_MS = 5000;
     private static final Charset PRINTER_CHARSET = Charset.forName("GBK");
 
+    /**
+     * ESC/POS character-size mode (GS ! n) applied to prominent slip fields:
+     * buyer #, name, handle, order details, grand total.
+     *
+     * Byte format: upper nibble = vertical scale - 1, lower nibble = horizontal scale - 1.
+     *   0x22 -> 3W x 3H  (current: decisive fix for "text too small" user feedback)
+     *   0x11 -> 2W x 2H  (fallback if 3x wraps badly on 80mm or printer mis-renders)
+     *   0x00 -> normal   (off)
+     *
+     * SINGLE SOURCE OF TRUTH. Edit this one byte to change every prominent line
+     * in both buildEscPosSlip implementations (this file + MainActivity.java
+     * dead-code path). Recompile APK -> reinstall -> reprint to compare sizes.
+     */
+    public static final int ESC_POS_IMPORTANT_SIZE = 0x22;
+
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
     @PluginMethod
@@ -190,22 +205,28 @@ public class SellerFlowPrinterPlugin extends Plugin {
         out.init();
         out.alignCenter();
         out.bold(true);
-        out.text(storeName);
+        out.text(storeName);                                            // normal -- header
         out.bold(false);
-        out.text("SellerFlowLive");
-        out.line();
+        out.text("SellerFlowLive");                                     // normal -- subtitle
+        out.line();                                                     // normal -- divider
         out.alignLeft();
+
+        out.setCharSize(ESC_POS_IMPORTANT_SIZE);                        // === 3x BLOCK ===
         out.text("Buyer #" + buyer.optInt("num", buyer.optInt("bNum", 0)));
         out.text("Name: " + buyer.optString("name", ""));
         out.text("Handle: " + buyer.optString("handle", ""));
-        out.text("Platform: " + buyer.optString("platform", ""));
-        out.text("Session: " + payload.optString("sessionDate", ""));
-        out.line();
+        out.setCharSize(0x00);                                          // === END 3x ===
+
+        out.text("Platform: " + buyer.optString("platform", ""));       // normal -- header info
+        out.text("Session: " + payload.optString("sessionDate", ""));   // normal -- header info
+        out.line();                                                     // normal -- divider
 
         if (orders != null && orders.length() > 0) {
             for (int i = 0; i < orders.length(); i++) {
                 JSONObject order = orders.optJSONObject(i);
                 if (order == null) continue;
+
+                out.setCharSize(ESC_POS_IMPORTANT_SIZE);                // === 3x BLOCK ===
                 out.bold(true);
                 out.text("Order #" + order.optInt("orderNum", i + 1));
                 out.bold(false);
@@ -215,23 +236,29 @@ public class SellerFlowPrinterPlugin extends Plugin {
                 double total = order.optDouble("total", price);
                 if (price > 0) out.text("Price: " + currency + " " + money(price));
                 if (total > 0) out.text("Total: " + currency + " " + money(total));
+                out.setCharSize(0x00);                                  // === END 3x ===
+
                 String time = order.optString("time", "");
-                if (!time.isEmpty()) out.text(time);
-                out.line();
+                if (!time.isEmpty()) out.text(time);                    // normal -- timestamp
+                out.line();                                             // normal -- divider
             }
         } else {
+            out.setCharSize(ESC_POS_IMPORTANT_SIZE);                    // === 3x BLOCK ===
             out.text("Order:");
             out.text(buyer.optString("lastComment", buyer.optString("comment", "")));
+            out.setCharSize(0x00);                                      // === END 3x ===
             out.line();
         }
 
         double totalSpent = buyer.optDouble("totalSpent", 0);
         if (totalSpent > 0) {
+            out.setCharSize(ESC_POS_IMPORTANT_SIZE);                    // === 3x BLOCK ===
             out.bold(true);
             out.text("TOTAL: " + currency + " " + money(totalSpent));
             out.bold(false);
+            out.setCharSize(0x00);                                      // === END 3x ===
         }
-        out.text("Created: " + payload.optString("createdAt", ""));
+        out.text("Created: " + payload.optString("createdAt", ""));     // normal -- timestamp
         out.feed(4);
         out.cut();
         return out.bytes();
@@ -259,6 +286,12 @@ public class SellerFlowPrinterPlugin extends Plugin {
 
         void bold(boolean enabled) {
             write(0x1B, 0x45, enabled ? 0x01 : 0x00);
+        }
+
+        // GS ! n -- character size. Use ESC_POS_IMPORTANT_SIZE for prominent
+        // fields, 0x00 to return to normal. See constant comment for byte format.
+        void setCharSize(int size) {
+            write(0x1D, 0x21, size);
         }
 
         void text(String text) {
