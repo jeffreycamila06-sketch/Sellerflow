@@ -30,6 +30,19 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
     private let defaultPort = 9100
     private let connectTimeoutMs = 5000
 
+    /// ESC/POS character-size mode (GS ! n) applied to prominent slip fields:
+    /// buyer #, name, handle, order details, grand total.
+    ///
+    /// Byte format: upper nibble = vertical scale - 1, lower nibble = horizontal scale - 1.
+    ///   0x11 -> 2W x 2H  (current: matches Android after physical test confirmed 2x on 80mm)
+    ///   0x22 -> 3W x 3H  (alternative: also tested on Android, too large for 80mm)
+    ///   0x00 -> normal   (off)
+    ///
+    /// SINGLE SOURCE OF TRUTH. Edit this one byte to change every prominent line.
+    /// Mirrors the Android constant `SellerFlowPrinterPlugin.ESC_POS_IMPORTANT_SIZE`
+    /// in `mobile/android/.../SellerFlowPrinterPlugin.java` -- keep both in sync.
+    public static let ESC_POS_IMPORTANT_SIZE: UInt8 = 0x11
+
     // MARK: - load(): inject window.SellerFlowPrinter JS shim
     //
     // Mirrors mobile/android/.../MainActivity.injectPrinterBridge. The web
@@ -308,7 +321,8 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         var out = Data()
         func raw(_ bs: [UInt8]) { out.append(contentsOf: bs) }
         func text(_ s: String) {
-            let cfEnc = CFStringEncoding(CFStringEncodings.GB_18030_2000.rawValue)
+            // GBK_95 to match Android exactly (see comment in buildEscPosSlip.text).
+            let cfEnc = CFStringEncoding(CFStringEncodings.GBK_95.rawValue)
             let nsEnc = CFStringConvertEncodingToNSStringEncoding(cfEnc)
             if let d = (s as NSString).data(using: nsEnc) {
                 out.append(d)
@@ -347,8 +361,11 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         var out = Data()
         func raw(_ bs: [UInt8]) { out.append(contentsOf: bs) }
         func text(_ s: String) {
-            // GBK encoding to match Android printer charset (Chinese thermal printers)
-            let cfEnc = CFStringEncoding(CFStringEncodings.GB_18030_2000.rawValue)
+            // GBK encoding to match Android printer charset (Chinese thermal printers).
+            // GBK_95 matches Android's `Charset.forName("GBK")` exactly. (Previously
+            // this used GB_18030_2000 which is a superset and emits different bytes
+            // for non-BMP characters -- byte-for-byte parity with Android required GBK_95.)
+            let cfEnc = CFStringEncoding(CFStringEncodings.GBK_95.rawValue)
             let nsEnc = CFStringConvertEncodingToNSStringEncoding(cfEnc)
             if let d = (s as NSString).data(using: nsEnc) {
                 out.append(d)
@@ -363,6 +380,9 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         func alignCenter() { raw([0x1B, 0x61, 0x01]) }
         func feed(_ n: Int) { raw([0x1B, 0x64, UInt8(max(1, min(n, 8)))]) }
         func cut() { raw([0x1D, 0x56, 0x42, 0x00]) }
+        // GS ! n -- character size. Use Self.ESC_POS_IMPORTANT_SIZE for prominent
+        // fields, 0x00 to return to normal. Mirrors Android's EscPos.setCharSize.
+        func setCharSize(_ size: UInt8) { raw([0x1D, 0x21, size]) }
         func money(_ v: Double) -> String {
             return floor(v) == v ? String(Int(v)) : String(format: "%.2f", v)
         }
@@ -370,21 +390,26 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         // init
         raw([0x1B, 0x40])
         alignCenter()
-        bold(true); text(storeName); bold(false)
-        text("SellerFlowLive")
-        line()
+        bold(true); text(storeName); bold(false)                // normal -- header
+        text("SellerFlowLive")                                   // normal -- subtitle
+        line()                                                   // normal -- divider
         alignLeft()
+
+        setCharSize(Self.ESC_POS_IMPORTANT_SIZE)                 // === 2x BLOCK ===
         let buyerNum = (buyer["num"] as? Int) ?? (buyer["bNum"] as? Int) ?? 0
         text("Buyer #\(buyerNum)")
         text("Name: \((buyer["name"] as? String) ?? "")")
         text("Handle: \((buyer["handle"] as? String) ?? "")")
-        text("Platform: \((buyer["platform"] as? String) ?? "")")
-        text("Session: \(sessionDate)")
-        line()
+        setCharSize(0x00)                                        // === END 2x ===
+
+        text("Platform: \((buyer["platform"] as? String) ?? "")") // normal -- header info
+        text("Session: \(sessionDate)")                           // normal -- header info
+        line()                                                    // normal -- divider
 
         let orders = (buyer["orders"] as? [[String: Any]]) ?? []
         if !orders.isEmpty {
             for (i, order) in orders.enumerated() {
+                setCharSize(Self.ESC_POS_IMPORTANT_SIZE)             // === 2x BLOCK ===
                 bold(true); text("Order #\((order["orderNum"] as? Int) ?? (i + 1))"); bold(false)
                 text((order["item"] as? String) ?? "")
                 text("Qty: \((order["qty"] as? Int) ?? 1)")
@@ -392,20 +417,26 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                 let total = (order["total"] as? Double) ?? Double((order["total"] as? Int) ?? 0)
                 if price > 0 { text("Price: \(currency) \(money(price))") }
                 if total > 0 { text("Total: \(currency) \(money(total))") }
-                if let t = order["time"] as? String, !t.isEmpty { text(t) }
-                line()
+                setCharSize(0x00)                                    // === END 2x ===
+
+                if let t = order["time"] as? String, !t.isEmpty { text(t) }  // normal -- timestamp
+                line()                                                        // normal -- divider
             }
         } else {
+            setCharSize(Self.ESC_POS_IMPORTANT_SIZE)                 // === 2x BLOCK ===
             text("Order:")
             text((buyer["lastComment"] as? String) ?? (buyer["comment"] as? String) ?? "")
+            setCharSize(0x00)                                        // === END 2x ===
             line()
         }
 
         let totalSpent = (buyer["totalSpent"] as? Double) ?? Double((buyer["totalSpent"] as? Int) ?? 0)
         if totalSpent > 0 {
+            setCharSize(Self.ESC_POS_IMPORTANT_SIZE)                 // === 2x BLOCK ===
             bold(true); text("TOTAL: \(currency) \(money(totalSpent))"); bold(false)
+            setCharSize(0x00)                                        // === END 2x ===
         }
-        text("Created: \(createdAt)")
+        text("Created: \(createdAt)")                                // normal -- timestamp
         feed(4)
         cut()
         return out
