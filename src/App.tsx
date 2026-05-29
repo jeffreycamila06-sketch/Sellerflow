@@ -3241,10 +3241,10 @@ export default function App(){
         },
         body:JSON.stringify(body)
       });
-      if(r.status===401){setToast(`${t.conn_failed}: Unauthorized`);return;}
-      if(r.status===500){setToast(`${t.conn_failed}: Server secret missing`);return;}
       const j=await r.json();
-      if(!j.success)setToast(`${t.conn_failed}: ${j.error}`);
+      if(r.status===401){setToast(`${t.conn_failed}: ${j.error||"Unauthorized"}`);return;}
+      if(r.status===500){setToast(`${t.conn_failed}: ${j.error||"Server error"}`);return;}
+      if(!j.success)setToast(`${t.conn_failed}: ${j.error||r.statusText||`HTTP ${r.status}`}`);
       else{
         setToast(`${t.conn_success} ${platform}!`);
         clearLiveCommentMemory();
