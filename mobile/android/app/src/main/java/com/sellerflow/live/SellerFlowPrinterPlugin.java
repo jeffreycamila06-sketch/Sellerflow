@@ -33,15 +33,16 @@ public class SellerFlowPrinterPlugin extends Plugin {
      * buyer #, name, handle, order details, grand total.
      *
      * Byte format: upper nibble = vertical scale - 1, lower nibble = horizontal scale - 1.
-     *   0x22 -> 3W x 3H  (current: decisive fix for "text too small" user feedback)
-     *   0x11 -> 2W x 2H  (fallback if 3x wraps badly on 80mm or printer mis-renders)
+     *   0x11 -> 2W x 2H  (current: dialed down from 3x after physical test
+     *                     showed 3x was too large on 80mm paper)
+     *   0x22 -> 3W x 3H  (previous: tested, decisive but too big)
      *   0x00 -> normal   (off)
      *
      * SINGLE SOURCE OF TRUTH. Edit this one byte to change every prominent line
      * in both buildEscPosSlip implementations (this file + MainActivity.java
      * dead-code path). Recompile APK -> reinstall -> reprint to compare sizes.
      */
-    public static final int ESC_POS_IMPORTANT_SIZE = 0x22;
+    public static final int ESC_POS_IMPORTANT_SIZE = 0x11;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
