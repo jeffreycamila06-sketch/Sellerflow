@@ -118,6 +118,23 @@ const tiktokRateLimitCooldowns = new Map();
 const tiktokConnectLocks = new Set();
 const manualTikTokDisconnects = new Set();
 
+// Passive health tracking for /health/tiktok. Ring buffer of the last 20 TikTok
+// connection attempts populated from connectTikTok success and catch branches.
+// Bounded by the shift() to avoid unbounded memory growth across the process
+// lifetime. No external calls; no Eulerstream quota cost.
+const recentTiktokAttempts = [];
+const TIKTOK_ATTEMPT_RING_MAX = 20;
+function recordTikTokAttempt(outcome, reason) {
+  recentTiktokAttempts.push({
+    outcome,                       // "ok" | "fail" | "rate_limit"
+    reason: reason || null,
+    timestamp: Date.now(),
+  });
+  if (recentTiktokAttempts.length > TIKTOK_ATTEMPT_RING_MAX) {
+    recentTiktokAttempts.shift();
+  }
+}
+
 function cleanSellerId(value) {
   return String(value || "")
     .trim()
@@ -313,6 +330,55 @@ app.get("/health", (_req, res) => {
   res.json({
     ok: true,
     service: "sellerflow-live-server",
+  });
+});
+
+// TikTok-signing health probe. Synchronous, makes no external calls
+// (zero Eulerstream quota cost), reads existing in-memory state plus the
+// recentTiktokAttempts ring buffer populated from real connect outcomes.
+// Catches:
+//   - Missing EULER_API_KEY env var (sync)
+//   - Recent failure rate spike (>=50% fail in last >=5 attempts)
+// Misses by design (passive tracker, not active probe):
+//   - Eulerstream service down before any seller has tried to connect
+//   - Quota exhaustion before a real attempt hits the wall
+// EULER_API_KEY value is NEVER returned -- only a boolean flag.
+app.get("/health/tiktok", (_req, res) => {
+  const eulerKeyConfigured = !!process.env.EULER_API_KEY;
+  const activeConnections = tiktokConnections.size;
+  const reconnectingNow = tiktokReconnectTimers.size;
+  const rateLimitedAccounts = tiktokRateLimitCooldowns.size;
+
+  const last = recentTiktokAttempts;
+  const fails = last.filter(a => a.outcome === "fail").length;
+  const recentFailureRate = last.length === 0 ? null : `${fails}/${last.length}`;
+  const lastFailReason = [...last].reverse().find(a => a.outcome === "fail")?.reason || null;
+
+  const warnings = [];
+  if (!eulerKeyConfigured) {
+    warnings.push("EULER_API_KEY is not set; sign requests will use the free tier and likely fail.");
+  }
+  if (last.length >= 5 && fails / last.length >= 0.5) {
+    warnings.push(`High recent failure rate: ${recentFailureRate}. Last reason: ${lastFailReason || "unknown"}`);
+  }
+
+  const ok = warnings.length === 0;
+  const status = ok ? "healthy" : "degraded";
+
+  res.json({
+    ok,
+    status,
+    service: "tiktok-signing",
+    checks: {
+      eulerKeyConfigured,
+      activeConnections,
+      reconnectingNow,
+      rateLimitedAccounts,
+    },
+    recentFailureRate,
+    lastFailReason,
+    warnings,
+    timestamp: new Date().toISOString(),
   });
 });
 
@@ -525,6 +591,7 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
   });
 
   console.log(`Connected to TikTok LIVE: ${cleanUsername} for ${sellerId} room ${state?.roomId || "unknown"}`);
+  recordTikTokAttempt("ok");
 
   emitTikTokStatus({
     sellerId,
@@ -665,6 +732,7 @@ async function connectTikTok(username, res, meta = {}) {
   } catch (error) {
     console.log(error);
     if (key && isTikTokRateLimitError(error)) {
+      recordTikTokAttempt("rate_limit", error?.message);
       rememberTikTokRateLimit(key, sellerId, cleanUsername, sessionId, error);
       return res.status(429).json({
         success: false,
@@ -673,6 +741,7 @@ async function connectTikTok(username, res, meta = {}) {
       });
     }
 
+    recordTikTokAttempt("fail", error?.message);
     return res.status(500).json({
       success: false,
       error: error.message,
