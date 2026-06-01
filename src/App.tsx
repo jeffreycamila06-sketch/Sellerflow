@@ -977,101 +977,264 @@ function Orders({orders,setOrders,onPersist,cur,t}:{orders:LiveOrder[];setOrders
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// SHIPPING — 7-ELEVEN MyShip (賣貨便/交貨便) bulk import export
+// SHIPPING — 7-ELEVEN MyShip, grouped per buyer with daily numbering
 // ═══════════════════════════════════════════════════════════════════
-interface ShipRec { id:string; name:string; phone:string; store:string; product:string; price:string; fee:string; }
+// Each buyer = ONE shipment per day. Multiple orders for the same buyer in
+// the same day land in the same shipment card and share one shipping fee.
+// "Day" is Asia/Taipei calendar day (hardcoded TZ so midnight resets are
+// consistent regardless of seller's device clock). After Export, today's
+// open shipments auto-close; a same-day repeat buyer afterwards starts a
+// new shipment with the next daily number (gaps in numbering are fine).
+interface ShipOrder { id:string; product:string; price:string; }
+interface Shipment {
+  id:string;
+  buyerUsername:string;
+  dayId:string;
+  num:number;
+  name:string;
+  phone:string;
+  store:string;
+  fee:string;
+  status:"open"|"shipped";
+  createdAt:string;
+  orders:ShipOrder[];
+}
 const SHIP_MAX=500;
-const SHIP_TEMP="常溫"; // temperature is always normal/room temp for every record
+const SHIP_TEMP="常溫";
+const SHIP_DEFAULT_FEE="38";
 // Official 7-ELEVEN MyShip "Order Import Validation" header row, columns A–J.
-// IMPORTANT: this must match the official template EXACTLY or 7-11 rejects the
-// file. Verify against the official template before relying on a real import.
+// IMPORTANT: this must match the official template EXACTLY or 7-11 rejects the file.
 const MYSHIP_HEADERS=["取件人姓名","取件人手機","取件門市","溫層","商品","訂單金額","運費金額","買家下訂日期","商品備註","其他資訊 (FB/LINE/IG帳號)"];
 
+// Asia/Taipei calendar day — hardcoded TZ so #1 reset at midnight is
+// consistent across all sellers regardless of their device timezone.
+const taipeiDayId=()=>{
+  try{
+    const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
+    const y=parts.find(p=>p.type==="year")?.value||"";
+    const m=parts.find(p=>p.type==="month")?.value||"";
+    const d=parts.find(p=>p.type==="day")?.value||"";
+    if(y&&m&&d)return `${y}-${m}-${d}`;
+  }catch{/* fall through */}
+  return liveDayId();
+};
+
+const shipmentsKey=(email:string)=>sellerDataKey("sf_shipments",email);
+const shipmentsMigrationFlagKey=(email:string)=>sellerDataKey("sf_shipments_migrated",email);
+// Legacy ephemeral key `sf_shipping:{email}` from the pre-redesign flat list
+// is intentionally left untouched in localStorage as a recovery backup.
+
+function nextDailyNum(list:Shipment[],dayId:string){
+  return list.reduce((m,s)=>s.dayId===dayId&&s.num>m?s.num:m,0)+1;
+}
+function findOpenShipment(list:Shipment[],username:string,dayId:string){
+  const u=username.trim().toLowerCase();
+  return list.find(s=>s.dayId===dayId&&s.status==="open"&&s.buyerUsername.toLowerCase()===u)||null;
+}
+function shipmentSubtotal(s:Shipment){return s.orders.reduce((sum,o)=>sum+(Number(o.price)||0),0);}
+function shipmentGrandTotal(s:Shipment){return shipmentSubtotal(s)+(Number(s.fee)||0);}
+
+// One-time migration helper. SAFETY: auto-import is intentionally disabled —
+// the legacy `sf_shipping:{email}` ephemeral list could surface unexpected
+// rows as TODAY's shipments for an active user, which would confuse them.
+// The legacy key is preserved untouched as a backup; if a user needs to
+// recover pending pre-merge work, read `sf_shipping:{seller}` in DevTools
+// and re-enter manually. Setting the flag here prevents any future
+// auto-import attempt even if this function is re-enabled later.
+function migrateLegacyShipping(email:string):Shipment[]{
+  try{
+    const flagKey=shipmentsMigrationFlagKey(email);
+    if(!LS.get<boolean>(flagKey,false))LS.set(flagKey,true);
+  }catch{/* localStorage unavailable — fail silent, defaults still work */}
+  return [];
+}
+
+// Defensive shape check: silently skip any corrupted localStorage rows
+// (partial writes, manual edits, stale schemas) instead of crashing the page.
+function isValidShipment(s:unknown):s is Shipment{
+  if(!s||typeof s!=="object")return false;
+  const r=s as Partial<Shipment>;
+  return typeof r.id==="string"
+    && typeof r.buyerUsername==="string"
+    && typeof r.dayId==="string"
+    && typeof r.num==="number"
+    && typeof r.name==="string"
+    && typeof r.phone==="string"
+    && typeof r.store==="string"
+    && typeof r.fee==="string"
+    && (r.status==="open"||r.status==="shipped")
+    && Array.isArray(r.orders);
+}
+
 function Shipping({user,t}:{user:User;t:T}){
-  const storeKey=sellerDataKey("sf_shipping",user.email);
-  const [list,setList]=useState<ShipRec[]>(()=>arrLS<ShipRec>(storeKey));
-  // Registered customers come from Customer Data (name, phone, 7/11 code encoded once).
+  const sKey=shipmentsKey(user.email);
+  const [shipments,setShipments]=useState<Shipment[]>(()=>{
+    try{
+      migrateLegacyShipping(user.email);
+      return arrLS<Shipment>(sKey).filter(isValidShipment);
+    }catch(e){
+      console.warn("[Shipping] init failed, starting empty:",e);
+      return [];
+    }
+  });
   const [customers]=useState<ShippingCustomer[]>(()=>arrLS<ShippingCustomer>(custDataKey(user.email)).filter(c=>c.name.trim()&&c.phone.trim()&&/^\d{6}$/.test(c.sevenCode.trim())));
   const [sel,setSel]=useState("");
   const [product,setProduct]=useState("CLOTHING");
   const [price,setPrice]=useState("");
-  const [fee,setFee]=useState("38");
   const [err,setErr]=useState("");
   const [msg,setMsg]=useState("");
+  const [editing,setEditing]=useState<{shipmentId:string;orderId:string;value:string}|null>(null);
+  const today=taipeiDayId();
+
+  const todayShipments=shipments.filter(s=>s.dayId===today);
+  const openToday=todayShipments.filter(s=>s.status==="open");
+  const shippedToday=todayShipments.filter(s=>s.status==="shipped");
   const selected=customers.find(c=>c.username===sel)||null;
+  const existingForSelected=selected?findOpenShipment(shipments,selected.username,today):null;
 
-  const persist=(next:ShipRec[])=>{setList(next);LS.set(storeKey,next);};
+  const persist=(next:Shipment[])=>{setShipments(next);LS.set(sKey,next);};
 
-  function add(e:React.FormEvent){
+  function addOrder(e:React.FormEvent){
     e.preventDefault();
     setErr("");setMsg("");
-    if(list.length>=SHIP_MAX){setErr(`Limit reached: ${SHIP_MAX} records per file. Export, then start a new list.`);return;}
-    if(!selected){setErr("Select a registered customer first.");return;}
-    const pr=product.trim(),pc=price.trim(),fe=fee.trim();
-    if(!pr){setErr("Product is required.");return;}
-    if(pc===""||isNaN(Number(pc))||Number(pc)<0){setErr("Enter a valid price (0 or more).");return;}
-    if(fe===""||isNaN(Number(fe))||Number(fe)<0){setErr("Enter a valid shipping fee (0 or more).");return;}
-    const rec:ShipRec={id:`${Date.now()}-${Math.random().toString(36).slice(2,7)}`,name:selected.name,phone:selected.phone,store:selected.sevenCode,product:pr,price:pc,fee:fe};
-    persist([...list,rec]);
-    setSel("");setPrice(""); // keep product + fee defaults for fast repeat entry
-    setMsg(`Added ${selected.name}. ${list.length+1} / ${SHIP_MAX} records.`);
+    if(!selected){setErr(t.ship_select_customer_first);return;}
+    const pr=product.trim(),pc=price.trim();
+    if(!pr){setErr(t.ship_product_required);return;}
+    if(pc===""||isNaN(Number(pc))||Number(pc)<0){setErr(t.ship_invalid_price);return;}
+    const existing=findOpenShipment(shipments,selected.username,today);
+    if(!existing && openToday.length>=SHIP_MAX){
+      setErr(`${t.ship_limit_reached} (${SHIP_MAX})`);return;
+    }
+    let next:Shipment[];
+    if(existing){
+      next=shipments.map(s=>s.id===existing.id
+        ? {...s,
+           name:selected.name,phone:selected.phone,store:selected.sevenCode,
+           orders:[...s.orders,{id:`${Date.now()}-${Math.random().toString(36).slice(2,7)}`,product:pr,price:pc}]}
+        : s);
+      setMsg(`${t.ship_added_to_existing} #${existing.num} ${selected.name}.`);
+    }else{
+      const num=nextDailyNum(shipments,today);
+      const newShipment:Shipment={
+        id:`${Date.now()}-${Math.random().toString(36).slice(2,7)}`,
+        buyerUsername:selected.username,
+        dayId:today,num,
+        name:selected.name,phone:selected.phone,store:selected.sevenCode,
+        fee:SHIP_DEFAULT_FEE,status:"open",
+        createdAt:new Date().toISOString(),
+        orders:[{id:`${Date.now()+1}-${Math.random().toString(36).slice(2,7)}`,product:pr,price:pc}],
+      };
+      next=[...shipments,newShipment];
+      setMsg(`${t.ship_created_new} #${num} ${selected.name}.`);
+    }
+    persist(next);
+    setSel("");setPrice("");
   }
 
-  function remove(id:string){persist(list.filter(r=>r.id!==id));setMsg("");}
-  function clearAll(){if(list.length&&window.confirm("Remove all shipping records from this list?")){persist([]);setMsg("");}}
+  function deleteOrder(shipmentId:string,orderId:string){
+    if(!window.confirm(t.ship_delete_confirm))return;
+    let next=shipments.map(s=>s.id===shipmentId?{...s,orders:s.orders.filter(o=>o.id!==orderId)}:s);
+    // Auto-remove the whole shipment if its last order was deleted (Q4).
+    // Daily number stays consumed — gaps in numbering are intentional and fine.
+    next=next.filter(s=>!(s.id===shipmentId&&s.orders.length===0));
+    persist(next);
+    setMsg("");setErr("");
+  }
+
+  function startEdit(shipmentId:string,orderId:string,current:string){
+    setEditing({shipmentId,orderId,value:current});
+    setErr("");
+  }
+  function saveEdit(){
+    if(!editing)return;
+    const v=editing.value.trim();
+    if(v===""||isNaN(Number(v))||Number(v)<0){setErr(t.ship_invalid_price);return;}
+    const next=shipments.map(s=>s.id===editing.shipmentId?{...s,orders:s.orders.map(o=>o.id===editing.orderId?{...o,price:v}:o)}:s);
+    persist(next);
+    setEditing(null);
+    setMsg(t.ship_amount_updated);
+    setErr("");
+  }
+  function cancelEdit(){setEditing(null);setErr("");}
+
+  function updateFee(shipmentId:string,fee:string){
+    const cleaned=fee.replace(/[^\d.]/g,"");
+    persist(shipments.map(s=>s.id===shipmentId?{...s,fee:cleaned}:s));
+  }
 
   async function exportXlsx(){
     setErr("");setMsg("");
-    if(!list.length){setErr("Add at least one order before exporting.");return;}
-    // 7-11/OpenPoint requires a real Name in every row — block export if any are still blank.
-    if(list.some(r=>!r.name.trim())){setErr(t.ship_export_no_name);return;}
+    if(!openToday.length){setErr(t.ship_no_open_to_export);return;}
+    if(openToday.some(s=>!s.name.trim())){setErr(t.ship_export_no_name);return;}
     try{
       const XLSX=await import("xlsx");
-      // phone + store kept as text (preserve leading zeros); amounts as numbers; H/I/J blank.
-      const rows=list.map(r=>[r.name,r.phone,r.store,SHIP_TEMP,r.product,Number(r.price),Number(r.fee),"","",""]);
+      // One row per shipment: summed product price + single shipping fee.
+      // Product column joins multiple product names with " / " (manual review possible before send).
+      const rows=openToday.map(s=>[
+        s.name,
+        s.phone,
+        s.store,
+        SHIP_TEMP,
+        s.orders.map(o=>o.product).filter(Boolean).join(" / ")||s.orders[0]?.product||"",
+        shipmentSubtotal(s),
+        Number(s.fee)||0,
+        "","",""
+      ]);
       const ws=XLSX.utils.aoa_to_sheet([MYSHIP_HEADERS,...rows]);
       const wb=XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb,ws,"Sheet1");
-      XLSX.writeFile(wb,`myship-${new Date().toISOString().slice(0,10)}.xlsx`);
-      setMsg(`Exported ${list.length} record(s) to Excel.`);
+      XLSX.writeFile(wb,`myship-${today}.xlsx`);
+      // Auto-close (Q3): all of today's OPEN shipments become "shipped".
+      // Any same-buyer order after this gets a fresh shipment + new daily #.
+      const ids=new Set(openToday.map(s=>s.id));
+      persist(shipments.map(s=>ids.has(s.id)?{...s,status:"shipped" as const}:s));
+      setMsg(`${t.ship_exported} ${openToday.length} ${openToday.length===1?t.ship_buyer_singular:t.ship_buyer_plural}.`);
     }catch(error){
       setErr(`Export failed: ${error instanceof Error?error.message:"unknown error"}`);
     }
   }
 
+  const moneyFmt=(n:number)=>`NT$${(n||0).toLocaleString()}`;
+  const sortedToday=[...todayShipments].sort((a,b)=>a.num-b.num);
+
   return(
     <div className="subpage">
       <div className="subpage-hd">
-        <div><h2>Shipping</h2><p>Pick a registered customer, add the price, then export the 7-ELEVEN MyShip (賣貨便) file (max {SHIP_MAX} per file).</p></div>
-        <button className="btn-out" onClick={exportXlsx} disabled={!list.length}>⬇ Export Excel (.xlsx)</button>
+        <div>
+          <h2>Shipping</h2>
+          <p>{t.ship_subtitle}</p>
+        </div>
+        <button className="btn-out" onClick={exportXlsx} disabled={!openToday.length}>⬇ Export Excel (.xlsx)</button>
       </div>
       <div className="grid4">
-        <div className="mstat"><div className="ms-l">In this file</div><div className="ms-v">{list.length}</div></div>
-        <div className="mstat"><div className="ms-l">Remaining</div><div className="ms-v" style={{color:list.length>=SHIP_MAX?"#A32D2D":"#1D9E75"}}>{SHIP_MAX-list.length}</div></div>
-        <div className="mstat"><div className="ms-l">Registered customers</div><div className="ms-v">{customers.length}</div></div>
-        <div className="mstat"><div className="ms-l">Temperature (溫層)</div><div className="ms-v" style={{fontSize:18}}>{SHIP_TEMP}</div></div>
+        <div className="mstat"><div className="ms-l">{t.ship_open_shipments}</div><div className="ms-v">{openToday.length}</div></div>
+        <div className="mstat"><div className="ms-l">{t.ship_shipped_today}</div><div className="ms-v" style={{color:"#1D9E75"}}>{shippedToday.length}</div></div>
+        <div className="mstat"><div className="ms-l">{t.ship_next_num}</div><div className="ms-v">#{nextDailyNum(shipments,today)}</div></div>
+        <div className="mstat"><div className="ms-l">{t.ship_remaining}</div><div className="ms-v" style={{color:openToday.length>=SHIP_MAX?"#A32D2D":"#1D9E75"}}>{SHIP_MAX-openToday.length}</div></div>
       </div>
 
       <div className="table-card" style={{padding:16,marginTop:12}}>
         {customers.length===0?(
-          <p style={{margin:0,color:"#888",fontSize:13}}>No registered customers yet. Open <strong>Customer Data</strong>, tap a buyer's TikTok username, and encode their Name, Phone and 7/11 code. Registered customers appear here automatically — then you only add the price.</p>
+          <p style={{margin:0,color:"#888",fontSize:13}}>{t.ship_no_registered_customers}</p>
         ):(
-        <form onSubmit={add}>
+        <form onSubmit={addOrder}>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12}}>
-            <Fg label="Customer (registered) *">
+            <Fg label={`${t.ship_customer_field} *`}>
               <select value={sel} onChange={e=>{setSel(e.target.value);setMsg("");setErr("");}}>
-                <option value="">Select a customer…</option>
+                <option value="">{t.ship_select_customer_placeholder}</option>
                 {customers.map(c=><option key={c.username} value={c.username}>@{c.username} — {c.name}</option>)}
               </select>
             </Fg>
-            <Fg label="Product 商品 *"><input value={product} onChange={e=>setProduct(e.target.value)} placeholder="CLOTHING"/></Fg>
-            <Fg label="Price 訂單金額 * (manual)"><input value={price} onChange={e=>setPrice(e.target.value.replace(/[^\d.]/g,""))} inputMode="decimal" placeholder="0"/></Fg>
-            <Fg label="Shipping fee 運費金額 *"><input value={fee} onChange={e=>setFee(e.target.value.replace(/[^\d.]/g,""))} inputMode="decimal" placeholder="38"/></Fg>
+            <Fg label={`${t.ship_product_field} 商品 *`}><input value={product} onChange={e=>setProduct(e.target.value)} placeholder="CLOTHING"/></Fg>
+            <Fg label={`${t.ship_amount_field} 訂單金額 *`}><input value={price} onChange={e=>setPrice(e.target.value.replace(/[^\d.]/g,""))} inputMode="decimal" placeholder="0"/></Fg>
           </div>
-          {selected&&<div style={{marginTop:10,fontSize:12,color:"#666"}}>Shipping to <strong>{selected.name}</strong> · {selected.phone} · 7/11 {selected.sevenCode} · 溫層 {SHIP_TEMP}</div>}
+          {selected && (existingForSelected
+            ? <div style={{marginTop:10,fontSize:12,color:"#1D9E75"}}>+ {t.ship_will_append} #{existingForSelected.num} ({existingForSelected.orders.length} {existingForSelected.orders.length===1?t.ship_order_singular:t.ship_order_plural})</div>
+            : <div style={{marginTop:10,fontSize:12,color:"#666"}}>{t.ship_will_create} #{nextDailyNum(shipments,today)} — <strong>{selected.name}</strong> · {selected.phone} · 7/11 {selected.sevenCode}</div>
+          )}
           <div style={{display:"flex",alignItems:"center",gap:10,marginTop:12,flexWrap:"wrap"}}>
-            <button type="submit" className="btn-purple" disabled={list.length>=SHIP_MAX}>+ Add to list</button>
-            <span style={{fontSize:11,color:"#888"}}>Name, phone and 7/11 code come from Customer Data. 溫層 is {SHIP_TEMP} automatically. Set price to 0 for free.</span>
+            <button type="submit" className="btn-purple">+ {t.ship_add_order_btn}</button>
+            <span style={{fontSize:11,color:"#888"}}>{t.ship_form_hint}</span>
           </div>
         </form>
         )}
@@ -1080,30 +1243,73 @@ function Shipping({user,t}:{user:User;t:T}){
       </div>
 
       <div style={{display:"flex",alignItems:"center",gap:8,marginTop:14}}>
-        <strong style={{fontSize:13}}>List ({list.length}/{SHIP_MAX})</strong>
-        {list.length>0&&<button className="btn-out" style={{marginLeft:"auto"}} onClick={clearAll}>Clear list</button>}
+        <strong style={{fontSize:13}}>{t.ship_today_label} ({todayShipments.length})</strong>
+        <span style={{fontSize:11,color:"#888"}}>{today} · 溫層 {SHIP_TEMP}</span>
       </div>
-      <div className="table-card" style={{marginTop:8}}>
-        <table className="tbl">
-          <thead><tr><th>#</th><th>Name 取件人姓名</th><th>Phone 取件人手機</th><th>Store 取件門市</th><th>溫層</th><th>Product 商品</th><th>訂單金額</th><th>運費金額</th><th></th></tr></thead>
-          <tbody>
-            {list.length===0&&<tr><td colSpan={9} style={{textAlign:"center",padding:32,color:"#888"}}>No orders added yet.</td></tr>}
-            {list.map((r,i)=>(
-              <tr key={r.id}>
-                <td className="muted">{i+1}</td>
-                <td><strong>{r.name}</strong></td>
-                <td className="mono">{r.phone}</td>
-                <td className="mono">{r.store}</td>
-                <td>{SHIP_TEMP}</td>
-                <td>{r.product}</td>
-                <td>{r.price}</td>
-                <td>{r.fee}</td>
-                <td><button className="btn-out" style={{padding:"3px 10px",fontSize:11}} onClick={()=>remove(r.id)}>Remove</button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+
+      {todayShipments.length===0
+        ? <div className="table-card" style={{padding:32,textAlign:"center",color:"#888",fontSize:13}}>{t.ship_no_open_shipments}</div>
+        : (
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {sortedToday.map(s=>{
+              const isShipped=s.status==="shipped";
+              return (
+                <div key={s.id} className="table-card" style={{padding:14,opacity:isShipped?0.78:1}}>
+                  <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                    <div style={{fontSize:22,fontWeight:700,color:"#534AB7",minWidth:50,lineHeight:1}}>#{s.num}</div>
+                    <div style={{flex:1,minWidth:200}}>
+                      <div style={{fontWeight:600,fontSize:14}}>{s.name}</div>
+                      <div style={{fontSize:11,color:"#888",fontFamily:"monospace",marginTop:2}}>{s.phone} · 7/11 {s.store}</div>
+                    </div>
+                    {isShipped && <span style={{background:"#E0E7FF",color:"#3730A3",padding:"3px 10px",borderRadius:999,fontSize:10,fontWeight:700,letterSpacing:.04}}>{t.ship_shipped_badge}</span>}
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontSize:10,color:"#888",textTransform:"uppercase",letterSpacing:.04}}>{t.ship_total}</div>
+                      <div style={{fontSize:17,fontWeight:700,color:"#1D9E75"}}>{moneyFmt(shipmentGrandTotal(s))}</div>
+                    </div>
+                  </div>
+
+                  <div style={{marginTop:12,paddingTop:10,borderTop:"0.5px solid #E4E2DC"}}>
+                    {s.orders.map((o,i)=>{
+                      const isEditing=!isShipped && editing?.shipmentId===s.id && editing?.orderId===o.id;
+                      return (
+                        <div key={o.id} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 0",borderBottom:i<s.orders.length-1?"0.5px dashed #F0EFE9":"none",flexWrap:"wrap"}}>
+                          <span style={{minWidth:18,color:"#888",fontSize:11}}>{i+1}.</span>
+                          <span style={{flex:1,minWidth:120,fontSize:13}}>{o.product}</span>
+                          {isEditing
+                            ? <>
+                                <input value={editing.value} onChange={e=>setEditing({...editing,value:e.target.value.replace(/[^\d.]/g,"")})} onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();saveEdit();}if(e.key==="Escape"){cancelEdit();}}} inputMode="decimal" placeholder="0" style={{width:90,padding:"5px 8px",border:"1px solid #7F77DD",borderRadius:6,fontSize:13,textAlign:"right"}} autoFocus/>
+                                <button type="button" className="tbl-btn ed" onClick={saveEdit}>{t.save_btn}</button>
+                                <button type="button" className="tbl-btn" onClick={cancelEdit} style={{background:"#F5F5F2",color:"#666"}}>{t.cancel_btn}</button>
+                              </>
+                            : <>
+                                <span style={{minWidth:80,textAlign:"right",fontSize:13,fontWeight:600,color:"#26215C"}}>{moneyFmt(Number(o.price)||0)}</span>
+                                {!isShipped && <>
+                                  <button type="button" className="tbl-btn ed" onClick={()=>startEdit(s.id,o.id,o.price)} title={t.ship_edit_amount}>✏️ {t.edit_btn}</button>
+                                  <button type="button" className="tbl-btn dl" onClick={()=>deleteOrder(s.id,o.id)} title={t.delete_btn}>🗑 {t.delete_btn}</button>
+                                </>}
+                              </>
+                          }
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div style={{marginTop:10,paddingTop:8,borderTop:"0.5px solid #E4E2DC",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:18,fontSize:12,color:"#666",flexWrap:"wrap"}}>
+                    <div>{t.ship_subtotal}: <strong style={{color:"#26215C"}}>{moneyFmt(shipmentSubtotal(s))}</strong></div>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      {t.ship_fee} 運費:
+                      {isShipped
+                        ? <strong style={{color:"#26215C"}}>NT${s.fee||0}</strong>
+                        : <input value={s.fee} onChange={e=>updateFee(s.id,e.target.value)} inputMode="decimal" placeholder="0" style={{width:70,padding:"4px 7px",border:"0.5px solid #D3D1C7",borderRadius:6,fontSize:12,textAlign:"right",background:"#fff",color:"#26215C"}}/>
+                      }
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )
+      }
     </div>
   );
 }
