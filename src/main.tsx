@@ -1,7 +1,22 @@
 import { Component, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
+import posthog from "posthog-js";
 import "./index.css";
 import App from "./App.tsx";
+
+// PostHog analytics initialization. Reads env vars at build time via Vite.
+// Silently skips init if the key is missing (e.g. local dev without .env)
+// so the app never crashes due to missing analytics config.
+const POSTHOG_KEY = import.meta.env.VITE_PUBLIC_POSTHOG_KEY;
+const POSTHOG_HOST = import.meta.env.VITE_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com";
+if (typeof window !== "undefined" && POSTHOG_KEY) {
+  posthog.init(POSTHOG_KEY, {
+    api_host: POSTHOG_HOST,
+    person_profiles: "identified_only",
+    capture_pageview: true,
+    capture_pageleave: true,
+  });
+}
 
 // iOS HIG styling hook. Adds body.platform-ios when running on:
 //   - Capacitor iOS app  (Capacitor.getPlatform() === "ios")
