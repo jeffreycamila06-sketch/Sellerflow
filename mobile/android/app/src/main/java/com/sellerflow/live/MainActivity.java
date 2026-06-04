@@ -88,6 +88,16 @@ public class MainActivity extends BridgeActivity {
             + "window.SellerFlowPrinter.connectPrinter=function(printer){var p=printer;if(typeof printer==='string'){try{p=JSON.parse(printer);}catch(e){p={host:printer};}}return cap.setPrinter({host:(p&&p.host)||p||'',port:(p&&p.port)||9100});};"
             + "window.SellerFlowPrinter.printerStatus=function(){return cap.getPrinter();};"
             + "window.SellerFlowPrinter.testPrint=function(){return cap.printSlip({type:'sellerflow.printSlip',storeName:'SellerFlowLive',currency:'PHP',sessionDate:new Date().toISOString().slice(0,10),createdAt:new Date().toISOString(),buyer:{num:0,name:'Test Print',handle:'sellerflow',platform:'Android',orders:[{orderNum:1,item:'SellerFlowLive test print',qty:1,price:0,total:0,time:new Date().toLocaleString()}],totalSpent:0,totalOrders:1}});};"
+            // ── Bluetooth sticker (TSPL/AIMO) bridge — additive. Frontend calls
+            // these on window.SellerFlowPrinter; they forward to the Capacitor
+            // plugin's @PluginMethods. Existing LAN method wrappers above are
+            // untouched.
+            + "window.SellerFlowPrinter.scanBluetoothLabelPrinters=function(){return cap.scanBluetoothLabelPrinters();};"
+            + "window.SellerFlowPrinter.getBluetoothLabelPrinter=function(){return cap.getBluetoothLabelPrinter();};"
+            + "window.SellerFlowPrinter.setBluetoothLabelPrinter=function(printer){return cap.setBluetoothLabelPrinter(printer||{});};"
+            + "window.SellerFlowPrinter.clearBluetoothLabelPrinter=function(){return cap.clearBluetoothLabelPrinter();};"
+            + "window.SellerFlowPrinter.printSticker=function(payload){return cap.printSticker(payload||{});};"
+            + "window.SellerFlowPrinter.testStickerPrint=function(args){return cap.testStickerPrint(args||{});};"
             + "}else{"
             + "window.SellerFlowPrinter.printSlip=function(payload){return window.SellerFlowPrinterAndroid.printSlip(JSON.stringify(payload));};"
             + "window.SellerFlowPrinter.status=function(){return window.SellerFlowPrinterAndroid.status();};"

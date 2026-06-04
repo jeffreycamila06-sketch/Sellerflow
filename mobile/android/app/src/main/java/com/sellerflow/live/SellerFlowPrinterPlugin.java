@@ -1,7 +1,14 @@
 package com.sellerflow.live;
 
+import android.Manifest;
+import android.annotation.SuppressLint;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothSocket;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.util.Log;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -13,6 +20,9 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.Charset;
+import java.util.Locale;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.json.JSONArray;
@@ -24,9 +34,19 @@ public class SellerFlowPrinterPlugin extends Plugin {
     private static final String PREFS = "sellerflow_printer";
     private static final String PREF_HOST = "lan_host";
     private static final String PREF_PORT = "lan_port";
+    // Bluetooth sticker printer (AIMO D520BT / TSPL). SEPARATE prefs keys from
+    // LAN so saving a BT printer never touches the WiFi/LAN config.
+    private static final String PREF_BT_ADDR = "bt_label_addr";
+    private static final String PREF_BT_NAME = "bt_label_name";
     private static final int DEFAULT_PORT = 9100;
     private static final int CONNECT_TIMEOUT_MS = 5000;
     private static final Charset PRINTER_CHARSET = Charset.forName("GBK");
+    // Classic Bluetooth SPP (Serial Port Profile) UUID — universal for ESC/POS
+    // and TSPL thermal/label printers. AIMO D520BT, Xprinter, GP-, RPP all use this.
+    private static final UUID SPP_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
+    // Default label dimensions for AIMO D520BT sticker stock.
+    private static final int LABEL_WIDTH_MM = 100;
+    private static final int LABEL_HEIGHT_MM = 60;
 
     /**
      * ESC/POS character-size mode (GS ! n) applied to prominent slip fields:
@@ -132,6 +152,288 @@ public class SellerFlowPrinterPlugin extends Plugin {
                 call.reject("Print failed at " + host + ":" + port + " - " + e.getMessage(), "PRINT_FAILED", e);
             }
         });
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // BLUETOOTH STICKER PRINTER (additive — independent of all LAN methods above)
+    // Backs the frontend's printerType="bluetooth" path. Saved BT printer is
+    // stored in SEPARATE SharedPreferences keys (bt_label_addr / bt_label_name)
+    // so the WiFi/LAN host/port is never overwritten. printSticker decodes the
+    // base64 1-bit bitmap rendered by the frontend (html2canvas), wraps it via
+    // TsplBuilder.forSticker, and writes the byte stream to the printer over
+    // Classic Bluetooth SPP. 1-click in-app — no Android system print dialog.
+    // ────────────────────────────────────────────────────────────────────────
+
+    @PluginMethod
+    public void scanBluetoothLabelPrinters(PluginCall call) {
+        Log.i(TAG, "scanBluetoothLabelPrinters start");
+        BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
+        if (adapter == null) {
+            call.reject("Bluetooth not supported on this device", "BT_NO_ADAPTER");
+            return;
+        }
+        if (!adapter.isEnabled()) {
+            call.reject("Bluetooth is off. Turn it on in Android Settings then try again.", "BT_DISABLED");
+            return;
+        }
+        if (!hasBluetoothConnectPermission()) {
+            requestBluetoothPermissions();
+            call.reject("Bluetooth permission needed. Allow it in the system prompt and tap Scan again.", "BT_PERMISSION");
+            return;
+        }
+        executor.execute(() -> {
+            try {
+                JSObject ret = new JSObject();
+                JSONArray printers = new JSONArray();
+                @SuppressLint("MissingPermission")
+                Set<BluetoothDevice> bonded = adapter.getBondedDevices();
+                if (bonded != null) {
+                    for (BluetoothDevice device : bonded) {
+                        JSObject d = bluetoothDeviceJson(device, true);
+                        if (looksLikeLabelPrinter(d.optString("name", ""))) {
+                            printers.put(d);
+                        }
+                    }
+                    // If no obvious printer-named devices, surface ALL paired
+                    // devices so the seller can still pick one (helpful for
+                    // generic names like "BT-Printer" or unbranded clones).
+                    if (printers.length() == 0) {
+                        for (BluetoothDevice device : bonded) printers.put(bluetoothDeviceJson(device, true));
+                    }
+                }
+                ret.put("ok", true);
+                ret.put("printers", printers);
+                ret.put("savedPrinter", savedBluetoothPrinter());
+                ret.put("message", printers.length() == 0
+                    ? "No paired Bluetooth printer found. Pair the printer in Android Settings first."
+                    : "Found " + printers.length() + " paired Bluetooth printer" + (printers.length() == 1 ? "" : "s"));
+                Log.i(TAG, "scanBluetoothLabelPrinters success count=" + printers.length());
+                call.resolve(ret);
+            } catch (SecurityException e) {
+                Log.e(TAG, "scanBluetoothLabelPrinters permission denied", e);
+                call.reject("Bluetooth permission denied: " + e.getMessage(), "BT_PERMISSION", e);
+            } catch (Exception e) {
+                Log.e(TAG, "scanBluetoothLabelPrinters failed", e);
+                call.reject("Bluetooth scan failed: " + e.getMessage(), "BT_SCAN_FAILED", e);
+            }
+        });
+    }
+
+    @PluginMethod
+    public void getBluetoothLabelPrinter(PluginCall call) {
+        JSObject ret = new JSObject();
+        ret.put("ok", true);
+        ret.put("savedPrinter", savedBluetoothPrinter());
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void setBluetoothLabelPrinter(PluginCall call) {
+        String address = call.getString("address", "");
+        String name = call.getString("name", "");
+        if (address == null || address.trim().isEmpty()) {
+            call.reject("Bluetooth address is required", "BT_ADDR_REQUIRED");
+            return;
+        }
+        prefs().edit()
+            .putString(PREF_BT_ADDR, address.trim())
+            .putString(PREF_BT_NAME, name == null ? "" : name.trim())
+            .apply();
+        JSObject ret = new JSObject();
+        ret.put("ok", true);
+        ret.put("savedPrinter", savedBluetoothPrinter());
+        ret.put("message", "Saved Bluetooth printer: " + (name == null || name.isEmpty() ? address : name));
+        Log.i(TAG, "setBluetoothLabelPrinter saved address=" + address + " name=" + name);
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void clearBluetoothLabelPrinter(PluginCall call) {
+        prefs().edit().remove(PREF_BT_ADDR).remove(PREF_BT_NAME).apply();
+        JSObject ret = new JSObject();
+        ret.put("ok", true);
+        ret.put("savedPrinter", JSObject.NULL);
+        ret.put("message", "Bluetooth printer cleared");
+        Log.i(TAG, "clearBluetoothLabelPrinter cleared");
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void printSticker(PluginCall call) {
+        String bitmapBase64 = call.getString("bitmapBase64", "");
+        int widthDots = call.getInt("widthDots", 800);
+        int heightDots = call.getInt("heightDots", 480);
+        String address = prefs().getString(PREF_BT_ADDR, "");
+        Log.i(TAG, "printSticker start widthDots=" + widthDots + " heightDots=" + heightDots + " address=" + address);
+
+        if (address == null || address.isEmpty()) {
+            call.reject("No Bluetooth printer saved. Tap Scan in Settings and pick a printer first.", "BT_NOT_SET");
+            return;
+        }
+        if (bitmapBase64 == null || bitmapBase64.isEmpty()) {
+            call.reject("bitmapBase64 payload is required", "BITMAP_REQUIRED");
+            return;
+        }
+        if (!hasBluetoothConnectPermission()) {
+            requestBluetoothPermissions();
+            call.reject("Bluetooth permission needed. Allow it then tap Print again.", "BT_PERMISSION");
+            return;
+        }
+
+        executor.execute(() -> {
+            try {
+                byte[] tspl = TsplBuilder.forSticker(bitmapBase64, widthDots, heightDots, LABEL_WIDTH_MM, LABEL_HEIGHT_MM);
+                sendViaBluetoothSpp(address, tspl);
+                JSObject ret = new JSObject();
+                ret.put("ok", true);
+                ret.put("bytes", tspl.length);
+                ret.put("savedPrinter", savedBluetoothPrinter());
+                ret.put("message", "Printed sticker via Bluetooth (" + tspl.length + " bytes)");
+                Log.i(TAG, "printSticker success bytes=" + tspl.length);
+                call.resolve(ret);
+            } catch (IllegalArgumentException e) {
+                Log.e(TAG, "printSticker bitmap rejected", e);
+                call.reject(e.getMessage(), "BITMAP_INVALID", e);
+            } catch (SecurityException e) {
+                Log.e(TAG, "printSticker permission denied", e);
+                call.reject("Bluetooth permission denied: " + e.getMessage(), "BT_PERMISSION", e);
+            } catch (Exception e) {
+                Log.e(TAG, "printSticker failed", e);
+                call.reject("Bluetooth print failed: " + e.getMessage(), "BT_PRINT_FAILED", e);
+            }
+        });
+    }
+
+    @PluginMethod
+    public void testStickerPrint(PluginCall call) {
+        String address = prefs().getString(PREF_BT_ADDR, "");
+        Log.i(TAG, "testStickerPrint start address=" + address);
+        if (address == null || address.isEmpty()) {
+            call.reject("No Bluetooth printer saved. Tap Scan in Settings and pick a printer first.", "BT_NOT_SET");
+            return;
+        }
+        if (!hasBluetoothConnectPermission()) {
+            requestBluetoothPermissions();
+            call.reject("Bluetooth permission needed. Allow it then tap Test again.", "BT_PERMISSION");
+            return;
+        }
+        String storeName = call.getString("storeName", "SellerFlowLive");
+        executor.execute(() -> {
+            try {
+                byte[] tspl = TsplBuilder.textTestPage(storeName, LABEL_WIDTH_MM, LABEL_HEIGHT_MM);
+                sendViaBluetoothSpp(address, tspl);
+                JSObject ret = new JSObject();
+                ret.put("ok", true);
+                ret.put("bytes", tspl.length);
+                ret.put("message", "Test sticker sent (" + tspl.length + " bytes)");
+                call.resolve(ret);
+            } catch (Exception e) {
+                Log.e(TAG, "testStickerPrint failed", e);
+                call.reject("Test sticker failed: " + e.getMessage(), "BT_PRINT_FAILED", e);
+            }
+        });
+    }
+
+    // ── Bluetooth helpers ───────────────────────────────────────────────────
+
+    private JSObject savedBluetoothPrinter() {
+        String address = prefs().getString(PREF_BT_ADDR, "");
+        if (address == null || address.isEmpty()) return null;
+        String name = prefs().getString(PREF_BT_NAME, "");
+        JSObject p = new JSObject();
+        p.put("id", "bluetooth:" + address);
+        p.put("address", address);
+        p.put("name", name == null || name.isEmpty() ? "Bluetooth printer" : name);
+        p.put("paired", true);
+        return p;
+    }
+
+    @SuppressLint("MissingPermission")
+    private JSObject bluetoothDeviceJson(BluetoothDevice device, boolean paired) {
+        JSObject d = new JSObject();
+        String address = device.getAddress();
+        String name = "Bluetooth printer";
+        try {
+            String fetched = device.getName();
+            if (fetched != null && !fetched.trim().isEmpty()) name = fetched;
+            else name = address;
+        } catch (Exception ignored) {}
+        d.put("id", "bluetooth:" + address);
+        d.put("address", address);
+        d.put("name", name);
+        d.put("paired", paired);
+        return d;
+    }
+
+    private boolean looksLikeLabelPrinter(String rawName) {
+        String name = rawName == null ? "" : rawName.toLowerCase(Locale.ROOT);
+        return name.contains("aimo")
+            || name.contains("tsc")
+            || name.contains("label")
+            || name.contains("sticker")
+            || name.contains("thermal")
+            || name.contains("printer")
+            || name.contains("xprinter")
+            || name.contains("xp-")
+            || name.contains("gprinter")
+            || name.contains("gp-")
+            || name.contains("rpp")
+            || name.contains("mpt")
+            || name.contains("pos")
+            || name.contains("d520")
+            || name.contains("munbyn")
+            || name.contains("netum")
+            || name.contains("58")
+            || name.contains("80");
+    }
+
+    private boolean hasBluetoothConnectPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            return getContext().checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED;
+        }
+        // Pre-Android 12 — BLUETOOTH + BLUETOOTH_ADMIN are normal perms auto-
+        // granted at install; runtime ACCESS_FINE_LOCATION only matters for
+        // discovery, not bonded-device read which we do here.
+        return true;
+    }
+
+    private void requestBluetoothPermissions() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            try {
+                getActivity().runOnUiThread(() -> getActivity().requestPermissions(
+                    new String[]{Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN},
+                    8588
+                ));
+            } catch (Exception e) {
+                Log.w(TAG, "requestBluetoothPermissions failed: " + e.getMessage());
+            }
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private void sendViaBluetoothSpp(String address, byte[] data) throws Exception {
+        BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
+        if (adapter == null) throw new Exception("Bluetooth not supported");
+        if (!adapter.isEnabled()) throw new Exception("Bluetooth is off");
+        try { adapter.cancelDiscovery(); } catch (Exception ignored) {}
+        BluetoothDevice device = adapter.getRemoteDevice(address);
+        // SPP socket via the universal Serial Port Profile UUID. Many TSPL/ESC-
+        // POS printers also support insecure variant; we try secure first.
+        BluetoothSocket socket = null;
+        try {
+            socket = device.createRfcommSocketToServiceRecord(SPP_UUID);
+            socket.connect();
+            OutputStream output = socket.getOutputStream();
+            output.write(data);
+            output.flush();
+            // Some printers need a brief tail-out window before the socket
+            // closes, otherwise the last bytes get truncated on slow links.
+            try { Thread.sleep(180); } catch (InterruptedException ignored) {}
+        } finally {
+            if (socket != null) {
+                try { socket.close(); } catch (Exception ignored) {}
+            }
+        }
     }
 
     @Override
