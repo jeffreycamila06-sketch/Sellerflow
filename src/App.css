@@ -304,6 +304,8 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .admin-quick-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .admin-action-card{min-height:64px;border:1px solid var(--sf-border,#E4E2DC);border-radius:10px;background:#fff;text-align:left;padding:10px 14px;cursor:pointer;box-shadow:0 10px 24px rgba(38,33,92,.06);transition:transform .15s,border-color .15s,box-shadow .15s}
 .admin-action-card:hover{border-color:#C7C1F7;transform:translateY(-1px);box-shadow:0 14px 30px rgba(38,33,92,.1)}
+.admin-action-card.has-pending{border-color:#E8B765;background:#FFFBF2}
+.row-pending{background:#FFFBF2}
 .admin-action-card span{display:block;color:#77736B;font-size:11px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .admin-compact-card{box-shadow:0 8px 22px rgba(38,33,92,.06)}
 .admin-compact-card .table-title,.admin-compact-card .scard-title{min-height:32px;padding:8px 14px}

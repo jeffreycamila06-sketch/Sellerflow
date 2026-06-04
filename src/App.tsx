@@ -2585,6 +2585,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     log.actorEmail,log.action,log.targetEmail,log.details,log.timestamp
   ].some(v=>String(v||"").toLowerCase().includes(q)));
   const sellerUsers=users.filter(u=>!(u.role==="admin"));
+  const pendingApprovalUsers=sellerUsers.filter(u=>u.planStatus==="pending");
   const activeSellers=sellerUsers.filter(u=>u.planStatus==="active"&&dLeft(u.planExpiry)>0);
   const expiredSellers=sellerUsers.filter(u=>u.planStatus==="expired"||dLeft(u.planExpiry)===0);
   const planMonitorUsers=sellerUsers
@@ -2685,6 +2686,9 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
         <button className="admin-action-card" onDoubleClick={()=>setExpandedAdminBox("create")}>
           <div className="ms-l">Create Seller</div><div className="ms-v">+</div><span>Add a seller account fast</span>
         </button>
+        <button className={`admin-action-card ${pendingApprovalUsers.length>0?"has-pending":""}`} onDoubleClick={()=>setExpandedAdminBox("users")}>
+          <div className="ms-l">Pending Approvals</div><div className="ms-v" style={pendingApprovalUsers.length>0?{color:"#BA7517"}:undefined}>{pendingApprovalUsers.length}</div><span>{pendingApprovalUsers.length>0?"New sign-ups waiting — double-click to review":"No sign-ups waiting"}</span>
+        </button>
       </div>
 
       <div className="table-card admin-compact-card" style={{marginBottom:12}} onDoubleClick={()=>setExpandedAdminBox("users")}>
@@ -2696,8 +2700,8 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                 <tbody>
                   {filteredUsers.length===0&&<tr><td colSpan={8} style={{textAlign:"center",padding:24,color:"#888"}}>{users.length===0?"No users yet.":"No users found."}</td></tr>}
                   {filteredUsers.map(u=>{const fr=freeByEmail.get(u.email.toLowerCase());return(
-                    <tr key={u.email}>
-                      <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>
+                    <tr key={u.email} className={u.planStatus==="pending"?"row-pending":undefined}>
+                      <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div>{u.planStatus==="pending"&&<div style={{marginTop:3}}><Badge label="Pending Approval" color="amber"/></div>}</td>
                       <td><Badge label={(u.role==="admin")?"Admin":"Seller"} color={(u.role==="admin")?"amber":"gray"}/></td>
                       <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
                       <td>{u.plan==="free"&&fr?<span style={{color:fr.capped?"#A32D2D":fr.near_cap?"#BA7517":"#1D9E75",fontWeight:600}}>{fr.count}/{fr.cap} · {fr.cycle_resets_in_days}d</span>:<span className="muted">—</span>}</td>
@@ -2905,8 +2909,8 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
             {expandedAdminBox==="users"&&<div className="table-card admin-fullscreen-table">
               <div className="table-title">Users ({filteredUsers.length})</div>
               <table className="tbl"><thead><tr><th>Email</th><th>Role</th><th>Plan</th><th>Days</th><th>Months</th><th>Accounts</th><th>Actions</th></tr></thead><tbody>
-                {filteredUsers.map(u=><tr key={"expanded-"+u.email}>
-                  <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>
+                {filteredUsers.map(u=><tr key={"expanded-"+u.email} className={u.planStatus==="pending"?"row-pending":undefined}>
+                  <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div>{u.planStatus==="pending"&&<div style={{marginTop:3}}><Badge label="Pending Approval" color="amber"/></div>}</td>
                   <td><Badge label={(u.role==="admin")?"Admin":"Seller"} color={(u.role==="admin")?"amber":"gray"}/></td>
                   <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
                   <td>{dLeft(u.planExpiry)}</td>
@@ -3201,6 +3205,7 @@ export default function App(){
   const [commentPrices,setCommentPrices]=useState<Record<string,string>>({});
   const priceInputRefs=useRef<Record<string,HTMLInputElement|null>>({});
   const [supportUnreadCount,setSupportUnreadCount]=useState(0);
+  const [pendingUsersCount,setPendingUsersCount]=useState(0);
   const [mobileMinerSearch,setMobileMinerSearch]=useState("");
   const [toast,setToast]=useState("");
   // Free-tier usage state + which cap popup (if any) is open.
@@ -3402,7 +3407,7 @@ export default function App(){
 
   /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(()=>{
-    if(!user){setSupportUnreadCount(0);return;}
+    if(!user){setSupportUnreadCount(0);setPendingUsersCount(0);return;}
     const refreshSupportBadge=()=>void listSupportMessages().then(ms=>{
       if(isAdminUser(user)){
         setSupportUnreadCount(ms.filter(m=>m.status==="pending"&&!m.adminReply).length);
@@ -3411,8 +3416,14 @@ export default function App(){
       const read=arrLS<string>(supportReadKey(user.email));
       setSupportUnreadCount(ms.filter(m=>m.email.toLowerCase()===user.email.toLowerCase()&&m.adminReply&&!read.includes(m.id)).length);
     });
+    // Admins also track new sellers awaiting approval (plan_status='pending').
+    const refreshPendingUsers=()=>{
+      if(!isAdminUser(user)){setPendingUsersCount(0);return;}
+      void listUsers().then(list=>setPendingUsersCount(list.filter(u=>u.role!=="admin"&&u.planStatus==="pending").length));
+    };
     refreshSupportBadge();
-    const timer=window.setInterval(refreshSupportBadge,10000);
+    refreshPendingUsers();
+    const timer=window.setInterval(()=>{refreshSupportBadge();refreshPendingUsers();},10000);
     return()=>window.clearInterval(timer);
   },[user?.email]);
   /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
@@ -3771,7 +3782,7 @@ export default function App(){
         <div className="nav-sec-lbl">{t.nav_analytics}</div>
         {navItems.slice(7).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={navClass(id)}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
         <button onClick={()=>setPage("support")} className={`nav-it ${page==="support"?"on":""}`}><span className="nav-ic">💬</span><span className="nav-lb">Support</span>{supportUnreadCount>0&&<span className="nav-alert-badge">{supportUnreadCount>9?"9+":supportUnreadCount}</span>}</button>
-        {isAdminUser(user)&&<button onClick={()=>setPage("admin")} className={`nav-it ${page==="admin"?"on":""}`}><span className="nav-ic">👑</span><span className="nav-lb">Admin</span>{supportUnreadCount>0&&<span className="nav-alert-badge">{supportUnreadCount>9?"9+":supportUnreadCount}</span>}</button>}
+        {isAdminUser(user)&&(()=>{const adminAlertCount=supportUnreadCount+pendingUsersCount;return <button onClick={()=>setPage("admin")} className={`nav-it ${page==="admin"?"on":""}`}><span className="nav-ic">👑</span><span className="nav-lb">Admin</span>{adminAlertCount>0&&<span className="nav-alert-badge" title={`${pendingUsersCount} pending approval${pendingUsersCount===1?"":"s"}, ${supportUnreadCount} support`}>{adminAlertCount>9?"9+":adminAlertCount}</span>}</button>;})()}
         <button onClick={()=>setPage("settings")} className={navClass("settings")} style={{marginTop:"auto"}}><span className="nav-ic">⚙️</span><span className="nav-lb">{t.nav_settings}</span></button>
         <div className="trial-box">
           {isFreeUser?(()=>{
@@ -4042,7 +4053,7 @@ export default function App(){
           >
             <span style={{fontSize:22}}>•••</span>
             <span>{t.more_label}</span>
-            {supportUnreadCount>0&&<span className="mobile-nav-badge">{supportUnreadCount>9?"9+":supportUnreadCount}</span>}
+            {(()=>{const moreBadge=supportUnreadCount+(isAdminUser(user)?pendingUsersCount:0);return moreBadge>0&&<span className="mobile-nav-badge">{moreBadge>9?"9+":moreBadge}</span>;})()}
           </button>
         </nav>
       )}
