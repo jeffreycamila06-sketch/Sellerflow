@@ -598,6 +598,17 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .mtab{flex:1;padding:10px 0;border:none;background:none;cursor:pointer;font-weight:500;font-size:13px;border-bottom:2px solid transparent;color:#888780;transition:all .15s}
 .mtab.on{border-bottom-color:#7F77DD;color:#534AB7}
 .modal-body{padding:16px;display:flex;flex-direction:column;gap:10px}
+/* Free-tier usage bar (sidebar) + cap popups (centered, responsive modal) */
+.free-usage-bar{height:6px;border-radius:999px;background:rgba(0,0,0,0.10);overflow:hidden;margin:6px 0 8px}
+.free-usage-bar>span{display:block;height:100%;border-radius:999px;transition:width .3s ease}
+.free-cap-modal{max-width:380px}
+.free-cap-body{padding:24px 22px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px}
+.free-cap-emoji{font-size:40px;line-height:1}
+.free-cap-title{font-size:18px;font-weight:700;color:#26215C;margin:0}
+.free-cap-msg{font-size:13.5px;line-height:1.55;color:#5F5E5A;margin:0}
+.free-cap-actions{display:flex;flex-direction:column;gap:8px;width:100%;margin-top:6px}
+.free-cap-actions button{width:100%;padding:11px 14px;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer}
+@media (max-width:480px){.free-cap-body{padding:20px 16px}.free-cap-title{font-size:16px}.free-cap-msg{font-size:13px}}
 .notice-box{padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.5}
 .registered-account-picker{display:flex;flex-direction:column;gap:8px}
 .registered-account-btn{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid #E4E2DC;background:#fff;border-radius:10px;padding:10px 12px;cursor:pointer;color:#26215C;text-align:left}

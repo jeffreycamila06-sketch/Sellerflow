@@ -23,7 +23,7 @@ import "./App.css";
 import { TRANSLATIONS, type Lang, type T } from "./translations";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type Plan = "trial" | "basic" | "pro" | "master";
+type Plan = "free" | "trial" | "basic" | "pro" | "master";
 type PlanStatus = "active" | "expired" | "pending";
 type Page = "dashboard"|"miners"|"orders"|"products"|"customers"|"customerData"|"print"|"sales"|"shipping"|"settings"|"subscription"|"support"|"admin"|"privacy"|"terms"|"deleteAccount";
 
@@ -44,6 +44,12 @@ type PrinterBridgeReturn = void|string|MobilePrinterResult;
 type NumberSettingKey = {[K in keyof Settings]: Settings[K] extends number ? K : never}[keyof Settings];
 interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; proofImage?:string; timestamp:string; status:"pending"|"approved"|"rejected"|"resolved"; adminReply?:string; repliedAt?:string; }
 interface NativePrinterPayload { type:"sellerflow.printSlip"; buyer:Buyer; currency:string; storeName:string; settings:Settings; sessionDate:string; createdAt:string; }
+// Free-tier usage status from the Supabase RPC free_tier_status_for_user.
+interface FreeStatus { is_free:boolean; count?:number; cap?:number; near_cap_threshold?:number; near_cap?:boolean; capped?:boolean; cycle_resets_in_days?:number; warning_shown?:boolean; }
+// One row from the admin RPC list_free_users_status (free users + cycle usage).
+interface FreeUserRow { email:string; store_name:string; full_name:string; count:number; cap:number; near_cap:boolean; capped:boolean; cycle_resets_in_days:number; }
+// Fill {placeholders} in a translation string, e.g. tpl(t.free_orders_progress,{count:5,cap:200}).
+const tpl=(text:string,vars:Record<string,string|number>)=>String(text||"").replace(/\{(\w+)\}/g,(m,k)=>k in vars?String(vars[k]):m);
 
 declare global {
   interface Window {
@@ -188,7 +194,7 @@ const safeUser=(raw:unknown):User|null=>{
   const u=raw as Partial<User>;
   const email=String(u.email||"").trim().toLowerCase();
   if(!email)return null;
-  const plan:Plan=["trial","basic","pro","master"].includes(String(u.plan))?u.plan as Plan:"trial";
+  const plan:Plan=["free","trial","basic","pro","master"].includes(String(u.plan))?u.plan as Plan:"free";
   const planStatus:PlanStatus=["active","expired","pending"].includes(String(u.planStatus))?u.planStatus as PlanStatus:"active";
   return {
     authUserId:typeof u.authUserId==="string"?u.authUserId:undefined,
@@ -210,7 +216,7 @@ const addMonths=(n:number)=>addDays(Math.max(1,n)*30);
 const dLeft=(e:string,now=Date.now())=>Math.max(0,Math.ceil((new Date(e).getTime()-now)/86400000));
 const normalizePhone=(value:string)=>String(value||"").replace(/\D/g,"");
 const phoneDisplay=(value:string)=>String(value||"").trim();
-const maxAcc=(p:Plan)=>({trial:1,basic:1,pro:3,master:5}[p]);
+const maxAcc=(p:Plan)=>({free:1,trial:1,basic:1,pro:3,master:5}[p]);
 const LIVE_COMMENT_LIMIT=5000;
 const COMMENT_ARCHIVE_LIMIT=5000;
 const accountList=(value:string)=>Array.from(new Set((value||"").split(/[,\n]/).map(v=>v.trim()).filter(Boolean)));
@@ -233,8 +239,8 @@ const supportReadKey=(email:string)=>`sf_support_read_${email.trim().toLowerCase
 const isAdminUser=(u:User|null)=>!!u&&u.role==="admin";
 const canConnectMore=(u:User)=>isAdminUser(u)||registeredAccountCount(u)<maxAcc(u.plan);
 const asAdminPlan=(u:User)=>isAdminUser(u)?{...u,plan:"master" as Plan,planStatus:"active" as PlanStatus,planExpiry:addMonths(120)}:u;
-const pName=(p:Plan,t:T)=>({trial:t.plan_trial,basic:t.plan_basic,pro:t.plan_pro,master:t.plan_master}[p]);
-const pColor=(p:Plan)=>({trial:"gray",basic:"green",pro:"purple",master:"amber"}[p] as "gray"|"green"|"purple"|"amber");
+const pName=(p:Plan,t:T)=>({free:t.plan_free,trial:t.plan_trial,basic:t.plan_basic,pro:t.plan_pro,master:t.plan_master}[p]);
+const pColor=(p:Plan)=>({free:"blue",trial:"gray",basic:"green",pro:"purple",master:"amber"}[p] as "gray"|"green"|"purple"|"amber"|"blue");
 const csvDL=(filename:string,headers:string[],rows:(string|number)[][])=>{
   const csv=[headers,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download=filename;a.click();
@@ -424,7 +430,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
   const [activeFeature,setActiveFeature]=useState(0);
   const [activeFlow,setActiveFlow]=useState(0);
   const [openFaq,setOpenFaq]=useState(0);
-  const [publicPlanMonths,setPublicPlanMonths]=useState<Record<Exclude<Plan,"trial">,number>>({basic:1,pro:1,master:1});
+  const [publicPlanMonths,setPublicPlanMonths]=useState<Record<Exclude<Plan,"free"|"trial">,number>>({basic:1,pro:1,master:1});
   const [publicLegal,setPublicLegal]=useState<""|"privacy"|"terms">(()=>{
     if(typeof window==="undefined")return "";
     return window.location.hash==="#privacy"?"privacy":window.location.hash==="#terms"?"terms":"";
@@ -513,7 +519,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
   ];
   const monthOptions=Array.from({length:12},(_,i)=>i+1);
   const publicPlans=[
-    {id:"trial" as Plan,name:"Free Trial",basePrice:0,period:"7 Days",desc:"Perfect for new live sellers starting online selling.",features:["1 TikTok or Facebook Page","Live comment detection","Auto order capture","Basic order printing","Real-time customer comments","Easy setup in minutes"],bestFor:"New live sellers",action:"Start Free Trial"},
+    {id:"free" as Plan,name:"Free",basePrice:0,period:"Forever",desc:"Full features, free to start. Perfect for new live sellers.",features:["1 TikTok or Facebook Page","Live comment detection","Auto order capture","1-click order printing","Real-time customer comments","Easy setup in minutes"],bestFor:"New live sellers",action:"Start Free"},
     {id:"basic" as Plan,name:"Basic",basePrice:15,period:"month",desc:"Best for solo live sellers who want faster order processing.",features:["1 TikTok or Facebook Page","Fast live comment detection","1-click order creation","Auto customer information capture","Instant printing support","Sales tracking dashboard","Order history storage","Basic customer support","Mobile & desktop friendly"],bestFor:"Small sellers & beginners",action:"Select Basic Plan"},
     {id:"pro" as Plan,name:"Pro",basePrice:25,period:"month",desc:"For growing sellers managing multiple live pages.",features:["3 TikTok/Facebook Pages","Multi-page live streaming support","Can livestream all pages at once","Unlimited orders","Faster comment grabbing","Advanced sales analytics","Priority printing system","Customer management tools","Messenger-like support panel","Faster support response","Export reports","Smart live order workflow"],bestFor:"Full-time live sellers",action:"Upgrade to Pro",popular:true},
     {id:"master" as Plan,name:"Master",basePrice:40,period:"month",desc:"Built for teams, agencies, and large live-selling businesses.",features:["5 TikTok/Facebook Pages","Simultaneous multi-live support","Unlimited orders","Ultra-fast comment detection","Team/admin management","Priority customer support","Advanced reporting dashboard","Staff access control","Dedicated seller tools","Faster live processing","Premium support","Future feature access","Scalable for large operations"],bestFor:"Teams & high-volume sellers",action:"Go Master"},
@@ -546,7 +552,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
           <Fg label={t.confirm_field}><input type="password" value={cpw} onChange={e=>setCpw(e.target.value)} placeholder="Confirm password" required/></Fg>
           <button type="submit" className="auth-btn" disabled={busy}>{busy?"Submitting...":"Submit for admin approval"}</button>
           <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat?v=6" download>Printer Shortcut</a>
-          <p className="auth-terms">Your free trial starts only after admin approval.</p>
+          <p className="auth-terms">Your free account starts only after admin approval.</p>
           <p className="auth-terms">By creating an account, you agree to SellerFlowLive <button type="button" className="inline-link" onClick={()=>openLegal("terms")}>Terms</button> and <button type="button" className="inline-link" onClick={()=>openLegal("privacy")}>Privacy Policy</button>.</p>
         </form>
         <div className="auth-sw">{t.have_account} <button className="auth-link" onClick={()=>go("login")}>{t.sign_in_btn}</button></div>
@@ -571,7 +577,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
         <div className="public-nav-actions"><select value={lang} onChange={e=>setLang(e.target.value as Lang)}>{LANG_OPTS.map(l=><option key={l.code} value={l.code}>{l.label}</option>)}</select><button onClick={()=>{go("login");jump("account")}}>Log in</button><button className="public-primary" onClick={()=>{go("reg");jump("account")}}>Register</button></div>
       </header>
       <section id="home" className="public-hero">
-        <div className="public-hero-copy"><span className="public-kicker">Premium live selling workspace</span><h1>Stop typing. Start selling.</h1><p>Capture live orders, manage buyers, and print receipts in one click.</p><div className="public-hero-actions"><button className="public-primary" onClick={()=>{go("reg");jump("account")}}>Try free trial</button><button onClick={()=>jump("instructions")}>See how it works</button></div><div className="public-metrics"><div><b>1-click</b><span>receipt printing</span></div><div><b>Live</b><span>comment capture</span></div><div><b>Smart</b><span>buyer database</span></div></div></div>
+        <div className="public-hero-copy"><span className="public-kicker">Premium live selling workspace</span><h1>Stop typing. Start selling.</h1><p>Capture live orders, manage buyers, and print receipts in one click.</p><div className="public-hero-actions"><button className="public-primary" onClick={()=>{go("reg");jump("account")}}>Start free</button><button onClick={()=>jump("instructions")}>See how it works</button></div><div className="public-metrics"><div><b>1-click</b><span>receipt printing</span></div><div><b>Live</b><span>comment capture</span></div><div><b>Smart</b><span>buyer database</span></div></div></div>
         <div className="public-device" aria-label="SellerFlowLive dashboard preview">
           <div className="device-top"><span/><span/><span/><em>SellerFlowLive dashboard</em></div>
           <div className="device-grid">
@@ -610,7 +616,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
       </section>
       <section id="features" className="public-section public-feature-band"><div className="public-section-head"><span>Features</span><h2>Everything live sellers need in one sharp workspace</h2><p>Clear tools for capturing comments, creating orders, printing slips, and tracking buyers without slowing down the live.</p></div><div className="public-feature-cards">{featureItems.map((f,i)=><button key={f.title} className={activeFeature===i?"active":""} onClick={()=>setActiveFeature(i)}><span>{String(i+1).padStart(2,"0")}</span><strong>{f.title}</strong><p>{f.body}</p></button>)}</div><div className="public-feature-detail premium"><small>Selected feature</small><h3>{featureItems[activeFeature].title}</h3><p>{featureItems[activeFeature].body}</p><button onClick={()=>jump("account")}>Try this workflow</button></div></section>
       <section id="instructions" className="public-section public-instructions"><div className="public-section-head"><span>Instructions</span><h2>How to use SellerFlowLive</h2><p>Simple daily workflow for sellers and admins.</p></div><div className="public-steps">{howSteps.map((step,i)=><button key={step} onClick={()=>i<2?jump("account"):jump("features")}><b>{i+1}</b><span>{step}</span></button>)}</div></section>
-      <section id="pricing" className="public-section public-pricing-section"><div className="public-section-head"><span>Price list</span><h2>Choose the plan that fits the seller</h2><p>Simple plans for live sellers, from first stream to full team operations.</p></div><div className="public-pricing">{publicPlans.map((p,i)=>{const paid=p.id!=="trial";const months=paid?publicPlanMonths[p.id]:1;const price=paid?p.basePrice*months:p.basePrice;return <button key={p.name} className={p.popular?"popular":""} onClick={()=>{go(i===0?"reg":"login");jump("account")}}>{p.popular&&<small>Most popular</small>}<span className="pricing-icon">{i+1}</span><strong>{p.name}</strong><b>${price}</b><span className="pricing-period">/{paid?`${months} ${months===1?"month":"months"}`:p.period}</span>{paid&&<div className="public-plan-duration" onClick={e=>e.stopPropagation()}><span>Duration</span><select value={months} onChange={e=>setPublicPlanMonths(current=>({...current,[p.id]:Number(e.target.value)}))}>{monthOptions.map(month=><option key={month} value={month}>{month} {month===1?"month":"months"}</option>)}</select><em>${p.basePrice}/month</em></div>}<p>{p.desc}</p><ul>{p.features.map(f=><li key={f}>{f}</li>)}</ul><div className="pricing-best"><span>Best For</span><b>{p.bestFor}</b></div><em>{p.action}</em></button>})}</div></section>
+      <section id="pricing" className="public-section public-pricing-section"><div className="public-section-head"><span>Price list</span><h2>Choose the plan that fits the seller</h2><p>Simple plans for live sellers, from first stream to full team operations.</p></div><div className="public-pricing">{publicPlans.map((p,i)=>{const paid=p.basePrice>0;const months=paid?publicPlanMonths[p.id as Exclude<Plan,"free"|"trial">]:1;const price=paid?p.basePrice*months:p.basePrice;return <button key={p.name} className={p.popular?"popular":""} onClick={()=>{go(i===0?"reg":"login");jump("account")}}>{p.popular&&<small>Most popular</small>}<span className="pricing-icon">{i+1}</span><strong>{p.name}</strong><b>${price}</b><span className="pricing-period">/{paid?`${months} ${months===1?"month":"months"}`:p.period}</span>{paid&&<div className="public-plan-duration" onClick={e=>e.stopPropagation()}><span>Duration</span><select value={months} onChange={e=>setPublicPlanMonths(current=>({...current,[p.id]:Number(e.target.value)}))}>{monthOptions.map(month=><option key={month} value={month}>{month} {month===1?"month":"months"}</option>)}</select><em>${p.basePrice}/month</em></div>}<p>{p.desc}</p><ul>{p.features.map(f=><li key={f}>{f}</li>)}</ul><div className="pricing-best"><span>Best For</span><b>{p.bestFor}</b></div><em>{p.action}</em></button>})}</div></section>
       <section id="support-info" className="public-section public-support-band"><div><span>Support</span><h2>Handle seller complaints like Messenger</h2><p>Every seller can send a payment proof or support issue. Admin receives a compact chat thread, can approve, reject, resolve, reply, and see unread notifications.</p></div><button onClick={()=>{go("login");jump("account")}}>Open seller account</button></section>
       <section id="faq" className="public-section"><div className="public-section-head"><span>FAQ</span><h2>Frequently asked questions</h2><p>Click a question to expand the answer.</p></div><div className="public-faq">{faqItems.map((item,i)=><button key={item[0]} className={openFaq===i?"open":""} onClick={()=>setOpenFaq(openFaq===i?-1:i)}><div><span>{i+1}</span><strong>{item[0]}</strong><b>{openFaq===i?"-":"+"}</b></div>{openFaq===i&&<p>{item[1]}</p>}</button>)}</div></section>
       <section id="account" className="public-account"><div className="public-account-copy"><span>Account access</span><h2>Start using SellerFlowLive</h2><p>Login if you already have a seller account. Register only if you are creating a new shop account.</p></div>{accountForm}</section>
@@ -659,8 +665,8 @@ function PendingApprovalWall({user,onLogout}:{user:User;onLogout:()=>void}){
     <div className="pending-approval">
       <div className="pending-card">
         <h2>Waiting for admin approval</h2>
-        <p>Your account was submitted successfully. The app will stay locked until admin approves your free trial.</p>
-        <p><strong>Trial countdown has not started yet.</strong> It starts only after approval.</p>
+        <p>Your account was submitted successfully. The app will stay locked until admin approves your free account.</p>
+        <p><strong>Your free account is almost ready.</strong> Access starts only after approval.</p>
         <p>{user.email}<br/>{user.profile.phone}</p>
         <div className="pending-actions">
           <button className="btn-out" onClick={onLogout}>Sign out</button>
@@ -751,16 +757,15 @@ function DeleteAccountPage({user,onDelete,onCancel}:{user:User;onDelete:()=>Prom
   );
 }
 
-function SubPage({user,onActivate,t}:{user:User;onActivate:(plan:Plan,status:PlanStatus,expiry:string)=>void;t:T}){
+function SubPage({user,t}:{user:User;onActivate:(plan:Plan,status:PlanStatus,expiry:string)=>void;t:T}){
   const [sel,setSel]=useState<Plan|null>(null);
   const [showPay,setShowPay]=useState(false);
   const [done,setDone]=useState(false);
-  const [planMonths,setPlanMonths]=useState<Record<Exclude<Plan,"trial">,number>>({basic:1,pro:1,master:1});
+  const [planMonths,setPlanMonths]=useState<Record<Exclude<Plan,"free"|"trial">,number>>({basic:1,pro:1,master:1});
   const days=dLeft(user.planExpiry);
-  const paidPlanPrices:Record<Exclude<Plan,"trial">,number>={basic:15,pro:25,master:40};
+  const paidPlanPrices:Record<Exclude<Plan,"free"|"trial">,number>={basic:15,pro:25,master:40};
   const monthOptions=Array.from({length:12},(_,i)=>i+1);
   const plans=[
-    {id:"trial" as Plan,name:t.plan_trial,basePrice:0,period:"7 Days",color:"#A855F7",desc:"Perfect for new live sellers starting online selling.",features:["1 TikTok or Facebook Page","Live comment detection","Auto order capture","Basic order printing","Real-time customer comments","Easy setup in minutes"],bestFor:"New live sellers",action:"Start Free Trial"},
     {id:"basic" as Plan,name:t.plan_basic,basePrice:15,period:t.plan_month,color:"#A855F7",desc:"Best for solo live sellers who want faster order processing.",features:["1 TikTok or Facebook Page","Fast live comment detection","1-click order creation","Auto customer information capture","Instant printing support","Sales tracking dashboard","Order history storage","Basic customer support","Mobile & desktop friendly"],bestFor:"Small sellers & beginners",action:"Select Basic Plan"},
     {id:"pro" as Plan,name:t.plan_pro,basePrice:25,period:t.plan_month,color:"#A855F7",badge:t.plan_popular,desc:"For growing sellers managing multiple live pages.",features:["3 TikTok/Facebook Pages","Multi-page live streaming support","Can livestream all pages at once","Unlimited orders","Faster comment grabbing","Advanced sales analytics","Priority printing system","Customer management tools","Messenger-like support panel","Faster support response","Export reports","Smart live order workflow"],bestFor:"Full-time live sellers",action:"Upgrade to Pro"},
     {id:"master" as Plan,name:t.plan_master,basePrice:40,period:t.plan_month,color:"#A855F7",desc:"Built for teams, agencies, and large live-selling businesses.",features:["5 TikTok/Facebook Pages","Simultaneous multi-live support","Unlimited orders","Ultra-fast comment detection","Team/admin management","Priority customer support","Advanced reporting dashboard","Staff access control","Dedicated seller tools","Faster live processing","Premium support","Future feature access","Scalable for large operations"],bestFor:"Teams & high-volume sellers",action:"Go Master"},
@@ -768,16 +773,12 @@ function SubPage({user,onActivate,t}:{user:User;onActivate:(plan:Plan,status:Pla
   const selectedPaidPlan=sel&&sel!=="trial"?sel:null;
   const selectedMonths=selectedPaidPlan?planMonths[selectedPaidPlan]:1;
   const selectedTotal=selectedPaidPlan?paidPlanPrices[selectedPaidPlan]*selectedMonths:0;
-  const updateMonths=(plan:Exclude<Plan,"trial">,months:number)=>setPlanMonths(current=>({...current,[plan]:months}));
+  const updateMonths=(plan:Exclude<Plan,"free"|"trial">,months:number)=>setPlanMonths(current=>({...current,[plan]:months}));
 
   function handleSelect(plan:Plan){
     setSel(plan);setDone(false);
-    if(plan==="trial"){
-      onActivate("trial","active",addDays(7));
-      setDone(true);
-    } else {
-      setShowPay(true);
-    }
+    // Only paid plans are selectable here; Free is the default tier (no purchase).
+    setShowPay(true);
   }
   return(
     <div className="subpage">
@@ -797,7 +798,7 @@ function SubPage({user,onActivate,t}:{user:User;onActivate:(plan:Plan,status:Pla
             {p.id!=="trial"&&(
               <div className="plan-duration" onClick={e=>e.stopPropagation()}>
                 <label>Duration</label>
-                <select value={planMonths[p.id as Exclude<Plan,"trial">]} onChange={e=>updateMonths(p.id as Exclude<Plan,"trial">,Number(e.target.value))}>
+                <select value={planMonths[p.id as Exclude<Plan,"free"|"trial">]} onChange={e=>updateMonths(p.id as Exclude<Plan,"free"|"trial">,Number(e.target.value))}>
                   {monthOptions.map(month=><option key={month} value={month}>{month} {month===1?"month":"months"}</option>)}
                 </select>
                 <span>${p.basePrice}/month</span>
@@ -2246,6 +2247,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   const [users,setUsers]=useState<User[]>([]);
   const [msgs,setMsgs]=useState<SupportMsg[]>(()=>arrLS<SupportMsg>("sf_support"));
   const [auditLogs,setAuditLogs]=useState<AccountAuditLog[]>(()=>arrLS<AccountAuditLog>("sf_audit_logs"));
+  const [freeUsers,setFreeUsers]=useState<FreeUserRow[]>([]);
   const [admins,setAdmins]=useState<string[]>([]);
   const [newSeller,setNewSeller]=useState({email:"",password:"",fullName:"",storeName:""});
   const [editOriginalEmail,setEditOriginalEmail]=useState("");
@@ -2286,6 +2288,12 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     await sendAutomaticPlanNotices(freshUsers);
     setMsgs(await listSupportMessages());
     setAuditLogs(await listAuditLogs());
+    if(supabase){
+      try{
+        const {data}=await supabase.rpc("list_free_users_status");
+        setFreeUsers((data as FreeUserRow[])||[]);
+      }catch(err){console.warn("list_free_users_status failed:",err);}
+    }
   }
 
   async function sendAutomaticPlanNotices(sourceUsers:User[]){
@@ -2403,7 +2411,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   }
 
   async function setPlan(email:string,plan:Plan,status:PlanStatus="active",months=1){
-    const expiry=status==="expired"?addDays(-1):status==="pending"?new Date().toISOString():plan==="trial"?addDays(7):addMonths(months);
+    const expiry=status==="expired"?addDays(-1):status==="pending"?new Date().toISOString():plan==="trial"?addDays(7):plan==="free"?addMonths(120):addMonths(months);
     const trialStartedAt=status==="active"&&plan==="trial"?new Date().toISOString():null;
     try{
       await adminUpdatePlan(email,{plan,planStatus:status,planExpiry:expiry,trialStartedAt});
@@ -2583,6 +2591,13 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     .filter(u=>u.planStatus==="expired"||dLeft(u.planExpiry)<=(u.plan==="trial"?3:5))
     .sort((a,b)=>dLeft(a.planExpiry)-dLeft(b.planExpiry));
   const pendingPayments=msgs.filter(m=>m.status==="pending");
+  // Free-tier monitoring (from list_free_users_status RPC).
+  const q2=adminSearch.trim().toLowerCase();
+  const freeUsersFiltered=freeUsers.filter(f=>!q2||[f.email,f.store_name,f.full_name].some(v=>String(v||"").toLowerCase().includes(q2)));
+  const freeNearCap=freeUsersFiltered.filter(f=>f.near_cap&&!f.capped);
+  const freeCappedUsers=freeUsersFiltered.filter(f=>f.capped);
+  const freeMonitorUsers=[...freeUsersFiltered].filter(f=>f.near_cap||f.capped).sort((a,b)=>b.count-a.count);
+  const freeByEmail=new Map(freeUsers.map(f=>[f.email.toLowerCase(),f]));
   const todayIso=new Date().toISOString().slice(0,10);
   const todayOrders=orders.filter(o=>o.date===todayIso);
   const allStoredOrders=orders;
@@ -2677,14 +2692,15 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
           <div className="admin-table-wrap">
             <div className="admin-table-scroll" ref={usersTableRef}>
               <table className="tbl">
-                <thead><tr><th>Email</th><th>Role</th><th>Plan</th><th>Days</th><th>Months</th><th>Accounts</th><th></th></tr></thead>
+                <thead><tr><th>Email</th><th>Role</th><th>Plan</th><th>Free Cycle</th><th>Days</th><th>Months</th><th>Accounts</th><th></th></tr></thead>
                 <tbody>
-                  {filteredUsers.length===0&&<tr><td colSpan={7} style={{textAlign:"center",padding:24,color:"#888"}}>{users.length===0?"No users yet.":"No users found."}</td></tr>}
-                  {filteredUsers.map(u=>(
+                  {filteredUsers.length===0&&<tr><td colSpan={8} style={{textAlign:"center",padding:24,color:"#888"}}>{users.length===0?"No users yet.":"No users found."}</td></tr>}
+                  {filteredUsers.map(u=>{const fr=freeByEmail.get(u.email.toLowerCase());return(
                     <tr key={u.email}>
                       <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>
                       <td><Badge label={(u.role==="admin")?"Admin":"Seller"} color={(u.role==="admin")?"amber":"gray"}/></td>
                       <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
+                      <td>{u.plan==="free"&&fr?<span style={{color:fr.capped?"#A32D2D":fr.near_cap?"#BA7517":"#1D9E75",fontWeight:600}}>{fr.count}/{fr.cap} · {fr.cycle_resets_in_days}d</span>:<span className="muted">—</span>}</td>
                       <td>{dLeft(u.planExpiry)}</td>
                       <td>{renderUserMonthsSelect(u)}</td>
                       <td>{registeredAccountCount(u)} / {maxAcc(u.plan)}</td>
@@ -2692,7 +2708,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                           <button className="tbl-btn ed" onClick={()=>openEditSeller(u)}>Edit</button>
                           <button className="tbl-btn ed" onClick={()=>resetPassword(u.email)}>Reset PW</button>
-                          <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"trial")}>Trial</button>
+                          <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"free")}>Free</button>
                           <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"basic","active",monthsForUser(u))}>Basic</button>
                           <button className="tbl-btn ed" onClick={()=>approve(u.email,"pro",monthsForUser(u))}>Pro</button>
                           <button className="tbl-btn ed" onClick={()=>approve(u.email,"master",monthsForUser(u))}>Master</button>
@@ -2703,7 +2719,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  );})}
                 </tbody>
               </table>
             </div>
@@ -2805,6 +2821,34 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                     </tr>
                   );
                 })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div className="table-card admin-compact-card" style={{marginBottom:12}}>
+        <div className="table-title">
+          <span>Free Users — Usage Monitor ({freeUsersFiltered.length})</span>
+          {freeNearCap.length>0&&<Badge label={`${freeNearCap.length} near cap`} color="amber"/>}
+          {freeCappedUsers.length>0&&<Badge label={`${freeCappedUsers.length} capped`} color="red"/>}
+        </div>
+        <div className="admin-table-wrap">
+          <div className="admin-table-scroll">
+            <table className="tbl">
+              <thead><tr><th>Seller</th><th>Orders this cycle</th><th>Status</th><th>Resets in</th><th></th></tr></thead>
+              <tbody>
+                {freeUsersFiltered.length===0&&<tr><td colSpan={5} style={{textAlign:"center",padding:24,color:"#888"}}>No free users yet.</td></tr>}
+                {freeUsersFiltered.length>0&&freeMonitorUsers.length===0&&<tr><td colSpan={5} style={{textAlign:"center",padding:24,color:"#888"}}>No free users near the cap. ({freeUsersFiltered.length} free user{freeUsersFiltered.length===1?"":"s"} tracked.)</td></tr>}
+                {freeMonitorUsers.map(f=>(
+                  <tr key={`free-${f.email}`}>
+                    <td><strong>{f.email}</strong><div className="muted" style={{fontSize:11}}>{f.store_name||f.full_name}</div></td>
+                    <td><strong style={{color:f.capped?"#A32D2D":f.near_cap?"#BA7517":"#1D9E75"}}>{f.count}</strong> / {f.cap}</td>
+                    <td><Badge label={f.capped?"Capped":"Near cap"} color={f.capped?"red":"amber"}/></td>
+                    <td>{f.cycle_resets_in_days}d</td>
+                    <td><button className="tbl-btn ed" onClick={()=>approve(f.email,"basic",monthsForUser(users.find(u=>u.email.toLowerCase()===f.email.toLowerCase())||currentUser))}>Promote to Basic</button></td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -3139,6 +3183,9 @@ export default function App(){
   const [supportUnreadCount,setSupportUnreadCount]=useState(0);
   const [mobileMinerSearch,setMobileMinerSearch]=useState("");
   const [toast,setToast]=useState("");
+  // Free-tier usage state + which cap popup (if any) is open.
+  const [freeStatus,setFreeStatus]=useState<FreeStatus|null>(null);
+  const [capPopup,setCapPopup]=useState<""|"near"|"hard">("");
   const feedRef=useRef<HTMLDivElement>(null);
   const today=new Date().toLocaleDateString("en-PH",{month:"short",day:"numeric",year:"numeric"});
   const [nowTick,setNowTick]=useState(()=>Date.now());
@@ -3207,7 +3254,9 @@ export default function App(){
   }
 
   // Check trial expiry
-  const accountLocked=!!user&&!isAdminUser(user)&&(user.planStatus==="expired"||dLeft(user.planExpiry,nowTick)===0);
+  // Free users are limited by the order cap, never by a time expiry, so they
+  // are exempt from the expired/days-left lock that paid plans use.
+  const accountLocked=!!user&&!isAdminUser(user)&&user.plan!=="free"&&(user.planStatus==="expired"||dLeft(user.planExpiry,nowTick)===0);
   const showAccountLock=accountLocked&&page!=="subscription"&&page!=="support";
 
   /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
@@ -3348,6 +3397,39 @@ export default function App(){
   },[user?.email]);
   /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
+  // Free-tier usage status (counter, near-cap, capped). Paid users get is_free:false.
+  async function refreshFreeStatus(){
+    if(!user||!supabase){setFreeStatus(null);return;}
+    try{
+      const {data}=await supabase.rpc("free_tier_status_for_user");
+      setFreeStatus((data as FreeStatus)||null);
+    }catch(err){console.warn("free_tier_status_for_user failed:",err);}
+  }
+  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+  useEffect(()=>{
+    if(!user){setFreeStatus(null);return;}
+    void refreshFreeStatus();
+    const timer=window.setInterval(()=>{void refreshFreeStatus();},30000);
+    return()=>window.clearInterval(timer);
+  },[user?.email]);
+  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+  const isFreeUser=user?.plan==="free"&&!!freeStatus?.is_free;
+  const freeCapped=isFreeUser&&!!freeStatus?.capped;
+
+  // Near-cap (150) celebration popup — shown ONCE per cycle. The DB remembers
+  // via free_warned_at (warning_shown), so it never repeats at 160/170/etc.
+  /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+  useEffect(()=>{
+    if(!isFreeUser||!freeStatus)return;
+    if(freeStatus.capped)return;                 // 200 hard-stop takes over
+    if(!freeStatus.near_cap)return;              // below 150
+    if(freeStatus.warning_shown)return;          // already shown this cycle
+    if(capPopup)return;                          // a popup is already open
+    setCapPopup("near");
+    if(supabase)void supabase.rpc("free_tier_mark_warned").then(()=>refreshFreeStatus());
+  },[freeStatus?.count,freeStatus?.near_cap,freeStatus?.capped,freeStatus?.warning_shown]);
+  /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+
   function saveUser(u:User){
     const next=asAdminPlan(u);
     setUser(next);
@@ -3359,7 +3441,7 @@ export default function App(){
   }
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(()=>{
-    if(!user||isAdminUser(user)||user.planStatus==="expired")return;
+    if(!user||isAdminUser(user)||user.plan==="free"||user.planStatus==="expired")return;
     if(dLeft(user.planExpiry,nowTick)>0)return;
     saveUser({...user,planStatus:"expired"});
     setPage("subscription");
@@ -3485,6 +3567,10 @@ export default function App(){
     LS.set(key,[...cur,rec]);
   }
   async function createOrderFromComment(c:Comment,{print=true,price=0}:{print?:boolean;price?:number}={}){
+    // Free-tier HARD STOP: at the 200-order cap, block creating new orders
+    // (viewing/printing existing orders stays allowed). The DB trigger is the
+    // authoritative limit; this is the friendly in-app block before we even try.
+    if(freeCapped){setCapPopup("hard");return;}
     const existing=buyers.find(b=>b.handle===c.handle&&b.platform===c.platform);
     const buyerNum=existing?.num||buyers.length+1;
     const orderItem=price>0?String(price):(c.comment||"Live comment order");
@@ -3533,7 +3619,18 @@ export default function App(){
         total_orders:1,
         total_spent:order.total,
       }),
-    ]).catch(err=>console.warn("Background database save failed",err));
+    ]).catch(err=>{
+      // If a race got past the soft block, the DB cap trigger rejects the
+      // insert — surface the hard-stop popup and resync the counter.
+      if(String(err?.message||err||"").includes("free_tier_cap_reached")){
+        setCapPopup("hard");
+        void refreshFreeStatus();
+      }else{
+        console.warn("Background database save failed",err);
+      }
+    });
+    // Free users: resync the usage counter so the topbar + near-cap warning stay live.
+    if(isFreeUser)void refreshFreeStatus();
   }
   function reprintLatestForComment(c:Comment){
     const b=buyers.find(x=>x.handle===c.handle&&x.platform===c.platform);
@@ -3616,6 +3713,33 @@ export default function App(){
       {toast&&<Toast msg={toast} onDone={()=>setToast("")}/>}
       {showAccountLock&&<TrialExpiredWall t={t} onUpgrade={()=>{setPage("subscription");}}/>}
 
+      {/* Free-tier popups — centered modal, responsive (reuses .modal-overlay/.modal). */}
+      {capPopup&&(()=>{
+        const cnt=freeStatus?.count??0,cap=freeStatus?.cap??200,resetDays=freeStatus?.cycle_resets_in_days??30;
+        const left=Math.max(0,cap-cnt);
+        const isHard=capPopup==="hard";
+        const title=isHard?tpl(t.free_cap_reached_title,{cap}):tpl(t.free_near_cap_title,{count:cnt});
+        const msg=isHard?tpl(t.free_cap_reached_msg,{cap,days:resetDays}):tpl(t.free_near_cap_msg,{left,cap,count:cnt});
+        const close=()=>setCapPopup("");
+        return(
+          <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&close()}>
+            <div className="modal free-cap-modal" style={{maxWidth:380}}>
+              <div className="free-cap-body">
+                <div className="free-cap-emoji" aria-hidden="true">{isHard?"🎉":"🚀"}</div>
+                <h3 className="free-cap-title">{title}</h3>
+                <p className="free-cap-msg">{msg}</p>
+                <div className="free-cap-actions">
+                  <button className="btn-purple" onClick={()=>{close();setPage("subscription");}}>{t.free_upgrade_btn}</button>
+                  {isHard
+                    ?<button className="btn-out" onClick={()=>{close();setPage("orders");}}>{t.free_view_orders_btn}</button>
+                    :<button className="btn-out" onClick={close}>{t.free_dismiss_btn}</button>}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* SIDEBAR */}
       <aside className="sidebar">
         <div className="sb-logo"><div className="logo-ic"><svg width="16" height="16" viewBox="0 0 18 18"><path d="M4 6 Q4 3 7 3 L11 3 Q14 3 14 6 Q14 9 11 9.5 L7 10.5 Q4 10.5 4 13 Q4 15 7 15 L11 15 Q14 15 14 13" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/></svg></div><span className="logo-tx">Seller<span>FlowLive</span></span></div>
@@ -3630,9 +3754,21 @@ export default function App(){
         {isAdminUser(user)&&<button onClick={()=>setPage("admin")} className={`nav-it ${page==="admin"?"on":""}`}><span className="nav-ic">👑</span><span className="nav-lb">Admin</span>{supportUnreadCount>0&&<span className="nav-alert-badge">{supportUnreadCount>9?"9+":supportUnreadCount}</span>}</button>}
         <button onClick={()=>setPage("settings")} className={navClass("settings")} style={{marginTop:"auto"}}><span className="nav-ic">⚙️</span><span className="nav-lb">{t.nav_settings}</span></button>
         <div className="trial-box">
-          <div className="trial-row"><span className="trial-pill">{pName(user.plan,t)}</span><span className="trial-exp">{days}d {t.days_remaining}</span></div>
-          <div className="trial-cd" style={{color:days<=2?"#A32D2D":"#26215C"}}>{days===0?t.expired_label:`${days} ${t.days_remaining}`}</div>
-          <button className="upgrade-btn" onClick={()=>setPage("subscription")}>{t.upgrade_btn}</button>
+          {isFreeUser?(()=>{
+            const cnt=freeStatus?.count??0,cap=freeStatus?.cap??200,resetDays=freeStatus?.cycle_resets_in_days??30;
+            const pct=Math.min(100,Math.round((cnt/Math.max(1,cap))*100));
+            const barColor=freeStatus?.capped?"#A32D2D":freeStatus?.near_cap?"#BA7517":"#1D9E75";
+            return <>
+              <div className="trial-row"><span className="trial-pill">{pName("free",t)}</span><span className="trial-exp">{tpl(t.free_cycle_resets_in,{days:resetDays})}</span></div>
+              <div className="trial-cd" style={{color:barColor}}>{tpl(t.free_orders_progress,{count:cnt,cap})}</div>
+              <div className="free-usage-bar"><span style={{width:`${pct}%`,background:barColor}}/></div>
+              <button className="upgrade-btn" onClick={()=>setPage("subscription")}>{t.free_upgrade_btn}</button>
+            </>;
+          })():<>
+            <div className="trial-row"><span className="trial-pill">{pName(user.plan,t)}</span><span className="trial-exp">{days}d {t.days_remaining}</span></div>
+            <div className="trial-cd" style={{color:days<=2?"#A32D2D":"#26215C"}}>{days===0?t.expired_label:`${days} ${t.days_remaining}`}</div>
+            <button className="upgrade-btn" onClick={()=>setPage("subscription")}>{t.upgrade_btn}</button>
+          </>}
         </div>
       </aside>
 
