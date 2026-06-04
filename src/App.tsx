@@ -41,6 +41,14 @@ interface MobilePrinterDevice { id:string; type:"bluetooth"|"lan"; name:string; 
 interface MobilePrinterResult { ok?:boolean; message?:string; online?:boolean; host?:string; port?:number; savedPrinter?:MobilePrinterDevice|null; printers?:MobilePrinterDevice[]; }
 interface PrinterLanConfig { host:string; port?:number; }
 type PrinterBridgeReturn = void|string|MobilePrinterResult;
+// Bluetooth sticker printer (TSPL/AIMO-style). Frontend stages the UI + bitmap
+// pipeline; the native Android bridge (separate phase) implements scan/connect/
+// printSticker over Classic Bluetooth SPP and decodes the base64 bitmap into a
+// TSPL BITMAP command stream.
+interface BluetoothPrinterDevice { id:string; address:string; name:string; paired?:boolean; signal?:number; }
+interface BluetoothScanResult { ok?:boolean; message?:string; printers?:BluetoothPrinterDevice[]; savedPrinter?:BluetoothPrinterDevice|null; }
+interface StickerPrintPayload { bitmapBase64:string; widthDots:number; heightDots:number; }
+interface StickerPrintResult { ok?:boolean; message?:string; }
 type NumberSettingKey = {[K in keyof Settings]: Settings[K] extends number ? K : never}[keyof Settings];
 interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; proofImage?:string; timestamp:string; status:"pending"|"approved"|"rejected"|"resolved"; adminReply?:string; repliedAt?:string; }
 interface NativePrinterPayload { type:"sellerflow.printSlip"; buyer:Buyer; currency:string; storeName:string; settings:Settings; sessionDate:string; createdAt:string; }
@@ -53,7 +61,7 @@ const tpl=(text:string,vars:Record<string,string|number>)=>String(text||"").repl
 
 declare global {
   interface Window {
-    SellerFlowPrinter?: { printSlip?: (payload:NativePrinterPayload)=>PrinterBridgeReturn|Promise<PrinterBridgeReturn>; setPrinter?: (config:PrinterLanConfig)=>Promise<MobilePrinterResult>; getPrinter?: ()=>Promise<MobilePrinterResult>; testConnection?: (config:PrinterLanConfig)=>Promise<MobilePrinterResult>; status?: ()=>string|Promise<string>; printerStatus?: ()=>string|Promise<string|MobilePrinterResult>; scanPrinters?: ()=>string|Promise<string|MobilePrinterResult>; connectPrinter?: (printer:MobilePrinterDevice|string)=>string|Promise<string|MobilePrinterResult>; testPrint?: ()=>string|Promise<string|MobilePrinterResult>; };
+    SellerFlowPrinter?: { printSlip?: (payload:NativePrinterPayload)=>PrinterBridgeReturn|Promise<PrinterBridgeReturn>; setPrinter?: (config:PrinterLanConfig)=>Promise<MobilePrinterResult>; getPrinter?: ()=>Promise<MobilePrinterResult>; testConnection?: (config:PrinterLanConfig)=>Promise<MobilePrinterResult>; status?: ()=>string|Promise<string>; printerStatus?: ()=>string|Promise<string|MobilePrinterResult>; scanPrinters?: ()=>string|Promise<string|MobilePrinterResult>; connectPrinter?: (printer:MobilePrinterDevice|string)=>string|Promise<string|MobilePrinterResult>; testPrint?: ()=>string|Promise<string|MobilePrinterResult>; scanBluetoothLabelPrinters?: ()=>Promise<BluetoothScanResult>; getBluetoothLabelPrinter?: ()=>Promise<BluetoothScanResult>; setBluetoothLabelPrinter?: (printer:{address:string;name:string})=>Promise<BluetoothScanResult>; clearBluetoothLabelPrinter?: ()=>Promise<BluetoothScanResult>; printSticker?: (payload:StickerPrintPayload)=>Promise<StickerPrintResult>; testStickerPrint?: ()=>Promise<StickerPrintResult>; };
     ReactNativeWebView?: { postMessage:(message:string)=>void };
     Capacitor?: { Plugins?: { SellerFlowPrinter?: { printSlip:(payload:NativePrinterPayload)=>Promise<PrinterBridgeReturn>; setPrinter?:(config:PrinterLanConfig)=>Promise<MobilePrinterResult>; getPrinter?:()=>Promise<MobilePrinterResult>; testConnection?:(config:PrinterLanConfig)=>Promise<MobilePrinterResult> } } };
   }
@@ -358,8 +366,148 @@ function sendSlipToNativePrinter(payload:NativePrinterPayload){
   return false;
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// Bluetooth sticker (TSPL/AIMO) — additive printing path. Off by default.
+// Triggers ONLY when settings.printerType === "bluetooth" AND the native
+// bridge (window.SellerFlowPrinter.printSticker) is present. Otherwise the
+// existing WiFi/LAN path runs unchanged.
+//
+// Pipeline:
+//   1. Build the SAME slip HTML the WiFi/LAN print uses (buildSlipPageHTML).
+//   2. Render that HTML to a canvas at 100×60mm @ 203 DPI = 800×480 dots
+//      using html2canvas in an off-screen iframe.
+//   3. Convert to 1-bit monochrome and pack into TSPL BITMAP byte rows.
+//   4. Base64-encode and hand off to the native bridge; the Android plugin
+//      (separate phase) wraps it in TSPL SIZE/GAP/BITMAP/PRINT and sends
+//      over Classic Bluetooth SPP to the saved AIMO-class printer.
+// Returns false on any failure → printSlip falls back to existing flow.
+// ───────────────────────────────────────────────────────────────────────────
+function buildSlipPageHTML(buyer:Buyer,cur:string,storeName:string,cfg:Settings):string{
+  const size=cfg.stickerSize;
+  const scale=(v:number|undefined,fallback=100)=>Math.max(60,Math.min(180,v||fallback))/100;
+  const storeScale=scale(cfg.printStoreScale,cfg.printLabelScale);
+  const buyerNumberScale=scale(cfg.printBuyerNumberScale,120);
+  const buyerNameScale=scale(cfg.printBuyerNameScale,cfg.printLabelScale);
+  const usernameScale=scale(cfg.printUsernameScale,cfg.printLabelScale);
+  const orderScale=scale(cfg.printOrderScale,cfg.printLabelScale);
+  const commentScale=scale(cfg.printCommentScale,cfg.printLabelScale);
+  const totalScale=scale(cfg.printTotalScale,cfg.printLabelScale);
+  const pos=(v:number|undefined)=>Math.max(-40,Math.min(40,v||0));
+  const sess=new Date().toLocaleDateString("en-PH",{month:"long",day:"numeric",year:"numeric"});
+  const color=nc(buyer.num);
+  const [w]=size.split("x").map(Number);
+  const safeSess=esc(sess);
+  const safeStoreName=esc(storeName);
+  const safeBuyerNum=esc(buyer.num);
+  const safeBuyerName=esc(buyer.name);
+  const safeBuyerHandle=esc(buyer.handle);
+  const safeCurrency=esc(cur);
+  const safeTotal=buyer.totalSpent>0?`${safeCurrency}${esc(buyer.totalSpent.toLocaleString())}`:"";
+  const commentOnlyHtml=buyer.orders.map(o=>`<div class="order-entry"><div class="order-time">${esc(o.time)}</div><div class="order-comment">${esc(o.item)}</div></div>`).join("");
+  return `<!DOCTYPE html><html><head><title>Slip #${safeBuyerNum}</title><style>@page{size:${size.replace("x","mm ")}mm;margin:3mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;width:${w}mm;color:#000}.head{display:flex;align-items:flex-start;justify-content:space-between;gap:3mm;margin-bottom:2.5mm}.brand{font-size:${14*storeScale}px;font-weight:800;transform:translate(${pos(cfg.printStoreX)}mm,${pos(cfg.printStoreY)}mm)}.brand span{color:#7F77DD}.session{font-size:${12*totalScale}px;font-weight:800;text-align:right;transform:translate(${pos(cfg.printSessionX)}mm,${pos(cfg.printSessionY)}mm)}.grid{display:grid;grid-template-columns:52% 48%;gap:3mm;align-items:start}.left{display:flex;flex-direction:column;gap:1.5mm;padding-top:1mm}.seller{font-size:${13*storeScale}px;font-weight:800;line-height:1.1;transform:translate(${pos(cfg.printStoreX)}mm,${pos(cfg.printStoreY)}mm)}.line{font-size:${13*buyerNameScale}px;font-weight:800;line-height:1.1}.muted{font-size:${10*usernameScale}px;font-weight:700;color:#333}.buyer-num{font-size:${13*buyerNumberScale}px;color:${color};font-weight:900;transform:translate(${pos(cfg.printBuyerNumberX)}mm,${pos(cfg.printBuyerNumberY)}mm)}.buyer-name{transform:translate(${pos(cfg.printBuyerNameX)}mm,${pos(cfg.printBuyerNameY)}mm)}.username{transform:translate(${pos(cfg.printUsernameX)}mm,${pos(cfg.printUsernameY)}mm)}.order-box{min-height:38mm;padding:0;transform:translate(${pos(cfg.printOrderX)}mm,${pos(cfg.printOrderY)}mm)}.order-title{font-size:${15*orderScale}px;font-weight:900;margin-bottom:2mm}.order-entry{border-left:2px solid #000;padding-left:2mm;margin-bottom:2mm}.order-time{font-size:${9*orderScale}px;color:#111;font-weight:500;line-height:1.1}.order-comment{font-size:${10*commentScale}px;font-weight:800;line-height:1.1;margin-top:.8mm}.total{border-top:1px dashed #777;margin-top:2mm;padding-top:1.5mm;display:flex;justify-content:space-between;gap:2mm;font-size:${11*totalScale}px;font-weight:800;transform:translate(${pos(cfg.printTotalX)}mm,${pos(cfg.printTotalY)}mm)}@media print{body{margin:0}}</style></head><body>
+  <div class="head"><div class="brand">Seller<span>FlowLive</span></div><div class="session">Session: ${safeSess}</div></div>
+  <div class="grid"><div class="left">
+  ${cfg.printStoreName?`<div class="seller">${safeStoreName}</div>`:""}
+  ${cfg.printBuyerNumber?`<div class="line buyer-num">Buyer #${safeBuyerNum}</div>`:""}
+  <div class="line buyer-name">${safeBuyerName}</div>
+  ${cfg.printBuyerUsername?`<div class="muted username">@${safeBuyerHandle}</div>`:""}
+  </div>
+  ${cfg.printOrderItems?`<div class="order-box"><div class="order-title">Order here</div>${commentOnlyHtml}${cfg.printTotal?`<div class="total"><span>Total</span><span>${safeTotal}</span></div>`:""}</div>`:""}
+  </div>
+  </body></html>`;
+}
+
+// Render the same slip HTML to an off-screen canvas via html2canvas, then
+// pack into 1-bit-per-pixel TSPL BITMAP rows. Returns the base64 string +
+// final dot dimensions, or null on failure.
+async function renderSlipStickerBitmap(buyer:Buyer,cur:string,storeName:string,cfg:Settings,widthDots=800,heightDots=480):Promise<StickerPrintPayload|null>{
+  if(typeof document==="undefined"||typeof window==="undefined")return null;
+  // Off-screen iframe so the slip CSS doesn't pollute the parent page.
+  const frame=document.createElement("iframe");
+  const [wmmStr,hmmStr]=cfg.stickerSize.split("x");
+  const widthMm=Number(wmmStr)||100,heightMm=Number(hmmStr)||60;
+  frame.style.cssText=`position:fixed;left:-99999px;top:0;width:${widthMm}mm;height:${heightMm}mm;border:0;background:#fff;opacity:0;pointer-events:none`;
+  document.body.appendChild(frame);
+  try{
+    const doc=frame.contentDocument;
+    if(!doc)return null;
+    doc.open();
+    doc.write(buildSlipPageHTML(buyer,cur,storeName,cfg));
+    doc.close();
+    await new Promise(r=>setTimeout(r,80)); // let fonts/layout settle
+    const mod=await import("html2canvas");
+    const html2canvas=(mod as unknown as {default:(el:HTMLElement,opts?:Record<string,unknown>)=>Promise<HTMLCanvasElement>}).default;
+    const body=doc.body;
+    const naturalW=body.scrollWidth||body.offsetWidth||widthMm*4;
+    const naturalH=body.scrollHeight||body.offsetHeight||heightMm*4;
+    const scaleX=widthDots/naturalW;
+    const raw=await html2canvas(body,{width:naturalW,height:naturalH,scale:scaleX,backgroundColor:"#ffffff",logging:false});
+    // Re-draw onto a target-sized canvas so the bitmap byte layout is exact.
+    const tmp=document.createElement("canvas");
+    tmp.width=widthDots;tmp.height=heightDots;
+    const ctx=tmp.getContext("2d");
+    if(!ctx)return null;
+    ctx.fillStyle="#ffffff";ctx.fillRect(0,0,widthDots,heightDots);
+    ctx.drawImage(raw,0,0,widthDots,Math.min(heightDots,Math.round(raw.height*(widthDots/raw.width))));
+    const imageData=ctx.getImageData(0,0,widthDots,heightDots).data;
+    const bytesPerRow=Math.ceil(widthDots/8);
+    const totalBytes=bytesPerRow*heightDots;
+    const bytes=new Uint8Array(totalBytes);
+    for(let y=0;y<heightDots;y++){
+      for(let xByte=0;xByte<bytesPerRow;xByte++){
+        let b=0;
+        for(let bit=0;bit<8;bit++){
+          const x=xByte*8+bit;
+          if(x>=widthDots)continue;
+          const i=(y*widthDots+x)*4;
+          const a=imageData[i+3];
+          const lum=a<128?255:0.299*imageData[i]+0.587*imageData[i+1]+0.114*imageData[i+2];
+          if(lum<128)b|=1<<(7-bit); // TSPL: bit=1 means BLACK (printed)
+        }
+        bytes[y*bytesPerRow+xByte]=b;
+      }
+    }
+    let binary="";
+    for(let i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);
+    return {bitmapBase64:btoa(binary),widthDots,heightDots};
+  }catch(err){
+    console.warn("renderSlipStickerBitmap failed:",err);
+    return null;
+  }finally{
+    frame.remove();
+  }
+}
+
+// Kicks off the 1-tap Bluetooth sticker print. Async fire-and-forget from
+// printSlip — returns nothing (matching the existing native LAN bridge call
+// pattern). Falls back to existing path if anything goes wrong.
+async function printStickerViaBluetooth(buyer:Buyer,cur:string,storeName:string,cfg:Settings):Promise<boolean>{
+  const bridge=typeof window!=="undefined"?window.SellerFlowPrinter:undefined;
+  if(!bridge?.printSticker)return false;
+  const payload=await renderSlipStickerBitmap(buyer,cur,storeName,cfg);
+  if(!payload)return false;
+  try{
+    const result=await bridge.printSticker(payload);
+    return !!result?.ok;
+  }catch(err){
+    console.warn("printSticker bridge call failed:",err);
+    return false;
+  }
+}
+
 function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Settings|string){
   const cfg:Settings=typeof printSettings==="string"?{...DEF_SETTINGS,stickerSize:printSettings}:printSettings;
+  // 🅱️ Bluetooth sticker (TSPL) path — additive, opt-in. Triggers ONLY when
+  // the seller explicitly picked "bluetooth" AND the native bridge has the
+  // printSticker method (Android APK with BT plugin). Otherwise we fall
+  // straight through to the existing WiFi/LAN + browser-print flow below,
+  // byte-identical to before this feature.
+  if(cfg.printerType==="bluetooth"&&typeof window!=="undefined"&&window.SellerFlowPrinter?.printSticker){
+    void printStickerViaBluetooth(buyer,cur,storeName,cfg).then(ok=>{
+      if(!ok)console.warn("[BT sticker] print failed — check Bluetooth printer pairing and selection in Settings.");
+    });
+    return;
+  }
   const size=cfg.stickerSize;
   const scale=(v:number|undefined,fallback=100)=>Math.max(60,Math.min(180,v||fallback))/100;
   const storeScale=scale(cfg.printStoreScale,cfg.printLabelScale);
@@ -1600,6 +1748,51 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   const [printerScanning,setPrinterScanning]=useState(false);
   const [lanPrinterHost,setLanPrinterHost]=useState("");
   const [lanPrinterPort,setLanPrinterPort]=useState("9100");
+  // ── Bluetooth sticker printer (additive — Settings UI only; native phase implements scan/print)
+  const [btScanning,setBtScanning]=useState(false);
+  const [btPrinters,setBtPrinters]=useState<BluetoothPrinterDevice[]>([]);
+  const [btSavedPrinter,setBtSavedPrinter]=useState<BluetoothPrinterDevice|null>(null);
+  const [btStatusMsg,setBtStatusMsg]=useState<string>("");
+  const isBtMode=sets.printerType==="bluetooth";
+  const bridgeHasBt=typeof window!=="undefined"&&!!window.SellerFlowPrinter?.scanBluetoothLabelPrinters;
+  async function btCall<T>(action:"scanBluetoothLabelPrinters"|"getBluetoothLabelPrinter"|"setBluetoothLabelPrinter"|"clearBluetoothLabelPrinter"|"testStickerPrint"|"printSticker",arg?:unknown):Promise<T|null>{
+    if(typeof window==="undefined")return null;
+    const bridge=window.SellerFlowPrinter;
+    const fn=bridge?.[action] as ((a?:unknown)=>Promise<T>)|undefined;
+    if(typeof fn!=="function"){setBtStatusMsg("Open SellerFlow mobile app to use Bluetooth printer.");return null;}
+    try{return arg===undefined?await fn():await fn(arg);}catch(err){setBtStatusMsg(`Bluetooth error: ${err instanceof Error?err.message:String(err)}`);return null;}
+  }
+  async function scanBtPrinters(){
+    setBtScanning(true);setBtStatusMsg("");
+    const result=await btCall<BluetoothScanResult>("scanBluetoothLabelPrinters");
+    setBtScanning(false);
+    if(result){setBtPrinters(result.printers||[]);if(result.savedPrinter)setBtSavedPrinter(result.savedPrinter);setBtStatusMsg(result.message||"");}
+  }
+  async function selectBtPrinter(printer:BluetoothPrinterDevice){
+    const result=await btCall<BluetoothScanResult>("setBluetoothLabelPrinter",{address:printer.address,name:printer.name});
+    if(result?.savedPrinter)setBtSavedPrinter(result.savedPrinter);
+    else setBtSavedPrinter(printer);
+    setBtStatusMsg(result?.message||"Bluetooth printer saved");
+  }
+  async function clearBtPrinter(){
+    await btCall<BluetoothScanResult>("clearBluetoothLabelPrinter");
+    setBtSavedPrinter(null);
+    setBtStatusMsg("Bluetooth printer cleared");
+  }
+  async function testBtSticker(){
+    if(!bridgeHasBt){setBtStatusMsg("Open SellerFlow mobile app to print a test sticker.");return;}
+    setBtStatusMsg("Sending test sticker...");
+    const testBuyer:Buyer={handle:"sellerflow",name:"Test Print",platform:"TikTok",num:88,orders:[{orderNum:1,item:"SellerFlowLive sticker test",qty:1,price:0,total:0,time:new Date().toLocaleTimeString(),handle:"sellerflow",name:"Test Print",bNum:88,platform:"TikTok",status:"New",date:new Date().toISOString().slice(0,10)}],totalSpent:0,totalOrders:1};
+    const payload=await renderSlipStickerBitmap(testBuyer,sets.currency,user.profile.storeName||"SellerFlowLive",sets);
+    if(!payload){setBtStatusMsg("Could not render the sticker bitmap.");return;}
+    const result=await btCall<StickerPrintResult>("printSticker",payload);
+    setBtStatusMsg(result?.ok?(result.message||"Test sticker printed"):(result?.message||"Test sticker failed"));
+  }
+  useEffect(()=>{
+    if(!bridgeHasBt)return;
+    void btCall<BluetoothScanResult>("getBluetoothLabelPrinter").then(r=>{if(r?.savedPrinter)setBtSavedPrinter(r.savedPrinter);});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[bridgeHasBt]);
   const previewMove=(x:number|undefined,y:number|undefined)=>({transform:`translate(${(x||0)*1.8}px,${(y||0)*1.8}px)`});
   const stepSetting=(key:NumberSettingKey,delta:number)=>setSets(s=>({...s,[key]:Math.max(-40,Math.min(40,Number(s[key]||0)+delta))}));
   const stepSize=(key:NumberSettingKey,delta:number)=>setSets(s=>({...s,[key]:Math.max(60,Math.min(180,Number(s[key]||100)+delta))}));
@@ -1870,14 +2063,22 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
               <p>If it opens the wrong admin or seller account, open SellerFlowLive Switch Account once, then login again. If the print screen stays open, you are probably using a normal browser tab or an old shortcut.</p>
             </div>
           </div>
-          <Fg label={t.printer_type}>
-            <select value={sets.printerType} onChange={e=>setSets(s=>({...s,printerType:e.target.value as Settings["printerType"]}))}>
-              <option value="auto">Auto detect Bluetooth / LAN</option>
-              <option value="usb">{t.printer_usb}</option>
-              <option value="bluetooth">{t.printer_bt}</option>
-              <option value="lan">WiFi / LAN ESC-POS</option>
-            </select>
-          </Fg>
+          {/* Print mode — 2-card selector (WiFi/LAN default, Bluetooth additive). */}
+          <div className="printer-mode-section">
+            <div className="printer-mode-label">{t.printer_mode_title}</div>
+            <div className="printer-mode-cards">
+              <button type="button" className={`printer-mode-card ${!isBtMode?"on":""}`} onClick={()=>setSets(s=>({...s,printerType:"lan"}))}>
+                <div className="pm-card-head"><span className="pm-card-radio">{!isBtMode?"●":"○"}</span><strong>{t.printer_mode_wifi}</strong></div>
+                <div className="pm-card-rec">{t.printer_mode_wifi_rec}</div>
+                <div className="pm-card-desc">{t.printer_mode_wifi_desc}</div>
+              </button>
+              <button type="button" className={`printer-mode-card ${isBtMode?"on":""}`} onClick={()=>setSets(s=>({...s,printerType:"bluetooth"}))}>
+                <div className="pm-card-head"><span className="pm-card-radio">{isBtMode?"●":"○"}</span><strong>{t.printer_mode_bt}</strong></div>
+                <div className="pm-card-rec">{t.printer_mode_bt_rec}</div>
+                <div className="pm-card-desc">{t.printer_mode_bt_desc}</div>
+              </button>
+            </div>
+          </div>
           <Fg label={t.printer_size}>
             <select value={sets.stickerSize} onChange={e=>setSets(s=>({...s,stickerSize:e.target.value}))}>
               <option value="100x60">100x60mm (Standard)</option>
@@ -1961,8 +2162,8 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
           <div className="tog-row"><div><div style={{fontWeight:500}}>TikTok Live</div><div style={{fontSize:11,color:"#888",whiteSpace:"pre-wrap"}}>{accountList(user.profile.tiktok).join(", ")||t.not_set}</div></div><Badge label={user.connectedAccounts.includes("TikTok")?t.connected_label:t.not_connected} color={user.connectedAccounts.includes("TikTok")?"green":"gray"}/></div>
           <div className="tog-row" style={{borderBottom:"none"}}><div><div style={{fontWeight:500}}>Facebook Live</div><div style={{fontSize:11,color:"#888",whiteSpace:"pre-wrap"}}>{accountList(user.profile.facebook).join(", ")||t.not_set}</div></div><Badge label={user.connectedAccounts.includes("Facebook")?t.connected_label:t.not_connected} color={user.connectedAccounts.includes("Facebook")?"green":"gray"}/></div>
         </form>
-        <form onSubmit={saveSets} className="scard settings-section settings-section-mobile-printer">
-          <div className="scard-title">Plug-and-play Phone Printer</div>
+        <form onSubmit={saveSets} className="scard settings-section settings-section-mobile-printer" style={isBtMode?{display:"none"}:undefined}>
+          <div className="scard-title">{t.printer_wifi_card_title}</div>
           <div className="mobile-bt-layout">
             <div className="mobile-bt-copy">
               <div className={`printer-direct-status ${mobilePrinterStatus.online?"active":"inactive"}`}>
@@ -2039,6 +2240,47 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
             </div>
           </div>
         </form>
+        {/* ── BLUETOOTH STICKER PRINTER (additive — Settings UI for AIMO-class TSPL printers) ── */}
+        {isBtMode&&(
+          <div className="scard settings-section settings-section-bt-printer">
+            <div className="scard-title">{t.printer_bt_card_title}</div>
+            <div className="bt-printer-rec">{t.printer_mode_bt_rec}</div>
+            <div className="bt-printer-pair-hint">{t.printer_bt_pair_hint}</div>
+            {btSavedPrinter?(
+              <div className="bt-printer-saved">
+                <div>
+                  <span className="bt-printer-saved-label">{t.printer_bt_saved}</span>
+                  <strong>{btSavedPrinter.name}</strong>
+                  <small className="mono">{btSavedPrinter.address}</small>
+                </div>
+                <button type="button" className="btn-out" onClick={clearBtPrinter}>{t.printer_bt_clear}</button>
+              </div>
+            ):(
+              <div className="bt-printer-empty">{t.printer_bt_no_saved}</div>
+            )}
+            <div className="bt-printer-actions">
+              <button type="button" className="printer-test-btn" onClick={scanBtPrinters} disabled={btScanning}>
+                {btScanning?t.printer_bt_scanning:t.printer_bt_scan}
+              </button>
+              <button type="button" className="printer-test-btn" onClick={testBtSticker} disabled={!btSavedPrinter&&!bridgeHasBt}>
+                {t.printer_bt_test}
+              </button>
+            </div>
+            {btPrinters.length>0&&(
+              <div className="bt-printer-list">
+                <div className="bt-printer-list-title">{t.printer_bt_paired_found}</div>
+                {btPrinters.map(p=>(
+                  <button type="button" key={p.id||p.address} className="bt-printer-option" onClick={()=>selectBtPrinter(p)}>
+                    <div className="bt-printer-option-name"><strong>{p.name||"Bluetooth printer"}</strong><small className="mono">{p.address}</small></div>
+                    <Badge label={p.paired?t.printer_bt_paired:t.printer_bt_nearby} color={p.paired?"green":"purple"}/>
+                  </button>
+                ))}
+              </div>
+            )}
+            {btStatusMsg&&<div className="bt-printer-status">{btStatusMsg}</div>}
+            {!bridgeHasBt&&<div className="bt-printer-no-bridge">{t.printer_bt_no_bridge}</div>}
+          </div>
+        )}
           </div>
         </div>
       )}

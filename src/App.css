@@ -570,6 +570,35 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .mobile-printer-option span,.mobile-printer-option small{display:block;font-size:11px;color:#6E687E;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mobile-printer-type{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-size:11px;font-weight:900;color:#fff}
 .mobile-printer-type.bluetooth{background:linear-gradient(135deg,#7F77DD,#3B82F6)}
+/* Print mode selector (2-card radio) — WiFi/LAN vs Bluetooth sticker. */
+.printer-mode-section{margin-bottom:10px}
+.printer-mode-label{font-size:11px;font-weight:600;color:#26215C;margin-bottom:6px;letter-spacing:.4px;text-transform:uppercase}
+.printer-mode-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.printer-mode-card{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:12px 14px;border:1px solid #E4E2DC;border-radius:12px;background:#fff;cursor:pointer;text-align:left;box-shadow:0 6px 14px rgba(38,33,92,.04);transition:border-color .15s,background .15s,transform .1s}
+.printer-mode-card:hover{border-color:#AFA9EC;background:#FAFAFE}
+.printer-mode-card.on{border-color:#7F77DD;background:#F5F4FF;box-shadow:0 10px 24px rgba(83,74,183,.12)}
+.pm-card-head{display:flex;align-items:center;gap:8px;font-size:13px;color:#26215C}
+.pm-card-radio{font-size:14px;color:#7F77DD;line-height:1}
+.pm-card-rec{font-size:11px;color:#534AB7;font-weight:600}
+.pm-card-desc{font-size:11px;color:#6E687E;line-height:1.4}
+/* Bluetooth sticker printer card */
+.settings-section-bt-printer{margin-top:12px}
+.bt-printer-rec{font-size:12px;color:#534AB7;font-weight:600;margin-bottom:6px}
+.bt-printer-pair-hint{font-size:11px;color:#6E687E;line-height:1.45;background:#FFF8E1;border:1px solid #F5DDA0;border-radius:8px;padding:8px 10px;margin-bottom:10px}
+.bt-printer-saved{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid #9FE1CB;background:#E1F5EE;border-radius:10px;margin-bottom:10px}
+.bt-printer-saved-label{display:block;font-size:10px;color:#0F6E56;text-transform:uppercase;letter-spacing:.4px;font-weight:600;margin-bottom:2px}
+.bt-printer-saved strong{display:block;font-size:13px;color:#0F6E56}
+.bt-printer-saved small{display:block;font-size:11px;color:#0F6E56;margin-top:2px}
+.bt-printer-empty{font-size:12px;color:#6E687E;margin-bottom:10px;padding:10px 12px;background:#FAF9F5;border:1px dashed #D3D1C7;border-radius:8px}
+.bt-printer-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.bt-printer-list{display:grid;gap:8px;margin-bottom:10px}
+.bt-printer-list-title{font-size:11px;font-weight:600;color:#26215C;text-transform:uppercase;letter-spacing:.4px}
+.bt-printer-option{display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;border:1px solid #E4E2DC;background:#fff;border-radius:10px;padding:10px 12px;cursor:pointer;color:#26215C}
+.bt-printer-option:hover{border-color:#AFA9EC;background:#F8F7FF}
+.bt-printer-option-name strong{display:block;font-size:13px}
+.bt-printer-option-name small{display:block;font-size:11px;color:#6E687E;margin-top:2px}
+.bt-printer-status{font-size:11px;color:#534AB7;padding:8px 10px;background:#F5F4FF;border-radius:8px;margin-bottom:8px}
+.bt-printer-no-bridge{font-size:11px;color:#888780;font-style:italic}
 .mobile-printer-type.lan{background:linear-gradient(135deg,#0F6E56,#10B981)}
 .tog-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:0.5px solid #F5F5F2;font-size:12px;font-weight:500;cursor:pointer}
 .theme-mode-toggle{gap:14px;padding:12px 0}
