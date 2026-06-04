@@ -2262,7 +2262,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     setSupportReadIds(prev=>{const next=Array.from(new Set([...prev,...ids]));LS.set(adminSupportReadKey,next);return next;});
     setSelectedSupportEmail(email);
   }
-  const [expandedAdminBox,setExpandedAdminBox]=useState<""|"overview"|"create"|"users"|"payments"|"planmonitor"|"audit">("");
+  const [expandedAdminBox,setExpandedAdminBox]=useState<""|"overview"|"create"|"users"|"payments"|"planmonitor"|"freeusers"|"audit">("");
   const [adminUserPlanMonths,setAdminUserPlanMonths]=useState<Record<string,number>>({});
   const [copied,setCopied]=useState("");
   const usersTableRef=useRef<HTMLDivElement>(null);
@@ -2602,7 +2602,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   const todayOrders=orders.filter(o=>o.date===todayIso);
   const allStoredOrders=orders;
   const dayStamp=new Date().toISOString().slice(0,10);
-  const expandedTitles={"":"Admin",overview:"Overview",create:"Create Seller",users:"Users",payments:"Payment / Support",planmonitor:"Plan Monitoring",audit:"Audit Log"};
+  const expandedTitles={"":"Admin",overview:"Overview",create:"Create Seller",users:"Users",payments:"Payment / Support",planmonitor:"Plan Monitoring",freeusers:"Free Users — Usage Monitor",audit:"Audit Log"};
 
   function exportUsers(){
     csvDL(`sellerflow-users-${dayStamp}.csv`,["Email","Role","Plan","Plan Status","Days Left","Connected Accounts","Full Name","Store Name","Phone","TikTok","Facebook"],filteredUsers.map(u=>[
@@ -2827,11 +2827,12 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
         </div>
       </div>
 
-      <div className="table-card admin-compact-card" style={{marginBottom:12}}>
-        <div className="table-title">
+      <div className="table-card admin-compact-card" style={{marginBottom:12}} onDoubleClick={()=>setExpandedAdminBox("freeusers")}>
+        <div className="table-title admin-expandable-title">
           <span>Free Users — Usage Monitor ({freeUsersFiltered.length})</span>
           {freeNearCap.length>0&&<Badge label={`${freeNearCap.length} near cap`} color="amber"/>}
           {freeCappedUsers.length>0&&<Badge label={`${freeCappedUsers.length} capped`} color="red"/>}
+          <span className="expand-hint">⤢ double-click to expand</span>
         </div>
         <div className="admin-table-wrap">
           <div className="admin-table-scroll">
@@ -3023,6 +3024,25 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                     </tr>
                   );
                 })}
+              </tbody></table>
+            </div>}
+            {expandedAdminBox==="freeusers"&&<div className="table-card admin-fullscreen-table">
+              <div className="table-title">
+                <span>Free Users — Usage Monitor ({freeUsersFiltered.length})</span>
+                {freeNearCap.length>0&&<Badge label={`${freeNearCap.length} near cap`} color="amber"/>}
+                {freeCappedUsers.length>0&&<Badge label={`${freeCappedUsers.length} capped`} color="red"/>}
+              </div>
+              <table className="tbl"><thead><tr><th>Seller</th><th>Orders this cycle</th><th>Status</th><th>Resets in</th><th></th></tr></thead><tbody>
+                {freeUsersFiltered.length===0&&<tr><td colSpan={5} style={{textAlign:"center",padding:24,color:"#888"}}>No free users yet.</td></tr>}
+                {freeUsersFiltered.map(f=>(
+                  <tr key={`expanded-free-${f.email}`}>
+                    <td><strong>{f.email}</strong><div className="muted" style={{fontSize:11}}>{f.store_name||f.full_name}</div></td>
+                    <td><strong style={{color:f.capped?"#A32D2D":f.near_cap?"#BA7517":"#1D9E75"}}>{f.count}</strong> / {f.cap}</td>
+                    <td><Badge label={f.capped?"Capped":f.near_cap?"Near cap":"OK"} color={f.capped?"red":f.near_cap?"amber":"green"}/></td>
+                    <td>{f.cycle_resets_in_days}d</td>
+                    <td><button className="tbl-btn ed" onClick={()=>approve(f.email,"basic",monthsForUser(users.find(u=>u.email.toLowerCase()===f.email.toLowerCase())||currentUser))}>Promote to Basic</button></td>
+                  </tr>
+                ))}
               </tbody></table>
             </div>}
             {expandedAdminBox==="audit"&&<div className="table-card admin-fullscreen-table">
