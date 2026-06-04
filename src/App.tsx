@@ -2663,7 +2663,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
       <div className="subpage-hd">
         <div>
           <h2>Admin</h2>
-          <p>Owner: {OWNER_EMAIL} · Admins: {admins.length}</p>
+          <p>Owner: (you) · Admins: {admins.length}</p>
         </div>
         <div className="admin-refresh-group">
           <span>Auto refresh: 10s</span>
