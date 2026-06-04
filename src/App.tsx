@@ -239,7 +239,7 @@ const supportReadKey=(email:string)=>`sf_support_read_${email.trim().toLowerCase
 const isAdminUser=(u:User|null)=>!!u&&u.role==="admin";
 const canConnectMore=(u:User)=>isAdminUser(u)||registeredAccountCount(u)<maxAcc(u.plan);
 const asAdminPlan=(u:User)=>isAdminUser(u)?{...u,plan:"master" as Plan,planStatus:"active" as PlanStatus,planExpiry:addMonths(120)}:u;
-const pName=(p:Plan,t:T)=>({free:t.plan_free,trial:t.plan_trial,basic:t.plan_basic,pro:t.plan_pro,master:t.plan_master}[p]);
+const pName=(p:Plan,t:T)=>({free:t.plan_free,trial:t.plan_free,basic:t.plan_basic,pro:t.plan_pro,master:t.plan_master}[p]);
 const pColor=(p:Plan)=>({free:"blue",trial:"gray",basic:"green",pro:"purple",master:"amber"}[p] as "gray"|"green"|"purple"|"amber"|"blue");
 const csvDL=(filename:string,headers:string[],rows:(string|number)[][])=>{
   const csv=[headers,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
@@ -2920,7 +2920,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                     <div className="admin-row-actions">
                       <button className="tbl-btn ed" onClick={()=>openEditSeller(u)}>Edit</button>
                       <button className="tbl-btn ed" onClick={()=>resetPassword(u.email)}>Reset PW</button>
-                      <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"trial")}>Trial</button>
+                      <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"free")}>Free</button>
                       <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"basic","active",monthsForUser(u))}>Basic</button>
                       <button className="tbl-btn ed" onClick={()=>approve(u.email,"pro",monthsForUser(u))}>Pro</button>
                       <button className="tbl-btn ed" onClick={()=>approve(u.email,"master",monthsForUser(u))}>Master</button>
@@ -3278,7 +3278,7 @@ export default function App(){
     setToast("Live comments cleared");
   }
 
-  // Check trial expiry
+  // Check plan expiry
   // Free users are limited by the order cap, never by a time expiry, so they
   // are exempt from the expired/days-left lock that paid plans use.
   const accountLocked=!!user&&!isAdminUser(user)&&user.plan!=="free"&&(user.planStatus==="expired"||dLeft(user.planExpiry,nowTick)===0);
