@@ -80,7 +80,7 @@ function rowToUser(row: SupabaseRow): AccountUser {
       tiktok: textValue(row.tiktok),
       facebook: textValue(row.facebook),
     },
-    plan: ["trial", "basic", "pro", "master"].includes(textValue(row.plan)) ? textValue(row.plan) as Plan : "trial",
+    plan: ["free", "trial", "basic", "pro", "master"].includes(textValue(row.plan)) ? textValue(row.plan) as Plan : "free",
     planStatus: ["active", "expired", "pending"].includes(textValue(row.plan_status)) ? textValue(row.plan_status) as PlanStatus : "active",
     planExpiry: textValue(row.plan_expiry, new Date().toISOString()),
     trialStartedAt: textValue(row.trial_started_at),
