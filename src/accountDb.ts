@@ -1,6 +1,6 @@
 import { isSupabaseConfigured, supabase, supabaseConfigHint } from "./supabase";
 
-type Plan = "trial" | "basic" | "pro" | "master";
+type Plan = "free" | "trial" | "basic" | "pro" | "master";
 type PlanStatus = "active" | "expired" | "pending";
 export type Role = "seller" | "admin";
 
