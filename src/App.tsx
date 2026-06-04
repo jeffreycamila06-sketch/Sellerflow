@@ -46,6 +46,8 @@ interface SupportMsg { id:string; name:string; email:string; subject:string; mes
 interface NativePrinterPayload { type:"sellerflow.printSlip"; buyer:Buyer; currency:string; storeName:string; settings:Settings; sessionDate:string; createdAt:string; }
 // Free-tier usage status from the Supabase RPC free_tier_status_for_user.
 interface FreeStatus { is_free:boolean; count?:number; cap?:number; near_cap_threshold?:number; near_cap?:boolean; capped?:boolean; cycle_resets_in_days?:number; warning_shown?:boolean; }
+// One row from the admin RPC list_free_users_status (free users + cycle usage).
+interface FreeUserRow { email:string; store_name:string; full_name:string; count:number; cap:number; near_cap:boolean; capped:boolean; cycle_resets_in_days:number; }
 // Fill {placeholders} in a translation string, e.g. tpl(t.free_orders_progress,{count:5,cap:200}).
 const tpl=(text:string,vars:Record<string,string|number>)=>String(text||"").replace(/\{(\w+)\}/g,(m,k)=>k in vars?String(vars[k]):m);
 
@@ -2245,6 +2247,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   const [users,setUsers]=useState<User[]>([]);
   const [msgs,setMsgs]=useState<SupportMsg[]>(()=>arrLS<SupportMsg>("sf_support"));
   const [auditLogs,setAuditLogs]=useState<AccountAuditLog[]>(()=>arrLS<AccountAuditLog>("sf_audit_logs"));
+  const [freeUsers,setFreeUsers]=useState<FreeUserRow[]>([]);
   const [admins,setAdmins]=useState<string[]>([]);
   const [newSeller,setNewSeller]=useState({email:"",password:"",fullName:"",storeName:""});
   const [editOriginalEmail,setEditOriginalEmail]=useState("");
@@ -2285,6 +2288,12 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     await sendAutomaticPlanNotices(freshUsers);
     setMsgs(await listSupportMessages());
     setAuditLogs(await listAuditLogs());
+    if(supabase){
+      try{
+        const {data}=await supabase.rpc("list_free_users_status");
+        setFreeUsers((data as FreeUserRow[])||[]);
+      }catch(err){console.warn("list_free_users_status failed:",err);}
+    }
   }
 
   async function sendAutomaticPlanNotices(sourceUsers:User[]){
@@ -2402,7 +2411,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   }
 
   async function setPlan(email:string,plan:Plan,status:PlanStatus="active",months=1){
-    const expiry=status==="expired"?addDays(-1):status==="pending"?new Date().toISOString():plan==="trial"?addDays(7):addMonths(months);
+    const expiry=status==="expired"?addDays(-1):status==="pending"?new Date().toISOString():plan==="trial"?addDays(7):plan==="free"?addMonths(120):addMonths(months);
     const trialStartedAt=status==="active"&&plan==="trial"?new Date().toISOString():null;
     try{
       await adminUpdatePlan(email,{plan,planStatus:status,planExpiry:expiry,trialStartedAt});
@@ -2582,6 +2591,13 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     .filter(u=>u.planStatus==="expired"||dLeft(u.planExpiry)<=(u.plan==="trial"?3:5))
     .sort((a,b)=>dLeft(a.planExpiry)-dLeft(b.planExpiry));
   const pendingPayments=msgs.filter(m=>m.status==="pending");
+  // Free-tier monitoring (from list_free_users_status RPC).
+  const q2=adminSearch.trim().toLowerCase();
+  const freeUsersFiltered=freeUsers.filter(f=>!q2||[f.email,f.store_name,f.full_name].some(v=>String(v||"").toLowerCase().includes(q2)));
+  const freeNearCap=freeUsersFiltered.filter(f=>f.near_cap&&!f.capped);
+  const freeCappedUsers=freeUsersFiltered.filter(f=>f.capped);
+  const freeMonitorUsers=[...freeUsersFiltered].filter(f=>f.near_cap||f.capped).sort((a,b)=>b.count-a.count);
+  const freeByEmail=new Map(freeUsers.map(f=>[f.email.toLowerCase(),f]));
   const todayIso=new Date().toISOString().slice(0,10);
   const todayOrders=orders.filter(o=>o.date===todayIso);
   const allStoredOrders=orders;
@@ -2676,14 +2692,15 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
           <div className="admin-table-wrap">
             <div className="admin-table-scroll" ref={usersTableRef}>
               <table className="tbl">
-                <thead><tr><th>Email</th><th>Role</th><th>Plan</th><th>Days</th><th>Months</th><th>Accounts</th><th></th></tr></thead>
+                <thead><tr><th>Email</th><th>Role</th><th>Plan</th><th>Free Cycle</th><th>Days</th><th>Months</th><th>Accounts</th><th></th></tr></thead>
                 <tbody>
-                  {filteredUsers.length===0&&<tr><td colSpan={7} style={{textAlign:"center",padding:24,color:"#888"}}>{users.length===0?"No users yet.":"No users found."}</td></tr>}
-                  {filteredUsers.map(u=>(
+                  {filteredUsers.length===0&&<tr><td colSpan={8} style={{textAlign:"center",padding:24,color:"#888"}}>{users.length===0?"No users yet.":"No users found."}</td></tr>}
+                  {filteredUsers.map(u=>{const fr=freeByEmail.get(u.email.toLowerCase());return(
                     <tr key={u.email}>
                       <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>
                       <td><Badge label={(u.role==="admin")?"Admin":"Seller"} color={(u.role==="admin")?"amber":"gray"}/></td>
                       <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
+                      <td>{u.plan==="free"&&fr?<span style={{color:fr.capped?"#A32D2D":fr.near_cap?"#BA7517":"#1D9E75",fontWeight:600}}>{fr.count}/{fr.cap} · {fr.cycle_resets_in_days}d</span>:<span className="muted">—</span>}</td>
                       <td>{dLeft(u.planExpiry)}</td>
                       <td>{renderUserMonthsSelect(u)}</td>
                       <td>{registeredAccountCount(u)} / {maxAcc(u.plan)}</td>
@@ -2691,7 +2708,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                           <button className="tbl-btn ed" onClick={()=>openEditSeller(u)}>Edit</button>
                           <button className="tbl-btn ed" onClick={()=>resetPassword(u.email)}>Reset PW</button>
-                          <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"trial")}>Trial</button>
+                          <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"free")}>Free</button>
                           <button className="tbl-btn ed" onClick={()=>setPlan(u.email,"basic","active",monthsForUser(u))}>Basic</button>
                           <button className="tbl-btn ed" onClick={()=>approve(u.email,"pro",monthsForUser(u))}>Pro</button>
                           <button className="tbl-btn ed" onClick={()=>approve(u.email,"master",monthsForUser(u))}>Master</button>
@@ -2702,7 +2719,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  );})}
                 </tbody>
               </table>
             </div>
@@ -2804,6 +2821,34 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                     </tr>
                   );
                 })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div className="table-card admin-compact-card" style={{marginBottom:12}}>
+        <div className="table-title">
+          <span>Free Users — Usage Monitor ({freeUsersFiltered.length})</span>
+          {freeNearCap.length>0&&<Badge label={`${freeNearCap.length} near cap`} color="amber"/>}
+          {freeCappedUsers.length>0&&<Badge label={`${freeCappedUsers.length} capped`} color="red"/>}
+        </div>
+        <div className="admin-table-wrap">
+          <div className="admin-table-scroll">
+            <table className="tbl">
+              <thead><tr><th>Seller</th><th>Orders this cycle</th><th>Status</th><th>Resets in</th><th></th></tr></thead>
+              <tbody>
+                {freeUsersFiltered.length===0&&<tr><td colSpan={5} style={{textAlign:"center",padding:24,color:"#888"}}>No free users yet.</td></tr>}
+                {freeUsersFiltered.length>0&&freeMonitorUsers.length===0&&<tr><td colSpan={5} style={{textAlign:"center",padding:24,color:"#888"}}>No free users near the cap. ({freeUsersFiltered.length} free user{freeUsersFiltered.length===1?"":"s"} tracked.)</td></tr>}
+                {freeMonitorUsers.map(f=>(
+                  <tr key={`free-${f.email}`}>
+                    <td><strong>{f.email}</strong><div className="muted" style={{fontSize:11}}>{f.store_name||f.full_name}</div></td>
+                    <td><strong style={{color:f.capped?"#A32D2D":f.near_cap?"#BA7517":"#1D9E75"}}>{f.count}</strong> / {f.cap}</td>
+                    <td><Badge label={f.capped?"Capped":"Near cap"} color={f.capped?"red":"amber"}/></td>
+                    <td>{f.cycle_resets_in_days}d</td>
+                    <td><button className="tbl-btn ed" onClick={()=>approve(f.email,"basic",monthsForUser(users.find(u=>u.email.toLowerCase()===f.email.toLowerCase())||currentUser))}>Promote to Basic</button></td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -3209,7 +3254,9 @@ export default function App(){
   }
 
   // Check trial expiry
-  const accountLocked=!!user&&!isAdminUser(user)&&(user.planStatus==="expired"||dLeft(user.planExpiry,nowTick)===0);
+  // Free users are limited by the order cap, never by a time expiry, so they
+  // are exempt from the expired/days-left lock that paid plans use.
+  const accountLocked=!!user&&!isAdminUser(user)&&user.plan!=="free"&&(user.planStatus==="expired"||dLeft(user.planExpiry,nowTick)===0);
   const showAccountLock=accountLocked&&page!=="subscription"&&page!=="support";
 
   /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
@@ -3394,7 +3441,7 @@ export default function App(){
   }
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(()=>{
-    if(!user||isAdminUser(user)||user.planStatus==="expired")return;
+    if(!user||isAdminUser(user)||user.plan==="free"||user.planStatus==="expired")return;
     if(dLeft(user.planExpiry,nowTick)>0)return;
     saveUser({...user,planStatus:"expired"});
     setPage("subscription");
