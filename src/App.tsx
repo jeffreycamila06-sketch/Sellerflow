@@ -2303,6 +2303,12 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     const notices:SupportMsg[]=[];
     for(const seller of sourceUsers){
       if(seller.role==="admin")continue;
+      // Free tier has no time expiry (cap-limited) — never send expiry notices.
+      if(seller.plan==="free")continue;
+      // No valid expiry → skip. Guards the null plan_expiry → now() drift in
+      // rowToUser that otherwise made the dedup key change every refresh and
+      // spammed a new message every ~10s.
+      if(!seller.planExpiry||Number.isNaN(Date.parse(seller.planExpiry)))continue;
       const days=dLeft(seller.planExpiry);
       const warnDays=seller.plan==="trial"?3:5;
       const noticeType=seller.planStatus==="expired"||days===0?"expired":days===warnDays?"warning":"";
