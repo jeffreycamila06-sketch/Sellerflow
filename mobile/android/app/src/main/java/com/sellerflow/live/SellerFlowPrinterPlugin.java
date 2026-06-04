@@ -20,7 +20,6 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.Charset;
-import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -188,25 +187,22 @@ public class SellerFlowPrinterPlugin extends Plugin {
                 @SuppressLint("MissingPermission")
                 Set<BluetoothDevice> bonded = adapter.getBondedDevices();
                 if (bonded != null) {
+                    // No name-keyword filter: printer model names are wildly
+                    // inconsistent (e.g., AIMO D520BT may advertise as
+                    // "d520bt-z", unbranded clones as "BT-Printer", and some
+                    // Android Bluetooth stacks return the MAC address as the
+                    // name on first read). Showing every paired device lets the
+                    // seller pick reliably regardless of the printer brand.
                     for (BluetoothDevice device : bonded) {
-                        JSObject d = bluetoothDeviceJson(device, true);
-                        if (looksLikeLabelPrinter(d.optString("name", ""))) {
-                            printers.put(d);
-                        }
-                    }
-                    // If no obvious printer-named devices, surface ALL paired
-                    // devices so the seller can still pick one (helpful for
-                    // generic names like "BT-Printer" or unbranded clones).
-                    if (printers.length() == 0) {
-                        for (BluetoothDevice device : bonded) printers.put(bluetoothDeviceJson(device, true));
+                        printers.put(bluetoothDeviceJson(device, true));
                     }
                 }
                 ret.put("ok", true);
                 ret.put("printers", printers);
                 ret.put("savedPrinter", savedBluetoothPrinter());
                 ret.put("message", printers.length() == 0
-                    ? "No paired Bluetooth printer found. Pair the printer in Android Settings first."
-                    : "Found " + printers.length() + " paired Bluetooth printer" + (printers.length() == 1 ? "" : "s"));
+                    ? "No paired Bluetooth devices found. Pair your printer in Android Settings first."
+                    : "Found " + printers.length() + " paired device" + (printers.length() == 1 ? "" : "s") + ". Pick your printer from the list.");
                 Log.i(TAG, "scanBluetoothLabelPrinters success count=" + printers.length());
                 call.resolve(ret);
             } catch (SecurityException e) {
@@ -363,28 +359,6 @@ public class SellerFlowPrinterPlugin extends Plugin {
         d.put("name", name);
         d.put("paired", paired);
         return d;
-    }
-
-    private boolean looksLikeLabelPrinter(String rawName) {
-        String name = rawName == null ? "" : rawName.toLowerCase(Locale.ROOT);
-        return name.contains("aimo")
-            || name.contains("tsc")
-            || name.contains("label")
-            || name.contains("sticker")
-            || name.contains("thermal")
-            || name.contains("printer")
-            || name.contains("xprinter")
-            || name.contains("xp-")
-            || name.contains("gprinter")
-            || name.contains("gp-")
-            || name.contains("rpp")
-            || name.contains("mpt")
-            || name.contains("pos")
-            || name.contains("d520")
-            || name.contains("munbyn")
-            || name.contains("netum")
-            || name.contains("58")
-            || name.contains("80");
     }
 
     private boolean hasBluetoothConnectPermission() {
