@@ -2789,7 +2789,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                         )}
                         <div className="support-actions">
                           <Badge label={m.status==="resolved"?"resolved":m.status} color={m.status==="approved"?"green":m.status==="rejected"?"red":m.status==="resolved"?"gray":"amber"}/>
-                          <button className="tbl-btn ed" onClick={()=>{updateMsg(m.id,"approved");approve(m.email,"pro");}}>Approve</button>
+                          <button className="tbl-btn ed" onClick={()=>updateMsg(m.id,"approved")}>Approve</button>
                           <button className="tbl-btn dl" onClick={()=>updateMsg(m.id,"rejected")}>Reject</button>
                           <button className="tbl-btn ed" onClick={()=>updateMsg(m.id,"resolved")}>Resolve</button>
                           <button className="tbl-btn ed" onClick={()=>copy(m.email,"Email")}>Copy email</button>
@@ -2999,7 +2999,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                           )}
                           <div className="support-actions">
                             <Badge label={m.status==="resolved"?"resolved":m.status} color={m.status==="approved"?"green":m.status==="rejected"?"red":m.status==="resolved"?"gray":"amber"}/>
-                            <button className="tbl-btn ed" onClick={()=>{updateMsg(m.id,"approved");approve(m.email,"pro");}}>Approve</button>
+                            <button className="tbl-btn ed" onClick={()=>updateMsg(m.id,"approved")}>Approve</button>
                             <button className="tbl-btn dl" onClick={()=>updateMsg(m.id,"rejected")}>Reject</button>
                             <button className="tbl-btn ed" onClick={()=>updateMsg(m.id,"resolved")}>Resolve</button>
                             <button className="tbl-btn ed" onClick={()=>copy(m.email,"Email")}>Copy email</button>
