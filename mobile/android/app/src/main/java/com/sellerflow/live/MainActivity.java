@@ -98,6 +98,7 @@ public class MainActivity extends BridgeActivity {
             + "window.SellerFlowPrinter.clearBluetoothLabelPrinter=function(){return cap.clearBluetoothLabelPrinter();};"
             + "window.SellerFlowPrinter.printSticker=function(payload){return cap.printSticker(payload||{});};"
             + "window.SellerFlowPrinter.testStickerPrint=function(args){return cap.testStickerPrint(args||{});};"
+            + "window.SellerFlowPrinter.testBarPrint=function(args){return cap.testBarPrint(args||{});};"
             + "}else{"
             + "window.SellerFlowPrinter.printSlip=function(payload){return window.SellerFlowPrinterAndroid.printSlip(JSON.stringify(payload));};"
             + "window.SellerFlowPrinter.status=function(){return window.SellerFlowPrinterAndroid.status();};"
