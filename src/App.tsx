@@ -1835,6 +1835,46 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
     const result=await btCall<StickerPrintResult>("testStickerPrint",{storeName:user.profile.storeName||"SellerFlowLive"});
     setBtStatusMsg(result?.ok?(result.message||"Text-only test sent"):(result?.message||"Text-only test failed"));
   }
+  // Diagnostic: send a synthetic bitmap directly through the printSticker
+  // path (same TSPL BITMAP command, same SPP write). The frontend renders
+  // the bytes — no html2canvas involved. If the printer outputs the expected
+  // pattern, the BITMAP/SPP/format chain is healthy and the bug is in the
+  // html2canvas-derived bitmap (likely too-sparse text on thermal paper).
+  // If it stays blank, the BITMAP command itself is the problem on this
+  // printer and we have to swap to a different TSPL graphic primitive.
+  async function sendDiagnosticBitmap(label:string,fill:(x:number,y:number)=>boolean){
+    if(!bridgeHasBt){setBtStatusMsg(`Open SellerFlow mobile app to run the ${label} test.`);return;}
+    const widthDots=800,heightDots=480;
+    const bytesPerRow=Math.ceil(widthDots/8);
+    const bytes=new Uint8Array(bytesPerRow*heightDots);
+    let blackPixels=0;
+    for(let y=0;y<heightDots;y++){
+      for(let xByte=0;xByte<bytesPerRow;xByte++){
+        let b=0;
+        for(let bit=0;bit<8;bit++){
+          const x=xByte*8+bit;
+          if(x>=widthDots)continue;
+          // TSPL polarity: bit=0 prints BLACK, bit=1 leaves white.
+          if(fill(x,y)){blackPixels++;}else{b|=1<<(7-bit);}
+        }
+        bytes[y*bytesPerRow+xByte]=b;
+      }
+    }
+    let binary="";
+    for(let i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);
+    const totalPixels=widthDots*heightDots;
+    const pctBlack=Number(((blackPixels/totalPixels)*100).toFixed(2));
+    setBtStatusMsg(`Sending ${label}: ${blackPixels}/${totalPixels} black (${pctBlack}%)...`);
+    const payload:StickerPrintPayload={bitmapBase64:btoa(binary),widthDots,heightDots,blackPixels,pctBlack,rawW:widthDots,rawH:heightDots,iframeW:widthDots,iframeH:heightDots};
+    const result=await btCall<StickerPrintResult>("printSticker",payload);
+    const printMsg=result?.ok?(result.message||`${label} sent`):(result?.message||`${label} failed`);
+    setBtStatusMsg(`${printMsg} | ${label}: ${blackPixels}/${totalPixels} black (${pctBlack}%)`);
+  }
+  async function testBtSolidBlack(){await sendDiagnosticBitmap("SOLID BLACK",()=>true);}
+  async function testBtCheckerboard(){
+    // 16-dot squares so the eye can confirm the pattern landed correctly.
+    await sendDiagnosticBitmap("CHECKERBOARD",(x,y)=>((Math.floor(x/16)+Math.floor(y/16))%2)===0);
+  }
   useEffect(()=>{
     if(!bridgeHasBt)return;
     void btCall<BluetoothScanResult>("getBluetoothLabelPrinter").then(r=>{if(r?.savedPrinter)setBtSavedPrinter(r.savedPrinter);});
@@ -2366,6 +2406,26 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
                   style={{borderColor:"#7F77DD"}}
                 >
                   📝 Test TEXT-only (no bitmap)
+                </button>
+              )}
+              {btSavedPrinter&&(
+                <button
+                  type="button"
+                  className="btn-out bt-printer-test-btn"
+                  onClick={testBtSolidBlack}
+                  style={{borderColor:"#000",background:"#222",color:"#fff"}}
+                >
+                  ⬛ Test SOLID BLACK bitmap (diagnostic)
+                </button>
+              )}
+              {btSavedPrinter&&(
+                <button
+                  type="button"
+                  className="btn-out bt-printer-test-btn"
+                  onClick={testBtCheckerboard}
+                  style={{borderColor:"#888"}}
+                >
+                  ▦ Test CHECKERBOARD bitmap (diagnostic)
                 </button>
               )}
               {btSavedPrinter&&(
