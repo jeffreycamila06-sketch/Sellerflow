@@ -462,7 +462,12 @@ async function renderSlipStickerBitmap(buyer:Buyer,cur:string,storeName:string,c
           const i=(y*widthDots+x)*4;
           const a=imageData[i+3];
           const lum=a<128?255:0.299*imageData[i]+0.587*imageData[i+1]+0.114*imageData[i+2];
-          if(lum<128)b|=1<<(7-bit); // TSPL: bit=1 means BLACK (printed)
+          // TSPL BITMAP polarity is INVERTED relative to most other formats:
+          // per the TSC TSPL2 spec, bit=0 means PRINT BLACK and bit=1 means
+          // DO NOT PRINT (transparent/white). Earlier versions packed dark
+          // pixels as bit=1, which made the AIMO print mostly blank labels —
+          // bytes were transferred but the printer skipped them all.
+          if(lum>=128)b|=1<<(7-bit);
         }
         bytes[y*bytesPerRow+xByte]=b;
       }
@@ -1796,6 +1801,16 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
     const result=await btCall<StickerPrintResult>("printSticker",payload);
     setBtStatusMsg(result?.ok?(result.message||"Test sticker printed"):(result?.message||"Test sticker failed"));
   }
+  // Pure TSPL TEXT test page (no bitmap). Isolates bitmap-encoding bugs from
+  // command/connection issues: if THIS prints but the bitmap test doesn't,
+  // the problem is in the bitmap rendering/packing. If neither prints, the
+  // problem is at the TSPL command or BT connection layer.
+  async function testBtTextOnly(){
+    if(!bridgeHasBt){setBtStatusMsg("Open SellerFlow mobile app to run the text-only test.");return;}
+    setBtStatusMsg("Sending TSPL text-only test...");
+    const result=await btCall<StickerPrintResult>("testStickerPrint",{storeName:user.profile.storeName||"SellerFlowLive"});
+    setBtStatusMsg(result?.ok?(result.message||"Text-only test sent"):(result?.message||"Text-only test failed"));
+  }
   useEffect(()=>{
     if(!bridgeHasBt)return;
     void btCall<BluetoothScanResult>("getBluetoothLabelPrinter").then(r=>{if(r?.savedPrinter)setBtSavedPrinter(r.savedPrinter);});
@@ -2319,6 +2334,16 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
               >
                 🔍 {btScanning?(t.printer_bt_scanning||"Scanning…"):(t.printer_bt_scan||"Scan paired Bluetooth printers")}
               </button>
+              {btSavedPrinter&&(
+                <button
+                  type="button"
+                  className="btn-out bt-printer-test-btn"
+                  onClick={testBtTextOnly}
+                  style={{borderColor:"#7F77DD"}}
+                >
+                  📝 Test TEXT-only (no bitmap)
+                </button>
+              )}
               {btSavedPrinter&&(
                 <button
                   type="button"
