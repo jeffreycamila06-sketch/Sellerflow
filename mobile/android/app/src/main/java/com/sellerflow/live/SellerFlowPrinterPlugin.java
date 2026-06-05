@@ -302,51 +302,6 @@ public class SellerFlowPrinterPlugin extends Plugin {
         });
     }
 
-    @PluginMethod
-    public void printSticker(PluginCall call) {
-        String bitmapBase64 = call.getString("bitmapBase64", "");
-        int widthDots = call.getInt("widthDots", 800);
-        int heightDots = call.getInt("heightDots", 480);
-        String address = prefs().getString(PREF_BT_ADDR, "");
-        Log.i(TAG, "printSticker start widthDots=" + widthDots + " heightDots=" + heightDots + " address=" + address);
-
-        if (address == null || address.isEmpty()) {
-            call.reject("No Bluetooth printer saved. Tap Scan in Settings and pick a printer first.", "BT_NOT_SET");
-            return;
-        }
-        if (bitmapBase64 == null || bitmapBase64.isEmpty()) {
-            call.reject("bitmapBase64 payload is required", "BITMAP_REQUIRED");
-            return;
-        }
-        if (!hasBluetoothConnectPermission()) {
-            requestBluetoothPermissions();
-            call.reject("Bluetooth permission needed. Allow it then tap Print again.", "BT_PERMISSION");
-            return;
-        }
-
-        executor.execute(() -> {
-            try {
-                byte[] tspl = TsplBuilder.forSticker(bitmapBase64, widthDots, heightDots, LABEL_WIDTH_MM, LABEL_HEIGHT_MM);
-                sendViaBluetoothSpp(address, tspl);
-                JSObject ret = new JSObject();
-                ret.put("ok", true);
-                ret.put("bytes", tspl.length);
-                ret.put("savedPrinter", savedBluetoothPrinter());
-                ret.put("message", "Printed sticker via Bluetooth (" + tspl.length + " bytes)");
-                Log.i(TAG, "printSticker success bytes=" + tspl.length);
-                call.resolve(ret);
-            } catch (IllegalArgumentException e) {
-                Log.e(TAG, "printSticker bitmap rejected", e);
-                call.reject(e.getMessage(), "BITMAP_INVALID", e);
-            } catch (SecurityException e) {
-                Log.e(TAG, "printSticker permission denied", e);
-                call.reject("Bluetooth permission denied: " + e.getMessage(), "BT_PERMISSION", e);
-            } catch (Exception e) {
-                Log.e(TAG, "printSticker failed", e);
-                call.reject("Bluetooth print failed: " + e.getMessage(), "BT_PRINT_FAILED", e);
-            }
-        });
-    }
 
     @PluginMethod
     public void testStickerPrint(PluginCall call) {
@@ -378,44 +333,6 @@ public class SellerFlowPrinterPlugin extends Plugin {
         });
     }
 
-    /**
-     * Diagnostic: BAR-only test page (no BITMAP command). If TEXT prints but
-     * BITMAP prints blank on this printer, this isolates whether BAR works
-     * — if so, the next iteration pivots to decomposing bitmaps into BAR
-     * rectangles instead of using the BITMAP command. Reuses every other
-     * plumbing path (printer selection, permission check, executor,
-     * sendViaBluetoothSpp) — only the TSPL byte stream is different.
-     */
-    @PluginMethod
-    public void testBarPrint(PluginCall call) {
-        String address = prefs().getString(PREF_BT_ADDR, "");
-        Log.i(TAG, "testBarPrint start address=" + address);
-        if (address == null || address.isEmpty()) {
-            call.reject("No Bluetooth printer saved. Tap Scan in Settings and pick a printer first.", "BT_NOT_SET");
-            return;
-        }
-        if (!hasBluetoothConnectPermission()) {
-            requestBluetoothPermissions();
-            call.reject("Bluetooth permission needed. Allow it then tap Test again.", "BT_PERMISSION");
-            return;
-        }
-        String storeName = call.getString("storeName", "SellerFlowLive");
-        executor.execute(() -> {
-            try {
-                byte[] tspl = TsplBuilder.barTestPage(storeName, LABEL_WIDTH_MM, LABEL_HEIGHT_MM);
-                sendViaBluetoothSpp(address, tspl);
-                JSObject ret = new JSObject();
-                ret.put("ok", true);
-                ret.put("bytes", tspl.length);
-                ret.put("message", "BAR test sent (" + tspl.length + " bytes)");
-                Log.i(TAG, "testBarPrint success bytes=" + tspl.length);
-                call.resolve(ret);
-            } catch (Exception e) {
-                Log.e(TAG, "testBarPrint failed", e);
-                call.reject("BAR test failed: " + e.getMessage(), "BT_PRINT_FAILED", e);
-            }
-        });
-    }
 
     // ── Bluetooth helpers ───────────────────────────────────────────────────
 

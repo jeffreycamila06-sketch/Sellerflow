@@ -47,7 +47,6 @@ type PrinterBridgeReturn = void|string|MobilePrinterResult;
 // TSPL BITMAP command stream.
 interface BluetoothPrinterDevice { id:string; address:string; name:string; paired?:boolean; signal?:number; }
 interface BluetoothScanResult { ok?:boolean; message?:string; printers?:BluetoothPrinterDevice[]; savedPrinter?:BluetoothPrinterDevice|null; }
-interface StickerPrintPayload { bitmapBase64:string; widthDots:number; heightDots:number; /* optional client-side diagnostics — native side ignores extra fields */ blackPixels?:number; pctBlack?:number; rawW?:number; rawH?:number; iframeW?:number; iframeH?:number; }
 // Native TEXT+BAR sticker payload — the AIMO D520BT firmware ignores TSPL
 // BITMAP commands, so the native plugin builds the layout from structured
 // slip data using TEXT and BAR primitives only. Mirrors the existing slip
@@ -66,7 +65,7 @@ const tpl=(text:string,vars:Record<string,string|number>)=>String(text||"").repl
 
 declare global {
   interface Window {
-    SellerFlowPrinter?: { printSlip?: (payload:NativePrinterPayload)=>PrinterBridgeReturn|Promise<PrinterBridgeReturn>; setPrinter?: (config:PrinterLanConfig)=>Promise<MobilePrinterResult>; getPrinter?: ()=>Promise<MobilePrinterResult>; testConnection?: (config:PrinterLanConfig)=>Promise<MobilePrinterResult>; status?: ()=>string|Promise<string>; printerStatus?: ()=>string|Promise<string|MobilePrinterResult>; scanPrinters?: ()=>string|Promise<string|MobilePrinterResult>; connectPrinter?: (printer:MobilePrinterDevice|string)=>string|Promise<string|MobilePrinterResult>; testPrint?: ()=>string|Promise<string|MobilePrinterResult>; scanBluetoothLabelPrinters?: ()=>Promise<BluetoothScanResult>; getBluetoothLabelPrinter?: ()=>Promise<BluetoothScanResult>; setBluetoothLabelPrinter?: (printer:{address:string;name:string})=>Promise<BluetoothScanResult>; clearBluetoothLabelPrinter?: ()=>Promise<BluetoothScanResult>; printSticker?: (payload:StickerPrintPayload)=>Promise<StickerPrintResult>; testStickerPrint?: ()=>Promise<StickerPrintResult>; testBarPrint?: (args?:{storeName?:string})=>Promise<StickerPrintResult>; printStickerNative?: (payload:NativeStickerPayload)=>Promise<StickerPrintResult>; };
+    SellerFlowPrinter?: { printSlip?: (payload:NativePrinterPayload)=>PrinterBridgeReturn|Promise<PrinterBridgeReturn>; setPrinter?: (config:PrinterLanConfig)=>Promise<MobilePrinterResult>; getPrinter?: ()=>Promise<MobilePrinterResult>; testConnection?: (config:PrinterLanConfig)=>Promise<MobilePrinterResult>; status?: ()=>string|Promise<string>; printerStatus?: ()=>string|Promise<string|MobilePrinterResult>; scanPrinters?: ()=>string|Promise<string|MobilePrinterResult>; connectPrinter?: (printer:MobilePrinterDevice|string)=>string|Promise<string|MobilePrinterResult>; testPrint?: ()=>string|Promise<string|MobilePrinterResult>; scanBluetoothLabelPrinters?: ()=>Promise<BluetoothScanResult>; getBluetoothLabelPrinter?: ()=>Promise<BluetoothScanResult>; setBluetoothLabelPrinter?: (printer:{address:string;name:string})=>Promise<BluetoothScanResult>; clearBluetoothLabelPrinter?: ()=>Promise<BluetoothScanResult>; testStickerPrint?: ()=>Promise<StickerPrintResult>; printStickerNative?: (payload:NativeStickerPayload)=>Promise<StickerPrintResult>; };
     ReactNativeWebView?: { postMessage:(message:string)=>void };
     Capacitor?: { Plugins?: { SellerFlowPrinter?: { printSlip:(payload:NativePrinterPayload)=>Promise<PrinterBridgeReturn>; setPrinter?:(config:PrinterLanConfig)=>Promise<MobilePrinterResult>; getPrinter?:()=>Promise<MobilePrinterResult>; testConnection?:(config:PrinterLanConfig)=>Promise<MobilePrinterResult> } } };
   }
@@ -376,11 +375,26 @@ function sendSlipToNativePrinter(payload:NativePrinterPayload){
 // consumes. Mirrors the existing slip shape so this is a flat pass-through.
 function buildNativeStickerPayload(buyer:Buyer,cur:string,storeName:string,cfg:Settings):NativeStickerPayload{
   const sessionDate=new Date().toLocaleDateString("en-PH",{month:"long",day:"numeric",year:"numeric"});
+  // Re-derive each order's time from its orderNum (epoch ms set at order
+  // creation) in the device's LOCAL timezone, formatted "HH:MM" (24h, no
+  // seconds). The server-emitted order.time is UTC because Render runs in
+  // UTC, which printed as 6:02 instead of the seller's Taiwan 14:02; and
+  // "HH:MM:SS PM" used to overflow the time column into the item column.
+  // Both issues go away by reformatting here. orderNum is checked > 1e12
+  // (~year 2001) to skip values that are sequence numbers rather than
+  // real epochs — those fall back to the original string.
+  const localizedOrders=buyer.orders.map(o=>{
+    const ts=typeof o.orderNum==="number"?o.orderNum:0;
+    const time=ts>1e12
+      ?new Date(ts).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})
+      :o.time;
+    return {...o,time};
+  });
   return {
     storeName,
     sessionDate,
     currency:cur,
-    buyer,
+    buyer:{...buyer,orders:localizedOrders},
     settings:{
       printStoreName:cfg.printStoreName,
       printBuyerNumber:cfg.printBuyerNumber,
@@ -1667,7 +1681,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   const [btStatusMsg,setBtStatusMsg]=useState<string>("");
   const isBtMode=sets.printerType==="bluetooth";
   const bridgeHasBt=typeof window!=="undefined"&&!!window.SellerFlowPrinter?.scanBluetoothLabelPrinters;
-  async function btCall<T>(action:"scanBluetoothLabelPrinters"|"getBluetoothLabelPrinter"|"setBluetoothLabelPrinter"|"clearBluetoothLabelPrinter"|"testStickerPrint"|"testBarPrint"|"printSticker"|"printStickerNative",arg?:unknown):Promise<T|null>{
+  async function btCall<T>(action:"scanBluetoothLabelPrinters"|"getBluetoothLabelPrinter"|"setBluetoothLabelPrinter"|"clearBluetoothLabelPrinter"|"testStickerPrint"|"printStickerNative",arg?:unknown):Promise<T|null>{
     if(typeof window==="undefined")return null;
     const bridge=window.SellerFlowPrinter;
     const fn=bridge?.[action] as ((a?:unknown)=>Promise<T>)|undefined;
@@ -1717,56 +1731,6 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
     setBtStatusMsg("Sending TSPL text-only test...");
     const result=await btCall<StickerPrintResult>("testStickerPrint",{storeName:user.profile.storeName||"SellerFlowLive"});
     setBtStatusMsg(result?.ok?(result.message||"Text-only test sent"):(result?.message||"Text-only test failed"));
-  }
-  // Diagnostic: send a synthetic bitmap directly through the printSticker
-  // path (same TSPL BITMAP command, same SPP write). The frontend renders
-  // the bytes — no html2canvas involved. If the printer outputs the expected
-  // pattern, the BITMAP/SPP/format chain is healthy and the bug is in the
-  // html2canvas-derived bitmap (likely too-sparse text on thermal paper).
-  // If it stays blank, the BITMAP command itself is the problem on this
-  // printer and we have to swap to a different TSPL graphic primitive.
-  async function sendDiagnosticBitmap(label:string,fill:(x:number,y:number)=>boolean){
-    if(!bridgeHasBt){setBtStatusMsg(`Open SellerFlow mobile app to run the ${label} test.`);return;}
-    const widthDots=800,heightDots=480;
-    const bytesPerRow=Math.ceil(widthDots/8);
-    const bytes=new Uint8Array(bytesPerRow*heightDots);
-    let blackPixels=0;
-    for(let y=0;y<heightDots;y++){
-      for(let xByte=0;xByte<bytesPerRow;xByte++){
-        let b=0;
-        for(let bit=0;bit<8;bit++){
-          const x=xByte*8+bit;
-          if(x>=widthDots)continue;
-          // TSPL polarity: bit=0 prints BLACK, bit=1 leaves white.
-          if(fill(x,y)){blackPixels++;}else{b|=1<<(7-bit);}
-        }
-        bytes[y*bytesPerRow+xByte]=b;
-      }
-    }
-    let binary="";
-    for(let i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);
-    const totalPixels=widthDots*heightDots;
-    const pctBlack=Number(((blackPixels/totalPixels)*100).toFixed(2));
-    setBtStatusMsg(`Sending ${label}: ${blackPixels}/${totalPixels} black (${pctBlack}%)...`);
-    const payload:StickerPrintPayload={bitmapBase64:btoa(binary),widthDots,heightDots,blackPixels,pctBlack,rawW:widthDots,rawH:heightDots,iframeW:widthDots,iframeH:heightDots};
-    const result=await btCall<StickerPrintResult>("printSticker",payload);
-    const printMsg=result?.ok?(result.message||`${label} sent`):(result?.message||`${label} failed`);
-    setBtStatusMsg(`${printMsg} | ${label}: ${blackPixels}/${totalPixels} black (${pctBlack}%)`);
-  }
-  async function testBtSolidBlack(){await sendDiagnosticBitmap("SOLID BLACK",()=>true);}
-  async function testBtCheckerboard(){
-    // 16-dot squares so the eye can confirm the pattern landed correctly.
-    await sendDiagnosticBitmap("CHECKERBOARD",(x,y)=>((Math.floor(x/16)+Math.floor(y/16))%2)===0);
-  }
-  // BAR primitive test — uses no BITMAP command, just BAR rectangles. If
-  // TEXT works and BAR works but BITMAP fails, we know the AIMO firmware
-  // doesn't implement BITMAP and the next iteration must decompose images
-  // into BAR rectangles per black region.
-  async function testBtBar(){
-    if(!bridgeHasBt){setBtStatusMsg("Open SellerFlow mobile app to run the BAR test.");return;}
-    setBtStatusMsg("Sending TSPL BAR test (no bitmap)...");
-    const result=await btCall<StickerPrintResult>("testBarPrint",{storeName:user.profile.storeName||"SellerFlowLive"});
-    setBtStatusMsg(result?.ok?(result.message||"BAR test sent"):(result?.message||"BAR test failed"));
   }
   useEffect(()=>{
     if(!bridgeHasBt)return;
@@ -2223,50 +2187,6 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
         {/* ── BLUETOOTH STICKER PRINTER (additive — Settings UI for AIMO-class TSPL printers) ── */}
         {isBtMode&&(
           <div className="scard settings-section settings-section-bt-printer">
-            {/* ── DEBUG STRIP (temporary, remove once BT scan works) ────────
-               Shows the live state driving this section so we can see, from
-               the phone screen alone, whether printerType is set, whether
-               the native bridge is detected, and whether the scan handler
-               sees any devices. WiFi/LAN path is untouched.            */}
-            <div style={{background:"#FFEFD5",border:"2px dashed #BA7517",borderRadius:8,padding:"8px 10px",fontSize:11,lineHeight:1.5,color:"#633806",marginBottom:10,fontFamily:"monospace"}}>
-              <strong>BT DEBUG</strong><br/>
-              printerType: {sets.printerType}<br/>
-              isBtMode: {String(isBtMode)}<br/>
-              bridgeHasBt: {String(bridgeHasBt)}<br/>
-              window.SellerFlowPrinter: {typeof window!=="undefined"&&window.SellerFlowPrinter?"present":"missing"}<br/>
-              scan method: {typeof window!=="undefined"&&typeof window.SellerFlowPrinter?.scanBluetoothLabelPrinters==="function"?"function":"missing"}<br/>
-              btSavedPrinter: {btSavedPrinter?(btSavedPrinter.name+" / "+btSavedPrinter.address):"none"}<br/>
-              btPrinters.length: {btPrinters.length}<br/>
-              btScanning: {String(btScanning)}<br/>
-              btStatusMsg: {btStatusMsg||"(empty)"}
-            </div>
-            {/* ── HUGE FALLBACK SCAN BUTTON — independent of all styles below,
-               uses inline styles so no CSS rule can hide it. If THIS button
-               doesn't show when isBtMode is true, the BT section itself
-               isn't rendering at all. Tap it to start the scan.          */}
-            <button
-              type="button"
-              onClick={scanBtPrinters}
-              disabled={btScanning}
-              style={{
-                display:"block",
-                width:"100%",
-                minHeight:60,
-                padding:"16px 18px",
-                marginBottom:12,
-                background:"#7F1FFF",
-                color:"#fff",
-                fontSize:16,
-                fontWeight:800,
-                border:"3px solid #FFD500",
-                borderRadius:14,
-                cursor:"pointer",
-                textAlign:"center",
-                boxShadow:"0 6px 18px rgba(127,31,255,.35)"
-              }}
-            >
-              🔍 {btScanning?"SCANNING…":"TAP HERE: Scan paired Bluetooth printers"}
-            </button>
             <div className="scard-title">{t.printer_bt_card_title}</div>
             <div className="bt-printer-rec">{t.printer_mode_bt_rec}</div>
             <div className="bt-printer-pair-hint">{t.printer_bt_pair_hint}</div>
@@ -2299,36 +2219,6 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
                   style={{borderColor:"#7F77DD"}}
                 >
                   📝 Test TEXT-only (no bitmap)
-                </button>
-              )}
-              {btSavedPrinter&&(
-                <button
-                  type="button"
-                  className="btn-out bt-printer-test-btn"
-                  onClick={testBtBar}
-                  style={{borderColor:"#1D9E75",background:"#E1F5EE",color:"#0F6E56"}}
-                >
-                  ▭ Test BAR rectangle (no BITMAP cmd)
-                </button>
-              )}
-              {btSavedPrinter&&(
-                <button
-                  type="button"
-                  className="btn-out bt-printer-test-btn"
-                  onClick={testBtSolidBlack}
-                  style={{borderColor:"#000",background:"#222",color:"#fff"}}
-                >
-                  ⬛ Test SOLID BLACK bitmap (diagnostic)
-                </button>
-              )}
-              {btSavedPrinter&&(
-                <button
-                  type="button"
-                  className="btn-out bt-printer-test-btn"
-                  onClick={testBtCheckerboard}
-                  style={{borderColor:"#888"}}
-                >
-                  ▦ Test CHECKERBOARD bitmap (diagnostic)
                 </button>
               )}
               {btSavedPrinter&&(
