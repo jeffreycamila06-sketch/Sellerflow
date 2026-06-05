@@ -48,6 +48,11 @@ type PrinterBridgeReturn = void|string|MobilePrinterResult;
 interface BluetoothPrinterDevice { id:string; address:string; name:string; paired?:boolean; signal?:number; }
 interface BluetoothScanResult { ok?:boolean; message?:string; printers?:BluetoothPrinterDevice[]; savedPrinter?:BluetoothPrinterDevice|null; }
 interface StickerPrintPayload { bitmapBase64:string; widthDots:number; heightDots:number; /* optional client-side diagnostics — native side ignores extra fields */ blackPixels?:number; pctBlack?:number; rawW?:number; rawH?:number; iframeW?:number; iframeH?:number; }
+// Native TEXT+BAR sticker payload — the AIMO D520BT firmware ignores TSPL
+// BITMAP commands, so the native plugin builds the layout from structured
+// slip data using TEXT and BAR primitives only. Mirrors the existing slip
+// shape so we can pass straight through from printSlip.
+interface NativeStickerPayload { storeName:string; sessionDate:string; currency:string; buyer:Buyer; settings:Pick<Settings,"printStoreName"|"printBuyerNumber"|"printBuyerUsername"|"printOrderItems"|"printTotal">; }
 interface StickerPrintResult { ok?:boolean; message?:string; }
 type NumberSettingKey = {[K in keyof Settings]: Settings[K] extends number ? K : never}[keyof Settings];
 interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; proofImage?:string; timestamp:string; status:"pending"|"approved"|"rejected"|"resolved"; adminReply?:string; repliedAt?:string; }
@@ -61,7 +66,7 @@ const tpl=(text:string,vars:Record<string,string|number>)=>String(text||"").repl
 
 declare global {
   interface Window {
-    SellerFlowPrinter?: { printSlip?: (payload:NativePrinterPayload)=>PrinterBridgeReturn|Promise<PrinterBridgeReturn>; setPrinter?: (config:PrinterLanConfig)=>Promise<MobilePrinterResult>; getPrinter?: ()=>Promise<MobilePrinterResult>; testConnection?: (config:PrinterLanConfig)=>Promise<MobilePrinterResult>; status?: ()=>string|Promise<string>; printerStatus?: ()=>string|Promise<string|MobilePrinterResult>; scanPrinters?: ()=>string|Promise<string|MobilePrinterResult>; connectPrinter?: (printer:MobilePrinterDevice|string)=>string|Promise<string|MobilePrinterResult>; testPrint?: ()=>string|Promise<string|MobilePrinterResult>; scanBluetoothLabelPrinters?: ()=>Promise<BluetoothScanResult>; getBluetoothLabelPrinter?: ()=>Promise<BluetoothScanResult>; setBluetoothLabelPrinter?: (printer:{address:string;name:string})=>Promise<BluetoothScanResult>; clearBluetoothLabelPrinter?: ()=>Promise<BluetoothScanResult>; printSticker?: (payload:StickerPrintPayload)=>Promise<StickerPrintResult>; testStickerPrint?: ()=>Promise<StickerPrintResult>; testBarPrint?: (args?:{storeName?:string})=>Promise<StickerPrintResult>; };
+    SellerFlowPrinter?: { printSlip?: (payload:NativePrinterPayload)=>PrinterBridgeReturn|Promise<PrinterBridgeReturn>; setPrinter?: (config:PrinterLanConfig)=>Promise<MobilePrinterResult>; getPrinter?: ()=>Promise<MobilePrinterResult>; testConnection?: (config:PrinterLanConfig)=>Promise<MobilePrinterResult>; status?: ()=>string|Promise<string>; printerStatus?: ()=>string|Promise<string|MobilePrinterResult>; scanPrinters?: ()=>string|Promise<string|MobilePrinterResult>; connectPrinter?: (printer:MobilePrinterDevice|string)=>string|Promise<string|MobilePrinterResult>; testPrint?: ()=>string|Promise<string|MobilePrinterResult>; scanBluetoothLabelPrinters?: ()=>Promise<BluetoothScanResult>; getBluetoothLabelPrinter?: ()=>Promise<BluetoothScanResult>; setBluetoothLabelPrinter?: (printer:{address:string;name:string})=>Promise<BluetoothScanResult>; clearBluetoothLabelPrinter?: ()=>Promise<BluetoothScanResult>; printSticker?: (payload:StickerPrintPayload)=>Promise<StickerPrintResult>; testStickerPrint?: ()=>Promise<StickerPrintResult>; testBarPrint?: (args?:{storeName?:string})=>Promise<StickerPrintResult>; printStickerNative?: (payload:NativeStickerPayload)=>Promise<StickerPrintResult>; };
     ReactNativeWebView?: { postMessage:(message:string)=>void };
     Capacitor?: { Plugins?: { SellerFlowPrinter?: { printSlip:(payload:NativePrinterPayload)=>Promise<PrinterBridgeReturn>; setPrinter?:(config:PrinterLanConfig)=>Promise<MobilePrinterResult>; getPrinter?:()=>Promise<MobilePrinterResult>; testConnection?:(config:PrinterLanConfig)=>Promise<MobilePrinterResult> } } };
   }
@@ -366,154 +371,38 @@ function sendSlipToNativePrinter(payload:NativePrinterPayload){
   return false;
 }
 
-// ───────────────────────────────────────────────────────────────────────────
-// Bluetooth sticker (TSPL/AIMO) — additive printing path. Off by default.
-// Triggers ONLY when settings.printerType === "bluetooth" AND the native
-// bridge (window.SellerFlowPrinter.printSticker) is present. Otherwise the
-// existing WiFi/LAN path runs unchanged.
-//
-// Pipeline:
-//   1. Build the SAME slip HTML the WiFi/LAN print uses (buildSlipPageHTML).
-//   2. Render that HTML to a canvas at 100×60mm @ 203 DPI = 800×480 dots
-//      using html2canvas in an off-screen iframe.
-//   3. Convert to 1-bit monochrome and pack into TSPL BITMAP byte rows.
-//   4. Base64-encode and hand off to the native bridge; the Android plugin
-//      (separate phase) wraps it in TSPL SIZE/GAP/BITMAP/PRINT and sends
-//      over Classic Bluetooth SPP to the saved AIMO-class printer.
-// Returns false on any failure → printSlip falls back to existing flow.
-// ───────────────────────────────────────────────────────────────────────────
-function buildSlipPageHTML(buyer:Buyer,cur:string,storeName:string,cfg:Settings):string{
-  const size=cfg.stickerSize;
-  const scale=(v:number|undefined,fallback=100)=>Math.max(60,Math.min(180,v||fallback))/100;
-  const storeScale=scale(cfg.printStoreScale,cfg.printLabelScale);
-  const buyerNumberScale=scale(cfg.printBuyerNumberScale,120);
-  const buyerNameScale=scale(cfg.printBuyerNameScale,cfg.printLabelScale);
-  const usernameScale=scale(cfg.printUsernameScale,cfg.printLabelScale);
-  const orderScale=scale(cfg.printOrderScale,cfg.printLabelScale);
-  const commentScale=scale(cfg.printCommentScale,cfg.printLabelScale);
-  const totalScale=scale(cfg.printTotalScale,cfg.printLabelScale);
-  const pos=(v:number|undefined)=>Math.max(-40,Math.min(40,v||0));
-  const sess=new Date().toLocaleDateString("en-PH",{month:"long",day:"numeric",year:"numeric"});
-  const color=nc(buyer.num);
-  const [w]=size.split("x").map(Number);
-  const safeSess=esc(sess);
-  const safeStoreName=esc(storeName);
-  const safeBuyerNum=esc(buyer.num);
-  const safeBuyerName=esc(buyer.name);
-  const safeBuyerHandle=esc(buyer.handle);
-  const safeCurrency=esc(cur);
-  const safeTotal=buyer.totalSpent>0?`${safeCurrency}${esc(buyer.totalSpent.toLocaleString())}`:"";
-  const commentOnlyHtml=buyer.orders.map(o=>`<div class="order-entry"><div class="order-time">${esc(o.time)}</div><div class="order-comment">${esc(o.item)}</div></div>`).join("");
-  return `<!DOCTYPE html><html><head><title>Slip #${safeBuyerNum}</title><style>@page{size:${size.replace("x","mm ")}mm;margin:3mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;width:${w}mm;color:#000}.head{display:flex;align-items:flex-start;justify-content:space-between;gap:3mm;margin-bottom:2.5mm}.brand{font-size:${14*storeScale}px;font-weight:800;transform:translate(${pos(cfg.printStoreX)}mm,${pos(cfg.printStoreY)}mm)}.brand span{color:#7F77DD}.session{font-size:${12*totalScale}px;font-weight:800;text-align:right;transform:translate(${pos(cfg.printSessionX)}mm,${pos(cfg.printSessionY)}mm)}.grid{display:grid;grid-template-columns:52% 48%;gap:3mm;align-items:start}.left{display:flex;flex-direction:column;gap:1.5mm;padding-top:1mm}.seller{font-size:${13*storeScale}px;font-weight:800;line-height:1.1;transform:translate(${pos(cfg.printStoreX)}mm,${pos(cfg.printStoreY)}mm)}.line{font-size:${13*buyerNameScale}px;font-weight:800;line-height:1.1}.muted{font-size:${10*usernameScale}px;font-weight:700;color:#333}.buyer-num{font-size:${13*buyerNumberScale}px;color:${color};font-weight:900;transform:translate(${pos(cfg.printBuyerNumberX)}mm,${pos(cfg.printBuyerNumberY)}mm)}.buyer-name{transform:translate(${pos(cfg.printBuyerNameX)}mm,${pos(cfg.printBuyerNameY)}mm)}.username{transform:translate(${pos(cfg.printUsernameX)}mm,${pos(cfg.printUsernameY)}mm)}.order-box{min-height:38mm;padding:0;transform:translate(${pos(cfg.printOrderX)}mm,${pos(cfg.printOrderY)}mm)}.order-title{font-size:${15*orderScale}px;font-weight:900;margin-bottom:2mm}.order-entry{border-left:2px solid #000;padding-left:2mm;margin-bottom:2mm}.order-time{font-size:${9*orderScale}px;color:#111;font-weight:500;line-height:1.1}.order-comment{font-size:${10*commentScale}px;font-weight:800;line-height:1.1;margin-top:.8mm}.total{border-top:1px dashed #777;margin-top:2mm;padding-top:1.5mm;display:flex;justify-content:space-between;gap:2mm;font-size:${11*totalScale}px;font-weight:800;transform:translate(${pos(cfg.printTotalX)}mm,${pos(cfg.printTotalY)}mm)}@media print{body{margin:0}}</style></head><body>
-  <div class="head"><div class="brand">Seller<span>FlowLive</span></div><div class="session">Session: ${safeSess}</div></div>
-  <div class="grid"><div class="left">
-  ${cfg.printStoreName?`<div class="seller">${safeStoreName}</div>`:""}
-  ${cfg.printBuyerNumber?`<div class="line buyer-num">Buyer #${safeBuyerNum}</div>`:""}
-  <div class="line buyer-name">${safeBuyerName}</div>
-  ${cfg.printBuyerUsername?`<div class="muted username">@${safeBuyerHandle}</div>`:""}
-  </div>
-  ${cfg.printOrderItems?`<div class="order-box"><div class="order-title">Order here</div>${commentOnlyHtml}${cfg.printTotal?`<div class="total"><span>Total</span><span>${safeTotal}</span></div>`:""}</div>`:""}
-  </div>
-  </body></html>`;
+
+// Build the native-sticker payload the printStickerNative plugin method
+// consumes. Mirrors the existing slip shape so this is a flat pass-through.
+function buildNativeStickerPayload(buyer:Buyer,cur:string,storeName:string,cfg:Settings):NativeStickerPayload{
+  const sessionDate=new Date().toLocaleDateString("en-PH",{month:"long",day:"numeric",year:"numeric"});
+  return {
+    storeName,
+    sessionDate,
+    currency:cur,
+    buyer,
+    settings:{
+      printStoreName:cfg.printStoreName,
+      printBuyerNumber:cfg.printBuyerNumber,
+      printBuyerUsername:cfg.printBuyerUsername,
+      printOrderItems:cfg.printOrderItems,
+      printTotal:cfg.printTotal,
+    },
+  };
 }
 
-// Render the same slip HTML to an off-screen canvas via html2canvas, then
-// pack into 1-bit-per-pixel TSPL BITMAP rows. Returns the base64 string +
-// final dot dimensions, or null on failure.
-async function renderSlipStickerBitmap(buyer:Buyer,cur:string,storeName:string,cfg:Settings,widthDots=800,heightDots=480):Promise<StickerPrintPayload|null>{
-  if(typeof document==="undefined"||typeof window==="undefined")return null;
-  // Off-screen iframe so the slip CSS doesn't pollute the parent page.
-  // IMPORTANT: do NOT set opacity:0 — some WebViews skip the rendering
-  // pipeline for opacity-0 nodes, so html2canvas reads them back blank.
-  // Hiding off-screen at -99999px is enough; user never sees it.
-  const frame=document.createElement("iframe");
-  const [wmmStr,hmmStr]=cfg.stickerSize.split("x");
-  const widthMm=Number(wmmStr)||100,heightMm=Number(hmmStr)||60;
-  frame.style.cssText=`position:fixed;left:-99999px;top:0;width:${widthMm}mm;height:${heightMm}mm;border:0;background:#fff;pointer-events:none`;
-  document.body.appendChild(frame);
-  try{
-    const doc=frame.contentDocument;
-    if(!doc)return null;
-    doc.open();
-    doc.write(buildSlipPageHTML(buyer,cur,storeName,cfg));
-    doc.close();
-    // Wait for fonts AND give layout enough time to settle. The previous 80ms
-    // was sometimes catching the iframe before the slip CSS / system fonts
-    // had finished applying, leading to html2canvas seeing an unstyled or
-    // empty body — which encodes to all-white and the printer prints blank.
-    try{await document.fonts.ready;}catch{/* fonts API unavailable */}
-    try{const d=doc as Document&{fonts?:FontFaceSet};if(d.fonts)await d.fonts.ready;}catch{}
-    // Force a synchronous reflow on the iframe document so any pending CSS
-    // computations finish before we ask html2canvas to read the box model.
-    void doc.body.offsetHeight;
-    await new Promise(r=>setTimeout(r,300));
-    const mod=await import("html2canvas");
-    const html2canvas=(mod as unknown as {default:(el:HTMLElement,opts?:Record<string,unknown>)=>Promise<HTMLCanvasElement>}).default;
-    const body=doc.body;
-    const naturalW=body.scrollWidth||body.offsetWidth||widthMm*4;
-    const naturalH=body.scrollHeight||body.offsetHeight||heightMm*4;
-    const scaleX=widthDots/naturalW;
-    const raw=await html2canvas(body,{width:naturalW,height:naturalH,scale:scaleX,backgroundColor:"#ffffff",logging:false,useCORS:true,allowTaint:true});
-    // Re-draw onto a target-sized canvas so the bitmap byte layout is exact.
-    const tmp=document.createElement("canvas");
-    tmp.width=widthDots;tmp.height=heightDots;
-    const ctx=tmp.getContext("2d");
-    if(!ctx)return null;
-    ctx.fillStyle="#ffffff";ctx.fillRect(0,0,widthDots,heightDots);
-    ctx.drawImage(raw,0,0,widthDots,Math.min(heightDots,Math.round(raw.height*(widthDots/raw.width))));
-    const imageData=ctx.getImageData(0,0,widthDots,heightDots).data;
-    const bytesPerRow=Math.ceil(widthDots/8);
-    const totalBytes=bytesPerRow*heightDots;
-    const bytes=new Uint8Array(totalBytes);
-    let blackPixels=0;
-    for(let y=0;y<heightDots;y++){
-      for(let xByte=0;xByte<bytesPerRow;xByte++){
-        let b=0;
-        for(let bit=0;bit<8;bit++){
-          const x=xByte*8+bit;
-          if(x>=widthDots)continue;
-          const i=(y*widthDots+x)*4;
-          const a=imageData[i+3];
-          const lum=a<128?255:0.299*imageData[i]+0.587*imageData[i+1]+0.114*imageData[i+2];
-          // TSPL BITMAP polarity is INVERTED relative to most other formats:
-          // per the TSC TSPL2 spec, bit=0 means PRINT BLACK and bit=1 means
-          // DO NOT PRINT (transparent/white).
-          if(lum>=128){b|=1<<(7-bit);}else{blackPixels++;}
-        }
-        bytes[y*bytesPerRow+xByte]=b;
-      }
-    }
-    const totalPixels=widthDots*heightDots;
-    const pctBlack=Number(((blackPixels/totalPixels)*100).toFixed(2));
-    // Surface the encoded bitmap stats so the SettingsPage debug strip can
-    // show, from the phone screen alone, whether html2canvas produced any
-    // ink. If blackPixels stays at 0 across attempts, the issue is upstream
-    // of the bit-packing — most likely html2canvas not seeing the iframe.
-    if(typeof console!=="undefined")console.info("[BT sticker bitmap]",{widthDots,heightDots,bytes:totalBytes,rawW:raw.width,rawH:raw.height,iframeW:naturalW,iframeH:naturalH,blackPixels,pctBlack});
-    let binary="";
-    for(let i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);
-    return {bitmapBase64:btoa(binary),widthDots,heightDots,blackPixels,pctBlack,rawW:raw.width,rawH:raw.height,iframeW:naturalW,iframeH:naturalH};
-  }catch(err){
-    console.warn("renderSlipStickerBitmap failed:",err);
-    return null;
-  }finally{
-    frame.remove();
-  }
-}
-
-// Kicks off the 1-tap Bluetooth sticker print. Async fire-and-forget from
-// printSlip — returns nothing (matching the existing native LAN bridge call
-// pattern). Falls back to existing path if anything goes wrong.
+// 1-click Bluetooth sticker print. AIMO D520BT (and other TSPL clones we've
+// tested) accept TEXT + BAR commands but ignore BITMAP, so we send the
+// printSlip payload to the native TEXT+BAR builder. The older BITMAP path
+// (printSticker) is kept dormant for future printers that DO support it.
 async function printStickerViaBluetooth(buyer:Buyer,cur:string,storeName:string,cfg:Settings):Promise<boolean>{
   const bridge=typeof window!=="undefined"?window.SellerFlowPrinter:undefined;
-  if(!bridge?.printSticker)return false;
-  const payload=await renderSlipStickerBitmap(buyer,cur,storeName,cfg);
-  if(!payload)return false;
+  if(!bridge?.printStickerNative)return false;
   try{
-    const result=await bridge.printSticker(payload);
+    const result=await bridge.printStickerNative(buildNativeStickerPayload(buyer,cur,storeName,cfg));
     return !!result?.ok;
   }catch(err){
-    console.warn("printSticker bridge call failed:",err);
+    console.warn("printStickerNative bridge call failed:",err);
     return false;
   }
 }
@@ -525,7 +414,7 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Setting
   // printSticker method (Android APK with BT plugin). Otherwise we fall
   // straight through to the existing WiFi/LAN + browser-print flow below,
   // byte-identical to before this feature.
-  if(cfg.printerType==="bluetooth"&&typeof window!=="undefined"&&window.SellerFlowPrinter?.printSticker){
+  if(cfg.printerType==="bluetooth"&&typeof window!=="undefined"&&window.SellerFlowPrinter?.printStickerNative){
     void printStickerViaBluetooth(buyer,cur,storeName,cfg).then(ok=>{
       if(!ok)console.warn("[BT sticker] print failed — check Bluetooth printer pairing and selection in Settings.");
     });
@@ -1778,7 +1667,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   const [btStatusMsg,setBtStatusMsg]=useState<string>("");
   const isBtMode=sets.printerType==="bluetooth";
   const bridgeHasBt=typeof window!=="undefined"&&!!window.SellerFlowPrinter?.scanBluetoothLabelPrinters;
-  async function btCall<T>(action:"scanBluetoothLabelPrinters"|"getBluetoothLabelPrinter"|"setBluetoothLabelPrinter"|"clearBluetoothLabelPrinter"|"testStickerPrint"|"testBarPrint"|"printSticker",arg?:unknown):Promise<T|null>{
+  async function btCall<T>(action:"scanBluetoothLabelPrinters"|"getBluetoothLabelPrinter"|"setBluetoothLabelPrinter"|"clearBluetoothLabelPrinter"|"testStickerPrint"|"testBarPrint"|"printSticker"|"printStickerNative",arg?:unknown):Promise<T|null>{
     if(typeof window==="undefined")return null;
     const bridge=window.SellerFlowPrinter;
     const fn=bridge?.[action] as ((a?:unknown)=>Promise<T>)|undefined;
@@ -1812,18 +1701,12 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   }
   async function testBtSticker(){
     if(!bridgeHasBt){setBtStatusMsg("Open SellerFlow mobile app to print a test sticker.");return;}
-    setBtStatusMsg("Rendering sticker bitmap...");
-    const testBuyer:Buyer={handle:"sellerflow",name:"Test Print",platform:"TikTok",num:88,orders:[{orderNum:1,item:"SellerFlowLive sticker test",qty:1,price:0,total:0,time:new Date().toLocaleTimeString(),handle:"sellerflow",name:"Test Print",bNum:88,platform:"TikTok",status:"New",date:new Date().toISOString().slice(0,10)}],totalSpent:0,totalOrders:1};
-    const payload=await renderSlipStickerBitmap(testBuyer,sets.currency,user.profile.storeName||"SellerFlowLive",sets);
-    if(!payload){setBtStatusMsg("Could not render the sticker bitmap.");return;}
-    // Build a one-line diagnostic showing what the bitmap pipeline produced.
-    // If blackPixels=0, the print will be blank no matter what the printer
-    // does — the upstream html2canvas pass returned an all-white image.
-    const dbg=`bitmap: iframe ${payload.iframeW}x${payload.iframeH} -> raw ${payload.rawW}x${payload.rawH} -> ${payload.widthDots}x${payload.heightDots} dots, ${payload.blackPixels}/${(payload.widthDots||0)*(payload.heightDots||0)} black (${payload.pctBlack}%)`;
-    setBtStatusMsg(`Rendered: ${dbg} — sending to printer...`);
-    const result=await btCall<StickerPrintResult>("printSticker",payload);
+    setBtStatusMsg("Sending TEXT+BAR sticker...");
+    const testBuyer:Buyer={handle:"sellerflow",name:"Test Print",platform:"TikTok",num:88,orders:[{orderNum:1,item:"SellerFlowLive sticker test",qty:1,price:350,total:350,time:new Date().toLocaleTimeString(),handle:"sellerflow",name:"Test Print",bNum:88,platform:"TikTok",status:"New",date:new Date().toISOString().slice(0,10)}],totalSpent:350,totalOrders:1};
+    const payload=buildNativeStickerPayload(testBuyer,sets.currency||"NT$",user.profile.storeName||"SellerFlowLive",sets);
+    const result=await btCall<StickerPrintResult>("printStickerNative",payload);
     const printMsg=result?.ok?(result.message||"Test sticker printed"):(result?.message||"Test sticker failed");
-    setBtStatusMsg(`${printMsg} | ${dbg}`);
+    setBtStatusMsg(`${printMsg} | sticker=TEXT+BAR, buyer #${testBuyer.num}, total ${sets.currency||"NT$"}${testBuyer.totalSpent}`);
   }
   // Pure TSPL TEXT test page (no bitmap). Isolates bitmap-encoding bugs from
   // command/connection issues: if THIS prints but the bitmap test doesn't,

@@ -254,6 +254,54 @@ public class SellerFlowPrinterPlugin extends Plugin {
         call.resolve(ret);
     }
 
+    /**
+     * Primary sticker print path for printers (like the AIMO D520BT) that
+     * accept TSPL TEXT + BAR but ignore BITMAP. The frontend hands over
+     * structured slip data (storeName / sessionDate / currency / buyer with
+     * num/name/handle/orders/totalSpent / printer settings flags) and the
+     * native side builds the TSPL command stream via TsplBuilder.forStickerNative
+     * — no bitmap rendering, no html2canvas, no BITMAP command. Same SPP
+     * write path as printSticker so all the connection/permission/retry
+     * plumbing is shared.
+     */
+    @PluginMethod
+    public void printStickerNative(PluginCall call) {
+        String address = prefs().getString(PREF_BT_ADDR, "");
+        Log.i(TAG, "printStickerNative start address=" + address);
+        if (address == null || address.isEmpty()) {
+            call.reject("No Bluetooth printer saved. Tap Scan in Settings and pick a printer first.", "BT_NOT_SET");
+            return;
+        }
+        if (!hasBluetoothConnectPermission()) {
+            requestBluetoothPermissions();
+            call.reject("Bluetooth permission needed. Allow it then tap Print again.", "BT_PERMISSION");
+            return;
+        }
+        final JSObject jsPayload = call.getData();
+        executor.execute(() -> {
+            try {
+                JSONObject payload = jsPayload == null
+                    ? new JSONObject()
+                    : new JSONObject(jsPayload.toString());
+                byte[] tspl = TsplBuilder.forStickerNative(payload, LABEL_WIDTH_MM, LABEL_HEIGHT_MM);
+                sendViaBluetoothSpp(address, tspl);
+                JSObject ret = new JSObject();
+                ret.put("ok", true);
+                ret.put("bytes", tspl.length);
+                ret.put("savedPrinter", savedBluetoothPrinter());
+                ret.put("message", "Printed sticker via Bluetooth (TEXT+BAR, " + tspl.length + " bytes)");
+                Log.i(TAG, "printStickerNative success bytes=" + tspl.length);
+                call.resolve(ret);
+            } catch (SecurityException e) {
+                Log.e(TAG, "printStickerNative permission denied", e);
+                call.reject("Bluetooth permission denied: " + e.getMessage(), "BT_PERMISSION", e);
+            } catch (Exception e) {
+                Log.e(TAG, "printStickerNative failed", e);
+                call.reject("Bluetooth print failed: " + e.getMessage(), "BT_PRINT_FAILED", e);
+            }
+        });
+    }
+
     @PluginMethod
     public void printSticker(PluginCall call) {
         String bitmapBase64 = call.getString("bitmapBase64", "");
