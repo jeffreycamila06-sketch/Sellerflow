@@ -3,6 +3,8 @@ package com.sellerflow.live;
 import android.util.Base64;
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 /**
  * TSPL (TSC Printer Language) command stream builder for AIMO-class label
@@ -144,6 +146,124 @@ class TsplBuilder {
         writeAscii(out, "TEXT 60," + (barY + 100) + ",\"2\",0,1,1,\"" + safe(storeName) + "\"");
         writeAscii(out, "PRINT 1");
         return out.toByteArray();
+    }
+
+    /**
+     * Build a sticker using TSPL drawing primitives (TEXT + BAR) ONLY — no
+     * BITMAP command. Required because the AIMO D520BT firmware accepts TEXT
+     * and BAR but silently ignores BITMAP, so the bitmap-image pipeline
+     * always produced a blank label regardless of bit polarity, density,
+     * mode, or pattern. Lays out the same content the WiFi/LAN web slip
+     * shows — store name, buyer #, buyer name, @handle, up to 2 order lines
+     * (time + item), and total — sized for a 100x60mm label at 203 DPI
+     * (800x480 dots).
+     *
+     * The payload mirrors the existing NativePrinterPayload buyer shape so
+     * the frontend can call this directly off printSlip without an extra
+     * data transform.
+     */
+    static byte[] forStickerNative(JSONObject payload, int labelWidthMm, int labelHeightMm) {
+        if (payload == null) payload = new JSONObject();
+        JSONObject buyer = payload.optJSONObject("buyer");
+        if (buyer == null) buyer = new JSONObject();
+        JSONObject settings = payload.optJSONObject("settings");
+
+        String storeName = payload.optString("storeName", "");
+        String sessionDate = payload.optString("sessionDate", "");
+        String currency = payload.optString("currency", "");
+        int buyerNum = buyer.optInt("num", buyer.optInt("bNum", 0));
+        String buyerName = buyer.optString("name", "");
+        String buyerHandle = buyer.optString("handle", "");
+        double totalSpent = buyer.optDouble("totalSpent", 0);
+        JSONArray orders = buyer.optJSONArray("orders");
+
+        boolean printStoreName    = settings == null || settings.optBoolean("printStoreName", true);
+        boolean printBuyerNumber  = settings == null || settings.optBoolean("printBuyerNumber", true);
+        boolean printBuyerUsername= settings == null || settings.optBoolean("printBuyerUsername", true);
+        boolean printOrderItems   = settings == null || settings.optBoolean("printOrderItems", true);
+        boolean printTotal        = settings == null || settings.optBoolean("printTotal", true);
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream(1024);
+        writeAscii(out, "SIZE " + labelWidthMm + " mm, " + labelHeightMm + " mm");
+        writeAscii(out, "GAP 2 mm, 0");
+        writeAscii(out, "DIRECTION 1");
+        writeAscii(out, "REFERENCE 0,0");
+        writeAscii(out, "DENSITY 8");
+        writeAscii(out, "CLS");
+
+        // Header row: brand at left, session date at right.
+        writeAscii(out, "TEXT 16,10,\"4\",0,1,1,\"SellerFlowLive\"");
+        if (!sessionDate.isEmpty()) {
+            writeAscii(out, "TEXT 460,18,\"2\",0,1,1,\"Session: " + safe(truncate(sessionDate, 22)) + "\"");
+        }
+        writeAscii(out, "BAR 0,48,800,3");
+
+        int y = 60;
+        if (printStoreName && !storeName.isEmpty()) {
+            writeAscii(out, "TEXT 16," + y + ",\"3\",0,1,1,\"" + safe(truncate(storeName, 36)) + "\"");
+            y += 35;
+        }
+
+        // Buyer # is the dominant element — the whole point of the sticker.
+        if (printBuyerNumber) {
+            writeAscii(out, "TEXT 16," + y + ",\"4\",0,2,2,\"Buyer #" + buyerNum + "\"");
+            y += 95;
+        }
+
+        if (!buyerName.isEmpty()) {
+            writeAscii(out, "TEXT 16," + y + ",\"4\",0,1,1,\"" + safe(truncate(buyerName, 30)) + "\"");
+            y += 40;
+        }
+
+        if (printBuyerUsername && !buyerHandle.isEmpty()) {
+            writeAscii(out, "TEXT 16," + y + ",\"3\",0,1,1,\"@" + safe(truncate(buyerHandle, 30)) + "\"");
+            y += 35;
+        }
+
+        // Thin separator before the order lines so they read as a sub-section.
+        if (printOrderItems && orders != null && orders.length() > 0 && y < 350) {
+            writeAscii(out, "BAR 16," + y + ",520,2");
+            y += 10;
+            // Cap at 2 orders so the layout doesn't run off the bottom of a
+            // 60mm label. The full order history is still on the web slip and
+            // any reprint UI; the sticker is a buyer-identifier, not a ledger.
+            int maxOrders = 2;
+            for (int i = 0; i < Math.min(orders.length(), maxOrders) && y < 360; i++) {
+                JSONObject order = orders.optJSONObject(i);
+                if (order == null) continue;
+                String time = order.optString("time", "");
+                String item = order.optString("item", "");
+                if (!time.isEmpty()) {
+                    writeAscii(out, "TEXT 16," + y + ",\"2\",0,1,1,\"" + safe(truncate(time, 12)) + "\"");
+                }
+                if (!item.isEmpty()) {
+                    writeAscii(out, "TEXT 130," + y + ",\"3\",0,1,1,\"" + safe(truncate(item, 28)) + "\"");
+                }
+                y += 38;
+            }
+        }
+
+        // Footer divider + total. Anchored to the bottom of the label so
+        // variable-length content above doesn't shift it.
+        writeAscii(out, "BAR 0,380,800,3");
+        if (printTotal && totalSpent > 0) {
+            writeAscii(out, "TEXT 16,395,\"3\",0,1,1,\"Total:\"");
+            String totalStr = safe(currency) + money(totalSpent);
+            writeAscii(out, "TEXT 410,395,\"4\",0,2,1,\"" + safe(truncate(totalStr, 18)) + "\"");
+        }
+
+        writeAscii(out, "PRINT 1");
+        return out.toByteArray();
+    }
+
+    private static String truncate(String s, int maxLen) {
+        if (s == null) return "";
+        return s.length() > maxLen ? s.substring(0, maxLen) : s;
+    }
+
+    private static String money(double v) {
+        if (Math.rint(v) == v) return String.valueOf((long) v);
+        return String.format(java.util.Locale.US, "%.2f", v);
     }
 
     private static String safe(String s) {
