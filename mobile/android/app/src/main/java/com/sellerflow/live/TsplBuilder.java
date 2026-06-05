@@ -100,6 +100,52 @@ class TsplBuilder {
         return out.toByteArray();
     }
 
+    /**
+     * Diagnostic: drawing-primitive-only test page using BAR (solid rectangle)
+     * commands — no BITMAP, no bitmap binary data. Used to confirm whether the
+     * printer's TSPL graphics layer works at all when the BITMAP command path
+     * is suspect (e.g., AIMO D520BT firmware that accepts TEXT but ignores
+     * BITMAP). Draws a recognizable frame + crossbar pattern:
+     *   ┌──────────────┐
+     *   │              │
+     *   │  ===bar===   │   (filled bar across the middle)
+     *   │              │
+     *   └──────────────┘
+     * If THIS prints, BAR works and we can pivot from BITMAP-based image
+     * encoding to a BAR-decomposition pipeline (one BAR per black run on
+     * each row, or per-region rectangles). If even BAR is blank, the printer
+     * accepts only TEXT and we need a fundamentally different protocol
+     * (CPCL or ESC/POS raster).
+     *
+     * Note: TSPL BAR x,y,width,height expects dots. At 203 DPI a 100mm wide
+     * label = 800 dots and a 60mm tall label = 480 dots, so we use a hard
+     * 800x480 frame with 40-dot-thick borders and a 80-dot crossbar.
+     */
+    static byte[] barTestPage(String storeName, int labelWidthMm, int labelHeightMm) {
+        int widthDots = labelWidthMm * 8;    // 203 DPI rounded -> 8 dots/mm
+        int heightDots = labelHeightMm * 8;
+        ByteArrayOutputStream out = new ByteArrayOutputStream(384);
+        writeAscii(out, "SIZE " + labelWidthMm + " mm, " + labelHeightMm + " mm");
+        writeAscii(out, "GAP 2 mm, 0");
+        writeAscii(out, "DIRECTION 1");
+        writeAscii(out, "REFERENCE 0,0");
+        writeAscii(out, "DENSITY 8");
+        writeAscii(out, "CLS");
+        // Frame: top, bottom, left, right (each 40 dots thick)
+        writeAscii(out, "BAR 0,0," + widthDots + ",40");
+        writeAscii(out, "BAR 0," + (heightDots - 40) + "," + widthDots + ",40");
+        writeAscii(out, "BAR 0,0,40," + heightDots);
+        writeAscii(out, "BAR " + (widthDots - 40) + ",0,40," + heightDots);
+        // Middle crossbar (centered, 80 dots tall)
+        int barY = (heightDots - 80) / 2;
+        writeAscii(out, "BAR 80," + barY + "," + (widthDots - 160) + ",80");
+        // Caption above the bar
+        writeAscii(out, "TEXT 60," + (barY - 60) + ",\"3\",0,1,1,\"BAR test OK\"");
+        writeAscii(out, "TEXT 60," + (barY + 100) + ",\"2\",0,1,1,\"" + safe(storeName) + "\"");
+        writeAscii(out, "PRINT 1");
+        return out.toByteArray();
+    }
+
     private static String safe(String s) {
         if (s == null) return "";
         // TSPL TEXT uses " as the value delimiter; escape any internal quotes.

@@ -61,7 +61,7 @@ const tpl=(text:string,vars:Record<string,string|number>)=>String(text||"").repl
 
 declare global {
   interface Window {
-    SellerFlowPrinter?: { printSlip?: (payload:NativePrinterPayload)=>PrinterBridgeReturn|Promise<PrinterBridgeReturn>; setPrinter?: (config:PrinterLanConfig)=>Promise<MobilePrinterResult>; getPrinter?: ()=>Promise<MobilePrinterResult>; testConnection?: (config:PrinterLanConfig)=>Promise<MobilePrinterResult>; status?: ()=>string|Promise<string>; printerStatus?: ()=>string|Promise<string|MobilePrinterResult>; scanPrinters?: ()=>string|Promise<string|MobilePrinterResult>; connectPrinter?: (printer:MobilePrinterDevice|string)=>string|Promise<string|MobilePrinterResult>; testPrint?: ()=>string|Promise<string|MobilePrinterResult>; scanBluetoothLabelPrinters?: ()=>Promise<BluetoothScanResult>; getBluetoothLabelPrinter?: ()=>Promise<BluetoothScanResult>; setBluetoothLabelPrinter?: (printer:{address:string;name:string})=>Promise<BluetoothScanResult>; clearBluetoothLabelPrinter?: ()=>Promise<BluetoothScanResult>; printSticker?: (payload:StickerPrintPayload)=>Promise<StickerPrintResult>; testStickerPrint?: ()=>Promise<StickerPrintResult>; };
+    SellerFlowPrinter?: { printSlip?: (payload:NativePrinterPayload)=>PrinterBridgeReturn|Promise<PrinterBridgeReturn>; setPrinter?: (config:PrinterLanConfig)=>Promise<MobilePrinterResult>; getPrinter?: ()=>Promise<MobilePrinterResult>; testConnection?: (config:PrinterLanConfig)=>Promise<MobilePrinterResult>; status?: ()=>string|Promise<string>; printerStatus?: ()=>string|Promise<string|MobilePrinterResult>; scanPrinters?: ()=>string|Promise<string|MobilePrinterResult>; connectPrinter?: (printer:MobilePrinterDevice|string)=>string|Promise<string|MobilePrinterResult>; testPrint?: ()=>string|Promise<string|MobilePrinterResult>; scanBluetoothLabelPrinters?: ()=>Promise<BluetoothScanResult>; getBluetoothLabelPrinter?: ()=>Promise<BluetoothScanResult>; setBluetoothLabelPrinter?: (printer:{address:string;name:string})=>Promise<BluetoothScanResult>; clearBluetoothLabelPrinter?: ()=>Promise<BluetoothScanResult>; printSticker?: (payload:StickerPrintPayload)=>Promise<StickerPrintResult>; testStickerPrint?: ()=>Promise<StickerPrintResult>; testBarPrint?: (args?:{storeName?:string})=>Promise<StickerPrintResult>; };
     ReactNativeWebView?: { postMessage:(message:string)=>void };
     Capacitor?: { Plugins?: { SellerFlowPrinter?: { printSlip:(payload:NativePrinterPayload)=>Promise<PrinterBridgeReturn>; setPrinter?:(config:PrinterLanConfig)=>Promise<MobilePrinterResult>; getPrinter?:()=>Promise<MobilePrinterResult>; testConnection?:(config:PrinterLanConfig)=>Promise<MobilePrinterResult> } } };
   }
@@ -1778,7 +1778,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   const [btStatusMsg,setBtStatusMsg]=useState<string>("");
   const isBtMode=sets.printerType==="bluetooth";
   const bridgeHasBt=typeof window!=="undefined"&&!!window.SellerFlowPrinter?.scanBluetoothLabelPrinters;
-  async function btCall<T>(action:"scanBluetoothLabelPrinters"|"getBluetoothLabelPrinter"|"setBluetoothLabelPrinter"|"clearBluetoothLabelPrinter"|"testStickerPrint"|"printSticker",arg?:unknown):Promise<T|null>{
+  async function btCall<T>(action:"scanBluetoothLabelPrinters"|"getBluetoothLabelPrinter"|"setBluetoothLabelPrinter"|"clearBluetoothLabelPrinter"|"testStickerPrint"|"testBarPrint"|"printSticker",arg?:unknown):Promise<T|null>{
     if(typeof window==="undefined")return null;
     const bridge=window.SellerFlowPrinter;
     const fn=bridge?.[action] as ((a?:unknown)=>Promise<T>)|undefined;
@@ -1874,6 +1874,16 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   async function testBtCheckerboard(){
     // 16-dot squares so the eye can confirm the pattern landed correctly.
     await sendDiagnosticBitmap("CHECKERBOARD",(x,y)=>((Math.floor(x/16)+Math.floor(y/16))%2)===0);
+  }
+  // BAR primitive test — uses no BITMAP command, just BAR rectangles. If
+  // TEXT works and BAR works but BITMAP fails, we know the AIMO firmware
+  // doesn't implement BITMAP and the next iteration must decompose images
+  // into BAR rectangles per black region.
+  async function testBtBar(){
+    if(!bridgeHasBt){setBtStatusMsg("Open SellerFlow mobile app to run the BAR test.");return;}
+    setBtStatusMsg("Sending TSPL BAR test (no bitmap)...");
+    const result=await btCall<StickerPrintResult>("testBarPrint",{storeName:user.profile.storeName||"SellerFlowLive"});
+    setBtStatusMsg(result?.ok?(result.message||"BAR test sent"):(result?.message||"BAR test failed"));
   }
   useEffect(()=>{
     if(!bridgeHasBt)return;
@@ -2406,6 +2416,16 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
                   style={{borderColor:"#7F77DD"}}
                 >
                   📝 Test TEXT-only (no bitmap)
+                </button>
+              )}
+              {btSavedPrinter&&(
+                <button
+                  type="button"
+                  className="btn-out bt-printer-test-btn"
+                  onClick={testBtBar}
+                  style={{borderColor:"#1D9E75",background:"#E1F5EE",color:"#0F6E56"}}
+                >
+                  ▭ Test BAR rectangle (no BITMAP cmd)
                 </button>
               )}
               {btSavedPrinter&&(
