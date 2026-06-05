@@ -539,7 +539,7 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .settings-quick-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .settings-expanded{grid-template-columns:1fr}
 .settings-expanded .settings-section{display:none}
-.settings-show-profile .settings-section-profile,.settings-show-password .settings-section-password,.settings-show-display .settings-section-display,.settings-show-printer .settings-section-printer,.settings-show-mobilePrinter .settings-section-mobile-printer{display:flex}
+.settings-show-profile .settings-section-profile,.settings-show-password .settings-section-password,.settings-show-display .settings-section-display,.settings-show-printer .settings-section-printer,.settings-show-mobilePrinter .settings-section-mobile-printer,.settings-show-mobilePrinter .settings-section-bt-printer{display:flex}
 .settings-expanded .settings-section{max-width:980px;width:100%;margin:0 auto}
 .mobile-bluetooth-card,.settings-section-mobile-printer{display:none}
 .settings-show-mobilePrinter .settings-section-mobile-printer{display:none}
@@ -1206,7 +1206,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .support-payment-card form{gap:8px!important}
   .settings-quick-grid{grid-template-columns:1fr}
   .mobile-bluetooth-card{display:flex}
-  .settings-show-mobilePrinter .settings-section-mobile-printer{display:flex}
+  .settings-show-mobilePrinter .settings-section-mobile-printer,.settings-show-mobilePrinter .settings-section-bt-printer{display:flex}
   .mobile-bt-layout{grid-template-columns:1fr}
   .mobile-bt-preview{order:-1}
   .mobile-bt-actions{grid-template-columns:1fr}
