@@ -1763,6 +1763,14 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
     try{return arg===undefined?await fn():await fn(arg);}catch(err){setBtStatusMsg(`Bluetooth error: ${err instanceof Error?err.message:String(err)}`);return null;}
   }
   async function scanBtPrinters(){
+    // Bridge-missing path: fire a visible toast and bail. The button stays
+    // visible and clickable — we never gate the button itself on bridge
+    // presence, so the seller is never stuck staring at a missing control.
+    if(!bridgeHasBt){
+      setToast("Open SellerFlow mobile app (Android) to scan Bluetooth printers.");
+      setBtStatusMsg("Bluetooth scan needs the Android app.");
+      return;
+    }
     setBtScanning(true);setBtStatusMsg("");
     const result=await btCall<BluetoothScanResult>("scanBluetoothLabelPrinters");
     setBtScanning(false);
@@ -2258,13 +2266,24 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
             ):(
               <div className="bt-printer-empty">{t.printer_bt_no_saved}</div>
             )}
-            <div className="bt-printer-actions">
-              <button type="button" className="printer-test-btn" onClick={scanBtPrinters} disabled={btScanning}>
-                {btScanning?t.printer_bt_scanning:t.printer_bt_scan}
+            <div className="bt-printer-actions bt-printer-scan-block">
+              <button
+                type="button"
+                className="btn-purple bt-printer-scan-btn"
+                onClick={scanBtPrinters}
+                disabled={btScanning}
+              >
+                🔍 {btScanning?(t.printer_bt_scanning||"Scanning…"):(t.printer_bt_scan||"Scan paired Bluetooth printers")}
               </button>
-              <button type="button" className="printer-test-btn" onClick={testBtSticker} disabled={!btSavedPrinter&&!bridgeHasBt}>
-                {t.printer_bt_test}
-              </button>
+              {btSavedPrinter&&(
+                <button
+                  type="button"
+                  className="btn-out bt-printer-test-btn"
+                  onClick={testBtSticker}
+                >
+                  🖨️ {t.printer_bt_test||"Test print sticker"}
+                </button>
+              )}
             </div>
             {btPrinters.length>0&&(
               <div className="bt-printer-list">

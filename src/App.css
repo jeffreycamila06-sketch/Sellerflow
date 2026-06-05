@@ -591,6 +591,13 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .bt-printer-saved small{display:block;font-size:11px;color:#0F6E56;margin-top:2px}
 .bt-printer-empty{font-size:12px;color:#6E687E;margin-bottom:10px;padding:10px 12px;background:#FAF9F5;border:1px dashed #D3D1C7;border-radius:8px}
 .bt-printer-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+/* Make the Scan button unmissable: full-width, bold purple CTA. Never gated
+   on bridge presence — the click handler shows a toast if the native bridge
+   is missing instead of hiding the button. */
+.bt-printer-scan-block{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+.bt-printer-scan-btn{display:block;width:100%;padding:14px 16px;font-size:14px;font-weight:700;border-radius:12px;text-align:center;box-shadow:0 8px 18px rgba(83,74,183,.18)}
+.bt-printer-scan-btn:disabled{opacity:.7;cursor:wait}
+.bt-printer-test-btn{display:block;width:100%;padding:12px 14px;font-size:13px;font-weight:600;border-radius:11px;text-align:center}
 .bt-printer-list{display:grid;gap:8px;margin-bottom:10px}
 .bt-printer-list-title{font-size:11px;font-weight:600;color:#26215C;text-transform:uppercase;letter-spacing:.4px}
 .bt-printer-option{display:flex;align-items:center;justify-content:space-between;gap:10px;text-align:left;border:1px solid #E4E2DC;background:#fff;border-radius:10px;padding:10px 12px;cursor:pointer;color:#26215C}
