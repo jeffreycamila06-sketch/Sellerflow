@@ -2251,6 +2251,50 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
         {/* ── BLUETOOTH STICKER PRINTER (additive — Settings UI for AIMO-class TSPL printers) ── */}
         {isBtMode&&(
           <div className="scard settings-section settings-section-bt-printer">
+            {/* ── DEBUG STRIP (temporary, remove once BT scan works) ────────
+               Shows the live state driving this section so we can see, from
+               the phone screen alone, whether printerType is set, whether
+               the native bridge is detected, and whether the scan handler
+               sees any devices. WiFi/LAN path is untouched.            */}
+            <div style={{background:"#FFEFD5",border:"2px dashed #BA7517",borderRadius:8,padding:"8px 10px",fontSize:11,lineHeight:1.5,color:"#633806",marginBottom:10,fontFamily:"monospace"}}>
+              <strong>BT DEBUG</strong><br/>
+              printerType: {sets.printerType}<br/>
+              isBtMode: {String(isBtMode)}<br/>
+              bridgeHasBt: {String(bridgeHasBt)}<br/>
+              window.SellerFlowPrinter: {typeof window!=="undefined"&&window.SellerFlowPrinter?"present":"missing"}<br/>
+              scan method: {typeof window!=="undefined"&&typeof window.SellerFlowPrinter?.scanBluetoothLabelPrinters==="function"?"function":"missing"}<br/>
+              btSavedPrinter: {btSavedPrinter?(btSavedPrinter.name+" / "+btSavedPrinter.address):"none"}<br/>
+              btPrinters.length: {btPrinters.length}<br/>
+              btScanning: {String(btScanning)}<br/>
+              btStatusMsg: {btStatusMsg||"(empty)"}
+            </div>
+            {/* ── HUGE FALLBACK SCAN BUTTON — independent of all styles below,
+               uses inline styles so no CSS rule can hide it. If THIS button
+               doesn't show when isBtMode is true, the BT section itself
+               isn't rendering at all. Tap it to start the scan.          */}
+            <button
+              type="button"
+              onClick={scanBtPrinters}
+              disabled={btScanning}
+              style={{
+                display:"block",
+                width:"100%",
+                minHeight:60,
+                padding:"16px 18px",
+                marginBottom:12,
+                background:"#7F1FFF",
+                color:"#fff",
+                fontSize:16,
+                fontWeight:800,
+                border:"3px solid #FFD500",
+                borderRadius:14,
+                cursor:"pointer",
+                textAlign:"center",
+                boxShadow:"0 6px 18px rgba(127,31,255,.35)"
+              }}
+            >
+              🔍 {btScanning?"SCANNING…":"TAP HERE: Scan paired Bluetooth printers"}
+            </button>
             <div className="scard-title">{t.printer_bt_card_title}</div>
             <div className="bt-printer-rec">{t.printer_mode_bt_rec}</div>
             <div className="bt-printer-pair-hint">{t.printer_bt_pair_hint}</div>
