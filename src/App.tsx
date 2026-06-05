@@ -47,7 +47,7 @@ type PrinterBridgeReturn = void|string|MobilePrinterResult;
 // TSPL BITMAP command stream.
 interface BluetoothPrinterDevice { id:string; address:string; name:string; paired?:boolean; signal?:number; }
 interface BluetoothScanResult { ok?:boolean; message?:string; printers?:BluetoothPrinterDevice[]; savedPrinter?:BluetoothPrinterDevice|null; }
-interface StickerPrintPayload { bitmapBase64:string; widthDots:number; heightDots:number; }
+interface StickerPrintPayload { bitmapBase64:string; widthDots:number; heightDots:number; /* optional client-side diagnostics — native side ignores extra fields */ blackPixels?:number; pctBlack?:number; rawW?:number; rawH?:number; iframeW?:number; iframeH?:number; }
 interface StickerPrintResult { ok?:boolean; message?:string; }
 type NumberSettingKey = {[K in keyof Settings]: Settings[K] extends number ? K : never}[keyof Settings];
 interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; proofImage?:string; timestamp:string; status:"pending"|"approved"|"rejected"|"resolved"; adminReply?:string; repliedAt?:string; }
@@ -423,10 +423,13 @@ function buildSlipPageHTML(buyer:Buyer,cur:string,storeName:string,cfg:Settings)
 async function renderSlipStickerBitmap(buyer:Buyer,cur:string,storeName:string,cfg:Settings,widthDots=800,heightDots=480):Promise<StickerPrintPayload|null>{
   if(typeof document==="undefined"||typeof window==="undefined")return null;
   // Off-screen iframe so the slip CSS doesn't pollute the parent page.
+  // IMPORTANT: do NOT set opacity:0 — some WebViews skip the rendering
+  // pipeline for opacity-0 nodes, so html2canvas reads them back blank.
+  // Hiding off-screen at -99999px is enough; user never sees it.
   const frame=document.createElement("iframe");
   const [wmmStr,hmmStr]=cfg.stickerSize.split("x");
   const widthMm=Number(wmmStr)||100,heightMm=Number(hmmStr)||60;
-  frame.style.cssText=`position:fixed;left:-99999px;top:0;width:${widthMm}mm;height:${heightMm}mm;border:0;background:#fff;opacity:0;pointer-events:none`;
+  frame.style.cssText=`position:fixed;left:-99999px;top:0;width:${widthMm}mm;height:${heightMm}mm;border:0;background:#fff;pointer-events:none`;
   document.body.appendChild(frame);
   try{
     const doc=frame.contentDocument;
@@ -434,14 +437,23 @@ async function renderSlipStickerBitmap(buyer:Buyer,cur:string,storeName:string,c
     doc.open();
     doc.write(buildSlipPageHTML(buyer,cur,storeName,cfg));
     doc.close();
-    await new Promise(r=>setTimeout(r,80)); // let fonts/layout settle
+    // Wait for fonts AND give layout enough time to settle. The previous 80ms
+    // was sometimes catching the iframe before the slip CSS / system fonts
+    // had finished applying, leading to html2canvas seeing an unstyled or
+    // empty body — which encodes to all-white and the printer prints blank.
+    try{await document.fonts.ready;}catch{/* fonts API unavailable */}
+    try{const d=doc as Document&{fonts?:FontFaceSet};if(d.fonts)await d.fonts.ready;}catch{}
+    // Force a synchronous reflow on the iframe document so any pending CSS
+    // computations finish before we ask html2canvas to read the box model.
+    void doc.body.offsetHeight;
+    await new Promise(r=>setTimeout(r,300));
     const mod=await import("html2canvas");
     const html2canvas=(mod as unknown as {default:(el:HTMLElement,opts?:Record<string,unknown>)=>Promise<HTMLCanvasElement>}).default;
     const body=doc.body;
     const naturalW=body.scrollWidth||body.offsetWidth||widthMm*4;
     const naturalH=body.scrollHeight||body.offsetHeight||heightMm*4;
     const scaleX=widthDots/naturalW;
-    const raw=await html2canvas(body,{width:naturalW,height:naturalH,scale:scaleX,backgroundColor:"#ffffff",logging:false});
+    const raw=await html2canvas(body,{width:naturalW,height:naturalH,scale:scaleX,backgroundColor:"#ffffff",logging:false,useCORS:true,allowTaint:true});
     // Re-draw onto a target-sized canvas so the bitmap byte layout is exact.
     const tmp=document.createElement("canvas");
     tmp.width=widthDots;tmp.height=heightDots;
@@ -453,6 +465,7 @@ async function renderSlipStickerBitmap(buyer:Buyer,cur:string,storeName:string,c
     const bytesPerRow=Math.ceil(widthDots/8);
     const totalBytes=bytesPerRow*heightDots;
     const bytes=new Uint8Array(totalBytes);
+    let blackPixels=0;
     for(let y=0;y<heightDots;y++){
       for(let xByte=0;xByte<bytesPerRow;xByte++){
         let b=0;
@@ -464,17 +477,22 @@ async function renderSlipStickerBitmap(buyer:Buyer,cur:string,storeName:string,c
           const lum=a<128?255:0.299*imageData[i]+0.587*imageData[i+1]+0.114*imageData[i+2];
           // TSPL BITMAP polarity is INVERTED relative to most other formats:
           // per the TSC TSPL2 spec, bit=0 means PRINT BLACK and bit=1 means
-          // DO NOT PRINT (transparent/white). Earlier versions packed dark
-          // pixels as bit=1, which made the AIMO print mostly blank labels —
-          // bytes were transferred but the printer skipped them all.
-          if(lum>=128)b|=1<<(7-bit);
+          // DO NOT PRINT (transparent/white).
+          if(lum>=128){b|=1<<(7-bit);}else{blackPixels++;}
         }
         bytes[y*bytesPerRow+xByte]=b;
       }
     }
+    const totalPixels=widthDots*heightDots;
+    const pctBlack=Number(((blackPixels/totalPixels)*100).toFixed(2));
+    // Surface the encoded bitmap stats so the SettingsPage debug strip can
+    // show, from the phone screen alone, whether html2canvas produced any
+    // ink. If blackPixels stays at 0 across attempts, the issue is upstream
+    // of the bit-packing — most likely html2canvas not seeing the iframe.
+    if(typeof console!=="undefined")console.info("[BT sticker bitmap]",{widthDots,heightDots,bytes:totalBytes,rawW:raw.width,rawH:raw.height,iframeW:naturalW,iframeH:naturalH,blackPixels,pctBlack});
     let binary="";
     for(let i=0;i<bytes.length;i++)binary+=String.fromCharCode(bytes[i]);
-    return {bitmapBase64:btoa(binary),widthDots,heightDots};
+    return {bitmapBase64:btoa(binary),widthDots,heightDots,blackPixels,pctBlack,rawW:raw.width,rawH:raw.height,iframeW:naturalW,iframeH:naturalH};
   }catch(err){
     console.warn("renderSlipStickerBitmap failed:",err);
     return null;
@@ -1794,12 +1812,18 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   }
   async function testBtSticker(){
     if(!bridgeHasBt){setBtStatusMsg("Open SellerFlow mobile app to print a test sticker.");return;}
-    setBtStatusMsg("Sending test sticker...");
+    setBtStatusMsg("Rendering sticker bitmap...");
     const testBuyer:Buyer={handle:"sellerflow",name:"Test Print",platform:"TikTok",num:88,orders:[{orderNum:1,item:"SellerFlowLive sticker test",qty:1,price:0,total:0,time:new Date().toLocaleTimeString(),handle:"sellerflow",name:"Test Print",bNum:88,platform:"TikTok",status:"New",date:new Date().toISOString().slice(0,10)}],totalSpent:0,totalOrders:1};
     const payload=await renderSlipStickerBitmap(testBuyer,sets.currency,user.profile.storeName||"SellerFlowLive",sets);
     if(!payload){setBtStatusMsg("Could not render the sticker bitmap.");return;}
+    // Build a one-line diagnostic showing what the bitmap pipeline produced.
+    // If blackPixels=0, the print will be blank no matter what the printer
+    // does — the upstream html2canvas pass returned an all-white image.
+    const dbg=`bitmap: iframe ${payload.iframeW}x${payload.iframeH} -> raw ${payload.rawW}x${payload.rawH} -> ${payload.widthDots}x${payload.heightDots} dots, ${payload.blackPixels}/${(payload.widthDots||0)*(payload.heightDots||0)} black (${payload.pctBlack}%)`;
+    setBtStatusMsg(`Rendered: ${dbg} — sending to printer...`);
     const result=await btCall<StickerPrintResult>("printSticker",payload);
-    setBtStatusMsg(result?.ok?(result.message||"Test sticker printed"):(result?.message||"Test sticker failed"));
+    const printMsg=result?.ok?(result.message||"Test sticker printed"):(result?.message||"Test sticker failed");
+    setBtStatusMsg(`${printMsg} | ${dbg}`);
   }
   // Pure TSPL TEXT test page (no bitmap). Isolates bitmap-encoding bugs from
   // command/connection issues: if THIS prints but the bitmap test doesn't,
