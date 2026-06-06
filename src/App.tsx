@@ -20,6 +20,7 @@ import {
 import { useState, useEffect, useRef } from "react";
 import { io } from "socket.io-client";
 import "./App.css";
+import posthog from "posthog-js";
 import { TRANSLATIONS, type Lang, type T } from "./translations";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -521,6 +522,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
       catch(err){setErr(err instanceof Error?err.message:"Could not load your profile.");setBusy(false);return;}
     }
     if(!profile){setErr("Could not load your profile. Please contact support.");setBusy(false);return;}
+    posthog.identify(profile.email,{plan:profile.plan,store_name:profile.profile.storeName,role:profile.role||"seller"});
     onLogin(profile);setBusy(false);
   }
   async function reg(e:React.FormEvent){e.preventDefault();setErr("");setOk("");setBusy(true);
@@ -542,6 +544,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
     try{profile=await createMyProfile(data.user.id,cleanEmail,{fullName:fn.trim(),storeName:sn.trim(),phone:phoneDisplay(phone),tiktok:"",facebook:""});}
     catch(err){setErr(err instanceof Error?err.message:"Could not create your profile.");setBusy(false);return;}
     if(!profile){setErr("Could not create your profile. Please contact support.");setBusy(false);return;}
+    posthog.identify(profile.email,{plan:profile.plan,store_name:profile.profile.storeName,role:profile.role||"seller"});
     onLogin(profile);setBusy(false);
   }
   async function forgot(e:React.FormEvent){e.preventDefault();setErr("");setOk("");setBusy(true);
@@ -3692,7 +3695,7 @@ export default function App(){
   },[user,nowTick]);
   /* eslint-enable react-hooks/set-state-in-effect */
   function handleLogin(u:User){const safe=safeUser(u);if(safe){const next=asAdminPlan(safe);setUser(next);LS.set("sf_session",next.email);LS.set("sf_session_user",next);setPage("dashboard");}}
-  function handleLogout(){void supabase?.auth.signOut();LS.del("sf_session");LS.del("sf_session_user");if(typeof window!=="undefined")window.sessionStorage.removeItem("sf_account_gate_ok");setUser(null);setComments([]);setBuyers([]);setAllOrders([]);setPrinted(new Set());setTotOrd(0);setTotRev(0);setSelBuyer(null);}
+  function handleLogout(){posthog.reset();void supabase?.auth.signOut();LS.del("sf_session");LS.del("sf_session_user");if(typeof window!=="undefined")window.sessionStorage.removeItem("sf_account_gate_ok");setUser(null);setComments([]);setBuyers([]);setAllOrders([]);setPrinted(new Set());setTotOrd(0);setTotRev(0);setSelBuyer(null);}
   async function handleDeleteAccount(){
     if(!user)return;
     const email=user.email;
@@ -3763,6 +3766,7 @@ export default function App(){
     const body=platform==="TikTok"
       ? {username:tiktokUsername,...connectionMeta}
       : {username:facebookPage,pageName:facebookPage,liveVideoId:facebookPage,accessToken:data.accessToken,...connectionMeta};
+    posthog.capture("connect_attempt",{platform});
     try{
       const session=supabase?(await supabase.auth.getSession()).data.session:null;
       const r=await fetch(`${SERVER}${ep}`,{
@@ -3774,10 +3778,11 @@ export default function App(){
         body:JSON.stringify(body)
       });
       const j=await r.json();
-      if(r.status===401){setToast(`${t.conn_failed}: ${j.error||"Unauthorized"}`);return;}
-      if(r.status===500){setToast(`${t.conn_failed}: ${j.error||"Server error"}`);return;}
-      if(!j.success)setToast(`${t.conn_failed}: ${j.error||r.statusText||`HTTP ${r.status}`}`);
+      if(r.status===401){posthog.capture("connect_failed",{platform,reason:"unauthorized",error:j.error});setToast(`${t.conn_failed}: ${j.error||"Unauthorized"}`);return;}
+      if(r.status===500){posthog.capture("connect_failed",{platform,reason:"server_error",error:j.error});setToast(`${t.conn_failed}: ${j.error||"Server error"}`);return;}
+      if(!j.success){posthog.capture("connect_failed",{platform,reason:j.error||"unknown",status:r.status});setToast(`${t.conn_failed}: ${j.error||r.statusText||`HTTP ${r.status}`}`);}
       else{
+        posthog.capture("connect_success",{platform});
         setToast(`${t.conn_success} ${platform}!`);
         clearLiveCommentMemory();
         setActiveLiveAccounts(a=>({
@@ -3795,7 +3800,7 @@ export default function App(){
           saveUser(u);
         }
       }
-    }catch{setToast(t.cant_reach);}
+    }catch{posthog.capture("connect_failed",{platform,reason:"network"});setToast(t.cant_reach);}
   }
   function autoRegisterCustomer(c:Comment){
     if(!user)return;
