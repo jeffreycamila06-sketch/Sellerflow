@@ -221,6 +221,16 @@ const abg=(h:string)=>{const c=["#7F77DD","#1D9E75","#D85A30","#D4537E","#378ADD
 const addDays=(n:number)=>{const d=new Date();d.setDate(d.getDate()+n);return d.toISOString();};
 const addMonths=(n:number)=>addDays(Math.max(1,n)*30);
 const dLeft=(e:string,now=Date.now())=>Math.max(0,Math.ceil((new Date(e).getTime()-now)/86400000));
+// Background highlight for the admin Users table DAYS cell. dLeft clamps at 0
+// so expired plans land in the strongest red. 8+ days → no highlight (returns
+// undefined so React drops the style attribute entirely).
+const daysCellStyle=(days:number):React.CSSProperties|undefined=>{
+  if(days<=0)return {background:"#FCA5A5",color:"#7F1D1D",fontWeight:700};
+  if(days<=2)return {background:"#FEE2E2",color:"#991B1B",fontWeight:700};
+  if(days<=5)return {background:"#FED7AA",color:"#9A3412"};
+  if(days<=7)return {background:"#FEF3C7",color:"#92400E"};
+  return undefined;
+};
 const normalizePhone=(value:string)=>String(value||"").replace(/\D/g,"");
 const phoneDisplay=(value:string)=>String(value||"").trim();
 const maxAcc=(p:Plan)=>({free:1,trial:1,basic:1,pro:3,master:5}[p]);
@@ -2611,7 +2621,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                       <td><Badge label={(u.role==="admin")?"Admin":"Seller"} color={(u.role==="admin")?"amber":"gray"}/></td>
                       <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
                       <td>{u.plan==="free"&&fr?<span style={{color:fr.capped?"#A32D2D":fr.near_cap?"#BA7517":"#1D9E75",fontWeight:600}}>{fr.count}/{fr.cap} · {fr.cycle_resets_in_days}d</span>:<span className="muted">—</span>}</td>
-                      <td>{dLeft(u.planExpiry)}</td>
+                      <td style={u.plan==="free"?undefined:daysCellStyle(dLeft(u.planExpiry))}>{dLeft(u.planExpiry)}</td>
                       <td>{renderUserMonthsSelect(u)}</td>
                       <td>{registeredAccountCount(u)} / {maxAcc(u.plan)}</td>
                       <td>
@@ -2748,7 +2758,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                   <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div>{u.planStatus==="pending"&&<div style={{marginTop:3}}><Badge label="Pending Approval" color="amber"/></div>}</td>
                   <td><Badge label={(u.role==="admin")?"Admin":"Seller"} color={(u.role==="admin")?"amber":"gray"}/></td>
                   <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
-                  <td>{dLeft(u.planExpiry)}</td>
+                  <td style={u.plan==="free"?undefined:daysCellStyle(dLeft(u.planExpiry))}>{dLeft(u.planExpiry)}</td>
                   <td>{renderUserMonthsSelect(u)}</td>
                   <td>{registeredAccountCount(u)} / {maxAcc(u.plan)}</td>
                   <td>
