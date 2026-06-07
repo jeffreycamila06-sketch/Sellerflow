@@ -4,17 +4,11 @@ import {
   type AccountAuditLog,
   adminUpdatePlan,
   createMyProfile,
-  deleteSupportMessagesForEmail,
   deleteUser,
   getMyProfile,
   listAuditLogs,
-  listSupportMessages,
-  countSupportMessages,
   listUsers,
   saveAuditLog,
-  saveSupportMessage,
-  updateSupportReply,
-  updateSupportStatus,
   upsertUser,
 } from "./accountDb";
 
@@ -56,7 +50,6 @@ interface BluetoothScanResult { ok?:boolean; message?:string; printers?:Bluetoot
 interface NativeStickerPayload { storeName:string; sessionDate:string; currency:string; buyer:Buyer; settings:Pick<Settings,"printStoreName"|"printBuyerNumber"|"printBuyerUsername"|"printOrderItems"|"printTotal">; }
 interface StickerPrintResult { ok?:boolean; message?:string; }
 type NumberSettingKey = {[K in keyof Settings]: Settings[K] extends number ? K : never}[keyof Settings];
-interface SupportMsg { id:string; name:string; email:string; subject:string; message:string; hasProof:boolean; proofImage?:string; timestamp:string; status:"pending"|"approved"|"rejected"|"resolved"; adminReply?:string; repliedAt?:string; }
 interface NativePrinterPayload { type:"sellerflow.printSlip"; buyer:Buyer; currency:string; storeName:string; settings:Settings; sessionDate:string; createdAt:string; }
 // Free-tier usage status from the Supabase RPC free_tier_status_for_user.
 interface FreeStatus { is_free:boolean; count?:number; cap?:number; near_cap_threshold?:number; near_cap?:boolean; capped?:boolean; cycle_resets_in_days?:number; warning_shown?:boolean; }
@@ -249,7 +242,6 @@ const fitProfileAccounts=(original:Profile,next:Profile,limit:number):Profile=>{
   return {...next,tiktok:accountText(resultTikTok),facebook:accountText(resultFacebook)};
 };
 const OWNER_EMAIL=(import.meta.env.VITE_OWNER_EMAIL||"admin@sellerflow.app").trim().toLowerCase();
-const supportReadKey=(email:string)=>`sf_support_read_${email.trim().toLowerCase()}`;
 const isAdminUser=(u:User|null)=>!!u&&u.role==="admin";
 const canConnectMore=(u:User)=>isAdminUser(u)||registeredAccountCount(u)<maxAcc(u.plan);
 const asAdminPlan=(u:User)=>isAdminUser(u)?{...u,plan:"master" as Plan,planStatus:"active" as PlanStatus,planExpiry:addMonths(120)}:u;
@@ -282,28 +274,6 @@ function Toast({msg,onDone}:{msg:string;onDone:()=>void}){
 }
 function Fg({label,children}:{label:string;children:React.ReactNode}){
   return <div className="fg"><label>{label}</label>{children}</div>;
-}
-
-function readProofImage(file:File|null):Promise<string>{
-  return new Promise((resolve,reject)=>{
-    if(!file){resolve("");return;}
-    const img=new Image();
-    const url=URL.createObjectURL(file);
-    img.onload=()=>{
-      const maxSize=1200;
-      const scale=Math.min(1,maxSize/Math.max(img.width,img.height));
-      const canvas=document.createElement("canvas");
-      canvas.width=Math.max(1,Math.round(img.width*scale));
-      canvas.height=Math.max(1,Math.round(img.height*scale));
-      const ctx=canvas.getContext("2d");
-      if(!ctx){URL.revokeObjectURL(url);reject(new Error("Cannot prepare proof image"));return;}
-      ctx.drawImage(img,0,0,canvas.width,canvas.height);
-      URL.revokeObjectURL(url);
-      resolve(canvas.toDataURL("image/jpeg",0.78));
-    };
-    img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error("Cannot read proof image"));};
-    img.src=url;
-  });
 }
 
 function hasNativeMobilePrinter(){
@@ -2260,202 +2230,28 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
 // ═══════════════════════════════════════════════════════════════════
 // SUPPORT
 // ═══════════════════════════════════════════════════════════════════
+// In-app chat replaced with a static Telegram contact link. No state, no
+// effects, no Supabase fetches — the only egress is one click out to t.me.
+// user prop kept (TS), referenced as void so the signature stays stable
+// with the call site at <Support user=... t=...>.
 function Support({user,t}:{user:User;t:T}){
-  const [name,setName]=useState(user.profile.fullName);
-  const [email,setEmail]=useState(user.email);
-  const [subject,setSubject]=useState(t.support_subject_payment);
-  const [msg,setMsg]=useState("");
-  const [file,setFile]=useState<File|null>(null);
-  const [sent,setSent]=useState(false);
-  const [supportError,setSupportError]=useState("");
-  const [followUp,setFollowUp]=useState("");
-  const [followBusy,setFollowBusy]=useState(false);
-  const [readIds,setReadIds]=useState<string[]>(()=>arrLS<string>(supportReadKey(user.email)));
-  const convoRef=useRef<HTMLDivElement>(null);
-  // FAQ Auto-help bot: clicking a question reveals its answer instantly, fully client-side (no API, no admin).
-  const [botMsgs,setBotMsgs]=useState<{q:string;a:string}[]>([]);
-  const askBot=(f:{q:string;a:string})=>setBotMsgs(prev=>[...prev,f]);
-  async function send(e:React.FormEvent){
-    e.preventDefault();
-    try{
-      const proofImage=await readProofImage(file);
-      const sm:SupportMsg={id:Date.now().toString(),name,email,subject,message:msg,hasProof:!!proofImage,proofImage,timestamp:new Date().toISOString(),status:"pending"};
-      await saveSupportMessage(sm);
-      setSupportError("");
-      setSent(true);setMsg("");setFile(null);
-    }catch(error){
-      setSupportError(`Support message was not saved: ${error instanceof Error?error.message:"Unknown error"}`);
-    }
-  }
-  const [prev,setPrev]=useState<SupportMsg[]>(()=>arrLS<SupportMsg>("sf_support").filter(m=>m.email.toLowerCase()===user.email.toLowerCase()));
-  useEffect(()=>{
-    const refreshSupport=()=>{
-      // Skip background-tab polls — saves Supabase egress when the seller has
-      // the app open but isn't looking at it. Next foregrounding triggers
-      // the effect again via the deps.
-      if(typeof document!=="undefined"&&document.visibilityState!=="visible")return;
-      // Server-side WHERE on email + LIMIT 50 keeps egress bounded to this
-      // seller's own thread instead of pulling the whole support_messages
-      // table on every poll.
-      void listSupportMessages(user.email).then(ms=>setPrev(ms));
-    };
-    refreshSupport();
-    const onVis=()=>{if(document.visibilityState==="visible")refreshSupport();};
-    document.addEventListener("visibilitychange",onVis);
-    const timer=window.setInterval(refreshSupport,30000);
-    return()=>{window.clearInterval(timer);document.removeEventListener("visibilitychange",onVis);};
-  },[user.email,sent]);
-  const sellerMessages=[...prev].sort((a,b)=>{
-    const au=a.status!=="resolved"&&a.adminReply&&!readIds.includes(a.id)?1:0;
-    const bu=b.status!=="resolved"&&b.adminReply&&!readIds.includes(b.id)?1:0;
-    if(au!==bu)return bu-au;
-    if((a.status==="resolved")!==(b.status==="resolved"))return a.status==="resolved"?1:-1;
-    return new Date(b.timestamp).getTime()-new Date(a.timestamp).getTime();
-  });
-  const unreadReplies=sellerMessages.filter(m=>m.status!=="resolved"&&m.adminReply&&!readIds.includes(m.id)).length;
-  const conversation=[...prev].sort((a,b)=>new Date(a.timestamp).getTime()-new Date(b.timestamp).getTime()); // oldest first (top), newest at bottom
-  const latest=conversation[conversation.length-1];
-  // Viewing the conversation marks any admin replies as read (Messenger-style).
-  useEffect(()=>{
-    const unreadIds=sellerMessages.filter(m=>m.adminReply&&!readIds.includes(m.id)).map(m=>m.id);
-    if(unreadIds.length){const next=[...readIds,...unreadIds];setReadIds(next);LS.set(supportReadKey(user.email),next);}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[prev]);
-  useEffect(()=>{
-    const el=convoRef.current;
-    if(el)el.scrollTop=el.scrollHeight; // auto-scroll to newest message (bottom)
-  },[prev]);
-  async function sendFollowUp(e:React.FormEvent){
-    e.preventDefault();
-    const text=followUp.trim();
-    if(!text)return;
-    setFollowBusy(true);
-    try{
-      const lastSubject=latest?.subject||subject||"Follow-up";
-      const sm:SupportMsg={id:Date.now().toString(),name,email,subject:lastSubject,message:text,hasProof:false,timestamp:new Date().toISOString(),status:"pending"};
-      await saveSupportMessage(sm);
-      setSupportError("");
-      setFollowUp("");
-      const ms=await listSupportMessages(user.email);
-      setPrev(ms);
-    }catch(error){
-      setSupportError(`Message not sent: ${error instanceof Error?error.message:"Unknown error"}`);
-    }finally{setFollowBusy(false);}
-  }
+  void user;
+  const TELEGRAM_URL="https://t.me/SELLERFLOWLIVE1995";
   return(
     <div className="subpage support-page">
       <div className="subpage-hd"><div><h2>{t.support_title}</h2><p>{t.support_sub}</p></div></div>
-      <div className="grid2 support-mobile-grid">
-        <div className="scard support-payment-card">
-          <div className="scard-title">{t.payment_title}</div>
-          <div className="payment-box" style={{marginBottom:12}}>
-            <p style={{color:"#5F5E5A",fontSize:12,marginBottom:8}}>{t.payment_info}</p>
-            {[t.payment_account,t.payment_number,t.payment_bank,t.payment_name].map((d,i)=>(
-              <div key={i} className="payment-detail"><span>{"👤🔢🏦🏛"[i]}</span><span>{d}</span></div>
-            ))}
-            <div style={{marginTop:8,padding:"8px 12px",background:"#FFF8E1",borderRadius:8,fontSize:12,color:"#633806",lineHeight:1.5}}>{t.payment_note}</div>
-          </div>
-          {sent?<div className="auth-ok">{t.support_sent}</div>:(
-            <form onSubmit={send} style={{display:"flex",flexDirection:"column",gap:10}}>
-              <div className="auth-row2">
-                <Fg label={t.support_name}><input value={name} onChange={e=>setName(e.target.value)} required/></Fg>
-                <Fg label={t.support_email}><input type="email" value={email} onChange={e=>setEmail(e.target.value)} required/></Fg>
-              </div>
-              <Fg label={t.support_subject}>
-                <select value={subject} onChange={e=>setSubject(e.target.value)}>
-                  <option>{t.support_subject_payment}</option>
-                  <option>{t.support_subject_general}</option>
-                  <option>{t.support_subject_bug}</option>
-                </select>
-              </Fg>
-              <Fg label={t.support_msg}><textarea value={msg} onChange={e=>setMsg(e.target.value)} rows={4} required style={{resize:"vertical"}}/></Fg>
-              <Fg label={t.support_attach}>
-                <input type="file" accept="image/*" onChange={e=>setFile(e.target.files?.[0]||null)} style={{fontSize:12}}/>
-                {file&&<div className="support-proof-preview">Proof selected: {file.name}</div>}
-              </Fg>
-              {supportError&&<div className="auth-err">{supportError}</div>}
-              <button type="submit" className="btn-purple">{t.support_send}</button>
-            </form>
-          )}
-        </div>
-        <div className="scard support-messages-card">
-          <div className="scard-title support-title">
-            <span>My messages ({prev.length})</span>
-            {latest&&<Badge label={latest.status==="approved"?"Approved":latest.status==="rejected"?"Rejected":latest.status==="resolved"?"Resolved":"Pending"} color={latest.status==="approved"?"green":latest.status==="rejected"?"red":latest.status==="resolved"?"gray":"amber"}/>}
-            {unreadReplies>0&&<span className="support-new-badge">{unreadReplies>9?"9+":unreadReplies} new</span>}
-          </div>
-          {/* FAQ Auto-help bot — always visible, instant client-side answers (no API, no cost) */}
-          <div className="sf-bot">
-            <div className="support-chat-row admin">
-              <div className="support-avatar sf-bot-avatar" aria-hidden="true">🤖</div>
-              <div className="support-bubble admin sf-bot-bubble">
-                <strong className="sf-bot-name">🤖 {t.bot_label}</strong>
-                <p>{t.bot_welcome}</p>
-              </div>
-            </div>
-            {botMsgs.map((m,i)=>(
-              <div key={i} className="support-message-block">
-                <div className="support-chat-row seller">
-                  <div className="support-avatar">{ini(user.profile.fullName||user.email)}</div>
-                  <div className="support-bubble seller"><p>{m.q}</p></div>
-                </div>
-                <div className="support-chat-row admin">
-                  <div className="support-avatar sf-bot-avatar" aria-hidden="true">🤖</div>
-                  <div className="support-bubble admin sf-bot-bubble">
-                    <strong className="sf-bot-name">🤖 {t.bot_label}</strong>
-                    <p>{m.a}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-            <div className="sf-bot-chips">
-              {t.bot_faq.map((f,i)=>(
-                <button type="button" key={i} className="sf-bot-chip" onClick={()=>askBot(f)}>
-                  <span className="sf-bot-chip-ico" aria-hidden="true">{BOT_FAQ_ICONS[i]||"❓"}</span>
-                  <span>{f.q}</span>
-                </button>
-              ))}
-            </div>
-            <p className="sf-bot-notice">{t.bot_notice}</p>
-          </div>
-          {prev.length>0&&(
-            <>
-              <div className="support-chat-header">
-                <div className="support-avatar big">{ini("SellerFlowLive")}</div>
-                <div><strong>SellerFlowLive Support</strong><span className="chat-active"><span className="chat-active-dot"/>Active</span></div>
-              </div>
-              <div className="seller-support-box support-conversation-body" ref={convoRef}>
-                {conversation.map(m=>(
-                  <div key={m.id} className="support-message-block">
-                    <div className="support-chat-row seller">
-                      <div className="support-avatar">{ini(user.profile.fullName||user.email)}</div>
-                      <div className="support-bubble seller">
-                        {m.subject&&<strong>{m.subject}</strong>}
-                        <p>{m.message}</p>
-                        {m.proofImage&&<a href={m.proofImage} target="_blank" rel="noreferrer"><img className="support-proof-img" src={m.proofImage} alt="Payment proof" /></a>}
-                        <span>{new Date(m.timestamp).toLocaleString()}{m.hasProof?" - Proof attached":""}</span>
-                      </div>
-                    </div>
-                    {m.adminReply&&(
-                      <div className="support-chat-row admin">
-                        <div className="support-bubble admin">
-                          <strong>Admin</strong>
-                          <p>{m.adminReply}</p>
-                          {m.repliedAt&&<span>{new Date(m.repliedAt).toLocaleString()}</span>}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-          <form onSubmit={sendFollowUp} className="messenger-reply" style={{marginTop:10}}>
-            <textarea rows={2} value={followUp} onChange={e=>setFollowUp(e.target.value)} placeholder="Type your message..." style={{flex:1,resize:"vertical"}}/>
-            <button type="submit" className="btn-purple" disabled={followBusy||!followUp.trim()}>{followBusy?"Sending...":"Send"}</button>
-          </form>
-          {supportError&&<div className="auth-err" style={{marginTop:8}}>{supportError}</div>}
-        </div>
+      <div className="scard" style={{maxWidth:520,margin:"0 auto",textAlign:"center",padding:"32px 24px"}}>
+        <div style={{fontSize:48,marginBottom:12,lineHeight:1}} aria-hidden="true">💬</div>
+        <p style={{fontSize:16,lineHeight:1.55,marginBottom:20,color:"#26215C"}}>{t.support_telegram_intro}</p>
+        <a
+          href={TELEGRAM_URL}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="btn-purple"
+          style={{display:"inline-block",textDecoration:"none",padding:"12px 24px"}}
+        >
+          {t.support_telegram_button}
+        </a>
       </div>
     </div>
   );
@@ -2467,7 +2263,6 @@ function Support({user,t}:{user:User;t:T}){
 function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:(email:string,plan:Plan,months?:number)=>void;orders:LiveOrder[];t:T}){
   const normalizeAdminUsers=(list:User[])=>list.map(u=>u.role==="admin"?asAdminPlan(u):u);
   const [users,setUsers]=useState<User[]>([]);
-  const [msgs,setMsgs]=useState<SupportMsg[]>(()=>arrLS<SupportMsg>("sf_support"));
   const [auditLogs,setAuditLogs]=useState<AccountAuditLog[]>(()=>arrLS<AccountAuditLog>("sf_audit_logs"));
   const [freeUsers,setFreeUsers]=useState<FreeUserRow[]>([]);
   const [admins,setAdmins]=useState<string[]>([]);
@@ -2475,40 +2270,17 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   const [editOriginalEmail,setEditOriginalEmail]=useState("");
   const [editSeller,setEditSeller]=useState({email:"",newPassword:"",fullName:"",storeName:"",phone:"",tiktok:"",facebook:""});
   const [adminSearch,setAdminSearch]=useState("");
-  const [replyDrafts,setReplyDrafts]=useState<Record<string,string>>({});
-  const [selectedSupportEmail,setSelectedSupportEmail]=useState("");
-  const adminSupportReadKey=`sf_admin_support_read_${currentUser.email.trim().toLowerCase()}`;
-  const [supportReadIds,setSupportReadIds]=useState<string[]>(()=>arrLS<string>(adminSupportReadKey));
-  function openConversation(email:string){
-    const ids=msgs.filter(m=>m.email.toLowerCase()===email.toLowerCase()).map(m=>m.id);
-    setSupportReadIds(prev=>{const next=Array.from(new Set([...prev,...ids]));LS.set(adminSupportReadKey,next);return next;});
-    setSelectedSupportEmail(email);
-  }
-  const [expandedAdminBox,setExpandedAdminBox]=useState<""|"overview"|"create"|"users"|"payments"|"planmonitor"|"freeusers"|"audit">("");
+  const [expandedAdminBox,setExpandedAdminBox]=useState<""|"overview"|"create"|"users"|"planmonitor"|"freeusers"|"audit">("");
   const [adminUserPlanMonths,setAdminUserPlanMonths]=useState<Record<string,number>>({});
   const [copied,setCopied]=useState("");
   const usersTableRef=useRef<HTMLDivElement>(null);
-  const paymentsTableRef=useRef<HTMLDivElement>(null);
   const auditTableRef=useRef<HTMLDivElement>(null);
   const adminPageRef=useRef<HTMLDivElement>(null);
-  const expandedChatRef=useRef<HTMLDivElement>(null);
-  useEffect(()=>{
-    if(!selectedSupportEmail)return;
-    const el=paymentsTableRef.current;
-    if(el)el.scrollTop=el.scrollHeight; // auto-scroll admin conversation to newest (bottom)
-  },[selectedSupportEmail,msgs]);
-  useEffect(()=>{
-    if(expandedAdminBox!=="payments"||!selectedSupportEmail)return;
-    const el=expandedChatRef.current;
-    if(el)el.scrollTop=el.scrollHeight; // expanded two-panel chat: scroll to newest (bottom)
-  },[expandedAdminBox,selectedSupportEmail,msgs]);
 
   async function refresh(){
     const freshUsers=normalizeAdminUsers(await listUsers());
     setUsers(freshUsers);
     setAdmins(freshUsers.filter(u=>u.role==="admin").map(u=>u.email));
-    await sendAutomaticPlanNotices(freshUsers);
-    setMsgs(await listSupportMessages());
     setAuditLogs(await listAuditLogs());
     if(supabase){
       try{
@@ -2518,57 +2290,12 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     }
   }
 
-  async function sendAutomaticPlanNotices(sourceUsers:User[]){
-    const sentKeys=arrLS<string>("sf_plan_notice_sent");
-    const nextSent=new Set(sentKeys);
-    const todayKey=new Date().toISOString().slice(0,10);
-    const notices:SupportMsg[]=[];
-    for(const seller of sourceUsers){
-      if(seller.role==="admin")continue;
-      // Free tier has no time expiry (cap-limited) — never send expiry notices.
-      if(seller.plan==="free")continue;
-      // No valid expiry → skip. Guards the null plan_expiry → now() drift in
-      // rowToUser that otherwise made the dedup key change every refresh and
-      // spammed a new message every ~10s.
-      if(!seller.planExpiry||Number.isNaN(Date.parse(seller.planExpiry)))continue;
-      const days=dLeft(seller.planExpiry);
-      const warnDays=seller.plan==="trial"?3:5;
-      const noticeType=seller.planStatus==="expired"||days===0?"expired":days===warnDays?"warning":"";
-      if(!noticeType)continue;
-      const key=`${seller.email.toLowerCase()}|${seller.plan}|${seller.planExpiry}|${noticeType}`;
-      if(nextSent.has(key))continue;
-      nextSent.add(key);
-      const planLabel=pName(seller.plan,t);
-      const expiryDate=new Date(seller.planExpiry).toLocaleDateString();
-      const adminReply=noticeType==="warning"
-        ? `Automatic message from SellerFlowLive Admin: Your ${planLabel} plan will expire in ${days} day${days===1?"":"s"} on ${expiryDate}. Please send payment proof or upgrade before it expires.`
-        : `Automatic message from SellerFlowLive Admin: Your ${planLabel} plan expired today. Please upgrade or send payment proof to continue using SellerFlowLive.`;
-      notices.push({
-        id:`plan-${noticeType}-${seller.email}-${todayKey}`,
-        name:seller.profile.fullName||seller.profile.storeName||seller.email,
-        email:seller.email,
-        subject:noticeType==="warning"?"Plan expiration reminder":"Plan expired notice",
-        message:"Automatic plan notice",
-        hasProof:false,
-        timestamp:new Date().toISOString(),
-        status:"approved",
-        adminReply,
-        repliedAt:new Date().toISOString(),
-      });
-    }
-    if(!notices.length)return;
-    LS.set("sf_plan_notice_sent",Array.from(nextSent));
-    await Promise.all(notices.map(n=>saveSupportMessage(n).catch(error=>console.error("Auto plan notice failed:",error))));
-    setCopied(`${notices.length} automatic plan message${notices.length===1?"":"s"} sent`);
-  }
-
   /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(()=>{
     void refresh();
-    // Admin refresh pulls the full support_messages + audit_logs + free-tier
-    // RPC every tick. Even with a small table, polling every 10s across
-    // every admin tab is the egress hot-spot. 30s + visibility guard keeps
-    // backgrounded tabs from polling at all.
+    // Admin polls users + audit_logs + free-tier RPC. 30s + visibility guard
+    // keeps backgrounded tabs from polling at all. (Chat polling removed
+    // entirely — sellers contact via Telegram now.)
     const tick=()=>{if(document.visibilityState==="visible")void refresh();};
     const onVis=()=>{if(document.visibilityState==="visible")void refresh();};
     document.addEventListener("visibilitychange",onVis);
@@ -2576,29 +2303,6 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     return()=>{window.clearInterval(timer);document.removeEventListener("visibilitychange",onVis);};
   },[]);
   /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
-
-  async function updateMsg(id:string,status:SupportMsg["status"]){
-    const next=msgs.map(m=>m.id===id?{...m,status}:m);
-    setMsgs(next);
-    await updateSupportStatus(id,status);
-    const msg=msgs.find(m=>m.id===id);
-    if(msg)await logAction(status==="approved"?"approved payment/support":status==="resolved"?"resolved support":"rejected payment/support",msg.email,msg.subject);
-  }
-
-  async function replyToSeller(message:SupportMsg){
-    const reply=(replyDrafts[message.id] ?? message.adminReply ?? "").trim();
-    if(!reply){setCopied("Write a reply first");return;}
-    const repliedAt=new Date().toISOString();
-    const next=msgs.map(m=>m.id===message.id?{...m,adminReply:reply,repliedAt}:m);
-    setMsgs(next);
-    try{
-      await updateSupportReply(message.id,reply);
-      await logAction("replied to support",message.email,message.subject);
-      setCopied("Reply sent to seller");
-    }catch(error){
-      setCopied(`Reply failed: ${error instanceof Error?error.message:"Unknown error"}`);
-    }
-  }
 
   function approve(email:string,plan:Plan,months=1){
     onApprove(email,plan,months);
@@ -2792,30 +2496,6 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   const filteredUsers=users.filter(u=>!q||[
     u.email,u.profile.fullName,u.profile.storeName,u.profile.phone,u.profile.tiktok,u.profile.facebook,u.plan,(u.role==="admin")?"admin":"seller"
   ].some(v=>String(v||"").toLowerCase().includes(q)));
-  const filteredMsgs=msgs.filter(m=>!q||[
-    m.name,m.email,m.subject,m.message,m.status
-  ].some(v=>String(v||"").toLowerCase().includes(q)));
-  const supportConversations=Object.values(filteredMsgs.reduce<Record<string,{email:string;name:string;messages:SupportMsg[];latest:SupportMsg;unread:number}>>((acc,m)=>{
-    const key=m.email.toLowerCase();
-    const isUnread=m.status==="pending"&&!m.adminReply&&!supportReadIds.includes(m.id);
-    if(!acc[key]){
-      acc[key]={email:m.email,name:m.name,messages:[m],latest:m,unread:isUnread?1:0};
-      return acc;
-    }
-    acc[key].messages.push(m);
-    acc[key].unread+=isUnread?1:0;
-    if(new Date(m.timestamp).getTime()>new Date(acc[key].latest.timestamp).getTime())acc[key].latest=m;
-    return acc;
-  },{})).map(c=>({
-    ...c,
-    messages:[...c.messages].sort((a,b)=>new Date(a.timestamp).getTime()-new Date(b.timestamp).getTime()), // oldest first (top), newest at bottom
-    active:c.messages.some(m=>m.status!=="resolved"),
-  })).sort((a,b)=>{
-    if(a.unread!==b.unread)return b.unread-a.unread;
-    if(a.active!==b.active)return a.active?-1:1;
-    return new Date(b.latest.timestamp).getTime()-new Date(a.latest.timestamp).getTime();
-  });
-  const unreadSupportCount=supportConversations.reduce((sum,c)=>sum+c.unread,0);
   const filteredAuditLogs=auditLogs.filter(log=>!q||[
     log.actorEmail,log.action,log.targetEmail,log.details,log.timestamp
   ].some(v=>String(v||"").toLowerCase().includes(q)));
@@ -2826,7 +2506,6 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   const planMonitorUsers=sellerUsers
     .filter(u=>u.planStatus==="expired"||dLeft(u.planExpiry)<=(u.plan==="trial"?3:5))
     .sort((a,b)=>dLeft(a.planExpiry)-dLeft(b.planExpiry));
-  const pendingPayments=msgs.filter(m=>m.status==="pending");
   // Free-tier monitoring (from list_free_users_status RPC).
   const q2=adminSearch.trim().toLowerCase();
   const freeUsersFiltered=freeUsers.filter(f=>!q2||[f.email,f.store_name,f.full_name].some(v=>String(v||"").toLowerCase().includes(q2)));
@@ -2838,16 +2517,11 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   const todayOrders=orders.filter(o=>o.date===todayIso);
   const allStoredOrders=orders;
   const dayStamp=new Date().toISOString().slice(0,10);
-  const expandedTitles={"":"Admin",overview:"Overview",create:"Create Seller",users:"Users",payments:"Payment / Support",planmonitor:"Plan Monitoring",freeusers:"Free Users — Usage Monitor",audit:"Audit Log"};
+  const expandedTitles={"":"Admin",overview:"Overview",create:"Create Seller",users:"Users",planmonitor:"Plan Monitoring",freeusers:"Free Users — Usage Monitor",audit:"Audit Log"};
 
   function exportUsers(){
     csvDL(`sellerflow-users-${dayStamp}.csv`,["Email","Role","Plan","Plan Status","Days Left","Connected Accounts","Full Name","Store Name","Phone","TikTok","Facebook"],filteredUsers.map(u=>[
       u.email,(u.role==="admin")?"Admin":"Seller",pName(u.plan,t),u.planStatus,dLeft(u.planExpiry),registeredAccountCount(u),u.profile.fullName,u.profile.storeName,u.profile.phone,u.profile.tiktok,u.profile.facebook
-    ]));
-  }
-  function exportPayments(){
-    csvDL(`sellerflow-payments-support-${dayStamp}.csv`,["Name","Email","Subject","Message","Admin Reply","Proof","Status","Timestamp","Replied At"],filteredMsgs.map(m=>[
-      m.name,m.email,m.subject,m.message,m.adminReply||"",m.hasProof?"yes":"no",m.status,m.timestamp,m.repliedAt||""
     ]));
   }
   function exportAudit(){
@@ -2865,14 +2539,12 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
       exportedAt:new Date().toISOString(),
       owner:OWNER_EMAIL,
       users,
-      supportMessages:msgs,
       auditLogs,
       orders:allStoredOrders,
       summary:{
         sellers:sellerUsers.length,
         active:activeSellers.length,
         expired:expiredSellers.length,
-        pendingPayments:pendingPayments.length,
         todayOrders:todayOrders.length,
       },
     });
@@ -2908,7 +2580,6 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
 
       <div className="admin-exportbar admin-compact">
         <button className="btn-out" onClick={exportUsers}>Export Users CSV</button>
-        <button className="btn-out" onClick={exportPayments}>Export Payments CSV</button>
         <button className="btn-out" onClick={exportAudit}>Export Audit CSV</button>
         <button className="btn-out" onClick={exportOrders}>Export Orders CSV</button>
         <button className="btn-out" onClick={exportAdminBackup}>Export Admin Backup</button>
@@ -2963,77 +2634,6 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
               </table>
             </div>
             <div className="admin-scroll-tools"><button onClick={()=>scrollBox(usersTableRef.current,"up")}>^</button><button onClick={()=>scrollBox(usersTableRef.current,"down")}>v</button></div>
-          </div>
-        </div>
-
-      <div className="table-card admin-compact-card" style={{marginBottom:12}} onDoubleClick={()=>setExpandedAdminBox("payments")}>
-          <div className="table-title support-title">
-            <span>Payment / Support Messages ({msgs.length})</span>
-            <Badge label={`${pendingPayments.length} pending`} color="amber"/>
-            {unreadSupportCount>0&&<span className="support-new-badge">{unreadSupportCount>9?"9+":unreadSupportCount} unread</span>}
-            <span className="expand-hint">⤢ double-click to expand</span>
-          </div>
-          <div className="admin-table-wrap">
-            <div className="admin-table-scroll support-chat-scroll" ref={paymentsTableRef}>
-              {filteredMsgs.length===0&&<div style={{textAlign:"center",padding:24,color:"#888"}}>{msgs.length===0?"No messages yet.":"No messages found."}</div>}
-              {supportConversations.filter(c=>!selectedSupportEmail||c.email.toLowerCase()===selectedSupportEmail.toLowerCase()).map(c=>(
-                <div key={c.email} className={`support-thread ${c.unread>0?"has-new":""} ${selectedSupportEmail?"chat-open":"list-only"}`}>
-                  {selectedSupportEmail&&<button className="tbl-btn ed support-back-btn" onClick={()=>setSelectedSupportEmail("")}>Back to messages</button>}
-                  <button className="support-thread-head messenger-thread-head" onClick={()=>!selectedSupportEmail&&openConversation(c.email)}>
-                    <div className="support-avatar big">{ini(c.name||c.email)}</div>
-                    <div className="support-convo-meta">
-                      <div className="support-convo-top">
-                        <strong>{c.name||c.email}</strong>
-                        <span>{new Date(c.latest.timestamp).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}</span>
-                      </div>
-                      <div className="support-convo-sub">
-                        <span>{c.latest.adminReply?`You: ${c.latest.adminReply}`:c.latest.message}</span>
-                        {c.unread>0&&<b>{c.unread>9?"9+":c.unread} new message{c.unread>1?"s":""}</b>}
-                      </div>
-                      <div className="muted" style={{fontSize:10}}>{c.email}</div>
-                      {selectedSupportEmail&&<span className="chat-active"><span className="chat-active-dot"/>Active</span>}
-                    </div>
-                    {c.unread>0&&<span className="support-unread-dot"/>}
-                  </button>
-                  {selectedSupportEmail&&<div className="support-conversation-body">
-                    {c.messages.map(m=>(
-                      <div key={m.id} className="support-message-block">
-                        <div className="support-chat-row seller">
-                          <div className="support-avatar">{ini(m.name||m.email)}</div>
-                          <div className="support-bubble seller">
-                            <strong>{m.subject}</strong>
-                            <p>{m.message}</p>
-                            {m.proofImage&&<a href={m.proofImage} target="_blank" rel="noreferrer"><img className="support-proof-img" src={m.proofImage} alt="Payment proof" /></a>}
-                            <span>{new Date(m.timestamp).toLocaleString()} {m.hasProof?" - Proof attached":""}</span>
-                          </div>
-                        </div>
-                        {m.adminReply&&(
-                          <div className="support-chat-row admin">
-                            <div className="support-bubble admin">
-                              <strong>Admin reply</strong>
-                              <p>{m.adminReply}</p>
-                              {m.repliedAt&&<span>{new Date(m.repliedAt).toLocaleString()}</span>}
-                            </div>
-                          </div>
-                        )}
-                        <div className="support-actions">
-                          <Badge label={m.status==="resolved"?"resolved":m.status} color={m.status==="approved"?"green":m.status==="rejected"?"red":m.status==="resolved"?"gray":"amber"}/>
-                          <button className="tbl-btn ed" onClick={()=>updateMsg(m.id,"approved")}>Approve</button>
-                          <button className="tbl-btn dl" onClick={()=>updateMsg(m.id,"rejected")}>Reject</button>
-                          <button className="tbl-btn ed" onClick={()=>updateMsg(m.id,"resolved")}>Resolve</button>
-                          <button className="tbl-btn ed" onClick={()=>copy(m.email,"Email")}>Copy email</button>
-                        </div>
-                        <div className="messenger-reply">
-                          <textarea rows={2} value={replyDrafts[m.id] ?? m.adminReply ?? ""} onChange={e=>setReplyDrafts(s=>({...s,[m.id]:e.target.value}))} placeholder="Type a reply like Messenger..."/>
-                          <button className="tbl-btn ed" onClick={()=>replyToSeller(m)}>{m.adminReply?"Update reply":"Send reply"}</button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>}
-                </div>
-              ))}
-            </div>
-            <div className="admin-scroll-tools"><button onClick={()=>scrollBox(paymentsTableRef.current,"up")}>^</button><button onClick={()=>scrollBox(paymentsTableRef.current,"down")}>v</button></div>
           </div>
         </div>
 
@@ -3167,82 +2767,6 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                   </td>
                 </tr>)}
               </tbody></table>
-            </div>}
-            {expandedAdminBox==="payments"&&<div className={`admin-messenger ${selectedSupportEmail?"has-selection":""}`}>
-              <div className="admin-messenger-list">
-                <div className="admin-messenger-search">
-                  <input value={adminSearch} onChange={e=>setAdminSearch(e.target.value)} placeholder="Search name or email"/>
-                  {adminSearch&&<button className="admin-search-clear" onClick={()=>setAdminSearch("")}>Clear</button>}
-                </div>
-                <div className="admin-messenger-listhd"><span>Chats</span>{unreadSupportCount>0&&<span className="support-new-badge">{unreadSupportCount>9?"9+":unreadSupportCount} unread</span>}</div>
-                <div className="admin-messenger-threads">
-                  {supportConversations.length===0&&<div style={{textAlign:"center",padding:24,color:"#888"}}>{msgs.length===0?"No messages yet.":"No messages found."}</div>}
-                  {supportConversations.map(c=>(
-                    <button key={"mlist-"+c.email} className={`support-thread list-only messenger-thread-head ${c.unread>0?"has-new":""} ${selectedSupportEmail.toLowerCase()===c.email.toLowerCase()?"is-active":""}`} onClick={()=>openConversation(c.email)}>
-                      <div className="support-avatar big">{ini(c.name||c.email)}</div>
-                      <div className="support-convo-meta">
-                        <div className="support-convo-top"><strong>{c.name||c.email}</strong><span>{new Date(c.latest.timestamp).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}</span></div>
-                        <div className="support-convo-sub"><span>{c.latest.adminReply?`You: ${c.latest.adminReply}`:c.latest.message}</span>{c.unread>0&&<b>{c.unread>9?"9+":c.unread} unread</b>}</div>
-                        <div className="muted" style={{fontSize:10}}>{c.email}</div>
-                      </div>
-                      {c.unread>0&&<span className="support-unread-dot"/>}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="admin-messenger-chat">
-                {(()=>{
-                  const c=supportConversations.find(x=>x.email.toLowerCase()===selectedSupportEmail.toLowerCase());
-                  if(!c)return <div className="admin-messenger-empty">Select a conversation from the left to read and reply.</div>;
-                  const last=c.messages[c.messages.length-1];
-                  return <>
-                    <div className="admin-messenger-chat-head">
-                      <button className="btn-out admin-messenger-back" onClick={()=>setSelectedSupportEmail("")}>← Chats</button>
-                      <div className="support-avatar big">{ini(c.name||c.email)}</div>
-                      <div className="admin-messenger-chat-meta">
-                        <strong>{c.name||c.email}</strong>
-                        <span className="chat-active"><span className="chat-active-dot"/>Active</span>
-                      </div>
-                      <span className="muted admin-messenger-chat-email">{c.email}</span>
-                    </div>
-                    <div className="support-conversation-body admin-messenger-body" ref={expandedChatRef}>
-                      {c.messages.map(m=>(
-                        <div key={"exp-"+m.id} className="support-message-block">
-                          <div className="support-chat-row seller">
-                            <div className="support-avatar">{ini(m.name||m.email)}</div>
-                            <div className="support-bubble seller">
-                              <strong>{m.subject}</strong>
-                              <p>{m.message}</p>
-                              {m.proofImage&&<a href={m.proofImage} target="_blank" rel="noreferrer"><img className="support-proof-img" src={m.proofImage} alt="Payment proof" /></a>}
-                              <span>{new Date(m.timestamp).toLocaleString()} {m.hasProof?" - Proof attached":""}</span>
-                            </div>
-                          </div>
-                          {m.adminReply&&(
-                            <div className="support-chat-row admin">
-                              <div className="support-bubble admin">
-                                <strong>Admin reply</strong>
-                                <p>{m.adminReply}</p>
-                                {m.repliedAt&&<span>{new Date(m.repliedAt).toLocaleString()}</span>}
-                              </div>
-                            </div>
-                          )}
-                          <div className="support-actions">
-                            <Badge label={m.status==="resolved"?"resolved":m.status} color={m.status==="approved"?"green":m.status==="rejected"?"red":m.status==="resolved"?"gray":"amber"}/>
-                            <button className="tbl-btn ed" onClick={()=>updateMsg(m.id,"approved")}>Approve</button>
-                            <button className="tbl-btn dl" onClick={()=>updateMsg(m.id,"rejected")}>Reject</button>
-                            <button className="tbl-btn ed" onClick={()=>updateMsg(m.id,"resolved")}>Resolve</button>
-                            <button className="tbl-btn ed" onClick={()=>copy(m.email,"Email")}>Copy email</button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="messenger-reply admin-messenger-composer">
-                      <textarea rows={2} value={replyDrafts[last.id] ?? last.adminReply ?? ""} onChange={e=>setReplyDrafts(s=>({...s,[last.id]:e.target.value}))} placeholder={`Reply to ${c.name||c.email}...`}/>
-                      <button className="tbl-btn ed" onClick={()=>replyToSeller(last)}>{last.adminReply?"Update reply":"Send reply"}</button>
-                    </div>
-                  </>;
-                })()}
-              </div>
             </div>}
             {expandedAdminBox==="planmonitor"&&<div className="table-card admin-fullscreen-table">
               <div className="table-title">Plan Monitoring ({planMonitorUsers.length})</div>
@@ -3439,7 +2963,6 @@ export default function App(){
   const [openCommentMenu,setOpenCommentMenu]=useState<number|null>(null);
   const [commentPrices,setCommentPrices]=useState<Record<string,string>>({});
   const priceInputRefs=useRef<Record<string,HTMLInputElement|null>>({});
-  const [supportUnreadCount,setSupportUnreadCount]=useState(0);
   const [pendingUsersCount,setPendingUsersCount]=useState(0);
   const [mobileMinerSearch,setMobileMinerSearch]=useState("");
   const [toast,setToast]=useState("");
@@ -3640,34 +3163,21 @@ export default function App(){
     return()=>{active=false;authSub.subscription.unsubscribe();};
   },[forceLogin]);
 
+  // Support chat replaced by a Telegram contact link — no chat polling here.
+  // Admin still polls pending-approval count for the admin-nav badge (kept —
+  // unrelated to chat egress).
   /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(()=>{
-    if(!user){setSupportUnreadCount(0);setPendingUsersCount(0);return;}
-    // Badge polls use a HEAD count query (head:true, count:"exact") — zero
-    // row bytes transferred, only a number in a response header. Tradeoff
-    // for the seller path: the localStorage read-state subtraction is
-    // dropped, so the badge shows "any unread admin reply" rather than
-    // "specifically the ones the user has not yet clicked into". The badge
-    // clears when the seller opens that thread and the admin reply moves
-    // to resolved/replied-and-acknowledged via the SupportPage flow.
-    const refreshSupportBadge=()=>{
-      if(document.visibilityState!=="visible")return;
-      const promise=isAdminUser(user)
-        ?countSupportMessages({status:"pending",hasReply:false})
-        :countSupportMessages({email:user.email,hasReply:true});
-      void promise.then(n=>setSupportUnreadCount(n));
-    };
-    // Admins also track new sellers awaiting approval (plan_status='pending').
+    if(!user){setPendingUsersCount(0);return;}
     const refreshPendingUsers=()=>{
       if(!isAdminUser(user)){setPendingUsersCount(0);return;}
       if(document.visibilityState!=="visible")return;
       void listUsers().then(list=>setPendingUsersCount(list.filter(u=>u.role!=="admin"&&u.planStatus==="pending").length));
     };
-    refreshSupportBadge();
     refreshPendingUsers();
-    const onVis=()=>{if(document.visibilityState==="visible"){refreshSupportBadge();refreshPendingUsers();}};
+    const onVis=()=>{if(document.visibilityState==="visible")refreshPendingUsers();};
     document.addEventListener("visibilitychange",onVis);
-    const timer=window.setInterval(()=>{refreshSupportBadge();refreshPendingUsers();},60000);
+    const timer=window.setInterval(refreshPendingUsers,60000);
     return()=>{window.clearInterval(timer);document.removeEventListener("visibilitychange",onVis);};
   },[user?.email]);
   /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
@@ -3727,10 +3237,9 @@ export default function App(){
   async function handleDeleteAccount(){
     if(!user)return;
     const email=user.email;
-    try{await deleteSupportMessagesForEmail(email);}catch(err){console.error("Delete support messages failed:",err);}
     try{await deleteUser(email);}catch(err){console.error("Delete profile failed:",err);}
     void supabase?.auth.signOut();
-    ["sf_session","sf_session_user","sf_comments","sf_comment_archive","sf_buyers","sf_orders",sellerDataKey("sf_comments",email),sellerDataKey("sf_comment_archive",email),sellerDataKey("sf_buyers",email),sellerDataKey("sf_orders",email),sellerDataKey("sf_printed",email),supportReadKey(email)].forEach(k=>LS.del(k));
+    ["sf_session","sf_session_user","sf_comments","sf_comment_archive","sf_buyers","sf_orders",sellerDataKey("sf_comments",email),sellerDataKey("sf_comment_archive",email),sellerDataKey("sf_buyers",email),sellerDataKey("sf_orders",email),sellerDataKey("sf_printed",email)].forEach(k=>LS.del(k));
     setShowProf(false);
     setPage("dashboard");
     setUser(null);
@@ -4027,8 +3536,8 @@ export default function App(){
         {isAdminUser(user)&&<button onClick={()=>setPage("shipping")} className={navClass("shipping")}><span className="nav-ic">🚚</span><span className="nav-lb">Shipping</span></button>}
         <div className="nav-sec-lbl">{t.nav_analytics}</div>
         {navItems.slice(7).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={navClass(id)}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
-        <button onClick={()=>setPage("support")} className={`nav-it ${page==="support"?"on":""}`}><span className="nav-ic">💬</span><span className="nav-lb">Support</span>{supportUnreadCount>0&&<span className="nav-alert-badge">{supportUnreadCount>9?"9+":supportUnreadCount}</span>}</button>
-        {isAdminUser(user)&&(()=>{const adminAlertCount=supportUnreadCount+pendingUsersCount;return <button onClick={()=>setPage("admin")} className={`nav-it ${page==="admin"?"on":""}`}><span className="nav-ic">👑</span><span className="nav-lb">Admin</span>{adminAlertCount>0&&<span className="nav-alert-badge" title={`${pendingUsersCount} pending approval${pendingUsersCount===1?"":"s"}, ${supportUnreadCount} support`}>{adminAlertCount>9?"9+":adminAlertCount}</span>}</button>;})()}
+        <button onClick={()=>setPage("support")} className={`nav-it ${page==="support"?"on":""}`}><span className="nav-ic">💬</span><span className="nav-lb">Support</span></button>
+        {isAdminUser(user)&&<button onClick={()=>setPage("admin")} className={`nav-it ${page==="admin"?"on":""}`}><span className="nav-ic">👑</span><span className="nav-lb">Admin</span>{pendingUsersCount>0&&<span className="nav-alert-badge" title={`${pendingUsersCount} pending approval${pendingUsersCount===1?"":"s"}`}>{pendingUsersCount>9?"9+":pendingUsersCount}</span>}</button>}
         <button onClick={()=>setPage("settings")} className={navClass("settings")} style={{marginTop:"auto"}}><span className="nav-ic">⚙️</span><span className="nav-lb">{t.nav_settings}</span></button>
         <div className="trial-box">
           {isFreeUser?(()=>{
@@ -4299,7 +3808,7 @@ export default function App(){
           >
             <span style={{fontSize:22}}>•••</span>
             <span>{t.more_label}</span>
-            {(()=>{const moreBadge=supportUnreadCount+(isAdminUser(user)?pendingUsersCount:0);return moreBadge>0&&<span className="mobile-nav-badge">{moreBadge>9?"9+":moreBadge}</span>;})()}
+            {isAdminUser(user)&&pendingUsersCount>0&&<span className="mobile-nav-badge">{pendingUsersCount>9?"9+":pendingUsersCount}</span>}
           </button>
         </nav>
       )}
