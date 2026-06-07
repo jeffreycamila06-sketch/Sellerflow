@@ -216,14 +216,16 @@ export async function createMyProfile(
 }
 
 // Admin-only: lists every seller profile. Sellers calling this only see their
-// own row because of RLS.
+// own row because of RLS. Capped at 100 rows — we have ~9 paying sellers and
+// a handful of free, so this is a safety ceiling, not a real pagination point.
 export async function listUsers(): Promise<AccountUser[]> {
   if (!isSupabaseConfigured || !supabase) return [];
 
   const { data, error } = await supabase
     .from("seller_profiles")
     .select("*")
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: true })
+    .limit(100);
 
   if (error) {
     console.error("Load users error:", error.message);
@@ -319,28 +321,65 @@ export async function deleteSupportMessagesForEmail(email: string): Promise<void
   }
 }
 
-export async function listSupportMessages(): Promise<AccountSupportMsg[]> {
+// Full support message list — fetches up to 50 most recent rows. emailFilter
+// narrows the query server-side via WHERE; pass the seller's email for the
+// seller path so they only pull their own thread; pass undefined for admin
+// paths that need the global view. For badge counters that only need a
+// number, call countSupportMessages instead — it uses a HEAD request and
+// downloads zero row data.
+export async function listSupportMessages(emailFilter?: string): Promise<AccountSupportMsg[]> {
   const localMessages = localGet<AccountSupportMsg[]>("sf_support", []);
   if (!isSupabaseConfigured || !supabase) return localMessages;
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("support_messages")
     .select("*")
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (emailFilter) {
+    query = query.eq("email", emailFilter.trim().toLowerCase());
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     console.error("Load support messages error:", error.message);
     return localMessages;
   }
 
-  if ((!data || data.length === 0) && localMessages.length > 0) {
+  if ((!data || data.length === 0) && localMessages.length > 0 && !emailFilter) {
     await Promise.all(localMessages.map((message) => saveSupportMessage(message)));
     return localMessages;
   }
 
   const messages = (data || []).map(rowToSupport);
-  localSet("sf_support", messages);
+  if (!emailFilter) localSet("sf_support", messages);
   return messages;
+}
+
+// Pure count of support messages matching the given filters. Uses a HEAD
+// request (head:true, count:"exact") so PostgREST returns just the count
+// in a response header — zero row bytes transferred. Use for badge counts.
+//
+// admin_reply is NOT NULL DEFAULT '' (see saveSupportMessage), so we can
+// rely on .eq("admin_reply","") meaning "no reply yet" and .neq for "has
+// reply".
+export async function countSupportMessages(opts: { email?: string; status?: AccountSupportMsg["status"]; hasReply?: boolean } = {}): Promise<number> {
+  if (!isSupabaseConfigured || !supabase) return 0;
+
+  let q = supabase.from("support_messages").select("*", { count: "exact", head: true });
+  if (opts.email) q = q.eq("email", opts.email.trim().toLowerCase());
+  if (opts.status) q = q.eq("status", opts.status);
+  if (opts.hasReply === true) q = q.neq("admin_reply", "");
+  if (opts.hasReply === false) q = q.eq("admin_reply", "");
+
+  const { count, error } = await q;
+  if (error) {
+    console.error("Count support messages error:", error.message);
+    return 0;
+  }
+  return count || 0;
 }
 
 export async function saveSupportMessage(message: AccountSupportMsg): Promise<AccountSupportMsg> {

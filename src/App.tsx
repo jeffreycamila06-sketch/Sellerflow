@@ -9,6 +9,7 @@ import {
   getMyProfile,
   listAuditLogs,
   listSupportMessages,
+  countSupportMessages,
   listUsers,
   saveAuditLog,
   saveSupportMessage,
@@ -2288,10 +2289,21 @@ function Support({user,t}:{user:User;t:T}){
   }
   const [prev,setPrev]=useState<SupportMsg[]>(()=>arrLS<SupportMsg>("sf_support").filter(m=>m.email.toLowerCase()===user.email.toLowerCase()));
   useEffect(()=>{
-    const refreshSupport=()=>void listSupportMessages().then(ms=>setPrev(ms.filter(m=>m.email.toLowerCase()===user.email.toLowerCase())));
+    const refreshSupport=()=>{
+      // Skip background-tab polls — saves Supabase egress when the seller has
+      // the app open but isn't looking at it. Next foregrounding triggers
+      // the effect again via the deps.
+      if(typeof document!=="undefined"&&document.visibilityState!=="visible")return;
+      // Server-side WHERE on email + LIMIT 50 keeps egress bounded to this
+      // seller's own thread instead of pulling the whole support_messages
+      // table on every poll.
+      void listSupportMessages(user.email).then(ms=>setPrev(ms));
+    };
     refreshSupport();
-    const timer=window.setInterval(refreshSupport,10000);
-    return()=>window.clearInterval(timer);
+    const onVis=()=>{if(document.visibilityState==="visible")refreshSupport();};
+    document.addEventListener("visibilitychange",onVis);
+    const timer=window.setInterval(refreshSupport,30000);
+    return()=>{window.clearInterval(timer);document.removeEventListener("visibilitychange",onVis);};
   },[user.email,sent]);
   const sellerMessages=[...prev].sort((a,b)=>{
     const au=a.status!=="resolved"&&a.adminReply&&!readIds.includes(a.id)?1:0;
@@ -2324,8 +2336,8 @@ function Support({user,t}:{user:User;t:T}){
       await saveSupportMessage(sm);
       setSupportError("");
       setFollowUp("");
-      const ms=await listSupportMessages();
-      setPrev(ms.filter(m=>m.email.toLowerCase()===user.email.toLowerCase()));
+      const ms=await listSupportMessages(user.email);
+      setPrev(ms);
     }catch(error){
       setSupportError(`Message not sent: ${error instanceof Error?error.message:"Unknown error"}`);
     }finally{setFollowBusy(false);}
@@ -2553,8 +2565,15 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(()=>{
     void refresh();
-    const timer=window.setInterval(()=>{void refresh();},10000);
-    return()=>window.clearInterval(timer);
+    // Admin refresh pulls the full support_messages + audit_logs + free-tier
+    // RPC every tick. Even with a small table, polling every 10s across
+    // every admin tab is the egress hot-spot. 30s + visibility guard keeps
+    // backgrounded tabs from polling at all.
+    const tick=()=>{if(document.visibilityState==="visible")void refresh();};
+    const onVis=()=>{if(document.visibilityState==="visible")void refresh();};
+    document.addEventListener("visibilitychange",onVis);
+    const timer=window.setInterval(tick,30000);
+    return()=>{window.clearInterval(timer);document.removeEventListener("visibilitychange",onVis);};
   },[]);
   /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
@@ -3624,23 +3643,32 @@ export default function App(){
   /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(()=>{
     if(!user){setSupportUnreadCount(0);setPendingUsersCount(0);return;}
-    const refreshSupportBadge=()=>void listSupportMessages().then(ms=>{
-      if(isAdminUser(user)){
-        setSupportUnreadCount(ms.filter(m=>m.status==="pending"&&!m.adminReply).length);
-        return;
-      }
-      const read=arrLS<string>(supportReadKey(user.email));
-      setSupportUnreadCount(ms.filter(m=>m.email.toLowerCase()===user.email.toLowerCase()&&m.adminReply&&!read.includes(m.id)).length);
-    });
+    // Badge polls use a HEAD count query (head:true, count:"exact") — zero
+    // row bytes transferred, only a number in a response header. Tradeoff
+    // for the seller path: the localStorage read-state subtraction is
+    // dropped, so the badge shows "any unread admin reply" rather than
+    // "specifically the ones the user has not yet clicked into". The badge
+    // clears when the seller opens that thread and the admin reply moves
+    // to resolved/replied-and-acknowledged via the SupportPage flow.
+    const refreshSupportBadge=()=>{
+      if(document.visibilityState!=="visible")return;
+      const promise=isAdminUser(user)
+        ?countSupportMessages({status:"pending",hasReply:false})
+        :countSupportMessages({email:user.email,hasReply:true});
+      void promise.then(n=>setSupportUnreadCount(n));
+    };
     // Admins also track new sellers awaiting approval (plan_status='pending').
     const refreshPendingUsers=()=>{
       if(!isAdminUser(user)){setPendingUsersCount(0);return;}
+      if(document.visibilityState!=="visible")return;
       void listUsers().then(list=>setPendingUsersCount(list.filter(u=>u.role!=="admin"&&u.planStatus==="pending").length));
     };
     refreshSupportBadge();
     refreshPendingUsers();
-    const timer=window.setInterval(()=>{refreshSupportBadge();refreshPendingUsers();},10000);
-    return()=>window.clearInterval(timer);
+    const onVis=()=>{if(document.visibilityState==="visible"){refreshSupportBadge();refreshPendingUsers();}};
+    document.addEventListener("visibilitychange",onVis);
+    const timer=window.setInterval(()=>{refreshSupportBadge();refreshPendingUsers();},60000);
+    return()=>{window.clearInterval(timer);document.removeEventListener("visibilitychange",onVis);};
   },[user?.email]);
   /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 
