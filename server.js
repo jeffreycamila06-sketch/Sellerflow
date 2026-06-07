@@ -87,7 +87,8 @@ async function requireAuth(req, res, next) {
       error: "Server auth is not configured",
     });
   }
-  const user = await verifyToken(bearerToken(req));
+  const token = bearerToken(req);
+  const user = await verifyToken(token);
   if (!user) {
     return res.status(401).json({
       success: false,
@@ -95,6 +96,117 @@ async function requireAuth(req, res, next) {
     });
   }
   req.sellerId = cleanSellerId(user.email);
+  // Stashed for the plan-enforcement middleware that may follow this one.
+  req.userEmail = user.email || "";
+  req.authUserId = user.id || "";
+  req.authToken = token || "";
+  return next();
+}
+
+// ============================================================================
+// PLAN ENFORCEMENT
+// ----------------------------------------------------------------------------
+// Reads seller_profiles.{plan,plan_status,plan_expiry} for the authenticated
+// user and decides whether to allow a new /connect attempt.
+//
+// SAFETY:
+//   * FAIL-OPEN — any error (missing client, DB error, no profile row, network
+//     failure, thrown exception) → allow + log [PLAN_CHECK] ERROR. We will
+//     never lock out paying sellers because of a transient infra problem.
+//   * KILL-SWITCH — flip PLAN_ENFORCEMENT_ENABLED to false and redeploy to
+//     instantly disable enforcement without reverting code. When disabled the
+//     check still LOGS what it WOULD have done so you can keep observing.
+//   * FREE TIER — sellers with plan='free' are never blocked here (cap-based
+//     elsewhere via DB trigger). Pending free sellers are stopped at the
+//     frontend's PendingApprovalWall before ever reaching /connect.
+//   * No hard-coded emails. No deny-list. Decisions come from the DB only.
+//
+// Every decision emits a single greppable log line:
+//   [PLAN_CHECK] ALLOW  email=... plan=... status=... expiry=...
+//   [PLAN_CHECK] BLOCK  email=... plan=... status=... expiry=... reason=...
+//   [PLAN_CHECK] ERROR  email=... err=... -> FAIL-OPEN (allowing)
+//   [PLAN_CHECK] (disabled) WOULD BLOCK email=... ... reason=...
+// ============================================================================
+
+const PLAN_ENFORCEMENT_ENABLED = true;
+
+async function checkPlanActive(email, authUserId, token) {
+  const ctx = `email=${email || "(unknown)"}`;
+
+  if (!sb || !SUPABASE_URL || !SUPABASE_KEY) {
+    console.log(`[PLAN_CHECK] ERROR ${ctx} err=no_supabase_client -> FAIL-OPEN (allowing)`);
+    return { allowed: true };
+  }
+  if (!authUserId || !token) {
+    console.log(`[PLAN_CHECK] ERROR ${ctx} err=missing_auth_context -> FAIL-OPEN (allowing)`);
+    return { allowed: true };
+  }
+
+  try {
+    // Per-request, JWT-scoped client so the seller's own RLS policy lets us
+    // read their seller_profiles row by auth_user_id (same pattern the
+    // frontend uses in getMyProfile).
+    const userSb = createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { headers: { Authorization: `Bearer ${token}` } },
+    });
+
+    const { data, error } = await userSb
+      .from("seller_profiles")
+      .select("plan, plan_status, plan_expiry")
+      .eq("auth_user_id", authUserId)
+      .maybeSingle();
+
+    if (error) {
+      console.log(`[PLAN_CHECK] ERROR ${ctx} err=${error.message || "rls_or_db_error"} -> FAIL-OPEN (allowing)`);
+      return { allowed: true };
+    }
+    if (!data) {
+      console.log(`[PLAN_CHECK] ERROR ${ctx} err=no_profile_row -> FAIL-OPEN (allowing)`);
+      return { allowed: true };
+    }
+
+    const plan = String(data.plan || "");
+    const status = String(data.plan_status || "");
+    const expiry = data.plan_expiry ? String(data.plan_expiry) : "";
+    const ctx2 = `${ctx} plan=${plan} status=${status} expiry=${expiry}`;
+
+    // Free plan is cap-limited (DB trigger), never time-blocked at /connect.
+    if (plan === "free") {
+      console.log(`[PLAN_CHECK] ALLOW ${ctx2} (free-tier exempt)`);
+      return { allowed: true };
+    }
+
+    const expiredStatus = status === "expired";
+    const pastExpiry = expiry ? new Date(expiry).getTime() < Date.now() : false;
+
+    if (expiredStatus || pastExpiry) {
+      const reason = expiredStatus ? "expired" : "past_expiry";
+      if (!PLAN_ENFORCEMENT_ENABLED) {
+        console.log(`[PLAN_CHECK] (disabled) WOULD BLOCK ${ctx2} reason=${reason}`);
+        return { allowed: true };
+      }
+      console.log(`[PLAN_CHECK] BLOCK ${ctx2} reason=${reason}`);
+      return { allowed: false, reason };
+    }
+
+    console.log(`[PLAN_CHECK] ALLOW ${ctx2}`);
+    return { allowed: true };
+  } catch (err) {
+    console.log(`[PLAN_CHECK] ERROR ${ctx} err=${err && err.message ? err.message : String(err)} -> FAIL-OPEN (allowing)`);
+    return { allowed: true };
+  }
+}
+
+async function requirePlanActive(req, res, next) {
+  const result = await checkPlanActive(req.userEmail, req.authUserId, req.authToken);
+  if (!result.allowed) {
+    return res.status(403).json({
+      success: false,
+      error: "plan_expired",
+      message: "Your plan has expired. Please upgrade.",
+    });
+  }
   return next();
 }
 
@@ -284,9 +396,19 @@ async function disconnectTikTokConnection(key, { manual = false } = {}) {
 }
 
 io.use(async (socket, next) => {
-  const user = await verifyToken(socket.handshake.auth?.token || "");
+  const token = socket.handshake.auth?.token || "";
+  const user = await verifyToken(token);
   if (!user) return next(new Error("unauthorized"));
   socket.data.sellerId = cleanSellerId(user.email);
+
+  // Same plan gate as the HTTP /connect routes — fail-open on lookup error,
+  // free-tier exempt, kill-switch via PLAN_ENFORCEMENT_ENABLED. An expired
+  // seller is rejected at the handshake so they can't receive live comments
+  // even from a connection that was alive before they expired.
+  const planResult = await checkPlanActive(user.email, user.id, token);
+  if (!planResult.allowed) {
+    return next(new Error("plan_expired"));
+  }
   next();
 });
 
@@ -383,7 +505,7 @@ app.get("/health/tiktok", (_req, res) => {
 });
 
 
-app.post("/connect/tiktok", requireAuth, async (req, res) => {
+app.post("/connect/tiktok", requireAuth, requirePlanActive, async (req, res) => {
   return connectTikTok(req.body.username, res, {
     sellerId: req.sellerId,
     sessionId: req.body.sessionId,
@@ -427,7 +549,7 @@ app.post("/disconnect/tiktok", requireAuth, async (req, res) => {
   });
 });
 
-app.post("/connect/facebook", requireAuth, (req, res) => {
+app.post("/connect/facebook", requireAuth, requirePlanActive, (req, res) => {
   const sellerId = req.sellerId;
   const username = cleanAccountKey(req.body.username || req.body.liveVideoId || req.body.pageName);
   const sessionId = String(req.body.sessionId || "");
