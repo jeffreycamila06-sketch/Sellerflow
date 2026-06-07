@@ -2621,7 +2621,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                       <td><Badge label={(u.role==="admin")?"Admin":"Seller"} color={(u.role==="admin")?"amber":"gray"}/></td>
                       <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
                       <td>{u.plan==="free"&&fr?<span style={{color:fr.capped?"#A32D2D":fr.near_cap?"#BA7517":"#1D9E75",fontWeight:600}}>{fr.count}/{fr.cap} · {fr.cycle_resets_in_days}d</span>:<span className="muted">—</span>}</td>
-                      <td style={daysCellStyle(dLeft(u.planExpiry))}>{dLeft(u.planExpiry)}</td>
+                      <td style={u.plan==="free"?undefined:daysCellStyle(dLeft(u.planExpiry))}>{dLeft(u.planExpiry)}</td>
                       <td>{renderUserMonthsSelect(u)}</td>
                       <td>{registeredAccountCount(u)} / {maxAcc(u.plan)}</td>
                       <td>
@@ -2758,7 +2758,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                   <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div>{u.planStatus==="pending"&&<div style={{marginTop:3}}><Badge label="Pending Approval" color="amber"/></div>}</td>
                   <td><Badge label={(u.role==="admin")?"Admin":"Seller"} color={(u.role==="admin")?"amber":"gray"}/></td>
                   <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
-                  <td style={daysCellStyle(dLeft(u.planExpiry))}>{dLeft(u.planExpiry)}</td>
+                  <td style={u.plan==="free"?undefined:daysCellStyle(dLeft(u.planExpiry))}>{dLeft(u.planExpiry)}</td>
                   <td>{renderUserMonthsSelect(u)}</td>
                   <td>{registeredAccountCount(u)} / {maxAcc(u.plan)}</td>
                   <td>
