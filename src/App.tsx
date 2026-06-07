@@ -889,7 +889,14 @@ function SubPage({user,t}:{user:User;onActivate:(plan:Plan,status:PlanStatus,exp
                 <div className="payment-detail"><span>🏛</span><span>{t.payment_name}</span></div>
                 <div style={{marginTop:10,padding:"8px 12px",background:"#FFF8E1",borderRadius:8,fontSize:12,color:"#633806",lineHeight:1.5}}>{t.payment_note}</div>
               </div>
-              <button onClick={()=>{setShowPay(false);}} className="btn-purple" style={{width:"100%",padding:"10px 0"}}>{t.payment_btn}</button>
+              <a
+                href="https://t.me/SELLERFLOWLIVE1995"
+                target="_blank"
+                rel="noreferrer noopener"
+                onClick={()=>setShowPay(false)}
+                className="btn-purple"
+                style={{width:"100%",padding:"10px 0",display:"block",textAlign:"center",textDecoration:"none",boxSizing:"border-box"}}
+              >{t.payment_btn}</a>
             </div>
           </div>
         </div>
