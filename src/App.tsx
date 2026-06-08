@@ -2524,6 +2524,14 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   const planMonitorUsers=sellerUsers
     .filter(u=>u.planStatus==="expired"||dLeft(u.planExpiry)<=(u.plan==="trial"?3:5))
     .sort((a,b)=>dLeft(a.planExpiry)-dLeft(b.planExpiry));
+  // 1-day / already-expired urgency feed for the top-of-page banner. Pure
+  // derivation from the existing `users` state — zero new Supabase queries.
+  // Excludes admin (already filtered by sellerUsers), free (cap-limited not
+  // time-limited), and pending (different flow — they appear in Pending
+  // Approvals). Sorted most-urgent first.
+  const expiringSoonSellers=sellerUsers
+    .filter(u=>u.plan!=="free"&&u.planStatus!=="pending"&&(u.planStatus==="expired"||dLeft(u.planExpiry)<=1))
+    .sort((a,b)=>dLeft(a.planExpiry)-dLeft(b.planExpiry));
   // Free-tier monitoring (from list_free_users_status RPC).
   const q2=adminSearch.trim().toLowerCase();
   const freeUsersFiltered=freeUsers.filter(f=>!q2||[f.email,f.store_name,f.full_name].some(v=>String(v||"").toLowerCase().includes(q2)));
@@ -2589,6 +2597,13 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
           <button className="btn-out" onClick={refresh}>Refresh</button>
         </div>
       </div>
+
+      {expiringSoonSellers.length>0&&(
+        <div className="notice-box" style={{background:"#FEE2E2",border:"1px solid #FCA5A5",borderRadius:8,padding:"12px 16px",fontSize:13,color:"#991B1B",marginBottom:8,fontWeight:600}}>
+          ⚠️ {expiringSoonSellers.length} {expiringSoonSellers.length===1?t.expiry_banner_one:t.expiry_banner_many}
+          <span style={{fontWeight:400}}> — {expiringSoonSellers.slice(0,5).map(u=>u.profile.storeName||u.email).join(", ")}{expiringSoonSellers.length>5?` +${expiringSoonSellers.length-5}`:""}</span>
+        </div>
+      )}
 
       <div className="admin-searchbar">
         <span className="admin-search-ic">⌕</span>
@@ -2982,6 +2997,7 @@ export default function App(){
   const [commentPrices,setCommentPrices]=useState<Record<string,string>>({});
   const priceInputRefs=useRef<Record<string,HTMLInputElement|null>>({});
   const [pendingUsersCount,setPendingUsersCount]=useState(0);
+  const [expiringSoonCount,setExpiringSoonCount]=useState(0);
   const [mobileMinerSearch,setMobileMinerSearch]=useState("");
   const [toast,setToast]=useState("");
   // Free-tier usage state + which cap popup (if any) is open.
@@ -3196,11 +3212,17 @@ export default function App(){
   // unrelated to chat egress).
   /* eslint-disable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
   useEffect(()=>{
-    if(!user){setPendingUsersCount(0);return;}
+    if(!user){setPendingUsersCount(0);setExpiringSoonCount(0);return;}
     const refreshPendingUsers=()=>{
-      if(!isAdminUser(user)){setPendingUsersCount(0);return;}
+      if(!isAdminUser(user)){setPendingUsersCount(0);setExpiringSoonCount(0);return;}
       if(document.visibilityState!=="visible")return;
-      void listUsers().then(list=>setPendingUsersCount(list.filter(u=>u.role!=="admin"&&u.planStatus==="pending").length));
+      // Single listUsers() response → two derived counts. Same egress as
+      // before, just an extra client-side filter for the expiring-soon dot.
+      void listUsers().then(list=>{
+        const sellers=list.filter(u=>u.role!=="admin");
+        setPendingUsersCount(sellers.filter(u=>u.planStatus==="pending").length);
+        setExpiringSoonCount(sellers.filter(u=>u.plan!=="free"&&u.planStatus!=="pending"&&(u.planStatus==="expired"||dLeft(u.planExpiry)<=1)).length);
+      });
     };
     refreshPendingUsers();
     const onVis=()=>{if(document.visibilityState==="visible")refreshPendingUsers();};
@@ -3565,7 +3587,7 @@ export default function App(){
         <div className="nav-sec-lbl">{t.nav_analytics}</div>
         {navItems.slice(7).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={navClass(id)}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
         <button onClick={()=>setPage("support")} className={`nav-it ${page==="support"?"on":""}`}><span className="nav-ic">💬</span><span className="nav-lb">Support</span></button>
-        {isAdminUser(user)&&<button onClick={()=>setPage("admin")} className={`nav-it ${page==="admin"?"on":""}`}><span className="nav-ic">👑</span><span className="nav-lb">Admin</span>{pendingUsersCount>0&&<span className="nav-alert-badge" title={`${pendingUsersCount} pending approval${pendingUsersCount===1?"":"s"}`}>{pendingUsersCount>9?"9+":pendingUsersCount}</span>}</button>}
+        {isAdminUser(user)&&(()=>{const adminAlertCount=pendingUsersCount+expiringSoonCount;return <button onClick={()=>setPage("admin")} className={`nav-it ${page==="admin"?"on":""}`}><span className="nav-ic">👑</span><span className="nav-lb">Admin</span>{adminAlertCount>0&&<span className="nav-alert-badge" title={`${pendingUsersCount} pending approval${pendingUsersCount===1?"":"s"}, ${expiringSoonCount} expiring within 24h`}>{adminAlertCount>9?"9+":adminAlertCount}</span>}</button>;})()}
         <button onClick={()=>setPage("settings")} className={navClass("settings")} style={{marginTop:"auto"}}><span className="nav-ic">⚙️</span><span className="nav-lb">{t.nav_settings}</span></button>
         <div className="trial-box">
           {isFreeUser?(()=>{
@@ -3836,7 +3858,7 @@ export default function App(){
           >
             <span style={{fontSize:22}}>•••</span>
             <span>{t.more_label}</span>
-            {isAdminUser(user)&&pendingUsersCount>0&&<span className="mobile-nav-badge">{pendingUsersCount>9?"9+":pendingUsersCount}</span>}
+            {(()=>{const moreBadge=isAdminUser(user)?pendingUsersCount+expiringSoonCount:0;return moreBadge>0&&<span className="mobile-nav-badge">{moreBadge>9?"9+":moreBadge}</span>;})()}
           </button>
         </nav>
       )}
