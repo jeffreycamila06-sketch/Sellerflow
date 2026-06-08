@@ -1650,7 +1650,7 @@ function Sales({orders,buyers,cur,t}:{orders:LiveOrder[];buyers:Buyer[];cur:stri
 // ═══════════════════════════════════════════════════════════════════
 // SETTINGS
 // ═══════════════════════════════════════════════════════════════════
-function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExportBackup,onClearLiveComments,t}:{user:User;settings:Settings;onSaveProfile:(p:Profile)=>void;onSaveSettings:(s:Settings)=>void;onSavePw:(o:string,n:string)=>Promise<string>;onExportBackup:()=>void;onClearLiveComments:()=>void;t:T}){
+function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExportBackup,onClearLiveComments,onResetBuyerCounter,t}:{user:User;settings:Settings;onSaveProfile:(p:Profile)=>void;onSaveSettings:(s:Settings)=>void;onSavePw:(o:string,n:string)=>Promise<string>;onExportBackup:()=>void;onClearLiveComments:()=>void;onResetBuyerCounter:()=>void;t:T}){
   const [prof,setProf]=useState<Profile>({...user.profile});
   const [sets,setSets]=useState<Settings>({...settings});
   const [op,setOp]=useState("");const [np,setNp]=useState("");const [cp,setCp]=useState("");
@@ -1975,6 +1975,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
           <div className="backup-actions">
             <button type="button" className="btn-out" onClick={onExportBackup}>Export Seller Backup</button>
             <button type="button" className="btn-out danger-lite" onClick={onClearLiveComments}>Clear Live Comments Only</button>
+            <button type="button" className="btn-out danger-lite" onClick={onResetBuyerCounter}>{t.reset_buyer_btn}</button>
           </div>
           <div className="backup-note">Clear live comments keeps orders, customers, sales, and comment history archive.</div>
           <button type="submit" className="btn-purple" style={{marginTop:6}}>{t.save_settings}</button>
@@ -3490,6 +3491,16 @@ export default function App(){
     clearLiveCommentMemory();
     setToast("Live comments cleared");
   }
+  function resetBuyerCounterOnly(){
+    if(!window.confirm(t.confirm_reset_buyer_counter))return;
+    setBuyers([]);
+    setSelBuyer(null);
+    if(user){
+      LS.set(sellerDailyDataKey("sf_buyers",user.email,currentLiveDayId),[]);
+      LS.set(sellerLiveDataKey("sf_buyers",user.email,currentSessionId),[]);
+    }
+    setToast(t.toast_buyer_counter_reset);
+  }
 
   // Check plan expiry
   // Free users are limited by the order cap, never by a time expiry, so they
@@ -4233,7 +4244,7 @@ export default function App(){
         {page==="print"&&<PrintPage buyers={buyers} cur={settings.currency} storeName={user.profile.storeName||"SellerFlowLive"} settings={settings} t={t}/>}
         {page==="sales"&&<Sales orders={allOrders} buyers={buyers} cur={settings.currency} t={t}/>}
         {page==="shipping"&&isAdminUser(user)&&<Shipping user={user} t={t}/>}
-        {page==="settings"&&<SettingsPage user={user} settings={settings} onSaveProfile={handleSaveProfile} onSaveSettings={handleSaveSettings} onSavePw={handleSavePw} onExportBackup={exportSellerBackup} onClearLiveComments={clearLiveCommentsOnly} t={t}/>}
+        {page==="settings"&&<SettingsPage user={user} settings={settings} onSaveProfile={handleSaveProfile} onSaveSettings={handleSaveSettings} onSavePw={handleSavePw} onExportBackup={exportSellerBackup} onClearLiveComments={clearLiveCommentsOnly} onResetBuyerCounter={resetBuyerCounterOnly} t={t}/>}
         {page==="subscription"&&<SubPage user={user} onActivate={handleActivate} t={t}/>}
         {page==="support"&&<Support user={user} t={t}/>}
         {page==="admin"&&<AdminPage currentUser={user} onApprove={handleAdminApprove} orders={allOrders} t={t}/>}
