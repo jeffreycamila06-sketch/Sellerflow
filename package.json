@@ -9,7 +9,9 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "server": "node server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "typecheck": "tsc --noEmit",
+    "agent:check": "npm run lint && npm run typecheck && npm run build"
   },
   "engines": {
     "node": ">=20"
