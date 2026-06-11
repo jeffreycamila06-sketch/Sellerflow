@@ -139,13 +139,17 @@ Known gaps (do not assume these exist):
 - **No CI** — no GitHub Actions; agent:check is manual discipline.
 - ESLint does not cover `server.js` (flat config targets `**/*.{ts,tsx}` only).
 
-### Baseline note (2026-06-11, main `070cc42`)
+### Baseline note (updated 2026-06-11, main `76d48d4`)
 
-`npm run agent:check` currently **fails at the lint step** with 8 pre-existing
-errors + 2 warnings, all in `src/App.tsx` (unused vars `BOT_FAQ_ICONS` /
-`printerScanning` / `scanMobilePrinters` / `copy`; two
-`react-hooks/set-state-in-effect`; two `react-hooks/purity` on `Date.now()`).
-`npm run typecheck` and `npm run build` both pass. Until the owner approves a
-lint-cleanup pass, treat **typecheck + build green** as the effective gate and
-compare lint output against this known-error list — any NEW lint error is a
-regression.
+`npm run agent:check` currently **fails at the lint step** with 4 pre-existing
+errors + 2 warnings, all in `src/App.tsx` — the 4 react-hooks errors only:
+two `react-hooks/set-state-in-effect`, and two `react-hooks/purity` on
+`Date.now()` in the order path (`createOrderFromComment`, `commentStamp`).
+These are intentionally left pending owner-approved refactor (two sit in the
+live order-creation path; don't touch without test coverage).
+The 4 unused-vars errors originally in this baseline (`BOT_FAQ_ICONS`,
+`printerScanning`, `scanMobilePrinters`, `copy`) were removed 2026-06-11 in
+commit `ddce040`.
+`npm run typecheck` and `npm run build` both pass. Treat **typecheck + build
+green** as the effective gate and compare lint output against this known-error
+list — any NEW lint error is a regression.
