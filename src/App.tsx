@@ -20,6 +20,7 @@ import { TRANSLATIONS, type Lang, type T } from "./translations";
 import { liveDayId, taipeiDayId } from "./lib/dateHelpers";
 import type { LiveOrder, Buyer, Comment } from "./lib/orderTypes";
 import { buildOrderFromComment } from "./lib/orderLogic";
+import { sellerExpiryState } from "./lib/sellerExpiry";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Plan = "free" | "trial" | "basic" | "pro" | "master";
@@ -211,6 +212,8 @@ const ini=(s:string)=>s.split(/[\s_]/g).slice(0,2).map(w=>w[0]?.toUpperCase()).j
 const abg=(h:string)=>{const c=["#7F77DD","#1D9E75","#D85A30","#D4537E","#378ADD","#BA7517"];let x=0;for(const ch of h)x=(x*31+ch.charCodeAt(0))%c.length;return c[Math.abs(x)];};
 const addDays=(n:number)=>{const d=new Date();d.setDate(d.getDate()+n);return d.toISOString();};
 const addMonths=(n:number)=>addDays(Math.max(1,n)*30);
+// Single source of truth for the support/renewal Telegram contact.
+const TELEGRAM_URL="https://t.me/SELLERFLOWLIVE1995";
 const dLeft=(e:string,now=Date.now())=>Math.max(0,Math.ceil((new Date(e).getTime()-now)/86400000));
 // Background highlight for the admin Users table DAYS cell. dLeft clamps at 0
 // so expired plans land in the strongest red. 8+ days → no highlight (returns
@@ -881,7 +884,7 @@ function SubPage({user,t}:{user:User;onActivate:(plan:Plan,status:PlanStatus,exp
                 <div style={{marginTop:10,padding:"8px 12px",background:"#FFF8E1",borderRadius:8,fontSize:12,color:"#633806",lineHeight:1.5}}>{t.payment_note}</div>
               </div>
               <a
-                href="https://t.me/SELLERFLOWLIVE1995"
+                href={TELEGRAM_URL}
                 target="_blank"
                 rel="noreferrer noopener"
                 onClick={()=>setShowPay(false)}
@@ -2224,7 +2227,6 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
 // with the call site at <Support user=... t=...>.
 function Support({user,t}:{user:User;t:T}){
   void user;
-  const TELEGRAM_URL="https://t.me/SELLERFLOWLIVE1995";
   return(
     <div className="subpage support-page">
       <div className="subpage-hd"><div><h2>{t.support_title}</h2><p>{t.support_sub}</p></div></div>
@@ -3585,6 +3587,27 @@ export default function App(){
                 <div className="pd-div"/>
                 <div className="pd-row pd-cl" onClick={()=>{setPage("settings");setShowProf(false);}}><span>⚙️</span><span>{t.nav_settings}</span></div>
                 <div className="pd-row pd-cl" onClick={()=>{setPage("subscription");setShowProf(false);}}><span>💎</span><span>{t.subscription_label}</span></div>
+                {(()=>{
+                  // Seller-facing expiry line — derived from the already-loaded
+                  // user.planExpiry + the existing 60s nowTick (zero new egress).
+                  const exp=sellerExpiryState(user,nowTick);
+                  if(!exp)return null;
+                  const expColor=exp.tier==="urgent"?"#991B1B":exp.tier==="warning"?"#92400E":undefined;
+                  const expLine=exp.days===0?t.seller_expiry_today:exp.days===1?t.seller_expiry_tomorrow:tpl(t.seller_expiry_line,{days:exp.days});
+                  return(
+                    <div className="pd-row" style={expColor?{color:expColor,fontWeight:exp.tier==="urgent"?700:500}:undefined}>
+                      <span>⏳</span>
+                      <span>
+                        {expLine}{exp.expiryDate?` · ${exp.expiryDate}`:""}
+                        {exp.tier!=="normal"&&(
+                          <a href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener" onClick={e=>e.stopPropagation()} style={{display:"block",marginTop:4,color:"#7F77DD",fontWeight:600,textDecoration:"underline"}}>
+                            {t.seller_expiry_renew_cta}
+                          </a>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })()}
                 <div className="pd-row pd-cl" onClick={()=>{setPage("support");setShowProf(false);}}><span>💬</span><span>{t.support_label}</span></div>
                 {isAdminUser(user)&&<div className="pd-row pd-cl" onClick={()=>{setPage("shipping");setShowProf(false);}}><span>🚚</span><span>Shipping</span></div>}
                 <div className="pd-row pd-cl" onClick={()=>{setPage("privacy");setShowProf(false);}}><span>{t.privacy_policy}</span><span>{t.privacy_policy}</span></div>
