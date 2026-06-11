@@ -139,17 +139,20 @@ Known gaps (do not assume these exist):
 - **No CI** — no GitHub Actions; agent:check is manual discipline.
 - ESLint does not cover `server.js` (flat config targets `**/*.{ts,tsx}` only).
 
-### Baseline note (updated 2026-06-11, main `76d48d4`)
+### Baseline note (updated 2026-06-11, main `c3fddc6`)
 
-`npm run agent:check` currently **fails at the lint step** with 4 pre-existing
-errors + 2 warnings, all in `src/App.tsx` — the 4 react-hooks errors only:
-two `react-hooks/set-state-in-effect`, and two `react-hooks/purity` on
-`Date.now()` in the order path (`createOrderFromComment`, `commentStamp`).
-These are intentionally left pending owner-approved refactor (two sit in the
-live order-creation path; don't touch without test coverage).
-The 4 unused-vars errors originally in this baseline (`BOT_FAQ_ICONS`,
-`printerScanning`, `scanMobilePrinters`, `copy`) were removed 2026-06-11 in
-commit `ddce040`.
-`npm run typecheck` and `npm run build` both pass. Treat **typecheck + build
-green** as the effective gate and compare lint output against this known-error
-list — any NEW lint error is a regression.
+`npm run agent:check` currently **fails at the lint step** with 3 pre-existing
+errors + 2 warnings, all in `src/App.tsx`:
+two `react-hooks/set-state-in-effect`, and one `react-hooks/purity` on
+`Date.now()` in `commentStamp` (display-only helper). These are intentionally
+left pending owner-approved refactor.
+The **order path is now lint-clean**: the `Date.now()` purity error in
+`createOrderFromComment` was fixed by the Phase 2b extraction (commit
+`384185b`) — the pure assembly core lives in `src/lib/orderLogic.ts`,
+protected by 17 deterministic tests.
+History: the 4 unused-vars errors (`BOT_FAQ_ICONS`, `printerScanning`,
+`scanMobilePrinters`, `copy`) were removed 2026-06-11 in commit `ddce040`.
+`npm run typecheck`, `npm run test` (29 tests), and `npm run build` all pass.
+Treat **typecheck + test + build green** as the effective gate and compare
+lint output against this known-error list — any NEW lint error is a
+regression.
