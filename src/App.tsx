@@ -17,6 +17,7 @@ import { io } from "socket.io-client";
 import "./App.css";
 import posthog from "posthog-js";
 import { TRANSLATIONS, type Lang, type T } from "./translations";
+import { liveDayId, taipeiDayId } from "./lib/dateHelpers";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Plan = "free" | "trial" | "basic" | "pro" | "master";
@@ -152,13 +153,6 @@ const sellerIdOf=(email:string)=>email.trim().toLowerCase();
 const sellerDataKey=(base:string,email:string)=>email?`${base}:${sellerIdOf(email)}`:base;
 const custDataKey=(email:string)=>sellerDataKey("sf_shipping_customer_data",email);
 const sellerLiveDataKey=(base:string,email:string,sessionId:string)=>email?`${base}:${sellerIdOf(email)}:${sessionId}`:base;
-const liveDayId=()=>{
-  const d=new Date();
-  const y=d.getFullYear();
-  const m=String(d.getMonth()+1).padStart(2,"0");
-  const day=String(d.getDate()).padStart(2,"0");
-  return `${y}-${m}-${day}`;
-};
 const sellerDailyDataKey=(base:string,email:string,dayId:string)=>email?`${base}:${sellerIdOf(email)}:${dayId}`:base;
 const cleanLiveAccount=(value:string)=>String(value||"").trim().replace(/^@+/,"").toLowerCase();
 const sellerDayOrSessionArray=<X,>(base:string,email:string,dayId:string,sessionId:string):X[]=>{
@@ -1070,18 +1064,6 @@ const SHIP_DEFAULT_FEE="38";
 // IMPORTANT: this must match the official template EXACTLY or 7-11 rejects the file.
 const MYSHIP_HEADERS=["取件人姓名","取件人手機","取件門市","溫層","商品","訂單金額","運費金額","買家下訂日期","商品備註","其他資訊 (FB/LINE/IG帳號)"];
 
-// Asia/Taipei calendar day — hardcoded TZ so #1 reset at midnight is
-// consistent across all sellers regardless of their device timezone.
-const taipeiDayId=()=>{
-  try{
-    const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(new Date());
-    const y=parts.find(p=>p.type==="year")?.value||"";
-    const m=parts.find(p=>p.type==="month")?.value||"";
-    const d=parts.find(p=>p.type==="day")?.value||"";
-    if(y&&m&&d)return `${y}-${m}-${d}`;
-  }catch{/* fall through */}
-  return liveDayId();
-};
 
 const shipmentsKey=(email:string)=>sellerDataKey("sf_shipments",email);
 const shipmentsMigrationFlagKey=(email:string)=>sellerDataKey("sf_shipments_migrated",email);
