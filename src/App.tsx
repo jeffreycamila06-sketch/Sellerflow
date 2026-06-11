@@ -178,8 +178,6 @@ const SERVER = String(import.meta.env.VITE_SERVER_URL || DEFAULT_SERVER).replace
 const DEBUG_SOCKET = import.meta.env.DEV || import.meta.env.VITE_DEBUG_SOCKET === "true";
 const DEF_SETTINGS: Settings = { darkMode:true, autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"", paperSize:"100x60mm", printerType:"auto", stickerSize:"100x60mm", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printLabelScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printCommentScale:100, printTotalScale:100, printStoreX:0, printStoreY:0, printBuyerLabelX:0, printBuyerLabelY:0, printBuyerNumberX:0, printBuyerNumberY:0, printBuyerNameX:0, printBuyerNameY:0, printUsernameX:0, printUsernameY:0, printSessionX:0, printSessionY:0, printOrderX:0, printOrderY:0, printTotalX:0, printTotalY:0 };
 const LANG_OPTS: {code:Lang;label:string}[] = [{code:"en",label:"🇺🇸 EN"},{code:"fil",label:"🇵🇭 FIL"},{code:"zh",label:"🇨🇳 中文"},{code:"vi",label:"🇻🇳 VI"},{code:"th",label:"🇹🇭 TH"},{code:"id",label:"🇮🇩 ID"}];
-// Icons for the 6 Support FAQ-bot questions, in the fixed order they appear in every language's bot_faq
-const BOT_FAQ_ICONS=["🔗","💬","🛒","🖨️","💳","🔑"];
 const CURRENCIES = [{v:"",l:"No symbol"},{v:"$",l:"$ USD"},{v:"NT$",l:"NT$ NTD"}];
 const cleanCurrency=(value:unknown)=>{
   const currency=String(value||"").trim();
@@ -1662,7 +1660,6 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   const nativePrinterReady=hasNativeMobilePrinter();
   const [mobilePrinterStatus,setMobilePrinterStatus]=useState<MobilePrinterResult>({ok:false,message:nativePrinterReady?"Tap Check Status":"Open SellerFlow mobile app for printer scan"});
   const [mobilePrinters,setMobilePrinters]=useState<MobilePrinterDevice[]>([]);
-  const [printerScanning,setPrinterScanning]=useState(false);
   const [lanPrinterHost,setLanPrinterHost]=useState("");
   const [lanPrinterPort,setLanPrinterPort]=useState("9100");
   // ── Bluetooth sticker printer (additive — Settings UI only; native phase implements scan/print)
@@ -1816,14 +1813,6 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
     if(result.host||saved?.host)setLanPrinterHost(result.host||saved?.host||"");
     if(result.port||saved?.port)setLanPrinterPort(String(result.port||saved?.port||9100));
     return result;
-  }
-  async function scanMobilePrinters(){
-    setPrinterScanning(true);
-    const result=await callMobilePrinterBridge("getPrinter");
-    setMobilePrinterStatus(result);
-    setMobilePrinters(result.savedPrinter&&result.savedPrinter.host?[result.savedPrinter]:[]);
-    setPrinterScanning(false);
-    setToast(result.message||"Printer status checked");
   }
   async function connectMobilePrinter(printer:MobilePrinterDevice){
     const result=await callMobilePrinterBridge("setPrinter",{host:printer.host||"",port:printer.port||9100});
@@ -2494,11 +2483,6 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     }
   }
 
-  function copy(value:string,label:string){
-    navigator.clipboard?.writeText(value);
-    setCopied(`${label} copied`);
-    setTimeout(()=>setCopied(""),1800);
-  }
 
   function scrollBox(el:HTMLDivElement|null,dir:"up"|"down"){
     el?.scrollBy({top:dir==="up"?-220:220,behavior:"smooth"});
