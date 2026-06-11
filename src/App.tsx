@@ -18,6 +18,8 @@ import "./App.css";
 import posthog from "posthog-js";
 import { TRANSLATIONS, type Lang, type T } from "./translations";
 import { liveDayId, taipeiDayId } from "./lib/dateHelpers";
+import type { LiveOrder, Buyer, Comment } from "./lib/orderTypes";
+import { buildOrderFromComment } from "./lib/orderLogic";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Plan = "free" | "trial" | "basic" | "pro" | "master";
@@ -27,9 +29,6 @@ type Page = "dashboard"|"miners"|"orders"|"products"|"customers"|"customerData"|
 interface Profile { fullName:string; storeName:string; phone:string; tiktok:string; facebook:string; }
 type Role = "seller" | "admin";
 interface User { authUserId?:string; email:string; profile:Profile; plan:Plan; planStatus:PlanStatus; planExpiry:string; trialStartedAt?:string; connectedAccounts:string[]; role?:Role; }
-interface LiveOrder { orderNum:number; item:string; qty:number; price:number; total:number; time:string; handle:string; name:string; bNum:number; platform:string; status:string; date:string; }
-interface Buyer { handle:string; name:string; platform:string; num:number; orders:LiveOrder[]; totalSpent:number; totalOrders:number; }
-interface Comment { handle:string; name:string; comment:string; platform:"TikTok"|"Facebook"; isBuy:boolean; buyerNum:number|null; buyerData:Buyer|null; time:string; avatar?:string; timestamp?:string; sellerId?:string; sessionId?:string; sourceUsername?:string; }
 interface Product { id:number; name:string; sku:string; price:number; stock:number; platform:string; status:string; }
 type ShippingStatus = "Pending"|"Ready"|"Shipped"|"Delivered"|"Returned";
 interface ShippingCustomer { username:string; name:string; phone:string; sevenCode:string; note:string; lastComment:string; firstSeen:string; status:ShippingStatus; isNew:boolean; num?:number; }
@@ -3373,29 +3372,11 @@ export default function App(){
     // (viewing/printing existing orders stays allowed). The DB trigger is the
     // authoritative limit; this is the friendly in-app block before we even try.
     if(freeCapped){setCapPopup("hard");return;}
-    const existing=buyers.find(b=>b.handle===c.handle&&b.platform===c.platform);
-    const buyerNum=existing?.num||buyers.length+1;
-    const orderItem=price>0?String(price):(c.comment||"Live comment order");
-    const order:LiveOrder={
-      orderNum:Date.now(),
-      item:orderItem,
-      qty:1,
-      price,
-      total:price,
-      time:c.time||new Date().toLocaleTimeString(),
-      handle:c.handle,
-      name:c.name||c.handle,
-      bNum:buyerNum,
-      platform:c.platform,
-      status:"New",
-      date:new Date().toISOString().slice(0,10),
-    };
-    const nextBuyer:Buyer=existing
-      ? {...existing,name:c.name||existing.name,orders:[...existing.orders,order],totalOrders:existing.totalOrders+1,totalSpent:existing.totalSpent+order.total}
-      : {handle:c.handle,name:c.name||c.handle,platform:c.platform,num:buyerNum,orders:[order],totalOrders:1,totalSpent:order.total};
-    const singleOrderBuyer:Buyer={...nextBuyer,orders:[order],totalOrders:1,totalSpent:order.total};
-
-    const nextBuyers=existing?buyers.map(b=>b.handle===c.handle&&b.platform===c.platform?nextBuyer:b):[...buyers,nextBuyer];
+    // Pure assembly extracted to src/lib/orderLogic.ts (tested). Single
+    // `new Date()` feeds orderNum/time/date consistently; this runs in an
+    // event handler, not render.
+    const {order,singleOrderBuyer,nextBuyers}=buildOrderFromComment(c,buyers,price,new Date());
+    const orderItem=order.item;
     saveBuyerMemory(nextBuyers);
     try{autoRegisterCustomer(c);}catch(autoRegErr){console.warn("autoRegisterCustomer failed (non-fatal):",autoRegErr);} // never block order creation / printing
     setSelBuyer(singleOrderBuyer);
