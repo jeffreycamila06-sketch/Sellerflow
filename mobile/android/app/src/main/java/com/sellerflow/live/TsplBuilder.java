@@ -109,6 +109,12 @@ class TsplBuilder {
      *     Time is expected pre-formatted as "HH:MM" (5 chars at font 2 =
      *     ~60 dots) so the columns never collide; the truncation lengths
      *     act as a safety net for unexpected formats.
+     *
+     * CJK: content fields (store name, buyer name, handle, order item) go
+     * through writeTextSmart — pure-ASCII content takes the legacy
+     * byte-identical path; content with any non-ASCII char is emitted as
+     * TSS24.BF2 + GBK bytes, the only combination the AIMO firmware rendered
+     * in the hardware diagnostic (probe "D" on the test page).
      */
     static byte[] forStickerNative(JSONObject payload, int labelWidthMm, int labelHeightMm) {
         if (payload == null) payload = new JSONObject();
@@ -148,7 +154,7 @@ class TsplBuilder {
 
         int y = 60;
         if (printStoreName && !storeName.isEmpty()) {
-            writeAscii(out, "TEXT 16," + y + ",\"3\",0,1,1,\"" + safe(truncate(storeName, 36)) + "\"");
+            writeTextSmart(out, 16, y, "3", safe(truncate(storeName, 36)));
             y += 35;
         }
 
@@ -159,12 +165,12 @@ class TsplBuilder {
         }
 
         if (!buyerName.isEmpty()) {
-            writeAscii(out, "TEXT 16," + y + ",\"4\",0,1,1,\"" + safe(truncate(buyerName, 30)) + "\"");
+            writeTextSmart(out, 16, y, "4", safe(truncate(buyerName, 30)));
             y += 40;
         }
 
         if (printBuyerUsername && !buyerHandle.isEmpty()) {
-            writeAscii(out, "TEXT 16," + y + ",\"3\",0,1,1,\"@" + safe(truncate(buyerHandle, 30)) + "\"");
+            writeTextSmart(out, 16, y, "3", "@" + safe(truncate(buyerHandle, 30)));
             y += 35;
         }
 
@@ -191,7 +197,7 @@ class TsplBuilder {
                 if (!item.isEmpty()) {
                     // Item column: x=180..~780. Pushed out from x=130 so
                     // even a full "HH:MM:SS PM" time can't bleed into it.
-                    writeAscii(out, "TEXT 180," + y + ",\"3\",0,1,1,\"" + safe(truncate(item, 30)) + "\"");
+                    writeTextSmart(out, 180, y, "3", safe(truncate(item, 30)));
                 }
                 y += 38;
             }
@@ -224,6 +230,51 @@ class TsplBuilder {
         if (s == null) return "";
         // TSPL TEXT uses " as the value delimiter; escape any internal quotes.
         return s.replace("\"", "'");
+    }
+
+    private static boolean hasNonAscii(String s) {
+        if (s == null) return false;
+        for (int i = 0; i < s.length(); i++) {
+            if (s.charAt(i) > 127) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Production content-line writer (rotation 0, multipliers 1,1 — all
+     * converted call sites use exactly these).
+     *
+     * ASCII content: emits the EXACT same command string the legacy inline
+     * writeAscii calls produced — byte-identical, zero risk to the English
+     * printing the production sellers rely on.
+     *
+     * Non-ASCII (Chinese) content: emits TSS24.BF2 + GBK bytes — the only
+     * combination the AIMO D520BT rendered in the hardware diagnostic
+     * (probe "D"). TSS24.BF2 is a 24-dot font and CJK glyphs are full-width
+     * (~24 dots/char vs ~16 for ASCII font "3"), so the content is
+     * re-truncated to fit the printable width from its x origin; the 24-dot
+     * height fits the existing 35/38/40-dot row spacing without overlap.
+     * If GBK is somehow unavailable, falls back to the legacy ASCII path
+     * (CJK prints as '?' — same as pre-fix behaviour, never a crash).
+     */
+    private static void writeTextSmart(ByteArrayOutputStream out, int x, int y, String asciiFont, String content) {
+        if (!hasNonAscii(content)) {
+            writeAscii(out, "TEXT " + x + "," + y + ",\"" + asciiFont + "\",0,1,1,\"" + content + "\"");
+            return;
+        }
+        try {
+            // Conservative width clamp: treat every char as full-width 24
+            // dots so mixed ASCII+CJK strings can never overrun x=784.
+            int maxChars = Math.max(1, (784 - x) / 24);
+            String fitted = truncate(content, maxChars);
+            String prefix = "TEXT " + x + "," + y + ",\"TSS24.BF2\",0,1,1,\"";
+            writeBytes(out, prefix.getBytes(StandardCharsets.US_ASCII));
+            writeBytes(out, fitted.getBytes("GBK"));
+            writeBytes(out, "\"".getBytes(StandardCharsets.US_ASCII));
+            writeBytes(out, CRLF);
+        } catch (java.io.UnsupportedEncodingException e) {
+            writeAscii(out, "TEXT " + x + "," + y + ",\"" + asciiFont + "\",0,1,1,\"" + content + "\"");
+        }
     }
 
     private static String nowStamp() {
