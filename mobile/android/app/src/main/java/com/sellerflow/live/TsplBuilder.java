@@ -30,9 +30,20 @@ class TsplBuilder {
     /**
      * Minimal text-only test page. Used by testStickerPrint() to verify the
      * printer + Bluetooth pipeline before any structured content is involved.
+     *
+     * CJK DIAGNOSTIC (temporary, additive): lines A-D probe whether the AIMO
+     * firmware can render Chinese at all. Each line has an ASCII label so the
+     * photo of the printout tells us exactly which approach (if any) works:
+     *   A: internal Traditional-Chinese font TST24.BF2 + Big5 bytes
+     *   B: numbered font "3" + Big5 bytes (some clones map CJK here)
+     *   D: internal Simplified font TSS24.BF2 + GBK bytes
+     *   C: CODEPAGE UTF-8 + TST24.BF2 + UTF-8 bytes (last, so a sticky
+     *      codepage can't corrupt the earlier lines; reset to 437 after)
+     * The first four ASCII lines are the known-good control — they must
+     * always print. Production forStickerNative is untouched by all of this.
      */
     static byte[] textTestPage(String storeName, int labelWidthMm, int labelHeightMm) {
-        ByteArrayOutputStream out = new ByteArrayOutputStream(256);
+        ByteArrayOutputStream out = new ByteArrayOutputStream(512);
         writeAscii(out, "SIZE " + labelWidthMm + " mm, " + labelHeightMm + " mm");
         writeAscii(out, "GAP 2 mm, 0");
         writeAscii(out, "DIRECTION 1");
@@ -43,8 +54,48 @@ class TsplBuilder {
         writeAscii(out, "TEXT 20,80,\"3\",0,1,1,\"Bluetooth printer OK\"");
         writeAscii(out, "TEXT 20,140,\"3\",0,1,1,\"" + safe(storeName) + "\"");
         writeAscii(out, "TEXT 20,200,\"2\",0,1,1,\"" + nowStamp() + "\"");
+
+        // -- CJK probes: test name "CHEN XIAO MEI" (Traditional Chinese),
+        // written as unicode escapes so this .java source stays ASCII-safe
+        // under any javac file-encoding setting.
+        String cjk = "\u9673\u5C0F\u7F8E";
+        // A: TST24.BF2 + Big5
+        writeAscii(out, "TEXT 20,250,\"2\",0,1,1,\"A:\"");
+        writeEncodedTextLine(out, "TEXT 70,244,\"TST24.BF2\",0,1,1,\"", cjk, "Big5");
+        // B: numbered font 3 + Big5
+        writeAscii(out, "TEXT 20,300,\"2\",0,1,1,\"B:\"");
+        writeEncodedTextLine(out, "TEXT 70,294,\"3\",0,1,1,\"", cjk, "Big5");
+        // D: TSS24.BF2 + GBK (Simplified probe)
+        writeAscii(out, "TEXT 20,350,\"2\",0,1,1,\"D:\"");
+        writeEncodedTextLine(out, "TEXT 70,344,\"TSS24.BF2\",0,1,1,\"", cjk, "GBK");
+        // C: CODEPAGE UTF-8 route — LAST so it can't affect A/B/D, then reset.
+        writeAscii(out, "CODEPAGE UTF-8");
+        writeAscii(out, "TEXT 20,400,\"2\",0,1,1,\"C:\"");
+        writeEncodedTextLine(out, "TEXT 70,394,\"TST24.BF2\",0,1,1,\"", cjk, "UTF-8");
+        // Reset to the TSPL default codepage so nothing sticky leaks into
+        // later production prints (which never set CODEPAGE themselves).
+        writeAscii(out, "CODEPAGE 437");
+
         writeAscii(out, "PRINT 1");
         return out.toByteArray();
+    }
+
+    /**
+     * DIAGNOSTIC-ONLY encoder. Writes a TEXT command whose prefix/suffix are
+     * ASCII but whose content bytes use the given charset (Big5/GBK/UTF-8),
+     * because the production writeAscii would turn every CJK char into '?'.
+     * If the charset is unavailable on this device, falls back to writeAscii
+     * (the line will print as '?' — still a valid diagnostic result).
+     */
+    private static void writeEncodedTextLine(ByteArrayOutputStream out, String asciiPrefix, String content, String charsetName) {
+        try {
+            writeBytes(out, asciiPrefix.getBytes(StandardCharsets.US_ASCII));
+            writeBytes(out, content.getBytes(charsetName));
+            writeBytes(out, "\"".getBytes(StandardCharsets.US_ASCII));
+            writeBytes(out, CRLF);
+        } catch (java.io.UnsupportedEncodingException e) {
+            writeAscii(out, asciiPrefix + content + "\"");
+        }
     }
 
     /**
