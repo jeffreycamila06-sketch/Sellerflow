@@ -109,6 +109,12 @@ class TsplBuilder {
      *     Time is expected pre-formatted as "HH:MM" (5 chars at font 2 =
      *     ~60 dots) so the columns never collide; the truncation lengths
      *     act as a safety net for unexpected formats.
+     *
+     * CJK: content fields (store name, buyer name, handle, order item) go
+     * through writeTextSmart — pure-ASCII content takes the legacy
+     * byte-identical path; content with any non-ASCII char is emitted as
+     * TSS24.BF2 + GBK bytes, the only combination the AIMO firmware rendered
+     * in the hardware diagnostic (probe "D" on the test page).
      */
     static byte[] forStickerNative(JSONObject payload, int labelWidthMm, int labelHeightMm) {
         if (payload == null) payload = new JSONObject();
@@ -146,9 +152,23 @@ class TsplBuilder {
         }
         writeAscii(out, "BAR 0,48,800,3");
 
+        // Strip unrenderable codepoints (emoji/flags/pictographs/ZWJ/VS) per
+        // field BEFORE the encoding decision — otherwise GBK turns them into
+        // '?'. Pure-emoji buyer name then falls back to handle or "Buyer #N"
+        // so the dominant identification row is never blank.
+        String cleanStoreName = stripEmoji(storeName);
+        String cleanBuyerName = stripEmoji(buyerName);
+        String cleanBuyerHandle = stripEmoji(buyerHandle);
+        String buyerNameToPrint = cleanBuyerName;
+        if (!buyerName.isEmpty() && cleanBuyerName.isEmpty()) {
+            buyerNameToPrint = !cleanBuyerHandle.isEmpty()
+                ? cleanBuyerHandle
+                : "Buyer #" + buyerNum;
+        }
+
         int y = 60;
-        if (printStoreName && !storeName.isEmpty()) {
-            writeAscii(out, "TEXT 16," + y + ",\"3\",0,1,1,\"" + safe(truncate(storeName, 36)) + "\"");
+        if (printStoreName && !cleanStoreName.isEmpty()) {
+            writeTextSmart(out, 16, y, "3", safe(truncate(cleanStoreName, 36)));
             y += 35;
         }
 
@@ -158,13 +178,13 @@ class TsplBuilder {
             y += 95;
         }
 
-        if (!buyerName.isEmpty()) {
-            writeAscii(out, "TEXT 16," + y + ",\"4\",0,1,1,\"" + safe(truncate(buyerName, 30)) + "\"");
+        if (!buyerNameToPrint.isEmpty()) {
+            writeTextSmart(out, 16, y, "4", safe(truncate(buyerNameToPrint, 30)));
             y += 40;
         }
 
-        if (printBuyerUsername && !buyerHandle.isEmpty()) {
-            writeAscii(out, "TEXT 16," + y + ",\"3\",0,1,1,\"@" + safe(truncate(buyerHandle, 30)) + "\"");
+        if (printBuyerUsername && !cleanBuyerHandle.isEmpty()) {
+            writeTextSmart(out, 16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)));
             y += 35;
         }
 
@@ -181,6 +201,7 @@ class TsplBuilder {
                 if (order == null) continue;
                 String time = order.optString("time", "");
                 String item = order.optString("item", "");
+                String cleanItem = stripEmoji(item);
                 if (!time.isEmpty()) {
                     // Time column: x=16..~160 (font 2, ~12 dots/char). The
                     // frontend formats this as "HH:MM" (5 chars = ~60 dots)
@@ -188,10 +209,10 @@ class TsplBuilder {
                     // net for unexpected formats.
                     writeAscii(out, "TEXT 16," + y + ",\"2\",0,1,1,\"" + safe(truncate(time, 10)) + "\"");
                 }
-                if (!item.isEmpty()) {
+                if (!cleanItem.isEmpty()) {
                     // Item column: x=180..~780. Pushed out from x=130 so
                     // even a full "HH:MM:SS PM" time can't bleed into it.
-                    writeAscii(out, "TEXT 180," + y + ",\"3\",0,1,1,\"" + safe(truncate(item, 30)) + "\"");
+                    writeTextSmart(out, 180, y, "3", safe(truncate(cleanItem, 30)));
                 }
                 y += 38;
             }
@@ -224,6 +245,92 @@ class TsplBuilder {
         if (s == null) return "";
         // TSPL TEXT uses " as the value delimiter; escape any internal quotes.
         return s.replace("\"", "'");
+    }
+
+    private static boolean hasNonAscii(String s) {
+        if (s == null) return false;
+        for (int i = 0; i < s.length(); i++) {
+            if (s.charAt(i) > 127) return true;
+        }
+        return false;
+    }
+
+    /**
+     * True for codepoints the AIMO firmware can't render and we therefore
+     * drop instead of letting GBK substitute them as '?'. Covers the Unicode
+     * emoji blocks (U+1F000+ pictographs/emoticons/flags, U+2600-27BF misc
+     * symbols + dingbats), ZWJ (U+200D) that glues emoji sequences,
+     * variation selectors (U+FE00-FE0F) that style preceding chars as emoji,
+     * and the combining enclosing keycap (U+20E3). CJK ideographs (U+4E00+)
+     * and Latin/punctuation/digits pass through untouched.
+     */
+    private static boolean isStrippable(int cp) {
+        return cp >= 0x1F000
+            || (cp >= 0x2600 && cp <= 0x27BF)
+            || (cp >= 0xFE00 && cp <= 0xFE0F)
+            || cp == 0x200D
+            || cp == 0x20E3;
+    }
+
+    /**
+     * Removes emoji / pictographs / flag sequences from a display field so
+     * GBK encoding doesn't substitute them as '?'. Walks codepoints (not
+     * chars) so surrogate-pair emoji are dropped whole. Trailing/leading
+     * whitespace left behind after stripping (e.g. "Maria [flag] ") is
+     * trimmed so the caller's empty-check sees a truly empty string and can
+     * apply its fallback. ASCII-only and pure-CJK strings come through
+     * unchanged.
+     */
+    private static String stripEmoji(String s) {
+        if (s == null || s.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder(s.length());
+        int i = 0;
+        while (i < s.length()) {
+            int cp = s.codePointAt(i);
+            int width = Character.charCount(cp);
+            if (!isStrippable(cp)) {
+                sb.appendCodePoint(cp);
+            }
+            i += width;
+        }
+        return sb.toString().trim();
+    }
+
+    /**
+     * Production content-line writer (rotation 0, multipliers 1,1 — all
+     * converted call sites use exactly these).
+     *
+     * ASCII content: emits the EXACT same command string the legacy inline
+     * writeAscii calls produced — byte-identical, zero risk to the English
+     * printing the production sellers rely on.
+     *
+     * Non-ASCII (Chinese) content: emits TSS24.BF2 + GBK bytes — the only
+     * combination the AIMO D520BT rendered in the hardware diagnostic
+     * (probe "D"). TSS24.BF2 is a 24-dot font and CJK glyphs are full-width
+     * (~24 dots/char vs ~16 for ASCII font "3"), so the content is
+     * re-truncated to fit the printable width from its x origin; the 24-dot
+     * height fits the existing 35/38/40-dot row spacing without overlap.
+     * If GBK is somehow unavailable, falls back to the legacy ASCII path
+     * (CJK prints as '?' — same as pre-fix behaviour, never a crash).
+     */
+    private static void writeTextSmart(ByteArrayOutputStream out, int x, int y, String asciiFont, String content) {
+        if (!hasNonAscii(content)) {
+            writeAscii(out, "TEXT " + x + "," + y + ",\"" + asciiFont + "\",0,1,1,\"" + content + "\"");
+            return;
+        }
+        try {
+            // Conservative width clamp: treat every char as full-width 24
+            // dots so mixed ASCII+CJK strings can never overrun x=784.
+            int maxChars = Math.max(1, (784 - x) / 24);
+            String fitted = truncate(content, maxChars);
+            String prefix = "TEXT " + x + "," + y + ",\"TSS24.BF2\",0,1,1,\"";
+            writeBytes(out, prefix.getBytes(StandardCharsets.US_ASCII));
+            writeBytes(out, fitted.getBytes("GBK"));
+            writeBytes(out, "\"".getBytes(StandardCharsets.US_ASCII));
+            writeBytes(out, CRLF);
+        } catch (java.io.UnsupportedEncodingException e) {
+            writeAscii(out, "TEXT " + x + "," + y + ",\"" + asciiFont + "\",0,1,1,\"" + content + "\"");
+        }
     }
 
     private static String nowStamp() {
