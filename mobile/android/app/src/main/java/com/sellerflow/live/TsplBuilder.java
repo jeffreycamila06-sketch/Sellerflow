@@ -152,9 +152,23 @@ class TsplBuilder {
         }
         writeAscii(out, "BAR 0,48,800,3");
 
+        // Strip unrenderable codepoints (emoji/flags/pictographs/ZWJ/VS) per
+        // field BEFORE the encoding decision — otherwise GBK turns them into
+        // '?'. Pure-emoji buyer name then falls back to handle or "Buyer #N"
+        // so the dominant identification row is never blank.
+        String cleanStoreName = stripEmoji(storeName);
+        String cleanBuyerName = stripEmoji(buyerName);
+        String cleanBuyerHandle = stripEmoji(buyerHandle);
+        String buyerNameToPrint = cleanBuyerName;
+        if (!buyerName.isEmpty() && cleanBuyerName.isEmpty()) {
+            buyerNameToPrint = !cleanBuyerHandle.isEmpty()
+                ? cleanBuyerHandle
+                : "Buyer #" + buyerNum;
+        }
+
         int y = 60;
-        if (printStoreName && !storeName.isEmpty()) {
-            writeTextSmart(out, 16, y, "3", safe(truncate(storeName, 36)));
+        if (printStoreName && !cleanStoreName.isEmpty()) {
+            writeTextSmart(out, 16, y, "3", safe(truncate(cleanStoreName, 36)));
             y += 35;
         }
 
@@ -164,13 +178,13 @@ class TsplBuilder {
             y += 95;
         }
 
-        if (!buyerName.isEmpty()) {
-            writeTextSmart(out, 16, y, "4", safe(truncate(buyerName, 30)));
+        if (!buyerNameToPrint.isEmpty()) {
+            writeTextSmart(out, 16, y, "4", safe(truncate(buyerNameToPrint, 30)));
             y += 40;
         }
 
-        if (printBuyerUsername && !buyerHandle.isEmpty()) {
-            writeTextSmart(out, 16, y, "3", "@" + safe(truncate(buyerHandle, 30)));
+        if (printBuyerUsername && !cleanBuyerHandle.isEmpty()) {
+            writeTextSmart(out, 16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)));
             y += 35;
         }
 
@@ -187,6 +201,7 @@ class TsplBuilder {
                 if (order == null) continue;
                 String time = order.optString("time", "");
                 String item = order.optString("item", "");
+                String cleanItem = stripEmoji(item);
                 if (!time.isEmpty()) {
                     // Time column: x=16..~160 (font 2, ~12 dots/char). The
                     // frontend formats this as "HH:MM" (5 chars = ~60 dots)
@@ -194,10 +209,10 @@ class TsplBuilder {
                     // net for unexpected formats.
                     writeAscii(out, "TEXT 16," + y + ",\"2\",0,1,1,\"" + safe(truncate(time, 10)) + "\"");
                 }
-                if (!item.isEmpty()) {
+                if (!cleanItem.isEmpty()) {
                     // Item column: x=180..~780. Pushed out from x=130 so
                     // even a full "HH:MM:SS PM" time can't bleed into it.
-                    writeTextSmart(out, 180, y, "3", safe(truncate(item, 30)));
+                    writeTextSmart(out, 180, y, "3", safe(truncate(cleanItem, 30)));
                 }
                 y += 38;
             }
@@ -238,6 +253,47 @@ class TsplBuilder {
             if (s.charAt(i) > 127) return true;
         }
         return false;
+    }
+
+    /**
+     * True for codepoints the AIMO firmware can't render and we therefore
+     * drop instead of letting GBK substitute them as '?'. Covers the Unicode
+     * emoji blocks (U+1F000+ pictographs/emoticons/flags, U+2600-27BF misc
+     * symbols + dingbats), ZWJ (U+200D) that glues emoji sequences,
+     * variation selectors (U+FE00-FE0F) that style preceding chars as emoji,
+     * and the combining enclosing keycap (U+20E3). CJK ideographs (U+4E00+)
+     * and Latin/punctuation/digits pass through untouched.
+     */
+    private static boolean isStrippable(int cp) {
+        return cp >= 0x1F000
+            || (cp >= 0x2600 && cp <= 0x27BF)
+            || (cp >= 0xFE00 && cp <= 0xFE0F)
+            || cp == 0x200D
+            || cp == 0x20E3;
+    }
+
+    /**
+     * Removes emoji / pictographs / flag sequences from a display field so
+     * GBK encoding doesn't substitute them as '?'. Walks codepoints (not
+     * chars) so surrogate-pair emoji are dropped whole. Trailing/leading
+     * whitespace left behind after stripping (e.g. "Maria [flag] ") is
+     * trimmed so the caller's empty-check sees a truly empty string and can
+     * apply its fallback. ASCII-only and pure-CJK strings come through
+     * unchanged.
+     */
+    private static String stripEmoji(String s) {
+        if (s == null || s.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder(s.length());
+        int i = 0;
+        while (i < s.length()) {
+            int cp = s.codePointAt(i);
+            int width = Character.charCount(cp);
+            if (!isStrippable(cp)) {
+                sb.appendCodePoint(cp);
+            }
+            i += width;
+        }
+        return sb.toString().trim();
     }
 
     /**
