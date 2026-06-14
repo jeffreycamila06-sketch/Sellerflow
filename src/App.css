@@ -1512,6 +1512,13 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     box-shadow:0 14px 34px rgba(0,0,0,.3),inset 0 1px 0 rgba(255,255,255,.04)!important;
   }
   .chat-hd,.miners-hd,.table-title,.scard-title{background:transparent!important;border-color:var(--m-line)!important;color:#F8F7FF!important;font-weight:900}
+  /* Printer Settings: row labels ("Store name size", "Seller name left/right",
+     ...) and their value chips ("100%", "0mm") inherit the light-theme indigo
+     #26215C and gray #555, both invisibly low-contrast on the dark card. Scope
+     to .settings-section-printer so no other page is affected even though the
+     class is currently used only here. */
+  .settings-section-printer .position-step-row span{color:#F8F7FF!important;font-weight:600}
+  .settings-section-printer .position-step-controls b{color:#F8F7FF!important}
   .chat-sub,.muted,.ms-l,.stat-l,.b-handle,.slip-empty,.miners-empty,.feed-empty,.subpage-hd p{color:var(--m-muted)!important}
   .feed-empty,.miners-empty,.slip-empty{background:transparent!important}
 
