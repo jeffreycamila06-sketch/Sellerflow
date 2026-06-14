@@ -2634,21 +2634,32 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                   {filteredUsers.map(u=>{const fr=freeByEmail.get(u.email.toLowerCase());return(
                     <tr key={u.email} className={u.planStatus==="pending"?"row-pending":undefined}>
                       <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div>{u.planStatus==="pending"&&<div style={{marginTop:3}}><Badge label="Pending Approval" color="amber"/></div>}</td>
-                      <td
-                        onClick={e=>{e.stopPropagation();if(editingContactEmail===u.email)return;setEditingContactEmail(u.email);setContactDraft(u.profile.adminContactNote||"");}}
-                        onDoubleClick={e=>e.stopPropagation()}
-                        title={editingContactEmail===u.email?undefined:"Click to edit"}
-                        style={{cursor:editingContactEmail===u.email?"text":"pointer",userSelect:"none"}}
-                      >{editingContactEmail===u.email
-                        ? <input autoFocus value={contactDraft} maxLength={120}
-                            onClick={e=>e.stopPropagation()}
-                            onChange={e=>setContactDraft(e.target.value)}
-                            onBlur={()=>saveContactNote(u.email,contactDraft)}
-                            onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();saveContactNote(u.email,contactDraft);}else if(e.key==="Escape"){e.preventDefault();setEditingContactEmail("");setContactDraft("");}}}
-                            style={{width:"100%",minWidth:120,fontSize:12,padding:"2px 4px"}}/>
-                        : <span style={{display:"inline-block",minWidth:80}}>
-                            {u.profile.adminContactNote?u.profile.adminContactNote:<span className="muted">add note…</span>}
-                          </span>}</td>
+                      {(() => {
+                        // Editing is "live" in this view only when the expanded
+                        // panel isn't covering it. Otherwise both this <input>
+                        // and the expanded one would mount with autoFocus, the
+                        // later mount would steal focus, and the resulting blur
+                        // here would clear editingContactEmail and instantly
+                        // unmount both editors.
+                        const isEditingHere=editingContactEmail===u.email&&expandedAdminBox!=="users";
+                        return(
+                        <td
+                          onClick={e=>{e.stopPropagation();if(isEditingHere)return;setEditingContactEmail(u.email);setContactDraft(u.profile.adminContactNote||"");}}
+                          onDoubleClick={e=>e.stopPropagation()}
+                          title={isEditingHere?undefined:"Click to edit"}
+                          style={{cursor:isEditingHere?"text":"pointer",userSelect:"none"}}
+                        >{isEditingHere
+                          ? <input autoFocus value={contactDraft} maxLength={120}
+                              onClick={e=>e.stopPropagation()}
+                              onChange={e=>setContactDraft(e.target.value)}
+                              onBlur={()=>saveContactNote(u.email,contactDraft)}
+                              onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();saveContactNote(u.email,contactDraft);}else if(e.key==="Escape"){e.preventDefault();setEditingContactEmail("");setContactDraft("");}}}
+                              style={{width:"100%",minWidth:120,fontSize:12,padding:"2px 4px"}}/>
+                          : <span style={{display:"inline-block",minWidth:80}}>
+                              {u.profile.adminContactNote?u.profile.adminContactNote:<span className="muted">add note…</span>}
+                            </span>}</td>
+                        );
+                      })()}
                       <td><Badge label={(u.role==="admin")?"Admin":"Seller"} color={(u.role==="admin")?"amber":"gray"}/></td>
                       <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
                       <td>{u.plan==="free"&&fr?<span style={{color:fr.capped?"#A32D2D":fr.near_cap?"#BA7517":"#1D9E75",fontWeight:600}}>{fr.count}/{fr.cap} · {fr.cycle_resets_in_days}d</span>:<span className="muted">—</span>}</td>
