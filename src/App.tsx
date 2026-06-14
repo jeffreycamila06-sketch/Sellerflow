@@ -282,6 +282,123 @@ function Fg({label,children}:{label:string;children:React.ReactNode}){
   return <div className="fg"><label>{label}</label>{children}</div>;
 }
 
+// admin_contact_note structured value: "<platform>:<name>" where platform is
+// one of CONTACT_PLATFORMS. Anything else (legacy plain text from before this
+// feature, or notes with an unrecognized prefix) is preserved and displayed
+// as-is so no existing data is lost.
+const CONTACT_PLATFORMS=["fb","telegram","line"] as const;
+type ContactPlatform=typeof CONTACT_PLATFORMS[number];
+const CONTACT_THEME:Record<ContactPlatform,{label:string;fg:string;bg:string}>={
+  fb:      {label:"Facebook",fg:"#0C447C",bg:"#E6F1FB"},
+  telegram:{label:"Telegram",fg:"#0F6E56",bg:"#E1F5EE"},
+  line:    {label:"Line",    fg:"#854F0B",bg:"#FAEEDA"},
+};
+const ContactIcons:Record<ContactPlatform,React.ReactNode>={
+  fb:<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M14 8.5V6.8c0-.7.4-1.1 1.1-1.1H17V3h-2.9c-2.2 0-3.6 1.4-3.6 3.7v1.8H8v3h2.5V21h3.4v-9.5h2.4l.3-3H14z"/></svg>,
+  telegram:<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M22 3L2 11.4l5.8 2 9.2-6.4-7.3 8.6 1.7 5.6 3-3.1 4.6 3.4L22 3z"/></svg>,
+  line:<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3.2C6.5 3.2 2 6.9 2 11.4c0 4 3.5 7.4 8.3 8.1.3.1.7.2.8.5.1.3.1.7 0 1l-.1.7c0 .2.1.4.4.4.4 0 6.4-3.8 8.7-6.5 1.6-1.9 2.1-3.8 2.1-5.4 0-4.5-4.5-8.2-10-8.2zM8 13.5H6V8.7h.9v4H8v.8zm1.9 0h-.9V8.7h.9v4.8zm5.5 0h-.9l-2-3v3h-.9V8.7h.9l2 3v-3h.9v4.8zm3.3-3.7H17v.9h1.6v.8H17v1h1.6v.8h-2.4V8.7h2.4v.9z"/></svg>,
+};
+
+function parseContact(raw:string):{platform:ContactPlatform|"";name:string;legacy:boolean}{
+  if(!raw)return{platform:"",name:"",legacy:false};
+  const i=raw.indexOf(":");
+  if(i>0){
+    const prefix=raw.slice(0,i).trim().toLowerCase();
+    if((CONTACT_PLATFORMS as readonly string[]).includes(prefix)){
+      return{platform:prefix as ContactPlatform,name:raw.slice(i+1).trim(),legacy:false};
+    }
+  }
+  return{platform:"",name:raw.trim(),legacy:true};
+}
+
+function formatContact(platform:ContactPlatform|"",name:string):string{
+  const trimmed=name.trim();
+  if(!trimmed)return "";
+  return platform?`${platform}:${trimmed}`:trimmed;
+}
+
+function ContactDisplay({note}:{note:string}){
+  if(!note)return <span className="muted">add note…</span>;
+  const p=parseContact(note);
+  if(p.platform){
+    const theme=CONTACT_THEME[p.platform];
+    return(
+      <span style={{display:"inline-flex",alignItems:"center",gap:4,padding:"2px 8px",borderRadius:10,color:theme.fg,background:theme.bg,fontSize:11,fontWeight:600,lineHeight:"16px"}}>
+        {ContactIcons[p.platform]}
+        <span>{p.name||theme.label}</span>
+      </span>
+    );
+  }
+  return <span style={{color:"#5a574e",fontSize:11}}>{p.name}</span>;
+}
+
+// Inline editor wrapper. Uses a focus-trap pattern: container onBlur only
+// fires when focus exits the editor entirely (relatedTarget outside), so
+// platform-button clicks don't trigger save. Buttons preventDefault on
+// mousedown so they never take focus from the name input — Enter still
+// works to commit from any moment.
+function ContactEditor({platform,name,setPlatform,setName,inputRef,onSave,onCancel,minWidth}:{
+  platform:ContactPlatform|"";
+  name:string;
+  setPlatform:(p:ContactPlatform|"")=>void;
+  setName:(n:string)=>void;
+  inputRef:React.RefObject<HTMLInputElement|null>;
+  onSave:()=>void;
+  onCancel:()=>void;
+  minWidth:number;
+}){
+  return(
+    <div
+      onClick={e=>e.stopPropagation()}
+      onBlur={e=>{
+        // relatedTarget is the next focus target. Still inside the wrapper
+        // (e.g. switching between input and a button) → not a real exit.
+        if(e.currentTarget.contains(e.relatedTarget as Node|null))return;
+        onSave();
+      }}
+      onKeyDown={e=>{
+        if(e.key==="Enter"){e.preventDefault();onSave();}
+        else if(e.key==="Escape"){e.preventDefault();onCancel();}
+      }}
+      style={{display:"flex",flexDirection:"column",gap:4,minWidth}}
+    >
+      <div style={{display:"flex",gap:3}}>
+        {CONTACT_PLATFORMS.map(p=>{
+          const theme=CONTACT_THEME[p];
+          const selected=platform===p;
+          return(
+            <button key={p} type="button" title={theme.label}
+              onMouseDown={e=>e.preventDefault()}
+              onClick={e=>{e.stopPropagation();setPlatform(selected?"":p);inputRef.current?.focus();}}
+              style={{
+                width:24,height:22,
+                display:"inline-flex",alignItems:"center",justifyContent:"center",
+                padding:0,
+                border:selected?`2px solid ${theme.fg}`:"1px solid #D9D6CC",
+                borderRadius:6,
+                background:selected?theme.bg:"#fff",
+                color:theme.fg,
+                cursor:"pointer",
+                lineHeight:0,
+              }}
+            >{ContactIcons[p]}</button>
+          );
+        })}
+      </div>
+      <input
+        ref={inputRef}
+        autoFocus
+        value={name}
+        maxLength={80}
+        placeholder={platform?"name / handle":"plain note (no platform)"}
+        onChange={e=>setName(e.target.value)}
+        onClick={e=>e.stopPropagation()}
+        style={{width:"100%",fontSize:12,padding:"2px 4px"}}
+      />
+    </div>
+  );
+}
+
 function hasNativeMobilePrinter(){
   if(typeof window==="undefined")return false;
   return !!(
@@ -2265,9 +2382,14 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   const [expandedAdminBox,setExpandedAdminBox]=useState<""|"overview"|"create"|"users"|"planmonitor"|"freeusers"|"audit">("");
   const [adminUserPlanMonths,setAdminUserPlanMonths]=useState<Record<string,number>>({});
   // Inline contact-note editor: only one row is in edit mode at a time so a
-  // single email+draft pair is enough (no per-row useState explosion).
+  // single email + draft pair is enough (no per-row useState explosion). The
+  // draft is split into platform + name so the picker buttons can update one
+  // dimension without re-parsing/re-formatting the combined string on every
+  // keystroke.
   const [editingContactEmail,setEditingContactEmail]=useState("");
-  const [contactDraft,setContactDraft]=useState("");
+  const [contactDraftPlatform,setContactDraftPlatform]=useState<ContactPlatform|"">("");
+  const [contactDraftName,setContactDraftName]=useState("");
+  const contactInputRef=useRef<HTMLInputElement>(null);
   const [copied,setCopied]=useState("");
   const usersTableRef=useRef<HTMLDivElement>(null);
   const auditTableRef=useRef<HTMLDivElement>(null);
@@ -2357,17 +2479,37 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     }
   }
 
+  // Seed the editor state from the row's current note so the platform picker
+  // pre-selects and the input pre-fills. Legacy plain-text notes (no platform
+  // prefix) land in the name field with no platform selected, so a save
+  // without picking one preserves the legacy value byte-for-byte.
+  function beginEditingContact(u:User){
+    const parsed=parseContact(u.profile.adminContactNote);
+    setEditingContactEmail(u.email);
+    setContactDraftPlatform(parsed.platform);
+    setContactDraftName(parsed.name);
+  }
+
+  function cancelEditingContact(){
+    setEditingContactEmail("");
+    setContactDraftPlatform("");
+    setContactDraftName("");
+  }
+
   // Optimistic save for the inline Contact note. We snapshot the previous value
   // up front so an RLS/network failure can revert the cell without a full
-  // listUsers() round-trip.
+  // listUsers() round-trip. setEditingContactEmail("") fires first as
+  // defense-in-depth against the blur-race that the dual-mount gate already
+  // prevents.
   async function saveContactNote(email:string,nextNote:string){
     const key=email.toLowerCase();
     const trimmed=nextNote.trim();
     const previous=users.find(u=>u.email.toLowerCase()===key)?.profile.adminContactNote||"";
     setEditingContactEmail("");
-    if(trimmed===previous){setContactDraft("");return;}
+    setContactDraftPlatform("");
+    setContactDraftName("");
+    if(trimmed===previous)return;
     setUsers(prev=>prev.map(u=>u.email.toLowerCase()===key?{...u,profile:{...u.profile,adminContactNote:trimmed}}:u));
-    setContactDraft("");
     try{
       await adminUpdateContactNote(email,trimmed);
       await logAction("updated contact note",email,trimmed?`Contact note set: ${trimmed}`:"Contact note cleared");
@@ -2644,20 +2786,21 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                         const isEditingHere=editingContactEmail===u.email&&expandedAdminBox!=="users";
                         return(
                         <td
-                          onClick={e=>{e.stopPropagation();if(isEditingHere)return;setEditingContactEmail(u.email);setContactDraft(u.profile.adminContactNote||"");}}
+                          onClick={e=>{e.stopPropagation();if(isEditingHere)return;beginEditingContact(u);}}
                           onDoubleClick={e=>e.stopPropagation()}
                           title={isEditingHere?undefined:"Click to edit"}
-                          style={{cursor:isEditingHere?"text":"pointer",userSelect:"none"}}
+                          style={{cursor:isEditingHere?"default":"pointer",userSelect:"none"}}
                         >{isEditingHere
-                          ? <input autoFocus value={contactDraft} maxLength={120}
-                              onClick={e=>e.stopPropagation()}
-                              onChange={e=>setContactDraft(e.target.value)}
-                              onBlur={()=>saveContactNote(u.email,contactDraft)}
-                              onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();saveContactNote(u.email,contactDraft);}else if(e.key==="Escape"){e.preventDefault();setEditingContactEmail("");setContactDraft("");}}}
-                              style={{width:"100%",minWidth:120,fontSize:12,padding:"2px 4px"}}/>
-                          : <span style={{display:"inline-block",minWidth:80}}>
-                              {u.profile.adminContactNote?u.profile.adminContactNote:<span className="muted">add note…</span>}
-                            </span>}</td>
+                          ? <ContactEditor
+                              platform={contactDraftPlatform}
+                              name={contactDraftName}
+                              setPlatform={setContactDraftPlatform}
+                              setName={setContactDraftName}
+                              inputRef={contactInputRef}
+                              onSave={()=>saveContactNote(u.email,formatContact(contactDraftPlatform,contactDraftName))}
+                              onCancel={cancelEditingContact}
+                              minWidth={140}/>
+                          : <ContactDisplay note={u.profile.adminContactNote}/>}</td>
                         );
                       })()}
                       <td><Badge label={(u.role==="admin")?"Admin":"Seller"} color={(u.role==="admin")?"amber":"gray"}/></td>
@@ -2800,19 +2943,20 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                 <tr key={"expanded-"+u.email} className={u.planStatus==="pending"?"row-pending":undefined}>
                   <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div>{u.planStatus==="pending"&&<div style={{marginTop:3}}><Badge label="Pending Approval" color="amber"/></div>}</td>
                   <td
-                    onClick={e=>{e.stopPropagation();if(editingContactEmail===u.email)return;setEditingContactEmail(u.email);setContactDraft(u.profile.adminContactNote||"");}}
+                    onClick={e=>{e.stopPropagation();if(editingContactEmail===u.email)return;beginEditingContact(u);}}
                     title={editingContactEmail===u.email?undefined:"Click to edit"}
-                    style={{cursor:editingContactEmail===u.email?"text":"pointer",userSelect:"none"}}
+                    style={{cursor:editingContactEmail===u.email?"default":"pointer",userSelect:"none"}}
                   >{editingContactEmail===u.email
-                    ? <input autoFocus value={contactDraft} maxLength={120}
-                        onClick={e=>e.stopPropagation()}
-                        onChange={e=>setContactDraft(e.target.value)}
-                        onBlur={()=>saveContactNote(u.email,contactDraft)}
-                        onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();saveContactNote(u.email,contactDraft);}else if(e.key==="Escape"){e.preventDefault();setEditingContactEmail("");setContactDraft("");}}}
-                        style={{width:"100%",minWidth:140,fontSize:12,padding:"2px 4px"}}/>
-                    : <span style={{display:"inline-block",minWidth:100}}>
-                        {u.profile.adminContactNote?u.profile.adminContactNote:<span className="muted">add note…</span>}
-                      </span>}</td>
+                    ? <ContactEditor
+                        platform={contactDraftPlatform}
+                        name={contactDraftName}
+                        setPlatform={setContactDraftPlatform}
+                        setName={setContactDraftName}
+                        inputRef={contactInputRef}
+                        onSave={()=>saveContactNote(u.email,formatContact(contactDraftPlatform,contactDraftName))}
+                        onCancel={cancelEditingContact}
+                        minWidth={170}/>
+                    : <ContactDisplay note={u.profile.adminContactNote}/>}</td>
                   <td><Badge label={(u.role==="admin")?"Admin":"Seller"} color={(u.role==="admin")?"amber":"gray"}/></td>
                   <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
                   <td>{u.plan==="free"&&fr?<span style={{color:fr.capped?"#A32D2D":fr.near_cap?"#BA7517":"#1D9E75",fontWeight:600}}>{fr.count}/{fr.cap} · {fr.cycle_resets_in_days}d</span>:<span className="muted">—</span>}</td>
