@@ -2,6 +2,7 @@ import { saveOrderToDatabase, saveCustomerToDatabase } from "./db";
 import { supabase } from "./supabase";
 import {
   type AccountAuditLog,
+  adminUpdateContactNote,
   adminUpdatePlan,
   createMyProfile,
   deleteUser,
@@ -27,7 +28,7 @@ type Plan = "free" | "trial" | "basic" | "pro" | "master";
 type PlanStatus = "active" | "expired" | "pending";
 type Page = "dashboard"|"miners"|"orders"|"products"|"customers"|"customerData"|"print"|"sales"|"shipping"|"settings"|"subscription"|"support"|"admin"|"privacy"|"terms"|"deleteAccount";
 
-interface Profile { fullName:string; storeName:string; phone:string; tiktok:string; facebook:string; }
+interface Profile { fullName:string; storeName:string; phone:string; tiktok:string; facebook:string; adminContactNote:string; }
 type Role = "seller" | "admin";
 interface User { authUserId?:string; email:string; profile:Profile; plan:Plan; planStatus:PlanStatus; planExpiry:string; trialStartedAt?:string; connectedAccounts:string[]; role?:Role; }
 interface Product { id:number; name:string; sku:string; price:number; stock:number; platform:string; status:string; }
@@ -187,6 +188,7 @@ const safeProfile=(p:Partial<Profile>|undefined):Profile=>({
   phone:String(p?.phone||""),
   tiktok:String(p?.tiktok||""),
   facebook:String(p?.facebook||""),
+  adminContactNote:String(p?.adminContactNote||""),
 });
 const safeUser=(raw:unknown):User|null=>{
   if(!raw||typeof raw!=="object")return null;
@@ -493,7 +495,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
     let profile=await getMyProfile(data.user.id);
     if(!profile){
       // Auth account exists but has no profile row yet — create a minimal one.
-      try{profile=await createMyProfile(data.user.id,cleanEmail,{fullName:"",storeName:"",phone:"",tiktok:"",facebook:""});}
+      try{profile=await createMyProfile(data.user.id,cleanEmail,{fullName:"",storeName:"",phone:"",tiktok:"",facebook:"",adminContactNote:""});}
       catch(err){setErr(err instanceof Error?err.message:"Could not load your profile.");setBusy(false);return;}
     }
     if(!profile){setErr("Could not load your profile. Please contact support.");setBusy(false);return;}
@@ -516,7 +518,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
       setOk("Account created. Please check your email to confirm, then log in.");setMode("login");setBusy(false);return;
     }
     let profile;
-    try{profile=await createMyProfile(data.user.id,cleanEmail,{fullName:fn.trim(),storeName:sn.trim(),phone:phoneDisplay(phone),tiktok:"",facebook:""});}
+    try{profile=await createMyProfile(data.user.id,cleanEmail,{fullName:fn.trim(),storeName:sn.trim(),phone:phoneDisplay(phone),tiktok:"",facebook:"",adminContactNote:""});}
     catch(err){setErr(err instanceof Error?err.message:"Could not create your profile.");setBusy(false);return;}
     if(!profile){setErr("Could not create your profile. Please contact support.");setBusy(false);return;}
     posthog.identify(profile.email,{plan:profile.plan,store_name:profile.profile.storeName,role:profile.role||"seller"});
@@ -2262,6 +2264,10 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   const [adminSearch,setAdminSearch]=useState("");
   const [expandedAdminBox,setExpandedAdminBox]=useState<""|"overview"|"create"|"users"|"planmonitor"|"freeusers"|"audit">("");
   const [adminUserPlanMonths,setAdminUserPlanMonths]=useState<Record<string,number>>({});
+  // Inline contact-note editor: only one row is in edit mode at a time so a
+  // single email+draft pair is enough (no per-row useState explosion).
+  const [editingContactEmail,setEditingContactEmail]=useState("");
+  const [contactDraft,setContactDraft]=useState("");
   const [copied,setCopied]=useState("");
   const usersTableRef=useRef<HTMLDivElement>(null);
   const auditTableRef=useRef<HTMLDivElement>(null);
@@ -2348,6 +2354,26 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
       await logAction(status==="expired"?"expired seller":"changed plan",email,`Plan ${plan}, status ${status}, duration ${plan==="trial"?7:`${months} month${months===1?"":"s"}`}`);
     }catch(error){
       setCopied(`Update failed: ${error instanceof Error?error.message:"Unknown error"}`);
+    }
+  }
+
+  // Optimistic save for the inline Contact note. We snapshot the previous value
+  // up front so an RLS/network failure can revert the cell without a full
+  // listUsers() round-trip.
+  async function saveContactNote(email:string,nextNote:string){
+    const key=email.toLowerCase();
+    const trimmed=nextNote.trim();
+    const previous=users.find(u=>u.email.toLowerCase()===key)?.profile.adminContactNote||"";
+    setEditingContactEmail("");
+    if(trimmed===previous){setContactDraft("");return;}
+    setUsers(prev=>prev.map(u=>u.email.toLowerCase()===key?{...u,profile:{...u.profile,adminContactNote:trimmed}}:u));
+    setContactDraft("");
+    try{
+      await adminUpdateContactNote(email,trimmed);
+      await logAction("updated contact note",email,trimmed?`Contact note set: ${trimmed}`:"Contact note cleared");
+    }catch(error){
+      setUsers(prev=>prev.map(u=>u.email.toLowerCase()===key?{...u,profile:{...u.profile,adminContactNote:previous}}:u));
+      setCopied(`Contact note save failed: ${error instanceof Error?error.message:"Unknown error"}`);
     }
   }
 
@@ -2602,12 +2628,22 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
           <div className="admin-table-wrap">
             <div className="admin-table-scroll" ref={usersTableRef}>
               <table className="tbl">
-                <thead><tr><th>Email</th><th>Role</th><th>Plan</th><th>Free Cycle</th><th>Days</th><th>Months</th><th>Accounts</th><th></th></tr></thead>
+                <thead><tr><th>Email</th><th>Contact</th><th>Role</th><th>Plan</th><th>Free Cycle</th><th>Days</th><th>Months</th><th>Accounts</th><th></th></tr></thead>
                 <tbody>
-                  {filteredUsers.length===0&&<tr><td colSpan={8} style={{textAlign:"center",padding:24,color:"#888"}}>{users.length===0?"No users yet.":"No users found."}</td></tr>}
+                  {filteredUsers.length===0&&<tr><td colSpan={9} style={{textAlign:"center",padding:24,color:"#888"}}>{users.length===0?"No users yet.":"No users found."}</td></tr>}
                   {filteredUsers.map(u=>{const fr=freeByEmail.get(u.email.toLowerCase());return(
                     <tr key={u.email} className={u.planStatus==="pending"?"row-pending":undefined}>
                       <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div>{u.planStatus==="pending"&&<div style={{marginTop:3}}><Badge label="Pending Approval" color="amber"/></div>}</td>
+                      <td onDoubleClick={e=>e.stopPropagation()}>{editingContactEmail===u.email
+                        ? <input autoFocus value={contactDraft} maxLength={120}
+                            onChange={e=>setContactDraft(e.target.value)}
+                            onBlur={()=>saveContactNote(u.email,contactDraft)}
+                            onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();saveContactNote(u.email,contactDraft);}else if(e.key==="Escape"){e.preventDefault();setEditingContactEmail("");setContactDraft("");}}}
+                            style={{width:"100%",minWidth:120,fontSize:12,padding:"2px 4px"}}/>
+                        : <span title="Click to edit" style={{cursor:"pointer",display:"inline-block",minWidth:80}}
+                            onClick={()=>{setEditingContactEmail(u.email);setContactDraft(u.profile.adminContactNote||"");}}>
+                            {u.profile.adminContactNote?u.profile.adminContactNote:<span className="muted">add note…</span>}
+                          </span>}</td>
                       <td><Badge label={(u.role==="admin")?"Admin":"Seller"} color={(u.role==="admin")?"amber":"gray"}/></td>
                       <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
                       <td>{u.plan==="free"&&fr?<span style={{color:fr.capped?"#A32D2D":fr.near_cap?"#BA7517":"#1D9E75",fontWeight:600}}>{fr.count}/{fr.cap} · {fr.cycle_resets_in_days}d</span>:<span className="muted">—</span>}</td>
@@ -2743,10 +2779,20 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
             </div>}
             {expandedAdminBox==="users"&&<div className="table-card admin-fullscreen-table">
               <div className="table-title">Users ({filteredUsers.length})</div>
-              <table className="tbl"><thead><tr><th>Email</th><th>Role</th><th>Plan</th><th>Free Cycle</th><th>Days</th><th>Months</th><th>Accounts</th><th>Actions</th></tr></thead><tbody>
+              <table className="tbl"><thead><tr><th>Email</th><th>Contact</th><th>Role</th><th>Plan</th><th>Free Cycle</th><th>Days</th><th>Months</th><th>Accounts</th><th>Actions</th></tr></thead><tbody>
                 {filteredUsers.map(u=>{const fr=freeByEmail.get(u.email.toLowerCase());return(
                 <tr key={"expanded-"+u.email} className={u.planStatus==="pending"?"row-pending":undefined}>
                   <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div>{u.planStatus==="pending"&&<div style={{marginTop:3}}><Badge label="Pending Approval" color="amber"/></div>}</td>
+                  <td>{editingContactEmail===u.email
+                    ? <input autoFocus value={contactDraft} maxLength={120}
+                        onChange={e=>setContactDraft(e.target.value)}
+                        onBlur={()=>saveContactNote(u.email,contactDraft)}
+                        onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();saveContactNote(u.email,contactDraft);}else if(e.key==="Escape"){e.preventDefault();setEditingContactEmail("");setContactDraft("");}}}
+                        style={{width:"100%",minWidth:140,fontSize:12,padding:"2px 4px"}}/>
+                    : <span title="Click to edit" style={{cursor:"pointer",display:"inline-block",minWidth:100}}
+                        onClick={()=>{setEditingContactEmail(u.email);setContactDraft(u.profile.adminContactNote||"");}}>
+                        {u.profile.adminContactNote?u.profile.adminContactNote:<span className="muted">add note…</span>}
+                      </span>}</td>
                   <td><Badge label={(u.role==="admin")?"Admin":"Seller"} color={(u.role==="admin")?"amber":"gray"}/></td>
                   <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
                   <td>{u.plan==="free"&&fr?<span style={{color:fr.capped?"#A32D2D":fr.near_cap?"#BA7517":"#1D9E75",fontWeight:600}}>{fr.count}/{fr.cap} · {fr.cycle_resets_in_days}d</span>:<span className="muted">—</span>}</td>
