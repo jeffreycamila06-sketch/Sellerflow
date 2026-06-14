@@ -2634,14 +2634,19 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                   {filteredUsers.map(u=>{const fr=freeByEmail.get(u.email.toLowerCase());return(
                     <tr key={u.email} className={u.planStatus==="pending"?"row-pending":undefined}>
                       <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div>{u.planStatus==="pending"&&<div style={{marginTop:3}}><Badge label="Pending Approval" color="amber"/></div>}</td>
-                      <td onDoubleClick={e=>e.stopPropagation()}>{editingContactEmail===u.email
+                      <td
+                        onClick={e=>{e.stopPropagation();if(editingContactEmail===u.email)return;setEditingContactEmail(u.email);setContactDraft(u.profile.adminContactNote||"");}}
+                        onDoubleClick={e=>e.stopPropagation()}
+                        title={editingContactEmail===u.email?undefined:"Click to edit"}
+                        style={{cursor:editingContactEmail===u.email?"text":"pointer",userSelect:"none"}}
+                      >{editingContactEmail===u.email
                         ? <input autoFocus value={contactDraft} maxLength={120}
+                            onClick={e=>e.stopPropagation()}
                             onChange={e=>setContactDraft(e.target.value)}
                             onBlur={()=>saveContactNote(u.email,contactDraft)}
                             onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();saveContactNote(u.email,contactDraft);}else if(e.key==="Escape"){e.preventDefault();setEditingContactEmail("");setContactDraft("");}}}
                             style={{width:"100%",minWidth:120,fontSize:12,padding:"2px 4px"}}/>
-                        : <span title="Click to edit" style={{cursor:"pointer",display:"inline-block",minWidth:80}}
-                            onClick={()=>{setEditingContactEmail(u.email);setContactDraft(u.profile.adminContactNote||"");}}>
+                        : <span style={{display:"inline-block",minWidth:80}}>
                             {u.profile.adminContactNote?u.profile.adminContactNote:<span className="muted">add note…</span>}
                           </span>}</td>
                       <td><Badge label={(u.role==="admin")?"Admin":"Seller"} color={(u.role==="admin")?"amber":"gray"}/></td>
@@ -2783,14 +2788,18 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                 {filteredUsers.map(u=>{const fr=freeByEmail.get(u.email.toLowerCase());return(
                 <tr key={"expanded-"+u.email} className={u.planStatus==="pending"?"row-pending":undefined}>
                   <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div>{u.planStatus==="pending"&&<div style={{marginTop:3}}><Badge label="Pending Approval" color="amber"/></div>}</td>
-                  <td>{editingContactEmail===u.email
+                  <td
+                    onClick={e=>{e.stopPropagation();if(editingContactEmail===u.email)return;setEditingContactEmail(u.email);setContactDraft(u.profile.adminContactNote||"");}}
+                    title={editingContactEmail===u.email?undefined:"Click to edit"}
+                    style={{cursor:editingContactEmail===u.email?"text":"pointer",userSelect:"none"}}
+                  >{editingContactEmail===u.email
                     ? <input autoFocus value={contactDraft} maxLength={120}
+                        onClick={e=>e.stopPropagation()}
                         onChange={e=>setContactDraft(e.target.value)}
                         onBlur={()=>saveContactNote(u.email,contactDraft)}
                         onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();saveContactNote(u.email,contactDraft);}else if(e.key==="Escape"){e.preventDefault();setEditingContactEmail("");setContactDraft("");}}}
                         style={{width:"100%",minWidth:140,fontSize:12,padding:"2px 4px"}}/>
-                    : <span title="Click to edit" style={{cursor:"pointer",display:"inline-block",minWidth:100}}
-                        onClick={()=>{setEditingContactEmail(u.email);setContactDraft(u.profile.adminContactNote||"");}}>
+                    : <span style={{display:"inline-block",minWidth:100}}>
                         {u.profile.adminContactNote?u.profile.adminContactNote:<span className="muted">add note…</span>}
                       </span>}</td>
                   <td><Badge label={(u.role==="admin")?"Admin":"Seller"} color={(u.role==="admin")?"amber":"gray"}/></td>
