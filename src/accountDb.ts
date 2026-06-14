@@ -10,6 +10,7 @@ export interface AccountProfile {
   phone: string;
   tiktok: string;
   facebook: string;
+  adminContactNote: string;
 }
 
 export interface AccountUser {
@@ -65,6 +66,7 @@ function rowToUser(row: SupabaseRow): AccountUser {
       phone: textValue(row.phone),
       tiktok: textValue(row.tiktok),
       facebook: textValue(row.facebook),
+      adminContactNote: textValue(row.admin_contact_note),
     },
     plan: ["free", "trial", "basic", "pro", "master"].includes(textValue(row.plan)) ? textValue(row.plan) as Plan : "free",
     planStatus: ["active", "expired", "pending"].includes(textValue(row.plan_status)) ? textValue(row.plan_status) as PlanStatus : "active",
@@ -243,6 +245,24 @@ export async function adminUpdatePlan(
 
   if (error) {
     console.error("Admin update plan error:", error.message);
+    throw new Error(`${error.message} (${supabaseConfigHint})`);
+  }
+}
+
+// Admin-only: set the freeform contact note (e.g. "FB: Lhey Ukay") on a seller
+// row. Mirrors adminUpdatePlan's pattern — the DB trigger keeps regular sellers
+// from writing this column even if they construct the same UPDATE. Saving an
+// empty string is allowed (clears the note).
+export async function adminUpdateContactNote(email: string, note: string): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) return;
+
+  const { error } = await supabase
+    .from("seller_profiles")
+    .update({ admin_contact_note: note, updated_at: new Date().toISOString() })
+    .eq("email", email.trim().toLowerCase());
+
+  if (error) {
+    console.error("Admin update contact note error:", error.message);
     throw new Error(`${error.message} (${supabaseConfigHint})`);
   }
 }
