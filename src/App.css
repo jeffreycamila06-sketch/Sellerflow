@@ -1461,7 +1461,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     --m-panel-2:#171a2d;
     --m-card:#151827;
     --m-line:rgba(160,145,255,.16);
-    --m-text:#F8F7FF;
+    --m-text:#EAEAEA;
     --m-muted:#A5A8BA;
     --m-purple:#9B4DFF;
     --m-purple-2:#6D36E8;
@@ -1983,6 +1983,159 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     border:0.5px solid #CFC8FF!important;
   }
   .app.theme-regular .theme-mode-toggle small{color:#77736A!important}
+
+  /* ===== WCAG AA contrast pass for BOTH modes =======================
+   * Dark mode: the dark @media blocks above hardcode #fff / #F8F7FF
+   * (≈18:1 on the near-black bg — readable but harsh on the eyes for
+   * long sessions). --m-text is dropped to #EAEAEA (≈14:1, still AA)
+   * and the rules below re-point the hardcoded body-text colors to
+   * the variable via a higher-specificity .app.theme-dark scope so
+   * the original lines don't need editing.
+   * Light mode: the same dark @media leaks white / very-light-gray
+   * text onto the cream/white .app.theme-regular surface where it
+   * fails AA (or vanishes entirely). The .app.theme-regular block
+   * here restores readable colors using the palette already in use
+   * for the existing topbar/card/input overrides (#26215C 14:1,
+   * #77736A 4.6:1, #fff card, #E4E2DC border, #CFC8FF input border).
+   * ============================================================ */
+
+  /* DARK MODE — soften body text to var(--m-text) = #EAEAEA. Specificity
+     (0,2,1) wins over the original (0,1,1) rules; button text on saturated
+     bgs (purple gradients, "Live" pill, brand hero, etc.) keeps its bright
+     #fff intentionally — those still pass AA and need the visual pop. */
+  .app.theme-dark .subpage-hd h2,
+  .app.theme-dark .ms-v,
+  .app.theme-dark .stat-v,
+  .app.theme-dark .b-name,
+  .app.theme-dark .b-total,
+  .app.theme-dark .msg-nm strong,
+  .app.theme-dark .msg-handle,
+  .app.theme-dark .msg-tx.buy,
+  .app.theme-dark .col-lbl,
+  .app.theme-dark .pd-row,
+  .app.theme-dark .pd-hd,
+  .app.theme-dark .prof-drop,
+  .app.theme-dark .btn-out,
+  .app.theme-dark .tbl-btn,
+  .app.theme-dark .printer-shortcut-link,
+  .app.theme-dark .cd-tool-btn,
+  .app.theme-dark .table-card .tbl td,
+  .app.theme-dark .table-card .tbl strong,
+  .app.theme-dark .cd-table td,
+  .app.theme-dark .seller-message-row,
+  .app.theme-dark .support-thread,
+  .app.theme-dark .support-bubble,
+  .app.theme-dark .payment-box,
+  .app.theme-dark .mobile-printer-option,
+  .app.theme-dark .mobile-printer-option strong,
+  .app.theme-dark .sf-bot-chip,
+  .app.theme-dark .settings-section-printer .position-step-row span,
+  .app.theme-dark .settings-section-printer .position-step-controls b{
+    color:var(--m-text)!important;
+  }
+
+  /* LIGHT MODE — rescue elements the existing theme-regular groups
+     missed (~25 selector clusters listed in the audit). All values
+     hit WCAG AA on either the cream page bg (#F5F3EF, 4.6:1+) or the
+     white card bg (#fff, 5:1+) for normal text; UI element borders
+     and pill bgs all clear 3:1. */
+
+  /* Subpage headers (h2 was white, ::before icon was purple-on-purple) */
+  .app.theme-regular .subpage-hd h2{color:#26215C!important}
+  .app.theme-regular .subpage-hd>div:first-child::before{background:rgba(124,58,237,.12)!important;color:#7C3AED!important}
+  .app.theme-regular .subpage-hd p,
+  .app.theme-regular .muted,
+  .app.theme-regular .ms-l,
+  .app.theme-regular .stat-l,
+  .app.theme-regular .b-handle,
+  .app.theme-regular .slip-empty,
+  .app.theme-regular .miners-empty,
+  .app.theme-regular .feed-empty{color:#77736A!important}
+
+  /* Cards missed by the L1882 light card group */
+  .app.theme-regular .mobile-tool-card,
+  .app.theme-regular .admin-action-card,
+  .app.theme-regular .payment-box,
+  .app.theme-regular .notice-box{
+    background:#fff!important;
+    border:0.5px solid #E4E2DC!important;
+    color:#26215C!important;
+    box-shadow:0 6px 18px rgba(38,33,92,.07)!important;
+  }
+
+  /* Stat / chip values (were #fff in dark @media) */
+  .app.theme-regular .ms-v,
+  .app.theme-regular .stat-v,
+  .app.theme-regular .b-name,
+  .app.theme-regular .b-total{color:#26215C!important}
+
+  /* Secondary buttons (had dark island bg + light text). The dark rule's
+     !important suppressed the desktop ed/dl variants; re-establish them. */
+  .app.theme-regular .btn-out,
+  .app.theme-regular .tbl-btn,
+  .app.theme-regular .printer-shortcut-link,
+  .app.theme-regular .cd-tool-btn{
+    background:#fff!important;
+    color:#26215C!important;
+    border:0.5px solid #CFC8FF!important;
+  }
+  .app.theme-regular .tbl-btn.ed{background:#EEEDFE!important;color:#534AB7!important;border-color:#CFC8FF!important}
+  .app.theme-regular .tbl-btn.dl{background:#FCEBEB!important;color:#A32D2D!important;border-color:#F5C0BE!important}
+
+  /* Platform tags — restore TikTok purple / Facebook green from base */
+  .app.theme-regular .p-tag{background:#EEEDFE!important;color:#534AB7!important;border:none!important;border-radius:10px!important}
+  .app.theme-regular .p-tag.facebook{background:#E1F5EE!important;color:#0F6E56!important}
+
+  /* Filter tabs */
+  .app.theme-regular .filter-tabs{background:#FBFAF8!important;border:0.5px solid #E4E2DC!important}
+  .app.theme-regular .ftab{background:transparent!important;color:#77736A!important}
+  .app.theme-regular .ftab.on{background:linear-gradient(135deg,#7C3AED,#5B21B6)!important;color:#fff!important}
+
+  /* Mobile-stacked tables (.table-card .tbl + .cd-table) */
+  .app.theme-regular .table-card .tbl tr,
+  .app.theme-regular .cd-table tr{
+    background:#fff!important;
+    border:0.5px solid #E4E2DC!important;
+  }
+  .app.theme-regular .table-card .tbl td,
+  .app.theme-regular .cd-table td{color:#26215C!important;background:transparent!important}
+  .app.theme-regular .table-card .tbl td::before{color:#77736A!important}
+  .app.theme-regular .table-card .tbl strong{color:#05070D!important}
+  .app.theme-regular .cd-pager{color:#77736A!important}
+
+  /* Buyer / miner rows */
+  .app.theme-regular .buyer-row{background:#fff!important;color:#26215C!important;border:0.5px solid #E4E2DC!important}
+  .app.theme-regular .buyer-row.active{background:linear-gradient(135deg,rgba(124,58,237,.10),rgba(244,240,255,.7))!important;color:#26215C!important}
+
+  /* Support / SF Bot */
+  .app.theme-regular .seller-message-row,
+  .app.theme-regular .support-thread,
+  .app.theme-regular .support-bubble{
+    background:#fff!important;
+    border:0.5px solid #E4E2DC!important;
+    color:#26215C!important;
+  }
+  .app.theme-regular .support-bubble p,
+  .app.theme-regular .support-convo-sub span,
+  .app.theme-regular .payment-box p{color:#26215C!important}
+  .app.theme-regular .support-bubble.admin,
+  .app.theme-regular .support-page .support-bubble.seller{background:#F4F0FF!important;color:#26215C!important}
+  .app.theme-regular .support-page .support-bubble.admin{background:#fff!important;color:#26215C!important}
+  .app.theme-regular .sf-bot{border-bottom-color:#E4E2DC!important}
+  .app.theme-regular .sf-bot .support-bubble.admin.sf-bot-bubble{background:#fff!important;color:#26215C!important;border:0.5px solid #E4E2DC!important;border-left:3px solid #18B981!important}
+  .app.theme-regular .sf-bot-chip{background:#fff!important;border-color:#CFC8FF!important;color:#26215C!important}
+  .app.theme-regular .sf-bot-chip:hover{background:#F8F6FF!important;border-color:#7C3AED!important}
+  .app.theme-regular .sf-bot-notice{background:#FBFAF8!important;border-color:#E4E2DC!important;color:#77736A!important}
+
+  /* Mobile WiFi printer panels */
+  .app.theme-regular .mobile-printer-saved{background:#E8F8F2!important;border-color:#A5E3CB!important;color:#0F6E56!important}
+  .app.theme-regular .mobile-printer-saved span,
+  .app.theme-regular .mobile-printer-saved small{color:#0F6E56!important}
+  .app.theme-regular .mobile-printer-empty{background:#FBFAF8!important;border-color:#E4E2DC!important;color:#77736A!important}
+  .app.theme-regular .mobile-printer-option{background:#fff!important;border-color:#E4E2DC!important;color:#26215C!important}
+  .app.theme-regular .mobile-printer-option strong{color:#05070D!important}
+  .app.theme-regular .mobile-printer-option span,
+  .app.theme-regular .mobile-printer-option small{color:#77736A!important}
 }
 
 /* ============================================================================
