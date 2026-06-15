@@ -1998,6 +1998,16 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   }
   .app.theme-regular .theme-mode-toggle small{color:#77736A!important}
 
+  /* Printer Settings labels — the 0cb888c unconditional rule
+     (.settings-section-printer .position-step-row span at L1530-1531)
+     forces #F8F7FF on these rows so dark mode reads, but that
+     value also leaks into light mode where it's invisible on the
+     cream/white card. Higher-specificity .app.theme-regular scope
+     (0,3,1) wins back the dark indigo for light mode while leaving
+     the dark-mode behaviour from 0cb888c + d85cf05 alone. */
+  .app.theme-regular .settings-section-printer .position-step-row span{color:#26215C!important;font-weight:600}
+  .app.theme-regular .settings-section-printer .position-step-controls b{color:#26215C!important}
+
   /* ===== WCAG AA contrast pass for BOTH modes =======================
    * Dark mode: the dark @media blocks above hardcode #fff / #F8F7FF
    * (≈18:1 on the near-black bg — readable but harsh on the eyes for
