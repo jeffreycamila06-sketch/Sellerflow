@@ -282,6 +282,25 @@ function Fg({label,children}:{label:string;children:React.ReactNode}){
   return <div className="fg"><label>{label}</label>{children}</div>;
 }
 
+// Password-visibility toggle icons for the .pw-eye button on the login /
+// signup forms. stroke="currentColor" so the .pw-eye color rule themes them
+// (dark gray on white, light gray on the mobile dark input). Lucide-style
+// minimal paths so no icon library is needed.
+const PwEyeIcon=(
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/>
+    <circle cx="12" cy="12" r="3"/>
+  </svg>
+);
+const PwEyeOffIcon=(
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/>
+    <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7c1.66 0 3.21-.39 4.61-1.07"/>
+    <path d="M14.12 14.12A3 3 0 1 1 9.88 9.88"/>
+    <path d="M1 1l22 22"/>
+  </svg>
+);
+
 // admin_contact_note structured value: "<platform>:<name>" where platform is
 // one of CONTACT_PLATFORMS. Anything else (legacy plain text from before this
 // feature, or notes with an unrecognized prefix) is preserved and displayed
@@ -702,7 +721,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
         <form onSubmit={login} className="auth-form">
           {err&&<div className="auth-err">Warning: {err}</div>}
           <Fg label={t.email_field}><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@email.com" required autoFocus/></Fg>
-          <Fg label={t.pw_field}><div className="pw-wrap"><input type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="Password" required/><button type="button" onClick={()=>setShowPw(p=>!p)} className="pw-eye">{showPw?"Hide":"Show"}</button></div></Fg>
+          <Fg label={t.pw_field}><div className="pw-wrap"><input type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="Password" required/><button type="button" onClick={()=>setShowPw(p=>!p)} className="pw-eye" aria-label={showPw?"Hide password":"Show password"} title={showPw?"Hide password":"Show password"}>{showPw?PwEyeOffIcon:PwEyeIcon}</button></div></Fg>
           <div style={{textAlign:"right",marginBottom:4}}><button type="button" className="auth-link" onClick={()=>go("forgot")}>{t.forgot_link}</button></div>
           <button type="submit" className="auth-btn" disabled={busy}>{busy?t.signing_in:t.sign_in_btn}</button>
         </form>
@@ -719,7 +738,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
           </div>
           <Fg label={t.email_field}><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@email.com" required/></Fg>
           <Fg label="Phone number"><input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="+63 912 345 6789" inputMode="tel" required/></Fg>
-          <Fg label={t.pw_field}><div className="pw-wrap"><input type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="Min 6 chars" required/><button type="button" onClick={()=>setShowPw(p=>!p)} className="pw-eye">{showPw?"Hide":"Show"}</button></div></Fg>
+          <Fg label={t.pw_field}><div className="pw-wrap"><input type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="Min 6 chars" required/><button type="button" onClick={()=>setShowPw(p=>!p)} className="pw-eye" aria-label={showPw?"Hide password":"Show password"} title={showPw?"Hide password":"Show password"}>{showPw?PwEyeOffIcon:PwEyeIcon}</button></div></Fg>
           <Fg label={t.confirm_field}><input type="password" value={cpw} onChange={e=>setCpw(e.target.value)} placeholder="Confirm password" required/></Fg>
           <button type="submit" className="auth-btn" disabled={busy}>{busy?"Submitting...":"Submit for admin approval"}</button>
           <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat?v=6" download>Printer Shortcut</a>
