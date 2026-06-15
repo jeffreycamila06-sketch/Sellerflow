@@ -58,8 +58,18 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .pending-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}
 .auth-row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .pw-wrap{position:relative}
-.pw-wrap input{width:100%;padding-right:50px}
-.pw-eye{position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px}
+.pw-wrap input{width:100%;padding-right:48px}
+/* Password visibility toggle button. SVG inherits color via stroke=currentColor
+   so this single declaration themes both eye / eye-off icons. #5F5E5A on the
+   white auth card = ~5.9:1 (AA); the mobile dark @media block lifts this to
+   #C8C9D6 on the #0D1020 dark input (~9.3:1) so the icon is clearly visible
+   in both themes without being harshly bright. */
+.pw-eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);
+        width:36px;height:36px;display:inline-flex;align-items:center;
+        justify-content:center;background:none;border:none;border-radius:8px;
+        color:#5F5E5A;cursor:pointer;padding:0}
+.pw-eye:hover{background:rgba(127,119,221,.08);color:#26215C}
+.pw-eye:focus-visible{outline:2px solid #7C3AED;outline-offset:1px}
 
 /* Public product page */
 .public-page{min-height:100vh;background:linear-gradient(180deg,#FFFEFF 0%,#F6F3FF 34%,#F7F7F4 100%);color:#26215C;overflow-x:hidden;scroll-behavior:smooth}
@@ -1624,6 +1634,10 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
     color:#fff!important;
     box-shadow:none!important;
   }
+  /* Password toggle: invisible on the #0D1020 dark input with its default
+     near-black color. Lift to a soft light gray (~9.3:1 on that bg). */
+  .pw-eye{color:#C8C9D6!important}
+  .pw-eye:hover{color:#fff!important;background:rgba(255,255,255,.06)!important}
   .mobile-miner-search{display:block!important;width:100%!important;max-width:none!important}
   .grid4,.grid2,.miners-page-stats{display:grid!important;grid-template-columns:1fr!important;gap:10px!important}
   .mstat,.stat-c{min-height:92px!important;padding:14px!important}
