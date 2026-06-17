@@ -217,6 +217,15 @@ const addMonths=(n:number)=>addDays(Math.max(1,n)*30);
 // Single source of truth for the support/renewal Telegram contact.
 const TELEGRAM_URL="https://t.me/SELLERFLOWLIVE1995";
 const dLeft=(e:string,now=Date.now())=>Math.max(0,Math.ceil((new Date(e).getTime()-now)/86400000));
+// Value-only renewal that ADDS to remaining time instead of resetting from now.
+// Active+days-left → current expiry + n*30d; otherwise (expired) from now + n*30d.
+// Module-scope so the impure Date reads stay out of the component render path
+// (mirrors addDays/addMonths above).
+const addMonthsToExpiry=(planExpiry:string,planStatus:string,n:number)=>{
+  const active=planStatus==="active"&&dLeft(planExpiry)>0;
+  const base=active?new Date(planExpiry).getTime():Date.now();
+  return new Date(base+Math.max(1,n)*30*86400000).toISOString();
+};
 // Background highlight for the admin Users table DAYS cell. dLeft clamps at 0
 // so expired plans land in the strongest red. 8+ days → no highlight (returns
 // undefined so React drops the style attribute entirely).
@@ -2400,6 +2409,9 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   const [adminSearch,setAdminSearch]=useState("");
   const [expandedAdminBox,setExpandedAdminBox]=useState<""|"overview"|"create"|"users"|"planmonitor"|"freeusers"|"audit">("");
   const [adminUserPlanMonths,setAdminUserPlanMonths]=useState<Record<string,number>>({});
+  // Separate per-user state for the additive "Add months" control. Kept apart
+  // from adminUserPlanMonths so the existing "set from now" dropdown is untouched.
+  const [adminUserAddMonths,setAdminUserAddMonths]=useState<Record<string,number>>({});
   // Inline contact-note editor: only one row is in edit mode at a time so a
   // single email + draft pair is enough (no per-row useState explosion). The
   // draft is split into platform + name so the picker buttons can update one
@@ -2496,6 +2508,54 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
     }catch(error){
       setCopied(`Update failed: ${error instanceof Error?error.message:"Unknown error"}`);
     }
+  }
+
+  // Additive "Add months" control: reads its own per-user selection (default 1),
+  // independent of the existing "set from now" month dropdown.
+  function addMonthsForUser(user:User){
+    return adminUserAddMonths[user.email.toLowerCase()] ?? 1;
+  }
+  function setAddMonthsForUser(email:string,months:number){
+    setAdminUserAddMonths(current=>({...current,[email.toLowerCase()]:months}));
+  }
+
+  // Value-only renewal that ADDS to whatever the seller has left instead of
+  // resetting from now(). Active+remaining → current expiry + N*30d; expired →
+  // now() + N*30d (reactivated). Keeps the current paid tier; never touches the
+  // plan column. Trial/free are left to the existing set buttons.
+  async function addMonthsToRemaining(user:User,months:number){
+    if(user.plan==="trial"||user.plan==="free")return;
+    const add=Math.max(1,months);
+    const active=user.planStatus==="active"&&dLeft(user.planExpiry)>0;
+    const expiry=addMonthsToExpiry(user.planExpiry,user.planStatus,add);
+    try{
+      await adminUpdatePlan(user.email,{plan:user.plan,planStatus:"active",planExpiry:expiry});
+      setUsers(prev=>prev.map(u=>u.email.toLowerCase()===user.email.toLowerCase()?{...u,plan:user.plan,planStatus:"active" as PlanStatus,planExpiry:expiry}:u));
+      await logAction("added months",user.email,`Added ${add} month${add===1?"":"s"} to ${active?"remaining":"expired"} ${user.plan} (new expiry ${expiry})`);
+    }catch(error){
+      setCopied(`Add months failed: ${error instanceof Error?error.message:"Unknown error"}`);
+    }
+  }
+
+  // Renders the additive Add-months dropdown + Add button for a seller row.
+  // Paid sellers only (matches addMonthsToRemaining's guard).
+  function renderAddMonthsControl(user:User){
+    if(user.plan==="trial"||user.plan==="free")return null;
+    const months=addMonthsForUser(user);
+    return(
+      <span className="admin-add-months" onClick={e=>e.stopPropagation()}>
+        <select
+          className="admin-add-month-select"
+          value={months}
+          onChange={e=>setAddMonthsForUser(user.email,Number(e.target.value))}
+          onClick={e=>e.stopPropagation()}
+          onDoubleClick={e=>e.stopPropagation()}
+        >
+          {Array.from({length:12},(_,i)=>i+1).map(month=><option key={month} value={month}>{month} {month===1?"month":"months"}</option>)}
+        </select>
+        <button className="tbl-btn ed admin-add-months-btn" onClick={()=>void addMonthsToRemaining(user,months)}>Add</button>
+      </span>
+    );
   }
 
   // Seed the editor state from the row's current note so the platform picker
@@ -2837,6 +2897,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                           <button className="tbl-btn ed" onClick={()=>approve(u.email,"pro",monthsForUser(u))}>Pro</button>
                           <button className="tbl-btn ed" onClick={()=>approve(u.email,"master",monthsForUser(u))}>Master</button>
                           <button className="tbl-btn dl" onClick={()=>setPlan(u.email,u.plan,"expired")}>Expire</button>
+                          {renderAddMonthsControl(u)}
                           {!(u.role==="admin")
                             ? <><button className="tbl-btn ed" onClick={()=>makeAdmin(u.email)}>Make Admin</button><button className="tbl-btn dl" onClick={()=>removeSeller(u.email)}>Delete</button></>
                             : <button className="tbl-btn dl" onClick={()=>removeAdmin(u.email)}>Remove Admin</button>}
@@ -2991,6 +3052,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                       <button className="tbl-btn ed" onClick={()=>approve(u.email,"pro",monthsForUser(u))}>Pro</button>
                       <button className="tbl-btn ed" onClick={()=>approve(u.email,"master",monthsForUser(u))}>Master</button>
                       <button className="tbl-btn dl" onClick={()=>setPlan(u.email,u.plan,"expired")}>Expire</button>
+                      {renderAddMonthsControl(u)}
                       {!(u.role==="admin")
                         ? <><button className="tbl-btn ed" onClick={()=>makeAdmin(u.email)}>Make Admin</button><button className="tbl-btn dl" onClick={()=>removeSeller(u.email)}>Delete</button></>
                         : <button className="tbl-btn dl" onClick={()=>removeAdmin(u.email)}>Remove Admin</button>}
