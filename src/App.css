@@ -307,6 +307,8 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .admin-exportbar .btn-out{padding:7px 12px}
 .admin-user-month-select{height:30px;min-width:126px;border:2px solid #AFA9EC;border-radius:7px;background:#fff;color:#F27A1A;font-size:13px;font-weight:700;padding:0 28px 0 8px;cursor:pointer}
 .admin-row-actions{display:flex;gap:6px;flex-wrap:wrap}
+.admin-add-months{display:inline-flex;align-items:center;gap:4px}
+.admin-add-month-select{height:26px;border:1px solid var(--sf-border-strong);border-radius:6px;background:#fff;color:var(--sf-purple-dark);font-size:11px;font-weight:600;padding:0 4px;cursor:pointer}
 .admin-refresh-group{display:flex;align-items:center;gap:8px}
 .admin-refresh-group span{font-size:11px;color:#888780;background:#F1EFE8;border-radius:999px;padding:5px 10px;white-space:nowrap}
 .admin-summary-grid{grid-template-columns:repeat(5,1fr)}
