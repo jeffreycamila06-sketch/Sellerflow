@@ -2849,9 +2849,9 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
           <div className="admin-table-wrap">
             <div className="admin-table-scroll" ref={usersTableRef}>
               <table className="tbl">
-                <thead><tr><th>Email</th><th>Contact</th><th>Role</th><th>Plan</th><th>Free Cycle</th><th>Days</th><th>Months</th><th>Accounts</th><th></th></tr></thead>
+                <thead><tr><th>Email</th><th>Contact</th><th>Role</th><th>Plan</th><th>Free Cycle</th><th>Days</th><th>Months</th><th>Add</th><th>Accounts</th><th></th></tr></thead>
                 <tbody>
-                  {filteredUsers.length===0&&<tr><td colSpan={9} style={{textAlign:"center",padding:24,color:"#888"}}>{users.length===0?"No users yet.":"No users found."}</td></tr>}
+                  {filteredUsers.length===0&&<tr><td colSpan={10} style={{textAlign:"center",padding:24,color:"#888"}}>{users.length===0?"No users yet.":"No users found."}</td></tr>}
                   {filteredUsers.map(u=>{const fr=freeByEmail.get(u.email.toLowerCase());return(
                     <tr key={u.email} className={u.planStatus==="pending"?"row-pending":undefined}>
                       <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div>{u.planStatus==="pending"&&<div style={{marginTop:3}}><Badge label="Pending Approval" color="amber"/></div>}</td>
@@ -2887,6 +2887,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                       <td>{u.plan==="free"&&fr?<span style={{color:fr.capped?"#A32D2D":fr.near_cap?"#BA7517":"#1D9E75",fontWeight:600}}>{fr.count}/{fr.cap} · {fr.cycle_resets_in_days}d</span>:<span className="muted">—</span>}</td>
                       <td style={u.plan==="free"?undefined:daysCellStyle(dLeft(u.planExpiry))}>{dLeft(u.planExpiry)}</td>
                       <td>{renderUserMonthsSelect(u)}</td>
+                      <td>{renderAddMonthsControl(u)}</td>
                       <td>{registeredAccountCount(u)} / {maxAcc(u.plan)}</td>
                       <td>
                         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
@@ -2897,7 +2898,6 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                           <button className="tbl-btn ed" onClick={()=>approve(u.email,"pro",monthsForUser(u))}>Pro</button>
                           <button className="tbl-btn ed" onClick={()=>approve(u.email,"master",monthsForUser(u))}>Master</button>
                           <button className="tbl-btn dl" onClick={()=>setPlan(u.email,u.plan,"expired")}>Expire</button>
-                          {renderAddMonthsControl(u)}
                           {!(u.role==="admin")
                             ? <><button className="tbl-btn ed" onClick={()=>makeAdmin(u.email)}>Make Admin</button><button className="tbl-btn dl" onClick={()=>removeSeller(u.email)}>Delete</button></>
                             : <button className="tbl-btn dl" onClick={()=>removeAdmin(u.email)}>Remove Admin</button>}
@@ -3018,7 +3018,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
             </div>}
             {expandedAdminBox==="users"&&<div className="table-card admin-fullscreen-table">
               <div className="table-title">Users ({filteredUsers.length})</div>
-              <table className="tbl"><thead><tr><th>Email</th><th>Contact</th><th>Role</th><th>Plan</th><th>Free Cycle</th><th>Days</th><th>Months</th><th>Accounts</th><th>Actions</th></tr></thead><tbody>
+              <table className="tbl"><thead><tr><th>Email</th><th>Contact</th><th>Role</th><th>Plan</th><th>Free Cycle</th><th>Days</th><th>Months</th><th>Add</th><th>Accounts</th><th>Actions</th></tr></thead><tbody>
                 {filteredUsers.map(u=>{const fr=freeByEmail.get(u.email.toLowerCase());return(
                 <tr key={"expanded-"+u.email} className={u.planStatus==="pending"?"row-pending":undefined}>
                   <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div>{u.planStatus==="pending"&&<div style={{marginTop:3}}><Badge label="Pending Approval" color="amber"/></div>}</td>
@@ -3042,6 +3042,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                   <td>{u.plan==="free"&&fr?<span style={{color:fr.capped?"#A32D2D":fr.near_cap?"#BA7517":"#1D9E75",fontWeight:600}}>{fr.count}/{fr.cap} · {fr.cycle_resets_in_days}d</span>:<span className="muted">—</span>}</td>
                   <td style={u.plan==="free"?undefined:daysCellStyle(dLeft(u.planExpiry))}>{dLeft(u.planExpiry)}</td>
                   <td>{renderUserMonthsSelect(u)}</td>
+                  <td>{renderAddMonthsControl(u)}</td>
                   <td>{registeredAccountCount(u)} / {maxAcc(u.plan)}</td>
                   <td>
                     <div className="admin-row-actions">
@@ -3052,7 +3053,6 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                       <button className="tbl-btn ed" onClick={()=>approve(u.email,"pro",monthsForUser(u))}>Pro</button>
                       <button className="tbl-btn ed" onClick={()=>approve(u.email,"master",monthsForUser(u))}>Master</button>
                       <button className="tbl-btn dl" onClick={()=>setPlan(u.email,u.plan,"expired")}>Expire</button>
-                      {renderAddMonthsControl(u)}
                       {!(u.role==="admin")
                         ? <><button className="tbl-btn ed" onClick={()=>makeAdmin(u.email)}>Make Admin</button><button className="tbl-btn dl" onClick={()=>removeSeller(u.email)}>Delete</button></>
                         : <button className="tbl-btn dl" onClick={()=>removeAdmin(u.email)}>Remove Admin</button>}
