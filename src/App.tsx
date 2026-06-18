@@ -35,7 +35,7 @@ interface User { authUserId?:string; email:string; profile:Profile; plan:Plan; p
 interface Product { id:number; name:string; sku:string; price:number; stock:number; platform:string; status:string; }
 type ShippingStatus = "Pending"|"Ready"|"Shipped"|"Delivered"|"Returned";
 interface ShippingCustomer { username:string; name:string; phone:string; sevenCode:string; note:string; lastComment:string; firstSeen:string; status:ShippingStatus; isNew:boolean; num?:number; }
-interface Settings { darkMode:boolean; autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"auto"|"usb"|"bluetooth"|"lan"; stickerSize:string; printStoreName:boolean; printBuyerNumber:boolean; printBuyerUsername:boolean; printOrderItems:boolean; printTotal:boolean; printAutoClose:boolean; printLabelScale:number; printStoreScale:number; printBuyerNumberScale:number; printBuyerNameScale:number; printUsernameScale:number; printOrderScale:number; printCommentScale:number; printTotalScale:number; printStoreX:number; printStoreY:number; printBuyerLabelX:number; printBuyerLabelY:number; printBuyerNumberX:number; printBuyerNumberY:number; printBuyerNameX:number; printBuyerNameY:number; printUsernameX:number; printUsernameY:number; printSessionX:number; printSessionY:number; printOrderX:number; printOrderY:number; printTotalX:number; printTotalY:number; }
+interface Settings { darkMode:boolean; autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"auto"|"usb"|"bluetooth"|"lan"; lanFormat:"receipt"|"sticker"; stickerSize:string; printStoreName:boolean; printBuyerNumber:boolean; printBuyerUsername:boolean; printOrderItems:boolean; printTotal:boolean; printAutoClose:boolean; printLabelScale:number; printStoreScale:number; printBuyerNumberScale:number; printBuyerNameScale:number; printUsernameScale:number; printOrderScale:number; printCommentScale:number; printTotalScale:number; printStoreX:number; printStoreY:number; printBuyerLabelX:number; printBuyerLabelY:number; printBuyerNumberX:number; printBuyerNumberY:number; printBuyerNameX:number; printBuyerNameY:number; printUsernameX:number; printUsernameY:number; printSessionX:number; printSessionY:number; printOrderX:number; printOrderY:number; printTotalX:number; printTotalY:number; }
 interface MobilePrinterDevice { id:string; type:"bluetooth"|"lan"; name:string; address?:string; host?:string; port?:number; paired?:boolean; online?:boolean; signal?:number; distance?:string; hint?:string; }
 interface MobilePrinterResult { ok?:boolean; message?:string; online?:boolean; host?:string; port?:number; savedPrinter?:MobilePrinterDevice|null; printers?:MobilePrinterDevice[]; }
 interface PrinterLanConfig { host:string; port?:number; }
@@ -172,7 +172,7 @@ const DEFAULT_SERVER =
     : "https://sellerflow-live-server.onrender.com";
 const SERVER = String(import.meta.env.VITE_SERVER_URL || DEFAULT_SERVER).replace(/\/$/,"");
 const DEBUG_SOCKET = import.meta.env.DEV || import.meta.env.VITE_DEBUG_SOCKET === "true";
-const DEF_SETTINGS: Settings = { darkMode:true, autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"", paperSize:"100x60mm", printerType:"auto", stickerSize:"100x60mm", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printLabelScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printCommentScale:100, printTotalScale:100, printStoreX:0, printStoreY:0, printBuyerLabelX:0, printBuyerLabelY:0, printBuyerNumberX:0, printBuyerNumberY:0, printBuyerNameX:0, printBuyerNameY:0, printUsernameX:0, printUsernameY:0, printSessionX:0, printSessionY:0, printOrderX:0, printOrderY:0, printTotalX:0, printTotalY:0 };
+const DEF_SETTINGS: Settings = { darkMode:true, autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"", paperSize:"100x60mm", printerType:"auto", lanFormat:"receipt", stickerSize:"100x60mm", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printLabelScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printCommentScale:100, printTotalScale:100, printStoreX:0, printStoreY:0, printBuyerLabelX:0, printBuyerLabelY:0, printBuyerNumberX:0, printBuyerNumberY:0, printBuyerNameX:0, printBuyerNameY:0, printUsernameX:0, printUsernameY:0, printSessionX:0, printSessionY:0, printOrderX:0, printOrderY:0, printTotalX:0, printTotalY:0 };
 const LANG_OPTS: {code:Lang;label:string}[] = [{code:"en",label:"🇺🇸 EN"},{code:"fil",label:"🇵🇭 FIL"},{code:"zh",label:"🇨🇳 中文"},{code:"vi",label:"🇻🇳 VI"},{code:"th",label:"🇹🇭 TH"},{code:"id",label:"🇮🇩 ID"}];
 const CURRENCIES = [{v:"",l:"No symbol"},{v:"$",l:"$ USD"},{v:"NT$",l:"NT$ NTD"}];
 const cleanCurrency=(value:unknown)=>{
@@ -577,11 +577,12 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Setting
     return;
   }
   // 📶 iOS WiFi/LAN sticker (TSPL over TCP 9100) — additive, opt-in. Triggers
-  // ONLY when the seller picked "lan" AND the iOS-exclusive printStickerLan
-  // bridge method exists. On Android (no printStickerLan) and on every other
-  // printerType this is skipped, so the ESC/POS WiFi receipt + browser-print
-  // flow below is untouched.
-  if(shouldUseLanSticker(cfg.printerType,!!nativePrinter?.printStickerLan)){
+  // ONLY when the seller EXPLICITLY chose Output: Sticker (cfg.lanFormat==="sticker")
+  // AND picked "lan" AND the iOS-exclusive printStickerLan bridge method exists.
+  // Default lanFormat is "receipt", so WiFi/LAN keeps using the ESC/POS receipt
+  // path below unless the seller opts into stickers. On Android (no
+  // printStickerLan) this is always skipped.
+  if(shouldUseLanSticker(cfg.printerType,cfg.lanFormat,!!nativePrinter?.printStickerLan)){
     void printStickerViaLan(buyer,cur,storeName,cfg).then(ok=>{
       if(!ok)console.warn("[LAN sticker] print failed — check WiFi printer IP in Settings.");
     });
@@ -2165,6 +2166,27 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
               </button>
             </div>
           </div>
+          {/* WiFi/LAN output format — Receipt (ESC/POS) vs Sticker (TSPL).
+              Additive, explicit choice; default "receipt" keeps the existing
+              ESC/POS behavior. Only shown for WiFi/LAN mode — Bluetooth always
+              prints TSPL stickers, so the toggle would be meaningless there. */}
+          {!isBtMode&&(
+          <div className="printer-mode-section">
+            <div className="printer-mode-label">Output format</div>
+            <div className="printer-mode-cards">
+              <button type="button" className={`printer-mode-card ${sets.lanFormat!=="sticker"?"on":""}`} onClick={()=>setSets(s=>({...s,lanFormat:"receipt"}))}>
+                <div className="pm-card-head"><span className="pm-card-radio">{sets.lanFormat!=="sticker"?"●":"○"}</span><strong>Receipt</strong></div>
+                <div className="pm-card-rec">Default</div>
+                <div className="pm-card-desc">ESC/POS thermal receipt slip (e.g. 80mm roll).</div>
+              </button>
+              <button type="button" className={`printer-mode-card ${sets.lanFormat==="sticker"?"on":""}`} onClick={()=>setSets(s=>({...s,lanFormat:"sticker"}))}>
+                <div className="pm-card-head"><span className="pm-card-radio">{sets.lanFormat==="sticker"?"●":"○"}</span><strong>Sticker</strong></div>
+                <div className="pm-card-rec">iOS WiFi label</div>
+                <div className="pm-card-desc">TSPL label sticker (100×60mm) over WiFi/LAN.</div>
+              </button>
+            </div>
+          </div>
+          )}
           <Fg label={t.printer_size}>
             <select value={sets.stickerSize} onChange={e=>setSets(s=>({...s,stickerSize:e.target.value}))}>
               <option value="100x60">100x60mm (Standard)</option>
