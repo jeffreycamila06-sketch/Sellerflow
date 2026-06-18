@@ -22,6 +22,7 @@ import { liveDayId, taipeiDayId } from "./lib/dateHelpers";
 import type { LiveOrder, Buyer, Comment } from "./lib/orderTypes";
 import { buildOrderFromComment } from "./lib/orderLogic";
 import { sellerExpiryState } from "./lib/sellerExpiry";
+import { shouldUseBluetoothSticker, shouldUseLanSticker } from "./lib/printerRouting";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Plan = "free" | "trial" | "basic" | "pro" | "master";
@@ -62,7 +63,7 @@ const tpl=(text:string,vars:Record<string,string|number>)=>String(text||"").repl
 
 declare global {
   interface Window {
-    SellerFlowPrinter?: { printSlip?: (payload:NativePrinterPayload)=>PrinterBridgeReturn|Promise<PrinterBridgeReturn>; setPrinter?: (config:PrinterLanConfig)=>Promise<MobilePrinterResult>; getPrinter?: ()=>Promise<MobilePrinterResult>; testConnection?: (config:PrinterLanConfig)=>Promise<MobilePrinterResult>; status?: ()=>string|Promise<string>; printerStatus?: ()=>string|Promise<string|MobilePrinterResult>; scanPrinters?: ()=>string|Promise<string|MobilePrinterResult>; connectPrinter?: (printer:MobilePrinterDevice|string)=>string|Promise<string|MobilePrinterResult>; testPrint?: ()=>string|Promise<string|MobilePrinterResult>; scanBluetoothLabelPrinters?: ()=>Promise<BluetoothScanResult>; getBluetoothLabelPrinter?: ()=>Promise<BluetoothScanResult>; setBluetoothLabelPrinter?: (printer:{address:string;name:string})=>Promise<BluetoothScanResult>; clearBluetoothLabelPrinter?: ()=>Promise<BluetoothScanResult>; testStickerPrint?: ()=>Promise<StickerPrintResult>; printStickerNative?: (payload:NativeStickerPayload)=>Promise<StickerPrintResult>; };
+    SellerFlowPrinter?: { printSlip?: (payload:NativePrinterPayload)=>PrinterBridgeReturn|Promise<PrinterBridgeReturn>; setPrinter?: (config:PrinterLanConfig)=>Promise<MobilePrinterResult>; getPrinter?: ()=>Promise<MobilePrinterResult>; testConnection?: (config:PrinterLanConfig)=>Promise<MobilePrinterResult>; status?: ()=>string|Promise<string>; printerStatus?: ()=>string|Promise<string|MobilePrinterResult>; scanPrinters?: ()=>string|Promise<string|MobilePrinterResult>; connectPrinter?: (printer:MobilePrinterDevice|string)=>string|Promise<string|MobilePrinterResult>; testPrint?: ()=>string|Promise<string|MobilePrinterResult>; scanBluetoothLabelPrinters?: ()=>Promise<BluetoothScanResult>; getBluetoothLabelPrinter?: ()=>Promise<BluetoothScanResult>; setBluetoothLabelPrinter?: (printer:{address:string;name:string})=>Promise<BluetoothScanResult>; clearBluetoothLabelPrinter?: ()=>Promise<BluetoothScanResult>; testStickerPrint?: ()=>Promise<StickerPrintResult>; printStickerNative?: (payload:NativeStickerPayload)=>Promise<StickerPrintResult>; printStickerLan?: (payload:NativeStickerPayload)=>Promise<StickerPrintResult>; };
     ReactNativeWebView?: { postMessage:(message:string)=>void };
     Capacitor?: { Plugins?: { SellerFlowPrinter?: { printSlip:(payload:NativePrinterPayload)=>Promise<PrinterBridgeReturn>; setPrinter?:(config:PrinterLanConfig)=>Promise<MobilePrinterResult>; getPrinter?:()=>Promise<MobilePrinterResult>; testConnection?:(config:PrinterLanConfig)=>Promise<MobilePrinterResult> } } };
   }
@@ -544,6 +545,23 @@ async function printStickerViaBluetooth(buyer:Buyer,cur:string,storeName:string,
   }
 }
 
+// 1-click WiFi/LAN sticker print (iOS). Same TSPL TEXT+BAR slip data as the
+// Bluetooth path, but shipped over raw TCP 9100 by the iOS plugin's
+// printStickerLan method (iOS BLE printing is MFi-gated, so WiFi is the only
+// native sticker transport on iPhone). printStickerLan is injected ONLY by the
+// iOS plugin, so this never fires on Android.
+async function printStickerViaLan(buyer:Buyer,cur:string,storeName:string,cfg:Settings):Promise<boolean>{
+  const bridge=typeof window!=="undefined"?window.SellerFlowPrinter:undefined;
+  if(!bridge?.printStickerLan)return false;
+  try{
+    const result=await bridge.printStickerLan(buildNativeStickerPayload(buyer,cur,storeName,cfg));
+    return !!result?.ok;
+  }catch(err){
+    console.warn("printStickerLan bridge call failed:",err);
+    return false;
+  }
+}
+
 function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Settings|string){
   const cfg:Settings=typeof printSettings==="string"?{...DEF_SETTINGS,stickerSize:printSettings}:printSettings;
   // 🅱️ Bluetooth sticker (TSPL) path — additive, opt-in. Triggers ONLY when
@@ -551,9 +569,21 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Setting
   // printSticker method (Android APK with BT plugin). Otherwise we fall
   // straight through to the existing WiFi/LAN + browser-print flow below,
   // byte-identical to before this feature.
-  if(cfg.printerType==="bluetooth"&&typeof window!=="undefined"&&window.SellerFlowPrinter?.printStickerNative){
+  const nativePrinter=typeof window!=="undefined"?window.SellerFlowPrinter:undefined;
+  if(shouldUseBluetoothSticker(cfg.printerType,!!nativePrinter?.printStickerNative)){
     void printStickerViaBluetooth(buyer,cur,storeName,cfg).then(ok=>{
       if(!ok)console.warn("[BT sticker] print failed — check Bluetooth printer pairing and selection in Settings.");
+    });
+    return;
+  }
+  // 📶 iOS WiFi/LAN sticker (TSPL over TCP 9100) — additive, opt-in. Triggers
+  // ONLY when the seller picked "lan" AND the iOS-exclusive printStickerLan
+  // bridge method exists. On Android (no printStickerLan) and on every other
+  // printerType this is skipped, so the ESC/POS WiFi receipt + browser-print
+  // flow below is untouched.
+  if(shouldUseLanSticker(cfg.printerType,!!nativePrinter?.printStickerLan)){
+    void printStickerViaLan(buyer,cur,storeName,cfg).then(ok=>{
+      if(!ok)console.warn("[LAN sticker] print failed — check WiFi printer IP in Settings.");
     });
     return;
   }
