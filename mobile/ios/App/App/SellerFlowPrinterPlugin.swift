@@ -22,7 +22,16 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "getPrinter", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "testConnection", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "printSlip", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "printStickerLan", returnType: CAPPluginReturnPromise),
     ]
+
+    /// Default AIMO-class sticker stock: 100x60mm @ 203 DPI (800x480 dots).
+    /// Mirrors the Android constants `LABEL_WIDTH_MM` / `LABEL_HEIGHT_MM` in
+    /// `mobile/android/.../SellerFlowPrinterPlugin.java`. Overridable per call
+    /// via `labelWidthMm` / `labelHeightMm` so other label sizes can be tested
+    /// without a code change; defaults keep byte-parity with Android.
+    private let defaultLabelWidthMm = 100
+    private let defaultLabelHeightMm = 60
 
     private let defaults = UserDefaults.standard
     private let hostKey = "sellerflow_lan_host"
@@ -73,6 +82,11 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
       window.SellerFlowPrinter.getPrinter = function(){ return cap.getPrinter(); };
       window.SellerFlowPrinter.testConnection = function(c){ return cap.testConnection(c || {}); };
       window.SellerFlowPrinter.printSlip = function(p){ return cap.printSlip(p); };
+      // iOS WiFi/LAN sticker (TSPL over TCP 9100). EXCLUSIVE to iOS -- Android's
+      // sticker method is named printStickerNative and rides Bluetooth, so the
+      // web's printerType==="lan" sticker branch (which gates on this method)
+      // can never fire on Android and never disturbs the BT path.
+      window.SellerFlowPrinter.printStickerLan = function(p){ return cap.printStickerLan(p); };
       window.SellerFlowPrinter.status = function(){ return cap.getPrinter(); };
       window.SellerFlowPrinter.printerStatus = function(){ return cap.getPrinter(); };
       window.SellerFlowPrinter.scanPrinters = function(){ return cap.getPrinter(); };
@@ -184,6 +198,55 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                 ret["online"] = true
                 ret["bytes"] = data.count
                 ret["message"] = "Printed to WiFi printer \(host):\(port)"
+                call.resolve(ret)
+            }
+        }
+    }
+
+    // MARK: - printStickerLan: TSPL sticker over WiFi/LAN (TCP 9100)
+    //
+    // iOS counterpart to Android's printStickerNative, but over WiFi instead of
+    // Bluetooth (iOS BLE printing is MFi-gated). Reads the same saved LAN
+    // host/port the ESC/POS printSlip uses, builds a TSPL TEXT+BAR command
+    // stream via buildTsplSticker (a byte-for-byte port of Android's
+    // TsplBuilder.forStickerNative), and ships it through the shared openTCP
+    // transport. Return shape mirrors Android printStickerNative so the web's
+    // printStickerNative/printStickerLan result handling is identical.
+    @objc func printStickerLan(_ call: CAPPluginCall) {
+        let host = savedHost()
+        let port = savedPort()
+        if host.isEmpty {
+            call.reject("No WiFi printer saved. Enter printer IP and tap Test Connection first.", "PRINTER_NOT_SET")
+            return
+        }
+        let buyer = call.getObject("buyer") ?? [:]
+        let settings = call.getObject("settings")
+        let storeName = call.getString("storeName") ?? "SellerFlowLive"
+        let currency = call.getString("currency") ?? ""
+        let sessionDate = call.getString("sessionDate") ?? ""
+        let labelWidthMm = call.getInt("labelWidthMm", defaultLabelWidthMm)
+        let labelHeightMm = call.getInt("labelHeightMm", defaultLabelHeightMm)
+
+        let data = buildTsplSticker(
+            buyer: buyer,
+            settings: settings,
+            storeName: storeName,
+            currency: currency,
+            sessionDate: sessionDate,
+            labelWidthMm: labelWidthMm,
+            labelHeightMm: labelHeightMm
+        )
+
+        openTCP(host: host, port: port, data: data) { [weak self] error in
+            guard let self = self else { return }
+            if let error = error {
+                call.reject("Sticker print failed at \(host):\(port) - \(error)", "PRINT_FAILED")
+            } else {
+                var ret = self.printerConfig(host: host, port: port)
+                ret["ok"] = true
+                ret["online"] = true
+                ret["bytes"] = data.count
+                ret["message"] = "Printed sticker (TEXT+BAR, \(data.count) bytes) to WiFi printer \(host):\(port)"
                 call.resolve(ret)
             }
         }
@@ -377,5 +440,243 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         feed(4)
         cut()
         return out
+    }
+
+    // MARK: - TSPL sticker builder (byte-for-byte port of TsplBuilder.java)
+    //
+    // Mirrors Android `TsplBuilder.forStickerNative` exactly: TEXT + BAR
+    // primitives only (the AIMO-class firmware ignores BITMAP), ASCII commands
+    // terminated with \r\n, CJK fields emitted as TSS24.BF2 + GBK bytes. The
+    // byte output is pinned to the Android golden fixtures under
+    // mobile/ios/tspl-parity/golden/ and asserted by both the iOS XCTest
+    // (MobileTsplBuilderTests.swift) and the web suite (src/lib/__tests__).
+    //
+    // PARITY NOTES (Java semantics this port must preserve):
+    //   - truncate() slices by UTF-16 code units (Java String.substring), NOT
+    //     by Character/grapheme -- see truncate16().
+    //   - writeAscii encodes US-ASCII with '?' (0x3F) for unmappable units,
+    //     matching Java getBytes(US_ASCII) -- see tsplAsciiBytes().
+    //   - GBK uses CFStringEncodings.GBK_95, the same encoding the ESC/POS path
+    //     uses and which matches Android's Charset.forName("GBK") byte-for-byte
+    //     on the BMP (CJK ideographs live here).
+    // Internal (not private) so the Phase-3 XCTest (mobile/ios/tspl-parity/
+    // swift/MobileTsplBuilderTests.swift) can assert it byte-for-byte against
+    // the Android golden fixtures via @testable import.
+    func buildTsplSticker(
+        buyer: [String: Any],
+        settings: [String: Any]?,
+        storeName: String,
+        currency: String,
+        sessionDate: String,
+        labelWidthMm: Int,
+        labelHeightMm: Int
+    ) -> Data {
+        var out = Data()
+        func writeAscii(_ s: String) {
+            out.append(contentsOf: tsplAsciiBytes(s))
+            out.append(contentsOf: [0x0D, 0x0A])
+        }
+        func asInt(_ v: Any?) -> Int? {
+            if let i = v as? Int { return i }
+            if let d = v as? Double { return Int(d) }
+            return (v as? NSNumber)?.intValue
+        }
+        func asDouble(_ v: Any?) -> Double {
+            if let d = v as? Double { return d }
+            if let i = v as? Int { return Double(i) }
+            return (v as? NSNumber)?.doubleValue ?? 0
+        }
+        func boolSetting(_ key: String) -> Bool {
+            guard let settings = settings else { return true }
+            if let b = settings[key] as? Bool { return b }
+            if let n = settings[key] as? NSNumber { return n.boolValue }
+            return true
+        }
+
+        let buyerNum = asInt(buyer["num"]) ?? asInt(buyer["bNum"]) ?? 0
+        let buyerName = (buyer["name"] as? String) ?? ""
+        let buyerHandle = (buyer["handle"] as? String) ?? ""
+        let totalSpent = asDouble(buyer["totalSpent"])
+        let orders = (buyer["orders"] as? [[String: Any]]) ?? []
+
+        let printStoreName = boolSetting("printStoreName")
+        let printBuyerNumber = boolSetting("printBuyerNumber")
+        let printBuyerUsername = boolSetting("printBuyerUsername")
+        let printOrderItems = boolSetting("printOrderItems")
+        let printTotal = boolSetting("printTotal")
+
+        writeAscii("SIZE \(labelWidthMm) mm, \(labelHeightMm) mm")
+        writeAscii("GAP 2 mm, 0")
+        writeAscii("DIRECTION 1")
+        writeAscii("REFERENCE 0,0")
+        writeAscii("DENSITY 8")
+        writeAscii("CLS")
+
+        // Header row: brand at left, session date at right.
+        writeAscii("TEXT 16,10,\"4\",0,1,1,\"SellerFlowLive\"")
+        if !sessionDate.isEmpty {
+            writeAscii("TEXT 460,18,\"2\",0,1,1,\"Session: \(tsplSafe(truncate16(sessionDate, 22)))\"")
+        }
+        writeAscii("BAR 0,48,800,3")
+
+        // Strip unrenderable codepoints per field BEFORE the encoding decision.
+        let cleanStoreName = stripEmoji(storeName)
+        let cleanBuyerName = stripEmoji(buyerName)
+        let cleanBuyerHandle = stripEmoji(buyerHandle)
+        var buyerNameToPrint = cleanBuyerName
+        if !buyerName.isEmpty && cleanBuyerName.isEmpty {
+            buyerNameToPrint = !cleanBuyerHandle.isEmpty ? cleanBuyerHandle : "Buyer #\(buyerNum)"
+        }
+
+        var y = 60
+        if printStoreName && !cleanStoreName.isEmpty {
+            writeTextSmart(&out, 16, y, "3", tsplSafe(truncate16(cleanStoreName, 36)))
+            y += 35
+        }
+
+        // Buyer # is the dominant element -- the whole point of the sticker.
+        if printBuyerNumber {
+            writeAscii("TEXT 16,\(y),\"4\",0,2,2,\"Buyer #\(buyerNum)\"")
+            y += 95
+        }
+
+        if !buyerNameToPrint.isEmpty {
+            writeTextSmart(&out, 16, y, "4", tsplSafe(truncate16(buyerNameToPrint, 30)))
+            y += 40
+        }
+
+        if printBuyerUsername && !cleanBuyerHandle.isEmpty {
+            writeTextSmart(&out, 16, y, "3", "@" + tsplSafe(truncate16(cleanBuyerHandle, 30)))
+            y += 35
+        }
+
+        // Thin separator + order lines (capped at 2 so a 60mm label can't overflow).
+        if printOrderItems && !orders.isEmpty && y < 350 {
+            writeAscii("BAR 16,\(y),520,2")
+            y += 10
+            let maxOrders = 2
+            var i = 0
+            while i < min(orders.count, maxOrders) && y < 360 {
+                let order = orders[i]
+                let time = (order["time"] as? String) ?? ""
+                let item = (order["item"] as? String) ?? ""
+                let cleanItem = stripEmoji(item)
+                if !time.isEmpty {
+                    writeAscii("TEXT 16,\(y),\"2\",0,1,1,\"\(tsplSafe(truncate16(time, 10)))\"")
+                }
+                if !cleanItem.isEmpty {
+                    writeTextSmart(&out, 180, y, "3", tsplSafe(truncate16(cleanItem, 30)))
+                }
+                y += 38
+                i += 1
+            }
+        }
+
+        // Footer divider + total, anchored to the bottom of the label.
+        writeAscii("BAR 0,380,800,3")
+        if printTotal && totalSpent > 0 {
+            writeAscii("TEXT 16,395,\"3\",0,1,1,\"Total:\"")
+            let totalStr = tsplSafe(currency) + tsplMoney(totalSpent)
+            writeAscii("TEXT 410,395,\"4\",0,2,1,\"\(tsplSafe(truncate16(totalStr, 18)))\"")
+        }
+
+        writeAscii("PRINT 1")
+        return out
+    }
+
+    // MARK: - TSPL helpers (mirror the private statics in TsplBuilder.java)
+
+    /// Production content-line writer. ASCII content -> the exact legacy
+    /// command string (byte-identical to the inline writeAscii calls).
+    /// Non-ASCII (Chinese) -> TSS24.BF2 + GBK bytes, re-truncated to the
+    /// printable width from its x origin (CJK glyphs are ~24 dots wide). If GBK
+    /// is unavailable, falls back to the ASCII path. Mirrors TsplBuilder.writeTextSmart.
+    private func writeTextSmart(_ out: inout Data, _ x: Int, _ y: Int, _ asciiFont: String, _ content: String) {
+        if !hasNonAscii(content) {
+            out.append(contentsOf: tsplAsciiBytes("TEXT \(x),\(y),\"\(asciiFont)\",0,1,1,\"\(content)\""))
+            out.append(contentsOf: [0x0D, 0x0A])
+            return
+        }
+        let maxChars = max(1, (784 - x) / 24)
+        let fitted = truncate16(content, maxChars)
+        if let gbk = gbkBytes(fitted) {
+            out.append(contentsOf: tsplAsciiBytes("TEXT \(x),\(y),\"TSS24.BF2\",0,1,1,\""))
+            out.append(contentsOf: gbk)
+            out.append(contentsOf: tsplAsciiBytes("\""))
+            out.append(contentsOf: [0x0D, 0x0A])
+        } else {
+            out.append(contentsOf: tsplAsciiBytes("TEXT \(x),\(y),\"\(asciiFont)\",0,1,1,\"\(content)\""))
+            out.append(contentsOf: [0x0D, 0x0A])
+        }
+    }
+
+    /// US-ASCII bytes with '?' (0x3F) for any UTF-16 unit > 127 -- matches
+    /// Java String.getBytes(US_ASCII). Iterates UTF-16 units (not scalars) so a
+    /// surrogate-pair char yields two '?' exactly as Java does.
+    private func tsplAsciiBytes(_ s: String) -> [UInt8] {
+        return s.utf16.map { $0 <= 127 ? UInt8($0) : 0x3F }
+    }
+
+    /// GBK_95 bytes, the same encoding the ESC/POS path uses; matches Android
+    /// Charset.forName("GBK") byte-for-byte on the BMP. nil if unavailable.
+    private func gbkBytes(_ s: String) -> [UInt8]? {
+        let cfEnc = CFStringEncoding(CFStringEncodings.GBK_95.rawValue)
+        let nsEnc = CFStringConvertEncodingToNSStringEncoding(cfEnc)
+        guard let d = (s as NSString).data(using: nsEnc) else { return nil }
+        return [UInt8](d)
+    }
+
+    /// Truncate by UTF-16 code units to match Java String.substring(0, maxLen).
+    private func truncate16(_ s: String, _ maxLen: Int) -> String {
+        let units = Array(s.utf16)
+        if units.count <= maxLen { return s }
+        return String(decoding: Array(units.prefix(maxLen)), as: UTF16.self)
+    }
+
+    /// TSPL TEXT uses " as the value delimiter; escape internal quotes to '.
+    private func tsplSafe(_ s: String) -> String {
+        return s.replacingOccurrences(of: "\"", with: "'")
+    }
+
+    /// True if any UTF-16 unit > 127 (matches Java char > 127 scan).
+    private func hasNonAscii(_ s: String) -> Bool {
+        return s.utf16.contains { $0 > 127 }
+    }
+
+    /// Whole number -> integer string, else 2 decimals (C/US locale). Mirrors
+    /// TsplBuilder.money.
+    private func tsplMoney(_ v: Double) -> String {
+        return v.rounded() == v ? String(Int64(v)) : String(format: "%.2f", v)
+    }
+
+    /// Drop emoji/pictographs/flags/ZWJ/variation-selectors/keycap, then trim
+    /// (Java semantics: strip leading/trailing units <= U+0020). Walks Unicode
+    /// scalars so surrogate-pair emoji are dropped whole. Mirrors
+    /// TsplBuilder.stripEmoji + isStrippable.
+    private func stripEmoji(_ s: String) -> String {
+        if s.isEmpty { return "" }
+        var kept = String.UnicodeScalarView()
+        for scalar in s.unicodeScalars where !isStrippable(scalar.value) {
+            kept.append(scalar)
+        }
+        return javaTrim(String(kept))
+    }
+
+    private func isStrippable(_ cp: UInt32) -> Bool {
+        return cp >= 0x1F000
+            || (cp >= 0x2600 && cp <= 0x27BF)
+            || (cp >= 0xFE00 && cp <= 0xFE0F)
+            || cp == 0x200D
+            || cp == 0x20E3
+    }
+
+    /// Java String.trim(): remove leading/trailing chars with value <= U+0020.
+    private func javaTrim(_ s: String) -> String {
+        let scalars = Array(s.unicodeScalars)
+        var start = 0
+        var end = scalars.count
+        while start < end && scalars[start].value <= 0x20 { start += 1 }
+        while end > start && scalars[end - 1].value <= 0x20 { end -= 1 }
+        return String(String.UnicodeScalarView(scalars[start..<end]))
     }
 }

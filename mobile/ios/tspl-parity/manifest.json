@@ -1,0 +1,14 @@
+{
+  "labelWidthMm": 100,
+  "labelHeightMm": 60,
+  "fixtures": [
+    "ascii_full",
+    "chinese",
+    "emoji_strip",
+    "pure_emoji_fallback",
+    "settings_off",
+    "long_truncation",
+    "quote_escape",
+    "minimal"
+  ]
+}
