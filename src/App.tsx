@@ -855,6 +855,67 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
   );
 }
 
+// Password-recovery "Set New Password" screen. Shown only when a Supabase
+// PASSWORD_RECOVERY session is active (link clicked from the reset email). The
+// recovery session already authenticates the user, so updateUser() needs NO
+// old password — this is deliberately different from handleSavePw (settings),
+// which still requires the current password.
+function ResetPasswordPage({onDone}:{onDone:()=>void}){
+  const MIN_PW=8;
+  const [pw,setPw]=useState("");
+  const [cpw,setCpw]=useState("");
+  const [showPw,setShowPw]=useState(false);
+  const [showCpw,setShowCpw]=useState(false);
+  const [err,setErr]=useState("");
+  const [busy,setBusy]=useState(false);
+  const [done,setDone]=useState(false);
+  // Strip the recovery token (#access_token=...&type=recovery) from the address
+  // bar as soon as the form mounts so it isn't shoulder-surfed or bookmarked.
+  useEffect(()=>{
+    if(typeof window!=="undefined"&&window.location.hash){
+      window.history.replaceState(null,document.title,window.location.pathname+window.location.search);
+    }
+  },[]);
+  const tooShort=pw.length<MIN_PW;
+  const mismatch=cpw.length>0&&pw!==cpw;
+  const canSubmit=!busy&&!tooShort&&cpw.length>0&&pw===cpw;
+  async function submit(e:React.FormEvent){
+    e.preventDefault();
+    setErr("");
+    if(!supabase){setErr("Service is temporarily unavailable. Please try again later.");return;}
+    if(tooShort){setErr(`Password must be at least ${MIN_PW} characters.`);return;}
+    if(pw!==cpw){setErr("Passwords do not match.");return;}
+    setBusy(true);
+    const {error}=await supabase.auth.updateUser({password:pw});
+    if(error){setBusy(false);setErr(error.message);return;}
+    // Recovery session has served its purpose — sign out so the seller logs in
+    // fresh with the new password.
+    await supabase.auth.signOut();
+    setBusy(false);
+    setDone(true);
+  }
+  return(
+    <div className="auth-page">
+      <div className="auth-card" style={{maxWidth:460}}>
+        <h2>Set New Password</h2>
+        {done?(<>
+          <div className="auth-ok">Password updated! Please log in.</div>
+          <button type="button" className="auth-btn" style={{marginTop:12}} onClick={onDone}>Go to login</button>
+        </>):(<>
+          <p className="auth-sub">Choose a new password for your SellerFlowLive account.</p>
+          <form onSubmit={submit} className="auth-form">
+            {err&&<div className="auth-err">Warning: {err}</div>}
+            <Fg label="Set New Password"><div className="pw-wrap"><input type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder={`At least ${MIN_PW} characters`} autoFocus autoComplete="new-password"/><button type="button" onClick={()=>setShowPw(p=>!p)} className="pw-eye" aria-label={showPw?"Hide password":"Show password"} title={showPw?"Hide password":"Show password"}>{showPw?PwEyeOffIcon:PwEyeIcon}</button></div></Fg>
+            <Fg label="Confirm New Password"><div className="pw-wrap"><input type={showCpw?"text":"password"} value={cpw} onChange={e=>setCpw(e.target.value)} placeholder="Re-enter new password" autoComplete="new-password"/><button type="button" onClick={()=>setShowCpw(p=>!p)} className="pw-eye" aria-label={showCpw?"Hide password":"Show password"} title={showCpw?"Hide password":"Show password"}>{showCpw?PwEyeOffIcon:PwEyeIcon}</button></div></Fg>
+            {mismatch&&<div className="auth-err">Passwords do not match.</div>}
+            <button type="submit" className="auth-btn" disabled={!canSubmit}>{busy?"Updating...":"Update Password"}</button>
+          </form>
+        </>)}
+      </div>
+    </div>
+  );
+}
+
 function AccountGate({user,onContinue,onSwitch}:{user:User;onContinue:()=>void;onSwitch:()=>void}){
   return(
     <div className="auth-page">
@@ -3284,6 +3345,12 @@ export default function App(){
     return {...DEF_SETTINGS,...saved,currency:cleanCurrency(saved.currency)};
   });
   const [page,setPage]=useState<Page>("dashboard");
+  // True while a Supabase PASSWORD_RECOVERY session is active (seller clicked the
+  // reset link in their email). Gates the ResetPasswordPage ahead of login.
+  // Initialized from the URL hash so the reset form shows even if detectSessionInUrl
+  // consumes the #...type=recovery fragment before the auth event subscription
+  // attaches; the PASSWORD_RECOVERY event below is the primary trigger.
+  const [recoveryMode,setRecoveryMode]=useState(()=>typeof window!=="undefined"&&window.location.hash.includes("type=recovery"));
   const initialSellerEmail=LS.get<string>("sf_session","");
   const currentSessionId=browserSessionId();
   const [currentLiveDayId,setCurrentLiveDayId]=useState(()=>liveDayId());
@@ -3514,6 +3581,9 @@ export default function App(){
       void supabase.auth.getSession().then(({data})=>{void applySession(data.session);});
     }
     const {data:authSub}=supabase.auth.onAuthStateChange((event,session)=>{
+      // Recovery link clicked: show the Set New Password form instead of
+      // auto-logging the seller into the dashboard. Must precede applySession.
+      if(event==="PASSWORD_RECOVERY"){setRecoveryMode(true);return;}
       if(event==="SIGNED_OUT"){setUser(null);LS.del("sf_session");LS.del("sf_session_user");return;}
       void applySession(session);
     });
@@ -3818,6 +3888,10 @@ export default function App(){
     setAccountGate(false);
   }
 
+  // Password-recovery takes precedence over both the login screen and any
+  // session that PASSWORD_RECOVERY may have established — the seller must set a
+  // new password before anything else. onDone clears the flag → login screen.
+  if(recoveryMode)return <ResetPasswordPage onDone={()=>setRecoveryMode(false)}/>;
   if(!user)return <PublicAuth onLogin={handleLogin} t={t} lang={lang} setLang={setLang}/>;
   if(!isAdminUser(user)&&user.planStatus==="pending")return <PendingApprovalWall user={user} onLogout={handleLogout}/>;
   if(accountGate)return <AccountGate user={user} onContinue={continueSavedAccount} onSwitch={switchAccount}/>;
