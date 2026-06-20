@@ -66,11 +66,11 @@ public class SellerFlowPrinterPlugin extends Plugin {
      */
     public static final int ESC_POS_IMPORTANT_SIZE = 0x11;
 
-    // Order item/comment size on the receipt: 0x10 = 1W x 2H (taller, normal
-    // width). Medium -- bigger than normal, smaller than the 2x buyer name -- so
-    // long comments stay readable without extra wrapping. GS ! n: high nibble =
+    // Order item/comment size on the receipt: 0x11 = 2W x 2H -- same prominence
+    // as the buyer name, so the item is the most readable line on the slip. Only
+    // the item uses this; Qty/Price/Total stay normal. GS ! n: high nibble =
     // vertical scale-1, low nibble = horizontal scale-1. Mirrors the iOS constant.
-    public static final int ESC_POS_ORDER_SIZE = 0x10;
+    public static final int ESC_POS_ORDER_SIZE = 0x11;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
@@ -516,7 +516,7 @@ public class SellerFlowPrinterPlugin extends Plugin {
                 JSONObject order = orders.optJSONObject(i);
                 if (order == null) continue;
 
-                out.setCharSize(ESC_POS_ORDER_SIZE);                    // === MEDIUM (1Wx2H) -- item only ===
+                out.setCharSize(ESC_POS_ORDER_SIZE);                    // === 2x (2Wx2H) -- item only ===
                 out.text(order.optString("item", ""));
                 out.setCharSize(0x00);                                  // === normal -- order details ===
                 out.text("Qty: " + order.optInt("qty", 1));
@@ -531,7 +531,7 @@ public class SellerFlowPrinterPlugin extends Plugin {
             }
         } else {
             out.text("Order:");                                        // normal -- label
-            out.setCharSize(ESC_POS_ORDER_SIZE);                        // === MEDIUM (1Wx2H) -- comment ===
+            out.setCharSize(ESC_POS_ORDER_SIZE);                        // === 2x (2Wx2H) -- comment ===
             out.text(buyer.optString("lastComment", buyer.optString("comment", "")));
             out.setCharSize(0x00);                                      // === normal ===
             out.line();

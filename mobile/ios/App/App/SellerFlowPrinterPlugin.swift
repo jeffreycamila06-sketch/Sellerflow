@@ -52,11 +52,11 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
     /// in `mobile/android/.../SellerFlowPrinterPlugin.java` -- keep both in sync.
     public static let ESC_POS_IMPORTANT_SIZE: UInt8 = 0x11
 
-    /// Order item/comment size on the receipt: 0x10 = 1W x 2H (taller, normal
-    /// width). Medium -- bigger than normal, smaller than the 2x buyer name -- so
-    /// long comments stay readable without extra wrapping. Mirrors the Android
+    /// Order item/comment size on the receipt: 0x11 = 2W x 2H -- same prominence
+    /// as the buyer name, so the item is the most readable line on the slip. Only
+    /// the item uses this; Qty/Price/Total stay normal. Mirrors the Android
     /// constant `ESC_POS_ORDER_SIZE`.
-    public static let ESC_POS_ORDER_SIZE: UInt8 = 0x10
+    public static let ESC_POS_ORDER_SIZE: UInt8 = 0x11
 
     // MARK: - load(): inject window.SellerFlowPrinter JS shim
     //
@@ -425,7 +425,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         let orders = (buyer["orders"] as? [[String: Any]]) ?? []
         if !orders.isEmpty {
             for order in orders {
-                setCharSize(Self.ESC_POS_ORDER_SIZE)                 // === MEDIUM (1Wx2H) -- item only ===
+                setCharSize(Self.ESC_POS_ORDER_SIZE)                 // === 2x (2Wx2H) -- item only ===
                 text((order["item"] as? String) ?? "")
                 setCharSize(0x00)                                    // === normal -- order details ===
                 text("Qty: \(asInt(order["qty"]) ?? 1)")
@@ -439,7 +439,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             }
         } else {
             text("Order:")                                           // normal -- label
-            setCharSize(Self.ESC_POS_ORDER_SIZE)                     // === MEDIUM (1Wx2H) -- comment ===
+            setCharSize(Self.ESC_POS_ORDER_SIZE)                     // === 2x (2Wx2H) -- comment ===
             text((buyer["lastComment"] as? String) ?? (buyer["comment"] as? String) ?? "")
             setCharSize(0x00)                                        // === normal ===
             line()
