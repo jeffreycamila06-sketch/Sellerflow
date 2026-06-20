@@ -1,4 +1,4 @@
-export type Lang = "en" | "fil" | "zh" | "vi" | "th" | "id";
+export type Lang = "en" | "fil" | "zh" | "zh-TW" | "vi" | "th" | "id";
 
 const BASE_TRANSLATIONS = {
   en: {
@@ -1367,8 +1367,45 @@ const INDONESIAN_TRANSLATIONS: T = {
   ],
 };
 
+// Traditional Chinese (繁體中文) for Taiwan. Spreads the English base, then
+// overrides every login/register auth key with natural Taiwan Traditional.
+// Non-auth keys fall back to English (same pattern as Thai/Indonesian) until a
+// full-block Traditional pass is done. Separate from `zh` (Simplified), which
+// is left untouched.
+const ZH_TW_TRANSLATIONS: T = {
+  ...BASE_TRANSLATIONS.en,
+  // Auth i18n (login/register) — Traditional Chinese for Taiwan
+  login_title:"歡迎回來", login_sub:"登入您的 SellerFlowLive 帳號",
+  register_title:"建立帳號", register_sub:"免費開始 — 無需信用卡",
+  forgot_title:"重設密碼", forgot_sub:"輸入您的電子郵件以接收重設連結",
+  email_label:"電子郵件", phone_label:"電話號碼",
+  email_field:"電子郵件", pw_field:"密碼",
+  fname_field:"全名", sname_field:"店家名稱", confirm_field:"確認密碼",
+  forgot_link:"忘記密碼？", sign_in_btn:"登入", signing_in:"登入中...",
+  no_account:"還沒有帳號？", create_account:"建立帳號", have_account:"已經有帳號了？",
+  send_reset:"傳送重設連結", sending:"傳送中...", back_login:"返回登入",
+  reset_sent:"重設連結已傳送至", support_label:"客服",
+  err_fill_all:"請填寫所有欄位。", err_pw_short:"密碼至少需要 6 個字元。",
+  err_pw_mismatch:"兩次密碼不一致。", err_email_exists:"此電子郵件已註冊。", err_wrong_pw:"密碼錯誤。",
+  ph_password:"密碼", ph_min6:"至少 6 個字元", ph_confirm:"確認密碼",
+  warning_prefix:"警告：", done_prefix:"完成：",
+  submit_approval:"送出以待管理員審核", submitting:"送出中...",
+  printer_shortcut:"印表機捷徑",
+  free_after_approval:"您的免費帳號需經管理員審核後才會啟用。",
+  terms_agree:"建立帳號即表示您同意我們的", terms_label:"服務條款", privacy_label:"隱私權政策",
+  show_pw:"顯示密碼", hide_pw:"隱藏密碼",
+  err_service_unavailable:"服務暫時無法使用，請稍後再試。",
+  err_profile_load:"無法載入您的資料，請聯絡客服。",
+  err_phone_invalid:"請輸入有效的電話號碼以供管理員審核。",
+  err_register_failed:"註冊失敗，請重試。",
+  reg_check_email:"帳號已建立。請查看您的電子郵件進行確認，然後登入。",
+  err_profile_create:"無法建立您的資料，請聯絡客服。",
+  err_generic:"發生錯誤，請重試。",
+};
+
 export const TRANSLATIONS: Record<Lang,T> = {
   ...BASE_TRANSLATIONS,
   th: THAI_TRANSLATIONS,
   id: INDONESIAN_TRANSLATIONS,
+  "zh-TW": ZH_TW_TRANSLATIONS,
 };
