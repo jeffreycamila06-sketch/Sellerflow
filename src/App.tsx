@@ -1882,7 +1882,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   const directPrintParam=new URLSearchParams(window.location.search).get("directPrint")==="1";
   const [directPrintMode,setDirectPrintMode]=useState(()=>directPrintParam||LS.get<boolean>("sf_direct_print_mode",false));
   const settingsDirty=JSON.stringify(sets)!==JSON.stringify(settings);
-  const settingsTitles={"":"Settings",profile:"Profile Information",password:"Change Password",display:"Display & Printing",printer:"Printer Settings",mobilePrinter:"Mobile WiFi Printer"};
+  const settingsTitles={"":t.nav_settings,profile:t.profile_section,password:t.pw_section,display:t.display_section,printer:t.printer_section,mobilePrinter:t.set_title_mobile_printer};
   const previewScale=(v:number|undefined,fallback=100)=>Math.max(60,Math.min(180,v||fallback))/100;
   const storePreview=previewScale(sets.printStoreScale,sets.printLabelScale);
   const buyerNumberPreview=previewScale(sets.printBuyerNumberScale,120);
@@ -1892,7 +1892,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   const commentPreview=previewScale(sets.printCommentScale,sets.printLabelScale);
   const totalPreview=previewScale(sets.printTotalScale,sets.printLabelScale);
   const nativePrinterReady=hasNativeMobilePrinter();
-  const [mobilePrinterStatus,setMobilePrinterStatus]=useState<MobilePrinterResult>({ok:false,message:nativePrinterReady?"Tap Check Status":"Open SellerFlow mobile app for printer scan"});
+  const [mobilePrinterStatus,setMobilePrinterStatus]=useState<MobilePrinterResult>({ok:false,message:nativePrinterReady?t.set_toast_check_status:t.set_toast_open_app_scan});
   const [mobilePrinters,setMobilePrinters]=useState<MobilePrinterDevice[]>([]);
   const [lanPrinterHost,setLanPrinterHost]=useState("");
   const [lanPrinterPort,setLanPrinterPort]=useState("9100");
@@ -1907,7 +1907,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
     if(typeof window==="undefined")return null;
     const bridge=window.SellerFlowPrinter;
     const fn=bridge?.[action] as ((a?:unknown)=>Promise<T>)|undefined;
-    if(typeof fn!=="function"){setBtStatusMsg("Open SellerFlow mobile app to use Bluetooth printer.");return null;}
+    if(typeof fn!=="function"){setBtStatusMsg(t.set_bt_open_app);return null;}
     try{return arg===undefined?await fn():await fn(arg);}catch(err){setBtStatusMsg(`Bluetooth error: ${err instanceof Error?err.message:String(err)}`);return null;}
   }
   async function scanBtPrinters(){
@@ -1915,8 +1915,8 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
     // visible and clickable — we never gate the button itself on bridge
     // presence, so the seller is never stuck staring at a missing control.
     if(!bridgeHasBt){
-      setToast("Open SellerFlow mobile app (Android) to scan Bluetooth printers.");
-      setBtStatusMsg("Bluetooth scan needs the Android app.");
+      setToast(t.set_bt_scan_need_app);
+      setBtStatusMsg(t.set_bt_scan_need_app_short);
       return;
     }
     setBtScanning(true);setBtStatusMsg("");
@@ -1928,20 +1928,20 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
     const result=await btCall<BluetoothScanResult>("setBluetoothLabelPrinter",{address:printer.address,name:printer.name});
     if(result?.savedPrinter)setBtSavedPrinter(result.savedPrinter);
     else setBtSavedPrinter(printer);
-    setBtStatusMsg(result?.message||"Bluetooth printer saved");
+    setBtStatusMsg(result?.message||t.set_toast_bt_saved);
   }
   async function clearBtPrinter(){
     await btCall<BluetoothScanResult>("clearBluetoothLabelPrinter");
     setBtSavedPrinter(null);
-    setBtStatusMsg("Bluetooth printer cleared");
+    setBtStatusMsg(t.set_toast_bt_cleared);
   }
   async function testBtSticker(){
-    if(!bridgeHasBt){setBtStatusMsg("Open SellerFlow mobile app to print a test sticker.");return;}
+    if(!bridgeHasBt){setBtStatusMsg(t.set_bt_open_app_print);return;}
     setBtStatusMsg("Sending TEXT+BAR sticker...");
     const testBuyer:Buyer={handle:"sellerflow",name:"Test Print",platform:"TikTok",num:88,orders:[{orderNum:1,item:"SellerFlowLive sticker test",qty:1,price:350,total:350,time:new Date().toLocaleTimeString(),handle:"sellerflow",name:"Test Print",bNum:88,platform:"TikTok",status:"New",date:new Date().toISOString().slice(0,10)}],totalSpent:350,totalOrders:1};
     const payload=buildNativeStickerPayload(testBuyer,sets.currency||"NT$",user.profile.storeName||"SellerFlowLive",sets);
     const result=await btCall<StickerPrintResult>("printStickerNative",payload);
-    const printMsg=result?.ok?(result.message||"Test sticker printed"):(result?.message||"Test sticker failed");
+    const printMsg=result?.ok?(result.message||t.set_bt_test_sticker_printed):(result?.message||t.set_bt_test_sticker_failed);
     setBtStatusMsg(`${printMsg} | sticker=TEXT+BAR, buyer #${testBuyer.num}, total ${sets.currency||"NT$"}${testBuyer.totalSpent}`);
   }
   // Pure TSPL TEXT test page (no bitmap). Isolates bitmap-encoding bugs from
@@ -1949,10 +1949,10 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   // the problem is in the bitmap rendering/packing. If neither prints, the
   // problem is at the TSPL command or BT connection layer.
   async function testBtTextOnly(){
-    if(!bridgeHasBt){setBtStatusMsg("Open SellerFlow mobile app to run the text-only test.");return;}
+    if(!bridgeHasBt){setBtStatusMsg(t.set_bt_open_app_text);return;}
     setBtStatusMsg("Sending TSPL text-only test...");
     const result=await btCall<StickerPrintResult>("testStickerPrint",{storeName:user.profile.storeName||"SellerFlowLive"});
-    setBtStatusMsg(result?.ok?(result.message||"Text-only test sent"):(result?.message||"Text-only test failed"));
+    setBtStatusMsg(result?.ok?(result.message||t.set_bt_text_test_sent):(result?.message||t.set_bt_text_test_failed));
   }
   useEffect(()=>{
     if(!bridgeHasBt)return;
@@ -2016,11 +2016,11 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
             <input
               value={value}
               onChange={e=>changeAccount(platform,index,e.target.value)}
-              placeholder={limitReached?"Plan account limit reached":placeholder}
+              placeholder={limitReached?t.set_account_limit_reached:placeholder}
               disabled={locked||limitReached}
               className={locked?"locked-account-input":""}
             />
-            {locked&&<div className="locked-account-note">Locked. Admin can change this account.</div>}
+            {locked&&<div className="locked-account-note">{t.set_account_locked_note}</div>}
           </Fg>
         );
       })}
@@ -2043,7 +2043,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   function testPrinter(){
     const testBuyer=samplePrinterBuyer();
     printSlip(testBuyer,sets.currency,user.profile.storeName||"SellerFlowLive",sets);
-    setToast("Printer test sent");
+    setToast(t.set_toast_printer_test_sent);
   }
   async function refreshMobilePrinterStatus(){
     const result=await callMobilePrinterBridge("getPrinter");
@@ -2057,29 +2057,29 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
     const result=await callMobilePrinterBridge("setPrinter",{host:printer.host||"",port:printer.port||9100});
     setMobilePrinterStatus(result);
     if(result.savedPrinter)setMobilePrinters(list=>[result.savedPrinter as MobilePrinterDevice,...list.filter(p=>p.id!==result.savedPrinter?.id)]);
-    setToast(result.message||"Printer saved");
+    setToast(result.message||t.set_toast_printer_saved);
   }
   async function saveLanPrinter(){
     const port=Math.max(1,Math.min(65535,Number(lanPrinterPort)||9100));
     const result=await callMobilePrinterBridge("setPrinter",{host:lanPrinterHost.trim(),port});
     setMobilePrinterStatus(result);
     if(result.savedPrinter)setMobilePrinters([result.savedPrinter]);
-    setToast(result.message||"WiFi printer saved");
+    setToast(result.message||t.set_toast_wifi_saved);
   }
   async function testLanPrinterConnection(){
     const port=Math.max(1,Math.min(65535,Number(lanPrinterPort)||9100));
     const result=await callMobilePrinterBridge("testConnection",{host:lanPrinterHost.trim(),port});
     setMobilePrinterStatus(result);
     if(result.ok)await saveLanPrinter();
-    else setToast(result.message||"Printer connection failed");
+    else setToast(result.message||t.set_toast_conn_failed);
   }
   async function testMobilePrinter(){
     const result=await callMobilePrinterBridge("testPrint");
     setMobilePrinterStatus(result);
-    setToast(result.ok?result.message||"Test printed":result.message||"Test print failed");
+    setToast(result.ok?result.message||t.set_toast_test_printed:result.message||t.set_toast_test_failed);
   }
   function openMobileBluetoothGuide(){
-    setToast("Turn on printer, connect phone to the same WiFi, then enter the printer IP and tap Test Connection.");
+    setToast(t.set_toast_setup_help);
   }
   function resetPrinterLayout(){
     setSets(s=>({
@@ -2113,7 +2113,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
       printTotalX:DEF_SETTINGS.printTotalX,
       printTotalY:DEF_SETTINGS.printTotalY,
     }));
-    setToast("Printer layout reset");
+    setToast(t.set_toast_layout_reset);
   }
   async function savePw(e:React.FormEvent){
     e.preventDefault();setPwErr("");
@@ -2129,26 +2129,26 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
       <div className="subpage-hd"><div><h2>{t.nav_settings}</h2><p>{t.settings_sub}</p></div></div>
       <div className="settings-quick-grid">
         <button className="admin-action-card" onDoubleClick={()=>setExpandedSettingsBox("profile")}>
-          <div className="ms-l">Profile</div><div className="ms-v">1</div><span>Name, store, TikTok and Facebook accounts</span>
+          <div className="ms-l">{t.set_card_profile}</div><div className="ms-v">1</div><span>{t.set_card_profile_desc}</span>
         </button>
         <button className="admin-action-card" onDoubleClick={()=>setExpandedSettingsBox("password")}>
-          <div className="ms-l">Password</div><div className="ms-v">PW</div><span>Change seller login password</span>
+          <div className="ms-l">{t.set_card_password}</div><div className="ms-v">PW</div><span>{t.set_card_password_desc}</span>
         </button>
         <button className="admin-action-card" onDoubleClick={()=>setExpandedSettingsBox("display")}>
-          <div className="ms-l">Display</div><div className="ms-v">{sets.currency}</div><span>Currency, paper, notifications</span>
+          <div className="ms-l">{t.set_card_display}</div><div className="ms-v">{sets.currency}</div><span>{t.set_card_display_desc}</span>
         </button>
         <button className="admin-action-card" onDoubleClick={()=>setExpandedSettingsBox("printer")}>
-          <div className="ms-l">Printer</div><div className="ms-v">{settingsDirty?"!":"OK"}</div><span>{settingsDirty?"Changes not saved":"Saved"} - output tools</span>
+          <div className="ms-l">{t.set_card_printer}</div><div className="ms-v">{settingsDirty?"!":"OK"}</div><span>{settingsDirty?t.set_card_changes_unsaved:t.set_card_saved} - {t.set_card_output_tools}</span>
         </button>
         <button className="admin-action-card mobile-bluetooth-card" onDoubleClick={()=>setExpandedSettingsBox("mobilePrinter")}>
-          <div className="ms-l">Mobile Printer</div><div className="ms-v">LAN</div><span>WiFi printer setup for phone app</span>
+          <div className="ms-l">{t.set_card_mobile_printer}</div><div className="ms-v">LAN</div><span>{t.set_card_mobile_printer_desc}</span>
         </button>
       </div>
       {expandedSettingsBox&&(
         <div className="admin-fullscreen-panel">
           <div className="admin-fullscreen-head">
-            <button className="btn-out" onClick={()=>setExpandedSettingsBox("")}>Back</button>
-            <div><h2>{settingsTitles[expandedSettingsBox]}</h2><p>Full settings page</p></div>
+            <button className="btn-out" onClick={()=>setExpandedSettingsBox("")}>{t.back_btn}</button>
+            <div><h2>{settingsTitles[expandedSettingsBox]}</h2><p>{t.set_full_page}</p></div>
           </div>
           <div className={`grid2 settings-expanded settings-show-${expandedSettingsBox}`}>
         <form onSubmit={saveProf} className="scard settings-section settings-section-profile">
@@ -2157,8 +2157,8 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
           <Fg label={t.store_name}><input value={prof.storeName} onChange={e=>setProf(p=>({...p,storeName:e.target.value}))} required/></Fg>
           <Fg label={t.email_label}><input value={user.email} disabled style={{background:"#F5F5F2",color:"#888"}}/></Fg>
           <Fg label={t.phone_label}><input value={prof.phone} onChange={e=>setProf(p=>({...p,phone:e.target.value}))} placeholder="+63 912 345 6789"/></Fg>
-          {renderAccountSlots("tiktok","TikTok account","@yourusername",profTikTok,originalTikTok)}
-          {renderAccountSlots("facebook","Facebook page","Your Facebook Page",profFacebook,originalFacebook)}
+          {renderAccountSlots("tiktok",t.set_tiktok_account,t.set_tiktok_ph,profTikTok,originalTikTok)}
+          {renderAccountSlots("facebook",t.set_facebook_page,t.set_facebook_ph,profFacebook,originalFacebook)}
           <button type="submit" className="btn-purple">{t.save_profile}</button>
         </form>
         <form onSubmit={savePw} className="scard settings-section settings-section-password">
@@ -2173,8 +2173,8 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
           <div className="scard-title">{t.display_section}</div>
           <div className="tog-row theme-mode-toggle">
             <span>
-              <strong>Dark mode skin</strong>
-              <small>{sets.darkMode?"Premium dark mobile theme":"Original regular color theme"}</small>
+              <strong>{t.set_dark_mode}</strong>
+              <small>{sets.darkMode?t.set_dark_mode_on:t.set_dark_mode_off}</small>
             </span>
             <div onClick={()=>setSets(s=>({...s,darkMode:!s.darkMode}))} className={`tog ${sets.darkMode?"on":""}`}/>
           </div>
@@ -2190,41 +2190,41 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
           {([["autoprint",t.auto_print],["soundAlert",t.sound_alert],["stockAlert",t.stock_alert],["dailyEmail",t.daily_email]] as [keyof Settings,string][]).map(([k,label])=>(
             <div key={k} className="tog-row"><span>{label}</span><div onClick={()=>setSets(s=>({...s,[k]:!s[k]}))} className={`tog ${sets[k]?"on":""}`}/></div>
           ))}
-          <div className="scard-title" style={{marginTop:10}}>Backup & recovery</div>
+          <div className="scard-title" style={{marginTop:10}}>{t.set_backup_section}</div>
           <div className="backup-actions">
-            <button type="button" className="btn-out" onClick={onExportBackup}>Export Seller Backup</button>
-            <button type="button" className="btn-out danger-lite" onClick={onClearLiveComments}>Clear Live Comments Only</button>
+            <button type="button" className="btn-out" onClick={onExportBackup}>{t.set_export_backup}</button>
+            <button type="button" className="btn-out danger-lite" onClick={onClearLiveComments}>{t.set_clear_comments}</button>
             <button type="button" className="btn-out danger-lite" onClick={onResetBuyerCounter}>{t.reset_buyer_btn}</button>
           </div>
-          <div className="backup-note">Clear live comments keeps orders, customers, sales, and comment history archive.</div>
+          <div className="backup-note">{t.set_backup_note}</div>
           <button type="submit" className="btn-purple" style={{marginTop:6}}>{t.save_settings}</button>
         </form>
         <form onSubmit={saveSets} className="scard settings-section settings-section-printer">
           <div className="scard-title" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
             <span>{t.printer_section}</span>
             <span style={{fontSize:11,fontWeight:600,color:settingsDirty?"#B45309":"#0F6E56",background:settingsDirty?"#FFF3CD":"#E1F5EE",borderRadius:999,padding:"3px 8px"}}>
-              {settingsDirty?"Not saved":"Saved"}
+              {settingsDirty?t.set_not_saved:t.set_card_saved}
             </span>
           </div>
           <div className="printer-tools-row">
             <div className={`printer-direct-status ${directPrintMode?"active":"inactive"}`}>
               <div>
-                <strong>{directPrintMode?"Direct Print Active":"Direct Print Not Active"}</strong>
-                <span>{directPrintMode?"You opened SellerFlowLive with the desktop shortcut. 1-click can print directly.":"Open SellerFlowLive using the desktop shortcut to enable kiosk direct print."}</span>
+                <strong>{directPrintMode?t.set_direct_active:t.set_direct_inactive}</strong>
+                <span>{directPrintMode?t.set_direct_active_desc:t.set_direct_inactive_desc}</span>
               </div>
-              <Badge label={directPrintMode?"Ready":"Shortcut needed"} color={directPrintMode?"green":"amber"}/>
+              <Badge label={directPrintMode?t.set_ready:t.set_shortcut_needed} color={directPrintMode?"green":"amber"}/>
             </div>
-            <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat?v=6" download>Printer Shortcut</a>
-            <button type="button" className="printer-test-btn" onClick={testPrinter}>Printer Test</button>
+            <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat?v=6" download>{t.printer_shortcut}</a>
+            <button type="button" className="printer-test-btn" onClick={testPrinter}>{t.set_printer_test}</button>
             <div className="printer-troubleshoot">
-              <strong>Quick setup</strong>
+              <strong>{t.set_quick_setup}</strong>
               <ol>
-                <li>Click Printer Shortcut and run it once.</li>
-                <li>Close normal Chrome/Edge tabs.</li>
-                <li>Open SellerFlowLive from the new SellerFlowLive Direct Print icon on the desktop.</li>
-                <li>Choose the printer once. After that, 1-click prints automatically.</li>
+                <li>{t.set_quick_step1}</li>
+                <li>{t.set_quick_step2}</li>
+                <li>{t.set_quick_step3}</li>
+                <li>{t.set_quick_step4}</li>
               </ol>
-              <p>If it opens the wrong admin or seller account, open SellerFlowLive Switch Account once, then login again. If the print screen stays open, you are probably using a normal browser tab or an old shortcut.</p>
+              <p>{t.set_quick_note}</p>
             </div>
           </div>
           {/* Print mode — 2-card selector (WiFi/LAN default, Bluetooth additive). */}
@@ -2249,31 +2249,31 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
               prints TSPL stickers, so the toggle would be meaningless there. */}
           {!isBtMode&&(
           <div className="printer-mode-section">
-            <div className="printer-mode-label">Output format</div>
+            <div className="printer-mode-label">{t.set_output_format}</div>
             <div className="printer-mode-cards">
               <button type="button" className={`printer-mode-card ${sets.lanFormat!=="sticker"?"on":""}`} onClick={()=>setSets(s=>({...s,lanFormat:"receipt"}))}>
-                <div className="pm-card-head"><span className="pm-card-radio">{sets.lanFormat!=="sticker"?"●":"○"}</span><strong>Receipt</strong></div>
-                <div className="pm-card-rec">Default</div>
-                <div className="pm-card-desc">ESC/POS thermal receipt slip (e.g. 80mm roll).</div>
+                <div className="pm-card-head"><span className="pm-card-radio">{sets.lanFormat!=="sticker"?"●":"○"}</span><strong>{t.set_format_receipt}</strong></div>
+                <div className="pm-card-rec">{t.set_format_default}</div>
+                <div className="pm-card-desc">{t.set_format_receipt_desc}</div>
               </button>
               <button type="button" className={`printer-mode-card ${sets.lanFormat==="sticker"?"on":""}`} onClick={()=>setSets(s=>({...s,lanFormat:"sticker"}))}>
-                <div className="pm-card-head"><span className="pm-card-radio">{sets.lanFormat==="sticker"?"●":"○"}</span><strong>Sticker</strong></div>
-                <div className="pm-card-rec">iOS WiFi label</div>
-                <div className="pm-card-desc">TSPL label sticker (100×60mm) over WiFi/LAN.</div>
+                <div className="pm-card-head"><span className="pm-card-radio">{sets.lanFormat==="sticker"?"●":"○"}</span><strong>{t.set_format_sticker}</strong></div>
+                <div className="pm-card-rec">{t.set_format_sticker_rec}</div>
+                <div className="pm-card-desc">{t.set_format_sticker_desc}</div>
               </button>
             </div>
           </div>
           )}
           <Fg label={t.printer_size}>
             <select value={sets.stickerSize} onChange={e=>setSets(s=>({...s,stickerSize:e.target.value}))}>
-              <option value="100x60">100x60mm (Standard)</option>
+              <option value="100x60">{t.set_size_standard}</option>
               <option value="80x50">80x50mm</option>
               <option value="60x40">60x40mm</option>
             </select>
           </Fg>
           {!isIOSPlatform && <>
           <div className="printer-preview-box">
-            <div className="printer-preview-title">Print output preview</div>
+            <div className="printer-preview-title">{t.set_preview_title}</div>
             <div className="printer-preview-slip">
               <div className="printer-preview-head">
                 <div className="printer-preview-brand"><span className="printer-preview-logo">S</span><strong>Seller<span>FlowLive</span></strong></div>
@@ -2281,73 +2281,73 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
               </div>
               <div className="printer-preview-grid">
                 <div className="printer-preview-left">
-                  {sets.printStoreName&&<strong style={{fontSize:`${13*storePreview}px`,...previewMove(sets.printStoreX,sets.printStoreY)}}>{user.profile.storeName||"Seller name"}</strong>}
+                  {sets.printStoreName&&<strong style={{fontSize:`${13*storePreview}px`,...previewMove(sets.printStoreX,sets.printStoreY)}}>{user.profile.storeName||t.set_preview_seller_name}</strong>}
                   {sets.printBuyerNumber&&<b style={{fontSize:`${13*buyerNumberPreview}px`,...previewMove(sets.printBuyerNumberX,sets.printBuyerNumberY)}}>Buyer #12</b>}
                   <b style={{fontSize:`${13*buyerNamePreview}px`,...previewMove(sets.printBuyerNameX,sets.printBuyerNameY)}}>Maria Santos</b>
                   {sets.printBuyerUsername&&<em style={{fontSize:`${10*usernamePreview}px`,...previewMove(sets.printUsernameX,sets.printUsernameY)}}>@maria_live</em>}
                 </div>
                 {sets.printOrderItems&&<div className="printer-preview-order-box" style={previewMove(sets.printOrderX,sets.printOrderY)}>
-                  <strong>Order here</strong>
+                  <strong>{t.set_preview_order_here}</strong>
                   <div><span style={{fontSize:`${9*orderPreview}px`}}>12:21 PM</span><b style={{fontSize:`${10*commentPreview}px`}}>620</b></div>
                   <div><span style={{fontSize:`${9*orderPreview}px`}}>12:22 PM</span><b style={{fontSize:`${10*commentPreview}px`}}>150</b></div>
-                  {sets.printTotal&&<div className="printer-preview-total" style={{fontSize:`${10*totalPreview}px`,...previewMove(sets.printTotalX,sets.printTotalY)}}><span>Total</span><b>{sets.currency}1,240</b></div>}
+                  {sets.printTotal&&<div className="printer-preview-total" style={{fontSize:`${10*totalPreview}px`,...previewMove(sets.printTotalX,sets.printTotalY)}}><span>{t.total_label}</span><b>{sets.currency}1,240</b></div>}
                 </div>}
               </div>
             </div>
-            <button type="button" className="printer-reset-btn" onClick={resetPrinterLayout}>Reset Printer Layout</button>
+            <button type="button" className="printer-reset-btn" onClick={resetPrinterLayout}>{t.set_reset_layout}</button>
           </div>
           {([
-            ["printStoreScale","Store name"],
-            ["printBuyerNumberScale","Buyer number"],
-            ["printBuyerNameScale","Buyer name"],
-            ["printUsernameScale","TikTok / username"],
-            ["printOrderScale","Order time"],
-            ["printCommentScale","Customer comment"],
-            ["printTotalScale","Total amount"],
-          ] as [NumberSettingKey,string][]).map(([k,label])=>sizeStep(k,`${label} size`))}
-          <div className="scard-title" style={{marginTop:10}}>Label position tools</div>
+            ["printStoreScale",t.set_el_store_name],
+            ["printBuyerNumberScale",t.set_el_buyer_number],
+            ["printBuyerNameScale",t.set_el_buyer_name],
+            ["printUsernameScale",t.set_el_username],
+            ["printOrderScale",t.set_el_order_time],
+            ["printCommentScale",t.set_el_customer_comment],
+            ["printTotalScale",t.set_el_total_amount],
+          ] as [NumberSettingKey,string][]).map(([k,label])=>sizeStep(k,`${label} ${t.set_size_word}`))}
+          <div className="scard-title" style={{marginTop:10}}>{t.set_position_tools}</div>
           <div className="position-step-grid">
             {([
-              ["printStoreX","Seller name left / right"],
-              ["printStoreY","Seller name up / down"],
-              ["printBuyerLabelX","Buyer label left / right"],
-              ["printBuyerLabelY","Buyer label up / down"],
-              ["printBuyerNumberX","Buyer number left / right"],
-              ["printBuyerNumberY","Buyer number up / down"],
-              ["printBuyerNameX","Buyer name left / right"],
-              ["printBuyerNameY","Buyer name up / down"],
-              ["printUsernameX","Username left / right"],
-              ["printUsernameY","Username up / down"],
-              ["printSessionX","Date/session left / right"],
-              ["printSessionY","Date/session up / down"],
-              ["printOrderX","Order items left / right"],
-              ["printOrderY","Order items up / down"],
+              ["printStoreX",`${t.set_preview_seller_name} ${t.set_dir_lr}`],
+              ["printStoreY",`${t.set_preview_seller_name} ${t.set_dir_ud}`],
+              ["printBuyerLabelX",`${t.set_posel_buyer_label} ${t.set_dir_lr}`],
+              ["printBuyerLabelY",`${t.set_posel_buyer_label} ${t.set_dir_ud}`],
+              ["printBuyerNumberX",`${t.set_el_buyer_number} ${t.set_dir_lr}`],
+              ["printBuyerNumberY",`${t.set_el_buyer_number} ${t.set_dir_ud}`],
+              ["printBuyerNameX",`${t.set_el_buyer_name} ${t.set_dir_lr}`],
+              ["printBuyerNameY",`${t.set_el_buyer_name} ${t.set_dir_ud}`],
+              ["printUsernameX",`${t.set_posel_username} ${t.set_dir_lr}`],
+              ["printUsernameY",`${t.set_posel_username} ${t.set_dir_ud}`],
+              ["printSessionX",`${t.set_posel_session} ${t.set_dir_lr}`],
+              ["printSessionY",`${t.set_posel_session} ${t.set_dir_ud}`],
+              ["printOrderX",`${t.set_el_order_items} ${t.set_dir_lr}`],
+              ["printOrderY",`${t.set_el_order_items} ${t.set_dir_ud}`],
             ] as [NumberSettingKey,string][]).map(([k,label])=>positionStep(k,label))}
           </div>
           </>}
-          <div className="scard-title" style={{marginTop:10}}>Printer output</div>
+          <div className="scard-title" style={{marginTop:10}}>{t.set_printer_output}</div>
           {([
-            ["printStoreName","Store name"],
-            ["printBuyerNumber","Buyer number"],
-            ["printBuyerUsername","TikTok / username"],
-            ["printOrderItems","Order items"],
-            ["printTotal","Total amount"],
-            ["printAutoClose","Close print tab after printing"],
+            ["printStoreName",t.set_el_store_name],
+            ["printBuyerNumber",t.set_el_buyer_number],
+            ["printBuyerUsername",t.set_el_username],
+            ["printOrderItems",t.set_el_order_items],
+            ["printTotal",t.set_el_total_amount],
+            ["printAutoClose",t.set_el_close_tab],
           ] as [keyof Settings,string][]).map(([k,label])=>(
             <div key={k} className="tog-row"><span>{label}</span><div onClick={()=>setSets(s=>({...s,[k]:!s[k]}))} className={`tog ${sets[k]?"on":""}`}/></div>
           ))}
           <div style={{padding:"8px 10px",background:"#F5F4FF",borderRadius:8,fontSize:12,color:"#534AB7",lineHeight:1.5,marginTop:4}}>
             {sets.printerType==="bluetooth"
-              ?"Laptop/Desktop Bluetooth uses the same print system as USB: pair the printer in Windows Bluetooth settings, add it under Printers, then choose it in the print dialog or make it the default printer for direct print. Phone Bluetooth uses the mobile bridge."
+              ?t.set_bt_desktop_note
               :t.printer_usb_note}
           </div>
           <button type="submit" className="btn-purple" style={{marginTop:10,width:"100%"}}>
-            Save printer settings
+            {t.set_save_printer_settings}
           </button>
           <div className="scard-title" style={{marginTop:10}}>{t.platform_section}</div>
           <div style={{fontSize:12,color:"#888",marginBottom:8}}>{t.platform_hint}</div>
-          <div className="tog-row"><div><div style={{fontWeight:500}}>TikTok Live</div><div style={{fontSize:11,color:"#888",whiteSpace:"pre-wrap"}}>{accountList(user.profile.tiktok).join(", ")||t.not_set}</div></div><Badge label={user.connectedAccounts.includes("TikTok")?t.connected_label:t.not_connected} color={user.connectedAccounts.includes("TikTok")?"green":"gray"}/></div>
-          <div className="tog-row" style={{borderBottom:"none"}}><div><div style={{fontWeight:500}}>Facebook Live</div><div style={{fontSize:11,color:"#888",whiteSpace:"pre-wrap"}}>{accountList(user.profile.facebook).join(", ")||t.not_set}</div></div><Badge label={user.connectedAccounts.includes("Facebook")?t.connected_label:t.not_connected} color={user.connectedAccounts.includes("Facebook")?"green":"gray"}/></div>
+          <div className="tog-row"><div><div style={{fontWeight:500}}>{t.set_tiktok_live}</div><div style={{fontSize:11,color:"#888",whiteSpace:"pre-wrap"}}>{accountList(user.profile.tiktok).join(", ")||t.not_set}</div></div><Badge label={user.connectedAccounts.includes("TikTok")?t.connected_label:t.not_connected} color={user.connectedAccounts.includes("TikTok")?"green":"gray"}/></div>
+          <div className="tog-row" style={{borderBottom:"none"}}><div><div style={{fontWeight:500}}>{t.set_facebook_live}</div><div style={{fontSize:11,color:"#888",whiteSpace:"pre-wrap"}}>{accountList(user.profile.facebook).join(", ")||t.not_set}</div></div><Badge label={user.connectedAccounts.includes("Facebook")?t.connected_label:t.not_connected} color={user.connectedAccounts.includes("Facebook")?"green":"gray"}/></div>
         </form>
         <form onSubmit={saveSets} className="scard settings-section settings-section-mobile-printer" style={isBtMode?{display:"none"}:undefined}>
           <div className="scard-title">{t.printer_wifi_card_title}</div>
@@ -2355,68 +2355,68 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
             <div className="mobile-bt-copy">
               <div className={`printer-direct-status ${mobilePrinterStatus.online?"active":"inactive"}`}>
                 <div>
-                  <strong>{mobilePrinterStatus.online?"Printer Online":nativePrinterReady?"Ready for WiFi printer":"SellerFlow mobile app needed"}</strong>
-                  <span>{mobilePrinterStatus.message||"Enter the thermal printer IP address and test the TCP connection."}</span>
+                  <strong>{mobilePrinterStatus.online?t.set_printer_online:nativePrinterReady?t.set_ready_wifi:t.set_app_needed}</strong>
+                  <span>{mobilePrinterStatus.message||t.set_wifi_default_msg}</span>
                 </div>
-                <Badge label={mobilePrinterStatus.online?"Online":nativePrinterReady?"WiFi":"Mobile only"} color={mobilePrinterStatus.online?"green":"amber"}/>
+                <Badge label={mobilePrinterStatus.online?t.set_status_online:nativePrinterReady?t.set_status_wifi:t.set_status_mobile_only} color={mobilePrinterStatus.online?"green":"amber"}/>
               </div>
               {mobilePrinterStatus.savedPrinter&&(
                 <div className="mobile-printer-saved">
-                  <span>Saved printer</span>
+                  <span>{t.printer_bt_saved}</span>
                   <strong>{mobilePrinterStatus.savedPrinter.name}</strong>
                   <small>WiFi/LAN {mobilePrinterStatus.savedPrinter.host||""}:{mobilePrinterStatus.savedPrinter.port||9100}</small>
                 </div>
               )}
               <div className="mobile-printer-lan-config">
-                <Fg label="Printer IP address">
+                <Fg label={t.set_printer_ip}>
                   <input value={lanPrinterHost} onChange={e=>setLanPrinterHost(e.target.value)} placeholder="192.168.18.234" inputMode="decimal"/>
                 </Fg>
-                <Fg label="Port">
+                <Fg label={t.set_port}>
                   <input value={lanPrinterPort} onChange={e=>setLanPrinterPort(e.target.value.replace(/[^\d]/g,""))} placeholder="9100" inputMode="numeric"/>
                 </Fg>
               </div>
               <div className="mobile-printer-actions">
-                <button type="button" className="printer-test-btn" onClick={testLanPrinterConnection}>Test Connection</button>
-                <button type="button" className="btn-out" onClick={saveLanPrinter}>Save Printer</button>
-                <button type="button" className="btn-out" onClick={refreshMobilePrinterStatus}>Check Status</button>
-                <button type="button" className="printer-test-btn" onClick={testMobilePrinter}>Test Print</button>
+                <button type="button" className="printer-test-btn" onClick={testLanPrinterConnection}>{t.set_test_connection}</button>
+                <button type="button" className="btn-out" onClick={saveLanPrinter}>{t.set_save_printer_btn}</button>
+                <button type="button" className="btn-out" onClick={refreshMobilePrinterStatus}>{t.set_check_status}</button>
+                <button type="button" className="printer-test-btn" onClick={testMobilePrinter}>{t.set_test_print}</button>
               </div>
               <div className="mobile-printer-list">
-                {mobilePrinters.length===0&&<div className="mobile-printer-empty">No WiFi printer saved yet. Turn printer on, connect phone to the same WiFi, enter the printer IP, then tap Test Connection.</div>}
+                {mobilePrinters.length===0&&<div className="mobile-printer-empty">{t.set_no_wifi_saved}</div>}
                 {mobilePrinters.map(printer=>(
                   <button type="button" key={printer.id} className="mobile-printer-option" onClick={()=>connectMobilePrinter(printer)}>
-                    <div className={`mobile-printer-type ${printer.type}`}>WiFi</div>
+                    <div className={`mobile-printer-type ${printer.type}`}>{t.set_status_wifi}</div>
                     <div>
                       <strong>{printer.name}</strong>
-                      <span>{printer.hint||"Raw TCP ESC/POS printer"}</span>
+                      <span>{printer.hint||t.set_raw_tcp_hint}</span>
                       <small>{printer.host}:{printer.port||9100}</small>
                     </div>
-                    <Badge label={printer.online||printer.paired?"Ready":"Nearby"} color={printer.online||printer.paired?"green":"purple"}/>
+                    <Badge label={printer.online||printer.paired?t.set_ready:t.printer_bt_nearby} color={printer.online||printer.paired?"green":"purple"}/>
                   </button>
                 ))}
               </div>
               <div className="mobile-bt-steps">
-                <strong>Simple seller setup</strong>
+                <strong>{t.set_simple_setup}</strong>
                 <ol>
-                  <li>Turn on the thermal printer.</li>
-                  <li>Connect phone and printer to the same WiFi.</li>
-                  <li>Enter printer IP address and port 9100.</li>
-                  <li>Tap Test Connection, then Test Print.</li>
+                  <li>{t.set_simple_step1}</li>
+                  <li>{t.set_simple_step2}</li>
+                  <li>{t.set_simple_step3}</li>
+                  <li>{t.set_simple_step4}</li>
                 </ol>
               </div>
               <div className="mobile-bt-actions">
-                <button type="button" className="btn-out" onClick={openMobileBluetoothGuide}>Setup Help</button>
-                <button type="button" className="btn-out" onClick={testPrinter}>Browser Fallback Test</button>
+                <button type="button" className="btn-out" onClick={openMobileBluetoothGuide}>{t.set_setup_help}</button>
+                <button type="button" className="btn-out" onClick={testPrinter}>{t.set_browser_fallback}</button>
               </div>
-              <div className="backup-note">SellerFlowLive saves the WiFi printer IP in the mobile app. Use port 9100 for most ESC/POS network printers.</div>
+              <div className="backup-note">{t.set_wifi_note}</div>
             </div>
             <div className="mobile-bt-preview">
               <div className="mobile-bt-phone">
                 <div className="mobile-bt-top"/>
                 <div className="mobile-bt-card">
-                  <b>Auto Printer</b>
-                  <span>WiFi/LAN TCP</span>
-                  <em>{mobilePrinterStatus.online?"Online":"Scan to connect"}</em>
+                  <b>{t.set_auto_printer}</b>
+                  <span>{t.set_wifi_lan_tcp}</span>
+                  <em>{mobilePrinterStatus.online?t.set_status_online:t.set_scan_to_connect}</em>
                 </div>
                 <div className="mobile-bt-slip">
                   <strong>BUYER #12</strong>
@@ -2461,7 +2461,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
                   onClick={testBtTextOnly}
                   style={{borderColor:"#7F77DD"}}
                 >
-                  📝 Test TEXT-only (no bitmap)
+                  📝 {t.set_bt_test_text}
                 </button>
               )}
               {btSavedPrinter&&(
