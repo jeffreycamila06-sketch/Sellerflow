@@ -717,27 +717,27 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
   };
   if(publicLegal)return <LegalPage kind={publicLegal} onBack={closeLegal}/>;
   const featureItems=[
-    {title:"1-Click Print",body:"Turn any live comment into a buyer slip instantly, with a print-ready layout for fast packing."},
-    {title:"Live Comment Capture",body:"Keep TikTok and Facebook live comments organized as they arrive, with buyer names and usernames visible."},
-    {title:"Order Management",body:"Create, review, and track live orders without jumping between spreadsheets, chats, and paper notes."},
-    {title:"Customer Database",body:"Remember repeat buyers, order history, usernames, and searchable customer details."},
-    {title:"Bluetooth Printer Support",body:"Prepare mobile sellers for direct Bluetooth receipt printing from the app workflow."},
-    {title:"Sales Analytics",body:"See daily orders, buyers, revenue, and seller activity in a clean dashboard view."},
+    {title:t.lp_feat_print_t,body:t.lp_feat_print_b},
+    {title:t.lp_feat_capture_t,body:t.lp_feat_capture_b},
+    {title:t.lp_feat_orders_t,body:t.lp_feat_orders_b},
+    {title:t.lp_feat_db_t,body:t.lp_feat_db_b},
+    {title:t.lp_feat_bt_t,body:t.lp_feat_bt_b},
+    {title:t.lp_feat_analytics_t,body:t.lp_feat_analytics_b},
   ];
   const flowItems=[
-    {title:"Admin",label:"Control plans and sellers",body:"Admin creates or edits sellers, approves payment proof, changes plans, resets passwords, locks registered platform accounts, and reviews audit logs."},
-    {title:"Live",label:"Capture buyer comments",body:"Seller connects TikTok or Facebook Live, then SellerFlowLive keeps every comment readable with time, username, platform, cart count, and 1-click action."},
-    {title:"Computer",label:"Work from one dashboard",body:"The dashboard keeps comments, buyer numbers, slip preview, miners list, sales, customers, and support in one compact workspace."},
-    {title:"Payment",label:"Proof and support chat",body:"Sellers send proof of payment or complaints. Admin sees each seller as a message bubble and can reply, approve, reject, or resolve."},
-    {title:"Full screen",label:"Readable during live selling",body:"The live feed uses compact rows for laptop or desktop so more comments fit on screen while keeping buttons readable."},
-    {title:"Big box",label:"Main order workspace",body:"The main center area is for fast work: search, create orders, print slips, reprint if printer fails, and keep buyer history saved."},
+    {title:t.lp_flow_admin_t,label:t.lp_flow_admin_l,body:t.lp_flow_admin_b},
+    {title:t.lp_flow_live_t,label:t.lp_flow_live_l,body:t.lp_flow_live_b},
+    {title:t.lp_flow_computer_t,label:t.lp_flow_computer_l,body:t.lp_flow_computer_b},
+    {title:t.lp_flow_payment_t,label:t.lp_flow_payment_l,body:t.lp_flow_payment_b},
+    {title:t.lp_flow_fullscreen_t,label:t.lp_flow_fullscreen_l,body:t.lp_flow_fullscreen_b},
+    {title:t.lp_flow_bigbox_t,label:t.lp_flow_bigbox_l,body:t.lp_flow_bigbox_b},
   ];
   const howSteps=[
-    "Create a seller account or let the admin create one.",
-    "Register the TikTok account or Facebook page allowed by the seller plan.",
-    "Connect live stream from the top bar when selling starts.",
-    "Click 1-click on any buyer comment to create and print the order slip.",
-    "Use Customers, Orders, Print, Sales, and Support to review everything after the live.",
+    t.lp_inst_step1,
+    t.lp_inst_step2,
+    t.lp_inst_step3,
+    t.lp_inst_step4,
+    t.lp_inst_step5,
   ];
   const faqItems=[
     ["Can sellers change their TikTok or Facebook account?","They can register the allowed account slots once. After saving, those accounts are locked and only admin can change them."],
@@ -834,15 +834,15 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
         </div>
       </section>
       <section id="workflow" className="public-section public-workflow">
-        <div className="public-section-head"><span>System map</span><h2>Everything connects in one selling workflow</h2><p>Click each area to learn what it does inside SellerFlowLive.</p></div>
+        <div className="public-section-head"><span>{t.lp_wf_kicker}</span><h2>{t.lp_wf_title}</h2><p>{t.lp_wf_sub}</p></div>
         <div className="workflow-board">
           <div className="workflow-left">
             {flowItems.slice(0,3).map((item,i)=><button key={item.title} className={activeFlow===i?"active":""} onClick={()=>setActiveFlow(i)}><strong>{item.title}</strong><span>{item.label}</span></button>)}
           </div>
           <button className="workflow-center" onClick={()=>setActiveFlow(5)}>
-            <span>SellerFlowLive workspace</span>
-            <strong>Live comments, orders, print slips, customers, sales, support</strong>
-            <em>Click to see the main order box</em>
+            <span>{t.lp_wf_center_label}</span>
+            <strong>{t.lp_wf_center_title}</strong>
+            <em>{t.lp_wf_center_hint}</em>
           </button>
           <div className="workflow-right">
             {flowItems.slice(3).map((item,i)=><button key={item.title} className={activeFlow===i+3?"active":""} onClick={()=>setActiveFlow(i+3)}><strong>{item.title}</strong><span>{item.label}</span></button>)}
@@ -852,11 +852,11 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
           <small>{flowItems[activeFlow].title}</small>
           <h3>{flowItems[activeFlow].label}</h3>
           <p>{flowItems[activeFlow].body}</p>
-          <button onClick={()=>jump(activeFlow===3?"support-info":activeFlow===0?"account":"features")}>Open related section</button>
+          <button onClick={()=>jump(activeFlow===3?"support-info":activeFlow===0?"account":"features")}>{t.lp_wf_open_related}</button>
         </div>
       </section>
-      <section id="features" className="public-section public-feature-band"><div className="public-section-head"><span>Features</span><h2>Everything live sellers need in one sharp workspace</h2><p>Clear tools for capturing comments, creating orders, printing slips, and tracking buyers without slowing down the live.</p></div><div className="public-feature-cards">{featureItems.map((f,i)=><button key={f.title} className={activeFeature===i?"active":""} onClick={()=>setActiveFeature(i)}><span>{String(i+1).padStart(2,"0")}</span><strong>{f.title}</strong><p>{f.body}</p></button>)}</div><div className="public-feature-detail premium"><small>Selected feature</small><h3>{featureItems[activeFeature].title}</h3><p>{featureItems[activeFeature].body}</p><button onClick={()=>jump("account")}>Try this workflow</button></div></section>
-      <section id="instructions" className="public-section public-instructions"><div className="public-section-head"><span>Instructions</span><h2>How to use SellerFlowLive</h2><p>Simple daily workflow for sellers and admins.</p></div><div className="public-steps">{howSteps.map((step,i)=><button key={step} onClick={()=>i<2?jump("account"):jump("features")}><b>{i+1}</b><span>{step}</span></button>)}</div></section>
+      <section id="features" className="public-section public-feature-band"><div className="public-section-head"><span>{t.lp_nav_features}</span><h2>{t.lp_feat_title}</h2><p>{t.lp_feat_sub}</p></div><div className="public-feature-cards">{featureItems.map((f,i)=><button key={f.title} className={activeFeature===i?"active":""} onClick={()=>setActiveFeature(i)}><span>{String(i+1).padStart(2,"0")}</span><strong>{f.title}</strong><p>{f.body}</p></button>)}</div><div className="public-feature-detail premium"><small>{t.lp_feat_selected}</small><h3>{featureItems[activeFeature].title}</h3><p>{featureItems[activeFeature].body}</p><button onClick={()=>jump("account")}>{t.lp_feat_try}</button></div></section>
+      <section id="instructions" className="public-section public-instructions"><div className="public-section-head"><span>{t.lp_nav_instructions}</span><h2>{t.lp_inst_title}</h2><p>{t.lp_inst_sub}</p></div><div className="public-steps">{howSteps.map((step,i)=><button key={step} onClick={()=>i<2?jump("account"):jump("features")}><b>{i+1}</b><span>{step}</span></button>)}</div></section>
       <section id="pricing" className="public-section public-pricing-section"><div className="public-section-head"><span>Price list</span><h2>Choose the plan that fits the seller</h2><p>Simple plans for live sellers, from first stream to full team operations.</p></div><div className="public-pricing">{publicPlans.map((p,i)=>{const paid=p.basePrice>0;const months=paid?publicPlanMonths[p.id as Exclude<Plan,"free"|"trial">]:1;const price=paid?p.basePrice*months:p.basePrice;return <button key={p.name} className={p.popular?"popular":""} onClick={()=>{go(i===0?"reg":"login");jump("account")}}>{p.popular&&<small>Most popular</small>}<span className="pricing-icon">{i+1}</span><strong>{p.name}</strong><b>${price}</b><span className="pricing-period">/{paid?`${months} ${months===1?"month":"months"}`:p.period}</span>{paid&&<div className="public-plan-duration" onClick={e=>e.stopPropagation()}><span>Duration</span><select value={months} onChange={e=>setPublicPlanMonths(current=>({...current,[p.id]:Number(e.target.value)}))}>{monthOptions.map(month=><option key={month} value={month}>{month} {month===1?"month":"months"}</option>)}</select><em>${p.basePrice}/month</em></div>}<p>{p.desc}</p><ul>{p.features.map(f=><li key={f}>{f}</li>)}</ul><div className="pricing-best"><span>Best For</span><b>{p.bestFor}</b></div><em>{p.action}</em></button>})}</div></section>
       <section id="support-info" className="public-section public-support-band"><div><span>Support</span><h2>Handle seller complaints like Messenger</h2><p>Every seller can send a payment proof or support issue. Admin receives a compact chat thread, can approve, reject, resolve, reply, and see unread notifications.</p></div><button onClick={()=>{go("login");jump("account")}}>Open seller account</button></section>
       <section id="faq" className="public-section"><div className="public-section-head"><span>FAQ</span><h2>Frequently asked questions</h2><p>Click a question to expand the answer.</p></div><div className="public-faq">{faqItems.map((item,i)=><button key={item[0]} className={openFaq===i?"open":""} onClick={()=>setOpenFaq(openFaq===i?-1:i)}><div><span>{i+1}</span><strong>{item[0]}</strong><b>{openFaq===i?"-":"+"}</b></div>{openFaq===i&&<p>{item[1]}</p>}</button>)}</div></section>
