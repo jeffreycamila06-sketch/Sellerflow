@@ -557,7 +557,14 @@ public class SellerFlowPrinterPlugin extends Plugin {
         private final java.nio.charset.CharsetEncoder gbkEncoder = PRINTER_CHARSET.newEncoder();
 
         void init() {
-            write(0x1B, 0x40);
+            write(0x1B, 0x40);   // ESC @ -- reset to power-on defaults
+            // FS & -- enter Kanji/Chinese double-byte mode so the printer renders
+            // the GBK bytes with its internal Chinese font ROM (covers Traditional
+            // + Simplified). Without it the XP-N160II reads each GBK byte as a
+            // single-byte PC437 char and prints garbage. This is the ESC/POS analog
+            // of the TSPL sticker selecting a Chinese font (TSS24.BF2) per line.
+            // iOS receipt init sends the identical byte for parity.
+            write(0x1C, 0x26);   // FS &
         }
 
         void alignLeft() {

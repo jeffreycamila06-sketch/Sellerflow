@@ -394,7 +394,12 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         }
 
         // init
-        raw([0x1B, 0x40])
+        raw([0x1B, 0x40])   // ESC @ -- reset to power-on defaults
+        // FS & -- enter Kanji/Chinese double-byte mode so the printer renders the
+        // GBK bytes with its internal Chinese font ROM. Without it the XP-N160II
+        // reads each GBK byte as single-byte PC437 and prints garbage. Byte-
+        // identical to Android EscPos.init() for parity.
+        raw([0x1C, 0x26])   // FS &
         alignCenter()
         bold(true); text(storeName); bold(false)                // normal -- header
         text("SellerFlowLive")                                   // normal -- subtitle
