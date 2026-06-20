@@ -52,6 +52,12 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
     /// in `mobile/android/.../SellerFlowPrinterPlugin.java` -- keep both in sync.
     public static let ESC_POS_IMPORTANT_SIZE: UInt8 = 0x11
 
+    /// Order item/comment size on the receipt: 0x10 = 1W x 2H (taller, normal
+    /// width). Medium -- bigger than normal, smaller than the 2x buyer name -- so
+    /// long comments stay readable without extra wrapping. Mirrors the Android
+    /// constant `ESC_POS_ORDER_SIZE`.
+    public static let ESC_POS_ORDER_SIZE: UInt8 = 0x10
+
     // MARK: - load(): inject window.SellerFlowPrinter JS shim
     //
     // Mirrors mobile/android/.../MainActivity.injectPrinterBridge. The web
@@ -418,25 +424,24 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
 
         let orders = (buyer["orders"] as? [[String: Any]]) ?? []
         if !orders.isEmpty {
-            for (i, order) in orders.enumerated() {
-                setCharSize(Self.ESC_POS_IMPORTANT_SIZE)             // === 2x BLOCK ===
-                bold(true); text("Order #\(asInt(order["orderNum"]) ?? (i + 1))"); bold(false)
+            for order in orders {
+                setCharSize(Self.ESC_POS_ORDER_SIZE)                 // === MEDIUM (1Wx2H) -- item only ===
                 text((order["item"] as? String) ?? "")
+                setCharSize(0x00)                                    // === normal -- order details ===
                 text("Qty: \(asInt(order["qty"]) ?? 1)")
                 let price = (order["price"] as? Double) ?? Double((order["price"] as? Int) ?? 0)
                 let total = (order["total"] as? Double) ?? Double((order["total"] as? Int) ?? 0)
                 if price > 0 { text("Price: \(currency) \(money(price))") }
                 if total > 0 { text("Total: \(currency) \(money(total))") }
-                setCharSize(0x00)                                    // === END 2x ===
 
                 if let t = order["time"] as? String, !t.isEmpty { text(t) }  // normal -- timestamp
                 line()                                                        // normal -- divider
             }
         } else {
-            setCharSize(Self.ESC_POS_IMPORTANT_SIZE)                 // === 2x BLOCK ===
-            text("Order:")
+            text("Order:")                                           // normal -- label
+            setCharSize(Self.ESC_POS_ORDER_SIZE)                     // === MEDIUM (1Wx2H) -- comment ===
             text((buyer["lastComment"] as? String) ?? (buyer["comment"] as? String) ?? "")
-            setCharSize(0x00)                                        // === END 2x ===
+            setCharSize(0x00)                                        // === normal ===
             line()
         }
 

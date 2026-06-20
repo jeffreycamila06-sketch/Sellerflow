@@ -66,6 +66,12 @@ public class SellerFlowPrinterPlugin extends Plugin {
      */
     public static final int ESC_POS_IMPORTANT_SIZE = 0x11;
 
+    // Order item/comment size on the receipt: 0x10 = 1W x 2H (taller, normal
+    // width). Medium -- bigger than normal, smaller than the 2x buyer name -- so
+    // long comments stay readable without extra wrapping. GS ! n: high nibble =
+    // vertical scale-1, low nibble = horizontal scale-1. Mirrors the iOS constant.
+    public static final int ESC_POS_ORDER_SIZE = 0x10;
+
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
     @PluginMethod
@@ -510,27 +516,24 @@ public class SellerFlowPrinterPlugin extends Plugin {
                 JSONObject order = orders.optJSONObject(i);
                 if (order == null) continue;
 
-                out.setCharSize(ESC_POS_IMPORTANT_SIZE);                // === IMPORTANT ===
-                out.bold(true);
-                out.text("Order #" + order.optInt("orderNum", i + 1));
-                out.bold(false);
+                out.setCharSize(ESC_POS_ORDER_SIZE);                    // === MEDIUM (1Wx2H) -- item only ===
                 out.text(order.optString("item", ""));
+                out.setCharSize(0x00);                                  // === normal -- order details ===
                 out.text("Qty: " + order.optInt("qty", 1));
                 double price = order.optDouble("price", 0);
                 double total = order.optDouble("total", price);
                 if (price > 0) out.text("Price: " + currency + " " + money(price));
                 if (total > 0) out.text("Total: " + currency + " " + money(total));
-                out.setCharSize(0x00);                                  // === END IMPORTANT ===
 
                 String time = order.optString("time", "");
                 if (!time.isEmpty()) out.text(time);                    // normal -- timestamp
                 out.line();                                             // normal -- divider
             }
         } else {
-            out.setCharSize(ESC_POS_IMPORTANT_SIZE);                    // === IMPORTANT ===
-            out.text("Order:");
+            out.text("Order:");                                        // normal -- label
+            out.setCharSize(ESC_POS_ORDER_SIZE);                        // === MEDIUM (1Wx2H) -- comment ===
             out.text(buyer.optString("lastComment", buyer.optString("comment", "")));
-            out.setCharSize(0x00);                                      // === END IMPORTANT ===
+            out.setCharSize(0x00);                                      // === normal ===
             out.line();
         }
 
