@@ -50,6 +50,11 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .auth-link{background:none;border:none;color:#7F77DD;font-size:13px;cursor:pointer;font-weight:500;text-decoration:underline;padding:0}
 .auth-sw{margin-top:16px;text-align:center;font-size:13px;color:#888780}
 .auth-terms{font-size:11px;color:#B4B2A9;text-align:center}
+/* Login-card footer: Support (Telegram) left, language switcher right, divider on top. */
+.auth-foot-tools{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:18px;padding-top:14px;border-top:1px solid #E7E3F5}
+.auth-foot-support{display:inline-flex;align-items:center;gap:6px;color:#7F77DD;font-size:13px;font-weight:600;text-decoration:none}
+.auth-foot-support:hover{color:#26215C}
+.auth-foot-lang{font-size:13px;padding:6px 10px;border:1px solid #D8D3FF;border-radius:8px;background:#fff;color:#26215C;cursor:pointer}
 .pending-approval{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#F5F5F2;padding:24px}
 .pending-card{background:#fff;border:1px solid #E4E2DC;border-radius:16px;box-shadow:0 18px 48px rgba(38,33,92,.12);width:min(480px,100%);padding:28px;text-align:center}
 .pending-card h2{font-size:24px;color:#26215C;margin-bottom:8px}

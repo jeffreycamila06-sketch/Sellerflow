@@ -664,7 +664,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
     return window.location.hash==="#privacy"?"privacy":window.location.hash==="#terms"?"terms":"";
   });
   async function login(e:React.FormEvent){e.preventDefault();setErr("");setBusy(true);
-    if(!supabase){setErr("Service is temporarily unavailable. Please try again later.");setBusy(false);return;}
+    if(!supabase){setErr(t.err_service_unavailable);setBusy(false);return;}
     const cleanEmail=email.trim().toLowerCase();
     const {data,error}=await supabase.auth.signInWithPassword({email:cleanEmail,password:pw});
     if(error||!data.user){setErr(t.err_wrong_pw);setBusy(false);return;}
@@ -672,40 +672,40 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
     if(!profile){
       // Auth account exists but has no profile row yet — create a minimal one.
       try{profile=await createMyProfile(data.user.id,cleanEmail,{fullName:"",storeName:"",phone:"",tiktok:"",facebook:"",adminContactNote:""});}
-      catch(err){setErr(err instanceof Error?err.message:"Could not load your profile.");setBusy(false);return;}
+      catch{setErr(t.err_profile_load);setBusy(false);return;}
     }
-    if(!profile){setErr("Could not load your profile. Please contact support.");setBusy(false);return;}
+    if(!profile){setErr(t.err_profile_load);setBusy(false);return;}
     posthog.identify(profile.email,{plan:profile.plan,store_name:profile.profile.storeName,role:profile.role||"seller"});
     onLogin(profile);setBusy(false);
   }
   async function reg(e:React.FormEvent){e.preventDefault();setErr("");setOk("");setBusy(true);
     if(!fn.trim()||!sn.trim()||!email.trim()||!pw){setErr(t.err_fill_all);setBusy(false);return;}
-    if(normalizePhone(phone).length<8){setErr("Enter a valid phone number for admin review.");setBusy(false);return;}
+    if(normalizePhone(phone).length<8){setErr(t.err_phone_invalid);setBusy(false);return;}
     if(pw.length<6){setErr(t.err_pw_short);setBusy(false);return;}
     if(pw!==cpw){setErr(t.err_pw_mismatch);setBusy(false);return;}
-    if(!supabase){setErr("Service is temporarily unavailable. Please try again later.");setBusy(false);return;}
+    if(!supabase){setErr(t.err_service_unavailable);setBusy(false);return;}
     const cleanEmail=email.trim().toLowerCase();
     const {data,error}=await supabase.auth.signUp({email:cleanEmail,password:pw});
-    if(error){setErr(/already|registered|exists/i.test(error.message)?t.err_email_exists:error.message);setBusy(false);return;}
-    if(!data.user){setErr("Registration failed. Please try again.");setBusy(false);return;}
+    if(error){setErr(/already|registered|exists/i.test(error.message)?t.err_email_exists:t.err_generic);setBusy(false);return;}
+    if(!data.user){setErr(t.err_register_failed);setBusy(false);return;}
     if(!data.session){
       // Email confirmation is enabled: no session yet, so we can't create the
       // profile row (RLS needs auth.uid()). Ask the user to confirm + log in.
-      setOk("Account created. Please check your email to confirm, then log in.");setMode("login");setBusy(false);return;
+      setOk(t.reg_check_email);setMode("login");setBusy(false);return;
     }
     let profile;
     try{profile=await createMyProfile(data.user.id,cleanEmail,{fullName:fn.trim(),storeName:sn.trim(),phone:phoneDisplay(phone),tiktok:"",facebook:"",adminContactNote:""});}
-    catch(err){setErr(err instanceof Error?err.message:"Could not create your profile.");setBusy(false);return;}
-    if(!profile){setErr("Could not create your profile. Please contact support.");setBusy(false);return;}
+    catch{setErr(t.err_profile_create);setBusy(false);return;}
+    if(!profile){setErr(t.err_profile_create);setBusy(false);return;}
     posthog.identify(profile.email,{plan:profile.plan,store_name:profile.profile.storeName,role:profile.role||"seller"});
     onLogin(profile);setBusy(false);
   }
   async function forgot(e:React.FormEvent){e.preventDefault();setErr("");setOk("");setBusy(true);
-    if(!supabase){setErr("Service is temporarily unavailable. Please try again later.");setBusy(false);return;}
+    if(!supabase){setErr(t.err_service_unavailable);setBusy(false);return;}
     const cleanEmail=email.trim().toLowerCase();
     const redirectTo=typeof window!=="undefined"?`${window.location.origin}/`:undefined;
     const {error}=await supabase.auth.resetPasswordForEmail(cleanEmail,redirectTo?{redirectTo}:undefined);
-    if(error){setErr(error.message);setBusy(false);return;}
+    if(error){setErr(t.err_generic);setBusy(false);return;}
     setOk(`${t.reset_sent} ${cleanEmail}`);setBusy(false);
   }
   const go=(m:"login"|"reg"|"forgot")=>{setMode(m);setErr("");setOk("");};
@@ -759,9 +759,9 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
       {mode==="login"&&<>
         <h2>{t.login_title}</h2><p className="auth-sub">{t.login_sub}</p>
         <form onSubmit={login} className="auth-form">
-          {err&&<div className="auth-err">Warning: {err}</div>}
+          {err&&<div className="auth-err">{t.warning_prefix} {err}</div>}
           <Fg label={t.email_field}><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@email.com" required autoFocus/></Fg>
-          <Fg label={t.pw_field}><div className="pw-wrap"><input type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="Password" required/><button type="button" onClick={()=>setShowPw(p=>!p)} className="pw-eye" aria-label={showPw?"Hide password":"Show password"} title={showPw?"Hide password":"Show password"}>{showPw?PwEyeOffIcon:PwEyeIcon}</button></div></Fg>
+          <Fg label={t.pw_field}><div className="pw-wrap"><input type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder={t.ph_password} required/><button type="button" onClick={()=>setShowPw(p=>!p)} className="pw-eye" aria-label={showPw?t.hide_pw:t.show_pw} title={showPw?t.hide_pw:t.show_pw}>{showPw?PwEyeOffIcon:PwEyeIcon}</button></div></Fg>
           <div style={{textAlign:"right",marginBottom:4}}><button type="button" className="auth-link" onClick={()=>go("forgot")}>{t.forgot_link}</button></div>
           <button type="submit" className="auth-btn" disabled={busy}>{busy?t.signing_in:t.sign_in_btn}</button>
         </form>
@@ -770,33 +770,44 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
       {mode==="reg"&&<>
         <h2>{t.register_title}</h2><p className="auth-sub">{t.register_sub}</p>
         <form onSubmit={reg} className="auth-form">
-          {err&&<div className="auth-err">Warning: {err}</div>}
-          {ok&&<div className="auth-ok">Done: {ok}</div>}
+          {err&&<div className="auth-err">{t.warning_prefix} {err}</div>}
+          {ok&&<div className="auth-ok">{t.done_prefix} {ok}</div>}
           <div className="auth-row2">
             <Fg label={t.fname_field}><input value={fn} onChange={e=>setFn(e.target.value)} placeholder="Maria Reyes" required/></Fg>
             <Fg label={t.sname_field}><input value={sn} onChange={e=>setSn(e.target.value)} placeholder="Maria's Shop" required/></Fg>
           </div>
           <Fg label={t.email_field}><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@email.com" required/></Fg>
-          <Fg label="Phone number"><input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="+63 912 345 6789" inputMode="tel" required/></Fg>
-          <Fg label={t.pw_field}><div className="pw-wrap"><input type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder="Min 6 chars" required/><button type="button" onClick={()=>setShowPw(p=>!p)} className="pw-eye" aria-label={showPw?"Hide password":"Show password"} title={showPw?"Hide password":"Show password"}>{showPw?PwEyeOffIcon:PwEyeIcon}</button></div></Fg>
-          <Fg label={t.confirm_field}><input type="password" value={cpw} onChange={e=>setCpw(e.target.value)} placeholder="Confirm password" required/></Fg>
-          <button type="submit" className="auth-btn" disabled={busy}>{busy?"Submitting...":"Submit for admin approval"}</button>
-          <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat?v=6" download>Printer Shortcut</a>
-          <p className="auth-terms">Your free account starts only after admin approval.</p>
-          <p className="auth-terms">By creating an account, you agree to SellerFlowLive <button type="button" className="inline-link" onClick={()=>openLegal("terms")}>Terms</button> and <button type="button" className="inline-link" onClick={()=>openLegal("privacy")}>Privacy Policy</button>.</p>
+          <Fg label={t.phone_label}><input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="+63 912 345 6789" inputMode="tel" required/></Fg>
+          <Fg label={t.pw_field}><div className="pw-wrap"><input type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder={t.ph_min6} required/><button type="button" onClick={()=>setShowPw(p=>!p)} className="pw-eye" aria-label={showPw?t.hide_pw:t.show_pw} title={showPw?t.hide_pw:t.show_pw}>{showPw?PwEyeOffIcon:PwEyeIcon}</button></div></Fg>
+          <Fg label={t.confirm_field}><input type="password" value={cpw} onChange={e=>setCpw(e.target.value)} placeholder={t.ph_confirm} required/></Fg>
+          <button type="submit" className="auth-btn" disabled={busy}>{busy?t.submitting:t.submit_approval}</button>
+          <a className="printer-shortcut-link" href="/sellerflow-printer-shortcut.bat?v=6" download>{t.printer_shortcut}</a>
+          <p className="auth-terms">{t.free_after_approval}</p>
+          <p className="auth-terms">{t.terms_agree} <button type="button" className="inline-link" onClick={()=>openLegal("terms")}>{t.terms_label}</button> · <button type="button" className="inline-link" onClick={()=>openLegal("privacy")}>{t.privacy_label}</button></p>
         </form>
         <div className="auth-sw">{t.have_account} <button className="auth-link" onClick={()=>go("login")}>{t.sign_in_btn}</button></div>
       </>}
       {mode==="forgot"&&<>
         <h2>{t.forgot_title}</h2><p className="auth-sub">{t.forgot_sub}</p>
         <form onSubmit={forgot} className="auth-form">
-          {err&&<div className="auth-err">Warning: {err}</div>}
-          {ok&&<div className="auth-ok">Done: {ok}</div>}
+          {err&&<div className="auth-err">{t.warning_prefix} {err}</div>}
+          {ok&&<div className="auth-ok">{t.done_prefix} {ok}</div>}
           <Fg label={t.email_field}><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@email.com" required autoFocus/></Fg>
           <button type="submit" className="auth-btn" disabled={busy}>{busy?t.sending:t.send_reset}</button>
         </form>
         <div className="auth-sw"><button className="auth-link" onClick={()=>go("login")}>{t.back_login}</button></div>
       </>}
+      {/* Footer tools — shared across all auth modes: Support (Telegram) on the
+          left, language switcher on the right (moved here from the top nav). */}
+      <div className="auth-foot-tools">
+        <a href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener" className="auth-foot-support">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M22 3L2 11.4l5.8 2 9.2-6.4-7.3 8.6 1.7 5.6 3-3.1 4.6 3.4L22 3z"/></svg>
+          {t.support_label}
+        </a>
+        <select value={lang} onChange={e=>setLang(e.target.value as Lang)} className="auth-foot-lang" aria-label="Language">
+          {LANG_OPTS.map(l=><option key={l.code} value={l.code}>{l.label}</option>)}
+        </select>
+      </div>
     </div>
   );
   return(
@@ -804,7 +815,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
       <header className="public-nav">
         <button className="public-brand" onClick={()=>jump("home")}><span className="public-logo">S</span><span>Seller<span>FlowLive</span></span></button>
         <nav><button onClick={()=>jump("features")}>Features</button><button onClick={()=>jump("pricing")}>Price list</button><button onClick={()=>jump("instructions")}>How to use</button><button onClick={()=>jump("support-info")}>Support</button><button onClick={()=>jump("faq")}>FAQ</button></nav>
-        <div className="public-nav-actions"><select value={lang} onChange={e=>setLang(e.target.value as Lang)}>{LANG_OPTS.map(l=><option key={l.code} value={l.code}>{l.label}</option>)}</select><button onClick={()=>{go("login");jump("account")}}>Log in</button><button className="public-primary" onClick={()=>{go("reg");jump("account")}}>Register</button></div>
+        <div className="public-nav-actions"><button onClick={()=>{go("login");jump("account")}}>Log in</button><button className="public-primary" onClick={()=>{go("reg");jump("account")}}>Register</button></div>
       </header>
       <section id="home" className="public-hero">
         <div className="public-hero-copy"><span className="public-kicker">Premium live selling workspace</span><h1>Stop typing. Start selling.</h1><p>Capture live orders, manage buyers, and print receipts in one click.</p><div className="public-hero-actions"><button className="public-primary" onClick={()=>{go("reg");jump("account")}}>Start free</button><button onClick={()=>jump("instructions")}>See how it works</button></div><div className="public-metrics"><div><b>1-click</b><span>receipt printing</span></div><div><b>Live</b><span>comment capture</span></div><div><b>Smart</b><span>buyer database</span></div></div></div>
@@ -882,7 +893,7 @@ function ResetPasswordPage({onDone}:{onDone:()=>void}){
   async function submit(e:React.FormEvent){
     e.preventDefault();
     setErr("");
-    if(!supabase){setErr("Service is temporarily unavailable. Please try again later.");return;}
+    if(!supabase){setErr(t.err_service_unavailable);return;}
     if(tooShort){setErr(`Password must be at least ${MIN_PW} characters.`);return;}
     if(pw!==cpw){setErr("Passwords do not match.");return;}
     setBusy(true);
