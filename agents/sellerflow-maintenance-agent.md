@@ -51,19 +51,19 @@ Additional working agreements from the owner's workflow:
 ## Core Flow Locations
 
 Line numbers drift as the code evolves — treat them as anchors and re-grep
-before editing. Verified against main `070cc42`.
+before editing. Verified against main `940558f` (re-checked 2026-06-20).
 
 | Flow | Location | Notes |
 |---|---|---|
 | TikTok comment connection | `server.js` — `startTikTokConnection` (~line 690) | `WebcastPushConnection` + EulerStream `signApiKey`; `.on("chat")` → `io.to(sellerRoom).emit("comment")`; reconnect/backoff/rate-limit machinery ~lines 213–470 |
 | Socket handshake (auth + plan gate) | `server.js` — `io.use(...)` (~line 398) | JWT verify + `checkPlanActive`; runs per handshake, not per message |
-| Order capture from comments | `src/App.tsx` — `createOrderFromComment` (~line 3405) | Free-cap guard, buyer numbering (`buyers.length+1`), order assembly, print trigger, background Supabase saves |
+| Order capture from comments | `src/App.tsx` — `createOrderFromComment` (~line 3808) | Free-cap guard, buyer numbering (`buyers.length+1`), order assembly, print trigger, background Supabase saves |
 | Customer save/edit | `src/db.ts` — `saveOrderToDatabase`, `saveCustomerToDatabase` | Insert/update to Supabase `orders` / `customers`; admin Customer Data page in App.tsx (`CustomerDataPage`) |
-| 1-click printing (web/LAN) | `src/App.tsx` — `printSlip` (~line 406) | BT early-return → native bridge → iframe print fallback |
+| 1-click printing (web/LAN) | `src/App.tsx` — `printSlip` (~line 565) | BT early-return → native bridge → iframe print fallback |
 | 1-click printing (BT native) | `mobile/android/.../TsplBuilder.java` | TSPL TEXT+BAR sticker (AIMO D520BT ignores BITMAP); `SellerFlowPrinterPlugin.java` = @PluginMethods; `MainActivity.java` = JS bridge |
-| Login / register / forgot | `src/App.tsx` — `PublicAuth` (~line 480) | Landing page + auth card (login/reg/forgot modes), Supabase Auth |
+| Login / register / forgot | `src/App.tsx` — `PublicAuth` (~line 652) | Landing page + auth card (login/reg/forgot modes), Supabase Auth |
 | Subscription / plan lock (frontend) | `src/App.tsx` — `accountLocked` + `TrialExpiredWall`, `SubPage` | Auto-expire effect flips planStatus client-side |
-| Plan enforcement (backend) | `server.js` — `checkPlanActive` (~lines 131–211) | `PLAN_ENFORCEMENT_ENABLED` kill-switch; FAIL-OPEN on any error; free tier exempt |
+| Plan enforcement (backend) | `server.js` — `checkPlanActive` (~lines 133–201) | `PLAN_ENFORCEMENT_ENABLED` kill-switch; FAIL-OPEN on any error; free tier exempt |
 | Backend API endpoints | `server.js` | `GET /` , `GET /health`, `GET /health/tiktok`, `POST /connect/tiktok`, `POST /disconnect/tiktok`, `POST /connect/facebook`, `GET /test-comment` (token-gated) |
 | Database client | `src/supabase.ts` (init), `src/accountDb.ts` (seller_profiles, audit_logs), `src/db.ts` (orders, customers) | Plus RPCs called from App.tsx: `free_tier_status_for_user`, `list_free_users_status`, `free_tier_mark_warned` |
 | DB schema / triggers | `sql/01–04` | RLS policies, free-tier 200-order cap trigger (`free_tier_cap()`), status RPCs — run manually in Supabase SQL Editor |
@@ -122,6 +122,20 @@ is having trouble going live and why.
   shows a self-service reset screen.
 - Render keep-alive self-ping every 5 min → "Keep-alive ping sent".
 
+### Server restart cadence
+- The Render web service is restarted every ~3 hours by an **external
+  cron-job.org job** (console.cron-job.org/jobs) that POSTs to the Render
+  restart API. This is the **primary and only automated restart** — a
+  band-aid for occasional dropped TikTok WebSocket connections.
+- A former `.github/workflows/auto-restart.yml` GitHub Action was removed
+  2026-06-20 (redundant with cron-job.org). There is no GitHub Actions
+  restart path anymore.
+
+### Supabase RLS (optimized 2026-06-20)
+- All 16 RLS policies now wrap `auth.uid()` / `auth.jwt()` / `is_admin()` in
+  `(select ...)` so they evaluate once per query instead of per row. The 15
+  Supabase performance advisor WARNs are now 0.
+
 ---
 
 ## Verification Commands
@@ -134,15 +148,21 @@ npm run agent:check # all three, in order — must pass before any push
 node --check server.js   # syntax-only check for server.js changes
 ```
 
-Known gaps (do not assume these exist):
-- **No test framework** — no Vitest/Jest, zero test files (planned, separate phase).
-- **No CI** — no GitHub Actions; agent:check is manual discipline.
+Current tooling (verified 2026-06-20, main `940558f`):
+- **Vitest test suite** — 68 tests across 6 files (`src/lib/__tests__/` +
+  `src/__tests__/`). Run with `npm test` (vitest run). Covers the extracted
+  pure logic: order assembly, buyer numbering, seller expiry, date helpers,
+  printer routing, and TSPL byte-parity vs the Android golden.
+- **CI** — `.github/workflows/ci.yml` runs `npm ci → typecheck → test → build`
+  on every push and pull request. Lint is intentionally NOT in the CI gate
+  (see the pre-existing-error baseline below); typecheck + test + build green
+  is the gate.
 - ESLint does not cover `server.js` (flat config targets `**/*.{ts,tsx}` only).
 
-### Baseline note (updated 2026-06-11, main `c3fddc6`)
+### Baseline note (updated 2026-06-20, main `940558f`)
 
 `npm run agent:check` currently **fails at the lint step** with 3 pre-existing
-errors + 2 warnings, all in `src/App.tsx`:
+errors + 1 warning, all in `src/App.tsx`:
 two `react-hooks/set-state-in-effect`, and one `react-hooks/purity` on
 `Date.now()` in `commentStamp` (display-only helper). These are intentionally
 left pending owner-approved refactor.
@@ -152,7 +172,7 @@ The **order path is now lint-clean**: the `Date.now()` purity error in
 protected by 17 deterministic tests.
 History: the 4 unused-vars errors (`BOT_FAQ_ICONS`, `printerScanning`,
 `scanMobilePrinters`, `copy`) were removed 2026-06-11 in commit `ddce040`.
-`npm run typecheck`, `npm run test` (29 tests), and `npm run build` all pass.
+`npm run typecheck`, `npm run test` (68 tests), and `npm run build` all pass.
 Treat **typecheck + test + build green** as the effective gate and compare
 lint output against this known-error list — any NEW lint error is a
 regression.
