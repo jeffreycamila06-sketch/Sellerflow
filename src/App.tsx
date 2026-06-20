@@ -927,7 +927,7 @@ function ResetPasswordPage({onDone}:{onDone:()=>void}){
   );
 }
 
-function AccountGate({user,onContinue,onSwitch}:{user:User;onContinue:()=>void;onSwitch:()=>void}){
+function AccountGate({user,onContinue,onSwitch,t}:{user:User;onContinue:()=>void;onSwitch:()=>void;t:T}){
   return(
     <div className="auth-page">
       <div className="auth-card" style={{maxWidth:460}}>
@@ -935,8 +935,8 @@ function AccountGate({user,onContinue,onSwitch}:{user:User;onContinue:()=>void;o
           <div className="logo-ic"><svg width="16" height="16" viewBox="0 0 18 18"><path d="M4 6 Q4 3 7 3 L11 3 Q14 3 14 6 Q14 9 11 9.5 L7 10.5 Q4 10.5 4 13 Q4 15 7 15 L11 15 Q14 15 14 13" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"/></svg></div>
           <span>Seller<span>FlowLive</span></span>
         </div>
-        <h2>Choose account</h2>
-        <p className="auth-sub">This browser remembers the last SellerFlowLive login. Confirm it first so Chrome or Edge will not open the wrong seller.</p>
+        <h2>{t.gate_choose_account}</h2>
+        <p className="auth-sub">{t.gate_choose_sub}</p>
         <div className="pd-hd" style={{border:"1px solid #E4DED2",borderRadius:8,margin:"14px 0",padding:12}}>
           <div className="pd-av">{ini(user.profile.fullName||user.email)}</div>
           <div>
@@ -944,8 +944,8 @@ function AccountGate({user,onContinue,onSwitch}:{user:User;onContinue:()=>void;o
             <div className="pd-role">{user.email} · {pName(user.plan,TRANSLATIONS.en)}</div>
           </div>
         </div>
-        <button type="button" className="auth-btn" onClick={onContinue}>Continue as this account</button>
-        <button type="button" className="auth-link" style={{width:"100%",marginTop:14,textAlign:"center"}} onClick={onSwitch}>Use another account</button>
+        <button type="button" className="auth-btn" onClick={onContinue}>{t.gate_continue}</button>
+        <button type="button" className="auth-link" style={{width:"100%",marginTop:14,textAlign:"center"}} onClick={onSwitch}>{t.gate_use_another}</button>
       </div>
     </div>
   );
@@ -962,17 +962,17 @@ function TrialExpiredWall({t,onUpgrade}:{t:T;onUpgrade:()=>void}){
   );
 }
 
-function PendingApprovalWall({user,onLogout}:{user:User;onLogout:()=>void}){
+function PendingApprovalWall({user,onLogout,t}:{user:User;onLogout:()=>void;t:T}){
   return(
     <div className="pending-approval">
       <div className="pending-card">
-        <h2>Waiting for admin approval</h2>
-        <p>Your account was submitted successfully. The app will stay locked until admin approves your free account.</p>
-        <p><strong>Your free account is almost ready.</strong> Access starts only after approval.</p>
+        <h2>{t.pending_title}</h2>
+        <p>{t.pending_msg1}</p>
+        <p><strong>{t.pending_almost_ready}</strong> {t.pending_access_after}</p>
         <p>{user.email}<br/>{user.profile.phone}</p>
         <div className="pending-actions">
-          <button className="btn-out" onClick={onLogout}>Sign out</button>
-          <button className="auth-btn" onClick={()=>window.location.reload()}>Refresh status</button>
+          <button className="btn-out" onClick={onLogout}>{t.sign_out}</button>
+          <button className="auth-btn" onClick={()=>window.location.reload()}>{t.pending_refresh}</button>
         </div>
       </div>
     </div>
@@ -1667,7 +1667,7 @@ function Customers({buyers,cur,t}:{buyers:Buyer[];cur:string;t:T}){
 // ═══════════════════════════════════════════════════════════════════
 // PRINT
 // ═══════════════════════════════════════════════════════════════════
-function CustomerDataPage({user}:{user:User}){
+function CustomerDataPage({user,t}:{user:User;t:T}){
   const key=custDataKey(user.email);
   const [records,setRecords]=useState<ShippingCustomer[]>(()=>arrLS<ShippingCustomer>(key));
   const [query,setQuery]=useState("");
@@ -1678,15 +1678,16 @@ function CustomerDataPage({user}:{user:User}){
   const regStatus=(r:ShippingCustomer):"Registered"|"Pending"|"Not Registered"=>
     (r.name.trim()&&r.phone.trim()&&/^\d{6}$/.test(r.sevenCode.trim()))?"Registered":(r.phone.trim()||r.sevenCode.trim())?"Pending":"Not Registered";
   const statusColor=(s:string):"green"|"amber"|"gray"=>s==="Registered"?"green":s==="Pending"?"amber":"gray";
+  const statusLabel=(s:string):string=>s==="Registered"?t.cust_status_registered:s==="Pending"?t.cust_status_pending:t.cust_status_not_registered;
   const openEncode=(r:ShippingCustomer)=>{setEditUser(r.username);setForm({username:r.username,name:r.name,phone:r.phone,sevenCode:r.sevenCode});setErr("");};
   function saveEncode(e:React.FormEvent){
     e.preventDefault();
     const username=form.username.trim().replace(/^@/,""),name=form.name.trim(),phone=form.phone.trim(),sevenCode=form.sevenCode.trim();
-    if(!username){setErr("Username (TikTok / FB handle) is required.");return;}
-    if(records.some(r=>r.username!==editUser&&r.username.toLowerCase()===username.toLowerCase())){setErr("Another customer already uses that username.");return;}
-    if(!name){setErr("Name is required.");return;}
-    if(!phone){setErr("Phone is required.");return;}
-    if(!/^\d{6}$/.test(sevenCode)){setErr("7/11 code must be exactly 6 digits.");return;}
+    if(!username){setErr(t.cust_err_username_required);return;}
+    if(records.some(r=>r.username!==editUser&&r.username.toLowerCase()===username.toLowerCase())){setErr(t.cust_err_username_dup);return;}
+    if(!name){setErr(t.cust_err_name_required);return;}
+    if(!phone){setErr(t.cust_err_phone_required);return;}
+    if(!/^\d{6}$/.test(sevenCode)){setErr(t.cust_err_seven_code);return;}
     persist(records.map(r=>r.username===editUser?{...r,username,name,phone,sevenCode,isNew:false}:r));
     setEditUser(null);
   }
@@ -1702,28 +1703,28 @@ function CustomerDataPage({user}:{user:User}){
   return(
     <div className="subpage">
       <div className="subpage-hd">
-        <div><h2>Customer Data</h2><p>Buyers are added automatically from Live. Tap a TikTok username to encode Name, Phone and 7/11 code once — then they are ready in Shipping.</p></div>
+        <div><h2>{t.cust_data_title}</h2><p>{t.cust_data_sub}</p></div>
       </div>
       <div className="grid4">
-        <div className="mstat"><div className="ms-l">Total Customers</div><div className="ms-v">{total}</div></div>
-        <div className="mstat"><div className="ms-l">Unique Registered</div><div className="ms-v" style={{color:"#1D9E75"}}>{registered}</div></div>
-        <div className="mstat"><div className="ms-l">Pending</div><div className="ms-v" style={{color:"#BA7517"}}>{pending}</div></div>
-        <div className="mstat"><div className="ms-l">Need Encoding</div><div className="ms-v" style={{color:"#A32D2D"}}>{needEncoding}</div></div>
+        <div className="mstat"><div className="ms-l">{t.cust_total}</div><div className="ms-v">{total}</div></div>
+        <div className="mstat"><div className="ms-l">{t.cust_unique_registered}</div><div className="ms-v" style={{color:"#1D9E75"}}>{registered}</div></div>
+        <div className="mstat"><div className="ms-l">{t.cust_status_pending}</div><div className="ms-v" style={{color:"#BA7517"}}>{pending}</div></div>
+        <div className="mstat"><div className="ms-l">{t.cust_need_encoding}</div><div className="ms-v" style={{color:"#A32D2D"}}>{needEncoding}</div></div>
       </div>
-      <input placeholder="Search username, name, phone, 7/11 code..." value={query} onChange={e=>setQuery(e.target.value)} className="search-inp" style={{maxWidth:320}}/>
+      <input placeholder={t.cust_search_ph} value={query} onChange={e=>setQuery(e.target.value)} className="search-inp" style={{maxWidth:320}}/>
       <div className="table-card">
         <table className="tbl">
-          <thead><tr><th>#</th><th>TikTok username</th><th>Name</th><th>Phone number</th><th>7/11 code</th><th>Status</th></tr></thead>
+          <thead><tr><th>#</th><th>{t.cust_col_username}</th><th>{t.name_col}</th><th>{t.phone_label}</th><th>{t.cust_col_seven}</th><th>{t.status_col}</th></tr></thead>
           <tbody>
-            {filtered.length===0&&<tr><td colSpan={6} style={{textAlign:"center",padding:32,color:"#888"}}>No customers yet. Buyers are added here automatically when you 1-click or set a price on the Live page.</td></tr>}
+            {filtered.length===0&&<tr><td colSpan={6} style={{textAlign:"center",padding:32,color:"#888"}}>{t.cust_empty}</td></tr>}
             {filtered.map((r,i)=>{const s=regStatus(r);return(
               <tr key={r.username}>
                 <td className="muted">{r.num??i+1}</td>
-                <td><button type="button" className="inline-link" onClick={()=>openEncode(r)}>@{r.username}</button>{r.isNew&&s==="Not Registered"&&<>{" "}<Badge label="New" color="purple"/></>}</td>
+                <td><button type="button" className="inline-link" onClick={()=>openEncode(r)}>@{r.username}</button>{r.isNew&&s==="Not Registered"&&<>{" "}<Badge label={t.cust_badge_new} color="purple"/></>}</td>
                 <td>{r.name||<span className="muted">—</span>}</td>
                 <td className="mono">{r.phone||<span className="muted">—</span>}</td>
                 <td className="mono">{r.sevenCode||<span className="muted">—</span>}</td>
-                <td><Badge label={s} color={statusColor(s)}/></td>
+                <td><Badge label={statusLabel(s)} color={statusColor(s)}/></td>
               </tr>
             );})}
           </tbody>
@@ -1732,16 +1733,16 @@ function CustomerDataPage({user}:{user:User}){
       {editing&&(
         <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setEditUser(null)}>
           <div className="modal" style={{maxWidth:420}}>
-            <div className="modal-hd"><span>Encode Customer · @{editing.username}</span><button onClick={()=>setEditUser(null)} className="modal-x">×</button></div>
+            <div className="modal-hd"><span>{t.cust_encode_title} · @{editing.username}</span><button onClick={()=>setEditUser(null)} className="modal-x">×</button></div>
             <form onSubmit={saveEncode} className="modal-body">
-              <Fg label="Username TikTok / FB 帳號 *"><input value={form.username} onChange={e=>setForm(f=>({...f,username:e.target.value}))} placeholder="mine301520"/></Fg>
-              <Fg label="Name 取件人姓名 (real name) *"><input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="錢蘭 / Maria Santos" autoFocus/></Fg>
-              <Fg label="Phone number 取件人手機 *"><input value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value.replace(/[^\d]/g,"")}))} inputMode="numeric" placeholder="09xxxxxxxx"/></Fg>
-              <Fg label="7/11 code 取件門市 (6 digits) *"><input value={form.sevenCode} onChange={e=>setForm(f=>({...f,sevenCode:e.target.value.replace(/[^\d]/g,"").slice(0,6)}))} inputMode="numeric" placeholder="123456"/></Fg>
+              <Fg label={t.cust_field_username}><input value={form.username} onChange={e=>setForm(f=>({...f,username:e.target.value}))} placeholder="mine301520"/></Fg>
+              <Fg label={t.cust_field_name}><input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="錢蘭 / Maria Santos" autoFocus/></Fg>
+              <Fg label={t.cust_field_phone}><input value={form.phone} onChange={e=>setForm(f=>({...f,phone:e.target.value.replace(/[^\d]/g,"")}))} inputMode="numeric" placeholder="09xxxxxxxx"/></Fg>
+              <Fg label={t.cust_field_seven}><input value={form.sevenCode} onChange={e=>setForm(f=>({...f,sevenCode:e.target.value.replace(/[^\d]/g,"").slice(0,6)}))} inputMode="numeric" placeholder="123456"/></Fg>
               {err&&<p style={{color:"#A32D2D",fontSize:13,margin:"4px 0 0"}}>{err}</p>}
               <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:8}}>
-                <button type="button" className="btn-out" onClick={()=>setEditUser(null)}>Cancel</button>
-                <button type="submit" className="btn-purple">Save</button>
+                <button type="button" className="btn-out" onClick={()=>setEditUser(null)}>{t.cancel_btn}</button>
+                <button type="submit" className="btn-purple">{t.save_btn}</button>
               </div>
             </form>
           </div>
@@ -1751,7 +1752,7 @@ function CustomerDataPage({user}:{user:User}){
   );
 }
 
-function CommentArchive({comments}:{comments:Comment[]}){
+function CommentArchive({comments,t}:{comments:Comment[];t:T}){
   const [q,setQ]=useState("");
   const query=q.trim().toLowerCase();
   const filtered=comments.filter(c=>{
@@ -1765,13 +1766,13 @@ function CommentArchive({comments}:{comments:Comment[]}){
   return(
     <div className="table-card">
       <div className="table-title" style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
-        <span>Comment archive ({comments.length})</span>
-        <input className="search-inp" style={{maxWidth:220}} value={q} onChange={e=>setQ(e.target.value)} placeholder="Search old comments..."/>
+        <span>{t.arch_title} ({comments.length})</span>
+        <input className="search-inp" style={{maxWidth:220}} value={q} onChange={e=>setQ(e.target.value)} placeholder={t.arch_search_ph}/>
       </div>
       <table className="tbl">
-        <thead><tr><th>Name</th><th>Username</th><th>Platform</th><th>Comment</th><th>Time</th></tr></thead>
+        <thead><tr><th>{t.name_col}</th><th>{t.username_col}</th><th>{t.platform_label}</th><th>{t.comment_label}</th><th>{t.time_col}</th></tr></thead>
         <tbody>
-          {filtered.length===0&&<tr><td colSpan={5} style={{textAlign:"center",padding:24,color:"#888"}}>No archived comments yet</td></tr>}
+          {filtered.length===0&&<tr><td colSpan={5} style={{textAlign:"center",padding:24,color:"#888"}}>{t.arch_empty}</td></tr>}
           {filtered.map(c=>(
             <tr key={`${c.platform}-${c.handle}-${c.timestamp||c.time}-${c.comment}`}>
               <td><div style={{display:"flex",alignItems:"center",gap:8}}><Av name={c.name} size={26}/><strong>{c.name}</strong></div></td>
@@ -3911,8 +3912,8 @@ export default function App(){
   // new password before anything else. onDone clears the flag → login screen.
   if(recoveryMode)return <ResetPasswordPage onDone={()=>setRecoveryMode(false)}/>;
   if(!user)return <PublicAuth onLogin={handleLogin} t={t} lang={lang} setLang={setLang}/>;
-  if(!isAdminUser(user)&&user.planStatus==="pending")return <PendingApprovalWall user={user} onLogout={handleLogout}/>;
-  if(accountGate)return <AccountGate user={user} onContinue={continueSavedAccount} onSwitch={switchAccount}/>;
+  if(!isAdminUser(user)&&user.planStatus==="pending")return <PendingApprovalWall user={user} onLogout={handleLogout} t={t}/>;
+  if(accountGate)return <AccountGate user={user} onContinue={continueSavedAccount} onSwitch={switchAccount} t={t}/>;
 
   const isLive=ttOn||fbOn;
   const mobileMinerQuery=mobileMinerSearch.trim().toLowerCase();
@@ -3927,7 +3928,7 @@ export default function App(){
   const showMobileBack=["settings","subscription","support","admin","privacy","terms","deleteAccount","shipping"].includes(page);
   const navItems:[Page,string,string][]=[
     ["dashboard","⚡",t.nav_live],["miners","🏅",t.nav_miners],["orders","🛒",t.nav_orders],
-    ["products","📦",t.nav_products],["customers","👥",t.nav_customers],["customerData","📋","Customer Data"],["print","🖨️",t.nav_print],["sales","📊",t.nav_sales],
+    ["products","📦",t.nav_products],["customers","👥",t.nav_customers],["customerData","📋",t.cust_data_title],["print","🖨️",t.nav_print],["sales","📊",t.nav_sales],
   ];
   const navClass=(id:Page)=>`nav-it ${page===id?"on":""}`;
 
@@ -3970,11 +3971,11 @@ export default function App(){
         {navItems.slice(0,3).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={navClass(id)}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
         <div className="nav-sec-lbl">{t.nav_manage}</div>
         {navItems.slice(3,7).filter(([id])=>isAdminUser(user)||id!=="customerData").map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={navClass(id)}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
-        {isAdminUser(user)&&<button onClick={()=>setPage("shipping")} className={navClass("shipping")}><span className="nav-ic">🚚</span><span className="nav-lb">Shipping</span></button>}
+        {isAdminUser(user)&&<button onClick={()=>setPage("shipping")} className={navClass("shipping")}><span className="nav-ic">🚚</span><span className="nav-lb">{t.nav_shipping}</span></button>}
         <div className="nav-sec-lbl">{t.nav_analytics}</div>
         {navItems.slice(7).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={navClass(id)}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
-        <button onClick={()=>setPage("support")} className={`nav-it ${page==="support"?"on":""}`}><span className="nav-ic">💬</span><span className="nav-lb">Support</span></button>
-        {isAdminUser(user)&&(()=>{const adminAlertCount=pendingUsersCount+expiringSoonCount;return <button onClick={()=>setPage("admin")} className={`nav-it ${page==="admin"?"on":""}`}><span className="nav-ic">👑</span><span className="nav-lb">Admin</span>{adminAlertCount>0&&<span className="nav-alert-badge" title={`${pendingUsersCount} pending approval${pendingUsersCount===1?"":"s"}, ${expiringSoonCount} expiring within 24h`}>{adminAlertCount>9?"9+":adminAlertCount}</span>}</button>;})()}
+        <button onClick={()=>setPage("support")} className={`nav-it ${page==="support"?"on":""}`}><span className="nav-ic">💬</span><span className="nav-lb">{t.support_label}</span></button>
+        {isAdminUser(user)&&(()=>{const adminAlertCount=pendingUsersCount+expiringSoonCount;return <button onClick={()=>setPage("admin")} className={`nav-it ${page==="admin"?"on":""}`}><span className="nav-ic">👑</span><span className="nav-lb">{t.admin_label}</span>{adminAlertCount>0&&<span className="nav-alert-badge" title={`${pendingUsersCount} pending approval${pendingUsersCount===1?"":"s"}, ${expiringSoonCount} expiring within 24h`}>{adminAlertCount>9?"9+":adminAlertCount}</span>}</button>;})()}
         <button onClick={()=>setPage("settings")} className={navClass("settings")} style={{marginTop:"auto"}}><span className="nav-ic">⚙️</span><span className="nav-lb">{t.nav_settings}</span></button>
         <div className="trial-box">
           {isFreeUser?(()=>{
@@ -4228,8 +4229,8 @@ export default function App(){
 
         {page==="orders"&&<Orders orders={allOrders} setOrders={setAllOrders} onPersist={orders=>LS.set(sellerMemoryKey("sf_orders"),orders)} cur={settings.currency} t={t}/>}
         {page==="products"&&<Products cur={settings.currency} t={t}/>}
-        {page==="customers"&&<><Customers buyers={buyers} cur={settings.currency} t={t}/><CommentArchive comments={archivedComments}/></>}
-        {page==="customerData"&&isAdminUser(user)&&<CustomerDataPage user={user}/>}
+        {page==="customers"&&<><Customers buyers={buyers} cur={settings.currency} t={t}/><CommentArchive comments={archivedComments} t={t}/></>}
+        {page==="customerData"&&isAdminUser(user)&&<CustomerDataPage user={user} t={t}/>}
         {page==="print"&&<PrintPage buyers={buyers} cur={settings.currency} storeName={user.profile.storeName||"SellerFlowLive"} settings={settings} t={t}/>}
         {page==="sales"&&<Sales orders={allOrders} buyers={buyers} cur={settings.currency} t={t}/>}
         {page==="shipping"&&isAdminUser(user)&&<Shipping user={user} t={t}/>}
