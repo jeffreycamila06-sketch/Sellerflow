@@ -1260,7 +1260,7 @@ function Orders({orders,setOrders,onPersist,cur,t}:{orders:LiveOrder[];setOrders
             return <button key={key} onClick={()=>setFilt(key)} className={`ftab ${filt===key?"on":""}`}>{l} ({c[key as keyof typeof c]??c.all})</button>;
           })}
         </div>
-        <input placeholder="Search..." value={q} onChange={e=>setQ(e.target.value)} className="search-inp" style={{marginLeft:"auto",maxWidth:180}}/>
+        <input placeholder={t.orders_search_ph} value={q} onChange={e=>setQ(e.target.value)} className="search-inp" style={{marginLeft:"auto",maxWidth:180}}/>
       </div>
       <div className="table-card">
         <table className="tbl">
@@ -1276,7 +1276,7 @@ function Orders({orders,setOrders,onPersist,cur,t}:{orders:LiveOrder[];setOrders
                 <td><strong>{cur}{o.total.toLocaleString()}</strong></td>
                 <td><Badge label={o.platform} color={o.platform==="TikTok"?"purple":"green"}/></td>
                 <td className="muted" style={{fontSize:11}}>{o.time}</td>
-                <td><select value={o.status} onChange={e=>upStat(i,e.target.value)} className="stat-sel" style={{background:o.status==="Printed"?"#E1F5EE":o.status==="New"?"#EEEDFE":"#FAEEDA"}}><option>New</option><option>Printed</option><option>Waiting</option></select></td>
+                <td><select value={o.status} onChange={e=>upStat(i,e.target.value)} className="stat-sel" style={{background:o.status==="Printed"?"#E1F5EE":o.status==="New"?"#EEEDFE":"#FAEEDA"}}><option value="New">{t.filter_new}</option><option value="Printed">{t.filter_printed}</option><option value="Waiting">{t.filter_waiting}</option></select></td>
               </tr>
             ))}
           </tbody>
@@ -1488,7 +1488,7 @@ function Shipping({user,t}:{user:User;t:T}){
       persist(shipments.map(s=>ids.has(s.id)?{...s,status:"shipped" as const}:s));
       setMsg(`${t.ship_exported} ${openToday.length} ${openToday.length===1?t.ship_buyer_singular:t.ship_buyer_plural}.`);
     }catch(error){
-      setErr(`Export failed: ${error instanceof Error?error.message:"unknown error"}`);
+      setErr(`${t.ship_export_failed} ${error instanceof Error?error.message:t.ship_unknown_error}`);
     }
   }
 
@@ -1499,10 +1499,10 @@ function Shipping({user,t}:{user:User;t:T}){
     <div className="subpage">
       <div className="subpage-hd">
         <div>
-          <h2>Shipping</h2>
+          <h2>{t.nav_shipping}</h2>
           <p>{t.ship_subtitle}</p>
         </div>
-        <button className="btn-out" onClick={exportXlsx} disabled={!openToday.length}>⬇ Export Excel (.xlsx)</button>
+        <button className="btn-out" onClick={exportXlsx} disabled={!openToday.length}>⬇ {t.ship_export_excel}</button>
       </div>
       <div className="grid4">
         <div className="mstat"><div className="ms-l">{t.ship_open_shipments}</div><div className="ms-v">{openToday.length}</div></div>
@@ -1799,8 +1799,8 @@ function PrintPage({buyers,cur,storeName,settings,t}:{buyers:Buyer[];cur:string;
         <button className="btn-purple" onClick={()=>buyers.forEach(b=>doPrint(b))}>🖨 {t.print_all} ({buyers.length})</button>
       </div>
       <div className="notice-box" style={{background:"#EEF",border:"1px solid #AFA9EC",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#534AB7",marginBottom:4}}>
-        {settings.printerType==="bluetooth"?"Bluetooth printer: pair it in Windows or phone settings first. On laptop/desktop, make sure it appears as a normal printer and choose it in the print dialog or set it as default for direct print.":t.printer_usb_note}
-        &nbsp;· Sticker: {settings.stickerSize}mm
+        {settings.printerType==="bluetooth"?t.print_bt_note:t.printer_usb_note}
+        &nbsp;· {t.set_format_sticker}: {settings.stickerSize}mm
       </div>
       <div className="grid4" style={{gridTemplateColumns:"repeat(3,1fr)"}}>
         <div className="mstat"><div className="ms-l">{t.buyers_stat}</div><div className="ms-v">{buyers.length}</div></div>
@@ -1809,7 +1809,7 @@ function PrintPage({buyers,cur,storeName,settings,t}:{buyers:Buyer[];cur:string;
       </div>
       <div className="table-card">
         <table className="tbl">
-          <thead><tr><th>#</th><th>Name</th><th>Username</th><th>{t.orders_col}</th><th>Total</th><th>Platform</th><th></th></tr></thead>
+          <thead><tr><th>#</th><th>{t.name_col}</th><th>{t.username_col}</th><th>{t.orders_col}</th><th>{t.total_label}</th><th>{t.platform_label}</th><th></th></tr></thead>
           <tbody>
             {buyers.length===0&&<tr><td colSpan={7} style={{textAlign:"center",padding:32,color:"#888"}}>{t.no_buyers_print}</td></tr>}
             {buyers.map(b=>(
@@ -1844,7 +1844,7 @@ function Sales({orders,buyers,cur,t}:{orders:LiveOrder[];buyers:Buyer[];cur:stri
     <div className="subpage">
       <div className="subpage-hd">
         <div><h2>{t.nav_sales}</h2><p>{t.sales_sub}</p></div>
-        <button className="btn-out" onClick={()=>csvDL(`sales-${new Date().toISOString().slice(0,10)}.csv`,[t.order_num,"Buyer",t.item_col,t.qty_col,t.total_col,t.platform_label,t.time_col],orders.map(o=>[`#SF${o.orderNum}`,o.name,o.item,o.qty,`${cur}${o.total}`,o.platform,o.time]))}>⬇ {t.export_csv}</button>
+        <button className="btn-out" onClick={()=>csvDL(`sales-${new Date().toISOString().slice(0,10)}.csv`,[t.order_num,t.sales_csv_buyer,t.item_col,t.qty_col,t.total_col,t.platform_label,t.time_col],orders.map(o=>[`#SF${o.orderNum}`,o.name,o.item,o.qty,`${cur}${o.total}`,o.platform,o.time]))}>⬇ {t.export_csv}</button>
       </div>
       <div className="grid4">
         <div className="mstat"><div className="ms-l">{t.revenue_stat}</div><div className="ms-v" style={{fontSize:22,color:"#1D9E75"}}>{cur}{tot.toLocaleString()}</div></div>
@@ -1854,12 +1854,12 @@ function Sales({orders,buyers,cur,t}:{orders:LiveOrder[];buyers:Buyer[];cur:stri
       </div>
       <div className="grid2">
         <div className="table-card"><div className="table-title">{t.top_products}</div>
-          <table className="tbl"><thead><tr><th>Item</th><th>{t.units_sold}</th><th>{t.revenue_stat}</th></tr></thead>
+          <table className="tbl"><thead><tr><th>{t.item_col}</th><th>{t.units_sold}</th><th>{t.revenue_stat}</th></tr></thead>
             <tbody>{top.length===0&&<tr><td colSpan={3} style={{textAlign:"center",padding:24,color:"#888"}}>{t.no_sales}</td></tr>}{top.map(([item,d])=><tr key={item}><td><strong>{item}</strong></td><td>{d.qty}</td><td><strong style={{color:"#1D9E75"}}>{cur}{d.rev.toLocaleString()}</strong></td></tr>)}</tbody>
           </table>
         </div>
         <div className="table-card"><div className="table-title">{t.revenue_platform}</div>
-          <table className="tbl"><thead><tr><th>Platform</th><th>Orders</th><th>{t.revenue_stat}</th><th>{t.share_col}</th></tr></thead>
+          <table className="tbl"><thead><tr><th>{t.platform_label}</th><th>{t.orders_col}</th><th>{t.revenue_stat}</th><th>{t.share_col}</th></tr></thead>
             <tbody>
               <tr><td><Badge label="TikTok" color="purple"/></td><td>{orders.filter(o=>o.platform==="TikTok").length}</td><td><strong>{cur}{ttR.toLocaleString()}</strong></td><td>{tot?Math.round(ttR/tot*100):0}%</td></tr>
               <tr><td><Badge label="Facebook" color="green"/></td><td>{orders.filter(o=>o.platform==="Facebook").length}</td><td><strong>{cur}{fbR.toLocaleString()}</strong></td><td>{tot?Math.round(fbR/tot*100):0}%</td></tr>

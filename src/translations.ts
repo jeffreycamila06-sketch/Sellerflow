@@ -438,6 +438,13 @@ const BASE_TRANSLATIONS = {
     pending_access_after:"Access starts only after approval.",
     pending_refresh:"Refresh status",
     nav_shipping:"Shipping",
+    // ── Phase 2c: Shipping + Sales + Orders + Print ──
+    orders_search_ph:"Search...",
+    ship_export_excel:"Export Excel (.xlsx)",
+    ship_export_failed:"Export failed:",
+    ship_unknown_error:"unknown error",
+    print_bt_note:"Bluetooth printer: pair it in Windows or phone settings first. On laptop/desktop, make sure it appears as a normal printer and choose it in the print dialog or set it as default for direct print.",
+    sales_csv_buyer:"Buyer",
   },
   fil: {
     nav_live:"Live", nav_miners:"Miners", nav_orders:"Mga Order", nav_products:"Produkto",
@@ -856,6 +863,13 @@ const BASE_TRANSLATIONS = {
     pending_access_after:"Magsisimula ang access pagkatapos lang ng approval.",
     pending_refresh:"I-refresh ang status",
     nav_shipping:"Shipping",
+    // ── Phase 2c: Shipping + Sales + Orders + Print ──
+    orders_search_ph:"Maghanap...",
+    ship_export_excel:"I-export ang Excel (.xlsx)",
+    ship_export_failed:"Nabigo ang export:",
+    ship_unknown_error:"hindi alam na error",
+    print_bt_note:"Bluetooth printer: i-pair muna ito sa Windows o phone settings. Sa laptop/desktop, siguraduhing lumalabas ito bilang normal na printer at piliin ito sa print dialog o gawing default para sa direct print.",
+    sales_csv_buyer:"Buyer",
   },
   zh: {
     nav_live:"直播", nav_miners:"买家", nav_orders:"订单", nav_products:"产品",
@@ -1274,6 +1288,13 @@ const BASE_TRANSLATIONS = {
     pending_access_after:"批准后才能开始使用。",
     pending_refresh:"刷新状态",
     nav_shipping:"发货",
+    // ── Phase 2c: Shipping + Sales + Orders + Print ──
+    orders_search_ph:"搜索...",
+    ship_export_excel:"导出 Excel (.xlsx)",
+    ship_export_failed:"导出失败：",
+    ship_unknown_error:"未知错误",
+    print_bt_note:"蓝牙打印机：请先在 Windows 或手机设置中配对。在笔记本/台式机上，确保它显示为普通打印机，并在打印对话框中选择它或将其设为直接打印的默认打印机。",
+    sales_csv_buyer:"买家",
   },
   vi: {
     nav_live:"Trực tiếp", nav_miners:"Người mua", nav_orders:"Đơn hàng", nav_products:"Sản phẩm",
@@ -1692,6 +1713,13 @@ const BASE_TRANSLATIONS = {
     pending_access_after:"Quyền truy cập chỉ bắt đầu sau khi được phê duyệt.",
     pending_refresh:"Làm mới trạng thái",
     nav_shipping:"Vận chuyển",
+    // ── Phase 2c: Shipping + Sales + Orders + Print ──
+    orders_search_ph:"Tìm kiếm...",
+    ship_export_excel:"Xuất Excel (.xlsx)",
+    ship_export_failed:"Xuất thất bại:",
+    ship_unknown_error:"lỗi không xác định",
+    print_bt_note:"Máy in Bluetooth: hãy ghép nối trong cài đặt Windows hoặc điện thoại trước. Trên laptop/máy bàn, đảm bảo nó hiển thị như một máy in thông thường và chọn nó trong hộp thoại in hoặc đặt làm mặc định để in trực tiếp.",
+    sales_csv_buyer:"Người mua",
   },
 };
 
@@ -2253,6 +2281,13 @@ const THAI_TRANSLATIONS: T = {
   pending_access_after:"การเข้าใช้งานจะเริ่มหลังจากได้รับอนุมัติเท่านั้น",
   pending_refresh:"รีเฟรชสถานะ",
   nav_shipping:"การจัดส่ง",
+  // ── Phase 2c: Shipping + Sales + Orders + Print ──
+  orders_search_ph:"ค้นหา...",
+  ship_export_excel:"ส่งออก Excel (.xlsx)",
+  ship_export_failed:"ส่งออกล้มเหลว:",
+  ship_unknown_error:"ข้อผิดพลาดที่ไม่รู้จัก",
+  print_bt_note:"เครื่องพิมพ์ Bluetooth: จับคู่ในการตั้งค่า Windows หรือมือถือก่อน บนแล็ปท็อป/เดสก์ท็อป ตรวจสอบว่าปรากฏเป็นเครื่องพิมพ์ปกติ แล้วเลือกในกล่องโต้ตอบการพิมพ์ หรือตั้งเป็นค่าเริ่มต้นสำหรับการพิมพ์โดยตรง",
+  sales_csv_buyer:"ผู้ซื้อ",
 };
 
 const INDONESIAN_TRANSLATIONS: T = {
@@ -2811,6 +2846,13 @@ const INDONESIAN_TRANSLATIONS: T = {
   pending_access_after:"Akses baru dimulai setelah disetujui.",
   pending_refresh:"Segarkan status",
   nav_shipping:"Pengiriman",
+  // ── Phase 2c: Shipping + Sales + Orders + Print ──
+  orders_search_ph:"Cari...",
+  ship_export_excel:"Ekspor Excel (.xlsx)",
+  ship_export_failed:"Ekspor gagal:",
+  ship_unknown_error:"kesalahan tidak diketahui",
+  print_bt_note:"Printer Bluetooth: sambungkan di pengaturan Windows atau ponsel terlebih dahulu. Di laptop/desktop, pastikan muncul sebagai printer biasa dan pilih di dialog cetak atau jadikan default untuk cetak langsung.",
+  sales_csv_buyer:"Pembeli",
 };
 
 // Traditional Chinese (繁體中文) for Taiwan. Spreads the English base, then
@@ -3254,6 +3296,13 @@ const ZH_TW_TRANSLATIONS: T = {
   pending_access_after:"核准後才能開始使用。",
   pending_refresh:"重新整理狀態",
   nav_shipping:"出貨",
+  // ── Phase 2c: Shipping + Sales + Orders + Print ──
+  orders_search_ph:"搜尋...",
+  ship_export_excel:"匯出 Excel (.xlsx)",
+  ship_export_failed:"匯出失敗：",
+  ship_unknown_error:"未知錯誤",
+  print_bt_note:"藍牙印表機：請先在 Windows 或手機設定中配對。在筆電/桌機上，確保它顯示為一般印表機，並在列印對話框中選擇它，或將其設為直接列印的預設印表機。",
+  sales_csv_buyer:"買家",
 };
 
 export const TRANSLATIONS: Record<Lang,T> = {
