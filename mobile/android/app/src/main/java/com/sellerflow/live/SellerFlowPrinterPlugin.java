@@ -39,7 +39,10 @@ public class SellerFlowPrinterPlugin extends Plugin {
     private static final String PREF_BT_NAME = "bt_label_name";
     private static final int DEFAULT_PORT = 9100;
     private static final int CONNECT_TIMEOUT_MS = 5000;
-    private static final Charset PRINTER_CHARSET = Charset.forName("GBK");
+    // Receipt printer (XP-N160II) resident character set is Big5 (Traditional
+    // Chinese, confirmed on its self-test page) -- NOT GBK. The AIMO TSPL sticker
+    // path is a DIFFERENT printer and stays GBK (TsplBuilder has its own encoding).
+    private static final Charset PRINTER_CHARSET = Charset.forName("Big5");
     // Classic Bluetooth SPP (Serial Port Profile) UUID — universal for ESC/POS
     // and TSPL thermal/label printers. AIMO D520BT, Xprinter, GP-, RPP all use this.
     private static final UUID SPP_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
@@ -62,6 +65,12 @@ public class SellerFlowPrinterPlugin extends Plugin {
      * dead-code path). Recompile APK -> reinstall -> reprint to compare sizes.
      */
     public static final int ESC_POS_IMPORTANT_SIZE = 0x11;
+
+    // Order item/comment size on the receipt: 0x11 = 2W x 2H -- same prominence
+    // as the buyer name, so the item is the most readable line on the slip. Only
+    // the item uses this; Qty/Price/Total stay normal. GS ! n: high nibble =
+    // vertical scale-1, low nibble = horizontal scale-1. Mirrors the iOS constant.
+    public static final int ESC_POS_ORDER_SIZE = 0x11;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
@@ -507,27 +516,24 @@ public class SellerFlowPrinterPlugin extends Plugin {
                 JSONObject order = orders.optJSONObject(i);
                 if (order == null) continue;
 
-                out.setCharSize(ESC_POS_IMPORTANT_SIZE);                // === IMPORTANT ===
-                out.bold(true);
-                out.text("Order #" + order.optInt("orderNum", i + 1));
-                out.bold(false);
+                out.setCharSize(ESC_POS_ORDER_SIZE);                    // === 2x (2Wx2H) -- item only ===
                 out.text(order.optString("item", ""));
+                out.setCharSize(0x00);                                  // === normal -- order details ===
                 out.text("Qty: " + order.optInt("qty", 1));
                 double price = order.optDouble("price", 0);
                 double total = order.optDouble("total", price);
                 if (price > 0) out.text("Price: " + currency + " " + money(price));
                 if (total > 0) out.text("Total: " + currency + " " + money(total));
-                out.setCharSize(0x00);                                  // === END IMPORTANT ===
 
                 String time = order.optString("time", "");
                 if (!time.isEmpty()) out.text(time);                    // normal -- timestamp
                 out.line();                                             // normal -- divider
             }
         } else {
-            out.setCharSize(ESC_POS_IMPORTANT_SIZE);                    // === IMPORTANT ===
-            out.text("Order:");
+            out.text("Order:");                                        // normal -- label
+            out.setCharSize(ESC_POS_ORDER_SIZE);                        // === 2x (2Wx2H) -- comment ===
             out.text(buyer.optString("lastComment", buyer.optString("comment", "")));
-            out.setCharSize(0x00);                                      // === END IMPORTANT ===
+            out.setCharSize(0x00);                                      // === normal ===
             out.line();
         }
 
@@ -552,9 +558,19 @@ public class SellerFlowPrinterPlugin extends Plugin {
 
     private static class EscPos {
         private final ByteArrayOutputStream out = new ByteArrayOutputStream();
+        // One reusable encoder for the Big5-encodability test in text(). A print
+        // job runs single-threaded, so reuse is safe.
+        private final java.nio.charset.CharsetEncoder charsetEncoder = PRINTER_CHARSET.newEncoder();
 
         void init() {
-            write(0x1B, 0x40);
+            write(0x1B, 0x40);   // ESC @ -- reset to power-on defaults
+            // FS & -- enter Kanji/Chinese double-byte mode so the printer renders
+            // the GBK bytes with its internal Chinese font ROM (covers Traditional
+            // + Simplified). Without it the XP-N160II reads each GBK byte as a
+            // single-byte PC437 char and prints garbage. This is the ESC/POS analog
+            // of the TSPL sticker selecting a Chinese font (TSS24.BF2) per line.
+            // iOS receipt init sends the identical byte for parity.
+            write(0x1C, 0x26);   // FS &
         }
 
         void alignLeft() {
@@ -577,9 +593,27 @@ public class SellerFlowPrinterPlugin extends Plugin {
 
         void text(String text) {
             if (text == null) text = "";
-            byte[] bytes = text.getBytes(PRINTER_CHARSET);
+            byte[] bytes = stripUnencodable(text).getBytes(PRINTER_CHARSET);
             out.write(bytes, 0, bytes.length);
             out.write(0x0A);
+        }
+
+        // Drop any codepoint the receipt charset (Big5) cannot encode -- emoji,
+        // flags (regional-indicator pairs), ZWJ, variation selectors, and any
+        // non-Big5 symbol -- BEFORE encoding, so they never reach the printer as
+        // '?' or garbage. ASCII and Traditional Chinese are Big5-encodable and
+        // pass through untouched. Iterating by codepoint (not char) removes every
+        // half of a surrogate-pair emoji and every joiner, leaving no fragment.
+        private String stripUnencodable(String s) {
+            StringBuilder sb = new StringBuilder(s.length());
+            int i = 0;
+            while (i < s.length()) {
+                int cp = s.codePointAt(i);
+                String ch = new String(Character.toChars(cp));
+                if (charsetEncoder.canEncode(ch)) sb.append(ch);
+                i += Character.charCount(cp);
+            }
+            return sb.toString();
         }
 
         void line() {

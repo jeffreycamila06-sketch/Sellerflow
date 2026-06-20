@@ -1948,6 +1948,11 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
     void btCall<BluetoothScanResult>("getBluetoothLabelPrinter").then(r=>{if(r?.savedPrinter)setBtSavedPrinter(r.savedPrinter);});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[bridgeHasBt]);
+  // Hide the receipt size + position tuning UI on iOS: the iOS native ESC/POS
+  // print uses fixed sizes (verified), so these controls never affect the actual
+  // printout there. Reuses main.tsx's body.platform-ios hook (Capacitor iOS app
+  // or ?ios dev param); Android and web keep the controls (class never set).
+  const isIOSPlatform = typeof document!=="undefined" && document.body.classList.contains("platform-ios");
   const previewMove=(x:number|undefined,y:number|undefined)=>({transform:`translate(${(x||0)*1.8}px,${(y||0)*1.8}px)`});
   const stepSetting=(key:NumberSettingKey,delta:number)=>setSets(s=>({...s,[key]:Math.max(-40,Math.min(40,Number(s[key]||0)+delta))}));
   const stepSize=(key:NumberSettingKey,delta:number)=>setSets(s=>({...s,[key]:Math.max(60,Math.min(180,Number(s[key]||100)+delta))}));
@@ -2255,6 +2260,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
               <option value="60x40">60x40mm</option>
             </select>
           </Fg>
+          {!isIOSPlatform && <>
           <div className="printer-preview-box">
             <div className="printer-preview-title">Print output preview</div>
             <div className="printer-preview-slip">
@@ -2307,6 +2313,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
               ["printOrderY","Order items up / down"],
             ] as [NumberSettingKey,string][]).map(([k,label])=>positionStep(k,label))}
           </div>
+          </>}
           <div className="scard-title" style={{marginTop:10}}>Printer output</div>
           {([
             ["printStoreName","Store name"],

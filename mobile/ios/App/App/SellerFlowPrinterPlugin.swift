@@ -52,6 +52,12 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
     /// in `mobile/android/.../SellerFlowPrinterPlugin.java` -- keep both in sync.
     public static let ESC_POS_IMPORTANT_SIZE: UInt8 = 0x11
 
+    /// Order item/comment size on the receipt: 0x11 = 2W x 2H -- same prominence
+    /// as the buyer name, so the item is the most readable line on the slip. Only
+    /// the item uses this; Qty/Price/Total stay normal. Mirrors the Android
+    /// constant `ESC_POS_ORDER_SIZE`.
+    public static let ESC_POS_ORDER_SIZE: UInt8 = 0x11
+
     // MARK: - load(): inject window.SellerFlowPrinter JS shim
     //
     // Mirrors mobile/android/.../MainActivity.injectPrinterBridge. The web
@@ -352,15 +358,20 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         var out = Data()
         func raw(_ bs: [UInt8]) { out.append(contentsOf: bs) }
         func text(_ s: String) {
-            // GBK encoding to match Android printer charset (Chinese thermal printers).
-            // GBK_95 matches Android's `Charset.forName("GBK")` exactly. (Previously
-            // this used GB_18030_2000 which is a superset and emits different bytes
-            // for non-BMP characters -- byte-for-byte parity with Android required GBK_95.)
-            let cfEnc = CFStringEncoding(CFStringEncodings.GBK_95.rawValue)
+            // Strip emoji / flags / ZWJ / variation-selectors BEFORE encoding so
+            // they never reach the Big5 encoder (no Big5 mapping -> garbage).
+            // Range-based stripEmoji is charset-agnostic and never touches ASCII or
+            // Chinese, so the receipt always keeps its real text.
+            let cleaned = stripEmoji(s)
+            // Big5 (Traditional Chinese) -- the XP-N160II receipt printer's resident
+            // character set (confirmed on its self-test page). This DIFFERS from the
+            // AIMO TSPL sticker path, which is GBK (a different printer); only the
+            // receipt encoder changes here -- gbkBytes() for the sticker stays GBK_95.
+            let cfEnc = CFStringEncoding(CFStringEncodings.big5.rawValue)
             let nsEnc = CFStringConvertEncodingToNSStringEncoding(cfEnc)
-            if let d = (s as NSString).data(using: nsEnc) {
+            if let d = (cleaned as NSString).data(using: nsEnc) {
                 out.append(d)
-            } else if let d = s.data(using: .utf8) {
+            } else if let d = cleaned.data(using: .utf8) {
                 out.append(d) // fallback
             }
             out.append(0x0A)
@@ -388,7 +399,12 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         }
 
         // init
-        raw([0x1B, 0x40])
+        raw([0x1B, 0x40])   // ESC @ -- reset to power-on defaults
+        // FS & -- enter Kanji/Chinese double-byte mode so the printer renders the
+        // GBK bytes with its internal Chinese font ROM. Without it the XP-N160II
+        // reads each GBK byte as single-byte PC437 and prints garbage. Byte-
+        // identical to Android EscPos.init() for parity.
+        raw([0x1C, 0x26])   // FS &
         alignCenter()
         bold(true); text(storeName); bold(false)                // normal -- header
         text("SellerFlowLive")                                   // normal -- subtitle
@@ -408,25 +424,24 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
 
         let orders = (buyer["orders"] as? [[String: Any]]) ?? []
         if !orders.isEmpty {
-            for (i, order) in orders.enumerated() {
-                setCharSize(Self.ESC_POS_IMPORTANT_SIZE)             // === 2x BLOCK ===
-                bold(true); text("Order #\(asInt(order["orderNum"]) ?? (i + 1))"); bold(false)
+            for order in orders {
+                setCharSize(Self.ESC_POS_ORDER_SIZE)                 // === 2x (2Wx2H) -- item only ===
                 text((order["item"] as? String) ?? "")
+                setCharSize(0x00)                                    // === normal -- order details ===
                 text("Qty: \(asInt(order["qty"]) ?? 1)")
                 let price = (order["price"] as? Double) ?? Double((order["price"] as? Int) ?? 0)
                 let total = (order["total"] as? Double) ?? Double((order["total"] as? Int) ?? 0)
                 if price > 0 { text("Price: \(currency) \(money(price))") }
                 if total > 0 { text("Total: \(currency) \(money(total))") }
-                setCharSize(0x00)                                    // === END 2x ===
 
                 if let t = order["time"] as? String, !t.isEmpty { text(t) }  // normal -- timestamp
                 line()                                                        // normal -- divider
             }
         } else {
-            setCharSize(Self.ESC_POS_IMPORTANT_SIZE)                 // === 2x BLOCK ===
-            text("Order:")
+            text("Order:")                                           // normal -- label
+            setCharSize(Self.ESC_POS_ORDER_SIZE)                     // === 2x (2Wx2H) -- comment ===
             text((buyer["lastComment"] as? String) ?? (buyer["comment"] as? String) ?? "")
-            setCharSize(0x00)                                        // === END 2x ===
+            setCharSize(0x00)                                        // === normal ===
             line()
         }
 
