@@ -353,16 +353,15 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         func raw(_ bs: [UInt8]) { out.append(contentsOf: bs) }
         func text(_ s: String) {
             // Strip emoji / flags / ZWJ / variation-selectors BEFORE encoding so
-            // they never reach the GBK encoder (they have no GBK mapping and would
-            // print as garbage). Reuses the same proven range-based stripEmoji as
-            // the sticker path -- it removes only emoji-class codepoints and never
-            // touches ASCII or Chinese, so the receipt always keeps its real text.
+            // they never reach the Big5 encoder (no Big5 mapping -> garbage).
+            // Range-based stripEmoji is charset-agnostic and never touches ASCII or
+            // Chinese, so the receipt always keeps its real text.
             let cleaned = stripEmoji(s)
-            // GBK encoding to match Android printer charset (Chinese thermal printers).
-            // GBK_95 matches Android's `Charset.forName("GBK")` exactly. (Previously
-            // this used GB_18030_2000 which is a superset and emits different bytes
-            // for non-BMP characters -- byte-for-byte parity with Android required GBK_95.)
-            let cfEnc = CFStringEncoding(CFStringEncodings.GBK_95.rawValue)
+            // Big5 (Traditional Chinese) -- the XP-N160II receipt printer's resident
+            // character set (confirmed on its self-test page). This DIFFERS from the
+            // AIMO TSPL sticker path, which is GBK (a different printer); only the
+            // receipt encoder changes here -- gbkBytes() for the sticker stays GBK_95.
+            let cfEnc = CFStringEncoding(CFStringEncodings.big5.rawValue)
             let nsEnc = CFStringConvertEncodingToNSStringEncoding(cfEnc)
             if let d = (cleaned as NSString).data(using: nsEnc) {
                 out.append(d)

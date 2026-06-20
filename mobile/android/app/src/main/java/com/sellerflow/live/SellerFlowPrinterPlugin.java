@@ -39,7 +39,10 @@ public class SellerFlowPrinterPlugin extends Plugin {
     private static final String PREF_BT_NAME = "bt_label_name";
     private static final int DEFAULT_PORT = 9100;
     private static final int CONNECT_TIMEOUT_MS = 5000;
-    private static final Charset PRINTER_CHARSET = Charset.forName("GBK");
+    // Receipt printer (XP-N160II) resident character set is Big5 (Traditional
+    // Chinese, confirmed on its self-test page) -- NOT GBK. The AIMO TSPL sticker
+    // path is a DIFFERENT printer and stays GBK (TsplBuilder has its own encoding).
+    private static final Charset PRINTER_CHARSET = Charset.forName("Big5");
     // Classic Bluetooth SPP (Serial Port Profile) UUID — universal for ESC/POS
     // and TSPL thermal/label printers. AIMO D520BT, Xprinter, GP-, RPP all use this.
     private static final UUID SPP_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
@@ -552,9 +555,9 @@ public class SellerFlowPrinterPlugin extends Plugin {
 
     private static class EscPos {
         private final ByteArrayOutputStream out = new ByteArrayOutputStream();
-        // One reusable encoder for the GBK-encodability test in text(). A print
+        // One reusable encoder for the Big5-encodability test in text(). A print
         // job runs single-threaded, so reuse is safe.
-        private final java.nio.charset.CharsetEncoder gbkEncoder = PRINTER_CHARSET.newEncoder();
+        private final java.nio.charset.CharsetEncoder charsetEncoder = PRINTER_CHARSET.newEncoder();
 
         void init() {
             write(0x1B, 0x40);   // ESC @ -- reset to power-on defaults
@@ -587,25 +590,24 @@ public class SellerFlowPrinterPlugin extends Plugin {
 
         void text(String text) {
             if (text == null) text = "";
-            byte[] bytes = stripNonGbk(text).getBytes(PRINTER_CHARSET);
+            byte[] bytes = stripUnencodable(text).getBytes(PRINTER_CHARSET);
             out.write(bytes, 0, bytes.length);
             out.write(0x0A);
         }
 
-        // Drop any codepoint the printer charset (GBK) cannot encode -- emoji,
-        // flags (regional-indicator pairs), ZWJ, variation selectors -- BEFORE
-        // encoding, so they never reach the printer as '?' or garbage. ASCII and
-        // Chinese are GBK-encodable and pass through untouched. Iterating by
-        // codepoint (not char) removes every half of a surrogate-pair emoji and
-        // every joiner, leaving no stray fragment. Mirrors the iOS text() filter
-        // so both platforms emit byte-for-byte identical GBK output.
-        private String stripNonGbk(String s) {
+        // Drop any codepoint the receipt charset (Big5) cannot encode -- emoji,
+        // flags (regional-indicator pairs), ZWJ, variation selectors, and any
+        // non-Big5 symbol -- BEFORE encoding, so they never reach the printer as
+        // '?' or garbage. ASCII and Traditional Chinese are Big5-encodable and
+        // pass through untouched. Iterating by codepoint (not char) removes every
+        // half of a surrogate-pair emoji and every joiner, leaving no fragment.
+        private String stripUnencodable(String s) {
             StringBuilder sb = new StringBuilder(s.length());
             int i = 0;
             while (i < s.length()) {
                 int cp = s.codePointAt(i);
                 String ch = new String(Character.toChars(cp));
-                if (gbkEncoder.canEncode(ch)) sb.append(ch);
+                if (charsetEncoder.canEncode(ch)) sb.append(ch);
                 i += Character.charCount(cp);
             }
             return sb.toString();
