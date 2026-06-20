@@ -358,10 +358,23 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             // for non-BMP characters -- byte-for-byte parity with Android required GBK_95.)
             let cfEnc = CFStringEncoding(CFStringEncodings.GBK_95.rawValue)
             let nsEnc = CFStringConvertEncodingToNSStringEncoding(cfEnc)
-            if let d = (s as NSString).data(using: nsEnc) {
+            // Drop any scalar GBK can't encode (emoji, flags, ZWJ, variation
+            // selectors) BEFORE encoding. Without this, a single non-GBK char
+            // makes NSString.data(using: GBK) return nil for the whole string,
+            // tripping the UTF-8 fallback below and printing garbage. ASCII and
+            // Chinese are GBK-encodable and pass through untouched; iterating
+            // unicodeScalars removes every half of a multi-scalar emoji/flag and
+            // every joiner with no leftover fragment. Mirrors Android's
+            // EscPos.stripNonGbk so both platforms emit identical GBK bytes.
+            var cleanScalars = String.UnicodeScalarView()
+            for scalar in s.unicodeScalars where (String(scalar) as NSString).data(using: nsEnc) != nil {
+                cleanScalars.append(scalar)
+            }
+            let cleaned = String(cleanScalars)
+            if let d = (cleaned as NSString).data(using: nsEnc) {
                 out.append(d)
-            } else if let d = s.data(using: .utf8) {
-                out.append(d) // fallback
+            } else if let d = cleaned.data(using: .utf8) {
+                out.append(d) // fallback (unreachable now that non-GBK scalars are stripped)
             }
             out.append(0x0A)
         }

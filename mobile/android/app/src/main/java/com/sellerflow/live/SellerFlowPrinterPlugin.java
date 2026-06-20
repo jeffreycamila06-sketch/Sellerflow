@@ -552,6 +552,9 @@ public class SellerFlowPrinterPlugin extends Plugin {
 
     private static class EscPos {
         private final ByteArrayOutputStream out = new ByteArrayOutputStream();
+        // One reusable encoder for the GBK-encodability test in text(). A print
+        // job runs single-threaded, so reuse is safe.
+        private final java.nio.charset.CharsetEncoder gbkEncoder = PRINTER_CHARSET.newEncoder();
 
         void init() {
             write(0x1B, 0x40);
@@ -577,9 +580,28 @@ public class SellerFlowPrinterPlugin extends Plugin {
 
         void text(String text) {
             if (text == null) text = "";
-            byte[] bytes = text.getBytes(PRINTER_CHARSET);
+            byte[] bytes = stripNonGbk(text).getBytes(PRINTER_CHARSET);
             out.write(bytes, 0, bytes.length);
             out.write(0x0A);
+        }
+
+        // Drop any codepoint the printer charset (GBK) cannot encode -- emoji,
+        // flags (regional-indicator pairs), ZWJ, variation selectors -- BEFORE
+        // encoding, so they never reach the printer as '?' or garbage. ASCII and
+        // Chinese are GBK-encodable and pass through untouched. Iterating by
+        // codepoint (not char) removes every half of a surrogate-pair emoji and
+        // every joiner, leaving no stray fragment. Mirrors the iOS text() filter
+        // so both platforms emit byte-for-byte identical GBK output.
+        private String stripNonGbk(String s) {
+            StringBuilder sb = new StringBuilder(s.length());
+            int i = 0;
+            while (i < s.length()) {
+                int cp = s.codePointAt(i);
+                String ch = new String(Character.toChars(cp));
+                if (gbkEncoder.canEncode(ch)) sb.append(ch);
+                i += Character.charCount(cp);
+            }
+            return sb.toString();
         }
 
         void line() {
