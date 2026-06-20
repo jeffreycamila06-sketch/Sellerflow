@@ -1068,9 +1068,9 @@ function SubPage({user,t}:{user:User;onActivate:(plan:Plan,status:PlanStatus,exp
   const paidPlanPrices:Record<Exclude<Plan,"free"|"trial">,number>={basic:15,pro:25,master:40};
   const monthOptions=Array.from({length:12},(_,i)=>i+1);
   const plans=[
-    {id:"basic" as Plan,name:t.plan_basic,basePrice:15,period:t.plan_month,color:"#A855F7",desc:"Best for solo live sellers who want faster order processing.",features:["1 TikTok or Facebook Page","Fast live comment detection","1-click order creation","Auto customer information capture","Instant printing support","Sales tracking dashboard","Order history storage","Basic customer support","Mobile & desktop friendly"],bestFor:"Small sellers & beginners",action:"Select Basic Plan"},
-    {id:"pro" as Plan,name:t.plan_pro,basePrice:25,period:t.plan_month,color:"#A855F7",badge:t.plan_popular,desc:"For growing sellers managing multiple live pages.",features:["3 TikTok/Facebook Pages","Multi-page live streaming support","Can livestream all pages at once","Unlimited orders","Faster comment grabbing","Advanced sales analytics","Priority printing system","Customer management tools","Messenger-like support panel","Faster support response","Export reports","Smart live order workflow"],bestFor:"Full-time live sellers",action:"Upgrade to Pro"},
-    {id:"master" as Plan,name:t.plan_master,basePrice:40,period:t.plan_month,color:"#A855F7",desc:"Built for teams, agencies, and large live-selling businesses.",features:["5 TikTok/Facebook Pages","Simultaneous multi-live support","Unlimited orders","Ultra-fast comment detection","Team/admin management","Priority customer support","Advanced reporting dashboard","Staff access control","Dedicated seller tools","Faster live processing","Premium support","Future feature access","Scalable for large operations"],bestFor:"Teams & high-volume sellers",action:"Go Master"},
+    {id:"basic" as Plan,name:t.plan_basic,basePrice:15,period:t.plan_month,color:"#A855F7",desc:t.sub_basic_desc,features:t.sub_basic_features,bestFor:t.sub_basic_best,action:t.sub_basic_action},
+    {id:"pro" as Plan,name:t.plan_pro,basePrice:25,period:t.plan_month,color:"#A855F7",badge:t.plan_popular,desc:t.sub_pro_desc,features:t.sub_pro_features,bestFor:t.sub_pro_best,action:t.sub_pro_action},
+    {id:"master" as Plan,name:t.plan_master,basePrice:40,period:t.plan_month,color:"#A855F7",desc:t.sub_master_desc,features:t.sub_master_features,bestFor:t.sub_master_best,action:t.sub_master_action},
   ] as const;
   const selectedPaidPlan=sel&&sel!=="trial"?sel:null;
   const selectedMonths=selectedPaidPlan?planMonths[selectedPaidPlan]:1;
@@ -1084,7 +1084,7 @@ function SubPage({user,t}:{user:User;onActivate:(plan:Plan,status:PlanStatus,exp
   }
   return(
     <div className="subpage">
-      <div className="subpage-hd"><div><h2>Subscription Plans</h2><p>{t.plan_current}: <Badge label={pName(user.plan,t)} color={pColor(user.plan)}/> · {days>0?`${days} ${t.days_remaining}`:t.expired_label}</p></div></div>
+      <div className="subpage-hd"><div><h2>{t.sub_plans_title}</h2><p>{t.plan_current}: <Badge label={pName(user.plan,t)} color={pColor(user.plan)}/> · {days>0?`${days} ${t.days_remaining}`:t.expired_label}</p></div></div>
       {done&&<div className="auth-ok" style={{marginBottom:8}}>✓ {t.plan_activated}</div>}
 
       <div className="plans-grid">
@@ -1095,20 +1095,20 @@ function SubPage({user,t}:{user:User;onActivate:(plan:Plan,status:PlanStatus,exp
             <div className="plan-name">{p.name}</div>
             <div className="plan-price">
               <span className="plan-amt">{p.id==="trial"?"$0":`$${p.basePrice*planMonths[p.id]}`}</span>
-              <span className="plan-period">{p.id==="trial"?p.period:`/${planMonths[p.id]} ${planMonths[p.id]===1?"month":"months"}`}</span>
+              <span className="plan-period">{p.id==="trial"?p.period:`/${planMonths[p.id]} ${planMonths[p.id]===1?t.sub_month:t.sub_months}`}</span>
             </div>
             {p.id!=="trial"&&(
               <div className="plan-duration" onClick={e=>e.stopPropagation()}>
-                <label>Duration</label>
+                <label>{t.sub_duration}</label>
                 <select value={planMonths[p.id as Exclude<Plan,"free"|"trial">]} onChange={e=>updateMonths(p.id as Exclude<Plan,"free"|"trial">,Number(e.target.value))}>
-                  {monthOptions.map(month=><option key={month} value={month}>{month} {month===1?"month":"months"}</option>)}
+                  {monthOptions.map(month=><option key={month} value={month}>{month} {month===1?t.sub_month:t.sub_months}</option>)}
                 </select>
-                <span>${p.basePrice}/month</span>
+                <span>${p.basePrice}{t.plan_month}</span>
               </div>
             )}
             <div className="plan-desc minimal">{p.desc}</div>
             <ul className="plan-feature-list">{p.features.map(f=><li key={f}>{f}</li>)}</ul>
-            <div className="plan-best"><span>Best For</span><b>{p.bestFor}</b></div>
+            <div className="plan-best"><span>{t.sub_best_for}</span><b>{p.bestFor}</b></div>
             <div className="plan-sel-btn" style={sel===p.id&&user.plan!==p.id?{background:p.color,borderColor:p.color,color:"#fff"}:{borderColor:p.color,color:p.color}}>
               {user.plan===p.id?t.plan_current:sel===p.id?t.plan_selected:p.action}
             </div>
@@ -1124,8 +1124,8 @@ function SubPage({user,t}:{user:User;onActivate:(plan:Plan,status:PlanStatus,exp
               <div className="payment-box">
                 <p style={{marginBottom:10,color:"#5F5E5A"}}>{t.payment_info}</p>
                 <div className="payment-summary">
-                  <strong>{pName(sel,t)} - {selectedMonths} {selectedMonths===1?"month":"months"}</strong>
-                  <span>Total to pay: ${selectedTotal}</span>
+                  <strong>{pName(sel,t)} - {selectedMonths} {selectedMonths===1?t.sub_month:t.sub_months}</strong>
+                  <span>{t.sub_total_to_pay} ${selectedTotal}</span>
                 </div>
                 <div className="payment-detail"><span>👤</span><span>{t.payment_account}</span></div>
                 <div className="payment-detail"><span>🔢</span><span>{t.payment_number}</span></div>
@@ -1160,6 +1160,7 @@ function Products({cur,t}:{cur:string;t:T}){
   const [toast,setToast]=useState("");const [q,setQ]=useState("");
   const save=(p:Product[])=>{setProds(p);LS.set("sf_prods",p);};
   const stat=(s:number)=>s===0?"Out of stock":s<=5?"Low stock":"Active";
+  const statusLabel=(s:string):string=>s==="Active"?t.in_stock:s==="Low stock"?t.low_stock:t.out_of_stock;
   const openAdd=()=>{setForm({name:"",sku:"",price:"",stock:"",platform:"TikTok"});setEid(null);setShow(true);};
   const openEdit=(p:Product)=>{setForm({name:p.name,sku:p.sku,price:String(p.price),stock:String(p.stock),platform:p.platform});setEid(p.id);setShow(true);};
   const del=(id:number)=>{if(!confirm(t.confirm_delete))return;save(prods.filter(p=>p.id!==id));setToast(t.product_deleted);};
@@ -1222,7 +1223,7 @@ function Products({cur,t}:{cur:string;t:T}){
                 <td>{cur}{p.price.toLocaleString()}</td>
                 <td style={{color:p.stock===0?"#A32D2D":p.stock<=5?"#BA7517":"inherit",fontWeight:p.stock===0?700:400}}>{p.stock}</td>
                 <td>{p.platform}</td>
-                <td><Badge label={p.status} color={p.status==="Active"?"green":p.status==="Low stock"?"amber":"red"}/></td>
+                <td><Badge label={statusLabel(p.status)} color={p.status==="Active"?"green":p.status==="Low stock"?"amber":"red"}/></td>
                 <td><div style={{display:"flex",gap:5}}><button onClick={()=>openEdit(p)} className="tbl-btn ed">{t.edit_btn}</button><button onClick={()=>del(p.id)} className="tbl-btn dl">{t.delete_btn}</button></div></td>
               </tr>
             ))}
@@ -3316,7 +3317,7 @@ function ConnectModal({onClose,onConnect,user,t,initialTab="TikTok"}:{onClose:()
           {canUseExisting?(
             <div className="registered-account-picker">
               <div className="notice-box" style={{background:"#F5F4FF",border:"1px solid #D8D3FF",color:"#26215C"}}>
-                Select the registered {tab==="TikTok"?"TikTok account":"Facebook page"} for this live.
+                {tpl(t.conn_select_registered,{kind:tab==="TikTok"?t.set_tiktok_account:t.set_facebook_page})}
               </div>
               {registered.map(account=>(
                 <button
@@ -3330,7 +3331,7 @@ function ConnectModal({onClose,onConnect,user,t,initialTab="TikTok"}:{onClose:()
                 </button>
               ))}
             </div>
-          ):tab==="TikTok"?(<><div className="notice-box" style={{background:"#FFF8E1",border:"1px solid #F5DDA0",color:"#633806"}}>??{t.tt_warning}</div><Fg label="TikTok username (without @)"><input value={tiktokValue} onChange={e=>setTtu(e.target.value)} placeholder="e.g. duonglily_0708" disabled={!canAdd}/></Fg></>):(<><div className="notice-box" style={{background:"#E1F5EE",border:"1px solid #9FE1CB",color:"#0F6E56"}}>{t.fb_hint}</div><Fg label={t.fb_video_id}><input value={facebookValue} onChange={e=>setFbId(e.target.value)} disabled={!canAdd}/></Fg><Fg label={t.fb_token}><input value={fbTok} onChange={e=>setFbTok(e.target.value)} type="password" disabled={!canConnect}/></Fg></>)}
+          ):tab==="TikTok"?(<><div className="notice-box" style={{background:"#FFF8E1",border:"1px solid #F5DDA0",color:"#633806"}}>??{t.tt_warning}</div><Fg label={t.conn_tiktok_username_label}><input value={tiktokValue} onChange={e=>setTtu(e.target.value)} placeholder="e.g. duonglily_0708" disabled={!canAdd}/></Fg></>):(<><div className="notice-box" style={{background:"#E1F5EE",border:"1px solid #9FE1CB",color:"#0F6E56"}}>{t.fb_hint}</div><Fg label={t.fb_video_id}><input value={facebookValue} onChange={e=>setFbId(e.target.value)} disabled={!canAdd}/></Fg><Fg label={t.fb_token}><input value={fbTok} onChange={e=>setFbTok(e.target.value)} type="password" disabled={!canConnect}/></Fg></>)}
           <button onClick={connect} disabled={busy||!canConnect} className="btn-purple" style={{width:"100%",padding:"10px 0",marginTop:4}}>{busy?t.connecting:canConnect?`${t.connect_btn} ${tab}`:t.upgrade_to_connect}</button>
         </div>
       </div>
