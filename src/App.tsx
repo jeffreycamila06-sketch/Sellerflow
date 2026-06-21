@@ -2279,7 +2279,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
             </div>
           </div>
           )}
-          {!isStickerOutput && !isAndroidPlatform && (
+          {!isStickerOutput && !isIOSPlatform && !isAndroidPlatform && (
           <Fg label={t.printer_size}>
             <select value={sets.stickerSize} onChange={e=>setSets(s=>({...s,stickerSize:e.target.value}))}>
               <option value="100x60">{t.set_size_standard}</option>
