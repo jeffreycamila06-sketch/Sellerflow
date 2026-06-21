@@ -4,13 +4,12 @@ DIRECTION 1
 REFERENCE 0,0
 DENSITY 8
 CLS
-TEXT 16,10,"4",0,1,1,"SellerFlowLive"
+TEXT 16,10,"3",0,1,1,"SellerFlowLive"
 BAR 0,48,800,3
 TEXT 16,60,"3",0,1,1,"Shop"
 TEXT 16,95,"4",0,2,2,"Buyer #3"
 TEXT 16,190,"4",0,1,1,"Maria"
 TEXT 16,230,"3",0,1,1,"@maria_ph"
-BAR 0,380,800,3
 TEXT 16,395,"3",0,1,1,"Total:"
 TEXT 410,395,"4",0,2,1,"$99"
 PRINT 1

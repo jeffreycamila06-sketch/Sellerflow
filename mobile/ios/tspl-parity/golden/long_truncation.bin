@@ -4,8 +4,8 @@ DIRECTION 1
 REFERENCE 0,0
 DENSITY 8
 CLS
-TEXT 16,10,"4",0,1,1,"SellerFlowLive"
-TEXT 460,18,"2",0,1,1,"Session: A very long session da"
+TEXT 16,10,"3",0,1,1,"SellerFlowLive"
+TEXT 670,18,"2",0,1,1,"A very long "
 BAR 0,48,800,3
 TEXT 16,60,"3",0,1,1,"A store name that is definitely long"
 TEXT 16,95,"4",0,2,2,"Buyer #123"
@@ -16,7 +16,6 @@ TEXT 16,275,"2",0,1,1,"14:02:30 P"
 TEXT 180,275,"4",0,2,1,"A super long"
 TEXT 16,313,"2",0,1,1,"14:09"
 TEXT 180,313,"4",0,2,1,"Second order"
-BAR 0,380,800,3
 TEXT 16,395,"3",0,1,1,"Total:"
 TEXT 410,395,"4",0,2,1,"NT$12345.67"
 PRINT 1

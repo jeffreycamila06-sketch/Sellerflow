@@ -4,8 +4,8 @@ DIRECTION 1
 REFERENCE 0,0
 DENSITY 8
 CLS
-TEXT 16,10,"4",0,1,1,"SellerFlowLive"
-TEXT 220,18,"2",0,1,1,"Session: June 18, 2026"
+TEXT 16,10,"3",0,1,1,"SellerFlowLive"
+TEXT 430,18,"2",0,1,1,"June 18, 202"
 BAR 0,48,560,3
 TEXT 16,60,"3",0,1,1,"My Shop"
 TEXT 16,95,"4",0,2,2,"Buyer #7"
@@ -14,7 +14,6 @@ TEXT 16,230,"3",0,1,1,"@maria_s"
 BAR 16,265,280,2
 TEXT 16,275,"2",0,1,1,"14:02"
 TEXT 180,275,"4",0,2,1,"150"
-BAR 0,300,560,3
 TEXT 16,315,"3",0,1,1,"Total:"
 TEXT 170,315,"4",0,2,1,"NT$250"
 PRINT 1
