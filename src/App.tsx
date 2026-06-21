@@ -1966,6 +1966,12 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   // printout there. Reuses main.tsx's body.platform-ios hook (Capacitor iOS app
   // or ?ios dev param); Android and web keep the controls (class never set).
   const isIOSPlatform = typeof document!=="undefined" && document.body.classList.contains("platform-ios");
+  // Sticker output (BT TSPL or LAN sticker) prints fixed TSPL fonts/coords —
+  // the size dropdown + per-field size/position tuning don't reach it (only
+  // the on/off "Printer output" toggles do). Hide those inert controls in
+  // sticker mode (same rationale as the iOS fixed-size hide); the receipt /
+  // browser-print path keeps them.
+  const isStickerOutput = sets.printerType==="bluetooth" || sets.lanFormat==="sticker";
   const previewMove=(x:number|undefined,y:number|undefined)=>({transform:`translate(${(x||0)*1.8}px,${(y||0)*1.8}px)`});
   const stepSetting=(key:NumberSettingKey,delta:number)=>setSets(s=>({...s,[key]:Math.max(-40,Math.min(40,Number(s[key]||0)+delta))}));
   const stepSize=(key:NumberSettingKey,delta:number)=>setSets(s=>({...s,[key]:Math.max(60,Math.min(180,Number(s[key]||100)+delta))}));
@@ -2266,6 +2272,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
             </div>
           </div>
           )}
+          {!isStickerOutput && (
           <Fg label={t.printer_size}>
             <select value={sets.stickerSize} onChange={e=>setSets(s=>({...s,stickerSize:e.target.value}))}>
               <option value="100x60">{t.set_size_standard}</option>
@@ -2273,7 +2280,8 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
               <option value="60x40">60x40mm</option>
             </select>
           </Fg>
-          {!isIOSPlatform && <>
+          )}
+          {!isIOSPlatform && !isStickerOutput && <>
           <div className="printer-preview-box">
             <div className="printer-preview-title">{t.set_preview_title}</div>
             <div className="printer-preview-slip">
