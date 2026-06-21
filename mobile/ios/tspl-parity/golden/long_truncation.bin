@@ -13,9 +13,9 @@ TEXT 16,190,"4",0,1,1,"A very long buyer name that ex"
 TEXT 16,230,"3",0,1,1,"@averylonghandlethatexceedsthir"
 BAR 16,265,520,2
 TEXT 16,275,"2",0,1,1,"14:02:30 P"
-TEXT 180,275,"3",0,1,1,"A super long product item name"
+TEXT 180,275,"4",0,2,1,"A super long"
 TEXT 16,313,"2",0,1,1,"14:09"
-TEXT 180,313,"3",0,1,1,"Second order item also fairly "
+TEXT 180,313,"4",0,2,1,"Second order"
 BAR 0,380,800,3
 TEXT 16,395,"3",0,1,1,"Total:"
 TEXT 410,395,"4",0,2,1,"NT$12345.67"
