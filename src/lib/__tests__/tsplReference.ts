@@ -107,14 +107,16 @@ export function buildTsplStickerReference(
   const writeAscii = (s: string) => {
     out.push(...asciiBytes(s), ...CRLF);
   };
-  const writeTextSmart = (x: number, y: number, asciiFont: string, content: string) => {
+  // xMul/yMul default to 1 so existing callers stay byte-identical; applied to
+  // both the ASCII and TSS24.BF2 (CJK) paths. Mirrors TsplBuilder.writeTextSmart.
+  const writeTextSmart = (x: number, y: number, asciiFont: string, content: string, xMul = 1, yMul = 1) => {
     if (!hasNonAscii(content)) {
-      writeAscii(`TEXT ${x},${y},"${asciiFont}",0,1,1,"${content}"`);
+      writeAscii(`TEXT ${x},${y},"${asciiFont}",0,${xMul},${yMul},"${content}"`);
       return;
     }
-    const maxChars = Math.max(1, Math.floor((784 - x) / 24));
+    const maxChars = Math.max(1, Math.floor((784 - x) / (24 * xMul)));
     const fitted = truncate(content, maxChars);
-    out.push(...asciiBytes(`TEXT ${x},${y},"TSS24.BF2",0,1,1,"`));
+    out.push(...asciiBytes(`TEXT ${x},${y},"TSS24.BF2",0,${xMul},${yMul},"`));
     out.push(...gbk(fitted));
     out.push(...asciiBytes(`"`), ...CRLF);
   };
@@ -193,7 +195,9 @@ export function buildTsplStickerReference(
         writeAscii(`TEXT 16,${y},"2",0,1,1,"${safe(truncate(time, 10))}"`);
       }
       if (cleanItem) {
-        writeTextSmart(180, y, "3", safe(truncate(cleanItem, 30)));
+        // Buyer's short price code -> same size as the grand Total amount:
+        // font "4", 2x width, 1x height. truncate(12) guards the column width.
+        writeTextSmart(180, y, "4", safe(truncate(cleanItem, 12)), 2, 1);
       }
       y += 38;
     }

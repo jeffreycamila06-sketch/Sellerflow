@@ -210,9 +210,14 @@ class TsplBuilder {
                     writeAscii(out, "TEXT 16," + y + ",\"2\",0,1,1,\"" + safe(truncate(time, 10)) + "\"");
                 }
                 if (!cleanItem.isEmpty()) {
-                    // Item column: x=180..~780. Pushed out from x=130 so
-                    // even a full "HH:MM:SS PM" time can't bleed into it.
-                    writeTextSmart(out, 180, y, "3", safe(truncate(cleanItem, 30)));
+                    // Item column: x=180..~780. The "item" is the buyer's short
+                    // price code (e.g. 150/250/600), so render it at the SAME
+                    // size as the grand Total amount below — font "4", 2x width,
+                    // 1x height (xMul=2 only; 2x height would overlap the y=380
+                    // footer bar). truncate(12) is a width guard: ~12 chars fit
+                    // the 604-dot column at font 4 2x, so a longer-than-expected
+                    // code clips instead of overrunning x=784.
+                    writeTextSmart(out, 180, y, "4", safe(truncate(cleanItem, 12)), 2, 1);
                 }
                 y += 38;
             }
@@ -314,22 +319,31 @@ class TsplBuilder {
      * (CJK prints as '?' — same as pre-fix behaviour, never a crash).
      */
     private static void writeTextSmart(ByteArrayOutputStream out, int x, int y, String asciiFont, String content) {
+        writeTextSmart(out, x, y, asciiFont, content, 1, 1);
+    }
+
+    // Variant with explicit TSPL multipliers (xMul, yMul). Applied to BOTH the
+    // ASCII font path and the TSS24.BF2 (CJK) path so an enlarged field renders
+    // the same for English and Chinese. The no-multiplier overload above keeps
+    // existing callers (storeName/buyerName/username) byte-identical at 1,1.
+    private static void writeTextSmart(ByteArrayOutputStream out, int x, int y, String asciiFont, String content, int xMul, int yMul) {
         if (!hasNonAscii(content)) {
-            writeAscii(out, "TEXT " + x + "," + y + ",\"" + asciiFont + "\",0,1,1,\"" + content + "\"");
+            writeAscii(out, "TEXT " + x + "," + y + ",\"" + asciiFont + "\",0," + xMul + "," + yMul + ",\"" + content + "\"");
             return;
         }
         try {
             // Conservative width clamp: treat every char as full-width 24
-            // dots so mixed ASCII+CJK strings can never overrun x=784.
-            int maxChars = Math.max(1, (784 - x) / 24);
+            // dots times the horizontal multiplier so mixed ASCII+CJK strings
+            // can never overrun x=784.
+            int maxChars = Math.max(1, (784 - x) / (24 * xMul));
             String fitted = truncate(content, maxChars);
-            String prefix = "TEXT " + x + "," + y + ",\"TSS24.BF2\",0,1,1,\"";
+            String prefix = "TEXT " + x + "," + y + ",\"TSS24.BF2\",0," + xMul + "," + yMul + ",\"";
             writeBytes(out, prefix.getBytes(StandardCharsets.US_ASCII));
             writeBytes(out, fitted.getBytes("GBK"));
             writeBytes(out, "\"".getBytes(StandardCharsets.US_ASCII));
             writeBytes(out, CRLF);
         } catch (java.io.UnsupportedEncodingException e) {
-            writeAscii(out, "TEXT " + x + "," + y + ",\"" + asciiFont + "\",0,1,1,\"" + content + "\"");
+            writeAscii(out, "TEXT " + x + "," + y + ",\"" + asciiFont + "\",0," + xMul + "," + yMul + ",\"" + content + "\"");
         }
     }
 

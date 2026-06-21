@@ -601,7 +601,11 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                     writeAscii("TEXT 16,\(y),\"2\",0,1,1,\"\(tsplSafe(truncate16(time, 10)))\"")
                 }
                 if !cleanItem.isEmpty {
-                    writeTextSmart(&out, 180, y, "3", tsplSafe(truncate16(cleanItem, 30)))
+                    // Buyer's short price code (e.g. 150/250/600) -> SAME size as
+                    // the grand Total amount: font "4", 2x width, 1x height
+                    // (2x height would overlap the y=380 footer bar). truncate(12)
+                    // guards the 604-dot column width at font 4 2x.
+                    writeTextSmart(&out, 180, y, "4", tsplSafe(truncate16(cleanItem, 12)), 2, 1)
                 }
                 y += 38
                 i += 1
@@ -628,20 +632,28 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
     /// printable width from its x origin (CJK glyphs are ~24 dots wide). If GBK
     /// is unavailable, falls back to the ASCII path. Mirrors TsplBuilder.writeTextSmart.
     private func writeTextSmart(_ out: inout Data, _ x: Int, _ y: Int, _ asciiFont: String, _ content: String) {
+        writeTextSmart(&out, x, y, asciiFont, content, 1, 1)
+    }
+
+    /// Variant with explicit TSPL multipliers (xMul, yMul), applied to BOTH the
+    /// ASCII and TSS24.BF2 (CJK) paths so an enlarged field renders the same for
+    /// English and Chinese. The no-multiplier overload above keeps existing
+    /// callers byte-identical at 1,1. Mirrors TsplBuilder.writeTextSmart(...,xMul,yMul).
+    private func writeTextSmart(_ out: inout Data, _ x: Int, _ y: Int, _ asciiFont: String, _ content: String, _ xMul: Int, _ yMul: Int) {
         if !hasNonAscii(content) {
-            out.append(contentsOf: tsplAsciiBytes("TEXT \(x),\(y),\"\(asciiFont)\",0,1,1,\"\(content)\""))
+            out.append(contentsOf: tsplAsciiBytes("TEXT \(x),\(y),\"\(asciiFont)\",0,\(xMul),\(yMul),\"\(content)\""))
             out.append(contentsOf: [0x0D, 0x0A])
             return
         }
-        let maxChars = max(1, (784 - x) / 24)
+        let maxChars = max(1, (784 - x) / (24 * xMul))
         let fitted = truncate16(content, maxChars)
         if let gbk = gbkBytes(fitted) {
-            out.append(contentsOf: tsplAsciiBytes("TEXT \(x),\(y),\"TSS24.BF2\",0,1,1,\""))
+            out.append(contentsOf: tsplAsciiBytes("TEXT \(x),\(y),\"TSS24.BF2\",0,\(xMul),\(yMul),\""))
             out.append(contentsOf: gbk)
             out.append(contentsOf: tsplAsciiBytes("\""))
             out.append(contentsOf: [0x0D, 0x0A])
         } else {
-            out.append(contentsOf: tsplAsciiBytes("TEXT \(x),\(y),\"\(asciiFont)\",0,1,1,\"\(content)\""))
+            out.append(contentsOf: tsplAsciiBytes("TEXT \(x),\(y),\"\(asciiFont)\",0,\(xMul),\(yMul),\"\(content)\""))
             out.append(contentsOf: [0x0D, 0x0A])
         }
     }
