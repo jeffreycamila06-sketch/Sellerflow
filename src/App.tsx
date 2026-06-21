@@ -740,12 +740,12 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
     t.lp_inst_step5,
   ];
   const faqItems=[
-    ["Can sellers change their TikTok or Facebook account?","They can register the allowed account slots once. After saving, those accounts are locked and only admin can change them."],
-    ["What happens when a plan expires?","The seller can still open Support and Subscription, but selling tools are blocked until admin approves or upgrades the plan."],
-    ["Can I print without extra popups?","Yes. Turn on auto-print in Settings, adjust the printer output, then 1-click orders will print directly through the browser print flow."],
-    ["Where do payment proofs show?","Proof images appear inside the admin and seller support conversation bubbles so you can approve faster."],
-    ["Is the customer list searchable?","Yes. SellerFlowLive saves buyer/customer memory so sellers can search names, usernames, buyer numbers, orders, and totals."],
-    ["Who controls seller limits?","Admin controls plan, expiry, locked accounts, seller edits, password resets, and support approvals."],
+    [t.lp_faq_q1,t.lp_faq_a1],
+    [t.lp_faq_q2,t.lp_faq_a2],
+    [t.lp_faq_q3,t.lp_faq_a3],
+    [t.lp_faq_q4,t.lp_faq_a4],
+    [t.lp_faq_q5,t.lp_faq_a5],
+    [t.lp_faq_q6,t.lp_faq_a6],
   ];
   const monthOptions=Array.from({length:12},(_,i)=>i+1);
   const publicPlans=[
@@ -859,7 +859,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
       <section id="instructions" className="public-section public-instructions"><div className="public-section-head"><span>{t.lp_nav_instructions}</span><h2>{t.lp_inst_title}</h2><p>{t.lp_inst_sub}</p></div><div className="public-steps">{howSteps.map((step,i)=><button key={step} onClick={()=>i<2?jump("account"):jump("features")}><b>{i+1}</b><span>{step}</span></button>)}</div></section>
       <section id="pricing" className="public-section public-pricing-section"><div className="public-section-head"><span>{t.lp_nav_pricing}</span><h2>{t.lp_price_title}</h2><p>{t.lp_price_sub}</p></div><div className="public-pricing">{publicPlans.map((p,i)=>{const paid=p.basePrice>0;const months=paid?publicPlanMonths[p.id as Exclude<Plan,"free"|"trial">]:1;const price=paid?p.basePrice*months:p.basePrice;return <button key={p.name} className={p.popular?"popular":""} onClick={()=>{go(i===0?"reg":"login");jump("account")}}>{p.popular&&<small>{t.lp_price_popular}</small>}<span className="pricing-icon">{i+1}</span><strong>{p.name}</strong><b>${price}</b><span className="pricing-period">/{paid?`${months} ${months===1?t.sub_month:t.sub_months}`:p.period}</span>{paid&&<div className="public-plan-duration" onClick={e=>e.stopPropagation()}><span>{t.sub_duration}</span><select value={months} onChange={e=>setPublicPlanMonths(current=>({...current,[p.id]:Number(e.target.value)}))}>{monthOptions.map(month=><option key={month} value={month}>{month} {month===1?t.sub_month:t.sub_months}</option>)}</select><em>${p.basePrice}{t.plan_month}</em></div>}<p>{p.desc}</p><ul>{p.features.map(f=><li key={f}>{f}</li>)}</ul><div className="pricing-best"><span>{t.sub_best_for}</span><b>{p.bestFor}</b></div><em>{p.action}</em></button>})}</div></section>
       <section id="support-info" className="public-section public-support-band"><div><span>Support</span><h2>Handle seller complaints like Messenger</h2><p>Every seller can send a payment proof or support issue. Admin receives a compact chat thread, can approve, reject, resolve, reply, and see unread notifications.</p></div><button onClick={()=>{go("login");jump("account")}}>Open seller account</button></section>
-      <section id="faq" className="public-section"><div className="public-section-head"><span>FAQ</span><h2>Frequently asked questions</h2><p>Click a question to expand the answer.</p></div><div className="public-faq">{faqItems.map((item,i)=><button key={item[0]} className={openFaq===i?"open":""} onClick={()=>setOpenFaq(openFaq===i?-1:i)}><div><span>{i+1}</span><strong>{item[0]}</strong><b>{openFaq===i?"-":"+"}</b></div>{openFaq===i&&<p>{item[1]}</p>}</button>)}</div></section>
+      <section id="faq" className="public-section"><div className="public-section-head"><span>{t.lp_nav_faq}</span><h2>{t.lp_faq_title}</h2><p>{t.lp_faq_sub}</p></div><div className="public-faq">{faqItems.map((item,i)=><button key={item[0]} className={openFaq===i?"open":""} onClick={()=>setOpenFaq(openFaq===i?-1:i)}><div><span>{i+1}</span><strong>{item[0]}</strong><b>{openFaq===i?"-":"+"}</b></div>{openFaq===i&&<p>{item[1]}</p>}</button>)}</div></section>
       <section id="account" className="public-account"><div className="public-account-copy"><span>{t.lp_account_badge}</span><h2>{t.lp_account_title}</h2><p>{t.lp_account_sub}</p></div>{accountForm}</section>
       <footer className="public-footer"><div><strong>SellerFlowLive</strong><p>{t.lp_footer_tagline}</p></div><div><button onClick={()=>jump("features")}>{t.lp_nav_features}</button><button onClick={()=>jump("instructions")}>{t.lp_nav_instructions}</button><button onClick={()=>jump("pricing")}>{t.lp_nav_pricing}</button><button onClick={()=>openLegal("privacy")}>{t.lp_footer_privacy}</button><button onClick={()=>openLegal("terms")}>{t.terms_label}</button><button onClick={()=>jump("account")}>{t.lp_login}</button></div></footer>
     </div>
