@@ -1,14 +1,12 @@
 {
-  "labelWidthMm": 100,
-  "labelHeightMm": 60,
   "fixtures": [
-    "ascii_full",
-    "chinese",
-    "emoji_strip",
-    "pure_emoji_fallback",
-    "settings_off",
-    "long_truncation",
-    "quote_escape",
-    "minimal"
+    {"name": "ascii_full", "labelWidthMm": 100, "labelHeightMm": 60},
+    {"name": "chinese", "labelWidthMm": 100, "labelHeightMm": 60},
+    {"name": "emoji_strip", "labelWidthMm": 100, "labelHeightMm": 60},
+    {"name": "pure_emoji_fallback", "labelWidthMm": 100, "labelHeightMm": 60},
+    {"name": "settings_off", "labelWidthMm": 100, "labelHeightMm": 60},
+    {"name": "long_truncation", "labelWidthMm": 100, "labelHeightMm": 60},
+    {"name": "quote_escape", "labelWidthMm": 100, "labelHeightMm": 60},
+    {"name": "minimal", "labelWidthMm": 100, "labelHeightMm": 60}
   ]
 }

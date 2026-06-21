@@ -16,10 +16,14 @@ import { buildGbkEncoder } from "./gbk";
 // vitest runs from the repo root; golden fixtures live under mobile/ios/.
 const PARITY_DIR = join(process.cwd(), "mobile/ios/tspl-parity") + "/";
 
-interface Manifest {
+interface Fixture {
+  name: string;
   labelWidthMm: number;
   labelHeightMm: number;
-  fixtures: string[];
+}
+interface Manifest {
+  // PHASE 1: per-fixture label dimensions (100x60 + 80x60, the 60mm tier).
+  fixtures: Fixture[];
 }
 
 const manifest: Manifest = JSON.parse(readFileSync(`${PARITY_DIR}manifest.json`, "utf8"));
@@ -40,14 +44,14 @@ describe("TSPL sticker builder — byte parity with Android golden", () => {
     expect(manifest.fixtures.length).toBeGreaterThanOrEqual(8);
   });
 
-  for (const name of manifest.fixtures) {
-    it(`reproduces golden bytes for "${name}"`, () => {
-      const payload = readPayload(name);
-      const golden = readGolden(name);
+  for (const fx of manifest.fixtures) {
+    it(`reproduces golden bytes for "${fx.name}" (${fx.labelWidthMm}x${fx.labelHeightMm})`, () => {
+      const payload = readPayload(fx.name);
+      const golden = readGolden(fx.name);
       const built = buildTsplStickerReference(
         payload,
-        manifest.labelWidthMm,
-        manifest.labelHeightMm,
+        fx.labelWidthMm,
+        fx.labelHeightMm,
         gbk,
       );
       // Hex compare gives a readable diff (and pins length) on mismatch.
@@ -59,9 +63,9 @@ describe("TSPL sticker builder — byte parity with Android golden", () => {
 describe("TSPL golden integrity (independent of the reference builder)", () => {
   it("every golden is a well-formed TSPL stream", () => {
     const ascii = new TextDecoder("latin1");
-    for (const name of manifest.fixtures) {
-      const text = ascii.decode(readGolden(name));
-      expect(text.startsWith("SIZE 100 mm, 60 mm\r\n")).toBe(true);
+    for (const fx of manifest.fixtures) {
+      const text = ascii.decode(readGolden(fx.name));
+      expect(text.startsWith(`SIZE ${fx.labelWidthMm} mm, ${fx.labelHeightMm} mm\r\n`)).toBe(true);
       expect(text.endsWith("PRINT 1\r\n")).toBe(true);
       expect(text).toContain("CLS\r\n");
     }

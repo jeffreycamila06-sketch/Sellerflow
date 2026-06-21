@@ -548,12 +548,19 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         writeAscii("DENSITY 8")
         writeAscii("CLS")
 
+        // 8 dots/mm @ 203 DPI. PHASE 1 scales only the WIDTH-dependent layout
+        // (full-width rules, right-anchored session date + total amount, the
+        // separator, and the CJK clamp); the 60mm height tier keeps every y.
+        // 100x60 reproduces the original bytes exactly (wDots-340==460, etc).
+        let wDots = labelWidthMm * 8
+        let rightEdge = wDots - 16
+
         // Header row: brand at left, session date at right.
         writeAscii("TEXT 16,10,\"4\",0,1,1,\"SellerFlowLive\"")
         if !sessionDate.isEmpty {
-            writeAscii("TEXT 460,18,\"2\",0,1,1,\"Session: \(tsplSafe(truncate16(sessionDate, 22)))\"")
+            writeAscii("TEXT \(wDots - 340),18,\"2\",0,1,1,\"Session: \(tsplSafe(truncate16(sessionDate, 22)))\"")
         }
-        writeAscii("BAR 0,48,800,3")
+        writeAscii("BAR 0,48,\(wDots),3")
 
         // Strip unrenderable codepoints per field BEFORE the encoding decision.
         let cleanStoreName = stripEmoji(storeName)
@@ -566,7 +573,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
 
         var y = 60
         if printStoreName && !cleanStoreName.isEmpty {
-            writeTextSmart(&out, 16, y, "3", tsplSafe(truncate16(cleanStoreName, 36)))
+            writeTextSmart(&out, 16, y, "3", tsplSafe(truncate16(cleanStoreName, 36)), 1, 1, rightEdge)
             y += 35
         }
 
@@ -577,18 +584,18 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         }
 
         if !buyerNameToPrint.isEmpty {
-            writeTextSmart(&out, 16, y, "4", tsplSafe(truncate16(buyerNameToPrint, 30)))
+            writeTextSmart(&out, 16, y, "4", tsplSafe(truncate16(buyerNameToPrint, 30)), 1, 1, rightEdge)
             y += 40
         }
 
         if printBuyerUsername && !cleanBuyerHandle.isEmpty {
-            writeTextSmart(&out, 16, y, "3", "@" + tsplSafe(truncate16(cleanBuyerHandle, 30)))
+            writeTextSmart(&out, 16, y, "3", "@" + tsplSafe(truncate16(cleanBuyerHandle, 30)), 1, 1, rightEdge)
             y += 35
         }
 
         // Thin separator + order lines (capped at 2 so a 60mm label can't overflow).
         if printOrderItems && !orders.isEmpty && y < 350 {
-            writeAscii("BAR 16,\(y),520,2")
+            writeAscii("BAR 16,\(y),\(wDots - 280),2")
             y += 10
             let maxOrders = 2
             var i = 0
@@ -604,8 +611,8 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                     // Buyer's short price code (e.g. 150/250/600) -> SAME size as
                     // the grand Total amount: font "4", 2x width, 1x height
                     // (2x height would overlap the y=380 footer bar). truncate(12)
-                    // guards the 604-dot column width at font 4 2x.
-                    writeTextSmart(&out, 180, y, "4", tsplSafe(truncate16(cleanItem, 12)), 2, 1)
+                    // guards the column width at font 4 2x.
+                    writeTextSmart(&out, 180, y, "4", tsplSafe(truncate16(cleanItem, 12)), 2, 1, rightEdge)
                 }
                 y += 38
                 i += 1
@@ -613,11 +620,11 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         }
 
         // Footer divider + total, anchored to the bottom of the label.
-        writeAscii("BAR 0,380,800,3")
+        writeAscii("BAR 0,380,\(wDots),3")
         if printTotal && totalSpent > 0 {
             writeAscii("TEXT 16,395,\"3\",0,1,1,\"Total:\"")
             let totalStr = tsplSafe(currency) + tsplMoney(totalSpent)
-            writeAscii("TEXT 410,395,\"4\",0,2,1,\"\(tsplSafe(truncate16(totalStr, 18)))\"")
+            writeAscii("TEXT \(wDots - 390),395,\"4\",0,2,1,\"\(tsplSafe(truncate16(totalStr, 18)))\"")
         }
 
         writeAscii("PRINT 1")
@@ -631,21 +638,18 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
     /// Non-ASCII (Chinese) -> TSS24.BF2 + GBK bytes, re-truncated to the
     /// printable width from its x origin (CJK glyphs are ~24 dots wide). If GBK
     /// is unavailable, falls back to the ASCII path. Mirrors TsplBuilder.writeTextSmart.
-    private func writeTextSmart(_ out: inout Data, _ x: Int, _ y: Int, _ asciiFont: String, _ content: String) {
-        writeTextSmart(&out, x, y, asciiFont, content, 1, 1)
-    }
-
-    /// Variant with explicit TSPL multipliers (xMul, yMul), applied to BOTH the
+    /// Content-line writer with explicit TSPL multipliers (xMul, yMul) and a
+    /// width-dependent rightEdge for the CJK clamp. Multipliers apply to BOTH the
     /// ASCII and TSS24.BF2 (CJK) paths so an enlarged field renders the same for
-    /// English and Chinese. The no-multiplier overload above keeps existing
-    /// callers byte-identical at 1,1. Mirrors TsplBuilder.writeTextSmart(...,xMul,yMul).
-    private func writeTextSmart(_ out: inout Data, _ x: Int, _ y: Int, _ asciiFont: String, _ content: String, _ xMul: Int, _ yMul: Int) {
+    /// English and Chinese. rightEdge = wDots-16 so the clamp tracks the label
+    /// width (784 on 100mm, 624 on 80mm). Mirrors TsplBuilder.writeTextSmart.
+    private func writeTextSmart(_ out: inout Data, _ x: Int, _ y: Int, _ asciiFont: String, _ content: String, _ xMul: Int, _ yMul: Int, _ rightEdge: Int) {
         if !hasNonAscii(content) {
             out.append(contentsOf: tsplAsciiBytes("TEXT \(x),\(y),\"\(asciiFont)\",0,\(xMul),\(yMul),\"\(content)\""))
             out.append(contentsOf: [0x0D, 0x0A])
             return
         }
-        let maxChars = max(1, (784 - x) / (24 * xMul))
+        let maxChars = max(1, (rightEdge - x) / (24 * xMul))
         let fitted = truncate16(content, maxChars)
         if let gbk = gbkBytes(fitted) {
             out.append(contentsOf: tsplAsciiBytes("TEXT \(x),\(y),\"TSS24.BF2\",0,\(xMul),\(yMul),\""))

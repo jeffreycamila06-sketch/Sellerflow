@@ -22,10 +22,14 @@ import XCTest
 
 final class MobileTsplBuilderTests: XCTestCase {
 
-    private struct Manifest: Decodable {
+    // PHASE 1: per-fixture label dimensions (100x60 + 80x60, the 60mm tier).
+    private struct Fixture: Decodable {
+        let name: String
         let labelWidthMm: Int
         let labelHeightMm: Int
-        let fixtures: [String]
+    }
+    private struct Manifest: Decodable {
+        let fixtures: [Fixture]
     }
 
     /// mobile/ios/tspl-parity/ (this file lives in .../tspl-parity/swift/).
@@ -42,9 +46,9 @@ final class MobileTsplBuilderTests: XCTestCase {
         let manifest = try loadManifest()
         let plugin = SellerFlowPrinterPlugin()
 
-        for name in manifest.fixtures {
-            let payloadURL = parityDir.appendingPathComponent("payloads/\(name).json")
-            let goldenURL = parityDir.appendingPathComponent("golden/\(name).bin")
+        for fx in manifest.fixtures {
+            let payloadURL = parityDir.appendingPathComponent("payloads/\(fx.name).json")
+            let goldenURL = parityDir.appendingPathComponent("golden/\(fx.name).bin")
             let golden = try Data(contentsOf: goldenURL)
 
             let raw = try JSONSerialization.jsonObject(
@@ -58,13 +62,13 @@ final class MobileTsplBuilderTests: XCTestCase {
                 storeName: raw["storeName"] as? String ?? "SellerFlowLive",
                 currency: raw["currency"] as? String ?? "",
                 sessionDate: raw["sessionDate"] as? String ?? "",
-                labelWidthMm: manifest.labelWidthMm,
-                labelHeightMm: manifest.labelHeightMm
+                labelWidthMm: fx.labelWidthMm,
+                labelHeightMm: fx.labelHeightMm
             )
 
             XCTAssertEqual(
                 [UInt8](built), [UInt8](golden),
-                "TSPL byte mismatch for fixture \"\(name)\" "
+                "TSPL byte mismatch for fixture \"\(fx.name)\" "
                     + "(built \(built.count)B vs golden \(golden.count)B)"
             )
         }

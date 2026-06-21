@@ -107,14 +107,19 @@ export function buildTsplStickerReference(
   const writeAscii = (s: string) => {
     out.push(...asciiBytes(s), ...CRLF);
   };
-  // xMul/yMul default to 1 so existing callers stay byte-identical; applied to
-  // both the ASCII and TSS24.BF2 (CJK) paths. Mirrors TsplBuilder.writeTextSmart.
-  const writeTextSmart = (x: number, y: number, asciiFont: string, content: string, xMul = 1, yMul = 1) => {
+  // 8 dots/mm @ 203 DPI. PHASE 1 scales only WIDTH-dependent layout; the 60mm
+  // height tier keeps every y. 100x60 reproduces the original bytes exactly
+  // (wDots-340==460, wDots-390==410, wDots-16==784 at 800). Mirrors TsplBuilder.
+  const wDots = labelWidthMm * 8;
+  const rightEdge = wDots - 16;
+  // xMul/yMul multipliers + width-dependent rightEdge for the CJK clamp; applied
+  // to both the ASCII and TSS24.BF2 (CJK) paths. Mirrors TsplBuilder.writeTextSmart.
+  const writeTextSmart = (x: number, y: number, asciiFont: string, content: string, xMul: number, yMul: number) => {
     if (!hasNonAscii(content)) {
       writeAscii(`TEXT ${x},${y},"${asciiFont}",0,${xMul},${yMul},"${content}"`);
       return;
     }
-    const maxChars = Math.max(1, Math.floor((784 - x) / (24 * xMul)));
+    const maxChars = Math.max(1, Math.floor((rightEdge - x) / (24 * xMul)));
     const fitted = truncate(content, maxChars);
     out.push(...asciiBytes(`TEXT ${x},${y},"TSS24.BF2",0,${xMul},${yMul},"`));
     out.push(...gbk(fitted));
@@ -149,9 +154,9 @@ export function buildTsplStickerReference(
 
   writeAscii('TEXT 16,10,"4",0,1,1,"SellerFlowLive"');
   if (sessionDate) {
-    writeAscii(`TEXT 460,18,"2",0,1,1,"Session: ${safe(truncate(sessionDate, 22))}"`);
+    writeAscii(`TEXT ${wDots - 340},18,"2",0,1,1,"Session: ${safe(truncate(sessionDate, 22))}"`);
   }
-  writeAscii("BAR 0,48,800,3");
+  writeAscii(`BAR 0,48,${wDots},3`);
 
   const cleanStoreName = stripEmoji(storeName);
   const cleanBuyerName = stripEmoji(buyerName);
@@ -163,7 +168,7 @@ export function buildTsplStickerReference(
 
   let y = 60;
   if (printStoreName && cleanStoreName) {
-    writeTextSmart(16, y, "3", safe(truncate(cleanStoreName, 36)));
+    writeTextSmart(16, y, "3", safe(truncate(cleanStoreName, 36)), 1, 1);
     y += 35;
   }
 
@@ -173,17 +178,17 @@ export function buildTsplStickerReference(
   }
 
   if (buyerNameToPrint) {
-    writeTextSmart(16, y, "4", safe(truncate(buyerNameToPrint, 30)));
+    writeTextSmart(16, y, "4", safe(truncate(buyerNameToPrint, 30)), 1, 1);
     y += 40;
   }
 
   if (printBuyerUsername && cleanBuyerHandle) {
-    writeTextSmart(16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)));
+    writeTextSmart(16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)), 1, 1);
     y += 35;
   }
 
   if (printOrderItems && orders.length > 0 && y < 350) {
-    writeAscii(`BAR 16,${y},520,2`);
+    writeAscii(`BAR 16,${y},${wDots - 280},2`);
     y += 10;
     const maxOrders = 2;
     for (let i = 0; i < Math.min(orders.length, maxOrders) && y < 360; i++) {
@@ -203,11 +208,11 @@ export function buildTsplStickerReference(
     }
   }
 
-  writeAscii("BAR 0,380,800,3");
+  writeAscii(`BAR 0,380,${wDots},3`);
   if (printTotal && totalSpent > 0) {
     writeAscii('TEXT 16,395,"3",0,1,1,"Total:"');
     const totalStr = safe(currency) + money(totalSpent);
-    writeAscii(`TEXT 410,395,"4",0,2,1,"${safe(truncate(totalStr, 18))}"`);
+    writeAscii(`TEXT ${wDots - 390},395,"4",0,2,1,"${safe(truncate(totalStr, 18))}"`);
   }
 
   writeAscii("PRINT 1");

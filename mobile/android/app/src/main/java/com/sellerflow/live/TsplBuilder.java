@@ -145,12 +145,20 @@ class TsplBuilder {
         writeAscii(out, "DENSITY 8");
         writeAscii(out, "CLS");
 
+        // 8 dots/mm @ 203 DPI. PHASE 1 scales only the WIDTH-dependent layout:
+        // full-width rules, the right-anchored session date + total amount, the
+        // sub-section separator, and the CJK right-edge clamp. The 60mm height
+        // tier keeps every y coordinate, so 100x60 reproduces the original bytes
+        // exactly (wDots-340 == 460, wDots-390 == 410, wDots-16 == 784 at 800).
+        int wDots = labelWidthMm * 8;
+        int rightEdge = wDots - 16;
+
         // Header row: brand at left, session date at right.
         writeAscii(out, "TEXT 16,10,\"4\",0,1,1,\"SellerFlowLive\"");
         if (!sessionDate.isEmpty()) {
-            writeAscii(out, "TEXT 460,18,\"2\",0,1,1,\"Session: " + safe(truncate(sessionDate, 22)) + "\"");
+            writeAscii(out, "TEXT " + (wDots - 340) + ",18,\"2\",0,1,1,\"Session: " + safe(truncate(sessionDate, 22)) + "\"");
         }
-        writeAscii(out, "BAR 0,48,800,3");
+        writeAscii(out, "BAR 0,48," + wDots + ",3");
 
         // Strip unrenderable codepoints (emoji/flags/pictographs/ZWJ/VS) per
         // field BEFORE the encoding decision — otherwise GBK turns them into
@@ -168,7 +176,7 @@ class TsplBuilder {
 
         int y = 60;
         if (printStoreName && !cleanStoreName.isEmpty()) {
-            writeTextSmart(out, 16, y, "3", safe(truncate(cleanStoreName, 36)));
+            writeTextSmart(out, 16, y, "3", safe(truncate(cleanStoreName, 36)), 1, 1, rightEdge);
             y += 35;
         }
 
@@ -179,18 +187,18 @@ class TsplBuilder {
         }
 
         if (!buyerNameToPrint.isEmpty()) {
-            writeTextSmart(out, 16, y, "4", safe(truncate(buyerNameToPrint, 30)));
+            writeTextSmart(out, 16, y, "4", safe(truncate(buyerNameToPrint, 30)), 1, 1, rightEdge);
             y += 40;
         }
 
         if (printBuyerUsername && !cleanBuyerHandle.isEmpty()) {
-            writeTextSmart(out, 16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)));
+            writeTextSmart(out, 16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)), 1, 1, rightEdge);
             y += 35;
         }
 
         // Thin separator before the order lines so they read as a sub-section.
         if (printOrderItems && orders != null && orders.length() > 0 && y < 350) {
-            writeAscii(out, "BAR 16," + y + ",520,2");
+            writeAscii(out, "BAR 16," + y + "," + (wDots - 280) + ",2");
             y += 10;
             // Cap at 2 orders so the layout doesn't run off the bottom of a
             // 60mm label. The full order history is still on the web slip and
@@ -210,14 +218,13 @@ class TsplBuilder {
                     writeAscii(out, "TEXT 16," + y + ",\"2\",0,1,1,\"" + safe(truncate(time, 10)) + "\"");
                 }
                 if (!cleanItem.isEmpty()) {
-                    // Item column: x=180..~780. The "item" is the buyer's short
-                    // price code (e.g. 150/250/600), so render it at the SAME
+                    // Item column: x=180..rightEdge. The "item" is the buyer's
+                    // short price code (e.g. 150/250/600), rendered at the SAME
                     // size as the grand Total amount below — font "4", 2x width,
                     // 1x height (xMul=2 only; 2x height would overlap the y=380
-                    // footer bar). truncate(12) is a width guard: ~12 chars fit
-                    // the 604-dot column at font 4 2x, so a longer-than-expected
-                    // code clips instead of overrunning x=784.
-                    writeTextSmart(out, 180, y, "4", safe(truncate(cleanItem, 12)), 2, 1);
+                    // footer bar). truncate(12) is a width guard so a longer-
+                    // than-expected code clips instead of overrunning rightEdge.
+                    writeTextSmart(out, 180, y, "4", safe(truncate(cleanItem, 12)), 2, 1, rightEdge);
                 }
                 y += 38;
             }
@@ -225,11 +232,11 @@ class TsplBuilder {
 
         // Footer divider + total. Anchored to the bottom of the label so
         // variable-length content above doesn't shift it.
-        writeAscii(out, "BAR 0,380,800,3");
+        writeAscii(out, "BAR 0,380," + wDots + ",3");
         if (printTotal && totalSpent > 0) {
             writeAscii(out, "TEXT 16,395,\"3\",0,1,1,\"Total:\"");
             String totalStr = safe(currency) + money(totalSpent);
-            writeAscii(out, "TEXT 410,395,\"4\",0,2,1,\"" + safe(truncate(totalStr, 18)) + "\"");
+            writeAscii(out, "TEXT " + (wDots - 390) + ",395,\"4\",0,2,1,\"" + safe(truncate(totalStr, 18)) + "\"");
         }
 
         writeAscii(out, "PRINT 1");
@@ -318,24 +325,21 @@ class TsplBuilder {
      * If GBK is somehow unavailable, falls back to the legacy ASCII path
      * (CJK prints as '?' — same as pre-fix behaviour, never a crash).
      */
-    private static void writeTextSmart(ByteArrayOutputStream out, int x, int y, String asciiFont, String content) {
-        writeTextSmart(out, x, y, asciiFont, content, 1, 1);
-    }
-
-    // Variant with explicit TSPL multipliers (xMul, yMul). Applied to BOTH the
-    // ASCII font path and the TSS24.BF2 (CJK) path so an enlarged field renders
-    // the same for English and Chinese. The no-multiplier overload above keeps
-    // existing callers (storeName/buyerName/username) byte-identical at 1,1.
-    private static void writeTextSmart(ByteArrayOutputStream out, int x, int y, String asciiFont, String content, int xMul, int yMul) {
+    // Content-line writer with explicit TSPL multipliers (xMul, yMul) and a
+    // width-dependent rightEdge for the CJK clamp. Multipliers apply to BOTH the
+    // ASCII and TSS24.BF2 (CJK) paths so an enlarged field renders the same for
+    // English and Chinese. rightEdge = wDots-16 so the CJK width clamp tracks the
+    // actual label width (784 on 100mm, 624 on 80mm) instead of a hardcoded edge.
+    private static void writeTextSmart(ByteArrayOutputStream out, int x, int y, String asciiFont, String content, int xMul, int yMul, int rightEdge) {
         if (!hasNonAscii(content)) {
             writeAscii(out, "TEXT " + x + "," + y + ",\"" + asciiFont + "\",0," + xMul + "," + yMul + ",\"" + content + "\"");
             return;
         }
         try {
-            // Conservative width clamp: treat every char as full-width 24
-            // dots times the horizontal multiplier so mixed ASCII+CJK strings
-            // can never overrun x=784.
-            int maxChars = Math.max(1, (784 - x) / (24 * xMul));
+            // Conservative width clamp: treat every char as full-width 24 dots
+            // times the horizontal multiplier so mixed ASCII+CJK strings can
+            // never overrun the right edge of the label.
+            int maxChars = Math.max(1, (rightEdge - x) / (24 * xMul));
             String fitted = truncate(content, maxChars);
             String prefix = "TEXT " + x + "," + y + ",\"TSS24.BF2\",0," + xMul + "," + yMul + ",\"";
             writeBytes(out, prefix.getBytes(StandardCharsets.US_ASCII));

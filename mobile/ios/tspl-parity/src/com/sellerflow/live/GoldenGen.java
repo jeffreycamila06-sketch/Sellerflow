@@ -31,7 +31,12 @@ public final class GoldenGen {
     private static final class Fixture {
         final String name;
         final JSONObject payload;
-        Fixture(String name, JSONObject payload) { this.name = name; this.payload = payload; }
+        final int w;
+        final int h;
+        Fixture(String name, JSONObject payload) { this(name, payload, W, H); }
+        Fixture(String name, JSONObject payload, int w, int h) {
+            this.name = name; this.payload = payload; this.w = w; this.h = h;
+        }
     }
 
     public static void main(String[] args) throws IOException {
@@ -47,21 +52,23 @@ public final class GoldenGen {
 
         List<Fixture> fixtures = buildFixtures();
         StringBuilder manifest = new StringBuilder();
-        manifest.append("{\n  \"labelWidthMm\": ").append(W)
-                .append(",\n  \"labelHeightMm\": ").append(H)
-                .append(",\n  \"fixtures\": [\n");
+        // Per-fixture label dimensions: PHASE 1 covers two sizes in the 60mm
+        // height tier (100x60 + 80x60), so each fixture carries its own w/h.
+        manifest.append("{\n  \"fixtures\": [\n");
 
         for (int i = 0; i < fixtures.size(); i++) {
             Fixture f = fixtures.get(i);
-            byte[] bytes = TsplBuilder.forStickerNative(f.payload, W, H);
+            byte[] bytes = TsplBuilder.forStickerNative(f.payload, f.w, f.h);
 
             write(new File(payloadsDir, f.name + ".json"), f.payload.toString());
             Files.write(new File(goldenDir, f.name + ".bin").toPath(), bytes);
             write(new File(goldenDir, f.name + ".hex"), toHex(bytes));
 
-            manifest.append("    \"").append(f.name).append("\"");
+            manifest.append("    {\"name\": \"").append(f.name)
+                    .append("\", \"labelWidthMm\": ").append(f.w)
+                    .append(", \"labelHeightMm\": ").append(f.h).append("}");
             manifest.append(i < fixtures.size() - 1 ? ",\n" : "\n");
-            System.out.println(f.name + ": " + bytes.length + " bytes");
+            System.out.println(f.name + " (" + f.w + "x" + f.h + "): " + bytes.length + " bytes");
         }
         manifest.append("  ]\n}\n");
         write(new File(outDir, "manifest.json"), manifest.toString());
@@ -127,6 +134,24 @@ public final class GoldenGen {
         JSONObject minimal = new JSONObject();
         minimal.put("buyer", new JSONObject());
         list.add(new Fixture("minimal", minimal));
+
+        // 9. PHASE 1 second size — 80x60 (width-scaled, same 60mm height tier).
+        //    ASCII, all settings on; validates the width-parametric layout
+        //    (full-width rules, right-anchored session/total, separator).
+        list.add(new Fixture("ascii_full_80x60", payload(
+            "My Shop", "June 18, 2026", "NT$",
+            buyer(7, "Maria Santos", "maria_s", 250.0,
+                order("14:02", "Red Dress"),
+                order("14:05", "Blue Bag")),
+            settings(true, true, true, true, true)), 80, 60));
+
+        // 10. 80x60 with Chinese fields — exercises the width-scaled CJK clamp
+        //     (rightEdge = 80*8-16 = 624 instead of 784).
+        list.add(new Fixture("chinese_80x60", payload(
+            "小店", "2026-06-18", "NT$",
+            buyer(12, "陳小美", "meimei", 1280.5,
+                order("09:30", "紅色洋裝")),
+            settings(true, true, true, true, true)), 80, 60));
 
         return list;
     }

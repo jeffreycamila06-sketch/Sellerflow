@@ -292,7 +292,11 @@ public class SellerFlowPrinterPlugin extends Plugin {
                 JSONObject payload = jsPayload == null
                     ? new JSONObject()
                     : new JSONObject(jsPayload.toString());
-                byte[] tspl = TsplBuilder.forStickerNative(payload, LABEL_WIDTH_MM, LABEL_HEIGHT_MM);
+                // Label size comes from the web payload (parsed from the seller's
+                // stickerSize setting); fall back to the AIMO default if absent.
+                int labelWidthMm = payload.optInt("labelWidthMm", LABEL_WIDTH_MM);
+                int labelHeightMm = payload.optInt("labelHeightMm", LABEL_HEIGHT_MM);
+                byte[] tspl = TsplBuilder.forStickerNative(payload, labelWidthMm, labelHeightMm);
                 sendViaBluetoothSpp(address, tspl);
                 JSObject ret = new JSObject();
                 ret.put("ok", true);

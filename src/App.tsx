@@ -50,7 +50,7 @@ interface BluetoothScanResult { ok?:boolean; message?:string; printers?:Bluetoot
 // BITMAP commands, so the native plugin builds the layout from structured
 // slip data using TEXT and BAR primitives only. Mirrors the existing slip
 // shape so we can pass straight through from printSlip.
-interface NativeStickerPayload { storeName:string; sessionDate:string; currency:string; buyer:Buyer; settings:Pick<Settings,"printStoreName"|"printBuyerNumber"|"printBuyerUsername"|"printOrderItems"|"printTotal">; }
+interface NativeStickerPayload { storeName:string; sessionDate:string; currency:string; buyer:Buyer; labelWidthMm:number; labelHeightMm:number; settings:Pick<Settings,"printStoreName"|"printBuyerNumber"|"printBuyerUsername"|"printOrderItems"|"printTotal">; }
 interface StickerPrintResult { ok?:boolean; message?:string; }
 type NumberSettingKey = {[K in keyof Settings]: Settings[K] extends number ? K : never}[keyof Settings];
 interface NativePrinterPayload { type:"sellerflow.printSlip"; buyer:Buyer; currency:string; storeName:string; settings:Settings; sessionDate:string; createdAt:string; }
@@ -172,7 +172,7 @@ const DEFAULT_SERVER =
     : "https://sellerflow-live-server.onrender.com";
 const SERVER = String(import.meta.env.VITE_SERVER_URL || DEFAULT_SERVER).replace(/\/$/,"");
 const DEBUG_SOCKET = import.meta.env.DEV || import.meta.env.VITE_DEBUG_SOCKET === "true";
-const DEF_SETTINGS: Settings = { darkMode:true, autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"", paperSize:"100x60mm", printerType:"auto", lanFormat:"receipt", stickerSize:"100x60mm", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printLabelScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printCommentScale:100, printTotalScale:100, printStoreX:0, printStoreY:0, printBuyerLabelX:0, printBuyerLabelY:0, printBuyerNumberX:0, printBuyerNumberY:0, printBuyerNameX:0, printBuyerNameY:0, printUsernameX:0, printUsernameY:0, printSessionX:0, printSessionY:0, printOrderX:0, printOrderY:0, printTotalX:0, printTotalY:0 };
+const DEF_SETTINGS: Settings = { darkMode:true, autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"", paperSize:"100x60mm", printerType:"auto", lanFormat:"receipt", stickerSize:"100x60", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printLabelScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printCommentScale:100, printTotalScale:100, printStoreX:0, printStoreY:0, printBuyerLabelX:0, printBuyerLabelY:0, printBuyerNumberX:0, printBuyerNumberY:0, printBuyerNameX:0, printBuyerNameY:0, printUsernameX:0, printUsernameY:0, printSessionX:0, printSessionY:0, printOrderX:0, printOrderY:0, printTotalX:0, printTotalY:0 };
 const LANG_OPTS: {code:Lang;label:string}[] = [{code:"en",label:"🇺🇸 EN"},{code:"fil",label:"🇵🇭 FIL"},{code:"zh",label:"🇨🇳 中文"},{code:"zh-TW",label:"🇹🇼 繁體"},{code:"vi",label:"🇻🇳 VI"},{code:"th",label:"🇹🇭 TH"},{code:"id",label:"🇮🇩 ID"}];
 const CURRENCIES = [{v:"",l:"No symbol"},{v:"$",l:"$ USD"},{v:"NT$",l:"NT$ NTD"}];
 const cleanCurrency=(value:unknown)=>{
@@ -497,6 +497,25 @@ function sendSlipToNativePrinter(payload:NativePrinterPayload){
 
 // Build the native-sticker payload the printStickerNative plugin method
 // consumes. Mirrors the existing slip shape so this is a flat pass-through.
+// Sticker label sizes the native TSPL builder can currently lay out. PHASE 1 =
+// the 480-dot height tier only (60mm tall): 100x60 (original) + 80x60 (new,
+// width-scaled). Shorter tiers (80x50/70x50 = 400 dots, 60x40 = 320 dots) need
+// the vertical layout reflowed and arrive in later phases. Until then any other
+// value clamps to 100x60 so content can never run off a shorter label.
+const STICKER_LABELS: Record<string,{w:number;h:number}> = {
+  "100x60": {w:100,h:60},
+  "80x60": {w:80,h:60},
+};
+const STICKER_SIZE_FALLBACK = "100x60";
+// Strip a legacy "mm" suffix; return the canonical key if supported, else fallback.
+function stickerSizeKey(size:string|undefined):string{
+  const k=(size||"").replace(/mm$/i,"");
+  return k in STICKER_LABELS ? k : STICKER_SIZE_FALLBACK;
+}
+function resolveStickerLabel(size:string|undefined):{w:number;h:number}{
+  return STICKER_LABELS[stickerSizeKey(size)];
+}
+
 function buildNativeStickerPayload(buyer:Buyer,cur:string,storeName:string,cfg:Settings):NativeStickerPayload{
   const sessionDate=new Date().toLocaleDateString("en-PH",{month:"long",day:"numeric",year:"numeric"});
   // Re-derive each order's time from its orderNum (epoch ms set at order
@@ -514,11 +533,14 @@ function buildNativeStickerPayload(buyer:Buyer,cur:string,storeName:string,cfg:S
       :o.time;
     return {...o,time};
   });
+  const label=resolveStickerLabel(cfg.stickerSize);
   return {
     storeName,
     sessionDate,
     currency:cur,
     buyer:{...buyer,orders:localizedOrders},
+    labelWidthMm:label.w,
+    labelHeightMm:label.h,
     settings:{
       printStoreName:cfg.printStoreName,
       printBuyerNumber:cfg.printBuyerNumber,
@@ -2288,6 +2310,17 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
             </select>
           </Fg>
           )}
+          {/* Sticker label size — sticker (TSPL) output only. PHASE 1: the 60mm
+              height tier (100x60 + 80x60). More sizes arrive as later phases
+              add the vertical reflow. Wired through to the native builder. */}
+          {isStickerOutput && (
+          <Fg label={t.printer_size}>
+            <select value={stickerSizeKey(sets.stickerSize)} onChange={e=>setSets(s=>({...s,stickerSize:e.target.value}))}>
+              <option value="100x60">{t.set_size_standard}</option>
+              <option value="80x60">80x60mm</option>
+            </select>
+          </Fg>
+          )}
           {!isIOSPlatform && !isAndroidPlatform && !isStickerOutput && <>
           <div className="printer-preview-box">
             <div className="printer-preview-title">{t.set_preview_title}</div>
@@ -3377,7 +3410,11 @@ export default function App(){
   });
   const [settings,setSettingsState]=useState<Settings>(()=>{
     const saved=LS.get<Partial<Settings>>("sf_settings",{});
-    return {...DEF_SETTINGS,...saved,currency:cleanCurrency(saved.currency)};
+    // Migration: older builds stored stickerSize as "100x60mm" (with the unit
+    // suffix), which matched no dropdown <option value> and broke the desktop
+    // @page parse. Strip the suffix on load so the value is canonical "WxH".
+    const stickerSize=((saved.stickerSize as string|undefined)??DEF_SETTINGS.stickerSize).replace(/mm$/i,"");
+    return {...DEF_SETTINGS,...saved,currency:cleanCurrency(saved.currency),stickerSize};
   });
   const [page,setPage]=useState<Page>("dashboard");
   // True while a Supabase PASSWORD_RECOVERY session is active (seller clicked the
