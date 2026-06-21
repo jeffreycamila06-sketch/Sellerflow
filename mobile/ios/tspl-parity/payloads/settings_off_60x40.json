@@ -1,0 +1,1 @@
+{"storeName":"Big Store","sessionDate":"2026-06-18","currency":"NT$","buyer":{"num":9,"name":"John Doe","handle":"johnd","totalSpent":500.0,"orders":[{"time":"10:00","item":"300"}]},"settings":{"printStoreName":false,"printBuyerNumber":false,"printBuyerUsername":false,"printOrderItems":false,"printTotal":false}}
