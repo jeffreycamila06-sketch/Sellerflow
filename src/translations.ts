@@ -561,6 +561,10 @@ const BASE_TRANSLATIONS = {
     lp_faq_a5:"Yes. SellerFlowLive saves buyer/customer memory so sellers can search names, usernames, buyer numbers, orders, and totals.",
     lp_faq_q6:"Who controls seller limits?",
     lp_faq_a6:"Admin controls plan, expiry, locked accounts, seller edits, password resets, and support approvals.",
+    // ── Landing L-e: support-info band ──
+    lp_support_title:"Handle seller complaints like Messenger",
+    lp_support_sub:"Every seller can send a payment proof or support issue. Admin receives a compact chat thread, can approve, reject, resolve, reply, and see unread notifications.",
+    lp_support_cta:"Open seller account",
   },
   fil: {
     nav_live:"Live", nav_miners:"Miners", nav_orders:"Mga Order", nav_products:"Produkto",
@@ -1102,6 +1106,10 @@ const BASE_TRANSLATIONS = {
     lp_faq_a5:"Oo. Sine-save ng SellerFlowLive ang buyer/customer memory kaya kayang hanapin ng seller ang mga pangalan, username, buyer numbers, orders, at totals.",
     lp_faq_q6:"Sino ang kumokontrol sa seller limits?",
     lp_faq_a6:"Kinokontrol ng admin ang plan, expiry, naka-lock na accounts, seller edits, password resets, at support approvals.",
+    // ── Landing L-e: support-info band ──
+    lp_support_title:"Hawakan ang reklamo ng seller na parang Messenger",
+    lp_support_sub:"Bawat seller ay pwedeng magpadala ng payment proof o support issue. Tumatanggap ang admin ng compact na chat thread, pwedeng mag-approve, mag-reject, mag-resolve, mag-reply, at makita ang unread notifications.",
+    lp_support_cta:"Buksan ang seller account",
   },
   zh: {
     nav_live:"直播", nav_miners:"买家", nav_orders:"订单", nav_products:"产品",
@@ -1643,6 +1651,10 @@ const BASE_TRANSLATIONS = {
     lp_faq_a5:"可以。SellerFlowLive 会保存买家/客户记忆，因此卖家可以搜索姓名、用户名、买家编号、订单和总额。",
     lp_faq_q6:"谁来控制卖家权限？",
     lp_faq_a6:"管理员控制套餐、到期时间、锁定的账号、卖家编辑、密码重置和客服批准。",
+    // ── Landing L-e: support-info band ──
+    lp_support_title:"像 Messenger 一样处理卖家投诉",
+    lp_support_sub:"每位卖家都可以发送付款凭证或支持问题。管理员会收到一个紧凑的聊天会话，可以批准、拒绝、解决、回复，并查看未读通知。",
+    lp_support_cta:"打开卖家账号",
   },
   vi: {
     nav_live:"Trực tiếp", nav_miners:"Người mua", nav_orders:"Đơn hàng", nav_products:"Sản phẩm",
@@ -2184,6 +2196,10 @@ const BASE_TRANSLATIONS = {
     lp_faq_a5:"Có. SellerFlowLive lưu bộ nhớ người mua/khách hàng nên người bán có thể tìm tên, tên người dùng, số người mua, đơn hàng và tổng tiền.",
     lp_faq_q6:"Ai kiểm soát giới hạn của người bán?",
     lp_faq_a6:"Admin kiểm soát gói, hạn dùng, tài khoản bị khoá, chỉnh sửa người bán, đặt lại mật khẩu và phê duyệt hỗ trợ.",
+    // ── Landing L-e: support-info band ──
+    lp_support_title:"Xử lý khiếu nại của người bán như Messenger",
+    lp_support_sub:"Mỗi người bán có thể gửi bằng chứng thanh toán hoặc vấn đề hỗ trợ. Admin nhận được một luồng chat gọn gàng, có thể duyệt, từ chối, giải quyết, trả lời và xem thông báo chưa đọc.",
+    lp_support_cta:"Mở tài khoản người bán",
   },
 };
 
@@ -2868,6 +2884,10 @@ const THAI_TRANSLATIONS: T = {
   lp_faq_a5:"ได้ SellerFlowLive บันทึกข้อมูลผู้ซื้อ/ลูกค้า ผู้ขายจึงค้นหาชื่อ ชื่อผู้ใช้ หมายเลขผู้ซื้อ ออเดอร์ และยอดรวมได้",
   lp_faq_q6:"ใครควบคุมขีดจำกัดของผู้ขาย?",
   lp_faq_a6:"แอดมินควบคุมแพ็กเกจ วันหมดอายุ บัญชีที่ล็อก การแก้ไขผู้ขาย การรีเซ็ตรหัสผ่าน และการอนุมัติฝ่ายสนับสนุน",
+  // ── Landing L-e: support-info band ──
+  lp_support_title:"จัดการข้อร้องเรียนของผู้ขายเหมือน Messenger",
+  lp_support_sub:"ผู้ขายทุกคนสามารถส่งหลักฐานการชำระเงินหรือปัญหาการสนับสนุนได้ แอดมินจะได้รับเธรดแชทแบบกระชับ สามารถอนุมัติ ปฏิเสธ แก้ไข ตอบกลับ และดูการแจ้งเตือนที่ยังไม่ได้อ่าน",
+  lp_support_cta:"เปิดบัญชีผู้ขาย",
 };
 
 const INDONESIAN_TRANSLATIONS: T = {
@@ -3549,6 +3569,10 @@ const INDONESIAN_TRANSLATIONS: T = {
   lp_faq_a5:"Ya. SellerFlowLive menyimpan memori pembeli/pelanggan sehingga penjual dapat mencari nama, nama pengguna, nomor pembeli, pesanan, dan total.",
   lp_faq_q6:"Siapa yang mengontrol batas penjual?",
   lp_faq_a6:"Admin mengontrol paket, masa berlaku, akun terkunci, pengeditan penjual, reset kata sandi, dan persetujuan dukungan.",
+  // ── Landing L-e: support-info band ──
+  lp_support_title:"Tangani keluhan penjual seperti Messenger",
+  lp_support_sub:"Setiap penjual dapat mengirim bukti pembayaran atau masalah dukungan. Admin menerima thread chat ringkas, dapat menyetujui, menolak, menyelesaikan, membalas, dan melihat notifikasi yang belum dibaca.",
+  lp_support_cta:"Buka akun penjual",
 };
 
 // Traditional Chinese (繁體中文) for Taiwan. Spreads the English base, then
@@ -4115,6 +4139,10 @@ const ZH_TW_TRANSLATIONS: T = {
   lp_faq_a5:"可以。SellerFlowLive 會儲存買家／客戶記憶，因此賣家可以搜尋姓名、使用者名稱、買家編號、訂單與總額。",
   lp_faq_q6:"誰來控制賣家權限？",
   lp_faq_a6:"管理員控制方案、到期時間、鎖定的帳號、賣家編輯、密碼重設與客服核准。",
+  // ── Landing L-e: support-info band ──
+  lp_support_title:"像 Messenger 一樣處理賣家投訴",
+  lp_support_sub:"每位賣家都可以傳送付款憑證或客服問題。管理員會收到一個精簡的聊天會話，可以核准、拒絕、解決、回覆，並查看未讀通知。",
+  lp_support_cta:"開啟賣家帳號",
 };
 
 export const TRANSLATIONS: Record<Lang,T> = {
