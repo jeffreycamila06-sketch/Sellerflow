@@ -567,10 +567,11 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         // stay byte-identical (compact=false reproduces the original layout).
         let compact = hDots <= 320
 
-        // Header row: brand at left, session date at right.
-        writeAscii("TEXT 16,10,\"4\",0,1,1,\"SellerFlowLive\"")
+        // Header row: brand at left (font 3 so it can't reach the date), the
+        // compact MM/DD/YYYY date right-aligned in the corner. No "Session:" prefix.
+        writeAscii("TEXT 16,10,\"3\",0,1,1,\"SellerFlowLive\"")
         if !sessionDate.isEmpty {
-            writeAscii("TEXT \(wDots - 340),18,\"2\",0,1,1,\"Session: \(tsplSafe(truncate16(sessionDate, 22)))\"")
+            writeAscii("TEXT \(wDots - 130),18,\"2\",0,1,1,\"\(tsplSafe(truncate16(sessionDate, 12)))\"")
         }
         writeAscii("BAR 0,48,\(wDots),3")
 
@@ -634,8 +635,8 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             }
         }
 
-        // Footer divider + total, anchored to the bottom of the label.
-        writeAscii("BAR 0,\(footerBarY),\(wDots),3")
+        // Footer total, anchored to the bottom. Divider line removed (price code
+        // grazed it); footerBarY stays as the invisible clearance boundary.
         if printTotal && totalSpent > 0 {
             writeAscii("TEXT 16,\(totalY),\"3\",0,1,1,\"Total:\"")
             let totalStr = tsplSafe(currency) + tsplMoney(totalSpent)

@@ -162,9 +162,9 @@ export function buildTsplStickerReference(
   writeAscii("DENSITY 8");
   writeAscii("CLS");
 
-  writeAscii('TEXT 16,10,"4",0,1,1,"SellerFlowLive"');
+  writeAscii('TEXT 16,10,"3",0,1,1,"SellerFlowLive"');
   if (sessionDate) {
-    writeAscii(`TEXT ${wDots - 340},18,"2",0,1,1,"Session: ${safe(truncate(sessionDate, 22))}"`);
+    writeAscii(`TEXT ${wDots - 130},18,"2",0,1,1,"${safe(truncate(sessionDate, 12))}"`);
   }
   writeAscii(`BAR 0,48,${wDots},3`);
 
@@ -220,7 +220,7 @@ export function buildTsplStickerReference(
     }
   }
 
-  writeAscii(`BAR 0,${footerBarY},${wDots},3`);
+  // Footer divider line removed; footerBarY stays as the invisible clearance boundary.
   if (printTotal && totalSpent > 0) {
     writeAscii(`TEXT 16,${totalY},"3",0,1,1,"Total:"`);
     const totalStr = safe(currency) + money(totalSpent);

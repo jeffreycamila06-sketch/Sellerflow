@@ -169,10 +169,12 @@ class TsplBuilder {
         // (compact=false reproduces the original 35/95(2x2)/40/35/10 layout).
         boolean compact = hDots <= 320;
 
-        // Header row: brand at left, session date at right.
-        writeAscii(out, "TEXT 16,10,\"4\",0,1,1,\"SellerFlowLive\"");
+        // Header row: brand at left (font 3 so it can't reach the date), the
+        // compact MM/DD/YYYY date right-aligned in the corner. No "Session:"
+        // prefix — it overflowed into the brand on every size.
+        writeAscii(out, "TEXT 16,10,\"3\",0,1,1,\"SellerFlowLive\"");
         if (!sessionDate.isEmpty()) {
-            writeAscii(out, "TEXT " + (wDots - 340) + ",18,\"2\",0,1,1,\"Session: " + safe(truncate(sessionDate, 22)) + "\"");
+            writeAscii(out, "TEXT " + (wDots - 130) + ",18,\"2\",0,1,1,\"" + safe(truncate(sessionDate, 12)) + "\"");
         }
         writeAscii(out, "BAR 0,48," + wDots + ",3");
 
@@ -249,9 +251,9 @@ class TsplBuilder {
             }
         }
 
-        // Footer divider + total. Anchored to the bottom of the label so
-        // variable-length content above doesn't shift it.
-        writeAscii(out, "BAR 0," + footerBarY + "," + wDots + ",3");
+        // Footer total, anchored to the bottom of the label. The footer divider
+        // line was removed (the price code grazed it); footerBarY stays as the
+        // invisible boundary that keeps the order rows clear of the total.
         if (printTotal && totalSpent > 0) {
             writeAscii(out, "TEXT 16," + totalY + ",\"3\",0,1,1,\"Total:\"");
             String totalStr = safe(currency) + money(totalSpent);

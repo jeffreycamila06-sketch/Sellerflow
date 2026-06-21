@@ -522,7 +522,11 @@ function resolveStickerLabel(size:string|undefined):{w:number;h:number}{
 }
 
 function buildNativeStickerPayload(buyer:Buyer,cur:string,storeName:string,cfg:Settings):NativeStickerPayload{
-  const sessionDate=new Date().toLocaleDateString("en-PH",{month:"long",day:"numeric",year:"numeric"});
+  // Compact MM/DD/YYYY for the sticker header (e.g. "06/22/2026") — fixed
+  // 10 chars so it right-aligns cleanly in the corner without colliding with
+  // the brand. The receipt slip keeps its own long-form date.
+  const sdNow=new Date();
+  const sessionDate=`${String(sdNow.getMonth()+1).padStart(2,"0")}/${String(sdNow.getDate()).padStart(2,"0")}/${sdNow.getFullYear()}`;
   // Re-derive each order's time from its orderNum (epoch ms set at order
   // creation) in the device's LOCAL timezone, formatted "HH:MM" (24h, no
   // seconds). The server-emitted order.time is UTC because Render runs in
