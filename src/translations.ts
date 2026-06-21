@@ -538,6 +538,14 @@ const BASE_TRANSLATIONS = {
     lp_inst_step3:"Connect live stream from the top bar when selling starts.",
     lp_inst_step4:"Click 1-click on any buyer comment to create and print the order slip.",
     lp_inst_step5:"Use Customers, Orders, Print, Sales, and Support to review everything after the live.",
+    // ── Landing L-c: pricing (Free plan + heads; paid plans reuse sub_* keys) ──
+    lp_price_title:"Choose the plan that fits the seller",
+    lp_price_sub:"Simple plans for live sellers, from first stream to full team operations.",
+    lp_price_popular:"Most popular",
+    lp_price_forever:"Forever",
+    lp_free_desc:"Full features, free to start. Perfect for new live sellers.",
+    lp_free_features:["1 TikTok or Facebook Page","Live comment detection","Auto order capture","1-click order printing","Real-time customer comments","Easy setup in minutes"],
+    lp_free_best:"New live sellers",
   },
   fil: {
     nav_live:"Live", nav_miners:"Miners", nav_orders:"Mga Order", nav_products:"Produkto",
@@ -1056,6 +1064,14 @@ const BASE_TRANSLATIONS = {
     lp_inst_step3:"Ikonekta ang live stream mula sa top bar kapag nagsimula ang pagbebenta.",
     lp_inst_step4:"I-click ang 1-click sa anumang buyer comment para gumawa at mag-print ng order slip.",
     lp_inst_step5:"Gamitin ang Customers, Orders, Print, Sales, at Support para suriin ang lahat pagkatapos ng live.",
+    // ── Landing L-c: pricing (Free plan + heads; paid plans reuse sub_* keys) ──
+    lp_price_title:"Piliin ang plan na bagay sa seller",
+    lp_price_sub:"Simpleng mga plan para sa live sellers, mula sa unang stream hanggang sa buong team operations.",
+    lp_price_popular:"Pinakasikat",
+    lp_price_forever:"Habambuhay",
+    lp_free_desc:"Kumpletong features, libreng magsimula. Perpekto para sa mga bagong live seller.",
+    lp_free_features:["1 TikTok o Facebook Page","Pag-detect ng live comment","Awtomatikong pagkuha ng order","1-click na pag-print ng order","Real-time na customer comments","Madaling setup sa loob ng ilang minuto"],
+    lp_free_best:"Mga bagong live seller",
   },
   zh: {
     nav_live:"直播", nav_miners:"买家", nav_orders:"订单", nav_products:"产品",
@@ -1574,6 +1590,14 @@ const BASE_TRANSLATIONS = {
     lp_inst_step3:"开始销售时，从顶部栏连接直播。",
     lp_inst_step4:"在任意买家评论上点击一键，即可创建并打印订单小票。",
     lp_inst_step5:"使用客户、订单、打印、销售和客服，在直播后查看所有内容。",
+    // ── Landing L-c: pricing (Free plan + heads; paid plans reuse sub_* keys) ──
+    lp_price_title:"选择适合卖家的套餐",
+    lp_price_sub:"为直播卖家设计的简单套餐，从第一次直播到完整团队运营。",
+    lp_price_popular:"最受欢迎",
+    lp_price_forever:"永久",
+    lp_free_desc:"功能齐全，免费开始。非常适合新的直播卖家。",
+    lp_free_features:["1 个 TikTok 或 Facebook 主页","直播评论检测","自动捕捉订单","一键订单打印","实时客户评论","几分钟轻松设置"],
+    lp_free_best:"新的直播卖家",
   },
   vi: {
     nav_live:"Trực tiếp", nav_miners:"Người mua", nav_orders:"Đơn hàng", nav_products:"Sản phẩm",
@@ -2092,6 +2116,14 @@ const BASE_TRANSLATIONS = {
     lp_inst_step3:"Kết nối live từ thanh trên cùng khi bắt đầu bán.",
     lp_inst_step4:"Nhấp 1-click trên bất kỳ bình luận người mua nào để tạo và in phiếu đơn.",
     lp_inst_step5:"Dùng Khách hàng, Đơn hàng, In, Doanh số và Hỗ trợ để xem lại mọi thứ sau buổi live.",
+    // ── Landing L-c: pricing (Free plan + heads; paid plans reuse sub_* keys) ──
+    lp_price_title:"Chọn gói phù hợp với người bán",
+    lp_price_sub:"Các gói đơn giản cho người bán live, từ buổi live đầu tiên đến vận hành cả đội nhóm.",
+    lp_price_popular:"Phổ biến nhất",
+    lp_price_forever:"Vĩnh viễn",
+    lp_free_desc:"Đầy đủ tính năng, miễn phí để bắt đầu. Hoàn hảo cho người bán live mới.",
+    lp_free_features:["1 Trang TikTok hoặc Facebook","Phát hiện bình luận live","Tự động thu đơn hàng","In đơn bằng 1-click","Bình luận khách hàng thời gian thực","Thiết lập dễ dàng trong vài phút"],
+    lp_free_best:"Người bán live mới",
   },
 };
 
@@ -2753,6 +2785,14 @@ const THAI_TRANSLATIONS: T = {
   lp_inst_step3:"เชื่อมต่อไลฟ์จากแถบด้านบนเมื่อเริ่มขาย",
   lp_inst_step4:"คลิก 1-click บนคอมเมนต์ผู้ซื้อใด ๆ เพื่อสร้างและพิมพ์สลิปออเดอร์",
   lp_inst_step5:"ใช้ ลูกค้า ออเดอร์ พิมพ์ ยอดขาย และฝ่ายสนับสนุน เพื่อตรวจสอบทุกอย่างหลังไลฟ์",
+  // ── Landing L-c: pricing (Free plan + heads; paid plans reuse sub_* keys) ──
+  lp_price_title:"เลือกแพ็กเกจที่เหมาะกับผู้ขาย",
+  lp_price_sub:"แพ็กเกจที่เรียบง่ายสำหรับผู้ขายสด ตั้งแต่ไลฟ์ครั้งแรกจนถึงการดำเนินงานเต็มทีม",
+  lp_price_popular:"ยอดนิยมที่สุด",
+  lp_price_forever:"ตลอดไป",
+  lp_free_desc:"ฟีเจอร์ครบครัน เริ่มใช้ฟรี เหมาะสำหรับผู้ขายสดมือใหม่",
+  lp_free_features:["1 เพจ TikTok หรือ Facebook","ตรวจจับคอมเมนต์สด","เก็บออเดอร์อัตโนมัติ","พิมพ์ออเดอร์ด้วย 1-click","คอมเมนต์ลูกค้าแบบเรียลไทม์","ตั้งค่าง่ายในไม่กี่นาที"],
+  lp_free_best:"ผู้ขายสดมือใหม่",
 };
 
 const INDONESIAN_TRANSLATIONS: T = {
@@ -3411,6 +3451,14 @@ const INDONESIAN_TRANSLATIONS: T = {
   lp_inst_step3:"Hubungkan live dari bilah atas saat penjualan dimulai.",
   lp_inst_step4:"Klik 1-click pada komentar pembeli mana pun untuk membuat dan mencetak slip pesanan.",
   lp_inst_step5:"Gunakan Pelanggan, Pesanan, Cetak, Penjualan, dan Dukungan untuk meninjau semuanya setelah live.",
+  // ── Landing L-c: pricing (Free plan + heads; paid plans reuse sub_* keys) ──
+  lp_price_title:"Pilih paket yang cocok untuk penjual",
+  lp_price_sub:"Paket sederhana untuk penjual live, dari siaran pertama hingga operasi tim penuh.",
+  lp_price_popular:"Paling populer",
+  lp_price_forever:"Selamanya",
+  lp_free_desc:"Fitur lengkap, gratis untuk memulai. Sempurna untuk penjual live baru.",
+  lp_free_features:["1 Halaman TikTok atau Facebook","Deteksi komentar live","Tangkap pesanan otomatis","Cetak pesanan 1-klik","Komentar pelanggan real-time","Pengaturan mudah dalam hitungan menit"],
+  lp_free_best:"Penjual live baru",
 };
 
 // Traditional Chinese (繁體中文) for Taiwan. Spreads the English base, then
@@ -3954,6 +4002,14 @@ const ZH_TW_TRANSLATIONS: T = {
   lp_inst_step3:"開始銷售時，從頂部列連接直播。",
   lp_inst_step4:"在任一買家留言上點選一鍵，即可建立並列印訂單出貨單。",
   lp_inst_step5:"使用客戶、訂單、列印、銷售與客服，在直播後檢視所有內容。",
+  // ── Landing L-c: pricing (Free plan + heads; paid plans reuse sub_* keys) ──
+  lp_price_title:"選擇適合賣家的方案",
+  lp_price_sub:"為直播賣家設計的簡單方案，從第一次直播到完整團隊營運。",
+  lp_price_popular:"最受歡迎",
+  lp_price_forever:"永久",
+  lp_free_desc:"功能齊全，免費開始。非常適合新的直播賣家。",
+  lp_free_features:["1 個 TikTok 或 Facebook 粉絲專頁","直播留言偵測","自動擷取訂單","一鍵訂單列印","即時客戶留言","幾分鐘輕鬆設定"],
+  lp_free_best:"新的直播賣家",
 };
 
 export const TRANSLATIONS: Record<Lang,T> = {
