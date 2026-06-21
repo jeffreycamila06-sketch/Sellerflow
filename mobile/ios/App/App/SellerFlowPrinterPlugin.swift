@@ -186,8 +186,10 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         let sessionDate = call.getString("sessionDate") ?? ""
         let createdAt = call.getString("createdAt") ?? ""
 
+        let settings = call.getObject("settings")
         let data = buildEscPosSlip(
             buyer: buyer,
+            settings: settings,
             storeName: storeName,
             currency: currency,
             sessionDate: sessionDate,
@@ -350,6 +352,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
 
     private func buildEscPosSlip(
         buyer: [String: Any],
+        settings: [String: Any]?,
         storeName: String,
         currency: String,
         sessionDate: String,
@@ -397,6 +400,22 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         func money(_ v: Double) -> String {
             return floor(v) == v ? String(Int(v)) : String(format: "%.2f", v)
         }
+        // "Printer output" on/off toggles. Mirror of the Android buildEscPosSlip
+        // and the TSPL sticker builders, and of the web iframe in App.tsx printSlip.
+        // Canonical contract: src/lib/slipFields.ts (slipFieldVisibility). Default
+        // true so a payload without settings prints everything (backwards-compat).
+        // NOTE: buyer Name has no toggle and always prints (matches every path).
+        func boolSetting(_ key: String) -> Bool {
+            guard let settings = settings else { return true }
+            if let b = settings[key] as? Bool { return b }
+            if let n = settings[key] as? NSNumber { return n.boolValue }
+            return true
+        }
+        let printStoreName = boolSetting("printStoreName")
+        let printBuyerNumber = boolSetting("printBuyerNumber")
+        let printBuyerUsername = boolSetting("printBuyerUsername")
+        let printOrderItems = boolSetting("printOrderItems")
+        let printTotal = boolSetting("printTotal")
 
         // init
         raw([0x1B, 0x40])   // ESC @ -- reset to power-on defaults
@@ -406,16 +425,16 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         // identical to Android EscPos.init() for parity.
         raw([0x1C, 0x26])   // FS &
         alignCenter()
-        bold(true); text(storeName); bold(false)                // normal -- header
+        bold(true); if printStoreName { text(storeName) }; bold(false)  // normal -- header (gated)
         text("SellerFlowLive")                                   // normal -- subtitle
         line()                                                   // normal -- divider
         alignLeft()
 
         setCharSize(Self.ESC_POS_IMPORTANT_SIZE)                 // === 2x BLOCK ===
         let buyerNum = asInt(buyer["num"]) ?? asInt(buyer["bNum"]) ?? 0
-        text("Buyer #\(buyerNum)")
-        text("Name: \((buyer["name"] as? String) ?? "")")
-        text("Handle: \((buyer["handle"] as? String) ?? "")")
+        if printBuyerNumber { text("Buyer #\(buyerNum)") }
+        text("Name: \((buyer["name"] as? String) ?? "")")       // buyer name -- no toggle, always
+        if printBuyerUsername { text("Handle: \((buyer["handle"] as? String) ?? "")") }
         setCharSize(0x00)                                        // === END 2x ===
 
         text("Platform: \((buyer["platform"] as? String) ?? "")") // normal -- header info
@@ -423,30 +442,32 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         line()                                                    // normal -- divider
 
         let orders = (buyer["orders"] as? [[String: Any]]) ?? []
-        if !orders.isEmpty {
-            for order in orders {
-                setCharSize(Self.ESC_POS_ORDER_SIZE)                 // === 2x (2Wx2H) -- item only ===
-                text((order["item"] as? String) ?? "")
-                setCharSize(0x00)                                    // === normal -- order details ===
-                text("Qty: \(asInt(order["qty"]) ?? 1)")
-                let price = (order["price"] as? Double) ?? Double((order["price"] as? Int) ?? 0)
-                let total = (order["total"] as? Double) ?? Double((order["total"] as? Int) ?? 0)
-                if price > 0 { text("Price: \(currency) \(money(price))") }
-                if total > 0 { text("Total: \(currency) \(money(total))") }
+        if printOrderItems {
+            if !orders.isEmpty {
+                for order in orders {
+                    setCharSize(Self.ESC_POS_ORDER_SIZE)                 // === 2x (2Wx2H) -- item only ===
+                    text((order["item"] as? String) ?? "")
+                    setCharSize(0x00)                                    // === normal -- order details ===
+                    text("Qty: \(asInt(order["qty"]) ?? 1)")
+                    let price = (order["price"] as? Double) ?? Double((order["price"] as? Int) ?? 0)
+                    let total = (order["total"] as? Double) ?? Double((order["total"] as? Int) ?? 0)
+                    if price > 0 { text("Price: \(currency) \(money(price))") }
+                    if total > 0 { text("Total: \(currency) \(money(total))") }
 
-                if let t = order["time"] as? String, !t.isEmpty { text(t) }  // normal -- timestamp
-                line()                                                        // normal -- divider
+                    if let t = order["time"] as? String, !t.isEmpty { text(t) }  // normal -- timestamp
+                    line()                                                        // normal -- divider
+                }
+            } else {
+                text("Order:")                                           // normal -- label
+                setCharSize(Self.ESC_POS_ORDER_SIZE)                     // === 2x (2Wx2H) -- comment ===
+                text((buyer["lastComment"] as? String) ?? (buyer["comment"] as? String) ?? "")
+                setCharSize(0x00)                                        // === normal ===
+                line()
             }
-        } else {
-            text("Order:")                                           // normal -- label
-            setCharSize(Self.ESC_POS_ORDER_SIZE)                     // === 2x (2Wx2H) -- comment ===
-            text((buyer["lastComment"] as? String) ?? (buyer["comment"] as? String) ?? "")
-            setCharSize(0x00)                                        // === normal ===
-            line()
         }
 
         let totalSpent = (buyer["totalSpent"] as? Double) ?? Double((buyer["totalSpent"] as? Int) ?? 0)
-        if totalSpent > 0 {
+        if printTotal && totalSpent > 0 {
             setCharSize(Self.ESC_POS_IMPORTANT_SIZE)                 // === 2x BLOCK ===
             bold(true); text("TOTAL: \(currency) \(money(totalSpent))"); bold(false)
             setCharSize(0x00)                                        // === END 2x ===

@@ -99,7 +99,6 @@ public class MainActivity extends BridgeActivity {
             + "window.SellerFlowPrinter.printStickerNative=function(payload){return cap.printStickerNative(payload||{});};"
             + "window.SellerFlowPrinter.testStickerPrint=function(args){return cap.testStickerPrint(args||{});};"
             + "}else{"
-            + "window.SellerFlowPrinter.printSlip=function(payload){return window.SellerFlowPrinterAndroid.printSlip(JSON.stringify(payload));};"
             + "window.SellerFlowPrinter.status=function(){return window.SellerFlowPrinterAndroid.status();};"
             + "window.SellerFlowPrinter.scanPrinters=function(){return window.SellerFlowPrinterAndroid.scanPrinters();};"
             + "window.SellerFlowPrinter.connectPrinter=function(printer){return window.SellerFlowPrinterAndroid.connectPrinter(typeof printer==='string'?printer:JSON.stringify(printer));};"
@@ -216,21 +215,6 @@ public class MainActivity extends BridgeActivity {
                 return out.toString();
             } catch (Exception e) {
                 return fail("Test print failed: " + e.getMessage()).toString();
-            }
-        }
-
-        @JavascriptInterface
-        public String printSlip(String payloadJson) {
-            try {
-                JSONObject payload = new JSONObject(payloadJson);
-                JSONObject settings = payload.optJSONObject("settings");
-                JSONObject printer = choosePrinter(settings);
-                if (printer == null) return "No printer found. Open Settings > Mobile Printer, then Scan Printers.";
-                sendToPrinter(printer, buildEscPosSlip(payload));
-                savePrinter(printer);
-                return "Printed to " + printer.optString("name", "Printer");
-            } catch (Exception e) {
-                return "Printer failed: " + e.getMessage();
             }
         }
 
@@ -522,64 +506,6 @@ public class MainActivity extends BridgeActivity {
             return esc.bytes();
         }
 
-        private byte[] buildEscPosSlip(JSONObject payload) throws Exception {
-            JSONObject buyer = payload.optJSONObject("buyer");
-            JSONObject settings = payload.optJSONObject("settings");
-            String storeName = payload.optString("storeName", "SellerFlowLive");
-            String sessionDate = payload.optString("sessionDate", "");
-            String buyerName = buyer == null ? "" : buyer.optString("name", "");
-            String handle = buyer == null ? "" : buyer.optString("handle", "");
-            int buyerNum = buyer == null ? 0 : buyer.optInt("num", 0);
-            JSONArray orders = buyer == null ? new JSONArray() : buyer.optJSONArray("orders");
-            if (orders == null) orders = new JSONArray();
-            boolean printTotal = settings == null || settings.optBoolean("printTotal", true);
-            String currency = payload.optString("currency", "");
-            int total = buyer == null ? 0 : buyer.optInt("totalSpent", 0);
-
-            EscPosBuilder esc = new EscPosBuilder();
-            esc.init();
-            esc.alignLeft();
-            esc.bold(true);
-            esc.text("SellerFlowLive");                                  // normal -- header
-            if (!sessionDate.isEmpty()) esc.text("Session: " + sessionDate); // normal -- header info
-            esc.feed();
-            esc.text(storeName);                                         // normal -- header
-
-            esc.setCharSize(SellerFlowPrinterPlugin.ESC_POS_IMPORTANT_SIZE);  // === IMPORTANT ===
-            esc.text("Buyer #" + buyerNum);
-            esc.text(buyerName);
-            if (!handle.isEmpty()) esc.text("@" + handle);
-            esc.setCharSize(0x00);                                       // === END IMPORTANT ===
-
-            esc.feed();
-            esc.text("Order here");                                      // normal -- subtitle
-            esc.bold(false);
-            for (int i = 0; i < orders.length(); i++) {
-                JSONObject order = orders.optJSONObject(i);
-                if (order == null) continue;
-                String time = order.optString("time", "");
-                String item = order.optString("item", "");
-                if (!time.isEmpty()) esc.text(time);                     // normal -- timestamp
-                if (!item.isEmpty()) {
-                    esc.setCharSize(SellerFlowPrinterPlugin.ESC_POS_IMPORTANT_SIZE);  // === IMPORTANT ===
-                    esc.bold(true);
-                    esc.text(item);
-                    esc.bold(false);
-                    esc.setCharSize(0x00);                               // === END IMPORTANT ===
-                }
-            }
-            if (printTotal && total > 0) {
-                esc.feed();
-                esc.setCharSize(SellerFlowPrinterPlugin.ESC_POS_IMPORTANT_SIZE);      // === IMPORTANT ===
-                esc.bold(true);
-                esc.text("Total: " + currency + total);
-                esc.bold(false);
-                esc.setCharSize(0x00);                                   // === END IMPORTANT ===
-            }
-            esc.feed(4);
-            esc.cut();
-            return esc.bytes();
-        }
     }
 
     private static class EscPosBuilder {

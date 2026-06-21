@@ -635,7 +635,7 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Setting
   <div class="line buyer-name">${safeBuyerName}</div>
   ${cfg.printBuyerUsername?`<div class="muted username">@${safeBuyerHandle}</div>`:""}
   </div>
-  ${cfg.printOrderItems?`<div class="order-box"><div class="order-title">Order here</div>${scaledOrderHtml}${cfg.printTotal?`<div class="total"><span>Total</span><span>${safeTotal}</span></div>`:""}</div>`:""}
+  ${(cfg.printOrderItems||cfg.printTotal)?`<div class="order-box">${cfg.printOrderItems?`<div class="order-title">Order here</div>${scaledOrderHtml}`:""}${cfg.printTotal?`<div class="total"><span>Total</span><span>${safeTotal}</span></div>`:""}</div>`:""}
   </div>
   </body></html>`);
   doc.close();

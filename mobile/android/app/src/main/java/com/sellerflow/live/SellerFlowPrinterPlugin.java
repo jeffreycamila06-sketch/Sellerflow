@@ -492,53 +492,67 @@ public class SellerFlowPrinterPlugin extends Plugin {
         String storeName = payload.optString("storeName", "SellerFlowLive");
         String currency = payload.optString("currency", "PHP");
 
+        // "Printer output" on/off toggles. Mirror of the iOS buildEscPosSlip and
+        // the TSPL sticker builders, and of the web iframe in App.tsx printSlip.
+        // Canonical contract: src/lib/slipFields.ts (slipFieldVisibility). Default
+        // true so a payload without settings prints everything (backwards-compat).
+        // NOTE: buyer Name has no toggle and always prints (matches every path).
+        JSONObject settings        = payload.optJSONObject("settings");
+        boolean printStoreName     = settings == null || settings.optBoolean("printStoreName", true);
+        boolean printBuyerNumber   = settings == null || settings.optBoolean("printBuyerNumber", true);
+        boolean printBuyerUsername = settings == null || settings.optBoolean("printBuyerUsername", true);
+        boolean printOrderItems    = settings == null || settings.optBoolean("printOrderItems", true);
+        boolean printTotal         = settings == null || settings.optBoolean("printTotal", true);
+
         out.init();
         out.alignCenter();
         out.bold(true);
-        out.text(storeName);                                            // normal -- header
+        if (printStoreName) out.text(storeName);                        // normal -- header (gated)
         out.bold(false);
         out.text("SellerFlowLive");                                     // normal -- subtitle
         out.line();                                                     // normal -- divider
         out.alignLeft();
 
         out.setCharSize(ESC_POS_IMPORTANT_SIZE);                        // === IMPORTANT ===
-        out.text("Buyer #" + buyer.optInt("num", buyer.optInt("bNum", 0)));
-        out.text("Name: " + buyer.optString("name", ""));
-        out.text("Handle: " + buyer.optString("handle", ""));
+        if (printBuyerNumber) out.text("Buyer #" + buyer.optInt("num", buyer.optInt("bNum", 0)));
+        out.text("Name: " + buyer.optString("name", ""));              // buyer name -- no toggle, always
+        if (printBuyerUsername) out.text("Handle: " + buyer.optString("handle", ""));
         out.setCharSize(0x00);                                          // === END IMPORTANT ===
 
         out.text("Platform: " + buyer.optString("platform", ""));       // normal -- header info
         out.text("Session: " + payload.optString("sessionDate", ""));   // normal -- header info
         out.line();                                                     // normal -- divider
 
-        if (orders != null && orders.length() > 0) {
-            for (int i = 0; i < orders.length(); i++) {
-                JSONObject order = orders.optJSONObject(i);
-                if (order == null) continue;
+        if (printOrderItems) {
+            if (orders != null && orders.length() > 0) {
+                for (int i = 0; i < orders.length(); i++) {
+                    JSONObject order = orders.optJSONObject(i);
+                    if (order == null) continue;
 
-                out.setCharSize(ESC_POS_ORDER_SIZE);                    // === 2x (2Wx2H) -- item only ===
-                out.text(order.optString("item", ""));
-                out.setCharSize(0x00);                                  // === normal -- order details ===
-                out.text("Qty: " + order.optInt("qty", 1));
-                double price = order.optDouble("price", 0);
-                double total = order.optDouble("total", price);
-                if (price > 0) out.text("Price: " + currency + " " + money(price));
-                if (total > 0) out.text("Total: " + currency + " " + money(total));
+                    out.setCharSize(ESC_POS_ORDER_SIZE);                // === 2x (2Wx2H) -- item only ===
+                    out.text(order.optString("item", ""));
+                    out.setCharSize(0x00);                              // === normal -- order details ===
+                    out.text("Qty: " + order.optInt("qty", 1));
+                    double price = order.optDouble("price", 0);
+                    double total = order.optDouble("total", price);
+                    if (price > 0) out.text("Price: " + currency + " " + money(price));
+                    if (total > 0) out.text("Total: " + currency + " " + money(total));
 
-                String time = order.optString("time", "");
-                if (!time.isEmpty()) out.text(time);                    // normal -- timestamp
-                out.line();                                             // normal -- divider
+                    String time = order.optString("time", "");
+                    if (!time.isEmpty()) out.text(time);                // normal -- timestamp
+                    out.line();                                         // normal -- divider
+                }
+            } else {
+                out.text("Order:");                                    // normal -- label
+                out.setCharSize(ESC_POS_ORDER_SIZE);                    // === 2x (2Wx2H) -- comment ===
+                out.text(buyer.optString("lastComment", buyer.optString("comment", "")));
+                out.setCharSize(0x00);                                  // === normal ===
+                out.line();
             }
-        } else {
-            out.text("Order:");                                        // normal -- label
-            out.setCharSize(ESC_POS_ORDER_SIZE);                        // === 2x (2Wx2H) -- comment ===
-            out.text(buyer.optString("lastComment", buyer.optString("comment", "")));
-            out.setCharSize(0x00);                                      // === normal ===
-            out.line();
         }
 
         double totalSpent = buyer.optDouble("totalSpent", 0);
-        if (totalSpent > 0) {
+        if (printTotal && totalSpent > 0) {
             out.setCharSize(ESC_POS_IMPORTANT_SIZE);                    // === IMPORTANT ===
             out.bold(true);
             out.text("TOTAL: " + currency + " " + money(totalSpent));
