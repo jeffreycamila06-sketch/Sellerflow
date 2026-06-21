@@ -5,7 +5,7 @@ REFERENCE 0,0
 DENSITY 8
 CLS
 TEXT 16,10,"3",0,1,1,"SellerFlowLive"
-TEXT 670,18,"2",0,1,1,"2026-06-18"
+TEXT 290,18,"2",0,1,1,"2026-06-18"
 BAR 0,48,800,3
 TEXT 16,60,"4",0,2,2,"Buyer #5"
 TEXT 16,155,"4",0,1,1,"firegirl"
