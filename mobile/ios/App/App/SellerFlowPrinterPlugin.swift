@@ -571,7 +571,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         // compact MM/DD/YYYY date right-aligned in the corner. No "Session:" prefix.
         writeAscii("TEXT 16,10,\"3\",0,1,1,\"SellerFlowLive\"")
         if !sessionDate.isEmpty {
-            writeAscii("TEXT \(wDots - 130),18,\"2\",0,1,1,\"\(tsplSafe(truncate16(sessionDate, 12)))\"")
+            writeAscii("TEXT 290,18,\"2\",0,1,1,\"\(tsplSafe(truncate16(sessionDate, 12)))\"")
         }
         writeAscii("BAR 0,48,\(wDots),3")
 

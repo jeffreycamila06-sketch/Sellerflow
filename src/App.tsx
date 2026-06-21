@@ -522,11 +522,10 @@ function resolveStickerLabel(size:string|undefined):{w:number;h:number}{
 }
 
 function buildNativeStickerPayload(buyer:Buyer,cur:string,storeName:string,cfg:Settings):NativeStickerPayload{
-  // Compact MM/DD/YYYY for the sticker header (e.g. "06/22/2026") — fixed
-  // 10 chars so it right-aligns cleanly in the corner without colliding with
-  // the brand. The receipt slip keeps its own long-form date.
-  const sdNow=new Date();
-  const sessionDate=`${String(sdNow.getMonth()+1).padStart(2,"0")}/${String(sdNow.getDate()).padStart(2,"0")}/${sdNow.getFullYear()}`;
+  // Compact MM/DD/YYYY for the sticker header (e.g. "06/22/2026"), forced to
+  // Asia/Taipei (UTC+8) so it is correct regardless of the worker device's
+  // timezone setting — sellers had wrong-date complaints from device-local time.
+  const sessionDate=new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Taipei",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
   // Re-derive each order's time from its orderNum (epoch ms set at order
   // creation) in the device's LOCAL timezone, formatted "HH:MM" (24h, no
   // seconds). The server-emitted order.time is UTC because Render runs in
@@ -538,7 +537,7 @@ function buildNativeStickerPayload(buyer:Buyer,cur:string,storeName:string,cfg:S
   const localizedOrders=buyer.orders.map(o=>{
     const ts=typeof o.orderNum==="number"?o.orderNum:0;
     const time=ts>1e12
-      ?new Date(ts).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})
+      ?new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Taipei",hour:"2-digit",minute:"2-digit",hour12:false}).format(new Date(ts))
       :o.time;
     return {...o,time};
   });
@@ -629,7 +628,7 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Setting
   const commentScale=scale(cfg.printCommentScale,cfg.printLabelScale);
   const totalScale=scale(cfg.printTotalScale,cfg.printLabelScale);
   const pos=(v:number|undefined)=>Math.max(-40,Math.min(40,v||0));
-  const sess=new Date().toLocaleDateString("en-PH",{month:"long",day:"numeric",year:"numeric"});
+  const sess=new Date().toLocaleDateString("en-PH",{timeZone:"Asia/Taipei",month:"long",day:"numeric",year:"numeric"});
   const nativePayload:NativePrinterPayload={type:"sellerflow.printSlip",buyer,currency:cur,storeName,settings:cfg,sessionDate:sess,createdAt:new Date().toISOString()};
   if(hasNativeMobilePrinter()&&sendSlipToNativePrinter(nativePayload))return;
   const color=nc(buyer.num);

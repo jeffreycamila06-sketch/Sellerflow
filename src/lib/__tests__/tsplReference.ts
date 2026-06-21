@@ -164,7 +164,7 @@ export function buildTsplStickerReference(
 
   writeAscii('TEXT 16,10,"3",0,1,1,"SellerFlowLive"');
   if (sessionDate) {
-    writeAscii(`TEXT ${wDots - 130},18,"2",0,1,1,"${safe(truncate(sessionDate, 12))}"`);
+    writeAscii(`TEXT 290,18,"2",0,1,1,"${safe(truncate(sessionDate, 12))}"`);
   }
   writeAscii(`BAR 0,48,${wDots},3`);
 
