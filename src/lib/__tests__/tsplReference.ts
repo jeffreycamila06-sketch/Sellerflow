@@ -119,6 +119,9 @@ export function buildTsplStickerReference(
   const totalY = hDots - 85;
   const orderEntryGuard = footerBarY - 30;
   const orderLoopGuard = footerBarY - 20;
+  // PHASE 3 / 320-dot (40mm) tier: compact body (tighter gaps, buyer# 2x1,
+  // @username dropped). Gated to hDots<=320 so 480/400 stay byte-identical.
+  const compact = hDots <= 320;
   // xMul/yMul multipliers + width-dependent rightEdge for the CJK clamp; applied
   // to both the ASCII and TSS24.BF2 (CJK) paths. Mirrors TsplBuilder.writeTextSmart.
   const writeTextSmart = (x: number, y: number, asciiFont: string, content: string, xMul: number, yMul: number) => {
@@ -176,27 +179,29 @@ export function buildTsplStickerReference(
   let y = 60;
   if (printStoreName && cleanStoreName) {
     writeTextSmart(16, y, "3", safe(truncate(cleanStoreName, 36)), 1, 1);
-    y += 35;
+    y += compact ? 30 : 35;
   }
 
+  // Buyer # — dominant element; drops to 2x1 on the 320 tier to fit.
   if (printBuyerNumber) {
-    writeAscii(`TEXT 16,${y},"4",0,2,2,"Buyer #${buyerNum}"`);
-    y += 95;
+    writeAscii(`TEXT 16,${y},"4",0,2,${compact ? 1 : 2},"Buyer #${buyerNum}"`);
+    y += compact ? 46 : 95;
   }
 
   if (buyerNameToPrint) {
     writeTextSmart(16, y, "4", safe(truncate(buyerNameToPrint, 30)), 1, 1);
-    y += 40;
+    y += compact ? 34 : 40;
   }
 
-  if (printBuyerUsername && cleanBuyerHandle) {
+  // @username dropped on the 320 tier (no vertical room).
+  if (printBuyerUsername && cleanBuyerHandle && !compact) {
     writeTextSmart(16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)), 1, 1);
     y += 35;
   }
 
   if (printOrderItems && orders.length > 0 && y < orderEntryGuard) {
     writeAscii(`BAR 16,${y},${wDots - 280},2`);
-    y += 10;
+    y += compact ? 6 : 10;
     const maxOrders = 2;
     for (let i = 0; i < Math.min(orders.length, maxOrders) && y < orderLoopGuard; i++) {
       const order = orders[i] ?? {};

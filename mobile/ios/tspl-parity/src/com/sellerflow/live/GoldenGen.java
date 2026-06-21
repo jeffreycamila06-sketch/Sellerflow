@@ -185,6 +185,28 @@ public final class GoldenGen {
             buyer(9, "John Doe", "johnd", 500.0, order("10:00", "300")),
             settings(false, false, false, false, false)), 70, 50));
 
+        // ── PHASE 3: 320-dot (40mm) tier — compact body (buyer# 2x1, tighter
+        // gaps, @username dropped). Width 480 dots.
+        // 15. 60x40 ASCII, all settings on. Validates the compact layout fits.
+        list.add(new Fixture("ascii_full_60x40", payload(
+            "My Shop", "June 18, 2026", "NT$",
+            buyer(7, "Maria Santos", "maria_s", 250.0,
+                order("14:02", "150")),
+            settings(true, true, true, true, true)), 60, 40));
+
+        // 16. 60x40 Chinese — CJK clamp (rightEdge = 60*8-16 = 464) + compact.
+        list.add(new Fixture("chinese_60x40", payload(
+            "小店", "2026-06-18", "NT$",
+            buyer(12, "陳小美", "meimei", 1280.5,
+                order("09:30", "紅色洋裝")),
+            settings(true, true, true, true, true)), 60, 40));
+
+        // 17. 60x40 all settings OFF — footer position with an empty compact body.
+        list.add(new Fixture("settings_off_60x40", payload(
+            "Big Store", "2026-06-18", "NT$",
+            buyer(9, "John Doe", "johnd", 500.0, order("10:00", "300")),
+            settings(false, false, false, false, false)), 60, 40));
+
         return list;
     }
 

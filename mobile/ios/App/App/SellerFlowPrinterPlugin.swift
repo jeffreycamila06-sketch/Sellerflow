@@ -562,6 +562,10 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         let totalY = hDots - 85
         let orderEntryGuard = footerBarY - 30
         let orderLoopGuard = footerBarY - 20
+        // PHASE 3 / 320-dot (40mm) tier: compact mode tightens gaps, shrinks
+        // buyer# to 2x1, and drops @username. Gated to hDots<=320 so 480/400
+        // stay byte-identical (compact=false reproduces the original layout).
+        let compact = hDots <= 320
 
         // Header row: brand at left, session date at right.
         writeAscii("TEXT 16,10,\"4\",0,1,1,\"SellerFlowLive\"")
@@ -582,21 +586,24 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         var y = 60
         if printStoreName && !cleanStoreName.isEmpty {
             writeTextSmart(&out, 16, y, "3", tsplSafe(truncate16(cleanStoreName, 36)), 1, 1, rightEdge)
-            y += 35
+            y += compact ? 30 : 35
         }
 
-        // Buyer # is the dominant element -- the whole point of the sticker.
+        // Buyer # is the dominant element -- the whole point of the sticker. On
+        // the 320 tier it drops to 2x1 (half height, still 2x wide) to fit.
         if printBuyerNumber {
-            writeAscii("TEXT 16,\(y),\"4\",0,2,2,\"Buyer #\(buyerNum)\"")
-            y += 95
+            writeAscii("TEXT 16,\(y),\"4\",0,2,\(compact ? 1 : 2),\"Buyer #\(buyerNum)\"")
+            y += compact ? 46 : 95
         }
 
         if !buyerNameToPrint.isEmpty {
             writeTextSmart(&out, 16, y, "4", tsplSafe(truncate16(buyerNameToPrint, 30)), 1, 1, rightEdge)
-            y += 40
+            y += compact ? 34 : 40
         }
 
-        if printBuyerUsername && !cleanBuyerHandle.isEmpty {
+        // @username is dropped on the 320 tier — no vertical room once store +
+        // buyer# + name + price code + total are kept.
+        if printBuyerUsername && !cleanBuyerHandle.isEmpty && !compact {
             writeTextSmart(&out, 16, y, "3", "@" + tsplSafe(truncate16(cleanBuyerHandle, 30)), 1, 1, rightEdge)
             y += 35
         }
@@ -604,7 +611,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         // Thin separator + order lines (capped at 2 so a 60mm label can't overflow).
         if printOrderItems && !orders.isEmpty && y < orderEntryGuard {
             writeAscii("BAR 16,\(y),\(wDots - 280),2")
-            y += 10
+            y += compact ? 6 : 10
             let maxOrders = 2
             var i = 0
             while i < min(orders.count, maxOrders) && y < orderLoopGuard {

@@ -508,6 +508,8 @@ const STICKER_LABELS: Record<string,{w:number;h:number}> = {
   // PHASE 2 — 400-dot (50mm) height tier; footer reflows up to the bottom.
   "80x50": {w:80,h:50},
   "70x50": {w:70,h:50},
+  // PHASE 3 — 320-dot (40mm) tier; compact body (buyer# 2x1, no @username).
+  "60x40": {w:60,h:40},
 };
 const STICKER_SIZE_FALLBACK = "100x60";
 // Strip a legacy "mm" suffix; return the canonical key if supported, else fallback.
@@ -2323,6 +2325,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
               <option value="80x60">80x60mm</option>
               <option value="80x50">80x50mm</option>
               <option value="70x50">70x50mm</option>
+              <option value="60x40">60x40mm</option>
             </select>
           </Fg>
           )}

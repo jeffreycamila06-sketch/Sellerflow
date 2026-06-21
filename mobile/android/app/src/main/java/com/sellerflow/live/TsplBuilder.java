@@ -162,6 +162,12 @@ class TsplBuilder {
         int totalY = hDots - 85;               // 395 @ 60mm, 315 @ 50mm
         int orderEntryGuard = footerBarY - 30; // 350 @ 60mm
         int orderLoopGuard = footerBarY - 20;  // 360 @ 60mm
+        // PHASE 3 / 320-dot (40mm) tier: the identity body would overflow the
+        // bottom-anchored footer, so compact mode tightens field gaps, shrinks
+        // the buyer# to 2x1 (still 2x wide, half the height), and drops the
+        // @username row. Gated to hDots<=320, so the 480/400 tiers are untouched
+        // (compact=false reproduces the original 35/95(2x2)/40/35/10 layout).
+        boolean compact = hDots <= 320;
 
         // Header row: brand at left, session date at right.
         writeAscii(out, "TEXT 16,10,\"4\",0,1,1,\"SellerFlowLive\"");
@@ -187,21 +193,24 @@ class TsplBuilder {
         int y = 60;
         if (printStoreName && !cleanStoreName.isEmpty()) {
             writeTextSmart(out, 16, y, "3", safe(truncate(cleanStoreName, 36)), 1, 1, rightEdge);
-            y += 35;
+            y += compact ? 30 : 35;
         }
 
-        // Buyer # is the dominant element — the whole point of the sticker.
+        // Buyer # is the dominant element — the whole point of the sticker. On
+        // the 320 tier it drops to 2x1 (half height, still 2x wide) to fit.
         if (printBuyerNumber) {
-            writeAscii(out, "TEXT 16," + y + ",\"4\",0,2,2,\"Buyer #" + buyerNum + "\"");
-            y += 95;
+            writeAscii(out, "TEXT 16," + y + ",\"4\",0,2," + (compact ? 1 : 2) + ",\"Buyer #" + buyerNum + "\"");
+            y += compact ? 46 : 95;
         }
 
         if (!buyerNameToPrint.isEmpty()) {
             writeTextSmart(out, 16, y, "4", safe(truncate(buyerNameToPrint, 30)), 1, 1, rightEdge);
-            y += 40;
+            y += compact ? 34 : 40;
         }
 
-        if (printBuyerUsername && !cleanBuyerHandle.isEmpty()) {
+        // @username is dropped on the 320 tier — no vertical room once store +
+        // buyer# + name + price code + total are kept.
+        if (printBuyerUsername && !cleanBuyerHandle.isEmpty() && !compact) {
             writeTextSmart(out, 16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)), 1, 1, rightEdge);
             y += 35;
         }
@@ -209,7 +218,7 @@ class TsplBuilder {
         // Thin separator before the order lines so they read as a sub-section.
         if (printOrderItems && orders != null && orders.length() > 0 && y < orderEntryGuard) {
             writeAscii(out, "BAR 16," + y + "," + (wDots - 280) + ",2");
-            y += 10;
+            y += compact ? 6 : 10;
             // Cap at 2 orders so the layout doesn't run off the bottom of a
             // 60mm label. The full order history is still on the web slip and
             // any reprint UI; the sticker is a buyer-identifier, not a ledger.
