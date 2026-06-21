@@ -505,6 +505,9 @@ function sendSlipToNativePrinter(payload:NativePrinterPayload){
 const STICKER_LABELS: Record<string,{w:number;h:number}> = {
   "100x60": {w:100,h:60},
   "80x60": {w:80,h:60},
+  // PHASE 2 — 400-dot (50mm) height tier; footer reflows up to the bottom.
+  "80x50": {w:80,h:50},
+  "70x50": {w:70,h:50},
 };
 const STICKER_SIZE_FALLBACK = "100x60";
 // Strip a legacy "mm" suffix; return the canonical key if supported, else fallback.
@@ -2318,6 +2321,8 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
             <select value={stickerSizeKey(sets.stickerSize)} onChange={e=>setSets(s=>({...s,stickerSize:e.target.value}))}>
               <option value="100x60">{t.set_size_standard}</option>
               <option value="80x60">80x60mm</option>
+              <option value="80x50">80x50mm</option>
+              <option value="70x50">70x50mm</option>
             </select>
           </Fg>
           )}

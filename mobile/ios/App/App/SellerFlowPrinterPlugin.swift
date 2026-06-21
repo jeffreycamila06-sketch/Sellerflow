@@ -554,6 +554,14 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         // 100x60 reproduces the original bytes exactly (wDots-340==460, etc).
         let wDots = labelWidthMm * 8
         let rightEdge = wDots - 16
+        // PHASE 2 height tier: footer anchored to the bottom, order caps derived
+        // from it, so a shorter label reflows without touching the top-down body.
+        // At 60mm (480) these reduce to the original 380/395/350/360 -> byte-identical.
+        let hDots = labelHeightMm * 8
+        let footerBarY = hDots - 100
+        let totalY = hDots - 85
+        let orderEntryGuard = footerBarY - 30
+        let orderLoopGuard = footerBarY - 20
 
         // Header row: brand at left, session date at right.
         writeAscii("TEXT 16,10,\"4\",0,1,1,\"SellerFlowLive\"")
@@ -594,12 +602,12 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         }
 
         // Thin separator + order lines (capped at 2 so a 60mm label can't overflow).
-        if printOrderItems && !orders.isEmpty && y < 350 {
+        if printOrderItems && !orders.isEmpty && y < orderEntryGuard {
             writeAscii("BAR 16,\(y),\(wDots - 280),2")
             y += 10
             let maxOrders = 2
             var i = 0
-            while i < min(orders.count, maxOrders) && y < 360 {
+            while i < min(orders.count, maxOrders) && y < orderLoopGuard {
                 let order = orders[i]
                 let time = (order["time"] as? String) ?? ""
                 let item = (order["item"] as? String) ?? ""
@@ -620,11 +628,11 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         }
 
         // Footer divider + total, anchored to the bottom of the label.
-        writeAscii("BAR 0,380,\(wDots),3")
+        writeAscii("BAR 0,\(footerBarY),\(wDots),3")
         if printTotal && totalSpent > 0 {
-            writeAscii("TEXT 16,395,\"3\",0,1,1,\"Total:\"")
+            writeAscii("TEXT 16,\(totalY),\"3\",0,1,1,\"Total:\"")
             let totalStr = tsplSafe(currency) + tsplMoney(totalSpent)
-            writeAscii("TEXT \(wDots - 390),395,\"4\",0,2,1,\"\(tsplSafe(truncate16(totalStr, 18)))\"")
+            writeAscii("TEXT \(wDots - 390),\(totalY),\"4\",0,2,1,\"\(tsplSafe(truncate16(totalStr, 18)))\"")
         }
 
         writeAscii("PRINT 1")

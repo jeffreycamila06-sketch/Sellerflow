@@ -112,6 +112,13 @@ export function buildTsplStickerReference(
   // (wDots-340==460, wDots-390==410, wDots-16==784 at 800). Mirrors TsplBuilder.
   const wDots = labelWidthMm * 8;
   const rightEdge = wDots - 16;
+  // PHASE 2 height tier: footer anchored to the bottom; order caps derive from
+  // it. At 60mm (480) these reduce to the original 380/395/350/360 -> byte-identical.
+  const hDots = labelHeightMm * 8;
+  const footerBarY = hDots - 100;
+  const totalY = hDots - 85;
+  const orderEntryGuard = footerBarY - 30;
+  const orderLoopGuard = footerBarY - 20;
   // xMul/yMul multipliers + width-dependent rightEdge for the CJK clamp; applied
   // to both the ASCII and TSS24.BF2 (CJK) paths. Mirrors TsplBuilder.writeTextSmart.
   const writeTextSmart = (x: number, y: number, asciiFont: string, content: string, xMul: number, yMul: number) => {
@@ -187,11 +194,11 @@ export function buildTsplStickerReference(
     y += 35;
   }
 
-  if (printOrderItems && orders.length > 0 && y < 350) {
+  if (printOrderItems && orders.length > 0 && y < orderEntryGuard) {
     writeAscii(`BAR 16,${y},${wDots - 280},2`);
     y += 10;
     const maxOrders = 2;
-    for (let i = 0; i < Math.min(orders.length, maxOrders) && y < 360; i++) {
+    for (let i = 0; i < Math.min(orders.length, maxOrders) && y < orderLoopGuard; i++) {
       const order = orders[i] ?? {};
       const time = order.time ?? "";
       const item = order.item ?? "";
@@ -208,11 +215,11 @@ export function buildTsplStickerReference(
     }
   }
 
-  writeAscii(`BAR 0,380,${wDots},3`);
+  writeAscii(`BAR 0,${footerBarY},${wDots},3`);
   if (printTotal && totalSpent > 0) {
-    writeAscii('TEXT 16,395,"3",0,1,1,"Total:"');
+    writeAscii(`TEXT 16,${totalY},"3",0,1,1,"Total:"`);
     const totalStr = safe(currency) + money(totalSpent);
-    writeAscii(`TEXT ${wDots - 390},395,"4",0,2,1,"${safe(truncate(totalStr, 18))}"`);
+    writeAscii(`TEXT ${wDots - 390},${totalY},"4",0,2,1,"${safe(truncate(totalStr, 18))}"`);
   }
 
   writeAscii("PRINT 1");

@@ -153,6 +153,38 @@ public final class GoldenGen {
                 order("09:30", "紅色洋裝")),
             settings(true, true, true, true, true)), 80, 60));
 
+        // ── PHASE 2: 400-dot (50mm) height tier — footer reflows to the bottom.
+        // 11. 80x50 ASCII (width 640, height 400). Validates the bottom-anchored
+        //     footer + order-row cap on the shorter label.
+        list.add(new Fixture("ascii_full_80x50", payload(
+            "My Shop", "June 18, 2026", "NT$",
+            buyer(7, "Maria Santos", "maria_s", 250.0,
+                order("14:02", "150"),
+                order("14:05", "250")),
+            settings(true, true, true, true, true)), 80, 50));
+
+        // 12. 70x50 ASCII (width 560, height 400) — narrowest Phase-2 width.
+        list.add(new Fixture("ascii_full_70x50", payload(
+            "My Shop", "June 18, 2026", "NT$",
+            buyer(7, "Maria Santos", "maria_s", 250.0,
+                order("14:02", "150"),
+                order("14:05", "250")),
+            settings(true, true, true, true, true)), 70, 50));
+
+        // 13. 70x50 Chinese — CJK clamp (rightEdge=544) at the new height tier.
+        list.add(new Fixture("chinese_70x50", payload(
+            "小店", "2026-06-18", "NT$",
+            buyer(12, "陳小美", "meimei", 1280.5,
+                order("09:30", "紅色洋裝")),
+            settings(true, true, true, true, true)), 70, 50));
+
+        // 14. 70x50 all settings OFF — checks the footer position with an empty
+        //     body (only the fixed scaffold + bottom-anchored divider remain).
+        list.add(new Fixture("settings_off_70x50", payload(
+            "Big Store", "2026-06-18", "NT$",
+            buyer(9, "John Doe", "johnd", 500.0, order("10:00", "300")),
+            settings(false, false, false, false, false)), 70, 50));
+
         return list;
     }
 

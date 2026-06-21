@@ -152,6 +152,16 @@ class TsplBuilder {
         // exactly (wDots-340 == 460, wDots-390 == 410, wDots-16 == 784 at 800).
         int wDots = labelWidthMm * 8;
         int rightEdge = wDots - 16;
+        // PHASE 2 height tier. The footer (divider + total) is anchored to the
+        // BOTTOM of the label, and the order-row caps derive from it, so a
+        // shorter label (50mm = 400 dots) reflows without touching the top-down
+        // body. At 60mm (480 dots) these reduce to the original literals
+        // (380/395/350/360), so the 480-tier goldens stay byte-identical.
+        int hDots = labelHeightMm * 8;
+        int footerBarY = hDots - 100;          // 380 @ 60mm, 300 @ 50mm
+        int totalY = hDots - 85;               // 395 @ 60mm, 315 @ 50mm
+        int orderEntryGuard = footerBarY - 30; // 350 @ 60mm
+        int orderLoopGuard = footerBarY - 20;  // 360 @ 60mm
 
         // Header row: brand at left, session date at right.
         writeAscii(out, "TEXT 16,10,\"4\",0,1,1,\"SellerFlowLive\"");
@@ -197,14 +207,14 @@ class TsplBuilder {
         }
 
         // Thin separator before the order lines so they read as a sub-section.
-        if (printOrderItems && orders != null && orders.length() > 0 && y < 350) {
+        if (printOrderItems && orders != null && orders.length() > 0 && y < orderEntryGuard) {
             writeAscii(out, "BAR 16," + y + "," + (wDots - 280) + ",2");
             y += 10;
             // Cap at 2 orders so the layout doesn't run off the bottom of a
             // 60mm label. The full order history is still on the web slip and
             // any reprint UI; the sticker is a buyer-identifier, not a ledger.
             int maxOrders = 2;
-            for (int i = 0; i < Math.min(orders.length(), maxOrders) && y < 360; i++) {
+            for (int i = 0; i < Math.min(orders.length(), maxOrders) && y < orderLoopGuard; i++) {
                 JSONObject order = orders.optJSONObject(i);
                 if (order == null) continue;
                 String time = order.optString("time", "");
@@ -232,11 +242,11 @@ class TsplBuilder {
 
         // Footer divider + total. Anchored to the bottom of the label so
         // variable-length content above doesn't shift it.
-        writeAscii(out, "BAR 0,380," + wDots + ",3");
+        writeAscii(out, "BAR 0," + footerBarY + "," + wDots + ",3");
         if (printTotal && totalSpent > 0) {
-            writeAscii(out, "TEXT 16,395,\"3\",0,1,1,\"Total:\"");
+            writeAscii(out, "TEXT 16," + totalY + ",\"3\",0,1,1,\"Total:\"");
             String totalStr = safe(currency) + money(totalSpent);
-            writeAscii(out, "TEXT " + (wDots - 390) + ",395,\"4\",0,2,1,\"" + safe(truncate(totalStr, 18)) + "\"");
+            writeAscii(out, "TEXT " + (wDots - 390) + "," + totalY + ",\"4\",0,2,1,\"" + safe(truncate(totalStr, 18)) + "\"");
         }
 
         writeAscii(out, "PRINT 1");
