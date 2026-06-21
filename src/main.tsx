@@ -18,17 +18,27 @@ if (typeof window !== "undefined" && POSTHOG_KEY) {
   });
 }
 
-// iOS HIG styling hook. Adds body.platform-ios when running on:
-//   - Capacitor iOS app  (Capacitor.getPlatform() === "ios")
-//   - Mac Safari Responsive Design Mode with ?ios=1 in URL (dev testing)
-// Android, web (desktop), and regular iPhone Safari are unaffected: the
-// class is never added, so the .platform-ios-scoped CSS rules in App.css
-// don't match and apply nothing.
+// Platform styling/behavior hooks. Sets body.platform-ios / body.platform-android
+// so platform-scoped CSS and UI gating can match the running container:
+//   - body.platform-ios     -> Capacitor iOS app, or ?ios=1 (dev testing)
+//   - body.platform-android  -> Capacitor Android app, or ?android=1 (dev testing)
+// Desktop web and regular mobile browsers get neither class (no Capacitor),
+// so platform-scoped CSS rules and gates don't apply there.
+//
+// The android marker exists so SettingsPage can hide the slip size/position
+// controls on the Android APK: it prints slips via the native ESC/POS bridge
+// (window.SellerFlowPrinter.printSlip, MainActivity.java) using fixed 1x/2x
+// sizing byte-identical to iOS, so those controls are inert on-device — same
+// as iOS. Desktop web keeps them, since its browser-print iframe honors them.
 if (typeof window !== "undefined" && typeof document !== "undefined" && document.body) {
   const cap = (window as { Capacitor?: { getPlatform?: () => string } }).Capacitor;
-  const forced = new URLSearchParams(window.location.search).has("ios");
-  if (cap?.getPlatform?.() === "ios" || forced) {
+  const params = new URLSearchParams(window.location.search);
+  const platform = cap?.getPlatform?.();
+  if (platform === "ios" || params.has("ios")) {
     document.body.classList.add("platform-ios");
+  }
+  if (platform === "android" || params.has("android")) {
+    document.body.classList.add("platform-android");
   }
 }
 

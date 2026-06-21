@@ -1966,6 +1966,13 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   // printout there. Reuses main.tsx's body.platform-ios hook (Capacitor iOS app
   // or ?ios dev param); Android and web keep the controls (class never set).
   const isIOSPlatform = typeof document!=="undefined" && document.body.classList.contains("platform-ios");
+  // Android APK marker (set in main.tsx). The Android APK prints slips through
+  // the native ESC/POS bridge (window.SellerFlowPrinter.printSlip), which uses
+  // fixed 1x/2x sizing byte-identical to iOS and ignores the per-field scale +
+  // position settings — so those controls are inert on-device, exactly like iOS.
+  // Hide them here so the Android Settings match iOS. Desktop web (class never
+  // set) keeps them: its browser-print iframe path actually honors the scales.
+  const isAndroidPlatform = typeof document!=="undefined" && document.body.classList.contains("platform-android");
   // Sticker output (BT TSPL or LAN sticker) prints fixed TSPL fonts/coords —
   // the size dropdown + per-field size/position tuning don't reach it (only
   // the on/off "Printer output" toggles do). Hide those inert controls in
@@ -2272,7 +2279,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
             </div>
           </div>
           )}
-          {!isStickerOutput && (
+          {!isStickerOutput && !isAndroidPlatform && (
           <Fg label={t.printer_size}>
             <select value={sets.stickerSize} onChange={e=>setSets(s=>({...s,stickerSize:e.target.value}))}>
               <option value="100x60">{t.set_size_standard}</option>
@@ -2281,7 +2288,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
             </select>
           </Fg>
           )}
-          {!isIOSPlatform && !isStickerOutput && <>
+          {!isIOSPlatform && !isAndroidPlatform && !isStickerOutput && <>
           <div className="printer-preview-box">
             <div className="printer-preview-title">{t.set_preview_title}</div>
             <div className="printer-preview-slip">
