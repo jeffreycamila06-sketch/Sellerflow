@@ -9,6 +9,10 @@
     {"name": "quote_escape", "labelWidthMm": 100, "labelHeightMm": 60},
     {"name": "minimal", "labelWidthMm": 100, "labelHeightMm": 60},
     {"name": "ascii_full_80x60", "labelWidthMm": 80, "labelHeightMm": 60},
-    {"name": "chinese_80x60", "labelWidthMm": 80, "labelHeightMm": 60}
+    {"name": "chinese_80x60", "labelWidthMm": 80, "labelHeightMm": 60},
+    {"name": "ascii_full_80x50", "labelWidthMm": 80, "labelHeightMm": 50},
+    {"name": "ascii_full_70x50", "labelWidthMm": 70, "labelHeightMm": 50},
+    {"name": "chinese_70x50", "labelWidthMm": 70, "labelHeightMm": 50},
+    {"name": "settings_off_70x50", "labelWidthMm": 70, "labelHeightMm": 50}
   ]
 }
