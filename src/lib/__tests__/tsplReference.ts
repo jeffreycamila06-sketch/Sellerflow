@@ -117,11 +117,13 @@ export function buildTsplStickerReference(
   const hDots = labelHeightMm * 8;
   const footerBarY = hDots - 100;
   const totalY = hDots - 85;
-  const orderEntryGuard = footerBarY - 30;
-  const orderLoopGuard = footerBarY - 20;
-  // PHASE 3 / 320-dot (40mm) tier: compact body (tighter gaps, buyer# 2x1,
-  // @username dropped). Gated to hDots<=320 so 480/400 stay byte-identical.
+  // PHASE 3 / 320-dot (40mm) tier: compact body (tighter gaps, buyer# 2x1).
+  // On 60x40 the Total line is dropped for the @username row. Gated to
+  // hDots<=320 so 480/400 stay byte-identical (Total + username kept).
   const compact = hDots <= 320;
+  // Order caps: compact has no Total, so orders use the bottom (hDots-80/-56).
+  const orderEntryGuard = compact ? (hDots - 80) : (footerBarY - 30);
+  const orderLoopGuard  = compact ? (hDots - 56) : (footerBarY - 20);
   // xMul/yMul multipliers + width-dependent rightEdge for the CJK clamp; applied
   // to both the ASCII and TSS24.BF2 (CJK) paths. Mirrors TsplBuilder.writeTextSmart.
   const writeTextSmart = (x: number, y: number, asciiFont: string, content: string, xMul: number, yMul: number) => {
@@ -193,10 +195,10 @@ export function buildTsplStickerReference(
     y += compact ? 34 : 40;
   }
 
-  // @username dropped on the 320 tier (no vertical room).
-  if (printBuyerUsername && cleanBuyerHandle && !compact) {
+  // @username — kept on every size, incl. 60x40 (replaced the Total line there).
+  if (printBuyerUsername && cleanBuyerHandle) {
     writeTextSmart(16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)), 1, 1);
-    y += 35;
+    y += compact ? 30 : 35;
   }
 
   if (printOrderItems && orders.length > 0 && y < orderEntryGuard) {
@@ -220,8 +222,9 @@ export function buildTsplStickerReference(
     }
   }
 
-  // Footer divider line removed; footerBarY stays as the invisible clearance boundary.
-  if (printTotal && totalSpent > 0) {
+  // Footer divider line removed; footerBarY stays as the invisible clearance
+  // boundary. Total dropped on 60x40 (compact) — swapped for the @username row.
+  if (printTotal && totalSpent > 0 && !compact) {
     writeAscii(`TEXT 16,${totalY},"3",0,1,1,"Total:"`);
     const totalStr = safe(currency) + money(totalSpent);
     writeAscii(`TEXT ${wDots - 390},${totalY},"4",0,2,1,"${safe(truncate(totalStr, 18))}"`);

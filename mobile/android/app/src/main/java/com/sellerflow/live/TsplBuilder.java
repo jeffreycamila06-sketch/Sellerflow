@@ -160,14 +160,20 @@ class TsplBuilder {
         int hDots = labelHeightMm * 8;
         int footerBarY = hDots - 100;          // 380 @ 60mm, 300 @ 50mm
         int totalY = hDots - 85;               // 395 @ 60mm, 315 @ 50mm
-        int orderEntryGuard = footerBarY - 30; // 350 @ 60mm
-        int orderLoopGuard = footerBarY - 20;  // 360 @ 60mm
         // PHASE 3 / 320-dot (40mm) tier: the identity body would overflow the
-        // bottom-anchored footer, so compact mode tightens field gaps, shrinks
-        // the buyer# to 2x1 (still 2x wide, half the height), and drops the
-        // @username row. Gated to hDots<=320, so the 480/400 tiers are untouched
-        // (compact=false reproduces the original 35/95(2x2)/40/35/10 layout).
+        // bottom-anchored footer, so compact mode tightens field gaps and shrinks
+        // the buyer# to 2x1 (still 2x wide, half the height). On 60x40 the Total
+        // line is dropped in favor of the @username row (buyer identity matters
+        // more than price on a shipping sticker) — so the order row instead uses
+        // the bottom space the Total would have taken (relaxed guards below).
+        // Gated to hDots<=320, so the 480/400 tiers are untouched (compact=false
+        // reproduces the original 35/95(2x2)/40/35/10 layout + Total).
         boolean compact = hDots <= 320;
+        // Order-row caps: non-compact keeps clear of the footer/Total
+        // (footerBarY-30/-20); compact has no Total, so orders may use the
+        // bottom of the label (hDots-80/-56) below the restored @username row.
+        int orderEntryGuard = compact ? (hDots - 80) : (footerBarY - 30); // 240 @ 320, 350 @ 480
+        int orderLoopGuard  = compact ? (hDots - 56) : (footerBarY - 20); // 264 @ 320, 360 @ 480
 
         // Header row: brand at left (font 3 so it can't reach the date), the
         // compact MM/DD/YYYY date grouped right after it at a fixed x=290 (the
@@ -211,11 +217,11 @@ class TsplBuilder {
             y += compact ? 34 : 40;
         }
 
-        // @username is dropped on the 320 tier — no vertical room once store +
-        // buyer# + name + price code + total are kept.
-        if (printBuyerUsername && !cleanBuyerHandle.isEmpty() && !compact) {
+        // @username — kept on every size, incl. 60x40 (it replaced the Total
+        // line there; buyer identity is essential on a shipping sticker).
+        if (printBuyerUsername && !cleanBuyerHandle.isEmpty()) {
             writeTextSmart(out, 16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)), 1, 1, rightEdge);
-            y += 35;
+            y += compact ? 30 : 35;
         }
 
         // Thin separator before the order lines so they read as a sub-section.
@@ -255,7 +261,9 @@ class TsplBuilder {
         // Footer total, anchored to the bottom of the label. The footer divider
         // line was removed (the price code grazed it); footerBarY stays as the
         // invisible boundary that keeps the order rows clear of the total.
-        if (printTotal && totalSpent > 0) {
+        // Dropped on 60x40 (compact): that tier swaps the Total line for the
+        // @username row — the price still prints as the order item above.
+        if (printTotal && totalSpent > 0 && !compact) {
             writeAscii(out, "TEXT 16," + totalY + ",\"3\",0,1,1,\"Total:\"");
             String totalStr = safe(currency) + money(totalSpent);
             writeAscii(out, "TEXT " + (wDots - 390) + "," + totalY + ",\"4\",0,2,1,\"" + safe(truncate(totalStr, 18)) + "\"");

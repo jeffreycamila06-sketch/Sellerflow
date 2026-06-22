@@ -560,12 +560,15 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         let hDots = labelHeightMm * 8
         let footerBarY = hDots - 100
         let totalY = hDots - 85
-        let orderEntryGuard = footerBarY - 30
-        let orderLoopGuard = footerBarY - 20
-        // PHASE 3 / 320-dot (40mm) tier: compact mode tightens gaps, shrinks
-        // buyer# to 2x1, and drops @username. Gated to hDots<=320 so 480/400
-        // stay byte-identical (compact=false reproduces the original layout).
+        // PHASE 3 / 320-dot (40mm) tier: compact mode tightens gaps + shrinks
+        // buyer# to 2x1. On 60x40 the Total line is dropped for the @username
+        // row (buyer identity > price on a shipping sticker). Gated to
+        // hDots<=320 so 480/400 stay byte-identical (Total + username kept).
         let compact = hDots <= 320
+        // Order caps: non-compact clears the footer/Total; compact has no Total
+        // so orders use the bottom (hDots-80/-56) below the restored @username.
+        let orderEntryGuard = compact ? (hDots - 80) : (footerBarY - 30)
+        let orderLoopGuard  = compact ? (hDots - 56) : (footerBarY - 20)
 
         // Header row: brand at left (font 3 so it can't reach the date), the
         // compact MM/DD/YYYY date right-aligned in the corner. No "Session:" prefix.
@@ -602,11 +605,11 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             y += compact ? 34 : 40
         }
 
-        // @username is dropped on the 320 tier — no vertical room once store +
-        // buyer# + name + price code + total are kept.
-        if printBuyerUsername && !cleanBuyerHandle.isEmpty && !compact {
+        // @username — kept on every size, incl. 60x40 (it replaced the Total
+        // line there; buyer identity is essential on a shipping sticker).
+        if printBuyerUsername && !cleanBuyerHandle.isEmpty {
             writeTextSmart(&out, 16, y, "3", "@" + tsplSafe(truncate16(cleanBuyerHandle, 30)), 1, 1, rightEdge)
-            y += 35
+            y += compact ? 30 : 35
         }
 
         // Thin separator + order lines (capped at 2 so a 60mm label can't overflow).
@@ -637,7 +640,9 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
 
         // Footer total, anchored to the bottom. Divider line removed (price code
         // grazed it); footerBarY stays as the invisible clearance boundary.
-        if printTotal && totalSpent > 0 {
+        // Dropped on 60x40 (compact) — swapped for the @username row; the price
+        // still prints as the order item above.
+        if printTotal && totalSpent > 0 && !compact {
             writeAscii("TEXT 16,\(totalY),\"3\",0,1,1,\"Total:\"")
             let totalStr = tsplSafe(currency) + tsplMoney(totalSpent)
             writeAscii("TEXT \(wDots - 390),\(totalY),\"4\",0,2,1,\"\(tsplSafe(truncate16(totalStr, 18)))\"")
