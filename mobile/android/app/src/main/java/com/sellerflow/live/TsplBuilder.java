@@ -27,6 +27,45 @@ class TsplBuilder {
 
     private static final byte[] CRLF = new byte[]{'\r', '\n'};
 
+    // ── Per-size layout config (ISOLATION) ──────────────────────────────────
+    // Each sticker size is a self-contained entry: editing one row cannot affect
+    // another (no shared geometry formula for any tunable value). forStickerNative
+    // just executes the config. Values are the resolved equivalents of the old
+    // parametric formulas, so every golden stays byte-identical. Mirrors the TS
+    // reference (tsplReference.ts STICKER_LAYOUTS) and Swift — keep all in sync.
+    //   rightEdge=wDots-16 (CJK clamp)   *Gap=y advance after that field
+    //   buyerNumYMul=2x2 vs 2x1 height   orderEntry/LoopGuard=order-row y caps
+    //   sepWidth=separator bar width     totalAmountX=right-aligned total amount
+    private static final class SizeConfig {
+        final int wDots, rightEdge, storeGap, buyerNumYMul, buyerNumGap, nameGap,
+                  usernameGap, sepGap, sepWidth, orderEntryGuard, orderLoopGuard, totalY, totalAmountX;
+        final boolean showTotal;
+        SizeConfig(int wDots, int rightEdge, int storeGap, int buyerNumYMul, int buyerNumGap,
+                   int nameGap, int usernameGap, int sepGap, int sepWidth, int orderEntryGuard,
+                   int orderLoopGuard, boolean showTotal, int totalY, int totalAmountX) {
+            this.wDots=wDots; this.rightEdge=rightEdge; this.storeGap=storeGap;
+            this.buyerNumYMul=buyerNumYMul; this.buyerNumGap=buyerNumGap; this.nameGap=nameGap;
+            this.usernameGap=usernameGap; this.sepGap=sepGap; this.sepWidth=sepWidth;
+            this.orderEntryGuard=orderEntryGuard; this.orderLoopGuard=orderLoopGuard;
+            this.showTotal=showTotal; this.totalY=totalY; this.totalAmountX=totalAmountX;
+        }
+    }
+    private static final java.util.Map<String, SizeConfig> LAYOUTS = java.util.Map.of(
+        // 480-dot height tier (60mm): full 2x2 buyer#, 2 order rows, Total kept.
+        "100x60", new SizeConfig(800, 784, 35, 2, 95, 40, 35, 10, 520, 350, 360, true, 395, 410),
+        "80x60",  new SizeConfig(640, 624, 35, 2, 95, 40, 35, 10, 360, 350, 360, true, 395, 250),
+        // 400-dot height tier (50mm): Total moves up, ~1 order row fits.
+        "80x50",  new SizeConfig(640, 624, 35, 2, 95, 40, 35, 10, 360, 270, 280, true, 315, 250),
+        "70x50",  new SizeConfig(560, 544, 35, 2, 95, 40, 35, 10, 280, 270, 280, true, 315, 170),
+        // 320-dot height tier (40mm): compact — buyer# 2x1, tighter gaps, NO Total
+        // (swapped for @username); order row uses the freed bottom space.
+        "60x40",  new SizeConfig(480, 464, 30, 1, 46, 34, 30,  6, 200, 240, 264, false,  0,   0)
+    );
+    private static SizeConfig stickerConfig(int wMm, int hMm) {
+        SizeConfig c = LAYOUTS.get(wMm + "x" + hMm);
+        return c != null ? c : LAYOUTS.get("100x60");
+    }
+
     /**
      * Minimal text-only test page. Used by testStickerPrint() to verify the
      * printer + Bluetooth pipeline before any structured content is involved.
@@ -145,35 +184,9 @@ class TsplBuilder {
         writeAscii(out, "DENSITY 8");
         writeAscii(out, "CLS");
 
-        // 8 dots/mm @ 203 DPI. PHASE 1 scales only the WIDTH-dependent layout:
-        // full-width rules, the right-anchored session date + total amount, the
-        // sub-section separator, and the CJK right-edge clamp. The 60mm height
-        // tier keeps every y coordinate, so 100x60 reproduces the original bytes
-        // exactly (wDots-340 == 460, wDots-390 == 410, wDots-16 == 784 at 800).
-        int wDots = labelWidthMm * 8;
-        int rightEdge = wDots - 16;
-        // PHASE 2 height tier. The footer (divider + total) is anchored to the
-        // BOTTOM of the label, and the order-row caps derive from it, so a
-        // shorter label (50mm = 400 dots) reflows without touching the top-down
-        // body. At 60mm (480 dots) these reduce to the original literals
-        // (380/395/350/360), so the 480-tier goldens stay byte-identical.
-        int hDots = labelHeightMm * 8;
-        int footerBarY = hDots - 100;          // 380 @ 60mm, 300 @ 50mm
-        int totalY = hDots - 85;               // 395 @ 60mm, 315 @ 50mm
-        // PHASE 3 / 320-dot (40mm) tier: the identity body would overflow the
-        // bottom-anchored footer, so compact mode tightens field gaps and shrinks
-        // the buyer# to 2x1 (still 2x wide, half the height). On 60x40 the Total
-        // line is dropped in favor of the @username row (buyer identity matters
-        // more than price on a shipping sticker) — so the order row instead uses
-        // the bottom space the Total would have taken (relaxed guards below).
-        // Gated to hDots<=320, so the 480/400 tiers are untouched (compact=false
-        // reproduces the original 35/95(2x2)/40/35/10 layout + Total).
-        boolean compact = hDots <= 320;
-        // Order-row caps: non-compact keeps clear of the footer/Total
-        // (footerBarY-30/-20); compact has no Total, so orders may use the
-        // bottom of the label (hDots-80/-56) below the restored @username row.
-        int orderEntryGuard = compact ? (hDots - 80) : (footerBarY - 30); // 240 @ 320, 350 @ 480
-        int orderLoopGuard  = compact ? (hDots - 56) : (footerBarY - 20); // 264 @ 320, 360 @ 480
+        // ISOLATION: all per-size geometry comes from this size's config entry —
+        // no shared formula, so editing one size can't affect another.
+        SizeConfig c = stickerConfig(labelWidthMm, labelHeightMm);
 
         // Header row: brand at left (font 3 so it can't reach the date), the
         // compact MM/DD/YYYY date grouped right after it at a fixed x=290 (the
@@ -183,7 +196,7 @@ class TsplBuilder {
         if (!sessionDate.isEmpty()) {
             writeAscii(out, "TEXT 290,18,\"2\",0,1,1,\"" + safe(truncate(sessionDate, 12)) + "\"");
         }
-        writeAscii(out, "BAR 0,48," + wDots + ",3");
+        writeAscii(out, "BAR 0,48," + c.wDots + ",3");
 
         // Strip unrenderable codepoints (emoji/flags/pictographs/ZWJ/VS) per
         // field BEFORE the encoding decision — otherwise GBK turns them into
@@ -201,38 +214,38 @@ class TsplBuilder {
 
         int y = 60;
         if (printStoreName && !cleanStoreName.isEmpty()) {
-            writeTextSmart(out, 16, y, "3", safe(truncate(cleanStoreName, 36)), 1, 1, rightEdge);
-            y += compact ? 30 : 35;
+            writeTextSmart(out, 16, y, "3", safe(truncate(cleanStoreName, 36)), 1, 1, c.rightEdge);
+            y += c.storeGap;
         }
 
-        // Buyer # is the dominant element — the whole point of the sticker. On
-        // the 320 tier it drops to 2x1 (half height, still 2x wide) to fit.
+        // Buyer # is the dominant element — the whole point of the sticker.
+        // Height multiplier per size (2x2 on tall labels, 2x1 on 60x40).
         if (printBuyerNumber) {
-            writeAscii(out, "TEXT 16," + y + ",\"4\",0,2," + (compact ? 1 : 2) + ",\"Buyer #" + buyerNum + "\"");
-            y += compact ? 46 : 95;
+            writeAscii(out, "TEXT 16," + y + ",\"4\",0,2," + c.buyerNumYMul + ",\"Buyer #" + buyerNum + "\"");
+            y += c.buyerNumGap;
         }
 
         if (!buyerNameToPrint.isEmpty()) {
-            writeTextSmart(out, 16, y, "4", safe(truncate(buyerNameToPrint, 30)), 1, 1, rightEdge);
-            y += compact ? 34 : 40;
+            writeTextSmart(out, 16, y, "4", safe(truncate(buyerNameToPrint, 30)), 1, 1, c.rightEdge);
+            y += c.nameGap;
         }
 
         // @username — kept on every size, incl. 60x40 (it replaced the Total
         // line there; buyer identity is essential on a shipping sticker).
         if (printBuyerUsername && !cleanBuyerHandle.isEmpty()) {
-            writeTextSmart(out, 16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)), 1, 1, rightEdge);
-            y += compact ? 30 : 35;
+            writeTextSmart(out, 16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)), 1, 1, c.rightEdge);
+            y += c.usernameGap;
         }
 
         // Thin separator before the order lines so they read as a sub-section.
-        if (printOrderItems && orders != null && orders.length() > 0 && y < orderEntryGuard) {
-            writeAscii(out, "BAR 16," + y + "," + (wDots - 280) + ",2");
-            y += compact ? 6 : 10;
+        if (printOrderItems && orders != null && orders.length() > 0 && y < c.orderEntryGuard) {
+            writeAscii(out, "BAR 16," + y + "," + c.sepWidth + ",2");
+            y += c.sepGap;
             // Cap at 2 orders so the layout doesn't run off the bottom of a
             // 60mm label. The full order history is still on the web slip and
             // any reprint UI; the sticker is a buyer-identifier, not a ledger.
             int maxOrders = 2;
-            for (int i = 0; i < Math.min(orders.length(), maxOrders) && y < orderLoopGuard; i++) {
+            for (int i = 0; i < Math.min(orders.length(), maxOrders) && y < c.orderLoopGuard; i++) {
                 JSONObject order = orders.optJSONObject(i);
                 if (order == null) continue;
                 String time = order.optString("time", "");
@@ -248,25 +261,23 @@ class TsplBuilder {
                 if (!cleanItem.isEmpty()) {
                     // Item column: x=180..rightEdge. The "item" is the buyer's
                     // short price code (e.g. 150/250/600), rendered at the SAME
-                    // size as the grand Total amount below — font "4", 2x width,
-                    // 1x height (xMul=2 only; 2x height would overlap the y=380
-                    // footer bar). truncate(12) is a width guard so a longer-
-                    // than-expected code clips instead of overrunning rightEdge.
-                    writeTextSmart(out, 180, y, "4", safe(truncate(cleanItem, 12)), 2, 1, rightEdge);
+                    // size as the grand Total amount — font "4", 2x width, 1x
+                    // height. truncate(12) is a width guard so a longer-than-
+                    // expected code clips instead of overrunning rightEdge.
+                    writeTextSmart(out, 180, y, "4", safe(truncate(cleanItem, 12)), 2, 1, c.rightEdge);
                 }
                 y += 38;
             }
         }
 
-        // Footer total, anchored to the bottom of the label. The footer divider
-        // line was removed (the price code grazed it); footerBarY stays as the
-        // invisible boundary that keeps the order rows clear of the total.
-        // Dropped on 60x40 (compact): that tier swaps the Total line for the
+        // Footer total, anchored to the bottom of the label (no divider line).
+        // The order rows stay clear of it via the guards. Dropped on 60x40
+        // (config showTotal=false): that tier swaps the Total line for the
         // @username row — the price still prints as the order item above.
-        if (printTotal && totalSpent > 0 && !compact) {
-            writeAscii(out, "TEXT 16," + totalY + ",\"3\",0,1,1,\"Total:\"");
+        if (printTotal && totalSpent > 0 && c.showTotal) {
+            writeAscii(out, "TEXT 16," + c.totalY + ",\"3\",0,1,1,\"Total:\"");
             String totalStr = safe(currency) + money(totalSpent);
-            writeAscii(out, "TEXT " + (wDots - 390) + "," + totalY + ",\"4\",0,2,1,\"" + safe(truncate(totalStr, 18)) + "\"");
+            writeAscii(out, "TEXT " + c.totalAmountX + "," + c.totalY + ",\"4\",0,2,1,\"" + safe(truncate(totalStr, 18)) + "\"");
         }
 
         writeAscii(out, "PRINT 1");

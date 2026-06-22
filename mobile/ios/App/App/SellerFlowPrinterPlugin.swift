@@ -58,6 +58,34 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
     /// constant `ESC_POS_ORDER_SIZE`.
     public static let ESC_POS_ORDER_SIZE: UInt8 = 0x11
 
+    // ── Per-size sticker layout config (ISOLATION) ──────────────────────────
+    // Each size is a self-contained entry: editing one row cannot affect another
+    // (no shared geometry formula for any tunable value). buildTsplSticker just
+    // executes the config. Values are the resolved equivalents of the old
+    // parametric formulas, so every golden stays byte-identical. Mirrors the
+    // Java LAYOUTS + TS STICKER_LAYOUTS — keep all three in sync (goldens enforce).
+    private struct SizeConfig {
+        let wDots, rightEdge, storeGap, buyerNumYMul, buyerNumGap, nameGap,
+            usernameGap, sepGap, sepWidth, orderEntryGuard, orderLoopGuard,
+            totalY, totalAmountX: Int
+        let showTotal: Bool
+    }
+    private static let stickerLayouts: [String: SizeConfig] = [
+        // 480-dot height tier (60mm): full 2x2 buyer#, 2 order rows, Total kept.
+        "100x60": SizeConfig(wDots: 800, rightEdge: 784, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 520, orderEntryGuard: 350, orderLoopGuard: 360, totalY: 395, totalAmountX: 410, showTotal: true),
+        "80x60":  SizeConfig(wDots: 640, rightEdge: 624, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 360, orderEntryGuard: 350, orderLoopGuard: 360, totalY: 395, totalAmountX: 250, showTotal: true),
+        // 400-dot height tier (50mm): Total moves up, ~1 order row fits.
+        "80x50":  SizeConfig(wDots: 640, rightEdge: 624, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 360, orderEntryGuard: 270, orderLoopGuard: 280, totalY: 315, totalAmountX: 250, showTotal: true),
+        "70x50":  SizeConfig(wDots: 560, rightEdge: 544, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 280, orderEntryGuard: 270, orderLoopGuard: 280, totalY: 315, totalAmountX: 170, showTotal: true),
+        // 320-dot height tier (40mm): compact — buyer# 2x1, tighter gaps, NO Total
+        // (swapped for @username); order row uses the freed bottom space.
+        "60x40":  SizeConfig(wDots: 480, rightEdge: 464, storeGap: 30, buyerNumYMul: 1, buyerNumGap: 46, nameGap: 34, usernameGap: 30, sepGap: 6, sepWidth: 200, orderEntryGuard: 240, orderLoopGuard: 264, totalY: 0, totalAmountX: 0, showTotal: false),
+    ]
+    private func stickerConfig(_ wMm: Int, _ hMm: Int) -> SizeConfig {
+        return SellerFlowPrinterPlugin.stickerLayouts["\(wMm)x\(hMm)"]
+            ?? SellerFlowPrinterPlugin.stickerLayouts["100x60"]!
+    }
+
     // MARK: - load(): inject window.SellerFlowPrinter JS shim
     //
     // Mirrors mobile/android/.../MainActivity.injectPrinterBridge. The web
@@ -548,35 +576,17 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         writeAscii("DENSITY 8")
         writeAscii("CLS")
 
-        // 8 dots/mm @ 203 DPI. PHASE 1 scales only the WIDTH-dependent layout
-        // (full-width rules, right-anchored session date + total amount, the
-        // separator, and the CJK clamp); the 60mm height tier keeps every y.
-        // 100x60 reproduces the original bytes exactly (wDots-340==460, etc).
-        let wDots = labelWidthMm * 8
-        let rightEdge = wDots - 16
-        // PHASE 2 height tier: footer anchored to the bottom, order caps derived
-        // from it, so a shorter label reflows without touching the top-down body.
-        // At 60mm (480) these reduce to the original 380/395/350/360 -> byte-identical.
-        let hDots = labelHeightMm * 8
-        let footerBarY = hDots - 100
-        let totalY = hDots - 85
-        // PHASE 3 / 320-dot (40mm) tier: compact mode tightens gaps + shrinks
-        // buyer# to 2x1. On 60x40 the Total line is dropped for the @username
-        // row (buyer identity > price on a shipping sticker). Gated to
-        // hDots<=320 so 480/400 stay byte-identical (Total + username kept).
-        let compact = hDots <= 320
-        // Order caps: non-compact clears the footer/Total; compact has no Total
-        // so orders use the bottom (hDots-80/-56) below the restored @username.
-        let orderEntryGuard = compact ? (hDots - 80) : (footerBarY - 30)
-        let orderLoopGuard  = compact ? (hDots - 56) : (footerBarY - 20)
+        // ISOLATION: all per-size geometry comes from this size's config entry —
+        // no shared formula, so editing one size can't affect another.
+        let c = stickerConfig(labelWidthMm, labelHeightMm)
 
         // Header row: brand at left (font 3 so it can't reach the date), the
-        // compact MM/DD/YYYY date right-aligned in the corner. No "Session:" prefix.
+        // compact MM/DD/YYYY date grouped right after it. No "Session:" prefix.
         writeAscii("TEXT 16,10,\"3\",0,1,1,\"SellerFlowLive\"")
         if !sessionDate.isEmpty {
             writeAscii("TEXT 290,18,\"2\",0,1,1,\"\(tsplSafe(truncate16(sessionDate, 12)))\"")
         }
-        writeAscii("BAR 0,48,\(wDots),3")
+        writeAscii("BAR 0,48,\(c.wDots),3")
 
         // Strip unrenderable codepoints per field BEFORE the encoding decision.
         let cleanStoreName = stripEmoji(storeName)
@@ -589,36 +599,36 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
 
         var y = 60
         if printStoreName && !cleanStoreName.isEmpty {
-            writeTextSmart(&out, 16, y, "3", tsplSafe(truncate16(cleanStoreName, 36)), 1, 1, rightEdge)
-            y += compact ? 30 : 35
+            writeTextSmart(&out, 16, y, "3", tsplSafe(truncate16(cleanStoreName, 36)), 1, 1, c.rightEdge)
+            y += c.storeGap
         }
 
-        // Buyer # is the dominant element -- the whole point of the sticker. On
-        // the 320 tier it drops to 2x1 (half height, still 2x wide) to fit.
+        // Buyer # is the dominant element -- the whole point of the sticker.
+        // Height multiplier per size (2x2 on tall labels, 2x1 on 60x40).
         if printBuyerNumber {
-            writeAscii("TEXT 16,\(y),\"4\",0,2,\(compact ? 1 : 2),\"Buyer #\(buyerNum)\"")
-            y += compact ? 46 : 95
+            writeAscii("TEXT 16,\(y),\"4\",0,2,\(c.buyerNumYMul),\"Buyer #\(buyerNum)\"")
+            y += c.buyerNumGap
         }
 
         if !buyerNameToPrint.isEmpty {
-            writeTextSmart(&out, 16, y, "4", tsplSafe(truncate16(buyerNameToPrint, 30)), 1, 1, rightEdge)
-            y += compact ? 34 : 40
+            writeTextSmart(&out, 16, y, "4", tsplSafe(truncate16(buyerNameToPrint, 30)), 1, 1, c.rightEdge)
+            y += c.nameGap
         }
 
         // @username — kept on every size, incl. 60x40 (it replaced the Total
         // line there; buyer identity is essential on a shipping sticker).
         if printBuyerUsername && !cleanBuyerHandle.isEmpty {
-            writeTextSmart(&out, 16, y, "3", "@" + tsplSafe(truncate16(cleanBuyerHandle, 30)), 1, 1, rightEdge)
-            y += compact ? 30 : 35
+            writeTextSmart(&out, 16, y, "3", "@" + tsplSafe(truncate16(cleanBuyerHandle, 30)), 1, 1, c.rightEdge)
+            y += c.usernameGap
         }
 
         // Thin separator + order lines (capped at 2 so a 60mm label can't overflow).
-        if printOrderItems && !orders.isEmpty && y < orderEntryGuard {
-            writeAscii("BAR 16,\(y),\(wDots - 280),2")
-            y += compact ? 6 : 10
+        if printOrderItems && !orders.isEmpty && y < c.orderEntryGuard {
+            writeAscii("BAR 16,\(y),\(c.sepWidth),2")
+            y += c.sepGap
             let maxOrders = 2
             var i = 0
-            while i < min(orders.count, maxOrders) && y < orderLoopGuard {
+            while i < min(orders.count, maxOrders) && y < c.orderLoopGuard {
                 let order = orders[i]
                 let time = (order["time"] as? String) ?? ""
                 let item = (order["item"] as? String) ?? ""
@@ -628,24 +638,22 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                 }
                 if !cleanItem.isEmpty {
                     // Buyer's short price code (e.g. 150/250/600) -> SAME size as
-                    // the grand Total amount: font "4", 2x width, 1x height
-                    // (2x height would overlap the y=380 footer bar). truncate(12)
-                    // guards the column width at font 4 2x.
-                    writeTextSmart(&out, 180, y, "4", tsplSafe(truncate16(cleanItem, 12)), 2, 1, rightEdge)
+                    // the grand Total amount: font "4", 2x width, 1x height.
+                    // truncate(12) guards the column width at font 4 2x.
+                    writeTextSmart(&out, 180, y, "4", tsplSafe(truncate16(cleanItem, 12)), 2, 1, c.rightEdge)
                 }
                 y += 38
                 i += 1
             }
         }
 
-        // Footer total, anchored to the bottom. Divider line removed (price code
-        // grazed it); footerBarY stays as the invisible clearance boundary.
-        // Dropped on 60x40 (compact) — swapped for the @username row; the price
-        // still prints as the order item above.
-        if printTotal && totalSpent > 0 && !compact {
-            writeAscii("TEXT 16,\(totalY),\"3\",0,1,1,\"Total:\"")
+        // Footer total, anchored to the bottom (no divider line). The order rows
+        // stay clear of it via the guards. Dropped on 60x40 (config showTotal=
+        // false) — swapped for the @username row; the price still prints above.
+        if printTotal && totalSpent > 0 && c.showTotal {
+            writeAscii("TEXT 16,\(c.totalY),\"3\",0,1,1,\"Total:\"")
             let totalStr = tsplSafe(currency) + tsplMoney(totalSpent)
-            writeAscii("TEXT \(wDots - 390),\(totalY),\"4\",0,2,1,\"\(tsplSafe(truncate16(totalStr, 18)))\"")
+            writeAscii("TEXT \(c.totalAmountX),\(c.totalY),\"4\",0,2,1,\"\(tsplSafe(truncate16(totalStr, 18)))\"")
         }
 
         writeAscii("PRINT 1")

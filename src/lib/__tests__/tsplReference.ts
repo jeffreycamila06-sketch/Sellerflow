@@ -97,6 +97,37 @@ function money(v: number): string {
   return v === Math.trunc(v) ? String(v) : v.toFixed(2);
 }
 
+// ── Per-size layout config (ISOLATION) ──────────────────────────────────────
+// Each sticker size is a self-contained entry: editing one row cannot affect
+// another (no shared geometry formula for any tunable value). The renderer just
+// executes the config. Values are the resolved equivalents of the previous
+// parametric formulas, so every fixture stays byte-identical. Mirrors the
+// Java/Swift LAYOUTS tables — keep all three in sync (goldens enforce it).
+//   rightEdge   = wDots-16 (CJK clamp)         sepWidth  = separator bar width
+//   *Gap        = y advance after that field   buyerNumYMul = 2x2 vs 2x1 height
+//   orderEntry/LoopGuard = order-row y caps    totalAmountX = right-aligned $
+export interface SizeConfig {
+  wDots: number; rightEdge: number;
+  storeGap: number; buyerNumYMul: number; buyerNumGap: number;
+  nameGap: number; usernameGap: number; sepGap: number; sepWidth: number;
+  orderEntryGuard: number; orderLoopGuard: number;
+  showTotal: boolean; totalY: number; totalAmountX: number;
+}
+export const STICKER_LAYOUTS: Record<string, SizeConfig> = {
+  // 480-dot height tier (60mm): full 2x2 buyer#, 2 order rows, Total kept.
+  "100x60": { wDots: 800, rightEdge: 784, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 520, orderEntryGuard: 350, orderLoopGuard: 360, showTotal: true, totalY: 395, totalAmountX: 410 },
+  "80x60":  { wDots: 640, rightEdge: 624, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 360, orderEntryGuard: 350, orderLoopGuard: 360, showTotal: true, totalY: 395, totalAmountX: 250 },
+  // 400-dot height tier (50mm): Total moves up, ~1 order row fits.
+  "80x50":  { wDots: 640, rightEdge: 624, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 360, orderEntryGuard: 270, orderLoopGuard: 280, showTotal: true, totalY: 315, totalAmountX: 250 },
+  "70x50":  { wDots: 560, rightEdge: 544, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 280, orderEntryGuard: 270, orderLoopGuard: 280, showTotal: true, totalY: 315, totalAmountX: 170 },
+  // 320-dot height tier (40mm): compact — buyer# 2x1, tighter gaps, NO Total
+  // (swapped for @username); order row uses the freed bottom space.
+  "60x40":  { wDots: 480, rightEdge: 464, storeGap: 30, buyerNumYMul: 1, buyerNumGap: 46, nameGap: 34, usernameGap: 30, sepGap: 6,  sepWidth: 200, orderEntryGuard: 240, orderLoopGuard: 264, showTotal: false, totalY: 0, totalAmountX: 0 },
+};
+function stickerConfig(wMm: number, hMm: number): SizeConfig {
+  return STICKER_LAYOUTS[`${wMm}x${hMm}`] ?? STICKER_LAYOUTS["100x60"];
+}
+
 export function buildTsplStickerReference(
   payload: RefPayload,
   labelWidthMm: number,
@@ -107,31 +138,17 @@ export function buildTsplStickerReference(
   const writeAscii = (s: string) => {
     out.push(...asciiBytes(s), ...CRLF);
   };
-  // 8 dots/mm @ 203 DPI. PHASE 1 scales only WIDTH-dependent layout; the 60mm
-  // height tier keeps every y. 100x60 reproduces the original bytes exactly
-  // (wDots-340==460, wDots-390==410, wDots-16==784 at 800). Mirrors TsplBuilder.
-  const wDots = labelWidthMm * 8;
-  const rightEdge = wDots - 16;
-  // PHASE 2 height tier: footer anchored to the bottom; order caps derive from
-  // it. At 60mm (480) these reduce to the original 380/395/350/360 -> byte-identical.
-  const hDots = labelHeightMm * 8;
-  const footerBarY = hDots - 100;
-  const totalY = hDots - 85;
-  // PHASE 3 / 320-dot (40mm) tier: compact body (tighter gaps, buyer# 2x1).
-  // On 60x40 the Total line is dropped for the @username row. Gated to
-  // hDots<=320 so 480/400 stay byte-identical (Total + username kept).
-  const compact = hDots <= 320;
-  // Order caps: compact has no Total, so orders use the bottom (hDots-80/-56).
-  const orderEntryGuard = compact ? (hDots - 80) : (footerBarY - 30);
-  const orderLoopGuard  = compact ? (hDots - 56) : (footerBarY - 20);
-  // xMul/yMul multipliers + width-dependent rightEdge for the CJK clamp; applied
-  // to both the ASCII and TSS24.BF2 (CJK) paths. Mirrors TsplBuilder.writeTextSmart.
+  // ISOLATION: all per-size geometry comes from this size's config entry — no
+  // shared formula, so editing one size can't affect another. Mirrors TsplBuilder.
+  const c = stickerConfig(labelWidthMm, labelHeightMm);
+  // xMul/yMul multipliers + per-size rightEdge for the CJK clamp; applied to
+  // both the ASCII and TSS24.BF2 (CJK) paths. Mirrors TsplBuilder.writeTextSmart.
   const writeTextSmart = (x: number, y: number, asciiFont: string, content: string, xMul: number, yMul: number) => {
     if (!hasNonAscii(content)) {
       writeAscii(`TEXT ${x},${y},"${asciiFont}",0,${xMul},${yMul},"${content}"`);
       return;
     }
-    const maxChars = Math.max(1, Math.floor((rightEdge - x) / (24 * xMul)));
+    const maxChars = Math.max(1, Math.floor((c.rightEdge - x) / (24 * xMul)));
     const fitted = truncate(content, maxChars);
     out.push(...asciiBytes(`TEXT ${x},${y},"TSS24.BF2",0,${xMul},${yMul},"`));
     out.push(...gbk(fitted));
@@ -168,7 +185,7 @@ export function buildTsplStickerReference(
   if (sessionDate) {
     writeAscii(`TEXT 290,18,"2",0,1,1,"${safe(truncate(sessionDate, 12))}"`);
   }
-  writeAscii(`BAR 0,48,${wDots},3`);
+  writeAscii(`BAR 0,48,${c.wDots},3`);
 
   const cleanStoreName = stripEmoji(storeName);
   const cleanBuyerName = stripEmoji(buyerName);
@@ -181,31 +198,31 @@ export function buildTsplStickerReference(
   let y = 60;
   if (printStoreName && cleanStoreName) {
     writeTextSmart(16, y, "3", safe(truncate(cleanStoreName, 36)), 1, 1);
-    y += compact ? 30 : 35;
+    y += c.storeGap;
   }
 
-  // Buyer # — dominant element; drops to 2x1 on the 320 tier to fit.
+  // Buyer # — dominant element; 2x1 on the 320 tier (config buyerNumYMul).
   if (printBuyerNumber) {
-    writeAscii(`TEXT 16,${y},"4",0,2,${compact ? 1 : 2},"Buyer #${buyerNum}"`);
-    y += compact ? 46 : 95;
+    writeAscii(`TEXT 16,${y},"4",0,2,${c.buyerNumYMul},"Buyer #${buyerNum}"`);
+    y += c.buyerNumGap;
   }
 
   if (buyerNameToPrint) {
     writeTextSmart(16, y, "4", safe(truncate(buyerNameToPrint, 30)), 1, 1);
-    y += compact ? 34 : 40;
+    y += c.nameGap;
   }
 
   // @username — kept on every size, incl. 60x40 (replaced the Total line there).
   if (printBuyerUsername && cleanBuyerHandle) {
     writeTextSmart(16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)), 1, 1);
-    y += compact ? 30 : 35;
+    y += c.usernameGap;
   }
 
-  if (printOrderItems && orders.length > 0 && y < orderEntryGuard) {
-    writeAscii(`BAR 16,${y},${wDots - 280},2`);
-    y += compact ? 6 : 10;
+  if (printOrderItems && orders.length > 0 && y < c.orderEntryGuard) {
+    writeAscii(`BAR 16,${y},${c.sepWidth},2`);
+    y += c.sepGap;
     const maxOrders = 2;
-    for (let i = 0; i < Math.min(orders.length, maxOrders) && y < orderLoopGuard; i++) {
+    for (let i = 0; i < Math.min(orders.length, maxOrders) && y < c.orderLoopGuard; i++) {
       const order = orders[i] ?? {};
       const time = order.time ?? "";
       const item = order.item ?? "";
@@ -222,12 +239,12 @@ export function buildTsplStickerReference(
     }
   }
 
-  // Footer divider line removed; footerBarY stays as the invisible clearance
-  // boundary. Total dropped on 60x40 (compact) — swapped for the @username row.
-  if (printTotal && totalSpent > 0 && !compact) {
-    writeAscii(`TEXT 16,${totalY},"3",0,1,1,"Total:"`);
+  // Footer divider line removed; the order rows stay clear of the total via the
+  // guards. Total dropped on 60x40 (config showTotal=false) — swapped for @username.
+  if (printTotal && totalSpent > 0 && c.showTotal) {
+    writeAscii(`TEXT 16,${c.totalY},"3",0,1,1,"Total:"`);
     const totalStr = safe(currency) + money(totalSpent);
-    writeAscii(`TEXT ${wDots - 390},${totalY},"4",0,2,1,"${safe(truncate(totalStr, 18))}"`);
+    writeAscii(`TEXT ${c.totalAmountX},${c.totalY},"4",0,2,1,"${safe(truncate(totalStr, 18))}"`);
   }
 
   writeAscii("PRINT 1");
