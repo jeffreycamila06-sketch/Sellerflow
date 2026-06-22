@@ -72,7 +72,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
     }
     private static let stickerLayouts: [String: SizeConfig] = [
         // 480-dot height tier (60mm): full 2x2 buyer#, 2 order rows, Total kept.
-        "100x60": SizeConfig(wDots: 800, rightEdge: 784, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 520, orderEntryGuard: 350, orderLoopGuard: 360, totalY: 395, totalAmountX: 410, showTotal: true),
+        "100x60": SizeConfig(wDots: 800, rightEdge: 784, storeGap: 55, buyerNumYMul: 2, buyerNumGap: 110, nameGap: 58, usernameGap: 58, sepGap: 10, sepWidth: 520, orderEntryGuard: 390, orderLoopGuard: 400, totalY: 445, totalAmountX: 410, showTotal: true),
         "80x60":  SizeConfig(wDots: 640, rightEdge: 624, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 360, orderEntryGuard: 350, orderLoopGuard: 360, totalY: 395, totalAmountX: 250, showTotal: true),
         // 400-dot height tier (50mm): Total moves up, ~1 order row fits.
         "80x50":  SizeConfig(wDots: 640, rightEdge: 624, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 360, orderEntryGuard: 270, orderLoopGuard: 280, totalY: 315, totalAmountX: 250, showTotal: true),

@@ -52,7 +52,7 @@ class TsplBuilder {
     }
     private static final java.util.Map<String, SizeConfig> LAYOUTS = java.util.Map.of(
         // 480-dot height tier (60mm): full 2x2 buyer#, 2 order rows, Total kept.
-        "100x60", new SizeConfig(800, 784, 35, 2, 95, 40, 35, 10, 520, 350, 360, true, 395, 410),
+        "100x60", new SizeConfig(800, 784, 55, 2, 110, 58, 58, 10, 520, 390, 400, true, 445, 410),
         "80x60",  new SizeConfig(640, 624, 35, 2, 95, 40, 35, 10, 360, 350, 360, true, 395, 250),
         // 400-dot height tier (50mm): Total moves up, ~1 order row fits.
         "80x50",  new SizeConfig(640, 624, 35, 2, 95, 40, 35, 10, 360, 270, 280, true, 315, 250),
