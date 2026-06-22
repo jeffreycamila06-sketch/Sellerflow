@@ -2,7 +2,8 @@
 // passed explicitly — no fake timers needed since the function takes the
 // clock as a parameter.
 import { describe, it, expect } from "vitest";
-import { buildOrderFromComment } from "../orderLogic";
+import { buildOrderFromComment, rebuildSessionFromRows } from "../orderLogic";
+import type { LiveSessionRow } from "../orderLogic";
 import type { Buyer, Comment } from "../orderTypes";
 
 const NOW = new Date("2026-06-11T12:34:56.789Z");
@@ -152,5 +153,101 @@ describe("invariants", () => {
     const r = buildOrderFromComment(comment({ platform: "Facebook" }), [], 0, NOW);
     expect(r.order.status).toBe("New");
     expect(r.order.platform).toBe("Facebook");
+  });
+});
+
+// ── Cross-device session rebuild (inverse of the create path) ──────────────
+const row = (over: Partial<LiveSessionRow> = {}): LiveSessionRow => ({
+  buyer_number: 1,
+  handle: "maria_live",
+  customer_name: "Maria Santos",
+  platform: "TikTok",
+  product: "350",
+  price: 350,
+  created_at: "2026-06-11T12:00:00.000Z",
+  session_date: "2026-06-11",
+  ...over,
+});
+
+describe("rebuildSessionFromRows", () => {
+  it("empty rows yield empty buyers and orders", () => {
+    const s = rebuildSessionFromRows([]);
+    expect(s.buyers).toEqual([]);
+    expect(s.orders).toEqual([]);
+  });
+
+  it("one row rebuilds one buyer and one order", () => {
+    const { buyers, orders } = rebuildSessionFromRows([row()]);
+    expect(orders).toHaveLength(1);
+    expect(buyers).toHaveLength(1);
+    const o = orders[0];
+    expect(o.item).toBe("350");
+    expect(o.qty).toBe(1);
+    expect(o.price).toBe(350);
+    expect(o.total).toBe(350);
+    expect(o.bNum).toBe(1);
+    expect(o.status).toBe("New");
+    expect(o.handle).toBe("maria_live");
+    expect(o.name).toBe("Maria Santos");
+    expect(buyers[0]).toMatchObject({ handle: "maria_live", name: "Maria Santos", num: 1, totalOrders: 1, totalSpent: 350 });
+  });
+
+  it("CRITICAL: orderNum is created_at epoch ms (>1e12) so the BT sticker keeps working", () => {
+    const o = rebuildSessionFromRows([row()]).orders[0];
+    expect(o.orderNum).toBe(new Date("2026-06-11T12:00:00.000Z").getTime());
+    expect(o.orderNum).toBeGreaterThan(1e12);
+  });
+
+  it("date comes from session_date, time derives from created_at", () => {
+    const o = rebuildSessionFromRows([row()]).orders[0];
+    expect(o.date).toBe("2026-06-11");
+    expect(o.time).toBe(new Date("2026-06-11T12:00:00.000Z").toLocaleTimeString());
+  });
+
+  it("groups repeat buyer (same handle+platform), accumulating totals", () => {
+    const { buyers, orders } = rebuildSessionFromRows([
+      row({ price: 250, product: "250", created_at: "2026-06-11T12:00:00.000Z" }),
+      row({ price: 150, product: "150", created_at: "2026-06-11T12:05:00.000Z" }),
+    ]);
+    expect(orders).toHaveLength(2);
+    expect(buyers).toHaveLength(1);
+    expect(buyers[0].totalOrders).toBe(2);
+    expect(buyers[0].totalSpent).toBe(400);
+    expect(buyers[0].orders).toHaveLength(2);
+  });
+
+  it("same handle on a DIFFERENT platform stays a separate buyer", () => {
+    const { buyers } = rebuildSessionFromRows([
+      row({ platform: "TikTok", buyer_number: 1 }),
+      row({ platform: "Facebook", buyer_number: 2 }),
+    ]);
+    expect(buyers).toHaveLength(2);
+  });
+
+  it("buyers are sorted by buyer_number regardless of row order", () => {
+    const { buyers } = rebuildSessionFromRows([
+      row({ handle: "c", buyer_number: 3 }),
+      row({ handle: "a", buyer_number: 1 }),
+      row({ handle: "b", buyer_number: 2 }),
+    ]);
+    expect(buyers.map(b => b.num)).toEqual([1, 2, 3]);
+  });
+
+  it("blank customer_name falls back to the handle", () => {
+    const { buyers, orders } = rebuildSessionFromRows([row({ customer_name: "" })]);
+    expect(orders[0].name).toBe("maria_live");
+    expect(buyers[0].name).toBe("maria_live");
+  });
+
+  it("string price (numeric codec) is coerced to a number", () => {
+    const o = rebuildSessionFromRows([row({ price: "199.5" as unknown as number })]).orders[0];
+    expect(o.price).toBe(199.5);
+    expect(o.total).toBe(199.5);
+  });
+
+  it("missing created_at still produces a usable order (no crash)", () => {
+    const o = rebuildSessionFromRows([row({ created_at: undefined })]).orders[0];
+    expect(o.orderNum).toBeGreaterThan(0);
+    expect(o.date).toBe("2026-06-11"); // from session_date
   });
 });

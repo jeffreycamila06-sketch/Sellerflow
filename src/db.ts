@@ -1,4 +1,6 @@
 import { isSupabaseConfigured, supabase } from "./supabase";
+import { taipeiDayId } from "./lib/dateHelpers";
+import type { LiveSessionRow } from "./lib/orderLogic";
 
 export async function saveOrderToDatabase(order: {
   customer_name: string;
@@ -118,6 +120,92 @@ export async function saveCustomerToDatabase(customer: {
   }
 
   return { success: true, data };
+}
+
+// ── Cross-device live session sync ───────────────────────────────────────
+// live_session_orders is the shared, per-seller, per-day ledger that lets a
+// seller open their live session on a second device and see the same buyers
+// and orders. It is SEPARATE from the `orders` billing ledger (untouched).
+// RLS scopes every row to user_id = auth.uid().
+
+export interface LiveSessionOrderInput {
+  buyer_number: number;
+  handle: string;
+  customer_name: string;
+  platform: string;
+  product: string;
+  price: number;
+  // Asia/Taipei calendar day. Defaults to today so all devices agree on the
+  // session bucket regardless of their own timezone.
+  session_date?: string;
+}
+
+// Fire-and-forget write on the 1-click order create. One INSERT per order; no
+// polling. Mirrors saveOrderToDatabase's auth + skip-when-unconfigured shape.
+export async function saveLiveSessionOrder(order: LiveSessionOrderInput) {
+  if (!isSupabaseConfigured || !supabase) {
+    console.info("Supabase is not configured. Live session order kept in local app state.", order);
+    return { success: true, data: null, skipped: true };
+  }
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    console.error("Supabase save live session order error: no authenticated user");
+    return { success: false, error: new Error("Not authenticated") };
+  }
+
+  const { data, error } = await supabase
+    .from("live_session_orders")
+    .insert([
+      {
+        user_id: user.id,
+        session_date: order.session_date || taipeiDayId(),
+        buyer_number: order.buyer_number,
+        handle: order.handle,
+        customer_name: order.customer_name,
+        platform: order.platform,
+        product: order.product,
+        price: order.price,
+      },
+    ])
+    .select();
+
+  if (error) {
+    console.error("Supabase save live session order error:", error.message);
+    return { success: false, error };
+  }
+
+  return { success: true, data };
+}
+
+// One read on load (no polling). Returns today's rows ordered oldest-first so
+// rebuildSessionFromRows reproduces buyer numbering in creation order. RLS
+// already restricts to the current user; the explicit user_id filter is belt
+// and suspenders.
+export async function loadTodaysLiveSession(sessionDate?: string): Promise<LiveSessionRow[]> {
+  if (!isSupabaseConfigured || !supabase) {
+    return [];
+  }
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return [];
+  }
+
+  const day = sessionDate || taipeiDayId();
+  const { data, error } = await supabase
+    .from("live_session_orders")
+    .select("buyer_number,handle,customer_name,platform,product,price,created_at,session_date")
+    .eq("user_id", user.id)
+    .eq("session_date", day)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error("Load today's live session error:", error.message);
+    return [];
+  }
+
+  return (data || []) as LiveSessionRow[];
 }
 
 export async function getCustomersFromDatabase() {

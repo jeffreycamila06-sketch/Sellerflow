@@ -1,4 +1,4 @@
-import { saveOrderToDatabase, saveCustomerToDatabase } from "./db";
+import { saveOrderToDatabase, saveCustomerToDatabase, saveLiveSessionOrder, loadTodaysLiveSession } from "./db";
 import { supabase } from "./supabase";
 import {
   type AccountAuditLog,
@@ -18,9 +18,9 @@ import { io } from "socket.io-client";
 import "./App.css";
 import posthog from "posthog-js";
 import { TRANSLATIONS, type Lang, type T } from "./translations";
-import { liveDayId, taipeiDayId } from "./lib/dateHelpers";
+import { taipeiDayId } from "./lib/dateHelpers";
 import type { LiveOrder, Buyer, Comment } from "./lib/orderTypes";
-import { buildOrderFromComment } from "./lib/orderLogic";
+import { buildOrderFromComment, rebuildSessionFromRows } from "./lib/orderLogic";
 import { sellerExpiryState } from "./lib/sellerExpiry";
 import { shouldUseBluetoothSticker, shouldUseLanSticker } from "./lib/printerRouting";
 
@@ -3436,7 +3436,10 @@ export default function App(){
   const [recoveryMode,setRecoveryMode]=useState(()=>typeof window!=="undefined"&&window.location.hash.includes("type=recovery"));
   const initialSellerEmail=LS.get<string>("sf_session","");
   const currentSessionId=browserSessionId();
-  const [currentLiveDayId,setCurrentLiveDayId]=useState(()=>liveDayId());
+  // Asia/Taipei day (not device-local liveDayId) so the localStorage day
+  // bucket matches the live_session_orders.session_date written/read for
+  // cross-device sync — two devices in different timezones share one session.
+  const [currentLiveDayId,setCurrentLiveDayId]=useState(()=>taipeiDayId());
   const [comments,setComments]=useState<Comment[]>(()=>sortCommentsNewest(cleanComments(LS.get<unknown[]>(sellerLiveDataKey("sf_comments",initialSellerEmail,currentSessionId),[]))).slice(0,LIVE_COMMENT_LIMIT));
   const [archivedComments,setArchivedComments]=useState<Comment[]>(()=>sortCommentsNewest(cleanComments(LS.get<unknown[]>(sellerLiveDataKey("sf_comment_archive",initialSellerEmail,currentSessionId),[]))).slice(0,COMMENT_ARCHIVE_LIMIT));
   const [buyers,setBuyers]=useState<Buyer[]>(()=>sellerDayOrSessionArray<Buyer>("sf_buyers",initialSellerEmail,currentLiveDayId,currentSessionId));
@@ -3476,7 +3479,7 @@ export default function App(){
   },[]);
   useEffect(()=>{
     const timer=window.setInterval(()=>{
-      const next=liveDayId();
+      const next=taipeiDayId();
       setCurrentLiveDayId(prev=>prev===next?prev:next);
     },30000);
     return()=>window.clearInterval(timer);
@@ -3566,6 +3569,30 @@ export default function App(){
     setTotRev(nextOrders.length?nextOrders.reduce((s,o)=>s+o.total,0):nextBuyers.reduce((s,b)=>s+b.totalSpent,0));
   },[user?.email,currentLiveDayId]);
   /* eslint-enable react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
+
+  // Cross-device LOAD (one read, ZERO polling): when a device opens with an
+  // EMPTY local session for today, pull the shared session from Supabase and
+  // rebuild buyers/orders. We deliberately skip the pull when local already
+  // has orders so the active selling device — the one writing to the DB — is
+  // never clobbered; the order also lives in the DB independently, so nothing
+  // is lost if this read loses a race. Runs once per login/day-change.
+  /* eslint-disable react-hooks/exhaustive-deps */
+  useEffect(()=>{
+    if(!user)return;
+    if(allOrders.length)return;
+    let active=true;
+    void loadTodaysLiveSession(currentLiveDayId).then(rows=>{
+      if(!active||!rows.length)return;
+      const {buyers:dbBuyers,orders:dbOrders}=rebuildSessionFromRows(rows);
+      if(!dbOrders.length)return;
+      saveBuyerMemory(dbBuyers);
+      setAllOrders(dbOrders);
+      setTotOrd(dbOrders.length);
+      LS.set(sellerDailyDataKey("sf_orders",user.email,currentLiveDayId),dbOrders);
+    }).catch(err=>console.warn("Load today's live session failed (non-fatal):",err));
+    return()=>{active=false;};
+  },[user?.email,currentLiveDayId]);
+  /* eslint-enable react-hooks/exhaustive-deps */
 
   /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(()=>{
@@ -3895,6 +3922,18 @@ export default function App(){
         product:orderItem,
         total_amount:order.total,
         status:"Pending",
+      }),
+      // Cross-device live session: one INSERT per order so a second device can
+      // rebuild today's buyers/orders on load. session_date defaults to the
+      // Taipei day (== currentLiveDayId), keeping write + read in one bucket.
+      saveLiveSessionOrder({
+        buyer_number:order.bNum,
+        handle:c.handle,
+        customer_name:c.name||c.handle,
+        platform:c.platform,
+        product:orderItem,
+        price:order.price,
+        session_date:currentLiveDayId,
       }),
       saveCustomerToDatabase({
         name:c.name||c.handle,
