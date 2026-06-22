@@ -97,6 +97,65 @@ function money(v: number): string {
   return v === Math.trunc(v) ? String(v) : v.toFixed(2);
 }
 
+// ── Script handling (language-agnostic; mirrors TsplBuilder.java) ────────────
+const SCRIPT_ASCII = 1;
+const SCRIPT_CJK = 2;
+const SCRIPT_UNSUPPORTED = 3;
+
+// Latin letters NFD does NOT decompose to base+combining-mark.
+const ATOMIC_LATIN: Record<string, string> = {
+  "đ": "d", "Đ": "D", "ł": "l", "Ł": "L", "ø": "o", "Ø": "O",
+  "æ": "ae", "Æ": "AE", "œ": "oe", "Œ": "OE", "ß": "ss",
+  "þ": "th", "Þ": "Th", "ð": "d", "Ð": "D", "ı": "i",
+};
+
+// Romanize Latin-script text: NFD-decompose, drop combining marks
+// (U+0300–U+036F), map atomic Latin letters. CJK ideographs and plain ASCII
+// pass through unchanged, so existing goldens are byte-identical.
+function transliterateLatin(s: string): string {
+  if (!s) return "";
+  let out = "";
+  for (const ch of s.normalize("NFD")) {
+    const cp = ch.codePointAt(0) ?? 0;
+    if (cp >= 0x300 && cp <= 0x36f) continue; // combining mark
+    out += ATOMIC_LATIN[ch] ?? ch;
+  }
+  return out;
+}
+
+function isCjkIdeograph(cp: number): boolean {
+  return (
+    (cp >= 0x4e00 && cp <= 0x9fff) ||
+    (cp >= 0x3400 && cp <= 0x4dbf) ||
+    (cp >= 0xf900 && cp <= 0xfaff)
+  );
+}
+
+// Classify already-transliterated text: ASCII | CJK ideograph | UNSUPPORTED.
+function classifyScript(s: string): number {
+  let hasCjk = false;
+  for (const ch of s) {
+    const cp = ch.codePointAt(0) ?? 0;
+    if (cp <= 127) continue;
+    if (isCjkIdeograph(cp)) {
+      hasCjk = true;
+      continue;
+    }
+    return SCRIPT_UNSUPPORTED;
+  }
+  return hasCjk ? SCRIPT_CJK : SCRIPT_ASCII;
+}
+
+// Keep only what the printer can render: ASCII + CJK ideographs.
+function stripUnrenderable(s: string): string {
+  let out = "";
+  for (const ch of s) {
+    const cp = ch.codePointAt(0) ?? 0;
+    if (cp <= 127 || isCjkIdeograph(cp)) out += ch;
+  }
+  return out;
+}
+
 // ── Per-size layout config (ISOLATION) ──────────────────────────────────────
 // Each sticker size is a self-contained entry: editing one row cannot affect
 // another (no shared geometry formula for any tunable value). The renderer just
@@ -112,17 +171,22 @@ export interface SizeConfig {
   nameGap: number; usernameGap: number; sepGap: number; sepWidth: number;
   orderEntryGuard: number; orderLoopGuard: number;
   showTotal: boolean; totalY: number; totalAmountX: number;
+  // CJK buyer-name enlargement (Chinese/kanji render via 24-dot TSS24.BF2 vs the
+  // 32-dot ASCII name font). nameCjk{X,Y}Mul scale ONLY the CJK name; nameCjkGap
+  // is its y advance; the layout below shifts by (nameCjkGap - nameGap) only when
+  // the name is CJK, so English fixtures stay byte-identical.
+  nameCjkXMul: number; nameCjkYMul: number; nameCjkGap: number;
 }
 export const STICKER_LAYOUTS: Record<string, SizeConfig> = {
   // 480-dot height tier (60mm): full 2x2 buyer#, 2 order rows, Total kept.
-  "100x60": { wDots: 800, rightEdge: 784, storeGap: 55, buyerNumYMul: 2, buyerNumGap: 110, nameGap: 58, usernameGap: 58, sepGap: 10, sepWidth: 520, orderEntryGuard: 390, orderLoopGuard: 400, showTotal: true, totalY: 445, totalAmountX: 410 },
-  "80x60":  { wDots: 640, rightEdge: 624, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 360, orderEntryGuard: 350, orderLoopGuard: 360, showTotal: true, totalY: 395, totalAmountX: 250 },
+  "100x60": { wDots: 800, rightEdge: 784, storeGap: 55, buyerNumYMul: 2, buyerNumGap: 110, nameGap: 58, usernameGap: 58, sepGap: 10, sepWidth: 520, orderEntryGuard: 390, orderLoopGuard: 400, showTotal: true, totalY: 445, totalAmountX: 410, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58 },
+  "80x60":  { wDots: 640, rightEdge: 624, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 360, orderEntryGuard: 350, orderLoopGuard: 360, showTotal: true, totalY: 395, totalAmountX: 250, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58 },
   // 400-dot height tier (50mm): Total moves up, ~1 order row fits.
-  "80x50":  { wDots: 640, rightEdge: 624, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 360, orderEntryGuard: 270, orderLoopGuard: 280, showTotal: true, totalY: 315, totalAmountX: 250 },
-  "70x50":  { wDots: 560, rightEdge: 544, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 280, orderEntryGuard: 270, orderLoopGuard: 280, showTotal: true, totalY: 315, totalAmountX: 170 },
+  "80x50":  { wDots: 640, rightEdge: 624, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 360, orderEntryGuard: 270, orderLoopGuard: 280, showTotal: true, totalY: 315, totalAmountX: 250, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58 },
+  "70x50":  { wDots: 560, rightEdge: 544, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 280, orderEntryGuard: 270, orderLoopGuard: 280, showTotal: true, totalY: 315, totalAmountX: 170, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58 },
   // 320-dot height tier (40mm): compact — buyer# 2x1, tighter gaps, NO Total
   // (swapped for @username); order row uses the freed bottom space.
-  "60x40":  { wDots: 480, rightEdge: 464, storeGap: 30, buyerNumYMul: 1, buyerNumGap: 46, nameGap: 34, usernameGap: 30, sepGap: 6,  sepWidth: 200, orderEntryGuard: 240, orderLoopGuard: 264, showTotal: false, totalY: 0, totalAmountX: 0 },
+  "60x40":  { wDots: 480, rightEdge: 464, storeGap: 30, buyerNumYMul: 1, buyerNumGap: 46, nameGap: 34, usernameGap: 30, sepGap: 6,  sepWidth: 200, orderEntryGuard: 240, orderLoopGuard: 264, showTotal: false, totalY: 0, totalAmountX: 0, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58 },
 };
 function stickerConfig(wMm: number, hMm: number): SizeConfig {
   return STICKER_LAYOUTS[`${wMm}x${hMm}`] ?? STICKER_LAYOUTS["100x60"];
@@ -141,16 +205,20 @@ export function buildTsplStickerReference(
   // ISOLATION: all per-size geometry comes from this size's config entry — no
   // shared formula, so editing one size can't affect another. Mirrors TsplBuilder.
   const c = stickerConfig(labelWidthMm, labelHeightMm);
-  // xMul/yMul multipliers + per-size rightEdge for the CJK clamp; applied to
-  // both the ASCII and TSS24.BF2 (CJK) paths. Mirrors TsplBuilder.writeTextSmart.
-  const writeTextSmart = (x: number, y: number, asciiFont: string, content: string, xMul: number, yMul: number) => {
+  // Separate ASCII (xMul,yMul) and CJK (cjkXMul,cjkYMul) multipliers so a CJK
+  // field can be enlarged without touching ASCII. Content is normalized first:
+  // Latin diacritics romanized, then anything the AIMO can't render dropped, so
+  // nothing prints as '?'. Mirrors TsplBuilder.writeTextSmart.
+  const writeTextSmart = (x: number, y: number, asciiFont: string, rawContent: string, xMul: number, yMul: number, cjkXMul: number, cjkYMul: number) => {
+    const content = stripUnrenderable(transliterateLatin(rawContent));
+    if (!content) return;
     if (!hasNonAscii(content)) {
       writeAscii(`TEXT ${x},${y},"${asciiFont}",0,${xMul},${yMul},"${content}"`);
       return;
     }
-    const maxChars = Math.max(1, Math.floor((c.rightEdge - x) / (24 * xMul)));
+    const maxChars = Math.max(1, Math.floor((c.rightEdge - x) / (24 * cjkXMul)));
     const fitted = truncate(content, maxChars);
-    out.push(...asciiBytes(`TEXT ${x},${y},"TSS24.BF2",0,${xMul},${yMul},"`));
+    out.push(...asciiBytes(`TEXT ${x},${y},"TSS24.BF2",0,${cjkXMul},${cjkYMul},"`));
     out.push(...gbk(fitted));
     out.push(...asciiBytes(`"`), ...CRLF);
   };
@@ -190,14 +258,32 @@ export function buildTsplStickerReference(
   const cleanStoreName = stripEmoji(storeName);
   const cleanBuyerName = stripEmoji(buyerName);
   const cleanBuyerHandle = stripEmoji(buyerHandle);
-  let buyerNameToPrint = cleanBuyerName;
+
+  // Buyer name — language-agnostic resolution (mirrors TsplBuilder):
+  //  1. pure-emoji name -> handle / "Buyer #N".
+  //  2. transliterate Latin diacritics -> ASCII (big font "4").
+  //  3. classify: ASCII | CJK ideograph | UNSUPPORTED.
+  //  4. UNSUPPORTED (Arabic/Korean/Thai/...) -> romanized @handle if ASCII, else
+  //     omit the name line — never '?'.
+  let nameSource = cleanBuyerName;
   if (buyerName && !cleanBuyerName) {
-    buyerNameToPrint = cleanBuyerHandle ? cleanBuyerHandle : `Buyer #${buyerNum}`;
+    nameSource = cleanBuyerHandle ? cleanBuyerHandle : `Buyer #${buyerNum}`;
+  }
+  let nameOut = transliterateLatin(nameSource);
+  let nameTier = classifyScript(nameOut);
+  if (nameTier === SCRIPT_UNSUPPORTED) {
+    const handleOut = transliterateLatin(cleanBuyerHandle);
+    if (handleOut && classifyScript(handleOut) === SCRIPT_ASCII) {
+      nameOut = handleOut;
+      nameTier = SCRIPT_ASCII;
+    } else {
+      nameOut = "";
+    }
   }
 
   let y = 60;
   if (printStoreName && cleanStoreName) {
-    writeTextSmart(16, y, "3", safe(truncate(cleanStoreName, 36)), 1, 1);
+    writeTextSmart(16, y, "3", safe(truncate(cleanStoreName, 36)), 1, 1, 1, 1);
     y += c.storeGap;
   }
 
@@ -207,22 +293,29 @@ export function buildTsplStickerReference(
     y += c.buyerNumGap;
   }
 
-  if (buyerNameToPrint) {
-    writeTextSmart(16, y, "4", safe(truncate(buyerNameToPrint, 30)), 1, 1);
-    y += c.nameGap;
+  // CJK name renders taller (2x = 48 vs ASCII 32), so the layout below shifts
+  // down by `extra`. ASCII names -> extra 0 (English byte-identical).
+  let extra = 0;
+  if (nameOut) {
+    const cjkName = nameTier === SCRIPT_CJK;
+    const nxm = cjkName ? c.nameCjkXMul : 1;
+    const nym = cjkName ? c.nameCjkYMul : 1;
+    writeTextSmart(16, y, "4", safe(truncate(nameOut, 30)), 1, 1, nxm, nym);
+    y += cjkName ? c.nameCjkGap : c.nameGap;
+    extra = cjkName ? c.nameCjkGap - c.nameGap : 0;
   }
 
   // @username — kept on every size, incl. 60x40 (replaced the Total line there).
   if (printBuyerUsername && cleanBuyerHandle) {
-    writeTextSmart(16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)), 1, 1);
+    writeTextSmart(16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)), 1, 1, 1, 1);
     y += c.usernameGap;
   }
 
-  if (printOrderItems && orders.length > 0 && y < c.orderEntryGuard) {
+  if (printOrderItems && orders.length > 0 && y < c.orderEntryGuard + extra) {
     writeAscii(`BAR 16,${y},${c.sepWidth},2`);
     y += c.sepGap;
     const maxOrders = 2;
-    for (let i = 0; i < Math.min(orders.length, maxOrders) && y < c.orderLoopGuard; i++) {
+    for (let i = 0; i < Math.min(orders.length, maxOrders) && y < c.orderLoopGuard + extra; i++) {
       const order = orders[i] ?? {};
       const time = order.time ?? "";
       const item = order.item ?? "";
@@ -233,7 +326,7 @@ export function buildTsplStickerReference(
       if (cleanItem) {
         // Buyer's short price code -> same size as the grand Total amount:
         // font "4", 2x width, 1x height. truncate(12) guards the column width.
-        writeTextSmart(180, y, "4", safe(truncate(cleanItem, 12)), 2, 1);
+        writeTextSmart(180, y, "4", safe(truncate(cleanItem, 12)), 2, 1, 2, 1);
       }
       y += 38;
     }
@@ -242,9 +335,10 @@ export function buildTsplStickerReference(
   // Footer divider line removed; the order rows stay clear of the total via the
   // guards. Total dropped on 60x40 (config showTotal=false) — swapped for @username.
   if (printTotal && totalSpent > 0 && c.showTotal) {
-    writeAscii(`TEXT 16,${c.totalY},"3",0,1,1,"Total:"`);
+    const totalY = c.totalY + extra;
+    writeAscii(`TEXT 16,${totalY},"3",0,1,1,"Total:"`);
     const totalStr = safe(currency) + money(totalSpent);
-    writeAscii(`TEXT ${c.totalAmountX},${c.totalY},"4",0,2,1,"${safe(truncate(totalStr, 18))}"`);
+    writeAscii(`TEXT ${c.totalAmountX},${totalY},"4",0,2,1,"${safe(truncate(totalStr, 18))}"`);
   }
 
   writeAscii("PRINT 1");

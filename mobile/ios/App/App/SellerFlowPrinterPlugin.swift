@@ -69,17 +69,23 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             usernameGap, sepGap, sepWidth, orderEntryGuard, orderLoopGuard,
             totalY, totalAmountX: Int
         let showTotal: Bool
+        // CJK buyer-name enlargement (Chinese/kanji render via 24-dot TSS24.BF2
+        // vs the 32-dot ASCII name font). nameCjk{X,Y}Mul scale ONLY the CJK name;
+        // nameCjkGap is the y advance under the taller name. The layout below the
+        // name shifts by (nameCjkGap - nameGap) only when the name is CJK, so
+        // English fixtures stay byte-identical. Mirrors Java SizeConfig.
+        let nameCjkXMul, nameCjkYMul, nameCjkGap: Int
     }
     private static let stickerLayouts: [String: SizeConfig] = [
         // 480-dot height tier (60mm): full 2x2 buyer#, 2 order rows, Total kept.
-        "100x60": SizeConfig(wDots: 800, rightEdge: 784, storeGap: 55, buyerNumYMul: 2, buyerNumGap: 110, nameGap: 58, usernameGap: 58, sepGap: 10, sepWidth: 520, orderEntryGuard: 390, orderLoopGuard: 400, totalY: 445, totalAmountX: 410, showTotal: true),
-        "80x60":  SizeConfig(wDots: 640, rightEdge: 624, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 360, orderEntryGuard: 350, orderLoopGuard: 360, totalY: 395, totalAmountX: 250, showTotal: true),
+        "100x60": SizeConfig(wDots: 800, rightEdge: 784, storeGap: 55, buyerNumYMul: 2, buyerNumGap: 110, nameGap: 58, usernameGap: 58, sepGap: 10, sepWidth: 520, orderEntryGuard: 390, orderLoopGuard: 400, totalY: 445, totalAmountX: 410, showTotal: true, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58),
+        "80x60":  SizeConfig(wDots: 640, rightEdge: 624, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 360, orderEntryGuard: 350, orderLoopGuard: 360, totalY: 395, totalAmountX: 250, showTotal: true, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58),
         // 400-dot height tier (50mm): Total moves up, ~1 order row fits.
-        "80x50":  SizeConfig(wDots: 640, rightEdge: 624, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 360, orderEntryGuard: 270, orderLoopGuard: 280, totalY: 315, totalAmountX: 250, showTotal: true),
-        "70x50":  SizeConfig(wDots: 560, rightEdge: 544, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 280, orderEntryGuard: 270, orderLoopGuard: 280, totalY: 315, totalAmountX: 170, showTotal: true),
+        "80x50":  SizeConfig(wDots: 640, rightEdge: 624, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 360, orderEntryGuard: 270, orderLoopGuard: 280, totalY: 315, totalAmountX: 250, showTotal: true, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58),
+        "70x50":  SizeConfig(wDots: 560, rightEdge: 544, storeGap: 35, buyerNumYMul: 2, buyerNumGap: 95, nameGap: 40, usernameGap: 35, sepGap: 10, sepWidth: 280, orderEntryGuard: 270, orderLoopGuard: 280, totalY: 315, totalAmountX: 170, showTotal: true, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58),
         // 320-dot height tier (40mm): compact — buyer# 2x1, tighter gaps, NO Total
         // (swapped for @username); order row uses the freed bottom space.
-        "60x40":  SizeConfig(wDots: 480, rightEdge: 464, storeGap: 30, buyerNumYMul: 1, buyerNumGap: 46, nameGap: 34, usernameGap: 30, sepGap: 6, sepWidth: 200, orderEntryGuard: 240, orderLoopGuard: 264, totalY: 0, totalAmountX: 0, showTotal: false),
+        "60x40":  SizeConfig(wDots: 480, rightEdge: 464, storeGap: 30, buyerNumYMul: 1, buyerNumGap: 46, nameGap: 34, usernameGap: 30, sepGap: 6, sepWidth: 200, orderEntryGuard: 240, orderLoopGuard: 264, totalY: 0, totalAmountX: 0, showTotal: false, nameCjkXMul: 2, nameCjkYMul: 2, nameCjkGap: 58),
     ]
     private func stickerConfig(_ wMm: Int, _ hMm: Int) -> SizeConfig {
         return SellerFlowPrinterPlugin.stickerLayouts["\(wMm)x\(hMm)"]
@@ -592,14 +598,32 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         let cleanStoreName = stripEmoji(storeName)
         let cleanBuyerName = stripEmoji(buyerName)
         let cleanBuyerHandle = stripEmoji(buyerHandle)
-        var buyerNameToPrint = cleanBuyerName
+
+        // Buyer name — language-agnostic resolution (works for ANY buyer):
+        //  1. pure-emoji name -> handle / "Buyer #N".
+        //  2. transliterate Latin diacritics -> ASCII (big font "4").
+        //  3. classify: ASCII | CJK ideograph | UNSUPPORTED.
+        //  4. UNSUPPORTED (Arabic/Korean/Thai/...) -> romanized @handle if ASCII,
+        //     else omit the name line — never prints as '?'. Mirrors TsplBuilder.
+        var nameSource = cleanBuyerName
         if !buyerName.isEmpty && cleanBuyerName.isEmpty {
-            buyerNameToPrint = !cleanBuyerHandle.isEmpty ? cleanBuyerHandle : "Buyer #\(buyerNum)"
+            nameSource = !cleanBuyerHandle.isEmpty ? cleanBuyerHandle : "Buyer #\(buyerNum)"
+        }
+        var nameOut = transliterateLatin(nameSource)
+        var nameTier = classifyScript(nameOut)
+        if nameTier == SellerFlowPrinterPlugin.scriptUnsupported {
+            let handleOut = transliterateLatin(cleanBuyerHandle)
+            if !handleOut.isEmpty && classifyScript(handleOut) == SellerFlowPrinterPlugin.scriptAscii {
+                nameOut = handleOut
+                nameTier = SellerFlowPrinterPlugin.scriptAscii
+            } else {
+                nameOut = ""
+            }
         }
 
         var y = 60
         if printStoreName && !cleanStoreName.isEmpty {
-            writeTextSmart(&out, 16, y, "3", tsplSafe(truncate16(cleanStoreName, 36)), 1, 1, c.rightEdge)
+            writeTextSmart(&out, 16, y, "3", tsplSafe(truncate16(cleanStoreName, 36)), 1, 1, 1, 1, c.rightEdge)
             y += c.storeGap
         }
 
@@ -610,25 +634,32 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             y += c.buyerNumGap
         }
 
-        if !buyerNameToPrint.isEmpty {
-            writeTextSmart(&out, 16, y, "4", tsplSafe(truncate16(buyerNameToPrint, 30)), 1, 1, c.rightEdge)
-            y += c.nameGap
+        // CJK name renders taller (2x = 48 vs ASCII 32) so the layout below it
+        // shifts down by `extra`. ASCII names -> extra 0 (English byte-identical).
+        var extra = 0
+        if !nameOut.isEmpty {
+            let cjkName = nameTier == SellerFlowPrinterPlugin.scriptCjk
+            let nxm = cjkName ? c.nameCjkXMul : 1
+            let nym = cjkName ? c.nameCjkYMul : 1
+            writeTextSmart(&out, 16, y, "4", tsplSafe(truncate16(nameOut, 30)), 1, 1, nxm, nym, c.rightEdge)
+            y += cjkName ? c.nameCjkGap : c.nameGap
+            extra = cjkName ? (c.nameCjkGap - c.nameGap) : 0
         }
 
         // @username — kept on every size, incl. 60x40 (it replaced the Total
         // line there; buyer identity is essential on a shipping sticker).
         if printBuyerUsername && !cleanBuyerHandle.isEmpty {
-            writeTextSmart(&out, 16, y, "3", "@" + tsplSafe(truncate16(cleanBuyerHandle, 30)), 1, 1, c.rightEdge)
+            writeTextSmart(&out, 16, y, "3", "@" + tsplSafe(truncate16(cleanBuyerHandle, 30)), 1, 1, 1, 1, c.rightEdge)
             y += c.usernameGap
         }
 
         // Thin separator + order lines (capped at 2 so a 60mm label can't overflow).
-        if printOrderItems && !orders.isEmpty && y < c.orderEntryGuard {
+        if printOrderItems && !orders.isEmpty && y < c.orderEntryGuard + extra {
             writeAscii("BAR 16,\(y),\(c.sepWidth),2")
             y += c.sepGap
             let maxOrders = 2
             var i = 0
-            while i < min(orders.count, maxOrders) && y < c.orderLoopGuard {
+            while i < min(orders.count, maxOrders) && y < c.orderLoopGuard + extra {
                 let order = orders[i]
                 let time = (order["time"] as? String) ?? ""
                 let item = (order["item"] as? String) ?? ""
@@ -640,7 +671,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                     // Buyer's short price code (e.g. 150/250/600) -> SAME size as
                     // the grand Total amount: font "4", 2x width, 1x height.
                     // truncate(12) guards the column width at font 4 2x.
-                    writeTextSmart(&out, 180, y, "4", tsplSafe(truncate16(cleanItem, 12)), 2, 1, c.rightEdge)
+                    writeTextSmart(&out, 180, y, "4", tsplSafe(truncate16(cleanItem, 12)), 2, 1, 2, 1, c.rightEdge)
                 }
                 y += 38
                 i += 1
@@ -651,9 +682,10 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         // stay clear of it via the guards. Dropped on 60x40 (config showTotal=
         // false) — swapped for the @username row; the price still prints above.
         if printTotal && totalSpent > 0 && c.showTotal {
-            writeAscii("TEXT 16,\(c.totalY),\"3\",0,1,1,\"Total:\"")
+            let totalY = c.totalY + extra
+            writeAscii("TEXT 16,\(totalY),\"3\",0,1,1,\"Total:\"")
             let totalStr = tsplSafe(currency) + tsplMoney(totalSpent)
-            writeAscii("TEXT \(c.totalAmountX),\(c.totalY),\"4\",0,2,1,\"\(tsplSafe(truncate16(totalStr, 18)))\"")
+            writeAscii("TEXT \(c.totalAmountX),\(totalY),\"4\",0,2,1,\"\(tsplSafe(truncate16(totalStr, 18)))\"")
         }
 
         writeAscii("PRINT 1")
@@ -672,16 +704,20 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
     /// ASCII and TSS24.BF2 (CJK) paths so an enlarged field renders the same for
     /// English and Chinese. rightEdge = wDots-16 so the clamp tracks the label
     /// width (784 on 100mm, 624 on 80mm). Mirrors TsplBuilder.writeTextSmart.
-    private func writeTextSmart(_ out: inout Data, _ x: Int, _ y: Int, _ asciiFont: String, _ content: String, _ xMul: Int, _ yMul: Int, _ rightEdge: Int) {
+    private func writeTextSmart(_ out: inout Data, _ x: Int, _ y: Int, _ asciiFont: String, _ rawContent: String, _ xMul: Int, _ yMul: Int, _ cjkXMul: Int, _ cjkYMul: Int, _ rightEdge: Int) {
+        // Romanize Latin diacritics, then drop anything the AIMO has no font for
+        // (non-ASCII, non-CJK-ideograph) so nothing prints as '?'.
+        let content = stripUnrenderable(transliterateLatin(rawContent))
+        if content.isEmpty { return }
         if !hasNonAscii(content) {
             out.append(contentsOf: tsplAsciiBytes("TEXT \(x),\(y),\"\(asciiFont)\",0,\(xMul),\(yMul),\"\(content)\""))
             out.append(contentsOf: [0x0D, 0x0A])
             return
         }
-        let maxChars = max(1, (rightEdge - x) / (24 * xMul))
+        let maxChars = max(1, (rightEdge - x) / (24 * cjkXMul))
         let fitted = truncate16(content, maxChars)
         if let gbk = gbkBytes(fitted) {
-            out.append(contentsOf: tsplAsciiBytes("TEXT \(x),\(y),\"TSS24.BF2\",0,\(xMul),\(yMul),\""))
+            out.append(contentsOf: tsplAsciiBytes("TEXT \(x),\(y),\"TSS24.BF2\",0,\(cjkXMul),\(cjkYMul),\""))
             out.append(contentsOf: gbk)
             out.append(contentsOf: tsplAsciiBytes("\""))
             out.append(contentsOf: [0x0D, 0x0A])
@@ -689,6 +725,69 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             out.append(contentsOf: tsplAsciiBytes("TEXT \(x),\(y),\"\(asciiFont)\",0,\(xMul),\(yMul),\"\(content)\""))
             out.append(contentsOf: [0x0D, 0x0A])
         }
+    }
+
+    // ── Script handling (language-agnostic; mirrors TsplBuilder.java) ──────────
+    static let scriptAscii = 1, scriptCjk = 2, scriptUnsupported = 3
+
+    /// Latin letters NFD does NOT decompose to base+combining-mark.
+    private func atomicLatin(_ ch: Character) -> String? {
+        switch ch {
+        case "đ": return "d";  case "Đ": return "D"
+        case "ł": return "l";  case "Ł": return "L"
+        case "ø": return "o";  case "Ø": return "O"
+        case "æ": return "ae"; case "Æ": return "AE"
+        case "œ": return "oe"; case "Œ": return "OE"
+        case "ß": return "ss"
+        case "þ": return "th"; case "Þ": return "Th"
+        case "ð": return "d";  case "Ð": return "D"
+        case "ı": return "i"
+        default: return nil
+        }
+    }
+
+    /// NFD-decompose, drop combining marks (U+0300-U+036F), map atomic Latin
+    /// letters. CJK ideographs and plain ASCII pass through unchanged.
+    private func transliterateLatin(_ s: String) -> String {
+        if s.isEmpty { return "" }
+        let d = s.decomposedStringWithCanonicalMapping
+        var out = String.UnicodeScalarView()
+        for scalar in d.unicodeScalars {
+            if scalar.value >= 0x300 && scalar.value <= 0x36F { continue }
+            if let mapped = atomicLatin(Character(scalar)) {
+                out.append(contentsOf: mapped.unicodeScalars)
+            } else {
+                out.append(scalar)
+            }
+        }
+        return String(out)
+    }
+
+    private func isCjkIdeograph(_ cp: UInt32) -> Bool {
+        return (cp >= 0x4E00 && cp <= 0x9FFF)
+            || (cp >= 0x3400 && cp <= 0x4DBF)
+            || (cp >= 0xF900 && cp <= 0xFAFF)
+    }
+
+    /// Classify already-transliterated text: ASCII | CJK ideograph | UNSUPPORTED.
+    private func classifyScript(_ s: String) -> Int {
+        var hasCjk = false
+        for scalar in s.unicodeScalars {
+            let cp = scalar.value
+            if cp <= 127 { continue }
+            if isCjkIdeograph(cp) { hasCjk = true; continue }
+            return SellerFlowPrinterPlugin.scriptUnsupported
+        }
+        return hasCjk ? SellerFlowPrinterPlugin.scriptCjk : SellerFlowPrinterPlugin.scriptAscii
+    }
+
+    /// Keep only what the printer can render: ASCII + CJK ideographs.
+    private func stripUnrenderable(_ s: String) -> String {
+        var out = String.UnicodeScalarView()
+        for scalar in s.unicodeScalars {
+            if scalar.value <= 127 || isCjkIdeograph(scalar.value) { out.append(scalar) }
+        }
+        return String(out)
     }
 
     /// US-ASCII bytes with '?' (0x3F) for any UTF-16 unit > 127 -- matches

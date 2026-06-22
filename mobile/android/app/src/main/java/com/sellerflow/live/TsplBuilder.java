@@ -40,26 +40,37 @@ class TsplBuilder {
         final int wDots, rightEdge, storeGap, buyerNumYMul, buyerNumGap, nameGap,
                   usernameGap, sepGap, sepWidth, orderEntryGuard, orderLoopGuard, totalY, totalAmountX;
         final boolean showTotal;
+        // CJK buyer-name enlargement: Chinese/kanji names render via TSS24.BF2,
+        // which is 24 dots tall at 1x vs the ASCII name font "4" at 32 — so a CJK
+        // name looks smaller than an English one. nameCjk{X,Y}Mul scale ONLY the
+        // CJK name (English stays 1x1); nameCjkGap is the y advance under the
+        // taller name. The rest of the layout below the name shifts down by
+        // (nameCjkGap - nameGap) only when the name is CJK (see forStickerNative),
+        // so English fixtures stay byte-identical.
+        final int nameCjkXMul, nameCjkYMul, nameCjkGap;
         SizeConfig(int wDots, int rightEdge, int storeGap, int buyerNumYMul, int buyerNumGap,
                    int nameGap, int usernameGap, int sepGap, int sepWidth, int orderEntryGuard,
-                   int orderLoopGuard, boolean showTotal, int totalY, int totalAmountX) {
+                   int orderLoopGuard, boolean showTotal, int totalY, int totalAmountX,
+                   int nameCjkXMul, int nameCjkYMul, int nameCjkGap) {
             this.wDots=wDots; this.rightEdge=rightEdge; this.storeGap=storeGap;
             this.buyerNumYMul=buyerNumYMul; this.buyerNumGap=buyerNumGap; this.nameGap=nameGap;
             this.usernameGap=usernameGap; this.sepGap=sepGap; this.sepWidth=sepWidth;
             this.orderEntryGuard=orderEntryGuard; this.orderLoopGuard=orderLoopGuard;
             this.showTotal=showTotal; this.totalY=totalY; this.totalAmountX=totalAmountX;
+            this.nameCjkXMul=nameCjkXMul; this.nameCjkYMul=nameCjkYMul; this.nameCjkGap=nameCjkGap;
         }
     }
     private static final java.util.Map<String, SizeConfig> LAYOUTS = java.util.Map.of(
         // 480-dot height tier (60mm): full 2x2 buyer#, 2 order rows, Total kept.
-        "100x60", new SizeConfig(800, 784, 55, 2, 110, 58, 58, 10, 520, 390, 400, true, 445, 410),
-        "80x60",  new SizeConfig(640, 624, 35, 2, 95, 40, 35, 10, 360, 350, 360, true, 395, 250),
+        // CJK name 2x2 (48 tall); nameCjkGap 58 -> extra 0 on 100x60 (gap already 58).
+        "100x60", new SizeConfig(800, 784, 55, 2, 110, 58, 58, 10, 520, 390, 400, true, 445, 410, 2, 2, 58),
+        "80x60",  new SizeConfig(640, 624, 35, 2, 95, 40, 35, 10, 360, 350, 360, true, 395, 250, 2, 2, 58),
         // 400-dot height tier (50mm): Total moves up, ~1 order row fits.
-        "80x50",  new SizeConfig(640, 624, 35, 2, 95, 40, 35, 10, 360, 270, 280, true, 315, 250),
-        "70x50",  new SizeConfig(560, 544, 35, 2, 95, 40, 35, 10, 280, 270, 280, true, 315, 170),
+        "80x50",  new SizeConfig(640, 624, 35, 2, 95, 40, 35, 10, 360, 270, 280, true, 315, 250, 2, 2, 58),
+        "70x50",  new SizeConfig(560, 544, 35, 2, 95, 40, 35, 10, 280, 270, 280, true, 315, 170, 2, 2, 58),
         // 320-dot height tier (40mm): compact — buyer# 2x1, tighter gaps, NO Total
         // (swapped for @username); order row uses the freed bottom space.
-        "60x40",  new SizeConfig(480, 464, 30, 1, 46, 34, 30,  6, 200, 240, 264, false,  0,   0)
+        "60x40",  new SizeConfig(480, 464, 30, 1, 46, 34, 30,  6, 200, 240, 264, false,  0,   0, 2, 2, 58)
     );
     private static SizeConfig stickerConfig(int wMm, int hMm) {
         SizeConfig c = LAYOUTS.get(wMm + "x" + hMm);
@@ -205,16 +216,34 @@ class TsplBuilder {
         String cleanStoreName = stripEmoji(storeName);
         String cleanBuyerName = stripEmoji(buyerName);
         String cleanBuyerHandle = stripEmoji(buyerHandle);
-        String buyerNameToPrint = cleanBuyerName;
+
+        // Buyer name — language-agnostic resolution (works for ANY buyer):
+        //   1. pure-emoji name -> handle / "Buyer #N" (unchanged fallback).
+        //   2. transliterate Latin diacritics so accented Latin (Vietnamese,
+        //      Filipino, European, romanized) becomes ASCII -> big font "4".
+        //   3. classify the result: ASCII | CJK ideograph | UNSUPPORTED.
+        //   4. UNSUPPORTED (no AIMO font: Arabic/Korean/Thai/...) -> romanized
+        //      @handle if ASCII, else omit the name line. The Buyer #N header +
+        //      order code still identify the buyer, so nothing prints as '?'.
+        String nameSource = cleanBuyerName;
         if (!buyerName.isEmpty() && cleanBuyerName.isEmpty()) {
-            buyerNameToPrint = !cleanBuyerHandle.isEmpty()
-                ? cleanBuyerHandle
-                : "Buyer #" + buyerNum;
+            nameSource = !cleanBuyerHandle.isEmpty() ? cleanBuyerHandle : "Buyer #" + buyerNum;
+        }
+        String nameOut = transliterateLatin(nameSource);
+        int nameTier = classifyScript(nameOut);
+        if (nameTier == SCRIPT_UNSUPPORTED) {
+            String handleOut = transliterateLatin(cleanBuyerHandle);
+            if (!handleOut.isEmpty() && classifyScript(handleOut) == SCRIPT_ASCII) {
+                nameOut = handleOut;
+                nameTier = SCRIPT_ASCII;
+            } else {
+                nameOut = "";
+            }
         }
 
         int y = 60;
         if (printStoreName && !cleanStoreName.isEmpty()) {
-            writeTextSmart(out, 16, y, "3", safe(truncate(cleanStoreName, 36)), 1, 1, c.rightEdge);
+            writeTextSmart(out, 16, y, "3", safe(truncate(cleanStoreName, 36)), 1, 1, 1, 1, c.rightEdge);
             y += c.storeGap;
         }
 
@@ -225,27 +254,35 @@ class TsplBuilder {
             y += c.buyerNumGap;
         }
 
-        if (!buyerNameToPrint.isEmpty()) {
-            writeTextSmart(out, 16, y, "4", safe(truncate(buyerNameToPrint, 30)), 1, 1, c.rightEdge);
-            y += c.nameGap;
+        // When the name is CJK it renders taller (2x = 48 vs ASCII 32), so the
+        // whole layout BELOW it shifts down by `extra`. ASCII names -> extra 0,
+        // keeping every English fixture byte-identical.
+        int extra = 0;
+        if (!nameOut.isEmpty()) {
+            boolean cjkName = nameTier == SCRIPT_CJK;
+            int nxm = cjkName ? c.nameCjkXMul : 1;
+            int nym = cjkName ? c.nameCjkYMul : 1;
+            writeTextSmart(out, 16, y, "4", safe(truncate(nameOut, 30)), 1, 1, nxm, nym, c.rightEdge);
+            y += cjkName ? c.nameCjkGap : c.nameGap;
+            extra = cjkName ? (c.nameCjkGap - c.nameGap) : 0;
         }
 
         // @username — kept on every size, incl. 60x40 (it replaced the Total
         // line there; buyer identity is essential on a shipping sticker).
         if (printBuyerUsername && !cleanBuyerHandle.isEmpty()) {
-            writeTextSmart(out, 16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)), 1, 1, c.rightEdge);
+            writeTextSmart(out, 16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)), 1, 1, 1, 1, c.rightEdge);
             y += c.usernameGap;
         }
 
         // Thin separator before the order lines so they read as a sub-section.
-        if (printOrderItems && orders != null && orders.length() > 0 && y < c.orderEntryGuard) {
+        if (printOrderItems && orders != null && orders.length() > 0 && y < c.orderEntryGuard + extra) {
             writeAscii(out, "BAR 16," + y + "," + c.sepWidth + ",2");
             y += c.sepGap;
             // Cap at 2 orders so the layout doesn't run off the bottom of a
             // 60mm label. The full order history is still on the web slip and
             // any reprint UI; the sticker is a buyer-identifier, not a ledger.
             int maxOrders = 2;
-            for (int i = 0; i < Math.min(orders.length(), maxOrders) && y < c.orderLoopGuard; i++) {
+            for (int i = 0; i < Math.min(orders.length(), maxOrders) && y < c.orderLoopGuard + extra; i++) {
                 JSONObject order = orders.optJSONObject(i);
                 if (order == null) continue;
                 String time = order.optString("time", "");
@@ -264,7 +301,7 @@ class TsplBuilder {
                     // size as the grand Total amount — font "4", 2x width, 1x
                     // height. truncate(12) is a width guard so a longer-than-
                     // expected code clips instead of overrunning rightEdge.
-                    writeTextSmart(out, 180, y, "4", safe(truncate(cleanItem, 12)), 2, 1, c.rightEdge);
+                    writeTextSmart(out, 180, y, "4", safe(truncate(cleanItem, 12)), 2, 1, 2, 1, c.rightEdge);
                 }
                 y += 38;
             }
@@ -275,9 +312,10 @@ class TsplBuilder {
         // (config showTotal=false): that tier swaps the Total line for the
         // @username row — the price still prints as the order item above.
         if (printTotal && totalSpent > 0 && c.showTotal) {
-            writeAscii(out, "TEXT 16," + c.totalY + ",\"3\",0,1,1,\"Total:\"");
+            int totalY = c.totalY + extra;
+            writeAscii(out, "TEXT 16," + totalY + ",\"3\",0,1,1,\"Total:\"");
             String totalStr = safe(currency) + money(totalSpent);
-            writeAscii(out, "TEXT " + c.totalAmountX + "," + c.totalY + ",\"4\",0,2,1,\"" + safe(truncate(totalStr, 18)) + "\"");
+            writeAscii(out, "TEXT " + c.totalAmountX + "," + totalY + ",\"4\",0,2,1,\"" + safe(truncate(totalStr, 18)) + "\"");
         }
 
         writeAscii(out, "PRINT 1");
@@ -350,28 +388,27 @@ class TsplBuilder {
     }
 
     /**
-     * Production content-line writer (rotation 0, multipliers 1,1 — all
-     * converted call sites use exactly these).
+     * Production content-line writer.
      *
-     * ASCII content: emits the EXACT same command string the legacy inline
-     * writeAscii calls produced — byte-identical, zero risk to the English
-     * printing the production sellers rely on.
+     * ASCII content (incl. romanized Latin): emits a numbered-font TEXT command —
+     * byte-identical to the legacy inline writeAscii calls for unaccented English.
      *
-     * Non-ASCII (Chinese) content: emits TSS24.BF2 + GBK bytes — the only
-     * combination the AIMO D520BT rendered in the hardware diagnostic
-     * (probe "D"). TSS24.BF2 is a 24-dot font and CJK glyphs are full-width
-     * (~24 dots/char vs ~16 for ASCII font "3"), so the content is
-     * re-truncated to fit the printable width from its x origin; the 24-dot
-     * height fits the existing 35/38/40-dot row spacing without overlap.
-     * If GBK is somehow unavailable, falls back to the legacy ASCII path
-     * (CJK prints as '?' — same as pre-fix behaviour, never a crash).
+     * Chinese content: emits TSS24.BF2 + GBK bytes — the only combination the
+     * AIMO D520BT rendered in the hardware diagnostic (probe "D"). TSS24.BF2 is a
+     * 24-dot font; the content is re-truncated to fit the printable width from
+     * its x origin. If GBK is unavailable it falls back to the ASCII path (never
+     * a crash). Unsupported scripts are dropped upstream, so '?' never prints.
      */
-    // Content-line writer with explicit TSPL multipliers (xMul, yMul) and a
-    // width-dependent rightEdge for the CJK clamp. Multipliers apply to BOTH the
-    // ASCII and TSS24.BF2 (CJK) paths so an enlarged field renders the same for
-    // English and Chinese. rightEdge = wDots-16 so the CJK width clamp tracks the
-    // actual label width (784 on 100mm, 624 on 80mm) instead of a hardcoded edge.
-    private static void writeTextSmart(ByteArrayOutputStream out, int x, int y, String asciiFont, String content, int xMul, int yMul, int rightEdge) {
+    // Content-line writer with separate ASCII (xMul,yMul) and CJK (cjkXMul,
+    // cjkYMul) multipliers so a CJK field can be enlarged WITHOUT touching the
+    // ASCII (English) size. Before deciding the path, content is normalized:
+    // Latin diacritics are romanized to ASCII, then any codepoint the AIMO has
+    // no font for (non-ASCII, non-CJK-ideograph) is dropped — so nothing ever
+    // prints as '?'. rightEdge = wDots-16 so the CJK width clamp tracks the
+    // actual label width (784 on 100mm, 624 on 80mm).
+    private static void writeTextSmart(ByteArrayOutputStream out, int x, int y, String asciiFont, String content, int xMul, int yMul, int cjkXMul, int cjkYMul, int rightEdge) {
+        content = stripUnrenderable(transliterateLatin(content));
+        if (content.isEmpty()) return;
         if (!hasNonAscii(content)) {
             writeAscii(out, "TEXT " + x + "," + y + ",\"" + asciiFont + "\",0," + xMul + "," + yMul + ",\"" + content + "\"");
             return;
@@ -380,9 +417,9 @@ class TsplBuilder {
             // Conservative width clamp: treat every char as full-width 24 dots
             // times the horizontal multiplier so mixed ASCII+CJK strings can
             // never overrun the right edge of the label.
-            int maxChars = Math.max(1, (rightEdge - x) / (24 * xMul));
+            int maxChars = Math.max(1, (rightEdge - x) / (24 * cjkXMul));
             String fitted = truncate(content, maxChars);
-            String prefix = "TEXT " + x + "," + y + ",\"TSS24.BF2\",0," + xMul + "," + yMul + ",\"";
+            String prefix = "TEXT " + x + "," + y + ",\"TSS24.BF2\",0," + cjkXMul + "," + cjkYMul + ",\"";
             writeBytes(out, prefix.getBytes(StandardCharsets.US_ASCII));
             writeBytes(out, fitted.getBytes("GBK"));
             writeBytes(out, "\"".getBytes(StandardCharsets.US_ASCII));
@@ -390,6 +427,87 @@ class TsplBuilder {
         } catch (java.io.UnsupportedEncodingException e) {
             writeAscii(out, "TEXT " + x + "," + y + ",\"" + asciiFont + "\",0," + xMul + "," + yMul + ",\"" + content + "\"");
         }
+    }
+
+    // ── Script handling (language-agnostic; mirrored in Swift + TS reference) ──
+    // The AIMO D520BT can only render ASCII (bitmap fonts) and Chinese (TSS24.BF2
+    // + GBK). Everything else is handled in software: Latin diacritics are
+    // romanized to ASCII; truly unsupported scripts (Arabic/Korean/Thai/...) are
+    // dropped or fall back to the @handle / Buyer # so nothing prints as '?'.
+    static final int SCRIPT_ASCII = 1, SCRIPT_CJK = 2, SCRIPT_UNSUPPORTED = 3;
+
+    // Latin letters that NFD does NOT decompose to base+combining-mark. (The
+    // Android Gradle build and the golden harness both compile with UTF-8, so
+    // the literal letters here are safe — same as the Chinese fixtures.)
+    private static String atomicLatin(char ch) {
+        switch (ch) {
+            case 'đ': return "d";  case 'Đ': return "D";  // d-stroke
+            case 'ł': return "l";  case 'Ł': return "L";  // l-stroke
+            case 'ø': return "o";  case 'Ø': return "O";  // o-slash
+            case 'æ': return "ae"; case 'Æ': return "AE"; // ae
+            case 'œ': return "oe"; case 'Œ': return "OE"; // oe
+            case 'ß': return "ss";                             // sharp s
+            case 'þ': return "th"; case 'Þ': return "Th"; // thorn
+            case 'ð': return "d";  case 'Ð': return "D";  // eth
+            case 'ı': return "i";                              // dotless i
+            default: return null;
+        }
+    }
+
+    /**
+     * Romanize Latin-script text: NFD-decompose, drop combining diacritics
+     * (U+0300-U+036F), and map the handful of atomic Latin letters NFD leaves
+     * alone. e.g. "Tran"/"Phuong"/"Dang" from their accented forms. CJK
+     * ideographs (no NFD decomposition) and plain ASCII pass through unchanged,
+     * so existing goldens are byte-identical.
+     */
+    static String transliterateLatin(String s) {
+        if (s == null || s.isEmpty()) return "";
+        String d = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD);
+        StringBuilder sb = new StringBuilder(d.length());
+        for (int i = 0; i < d.length(); i++) {
+            char ch = d.charAt(i);
+            if (ch >= 0x0300 && ch <= 0x036F) continue; // combining mark
+            String mapped = atomicLatin(ch);
+            if (mapped != null) sb.append(mapped);
+            else sb.append(ch);
+        }
+        return sb.toString();
+    }
+
+    private static boolean isCjkIdeograph(int cp) {
+        return (cp >= 0x4E00 && cp <= 0x9FFF)   // CJK Unified Ideographs
+            || (cp >= 0x3400 && cp <= 0x4DBF)   // Extension A
+            || (cp >= 0xF900 && cp <= 0xFAFF);  // Compatibility Ideographs
+    }
+
+    /**
+     * Classify already-transliterated text: ASCII (printable on the big numbered
+     * fonts), CJK ideograph (printable via TSS24.BF2 + GBK), or UNSUPPORTED (any
+     * non-ASCII, non-CJK codepoint — no AIMO font, would print as '?').
+     */
+    static int classifyScript(String s) {
+        boolean hasCjk = false;
+        for (int i = 0; i < s.length(); ) {
+            int cp = s.codePointAt(i);
+            i += Character.charCount(cp);
+            if (cp <= 127) continue;
+            if (isCjkIdeograph(cp)) { hasCjk = true; continue; }
+            return SCRIPT_UNSUPPORTED;
+        }
+        return hasCjk ? SCRIPT_CJK : SCRIPT_ASCII;
+    }
+
+    /** Keep only what the printer can render: ASCII + CJK ideographs. */
+    private static String stripUnrenderable(String s) {
+        StringBuilder sb = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); ) {
+            int cp = s.codePointAt(i);
+            int w = Character.charCount(cp);
+            if (cp <= 127 || isCjkIdeograph(cp)) sb.appendCodePoint(cp);
+            i += w;
+        }
+        return sb.toString();
     }
 
     private static String nowStamp() {

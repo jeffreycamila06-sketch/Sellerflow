@@ -207,6 +207,42 @@ public final class GoldenGen {
             buyer(9, "John Doe", "johnd", 500.0, order("10:00", "300")),
             settings(false, false, false, false, false)), 60, 40));
 
+        // ── LANGUAGE COVERAGE: any-language buyer-name handling (run.sh compiles
+        // this with -encoding UTF-8, so non-ASCII literals are fine — same as the
+        // Chinese fixtures above). Transliteration romanizes Latin+diacritics to
+        // the big ASCII font; Arabic (no printer font) falls back to the @handle.
+        // 18. Vietnamese name "Trần Trà My" -> "Tran Tra My": diacritics stripped
+        //     -> rendered on ASCII font "4", not the small CJK path.
+        list.add(new Fixture("vietnamese", payload(
+            "Shop", "2026-06-22", "NT$",
+            buyer(8, "Trần Trà My", "tra_my", 250.0,
+                order("14:02", "150")),
+            settings(true, true, true, true, true))));
+
+        // 19. Same Vietnamese name on the compact 60x40 — proves romanization
+        //     works on every size, not just 100x60.
+        list.add(new Fixture("vietnamese_60x40", payload(
+            "Shop", "2026-06-22", "NT$",
+            buyer(8, "Trần Trà My", "tra_my", 250.0,
+                order("14:02", "150")),
+            settings(true, true, true, true, true)), 60, 40));
+
+        // 20. "Đặng Phương" -> "Dang Phuong" exercises the atomic-letter map:
+        //     Đ (D-stroke) is NOT decomposed by NFD, so it needs the explicit map.
+        list.add(new Fixture("vietnamese_dong", payload(
+            "Shop", "2026-06-22", "NT$",
+            buyer(8, "Đặng Phương", "dang_p", 250.0,
+                order("14:02", "150")),
+            settings(true, true, true, true, true))));
+
+        // 21. Arabic name (no AIMO font) + ASCII handle -> name falls back to the
+        //     romanized @handle "ahmad_q"; nothing prints as '?' (Tier 3 fallback).
+        list.add(new Fixture("arabic_fallback", payload(
+            "Shop", "2026-06-22", "NT$",
+            buyer(9, "محمد العربي", "ahmad_q", 100.0,
+                order("14:02", "150")),
+            settings(true, true, true, true, true))));
+
         return list;
     }
 
