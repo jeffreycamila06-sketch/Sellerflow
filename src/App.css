@@ -645,7 +645,7 @@ textarea{padding:8px 10px;border-radius:8px;border:0.5px solid #D3D1C7;font-size
 .btn-out:hover{background:#EEEDFE}
 
 /* Modal */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center;z-index:1000;padding:16px}
 .modal{background:#fff;border-radius:14px;width:100%;max-width:400px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.18)}
 .modal-hd{padding:14px 18px;border-bottom:0.5px solid #E4E2DC;display:flex;justify-content:space-between;align-items:center;font-weight:500;font-size:14px;color:#26215C}
 .modal-x{background:none;border:none;font-size:22px;cursor:pointer;color:#888;line-height:1}
