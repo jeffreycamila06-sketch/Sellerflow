@@ -840,6 +840,89 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
       </div>
     </div>
   );
+
+  // ── APK-ONLY mobile login (dark indigo "automation control center") ──────
+  // Gated on window.Capacitor (present only in the native APK WebView; the same
+  // global the native printer already relies on). Desktop AND mobile WEB browsers
+  // never have it → they fall through to the unchanged marketing landing below.
+  // `?apk=1` is a test override so the layout can be previewed in a desktop browser.
+  const isNativeApp = typeof window!=="undefined" && (!!window.Capacitor || new URLSearchParams(window.location.search).has("apk"));
+  if(isNativeApp){
+    // SMIL (animateMotion) cannot be stopped by CSS prefers-reduced-motion, so
+    // gate the traveling-packet dots in JS; CSS handles the keyframe animations.
+    const reduceMotion = typeof window!=="undefined" && !!window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const mlIcon=(d:React.ReactNode)=><svg className="ml-i" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">{d}</svg>;
+    const mailI=mlIcon(<><rect x="3" y="5" width="18" height="14" rx="2.5" stroke="#818cf8" strokeWidth="1.7"/><path d="m4 7 8 5 8-5" stroke="#818cf8" strokeWidth="1.7" strokeLinecap="round"/></>);
+    const lockI=mlIcon(<><rect x="5" y="10" width="14" height="10" rx="2.5" stroke="#818cf8" strokeWidth="1.7"/><path d="M8 10V8a4 4 0 0 1 8 0v2" stroke="#818cf8" strokeWidth="1.7" strokeLinecap="round"/></>);
+    const userI=mlIcon(<><circle cx="12" cy="8" r="3.4" stroke="#818cf8" strokeWidth="1.7"/><path d="M5 20c0-3.5 3.1-5.5 7-5.5s7 2 7 5.5" stroke="#818cf8" strokeWidth="1.7" strokeLinecap="round"/></>);
+    const storeI=mlIcon(<><path d="M4 9h16l-1 11H5L4 9Z" stroke="#818cf8" strokeWidth="1.6"/><path d="M4 9 5.5 5h13L20 9" stroke="#818cf8" strokeWidth="1.6" strokeLinejoin="round"/></>);
+    const phoneI=mlIcon(<><rect x="7" y="3" width="10" height="18" rx="2.5" stroke="#818cf8" strokeWidth="1.7"/><path d="M11 18h2" stroke="#818cf8" strokeWidth="1.7" strokeLinecap="round"/></>);
+    return(
+      <div className="ml">
+        {/* ── decorative automation backdrop (pointer-events:none) ── */}
+        <div className="ml-grid" aria-hidden="true"/>
+        <div className="ml-glow ml-glow-i" aria-hidden="true"/>
+        <div className="ml-glow ml-glow-c" aria-hidden="true"/>
+        <svg className="ml-lines" viewBox="0 0 390 844" fill="none" aria-hidden="true" preserveAspectRatio="xMidYMid slice">
+          <path id="mlp1" d="M-20 150 H80 a16 16 0 0 1 16 16 V210 a16 16 0 0 0 16 16 H300 a16 16 0 0 1 16 16 V300 H420" stroke="rgba(129,140,248,.45)" strokeWidth="1.6" strokeDasharray="5 9" className="ml-dash1"/>
+          <path id="mlp2" d="M410 120 H320 a16 16 0 0 0 -16 16 V190 a16 16 0 0 1 -16 16 H120" stroke="rgba(34,211,238,.4)" strokeWidth="1.6" strokeDasharray="5 9" className="ml-dash2"/>
+          <circle cx="96" cy="166" r="3.5" fill="#a5b4fc"/><circle cx="304" cy="136" r="3.5" fill="#67e8f9"/>
+          {!reduceMotion&&<>
+            <circle r="3.2" fill="#c7d2fe"><animateMotion dur="3.2s" repeatCount="indefinite" rotate="auto"><mpath href="#mlp1"/></animateMotion><animate attributeName="opacity" values="0;1;1;0" dur="3.2s" repeatCount="indefinite"/></circle>
+            <circle r="3.2" fill="#67e8f9"><animateMotion dur="2.6s" repeatCount="indefinite" rotate="auto"><mpath href="#mlp2"/></animateMotion><animate attributeName="opacity" values="0;1;1;0" dur="2.6s" repeatCount="indefinite"/></circle>
+          </>}
+        </svg>
+        {/* ── floating status chips (solid bg, no backdrop-filter) ── */}
+        <div className="ml-chip ml-chip-l" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#86efac" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg><span>{t.m_login_chip_reply}</span></div>
+        <div className="ml-chip ml-chip-r" aria-hidden="true"><span className="ml-chip-dot"/><span>{tpl(t.m_login_chip_synced,{count:142})}</span></div>
+        {/* ── header: logo tile + wordmark + status pill ── */}
+        <div className="ml-head">
+          <div className="ml-logo"><div className="ml-ring"/><div className="ml-tile"><img src="/favicon.svg" alt="" width="80" height="80"/></div></div>
+          <div className="ml-word">SellerFlow<span>Live</span></div>
+          <div className="ml-pill"><span className="ml-pill-dot"/><span>{t.m_login_status}</span></div>
+        </div>
+        {/* ── automation flow strip: Capture → Orders → Print ── */}
+        <div className="ml-flow">
+          <div className="ml-node"><div className="ml-node-box ml-box-i"><svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M8 10h.01M12 10h.01M16 10h.01" stroke="#c7d2fe" strokeWidth="2" strokeLinecap="round"/><path d="M4 6h16v9H7l-3 3V6Z" stroke="#c7d2fe" strokeWidth="1.6" strokeLinejoin="round"/></svg></div><span>{t.m_login_flow_capture}</span></div>
+          <svg className="ml-conn" width="40" height="20" viewBox="0 0 40 20" fill="none" aria-hidden="true"><path d="M2 10h36" stroke="rgba(165,180,252,.5)" strokeWidth="1.6" strokeDasharray="4 5" className="ml-dash1"/><path d="M33 5l6 5-6 5" stroke="#a5b4fc" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          <div className="ml-node"><div className="ml-node-box ml-box-i2"><svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M5 7h14l-1 11H6L5 7Z" stroke="#c7d2fe" strokeWidth="1.6" strokeLinejoin="round"/><path d="M9 7V5.5a3 3 0 0 1 6 0V7" stroke="#c7d2fe" strokeWidth="1.6"/></svg></div><span>{t.m_login_flow_orders}</span></div>
+          <svg className="ml-conn" width="40" height="20" viewBox="0 0 40 20" fill="none" aria-hidden="true"><path d="M2 10h36" stroke="rgba(103,232,249,.5)" strokeWidth="1.6" strokeDasharray="4 5" className="ml-dash2"/><path d="M33 5l6 5-6 5" stroke="#67e8f9" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          <div className="ml-node"><div className="ml-node-box ml-box-c"><svg width="19" height="19" viewBox="0 0 24 24" fill="none"><rect x="6" y="3" width="12" height="6" stroke="#a5f3fc" strokeWidth="1.6"/><path d="M6 14H4a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-2" stroke="#a5f3fc" strokeWidth="1.6"/><rect x="6" y="14" width="12" height="7" stroke="#a5f3fc" strokeWidth="1.6"/></svg></div><span>{t.m_login_flow_print}</span></div>
+        </div>
+        {/* ── body: glass form card (reuses login/reg/forgot) + support + language ── */}
+        <div className="ml-body">
+          <form className="ml-card" onSubmit={mode==="reg"?reg:mode==="forgot"?forgot:login}>
+            {err&&<div className="ml-err">{t.warning_prefix} {err}</div>}
+            {ok&&<div className="ml-ok">{t.done_prefix} {ok}</div>}
+            {mode==="reg"&&<>
+              <div className="ml-field">{userI}<input value={fn} onChange={e=>setFn(e.target.value)} placeholder={t.fname_field} required/></div>
+              <div className="ml-field">{storeI}<input value={sn} onChange={e=>setSn(e.target.value)} placeholder={t.sname_field} required/></div>
+            </>}
+            <div className="ml-field">{mailI}<input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder={t.m_login_email_ph} required autoFocus={mode==="login"}/></div>
+            {mode==="reg"&&<div className="ml-field">{phoneI}<input value={phone} onChange={e=>setPhone(e.target.value)} placeholder={t.phone_label} inputMode="tel" required/></div>}
+            {mode!=="forgot"&&<div className="ml-field">{lockI}<input type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} placeholder={t.ph_password} required/><button type="button" className="ml-eye" onClick={()=>setShowPw(p=>!p)} aria-label={showPw?t.hide_pw:t.show_pw}>{showPw?PwEyeOffIcon:PwEyeIcon}</button></div>}
+            {mode==="reg"&&<div className="ml-field">{lockI}<input type="password" value={cpw} onChange={e=>setCpw(e.target.value)} placeholder={t.confirm_field} required/></div>}
+            {mode==="login"&&<button type="button" className="ml-forgot" onClick={()=>go("forgot")}>{t.forgot_link}</button>}
+            <button type="submit" className="ml-submit" disabled={busy}>{busy?(mode==="reg"?t.submitting:mode==="forgot"?t.sending:t.signing_in):<>{mode==="reg"?t.submit_approval:mode==="forgot"?t.send_reset:t.sign_in_btn} <span aria-hidden="true">→</span></>}</button>
+            {mode==="reg"&&<p className="ml-terms">{t.terms_agree} <button type="button" className="ml-link-inline" onClick={()=>openLegal("terms")}>{t.terms_label}</button> · <button type="button" className="ml-link-inline" onClick={()=>openLegal("privacy")}>{t.privacy_label}</button></p>}
+            <div className="ml-switch">
+              {mode==="login"&&<>{t.no_account} <button type="button" onClick={()=>go("reg")}>{t.create_account}</button></>}
+              {mode==="reg"&&<>{t.have_account} <button type="button" onClick={()=>go("login")}>{t.sign_in_btn}</button></>}
+              {mode==="forgot"&&<button type="button" onClick={()=>go("login")}>{t.back_login}</button>}
+            </div>
+          </form>
+          <a className="ml-support" href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="#22d3ee" aria-hidden="true"><path d="M21.8 4.3 2.9 11.6c-1 .4-1 1.3-.1 1.6l4.7 1.5 1.8 5.6c.2.6.6.7 1.2.3l2.6-2 4.7 3.5c.6.4 1.2.2 1.4-.6l3.4-15.9c.2-.9-.4-1.4-1-1.1z"/></svg>
+            <span>{t.m_login_help}</span>
+          </a>
+          <div className="ml-lang">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="#818cf8" strokeWidth="1.6"/><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18" stroke="#818cf8" strokeWidth="1.6"/></svg>
+            <select value={lang} onChange={e=>setLang(e.target.value as Lang)} aria-label="Language">{LANG_OPTS.map(l=><option key={l.code} value={l.code}>{l.label}</option>)}</select>
+          </div>
+        </div>
+      </div>
+    );
+  }
   return(
     <div className="public-page">
       <header className="public-nav">

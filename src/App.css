@@ -2340,3 +2340,101 @@ body.platform-ios {
 /* ============================================================================
  * end iOS HIG block
  * ============================================================================ */
+
+/* ============================================================================
+ * APK MOBILE LOGIN (dark indigo "automation control center")
+ * APK-only — rendered solely when window.Capacitor is present (see PublicAuth).
+ * Web (desktop + mobile browser) never reaches these classes. Additive only:
+ * nothing here overrides an existing .public-* / .auth-* rule.
+ * ============================================================================ */
+.ml{position:relative;height:100vh;height:100dvh;overflow:hidden auto;display:flex;flex-direction:column;color:#fff;
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
+  background:radial-gradient(125% 65% at 80% -5%,#3730a3 0%,#251f7a 38%,#15123f 70%,#0a0824 100%)}
+.ml *{box-sizing:border-box}
+/* backdrop */
+.ml-grid{position:absolute;inset:0;pointer-events:none;
+  background-image:linear-gradient(rgba(129,140,248,.085) 1px,transparent 1px),linear-gradient(90deg,rgba(129,140,248,.085) 1px,transparent 1px);
+  background-size:34px 34px;animation:mlgrid 6s linear infinite}
+.ml-glow{position:absolute;border-radius:50%;pointer-events:none}
+.ml-glow-i{top:-100px;right:-80px;width:320px;height:320px;background:radial-gradient(circle,rgba(99,102,241,.6),transparent 64%);filter:blur(34px)}
+.ml-glow-c{bottom:30px;left:-100px;width:300px;height:300px;background:radial-gradient(circle,rgba(34,211,238,.26),transparent 66%);filter:blur(44px)}
+.ml-lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;opacity:.9}
+.ml-dash1{animation:mldash 1.5s linear infinite}
+.ml-dash2{animation:mldash2 2.1s linear infinite}
+/* floating status chips — solid bg (no backdrop-filter, perf on old phones) */
+.ml-chip{position:absolute;z-index:2;display:flex;align-items:center;gap:6px;border-radius:999px;padding:6px 11px;
+  font-size:10.5px;font-weight:600;pointer-events:none}
+.ml-chip span{white-space:nowrap}
+.ml-chip svg{flex:none}
+.ml-chip-l{top:118px;left:18px;background:#262168;border:1px solid rgba(129,140,248,.4);color:#dbeafe;animation:mlfloat 5s ease-in-out infinite}
+.ml-chip-r{top:120px;right:16px;background:#173a4f;border:1px solid rgba(34,211,238,.4);color:#cffafe;animation:mlfloat 4.2s ease-in-out .6s infinite}
+.ml-chip-dot{width:6px;height:6px;border-radius:50%;background:#67e8f9;box-shadow:0 0 6px #67e8f9}
+/* header */
+.ml-head{position:relative;z-index:1;padding:62px 30px 0;display:flex;flex-direction:column;align-items:center;text-align:center}
+.ml-logo{position:relative;width:96px;height:96px;animation:mlfloat 4.5s ease-in-out infinite}
+.ml-ring{position:absolute;inset:-9px;border-radius:30px;border:1.5px solid rgba(129,140,248,.55);animation:mlpulse 2.8s ease-in-out infinite}
+.ml-tile{width:96px;height:96px;border-radius:26px;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;
+  box-shadow:0 0 0 1px rgba(255,255,255,.2),0 14px 38px rgba(79,70,229,.5),0 0 50px rgba(99,102,241,.45)}
+.ml-tile img{display:block}
+.ml-word{margin-top:20px;font-size:28px;font-weight:700;letter-spacing:-.02em}
+.ml-word span{color:#818cf8}
+.ml-pill{margin-top:11px;display:inline-flex;align-items:center;gap:8px;background:rgba(34,211,238,.12);
+  border:1px solid rgba(34,211,238,.34);border-radius:999px;padding:7px 15px;font-size:11.5px;font-weight:600;letter-spacing:.04em;color:#a5f3fc}
+.ml-pill-dot{width:7px;height:7px;border-radius:50%;background:#34d399;box-shadow:0 0 8px #34d399;animation:mlblink 1.6s infinite}
+/* automation flow strip — solid bg (no blur) */
+.ml-flow{position:relative;z-index:1;margin:26px 26px 0;display:flex;align-items:center;justify-content:space-between;
+  background:rgba(255,255,255,.05);border:1px solid rgba(129,140,248,.22);border-radius:16px;padding:14px 16px}
+.ml-node{display:flex;flex-direction:column;align-items:center;gap:6px;flex:none;width:58px}
+.ml-node span{font-size:9.5px;font-weight:600;letter-spacing:.02em}
+.ml-node:nth-child(1) span,.ml-node:nth-child(3) span{color:#c7d2fe}
+.ml-node:nth-child(5) span{color:#a5f3fc}
+.ml-node-box{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center}
+.ml-box-i{background:rgba(129,140,248,.18);border:1px solid rgba(129,140,248,.4)}
+.ml-box-i2{background:rgba(99,102,241,.24);border:1px solid rgba(99,102,241,.5)}
+.ml-box-c{background:rgba(34,211,238,.16);border:1px solid rgba(34,211,238,.42)}
+.ml-conn{flex:none;margin-bottom:14px}
+/* body */
+.ml-body{position:relative;z-index:1;flex:1;display:flex;flex-direction:column;padding:20px 24px 0}
+/* glass form card — the ONLY backdrop-filter (perf) */
+.ml-card{background:rgba(255,255,255,.055);border:1px solid rgba(129,140,248,.26);border-radius:22px;padding:22px 20px;
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);box-shadow:0 16px 40px rgba(10,8,36,.4)}
+.ml-field{display:flex;align-items:center;gap:11px;background:rgba(255,255,255,.05);border:1px solid rgba(129,140,248,.3);
+  border-radius:13px;padding:14px;margin-bottom:13px}
+.ml-field input{flex:1;min-width:0;background:none;border:none;outline:none;color:#e0e7ff;font-size:14px}
+.ml-field input::placeholder{color:rgba(199,210,254,.66)}
+.ml-i{flex:none}
+.ml-eye{flex:none;background:none;border:none;padding:0;display:flex;cursor:pointer;color:#a5b4fc}
+.ml-eye svg{width:19px;height:19px}
+.ml-forgot{display:block;margin:-2px 0 18px auto;background:none;border:none;cursor:pointer;font-size:12.5px;font-weight:600;color:#a5b4fc}
+.ml-submit{width:100%;min-height:52px;border:none;border-radius:14px;padding:16px;cursor:pointer;
+  font-size:15.5px;font-weight:700;color:#fff;background:linear-gradient(135deg,#6366f1,#4f46e5);
+  box-shadow:0 10px 26px rgba(79,70,229,.5),0 0 30px rgba(99,102,241,.4);
+  display:flex;align-items:center;justify-content:center;gap:7px}
+.ml-submit:disabled{opacity:.7}
+.ml-switch{margin-top:15px;text-align:center;font-size:13px;color:rgba(199,210,254,.7)}
+.ml-switch button{background:none;border:none;cursor:pointer;font-size:13px;font-weight:700;color:#a5b4fc;padding:0}
+.ml-terms{margin:12px 0 0;font-size:11px;line-height:1.5;color:rgba(199,210,254,.6);text-align:center}
+.ml-link-inline{background:none;border:none;padding:0;cursor:pointer;color:#a5b4fc;font-size:11px;text-decoration:underline}
+.ml-err{background:rgba(244,63,94,.14);border:1px solid rgba(244,63,94,.4);color:#fecdd3;border-radius:10px;padding:9px 12px;font-size:12.5px;margin-bottom:13px}
+.ml-ok{background:rgba(52,211,153,.14);border:1px solid rgba(52,211,153,.4);color:#bbf7d0;border-radius:10px;padding:9px 12px;font-size:12.5px;margin-bottom:13px}
+/* support + language pinned to bottom */
+.ml-support{margin-top:auto;display:flex;align-items:center;justify-content:center;gap:9px;
+  background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.32);border-radius:14px;padding:13px;margin-bottom:13px;
+  text-decoration:none;color:#a5f3fc;font-size:13px;font-weight:600}
+.ml-support svg{flex:none}
+.ml-lang{display:flex;align-items:center;justify-content:center;gap:7px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
+.ml-lang select{background:none;border:none;color:#c7d2fe;font-size:12.5px;font-weight:600;cursor:pointer}
+.ml-lang select option{color:#15123f}
+/* center the column on tablet/large */
+@media(min-width:480px){.ml-head,.ml-flow,.ml-body{width:100%;max-width:440px;margin-left:auto;margin-right:auto}}
+/* keyframes */
+@keyframes mlpulse{0%,100%{opacity:.45;transform:scale(1)}50%{opacity:1;transform:scale(1.08)}}
+@keyframes mlfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
+@keyframes mldash{to{stroke-dashoffset:-28}}
+@keyframes mldash2{to{stroke-dashoffset:-40}}
+@keyframes mlblink{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes mlgrid{from{background-position:0 0}to{background-position:0 34px}}
+/* ⚠️ accessibility + old-phone: kill all decorative motion (SMIL packets gated in JS) */
+@media (prefers-reduced-motion: reduce){
+  .ml-grid,.ml-logo,.ml-ring,.ml-pill-dot,.ml-chip,.ml-dash1,.ml-dash2{animation:none!important}
+}
