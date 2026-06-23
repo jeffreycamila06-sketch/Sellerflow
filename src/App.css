@@ -2347,11 +2347,13 @@ body.platform-ios {
  * Web (desktop + mobile browser) never reaches these classes. Additive only:
  * nothing here overrides an existing .public-* / .auth-* rule.
  * ============================================================================ */
-.ml{position:relative;height:100vh;height:100dvh;overflow:hidden auto;display:flex;flex-direction:column;color:#fff;
-  /* FIX 2: cap the column so the phone design doesn't stretch full-width on
-     desktop/tablet (?apk=1 preview). On a real phone (<440px) this is a no-op —
-     full-width, fluid down to 360px. On wider screens: centered ~440px column. */
-  max-width:440px;margin-inline:auto;
+/* FIX 2 (robust): outer stage centers the phone frame; the gradient/chips/
+   content all live inside the ≤440px frame (mirrors the .dc.html outer wrapper).
+   Real phone (≤440px): frame = full width, full-bleed, fluid to 360px.
+   Desktop/tablet: centered 440px column on a dark surround. */
+.ml-stage{min-height:100vh;min-height:100dvh;display:flex;justify-content:center;background:#0a0824}
+.ml{position:relative;width:100%;max-width:440px;height:100vh;height:100dvh;overflow:hidden auto;
+  display:flex;flex-direction:column;color:#fff;
   font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
   background:radial-gradient(125% 65% at 80% -5%,#3730a3 0%,#251f7a 38%,#15123f 70%,#0a0824 100%)}
 .ml *{box-sizing:border-box}

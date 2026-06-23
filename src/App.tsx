@@ -858,7 +858,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
     const storeI=mlIcon(<><path d="M4 9h16l-1 11H5L4 9Z" stroke="#818cf8" strokeWidth="1.6"/><path d="M4 9 5.5 5h13L20 9" stroke="#818cf8" strokeWidth="1.6" strokeLinejoin="round"/></>);
     const phoneI=mlIcon(<><rect x="7" y="3" width="10" height="18" rx="2.5" stroke="#818cf8" strokeWidth="1.7"/><path d="M11 18h2" stroke="#818cf8" strokeWidth="1.7" strokeLinecap="round"/></>);
     return(
-      <div className="ml">
+      <div className="ml-stage"><div className="ml">
         {/* ── decorative automation backdrop (pointer-events:none) ── */}
         <div className="ml-grid" aria-hidden="true"/>
         <div className="ml-glow ml-glow-i" aria-hidden="true"/>
@@ -920,7 +920,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
             <select value={lang} onChange={e=>setLang(e.target.value as Lang)} aria-label="Language">{LANG_OPTS.map(l=><option key={l.code} value={l.code}>{l.label}</option>)}</select>
           </div>
         </div>
-      </div>
+      </div></div>
     );
   }
   return(
