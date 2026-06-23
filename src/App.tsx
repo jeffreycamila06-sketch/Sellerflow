@@ -2108,7 +2108,6 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   // browser-print path keeps them.
   const isStickerOutput = sets.printerType==="bluetooth" || sets.lanFormat==="sticker";
   const previewMove=(x:number|undefined,y:number|undefined)=>({transform:`translate(${(x||0)*1.8}px,${(y||0)*1.8}px)`});
-  const stepSetting=(key:NumberSettingKey,delta:number)=>setSets(s=>({...s,[key]:Math.max(-40,Math.min(40,Number(s[key]||0)+delta))}));
   const stepSize=(key:NumberSettingKey,delta:number)=>setSets(s=>({...s,[key]:Math.max(60,Math.min(180,Number(s[key]||100)+delta))}));
   const sizeStep=(key:NumberSettingKey,label:string)=>(
     <div key={key} className="position-step-row">
@@ -2117,16 +2116,6 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
         <button type="button" onClick={()=>stepSize(key,-5)}>-</button>
         <b>{Number(sets[key]||100)}%</b>
         <button type="button" onClick={()=>stepSize(key,5)}>+</button>
-      </div>
-    </div>
-  );
-  const positionStep=(key:NumberSettingKey,label:string)=>(
-    <div key={key} className="position-step-row">
-      <span>{label}</span>
-      <div className="position-step-controls">
-        <button type="button" onClick={()=>stepSetting(key,-1)}>-</button>
-        <b>{Number(sets[key]||0)}mm</b>
-        <button type="button" onClick={()=>stepSetting(key,1)}>+</button>
       </div>
     </div>
   );
@@ -2724,11 +2713,6 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
             </select>
           </Fg>
           )}
-          {/* Paper size — relocated here from the Display screen (Phase 3); it
-              belongs with the printer controls, not display. Save logic unchanged. */}
-          <Fg label={t.paper_size}>
-            <select value={sets.paperSize} onChange={e=>setSets(s=>({...s,paperSize:e.target.value}))}><option>100x60mm</option><option>80x60mm</option><option>58mm</option><option>80mm</option></select>
-          </Fg>
           {/* Sticker label size — sticker (TSPL) output only. PHASE 1: the 60mm
               height tier (100x60 + 80x60). More sizes arrive as later phases
               add the vertical reflow. Wired through to the native builder. */}
@@ -2777,25 +2761,6 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
             ["printCommentScale",t.set_el_customer_comment],
             ["printTotalScale",t.set_el_total_amount],
           ] as [NumberSettingKey,string][]).map(([k,label])=>sizeStep(k,`${label} ${t.set_size_word}`))}
-          <div className="scard-title" style={{marginTop:10}}>{t.set_position_tools}</div>
-          <div className="position-step-grid">
-            {([
-              ["printStoreX",`${t.set_preview_seller_name} ${t.set_dir_lr}`],
-              ["printStoreY",`${t.set_preview_seller_name} ${t.set_dir_ud}`],
-              ["printBuyerLabelX",`${t.set_posel_buyer_label} ${t.set_dir_lr}`],
-              ["printBuyerLabelY",`${t.set_posel_buyer_label} ${t.set_dir_ud}`],
-              ["printBuyerNumberX",`${t.set_el_buyer_number} ${t.set_dir_lr}`],
-              ["printBuyerNumberY",`${t.set_el_buyer_number} ${t.set_dir_ud}`],
-              ["printBuyerNameX",`${t.set_el_buyer_name} ${t.set_dir_lr}`],
-              ["printBuyerNameY",`${t.set_el_buyer_name} ${t.set_dir_ud}`],
-              ["printUsernameX",`${t.set_posel_username} ${t.set_dir_lr}`],
-              ["printUsernameY",`${t.set_posel_username} ${t.set_dir_ud}`],
-              ["printSessionX",`${t.set_posel_session} ${t.set_dir_lr}`],
-              ["printSessionY",`${t.set_posel_session} ${t.set_dir_ud}`],
-              ["printOrderX",`${t.set_el_order_items} ${t.set_dir_lr}`],
-              ["printOrderY",`${t.set_el_order_items} ${t.set_dir_ud}`],
-            ] as [NumberSettingKey,string][]).map(([k,label])=>positionStep(k,label))}
-          </div>
           </>}
           <div className="scard-title" style={{marginTop:10}}>{t.set_printer_output}</div>
           {([
