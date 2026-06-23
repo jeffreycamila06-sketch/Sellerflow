@@ -2442,3 +2442,39 @@ body.platform-ios {
 @media (prefers-reduced-motion: reduce){
   .ml-grid,.ml-logo,.ml-ring,.ml-pill-dot,.ml-chip,.ml-dash1,.ml-dash2{animation:none!important}
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   SETTINGS REDESIGN — PHASE 1 (APK-only visual shell, additive .set-*)
+   Home view: indigo hero + glass profile card + grouped cards w/ icon-tiles.
+   Routing only — every row reuses the existing expand/handler mechanism.
+   ═══════════════════════════════════════════════════════════════════ */
+.set-home{max-width:480px;margin:0 auto;padding:0 0 28px;-webkit-tap-highlight-color:transparent}
+.set-hero{background:linear-gradient(160deg,#4f46e5,#3730a3);border-radius:0 0 24px 24px;padding:18px 20px 22px;color:#fff;box-shadow:0 14px 34px rgba(55,48,163,.28)}
+.set-eyebrow{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.62)}
+.set-hero-title{margin:4px 0 16px;font-size:23px;font-weight:800;text-align:left;color:#fff}
+.set-profile-card{display:flex;align-items:center;gap:13px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.18);border-radius:16px;padding:13px 14px;backdrop-filter:blur(6px)}
+.set-avatar{width:46px;height:46px;border-radius:14px;flex-shrink:0;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:#fff;user-select:none}
+.set-profile-info{display:flex;flex-direction:column;min-width:0;flex:1}
+.set-profile-name{font-size:15px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.set-profile-store{font-size:12.5px;color:rgba(255,255,255,.72);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.set-plan-pill{flex-shrink:0;font-size:11px;font-weight:700;letter-spacing:.03em;color:#fff;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.28);border-radius:999px;padding:4px 11px}
+.set-group{margin:18px 16px 0}
+.set-group-title{font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#7A75A8;margin:0 4px 8px}
+.set-card{background:#fff;border:1px solid #ECEAF6;border-radius:16px;overflow:hidden;box-shadow:0 8px 22px rgba(38,33,92,.06)}
+.set-row{position:relative;display:flex;align-items:center;gap:13px;width:100%;background:none;border:none;border-bottom:1px solid #F1EFF8;padding:13px 15px;cursor:pointer;text-align:left;font-size:15px;color:#26215C;transition:background .12s}
+.set-row:last-child{border-bottom:none}
+.set-row:active{background:#F6F5FF}
+.set-row:disabled{cursor:default}
+.set-tile{flex-shrink:0;width:38px;height:38px;border-radius:11px;background:#EEEDFE;color:#534AB7;display:flex;align-items:center;justify-content:center}
+.set-i{display:block}
+.set-row-label{flex:1;font-weight:600;color:#26215C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.set-row-value{flex-shrink:0;font-size:13px;font-weight:600;color:#8A86B0}
+.set-chev{flex-shrink:0;color:#BBB7D8}
+.set-soon{flex-shrink:0;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#9A7B1E;background:#FBF1D6;border-radius:999px;padding:3px 9px}
+.set-row-soon{cursor:default}
+.set-row-soon .set-tile{background:#F2F1F8;color:#A6A2C4}
+.set-row-soon .set-row-label{color:#A6A2C4}
+.set-row-danger .set-row-label{color:#C2342F}
+.set-tile-danger{background:#FCE9E8;color:#C2342F}
+.set-row-select{cursor:pointer}
+.set-native-select{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:none;background:none;-webkit-appearance:none;appearance:none;cursor:pointer}

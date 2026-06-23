@@ -1988,7 +1988,7 @@ function Sales({orders,buyers,cur,t}:{orders:LiveOrder[];buyers:Buyer[];cur:stri
 // ═══════════════════════════════════════════════════════════════════
 // SETTINGS
 // ═══════════════════════════════════════════════════════════════════
-function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExportBackup,onClearLiveComments,onResetBuyerCounter,t}:{user:User;settings:Settings;onSaveProfile:(p:Profile)=>void;onSaveSettings:(s:Settings)=>void;onSavePw:(o:string,n:string)=>Promise<string>;onExportBackup:()=>void;onClearLiveComments:()=>void;onResetBuyerCounter:()=>void;t:T}){
+function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExportBackup,onClearLiveComments,onResetBuyerCounter,onLogout,onNavigate,lang,setLang,t}:{user:User;settings:Settings;onSaveProfile:(p:Profile)=>void;onSaveSettings:(s:Settings)=>void;onSavePw:(o:string,n:string)=>Promise<string>;onExportBackup:()=>void;onClearLiveComments:()=>void;onResetBuyerCounter:()=>void;onLogout:()=>void;onNavigate:(p:Page)=>void;lang:Lang;setLang:(l:Lang)=>void;t:T}){
   const [prof,setProf]=useState<Profile>({...user.profile});
   const [sets,setSets]=useState<Settings>({...settings});
   const [op,setOp]=useState("");const [np,setNp]=useState("");const [cp,setCp]=useState("");
@@ -2251,9 +2251,90 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
     if(err){setPwErr(err);return;}
     setOp("");setNp("");setCp("");setToast(t.pw_changed);
   }
+  // ── PHASE 1 Settings redesign (APK-only visual shell) ──────────────────────
+  // Gated on window.Capacitor (native APK WebView) with ?apk=1 desktop override,
+  // mirroring the mobile login redesign. Web/desktop keep the unchanged quick-grid
+  // below. This is HOME-view layout + routing only: every row reuses the existing
+  // expand mechanism (setExpandedSettingsBox) or existing handlers — no logic
+  // changed, no slide-in detail screens yet (Phase 2).
+  const isNativeApp = typeof window!=="undefined" && (!!window.Capacitor || new URLSearchParams(window.location.search).has("apk"));
+  const setIcon=(d:React.ReactNode)=><svg className="set-i" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">{d}</svg>;
+  const icProfile=setIcon(<><circle cx="12" cy="8" r="3.5" stroke="currentColor" strokeWidth="1.7"/><path d="M5 20c0-3.6 3.1-5.6 7-5.6s7 2 7 5.6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></>);
+  const icLock=setIcon(<><rect x="5" y="10.5" width="14" height="9.5" rx="2.4" stroke="currentColor" strokeWidth="1.7"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></>);
+  const icDisplay=setIcon(<><rect x="3" y="4.5" width="18" height="12" rx="2.2" stroke="currentColor" strokeWidth="1.7"/><path d="M9 20h6M12 16.5V20" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></>);
+  const icPrinter=setIcon(<><path d="M7 9V4h10v5" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><rect x="4" y="9" width="16" height="7" rx="2" stroke="currentColor" strokeWidth="1.7"/><rect x="7" y="14" width="10" height="6" rx="1.4" stroke="currentColor" strokeWidth="1.7"/></>);
+  const icShip=setIcon(<><path d="M3 7h11v8H3zM14 10h4l3 3v2h-7z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><circle cx="7" cy="18" r="1.7" stroke="currentColor" strokeWidth="1.7"/><circle cx="17" cy="18" r="1.7" stroke="currentColor" strokeWidth="1.7"/></>);
+  const icTikTok=setIcon(<path d="M14 4c.4 2.4 1.9 3.9 4.3 4.1v2.6c-1.5.1-2.9-.4-4.3-1.2v5.4a4.9 4.9 0 1 1-4.9-4.9c.3 0 .5 0 .8.1v2.7a2.3 2.3 0 1 0 1.6 2.1V4H14Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>);
+  const icFacebook=setIcon(<path d="M14 7h2V4h-2.5C11 4 10 5.6 10 7.5V9H8v3h2v8h3v-8h2.2l.4-3H13V7.7c0-.5.2-.7.7-.7H14Z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/>);
+  const icLang=setIcon(<><circle cx="12" cy="12" r="8.2" stroke="currentColor" strokeWidth="1.7"/><path d="M3.8 12h16.4M12 3.8c2.3 2.3 3.5 5.2 3.5 8.2s-1.2 5.9-3.5 8.2c-2.3-2.3-3.5-5.2-3.5-8.2S9.7 6.1 12 3.8Z" stroke="currentColor" strokeWidth="1.5"/></>);
+  const icSupport=setIcon(<><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7A2.5 2.5 0 0 1 17.5 16H9l-4 4v-4H6.5" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></>);
+  const icLogout=setIcon(<><path d="M14 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M10 12h10m0 0-3-3m3 3-3 3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></>);
+  const setChev=<svg className="set-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 6 6 6-6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>;
+  const setRow=(key:string,icon:React.ReactNode,label:string,onClick:()=>void,opts:{danger?:boolean;soon?:boolean}={})=>(
+    <button key={key} type="button" className={`set-row${opts.danger?" set-row-danger":""}${opts.soon?" set-row-soon":""}`} onClick={opts.soon?undefined:onClick} disabled={opts.soon}>
+      <span className={`set-tile${opts.danger?" set-tile-danger":""}`}>{icon}</span>
+      <span className="set-row-label">{label}</span>
+      {opts.soon?<span className="set-soon">{t.set_soon}</span>:setChev}
+    </button>
+  );
+  const settingsHome=(
+    <div className="set-home">
+      <div className="set-hero">
+        <div className="set-eyebrow">SELLERFLOWLIVE</div>
+        <h2 className="set-hero-title">{t.nav_settings}</h2>
+        <div className="set-profile-card">
+          <div className="set-avatar" aria-hidden="true">{(user.profile.storeName||user.profile.fullName||"S").trim().charAt(0).toUpperCase()||"S"}</div>
+          <div className="set-profile-info">
+            <strong className="set-profile-name">{user.profile.fullName||user.email}</strong>
+            <span className="set-profile-store">{user.profile.storeName||t.store_name}</span>
+          </div>
+          <span className="set-plan-pill">{pName(user.plan,t)}</span>
+        </div>
+      </div>
+      <div className="set-group">
+        <div className="set-group-title">{t.set_grp_account}</div>
+        <div className="set-card">
+          {setRow("profile",icProfile,t.set_card_profile,()=>setExpandedSettingsBox("profile"))}
+          {setRow("password",icLock,t.set_card_password,()=>setExpandedSettingsBox("password"))}
+        </div>
+      </div>
+      <div className="set-group">
+        <div className="set-group-title">{t.set_grp_config}</div>
+        <div className="set-card">
+          {setRow("display",icDisplay,t.set_row_display,()=>setExpandedSettingsBox("display"))}
+          {setRow("printer",icPrinter,t.set_row_printer,()=>setExpandedSettingsBox("printer"))}
+          {setRow("shipping",icShip,t.nav_shipping,()=>{},{soon:true})}
+        </div>
+      </div>
+      <div className="set-group">
+        <div className="set-group-title">{t.set_grp_channels}</div>
+        <div className="set-card">
+          {setRow("tiktok",icTikTok,t.set_row_manage_tiktok,()=>setExpandedSettingsBox("profile"))}
+          {setRow("facebook",icFacebook,t.set_row_manage_facebook,()=>setExpandedSettingsBox("profile"))}
+        </div>
+      </div>
+      <div className="set-group">
+        <div className="set-group-title">{t.set_grp_app}</div>
+        <div className="set-card">
+          <label className="set-row set-row-select">
+            <span className="set-tile">{icLang}</span>
+            <span className="set-row-label">{t.set_row_language}</span>
+            <span className="set-row-value">{LANG_OPTS.find(l=>l.code===lang)?.label}</span>
+            {setChev}
+            <select className="set-native-select" value={lang} onChange={e=>setLang(e.target.value as Lang)} aria-label={t.set_row_language}>
+              {LANG_OPTS.map(l=><option key={l.code} value={l.code}>{l.label}</option>)}
+            </select>
+          </label>
+          {setRow("support",icSupport,t.support_label,()=>onNavigate("support"))}
+          {setRow("logout",icLogout,t.sign_out,onLogout,{danger:true})}
+        </div>
+      </div>
+    </div>
+  );
   return(
     <div className="subpage">
       {toast&&<Toast msg={toast} onDone={()=>setToast("")}/>}
+      {isNativeApp?(!expandedSettingsBox&&settingsHome):(<>
       <div className="subpage-hd"><div><h2>{t.nav_settings}</h2><p>{t.settings_sub}</p></div></div>
       <div className="settings-quick-grid">
         <button className="admin-action-card" onDoubleClick={()=>setExpandedSettingsBox("profile")}>
@@ -2272,6 +2353,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
           <div className="ms-l">{t.set_card_mobile_printer}</div><div className="ms-v">LAN</div><span>{t.set_card_mobile_printer_desc}</span>
         </button>
       </div>
+      </>)}
       {expandedSettingsBox&&(
         <div className="admin-fullscreen-panel">
           <div className="admin-fullscreen-head">
@@ -4446,7 +4528,7 @@ export default function App(){
         {page==="print"&&<PrintPage buyers={buyers} cur={settings.currency} storeName={user.profile.storeName||"SellerFlowLive"} settings={settings} t={t}/>}
         {page==="sales"&&<Sales orders={allOrders} buyers={buyers} cur={settings.currency} t={t}/>}
         {page==="shipping"&&isAdminUser(user)&&<Shipping user={user} t={t}/>}
-        {page==="settings"&&<SettingsPage user={user} settings={settings} onSaveProfile={handleSaveProfile} onSaveSettings={handleSaveSettings} onSavePw={handleSavePw} onExportBackup={exportSellerBackup} onClearLiveComments={clearLiveCommentsOnly} onResetBuyerCounter={resetBuyerCounterOnly} t={t}/>}
+        {page==="settings"&&<SettingsPage user={user} settings={settings} onSaveProfile={handleSaveProfile} onSaveSettings={handleSaveSettings} onSavePw={handleSavePw} onExportBackup={exportSellerBackup} onClearLiveComments={clearLiveCommentsOnly} onResetBuyerCounter={resetBuyerCounterOnly} onLogout={handleLogout} onNavigate={setPage} lang={lang} setLang={setLang} t={t}/>}
         {page==="subscription"&&<SubPage user={user} onActivate={handleActivate} t={t}/>}
         {page==="support"&&<Support user={user} t={t}/>}
         {page==="admin"&&<AdminPage currentUser={user} onApprove={handleAdminApprove} orders={allOrders} t={t}/>}
