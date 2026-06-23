@@ -35,7 +35,7 @@ interface User { authUserId?:string; email:string; profile:Profile; plan:Plan; p
 interface Product { id:number; name:string; sku:string; price:number; stock:number; platform:string; status:string; }
 type ShippingStatus = "Pending"|"Ready"|"Shipped"|"Delivered"|"Returned";
 interface ShippingCustomer { username:string; name:string; phone:string; sevenCode:string; note:string; lastComment:string; firstSeen:string; status:ShippingStatus; isNew:boolean; num?:number; }
-interface Settings { darkMode:boolean; autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"auto"|"usb"|"bluetooth"|"lan"; lanFormat:"receipt"|"sticker"; stickerSize:string; printStoreName:boolean; printBuyerNumber:boolean; printBuyerUsername:boolean; printOrderItems:boolean; printTotal:boolean; printAutoClose:boolean; printLabelScale:number; printStoreScale:number; printBuyerNumberScale:number; printBuyerNameScale:number; printUsernameScale:number; printOrderScale:number; printCommentScale:number; printTotalScale:number; printStoreX:number; printStoreY:number; printBuyerLabelX:number; printBuyerLabelY:number; printBuyerNumberX:number; printBuyerNumberY:number; printBuyerNameX:number; printBuyerNameY:number; printUsernameX:number; printUsernameY:number; printSessionX:number; printSessionY:number; printOrderX:number; printOrderY:number; printTotalX:number; printTotalY:number; }
+interface Settings { darkMode:boolean; autoprint:boolean; soundAlert:boolean; stockAlert:boolean; dailyEmail:boolean; keywords:string; currency:string; paperSize:string; printerType:"auto"|"usb"|"bluetooth"|"lan"; lanFormat:"receipt"|"sticker"; stickerSize:string; printStoreName:boolean; printBuyerNumber:boolean; printBuyerUsername:boolean; printOrderItems:boolean; printTotal:boolean; printAutoClose:boolean; printLogo:boolean; printDateTime:boolean; printBuyerName:boolean; printLabelScale:number; printStoreScale:number; printBuyerNumberScale:number; printBuyerNameScale:number; printUsernameScale:number; printOrderScale:number; printCommentScale:number; printTotalScale:number; printStoreX:number; printStoreY:number; printBuyerLabelX:number; printBuyerLabelY:number; printBuyerNumberX:number; printBuyerNumberY:number; printBuyerNameX:number; printBuyerNameY:number; printUsernameX:number; printUsernameY:number; printSessionX:number; printSessionY:number; printOrderX:number; printOrderY:number; printTotalX:number; printTotalY:number; }
 interface MobilePrinterDevice { id:string; type:"bluetooth"|"lan"; name:string; address?:string; host?:string; port?:number; paired?:boolean; online?:boolean; signal?:number; distance?:string; hint?:string; }
 interface MobilePrinterResult { ok?:boolean; message?:string; online?:boolean; host?:string; port?:number; savedPrinter?:MobilePrinterDevice|null; printers?:MobilePrinterDevice[]; }
 interface PrinterLanConfig { host:string; port?:number; }
@@ -172,7 +172,7 @@ const DEFAULT_SERVER =
     : "https://sellerflow-live-server.onrender.com";
 const SERVER = String(import.meta.env.VITE_SERVER_URL || DEFAULT_SERVER).replace(/\/$/,"");
 const DEBUG_SOCKET = import.meta.env.DEV || import.meta.env.VITE_DEBUG_SOCKET === "true";
-const DEF_SETTINGS: Settings = { darkMode:true, autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"", paperSize:"100x60mm", printerType:"auto", lanFormat:"receipt", stickerSize:"100x60", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printLabelScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printCommentScale:100, printTotalScale:100, printStoreX:0, printStoreY:0, printBuyerLabelX:0, printBuyerLabelY:0, printBuyerNumberX:0, printBuyerNumberY:0, printBuyerNameX:0, printBuyerNameY:0, printUsernameX:0, printUsernameY:0, printSessionX:0, printSessionY:0, printOrderX:0, printOrderY:0, printTotalX:0, printTotalY:0 };
+const DEF_SETTINGS: Settings = { darkMode:true, autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"", paperSize:"100x60mm", printerType:"auto", lanFormat:"receipt", stickerSize:"100x60", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printLogo:true, printDateTime:true, printBuyerName:true, printLabelScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printCommentScale:100, printTotalScale:100, printStoreX:0, printStoreY:0, printBuyerLabelX:0, printBuyerLabelY:0, printBuyerNumberX:0, printBuyerNumberY:0, printBuyerNameX:0, printBuyerNameY:0, printUsernameX:0, printUsernameY:0, printSessionX:0, printSessionY:0, printOrderX:0, printOrderY:0, printTotalX:0, printTotalY:0 };
 const LANG_OPTS: {code:Lang;label:string}[] = [{code:"en",label:"🇺🇸 EN"},{code:"fil",label:"🇵🇭 FIL"},{code:"zh",label:"🇨🇳 中文"},{code:"zh-TW",label:"🇹🇼 繁體"},{code:"vi",label:"🇻🇳 VI"},{code:"th",label:"🇹🇭 TH"},{code:"id",label:"🇮🇩 ID"}];
 // Phase 3 Language screen rows. Uses a 2-letter country-code badge instead of
 // emoji flag glyphs — Android system fonts often fail to render regional-
@@ -2007,12 +2007,12 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   const [sets,setSets]=useState<Settings>({...settings});
   const [op,setOp]=useState("");const [np,setNp]=useState("");const [cp,setCp]=useState("");
   const [toast,setToast]=useState("");const [pwErr,setPwErr]=useState("");
-  const [expandedSettingsBox,setExpandedSettingsBox]=useState<""|"profile"|"password"|"display"|"printer"|"mobilePrinter"|"manageTiktok"|"manageFacebook"|"language"|"support">("");
+  const [expandedSettingsBox,setExpandedSettingsBox]=useState<""|"profile"|"password"|"display"|"printer"|"mobilePrinter"|"manageTiktok"|"manageFacebook"|"language"|"support"|"livePattern">("");
   const [showAddAccount,setShowAddAccount]=useState<""|"tiktok"|"facebook">("");
   const directPrintParam=new URLSearchParams(window.location.search).get("directPrint")==="1";
   const [directPrintMode,setDirectPrintMode]=useState(()=>directPrintParam||LS.get<boolean>("sf_direct_print_mode",false));
   const settingsDirty=JSON.stringify(sets)!==JSON.stringify(settings);
-  const settingsTitles={"":t.nav_settings,profile:t.profile_section,password:t.pw_section,display:t.display_section,printer:t.printer_section,mobilePrinter:t.set_title_mobile_printer,manageTiktok:t.set_row_manage_tiktok,manageFacebook:t.set_row_manage_facebook,language:t.set_row_language,support:t.support_label};
+  const settingsTitles={"":t.nav_settings,profile:t.profile_section,password:t.pw_section,display:t.display_section,printer:t.set_row_printer,mobilePrinter:t.set_title_mobile_printer,manageTiktok:t.set_row_manage_tiktok,manageFacebook:t.set_row_manage_facebook,language:t.set_row_language,support:t.support_label,livePattern:t.set_live_pattern_title};
   const previewScale=(v:number|undefined,fallback=100)=>Math.max(60,Math.min(180,v||fallback))/100;
   const storePreview=previewScale(sets.printStoreScale,sets.printLabelScale);
   const buyerNumberPreview=previewScale(sets.printBuyerNumberScale,120);
@@ -2286,6 +2286,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   const icLogout=setIcon(<><path d="M14 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M10 12h10m0 0-3-3m3 3-3 3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></>);
   const icGuide=setIcon(<><path d="M5 4.5h9a2.5 2.5 0 0 1 2.5 2.5v12.5H7.5A2.5 2.5 0 0 1 5 17V4.5Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><path d="M5 17a2.5 2.5 0 0 1 2.5-2.5h9M8.5 8h5M8.5 11h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></>);
   const icMail=setIcon(<><rect x="3.5" y="5.5" width="17" height="13" rx="2.4" stroke="currentColor" strokeWidth="1.7"/><path d="m4.5 7 7.5 5 7.5-5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></>);
+  const icPattern=setIcon(<><path d="M4 7h10M18 7h2M4 12h2M10 12h10M4 17h7M15 17h5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><circle cx="16" cy="7" r="2" stroke="currentColor" strokeWidth="1.7"/><circle cx="8" cy="12" r="2" stroke="currentColor" strokeWidth="1.7"/><circle cx="13" cy="17" r="2" stroke="currentColor" strokeWidth="1.7"/></>);
   const setChev=<svg className="set-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 6 6 6-6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>;
   const setRow=(key:string,icon:React.ReactNode,label:string,onClick:()=>void,opts:{danger?:boolean;soon?:boolean}={})=>(
     <button key={key} type="button" className={`set-row${opts.danger?" set-row-danger":""}${opts.soon?" set-row-soon":""}`} onClick={opts.soon?undefined:onClick} disabled={opts.soon}>
@@ -2441,7 +2442,138 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
       </a>
     </div>
   );
-  const isRedesignedSlide=isNativeApp&&(expandedSettingsBox==="profile"||expandedSettingsBox==="password"||expandedSettingsBox==="display"||expandedSettingsBox==="manageTiktok"||expandedSettingsBox==="manageFacebook"||expandedSettingsBox==="language"||expandedSettingsBox==="support");
+  // ── PHASE 5 Printer screen (APK). Type-aware: LAN/WiFi (Receipt/Sticker) vs
+  // Bluetooth. Folds the old web-only IP/Port config in. Reuses ALL existing
+  // handlers + bridge calls + state — no print logic touched. Dead paperSize
+  // dropped from the UI (stickerSize, the real TSPL size, kept).
+  const stickerSizeSelect=(
+    <Fg label={t.printer_size}>
+      <select value={stickerSizeKey(sets.stickerSize)} onChange={e=>setSets(s=>({...s,stickerSize:e.target.value}))}>
+        <option value="100x60">{t.set_size_standard}</option>
+        <option value="80x60">80x60mm</option>
+        <option value="80x50">80x50mm</option>
+        <option value="70x50">70x50mm</option>
+        <option value="60x40">60x40mm</option>
+      </select>
+    </Fg>
+  );
+  const lanConnected=mobilePrinterStatus.online||!!mobilePrinterStatus.savedPrinter;
+  const printerConnected=isBtMode?!!btSavedPrinter:lanConnected;
+  const printerScreen=(
+    <form onSubmit={saveSets} className="set-print">
+      <div className={`set-print-status ${printerConnected?"on":"off"}`}>
+        <span className="set-print-dot"/>
+        <div className="set-print-status-txt">
+          <strong>{isBtMode
+            ?(btSavedPrinter?btSavedPrinter.name:t.set_print_none)
+            :(mobilePrinterStatus.online?t.set_printer_online:mobilePrinterStatus.savedPrinter?`${mobilePrinterStatus.savedPrinter.host||""}:${mobilePrinterStatus.savedPrinter.port||9100}`:t.set_print_none)}</strong>
+          <span>{isBtMode?(btStatusMsg||t.printer_mode_bt_rec):(mobilePrinterStatus.message||t.set_wifi_default_msg)}</span>
+        </div>
+      </div>
+      <div className="set-field-label">{t.printer_mode_title}</div>
+      <div className="set-seg">
+        <button type="button" className={!isBtMode?"on":""} onClick={()=>setSets(s=>({...s,printerType:"lan"}))}>{t.printer_mode_wifi}</button>
+        <button type="button" className={isBtMode?"on":""} onClick={()=>setSets(s=>({...s,printerType:"bluetooth"}))}>{t.printer_mode_bt}</button>
+      </div>
+      {!isBtMode&&(<>
+        <div className="set-field-label">{t.set_output_format}</div>
+        <div className="set-seg">
+          <button type="button" className={sets.lanFormat!=="sticker"?"on":""} onClick={()=>setSets(s=>({...s,lanFormat:"receipt"}))}>{t.set_format_receipt}</button>
+          <button type="button" className={sets.lanFormat==="sticker"?"on":""} onClick={()=>setSets(s=>({...s,lanFormat:"sticker"}))}>{t.set_format_sticker}</button>
+        </div>
+        <div className="set-card set-print-form">
+          <Fg label={t.set_printer_ip}><input value={lanPrinterHost} onChange={e=>setLanPrinterHost(e.target.value)} placeholder="192.168.18.234" inputMode="decimal"/></Fg>
+          <Fg label={t.set_port}><input value={lanPrinterPort} onChange={e=>setLanPrinterPort(e.target.value.replace(/[^\d]/g,""))} placeholder="9100" inputMode="numeric"/></Fg>
+          {sets.lanFormat==="sticker"&&stickerSizeSelect}
+        </div>
+        <div className="set-print-actions">
+          <button type="button" className="btn-out" onClick={refreshMobilePrinterStatus}>{t.set_find_printer}</button>
+          <button type="button" className="btn-out" onClick={testLanPrinterConnection}>{t.set_test_connection}</button>
+          <button type="button" className="btn-purple" onClick={saveLanPrinter}>{t.set_connect_printer}</button>
+          <button type="button" className="btn-out" onClick={testMobilePrinter}>{t.set_test_print}</button>
+        </div>
+      </>)}
+      {isBtMode&&(<>
+        <div className="set-card set-print-form">
+          {stickerSizeSelect}
+          {btSavedPrinter&&(
+            <div className="bt-printer-saved">
+              <div><span className="bt-printer-saved-label">{t.printer_bt_saved}</span><strong>{btSavedPrinter.name}</strong><small className="mono">{btSavedPrinter.address}</small></div>
+              <button type="button" className="btn-out" onClick={clearBtPrinter}>{t.printer_bt_clear}</button>
+            </div>
+          )}
+        </div>
+        <div className="set-print-actions">
+          <button type="button" className="btn-purple" onClick={scanBtPrinters} disabled={btScanning}>🔍 {btScanning?(t.printer_bt_scanning||"Scanning…"):(t.printer_bt_scan||"Scan")}</button>
+          {btSavedPrinter&&<button type="button" className="btn-out" onClick={testBtSticker}>{t.set_test_print}</button>}
+        </div>
+        {btPrinters.length>0&&(
+          <div className="set-card">
+            {btPrinters.map(p=>(
+              <button type="button" key={p.id||p.address} className="set-row" onClick={()=>selectBtPrinter(p)}>
+                <span className="set-row-label">{p.name||"Bluetooth printer"}<small className="mono" style={{display:"block",color:"#8A86B0",fontWeight:400}}>{p.address}</small></span>
+                <Badge label={p.paired?t.printer_bt_paired:t.printer_bt_nearby} color={p.paired?"green":"purple"}/>
+              </button>
+            ))}
+          </div>
+        )}
+        {btStatusMsg&&<div className="set-print-msg">{btStatusMsg}</div>}
+      </>)}
+      <button type="submit" className="btn-purple set-modal-btn" style={{marginTop:14}}>{t.set_save_printer_settings}</button>
+      <div className="set-group-title" style={{marginTop:18}}>{t.set_print_layout_group}</div>
+      <div className="set-card">
+        {setRow("livePattern",icPattern,t.set_live_pattern_row,()=>setExpandedSettingsBox("livePattern"))}
+        {setRow("shipPattern",icShip,t.set_ship_pattern_row,()=>{},{soon:true})}
+      </div>
+    </form>
+  );
+  // ── PHASE 5 LIVE print-pattern screen. Per-element ON/OFF + size (60-180%).
+  // ⚠️ The size + new toggles persist (sf_settings) and drive the PREVIEW, but
+  // native ESC/POS + TSPL print fixed fonts — honoring these on-device is a
+  // SEPARATE native task (would touch the golden-tested builders). Position
+  // tools (L/R + U/D) stay desktop-only per the brief.
+  const patternRow=(toggleKey:keyof Settings,scaleKey:NumberSettingKey|null,label:string)=>(
+    <div className="set-pat-row" key={toggleKey}>
+      <span className="set-pat-label">{label}</span>
+      <div className="set-pat-ctrls">
+        {scaleKey
+          ?<div className="set-pat-size">
+            <button type="button" onClick={()=>stepSize(scaleKey,-5)}>−</button>
+            <b>{Number(sets[scaleKey]||100)}%</b>
+            <button type="button" onClick={()=>stepSize(scaleKey,5)}>+</button>
+          </div>
+          :<span className="set-pat-fixed">{t.set_fixed_size}</span>}
+        <div onClick={()=>setSets(s=>({...s,[toggleKey]:!s[toggleKey]}))} className={`tog ${sets[toggleKey]?"on":""}`}/>
+      </div>
+    </div>
+  );
+  const livePatternScreen=(
+    <form onSubmit={saveSets} className="set-pat">
+      <div className="set-pat-preview">
+        <div className="set-pat-slip">
+          {sets.printLogo&&<div className="set-pat-logo"><span className="set-pat-logo-ic">S</span><strong>Seller<span>FlowLive</span></strong></div>}
+          {sets.printDateTime&&<div className="set-pat-line set-pat-muted" style={{fontSize:`${10*orderPreview}px`}}>Session: May 22, 2026 · 12:21 PM</div>}
+          {sets.printStoreName&&<div className="set-pat-line" style={{fontSize:`${13*storePreview}px`,fontWeight:700}}>{user.profile.storeName||t.set_preview_seller_name}</div>}
+          {sets.printBuyerNumber&&<div className="set-pat-line" style={{fontSize:`${13*buyerNumberPreview}px`,fontWeight:700}}>Buyer #12</div>}
+          {sets.printBuyerName&&<div className="set-pat-line" style={{fontSize:`${13*buyerNamePreview}px`,fontWeight:600}}>Maria Santos</div>}
+          {sets.printBuyerUsername&&<div className="set-pat-line set-pat-muted" style={{fontSize:`${10*usernamePreview}px`}}>@maria_live</div>}
+          {sets.printOrderItems&&<div className="set-pat-line" style={{fontSize:`${11*commentPreview}px`}}>12:21 PM — 620&nbsp;&nbsp;·&nbsp;&nbsp;12:22 PM — 150</div>}
+        </div>
+      </div>
+      <button type="button" className="btn-purple set-modal-btn" onClick={testPrinter}>{t.set_printer_test}</button>
+      <div className="set-card set-pat-list">
+        {patternRow("printStoreName","printStoreScale",t.set_pat_shop)}
+        {patternRow("printDateTime","printOrderScale",t.set_pat_datetime)}
+        {patternRow("printBuyerNumber","printBuyerNumberScale",t.set_pat_buyer_num)}
+        {patternRow("printBuyerName","printBuyerNameScale",t.set_pat_tiktok_name)}
+        {patternRow("printBuyerUsername","printUsernameScale",t.set_pat_tiktok_user)}
+        {patternRow("printOrderItems","printCommentScale",t.set_pat_comment)}
+        {patternRow("printLogo",null,t.set_pat_logo)}
+      </div>
+      <button type="submit" className="btn-purple set-modal-btn" style={{marginTop:14}}>{t.save_settings}</button>
+    </form>
+  );
+  const isRedesignedSlide=isNativeApp&&(expandedSettingsBox==="profile"||expandedSettingsBox==="password"||expandedSettingsBox==="display"||expandedSettingsBox==="manageTiktok"||expandedSettingsBox==="manageFacebook"||expandedSettingsBox==="language"||expandedSettingsBox==="support"||expandedSettingsBox==="printer"||expandedSettingsBox==="livePattern");
   const nativeSlideIn=isRedesignedSlide&&(
     <div className="set-slide" key={expandedSettingsBox}>
       <div className="set-slide-head">
@@ -2459,6 +2591,8 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
         {expandedSettingsBox==="manageFacebook"&&channelScreen("facebook")}
         {expandedSettingsBox==="language"&&languageScreen}
         {expandedSettingsBox==="support"&&supportScreen}
+        {expandedSettingsBox==="printer"&&printerScreen}
+        {expandedSettingsBox==="livePattern"&&livePatternScreen}
       </div>
     </div>
   );
@@ -2474,9 +2608,10 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
       </div>
     </div>
   );
-  // Web (and native Printer/Mobile-Printer, which stay on the existing panel
-  // until the Phase 5 printer redesign) use the original fullscreen panel.
-  const showOldPanel=!!expandedSettingsBox&&(!isNativeApp||expandedSettingsBox==="printer"||expandedSettingsBox==="mobilePrinter");
+  // Web uses the original fullscreen panel for every section (web printer redesign
+  // is later). On the APK, Printer is now its own slide-in (Phase 5); the legacy
+  // mobilePrinter box is fully folded into it, so it's only a web fallback.
+  const showOldPanel=!!expandedSettingsBox&&(!isNativeApp||expandedSettingsBox==="mobilePrinter");
   return(
     <div className="subpage">
       {toast&&<Toast msg={toast} onDone={()=>setToast("")}/>}
