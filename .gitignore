@@ -28,3 +28,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Android signing (NEVER commit)
+keystore/
+mobile/android/keystore.properties
