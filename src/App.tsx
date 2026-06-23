@@ -172,7 +172,7 @@ const DEFAULT_SERVER =
     : "https://sellerflow-live-server.onrender.com";
 const SERVER = String(import.meta.env.VITE_SERVER_URL || DEFAULT_SERVER).replace(/\/$/,"");
 const DEBUG_SOCKET = import.meta.env.DEV || import.meta.env.VITE_DEBUG_SOCKET === "true";
-const DEF_SETTINGS: Settings = { darkMode:true, autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"", paperSize:"100x60mm", printerType:"auto", lanFormat:"receipt", stickerSize:"100x60", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printLogo:true, printDateTime:true, printBuyerName:true, printLabelScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printCommentScale:100, printTotalScale:100, printStoreX:0, printStoreY:0, printBuyerLabelX:0, printBuyerLabelY:0, printBuyerNumberX:0, printBuyerNumberY:0, printBuyerNameX:0, printBuyerNameY:0, printUsernameX:0, printUsernameY:0, printSessionX:0, printSessionY:0, printOrderX:0, printOrderY:0, printTotalX:0, printTotalY:0 };
+const DEF_SETTINGS: Settings = { darkMode:true, autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"", paperSize:"100x60mm", printerType:"lan", lanFormat:"receipt", stickerSize:"100x60", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printLogo:true, printDateTime:true, printBuyerName:true, printLabelScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printCommentScale:100, printTotalScale:100, printStoreX:0, printStoreY:0, printBuyerLabelX:0, printBuyerLabelY:0, printBuyerNumberX:0, printBuyerNumberY:0, printBuyerNameX:0, printBuyerNameY:0, printUsernameX:0, printUsernameY:0, printSessionX:0, printSessionY:0, printOrderX:0, printOrderY:0, printTotalX:0, printTotalY:0 };
 const LANG_OPTS: {code:Lang;label:string}[] = [{code:"en",label:"🇺🇸 EN"},{code:"fil",label:"🇵🇭 FIL"},{code:"zh",label:"🇨🇳 中文"},{code:"zh-TW",label:"🇹🇼 繁體"},{code:"vi",label:"🇻🇳 VI"},{code:"th",label:"🇹🇭 TH"},{code:"id",label:"🇮🇩 ID"}];
 // Phase 3 Language screen rows. Uses a 2-letter country-code badge instead of
 // emoji flag glyphs — Android system fonts often fail to render regional-
@@ -2551,7 +2551,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
     <form onSubmit={saveSets} className="set-pat">
       <div className="set-pat-preview">
         <div className="set-pat-slip">
-          {sets.printLogo&&<div className="set-pat-logo"><span className="set-pat-logo-ic">S</span><strong>Seller<span>FlowLive</span></strong></div>}
+          <div className="set-pat-logo"><span className="set-pat-logo-ic">S</span><strong>Seller<span>FlowLive</span></strong></div>
           {sets.printDateTime&&<div className="set-pat-line set-pat-muted" style={{fontSize:`${10*orderPreview}px`}}>Session: May 22, 2026 · 12:21 PM</div>}
           {sets.printStoreName&&<div className="set-pat-line" style={{fontSize:`${13*storePreview}px`,fontWeight:700}}>{user.profile.storeName||t.set_preview_seller_name}</div>}
           {sets.printBuyerNumber&&<div className="set-pat-line" style={{fontSize:`${13*buyerNumberPreview}px`,fontWeight:700}}>Buyer #12</div>}
@@ -2568,7 +2568,11 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
         {patternRow("printBuyerName","printBuyerNameScale",t.set_pat_tiktok_name)}
         {patternRow("printBuyerUsername","printUsernameScale",t.set_pat_tiktok_user)}
         {patternRow("printOrderItems","printCommentScale",t.set_pat_comment)}
-        {patternRow("printLogo",null,t.set_pat_logo)}
+        {/* SellerFlowLive logo — always printed, no toggle (locked on). */}
+        <div className="set-pat-row">
+          <span className="set-pat-label">{t.set_pat_logo}</span>
+          <span className="set-pat-fixed">{t.set_fixed_size}</span>
+        </div>
       </div>
       <button type="submit" className="btn-purple set-modal-btn" style={{marginTop:14}}>{t.save_settings}</button>
     </form>
