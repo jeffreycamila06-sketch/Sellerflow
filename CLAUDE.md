@@ -191,6 +191,21 @@ Admin can set a seller's password directly (was a dead-end before).
   change — it also bumps on normal user login. Use `admin_password_log` for the
   audit trail instead.
 
+## Settings Redesign (planned, not yet coded)
+Handoff: **`settings-redesign-handoff.md`**; approved mockup
+**`settings-mockup-v2.html`**.
+- **Direction:** Flive-inspired but differentiated Settings page — **indigo solid,
+  left-aligned header** with a **profile glass card**; **grouped cards** with
+  **rounded icon-tiles**; **slide-in full-screen nav**; **"Add TikTok ID
+  multi-account"** → modal → **Telegram redirect**.
+- **Status:** mockup approved (`settings-mockup-v2.html`). **No code yet.**
+- **Ship:** frontend-only → **branch + preview before merge** (no Render, no APK
+  rebuild — same thin-shell model).
+- **⚠️ Open questions (decide before coding):**
+  1. **Where** — inside the existing More menu vs a new dedicated page/route?
+  2. **Scope** — which settings groups are in scope for v1?
+  3. **Ship method** — phased rollout vs single merge?
+
 ## Current state / NEXT
 - `main` HEAD has all of the above. **97/97 vitest green.** Egress small. Billing
   `orders` untouched.
