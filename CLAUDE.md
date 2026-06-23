@@ -4,7 +4,8 @@ Guidance for Claude Code (and humans). Read this first — it captures
 load-bearing context that is NOT obvious from the code.
 
 _Last substantial update: 2026-06-23 (sticker system, language-agnostic names,
-cross-device live session)._
+cross-device live session; mobile login redesign, admin set-password, modal
+z-index, Android signing — see "SESSION 2026-06-23 (continued)")._
 
 ## What it is
 Capacitor-based live-selling assistant app para sa TikTok/Facebook sellers sa Taiwan.
@@ -130,6 +131,65 @@ sellerflowlive.com.
   Subscriptions stay outside Play (Wise + Telegram).
 - ⚠️ `versionCode` still **1** / `versionName` **"1.0"** — **MUST bump before any
   Play Store upload.**
+
+## SESSION 2026-06-23 (continued) — all LIVE on production `main`
+
+### Mobile login redesign (DONE, production)
+Dark indigo "automation control center" login, **APK-only** (gated on
+`window.Capacitor`; `?apk=1` = desktop test override). Web marketing landing
+untouched. Component: `MobileLogin` branch inside `PublicAuth` (`src/App.tsx`);
+styles `.ml*` in `src/App.css`; 8 `m_login_*` i18n keys × 7 langs.
+- **Logo:** bag-with-S app icon (`public/icon-180.png`) on the white tile,
+  replacing the `favicon.svg` fallback (`onError` fallback kept).
+- **Desktop stretch fix:** outer `.ml-stage` (flex center) + inner `.ml`
+  `width:100%; max-width:440px` — mirrors the `.dc.html` wrapper so the whole
+  frame (gradient + absolute chips) is a centered ≤440px column on desktop and
+  full-bleed on phones; chips anchor inside the frame.
+- Commits: `275bda2` (logo + 440 cap) → `1c3c4d4` (`.ml-stage`) → merged to
+  `main` `ee379b7`.
+
+### Android release signing (DONE, `fd3e2ca`)
+- `.gitignore`: `keystore/` + `mobile/android/keystore.properties` — **NEVER
+  commit keystore secrets.**
+- `mobile/android/app/build.gradle`: release `signingConfig` reads
+  `keystore.properties` (for the signed Play Store AAB).
+- ⚠️ `versionCode` still **1** / `versionName` **"1.0"** — MUST bump before the
+  production AAB upload.
+
+### Admin set-password (DONE, production)
+Admin can set a seller's password directly (was a dead-end before).
+- **Supabase Edge Function `admin-set-password`** (project `sqeuyuktdpidmlfpqgoc`,
+  v2 ACTIVE, `verify_jwt:true`): gates on `seller_profiles.role='admin'` →
+  `auth.admin.updateUserById`. **service_role lives INSIDE the function** (NOT in
+  the frontend, NOT a Render env var).
+- **Frontend:** `saveEditSeller` (`src/App.tsx`) — the old "use reset email"
+  dead-end replaced with `supabase.functions.invoke('admin-set-password', {body:{
+  targetEmail, newPassword}})` (invoke auto-attaches the admin JWT). Profile
+  fields still save via the normal flow first; `<6` chars warns client-side.
+  Commit `eebc225`.
+- **Audit:** table `public.admin_password_log` (`admin_email, target_email,
+  result, created_at` — **NO password stored**). RLS: admin-only SELECT. The
+  Edge Function writes best-effort.
+- **Flow:** seller messages Telegram → admin Edit Seller → type new password →
+  Save → relay via Telegram. Audit trail exists.
+- ⚠️ **Emergency fallback:** manual password set via Supabase MCP (used for
+  `meichi38` during an urgent live-stream lockout).
+
+### Modal z-index fix (DONE, production, `2bf7ea9`)
+- Bug: Edit Seller modal (`.modal-overlay` z-index:100) hid behind the expanded
+  Users panel (`.admin-fullscreen-panel` z-index:900) in the wide view.
+- Fix: `.modal-overlay` → **z-index:1000** (above panel 900, below toast 9999).
+  CSS-only; also fixes every other app modal (payment/product/customer/connect/
+  free-cap). The modal is a DOM sibling of the panel, so the bump suffices (no
+  portal needed).
+
+### Key learnings (load-bearing)
+- **Asset/file transfer Mac ↔ remote Claude Code = GIT BRIDGE** (`cp` on Mac →
+  push → pull/Vercel), OR GitHub web upload. **Drag-drop into chat does NOT
+  reach the remote container** (no access to the Mac's `~/Downloads`).
+- **`auth.users.updated_at` is NOT reliable** for detecting an admin-initiated
+  change — it also bumps on normal user login. Use `admin_password_log` for the
+  audit trail instead.
 
 ## Current state / NEXT
 - `main` HEAD has all of the above. **97/97 vitest green.** Egress small. Billing
