@@ -1993,11 +1993,12 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   const [sets,setSets]=useState<Settings>({...settings});
   const [op,setOp]=useState("");const [np,setNp]=useState("");const [cp,setCp]=useState("");
   const [toast,setToast]=useState("");const [pwErr,setPwErr]=useState("");
-  const [expandedSettingsBox,setExpandedSettingsBox]=useState<""|"profile"|"password"|"display"|"printer"|"mobilePrinter">("");
+  const [expandedSettingsBox,setExpandedSettingsBox]=useState<""|"profile"|"password"|"display"|"printer"|"mobilePrinter"|"manageTiktok"|"manageFacebook">("");
+  const [showAddAccount,setShowAddAccount]=useState<""|"tiktok"|"facebook">("");
   const directPrintParam=new URLSearchParams(window.location.search).get("directPrint")==="1";
   const [directPrintMode,setDirectPrintMode]=useState(()=>directPrintParam||LS.get<boolean>("sf_direct_print_mode",false));
   const settingsDirty=JSON.stringify(sets)!==JSON.stringify(settings);
-  const settingsTitles={"":t.nav_settings,profile:t.profile_section,password:t.pw_section,display:t.display_section,printer:t.printer_section,mobilePrinter:t.set_title_mobile_printer};
+  const settingsTitles={"":t.nav_settings,profile:t.profile_section,password:t.pw_section,display:t.display_section,printer:t.printer_section,mobilePrinter:t.set_title_mobile_printer,manageTiktok:t.set_row_manage_tiktok,manageFacebook:t.set_row_manage_facebook};
   const previewScale=(v:number|undefined,fallback=100)=>Math.max(60,Math.min(180,v||fallback))/100;
   const storePreview=previewScale(sets.printStoreScale,sets.printLabelScale);
   const buyerNumberPreview=previewScale(sets.printBuyerNumberScale,120);
@@ -2309,8 +2310,8 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
       <div className="set-group">
         <div className="set-group-title">{t.set_grp_channels}</div>
         <div className="set-card">
-          {setRow("tiktok",icTikTok,t.set_row_manage_tiktok,()=>setExpandedSettingsBox("profile"))}
-          {setRow("facebook",icFacebook,t.set_row_manage_facebook,()=>setExpandedSettingsBox("profile"))}
+          {setRow("tiktok",icTikTok,t.set_row_manage_tiktok,()=>setExpandedSettingsBox("manageTiktok"))}
+          {setRow("facebook",icFacebook,t.set_row_manage_facebook,()=>setExpandedSettingsBox("manageFacebook"))}
         </div>
       </div>
       <div className="set-group">
@@ -2331,10 +2332,116 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
       </div>
     </div>
   );
+  // ── Shared form bodies (reused by the web fullscreen panel AND the native
+  // Phase 2 slide-in screens). Identical JSX + identical save handlers — the
+  // account slots are simply gated out of the native Profile screen because
+  // they live in the dedicated Manage TikTok / Manage Facebook slide-ins.
+  const profileForm=(
+    <form onSubmit={saveProf} className="scard settings-section settings-section-profile">
+      <div className="scard-title">{t.profile_section}</div>
+      <Fg label={t.full_name}><input value={prof.fullName} onChange={e=>setProf(p=>({...p,fullName:e.target.value}))} required/></Fg>
+      <Fg label={t.store_name}><input value={prof.storeName} onChange={e=>setProf(p=>({...p,storeName:e.target.value}))} required/></Fg>
+      <Fg label={t.email_label}><input value={user.email} disabled style={{background:"#F5F5F2",color:"#888"}}/></Fg>
+      <Fg label={t.phone_label}><input value={prof.phone} onChange={e=>setProf(p=>({...p,phone:e.target.value}))} placeholder="+63 912 345 6789"/></Fg>
+      {!isNativeApp&&renderAccountSlots("tiktok",t.set_tiktok_account,t.set_tiktok_ph,profTikTok,originalTikTok)}
+      {!isNativeApp&&renderAccountSlots("facebook",t.set_facebook_page,t.set_facebook_ph,profFacebook,originalFacebook)}
+      <button type="submit" className="btn-purple">{t.save_profile}</button>
+    </form>
+  );
+  const passwordForm=(
+    <form onSubmit={savePw} className="scard settings-section settings-section-password">
+      <div className="scard-title">{t.pw_section}</div>
+      {pwErr&&<div className="auth-err">⚠ {pwErr}</div>}
+      <Fg label={t.current_pw}><input type="password" value={op} onChange={e=>setOp(e.target.value)} required/></Fg>
+      <Fg label={t.new_pw}><input type="password" value={np} onChange={e=>setNp(e.target.value)} required/></Fg>
+      <Fg label={t.confirm_pw}><input type="password" value={cp} onChange={e=>setCp(e.target.value)} required/></Fg>
+      <button type="submit" className="btn-purple">{t.update_pw}</button>
+    </form>
+  );
+  const displayForm=(
+    <form onSubmit={saveSets} className="scard settings-section settings-section-display">
+      <div className="scard-title">{t.display_section}</div>
+      <div className="tog-row theme-mode-toggle">
+        <span>
+          <strong>{t.set_dark_mode}</strong>
+          <small>{sets.darkMode?t.set_dark_mode_on:t.set_dark_mode_off}</small>
+        </span>
+        <div onClick={()=>setSets(s=>({...s,darkMode:!s.darkMode}))} className={`tog ${sets.darkMode?"on":""}`}/>
+      </div>
+      <Fg label={t.currency_label}>
+        <select value={sets.currency} onChange={e=>setSets(s=>({...s,currency:e.target.value}))}>
+          {CURRENCIES.map(c=><option key={c.v} value={c.v}>{c.l}</option>)}
+        </select>
+      </Fg>
+      <Fg label={t.paper_size}>
+        <select value={sets.paperSize} onChange={e=>setSets(s=>({...s,paperSize:e.target.value}))}><option>100x60mm</option><option>80x60mm</option><option>58mm</option><option>80mm</option></select>
+      </Fg>
+      <div className="scard-title" style={{marginTop:10}}>{t.notif_section}</div>
+      {([["autoprint",t.auto_print],["soundAlert",t.sound_alert],["stockAlert",t.stock_alert],["dailyEmail",t.daily_email]] as [keyof Settings,string][]).map(([k,label])=>(
+        <div key={k} className="tog-row"><span>{label}</span><div onClick={()=>setSets(s=>({...s,[k]:!s[k]}))} className={`tog ${sets[k]?"on":""}`}/></div>
+      ))}
+      <div className="scard-title" style={{marginTop:10}}>{t.set_backup_section}</div>
+      <div className="backup-actions">
+        <button type="button" className="btn-out" onClick={onExportBackup}>{t.set_export_backup}</button>
+        <button type="button" className="btn-out danger-lite" onClick={onClearLiveComments}>{t.set_clear_comments}</button>
+        <button type="button" className="btn-out danger-lite" onClick={onResetBuyerCounter}>{t.reset_buyer_btn}</button>
+      </div>
+      <div className="backup-note">{t.set_backup_note}</div>
+      <button type="submit" className="btn-purple" style={{marginTop:6}}>{t.save_settings}</button>
+    </form>
+  );
+  // ── Manage TikTok / Manage Facebook (Phase 2). The slots reuse the EXACT
+  // plan-aware renderAccountSlots (already-saved = locked/admin-only; empty over
+  // the combined plan limit = "Plan account limit reached") and the EXACT save
+  // handler (saveProf → onSaveProfile). "Add account" → modal → Telegram.
+  const channelScreen=(platform:"tiktok"|"facebook")=>(
+    <form onSubmit={saveProf} className="scard settings-section">
+      <div className="set-channel-hint">{t.set_channel_hint}</div>
+      {platform==="tiktok"
+        ? renderAccountSlots("tiktok",t.set_tiktok_account,t.set_tiktok_ph,profTikTok,originalTikTok)
+        : renderAccountSlots("facebook",t.set_facebook_page,t.set_facebook_ph,profFacebook,originalFacebook)}
+      <button type="button" className="btn-out set-add-btn" onClick={()=>setShowAddAccount(platform)}>＋ {platform==="tiktok"?t.set_add_tiktok:t.set_add_facebook}</button>
+      <button type="submit" className="btn-purple">{t.save_profile}</button>
+    </form>
+  );
+  const isRedesignedSlide=isNativeApp&&(expandedSettingsBox==="profile"||expandedSettingsBox==="password"||expandedSettingsBox==="display"||expandedSettingsBox==="manageTiktok"||expandedSettingsBox==="manageFacebook");
+  const nativeSlideIn=isRedesignedSlide&&(
+    <div className="set-slide" key={expandedSettingsBox}>
+      <div className="set-slide-head">
+        <button type="button" className="set-back" onClick={()=>setExpandedSettingsBox("")} aria-label={t.back_btn}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m15 6-6 6 6 6" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          <span>{t.back_btn}</span>
+        </button>
+        <h2 className="set-slide-title">{settingsTitles[expandedSettingsBox]}</h2>
+      </div>
+      <div className="set-slide-body">
+        {expandedSettingsBox==="profile"&&profileForm}
+        {expandedSettingsBox==="password"&&passwordForm}
+        {expandedSettingsBox==="display"&&displayForm}
+        {expandedSettingsBox==="manageTiktok"&&channelScreen("tiktok")}
+        {expandedSettingsBox==="manageFacebook"&&channelScreen("facebook")}
+      </div>
+    </div>
+  );
+  const addAccountModal=showAddAccount&&(
+    <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setShowAddAccount("")}>
+      <div className="modal" style={{maxWidth:380}}>
+        <div className="modal-hd"><span>{showAddAccount==="tiktok"?t.set_add_tiktok:t.set_add_facebook}</span><button onClick={()=>setShowAddAccount("")} className="modal-x">×</button></div>
+        <div className="modal-body" style={{gap:14,textAlign:"center",padding:"18px 20px 22px"}}>
+          <p style={{color:"#5F5E5A",lineHeight:1.55,margin:0}}>{t.set_add_account_desc}</p>
+          <a href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener" onClick={()=>setShowAddAccount("")} className="btn-purple" style={{textDecoration:"none"}}>{t.set_add_account_cta}</a>
+        </div>
+      </div>
+    </div>
+  );
+  // Web (and native Printer/Mobile-Printer, which stay on the existing panel
+  // until the Phase 5 printer redesign) use the original fullscreen panel.
+  const showOldPanel=!!expandedSettingsBox&&(!isNativeApp||expandedSettingsBox==="printer"||expandedSettingsBox==="mobilePrinter");
   return(
     <div className="subpage">
       {toast&&<Toast msg={toast} onDone={()=>setToast("")}/>}
-      {isNativeApp?(!expandedSettingsBox&&settingsHome):(<>
+      {addAccountModal}
+      {isNativeApp?(<>{!expandedSettingsBox&&settingsHome}{nativeSlideIn}</>):(<>
       <div className="subpage-hd"><div><h2>{t.nav_settings}</h2><p>{t.settings_sub}</p></div></div>
       <div className="settings-quick-grid">
         <button className="admin-action-card" onDoubleClick={()=>setExpandedSettingsBox("profile")}>
@@ -2354,61 +2461,16 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
         </button>
       </div>
       </>)}
-      {expandedSettingsBox&&(
+      {showOldPanel&&(
         <div className="admin-fullscreen-panel">
           <div className="admin-fullscreen-head">
             <button className="btn-out" onClick={()=>setExpandedSettingsBox("")}>{t.back_btn}</button>
             <div><h2>{settingsTitles[expandedSettingsBox]}</h2><p>{t.set_full_page}</p></div>
           </div>
           <div className={`grid2 settings-expanded settings-show-${expandedSettingsBox}`}>
-        <form onSubmit={saveProf} className="scard settings-section settings-section-profile">
-          <div className="scard-title">{t.profile_section}</div>
-          <Fg label={t.full_name}><input value={prof.fullName} onChange={e=>setProf(p=>({...p,fullName:e.target.value}))} required/></Fg>
-          <Fg label={t.store_name}><input value={prof.storeName} onChange={e=>setProf(p=>({...p,storeName:e.target.value}))} required/></Fg>
-          <Fg label={t.email_label}><input value={user.email} disabled style={{background:"#F5F5F2",color:"#888"}}/></Fg>
-          <Fg label={t.phone_label}><input value={prof.phone} onChange={e=>setProf(p=>({...p,phone:e.target.value}))} placeholder="+63 912 345 6789"/></Fg>
-          {renderAccountSlots("tiktok",t.set_tiktok_account,t.set_tiktok_ph,profTikTok,originalTikTok)}
-          {renderAccountSlots("facebook",t.set_facebook_page,t.set_facebook_ph,profFacebook,originalFacebook)}
-          <button type="submit" className="btn-purple">{t.save_profile}</button>
-        </form>
-        <form onSubmit={savePw} className="scard settings-section settings-section-password">
-          <div className="scard-title">{t.pw_section}</div>
-          {pwErr&&<div className="auth-err">⚠ {pwErr}</div>}
-          <Fg label={t.current_pw}><input type="password" value={op} onChange={e=>setOp(e.target.value)} required/></Fg>
-          <Fg label={t.new_pw}><input type="password" value={np} onChange={e=>setNp(e.target.value)} required/></Fg>
-          <Fg label={t.confirm_pw}><input type="password" value={cp} onChange={e=>setCp(e.target.value)} required/></Fg>
-          <button type="submit" className="btn-purple">{t.update_pw}</button>
-        </form>
-        <form onSubmit={saveSets} className="scard settings-section settings-section-display">
-          <div className="scard-title">{t.display_section}</div>
-          <div className="tog-row theme-mode-toggle">
-            <span>
-              <strong>{t.set_dark_mode}</strong>
-              <small>{sets.darkMode?t.set_dark_mode_on:t.set_dark_mode_off}</small>
-            </span>
-            <div onClick={()=>setSets(s=>({...s,darkMode:!s.darkMode}))} className={`tog ${sets.darkMode?"on":""}`}/>
-          </div>
-          <Fg label={t.currency_label}>
-            <select value={sets.currency} onChange={e=>setSets(s=>({...s,currency:e.target.value}))}>
-              {CURRENCIES.map(c=><option key={c.v} value={c.v}>{c.l}</option>)}
-            </select>
-          </Fg>
-          <Fg label={t.paper_size}>
-            <select value={sets.paperSize} onChange={e=>setSets(s=>({...s,paperSize:e.target.value}))}><option>100x60mm</option><option>80x60mm</option><option>58mm</option><option>80mm</option></select>
-          </Fg>
-          <div className="scard-title" style={{marginTop:10}}>{t.notif_section}</div>
-          {([["autoprint",t.auto_print],["soundAlert",t.sound_alert],["stockAlert",t.stock_alert],["dailyEmail",t.daily_email]] as [keyof Settings,string][]).map(([k,label])=>(
-            <div key={k} className="tog-row"><span>{label}</span><div onClick={()=>setSets(s=>({...s,[k]:!s[k]}))} className={`tog ${sets[k]?"on":""}`}/></div>
-          ))}
-          <div className="scard-title" style={{marginTop:10}}>{t.set_backup_section}</div>
-          <div className="backup-actions">
-            <button type="button" className="btn-out" onClick={onExportBackup}>{t.set_export_backup}</button>
-            <button type="button" className="btn-out danger-lite" onClick={onClearLiveComments}>{t.set_clear_comments}</button>
-            <button type="button" className="btn-out danger-lite" onClick={onResetBuyerCounter}>{t.reset_buyer_btn}</button>
-          </div>
-          <div className="backup-note">{t.set_backup_note}</div>
-          <button type="submit" className="btn-purple" style={{marginTop:6}}>{t.save_settings}</button>
-        </form>
+        {profileForm}
+        {passwordForm}
+        {displayForm}
         <form onSubmit={saveSets} className="scard settings-section settings-section-printer">
           <div className="scard-title" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
             <span>{t.printer_section}</span>

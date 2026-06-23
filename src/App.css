@@ -2478,3 +2478,15 @@ body.platform-ios {
 .set-tile-danger{background:#FCE9E8;color:#C2342F}
 .set-row-select{cursor:pointer}
 .set-native-select{position:absolute;inset:0;width:100%;height:100%;opacity:0;border:none;background:none;-webkit-appearance:none;appearance:none;cursor:pointer}
+
+/* ── Settings Phase 2 — slide-in detail screens (APK-only) ── */
+@keyframes setSlideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}
+.set-slide{position:fixed;inset:0;z-index:900;background:#F5F4F8;overflow-y:auto;-webkit-overflow-scrolling:touch;animation:setSlideIn .26s cubic-bezier(.22,.61,.36,1);padding:0 0 calc(84px + env(safe-area-inset-bottom))}
+.set-slide-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:6px;background:linear-gradient(160deg,#4f46e5,#3730a3);color:#fff;padding:14px 16px;box-shadow:0 6px 18px rgba(55,48,163,.22)}
+.set-back{display:inline-flex;align-items:center;gap:2px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:10px;padding:7px 12px 7px 8px;font-size:14px;font-weight:600;cursor:pointer}
+.set-back:active{background:rgba(255,255,255,.24)}
+.set-slide-title{margin:0 0 0 6px;font-size:18px;font-weight:800;color:#fff}
+.set-slide-body{max-width:560px;margin:0 auto;padding:16px}
+.set-slide-body .settings-section{max-width:100%;width:100%}
+.set-channel-hint{font-size:12.5px;line-height:1.5;color:#6A66A0;background:#EEEDFE;border:1px solid #E0DEF6;border-radius:11px;padding:10px 12px;margin-bottom:12px}
+.set-add-btn{width:100%;justify-content:center;margin-top:4px}
