@@ -858,7 +858,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
     const storeI=mlIcon(<><path d="M4 9h16l-1 11H5L4 9Z" stroke="#818cf8" strokeWidth="1.6"/><path d="M4 9 5.5 5h13L20 9" stroke="#818cf8" strokeWidth="1.6" strokeLinejoin="round"/></>);
     const phoneI=mlIcon(<><rect x="7" y="3" width="10" height="18" rx="2.5" stroke="#818cf8" strokeWidth="1.7"/><path d="M11 18h2" stroke="#818cf8" strokeWidth="1.7" strokeLinecap="round"/></>);
     return(
-      <div className="ml">
+      <div className="ml-stage"><div className="ml">
         {/* ── decorative automation backdrop (pointer-events:none) ── */}
         <div className="ml-grid" aria-hidden="true"/>
         <div className="ml-glow ml-glow-i" aria-hidden="true"/>
@@ -877,7 +877,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
         <div className="ml-chip ml-chip-r" aria-hidden="true"><span className="ml-chip-dot"/><span>{tpl(t.m_login_chip_synced,{count:142})}</span></div>
         {/* ── header: logo tile + wordmark + status pill ── */}
         <div className="ml-head">
-          <div className="ml-logo"><div className="ml-ring"/><div className="ml-tile"><img src="/favicon.svg" alt="" width="80" height="80"/></div></div>
+          <div className="ml-logo"><div className="ml-ring"/><div className="ml-tile"><img src="/icon-180.png" alt="" width="80" height="80" onError={e=>{const i=e.currentTarget;if(!i.src.endsWith("/favicon.svg"))i.src="/favicon.svg";}}/></div></div>
           <div className="ml-word">SellerFlow<span>Live</span></div>
           <div className="ml-pill"><span className="ml-pill-dot"/><span>{t.m_login_status}</span></div>
         </div>
@@ -920,7 +920,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
             <select value={lang} onChange={e=>setLang(e.target.value as Lang)} aria-label="Language">{LANG_OPTS.map(l=><option key={l.code} value={l.code}>{l.label}</option>)}</select>
           </div>
         </div>
-      </div>
+      </div></div>
     );
   }
   return(

@@ -2347,7 +2347,13 @@ body.platform-ios {
  * Web (desktop + mobile browser) never reaches these classes. Additive only:
  * nothing here overrides an existing .public-* / .auth-* rule.
  * ============================================================================ */
-.ml{position:relative;height:100vh;height:100dvh;overflow:hidden auto;display:flex;flex-direction:column;color:#fff;
+/* FIX 2 (robust): outer stage centers the phone frame; the gradient/chips/
+   content all live inside the ≤440px frame (mirrors the .dc.html outer wrapper).
+   Real phone (≤440px): frame = full width, full-bleed, fluid to 360px.
+   Desktop/tablet: centered 440px column on a dark surround. */
+.ml-stage{min-height:100vh;min-height:100dvh;display:flex;justify-content:center;background:#0a0824}
+.ml{position:relative;width:100%;max-width:440px;height:100vh;height:100dvh;overflow:hidden auto;
+  display:flex;flex-direction:column;color:#fff;
   font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
   background:radial-gradient(125% 65% at 80% -5%,#3730a3 0%,#251f7a 38%,#15123f 70%,#0a0824 100%)}
 .ml *{box-sizing:border-box}
@@ -2425,8 +2431,6 @@ body.platform-ios {
 .ml-lang{display:flex;align-items:center;justify-content:center;gap:7px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
 .ml-lang select{background:none;border:none;color:#c7d2fe;font-size:12.5px;font-weight:600;cursor:pointer}
 .ml-lang select option{color:#15123f}
-/* center the column on tablet/large */
-@media(min-width:480px){.ml-head,.ml-flow,.ml-body{width:100%;max-width:440px;margin-left:auto;margin-right:auto}}
 /* keyframes */
 @keyframes mlpulse{0%,100%{opacity:.45;transform:scale(1)}50%{opacity:1;transform:scale(1.08)}}
 @keyframes mlfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
