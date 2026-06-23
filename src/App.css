@@ -2348,6 +2348,10 @@ body.platform-ios {
  * nothing here overrides an existing .public-* / .auth-* rule.
  * ============================================================================ */
 .ml{position:relative;height:100vh;height:100dvh;overflow:hidden auto;display:flex;flex-direction:column;color:#fff;
+  /* FIX 2: cap the column so the phone design doesn't stretch full-width on
+     desktop/tablet (?apk=1 preview). On a real phone (<440px) this is a no-op —
+     full-width, fluid down to 360px. On wider screens: centered ~440px column. */
+  max-width:440px;margin-inline:auto;
   font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;
   background:radial-gradient(125% 65% at 80% -5%,#3730a3 0%,#251f7a 38%,#15123f 70%,#0a0824 100%)}
 .ml *{box-sizing:border-box}
@@ -2425,8 +2429,6 @@ body.platform-ios {
 .ml-lang{display:flex;align-items:center;justify-content:center;gap:7px;padding-bottom:calc(12px + env(safe-area-inset-bottom,0px))}
 .ml-lang select{background:none;border:none;color:#c7d2fe;font-size:12.5px;font-weight:600;cursor:pointer}
 .ml-lang select option{color:#15123f}
-/* center the column on tablet/large */
-@media(min-width:480px){.ml-head,.ml-flow,.ml-body{width:100%;max-width:440px;margin-left:auto;margin-right:auto}}
 /* keyframes */
 @keyframes mlpulse{0%,100%{opacity:.45;transform:scale(1)}50%{opacity:1;transform:scale(1.08)}}
 @keyframes mlfloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}

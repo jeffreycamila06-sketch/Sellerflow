@@ -877,7 +877,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
         <div className="ml-chip ml-chip-r" aria-hidden="true"><span className="ml-chip-dot"/><span>{tpl(t.m_login_chip_synced,{count:142})}</span></div>
         {/* ── header: logo tile + wordmark + status pill ── */}
         <div className="ml-head">
-          <div className="ml-logo"><div className="ml-ring"/><div className="ml-tile"><img src="/favicon.svg" alt="" width="80" height="80"/></div></div>
+          <div className="ml-logo"><div className="ml-ring"/><div className="ml-tile"><img src="/icon-180.png" alt="" width="80" height="80" onError={e=>{const i=e.currentTarget;if(!i.src.endsWith("/favicon.svg"))i.src="/favicon.svg";}}/></div></div>
           <div className="ml-word">SellerFlow<span>Live</span></div>
           <div className="ml-pill"><span className="ml-pill-dot"/><span>{t.m_login_status}</span></div>
         </div>
