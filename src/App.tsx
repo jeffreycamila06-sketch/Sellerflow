@@ -174,11 +174,25 @@ const SERVER = String(import.meta.env.VITE_SERVER_URL || DEFAULT_SERVER).replace
 const DEBUG_SOCKET = import.meta.env.DEV || import.meta.env.VITE_DEBUG_SOCKET === "true";
 const DEF_SETTINGS: Settings = { darkMode:true, autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"", paperSize:"100x60mm", printerType:"auto", lanFormat:"receipt", stickerSize:"100x60", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printLabelScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printCommentScale:100, printTotalScale:100, printStoreX:0, printStoreY:0, printBuyerLabelX:0, printBuyerLabelY:0, printBuyerNumberX:0, printBuyerNumberY:0, printBuyerNameX:0, printBuyerNameY:0, printUsernameX:0, printUsernameY:0, printSessionX:0, printSessionY:0, printOrderX:0, printOrderY:0, printTotalX:0, printTotalY:0 };
 const LANG_OPTS: {code:Lang;label:string}[] = [{code:"en",label:"🇺🇸 EN"},{code:"fil",label:"🇵🇭 FIL"},{code:"zh",label:"🇨🇳 中文"},{code:"zh-TW",label:"🇹🇼 繁體"},{code:"vi",label:"🇻🇳 VI"},{code:"th",label:"🇹🇭 TH"},{code:"id",label:"🇮🇩 ID"}];
-const CURRENCIES = [{v:"",l:"No symbol"},{v:"$",l:"$ USD"},{v:"NT$",l:"NT$ NTD"}];
-const cleanCurrency=(value:unknown)=>{
-  const currency=String(value||"").trim();
-  return currency.length===1&&currency.charCodeAt(0)===8369?"":currency;
-};
+// Phase 3 Language screen rows. Uses a 2-letter country-code badge instead of
+// emoji flag glyphs — Android system fonts often fail to render regional-
+// indicator flag emoji (shows "US"/"PH" boxes), so a styled badge is the safe,
+// consistent choice. `name` is each language's own endonym (no translation).
+const LANG_SCREEN: {code:Lang;badge:string;name:string}[] = [
+  {code:"en",badge:"EN",name:"English"},
+  {code:"fil",badge:"PH",name:"Filipino"},
+  {code:"zh",badge:"CN",name:"中文（简体）"},
+  {code:"zh-TW",badge:"TW",name:"中文（繁體）"},
+  {code:"vi",badge:"VN",name:"Tiếng Việt"},
+  {code:"th",badge:"TH",name:"ไทย"},
+  {code:"id",badge:"ID",name:"Bahasa Indonesia"},
+];
+const CURRENCIES = [{v:"$",l:"$ USD"},{v:"₫",l:"₫ VND"},{v:"NT$",l:"NT$ NTD"},{v:"¥",l:"¥ CNY"},{v:"₱",l:"₱ PHP"}];
+// Currency value IS the symbol prefix shown in the app (e.g. "₱1,240"). Just
+// trim. (The old rule that mapped a lone "₱" → "" was a legacy migration away
+// from a stray peso default; ₱ is now a real, selectable PHP option so that
+// strip is removed — otherwise picking PHP would silently reset to no symbol.)
+const cleanCurrency=(value:unknown)=>String(value||"").trim();
 const esc=(value:unknown)=>String(value ?? "").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]||ch));
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -1993,12 +2007,12 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   const [sets,setSets]=useState<Settings>({...settings});
   const [op,setOp]=useState("");const [np,setNp]=useState("");const [cp,setCp]=useState("");
   const [toast,setToast]=useState("");const [pwErr,setPwErr]=useState("");
-  const [expandedSettingsBox,setExpandedSettingsBox]=useState<""|"profile"|"password"|"display"|"printer"|"mobilePrinter"|"manageTiktok"|"manageFacebook">("");
+  const [expandedSettingsBox,setExpandedSettingsBox]=useState<""|"profile"|"password"|"display"|"printer"|"mobilePrinter"|"manageTiktok"|"manageFacebook"|"language">("");
   const [showAddAccount,setShowAddAccount]=useState<""|"tiktok"|"facebook">("");
   const directPrintParam=new URLSearchParams(window.location.search).get("directPrint")==="1";
   const [directPrintMode,setDirectPrintMode]=useState(()=>directPrintParam||LS.get<boolean>("sf_direct_print_mode",false));
   const settingsDirty=JSON.stringify(sets)!==JSON.stringify(settings);
-  const settingsTitles={"":t.nav_settings,profile:t.profile_section,password:t.pw_section,display:t.display_section,printer:t.printer_section,mobilePrinter:t.set_title_mobile_printer,manageTiktok:t.set_row_manage_tiktok,manageFacebook:t.set_row_manage_facebook};
+  const settingsTitles={"":t.nav_settings,profile:t.profile_section,password:t.pw_section,display:t.display_section,printer:t.printer_section,mobilePrinter:t.set_title_mobile_printer,manageTiktok:t.set_row_manage_tiktok,manageFacebook:t.set_row_manage_facebook,language:t.set_row_language};
   const previewScale=(v:number|undefined,fallback=100)=>Math.max(60,Math.min(180,v||fallback))/100;
   const storePreview=previewScale(sets.printStoreScale,sets.printLabelScale);
   const buyerNumberPreview=previewScale(sets.printBuyerNumberScale,120);
@@ -2317,15 +2331,12 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
       <div className="set-group">
         <div className="set-group-title">{t.set_grp_app}</div>
         <div className="set-card">
-          <label className="set-row set-row-select">
+          <button type="button" className="set-row" onClick={()=>setExpandedSettingsBox("language")}>
             <span className="set-tile">{icLang}</span>
             <span className="set-row-label">{t.set_row_language}</span>
-            <span className="set-row-value">{LANG_OPTS.find(l=>l.code===lang)?.label}</span>
+            <span className="set-row-value">{LANG_SCREEN.find(l=>l.code===lang)?.name}</span>
             {setChev}
-            <select className="set-native-select" value={lang} onChange={e=>setLang(e.target.value as Lang)} aria-label={t.set_row_language}>
-              {LANG_OPTS.map(l=><option key={l.code} value={l.code}>{l.label}</option>)}
-            </select>
-          </label>
+          </button>
           {setRow("support",icSupport,t.support_label,()=>onNavigate("support"))}
           {setRow("logout",icLogout,t.sign_out,onLogout,{danger:true})}
         </div>
@@ -2373,13 +2384,6 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
           {CURRENCIES.map(c=><option key={c.v} value={c.v}>{c.l}</option>)}
         </select>
       </Fg>
-      <Fg label={t.paper_size}>
-        <select value={sets.paperSize} onChange={e=>setSets(s=>({...s,paperSize:e.target.value}))}><option>100x60mm</option><option>80x60mm</option><option>58mm</option><option>80mm</option></select>
-      </Fg>
-      <div className="scard-title" style={{marginTop:10}}>{t.notif_section}</div>
-      {([["autoprint",t.auto_print],["soundAlert",t.sound_alert],["stockAlert",t.stock_alert],["dailyEmail",t.daily_email]] as [keyof Settings,string][]).map(([k,label])=>(
-        <div key={k} className="tog-row"><span>{label}</span><div onClick={()=>setSets(s=>({...s,[k]:!s[k]}))} className={`tog ${sets[k]?"on":""}`}/></div>
-      ))}
       <div className="scard-title" style={{marginTop:10}}>{t.set_backup_section}</div>
       <div className="backup-actions">
         <button type="button" className="btn-out" onClick={onExportBackup}>{t.set_export_backup}</button>
@@ -2404,7 +2408,22 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
       <button type="submit" className="btn-purple">{t.save_profile}</button>
     </form>
   );
-  const isRedesignedSlide=isNativeApp&&(expandedSettingsBox==="profile"||expandedSettingsBox==="password"||expandedSettingsBox==="display"||expandedSettingsBox==="manageTiktok"||expandedSettingsBox==="manageFacebook");
+  // ── Language screen (Phase 3). Reuses the existing setLang (persists sf_lang);
+  // tap a row to switch, the active language shows a check. No save button.
+  const languageScreen=(
+    <div className="scard settings-section set-lang-list">
+      {LANG_SCREEN.map(l=>(
+        <button type="button" key={l.code} className={`set-lang-row${l.code===lang?" active":""}`} onClick={()=>setLang(l.code)}>
+          <span className="set-lang-badge">{l.badge}</span>
+          <span className="set-lang-name">{l.name}</span>
+          {l.code===lang&&(
+            <svg className="set-lang-check" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m5 12 4.5 4.5L19 7" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+  const isRedesignedSlide=isNativeApp&&(expandedSettingsBox==="profile"||expandedSettingsBox==="password"||expandedSettingsBox==="display"||expandedSettingsBox==="manageTiktok"||expandedSettingsBox==="manageFacebook"||expandedSettingsBox==="language");
   const nativeSlideIn=isRedesignedSlide&&(
     <div className="set-slide" key={expandedSettingsBox}>
       <div className="set-slide-head">
@@ -2420,6 +2439,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
         {expandedSettingsBox==="display"&&displayForm}
         {expandedSettingsBox==="manageTiktok"&&channelScreen("tiktok")}
         {expandedSettingsBox==="manageFacebook"&&channelScreen("facebook")}
+        {expandedSettingsBox==="language"&&languageScreen}
       </div>
     </div>
   );
@@ -2545,6 +2565,11 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
             </select>
           </Fg>
           )}
+          {/* Paper size — relocated here from the Display screen (Phase 3); it
+              belongs with the printer controls, not display. Save logic unchanged. */}
+          <Fg label={t.paper_size}>
+            <select value={sets.paperSize} onChange={e=>setSets(s=>({...s,paperSize:e.target.value}))}><option>100x60mm</option><option>80x60mm</option><option>58mm</option><option>80mm</option></select>
+          </Fg>
           {/* Sticker label size — sticker (TSPL) output only. PHASE 1: the 60mm
               height tier (100x60 + 80x60). More sizes arrive as later phases
               add the vertical reflow. Wired through to the native builder. */}

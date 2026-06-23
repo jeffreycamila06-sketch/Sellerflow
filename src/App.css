@@ -2490,3 +2490,13 @@ body.platform-ios {
 .set-slide-body .settings-section{max-width:100%;width:100%}
 .set-channel-hint{font-size:12.5px;line-height:1.5;color:#6A66A0;background:#EEEDFE;border:1px solid #E0DEF6;border-radius:11px;padding:10px 12px;margin-bottom:12px}
 .set-add-btn{width:100%;justify-content:center;margin-top:4px}
+
+/* ── Settings Phase 3 — Language screen rows (country-code badge, not emoji) ── */
+.set-lang-list{padding:6px}
+.set-lang-row{display:flex;align-items:center;gap:13px;width:100%;background:none;border:none;border-radius:12px;padding:12px 12px;cursor:pointer;text-align:left;font-size:15px;color:#26215C;transition:background .12s}
+.set-lang-row:active{background:#F2F1FB}
+.set-lang-row.active{background:#EEEDFE}
+.set-lang-badge{flex-shrink:0;width:38px;height:30px;border-radius:8px;background:#534AB7;color:#fff;font-size:12px;font-weight:800;letter-spacing:.04em;display:flex;align-items:center;justify-content:center}
+.set-lang-name{flex:1;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.set-lang-row.active .set-lang-name{color:#3730a3}
+.set-lang-check{flex-shrink:0;color:#4f46e5}
