@@ -2908,8 +2908,11 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
       setCopied("Changing a seller's email needs the secure server step (coming next).");
       return;
     }
-    if(editSeller.newPassword.trim()){
-      setCopied('Use "Send reset email" to change a seller\'s password.');
+    // Password is optional; when provided it goes through the admin-set-password
+    // Edge Function below (after the profile save). Validate length up front.
+    const wantsPassword=!!editSeller.newPassword.trim();
+    if(wantsPassword&&editSeller.newPassword.trim().length<6){
+      setCopied("Password must be at least 6 characters");
       return;
     }
     const editLimit=maxAcc(current.plan);
@@ -2929,6 +2932,29 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
       await upsertUser(updated);
       setUsers(prev=>prev.map(u=>u.email.toLowerCase()===oldEmail?updated:u));
       await logAction("edited seller",oldEmail,"Profile updated.");
+      // Optional password change goes through the admin-set-password Edge Function.
+      // supabase.functions.invoke auto-attaches the caller's JWT (Authorization
+      // header) which the function uses for its admin gate; the service_role key
+      // lives inside the function. Profile fields above already saved via the
+      // normal flow regardless of the password outcome.
+      if(wantsPassword){
+        const targetEmail=editSeller.email.trim().toLowerCase();
+        if(!supabase){setCopied("Seller updated, but the password service is unavailable");return;}
+        const {data,error}=await supabase.functions.invoke("admin-set-password",{
+          body:{targetEmail,newPassword:editSeller.newPassword.trim()},
+        });
+        const result=data as {success?:boolean;error?:string}|null;
+        if(error||result?.error){
+          const msg=result?.error||error?.message||"Unknown error";
+          setCopied(`Seller updated, but password change failed: ${msg}`);
+          return;
+        }
+        await logAction("set password",targetEmail,"Admin set a new password via Edge Function");
+        setEditSeller(s=>({...s,newPassword:""}));
+        setEditOriginalEmail("");
+        setCopied(`Password updated for ${targetEmail}`);
+        return;
+      }
       setEditOriginalEmail("");
       setCopied("Seller updated");
     }catch(error){
