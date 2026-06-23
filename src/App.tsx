@@ -2002,17 +2002,17 @@ function Sales({orders,buyers,cur,t}:{orders:LiveOrder[];buyers:Buyer[];cur:stri
 // ═══════════════════════════════════════════════════════════════════
 // SETTINGS
 // ═══════════════════════════════════════════════════════════════════
-function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExportBackup,onClearLiveComments,onResetBuyerCounter,onLogout,onNavigate,lang,setLang,t}:{user:User;settings:Settings;onSaveProfile:(p:Profile)=>void;onSaveSettings:(s:Settings)=>void;onSavePw:(o:string,n:string)=>Promise<string>;onExportBackup:()=>void;onClearLiveComments:()=>void;onResetBuyerCounter:()=>void;onLogout:()=>void;onNavigate:(p:Page)=>void;lang:Lang;setLang:(l:Lang)=>void;t:T}){
+function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExportBackup,onClearLiveComments,onResetBuyerCounter,onLogout,lang,setLang,t}:{user:User;settings:Settings;onSaveProfile:(p:Profile)=>void;onSaveSettings:(s:Settings)=>void;onSavePw:(o:string,n:string)=>Promise<string>;onExportBackup:()=>void;onClearLiveComments:()=>void;onResetBuyerCounter:()=>void;onLogout:()=>void;lang:Lang;setLang:(l:Lang)=>void;t:T}){
   const [prof,setProf]=useState<Profile>({...user.profile});
   const [sets,setSets]=useState<Settings>({...settings});
   const [op,setOp]=useState("");const [np,setNp]=useState("");const [cp,setCp]=useState("");
   const [toast,setToast]=useState("");const [pwErr,setPwErr]=useState("");
-  const [expandedSettingsBox,setExpandedSettingsBox]=useState<""|"profile"|"password"|"display"|"printer"|"mobilePrinter"|"manageTiktok"|"manageFacebook"|"language">("");
+  const [expandedSettingsBox,setExpandedSettingsBox]=useState<""|"profile"|"password"|"display"|"printer"|"mobilePrinter"|"manageTiktok"|"manageFacebook"|"language"|"support">("");
   const [showAddAccount,setShowAddAccount]=useState<""|"tiktok"|"facebook">("");
   const directPrintParam=new URLSearchParams(window.location.search).get("directPrint")==="1";
   const [directPrintMode,setDirectPrintMode]=useState(()=>directPrintParam||LS.get<boolean>("sf_direct_print_mode",false));
   const settingsDirty=JSON.stringify(sets)!==JSON.stringify(settings);
-  const settingsTitles={"":t.nav_settings,profile:t.profile_section,password:t.pw_section,display:t.display_section,printer:t.printer_section,mobilePrinter:t.set_title_mobile_printer,manageTiktok:t.set_row_manage_tiktok,manageFacebook:t.set_row_manage_facebook,language:t.set_row_language};
+  const settingsTitles={"":t.nav_settings,profile:t.profile_section,password:t.pw_section,display:t.display_section,printer:t.printer_section,mobilePrinter:t.set_title_mobile_printer,manageTiktok:t.set_row_manage_tiktok,manageFacebook:t.set_row_manage_facebook,language:t.set_row_language,support:t.support_label};
   const previewScale=(v:number|undefined,fallback=100)=>Math.max(60,Math.min(180,v||fallback))/100;
   const storePreview=previewScale(sets.printStoreScale,sets.printLabelScale);
   const buyerNumberPreview=previewScale(sets.printBuyerNumberScale,120);
@@ -2284,6 +2284,8 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   const icLang=setIcon(<><circle cx="12" cy="12" r="8.2" stroke="currentColor" strokeWidth="1.7"/><path d="M3.8 12h16.4M12 3.8c2.3 2.3 3.5 5.2 3.5 8.2s-1.2 5.9-3.5 8.2c-2.3-2.3-3.5-5.2-3.5-8.2S9.7 6.1 12 3.8Z" stroke="currentColor" strokeWidth="1.5"/></>);
   const icSupport=setIcon(<><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7A2.5 2.5 0 0 1 17.5 16H9l-4 4v-4H6.5" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/></>);
   const icLogout=setIcon(<><path d="M14 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/><path d="M10 12h10m0 0-3-3m3 3-3 3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></>);
+  const icGuide=setIcon(<><path d="M5 4.5h9a2.5 2.5 0 0 1 2.5 2.5v12.5H7.5A2.5 2.5 0 0 1 5 17V4.5Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round"/><path d="M5 17a2.5 2.5 0 0 1 2.5-2.5h9M8.5 8h5M8.5 11h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></>);
+  const icMail=setIcon(<><rect x="3.5" y="5.5" width="17" height="13" rx="2.4" stroke="currentColor" strokeWidth="1.7"/><path d="m4.5 7 7.5 5 7.5-5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"/></>);
   const setChev=<svg className="set-chev" width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 6 6 6-6 6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>;
   const setRow=(key:string,icon:React.ReactNode,label:string,onClick:()=>void,opts:{danger?:boolean;soon?:boolean}={})=>(
     <button key={key} type="button" className={`set-row${opts.danger?" set-row-danger":""}${opts.soon?" set-row-soon":""}`} onClick={opts.soon?undefined:onClick} disabled={opts.soon}>
@@ -2337,7 +2339,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
             <span className="set-row-value">{LANG_SCREEN.find(l=>l.code===lang)?.name}</span>
             {setChev}
           </button>
-          {setRow("support",icSupport,t.support_label,()=>onNavigate("support"))}
+          {setRow("support",icSupport,t.support_label,()=>setExpandedSettingsBox("support"))}
           {setRow("logout",icLogout,t.sign_out,onLogout,{danger:true})}
         </div>
       </div>
@@ -2423,7 +2425,23 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
       ))}
     </div>
   );
-  const isRedesignedSlide=isNativeApp&&(expandedSettingsBox==="profile"||expandedSettingsBox==="password"||expandedSettingsBox==="display"||expandedSettingsBox==="manageTiktok"||expandedSettingsBox==="manageFacebook"||expandedSettingsBox==="language");
+  // ── Support screen (Phase 4). "User guide" is a SOON placeholder; "Contact us"
+  // opens Telegram (TELEGRAM_URL) — same egress as the existing Support page.
+  const supportScreen=(
+    <div className="set-card">
+      <button type="button" className="set-row set-row-soon" disabled>
+        <span className="set-tile">{icGuide}</span>
+        <span className="set-row-label">{t.set_support_guide}</span>
+        <span className="set-soon">{t.set_soon}</span>
+      </button>
+      <a className="set-row" href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener">
+        <span className="set-tile">{icMail}</span>
+        <span className="set-row-label">{t.set_support_contact}</span>
+        {setChev}
+      </a>
+    </div>
+  );
+  const isRedesignedSlide=isNativeApp&&(expandedSettingsBox==="profile"||expandedSettingsBox==="password"||expandedSettingsBox==="display"||expandedSettingsBox==="manageTiktok"||expandedSettingsBox==="manageFacebook"||expandedSettingsBox==="language"||expandedSettingsBox==="support");
   const nativeSlideIn=isRedesignedSlide&&(
     <div className="set-slide" key={expandedSettingsBox}>
       <div className="set-slide-head">
@@ -2440,6 +2458,7 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
         {expandedSettingsBox==="manageTiktok"&&channelScreen("tiktok")}
         {expandedSettingsBox==="manageFacebook"&&channelScreen("facebook")}
         {expandedSettingsBox==="language"&&languageScreen}
+        {expandedSettingsBox==="support"&&supportScreen}
       </div>
     </div>
   );
@@ -2447,9 +2466,10 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
     <div className="modal-overlay" onClick={e=>e.target===e.currentTarget&&setShowAddAccount("")}>
       <div className="modal" style={{maxWidth:380}}>
         <div className="modal-hd"><span>{showAddAccount==="tiktok"?t.set_add_tiktok:t.set_add_facebook}</span><button onClick={()=>setShowAddAccount("")} className="modal-x">×</button></div>
-        <div className="modal-body" style={{gap:14,textAlign:"center",padding:"18px 20px 22px"}}>
-          <p style={{color:"#5F5E5A",lineHeight:1.55,margin:0}}>{t.set_add_account_desc}</p>
-          <a href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener" onClick={()=>setShowAddAccount("")} className="btn-purple" style={{textDecoration:"none"}}>{t.set_add_account_cta}</a>
+        <div className="modal-body" style={{gap:12,padding:"18px 20px 22px"}}>
+          <p style={{color:"#4A4860",lineHeight:1.6,margin:0,fontSize:14}}>{t.set_add_account_desc}</p>
+          <a href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener" onClick={()=>setShowAddAccount("")} className="btn-purple set-modal-btn" style={{textDecoration:"none"}}>{t.set_add_account_cta}</a>
+          <button type="button" className="btn-out set-modal-btn" onClick={()=>setShowAddAccount("")}>{t.set_add_account_cancel}</button>
         </div>
       </div>
     </div>
@@ -4615,7 +4635,7 @@ export default function App(){
         {page==="print"&&<PrintPage buyers={buyers} cur={settings.currency} storeName={user.profile.storeName||"SellerFlowLive"} settings={settings} t={t}/>}
         {page==="sales"&&<Sales orders={allOrders} buyers={buyers} cur={settings.currency} t={t}/>}
         {page==="shipping"&&isAdminUser(user)&&<Shipping user={user} t={t}/>}
-        {page==="settings"&&<SettingsPage user={user} settings={settings} onSaveProfile={handleSaveProfile} onSaveSettings={handleSaveSettings} onSavePw={handleSavePw} onExportBackup={exportSellerBackup} onClearLiveComments={clearLiveCommentsOnly} onResetBuyerCounter={resetBuyerCounterOnly} onLogout={handleLogout} onNavigate={setPage} lang={lang} setLang={setLang} t={t}/>}
+        {page==="settings"&&<SettingsPage user={user} settings={settings} onSaveProfile={handleSaveProfile} onSaveSettings={handleSaveSettings} onSavePw={handleSavePw} onExportBackup={exportSellerBackup} onClearLiveComments={clearLiveCommentsOnly} onResetBuyerCounter={resetBuyerCounterOnly} onLogout={handleLogout} lang={lang} setLang={setLang} t={t}/>}
         {page==="subscription"&&<SubPage user={user} onActivate={handleActivate} t={t}/>}
         {page==="support"&&<Support user={user} t={t}/>}
         {page==="admin"&&<AdminPage currentUser={user} onApprove={handleAdminApprove} orders={allOrders} t={t}/>}

@@ -2500,3 +2500,7 @@ body.platform-ios {
 .set-lang-name{flex:1;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .set-lang-row.active .set-lang-name{color:#3730a3}
 .set-lang-check{flex-shrink:0;color:#4f46e5}
+
+/* ── Settings Phase 4 — add-account modal buttons + Support screen rows ── */
+.set-modal-btn{display:flex;align-items:center;justify-content:center;width:100%;padding:12px;font-size:15px;font-weight:600;border-radius:11px;text-align:center}
+a.set-row{text-decoration:none}
