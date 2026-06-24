@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:'Inter',-apple-system,sans-serif;-webkit-font-smoothing:antialiased}
+    .sfl-scroll::-webkit-scrollbar{width:0;height:0}
+    @keyframes sflpulse{0%,100%{opacity:.4;transform:scale(1)}50%{opacity:.9;transform:scale(1.06)}}
+    @keyframes sfldash{to{stroke-dashoffset:-28}}
+    @keyframes sflblink{0%,100%{opacity:1}50%{opacity:.3}}
+    @keyframes sflgrid{from{background-position:0 0}to{background-position:0 34px}}
+    @keyframes sflpop{0%{transform:scale(.92);opacity:0}100%{transform:scale(1);opacity:1}}
+  </style>
+</helmet>
+
+<div style="min-height:100vh;box-sizing:border-box;padding:44px;background:#e7e5df;display:flex;flex-direction:column;align-items:center;gap:18px;font-family:'Inter',sans-serif">
+
+  <div style="text-align:center">
+    <div style="font-size:22px;font-weight:800;color:#1e1b4b;letter-spacing:-.01em">SellerFlowLive — full app mockup</div>
+    <div style="font-size:13.5px;color:#6b6577;margin-top:4px">Clickable. Tap the bottom nav &amp; buttons. Switch dark/light with ☾/☀ (top-right) and pick a color in Settings.</div>
+  </div>
+
+  <!-- @handle color adjuster (preview control) -->
+  <div style="display:flex;align-items:center;gap:13px;background:#fff;border:1px solid #e2e1ee;border-radius:14px;padding:11px 16px;box-shadow:0 4px 14px rgba(30,27,75,.08)">
+    <span style="font-size:12.5px;font-weight:700;color:#46435a">@username color</span>
+    <span style="font-size:11px;color:#8b889c">→ darker = more readable</span>
+    <div style="display:flex;gap:8px">
+      <sc-for list="{{ handleOptions }}" as="h" hint-placeholder-count="4">
+        <div onClick="{{ h.onPick }}" style="cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;width:52px">
+          <div style="width:42px;height:30px;border-radius:9px;background:{{ h.previewBg }};box-shadow:{{ h.ring }};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:{{ h.sample }}">@ab</div>
+          <span style="font-size:9.5px;font-weight:600;color:{{ h.labelColor }}">{{ h.name }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- PHONE FRAME (carries all theme tokens) -->
+  <div style="{{ frameStyle }}">
+
+    <!-- dark automation backdrop -->
+    <sc-if value="{{ isDark }}" hint-placeholder-val="{{ true }}">
+      <div style="position:absolute;inset:0;background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:34px 34px;animation:sflgrid 7s linear infinite;pointer-events:none"></div>
+      <div style="position:absolute;top:-110px;right:-80px;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,rgba(99,102,241,.5),transparent 64%);filter:blur(36px);pointer-events:none"></div>
+      <div style="position:absolute;bottom:40px;left:-100px;width:280px;height:280px;border-radius:50%;background:radial-gradient(circle,rgba(34,211,238,.22),transparent 66%);filter:blur(44px);pointer-events:none"></div>
+    </sc-if>
+
+    <!-- ===================== LOGIN ===================== -->
+    <sc-if value="{{ isLogin }}" hint-placeholder-val="{{ true }}">
+      <div style="position:relative;height:100%;display:flex;flex-direction:column;padding:64px 26px 30px;color:var(--text)">
+        <div style="display:flex;flex-direction:column;align-items:center;text-align:center">
+          <div style="width:88px;height:88px;border-radius:24px;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 14px 38px rgba(79,70,229,.32),0 0 0 1px rgba(255,255,255,.4);overflow:hidden">
+            <img src="uploads/icon-180.png" width="74" height="74" style="display:block"/>
+          </div>
+          <div style="margin-top:18px;font-family:'Space Grotesk',sans-serif;font-size:27px;font-weight:700;letter-spacing:-.02em;color:var(--text)">SellerFlow<span style="color:var(--accent-bright)">Live</span></div>
+          <div style="margin-top:11px;display:inline-flex;align-items:center;gap:8px;background:var(--cyan-soft);border:1px solid var(--cyan-border);border-radius:999px;padding:7px 15px">
+            <span style="width:7px;height:7px;border-radius:50%;background:var(--success);box-shadow:0 0 8px var(--success);animation:sflblink 1.6s infinite"></span>
+            <span style="font-size:11.5px;font-weight:600;color:var(--cyan-text)">Automation engine online</span>
+          </div>
+        </div>
+
+        <!-- flow strip -->
+        <div style="margin-top:26px;display:flex;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:14px 16px">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:6px;width:58px">
+            <div style="width:38px;height:38px;border-radius:12px;background:var(--accent-soft);border:1px solid var(--accent-border);display:flex;align-items:center;justify-content:center">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M4 6h16v9H7l-3 3V6Z" stroke="var(--accent-bright)" stroke-width="1.6" stroke-linejoin="round"/></svg>
+            </div>
+            <span style="font-size:9.5px;font-weight:600;color:var(--dim)">Capture</span>
+          </div>
+          <svg width="38" height="16" viewBox="0 0 38 16" fill="none" style="margin-bottom:14px"><path d="M2 8h32" stroke="var(--accent-border)" stroke-width="1.6" stroke-dasharray="4 5" style="animation:sfldash 1.3s linear infinite"/><path d="M30 4l5 4-5 4" stroke="var(--accent-bright)" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:6px;width:58px">
+            <div style="width:38px;height:38px;border-radius:12px;background:var(--accent-soft);border:1px solid var(--accent-border);display:flex;align-items:center;justify-content:center">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M5 7h14l-1 11H6L5 7Z" stroke="var(--accent-bright)" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 7V5.5a3 3 0 0 1 6 0V7" stroke="var(--accent-bright)" stroke-width="1.6"/></svg>
+            </div>
+            <span style="font-size:9.5px;font-weight:600;color:var(--dim)">Orders</span>
+          </div>
+          <svg width="38" height="16" viewBox="0 0 38 16" fill="none" style="margin-bottom:14px"><path d="M2 8h32" stroke="var(--cyan-border)" stroke-width="1.6" stroke-dasharray="4 5" style="animation:sfldash 1.7s linear infinite"/><path d="M30 4l5 4-5 4" stroke="var(--cyan)" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:6px;width:58px">
+            <div style="width:38px;height:38px;border-radius:12px;background:var(--cyan-soft);border:1px solid var(--cyan-border);display:flex;align-items:center;justify-content:center">
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><rect x="6" y="3" width="12" height="6" stroke="var(--cyan)" stroke-width="1.6"/><path d="M6 14H4a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-2" stroke="var(--cyan)" stroke-width="1.6"/><rect x="6" y="14" width="12" height="7" stroke="var(--cyan)" stroke-width="1.6"/></svg>
+            </div>
+            <span style="font-size:9.5px;font-weight:600;color:var(--cyan-text)">Print</span>
+          </div>
+        </div>
+
+        <!-- form -->
+        <div style="margin-top:20px;background:var(--surface);border:1px solid var(--border);border-radius:22px;padding:22px 20px;box-shadow:var(--shadow)">
+          <div style="display:flex;align-items:center;gap:11px;background:var(--surface2);border:1px solid var(--border2);border-radius:13px;padding:14px;margin-bottom:13px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2.5" stroke="var(--accent-bright)" stroke-width="1.7"/><path d="m4 7 8 5 8-5" stroke="var(--accent-bright)" stroke-width="1.7" stroke-linecap="round"/></svg>
+            <span style="font-size:14px;color:var(--faint)">Enter your email</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:11px;background:var(--surface2);border:1px solid var(--border2);border-radius:13px;padding:14px">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="5" y="10" width="14" height="10" rx="2.5" stroke="var(--accent-bright)" stroke-width="1.7"/><path d="M8 10V8a4 4 0 0 1 8 0v2" stroke="var(--accent-bright)" stroke-width="1.7" stroke-linecap="round"/></svg>
+            <span style="flex:1;font-size:14px;color:var(--text2);letter-spacing:2px">••••••••</span>
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" stroke="var(--faint)" stroke-width="1.7"/><circle cx="12" cy="12" r="2.6" stroke="var(--faint)" stroke-width="1.7"/></svg>
+          </div>
+          <div style="text-align:right;margin-top:10px;margin-bottom:18px"><span style="font-size:12.5px;font-weight:600;color:var(--accent-bright)">Forgot password?</span></div>
+          <div onClick="{{ signIn }}" style="cursor:pointer;border-radius:14px;padding:16px;text-align:center;font-size:15.5px;font-weight:700;color:var(--on-accent);background:linear-gradient(135deg,var(--accent-bright),var(--accent));box-shadow:0 10px 26px var(--accent-glow)">Sign in →</div>
+          <div style="margin-top:15px;text-align:center;font-size:13px;color:var(--dim)">New here? <span style="font-weight:700;color:var(--accent-bright)">Create account</span></div>
+        </div>
+
+        <div style="margin-top:auto;display:flex;align-items:center;justify-content:center;gap:9px;background:var(--cyan-soft);border:1px solid var(--cyan-border);border-radius:14px;padding:13px;margin-bottom:13px">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="var(--cyan)"><path d="M21.8 4.3 2.9 11.6c-1 .4-1 1.3-.1 1.6l4.7 1.5 1.8 5.6c.2.6.6.7 1.2.3l2.6-2 4.7 3.5c.6.4 1.2.2 1.4-.6l3.4-15.9c.2-.9-.4-1.4-1-1.1z"/></svg>
+          <span style="font-size:13px;color:var(--cyan-text);font-weight:600">Need help? Message me anytime</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:7px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="var(--faint)" stroke-width="1.6"/><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18" stroke="var(--faint)" stroke-width="1.6"/></svg>
+          <span style="font-size:12.5px;color:var(--dim);font-weight:600">English ▾</span>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ===================== APP (non-login) ===================== -->
+    <sc-if value="{{ inApp }}" hint-placeholder-val="{{ true }}">
+      <div style="position:relative;height:100%;display:flex;flex-direction:column">
+
+        <!-- top header -->
+        <div style="position:relative;z-index:2;display:flex;align-items:center;gap:11px;padding:54px 18px 14px;background:var(--head-bg);border-bottom:1px solid var(--head-border)">
+          <div style="width:34px;height:34px;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,.12)">
+            <img src="uploads/icon-180.png" width="28" height="28" style="display:block"/>
+          </div>
+          <div style="flex:1">
+            <div style="font-size:16px;font-weight:800;color:var(--head-text);letter-spacing:-.01em">{{ screenTitle }}</div>
+            <div style="font-size:11px;color:var(--head-sub);font-weight:500">{{ screenSub }}</div>
+          </div>
+          <div onClick="{{ toggleTheme }}" style="cursor:pointer;width:38px;height:38px;border-radius:11px;background:var(--head-btn);border:1px solid var(--head-btn-border);display:flex;align-items:center;justify-content:center;font-size:17px">{{ themeIcon }}</div>
+        </div>
+
+        <!-- scroll area -->
+        <div class="sfl-scroll" style="position:relative;z-index:1;flex:1;overflow-y:auto;padding:16px 16px 92px">
+
+          <!-- ---------- LIVE / DASHBOARD ---------- -->
+          <sc-if value="{{ isDash }}" hint-placeholder-val="{{ true }}">
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-bottom:16px">
+              <div style="background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:13px 10px;text-align:center">
+                <div style="font-size:10.5px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.04em">Orders</div>
+                <div style="font-size:25px;font-weight:800;color:var(--text);margin-top:3px">{{ totOrd }}</div>
+              </div>
+              <div style="background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:13px 10px;text-align:center">
+                <div style="font-size:10.5px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.04em">Revenue</div>
+                <div style="font-size:25px;font-weight:800;color:var(--success);margin-top:3px">{{ totRevLabel }}</div>
+              </div>
+              <div style="background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:13px 10px;text-align:center">
+                <div style="font-size:10.5px;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.04em">Buyers</div>
+                <div style="font-size:25px;font-weight:800;color:var(--accent-bright);margin-top:3px">{{ buyersCount }}</div>
+              </div>
+            </div>
+
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:11px">
+              <span style="width:8px;height:8px;border-radius:50%;background:#ef4444;box-shadow:0 0 8px #ef4444;animation:sflblink 1.4s infinite"></span>
+              <span style="font-size:13px;font-weight:800;color:var(--text);letter-spacing:.02em">LIVE COMMENTS</span>
+              <span style="margin-left:auto;font-size:11.5px;color:var(--faint);font-weight:600">{{ commentsCountLabel }}</span>
+            </div>
+
+            <sc-for list="{{ comments }}" as="c" hint-placeholder-count="4">
+              <div style="display:flex;gap:11px;align-items:flex-start;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:13px;margin-bottom:10px">
+                <div style="flex:none;width:40px;height:40px;border-radius:12px;background:{{ c.avColor }};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff">{{ c.initials }}</div>
+                <div style="flex:1;min-width:0">
+                  <div style="display:flex;align-items:center;gap:7px">
+                    <span style="font-size:13.5px;font-weight:700;color:var(--text)">{{ c.name }}</span>
+                    <span style="font-size:10px;font-weight:700;color:{{ c.ptagText }};background:{{ c.ptagBg }};border-radius:6px;padding:2px 6px">{{ c.platform }}</span>
+                  </div>
+                  <div style="font-size:13px;color:var(--text2);margin-top:3px">{{ c.comment }}</div>
+                  <div style="font-size:11px;margin-top:4px"><span style="color:var(--handle);font-weight:600">{{ c.handleLabel }}</span><span style="color:var(--faint)"> · {{ c.time }}</span></div>
+                </div>
+                <div onClick="{{ c.onClick }}" style="flex:none;cursor:pointer;align-self:center;border-radius:11px;padding:10px 14px;font-size:12.5px;font-weight:800;color:{{ c.btnTextColor }};background:{{ c.btnBg }};border:1px solid {{ c.btnBorder }};min-width:84px;text-align:center">{{ c.btnLabel }}</div>
+              </div>
+            </sc-for>
+          </sc-if>
+
+          <!-- ---------- BUYERS / MINERS ---------- -->
+          <sc-if value="{{ isBuyers }}" hint-placeholder-val="{{ true }}">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:14px">
+              <div style="background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:14px"><div style="font-size:10.5px;font-weight:600;color:var(--dim);text-transform:uppercase">Total buyers</div><div style="font-size:26px;font-weight:800;color:var(--text);margin-top:2px">{{ buyersCount }}</div></div>
+              <div style="background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:14px"><div style="font-size:10.5px;font-weight:600;color:var(--dim);text-transform:uppercase">Total spent</div><div style="font-size:26px;font-weight:800;color:var(--success);margin-top:2px">{{ totRevLabel }}</div></div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border2);border-radius:13px;padding:12px 14px;margin-bottom:13px">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="var(--faint)" stroke-width="1.8"/><path d="m20 20-3.5-3.5" stroke="var(--faint)" stroke-width="1.8" stroke-linecap="round"/></svg>
+              <span style="font-size:13px;color:var(--faint)">Search buyer…</span>
+            </div>
+            <sc-for list="{{ buyers }}" as="b" hint-placeholder-count="4">
+              <div onClick="{{ b.onSelect }}" style="cursor:pointer;display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid {{ b.rowBorder }};border-radius:15px;padding:12px 13px;margin-bottom:9px">
+                <div style="flex:none;width:34px;height:34px;border-radius:50%;background:{{ b.numColor }};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff">{{ b.num }}</div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:14px;font-weight:700;color:var(--text)">{{ b.name }}</div>
+                  <div style="font-size:11.5px;color:var(--handle);font-weight:600">{{ b.handleLabel }}</div>
+                </div>
+                <div style="text-align:right">
+                  <div style="font-size:14px;font-weight:800;color:var(--accent-bright)">{{ b.totalLabel }}</div>
+                  <div style="font-size:11px;color:var(--dim)">{{ b.ordersLabel }}</div>
+                </div>
+              </div>
+            </sc-for>
+          </sc-if>
+
+          <!-- ---------- ORDERS ---------- -->
+          <sc-if value="{{ isOrders }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px">
+              <div style="font-size:13px;font-weight:700;color:var(--text)">{{ ordersCountLabel }}</div>
+              <div style="display:flex;align-items:center;gap:7px;background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:10px;padding:8px 13px;font-size:12px;font-weight:700;color:var(--accent-bright)">⬇ Export CSV</div>
+            </div>
+            <sc-for list="{{ orders }}" as="o" hint-placeholder-count="5">
+              <div style="display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:13px;margin-bottom:9px">
+                <div style="flex:none;width:38px;height:38px;border-radius:11px;background:{{ o.avColor }};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff">{{ o.initials }}</div>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:13.5px;font-weight:700;color:var(--text)">{{ o.name }}</div>
+                  <div style="font-size:11.5px;color:var(--faint)">{{ o.orderId }} · {{ o.time }}</div>
+                </div>
+                <div style="text-align:right">
+                  <div style="font-size:14px;font-weight:800;color:var(--text)">{{ o.priceLabel }}</div>
+                  <div style="display:inline-block;font-size:10px;font-weight:700;color:var(--success);background:var(--success-soft);border-radius:6px;padding:2px 7px;margin-top:2px">{{ o.status }}</div>
+                </div>
+              </div>
+            </sc-for>
+          </sc-if>
+
+          <!-- ---------- PRINT ---------- -->
+          <sc-if value="{{ isPrint }}" hint-placeholder-val="{{ true }}">
+            <div style="font-size:12px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">Pick a buyer</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">
+              <sc-for list="{{ buyers }}" as="b" hint-placeholder-count="4">
+                <div onClick="{{ b.onSelect }}" style="cursor:pointer;display:flex;align-items:center;gap:7px;background:var(--surface);border:1px solid {{ b.rowBorder }};border-radius:999px;padding:7px 13px 7px 8px">
+                  <span style="width:22px;height:22px;border-radius:50%;background:{{ b.numColor }};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff">{{ b.num }}</span>
+                  <span style="font-size:12.5px;font-weight:600;color:var(--text)">{{ b.name }}</span>
+                </div>
+              </sc-for>
+            </div>
+
+            <sc-if value="{{ hasSel }}" hint-placeholder-val="{{ true }}">
+              <div style="background:#fff;border-radius:14px;padding:20px;box-shadow:var(--shadow);color:#1a1726;max-width:280px;margin:0 auto;animation:sflpop .25s ease">
+                <div style="display:flex;align-items:center;justify-content:center;gap:6px"><div style="width:18px;height:18px;border-radius:5px;background:#4f46e5;display:flex;align-items:center;justify-content:center"><svg width="11" height="11" viewBox="0 0 18 18"><path d="M4 6 Q4 3 7 3 L11 3 Q14 3 14 6 Q14 9 11 9.5 L7 10.5 Q4 10.5 4 13 Q4 15 7 15 L11 15 Q14 15 14 13" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/></svg></div><span style="font-size:13px;font-weight:800;color:#26215C">Seller<span style="color:#7F77DD">FlowLive</span></span></div>
+                <div style="border-top:1px dashed #ccc;margin:13px 0"></div>
+                <div style="text-align:center">
+                  <div style="font-size:10px;color:#888;text-transform:uppercase;letter-spacing:.08em">Buyer number</div>
+                  <div style="font-size:40px;font-weight:900;line-height:1;color:{{ selNumColor }};margin:2px 0">#{{ selNum }}</div>
+                  <div style="font-size:14px;font-weight:700;color:#1a1726">{{ selName }}</div>
+                  <div style="font-size:11.5px;color:#999">{{ selHandleLabel }}</div>
+                </div>
+                <div style="font-size:10.5px;color:#999;margin-top:12px">Session: {{ today }}</div>
+                <div style="font-size:11px;font-weight:700;color:#555;margin-top:8px">Orders today ({{ selOrdersCount }})</div>
+                <sc-for list="{{ selOrders }}" as="o" hint-placeholder-count="2">
+                  <div style="border-bottom:1px solid #f0f0f0;padding:7px 0">
+                    <div style="font-size:10px;color:#999">{{ o.time }} — {{ o.orderId }}</div>
+                    <div style="display:flex;justify-content:space-between;font-size:12.5px;color:#1a1726"><span>{{ o.item }}</span><span style="font-weight:700">{{ o.priceLabel }}</span></div>
+                  </div>
+                </sc-for>
+                <div style="border-top:1px dashed #ccc;margin:11px 0"></div>
+                <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:800;color:#1a1726"><span>TOTAL TODAY</span><span>{{ selTotalLabel }}</span></div>
+              </div>
+              <div onClick="{{ doPrint }}" style="cursor:pointer;margin:16px auto 0;max-width:280px;border-radius:13px;padding:15px;text-align:center;font-size:14.5px;font-weight:800;color:var(--on-accent);background:linear-gradient(135deg,var(--accent-bright),var(--accent));box-shadow:0 10px 24px var(--accent-glow)">🖨 {{ printLabel }}</div>
+            </sc-if>
+            <sc-if value="{{ noSel }}" hint-placeholder-val="{{ true }}">
+              <div style="background:var(--surface);border:1px dashed var(--border2);border-radius:16px;padding:40px 20px;text-align:center;color:var(--faint)">
+                <div style="font-size:34px;margin-bottom:10px">🖨️</div>
+                <div style="font-size:13px;font-weight:600">Pick a buyer to preview their slip</div>
+              </div>
+            </sc-if>
+          </sc-if>
+
+          <!-- ---------- SETTINGS ---------- -->
+          <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ true }}">
+            <!-- profile -->
+            <div style="display:flex;align-items:center;gap:13px;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:16px">
+              <div style="width:50px;height:50px;border-radius:14px;background:linear-gradient(135deg,var(--accent-bright),var(--accent));display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:#fff">JC</div>
+              <div style="flex:1"><div style="font-size:15px;font-weight:800;color:var(--text)">Jeff's Live Store</div><div style="font-size:12px;color:var(--dim)">Pro plan · TikTok + Facebook</div></div>
+            </div>
+
+            <!-- appearance -->
+            <div style="font-size:11.5px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin:0 4px 9px">Appearance</div>
+            <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:14px">
+              <div style="display:flex;align-items:center;margin-bottom:16px">
+                <div style="flex:1"><div style="font-size:14px;font-weight:700;color:var(--text)">Theme</div><div style="font-size:11.5px;color:var(--dim)">{{ themeName }} mode</div></div>
+                <div onClick="{{ toggleTheme }}" style="cursor:pointer;display:flex;background:var(--surface2);border:1px solid var(--border2);border-radius:999px;padding:3px">
+                  <div style="padding:7px 13px;border-radius:999px;font-size:12px;font-weight:700;background:{{ darkPillBg }};color:{{ darkPillColor }}">☾ Dark</div>
+                  <div style="padding:7px 13px;border-radius:999px;font-size:12px;font-weight:700;background:{{ lightPillBg }};color:{{ lightPillColor }}">☀ Light</div>
+                </div>
+              </div>
+              <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Accent color</div>
+              <div style="font-size:11.5px;color:var(--dim);margin-bottom:12px">Text + buttons adjust automatically for readability.</div>
+              <div style="display:flex;gap:11px;flex-wrap:wrap">
+                <sc-for list="{{ accentOptions }}" as="a" hint-placeholder-count="6">
+                  <div onClick="{{ a.onPick }}" style="cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;width:46px">
+                    <div style="width:38px;height:38px;border-radius:12px;background:{{ a.swatch }};box-shadow:{{ a.ring }};display:flex;align-items:center;justify-content:center">{{ a.check }}</div>
+                    <span style="font-size:10px;font-weight:600;color:{{ a.labelColor }}">{{ a.name }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <!-- preferences -->
+            <div style="font-size:11.5px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin:0 4px 9px">Preferences</div>
+            <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;margin-bottom:14px">
+              <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border)">
+                <span style="font-size:17px">🌐</span><span style="flex:1;font-size:13.5px;font-weight:600;color:var(--text)">Language</span><span style="font-size:13px;color:var(--dim)">English ▾</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border)">
+                <span style="font-size:17px">💱</span><span style="flex:1;font-size:13.5px;font-weight:600;color:var(--text)">Currency</span><span style="font-size:13px;color:var(--dim)">NT$ ▾</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:12px;padding:14px 16px">
+                <span style="font-size:17px">🖨️</span><span style="flex:1;font-size:13.5px;font-weight:600;color:var(--text)">Printer &amp; sticker</span><span style="font-size:13px;color:var(--success);font-weight:700">Connected</span>
+              </div>
+            </div>
+
+            <div onClick="{{ signOut }}" style="cursor:pointer;text-align:center;background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:14px;font-size:13.5px;font-weight:700;color:#ef4444">Sign out</div>
+          </sc-if>
+
+        </div>
+
+        <!-- bottom nav -->
+        <div style="position:absolute;bottom:0;left:0;right:0;z-index:3;display:flex;background:var(--nav);border-top:1px solid var(--nav-border);backdrop-filter:blur(14px);padding:9px 6px 14px">
+          <div onClick="{{ navLive }}" style="cursor:pointer;flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" stroke="{{ navLiveColor }}" stroke-width="1.7" stroke-linejoin="round" fill="{{ navLiveFill }}"/></svg>
+            <span style="font-size:10px;font-weight:700;color:{{ navLiveColor }}">Live</span>
+          </div>
+          <div onClick="{{ navBuyers }}" style="cursor:pointer;flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3.2" stroke="{{ navBuyersColor }}" stroke-width="1.7"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5" stroke="{{ navBuyersColor }}" stroke-width="1.7" stroke-linecap="round"/><path d="M16 7.5a3 3 0 0 1 0 6M18 19c0-2-.8-3.6-2-4.6" stroke="{{ navBuyersColor }}" stroke-width="1.7" stroke-linecap="round"/></svg>
+            <span style="font-size:10px;font-weight:700;color:{{ navBuyersColor }}">Buyers</span>
+          </div>
+          <div onClick="{{ navOrders }}" style="cursor:pointer;flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M5 7h14l-1 12H6L5 7Z" stroke="{{ navOrdersColor }}" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 7V5.5a3 3 0 0 1 6 0V7" stroke="{{ navOrdersColor }}" stroke-width="1.7"/></svg>
+            <span style="font-size:10px;font-weight:700;color:{{ navOrdersColor }}">Orders</span>
+          </div>
+          <div onClick="{{ navPrint }}" style="cursor:pointer;flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="6" y="3" width="12" height="6" stroke="{{ navPrintColor }}" stroke-width="1.7"/><path d="M6 14H4a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-2" stroke="{{ navPrintColor }}" stroke-width="1.7"/><rect x="6" y="14" width="12" height="7" stroke="{{ navPrintColor }}" stroke-width="1.7"/></svg>
+            <span style="font-size:10px;font-weight:700;color:{{ navPrintColor }}">Print</span>
+          </div>
+          <div onClick="{{ navSettings }}" style="cursor:pointer;flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="{{ navSettingsColor }}" stroke-width="1.7"/><path d="M12 3v2.5M12 18.5V21M4.2 7.5l2.1 1.2M17.7 15.3l2.1 1.2M4.2 16.5l2.1-1.2M17.7 8.7l2.1-1.2" stroke="{{ navSettingsColor }}" stroke-width="1.7" stroke-linecap="round"/></svg>
+            <span style="font-size:10px;font-weight:700;color:{{ navSettingsColor }}">Settings</span>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:480,&quot;height&quot;:960}}">
+class Component extends DCLogic {
+  state = {
+    screen: "login",
+    theme: "dark",
+    accentName: "Indigo",
+    comments: [
+      { handle:"maria_shops", name:"Maria Santos", comment:"mine 2! 🔥", platform:"TikTok", price:280, time:"21:04" },
+      { handle:"jenny.lin", name:"Jenny Lin", comment:"sold! pink size M", platform:"Facebook", price:450, time:"21:05" },
+      { handle:"aileen.shops", name:"Aileen Wu", comment:"get 1 please", platform:"TikTok", price:199, time:"21:06" },
+      { handle:"coco_tw", name:"Coco Chen", comment:"mine the blue one", platform:"TikTok", price:320, time:"21:07" },
+      { handle:"bennytw", name:"Benny Ho", comment:"sold 3pcs", platform:"Facebook", price:600, time:"21:08" },
+    ],
+    buyers: [
+      { handle:"lisa.tw", name:"Lisa Tan", platform:"TikTok", num:1, orders:[{item:"Floral dress",price:380,time:"20:51"},{item:"Tote bag",price:220,time:"20:58"}] },
+      { handle:"grace_h", name:"Grace Huang", platform:"Facebook", num:2, orders:[{item:"Sneakers",price:540,time:"20:55"}] },
+      { handle:"mike.tw", name:"Mike Lai", platform:"TikTok", num:3, orders:[{item:"Cap",price:160,time:"21:01"}] },
+    ],
+    printedKeys: [],
+    selHandle: null,
+    seq: 4821,
+    handleLevel: 2,
+  };
+
+  // @handle color per theme, 4 darkness levels
+  HANDLE = {
+    dark:  ["rgba(199,210,254,.55)","rgba(199,210,254,.72)","rgba(214,222,255,.9)","#e6ebff"],
+    light: ["#9b98ad","#7b7890","#5a5770","#403d54"],
+    names: ["Subtle","Medium","Dark","Darkest"],
+  };
+
+  ACCENTS = {
+    Indigo:  { a:"#4f46e5", a2:"#6366f1", bright:"#818cf8", soft:"#eef2ff", border:"#e0e7ff", ring:"#c7d2fe", text:"#3730a3", glow:"rgba(79,70,229,.4)" },
+    Violet:  { a:"#7c3aed", a2:"#8b5cf6", bright:"#a78bfa", soft:"#f5f3ff", border:"#ede9fe", ring:"#ddd6fe", text:"#5b21b6", glow:"rgba(124,58,237,.4)" },
+    Emerald: { a:"#059669", a2:"#10b981", bright:"#34d399", soft:"#ecfdf5", border:"#d1fae5", ring:"#a7f3d0", text:"#065f46", glow:"rgba(5,150,105,.4)" },
+    Rose:    { a:"#e11d48", a2:"#f43f5e", bright:"#fb7185", soft:"#fff1f3", border:"#ffe4e8", ring:"#fecdd3", text:"#9f1239", glow:"rgba(225,29,72,.4)" },
+    Sky:     { a:"#0284c7", a2:"#0ea5e9", bright:"#38bdf8", soft:"#f0f9ff", border:"#e0f2fe", ring:"#bae6fd", text:"#075985", glow:"rgba(2,132,199,.4)" },
+    Amber:   { a:"#d97706", a2:"#f59e0b", bright:"#fbbf24", soft:"#fffbeb", border:"#fef3c7", ring:"#fde68a", text:"#92400e", glow:"rgba(217,119,6,.4)" },
+  };
+
+  initials(s){ return (s||"").split(/[\s_.]+/).filter(Boolean).slice(0,2).map(w=>w[0].toUpperCase()).join("")||"?"; }
+  avColor(h){ const c=["#7F77DD","#1D9E75","#D85A30","#D4537E","#378ADD","#BA7517"];let x=0;for(const ch of (h||""))x=(x*31+ch.charCodeAt(0))%c.length;return c[Math.abs(x)]; }
+  money(n){ return "NT$"+Number(n||0).toLocaleString(); }
+
+  handleColor(){
+    const dark=this.state.theme==="dark";
+    const arr=dark?this.HANDLE.dark:this.HANDLE.light;
+    return arr[this.state.handleLevel]||arr[1];
+  }
+
+  tokens(){
+    const acc=this.ACCENTS[this.state.accentName]||this.ACCENTS.Indigo;
+    const dark=this.state.theme==="dark";
+    if(dark){
+      return {
+        "--bg":"radial-gradient(125% 65% at 80% -5%, #3730a3 0%, #251f7a 38%, #15123f 70%, #0a0824 100%)",
+        "--surface":"rgba(255,255,255,.055)","--surface2":"rgba(255,255,255,.05)",
+        "--border":"rgba(129,140,248,.22)","--border2":"rgba(129,140,248,.3)",
+        "--text":"#ffffff","--text2":"#e0e7ff","--dim":"rgba(199,210,254,.72)","--faint":"rgba(199,210,254,.5)","--handle":this.handleColor(),
+        "--accent":acc.a,"--accent2":acc.a2,"--accent-bright":acc.bright,"--accent-soft":"rgba(255,255,255,.06)","--accent-border":"rgba(129,140,248,.4)","--accent-glow":acc.glow,
+        "--on-accent":"#ffffff",
+        "--cyan":"#22d3ee","--cyan-text":"#a5f3fc","--cyan-soft":"rgba(34,211,238,.1)","--cyan-border":"rgba(34,211,238,.32)",
+        "--success":"#34d399","--success-soft":"rgba(52,211,153,.14)",
+        "--shadow":"0 16px 40px rgba(10,8,36,.4)","--grid":"rgba(129,140,248,.085)",
+        "--nav":"rgba(15,12,46,.82)","--nav-border":"rgba(129,140,248,.2)",
+        "--head-bg":"transparent","--head-border":"rgba(129,140,248,.16)","--head-text":"#ffffff","--head-sub":"rgba(199,210,254,.6)",
+        "--head-btn":"rgba(255,255,255,.07)","--head-btn-border":"rgba(129,140,248,.3)",
+      };
+    }
+    return {
+      "--bg":"#f3f4fb",
+      "--surface":"#ffffff","--surface2":"#f6f7fc",
+      "--border":"#ebecf5","--border2":"#e2e3ef",
+      "--text":"#1c1a35","--text2":"#34324f","--dim":"#6f6c86","--faint":"#a3a0b5","--handle":this.handleColor(),
+      "--accent":acc.a,"--accent2":acc.a2,"--accent-bright":acc.a,"--accent-soft":acc.soft,"--accent-border":acc.border,"--accent-glow":acc.glow,
+      "--on-accent":"#ffffff",
+      "--cyan":acc.a,"--cyan-text":acc.text,"--cyan-soft":acc.soft,"--cyan-border":acc.border,
+      "--success":"#059669","--success-soft":"#ecfdf5",
+      "--shadow":"0 12px 34px rgba(28,26,53,.10)","--grid":"rgba(0,0,0,0)",
+      "--nav":"rgba(255,255,255,.92)","--nav-border":"#ececf4",
+      "--head-bg":"linear-gradient(135deg,"+acc.a+","+acc.a2+")","--head-border":"transparent","--head-text":"#ffffff","--head-sub":"rgba(255,255,255,.8)",
+      "--head-btn":"rgba(255,255,255,.18)","--head-btn-border":"rgba(255,255,255,.3)",
+    };
+  }
+
+  oneClick(idx){
+    this.setState(s=>{
+      const c=s.comments[idx]; if(!c) return {};
+      const key=c.handle+"|"+c.time;
+      if(s.printedKeys.includes(key)) return {};
+      let buyers=s.buyers.slice();
+      let existing=buyers.find(b=>b.handle===c.handle&&b.platform===c.platform);
+      const order={item:c.comment||"Live order",price:c.price,time:c.time};
+      if(existing){
+        buyers=buyers.map(b=>b===existing?{...b,orders:[...b.orders,order]}:b);
+      }else{
+        const num=buyers.length+1;
+        buyers=[...buyers,{handle:c.handle,name:c.name,platform:c.platform,num,orders:[order]}];
+      }
+      return { buyers, printedKeys:[...s.printedKeys,key] };
+    });
+  }
+
+  renderVals(){
+    const s=this.state;
+    const acc=this.ACCENTS[s.accentName]||this.ACCENTS.Indigo;
+    const dark=s.theme==="dark";
+    const inApp=s.screen!=="login";
+
+    const frameStyle=Object.assign({}, this.tokens(), {
+      position:"relative", width:"390px", height:"844px", borderRadius:"36px",
+      overflow:"hidden", background:"var(--bg)", color:"var(--text)",
+      boxShadow:"0 30px 80px rgba(20,16,60,.4)", fontFamily:"'Inter',sans-serif",
+      border:"1px solid rgba(0,0,0,.06)",
+    });
+
+    // stats
+    const allOrders=[];
+    s.buyers.forEach(b=>b.orders.forEach(o=>allOrders.push(Object.assign({},o,{buyer:b}))));
+    const totRev=allOrders.reduce((a,o)=>a+(o.price||0),0);
+
+    const ptag=(p)=>p==="TikTok"
+      ? (dark?{bg:"rgba(168,85,247,.2)",text:"#d8b4fe"}:{bg:"#f3e8ff",text:"#7c3aed"})
+      : (dark?{bg:"rgba(34,197,94,.18)",text:"#86efac"}:{bg:"#dcfce7",text:"#15803d"});
+
+    const comments=s.comments.map((c,i)=>{
+      const key=c.handle+"|"+c.time;
+      const done=s.printedKeys.includes(key);
+      const pt=ptag(c.platform);
+      return {
+        name:c.name, handleLabel:"@"+c.handle, comment:c.comment, platform:c.platform, time:c.time,
+        initials:this.initials(c.name), avColor:this.avColor(c.handle),
+        ptagBg:pt.bg, ptagText:pt.text,
+        done, btnLabel: done?"✓ Done":"1-Click",
+        btnBg: done? "var(--success-soft)" : "linear-gradient(135deg,var(--accent-bright),var(--accent))",
+        btnTextColor: done? "var(--success)" : "var(--on-accent)",
+        btnBorder: done? "var(--success)" : "transparent",
+        onClick: ()=>this.oneClick(i),
+      };
+    });
+
+    const numColor=(n)=> dark ? (n===1?"#a5b4fc":n<=3?"#818cf8":"#6366f1") : (n===1?"#26215C":n<=3?"#534AB7":"#7F77DD");
+    const buyers=s.buyers.map(b=>{
+      const spent=b.orders.reduce((a,o)=>a+(o.price||0),0);
+      const active=s.selHandle===b.handle;
+      return {
+        name:b.name, handleLabel:"@"+b.handle, num:b.num, numColor:numColor(b.num),
+        totalLabel:this.money(spent), ordersLabel:b.orders.length+" orders",
+        rowBorder: active? "var(--accent-bright)" : "var(--border)",
+        onSelect: ()=>this.setState({selHandle:b.handle}),
+      };
+    });
+
+    const orders=allOrders.slice().reverse().map((o,i)=>({
+      name:o.buyer.name, initials:this.initials(o.buyer.name), avColor:this.avColor(o.buyer.handle),
+      item:o.item, priceLabel:this.money(o.price), time:o.time,
+      orderId:"#SF"+(s.seq - i), status:"Paid",
+    }));
+
+    // selected buyer slip
+    const sel=s.buyers.find(b=>b.handle===s.selHandle);
+    let selOrders=[], selTotalLabel="", selNum="", selName="", selHandleLabel="", selNumColor="", selOrdersCount=0, selSeq=s.seq;
+    if(sel){
+      const spent=sel.orders.reduce((a,o)=>a+(o.price||0),0);
+      selOrders=sel.orders.map((o,i)=>({time:o.time,item:o.item,priceLabel:this.money(o.price),orderId:"#SF"+(selSeq-i)}));
+      selTotalLabel=this.money(spent); selNum=sel.num; selName=sel.name; selHandleLabel="@"+sel.handle;
+      selNumColor=numColor(sel.num); selOrdersCount=sel.orders.length;
+    }
+
+    // accent picker
+    const accentOptions=Object.keys(this.ACCENTS).map(name=>{
+      const a=this.ACCENTS[name];
+      const activeA=s.accentName===name;
+      return {
+        name, swatch:"linear-gradient(135deg,"+a.bright+","+a.a+")",
+        ring: activeA? ("0 0 0 2px var(--surface),0 0 0 4px "+a.a2) : "none",
+        check: activeA? "✓" : "",
+        labelColor: activeA? "var(--text)" : "var(--dim)",
+        onPick: ()=>this.setState({accentName:name}),
+      };
+    });
+
+    // @handle color adjuster swatches (always shown against the gray preview bg)
+    const hArr = dark ? this.HANDLE.dark : this.HANDLE.light;
+    const handleOptions = this.HANDLE.names.map((nm,i)=>{
+      const col = hArr[i];
+      const activeH = s.handleLevel===i;
+      // sample chip sits on a mini panel matching current theme surface
+      const previewBg = dark ? "#1c1747" : "#f3f4fb";
+      return {
+        name:nm, sample:col, previewBg,
+        ring: activeH ? "0 0 0 2px #fff,0 0 0 4px #6366f1" : "inset 0 0 0 1px #e2e1ee",
+        labelColor: activeH ? "#46435a" : "#9b98ad",
+        onPick: ()=>this.setState({handleLevel:i}),
+      };
+    });
+
+    // nav
+    const navColor=(p)=> s.screen===p ? "var(--accent-bright)" : "var(--faint)";
+    const navFill=(p)=> s.screen===p ? "var(--accent-soft)" : "transparent";
+
+    const titles={dashboard:["Live session","Tonight · "+s.buyers.length+" buyers"],buyers:["Buyers","Your live-sale leaderboard"],orders:["Orders","All paid orders"],print:["Print slips","Tap a buyer to preview"],settings:["Settings","Profile & appearance"]};
+    const tt=titles[s.screen]||["",""];
+
+    return {
+      frameStyle, isDark:dark, isLogin:s.screen==="login", inApp,
+      isDash:s.screen==="dashboard", isBuyers:s.screen==="buyers", isOrders:s.screen==="orders",
+      isPrint:s.screen==="print", isSettings:s.screen==="settings",
+      screenTitle:tt[0], screenSub:tt[1],
+      themeIcon: dark? "☀" : "☾", themeName: dark? "Dark":"Light",
+
+      totOrd: allOrders.length, totRevLabel:this.money(totRev), buyersCount:s.buyers.length,
+      commentsCountLabel: s.comments.length+" received", ordersCountLabel: allOrders.length+" orders today",
+      comments, buyers, orders,
+
+      hasSel:!!sel, noSel:!sel, selOrders, selTotalLabel, selNum, selName, selHandleLabel, selNumColor, selOrdersCount,
+      today: "2026-06-23", printLabel:"Print slip again",
+
+      accentOptions, accentName:s.accentName, handleOptions,
+      darkPillBg: dark? "var(--accent-bright)":"transparent", darkPillColor: dark? "var(--on-accent)":"var(--dim)",
+      lightPillBg: dark? "transparent":"var(--accent)", lightPillColor: dark? "var(--dim)":"#ffffff",
+
+      navLive:()=>this.setState({screen:"dashboard"}), navLiveColor:navColor("dashboard"), navLiveFill:navFill("dashboard"),
+      navBuyers:()=>this.setState({screen:"buyers"}), navBuyersColor:navColor("buyers"),
+      navOrders:()=>this.setState({screen:"orders"}), navOrdersColor:navColor("orders"),
+      navPrint:()=>this.setState({screen:"print"}), navPrintColor:navColor("print"),
+      navSettings:()=>this.setState({screen:"settings"}), navSettingsColor:navColor("settings"),
+
+      signIn:()=>this.setState({screen:"dashboard"}),
+      signOut:()=>this.setState({screen:"login"}),
+      toggleTheme:()=>this.setState(st=>({theme:st.theme==="dark"?"light":"dark"})),
+      doPrint:()=>{},
+    };
+  }
+}
+</script>
+</body>
+</html>
