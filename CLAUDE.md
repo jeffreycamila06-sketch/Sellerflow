@@ -3,15 +3,17 @@
 Guidance for Claude Code (and humans). Read this first — it captures
 load-bearing context that is NOT obvious from the code.
 
-_Last substantial update: 2026-06-23 (sticker system, language-agnostic names,
-cross-device live session; mobile login redesign, admin set-password, modal
-z-index, Android signing — see "SESSION 2026-06-23 (continued)")._
+_Last substantial update: 2026-06-24 (Google Play production PUBLISHED — signed
+AAB versionCode 2 / "1.1", full rollout all countries; capacitor.config.ts
+production-URL restore gotcha; M3 billing doc fix; full audit; final APK to
+Telegram — see "SESSION 2026-06-24")._
 
 ## What it is
 Capacitor-based live-selling assistant app para sa TikTok/Facebook sellers sa Taiwan.
 ~45–53 active paying users. App is FREE to download; subscriptions (Basic/Pro/Master)
 bayad manually via Wise + Telegram, LABAS ng Google Play. Free tier = cap-limited
-sa 200 orders (hindi time-limited). Almost all UI lives in one big file:
+sa 200 orders kada rolling 30-day cycle (nagre-reset bawat cycle, HINDI lifetime;
+tugma sa `sql/04_free_tier_cap.sql`). Almost all UI lives in one big file:
 `src/App.tsx` (~4.3k lines); pure/testable logic is extracted to `src/lib/*`
 (`orderLogic.ts`, `dateHelpers.ts`, `slipFields.ts`, …).
 
@@ -26,7 +28,7 @@ sa 200 orders (hindi time-limited). Almost all UI lives in one big file:
 ```bash
 npm run dev         # vite dev server
 npm run typecheck   # tsc --noEmit
-npm test            # vitest run  (97/97 green on main as of 2026-06-23)
+npm test            # vitest run  (101/101 green on main as of 2026-06-24)
 npm run build       # vite build
 npm run lint        # eslint — has a few PRE-EXISTING warnings/errors, NOT run by CI
 npm run agent:check # lint + typecheck + test + build
@@ -48,6 +50,12 @@ npm run agent:check # lint + typecheck + test + build
   native sticker change leaves **CI red until goldens are regenerated**.
 - **Preview URLs cannot TikTok-connect** (Render `CLIENT_ORIGIN=sellerflowlive.com`),
   so live-order flows can only be tested on production.
+- ⚠️ **ALWAYS verify `mobile/capacitor.config.ts` `server.url` = PRODUCTION before
+  building an AAB.** The local working tree can drift to a preview URL (e.g.
+  `sellerflow-git-…vercel.app`); restore with
+  `git checkout origin/main -- mobile/capacitor.config.ts` (prod =
+  `https://www.sellerflowlive.com/?apk=20260523-dark-mobile`). A preview-URL AAB
+  ships a broken shell.
 
 ### Rollback (production)
 - **Fastest (no rebuild):** Vercel → Deployments → previous production deploy →
@@ -127,10 +135,16 @@ sellerflowlive.com.
 
 ## Google Play
 - Account: **`camilajeffrey1@gmail.com` (u/1)** — **NOT** `jeffreycamila06@gmail.com`.
-- App `com.sellerflow.live`. **Production submitted 2026-06-23** (review ~7 days).
-  Subscriptions stay outside Play (Wise + Telegram).
-- ⚠️ `versionCode` still **1** / `versionName` **"1.0"** — **MUST bump before any
-  Play Store upload.**
+- App `com.sellerflow.live`. Subscriptions stay outside Play (Wise + Telegram).
+- ✅ **Production PUBLISHED 2026-06-24** (live on Play, not just in review) —
+  signed AAB, **versionCode 1→2**, **versionName "1.0"→"1.1"**. Built via Android
+  Studio / `gradlew bundleRelease` (keystore at
+  `~/Sellerflow/keystore/sellerflow-upload.keystore`, props at
+  `mobile/android/keystore.properties` — both gitignored, Mac-local only).
+  **Released to production, all countries (rest of world), FULL rollout (not
+  staged).**
+- ⚠️ **NEXT bump:** versionCode must increase again (≥3) before the next AAB
+  upload — Play rejects duplicate versionCodes.
 
 ## SESSION 2026-06-23 (continued) — all LIVE on production `main`
 
@@ -191,6 +205,32 @@ Admin can set a seller's password directly (was a dead-end before).
   change — it also bumps on normal user login. Use `admin_password_log` for the
   audit trail instead.
 
+## SESSION 2026-06-24 — Play release + audit
+
+### Google Play production release (DONE — see "Google Play" above)
+Signed AAB built + **PUBLISHED** (live, not just in review): versionCode 1→2,
+versionName "1.0"→"1.1", full rollout all countries.
+- ⚠️ **capacitor.config.ts gotcha:** the local working tree had drifted to a
+  preview URL (`sellerflow-git-claude-printer-followups…vercel.app`); restored to
+  prod (`https://www.sellerflowlive.com/?apk=20260523-dark-mobile`) via
+  `git checkout origin/main -- mobile/capacitor.config.ts` **before** building.
+  Always verify `server.url` = production before any AAB.
+
+### Final APK → Telegram (DONE, 2026-06-24)
+Distributed a **debug build** with the new native sticker pipeline
+(`TsplBuilder` / `SizeConfig` / `writeTextSmart`) + language-agnostic buyer names.
+Fixes the prior-APK gap (language / fill-height / per-size isolation).
+
+### Full audit (2026-06-24) — healthy, report-only
+typecheck clean · **101/101 tests** · golden TSPL parity OK · build green · billing
+trigger intact + DB-enforced · RLS all scoped · zero hardcoded secrets.
+- Findings (NO action taken, by design):
+  - 🔴 **H1** — `protobufjs` advisory (Cluster B, deliberately pinned — see Critical rules).
+  - 🟡 **M1** — sticker clipping at high size scale.
+  - 🟡 **M2** — free-tier RPC poll every 30s, not visibility-guarded (egress watch).
+  - 🟢 **M3** — billing doc fixed: free tier = 200 orders / rolling 30-day cycle
+    (resets, NOT lifetime) — matches `sql/04_free_tier_cap.sql`. (Applied above.)
+
 ## Settings Redesign (planned, not yet coded)
 Handoff: **`settings-redesign-handoff.md`**; approved mockup
 **`settings-mockup-v2.html`**.
@@ -207,7 +247,9 @@ Handoff: **`settings-redesign-handoff.md`**; approved mockup
   3. **Ship method** — phased rollout vs single merge?
 
 ## Current state / NEXT
-- `main` HEAD has all of the above. **97/97 vitest green.** Egress small. Billing
+- `main` HEAD has all of the above. **101/101 vitest green.** Egress small. Billing
   `orders` untouched.
-- ⚠️ **NEXT:** build the **final APK** (native sticker + language) + distribute via
-  Telegram — prior APK lacks the language / fill-height / per-size-isolation changes.
+- ✅ **DONE:** Google Play production **PUBLISHED** (AAB v2 / "1.1", full rollout —
+  live); final APK (native sticker + language) distributed via Telegram.
+- ⚠️ **NEXT:** bump versionCode ≥3 before the next AAB upload.
+  Open watch items: M1 sticker clipping at high scale, M2 free-tier 30s poll egress.
