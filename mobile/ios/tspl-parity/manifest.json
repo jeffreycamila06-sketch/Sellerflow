@@ -20,6 +20,10 @@
     {"name": "vietnamese", "labelWidthMm": 100, "labelHeightMm": 60},
     {"name": "vietnamese_60x40", "labelWidthMm": 60, "labelHeightMm": 40},
     {"name": "vietnamese_dong", "labelWidthMm": 100, "labelHeightMm": 60},
-    {"name": "arabic_fallback", "labelWidthMm": 100, "labelHeightMm": 60}
+    {"name": "arabic_fallback", "labelWidthMm": 100, "labelHeightMm": 60},
+    {"name": "scaled_name2_num3", "labelWidthMm": 100, "labelHeightMm": 60},
+    {"name": "scaled_mixed", "labelWidthMm": 100, "labelHeightMm": 60},
+    {"name": "scaled_cjk_name2", "labelWidthMm": 100, "labelHeightMm": 60},
+    {"name": "scaled_max_100x60", "labelWidthMm": 100, "labelHeightMm": 60}
   ]
 }
