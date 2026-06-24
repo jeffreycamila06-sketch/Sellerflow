@@ -187,6 +187,23 @@ class TsplBuilder {
         boolean printOrderItems   = settings == null || settings.optBoolean("printOrderItems", true);
         boolean printTotal        = settings == null || settings.optBoolean("printTotal", true);
 
+        // ── Per-element size scaling (mirrors tsplReference.ts / Swift) ─────────
+        // Each element has an integer LEVEL 1-8 = the seller's size adjuster. The
+        // level multiplies the element's BASE TSPL multiplier (clamped to the
+        // TSPL 8x ceiling). Level 1 => base => byte-identical to the goldens. The
+        // already-2x-wide elements (buyer#, price code, total amount) scale
+        // HEIGHT only so they never overrun the right edge. F2/F3/F4 are the 1x
+        // font heights (dots) used only to reflow the layout down so a grown
+        // element never overlaps the next — at level 1 every delta is 0.
+        final int F2 = 24, F3 = 24, F4 = 32;
+        int lvlStore    = lvl(settings, "printStoreScale");
+        int lvlBuyerNum = lvl(settings, "printBuyerNumberScale");
+        int lvlName     = lvl(settings, "printBuyerNameScale");
+        int lvlUser     = lvl(settings, "printUsernameScale");
+        int lvlOrder    = lvl(settings, "printOrderScale");
+        int lvlComment  = lvl(settings, "printCommentScale");
+        int lvlTotal    = lvl(settings, "printTotalScale");
+
         ByteArrayOutputStream out = new ByteArrayOutputStream(1024);
         writeAscii(out, "SIZE " + labelWidthMm + " mm, " + labelHeightMm + " mm");
         writeAscii(out, "GAP 2 mm, 0");
@@ -241,37 +258,55 @@ class TsplBuilder {
             }
         }
 
+        // `extra` accumulates the cumulative downward shift from BOTH the CJK-
+        // name enlargement (legacy) and per-element size scaling, so the guards
+        // + the bottom-anchored Total track everything above them. At all levels
+        // = 1 it stays 0 (or the legacy CJK delta), keeping fixtures identical.
+        int extra = 0;
         int y = 60;
         if (printStoreName && !cleanStoreName.isEmpty()) {
-            writeTextSmart(out, 16, y, "3", safe(truncate(cleanStoreName, 36)), 1, 1, 1, 1, c.rightEdge);
-            y += c.storeGap;
+            int m = cmul(lvlStore);
+            writeTextSmart(out, 16, y, "3", safe(truncate(cleanStoreName, 36)), m, m, m, m, c.rightEdge);
+            int d = (m - 1) * F3;
+            y += c.storeGap + d;
+            extra += d;
         }
 
         // Buyer # is the dominant element — the whole point of the sticker.
         // Height multiplier per size (2x2 on tall labels, 2x1 on 60x40).
+        // Height-priority scaling: width stays 2x, height = buyerNumYMul * level.
         if (printBuyerNumber) {
-            writeAscii(out, "TEXT 16," + y + ",\"4\",0,2," + c.buyerNumYMul + ",\"Buyer #" + buyerNum + "\"");
-            y += c.buyerNumGap;
+            int ym = cmul(c.buyerNumYMul * lvlBuyerNum);
+            writeAscii(out, "TEXT 16," + y + ",\"4\",0,2," + ym + ",\"Buyer #" + buyerNum + "\"");
+            int d = (ym - c.buyerNumYMul) * F4;
+            y += c.buyerNumGap + d;
+            extra += d;
         }
 
-        // When the name is CJK it renders taller (2x = 48 vs ASCII 32), so the
-        // whole layout BELOW it shifts down by `extra`. ASCII names -> extra 0,
-        // keeping every English fixture byte-identical.
-        int extra = 0;
+        // Buyer name — scaled on both axes (left-aligned, has width budget).
+        // When the name is CJK it renders taller (base 2x = 48 vs ASCII 32), so
+        // the whole layout BELOW it shifts down by `extra`. ASCII names at level
+        // 1 -> extra 0, keeping every English fixture byte-identical.
         if (!nameOut.isEmpty()) {
             boolean cjkName = nameTier == SCRIPT_CJK;
-            int nxm = cjkName ? c.nameCjkXMul : 1;
-            int nym = cjkName ? c.nameCjkYMul : 1;
-            writeTextSmart(out, 16, y, "4", safe(truncate(nameOut, 30)), 1, 1, nxm, nym, c.rightEdge);
-            y += cjkName ? c.nameCjkGap : c.nameGap;
-            extra = cjkName ? (c.nameCjkGap - c.nameGap) : 0;
+            int asciiX = cmul(lvlName), asciiY = cmul(lvlName);
+            int cjkX = cmul(c.nameCjkXMul * lvlName), cjkY = cmul(c.nameCjkYMul * lvlName);
+            writeTextSmart(out, 16, y, "4", safe(truncate(nameOut, 30)), asciiX, asciiY, cjkX, cjkY, c.rightEdge);
+            int usedY = cjkName ? cjkY : asciiY;
+            int refBaseY = cjkName ? c.nameCjkYMul : 1;
+            int d = (usedY - refBaseY) * F4;
+            y += (cjkName ? c.nameCjkGap : c.nameGap) + d;
+            extra += (cjkName ? (c.nameCjkGap - c.nameGap) : 0) + d;
         }
 
         // @username — kept on every size, incl. 60x40 (it replaced the Total
         // line there; buyer identity is essential on a shipping sticker).
         if (printBuyerUsername && !cleanBuyerHandle.isEmpty()) {
-            writeTextSmart(out, 16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)), 1, 1, 1, 1, c.rightEdge);
-            y += c.usernameGap;
+            int m = cmul(lvlUser);
+            writeTextSmart(out, 16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)), m, m, m, m, c.rightEdge);
+            int d = (m - 1) * F3;
+            y += c.usernameGap + d;
+            extra += d;
         }
 
         // Thin separator before the order lines so they read as a sub-section.
@@ -288,22 +323,26 @@ class TsplBuilder {
                 String time = order.optString("time", "");
                 String item = order.optString("item", "");
                 String cleanItem = stripEmoji(item);
+                int tm = cmul(lvlOrder);
+                int pm = cmul(lvlComment); // price code: height-priority (width stays 2x)
                 if (!time.isEmpty()) {
                     // Time column: x=16..~160 (font 2, ~12 dots/char). The
                     // frontend formats this as "HH:MM" (5 chars = ~60 dots)
                     // in the device's local timezone; truncate is a safety
                     // net for unexpected formats.
-                    writeAscii(out, "TEXT 16," + y + ",\"2\",0,1,1,\"" + safe(truncate(time, 10)) + "\"");
+                    writeAscii(out, "TEXT 16," + y + ",\"2\",0," + tm + "," + tm + ",\"" + safe(truncate(time, 10)) + "\"");
                 }
                 if (!cleanItem.isEmpty()) {
                     // Item column: x=180..rightEdge. The "item" is the buyer's
                     // short price code (e.g. 150/250/600), rendered at the SAME
-                    // size as the grand Total amount — font "4", 2x width, 1x
+                    // base as the grand Total amount — font "4", 2x width, 1x
                     // height. truncate(12) is a width guard so a longer-than-
                     // expected code clips instead of overrunning rightEdge.
-                    writeTextSmart(out, 180, y, "4", safe(truncate(cleanItem, 12)), 2, 1, 2, 1, c.rightEdge);
+                    writeTextSmart(out, 180, y, "4", safe(truncate(cleanItem, 12)), 2, pm, 2, pm, c.rightEdge);
                 }
-                y += 38;
+                int d = Math.max((tm - 1) * F2, (pm - 1) * F4);
+                y += 38 + d;
+                extra += d;
             }
         }
 
@@ -313,9 +352,11 @@ class TsplBuilder {
         // @username row — the price still prints as the order item above.
         if (printTotal && totalSpent > 0 && c.showTotal) {
             int totalY = c.totalY + extra;
-            writeAscii(out, "TEXT 16," + totalY + ",\"3\",0,1,1,\"Total:\"");
+            int lm = cmul(lvlTotal);
+            writeAscii(out, "TEXT 16," + totalY + ",\"3\",0," + lm + "," + lm + ",\"Total:\"");
+            int am = cmul(lvlTotal); // amount: height-priority (width stays 2x)
             String totalStr = safe(currency) + money(totalSpent);
-            writeAscii(out, "TEXT " + c.totalAmountX + "," + totalY + ",\"4\",0,2,1,\"" + safe(truncate(totalStr, 18)) + "\"");
+            writeAscii(out, "TEXT " + c.totalAmountX + "," + totalY + ",\"4\",0,2," + am + ",\"" + safe(truncate(totalStr, 18)) + "\"");
         }
 
         writeAscii(out, "PRINT 1");
@@ -325,6 +366,17 @@ class TsplBuilder {
     private static String truncate(String s, int maxLen) {
         if (s == null) return "";
         return s.length() > maxLen ? s.substring(0, maxLen) : s;
+    }
+
+    // Per-element size LEVEL read from settings (1-8, default 1 = base size).
+    private static int lvl(JSONObject settings, String key) {
+        int v = settings == null ? 1 : settings.optInt(key, 1);
+        return Math.max(1, Math.min(8, v));
+    }
+
+    // Clamp a computed TSPL multiplier to the firmware's 1-8 range.
+    private static int cmul(int m) {
+        return Math.max(1, Math.min(8, m));
     }
 
     private static String money(double v) {

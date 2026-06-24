@@ -50,7 +50,7 @@ interface BluetoothScanResult { ok?:boolean; message?:string; printers?:Bluetoot
 // BITMAP commands, so the native plugin builds the layout from structured
 // slip data using TEXT and BAR primitives only. Mirrors the existing slip
 // shape so we can pass straight through from printSlip.
-interface NativeStickerPayload { storeName:string; sessionDate:string; currency:string; buyer:Buyer; labelWidthMm:number; labelHeightMm:number; settings:Pick<Settings,"printStoreName"|"printBuyerNumber"|"printBuyerUsername"|"printOrderItems"|"printTotal">; }
+interface NativeStickerPayload { storeName:string; sessionDate:string; currency:string; buyer:Buyer; labelWidthMm:number; labelHeightMm:number; settings:Pick<Settings,"printStoreName"|"printBuyerNumber"|"printBuyerUsername"|"printOrderItems"|"printTotal"|"printStoreScale"|"printBuyerNumberScale"|"printBuyerNameScale"|"printUsernameScale"|"printOrderScale"|"printCommentScale"|"printTotalScale">; }
 interface StickerPrintResult { ok?:boolean; message?:string; }
 type NumberSettingKey = {[K in keyof Settings]: Settings[K] extends number ? K : never}[keyof Settings];
 interface NativePrinterPayload { type:"sellerflow.printSlip"; buyer:Buyer; currency:string; storeName:string; settings:Settings; sessionDate:string; createdAt:string; }
@@ -172,7 +172,7 @@ const DEFAULT_SERVER =
     : "https://sellerflow-live-server.onrender.com";
 const SERVER = String(import.meta.env.VITE_SERVER_URL || DEFAULT_SERVER).replace(/\/$/,"");
 const DEBUG_SOCKET = import.meta.env.DEV || import.meta.env.VITE_DEBUG_SOCKET === "true";
-const DEF_SETTINGS: Settings = { darkMode:true, autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"", paperSize:"100x60mm", printerType:"lan", lanFormat:"receipt", stickerSize:"100x60", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printLogo:true, printDateTime:true, printBuyerName:true, printLabelScale:100, printStoreScale:100, printBuyerNumberScale:120, printBuyerNameScale:100, printUsernameScale:100, printOrderScale:100, printCommentScale:100, printTotalScale:100, printStoreX:0, printStoreY:0, printBuyerLabelX:0, printBuyerLabelY:0, printBuyerNumberX:0, printBuyerNumberY:0, printBuyerNameX:0, printBuyerNameY:0, printUsernameX:0, printUsernameY:0, printSessionX:0, printSessionY:0, printOrderX:0, printOrderY:0, printTotalX:0, printTotalY:0 };
+const DEF_SETTINGS: Settings = { darkMode:true, autoprint:true, soundAlert:true, stockAlert:true, dailyEmail:false, keywords:"", currency:"", paperSize:"100x60mm", printerType:"lan", lanFormat:"receipt", stickerSize:"100x60", printStoreName:true, printBuyerNumber:true, printBuyerUsername:true, printOrderItems:true, printTotal:true, printAutoClose:true, printLogo:true, printDateTime:true, printBuyerName:true, printLabelScale:1, printStoreScale:1, printBuyerNumberScale:1, printBuyerNameScale:1, printUsernameScale:1, printOrderScale:1, printCommentScale:1, printTotalScale:1, printStoreX:0, printStoreY:0, printBuyerLabelX:0, printBuyerLabelY:0, printBuyerNumberX:0, printBuyerNumberY:0, printBuyerNameX:0, printBuyerNameY:0, printUsernameX:0, printUsernameY:0, printSessionX:0, printSessionY:0, printOrderX:0, printOrderY:0, printTotalX:0, printTotalY:0 };
 const LANG_OPTS: {code:Lang;label:string}[] = [{code:"en",label:"🇺🇸 EN"},{code:"fil",label:"🇵🇭 FIL"},{code:"zh",label:"🇨🇳 中文"},{code:"zh-TW",label:"🇹🇼 繁體"},{code:"vi",label:"🇻🇳 VI"},{code:"th",label:"🇹🇭 TH"},{code:"id",label:"🇮🇩 ID"}];
 // Phase 3 Language screen rows. Uses a 2-letter country-code badge instead of
 // emoji flag glyphs — Android system fonts often fail to render regional-
@@ -569,6 +569,17 @@ function buildNativeStickerPayload(buyer:Buyer,cur:string,storeName:string,cfg:S
       printBuyerUsername:cfg.printBuyerUsername,
       printOrderItems:cfg.printOrderItems,
       printTotal:cfg.printTotal,
+      // Per-element size LEVELS (1-8, integer; default 1 = byte-identical to the
+      // goldens). The native TSPL builder multiplies each element's BASE TSPL
+      // multiplier by its level (height-priority for the already-2x-wide buyer#/
+      // price/total) and reflows the layout down so nothing overlaps.
+      printStoreScale:cfg.printStoreScale,
+      printBuyerNumberScale:cfg.printBuyerNumberScale,
+      printBuyerNameScale:cfg.printBuyerNameScale,
+      printUsernameScale:cfg.printUsernameScale,
+      printOrderScale:cfg.printOrderScale,
+      printCommentScale:cfg.printCommentScale,
+      printTotalScale:cfg.printTotalScale,
     },
   };
 }
@@ -633,9 +644,11 @@ function printSlip(buyer:Buyer,cur:string,storeName:string,printSettings:Setting
     return;
   }
   const size=cfg.stickerSize;
-  const scale=(v:number|undefined,fallback=100)=>Math.max(60,Math.min(180,v||fallback))/100;
+  // Size is an INTEGER LEVEL 1-8 (was 60-180%); use the level directly as the
+  // browser-print font multiplier so web matches the sticker (1 = base).
+  const scale=(v:number|undefined,fallback=1)=>Math.max(1,Math.min(8,Number(v||fallback||1)));
   const storeScale=scale(cfg.printStoreScale,cfg.printLabelScale);
-  const buyerNumberScale=scale(cfg.printBuyerNumberScale,120);
+  const buyerNumberScale=scale(cfg.printBuyerNumberScale,1);
   const buyerNameScale=scale(cfg.printBuyerNameScale,cfg.printLabelScale);
   const usernameScale=scale(cfg.printUsernameScale,cfg.printLabelScale);
   const orderScale=scale(cfg.printOrderScale,cfg.printLabelScale);
@@ -2013,9 +2026,11 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   const [directPrintMode,setDirectPrintMode]=useState(()=>directPrintParam||LS.get<boolean>("sf_direct_print_mode",false));
   const settingsDirty=JSON.stringify(sets)!==JSON.stringify(settings);
   const settingsTitles={"":t.nav_settings,profile:t.profile_section,password:t.pw_section,display:t.display_section,printer:t.set_row_printer,mobilePrinter:t.set_title_mobile_printer,manageTiktok:t.set_row_manage_tiktok,manageFacebook:t.set_row_manage_facebook,language:t.set_row_language,support:t.support_label,livePattern:t.set_live_pattern_title};
-  const previewScale=(v:number|undefined,fallback=100)=>Math.max(60,Math.min(180,v||fallback))/100;
+  // Size is now an INTEGER LEVEL 1-8 (was a 60-180% scale). previewScale returns
+  // the level directly as a px multiplier — level 1 = base size (unchanged look).
+  const previewScale=(v:number|undefined,fallback=1)=>Math.max(1,Math.min(8,Number(v||fallback||1)));
   const storePreview=previewScale(sets.printStoreScale,sets.printLabelScale);
-  const buyerNumberPreview=previewScale(sets.printBuyerNumberScale,120);
+  const buyerNumberPreview=previewScale(sets.printBuyerNumberScale,1);
   const buyerNamePreview=previewScale(sets.printBuyerNameScale,sets.printLabelScale);
   const usernamePreview=previewScale(sets.printUsernameScale,sets.printLabelScale);
   const orderPreview=previewScale(sets.printOrderScale,sets.printLabelScale);
@@ -2108,14 +2123,15 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
   // browser-print path keeps them.
   const isStickerOutput = sets.printerType==="bluetooth" || sets.lanFormat==="sticker";
   const previewMove=(x:number|undefined,y:number|undefined)=>({transform:`translate(${(x||0)*1.8}px,${(y||0)*1.8}px)`});
-  const stepSize=(key:NumberSettingKey,delta:number)=>setSets(s=>({...s,[key]:Math.max(60,Math.min(180,Number(s[key]||100)+delta))}));
+  // Size is an INTEGER LEVEL 1-8 (the TSPL multiplier; 1 = normal). -/+ steps by 1.
+  const stepSize=(key:NumberSettingKey,delta:number)=>setSets(s=>({...s,[key]:Math.max(1,Math.min(8,Number(s[key]||1)+delta))}));
   const sizeStep=(key:NumberSettingKey,label:string)=>(
     <div key={key} className="position-step-row">
       <span>{label}</span>
       <div className="position-step-controls">
-        <button type="button" onClick={()=>stepSize(key,-5)}>-</button>
-        <b>{Number(sets[key]||100)}%</b>
-        <button type="button" onClick={()=>stepSize(key,5)}>+</button>
+        <button type="button" onClick={()=>stepSize(key,-1)}>-</button>
+        <b>{Number(sets[key]||1)}×</b>
+        <button type="button" onClick={()=>stepSize(key,1)}>+</button>
       </div>
     </div>
   );
@@ -2516,20 +2532,20 @@ function SettingsPage({user,settings,onSaveProfile,onSaveSettings,onSavePw,onExp
       </div>
     </form>
   );
-  // ── PHASE 5 LIVE print-pattern screen. Per-element ON/OFF + size (60-180%).
-  // ⚠️ The size + new toggles persist (sf_settings) and drive the PREVIEW, but
-  // native ESC/POS + TSPL print fixed fonts — honoring these on-device is a
-  // SEPARATE native task (would touch the golden-tested builders). Position
-  // tools (L/R + U/D) stay desktop-only per the brief.
+  // ── PHASE 5 LIVE print-pattern screen. Per-element ON/OFF + size LEVEL (1-8x).
+  // The level is the TSPL TEXT multiplier the native sticker builder applies to
+  // that element (1 = normal, byte-identical to the goldens). Level + toggles
+  // persist to sf_settings and drive the preview AND the on-device sticker.
+  // Position tools (L/R + U/D) stay desktop-only per the brief.
   const patternRow=(toggleKey:keyof Settings,scaleKey:NumberSettingKey|null,label:string)=>(
     <div className="set-pat-row" key={toggleKey}>
       <span className="set-pat-label">{label}</span>
       <div className="set-pat-ctrls">
         {scaleKey
           ?<div className="set-pat-size">
-            <button type="button" onClick={()=>stepSize(scaleKey,-5)}>−</button>
-            <b>{Number(sets[scaleKey]||100)}%</b>
-            <button type="button" onClick={()=>stepSize(scaleKey,5)}>+</button>
+            <button type="button" onClick={()=>stepSize(scaleKey,-1)}>−</button>
+            <b>{Number(sets[scaleKey]||1)}×</b>
+            <button type="button" onClick={()=>stepSize(scaleKey,1)}>+</button>
           </div>
           :<span className="set-pat-fixed">{t.set_fixed_size}</span>}
         <div onClick={()=>setSets(s=>({...s,[toggleKey]:!s[toggleKey]}))} className={`tog ${sets[toggleKey]?"on":""}`}/>
@@ -3827,7 +3843,17 @@ export default function App(){
     // suffix), which matched no dropdown <option value> and broke the desktop
     // @page parse. Strip the suffix on load so the value is canonical "WxH".
     const stickerSize=((saved.stickerSize as string|undefined)??DEF_SETTINGS.stickerSize).replace(/mm$/i,"");
-    return {...DEF_SETTINGS,...saved,currency:cleanCurrency(saved.currency),stickerSize};
+    // Migration: per-element size changed from a 60-180% scale to an integer
+    // LEVEL 1-8 (the TSPL multiplier). Old saves hold percentages (>8); convert
+    // them to the nearest level so they don't read as a giant 8x. New saves are
+    // already 1-8 and pass through. 100->1, 120->1, 150->2, 180->2.
+    const SCALE_KEYS:NumberSettingKey[]=["printLabelScale","printStoreScale","printBuyerNumberScale","printBuyerNameScale","printUsernameScale","printOrderScale","printCommentScale","printTotalScale"];
+    const migratedScales:Partial<Settings>={};
+    for(const k of SCALE_KEYS){
+      const v=saved[k] as number|undefined;
+      if(typeof v==="number"&&v>8)migratedScales[k]=Math.max(1,Math.min(8,Math.round(v/100)));
+    }
+    return {...DEF_SETTINGS,...saved,...migratedScales,currency:cleanCurrency(saved.currency),stickerSize};
   });
   const [page,setPage]=useState<Page>("dashboard");
   // True while a Supabase PASSWORD_RECOVERY session is active (seller clicked the

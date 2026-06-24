@@ -29,6 +29,15 @@ interface RefSettings {
   printBuyerUsername?: boolean;
   printOrderItems?: boolean;
   printTotal?: boolean;
+  // Per-element size LEVELS (1-8 integer, TSPL multiplier). Absent/1 => base
+  // size => byte-identical to the legacy goldens.
+  printStoreScale?: number;
+  printBuyerNumberScale?: number;
+  printBuyerNameScale?: number;
+  printUsernameScale?: number;
+  printOrderScale?: number;
+  printCommentScale?: number;
+  printTotalScale?: number;
 }
 export interface RefPayload {
   storeName?: string;
@@ -242,6 +251,29 @@ export function buildTsplStickerReference(
   const printOrderItems = flag("printOrderItems");
   const printTotal = flag("printTotal");
 
+  // ── Per-element size scaling (mirrors TsplBuilder.java / Swift) ─────────────
+  // Each element has an integer LEVEL 1-8 = the seller's size adjuster. The
+  // level multiplies the element's BASE TSPL multiplier (clamped to the TSPL 8x
+  // ceiling). Level 1 => base => byte-identical to the legacy goldens. The
+  // already-2x-wide elements (buyer#, price code, total amount) scale HEIGHT
+  // only (width stays at base) so they never overrun the right edge. F2/F3/F4
+  // are the 1x font heights (dots) used only to reflow the layout down so a
+  // grown element never overlaps the next — at level 1 every delta is 0, so the
+  // goldens are untouched.
+  const F2 = 24, F3 = 24, F4 = 32;
+  const cmul = (m: number) => Math.max(1, Math.min(8, m));
+  const lvl = (key: keyof RefSettings) => {
+    const v = settings == null ? 1 : (settings[key] as number | undefined) ?? 1;
+    return Math.max(1, Math.min(8, Number(v) || 1));
+  };
+  const lvlStore = lvl("printStoreScale");
+  const lvlBuyerNum = lvl("printBuyerNumberScale");
+  const lvlName = lvl("printBuyerNameScale");
+  const lvlUser = lvl("printUsernameScale");
+  const lvlOrder = lvl("printOrderScale");
+  const lvlComment = lvl("printCommentScale");
+  const lvlTotal = lvl("printTotalScale");
+
   writeAscii(`SIZE ${labelWidthMm} mm, ${labelHeightMm} mm`);
   writeAscii("GAP 2 mm, 0");
   writeAscii("DIRECTION 1");
@@ -281,34 +313,51 @@ export function buildTsplStickerReference(
     }
   }
 
+  // `extra` accumulates the cumulative downward shift from BOTH the CJK-name
+  // enlargement (legacy) and per-element size scaling, so the guards + the
+  // bottom-anchored Total track everything above them. At all levels = 1 it
+  // stays 0 (or the legacy CJK delta), keeping every fixture byte-identical.
+  let extra = 0;
   let y = 60;
   if (printStoreName && cleanStoreName) {
-    writeTextSmart(16, y, "3", safe(truncate(cleanStoreName, 36)), 1, 1, 1, 1);
-    y += c.storeGap;
+    const m = cmul(lvlStore);
+    writeTextSmart(16, y, "3", safe(truncate(cleanStoreName, 36)), m, m, m, m);
+    const d = (m - 1) * F3;
+    y += c.storeGap + d;
+    extra += d;
   }
 
   // Buyer # — dominant element; 2x1 on the 320 tier (config buyerNumYMul).
+  // Height-priority: width stays 2x, height = buyerNumYMul * level (clamped 8).
   if (printBuyerNumber) {
-    writeAscii(`TEXT 16,${y},"4",0,2,${c.buyerNumYMul},"Buyer #${buyerNum}"`);
-    y += c.buyerNumGap;
+    const ym = cmul(c.buyerNumYMul * lvlBuyerNum);
+    writeAscii(`TEXT 16,${y},"4",0,2,${ym},"Buyer #${buyerNum}"`);
+    const d = (ym - c.buyerNumYMul) * F4;
+    y += c.buyerNumGap + d;
+    extra += d;
   }
 
-  // CJK name renders taller (2x = 48 vs ASCII 32), so the layout below shifts
-  // down by `extra`. ASCII names -> extra 0 (English byte-identical).
-  let extra = 0;
+  // Buyer name — scaled on both axes (left-aligned, has width budget). CJK
+  // renders via TSS24.BF2 (base cjkXMul x cjkYMul); ASCII via font "4" (base 1x1).
   if (nameOut) {
     const cjkName = nameTier === SCRIPT_CJK;
-    const nxm = cjkName ? c.nameCjkXMul : 1;
-    const nym = cjkName ? c.nameCjkYMul : 1;
-    writeTextSmart(16, y, "4", safe(truncate(nameOut, 30)), 1, 1, nxm, nym);
-    y += cjkName ? c.nameCjkGap : c.nameGap;
-    extra = cjkName ? c.nameCjkGap - c.nameGap : 0;
+    const asciiX = cmul(lvlName), asciiY = cmul(lvlName);
+    const cjkX = cmul(c.nameCjkXMul * lvlName), cjkY = cmul(c.nameCjkYMul * lvlName);
+    writeTextSmart(16, y, "4", safe(truncate(nameOut, 30)), asciiX, asciiY, cjkX, cjkY);
+    const usedY = cjkName ? cjkY : asciiY;
+    const refBaseY = cjkName ? c.nameCjkYMul : 1;
+    const d = (usedY - refBaseY) * F4;
+    y += (cjkName ? c.nameCjkGap : c.nameGap) + d;
+    extra += (cjkName ? c.nameCjkGap - c.nameGap : 0) + d;
   }
 
   // @username — kept on every size, incl. 60x40 (replaced the Total line there).
   if (printBuyerUsername && cleanBuyerHandle) {
-    writeTextSmart(16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)), 1, 1, 1, 1);
-    y += c.usernameGap;
+    const m = cmul(lvlUser);
+    writeTextSmart(16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)), m, m, m, m);
+    const d = (m - 1) * F3;
+    y += c.usernameGap + d;
+    extra += d;
   }
 
   if (printOrderItems && orders.length > 0 && y < c.orderEntryGuard + extra) {
@@ -320,15 +369,19 @@ export function buildTsplStickerReference(
       const time = order.time ?? "";
       const item = order.item ?? "";
       const cleanItem = stripEmoji(item);
+      const tm = cmul(lvlOrder);
+      const pm = cmul(lvlComment); // price code: height-priority (width stays 2x)
       if (time) {
-        writeAscii(`TEXT 16,${y},"2",0,1,1,"${safe(truncate(time, 10))}"`);
+        writeAscii(`TEXT 16,${y},"2",0,${tm},${tm},"${safe(truncate(time, 10))}"`);
       }
       if (cleanItem) {
-        // Buyer's short price code -> same size as the grand Total amount:
+        // Buyer's short price code -> same base as the grand Total amount:
         // font "4", 2x width, 1x height. truncate(12) guards the column width.
-        writeTextSmart(180, y, "4", safe(truncate(cleanItem, 12)), 2, 1, 2, 1);
+        writeTextSmart(180, y, "4", safe(truncate(cleanItem, 12)), 2, pm, 2, pm);
       }
-      y += 38;
+      const d = Math.max((tm - 1) * F2, (pm - 1) * F4);
+      y += 38 + d;
+      extra += d;
     }
   }
 
@@ -336,9 +389,11 @@ export function buildTsplStickerReference(
   // guards. Total dropped on 60x40 (config showTotal=false) — swapped for @username.
   if (printTotal && totalSpent > 0 && c.showTotal) {
     const totalY = c.totalY + extra;
-    writeAscii(`TEXT 16,${totalY},"3",0,1,1,"Total:"`);
+    const lm = cmul(lvlTotal);
+    writeAscii(`TEXT 16,${totalY},"3",0,${lm},${lm},"Total:"`);
+    const am = cmul(lvlTotal); // amount: height-priority (width stays 2x)
     const totalStr = safe(currency) + money(totalSpent);
-    writeAscii(`TEXT ${c.totalAmountX},${totalY},"4",0,2,1,"${safe(truncate(totalStr, 18))}"`);
+    writeAscii(`TEXT ${c.totalAmountX},${totalY},"4",0,2,${am},"${safe(truncate(totalStr, 18))}"`);
   }
 
   writeAscii("PRINT 1");

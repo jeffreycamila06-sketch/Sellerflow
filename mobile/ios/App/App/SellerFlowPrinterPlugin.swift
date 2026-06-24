@@ -575,6 +575,32 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         let printOrderItems = boolSetting("printOrderItems")
         let printTotal = boolSetting("printTotal")
 
+        // ── Per-element size scaling (mirrors tsplReference.ts / TsplBuilder.java)
+        // Each element has an integer LEVEL 1-8 = the seller's size adjuster. The
+        // level multiplies the element's BASE TSPL multiplier (clamped to the TSPL
+        // 8x ceiling). Level 1 => base => byte-identical to the goldens. The
+        // already-2x-wide elements (buyer#, price code, total amount) scale HEIGHT
+        // only. F2/F3/F4 are the 1x font heights (dots) used only to reflow the
+        // layout down so a grown element never overlaps the next.
+        let F2 = 24, F3 = 24, F4 = 32
+        func cmul(_ m: Int) -> Int { return max(1, min(8, m)) }
+        func lvlSetting(_ key: String) -> Int {
+            guard let settings = settings else { return 1 }
+            let v: Int
+            if let n = settings[key] as? NSNumber { v = n.intValue }
+            else if let i = settings[key] as? Int { v = i }
+            else if let d = settings[key] as? Double { v = Int(d) }
+            else { v = 1 }
+            return max(1, min(8, v == 0 ? 1 : v))
+        }
+        let lvlStore = lvlSetting("printStoreScale")
+        let lvlBuyerNum = lvlSetting("printBuyerNumberScale")
+        let lvlName = lvlSetting("printBuyerNameScale")
+        let lvlUser = lvlSetting("printUsernameScale")
+        let lvlOrder = lvlSetting("printOrderScale")
+        let lvlComment = lvlSetting("printCommentScale")
+        let lvlTotal = lvlSetting("printTotalScale")
+
         writeAscii("SIZE \(labelWidthMm) mm, \(labelHeightMm) mm")
         writeAscii("GAP 2 mm, 0")
         writeAscii("DIRECTION 1")
@@ -621,36 +647,54 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             }
         }
 
+        // `extra` accumulates the cumulative downward shift from BOTH the CJK-name
+        // enlargement (legacy) and per-element size scaling, so the guards + the
+        // bottom-anchored Total track everything above them. At all levels = 1 it
+        // stays 0 (or the legacy CJK delta), keeping fixtures byte-identical.
+        var extra = 0
         var y = 60
         if printStoreName && !cleanStoreName.isEmpty {
-            writeTextSmart(&out, 16, y, "3", tsplSafe(truncate16(cleanStoreName, 36)), 1, 1, 1, 1, c.rightEdge)
-            y += c.storeGap
+            let m = cmul(lvlStore)
+            writeTextSmart(&out, 16, y, "3", tsplSafe(truncate16(cleanStoreName, 36)), m, m, m, m, c.rightEdge)
+            let d = (m - 1) * F3
+            y += c.storeGap + d
+            extra += d
         }
 
         // Buyer # is the dominant element -- the whole point of the sticker.
         // Height multiplier per size (2x2 on tall labels, 2x1 on 60x40).
+        // Height-priority scaling: width stays 2x, height = buyerNumYMul * level.
         if printBuyerNumber {
-            writeAscii("TEXT 16,\(y),\"4\",0,2,\(c.buyerNumYMul),\"Buyer #\(buyerNum)\"")
-            y += c.buyerNumGap
+            let ym = cmul(c.buyerNumYMul * lvlBuyerNum)
+            writeAscii("TEXT 16,\(y),\"4\",0,2,\(ym),\"Buyer #\(buyerNum)\"")
+            let d = (ym - c.buyerNumYMul) * F4
+            y += c.buyerNumGap + d
+            extra += d
         }
 
-        // CJK name renders taller (2x = 48 vs ASCII 32) so the layout below it
-        // shifts down by `extra`. ASCII names -> extra 0 (English byte-identical).
-        var extra = 0
+        // Buyer name — scaled on both axes (left-aligned, has width budget). When
+        // the name is CJK it renders taller (base 2x = 48 vs ASCII 32) so the
+        // layout below shifts down by `extra`. ASCII at level 1 -> byte-identical.
         if !nameOut.isEmpty {
             let cjkName = nameTier == SellerFlowPrinterPlugin.scriptCjk
-            let nxm = cjkName ? c.nameCjkXMul : 1
-            let nym = cjkName ? c.nameCjkYMul : 1
-            writeTextSmart(&out, 16, y, "4", tsplSafe(truncate16(nameOut, 30)), 1, 1, nxm, nym, c.rightEdge)
-            y += cjkName ? c.nameCjkGap : c.nameGap
-            extra = cjkName ? (c.nameCjkGap - c.nameGap) : 0
+            let asciiX = cmul(lvlName), asciiY = cmul(lvlName)
+            let cjkX = cmul(c.nameCjkXMul * lvlName), cjkY = cmul(c.nameCjkYMul * lvlName)
+            writeTextSmart(&out, 16, y, "4", tsplSafe(truncate16(nameOut, 30)), asciiX, asciiY, cjkX, cjkY, c.rightEdge)
+            let usedY = cjkName ? cjkY : asciiY
+            let refBaseY = cjkName ? c.nameCjkYMul : 1
+            let d = (usedY - refBaseY) * F4
+            y += (cjkName ? c.nameCjkGap : c.nameGap) + d
+            extra += (cjkName ? (c.nameCjkGap - c.nameGap) : 0) + d
         }
 
         // @username — kept on every size, incl. 60x40 (it replaced the Total
         // line there; buyer identity is essential on a shipping sticker).
         if printBuyerUsername && !cleanBuyerHandle.isEmpty {
-            writeTextSmart(&out, 16, y, "3", "@" + tsplSafe(truncate16(cleanBuyerHandle, 30)), 1, 1, 1, 1, c.rightEdge)
-            y += c.usernameGap
+            let m = cmul(lvlUser)
+            writeTextSmart(&out, 16, y, "3", "@" + tsplSafe(truncate16(cleanBuyerHandle, 30)), m, m, m, m, c.rightEdge)
+            let d = (m - 1) * F3
+            y += c.usernameGap + d
+            extra += d
         }
 
         // Thin separator + order lines (capped at 2 so a 60mm label can't overflow).
@@ -664,16 +708,19 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                 let time = (order["time"] as? String) ?? ""
                 let item = (order["item"] as? String) ?? ""
                 let cleanItem = stripEmoji(item)
+                let tm = cmul(lvlOrder)
+                let pm = cmul(lvlComment) // price code: height-priority (width stays 2x)
                 if !time.isEmpty {
-                    writeAscii("TEXT 16,\(y),\"2\",0,1,1,\"\(tsplSafe(truncate16(time, 10)))\"")
+                    writeAscii("TEXT 16,\(y),\"2\",0,\(tm),\(tm),\"\(tsplSafe(truncate16(time, 10)))\"")
                 }
                 if !cleanItem.isEmpty {
-                    // Buyer's short price code (e.g. 150/250/600) -> SAME size as
+                    // Buyer's short price code (e.g. 150/250/600) -> SAME base as
                     // the grand Total amount: font "4", 2x width, 1x height.
                     // truncate(12) guards the column width at font 4 2x.
-                    writeTextSmart(&out, 180, y, "4", tsplSafe(truncate16(cleanItem, 12)), 2, 1, 2, 1, c.rightEdge)
+                    writeTextSmart(&out, 180, y, "4", tsplSafe(truncate16(cleanItem, 12)), 2, pm, 2, pm, c.rightEdge)
                 }
-                y += 38
+                let d = max((tm - 1) * F2, (pm - 1) * F4)
+                y += 38 + d
                 i += 1
             }
         }
@@ -683,9 +730,11 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         // false) — swapped for the @username row; the price still prints above.
         if printTotal && totalSpent > 0 && c.showTotal {
             let totalY = c.totalY + extra
-            writeAscii("TEXT 16,\(totalY),\"3\",0,1,1,\"Total:\"")
+            let lm = cmul(lvlTotal)
+            writeAscii("TEXT 16,\(totalY),\"3\",0,\(lm),\(lm),\"Total:\"")
+            let am = cmul(lvlTotal) // amount: height-priority (width stays 2x)
             let totalStr = tsplSafe(currency) + tsplMoney(totalSpent)
-            writeAscii("TEXT \(c.totalAmountX),\(totalY),\"4\",0,2,1,\"\(tsplSafe(truncate16(totalStr, 18)))\"")
+            writeAscii("TEXT \(c.totalAmountX),\(totalY),\"4\",0,2,\(am),\"\(tsplSafe(truncate16(totalStr, 18)))\"")
         }
 
         writeAscii("PRINT 1")

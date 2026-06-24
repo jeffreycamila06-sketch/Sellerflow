@@ -243,6 +243,44 @@ public final class GoldenGen {
                 order("14:02", "150")),
             settings(true, true, true, true, true))));
 
+        // ── PER-ELEMENT SIZE SCALING (integer levels 1-8) ───────────────────────
+        // Level 1 everywhere is already covered by EVERY fixture above (default),
+        // which is why those goldens stay byte-identical. These exercise non-
+        // trivial levels: base-multiplier x level, height-priority on the 2x-wide
+        // elements, the cmul(8) clamp, and the cumulative reflow. settingsScaled
+        // args: store, buyer#, name, username, orderTime, priceCode, total.
+        // 22. Buyer name 2x + buyer# 3x on 100x60 (priority size).
+        list.add(new Fixture("scaled_name2_num3", payload(
+            "My Shop", "June 18, 2026", "NT$",
+            buyer(7, "Maria Santos", "maria_s", 250.0,
+                order("14:02", "150"),
+                order("14:05", "250")),
+            settingsScaled(1, 3, 2, 1, 1, 1, 1))));
+
+        // 23. Mixed: store 2x, username 2x, order-time 2x, price 3x, total 2x.
+        list.add(new Fixture("scaled_mixed", payload(
+            "My Shop", "June 18, 2026", "NT$",
+            buyer(7, "Maria Santos", "maria_s", 250.0,
+                order("14:02", "150"),
+                order("14:05", "250")),
+            settingsScaled(2, 1, 1, 2, 2, 3, 2))));
+
+        // 24. CJK buyer name at level 2 (on top of the base CJK 2x2) — exercises
+        //     base-cjk x level + clamp on the TSS24.BF2 path.
+        list.add(new Fixture("scaled_cjk_name2", payload(
+            "小店", "2026-06-18", "NT$",
+            buyer(12, "陳小美", "meimei", 1280.5,
+                order("09:30", "紅色洋裝")),
+            settingsScaled(1, 1, 2, 1, 1, 1, 1))));
+
+        // 25. Near-max on 100x60: buyer# 4x (height 2*4=8 saturates at the cmul(8)
+        //     ceiling), name 4x — heavy reflow; Total sits low (may clip on paper).
+        list.add(new Fixture("scaled_max_100x60", payload(
+            "My Shop", "June 18, 2026", "NT$",
+            buyer(7, "Maria Santos", "maria_s", 250.0,
+                order("14:02", "150")),
+            settingsScaled(1, 4, 4, 1, 1, 1, 1))));
+
         return list;
     }
 
@@ -287,6 +325,21 @@ public final class GoldenGen {
         s.put("printBuyerUsername", username);
         s.put("printOrderItems", orderItems);
         s.put("printTotal", total);
+        return s;
+    }
+
+    // All print fields ON, with per-element size LEVELS (1-8). Mirrors the web
+    // payload's settings block (booleans + scale ints).
+    private static JSONObject settingsScaled(int store, int number, int name, int username,
+                                             int orderTime, int priceCode, int total) {
+        JSONObject s = settings(true, true, true, true, true);
+        s.put("printStoreScale", store);
+        s.put("printBuyerNumberScale", number);
+        s.put("printBuyerNameScale", name);
+        s.put("printUsernameScale", username);
+        s.put("printOrderScale", orderTime);
+        s.put("printCommentScale", priceCode);
+        s.put("printTotalScale", total);
         return s;
     }
 
