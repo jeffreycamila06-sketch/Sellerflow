@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0d13; }
+[data-scroll]::-webkit-scrollbar { width: 0; height: 0; }
+[data-scroll] { scrollbar-width: none; }
+@keyframes sflLive { 0%,100% { box-shadow: 0 0 0 0 rgba(225,29,72,.55); } 50% { box-shadow: 0 0 0 7px rgba(225,29,72,0); } }
+@keyframes sflDot { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .5; transform: scale(.7); } }
+@keyframes sflComm { from { opacity: .35; transform: translateY(-7px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes sflRise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes sflGrid { from { background-position: 0 0; } to { background-position: 38px 38px; } }
+@keyframes sflGlow { 0%,100% { transform: translate(0,0) scale(1); opacity: .8; } 50% { transform: translate(14px,-10px) scale(1.12); opacity: 1; } }
+@keyframes sflSheet { from { transform: translateY(100%); } to { transform: translateY(0); } }
+</style>
+</helmet>
+<div ref="{{ setRoot }}" style="position:fixed;inset:0;display:flex;background:#0b0d13;color:#e7e9f3;font-family:'Plus Jakarta Sans',sans-serif;overflow:hidden;">
+
+  <aside style="width:264px;flex-shrink:0;height:100%;background:#13151d;border-right:1px solid rgba(255,255,255,.07);display:flex;flex-direction:column;overflow-y:auto;" data-scroll="1">
+    <div style="display:flex;align-items:center;gap:11px;padding:20px 20px 16px;">
+      <img src="uploads/icon-180.png" alt="SellerFlowLive" style="width:36px;height:36px;border-radius:10px;object-fit:cover;box-shadow:0 6px 16px rgba(91,33,182,.45);">
+      <div>
+        <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;letter-spacing:-.02em;color:#fff;line-height:1;">SellerFlowLive</div>
+        <div style="font-size:11px;color:#7c809a;margin-top:3px;letter-spacing:.02em;">Live-selling assistant</div>
+      </div>
+    </div>
+
+    <div style="padding:4px 16px 14px;">
+      <div style="display:flex;background:#1c1f2b;border-radius:11px;padding:4px;gap:4px;">
+        <button onClick="{{ goLight }}" style="{{ lightTabStyle }}">☀ Light</button>
+        <button onClick="{{ goDark }}" style="{{ darkTabStyle }}">☾ Dark</button>
+      </div>
+    </div>
+
+    <div style="padding:2px 18px 16px;">
+      <div style="font-size:10.5px;letter-spacing:.14em;color:#6b6f86;font-weight:700;margin-bottom:10px;">ACCENT</div>
+      <div style="display:flex;gap:9px;">
+        <sc-for list="{{ accentList }}" as="a" hint-placeholder-count="6">
+          <button onClick="{{ a.pick }}" title="{{ a.name }}" style="width:30px;height:30px;border-radius:9px;cursor:pointer;background:{{ a.base }};border:2px solid {{ a.ring }};outline:none;box-shadow:{{ a.glow }};transition:transform .12s;"></button>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="height:1px;background:rgba(255,255,255,.07);margin:2px 16px 8px;"></div>
+
+    <nav style="flex:1;padding:4px 12px 18px;">
+      <sc-for list="{{ navGroups }}" as="g" hint-placeholder-count="3">
+        <div style="margin-bottom:14px;">
+          <div style="font-size:10.5px;letter-spacing:.14em;color:#6b6f86;font-weight:700;padding:0 8px 7px;">{{ g.label }}</div>
+          <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="4">
+            <button onClick="{{ it.go }}" style="width:100%;display:flex;align-items:center;gap:10px;padding:8.5px 10px;margin-bottom:2px;border:none;border-radius:9px;cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:{{ it.weight }};color:{{ it.color }};background:{{ it.bg }};transition:background .12s;">
+              <span style="width:6px;height:6px;border-radius:50%;flex-shrink:0;background:{{ it.dot }};"></span>
+              {{ it.label }}
+            </button>
+          </sc-for>
+        </div>
+      </sc-for>
+    </nav>
+  </aside>
+
+  <main style="flex:1;height:100%;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:auto;background:radial-gradient(120% 120% at 80% -10%, #1b1e2b 0%, #0b0d13 60%);">
+    <div style="position:absolute;top:22px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:10px;font-size:12.5px;color:#8b90a6;">
+      <span style="font-weight:600;color:#c3c7d9;">{{ screenName }}</span>
+      <span style="opacity:.4;">·</span>
+      <span>{{ themeLabel }} · {{ accentName }}</span>
+    </div>
+
+    <div style="width:392px;height:812px;border-radius:46px;background:#04060c;padding:11px;box-shadow:0 40px 90px rgba(0,0,0,.6), 0 0 0 1.5px rgba(255,255,255,.06);flex-shrink:0;">
+      <div style="position:relative;width:100%;height:100%;border-radius:36px;overflow:hidden;background:var(--app-bg,#f3f4fb);display:flex;flex-direction:column;">
+
+        <sc-if value="{{ isDark }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;inset:0;pointer-events:none;z-index:0;">
+            <div style="position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.045) 1px,transparent 1px);background-size:38px 38px;animation:sflGrid 7s linear infinite;opacity:.6;"></div>
+            <div style="position:absolute;width:360px;height:360px;top:-130px;right:-130px;border-radius:50%;background:radial-gradient(circle, var(--glow-a,rgba(79,70,229,.5)) 0%, rgba(79,70,229,0) 70%);animation:sflGlow 9s ease-in-out infinite;"></div>
+            <div style="position:absolute;width:300px;height:300px;bottom:10px;left:-120px;border-radius:50%;background:radial-gradient(circle, rgba(34,211,238,.34) 0%, rgba(34,211,238,0) 70%);animation:sflGlow 11s ease-in-out infinite reverse;"></div>
+          </div>
+        </sc-if>
+
+        <div style="position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;padding:11px 22px 5px;font-size:13px;font-weight:700;color:var(--text,#1c1a35);flex-shrink:0;">
+          <span style="font-family:'JetBrains Mono',monospace;letter-spacing:-.02em;">9:41</span>
+          <div style="display:flex;align-items:center;gap:6px;">
+            <svg width="17" height="11" viewBox="0 0 18 12" fill="none"><rect x="0" y="7" width="3" height="5" rx="1" fill="currentColor"/><rect x="5" y="4" width="3" height="8" rx="1" fill="currentColor"/><rect x="10" y="1.5" width="3" height="10.5" rx="1" fill="currentColor" opacity=".4"/><rect x="15" y="0" width="3" height="12" rx="1" fill="currentColor" opacity=".4"/></svg>
+            <svg width="16" height="11" viewBox="0 0 16 12" fill="none"><path d="M8 10.5 1.5 4a9 9 0 0 1 13 0L8 10.5Z" stroke="currentColor" stroke-width="1.4" fill="none" opacity=".55"/><circle cx="8" cy="9.5" r="1.3" fill="currentColor"/></svg>
+            <svg width="24" height="12" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="21" height="11" rx="3" stroke="currentColor" stroke-width="1.3" opacity=".5"/><rect x="3" y="3" width="15" height="7" rx="1.5" fill="currentColor"/><rect x="23.5" y="4" width="2" height="5" rx="1" fill="currentColor" opacity=".5"/></svg>
+          </div>
+        </div>
+
+        <div style="position:relative;z-index:2;flex:1;overflow-y:auto;overflow-x:hidden;" data-scroll="1">
+          <sc-if value="{{ show.dashboard }}" hint-placeholder-val="{{ true }}">
+  <div style="min-height:100%;display:flex;flex-direction:column;">
+    <div style="position:sticky;top:0;z-index:5;background:var(--header-bg);backdrop-filter:saturate(1.5) blur(14px);color:var(--on-header);padding:12px 16px 13px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:9px;">
+          <div style="display:flex;align-items:center;gap:6px;background:#e11d48;padding:4px 9px 4px 7px;border-radius:20px;animation:sflLive 1.8s ease-out infinite;">
+            <span style="width:7px;height:7px;border-radius:50%;background:#fff;animation:sflDot 1s ease-in-out infinite;"></span>
+            <span style="font-size:11px;font-weight:800;letter-spacing:.06em;color:#fff;">LIVE</span>
+          </div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;letter-spacing:-.01em;">Tonight's Live</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:11px;font-size:12px;font-weight:700;opacity:.95;">
+          <span style="display:flex;align-items:center;gap:5px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 4.5C7 4.5 3 8 3 12s4 7.5 9 7.5 9-3.5 9-7.5-4-7.5-9-7.5Z" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/></svg>{{ viewersF }}</span>
+          <span style="display:flex;align-items:center;gap:5px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 7h12l-1 12a2 2 0 0 1-2 1.8H9A2 2 0 0 1 7 19L6 7Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 7a3 3 0 0 1 6 0" stroke="currentColor" stroke-width="1.6"/></svg>{{ liveClaims }}</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:11px;">
+        <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.16);padding:5px 10px;border-radius:9px;font-size:11.5px;font-weight:600;">
+          <span style="width:7px;height:7px;border-radius:50%;background:#4ade80;"></span> TikTok · @maria_shops
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.16);padding:5px 10px;border-radius:9px;font-size:11.5px;font-weight:600;">
+          <span style="width:7px;height:7px;border-radius:50%;background:#4ade80;"></span> Facebook
+        </div>
+      </div>
+    </div>
+
+    <div style="padding:14px 14px 18px;flex:1;display:flex;flex-direction:column;">
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;padding:0 2px;">
+        <div style="display:flex;align-items:center;gap:7px;">
+          <span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14.5px;color:var(--text);">Live comments</span>
+          <span style="width:6px;height:6px;border-radius:50%;background:#e11d48;animation:sflDot 1s infinite;"></span>
+        </div>
+        <span style="font-size:11px;color:var(--text-muted);font-weight:600;">Auto-detecting "mine"</span>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:7px;box-shadow:var(--shadow);flex:1;">
+        <sc-for list="{{ comments }}" as="c" hint-placeholder-count="5">
+          <div style="display:flex;gap:10px;padding:9px 8px;border-radius:11px;">
+            <div style="width:34px;height:34px;border-radius:50%;background:{{ c.av }};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#fff;flex-shrink:0;">{{ c.ini }}</div>
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;align-items:baseline;gap:6px;">
+                <span style="font-size:13px;font-weight:700;color:var(--text);">{{ c.name }}</span>
+                <span style="font-size:11.5px;font-weight:600;color:var(--handle);">{{ c.handle }}</span>
+                <span style="font-size:10.5px;color:var(--text-muted);margin-left:auto;flex-shrink:0;">{{ c.time }}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:7px;margin-top:2px;">
+                <span style="font-size:13px;color:var(--text-dim);line-height:1.3;">{{ c.text }}</span>
+                <sc-if value="{{ c.mine }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-size:9.5px;font-weight:800;letter-spacing:.05em;color:var(--accent-text);background:var(--accent);padding:2px 6px;border-radius:5px;flex-shrink:0;">MINE</span>
+                </sc-if>
+              </div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+    </div>
+  </div>
+</sc-if>
+<sc-if value="{{ show.menu }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="position:sticky;top:0;z-index:5;background:var(--header-bg);backdrop-filter:saturate(1.5) blur(14px);color:var(--on-header);padding:14px 16px;">
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:19px;letter-spacing:-.01em;">Settings</div>
+      <div style="font-size:12px;opacity:.85;margin-top:1px;">Shop tools &amp; account</div>
+    </div>
+    <div style="padding:16px 14px 22px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <button onClick="{{ goSettings }}" style="display:flex;align-items:center;gap:11px;padding:15px 13px;border:1px solid var(--border);border-radius:15px;background:var(--surface);box-shadow:var(--shadow);cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;">
+          <span style="width:36px;height:36px;border-radius:10px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;color:var(--accent-fg);flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.7"/><path d="M19.4 13c.04-.3.06-.66.06-1s-.02-.7-.06-1l2.1-1.6-2-3.5-2.5 1a7.5 7.5 0 0 0-1.7-1l-.4-2.6H9.1l-.4 2.6c-.6.25-1.18.58-1.7 1l-2.5-1-2 3.5L4.6 11c-.04.3-.06.66-.06 1s.02.7.06 1l-2.1 1.6 2 3.5 2.5-1c.52.42 1.1.75 1.7 1l.4 2.6h5.8l.4-2.6c.6-.25 1.18-.58 1.7-1l2.5 1 2-3.5-2.1-1.6Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></span>
+          <span style="font-size:13.5px;font-weight:600;color:var(--text);line-height:1.15;">General Settings</span>
+        </button>
+        <button onClick="{{ goSettings }}" style="display:flex;align-items:center;gap:11px;padding:15px 13px;border:1px solid var(--border);border-radius:15px;background:var(--surface);box-shadow:var(--shadow);cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;">
+          <span style="width:36px;height:36px;border-radius:10px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;color:var(--accent-fg);flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18" stroke="currentColor" stroke-width="1.5"/></svg></span>
+          <span style="font-size:13.5px;font-weight:600;color:var(--text);line-height:1.15;">Language</span>
+        </button>
+        <button onClick="{{ goCustomers }}" style="display:flex;align-items:center;gap:11px;padding:15px 13px;border:1px solid var(--border);border-radius:15px;background:var(--surface);box-shadow:var(--shadow);cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;">
+          <span style="width:36px;height:36px;border-radius:10px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;color:var(--accent-fg);flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3.2" stroke="currentColor" stroke-width="1.7"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M17 14.3a5.5 5.5 0 0 1 3.5 4.7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
+          <span style="font-size:13.5px;font-weight:600;color:var(--text);line-height:1.15;">Customers</span>
+        </button>
+        <button onClick="{{ goAdmin }}" style="display:flex;align-items:center;gap:11px;padding:15px 13px;border:1px solid var(--border);border-radius:15px;background:var(--surface);box-shadow:var(--shadow);cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;">
+          <span style="width:36px;height:36px;border-radius:10px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;color:var(--accent-fg);flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 3 5 6v5c0 4.4 3 7.6 7 9 4-1.4 7-4.6 7-9V6l-7-3Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="m9 12 2 2 4-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span style="font-size:13.5px;font-weight:600;color:var(--text);line-height:1.15;">Admin</span>
+        </button>
+        <button onClick="{{ goSales }}" style="display:flex;align-items:center;gap:11px;padding:15px 13px;border:1px solid var(--border);border-radius:15px;background:var(--surface);box-shadow:var(--shadow);cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;">
+          <span style="width:36px;height:36px;border-radius:10px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;color:var(--accent-fg);flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M5 19V11M10 19V5M15 19v-6M20 19V9" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg></span>
+          <span style="font-size:13.5px;font-weight:600;color:var(--text);line-height:1.15;">Sales Report</span>
+        </button>
+        <button onClick="{{ goShipping }}" style="display:flex;align-items:center;gap:11px;padding:15px 13px;border:1px solid var(--border);border-radius:15px;background:var(--surface);box-shadow:var(--shadow);cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;">
+          <span style="width:36px;height:36px;border-radius:10px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;color:var(--accent-fg);flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 6h10v9H3z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 9h4l3 3v3h-7z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="7" cy="17.5" r="1.6" stroke="currentColor" stroke-width="1.5"/><circle cx="17" cy="17.5" r="1.6" stroke="currentColor" stroke-width="1.5"/></svg></span>
+          <span style="font-size:13.5px;font-weight:600;color:var(--text);line-height:1.15;">Shipping</span>
+        </button>
+        <button onClick="{{ goCustomerData }}" style="display:flex;align-items:center;gap:11px;padding:15px 13px;border:1px solid var(--border);border-radius:15px;background:var(--surface);box-shadow:var(--shadow);cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;">
+          <span style="width:36px;height:36px;border-radius:10px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;color:var(--accent-fg);flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><ellipse cx="12" cy="6" rx="7" ry="3" stroke="currentColor" stroke-width="1.6"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6" stroke="currentColor" stroke-width="1.6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3" stroke="currentColor" stroke-width="1.6"/></svg></span>
+          <span style="font-size:13.5px;font-weight:600;color:var(--text);line-height:1.15;">Customer Data</span>
+        </button>
+        <button onClick="{{ goLegal }}" style="display:flex;align-items:center;gap:11px;padding:15px 13px;border:1px solid var(--border);border-radius:15px;background:var(--surface);box-shadow:var(--shadow);cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;">
+          <span style="width:36px;height:36px;border-radius:10px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;color:var(--accent-fg);flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v14H6z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M13 3v5h5" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><rect x="9" y="12.5" width="6" height="4.5" rx="1" stroke="currentColor" stroke-width="1.4"/><path d="M10.3 12.5v-1a1.7 1.7 0 0 1 3.4 0v1" stroke="currentColor" stroke-width="1.4"/></svg></span>
+          <span style="font-size:13.5px;font-weight:600;color:var(--text);line-height:1.15;">Privacy &amp; Terms</span>
+        </button>
+        <button onClick="{{ goDelete }}" style="display:flex;align-items:center;gap:11px;padding:15px 13px;border:1px solid var(--border);border-radius:15px;background:var(--surface);box-shadow:var(--shadow);cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;">
+          <span style="width:36px;height:36px;border-radius:10px;background:rgba(225,29,72,.13);display:flex;align-items:center;justify-content:center;color:var(--danger);flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M5 7h14M10 7V5h4v2M6 7l1 13h10l1-13" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span style="font-size:13.5px;font-weight:600;color:var(--text);line-height:1.15;">Delete Account</span>
+        </button>
+        <button onClick="{{ goLogin }}" style="display:flex;align-items:center;gap:11px;padding:15px 13px;border:1px solid var(--border);border-radius:15px;background:var(--surface);box-shadow:var(--shadow);cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;">
+          <span style="width:36px;height:36px;border-radius:10px;background:var(--chip-bg);display:flex;align-items:center;justify-content:center;color:var(--text-dim);flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 8 5 12l4 4M5 12h11" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+          <span style="font-size:13.5px;font-weight:600;color:var(--text);line-height:1.15;">Log out</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+<sc-if value="{{ show.login }}" hint-placeholder-val="{{ false }}">
+  <div style="min-height:100%;display:flex;flex-direction:column;">
+    <div style="background:var(--header-bg);padding:34px 24px 30px;color:var(--on-header);position:relative;overflow:hidden;">
+      <div style="position:absolute;width:160px;height:160px;border-radius:50%;background:rgba(255,255,255,.12);top:-50px;right:-30px;"></div>
+      <div style="position:relative;display:flex;align-items:center;gap:11px;">
+        <img src="uploads/icon-180.png" alt="SellerFlowLive" style="width:48px;height:48px;border-radius:13px;object-fit:cover;box-shadow:0 6px 16px rgba(0,0,0,.18);">
+        <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:21px;letter-spacing:-.02em;">SellerFlowLive</div>
+      </div>
+      <div style="position:relative;font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:25px;line-height:1.2;margin-top:22px;letter-spacing:-.02em;text-wrap:balance;">Turn every live comment into a paid order.</div>
+      <div style="position:relative;font-size:13.5px;opacity:.92;margin-top:10px;line-height:1.5;">Auto-capture "mine" claims from TikTok &amp; Facebook live, build order slips instantly, and print to ship.</div>
+    </div>
+
+    <div style="flex:1;padding:22px 22px 26px;display:flex;flex-direction:column;">
+      <div style="display:flex;gap:8px;margin-bottom:20px;">
+        <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:11px;text-align:center;box-shadow:var(--shadow);">
+          <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:17px;color:var(--accent-fg);">12k+</div>
+          <div style="font-size:10.5px;color:var(--text-muted);font-weight:600;margin-top:2px;">sellers</div>
+        </div>
+        <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:11px;text-align:center;box-shadow:var(--shadow);">
+          <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:17px;color:var(--accent-fg);">2.4M</div>
+          <div style="font-size:10.5px;color:var(--text-muted);font-weight:600;margin-top:2px;">orders</div>
+        </div>
+        <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:11px;text-align:center;box-shadow:var(--shadow);">
+          <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:17px;color:var(--accent-fg);">4.9★</div>
+          <div style="font-size:10.5px;color:var(--text-muted);font-weight:600;margin-top:2px;">rating</div>
+        </div>
+      </div>
+
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:17px;color:var(--text);margin-bottom:14px;">Welcome back</div>
+
+      <label style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:6px;">Phone or email</label>
+      <input value="maria@liveshop.ph" style="width:100%;padding:13px 14px;border:1px solid var(--border-strong);border-radius:12px;background:var(--surface-2);color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:600;margin-bottom:14px;outline:none;">
+
+      <label style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:6px;">Password</label>
+      <input type="password" value="liveselling" style="width:100%;padding:13px 14px;border:1px solid var(--border-strong);border-radius:12px;background:var(--surface-2);color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;margin-bottom:8px;outline:none;">
+
+      <div style="text-align:right;margin-bottom:16px;"><span style="font-size:12px;font-weight:700;color:var(--accent-fg);cursor:pointer;">Forgot password?</span></div>
+
+      <button onClick="{{ goDashboard }}" style="width:100%;padding:14px 0;border:none;border-radius:13px;background:var(--accent);color:var(--accent-text);font-family:'Plus Jakarta Sans',sans-serif;font-size:14.5px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px var(--accent-soft);">Log in</button>
+
+      <div style="text-align:center;margin-top:16px;font-size:12.5px;color:var(--text-dim);">New here? <span style="font-weight:700;color:var(--accent-fg);cursor:pointer;">Create account</span></div>
+
+      <div style="margin-top:auto;padding-top:22px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+          <button style="display:flex;align-items:center;gap:7px;background:none;border:none;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;padding:0;">
+            <span style="width:24px;height:24px;border-radius:7px;background:#0088cc;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M21.5 4.3 3.2 11.4c-1 .4-1 1.8.1 2.1l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.3l2.5-2.6 4.7 3.4c.6.4 1.4.1 1.6-.6l3-15c.2-1-.7-1.8-1.6-1.3Z"/></svg></span>
+            <span style="font-size:12.5px;font-weight:700;color:var(--accent-fg);">Need help?</span>
+          </button>
+
+          <div style="position:relative;">
+            <sc-if value="{{ langOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="position:absolute;bottom:calc(100% + 8px);right:0;width:196px;background:var(--surface);border:1px solid var(--border);border-radius:13px;box-shadow:0 14px 34px rgba(0,0,0,.22);padding:6px;z-index:20;">
+                <sc-for list="{{ langs }}" as="l" hint-placeholder-count="7">
+                  <button onClick="{{ l.pick }}" style="width:100%;display:flex;align-items:center;gap:10px;padding:9px 10px;border:none;border-radius:9px;background:{{ l.bg }};cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;">
+                    <span style="font-size:17px;line-height:1;">{{ l.flag }}</span>
+                    <span style="flex:1;font-size:13px;font-weight:600;color:var(--text);">{{ l.label }}</span>
+                  </button>
+                </sc-for>
+              </div>
+            </sc-if>
+            <button onClick="{{ toggleLang }}" style="display:flex;align-items:center;gap:6px;background:var(--surface-2);border:1px solid var(--border);border-radius:9px;padding:7px 10px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="var(--text-dim)" stroke-width="1.7"/><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18" stroke="var(--text-dim)" stroke-width="1.4"/></svg>
+              <span style="font-size:15px;line-height:1;">{{ curFlag }}</span>
+              <span style="font-size:10px;color:var(--text-muted);">▾</span>
+            </button>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:14px;">By continuing you agree to our <span onClick="{{ goLegal }}" style="color:var(--accent-fg);font-weight:600;cursor:pointer;">Terms</span></div>
+      </div>
+    </div>
+  </div>
+</sc-if>
+<sc-if value="{{ show.orders }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="position:sticky;top:0;z-index:5;background:var(--header-bg);backdrop-filter:saturate(1.5) blur(14px);color:var(--on-header);padding:14px 16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:19px;letter-spacing:-.01em;">Orders</div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;background:rgba(255,255,255,.16);padding:6px 11px;border-radius:9px;">Today · 6</div>
+      </div>
+      <div style="display:flex;gap:7px;margin-top:13px;overflow-x:auto;" data-scroll="1">
+        <div style="background:#fff;color:var(--accent);font-size:12px;font-weight:700;padding:6px 13px;border-radius:20px;white-space:nowrap;">All</div>
+        <div style="background:rgba(255,255,255,.16);font-size:12px;font-weight:600;padding:6px 13px;border-radius:20px;white-space:nowrap;">Unpaid · 2</div>
+        <div style="background:rgba(255,255,255,.16);font-size:12px;font-weight:600;padding:6px 13px;border-radius:20px;white-space:nowrap;">Paid · 2</div>
+        <div style="background:rgba(255,255,255,.16);font-size:12px;font-weight:600;padding:6px 13px;border-radius:20px;white-space:nowrap;">Shipped</div>
+      </div>
+    </div>
+    <div style="padding:14px 14px 22px;display:flex;flex-direction:column;gap:11px;">
+      <sc-for list="{{ orders }}" as="o" hint-placeholder-count="6">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:13px 14px;box-shadow:var(--shadow);">
+          <div style="display:flex;align-items:center;gap:11px;">
+            <div style="width:40px;height:40px;border-radius:12px;background:{{ o.av }};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;flex-shrink:0;">{{ o.ini }}</div>
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;align-items:baseline;gap:7px;">
+                <span style="font-size:14.5px;font-weight:700;color:var(--text);">{{ o.buyer }}</span>
+                <span style="font-size:11.5px;font-weight:600;color:var(--handle);">{{ o.handle }}</span>
+              </div>
+              <div style="font-size:12px;color:var(--text-dim);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ o.items }}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+              <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--text-muted);">{{ o.id }}</div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:var(--text);margin-top:1px;">₱{{ o.totalF }}</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border);">
+            <span style="font-size:11px;font-weight:800;letter-spacing:.03em;color:{{ o.sc }};background:var(--surface-2);border:1px solid var(--border);padding:3px 9px;border-radius:7px;">{{ o.status }}</span>
+            <span style="font-size:11.5px;font-weight:600;color:var(--text-muted);">{{ o.platform }}</span>
+            <span style="font-size:11.5px;color:var(--text-muted);margin-left:auto;">{{ o.time }} ago</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ show.products }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="position:sticky;top:0;z-index:5;background:var(--header-bg);backdrop-filter:saturate(1.5) blur(14px);color:var(--on-header);padding:14px 16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:19px;letter-spacing:-.01em;">Products</div>
+        <button style="display:flex;align-items:center;gap:5px;background:#fff;color:var(--accent);font-size:12.5px;font-weight:700;padding:7px 12px;border:none;border-radius:9px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">+ Add</button>
+      </div>
+      <div style="display:flex;gap:7px;margin-top:13px;overflow-x:auto;" data-scroll="1">
+        <div style="background:#fff;color:var(--accent);font-size:12px;font-weight:700;padding:6px 13px;border-radius:20px;white-space:nowrap;">All · 6</div>
+        <div style="background:rgba(255,255,255,.16);font-size:12px;font-weight:600;padding:6px 13px;border-radius:20px;white-space:nowrap;">Beauty</div>
+        <div style="background:rgba(255,255,255,.16);font-size:12px;font-weight:600;padding:6px 13px;border-radius:20px;white-space:nowrap;">Apparel</div>
+        <div style="background:rgba(255,255,255,.16);font-size:12px;font-weight:600;padding:6px 13px;border-radius:20px;white-space:nowrap;">Home</div>
+      </div>
+    </div>
+    <div style="padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:11px;">
+      <sc-for list="{{ products }}" as="p" hint-placeholder-count="6">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:15px;overflow:hidden;box-shadow:var(--shadow);">
+          <div style="height:84px;background:{{ p.av }};display:flex;align-items:center;justify-content:center;position:relative;">
+            <span style="font-size:24px;font-weight:800;color:rgba(255,255,255,.9);font-family:'Space Grotesk',sans-serif;">{{ p.ini }}</span>
+            <span style="position:absolute;top:8px;right:8px;font-size:9.5px;font-weight:700;color:#fff;background:rgba(0,0,0,.3);padding:3px 7px;border-radius:6px;">{{ p.cat }}</span>
+          </div>
+          <div style="padding:11px 11px 12px;">
+            <div style="font-size:13.5px;font-weight:700;color:var(--text);line-height:1.25;">{{ p.name }}</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted);margin-top:2px;">{{ p.sku }}</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:var(--text);margin-top:7px;">₱{{ p.priceF }}</div>
+            <div style="height:5px;border-radius:3px;background:var(--surface-3);margin-top:9px;overflow:hidden;">
+              <div style="height:100%;width:{{ p.barW }};background:{{ p.stockColor }};border-radius:3px;"></div>
+            </div>
+            <div style="font-size:11px;font-weight:700;color:{{ p.stockColor }};margin-top:6px;">{{ p.stockLabel }}</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ show.miners }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="position:sticky;top:0;z-index:5;background:var(--header-bg);backdrop-filter:saturate(1.5) blur(14px);color:var(--on-header);padding:14px 16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:19px;letter-spacing:-.01em;">Miners</div>
+          <div style="font-size:12px;opacity:.85;margin-top:1px;">Buyers who claimed "mine"</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:700;background:rgba(255,255,255,.16);padding:6px 11px;border-radius:9px;">30 days ▾</div>
+      </div>
+    </div>
+    <div style="padding:14px 14px 22px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:14px;box-shadow:var(--shadow);">
+          <div style="font-size:11.5px;color:var(--text-muted);font-weight:600;">Total buyers</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:25px;color:var(--text);margin-top:4px;letter-spacing:-.02em;">1,284</div>
+          <div style="font-size:11px;font-weight:700;color:var(--ok);margin-top:3px;">▲ 12% this month</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:14px;box-shadow:var(--shadow);">
+          <div style="font-size:11.5px;color:var(--text-muted);font-weight:600;">Total orders</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:25px;color:var(--text);margin-top:4px;letter-spacing:-.02em;">3,947</div>
+          <div style="font-size:11px;font-weight:700;color:var(--ok);margin-top:3px;">▲ 8% this month</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:14px;box-shadow:var(--shadow);">
+          <div style="font-size:11.5px;color:var(--text-muted);font-weight:600;">Total spent</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;color:var(--text);margin-top:4px;letter-spacing:-.02em;">₱1.28M</div>
+          <div style="font-size:11px;font-weight:700;color:var(--accent-fg);margin-top:3px;">₱325 avg order</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:14px;box-shadow:var(--shadow);">
+          <div style="font-size:11.5px;color:var(--text-muted);font-weight:600;">Platforms</div>
+          <div style="display:flex;gap:7px;margin-top:9px;">
+            <div style="flex:1;text-align:center;background:var(--surface-2);border-radius:9px;padding:7px 0;"><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:var(--text);">64%</div><div style="font-size:10px;color:var(--text-muted);font-weight:600;">TikTok</div></div>
+            <div style="flex:1;text-align:center;background:var(--surface-2);border-radius:9px;padding:7px 0;"><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:var(--text);">36%</div><div style="font-size:10px;color:var(--text-muted);font-weight:600;">Facebook</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14.5px;color:var(--text);margin:4px 2px 10px;">Top buyers</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:15px;box-shadow:var(--shadow);overflow:hidden;">
+        <sc-for list="{{ miners }}" as="m" hint-placeholder-count="5">
+          <div style="display:flex;align-items:center;gap:11px;padding:12px 14px;border-bottom:1px solid var(--border);">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:var(--text-muted);width:16px;">{{ m.rank }}</div>
+            <div style="width:38px;height:38px;border-radius:50%;background:{{ m.av }};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;flex-shrink:0;">{{ m.ini }}</div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:14px;font-weight:700;color:var(--text);">{{ m.name }}</div>
+              <div style="font-size:11.5px;font-weight:600;color:var(--handle);">{{ m.handle }}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+              <div style="font-family:'JetBrains Mono',monospace;font-size:14.5px;font-weight:700;color:var(--text);">₱{{ m.spentF }}</div>
+              <div style="font-size:11px;color:var(--text-muted);font-weight:600;">{{ m.orders }} orders</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</sc-if>
+<sc-if value="{{ show.settings }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="position:sticky;top:0;z-index:5;background:var(--header-bg);backdrop-filter:saturate(1.5) blur(14px);color:var(--on-header);padding:14px 16px;">
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:19px;letter-spacing:-.01em;">Settings</div>
+    </div>
+    <div style="padding:14px 14px 22px;display:flex;flex-direction:column;gap:16px;">
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:15px;box-shadow:var(--shadow);">
+        <div style="display:flex;align-items:center;gap:13px;">
+          <div style="width:54px;height:54px;border-radius:16px;background:#f59e0b;display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:800;color:#fff;font-family:'Space Grotesk',sans-serif;">MS</div>
+          <div style="flex:1;">
+            <div style="font-size:16px;font-weight:700;color:var(--text);">Maria's Live Shop</div>
+            <div style="font-size:12.5px;font-weight:600;color:var(--handle);">@maria_shops</div>
+            <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px;">Pro plan · renews Jul 28</div>
+          </div>
+          <button style="font-size:12px;font-weight:700;color:var(--accent-fg);background:var(--accent-soft);border:none;padding:8px 12px;border-radius:9px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">Edit</button>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-size:11px;letter-spacing:.12em;font-weight:800;color:var(--text-muted);margin:0 4px 9px;">APPEARANCE</div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:15px;box-shadow:var(--shadow);">
+          <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:9px;">Theme</div>
+          <div style="display:flex;background:var(--surface-2);border:1px solid var(--border);border-radius:11px;padding:4px;gap:4px;margin-bottom:18px;">
+            <button onClick="{{ goLight }}" style="{{ segLightStyle }}">☀ Light</button>
+            <button onClick="{{ goDark }}" style="{{ segDarkStyle }}">☾ Dark</button>
+          </div>
+          <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:11px;">Accent color</div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:18px;">
+            <sc-for list="{{ appAccentList }}" as="a" hint-placeholder-count="6">
+              <button onClick="{{ a.pick }}" title="{{ a.name }}" style="width:40px;height:40px;border-radius:12px;cursor:pointer;background:{{ a.base }};border:{{ a.rw }} solid {{ a.ring }};display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:#fff;outline:none;">{{ a.mark }}</button>
+            </sc-for>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding-top:14px;border-top:1px solid var(--border);">
+            <div style="flex:1;">
+              <div style="font-size:13px;font-weight:700;color:var(--text);">Readable @handles</div>
+              <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px;">High-contrast color for usernames — <span style="color:var(--handle);font-weight:700;">@maria_shops</span></div>
+            </div>
+            <div style="width:44px;height:26px;border-radius:13px;background:var(--accent);position:relative;flex-shrink:0;"><div style="width:20px;height:20px;border-radius:50%;background:#fff;position:absolute;top:3px;right:3px;box-shadow:0 1px 3px rgba(0,0,0,.3);"></div></div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding-top:14px;margin-top:14px;border-top:1px solid var(--border);">
+            <div style="flex:1;">
+              <div style="font-size:13px;font-weight:700;color:var(--text);">Language</div>
+              <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px;">App display language</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--accent-fg);background:var(--accent-soft);padding:7px 12px;border-radius:9px;cursor:pointer;">English (US) ▾</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-size:11px;letter-spacing:.12em;font-weight:800;color:var(--text-muted);margin:0 4px 9px;">CHANNELS</div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);overflow:hidden;">
+          <div style="display:flex;align-items:center;gap:12px;padding:14px;border-bottom:1px solid var(--border);">
+            <div style="width:38px;height:38px;border-radius:11px;background:#000;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;">t</div>
+            <div style="flex:1;"><div style="font-size:13.5px;font-weight:700;color:var(--text);">TikTok Live</div><div style="font-size:11.5px;font-weight:600;color:var(--handle);">@maria_shops</div></div>
+            <span style="display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:var(--ok);"><span style="width:7px;height:7px;border-radius:50%;background:var(--ok);"></span>Connected</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:14px;">
+            <div style="width:38px;height:38px;border-radius:11px;background:#1877f2;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;color:#fff;font-family:'Space Grotesk',sans-serif;">f</div>
+            <div style="flex:1;"><div style="font-size:13.5px;font-weight:700;color:var(--text);">Facebook Live</div><div style="font-size:11.5px;font-weight:600;color:var(--handle);">Maria's Live Shop</div></div>
+            <span style="display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:var(--ok);"><span style="width:7px;height:7px;border-radius:50%;background:var(--ok);"></span>Connected</span>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-size:11px;letter-spacing:.12em;font-weight:800;color:var(--text-muted);margin:0 4px 9px;">PRINTER &amp; DISPLAY</div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);overflow:hidden;">
+          <div style="display:flex;align-items:center;gap:12px;padding:14px;border-bottom:1px solid var(--border);">
+            <div style="width:36px;height:36px;border-radius:10px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;color:var(--accent-fg);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="6" y="3" width="12" height="6" stroke="currentColor" stroke-width="1.7"/><rect x="4" y="9" width="16" height="8" rx="2" stroke="currentColor" stroke-width="1.7"/><rect x="7" y="15" width="10" height="6" stroke="currentColor" stroke-width="1.7"/></svg></div>
+            <div style="flex:1;"><div style="font-size:13.5px;font-weight:700;color:var(--text);">Receipt printer</div><div style="font-size:11.5px;color:var(--text-muted);">LAN · 192.168.1.42 · 58mm</div></div>
+            <span style="font-size:11.5px;font-weight:700;color:var(--ok);">Ready</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:14px;border-bottom:1px solid var(--border);">
+            <div style="width:36px;height:36px;border-radius:10px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;color:var(--accent-fg);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M8 6 12 3v18l-4-3H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h3Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M16 9a4 4 0 0 1 0 6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></div>
+            <div style="flex:1;"><div style="font-size:13.5px;font-weight:700;color:var(--text);">Bluetooth printer</div><div style="font-size:11.5px;color:var(--text-muted);">Pair a portable printer</div></div>
+            <span style="font-size:11.5px;font-weight:700;color:var(--text-muted);">Off</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:14px;border-bottom:1px solid var(--border);">
+            <div style="width:36px;height:36px;border-radius:10px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;color:var(--accent-fg);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="12" rx="2" stroke="currentColor" stroke-width="1.7"/><path d="M9 21h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></div>
+            <div style="flex:1;"><div style="font-size:13.5px;font-weight:700;color:var(--text);">Display &amp; text size</div><div style="font-size:11.5px;color:var(--text-muted);">Large · keep screen awake</div></div>
+            <span style="font-size:16px;color:var(--text-muted);">›</span>
+          </div>
+          <button onClick="{{ goPrint }}" style="width:100%;display:flex;align-items:center;gap:12px;padding:14px;border:none;background:transparent;cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;">
+            <div style="width:36px;height:36px;border-radius:10px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;color:var(--accent-fg);flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="6" y="3" width="12" height="6" stroke="currentColor" stroke-width="1.7"/><rect x="4" y="9" width="16" height="8" rx="2" stroke="currentColor" stroke-width="1.7"/><rect x="7" y="15" width="10" height="6" stroke="currentColor" stroke-width="1.7"/></svg></div>
+            <div style="flex:1;"><div style="font-size:13.5px;font-weight:700;color:var(--text);">Print order slip</div><div style="font-size:11.5px;color:var(--text-muted);">58mm receipt · GCash details</div></div>
+            <span style="font-size:16px;color:var(--text-muted);">›</span>
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <div style="font-size:11px;letter-spacing:.12em;font-weight:800;color:var(--text-muted);margin:0 4px 9px;">ACCOUNT</div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);overflow:hidden;">
+          <button onClick="{{ goSubscription }}" style="width:100%;display:flex;align-items:center;gap:12px;padding:14px;border:none;border-bottom:1px solid var(--border);background:transparent;cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;"><span style="flex:1;font-size:13.5px;font-weight:700;color:var(--text);">Subscription</span><span style="font-size:12px;color:var(--text-muted);">Pro · Jul 28 ›</span></button>
+          <button onClick="{{ goSupport }}" style="width:100%;display:flex;align-items:center;gap:12px;padding:14px;border:none;border-bottom:1px solid var(--border);background:transparent;cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;"><span style="flex:1;font-size:13.5px;font-weight:700;color:var(--text);">Support &amp; user guide</span><span style="font-size:16px;color:var(--text-muted);">›</span></button>
+          <button onClick="{{ goDelete }}" style="width:100%;display:flex;align-items:center;gap:12px;padding:14px;border:none;background:transparent;cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;"><span style="flex:1;font-size:13.5px;font-weight:700;color:var(--danger);">Delete account</span><span style="font-size:16px;color:var(--danger);">›</span></button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ show.customers }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="position:sticky;top:0;z-index:5;background:var(--header-bg);backdrop-filter:saturate(1.5) blur(14px);color:var(--on-header);padding:14px 16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:19px;letter-spacing:-.01em;">Customers</div>
+        <div style="font-size:12.5px;font-weight:700;background:rgba(255,255,255,.16);padding:6px 11px;border-radius:9px;">1,284 total</div>
+      </div>
+      <div style="margin-top:12px;display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.16);border-radius:11px;padding:9px 12px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <span style="font-size:13px;opacity:.85;">Search name or @handle</span>
+      </div>
+    </div>
+    <div style="padding:14px 14px 22px;">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:15px;box-shadow:var(--shadow);overflow:hidden;margin-bottom:18px;">
+        <sc-for list="{{ customers }}" as="c" hint-placeholder-count="7">
+          <div style="display:flex;align-items:center;gap:11px;padding:12px 14px;border-bottom:1px solid var(--border);">
+            <div style="width:40px;height:40px;border-radius:50%;background:{{ c.av }};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;flex-shrink:0;">{{ c.ini }}</div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:14px;font-weight:700;color:var(--text);">{{ c.name }}</div>
+              <div style="font-size:11.5px;font-weight:600;color:var(--handle);">{{ c.handle }} · {{ c.platform }}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+              <div style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;color:var(--text);">₱{{ c.spentF }}</div>
+              <div style="font-size:11px;color:var(--text-muted);font-weight:600;">{{ c.orders }} orders · {{ c.last }}</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14.5px;color:var(--text);margin:0 2px 10px;">Comment archive</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:15px;box-shadow:var(--shadow);padding:6px;">
+        <sc-for list="{{ archive }}" as="a" hint-placeholder-count="5">
+          <div style="display:flex;gap:10px;padding:9px 8px;">
+            <div style="width:32px;height:32px;border-radius:50%;background:{{ a.av }};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;flex-shrink:0;">{{ a.ini }}</div>
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;align-items:baseline;gap:6px;"><span style="font-size:12.5px;font-weight:700;color:var(--text);">{{ a.name }}</span><span style="font-size:11px;font-weight:600;color:var(--handle);">{{ a.handle }}</span><span style="font-size:10.5px;color:var(--text-muted);margin-left:auto;">{{ a.time }}</span></div>
+              <div style="font-size:12.5px;color:var(--text-dim);margin-top:1px;">{{ a.text }}</div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ show.subscription }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="position:sticky;top:0;z-index:5;background:var(--header-bg);backdrop-filter:saturate(1.5) blur(14px);color:var(--on-header);padding:14px 16px;">
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:19px;letter-spacing:-.01em;">Subscription</div>
+    </div>
+    <div style="padding:16px 14px 22px;">
+      <div style="background:linear-gradient(150deg,var(--accent),var(--accent));border-radius:18px;padding:20px;color:#fff;position:relative;overflow:hidden;box-shadow:0 10px 28px var(--accent-soft);">
+        <div style="position:absolute;width:140px;height:140px;border-radius:50%;background:rgba(255,255,255,.14);top:-50px;right:-30px;"></div>
+        <div style="position:relative;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:12px;font-weight:700;letter-spacing:.06em;opacity:.9;">CURRENT PLAN</span>
+            <span style="font-size:11px;font-weight:800;background:rgba(255,255,255,.22);padding:4px 9px;border-radius:7px;">ACTIVE</span>
+          </div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:30px;margin-top:8px;letter-spacing:-.02em;">Pro</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;opacity:.92;margin-top:2px;">₱499 / month</div>
+          <div style="display:flex;gap:18px;margin-top:18px;">
+            <div><div style="font-size:11px;opacity:.85;">Renews on</div><div style="font-size:14px;font-weight:700;margin-top:2px;">Jul 28, 2026</div></div>
+            <div><div style="font-size:11px;opacity:.85;">Days left</div><div style="font-size:14px;font-weight:700;margin-top:2px;">33 days</div></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:15px;box-shadow:var(--shadow);margin-top:14px;">
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:11px;">Included in Pro</div>
+        <div style="display:flex;flex-direction:column;gap:9px;">
+          <div style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--text-dim);"><span style="color:var(--ok);font-weight:800;">✓</span> Unlimited live sessions</div>
+          <div style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--text-dim);"><span style="color:var(--ok);font-weight:800;">✓</span> Auto "mine" detection &amp; order slips</div>
+          <div style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--text-dim);"><span style="color:var(--ok);font-weight:800;">✓</span> TikTok + Facebook channels</div>
+          <div style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--text-dim);"><span style="color:var(--ok);font-weight:800;">✓</span> Printer &amp; shipping tools</div>
+        </div>
+      </div>
+
+      <button style="width:100%;margin-top:16px;padding:14px 0;border:none;border-radius:13px;background:#0088cc;color:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;box-shadow:0 6px 16px rgba(0,136,204,.35);">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="#fff"><path d="M21.5 4.3 3.2 11.4c-1 .4-1 1.8.1 2.1l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.3l2.5-2.6 4.7 3.4c.6.4 1.4.1 1.6-.6l3-15c.2-1-.7-1.8-1.6-1.3Z"/></svg>
+        Renew via Telegram
+      </button>
+      <div style="text-align:center;font-size:11.5px;color:var(--text-muted);margin-top:10px;">Message <span style="font-weight:700;color:var(--accent-fg);">@SellerFlowSupport</span> to renew or upgrade</div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ show.support }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="position:sticky;top:0;z-index:5;background:var(--header-bg);backdrop-filter:saturate(1.5) blur(14px);color:var(--on-header);padding:14px 16px;">
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:19px;letter-spacing:-.01em;">Support</div>
+    </div>
+    <div style="padding:16px 14px 22px;">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px;box-shadow:var(--shadow);text-align:center;">
+        <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:17px;color:var(--text);">Need a hand?</div>
+        <div style="font-size:12.5px;color:var(--text-dim);margin-top:5px;line-height:1.5;">We reply within minutes on Telegram during live hours.</div>
+        <button style="width:100%;margin-top:14px;padding:13px 0;border:none;border-radius:12px;background:#0088cc;color:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M21.5 4.3 3.2 11.4c-1 .4-1 1.8.1 2.1l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.3l2.5-2.6 4.7 3.4c.6.4 1.4.1 1.6-.6l3-15c.2-1-.7-1.8-1.6-1.3Z"/></svg>
+          Chat with @SellerFlowSupport
+        </button>
+      </div>
+
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14.5px;color:var(--text);margin:18px 2px 10px;">User guide</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);overflow:hidden;">
+        <div style="display:flex;align-items:center;gap:12px;padding:14px;border-bottom:1px solid var(--border);"><span style="width:30px;height:30px;border-radius:9px;background:var(--accent-soft);color:var(--accent-fg);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;">1</span><span style="flex:1;font-size:13.5px;font-weight:600;color:var(--text);">Connecting TikTok &amp; Facebook live</span><span style="color:var(--text-muted);">›</span></div>
+        <div style="display:flex;align-items:center;gap:12px;padding:14px;border-bottom:1px solid var(--border);"><span style="width:30px;height:30px;border-radius:9px;background:var(--accent-soft);color:var(--accent-fg);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;">2</span><span style="flex:1;font-size:13.5px;font-weight:600;color:var(--text);">How "mine" auto-capture works</span><span style="color:var(--text-muted);">›</span></div>
+        <div style="display:flex;align-items:center;gap:12px;padding:14px;border-bottom:1px solid var(--border);"><span style="width:30px;height:30px;border-radius:9px;background:var(--accent-soft);color:var(--accent-fg);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;">3</span><span style="flex:1;font-size:13.5px;font-weight:600;color:var(--text);">Printing slips &amp; shipping orders</span><span style="color:var(--text-muted);">›</span></div>
+        <div style="display:flex;align-items:center;gap:12px;padding:14px;"><span style="width:30px;height:30px;border-radius:9px;background:var(--accent-soft);color:var(--accent-fg);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;">4</span><span style="flex:1;font-size:13.5px;font-weight:600;color:var(--text);">Renewing your subscription</span><span style="color:var(--text-muted);">›</span></div>
+      </div>
+
+      <div style="text-align:center;font-size:11.5px;color:var(--text-muted);margin-top:18px;">SellerFlowLive v4.2 · <span onClick="{{ goLegal }}" style="color:var(--accent-fg);font-weight:600;cursor:pointer;">Privacy &amp; Terms</span></div>
+    </div>
+  </div>
+</sc-if>
+<sc-if value="{{ show.admin }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="position:sticky;top:0;z-index:5;background:var(--header-bg);backdrop-filter:saturate(1.5) blur(14px);color:var(--on-header);padding:14px 16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div><div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:19px;letter-spacing:-.01em;">Admin</div><div style="font-size:12px;opacity:.85;">Seller management</div></div>
+        <div style="font-size:12px;font-weight:700;background:rgba(255,255,255,.16);padding:6px 11px;border-radius:9px;">12,480 sellers</div>
+      </div>
+    </div>
+    <div style="padding:14px 14px 22px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-bottom:14px;">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px;box-shadow:var(--shadow);"><div style="font-size:10.5px;color:var(--text-muted);font-weight:600;">Active</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:19px;color:var(--ok);margin-top:3px;">9,842</div></div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px;box-shadow:var(--shadow);"><div style="font-size:10.5px;color:var(--text-muted);font-weight:600;">Expiring</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:19px;color:var(--warn);margin-top:3px;">418</div></div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px;box-shadow:var(--shadow);"><div style="font-size:10.5px;color:var(--text-muted);font-weight:600;">Expired</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:19px;color:var(--danger);margin-top:3px;">2,220</div></div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:2px 2px 10px;"><span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14.5px;color:var(--text);">Sellers</span><span style="font-size:12px;font-weight:700;color:var(--accent-fg);">+ Add plan</span></div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:15px;box-shadow:var(--shadow);overflow:hidden;">
+        <sc-for list="{{ sellers }}" as="s" hint-placeholder-count="5">
+          <div style="display:flex;align-items:center;gap:11px;padding:12px 14px;border-bottom:1px solid var(--border);">
+            <div style="width:38px;height:38px;border-radius:11px;background:{{ s.av }};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#fff;flex-shrink:0;">{{ s.ini }}</div>
+            <div style="flex:1;min-width:0;"><div style="font-size:13.5px;font-weight:700;color:var(--text);">{{ s.shop }}</div><div style="font-size:11px;color:var(--text-muted);">{{ s.owner }} · {{ s.plan }}</div></div>
+            <div style="text-align:right;flex-shrink:0;"><div style="font-size:11px;font-weight:800;color:{{ s.sc }};">{{ s.status }}</div><div style="font-size:10.5px;color:var(--text-muted);margin-top:2px;">{{ s.expiry }}</div></div>
+          </div>
+        </sc-for>
+      </div>
+      <button style="width:100%;margin-top:14px;padding:12px 0;border:1px solid var(--border-strong);border-radius:12px;background:var(--surface);color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="#0088cc"><path d="M21.5 4.3 3.2 11.4c-1 .4-1 1.8.1 2.1l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.3l2.5-2.6 4.7 3.4c.6.4 1.4.1 1.6-.6l3-15c.2-1-.7-1.8-1.6-1.3Z"/></svg>Contact seller via Telegram</button>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ show.print }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="position:sticky;top:0;z-index:5;background:var(--header-bg);backdrop-filter:saturate(1.5) blur(14px);color:var(--on-header);padding:14px 16px;display:flex;align-items:center;gap:12px;">
+      <button onClick="{{ goOrders }}" style="background:rgba(255,255,255,.18);border:none;width:32px;height:32px;border-radius:9px;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">‹</button>
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:18px;letter-spacing:-.01em;">Print slip</div>
+    </div>
+    <div style="padding:18px 16px 22px;">
+      <div style="background:#fff;border-radius:6px;padding:20px 18px;box-shadow:0 8px 30px rgba(0,0,0,.18);font-family:'JetBrains Mono',monospace;color:#1a1a1a;max-width:300px;margin:0 auto;">
+        <div style="text-align:center;border-bottom:1.5px dashed #bbb;padding-bottom:12px;">
+          <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:17px;">Maria's Live Shop</div>
+          <div style="font-size:11px;color:#666;margin-top:3px;">@maria_shops · TikTok Live</div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-top:12px;color:#444;"><span>ORDER</span><span style="font-weight:700;color:#000;">#10472</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-top:4px;color:#444;"><span>BUYER</span><span style="font-weight:700;color:#000;">Maria Santos</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-top:4px;color:#444;"><span>DATE</span><span>Jun 25, 9:41 PM</span></div>
+        <div style="border-top:1.5px dashed #bbb;margin:12px 0;"></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:7px;"><span>Matte Lipstick — Red ×2</span><span style="font-weight:700;">₱498</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;"><span>Insulated Tumbler ×1</span><span style="font-weight:700;">₱399</span></div>
+        <div style="border-top:1.5px dashed #bbb;margin:12px 0;"></div>
+        <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;"><span>TOTAL</span><span>₱897</span></div>
+        <div style="text-align:center;font-size:10.5px;color:#777;margin-top:14px;border-top:1.5px dashed #bbb;padding-top:10px;">Thank you for shopping live! 💜<br>Pay via GCash · 0917 555 0142</div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:18px;">
+        <button style="flex:1;padding:13px 0;border:none;border-radius:12px;background:var(--accent);color:var(--accent-text);font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px var(--accent-soft);">Print to LAN printer</button>
+      </div>
+      <button style="width:100%;margin-top:10px;padding:12px 0;border:1px solid var(--border-strong);border-radius:12px;background:var(--surface);color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;">Share as image</button>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ show.sales }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="position:sticky;top:0;z-index:5;background:var(--header-bg);backdrop-filter:saturate(1.5) blur(14px);color:var(--on-header);padding:14px 16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;"><div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:19px;letter-spacing:-.01em;">Sales report</div><div style="font-size:12px;font-weight:700;background:rgba(255,255,255,.16);padding:6px 11px;border-radius:9px;">This week ▾</div></div>
+    </div>
+    <div style="padding:16px 14px 22px;">
+      <div style="display:flex;gap:10px;margin-bottom:16px;">
+        <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:14px;box-shadow:var(--shadow);"><div style="font-size:11px;color:var(--text-muted);font-weight:600;">This week</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;color:var(--text);margin-top:4px;letter-spacing:-.02em;">₱114.4k</div><div style="font-size:11px;font-weight:700;color:var(--ok);margin-top:3px;">▲ 18% vs last</div></div>
+        <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:14px;box-shadow:var(--shadow);"><div style="font-size:11px;color:var(--text-muted);font-weight:600;">Orders</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;color:var(--text);margin-top:4px;letter-spacing:-.02em;">352</div><div style="font-size:11px;font-weight:700;color:var(--accent-fg);margin-top:3px;">₱325 avg</div></div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px 14px;box-shadow:var(--shadow);margin-bottom:16px;">
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:14px;">Daily sales</div>
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:8px;height:130px;">
+          <sc-for list="{{ sales }}" as="s" hint-placeholder-count="7">
+            <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;gap:7px;">
+              <div style="width:100%;height:{{ s.h }};background:var(--accent);border-radius:6px 6px 3px 3px;min-height:6px;"></div>
+              <span style="font-size:10.5px;font-weight:600;color:var(--text-muted);">{{ s.d }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:15px;box-shadow:var(--shadow);">
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:11px;">Top product</div>
+        <div style="display:flex;align-items:center;gap:11px;"><div style="width:40px;height:40px;border-radius:11px;background:#ec4899;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;">ML</div><div style="flex:1;"><div style="font-size:13.5px;font-weight:700;color:var(--text);">Matte Lipstick — Red</div><div style="font-size:11.5px;color:var(--text-muted);">184 sold this week</div></div><div style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:var(--text);">₱45.8k</div></div>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ show.shipping }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="position:sticky;top:0;z-index:5;background:var(--header-bg);backdrop-filter:saturate(1.5) blur(14px);color:var(--on-header);padding:14px 16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;"><div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:19px;letter-spacing:-.01em;">Shipping</div><div style="font-size:12px;font-weight:700;background:rgba(255,255,255,.16);padding:6px 11px;border-radius:9px;">4 to ship</div></div>
+    </div>
+    <div style="padding:14px 14px 22px;display:flex;flex-direction:column;gap:11px;">
+      <sc-for list="{{ shipping }}" as="s" hint-placeholder-count="4">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:13px 14px;box-shadow:var(--shadow);">
+          <div style="display:flex;align-items:center;gap:11px;">
+            <div style="width:38px;height:38px;border-radius:11px;background:{{ s.av }};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#fff;flex-shrink:0;">{{ s.ini }}</div>
+            <div style="flex:1;min-width:0;"><div style="font-size:14px;font-weight:700;color:var(--text);">{{ s.buyer }}</div><div style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--text-muted);">{{ s.id }}</div></div>
+            <span style="font-size:11px;font-weight:800;color:{{ s.sc }};background:var(--surface-2);border:1px solid var(--border);padding:3px 9px;border-radius:7px;flex-shrink:0;">{{ s.status }}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border);">
+            <span style="font-size:12px;font-weight:700;color:var(--text-dim);">{{ s.courier }}</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--accent-fg);font-weight:600;">{{ s.track }}</span>
+            <span style="font-size:11.5px;color:var(--accent-fg);font-weight:700;margin-left:auto;">Track ›</span>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ show.customerdata }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="position:sticky;top:0;z-index:5;background:var(--header-bg);backdrop-filter:saturate(1.5) blur(14px);color:var(--on-header);padding:14px 16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;"><div><div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:19px;letter-spacing:-.01em;">Customer data</div><div style="font-size:12px;opacity:.85;">Admin export</div></div><button style="background:#fff;color:var(--accent);font-size:12px;font-weight:700;padding:7px 12px;border:none;border-radius:9px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">Export CSV</button></div>
+    </div>
+    <div style="padding:14px;">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;">
+        <div style="display:flex;padding:10px 14px;background:var(--surface-2);border-bottom:1px solid var(--border);font-size:10.5px;font-weight:800;letter-spacing:.04em;color:var(--text-muted);">
+          <span style="flex:1.6;">CUSTOMER</span><span style="flex:.8;text-align:right;">ORDERS</span><span style="flex:1.1;text-align:right;">SPENT</span>
+        </div>
+        <sc-for list="{{ customers }}" as="c" hint-placeholder-count="7">
+          <div style="display:flex;align-items:center;padding:11px 14px;border-bottom:1px solid var(--border);">
+            <div style="flex:1.6;min-width:0;"><div style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ c.name }}</div><div style="font-size:11px;font-weight:600;color:var(--handle);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ c.handle }}</div></div>
+            <div style="flex:.8;text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:var(--text);">{{ c.orders }}</div>
+            <div style="flex:1.1;text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:var(--text);">₱{{ c.spentF }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="font-size:11.5px;color:var(--text-muted);margin-top:12px;line-height:1.5;padding:0 2px;">Customer data is encrypted and handled per our <span onClick="{{ goLegal }}" style="color:var(--accent-fg);font-weight:700;cursor:pointer;">Privacy Policy</span>. Export access is logged.</div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ show.legal }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="position:sticky;top:0;z-index:5;background:var(--header-bg);backdrop-filter:saturate(1.5) blur(14px);color:var(--on-header);padding:14px 16px;">
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:19px;letter-spacing:-.01em;">Privacy &amp; Terms</div>
+    </div>
+    <div style="padding:18px 18px 24px;">
+      <div style="font-size:11.5px;color:var(--text-muted);font-weight:600;margin-bottom:18px;">Last updated Jun 1, 2026</div>
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:15px;color:var(--text);margin-bottom:8px;">1. Data we collect</div>
+      <p style="font-size:13px;color:var(--text-dim);line-height:1.65;margin:0 0 18px;">SellerFlowLive captures public live-stream comments, buyer handles, and order details you create during live sessions. We store these to build order slips, analytics, and shipping records on your behalf.</p>
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:15px;color:var(--text);margin-bottom:8px;">2. How we use it</div>
+      <p style="font-size:13px;color:var(--text-dim);line-height:1.65;margin:0 0 18px;">Data is used solely to operate your shop — detecting "mine" claims, generating slips, and reporting sales. We never sell customer data to third parties.</p>
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:15px;color:var(--text);margin-bottom:8px;">3. Your rights</div>
+      <p style="font-size:13px;color:var(--text-dim);line-height:1.65;margin:0 0 18px;">You may export or permanently delete all shop and customer data at any time from Settings. Deletion is irreversible and completes within 30 days.</p>
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:15px;color:var(--text);margin-bottom:8px;">4. Contact</div>
+      <p style="font-size:13px;color:var(--text-dim);line-height:1.65;margin:0;">Questions? Reach us on Telegram <span style="color:var(--accent-fg);font-weight:700;">@SellerFlowSupport</span> or email privacy@sellerflowlive.app.</p>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ show.delete }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="position:sticky;top:0;z-index:5;background:var(--header-bg);backdrop-filter:saturate(1.5) blur(14px);color:var(--on-header);padding:14px 16px;display:flex;align-items:center;gap:12px;">
+      <button onClick="{{ goSettings }}" style="background:rgba(255,255,255,.18);border:none;width:32px;height:32px;border-radius:9px;color:#fff;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;">‹</button>
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:18px;letter-spacing:-.01em;">Delete account</div>
+    </div>
+    <div style="padding:18px 16px 24px;">
+      <div style="background:var(--danger-soft,rgba(225,29,72,.08));border:1px solid var(--danger);border-radius:16px;padding:18px;text-align:center;">
+        <div style="width:54px;height:54px;border-radius:50%;background:rgba(225,29,72,.14);display:flex;align-items:center;justify-content:center;margin:0 auto 12px;"><svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 8v5" stroke="var(--danger)" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="16.5" r="1.3" fill="var(--danger)"/><path d="M10.3 3.9 2.6 17.4A2 2 0 0 0 4.3 20.4h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" stroke="var(--danger)" stroke-width="1.8" stroke-linejoin="round"/></svg></div>
+        <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:17px;color:var(--text);">This can't be undone</div>
+        <div style="font-size:13px;color:var(--text-dim);margin-top:6px;line-height:1.55;">Deleting your account permanently removes your shop, orders, customers, and analytics.</div>
+      </div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:15px;box-shadow:var(--shadow);margin-top:14px;">
+        <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:11px;">You'll lose</div>
+        <div style="display:flex;flex-direction:column;gap:9px;">
+          <div style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--text-dim);"><span style="color:var(--danger);font-weight:800;">✕</span> 3,947 orders &amp; all order slips</div>
+          <div style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--text-dim);"><span style="color:var(--danger);font-weight:800;">✕</span> 1,284 customer records</div>
+          <div style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--text-dim);"><span style="color:var(--danger);font-weight:800;">✕</span> Sales history &amp; analytics</div>
+          <div style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--text-dim);"><span style="color:var(--danger);font-weight:800;">✕</span> Your Pro subscription</div>
+        </div>
+      </div>
+
+      <label style="font-size:12px;font-weight:600;color:var(--text-dim);margin:16px 2px 6px;display:block;">Type DELETE to confirm</label>
+      <input value="" style="width:100%;padding:13px 14px;border:1px solid var(--border-strong);border-radius:12px;background:var(--surface-2);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;letter-spacing:.1em;outline:none;" placeholder="DELETE">
+      <button style="width:100%;margin-top:14px;padding:14px 0;border:none;border-radius:13px;background:var(--danger);color:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;">Permanently delete account</button>
+      <button onClick="{{ goSettings }}" style="width:100%;margin-top:10px;padding:13px 0;border:1px solid var(--border-strong);border-radius:13px;background:var(--surface);color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:700;cursor:pointer;">Keep my account</button>
+    </div>
+  </div>
+</sc-if>
+<!--SCREENS-->
+        </div>
+
+        <sc-if value="{{ showNav }}" hint-placeholder-val="{{ true }}">
+          <div style="position:relative;z-index:3;flex-shrink:0;display:flex;align-items:stretch;justify-content:space-around;padding:8px 8px calc(8px + env(safe-area-inset-bottom));background:var(--nav-bg,#fff);border-top:1px solid var(--border,rgba(28,26,53,.09));backdrop-filter:saturate(1.4) blur(14px);">
+            <button onClick="{{ nav.dashboard }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 0;border:none;background:{{ navLiveBg }};border-radius:12px;cursor:pointer;color:{{ navLiveColor }};font-family:'Plus Jakarta Sans',sans-serif;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" fill="currentColor"/><circle cx="12" cy="12" r="8.2" stroke="currentColor" stroke-width="1.7" opacity=".55"/></svg>
+              <span style="font-size:10px;font-weight:700;">Live</span>
+            </button>
+            <button onClick="{{ nav.miners }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 0;border:none;background:{{ navMinersBg }};border-radius:12px;cursor:pointer;color:{{ navMinersColor }};font-family:'Plus Jakarta Sans',sans-serif;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 19V11M9 19V5M14 19v-6M19 19V9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <span style="font-size:10px;font-weight:700;">Miners</span>
+            </button>
+            <button onClick="{{ nav.orders }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 0;border:none;background:{{ navOrdersBg }};border-radius:12px;cursor:pointer;color:{{ navOrdersColor }};font-family:'Plus Jakarta Sans',sans-serif;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M6 7h12l-1 12a2 2 0 0 1-2 1.8H9A2 2 0 0 1 7 19L6 7Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 7a3 3 0 0 1 6 0" stroke="currentColor" stroke-width="1.7"/></svg>
+              <span style="font-size:10px;font-weight:700;">Orders</span>
+            </button>
+            <button onClick="{{ nav.products }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 0;border:none;background:{{ navProductsBg }};border-radius:12px;cursor:pointer;color:{{ navProductsColor }};font-family:'Plus Jakarta Sans',sans-serif;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 8.5 12 4l8 4.5v7L12 20l-8-4.5v-7Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="m4 8.5 8 4.5 8-4.5M12 13v7" stroke="currentColor" stroke-width="1.7"/></svg>
+              <span style="font-size:10px;font-weight:700;">Products</span>
+            </button>
+            <button onClick="{{ goMenu }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 0;border:none;background:{{ navMoreBg }};border-radius:12px;cursor:pointer;color:{{ navMoreColor }};font-family:'Plus Jakarta Sans',sans-serif;">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.7"/><path d="M19.4 13c.04-.3.06-.66.06-1s-.02-.7-.06-1l2.1-1.6-2-3.5-2.5 1a7.5 7.5 0 0 0-1.7-1l-.4-2.6H9.1l-.4 2.6c-.6.25-1.18.58-1.7 1l-2.5-1-2 3.5L4.6 11c-.04.3-.06.66-.06 1s.02.7.06 1l-2.1 1.6 2 3.5 2.5-1c.52.42 1.1.75 1.7 1l.4 2.6h5.8l.4-2.6c.6-.25 1.18-.58 1.7-1l2.5 1 2-3.5-2.1-1.6Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+              <span style="font-size:10px;font-weight:700;">Settings</span>
+            </button>
+          </div>
+        </sc-if>
+
+
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:860}}">
+class Component extends DCLogic {
+  state = { theme:'light', accent:'indigo', screen:'dashboard', moreOpen:false, comments:[], slipFlash:false, liveClaims:47, viewers:1284, langOpen:false, lang:'en' };
+
+  LANGS = [
+    {code:'en',label:'English',flag:'🇺🇸'},
+    {code:'fil',label:'Filipino',flag:'🇵🇭'},
+    {code:'id',label:'Bahasa Indonesia',flag:'🇮🇩'},
+    {code:'vi',label:'Tiếng Việt',flag:'🇻🇳'},
+    {code:'zh',label:'中文 (简体)',flag:'🇨🇳'},
+    {code:'zh-tw',label:'中文 (繁體)',flag:'🇹🇼'},
+    {code:'th',label:'ไทย',flag:'🇹🇭'}
+  ];
+
+  ACCENTS = {
+    indigo:{name:'Indigo',base:'#4f46e5',light:'#a5b4fc',dark:'#3730a3'},
+    violet:{name:'Violet',base:'#7c3aed',light:'#c4b5fd',dark:'#5b21b6'},
+    emerald:{name:'Emerald',base:'#059669',light:'#34d399',dark:'#065f46'},
+    rose:{name:'Rose',base:'#e11d48',light:'#fda4af',dark:'#9f1239'},
+    sky:{name:'Sky',base:'#0284c7',light:'#7dd3fc',dark:'#075985'},
+    amber:{name:'Amber',base:'#d97706',light:'#fcd34d',dark:'#b45309'}
+  };
+  ACCENT_ORDER = ['indigo','violet','emerald','rose','sky','amber'];
+
+  SCREENS = {
+    dashboard:'Dashboard', menu:'Settings', miners:'Miners', orders:'Orders', products:'Products', login:'Login / Landing',
+    settings:'Settings', customers:'Customers', subscription:'Subscription', support:'Support',
+    admin:'Admin', print:'Print Slip', sales:'Sales Report', shipping:'Shipping',
+    customerdata:'Customer Data', legal:'Privacy & Terms', delete:'Delete Account'
+  };
+
+  INCOMING = [
+    {name:'Grace Lim',handle:'@gracelim',text:'Mine! 1pc rose gold ⌚',mine:true},
+    {name:'Paolo Reyes',handle:'@paoloreyes',text:'How much shipping po?',mine:false},
+    {name:'Nene Bautista',handle:'@nene.b',text:'Mine 2pcs size 7',mine:true},
+    {name:'Daisy Ong',handle:'@daisy.ong',text:'Pa-mine din po 🙋',mine:true},
+    {name:'Rico Tan',handle:'@ricotan',text:'Still available?',mine:false},
+    {name:'Mae Villar',handle:'@mae.villar',text:'Mine the bundle set',mine:true},
+    {name:'Joy Aquino',handle:'@joyaquino',text:'Mine! black medium',mine:true},
+    {name:'Ben Co',handle:'@benco',text:'Claiming mine — red 1pc',mine:true}
+  ];
+
+  DATA = {
+    orders:[
+      {id:'#10472',buyer:'Maria Santos',handle:'@maria_shops',items:'Matte Lipstick ×2 · Tumbler ×1',qty:3,total:897,status:'Unpaid',platform:'TikTok',time:'2m'},
+      {id:'#10471',buyer:'Kim Tan',handle:'@kimtanph',items:'Cotton Tee — White M',qty:1,total:349,status:'Paid',platform:'TikTok',time:'5m'},
+      {id:'#10470',buyer:'Liza Reyes',handle:'@lizareyes',items:'Insulated Tumbler — Black',qty:1,total:399,status:'Packed',platform:'Facebook',time:'11m'},
+      {id:'#10469',buyer:'Grace Lim',handle:'@gracelim',items:'Rose Gold Watch',qty:1,total:1299,status:'Shipped',platform:'TikTok',time:'24m'},
+      {id:'#10468',buyer:'Nene Bautista',handle:'@nene.b',items:'Running Sneakers — Size 7 ×2',qty:2,total:1798,status:'Paid',platform:'Facebook',time:'33m'},
+      {id:'#10467',buyer:'Joy Aquino',handle:'@joyaquino',items:'Skincare Bundle Set',qty:1,total:649,status:'Unpaid',platform:'TikTok',time:'40m'}
+    ],
+    products:[
+      {name:'Matte Lipstick',sku:'LIP-RED',price:249,stock:42,cat:'Beauty'},
+      {name:'Insulated Tumbler',sku:'TUM-BLK',price:399,stock:8,cat:'Home'},
+      {name:'Cotton Tee — White',sku:'TEE-WHT-M',price:349,stock:120,cat:'Apparel'},
+      {name:'Rose Gold Watch',sku:'WTCH-RG',price:1299,stock:5,cat:'Accessories'},
+      {name:'Running Sneakers',sku:'SNK-07',price:899,stock:0,cat:'Footwear'},
+      {name:'Skincare Bundle',sku:'BND-SKN',price:649,stock:31,cat:'Beauty'}
+    ],
+    miners:[
+      {name:'Maria Santos',handle:'@maria_shops',orders:24,spent:18420,platform:'TikTok'},
+      {name:'Grace Lim',handle:'@gracelim',orders:18,spent:14250,platform:'TikTok'},
+      {name:'Liza Reyes',handle:'@lizareyes',orders:16,spent:12990,platform:'Facebook'},
+      {name:'Kim Tan',handle:'@kimtanph',orders:15,spent:9870,platform:'TikTok'},
+      {name:'Nene Bautista',handle:'@nene.b',orders:9,spent:7640,platform:'Facebook'}
+    ],
+    customers:[
+      {name:'Maria Santos',handle:'@maria_shops',orders:24,spent:18420,last:'2m',platform:'TikTok'},
+      {name:'Grace Lim',handle:'@gracelim',orders:18,spent:14250,last:'24m',platform:'TikTok'},
+      {name:'Liza Reyes',handle:'@lizareyes',orders:16,spent:12990,last:'11m',platform:'Facebook'},
+      {name:'Kim Tan',handle:'@kimtanph',orders:15,spent:9870,last:'5m',platform:'TikTok'},
+      {name:'Nene Bautista',handle:'@nene.b',orders:9,spent:7640,last:'33m',platform:'Facebook'},
+      {name:'Joy Aquino',handle:'@joyaquino',orders:7,spent:4310,last:'40m',platform:'TikTok'},
+      {name:'Rico Tan',handle:'@ricotan',orders:4,spent:2180,last:'1h',platform:'Facebook'}
+    ],
+    archive:[
+      {name:'Maria Santos',handle:'@maria_shops',text:'Mine! Red lipstick 2pcs 💄',time:'9:41 PM'},
+      {name:'Kim Tan',handle:'@kimtanph',text:'Mine size M white tee',time:'9:39 PM'},
+      {name:'Liza Reyes',handle:'@lizareyes',text:'Mine black tumbler',time:'9:36 PM'},
+      {name:'Joy Aquino',handle:'@joyaquino',text:'How much the bundle po?',time:'9:34 PM'},
+      {name:'Grace Lim',handle:'@gracelim',text:'Mine rose gold watch ✨',time:'9:31 PM'}
+    ],
+    shipping:[
+      {id:'#10469',buyer:'Grace Lim',courier:'J&T Express',track:'JT882190455',status:'Shipped'},
+      {id:'#10470',buyer:'Liza Reyes',courier:'LBC',track:'LBC772019',status:'Packed'},
+      {id:'#10468',buyer:'Nene Bautista',courier:'Flash',track:'FL552281',status:'Shipped'},
+      {id:'#10465',buyer:'Rico Tan',courier:'J&T Express',track:'JT882110023',status:'Delivered'}
+    ],
+    sellers:[
+      {shop:'Maria Beauty Hub',owner:'Maria Santos',plan:'Pro',expiry:'Jul 28, 2026',status:'Active'},
+      {shop:'TanwearPH',owner:'Kim Tan',plan:'Starter',expiry:'Jun 30, 2026',status:'Expiring'},
+      {shop:'Reyes Finds',owner:'Liza Reyes',plan:'Pro',expiry:'Sep 12, 2026',status:'Active'},
+      {shop:'Grace Luxe',owner:'Grace Lim',plan:'Business',expiry:'Dec 01, 2026',status:'Active'},
+      {shop:'BudgetBuys',owner:'Rico Tan',plan:'Starter',expiry:'Jun 20, 2026',status:'Expired'}
+    ],
+    sales:[{d:'Mon',v:8200},{d:'Tue',v:11400},{d:'Wed',v:9800},{d:'Thu',v:15200},{d:'Fri',v:21800},{d:'Sat',v:28400},{d:'Sun',v:19600}]
+  };
+
+  cid = 1; pushIdx = 0;
+
+  componentDidMount(){
+    this.setState({ comments:[
+      {id:'s1',name:'Maria Santos',handle:'@maria_shops',text:'Mine! Red lipstick 2pcs 💄',mine:true,time:'now'},
+      {id:'s2',name:'Jenny Cruz',handle:'@jen.cruz',text:'How much po the bundle?',mine:false,time:'12s'},
+      {id:'s3',name:'Liza Reyes',handle:'@lizareyes',text:'Mine black tumbler',mine:true,time:'28s'},
+      {id:'s4',name:'Aira Dela Cruz',handle:'@aira.dc',text:'Sold na po ba?',mine:false,time:'45s'},
+      {id:'s5',name:'Kim Tan',handle:'@kimtanph',text:'Mine! size M white',mine:true,time:'1m'},
+      {id:'s6',name:'Joy Aquino',handle:'@joyaquino',text:'How to pay po? GCash?',mine:false,time:'1m'},
+      {id:'s7',name:'Mae Villar',handle:'@mae.villar',text:'Mine the bundle set 🙋',mine:true,time:'2m'},
+      {id:'s8',name:'Rico Tan',handle:'@ricotan',text:'Sana available pa 🙏',mine:false,time:'2m'},
+      {id:'s9',name:'Grace Lim',handle:'@gracelim',text:'Mine rose gold ✨',mine:true,time:'3m'}
+    ]});
+    this.timer = setInterval(()=>this.pushComment(), 2700);
+    this.applyVars();
+  }
+  componentDidUpdate(){ this.applyVars(); }
+  componentWillUnmount(){ clearInterval(this.timer); clearTimeout(this._ft); }
+
+  pushComment(){
+    const inc = this.INCOMING[this.pushIdx % this.INCOMING.length]; this.pushIdx++;
+    const c = { ...inc, id:'c'+(this.cid++), time:'now' };
+    this.setState(s=>{
+      const aged = s.comments.map(x=>({...x, time: x.time==='now'?'2s':x.time}));
+      return {
+        comments:[c, ...aged].slice(0,11),
+        slipFlash: inc.mine,
+        liveClaims: inc.mine ? s.liveClaims+1 : s.liveClaims,
+        viewers: Math.max(900, s.viewers + Math.round((Math.random()-0.35)*22))
+      };
+    });
+    if(inc.mine){ clearTimeout(this._ft); this._ft=setTimeout(()=>this.setState({slipFlash:false}),950); }
+  }
+
+  rgba(hex,a){ const n=parseInt(hex.slice(1),16); return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')'; }
+  setRoot = (el)=>{ this.root = el; this.applyVars(); };
+
+  applyVars(){
+    const r = this.root; if(!r) return;
+    const A = this.ACCENTS[this.state.accent]; const dark = this.state.theme==='dark';
+    const S=(k,v)=>r.style.setProperty(k,v);
+    S('--accent', A.base); S('--accent-text','#ffffff');
+    S('--accent-chip', this.rgba(A.base, 0.20));
+    if(dark){
+      S('--app-bg', 'radial-gradient(125% 95% at 50% -12%, '+A.dark+' 0%, #15123f 46%, #0a0824 100%)');
+      S('--surface','rgba(255,255,255,.055)'); S('--surface-2','rgba(255,255,255,.03)'); S('--surface-3','rgba(255,255,255,.09)');
+      S('--border','rgba(255,255,255,.10)'); S('--border-strong','rgba(255,255,255,.18)');
+      S('--text','#ffffff'); S('--text-dim','#c2c9ee'); S('--text-muted','rgba(224,231,255,.5)');
+      S('--handle', A.light); S('--accent-fg', A.light);
+      S('--header-bg','rgba(16,12,46,.62)'); S('--on-header','#ffffff');
+      S('--accent-soft', this.rgba(A.base,0.24)); S('--accent-softer', this.rgba(A.base,0.14));
+      S('--nav-bg','rgba(16,12,46,.66)'); S('--glow-a', this.rgba(A.base,0.55));
+      S('--shadow','0 10px 30px rgba(0,0,0,.45)'); S('--chip-bg','rgba(255,255,255,.07)');
+      S('--ok','#34d399'); S('--warn','#fbbf24'); S('--danger','#fb7185');
+    } else {
+      S('--app-bg','#f3f4fb');
+      S('--surface','#ffffff'); S('--surface-2','#f6f7fc'); S('--surface-3','#eef0f9');
+      S('--border','rgba(28,26,53,.09)'); S('--border-strong','rgba(28,26,53,.16)');
+      S('--text','#1c1a35'); S('--text-dim','#5a5872'); S('--text-muted','#9795ad');
+      S('--handle', A.dark); S('--accent-fg', A.dark);
+      S('--header-bg', A.base); S('--on-header','#ffffff');
+      S('--accent-soft', this.rgba(A.base,0.12)); S('--accent-softer', this.rgba(A.base,0.07));
+      S('--nav-bg','#ffffff'); S('--glow-a', this.rgba(A.base,0.5));
+      S('--shadow','0 1px 3px rgba(28,26,53,.08), 0 12px 28px rgba(28,26,53,.07)'); S('--chip-bg','#f1f2fa');
+      S('--ok','#059669'); S('--warn','#d97706'); S('--danger','#e11d48');
+    }
+  }
+
+  go(id){ return ()=> this.setState({screen:id, moreOpen:false}); }
+
+  renderVals(){
+    const dark = this.state.theme==='dark'; const screen = this.state.screen;
+    const ids = Object.keys(this.SCREENS);
+    const show = {}; ids.forEach(i=> show[i]= screen===i);
+    const pal=['#f59e0b','#ef4444','#10b981','#3b82f6','#8b5cf6','#ec4899','#14b8a6','#6366f1'];
+    const col=(s)=>{let h=0;for(const c of (s||'x'))h=(h*31+c.charCodeAt(0))>>>0;return pal[h%pal.length];};
+    const init=(s)=>(s||'').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
+    const statusColor=(st)=>({Unpaid:'#e11d48',Paid:'#059669',Packed:'#0284c7',Shipped:'#7c3aed',Delivered:'#059669',Cancelled:'#9ca3af',Active:'#059669',Expiring:'#d97706',Expired:'#e11d48'}[st]||'#9ca3af');
+    const fmt=(n)=>n.toLocaleString('en-US');
+
+    const comments = this.state.comments.map(c=>({...c, av:col(c.name), ini:init(c.name), mineLabel: c.mine?'MINE':'' }));
+    const orders = this.DATA.orders.map(o=>({...o, av:col(o.buyer), ini:init(o.buyer), sc:statusColor(o.status), totalF:fmt(o.total)}));
+    const products = this.DATA.products.map(p=>({...p, priceF:fmt(p.price), av:col(p.name), ini:init(p.name),
+      stockColor: p.stock===0?'var(--danger)':(p.stock<10?'var(--warn)':'var(--ok)'),
+      stockLabel: p.stock===0?'Out of stock':(p.stock<10?('Low · '+p.stock+' left'):(p.stock+' in stock')),
+      barW: Math.min(100, Math.round(p.stock/120*100))+'%' }));
+    const miners = this.DATA.miners.map((m,i)=>({...m, av:col(m.name), ini:init(m.name), spentF:fmt(m.spent), rank:i+1}));
+    const customers = this.DATA.customers.map(c=>({...c, av:col(c.name), ini:init(c.name), spentF:fmt(c.spent)}));
+    const archive = this.DATA.archive.map(c=>({...c, av:col(c.name), ini:init(c.name)}));
+    const shipping = this.DATA.shipping.map(s=>({...s, av:col(s.buyer), ini:init(s.buyer), sc:statusColor(s.status)}));
+    const sellers = this.DATA.sellers.map(s=>({...s, av:col(s.shop), ini:init(s.shop), sc:statusColor(s.status)}));
+    const maxSale = Math.max(...this.DATA.sales.map(s=>s.v));
+    const sales = this.DATA.sales.map(s=>({...s, h: Math.round(s.v/maxSale*100)+'%', vf:fmt(s.v)}));
+
+    const accentList = this.ACCENT_ORDER.map(k=>{ const a=this.ACCENTS[k]; const on=k===this.state.accent;
+      return {key:k, name:a.name, base:a.base, pick:()=>this.setState({accent:k}),
+        ring: on?'#fff':'rgba(255,255,255,.14)', glow: on?('0 0 0 2px '+a.base+', 0 4px 12px '+this.rgba(a.base,.6)):'none'}; });
+    const appAccentList = this.ACCENT_ORDER.map(k=>{ const a=this.ACCENTS[k]; const on=k===this.state.accent;
+      return {key:k, name:a.name, base:a.base, pick:()=>this.setState({accent:k}),
+        ring: on?'var(--accent)':'var(--border-strong)', mark: on?'✓':'', rw: on?'3px':'1.5px'}; });
+    const segBase='flex:1;padding:9px 0;border:none;border-radius:9px;cursor:pointer;font-family:Plus Jakarta Sans,sans-serif;font-size:13px;font-weight:700;';
+    const segLightStyle = segBase + (!dark?'background:var(--accent);color:#fff;':'background:transparent;color:var(--text-dim);');
+    const segDarkStyle = segBase + (dark?'background:var(--accent);color:#fff;':'background:transparent;color:var(--text-dim);');
+
+    const mkItem=(id,label)=>{ const on=screen===id;
+      return {id,label, go:this.go(id),
+        color: on?'#fff':'#a6abc0', bg: on?'var(--accent-chip)':'transparent',
+        dot: on?'var(--accent)':'#43475a', weight: on?'700':'500'}; };
+    const navGroups=[
+      {label:'CORE', items:[mkItem('dashboard','Dashboard'),mkItem('orders','Orders'),mkItem('products','Products'),mkItem('miners','Miners'),mkItem('login','Login / Landing')]},
+      {label:'FREQUENT', items:[mkItem('settings','Settings'),mkItem('customers','Customers'),mkItem('subscription','Subscription'),mkItem('support','Support')]},
+      {label:'ADMIN', items:[mkItem('admin','Admin'),mkItem('print','Print Slip'),mkItem('sales','Sales Report'),mkItem('shipping','Shipping'),mkItem('customerdata','Customer Data'),mkItem('legal','Privacy & Terms'),mkItem('delete','Delete Account')]}
+    ];
+
+    const moreDefs=[['settings','General Settings'],['language','Language'],['customers','Customers'],['admin','Admin'],['sales','Sales Report'],['shipping','Shipping'],['customerdata','Customer Data'],['legal','Privacy & Terms'],['delete','Delete Account'],['login','Log out']];
+    const moreItems = moreDefs.map(([id,label])=>({id,label, go:this.go(id==='language'?'settings':id),
+      mono: id==='settings'?'⚙':(id==='language'?'EN':(id==='delete'?'⚠':(id==='login'?'⎋':init(label)))),
+      tint: id==='delete'?this.rgba('#e11d48',.13):'var(--accent-soft)',
+      ink: id==='delete'?'var(--danger)':'var(--accent-fg)'}));
+
+    const extra=['settings','customers','subscription','support','admin','print','sales','shipping','customerdata','legal','delete'];
+    const navOn=(b)=>b?'var(--accent-fg)':'var(--text-muted)';
+    const navBg=(b)=>b?'var(--accent-soft)':'transparent';
+    const nDash=screen==='dashboard', nMin=screen==='miners', nOrd=screen==='orders', nProd=screen==='products', nMore=screen==='menu'||extra.includes(screen);
+
+    return {
+      setRoot:this.setRoot, isDark:dark, screenName:this.SCREENS[screen]||'', themeLabel: dark?'Dark':'Light', accentName:this.ACCENTS[this.state.accent].name,
+      show, showNav: screen!=='login', moreOpen:this.state.moreOpen,
+      goLight:()=>this.setState({theme:'light'}), goDark:()=>this.setState({theme:'dark'}),
+      lightTabStyle: this.tab(!dark), darkTabStyle: this.tab(dark),
+      accentList, appAccentList, segLightStyle, segDarkStyle, navGroups, moreItems,
+      openMore:()=>this.setState({moreOpen:true}), closeMore:()=>this.setState({moreOpen:false}),
+      nav:{ dashboard:this.go('dashboard'), miners:this.go('miners'), orders:this.go('orders'), products:this.go('products') },
+      navLiveColor:navOn(nDash), navLiveBg:navBg(nDash), navMinersColor:navOn(nMin), navMinersBg:navBg(nMin),
+      navOrdersColor:navOn(nOrd), navOrdersBg:navBg(nOrd), navProductsColor:navOn(nProd), navProductsBg:navBg(nProd),
+      navMoreColor:navOn(nMore), navMoreBg:navBg(nMore), goMenu:this.go('menu'),
+      go:(id)=>this.go(id),
+      comments, orders, products, miners, customers, archive, shipping, sellers, sales,
+      liveClaims:this.state.liveClaims, viewersF:fmt(this.state.viewers),
+      slipBorder: this.state.slipFlash?'var(--accent)':'var(--border)',
+      slipShadow: this.state.slipFlash?'0 0 0 3px var(--accent-softer)':'none',
+      goOrders:this.go('orders'), goProducts:this.go('products'), goPrint:this.go('print'), goLogin:this.go('login'),
+      goDashboard:this.go('dashboard'), goSubscription:this.go('subscription'), goLegal:this.go('legal'), goSupport:this.go('support'),
+      goDelete:this.go('delete'), goSettings:this.go('settings'), goCustomers:this.go('customers'),
+      goAdmin:this.go('admin'), goSales:this.go('sales'), goShipping:this.go('shipping'), goCustomerData:this.go('customerdata'),
+      langs: this.LANGS.map(l=>({...l, active:l.code===this.state.lang, bg:l.code===this.state.lang?'var(--accent-soft)':'transparent', pick:()=>this.setState({lang:l.code,langOpen:false})})),
+      langOpen:this.state.langOpen, toggleLang:()=>this.setState(s=>({langOpen:!s.langOpen})),
+      curFlag:(this.LANGS.find(l=>l.code===this.state.lang)||this.LANGS[0]).flag,
+      curLabel:(this.LANGS.find(l=>l.code===this.state.lang)||this.LANGS[0]).label
+    };
+  }
+
+  tab(active){
+    return 'flex:1;padding:7px 0;border:none;border-radius:8px;cursor:pointer;font-family:Plus Jakarta Sans,sans-serif;font-size:12.5px;font-weight:700;transition:all .15s;'
+      + (active ? 'background:var(--accent);color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.3);' : 'background:transparent;color:#9aa0b4;');
+  }
+}
+</script>
+</body>
+</html>
