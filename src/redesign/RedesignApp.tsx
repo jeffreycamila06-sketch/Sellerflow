@@ -28,6 +28,26 @@ export default function RedesignApp() {
   const [lang, setLang] = useState<string>(() => readLS(LS.lang, "en"));
   const [langOpen, setLangOpen] = useState(false);
 
+  // Dashboard account pickers (visual only; selection/open state local — no real
+  // account switching, which is Phase 5).
+  const [ttOpen, setTtOpen] = useState(false);
+  const [fbOpen, setFbOpen] = useState(false);
+  const [ttIdx, setTtIdx] = useState(0);
+  const [fbIdx, setFbIdx] = useState(0);
+
+  // Auto-detect keyword feature (visual only — no real comment detection /
+  // automation, which is Phase 5). Defaults from dc.html v2 state (L1160).
+  const [autoDetect, setAutoDetect] = useState(true);
+  const [autoSetupOpen, setAutoSetupOpen] = useState(false);
+  const [autoAction, setAutoAction] = useState<"slip" | "sticker">("slip");
+  const [autoWords, setAutoWords] = useState<string[]>(["mine", "claim", "sold", "get", "take"]);
+  const [autoInput, setAutoInput] = useState("");
+  const addAutoWord = () => {
+    const w = autoInput.trim().toLowerCase();
+    if (w && !autoWords.includes(w) && autoWords.length < 20) setAutoWords((ws) => [...ws, w]);
+    setAutoInput("");
+  };
+
   const [comments, setComments] = useState<Comment[]>(SEED_COMMENTS);
   const [viewers, setViewers] = useState(1284);
   const [liveClaims, setLiveClaims] = useState(47);
@@ -91,7 +111,35 @@ export default function RedesignApp() {
               onPickLang={(code) => { setLang(code); setLangOpen(false); }}
             />
           )}
-          {screen === "dashboard" && <Dashboard comments={comments} viewers={viewers} liveClaims={liveClaims} />}
+          {screen === "dashboard" && (
+            <Dashboard
+              comments={comments}
+              viewers={viewers}
+              liveClaims={liveClaims}
+              ttOpen={ttOpen}
+              fbOpen={fbOpen}
+              ttIdx={ttIdx}
+              fbIdx={fbIdx}
+              onToggleTT={() => { setTtOpen((o) => !o); setFbOpen(false); }}
+              onToggleFB={() => { setFbOpen((o) => !o); setTtOpen(false); }}
+              onPickTT={(i) => { setTtIdx(i); setTtOpen(false); }}
+              onPickFB={(i) => { setFbIdx(i); setFbOpen(false); }}
+              onGoOrders={() => setScreen("orders")}
+              auto={{
+                detect: autoDetect,
+                setupOpen: autoSetupOpen,
+                action: autoAction,
+                words: autoWords,
+                input: autoInput,
+                toggle: () => setAutoDetect((v) => !v),
+                toggleSetup: () => setAutoSetupOpen((o) => !o),
+                setAction: setAutoAction,
+                removeWord: (i) => setAutoWords((ws) => ws.filter((_, j) => j !== i)),
+                setInput: setAutoInput,
+                addWord: addAutoWord,
+              }}
+            />
+          )}
           {screen === "orders" && <Orders />}
           {screen === "products" && <Products />}
           {screen === "miners" && <Miners />}

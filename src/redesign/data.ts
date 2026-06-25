@@ -82,6 +82,20 @@ export const MINERS: Miner[] = [
   { name: "Nene Bautista", handle: "@nene.b", orders: 9, spent: 7640, platform: "Facebook" },
 ];
 
+// Dashboard header account pickers (dc.html v2 L1182–1191). SAMPLE data only —
+// Phase 5 wires real connected TikTok/Facebook accounts + actual switching.
+export interface Account { handle: string; name: string; meta: string; }
+export const TT_ACCOUNTS: Account[] = [
+  { handle: "@maria_shops", name: "Maria's Live Shop", meta: "128K followers" },
+  { handle: "@maria_beauty", name: "Maria Beauty Hub", meta: "54K followers" },
+  { handle: "@mariadeals", name: "Maria Deals PH", meta: "31K followers" },
+];
+export const FB_ACCOUNTS: Account[] = [
+  { handle: "Maria's Live Shop", name: "Page · 86K likes", meta: "Page" },
+  { handle: "Maria Beauty Hub", name: "Page · 22K likes", meta: "Page" },
+  { handle: "Reseller Group PH", name: "Group · 12K members", meta: "Group" },
+];
+
 // ── Helpers (dc.html L1029–1033) ────────────────────────────────────────────
 const AV_PALETTE = ["#f59e0b", "#ef4444", "#10b981", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#6366f1"];
 export const avColor = (s: string): string => {

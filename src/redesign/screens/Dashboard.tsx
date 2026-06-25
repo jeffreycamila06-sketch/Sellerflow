@@ -1,12 +1,65 @@
-// Screen 1 — Dashboard / Live (hero). dc.html L101–160.
+// Screen 1 — Dashboard / Live (hero). dc.html v2 L101–203.
+// v2 additions: TikTok/Facebook account-picker dropdowns in the header, and
+// Enterprise + 1-Click action buttons on each MINE comment row. Visual only
+// (sample data; dropdown open/selected via local state in RedesignApp) — real
+// account switching / order creation is Phase 5.
 import type { CSSProperties } from "react";
-import { avColor, initials, fmt, type Comment } from "../data";
+import { avColor, initials, fmt, TT_ACCOUNTS, FB_ACCOUNTS, type Comment } from "../data";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "12px 16px 13px" };
-const chip: CSSProperties = { display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.16)", padding: "5px 10px", borderRadius: 9, fontSize: 11.5, fontWeight: 600 };
-const greenDot: CSSProperties = { width: 7, height: 7, borderRadius: "50%", background: "#4ade80" };
+const pickerBtn: CSSProperties = { width: "100%", display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.18)", padding: "6px 9px", border: "none", borderRadius: 9, fontSize: 11.5, fontWeight: 600, color: "var(--on-header)", cursor: "pointer", fontFamily: "var(--font-ui)" };
+const dropdown = (side: "left" | "right"): CSSProperties => ({ position: "absolute", top: "calc(100% + 7px)", [side]: 0, width: 220, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 13, boxShadow: "0 16px 38px rgba(0,0,0,.3)", padding: 6, zIndex: 30 });
+const ddHeading: CSSProperties = { fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--text-muted)", padding: "6px 8px 7px" };
+const ddRow = (active: boolean): CSSProperties => ({ width: "100%", display: "flex", alignItems: "center", gap: 9, padding: 8, border: "none", borderRadius: 9, background: active ? "var(--accent-soft)" : "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" });
+const ddName: CSSProperties = { display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+const ddMeta: CSSProperties = { display: "block", fontSize: 10.5, color: "var(--text-muted)" };
+const ddCheck: CSSProperties = { color: "var(--accent-fg)", fontWeight: 800, fontSize: 13, width: 12, flexShrink: 0 };
+const bolt = <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4.5 13.5H11l-1 8.5 9-12h-6.5L13 2Z" /></svg>;
+const bolt12 = <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4.5 13.5H11l-1 8.5 9-12h-6.5L13 2Z" /></svg>;
 
-export default function Dashboard({ comments, viewers, liveClaims }: { comments: Comment[]; viewers: number; liveClaims: number }) {
+// Auto-detect keyword controls (visual only).
+export interface AutoControls {
+  detect: boolean;
+  setupOpen: boolean;
+  action: "slip" | "sticker";
+  words: string[];
+  input: string;
+  toggle: () => void;
+  toggleSetup: () => void;
+  setAction: (a: "slip" | "sticker") => void;
+  removeWord: (i: number) => void;
+  setInput: (v: string) => void;
+  addWord: () => void;
+}
+
+const wordChip: CSSProperties = { display: "flex", alignItems: "center", gap: 6, background: "var(--accent-soft)", border: "1px solid var(--accent)", color: "var(--accent-fg)", padding: "6px 8px 6px 11px", borderRadius: 9, fontSize: 12, fontWeight: 700 };
+const wordX: CSSProperties = { background: "none", border: "none", cursor: "pointer", color: "var(--accent-fg)", fontSize: 15, lineHeight: 1, padding: 0, display: "flex", alignItems: "center" };
+const addWordInput: CSSProperties = { background: "transparent", border: "1.3px dashed var(--border-strong)", color: "var(--text)", padding: "6px 11px", borderRadius: 9, fontSize: 12, fontWeight: 700, fontFamily: "var(--font-ui)", outline: "none", width: 168 };
+
+export default function Dashboard({
+  comments, viewers, liveClaims,
+  ttOpen, fbOpen, ttIdx, fbIdx, onToggleTT, onToggleFB, onPickTT, onPickFB, onGoOrders,
+  auto,
+}: {
+  comments: Comment[]; viewers: number; liveClaims: number;
+  ttOpen: boolean; fbOpen: boolean; ttIdx: number; fbIdx: number;
+  onToggleTT: () => void; onToggleFB: () => void;
+  onPickTT: (i: number) => void; onPickFB: (i: number) => void;
+  onGoOrders: () => void;
+  auto: AutoControls;
+}) {
+  // derived toggle visuals (dc.html v2 L1471–1478)
+  const autoLabel = auto.detect ? "Auto-detect" : "Manual mode";
+  const autoLabelColor = auto.detect ? "var(--accent-fg)" : "var(--text-muted)";
+  const autoTrack = auto.detect ? "var(--accent)" : "var(--border-strong)";
+  const autoKnob = auto.detect ? 17 : 2;
+  const autoChevron = auto.setupOpen ? "rotate(180deg)" : "rotate(0deg)";
+  const segStyle = (a: "slip" | "sticker"): CSSProperties => ({
+    flex: 1, padding: "9px 0", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)", fontSize: 11.5, fontWeight: 700,
+    ...(auto.action === a
+      ? { background: "var(--accent)", color: "var(--accent-text)", border: "1px solid var(--accent)" }
+      : { background: "var(--surface-2)", color: "var(--text-dim)", border: "1px solid var(--border)" }),
+  });
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
       <div style={headerBar}>
@@ -29,9 +82,49 @@ export default function Dashboard({ comments, viewers, liveClaims }: { comments:
             </span>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8, marginTop: 11 }}>
-          <div style={chip}><span style={greenDot} /> TikTok · @maria_shops</div>
-          <div style={chip}><span style={greenDot} /> Facebook</div>
+
+        {/* Account pickers (TikTok / Facebook) */}
+        <div style={{ display: "flex", gap: 8, marginTop: 11, position: "relative", zIndex: 6 }}>
+          <div style={{ position: "relative", flex: 1 }}>
+            <button onClick={onToggleTT} style={pickerBtn}>
+              <span style={{ width: 16, height: 16, borderRadius: 5, background: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, color: "#fff", flexShrink: 0 }}>t</span>
+              <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{TT_ACCOUNTS[ttIdx].handle}</span>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#4ade80", flexShrink: 0 }} />
+              <span style={{ fontSize: 9, opacity: 0.85 }}>▾</span>
+            </button>
+            {ttOpen && (
+              <div style={dropdown("left")}>
+                <div style={ddHeading}>TIKTOK ACCOUNT</div>
+                {TT_ACCOUNTS.map((a, i) => (
+                  <button key={a.handle} onClick={() => onPickTT(i)} style={ddRow(i === ttIdx)}>
+                    <span style={{ width: 30, height: 30, borderRadius: 8, background: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{initials(a.name)}</span>
+                    <span style={{ flex: 1, minWidth: 0 }}><span style={ddName}>{a.handle}</span><span style={ddMeta}>{a.meta}</span></span>
+                    <span style={ddCheck}>{i === ttIdx ? "✓" : ""}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div style={{ position: "relative", flex: 1 }}>
+            <button onClick={onToggleFB} style={pickerBtn}>
+              <span style={{ width: 16, height: 16, borderRadius: 5, background: "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: "#fff", flexShrink: 0, fontFamily: "var(--font-display)" }}>f</span>
+              <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{FB_ACCOUNTS[fbIdx].handle}</span>
+              <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#4ade80", flexShrink: 0 }} />
+              <span style={{ fontSize: 9, opacity: 0.85 }}>▾</span>
+            </button>
+            {fbOpen && (
+              <div style={dropdown("right")}>
+                <div style={ddHeading}>FACEBOOK PAGE / GROUP</div>
+                {FB_ACCOUNTS.map((a, i) => (
+                  <button key={a.handle} onClick={() => onPickFB(i)} style={ddRow(i === fbIdx)}>
+                    <span style={{ width: 30, height: 30, borderRadius: 8, background: "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#fff", flexShrink: 0, fontFamily: "var(--font-display)" }}>f</span>
+                    <span style={{ flex: 1, minWidth: 0 }}><span style={ddName}>{a.handle}</span><span style={ddMeta}>{a.meta}</span></span>
+                    <span style={ddCheck}>{i === fbIdx ? "✓" : ""}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -41,8 +134,55 @@ export default function Dashboard({ comments, viewers, liveClaims }: { comments:
             <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14.5, color: "var(--text)" }}>Live comments</span>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#e11d48", animation: "sflDot 1s infinite" }} />
           </div>
-          <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>Auto-detecting "mine"</span>
+          {/* auto-detect: tappable label+chevron opens setup; switch toggles on/off */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button onClick={auto.toggleSetup} title="Set up trigger words" style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "var(--font-ui)" }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: autoLabelColor }}>{autoLabel}</span>
+              <span style={{ color: "var(--text-muted)", fontSize: 10, transition: "transform .2s", transform: autoChevron, display: "inline-block" }}>▾</span>
+            </button>
+            <button onClick={auto.toggle} title="Toggle auto-detect / manual mode" style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }}>
+              <span style={{ width: 34, height: 19, borderRadius: 11, background: autoTrack, position: "relative", transition: "background .15s", flexShrink: 0, display: "block" }}>
+                <span style={{ position: "absolute", top: 2, left: autoKnob, width: 15, height: 15, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 2px rgba(0,0,0,.3)", transition: "left .15s" }} />
+              </span>
+            </button>
+          </div>
         </div>
+
+        {/* auto-detect setup panel (dc.html v2 L535–549 + action selector L1480–1481) */}
+        {auto.setupOpen && (
+          <div className="sfl-comm-row" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginBottom: 11 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>Trigger word sets</span>
+              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{auto.words.length} / 20</span>
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
+              {auto.words.map((w, i) => (
+                <span key={w} style={wordChip}>{w}<button onClick={() => auto.removeWord(i)} title="Remove" style={wordX}>×</button></span>
+              ))}
+              {auto.words.length < 20 && (
+                <input
+                  value={auto.input}
+                  onChange={(e) => auto.setInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); auto.addWord(); } }}
+                  placeholder="Type word, press Enter"
+                  style={addWordInput}
+                />
+              )}
+            </div>
+            <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", marginBottom: 10 }}>Auto action</div>
+              <div style={{ display: "flex", gap: 7 }}>
+                <button onClick={() => auto.setAction("slip")} style={segStyle("slip")}>Slip</button>
+                <button onClick={() => auto.setAction("sticker")} style={segStyle("sticker")}>Sticker</button>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: autoLabelColor }} />
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: autoLabelColor }}>{autoLabel}</span>
+              <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>currently active</span>
+            </div>
+          </div>
+        )}
 
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 7, boxShadow: "var(--shadow)", flex: 1 }}>
           {comments.map((c) => (
@@ -60,6 +200,12 @@ export default function Dashboard({ comments, viewers, liveClaims }: { comments:
                     <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".05em", color: "var(--accent-text)", background: "var(--accent)", padding: "2px 6px", borderRadius: 5, flexShrink: 0 }}>MINE</span>
                   )}
                 </div>
+                {c.mine && (
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 8 }}>
+                    <button onClick={onGoOrders} title="Enterprise auto-order" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 800, letterSpacing: ".02em", color: "var(--accent-fg)", background: "transparent", border: "1.3px solid var(--accent)", padding: "5px 11px", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{bolt}Enterprise</button>
+                    <button onClick={onGoOrders} title="Create order in 1 click" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 800, letterSpacing: ".02em", color: "var(--accent-text)", background: "var(--accent)", border: "none", padding: "5px 12px", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)", boxShadow: "0 2px 8px var(--accent-soft)" }}>{bolt12}1-Click</button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
