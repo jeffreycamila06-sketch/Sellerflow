@@ -9,8 +9,8 @@ import { headerBar, headerTitle, card, sectionLabel } from "../ui";
 
 const label: CSSProperties = { fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 5 };
 const input: CSSProperties = { width: "100%", padding: "11px 13px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 600, outline: "none" };
-const rowTitle: CSSProperties = { fontSize: 13, fontWeight: 700, color: "var(--text)" };
-const rowSub: CSSProperties = { fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 };
+const rowTitle: CSSProperties = { fontSize: 13.5, fontWeight: 700, color: "var(--text)" };
+const rowSub: CSSProperties = { fontSize: 11.5, color: "var(--text-muted)" };
 const connected = (
   <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 700, color: "var(--ok)" }}>
     <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--ok)" }} />Connected
@@ -121,25 +121,25 @@ export default function GeneralSettings({
         {/* APPEARANCE — real theme + accent control */}
         <div>
           <div style={sectionLabel}>APPEARANCE</div>
-          <div style={card}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 9 }}>Theme</div>
-            <div style={{ display: "flex", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 11, padding: 4, gap: 4, marginBottom: 18 }}>
+          <div style={{ ...card, padding: 13 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", marginBottom: 7 }}>Theme</div>
+            <div style={{ display: "flex", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 11, padding: 4, gap: 4, marginBottom: 13 }}>
               <button onClick={() => onSetTheme("light")} style={seg(theme === "light")}>☀ Light</button>
               <button onClick={() => onSetTheme("dark")} style={seg(theme === "dark")}>☾ Dark</button>
             </div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 11 }}>Accent color</div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 18 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", marginBottom: 9 }}>Accent color</div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 13 }}>
               {ACCENT_ORDER.map((k) => {
                 const on = k === accent;
                 return (
-                  <button key={k} onClick={() => onSetAccent(k)} title={ACCENTS[k].name} style={{ width: 40, height: 40, borderRadius: 12, cursor: "pointer", background: ACCENTS[k].base, border: `${on ? "3px" : "1.5px"} solid ${on ? "var(--accent)" : "var(--border-strong)"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 800, color: "#fff", outline: "none" }}>{on ? "✓" : ""}</button>
+                  <button key={k} onClick={() => onSetAccent(k)} title={ACCENTS[k].name} style={{ width: 36, height: 36, borderRadius: 11, cursor: "pointer", background: ACCENTS[k].base, border: `${on ? "3px" : "1.5px"} solid ${on ? "var(--accent)" : "var(--border-strong)"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 800, color: "#fff", outline: "none" }}>{on ? "✓" : ""}</button>
                 );
               })}
             </div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 12, borderTop: "1px solid var(--border)" }}>
               <div style={{ flex: 1 }}>
-                <div style={rowTitle}>Readable @handles</div>
-                <div style={rowSub}>High-contrast color for usernames — <span style={{ color: "var(--handle)", fontWeight: 700 }}>@maria_shops</span></div>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>Readable @handles</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>High-contrast usernames — <span style={{ color: "var(--handle)", fontWeight: 700 }}>@maria_shops</span></div>
               </div>
               <div style={{ width: 44, height: 26, borderRadius: 13, background: "var(--accent)", position: "relative", flexShrink: 0 }}><div style={{ width: 20, height: 20, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, right: 3, boxShadow: "0 1px 3px rgba(0,0,0,.3)" }} /></div>
             </div>

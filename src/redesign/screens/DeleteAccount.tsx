@@ -17,7 +17,7 @@ export default function DeleteAccount({ onBack }: { onBack: () => void }) {
         <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, letterSpacing: "-.01em" }}>Delete account</div>
       </div>
       <div style={{ padding: "18px 16px 24px" }}>
-        <div style={{ background: "rgba(225,29,72,.08)", border: "1px solid var(--danger)", borderRadius: 16, padding: 18, textAlign: "center" }}>
+        <div style={{ background: "var(--danger-soft, rgba(225,29,72,.08))", border: "1px solid var(--danger)", borderRadius: 16, padding: 18, textAlign: "center" }}>
           <div style={{ width: 54, height: 54, borderRadius: "50%", background: "rgba(225,29,72,.14)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M12 8v5" stroke="var(--danger)" strokeWidth="2.2" strokeLinecap="round" /><circle cx="12" cy="16.5" r="1.3" fill="var(--danger)" /><path d="M10.3 3.9 2.6 17.4A2 2 0 0 0 4.3 20.4h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" stroke="var(--danger)" strokeWidth="1.8" strokeLinejoin="round" /></svg>
           </div>

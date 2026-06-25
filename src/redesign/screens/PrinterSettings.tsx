@@ -1,6 +1,6 @@
-// Screen 18 — Printer settings. dc.html v3 L1174–1237 (+ Wi-Fi/Bluetooth type
-// toggle using the v3 psWifiTab/psBtTab styles, L1896–1897). Visual only — no
-// real printer connection (Phase 5). Back → General Settings.
+// Screen 18 — Printer settings. dc.html v3 L1174–1237. Visual only — no real
+// printer connection (Phase 5). psType is set on entry from the General Settings
+// printer picker (no in-screen switcher, per dc.html). Back → General Settings.
 import type { CSSProperties } from "react";
 
 const PS_SIZES = ["100x60mm (Standard)", "80x60mm", "80x50mm", "70x50mm", "60x40mm"];
@@ -9,13 +9,12 @@ const input: CSSProperties = { width: "100%", padding: "11px 13px", border: "1px
 const groupLabel: CSSProperties = { fontSize: 11, letterSpacing: ".12em", fontWeight: 800, color: "var(--text-muted)", margin: "14px 2px 8px" };
 const gridBtn: CSSProperties = { padding: "12px 0", border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer" };
 const tab = (active: boolean): CSSProperties => ({ flex: 1, padding: "13px 0", borderRadius: 11, cursor: "pointer", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, textAlign: "center", border: "none", ...(active ? { background: "var(--surface)", color: "var(--accent-fg)", boxShadow: "var(--shadow)" } : { background: "transparent", color: "var(--text-dim)" }) });
-const typeTab = (active: boolean): CSSProperties => ({ flex: 1, padding: "14px 10px", borderRadius: 12, cursor: "pointer", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, textAlign: "center", lineHeight: 1.25, border: "none", ...(active ? { background: "var(--surface)", color: "var(--accent-fg)", boxShadow: "var(--shadow)" } : { background: "transparent", color: "var(--text-dim)" }) });
 
 export default function PrinterSettings({
-  onBack, psType, onSetPsType, psOut, onSetPsOut, psSize, psSizeOpen, onTogglePsSize, onPickPsSize,
+  onBack, psType, psOut, onSetPsOut, psSize, psSizeOpen, onTogglePsSize, onPickPsSize,
 }: {
   onBack: () => void;
-  psType: "wifi" | "bt"; onSetPsType: (t: "wifi" | "bt") => void;
+  psType: "wifi" | "bt";
   psOut: "receipt" | "sticker"; onSetPsOut: (o: "receipt" | "sticker") => void;
   psSize: string; psSizeOpen: boolean; onTogglePsSize: () => void; onPickPsSize: (s: string) => void;
 }) {
@@ -37,12 +36,6 @@ export default function PrinterSettings({
             <div style={{ fontSize: 15, fontWeight: 700, color: "var(--text)" }}>{status.title}</div>
             <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{status.sub}</div>
           </div>
-        </div>
-
-        {/* Wi-Fi / Bluetooth type toggle (v3 psWifiTab/psBtTab styles) */}
-        <div style={{ display: "flex", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 13, padding: 5, marginTop: 12 }}>
-          <button onClick={() => onSetPsType("wifi")} style={typeTab(wifi)}>Wi-Fi (LAN)</button>
-          <button onClick={() => onSetPsType("bt")} style={typeTab(!wifi)}>Bluetooth</button>
         </div>
 
         {wifi ? (

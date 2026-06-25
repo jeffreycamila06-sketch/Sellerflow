@@ -277,7 +277,7 @@ export default function RedesignApp() {
           {screen === "printersettings" && (
             <PrinterSettings
               onBack={() => setScreen("settings")}
-              psType={psType} onSetPsType={setPsType}
+              psType={psType}
               psOut={psOut} onSetPsOut={setPsOut}
               psSize={psSize} psSizeOpen={psSizeOpen}
               onTogglePsSize={() => setPsSizeOpen((o) => !o)} onPickPsSize={(s) => { setPsSize(s); setPsSizeOpen(false); }}

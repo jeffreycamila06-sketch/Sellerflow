@@ -15,12 +15,12 @@ export default function SalesReport({ cur }: { cur: string }) {
       </div>
       <div style={{ padding: "16px 14px 22px" }}>
         <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-          <div style={{ ...card, flex: 1, borderRadius: 15 }}>
+          <div style={{ ...card, flex: 1, borderRadius: 15, padding: 14 }}>
             <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>This week</div>
             <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 22, color: "var(--text)", marginTop: 4, letterSpacing: "-.02em" }}>{cur}114.4k</div>
             <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ok)", marginTop: 3 }}>▲ 18% vs last</div>
           </div>
-          <div style={{ ...card, flex: 1, borderRadius: 15 }}>
+          <div style={{ ...card, flex: 1, borderRadius: 15, padding: 14 }}>
             <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>Orders</div>
             <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 22, color: "var(--text)", marginTop: 4, letterSpacing: "-.02em" }}>352</div>
             <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", marginTop: 3 }}>{cur}325 avg</div>
