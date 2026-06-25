@@ -283,30 +283,48 @@ already-exported safe pieces — DO NOT touch protected logic files.**
   SAME pure cores, zero App.tsx touch):** `createOrderFromComment` fan-out (4326),
   socket.io (4025), `commentKey`/dedup (111), `refreshFreeStatus`+cap popup (4157),
   `printSlip`+`buildNativeStickerPayload` (538–707).
-- **Sub-steps (each: diff + tests 101/101 + Vercel preview + wait "go"):** 5a auth ·
-  5b read-only data · 5c cross-device load · 5d live feed(socket) · 5e **order
-  1-click fan-out (RISKIEST, writes billing ledger)** · 5f free-cap · 5g printing ·
-  5h admin writes · 5i settings persistence · 5j tail(signup/export/delete/ship).
+- **END GOAL = REPLACEMENT (F3):** redesign eventually BECOMES the real app. So
+  prefer **EXTRACTING shared logic into reusable modules (one source of truth)**
+  over adapter-duplication — BUT only when extraction is SAFE (does NOT risk the 6
+  tangled zones or require risky App.tsx surgery). If risky → fall back to
+  adapter-copy + parity-test and FLAG. **`main` stays UNTOUCHED until the very end**
+  (after iOS approval + Jeff's explicit "merge to production"). Diff + "go" per
+  sub-step, always.
 - **Taiwan swap:** default currency `TWD`/`NT$`; Maria→real `getMyProfile`; demo
   arrays→live RLS-scoped queries. **Subscription stays Wise+Telegram manual (NO
   Play billing).**
 - **Testing:** `googletest@sellerflowlive.com` on **production Supabase** (no
   staging) — RLS `user_id=auth.uid()` isolates it from the 45–53 real sellers;
-  set it FREE tier to test the cap without touching the real ledger.
-- **🚩 OPEN FLAGS (decide before coding):**
-  - **F1 printing** — `printSlip`/`buildNativeStickerPayload` live in App.tsx (NOT
-    golden-tested directly). Rec: extract to `src/lib/printPayload.ts` (touches
-    App.tsx, behavior-identical) vs copy+parity-test vs defer.
-  - **F2 socket preview** — Render `CLIENT_ORIGIN=sellerflowlive.com` → Vercel
-    preview CANNOT TikTok-connect; 5d/5e socket flow only testable on prod / behind
-    flag / temp Render origin allow.
-  - **F3** — side-by-side forever vs eventually REPLACE prod UI (changes
-    reimplement-vs-extract calculus).
-  - **F4 NEW (not wiring)** — Miners/SalesReport have no aggregation source;
-    Shipping has no courier backend; self-serve Signup/DeleteAccount need
-    service_role edge fns; Products = localStorage `sf_prods` (no Supabase table).
-  - **F5** — Admin test needs an admin-role test account.
-  - **F6** — fix M2 (visibility-guard free-cap poll) while in 5f?
+  set it FREE tier to test the cap without touching the real ledger. **Socket
+  flows (5d/5e) tested with SYNTHETIC comments on preview** (Render origin NOT
+  changed); real socket deferred to post-merge / behind a flag.
+
+### Phase 5 — RESOLVED decisions (2026-06-25)
+- **F1 printing → Option B:** COPY `printSlip`/`buildNativeStickerPayload` into a
+  redesign adapter + a **parity unit test guarding byte-equality** vs the real
+  payload. Do NOT touch App.tsx unless Jeff approves an extraction.
+- **F2 socket → (a):** synthetic comments on preview; real socket deferred. Do NOT
+  change Render `CLIENT_ORIGIN`.
+- **F3 → REPLACEMENT** (see END GOAL above): extract-when-safe, adapter-copy when
+  risky, `main` untouched till the end.
+- **F4 → WIRING ONLY** (no new backends this phase). Screens with no real backend
+  get a clear **"Soon" badge/label** so Jeff can see what's not functional:
+  **Shipping** (whole screen), **Sales Report** (aggregation), **Miners**
+  (aggregation), **self-serve Signup**, **self-serve Delete Account**,
+  **Products→Supabase cross-device** (Products still wires to localStorage
+  `sf_prods` = its real current backend). New backends = later phase.
+- **F5 admin → (a):** temporarily grant a TEST account (NOT the real owner) an
+  admin role for 5h Admin testing; set up when 5h starts.
+- **F6 → YES:** include the visibility-guarded free-cap poll fix (M2 egress) during
+  5f.
+- **Per-sub-step approach (extract-vs-adapter, F3-aware):** 5a auth = adapter hook
+  (zone 6, extraction risky) · 5b read-only = DIRECT calls (already one-source) ·
+  5c load = adapter effect (pure fns already exported) · 5d feed = adapter +
+  copy `commentKey` + parity test (zone 1) · 5e fan-out = adapter reimpl over pure
+  `buildOrderFromComment` (zone 5) · 5f free-cap = adapter RPC + M2 fix · 5g
+  printing = Option B copy + parity test · 5h admin = DIRECT `accountDb`/edge +
+  temp admin acct · 5i settings = DIRECT `upsertUser`/localStorage · 5j tail =
+  wire CSV export (real) + "Soon" badges on F4 screens.
 - Recommended start: **5a (auth)**.
 
 ## Current state / NEXT
