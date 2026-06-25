@@ -7,6 +7,7 @@ import { useState, type CSSProperties, type ReactNode } from "react";
 import { PLANS, PAYMENTS, USERS, SIGNUPS, SUBS, PLAN_PRICE, type Sub, type User } from "../data";
 import { headerBar, card, mono } from "../ui";
 import type { ReadState } from "../adapters/useReadData";
+import type { AdminActions, Plan } from "../adapters/useAdmin";
 
 export type AdminPanelKind =
   | "sellers" | "plans" | "payments" | "reports" | "system" | "broadcast"
@@ -128,16 +129,33 @@ function SubList({ list, statusLabel, statusColor, note, showPlan = true }: { li
   );
 }
 
-export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample" }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState }) {
-  // Users-management ephemeral state (dc.html v3 userPlans/userDays/addIdx). Visual
-  // only — these never write to the DB (real plan/days/PW changes are 5h).
+export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", actions }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; actions?: AdminActions }) {
+  // Per-user optimistic display state. Real writes go through `actions` (5h).
   const [userPlans, setUserPlans] = useState<Record<string, string>>({});
   const [userDays, setUserDays] = useState<Record<string, number>>({});
   const [addIdx, setAddIdx] = useState<number | null>(null);
   const [addVal, setAddVal] = useState("");
+  const [pwIdx, setPwIdx] = useState<number | null>(null);
+  const [pwVal, setPwVal] = useState("");
+  const [busy, setBusy] = useState(false);
   const setPlan = (email: string, plan: string) => setUserPlans((p) => ({ ...p, [email]: plan }));
   const revAdded = users.reduce((sum, u) => sum + ((PLAN_PRICE[userPlans[u.email] || u.plan] || 0) - (PLAN_PRICE[u.plan] || 0)), 0);
   const userCount = usersState === "live" || usersState === "empty" ? `${users.length}` : "12,480";
+
+  // 5h — every admin write is human-confirmed (R2 safeguard: target the dummy only).
+  const run = async (label: string, email: string, fn: () => Promise<{ ok: boolean; error?: string }>, onOk?: () => void) => {
+    if (!actions || busy) return;
+    if (!window.confirm(`Admin action:\n${label}\nTarget: ${email}\n\nContinue?`)) return;
+    setBusy(true);
+    const r = await fn();
+    setBusy(false);
+    if (r.ok) { onOk?.(); window.alert(`✓ ${label} — ${email}`); }
+    else window.alert(`✗ ${label} failed: ${r.error || "error"}`);
+  };
+  const doPlan = (email: string, plan: Plan, label: string) =>
+    void run(`Set plan → ${label}`, email, async () => { const r = await actions!.changePlan(email, plan); if (r.ok) setPlan(email, label); return r; });
+  const doPassword = (email: string) =>
+    void run("Set password (Edge Function)", email, () => actions!.setPassword(email, pwVal), () => { setPwIdx(null); setPwVal(""); });
 
   return (
     <div onClick={onClose} style={{ position: "absolute", inset: 0, zIndex: 9, background: "rgba(8,6,24,.5)", backdropFilter: "blur(2px)", display: "flex", alignItems: "flex-end" }}>
@@ -190,17 +208,23 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                         )}
                       </div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 10 }}>
-                        <button onClick={() => setPlan(u.email, "Free")} style={planBtn}>Free</button>
-                        <button onClick={() => setPlan(u.email, "Basic")} style={planBtn}>Basic</button>
-                        <button onClick={() => setPlan(u.email, "Pro")} style={planBtn}>Pro</button>
-                        <button onClick={() => setPlan(u.email, "Master")} style={planBtn}>Master</button>
+                        <button onClick={() => actions ? doPlan(u.email, "free", "Free") : setPlan(u.email, "Free")} style={planBtn}>Free</button>
+                        <button onClick={() => actions ? doPlan(u.email, "basic", "Basic") : setPlan(u.email, "Basic")} style={planBtn}>Basic</button>
+                        <button onClick={() => actions ? doPlan(u.email, "pro", "Pro") : setPlan(u.email, "Pro")} style={planBtn}>Pro</button>
+                        <button onClick={() => actions ? doPlan(u.email, "master", "Master") : setPlan(u.email, "Master")} style={planBtn}>Master</button>
                       </div>
+                      {pwIdx === i && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
+                          <input value={pwVal} onChange={(e) => setPwVal(e.target.value)} type="text" autoFocus placeholder="New password (≥6 chars)" style={{ flex: 1, padding: "6px 9px", border: "1.3px solid var(--accent)", borderRadius: 7, background: "var(--surface)", color: "var(--text)", fontSize: 11.5, fontWeight: 600, fontFamily: "var(--font-ui)", outline: "none" }} />
+                          <button onClick={() => doPassword(u.email)} disabled={busy} style={{ ...actBtn, color: "var(--accent-fg)", borderColor: "var(--accent)" }}>Set</button>
+                          <button onClick={() => { setPwIdx(null); setPwVal(""); }} style={actBtn}>Cancel</button>
+                        </div>
+                      )}
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6, paddingTop: 9, borderTop: "1px solid var(--border)" }}>
-                        <button style={actBtn}>Edit</button>
-                        <button style={actBtn}>Reset PW</button>
-                        <button style={actBtn}>{isAdmin ? "Remove Admin" : "Make Admin"}</button>
-                        <button style={{ ...actBtn, color: "var(--warn)" }}>Expire</button>
-                        <button style={{ ...actBtn, color: "var(--danger)" }}>Delete</button>
+                        <button onClick={() => { setPwIdx(pwIdx === i ? null : i); setPwVal(""); }} style={actBtn} disabled={!actions}>Reset PW</button>
+                        <button onClick={() => void run(isAdmin ? "Remove admin role" : "Make admin", u.email, () => actions!.setRole(u.email, isAdmin ? "seller" : "admin"))} style={actBtn} disabled={!actions}>{isAdmin ? "Remove Admin" : "Make Admin"}</button>
+                        <button onClick={() => void run("Expire plan", u.email, () => actions!.expire(u.email))} style={{ ...actBtn, color: "var(--warn)" }} disabled={!actions}>Expire</button>
+                        <button onClick={() => void run("DELETE seller profile", u.email, () => actions!.removeUser(u.email))} style={{ ...actBtn, color: "var(--danger)" }} disabled={!actions}>Delete</button>
                       </div>
                     </div>
                   );

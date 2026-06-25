@@ -36,10 +36,12 @@ const ic = {
 
 export default function SettingsHub({
   onGeneral, onCustomers, onAdmin, onSales, onShipping, onCustomerData, onLegal, onDelete, onLogout,
+  isAdmin = false,
 }: {
   onGeneral: () => void; onCustomers: () => void;
   onAdmin: () => void; onSales: () => void; onShipping: () => void;
   onCustomerData: () => void; onLegal: () => void; onDelete: () => void; onLogout: () => void;
+  isAdmin?: boolean; // Phase 5h — owner-only tiles (matches production isAdminUser gating)
 }) {
   return (
     <div>
@@ -51,10 +53,11 @@ export default function SettingsHub({
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           <Tile icon={ic.gear} label="General Settings" onClick={onGeneral} />
           <Tile icon={ic.people} label="Customers" onClick={onCustomers} />
-          <Tile icon={ic.shield} label="Admin" onClick={onAdmin} />
+          {/* Owner-only (production: isAdminUser) */}
+          {isAdmin && <Tile icon={ic.shield} label="Admin" onClick={onAdmin} />}
           <Tile icon={ic.chart} label="Sales Report" onClick={onSales} />
-          <Tile icon={ic.truck} label="Shipping" onClick={onShipping} />
-          <Tile icon={ic.database} label="Customer Data" onClick={onCustomerData} />
+          {isAdmin && <Tile icon={ic.truck} label="Shipping" onClick={onShipping} />}
+          {isAdmin && <Tile icon={ic.database} label="Customer Data" onClick={onCustomerData} />}
           <Tile icon={ic.doclock} label="Privacy & Terms" onClick={onLegal} />
           <Tile icon={ic.trash} label="Delete Account" onClick={onDelete} variant="danger" />
           <Tile icon={ic.exit} label="Log out" onClick={onLogout} variant="neutral" />

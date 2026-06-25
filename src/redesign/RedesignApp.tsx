@@ -30,6 +30,7 @@ import { useLiveSession } from "./adapters/useLiveSession";
 import { useLiveFeed } from "./adapters/useLiveFeed";
 import { useOrders } from "./adapters/useOrders";
 import { useFreeCap } from "./adapters/useFreeCap";
+import { useAdmin } from "./adapters/useAdmin";
 import { printSlip, buildSettingsFromRedesign, type Settings as PrintSettings } from "./adapters/printing";
 import type { Buyer } from "../lib/orderTypes";
 import CapPopup from "./screens/CapPopup";
@@ -61,6 +62,8 @@ export default function RedesignApp() {
   const isAdmin = auth.profile?.role === "admin";
   const customersData = useCustomers(authed);
   const adminUsers = useAdminUsers(authed && isAdmin);
+  // Phase 5h — real admin write actions (owner-only; targets human-confirmed).
+  const admin = useAdmin(auth.profile?.email);
   // Phase 5c — cross-device live-session load for the Dashboard (hydrate-on-empty).
   const liveSession = useLiveSession(authed);
   // Phase 5d — real live comment feed (socket + dedup). Replaces the sample
@@ -331,6 +334,7 @@ export default function RedesignApp() {
               onLegal={() => setScreen("legal")}
               onDelete={() => setScreen("delete")}
               onLogout={() => { void auth.signOut(); setScreen("login"); }}
+              isAdmin={isAdmin}
             />
           )}
           {screen === "settings" && (
@@ -351,7 +355,7 @@ export default function RedesignApp() {
           {screen === "customers" && <Customers cur={cur} customers={customersData.customers} state={customersData.state} />}
           {screen === "subscription" && <Subscription cur={cur} account={auth.profile} isFreeUser={freeCap.isFreeUser} freeStatus={freeCap.freeStatus} />}
           {screen === "support" && <Support onLegal={() => setScreen("legal")} />}
-          {screen === "admin" && <Admin onOpenPanel={setAdminPanel} cur={cur} />}
+          {screen === "admin" && isAdmin && <Admin onOpenPanel={setAdminPanel} cur={cur} />}
           {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} />}
           {screen === "sales" && <SalesReport cur={cur} />}
           {screen === "shipping" && <Shipping />}
@@ -398,8 +402,8 @@ export default function RedesignApp() {
         )}
 
         {/* Admin control bottom-sheet (absolute within the phone, like the v2 prototype) */}
-        {adminPanel && (
-          <AdminPanel panel={adminPanel} onClose={() => setAdminPanel(null)} assignAmount={assignAmount} onAssignAmount={setAssignAmount} cur={cur} users={adminUsers.users} usersState={adminUsers.state} />
+        {adminPanel && isAdmin && (
+          <AdminPanel panel={adminPanel} onClose={() => setAdminPanel(null)} assignAmount={assignAmount} onAssignAmount={setAssignAmount} cur={cur} users={adminUsers.users} usersState={adminUsers.state} actions={admin} />
         )}
 
         {/* Phase 5f — free-tier cap popup (near / hard) */}
