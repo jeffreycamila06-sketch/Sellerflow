@@ -4,7 +4,7 @@ import { headerBar, headerTitle, card, mono } from "../ui";
 
 const maxSale = Math.max(...SALES.map((s) => s.v));
 
-export default function SalesReport() {
+export default function SalesReport({ cur }: { cur: string }) {
   return (
     <div>
       <div style={headerBar}>
@@ -17,13 +17,13 @@ export default function SalesReport() {
         <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
           <div style={{ ...card, flex: 1, borderRadius: 15 }}>
             <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>This week</div>
-            <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 22, color: "var(--text)", marginTop: 4, letterSpacing: "-.02em" }}>₱114.4k</div>
+            <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 22, color: "var(--text)", marginTop: 4, letterSpacing: "-.02em" }}>{cur}114.4k</div>
             <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ok)", marginTop: 3 }}>▲ 18% vs last</div>
           </div>
           <div style={{ ...card, flex: 1, borderRadius: 15 }}>
             <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>Orders</div>
             <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 22, color: "var(--text)", marginTop: 4, letterSpacing: "-.02em" }}>352</div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", marginTop: 3 }}>₱325 avg</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", marginTop: 3 }}>{cur}325 avg</div>
           </div>
         </div>
 
@@ -44,7 +44,7 @@ export default function SalesReport() {
           <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
             <div style={{ width: 40, height: 40, borderRadius: 11, background: "#ec4899", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, color: "#fff" }}>ML</div>
             <div style={{ flex: 1 }}><div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>Matte Lipstick — Red</div><div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>184 sold this week</div></div>
-            <div style={{ fontFamily: mono, fontSize: 15, fontWeight: 700, color: "var(--text)" }}>₱45.8k</div>
+            <div style={{ fontFamily: mono, fontSize: 15, fontWeight: 700, color: "var(--text)" }}>{cur}45.8k</div>
           </div>
         </div>
       </div>

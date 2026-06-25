@@ -8,7 +8,7 @@ const filterActive: CSSProperties = { background: "#fff", color: "var(--accent)"
 const filterIdle: CSSProperties = { background: "rgba(255,255,255,.16)", fontSize: 12, fontWeight: 600, padding: "6px 13px", borderRadius: 20, whiteSpace: "nowrap" };
 const mono = "var(--font-mono)";
 
-export default function Orders({ onGoPrint }: { onGoPrint: () => void }) {
+export default function Orders({ onGoPrint, cur }: { onGoPrint: () => void; cur: string }) {
   return (
     <div>
       <div style={headerBar}>
@@ -37,7 +37,7 @@ export default function Orders({ onGoPrint }: { onGoPrint: () => void }) {
               </div>
               <div style={{ textAlign: "right", flexShrink: 0 }}>
                 <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 600, color: "var(--text-muted)" }}>{o.id}</div>
-                <div style={{ fontFamily: mono, fontSize: 16, fontWeight: 700, color: "var(--text)", marginTop: 1 }}>₱{fmt(o.total)}</div>
+                <div style={{ fontFamily: mono, fontSize: 16, fontWeight: 700, color: "var(--text)", marginTop: 1 }}>{cur}{fmt(o.total)}</div>
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 11, paddingTop: 11, borderTop: "1px solid var(--border)" }}>

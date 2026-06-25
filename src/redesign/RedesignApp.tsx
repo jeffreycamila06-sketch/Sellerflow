@@ -3,7 +3,7 @@
 // src/styles/design-tokens.css), and renders all built screens + bottom nav.
 // Self-contained preview — does NOT import or touch the existing app.
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { INCOMING, SEED_COMMENTS, LANGS, type Comment, type ThemeMode, type AccentKey, type AutoControls } from "./data";
+import { INCOMING, SEED_COMMENTS, LANGS, CURRENCIES, curSymbol, type Comment, type ThemeMode, type AccentKey, type AutoControls, type AutoWord } from "./data";
 import Dashboard from "./screens/Dashboard";
 import Orders from "./screens/Orders";
 import Products from "./screens/Products";
@@ -21,16 +21,20 @@ import Shipping from "./screens/Shipping";
 import CustomerData from "./screens/CustomerData";
 import Legal from "./screens/Legal";
 import DeleteAccount from "./screens/DeleteAccount";
+import Signup from "./screens/Signup";
+import PrinterSettings from "./screens/PrinterSettings";
+import PrintPattern, { DEFAULT_PP, type PrintPatternState, type PpBoolKey, type PpSizeKey } from "./screens/PrintPattern";
 
 type Screen =
-  | "login" | "dashboard" | "miners" | "orders" | "products"
+  | "login" | "signup" | "dashboard" | "miners" | "orders" | "products"
   | "menu" | "settings" | "customers" | "subscription" | "support"
-  | "admin" | "print" | "sales" | "shipping" | "customerdata" | "legal" | "delete";
+  | "admin" | "print" | "sales" | "shipping" | "customerdata" | "legal" | "delete"
+  | "printersettings" | "printpattern";
 
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
-const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete"];
+const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern"];
 
-const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang" } as const;
+const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency" } as const;
 const readLS = (k: string, fallback: string): string => {
   try { return localStorage.getItem(k) || fallback; } catch { return fallback; }
 };
@@ -47,6 +51,15 @@ export default function RedesignApp() {
   const [langOpen, setLangOpen] = useState(false);
   const [langPickerOpen, setLangPickerOpen] = useState(false);
 
+  // Currency switcher (dc.html v3). `cur` is the derived symbol threaded through
+  // every money display. Visual only — Phase 5 wires the real Taiwan NT$.
+  const [currency, setCurrency] = useState<string>(() => (CURRENCIES[readLS(LS.currency, "USD")] ? readLS(LS.currency, "USD") : "USD"));
+  const cur = curSymbol(currency);
+
+  // Live-session-length pill (dc.html v3 Dashboard header). Visual only.
+  const [sessionDays, setSessionDays] = useState(1);
+  const [sessionOpen, setSessionOpen] = useState(false);
+
   // Dashboard account pickers (visual only — Phase 5 wires real switching).
   const [ttOpen, setTtOpen] = useState(false);
   const [fbOpen, setFbOpen] = useState(false);
@@ -58,15 +71,52 @@ export default function RedesignApp() {
   const [printerOpen, setPrinterOpen] = useState(false);
   const [printerIdx, setPrinterIdx] = useState(0);
 
-  // Auto-detect keyword feature (visual only). Defaults from dc.html v2 (L1160).
-  const [autoDetect, setAutoDetect] = useState(true);
+  // TikTok/FB connection flow (visual only — no real connection). dc.html v3.
+  const [ttConnected, setTtConnected] = useState(false);
+  const [fbConnected, setFbConnected] = useState(false);
+  const [ttConnecting, setTtConnecting] = useState(false);
+  const [fbConnecting, setFbConnecting] = useState(false);
+  const connectTT = () => {
+    if (ttConnected) { setTtConnected(false); return; }
+    if (ttConnecting) return;
+    setTtConnecting(true);
+    setTimeout(() => { setTtConnected(true); setTtConnecting(false); setTtOpen(false); }, 1200);
+  };
+  const connectFB = () => {
+    if (fbConnected) { setFbConnected(false); return; }
+    if (fbConnecting) return;
+    setFbConnecting(true);
+    setTimeout(() => { setFbConnected(true); setFbConnecting(false); setFbOpen(false); }, 1200);
+  };
+
+  // Printer settings (visual only). psType wifi|bt, psOut receipt|sticker.
+  const [psType, setPsType] = useState<"wifi" | "bt">("wifi");
+  const [psOut, setPsOut] = useState<"receipt" | "sticker">("receipt");
+  const [psSize, setPsSize] = useState("100x60mm (Standard)");
+  const [psSizeOpen, setPsSizeOpen] = useState(false);
+
+  // LIVE print pattern (visual only).
+  const [pp, setPp] = useState<PrintPatternState>(DEFAULT_PP);
+  const togglePp = (k: PpBoolKey) => setPp((p) => ({ ...p, [k]: !p[k] }));
+  const stepPp = (k: PpSizeKey, dir: 1 | -1) => setPp((p) => ({ ...p, [k]: Math.min(3, Math.max(0.5, Math.round((p[k] + dir * 0.1) * 10) / 10)) }));
+
+  // Auto-detect keyword feature (visual only). v3: each trigger is a
+  // {word, price} pair; default OFF (dc.html v3 autoDetect:false L1548).
+  const [autoDetect, setAutoDetect] = useState(false);
   const [autoSetupOpen, setAutoSetupOpen] = useState(false);
   const [autoAction, setAutoAction] = useState<"slip" | "sticker">("slip");
-  const [autoWords, setAutoWords] = useState<string[]>(["mine", "claim", "sold", "get", "take"]);
+  const [autoWords, setAutoWords] = useState<AutoWord[]>([
+    { word: "mine", price: "150" }, { word: "claim", price: "150" }, { word: "sold", price: "150" },
+    { word: "get", price: "150" }, { word: "take", price: "150" },
+  ]);
   const [autoInput, setAutoInput] = useState("");
+  // Parse "word = price" / "word price" / "word" (default price 150). dc.html v3 onAutoKey L2063.
   const addAutoWord = () => {
-    const w = autoInput.trim().toLowerCase();
-    if (w && !autoWords.includes(w) && autoWords.length < 20) setAutoWords((ws) => [...ws, w]);
+    const raw = autoInput.trim().toLowerCase();
+    const m = raw.match(/^(.*?)[\s=]*(\d+)?$/);
+    const word = ((m && m[1]) || raw).trim();
+    const price = (m && m[2]) || "150";
+    if (word && !autoWords.some((x) => x.word === word) && autoWords.length < 20) setAutoWords((ws) => [...ws, { word, price }]);
     setAutoInput("");
   };
   const autoControls: AutoControls = {
@@ -79,9 +129,30 @@ export default function RedesignApp() {
     addWord: addAutoWord,
   };
 
+  // Dashboard order flow (dc.html v3 L1796–1810 / onEntKey L2058). Visual only —
+  // 1-Click / Enterprise "print" a transient badge on the comment row.
+  const [printed, setPrinted] = useState<Record<string, string>>({});
+  const [entId, setEntId] = useState<string | null>(null);
+  const [entPrice, setEntPrice] = useState("");
+  const clearPrinted = (id: string) => setTimeout(() => setPrinted((p) => { const n = { ...p }; delete n[id]; return n; }), 1600);
+  const onOneClick = (id: string) => {
+    const lc = (comments.find((c) => c.id === id)?.text || "").toLowerCase();
+    const hit = autoWords.find((w) => w.word && lc.includes(w.word));
+    setPrinted((p) => ({ ...p, [id]: hit && hit.price ? cur + hit.price : "order" }));
+    clearPrinted(id);
+  };
+  const onOpenEnt = (id: string) => { setEntId(id); setEntPrice(""); };
+  const onEntKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const id = entId;
+    if (!id) return;
+    setPrinted((p) => ({ ...p, [id]: cur + (entPrice || "0") }));
+    setEntId(null); setEntPrice("");
+    clearPrinted(id);
+  };
+
   const [comments, setComments] = useState<Comment[]>(SEED_COMMENTS);
-  const [viewers, setViewers] = useState(1284);
-  const [liveClaims, setLiveClaims] = useState(47);
   const cid = useRef(1);
   const pushIdx = useRef(0);
 
@@ -89,16 +160,15 @@ export default function RedesignApp() {
   useEffect(() => { try { localStorage.setItem(LS.theme, theme); } catch { /* ignore */ } }, [theme]);
   useEffect(() => { try { localStorage.setItem(LS.accent, accent); } catch { /* ignore */ } }, [accent]);
   useEffect(() => { try { localStorage.setItem(LS.lang, lang); } catch { /* ignore */ } }, [lang]);
+  useEffect(() => { try { localStorage.setItem(LS.currency, currency); } catch { /* ignore */ } }, [currency]);
 
-  // Live comment feed — prepend every 2.7s, cap 11, bump claims on "mine".
+  // Live comment feed — prepend every 2.7s, cap 11 (dc.html v3 L1740).
   useEffect(() => {
     const t = setInterval(() => {
       const inc = INCOMING[pushIdx.current % INCOMING.length];
       pushIdx.current += 1;
       const c: Comment = { ...inc, id: "c" + cid.current++, time: "now" };
       setComments((prev) => [c, ...prev.map((x) => ({ ...x, time: x.time === "now" ? "2s" : x.time }))].slice(0, 11));
-      if (inc.mine) setLiveClaims((n) => n + 1);
-      setViewers((v) => Math.max(900, v + Math.round((Math.random() - 0.35) * 22)));
     }, 2700);
     return () => clearInterval(t);
   }, []);
@@ -135,26 +205,38 @@ export default function RedesignApp() {
           {screen === "login" && (
             <Login
               onLogin={() => setScreen("dashboard")}
+              onSignup={() => setScreen("signup")}
               lang={lang}
               langOpen={langOpen}
               onToggleLang={() => setLangOpen((o) => !o)}
               onPickLang={(code) => { setLang(code); setLangOpen(false); }}
             />
           )}
+          {screen === "signup" && (
+            <Signup onBack={() => setScreen("login")} onCreate={() => setScreen("dashboard")} onLegal={() => setScreen("legal")} />
+          )}
           {screen === "dashboard" && (
             <Dashboard
-              comments={comments} viewers={viewers} liveClaims={liveClaims}
+              comments={comments} cur={cur}
               ttOpen={ttOpen} fbOpen={fbOpen} ttIdx={ttIdx} fbIdx={fbIdx}
-              onToggleTT={() => { setTtOpen((o) => !o); setFbOpen(false); }}
-              onToggleFB={() => { setFbOpen((o) => !o); setTtOpen(false); }}
+              onToggleTT={() => { setTtOpen((o) => !o); setFbOpen(false); setSessionOpen(false); }}
+              onToggleFB={() => { setFbOpen((o) => !o); setTtOpen(false); setSessionOpen(false); }}
               onPickTT={(i) => { setTtIdx(i); setTtOpen(false); }}
               onPickFB={(i) => { setFbIdx(i); setFbOpen(false); }}
-              onGoOrders={() => setScreen("orders")}
+              ttConnected={ttConnected} fbConnected={fbConnected} ttConnecting={ttConnecting} fbConnecting={fbConnecting}
+              onConnectTT={connectTT} onConnectFB={connectFB}
+              sessionDays={sessionDays} sessionOpen={sessionOpen}
+              onToggleSession={() => { setSessionOpen((o) => !o); setTtOpen(false); setFbOpen(false); }}
+              onPickSession={(n) => { setSessionDays(n); setSessionOpen(false); }}
+              autoDetect={autoDetect} autoWords={autoWords}
+              printed={printed} entId={entId} entPrice={entPrice}
+              onOneClick={onOneClick} onOpenEnt={onOpenEnt}
+              onEntPrice={(v) => setEntPrice(v.replace(/[^0-9]/g, ""))} onEntKey={onEntKey}
             />
           )}
-          {screen === "orders" && <Orders onGoPrint={() => setScreen("print")} />}
-          {screen === "products" && <Products />}
-          {screen === "miners" && <Miners />}
+          {screen === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} />}
+          {screen === "products" && <Products cur={cur} />}
+          {screen === "miners" && <Miners cur={cur} />}
           {screen === "menu" && (
             <SettingsHub
               onGeneral={() => setScreen("settings")}
@@ -172,26 +254,40 @@ export default function RedesignApp() {
           {screen === "settings" && (
             <GeneralSettings
               theme={theme} accent={accent} onSetTheme={setTheme} onSetAccent={setAccent}
-              auto={autoControls}
+              auto={autoControls} cur={cur}
+              lang={lang} onSetLang={setLang} currency={currency} onSetCurrency={setCurrency}
               profileOpen={profileOpen} onToggleProfile={() => setProfileOpen((o) => !o)}
               printerIdx={printerIdx} printerOpen={printerOpen}
-              onTogglePrinter={() => setPrinterOpen((o) => !o)} onPickPrinter={(i) => { setPrinterIdx(i); setPrinterOpen(false); }}
-              onLanguage={() => setLangPickerOpen(true)}
+              onTogglePrinter={() => setPrinterOpen((o) => !o)}
+              onPickPrinter={(i) => { setPrinterIdx(i); setPrinterOpen(false); setPsType(i === 0 ? "wifi" : "bt"); setScreen("printersettings"); }}
+              onPrintPattern={() => setScreen("printpattern")}
               onSubscription={() => setScreen("subscription")}
               onSupport={() => setScreen("support")}
               onDelete={() => setScreen("delete")}
             />
           )}
-          {screen === "customers" && <Customers />}
-          {screen === "subscription" && <Subscription />}
+          {screen === "customers" && <Customers cur={cur} />}
+          {screen === "subscription" && <Subscription cur={cur} />}
           {screen === "support" && <Support onLegal={() => setScreen("legal")} />}
-          {screen === "admin" && <Admin onOpenPanel={setAdminPanel} />}
-          {screen === "print" && <Print onBack={() => setScreen("orders")} />}
-          {screen === "sales" && <SalesReport />}
+          {screen === "admin" && <Admin onOpenPanel={setAdminPanel} cur={cur} />}
+          {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} />}
+          {screen === "sales" && <SalesReport cur={cur} />}
           {screen === "shipping" && <Shipping />}
-          {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} />}
+          {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} cur={cur} />}
           {screen === "legal" && <Legal />}
           {screen === "delete" && <DeleteAccount onBack={() => setScreen("settings")} />}
+          {screen === "printersettings" && (
+            <PrinterSettings
+              onBack={() => setScreen("settings")}
+              psType={psType} onSetPsType={setPsType}
+              psOut={psOut} onSetPsOut={setPsOut}
+              psSize={psSize} psSizeOpen={psSizeOpen}
+              onTogglePsSize={() => setPsSizeOpen((o) => !o)} onPickPsSize={(s) => { setPsSize(s); setPsSizeOpen(false); }}
+            />
+          )}
+          {screen === "printpattern" && (
+            <PrintPattern onBack={() => setScreen("settings")} pp={pp} onToggle={togglePp} onStep={stepPp} />
+          )}
         </div>
 
         {showNav && (
@@ -221,7 +317,7 @@ export default function RedesignApp() {
 
         {/* Admin control bottom-sheet (absolute within the phone, like the v2 prototype) */}
         {adminPanel && (
-          <AdminPanel panel={adminPanel} onClose={() => setAdminPanel(null)} assignAmount={assignAmount} onAssignAmount={setAssignAmount} />
+          <AdminPanel panel={adminPanel} onClose={() => setAdminPanel(null)} assignAmount={assignAmount} onAssignAmount={setAssignAmount} cur={cur} />
         )}
       </div>
 

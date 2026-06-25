@@ -3,8 +3,8 @@
 // (REAL theme + accent control — replaces the old floating toggle) · Channels ·
 // Printer & display · Account links. Visual/sample only; theme+accent drive the
 // redesign preview state.
-import type { CSSProperties } from "react";
-import { ACCENT_ORDER, ACCENTS, PRINTERS, type ThemeMode, type AccentKey, type AutoControls } from "../data";
+import { useState, type CSSProperties } from "react";
+import { ACCENT_ORDER, ACCENTS, PRINTERS, LANGS, CURRENCIES, CURRENCY_ORDER, type ThemeMode, type AccentKey, type AutoControls } from "../data";
 import { headerBar, headerTitle, card, sectionLabel } from "../ui";
 
 const label: CSSProperties = { fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 5 };
@@ -19,15 +19,21 @@ const connected = (
 
 export default function GeneralSettings({
   theme, accent, onSetTheme, onSetAccent,
-  auto, profileOpen, onToggleProfile,
-  printerIdx, printerOpen, onTogglePrinter, onPickPrinter,
-  onLanguage, onSubscription, onSupport, onDelete,
+  auto, cur, lang, onSetLang, currency, onSetCurrency,
+  profileOpen, onToggleProfile,
+  printerIdx, printerOpen, onTogglePrinter, onPickPrinter, onPrintPattern,
+  onSubscription, onSupport, onDelete,
 }: {
   theme: ThemeMode; accent: AccentKey; onSetTheme: (t: ThemeMode) => void; onSetAccent: (a: AccentKey) => void;
-  auto: AutoControls; profileOpen: boolean; onToggleProfile: () => void;
-  printerIdx: number; printerOpen: boolean; onTogglePrinter: () => void; onPickPrinter: (i: number) => void;
-  onLanguage: () => void; onSubscription: () => void; onSupport: () => void; onDelete: () => void;
+  auto: AutoControls; cur: string;
+  lang: string; onSetLang: (c: string) => void; currency: string; onSetCurrency: (c: string) => void;
+  profileOpen: boolean; onToggleProfile: () => void;
+  printerIdx: number; printerOpen: boolean; onTogglePrinter: () => void; onPickPrinter: (i: number) => void; onPrintPattern: () => void;
+  onSubscription: () => void; onSupport: () => void; onDelete: () => void;
 }) {
+  const [apLangOpen, setApLangOpen] = useState(false);
+  const [apCurOpen, setApCurOpen] = useState(false);
+  const curLang = LANGS.find((l) => l.code === lang) || LANGS[0];
   const autoLabel = auto.detect ? "Auto-detect" : "Manual mode";
   const autoLabelColor = auto.detect ? "var(--accent-fg)" : "var(--text-muted)";
   const autoTrack = auto.detect ? "var(--accent)" : "var(--border-strong)";
@@ -89,16 +95,17 @@ export default function GeneralSettings({
             </div>
             {auto.setupOpen && (
               <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
                   <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>Trigger word sets</span>
                   <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{auto.words.length} / 20</span>
                 </div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.45, marginBottom: 11 }}>When Auto-detect is ON, any comment containing a trigger word auto-prints an order at its price. e.g. <span style={{ color: "var(--accent-fg)", fontWeight: 700 }}>hello = 150</span> → prints {cur}150.</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
                   {auto.words.map((w, i) => (
-                    <span key={w} style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--accent-soft)", border: "1px solid var(--accent)", color: "var(--accent-fg)", padding: "6px 8px 6px 11px", borderRadius: 9, fontSize: 12, fontWeight: 700 }}>{w}<button onClick={() => auto.removeWord(i)} title="Remove" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent-fg)", fontSize: 15, lineHeight: 1, padding: 0, display: "flex", alignItems: "center" }}>×</button></span>
+                    <span key={w.word} style={{ display: "flex", alignItems: "center", gap: 7, background: "var(--accent-soft)", border: "1px solid var(--accent)", color: "var(--accent-fg)", padding: "6px 8px 6px 11px", borderRadius: 9, fontSize: 12, fontWeight: 700 }}>{w.word}<span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, opacity: 0.85 }}>{cur}{w.price}</span><button onClick={() => auto.removeWord(i)} title="Remove" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent-fg)", fontSize: 15, lineHeight: 1, padding: 0, display: "flex", alignItems: "center" }}>×</button></span>
                   ))}
                   {auto.words.length < 20 && (
-                    <input value={auto.input} onChange={(e) => auto.setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); auto.addWord(); } }} placeholder="Type word, press Enter" style={{ background: "transparent", border: "1.3px dashed var(--border-strong)", color: "var(--text)", padding: "6px 11px", borderRadius: 9, fontSize: 12, fontWeight: 700, fontFamily: "var(--font-ui)", outline: "none", width: 168 }} />
+                    <input value={auto.input} onChange={(e) => auto.setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); auto.addWord(); } }} placeholder="word = price, e.g. hello=150" style={{ background: "transparent", border: "1.3px dashed var(--border-strong)", color: "var(--text)", padding: "6px 11px", borderRadius: 9, fontSize: 12, fontWeight: 700, fontFamily: "var(--font-ui)", outline: "none", width: 188 }} />
                   )}
                 </div>
               </div>
@@ -136,12 +143,53 @@ export default function GeneralSettings({
               </div>
               <div style={{ width: 44, height: 26, borderRadius: 13, background: "var(--accent)", position: "relative", flexShrink: 0 }}><div style={{ width: 20, height: 20, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, right: 3, boxShadow: "0 1px 3px rgba(0,0,0,.3)" }} /></div>
             </div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 14, marginTop: 14, borderTop: "1px solid var(--border)" }}>
-              <div style={{ flex: 1 }}>
-                <div style={rowTitle}>Language</div>
-                <div style={rowSub}>App display language</div>
+            {/* Language — inline accordion (dc.html v3 L686) */}
+            <div style={{ paddingTop: 12, marginTop: 12, borderTop: "1px solid var(--border)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>Language</div>
+                <button onClick={() => { setApLangOpen((o) => !o); setApCurOpen(false); }} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: "var(--accent-fg)", background: "var(--accent-soft)", border: "none", padding: "6px 11px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)", minWidth: 150, justifyContent: "space-between" }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>{curLang.flag} {curLang.label}</span>
+                  <span style={{ fontSize: 9, transition: "transform .2s", transform: apLangOpen ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block" }}>▾</span>
+                </button>
               </div>
-              <button onClick={onLanguage} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 700, color: "var(--accent-fg)", background: "var(--accent-soft)", border: "none", padding: "7px 12px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>English (US) ▾</button>
+              {apLangOpen && (
+                <div style={{ marginTop: 8, border: "1px solid var(--border)", borderRadius: 11, overflow: "hidden" }}>
+                  {LANGS.map((l) => {
+                    const on = l.code === lang;
+                    return (
+                      <button key={l.code} onClick={() => { onSetLang(l.code); setApLangOpen(false); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", border: "none", borderBottom: "1px solid var(--border)", background: on ? "var(--accent-softer)" : "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
+                        <span style={{ fontSize: 15 }}>{l.flag}</span>
+                        <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{l.label}</span>
+                        <span style={{ color: "var(--accent-fg)", fontWeight: 800, fontSize: 13, width: 12 }}>{on ? "✓" : ""}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {/* Currency — inline accordion (dc.html v3 L706) */}
+            <div style={{ paddingTop: 12, marginTop: 12, borderTop: "1px solid var(--border)" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div><div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>Currency</div><div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>Applies to all prices</div></div>
+                <button onClick={() => { setApCurOpen((o) => !o); setApLangOpen(false); }} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: "var(--accent-fg)", background: "var(--accent-soft)", border: "none", padding: "6px 11px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)", minWidth: 150, justifyContent: "space-between" }}>
+                  <span style={{ fontFamily: "var(--font-mono)" }}>{currency} {CURRENCIES[currency] || "$"}</span>
+                  <span style={{ fontSize: 9, transition: "transform .2s", transform: apCurOpen ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block" }}>▾</span>
+                </button>
+              </div>
+              {apCurOpen && (
+                <div style={{ marginTop: 8, border: "1px solid var(--border)", borderRadius: 11, overflow: "hidden" }}>
+                  {CURRENCY_ORDER.map((code) => {
+                    const on = code === currency;
+                    return (
+                      <button key={code} onClick={() => { onSetCurrency(code); setApCurOpen(false); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", border: "none", borderBottom: "1px solid var(--border)", background: on ? "var(--accent-softer)" : "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 700, color: "var(--accent-fg)", width: 30 }}>{CURRENCIES[code]}</span>
+                        <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{code}</span>
+                        <span style={{ color: "var(--accent-fg)", fontWeight: 800, fontSize: 13, width: 12 }}>{on ? "✓" : ""}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -187,7 +235,12 @@ export default function GeneralSettings({
                 })}
               </div>
             )}
-            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 14 }}>
+            <button onClick={onPrintPattern} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", borderTop: "1px solid var(--border)", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)", flexShrink: 0 }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="6" y="3" width="12" height="6" stroke="currentColor" strokeWidth="1.7" /><rect x="4" y="9" width="16" height="8" rx="2" stroke="currentColor" strokeWidth="1.7" /><rect x="7" y="14" width="10" height="7" stroke="currentColor" strokeWidth="1.7" /></svg></div>
+              <div style={{ flex: 1 }}><div style={rowTitle}>LIVE print pattern</div><div style={rowSub}>What prints on each slip · sizes</div></div>
+              <span style={{ fontSize: 16, color: "var(--text-muted)" }}>›</span>
+            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 14, borderTop: "1px solid var(--border)" }}>
               <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)" }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="12" rx="2" stroke="currentColor" strokeWidth="1.7" /><path d="M9 21h6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg></div>
               <div style={{ flex: 1 }}><div style={rowTitle}>Display &amp; text size</div><div style={rowSub}>Large · keep screen awake</div></div>
               <span style={{ fontSize: 16, color: "var(--text-muted)" }}>›</span>

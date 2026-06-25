@@ -2,7 +2,7 @@
 import { CUSTOMERS, fmt } from "../data";
 import { headerBar, headerTitle, mono } from "../ui";
 
-export default function CustomerData({ onLegal }: { onLegal: () => void }) {
+export default function CustomerData({ onLegal, cur }: { onLegal: () => void; cur: string }) {
   return (
     <div>
       <div style={headerBar}>
@@ -26,7 +26,7 @@ export default function CustomerData({ onLegal }: { onLegal: () => void }) {
                 <div style={{ fontSize: 11, fontWeight: 600, color: "var(--handle)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.handle}</div>
               </div>
               <div style={{ flex: 0.8, textAlign: "right", fontFamily: mono, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{c.orders}</div>
-              <div style={{ flex: 1.1, textAlign: "right", fontFamily: mono, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>₱{fmt(c.spent)}</div>
+              <div style={{ flex: 1.1, textAlign: "right", fontFamily: mono, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{cur}{fmt(c.spent)}</div>
             </div>
           ))}
         </div>

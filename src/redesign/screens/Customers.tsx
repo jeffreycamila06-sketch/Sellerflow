@@ -2,7 +2,7 @@
 import { CUSTOMERS, ARCHIVE, avColor, initials, fmt } from "../data";
 import { headerBar, headerTitle, mono } from "../ui";
 
-export default function Customers() {
+export default function Customers({ cur }: { cur: string }) {
   return (
     <div>
       <div style={headerBar}>
@@ -25,7 +25,7 @@ export default function Customers() {
                 <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)" }}>{c.handle} · {c.platform}</div>
               </div>
               <div style={{ textAlign: "right", flexShrink: 0 }}>
-                <div style={{ fontFamily: mono, fontSize: 14, fontWeight: 700, color: "var(--text)" }}>₱{fmt(c.spent)}</div>
+                <div style={{ fontFamily: mono, fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{cur}{fmt(c.spent)}</div>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>{c.orders} orders · {c.last}</div>
               </div>
             </div>

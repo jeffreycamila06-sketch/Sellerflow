@@ -5,7 +5,7 @@ import { mono } from "../ui";
 const dash = { borderTop: "1.5px dashed #bbb", margin: "12px 0" } as const;
 const line = { display: "flex", justifyContent: "space-between" } as const;
 
-export default function Print({ onBack }: { onBack: () => void }) {
+export default function Print({ onBack, cur }: { onBack: () => void; cur: string }) {
   return (
     <div>
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
@@ -22,10 +22,10 @@ export default function Print({ onBack }: { onBack: () => void }) {
           <div style={{ ...line, fontSize: 11.5, marginTop: 4, color: "#444" }}><span>BUYER</span><span style={{ fontWeight: 700, color: "#000" }}>Maria Santos</span></div>
           <div style={{ ...line, fontSize: 11.5, marginTop: 4, color: "#444" }}><span>DATE</span><span>Jun 25, 9:41 PM</span></div>
           <div style={dash} />
-          <div style={{ ...line, fontSize: 12, marginBottom: 7 }}><span>Matte Lipstick — Red ×2</span><span style={{ fontWeight: 700 }}>₱498</span></div>
-          <div style={{ ...line, fontSize: 12 }}><span>Insulated Tumbler ×1</span><span style={{ fontWeight: 700 }}>₱399</span></div>
+          <div style={{ ...line, fontSize: 12, marginBottom: 7 }}><span>Matte Lipstick — Red ×2</span><span style={{ fontWeight: 700 }}>{cur}498</span></div>
+          <div style={{ ...line, fontSize: 12 }}><span>Insulated Tumbler ×1</span><span style={{ fontWeight: 700 }}>{cur}399</span></div>
           <div style={dash} />
-          <div style={{ ...line, fontSize: 15, fontWeight: 700 }}><span>TOTAL</span><span>₱897</span></div>
+          <div style={{ ...line, fontSize: 15, fontWeight: 700 }}><span>TOTAL</span><span>{cur}897</span></div>
           <div style={{ textAlign: "center", fontSize: 10.5, color: "#777", marginTop: 14, borderTop: "1.5px dashed #bbb", paddingTop: 10 }}>Thank you for shopping live! 💜<br />Pay via GCash · 0917 555 0142</div>
         </div>
         <div style={{ display: "flex", gap: 10, marginTop: 18 }}>

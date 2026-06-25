@@ -5,7 +5,7 @@ import { headerBar, headerTitle, mono } from "../ui";
 const tgPlane = <svg width="19" height="19" viewBox="0 0 24 24" fill="#fff"><path d="M21.5 4.3 3.2 11.4c-1 .4-1 1.8.1 2.1l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.3l2.5-2.6 4.7 3.4c.6.4 1.4.1 1.6-.6l3-15c.2-1-.7-1.8-1.6-1.3Z" /></svg>;
 const check = <span style={{ color: "var(--ok)", fontWeight: 800 }}>✓</span>;
 
-export default function Subscription() {
+export default function Subscription({ cur }: { cur: string }) {
   return (
     <div>
       <div style={headerBar}><div style={headerTitle}>Subscription</div></div>
@@ -18,7 +18,7 @@ export default function Subscription() {
               <span style={{ fontSize: 11, fontWeight: 800, background: "rgba(255,255,255,.22)", padding: "4px 9px", borderRadius: 7 }}>ACTIVE</span>
             </div>
             <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 30, marginTop: 8, letterSpacing: "-.02em" }}>Pro</div>
-            <div style={{ fontFamily: mono, fontSize: 14, fontWeight: 600, opacity: 0.92, marginTop: 2 }}>₱499 / month</div>
+            <div style={{ fontFamily: mono, fontSize: 14, fontWeight: 600, opacity: 0.92, marginTop: 2 }}>{cur}499 / month</div>
             <div style={{ display: "flex", gap: 18, marginTop: 18 }}>
               <div><div style={{ fontSize: 11, opacity: 0.85 }}>Renews on</div><div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>Jul 28, 2026</div></div>
               <div><div style={{ fontSize: 11, opacity: 0.85 }}>Days left</div><div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>33 days</div></div>

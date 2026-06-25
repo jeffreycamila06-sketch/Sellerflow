@@ -8,7 +8,7 @@ const statLbl: CSSProperties = { fontSize: 11.5, color: "var(--text-muted)", fon
 const bigNum: CSSProperties = { fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 25, color: "var(--text)", marginTop: 4, letterSpacing: "-.02em" };
 const mono = "var(--font-mono)";
 
-export default function Miners() {
+export default function Miners({ cur }: { cur: string }) {
   return (
     <div>
       <div style={headerBar}>
@@ -34,8 +34,8 @@ export default function Miners() {
           </div>
           <div style={statCard}>
             <div style={statLbl}>Total spent</div>
-            <div style={{ ...bigNum, fontSize: 22 }}>₱1.28M</div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", marginTop: 3 }}>₱325 avg order</div>
+            <div style={{ ...bigNum, fontSize: 22 }}>{cur}1.28M</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", marginTop: 3 }}>{cur}325 avg order</div>
           </div>
           <div style={statCard}>
             <div style={statLbl}>Platforms</div>
@@ -63,7 +63,7 @@ export default function Miners() {
                 <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)" }}>{m.handle}</div>
               </div>
               <div style={{ textAlign: "right", flexShrink: 0 }}>
-                <div style={{ fontFamily: mono, fontSize: 14.5, fontWeight: 700, color: "var(--text)" }}>₱{fmt(m.spent)}</div>
+                <div style={{ fontFamily: mono, fontSize: 14.5, fontWeight: 700, color: "var(--text)" }}>{cur}{fmt(m.spent)}</div>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>{m.orders} orders</div>
               </div>
             </div>

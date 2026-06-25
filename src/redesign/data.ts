@@ -27,6 +27,12 @@ export const LANGS = [
   { code: "th", label: "ไทย", flag: "🇹🇭" },
 ];
 
+// Currency switcher (dc.html v3 L1555). The derived symbol `cur` threads through
+// every money display. Sample/visual only — Phase 5 wires the real Taiwan NT$.
+export const CURRENCIES: Record<string, string> = { USD: "$", PHP: "₱", IDR: "Rp", VND: "₫", CNY: "¥", TWD: "NT$", THB: "฿" };
+export const CURRENCY_ORDER: string[] = ["USD", "PHP", "IDR", "VND", "CNY", "TWD", "THB"];
+export const curSymbol = (code: string): string => CURRENCIES[code] || "$";
+
 export interface Comment { id: string; name: string; handle: string; text: string; mine: boolean; time: string; }
 
 export const INCOMING: Omit<Comment, "id" | "time">[] = [
@@ -124,13 +130,16 @@ export const PRINTERS: Printer[] = [
   { name: "Label / sticker printer", meta: "USB · Xprinter XP-365B · 40mm", status: "Ready" },
 ];
 
-// Auto-detect keyword controls (visual only). Lives in General Settings (per v2);
+// Auto-detect keyword controls (visual only). Lives in General Settings;
 // shared from RedesignApp state. (Removed from the Dashboard per Jeff's call.)
+// v3: each trigger is a {word, price} pair — a matching comment auto-prints an
+// order at that price (dc.html v3 autoWords L1548 / onAutoKey L2063).
+export interface AutoWord { word: string; price: string; }
 export interface AutoControls {
   detect: boolean;
   setupOpen: boolean;
   action: "slip" | "sticker";
-  words: string[];
+  words: AutoWord[];
   input: string;
   toggle: () => void;
   toggleSetup: () => void;
@@ -163,21 +172,73 @@ export const SALES: { d: string; v: number }[] = [
   { d: "Mon", v: 8200 }, { d: "Tue", v: 11400 }, { d: "Wed", v: 9800 }, { d: "Thu", v: 15200 },
   { d: "Fri", v: 21800 }, { d: "Sat", v: 28400 }, { d: "Sun", v: 19600 },
 ];
-// Admin plans (dc.html PLANS L1162–1166).
+// Admin plans (dc.html v3 PLANS L1550). Prices are bare — the currency symbol
+// `cur` is prepended at render so the currency switcher applies everywhere.
 export interface Plan { name: string; price: string; per: string; sellers: string; feats: string[]; }
 export const PLANS: Plan[] = [
-  { name: "Starter", price: "₱199", per: "/mo", sellers: "4,120 sellers", feats: ["1 live channel", "Auto-detect \"mine\"", "Order slips"] },
-  { name: "Pro", price: "₱499", per: "/mo", sellers: "5,310 sellers", feats: ["TikTok + Facebook", "1-Click order", "Printer & shipping"] },
-  { name: "Enterprise", price: "₱1,499", per: "/mo", sellers: "412 sellers", feats: ["Everything in Pro", "Auto-print + stickers", "Bulk claim · priority sync"] },
+  { name: "Starter", price: "199", per: "/mo", sellers: "4,120 sellers", feats: ["1 live channel", "Auto-detect \"mine\"", "Order slips"] },
+  { name: "Pro", price: "499", per: "/mo", sellers: "5,310 sellers", feats: ["TikTok + Facebook", "1-Click order", "Printer & shipping"] },
+  { name: "Enterprise", price: "1,499", per: "/mo", sellers: "412 sellers", feats: ["Everything in Pro", "Auto-print + stickers", "Bulk claim · priority sync"] },
 ];
-// Admin payments (dc.html PAYMENTS L1167–1172).
+// Admin payments (dc.html v3 PAYMENTS L1594). Bare amounts — `cur` prepended at render.
 export interface Payment { seller: string; method: string; amount: string; status: string; time: string; }
 export const PAYMENTS: Payment[] = [
-  { seller: "TanwearPH", method: "GCash", amount: "₱499", status: "Paid", time: "2m" },
-  { seller: "Reyes Finds", method: "Maya", amount: "₱499", status: "Paid", time: "18m" },
-  { seller: "Grace Luxe", method: "Bank transfer", amount: "₱1,499", status: "Pending", time: "1h" },
-  { seller: "BudgetBuys", method: "GCash", amount: "₱199", status: "Paid", time: "3h" },
+  { seller: "TanwearPH", method: "GCash", amount: "499", status: "Paid", time: "2m" },
+  { seller: "Reyes Finds", method: "Maya", amount: "499", status: "Paid", time: "18m" },
+  { seller: "Grace Luxe", method: "Bank transfer", amount: "1,499", status: "Pending", time: "1h" },
+  { seller: "BudgetBuys", method: "GCash", amount: "199", status: "Paid", time: "3h" },
 ];
+
+// ── Expanded Admin (dc.html v3) ──────────────────────────────────────────────
+// Plan price table — drives the "revenue detected from plan changes" calc
+// (dc.html v3 PLAN_PRICE L1556 / revAdded L1984).
+export const PLAN_PRICE: Record<string, number> = { Free: 0, Basic: 500, Pro: 1200, Master: 1700, Business: 1700, Starter: 500 };
+
+// Users management list (dc.html v3 USERS L1557). Sample data only.
+export interface User { email: string; note: string; role: string; plan: string; days: number; accounts: string; }
+export const USERS: User[] = [
+  { email: "camilajeffrey1@gmail.com", note: "admin", role: "Admin", plan: "Master", days: 3600, accounts: "5 / 5" },
+  { email: "lheyukay@gmail.com", note: "Lheyukay", role: "Seller", plan: "Pro", days: 118, accounts: "3 / 3" },
+  { email: "cmosiclar@icloud.com", note: "Kycher taiwan", role: "Seller", plan: "Basic", days: 42, accounts: "1 / 1" },
+  { email: "alishariq3660@gmail.com", note: "ALUKAY", role: "Seller", plan: "Basic", days: 43, accounts: "1 / 1" },
+  { email: "googletest@sellerflowlive.com", note: "googletest", role: "Seller", plan: "Basic", days: 29, accounts: "1 / 1" },
+  { email: "nliboon7@gmail.com", note: "@bby_dolltw.ph", role: "Seller", plan: "Basic", days: 14, accounts: "1 / 1" },
+  { email: "danishaqil194@gmail.com", note: "Baba", role: "Seller", plan: "Free", days: 3587, accounts: "0 / 1" },
+  { email: "khalidkhadem2023@gmail.com", note: "Atlas", role: "Seller", plan: "Free", days: 3587, accounts: "0 / 1" },
+];
+
+// New sign-ups awaiting approval (dc.html v3 SIGNUPS L1567).
+export interface Signup { name: string; email: string; shop: string; time: string; }
+export const SIGNUPS: Signup[] = [
+  { name: "Carla Mendoza", email: "carla.m@gmail.com", shop: "Carla Finds", time: "12m ago" },
+  { name: "Ben Uy", email: "benuy@gmail.com", shop: "Uy Gadgets", time: "40m ago" },
+  { name: "Tina Flores", email: "tinaflores@icloud.com", shop: "Tina Beauty", time: "1h ago" },
+];
+
+// Subscription buckets (dc.html v3 SUBS L1572).
+export interface Sub { shop: string; owner: string; plan: string; info: string; }
+export const SUBS: { active: Sub[]; expiring: Sub[]; free: Sub[]; expired: Sub[] } = {
+  active: [
+    { shop: "Maria Beauty Hub", owner: "Maria Santos", plan: "Pro", info: "Renews Jul 28, 2026" },
+    { shop: "Reyes Finds", owner: "Liza Reyes", plan: "Pro", info: "Renews Sep 12, 2026" },
+    { shop: "Grace Luxe", owner: "Grace Lim", plan: "Business", info: "Renews Dec 01, 2026" },
+    { shop: "KimStyle PH", owner: "Kim Tan", plan: "Pro", info: "Renews Aug 04, 2026" },
+  ],
+  expiring: [
+    { shop: "TanwearPH", owner: "Kim Tan", plan: "Starter", info: "Expires in 5 days · Jun 30" },
+    { shop: "NeneFinds", owner: "Nene Bautista", plan: "Pro", info: "Expires in 11 days · Jul 06" },
+    { shop: "JoyMart", owner: "Joy Aquino", plan: "Starter", info: "Expires in 14 days · Jul 09" },
+  ],
+  free: [
+    { shop: "Baba Store", owner: "danishaqil194", plan: "Free", info: "0 / 200 orders · 14d cycle" },
+    { shop: "Atlas Shop", owner: "khalidkhadem2023", plan: "Free", info: "0 / 200 orders · 14d cycle" },
+    { shop: "Zam Picks", owner: "barakatullahkhan12", plan: "Free", info: "12 / 200 orders · 9d left" },
+  ],
+  expired: [
+    { shop: "BudgetBuys", owner: "Rico Tan", plan: "Starter", info: "Expired Jun 20 · not renewed" },
+    { shop: "OldStock PH", owner: "Sim Jan", plan: "Basic", info: "Expired May 28 · no payment" },
+  ],
+};
 
 // ── Helpers (dc.html L1029–1033) ────────────────────────────────────────────
 const AV_PALETTE = ["#f59e0b", "#ef4444", "#10b981", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#6366f1"];

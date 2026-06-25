@@ -12,7 +12,7 @@ const stockColor = (stock: number) => (stock === 0 ? "var(--danger)" : stock < 1
 const stockLabel = (stock: number) => (stock === 0 ? "Out of stock" : stock < 10 ? `Low · ${stock} left` : `${stock} in stock`);
 const barW = (stock: number) => `${Math.min(100, Math.round((stock / 120) * 100))}%`;
 
-export default function Products() {
+export default function Products({ cur }: { cur: string }) {
   return (
     <div>
       <div style={headerBar}>
@@ -37,7 +37,7 @@ export default function Products() {
             <div style={{ padding: "11px 11px 12px" }}>
               <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)", lineHeight: 1.25 }}>{p.name}</div>
               <div style={{ fontFamily: mono, fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{p.sku}</div>
-              <div style={{ fontFamily: mono, fontSize: 16, fontWeight: 700, color: "var(--text)", marginTop: 7 }}>₱{fmt(p.price)}</div>
+              <div style={{ fontFamily: mono, fontSize: 16, fontWeight: 700, color: "var(--text)", marginTop: 7 }}>{cur}{fmt(p.price)}</div>
               <div style={{ height: 5, borderRadius: 3, background: "var(--surface-3)", marginTop: 9, overflow: "hidden" }}>
                 <div style={{ height: "100%", width: barW(p.stock), background: stockColor(p.stock), borderRadius: 3 }} />
               </div>

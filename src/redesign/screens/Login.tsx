@@ -1,5 +1,6 @@
-// Screen 5 — Login / Landing (pre-auth, no bottom nav). dc.html L213–283.
-import type { CSSProperties } from "react";
+// Screen 5 — Login / Landing (pre-auth, no bottom nav). dc.html v3 L284–376.
+// v3: a "Forgot password?" modal (admin-only reset → Telegram redirect).
+import { useState, type CSSProperties } from "react";
 import { LANGS } from "../data";
 
 const card: CSSProperties = { flex: 1, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 13, padding: 11, textAlign: "center", boxShadow: "var(--shadow)" };
@@ -9,17 +10,19 @@ const label: CSSProperties = { fontSize: 12, fontWeight: 600, color: "var(--text
 const input: CSSProperties = { width: "100%", padding: "13px 14px", border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 14, outline: "none" };
 
 export default function Login({
-  onLogin, lang, langOpen, onToggleLang, onPickLang,
+  onLogin, onSignup, lang, langOpen, onToggleLang, onPickLang,
 }: {
   onLogin: () => void;
+  onSignup: () => void;
   lang: string;
   langOpen: boolean;
   onToggleLang: () => void;
   onPickLang: (code: string) => void;
 }) {
   const cur = LANGS.find((l) => l.code === lang) || LANGS[0];
+  const [forgotOpen, setForgotOpen] = useState(false);
   return (
-    <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
+    <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", position: "relative" }}>
       {/* hero band */}
       <div style={{ background: "var(--header-bg)", padding: "34px 24px 30px", color: "var(--on-header)", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", width: 160, height: 160, borderRadius: "50%", background: "rgba(255,255,255,.12)", top: -50, right: -30 }} />
@@ -46,11 +49,11 @@ export default function Login({
         <label style={label}>Password</label>
         <input type="password" defaultValue="liveselling" style={{ ...input, marginBottom: 8 }} />
 
-        <div style={{ textAlign: "right", marginBottom: 16 }}><span style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-fg)", cursor: "pointer" }}>Forgot password?</span></div>
+        <div style={{ textAlign: "right", marginBottom: 16 }}><span onClick={() => setForgotOpen(true)} style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-fg)", cursor: "pointer" }}>Forgot password?</span></div>
 
         <button onClick={onLogin} style={{ width: "100%", padding: "14px 0", border: "none", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 6px 18px var(--accent-soft)" }}>Log in</button>
 
-        <div style={{ textAlign: "center", marginTop: 16, fontSize: 12.5, color: "var(--text-dim)" }}>New here? <span style={{ fontWeight: 700, color: "var(--accent-fg)", cursor: "pointer" }}>Create account</span></div>
+        <div style={{ textAlign: "center", marginTop: 16, fontSize: 12.5, color: "var(--text-dim)" }}>New here? <span onClick={onSignup} style={{ fontWeight: 700, color: "var(--accent-fg)", cursor: "pointer" }}>Create account</span></div>
 
         <div style={{ marginTop: "auto", paddingTop: 22 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
@@ -82,6 +85,29 @@ export default function Login({
           <div style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "center", marginTop: 14 }}>By continuing you agree to our <span style={{ color: "var(--accent-fg)", fontWeight: 600, cursor: "pointer" }}>Terms</span></div>
         </div>
       </div>
+
+      {/* Forgot-password modal (dc.html v3 L355–375) — admin-only reset → Telegram. */}
+      {forgotOpen && (
+        <div onClick={() => setForgotOpen(false)} style={{ position: "absolute", inset: 0, zIndex: 9, background: "rgba(8,6,24,.55)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 320, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 20, boxShadow: "0 24px 60px rgba(0,0,0,.4)", overflow: "hidden" }}>
+            <div style={{ padding: "22px 20px 18px", textAlign: "center" }}>
+              <div style={{ width: 54, height: 54, borderRadius: 16, background: "#0088cc", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px", boxShadow: "0 8px 20px rgba(0,136,204,.4)" }}>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="#fff"><path d="M21.5 4.3 3.2 11.4c-1 .4-1 1.8.1 2.1l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.3l2.5-2.6 4.7 3.4c.6.4 1.4.1 1.6-.6l3-15c.2-1-.7-1.8-1.6-1.3Z" /></svg>
+              </div>
+              <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, color: "var(--text)" }}>Reset your password</div>
+              <div style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.55, marginTop: 9 }}>For your security, passwords can only be reset by an admin. Message us on Telegram and we’ll help you create a new password right away.</div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, marginTop: 14, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: 9 }}>
+                <span style={{ width: 18, height: 18, borderRadius: 5, background: "#0088cc", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><svg width="11" height="11" viewBox="0 0 24 24" fill="#fff"><path d="M21.5 4.3 3.2 11.4c-1 .4-1 1.8.1 2.1l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.3l2.5-2.6 4.7 3.4c.6.4 1.4.1 1.6-.6l3-15c.2-1-.7-1.8-1.6-1.3Z" /></svg></span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>@SellerFlowSupport</span>
+              </div>
+            </div>
+            <div style={{ display: "flex", borderTop: "1px solid var(--border)" }}>
+              <button onClick={() => setForgotOpen(false)} style={{ flex: 1, padding: "15px 0", border: "none", borderRight: "1px solid var(--border)", background: "transparent", color: "var(--text-dim)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>Maybe next time</button>
+              <a href="https://t.me/SellerFlowSupport" target="_blank" rel="noreferrer" onClick={() => setForgotOpen(false)} style={{ flex: 1, padding: "15px 0", background: "#0088cc", color: "#fff", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", textAlign: "center", textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>Next<span style={{ fontSize: 15 }}>→</span></a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
