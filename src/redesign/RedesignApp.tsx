@@ -14,13 +14,21 @@ import GeneralSettings from "./screens/GeneralSettings";
 import Customers from "./screens/Customers";
 import Subscription from "./screens/Subscription";
 import Support from "./screens/Support";
+import Admin, { AdminPanel, type AdminPanelKind } from "./screens/Admin";
+import Print from "./screens/Print";
+import SalesReport from "./screens/SalesReport";
+import Shipping from "./screens/Shipping";
+import CustomerData from "./screens/CustomerData";
+import Legal from "./screens/Legal";
+import DeleteAccount from "./screens/DeleteAccount";
 
 type Screen =
   | "login" | "dashboard" | "miners" | "orders" | "products"
-  | "menu" | "settings" | "customers" | "subscription" | "support" | "p4";
+  | "menu" | "settings" | "customers" | "subscription" | "support"
+  | "admin" | "print" | "sales" | "shipping" | "customerdata" | "legal" | "delete";
 
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
-const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "p4"];
+const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete"];
 
 const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang" } as const;
 const readLS = (k: string, fallback: string): string => {
@@ -33,7 +41,8 @@ export default function RedesignApp() {
   const [theme, setTheme] = useState<ThemeMode>(() => (readLS(LS.theme, "light") === "dark" ? "dark" : "light"));
   const [accent, setAccent] = useState<AccentKey>(() => safeAccent(readLS(LS.accent, "indigo")));
   const [screen, setScreen] = useState<Screen>("login");
-  const [p4Label, setP4Label] = useState("Admin");
+  const [adminPanel, setAdminPanel] = useState<AdminPanelKind | null>(null);
+  const [assignAmount, setAssignAmount] = useState("499");
   const [lang, setLang] = useState<string>(() => readLS(LS.lang, "en"));
   const [langOpen, setLangOpen] = useState(false);
   const [langPickerOpen, setLangPickerOpen] = useState(false);
@@ -94,8 +103,8 @@ export default function RedesignApp() {
     return () => clearInterval(t);
   }, []);
 
-  const goP4 = (label: string) => { setP4Label(label); setScreen("p4"); };
   const showNav = screen !== "login";
+  const ordersActive = screen === "orders" || screen === "print";
   const navColor = (on: boolean) => (on ? "var(--accent-fg)" : "var(--text-muted)");
   const navBg = (on: boolean) => (on ? "var(--accent-soft)" : "transparent");
   const navBtn = (on: boolean): CSSProperties => ({ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "7px 0", border: "none", background: navBg(on), borderRadius: 12, cursor: "pointer", color: navColor(on), fontFamily: "var(--font-ui)" });
@@ -143,7 +152,7 @@ export default function RedesignApp() {
               onGoOrders={() => setScreen("orders")}
             />
           )}
-          {screen === "orders" && <Orders />}
+          {screen === "orders" && <Orders onGoPrint={() => setScreen("print")} />}
           {screen === "products" && <Products />}
           {screen === "miners" && <Miners />}
           {screen === "menu" && (
@@ -151,7 +160,12 @@ export default function RedesignApp() {
               onGeneral={() => setScreen("settings")}
               onLanguage={() => setLangPickerOpen(true)}
               onCustomers={() => setScreen("customers")}
-              onP4={goP4}
+              onAdmin={() => setScreen("admin")}
+              onSales={() => setScreen("sales")}
+              onShipping={() => setScreen("shipping")}
+              onCustomerData={() => setScreen("customerdata")}
+              onLegal={() => setScreen("legal")}
+              onDelete={() => setScreen("delete")}
               onLogout={() => setScreen("login")}
             />
           )}
@@ -165,24 +179,19 @@ export default function RedesignApp() {
               onLanguage={() => setLangPickerOpen(true)}
               onSubscription={() => setScreen("subscription")}
               onSupport={() => setScreen("support")}
-              onDelete={() => goP4("Delete Account")}
+              onDelete={() => setScreen("delete")}
             />
           )}
           {screen === "customers" && <Customers />}
           {screen === "subscription" && <Subscription />}
-          {screen === "support" && <Support onLegal={() => goP4("Privacy & Terms")} />}
-          {screen === "p4" && (
-            <div>
-              <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px" }}>
-                <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" }}>{p4Label}</div>
-              </div>
-              <div style={{ padding: 14 }}>
-                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 18, boxShadow: "var(--shadow)", color: "var(--text-dim)", fontSize: 13, lineHeight: 1.6 }}>
-                  <strong style={{ color: "var(--text)" }}>{p4Label}</strong> is part of the admin/occasional set built in <strong style={{ color: "var(--text)" }}>Phase 4</strong>. This placeholder keeps Settings-hub navigation complete for the Phase 3 preview.
-                </div>
-              </div>
-            </div>
-          )}
+          {screen === "support" && <Support onLegal={() => setScreen("legal")} />}
+          {screen === "admin" && <Admin onOpenPanel={setAdminPanel} />}
+          {screen === "print" && <Print onBack={() => setScreen("orders")} />}
+          {screen === "sales" && <SalesReport />}
+          {screen === "shipping" && <Shipping />}
+          {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} />}
+          {screen === "legal" && <Legal />}
+          {screen === "delete" && <DeleteAccount onBack={() => setScreen("settings")} />}
         </div>
 
         {showNav && (
@@ -195,7 +204,7 @@ export default function RedesignApp() {
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 19V11M9 19V5M14 19v-6M19 19V9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
               <span style={{ fontSize: 10, fontWeight: 700 }}>Miners</span>
             </button>
-            <button onClick={() => setScreen("orders")} style={navBtn(screen === "orders")}>
+            <button onClick={() => setScreen("orders")} style={navBtn(ordersActive)}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M6 7h12l-1 12a2 2 0 0 1-2 1.8H9A2 2 0 0 1 7 19L6 7Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M9 7a3 3 0 0 1 6 0" stroke="currentColor" strokeWidth="1.7" /></svg>
               <span style={{ fontSize: 10, fontWeight: 700 }}>Orders</span>
             </button>
@@ -208,6 +217,11 @@ export default function RedesignApp() {
               <span style={{ fontSize: 10, fontWeight: 700 }}>Settings</span>
             </button>
           </div>
+        )}
+
+        {/* Admin control bottom-sheet (absolute within the phone, like the v2 prototype) */}
+        {adminPanel && (
+          <AdminPanel panel={adminPanel} onClose={() => setAdminPanel(null)} assignAmount={assignAmount} onAssignAmount={setAssignAmount} />
         )}
       </div>
 

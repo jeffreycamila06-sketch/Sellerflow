@@ -116,6 +116,14 @@ export const ARCHIVE: ArchiveItem[] = [
   { name: "Grace Lim", handle: "@gracelim", text: "Mine rose gold watch ✨", time: "9:31 PM" },
 ];
 
+// Printer & display picker (dc.html PRINTERS L1176–1179).
+export interface Printer { name: string; meta: string; status: string; }
+export const PRINTERS: Printer[] = [
+  { name: "Receipt printer", meta: "LAN · 192.168.1.42 · 58mm", status: "Ready" },
+  { name: "Bluetooth printer", meta: "Portable · not paired", status: "Off" },
+  { name: "Label / sticker printer", meta: "USB · Xprinter XP-365B · 40mm", status: "Ready" },
+];
+
 // Auto-detect keyword controls (visual only). Lives in General Settings (per v2);
 // shared from RedesignApp state. (Removed from the Dashboard per Jeff's call.)
 export interface AutoControls {
@@ -132,12 +140,43 @@ export interface AutoControls {
   addWord: () => void;
 }
 
-// Printer & display picker (dc.html PRINTERS L1176–1179).
-export interface Printer { name: string; meta: string; status: string; }
-export const PRINTERS: Printer[] = [
-  { name: "Receipt printer", meta: "LAN · 192.168.1.42 · 58mm", status: "Ready" },
-  { name: "Bluetooth printer", meta: "Portable · not paired", status: "Off" },
-  { name: "Label / sticker printer", meta: "USB · Xprinter XP-365B · 40mm", status: "Ready" },
+// ── Phase 4 (admin/occasional) sample data ──────────────────────────────────
+// Admin sellers (dc.html DATA.sellers L944–950).
+export interface Seller { shop: string; owner: string; plan: string; expiry: string; status: string; }
+export const SELLERS: Seller[] = [
+  { shop: "Maria Beauty Hub", owner: "Maria Santos", plan: "Pro", expiry: "Jul 28, 2026", status: "Active" },
+  { shop: "TanwearPH", owner: "Kim Tan", plan: "Starter", expiry: "Jun 30, 2026", status: "Expiring" },
+  { shop: "Reyes Finds", owner: "Liza Reyes", plan: "Pro", expiry: "Sep 12, 2026", status: "Active" },
+  { shop: "Grace Luxe", owner: "Grace Lim", plan: "Business", expiry: "Dec 01, 2026", status: "Active" },
+  { shop: "BudgetBuys", owner: "Rico Tan", plan: "Starter", expiry: "Jun 20, 2026", status: "Expired" },
+];
+// Shipping (dc.html DATA.shipping L938–943).
+export interface Shipment { id: string; buyer: string; courier: string; track: string; status: string; }
+export const SHIPPING: Shipment[] = [
+  { id: "#10469", buyer: "Grace Lim", courier: "J&T Express", track: "JT882190455", status: "Shipped" },
+  { id: "#10470", buyer: "Liza Reyes", courier: "LBC", track: "LBC772019", status: "Packed" },
+  { id: "#10468", buyer: "Nene Bautista", courier: "Flash", track: "FL552281", status: "Shipped" },
+  { id: "#10465", buyer: "Rico Tan", courier: "J&T Express", track: "JT882110023", status: "Delivered" },
+];
+// Sales report daily bars (dc.html DATA.sales L951).
+export const SALES: { d: string; v: number }[] = [
+  { d: "Mon", v: 8200 }, { d: "Tue", v: 11400 }, { d: "Wed", v: 9800 }, { d: "Thu", v: 15200 },
+  { d: "Fri", v: 21800 }, { d: "Sat", v: 28400 }, { d: "Sun", v: 19600 },
+];
+// Admin plans (dc.html PLANS L1162–1166).
+export interface Plan { name: string; price: string; per: string; sellers: string; feats: string[]; }
+export const PLANS: Plan[] = [
+  { name: "Starter", price: "₱199", per: "/mo", sellers: "4,120 sellers", feats: ["1 live channel", "Auto-detect \"mine\"", "Order slips"] },
+  { name: "Pro", price: "₱499", per: "/mo", sellers: "5,310 sellers", feats: ["TikTok + Facebook", "1-Click order", "Printer & shipping"] },
+  { name: "Enterprise", price: "₱1,499", per: "/mo", sellers: "412 sellers", feats: ["Everything in Pro", "Auto-print + stickers", "Bulk claim · priority sync"] },
+];
+// Admin payments (dc.html PAYMENTS L1167–1172).
+export interface Payment { seller: string; method: string; amount: string; status: string; time: string; }
+export const PAYMENTS: Payment[] = [
+  { seller: "TanwearPH", method: "GCash", amount: "₱499", status: "Paid", time: "2m" },
+  { seller: "Reyes Finds", method: "Maya", amount: "₱499", status: "Paid", time: "18m" },
+  { seller: "Grace Luxe", method: "Bank transfer", amount: "₱1,499", status: "Pending", time: "1h" },
+  { seller: "BudgetBuys", method: "GCash", amount: "₱199", status: "Paid", time: "3h" },
 ];
 
 // ── Helpers (dc.html L1029–1033) ────────────────────────────────────────────

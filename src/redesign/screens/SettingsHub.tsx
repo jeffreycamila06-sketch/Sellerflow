@@ -36,10 +36,11 @@ const ic = {
 };
 
 export default function SettingsHub({
-  onGeneral, onLanguage, onCustomers, onP4, onLogout,
+  onGeneral, onLanguage, onCustomers, onAdmin, onSales, onShipping, onCustomerData, onLegal, onDelete, onLogout,
 }: {
   onGeneral: () => void; onLanguage: () => void; onCustomers: () => void;
-  onP4: (label: string) => void; onLogout: () => void;
+  onAdmin: () => void; onSales: () => void; onShipping: () => void;
+  onCustomerData: () => void; onLegal: () => void; onDelete: () => void; onLogout: () => void;
 }) {
   return (
     <div>
@@ -52,12 +53,12 @@ export default function SettingsHub({
           <Tile icon={ic.gear} label="General Settings" onClick={onGeneral} />
           <Tile icon={ic.globe} label="Language" onClick={onLanguage} />
           <Tile icon={ic.people} label="Customers" onClick={onCustomers} />
-          <Tile icon={ic.shield} label="Admin" onClick={() => onP4("Admin")} />
-          <Tile icon={ic.chart} label="Sales Report" onClick={() => onP4("Sales Report")} />
-          <Tile icon={ic.truck} label="Shipping" onClick={() => onP4("Shipping")} />
-          <Tile icon={ic.database} label="Customer Data" onClick={() => onP4("Customer Data")} />
-          <Tile icon={ic.doclock} label="Privacy & Terms" onClick={() => onP4("Privacy & Terms")} />
-          <Tile icon={ic.trash} label="Delete Account" onClick={() => onP4("Delete Account")} variant="danger" />
+          <Tile icon={ic.shield} label="Admin" onClick={onAdmin} />
+          <Tile icon={ic.chart} label="Sales Report" onClick={onSales} />
+          <Tile icon={ic.truck} label="Shipping" onClick={onShipping} />
+          <Tile icon={ic.database} label="Customer Data" onClick={onCustomerData} />
+          <Tile icon={ic.doclock} label="Privacy & Terms" onClick={onLegal} />
+          <Tile icon={ic.trash} label="Delete Account" onClick={onDelete} variant="danger" />
           <Tile icon={ic.exit} label="Log out" onClick={onLogout} variant="neutral" />
         </div>
       </div>

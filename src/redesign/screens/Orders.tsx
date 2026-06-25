@@ -8,7 +8,7 @@ const filterActive: CSSProperties = { background: "#fff", color: "var(--accent)"
 const filterIdle: CSSProperties = { background: "rgba(255,255,255,.16)", fontSize: 12, fontWeight: 600, padding: "6px 13px", borderRadius: 20, whiteSpace: "nowrap" };
 const mono = "var(--font-mono)";
 
-export default function Orders() {
+export default function Orders({ onGoPrint }: { onGoPrint: () => void }) {
   return (
     <div>
       <div style={headerBar}>
@@ -25,7 +25,7 @@ export default function Orders() {
       </div>
       <div style={{ padding: "14px 14px 22px", display: "flex", flexDirection: "column", gap: 11 }}>
         {ORDERS.map((o) => (
-          <div key={o.id} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 15, padding: "13px 14px", boxShadow: "var(--shadow)" }}>
+          <div key={o.id} onClick={onGoPrint} title="Print slip" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 15, padding: "13px 14px", boxShadow: "var(--shadow)", cursor: "pointer" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
               <div style={{ width: 40, height: 40, borderRadius: 12, background: avColor(o.buyer), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{initials(o.buyer)}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
