@@ -96,6 +96,50 @@ export const FB_ACCOUNTS: Account[] = [
   { handle: "Reseller Group PH", name: "Group · 12K members", meta: "Group" },
 ];
 
+// Customers + Comment archive (dc.html DATA.customers L922–930, archive L931–937).
+export interface Customer { name: string; handle: string; orders: number; spent: number; last: string; platform: string; }
+export const CUSTOMERS: Customer[] = [
+  { name: "Maria Santos", handle: "@maria_shops", orders: 24, spent: 18420, last: "2m", platform: "TikTok" },
+  { name: "Grace Lim", handle: "@gracelim", orders: 18, spent: 14250, last: "24m", platform: "TikTok" },
+  { name: "Liza Reyes", handle: "@lizareyes", orders: 16, spent: 12990, last: "11m", platform: "Facebook" },
+  { name: "Kim Tan", handle: "@kimtanph", orders: 15, spent: 9870, last: "5m", platform: "TikTok" },
+  { name: "Nene Bautista", handle: "@nene.b", orders: 9, spent: 7640, last: "33m", platform: "Facebook" },
+  { name: "Joy Aquino", handle: "@joyaquino", orders: 7, spent: 4310, last: "40m", platform: "TikTok" },
+  { name: "Rico Tan", handle: "@ricotan", orders: 4, spent: 2180, last: "1h", platform: "Facebook" },
+];
+export interface ArchiveItem { name: string; handle: string; text: string; time: string; }
+export const ARCHIVE: ArchiveItem[] = [
+  { name: "Maria Santos", handle: "@maria_shops", text: "Mine! Red lipstick 2pcs 💄", time: "9:41 PM" },
+  { name: "Kim Tan", handle: "@kimtanph", text: "Mine size M white tee", time: "9:39 PM" },
+  { name: "Liza Reyes", handle: "@lizareyes", text: "Mine black tumbler", time: "9:36 PM" },
+  { name: "Joy Aquino", handle: "@joyaquino", text: "How much the bundle po?", time: "9:34 PM" },
+  { name: "Grace Lim", handle: "@gracelim", text: "Mine rose gold watch ✨", time: "9:31 PM" },
+];
+
+// Auto-detect keyword controls (visual only). Lives in General Settings (per v2);
+// shared from RedesignApp state. (Removed from the Dashboard per Jeff's call.)
+export interface AutoControls {
+  detect: boolean;
+  setupOpen: boolean;
+  action: "slip" | "sticker";
+  words: string[];
+  input: string;
+  toggle: () => void;
+  toggleSetup: () => void;
+  setAction: (a: "slip" | "sticker") => void;
+  removeWord: (i: number) => void;
+  setInput: (v: string) => void;
+  addWord: () => void;
+}
+
+// Printer & display picker (dc.html PRINTERS L1176–1179).
+export interface Printer { name: string; meta: string; status: string; }
+export const PRINTERS: Printer[] = [
+  { name: "Receipt printer", meta: "LAN · 192.168.1.42 · 58mm", status: "Ready" },
+  { name: "Bluetooth printer", meta: "Portable · not paired", status: "Off" },
+  { name: "Label / sticker printer", meta: "USB · Xprinter XP-365B · 40mm", status: "Ready" },
+];
+
 // ── Helpers (dc.html L1029–1033) ────────────────────────────────────────────
 const AV_PALETTE = ["#f59e0b", "#ef4444", "#10b981", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#6366f1"];
 export const avColor = (s: string): string => {

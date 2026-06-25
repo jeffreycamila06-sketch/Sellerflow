@@ -1,42 +1,55 @@
-// Redesign root (Phase 2). Owns theme/accent/screen state + the live feed, sets
+// Redesign root. Owns theme/accent/screen state + the live feed, sets
 // [data-theme]/[data-accent] on the [data-redesign] root (tokens resolve from
-// src/styles/design-tokens.css), and renders the 5 core screens + bottom nav.
+// src/styles/design-tokens.css), and renders all built screens + bottom nav.
 // Self-contained preview — does NOT import or touch the existing app.
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { INCOMING, SEED_COMMENTS, type Comment, type ThemeMode, type AccentKey } from "./data";
+import { INCOMING, SEED_COMMENTS, LANGS, type Comment, type ThemeMode, type AccentKey, type AutoControls } from "./data";
 import Dashboard from "./screens/Dashboard";
 import Orders from "./screens/Orders";
 import Products from "./screens/Products";
 import Miners from "./screens/Miners";
 import Login from "./screens/Login";
+import SettingsHub from "./screens/SettingsHub";
+import GeneralSettings from "./screens/GeneralSettings";
+import Customers from "./screens/Customers";
+import Subscription from "./screens/Subscription";
+import Support from "./screens/Support";
 
-type Screen = "login" | "dashboard" | "miners" | "orders" | "products" | "settings";
+type Screen =
+  | "login" | "dashboard" | "miners" | "orders" | "products"
+  | "menu" | "settings" | "customers" | "subscription" | "support" | "p4";
 
-const LS = {
-  theme: "sfl_rd_theme",
-  accent: "sfl_rd_accent",
-  lang: "sfl_rd_lang",
-} as const;
+// Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
+const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "p4"];
+
+const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang" } as const;
 const readLS = (k: string, fallback: string): string => {
   try { return localStorage.getItem(k) || fallback; } catch { return fallback; }
 };
+const ACCENT_KEYS: AccentKey[] = ["indigo", "violet", "emerald", "rose", "sky", "amber"];
+const safeAccent = (v: string): AccentKey => (ACCENT_KEYS.includes(v as AccentKey) ? (v as AccentKey) : "indigo");
 
 export default function RedesignApp() {
   const [theme, setTheme] = useState<ThemeMode>(() => (readLS(LS.theme, "light") === "dark" ? "dark" : "light"));
-  const [accent] = useState<AccentKey>(() => (readLS(LS.accent, "indigo") as AccentKey));
+  const [accent, setAccent] = useState<AccentKey>(() => safeAccent(readLS(LS.accent, "indigo")));
   const [screen, setScreen] = useState<Screen>("login");
+  const [p4Label, setP4Label] = useState("Admin");
   const [lang, setLang] = useState<string>(() => readLS(LS.lang, "en"));
   const [langOpen, setLangOpen] = useState(false);
+  const [langPickerOpen, setLangPickerOpen] = useState(false);
 
-  // Dashboard account pickers (visual only; selection/open state local — no real
-  // account switching, which is Phase 5).
+  // Dashboard account pickers (visual only — Phase 5 wires real switching).
   const [ttOpen, setTtOpen] = useState(false);
   const [fbOpen, setFbOpen] = useState(false);
   const [ttIdx, setTtIdx] = useState(0);
   const [fbIdx, setFbIdx] = useState(0);
 
-  // Auto-detect keyword feature (visual only — no real comment detection /
-  // automation, which is Phase 5). Defaults from dc.html v2 state (L1160).
+  // General Settings local UI state (visual only).
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [printerOpen, setPrinterOpen] = useState(false);
+  const [printerIdx, setPrinterIdx] = useState(0);
+
+  // Auto-detect keyword feature (visual only). Defaults from dc.html v2 (L1160).
   const [autoDetect, setAutoDetect] = useState(true);
   const [autoSetupOpen, setAutoSetupOpen] = useState(false);
   const [autoAction, setAutoAction] = useState<"slip" | "sticker">("slip");
@@ -47,6 +60,15 @@ export default function RedesignApp() {
     if (w && !autoWords.includes(w) && autoWords.length < 20) setAutoWords((ws) => [...ws, w]);
     setAutoInput("");
   };
+  const autoControls: AutoControls = {
+    detect: autoDetect, setupOpen: autoSetupOpen, action: autoAction, words: autoWords, input: autoInput,
+    toggle: () => setAutoDetect((v) => !v),
+    toggleSetup: () => setAutoSetupOpen((o) => !o),
+    setAction: setAutoAction,
+    removeWord: (i) => setAutoWords((ws) => ws.filter((_, j) => j !== i)),
+    setInput: setAutoInput,
+    addWord: addAutoWord,
+  };
 
   const [comments, setComments] = useState<Comment[]>(SEED_COMMENTS);
   const [viewers, setViewers] = useState(1284);
@@ -54,13 +76,12 @@ export default function RedesignApp() {
   const cid = useRef(1);
   const pushIdx = useRef(0);
 
-  // Persist appearance choices (redesign-namespaced keys; never touches the
-  // existing app's localStorage keys).
+  // Persist appearance (redesign-namespaced keys; never touches existing keys).
   useEffect(() => { try { localStorage.setItem(LS.theme, theme); } catch { /* ignore */ } }, [theme]);
+  useEffect(() => { try { localStorage.setItem(LS.accent, accent); } catch { /* ignore */ } }, [accent]);
   useEffect(() => { try { localStorage.setItem(LS.lang, lang); } catch { /* ignore */ } }, [lang]);
 
-  // Live comment feed — prepend every 2.7s, cap 11, bump claims on "mine",
-  // jitter viewers. (dc.html componentDidMount / pushComment L956–987.)
+  // Live comment feed — prepend every 2.7s, cap 11, bump claims on "mine".
   useEffect(() => {
     const t = setInterval(() => {
       const inc = INCOMING[pushIdx.current % INCOMING.length];
@@ -73,15 +94,16 @@ export default function RedesignApp() {
     return () => clearInterval(t);
   }, []);
 
+  const goP4 = (label: string) => { setP4Label(label); setScreen("p4"); };
   const showNav = screen !== "login";
   const navColor = (on: boolean) => (on ? "var(--accent-fg)" : "var(--text-muted)");
   const navBg = (on: boolean) => (on ? "var(--accent-soft)" : "transparent");
   const navBtn = (on: boolean): CSSProperties => ({ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "7px 0", border: "none", background: navBg(on), borderRadius: 12, cursor: "pointer", color: navColor(on), fontFamily: "var(--font-ui)" });
+  const settingsActive = SETTINGS_GROUP.includes(screen);
 
   return (
     <div data-redesign="" data-theme={theme} data-accent={accent} className="sfl-stage">
       <div className="sfl-phone">
-        {/* decorative dark-bg layers (dark theme only) */}
         {theme === "dark" && (
           <>
             <div className="sfl-grid" />
@@ -100,7 +122,6 @@ export default function RedesignApp() {
           </div>
         </div>
 
-        {/* scrollable screen content */}
         <div className="sfl-scroll">
           {screen === "login" && (
             <Login
@@ -113,50 +134,57 @@ export default function RedesignApp() {
           )}
           {screen === "dashboard" && (
             <Dashboard
-              comments={comments}
-              viewers={viewers}
-              liveClaims={liveClaims}
-              ttOpen={ttOpen}
-              fbOpen={fbOpen}
-              ttIdx={ttIdx}
-              fbIdx={fbIdx}
+              comments={comments} viewers={viewers} liveClaims={liveClaims}
+              ttOpen={ttOpen} fbOpen={fbOpen} ttIdx={ttIdx} fbIdx={fbIdx}
               onToggleTT={() => { setTtOpen((o) => !o); setFbOpen(false); }}
               onToggleFB={() => { setFbOpen((o) => !o); setTtOpen(false); }}
               onPickTT={(i) => { setTtIdx(i); setTtOpen(false); }}
               onPickFB={(i) => { setFbIdx(i); setFbOpen(false); }}
               onGoOrders={() => setScreen("orders")}
-              auto={{
-                detect: autoDetect,
-                setupOpen: autoSetupOpen,
-                action: autoAction,
-                words: autoWords,
-                input: autoInput,
-                toggle: () => setAutoDetect((v) => !v),
-                toggleSetup: () => setAutoSetupOpen((o) => !o),
-                setAction: setAutoAction,
-                removeWord: (i) => setAutoWords((ws) => ws.filter((_, j) => j !== i)),
-                setInput: setAutoInput,
-                addWord: addAutoWord,
-              }}
             />
           )}
           {screen === "orders" && <Orders />}
           {screen === "products" && <Products />}
           {screen === "miners" && <Miners />}
+          {screen === "menu" && (
+            <SettingsHub
+              onGeneral={() => setScreen("settings")}
+              onLanguage={() => setLangPickerOpen(true)}
+              onCustomers={() => setScreen("customers")}
+              onP4={goP4}
+              onLogout={() => setScreen("login")}
+            />
+          )}
           {screen === "settings" && (
-            <div style={{ padding: 24 }}>
-              <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px", margin: "-24px -24px 18px", borderRadius: 0 }}>
-                <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" }}>Settings</div>
-                <div style={{ fontSize: 12, opacity: 0.85, marginTop: 1 }}>Shop tools &amp; account</div>
+            <GeneralSettings
+              theme={theme} accent={accent} onSetTheme={setTheme} onSetAccent={setAccent}
+              auto={autoControls}
+              profileOpen={profileOpen} onToggleProfile={() => setProfileOpen((o) => !o)}
+              printerIdx={printerIdx} printerOpen={printerOpen}
+              onTogglePrinter={() => setPrinterOpen((o) => !o)} onPickPrinter={(i) => { setPrinterIdx(i); setPrinterOpen(false); }}
+              onLanguage={() => setLangPickerOpen(true)}
+              onSubscription={() => setScreen("subscription")}
+              onSupport={() => setScreen("support")}
+              onDelete={() => goP4("Delete Account")}
+            />
+          )}
+          {screen === "customers" && <Customers />}
+          {screen === "subscription" && <Subscription />}
+          {screen === "support" && <Support onLegal={() => goP4("Privacy & Terms")} />}
+          {screen === "p4" && (
+            <div>
+              <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px" }}>
+                <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" }}>{p4Label}</div>
               </div>
-              <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 15, padding: 18, boxShadow: "var(--shadow)", color: "var(--text-dim)", fontSize: 13, lineHeight: 1.6 }}>
-                The Settings hub and its sub-screens are built in <strong style={{ color: "var(--text)" }}>Phase 3</strong>. This placeholder keeps the 5-tab bottom nav complete for the Phase 2 core-screen preview.
+              <div style={{ padding: 14 }}>
+                <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 18, boxShadow: "var(--shadow)", color: "var(--text-dim)", fontSize: 13, lineHeight: 1.6 }}>
+                  <strong style={{ color: "var(--text)" }}>{p4Label}</strong> is part of the admin/occasional set built in <strong style={{ color: "var(--text)" }}>Phase 4</strong>. This placeholder keeps Settings-hub navigation complete for the Phase 3 preview.
+                </div>
               </div>
             </div>
           )}
         </div>
 
-        {/* bottom nav (hidden on login) — dc.html L825–848 */}
         {showNav && (
           <div style={{ position: "relative", zIndex: 3, flexShrink: 0, display: "flex", alignItems: "stretch", justifyContent: "space-around", padding: "8px 8px calc(8px + env(safe-area-inset-bottom))", background: "var(--nav-bg)", borderTop: "1px solid var(--border)", backdropFilter: "saturate(1.4) blur(14px)" }}>
             <button onClick={() => setScreen("dashboard")} style={navBtn(screen === "dashboard")}>
@@ -175,7 +203,7 @@ export default function RedesignApp() {
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 8.5 12 4l8 4.5v7L12 20l-8-4.5v-7Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="m4 8.5 8 4.5 8-4.5M12 13v7" stroke="currentColor" strokeWidth="1.7" /></svg>
               <span style={{ fontSize: 10, fontWeight: 700 }}>Products</span>
             </button>
-            <button onClick={() => setScreen("settings")} style={navBtn(screen === "settings")}>
+            <button onClick={() => setScreen("menu")} style={navBtn(settingsActive)}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.7" /><path d="M19.4 13c.04-.3.06-.66.06-1s-.02-.7-.06-1l2.1-1.6-2-3.5-2.5 1a7.5 7.5 0 0 0-1.7-1l-.4-2.6H9.1l-.4 2.6c-.6.25-1.18.58-1.7 1l-2.5-1-2 3.5L4.6 11c-.04.3-.06.66-.06 1s.02.7.06 1l-2.1 1.6 2 3.5 2.5-1c.52.42 1.1.75 1.7 1l.4 2.6h5.8l.4-2.6c.6-.25 1.18-.58 1.7-1l2.5 1 2-3.5-2.1-1.6Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>
               <span style={{ fontSize: 10, fontWeight: 700 }}>Settings</span>
             </button>
@@ -183,15 +211,21 @@ export default function RedesignApp() {
         )}
       </div>
 
-      {/* theme toggle (preview affordance — Appearance controls move into the
-          General Settings screen in Phase 3) */}
-      <button
-        onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-        title="Toggle theme (preview)"
-        style={{ position: "fixed", top: 10, right: 10, zIndex: 50, width: 36, height: 36, borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", cursor: "pointer", boxShadow: "var(--shadow)" }}
-      >
-        {theme === "dark" ? "☀" : "☾"}
-      </button>
+      {/* Language picker (hub Language tile / General Settings language row) */}
+      {langPickerOpen && (
+        <div onClick={() => setLangPickerOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 320, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, boxShadow: "0 18px 44px rgba(0,0,0,.4)", padding: 8 }}>
+            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--text-muted)", padding: "8px 10px 9px" }}>APP LANGUAGE</div>
+            {LANGS.map((l) => (
+              <button key={l.code} onClick={() => { setLang(l.code); setLangPickerOpen(false); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px", border: "none", borderRadius: 10, background: l.code === lang ? "var(--accent-soft)" : "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
+                <span style={{ fontSize: 18, lineHeight: 1 }}>{l.flag}</span>
+                <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{l.label}</span>
+                <span style={{ color: "var(--accent-fg)", fontWeight: 800, fontSize: 14, width: 14 }}>{l.code === lang ? "✓" : ""}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

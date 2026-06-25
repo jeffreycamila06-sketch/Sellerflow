@@ -17,49 +17,16 @@ const ddCheck: CSSProperties = { color: "var(--accent-fg)", fontWeight: 800, fon
 const bolt = <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4.5 13.5H11l-1 8.5 9-12h-6.5L13 2Z" /></svg>;
 const bolt12 = <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4.5 13.5H11l-1 8.5 9-12h-6.5L13 2Z" /></svg>;
 
-// Auto-detect keyword controls (visual only).
-export interface AutoControls {
-  detect: boolean;
-  setupOpen: boolean;
-  action: "slip" | "sticker";
-  words: string[];
-  input: string;
-  toggle: () => void;
-  toggleSetup: () => void;
-  setAction: (a: "slip" | "sticker") => void;
-  removeWord: (i: number) => void;
-  setInput: (v: string) => void;
-  addWord: () => void;
-}
-
-const wordChip: CSSProperties = { display: "flex", alignItems: "center", gap: 6, background: "var(--accent-soft)", border: "1px solid var(--accent)", color: "var(--accent-fg)", padding: "6px 8px 6px 11px", borderRadius: 9, fontSize: 12, fontWeight: 700 };
-const wordX: CSSProperties = { background: "none", border: "none", cursor: "pointer", color: "var(--accent-fg)", fontSize: 15, lineHeight: 1, padding: 0, display: "flex", alignItems: "center" };
-const addWordInput: CSSProperties = { background: "transparent", border: "1.3px dashed var(--border-strong)", color: "var(--text)", padding: "6px 11px", borderRadius: 9, fontSize: 12, fontWeight: 700, fontFamily: "var(--font-ui)", outline: "none", width: 168 };
-
 export default function Dashboard({
   comments, viewers, liveClaims,
   ttOpen, fbOpen, ttIdx, fbIdx, onToggleTT, onToggleFB, onPickTT, onPickFB, onGoOrders,
-  auto,
 }: {
   comments: Comment[]; viewers: number; liveClaims: number;
   ttOpen: boolean; fbOpen: boolean; ttIdx: number; fbIdx: number;
   onToggleTT: () => void; onToggleFB: () => void;
   onPickTT: (i: number) => void; onPickFB: (i: number) => void;
   onGoOrders: () => void;
-  auto: AutoControls;
 }) {
-  // derived toggle visuals (dc.html v2 L1471–1478)
-  const autoLabel = auto.detect ? "Auto-detect" : "Manual mode";
-  const autoLabelColor = auto.detect ? "var(--accent-fg)" : "var(--text-muted)";
-  const autoTrack = auto.detect ? "var(--accent)" : "var(--border-strong)";
-  const autoKnob = auto.detect ? 17 : 2;
-  const autoChevron = auto.setupOpen ? "rotate(180deg)" : "rotate(0deg)";
-  const segStyle = (a: "slip" | "sticker"): CSSProperties => ({
-    flex: 1, padding: "9px 0", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)", fontSize: 11.5, fontWeight: 700,
-    ...(auto.action === a
-      ? { background: "var(--accent)", color: "var(--accent-text)", border: "1px solid var(--accent)" }
-      : { background: "var(--surface-2)", color: "var(--text-dim)", border: "1px solid var(--border)" }),
-  });
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
       <div style={headerBar}>
@@ -134,55 +101,8 @@ export default function Dashboard({
             <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14.5, color: "var(--text)" }}>Live comments</span>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#e11d48", animation: "sflDot 1s infinite" }} />
           </div>
-          {/* auto-detect: tappable label+chevron opens setup; switch toggles on/off */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button onClick={auto.toggleSetup} title="Set up trigger words" style={{ display: "flex", alignItems: "center", gap: 5, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "var(--font-ui)" }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: autoLabelColor }}>{autoLabel}</span>
-              <span style={{ color: "var(--text-muted)", fontSize: 10, transition: "transform .2s", transform: autoChevron, display: "inline-block" }}>▾</span>
-            </button>
-            <button onClick={auto.toggle} title="Toggle auto-detect / manual mode" style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }}>
-              <span style={{ width: 34, height: 19, borderRadius: 11, background: autoTrack, position: "relative", transition: "background .15s", flexShrink: 0, display: "block" }}>
-                <span style={{ position: "absolute", top: 2, left: autoKnob, width: 15, height: 15, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 2px rgba(0,0,0,.3)", transition: "left .15s" }} />
-              </span>
-            </button>
-          </div>
+          <span style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>Auto-detecting "mine"</span>
         </div>
-
-        {/* auto-detect setup panel (dc.html v2 L535–549 + action selector L1480–1481) */}
-        {auto.setupOpen && (
-          <div className="sfl-comm-row" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginBottom: 11 }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>Trigger word sets</span>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{auto.words.length} / 20</span>
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-              {auto.words.map((w, i) => (
-                <span key={w} style={wordChip}>{w}<button onClick={() => auto.removeWord(i)} title="Remove" style={wordX}>×</button></span>
-              ))}
-              {auto.words.length < 20 && (
-                <input
-                  value={auto.input}
-                  onChange={(e) => auto.setInput(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); auto.addWord(); } }}
-                  placeholder="Type word, press Enter"
-                  style={addWordInput}
-                />
-              )}
-            </div>
-            <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", marginBottom: 10 }}>Auto action</div>
-              <div style={{ display: "flex", gap: 7 }}>
-                <button onClick={() => auto.setAction("slip")} style={segStyle("slip")}>Slip</button>
-                <button onClick={() => auto.setAction("sticker")} style={segStyle("sticker")}>Sticker</button>
-              </div>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: autoLabelColor }} />
-              <span style={{ fontSize: 11.5, fontWeight: 700, color: autoLabelColor }}>{autoLabel}</span>
-              <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>currently active</span>
-            </div>
-          </div>
-        )}
 
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 7, boxShadow: "var(--shadow)", flex: 1 }}>
           {comments.map((c) => (
