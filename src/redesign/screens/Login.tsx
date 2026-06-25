@@ -10,10 +10,13 @@ const label: CSSProperties = { fontSize: 12, fontWeight: 600, color: "var(--text
 const input: CSSProperties = { width: "100%", padding: "13px 14px", border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 14, outline: "none" };
 
 export default function Login({
-  onLogin, onSignup, lang, langOpen, onToggleLang, onPickLang,
+  onLogin, onSignup, configured, lang, langOpen, onToggleLang, onPickLang,
 }: {
-  onLogin: () => void;
+  // Phase 5a: real auth. Returns {ok,error}; on ok the parent navigates once the
+  // session resolves. Async so the button can show a busy state.
+  onLogin: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   onSignup: () => void;
+  configured: boolean;
   lang: string;
   langOpen: boolean;
   onToggleLang: () => void;
@@ -21,6 +24,21 @@ export default function Login({
 }) {
   const cur = LANGS.find((l) => l.code === lang) || LANGS[0];
   const [forgotOpen, setForgotOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  const submit = async () => {
+    if (busy) return;
+    setErr("");
+    if (!email.trim() || !password) { setErr("Enter your email and password."); return; }
+    setBusy(true);
+    const res = await onLogin(email, password);
+    if (!res.ok) { setErr(res.error || "Sign-in failed. Check your details and try again."); setBusy(false); }
+    // on success the parent flips the screen; leave busy=true to avoid a flash.
+  };
+  const onKey = (e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") { e.preventDefault(); void submit(); } };
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", position: "relative" }}>
       {/* hero band */}
@@ -44,14 +62,17 @@ export default function Login({
         <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 17, color: "var(--text)", marginBottom: 14 }}>Welcome back</div>
 
         <label style={label}>Phone or email</label>
-        <input defaultValue="maria@liveshop.ph" style={{ ...input, fontWeight: 600, marginBottom: 14 }} />
+        <input value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={onKey} autoComplete="username" inputMode="email" placeholder="you@example.com" style={{ ...input, fontWeight: 600, marginBottom: 14 }} />
 
         <label style={label}>Password</label>
-        <input type="password" defaultValue="liveselling" style={{ ...input, marginBottom: 8 }} />
+        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={onKey} autoComplete="current-password" placeholder="Your password" style={{ ...input, marginBottom: 8 }} />
 
         <div style={{ textAlign: "right", marginBottom: 16 }}><span onClick={() => setForgotOpen(true)} style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-fg)", cursor: "pointer" }}>Forgot password?</span></div>
 
-        <button onClick={onLogin} style={{ width: "100%", padding: "14px 0", border: "none", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 6px 18px var(--accent-soft)" }}>Log in</button>
+        {err && <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--danger)", background: "var(--danger-soft, rgba(225,29,72,.1))", border: "1px solid var(--danger)", borderRadius: 10, padding: "9px 12px", marginBottom: 12 }}>{err}</div>}
+        {!configured && <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>Sign-in is unavailable in this preview (Supabase not configured).</div>}
+
+        <button onClick={() => void submit()} disabled={busy} style={{ width: "100%", padding: "14px 0", border: "none", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14.5, fontWeight: 700, cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1, boxShadow: "0 6px 18px var(--accent-soft)" }}>{busy ? "Logging in…" : "Log in"}</button>
 
         <div style={{ textAlign: "center", marginTop: 16, fontSize: 12.5, color: "var(--text-dim)" }}>New here? <span onClick={onSignup} style={{ fontWeight: 700, color: "var(--accent-fg)", cursor: "pointer" }}>Create account</span></div>
 

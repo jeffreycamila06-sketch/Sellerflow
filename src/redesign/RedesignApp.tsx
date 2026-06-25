@@ -24,6 +24,7 @@ import DeleteAccount from "./screens/DeleteAccount";
 import Signup from "./screens/Signup";
 import PrinterSettings from "./screens/PrinterSettings";
 import PrintPattern, { DEFAULT_PP, type PrintPatternState, type PpBoolKey, type PpSizeKey } from "./screens/PrintPattern";
+import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
 
 type Screen =
   | "login" | "signup" | "dashboard" | "miners" | "orders" | "products"
@@ -34,7 +35,7 @@ type Screen =
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
 const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern"];
 
-const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency" } as const;
+const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set" } as const;
 const readLS = (k: string, fallback: string): string => {
   try { return localStorage.getItem(k) || fallback; } catch { return fallback; }
 };
@@ -42,6 +43,9 @@ const ACCENT_KEYS: AccentKey[] = ["indigo", "violet", "emerald", "rose", "sky", 
 const safeAccent = (v: string): AccentKey => (ACCENT_KEYS.includes(v as AccentKey) ? (v as AccentKey) : "indigo");
 
 export default function RedesignApp() {
+  // Phase 5a — REAL auth (adapter composes the supabase singleton + getMyProfile).
+  const auth = useAuthSession();
+
   const [theme, setTheme] = useState<ThemeMode>(() => (readLS(LS.theme, "light") === "dark" ? "dark" : "light"));
   const [accent, setAccent] = useState<AccentKey>(() => safeAccent(readLS(LS.accent, "indigo")));
   const [screen, setScreen] = useState<Screen>("login");
@@ -51,9 +55,15 @@ export default function RedesignApp() {
   const [langOpen, setLangOpen] = useState(false);
 
   // Currency switcher (dc.html v3). `cur` is the derived symbol threaded through
-  // every money display. Visual only — Phase 5 wires the real Taiwan NT$.
-  const [currency, setCurrency] = useState<string>(() => (CURRENCIES[readLS(LS.currency, "USD")] ? readLS(LS.currency, "USD") : "USD"));
+  // every money display. Phase 5a: default is NT$/TWD (production default, Taiwan
+  // market) instead of USD; on real login we pin TWD unless the user has explicitly
+  // picked a currency in the redesign.
+  const [currency, setCurrency] = useState<string>(() => (CURRENCIES[readLS(LS.currency, DEFAULT_CURRENCY)] ? readLS(LS.currency, DEFAULT_CURRENCY) : DEFAULT_CURRENCY));
   const cur = curSymbol(currency);
+  const setCurrencyExplicit = (c: string) => {
+    setCurrency(c);
+    try { localStorage.setItem(LS.currencySet, "1"); } catch { /* ignore */ }
+  };
 
   // Live-session-length pill (dc.html v3 Dashboard header). Visual only.
   const [sessionDays, setSessionDays] = useState(1);
@@ -161,6 +171,24 @@ export default function RedesignApp() {
   useEffect(() => { try { localStorage.setItem(LS.lang, lang); } catch { /* ignore */ } }, [lang]);
   useEffect(() => { try { localStorage.setItem(LS.currency, currency); } catch { /* ignore */ } }, [currency]);
 
+  // Phase 5a — auth-driven navigation + currency pin. Authed: leave the auth
+  // screens. Anon (incl. after logout): force the login screen. On first real
+  // login, pin NT$/TWD unless the user explicitly picked a currency here.
+  const currencyPinnedRef = useRef(false);
+  useEffect(() => {
+    if (auth.status === "authed") {
+      setScreen((s) => (s === "login" || s === "signup" ? "dashboard" : s));
+      if (!currencyPinnedRef.current) {
+        currencyPinnedRef.current = true;
+        let explicit = false;
+        try { explicit = !!localStorage.getItem(LS.currencySet); } catch { explicit = false; }
+        if (!explicit) setCurrency(DEFAULT_CURRENCY);
+      }
+    } else if (auth.status === "anon") {
+      setScreen("login");
+    }
+  }, [auth.status]);
+
   // Live comment feed — prepend every 2.7s, cap 11 (dc.html v3 L1740).
   useEffect(() => {
     const t = setInterval(() => {
@@ -172,7 +200,7 @@ export default function RedesignApp() {
     return () => clearInterval(t);
   }, []);
 
-  const showNav = screen !== "login";
+  const showNav = screen !== "login" && auth.status === "authed";
   const ordersActive = screen === "orders" || screen === "print";
   const navColor = (on: boolean) => (on ? "var(--accent-fg)" : "var(--text-muted)");
   const navBg = (on: boolean) => (on ? "var(--accent-soft)" : "transparent");
@@ -201,9 +229,16 @@ export default function RedesignApp() {
         </div>
 
         <div className="sfl-scroll">
-          {screen === "login" && (
+          {auth.status === "loading" && (
+            <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, color: "var(--text-muted)" }}>
+              <img src="/redesign/icon-180.png" alt="SellerFlowLive" style={{ width: 56, height: 56, borderRadius: 15, objectFit: "cover", opacity: 0.9 }} />
+              <div style={{ fontSize: 13, fontWeight: 600, fontFamily: "var(--font-ui)" }}>Loading…</div>
+            </div>
+          )}
+          {screen === "login" && auth.status !== "loading" && (
             <Login
-              onLogin={() => setScreen("dashboard")}
+              onLogin={(email, password) => auth.signIn(email, password)}
+              configured={auth.configured}
               onSignup={() => setScreen("signup")}
               lang={lang}
               langOpen={langOpen}
@@ -246,14 +281,14 @@ export default function RedesignApp() {
               onCustomerData={() => setScreen("customerdata")}
               onLegal={() => setScreen("legal")}
               onDelete={() => setScreen("delete")}
-              onLogout={() => setScreen("login")}
+              onLogout={() => { void auth.signOut(); setScreen("login"); }}
             />
           )}
           {screen === "settings" && (
             <GeneralSettings
               theme={theme} accent={accent} onSetTheme={setTheme} onSetAccent={setAccent}
-              auto={autoControls} cur={cur}
-              lang={lang} onSetLang={setLang} currency={currency} onSetCurrency={setCurrency}
+              auto={autoControls} cur={cur} account={auth.profile}
+              lang={lang} onSetLang={setLang} currency={currency} onSetCurrency={setCurrencyExplicit}
               profileOpen={profileOpen} onToggleProfile={() => setProfileOpen((o) => !o)}
               printerIdx={printerIdx} printerOpen={printerOpen}
               onTogglePrinter={() => setPrinterOpen((o) => !o)}

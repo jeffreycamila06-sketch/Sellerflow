@@ -6,6 +6,8 @@
 import { useState, type CSSProperties } from "react";
 import { ACCENT_ORDER, ACCENTS, PRINTERS, LANGS, CURRENCIES, CURRENCY_ORDER, type ThemeMode, type AccentKey, type AutoControls } from "../data";
 import { headerBar, headerTitle, card, sectionLabel } from "../ui";
+import { profileToDisplay, planLabel, renewLabel } from "../adapters/useAuthSession";
+import type { AccountUser } from "../../accountDb";
 
 const label: CSSProperties = { fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 5 };
 const input: CSSProperties = { width: "100%", padding: "11px 13px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 600, outline: "none" };
@@ -23,6 +25,7 @@ export default function GeneralSettings({
   profileOpen, onToggleProfile,
   printerIdx, printerOpen, onTogglePrinter, onPickPrinter, onPrintPattern,
   onSubscription, onSupport, onDelete,
+  account = null,
 }: {
   theme: ThemeMode; accent: AccentKey; onSetTheme: (t: ThemeMode) => void; onSetAccent: (a: AccentKey) => void;
   auto: AutoControls; cur: string;
@@ -30,10 +33,22 @@ export default function GeneralSettings({
   profileOpen: boolean; onToggleProfile: () => void;
   printerIdx: number; printerOpen: boolean; onTogglePrinter: () => void; onPickPrinter: (i: number) => void; onPrintPattern: () => void;
   onSubscription: () => void; onSupport: () => void; onDelete: () => void;
+  account?: AccountUser | null; // Phase 5a: real signed-in profile (null → demo fallback)
 }) {
   const [apLangOpen, setApLangOpen] = useState(false);
   const [apCurOpen, setApCurOpen] = useState(false);
   const curLang = LANGS.find((l) => l.code === lang) || LANGS[0];
+
+  // Phase 5a — real profile (falls back to the demo strings when signed out / no row).
+  const pd = profileToDisplay(account);
+  const pAvatar = pd ? pd.initials : "MS";
+  const pShop = pd ? pd.shopName : "Maria's Live Shop";
+  const pHandle = pd ? (pd.handle || "—") : "@maria_shops";
+  const pPlanLine = pd ? pd.planLine : "Pro plan · renews Jul 28";
+  const pOwner = account ? account.profile.fullName : "Maria Santos";
+  const pPhone = account ? account.profile.phone : "0917 555 0142";
+  const pEmail = account ? account.email : "maria@liveshop.ph";
+  const pSubRow = account ? `${planLabel(account.plan)}${renewLabel(account.planExpiry) ? " · " + renewLabel(account.planExpiry).replace(/^renews /, "") : ""} ›` : "Pro · Jul 28 ›";
   const autoLabel = auto.detect ? "Auto-detect" : "Manual mode";
   const autoLabelColor = auto.detect ? "var(--accent-fg)" : "var(--text-muted)";
   const autoTrack = auto.detect ? "var(--accent)" : "var(--border-strong)";
@@ -49,11 +64,11 @@ export default function GeneralSettings({
         {/* PROFILE (appears once) */}
         <div style={card}>
           <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
-            <div style={{ width: 54, height: 54, borderRadius: 16, background: "#f59e0b", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 19, fontWeight: 800, color: "#fff", fontFamily: "var(--font-display)" }}>MS</div>
+            <div style={{ width: 54, height: 54, borderRadius: 16, background: "#f59e0b", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 19, fontWeight: 800, color: "#fff", fontFamily: "var(--font-display)" }}>{pAvatar}</div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text)" }}>Maria's Live Shop</div>
-              <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--handle)" }}>@maria_shops</div>
-              <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>Pro plan · renews Jul 28</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text)" }}>{pShop}</div>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--handle)" }}>{pHandle}</div>
+              <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{pPlanLine}</div>
             </div>
             <button onClick={onToggleProfile} style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-fg)", background: "var(--accent-soft)", border: "none", padding: "8px 12px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{profileOpen ? "Close" : "Edit"}</button>
           </div>
@@ -61,13 +76,13 @@ export default function GeneralSettings({
             <div style={{ marginTop: 15, paddingTop: 15, borderTop: "1px solid var(--border)" }}>
               <div style={{ fontSize: 11, letterSpacing: ".1em", fontWeight: 800, color: "var(--text-muted)", marginBottom: 13 }}>BASIC INFORMATION</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <div><label style={label}>Shop name</label><input defaultValue="Maria's Live Shop" style={input} /></div>
+                <div><label style={label}>Shop name</label><input defaultValue={pShop} style={input} /></div>
                 <div style={{ display: "flex", gap: 9 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}><label style={label}>Owner name</label><input defaultValue="Maria Santos" style={input} /></div>
-                  <div style={{ flex: 1, minWidth: 0 }}><label style={label}>Phone</label><input defaultValue="0917 555 0142" style={{ ...input, fontFamily: "var(--font-mono)", fontSize: 13 }} /></div>
+                  <div style={{ flex: 1, minWidth: 0 }}><label style={label}>Owner name</label><input defaultValue={pOwner} style={input} /></div>
+                  <div style={{ flex: 1, minWidth: 0 }}><label style={label}>Phone</label><input defaultValue={pPhone} style={{ ...input, fontFamily: "var(--font-mono)", fontSize: 13 }} /></div>
                 </div>
-                <div><label style={label}>Username handle</label><input defaultValue="@maria_shops" style={{ ...input, color: "var(--handle)", fontWeight: 700 }} /></div>
-                <div><label style={label}>Email</label><input defaultValue="maria@liveshop.ph" style={input} /></div>
+                <div><label style={label}>Username handle</label><input defaultValue={pd ? pHandle : "@maria_shops"} style={{ ...input, color: "var(--handle)", fontWeight: 700 }} /></div>
+                <div><label style={label}>Email</label><input defaultValue={pEmail} style={input} /></div>
                 <div><label style={label}>Pickup / return address</label><input defaultValue="123 Katipunan Ave, Quezon City, PH" style={input} /></div>
               </div>
               <button onClick={onToggleProfile} style={{ width: "100%", marginTop: 15, padding: "12px 0", border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 14px var(--accent-soft)" }}>Save changes</button>
@@ -247,7 +262,7 @@ export default function GeneralSettings({
         <div>
           <div style={sectionLabel}>ACCOUNT</div>
           <div style={{ ...card, padding: 0, overflow: "hidden" }}>
-            <button onClick={onSubscription} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", borderBottom: "1px solid var(--border)", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}><span style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>Subscription</span><span style={{ fontSize: 12, color: "var(--text-muted)" }}>Pro · Jul 28 ›</span></button>
+            <button onClick={onSubscription} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", borderBottom: "1px solid var(--border)", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}><span style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>Subscription</span><span style={{ fontSize: 12, color: "var(--text-muted)" }}>{pSubRow}</span></button>
             <button onClick={onSupport} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", borderBottom: "1px solid var(--border)", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}><span style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>Support &amp; user guide</span><span style={{ fontSize: 16, color: "var(--text-muted)" }}>›</span></button>
             <button onClick={onDelete} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}><span style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: "var(--danger)" }}>Delete account</span><span style={{ fontSize: 16, color: "var(--danger)" }}>›</span></button>
           </div>
