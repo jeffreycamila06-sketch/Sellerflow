@@ -3,7 +3,7 @@
 // src/styles/design-tokens.css), and renders all built screens + bottom nav.
 // Self-contained preview — does NOT import or touch the existing app.
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { INCOMING, SEED_COMMENTS, CURRENCIES, curSymbol, type Comment, type ThemeMode, type AccentKey, type AutoControls, type AutoWord } from "./data";
+import { CURRENCIES, curSymbol, type ThemeMode, type AccentKey, type AutoControls, type AutoWord } from "./data";
 import Dashboard from "./screens/Dashboard";
 import Orders from "./screens/Orders";
 import Products from "./screens/Products";
@@ -27,6 +27,7 @@ import PrintPattern, { DEFAULT_PP, type PrintPatternState, type PpBoolKey, type 
 import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
 import { useLiveOrders, useCustomers, useAdminUsers } from "./adapters/useReadData";
 import { useLiveSession } from "./adapters/useLiveSession";
+import { useLiveFeed } from "./adapters/useLiveFeed";
 
 type Screen =
   | "login" | "signup" | "dashboard" | "miners" | "orders" | "products"
@@ -58,6 +59,10 @@ export default function RedesignApp() {
   const adminUsers = useAdminUsers(authed && isAdmin);
   // Phase 5c — cross-device live-session load for the Dashboard (hydrate-on-empty).
   const liveSession = useLiveSession(authed);
+  // Phase 5d — real live comment feed (socket + dedup). Replaces the sample
+  // SEED_COMMENTS/INCOMING stream. Read-only (order writes are 5e).
+  const liveFeed = useLiveFeed(authed, auth.profile?.email);
+  const comments = liveFeed.comments;
 
   const [theme, setTheme] = useState<ThemeMode>(() => (readLS(LS.theme, "light") === "dark" ? "dark" : "light"));
   const [accent, setAccent] = useState<AccentKey>(() => safeAccent(readLS(LS.accent, "indigo")));
@@ -174,9 +179,6 @@ export default function RedesignApp() {
     clearPrinted(id);
   };
 
-  const [comments, setComments] = useState<Comment[]>(SEED_COMMENTS);
-  const cid = useRef(1);
-  const pushIdx = useRef(0);
 
   // Persist appearance (redesign-namespaced keys; never touches existing keys).
   useEffect(() => { try { localStorage.setItem(LS.theme, theme); } catch { /* ignore */ } }, [theme]);
@@ -201,17 +203,6 @@ export default function RedesignApp() {
       setScreen("login");
     }
   }, [auth.status]);
-
-  // Live comment feed — prepend every 2.7s, cap 11 (dc.html v3 L1740).
-  useEffect(() => {
-    const t = setInterval(() => {
-      const inc = INCOMING[pushIdx.current % INCOMING.length];
-      pushIdx.current += 1;
-      const c: Comment = { ...inc, id: "c" + cid.current++, time: "now" };
-      setComments((prev) => [c, ...prev.map((x) => ({ ...x, time: x.time === "now" ? "2s" : x.time }))].slice(0, 11));
-    }, 2700);
-    return () => clearInterval(t);
-  }, []);
 
   const showNav = screen !== "login" && auth.status === "authed";
   const ordersActive = screen === "orders" || screen === "print";
@@ -280,6 +271,7 @@ export default function RedesignApp() {
               onOneClick={onOneClick} onOpenEnt={onOpenEnt}
               onEntPrice={(v) => setEntPrice(v.replace(/[^0-9]/g, ""))} onEntKey={onEntKey}
               session={liveSession.session} sessionState={liveSession.state}
+              canInject={liveFeed.canInject} onInjectSynthetic={liveFeed.injectSynthetic}
             />
           )}
           {screen === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} orders={liveOrders.orders} state={liveOrders.state} />}

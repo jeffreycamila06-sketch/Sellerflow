@@ -3,7 +3,7 @@
 // TikTok/Facebook account pickers with connect flow. Each comment row carries
 // the 1-Click / Enterprise order flow (printed / Enterprise price-entry), all
 // visual-only — real account switching / order creation is Phase 5.
-import type { CSSProperties } from "react";
+import { useLayoutEffect, useRef, type CSSProperties } from "react";
 import { avColor, initials, TT_ACCOUNTS, FB_ACCOUNTS, type Comment, type AutoWord } from "../data";
 import { sessionSummary, type SessionState } from "../adapters/useLiveSession";
 import type { RebuiltSession } from "../../lib/orderLogic";
@@ -47,9 +47,11 @@ export default function Dashboard({
   sessionDays, sessionOpen, onToggleSession, onPickSession,
   autoDetect, autoWords, printed, entId, entPrice, onOneClick, onOpenEnt, onEntPrice, onEntKey,
   session = { buyers: [], orders: [] }, sessionState = "idle",
+  canInject = false, onInjectSynthetic,
 }: {
   comments: Comment[]; cur: string;
   session?: RebuiltSession; sessionState?: SessionState;
+  canInject?: boolean; onInjectSynthetic?: () => void;
   ttOpen: boolean; fbOpen: boolean; ttIdx: number; fbIdx: number;
   onToggleTT: () => void; onToggleFB: () => void;
   onPickTT: (i: number) => void; onPickFB: (i: number) => void;
@@ -65,6 +67,14 @@ export default function Dashboard({
   const fb = conn(fbConnected, fbConnecting);
   const sessionLabel = sessionDays + (sessionDays > 1 ? " days" : " day");
   const summary = sessionSummary(session); // Phase 5c — today's hydrated session
+  // Phase 5d — feed scroll (tangled-zone #3). Newest is prepended at the top, so
+  // we scroll the feed container to top when a new comment arrives. useLayoutEffect
+  // (not setTimeout) so it runs after DOM mutation, before paint.
+  const feedRef = useRef<HTMLDivElement>(null);
+  const newestId = comments[0]?.id;
+  useLayoutEffect(() => {
+    feedRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }, [newestId]);
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
       <div style={headerBar}>
@@ -173,9 +183,21 @@ export default function Dashboard({
             <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14.5, color: "var(--text)" }}>Live comments</span>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#e11d48", animation: "sflDot 1s infinite" }} />
           </div>
+          {/* Preview-only synthetic comment injector (F2) — hidden on the real
+              production domain (isPreviewEnv). Lets us verify feed/dedup/scroll
+              without a real socket. */}
+          {canInject && (
+            <button onClick={onInjectSynthetic} title="Preview only — inject a synthetic test comment" style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".02em", color: "var(--accent-fg)", background: "var(--accent-soft)", border: "1px dashed var(--accent)", padding: "4px 9px", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" }}>+ Test comment</button>
+          )}
         </div>
 
-        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 7, boxShadow: "var(--shadow)", flex: 1 }}>
+        <div ref={feedRef} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 7, boxShadow: "var(--shadow)", flex: 1, minHeight: 0, overflowY: "auto" }}>
+          {comments.length === 0 && (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, height: "100%", minHeight: 160, color: "var(--text-muted)", textAlign: "center", padding: "0 24px" }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>Waiting for live comments…</span>
+              <span style={{ fontSize: 11.5 }}>Connect an account to start your live session.{canInject ? " (Preview: tap “+ Test comment”.)" : ""}</span>
+            </div>
+          )}
           {comments.map((c) => {
             const lc = (c.text || "").toLowerCase();
             const hit = autoWords.find((w) => w.word && lc.includes(w.word));
