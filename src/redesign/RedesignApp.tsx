@@ -30,6 +30,8 @@ import { useLiveSession } from "./adapters/useLiveSession";
 import { useLiveFeed } from "./adapters/useLiveFeed";
 import { useOrders } from "./adapters/useOrders";
 import { useFreeCap } from "./adapters/useFreeCap";
+import { printSlip, buildSettingsFromRedesign, type Settings as PrintSettings } from "./adapters/printing";
+import type { Buyer } from "../lib/orderTypes";
 import CapPopup from "./screens/CapPopup";
 
 type Screen =
@@ -67,6 +69,13 @@ export default function RedesignApp() {
   const comments = liveFeed.comments;
   // Phase 5f — free-tier cap status + popups (M2 visibility-guarded poll).
   const freeCap = useFreeCap(authed, auth.profile?.plan);
+  // Phase 5g — print config snapshot (filled after print-pattern/printer state is
+  // declared below), read by the stable onPrint callback at order-create time.
+  const printCfgRef = useRef<{ cur: string; storeName: string; settings: PrintSettings } | null>(null);
+  const onPrint = (b: Buyer) => {
+    const pc = printCfgRef.current;
+    if (pc) printSlip(b, pc.cur, pc.storeName, pc.settings); // native in APK; no-op on web
+  };
   // Phase 5e — real order creation fan-out (writes). Composes the SAME pure
   // builder + db writes; updates the live session optimistically. 5f: soft-block
   // when capped, resync counter after write, surface hard popup on trigger reject.
@@ -78,6 +87,7 @@ export default function RedesignApp() {
     onCapBlocked: () => freeCap.setCapPopup("hard"),
     onCapReached: freeCap.noteCapError,
     afterWrite: freeCap.afterOrder,
+    onPrint,
   });
   // Orders tab + Dashboard summary now share ONE source (the live session), so a
   // newly created order shows immediately. (5b's useLiveOrders is superseded here.)
@@ -146,6 +156,13 @@ export default function RedesignApp() {
   const [pp, setPp] = useState<PrintPatternState>(DEFAULT_PP);
   const togglePp = (k: PpBoolKey) => setPp((p) => ({ ...p, [k]: !p[k] }));
   const stepPp = (k: PpSizeKey, dir: 1 | -1) => setPp((p) => ({ ...p, [k]: Math.min(3, Math.max(0.5, Math.round((p[k] + dir * 0.1) * 10) / 10)) }));
+
+  // Phase 5g — snapshot the current print config for onPrint (declared above).
+  printCfgRef.current = {
+    cur,
+    storeName: auth.profile?.profile.storeName || "SellerFlowLive",
+    settings: buildSettingsFromRedesign({ pp, psType, psOut, psSize }),
+  };
 
   // Auto-detect keyword feature (visual only). v3: each trigger is a
   // {word, price} pair; default OFF (dc.html v3 autoDetect:false L1548).

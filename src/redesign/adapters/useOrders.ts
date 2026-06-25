@@ -63,6 +63,7 @@ export interface UseOrdersDeps {
   onCapBlocked?: () => void;                               // show hard popup when blocked
   onCapReached?: (err: unknown) => void;                   // DB trigger rejected (over cap)
   afterWrite?: () => void;                                 // resync usage counter (free users)
+  onPrint?: (singleOrderBuyer: Buyer) => void;             // 5g — print the slip (App.tsx:4341)
 }
 
 export interface UseOrders {
@@ -70,16 +71,19 @@ export interface UseOrders {
   createOrder: (c: ProdComment, price: number) => LiveOrder | null;
 }
 
-export function useOrders({ getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, afterWrite }: UseOrdersDeps): UseOrders {
+export function useOrders({ getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, afterWrite, onPrint }: UseOrdersDeps): UseOrders {
   const createOrder = useCallback((c: ProdComment, price: number): LiveOrder | null => {
     // 0) Free-tier HARD STOP soft block (App.tsx:4330). The DB trigger is still
     //    authoritative; this is the friendly block before we try.
     if (isCapped?.()) { onCapBlocked?.(); return null; }
     // 1) SAME pure builder production uses (buyer numbering + orderNum epoch ms).
-    const { order, nextBuyers } = buildOrderFromComment(c, getBuyers(), price, new Date());
+    const { order, nextBuyers, singleOrderBuyer } = buildOrderFromComment(c, getBuyers(), price, new Date());
     // 2) optimistic local update so the summary strip + Orders tab reflect it now.
     applyOrder(nextBuyers, order);
-    // 3) SAME three exported writes, SAME payload shapes, fire-and-forget (non-atomic
+    // 3) print the slip BEFORE the writes (App.tsx:4341-4345) — singleOrderBuyer is
+    //    the buyer carrying just this order, exactly what production prints.
+    onPrint?.(singleOrderBuyer);
+    // 4) SAME three exported writes, SAME payload shapes, fire-and-forget (non-atomic
     //    by design — matches production; do not "improve").
     void Promise.all([
       saveOrderToDatabase(orderDbPayload(c, order)),
@@ -91,10 +95,10 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, isCapped, onCapB
       if (isCapError(err)) onCapReached?.(err);
       else console.warn("Background database save failed", err);
     });
-    // 4) resync the usage counter (App.tsx:4384 — free users).
+    // 5) resync the usage counter (App.tsx:4384 — free users).
     afterWrite?.();
     return order;
-  }, [getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, afterWrite]);
+  }, [getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, afterWrite, onPrint]);
 
   return { createOrder };
 }
