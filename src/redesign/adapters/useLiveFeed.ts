@@ -93,12 +93,17 @@ export interface UseLiveFeed {
   connected: boolean;
   canInject: boolean;
   injectSynthetic: () => void;
+  getComment: (id: string) => ProdComment | undefined; // 5e — resolve a feed id (commentKey) → raw comment
 }
 
 export function useLiveFeed(enabled: boolean, email: string | undefined): UseLiveFeed {
   const [feed, setFeed] = useState<ProdComment[]>([]);
   const [connected, setConnected] = useState(false);
   const synthIdx = useRef(0);
+  // Latest feed readable from a stable getter (for 5e order creation by id).
+  const feedRef = useRef<ProdComment[]>(feed);
+  feedRef.current = feed;
+  const getComment = useCallback((id: string) => feedRef.current.find((c) => commentKey(c) === id), []);
 
   const pushComment = useCallback((c: ProdComment) => {
     setFeed((prev) => dedup(sortNewest([c, ...prev])).slice(0, LIVE_COMMENT_LIMIT));
@@ -160,5 +165,5 @@ export function useLiveFeed(enabled: boolean, email: string | undefined): UseLiv
     } as ProdComment);
   }, [pushComment]);
 
-  return { comments: feed.map(toRedesignComment), connected, canInject: isPreviewEnv(), injectSynthetic };
+  return { comments: feed.map(toRedesignComment), connected, canInject: isPreviewEnv(), injectSynthetic, getComment };
 }

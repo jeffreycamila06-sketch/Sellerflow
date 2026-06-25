@@ -25,9 +25,10 @@ import Signup from "./screens/Signup";
 import PrinterSettings from "./screens/PrinterSettings";
 import PrintPattern, { DEFAULT_PP, type PrintPatternState, type PpBoolKey, type PpSizeKey } from "./screens/PrintPattern";
 import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
-import { useLiveOrders, useCustomers, useAdminUsers } from "./adapters/useReadData";
+import { useCustomers, useAdminUsers, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
 import { useLiveSession } from "./adapters/useLiveSession";
 import { useLiveFeed } from "./adapters/useLiveFeed";
+import { useOrders } from "./adapters/useOrders";
 
 type Screen =
   | "login" | "signup" | "dashboard" | "miners" | "orders" | "products"
@@ -54,7 +55,6 @@ export default function RedesignApp() {
   // own row, so we keep sample).
   const authed = auth.status === "authed";
   const isAdmin = auth.profile?.role === "admin";
-  const liveOrders = useLiveOrders(authed);
   const customersData = useCustomers(authed);
   const adminUsers = useAdminUsers(authed && isAdmin);
   // Phase 5c — cross-device live-session load for the Dashboard (hydrate-on-empty).
@@ -63,6 +63,13 @@ export default function RedesignApp() {
   // SEED_COMMENTS/INCOMING stream. Read-only (order writes are 5e).
   const liveFeed = useLiveFeed(authed, auth.profile?.email);
   const comments = liveFeed.comments;
+  // Phase 5e — real order creation fan-out (writes). Composes the SAME pure
+  // builder + db writes; updates the live session optimistically.
+  const orders = useOrders({ getBuyers: liveSession.getBuyers, applyOrder: liveSession.applyOrder, sessionDate: liveSession.dayId });
+  // Orders tab + Dashboard summary now share ONE source (the live session), so a
+  // newly created order shows immediately. (5b's useLiveOrders is superseded here.)
+  const ordersList = liveOrdersToRedesign(liveSession.session);
+  const ordersState: ReadState = liveSession.state === "idle" ? "sample" : liveSession.state;
 
   const [theme, setTheme] = useState<ThemeMode>(() => (readLS(LS.theme, "light") === "dark" ? "dark" : "light"));
   const [accent, setAccent] = useState<AccentKey>(() => safeAccent(readLS(LS.accent, "indigo")));
@@ -156,27 +163,33 @@ export default function RedesignApp() {
     addWord: addAutoWord,
   };
 
-  // Dashboard order flow (dc.html v3 L1796–1810 / onEntKey L2058). Visual only —
-  // 1-Click / Enterprise "print" a transient badge on the comment row.
+  // Dashboard order flow (dc.html v3 L1796–1810 / onEntKey L2058). Phase 5e: now
+  // creates REAL orders. `printed` is kept PERSISTENT per comment id (commentKey)
+  // so the action buttons hide after the first order — the dedup guard that
+  // prevents a comment from creating duplicate orders.
   const [printed, setPrinted] = useState<Record<string, string>>({});
   const [entId, setEntId] = useState<string | null>(null);
   const [entPrice, setEntPrice] = useState("");
-  const clearPrinted = (id: string) => setTimeout(() => setPrinted((p) => { const n = { ...p }; delete n[id]; return n; }), 1600);
+  // 1-Click: production passes price 0 (captures buyer + comment; total 0).
   const onOneClick = (id: string) => {
-    const lc = (comments.find((c) => c.id === id)?.text || "").toLowerCase();
-    const hit = autoWords.find((w) => w.word && lc.includes(w.word));
-    setPrinted((p) => ({ ...p, [id]: hit && hit.price ? cur + hit.price : "order" }));
-    clearPrinted(id);
+    if (printed[id]) return; // already ordered — no duplicate
+    const prod = liveFeed.getComment(id);
+    if (!prod) return;
+    orders.createOrder(prod, 0);
+    setPrinted((p) => ({ ...p, [id]: "order" }));
   };
   const onOpenEnt = (id: string) => { setEntId(id); setEntPrice(""); };
+  // Enterprise: create the order at the typed price.
   const onEntKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Enter") return;
     e.preventDefault();
     const id = entId;
     if (!id) return;
-    setPrinted((p) => ({ ...p, [id]: cur + (entPrice || "0") }));
+    const prod = liveFeed.getComment(id);
+    const price = Number(entPrice || "0") || 0;
+    if (prod && !printed[id]) orders.createOrder(prod, price);
+    setPrinted((p) => ({ ...p, [id]: price > 0 ? cur + price : "order" }));
     setEntId(null); setEntPrice("");
-    clearPrinted(id);
   };
 
 
@@ -274,7 +287,7 @@ export default function RedesignApp() {
               canInject={liveFeed.canInject} onInjectSynthetic={liveFeed.injectSynthetic}
             />
           )}
-          {screen === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} orders={liveOrders.orders} state={liveOrders.state} />}
+          {screen === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} orders={ordersList} state={ordersState} />}
           {screen === "products" && <Products cur={cur} />}
           {screen === "miners" && <Miners cur={cur} />}
           {screen === "menu" && (

@@ -10,10 +10,11 @@
 // only hydrates when the redesign's own session state is EMPTY, so it can never
 // clobber or duplicate anything already present (matters once 5e adds writes).
 // NO writes here — load only.
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { isSupabaseConfigured } from "../../supabase";
 import { loadTodaysLiveSession } from "../../db";
 import { rebuildSessionFromRows, type RebuiltSession } from "../../lib/orderLogic";
+import type { Buyer, LiveOrder } from "../../lib/orderTypes";
 import { taipeiDayId } from "../../lib/dateHelpers";
 
 // "idle" = not wired / unconfigured / error · "loading" = query in flight ·
@@ -33,7 +34,15 @@ export function sessionSummary(s: RebuiltSession): SessionSummary {
   };
 }
 
-export function useLiveSession(enabled: boolean): { session: RebuiltSession; state: SessionState } {
+export interface UseLiveSession {
+  session: RebuiltSession;
+  state: SessionState;
+  dayId: string;
+  getBuyers: () => Buyer[];
+  applyOrder: (nextBuyers: Buyer[], order: LiveOrder) => void;
+}
+
+export function useLiveSession(enabled: boolean): UseLiveSession {
   const [session, setSession] = useState<RebuiltSession>(EMPTY);
   const [state, setState] = useState<SessionState>("idle");
   // Keep the latest session readable inside the effect WITHOUT making it a dep —
@@ -60,5 +69,15 @@ export function useLiveSession(enabled: boolean): { session: RebuiltSession; sta
     return () => { active = false; };
   }, [enabled, dayId]);
 
-  return { session, state };
+  // 5e — current buyers (read from the ref so callers always see the latest,
+  // matching production reading `buyers` state inside the order handler).
+  const getBuyers = useCallback(() => sessionRef.current.buyers, []);
+  // 5e — optimistic apply: set buyers to the rebuilt next list + append the order,
+  // and flip to "live" so the summary strip + Orders tab reflect it immediately.
+  const applyOrder = useCallback((nextBuyers: Buyer[], order: LiveOrder) => {
+    setSession((prev) => ({ buyers: nextBuyers, orders: [...prev.orders, order] }));
+    setState("live");
+  }, []);
+
+  return { session, state, dayId, getBuyers, applyOrder };
 }
