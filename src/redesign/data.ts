@@ -1,0 +1,96 @@
+// Redesign (Phase 2) — prototype sample data + helpers.
+// Verbatim from design-redesign/SellerFlowLive.dc.html (data L858–952, helpers
+// L1029–1033, accents L870–878, langs L860–868, incoming L887–896).
+// NOTE: this is the prototype's static SAMPLE data (₱ / "Maria's Live Shop").
+// Phase 5 swaps it for the real Taiwan app data (NT$, real sellers) + real APIs.
+
+export type ThemeMode = "light" | "dark";
+export type AccentKey = "indigo" | "violet" | "emerald" | "rose" | "sky" | "amber";
+
+export const ACCENT_ORDER: AccentKey[] = ["indigo", "violet", "emerald", "rose", "sky", "amber"];
+export const ACCENTS: Record<AccentKey, { name: string; base: string; light: string; dark: string }> = {
+  indigo: { name: "Indigo", base: "#4f46e5", light: "#a5b4fc", dark: "#3730a3" },
+  violet: { name: "Violet", base: "#7c3aed", light: "#c4b5fd", dark: "#5b21b6" },
+  emerald: { name: "Emerald", base: "#059669", light: "#34d399", dark: "#065f46" },
+  rose: { name: "Rose", base: "#e11d48", light: "#fda4af", dark: "#9f1239" },
+  sky: { name: "Sky", base: "#0284c7", light: "#7dd3fc", dark: "#075985" },
+  amber: { name: "Amber", base: "#d97706", light: "#fcd34d", dark: "#b45309" },
+};
+
+export const LANGS = [
+  { code: "en", label: "English", flag: "🇺🇸" },
+  { code: "fil", label: "Filipino", flag: "🇵🇭" },
+  { code: "id", label: "Bahasa Indonesia", flag: "🇮🇩" },
+  { code: "vi", label: "Tiếng Việt", flag: "🇻🇳" },
+  { code: "zh", label: "中文 (简体)", flag: "🇨🇳" },
+  { code: "zh-tw", label: "中文 (繁體)", flag: "🇹🇼" },
+  { code: "th", label: "ไทย", flag: "🇹🇭" },
+];
+
+export interface Comment { id: string; name: string; handle: string; text: string; mine: boolean; time: string; }
+
+export const INCOMING: Omit<Comment, "id" | "time">[] = [
+  { name: "Grace Lim", handle: "@gracelim", text: "Mine! 1pc rose gold ⌚", mine: true },
+  { name: "Paolo Reyes", handle: "@paoloreyes", text: "How much shipping po?", mine: false },
+  { name: "Nene Bautista", handle: "@nene.b", text: "Mine 2pcs size 7", mine: true },
+  { name: "Daisy Ong", handle: "@daisy.ong", text: "Pa-mine din po 🙋", mine: true },
+  { name: "Rico Tan", handle: "@ricotan", text: "Still available?", mine: false },
+  { name: "Mae Villar", handle: "@mae.villar", text: "Mine the bundle set", mine: true },
+  { name: "Joy Aquino", handle: "@joyaquino", text: "Mine! black medium", mine: true },
+  { name: "Ben Co", handle: "@benco", text: "Claiming mine — red 1pc", mine: true },
+];
+
+export const SEED_COMMENTS: Comment[] = [
+  { id: "s1", name: "Maria Santos", handle: "@maria_shops", text: "Mine! Red lipstick 2pcs 💄", mine: true, time: "now" },
+  { id: "s2", name: "Jenny Cruz", handle: "@jen.cruz", text: "How much po the bundle?", mine: false, time: "12s" },
+  { id: "s3", name: "Liza Reyes", handle: "@lizareyes", text: "Mine black tumbler", mine: true, time: "28s" },
+  { id: "s4", name: "Aira Dela Cruz", handle: "@aira.dc", text: "Sold na po ba?", mine: false, time: "45s" },
+  { id: "s5", name: "Kim Tan", handle: "@kimtanph", text: "Mine! size M white", mine: true, time: "1m" },
+  { id: "s6", name: "Joy Aquino", handle: "@joyaquino", text: "How to pay po? GCash?", mine: false, time: "1m" },
+  { id: "s7", name: "Mae Villar", handle: "@mae.villar", text: "Mine the bundle set 🙋", mine: true, time: "2m" },
+  { id: "s8", name: "Rico Tan", handle: "@ricotan", text: "Sana available pa 🙏", mine: false, time: "2m" },
+  { id: "s9", name: "Grace Lim", handle: "@gracelim", text: "Mine rose gold ✨", mine: true, time: "3m" },
+];
+
+export interface Order { id: string; buyer: string; handle: string; items: string; qty: number; total: number; status: string; platform: string; time: string; }
+export interface Product { name: string; sku: string; price: number; stock: number; cat: string; }
+export interface Miner { name: string; handle: string; orders: number; spent: number; platform: string; }
+
+export const ORDERS: Order[] = [
+  { id: "#10472", buyer: "Maria Santos", handle: "@maria_shops", items: "Matte Lipstick ×2 · Tumbler ×1", qty: 3, total: 897, status: "Unpaid", platform: "TikTok", time: "2m" },
+  { id: "#10471", buyer: "Kim Tan", handle: "@kimtanph", items: "Cotton Tee — White M", qty: 1, total: 349, status: "Paid", platform: "TikTok", time: "5m" },
+  { id: "#10470", buyer: "Liza Reyes", handle: "@lizareyes", items: "Insulated Tumbler — Black", qty: 1, total: 399, status: "Packed", platform: "Facebook", time: "11m" },
+  { id: "#10469", buyer: "Grace Lim", handle: "@gracelim", items: "Rose Gold Watch", qty: 1, total: 1299, status: "Shipped", platform: "TikTok", time: "24m" },
+  { id: "#10468", buyer: "Nene Bautista", handle: "@nene.b", items: "Running Sneakers — Size 7 ×2", qty: 2, total: 1798, status: "Paid", platform: "Facebook", time: "33m" },
+  { id: "#10467", buyer: "Joy Aquino", handle: "@joyaquino", items: "Skincare Bundle Set", qty: 1, total: 649, status: "Unpaid", platform: "TikTok", time: "40m" },
+];
+
+export const PRODUCTS: Product[] = [
+  { name: "Matte Lipstick", sku: "LIP-RED", price: 249, stock: 42, cat: "Beauty" },
+  { name: "Insulated Tumbler", sku: "TUM-BLK", price: 399, stock: 8, cat: "Home" },
+  { name: "Cotton Tee — White", sku: "TEE-WHT-M", price: 349, stock: 120, cat: "Apparel" },
+  { name: "Rose Gold Watch", sku: "WTCH-RG", price: 1299, stock: 5, cat: "Accessories" },
+  { name: "Running Sneakers", sku: "SNK-07", price: 899, stock: 0, cat: "Footwear" },
+  { name: "Skincare Bundle", sku: "BND-SKN", price: 649, stock: 31, cat: "Beauty" },
+];
+
+export const MINERS: Miner[] = [
+  { name: "Maria Santos", handle: "@maria_shops", orders: 24, spent: 18420, platform: "TikTok" },
+  { name: "Grace Lim", handle: "@gracelim", orders: 18, spent: 14250, platform: "TikTok" },
+  { name: "Liza Reyes", handle: "@lizareyes", orders: 16, spent: 12990, platform: "Facebook" },
+  { name: "Kim Tan", handle: "@kimtanph", orders: 15, spent: 9870, platform: "TikTok" },
+  { name: "Nene Bautista", handle: "@nene.b", orders: 9, spent: 7640, platform: "Facebook" },
+];
+
+// ── Helpers (dc.html L1029–1033) ────────────────────────────────────────────
+const AV_PALETTE = ["#f59e0b", "#ef4444", "#10b981", "#3b82f6", "#8b5cf6", "#ec4899", "#14b8a6", "#6366f1"];
+export const avColor = (s: string): string => {
+  let h = 0;
+  for (const c of s || "x") h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return AV_PALETTE[h % AV_PALETTE.length];
+};
+export const initials = (s: string): string =>
+  (s || "").split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase();
+export const fmt = (n: number): string => n.toLocaleString("en-US");
+export const statusColor = (st: string): string =>
+  ({ Unpaid: "#e11d48", Paid: "#059669", Packed: "#0284c7", Shipped: "#7c3aed", Delivered: "#059669", Cancelled: "#9ca3af", Active: "#059669", Expiring: "#d97706", Expired: "#e11d48" } as Record<string, string>)[st] || "#9ca3af";
