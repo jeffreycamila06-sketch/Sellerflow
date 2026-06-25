@@ -19,6 +19,7 @@ import { useCallback } from "react";
 import { buildOrderFromComment } from "../../lib/orderLogic";
 import type { Comment as ProdComment, Buyer, LiveOrder } from "../../lib/orderTypes";
 import { saveOrderToDatabase, saveLiveSessionOrder, saveCustomerToDatabase } from "../../db";
+import { isCapError } from "./useFreeCap";
 
 // ── Pure write-payload builders — mirror App.tsx:4348-4372 EXACTLY (parity-tested) ──
 
@@ -57,14 +58,23 @@ export interface UseOrdersDeps {
   getBuyers: () => Buyer[];                                 // current session buyers (live)
   applyOrder: (nextBuyers: Buyer[], order: LiveOrder) => void; // optimistic session update
   sessionDate: string;                                     // Taipei day == write/read bucket
+  // 5f free-cap integration (optional):
+  isCapped?: () => boolean;                                // soft block before creating
+  onCapBlocked?: () => void;                               // show hard popup when blocked
+  onCapReached?: (err: unknown) => void;                   // DB trigger rejected (over cap)
+  afterWrite?: () => void;                                 // resync usage counter (free users)
 }
 
 export interface UseOrders {
-  createOrder: (c: ProdComment, price: number) => LiveOrder;
+  // returns null when the free-tier soft block prevented creation.
+  createOrder: (c: ProdComment, price: number) => LiveOrder | null;
 }
 
-export function useOrders({ getBuyers, applyOrder, sessionDate }: UseOrdersDeps): UseOrders {
-  const createOrder = useCallback((c: ProdComment, price: number): LiveOrder => {
+export function useOrders({ getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, afterWrite }: UseOrdersDeps): UseOrders {
+  const createOrder = useCallback((c: ProdComment, price: number): LiveOrder | null => {
+    // 0) Free-tier HARD STOP soft block (App.tsx:4330). The DB trigger is still
+    //    authoritative; this is the friendly block before we try.
+    if (isCapped?.()) { onCapBlocked?.(); return null; }
     // 1) SAME pure builder production uses (buyer numbering + orderNum epoch ms).
     const { order, nextBuyers } = buildOrderFromComment(c, getBuyers(), price, new Date());
     // 2) optimistic local update so the summary strip + Orders tab reflect it now.
@@ -76,11 +86,15 @@ export function useOrders({ getBuyers, applyOrder, sessionDate }: UseOrdersDeps)
       saveLiveSessionOrder(liveSessionPayload(c, order, sessionDate)),
       saveCustomerToDatabase(customerDbPayload(c, order)),
     ]).catch((err) => {
-      // Cap enforcement is the DB trigger's job; surfacing the popup is 5f.
-      console.warn("Background database save failed", err);
+      // If a race got past the soft block, the DB cap trigger rejects the insert —
+      // surface the hard-stop popup (5f). Other errors: log only.
+      if (isCapError(err)) onCapReached?.(err);
+      else console.warn("Background database save failed", err);
     });
+    // 4) resync the usage counter (App.tsx:4384 — free users).
+    afterWrite?.();
     return order;
-  }, [getBuyers, applyOrder, sessionDate]);
+  }, [getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, afterWrite]);
 
   return { createOrder };
 }

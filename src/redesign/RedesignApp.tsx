@@ -29,6 +29,8 @@ import { useCustomers, useAdminUsers, liveOrdersToRedesign, type ReadState } fro
 import { useLiveSession } from "./adapters/useLiveSession";
 import { useLiveFeed } from "./adapters/useLiveFeed";
 import { useOrders } from "./adapters/useOrders";
+import { useFreeCap } from "./adapters/useFreeCap";
+import CapPopup from "./screens/CapPopup";
 
 type Screen =
   | "login" | "signup" | "dashboard" | "miners" | "orders" | "products"
@@ -63,9 +65,20 @@ export default function RedesignApp() {
   // SEED_COMMENTS/INCOMING stream. Read-only (order writes are 5e).
   const liveFeed = useLiveFeed(authed, auth.profile?.email);
   const comments = liveFeed.comments;
+  // Phase 5f — free-tier cap status + popups (M2 visibility-guarded poll).
+  const freeCap = useFreeCap(authed, auth.profile?.plan);
   // Phase 5e — real order creation fan-out (writes). Composes the SAME pure
-  // builder + db writes; updates the live session optimistically.
-  const orders = useOrders({ getBuyers: liveSession.getBuyers, applyOrder: liveSession.applyOrder, sessionDate: liveSession.dayId });
+  // builder + db writes; updates the live session optimistically. 5f: soft-block
+  // when capped, resync counter after write, surface hard popup on trigger reject.
+  const orders = useOrders({
+    getBuyers: liveSession.getBuyers,
+    applyOrder: liveSession.applyOrder,
+    sessionDate: liveSession.dayId,
+    isCapped: () => freeCap.freeCapped,
+    onCapBlocked: () => freeCap.setCapPopup("hard"),
+    onCapReached: freeCap.noteCapError,
+    afterWrite: freeCap.afterOrder,
+  });
   // Orders tab + Dashboard summary now share ONE source (the live session), so a
   // newly created order shows immediately. (5b's useLiveOrders is superseded here.)
   const ordersList = liveOrdersToRedesign(liveSession.session);
@@ -175,8 +188,8 @@ export default function RedesignApp() {
     if (printed[id]) return; // already ordered — no duplicate
     const prod = liveFeed.getComment(id);
     if (!prod) return;
-    orders.createOrder(prod, 0);
-    setPrinted((p) => ({ ...p, [id]: "order" }));
+    const order = orders.createOrder(prod, 0);
+    if (order) setPrinted((p) => ({ ...p, [id]: "order" })); // null = free-cap blocked
   };
   const onOpenEnt = (id: string) => { setEntId(id); setEntPrice(""); };
   // Enterprise: create the order at the typed price.
@@ -187,8 +200,8 @@ export default function RedesignApp() {
     if (!id) return;
     const prod = liveFeed.getComment(id);
     const price = Number(entPrice || "0") || 0;
-    if (prod && !printed[id]) orders.createOrder(prod, price);
-    setPrinted((p) => ({ ...p, [id]: price > 0 ? cur + price : "order" }));
+    const order = prod && !printed[id] ? orders.createOrder(prod, price) : null;
+    if (order) setPrinted((p) => ({ ...p, [id]: price > 0 ? cur + price : "order" })); // null = blocked
     setEntId(null); setEntPrice("");
   };
 
@@ -319,7 +332,7 @@ export default function RedesignApp() {
             />
           )}
           {screen === "customers" && <Customers cur={cur} customers={customersData.customers} state={customersData.state} />}
-          {screen === "subscription" && <Subscription cur={cur} account={auth.profile} />}
+          {screen === "subscription" && <Subscription cur={cur} account={auth.profile} isFreeUser={freeCap.isFreeUser} freeStatus={freeCap.freeStatus} />}
           {screen === "support" && <Support onLegal={() => setScreen("legal")} />}
           {screen === "admin" && <Admin onOpenPanel={setAdminPanel} cur={cur} />}
           {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} />}
@@ -370,6 +383,17 @@ export default function RedesignApp() {
         {/* Admin control bottom-sheet (absolute within the phone, like the v2 prototype) */}
         {adminPanel && (
           <AdminPanel panel={adminPanel} onClose={() => setAdminPanel(null)} assignAmount={assignAmount} onAssignAmount={setAssignAmount} cur={cur} users={adminUsers.users} usersState={adminUsers.state} />
+        )}
+
+        {/* Phase 5f — free-tier cap popup (near / hard) */}
+        {freeCap.capPopup && (
+          <CapPopup
+            kind={freeCap.capPopup}
+            freeStatus={freeCap.freeStatus}
+            onUpgrade={() => { freeCap.setCapPopup(""); setScreen("subscription"); }}
+            onViewOrders={() => { freeCap.setCapPopup(""); setScreen("orders"); }}
+            onClose={() => freeCap.setCapPopup("")}
+          />
         )}
       </div>
     </div>

@@ -6,6 +6,7 @@ import { headerBar, headerTitle, mono } from "../ui";
 import { PLAN_PRICE, fmt } from "../data";
 import { planLabel } from "../adapters/useAuthSession";
 import type { AccountUser } from "../../accountDb";
+import type { FreeStatus } from "../adapters/useFreeCap";
 
 const tgPlane = <svg width="19" height="19" viewBox="0 0 24 24" fill="#fff"><path d="M21.5 4.3 3.2 11.4c-1 .4-1 1.8.1 2.1l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.3l2.5-2.6 4.7 3.4c.6.4 1.4.1 1.6-.6l3-15c.2-1-.7-1.8-1.6-1.3Z" /></svg>;
 const check = <span style={{ color: "var(--ok)", fontWeight: 800 }}>✓</span>;
@@ -20,7 +21,7 @@ const daysLeft = (iso: string): number => {
   return Math.max(0, Math.ceil((d.getTime() - Date.now()) / 86400000));
 };
 
-export default function Subscription({ cur, account = null }: { cur: string; account?: AccountUser | null }) {
+export default function Subscription({ cur, account = null, isFreeUser = false, freeStatus = null }: { cur: string; account?: AccountUser | null; isFreeUser?: boolean; freeStatus?: FreeStatus | null }) {
   // Real profile → plan/price/status/expiry; demo fallback when signed out.
   const plan = account ? planLabel(account.plan) : "Pro";
   const price = account ? (PLAN_PRICE[plan] ?? 0) : PLAN_PRICE["Pro"];
@@ -47,6 +48,24 @@ export default function Subscription({ cur, account = null }: { cur: string; acc
             </div>
           </div>
         </div>
+
+        {isFreeUser && freeStatus && (() => {
+          const cnt = freeStatus.count ?? 0, fcap = freeStatus.cap ?? 200, rd = freeStatus.cycle_resets_in_days ?? 30;
+          const pct = Math.min(100, Math.round((cnt / Math.max(1, fcap)) * 100));
+          const barColor = freeStatus.capped ? "var(--danger)" : freeStatus.near_cap ? "var(--warn)" : "var(--ok)";
+          return (
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginTop: 14 }}>
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>Free orders this cycle</span>
+                <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 700, color: barColor }}>{cnt} / {fcap}</span>
+              </div>
+              <div style={{ height: 8, borderRadius: 6, background: "var(--surface-2)", overflow: "hidden" }}>
+                <div style={{ width: `${pct}%`, height: "100%", background: barColor, transition: "width .2s" }} />
+              </div>
+              <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 8 }}>Resets in {rd} day{rd === 1 ? "" : "s"}</div>
+            </div>
+          );
+        })()}
 
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginTop: 14 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 11 }}>Included in {plan}</div>
