@@ -280,3 +280,42 @@ The Admin screen is an **owner control center**: owner identity card (Juan Dela 
 - **Modals / bottom sheets** (language picker = centered modal; Admin control panels = bottom sheet with `sflSheet` slide-up keyframe): dismiss via × or selecting an item.
 - **Editable chip input** (trigger words): typed input + Enter appends a chip; × removes; capped at a max.
 - **Derived/computed value** (System assign-by-payment): a number input drives a computed matched-plan label live.
+
+---
+
+## Added features (v3) — authoritative (supersedes v2 where they overlap)
+
+Refinements after v2, all theme/accent-aware, same patterns.
+
+### Dashboard / Live
+- The big stat cards were replaced; header now has a **Session length selector** (top-down dropdown: **1 / 2 / 3 days**, default 1 — "ship same day" vs multi-day live before shipping). State: `sessionDays`, `sessionOpen`.
+- The header title reads **"SellerFlowLive"**. The **Auto-detect toggle was removed from the Dashboard** (now lives only in Settings → Auto mode); default is **Manual mode (auto-detect OFF)** — sellers opt in.
+- **Channel chips → connect flow:** chips start **not connected** (neutral). Pick an account in the dropdown, then press **Connect** → "Connecting…" → chip turns **green** (connected highlight: green bg + inset border + glowing pulsing dot). **Disconnect** returns to neutral. Each dropdown has **Refresh** + **Connect** footer buttons. State: `ttConnected/fbConnected`, `ttConnecting/fbConnecting`.
+- **Per-comment auto-print:** with Auto-detect ON, any comment containing a trigger word **auto-prints** and shows an **"Auto-printed {price}"** badge (price comes from the trigger word's set price). **1-Click** = manual print (shows "Printed {price}" ~1.6s then reverts to the buttons). **Enterprise** = tap → inline price input → **Enter** auto-prints at the typed price, then reverts. Trigger words now carry a **price** (e.g. `hello = 150`) editable in Settings → Auto mode.
+
+### Settings
+- **Profile → Edit** form: Pickup/return address field removed (now Shop name, Owner+Phone, Username handle, Email).
+- **Auto mode setup** (trigger word sets): each chip shows **word + price**; type `word=price` then **Enter** to add (up to 20).
+- **Printer & Display:** the **"LIVE print pattern"** row opens a full screen — a live **slip preview** (fixed SellerFlowLive logo + Session date + Shop name + Buyer # + TikTok name/username + Comment) where each field has a **toggle + size stepper (− 1× +)**; toggling/​resizing updates the preview live (off = field disappears, freeing space); the logo is fixed. **Printer Test** + **Save settings** buttons. State: `pp{...}`.
+- The **Printer** row's chooser items open a **Printer settings** screen: **Receipt printer → WiFi/LAN** view (saved-printer status, OUTPUT FORMAT Receipt/Sticker, IP + Port, Find/Test Connection/Connect/Test Print). **Bluetooth printer →** Bluetooth view (No-printer status, **Sticker size** dropdown with 100×60/80×60/80×50/70×50/60×40mm, Scan paired Bluetooth printers). Compact, WiFi-only on the receipt page. State: `psType`, `psOut`, `psSize`, `psSizeOpen`.
+- **Appearance** is compact; **Language** and **Currency** are two aligned **top-down dropdown rows**. **Currency** is a **global app-wide setting** (default **USD $**) with 7 options matching the 7 languages: USD $, PHP ₱, IDR Rp, VND ₫, CNY ¥, TWD NT$, THB ฿. Changing it re-renders **every price in the app** via a `cur` symbol token. State: `currency`, `apLangOpen`, `apCurOpen`.
+
+### Login / Auth
+- **Forgot password?** → Telegram popup ("Reset your password" — admin-only reset; "Maybe next time" / **Next →** opens `https://t.me/SellerFlowSupport`). State: `loginModal`.
+- **Create account** → a real **signup screen** (pre-auth, no bottom nav): Shop name, Owner name + Phone, Username handle, Email, Password + Confirm; "Create account" → Dashboard; "Already have an account? Log in". Screen id `signup`.
+
+### Admin → owner control center (expanded)
+- Owner card trimmed (no caption line). **KPI grid** = **Monthly revenue** (clickable) + **New today / sign-ups to approve** (clickable). Total sellers & Open tickets cards and the "Recent sellers" list were **removed** (sellers now live in the Sellers → Users panel).
+- **Notification bell** is functional: a **live counter badge** (currently 5 = new sign-ups + subscriptions expiring ≤5 days) opens a **Notifications** panel listing each (color-coded: accent = sign-up, amber = expiring). Panel id `notifs`.
+- **Subscriptions** = **4 clickable boxes** (2×2): **Active paid**, **Expiring ‹15d**, **Free tier** (new — free shops with plan + free cycle), **Expired**. Each opens a detail panel listing the relevant shops. Panel ids `subActive/subExpiring/subFree/subExpired`.
+- **New today** card → **New sign-ups to approve** panel: pending accounts from the signup flow, each with **Approve / Reject**. Panel id `signups`; data `SIGNUPS`.
+- **Monthly revenue** card → **App revenue** panel: this-month total, platform fees, **net profit**, **revenue by plan** (subscribers × price), Export. Panel id `revenue`.
+- **Sellers** control → full **Users management** list (replaces old seller cards): per-user card with email + note, **Role** badge (Admin/Seller), **Plan** badge, **Days** + **Accounts**, **plan tier quick-set** (Free/Basic/Pro/Master), and actions (Edit · Reset PW · Make Admin/Remove Admin · Expire · Delete). Data `USERS`.
+  - **+ Add days** per user: tap → number input → **Enter** adds to that user's remaining **Days** (e.g. paid 2 months → type 60 → +60). State: `userDays{}`, `addIdx`, `addVal`.
+  - **Dynamic revenue:** the plan tier buttons actually **change the user's plan**, and the change is **detected as profit** in the App revenue panel (a live "Detected from plan changes: +{cur}{amount}" line). Prices: **Basic NT$500 · Pro NT$1,200 · Master NT$1,700 · Free 0** (`PLAN_PRICE` map). State: `userPlans{}`.
+
+### Currency note
+All prices in the prototype are rendered through a single `cur` symbol (from `CURRENCIES[currency]`). Numeric values are stored without a symbol; in production keep currency as a user/region setting and format centrally.
+
+### Full state summary (v3 additions)
+`sessionDays, sessionOpen, ttConnected, fbConnected, ttConnecting, fbConnecting, autoDetect(false default), autoWords[{word,price}], printed{}, entId, entPrice, pp{...}, psType, psOut, psSize, psSizeOpen, currency, apLangOpen, apCurOpen, loginModal, screen:'signup', adminPanel(+ subActive/subExpiring/subFree/subExpired/signups/revenue/notifs), userDays{}, userPlans{}, addIdx, addVal`.

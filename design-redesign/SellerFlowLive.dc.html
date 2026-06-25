@@ -107,19 +107,35 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
             <span style="width:7px;height:7px;border-radius:50%;background:#fff;animation:sflDot 1s ease-in-out infinite;"></span>
             <span style="font-size:11px;font-weight:800;letter-spacing:.06em;color:#fff;">LIVE</span>
           </div>
-          <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;letter-spacing:-.01em;">Tonight's Live</div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;letter-spacing:-.01em;">SellerFlowLive</div>
         </div>
-        <div style="display:flex;align-items:center;gap:11px;font-size:12px;font-weight:700;opacity:.95;">
-          <span style="display:flex;align-items:center;gap:5px;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M12 4.5C7 4.5 3 8 3 12s4 7.5 9 7.5 9-3.5 9-7.5-4-7.5-9-7.5Z" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="2.6" fill="currentColor"/></svg>{{ viewersF }}</span>
-          <span style="display:flex;align-items:center;gap:5px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M6 7h12l-1 12a2 2 0 0 1-2 1.8H9A2 2 0 0 1 7 19L6 7Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 7a3 3 0 0 1 6 0" stroke="currentColor" stroke-width="1.6"/></svg>{{ liveClaims }}</span>
+        <div style="position:relative;z-index:7;">
+          <button onClick="{{ toggleSession }}" title="Set how many days this live runs before shipping" style="display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.18);border:none;padding:6px 10px;border-radius:9px;font-size:12px;font-weight:700;color:var(--on-header);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3.5" y="5" width="17" height="16" rx="2.5" stroke="currentColor" stroke-width="1.7"/><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            Session · {{ sessionLabel }}
+            <span style="font-size:9px;opacity:.85;">▾</span>
+          </button>
+          <sc-if value="{{ sessionOpen }}" hint-placeholder-val="{{ false }}">
+            <div style="position:absolute;top:calc(100% + 7px);right:0;width:212px;background:var(--surface);border:1px solid var(--border);border-radius:13px;box-shadow:0 16px 38px rgba(0,0,0,.3);padding:6px;z-index:30;">
+              <div style="font-size:10px;font-weight:800;letter-spacing:.1em;color:var(--text-muted);padding:7px 9px 6px;">LIVE SESSION LENGTH</div>
+              <sc-for list="{{ sessionOpts }}" as="o" hint-placeholder-count="3">
+                <button onClick="{{ o.pick }}" style="width:100%;display:flex;align-items:center;gap:10px;padding:9px 9px;border:none;border-radius:9px;background:{{ o.rowBg }};cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;">
+                  <span style="width:30px;height:30px;border-radius:8px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;color:var(--accent-fg);flex-shrink:0;">{{ o.n }}</span>
+                  <span style="flex:1;min-width:0;"><span style="display:block;font-size:13px;font-weight:700;color:var(--text);">{{ o.label }}</span><span style="display:block;font-size:10.5px;color:var(--text-muted);">{{ o.desc }}</span></span>
+                  <span style="color:var(--accent-fg);font-weight:800;font-size:13px;width:12px;flex-shrink:0;">{{ o.check }}</span>
+                </button>
+              </sc-for>
+              <div style="font-size:10px;color:var(--text-muted);line-height:1.4;padding:7px 9px 4px;">Orders from this live stay open until the session ends, then ship together.</div>
+            </div>
+          </sc-if>
         </div>
       </div>
       <div style="display:flex;gap:8px;margin-top:11px;position:relative;z-index:6;">
         <div style="position:relative;flex:1;">
-          <button onClick="{{ toggleTT }}" style="width:100%;display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.18);padding:6px 9px;border:none;border-radius:9px;font-size:11.5px;font-weight:600;color:var(--on-header);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">
+          <button onClick="{{ toggleTT }}" title="{{ ttTitle }}" style="width:100%;display:flex;align-items:center;gap:6px;background:{{ ttChipBg }};box-shadow:{{ ttChipShadow }};padding:6px 9px;border:none;border-radius:9px;font-size:11.5px;font-weight:600;color:var(--on-header);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">
             <span style="width:16px;height:16px;border-radius:5px;background:#000;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;color:#fff;flex-shrink:0;">t</span>
             <span style="flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ ttCurrent }}</span>
-            <span style="width:6px;height:6px;border-radius:50%;background:#4ade80;flex-shrink:0;"></span>
+            <span style="width:7px;height:7px;border-radius:50%;background:{{ ttDotBg }};flex-shrink:0;animation:{{ ttDotAnim }};box-shadow:{{ ttDotGlow }};"></span>
             <span style="font-size:9px;opacity:.85;">▾</span>
           </button>
           <sc-if value="{{ ttOpen }}" hint-placeholder-val="{{ false }}">
@@ -132,14 +148,18 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
                   <span style="color:var(--accent-fg);font-weight:800;font-size:13px;width:12px;flex-shrink:0;">{{ a.check }}</span>
                 </button>
               </sc-for>
+              <div style="display:flex;gap:6px;padding:7px 4px 3px;margin-top:4px;border-top:1px solid var(--border);">
+                <button title="Refresh connected accounts" style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:8px 0;border:1px solid var(--border-strong);border-radius:9px;background:var(--surface-2);color:var(--text);font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 0 0-14-4.5L4 8m0 0V4m0 4h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 13a8 8 0 0 0 14 4.5L20 16m0 0v4m0-4h-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Refresh</button>
+                <button onClick="{{ connectTT }}" title="Connect the selected account to your live" style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:8px 0;border:{{ ttConnBorder }};border-radius:9px;background:{{ ttConnBg }};color:{{ ttConnFg }};font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">{{ ttConnLabel }}</button>
+              </div>
             </div>
           </sc-if>
         </div>
         <div style="position:relative;flex:1;">
-          <button onClick="{{ toggleFB }}" style="width:100%;display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.18);padding:6px 9px;border:none;border-radius:9px;font-size:11.5px;font-weight:600;color:var(--on-header);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">
+          <button onClick="{{ toggleFB }}" title="{{ fbTitle }}" style="width:100%;display:flex;align-items:center;gap:6px;background:{{ fbChipBg }};box-shadow:{{ fbChipShadow }};padding:6px 9px;border:none;border-radius:9px;font-size:11.5px;font-weight:600;color:var(--on-header);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">
             <span style="width:16px;height:16px;border-radius:5px;background:#1877f2;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#fff;flex-shrink:0;font-family:'Space Grotesk',sans-serif;">f</span>
             <span style="flex:1;text-align:left;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ fbCurrent }}</span>
-            <span style="width:6px;height:6px;border-radius:50%;background:#4ade80;flex-shrink:0;"></span>
+            <span style="width:7px;height:7px;border-radius:50%;background:{{ fbDotBg }};flex-shrink:0;animation:{{ fbDotAnim }};box-shadow:{{ fbDotGlow }};"></span>
             <span style="font-size:9px;opacity:.85;">▾</span>
           </button>
           <sc-if value="{{ fbOpen }}" hint-placeholder-val="{{ false }}">
@@ -152,6 +172,10 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
                   <span style="color:var(--accent-fg);font-weight:800;font-size:13px;width:12px;flex-shrink:0;">{{ a.check }}</span>
                 </button>
               </sc-for>
+              <div style="display:flex;gap:6px;padding:7px 4px 3px;margin-top:4px;border-top:1px solid var(--border);">
+                <button title="Refresh connected pages" style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:8px 0;border:1px solid var(--border-strong);border-radius:9px;background:var(--surface-2);color:var(--text);font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 0 0-14-4.5L4 8m0 0V4m0 4h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 13a8 8 0 0 0 14 4.5L20 16m0 0v4m0-4h-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Refresh</button>
+                <button onClick="{{ connectFB }}" title="Connect the selected page to your live" style="flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:8px 0;border:{{ fbConnBorder }};border-radius:9px;background:{{ fbConnBg }};color:{{ fbConnFg }};font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">{{ fbConnLabel }}</button>
+              </div>
             </div>
           </sc-if>
         </div>
@@ -165,12 +189,6 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
           <span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14.5px;color:var(--text);">Live comments</span>
           <span style="width:6px;height:6px;border-radius:50%;background:#e11d48;animation:sflDot 1s infinite;"></span>
         </div>
-        <button onClick="{{ toggleAuto }}" title="Toggle auto-detect / manual mode" style="display:flex;align-items:center;gap:7px;background:none;border:none;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;padding:0;">
-          <span style="font-size:11px;font-weight:700;color:{{ autoLabelColor }};">{{ autoLabel }}</span>
-          <span style="width:34px;height:19px;border-radius:11px;background:{{ autoTrack }};position:relative;transition:background .15s;flex-shrink:0;display:block;">
-            <span style="position:absolute;top:2px;left:{{ autoKnob }};width:15px;height:15px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3);transition:left .15s;"></span>
-          </span>
-        </button>
       </div>
 
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:7px;box-shadow:var(--shadow);flex:1;">
@@ -189,9 +207,23 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
                   <span style="font-size:9.5px;font-weight:800;letter-spacing:.05em;color:var(--accent-text);background:var(--accent);padding:2px 6px;border-radius:5px;flex-shrink:0;">MINE</span>
                 </sc-if>
               </div>
-              <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:8px;">
-                <button onClick="{{ goOrders }}" title="Enterprise auto-order" style="display:flex;align-items:center;gap:4px;font-size:10px;font-weight:800;letter-spacing:.02em;color:var(--accent-fg);background:transparent;border:1.3px solid var(--accent);padding:5px 11px;border-radius:7px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4.5 13.5H11l-1 8.5 9-12h-6.5L13 2Z"/></svg>Enterprise</button>
-                <button onClick="{{ goOrders }}" title="Create order in 1 click" style="display:flex;align-items:center;gap:4px;font-size:10.5px;font-weight:800;letter-spacing:.02em;color:var(--accent-text);background:var(--accent);border:none;padding:5px 12px;border-radius:7px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;box-shadow:0 2px 8px var(--accent-soft);"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4.5 13.5H11l-1 8.5 9-12h-6.5L13 2Z"/></svg>1-Click</button>
+              <div style="display:flex;justify-content:flex-end;align-items:center;gap:6px;margin-top:8px;min-height:27px;">
+                <sc-if value="{{ c.printed }}" hint-placeholder-val="{{ false }}">
+                  <span style="display:flex;align-items:center;gap:5px;font-size:10px;font-weight:800;letter-spacing:.02em;color:{{ c.printedFg }};background:{{ c.printedBg }};padding:5px 10px;border-radius:7px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none"><rect x="6" y="3" width="12" height="6" stroke="currentColor" stroke-width="1.9"/><rect x="4" y="9" width="16" height="8" rx="2" stroke="currentColor" stroke-width="1.9"/><rect x="7" y="14" width="10" height="7" stroke="currentColor" stroke-width="1.9"/></svg>{{ c.printedTag }} {{ c.printedLabel }}</span>
+                </sc-if>
+                <sc-if value="{{ c.entOpen }}" hint-placeholder-val="{{ false }}">
+                  <span style="display:flex;align-items:center;gap:6px;">
+                    <span style="font-size:10px;font-weight:700;color:var(--text-muted);">Type price, Enter to print</span>
+                    <span style="display:flex;align-items:center;gap:3px;border:1.3px solid var(--accent);border-radius:7px;background:var(--surface-2);padding:0 9px;">
+                      <span style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--text-muted);">{{ cur }}</span>
+                      <input value="{{ entPrice }}" onChange="{{ onEntPrice }}" onKeyDown="{{ onEntKey }}" inputmode="numeric" autofocus style="width:48px;border:none;background:transparent;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;padding:5px 0;outline:none;" />
+                    </span>
+                  </span>
+                </sc-if>
+                <sc-if value="{{ c.showActions }}" hint-placeholder-val="{{ true }}">
+                  <button onClick="{{ c.openEnt }}" title="Enterprise — type a price, then Enter to auto-print" style="display:flex;align-items:center;gap:4px;font-size:10px;font-weight:800;letter-spacing:.02em;color:var(--accent-fg);background:transparent;border:1.3px solid var(--accent);padding:5px 11px;border-radius:7px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4.5 13.5H11l-1 8.5 9-12h-6.5L13 2Z"/></svg>Enterprise</button>
+                  <button onClick="{{ c.oneClick }}" title="1-Click — auto-print order now" style="display:flex;align-items:center;gap:4px;font-size:10.5px;font-weight:800;letter-spacing:.02em;color:var(--accent-text);background:var(--accent);border:none;padding:5px 12px;border-radius:7px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;box-shadow:0 2px 8px var(--accent-soft);"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4.5 13.5H11l-1 8.5 9-12h-6.5L13 2Z"/></svg>1-Click</button>
+                </sc-if>
               </div>
             </div>
           </div>
@@ -212,10 +244,6 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
         <button onClick="{{ goSettings }}" style="display:flex;align-items:center;gap:11px;padding:15px 13px;border:1px solid var(--border);border-radius:15px;background:var(--surface);box-shadow:var(--shadow);cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;">
           <span style="width:36px;height:36px;border-radius:10px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;color:var(--accent-fg);flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.7"/><path d="M19.4 13c.04-.3.06-.66.06-1s-.02-.7-.06-1l2.1-1.6-2-3.5-2.5 1a7.5 7.5 0 0 0-1.7-1l-.4-2.6H9.1l-.4 2.6c-.6.25-1.18.58-1.7 1l-2.5-1-2 3.5L4.6 11c-.04.3-.06.66-.06 1s.02.7.06 1l-2.1 1.6 2 3.5 2.5-1c.52.42 1.1.75 1.7 1l.4 2.6h5.8l.4-2.6c.6-.25 1.18-.58 1.7-1l2.5 1 2-3.5-2.1-1.6Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></span>
           <span style="font-size:13.5px;font-weight:600;color:var(--text);line-height:1.15;">General Settings</span>
-        </button>
-        <button onClick="{{ openLangPicker }}" style="display:flex;align-items:center;gap:11px;padding:15px 13px;border:1px solid var(--border);border-radius:15px;background:var(--surface);box-shadow:var(--shadow);cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;">
-          <span style="width:36px;height:36px;border-radius:10px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;color:var(--accent-fg);flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18" stroke="currentColor" stroke-width="1.5"/></svg></span>
-          <span style="font-size:13.5px;font-weight:600;color:var(--text);line-height:1.15;">Language</span>
         </button>
         <button onClick="{{ goCustomers }}" style="display:flex;align-items:center;gap:11px;padding:15px 13px;border:1px solid var(--border);border-radius:15px;background:var(--surface);box-shadow:var(--shadow);cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;">
           <span style="width:36px;height:36px;border-radius:10px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;color:var(--accent-fg);flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3.2" stroke="currentColor" stroke-width="1.7"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M17 14.3a5.5 5.5 0 0 1 3.5 4.7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
@@ -289,11 +317,11 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
       <label style="font-size:12px;font-weight:600;color:var(--text-dim);margin-bottom:6px;">Password</label>
       <input type="password" value="liveselling" style="width:100%;padding:13px 14px;border:1px solid var(--border-strong);border-radius:12px;background:var(--surface-2);color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;margin-bottom:8px;outline:none;">
 
-      <div style="text-align:right;margin-bottom:16px;"><span style="font-size:12px;font-weight:700;color:var(--accent-fg);cursor:pointer;">Forgot password?</span></div>
+      <div style="text-align:right;margin-bottom:16px;"><span onClick="{{ openForgot }}" style="font-size:12px;font-weight:700;color:var(--accent-fg);cursor:pointer;">Forgot password?</span></div>
 
       <button onClick="{{ goDashboard }}" style="width:100%;padding:14px 0;border:none;border-radius:13px;background:var(--accent);color:var(--accent-text);font-family:'Plus Jakarta Sans',sans-serif;font-size:14.5px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px var(--accent-soft);">Log in</button>
 
-      <div style="text-align:center;margin-top:16px;font-size:12.5px;color:var(--text-dim);">New here? <span style="font-weight:700;color:var(--accent-fg);cursor:pointer;">Create account</span></div>
+      <div style="text-align:center;margin-top:16px;font-size:12.5px;color:var(--text-dim);">New here? <span onClick="{{ openCreate }}" style="font-weight:700;color:var(--accent-fg);cursor:pointer;">Create account</span></div>
 
       <div style="margin-top:auto;padding-top:22px;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
@@ -322,6 +350,83 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
         </div>
         <div style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:14px;">By continuing you agree to our <span onClick="{{ goLegal }}" style="color:var(--accent-fg);font-weight:600;cursor:pointer;">Terms</span></div>
       </div>
+    </div>
+
+    <sc-if value="{{ loginModalOpen }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ closeLoginModal }}" style="position:absolute;inset:0;z-index:9;background:rgba(8,6,24,.55);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:24px;">
+        <div style="width:100%;max-width:320px;background:var(--surface);border:1px solid var(--border);border-radius:20px;box-shadow:0 24px 60px rgba(0,0,0,.4);overflow:hidden;">
+          <div style="padding:22px 20px 18px;text-align:center;">
+            <div style="width:54px;height:54px;border-radius:16px;background:#0088cc;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;box-shadow:0 8px 20px rgba(0,136,204,.4);">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="#fff"><path d="M21.5 4.3 3.2 11.4c-1 .4-1 1.8.1 2.1l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.3l2.5-2.6 4.7 3.4c.6.4 1.4.1 1.6-.6l3-15c.2-1-.7-1.8-1.6-1.3Z"/></svg>
+            </div>
+            <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:18px;color:var(--text);">{{ lmTitle }}</div>
+            <div style="font-size:13px;color:var(--text-dim);line-height:1.55;margin-top:9px;">{{ lmBody }}</div>
+            <div style="display:flex;align-items:center;justify-content:center;gap:7px;margin-top:14px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:9px;">
+              <span style="width:18px;height:18px;border-radius:5px;background:#0088cc;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="11" height="11" viewBox="0 0 24 24" fill="#fff"><path d="M21.5 4.3 3.2 11.4c-1 .4-1 1.8.1 2.1l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.3l2.5-2.6 4.7 3.4c.6.4 1.4.1 1.6-.6l3-15c.2-1-.7-1.8-1.6-1.3Z"/></svg></span>
+              <span style="font-size:13px;font-weight:700;color:var(--text);">@SellerFlowSupport</span>
+            </div>
+          </div>
+          <div style="display:flex;border-top:1px solid var(--border);">
+            <button onClick="{{ closeLoginModal }}" style="flex:1;padding:15px 0;border:none;border-right:1px solid var(--border);background:transparent;color:var(--text-dim);font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:700;cursor:pointer;">Maybe next time</button>
+            <a href="https://t.me/SellerFlowSupport" target="_blank" onClick="{{ closeLoginModal }}" style="flex:1;padding:15px 0;background:#0088cc;color:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:6px;">Next<span style="font-size:15px;">→</span></a>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+</sc-if>
+<sc-if value="{{ show.signup }}" hint-placeholder-val="{{ false }}">
+  <div style="min-height:100%;display:flex;flex-direction:column;">
+    <div style="background:var(--header-bg);padding:16px 16px 18px;color:var(--on-header);display:flex;align-items:center;gap:12px;">
+      <button onClick="{{ goLogin }}" style="display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.18);border:none;padding:7px 12px 7px 9px;border-radius:9px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">‹ Back</button>
+      <div>
+        <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:18px;letter-spacing:-.01em;">Create account</div>
+        <div style="font-size:12px;opacity:.9;margin-top:1px;">Set up your live-selling shop</div>
+      </div>
+    </div>
+
+    <div style="padding:16px 16px 22px;">
+      <div style="font-size:11px;letter-spacing:.12em;font-weight:800;color:var(--text-muted);margin:0 2px 9px;">SHOP PROFILE</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:15px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <label style="font-size:11.5px;font-weight:600;color:var(--text-dim);display:block;margin-bottom:5px;">Shop name</label>
+          <input value="" placeholder="e.g. Maria's Live Shop" style="width:100%;padding:12px 13px;border:1px solid var(--border-strong);border-radius:11px;background:var(--surface-2);color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:600;outline:none;">
+        </div>
+        <div style="display:flex;gap:9px;">
+          <div style="flex:1;min-width:0;">
+            <label style="font-size:11.5px;font-weight:600;color:var(--text-dim);display:block;margin-bottom:5px;">Owner name</label>
+            <input value="" placeholder="Full name" style="width:100%;padding:12px 13px;border:1px solid var(--border-strong);border-radius:11px;background:var(--surface-2);color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:600;outline:none;">
+          </div>
+          <div style="flex:1;min-width:0;">
+            <label style="font-size:11.5px;font-weight:600;color:var(--text-dim);display:block;margin-bottom:5px;">Phone</label>
+            <input value="" placeholder="0917 000 0000" style="width:100%;padding:12px 13px;border:1px solid var(--border-strong);border-radius:11px;background:var(--surface-2);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:600;outline:none;">
+          </div>
+        </div>
+        <div>
+          <label style="font-size:11.5px;font-weight:600;color:var(--text-dim);display:block;margin-bottom:5px;">Username handle</label>
+          <input value="" placeholder="@your_handle" style="width:100%;padding:12px 13px;border:1px solid var(--border-strong);border-radius:11px;background:var(--surface-2);color:var(--handle);font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:700;outline:none;">
+        </div>
+        <div>
+          <label style="font-size:11.5px;font-weight:600;color:var(--text-dim);display:block;margin-bottom:5px;">Email</label>
+          <input value="" placeholder="you@email.com" style="width:100%;padding:12px 13px;border:1px solid var(--border-strong);border-radius:11px;background:var(--surface-2);color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:600;outline:none;">
+        </div>
+      </div>
+
+      <div style="font-size:11px;letter-spacing:.12em;font-weight:800;color:var(--text-muted);margin:16px 2px 9px;">PASSWORD</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:15px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <label style="font-size:11.5px;font-weight:600;color:var(--text-dim);display:block;margin-bottom:5px;">Password</label>
+          <input type="password" value="" placeholder="Create a password" style="width:100%;padding:12px 13px;border:1px solid var(--border-strong);border-radius:11px;background:var(--surface-2);color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:600;outline:none;">
+        </div>
+        <div>
+          <label style="font-size:11.5px;font-weight:600;color:var(--text-dim);display:block;margin-bottom:5px;">Confirm password</label>
+          <input type="password" value="" placeholder="Re-enter password" style="width:100%;padding:12px 13px;border:1px solid var(--border-strong);border-radius:11px;background:var(--surface-2);color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:600;outline:none;">
+        </div>
+      </div>
+
+      <button onClick="{{ goDashboard }}" style="width:100%;margin-top:18px;padding:14px 0;border:none;border-radius:13px;background:var(--accent);color:var(--accent-text);font-family:'Plus Jakarta Sans',sans-serif;font-size:14.5px;font-weight:700;cursor:pointer;box-shadow:0 6px 18px var(--accent-soft);">Create account</button>
+      <div style="text-align:center;font-size:11.5px;color:var(--text-muted);margin-top:11px;line-height:1.5;">By creating an account you agree to our <span onClick="{{ goLegal }}" style="color:var(--accent-fg);font-weight:700;cursor:pointer;">Terms</span></div>
+      <div style="text-align:center;font-size:12.5px;color:var(--text-dim);margin-top:8px;">Already have an account? <span onClick="{{ goLogin }}" style="font-weight:700;color:var(--accent-fg);cursor:pointer;">Log in</span></div>
     </div>
   </div>
 </sc-if>
@@ -353,7 +458,7 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
             </div>
             <div style="text-align:right;flex-shrink:0;">
               <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--text-muted);">{{ o.id }}</div>
-              <div style="font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:var(--text);margin-top:1px;">₱{{ o.totalF }}</div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:var(--text);margin-top:1px;">{{ cur }}{{ o.totalF }}</div>
             </div>
           </div>
           <div style="display:flex;align-items:center;gap:8px;margin-top:11px;padding-top:11px;border-top:1px solid var(--border);">
@@ -391,7 +496,7 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
           <div style="padding:11px 11px 12px;">
             <div style="font-size:13.5px;font-weight:700;color:var(--text);line-height:1.25;">{{ p.name }}</div>
             <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text-muted);margin-top:2px;">{{ p.sku }}</div>
-            <div style="font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:var(--text);margin-top:7px;">₱{{ p.priceF }}</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;color:var(--text);margin-top:7px;">{{ cur }}{{ p.priceF }}</div>
             <div style="height:5px;border-radius:3px;background:var(--surface-3);margin-top:9px;overflow:hidden;">
               <div style="height:100%;width:{{ p.barW }};background:{{ p.stockColor }};border-radius:3px;"></div>
             </div>
@@ -428,8 +533,8 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
         </div>
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:14px;box-shadow:var(--shadow);">
           <div style="font-size:11.5px;color:var(--text-muted);font-weight:600;">Total spent</div>
-          <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;color:var(--text);margin-top:4px;letter-spacing:-.02em;">₱1.28M</div>
-          <div style="font-size:11px;font-weight:700;color:var(--accent-fg);margin-top:3px;">₱325 avg order</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;color:var(--text);margin-top:4px;letter-spacing:-.02em;">{{ cur }}1.28M</div>
+          <div style="font-size:11px;font-weight:700;color:var(--accent-fg);margin-top:3px;">{{ cur }}325 avg order</div>
         </div>
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:14px;box-shadow:var(--shadow);">
           <div style="font-size:11.5px;color:var(--text-muted);font-weight:600;">Platforms</div>
@@ -451,7 +556,7 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
               <div style="font-size:11.5px;font-weight:600;color:var(--handle);">{{ m.handle }}</div>
             </div>
             <div style="text-align:right;flex-shrink:0;">
-              <div style="font-family:'JetBrains Mono',monospace;font-size:14.5px;font-weight:700;color:var(--text);">₱{{ m.spentF }}</div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:14.5px;font-weight:700;color:var(--text);">{{ cur }}{{ m.spentF }}</div>
               <div style="font-size:11px;color:var(--text-muted);font-weight:600;">{{ m.orders }} orders</div>
             </div>
           </div>
@@ -533,16 +638,17 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
 
           <sc-if value="{{ autoSetupOpen }}" hint-placeholder-val="{{ false }}">
             <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
                 <span style="font-size:12px;font-weight:700;color:var(--text);">Trigger word sets</span>
                 <span style="font-size:11px;font-weight:700;color:var(--text-muted);font-family:'JetBrains Mono',monospace;">{{ autoWordCount }} / 20</span>
               </div>
+              <div style="font-size:11px;color:var(--text-muted);line-height:1.45;margin-bottom:11px;">When Auto-detect is ON, any comment containing a trigger word auto-prints an order at its price. e.g. <span style="color:var(--accent-fg);font-weight:700;">hello = 150</span> → prints {{ cur }}150.</div>
               <div style="display:flex;flex-wrap:wrap;gap:7px;">
                 <sc-for list="{{ autoWords }}" as="w" hint-placeholder-count="5">
-                  <span style="display:flex;align-items:center;gap:6px;background:var(--accent-soft);border:1px solid var(--accent);color:var(--accent-fg);padding:6px 8px 6px 11px;border-radius:9px;font-size:12px;font-weight:700;">{{ w.word }}<button onClick="{{ w.remove }}" title="Remove" style="background:none;border:none;cursor:pointer;color:var(--accent-fg);font-size:15px;line-height:1;padding:0;display:flex;align-items:center;">×</button></span>
+                  <span style="display:flex;align-items:center;gap:7px;background:var(--accent-soft);border:1px solid var(--accent);color:var(--accent-fg);padding:6px 8px 6px 11px;border-radius:9px;font-size:12px;font-weight:700;">{{ w.word }}<span style="font-family:'JetBrains Mono',monospace;font-weight:700;opacity:.85;">{{ cur }}{{ w.price }}</span><button onClick="{{ w.remove }}" title="Remove" style="background:none;border:none;cursor:pointer;color:var(--accent-fg);font-size:15px;line-height:1;padding:0;display:flex;align-items:center;">×</button></span>
                 </sc-for>
                 <sc-if value="{{ canAddWord }}" hint-placeholder-val="{{ true }}">
-                  <input value="{{ autoInput }}" onChange="{{ onAutoInput }}" onKeyDown="{{ onAutoKey }}" placeholder="Type word, press Enter" style="background:transparent;border:1.3px dashed var(--border-strong);color:var(--text);padding:6px 11px;border-radius:9px;font-size:12px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;outline:none;width:168px;" />
+                  <input value="{{ autoInput }}" onChange="{{ onAutoInput }}" onKeyDown="{{ onAutoKey }}" placeholder="word = price, e.g. hello=150" style="background:transparent;border:1.3px dashed var(--border-strong);color:var(--text);padding:6px 11px;border-radius:9px;font-size:12px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;outline:none;width:188px;" />
                 </sc-if>
               </div>
             </div>
@@ -558,31 +664,64 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
 
       <div>
         <div style="font-size:11px;letter-spacing:.12em;font-weight:800;color:var(--text-muted);margin:0 4px 9px;">APPEARANCE</div>
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:15px;box-shadow:var(--shadow);">
-          <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:9px;">Theme</div>
-          <div style="display:flex;background:var(--surface-2);border:1px solid var(--border);border-radius:11px;padding:4px;gap:4px;margin-bottom:18px;">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:13px;box-shadow:var(--shadow);">
+          <div style="font-size:12.5px;font-weight:700;color:var(--text);margin-bottom:7px;">Theme</div>
+          <div style="display:flex;background:var(--surface-2);border:1px solid var(--border);border-radius:11px;padding:4px;gap:4px;margin-bottom:13px;">
             <button onClick="{{ goLight }}" style="{{ segLightStyle }}">☀ Light</button>
             <button onClick="{{ goDark }}" style="{{ segDarkStyle }}">☾ Dark</button>
           </div>
-          <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:11px;">Accent color</div>
-          <div style="display:flex;justify-content:space-between;margin-bottom:18px;">
+          <div style="font-size:12.5px;font-weight:700;color:var(--text);margin-bottom:9px;">Accent color</div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:13px;">
             <sc-for list="{{ appAccentList }}" as="a" hint-placeholder-count="6">
-              <button onClick="{{ a.pick }}" title="{{ a.name }}" style="width:40px;height:40px;border-radius:12px;cursor:pointer;background:{{ a.base }};border:{{ a.rw }} solid {{ a.ring }};display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;color:#fff;outline:none;">{{ a.mark }}</button>
+              <button onClick="{{ a.pick }}" title="{{ a.name }}" style="width:36px;height:36px;border-radius:11px;cursor:pointer;background:{{ a.base }};border:{{ a.rw }} solid {{ a.ring }};display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;outline:none;">{{ a.mark }}</button>
             </sc-for>
           </div>
-          <div style="display:flex;align-items:center;justify-content:space-between;padding-top:14px;border-top:1px solid var(--border);">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding-top:12px;border-top:1px solid var(--border);">
             <div style="flex:1;">
-              <div style="font-size:13px;font-weight:700;color:var(--text);">Readable @handles</div>
-              <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px;">High-contrast color for usernames — <span style="color:var(--handle);font-weight:700;">@maria_shops</span></div>
+              <div style="font-size:12.5px;font-weight:700;color:var(--text);">Readable @handles</div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:1px;">High-contrast usernames — <span style="color:var(--handle);font-weight:700;">@maria_shops</span></div>
             </div>
             <div style="width:44px;height:26px;border-radius:13px;background:var(--accent);position:relative;flex-shrink:0;"><div style="width:20px;height:20px;border-radius:50%;background:#fff;position:absolute;top:3px;right:3px;box-shadow:0 1px 3px rgba(0,0,0,.3);"></div></div>
           </div>
-          <div style="display:flex;align-items:center;justify-content:space-between;padding-top:14px;margin-top:14px;border-top:1px solid var(--border);">
-            <div style="flex:1;">
-              <div style="font-size:13px;font-weight:700;color:var(--text);">Language</div>
-              <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px;">App display language</div>
+          <div style="padding-top:12px;margin-top:12px;border-top:1px solid var(--border);">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <div style="font-size:12.5px;font-weight:700;color:var(--text);">Language</div>
+              <button onClick="{{ toggleApLang }}" style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--accent-fg);background:var(--accent-soft);border:none;padding:6px 11px;border-radius:9px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;min-width:150px;justify-content:space-between;">
+                <span style="display:flex;align-items:center;gap:6px;">{{ curLangFlag }} {{ curLangLabel }}</span>
+                <span style="font-size:9px;transition:transform .2s;transform:{{ apLangChevron }};">▾</span>
+              </button>
             </div>
-            <div style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--accent-fg);background:var(--accent-soft);padding:7px 12px;border-radius:9px;cursor:pointer;">English (US) ▾</div>
+            <sc-if value="{{ apLangOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:8px;border:1px solid var(--border);border-radius:11px;overflow:hidden;">
+                <sc-for list="{{ apLangList }}" as="l" hint-placeholder-count="7">
+                  <button onClick="{{ l.pick }}" style="width:100%;display:flex;align-items:center;gap:10px;padding:10px 12px;border:none;border-bottom:1px solid var(--border);background:{{ l.rowBg }};cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;">
+                    <span style="font-size:15px;">{{ l.flag }}</span>
+                    <span style="flex:1;font-size:13px;font-weight:700;color:var(--text);">{{ l.label }}</span>
+                    <span style="color:var(--accent-fg);font-weight:800;font-size:13px;width:12px;">{{ l.check }}</span>
+                  </button>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+          <div style="padding-top:12px;margin-top:12px;border-top:1px solid var(--border);">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+              <div><div style="font-size:12.5px;font-weight:700;color:var(--text);">Currency</div><div style="font-size:11px;color:var(--text-muted);margin-top:1px;">Applies to all prices</div></div>
+              <button onClick="{{ toggleApCur }}" style="display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:700;color:var(--accent-fg);background:var(--accent-soft);border:none;padding:6px 11px;border-radius:9px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;min-width:150px;justify-content:space-between;">
+                <span style="font-family:'JetBrains Mono',monospace;">{{ curCurLabel }}</span>
+                <span style="font-size:9px;transition:transform .2s;transform:{{ apCurChevron }};">▾</span>
+              </button>
+            </div>
+            <sc-if value="{{ apCurOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:8px;border:1px solid var(--border);border-radius:11px;overflow:hidden;">
+                <sc-for list="{{ apCurList }}" as="cc" hint-placeholder-count="7">
+                  <button onClick="{{ cc.pick }}" style="width:100%;display:flex;align-items:center;gap:10px;padding:10px 12px;border:none;border-bottom:1px solid var(--border);background:{{ cc.rowBg }};cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;">
+                    <span style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;color:var(--accent-fg);width:30px;">{{ cc.sym }}</span>
+                    <span style="flex:1;font-size:13px;font-weight:700;color:var(--text);">{{ cc.code }}</span>
+                    <span style="color:var(--accent-fg);font-weight:800;font-size:13px;width:12px;">{{ cc.check }}</span>
+                  </button>
+                </sc-for>
+              </div>
+            </sc-if>
           </div>
         </div>
       </div>
@@ -623,11 +762,11 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
               </sc-for>
             </div>
           </sc-if>
-          <div style="display:flex;align-items:center;gap:12px;padding:14px;">
-            <div style="width:36px;height:36px;border-radius:10px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;color:var(--accent-fg);"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="12" rx="2" stroke="currentColor" stroke-width="1.7"/><path d="M9 21h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></div>
-            <div style="flex:1;"><div style="font-size:13.5px;font-weight:700;color:var(--text);">Display &amp; text size</div><div style="font-size:11.5px;color:var(--text-muted);">Large · keep screen awake</div></div>
+          <button onClick="{{ goPrintPattern }}" style="width:100%;display:flex;align-items:center;gap:12px;padding:14px;border:none;background:transparent;cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;">
+            <div style="width:36px;height:36px;border-radius:10px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;color:var(--accent-fg);flex-shrink:0;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="6" y="3" width="12" height="6" stroke="currentColor" stroke-width="1.7"/><rect x="4" y="9" width="16" height="8" rx="2" stroke="currentColor" stroke-width="1.7"/><rect x="7" y="14" width="10" height="7" stroke="currentColor" stroke-width="1.7"/></svg></div>
+            <div style="flex:1;"><div style="font-size:13.5px;font-weight:700;color:var(--text);">LIVE print pattern</div><div style="font-size:11.5px;color:var(--text-muted);">What prints on each slip · sizes</div></div>
             <span style="font-size:16px;color:var(--text-muted);">›</span>
-          </div>
+          </button>
         </div>
       </div>
 
@@ -666,7 +805,7 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
               <div style="font-size:11.5px;font-weight:600;color:var(--handle);">{{ c.handle }} · {{ c.platform }}</div>
             </div>
             <div style="text-align:right;flex-shrink:0;">
-              <div style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;color:var(--text);">₱{{ c.spentF }}</div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;color:var(--text);">{{ cur }}{{ c.spentF }}</div>
               <div style="font-size:11px;color:var(--text-muted);font-weight:600;">{{ c.orders }} orders · {{ c.last }}</div>
             </div>
           </div>
@@ -703,7 +842,7 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
             <span style="font-size:11px;font-weight:800;background:rgba(255,255,255,.22);padding:4px 9px;border-radius:7px;">ACTIVE</span>
           </div>
           <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:30px;margin-top:8px;letter-spacing:-.02em;">Pro</div>
-          <div style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;opacity:.92;margin-top:2px;">₱499 / month</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;opacity:.92;margin-top:2px;">{{ cur }}499 / month</div>
           <div style="display:flex;gap:18px;margin-top:18px;">
             <div><div style="font-size:11px;opacity:.85;">Renews on</div><div style="font-size:14px;font-weight:700;margin-top:2px;">Jul 28, 2026</div></div>
             <div><div style="font-size:11px;opacity:.85;">Days left</div><div style="font-size:14px;font-weight:700;margin-top:2px;">33 days</div></div>
@@ -763,9 +902,9 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
       <div style="display:flex;align-items:center;justify-content:space-between;">
         <div><div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:19px;letter-spacing:-.01em;">Admin panel</div><div style="font-size:12px;opacity:.85;">Owner control center</div></div>
         <div style="display:flex;align-items:center;gap:9px;">
-          <button title="Notifications" style="position:relative;width:32px;height:32px;border-radius:9px;border:none;background:rgba(255,255,255,.16);color:var(--on-header);cursor:pointer;display:flex;align-items:center;justify-content:center;">
+          <button onClick="{{ openNotifs }}" title="Notifications" style="position:relative;width:32px;height:32px;border-radius:9px;border:none;background:rgba(255,255,255,.16);color:var(--on-header);cursor:pointer;display:flex;align-items:center;justify-content:center;">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.7"/></svg>
-            <span style="position:absolute;top:4px;right:5px;width:8px;height:8px;border-radius:50%;background:#fb7185;border:1.5px solid var(--accent);"></span>
+            <span style="position:absolute;top:-4px;right:-4px;min-width:16px;height:16px;padding:0 3px;border-radius:8px;background:#fb7185;border:1.5px solid var(--accent);color:#fff;font-size:9.5px;font-weight:800;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;">{{ notifCount }}</span>
           </button>
           <div style="display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;background:rgba(255,255,255,.16);padding:6px 11px;border-radius:9px;"><span style="width:7px;height:7px;border-radius:50%;background:#4ade80;"></span>Systems OK</div>
         </div>
@@ -782,22 +921,20 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
           </div>
           <span style="display:flex;align-items:center;gap:4px;font-size:10px;font-weight:800;letter-spacing:.03em;color:var(--accent-text);background:var(--accent);padding:5px 9px;border-radius:7px;"><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 4.4 3.1 7.6 8 9 4.9-1.4 8-4.6 8-9V5l-8-3Z"/></svg>SUPER ADMIN</span>
         </div>
-        <div style="font-size:11.5px;color:var(--text-muted);margin-top:11px;padding-top:11px;border-top:1px solid var(--border);line-height:1.5;">Full access — controls all sellers, plans, payments, and platform settings.</div>
       </div>
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:13px 14px;box-shadow:var(--shadow);"><div style="font-size:11px;color:var(--text-muted);font-weight:600;">Total sellers</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;color:var(--text);margin-top:3px;letter-spacing:-.02em;">12,480</div><div style="font-size:11px;font-weight:700;color:var(--ok);margin-top:3px;">▲ 4.2% this week</div></div>
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:13px 14px;box-shadow:var(--shadow);"><div style="font-size:11px;color:var(--text-muted);font-weight:600;">Monthly revenue</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;color:var(--text);margin-top:3px;letter-spacing:-.02em;">₱4.2M</div><div style="font-size:11px;font-weight:700;color:var(--ok);margin-top:3px;">▲ 12% MoM</div></div>
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:13px 14px;box-shadow:var(--shadow);"><div style="font-size:11px;color:var(--text-muted);font-weight:600;">New today</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;color:var(--text);margin-top:3px;letter-spacing:-.02em;">38</div><div style="font-size:11px;font-weight:700;color:var(--accent-fg);margin-top:3px;">sign-ups</div></div>
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:13px 14px;box-shadow:var(--shadow);"><div style="font-size:11px;color:var(--text-muted);font-weight:600;">Open tickets</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;color:var(--text);margin-top:3px;letter-spacing:-.02em;">7</div><div style="font-size:11px;font-weight:700;color:var(--warn);margin-top:3px;">3 urgent</div></div>
+        <button onClick="{{ openRevenue }}" style="text-align:left;background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:13px 14px;box-shadow:var(--shadow);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;"><div style="font-size:11px;color:var(--text-muted);font-weight:600;">Monthly revenue</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;color:var(--text);margin-top:3px;letter-spacing:-.02em;">{{ cur }}4.2M</div><div style="font-size:11px;font-weight:700;color:var(--ok);margin-top:3px;">▲ 12% MoM ›</div></button>
+        <button onClick="{{ openSignups }}" style="text-align:left;background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:13px 14px;box-shadow:var(--shadow);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;"><div style="font-size:11px;color:var(--text-muted);font-weight:600;">New today</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;color:var(--text);margin-top:3px;letter-spacing:-.02em;">38</div><div style="font-size:11px;font-weight:700;color:var(--accent-fg);margin-top:3px;">sign-ups to approve ›</div></button>
       </div>
 
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:13px 14px;box-shadow:var(--shadow);margin-bottom:16px;">
         <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:11px;">Subscriptions</div>
-        <div style="display:flex;gap:8px;">
-          <div style="flex:1;text-align:center;background:var(--surface-2);border-radius:10px;padding:10px 0;"><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:17px;color:var(--ok);">9,842</div><div style="font-size:10px;color:var(--text-muted);font-weight:600;margin-top:2px;">Active</div></div>
-          <div style="flex:1;text-align:center;background:var(--surface-2);border-radius:10px;padding:10px 0;"><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:17px;color:var(--warn);">418</div><div style="font-size:10px;color:var(--text-muted);font-weight:600;margin-top:2px;">Expiring</div></div>
-          <div style="flex:1;text-align:center;background:var(--surface-2);border-radius:10px;padding:10px 0;"><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:17px;color:var(--danger);">2,220</div><div style="font-size:10px;color:var(--text-muted);font-weight:600;margin-top:2px;">Expired</div></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <button onClick="{{ openSubActive }}" style="text-align:center;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:11px 0;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;"><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:17px;color:var(--ok);">9,842</div><div style="font-size:10.5px;color:var(--text-muted);font-weight:600;margin-top:2px;">Active paid ›</div></button>
+          <button onClick="{{ openSubExpiring }}" style="text-align:center;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:11px 0;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;"><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:17px;color:var(--warn);">418</div><div style="font-size:10.5px;color:var(--text-muted);font-weight:600;margin-top:2px;">Expiring ‹15d ›</div></button>
+          <button onClick="{{ openSubFree }}" style="text-align:center;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:11px 0;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;"><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:17px;color:var(--accent-fg);">1,204</div><div style="font-size:10.5px;color:var(--text-muted);font-weight:600;margin-top:2px;">Free tier ›</div></button>
+          <button onClick="{{ openSubExpired }}" style="text-align:center;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:11px 0;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;"><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:17px;color:var(--danger);">2,220</div><div style="font-size:10.5px;color:var(--text-muted);font-weight:600;margin-top:2px;">Expired ›</div></button>
         </div>
       </div>
 
@@ -810,18 +947,6 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
         <div onClick="{{ openReportsAdmin }}" style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 6px;border:1px solid var(--border);border-radius:14px;background:var(--surface);box-shadow:var(--shadow);cursor:pointer;"><span style="width:34px;height:34px;border-radius:10px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;color:var(--accent-fg);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 19V11M10 19V5M15 19v-6M20 19V9" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg></span><span style="font-size:11px;font-weight:700;color:var(--text);text-align:center;line-height:1.2;">Reports</span></div>
         <div onClick="{{ openSystem }}" style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:14px 6px;border:1px solid var(--border);border-radius:14px;background:var(--surface);box-shadow:var(--shadow);cursor:pointer;"><span style="width:34px;height:34px;border-radius:10px;background:var(--accent-soft);display:flex;align-items:center;justify-content:center;color:var(--accent-fg);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 6h14M5 12h14M5 18h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="9" cy="6" r="2" fill="var(--surface)" stroke="currentColor" stroke-width="1.8"/><circle cx="15" cy="12" r="2" fill="var(--surface)" stroke="currentColor" stroke-width="1.8"/><circle cx="9" cy="18" r="2" fill="var(--surface)" stroke="currentColor" stroke-width="1.8"/></svg></span><span style="font-size:11px;font-weight:700;color:var(--text);text-align:center;line-height:1.2;">System</span></div>
       </div>
-
-      <div style="display:flex;align-items:center;justify-content:space-between;margin:2px 2px 10px;"><span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14.5px;color:var(--text);">Recent sellers</span><span style="font-size:12px;font-weight:700;color:var(--accent-fg);">+ Add plan</span></div>
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:15px;box-shadow:var(--shadow);overflow:hidden;">
-        <sc-for list="{{ sellers }}" as="s" hint-placeholder-count="5">
-          <div style="display:flex;align-items:center;gap:11px;padding:12px 14px;border-bottom:1px solid var(--border);">
-            <div style="width:38px;height:38px;border-radius:11px;background:{{ s.av }};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#fff;flex-shrink:0;">{{ s.ini }}</div>
-            <div style="flex:1;min-width:0;"><div style="font-size:13.5px;font-weight:700;color:var(--text);">{{ s.shop }}</div><div style="font-size:11px;color:var(--text-muted);">{{ s.owner }} · {{ s.plan }}</div></div>
-            <div style="text-align:right;flex-shrink:0;"><div style="font-size:11px;font-weight:800;color:{{ s.sc }};">{{ s.status }}</div><div style="font-size:10.5px;color:var(--text-muted);margin-top:2px;">{{ s.expiry }}</div></div>
-          </div>
-        </sc-for>
-      </div>
-      <button style="width:100%;margin-top:14px;padding:12px 0;border:1px solid var(--border-strong);border-radius:12px;background:var(--surface);color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="#0088cc"><path d="M21.5 4.3 3.2 11.4c-1 .4-1 1.8.1 2.1l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.3l2.5-2.6 4.7 3.4c.6.4 1.4.1 1.6-.6l3-15c.2-1-.7-1.8-1.6-1.3Z"/></svg>Contact seller via Telegram</button>
     </div>
   </div>
 </sc-if>
@@ -842,10 +967,10 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
         <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-top:4px;color:#444;"><span>BUYER</span><span style="font-weight:700;color:#000;">Maria Santos</span></div>
         <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-top:4px;color:#444;"><span>DATE</span><span>Jun 25, 9:41 PM</span></div>
         <div style="border-top:1.5px dashed #bbb;margin:12px 0;"></div>
-        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:7px;"><span>Matte Lipstick — Red ×2</span><span style="font-weight:700;">₱498</span></div>
-        <div style="display:flex;justify-content:space-between;font-size:12px;"><span>Insulated Tumbler ×1</span><span style="font-weight:700;">₱399</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:7px;"><span>Matte Lipstick — Red ×2</span><span style="font-weight:700;">{{ cur }}498</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;"><span>Insulated Tumbler ×1</span><span style="font-weight:700;">{{ cur }}399</span></div>
         <div style="border-top:1.5px dashed #bbb;margin:12px 0;"></div>
-        <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;"><span>TOTAL</span><span>₱897</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:700;"><span>TOTAL</span><span>{{ cur }}897</span></div>
         <div style="text-align:center;font-size:10.5px;color:#777;margin-top:14px;border-top:1.5px dashed #bbb;padding-top:10px;">Thank you for shopping live! 💜<br>Pay via GCash · 0917 555 0142</div>
       </div>
       <div style="display:flex;gap:10px;margin-top:18px;">
@@ -863,8 +988,8 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
     </div>
     <div style="padding:16px 14px 22px;">
       <div style="display:flex;gap:10px;margin-bottom:16px;">
-        <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:14px;box-shadow:var(--shadow);"><div style="font-size:11px;color:var(--text-muted);font-weight:600;">This week</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;color:var(--text);margin-top:4px;letter-spacing:-.02em;">₱114.4k</div><div style="font-size:11px;font-weight:700;color:var(--ok);margin-top:3px;">▲ 18% vs last</div></div>
-        <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:14px;box-shadow:var(--shadow);"><div style="font-size:11px;color:var(--text-muted);font-weight:600;">Orders</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;color:var(--text);margin-top:4px;letter-spacing:-.02em;">352</div><div style="font-size:11px;font-weight:700;color:var(--accent-fg);margin-top:3px;">₱325 avg</div></div>
+        <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:14px;box-shadow:var(--shadow);"><div style="font-size:11px;color:var(--text-muted);font-weight:600;">This week</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;color:var(--text);margin-top:4px;letter-spacing:-.02em;">{{ cur }}114.4k</div><div style="font-size:11px;font-weight:700;color:var(--ok);margin-top:3px;">▲ 18% vs last</div></div>
+        <div style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:14px;box-shadow:var(--shadow);"><div style="font-size:11px;color:var(--text-muted);font-weight:600;">Orders</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:22px;color:var(--text);margin-top:4px;letter-spacing:-.02em;">352</div><div style="font-size:11px;font-weight:700;color:var(--accent-fg);margin-top:3px;">{{ cur }}325 avg</div></div>
       </div>
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px 14px;box-shadow:var(--shadow);margin-bottom:16px;">
         <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:14px;">Daily sales</div>
@@ -879,7 +1004,7 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
       </div>
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:15px;box-shadow:var(--shadow);">
         <div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:11px;">Top product</div>
-        <div style="display:flex;align-items:center;gap:11px;"><div style="width:40px;height:40px;border-radius:11px;background:#ec4899;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;">ML</div><div style="flex:1;"><div style="font-size:13.5px;font-weight:700;color:var(--text);">Matte Lipstick — Red</div><div style="font-size:11.5px;color:var(--text-muted);">184 sold this week</div></div><div style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:var(--text);">₱45.8k</div></div>
+        <div style="display:flex;align-items:center;gap:11px;"><div style="width:40px;height:40px;border-radius:11px;background:#ec4899;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;">ML</div><div style="flex:1;"><div style="font-size:13.5px;font-weight:700;color:var(--text);">Matte Lipstick — Red</div><div style="font-size:11.5px;color:var(--text-muted);">184 sold this week</div></div><div style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:var(--text);">{{ cur }}45.8k</div></div>
       </div>
     </div>
   </div>
@@ -923,7 +1048,7 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
           <div style="display:flex;align-items:center;padding:11px 14px;border-bottom:1px solid var(--border);">
             <div style="flex:1.6;min-width:0;"><div style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ c.name }}</div><div style="font-size:11px;font-weight:600;color:var(--handle);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ c.handle }}</div></div>
             <div style="flex:.8;text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:var(--text);">{{ c.orders }}</div>
-            <div style="flex:1.1;text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:var(--text);">₱{{ c.spentF }}</div>
+            <div style="flex:1.1;text-align:right;font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:var(--text);">{{ cur }}{{ c.spentF }}</div>
           </div>
         </sc-for>
       </div>
@@ -981,6 +1106,136 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
     </div>
   </div>
 </sc-if>
+
+<sc-if value="{{ show.printpattern }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="position:sticky;top:0;z-index:5;background:var(--header-bg);backdrop-filter:saturate(1.5) blur(14px);color:var(--on-header);padding:14px 16px;display:flex;align-items:center;gap:12px;">
+      <button onClick="{{ goSettings }}" style="display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.18);border:none;padding:7px 12px 7px 9px;border-radius:9px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">‹ Back</button>
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:18px;letter-spacing:-.01em;">LIVE print pattern</div>
+    </div>
+
+    <div style="padding:12px 14px 16px;">
+      <div style="background:var(--accent);border-radius:16px;padding:11px;box-shadow:0 8px 22px var(--accent-soft);">
+        <div style="background:#fff;border-radius:11px;padding:12px 14px;text-align:center;">
+          <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;">
+            <span style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:16px;color:#1c1a35;">SellerFlowLive</span>
+            <sc-if value="{{ ppShowDate }}" hint-placeholder-val="{{ true }}">
+              <span style="font-size:{{ ppDateFs }}px;color:#9795ad;white-space:nowrap;">Session: 05/22/2026 12:21PM</span>
+            </sc-if>
+          </div>
+          <sc-if value="{{ ppShowShop }}" hint-placeholder-val="{{ true }}">
+            <div style="font-size:{{ ppShopFs }}px;font-weight:700;color:#1c1a35;margin-top:6px;">Maria's Live Shop</div>
+          </sc-if>
+          <sc-if value="{{ ppShowBuyer }}" hint-placeholder-val="{{ true }}">
+            <div style="font-size:{{ ppBuyerFs }}px;font-weight:700;color:#1c1a35;margin-top:3px;">Buyer #12</div>
+          </sc-if>
+          <sc-if value="{{ ppShowName }}" hint-placeholder-val="{{ true }}">
+            <div style="font-size:{{ ppNameFs }}px;font-weight:700;color:#1c1a35;margin-top:3px;">Maria Santos</div>
+          </sc-if>
+          <sc-if value="{{ ppShowUser }}" hint-placeholder-val="{{ true }}">
+            <div style="font-size:{{ ppUserFs }}px;font-weight:600;color:#7c3aed;margin-top:3px;">@maria_live</div>
+          </sc-if>
+          <sc-if value="{{ ppShowComment }}" hint-placeholder-val="{{ true }}">
+            <div style="font-family:'JetBrains Mono',monospace;font-size:{{ ppCommentFs }}px;color:#5a5872;margin-top:7px;">Comment</div>
+          </sc-if>
+        </div>
+      </div>
+
+      <button style="width:100%;margin-top:11px;padding:12px 0;border:none;border-radius:12px;background:var(--accent);color:var(--accent-text);font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:700;cursor:pointer;box-shadow:0 5px 14px var(--accent-soft);display:flex;align-items:center;justify-content:center;gap:8px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="6" y="3" width="12" height="6" stroke="currentColor" stroke-width="1.8"/><rect x="4" y="9" width="16" height="8" rx="2" stroke="currentColor" stroke-width="1.8"/><rect x="7" y="14" width="10" height="7" stroke="currentColor" stroke-width="1.8"/></svg>
+        Printer Test
+      </button>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);overflow:hidden;margin-top:12px;">
+        <sc-for list="{{ ppRows }}" as="r" hint-placeholder-count="6">
+          <div style="display:flex;align-items:center;gap:9px;padding:9px 13px;border-bottom:1px solid var(--border);">
+            <span style="flex:1;font-size:13.5px;font-weight:700;color:var(--text);">{{ r.label }}</span>
+            <button onClick="{{ r.dec }}" style="width:28px;height:28px;border-radius:50%;border:1px solid var(--border-strong);background:var(--surface);color:var(--accent-fg);font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">−</button>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:12.5px;font-weight:700;color:var(--text);width:30px;text-align:center;flex-shrink:0;">{{ r.sizeLabel }}</span>
+            <button onClick="{{ r.inc }}" style="width:28px;height:28px;border-radius:50%;border:1px solid var(--border-strong);background:var(--surface);color:var(--accent-fg);font-size:16px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;">+</button>
+            <button onClick="{{ r.toggle }}" style="background:none;border:none;cursor:pointer;padding:0;flex-shrink:0;margin-left:3px;">
+              <span style="width:40px;height:23px;border-radius:12px;background:{{ r.trackBg }};position:relative;display:block;transition:background .15s;">
+                <span style="position:absolute;top:3px;left:{{ r.knob }};width:17px;height:17px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:left .15s;"></span>
+              </span>
+            </button>
+          </div>
+        </sc-for>
+        <div style="display:flex;align-items:center;gap:10px;padding:11px 13px;">
+          <span style="flex:1;font-size:13.5px;font-weight:700;color:var(--text);">SellerFlowLive logo</span>
+          <span style="font-size:11.5px;font-style:italic;color:var(--text-muted);">Fixed default size</span>
+        </div>
+      </div>
+
+      <button onClick="{{ goSettings }}" style="width:100%;margin-top:12px;padding:13px 0;border:none;border-radius:12px;background:var(--accent);color:var(--accent-text);font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 5px 14px var(--accent-soft);">Save settings</button>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ show.printersettings }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="position:sticky;top:0;z-index:5;background:var(--header-bg);backdrop-filter:saturate(1.5) blur(14px);color:var(--on-header);padding:14px 16px;display:flex;align-items:center;gap:12px;">
+      <button onClick="{{ goSettings }}" style="display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.18);border:none;padding:7px 12px 7px 9px;border-radius:9px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">‹ Back</button>
+      <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:18px;letter-spacing:-.01em;">Printer settings</div>
+    </div>
+
+    <div style="padding:16px 14px 24px;">
+      <div style="display:flex;align-items:center;gap:12px;background:{{ psStatusBg }};border:1px solid {{ psStatusBorder }};border-radius:14px;padding:14px;">
+        <span style="width:13px;height:13px;border-radius:50%;background:{{ psStatusDot }};flex-shrink:0;box-shadow:0 0 7px {{ psStatusDot }};"></span>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:15px;font-weight:700;color:var(--text);">{{ psStatusTitle }}</div>
+          <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px;">{{ psStatusSub }}</div>
+        </div>
+      </div>
+
+      <sc-if value="{{ psWifi }}" hint-placeholder-val="{{ true }}">
+        <div>
+          <div style="font-size:11px;letter-spacing:.12em;font-weight:800;color:var(--text-muted);margin:14px 2px 8px;">OUTPUT FORMAT</div>
+          <div style="display:flex;gap:8px;background:var(--surface-2);border:1px solid var(--border);border-radius:13px;padding:5px;margin-bottom:12px;">
+            <button onClick="{{ setPsReceipt }}" style="{{ psRcptTab }}">Receipt</button>
+            <button onClick="{{ setPsSticker }}" style="{{ psStkrTab }}">Sticker</button>
+          </div>
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:13px;box-shadow:var(--shadow);">
+            <label style="font-size:12px;font-weight:600;color:var(--text-dim);display:block;margin-bottom:5px;">Printer IP address</label>
+            <input value="192.168.18.234" style="width:100%;padding:11px 13px;border:1px solid var(--border-strong);border-radius:11px;background:var(--surface-2);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;outline:none;margin-bottom:11px;">
+            <label style="font-size:12px;font-weight:600;color:var(--text-dim);display:block;margin-bottom:5px;">Port</label>
+            <input value="9100" style="width:100%;padding:11px 13px;border:1px solid var(--border-strong);border-radius:11px;background:var(--surface-2);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:600;outline:none;">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:12px;">
+            <button style="padding:12px 0;border:1px solid var(--border-strong);border-radius:12px;background:var(--surface);color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;">Find</button>
+            <button style="padding:12px 0;border:1px solid var(--border-strong);border-radius:12px;background:var(--surface);color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;">Test Connection</button>
+            <button style="padding:12px 0;border:none;border-radius:12px;background:var(--accent);color:var(--accent-text);font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px var(--accent-soft);">Connect</button>
+            <button style="padding:12px 0;border:1px solid var(--border-strong);border-radius:12px;background:var(--surface);color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;">Test Print</button>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ psBT }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:15px;box-shadow:var(--shadow);margin-top:16px;">
+            <label style="font-size:12px;font-weight:600;color:var(--text-dim);display:block;margin-bottom:6px;">Sticker size</label>
+            <button onClick="{{ togglePsSize }}" style="width:100%;display:flex;align-items:center;justify-content:space-between;padding:13px 14px;border:1px solid var(--border-strong);border-radius:11px;background:var(--surface-2);cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">
+              <span style="font-size:14px;font-weight:700;color:var(--text);">{{ psSizeCurrent }}</span>
+              <span style="color:var(--text-muted);transition:transform .2s;transform:{{ psSizeChevron }};">▾</span>
+            </button>
+            <sc-if value="{{ psSizeOpen }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:8px;border:1px solid var(--border);border-radius:11px;overflow:hidden;">
+                <sc-for list="{{ psSizes }}" as="z" hint-placeholder-count="5">
+                  <button onClick="{{ z.pick }}" style="width:100%;display:flex;align-items:center;gap:11px;padding:12px 13px;border:none;border-bottom:1px solid var(--border);background:{{ z.rowBg }};cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;">
+                    <span style="width:20px;height:20px;border-radius:50%;border:2px solid {{ z.dotBorder }};display:flex;align-items:center;justify-content:center;flex-shrink:0;"><span style="width:10px;height:10px;border-radius:50%;background:{{ z.dotBg }};"></span></span>
+                    <span style="font-size:14px;font-weight:700;color:var(--text);">{{ z.label }}</span>
+                  </button>
+                </sc-for>
+              </div>
+            </sc-if>
+          </div>
+          <button style="width:100%;margin-top:14px;padding:14px 0;border:none;border-radius:13px;background:var(--accent);color:var(--accent-text);font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px var(--accent-soft);display:flex;align-items:center;justify-content:center;gap:8px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#fff" stroke-width="1.9"/><path d="m20 20-3.5-3.5" stroke="#fff" stroke-width="1.9" stroke-linecap="round"/></svg>Scan paired Bluetooth printers</button>
+        </div>
+      </sc-if>
+
+      <button onClick="{{ goSettings }}" style="width:100%;margin-top:16px;padding:14px 0;border:none;border-radius:13px;background:var(--accent);color:var(--accent-text);font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 6px 16px var(--accent-soft);">Save printer settings</button>
+    </div>
+  </div>
+</sc-if>
 <!--SCREENS-->
         </div>
 
@@ -1014,22 +1269,55 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
               <div style="padding:16px 16px calc(22px + env(safe-area-inset-bottom));overflow-y:auto;" data-scroll="1">
 <sc-if value="{{ showSellers }}" hint-placeholder-val="{{ false }}">
                   <div>
-                    <div style="display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--border);border-radius:11px;padding:10px 12px;margin-bottom:13px;">
+                    <div style="display:flex;align-items:center;gap:8px;background:var(--surface-2);border:1px solid var(--border);border-radius:11px;padding:10px 12px;margin-bottom:11px;">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="var(--text-muted)" stroke-width="1.8"/><path d="m20 20-3.5-3.5" stroke="var(--text-muted)" stroke-width="1.8" stroke-linecap="round"/></svg>
-                      <span style="font-size:12.5px;color:var(--text-muted);">Search seller or @handle</span>
+                      <span style="font-size:12.5px;color:var(--text-muted);">Search email or @handle</span>
                     </div>
-                    <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:15px;">
-                      <span style="font-size:11.5px;font-weight:700;color:var(--accent-text);background:var(--accent);padding:6px 11px;border-radius:8px;">All · 12,480</span>
-                      <span style="font-size:11.5px;font-weight:600;color:var(--text-dim);background:var(--surface-2);border:1px solid var(--border);padding:6px 11px;border-radius:8px;">Active · 9,842</span>
-                      <span style="font-size:11.5px;font-weight:600;color:var(--text-dim);background:var(--surface-2);border:1px solid var(--border);padding:6px 11px;border-radius:8px;">Expiring · 418</span>
-                      <span style="font-size:11.5px;font-weight:600;color:var(--text-dim);background:var(--surface-2);border:1px solid var(--border);padding:6px 11px;border-radius:8px;">Expired · 2,220</span>
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:11px;">
+                      <span style="font-size:12px;font-weight:700;color:var(--text);">Users · 12,480</span>
+                      <button style="font-size:11.5px;font-weight:700;color:var(--accent-text);background:var(--accent);border:none;padding:7px 12px;border-radius:9px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">+ Add user</button>
                     </div>
-                    <div style="display:flex;flex-direction:column;gap:9px;">
-                      <button style="width:100%;padding:12px 0;border:none;border-radius:11px;background:var(--accent);color:var(--accent-text);font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px var(--accent-soft);">+ Add seller</button>
-                      <div style="display:flex;gap:9px;">
-                        <button style="flex:1;padding:11px 0;border:1px solid var(--border-strong);border-radius:11px;background:var(--surface);color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:12.5px;font-weight:700;cursor:pointer;">Suspend</button>
-                        <button style="flex:1;padding:11px 0;border:1px solid var(--border-strong);border-radius:11px;background:var(--surface);color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:12.5px;font-weight:700;cursor:pointer;">Message all</button>
-                      </div>
+                    <div style="display:flex;flex-direction:column;gap:10px;">
+                      <sc-for list="{{ users }}" as="u" hint-placeholder-count="8">
+                        <div style="border:1px solid var(--border);border-radius:13px;background:var(--surface-2);padding:12px;">
+                          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+                            <div style="min-width:0;flex:1;">
+                              <div style="font-size:13px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ u.email }}</div>
+                              <div style="font-size:11px;color:var(--text-muted);margin-top:1px;">{{ u.note }}</div>
+                            </div>
+                            <div style="display:flex;gap:5px;flex-shrink:0;">
+                              <span style="font-size:10px;font-weight:800;color:{{ u.roleFg }};background:{{ u.roleBg }};padding:3px 7px;border-radius:6px;">{{ u.role }}</span>
+                              <span style="font-size:10px;font-weight:800;color:{{ u.planFg }};background:var(--surface);border:1px solid var(--border);padding:3px 7px;border-radius:6px;">{{ u.plan }}</span>
+                            </div>
+                          </div>
+                          <div style="display:flex;align-items:center;gap:12px;margin-top:9px;font-size:11px;color:var(--text-dim);">
+                            <span><span style="color:var(--text-muted);">Days</span> <span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--text);">{{ u.days }}</span></span>
+                            <span><span style="color:var(--text-muted);">Accounts</span> <span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--text);">{{ u.accounts }}</span></span>
+                            <sc-if value="{{ u.addOpen }}" hint-placeholder-val="{{ false }}">
+                              <span style="display:flex;align-items:center;gap:5px;margin-left:auto;">
+                                <input value="{{ addVal }}" onChange="{{ u.onAddVal }}" onKeyDown="{{ u.onAddKey }}" inputmode="numeric" autofocus placeholder="days" style="width:54px;padding:4px 7px;border:1.3px solid var(--accent);border-radius:7px;background:var(--surface);color:var(--text);font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;outline:none;">
+                                <span style="font-size:9.5px;color:var(--text-muted);">Enter ↵</span>
+                              </span>
+                            </sc-if>
+                            <sc-if value="{{ u.addClosed }}" hint-placeholder-val="{{ true }}">
+                              <button onClick="{{ u.openAdd }}" style="margin-left:auto;display:flex;align-items:center;gap:3px;font-size:10.5px;font-weight:800;color:var(--accent-text);background:var(--accent);border:none;padding:4px 10px;border-radius:7px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">+ Add days</button>
+                            </sc-if>
+                          </div>
+                          <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:10px;">
+                            <button onClick="{{ u.setFree }}" style="font-size:10.5px;font-weight:700;color:var(--accent-fg);background:var(--accent-soft);border:none;padding:5px 9px;border-radius:7px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">Free</button>
+                            <button onClick="{{ u.setBasic }}" style="font-size:10.5px;font-weight:700;color:var(--accent-fg);background:var(--accent-soft);border:none;padding:5px 9px;border-radius:7px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">Basic</button>
+                            <button onClick="{{ u.setPro }}" style="font-size:10.5px;font-weight:700;color:var(--accent-fg);background:var(--accent-soft);border:none;padding:5px 9px;border-radius:7px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">Pro</button>
+                            <button onClick="{{ u.setMaster }}" style="font-size:10.5px;font-weight:700;color:var(--accent-fg);background:var(--accent-soft);border:none;padding:5px 9px;border-radius:7px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">Master</button>
+                          </div>
+                          <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;padding-top:9px;border-top:1px solid var(--border);">
+                            <button style="font-size:10.5px;font-weight:700;color:var(--text);background:var(--surface);border:1px solid var(--border-strong);padding:5px 9px;border-radius:7px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">Edit</button>
+                            <button style="font-size:10.5px;font-weight:700;color:var(--text);background:var(--surface);border:1px solid var(--border-strong);padding:5px 9px;border-radius:7px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">Reset PW</button>
+                            <button style="font-size:10.5px;font-weight:700;color:var(--text);background:var(--surface);border:1px solid var(--border-strong);padding:5px 9px;border-radius:7px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">{{ u.adminLabel }}</button>
+                            <button style="font-size:10.5px;font-weight:700;color:var(--warn);background:var(--surface);border:1px solid var(--border-strong);padding:5px 9px;border-radius:7px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">Expire</button>
+                            <button style="font-size:10.5px;font-weight:700;color:var(--danger);background:var(--surface);border:1px solid var(--border-strong);padding:5px 9px;border-radius:7px;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">Delete</button>
+                          </div>
+                        </div>
+                      </sc-for>
                     </div>
                   </div>
                 </sc-if>
@@ -1055,7 +1343,7 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
                 <sc-if value="{{ showPayments }}" hint-placeholder-val="{{ false }}">
                   <div>
                     <div style="display:flex;gap:10px;margin-bottom:14px;">
-                      <div style="flex:1;background:var(--surface-2);border:1px solid var(--border);border-radius:13px;padding:12px 13px;"><div style="font-size:11px;color:var(--text-muted);font-weight:600;">Collected today</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:19px;color:var(--text);margin-top:3px;">₱48,200</div></div>
+                      <div style="flex:1;background:var(--surface-2);border:1px solid var(--border);border-radius:13px;padding:12px 13px;"><div style="font-size:11px;color:var(--text-muted);font-weight:600;">Collected today</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:19px;color:var(--text);margin-top:3px;">{{ cur }}48,200</div></div>
                       <div style="flex:1;background:var(--surface-2);border:1px solid var(--border);border-radius:13px;padding:12px 13px;"><div style="font-size:11px;color:var(--text-muted);font-weight:600;">Pending</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:19px;color:var(--warn);margin-top:3px;">12</div></div>
                     </div>
                     <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:9px;">Recent transactions</div>
@@ -1072,10 +1360,10 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
 <sc-if value="{{ showReportsP }}" hint-placeholder-val="{{ false }}">
                   <div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
-                      <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:13px;padding:12px 13px;"><div style="font-size:11px;color:var(--text-muted);font-weight:600;">MRR</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:19px;color:var(--text);margin-top:3px;">₱4.2M</div></div>
+                      <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:13px;padding:12px 13px;"><div style="font-size:11px;color:var(--text-muted);font-weight:600;">MRR</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:19px;color:var(--text);margin-top:3px;">{{ cur }}4.2M</div></div>
                       <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:13px;padding:12px 13px;"><div style="font-size:11px;color:var(--text-muted);font-weight:600;">Growth</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:19px;color:var(--ok);margin-top:3px;">+12%</div></div>
                       <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:13px;padding:12px 13px;"><div style="font-size:11px;color:var(--text-muted);font-weight:600;">Churn</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:19px;color:var(--warn);margin-top:3px;">2.1%</div></div>
-                      <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:13px;padding:12px 13px;"><div style="font-size:11px;color:var(--text-muted);font-weight:600;">ARPU</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:19px;color:var(--text);margin-top:3px;">₱340</div></div>
+                      <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:13px;padding:12px 13px;"><div style="font-size:11px;color:var(--text-muted);font-weight:600;">ARPU</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:19px;color:var(--text);margin-top:3px;">{{ cur }}340</div></div>
                     </div>
                     <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:9px;">Reports</div>
                     <div style="display:flex;flex-direction:column;gap:8px;">
@@ -1091,7 +1379,7 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
                     <div style="font-size:12.5px;color:var(--text-dim);line-height:1.5;margin-bottom:15px;">Enter the amount a new seller paid — the matching plan is selected automatically and granted on assign.</div>
                     <label style="font-size:11.5px;font-weight:600;color:var(--text-dim);display:block;margin-bottom:6px;">Amount paid</label>
                     <div style="display:flex;align-items:center;gap:8px;border:1px solid var(--border-strong);border-radius:11px;background:var(--surface-2);padding:0 13px;margin-bottom:14px;">
-                      <span style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:var(--text-muted);">₱</span>
+                      <span style="font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:var(--text-muted);">{{ cur }}</span>
                       <input value="{{ assignAmount }}" onChange="{{ onAssignAmount }}" inputmode="numeric" style="flex:1;border:none;background:transparent;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;padding:12px 0;outline:none;" />
                     </div>
                     <div style="display:flex;align-items:center;justify-content:space-between;background:var(--accent-soft);border:1px solid var(--accent);border-radius:13px;padding:13px 15px;margin-bottom:16px;">
@@ -1117,6 +1405,106 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
                     <label style="font-size:11.5px;font-weight:600;color:var(--text-dim);display:block;margin-bottom:6px;">Message</label>
                     <div style="border:1px solid var(--border-strong);border-radius:12px;background:var(--surface-2);padding:12px 13px;min-height:84px;font-size:13px;color:var(--text-muted);margin-bottom:15px;">Type your announcement to sellers…</div>
                     <button style="width:100%;padding:13px 0;border:none;border-radius:12px;background:var(--accent);color:var(--accent-text);font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px var(--accent-soft);">Send broadcast</button>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ showSubActive }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:9px;">
+                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:2px;">9,842 active paid subscriptions · showing recent</div>
+                    <sc-for list="{{ subActive }}" as="s" hint-placeholder-count="4">
+                      <div style="display:flex;align-items:center;gap:11px;padding:11px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);">
+                        <div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:700;color:var(--text);">{{ s.shop }}</div><div style="font-size:11px;color:var(--text-muted);">{{ s.owner }} · {{ s.plan }}</div></div>
+                        <div style="text-align:right;flex-shrink:0;"><div style="font-size:10.5px;font-weight:800;color:var(--ok);">Active</div><div style="font-size:10.5px;color:var(--text-muted);margin-top:2px;">{{ s.info }}</div></div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ showSubExpiring }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:9px;">
+                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:2px;">418 expiring within 15 days — renew or follow up</div>
+                    <sc-for list="{{ subExpiring }}" as="s" hint-placeholder-count="3">
+                      <div style="display:flex;align-items:center;gap:11px;padding:11px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);">
+                        <div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:700;color:var(--text);">{{ s.shop }}</div><div style="font-size:11px;color:var(--text-muted);">{{ s.owner }} · {{ s.plan }}</div></div>
+                        <div style="text-align:right;flex-shrink:0;"><div style="font-size:10.5px;font-weight:800;color:var(--warn);">Expiring</div><div style="font-size:10.5px;color:var(--text-muted);margin-top:2px;">{{ s.info }}</div></div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ showSubFree }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:9px;">
+                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:2px;">1,204 free-tier shops · plan &amp; free cycle</div>
+                    <sc-for list="{{ subFree }}" as="s" hint-placeholder-count="3">
+                      <div style="display:flex;align-items:center;gap:11px;padding:11px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);">
+                        <div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:700;color:var(--text);">{{ s.shop }}</div><div style="font-size:11px;color:var(--text-muted);">{{ s.owner }}</div></div>
+                        <div style="text-align:right;flex-shrink:0;"><div style="font-size:10.5px;font-weight:800;color:var(--accent-fg);">Free</div><div style="font-size:10.5px;color:var(--text-muted);margin-top:2px;">{{ s.info }}</div></div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ showSubExpired }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:9px;">
+                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:2px;">2,220 expired — not renewed / no payment</div>
+                    <sc-for list="{{ subExpired }}" as="s" hint-placeholder-count="2">
+                      <div style="display:flex;align-items:center;gap:11px;padding:11px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);">
+                        <div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:700;color:var(--text);">{{ s.shop }}</div><div style="font-size:11px;color:var(--text-muted);">{{ s.owner }} · {{ s.plan }}</div></div>
+                        <div style="text-align:right;flex-shrink:0;"><div style="font-size:10.5px;font-weight:800;color:var(--danger);">Expired</div><div style="font-size:10.5px;color:var(--text-muted);margin-top:2px;">{{ s.info }}</div></div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ showSignups }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:10px;">
+                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:2px;">Pending approval — accounts created from sign-up</div>
+                    <sc-for list="{{ signups }}" as="g" hint-placeholder-count="3">
+                      <div style="border:1px solid var(--border);border-radius:12px;background:var(--surface-2);padding:12px;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;">
+                          <div style="min-width:0;"><div style="font-size:13px;font-weight:700;color:var(--text);">{{ g.name }}</div><div style="font-size:11px;color:var(--text-muted);">{{ g.email }}</div></div>
+                          <span style="font-size:10.5px;color:var(--text-muted);flex-shrink:0;">{{ g.time }}</span>
+                        </div>
+                        <div style="font-size:11.5px;color:var(--text-dim);margin-top:5px;">Shop: <span style="font-weight:700;color:var(--text);">{{ g.shop }}</span></div>
+                        <div style="display:flex;gap:7px;margin-top:10px;">
+                          <button style="flex:1;padding:9px 0;border:none;border-radius:9px;background:var(--accent);color:var(--accent-text);font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;">Approve</button>
+                          <button style="flex:1;padding:9px 0;border:1px solid var(--border-strong);border-radius:9px;background:var(--surface);color:var(--danger);font-family:'Plus Jakarta Sans',sans-serif;font-size:12px;font-weight:700;cursor:pointer;">Reject</button>
+                        </div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+                                <sc-if value="{{ showNotifs }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;flex-direction:column;gap:9px;">
+                    <div style="font-size:12px;color:var(--text-muted);margin-bottom:2px;">New sign-ups &amp; subscriptions expiring within 5 days</div>
+                    <sc-for list="{{ notifList }}" as="n" hint-placeholder-count="5">
+                      <div style="display:flex;align-items:flex-start;gap:11px;padding:11px 12px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);">
+                        <span style="font-size:9.5px;font-weight:800;letter-spacing:.02em;color:{{ n.ink }};background:{{ n.tint }};padding:4px 7px;border-radius:6px;flex-shrink:0;margin-top:1px;">{{ n.kind }}</span>
+                        <div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:700;color:var(--text);">{{ n.title }}</div><div style="font-size:11px;color:var(--text-muted);margin-top:1px;">{{ n.sub }}</div></div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ showRevenue }}" hint-placeholder-val="{{ false }}">
+                  <div>
+                    <div style="background:var(--accent);border-radius:14px;padding:15px;color:#fff;box-shadow:0 8px 22px var(--accent-soft);">
+                      <div style="font-size:11.5px;opacity:.9;font-weight:600;">This month · from paid subscribers</div>
+                      <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:28px;margin-top:4px;letter-spacing:-.02em;">{{ revTotal }}</div>
+                      <div style="font-size:11.5px;opacity:.92;margin-top:2px;">▲ 12% vs last month</div>
+                    </div>
+                    <div style="display:flex;gap:9px;margin-top:12px;">
+                      <div style="flex:1;background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:11px 12px;"><div style="font-size:10.5px;color:var(--text-muted);font-weight:600;">Platform fees</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:var(--text);margin-top:2px;">{{ revFees }}</div></div>
+                      <div style="flex:1;background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:11px 12px;"><div style="font-size:10.5px;color:var(--text-muted);font-weight:600;">Net profit</div><div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:var(--ok);margin-top:2px;">{{ revNet }}</div></div>
+                    </div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:11px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:12px;padding:11px 13px;">
+                      <div><div style="font-size:11px;color:var(--text-dim);font-weight:600;">Detected from plan changes</div><div style="font-size:10.5px;color:var(--text-muted);margin-top:1px;">Live — when you upgrade a paid seller</div></div>
+                      <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:17px;color:var(--accent-fg);">+{{ cur }}{{ revAddedF }}</div>
+                    </div>
+                    <div style="font-size:12px;font-weight:700;color:var(--text);margin:14px 2px 9px;">Revenue by plan</div>
+                    <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:13px;overflow:hidden;">
+                      <sc-for list="{{ revenueRows }}" as="r" hint-placeholder-count="3">
+                        <div style="display:flex;align-items:center;gap:11px;padding:11px 13px;border-bottom:1px solid var(--border);">
+                          <div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:700;color:var(--text);">{{ r.plan }}</div><div style="font-size:11px;color:var(--text-muted);">{{ r.subs }} subscribers · {{ r.price }}/mo</div></div>
+                          <div style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;color:var(--text);flex-shrink:0;">{{ r.total }}</div>
+                        </div>
+                      </sc-for>
+                    </div>
+                    <button style="width:100%;margin-top:13px;padding:12px 0;border:none;border-radius:11px;background:var(--accent);color:var(--accent-text);font-family:'Plus Jakarta Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px var(--accent-soft);">Export revenue report</button>
                   </div>
                 </sc-if>
               </div>
@@ -1157,18 +1545,57 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:860}}">
 class Component extends DCLogic {
-  state = { theme:'light', accent:'indigo', screen:'dashboard', moreOpen:false, comments:[], slipFlash:false, liveClaims:47, viewers:1284, langOpen:false, lang:'en', ttOpen:false, fbOpen:false, ttIdx:0, fbIdx:0, oneClickTier:'sellerflow', autoDetect:true, autoSetupOpen:false, autoAction:'slip', autoWords:['mine','claim','sold','get','take'], autoInput:'', profileOpen:false, printerOpen:false, printerIdx:0, langPickerOpen:false, adminPanel:null, assignAmount:'499' };
+  state = { theme:'light', accent:'indigo', screen:'dashboard', moreOpen:false, comments:[], slipFlash:false, liveClaims:47, viewers:1284, sessionDays:1, sessionOpen:false, langOpen:false, lang:'en', currency:'USD', apLangOpen:false, apCurOpen:false, loginModal:null, ttOpen:false, fbOpen:false, ttIdx:0, fbIdx:0, ttConnected:false, fbConnected:false, ttConnecting:false, fbConnecting:false, oneClickTier:'sellerflow', autoDetect:false, autoSetupOpen:false, autoAction:'slip', autoWords:[{word:'mine',price:'150'},{word:'claim',price:'150'},{word:'sold',price:'150'},{word:'get',price:'150'},{word:'take',price:'150'}], autoInput:'', printed:{}, entId:null, entPrice:'', profileOpen:false, printerOpen:false, printerIdx:0, psType:'wifi', psOut:'receipt', psSize:'100x60mm (Standard)', psSizeOpen:false, langPickerOpen:false, adminPanel:null, addIdx:null, addVal:'', userDays:{}, userPlans:{}, assignAmount:'499', pp:{ shopName:true, shopNameSize:1, dateTime:true, dateTimeSize:1, buyerNum:true, buyerNumSize:1, tiktokName:true, tiktokNameSize:1, tiktokUser:true, tiktokUserSize:1, comment:true, commentSize:1 } };
 
   PLANS = [
-    {name:'Starter',price:'₱199',per:'/mo',sellers:'4,120 sellers',feats:['1 live channel','Auto-detect "mine"','Order slips']},
-    {name:'Pro',price:'₱499',per:'/mo',sellers:'5,310 sellers',feats:['TikTok + Facebook','1-Click order','Printer & shipping']},
-    {name:'Enterprise',price:'₱1,499',per:'/mo',sellers:'412 sellers',feats:['Everything in Pro','Auto-print + stickers','Bulk claim · priority sync']}
+    {name:'Starter',price:'199',per:'/mo',sellers:'4,120 sellers',feats:['1 live channel','Auto-detect "mine"','Order slips']},
+    {name:'Pro',price:'499',per:'/mo',sellers:'5,310 sellers',feats:['TikTok + Facebook','1-Click order','Printer & shipping']},
+    {name:'Enterprise',price:'1,499',per:'/mo',sellers:'412 sellers',feats:['Everything in Pro','Auto-print + stickers','Bulk claim · priority sync']}
   ];
+  CURRENCIES = { USD:'$', PHP:'₱', IDR:'Rp', VND:'₫', CNY:'¥', TWD:'NT$', THB:'฿' };
+  PLAN_PRICE = { Free:0, Basic:500, Pro:1200, Master:1700, Business:1700, Starter:500 };
+  USERS = [
+    {email:'camilajeffrey1@gmail.com',note:'admin',role:'Admin',plan:'Master',days:3600,accounts:'5 / 5'},
+    {email:'lheyukay@gmail.com',note:'Lheyukay',role:'Seller',plan:'Pro',days:118,accounts:'3 / 3'},
+    {email:'cmosiclar@icloud.com',note:'Kycher taiwan',role:'Seller',plan:'Basic',days:42,accounts:'1 / 1'},
+    {email:'alishariq3660@gmail.com',note:'ALUKAY',role:'Seller',plan:'Basic',days:43,accounts:'1 / 1'},
+    {email:'googletest@sellerflowlive.com',note:'googletest',role:'Seller',plan:'Basic',days:29,accounts:'1 / 1'},
+    {email:'nliboon7@gmail.com',note:'@bby_dolltw.ph',role:'Seller',plan:'Basic',days:14,accounts:'1 / 1'},
+    {email:'danishaqil194@gmail.com',note:'Baba',role:'Seller',plan:'Free',days:3587,accounts:'0 / 1'},
+    {email:'khalidkhadem2023@gmail.com',note:'Atlas',role:'Seller',plan:'Free',days:3587,accounts:'0 / 1'}
+  ];
+  SIGNUPS = [
+    {name:'Carla Mendoza',email:'carla.m@gmail.com',shop:'Carla Finds',time:'12m ago'},
+    {name:'Ben Uy',email:'benuy@gmail.com',shop:'Uy Gadgets',time:'40m ago'},
+    {name:'Tina Flores',email:'tinaflores@icloud.com',shop:'Tina Beauty',time:'1h ago'}
+  ];
+  SUBS = {
+    active:[
+      {shop:'Maria Beauty Hub',owner:'Maria Santos',plan:'Pro',info:'Renews Jul 28, 2026'},
+      {shop:'Reyes Finds',owner:'Liza Reyes',plan:'Pro',info:'Renews Sep 12, 2026'},
+      {shop:'Grace Luxe',owner:'Grace Lim',plan:'Business',info:'Renews Dec 01, 2026'},
+      {shop:'KimStyle PH',owner:'Kim Tan',plan:'Pro',info:'Renews Aug 04, 2026'}
+    ],
+    expiring:[
+      {shop:'TanwearPH',owner:'Kim Tan',plan:'Starter',info:'Expires in 5 days · Jun 30'},
+      {shop:'NeneFinds',owner:'Nene Bautista',plan:'Pro',info:'Expires in 11 days · Jul 06'},
+      {shop:'JoyMart',owner:'Joy Aquino',plan:'Starter',info:'Expires in 14 days · Jul 09'}
+    ],
+    free:[
+      {shop:'Baba Store',owner:'danishaqil194',plan:'Free',info:'0 / 200 orders · 14d cycle'},
+      {shop:'Atlas Shop',owner:'khalidkhadem2023',plan:'Free',info:'0 / 200 orders · 14d cycle'},
+      {shop:'Zam Picks',owner:'barakatullahkhan12',plan:'Free',info:'12 / 200 orders · 9d left'}
+    ],
+    expired:[
+      {shop:'BudgetBuys',owner:'Rico Tan',plan:'Starter',info:'Expired Jun 20 · not renewed'},
+      {shop:'OldStock PH',owner:'Sim Jan',plan:'Basic',info:'Expired May 28 · no payment'}
+    ]
+  };
   PAYMENTS = [
-    {seller:'TanwearPH',method:'GCash',amount:'₱499',status:'Paid',time:'2m'},
-    {seller:'Reyes Finds',method:'Maya',amount:'₱499',status:'Paid',time:'18m'},
-    {seller:'Grace Luxe',method:'Bank transfer',amount:'₱1,499',status:'Pending',time:'1h'},
-    {seller:'BudgetBuys',method:'GCash',amount:'₱199',status:'Paid',time:'3h'}
+    {seller:'TanwearPH',method:'GCash',amount:'499',status:'Paid',time:'2m'},
+    {seller:'Reyes Finds',method:'Maya',amount:'499',status:'Paid',time:'18m'},
+    {seller:'Grace Luxe',method:'Bank transfer',amount:'1,499',status:'Pending',time:'1h'},
+    {seller:'BudgetBuys',method:'GCash',amount:'199',status:'Paid',time:'3h'}
   ];
 
   WORD_POOL = ['take','akin','kuha','reserve','book','dibs','grab','order','sakin','claiming','sana','add me','pa-reserve','+1','buy'];
@@ -1214,7 +1641,7 @@ class Component extends DCLogic {
     dashboard:'Dashboard', menu:'Settings', miners:'Miners', orders:'Orders', products:'Products', login:'Login / Landing',
     settings:'Settings', customers:'Customers', subscription:'Subscription', support:'Support',
     admin:'Admin', print:'Print Slip', sales:'Sales Report', shipping:'Shipping',
-    customerdata:'Customer Data', legal:'Privacy & Terms', delete:'Delete Account'
+    customerdata:'Customer Data', legal:'Privacy & Terms', delete:'Delete Account', printpattern:'LIVE Print Pattern', printersettings:'Printer settings', signup:'Create account'
   };
 
   INCOMING = [
@@ -1364,8 +1791,24 @@ class Component extends DCLogic {
     const init=(s)=>(s||'').split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
     const statusColor=(st)=>({Unpaid:'#e11d48',Paid:'#059669',Packed:'#0284c7',Shipped:'#7c3aed',Delivered:'#059669',Cancelled:'#9ca3af',Active:'#059669',Expiring:'#d97706',Expired:'#e11d48'}[st]||'#9ca3af');
     const fmt=(n)=>n.toLocaleString('en-US');
+    const cur=this.CURRENCIES[this.state.currency]||'$';
 
-    const comments = this.state.comments.map(c=>({...c, av:col(c.name), ini:init(c.name), mineLabel: c.mine?'MINE':'' }));
+    const comments = this.state.comments.map(c=>{
+      const lc=(c.text||'').toLowerCase();
+      const hit = this.state.autoWords.find(w=>w.word && lc.includes(w.word));
+      const manP = this.state.printed[c.id];
+      const printed = (this.state.autoDetect && !!hit) || !!manP;
+      let printedLabel=''; if(manP){ printedLabel = manP==='order'?'':manP; } else if(hit && hit.price){ printedLabel=cur+hit.price; }
+      const entOpen = this.state.entId===c.id;
+      const isAuto = (this.state.autoDetect && !!hit) && !manP;
+      return {...c, av:col(c.name), ini:init(c.name), mineLabel:c.mine?'MINE':'',
+        printed, printedLabel, entOpen, showActions: !printed && !entOpen,
+        printedTag: isAuto ? 'Auto-printed' : 'Printed',
+        printedBg: isAuto ? 'var(--accent-soft)' : 'var(--surface-3)',
+        printedFg: isAuto ? 'var(--accent-fg)' : 'var(--text-dim)',
+        oneClick:()=>{ const np={...this.state.printed,[c.id]:(hit&&hit.price?(cur+hit.price):'order')}; this.setState({printed:np}); setTimeout(()=>{ const p={...this.state.printed}; delete p[c.id]; this.setState({printed:p}); }, 1600); },
+        openEnt:()=>this.setState({entId:c.id, entPrice:''}) };
+    });
     const orders = this.DATA.orders.map(o=>({...o, av:col(o.buyer), ini:init(o.buyer), sc:statusColor(o.status), totalF:fmt(o.total)}));
     const products = this.DATA.products.map(p=>({...p, priceF:fmt(p.price), av:col(p.name), ini:init(p.name),
       stockColor: p.stock===0?'var(--danger)':(p.stock<10?'var(--warn)':'var(--ok)'),
@@ -1405,14 +1848,14 @@ class Component extends DCLogic {
       tint: id==='delete'?this.rgba('#e11d48',.13):'var(--accent-soft)',
       ink: id==='delete'?'var(--danger)':'var(--accent-fg)'}));
 
-    const extra=['settings','customers','subscription','support','admin','print','sales','shipping','customerdata','legal','delete'];
+    const extra=['settings','customers','subscription','support','admin','print','sales','shipping','customerdata','legal','delete','printpattern','printersettings'];
     const navOn=(b)=>b?'var(--accent-fg)':'var(--text-muted)';
     const navBg=(b)=>b?'var(--accent-soft)':'transparent';
     const nDash=screen==='dashboard', nMin=screen==='miners', nOrd=screen==='orders', nProd=screen==='products', nMore=screen==='menu'||extra.includes(screen);
 
     return {
-      setRoot:this.setRoot, isDark:dark, screenName:this.SCREENS[screen]||'', themeLabel: dark?'Dark':'Light', accentName:this.ACCENTS[this.state.accent].name,
-      show, showNav: screen!=='login', moreOpen:this.state.moreOpen,
+      setRoot:this.setRoot, isDark:dark, cur, screenName:this.SCREENS[screen]||'', themeLabel: dark?'Dark':'Light', accentName:this.ACCENTS[this.state.accent].name,
+      show, showNav: screen!=='login' && screen!=='signup', moreOpen:this.state.moreOpen,
       goLight:()=>this.setState({theme:'light'}), goDark:()=>this.setState({theme:'dark'}),
       lightTabStyle: this.tab(!dark), darkTabStyle: this.tab(dark),
       accentList, appAccentList, segLightStyle, segDarkStyle, navGroups, moreItems,
@@ -1424,12 +1867,71 @@ class Component extends DCLogic {
       go:(id)=>this.go(id),
       comments, orders, products, miners, customers, archive, shipping, sellers, sales,
       liveClaims:this.state.liveClaims, viewersF:fmt(this.state.viewers),
+      sessionOpen:this.state.sessionOpen,
+      toggleSession:()=>this.setState(s=>({sessionOpen:!s.sessionOpen, ttOpen:false, fbOpen:false})),
+      sessionLabel:this.state.sessionDays+(this.state.sessionDays>1?' days':' day'),
+      sessionOpts:[1,2,3].map(n=>({n, label:n+(n>1?' days':' day'),
+        desc:n===1?'Ship same day':(n+'-day live before sending'),
+        active:n===this.state.sessionDays,
+        rowBg:n===this.state.sessionDays?'var(--accent-soft)':'transparent',
+        check:n===this.state.sessionDays?'✓':'',
+        pick:()=>this.setState({sessionDays:n, sessionOpen:false})})),
       slipBorder: this.state.slipFlash?'var(--accent)':'var(--border)',
       slipShadow: this.state.slipFlash?'0 0 0 3px var(--accent-softer)':'none',
       goOrders:this.go('orders'), goProducts:this.go('products'), goPrint:this.go('print'), goLogin:this.go('login'),
       goDashboard:this.go('dashboard'), goSubscription:this.go('subscription'), goLegal:this.go('legal'), goSupport:this.go('support'),
+      loginModalOpen: !!this.state.loginModal,
+      openForgot:()=>this.setState({loginModal:'forgot'}),
+      openCreate:this.go('signup'),
+      closeLoginModal:()=>this.setState({loginModal:null}),
+      lmTitle: 'Reset your password',
+      lmBody: 'For your security, passwords can only be reset by an admin. Message us on Telegram and we\u2019ll help you create a new password right away.',
       goDelete:this.go('delete'), goSettings:this.go('settings'), goCustomers:this.go('customers'),
       goAdmin:this.go('admin'), goSales:this.go('sales'), goShipping:this.go('shipping'), goCustomerData:this.go('customerdata'),
+      goPrintPattern:this.go('printpattern'),
+      openReceiptPrinter:()=>this.setState({screen:'printersettings', psType:'wifi', printerOpen:false}),
+      openBTPrinter:()=>this.setState({screen:'printersettings', psType:'bt', printerOpen:false}),
+      psWifi:this.state.psType==='wifi', psBT:this.state.psType==='bt',
+      setPsWifi:()=>this.setState({psType:'wifi'}), setPsBT:()=>this.setState({psType:'bt'}),
+      psWifiTab:'flex:1;padding:14px 10px;border-radius:12px;cursor:pointer;font-family:Plus Jakarta Sans,sans-serif;font-size:13.5px;font-weight:700;text-align:center;line-height:1.25;border:none;'+(this.state.psType==='wifi'?'background:var(--surface);color:var(--accent-fg);box-shadow:var(--shadow);':'background:transparent;color:var(--text-dim);'),
+      psBtTab:'flex:1;padding:14px 10px;border-radius:12px;cursor:pointer;font-family:Plus Jakarta Sans,sans-serif;font-size:13.5px;font-weight:700;text-align:center;line-height:1.25;border:none;'+(this.state.psType==='bt'?'background:var(--surface);color:var(--accent-fg);box-shadow:var(--shadow);':'background:transparent;color:var(--text-dim);'),
+      psRcptTab:'flex:1;padding:13px 0;border-radius:11px;cursor:pointer;font-family:Plus Jakarta Sans,sans-serif;font-size:13.5px;font-weight:700;text-align:center;border:none;'+(this.state.psOut==='receipt'?'background:var(--surface);color:var(--accent-fg);box-shadow:var(--shadow);':'background:transparent;color:var(--text-dim);'),
+      psStkrTab:'flex:1;padding:13px 0;border-radius:11px;cursor:pointer;font-family:Plus Jakarta Sans,sans-serif;font-size:13.5px;font-weight:700;text-align:center;border:none;'+(this.state.psOut==='sticker'?'background:var(--surface);color:var(--accent-fg);box-shadow:var(--shadow);':'background:transparent;color:var(--text-dim);'),
+      setPsReceipt:()=>this.setState({psOut:'receipt'}), setPsSticker:()=>this.setState({psOut:'sticker'}),
+      psStatusTitle:this.state.psType==='wifi'?'192.168.18.234:9100':'No printer connected',
+      psStatusSub:this.state.psType==='wifi'?'Saved WiFi printer · 192.168.18.234:9100':'Recommended: AIMO D520BT (TSPL, 100×60mm)',
+      psStatusDot:this.state.psType==='wifi'?'#22c55e':'#ef4444',
+      psStatusBg:this.state.psType==='wifi'?'rgba(34,197,94,.10)':'rgba(239,68,68,.10)',
+      psStatusBorder:this.state.psType==='wifi'?'rgba(34,197,94,.35)':'rgba(239,68,68,.35)',
+      psSizeCurrent:this.state.psSize,
+      psSizeOpen:this.state.psSizeOpen,
+      togglePsSize:()=>this.setState(s=>({psSizeOpen:!s.psSizeOpen})),
+      psSizeChevron:this.state.psSizeOpen?'rotate(180deg)':'rotate(0deg)',
+      psSizes:['100x60mm (Standard)','80x60mm','80x50mm','70x50mm','60x40mm'].map(sz=>({label:sz, active:sz===this.state.psSize,
+        dotBorder:sz===this.state.psSize?'var(--accent)':'var(--border-strong)', dotBg:sz===this.state.psSize?'var(--accent)':'transparent',
+        rowBg:sz===this.state.psSize?'var(--accent-softer)':'transparent',
+        pick:()=>this.setState({psSize:sz, psSizeOpen:false})})),
+      pp:this.state.pp,
+      ppRows:[
+        {key:'shopName',sizeKey:'shopNameSize',label:'Shop name'},
+        {key:'dateTime',sizeKey:'dateTimeSize',label:'Date & time'},
+        {key:'buyerNum',sizeKey:'buyerNumSize',label:'Buyer #'},
+        {key:'tiktokName',sizeKey:'tiktokNameSize',label:'TikTok name'},
+        {key:'tiktokUser',sizeKey:'tiktokUserSize',label:'TikTok username'},
+        {key:'comment',sizeKey:'commentSize',label:'Comment (center)'}
+      ].map(r=>{ const on=!!this.state.pp[r.key]; const size=this.state.pp[r.sizeKey];
+        return {...r, on, sizeLabel:(size%1===0?size.toFixed(0):size.toFixed(1))+'×',
+          trackBg:on?'var(--accent)':'var(--border-strong)', knob:on?'21px':'3px',
+          toggle:()=>this.setState(s=>({pp:{...s.pp,[r.key]:!s.pp[r.key]}})),
+          dec:()=>this.setState(s=>({pp:{...s.pp,[r.sizeKey]:Math.max(0.5,Math.round((s.pp[r.sizeKey]-0.1)*10)/10)}})),
+          inc:()=>this.setState(s=>({pp:{...s.pp,[r.sizeKey]:Math.min(3,Math.round((s.pp[r.sizeKey]+0.1)*10)/10)}})) }; }),
+      ppShowShop:this.state.pp.shopName, ppShopFs:Math.round(16*this.state.pp.shopNameSize),
+      ppShowDate:this.state.pp.dateTime, ppDateFs:Math.round(11*this.state.pp.dateTimeSize),
+      ppShowTop:this.state.pp.shopName||this.state.pp.dateTime,
+      ppShowBuyer:this.state.pp.buyerNum, ppBuyerFs:Math.round(14*this.state.pp.buyerNumSize),
+      ppShowName:this.state.pp.tiktokName, ppNameFs:Math.round(14*this.state.pp.tiktokNameSize),
+      ppShowUser:this.state.pp.tiktokUser, ppUserFs:Math.round(12*this.state.pp.tiktokUserSize),
+      ppShowComment:this.state.pp.comment, ppCommentFs:Math.round(12*this.state.pp.commentSize),
       langs: this.LANGS.map(l=>({...l, active:l.code===this.state.lang, bg:l.code===this.state.lang?'var(--accent-soft)':'transparent', pick:()=>this.setState({lang:l.code,langOpen:false,langPickerOpen:false})})),
       langPickerOpen:this.state.langPickerOpen,
       openLangPicker:()=>this.setState({langPickerOpen:true}),
@@ -1442,9 +1944,58 @@ class Component extends DCLogic {
       showSellers:this.state.adminPanel==='sellers', showPlans:this.state.adminPanel==='plans',
       showPayments:this.state.adminPanel==='payments', showReportsP:this.state.adminPanel==='reports',
       showSystem:this.state.adminPanel==='system', showBroadcast:this.state.adminPanel==='broadcast',
-      adminPanelTitle:({sellers:'Manage sellers',plans:'Subscription plans',payments:'Payments',reports:'Platform reports',system:'Assign plan by payment',broadcast:'Broadcast'}[this.state.adminPanel]||''),
-      plans:this.PLANS,
-      payments:this.PAYMENTS.map(p=>({...p, sc:p.status==='Paid'?'var(--ok)':'var(--warn)'})),
+      showSubActive:this.state.adminPanel==='subActive', showSubExpiring:this.state.adminPanel==='subExpiring',
+      showSubFree:this.state.adminPanel==='subFree', showSubExpired:this.state.adminPanel==='subExpired',
+      openSubActive:()=>this.setState({adminPanel:'subActive'}), openSubExpiring:()=>this.setState({adminPanel:'subExpiring'}),
+      openSubFree:()=>this.setState({adminPanel:'subFree'}), openSubExpired:()=>this.setState({adminPanel:'subExpired'}),
+      subActive:this.SUBS.active, subExpiring:this.SUBS.expiring, subFree:this.SUBS.free, subExpired:this.SUBS.expired,
+      showSignups:this.state.adminPanel==='signups', openSignups:()=>this.setState({adminPanel:'signups'}), signups:this.SIGNUPS,
+      showNotifs:this.state.adminPanel==='notifs', openNotifs:()=>this.setState({adminPanel:'notifs'}),
+      notifList:[
+        {kind:'New sign-up',title:'Carla Mendoza signed up',sub:'Carla Finds · 12m ago',tint:'var(--accent-soft)',ink:'var(--accent-fg)'},
+        {kind:'New sign-up',title:'Ben Uy signed up',sub:'Uy Gadgets · 40m ago',tint:'var(--accent-soft)',ink:'var(--accent-fg)'},
+        {kind:'New sign-up',title:'Tina Flores signed up',sub:'Tina Beauty · 1h ago',tint:'var(--accent-soft)',ink:'var(--accent-fg)'},
+        {kind:'Expiring',title:'TanwearPH expires in 5 days',sub:'Kim Tan · Starter · Jun 30',tint:'rgba(217,119,6,.16)',ink:'var(--warn)'},
+        {kind:'Expiring',title:'NeneFinds expires in 4 days',sub:'Nene Bautista · Pro · Jun 29',tint:'rgba(217,119,6,.16)',ink:'var(--warn)'}
+      ],
+      notifCount:5,
+      showRevenue:this.state.adminPanel==='revenue', openRevenue:()=>this.setState({adminPanel:'revenue'}),
+      revenueRows:[
+        {plan:'Starter',subs:'4,120',price:cur+'199',total:cur+'820K'},
+        {plan:'Pro',subs:'5,310',price:cur+'499',total:cur+'2.65M'},
+        {plan:'Business',subs:'412',price:cur+'1,499',total:cur+'618K'}
+      ], revTotal:cur+'4.2M', revFees:cur+'1.05M', revNet:cur+'3.15M',
+      adminPanelTitle:({sellers:'Manage sellers',plans:'Subscription plans',payments:'Payments',reports:'Platform reports',system:'Assign plan by payment',broadcast:'Broadcast',subActive:'Active paid subscriptions',subExpiring:'Expiring soon',subFree:'Free tier',subExpired:'Expired',signups:'New sign-ups to approve',revenue:'App revenue',notifs:'Notifications'}[this.state.adminPanel]||''),
+      plans:this.PLANS.map(p=>({...p, price:cur+p.price})),
+      users:this.USERS.map((u,i)=>{ const plan=(this.state.userPlans[u.email]||u.plan); return {...u, isAdmin:u.role==='Admin', plan,
+        days:(this.state.userDays[u.email]!=null?this.state.userDays[u.email]:u.days),
+        roleBg:u.role==='Admin'?'var(--accent-soft)':'var(--surface-3)', roleFg:u.role==='Admin'?'var(--accent-fg)':'var(--text-dim)',
+        planFg:({Master:'#7c3aed',Pro:'#0284c7',Basic:'#059669',Free:'#9795ad'}[plan]||'var(--text-dim)'),
+        adminLabel:u.role==='Admin'?'Remove Admin':'Make Admin',
+        setFree:()=>this.setState(s=>({userPlans:{...s.userPlans,[u.email]:'Free'}})),
+        setBasic:()=>this.setState(s=>({userPlans:{...s.userPlans,[u.email]:'Basic'}})),
+        setPro:()=>this.setState(s=>({userPlans:{...s.userPlans,[u.email]:'Pro'}})),
+        setMaster:()=>this.setState(s=>({userPlans:{...s.userPlans,[u.email]:'Master'}})),
+        addOpen:this.state.addIdx===i, addClosed:this.state.addIdx!==i,
+        openAdd:()=>this.setState({addIdx:i, addVal:''}),
+        onAddVal:(e)=>this.setState({addVal:(e.target.value||'').replace(/[^0-9]/g,'')}),
+        onAddKey:(e)=>{ if(e.key==='Enter'){ e.preventDefault(); const base=(this.state.userDays[u.email]!=null?this.state.userDays[u.email]:u.days); const add=parseInt(this.state.addVal||'0',10)||0; this.setState(s=>({userDays:{...s.userDays,[u.email]:base+add}, addIdx:null, addVal:''})); } } }; }),
+      addVal:this.state.addVal,
+      revAdded:(()=>{ let sum=0; this.USERS.forEach(u=>{ const cp=this.state.userPlans[u.email]||u.plan; sum += (this.PLAN_PRICE[cp]||0)-(this.PLAN_PRICE[u.plan]||0); }); return sum; })(),
+      revAddedF:(()=>{ let sum=0; this.USERS.forEach(u=>{ const cp=this.state.userPlans[u.email]||u.plan; sum += (this.PLAN_PRICE[cp]||0)-(this.PLAN_PRICE[u.plan]||0); }); return sum.toLocaleString('en-US'); })(),
+      payments:this.PAYMENTS.map(p=>({...p, amount:cur+p.amount, sc:p.status==='Paid'?'var(--ok)':'var(--warn)'})),
+      apLangOpen:this.state.apLangOpen, apCurOpen:this.state.apCurOpen,
+      toggleApLang:()=>this.setState(s=>({apLangOpen:!s.apLangOpen, apCurOpen:false})),
+      toggleApCur:()=>this.setState(s=>({apCurOpen:!s.apCurOpen, apLangOpen:false})),
+      apLangChevron:this.state.apLangOpen?'rotate(180deg)':'rotate(0deg)',
+      apCurChevron:this.state.apCurOpen?'rotate(180deg)':'rotate(0deg)',
+      curLangLabel:(this.LANGS.find(l=>l.code===this.state.lang)||this.LANGS[0]).label,
+      curLangFlag:(this.LANGS.find(l=>l.code===this.state.lang)||this.LANGS[0]).flag,
+      curCurLabel:this.state.currency+' '+(this.CURRENCIES[this.state.currency]||'$'),
+      apLangList:this.LANGS.map(l=>({...l, active:l.code===this.state.lang, check:l.code===this.state.lang?'✓':'',
+        rowBg:l.code===this.state.lang?'var(--accent-softer)':'transparent', pick:()=>this.setState({lang:l.code, apLangOpen:false})})),
+      apCurList:Object.keys(this.CURRENCIES).map(code=>({code, sym:this.CURRENCIES[code], active:code===this.state.currency, check:code===this.state.currency?'✓':'',
+        rowBg:code===this.state.currency?'var(--accent-softer)':'transparent', pick:()=>this.setState({currency:code, apCurOpen:false})})),
       assignAmount:this.state.assignAmount,
       onAssignAmount:(e)=>this.setState({assignAmount:(e.target.value||'').replace(/[^0-9]/g,'')}),
       matchedPlan:(()=>{const a=+this.state.assignAmount||0; return a>=1499?'Enterprise':a>=499?'Pro':a>=199?'Starter':'—';})(),
@@ -1455,6 +2006,28 @@ class Component extends DCLogic {
       toggleTT:()=>this.setState(s=>({ttOpen:!s.ttOpen, fbOpen:false})),
       toggleFB:()=>this.setState(s=>({fbOpen:!s.fbOpen, ttOpen:false})),
       ttCurrent:this.TT_ACCOUNTS[this.state.ttIdx].handle, fbCurrent:this.FB_ACCOUNTS[this.state.fbIdx].handle,
+      ttChipBg: this.state.ttConnected?'rgba(74,222,128,.22)':'rgba(255,255,255,.14)',
+      ttChipShadow: this.state.ttConnected?'inset 0 0 0 1.3px rgba(74,222,128,.6)':'inset 0 0 0 1px rgba(255,255,255,.22)',
+      ttDotBg: this.state.ttConnected?'#4ade80':(this.state.ttConnecting?'#fbbf24':'rgba(255,255,255,.45)'),
+      ttDotGlow: this.state.ttConnected?'0 0 6px rgba(74,222,128,.9)':'none',
+      ttDotAnim: this.state.ttConnected?'sflDot 1.1s ease-in-out infinite':(this.state.ttConnecting?'sflDot .7s ease-in-out infinite':'none'),
+      ttTitle: this.state.ttConnected?'Connected to live stream':'Not connected — pick an account, then Connect',
+      fbChipBg: this.state.fbConnected?'rgba(74,222,128,.22)':'rgba(255,255,255,.14)',
+      fbChipShadow: this.state.fbConnected?'inset 0 0 0 1.3px rgba(74,222,128,.6)':'inset 0 0 0 1px rgba(255,255,255,.22)',
+      fbDotBg: this.state.fbConnected?'#4ade80':(this.state.fbConnecting?'#fbbf24':'rgba(255,255,255,.45)'),
+      fbDotGlow: this.state.fbConnected?'0 0 6px rgba(74,222,128,.9)':'none',
+      fbDotAnim: this.state.fbConnected?'sflDot 1.1s ease-in-out infinite':(this.state.fbConnecting?'sflDot .7s ease-in-out infinite':'none'),
+      fbTitle: this.state.fbConnected?'Connected to live stream':'Not connected — pick an account, then Connect',
+      ttConnLabel: this.state.ttConnecting?'Connecting…':(this.state.ttConnected?'Disconnect':'Connect'),
+      fbConnLabel: this.state.fbConnecting?'Connecting…':(this.state.fbConnected?'Disconnect':'Connect'),
+      ttConnBg: this.state.ttConnected?'var(--surface-2)':'var(--accent)',
+      ttConnFg: this.state.ttConnected?'var(--danger)':'var(--accent-text)',
+      ttConnBorder: this.state.ttConnected?'1px solid var(--border-strong)':'none',
+      fbConnBg: this.state.fbConnected?'var(--surface-2)':'var(--accent)',
+      fbConnFg: this.state.fbConnected?'var(--danger)':'var(--accent-text)',
+      fbConnBorder: this.state.fbConnected?'1px solid var(--border-strong)':'none',
+      connectTT:()=>{ if(this.state.ttConnected){ this.setState({ttConnected:false}); } else if(!this.state.ttConnecting){ this.setState({ttConnecting:true}); setTimeout(()=>this.setState({ttConnected:true, ttConnecting:false, ttOpen:false}), 1200); } },
+      connectFB:()=>{ if(this.state.fbConnected){ this.setState({fbConnected:false}); } else if(!this.state.fbConnecting){ this.setState({fbConnecting:true}); setTimeout(()=>this.setState({fbConnected:true, fbConnecting:false, fbOpen:false}), 1200); } },
       ttAccounts:this.TT_ACCOUNTS.map((a,i)=>({...a, active:i===this.state.ttIdx, ini:a.name.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase(), check:i===this.state.ttIdx?'✓':'', rowBg:i===this.state.ttIdx?'var(--accent-soft)':'transparent', pick:()=>this.setState({ttIdx:i, ttOpen:false})})),
       fbAccounts:this.FB_ACCOUNTS.map((a,i)=>({...a, active:i===this.state.fbIdx, ini:a.handle.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase(), check:i===this.state.fbIdx?'✓':'', rowBg:i===this.state.fbIdx?'var(--accent-soft)':'transparent', pick:()=>this.setState({fbIdx:i, fbOpen:false})})),
       ocSellerBorder: this.state.oneClickTier==='sellerflow'?'var(--accent)':'var(--border)',
@@ -1479,12 +2052,15 @@ class Component extends DCLogic {
       setSlip:()=>this.setState({autoAction:'slip'}), setSticker:()=>this.setState({autoAction:'sticker'}),
       autoSlipStyle:'flex:1;padding:9px 0;border-radius:9px;cursor:pointer;font-family:Plus Jakarta Sans,sans-serif;font-size:11.5px;font-weight:700;'+(this.state.autoAction==='slip'?'background:var(--accent);color:var(--accent-text);border:1px solid var(--accent);':'background:var(--surface-2);color:var(--text-dim);border:1px solid var(--border);'),
       autoStickerStyle:'flex:1;padding:9px 0;border-radius:9px;cursor:pointer;font-family:Plus Jakarta Sans,sans-serif;font-size:11.5px;font-weight:700;'+(this.state.autoAction==='sticker'?'background:var(--accent);color:var(--accent-text);border:1px solid var(--accent);':'background:var(--surface-2);color:var(--text-dim);border:1px solid var(--border);'),
-      autoWords:this.state.autoWords.map((w,i)=>({word:w, remove:()=>this.setState(s=>({autoWords:s.autoWords.filter((_,j)=>j!==i)}))})),
+      autoWords:this.state.autoWords.map((w,i)=>({word:w.word, price:w.price, hasPrice:!!w.price, remove:()=>this.setState(s=>({autoWords:s.autoWords.filter((_,j)=>j!==i)}))})),
+      entPrice:this.state.entPrice,
+      onEntPrice:(e)=>this.setState({entPrice:(e.target.value||'').replace(/[^0-9]/g,'')}),
+      onEntKey:(e)=>{ if(e.key==='Enter'){ e.preventDefault(); const id=this.state.entId; const np={...this.state.printed,[id]:cur+(this.state.entPrice||'0')}; this.setState({printed:np, entId:null, entPrice:''}); setTimeout(()=>{ const p={...this.state.printed}; delete p[id]; this.setState({printed:p}); }, 1600); } },
       autoWordCount:this.state.autoWords.length, canAddWord:this.state.autoWords.length<20,
       addAutoWord:()=>{const pool=this.WORD_POOL.filter(w=>!this.state.autoWords.includes(w)); if(this.state.autoWords.length<20&&pool.length) this.setState(s=>({autoWords:[...s.autoWords,pool[0]]}));},
       autoInput:this.state.autoInput,
       onAutoInput:(e)=>this.setState({autoInput:e.target.value}),
-      onAutoKey:(e)=>{ if(e.key==='Enter'){ e.preventDefault(); const w=(this.state.autoInput||'').trim().toLowerCase(); if(w && !this.state.autoWords.includes(w) && this.state.autoWords.length<20){ this.setState(s=>({autoWords:[...s.autoWords,w], autoInput:''})); } else { this.setState({autoInput:''}); } } },
+      onAutoKey:(e)=>{ if(e.key==='Enter'){ e.preventDefault(); const raw=(this.state.autoInput||'').trim().toLowerCase(); const m=raw.match(/^(.*?)[\s=]*(\d+)?$/); const word=((m&&m[1])||raw).trim(); const price=(m&&m[2])||'150'; if(word && !this.state.autoWords.some(x=>x.word===word) && this.state.autoWords.length<20){ this.setState(s=>({autoWords:[...s.autoWords,{word,price}], autoInput:''})); } else { this.setState({autoInput:''}); } } },
       profileOpen:this.state.profileOpen,
       toggleProfile:()=>this.setState(s=>({profileOpen:!s.profileOpen})),
       editLabel:this.state.profileOpen?'Close':'Edit',
@@ -1492,7 +2068,7 @@ class Component extends DCLogic {
       togglePrinter:()=>this.setState(s=>({printerOpen:!s.printerOpen})),
       printerChevron:this.state.printerOpen?'rotate(180deg)':'rotate(0deg)',
       printerCurrent:this.PRINTERS[this.state.printerIdx].name+' · '+this.PRINTERS[this.state.printerIdx].meta,
-      printers:this.PRINTERS.map((p,i)=>({...p, pick:()=>this.setState({printerIdx:i, printerOpen:false}),
+      printers:this.PRINTERS.map((p,i)=>({...p, pick:()=>this.setState({printerIdx:i, printerOpen:false, screen:'printersettings', psType:(i===0?'wifi':'bt')}),
         radioColor:i===this.state.printerIdx?'var(--accent)':'var(--border-strong)',
         dotBg:i===this.state.printerIdx?'var(--accent)':'transparent',
         rowBg:i===this.state.printerIdx?'var(--accent-softer)':'transparent',
