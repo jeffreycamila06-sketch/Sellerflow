@@ -3,7 +3,7 @@
 // src/styles/design-tokens.css), and renders all built screens + bottom nav.
 // Self-contained preview — does NOT import or touch the existing app.
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { INCOMING, SEED_COMMENTS, LANGS, CURRENCIES, curSymbol, type Comment, type ThemeMode, type AccentKey, type AutoControls, type AutoWord } from "./data";
+import { INCOMING, SEED_COMMENTS, CURRENCIES, curSymbol, type Comment, type ThemeMode, type AccentKey, type AutoControls, type AutoWord } from "./data";
 import Dashboard from "./screens/Dashboard";
 import Orders from "./screens/Orders";
 import Products from "./screens/Products";
@@ -49,7 +49,6 @@ export default function RedesignApp() {
   const [assignAmount, setAssignAmount] = useState("499");
   const [lang, setLang] = useState<string>(() => readLS(LS.lang, "en"));
   const [langOpen, setLangOpen] = useState(false);
-  const [langPickerOpen, setLangPickerOpen] = useState(false);
 
   // Currency switcher (dc.html v3). `cur` is the derived symbol threaded through
   // every money display. Visual only — Phase 5 wires the real Taiwan NT$.
@@ -240,7 +239,6 @@ export default function RedesignApp() {
           {screen === "menu" && (
             <SettingsHub
               onGeneral={() => setScreen("settings")}
-              onLanguage={() => setLangPickerOpen(true)}
               onCustomers={() => setScreen("customers")}
               onAdmin={() => setScreen("admin")}
               onSales={() => setScreen("sales")}
@@ -320,22 +318,6 @@ export default function RedesignApp() {
           <AdminPanel panel={adminPanel} onClose={() => setAdminPanel(null)} assignAmount={assignAmount} onAssignAmount={setAssignAmount} cur={cur} />
         )}
       </div>
-
-      {/* Language picker (hub Language tile / General Settings language row) */}
-      {langPickerOpen && (
-        <div onClick={() => setLangPickerOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 320, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, boxShadow: "0 18px 44px rgba(0,0,0,.4)", padding: 8 }}>
-            <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--text-muted)", padding: "8px 10px 9px" }}>APP LANGUAGE</div>
-            {LANGS.map((l) => (
-              <button key={l.code} onClick={() => { setLang(l.code); setLangPickerOpen(false); }} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "10px", border: "none", borderRadius: 10, background: l.code === lang ? "var(--accent-soft)" : "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
-                <span style={{ fontSize: 18, lineHeight: 1 }}>{l.flag}</span>
-                <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{l.label}</span>
-                <span style={{ color: "var(--accent-fg)", fontWeight: 800, fontSize: 14, width: 14 }}>{l.code === lang ? "✓" : ""}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

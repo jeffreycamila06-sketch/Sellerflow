@@ -240,11 +240,6 @@ export default function GeneralSettings({
               <div style={{ flex: 1 }}><div style={rowTitle}>LIVE print pattern</div><div style={rowSub}>What prints on each slip · sizes</div></div>
               <span style={{ fontSize: 16, color: "var(--text-muted)" }}>›</span>
             </button>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 14, borderTop: "1px solid var(--border)" }}>
-              <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)" }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="12" rx="2" stroke="currentColor" strokeWidth="1.7" /><path d="M9 21h6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg></div>
-              <div style={{ flex: 1 }}><div style={rowTitle}>Display &amp; text size</div><div style={rowSub}>Large · keep screen awake</div></div>
-              <span style={{ fontSize: 16, color: "var(--text-muted)" }}>›</span>
-            </div>
           </div>
         </div>
 
