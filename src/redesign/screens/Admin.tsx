@@ -129,7 +129,7 @@ function SubList({ list, statusLabel, statusColor, note, showPlan = true }: { li
   );
 }
 
-export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", actions }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; actions?: AdminActions }) {
+export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", actions, onChanged }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; actions?: AdminActions; onChanged?: () => void }) {
   // Per-user optimistic display state. Real writes go through `actions` (5h).
   const [userPlans, setUserPlans] = useState<Record<string, string>>({});
   const [userDays, setUserDays] = useState<Record<string, number>>({});
@@ -147,10 +147,15 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
     if (!actions || busy) return;
     if (!window.confirm(`Admin action:\n${label}\nTarget: ${email}\n\nContinue?`)) return;
     setBusy(true);
-    const r = await fn();
-    setBusy(false);
-    if (r.ok) { onOk?.(); window.alert(`✓ ${label} — ${email}`); }
-    else window.alert(`✗ ${label} failed: ${r.error || "error"}`);
+    try {
+      const r = await fn();
+      if (r.ok) { onOk?.(); onChanged?.(); window.alert(`✓ ${label} — ${email}`); } // refresh real list
+      else window.alert(`✗ ${label} failed: ${r.error || "error"}`);
+    } catch (e) {
+      window.alert(`✗ ${label} failed: ${e instanceof Error ? e.message : "error"}`);
+    } finally {
+      setBusy(false); // never leave the panel stuck (was the bug blocking later actions)
+    }
   };
   const doPlan = (email: string, plan: Plan, label: string) =>
     void run(`Set plan → ${label}`, email, async () => { const r = await actions!.changePlan(email, plan); if (r.ok) setPlan(email, label); return r; });
@@ -193,6 +198,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                         <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
                           <span style={{ fontSize: 10, fontWeight: 800, color: isAdmin ? "var(--accent-fg)" : "var(--text-dim)", background: isAdmin ? "var(--accent-soft)" : "var(--surface-3)", padding: "3px 7px", borderRadius: 6 }}>{u.role}</span>
                           <span style={{ fontSize: 10, fontWeight: 800, color: planFg(plan), background: "var(--surface)", border: "1px solid var(--border)", padding: "3px 7px", borderRadius: 6 }}>{plan}</span>
+                          {u.status && u.status !== "active" && <span style={{ fontSize: 10, fontWeight: 800, color: u.status === "expired" ? "var(--danger)" : "var(--warn)", background: "var(--surface)", border: "1px solid var(--border)", padding: "3px 7px", borderRadius: 6 }}>{u.status}</span>}
                         </div>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 9, fontSize: 11, color: "var(--text-dim)" }}>

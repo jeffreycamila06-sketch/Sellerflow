@@ -10,7 +10,7 @@
 // configured or a read errors, and shows a proper empty state when a real query
 // returns nothing (so the preview never looks broken, and a real-but-empty test
 // account reads as empty rather than fake).
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { isSupabaseConfigured } from "../../supabase";
 import { loadTodaysLiveSession, getCustomersFromDatabase } from "../../db";
 import { listUsers, type AccountUser } from "../../accountDb";
@@ -89,6 +89,7 @@ export function accountUsersToRedesign(users: AccountUser[]): User[] {
     plan: planLabel(u.plan),
     days: 0, // tenure not available from seller_profiles; real "add days" is 5h
     accounts: String(u.connectedAccounts.length),
+    status: u.planStatus, // 5h — surfaces "expired"/"pending"/"active" in the panel
   }));
 }
 
@@ -137,11 +138,12 @@ export function useCustomers(enabled: boolean): { customers: Customer[]; state: 
 // Admin user list. enabled should be true ONLY for an admin profile — a seller's
 // listUsers returns just their own row (RLS), which would look broken, so callers
 // gate on role and otherwise keep sample.
-export function useAdminUsers(enabled: boolean): { users: User[]; state: ReadState } {
+export function useAdminUsers(enabled: boolean): { users: User[]; state: ReadState; reload: () => void } {
   const [users, setUsers] = useState<User[]>(SAMPLE_USERS);
   const [state, setState] = useState<ReadState>("sample");
-  useEffect(() => {
-    if (!enabled || !isSupabaseConfigured) { setState("sample"); setUsers(SAMPLE_USERS); return; }
+  // 5h — reusable loader so the panel can refresh after an admin write.
+  const load = useCallback(() => {
+    if (!enabled || !isSupabaseConfigured) { setState("sample"); setUsers(SAMPLE_USERS); return () => {}; }
     let active = true;
     setState("loading");
     listUsers()
@@ -154,5 +156,6 @@ export function useAdminUsers(enabled: boolean): { users: User[]; state: ReadSta
       .catch(() => { if (active) { setUsers(SAMPLE_USERS); setState("sample"); } });
     return () => { active = false; };
   }, [enabled]);
-  return { users, state };
+  useEffect(() => load(), [load]);
+  return { users, state, reload: load };
 }

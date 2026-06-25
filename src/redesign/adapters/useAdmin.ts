@@ -61,13 +61,17 @@ export function useAdmin(adminEmail: string | undefined): AdminActions {
   const setPassword = useCallback(async (email: string, newPassword: string): Promise<AdminResult> => {
     if (!supabase) return { ok: false, error: "Password service unavailable" };
     if (newPassword.trim().length < 6) return { ok: false, error: "Password must be at least 6 characters" };
-    const { data, error } = await supabase.functions.invoke("admin-set-password", {
-      body: { targetEmail: email.trim().toLowerCase(), newPassword: newPassword.trim() },
-    });
-    const result = data as { success?: boolean; error?: string } | null;
-    if (error || result?.error) return { ok: false, error: result?.error || error?.message || "Unknown error" };
-    audit("set password", email, "via admin-set-password Edge Function");
-    return { ok: true };
+    try {
+      const { data, error } = await supabase.functions.invoke("admin-set-password", {
+        body: { targetEmail: email.trim().toLowerCase(), newPassword: newPassword.trim() },
+      });
+      const result = data as { success?: boolean; error?: string } | null;
+      if (error || result?.error) return { ok: false, error: result?.error || error?.message || "Unknown error" };
+      audit("set password", email, "via admin-set-password Edge Function");
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "Edge function call failed" };
+    }
   }, [audit]);
 
   const removeUser = useCallback(async (email: string): Promise<AdminResult> => {
