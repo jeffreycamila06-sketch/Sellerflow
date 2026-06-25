@@ -313,8 +313,16 @@ already-exported safe pieces — DO NOT touch protected logic files.**
   (aggregation), **self-serve Signup**, **self-serve Delete Account**,
   **Products→Supabase cross-device** (Products still wires to localStorage
   `sf_prods` = its real current backend). New backends = later phase.
-- **F5 admin → (a):** temporarily grant a TEST account (NOT the real owner) an
-  admin role for 5h Admin testing; set up when 5h starts.
+- **F5 admin → JEFF OVERRIDE (2026-06-25):** will test using the REAL admin/owner
+  account **`camilajeffrey1@gmail.com`** (not a temp role). ⚠️ RISKS noted:
+  - **R1** — free-cap (5f) CANNOT be tested with this account (owner is Master/Pro,
+    not free) → still need a FREE-tier account (e.g. `googletest` set free) for 5f.
+  - **R2** — admin writes (5h) on the real owner are DANGEROUS (set-password /
+    adminUpdatePlan affect real sellers, not RLS-protected). Safeguard: create a
+    dummy/throwaway seller row as the target; NEVER test against a real seller.
+  - **R3** — order writes (5e) land under the owner's own `user_id`
+    (live_session_orders/customers) — contained + deletable, but pollutes owner's
+    own session. (Open: use `googletest` for order-write tests instead?)
 - **F6 → YES:** include the visibility-guarded free-cap poll fix (M2 egress) during
   5f.
 - **Per-sub-step approach (extract-vs-adapter, F3-aware):** 5a auth = adapter hook
