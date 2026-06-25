@@ -200,12 +200,13 @@ export default function Dashboard({
                     <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".05em", color: "var(--accent-text)", background: "var(--accent)", padding: "2px 6px", borderRadius: 5, flexShrink: 0 }}>MINE</span>
                   )}
                 </div>
-                {c.mine && (
-                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 8 }}>
-                    <button onClick={onGoOrders} title="Enterprise auto-order" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 800, letterSpacing: ".02em", color: "var(--accent-fg)", background: "transparent", border: "1.3px solid var(--accent)", padding: "5px 11px", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{bolt}Enterprise</button>
-                    <button onClick={onGoOrders} title="Create order in 1 click" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 800, letterSpacing: ".02em", color: "var(--accent-text)", background: "var(--accent)", border: "none", padding: "5px 12px", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)", boxShadow: "0 2px 8px var(--accent-soft)" }}>{bolt12}1-Click</button>
-                  </div>
-                )}
+                {/* 1-Click + Enterprise on EVERY row (Jeff's deliberate change
+                    from v2, which showed them only on MINE rows). The MINE tag
+                    above stays gated on c.mine. */}
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 8 }}>
+                  <button onClick={onGoOrders} title="Enterprise auto-order" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 800, letterSpacing: ".02em", color: "var(--accent-fg)", background: "transparent", border: "1.3px solid var(--accent)", padding: "5px 11px", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{bolt}Enterprise</button>
+                  <button onClick={onGoOrders} title="Create order in 1 click" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 800, letterSpacing: ".02em", color: "var(--accent-text)", background: "var(--accent)", border: "none", padding: "5px 12px", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)", boxShadow: "0 2px 8px var(--accent-soft)" }}>{bolt12}1-Click</button>
+                </div>
               </div>
             </div>
           ))}
