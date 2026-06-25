@@ -5,6 +5,8 @@
 // visual-only — real account switching / order creation is Phase 5.
 import type { CSSProperties } from "react";
 import { avColor, initials, TT_ACCOUNTS, FB_ACCOUNTS, type Comment, type AutoWord } from "../data";
+import { sessionSummary, type SessionState } from "../adapters/useLiveSession";
+import type { RebuiltSession } from "../../lib/orderLogic";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "12px 16px 13px" };
 const pickerBtn: CSSProperties = { width: "100%", display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.18)", padding: "6px 9px", border: "none", borderRadius: 9, fontSize: 11.5, fontWeight: 600, color: "var(--on-header)", cursor: "pointer", fontFamily: "var(--font-ui)" };
@@ -44,8 +46,10 @@ export default function Dashboard({
   ttConnected, fbConnected, ttConnecting, fbConnecting, onConnectTT, onConnectFB,
   sessionDays, sessionOpen, onToggleSession, onPickSession,
   autoDetect, autoWords, printed, entId, entPrice, onOneClick, onOpenEnt, onEntPrice, onEntKey,
+  session = { buyers: [], orders: [] }, sessionState = "idle",
 }: {
   comments: Comment[]; cur: string;
+  session?: RebuiltSession; sessionState?: SessionState;
   ttOpen: boolean; fbOpen: boolean; ttIdx: number; fbIdx: number;
   onToggleTT: () => void; onToggleFB: () => void;
   onPickTT: (i: number) => void; onPickFB: (i: number) => void;
@@ -60,6 +64,7 @@ export default function Dashboard({
   const tt = conn(ttConnected, ttConnecting);
   const fb = conn(fbConnected, fbConnecting);
   const sessionLabel = sessionDays + (sessionDays > 1 ? " days" : " day");
+  const summary = sessionSummary(session); // Phase 5c — today's hydrated session
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
       <div style={headerBar}>
@@ -151,6 +156,18 @@ export default function Dashboard({
       </div>
 
       <div style={{ padding: "14px 14px 18px", flex: 1, display: "flex", flexDirection: "column" }}>
+        {/* Phase 5c — today's cross-device session summary (read-only). Shows
+            when a session exists for today; stays hidden when empty. */}
+        {sessionState === "loading" && (
+          <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "0 2px 9px" }}>Loading today’s session…</div>
+        )}
+        {summary.orders > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 13, padding: "10px 13px", marginBottom: 11, boxShadow: "var(--shadow)" }}>
+            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".04em", color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "4px 9px", borderRadius: 7 }}>TODAY</span>
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{summary.buyers} buyers · {summary.orders} orders</span>
+            <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{cur}{summary.total.toLocaleString("en-US")}</span>
+          </div>
+        )}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 9, padding: "0 2px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
             <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14.5, color: "var(--text)" }}>Live comments</span>

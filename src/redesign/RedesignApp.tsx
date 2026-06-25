@@ -26,6 +26,7 @@ import PrinterSettings from "./screens/PrinterSettings";
 import PrintPattern, { DEFAULT_PP, type PrintPatternState, type PpBoolKey, type PpSizeKey } from "./screens/PrintPattern";
 import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
 import { useLiveOrders, useCustomers, useAdminUsers } from "./adapters/useReadData";
+import { useLiveSession } from "./adapters/useLiveSession";
 
 type Screen =
   | "login" | "signup" | "dashboard" | "miners" | "orders" | "products"
@@ -55,6 +56,8 @@ export default function RedesignApp() {
   const liveOrders = useLiveOrders(authed);
   const customersData = useCustomers(authed);
   const adminUsers = useAdminUsers(authed && isAdmin);
+  // Phase 5c — cross-device live-session load for the Dashboard (hydrate-on-empty).
+  const liveSession = useLiveSession(authed);
 
   const [theme, setTheme] = useState<ThemeMode>(() => (readLS(LS.theme, "light") === "dark" ? "dark" : "light"));
   const [accent, setAccent] = useState<AccentKey>(() => safeAccent(readLS(LS.accent, "indigo")));
@@ -276,6 +279,7 @@ export default function RedesignApp() {
               printed={printed} entId={entId} entPrice={entPrice}
               onOneClick={onOneClick} onOpenEnt={onOpenEnt}
               onEntPrice={(v) => setEntPrice(v.replace(/[^0-9]/g, ""))} onEntKey={onEntKey}
+              session={liveSession.session} sessionState={liveSession.state}
             />
           )}
           {screen === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} orders={liveOrders.orders} state={liveOrders.state} />}
