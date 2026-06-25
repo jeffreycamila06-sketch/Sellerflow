@@ -3,10 +3,10 @@
 Guidance for Claude Code (and humans). Read this first — it captures
 load-bearing context that is NOT obvious from the code.
 
-_Last substantial update: 2026-06-24 (Google Play production PUBLISHED — signed
-AAB versionCode 2 / "1.1", full rollout all countries; capacitor.config.ts
-production-URL restore gotcha; M3 billing doc fix; full audit; final APK to
-Telegram — see "SESSION 2026-06-24")._
+_Last substantial update: 2026-06-25 (FULL REDESIGN — branch `claude/full-redesign`,
+20 screens visual-only via isolated `redesign.html` Vite entry; Phase 5 plan to wire
+real logic drafted + flagged, NO code yet — see "SESSION 2026-06-25". Prior: 2026-06-24
+Google Play production PUBLISHED AAB v2/"1.1".)_
 
 ## What it is
 Capacitor-based live-selling assistant app para sa TikTok/Facebook sellers sa Taiwan.
@@ -246,10 +246,77 @@ Handoff: **`settings-redesign-handoff.md`**; approved mockup
   2. **Scope** — which settings groups are in scope for v1?
   3. **Ship method** — phased rollout vs single merge?
 
+## SESSION 2026-06-25 — FULL REDESIGN (branch `claude/full-redesign`, NOT main)
+
+A complete app-wide visual redesign, built as a **fully ISOLATED sandbox** so it
+can never break production. Phases 1–4 DONE (visual-only); Phase 5 (wire to real
+logic) is **PLAN APPROVED-PENDING — no code yet**.
+
+### Architecture (load-bearing)
+- **Separate Vite entry:** `redesign.html` → `src/redesign/main.tsx` →
+  `RedesignApp.tsx`. vite.config multi-page: `main: index.html` (prod) +
+  `redesign: redesign.html` (preview). **Zero imports** from `App.tsx`/`db.ts`/
+  `lib/*` → production code path UNTOUCHED.
+- **20 screens DONE** (visual + sample data only): Login, Signup, Dashboard(LIVE),
+  Orders, Products, Miners, SettingsHub, GeneralSettings, Customers, Subscription,
+  Support, Admin(+13 panel kinds), Print, SalesReport, Shipping, CustomerData,
+  Legal, DeleteAccount, PrinterSettings, PrintPattern.
+- **All sample data** in `src/redesign/data.ts` (SEED_COMMENTS, ORDERS, PRODUCTS,
+  CUSTOMERS, SELLERS, etc. — Maria/₱ demo). Theme/accent/lang/currency persisted to
+  localStorage `sfl_rd_*`. **No Supabase, no socket.io, no native calls yet.**
+- Design source: `design-redesign/SellerFlowLive.dc.html` (v3) +
+  `design-redesign/README.md` (handoff). Parity confirmed 1:1 (commit `8a2c344`).
+- Shared helpers: `src/redesign/ui.ts`, design tokens `src/styles/design-tokens.css`
+  (`[data-theme]`/`[data-accent]`), 6 accents, dark/light.
+
+### Phase 5 PLAN (wire redesign → real logic + Taiwan NT$ swap) — APPROVED-PENDING
+**Core strategy: NEW adapter layer `src/redesign/adapters/*` that COMPOSES the
+already-exported safe pieces — DO NOT touch protected logic files.**
+- ✅ **Safe to import directly:** `supabase.ts` singleton (auth auto-shared via
+  `localStorage["sf_supabase_auth"]`), `db.ts` (`saveLiveSessionOrder`,
+  `loadTodaysLiveSession`, `saveOrderToDatabase`, `saveCustomerToDatabase`,
+  `getCustomersFromDatabase`), `accountDb.ts` (`getMyProfile`, `createMyProfile`,
+  `listUsers`, `upsertUser`, `adminUpdatePlan`, `listAuditLogs`), pure `lib/*`
+  (`buildOrderFromComment`, `rebuildSessionFromRows`, `taipeiDayId`,
+  `printerRouting`, `slipFields`).
+- ❌ **Tangled inside `App.tsx` (NOT exported → reimplement in adapter using the
+  SAME pure cores, zero App.tsx touch):** `createOrderFromComment` fan-out (4326),
+  socket.io (4025), `commentKey`/dedup (111), `refreshFreeStatus`+cap popup (4157),
+  `printSlip`+`buildNativeStickerPayload` (538–707).
+- **Sub-steps (each: diff + tests 101/101 + Vercel preview + wait "go"):** 5a auth ·
+  5b read-only data · 5c cross-device load · 5d live feed(socket) · 5e **order
+  1-click fan-out (RISKIEST, writes billing ledger)** · 5f free-cap · 5g printing ·
+  5h admin writes · 5i settings persistence · 5j tail(signup/export/delete/ship).
+- **Taiwan swap:** default currency `TWD`/`NT$`; Maria→real `getMyProfile`; demo
+  arrays→live RLS-scoped queries. **Subscription stays Wise+Telegram manual (NO
+  Play billing).**
+- **Testing:** `googletest@sellerflowlive.com` on **production Supabase** (no
+  staging) — RLS `user_id=auth.uid()` isolates it from the 45–53 real sellers;
+  set it FREE tier to test the cap without touching the real ledger.
+- **🚩 OPEN FLAGS (decide before coding):**
+  - **F1 printing** — `printSlip`/`buildNativeStickerPayload` live in App.tsx (NOT
+    golden-tested directly). Rec: extract to `src/lib/printPayload.ts` (touches
+    App.tsx, behavior-identical) vs copy+parity-test vs defer.
+  - **F2 socket preview** — Render `CLIENT_ORIGIN=sellerflowlive.com` → Vercel
+    preview CANNOT TikTok-connect; 5d/5e socket flow only testable on prod / behind
+    flag / temp Render origin allow.
+  - **F3** — side-by-side forever vs eventually REPLACE prod UI (changes
+    reimplement-vs-extract calculus).
+  - **F4 NEW (not wiring)** — Miners/SalesReport have no aggregation source;
+    Shipping has no courier backend; self-serve Signup/DeleteAccount need
+    service_role edge fns; Products = localStorage `sf_prods` (no Supabase table).
+  - **F5** — Admin test needs an admin-role test account.
+  - **F6** — fix M2 (visibility-guard free-cap poll) while in 5f?
+- Recommended start: **5a (auth)**.
+
 ## Current state / NEXT
-- `main` HEAD has all of the above. **101/101 vitest green.** Egress small. Billing
-  `orders` untouched.
+- **`main`** HEAD = Play-published prod (all pre-redesign work). **101/101 vitest
+  green.** Egress small. Billing `orders` untouched.
+- **`claude/full-redesign`** HEAD `8a2c344` = 20-screen visual redesign, isolated
+  Vite entry, sample data only. **Production untouched.** Phase 5 = plan only.
 - ✅ **DONE:** Google Play production **PUBLISHED** (AAB v2 / "1.1", full rollout —
-  live); final APK (native sticker + language) distributed via Telegram.
-- ⚠️ **NEXT:** bump versionCode ≥3 before the next AAB upload.
+  live); final APK (native sticker + language) distributed via Telegram. Full
+  redesign Phases 1–4 (visual). Phase 5 plan drafted + flagged.
+- ⚠️ **NEXT:** (1) Jeff to decide Phase 5 flags F1–F6 + pick first sub-step (rec
+  5a). (2) bump versionCode ≥3 before the next AAB upload.
   Open watch items: M1 sticker clipping at high scale, M2 free-tier 30s poll egress.
