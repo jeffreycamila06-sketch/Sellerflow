@@ -173,12 +173,14 @@ export const SALES: { d: string; v: number }[] = [
   { d: "Fri", v: 21800 }, { d: "Sat", v: 28400 }, { d: "Sun", v: 19600 },
 ];
 // Admin plans (dc.html v3 PLANS L1550). Prices are bare — the currency symbol
-// `cur` is prepended at render so the currency switcher applies everywhere.
+// `cur` is prepended at render. Phase 5b: REAL Taiwan production prices/tiers
+// (Basic NT$500 · Pro NT$1,200 · Master NT$1,700). Subscriptions stay manual
+// via Wise + Telegram (no Play billing). Seller counts are sample.
 export interface Plan { name: string; price: string; per: string; sellers: string; feats: string[]; }
 export const PLANS: Plan[] = [
-  { name: "Starter", price: "199", per: "/mo", sellers: "4,120 sellers", feats: ["1 live channel", "Auto-detect \"mine\"", "Order slips"] },
-  { name: "Pro", price: "499", per: "/mo", sellers: "5,310 sellers", feats: ["TikTok + Facebook", "1-Click order", "Printer & shipping"] },
-  { name: "Enterprise", price: "1,499", per: "/mo", sellers: "412 sellers", feats: ["Everything in Pro", "Auto-print + stickers", "Bulk claim · priority sync"] },
+  { name: "Basic", price: "500", per: "/mo", sellers: "sample", feats: ["1 live channel", "Auto-detect \"mine\"", "Order slips"] },
+  { name: "Pro", price: "1,200", per: "/mo", sellers: "sample", feats: ["TikTok + Facebook", "1-Click order", "Printer & shipping"] },
+  { name: "Master", price: "1,700", per: "/mo", sellers: "sample", feats: ["Everything in Pro", "Auto-print + stickers", "Bulk claim · priority sync"] },
 ];
 // Admin payments (dc.html v3 PAYMENTS L1594). Bare amounts — `cur` prepended at render.
 export interface Payment { seller: string; method: string; amount: string; status: string; time: string; }

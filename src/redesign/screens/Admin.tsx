@@ -4,8 +4,9 @@
 // full users-management panel (per-user plan + days, visual only). Sample data
 // only — no real seller management (Phase 5).
 import { useState, type CSSProperties, type ReactNode } from "react";
-import { PLANS, PAYMENTS, USERS, SIGNUPS, SUBS, PLAN_PRICE, type Sub } from "../data";
+import { PLANS, PAYMENTS, USERS, SIGNUPS, SUBS, PLAN_PRICE, type Sub, type User } from "../data";
 import { headerBar, card, mono } from "../ui";
+import type { ReadState } from "../adapters/useReadData";
 
 export type AdminPanelKind =
   | "sellers" | "plans" | "payments" | "reports" | "system" | "broadcast"
@@ -101,7 +102,8 @@ const sheetBtn: CSSProperties = { width: "100%", padding: "13px 0", border: "non
 const planBtn: CSSProperties = { fontSize: 10.5, fontWeight: 700, color: "var(--accent-fg)", background: "var(--accent-soft)", border: "none", padding: "5px 9px", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" };
 const actBtn: CSSProperties = { fontSize: 10.5, fontWeight: 700, color: "var(--text)", background: "var(--surface)", border: "1px solid var(--border-strong)", padding: "5px 9px", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" };
 
-const matchPlan = (amt: string) => { const a = +amt || 0; return a >= 1499 ? "Enterprise" : a >= 499 ? "Pro" : a >= 199 ? "Starter" : "—"; };
+// Real Taiwan prices: Master NT$1,700 · Pro NT$1,200 · Basic NT$500.
+const matchPlan = (amt: string) => { const a = +amt || 0; return a >= 1700 ? "Master" : a >= 1200 ? "Pro" : a >= 500 ? "Basic" : "—"; };
 const planFg = (plan: string) => ({ Master: "#7c3aed", Pro: "#0284c7", Basic: "#059669", Free: "#9795ad" } as Record<string, string>)[plan] || "var(--text-dim)";
 
 const NOTIFS = [
@@ -126,14 +128,16 @@ function SubList({ list, statusLabel, statusColor, note, showPlan = true }: { li
   );
 }
 
-export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string }) {
-  // Users-management ephemeral state (dc.html v3 userPlans/userDays/addIdx). Visual only.
+export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample" }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState }) {
+  // Users-management ephemeral state (dc.html v3 userPlans/userDays/addIdx). Visual
+  // only — these never write to the DB (real plan/days/PW changes are 5h).
   const [userPlans, setUserPlans] = useState<Record<string, string>>({});
   const [userDays, setUserDays] = useState<Record<string, number>>({});
   const [addIdx, setAddIdx] = useState<number | null>(null);
   const [addVal, setAddVal] = useState("");
   const setPlan = (email: string, plan: string) => setUserPlans((p) => ({ ...p, [email]: plan }));
-  const revAdded = USERS.reduce((sum, u) => sum + ((PLAN_PRICE[userPlans[u.email] || u.plan] || 0) - (PLAN_PRICE[u.plan] || 0)), 0);
+  const revAdded = users.reduce((sum, u) => sum + ((PLAN_PRICE[userPlans[u.email] || u.plan] || 0) - (PLAN_PRICE[u.plan] || 0)), 0);
+  const userCount = usersState === "live" || usersState === "empty" ? `${users.length}` : "12,480";
 
   return (
     <div onClick={onClose} style={{ position: "absolute", inset: 0, zIndex: 9, background: "rgba(8,6,24,.5)", backdropFilter: "blur(2px)", display: "flex", alignItems: "flex-end" }}>
@@ -151,11 +155,13 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur }
                 <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Search email or @handle</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 11 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>Users · 12,480</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>Users · {userCount}</span>
                 <button style={{ fontSize: 11.5, fontWeight: 700, color: "var(--accent-text)", background: "var(--accent)", border: "none", padding: "7px 12px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>+ Add user</button>
               </div>
+              {usersState === "loading" && <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 2px" }}>Loading sellers…</div>}
+              {usersState === "empty" && <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 2px" }}>No sellers found.</div>}
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {USERS.map((u, i) => {
+                {users.map((u, i) => {
                   const plan = userPlans[u.email] || u.plan;
                   const days = userDays[u.email] != null ? userDays[u.email] : u.days;
                   const isAdmin = u.role === "Admin";

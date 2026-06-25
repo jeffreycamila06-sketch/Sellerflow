@@ -1,14 +1,19 @@
 // Screen 7 — Customers (list + comment archive). dc.html v2 L647–689.
-import { CUSTOMERS, ARCHIVE, avColor, initials, fmt } from "../data";
+// Phase 5b: customer list reads REAL data via getCustomersFromDatabase (useCustomers
+// adapter), with loading/empty/sample states. The Comment archive stays sample —
+// it is live-comment history with no backing table (Phase 5 later). Read-only.
+import { CUSTOMERS, ARCHIVE, avColor, initials, fmt, type Customer } from "../data";
 import { headerBar, headerTitle, mono } from "../ui";
+import type { ReadState } from "../adapters/useReadData";
 
-export default function Customers({ cur }: { cur: string }) {
+export default function Customers({ cur, customers = CUSTOMERS, state = "sample" }: { cur: string; customers?: Customer[]; state?: ReadState }) {
+  const total = state === "loading" ? "…" : `${customers.length}`;
   return (
     <div>
       <div style={headerBar}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={headerTitle}>Customers</div>
-          <div style={{ fontSize: 12.5, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "6px 11px", borderRadius: 9 }}>1,284 total</div>
+          <div style={{ fontSize: 12.5, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "6px 11px", borderRadius: 9 }}>{total} total</div>
         </div>
         <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.16)", borderRadius: 11, padding: "9px 12px" }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" /><path d="m20 20-3.5-3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
@@ -16,9 +21,11 @@ export default function Customers({ cur }: { cur: string }) {
         </div>
       </div>
       <div style={{ padding: "14px 14px 22px" }}>
-        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 15, boxShadow: "var(--shadow)", overflow: "hidden", marginBottom: 18 }}>
-          {CUSTOMERS.map((c) => (
-            <div key={c.handle} style={{ display: "flex", alignItems: "center", gap: 11, padding: "12px 14px", borderBottom: "1px solid var(--border)" }}>
+        {state === "loading" && <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "20px 0" }}>Loading customers…</div>}
+        {state === "empty" && <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "20px 0", marginBottom: 18 }}>No customers yet.</div>}
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 15, boxShadow: "var(--shadow)", overflow: "hidden", marginBottom: 18, display: customers.length ? "block" : "none" }}>
+          {customers.map((c, i) => (
+            <div key={`${c.handle}-${i}`} style={{ display: "flex", alignItems: "center", gap: 11, padding: "12px 14px", borderBottom: "1px solid var(--border)" }}>
               <div style={{ width: 40, height: 40, borderRadius: "50%", background: avColor(c.name), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{initials(c.name)}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{c.name}</div>

@@ -1,6 +1,10 @@
 // Screen 2 — Orders. dc.html L285–325.
+// Phase 5b: reads today's REAL live-session orders (loadTodaysLiveSession +
+// rebuildSessionFromRows) via the useLiveOrders adapter; falls back to sample
+// when unconfigured, shows loading / empty states otherwise. Read-only.
 import type { CSSProperties } from "react";
-import { ORDERS, avColor, initials, fmt, statusColor } from "../data";
+import { ORDERS, avColor, initials, fmt, statusColor, type Order } from "../data";
+import type { ReadState } from "../adapters/useReadData";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px" };
 const title: CSSProperties = { fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" };
@@ -8,24 +12,29 @@ const filterActive: CSSProperties = { background: "#fff", color: "var(--accent)"
 const filterIdle: CSSProperties = { background: "rgba(255,255,255,.16)", fontSize: 12, fontWeight: 600, padding: "6px 13px", borderRadius: 20, whiteSpace: "nowrap" };
 const mono = "var(--font-mono)";
 
-export default function Orders({ onGoPrint, cur }: { onGoPrint: () => void; cur: string }) {
+export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sample" }: { onGoPrint: () => void; cur: string; orders?: Order[]; state?: ReadState }) {
+  const live = state === "live";
+  const countBy = (s: string) => orders.filter((o) => o.status === s).length;
+  const badge = state === "loading" ? "Today · …" : `Today · ${orders.length}`;
   return (
     <div>
       <div style={headerBar}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={title}>Orders</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "6px 11px", borderRadius: 9 }}>Today · 6</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "6px 11px", borderRadius: 9 }}>{badge}</div>
         </div>
         <div className="sfl-scroll" style={{ display: "flex", gap: 7, marginTop: 13, overflowX: "auto" }}>
-          <div style={filterActive}>All</div>
-          <div style={filterIdle}>Unpaid · 2</div>
-          <div style={filterIdle}>Paid · 2</div>
-          <div style={filterIdle}>Shipped</div>
+          <div style={filterActive}>All · {orders.length}</div>
+          <div style={filterIdle}>Unpaid · {countBy("Unpaid")}</div>
+          <div style={filterIdle}>Paid · {countBy("Paid")}</div>
+          <div style={filterIdle}>Shipped · {countBy("Shipped")}</div>
         </div>
       </div>
       <div style={{ padding: "14px 14px 22px", display: "flex", flexDirection: "column", gap: 11 }}>
-        {ORDERS.map((o) => (
-          <div key={o.id} onClick={onGoPrint} title="Print slip" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 15, padding: "13px 14px", boxShadow: "var(--shadow)", cursor: "pointer" }}>
+        {state === "loading" && <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "24px 0" }}>Loading today’s orders…</div>}
+        {state === "empty" && <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "24px 0" }}>No orders yet today.</div>}
+        {orders.map((o, idx) => (
+          <div key={`${o.id}-${idx}`} onClick={onGoPrint} title="Print slip" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 15, padding: "13px 14px", boxShadow: "var(--shadow)", cursor: "pointer" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
               <div style={{ width: 40, height: 40, borderRadius: 12, background: avColor(o.buyer), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{initials(o.buyer)}</div>
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -43,7 +52,7 @@ export default function Orders({ onGoPrint, cur }: { onGoPrint: () => void; cur:
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 11, paddingTop: 11, borderTop: "1px solid var(--border)" }}>
               <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".03em", color: statusColor(o.status), background: "var(--surface-2)", border: "1px solid var(--border)", padding: "3px 9px", borderRadius: 7 }}>{o.status}</span>
               <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)" }}>{o.platform}</span>
-              <span style={{ fontSize: 11.5, color: "var(--text-muted)", marginLeft: "auto" }}>{o.time} ago</span>
+              <span style={{ fontSize: 11.5, color: "var(--text-muted)", marginLeft: "auto" }}>{live ? o.time : `${o.time} ago`}</span>
             </div>
           </div>
         ))}

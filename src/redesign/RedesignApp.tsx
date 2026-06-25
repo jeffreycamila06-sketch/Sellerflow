@@ -25,6 +25,7 @@ import Signup from "./screens/Signup";
 import PrinterSettings from "./screens/PrinterSettings";
 import PrintPattern, { DEFAULT_PP, type PrintPatternState, type PpBoolKey, type PpSizeKey } from "./screens/PrintPattern";
 import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
+import { useLiveOrders, useCustomers, useAdminUsers } from "./adapters/useReadData";
 
 type Screen =
   | "login" | "signup" | "dashboard" | "miners" | "orders" | "products"
@@ -45,6 +46,15 @@ const safeAccent = (v: string): AccentKey => (ACCENT_KEYS.includes(v as AccentKe
 export default function RedesignApp() {
   // Phase 5a — REAL auth (adapter composes the supabase singleton + getMyProfile).
   const auth = useAuthSession();
+
+  // Phase 5b — READ-ONLY real data (no writes). Enabled only when authed; admin
+  // users list only when the profile is admin (else a seller would see just their
+  // own row, so we keep sample).
+  const authed = auth.status === "authed";
+  const isAdmin = auth.profile?.role === "admin";
+  const liveOrders = useLiveOrders(authed);
+  const customersData = useCustomers(authed);
+  const adminUsers = useAdminUsers(authed && isAdmin);
 
   const [theme, setTheme] = useState<ThemeMode>(() => (readLS(LS.theme, "light") === "dark" ? "dark" : "light"));
   const [accent, setAccent] = useState<AccentKey>(() => safeAccent(readLS(LS.accent, "indigo")));
@@ -268,7 +278,7 @@ export default function RedesignApp() {
               onEntPrice={(v) => setEntPrice(v.replace(/[^0-9]/g, ""))} onEntKey={onEntKey}
             />
           )}
-          {screen === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} />}
+          {screen === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} orders={liveOrders.orders} state={liveOrders.state} />}
           {screen === "products" && <Products cur={cur} />}
           {screen === "miners" && <Miners cur={cur} />}
           {screen === "menu" && (
@@ -299,8 +309,8 @@ export default function RedesignApp() {
               onDelete={() => setScreen("delete")}
             />
           )}
-          {screen === "customers" && <Customers cur={cur} />}
-          {screen === "subscription" && <Subscription cur={cur} />}
+          {screen === "customers" && <Customers cur={cur} customers={customersData.customers} state={customersData.state} />}
+          {screen === "subscription" && <Subscription cur={cur} account={auth.profile} />}
           {screen === "support" && <Support onLegal={() => setScreen("legal")} />}
           {screen === "admin" && <Admin onOpenPanel={setAdminPanel} cur={cur} />}
           {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} />}
@@ -350,7 +360,7 @@ export default function RedesignApp() {
 
         {/* Admin control bottom-sheet (absolute within the phone, like the v2 prototype) */}
         {adminPanel && (
-          <AdminPanel panel={adminPanel} onClose={() => setAdminPanel(null)} assignAmount={assignAmount} onAssignAmount={setAssignAmount} cur={cur} />
+          <AdminPanel panel={adminPanel} onClose={() => setAdminPanel(null)} assignAmount={assignAmount} onAssignAmount={setAssignAmount} cur={cur} users={adminUsers.users} usersState={adminUsers.state} />
         )}
       </div>
     </div>
