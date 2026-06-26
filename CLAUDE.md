@@ -3,12 +3,13 @@
 Guidance for Claude Code (and humans). Read this first — it captures
 load-bearing context that is NOT obvious from the code.
 
-_Last substantial update: 2026-06-26 (branch `claude/full-redesign`: **Phase 5
-COMPLETE** (10 sub-steps 5a–5j) + **MULTI-DAY LIVE SESSION feature CODE-COMPLETE**
-(1/2/3-day pill, activity-anchored window, new `seller_session_config` table,
-egress-safe read-on-load; verified on preview) — see the two "SESSION 2026-06-26"
-blocks; `main` still UNTOUCHED; next = Phase 6 preview testing. Prior: 2026-06-24
-Google Play prod PUBLISHED AAB v2/"1.1".)_
+_Last substantial update: 2026-06-26 (branch `claude/full-redesign`: **i18n
+CODE-COMPLETE** — all 21 redesign screens wired to `useT()`, 504 new keys × 7 langs
+(en byte-exact, zh-TW/th/id = AI DRAFT needing native verification), 281 vitest
+green, `main` UNTOUCHED — see "i18n / translation phase" block. Prior: **Phase 5
+COMPLETE** (5a–5j) + **MULTI-DAY LIVE SESSION** code-complete; 2026-06-24 Google
+Play prod PUBLISHED AAB v2/"1.1". Next = native verification of zh-TW + per-language
+visual pass, then Phase 6 preview testing.)_
 
 ## What it is
 Capacitor-based live-selling assistant app para sa TikTok/Facebook sellers sa Taiwan.
@@ -486,33 +487,50 @@ commit. Highlights:
   Free-cap trigger still gates `plan='free'` at 200/30-day. (Research snapshot:
   23 paid / 3 free, 0 pending.) Still TODO: apply + verify the migration.
 
-### i18n / translation phase (IN PROGRESS — plumbing DONE, per-screen extraction PENDING)
-Redesign was English-only (picker cosmetic). Wiring real translations by REUSING
+### i18n / translation phase (✅ CODE-COMPLETE — all 21 screens wired, all 7 langs)
+Redesign was English-only (picker cosmetic). Now FULLY translated by REUSING
 production's system. **NEVER edit `translations.ts` / `useTranslation.ts` / `lib` —
-import only.**
-- **Plumbing (DONE, Step 2):** `src/redesign/i18n/index.tsx` — `normalizeLang`
-  (shims redesign `"zh-tw"` → production `"zh-TW"`; 7 langs en/fil/zh/zh-TW/vi/th/id;
-  unknown→en), `REDESIGN_STRINGS` (redesign-owned supplement for NEW keys, starts
-  EMPTY), `buildT(lang)` = `{...TRANSLATIONS[norm], ...REDESIGN_STRINGS[norm]}`
-  (supplement wins), `TProvider`/`useT` context wrapping `RedesignApp` (no
-  prop-drilling). Reuses production `TRANSLATIONS` (539 keys × 7 langs). Tests in
-  `i18n/__tests__/`. NO screen strings converted yet.
-- **Per-screen extraction (PENDING, chunked, ONE screen per step, Jeff review each):**
-  small/static (Legal, Support, Subscription, DeleteAccount, CapPopup) → lists
-  (Orders, Customers, Products, Miners, Sales) → Dashboard → Settings (SettingsHub,
-  GeneralSettings, PrintPattern, PrinterSettings) → Shipping/Print/ConnectModal →
-  Admin (+User Base/Audit) → Login/Signup. Each: literals → `t.<key>`, reuse
-  existing production keys, append NEW keys to `REDESIGN_STRINGS`.
-- ⚠️ **CRITICAL RULE — native verification:** any NEW zh-TW (and other-lang)
-  translation is a **DRAFT marked "NEEDS NATIVE VERIFICATION"**, collected in a
-  per-screen list for **Jeff's Taiwan friend to verify the Chinese BEFORE it's
-  relied on**. NEVER ship AI-guessed Chinese as final. Reuse production's existing
-  verified keys verbatim.
-- **Honest caveat:** production `zh-TW`/`th`/`id` = English-base + partial overrides
-  (zh-TW = auth-only Traditional so far). So reused production keys show **English in
-  zh-TW/th/id wherever production hasn't translated yet** — matches production, NOT a
-  redesign regression. New-key estimate ~150–250 (most: GeneralSettings, Login,
-  Admin, Dashboard, Connect modal).
+import only.** Done in ONE PASS (commits `27d3598` WIP-18-screens + `1212334`
+Admin/Login/Signup + verification). **`main` UNTOUCHED.**
+- **Plumbing (DONE):** `src/redesign/i18n/index.tsx` — `normalizeLang` (shims
+  `"zh-tw"`→`"zh-TW"`; 7 langs; unknown→en), `tpl()` `{placeholder}` interp,
+  `RAW` authoring map (key → all-7-langs object) transposed into `REDESIGN_STRINGS`,
+  `buildT(lang)` = `{...TRANSLATIONS[norm], ...REDESIGN_STRINGS[norm]}` (supplement
+  wins), `TProvider`/`useT` context wrapping `RedesignApp`. Exposes `RAW_KEYS`,
+  `LANGS_ALL`, `RedesignT` for tests. Tests in `i18n/__tests__/`.
+- **All screens converted (DONE):** Login, Signup, Dashboard, Orders, Products,
+  Miners, Customers, CustomerData, SalesReport, Subscription, Support, Legal,
+  DeleteAccount, CapPopup, SettingsHub, GeneralSettings, PrintPattern,
+  PrinterSettings, Shipping, Print, ConnectModal, Admin (+~14 panels). literals →
+  `t.<key>` / `tpl(t.<key>, vars)`.
+- **Key strategy — NEW keys, NOT reused production keys:** every redesign string is
+  a NEW `rd_*` key (zero collision w/ prod's 624 keys; verified). Decided AGAINST
+  reusing prod keys because prod `zh-TW`/`th`/`id` are English-base → reuse would
+  leave English fallback, violating "all 7 langs filled". New keys guarantee BOTH
+  en-byte-identical behavior AND complete fill. **504 redesign keys total** (`rd_*`
+  + 11 `lg_*`), each filled in ALL 7 langs (Admin 142, GeneralSettings 48, Dashboard
+  34, Shipping 33, PrinterSettings 32, Products 26, Login 24, Subscription 21, …).
+- **Verified:** 504 used keys == 504 defined (zero undefined/orphan, grep
+  cross-ref) · no leftover placeholder/title/label literals · vitest **281 green**
+  (incl. no-blank-in-any-lang + en-byte-exact spot-checks) · tsc clean · vite build
+  green · only `src/redesign/*` touched.
+- **Intentional non-translations** (documented): brand/feature names literal in all
+  langs (TikTok, Facebook, SellerFlowLive, 1-Click, Enterprise, Miners, "MINE"
+  badge, `AIMO D520BT…` spec); **state-equality identifiers** left English on
+  purpose (`PS_SIZES` `100x60mm (Standard)`, Product `<option>` platform values,
+  default `product="CLOTHING"`) — translating would break selection logic; demo/
+  sample data (`Juan Dela Cruz`/`JC`, sample revenue, NOTIFS, slip-preview
+  placeholders `Comment`/`Maria Santos`/`Buyer #12`).
+- ⚠️ **CRITICAL — STILL OUTSTANDING — native verification:** `en` is byte-exact.
+  `fil/vi/zh` are reasonable AI drafts. **EVERY `zh-TW` value is an AI DRAFT → NEEDS
+  NATIVE VERIFICATION** by Jeff's Taiwan friend BEFORE relied on (used Traditional
+  forms + 「」 quotes, but unconfirmed); `th`/`id` are AI drafts (Jeff accepted).
+  NEVER treat AI Chinese as final.
+- ⚠️ **NOT self-verifiable: visual/layout.** Non-en strings (esp. longer fil/vi/th
+  + CJK suffix ordering) may wrap/overflow buttons/pills — needs a per-language
+  visual pass on the preview.
+- **Deviation note:** CLAUDE.md plan called for chunked one-screen-per-step review;
+  per Jeff's explicit instruction this was done in ONE PASS instead.
 
 ## FUTURE FEATURE (PLAN-FIRST, AFTER i18n) — AUTO MODE (code→price auction)
 Build in the redesign tree only; **propose a full plan for Jeff's review BEFORE any
