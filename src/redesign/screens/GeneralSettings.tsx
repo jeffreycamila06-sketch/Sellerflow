@@ -10,16 +10,16 @@ import { profileToDisplay, planLabel, renewLabel } from "../adapters/useAuthSess
 import type { AccountUser } from "../../accountDb";
 import SoonBadge from "../components/SoonBadge";
 import { useT, tpl } from "../i18n";
+import { accountSlots, accountList, accountText, maxAcc } from "../adapters/connect";
 
 const label: CSSProperties = { fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 5 };
 const input: CSSProperties = { width: "100%", padding: "11px 13px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 600, outline: "none" };
 const rowTitle: CSSProperties = { fontSize: 13.5, fontWeight: 700, color: "var(--text)" };
 const rowSub: CSSProperties = { fontSize: 11.5, color: "var(--text-muted)" };
-const connectedEl = (label: string) => (
-  <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 700, color: "var(--ok)" }}>
-    <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--ok)" }} />{label}
-  </span>
-);
+// Channels editor: usernames the seller types in empty slots; "+ Add" / change-locked → Telegram.
+const CH_TELEGRAM = "https://t.me/SellerFlowLive1995";
+const USERNAME_RE = /^[a-z0-9._]*$/; // SOFT guidance only — never hard-blocks input (matches main's accept-then-clean).
+const lockIcon = <svg width="11" height="11" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" strokeWidth="1.8" /><path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="currentColor" strokeWidth="1.8" /></svg>;
 
 export default function GeneralSettings({
   theme, accent, onSetTheme, onSetAccent,
@@ -27,7 +27,7 @@ export default function GeneralSettings({
   profileOpen, onToggleProfile,
   printerIdx, printerOpen, onTogglePrinter, onPickPrinter, onPrintPattern,
   onSubscription, onSupport, onDelete,
-  account = null, onSaveProfile,
+  account = null, onSaveProfile, onSaveChannels,
 }: {
   theme: ThemeMode; accent: AccentKey; onSetTheme: (t: ThemeMode) => void; onSetAccent: (a: AccentKey) => void;
   auto: AutoControls; cur: string;
@@ -38,6 +38,9 @@ export default function GeneralSettings({
   account?: AccountUser | null; // Phase 5a: real signed-in profile (null → demo fallback)
   // Phase 5i — real self-edit save (upsertUser → seller_profiles; user-editable fields only).
   onSaveProfile?: (fields: { fullName: string; storeName: string; phone: string; tiktok: string }) => Promise<{ ok: boolean; error?: string }>;
+  // Step 3 wiring point — Channels editor save (full tiktok+facebook lists). Until
+  // RedesignApp passes it, Save is inert (UI-only Step 2).
+  onSaveChannels?: (lists: { tiktok: string; facebook: string }) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const t = useT();
   const [apLangOpen, setApLangOpen] = useState(false);
@@ -88,6 +91,68 @@ export default function GeneralSettings({
   const autoChevron = auto.setupOpen ? "rotate(180deg)" : "rotate(0deg)";
   const seg = (active: boolean): CSSProperties => ({ flex: 1, padding: "9px 0", border: "none", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, ...(active ? { background: "var(--accent)", color: "#fff" } : { background: "transparent", color: "var(--text-dim)" }) });
   const printer = PRINTERS[printerIdx];
+
+  // ── Channels: plan-capped editable account slots (App.tsx renderAccountSlots parity).
+  // Locked = already-saved (non-empty) slot → read-only, tap → Telegram. Empty = the
+  // seller types their own username. Combined cap across both platforms. Save →
+  // onSaveChannels (wired in Step 3; inert until then). "+ Add" → Telegram popup.
+  const chLimit = maxAcc(account?.plan || "free");
+  const ttOrig = accountSlots(account?.profile.tiktok || "", chLimit);
+  const fbOrig = accountSlots(account?.profile.facebook || "", chLimit);
+  const [ttSlots, setTtSlots] = useState<string[]>(ttOrig);
+  const [fbSlots, setFbSlots] = useState<string[]>(fbOrig);
+  const [chPopup, setChPopup] = useState<"" | "tiktok" | "facebook">("");
+  const [chState, setChState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [chErr, setChErr] = useState("");
+  useEffect(() => {
+    setTtSlots(accountSlots(account?.profile.tiktok || "", chLimit));
+    setFbSlots(accountSlots(account?.profile.facebook || "", chLimit));
+    setChState("idle"); setChErr("");
+  }, [account, chLimit]);
+  // Live combined total (matches App.tsx currentTotal) → disables empties at the cap.
+  const chTotal = accountList(ttSlots.join("\n")).length + accountList(fbSlots.join("\n")).length;
+  const chAtCap = chTotal >= chLimit;
+  const setSlot = (platform: "tiktok" | "facebook", i: number, v: string) => {
+    const apply = (s: string[]) => s.map((x, idx) => (idx === i ? v : x)); // raw value (clean on save, like main)
+    if (platform === "tiktok") setTtSlots(apply); else setFbSlots(apply);
+    setChState("idle");
+  };
+  const saveChannels = async () => {
+    if (!onSaveChannels || chState === "saving") return; // ⚠️ Step 3 wires onSaveChannels; inert in Step 2
+    setChState("saving"); setChErr("");
+    const r = await onSaveChannels({ tiktok: accountText(ttSlots), facebook: accountText(fbSlots) });
+    if (r.ok) setChState("saved"); else { setChState("error"); setChErr(r.error || t.rd_set_err_save_failed); }
+  };
+  const channelBlock = (platform: "tiktok" | "facebook", labelText: string, slots: string[], orig: string[]) => {
+    const hasEditable = slots.some((_, i) => !orig[i]);
+    return (
+      <div style={{ ...card, padding: 0, overflow: "hidden", marginBottom: 12 }}>
+        {slots.map((val, i) => {
+          const locked = Boolean(orig[i]);
+          const limitReached = !val && !locked && chAtCap;
+          const invalid = !!val && !USERNAME_RE.test(val);
+          return (
+            <div key={`${platform}-${i}`} style={{ padding: "12px 14px", borderBottom: "1px solid var(--border)" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", marginBottom: 5 }}>{labelText} {i + 1}</div>
+              {locked ? (
+                <>
+                  <div onClick={() => setChPopup(platform)} style={{ display: "flex", alignItems: "center", gap: 9, padding: "11px 13px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-3)", cursor: "pointer" }}>
+                    <div style={{ width: 26, height: 26, borderRadius: 8, background: platform === "tiktok" ? "#000" : "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: "#fff", flexShrink: 0, fontFamily: platform === "facebook" ? "var(--font-display)" : undefined }}>{platform === "tiktok" ? "t" : "f"}</div>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 13.5, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{val}</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, color: "var(--text-muted)", marginTop: 5 }}>{lockIcon}{t.rd_ch_locked_note}</div>
+                </>
+              ) : (
+                <input value={val} onChange={(e) => setSlot(platform, i, e.target.value)} placeholder={limitReached ? t.rd_ch_limit_reached : t.rd_ch_ph} disabled={limitReached} style={{ ...input, opacity: limitReached ? 0.6 : 1, borderColor: invalid ? "var(--warn)" : "var(--border-strong)" }} />
+              )}
+            </div>
+          );
+        })}
+        {hasEditable && <div style={{ fontSize: 10.5, color: "var(--text-muted)", lineHeight: 1.45, padding: "8px 14px 0" }}>{t.rd_ch_validation}</div>}
+        <button onClick={() => setChPopup(platform)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "12px 0", marginTop: hasEditable ? 8 : 0, border: "none", borderTop: "1px solid var(--border)", background: "transparent", color: "var(--accent-fg)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>＋ {platform === "tiktok" ? t.rd_ch_add_tiktok : t.rd_ch_add_facebook}</button>
+      </div>
+    );
+  };
   return (
     <div>
       <div style={headerBar}><div style={headerTitle}>{t.rd_set_title}</div></div>
@@ -243,21 +308,17 @@ export default function GeneralSettings({
           </div>
         </div>
 
-        {/* CHANNELS */}
+        {/* CHANNELS — plan-capped editable account slots (App.tsx renderAccountSlots
+            parity). Saved = locked (admin-change via Telegram); empty = seller types
+            their username. ⚠️ Save wires in Step 3 (onSaveChannels) — UI-only here. */}
         <div>
           <div style={sectionLabel}>{t.rd_set_channels}</div>
-          <div style={{ ...card, padding: 0, overflow: "hidden" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 14, borderBottom: "1px solid var(--border)" }}>
-              <div style={{ width: 38, height: 38, borderRadius: 11, background: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 800, color: "#fff" }}>t</div>
-              <div style={{ flex: 1 }}><div style={rowTitle}>{t.rd_set_tiktok_live}</div><div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)" }}>@maria_shops</div></div>
-              {connectedEl(t.rd_set_connected)}
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 14 }}>
-              <div style={{ width: 38, height: 38, borderRadius: 11, background: "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 800, color: "#fff", fontFamily: "var(--font-display)" }}>f</div>
-              <div style={{ flex: 1 }}><div style={rowTitle}>{t.rd_set_facebook_live}</div><div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)" }}>Maria's Live Shop</div></div>
-              {connectedEl(t.rd_set_connected)}
-            </div>
-          </div>
+          <div style={{ fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.5, margin: "0 2px 9px" }}>{t.rd_ch_banner}</div>
+          {channelBlock("tiktok", t.rd_ch_tiktok_account, ttSlots, ttOrig)}
+          {channelBlock("facebook", t.rd_ch_facebook_page, fbSlots, fbOrig)}
+          {chState === "error" && <div style={{ fontSize: 12, fontWeight: 600, color: "var(--danger)", margin: "0 2px 8px" }}>{chErr}</div>}
+          {chState === "saved" && <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ok)", margin: "0 2px 8px" }}>{t.rd_set_saved}</div>}
+          <button onClick={saveChannels} disabled={chState === "saving" || !onSaveChannels} style={{ width: "100%", padding: "12px 0", border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: chState === "saving" || !onSaveChannels ? "default" : "pointer", opacity: chState === "saving" || !onSaveChannels ? 0.6 : 1, boxShadow: "0 4px 14px var(--accent-soft)" }}>{chState === "saving" ? t.rd_set_saving : t.rd_ch_save}</button>
         </div>
 
         {/* PRINTER & DISPLAY */}
@@ -303,6 +364,18 @@ export default function GeneralSettings({
         </div>
 
       </div>
+
+      {/* Channels "+ Add" / change-locked → Telegram (team-managed add/change) */}
+      {chPopup && (
+        <div onClick={(e) => e.target === e.currentTarget && setChPopup("")} style={{ position: "absolute", inset: 0, zIndex: 1000, background: "rgba(8,6,24,.5)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div style={{ width: "100%", maxWidth: 340, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 20, boxShadow: "0 24px 60px rgba(0,0,0,.4)", padding: "22px 22px", textAlign: "center" }}>
+            <h3 style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 17, color: "var(--text)", margin: "0 0 8px" }}>{chPopup === "tiktok" ? t.rd_ch_pop_title_tt : t.rd_ch_pop_title_fb}</h3>
+            <p style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.55, margin: "0 0 18px" }}>{t.rd_ch_pop_body}</p>
+            <a href={CH_TELEGRAM} target="_blank" rel="noreferrer noopener" onClick={() => setChPopup("")} style={{ display: "block", width: "100%", padding: "13px 0", border: "none", borderRadius: 12, background: "#0088cc", color: "#fff", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 700, cursor: "pointer", textDecoration: "none" }}>{t.rd_ch_add_cta}</a>
+            <button onClick={() => setChPopup("")} style={{ width: "100%", marginTop: 9, padding: "12px 0", border: "1px solid var(--border-strong)", borderRadius: 12, background: "transparent", color: "var(--text-dim)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>{t.rd_ch_add_cancel}</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
