@@ -80,16 +80,27 @@ export function customerRowsToRedesign(rows: Record<string, unknown>[], nowMs: n
   });
 }
 
-// AccountUser[] (real profiles) → redesign admin User[].
-export function accountUsersToRedesign(users: AccountUser[]): User[] {
+// Days remaining on a plan (Taipei-agnostic; ceil so a partial day counts). Pure.
+export function planDaysLeft(planExpiry: string | undefined | null, nowMs: number): number {
+  const t = new Date(planExpiry || "").getTime();
+  if (isNaN(t)) return 0;
+  return Math.max(0, Math.ceil((t - nowMs) / 86400000));
+}
+
+// AccountUser[] (real profiles) → redesign admin User[]. `days` = real days left on
+// the plan; planExpiry/planStatus are carried so admin "Add days" can extend the
+// EXISTING expiry (cumulative) via adminUpdatePlan (5h).
+export function accountUsersToRedesign(users: AccountUser[], nowMs: number = Date.now()): User[] {
   return users.map((u) => ({
     email: u.email,
     note: u.profile.adminContactNote || u.profile.fullName || "",
     role: u.role === "admin" ? "Admin" : "Seller",
     plan: planLabel(u.plan),
-    days: 0, // tenure not available from seller_profiles; real "add days" is 5h
+    days: planDaysLeft(u.planExpiry, nowMs), // real days remaining
     accounts: String(u.connectedAccounts.length),
-    status: u.planStatus, // 5h — surfaces "expired"/"pending"/"active" in the panel
+    status: u.planStatus, // surfaces "expired"/"pending"/"active" in the panel
+    planExpiry: u.planExpiry,
+    planStatus: u.planStatus,
   }));
 }
 

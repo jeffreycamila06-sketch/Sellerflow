@@ -5,6 +5,7 @@ import {
   liveOrdersToRedesign,
   customerRowsToRedesign,
   accountUsersToRedesign,
+  planDaysLeft,
 } from "../useReadData";
 import type { RebuiltSession } from "../../../lib/orderLogic";
 import type { AccountUser } from "../../../accountDb";
@@ -83,5 +84,24 @@ describe("accountUsersToRedesign", () => {
     expect(out.role).toBe("Admin");
     expect(out.plan).toBe("Master");
     expect(out.note).toBe("VIP note");
+  });
+  it("carries real days-left + planExpiry/planStatus (for admin Add days)", () => {
+    const now = Date.parse("2026-06-26T00:00:00.000Z");
+    const u: AccountUser = { ...base, planExpiry: "2026-07-06T00:00:00.000Z", planStatus: "active" }; // 10 days out
+    const out = accountUsersToRedesign([u], now)[0];
+    expect(out.days).toBe(10);
+    expect(out.planExpiry).toBe("2026-07-06T00:00:00.000Z");
+    expect(out.planStatus).toBe("active");
+  });
+});
+
+describe("planDaysLeft", () => {
+  const now = Date.parse("2026-06-26T00:00:00.000Z");
+  it("ceils partial days; floors at 0; handles empty/invalid", () => {
+    expect(planDaysLeft("2026-07-06T00:00:00.000Z", now)).toBe(10);
+    expect(planDaysLeft("2026-06-26T06:00:00.000Z", now)).toBe(1); // partial day → ceil
+    expect(planDaysLeft("2026-06-01T00:00:00.000Z", now)).toBe(0); // past → 0
+    expect(planDaysLeft("", now)).toBe(0);
+    expect(planDaysLeft(undefined, now)).toBe(0);
   });
 });

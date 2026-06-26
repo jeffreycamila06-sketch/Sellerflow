@@ -4,14 +4,14 @@
 // the 1-Click / Enterprise order flow (printed / Enterprise price-entry), all
 // visual-only — real account switching / order creation is Phase 5.
 import { useLayoutEffect, useRef, type CSSProperties } from "react";
-import { avColor, initials, TT_ACCOUNTS, FB_ACCOUNTS, type Comment, type AutoWord } from "../data";
+import { avColor, initials, TT_ACCOUNTS, FB_ACCOUNTS, type Comment } from "../data";
 import { sessionSummary, type SessionState } from "../adapters/useLiveSession";
 import type { RebuiltSession } from "../../lib/orderLogic";
+import SoonBadge from "../components/SoonBadge";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "12px 16px 13px" };
 const pickerBtn: CSSProperties = { width: "100%", display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.18)", padding: "6px 9px", border: "none", borderRadius: 9, fontSize: 11.5, fontWeight: 600, color: "var(--on-header)", cursor: "pointer", fontFamily: "var(--font-ui)" };
 const dropdown = (side: "left" | "right"): CSSProperties => ({ position: "absolute", top: "calc(100% + 7px)", [side]: 0, width: 220, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 13, boxShadow: "0 16px 38px rgba(0,0,0,.3)", padding: 6, zIndex: 30 });
-const ddHeading: CSSProperties = { fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--text-muted)", padding: "6px 8px 7px" };
 const ddRow = (active: boolean): CSSProperties => ({ width: "100%", display: "flex", alignItems: "center", gap: 9, padding: 8, border: "none", borderRadius: 9, background: active ? "var(--accent-soft)" : "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" });
 const ddName: CSSProperties = { display: "block", fontSize: 12.5, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
 const ddMeta: CSSProperties = { display: "block", fontSize: 10.5, color: "var(--text-muted)" };
@@ -45,7 +45,7 @@ export default function Dashboard({
   ttOpen, fbOpen, ttIdx, fbIdx, onToggleTT, onToggleFB, onPickTT, onPickFB,
   ttConnected, fbConnected, ttConnecting, fbConnecting, onConnectTT, onConnectFB,
   sessionDays, sessionOpen, onToggleSession, onPickSession,
-  autoDetect, autoWords, printed, entId, entPrice, onOneClick, onOpenEnt, onEntPrice, onEntKey,
+  printed, entId, entPrice, onOneClick, onOpenEnt, onEntPrice, onEntKey,
   session = { buyers: [], orders: [] }, sessionState = "idle",
   canInject = false, onInjectSynthetic,
 }: {
@@ -58,7 +58,6 @@ export default function Dashboard({
   ttConnected: boolean; fbConnected: boolean; ttConnecting: boolean; fbConnecting: boolean;
   onConnectTT: () => void; onConnectFB: () => void;
   sessionDays: number; sessionOpen: boolean; onToggleSession: () => void; onPickSession: (n: number) => void;
-  autoDetect: boolean; autoWords: AutoWord[];
   printed: Record<string, string>; entId: string | null; entPrice: string;
   onOneClick: (id: string) => void; onOpenEnt: (id: string) => void;
   onEntPrice: (v: string) => void; onEntKey: (e: React.KeyboardEvent<HTMLInputElement>) => void;
@@ -123,7 +122,10 @@ export default function Dashboard({
             </button>
             {ttOpen && (
               <div style={dropdown("left")}>
-                <div style={ddHeading}>TIKTOK ACCOUNT</div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "6px 8px 7px" }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--text-muted)" }}>TIKTOK ACCOUNT</span>
+                  <SoonBadge label="Soon · switching" />
+                </div>
                 {TT_ACCOUNTS.map((a, i) => (
                   <button key={a.handle} onClick={() => onPickTT(i)} style={ddRow(i === ttIdx)}>
                     <span style={{ width: 30, height: 30, borderRadius: 8, background: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{initials(a.name)}</span>
@@ -132,7 +134,7 @@ export default function Dashboard({
                   </button>
                 ))}
                 <div style={connFooterWrap}>
-                  <button style={refreshBtn} title="Refresh connected accounts">{refreshIcon}Refresh</button>
+                  <button disabled style={{ ...refreshBtn, opacity: 0.45, cursor: "not-allowed" }} title="Coming soon">{refreshIcon}Refresh</button>
                   <button onClick={onConnectTT} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: tt.border, borderRadius: 9, background: tt.bg, color: tt.fg, fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{tt.label}</button>
                 </div>
               </div>
@@ -147,7 +149,10 @@ export default function Dashboard({
             </button>
             {fbOpen && (
               <div style={dropdown("right")}>
-                <div style={ddHeading}>FACEBOOK PAGE / GROUP</div>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "6px 8px 7px" }}>
+                  <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--text-muted)" }}>FACEBOOK PAGE / GROUP</span>
+                  <SoonBadge label="Soon · switching" />
+                </div>
                 {FB_ACCOUNTS.map((a, i) => (
                   <button key={a.handle} onClick={() => onPickFB(i)} style={ddRow(i === fbIdx)}>
                     <span style={{ width: 30, height: 30, borderRadius: 8, background: "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#fff", flexShrink: 0, fontFamily: "var(--font-display)" }}>f</span>
@@ -156,7 +161,7 @@ export default function Dashboard({
                   </button>
                 ))}
                 <div style={connFooterWrap}>
-                  <button style={refreshBtn} title="Refresh connected pages">{refreshIcon}Refresh</button>
+                  <button disabled style={{ ...refreshBtn, opacity: 0.45, cursor: "not-allowed" }} title="Coming soon">{refreshIcon}Refresh</button>
                   <button onClick={onConnectFB} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: fb.border, borderRadius: 9, background: fb.bg, color: fb.fg, fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{fb.label}</button>
                 </div>
               </div>
@@ -199,19 +204,15 @@ export default function Dashboard({
             </div>
           )}
           {comments.map((c) => {
-            const lc = (c.text || "").toLowerCase();
-            const hit = autoWords.find((w) => w.word && lc.includes(w.word));
+            // Auto-detect is Soon-badged (not wired) — capture is ALWAYS manual, so
+            // every comment keeps its 1-Click / Enterprise buttons until it is ordered.
+            // "printed" is only ever set by a real manual order → no comment is ever
+            // silently marked done / left uncapturable.
             const manP = printed[c.id];
-            const isPrinted = (autoDetect && !!hit) || !!manP;
-            let printedLabel = "";
-            if (manP) printedLabel = manP === "order" ? "" : manP;
-            else if (hit && hit.price) printedLabel = cur + hit.price;
+            const isPrinted = !!manP;
+            const printedLabel = manP && manP !== "order" ? manP : "";
             const entOpen = entId === c.id;
-            const isAuto = autoDetect && !!hit && !manP;
             const showActions = !isPrinted && !entOpen;
-            const printedTag = isAuto ? "Auto-printed" : "Printed";
-            const printedBg = isAuto ? "var(--accent-soft)" : "var(--surface-3)";
-            const printedFg = isAuto ? "var(--accent-fg)" : "var(--text-dim)";
             return (
               <div key={c.id} className="sfl-comm-row" style={{ display: "flex", gap: 10, padding: "9px 8px", borderRadius: 11 }}>
                 <div style={{ width: 34, height: 34, borderRadius: "50%", background: avColor(c.name), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{initials(c.name)}</div>
@@ -231,7 +232,7 @@ export default function Dashboard({
                       price-entry · 1-Click / Enterprise actions. */}
                   <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 6, marginTop: 8, minHeight: 27 }}>
                     {isPrinted && (
-                      <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 800, letterSpacing: ".02em", color: printedFg, background: printedBg, padding: "5px 10px", borderRadius: 7 }}>{printerIcon}{printedTag} {printedLabel}</span>
+                      <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 800, letterSpacing: ".02em", color: "var(--text-dim)", background: "var(--surface-3)", padding: "5px 10px", borderRadius: 7 }}>{printerIcon}Printed {printedLabel}</span>
                     )}
                     {entOpen && (
                       <span style={{ display: "flex", alignItems: "center", gap: 6 }}>

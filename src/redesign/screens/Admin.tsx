@@ -6,8 +6,14 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { PLANS, PAYMENTS, USERS, SIGNUPS, SUBS, PLAN_PRICE, type Sub, type User } from "../data";
 import { headerBar, card, mono } from "../ui";
-import type { ReadState } from "../adapters/useReadData";
+import { planDaysLeft, type ReadState } from "../adapters/useReadData";
 import type { AdminActions, Plan } from "../adapters/useAdmin";
+import SoonBadge from "../components/SoonBadge";
+
+const deadBtn: CSSProperties = { opacity: 0.45, cursor: "not-allowed" };
+// Sample/not-wired marker for the Admin panels that have no real backend yet
+// (everything except the Sellers list + its per-user actions).
+const SampleNote = () => <div style={{ marginBottom: 12 }}><SoonBadge label="Sample data — not wired yet" /></div>;
 
 export type AdminPanelKind =
   | "sellers" | "plans" | "payments" | "reports" | "system" | "broadcast"
@@ -39,7 +45,7 @@ export default function Admin({ onOpenPanel, cur }: { onOpenPanel: (k: AdminPane
     <div>
       <div style={headerBar}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div><div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" }}>Admin panel</div><div style={{ fontSize: 12, opacity: 0.85 }}>Owner control center</div></div>
+          <div><div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" }}>Admin panel</div><div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}><span style={{ fontSize: 12, opacity: 0.85 }}>Owner control center</span><SoonBadge label="Metrics: sample" /></div></div>
           <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
             <button onClick={() => onOpenPanel("notifs")} title="Notifications" style={{ position: "relative", width: 32, height: 32, borderRadius: 9, border: "none", background: "rgba(255,255,255,.16)", color: "var(--on-header)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" strokeWidth="1.7" /></svg>
@@ -118,6 +124,7 @@ const NOTIFS = [
 function SubList({ list, statusLabel, statusColor, note, showPlan = true }: { list: Sub[]; statusLabel: string; statusColor: string; note: string; showPlan?: boolean }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+      <SampleNote />
       <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 2 }}>{note}</div>
       {list.map((s) => (
         <div key={s.shop} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 12px", border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface-2)" }}>
@@ -161,6 +168,24 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
     void run(`Set plan → ${label}`, email, async () => { const r = await actions!.changePlan(email, plan); if (r.ok) setPlan(email, label); return r; });
   const doPassword = (email: string) =>
     void run("Set password (Edge Function)", email, () => actions!.setPassword(email, pwVal), () => { setPwIdx(null); setPwVal(""); });
+  // Real add-days: extends the seller's planExpiry (cumulative) via actions.addDays
+  // (→ adminUpdatePlan) so it persists + survives reload. Falls back to local-only
+  // when there are no real actions (sample preview).
+  const doAddDays = (u: User, add: number) => {
+    if (add > 0) {
+      if (actions) {
+        void run(`Add ${add} day${add === 1 ? "" : "s"}`, u.email, async () => {
+          const r = await actions.addDays(u.email, u.planExpiry || new Date().toISOString(), u.planStatus || "active", add);
+          if (r.ok && r.planExpiry) setUserDays((d) => ({ ...d, [u.email]: planDaysLeft(r.planExpiry, Date.now()) }));
+          return r;
+        });
+      } else {
+        const base = userDays[u.email] != null ? userDays[u.email] : u.days;
+        setUserDays((d) => ({ ...d, [u.email]: base + add }));
+      }
+    }
+    setAddIdx(null); setAddVal("");
+  };
 
   return (
     <div onClick={onClose} style={{ position: "absolute", inset: 0, zIndex: 9, background: "rgba(8,6,24,.5)", backdropFilter: "blur(2px)", display: "flex", alignItems: "flex-end" }}>
@@ -176,10 +201,11 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
               <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 11, padding: "10px 12px", marginBottom: 11 }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="var(--text-muted)" strokeWidth="1.8" /><path d="m20 20-3.5-3.5" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round" /></svg>
                 <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Search email or @handle</span>
+                <span style={{ marginLeft: "auto" }}><SoonBadge label="Search soon" /></span>
               </div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 11 }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>Users · {userCount}</span>
-                <button style={{ fontSize: 11.5, fontWeight: 700, color: "var(--accent-text)", background: "var(--accent)", border: "none", padding: "7px 12px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>+ Add user</button>
+                <button disabled title="Coming soon" style={{ fontSize: 11.5, fontWeight: 700, color: "var(--accent-text)", background: "var(--accent)", border: "none", padding: "7px 12px", borderRadius: 9, fontFamily: "var(--font-ui)", ...deadBtn }}>+ Add user</button>
               </div>
               {usersState === "loading" && <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 2px" }}>Loading sellers…</div>}
               {usersState === "empty" && <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 2px" }}>No sellers found.</div>}
@@ -206,7 +232,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                         <span><span style={{ color: "var(--text-muted)" }}>Accounts</span> <span style={{ fontFamily: mono, fontWeight: 700, color: "var(--text)" }}>{u.accounts}</span></span>
                         {addIdx === i ? (
                           <span style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: "auto" }}>
-                            <input value={addVal} onChange={(e) => setAddVal(e.target.value.replace(/[^0-9]/g, ""))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const base = userDays[u.email] != null ? userDays[u.email] : u.days; const add = parseInt(addVal || "0", 10) || 0; setUserDays((d) => ({ ...d, [u.email]: base + add })); setAddIdx(null); setAddVal(""); } }} inputMode="numeric" autoFocus placeholder="days" style={{ width: 54, padding: "4px 7px", border: "1.3px solid var(--accent)", borderRadius: 7, background: "var(--surface)", color: "var(--text)", fontFamily: mono, fontSize: 11, fontWeight: 700, outline: "none" }} />
+                            <input value={addVal} onChange={(e) => setAddVal(e.target.value.replace(/[^0-9]/g, ""))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doAddDays(u, parseInt(addVal || "0", 10) || 0); } }} inputMode="numeric" autoFocus placeholder="days" style={{ width: 54, padding: "4px 7px", border: "1.3px solid var(--accent)", borderRadius: 7, background: "var(--surface)", color: "var(--text)", fontFamily: mono, fontSize: 11, fontWeight: 700, outline: "none" }} />
                             <span style={{ fontSize: 9.5, color: "var(--text-muted)" }}>Enter ↵</span>
                           </span>
                         ) : (
@@ -241,6 +267,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
 
           {panel === "plans" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
+              <SampleNote />
               {PLANS.map((p) => (
                 <div key={p.name} style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 14, background: "var(--surface-2)" }}>
                   <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
@@ -253,12 +280,13 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                   </div>
                 </div>
               ))}
-              <button style={{ width: "100%", padding: "12px 0", border: "1px dashed var(--border-strong)", borderRadius: 12, background: "transparent", color: "var(--accent-fg)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>+ New plan</button>
+              <button disabled title="Coming soon" style={{ width: "100%", padding: "12px 0", border: "1px dashed var(--border-strong)", borderRadius: 12, background: "transparent", color: "var(--accent-fg)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, ...deadBtn }}>+ New plan</button>
             </div>
           )}
 
           {panel === "payments" && (
             <div>
+              <SampleNote />
               <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
                 <div style={{ ...miniStat, flex: 1 }}><div style={miniLbl}>Collected today</div><div style={miniNum}>{cur}48,200</div></div>
                 <div style={{ ...miniStat, flex: 1 }}><div style={miniLbl}>Pending</div><div style={{ ...miniNum, color: "var(--warn)" }}>12</div></div>
@@ -277,6 +305,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
 
           {panel === "reports" && (
             <div>
+              <SampleNote />
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
                 <div style={miniStat}><div style={miniLbl}>MRR</div><div style={miniNum}>{cur}4.2M</div></div>
                 <div style={miniStat}><div style={miniLbl}>Growth</div><div style={{ ...miniNum, color: "var(--ok)" }}>+12%</div></div>
@@ -286,16 +315,17 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
               <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", marginBottom: 9 }}>Reports</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {["Revenue by plan", "Seller growth", "Churn & renewals"].map((r) => (
-                  <button key={r} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 13px", border: "1px solid var(--border)", borderRadius: 11, background: "var(--surface-2)", cursor: "pointer", fontFamily: "var(--font-ui)" }}><span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{r}</span><span style={{ color: "var(--text-muted)" }}>›</span></button>
+                  <button key={r} disabled title="Coming soon" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 13px", border: "1px solid var(--border)", borderRadius: 11, background: "var(--surface-2)", fontFamily: "var(--font-ui)", ...deadBtn }}><span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{r}</span><span style={{ color: "var(--text-muted)" }}>›</span></button>
                 ))}
               </div>
-              <button style={{ ...sheetBtn, marginTop: 13, padding: "12px 0", borderRadius: 11, fontSize: 13 }}>Export CSV</button>
+              <button disabled title="Coming soon" style={{ ...sheetBtn, marginTop: 13, padding: "12px 0", borderRadius: 11, fontSize: 13, ...deadBtn }}>Export CSV</button>
             </div>
           )}
 
           {panel === "system" && (
             <div>
-              <div style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.5, marginBottom: 15 }}>Enter the amount a new seller paid — the matching plan is selected automatically and granted on assign.</div>
+              <SampleNote />
+              <div style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.5, marginBottom: 15 }}>Enter the amount a new seller paid — the matching plan is selected automatically. Granting here is coming soon; for now use the per-seller plan buttons in <strong>Manage sellers</strong>.</div>
               <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 6 }}>Amount paid</label>
               <div style={{ display: "flex", alignItems: "center", gap: 8, border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", padding: "0 13px", marginBottom: 14 }}>
                 <span style={{ fontFamily: mono, fontSize: 15, fontWeight: 700, color: "var(--text-muted)" }}>{cur}</span>
@@ -309,19 +339,20 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", padding: "12px 13px", marginBottom: 16 }}>
                 <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text-muted)" }}>Select seller</span><span style={{ color: "var(--text-muted)" }}>▾</span>
               </div>
-              <button style={sheetBtn}>Grant {matchPlan(assignAmount)} plan</button>
+              <button disabled title="Coming soon" style={{ ...sheetBtn, ...deadBtn }}>Grant {matchPlan(assignAmount)} plan</button>
             </div>
           )}
 
           {panel === "broadcast" && (
             <div>
+              <SampleNote />
               <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 8 }}>Audience</label>
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 15 }}>
                 <span style={chipOn}>All sellers</span><span style={chipOff}>Pro only</span><span style={chipOff}>Expiring</span>
               </div>
               <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 6 }}>Message</label>
               <div style={{ border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface-2)", padding: "12px 13px", minHeight: 84, fontSize: 13, color: "var(--text-muted)", marginBottom: 15 }}>Type your announcement to sellers…</div>
-              <button style={sheetBtn}>Send broadcast</button>
+              <button disabled title="Coming soon" style={{ ...sheetBtn, ...deadBtn }}>Send broadcast</button>
             </div>
           )}
 
@@ -332,6 +363,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
 
           {panel === "signups" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <SampleNote />
               <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 2 }}>Pending approval — accounts created from sign-up</div>
               {SIGNUPS.map((g) => (
                 <div key={g.email} style={{ border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface-2)", padding: 12 }}>
@@ -341,8 +373,8 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                   </div>
                   <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 5 }}>Shop: <span style={{ fontWeight: 700, color: "var(--text)" }}>{g.shop}</span></div>
                   <div style={{ display: "flex", gap: 7, marginTop: 10 }}>
-                    <button style={{ flex: 1, padding: "9px 0", border: "none", borderRadius: 9, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Approve</button>
-                    <button style={{ flex: 1, padding: "9px 0", border: "1px solid var(--border-strong)", borderRadius: 9, background: "var(--surface)", color: "var(--danger)", fontFamily: "var(--font-ui)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Reject</button>
+                    <button disabled title="Coming soon" style={{ flex: 1, padding: "9px 0", border: "none", borderRadius: 9, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 12, fontWeight: 700, ...deadBtn }}>Approve</button>
+                    <button disabled title="Coming soon" style={{ flex: 1, padding: "9px 0", border: "1px solid var(--border-strong)", borderRadius: 9, background: "var(--surface)", color: "var(--danger)", fontFamily: "var(--font-ui)", fontSize: 12, fontWeight: 700, ...deadBtn }}>Reject</button>
                   </div>
                 </div>
               ))}
@@ -351,6 +383,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
 
           {panel === "notifs" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+              <SampleNote />
               <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 2 }}>New sign-ups &amp; subscriptions expiring within 5 days</div>
               {NOTIFS.map((n, i) => (
                 <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "11px 12px", border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface-2)" }}>
@@ -363,6 +396,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
 
           {panel === "revenue" && (
             <div>
+              <SampleNote />
               <div style={{ background: "var(--accent)", borderRadius: 14, padding: 15, color: "#fff", boxShadow: "0 8px 22px var(--accent-soft)" }}>
                 <div style={{ fontSize: 11.5, opacity: 0.9, fontWeight: 600 }}>This month · from paid subscribers</div>
                 <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 28, marginTop: 4, letterSpacing: "-.02em" }}>{cur}4.2M</div>
@@ -385,7 +419,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                   </div>
                 ))}
               </div>
-              <button style={{ ...sheetBtn, marginTop: 13, padding: "12px 0", borderRadius: 11, fontSize: 13 }}>Export revenue report</button>
+              <button disabled title="Coming soon" style={{ ...sheetBtn, marginTop: 13, padding: "12px 0", borderRadius: 11, fontSize: 13, ...deadBtn }}>Export revenue report</button>
             </div>
           )}
 

@@ -76,9 +76,9 @@ export default function Subscription({ cur, account = null, isFreeUser = false, 
           </div>
         </div>
 
-        <button style={{ width: "100%", marginTop: 16, padding: "14px 0", border: "none", borderRadius: 13, background: "#0088cc", color: "#fff", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, boxShadow: "0 6px 16px rgba(0,136,204,.35)" }}>
+        <a href="https://t.me/SellerFlowSupport" target="_blank" rel="noreferrer" style={{ width: "100%", marginTop: 16, padding: "14px 0", border: "none", borderRadius: 13, background: "#0088cc", color: "#fff", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 9, textDecoration: "none", boxShadow: "0 6px 16px rgba(0,136,204,.35)" }}>
           {tgPlane} Renew via Telegram
-        </button>
+        </a>
         <div style={{ textAlign: "center", fontSize: 11.5, color: "var(--text-muted)", marginTop: 10 }}>Message <span style={{ fontWeight: 700, color: "var(--accent-fg)" }}>@SellerFlowSupport</span> to renew or upgrade</div>
       </div>
     </div>

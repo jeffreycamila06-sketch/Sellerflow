@@ -345,7 +345,7 @@ export default function RedesignApp() {
             />
           )}
           {screen === "signup" && (
-            <Signup onBack={() => setScreen("login")} onCreate={() => setScreen("dashboard")} onLegal={() => setScreen("legal")} />
+            <Signup onBack={() => setScreen("login")} onLegal={() => setScreen("legal")} />
           )}
           {screen === "dashboard" && (
             <Dashboard
@@ -360,7 +360,6 @@ export default function RedesignApp() {
               sessionDays={sessionWindow.windowDays} sessionOpen={sessionOpen}
               onToggleSession={() => { setSessionOpen((o) => !o); setTtOpen(false); setFbOpen(false); }}
               onPickSession={(n) => { void sessionWindow.setWindowDays(n as WindowDays); liveSession.reset(); setSessionOpen(false); }}
-              autoDetect={autoDetect} autoWords={autoWords}
               printed={printed} entId={entId} entPrice={entPrice}
               onOneClick={onOneClick} onOpenEnt={onOpenEnt}
               onEntPrice={(v) => setEntPrice(v.replace(/[^0-9]/g, ""))} onEntKey={onEntKey}

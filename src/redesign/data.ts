@@ -197,7 +197,7 @@ export const PAYMENTS: Payment[] = [
 export const PLAN_PRICE: Record<string, number> = { Free: 0, Basic: 500, Pro: 1200, Master: 1700, Business: 1700, Starter: 500 };
 
 // Users management list (dc.html v3 USERS L1557). Sample data only.
-export interface User { email: string; note: string; role: string; plan: string; days: number; accounts: string; status?: string; }
+export interface User { email: string; note: string; role: string; plan: string; days: number; accounts: string; status?: string; planExpiry?: string; planStatus?: string; }
 export const USERS: User[] = [
   { email: "camilajeffrey1@gmail.com", note: "admin", role: "Admin", plan: "Master", days: 3600, accounts: "5 / 5" },
   { email: "lheyukay@gmail.com", note: "Lheyukay", role: "Seller", plan: "Pro", days: 118, accounts: "3 / 3" },

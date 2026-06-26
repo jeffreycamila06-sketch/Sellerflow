@@ -8,6 +8,7 @@ import { ACCENT_ORDER, ACCENTS, PRINTERS, LANGS, CURRENCIES, CURRENCY_ORDER, typ
 import { headerBar, headerTitle, card, sectionLabel } from "../ui";
 import { profileToDisplay, planLabel, renewLabel } from "../adapters/useAuthSession";
 import type { AccountUser } from "../../accountDb";
+import SoonBadge from "../components/SoonBadge";
 
 const label: CSSProperties = { fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 5 };
 const input: CSSProperties = { width: "100%", padding: "11px 13px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 600, outline: "none" };
@@ -128,8 +129,8 @@ export default function GeneralSettings({
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
               <button onClick={auto.toggleSetup} style={{ flex: 1, display: "flex", alignItems: "flex-start", gap: 9, background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: 0, fontFamily: "var(--font-ui)" }}>
                 <span style={{ flex: 1 }}>
-                  <span style={{ display: "block", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>Auto mode</span>
-                  <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>Auto-detect “mine” comments and tag claims. Tap to set up trigger word sets.</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>Auto mode <SoonBadge /></span>
+                  <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>Auto-detect “mine” comments and tag claims. Not wired yet — keep using 1-Click / Enterprise to capture orders. Tap to preview trigger word sets.</span>
                 </span>
                 <span style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 1, transition: "transform .2s", transform: autoChevron, display: "inline-block" }}>▾</span>
               </button>

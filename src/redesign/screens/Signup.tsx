@@ -8,7 +8,7 @@ const input: CSSProperties = { width: "100%", padding: "12px 13px", border: "1px
 const groupLabel: CSSProperties = { fontSize: 11, letterSpacing: ".12em", fontWeight: 800, color: "var(--text-muted)", margin: "0 2px 9px" };
 const groupCard: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", display: "flex", flexDirection: "column", gap: 12 };
 
-export default function Signup({ onBack, onCreate, onLegal }: { onBack: () => void; onCreate: () => void; onLegal: () => void }) {
+export default function Signup({ onBack, onLegal }: { onBack: () => void; onLegal: () => void }) {
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
       <div style={{ background: "var(--header-bg)", padding: "16px 16px 18px", color: "var(--on-header)", display: "flex", alignItems: "center", gap: 12 }}>
@@ -37,7 +37,9 @@ export default function Signup({ onBack, onCreate, onLegal }: { onBack: () => vo
           <div><label style={label}>Confirm password</label><input type="password" placeholder="Re-enter password" style={input} /></div>
         </div>
 
-        <button onClick={onCreate} style={{ width: "100%", marginTop: 18, padding: "14px 0", border: "none", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 6px 18px var(--accent-soft)" }}>Create account</button>
+        {/* Self-serve signup is deferred (Soon) — accounts are provisioned via Telegram.
+            Route to support instead of faking a logged-in session. */}
+        <a href="https://t.me/SellerFlowSupport" target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", marginTop: 18, padding: "14px 0", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14.5, fontWeight: 700, cursor: "pointer", textDecoration: "none", boxShadow: "0 6px 18px var(--accent-soft)" }}>Request account via Telegram</a>
         <div style={{ textAlign: "center", fontSize: 11.5, color: "var(--text-muted)", marginTop: 11, lineHeight: 1.5 }}>By creating an account you agree to our <span onClick={onLegal} style={{ color: "var(--accent-fg)", fontWeight: 700, cursor: "pointer" }}>Terms</span></div>
         <div style={{ textAlign: "center", fontSize: 12.5, color: "var(--text-dim)", marginTop: 8 }}>Already have an account? <span onClick={onBack} style={{ fontWeight: 700, color: "var(--accent-fg)", cursor: "pointer" }}>Log in</span></div>
       </div>

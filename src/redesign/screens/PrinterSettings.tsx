@@ -1,8 +1,12 @@
-// Screen 18 — Printer settings. dc.html v3 L1174–1237. Visual only — no real
-// printer connection (Phase 5). psType is set on entry from the General Settings
-// printer picker (no in-screen switcher, per dc.html). Back → General Settings.
+// Screen 18 — Printer settings. dc.html v3 L1174–1237. psOut/psSize ARE wired
+// (persisted + feed the print payload via buildSettingsFromRedesign). The
+// CONNECTION bits (IP/port, Find/Test/Connect, BT pairing) are Soon — real printer
+// connection is APK-native — so they're disabled and the status is honest.
+// psType is set on entry from the General Settings printer picker. Back → General Settings.
 import type { CSSProperties } from "react";
+import SoonBadge from "../components/SoonBadge";
 
+const deadBtn: CSSProperties = { opacity: 0.45, cursor: "not-allowed" };
 const PS_SIZES = ["100x60mm (Standard)", "80x60mm", "80x50mm", "70x50mm", "60x40mm"];
 const label: CSSProperties = { fontSize: 12, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 5 };
 const input: CSSProperties = { width: "100%", padding: "11px 13px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 600, outline: "none" };
@@ -19,14 +23,19 @@ export default function PrinterSettings({
   psSize: string; psSizeOpen: boolean; onTogglePsSize: () => void; onPickPsSize: (s: string) => void;
 }) {
   const wifi = psType === "wifi";
+  // Honest status — the redesign does not yet persist/connect a printer (connection
+  // is APK-native, Soon). Output format + size below ARE saved and used.
   const status = wifi
-    ? { title: "192.168.18.234:9100", sub: "Saved WiFi printer · 192.168.18.234:9100", dot: "#22c55e", bg: "rgba(34,197,94,.10)", border: "rgba(34,197,94,.35)" }
-    : { title: "No printer connected", sub: "Recommended: AIMO D520BT (TSPL, 100×60mm)", dot: "#ef4444", bg: "rgba(239,68,68,.10)", border: "rgba(239,68,68,.35)" };
+    ? { title: "WiFi printer not connected", sub: "Output format & size below are saved. Connecting (IP/port) is coming soon.", dot: "var(--warn)", bg: "rgba(217,119,6,.10)", border: "rgba(217,119,6,.35)" }
+    : { title: "No Bluetooth printer", sub: "AIMO D520BT (TSPL, 100×60mm) — pairing coming soon. Sticker size below is saved.", dot: "var(--warn)", bg: "rgba(217,119,6,.10)", border: "rgba(217,119,6,.35)" };
   return (
     <div>
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 5, background: "rgba(255,255,255,.18)", border: "none", padding: "7px 12px 7px 9px", borderRadius: 9, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>‹ Back</button>
-        <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, letterSpacing: "-.01em" }}>Printer settings</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+          <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, letterSpacing: "-.01em" }}>Printer settings</div>
+          <SoonBadge label="Soon · connection" />
+        </div>
       </div>
 
       <div style={{ padding: "16px 14px 24px" }}>
@@ -47,15 +56,15 @@ export default function PrinterSettings({
             </div>
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 13, boxShadow: "var(--shadow)" }}>
               <label style={label}>Printer IP address</label>
-              <input defaultValue="192.168.18.234" style={{ ...input, marginBottom: 11 }} />
+              <input defaultValue="192.168.18.234" disabled style={{ ...input, marginBottom: 11, ...deadBtn }} />
               <label style={label}>Port</label>
-              <input defaultValue="9100" style={input} />
+              <input defaultValue="9100" disabled style={{ ...input, ...deadBtn }} />
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 9, marginTop: 12 }}>
-              <button style={gridBtn}>Find</button>
-              <button style={gridBtn}>Test Connection</button>
-              <button style={{ ...gridBtn, border: "none", background: "var(--accent)", color: "var(--accent-text)", boxShadow: "0 4px 14px var(--accent-soft)" }}>Connect</button>
-              <button style={gridBtn}>Test Print</button>
+              <button disabled style={{ ...gridBtn, ...deadBtn }}>Find</button>
+              <button disabled style={{ ...gridBtn, ...deadBtn }}>Test Connection</button>
+              <button disabled style={{ ...gridBtn, border: "none", background: "var(--accent)", color: "var(--accent-text)", boxShadow: "0 4px 14px var(--accent-soft)", ...deadBtn }}>Connect</button>
+              <button disabled style={{ ...gridBtn, ...deadBtn }}>Test Print</button>
             </div>
           </div>
         ) : (
@@ -80,7 +89,7 @@ export default function PrinterSettings({
                 </div>
               )}
             </div>
-            <button style={{ width: "100%", marginTop: 14, padding: "14px 0", border: "none", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 6px 16px var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#fff" strokeWidth="1.9" /><path d="m20 20-3.5-3.5" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" /></svg>Scan paired Bluetooth printers</button>
+            <button disabled style={{ width: "100%", marginTop: 14, padding: "14px 0", border: "none", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, boxShadow: "0 6px 16px var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, ...deadBtn }}><svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="#fff" strokeWidth="1.9" /><path d="m20 20-3.5-3.5" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" /></svg>Scan paired Bluetooth printers</button>
           </div>
         )}
 

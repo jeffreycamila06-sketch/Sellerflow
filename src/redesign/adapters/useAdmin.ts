@@ -26,12 +26,27 @@ export function approvePlanPatch(plan: Plan, months: number, now: Date): PlanPat
   return { plan, planStatus: "active", planExpiry, ...(trialStartedAt ? { trialStartedAt } : {}) };
 }
 
+// PURE — extend a plan's expiry by `days`, mirroring App.tsx addMonthsToExpiry
+// (239-241): continue from the CURRENT expiry while the plan is still active
+// (cumulative), else from `now`. Takes `now` for testability. Parity-tested.
+export function addDaysToExpiry(planExpiry: string, planStatus: string, days: number, now: Date): string {
+  const exp = new Date(planExpiry).getTime();
+  const valid = !isNaN(exp);
+  const daysLeft = valid ? Math.max(0, Math.ceil((exp - now.getTime()) / 86400000)) : 0;
+  const active = planStatus === "active" && daysLeft > 0;
+  const base = active && valid ? exp : now.getTime();
+  return new Date(base + Math.max(1, days) * 86400000).toISOString();
+}
+
 export interface AdminActions {
   changePlan: (email: string, plan: Plan, months?: number) => Promise<AdminResult>;
   setRole: (email: string, role: Role) => Promise<AdminResult>;
   expire: (email: string) => Promise<AdminResult>;
   setPassword: (email: string, newPassword: string) => Promise<AdminResult>;
   removeUser: (email: string) => Promise<AdminResult>;
+  // Extends planExpiry by `days` (cumulative) and reactivates — same adminUpdatePlan
+  // path production uses for "Add Months". Returns the new expiry on success.
+  addDays: (email: string, planExpiry: string, planStatus: string, days: number) => Promise<AdminResult & { planExpiry?: string }>;
 }
 
 export function useAdmin(adminEmail: string | undefined): AdminActions {
@@ -79,5 +94,14 @@ export function useAdmin(adminEmail: string | undefined): AdminActions {
     catch (e) { return { ok: false, error: e instanceof Error ? e.message : "error" }; }
   }, [audit]);
 
-  return { changePlan, setRole, expire, setPassword, removeUser };
+  const addDays = useCallback(async (email: string, planExpiry: string, planStatus: string, days: number): Promise<AdminResult & { planExpiry?: string }> => {
+    try {
+      const next = addDaysToExpiry(planExpiry, planStatus, days, new Date());
+      await adminUpdatePlan(email, { planStatus: "active", planExpiry: next }); // same path as Add Months
+      audit("added days", email, `+${days}d → ${next.slice(0, 10)}`);
+      return { ok: true, planExpiry: next };
+    } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "error" }; }
+  }, [audit]);
+
+  return { changePlan, setRole, expire, setPassword, removeUser, addDays };
 }

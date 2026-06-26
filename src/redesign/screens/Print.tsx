@@ -1,6 +1,11 @@
 // Screen 11 — Print Slip. dc.html v2 L829–856. Back arrow → Orders.
-// The receipt is an intentional white "paper" mock (literal colors, theme-independent).
+// PREVIEW MOCK ONLY (Soon): the receipt is a static sample, not the tapped order.
+// Real printing happens at order-create time via onPrint (printing.ts native bridge),
+// so the buttons here are intentionally disabled.
 import { mono } from "../ui";
+import SoonBadge from "../components/SoonBadge";
+
+const deadBtn = { opacity: 0.45, cursor: "not-allowed" } as const;
 
 const dash = { borderTop: "1.5px dashed #bbb", margin: "12px 0" } as const;
 const line = { display: "flex", justifyContent: "space-between" } as const;
@@ -10,7 +15,10 @@ export default function Print({ onBack, cur }: { onBack: () => void; cur: string
     <div>
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onBack} style={{ background: "rgba(255,255,255,.18)", border: "none", width: 32, height: 32, borderRadius: 9, color: "#fff", fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
-        <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, letterSpacing: "-.01em" }}>Print slip</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+          <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, letterSpacing: "-.01em" }}>Print slip</div>
+          <SoonBadge label="Preview mock" />
+        </div>
       </div>
       <div style={{ padding: "18px 16px 22px" }}>
         <div style={{ background: "#fff", borderRadius: 6, padding: "20px 18px", boxShadow: "0 8px 30px rgba(0,0,0,.18)", fontFamily: mono, color: "#1a1a1a", maxWidth: 300, margin: "0 auto" }}>
@@ -29,9 +37,10 @@ export default function Print({ onBack, cur }: { onBack: () => void; cur: string
           <div style={{ textAlign: "center", fontSize: 10.5, color: "#777", marginTop: 14, borderTop: "1.5px dashed #bbb", paddingTop: 10 }}>Thank you for shopping live! 💜<br />Pay via GCash · 0917 555 0142</div>
         </div>
         <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-          <button style={{ flex: 1, padding: "13px 0", border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 14px var(--accent-soft)" }}>Print to LAN printer</button>
+          <button disabled style={{ flex: 1, padding: "13px 0", border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, boxShadow: "0 4px 14px var(--accent-soft)", ...deadBtn }}>Print to LAN printer</button>
         </div>
-        <button style={{ width: "100%", marginTop: 10, padding: "12px 0", border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Share as image</button>
+        <button disabled style={{ width: "100%", marginTop: 10, padding: "12px 0", border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, ...deadBtn }}>Share as image</button>
+        <div style={{ fontSize: 11.5, color: "var(--text-muted)", textAlign: "center", marginTop: 12, lineHeight: 1.5 }}>Sample slip. Real printing happens automatically when you capture an order from the live feed.</div>
       </div>
     </div>
   );
