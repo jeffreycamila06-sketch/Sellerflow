@@ -24,6 +24,7 @@ import DeleteAccount from "./screens/DeleteAccount";
 import Signup from "./screens/Signup";
 import PrinterSettings from "./screens/PrinterSettings";
 import PrintPattern, { DEFAULT_PP, type PrintPatternState, type PpBoolKey, type PpSizeKey } from "./screens/PrintPattern";
+import ManageChannels from "./screens/ManageChannels";
 import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
 import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
 import { useLiveSession } from "./adapters/useLiveSession";
@@ -46,10 +47,10 @@ type Screen =
   | "login" | "signup" | "dashboard" | "miners" | "orders" | "products"
   | "menu" | "settings" | "customers" | "subscription" | "support"
   | "admin" | "print" | "sales" | "shipping" | "customerdata" | "legal" | "delete"
-  | "printersettings" | "printpattern";
+  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels";
 
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
-const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern"];
+const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels"];
 
 const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set", autowords: "sfl_rd_autowords", pp: "sfl_rd_pp", printer: "sfl_rd_printer" } as const;
 const readLS = (k: string, fallback: string): string => {
@@ -431,7 +432,8 @@ export default function RedesignApp() {
           {screen === "settings" && (
             <GeneralSettings
               theme={theme} accent={accent} onSetTheme={setTheme} onSetAccent={setAccent}
-              auto={autoControls} cur={cur} account={auth.profile} onSaveProfile={saveProfile} onSaveChannels={saveChannels}
+              auto={autoControls} cur={cur} account={auth.profile} onSaveProfile={saveProfile}
+              onManageChannel={(p) => setScreen(p === "tiktok" ? "ttchannels" : "fbchannels")}
               lang={lang} onSetLang={setLang} currency={currency} onSetCurrency={setCurrencyExplicit}
               profileOpen={profileOpen} onToggleProfile={() => setProfileOpen((o) => !o)}
               printerIdx={printerIdx} printerOpen={printerOpen}
@@ -442,6 +444,9 @@ export default function RedesignApp() {
               onSupport={() => setScreen("support")}
               onDelete={() => setScreen("delete")}
             />
+          )}
+          {(screen === "ttchannels" || screen === "fbchannels") && (
+            <ManageChannels platform={screen === "ttchannels" ? "tiktok" : "facebook"} account={auth.profile} onBack={() => setScreen("settings")} onSaveChannels={saveChannels} />
           )}
           {screen === "customers" && <Customers cur={cur} customers={customersData.customers} state={customersData.state} onExport={exportCustomers} />}
           {screen === "subscription" && <Subscription cur={cur} account={auth.profile} isFreeUser={freeCap.isFreeUser} freeStatus={freeCap.freeStatus} />}

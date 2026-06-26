@@ -24,7 +24,7 @@ const noop = () => {};
 
 it("Profile card 'Save changes' sends name/store/phone only — no tiktok/facebook", async () => {
   const onSaveProfile = vi.fn().mockResolvedValue({ ok: true });
-  const onSaveChannels = vi.fn().mockResolvedValue({ ok: true });
+  const onManageChannel = vi.fn();
   render(
     <TProvider lang="en">
       <GeneralSettings
@@ -33,17 +33,17 @@ it("Profile card 'Save changes' sends name/store/phone only — no tiktok/facebo
         profileOpen onToggleProfile={noop}
         printerIdx={0} printerOpen={false} onTogglePrinter={noop} onPickPrinter={noop} onPrintPattern={noop}
         onSubscription={noop} onSupport={noop} onDelete={noop}
-        account={account} onSaveProfile={onSaveProfile} onSaveChannels={onSaveChannels}
+        account={account} onSaveProfile={onSaveProfile} onManageChannel={onManageChannel}
       />
     </TProvider>,
   );
-  fireEvent.click(screen.getByText("Save changes")); // Profile card button (Channels uses "Save profile")
+  fireEvent.click(screen.getByText("Save changes")); // Profile card button
   await waitFor(() => expect(onSaveProfile).toHaveBeenCalledTimes(1));
   const payload = onSaveProfile.mock.calls[0][0];
   expect(Object.keys(payload).sort()).toEqual(["fullName", "phone", "storeName"]);
   expect(payload).not.toHaveProperty("tiktok");
   expect(payload).not.toHaveProperty("facebook");
-  expect(onSaveChannels).not.toHaveBeenCalled(); // saving the profile must not touch accounts
+  expect(onManageChannel).not.toHaveBeenCalled(); // saving the profile must not navigate to Manage
 });
 
 describe("guard recap", () => {
