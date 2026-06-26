@@ -7,8 +7,11 @@ import {
   accountUsersToRedesign,
   planDaysLeft,
   deriveSubBuckets,
+  deriveUserBase,
+  freeUsersSummary,
   auditActionColor,
   filterAuditLogs,
+  type FreeUserRow,
 } from "../useReadData";
 import type { User } from "../../data";
 import type { AccountAuditLog } from "../../../accountDb";
@@ -137,6 +140,49 @@ describe("deriveSubBuckets — parity with App.tsx Plan Monitoring (3346-3350)",
     ];
     // sorted by days asc → p0(0), p1(1), exp(9)
     expect(deriveSubBuckets(users).expiring.map((x) => x.email)).toEqual(["p0@x.com", "p1@x.com", "exp@x.com"]);
+  });
+});
+
+describe("deriveUserBase — tier headcount by PLAN (not status)", () => {
+  const u = (over: Partial<User>): User => ({ email: "x@x.com", note: "", role: "Seller", plan: "Basic", days: 30, accounts: "1", planStatus: "active", ...over });
+  // Mirrors the live DB: 17 basic, 5 pro, 1 master(=owner/admin), 2 free-active, 1 free-expired.
+  const live: User[] = [
+    ...Array.from({ length: 17 }, (_, i) => u({ email: `b${i}@x.com`, plan: "Basic", planStatus: "active", days: 30 })),
+    ...Array.from({ length: 5 }, (_, i) => u({ email: `p${i}@x.com`, plan: "Pro", planStatus: "active", days: 30 })),
+    u({ email: "owner@x.com", plan: "Master", role: "Admin", planStatus: "active", days: 3600 }),
+    u({ email: "f1@x.com", plan: "Free", planStatus: "active", days: 0 }),   // free: expiry null → days 0
+    u({ email: "f2@x.com", plan: "Free", planStatus: "active", days: 0 }),
+    u({ email: "f3@x.com", plan: "Free", planStatus: "expired", days: 0 }),
+  ];
+  it("matches the real distribution: 23 paid / 3 free; free counted by plan, not status", () => {
+    const b = deriveUserBase(live);
+    expect(b).toMatchObject({ total: 26, admins: 1, basic: 17, pro: 5, master: 1, free: 3, trial: 0 });
+    expect(b.paid).toBe(23);          // 17+5+1 incl. owner's Master
+    expect(b.paidSellers).toBe(22);   // excludes the admin/owner
+  });
+  it("free-active users are NOT dropped into expired (counted as Free by plan)", () => {
+    const b = deriveUserBase(live);
+    expect(b.free).toBe(3); // 2 active + 1 expired free — all by plan==='Free'
+  });
+  it("paid status health is expiry-based over paid plans (active incl. owner's Master)", () => {
+    const b = deriveUserBase(live);
+    expect(b.paidActive).toBe(23);  // all paid currently active w/ days>0
+    expect(b.paidExpired).toBe(0);
+    expect(b.paidExpiring).toBe(0);
+  });
+  it("counts trial separately when present", () => {
+    expect(deriveUserBase([u({ plan: "Trial", planStatus: "active", days: 7 })]).trial).toBe(1);
+  });
+});
+
+describe("freeUsersSummary — cap-progress aggregate from the RPC rows", () => {
+  const f = (over: Partial<FreeUserRow>): FreeUserRow => ({ email: "f@x.com", store_name: "S", full_name: "F", count: 0, cap: 200, near_cap: false, capped: false, cycle_resets_in_days: 30, ...over });
+  it("totals users, near-cap (not capped), capped, and summed orders", () => {
+    const rows = [f({ count: 10 }), f({ count: 160, near_cap: true }), f({ count: 200, near_cap: true, capped: true })];
+    expect(freeUsersSummary(rows)).toEqual({ total: 3, nearCap: 1, capped: 1, orders: 370, cap: 200 });
+  });
+  it("empty → zeros, default cap 200", () => {
+    expect(freeUsersSummary([])).toEqual({ total: 0, nearCap: 0, capped: 0, orders: 0, cap: 200 });
   });
 });
 

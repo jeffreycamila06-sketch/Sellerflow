@@ -6,7 +6,7 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { PLANS, PAYMENTS, USERS, SIGNUPS, SUBS, PLAN_PRICE, type Sub, type User } from "../data";
 import { headerBar, card, mono } from "../ui";
-import { planDaysLeft, deriveSubBuckets, auditActionColor, filterAuditLogs, type ReadState, type SubBuckets, type FreeUserRow } from "../adapters/useReadData";
+import { planDaysLeft, deriveSubBuckets, deriveUserBase, freeUsersSummary, auditActionColor, filterAuditLogs, type ReadState, type SubBuckets, type FreeUserRow } from "../adapters/useReadData";
 import type { AdminActions, Plan } from "../adapters/useAdmin";
 import type { AccountAuditLog } from "../../accountDb";
 import { csvDL, dayStamp } from "../adapters/csv";
@@ -19,7 +19,7 @@ const SampleNote = () => <div style={{ marginBottom: 12 }}><SoonBadge label="Sam
 
 export type AdminPanelKind =
   | "sellers" | "plans" | "payments" | "reports" | "system" | "broadcast"
-  | "subActive" | "subExpiring" | "subFree" | "subExpired" | "signups" | "notifs" | "revenue" | "audit";
+  | "subActive" | "subExpiring" | "subFree" | "subExpired" | "signups" | "notifs" | "revenue" | "audit" | "userbase";
 
 const ctrlTile: CSSProperties = { display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "14px 6px", border: "1px solid var(--border)", borderRadius: 14, background: "var(--surface)", boxShadow: "var(--shadow)", cursor: "pointer" };
 const ctrlChip: CSSProperties = { width: 34, height: 34, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)" };
@@ -37,6 +37,7 @@ const cic = {
   reports: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 19V11M10 19V5M15 19v-6M20 19V9" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" /></svg>,
   system: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 6h14M5 12h14M5 18h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><circle cx="9" cy="6" r="2" fill="var(--surface)" stroke="currentColor" strokeWidth="1.8" /><circle cx="15" cy="12" r="2" fill="var(--surface)" stroke="currentColor" strokeWidth="1.8" /><circle cx="9" cy="18" r="2" fill="var(--surface)" stroke="currentColor" strokeWidth="1.8" /></svg>,
   audit: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v14H6z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M9 13h6M9 16.5h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>,
+  userbase: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3a9 9 0 1 0 9 9h-9V3Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" strokeWidth="1.7" opacity=".5" /></svg>,
 };
 
 function Ctrl({ icon, label, onClick }: { icon: ReactNode; label: string; onClick: () => void }) {
@@ -85,6 +86,7 @@ export default function Admin({ onOpenPanel, cur, counts, live = false }: { onOp
 
         <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14.5, color: "var(--text)", margin: "2px 2px 10px" }}>Controls</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 9, marginBottom: 16 }}>
+          <Ctrl icon={cic.userbase} label="User Base" onClick={() => onOpenPanel("userbase")} />
           <Ctrl icon={cic.sellers} label="Sellers" onClick={() => onOpenPanel("sellers")} />
           <Ctrl icon={cic.plans} label="Plans" onClick={() => onOpenPanel("plans")} />
           <Ctrl icon={cic.payments} label="Payments" onClick={() => onOpenPanel("payments")} />
@@ -103,7 +105,7 @@ const PANEL_TITLE: Record<AdminPanelKind, string> = {
   sellers: "Manage sellers", plans: "Subscription plans", payments: "Payments", reports: "Platform reports",
   system: "Assign plan by payment", broadcast: "Broadcast", subActive: "Active paid subscriptions",
   subExpiring: "Expiring soon", subFree: "Free tier", subExpired: "Expired", signups: "New sign-ups to approve",
-  revenue: "App revenue", notifs: "Notifications", audit: "Audit log",
+  revenue: "App revenue", notifs: "Notifications", audit: "Audit log", userbase: "User base",
 };
 const chipOn: CSSProperties = { fontSize: 11.5, fontWeight: 700, color: "var(--accent-text)", background: "var(--accent)", padding: "6px 11px", borderRadius: 8 };
 const chipOff: CSSProperties = { fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", background: "var(--surface-2)", border: "1px solid var(--border)", padding: "6px 11px", borderRadius: 8 };
@@ -177,7 +179,7 @@ function SubList({ list, statusLabel, statusColor, note, showPlan = true }: { li
   );
 }
 
-export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", actions, onChanged, freeUsers = [], freeUsersState = "sample", auditLogs = [], auditState = "sample" }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; actions?: AdminActions; onChanged?: () => void; freeUsers?: FreeUserRow[]; freeUsersState?: ReadState; auditLogs?: AccountAuditLog[]; auditState?: ReadState }) {
+export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", actions, onChanged, freeUsers = [], freeUsersState = "sample", auditLogs = [], auditState = "sample", onOpenPanel }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; actions?: AdminActions; onChanged?: () => void; freeUsers?: FreeUserRow[]; freeUsersState?: ReadState; auditLogs?: AccountAuditLog[]; auditState?: ReadState; onOpenPanel?: (k: AdminPanelKind) => void }) {
   // Real subscription buckets (derived) when the users list is live; else sample.
   const realSubs = usersState === "live" || usersState === "empty";
   const realFree = freeUsersState === "live" || freeUsersState === "empty";
@@ -187,6 +189,10 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
   const auditFiltered = filterAuditLogs(auditLogs, auditQ);
   const exportAudit = () => csvDL(`sellerflow-audit-log-${dayStamp()}.csv`, ["Time", "Admin", "Action", "Target", "Details"], auditFiltered.map((l) => [l.timestamp, l.actorEmail, l.action, l.targetEmail, l.details]));
   const auditTint = (c: "danger" | "ok" | "accent") => (c === "danger" ? "var(--danger)" : c === "ok" ? "var(--ok)" : "var(--accent-fg)");
+  // User-base overview — derived from the loaded seller list + the free RPC.
+  const userBase = deriveUserBase(users);
+  const freeSummary = freeUsersSummary(freeUsers);
+  const maxTier = Math.max(1, userBase.basic, userBase.pro, userBase.master);
   // Per-user optimistic display state. Real writes go through `actions` (5h).
   const [userPlans, setUserPlans] = useState<Record<string, string>>({});
   const [userDays, setUserDays] = useState<Record<string, number>>({});
@@ -478,6 +484,75 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                 ))}
               </div>
               <button disabled title="Coming soon" style={{ ...sheetBtn, marginTop: 13, padding: "12px 0", borderRadius: 11, fontSize: 13, ...deadBtn }}>Export revenue report</button>
+            </div>
+          )}
+
+          {panel === "userbase" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              {!realSubs && <SampleNote />}
+              {/* Headline — Paid vs Free */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div style={{ background: "var(--accent)", borderRadius: 14, padding: "14px 15px", color: "#fff", boxShadow: "0 8px 22px var(--accent-soft)" }}>
+                  <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 30, letterSpacing: "-.02em" }}>{userBase.paid}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.95 }}>Paid plans</div>
+                  <div style={{ fontSize: 10.5, opacity: 0.85, marginTop: 2 }}>{userBase.paidSellers} paying seller{userBase.paidSellers === 1 ? "" : "s"} + you</div>
+                </div>
+                <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 14, padding: "14px 15px" }}>
+                  <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 30, color: "var(--accent-fg)", letterSpacing: "-.02em" }}>{userBase.free}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>Free tier</div>
+                  <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>{userBase.total} accounts total</div>
+                </div>
+              </div>
+
+              {/* Paid plans by tier */}
+              <div style={{ ...card, padding: "14px 15px" }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", marginBottom: 11 }}>Paid plans by tier</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {([["Basic", userBase.basic, "#059669"], ["Pro", userBase.pro, "#0284c7"], ["Master", userBase.master, "#7c3aed"]] as const).map(([name, n, col]) => (
+                    <div key={name}>
+                      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
+                        <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{name}{name === "Master" ? " (incl. you)" : ""}</span>
+                        <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{n}</span>
+                      </div>
+                      <div style={{ height: 7, borderRadius: 4, background: "var(--surface-2)", overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${Math.round((n / maxTier) * 100)}%`, background: col, borderRadius: 4 }} />
+                      </div>
+                    </div>
+                  ))}
+                  {userBase.trial > 0 && <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>Trial: <strong style={{ color: "var(--text)" }}>{userBase.trial}</strong></div>}
+                </div>
+              </div>
+
+              {/* Paid status health (real expiry-based) */}
+              <div style={{ ...card, padding: "13px 15px" }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", marginBottom: 9 }}>Paid status</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  {([["Active", userBase.paidActive, "var(--ok)"], ["Expiring ≤1d", userBase.paidExpiring, "var(--warn)"], ["Expired", userBase.paidExpired, "var(--danger)"]] as const).map(([l, n, c]) => (
+                    <div key={l} style={{ flex: 1, textAlign: "center", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 0" }}>
+                      <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 17, color: c }}>{n}</div>
+                      <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600, marginTop: 2 }}>{l}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Free-tier cap usage (from list_free_users_status) */}
+              <div style={{ ...card, padding: "13px 15px" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 9 }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>Free tier — cap usage</span>
+                  {freeSummary.total > 0 && <button onClick={() => onOpenPanel?.("subFree")} style={{ ...planBtn }}>View ›</button>}
+                </div>
+                {realFree ? (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {([["Free users", freeSummary.total, "var(--accent-fg)"], ["Near cap", freeSummary.nearCap, "var(--warn)"], ["Capped", freeSummary.capped, "var(--danger)"]] as const).map(([l, n, c]) => (
+                      <div key={l} style={{ flex: 1, textAlign: "center", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 0" }}>
+                        <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 17, color: c }}>{n}</div>
+                        <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600, marginTop: 2 }}>{l}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>Free-tier usage loads for the signed-in admin (cap {freeSummary.cap}/cycle).</div>}
+              </div>
             </div>
           )}
 

@@ -125,6 +125,44 @@ export function deriveSubBuckets(users: User[]): SubBuckets {
 // One row from the admin RPC list_free_users_status (copied from App.tsx:60).
 export interface FreeUserRow { email: string; store_name: string; full_name: string; count: number; cap: number; near_cap: boolean; capped: boolean; cycle_resets_in_days: number }
 
+// ── User-base overview — DERIVED from the already-loaded seller list (no new
+// backend). Tier headcount is grouped by PLAN LABEL (not status): free users have
+// plan_expiry=null → days=0, so a status-based split would wrongly drop them into
+// "expired". Free is identified by plan==="Free" only.
+export interface UserBase {
+  total: number; admins: number;
+  free: number; trial: number; basic: number; pro: number; master: number;
+  paid: number;          // basic + pro + master (incl. the owner's Master)
+  paidSellers: number;   // paid excluding admins (the real paying customers)
+  // status health within paid plans (real expiry-based; mutually exclusive active/expired):
+  paidActive: number; paidExpiring: number; paidExpired: number;
+}
+export function deriveUserBase(users: User[]): UserBase {
+  const tally = (label: string) => users.filter((u) => u.plan === label).length;
+  const free = tally("Free"), trial = tally("Trial"), basic = tally("Basic"), pro = tally("Pro"), master = tally("Master");
+  const paid = basic + pro + master;
+  const admins = users.filter((u) => u.role === "Admin").length;
+  const paidUsers = users.filter((u) => u.plan === "Basic" || u.plan === "Pro" || u.plan === "Master");
+  const paidSellers = paidUsers.filter((u) => u.role !== "Admin").length;
+  const days = (u: User) => u.days ?? 0;
+  const paidActive = paidUsers.filter((u) => u.planStatus === "active" && days(u) > 0).length;
+  const paidExpired = paidUsers.filter((u) => u.planStatus === "expired" || days(u) === 0).length;
+  const paidExpiring = paidUsers.filter((u) => u.planStatus !== "pending" && (u.planStatus === "expired" || days(u) <= 1)).length;
+  return { total: users.length, admins, free, trial, basic, pro, master, paid, paidSellers, paidActive, paidExpiring, paidExpired };
+}
+
+// Free-tier cap-progress summary from the already-wired list_free_users_status RPC.
+export interface FreeSummary { total: number; nearCap: number; capped: number; orders: number; cap: number }
+export function freeUsersSummary(freeUsers: FreeUserRow[]): FreeSummary {
+  return {
+    total: freeUsers.length,
+    nearCap: freeUsers.filter((f) => f.near_cap && !f.capped).length,
+    capped: freeUsers.filter((f) => f.capped).length,
+    orders: freeUsers.reduce((s, f) => s + (f.count || 0), 0),
+    cap: freeUsers[0]?.cap ?? 200,
+  };
+}
+
 // Audit-log action → semantic color, byte-faithful to App.tsx:3595 (red/green/purple).
 export function auditActionColor(action: string): "danger" | "ok" | "accent" {
   const a = action.toLowerCase();
