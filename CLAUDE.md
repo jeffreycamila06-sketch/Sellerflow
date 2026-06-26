@@ -3,11 +3,12 @@
 Guidance for Claude Code (and humans). Read this first — it captures
 load-bearing context that is NOT obvious from the code.
 
-_Last substantial update: 2026-06-26 (FULL REDESIGN **Phase 5 COMPLETE** — branch
-`claude/full-redesign`, 20 screens now WIRED to real logic via `src/redesign/adapters/*`
-(all 10 sub-steps 5a–5j approved + verified); `main` still UNTOUCHED; next = Phase 6
-preview testing — see "SESSION 2026-06-26". Prior: 2026-06-25 redesign visual + Phase 5
-plan; 2026-06-24 Google Play prod PUBLISHED AAB v2/"1.1".)_
+_Last substantial update: 2026-06-26 (branch `claude/full-redesign`: **Phase 5
+COMPLETE** (10 sub-steps 5a–5j) + **MULTI-DAY LIVE SESSION feature CODE-COMPLETE**
+(1/2/3-day pill, activity-anchored window, new `seller_session_config` table,
+egress-safe read-on-load; verified on preview) — see the two "SESSION 2026-06-26"
+blocks; `main` still UNTOUCHED; next = Phase 6 preview testing. Prior: 2026-06-24
+Google Play prod PUBLISHED AAB v2/"1.1".)_
 
 ## What it is
 Capacitor-based live-selling assistant app para sa TikTok/Facebook sellers sa Taiwan.
@@ -389,15 +390,79 @@ reimplemented over the SAME pure cores (parity-tested), per the F1/F3 plan.
   Signup, self-serve Delete Account, Products→Supabase (local Products unchanged).
 - Currency default **NT$/TWD**; subscription stays Wise+Telegram (no Play billing).
 
+## SESSION 2026-06-26 (cont.) — MULTI-DAY LIVE SESSION feature ✅ CODE-COMPLETE (branch `claude/full-redesign`, NOT main)
+NEW feature (separate from Phase 5/6): the Dashboard session-length pill (1/2/3
+days) is now REAL. Default 1-day = current behavior (buyer# resets each Taipei
+day). 2/3-day = buyer# + session continue CONTINUOUSLY across N consecutive Taipei
+calendar days, then reset to #1. **Verified on preview** (pill="3d" → continuous
+#1–6 across 3 days). 178 vitest green · typecheck · build green. **`main` untouched.**
+
+### Design (load-bearing)
+- **ACTIVITY-ANCHORED window:** a window opens on the day selling starts
+  (`window_start`) + runs N consecutive Taipei calendar days; `today − window_start
+  ≥ N` → EXPIRED → next order opens a fresh window → buyer #1. **Reset is
+  COMPUTED-ON-LOAD** (no cron/background). Stale day-pin survives only one open
+  session; any refresh/re-login re-evaluates + resets correctly (same as 5c pin).
+- **session_date on order rows stays the ACTUAL Taipei day** (production-compatible,
+  `saveLiveSessionOrder` UNTOUCHED). Only the config tracks the window.
+- **Buyer continuation is automatic** — pure `buildOrderFromComment` +
+  `rebuildSessionFromRows` are UNCHANGED; they just operate on whatever rows the
+  LOAD returns. Multi-day = load the full window range; reset = load returns empty.
+- **EGRESS-SAFE: READ-ON-LOAD ONLY, zero poll.** One config read + one session read
+  per open/login (folded into the 5c load effect). `window_start` write = ONCE per
+  window-open (not per order; `shouldOpenWindow` + sync refs). N=1 = byte-identical
+  (no config read-gate side effects beyond the single read; no config WRITE at all).
+
+### Persistence — NEW table `seller_session_config` (production Supabase, applied)
+Cols: `user_id` (PK → auth.users), `window_days smallint default 1 check 1..3`,
+`window_start date null`, `updated_at`. RLS: select/insert/update scoped to
+`user_id = auth.uid()`. **Additive, nullable, production-IGNORES-it** (App.tsx never
+reads it → production stays 1-day). This is the ONLY shared change.
+
+### Adapter (all in `src/redesign/adapters/*` — no protected/lib/db/App.tsx edits)
+- `useSessionWindow.ts` — config read/write (supabase singleton, `getSession` local)
+  + PURE (unit-tested): `clampWindowDays`, `daysBetween`, `addDays`,
+  `computeWindowState` (active/expired/dayOfWindow/loadStart), `chooseSessionLoad`
+  (day vs range), `shouldOpenWindow`, `loadLiveSessionWindow` (ranged read, SAME
+  cols/RLS/order as `loadTodaysLiveSession`, `session_date BETWEEN`). Hook:
+  `setWindowDays` (fresh window from today — decision 3), `ensureWindowOpen`
+  (once/window, N=1 no-op, idempotent cross-device via refs).
+- `useLiveSession.ts` (5c) — load gated on config `ready`; `chooseSessionLoad`
+  picks single-day (N=1/day1/expired/fresh → `loadTodaysLiveSession`, byte-identical)
+  vs window range (active multi-day day≥2). + `reset()` (clear + reload on N-switch).
+- `useOrders.ts` (5e) — `onEnsureWindow()` fire-and-forget before build; 5e fan-out /
+  dedup / orderNum epoch ms / 3 writes all UNCHANGED.
+- `RedesignApp.tsx` — pill reads `windowDays`, picks → `setWindowDays` + `reset`.
+
+### Steps + commits (on `claude/full-redesign`)
+- **1** migration `seller_session_config` (applied via Supabase MCP — no code commit)
+- **2** `useSessionWindow` + pure window-calc + tests — `583db73`
+- **3** window-range load in `useLiveSession` (N=1 byte-identical) — `1912d3e`
+- **4** open-window logic in `useOrders` (once/window, N=1 no-op) — `c376d6b`
+- **5** wire session-length pill → real N (switch = fresh window) — `3743c6e`
+
+### ⚠️ MERGE-TIME caveat (remember at F3 merge)
+Multi-day stores CONTINUED `buyer_number`s on day-2/3 rows. The 1-day production app
+reads stored `buyer_number` + loads today-only → if the SAME user ever loaded
+multi-day data in the 1-day app, day 2/3 would show continued numbers (not #1).
+**Contained now** (real sellers = production-only 1-day; multi-day = googletest/
+redesign only). After F3 merge the redesign is the only app → no conflict. Just
+don't run both apps for the same user across a multi-day window before merge.
+- **Open mid-day N-switch nuance:** switching N opens a fresh window from today;
+  clean #1 only when today has no orders yet (switch-at-session-start = normal use).
+  Mid-day switch with existing today rows continues from them (no hard #1) — by design.
+
 ## Current state / NEXT
 - **`main`** HEAD = Play-published prod (all pre-redesign work). **101/101 vitest
-  green.** Egress small. Billing `orders` untouched. **NOT touched by Phase 5.**
-- **`claude/full-redesign`** HEAD `571bb88` = 20-screen redesign **fully wired to
-  real logic (Phase 5 a–j complete)**, isolated Vite entry. **156 vitest green.**
+  green.** Egress small. Billing `orders` untouched. **NOT touched.**
+- **`claude/full-redesign`** HEAD `3743c6e` = 20-screen redesign **fully wired
+  (Phase 5 a–j)** + **multi-day live session feature (code-complete)**, isolated
+  Vite entry. **178 vitest green.**
 - ✅ **DONE:** Google Play prod PUBLISHED (AAB v2/"1.1"); final APK via Telegram;
-  full redesign Phases 1–4 (visual) + **Phase 5 (real wiring) COMPLETE**.
+  full redesign Phases 1–4 (visual) + **Phase 5 COMPLETE** + **multi-day session
+  feature** (verified on preview).
 - ⚠️ **NEXT:** **Phase 6 = full preview testing** (Jeff returns fresh). Then, only
   after iOS approval + Jeff's explicit "merge to production" (F3), the redesign
-  replaces prod on `main`. Also: bump versionCode ≥3 before the next AAB upload.
-  Open watch items: M1 sticker clipping at high scale (M2 egress now fixed in the
-  redesign free-cap adapter).
+  replaces prod on `main` — **remember the multi-day merge-time caveat above**.
+  Also: bump versionCode ≥3 before the next AAB upload.
+  Open watch items: M1 sticker clipping at high scale (M2 egress fixed in redesign).
