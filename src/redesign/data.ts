@@ -209,14 +209,6 @@ export const USERS: User[] = [
   { email: "khalidkhadem2023@gmail.com", note: "Atlas", role: "Seller", plan: "Free", days: 3587, accounts: "0 / 1" },
 ];
 
-// New sign-ups awaiting approval (dc.html v3 SIGNUPS L1567).
-export interface Signup { name: string; email: string; shop: string; time: string; }
-export const SIGNUPS: Signup[] = [
-  { name: "Carla Mendoza", email: "carla.m@gmail.com", shop: "Carla Finds", time: "12m ago" },
-  { name: "Ben Uy", email: "benuy@gmail.com", shop: "Uy Gadgets", time: "40m ago" },
-  { name: "Tina Flores", email: "tinaflores@icloud.com", shop: "Tina Beauty", time: "1h ago" },
-];
-
 // Subscription buckets (dc.html v3 SUBS L1572).
 export interface Sub { shop: string; owner: string; plan: string; info: string; }
 export const SUBS: { active: Sub[]; expiring: Sub[]; free: Sub[]; expired: Sub[] } = {

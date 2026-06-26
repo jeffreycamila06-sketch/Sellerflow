@@ -25,7 +25,7 @@ import Signup from "./screens/Signup";
 import PrinterSettings from "./screens/PrinterSettings";
 import PrintPattern, { DEFAULT_PP, type PrintPatternState, type PpBoolKey, type PpSizeKey } from "./screens/PrintPattern";
 import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
-import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
+import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
 import { useLiveSession } from "./adapters/useLiveSession";
 import { useSessionWindow, type WindowDays } from "./adapters/useSessionWindow";
 import { useLiveFeed } from "./adapters/useLiveFeed";
@@ -79,6 +79,7 @@ export default function RedesignApp() {
   const subBuckets = deriveSubBuckets(adminUsers.users);
   const adminLive = adminUsers.state === "live" || adminUsers.state === "empty";
   const adminCounts = { active: subBuckets.active.length, expiring: subBuckets.expiring.length, expired: subBuckets.expired.length, free: freeUsersData.freeUsers.length };
+  const userBase = deriveUserBase(adminUsers.users); // plan-derived paid/free for the home card
   // Phase 5h — real admin write actions (owner-only; targets human-confirmed).
   const admin = useAdmin(auth.profile?.email);
   // Phase 5i — self-profile save (upsertUser → own seller_profiles row; user-editable
@@ -425,7 +426,7 @@ export default function RedesignApp() {
           {screen === "customers" && <Customers cur={cur} customers={customersData.customers} state={customersData.state} onExport={exportCustomers} />}
           {screen === "subscription" && <Subscription cur={cur} account={auth.profile} isFreeUser={freeCap.isFreeUser} freeStatus={freeCap.freeStatus} />}
           {screen === "support" && <Support onLegal={() => setScreen("legal")} />}
-          {screen === "admin" && isAdmin && <Admin onOpenPanel={setAdminPanel} cur={cur} counts={adminCounts} live={adminLive} />}
+          {screen === "admin" && isAdmin && <Admin onOpenPanel={setAdminPanel} cur={cur} counts={adminCounts} live={adminLive} userBase={adminLive ? { paid: userBase.paid, free: userBase.free, total: userBase.total } : undefined} />}
           {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} buyers={liveSession.session.buyers} storeName={auth.profile?.profile.storeName || "SellerFlowLive"} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
           {screen === "sales" && <SalesReport cur={cur} sales={sales} onExport={exportSales} />}
           {screen === "shipping" && isAdmin && <Shipping email={auth.profile?.email} cur={cur} />}

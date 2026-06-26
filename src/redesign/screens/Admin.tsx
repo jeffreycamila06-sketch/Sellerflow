@@ -4,7 +4,7 @@
 // full users-management panel (per-user plan + days, visual only). Sample data
 // only — no real seller management (Phase 5).
 import { useState, type CSSProperties, type ReactNode } from "react";
-import { PLANS, PAYMENTS, USERS, SIGNUPS, SUBS, PLAN_PRICE, type Sub, type User } from "../data";
+import { PLANS, PAYMENTS, USERS, SUBS, PLAN_PRICE, type Sub, type User } from "../data";
 import { headerBar, card, mono } from "../ui";
 import { planDaysLeft, deriveSubBuckets, deriveUserBase, freeUsersSummary, auditActionColor, filterAuditLogs, type ReadState, type SubBuckets, type FreeUserRow } from "../adapters/useReadData";
 import type { AdminActions, Plan } from "../adapters/useAdmin";
@@ -19,7 +19,7 @@ const SampleNote = () => <div style={{ marginBottom: 12 }}><SoonBadge label="Sam
 
 export type AdminPanelKind =
   | "sellers" | "plans" | "payments" | "reports" | "system" | "broadcast"
-  | "subActive" | "subExpiring" | "subFree" | "subExpired" | "signups" | "notifs" | "revenue" | "audit" | "userbase";
+  | "subActive" | "subExpiring" | "subFree" | "subExpired" | "notifs" | "revenue" | "audit" | "userbase";
 
 const ctrlTile: CSSProperties = { display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "14px 6px", border: "1px solid var(--border)", borderRadius: 14, background: "var(--surface)", boxShadow: "var(--shadow)", cursor: "pointer" };
 const ctrlChip: CSSProperties = { width: 34, height: 34, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)" };
@@ -44,13 +44,13 @@ function Ctrl({ icon, label, onClick }: { icon: ReactNode; label: string; onClic
   return <div onClick={onClick} style={ctrlTile}><span style={ctrlChip}>{icon}</span><span style={ctrlLbl}>{label}</span></div>;
 }
 
-export default function Admin({ onOpenPanel, cur, counts, live = false }: { onOpenPanel: (k: AdminPanelKind) => void; cur: string; counts?: { active: number; expiring: number; expired: number; free: number }; live?: boolean }) {
+export default function Admin({ onOpenPanel, cur, counts, live = false, userBase }: { onOpenPanel: (k: AdminPanelKind) => void; cur: string; counts?: { active: number; expiring: number; expired: number; free: number }; live?: boolean; userBase?: { paid: number; free: number; total: number } }) {
   const subCount = (k: "active" | "expiring" | "expired" | "free", sample: string) => (live && counts ? String(counts[k]) : sample);
   return (
     <div>
       <div style={headerBar}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div><div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" }}>Admin panel</div><div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}><span style={{ fontSize: 12, opacity: 0.85 }}>Owner control center</span><SoonBadge label="Revenue & sign-ups: sample" /></div></div>
+          <div><div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" }}>Admin panel</div><div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}><span style={{ fontSize: 12, opacity: 0.85 }}>Owner control center</span><SoonBadge label="Revenue: sample" /></div></div>
           <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
             <button onClick={() => onOpenPanel("notifs")} title="Notifications" style={{ position: "relative", width: 32, height: 32, borderRadius: 9, border: "none", background: "rgba(255,255,255,.16)", color: "var(--on-header)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" strokeWidth="1.7" /></svg>
@@ -71,7 +71,7 @@ export default function Admin({ onOpenPanel, cur, counts, live = false }: { onOp
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
           <button onClick={() => onOpenPanel("revenue")} style={topStat}><div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>Monthly revenue</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 22, color: "var(--text)", marginTop: 3, letterSpacing: "-.02em" }}>{cur}4.2M</div><div style={{ fontSize: 11, fontWeight: 700, color: "var(--ok)", marginTop: 3 }}>▲ 12% MoM ›</div></button>
-          <button onClick={() => onOpenPanel("signups")} style={topStat}><div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>New today</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 22, color: "var(--text)", marginTop: 3, letterSpacing: "-.02em" }}>38</div><div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", marginTop: 3 }}>sign-ups to approve ›</div></button>
+          <button onClick={() => onOpenPanel("userbase")} style={topStat}><div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>User base</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 22, color: "var(--accent-fg)", marginTop: 3, letterSpacing: "-.02em" }}>{userBase ? userBase.paid : "—"}</div><div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", marginTop: 3 }}>{userBase ? `paying · ${userBase.free} free ›` : "paid / free split ›"}</div></button>
         </div>
 
         <div style={{ ...card, padding: "13px 14px", borderRadius: 15, marginBottom: 16 }}>
@@ -104,7 +104,7 @@ export default function Admin({ onOpenPanel, cur, counts, live = false }: { onOp
 const PANEL_TITLE: Record<AdminPanelKind, string> = {
   sellers: "Manage sellers", plans: "Subscription plans", payments: "Payments", reports: "Platform reports",
   system: "Assign plan by payment", broadcast: "Broadcast", subActive: "Active paid subscriptions",
-  subExpiring: "Expiring soon", subFree: "Free tier", subExpired: "Expired", signups: "New sign-ups to approve",
+  subExpiring: "Expiring soon", subFree: "Free tier", subExpired: "Expired",
   revenue: "App revenue", notifs: "Notifications", audit: "Audit log", userbase: "User base",
 };
 const chipOn: CSSProperties = { fontSize: 11.5, fontWeight: 700, color: "var(--accent-text)", background: "var(--accent)", padding: "6px 11px", borderRadius: 8 };
@@ -424,26 +424,6 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
           {panel === "subExpired" && (realSubs
             ? <SellerSubList list={subB.expired} statusLabel="Expired" statusColor="var(--danger)" note={`${subB.expired.length} expired — not renewed / no payment`} />
             : <SubList list={SUBS.expired} statusLabel="Expired" statusColor="var(--danger)" note="Expired — not renewed / no payment" />)}
-
-          {panel === "signups" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <SampleNote />
-              <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 2 }}>Pending approval — accounts created from sign-up</div>
-              {SIGNUPS.map((g) => (
-                <div key={g.email} style={{ border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface-2)", padding: 12 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <div style={{ minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{g.name}</div><div style={{ fontSize: 11, color: "var(--text-muted)" }}>{g.email}</div></div>
-                    <span style={{ fontSize: 10.5, color: "var(--text-muted)", flexShrink: 0 }}>{g.time}</span>
-                  </div>
-                  <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 5 }}>Shop: <span style={{ fontWeight: 700, color: "var(--text)" }}>{g.shop}</span></div>
-                  <div style={{ display: "flex", gap: 7, marginTop: 10 }}>
-                    <button disabled title="Coming soon" style={{ flex: 1, padding: "9px 0", border: "none", borderRadius: 9, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 12, fontWeight: 700, ...deadBtn }}>Approve</button>
-                    <button disabled title="Coming soon" style={{ flex: 1, padding: "9px 0", border: "1px solid var(--border-strong)", borderRadius: 9, background: "var(--surface)", color: "var(--danger)", fontFamily: "var(--font-ui)", fontSize: 12, fontWeight: 700, ...deadBtn }}>Reject</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
 
           {panel === "notifs" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
