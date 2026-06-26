@@ -9,14 +9,15 @@ import { headerBar, headerTitle, card, sectionLabel } from "../ui";
 import { profileToDisplay, planLabel, renewLabel } from "../adapters/useAuthSession";
 import type { AccountUser } from "../../accountDb";
 import SoonBadge from "../components/SoonBadge";
+import { useT, tpl } from "../i18n";
 
 const label: CSSProperties = { fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 5 };
 const input: CSSProperties = { width: "100%", padding: "11px 13px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 600, outline: "none" };
 const rowTitle: CSSProperties = { fontSize: 13.5, fontWeight: 700, color: "var(--text)" };
 const rowSub: CSSProperties = { fontSize: 11.5, color: "var(--text-muted)" };
-const connected = (
+const connectedEl = (label: string) => (
   <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 700, color: "var(--ok)" }}>
-    <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--ok)" }} />Connected
+    <span style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--ok)" }} />{label}
   </span>
 );
 
@@ -38,6 +39,7 @@ export default function GeneralSettings({
   // Phase 5i — real self-edit save (upsertUser → seller_profiles; user-editable fields only).
   onSaveProfile?: (fields: { fullName: string; storeName: string; phone: string; tiktok: string }) => Promise<{ ok: boolean; error?: string }>;
 }) {
+  const t = useT();
   const [apLangOpen, setApLangOpen] = useState(false);
   const [apCurOpen, setApCurOpen] = useState(false);
   const curLang = LANGS.find((l) => l.code === lang) || LANGS[0];
@@ -59,7 +61,7 @@ export default function GeneralSettings({
   const setField = (k: keyof typeof form, v: string) => { setForm((f) => ({ ...f, [k]: v })); setSaveState("idle"); };
   const handleSaveProfile = async () => {
     if (!onSaveProfile || saveState === "saving") return;
-    if (!form.fullName.trim() || !form.storeName.trim()) { setSaveState("error"); setSaveErr("Owner name and shop name are required."); return; }
+    if (!form.fullName.trim() || !form.storeName.trim()) { setSaveState("error"); setSaveErr(t.rd_set_err_required); return; }
     setSaveState("saving"); setSaveErr("");
     const r = await onSaveProfile({
       fullName: form.fullName.trim(),
@@ -68,7 +70,7 @@ export default function GeneralSettings({
       tiktok: form.tiktok.trim().replace(/^@+/, ""), // store handle without leading @
     });
     if (r.ok) { setSaveState("saved"); }
-    else { setSaveState("error"); setSaveErr(r.error || "Save failed."); }
+    else { setSaveState("error"); setSaveErr(r.error || t.rd_set_err_save_failed); }
   };
 
   // Phase 5a — real profile (falls back to the demo strings when signed out / no row).
@@ -79,7 +81,7 @@ export default function GeneralSettings({
   const pPlanLine = pd ? pd.planLine : "Pro plan · renews Jul 28";
   const pEmail = account ? account.email : "maria@liveshop.ph";
   const pSubRow = account ? `${planLabel(account.plan)}${renewLabel(account.planExpiry) ? " · " + renewLabel(account.planExpiry).replace(/^renews /, "") : ""} ›` : "Pro · Jul 28 ›";
-  const autoLabel = auto.detect ? "Auto-detect" : "Manual mode";
+  const autoLabel = auto.detect ? t.rd_set_auto_detect : t.rd_set_manual_mode;
   const autoLabelColor = auto.detect ? "var(--accent-fg)" : "var(--text-muted)";
   const autoTrack = auto.detect ? "var(--accent)" : "var(--border-strong)";
   const autoKnobLg = auto.detect ? 21 : 3;
@@ -88,7 +90,7 @@ export default function GeneralSettings({
   const printer = PRINTERS[printerIdx];
   return (
     <div>
-      <div style={headerBar}><div style={headerTitle}>Settings</div></div>
+      <div style={headerBar}><div style={headerTitle}>{t.rd_set_title}</div></div>
       <div style={{ padding: "14px 14px 22px", display: "flex", flexDirection: "column", gap: 16 }}>
 
         {/* PROFILE (appears once) */}
@@ -100,37 +102,37 @@ export default function GeneralSettings({
               <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--handle)" }}>{pHandle}</div>
               <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{pPlanLine}</div>
             </div>
-            <button onClick={onToggleProfile} style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-fg)", background: "var(--accent-soft)", border: "none", padding: "8px 12px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{profileOpen ? "Close" : "Edit"}</button>
+            <button onClick={onToggleProfile} style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-fg)", background: "var(--accent-soft)", border: "none", padding: "8px 12px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{profileOpen ? t.rd_set_close : t.rd_set_edit}</button>
           </div>
           {profileOpen && (
             <div style={{ marginTop: 15, paddingTop: 15, borderTop: "1px solid var(--border)" }}>
-              <div style={{ fontSize: 11, letterSpacing: ".1em", fontWeight: 800, color: "var(--text-muted)", marginBottom: 13 }}>BASIC INFORMATION</div>
+              <div style={{ fontSize: 11, letterSpacing: ".1em", fontWeight: 800, color: "var(--text-muted)", marginBottom: 13 }}>{t.rd_set_basic_info}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <div><label style={label}>Shop name</label><input value={form.storeName} onChange={(e) => setField("storeName", e.target.value)} style={input} /></div>
+                <div><label style={label}>{t.rd_set_shop_name}</label><input value={form.storeName} onChange={(e) => setField("storeName", e.target.value)} style={input} /></div>
                 <div style={{ display: "flex", gap: 9 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}><label style={label}>Owner name</label><input value={form.fullName} onChange={(e) => setField("fullName", e.target.value)} style={input} /></div>
-                  <div style={{ flex: 1, minWidth: 0 }}><label style={label}>Phone</label><input value={form.phone} onChange={(e) => setField("phone", e.target.value)} style={{ ...input, fontFamily: "var(--font-mono)", fontSize: 13 }} /></div>
+                  <div style={{ flex: 1, minWidth: 0 }}><label style={label}>{t.rd_set_owner_name}</label><input value={form.fullName} onChange={(e) => setField("fullName", e.target.value)} style={input} /></div>
+                  <div style={{ flex: 1, minWidth: 0 }}><label style={label}>{t.rd_set_phone}</label><input value={form.phone} onChange={(e) => setField("phone", e.target.value)} style={{ ...input, fontFamily: "var(--font-mono)", fontSize: 13 }} /></div>
                 </div>
-                <div><label style={label}>Username handle</label><input value={form.tiktok} onChange={(e) => setField("tiktok", e.target.value)} placeholder="tiktok_handle" style={{ ...input, color: "var(--handle)", fontWeight: 700 }} /></div>
+                <div><label style={label}>{t.rd_set_username_handle}</label><input value={form.tiktok} onChange={(e) => setField("tiktok", e.target.value)} placeholder={t.rd_set_tiktok_ph} style={{ ...input, color: "var(--handle)", fontWeight: 700 }} /></div>
                 {/* Email is identity — changing it needs the secure server step (production blocks it too). */}
-                <div><label style={label}>Email</label><input value={pEmail} disabled style={{ ...input, opacity: 0.6 }} /></div>
+                <div><label style={label}>{t.rd_set_email}</label><input value={pEmail} disabled style={{ ...input, opacity: 0.6 }} /></div>
               </div>
               {saveState === "error" && <div style={{ fontSize: 12, fontWeight: 600, color: "var(--danger)", marginTop: 10 }}>{saveErr}</div>}
-              {saveState === "saved" && <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ok)", marginTop: 10 }}>✓ Saved</div>}
-              <button onClick={handleSaveProfile} disabled={saveState === "saving"} style={{ width: "100%", marginTop: 12, padding: "12px 0", border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: saveState === "saving" ? "default" : "pointer", opacity: saveState === "saving" ? 0.7 : 1, boxShadow: "0 4px 14px var(--accent-soft)" }}>{saveState === "saving" ? "Saving…" : "Save changes"}</button>
+              {saveState === "saved" && <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ok)", marginTop: 10 }}>{t.rd_set_saved}</div>}
+              <button onClick={handleSaveProfile} disabled={saveState === "saving"} style={{ width: "100%", marginTop: 12, padding: "12px 0", border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: saveState === "saving" ? "default" : "pointer", opacity: saveState === "saving" ? 0.7 : 1, boxShadow: "0 4px 14px var(--accent-soft)" }}>{saveState === "saving" ? t.rd_set_saving : t.rd_set_save_changes}</button>
             </div>
           )}
         </div>
 
         {/* LIVE SESSION — auto-detect (per v2, lives here) */}
         <div>
-          <div style={sectionLabel}>LIVE SESSION</div>
+          <div style={sectionLabel}>{t.rd_set_live_session}</div>
           <div style={card}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
               <button onClick={auto.toggleSetup} style={{ flex: 1, display: "flex", alignItems: "flex-start", gap: 9, background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: 0, fontFamily: "var(--font-ui)" }}>
                 <span style={{ flex: 1 }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>Auto mode <SoonBadge /></span>
-                  <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>Auto-detect “mine” comments and tag claims. Not wired yet — keep using 1-Click / Enterprise to capture orders. Tap to preview trigger word sets.</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_auto_mode} <SoonBadge /></span>
+                  <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{t.rd_set_auto_desc}</span>
                 </span>
                 <span style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 1, transition: "transform .2s", transform: autoChevron, display: "inline-block" }}>▾</span>
               </button>
@@ -143,16 +145,16 @@ export default function GeneralSettings({
             {auto.setupOpen && (
               <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>Trigger word sets</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_trigger_sets}</span>
                   <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{auto.words.length} / 20</span>
                 </div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.45, marginBottom: 11 }}>When Auto-detect is ON, any comment containing a trigger word auto-prints an order at its price. e.g. <span style={{ color: "var(--accent-fg)", fontWeight: 700 }}>hello = 150</span> → prints {cur}150.</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.45, marginBottom: 11 }}>{t.rd_set_auto_help_pre}<span style={{ color: "var(--accent-fg)", fontWeight: 700 }}>{t.rd_set_auto_help_eg}</span>{tpl(t.rd_set_auto_help_post, { cur })}</div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
                   {auto.words.map((w, i) => (
-                    <span key={w.word} style={{ display: "flex", alignItems: "center", gap: 7, background: "var(--accent-soft)", border: "1px solid var(--accent)", color: "var(--accent-fg)", padding: "6px 8px 6px 11px", borderRadius: 9, fontSize: 12, fontWeight: 700 }}>{w.word}<span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, opacity: 0.85 }}>{cur}{w.price}</span><button onClick={() => auto.removeWord(i)} title="Remove" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent-fg)", fontSize: 15, lineHeight: 1, padding: 0, display: "flex", alignItems: "center" }}>×</button></span>
+                    <span key={w.word} style={{ display: "flex", alignItems: "center", gap: 7, background: "var(--accent-soft)", border: "1px solid var(--accent)", color: "var(--accent-fg)", padding: "6px 8px 6px 11px", borderRadius: 9, fontSize: 12, fontWeight: 700 }}>{w.word}<span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, opacity: 0.85 }}>{cur}{w.price}</span><button onClick={() => auto.removeWord(i)} title={t.rd_set_remove} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent-fg)", fontSize: 15, lineHeight: 1, padding: 0, display: "flex", alignItems: "center" }}>×</button></span>
                   ))}
                   {auto.words.length < 20 && (
-                    <input value={auto.input} onChange={(e) => auto.setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); auto.addWord(); } }} placeholder="word = price, e.g. hello=150" style={{ background: "transparent", border: "1.3px dashed var(--border-strong)", color: "var(--text)", padding: "6px 11px", borderRadius: 9, fontSize: 12, fontWeight: 700, fontFamily: "var(--font-ui)", outline: "none", width: 188 }} />
+                    <input value={auto.input} onChange={(e) => auto.setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); auto.addWord(); } }} placeholder={t.rd_set_word_ph} style={{ background: "transparent", border: "1.3px dashed var(--border-strong)", color: "var(--text)", padding: "6px 11px", borderRadius: 9, fontSize: 12, fontWeight: 700, fontFamily: "var(--font-ui)", outline: "none", width: 188 }} />
                   )}
                 </div>
               </div>
@@ -160,21 +162,21 @@ export default function GeneralSettings({
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
               <span style={{ width: 7, height: 7, borderRadius: "50%", background: autoLabelColor }} />
               <span style={{ fontSize: 11.5, fontWeight: 700, color: autoLabelColor }}>{autoLabel}</span>
-              <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>currently active</span>
+              <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_set_currently_active}</span>
             </div>
           </div>
         </div>
 
         {/* APPEARANCE — real theme + accent control */}
         <div>
-          <div style={sectionLabel}>APPEARANCE</div>
+          <div style={sectionLabel}>{t.rd_set_appearance}</div>
           <div style={{ ...card, padding: 13 }}>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", marginBottom: 7 }}>Theme</div>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", marginBottom: 7 }}>{t.rd_set_theme}</div>
             <div style={{ display: "flex", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 11, padding: 4, gap: 4, marginBottom: 13 }}>
-              <button onClick={() => onSetTheme("light")} style={seg(theme === "light")}>☀ Light</button>
-              <button onClick={() => onSetTheme("dark")} style={seg(theme === "dark")}>☾ Dark</button>
+              <button onClick={() => onSetTheme("light")} style={seg(theme === "light")}>{t.rd_set_light}</button>
+              <button onClick={() => onSetTheme("dark")} style={seg(theme === "dark")}>{t.rd_set_dark}</button>
             </div>
-            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", marginBottom: 9 }}>Accent color</div>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", marginBottom: 9 }}>{t.rd_set_accent_color}</div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 13 }}>
               {ACCENT_ORDER.map((k) => {
                 const on = k === accent;
@@ -185,15 +187,15 @@ export default function GeneralSettings({
             </div>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 12, borderTop: "1px solid var(--border)" }}>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>Readable @handles</div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>High-contrast usernames — <span style={{ color: "var(--handle)", fontWeight: 700 }}>@maria_shops</span></div>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_readable}</div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{t.rd_set_readable_sub_pre}<span style={{ color: "var(--handle)", fontWeight: 700 }}>@maria_shops</span></div>
               </div>
               <div style={{ width: 44, height: 26, borderRadius: 13, background: "var(--accent)", position: "relative", flexShrink: 0 }}><div style={{ width: 20, height: 20, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, right: 3, boxShadow: "0 1px 3px rgba(0,0,0,.3)" }} /></div>
             </div>
             {/* Language — inline accordion (dc.html v3 L686) */}
             <div style={{ paddingTop: 12, marginTop: 12, borderTop: "1px solid var(--border)" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>Language</div>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_language}</div>
                 <button onClick={() => { setApLangOpen((o) => !o); setApCurOpen(false); }} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: "var(--accent-fg)", background: "var(--accent-soft)", border: "none", padding: "6px 11px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)", minWidth: 150, justifyContent: "space-between" }}>
                   <span style={{ display: "flex", alignItems: "center", gap: 6 }}>{curLang.flag} {curLang.label}</span>
                   <span style={{ fontSize: 9, transition: "transform .2s", transform: apLangOpen ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block" }}>▾</span>
@@ -217,7 +219,7 @@ export default function GeneralSettings({
             {/* Currency — inline accordion (dc.html v3 L706) */}
             <div style={{ paddingTop: 12, marginTop: 12, borderTop: "1px solid var(--border)" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div><div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>Currency</div><div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>Applies to all prices</div></div>
+                <div><div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_currency}</div><div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{t.rd_set_currency_sub}</div></div>
                 <button onClick={() => { setApCurOpen((o) => !o); setApLangOpen(false); }} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, color: "var(--accent-fg)", background: "var(--accent-soft)", border: "none", padding: "6px 11px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)", minWidth: 150, justifyContent: "space-between" }}>
                   <span style={{ fontFamily: "var(--font-mono)" }}>{currency} {CURRENCIES[currency] || "$"}</span>
                   <span style={{ fontSize: 9, transition: "transform .2s", transform: apCurOpen ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block" }}>▾</span>
@@ -243,33 +245,33 @@ export default function GeneralSettings({
 
         {/* CHANNELS */}
         <div>
-          <div style={sectionLabel}>CHANNELS</div>
+          <div style={sectionLabel}>{t.rd_set_channels}</div>
           <div style={{ ...card, padding: 0, overflow: "hidden" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 14, borderBottom: "1px solid var(--border)" }}>
               <div style={{ width: 38, height: 38, borderRadius: 11, background: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, fontWeight: 800, color: "#fff" }}>t</div>
-              <div style={{ flex: 1 }}><div style={rowTitle}>TikTok Live</div><div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)" }}>@maria_shops</div></div>
-              {connected}
+              <div style={{ flex: 1 }}><div style={rowTitle}>{t.rd_set_tiktok_live}</div><div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)" }}>@maria_shops</div></div>
+              {connectedEl(t.rd_set_connected)}
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12, padding: 14 }}>
               <div style={{ width: 38, height: 38, borderRadius: 11, background: "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 800, color: "#fff", fontFamily: "var(--font-display)" }}>f</div>
-              <div style={{ flex: 1 }}><div style={rowTitle}>Facebook Live</div><div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)" }}>Maria's Live Shop</div></div>
-              {connected}
+              <div style={{ flex: 1 }}><div style={rowTitle}>{t.rd_set_facebook_live}</div><div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)" }}>Maria's Live Shop</div></div>
+              {connectedEl(t.rd_set_connected)}
             </div>
           </div>
         </div>
 
         {/* PRINTER & DISPLAY */}
         <div>
-          <div style={sectionLabel}>PRINTER &amp; DISPLAY</div>
+          <div style={sectionLabel}>{t.rd_set_printer_display}</div>
           <div style={{ ...card, padding: 0, overflow: "hidden" }}>
             <button onClick={onTogglePrinter} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)", borderBottom: "1px solid var(--border)" }}>
               <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)", flexShrink: 0 }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="6" y="3" width="12" height="6" stroke="currentColor" strokeWidth="1.7" /><rect x="4" y="9" width="16" height="8" rx="2" stroke="currentColor" strokeWidth="1.7" /><rect x="7" y="15" width="10" height="6" stroke="currentColor" strokeWidth="1.7" /></svg></div>
-              <div style={{ flex: 1, minWidth: 0 }}><div style={rowTitle}>Printer</div><div style={{ fontSize: 11.5, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{printer.name} · {printer.meta}</div></div>
+              <div style={{ flex: 1, minWidth: 0 }}><div style={rowTitle}>{t.rd_set_printer}</div><div style={{ fontSize: 11.5, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{printer.name} · {printer.meta}</div></div>
               <span style={{ color: "var(--text-muted)", fontSize: 13, transition: "transform .2s", transform: printerOpen ? "rotate(180deg)" : "rotate(0deg)", flexShrink: 0, display: "inline-block" }}>▾</span>
             </button>
             {printerOpen && (
               <div style={{ background: "var(--surface-2)", borderBottom: "1px solid var(--border)", padding: 7 }}>
-                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--text-muted)", padding: "6px 9px 8px" }}>CHOOSE PRINTER</div>
+                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--text-muted)", padding: "6px 9px 8px" }}>{t.rd_set_choose_printer}</div>
                 {PRINTERS.map((p, i) => {
                   const on = i === printerIdx;
                   return (
@@ -284,7 +286,7 @@ export default function GeneralSettings({
             )}
             <button onClick={onPrintPattern} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", borderTop: "1px solid var(--border)", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
               <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)", flexShrink: 0 }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="6" y="3" width="12" height="6" stroke="currentColor" strokeWidth="1.7" /><rect x="4" y="9" width="16" height="8" rx="2" stroke="currentColor" strokeWidth="1.7" /><rect x="7" y="14" width="10" height="7" stroke="currentColor" strokeWidth="1.7" /></svg></div>
-              <div style={{ flex: 1 }}><div style={rowTitle}>LIVE print pattern</div><div style={rowSub}>What prints on each slip · sizes</div></div>
+              <div style={{ flex: 1 }}><div style={rowTitle}>{t.rd_set_live_pattern}</div><div style={rowSub}>{t.rd_set_pattern_sub}</div></div>
               <span style={{ fontSize: 16, color: "var(--text-muted)" }}>›</span>
             </button>
           </div>
@@ -292,11 +294,11 @@ export default function GeneralSettings({
 
         {/* ACCOUNT */}
         <div>
-          <div style={sectionLabel}>ACCOUNT</div>
+          <div style={sectionLabel}>{t.rd_set_account}</div>
           <div style={{ ...card, padding: 0, overflow: "hidden" }}>
-            <button onClick={onSubscription} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", borderBottom: "1px solid var(--border)", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}><span style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>Subscription</span><span style={{ fontSize: 12, color: "var(--text-muted)" }}>{pSubRow}</span></button>
-            <button onClick={onSupport} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", borderBottom: "1px solid var(--border)", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}><span style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>Support &amp; user guide</span><span style={{ fontSize: 16, color: "var(--text-muted)" }}>›</span></button>
-            <button onClick={onDelete} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}><span style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: "var(--danger)" }}>Delete account</span><span style={{ fontSize: 16, color: "var(--danger)" }}>›</span></button>
+            <button onClick={onSubscription} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", borderBottom: "1px solid var(--border)", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}><span style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_sub_title}</span><span style={{ fontSize: 12, color: "var(--text-muted)" }}>{pSubRow}</span></button>
+            <button onClick={onSupport} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", borderBottom: "1px solid var(--border)", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}><span style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_support_guide}</span><span style={{ fontSize: 16, color: "var(--text-muted)" }}>›</span></button>
+            <button onClick={onDelete} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}><span style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: "var(--danger)" }}>{t.rd_del_title}</span><span style={{ fontSize: 16, color: "var(--danger)" }}>›</span></button>
           </div>
         </div>
 

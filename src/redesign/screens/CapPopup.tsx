@@ -4,6 +4,7 @@
 // routes to the Subscription screen.
 import type { CSSProperties } from "react";
 import type { CapPopupKind, FreeStatus } from "../adapters/useFreeCap";
+import { useT, tpl } from "../i18n";
 
 const overlay: CSSProperties = { position: "absolute", inset: 0, zIndex: 12, background: "rgba(8,6,24,.55)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 };
 const modal: CSSProperties = { width: "100%", maxWidth: 340, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 20, boxShadow: "0 24px 60px rgba(0,0,0,.4)", padding: "24px 22px", textAlign: "center" };
@@ -19,25 +20,26 @@ export default function CapPopup({
   onClose: () => void;
   onViewOrders: () => void;
 }) {
+  const t = useT();
   const isHard = kind === "hard";
   const count = freeStatus?.count ?? 0;
   const cap = freeStatus?.cap ?? 200;
   const resetDays = freeStatus?.cycle_resets_in_days ?? 30;
   const left = Math.max(0, cap - count);
-  const title = isHard ? `You've reached your ${cap}-order limit` : "You're almost there!";
+  const title = isHard ? tpl(t.rd_cap_hard_title, { cap }) : t.rd_cap_near_title;
   const msg = isHard
-    ? `You've used all ${cap} free orders this cycle. It resets in ${resetDays} day${resetDays === 1 ? "" : "s"} — or upgrade to keep selling now.`
-    : `Only ${left} of your ${cap} free orders left this cycle. Upgrade for unlimited orders.`;
+    ? tpl(resetDays === 1 ? t.rd_cap_hard_msg_one : t.rd_cap_hard_msg_many, { cap, days: resetDays })
+    : tpl(t.rd_cap_near_msg, { left, cap });
   return (
     <div style={overlay} onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div style={modal} onClick={(e) => e.stopPropagation()}>
         <div style={{ fontSize: 40, lineHeight: 1, marginBottom: 12 }} aria-hidden="true">{isHard ? "🎉" : "🚀"}</div>
         <h3 style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, color: "var(--text)", margin: "0 0 8px" }}>{title}</h3>
         <p style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.55, margin: "0 0 18px" }}>{msg}</p>
-        <button style={upgradeBtn} onClick={onUpgrade}>Upgrade plan</button>
+        <button style={upgradeBtn} onClick={onUpgrade}>{t.rd_cap_upgrade}</button>
         {isHard
-          ? <button style={outBtn} onClick={onViewOrders}>View my orders</button>
-          : <button style={outBtn} onClick={onClose}>Maybe later</button>}
+          ? <button style={outBtn} onClick={onViewOrders}>{t.rd_cap_view_orders}</button>
+          : <button style={outBtn} onClick={onClose}>{t.rd_cap_later}</button>}
       </div>
     </div>
   );

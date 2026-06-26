@@ -1,6 +1,7 @@
 // Screen 6 — Settings hub (menu). dc.html v2 L204–254.
 import type { CSSProperties, ReactNode } from "react";
 import { headerBar, headerTitle } from "../ui";
+import { useT } from "../i18n";
 
 const tile: CSSProperties = { display: "flex", alignItems: "center", gap: 11, padding: "15px 13px", border: "1px solid var(--border)", borderRadius: 15, background: "var(--surface)", boxShadow: "var(--shadow)", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" };
 const chip = (variant: "accent" | "danger" | "neutral"): CSSProperties => ({
@@ -43,24 +44,25 @@ export default function SettingsHub({
   onCustomerData: () => void; onLegal: () => void; onDelete: () => void; onLogout: () => void;
   isAdmin?: boolean; // Phase 5h — owner-only tiles (matches production isAdminUser gating)
 }) {
+  const t = useT();
   return (
     <div>
       <div style={headerBar}>
-        <div style={headerTitle}>Settings</div>
-        <div style={{ fontSize: 12, opacity: 0.85, marginTop: 1 }}>Shop tools &amp; account</div>
+        <div style={headerTitle}>{t.rd_set_title}</div>
+        <div style={{ fontSize: 12, opacity: 0.85, marginTop: 1 }}>{t.rd_sh_sub}</div>
       </div>
       <div style={{ padding: "16px 14px 22px" }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <Tile icon={ic.gear} label="General Settings" onClick={onGeneral} />
-          <Tile icon={ic.people} label="Customers" onClick={onCustomers} />
+          <Tile icon={ic.gear} label={t.rd_sh_general} onClick={onGeneral} />
+          <Tile icon={ic.people} label={t.rd_cus_title} onClick={onCustomers} />
           {/* Owner-only (production: isAdminUser) */}
-          {isAdmin && <Tile icon={ic.shield} label="Admin" onClick={onAdmin} />}
-          <Tile icon={ic.chart} label="Sales Report" onClick={onSales} />
-          {isAdmin && <Tile icon={ic.truck} label="Shipping" onClick={onShipping} />}
-          {isAdmin && <Tile icon={ic.database} label="Customer Data" onClick={onCustomerData} />}
-          <Tile icon={ic.doclock} label="Privacy & Terms" onClick={onLegal} />
-          <Tile icon={ic.trash} label="Delete Account" onClick={onDelete} variant="danger" />
-          <Tile icon={ic.exit} label="Log out" onClick={onLogout} variant="neutral" />
+          {isAdmin && <Tile icon={ic.shield} label={t.rd_sh_admin} onClick={onAdmin} />}
+          <Tile icon={ic.chart} label={t.rd_sh_sales} onClick={onSales} />
+          {isAdmin && <Tile icon={ic.truck} label={t.rd_sh_shipping} onClick={onShipping} />}
+          {isAdmin && <Tile icon={ic.database} label={t.rd_sh_customer_data} onClick={onCustomerData} />}
+          <Tile icon={ic.doclock} label={t.lg_pt_title} onClick={onLegal} />
+          <Tile icon={ic.trash} label={t.rd_sh_delete} onClick={onDelete} variant="danger" />
+          <Tile icon={ic.exit} label={t.rd_sh_logout} onClick={onLogout} variant="neutral" />
         </div>
       </div>
     </div>

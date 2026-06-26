@@ -45,10 +45,34 @@ describe("buildT — merged dictionary per language", () => {
     expect(t.brand_new_key).toBe("Hi");        // new redesign key
     expect(t.nav_live).toBe("OVERRIDE");       // supplement wins over production
   });
-  it("REDESIGN_STRINGS starts empty for every language (plumbing only)", () => {
-    for (const lang of Object.keys(REDESIGN_STRINGS) as (keyof typeof REDESIGN_STRINGS)[]) {
-      expect(Object.keys(REDESIGN_STRINGS[lang])).toHaveLength(0);
+  it("every new key exists in ALL 7 languages (no blanks in any language)", () => {
+    const langs = Object.keys(REDESIGN_STRINGS) as (keyof typeof REDESIGN_STRINGS)[];
+    const enKeys = Object.keys(REDESIGN_STRINGS.en);
+    for (const lang of langs) {
+      for (const k of enKeys) {
+        expect(REDESIGN_STRINGS[lang][k], `${String(lang)} missing key ${k}`).toBeTruthy();
+      }
     }
+  });
+});
+
+describe("Legal screen keys (Step 3) — behavior identical for en", () => {
+  it("en values exactly match the previously-hardcoded English", () => {
+    const t = buildT("en");
+    expect(t.lg_pt_title).toBe("Privacy & Terms");
+    expect(t.lg_updated).toBe("Last updated Jun 1, 2026");
+    expect(t.lg_collect_h).toBe("1. Data we collect");
+    expect(t.lg_use_h).toBe("2. How we use it");
+    expect(t.lg_rights_h).toBe("3. Your rights");
+    expect(t.lg_contact_h).toBe("4. Contact");
+    expect(t.lg_contact_pre).toBe("Questions? Reach us on Telegram ");
+    expect(t.lg_contact_post).toBe(" or email privacy@sellerflowlive.app.");
+    expect(t.lg_collect_p).toContain("public live-stream comments");
+  });
+  it("zh-tw resolves the new legal keys (draft) — non-empty, not falling back blank", () => {
+    const t = buildT("zh-tw");
+    expect(t.lg_pt_title).toBe("隱私與條款");
+    expect(t.lg_collect_h).toBeTruthy();
   });
 });
 
