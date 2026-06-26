@@ -1,7 +1,7 @@
 // Phase 5d — PARITY test for the live-feed adapter's commentKey + the
 // production→redesign comment mapper. No Supabase / socket / React involved.
-import { describe, it, expect } from "vitest";
-import { commentKey, toRedesignComment } from "../useLiveFeed";
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { commentKey, toRedesignComment, isPreviewEnv } from "../useLiveFeed";
 import type { Comment as ProdComment } from "../../../lib/orderTypes";
 
 // referenceCommentKey is COPIED VERBATIM from src/App.tsx:111-114. The adapter's
@@ -64,5 +64,34 @@ describe("toRedesignComment", () => {
     expect(r.handle).toBe("@kept");
     expect(r.name).toBe("@kept");
     expect(r.mine).toBe(true);
+  });
+});
+
+// isPreviewEnv gates the synthetic-comment injector so REAL users on the
+// production domain never see it (F2). It must be true everywhere except the two
+// production hostnames, and always true in dev.
+describe("isPreviewEnv — synthetic injector gating", () => {
+  const origLocation = window.location;
+  const setHost = (hostname: string) =>
+    Object.defineProperty(window, "location", { value: { ...origLocation, hostname }, writable: true, configurable: true });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    Object.defineProperty(window, "location", { value: origLocation, writable: true, configurable: true });
+  });
+  it("DEV build → always preview (true)", () => {
+    vi.stubEnv("DEV", true);
+    expect(isPreviewEnv()).toBe(true);
+  });
+  it("prod build on the real domain → NOT preview (false) for apex + www", () => {
+    vi.stubEnv("DEV", false);
+    setHost("www.sellerflowlive.com");
+    expect(isPreviewEnv()).toBe(false);
+    setHost("sellerflowlive.com");
+    expect(isPreviewEnv()).toBe(false);
+  });
+  it("prod build on a Vercel preview host → preview (true)", () => {
+    vi.stubEnv("DEV", false);
+    setHost("sellerflow-git-claude-full-redesign.vercel.app");
+    expect(isPreviewEnv()).toBe(true);
   });
 });

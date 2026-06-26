@@ -2,7 +2,7 @@
 // redesign adapter produces output byte-for-byte identical to a VERBATIM copy of
 // App.tsx's builders (the native TSPL/ESC-POS payload shape is DO-NOT-TOUCH).
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { buildNativeStickerPayload, buildSlipPayload, buildSettingsFromRedesign, DEF_SETTINGS, type Settings } from "../printing";
+import { buildNativeStickerPayload, buildSlipPayload, buildSettingsFromRedesign, printSlip, DEF_SETTINGS, type Settings } from "../printing";
 import type { Buyer } from "../../../lib/orderTypes";
 
 // ── VERBATIM reference from src/App.tsx:519-585, 658-659. If App.tsx changes,
@@ -63,6 +63,40 @@ describe("buildSlipPayload — byte-parity with App.tsx", () => {
   it("matches verbatim reference (shape + Taipei session date + createdAt)", () => {
     const b = buyer(), c = cfg();
     expect(JSON.stringify(buildSlipPayload(b, "NT$", "Taipei Shop", c))).toBe(JSON.stringify(refSlip(b, "NT$", "Taipei Shop", c)));
+  });
+});
+
+describe("printSlip — web/preview no-op (no native bridge)", () => {
+  it("returns {ok:false, via:'none'} and never throws when there's no SellerFlowPrinter", () => {
+    // jsdom has no window.SellerFlowPrinter → all native paths skip → safe no-op.
+    expect(printSlip(buyer(), "NT$", "Shop", cfg())).toEqual({ ok: false, via: "none" });
+    expect(printSlip(buyer(), "NT$", "Shop", "80x50")).toEqual({ ok: false, via: "none" }); // string-settings overload
+  });
+});
+
+describe("DEF_SETTINGS — drift guard (copied from App.tsx:175)", () => {
+  it("pins the load-bearing print defaults", () => {
+    expect(DEF_SETTINGS.printerType).toBe("lan");
+    expect(DEF_SETTINGS.lanFormat).toBe("receipt");
+    expect(DEF_SETTINGS.stickerSize).toBe("100x60");
+    expect(DEF_SETTINGS.printStoreName).toBe(true);
+    expect(DEF_SETTINGS.printTotal).toBe(true);
+    expect(DEF_SETTINGS.printAutoClose).toBe(true);
+    expect(DEF_SETTINGS.printStoreScale).toBe(1);
+    expect(DEF_SETTINGS.printOrderScale).toBe(1);
+  });
+});
+
+describe("buildSettingsFromRedesign → buildNativeStickerPayload (5i config → 5g payload)", () => {
+  it("propagates toggles, scales, and paper size into the native sticker payload", () => {
+    const pp = { shopName: false, shopNameSize: 1, dateTime: true, dateTimeSize: 1, buyerNum: true, buyerNumSize: 2, tiktokName: true, tiktokNameSize: 1, tiktokUser: false, tiktokUserSize: 1, comment: true, commentSize: 1 };
+    const s = buildSettingsFromRedesign({ pp, psType: "bt", psOut: "sticker", psSize: "80x50mm" });
+    const payload = buildNativeStickerPayload(buyer(), "NT$", "Shop", s);
+    expect(payload.settings.printStoreName).toBe(false);      // pp.shopName off
+    expect(payload.settings.printBuyerUsername).toBe(false);   // pp.tiktokUser off
+    expect(payload.settings.printBuyerNumberScale).toBe(2);    // size 2 → level 2
+    expect(payload.labelWidthMm).toBe(80);
+    expect(payload.labelHeightMm).toBe(50);
   });
 });
 
