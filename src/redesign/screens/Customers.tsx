@@ -6,14 +6,17 @@ import { CUSTOMERS, ARCHIVE, avColor, initials, fmt, type Customer } from "../da
 import { headerBar, headerTitle, mono } from "../ui";
 import type { ReadState } from "../adapters/useReadData";
 
-export default function Customers({ cur, customers = CUSTOMERS, state = "sample" }: { cur: string; customers?: Customer[]; state?: ReadState }) {
+export default function Customers({ cur, customers = CUSTOMERS, state = "sample", onExport }: { cur: string; customers?: Customer[]; state?: ReadState; onExport?: () => void }) {
   const total = state === "loading" ? "…" : `${customers.length}`;
   return (
     <div>
       <div style={headerBar}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={headerTitle}>Customers</div>
-          <div style={{ fontSize: 12.5, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "6px 11px", borderRadius: 9 }}>{total} total</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            {onExport && customers.length > 0 && <button onClick={onExport} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, background: "rgba(255,255,255,.16)", border: "none", color: "var(--on-header)", padding: "6px 10px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>⬇ Export</button>}
+            <div style={{ fontSize: 12.5, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "6px 11px", borderRadius: 9 }}>{total} total</div>
+          </div>
         </div>
         <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.16)", borderRadius: 11, padding: "9px 12px" }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" /><path d="m20 20-3.5-3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>

@@ -32,6 +32,7 @@ import { useOrders } from "./adapters/useOrders";
 import { useFreeCap } from "./adapters/useFreeCap";
 import { useAdmin } from "./adapters/useAdmin";
 import { upsertUser } from "../accountDb";
+import { csvDL, dayStamp } from "./adapters/csv";
 import { printSlip, buildSettingsFromRedesign, type Settings as PrintSettings } from "./adapters/printing";
 import type { Buyer } from "../lib/orderTypes";
 import CapPopup from "./screens/CapPopup";
@@ -112,6 +113,24 @@ export default function RedesignApp() {
   // newly created order shows immediately. (5b's useLiveOrders is superseded here.)
   const ordersList = liveOrdersToRedesign(liveSession.session);
   const ordersState: ReadState = liveSession.state === "idle" ? "sample" : liveSession.state;
+
+  // Phase 5j — Miners DERIVED from already-loaded real customers (no new backend),
+  // + CSV exports of already-loaded real data (csvDL copied from App.tsx).
+  const minersLive = customersData.state === "live";
+  const minerList = [...customersData.customers].sort((a, b) => b.spent - a.spent).slice(0, 5)
+    .map((c) => ({ name: c.name, handle: c.handle, orders: c.orders, spent: c.spent, platform: c.platform }));
+  const minerStats = (() => {
+    const cs = customersData.customers;
+    const buyers = cs.length;
+    const orderCount = cs.reduce((s, c) => s + c.orders, 0);
+    const spent = cs.reduce((s, c) => s + c.spent, 0);
+    const tt = cs.filter((c) => c.platform === "TikTok").length;
+    const tiktokPct = buyers ? Math.round((tt / buyers) * 100) : 0;
+    return { buyers, orders: orderCount, spent, avg: orderCount ? Math.round(spent / orderCount) : 0, tiktokPct, fbPct: buyers ? 100 - tiktokPct : 0 };
+  })();
+  const exportOrders = () => csvDL(`orders-${dayStamp()}.csv`, ["Order", "#", "Customer", "Item", "Qty", "Total", "Platform", "Time", "Status"], liveSession.session.orders.map((o) => [`#SF${o.orderNum}`, o.bNum, `@${o.handle}`, o.item, o.qty, `${cur}${o.total}`, o.platform, o.time, o.status]));
+  const exportCustomers = () => csvDL(`customers-${dayStamp()}.csv`, ["Name", "Username", "Platform", "Orders", "Total"], customersData.customers.map((c) => [c.name, c.handle, c.platform, c.orders, `${cur}${c.spent}`]));
+  const exportMiners = () => csvDL(`miners-${dayStamp()}.csv`, ["#", "Name", "Username", "Platform", "Orders", "Total"], minerList.map((m, i) => [i + 1, m.name, m.handle, m.platform, m.orders, `${cur}${m.spent}`]));
 
   const [theme, setTheme] = useState<ThemeMode>(() => (readLS(LS.theme, "light") === "dark" ? "dark" : "light"));
   const [accent, setAccent] = useState<AccentKey>(() => safeAccent(readLS(LS.accent, "indigo")));
@@ -343,9 +362,9 @@ export default function RedesignApp() {
               canInject={liveFeed.canInject} onInjectSynthetic={liveFeed.injectSynthetic}
             />
           )}
-          {screen === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} orders={ordersList} state={ordersState} />}
+          {screen === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} orders={ordersList} state={ordersState} onExport={exportOrders} />}
           {screen === "products" && <Products cur={cur} />}
-          {screen === "miners" && <Miners cur={cur} />}
+          {screen === "miners" && <Miners cur={cur} miners={minersLive ? minerList : undefined} stats={minersLive ? minerStats : undefined} live={minersLive} onExport={exportMiners} />}
           {screen === "menu" && (
             <SettingsHub
               onGeneral={() => setScreen("settings")}
@@ -375,14 +394,14 @@ export default function RedesignApp() {
               onDelete={() => setScreen("delete")}
             />
           )}
-          {screen === "customers" && <Customers cur={cur} customers={customersData.customers} state={customersData.state} />}
+          {screen === "customers" && <Customers cur={cur} customers={customersData.customers} state={customersData.state} onExport={exportCustomers} />}
           {screen === "subscription" && <Subscription cur={cur} account={auth.profile} isFreeUser={freeCap.isFreeUser} freeStatus={freeCap.freeStatus} />}
           {screen === "support" && <Support onLegal={() => setScreen("legal")} />}
           {screen === "admin" && isAdmin && <Admin onOpenPanel={setAdminPanel} cur={cur} />}
           {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} />}
           {screen === "sales" && <SalesReport cur={cur} />}
           {screen === "shipping" && <Shipping />}
-          {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} cur={cur} />}
+          {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} cur={cur} customers={customersData.customers} onExport={exportCustomers} />}
           {screen === "legal" && <Legal />}
           {screen === "delete" && <DeleteAccount onBack={() => setScreen("settings")} />}
           {screen === "printersettings" && (

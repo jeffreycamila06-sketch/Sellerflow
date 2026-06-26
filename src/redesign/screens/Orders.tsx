@@ -12,7 +12,7 @@ const filterActive: CSSProperties = { background: "#fff", color: "var(--accent)"
 const filterIdle: CSSProperties = { background: "rgba(255,255,255,.16)", fontSize: 12, fontWeight: 600, padding: "6px 13px", borderRadius: 20, whiteSpace: "nowrap" };
 const mono = "var(--font-mono)";
 
-export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sample" }: { onGoPrint: () => void; cur: string; orders?: Order[]; state?: ReadState }) {
+export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sample", onExport }: { onGoPrint: () => void; cur: string; orders?: Order[]; state?: ReadState; onExport?: () => void }) {
   const live = state === "live";
   const countBy = (s: string) => orders.filter((o) => o.status === s).length;
   const badge = state === "loading" ? "Today · …" : `Today · ${orders.length}`;
@@ -21,7 +21,10 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
       <div style={headerBar}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={title}>Orders</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "6px 11px", borderRadius: 9 }}>{badge}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            {onExport && orders.length > 0 && <button onClick={onExport} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, background: "rgba(255,255,255,.16)", border: "none", color: "var(--on-header)", padding: "6px 10px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>⬇ Export</button>}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "6px 11px", borderRadius: 9 }}>{badge}</div>
+          </div>
         </div>
         <div className="sfl-scroll" style={{ display: "flex", gap: 7, marginTop: 13, overflowX: "auto" }}>
           <div style={filterActive}>All · {orders.length}</div>

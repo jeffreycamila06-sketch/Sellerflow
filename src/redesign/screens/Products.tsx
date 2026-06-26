@@ -1,6 +1,7 @@
 // Screen 3 — Products. dc.html L327–361.
 import type { CSSProperties } from "react";
 import { PRODUCTS, avColor, initials, fmt } from "../data";
+import SoonBadge from "../components/SoonBadge";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px" };
 const title: CSSProperties = { fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" };
@@ -17,7 +18,7 @@ export default function Products({ cur }: { cur: string }) {
     <div>
       <div style={headerBar}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={title}>Products</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 9 }}><div style={title}>Products</div><SoonBadge label="Soon · cross-device" /></div>
           <button style={{ display: "flex", alignItems: "center", gap: 5, background: "#fff", color: "var(--accent)", fontSize: 12.5, fontWeight: 700, padding: "7px 12px", border: "none", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>+ Add</button>
         </div>
         <div className="sfl-scroll" style={{ display: "flex", gap: 7, marginTop: 13, overflowX: "auto" }}>

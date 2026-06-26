@@ -1,8 +1,9 @@
 // Screen 14 — Customer Data (admin export table). dc.html v2 L912–932.
-import { CUSTOMERS, fmt } from "../data";
+// Phase 5j: real customers + working Export CSV (already-loaded data).
+import { CUSTOMERS, fmt, type Customer } from "../data";
 import { headerBar, headerTitle, mono } from "../ui";
 
-export default function CustomerData({ onLegal, cur }: { onLegal: () => void; cur: string }) {
+export default function CustomerData({ onLegal, cur, customers = CUSTOMERS, onExport }: { onLegal: () => void; cur: string; customers?: Customer[]; onExport?: () => void }) {
   return (
     <div>
       <div style={headerBar}>
@@ -11,7 +12,7 @@ export default function CustomerData({ onLegal, cur }: { onLegal: () => void; cu
             <div style={headerTitle}>Customer data</div>
             <div style={{ fontSize: 12, opacity: 0.85 }}>Admin export</div>
           </div>
-          <button style={{ background: "#fff", color: "var(--accent)", fontSize: 12, fontWeight: 700, padding: "7px 12px", border: "none", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>Export CSV</button>
+          <button onClick={onExport} disabled={!onExport || customers.length === 0} style={{ background: "#fff", color: "var(--accent)", fontSize: 12, fontWeight: 700, padding: "7px 12px", border: "none", borderRadius: 9, cursor: onExport && customers.length ? "pointer" : "default", opacity: onExport && customers.length ? 1 : 0.6, fontFamily: "var(--font-ui)" }}>Export CSV</button>
         </div>
       </div>
       <div style={{ padding: 14 }}>
@@ -19,7 +20,7 @@ export default function CustomerData({ onLegal, cur }: { onLegal: () => void; cu
           <div style={{ display: "flex", padding: "10px 14px", background: "var(--surface-2)", borderBottom: "1px solid var(--border)", fontSize: 10.5, fontWeight: 800, letterSpacing: ".04em", color: "var(--text-muted)" }}>
             <span style={{ flex: 1.6 }}>CUSTOMER</span><span style={{ flex: 0.8, textAlign: "right" }}>ORDERS</span><span style={{ flex: 1.1, textAlign: "right" }}>SPENT</span>
           </div>
-          {CUSTOMERS.map((c) => (
+          {customers.map((c) => (
             <div key={c.handle} style={{ display: "flex", alignItems: "center", padding: "11px 14px", borderBottom: "1px solid var(--border)" }}>
               <div style={{ flex: 1.6, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</div>

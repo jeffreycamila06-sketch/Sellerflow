@@ -1,6 +1,7 @@
 // Screen 12 — Sales Report. dc.html v2 L859–885.
 import { SALES } from "../data";
 import { headerBar, headerTitle, card, mono } from "../ui";
+import SoonBadge from "../components/SoonBadge";
 
 const maxSale = Math.max(...SALES.map((s) => s.v));
 
@@ -9,9 +10,10 @@ export default function SalesReport({ cur }: { cur: string }) {
     <div>
       <div style={headerBar}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={headerTitle}>Sales report</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 9 }}><div style={headerTitle}>Sales report</div><SoonBadge /></div>
           <div style={{ fontSize: 12, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "6px 11px", borderRadius: 9 }}>This week ▾</div>
         </div>
+        <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 6 }}>Weekly aggregation isn’t connected yet — sample data shown.</div>
       </div>
       <div style={{ padding: "16px 14px 22px" }}>
         <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>

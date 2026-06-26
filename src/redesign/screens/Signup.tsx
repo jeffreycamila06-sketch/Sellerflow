@@ -1,6 +1,7 @@
 // Screen 17 — Create account (signup). dc.html v3 L378–431.
 // Visual only — no real auth (Phase 5).
 import type { CSSProperties } from "react";
+import SoonBadge from "../components/SoonBadge";
 
 const label: CSSProperties = { fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 5 };
 const input: CSSProperties = { width: "100%", padding: "12px 13px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 600, outline: "none" };
@@ -13,8 +14,8 @@ export default function Signup({ onBack, onCreate, onLegal }: { onBack: () => vo
       <div style={{ background: "var(--header-bg)", padding: "16px 16px 18px", color: "var(--on-header)", display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 5, background: "rgba(255,255,255,.18)", border: "none", padding: "7px 12px 7px 9px", borderRadius: 9, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>‹ Back</button>
         <div>
-          <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, letterSpacing: "-.01em" }}>Create account</div>
-          <div style={{ fontSize: 12, opacity: 0.9, marginTop: 1 }}>Set up your live-selling shop</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, letterSpacing: "-.01em" }}>Create account</div><SoonBadge /></div>
+          <div style={{ fontSize: 12, opacity: 0.9, marginTop: 2 }}>Self-serve signup isn’t live yet — accounts are set up via Telegram.</div>
         </div>
       </div>
 

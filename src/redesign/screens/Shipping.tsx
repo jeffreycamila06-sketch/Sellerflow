@@ -1,15 +1,17 @@
 // Screen 13 — Shipping. dc.html v2 L888–909.
 import { SHIPPING, avColor, initials, statusColor } from "../data";
 import { headerBar, headerTitle, card, mono } from "../ui";
+import SoonBadge from "../components/SoonBadge";
 
 export default function Shipping() {
   return (
     <div>
       <div style={headerBar}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={headerTitle}>Shipping</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 9 }}><div style={headerTitle}>Shipping</div><SoonBadge /></div>
           <div style={{ fontSize: 12, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "6px 11px", borderRadius: 9 }}>4 to ship</div>
         </div>
+        <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 6 }}>Courier tracking isn’t connected yet — sample data shown.</div>
       </div>
       <div style={{ padding: "14px 14px 22px", display: "flex", flexDirection: "column", gap: 11 }}>
         {SHIPPING.map((s) => (

@@ -1,6 +1,7 @@
 // Screen 16 — Delete Account (visual flow only — NO real deletion). dc.html v2 L954–981.
 import { useState } from "react";
 import { card } from "../ui";
+import SoonBadge from "../components/SoonBadge";
 
 const loseItem = (text: string) => (
   <div key={text} style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 13, color: "var(--text-dim)" }}>
@@ -14,7 +15,7 @@ export default function DeleteAccount({ onBack }: { onBack: () => void }) {
     <div>
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onBack} style={{ background: "rgba(255,255,255,.18)", border: "none", width: 32, height: 32, borderRadius: 9, color: "#fff", fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
-        <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, letterSpacing: "-.01em" }}>Delete account</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 9 }}><div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, letterSpacing: "-.01em" }}>Delete account</div><SoonBadge /></div>
       </div>
       <div style={{ padding: "18px 16px 24px" }}>
         <div style={{ background: "var(--danger-soft, rgba(225,29,72,.08))", border: "1px solid var(--danger)", borderRadius: 16, padding: 18, textAlign: "center" }}>
