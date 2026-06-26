@@ -33,13 +33,15 @@ const conn = (connected: boolean, connecting: boolean) => ({
   border: connected ? "1px solid var(--border-strong)" : "none",
 });
 const connFooterWrap: CSSProperties = { display: "flex", gap: 6, padding: "7px 4px 3px", marginTop: 4, borderTop: "1px solid var(--border)" };
+const refreshBtn: CSSProperties = { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: "1px solid var(--border-strong)", borderRadius: 9, background: "var(--surface-2)", color: "var(--text)", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" };
+const refreshIcon = <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 0 0-14-4.5L4 8m0 0V4m0 4h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 13a8 8 0 0 0 14 4.5L20 16m0 0v4m0-4h-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 
 const SESSION_OPTS = [1, 2, 3];
 
 export default function Dashboard({
   comments, cur,
   ttOpen, fbOpen, ttIdx, fbIdx, onToggleTT, onToggleFB, onPickTT, onPickFB,
-  ttConnected, fbConnected, ttConnecting, fbConnecting, onConnectTT, onConnectFB,
+  ttConnected, fbConnected, ttConnecting, fbConnecting, onConnectTT, onConnectFB, onRefreshTT, onRefreshFB,
   ttAccounts = [], fbAccounts = [],
   sessionDays, sessionOpen, onToggleSession, onPickSession,
   printed, entId, entPrice, onOneClick, onOpenEnt, onEntPrice, onEntKey,
@@ -54,6 +56,7 @@ export default function Dashboard({
   onPickTT: (i: number) => void; onPickFB: (i: number) => void;
   ttConnected: boolean; fbConnected: boolean; ttConnecting: boolean; fbConnecting: boolean;
   onConnectTT: () => void; onConnectFB: () => void;
+  onRefreshTT?: () => void; onRefreshFB?: () => void;
   ttAccounts?: string[]; fbAccounts?: string[];
   sessionDays: number; sessionOpen: boolean; onToggleSession: () => void; onPickSession: (n: number) => void;
   printed: Record<string, string>; entId: string | null; entPrice: string;
@@ -63,6 +66,7 @@ export default function Dashboard({
   const t = useT();
   const tt = conn(ttConnected, ttConnecting);
   const fb = conn(fbConnected, fbConnecting);
+  const connLabel = (connected: boolean, connecting: boolean) => (connecting ? t.rd_dash_connecting : connected ? t.rd_dash_disconnect : t.rd_dash_connect);
   const ttTitle = ttConnected ? t.rd_dash_conn_title : t.rd_dash_not_conn_title;
   const fbTitle = fbConnected ? t.rd_dash_conn_title : t.rd_dash_not_conn_title;
   const dayUnit = (n: number) => `${n} ${n > 1 ? t.rd_dash_days : t.rd_dash_day}`;
@@ -134,7 +138,8 @@ export default function Dashboard({
                   </button>
                 ))}
                 <div style={connFooterWrap}>
-                  <button onClick={onConnectTT} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: tt.border, borderRadius: 9, background: tt.bg, color: tt.fg, fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{ttConnected ? t.rd_dash_manage_add : t.rd_dash_connect}</button>
+                  <button onClick={onRefreshTT} title={t.rd_dash_refresh} style={refreshBtn}>{refreshIcon}{t.rd_dash_refresh}</button>
+                  <button onClick={onConnectTT} disabled={ttConnecting} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: tt.border, borderRadius: 9, background: tt.bg, color: tt.fg, fontSize: 11.5, fontWeight: 700, cursor: ttConnecting ? "default" : "pointer", opacity: ttConnecting ? 0.7 : 1, fontFamily: "var(--font-ui)" }}>{connLabel(ttConnected, ttConnecting)}</button>
                 </div>
               </div>
             )}
@@ -158,7 +163,8 @@ export default function Dashboard({
                   </button>
                 ))}
                 <div style={connFooterWrap}>
-                  <button onClick={onConnectFB} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: fb.border, borderRadius: 9, background: fb.bg, color: fb.fg, fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{fbConnected ? t.rd_dash_manage_add : t.rd_dash_connect}</button>
+                  <button onClick={onRefreshFB} title={t.rd_dash_refresh} style={refreshBtn}>{refreshIcon}{t.rd_dash_refresh}</button>
+                  <button onClick={onConnectFB} disabled={fbConnecting} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: fb.border, borderRadius: 9, background: fb.bg, color: fb.fg, fontSize: 11.5, fontWeight: 700, cursor: fbConnecting ? "default" : "pointer", opacity: fbConnecting ? 0.7 : 1, fontFamily: "var(--font-ui)" }}>{connLabel(fbConnected, fbConnecting)}</button>
                 </div>
               </div>
             )}

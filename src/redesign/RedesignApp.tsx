@@ -232,6 +232,34 @@ export default function RedesignApp() {
     if (platform === "TikTok") { setTtIdx(i); setTtOpen(false); } else { setFbIdx(i); setFbOpen(false); }
     if (acct) void liveFeed.connect(platform, { username: acct });
   };
+  // Surface B — chip 3-state connect (neutral → connecting → connected → Disconnect).
+  // `connected` is server truth (liveFeed.tt/fbConnected). We add a LOCAL connecting
+  // flag for the in-flight POST and a LOCAL disconnect gesture (the redesign has no
+  // server unbind), cleared whenever the server pushes a fresh platform_status. The
+  // real connect path (liveFeed.connect / ConnectModal) is unchanged.
+  const [ttConnecting, setTtConnecting] = useState(false);
+  const [fbConnecting, setFbConnecting] = useState(false);
+  const [ttOff, setTtOff] = useState(false);
+  const [fbOff, setFbOff] = useState(false);
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => { setTtOff(false); }, [ttConnected]); // server status wins over a local disconnect
+  useEffect(() => { setFbOff(false); }, [fbConnected]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+  const ttEff = ttConnected && !ttOff;
+  const fbEff = fbConnected && !fbOff;
+  const doConnect = async (platform: Platform) => {
+    const eff = platform === "TikTok" ? ttEff : fbEff;
+    const setOff = platform === "TikTok" ? setTtOff : setFbOff;
+    const setConnecting = platform === "TikTok" ? setTtConnecting : setFbConnecting;
+    const accts = platform === "TikTok" ? ttAccounts : fbAccounts;
+    const idx = platform === "TikTok" ? ttIdx : fbIdx;
+    if (eff) { setOff(true); return; }               // Disconnect (local UI; no server unbind in the redesign)
+    const acct = accts[idx] || accts[0];
+    if (!acct) { setConnectOpen(platform); return; } // no registered account → add-new modal (real connect)
+    setConnecting(true);
+    try { await liveFeed.connect(platform, { username: acct }); } finally { setConnecting(false); }
+  };
+  const refreshAccounts = () => { void auth.reloadProfile(); }; // Refresh = re-scan registered accounts
 
   // Printer settings (visual only). psType wifi|bt, psOut receipt|sticker.
   // Phase 5i — printer config persists across refresh (sfl_rd_printer).
@@ -399,8 +427,9 @@ export default function RedesignApp() {
               onToggleFB={() => { setFbOpen((o) => !o); setTtOpen(false); setSessionOpen(false); }}
               onPickTT={(i) => switchAccount("TikTok", i)}
               onPickFB={(i) => switchAccount("Facebook", i)}
-              ttConnected={ttConnected} fbConnected={fbConnected} ttConnecting={false} fbConnecting={false}
-              onConnectTT={() => { setTtOpen(false); setConnectOpen("TikTok"); }} onConnectFB={() => { setFbOpen(false); setConnectOpen("Facebook"); }}
+              ttConnected={ttEff} fbConnected={fbEff} ttConnecting={ttConnecting} fbConnecting={fbConnecting}
+              onConnectTT={() => void doConnect("TikTok")} onConnectFB={() => void doConnect("Facebook")}
+              onRefreshTT={refreshAccounts} onRefreshFB={refreshAccounts}
               ttAccounts={ttAccounts} fbAccounts={fbAccounts}
               sessionDays={sessionWindow.windowDays} sessionOpen={sessionOpen}
               onToggleSession={() => { setSessionOpen((o) => !o); setTtOpen(false); setFbOpen(false); }}
