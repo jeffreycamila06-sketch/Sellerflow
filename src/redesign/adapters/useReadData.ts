@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { loadTodaysLiveSession, getCustomersFromDatabase } from "../../db";
-import { listUsers, type AccountUser } from "../../accountDb";
+import { listUsers, listAuditLogs, type AccountUser, type AccountAuditLog } from "../../accountDb";
 import { rebuildSessionFromRows, type RebuiltSession } from "../../lib/orderLogic";
 import { planLabel } from "./useAuthSession";
 import {
@@ -104,22 +104,41 @@ export function accountUsersToRedesign(users: AccountUser[], nowMs: number = Dat
   }));
 }
 
-// ── Admin subscription buckets — derived from the real seller list, matching
-// App.tsx Plan-Monitoring (3346-3350): active = active & days>0; expired =
-// expired or days==0; expiring = paid, non-pending, expired or days<=(trial?3:5).
-// Pure (operates on already-loaded users). Admins excluded (sellers only).
+// ── Admin subscription buckets — derived from the real seller list, byte-faithful
+// to App.tsx (3344-3358). Admins excluded (sellerUsers). `days` = dLeft(planExpiry).
+//   active   = active & days>0                                   (activeSellers 3346)
+//   expired  = expired or days==0                                (expiredSellers 3347)
+//   expiring = paid, non-pending, (expired or days<=1), sorted   (expiringSoonSellers 3356-3358,
+//              the same definition behind main's "expiring soon" admin count)
 export interface SubBuckets { active: User[]; expiring: User[]; expired: User[] }
 export function deriveSubBuckets(users: User[]): SubBuckets {
   const sellers = users.filter((u) => u.role !== "Admin");
   const days = (u: User) => u.days ?? 0;
   const active = sellers.filter((u) => u.planStatus === "active" && days(u) > 0);
   const expired = sellers.filter((u) => u.planStatus === "expired" || days(u) === 0);
-  const expiring = sellers.filter((u) => u.plan !== "Free" && u.planStatus !== "pending" && (u.planStatus === "expired" || days(u) <= (u.plan === "Trial" ? 3 : 5)));
+  const expiring = sellers
+    .filter((u) => u.plan !== "Free" && u.planStatus !== "pending" && (u.planStatus === "expired" || days(u) <= 1))
+    .sort((a, b) => days(a) - days(b));
   return { active, expiring, expired };
 }
 
 // One row from the admin RPC list_free_users_status (copied from App.tsx:60).
 export interface FreeUserRow { email: string; store_name: string; full_name: string; count: number; cap: number; near_cap: boolean; capped: boolean; cycle_resets_in_days: number }
+
+// Audit-log action → semantic color, byte-faithful to App.tsx:3595 (red/green/purple).
+export function auditActionColor(action: string): "danger" | "ok" | "accent" {
+  const a = action.toLowerCase();
+  if (a.includes("delete") || a.includes("reject")) return "danger";
+  if (a.includes("approve") || a.includes("created")) return "ok";
+  return "accent";
+}
+
+// Filter audit logs by query across all displayed fields — App.tsx:3341-3343. Pure.
+export function filterAuditLogs(logs: AccountAuditLog[], query: string): AccountAuditLog[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return logs;
+  return logs.filter((log) => [log.actorEmail, log.action, log.targetEmail, log.details, log.timestamp].some((v) => String(v || "").toLowerCase().includes(q)));
+}
 
 // ── Read hooks ────────────────────────────────────────────────────────────────
 
@@ -186,6 +205,25 @@ export function useAdminUsers(enabled: boolean): { users: User[]; state: ReadSta
   }, [enabled]);
   useEffect(() => load(), [load]);
   return { users, state, reload: load };
+}
+
+// Audit log — same exported fn as App.tsx admin refresh (3017). Admin-only;
+// READ-ON-LOAD (no poll). listAuditLogs returns newest-first (created_at desc, ≤80)
+// + a localStorage fallback, exactly like production.
+export function useAuditLogs(enabled: boolean): { logs: AccountAuditLog[]; state: ReadState; reload: () => void } {
+  const [logs, setLogs] = useState<AccountAuditLog[]>([]);
+  const [state, setState] = useState<ReadState>("sample");
+  const load = useCallback(() => {
+    if (!enabled || !isSupabaseConfigured) { setState("sample"); setLogs([]); return () => {}; }
+    let active = true;
+    setState("loading");
+    listAuditLogs()
+      .then((list) => { if (!active) return; setLogs(list); setState(list.length ? "live" : "empty"); })
+      .catch(() => { if (active) { setLogs([]); setState("sample"); } });
+    return () => { active = false; };
+  }, [enabled]);
+  useEffect(() => load(), [load]);
+  return { logs, state, reload: load };
 }
 
 // Free-tier usage monitor — same RPC as App.tsx admin refresh (3020). Admin-only;

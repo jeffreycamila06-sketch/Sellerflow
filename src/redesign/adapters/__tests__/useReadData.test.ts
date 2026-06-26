@@ -7,8 +7,11 @@ import {
   accountUsersToRedesign,
   planDaysLeft,
   deriveSubBuckets,
+  auditActionColor,
+  filterAuditLogs,
 } from "../useReadData";
 import type { User } from "../../data";
+import type { AccountAuditLog } from "../../../accountDb";
 import type { RebuiltSession } from "../../../lib/orderLogic";
 import type { AccountUser } from "../../../accountDb";
 
@@ -123,15 +126,40 @@ describe("deriveSubBuckets — parity with App.tsx Plan Monitoring (3346-3350)",
     const users = [u({ email: "c@x.com", planStatus: "expired", days: 5 }), u({ email: "d@x.com", planStatus: "active", days: 0 }), u({ email: "e@x.com", planStatus: "active", days: 9 })];
     expect(deriveSubBuckets(users).expired.map((x) => x.email).sort()).toEqual(["c@x.com", "d@x.com"]);
   });
-  it("expiring = paid, non-pending, expired or days<=(Trial?3:5); free + pending excluded", () => {
+  it("expiring = paid, non-pending, (expired or days<=1), sorted asc (App.tsx expiringSoonSellers)", () => {
     const users = [
-      u({ email: "p@x.com", plan: "Pro", planStatus: "active", days: 4 }),     // ≤5 → in
-      u({ email: "q@x.com", plan: "Pro", planStatus: "active", days: 10 }),    // >5 → out
-      u({ email: "t@x.com", plan: "Trial", planStatus: "active", days: 4 }),   // trial threshold 3 → out
-      u({ email: "t2@x.com", plan: "Trial", planStatus: "active", days: 2 }),  // ≤3 → in
+      u({ email: "p1@x.com", plan: "Pro", planStatus: "active", days: 1 }),    // ≤1 → in
+      u({ email: "p0@x.com", plan: "Pro", planStatus: "active", days: 0 }),    // 0 → in
+      u({ email: "q@x.com", plan: "Pro", planStatus: "active", days: 5 }),     // >1 → out
+      u({ email: "exp@x.com", plan: "Basic", planStatus: "expired", days: 9 }),// expired → in
       u({ email: "f@x.com", plan: "Free", planStatus: "active", days: 1 }),    // free → out
-      u({ email: "pend@x.com", plan: "Pro", planStatus: "pending", days: 1 }), // pending → out
+      u({ email: "pend@x.com", plan: "Pro", planStatus: "pending", days: 0 }), // pending → out
     ];
-    expect(deriveSubBuckets(users).expiring.map((x) => x.email).sort()).toEqual(["p@x.com", "t2@x.com"]);
+    // sorted by days asc → p0(0), p1(1), exp(9)
+    expect(deriveSubBuckets(users).expiring.map((x) => x.email)).toEqual(["p0@x.com", "p1@x.com", "exp@x.com"]);
+  });
+});
+
+describe("auditActionColor — parity with App.tsx:3595 badge color", () => {
+  it("red for delete/reject, green for approve/created, purple otherwise", () => {
+    expect(auditActionColor("deleted seller")).toBe("danger");
+    expect(auditActionColor("rejected signup")).toBe("danger");
+    expect(auditActionColor("approved plan")).toBe("ok");
+    expect(auditActionColor("created account")).toBe("ok");
+    expect(auditActionColor("made admin")).toBe("accent");
+    expect(auditActionColor("changed plan")).toBe("accent");
+    expect(auditActionColor("set password")).toBe("accent");
+  });
+});
+
+describe("filterAuditLogs — parity with App.tsx:3341-3343", () => {
+  const log = (over: Partial<AccountAuditLog>): AccountAuditLog => ({ id: "1", actorEmail: "admin@x.com", action: "changed plan", targetEmail: "seller@x.com", details: "→ pro", timestamp: "2026-06-26T05:30:00.000Z", ...over });
+  const logs = [log({ id: "1", action: "made admin", targetEmail: "a@x.com" }), log({ id: "2", action: "deleted seller", targetEmail: "b@x.com", details: "removed" })];
+  it("matches across action / target / details / actor; empty query returns all", () => {
+    expect(filterAuditLogs(logs, "")).toHaveLength(2);
+    expect(filterAuditLogs(logs, "made").map((l) => l.id)).toEqual(["1"]);      // action "made admin"
+    expect(filterAuditLogs(logs, "b@x.com").map((l) => l.id)).toEqual(["2"]);   // target
+    expect(filterAuditLogs(logs, "removed").map((l) => l.id)).toEqual(["2"]);   // details
+    expect(filterAuditLogs(logs, "zzz")).toHaveLength(0);
   });
 });

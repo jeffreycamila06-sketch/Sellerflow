@@ -6,8 +6,10 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { PLANS, PAYMENTS, USERS, SIGNUPS, SUBS, PLAN_PRICE, type Sub, type User } from "../data";
 import { headerBar, card, mono } from "../ui";
-import { planDaysLeft, deriveSubBuckets, type ReadState, type SubBuckets, type FreeUserRow } from "../adapters/useReadData";
+import { planDaysLeft, deriveSubBuckets, auditActionColor, filterAuditLogs, type ReadState, type SubBuckets, type FreeUserRow } from "../adapters/useReadData";
 import type { AdminActions, Plan } from "../adapters/useAdmin";
+import type { AccountAuditLog } from "../../accountDb";
+import { csvDL, dayStamp } from "../adapters/csv";
 import SoonBadge from "../components/SoonBadge";
 
 const deadBtn: CSSProperties = { opacity: 0.45, cursor: "not-allowed" };
@@ -17,7 +19,7 @@ const SampleNote = () => <div style={{ marginBottom: 12 }}><SoonBadge label="Sam
 
 export type AdminPanelKind =
   | "sellers" | "plans" | "payments" | "reports" | "system" | "broadcast"
-  | "subActive" | "subExpiring" | "subFree" | "subExpired" | "signups" | "notifs" | "revenue";
+  | "subActive" | "subExpiring" | "subFree" | "subExpired" | "signups" | "notifs" | "revenue" | "audit";
 
 const ctrlTile: CSSProperties = { display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "14px 6px", border: "1px solid var(--border)", borderRadius: 14, background: "var(--surface)", boxShadow: "var(--shadow)", cursor: "pointer" };
 const ctrlChip: CSSProperties = { width: 34, height: 34, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)" };
@@ -34,6 +36,7 @@ const cic = {
   broadcast: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 10v4a1 1 0 0 0 1 1h3l5 4V5L8 9H5a1 1 0 0 0-1 1Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M17 8a5 5 0 0 1 0 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>,
   reports: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 19V11M10 19V5M15 19v-6M20 19V9" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" /></svg>,
   system: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 6h14M5 12h14M5 18h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><circle cx="9" cy="6" r="2" fill="var(--surface)" stroke="currentColor" strokeWidth="1.8" /><circle cx="15" cy="12" r="2" fill="var(--surface)" stroke="currentColor" strokeWidth="1.8" /><circle cx="9" cy="18" r="2" fill="var(--surface)" stroke="currentColor" strokeWidth="1.8" /></svg>,
+  audit: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v14H6z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M9 13h6M9 16.5h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>,
 };
 
 function Ctrl({ icon, label, onClick }: { icon: ReactNode; label: string; onClick: () => void }) {
@@ -88,6 +91,7 @@ export default function Admin({ onOpenPanel, cur, counts, live = false }: { onOp
           <Ctrl icon={cic.broadcast} label="Broadcast" onClick={() => onOpenPanel("broadcast")} />
           <Ctrl icon={cic.reports} label="Reports" onClick={() => onOpenPanel("reports")} />
           <Ctrl icon={cic.system} label="System" onClick={() => onOpenPanel("system")} />
+          <Ctrl icon={cic.audit} label="Audit Log" onClick={() => onOpenPanel("audit")} />
         </div>
       </div>
     </div>
@@ -99,7 +103,7 @@ const PANEL_TITLE: Record<AdminPanelKind, string> = {
   sellers: "Manage sellers", plans: "Subscription plans", payments: "Payments", reports: "Platform reports",
   system: "Assign plan by payment", broadcast: "Broadcast", subActive: "Active paid subscriptions",
   subExpiring: "Expiring soon", subFree: "Free tier", subExpired: "Expired", signups: "New sign-ups to approve",
-  revenue: "App revenue", notifs: "Notifications",
+  revenue: "App revenue", notifs: "Notifications", audit: "Audit log",
 };
 const chipOn: CSSProperties = { fontSize: 11.5, fontWeight: 700, color: "var(--accent-text)", background: "var(--accent)", padding: "6px 11px", borderRadius: 8 };
 const chipOff: CSSProperties = { fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", background: "var(--surface-2)", border: "1px solid var(--border)", padding: "6px 11px", borderRadius: 8 };
@@ -173,11 +177,16 @@ function SubList({ list, statusLabel, statusColor, note, showPlan = true }: { li
   );
 }
 
-export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", actions, onChanged, freeUsers = [], freeUsersState = "sample" }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; actions?: AdminActions; onChanged?: () => void; freeUsers?: FreeUserRow[]; freeUsersState?: ReadState }) {
+export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", actions, onChanged, freeUsers = [], freeUsersState = "sample", auditLogs = [], auditState = "sample" }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; actions?: AdminActions; onChanged?: () => void; freeUsers?: FreeUserRow[]; freeUsersState?: ReadState; auditLogs?: AccountAuditLog[]; auditState?: ReadState }) {
   // Real subscription buckets (derived) when the users list is live; else sample.
   const realSubs = usersState === "live" || usersState === "empty";
   const realFree = freeUsersState === "live" || freeUsersState === "empty";
   const subB: SubBuckets = deriveSubBuckets(users);
+  // Audit log — real entries when admin/configured (audit panel never shows sample).
+  const [auditQ, setAuditQ] = useState("");
+  const auditFiltered = filterAuditLogs(auditLogs, auditQ);
+  const exportAudit = () => csvDL(`sellerflow-audit-log-${dayStamp()}.csv`, ["Time", "Admin", "Action", "Target", "Details"], auditFiltered.map((l) => [l.timestamp, l.actorEmail, l.action, l.targetEmail, l.details]));
+  const auditTint = (c: "danger" | "ok" | "accent") => (c === "danger" ? "var(--danger)" : c === "ok" ? "var(--ok)" : "var(--accent-fg)");
   // Per-user optimistic display state. Real writes go through `actions` (5h).
   const [userPlans, setUserPlans] = useState<Record<string, string>>({});
   const [userDays, setUserDays] = useState<Record<string, number>>({});
@@ -469,6 +478,35 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                 ))}
               </div>
               <button disabled title="Coming soon" style={{ ...sheetBtn, marginTop: 13, padding: "12px 0", borderRadius: 11, fontSize: 13, ...deadBtn }}>Export revenue report</button>
+            </div>
+          )}
+
+          {panel === "audit" && (
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 11 }}>
+                <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 11, padding: "9px 12px" }}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="var(--text-muted)" strokeWidth="1.8" /><path d="m20 20-3.5-3.5" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round" /></svg>
+                  <input value={auditQ} onChange={(e) => setAuditQ(e.target.value)} placeholder="Search admin, action, target…" style={{ flex: 1, border: "none", background: "transparent", color: "var(--text)", fontSize: 12.5, outline: "none", fontFamily: "var(--font-ui)" }} />
+                </div>
+                {auditLogs.length > 0 && <button onClick={exportAudit} style={{ ...actBtn, color: "var(--accent-fg)", borderColor: "var(--accent)" }}>⬇ CSV</button>}
+              </div>
+              {auditState === "loading" && <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "10px 2px" }}>Loading audit log…</div>}
+              {auditState !== "loading" && auditFiltered.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "10px 2px" }}>{auditLogs.length === 0 ? "No admin activity yet." : "No audit records found."}</div>}
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {auditFiltered.map((log) => {
+                  const tint = auditTint(auditActionColor(log.action));
+                  return (
+                    <div key={log.id} style={{ border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface-2)", padding: "10px 12px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".02em", color: tint, background: "var(--surface)", border: "1px solid var(--border)", padding: "3px 8px", borderRadius: 6 }}>{log.action}</span>
+                        <span style={{ marginLeft: "auto", fontSize: 10.5, color: "var(--text-muted)", whiteSpace: "nowrap", fontFamily: mono }}>{new Date(log.timestamp).toLocaleString()}</span>
+                      </div>
+                      <div style={{ fontSize: 12.5, color: "var(--text)" }}><strong>{log.actorEmail}</strong>{log.targetEmail ? <> → {log.targetEmail}</> : null}</div>
+                      {log.details && <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{log.details}</div>}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
 

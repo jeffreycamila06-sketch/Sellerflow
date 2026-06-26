@@ -1,7 +1,7 @@
 // Phase 5h — parity test for the admin plan-approval payload (vs App.tsx
 // handleAdminApprove:4254-4259). No Supabase / React.
 import { describe, it, expect } from "vitest";
-import { approvePlanPatch, addDaysToExpiry, type Plan } from "../useAdmin";
+import { approvePlanPatch, addDaysToExpiry, addDaysIso, makeAdminPatch, type Plan } from "../useAdmin";
 
 // VERBATIM reference from App.tsx:230-231 (addDays/addMonths) + 4256-4257.
 const refPatch = (plan: Plan, months: number, now: Date) => {
@@ -62,5 +62,26 @@ describe("addDaysToExpiry — cumulative plan extension", () => {
   it("invalid/empty expiry → from now; days clamps to >=1", () => {
     expect(addDaysToExpiry("", "active", 3, NOW)).toBe(new Date("2026-06-29T05:30:00.000Z").toISOString()); // now+3
     expect(addDaysToExpiry("", "active", 0, NOW)).toBe(new Date("2026-06-27T05:30:00.000Z").toISOString()); // clamps to +1
+  });
+});
+
+// VERBATIM reference for addDays (App.tsx:230, setDate-based).
+const refAddDays = (now: Date, n: number) => { const d = new Date(now); d.setDate(d.getDate() + n); return d.toISOString(); };
+
+describe("addDaysIso — parity with App.tsx addDays (230)", () => {
+  it("setDate-based add (handles month rollover)", () => {
+    expect(addDaysIso(NOW, 30)).toBe(refAddDays(NOW, 30));
+    expect(addDaysIso(NOW, -1)).toBe(refAddDays(NOW, -1)); // expire backdate
+    expect(addDaysIso(NOW, 0)).toBe(NOW.toISOString());
+  });
+});
+
+describe("makeAdminPatch — parity with App.tsx makeAdmin (3303)", () => {
+  it("grants admin + master + active + addMonths(120) expiry", () => {
+    const p = makeAdminPatch(NOW);
+    expect(p.role).toBe("admin");
+    expect(p.plan).toBe("master");
+    expect(p.planStatus).toBe("active");
+    expect(p.planExpiry).toBe(refAddDays(NOW, 120 * 30)); // addMonths(120) = addDays(3600)
   });
 });

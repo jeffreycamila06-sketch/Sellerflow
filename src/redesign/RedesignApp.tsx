@@ -25,7 +25,7 @@ import Signup from "./screens/Signup";
 import PrinterSettings from "./screens/PrinterSettings";
 import PrintPattern, { DEFAULT_PP, type PrintPatternState, type PpBoolKey, type PpSizeKey } from "./screens/PrintPattern";
 import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
-import { useCustomers, useAdminUsers, useFreeUsers, deriveSubBuckets, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
+import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
 import { useLiveSession } from "./adapters/useLiveSession";
 import { useSessionWindow, type WindowDays } from "./adapters/useSessionWindow";
 import { useLiveFeed } from "./adapters/useLiveFeed";
@@ -75,6 +75,7 @@ export default function RedesignApp() {
   // Admin subscription buckets — real free-tier monitor (RPC) + derived active/
   // expiring/expired from the loaded seller list (App.tsx Plan Monitoring).
   const freeUsersData = useFreeUsers(authed && isAdmin);
+  const auditData = useAuditLogs(authed && isAdmin);
   const subBuckets = deriveSubBuckets(adminUsers.users);
   const adminLive = adminUsers.state === "live" || adminUsers.state === "empty";
   const adminCounts = { active: subBuckets.active.length, expiring: subBuckets.expiring.length, expired: subBuckets.expired.length, free: freeUsersData.freeUsers.length };
@@ -473,7 +474,7 @@ export default function RedesignApp() {
 
         {/* Admin control bottom-sheet (absolute within the phone, like the v2 prototype) */}
         {adminPanel && isAdmin && (
-          <AdminPanel panel={adminPanel} onClose={() => setAdminPanel(null)} assignAmount={assignAmount} onAssignAmount={setAssignAmount} cur={cur} users={adminUsers.users} usersState={adminUsers.state} actions={admin} onChanged={() => { adminUsers.reload(); freeUsersData.reload(); }} freeUsers={freeUsersData.freeUsers} freeUsersState={freeUsersData.state} />
+          <AdminPanel panel={adminPanel} onClose={() => setAdminPanel(null)} assignAmount={assignAmount} onAssignAmount={setAssignAmount} cur={cur} users={adminUsers.users} usersState={adminUsers.state} actions={admin} onChanged={() => { adminUsers.reload(); freeUsersData.reload(); auditData.reload(); }} freeUsers={freeUsersData.freeUsers} freeUsersState={freeUsersData.state} auditLogs={auditData.logs} auditState={auditData.state} />
         )}
 
         {/* #6 — real connect modal (registered-account picker / add account) */}

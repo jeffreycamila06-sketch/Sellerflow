@@ -38,6 +38,15 @@ export function addDaysToExpiry(planExpiry: string, planStatus: string, days: nu
   return new Date(base + Math.max(1, days) * 86400000).toISOString();
 }
 
+// PURE — App.tsx addDays (230): setDate-based, takes `now` for tests.
+export function addDaysIso(now: Date, n: number): string { const d = new Date(now); d.setDate(d.getDate() + n); return d.toISOString(); }
+
+// PURE — make-admin payload, verbatim from App.tsx makeAdmin (3303): promotes to
+// admin AND grants master/active/+120mo (addMonths(120) = addDays(3600)). Parity-tested.
+export function makeAdminPatch(now: Date): { role: Role; plan: Plan; planStatus: "active"; planExpiry: string } {
+  return { role: "admin", plan: "master", planStatus: "active", planExpiry: addDaysIso(now, 120 * 30) };
+}
+
 export interface AdminActions {
   changePlan: (email: string, plan: Plan, months?: number) => Promise<AdminResult>;
   setRole: (email: string, role: Role) => Promise<AdminResult>;
@@ -63,12 +72,20 @@ export function useAdmin(adminEmail: string | undefined): AdminActions {
   }, [audit]);
 
   const setRole = useCallback(async (email: string, role: Role): Promise<AdminResult> => {
-    try { await adminUpdatePlan(email, { role }); audit(role === "admin" ? "made admin" : "removed admin", email, ""); return { ok: true }; }
-    catch (e) { return { ok: false, error: e instanceof Error ? e.message : "error" }; }
-  }, [audit]);
+    // Self-guard — App.tsx removeAdmin (3314): you cannot remove your own admin.
+    if (role === "seller" && adminEmail && email.trim().toLowerCase() === adminEmail.trim().toLowerCase()) {
+      return { ok: false, error: "You cannot remove your own admin access." };
+    }
+    try {
+      if (role === "admin") { await adminUpdatePlan(email, makeAdminPatch(new Date())); audit("made admin", email, "Seller promoted to admin"); }
+      else { await adminUpdatePlan(email, { role: "seller" }); audit("removed admin", email, "Admin access removed"); }
+      return { ok: true };
+    } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "error" }; }
+  }, [audit, adminEmail]);
 
   const expire = useCallback(async (email: string): Promise<AdminResult> => {
-    try { await adminUpdatePlan(email, { planStatus: "expired" }); audit("expired plan", email, ""); return { ok: true }; }
+    // App.tsx setPlan(status="expired") (3086): status expired + expiry backdated to yesterday.
+    try { await adminUpdatePlan(email, { planStatus: "expired", planExpiry: addDaysIso(new Date(), -1) }); audit("expired seller", email, ""); return { ok: true }; }
     catch (e) { return { ok: false, error: e instanceof Error ? e.message : "error" }; }
   }, [audit]);
 
