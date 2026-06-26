@@ -22,6 +22,7 @@ import { io, type Socket } from "socket.io-client";
 import { supabase } from "../../supabase";
 import type { Comment as ProdComment } from "../../lib/orderTypes";
 import type { Comment as RDComment } from "../data";
+import { cleanLiveAccount, connectPlatform, type Platform, type ConnectResult } from "./connect";
 
 // SERVER — same resolution as App.tsx:169-173 (do NOT change names/URLs).
 const DEFAULT_SERVER =
@@ -88,17 +89,32 @@ const SYNTH: { name: string; handle: string; text: string; platform: "TikTok" | 
   { name: "Ella Ng", handle: "ella.ng", text: "avail pa ba yung sneakers?", platform: "TikTok", isBuy: false },
 ];
 
+export interface ActiveAccounts { TikTok: string; Facebook: string }
+
 export interface UseLiveFeed {
   comments: RDComment[];
   connected: boolean;
   canInject: boolean;
   injectSynthetic: () => void;
   getComment: (id: string) => ProdComment | undefined; // 5e — resolve a feed id (commentKey) → raw comment
+  // #6 connect — real platform connect + server-driven active-account switching.
+  activeAccounts: ActiveAccounts;     // which account is live per platform (from platform_status)
+  ttConnected: boolean;               // server says TikTok is connected (not reconnecting)
+  fbConnected: boolean;
+  connect: (platform: Platform, data: Record<string, string>) => Promise<ConnectResult>;
 }
 
 export function useLiveFeed(enabled: boolean, email: string | undefined): UseLiveFeed {
   const [feed, setFeed] = useState<ProdComment[]>([]);
   const [connected, setConnected] = useState(false);
+  // #6 — active live account per platform + per-platform connected flags. Driven by
+  // the server `platform_status` event (App.tsx 4072-4080); the ref lets the comment
+  // handler filter by the active account without re-subscribing.
+  const [activeAccounts, setActiveAccounts] = useState<ActiveAccounts>({ TikTok: "", Facebook: "" });
+  const [ttConnected, setTtConnected] = useState(false);
+  const [fbConnected, setFbConnected] = useState(false);
+  const activeRef = useRef<ActiveAccounts>(activeAccounts);
+  activeRef.current = activeAccounts;
   const synthIdx = useRef(0);
   // Latest feed readable from a stable getter (for 5e order creation by id).
   const feedRef = useRef<ProdComment[]>(feed);
@@ -142,10 +158,40 @@ export function useLiveFeed(enabled: boolean, email: string | undefined): UseLiv
       if (!c.handle || !c.comment) return;
       if (c.sellerId && c.sellerId !== sellerId) return;
       if (c.sessionId && c.sessionId !== sessionId) return;
+      // #6 — filter to the active account for this platform (App.tsx 4045-4047).
+      if (c.sourceUsername) {
+        const selected = cleanLiveAccount(activeRef.current[c.platform === "Facebook" ? "Facebook" : "TikTok"]);
+        if (selected && cleanLiveAccount(c.sourceUsername) !== selected) return;
+      }
       pushComment(c);
+    });
+    // #6 — server-driven connection status + active account (App.tsx 4072-4082).
+    s.on("platform_status", (p: { platform?: string; connected?: boolean; reconnecting?: boolean; sellerId?: string; username?: string; sessionId?: string }) => {
+      if (p.sellerId && p.sellerId !== sellerId) return;
+      if (p.sessionId && p.sessionId !== sessionId) return;
+      const visible = !!p.connected && !p.reconnecting;
+      if (p.platform === "TikTok") { setTtConnected(visible); if (!visible) setActiveAccounts((a) => ({ ...a, TikTok: "" })); }
+      if (p.platform === "Facebook") { setFbConnected(visible); if (!visible) setActiveAccounts((a) => ({ ...a, Facebook: "" })); }
+      if (p.connected && p.platform === "TikTok" && p.username) setActiveAccounts((a) => ({ ...a, TikTok: p.username as string }));
+      if (p.connected && p.platform === "Facebook" && p.username) setActiveAccounts((a) => ({ ...a, Facebook: p.username as string }));
+    });
+    s.on("live_session_ended", (e: { sellerId?: string; sessionId?: string } = {}) => {
+      if (e.sellerId && e.sellerId !== sellerId) return;
+      if (e.sessionId && e.sessionId !== sessionId) return;
+      setActiveAccounts({ TikTok: "", Facebook: "" }); setTtConnected(false); setFbConnected(false); setFeed([]);
     });
     return () => { s.disconnect(); };
   }, [enabled, email, pushComment]);
+
+  // #6 — real connect: POST to the live server, then optimistically set the active
+  // account (the authoritative value still arrives via platform_status). Clears the
+  // feed like production's clearLiveCommentMemory.
+  const connect = useCallback(async (platform: Platform, data: Record<string, string>): Promise<ConnectResult> => {
+    if (!email) return { ok: false, error: "Not signed in", account: "" };
+    const r = await connectPlatform(platform, data, email);
+    if (r.ok) { setFeed([]); setActiveAccounts((a) => ({ ...a, [platform]: r.account })); }
+    return r;
+  }, [email]);
 
   const injectSynthetic = useCallback(() => {
     const t = SYNTH[synthIdx.current % SYNTH.length];
@@ -165,5 +211,5 @@ export function useLiveFeed(enabled: boolean, email: string | undefined): UseLiv
     } as ProdComment);
   }, [pushComment]);
 
-  return { comments: feed.map(toRedesignComment), connected, canInject: isPreviewEnv(), injectSynthetic, getComment };
+  return { comments: feed.map(toRedesignComment), connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, connect };
 }

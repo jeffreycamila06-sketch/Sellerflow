@@ -4,10 +4,9 @@
 // the 1-Click / Enterprise order flow (printed / Enterprise price-entry), all
 // visual-only — real account switching / order creation is Phase 5.
 import { useLayoutEffect, useRef, type CSSProperties } from "react";
-import { avColor, initials, TT_ACCOUNTS, FB_ACCOUNTS, type Comment } from "../data";
+import { avColor, initials, type Comment } from "../data";
 import { sessionSummary, type SessionState } from "../adapters/useLiveSession";
 import type { RebuiltSession } from "../../lib/orderLogic";
-import SoonBadge from "../components/SoonBadge";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "12px 16px 13px" };
 const pickerBtn: CSSProperties = { width: "100%", display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.18)", padding: "6px 9px", border: "none", borderRadius: 9, fontSize: 11.5, fontWeight: 600, color: "var(--on-header)", cursor: "pointer", fontFamily: "var(--font-ui)" };
@@ -34,8 +33,6 @@ const conn = (connected: boolean, connecting: boolean) => ({
   fg: connected ? "var(--danger)" : "var(--accent-text)",
   border: connected ? "1px solid var(--border-strong)" : "none",
 });
-const refreshIcon = <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 0 0-14-4.5L4 8m0 0V4m0 4h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 13a8 8 0 0 0 14 4.5L20 16m0 0v4m0-4h-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-const refreshBtn: CSSProperties = { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: "1px solid var(--border-strong)", borderRadius: 9, background: "var(--surface-2)", color: "var(--text)", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" };
 const connFooterWrap: CSSProperties = { display: "flex", gap: 6, padding: "7px 4px 3px", marginTop: 4, borderTop: "1px solid var(--border)" };
 
 const SESSION_OPTS = [1, 2, 3];
@@ -44,6 +41,7 @@ export default function Dashboard({
   comments, cur,
   ttOpen, fbOpen, ttIdx, fbIdx, onToggleTT, onToggleFB, onPickTT, onPickFB,
   ttConnected, fbConnected, ttConnecting, fbConnecting, onConnectTT, onConnectFB,
+  ttAccounts = [], fbAccounts = [],
   sessionDays, sessionOpen, onToggleSession, onPickSession,
   printed, entId, entPrice, onOneClick, onOpenEnt, onEntPrice, onEntKey,
   session = { buyers: [], orders: [] }, sessionState = "idle",
@@ -57,6 +55,7 @@ export default function Dashboard({
   onPickTT: (i: number) => void; onPickFB: (i: number) => void;
   ttConnected: boolean; fbConnected: boolean; ttConnecting: boolean; fbConnecting: boolean;
   onConnectTT: () => void; onConnectFB: () => void;
+  ttAccounts?: string[]; fbAccounts?: string[];
   sessionDays: number; sessionOpen: boolean; onToggleSession: () => void; onPickSession: (n: number) => void;
   printed: Record<string, string>; entId: string | null; entPrice: string;
   onOneClick: (id: string) => void; onOpenEnt: (id: string) => void;
@@ -116,26 +115,23 @@ export default function Dashboard({
           <div style={{ position: "relative", flex: 1 }}>
             <button onClick={onToggleTT} title={tt.title} style={{ ...pickerBtn, background: tt.chipBg, boxShadow: tt.chipShadow }}>
               <span style={{ width: 16, height: 16, borderRadius: 5, background: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, color: "#fff", flexShrink: 0 }}>t</span>
-              <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{TT_ACCOUNTS[ttIdx].handle}</span>
+              <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ttAccounts.length ? (ttAccounts[ttIdx] || ttAccounts[0]) : "Connect TikTok"}</span>
               <span style={{ width: 7, height: 7, borderRadius: "50%", background: tt.dotBg, flexShrink: 0, animation: tt.dotAnim, boxShadow: tt.dotGlow }} />
               <span style={{ fontSize: 9, opacity: 0.85 }}>▾</span>
             </button>
             {ttOpen && (
               <div style={dropdown("left")}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "6px 8px 7px" }}>
-                  <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--text-muted)" }}>TIKTOK ACCOUNT</span>
-                  <SoonBadge label="Soon · switching" />
-                </div>
-                {TT_ACCOUNTS.map((a, i) => (
-                  <button key={a.handle} onClick={() => onPickTT(i)} style={ddRow(i === ttIdx)}>
-                    <span style={{ width: 30, height: 30, borderRadius: 8, background: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{initials(a.name)}</span>
-                    <span style={{ flex: 1, minWidth: 0 }}><span style={ddName}>{a.handle}</span><span style={ddMeta}>{a.meta}</span></span>
+                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--text-muted)", padding: "6px 8px 7px" }}>TIKTOK ACCOUNT</div>
+                {ttAccounts.length === 0 && <div style={{ padding: "2px 10px 8px", fontSize: 11.5, color: "var(--text-muted)" }}>No accounts yet — Connect to add one.</div>}
+                {ttAccounts.map((a, i) => (
+                  <button key={a} onClick={() => onPickTT(i)} style={ddRow(i === ttIdx)}>
+                    <span style={{ width: 30, height: 30, borderRadius: 8, background: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{initials(a)}</span>
+                    <span style={{ flex: 1, minWidth: 0 }}><span style={ddName}>{a}</span><span style={ddMeta}>TikTok · tap to go live</span></span>
                     <span style={ddCheck}>{i === ttIdx ? "✓" : ""}</span>
                   </button>
                 ))}
                 <div style={connFooterWrap}>
-                  <button disabled style={{ ...refreshBtn, opacity: 0.45, cursor: "not-allowed" }} title="Coming soon">{refreshIcon}Refresh</button>
-                  <button onClick={onConnectTT} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: tt.border, borderRadius: 9, background: tt.bg, color: tt.fg, fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{tt.label}</button>
+                  <button onClick={onConnectTT} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: tt.border, borderRadius: 9, background: tt.bg, color: tt.fg, fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{ttConnected ? "Manage / add account" : "Connect"}</button>
                 </div>
               </div>
             )}
@@ -143,26 +139,23 @@ export default function Dashboard({
           <div style={{ position: "relative", flex: 1 }}>
             <button onClick={onToggleFB} title={fb.title} style={{ ...pickerBtn, background: fb.chipBg, boxShadow: fb.chipShadow }}>
               <span style={{ width: 16, height: 16, borderRadius: 5, background: "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: "#fff", flexShrink: 0, fontFamily: "var(--font-display)" }}>f</span>
-              <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{FB_ACCOUNTS[fbIdx].handle}</span>
+              <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fbAccounts.length ? (fbAccounts[fbIdx] || fbAccounts[0]) : "Connect Facebook"}</span>
               <span style={{ width: 7, height: 7, borderRadius: "50%", background: fb.dotBg, flexShrink: 0, animation: fb.dotAnim, boxShadow: fb.dotGlow }} />
               <span style={{ fontSize: 9, opacity: 0.85 }}>▾</span>
             </button>
             {fbOpen && (
               <div style={dropdown("right")}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "6px 8px 7px" }}>
-                  <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--text-muted)" }}>FACEBOOK PAGE / GROUP</span>
-                  <SoonBadge label="Soon · switching" />
-                </div>
-                {FB_ACCOUNTS.map((a, i) => (
-                  <button key={a.handle} onClick={() => onPickFB(i)} style={ddRow(i === fbIdx)}>
+                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--text-muted)", padding: "6px 8px 7px" }}>FACEBOOK PAGE / GROUP</div>
+                {fbAccounts.length === 0 && <div style={{ padding: "2px 10px 8px", fontSize: 11.5, color: "var(--text-muted)" }}>No pages yet — Connect to add one.</div>}
+                {fbAccounts.map((a, i) => (
+                  <button key={a} onClick={() => onPickFB(i)} style={ddRow(i === fbIdx)}>
                     <span style={{ width: 30, height: 30, borderRadius: 8, background: "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#fff", flexShrink: 0, fontFamily: "var(--font-display)" }}>f</span>
-                    <span style={{ flex: 1, minWidth: 0 }}><span style={ddName}>{a.handle}</span><span style={ddMeta}>{a.meta}</span></span>
+                    <span style={{ flex: 1, minWidth: 0 }}><span style={ddName}>{a}</span><span style={ddMeta}>Facebook · tap to go live</span></span>
                     <span style={ddCheck}>{i === fbIdx ? "✓" : ""}</span>
                   </button>
                 ))}
                 <div style={connFooterWrap}>
-                  <button disabled style={{ ...refreshBtn, opacity: 0.45, cursor: "not-allowed" }} title="Coming soon">{refreshIcon}Refresh</button>
-                  <button onClick={onConnectFB} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: fb.border, borderRadius: 9, background: fb.bg, color: fb.fg, fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{fb.label}</button>
+                  <button onClick={onConnectFB} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: fb.border, borderRadius: 9, background: fb.bg, color: fb.fg, fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{fbConnected ? "Manage / add account" : "Connect"}</button>
                 </div>
               </div>
             )}

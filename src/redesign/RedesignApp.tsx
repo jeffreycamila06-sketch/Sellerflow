@@ -36,8 +36,10 @@ import { upsertUser } from "../accountDb";
 import { csvDL, dayStamp } from "./adapters/csv";
 import { computeSales } from "./adapters/sales";
 import { printSlip, buildSettingsFromRedesign, type Settings as PrintSettings } from "./adapters/printing";
+import { registeredAccountsFor, appendAccount, type Platform } from "./adapters/connect";
 import type { Buyer } from "../lib/orderTypes";
 import CapPopup from "./screens/CapPopup";
+import ConnectModal from "./screens/ConnectModal";
 
 type Screen =
   | "login" | "signup" | "dashboard" | "miners" | "orders" | "products"
@@ -184,22 +186,29 @@ export default function RedesignApp() {
   const [printerOpen, setPrinterOpen] = useState(false);
   const [printerIdx, setPrinterIdx] = useState(0);
 
-  // TikTok/FB connection flow (visual only — no real connection). dc.html v3.
-  const [ttConnected, setTtConnected] = useState(false);
-  const [fbConnected, setFbConnected] = useState(false);
-  const [ttConnecting, setTtConnecting] = useState(false);
-  const [fbConnecting, setFbConnecting] = useState(false);
-  const connectTT = () => {
-    if (ttConnected) { setTtConnected(false); return; }
-    if (ttConnecting) return;
-    setTtConnecting(true);
-    setTimeout(() => { setTtConnected(true); setTtConnecting(false); setTtOpen(false); }, 1200);
+  // #6 — REAL TikTok/FB connect. Connected state + active account come from the
+  // server via useLiveFeed (platform_status); the modal/pickers POST to the live
+  // server. ⚠️ Preview-unverifiable (Render + socket) — only active post-merge/APK.
+  const ttConnected = liveFeed.ttConnected;
+  const fbConnected = liveFeed.fbConnected;
+  const ttAccounts = auth.profile ? registeredAccountsFor(auth.profile, "TikTok") : [];
+  const fbAccounts = auth.profile ? registeredAccountsFor(auth.profile, "Facebook") : [];
+  const [connectOpen, setConnectOpen] = useState<Platform | null>(null);
+  // ConnectModal action: real connect → on success register the account on the
+  // profile (same as App.tsx connectPlatform) + reload so it appears in the picker.
+  const handleConnect = async (platform: Platform, data: Record<string, string>) => {
+    const r = await liveFeed.connect(platform, data);
+    if (r.ok && auth.profile) {
+      const np = appendAccount(auth.profile, platform, r.account);
+      if (np) { try { await upsertUser(np); await auth.reloadProfile(); } catch { /* non-fatal */ } }
+    }
+    return r;
   };
-  const connectFB = () => {
-    if (fbConnected) { setFbConnected(false); return; }
-    if (fbConnecting) return;
-    setFbConnecting(true);
-    setTimeout(() => { setFbConnected(true); setFbConnecting(false); setFbOpen(false); }, 1200);
+  // Switch the active account (connect to the picked registered account).
+  const switchAccount = (platform: Platform, i: number) => {
+    const acct = (platform === "TikTok" ? ttAccounts : fbAccounts)[i];
+    if (platform === "TikTok") { setTtIdx(i); setTtOpen(false); } else { setFbIdx(i); setFbOpen(false); }
+    if (acct) void liveFeed.connect(platform, { username: acct });
   };
 
   // Printer settings (visual only). psType wifi|bt, psOut receipt|sticker.
@@ -365,10 +374,11 @@ export default function RedesignApp() {
               ttOpen={ttOpen} fbOpen={fbOpen} ttIdx={ttIdx} fbIdx={fbIdx}
               onToggleTT={() => { setTtOpen((o) => !o); setFbOpen(false); setSessionOpen(false); }}
               onToggleFB={() => { setFbOpen((o) => !o); setTtOpen(false); setSessionOpen(false); }}
-              onPickTT={(i) => { setTtIdx(i); setTtOpen(false); }}
-              onPickFB={(i) => { setFbIdx(i); setFbOpen(false); }}
-              ttConnected={ttConnected} fbConnected={fbConnected} ttConnecting={ttConnecting} fbConnecting={fbConnecting}
-              onConnectTT={connectTT} onConnectFB={connectFB}
+              onPickTT={(i) => switchAccount("TikTok", i)}
+              onPickFB={(i) => switchAccount("Facebook", i)}
+              ttConnected={ttConnected} fbConnected={fbConnected} ttConnecting={false} fbConnecting={false}
+              onConnectTT={() => { setTtOpen(false); setConnectOpen("TikTok"); }} onConnectFB={() => { setFbOpen(false); setConnectOpen("Facebook"); }}
+              ttAccounts={ttAccounts} fbAccounts={fbAccounts}
               sessionDays={sessionWindow.windowDays} sessionOpen={sessionOpen}
               onToggleSession={() => { setSessionOpen((o) => !o); setTtOpen(false); setFbOpen(false); }}
               onPickSession={(n) => { void sessionWindow.setWindowDays(n as WindowDays); liveSession.reset(); setSessionOpen(false); }}
@@ -428,6 +438,7 @@ export default function RedesignApp() {
               psOut={psOut} onSetPsOut={setPsOut}
               psSize={psSize} psSizeOpen={psSizeOpen}
               onTogglePsSize={() => setPsSizeOpen((o) => !o)} onPickPsSize={(s) => { setPsSize(s); setPsSizeOpen(false); }}
+              cur={cur} storeName={auth.profile?.profile.storeName || "SellerFlowLive"} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })}
             />
           )}
           {screen === "printpattern" && (
@@ -463,6 +474,11 @@ export default function RedesignApp() {
         {/* Admin control bottom-sheet (absolute within the phone, like the v2 prototype) */}
         {adminPanel && isAdmin && (
           <AdminPanel panel={adminPanel} onClose={() => setAdminPanel(null)} assignAmount={assignAmount} onAssignAmount={setAssignAmount} cur={cur} users={adminUsers.users} usersState={adminUsers.state} actions={admin} onChanged={() => { adminUsers.reload(); freeUsersData.reload(); }} freeUsers={freeUsersData.freeUsers} freeUsersState={freeUsersData.state} />
+        )}
+
+        {/* #6 — real connect modal (registered-account picker / add account) */}
+        {connectOpen && auth.profile && (
+          <ConnectModal profile={auth.profile} initialTab={connectOpen} onClose={() => setConnectOpen(null)} onConnect={handleConnect} />
         )}
 
         {/* Phase 5f — free-tier cap popup (near / hard) */}

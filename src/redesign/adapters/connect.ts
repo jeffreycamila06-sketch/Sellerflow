@@ -1,0 +1,82 @@
+// TikTok/Facebook connect + multi-account helpers — copied VERBATIM from App.tsx
+// (accountList 259 / accountText 260 / maxAcc 256 / registeredAccountCount 262 /
+// canConnectMore 276 / cleanLiveAccount 159) + connectPlatform (4269-4312). Imports
+// only the shared supabase singleton.
+//
+// ⚠️ PREVIEW-UNVERIFIABLE: connect POSTs to the Render live server
+// (sellerflow-live-server.onrender.com), which the Vercel preview cannot reach, and
+// account activation arrives via server-pushed `platform_status` socket events. This
+// only truly works in the merged build with the live socket — on preview the POST
+// fails gracefully (toast) and nothing activates.
+import { supabase } from "../../supabase";
+import type { AccountUser } from "../../accountDb";
+
+export type Platform = "TikTok" | "Facebook";
+
+// SERVER — same resolution as useLiveFeed / App.tsx:169-173.
+const DEFAULT_SERVER = typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname)
+  ? "http://localhost:3001" : "https://sellerflow-live-server.onrender.com";
+const SERVER = String(import.meta.env.VITE_SERVER_URL || DEFAULT_SERVER).replace(/\/$/, "");
+
+// ── Pure helpers (verbatim) — unit-tested ────────────────────────────────────
+export const cleanLiveAccount = (value: string): string => String(value || "").trim().replace(/^@+/, "").toLowerCase(); // 159
+export const maxAcc = (plan: string): number => (({ free: 1, trial: 1, basic: 1, pro: 3, master: 5 } as Record<string, number>)[plan] ?? 1); // 256
+export const accountList = (value: string): string[] => Array.from(new Set((value || "").split(/[,\n]/).map((v) => v.trim()).filter(Boolean))); // 259
+export const accountText = (values: string[]): string => values.map((v) => v.trim()).filter(Boolean).join("\n"); // 260
+export const registeredAccountCount = (u: AccountUser): number => accountList(u.profile.tiktok).length + accountList(u.profile.facebook).length; // 262
+export const isAdminUser = (u: AccountUser): boolean => u.role === "admin";
+export const canConnectMore = (u: AccountUser): boolean => isAdminUser(u) || registeredAccountCount(u) < maxAcc(u.plan); // 276
+
+// Registered accounts for a platform, capped to the plan limit (ConnectModal 3762-3763).
+export function registeredAccountsFor(u: AccountUser, platform: Platform): string[] {
+  const field = platform === "TikTok" ? u.profile.tiktok : u.profile.facebook;
+  return accountList(field).slice(0, maxAcc(u.plan));
+}
+
+// Append a newly-connected account to the profile if there's room (connectPlatform
+// 4304-4307). Pure — returns the next profile field value or null when unchanged.
+export function appendAccount(u: AccountUser, platform: Platform, account: string): AccountUser | null {
+  const field = platform === "TikTok" ? "tiktok" : "facebook";
+  const existing = accountList(u.profile[field]);
+  if (!account || existing.includes(account) || registeredAccountCount(u) >= maxAcc(u.plan)) return null;
+  const connected = [...u.connectedAccounts.filter((a) => a !== platform), platform];
+  return { ...u, profile: { ...u.profile, [field]: accountText([...existing, account]) }, connectedAccounts: connected };
+}
+
+const sellerIdOf = (email: string) => email.trim().toLowerCase();
+const browserSessionId = (): string => {
+  try { const raw = localStorage.getItem("sf_browser_session"); if (raw) return JSON.parse(raw); } catch { /* ignore */ }
+  const next = `sf-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  try { localStorage.setItem("sf_browser_session", JSON.stringify(next)); } catch { /* ignore */ }
+  return next;
+};
+
+export interface ConnectResult { ok: boolean; error?: string; account: string }
+
+// connectPlatform — verbatim POST from App.tsx:4269-4296 (without the posthog/toast
+// side-effects). Returns the cleaned active account on success.
+export async function connectPlatform(platform: Platform, data: Record<string, string>, email: string): Promise<ConnectResult> {
+  const ep = platform === "TikTok" ? "/connect/tiktok" : "/connect/facebook";
+  const meta = { sellerId: sellerIdOf(email), sessionId: browserSessionId() };
+  const tiktokUsername = cleanLiveAccount(data.username || "");
+  const facebookPage = (data.liveVideoId || data.username || "").trim();
+  const account = platform === "TikTok" ? tiktokUsername : facebookPage;
+  const body = platform === "TikTok"
+    ? { username: tiktokUsername, ...meta }
+    : { username: facebookPage, pageName: facebookPage, liveVideoId: facebookPage, accessToken: data.accessToken, ...meta };
+  try {
+    const session = supabase ? (await supabase.auth.getSession()).data.session : null;
+    const r = await fetch(`${SERVER}${ep}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}` },
+      body: JSON.stringify(body),
+    });
+    const j = await r.json().catch(() => ({} as { success?: boolean; error?: string }));
+    if (r.status === 401) return { ok: false, error: j.error || "Unauthorized", account };
+    if (r.status === 500) return { ok: false, error: j.error || "Server error", account };
+    if (!j.success) return { ok: false, error: j.error || r.statusText || `HTTP ${r.status}`, account };
+    return { ok: true, account };
+  } catch {
+    return { ok: false, error: "Can't reach the live server. Check your connection.", account };
+  }
+}
