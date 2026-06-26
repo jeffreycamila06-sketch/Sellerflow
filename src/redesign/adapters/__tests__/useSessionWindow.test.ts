@@ -1,6 +1,6 @@
 // Multi-day live session — PURE window-math tests (no Supabase / React).
 import { describe, it, expect } from "vitest";
-import { clampWindowDays, daysBetween, addDays, computeWindowState, chooseSessionLoad } from "../useSessionWindow";
+import { clampWindowDays, daysBetween, addDays, computeWindowState, chooseSessionLoad, shouldOpenWindow } from "../useSessionWindow";
 
 describe("clampWindowDays", () => {
   it("keeps 1/2/3, defaults everything else to 1", () => {
@@ -100,5 +100,23 @@ describe("chooseSessionLoad — single-day vs window-range", () => {
   });
   it("N=3 fresh (null start) → single-day today", () => {
     expect(chooseSessionLoad("2026-06-22", null, 3)).toEqual({ mode: "day", start: "2026-06-22", end: "2026-06-22" });
+  });
+});
+
+describe("shouldOpenWindow — when an order writes window_start", () => {
+  it("N=1 → NEVER writes config (byte-identical 1-day; zero new writes)", () => {
+    expect(shouldOpenWindow("2026-06-22", null, 1)).toBe(false);
+    expect(shouldOpenWindow("2026-06-23", "2026-06-22", 1)).toBe(false);
+  });
+  it("N=3 fresh (null) → open (write once)", () => {
+    expect(shouldOpenWindow("2026-06-22", null, 3)).toBe(true);
+  });
+  it("N=3 active window → do NOT write (continue) — proves once-per-window", () => {
+    expect(shouldOpenWindow("2026-06-22", "2026-06-22", 3)).toBe(false); // day 1
+    expect(shouldOpenWindow("2026-06-23", "2026-06-22", 3)).toBe(false); // day 2
+    expect(shouldOpenWindow("2026-06-24", "2026-06-22", 3)).toBe(false); // day 3
+  });
+  it("N=3 expired (day 4) → open a fresh window (write once)", () => {
+    expect(shouldOpenWindow("2026-06-25", "2026-06-22", 3)).toBe(true);
   });
 });

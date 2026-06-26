@@ -113,6 +113,7 @@ export default function RedesignApp() {
     onCapReached: freeCap.noteCapError,
     afterWrite: freeCap.afterOrder,
     onPrint,
+    onEnsureWindow: () => { void sessionWindow.ensureWindowOpen(); }, // multi-day; N=1 no-op
   });
   // Orders tab + Dashboard summary now share ONE source (the live session), so a
   // newly created order shows immediately. (5b's useLiveOrders is superseded here.)

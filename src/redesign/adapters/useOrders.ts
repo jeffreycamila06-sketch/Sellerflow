@@ -64,6 +64,7 @@ export interface UseOrdersDeps {
   onCapReached?: (err: unknown) => void;                   // DB trigger rejected (over cap)
   afterWrite?: () => void;                                 // resync usage counter (free users)
   onPrint?: (singleOrderBuyer: Buyer) => void;             // 5g — print the slip (App.tsx:4341)
+  onEnsureWindow?: () => void;                             // multi-day — open window if needed (once/window; N=1 no-op)
 }
 
 export interface UseOrders {
@@ -71,11 +72,15 @@ export interface UseOrders {
   createOrder: (c: ProdComment, price: number) => LiveOrder | null;
 }
 
-export function useOrders({ getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, afterWrite, onPrint }: UseOrdersDeps): UseOrders {
+export function useOrders({ getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, afterWrite, onPrint, onEnsureWindow }: UseOrdersDeps): UseOrders {
   const createOrder = useCallback((c: ProdComment, price: number): LiveOrder | null => {
     // 0) Free-tier HARD STOP soft block (App.tsx:4330). The DB trigger is still
     //    authoritative; this is the friendly block before we try.
     if (isCapped?.()) { onCapBlocked?.(); return null; }
+    // 0b) Multi-day: open the window if none active (writes window_start once per
+    //     window; N=1 → no-op). Does NOT affect this order's numbering (that comes
+    //     from the loaded window buyers); fire-and-forget, like the DB writes.
+    onEnsureWindow?.();
     // 1) SAME pure builder production uses (buyer numbering + orderNum epoch ms).
     const { order, nextBuyers, singleOrderBuyer } = buildOrderFromComment(c, getBuyers(), price, new Date());
     // 2) optimistic local update so the summary strip + Orders tab reflect it now.
@@ -98,7 +103,7 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, isCapped, onCapB
     // 5) resync the usage counter (App.tsx:4384 — free users).
     afterWrite?.();
     return order;
-  }, [getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, afterWrite, onPrint]);
+  }, [getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, afterWrite, onPrint, onEnsureWindow]);
 
   return { createOrder };
 }

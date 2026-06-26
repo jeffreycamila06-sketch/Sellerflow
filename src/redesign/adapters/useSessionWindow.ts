@@ -7,7 +7,7 @@
 // (window_start) and runs N consecutive Taipei calendar days; after that it
 // EXPIRES and the next order opens a fresh window (buyer# resets to #1). The reset
 // is COMPUTED-ON-LOAD (today − window_start ≥ N → expired) — no cron/background.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { taipeiDayId } from "../../lib/dateHelpers";
 import type { LiveSessionRow } from "../../lib/orderLogic";
@@ -66,6 +66,14 @@ export function chooseSessionLoad(today: string, windowStart: string | null, day
   return { mode: "day", start: today, end: today };
 }
 
+// PURE — should creating an order WRITE a fresh window_start? Only for N>1 when
+// there is no active window (null / expired). N=1 NEVER writes config (the load
+// ignores it → byte-identical 1-day behavior, zero new writes). Unit-tested.
+export function shouldOpenWindow(today: string, windowStart: string | null, days: number): boolean {
+  if (clampWindowDays(days) === 1) return false;
+  return !computeWindowState(today, windowStart, days).active;
+}
+
 // Ranged read of live_session_orders — SAME columns / RLS / ascending order as
 // db.ts loadTodaysLiveSession (db.ts UNTOUCHED), just session_date BETWEEN a range.
 // Read-on-load only. getSession() is local (no extra network); RLS + the explicit
@@ -103,6 +111,11 @@ export function useSessionWindow(enabled: boolean): UseSessionWindow {
   const [windowStart, setStart] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [dayId] = useState(() => taipeiDayId()); // pinned at load, like 5c (refresh re-evaluates)
+  // Synchronous mirrors so ensureWindowOpen sees the just-opened window even on
+  // rapid back-to-back orders (before React re-renders) → guarantees ONE write
+  // per window, not per order.
+  const windowStartRef = useRef<string | null>(windowStart); windowStartRef.current = windowStart;
+  const windowDaysRef = useRef<WindowDays>(windowDays); windowDaysRef.current = windowDays;
 
   // getSession() is LOCAL (no network) — keeps this read-on-load egress-free.
   const uid = useCallback(async (): Promise<string | null> => {
@@ -138,19 +151,24 @@ export function useSessionWindow(enabled: boolean): UseSessionWindow {
 
   // Changing N opens a FRESH window from today (decision 3) → resets to #1.
   const setWindowDays = useCallback(async (n: WindowDays) => {
+    windowDaysRef.current = n; windowStartRef.current = dayId; // sync mirrors
     setDays(n); setStart(dayId); // optimistic
     await persist(n, dayId);
   }, [dayId, persist]);
 
-  // Open a window today if none is active (null/expired). Idempotent (always today),
-  // so two devices opening at once converge on the same window_start.
+  // Called on every order; WRITES window_start only when actually opening a new
+  // window (shouldOpenWindow). N=1 → no-op (no config write). Idempotent (always
+  // today) → two devices opening at once converge; refs prevent rapid-order dupes.
   const ensureWindowOpen = useCallback(async (): Promise<string> => {
-    const st = computeWindowState(dayId, windowStart, windowDays);
-    if (st.active && st.loadStart) return st.loadStart; // already open — no write
-    setStart(dayId); // optimistic
-    await persist(windowDays, dayId);
+    if (!shouldOpenWindow(dayId, windowStartRef.current, windowDaysRef.current)) {
+      const st = computeWindowState(dayId, windowStartRef.current, windowDaysRef.current);
+      return st.loadStart || dayId; // already open (or N=1) — NO write
+    }
+    windowStartRef.current = dayId; // sync FIRST so a rapid 2nd order sees it open → no 2nd write
+    setStart(dayId);                // optimistic for render
+    await persist(windowDaysRef.current, dayId);
     return dayId;
-  }, [dayId, windowStart, windowDays, persist]);
+  }, [dayId, persist]);
 
   const state = computeWindowState(dayId, windowStart, windowDays);
   return { windowDays, windowStart, state, loaded, setWindowDays, ensureWindowOpen, reload: load };
