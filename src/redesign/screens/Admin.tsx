@@ -11,11 +11,12 @@ import type { AdminActions, Plan } from "../adapters/useAdmin";
 import type { AccountAuditLog } from "../../accountDb";
 import { csvDL, dayStamp } from "../adapters/csv";
 import SoonBadge from "../components/SoonBadge";
+import { useT, tpl, type RedesignT } from "../i18n";
 
 const deadBtn: CSSProperties = { opacity: 0.45, cursor: "not-allowed" };
 // Sample/not-wired marker for the Admin panels that have no real backend yet
 // (everything except the Sellers list + its per-user actions).
-const SampleNote = () => <div style={{ marginBottom: 12 }}><SoonBadge label="Sample data — not wired yet" /></div>;
+const SampleNote = () => { const t = useT(); return <div style={{ marginBottom: 12 }}><SoonBadge label={t.rd_adm_sample_note} /></div>; };
 
 export type AdminPanelKind =
   | "sellers" | "plans" | "payments" | "reports" | "system" | "broadcast"
@@ -45,18 +46,19 @@ function Ctrl({ icon, label, onClick }: { icon: ReactNode; label: string; onClic
 }
 
 export default function Admin({ onOpenPanel, cur, counts, live = false, userBase }: { onOpenPanel: (k: AdminPanelKind) => void; cur: string; counts?: { active: number; expiring: number; expired: number; free: number }; live?: boolean; userBase?: { paid: number; free: number; total: number } }) {
+  const t = useT();
   const subCount = (k: "active" | "expiring" | "expired" | "free", sample: string) => (live && counts ? String(counts[k]) : sample);
   return (
     <div>
       <div style={headerBar}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div><div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" }}>Admin panel</div><div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}><span style={{ fontSize: 12, opacity: 0.85 }}>Owner control center</span><SoonBadge label="Revenue: sample" /></div></div>
+          <div><div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" }}>{t.rd_adm_title}</div><div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}><span style={{ fontSize: 12, opacity: 0.85 }}>{t.rd_adm_subtitle}</span><SoonBadge label={t.rd_adm_revenue_sample} /></div></div>
           <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-            <button onClick={() => onOpenPanel("notifs")} title="Notifications" style={{ position: "relative", width: 32, height: 32, borderRadius: 9, border: "none", background: "rgba(255,255,255,.16)", color: "var(--on-header)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <button onClick={() => onOpenPanel("notifs")} title={t.rd_adm_notifications} style={{ position: "relative", width: 32, height: 32, borderRadius: 9, border: "none", background: "rgba(255,255,255,.16)", color: "var(--on-header)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" strokeWidth="1.7" /></svg>
               <span style={{ position: "absolute", top: -4, right: -4, minWidth: 16, height: 16, padding: "0 3px", borderRadius: 8, background: "#fb7185", border: "1.5px solid var(--accent)", color: "#fff", fontSize: 9.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: mono }}>5</span>
             </button>
-            <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "6px 11px", borderRadius: 9 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: "#4ade80" }} />Systems OK</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "6px 11px", borderRadius: 9 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: "#4ade80" }} />{t.rd_adm_systems_ok}</div>
           </div>
         </div>
       </div>
@@ -64,36 +66,36 @@ export default function Admin({ onOpenPanel, cur, counts, live = false, userBase
         <div style={{ ...card, marginBottom: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
             <div style={{ width: 50, height: 50, borderRadius: 15, background: "linear-gradient(150deg,#7c3aed,#4f46e5)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 800, color: "#fff", fontFamily: "var(--font-display)" }}>JC</div>
-            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 15.5, fontWeight: 700, color: "var(--text)" }}>Juan Dela Cruz</div><div style={{ fontSize: 12, fontWeight: 600, color: "var(--handle)" }}>Platform owner</div></div>
-            <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 800, letterSpacing: ".03em", color: "var(--accent-text)", background: "var(--accent)", padding: "5px 9px", borderRadius: 7 }}><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 4.4 3.1 7.6 8 9 4.9-1.4 8-4.6 8-9V5l-8-3Z" /></svg>SUPER ADMIN</span>
+            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 15.5, fontWeight: 700, color: "var(--text)" }}>Juan Dela Cruz</div><div style={{ fontSize: 12, fontWeight: 600, color: "var(--handle)" }}>{t.rd_adm_platform_owner}</div></div>
+            <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 800, letterSpacing: ".03em", color: "var(--accent-text)", background: "var(--accent)", padding: "5px 9px", borderRadius: 7 }}><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 4.4 3.1 7.6 8 9 4.9-1.4 8-4.6 8-9V5l-8-3Z" /></svg>{t.rd_adm_super_admin}</span>
           </div>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-          <button onClick={() => onOpenPanel("revenue")} style={topStat}><div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>Monthly revenue</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 22, color: "var(--text)", marginTop: 3, letterSpacing: "-.02em" }}>{cur}4.2M</div><div style={{ fontSize: 11, fontWeight: 700, color: "var(--ok)", marginTop: 3 }}>▲ 12% MoM ›</div></button>
-          <button onClick={() => onOpenPanel("userbase")} style={topStat}><div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>User base</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 22, color: "var(--accent-fg)", marginTop: 3, letterSpacing: "-.02em" }}>{userBase ? userBase.paid : "—"}</div><div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", marginTop: 3 }}>{userBase ? `paying · ${userBase.free} free ›` : "paid / free split ›"}</div></button>
+          <button onClick={() => onOpenPanel("revenue")} style={topStat}><div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>{t.rd_adm_monthly_revenue}</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 22, color: "var(--text)", marginTop: 3, letterSpacing: "-.02em" }}>{cur}4.2M</div><div style={{ fontSize: 11, fontWeight: 700, color: "var(--ok)", marginTop: 3 }}>{t.rd_adm_mom}</div></button>
+          <button onClick={() => onOpenPanel("userbase")} style={topStat}><div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>{t.rd_adm_user_base}</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 22, color: "var(--accent-fg)", marginTop: 3, letterSpacing: "-.02em" }}>{userBase ? userBase.paid : "—"}</div><div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", marginTop: 3 }}>{userBase ? tpl(t.rd_adm_paying_free, { free: userBase.free }) : t.rd_adm_paid_free_split}</div></button>
         </div>
 
         <div style={{ ...card, padding: "13px 14px", borderRadius: 15, marginBottom: 16 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", marginBottom: 11 }}>Subscriptions</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", marginBottom: 11 }}>{t.rd_adm_subscriptions}</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <button onClick={() => onOpenPanel("subActive")} style={subCell}><div style={{ ...subNum, color: "var(--ok)" }}>{subCount("active", "9,842")}</div><div style={subLbl}>Active paid ›</div></button>
-            <button onClick={() => onOpenPanel("subExpiring")} style={subCell}><div style={{ ...subNum, color: "var(--warn)" }}>{subCount("expiring", "418")}</div><div style={subLbl}>Expiring ›</div></button>
-            <button onClick={() => onOpenPanel("subFree")} style={subCell}><div style={{ ...subNum, color: "var(--accent-fg)" }}>{subCount("free", "1,204")}</div><div style={subLbl}>Free tier ›</div></button>
-            <button onClick={() => onOpenPanel("subExpired")} style={subCell}><div style={{ ...subNum, color: "var(--danger)" }}>{subCount("expired", "2,220")}</div><div style={subLbl}>Expired ›</div></button>
+            <button onClick={() => onOpenPanel("subActive")} style={subCell}><div style={{ ...subNum, color: "var(--ok)" }}>{subCount("active", "9,842")}</div><div style={subLbl}>{t.rd_adm_active_paid}</div></button>
+            <button onClick={() => onOpenPanel("subExpiring")} style={subCell}><div style={{ ...subNum, color: "var(--warn)" }}>{subCount("expiring", "418")}</div><div style={subLbl}>{t.rd_adm_expiring}</div></button>
+            <button onClick={() => onOpenPanel("subFree")} style={subCell}><div style={{ ...subNum, color: "var(--accent-fg)" }}>{subCount("free", "1,204")}</div><div style={subLbl}>{t.rd_adm_free_tier}</div></button>
+            <button onClick={() => onOpenPanel("subExpired")} style={subCell}><div style={{ ...subNum, color: "var(--danger)" }}>{subCount("expired", "2,220")}</div><div style={subLbl}>{t.rd_adm_expired}</div></button>
           </div>
         </div>
 
-        <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14.5, color: "var(--text)", margin: "2px 2px 10px" }}>Controls</div>
+        <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14.5, color: "var(--text)", margin: "2px 2px 10px" }}>{t.rd_adm_controls}</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 9, marginBottom: 16 }}>
-          <Ctrl icon={cic.userbase} label="User Base" onClick={() => onOpenPanel("userbase")} />
-          <Ctrl icon={cic.sellers} label="Sellers" onClick={() => onOpenPanel("sellers")} />
-          <Ctrl icon={cic.plans} label="Plans" onClick={() => onOpenPanel("plans")} />
-          <Ctrl icon={cic.payments} label="Payments" onClick={() => onOpenPanel("payments")} />
-          <Ctrl icon={cic.broadcast} label="Broadcast" onClick={() => onOpenPanel("broadcast")} />
-          <Ctrl icon={cic.reports} label="Reports" onClick={() => onOpenPanel("reports")} />
-          <Ctrl icon={cic.system} label="System" onClick={() => onOpenPanel("system")} />
-          <Ctrl icon={cic.audit} label="Audit Log" onClick={() => onOpenPanel("audit")} />
+          <Ctrl icon={cic.userbase} label={t.rd_adm_ctrl_userbase} onClick={() => onOpenPanel("userbase")} />
+          <Ctrl icon={cic.sellers} label={t.rd_adm_ctrl_sellers} onClick={() => onOpenPanel("sellers")} />
+          <Ctrl icon={cic.plans} label={t.rd_adm_ctrl_plans} onClick={() => onOpenPanel("plans")} />
+          <Ctrl icon={cic.payments} label={t.rd_adm_ctrl_payments} onClick={() => onOpenPanel("payments")} />
+          <Ctrl icon={cic.broadcast} label={t.rd_adm_ctrl_broadcast} onClick={() => onOpenPanel("broadcast")} />
+          <Ctrl icon={cic.reports} label={t.rd_adm_ctrl_reports} onClick={() => onOpenPanel("reports")} />
+          <Ctrl icon={cic.system} label={t.rd_adm_ctrl_system} onClick={() => onOpenPanel("system")} />
+          <Ctrl icon={cic.audit} label={t.rd_adm_ctrl_audit} onClick={() => onOpenPanel("audit")} />
         </div>
       </div>
     </div>
@@ -101,12 +103,12 @@ export default function Admin({ onOpenPanel, cur, counts, live = false, userBase
 }
 
 // ── Admin control bottom-sheet (overlay; rendered at the phone root) ─────────
-const PANEL_TITLE: Record<AdminPanelKind, string> = {
-  sellers: "Manage sellers", plans: "Subscription plans", payments: "Payments", reports: "Platform reports",
-  system: "Assign plan by payment", broadcast: "Broadcast", subActive: "Active paid subscriptions",
-  subExpiring: "Expiring soon", subFree: "Free tier", subExpired: "Expired",
-  revenue: "App revenue", notifs: "Notifications", audit: "Audit log", userbase: "User base",
-};
+const panelTitle = (t: RedesignT, k: AdminPanelKind): string => ({
+  sellers: t.rd_adm_pt_sellers, plans: t.rd_adm_pt_plans, payments: t.rd_adm_ctrl_payments, reports: t.rd_adm_pt_reports,
+  system: t.rd_adm_pt_system, broadcast: t.rd_adm_ctrl_broadcast, subActive: t.rd_adm_pt_subActive,
+  subExpiring: t.rd_adm_pt_subExpiring, subFree: t.rd_adm_pt_subFree, subExpired: t.rd_adm_pt_subExpired,
+  revenue: t.rd_adm_pt_revenue, notifs: t.rd_adm_notifications, audit: t.rd_adm_pt_audit, userbase: t.rd_adm_user_base,
+} as Record<AdminPanelKind, string>)[k];
 const chipOn: CSSProperties = { fontSize: 11.5, fontWeight: 700, color: "var(--accent-text)", background: "var(--accent)", padding: "6px 11px", borderRadius: 8 };
 const chipOff: CSSProperties = { fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", background: "var(--surface-2)", border: "1px solid var(--border)", padding: "6px 11px", borderRadius: 8 };
 const miniStat: CSSProperties = { background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 13, padding: "12px 13px" };
@@ -131,14 +133,15 @@ const NOTIFS = [
 // REAL seller bucket list (derived from the live users list). Mirrors the
 // SubList shape but rows are real seller_profiles.
 function SellerSubList({ list, statusLabel, statusColor, note }: { list: User[]; statusLabel: string; statusColor: string; note: string }) {
+  const t = useT();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
       <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 2 }}>{note}</div>
-      {list.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "8px 2px" }}>None.</div>}
+      {list.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "8px 2px" }}>{t.rd_adm_none}</div>}
       {list.map((u) => (
         <div key={u.email} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 12px", border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface-2)" }}>
           <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.note || u.email}</div><div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email} · {u.plan}</div></div>
-          <div style={{ textAlign: "right", flexShrink: 0 }}><div style={{ fontSize: 10.5, fontWeight: 800, color: statusColor }}>{statusLabel}</div><div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>{u.days} day{u.days === 1 ? "" : "s"} left</div></div>
+          <div style={{ textAlign: "right", flexShrink: 0 }}><div style={{ fontSize: 10.5, fontWeight: 800, color: statusColor }}>{statusLabel}</div><div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>{tpl(u.days === 1 ? t.rd_adm_days_left_one : t.rd_adm_days_left_many, { n: u.days })}</div></div>
         </div>
       ))}
     </div>
@@ -147,16 +150,17 @@ function SellerSubList({ list, statusLabel, statusColor, note }: { list: User[];
 
 // REAL free-tier monitor (list_free_users_status RPC).
 function FreeUserList({ list }: { list: FreeUserRow[] }) {
+  const t = useT();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 2 }}>{list.length} free-tier shop{list.length === 1 ? "" : "s"} · order usage this cycle</div>
-      {list.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "8px 2px" }}>No free-tier users.</div>}
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 2 }}>{tpl(list.length === 1 ? t.rd_adm_free_shops_one : t.rd_adm_free_shops_many, { n: list.length })}</div>
+      {list.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "8px 2px" }}>{t.rd_adm_no_free}</div>}
       {list.map((u) => {
         const color = u.capped ? "var(--danger)" : u.near_cap ? "var(--warn)" : "var(--ok)";
         return (
           <div key={u.email} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 12px", border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface-2)" }}>
             <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.store_name || u.full_name || u.email}</div><div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div></div>
-            <div style={{ textAlign: "right", flexShrink: 0 }}><div style={{ fontFamily: mono, fontSize: 12.5, fontWeight: 700, color }}>{u.count} / {u.cap}</div><div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>resets {u.cycle_resets_in_days}d</div></div>
+            <div style={{ textAlign: "right", flexShrink: 0 }}><div style={{ fontFamily: mono, fontSize: 12.5, fontWeight: 700, color }}>{u.count} / {u.cap}</div><div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>{tpl(t.rd_adm_resets_nd, { n: u.cycle_resets_in_days })}</div></div>
           </div>
         );
       })}
@@ -180,6 +184,7 @@ function SubList({ list, statusLabel, statusColor, note, showPlan = true }: { li
 }
 
 export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", actions, onChanged, freeUsers = [], freeUsersState = "sample", auditLogs = [], auditState = "sample", onOpenPanel }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; actions?: AdminActions; onChanged?: () => void; freeUsers?: FreeUserRow[]; freeUsersState?: ReadState; auditLogs?: AccountAuditLog[]; auditState?: ReadState; onOpenPanel?: (k: AdminPanelKind) => void }) {
+  const t = useT();
   // Real subscription buckets (derived) when the users list is live; else sample.
   const realSubs = usersState === "live" || usersState === "empty";
   const realFree = freeUsersState === "live" || freeUsersState === "empty";
@@ -208,29 +213,29 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
   // 5h — every admin write is human-confirmed (R2 safeguard: target the dummy only).
   const run = async (label: string, email: string, fn: () => Promise<{ ok: boolean; error?: string }>, onOk?: () => void) => {
     if (!actions || busy) return;
-    if (!window.confirm(`Admin action:\n${label}\nTarget: ${email}\n\nContinue?`)) return;
+    if (!window.confirm(tpl(t.rd_adm_confirm, { label, email }))) return;
     setBusy(true);
     try {
       const r = await fn();
-      if (r.ok) { onOk?.(); onChanged?.(); window.alert(`✓ ${label} — ${email}`); } // refresh real list
-      else window.alert(`✗ ${label} failed: ${r.error || "error"}`);
+      if (r.ok) { onOk?.(); onChanged?.(); window.alert(tpl(t.rd_adm_ok, { label, email })); } // refresh real list
+      else window.alert(tpl(t.rd_adm_failed, { label, err: r.error || t.rd_adm_err }));
     } catch (e) {
-      window.alert(`✗ ${label} failed: ${e instanceof Error ? e.message : "error"}`);
+      window.alert(tpl(t.rd_adm_failed, { label, err: e instanceof Error ? e.message : t.rd_adm_err }));
     } finally {
       setBusy(false); // never leave the panel stuck (was the bug blocking later actions)
     }
   };
   const doPlan = (email: string, plan: Plan, label: string) =>
-    void run(`Set plan → ${label}`, email, async () => { const r = await actions!.changePlan(email, plan); if (r.ok) setPlan(email, label); return r; });
+    void run(tpl(t.rd_adm_act_setplan, { plan: label }), email, async () => { const r = await actions!.changePlan(email, plan); if (r.ok) setPlan(email, label); return r; });
   const doPassword = (email: string) =>
-    void run("Set password (Edge Function)", email, () => actions!.setPassword(email, pwVal), () => { setPwIdx(null); setPwVal(""); });
+    void run(t.rd_adm_act_setpw, email, () => actions!.setPassword(email, pwVal), () => { setPwIdx(null); setPwVal(""); });
   // Real add-days: extends the seller's planExpiry (cumulative) via actions.addDays
   // (→ adminUpdatePlan) so it persists + survives reload. Falls back to local-only
   // when there are no real actions (sample preview).
   const doAddDays = (u: User, add: number) => {
     if (add > 0) {
       if (actions) {
-        void run(`Add ${add} day${add === 1 ? "" : "s"}`, u.email, async () => {
+        void run(tpl(add === 1 ? t.rd_adm_act_adddays_one : t.rd_adm_act_adddays_many, { n: add }), u.email, async () => {
           const r = await actions.addDays(u.email, u.planExpiry || new Date().toISOString(), u.planStatus || "active", add);
           if (r.ok && r.planExpiry) setUserDays((d) => ({ ...d, [u.email]: planDaysLeft(r.planExpiry, Date.now()) }));
           return r;
@@ -247,7 +252,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
     <div onClick={onClose} style={{ position: "absolute", inset: 0, zIndex: 9, background: "rgba(8,6,24,.5)", backdropFilter: "blur(2px)", display: "flex", alignItems: "flex-end" }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxHeight: "86%", background: "var(--surface)", borderRadius: "22px 22px 0 0", display: "flex", flexDirection: "column", boxShadow: "0 -16px 40px rgba(0,0,0,.3)", animation: "sflSheet .26s cubic-bezier(.22,1,.36,1)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px 13px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
-          <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 17, color: "var(--text)" }}>{PANEL_TITLE[panel]}</span>
+          <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 17, color: "var(--text)" }}>{panelTitle(t, panel)}</span>
           <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 9, border: "none", background: "var(--surface-2)", color: "var(--text-dim)", fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
         </div>
         <div className="sfl-scroll" style={{ padding: "16px 16px calc(22px + env(safe-area-inset-bottom))" }}>
@@ -256,15 +261,15 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 11, padding: "10px 12px", marginBottom: 11 }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="var(--text-muted)" strokeWidth="1.8" /><path d="m20 20-3.5-3.5" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round" /></svg>
-                <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>Search email or @handle</span>
-                <span style={{ marginLeft: "auto" }}><SoonBadge label="Search soon" /></span>
+                <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{t.rd_adm_search_email}</span>
+                <span style={{ marginLeft: "auto" }}><SoonBadge label={t.rd_adm_search_soon} /></span>
               </div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 11 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>Users · {userCount}</span>
-                <button disabled title="Coming soon" style={{ fontSize: 11.5, fontWeight: 700, color: "var(--accent-text)", background: "var(--accent)", border: "none", padding: "7px 12px", borderRadius: 9, fontFamily: "var(--font-ui)", ...deadBtn }}>+ Add user</button>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>{t.rd_adm_users} · {userCount}</span>
+                <button disabled title={t.rd_adm_coming_soon} style={{ fontSize: 11.5, fontWeight: 700, color: "var(--accent-text)", background: "var(--accent)", border: "none", padding: "7px 12px", borderRadius: 9, fontFamily: "var(--font-ui)", ...deadBtn }}>{t.rd_adm_add_user}</button>
               </div>
-              {usersState === "loading" && <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 2px" }}>Loading sellers…</div>}
-              {usersState === "empty" && <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 2px" }}>No sellers found.</div>}
+              {usersState === "loading" && <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 2px" }}>{t.rd_adm_loading_sellers}</div>}
+              {usersState === "empty" && <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 2px" }}>{t.rd_adm_no_sellers}</div>}
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {users.map((u, i) => {
                   const plan = userPlans[u.email] || u.plan;
@@ -284,15 +289,15 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                         </div>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 9, fontSize: 11, color: "var(--text-dim)" }}>
-                        <span><span style={{ color: "var(--text-muted)" }}>Days</span> <span style={{ fontFamily: mono, fontWeight: 700, color: "var(--text)" }}>{days}</span></span>
-                        <span><span style={{ color: "var(--text-muted)" }}>Accounts</span> <span style={{ fontFamily: mono, fontWeight: 700, color: "var(--text)" }}>{u.accounts}</span></span>
+                        <span><span style={{ color: "var(--text-muted)" }}>{t.rd_adm_days}</span> <span style={{ fontFamily: mono, fontWeight: 700, color: "var(--text)" }}>{days}</span></span>
+                        <span><span style={{ color: "var(--text-muted)" }}>{t.rd_adm_accounts}</span> <span style={{ fontFamily: mono, fontWeight: 700, color: "var(--text)" }}>{u.accounts}</span></span>
                         {addIdx === i ? (
                           <span style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: "auto" }}>
-                            <input value={addVal} onChange={(e) => setAddVal(e.target.value.replace(/[^0-9]/g, ""))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doAddDays(u, parseInt(addVal || "0", 10) || 0); } }} inputMode="numeric" autoFocus placeholder="days" style={{ width: 54, padding: "4px 7px", border: "1.3px solid var(--accent)", borderRadius: 7, background: "var(--surface)", color: "var(--text)", fontFamily: mono, fontSize: 11, fontWeight: 700, outline: "none" }} />
-                            <span style={{ fontSize: 9.5, color: "var(--text-muted)" }}>Enter ↵</span>
+                            <input value={addVal} onChange={(e) => setAddVal(e.target.value.replace(/[^0-9]/g, ""))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doAddDays(u, parseInt(addVal || "0", 10) || 0); } }} inputMode="numeric" autoFocus placeholder={t.rd_adm_days_ph} style={{ width: 54, padding: "4px 7px", border: "1.3px solid var(--accent)", borderRadius: 7, background: "var(--surface)", color: "var(--text)", fontFamily: mono, fontSize: 11, fontWeight: 700, outline: "none" }} />
+                            <span style={{ fontSize: 9.5, color: "var(--text-muted)" }}>{t.rd_adm_enter}</span>
                           </span>
                         ) : (
-                          <button onClick={() => { setAddIdx(i); setAddVal(""); }} style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 3, fontSize: 10.5, fontWeight: 800, color: "var(--accent-text)", background: "var(--accent)", border: "none", padding: "4px 10px", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" }}>+ Add days</button>
+                          <button onClick={() => { setAddIdx(i); setAddVal(""); }} style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 3, fontSize: 10.5, fontWeight: 800, color: "var(--accent-text)", background: "var(--accent)", border: "none", padding: "4px 10px", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_adm_add_days}</button>
                         )}
                       </div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 10 }}>
@@ -303,16 +308,16 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                       </div>
                       {pwIdx === i && (
                         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
-                          <input value={pwVal} onChange={(e) => setPwVal(e.target.value)} type="text" autoFocus placeholder="New password (≥6 chars)" style={{ flex: 1, padding: "6px 9px", border: "1.3px solid var(--accent)", borderRadius: 7, background: "var(--surface)", color: "var(--text)", fontSize: 11.5, fontWeight: 600, fontFamily: "var(--font-ui)", outline: "none" }} />
-                          <button onClick={() => doPassword(u.email)} disabled={busy} style={{ ...actBtn, color: "var(--accent-fg)", borderColor: "var(--accent)" }}>Set</button>
-                          <button onClick={() => { setPwIdx(null); setPwVal(""); }} style={actBtn}>Cancel</button>
+                          <input value={pwVal} onChange={(e) => setPwVal(e.target.value)} type="text" autoFocus placeholder={t.rd_adm_pw_ph} style={{ flex: 1, padding: "6px 9px", border: "1.3px solid var(--accent)", borderRadius: 7, background: "var(--surface)", color: "var(--text)", fontSize: 11.5, fontWeight: 600, fontFamily: "var(--font-ui)", outline: "none" }} />
+                          <button onClick={() => doPassword(u.email)} disabled={busy} style={{ ...actBtn, color: "var(--accent-fg)", borderColor: "var(--accent)" }}>{t.rd_adm_set}</button>
+                          <button onClick={() => { setPwIdx(null); setPwVal(""); }} style={actBtn}>{t.rd_prd_cancel}</button>
                         </div>
                       )}
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6, paddingTop: 9, borderTop: "1px solid var(--border)" }}>
-                        <button onClick={() => { setPwIdx(pwIdx === i ? null : i); setPwVal(""); }} style={actBtn} disabled={!actions}>Reset PW</button>
-                        <button onClick={() => void run(isAdmin ? "Remove admin role" : "Make admin", u.email, () => actions!.setRole(u.email, isAdmin ? "seller" : "admin"))} style={actBtn} disabled={!actions}>{isAdmin ? "Remove Admin" : "Make Admin"}</button>
-                        <button onClick={() => void run("Expire plan", u.email, () => actions!.expire(u.email))} style={{ ...actBtn, color: "var(--warn)" }} disabled={!actions}>Expire</button>
-                        <button onClick={() => void run("DELETE seller profile", u.email, () => actions!.removeUser(u.email))} style={{ ...actBtn, color: "var(--danger)" }} disabled={!actions}>Delete</button>
+                        <button onClick={() => { setPwIdx(pwIdx === i ? null : i); setPwVal(""); }} style={actBtn} disabled={!actions}>{t.rd_adm_reset_pw}</button>
+                        <button onClick={() => void run(isAdmin ? t.rd_adm_act_remove_admin : t.rd_adm_act_make_admin, u.email, () => actions!.setRole(u.email, isAdmin ? "seller" : "admin"))} style={actBtn} disabled={!actions}>{isAdmin ? t.rd_adm_remove_admin : t.rd_adm_make_admin}</button>
+                        <button onClick={() => void run(t.rd_adm_act_expire, u.email, () => actions!.expire(u.email))} style={{ ...actBtn, color: "var(--warn)" }} disabled={!actions}>{t.rd_adm_expire}</button>
+                        <button onClick={() => void run(t.rd_adm_act_delete, u.email, () => actions!.removeUser(u.email))} style={{ ...actBtn, color: "var(--danger)" }} disabled={!actions}>{t.rd_prd_delete_btn}</button>
                       </div>
                     </div>
                   );
@@ -336,7 +341,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                   </div>
                 </div>
               ))}
-              <button disabled title="Coming soon" style={{ width: "100%", padding: "12px 0", border: "1px dashed var(--border-strong)", borderRadius: 12, background: "transparent", color: "var(--accent-fg)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, ...deadBtn }}>+ New plan</button>
+              <button disabled title={t.rd_adm_coming_soon} style={{ width: "100%", padding: "12px 0", border: "1px dashed var(--border-strong)", borderRadius: 12, background: "transparent", color: "var(--accent-fg)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, ...deadBtn }}>{t.rd_adm_new_plan}</button>
             </div>
           )}
 
@@ -344,15 +349,15 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
             <div>
               <SampleNote />
               <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-                <div style={{ ...miniStat, flex: 1 }}><div style={miniLbl}>Collected today</div><div style={miniNum}>{cur}48,200</div></div>
-                <div style={{ ...miniStat, flex: 1 }}><div style={miniLbl}>Pending</div><div style={{ ...miniNum, color: "var(--warn)" }}>12</div></div>
+                <div style={{ ...miniStat, flex: 1 }}><div style={miniLbl}>{t.rd_adm_collected_today}</div><div style={miniNum}>{cur}48,200</div></div>
+                <div style={{ ...miniStat, flex: 1 }}><div style={miniLbl}>{t.rd_adm_pending}</div><div style={{ ...miniNum, color: "var(--warn)" }}>12</div></div>
               </div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", marginBottom: 9 }}>Recent transactions</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", marginBottom: 9 }}>{t.rd_adm_recent_tx}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {PAYMENTS.map((t, i) => (
+                {PAYMENTS.map((p, i) => (
                   <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 11 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t.seller}</div><div style={{ fontSize: 11, color: "var(--text-muted)" }}>{t.method} · {t.time} ago</div></div>
-                    <div style={{ textAlign: "right" }}><div style={{ fontFamily: mono, fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{cur}{t.amount}</div><div style={{ fontSize: 10.5, fontWeight: 800, color: t.status === "Paid" ? "var(--ok)" : "var(--warn)" }}>{t.status}</div></div>
+                    <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{p.seller}</div><div style={{ fontSize: 11, color: "var(--text-muted)" }}>{p.method} · {p.time} {t.rd_ord_ago}</div></div>
+                    <div style={{ textAlign: "right" }}><div style={{ fontFamily: mono, fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{cur}{p.amount}</div><div style={{ fontSize: 10.5, fontWeight: 800, color: p.status === "Paid" ? "var(--ok)" : "var(--warn)" }}>{p.status}</div></div>
                   </div>
                 ))}
               </div>
@@ -363,72 +368,72 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
             <div>
               <SampleNote />
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-                <div style={miniStat}><div style={miniLbl}>MRR</div><div style={miniNum}>{cur}4.2M</div></div>
-                <div style={miniStat}><div style={miniLbl}>Growth</div><div style={{ ...miniNum, color: "var(--ok)" }}>+12%</div></div>
-                <div style={miniStat}><div style={miniLbl}>Churn</div><div style={{ ...miniNum, color: "var(--warn)" }}>2.1%</div></div>
-                <div style={miniStat}><div style={miniLbl}>ARPU</div><div style={miniNum}>{cur}340</div></div>
+                <div style={miniStat}><div style={miniLbl}>{t.rd_adm_mrr}</div><div style={miniNum}>{cur}4.2M</div></div>
+                <div style={miniStat}><div style={miniLbl}>{t.rd_adm_growth}</div><div style={{ ...miniNum, color: "var(--ok)" }}>+12%</div></div>
+                <div style={miniStat}><div style={miniLbl}>{t.rd_adm_churn}</div><div style={{ ...miniNum, color: "var(--warn)" }}>2.1%</div></div>
+                <div style={miniStat}><div style={miniLbl}>{t.rd_adm_arpu}</div><div style={miniNum}>{cur}340</div></div>
               </div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", marginBottom: 9 }}>Reports</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", marginBottom: 9 }}>{t.rd_adm_reports_h}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {["Revenue by plan", "Seller growth", "Churn & renewals"].map((r) => (
-                  <button key={r} disabled title="Coming soon" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 13px", border: "1px solid var(--border)", borderRadius: 11, background: "var(--surface-2)", fontFamily: "var(--font-ui)", ...deadBtn }}><span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{r}</span><span style={{ color: "var(--text-muted)" }}>›</span></button>
+                {[t.rd_adm_rep_revplan, t.rd_adm_rep_growth, t.rd_adm_rep_churn].map((r) => (
+                  <button key={r} disabled title={t.rd_adm_coming_soon} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 13px", border: "1px solid var(--border)", borderRadius: 11, background: "var(--surface-2)", fontFamily: "var(--font-ui)", ...deadBtn }}><span style={{ fontSize: 13, fontWeight: 600, color: "var(--text)" }}>{r}</span><span style={{ color: "var(--text-muted)" }}>›</span></button>
                 ))}
               </div>
-              <button disabled title="Coming soon" style={{ ...sheetBtn, marginTop: 13, padding: "12px 0", borderRadius: 11, fontSize: 13, ...deadBtn }}>Export CSV</button>
+              <button disabled title={t.rd_adm_coming_soon} style={{ ...sheetBtn, marginTop: 13, padding: "12px 0", borderRadius: 11, fontSize: 13, ...deadBtn }}>{t.rd_cd_export_csv}</button>
             </div>
           )}
 
           {panel === "system" && (
             <div>
               <SampleNote />
-              <div style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.5, marginBottom: 15 }}>Enter the amount a new seller paid — the matching plan is selected automatically. Granting here is coming soon; for now use the per-seller plan buttons in <strong>Manage sellers</strong>.</div>
-              <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 6 }}>Amount paid</label>
+              <div style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.5, marginBottom: 15 }}>{t.rd_adm_sys_desc_pre}<strong>{t.rd_adm_pt_sellers}</strong>{t.rd_adm_sys_desc_post}</div>
+              <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 6 }}>{t.rd_adm_amount_paid}</label>
               <div style={{ display: "flex", alignItems: "center", gap: 8, border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", padding: "0 13px", marginBottom: 14 }}>
                 <span style={{ fontFamily: mono, fontSize: 15, fontWeight: 700, color: "var(--text-muted)" }}>{cur}</span>
                 <input value={assignAmount} onChange={(e) => onAssignAmount(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" style={{ flex: 1, border: "none", background: "transparent", color: "var(--text)", fontFamily: mono, fontSize: 15, fontWeight: 700, padding: "12px 0", outline: "none" }} />
               </div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--accent-soft)", border: "1px solid var(--accent)", borderRadius: 13, padding: "13px 15px", marginBottom: 16 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-dim)" }}>Matched plan</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-dim)" }}>{t.rd_adm_matched_plan}</span>
                 <span style={{ fontFamily: "var(--font-display)", fontSize: 16, fontWeight: 700, color: "var(--accent-fg)" }}>{matchPlan(assignAmount)}</span>
               </div>
-              <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 6 }}>Assign to seller</label>
+              <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 6 }}>{t.rd_adm_assign_seller}</label>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", padding: "12px 13px", marginBottom: 16 }}>
-                <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text-muted)" }}>Select seller</span><span style={{ color: "var(--text-muted)" }}>▾</span>
+                <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text-muted)" }}>{t.rd_adm_select_seller}</span><span style={{ color: "var(--text-muted)" }}>▾</span>
               </div>
-              <button disabled title="Coming soon" style={{ ...sheetBtn, ...deadBtn }}>Grant {matchPlan(assignAmount)} plan</button>
+              <button disabled title={t.rd_adm_coming_soon} style={{ ...sheetBtn, ...deadBtn }}>{tpl(t.rd_adm_grant, { plan: matchPlan(assignAmount) })}</button>
             </div>
           )}
 
           {panel === "broadcast" && (
             <div>
               <SampleNote />
-              <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 8 }}>Audience</label>
+              <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 8 }}>{t.rd_adm_audience}</label>
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 15 }}>
-                <span style={chipOn}>All sellers</span><span style={chipOff}>Pro only</span><span style={chipOff}>Expiring</span>
+                <span style={chipOn}>{t.rd_adm_all_sellers}</span><span style={chipOff}>{t.rd_adm_pro_only}</span><span style={chipOff}>{t.rd_adm_bc_expiring}</span>
               </div>
-              <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 6 }}>Message</label>
-              <div style={{ border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface-2)", padding: "12px 13px", minHeight: 84, fontSize: 13, color: "var(--text-muted)", marginBottom: 15 }}>Type your announcement to sellers…</div>
-              <button disabled title="Coming soon" style={{ ...sheetBtn, ...deadBtn }}>Send broadcast</button>
+              <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 6 }}>{t.rd_adm_message}</label>
+              <div style={{ border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface-2)", padding: "12px 13px", minHeight: 84, fontSize: 13, color: "var(--text-muted)", marginBottom: 15 }}>{t.rd_adm_announce_ph}</div>
+              <button disabled title={t.rd_adm_coming_soon} style={{ ...sheetBtn, ...deadBtn }}>{t.rd_adm_send_broadcast}</button>
             </div>
           )}
 
           {panel === "subActive" && (realSubs
-            ? <SellerSubList list={subB.active} statusLabel="Active" statusColor="var(--ok)" note={`${subB.active.length} active paid subscription${subB.active.length === 1 ? "" : "s"}`} />
-            : <SubList list={SUBS.active} statusLabel="Active" statusColor="var(--ok)" note="Active paid subscriptions · showing recent" />)}
+            ? <SellerSubList list={subB.active} statusLabel={t.rd_adm_st_active} statusColor="var(--ok)" note={tpl(subB.active.length === 1 ? t.rd_adm_note_active_one : t.rd_adm_note_active_many, { n: subB.active.length })} />
+            : <SubList list={SUBS.active} statusLabel={t.rd_adm_st_active} statusColor="var(--ok)" note={t.rd_adm_note_active_sample} />)}
           {panel === "subExpiring" && (realSubs
-            ? <SellerSubList list={subB.expiring} statusLabel="Expiring" statusColor="var(--warn)" note={`${subB.expiring.length} expiring soon — renew or follow up`} />
-            : <SubList list={SUBS.expiring} statusLabel="Expiring" statusColor="var(--warn)" note="Expiring soon — renew or follow up" />)}
+            ? <SellerSubList list={subB.expiring} statusLabel={t.rd_adm_st_expiring} statusColor="var(--warn)" note={tpl(t.rd_adm_note_expiring, { n: subB.expiring.length })} />
+            : <SubList list={SUBS.expiring} statusLabel={t.rd_adm_st_expiring} statusColor="var(--warn)" note={t.rd_adm_note_expiring_sample} />)}
           {panel === "subFree" && (realFree
             ? <FreeUserList list={freeUsers} />
-            : <SubList list={SUBS.free} statusLabel="Free" statusColor="var(--accent-fg)" note="Free-tier shops · plan & free cycle" showPlan={false} />)}
+            : <SubList list={SUBS.free} statusLabel={t.rd_adm_st_free} statusColor="var(--accent-fg)" note={t.rd_adm_note_free_sample} showPlan={false} />)}
           {panel === "subExpired" && (realSubs
-            ? <SellerSubList list={subB.expired} statusLabel="Expired" statusColor="var(--danger)" note={`${subB.expired.length} expired — not renewed / no payment`} />
-            : <SubList list={SUBS.expired} statusLabel="Expired" statusColor="var(--danger)" note="Expired — not renewed / no payment" />)}
+            ? <SellerSubList list={subB.expired} statusLabel={t.rd_adm_st_expired} statusColor="var(--danger)" note={tpl(t.rd_adm_note_expired, { n: subB.expired.length })} />
+            : <SubList list={SUBS.expired} statusLabel={t.rd_adm_st_expired} statusColor="var(--danger)" note={t.rd_adm_note_expired_sample} />)}
 
           {panel === "notifs" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
               <SampleNote />
-              <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 2 }}>New sign-ups &amp; subscriptions expiring within 5 days</div>
+              <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 2 }}>{t.rd_adm_notif_sub}</div>
               {NOTIFS.map((n, i) => (
                 <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "11px 12px", border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface-2)" }}>
                   <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".02em", color: n.ink, background: n.tint, padding: "4px 7px", borderRadius: 6, flexShrink: 0, marginTop: 1 }}>{n.kind}</span>
@@ -442,28 +447,28 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
             <div>
               <SampleNote />
               <div style={{ background: "var(--accent)", borderRadius: 14, padding: 15, color: "#fff", boxShadow: "0 8px 22px var(--accent-soft)" }}>
-                <div style={{ fontSize: 11.5, opacity: 0.9, fontWeight: 600 }}>This month · from paid subscribers</div>
+                <div style={{ fontSize: 11.5, opacity: 0.9, fontWeight: 600 }}>{t.rd_adm_rev_thismonth}</div>
                 <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 28, marginTop: 4, letterSpacing: "-.02em" }}>{cur}4.2M</div>
-                <div style={{ fontSize: 11.5, opacity: 0.92, marginTop: 2 }}>▲ 12% vs last month</div>
+                <div style={{ fontSize: 11.5, opacity: 0.92, marginTop: 2 }}>{t.rd_adm_rev_vslast}</div>
               </div>
               <div style={{ display: "flex", gap: 9, marginTop: 12 }}>
-                <div style={{ flex: 1, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 12, padding: "11px 12px" }}><div style={{ fontSize: 10.5, color: "var(--text-muted)", fontWeight: 600 }}>Platform fees</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 15, color: "var(--text)", marginTop: 2 }}>{cur}1.05M</div></div>
-                <div style={{ flex: 1, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 12, padding: "11px 12px" }}><div style={{ fontSize: 10.5, color: "var(--text-muted)", fontWeight: 600 }}>Net profit</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 15, color: "var(--ok)", marginTop: 2 }}>{cur}3.15M</div></div>
+                <div style={{ flex: 1, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 12, padding: "11px 12px" }}><div style={{ fontSize: 10.5, color: "var(--text-muted)", fontWeight: 600 }}>{t.rd_adm_platform_fees}</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 15, color: "var(--text)", marginTop: 2 }}>{cur}1.05M</div></div>
+                <div style={{ flex: 1, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 12, padding: "11px 12px" }}><div style={{ fontSize: 10.5, color: "var(--text-muted)", fontWeight: 600 }}>{t.rd_adm_net_profit}</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 15, color: "var(--ok)", marginTop: 2 }}>{cur}3.15M</div></div>
               </div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 11, background: "var(--accent-soft)", border: "1px solid var(--accent)", borderRadius: 12, padding: "11px 13px" }}>
-                <div><div style={{ fontSize: 11, color: "var(--text-dim)", fontWeight: 600 }}>Detected from plan changes</div><div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 1 }}>Live — when you upgrade a paid seller</div></div>
+                <div><div style={{ fontSize: 11, color: "var(--text-dim)", fontWeight: 600 }}>{t.rd_adm_detected}</div><div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 1 }}>{t.rd_adm_rev_live}</div></div>
                 <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 17, color: "var(--accent-fg)" }}>+{cur}{revAdded.toLocaleString("en-US")}</div>
               </div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", margin: "14px 2px 9px" }}>Revenue by plan</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", margin: "14px 2px 9px" }}>{t.rd_adm_rev_by_plan}</div>
               <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 13, overflow: "hidden" }}>
                 {[{ plan: "Starter", subs: "4,120", price: cur + "199", total: cur + "820K" }, { plan: "Pro", subs: "5,310", price: cur + "499", total: cur + "2.65M" }, { plan: "Business", subs: "412", price: cur + "1,499", total: cur + "618K" }].map((r) => (
                   <div key={r.plan} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 13px", borderBottom: "1px solid var(--border)" }}>
-                    <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{r.plan}</div><div style={{ fontSize: 11, color: "var(--text-muted)" }}>{r.subs} subscribers · {r.price}/mo</div></div>
+                    <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{r.plan}</div><div style={{ fontSize: 11, color: "var(--text-muted)" }}>{r.subs} {t.rd_adm_subscribers} · {r.price}/mo</div></div>
                     <div style={{ fontFamily: mono, fontSize: 14, fontWeight: 700, color: "var(--text)", flexShrink: 0 }}>{r.total}</div>
                   </div>
                 ))}
               </div>
-              <button disabled title="Coming soon" style={{ ...sheetBtn, marginTop: 13, padding: "12px 0", borderRadius: 11, fontSize: 13, ...deadBtn }}>Export revenue report</button>
+              <button disabled title={t.rd_adm_coming_soon} style={{ ...sheetBtn, marginTop: 13, padding: "12px 0", borderRadius: 11, fontSize: 13, ...deadBtn }}>{t.rd_adm_export_rev}</button>
             </div>
           )}
 
@@ -474,24 +479,24 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <div style={{ background: "var(--accent)", borderRadius: 14, padding: "14px 15px", color: "#fff", boxShadow: "0 8px 22px var(--accent-soft)" }}>
                   <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 30, letterSpacing: "-.02em" }}>{userBase.paid}</div>
-                  <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.95 }}>Paid plans</div>
-                  <div style={{ fontSize: 10.5, opacity: 0.85, marginTop: 2 }}>{userBase.paidSellers} paying seller{userBase.paidSellers === 1 ? "" : "s"} + you</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.95 }}>{t.rd_adm_paid_plans}</div>
+                  <div style={{ fontSize: 10.5, opacity: 0.85, marginTop: 2 }}>{tpl(userBase.paidSellers === 1 ? t.rd_adm_paying_plus_one : t.rd_adm_paying_plus_many, { n: userBase.paidSellers })}</div>
                 </div>
                 <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 14, padding: "14px 15px" }}>
                   <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 30, color: "var(--accent-fg)", letterSpacing: "-.02em" }}>{userBase.free}</div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>Free tier</div>
-                  <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>{userBase.total} accounts total</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>{t.rd_sub_free_tier}</div>
+                  <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>{tpl(t.rd_adm_accounts_total, { n: userBase.total })}</div>
                 </div>
               </div>
 
               {/* Paid plans by tier */}
               <div style={{ ...card, padding: "14px 15px" }}>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", marginBottom: 11 }}>Paid plans by tier</div>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", marginBottom: 11 }}>{t.rd_adm_paid_by_tier}</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   {([["Basic", userBase.basic, "#059669"], ["Pro", userBase.pro, "#0284c7"], ["Master", userBase.master, "#7c3aed"]] as const).map(([name, n, col]) => (
                     <div key={name}>
                       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
-                        <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{name}{name === "Master" ? " (incl. you)" : ""}</span>
+                        <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{name}{name === "Master" ? t.rd_adm_incl_you : ""}</span>
                         <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{n}</span>
                       </div>
                       <div style={{ height: 7, borderRadius: 4, background: "var(--surface-2)", overflow: "hidden" }}>
@@ -499,15 +504,15 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                       </div>
                     </div>
                   ))}
-                  {userBase.trial > 0 && <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>Trial: <strong style={{ color: "var(--text)" }}>{userBase.trial}</strong></div>}
+                  {userBase.trial > 0 && <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_adm_trial} <strong style={{ color: "var(--text)" }}>{userBase.trial}</strong></div>}
                 </div>
               </div>
 
               {/* Paid status health (real expiry-based) */}
               <div style={{ ...card, padding: "13px 15px" }}>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", marginBottom: 9 }}>Paid status</div>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", marginBottom: 9 }}>{t.rd_adm_paid_status}</div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  {([["Active", userBase.paidActive, "var(--ok)"], ["Expiring ≤1d", userBase.paidExpiring, "var(--warn)"], ["Expired", userBase.paidExpired, "var(--danger)"]] as const).map(([l, n, c]) => (
+                  {([[t.rd_adm_st_active, userBase.paidActive, "var(--ok)"], [t.rd_adm_expiring_1d, userBase.paidExpiring, "var(--warn)"], [t.rd_adm_st_expired, userBase.paidExpired, "var(--danger)"]] as const).map(([l, n, c]) => (
                     <div key={l} style={{ flex: 1, textAlign: "center", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 0" }}>
                       <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 17, color: c }}>{n}</div>
                       <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600, marginTop: 2 }}>{l}</div>
@@ -519,19 +524,19 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
               {/* Free-tier cap usage (from list_free_users_status) */}
               <div style={{ ...card, padding: "13px 15px" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 9 }}>
-                  <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>Free tier — cap usage</span>
-                  {freeSummary.total > 0 && <button onClick={() => onOpenPanel?.("subFree")} style={{ ...planBtn }}>View ›</button>}
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_adm_free_cap_usage}</span>
+                  {freeSummary.total > 0 && <button onClick={() => onOpenPanel?.("subFree")} style={{ ...planBtn }}>{t.rd_adm_view}</button>}
                 </div>
                 {realFree ? (
                   <div style={{ display: "flex", gap: 8 }}>
-                    {([["Free users", freeSummary.total, "var(--accent-fg)"], ["Near cap", freeSummary.nearCap, "var(--warn)"], ["Capped", freeSummary.capped, "var(--danger)"]] as const).map(([l, n, c]) => (
+                    {([[t.rd_adm_free_users, freeSummary.total, "var(--accent-fg)"], [t.rd_adm_near_cap, freeSummary.nearCap, "var(--warn)"], [t.rd_adm_capped, freeSummary.capped, "var(--danger)"]] as const).map(([l, n, c]) => (
                       <div key={l} style={{ flex: 1, textAlign: "center", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 0" }}>
                         <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 17, color: c }}>{n}</div>
                         <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600, marginTop: 2 }}>{l}</div>
                       </div>
                     ))}
                   </div>
-                ) : <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>Free-tier usage loads for the signed-in admin (cap {freeSummary.cap}/cycle).</div>}
+                ) : <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{tpl(t.rd_adm_free_loads, { cap: freeSummary.cap })}</div>}
               </div>
             </div>
           )}
@@ -541,12 +546,12 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 11 }}>
                 <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 11, padding: "9px 12px" }}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="var(--text-muted)" strokeWidth="1.8" /><path d="m20 20-3.5-3.5" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round" /></svg>
-                  <input value={auditQ} onChange={(e) => setAuditQ(e.target.value)} placeholder="Search admin, action, target…" style={{ flex: 1, border: "none", background: "transparent", color: "var(--text)", fontSize: 12.5, outline: "none", fontFamily: "var(--font-ui)" }} />
+                  <input value={auditQ} onChange={(e) => setAuditQ(e.target.value)} placeholder={t.rd_adm_audit_search} style={{ flex: 1, border: "none", background: "transparent", color: "var(--text)", fontSize: 12.5, outline: "none", fontFamily: "var(--font-ui)" }} />
                 </div>
-                {auditLogs.length > 0 && <button onClick={exportAudit} style={{ ...actBtn, color: "var(--accent-fg)", borderColor: "var(--accent)" }}>⬇ CSV</button>}
+                {auditLogs.length > 0 && <button onClick={exportAudit} style={{ ...actBtn, color: "var(--accent-fg)", borderColor: "var(--accent)" }}>{t.rd_adm_csv}</button>}
               </div>
-              {auditState === "loading" && <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "10px 2px" }}>Loading audit log…</div>}
-              {auditState !== "loading" && auditFiltered.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "10px 2px" }}>{auditLogs.length === 0 ? "No admin activity yet." : "No audit records found."}</div>}
+              {auditState === "loading" && <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "10px 2px" }}>{t.rd_adm_loading_audit}</div>}
+              {auditState !== "loading" && auditFiltered.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "10px 2px" }}>{auditLogs.length === 0 ? t.rd_adm_no_activity : t.rd_adm_no_records}</div>}
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {auditFiltered.map((log) => {
                   const tint = auditTint(auditActionColor(log.action));
