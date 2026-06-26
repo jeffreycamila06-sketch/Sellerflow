@@ -27,6 +27,33 @@ export const registeredAccountCount = (u: AccountUser): number => accountList(u.
 export const isAdminUser = (u: AccountUser): boolean => u.role === "admin";
 export const canConnectMore = (u: AccountUser): boolean => isAdminUser(u) || registeredAccountCount(u) < maxAcc(u.plan); // 276
 
+// Plan-capped slot array: parsed accounts (capped to limit) padded with "" to `limit`
+// length so the editor renders a fixed number of boxes. Verbatim App.tsx:261.
+export const accountSlots = (value: string, limit: number): string[] => {
+  const slots = (value || "").split(/[,\n]/).map((v) => v.trim()).filter(Boolean).slice(0, limit);
+  while (slots.length < limit) slots.push("");
+  return slots;
+};
+
+// Preserve already-saved (locked) accounts: at each slot index the ORIGINAL value
+// wins over the edited one — a seller can't overwrite a server-known account.
+// Verbatim App.tsx:263.
+export const keepLockedAccounts = (original: string, next: string, limit: number): string =>
+  accountText(accountSlots(next, limit).map((value, index) => accountSlots(original, limit)[index] || value));
+
+// Enforce the COMBINED tiktok+facebook cap: keep all already-saved accounts first,
+// then fill from the edited lists until the plan limit is hit. Verbatim App.tsx:264-273.
+export const fitProfileAccounts = <P extends { tiktok: string; facebook: string }>(original: P, next: P, limit: number): P => {
+  const lockedTikTok = accountList(original.tiktok);
+  const lockedFacebook = accountList(original.facebook);
+  const resultTikTok = [...lockedTikTok];
+  const resultFacebook = [...lockedFacebook];
+  let remaining = Math.max(0, limit - resultTikTok.length - resultFacebook.length);
+  for (const account of accountList(next.tiktok)) if (remaining > 0 && !resultTikTok.includes(account)) { resultTikTok.push(account); remaining--; }
+  for (const account of accountList(next.facebook)) if (remaining > 0 && !resultFacebook.includes(account)) { resultFacebook.push(account); remaining--; }
+  return { ...next, tiktok: accountText(resultTikTok), facebook: accountText(resultFacebook) };
+};
+
 // Registered accounts for a platform, capped to the plan limit (ConnectModal 3762-3763).
 export function registeredAccountsFor(u: AccountUser, platform: Platform): string[] {
   const field = platform === "TikTok" ? u.profile.tiktok : u.profile.facebook;

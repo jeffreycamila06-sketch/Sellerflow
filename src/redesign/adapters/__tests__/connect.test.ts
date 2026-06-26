@@ -3,7 +3,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import {
   cleanLiveAccount, maxAcc, accountList, accountText, registeredAccountCount, canConnectMore,
-  registeredAccountsFor, appendAccount, connectPlatform,
+  registeredAccountsFor, appendAccount, connectPlatform, accountSlots, keepLockedAccounts, fitProfileAccounts,
 } from "../connect";
 import type { AccountUser } from "../../../accountDb";
 
@@ -38,6 +38,30 @@ describe("pure helpers — verbatim from App.tsx", () => {
   it("registeredAccountsFor caps to the plan limit", () => {
     const u = user({ plan: "pro", profile: { ...user().profile, tiktok: "a,b,c,d,e" } });
     expect(registeredAccountsFor(u, "TikTok")).toEqual(["a", "b", "c"]); // pro=3
+  });
+});
+
+describe("accountSlots / keepLockedAccounts / fitProfileAccounts — verbatim App.tsx 261-273", () => {
+  it("accountSlots caps to limit + pads empties to a fixed length", () => {
+    expect(accountSlots("a,b,c", 1)).toEqual(["a"]);                         // basic = 1 box
+    expect(accountSlots("a", 3)).toEqual(["a", "", ""]);                     // pro = 1 filled + 2 empty
+    expect(accountSlots("", 2)).toEqual(["", ""]);                          // all empty
+    expect(accountSlots("a,b,c,d,e,f", 5)).toEqual(["a", "b", "c", "d", "e"]); // master cap
+  });
+  it("keepLockedAccounts: saved slot wins; empty slot accepts the edit", () => {
+    expect(keepLockedAccounts("a", "x\nb", 3)).toBe("a\nb");  // index0 "a" locked (edit "x" ignored); index1 "b" accepted
+    expect(keepLockedAccounts("", "b", 3)).toBe("b");          // nothing locked → edit accepted
+  });
+  it("fitProfileAccounts enforces the COMBINED tiktok+facebook cap (locked first)", () => {
+    // pro limit 3: locked a + edits b,c (tt) fills the cap → fb d (4th) dropped
+    const out = fitProfileAccounts({ tiktok: "a", facebook: "" }, { tiktok: "a\nb\nc", facebook: "d" }, 3);
+    expect(accountList(out.tiktok)).toEqual(["a", "b", "c"]);
+    expect(accountList(out.facebook)).toEqual([]);
+  });
+  it("fitProfileAccounts splits remaining room across platforms", () => {
+    const out = fitProfileAccounts({ tiktok: "", facebook: "" }, { tiktok: "a", facebook: "b\nc" }, 3);
+    expect(accountList(out.tiktok)).toEqual(["a"]);
+    expect(accountList(out.facebook)).toEqual(["b", "c"]);     // 1 + 2 = 3
   });
 });
 
