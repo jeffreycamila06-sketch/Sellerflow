@@ -7,9 +7,11 @@
 // into REDESIGN_STRINGS (Record<Lang, …>) at module load.
 //
 // ⚠️ NEW-KEY RULE: `en` is the real shipped English (byte-identical to the prior
-// hardcoded text). Every non-`en` value is an AI DRAFT — "NEEDS NATIVE VERIFICATION"
-// (zh-TW especially; th/id/vi/fil/zh are AI drafts too). Reused production keys (if
-// any) keep production's values. New keys live ONLY here, never in translations.ts.
+// hardcoded text). zh-TW is NATIVE-VERIFIED (Jeff's Taiwan friend reviewed the full
+// master list 2026-06-26 and confirmed all Traditional Chinese correct as-is). th/id
+// (and the other-lang fil/vi/zh) remain AI drafts — no native verifier for those.
+// Reused production keys (if any) keep production's values. New keys live ONLY here,
+// never in translations.ts.
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { TRANSLATIONS, type Lang, type T } from "../../translations";
 
@@ -31,7 +33,8 @@ export function tpl(str: string, vars: Record<string, string | number>): string 
 export type RedesignStrings = Record<Lang, Record<string, string>>;
 type Row = Record<Lang, string>;
 
-// ── NEW redesign keys: key → { 7 langs }. en = real English; rest = AI DRAFT. ──
+// ── NEW redesign keys: key → { 7 langs }. en = real English; zh-TW native-verified;
+//    fil/zh/vi/th/id = AI drafts. ──
 const RAW: Record<string, Row> = {
   // ════ Legal (Privacy & Terms) ════
   lg_pt_title: { en: "Privacy & Terms", fil: "Privacy at Mga Tuntunin", zh: "隐私与条款", "zh-TW": "隱私與條款", vi: "Quyền riêng tư & Điều khoản", th: "ความเป็นส่วนตัวและข้อกำหนด", id: "Privasi & Ketentuan" },

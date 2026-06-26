@@ -69,7 +69,7 @@ describe("Legal screen keys (Step 3) — behavior identical for en", () => {
     expect(t.lg_contact_post).toBe(" or email privacy@sellerflowlive.app.");
     expect(t.lg_collect_p).toContain("public live-stream comments");
   });
-  it("zh-tw resolves the new legal keys (draft) — non-empty, not falling back blank", () => {
+  it("zh-tw resolves the new legal keys (native-verified) — non-empty, not falling back blank", () => {
     const t = buildT("zh-tw");
     expect(t.lg_pt_title).toBe("隱私與條款");
     expect(t.lg_collect_h).toBeTruthy();

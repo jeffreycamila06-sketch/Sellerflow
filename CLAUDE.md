@@ -4,12 +4,12 @@ Guidance for Claude Code (and humans). Read this first — it captures
 load-bearing context that is NOT obvious from the code.
 
 _Last substantial update: 2026-06-26 (branch `claude/full-redesign`: **i18n
-CODE-COMPLETE** — all 21 redesign screens wired to `useT()`, 504 new keys × 7 langs
-(en byte-exact, zh-TW/th/id = AI DRAFT needing native verification), 281 vitest
-green, `main` UNTOUCHED — see "i18n / translation phase" block. Prior: **Phase 5
-COMPLETE** (5a–5j) + **MULTI-DAY LIVE SESSION** code-complete; 2026-06-24 Google
-Play prod PUBLISHED AAB v2/"1.1". Next = native verification of zh-TW + per-language
-visual pass, then Phase 6 preview testing.)_
+CODE-COMPLETE + zh-TW NATIVE-VERIFIED** — all 21 redesign screens wired to `useT()`,
+504 new keys × 7 langs (en byte-exact, zh-TW confirmed correct by Jeff's Taiwan
+friend, th/id = AI draft), 281 vitest green, `main` UNTOUCHED — see "i18n /
+translation phase" block. Prior: **Phase 5 COMPLETE** (5a–5j) + **MULTI-DAY LIVE
+SESSION** code-complete; 2026-06-24 Google Play prod PUBLISHED AAB v2/"1.1". Next =
+per-language VISUAL/layout pass on preview, then Phase 6 preview testing.)_
 
 ## What it is
 Capacitor-based live-selling assistant app para sa TikTok/Facebook sellers sa Taiwan.
@@ -521,14 +521,15 @@ Admin/Login/Signup + verification). **`main` UNTOUCHED.**
   default `product="CLOTHING"`) — translating would break selection logic; demo/
   sample data (`Juan Dela Cruz`/`JC`, sample revenue, NOTIFS, slip-preview
   placeholders `Comment`/`Maria Santos`/`Buyer #12`).
-- ⚠️ **CRITICAL — STILL OUTSTANDING — native verification:** `en` is byte-exact.
-  `fil/vi/zh` are reasonable AI drafts. **EVERY `zh-TW` value is an AI DRAFT → NEEDS
-  NATIVE VERIFICATION** by Jeff's Taiwan friend BEFORE relied on (used Traditional
-  forms + 「」 quotes, but unconfirmed); `th`/`id` are AI drafts (Jeff accepted).
-  NEVER treat AI Chinese as final.
-- ⚠️ **NOT self-verifiable: visual/layout.** Non-en strings (esp. longer fil/vi/th
-  + CJK suffix ordering) may wrap/overflow buttons/pills — needs a per-language
-  visual pass on the preview.
+- ✅ **zh-TW NATIVE-VERIFIED (2026-06-26):** Jeff's Taiwan friend reviewed the FULL
+  zh-TW master list and confirmed all Traditional Chinese correct **as-is (nothing to
+  change)** → zh-TW values are now FINAL. `en` is byte-exact. `fil/vi/zh` and
+  **`th`/`id` remain AI drafts** (no native verifier for those — Jeff accepted;
+  re-verify before any high-stakes reliance). NEVER treat AI Thai/Indonesian as final.
+- ⚠️ **ONLY REMAINING i18n TO-DO — visual/layout pass (NOT self-verifiable):** Jeff
+  to eyeball the preview per-language. Longer `fil`/`vi`/`th` strings + CJK suffix
+  ordering may wrap/overflow buttons/pills. Translation ACCURACY is settled (en exact,
+  zh-TW native-verified); this is purely a visual check.
 - **Deviation note:** CLAUDE.md plan called for chunked one-screen-per-step review;
   per Jeff's explicit instruction this was done in ONE PASS instead.
 
