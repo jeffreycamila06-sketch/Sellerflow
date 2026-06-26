@@ -1,6 +1,6 @@
 // Multi-day live session — PURE window-math tests (no Supabase / React).
 import { describe, it, expect } from "vitest";
-import { clampWindowDays, daysBetween, addDays, computeWindowState } from "../useSessionWindow";
+import { clampWindowDays, daysBetween, addDays, computeWindowState, chooseSessionLoad } from "../useSessionWindow";
 
 describe("clampWindowDays", () => {
   it("keeps 1/2/3, defaults everything else to 1", () => {
@@ -80,5 +80,25 @@ describe("computeWindowState — fresh / edge", () => {
   });
   it("window_start in the future → treated as fresh (defensive)", () => {
     expect(computeWindowState("2026-06-22", "2026-06-25", 3)).toMatchObject({ active: false, expired: false, loadStart: null });
+  });
+});
+
+describe("chooseSessionLoad — single-day vs window-range", () => {
+  it("N=1 → ALWAYS single-day (byte-identical to 5c), regardless of window_start", () => {
+    expect(chooseSessionLoad("2026-06-23", "2026-06-22", 1)).toEqual({ mode: "day", start: "2026-06-23", end: "2026-06-23" });
+    expect(chooseSessionLoad("2026-06-23", null, 1)).toEqual({ mode: "day", start: "2026-06-23", end: "2026-06-23" });
+  });
+  it("N=3 day 1 (start==today) → single-day (today only)", () => {
+    expect(chooseSessionLoad("2026-06-22", "2026-06-22", 3)).toEqual({ mode: "day", start: "2026-06-22", end: "2026-06-22" });
+  });
+  it("N=3 day 2/3 (active, start<today) → RANGE [window_start, today]", () => {
+    expect(chooseSessionLoad("2026-06-23", "2026-06-22", 3)).toEqual({ mode: "range", start: "2026-06-22", end: "2026-06-23" });
+    expect(chooseSessionLoad("2026-06-24", "2026-06-22", 3)).toEqual({ mode: "range", start: "2026-06-22", end: "2026-06-24" });
+  });
+  it("N=3 expired (day 4+) → single-day today (fresh window resets to #1)", () => {
+    expect(chooseSessionLoad("2026-06-25", "2026-06-22", 3)).toEqual({ mode: "day", start: "2026-06-25", end: "2026-06-25" });
+  });
+  it("N=3 fresh (null start) → single-day today", () => {
+    expect(chooseSessionLoad("2026-06-22", null, 3)).toEqual({ mode: "day", start: "2026-06-22", end: "2026-06-22" });
   });
 });

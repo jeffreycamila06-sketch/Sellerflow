@@ -16,6 +16,7 @@ import { loadTodaysLiveSession } from "../../db";
 import { rebuildSessionFromRows, type RebuiltSession } from "../../lib/orderLogic";
 import type { Buyer, LiveOrder } from "../../lib/orderTypes";
 import { taipeiDayId } from "../../lib/dateHelpers";
+import { chooseSessionLoad, loadLiveSessionWindow } from "./useSessionWindow";
 
 // "idle" = not wired / unconfigured / error · "loading" = query in flight ·
 // "live" = today's session hydrated · "empty" = no session rows today.
@@ -42,7 +43,13 @@ export interface UseLiveSession {
   applyOrder: (nextBuyers: Buyer[], order: LiveOrder) => void;
 }
 
-export function useLiveSession(enabled: boolean): UseLiveSession {
+// Multi-day window options (from useSessionWindow). When omitted → pure 5c
+// single-day behavior. When provided → load gated until config `ready`, then the
+// load shape is decided by chooseSessionLoad (N=1 / day1 / expired → single-day
+// byte-identical; active multi-day day≥2 → window range).
+export interface LiveSessionWindowOpts { ready: boolean; windowDays: number; windowStart: string | null }
+
+export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): UseLiveSession {
   const [session, setSession] = useState<RebuiltSession>(EMPTY);
   const [state, setState] = useState<SessionState>("idle");
   // Keep the latest session readable inside the effect WITHOUT making it a dep —
@@ -53,21 +60,30 @@ export function useLiveSession(enabled: boolean): UseLiveSession {
   // existing helper owns the timezone logic — we do not change it.
   const [dayId] = useState(() => taipeiDayId());
 
+  const winReady = win ? win.ready : true;
+  const winDays = win ? win.windowDays : 1;
+  const winStart = win ? win.windowStart : null;
+
   useEffect(() => {
     if (!enabled || !isSupabaseConfigured) { setState("idle"); return; }
-    if (sessionRef.current.orders.length) return; // hydrate-on-empty guard
+    if (!winReady) return;                          // wait for window config (one read) before loading
+    if (sessionRef.current.orders.length) return;   // hydrate-on-empty guard (unchanged)
     let active = true;
     setState("loading");
-    loadTodaysLiveSession(dayId)
+    // N=1 / day1 / expired / fresh → single-day (loadTodaysLiveSession, byte-identical
+    // to 5c). Active multi-day (day ≥2) → window range.
+    const choice = chooseSessionLoad(dayId, winStart, winDays);
+    const loader = choice.mode === "range" ? loadLiveSessionWindow(choice.start, choice.end) : loadTodaysLiveSession(dayId);
+    loader
       .then((rows) => {
         if (!active) return;
-        const rebuilt = rebuildSessionFromRows(rows);
+        const rebuilt = rebuildSessionFromRows(rows); // UNCHANGED — handles multi-day rows
         if (rebuilt.orders.length) { setSession(rebuilt); setState("live"); }
         else setState("empty");
       })
       .catch(() => { if (active) setState("idle"); });
     return () => { active = false; };
-  }, [enabled, dayId]);
+  }, [enabled, dayId, winReady, winDays, winStart]);
 
   // 5e — current buyers (read from the ref so callers always see the latest,
   // matching production reading `buyers` state inside the order handler).

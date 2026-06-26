@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { taipeiDayId } from "../../lib/dateHelpers";
+import type { LiveSessionRow } from "../../lib/orderLogic";
 
 export type WindowDays = 1 | 2 | 3;
 
@@ -51,6 +52,38 @@ export function computeWindowState(today: string, windowStart: string | null, da
   if (daysIn < 0) return { n, active: false, expired: false, dayOfWindow: 0, loadStart: null, windowEnd: null }; // future start (shouldn't happen) → treat as fresh
   if (daysIn >= n) return { n, active: false, expired: true, dayOfWindow: 0, loadStart: null, windowEnd: addDays(windowStart, n - 1) };
   return { n, active: true, expired: false, dayOfWindow: daysIn + 1, loadStart: windowStart, windowEnd: addDays(windowStart, n - 1) };
+}
+
+// PURE — decides the load shape for a given day/window. N=1 → always single-day
+// (byte-identical to 5c). Multi-day only loads a RANGE on day ≥2 of an active
+// window; day 1 / expired / fresh all stay single-day. Unit-tested.
+export interface SessionLoadChoice { mode: "day" | "range"; start: string; end: string }
+export function chooseSessionLoad(today: string, windowStart: string | null, days: number): SessionLoadChoice {
+  const n = clampWindowDays(days);
+  if (n === 1) return { mode: "day", start: today, end: today };
+  const st = computeWindowState(today, windowStart, n);
+  if (st.active && st.loadStart && st.loadStart !== today) return { mode: "range", start: st.loadStart, end: today };
+  return { mode: "day", start: today, end: today };
+}
+
+// Ranged read of live_session_orders — SAME columns / RLS / ascending order as
+// db.ts loadTodaysLiveSession (db.ts UNTOUCHED), just session_date BETWEEN a range.
+// Read-on-load only. getSession() is local (no extra network); RLS + the explicit
+// user_id filter both scope to the signed-in user.
+export async function loadLiveSessionWindow(start: string, end: string): Promise<LiveSessionRow[]> {
+  if (!isSupabaseConfigured || !supabase) return [];
+  const { data: { session } } = await supabase.auth.getSession();
+  const id = session?.user?.id;
+  if (!id) return [];
+  const { data, error } = await supabase
+    .from("live_session_orders")
+    .select("buyer_number,handle,customer_name,platform,product,price,created_at,session_date")
+    .eq("user_id", id)
+    .gte("session_date", start)
+    .lte("session_date", end)
+    .order("created_at", { ascending: true });
+  if (error) { console.error("Load live session window error:", error.message); return []; }
+  return (data || []) as LiveSessionRow[];
 }
 
 // ── Hook: config read/write (read-on-load only) ──────────────────────────────

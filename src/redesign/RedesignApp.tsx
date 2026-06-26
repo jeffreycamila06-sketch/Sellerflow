@@ -27,6 +27,7 @@ import PrintPattern, { DEFAULT_PP, type PrintPatternState, type PpBoolKey, type 
 import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
 import { useCustomers, useAdminUsers, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
 import { useLiveSession } from "./adapters/useLiveSession";
+import { useSessionWindow } from "./adapters/useSessionWindow";
 import { useLiveFeed } from "./adapters/useLiveFeed";
 import { useOrders } from "./adapters/useOrders";
 import { useFreeCap } from "./adapters/useFreeCap";
@@ -82,7 +83,11 @@ export default function RedesignApp() {
     } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "Save failed" }; }
   };
   // Phase 5c — cross-device live-session load for the Dashboard (hydrate-on-empty).
-  const liveSession = useLiveSession(authed);
+  // Multi-day live session — window config (read-on-load) feeds the session load
+  // range. N=1 → single-day (byte-identical 5c). Pill (setWindowDays) + order-open
+  // wiring come in later steps.
+  const sessionWindow = useSessionWindow(authed);
+  const liveSession = useLiveSession(authed, { ready: sessionWindow.loaded, windowDays: sessionWindow.windowDays, windowStart: sessionWindow.windowStart });
   // Phase 5d — real live comment feed (socket + dedup). Replaces the sample
   // SEED_COMMENTS/INCOMING stream. Read-only (order writes are 5e).
   const liveFeed = useLiveFeed(authed, auth.profile?.email);
