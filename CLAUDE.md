@@ -3,10 +3,11 @@
 Guidance for Claude Code (and humans). Read this first — it captures
 load-bearing context that is NOT obvious from the code.
 
-_Last substantial update: 2026-06-25 (FULL REDESIGN — branch `claude/full-redesign`,
-20 screens visual-only via isolated `redesign.html` Vite entry; Phase 5 plan to wire
-real logic drafted + flagged, NO code yet — see "SESSION 2026-06-25". Prior: 2026-06-24
-Google Play production PUBLISHED AAB v2/"1.1".)_
+_Last substantial update: 2026-06-26 (FULL REDESIGN **Phase 5 COMPLETE** — branch
+`claude/full-redesign`, 20 screens now WIRED to real logic via `src/redesign/adapters/*`
+(all 10 sub-steps 5a–5j approved + verified); `main` still UNTOUCHED; next = Phase 6
+preview testing — see "SESSION 2026-06-26". Prior: 2026-06-25 redesign visual + Phase 5
+plan; 2026-06-24 Google Play prod PUBLISHED AAB v2/"1.1".)_
 
 ## What it is
 Capacitor-based live-selling assistant app para sa TikTok/Facebook sellers sa Taiwan.
@@ -335,14 +336,68 @@ already-exported safe pieces — DO NOT touch protected logic files.**
   wire CSV export (real) + "Soon" badges on F4 screens.
 - Recommended start: **5a (auth)**.
 
+## SESSION 2026-06-26 — PHASE 5 COMPLETE ✅ (branch `claude/full-redesign`, NOT main)
+All 10 sub-steps coded, approved + verified on the Vercel preview (login
+`googletest@sellerflowlive.com`). **`main` STILL UNTOUCHED.** 156 vitest green ·
+typecheck clean · build green at every step. Each sub-step: diff + tests + preview
+verify + Jeff "go" before commit.
+
+### Adapter architecture (load-bearing — how the wiring works)
+**All real wiring lives in `src/redesign/adapters/*` (NEW) + a few screen edits —
+ZERO edits to App.tsx / db.ts / accountDb.ts / supabase.ts / lib/* / native / cap
+SQL.** Adapters COMPOSE the already-exported safe pieces; tangled-zone logic is
+reimplemented over the SAME pure cores (parity-tested), per the F1/F3 plan.
+- `useAuthSession.ts` — real Supabase auth (shared singleton) + `getMyProfile`;
+  zone-6 split-brain handled (getSession + onAuthStateChange + cross-tab `storage`
+  event); `reloadProfile`. Pure: `profileToDisplay`, `planLabel`, `DEFAULT_CURRENCY`.
+- `useReadData.ts` — read-only: `useLiveOrders`/`useCustomers`/`useAdminUsers`
+  (loadTodaysLiveSession+rebuild / getCustomersFromDatabase / listUsers) + reload.
+- `useLiveSession.ts` — cross-device load (hydrate-on-empty) + optimistic
+  `applyOrder`/`getBuyers`/`dayId`; pure `sessionSummary`.
+- `useLiveFeed.ts` — real socket.io (same SERVER/events) + `commentKey` copied
+  VERBATIM (parity test) + dedup/scroll; preview synthetic injector (`isPreviewEnv`).
+- `useOrders.ts` — 1-Click/Enterprise fan-out reimplemented over pure
+  `buildOrderFromComment` + SAME 3 db writes; free-cap soft-block + onPrint hooks.
+- `useFreeCap.ts` — free-tier RPCs (`free_tier_status_for_user`/`mark_warned`) +
+  near/hard popups + **M2 visibility-guarded poll** (no bg-tab egress).
+- `useAdmin.ts` — admin writes (adminUpdatePlan / deleteUser / admin-set-password
+  edge fn / saveAuditLog); pure `approvePlanPatch` (parity test).
+- `printing.ts` — **F1 Option B**: `buildNativeStickerPayload`/`buildSlipPayload`
+  + native bridge COPIED VERBATIM + byte-parity test; web/preview = no-op.
+- `csv.ts` — `csvDL`/`toCSV` copied verbatim (byte-parity test).
+- `components/SoonBadge.tsx` — design-token "Soon" pill for no-backend features.
+
+### Sub-steps + commits (on `claude/full-redesign`)
+- **5a** auth — `5565678`
+- **5b** read-only data + real Taiwan prices (Basic NT$500/Pro NT$1,200/Master NT$1,700) — `9d8c74b`
+- **5c** cross-device live-session load (hydrate-on-empty) — `99aa07e`
+- **5d** real live comment feed (socket + dedup + scroll + synthetic) — `20941f2`
+- **5e** real 1-Click/Enterprise order fan-out (writes) — `4ed7035`
+- **5f** free-cap popups + M2 visibility-guarded poll — `f72a827`
+- **5g** printing (slip + sticker) Option-B copy + byte-parity — `0b53423`
+- **5h** admin-gating (owner-only) + admin writes — `fe039ab` (+ fix `37ef053`)
+- **5i** settings persistence (real profile save via `upsertUser` + sticky `sfl_rd_*`) — `36d86d5`
+- **5j** real CSV export + "Soon" badges; Miners DERIVED real — `571bb88`
+
+### Verified / decisions realized
+- **Real DB writes** (googletest, RLS-scoped): orders→`live_session_orders`+billing
+  `orders`+`customers`; profile→`seller_profiles` (self-edit, plan/role untouched);
+  admin→plan/role/expire/set-pw/delete (is_admin gate intact). All test data
+  cleaned up; googletest restored to seller/basic.
+- **200-cap DB trigger + `seller_profiles_on_update` trigger = untouched/authoritative.**
+- **NEW backends deferred → "Soon" badges:** Shipping, Sales Report, self-serve
+  Signup, self-serve Delete Account, Products→Supabase (local Products unchanged).
+- Currency default **NT$/TWD**; subscription stays Wise+Telegram (no Play billing).
+
 ## Current state / NEXT
 - **`main`** HEAD = Play-published prod (all pre-redesign work). **101/101 vitest
-  green.** Egress small. Billing `orders` untouched.
-- **`claude/full-redesign`** HEAD `8a2c344` = 20-screen visual redesign, isolated
-  Vite entry, sample data only. **Production untouched.** Phase 5 = plan only.
-- ✅ **DONE:** Google Play production **PUBLISHED** (AAB v2 / "1.1", full rollout —
-  live); final APK (native sticker + language) distributed via Telegram. Full
-  redesign Phases 1–4 (visual). Phase 5 plan drafted + flagged.
-- ⚠️ **NEXT:** (1) Jeff to decide Phase 5 flags F1–F6 + pick first sub-step (rec
-  5a). (2) bump versionCode ≥3 before the next AAB upload.
-  Open watch items: M1 sticker clipping at high scale, M2 free-tier 30s poll egress.
+  green.** Egress small. Billing `orders` untouched. **NOT touched by Phase 5.**
+- **`claude/full-redesign`** HEAD `571bb88` = 20-screen redesign **fully wired to
+  real logic (Phase 5 a–j complete)**, isolated Vite entry. **156 vitest green.**
+- ✅ **DONE:** Google Play prod PUBLISHED (AAB v2/"1.1"); final APK via Telegram;
+  full redesign Phases 1–4 (visual) + **Phase 5 (real wiring) COMPLETE**.
+- ⚠️ **NEXT:** **Phase 6 = full preview testing** (Jeff returns fresh). Then, only
+  after iOS approval + Jeff's explicit "merge to production" (F3), the redesign
+  replaces prod on `main`. Also: bump versionCode ≥3 before the next AAB upload.
+  Open watch items: M1 sticker clipping at high scale (M2 egress now fixed in the
+  redesign free-cap adapter).
