@@ -36,10 +36,10 @@ export default function GeneralSettings({
   printerIdx: number; printerOpen: boolean; onTogglePrinter: () => void; onPickPrinter: (i: number) => void; onPrintPattern: () => void;
   onSubscription: () => void; onSupport: () => void; onDelete: () => void;
   account?: AccountUser | null; // Phase 5a: real signed-in profile (null → demo fallback)
-  // Phase 5i — real self-edit save (upsertUser → seller_profiles; user-editable fields only).
-  onSaveProfile?: (fields: { fullName: string; storeName: string; phone: string; tiktok: string }) => Promise<{ ok: boolean; error?: string }>;
-  // Step 3 wiring point — Channels editor save (full tiktok+facebook lists). Until
-  // RedesignApp passes it, Save is inert (UI-only Step 2).
+  // Phase 5i — real self-edit save (upsertUser → seller_profiles). Profile card writes
+  // ONLY name/store/phone — NOT tiktok/facebook (the Channels editor is the sole account writer).
+  onSaveProfile?: (fields: { fullName: string; storeName: string; phone: string }) => Promise<{ ok: boolean; error?: string }>;
+  // Channels editor save (full tiktok+facebook lists) → keepLockedAccounts + fitProfileAccounts in RedesignApp.
   onSaveChannels?: (lists: { tiktok: string; facebook: string }) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const t = useT();
@@ -49,7 +49,7 @@ export default function GeneralSettings({
 
   // Phase 5i — controlled profile-edit form, initialized from the real profile and
   // re-synced when it changes (e.g. after a save reload). Only user-editable fields.
-  const [form, setForm] = useState({ fullName: "", storeName: "", phone: "", tiktok: "" });
+  const [form, setForm] = useState({ fullName: "", storeName: "", phone: "" });
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveErr, setSaveErr] = useState("");
   useEffect(() => {
@@ -57,7 +57,6 @@ export default function GeneralSettings({
       fullName: account?.profile.fullName || "",
       storeName: account?.profile.storeName || "",
       phone: account?.profile.phone || "",
-      tiktok: account?.profile.tiktok || "",
     });
     setSaveState("idle"); setSaveErr("");
   }, [account]);
@@ -66,11 +65,11 @@ export default function GeneralSettings({
     if (!onSaveProfile || saveState === "saving") return;
     if (!form.fullName.trim() || !form.storeName.trim()) { setSaveState("error"); setSaveErr(t.rd_set_err_required); return; }
     setSaveState("saving"); setSaveErr("");
+    // ⚠️ name/store/phone ONLY — never tiktok/facebook (Channels editor owns accounts).
     const r = await onSaveProfile({
       fullName: form.fullName.trim(),
       storeName: form.storeName.trim(),
       phone: form.phone.trim(),
-      tiktok: form.tiktok.trim().replace(/^@+/, ""), // store handle without leading @
     });
     if (r.ok) { setSaveState("saved"); }
     else { setSaveState("error"); setSaveErr(r.error || t.rd_set_err_save_failed); }
@@ -178,7 +177,7 @@ export default function GeneralSettings({
                   <div style={{ flex: 1, minWidth: 0 }}><label style={label}>{t.rd_set_owner_name}</label><input value={form.fullName} onChange={(e) => setField("fullName", e.target.value)} style={input} /></div>
                   <div style={{ flex: 1, minWidth: 0 }}><label style={label}>{t.rd_set_phone}</label><input value={form.phone} onChange={(e) => setField("phone", e.target.value)} style={{ ...input, fontFamily: "var(--font-mono)", fontSize: 13 }} /></div>
                 </div>
-                <div><label style={label}>{t.rd_set_username_handle}</label><input value={form.tiktok} onChange={(e) => setField("tiktok", e.target.value)} placeholder={t.rd_set_tiktok_ph} style={{ ...input, color: "var(--handle)", fontWeight: 700 }} /></div>
+                {/* Username handle moved to the Channels editor (sole account writer). */}
                 {/* Email is identity — changing it needs the secure server step (production blocks it too). */}
                 <div><label style={label}>{t.rd_set_email}</label><input value={pEmail} disabled style={{ ...input, opacity: 0.6 }} /></div>
               </div>

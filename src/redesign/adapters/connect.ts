@@ -54,6 +54,21 @@ export const fitProfileAccounts = <P extends { tiktok: string; facebook: string 
   return { ...next, tiktok: accountText(resultTikTok), facebook: accountText(resultFacebook) };
 };
 
+// Compose the account fields to persist when the seller saves the Channels editor.
+// Mirrors App.tsx handleSaveProfile (4230-4238): non-admins can't overwrite locked
+// (server-known) slots (keepLockedAccounts) and the COMBINED tiktok+facebook list is
+// re-capped to the plan (fitProfileAccounts); admins save the edited lists verbatim.
+// Pure → unit-tested; the RedesignApp save handler just upserts the result.
+export function composeChannelSave<P extends { tiktok: string; facebook: string }>(
+  original: P, lists: { tiktok: string; facebook: string }, limit: number, isAdmin: boolean,
+): { tiktok: string; facebook: string } {
+  if (isAdmin) return { tiktok: lists.tiktok, facebook: lists.facebook };
+  const tiktok = keepLockedAccounts(original.tiktok, lists.tiktok, limit);
+  const facebook = keepLockedAccounts(original.facebook, lists.facebook, limit);
+  const fitted = fitProfileAccounts(original, { tiktok, facebook }, limit);
+  return { tiktok: fitted.tiktok, facebook: fitted.facebook };
+}
+
 // Registered accounts for a platform, capped to the plan limit (ConnectModal 3762-3763).
 export function registeredAccountsFor(u: AccountUser, platform: Platform): string[] {
   const field = platform === "TikTok" ? u.profile.tiktok : u.profile.facebook;

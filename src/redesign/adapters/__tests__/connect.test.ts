@@ -4,6 +4,7 @@ import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import {
   cleanLiveAccount, maxAcc, accountList, accountText, registeredAccountCount, canConnectMore,
   registeredAccountsFor, appendAccount, connectPlatform, accountSlots, keepLockedAccounts, fitProfileAccounts,
+  composeChannelSave,
 } from "../connect";
 import type { AccountUser } from "../../../accountDb";
 
@@ -62,6 +63,28 @@ describe("accountSlots / keepLockedAccounts / fitProfileAccounts — verbatim Ap
     const out = fitProfileAccounts({ tiktok: "", facebook: "" }, { tiktok: "a", facebook: "b\nc" }, 3);
     expect(accountList(out.tiktok)).toEqual(["a"]);
     expect(accountList(out.facebook)).toEqual(["b", "c"]);     // 1 + 2 = 3
+  });
+});
+
+describe("composeChannelSave — Channels save compose (App.tsx handleSaveProfile 4230-4238)", () => {
+  it("locked-wins: a saved account can't be overwritten or wiped by the edit", () => {
+    // pro=3, tiktok 'a' saved (locked slot0). Edit changes slot0→'x' and adds 'b'.
+    const out = composeChannelSave({ tiktok: "a", facebook: "" }, { tiktok: "x\nb", facebook: "" }, 3, false);
+    expect(accountList(out.tiktok)).toEqual(["a", "b"]); // 'a' kept, 'x' ignored, 'b' added
+  });
+  it("locked account survives even when the edit clears the slot", () => {
+    const out = composeChannelSave({ tiktok: "a", facebook: "" }, { tiktok: "", facebook: "" }, 3, false);
+    expect(accountList(out.tiktok)).toEqual(["a"]); // can't wipe a server-known account
+  });
+  it("combined cap across tiktok+facebook (4th dropped)", () => {
+    const out = composeChannelSave({ tiktok: "a", facebook: "" }, { tiktok: "a\nb\nc", facebook: "d" }, 3, false);
+    expect(accountList(out.tiktok)).toEqual(["a", "b", "c"]);
+    expect(accountList(out.facebook)).toEqual([]);
+  });
+  it("admin bypass: saves the edited lists verbatim (no lock / no cap)", () => {
+    const out = composeChannelSave({ tiktok: "a", facebook: "" }, { tiktok: "x\nb\nc\nd\ne\nf", facebook: "g" }, 3, true);
+    expect(out.tiktok).toBe("x\nb\nc\nd\ne\nf");
+    expect(out.facebook).toBe("g");
   });
 });
 

@@ -255,8 +255,6 @@ const RAW: Record<string, Row> = {
   rd_set_shop_name: { en: "Shop name", fil: "Pangalan ng shop", zh: "店铺名称", "zh-TW": "賣場名稱", vi: "Tên cửa hàng", th: "ชื่อร้าน", id: "Nama toko" },
   rd_set_owner_name: { en: "Owner name", fil: "Pangalan ng may-ari", zh: "店主姓名", "zh-TW": "店主姓名", vi: "Tên chủ", th: "ชื่อเจ้าของ", id: "Nama pemilik" },
   rd_set_phone: { en: "Phone", fil: "Telepono", zh: "电话", "zh-TW": "電話", vi: "Điện thoại", th: "โทรศัพท์", id: "Telepon" },
-  rd_set_username_handle: { en: "Username handle", fil: "Username handle", zh: "用户名", "zh-TW": "使用者名稱", vi: "Tên người dùng", th: "ชื่อผู้ใช้", id: "Handle username" },
-  rd_set_tiktok_ph: { en: "tiktok_handle", fil: "tiktok_handle", zh: "tiktok_handle", "zh-TW": "tiktok_handle", vi: "tiktok_handle", th: "tiktok_handle", id: "tiktok_handle" },
   rd_set_email: { en: "Email", fil: "Email", zh: "邮箱", "zh-TW": "電子郵件", vi: "Email", th: "อีเมล", id: "Email" },
   rd_set_err_required: { en: "Owner name and shop name are required.", fil: "Kailangan ang pangalan ng may-ari at pangalan ng shop.", zh: "店主姓名和店铺名称为必填项。", "zh-TW": "店主姓名與賣場名稱為必填。", vi: "Tên chủ và tên cửa hàng là bắt buộc.", th: "ต้องระบุชื่อเจ้าของและชื่อร้าน", id: "Nama pemilik dan nama toko wajib diisi." },
   rd_set_err_save_failed: { en: "Save failed.", fil: "Nabigo ang pag-save.", zh: "保存失败。", "zh-TW": "儲存失敗。", vi: "Lưu thất bại.", th: "บันทึกไม่สำเร็จ", id: "Gagal menyimpan." },

@@ -36,7 +36,7 @@ import { upsertUser } from "../accountDb";
 import { csvDL, dayStamp } from "./adapters/csv";
 import { computeSales } from "./adapters/sales";
 import { printSlip, buildSettingsFromRedesign, type Settings as PrintSettings } from "./adapters/printing";
-import { registeredAccountsFor, appendAccount, type Platform } from "./adapters/connect";
+import { registeredAccountsFor, appendAccount, maxAcc, composeChannelSave, type Platform } from "./adapters/connect";
 import type { Buyer } from "../lib/orderTypes";
 import CapPopup from "./screens/CapPopup";
 import ConnectModal from "./screens/ConnectModal";
@@ -85,11 +85,29 @@ export default function RedesignApp() {
   const admin = useAdmin(auth.profile?.email);
   // Phase 5i — self-profile save (upsertUser → own seller_profiles row; user-editable
   // fields only — plan/role are server-controlled and ignored by the trigger).
-  const saveProfile = async (fields: { fullName: string; storeName: string; phone: string; tiktok: string }) => {
+  // ⚠️ Profile card writes ONLY name/store/phone — NOT tiktok/facebook. The Channels
+  // editor (saveChannels below) is the SOLE writer of the account lists (no double-writer).
+  const saveProfile = async (fields: { fullName: string; storeName: string; phone: string }) => {
     if (!auth.profile) return { ok: false, error: "Not signed in" };
     const updated = { ...auth.profile, profile: { ...auth.profile.profile, ...fields } };
     try {
-      await upsertUser(updated); // no includePlan → only name/store/phone/handles
+      await upsertUser(updated); // spreads existing profile; tiktok/facebook untouched
+      await auth.reloadProfile();
+      return { ok: true };
+    } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "Save failed" }; }
+  };
+  // Channels editor save — the ONLY writer of seller_profiles.tiktok/.facebook.
+  // Mirrors App.tsx handleSaveProfile 4230-4238: keepLockedAccounts (can't overwrite
+  // server-known slots) + fitProfileAccounts (combined plan cap), admin bypass — all
+  // folded into the pure composeChannelSave. Spreads existing profile; never writes
+  // plan/role (trigger-protected). reloadProfile after → locks refresh.
+  const saveChannels = async (lists: { tiktok: string; facebook: string }) => {
+    if (!auth.profile) return { ok: false, error: "Not signed in" };
+    const cur = auth.profile;
+    const next = composeChannelSave(cur.profile, lists, maxAcc(cur.plan), cur.role === "admin");
+    const updated = { ...cur, profile: { ...cur.profile, tiktok: next.tiktok, facebook: next.facebook } };
+    try {
+      await upsertUser(updated);
       await auth.reloadProfile();
       return { ok: true };
     } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "Save failed" }; }
@@ -413,7 +431,7 @@ export default function RedesignApp() {
           {screen === "settings" && (
             <GeneralSettings
               theme={theme} accent={accent} onSetTheme={setTheme} onSetAccent={setAccent}
-              auto={autoControls} cur={cur} account={auth.profile} onSaveProfile={saveProfile}
+              auto={autoControls} cur={cur} account={auth.profile} onSaveProfile={saveProfile} onSaveChannels={saveChannels}
               lang={lang} onSetLang={setLang} currency={currency} onSetCurrency={setCurrencyExplicit}
               profileOpen={profileOpen} onToggleProfile={() => setProfileOpen((o) => !o)}
               printerIdx={printerIdx} printerOpen={printerOpen}
