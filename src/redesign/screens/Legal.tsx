@@ -18,7 +18,7 @@ export default function Legal() {
         <div style={h}>3. Your rights</div>
         <p style={p}>You may export or permanently delete all shop and customer data at any time from Settings. Deletion is irreversible and completes within 30 days.</p>
         <div style={h}>4. Contact</div>
-        <p style={{ ...p, margin: 0 }}>Questions? Reach us on Telegram <span style={{ color: "var(--accent-fg)", fontWeight: 700 }}>@SellerFlowSupport</span> or email privacy@sellerflowlive.app.</p>
+        <p style={{ ...p, margin: 0 }}>Questions? Reach us on Telegram <span style={{ color: "var(--accent-fg)", fontWeight: 700 }}>@SellerFlowLive1995</span> or email privacy@sellerflowlive.app.</p>
       </div>
     </div>
   );

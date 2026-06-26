@@ -6,7 +6,7 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { PLANS, PAYMENTS, USERS, SIGNUPS, SUBS, PLAN_PRICE, type Sub, type User } from "../data";
 import { headerBar, card, mono } from "../ui";
-import { planDaysLeft, type ReadState } from "../adapters/useReadData";
+import { planDaysLeft, deriveSubBuckets, type ReadState, type SubBuckets, type FreeUserRow } from "../adapters/useReadData";
 import type { AdminActions, Plan } from "../adapters/useAdmin";
 import SoonBadge from "../components/SoonBadge";
 
@@ -40,12 +40,13 @@ function Ctrl({ icon, label, onClick }: { icon: ReactNode; label: string; onClic
   return <div onClick={onClick} style={ctrlTile}><span style={ctrlChip}>{icon}</span><span style={ctrlLbl}>{label}</span></div>;
 }
 
-export default function Admin({ onOpenPanel, cur }: { onOpenPanel: (k: AdminPanelKind) => void; cur: string }) {
+export default function Admin({ onOpenPanel, cur, counts, live = false }: { onOpenPanel: (k: AdminPanelKind) => void; cur: string; counts?: { active: number; expiring: number; expired: number; free: number }; live?: boolean }) {
+  const subCount = (k: "active" | "expiring" | "expired" | "free", sample: string) => (live && counts ? String(counts[k]) : sample);
   return (
     <div>
       <div style={headerBar}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div><div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" }}>Admin panel</div><div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}><span style={{ fontSize: 12, opacity: 0.85 }}>Owner control center</span><SoonBadge label="Metrics: sample" /></div></div>
+          <div><div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" }}>Admin panel</div><div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}><span style={{ fontSize: 12, opacity: 0.85 }}>Owner control center</span><SoonBadge label="Revenue & sign-ups: sample" /></div></div>
           <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
             <button onClick={() => onOpenPanel("notifs")} title="Notifications" style={{ position: "relative", width: 32, height: 32, borderRadius: 9, border: "none", background: "rgba(255,255,255,.16)", color: "var(--on-header)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" strokeWidth="1.7" /></svg>
@@ -72,10 +73,10 @@ export default function Admin({ onOpenPanel, cur }: { onOpenPanel: (k: AdminPane
         <div style={{ ...card, padding: "13px 14px", borderRadius: 15, marginBottom: 16 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", marginBottom: 11 }}>Subscriptions</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <button onClick={() => onOpenPanel("subActive")} style={subCell}><div style={{ ...subNum, color: "var(--ok)" }}>9,842</div><div style={subLbl}>Active paid ›</div></button>
-            <button onClick={() => onOpenPanel("subExpiring")} style={subCell}><div style={{ ...subNum, color: "var(--warn)" }}>418</div><div style={subLbl}>Expiring ‹15d ›</div></button>
-            <button onClick={() => onOpenPanel("subFree")} style={subCell}><div style={{ ...subNum, color: "var(--accent-fg)" }}>1,204</div><div style={subLbl}>Free tier ›</div></button>
-            <button onClick={() => onOpenPanel("subExpired")} style={subCell}><div style={{ ...subNum, color: "var(--danger)" }}>2,220</div><div style={subLbl}>Expired ›</div></button>
+            <button onClick={() => onOpenPanel("subActive")} style={subCell}><div style={{ ...subNum, color: "var(--ok)" }}>{subCount("active", "9,842")}</div><div style={subLbl}>Active paid ›</div></button>
+            <button onClick={() => onOpenPanel("subExpiring")} style={subCell}><div style={{ ...subNum, color: "var(--warn)" }}>{subCount("expiring", "418")}</div><div style={subLbl}>Expiring ›</div></button>
+            <button onClick={() => onOpenPanel("subFree")} style={subCell}><div style={{ ...subNum, color: "var(--accent-fg)" }}>{subCount("free", "1,204")}</div><div style={subLbl}>Free tier ›</div></button>
+            <button onClick={() => onOpenPanel("subExpired")} style={subCell}><div style={{ ...subNum, color: "var(--danger)" }}>{subCount("expired", "2,220")}</div><div style={subLbl}>Expired ›</div></button>
           </div>
         </div>
 
@@ -121,6 +122,42 @@ const NOTIFS = [
   { kind: "Expiring", title: "NeneFinds expires in 4 days", sub: "Nene Bautista · Pro · Jun 29", tint: "rgba(217,119,6,.16)", ink: "var(--warn)" },
 ];
 
+// REAL seller bucket list (derived from the live users list). Mirrors the
+// SubList shape but rows are real seller_profiles.
+function SellerSubList({ list, statusLabel, statusColor, note }: { list: User[]; statusLabel: string; statusColor: string; note: string }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 2 }}>{note}</div>
+      {list.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "8px 2px" }}>None.</div>}
+      {list.map((u) => (
+        <div key={u.email} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 12px", border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface-2)" }}>
+          <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.note || u.email}</div><div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email} · {u.plan}</div></div>
+          <div style={{ textAlign: "right", flexShrink: 0 }}><div style={{ fontSize: 10.5, fontWeight: 800, color: statusColor }}>{statusLabel}</div><div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>{u.days} day{u.days === 1 ? "" : "s"} left</div></div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// REAL free-tier monitor (list_free_users_status RPC).
+function FreeUserList({ list }: { list: FreeUserRow[] }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+      <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 2 }}>{list.length} free-tier shop{list.length === 1 ? "" : "s"} · order usage this cycle</div>
+      {list.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "8px 2px" }}>No free-tier users.</div>}
+      {list.map((u) => {
+        const color = u.capped ? "var(--danger)" : u.near_cap ? "var(--warn)" : "var(--ok)";
+        return (
+          <div key={u.email} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 12px", border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface-2)" }}>
+            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.store_name || u.full_name || u.email}</div><div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div></div>
+            <div style={{ textAlign: "right", flexShrink: 0 }}><div style={{ fontFamily: mono, fontSize: 12.5, fontWeight: 700, color }}>{u.count} / {u.cap}</div><div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>resets {u.cycle_resets_in_days}d</div></div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function SubList({ list, statusLabel, statusColor, note, showPlan = true }: { list: Sub[]; statusLabel: string; statusColor: string; note: string; showPlan?: boolean }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
@@ -136,7 +173,11 @@ function SubList({ list, statusLabel, statusColor, note, showPlan = true }: { li
   );
 }
 
-export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", actions, onChanged }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; actions?: AdminActions; onChanged?: () => void }) {
+export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", actions, onChanged, freeUsers = [], freeUsersState = "sample" }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; actions?: AdminActions; onChanged?: () => void; freeUsers?: FreeUserRow[]; freeUsersState?: ReadState }) {
+  // Real subscription buckets (derived) when the users list is live; else sample.
+  const realSubs = usersState === "live" || usersState === "empty";
+  const realFree = freeUsersState === "live" || freeUsersState === "empty";
+  const subB: SubBuckets = deriveSubBuckets(users);
   // Per-user optimistic display state. Real writes go through `actions` (5h).
   const [userPlans, setUserPlans] = useState<Record<string, string>>({});
   const [userDays, setUserDays] = useState<Record<string, number>>({});
@@ -356,10 +397,18 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
             </div>
           )}
 
-          {panel === "subActive" && <SubList list={SUBS.active} statusLabel="Active" statusColor="var(--ok)" note="9,842 active paid subscriptions · showing recent" />}
-          {panel === "subExpiring" && <SubList list={SUBS.expiring} statusLabel="Expiring" statusColor="var(--warn)" note="418 expiring within 15 days — renew or follow up" />}
-          {panel === "subFree" && <SubList list={SUBS.free} statusLabel="Free" statusColor="var(--accent-fg)" note="1,204 free-tier shops · plan & free cycle" showPlan={false} />}
-          {panel === "subExpired" && <SubList list={SUBS.expired} statusLabel="Expired" statusColor="var(--danger)" note="2,220 expired — not renewed / no payment" />}
+          {panel === "subActive" && (realSubs
+            ? <SellerSubList list={subB.active} statusLabel="Active" statusColor="var(--ok)" note={`${subB.active.length} active paid subscription${subB.active.length === 1 ? "" : "s"}`} />
+            : <SubList list={SUBS.active} statusLabel="Active" statusColor="var(--ok)" note="Active paid subscriptions · showing recent" />)}
+          {panel === "subExpiring" && (realSubs
+            ? <SellerSubList list={subB.expiring} statusLabel="Expiring" statusColor="var(--warn)" note={`${subB.expiring.length} expiring soon — renew or follow up`} />
+            : <SubList list={SUBS.expiring} statusLabel="Expiring" statusColor="var(--warn)" note="Expiring soon — renew or follow up" />)}
+          {panel === "subFree" && (realFree
+            ? <FreeUserList list={freeUsers} />
+            : <SubList list={SUBS.free} statusLabel="Free" statusColor="var(--accent-fg)" note="Free-tier shops · plan & free cycle" showPlan={false} />)}
+          {panel === "subExpired" && (realSubs
+            ? <SellerSubList list={subB.expired} statusLabel="Expired" statusColor="var(--danger)" note={`${subB.expired.length} expired — not renewed / no payment`} />
+            : <SubList list={SUBS.expired} statusLabel="Expired" statusColor="var(--danger)" note="Expired — not renewed / no payment" />)}
 
           {panel === "signups" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

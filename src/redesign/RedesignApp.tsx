@@ -25,7 +25,7 @@ import Signup from "./screens/Signup";
 import PrinterSettings from "./screens/PrinterSettings";
 import PrintPattern, { DEFAULT_PP, type PrintPatternState, type PpBoolKey, type PpSizeKey } from "./screens/PrintPattern";
 import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
-import { useCustomers, useAdminUsers, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
+import { useCustomers, useAdminUsers, useFreeUsers, deriveSubBuckets, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
 import { useLiveSession } from "./adapters/useLiveSession";
 import { useSessionWindow, type WindowDays } from "./adapters/useSessionWindow";
 import { useLiveFeed } from "./adapters/useLiveFeed";
@@ -34,6 +34,7 @@ import { useFreeCap } from "./adapters/useFreeCap";
 import { useAdmin } from "./adapters/useAdmin";
 import { upsertUser } from "../accountDb";
 import { csvDL, dayStamp } from "./adapters/csv";
+import { computeSales } from "./adapters/sales";
 import { printSlip, buildSettingsFromRedesign, type Settings as PrintSettings } from "./adapters/printing";
 import type { Buyer } from "../lib/orderTypes";
 import CapPopup from "./screens/CapPopup";
@@ -69,6 +70,12 @@ export default function RedesignApp() {
   const isAdmin = auth.profile?.role === "admin";
   const customersData = useCustomers(authed);
   const adminUsers = useAdminUsers(authed && isAdmin);
+  // Admin subscription buckets — real free-tier monitor (RPC) + derived active/
+  // expiring/expired from the loaded seller list (App.tsx Plan Monitoring).
+  const freeUsersData = useFreeUsers(authed && isAdmin);
+  const subBuckets = deriveSubBuckets(adminUsers.users);
+  const adminLive = adminUsers.state === "live" || adminUsers.state === "empty";
+  const adminCounts = { active: subBuckets.active.length, expiring: subBuckets.expiring.length, expired: subBuckets.expired.length, free: freeUsersData.freeUsers.length };
   // Phase 5h — real admin write actions (owner-only; targets human-confirmed).
   const admin = useAdmin(auth.profile?.email);
   // Phase 5i — self-profile save (upsertUser → own seller_profiles row; user-editable
@@ -137,6 +144,11 @@ export default function RedesignApp() {
   const exportOrders = () => csvDL(`orders-${dayStamp()}.csv`, ["Order", "#", "Customer", "Item", "Qty", "Total", "Platform", "Time", "Status"], liveSession.session.orders.map((o) => [`#SF${o.orderNum}`, o.bNum, `@${o.handle}`, o.item, o.qty, `${cur}${o.total}`, o.platform, o.time, o.status]));
   const exportCustomers = () => csvDL(`customers-${dayStamp()}.csv`, ["Name", "Username", "Platform", "Orders", "Total"], customersData.customers.map((c) => [c.name, c.handle, c.platform, c.orders, `${cur}${c.spent}`]));
   const exportMiners = () => csvDL(`miners-${dayStamp()}.csv`, ["#", "Name", "Username", "Platform", "Orders", "Total"], minerList.map((m, i) => [i + 1, m.name, m.handle, m.platform, m.orders, `${cur}${m.spent}`]));
+
+  // Sales report — session-derived aggregation (App.tsx Sales). CSV row shape
+  // matches App.tsx:1988 exactly: [#SF{orderNum}, name, item, qty, cur+total, platform, time].
+  const sales = computeSales(liveSession.session.orders, liveSession.session.buyers);
+  const exportSales = () => csvDL(`sales-${dayStamp()}.csv`, ["Order", "Buyer", "Item", "Qty", "Total", "Platform", "Time"], liveSession.session.orders.map((o) => [`#SF${o.orderNum}`, o.name, o.item, o.qty, `${cur}${o.total}`, o.platform, o.time]));
 
   const [theme, setTheme] = useState<ThemeMode>(() => (readLS(LS.theme, "light") === "dark" ? "dark" : "light"));
   const [accent, setAccent] = useState<AccentKey>(() => safeAccent(readLS(LS.accent, "indigo")));
@@ -345,7 +357,7 @@ export default function RedesignApp() {
             />
           )}
           {screen === "signup" && (
-            <Signup onBack={() => setScreen("login")} onLegal={() => setScreen("legal")} />
+            <Signup onBack={() => setScreen("login")} onLegal={() => setScreen("legal")} onRegister={auth.register} />
           )}
           {screen === "dashboard" && (
             <Dashboard
@@ -402,13 +414,13 @@ export default function RedesignApp() {
           {screen === "customers" && <Customers cur={cur} customers={customersData.customers} state={customersData.state} onExport={exportCustomers} />}
           {screen === "subscription" && <Subscription cur={cur} account={auth.profile} isFreeUser={freeCap.isFreeUser} freeStatus={freeCap.freeStatus} />}
           {screen === "support" && <Support onLegal={() => setScreen("legal")} />}
-          {screen === "admin" && isAdmin && <Admin onOpenPanel={setAdminPanel} cur={cur} />}
-          {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} />}
-          {screen === "sales" && <SalesReport cur={cur} />}
-          {screen === "shipping" && <Shipping />}
+          {screen === "admin" && isAdmin && <Admin onOpenPanel={setAdminPanel} cur={cur} counts={adminCounts} live={adminLive} />}
+          {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} buyers={liveSession.session.buyers} storeName={auth.profile?.profile.storeName || "SellerFlowLive"} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
+          {screen === "sales" && <SalesReport cur={cur} sales={sales} onExport={exportSales} />}
+          {screen === "shipping" && isAdmin && <Shipping email={auth.profile?.email} cur={cur} />}
           {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} cur={cur} customers={customersData.customers} onExport={exportCustomers} />}
           {screen === "legal" && <Legal />}
-          {screen === "delete" && <DeleteAccount onBack={() => setScreen("settings")} />}
+          {screen === "delete" && <DeleteAccount onBack={() => setScreen("settings")} email={auth.profile?.email} onConfirm={auth.deleteAccount} />}
           {screen === "printersettings" && (
             <PrinterSettings
               onBack={() => setScreen("settings")}
@@ -450,7 +462,7 @@ export default function RedesignApp() {
 
         {/* Admin control bottom-sheet (absolute within the phone, like the v2 prototype) */}
         {adminPanel && isAdmin && (
-          <AdminPanel panel={adminPanel} onClose={() => setAdminPanel(null)} assignAmount={assignAmount} onAssignAmount={setAssignAmount} cur={cur} users={adminUsers.users} usersState={adminUsers.state} actions={admin} onChanged={adminUsers.reload} />
+          <AdminPanel panel={adminPanel} onClose={() => setAdminPanel(null)} assignAmount={assignAmount} onAssignAmount={setAssignAmount} cur={cur} users={adminUsers.users} usersState={adminUsers.state} actions={admin} onChanged={() => { adminUsers.reload(); freeUsersData.reload(); }} freeUsers={freeUsersData.freeUsers} freeUsersState={freeUsersData.state} />
         )}
 
         {/* Phase 5f — free-tier cap popup (near / hard) */}

@@ -11,7 +11,7 @@
 // returns nothing (so the preview never looks broken, and a real-but-empty test
 // account reads as empty rather than fake).
 import { useCallback, useEffect, useState } from "react";
-import { isSupabaseConfigured } from "../../supabase";
+import { isSupabaseConfigured, supabase } from "../../supabase";
 import { loadTodaysLiveSession, getCustomersFromDatabase } from "../../db";
 import { listUsers, type AccountUser } from "../../accountDb";
 import { rebuildSessionFromRows, type RebuiltSession } from "../../lib/orderLogic";
@@ -104,6 +104,23 @@ export function accountUsersToRedesign(users: AccountUser[], nowMs: number = Dat
   }));
 }
 
+// ── Admin subscription buckets — derived from the real seller list, matching
+// App.tsx Plan-Monitoring (3346-3350): active = active & days>0; expired =
+// expired or days==0; expiring = paid, non-pending, expired or days<=(trial?3:5).
+// Pure (operates on already-loaded users). Admins excluded (sellers only).
+export interface SubBuckets { active: User[]; expiring: User[]; expired: User[] }
+export function deriveSubBuckets(users: User[]): SubBuckets {
+  const sellers = users.filter((u) => u.role !== "Admin");
+  const days = (u: User) => u.days ?? 0;
+  const active = sellers.filter((u) => u.planStatus === "active" && days(u) > 0);
+  const expired = sellers.filter((u) => u.planStatus === "expired" || days(u) === 0);
+  const expiring = sellers.filter((u) => u.plan !== "Free" && u.planStatus !== "pending" && (u.planStatus === "expired" || days(u) <= (u.plan === "Trial" ? 3 : 5)));
+  return { active, expiring, expired };
+}
+
+// One row from the admin RPC list_free_users_status (copied from App.tsx:60).
+export interface FreeUserRow { email: string; store_name: string; full_name: string; count: number; cap: number; near_cap: boolean; capped: boolean; cycle_resets_in_days: number }
+
 // ── Read hooks ────────────────────────────────────────────────────────────────
 
 export function useLiveOrders(enabled: boolean): { orders: Order[]; state: ReadState } {
@@ -169,4 +186,26 @@ export function useAdminUsers(enabled: boolean): { users: User[]; state: ReadSta
   }, [enabled]);
   useEffect(() => load(), [load]);
   return { users, state, reload: load };
+}
+
+// Free-tier usage monitor — same RPC as App.tsx admin refresh (3020). Admin-only;
+// READ-ON-LOAD (no poll). Returns [] when unconfigured / non-admin / error.
+export function useFreeUsers(enabled: boolean): { freeUsers: FreeUserRow[]; state: ReadState; reload: () => void } {
+  const [freeUsers, setFreeUsers] = useState<FreeUserRow[]>([]);
+  const [state, setState] = useState<ReadState>("sample");
+  const load = useCallback(() => {
+    if (!enabled || !isSupabaseConfigured || !supabase) { setState("sample"); setFreeUsers([]); return () => {}; }
+    let active = true;
+    setState("loading");
+    supabase.rpc("list_free_users_status")
+      .then(({ data }: { data: unknown }) => {
+        if (!active) return;
+        const rows = (data as FreeUserRow[]) || [];
+        setFreeUsers(rows); setState(rows.length ? "live" : "empty");
+      })
+      .catch(() => { if (active) { setFreeUsers([]); setState("sample"); } });
+    return () => { active = false; };
+  }, [enabled]);
+  useEffect(() => load(), [load]);
+  return { freeUsers, state, reload: load };
 }

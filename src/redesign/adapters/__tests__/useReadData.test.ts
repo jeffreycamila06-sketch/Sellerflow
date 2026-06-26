@@ -6,7 +6,9 @@ import {
   customerRowsToRedesign,
   accountUsersToRedesign,
   planDaysLeft,
+  deriveSubBuckets,
 } from "../useReadData";
+import type { User } from "../../data";
 import type { RebuiltSession } from "../../../lib/orderLogic";
 import type { AccountUser } from "../../../accountDb";
 
@@ -103,5 +105,33 @@ describe("planDaysLeft", () => {
     expect(planDaysLeft("2026-06-01T00:00:00.000Z", now)).toBe(0); // past → 0
     expect(planDaysLeft("", now)).toBe(0);
     expect(planDaysLeft(undefined, now)).toBe(0);
+  });
+});
+
+describe("deriveSubBuckets — parity with App.tsx Plan Monitoring (3346-3350)", () => {
+  const u = (over: Partial<User>): User => ({ email: "x@x.com", note: "", role: "Seller", plan: "Pro", days: 30, accounts: "1", planStatus: "active", ...over });
+  it("active = active status & days>0; excludes admins", () => {
+    const users = [
+      u({ email: "admin@x.com", role: "Admin", plan: "Master", days: 3000, planStatus: "active" }),
+      u({ email: "a@x.com", planStatus: "active", days: 30 }),
+      u({ email: "b@x.com", planStatus: "active", days: 0 }),   // lapsed → not active
+    ];
+    const { active } = deriveSubBuckets(users);
+    expect(active.map((x) => x.email)).toEqual(["a@x.com"]);
+  });
+  it("expired = expired status OR days==0", () => {
+    const users = [u({ email: "c@x.com", planStatus: "expired", days: 5 }), u({ email: "d@x.com", planStatus: "active", days: 0 }), u({ email: "e@x.com", planStatus: "active", days: 9 })];
+    expect(deriveSubBuckets(users).expired.map((x) => x.email).sort()).toEqual(["c@x.com", "d@x.com"]);
+  });
+  it("expiring = paid, non-pending, expired or days<=(Trial?3:5); free + pending excluded", () => {
+    const users = [
+      u({ email: "p@x.com", plan: "Pro", planStatus: "active", days: 4 }),     // ≤5 → in
+      u({ email: "q@x.com", plan: "Pro", planStatus: "active", days: 10 }),    // >5 → out
+      u({ email: "t@x.com", plan: "Trial", planStatus: "active", days: 4 }),   // trial threshold 3 → out
+      u({ email: "t2@x.com", plan: "Trial", planStatus: "active", days: 2 }),  // ≤3 → in
+      u({ email: "f@x.com", plan: "Free", planStatus: "active", days: 1 }),    // free → out
+      u({ email: "pend@x.com", plan: "Pro", planStatus: "pending", days: 1 }), // pending → out
+    ];
+    expect(deriveSubBuckets(users).expiring.map((x) => x.email).sort()).toEqual(["p@x.com", "t2@x.com"]);
   });
 });

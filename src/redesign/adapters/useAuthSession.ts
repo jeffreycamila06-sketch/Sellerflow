@@ -17,10 +17,13 @@
 // mirrored here.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
-import { getMyProfile, type AccountUser } from "../../accountDb";
+import { getMyProfile, createMyProfile, deleteUser, type AccountUser } from "../../accountDb";
 import { initials as deriveInitials } from "../data";
 
 export type AuthStatus = "loading" | "authed" | "anon";
+
+export interface RegisterFields { email: string; password: string; confirm: string; fullName: string; storeName: string; phone: string }
+export interface RegisterResult { ok: boolean; error?: string; needsConfirm?: boolean }
 
 export interface UseAuthSession {
   status: AuthStatus;
@@ -29,6 +32,12 @@ export interface UseAuthSession {
   signIn: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   signOut: () => Promise<void>;
   reloadProfile: () => Promise<void>; // 5i — re-fetch own profile after a save
+  // Self-serve registration — mirrors App.tsx PublicAuth `reg` (738-758): signUp →
+  // (if a session) createMyProfile → loadProfile (auth listener logs the user in).
+  register: (f: RegisterFields) => Promise<RegisterResult>;
+  // Self-serve delete — mirrors App.tsx handleDeleteAccount (4208-4224): deleteUser
+  // (RLS deletes the seller_profiles row) → signOut → clear local keys.
+  deleteAccount: () => Promise<{ ok: boolean; error?: string }>;
 }
 
 const AUTH_STORAGE_KEY = "sf_supabase_auth"; // mirror of supabase.ts storageKey
@@ -115,7 +124,77 @@ export function useAuthSession(): UseAuthSession {
     await loadProfile(data.session?.user?.id);
   }, [loadProfile]);
 
-  return { status, profile, configured: isSupabaseConfigured, signIn, signOut, reloadProfile };
+  // Self-serve registration — same path as App.tsx PublicAuth `reg` (738-758).
+  const register = useCallback(async (f: RegisterFields): Promise<RegisterResult> => {
+    const invalid = validateRegistration(f);
+    if (invalid) return { ok: false, error: invalid };
+    if (!isSupabaseConfigured || !supabase) return { ok: false, error: "Registration is unavailable (service not configured)." };
+    const cleanEmail = f.email.trim().toLowerCase();
+    const { data, error } = await supabase.auth.signUp({ email: cleanEmail, password: f.password });
+    if (error) return { ok: false, error: mapSignUpError(error.message) };
+    if (!data.user) return { ok: false, error: "Registration failed. Please try again." };
+    // Email confirmation enabled → no session yet → cannot create the profile row
+    // (RLS needs auth.uid()). Same branch as App.tsx (748-752).
+    if (!data.session) return { ok: true, needsConfirm: true };
+    try {
+      await createMyProfile(data.user.id, cleanEmail, {
+        fullName: f.fullName.trim(), storeName: f.storeName.trim(), phone: phoneDisplay(f.phone),
+        tiktok: "", facebook: "", adminContactNote: "",
+      });
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : "Could not create your profile." };
+    }
+    // The auth listener already flipped status→authed (signUp persisted a session);
+    // load the profile now so the dashboard renders the real account, not a fallback.
+    await loadProfile(data.user.id);
+    return { ok: true };
+  }, [loadProfile]);
+
+  // Self-serve delete — same effect as App.tsx handleDeleteAccount (4208-4224).
+  const deleteAccount = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
+    const email = profile?.email;
+    if (!email) return { ok: false, error: "Not signed in" };
+    try { await deleteUser(email); } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "Delete failed" }; }
+    // Clear the same local keys production clears (parity; harmless if absent here).
+    for (const k of localKeysToClear(email)) { try { localStorage.removeItem(k); } catch { /* ignore */ } }
+    try { await supabase?.auth.signOut(); } catch { /* listener still flips to anon */ }
+    if (activeRef.current) { setProfile(null); setStatus("anon"); }
+    return { ok: true };
+  }, [profile]);
+
+  return { status, profile, configured: isSupabaseConfigured, signIn, signOut, reloadProfile, register, deleteAccount };
+}
+
+// ── Pure registration helpers (no Supabase / React — unit-tested) ─────────────
+
+// Mirrors App.tsx normalizePhone (254) / phoneDisplay (255).
+export const normalizePhone = (value: string): string => String(value || "").replace(/\D/g, "");
+export const phoneDisplay = (value: string): string => String(value || "").trim();
+
+// Mirrors App.tsx `reg` validation (739-742): all fields required, phone ≥ 8
+// digits, password ≥ 6, password === confirm. Returns an error string or "".
+export function validateRegistration(f: RegisterFields): string {
+  if (!f.fullName.trim() || !f.storeName.trim() || !f.email.trim() || !f.password) return "Please fill in all fields.";
+  if (normalizePhone(f.phone).length < 8) return "Enter a valid phone number.";
+  if (f.password.length < 6) return "Password must be at least 6 characters.";
+  if (f.password !== f.confirm) return "Passwords do not match.";
+  return "";
+}
+
+// Mirrors App.tsx (746): existing-email detection.
+export function mapSignUpError(message: string): string {
+  return /already|registered|exists/i.test(message) ? "That email is already registered. Try logging in." : "Could not create your account. Please try again.";
+}
+
+// The exact localStorage keys App.tsx handleDeleteAccount clears (4213), keyed per
+// seller (sellerIdOf = email.trim().toLowerCase()).
+export function localKeysToClear(email: string): string[] {
+  const id = email.trim().toLowerCase();
+  const seller = (base: string) => `${base}:${id}`;
+  return [
+    "sf_session", "sf_session_user", "sf_comments", "sf_comment_archive", "sf_buyers", "sf_orders",
+    seller("sf_comments"), seller("sf_comment_archive"), seller("sf_buyers"), seller("sf_orders"), seller("sf_printed"),
+  ];
 }
 
 // ── Pure display helpers (no Supabase / React — unit-tested) ──────────────────

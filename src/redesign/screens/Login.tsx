@@ -78,12 +78,12 @@ export default function Login({
 
         <div style={{ marginTop: "auto", paddingTop: 22 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-            <button onClick={() => setForgotOpen(true)} style={{ display: "flex", alignItems: "center", gap: 7, background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+            <a href="https://t.me/SellerFlowLive1995" target="_blank" rel="noreferrer" style={{ display: "flex", alignItems: "center", gap: 7, background: "none", border: "none", cursor: "pointer", padding: 0, textDecoration: "none" }}>
               <span style={{ width: 24, height: 24, borderRadius: 7, background: "#0088cc", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff"><path d="M21.5 4.3 3.2 11.4c-1 .4-1 1.8.1 2.1l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.3l2.5-2.6 4.7 3.4c.6.4 1.4.1 1.6-.6l3-15c.2-1-.7-1.8-1.6-1.3Z" /></svg>
               </span>
               <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--accent-fg)" }}>Need help?</span>
-            </button>
+            </a>
 
             <div style={{ position: "relative" }}>
               {langOpen && (
@@ -119,12 +119,12 @@ export default function Login({
               <div style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.55, marginTop: 9 }}>For your security, passwords can only be reset by an admin. Message us on Telegram and we’ll help you create a new password right away.</div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 7, marginTop: 14, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: 9 }}>
                 <span style={{ width: 18, height: 18, borderRadius: 5, background: "#0088cc", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><svg width="11" height="11" viewBox="0 0 24 24" fill="#fff"><path d="M21.5 4.3 3.2 11.4c-1 .4-1 1.8.1 2.1l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.3l2.5-2.6 4.7 3.4c.6.4 1.4.1 1.6-.6l3-15c.2-1-.7-1.8-1.6-1.3Z" /></svg></span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>@SellerFlowSupport</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>@SellerFlowLive1995</span>
               </div>
             </div>
             <div style={{ display: "flex", borderTop: "1px solid var(--border)" }}>
               <button onClick={() => setForgotOpen(false)} style={{ flex: 1, padding: "15px 0", border: "none", borderRight: "1px solid var(--border)", background: "transparent", color: "var(--text-dim)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>Maybe next time</button>
-              <a href="https://t.me/SellerFlowSupport" target="_blank" rel="noreferrer" onClick={() => setForgotOpen(false)} style={{ flex: 1, padding: "15px 0", background: "#0088cc", color: "#fff", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", textAlign: "center", textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>Next<span style={{ fontSize: 15 }}>→</span></a>
+              <a href="https://t.me/SellerFlowLive1995" target="_blank" rel="noreferrer" onClick={() => setForgotOpen(false)} style={{ flex: 1, padding: "15px 0", background: "#0088cc", color: "#fff", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", textAlign: "center", textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>Next<span style={{ fontSize: 15 }}>→</span></a>
             </div>
           </div>
         </div>

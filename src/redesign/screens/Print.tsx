@@ -1,46 +1,63 @@
-// Screen 11 — Print Slip. dc.html v2 L829–856. Back arrow → Orders.
-// PREVIEW MOCK ONLY (Soon): the receipt is a static sample, not the tapped order.
-// Real printing happens at order-create time via onPrint (printing.ts native bridge),
-// so the buttons here are intentionally disabled.
+// Screen 11 — Print. REAL, matching App.tsx PrintPage (1932-1975): lists the
+// current live-session buyers with a per-buyer print + "Print all", routed through
+// the SAME native bridge (printing.ts printSlip — byte-parity with App.tsx).
+// ⚠️ NATIVE-ONLY: on web/preview there's no SellerFlowPrinter bridge, so printSlip
+// is a no-op (returns {ok:false,via:"none"}) — real printing only happens in the APK.
+import { useState, type CSSProperties } from "react";
 import { mono } from "../ui";
-import SoonBadge from "../components/SoonBadge";
+import { fmt } from "../data";
+import { printSlip, type Settings } from "../adapters/printing";
+import type { Buyer } from "../../lib/orderTypes";
 
-const deadBtn = { opacity: 0.45, cursor: "not-allowed" } as const;
+const statCard: CSSProperties = { flex: 1, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 13, padding: "11px 12px", boxShadow: "var(--shadow)" };
 
-const dash = { borderTop: "1.5px dashed #bbb", margin: "12px 0" } as const;
-const line = { display: "flex", justifyContent: "space-between" } as const;
+export default function Print({ onBack, cur, buyers = [], storeName = "SellerFlowLive", settings }: {
+  onBack: () => void;
+  cur: string;
+  buyers?: Buyer[];
+  storeName?: string;
+  settings?: Settings;
+}) {
+  const [note, setNote] = useState("");
+  const totalOrders = buyers.reduce((s, b) => s + b.totalOrders, 0);
+  const totalRev = buyers.reduce((s, b) => s + b.totalSpent, 0);
+  const doPrint = (b: Buyer) => {
+    if (!settings) return;
+    const r = printSlip(b, cur, storeName, settings);             // native; no-op on web/preview
+    setNote(r.ok ? `Sent to printer (${r.via}).` : "Printing runs in the SellerFlow app — open it on your phone to print.");
+  };
+  const printAll = () => { buyers.forEach((b) => settings && printSlip(b, cur, storeName, settings)); setNote(buyers.length ? "Printing runs in the SellerFlow app — open it on your phone to print." : ""); };
 
-export default function Print({ onBack, cur }: { onBack: () => void; cur: string }) {
   return (
     <div>
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onBack} style={{ background: "rgba(255,255,255,.18)", border: "none", width: 32, height: 32, borderRadius: 9, color: "#fff", fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
-        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-          <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, letterSpacing: "-.01em" }}>Print slip</div>
-          <SoonBadge label="Preview mock" />
-        </div>
+        <div style={{ flex: 1, fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, letterSpacing: "-.01em" }}>Print</div>
+        {buyers.length > 0 && <button onClick={printAll} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.16)", border: "none", color: "var(--on-header)", fontSize: 12.5, fontWeight: 700, padding: "7px 12px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>🖨 Print all ({buyers.length})</button>}
       </div>
-      <div style={{ padding: "18px 16px 22px" }}>
-        <div style={{ background: "#fff", borderRadius: 6, padding: "20px 18px", boxShadow: "0 8px 30px rgba(0,0,0,.18)", fontFamily: mono, color: "#1a1a1a", maxWidth: 300, margin: "0 auto" }}>
-          <div style={{ textAlign: "center", borderBottom: "1.5px dashed #bbb", paddingBottom: 12 }}>
-            <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 17 }}>Maria's Live Shop</div>
-            <div style={{ fontSize: 11, color: "#666", marginTop: 3 }}>@maria_shops · TikTok Live</div>
-          </div>
-          <div style={{ ...line, fontSize: 11.5, marginTop: 12, color: "#444" }}><span>ORDER</span><span style={{ fontWeight: 700, color: "#000" }}>#10472</span></div>
-          <div style={{ ...line, fontSize: 11.5, marginTop: 4, color: "#444" }}><span>BUYER</span><span style={{ fontWeight: 700, color: "#000" }}>Maria Santos</span></div>
-          <div style={{ ...line, fontSize: 11.5, marginTop: 4, color: "#444" }}><span>DATE</span><span>Jun 25, 9:41 PM</span></div>
-          <div style={dash} />
-          <div style={{ ...line, fontSize: 12, marginBottom: 7 }}><span>Matte Lipstick — Red ×2</span><span style={{ fontWeight: 700 }}>{cur}498</span></div>
-          <div style={{ ...line, fontSize: 12 }}><span>Insulated Tumbler ×1</span><span style={{ fontWeight: 700 }}>{cur}399</span></div>
-          <div style={dash} />
-          <div style={{ ...line, fontSize: 15, fontWeight: 700 }}><span>TOTAL</span><span>{cur}897</span></div>
-          <div style={{ textAlign: "center", fontSize: 10.5, color: "#777", marginTop: 14, borderTop: "1.5px dashed #bbb", paddingTop: 10 }}>Thank you for shopping live! 💜<br />Pay via GCash · 0917 555 0142</div>
+      <div style={{ padding: "16px 14px 22px" }}>
+        <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
+          <div style={statCard}><div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>Buyers</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 19, color: "var(--accent-fg)", marginTop: 3 }}>{buyers.length}</div></div>
+          <div style={statCard}><div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>Orders</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 19, color: "var(--text)", marginTop: 3 }}>{totalOrders}</div></div>
+          <div style={statCard}><div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>Revenue</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 19, color: "var(--ok)", marginTop: 3 }}>{cur}{fmt(totalRev)}</div></div>
         </div>
-        <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-          <button disabled style={{ flex: 1, padding: "13px 0", border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, boxShadow: "0 4px 14px var(--accent-soft)", ...deadBtn }}>Print to LAN printer</button>
+
+        {note && <div style={{ fontSize: 12, color: "var(--text-dim)", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: "9px 12px", marginBottom: 12 }}>{note}</div>}
+
+        {buyers.length === 0 && <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "24px 0" }}>No buyers to print yet.</div>}
+
+        <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 15, boxShadow: "var(--shadow)", overflow: "hidden", display: buyers.length ? "block" : "none" }}>
+          {buyers.map((b) => (
+            <div key={`${b.handle}-${b.platform}`} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 14px", borderBottom: "1px solid var(--border)" }}>
+              <div style={{ fontFamily: mono, fontSize: 13, fontWeight: 700, color: "var(--text-muted)", width: 26 }}>#{b.num}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{b.totalOrders} orders · {cur}{fmt(b.totalSpent)} · {b.platform}</div>
+              </div>
+              <button onClick={() => doPrint(b)} style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 700, color: "var(--accent-text)", background: "var(--accent)", border: "none", padding: "7px 12px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>🖨 Print</button>
+            </div>
+          ))}
         </div>
-        <button disabled style={{ width: "100%", marginTop: 10, padding: "12px 0", border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, ...deadBtn }}>Share as image</button>
-        <div style={{ fontSize: 11.5, color: "var(--text-muted)", textAlign: "center", marginTop: 12, lineHeight: 1.5 }}>Sample slip. Real printing happens automatically when you capture an order from the live feed.</div>
       </div>
     </div>
   );
