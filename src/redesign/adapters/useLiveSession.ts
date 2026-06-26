@@ -41,6 +41,7 @@ export interface UseLiveSession {
   dayId: string;
   getBuyers: () => Buyer[];
   applyOrder: (nextBuyers: Buyer[], order: LiveOrder) => void;
+  reset: () => void; // step 5 — clear + reload (used when changing N opens a fresh window)
 }
 
 // Multi-day window options (from useSessionWindow). When omitted → pure 5c
@@ -59,6 +60,7 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
   // Pin today's Taipei day once (matches App.tsx currentLiveDayId init); the
   // existing helper owns the timezone logic — we do not change it.
   const [dayId] = useState(() => taipeiDayId());
+  const [reloadKey, setReloadKey] = useState(0); // step 5 — bump to force a reload
 
   const winReady = win ? win.ready : true;
   const winDays = win ? win.windowDays : 1;
@@ -83,7 +85,7 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
       })
       .catch(() => { if (active) setState("idle"); });
     return () => { active = false; };
-  }, [enabled, dayId, winReady, winDays, winStart]);
+  }, [enabled, dayId, winReady, winDays, winStart, reloadKey]);
 
   // 5e — current buyers (read from the ref so callers always see the latest,
   // matching production reading `buyers` state inside the order handler).
@@ -94,6 +96,9 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
     setSession((prev) => ({ buyers: nextBuyers, orders: [...prev.orders, order] }));
     setState("live");
   }, []);
+  // step 5 — clear local session + force the load effect to re-run (fresh window
+  // after changing N). The hydrate-on-empty guard passes (now empty) → reload.
+  const reset = useCallback(() => { setSession(EMPTY); setReloadKey((k) => k + 1); }, []);
 
-  return { session, state, dayId, getBuyers, applyOrder };
+  return { session, state, dayId, getBuyers, applyOrder, reset };
 }

@@ -27,7 +27,7 @@ import PrintPattern, { DEFAULT_PP, type PrintPatternState, type PpBoolKey, type 
 import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
 import { useCustomers, useAdminUsers, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
 import { useLiveSession } from "./adapters/useLiveSession";
-import { useSessionWindow } from "./adapters/useSessionWindow";
+import { useSessionWindow, type WindowDays } from "./adapters/useSessionWindow";
 import { useLiveFeed } from "./adapters/useLiveFeed";
 import { useOrders } from "./adapters/useOrders";
 import { useFreeCap } from "./adapters/useFreeCap";
@@ -158,7 +158,7 @@ export default function RedesignApp() {
   };
 
   // Live-session-length pill (dc.html v3 Dashboard header). Visual only.
-  const [sessionDays, setSessionDays] = useState(1);
+  // Session-length pill — real N from seller_session_config (sessionWindow). Open/close is local UI.
   const [sessionOpen, setSessionOpen] = useState(false);
 
   // Dashboard account pickers (visual only — Phase 5 wires real switching).
@@ -357,9 +357,9 @@ export default function RedesignApp() {
               onPickFB={(i) => { setFbIdx(i); setFbOpen(false); }}
               ttConnected={ttConnected} fbConnected={fbConnected} ttConnecting={ttConnecting} fbConnecting={fbConnecting}
               onConnectTT={connectTT} onConnectFB={connectFB}
-              sessionDays={sessionDays} sessionOpen={sessionOpen}
+              sessionDays={sessionWindow.windowDays} sessionOpen={sessionOpen}
               onToggleSession={() => { setSessionOpen((o) => !o); setTtOpen(false); setFbOpen(false); }}
-              onPickSession={(n) => { setSessionDays(n); setSessionOpen(false); }}
+              onPickSession={(n) => { void sessionWindow.setWindowDays(n as WindowDays); liveSession.reset(); setSessionOpen(false); }}
               autoDetect={autoDetect} autoWords={autoWords}
               printed={printed} entId={entId} entPrice={entPrice}
               onOneClick={onOneClick} onOpenEnt={onOpenEnt}
