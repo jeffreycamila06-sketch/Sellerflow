@@ -31,6 +31,7 @@ import { useLiveFeed } from "./adapters/useLiveFeed";
 import { useOrders } from "./adapters/useOrders";
 import { useFreeCap } from "./adapters/useFreeCap";
 import { useAdmin } from "./adapters/useAdmin";
+import { upsertUser } from "../accountDb";
 import { printSlip, buildSettingsFromRedesign, type Settings as PrintSettings } from "./adapters/printing";
 import type { Buyer } from "../lib/orderTypes";
 import CapPopup from "./screens/CapPopup";
@@ -44,10 +45,14 @@ type Screen =
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
 const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern"];
 
-const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set" } as const;
+const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set", autowords: "sfl_rd_autowords", pp: "sfl_rd_pp", printer: "sfl_rd_printer" } as const;
 const readLS = (k: string, fallback: string): string => {
   try { return localStorage.getItem(k) || fallback; } catch { return fallback; }
 };
+// 5i — JSON-typed read for persisted settings (auto-detect words, print pattern, printer).
+function readJSON<T>(k: string, fallback: T): T {
+  try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : fallback; } catch { return fallback; }
+}
 const ACCENT_KEYS: AccentKey[] = ["indigo", "violet", "emerald", "rose", "sky", "amber"];
 const safeAccent = (v: string): AccentKey => (ACCENT_KEYS.includes(v as AccentKey) ? (v as AccentKey) : "indigo");
 
@@ -64,6 +69,17 @@ export default function RedesignApp() {
   const adminUsers = useAdminUsers(authed && isAdmin);
   // Phase 5h — real admin write actions (owner-only; targets human-confirmed).
   const admin = useAdmin(auth.profile?.email);
+  // Phase 5i — self-profile save (upsertUser → own seller_profiles row; user-editable
+  // fields only — plan/role are server-controlled and ignored by the trigger).
+  const saveProfile = async (fields: { fullName: string; storeName: string; phone: string; tiktok: string }) => {
+    if (!auth.profile) return { ok: false, error: "Not signed in" };
+    const updated = { ...auth.profile, profile: { ...auth.profile.profile, ...fields } };
+    try {
+      await upsertUser(updated); // no includePlan → only name/store/phone/handles
+      await auth.reloadProfile();
+      return { ok: true };
+    } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "Save failed" }; }
+  };
   // Phase 5c — cross-device live-session load for the Dashboard (hydrate-on-empty).
   const liveSession = useLiveSession(authed);
   // Phase 5d — real live comment feed (socket + dedup). Replaces the sample
@@ -150,15 +166,20 @@ export default function RedesignApp() {
   };
 
   // Printer settings (visual only). psType wifi|bt, psOut receipt|sticker.
-  const [psType, setPsType] = useState<"wifi" | "bt">("wifi");
-  const [psOut, setPsOut] = useState<"receipt" | "sticker">("receipt");
-  const [psSize, setPsSize] = useState("100x60mm (Standard)");
+  // Phase 5i — printer config persists across refresh (sfl_rd_printer).
+  const printerInit = readJSON(LS.printer, { psType: "wifi" as "wifi" | "bt", psOut: "receipt" as "receipt" | "sticker", psSize: "100x60mm (Standard)" });
+  const [psType, setPsType] = useState<"wifi" | "bt">(printerInit.psType);
+  const [psOut, setPsOut] = useState<"receipt" | "sticker">(printerInit.psOut);
+  const [psSize, setPsSize] = useState(printerInit.psSize);
   const [psSizeOpen, setPsSizeOpen] = useState(false);
+  useEffect(() => { try { localStorage.setItem(LS.printer, JSON.stringify({ psType, psOut, psSize })); } catch { /* ignore */ } }, [psType, psOut, psSize]);
 
   // LIVE print pattern (visual only).
-  const [pp, setPp] = useState<PrintPatternState>(DEFAULT_PP);
+  // Phase 5i — print pattern persists across refresh (sfl_rd_pp).
+  const [pp, setPp] = useState<PrintPatternState>(() => readJSON(LS.pp, DEFAULT_PP));
   const togglePp = (k: PpBoolKey) => setPp((p) => ({ ...p, [k]: !p[k] }));
   const stepPp = (k: PpSizeKey, dir: 1 | -1) => setPp((p) => ({ ...p, [k]: Math.min(3, Math.max(0.5, Math.round((p[k] + dir * 0.1) * 10) / 10)) }));
+  useEffect(() => { try { localStorage.setItem(LS.pp, JSON.stringify(pp)); } catch { /* ignore */ } }, [pp]);
 
   // Phase 5g — snapshot the current print config for onPrint (declared above).
   printCfgRef.current = {
@@ -172,11 +193,13 @@ export default function RedesignApp() {
   const [autoDetect, setAutoDetect] = useState(false);
   const [autoSetupOpen, setAutoSetupOpen] = useState(false);
   const [autoAction, setAutoAction] = useState<"slip" | "sticker">("slip");
-  const [autoWords, setAutoWords] = useState<AutoWord[]>([
+  // Phase 5i — auto-detect trigger words persist across refresh (sfl_rd_autowords).
+  const [autoWords, setAutoWords] = useState<AutoWord[]>(() => readJSON<AutoWord[]>(LS.autowords, [
     { word: "mine", price: "150" }, { word: "claim", price: "150" }, { word: "sold", price: "150" },
     { word: "get", price: "150" }, { word: "take", price: "150" },
-  ]);
+  ]));
   const [autoInput, setAutoInput] = useState("");
+  useEffect(() => { try { localStorage.setItem(LS.autowords, JSON.stringify(autoWords)); } catch { /* ignore */ } }, [autoWords]);
   // Parse "word = price" / "word price" / "word" (default price 150). dc.html v3 onAutoKey L2063.
   const addAutoWord = () => {
     const raw = autoInput.trim().toLowerCase();
@@ -340,7 +363,7 @@ export default function RedesignApp() {
           {screen === "settings" && (
             <GeneralSettings
               theme={theme} accent={accent} onSetTheme={setTheme} onSetAccent={setAccent}
-              auto={autoControls} cur={cur} account={auth.profile}
+              auto={autoControls} cur={cur} account={auth.profile} onSaveProfile={saveProfile}
               lang={lang} onSetLang={setLang} currency={currency} onSetCurrency={setCurrencyExplicit}
               profileOpen={profileOpen} onToggleProfile={() => setProfileOpen((o) => !o)}
               printerIdx={printerIdx} printerOpen={printerOpen}

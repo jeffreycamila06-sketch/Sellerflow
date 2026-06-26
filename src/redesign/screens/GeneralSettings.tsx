@@ -3,7 +3,7 @@
 // (REAL theme + accent control — replaces the old floating toggle) · Channels ·
 // Printer & display · Account links. Visual/sample only; theme+accent drive the
 // redesign preview state.
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { ACCENT_ORDER, ACCENTS, PRINTERS, LANGS, CURRENCIES, CURRENCY_ORDER, type ThemeMode, type AccentKey, type AutoControls } from "../data";
 import { headerBar, headerTitle, card, sectionLabel } from "../ui";
 import { profileToDisplay, planLabel, renewLabel } from "../adapters/useAuthSession";
@@ -25,7 +25,7 @@ export default function GeneralSettings({
   profileOpen, onToggleProfile,
   printerIdx, printerOpen, onTogglePrinter, onPickPrinter, onPrintPattern,
   onSubscription, onSupport, onDelete,
-  account = null,
+  account = null, onSaveProfile,
 }: {
   theme: ThemeMode; accent: AccentKey; onSetTheme: (t: ThemeMode) => void; onSetAccent: (a: AccentKey) => void;
   auto: AutoControls; cur: string;
@@ -34,10 +34,41 @@ export default function GeneralSettings({
   printerIdx: number; printerOpen: boolean; onTogglePrinter: () => void; onPickPrinter: (i: number) => void; onPrintPattern: () => void;
   onSubscription: () => void; onSupport: () => void; onDelete: () => void;
   account?: AccountUser | null; // Phase 5a: real signed-in profile (null → demo fallback)
+  // Phase 5i — real self-edit save (upsertUser → seller_profiles; user-editable fields only).
+  onSaveProfile?: (fields: { fullName: string; storeName: string; phone: string; tiktok: string }) => Promise<{ ok: boolean; error?: string }>;
 }) {
   const [apLangOpen, setApLangOpen] = useState(false);
   const [apCurOpen, setApCurOpen] = useState(false);
   const curLang = LANGS.find((l) => l.code === lang) || LANGS[0];
+
+  // Phase 5i — controlled profile-edit form, initialized from the real profile and
+  // re-synced when it changes (e.g. after a save reload). Only user-editable fields.
+  const [form, setForm] = useState({ fullName: "", storeName: "", phone: "", tiktok: "" });
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [saveErr, setSaveErr] = useState("");
+  useEffect(() => {
+    setForm({
+      fullName: account?.profile.fullName || "",
+      storeName: account?.profile.storeName || "",
+      phone: account?.profile.phone || "",
+      tiktok: account?.profile.tiktok || "",
+    });
+    setSaveState("idle"); setSaveErr("");
+  }, [account]);
+  const setField = (k: keyof typeof form, v: string) => { setForm((f) => ({ ...f, [k]: v })); setSaveState("idle"); };
+  const handleSaveProfile = async () => {
+    if (!onSaveProfile || saveState === "saving") return;
+    if (!form.fullName.trim() || !form.storeName.trim()) { setSaveState("error"); setSaveErr("Owner name and shop name are required."); return; }
+    setSaveState("saving"); setSaveErr("");
+    const r = await onSaveProfile({
+      fullName: form.fullName.trim(),
+      storeName: form.storeName.trim(),
+      phone: form.phone.trim(),
+      tiktok: form.tiktok.trim().replace(/^@+/, ""), // store handle without leading @
+    });
+    if (r.ok) { setSaveState("saved"); }
+    else { setSaveState("error"); setSaveErr(r.error || "Save failed."); }
+  };
 
   // Phase 5a — real profile (falls back to the demo strings when signed out / no row).
   const pd = profileToDisplay(account);
@@ -45,8 +76,6 @@ export default function GeneralSettings({
   const pShop = pd ? pd.shopName : "Maria's Live Shop";
   const pHandle = pd ? (pd.handle || "—") : "@maria_shops";
   const pPlanLine = pd ? pd.planLine : "Pro plan · renews Jul 28";
-  const pOwner = account ? account.profile.fullName : "Maria Santos";
-  const pPhone = account ? account.profile.phone : "0917 555 0142";
   const pEmail = account ? account.email : "maria@liveshop.ph";
   const pSubRow = account ? `${planLabel(account.plan)}${renewLabel(account.planExpiry) ? " · " + renewLabel(account.planExpiry).replace(/^renews /, "") : ""} ›` : "Pro · Jul 28 ›";
   const autoLabel = auto.detect ? "Auto-detect" : "Manual mode";
@@ -76,16 +105,18 @@ export default function GeneralSettings({
             <div style={{ marginTop: 15, paddingTop: 15, borderTop: "1px solid var(--border)" }}>
               <div style={{ fontSize: 11, letterSpacing: ".1em", fontWeight: 800, color: "var(--text-muted)", marginBottom: 13 }}>BASIC INFORMATION</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <div><label style={label}>Shop name</label><input defaultValue={pShop} style={input} /></div>
+                <div><label style={label}>Shop name</label><input value={form.storeName} onChange={(e) => setField("storeName", e.target.value)} style={input} /></div>
                 <div style={{ display: "flex", gap: 9 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}><label style={label}>Owner name</label><input defaultValue={pOwner} style={input} /></div>
-                  <div style={{ flex: 1, minWidth: 0 }}><label style={label}>Phone</label><input defaultValue={pPhone} style={{ ...input, fontFamily: "var(--font-mono)", fontSize: 13 }} /></div>
+                  <div style={{ flex: 1, minWidth: 0 }}><label style={label}>Owner name</label><input value={form.fullName} onChange={(e) => setField("fullName", e.target.value)} style={input} /></div>
+                  <div style={{ flex: 1, minWidth: 0 }}><label style={label}>Phone</label><input value={form.phone} onChange={(e) => setField("phone", e.target.value)} style={{ ...input, fontFamily: "var(--font-mono)", fontSize: 13 }} /></div>
                 </div>
-                <div><label style={label}>Username handle</label><input defaultValue={pd ? pHandle : "@maria_shops"} style={{ ...input, color: "var(--handle)", fontWeight: 700 }} /></div>
-                <div><label style={label}>Email</label><input defaultValue={pEmail} style={input} /></div>
-                <div><label style={label}>Pickup / return address</label><input defaultValue="123 Katipunan Ave, Quezon City, PH" style={input} /></div>
+                <div><label style={label}>Username handle</label><input value={form.tiktok} onChange={(e) => setField("tiktok", e.target.value)} placeholder="tiktok_handle" style={{ ...input, color: "var(--handle)", fontWeight: 700 }} /></div>
+                {/* Email is identity — changing it needs the secure server step (production blocks it too). */}
+                <div><label style={label}>Email</label><input value={pEmail} disabled style={{ ...input, opacity: 0.6 }} /></div>
               </div>
-              <button onClick={onToggleProfile} style={{ width: "100%", marginTop: 15, padding: "12px 0", border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 14px var(--accent-soft)" }}>Save changes</button>
+              {saveState === "error" && <div style={{ fontSize: 12, fontWeight: 600, color: "var(--danger)", marginTop: 10 }}>{saveErr}</div>}
+              {saveState === "saved" && <div style={{ fontSize: 12, fontWeight: 600, color: "var(--ok)", marginTop: 10 }}>✓ Saved</div>}
+              <button onClick={handleSaveProfile} disabled={saveState === "saving"} style={{ width: "100%", marginTop: 12, padding: "12px 0", border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: saveState === "saving" ? "default" : "pointer", opacity: saveState === "saving" ? 0.7 : 1, boxShadow: "0 4px 14px var(--accent-soft)" }}>{saveState === "saving" ? "Saving…" : "Save changes"}</button>
             </div>
           )}
         </div>

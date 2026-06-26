@@ -28,6 +28,7 @@ export interface UseAuthSession {
   configured: boolean;
   signIn: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   signOut: () => Promise<void>;
+  reloadProfile: () => Promise<void>; // 5i — re-fetch own profile after a save
 }
 
 const AUTH_STORAGE_KEY = "sf_supabase_auth"; // mirror of supabase.ts storageKey
@@ -107,7 +108,14 @@ export function useAuthSession(): UseAuthSession {
     setStatus("anon");
   }, []);
 
-  return { status, profile, configured: isSupabaseConfigured, signIn, signOut };
+  // 5i — refresh the signed-in user's own profile (after a self-edit save).
+  const reloadProfile = useCallback(async () => {
+    if (!isSupabaseConfigured || !supabase) return;
+    const { data } = await supabase.auth.getSession();
+    await loadProfile(data.session?.user?.id);
+  }, [loadProfile]);
+
+  return { status, profile, configured: isSupabaseConfigured, signIn, signOut, reloadProfile };
 }
 
 // ── Pure display helpers (no Supabase / React — unit-tested) ──────────────────
