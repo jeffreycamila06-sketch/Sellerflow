@@ -466,3 +466,70 @@ don't run both apps for the same user across a multi-day window before merge.
   replaces prod on `main` — **remember the multi-day merge-time caveat above**.
   Also: bump versionCode ≥3 before the next AAB upload.
   Open watch items: M1 sticker clipping at high scale (M2 egress fixed in redesign).
+
+## SESSION (Phase 6 cont.) — admin perfection, open registration, i18n (branch `claude/full-redesign`, NOT main)
+Post-Phase-5 wiring on the redesign. Each step = diff + tests + Jeff "go" before
+commit. Highlights:
+- **100% main-parity wiring pass:** Signup (real registration), Delete Account,
+  Sales Report, Print, Products (local `sf_prods` CRUD), Shipping (full 7-ELEVEN
+  MyShip xlsx port), Connect (#6) + Printer (#7) native/socket (PREVIEW-UNVERIFIABLE
+  — only work in APK/post-merge with the live socket), Admin (Audit Log + make-admin
+  full payload + remove-admin self-guard + expire backdate + expiring-bucket =
+  `expiringSoonSellers`), **User Base monitoring** (paid/free by PLAN, derived, no
+  new backend). Telegram handle fixed everywhere → **t.me/SellerFlowLive1995**.
+  ~267 vitest green pre-i18n.
+- **Open registration (PRODUCTION DB change, DECIDED):** edit the
+  `seller_profiles_on_insert` trigger so normal signups get `plan='free',
+  plan_status='active'` (was `'pending'`) → no admin approval. ⚠️ **Production
+  Supabase migration** (NOT redesign-only); App.tsx PendingApprovalWall becomes
+  inert. The redesign's **Sign-ups approval admin panel was REMOVED** (obsolete).
+  Free-cap trigger still gates `plan='free'` at 200/30-day. (Research snapshot:
+  23 paid / 3 free, 0 pending.) Still TODO: apply + verify the migration.
+
+### i18n / translation phase (IN PROGRESS — plumbing DONE, per-screen extraction PENDING)
+Redesign was English-only (picker cosmetic). Wiring real translations by REUSING
+production's system. **NEVER edit `translations.ts` / `useTranslation.ts` / `lib` —
+import only.**
+- **Plumbing (DONE, Step 2):** `src/redesign/i18n/index.tsx` — `normalizeLang`
+  (shims redesign `"zh-tw"` → production `"zh-TW"`; 7 langs en/fil/zh/zh-TW/vi/th/id;
+  unknown→en), `REDESIGN_STRINGS` (redesign-owned supplement for NEW keys, starts
+  EMPTY), `buildT(lang)` = `{...TRANSLATIONS[norm], ...REDESIGN_STRINGS[norm]}`
+  (supplement wins), `TProvider`/`useT` context wrapping `RedesignApp` (no
+  prop-drilling). Reuses production `TRANSLATIONS` (539 keys × 7 langs). Tests in
+  `i18n/__tests__/`. NO screen strings converted yet.
+- **Per-screen extraction (PENDING, chunked, ONE screen per step, Jeff review each):**
+  small/static (Legal, Support, Subscription, DeleteAccount, CapPopup) → lists
+  (Orders, Customers, Products, Miners, Sales) → Dashboard → Settings (SettingsHub,
+  GeneralSettings, PrintPattern, PrinterSettings) → Shipping/Print/ConnectModal →
+  Admin (+User Base/Audit) → Login/Signup. Each: literals → `t.<key>`, reuse
+  existing production keys, append NEW keys to `REDESIGN_STRINGS`.
+- ⚠️ **CRITICAL RULE — native verification:** any NEW zh-TW (and other-lang)
+  translation is a **DRAFT marked "NEEDS NATIVE VERIFICATION"**, collected in a
+  per-screen list for **Jeff's Taiwan friend to verify the Chinese BEFORE it's
+  relied on**. NEVER ship AI-guessed Chinese as final. Reuse production's existing
+  verified keys verbatim.
+- **Honest caveat:** production `zh-TW`/`th`/`id` = English-base + partial overrides
+  (zh-TW = auth-only Traditional so far). So reused production keys show **English in
+  zh-TW/th/id wherever production hasn't translated yet** — matches production, NOT a
+  redesign regression. New-key estimate ~150–250 (most: GeneralSettings, Login,
+  Admin, Dashboard, Connect modal).
+
+## FUTURE FEATURE (PLAN-FIRST, AFTER i18n) — AUTO MODE (code→price auction)
+Build in the redesign tree only; **propose a full plan for Jeff's review BEFORE any
+code.** Builds on the existing redesign `autoWords {word,price}` concept.
+- **Vision:** seller sets a CODE→PRICE map (A=150, B=200, C=250, D=300 … up to
+  ~J/K), saves, goes live, announces a code ("code D") → system auto-creates an
+  order at that code's price off the live socket feed.
+- **LOCKED decisions:** (1) **SINGLE-WINNER** — only the FIRST commenter of the
+  exact code gets the order (auction-style). (2) **ALL CODES ALWAYS ACTIVE** —
+  automatic, no tap-to-activate. (3) **MATCH = EXACTLY the code alone** ("D" only,
+  not "D po" / "Daming" / "ok D") — main guard against accidental orders.
+  (4) **WINNER = earliest comment timestamp.** (5) **FAST/real-time off the live
+  socket** (NOT DB polling — egress-safe like multi-day).
+- **OPEN questions for the plan:** case-sensitivity ("D" vs "d"); tie-break for
+  near-simultaneous identical codes (timestamp precision / arrival order); dedup
+  (winner re-commenting = still 1 order — reuse `commentKey` dedup); multiple
+  always-active codes at once; interaction with the 5e order fan-out + dedup
+  **tangled zone**.
+- **Plan-first deliverable:** files, matching logic, dedup, egress, edge cases →
+  Jeff approves before code.

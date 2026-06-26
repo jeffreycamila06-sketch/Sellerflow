@@ -40,6 +40,7 @@ import { registeredAccountsFor, appendAccount, type Platform } from "./adapters/
 import type { Buyer } from "../lib/orderTypes";
 import CapPopup from "./screens/CapPopup";
 import ConnectModal from "./screens/ConnectModal";
+import { TProvider } from "./i18n";
 
 type Screen =
   | "login" | "signup" | "dashboard" | "miners" | "orders" | "products"
@@ -329,6 +330,7 @@ export default function RedesignApp() {
   const settingsActive = SETTINGS_GROUP.includes(screen);
 
   return (
+    <TProvider lang={lang}>
     <div data-redesign="" data-theme={theme} data-accent={accent} className="sfl-stage">
       <div className="sfl-phone">
         {theme === "dark" && (
@@ -495,5 +497,6 @@ export default function RedesignApp() {
         )}
       </div>
     </div>
+    </TProvider>
   );
 }
