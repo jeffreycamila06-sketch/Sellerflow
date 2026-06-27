@@ -214,6 +214,8 @@ const RAW: Record<string, Row> = {
   rd_dash_tap_go_live: { en: "tap to go live", fil: "i-tap para mag-live", zh: "点击开始直播", "zh-TW": "點擊開始直播", vi: "chạm để phát live", th: "แตะเพื่อไลฟ์", id: "ketuk untuk live" },
   rd_dash_connect: { en: "Connect", fil: "Ikonekta", zh: "连接", "zh-TW": "連接", vi: "Kết nối", th: "เชื่อมต่อ", id: "Hubungkan" },
   rd_dash_refresh: { en: "Refresh", fil: "I-refresh", zh: "刷新", "zh-TW": "重新整理", vi: "Làm mới", th: "รีเฟรช", id: "Segarkan" },
+  rd_dash_refreshing: { en: "Refreshing…", fil: "Nire-refresh…", zh: "正在刷新…", "zh-TW": "正在重新整理…", vi: "Đang làm mới…", th: "กำลังรีเฟรช…", id: "Menyegarkan…" },
+  rd_dash_connected_toast: { en: "Connected!", fil: "Nakakonekta na!", zh: "已连接！", "zh-TW": "已連接！", vi: "Đã kết nối!", th: "เชื่อมต่อแล้ว!", id: "Terhubung!" },
   rd_dash_connecting: { en: "Connecting…", fil: "Kumokonekta…", zh: "正在连接…", "zh-TW": "正在連線…", vi: "Đang kết nối…", th: "กำลังเชื่อมต่อ…", id: "Menghubungkan…" },
   rd_dash_disconnect: { en: "Disconnect", fil: "Idiskonekta", zh: "断开连接", "zh-TW": "中斷連線", vi: "Ngắt kết nối", th: "ตัดการเชื่อมต่อ", id: "Putuskan" },
   rd_dash_fb_page_group: { en: "FACEBOOK PAGE / GROUP", fil: "FACEBOOK PAGE / GROUP", zh: "FACEBOOK 主页 / 群组", "zh-TW": "FACEBOOK 粉專 / 社團", vi: "TRANG / NHÓM FACEBOOK", th: "เพจ / กลุ่ม FACEBOOK", id: "HALAMAN / GRUP FACEBOOK" },

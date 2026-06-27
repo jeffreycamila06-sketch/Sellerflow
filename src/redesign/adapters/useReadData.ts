@@ -200,9 +200,10 @@ export function useLiveOrders(enabled: boolean): { orders: Order[]; state: ReadS
   return { orders, state };
 }
 
-export function useCustomers(enabled: boolean): { customers: Customer[]; state: ReadState } {
+export function useCustomers(enabled: boolean): { customers: Customer[]; state: ReadState; reload: () => void } {
   const [customers, setCustomers] = useState<Customer[]>(SAMPLE_CUSTOMERS);
   const [state, setState] = useState<ReadState>("sample");
+  const [reloadKey, setReloadKey] = useState(0); // one-shot reload trigger (no polling)
   useEffect(() => {
     if (!enabled || !isSupabaseConfigured) { setState("sample"); setCustomers(SAMPLE_CUSTOMERS); return; }
     let active = true;
@@ -216,8 +217,8 @@ export function useCustomers(enabled: boolean): { customers: Customer[]; state: 
       })
       .catch(() => { if (active) { setCustomers(SAMPLE_CUSTOMERS); setState("sample"); } });
     return () => { active = false; };
-  }, [enabled]);
-  return { customers, state };
+  }, [enabled, reloadKey]);
+  return { customers, state, reload: () => setReloadKey((k) => k + 1) };
 }
 
 // Admin user list. enabled should be true ONLY for an admin profile — a seller's

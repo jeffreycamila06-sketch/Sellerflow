@@ -41,7 +41,7 @@ import { registeredAccountsFor, appendAccount, maxAcc, composeChannelSave, type 
 import type { Buyer } from "../lib/orderTypes";
 import CapPopup from "./screens/CapPopup";
 import ConnectModal from "./screens/ConnectModal";
-import { TProvider } from "./i18n";
+import { TProvider, buildT } from "./i18n";
 
 type Screen =
   | "login" | "signup" | "dashboard" | "miners" | "orders" | "products"
@@ -181,6 +181,12 @@ export default function RedesignApp() {
   const [assignAmount, setAssignAmount] = useState("499");
   const [lang, setLang] = useState<string>(() => readLS(LS.lang, "en"));
   const [langOpen, setLangOpen] = useState(false);
+  const tApp = buildT(lang); // RedesignApp is the TProvider parent → resolve strings directly here
+  // Auto-dismissing toast (no OK button) — used for the chip "Connected!" confirmation.
+  const [toast, setToast] = useState("");
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(""), 1800); return () => clearTimeout(id); }, [toast]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Currency switcher (dc.html v3). `cur` is the derived symbol threaded through
   // every money display. Phase 5a: default is NT$/TWD (production default, Taiwan
@@ -257,9 +263,25 @@ export default function RedesignApp() {
     const acct = accts[idx] || accts[0];
     if (!acct) { setConnectOpen(platform); return; } // no registered account → add-new modal (real connect)
     setConnecting(true);
-    try { await liveFeed.connect(platform, { username: acct }); } finally { setConnecting(false); }
+    try {
+      const r = await liveFeed.connect(platform, { username: acct });
+      if (r.ok) setToast(tApp.rd_dash_connected_toast); // success only — no false toast on preview/failure
+    } finally { setConnecting(false); }
   };
-  const refreshAccounts = () => { void auth.reloadProfile(); }; // Refresh = re-scan registered accounts
+  // Refresh = one-shot full dashboard reload (pull-to-refresh style; NO polling).
+  // Reuses the existing load functions: profile/accounts + live session (reset =
+  // clear + hydrate-on-empty from DB) + customers (read adapter reload). Orders derive
+  // from the live session; Products read from localStorage on mount.
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshDashboard = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      liveSession.reset();        // reload today's live session from DB
+      customersData.reload();     // reload customers/miners read data
+      await auth.reloadProfile(); // reload profile + registered accounts
+    } finally { setRefreshing(false); }
+  };
 
   // Printer settings (visual only). psType wifi|bt, psOut receipt|sticker.
   // Phase 5i — printer config persists across refresh (sfl_rd_printer).
@@ -429,7 +451,7 @@ export default function RedesignApp() {
               onPickFB={(i) => switchAccount("Facebook", i)}
               ttConnected={ttEff} fbConnected={fbEff} ttConnecting={ttConnecting} fbConnecting={fbConnecting}
               onConnectTT={() => void doConnect("TikTok")} onConnectFB={() => void doConnect("Facebook")}
-              onRefreshTT={refreshAccounts} onRefreshFB={refreshAccounts}
+              onRefreshTT={() => void refreshDashboard()} onRefreshFB={() => void refreshDashboard()} refreshing={refreshing}
               ttAccounts={ttAccounts} fbAccounts={fbAccounts}
               sessionDays={sessionWindow.windowDays} sessionOpen={sessionOpen}
               onToggleSession={() => { setSessionOpen((o) => !o); setTtOpen(false); setFbOpen(false); }}
@@ -546,6 +568,13 @@ export default function RedesignApp() {
             onViewOrders={() => { freeCap.setCapPopup(""); setScreen("orders"); }}
             onClose={() => freeCap.setCapPopup("")}
           />
+        )}
+
+        {/* Auto-dismissing toast (e.g. chip "Connected!") — no buttons, fades on its own */}
+        {toast && (
+          <div style={{ position: "absolute", left: 0, right: 0, bottom: 80, display: "flex", justifyContent: "center", zIndex: 1200, pointerEvents: "none" }}>
+            <div style={{ background: "var(--text)", color: "var(--surface)", fontSize: 13, fontWeight: 700, padding: "10px 18px", borderRadius: 999, boxShadow: "0 8px 24px rgba(0,0,0,.3)" }}>{toast}</div>
+          </div>
         )}
       </div>
     </div>

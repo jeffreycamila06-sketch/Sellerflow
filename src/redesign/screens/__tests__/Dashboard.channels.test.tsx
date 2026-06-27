@@ -41,4 +41,9 @@ describe("Dashboard channel chip footer (surface B)", () => {
     expect(screen.getByText("Disconnect")).toBeTruthy();
     expect(screen.getByText("Refresh")).toBeTruthy();
   });
+  it("refreshing → Refresh button shows 'Refreshing…' and is disabled", () => {
+    renderDash({ refreshing: true });
+    const btn = screen.getByText("Refreshing…").closest("button") as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+  });
 });

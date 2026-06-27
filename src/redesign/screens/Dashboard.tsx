@@ -41,7 +41,7 @@ const SESSION_OPTS = [1, 2, 3];
 export default function Dashboard({
   comments, cur,
   ttOpen, fbOpen, ttIdx, fbIdx, onToggleTT, onToggleFB, onPickTT, onPickFB,
-  ttConnected, fbConnected, ttConnecting, fbConnecting, onConnectTT, onConnectFB, onRefreshTT, onRefreshFB,
+  ttConnected, fbConnected, ttConnecting, fbConnecting, onConnectTT, onConnectFB, onRefreshTT, onRefreshFB, refreshing = false,
   ttAccounts = [], fbAccounts = [],
   sessionDays, sessionOpen, onToggleSession, onPickSession,
   printed, entId, entPrice, onOneClick, onOpenEnt, onEntPrice, onEntKey,
@@ -56,7 +56,7 @@ export default function Dashboard({
   onPickTT: (i: number) => void; onPickFB: (i: number) => void;
   ttConnected: boolean; fbConnected: boolean; ttConnecting: boolean; fbConnecting: boolean;
   onConnectTT: () => void; onConnectFB: () => void;
-  onRefreshTT?: () => void; onRefreshFB?: () => void;
+  onRefreshTT?: () => void; onRefreshFB?: () => void; refreshing?: boolean;
   ttAccounts?: string[]; fbAccounts?: string[];
   sessionDays: number; sessionOpen: boolean; onToggleSession: () => void; onPickSession: (n: number) => void;
   printed: Record<string, string>; entId: string | null; entPrice: string;
@@ -138,7 +138,7 @@ export default function Dashboard({
                   </button>
                 ))}
                 <div style={connFooterWrap}>
-                  <button onClick={onRefreshTT} title={t.rd_dash_refresh} style={refreshBtn}>{refreshIcon}{t.rd_dash_refresh}</button>
+                  <button onClick={onRefreshTT} disabled={refreshing} title={t.rd_dash_refresh} style={{ ...refreshBtn, opacity: refreshing ? 0.6 : 1, cursor: refreshing ? "default" : "pointer" }}>{refreshIcon}{refreshing ? t.rd_dash_refreshing : t.rd_dash_refresh}</button>
                   <button onClick={onConnectTT} disabled={ttConnecting} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: tt.border, borderRadius: 9, background: tt.bg, color: tt.fg, fontSize: 11.5, fontWeight: 700, cursor: ttConnecting ? "default" : "pointer", opacity: ttConnecting ? 0.7 : 1, fontFamily: "var(--font-ui)" }}>{connLabel(ttConnected, ttConnecting)}</button>
                 </div>
               </div>
@@ -163,7 +163,7 @@ export default function Dashboard({
                   </button>
                 ))}
                 <div style={connFooterWrap}>
-                  <button onClick={onRefreshFB} title={t.rd_dash_refresh} style={refreshBtn}>{refreshIcon}{t.rd_dash_refresh}</button>
+                  <button onClick={onRefreshFB} disabled={refreshing} title={t.rd_dash_refresh} style={{ ...refreshBtn, opacity: refreshing ? 0.6 : 1, cursor: refreshing ? "default" : "pointer" }}>{refreshIcon}{refreshing ? t.rd_dash_refreshing : t.rd_dash_refresh}</button>
                   <button onClick={onConnectFB} disabled={fbConnecting} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: fb.border, borderRadius: 9, background: fb.bg, color: fb.fg, fontSize: 11.5, fontWeight: 700, cursor: fbConnecting ? "default" : "pointer", opacity: fbConnecting ? 0.7 : 1, fontFamily: "var(--font-ui)" }}>{connLabel(fbConnected, fbConnecting)}</button>
                 </div>
               </div>
