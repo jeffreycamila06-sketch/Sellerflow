@@ -11,6 +11,7 @@ import type { AccountUser } from "../../accountDb";
 import { useT, tpl } from "../i18n";
 import { accountList } from "../adapters/connect";
 import { useAutoCodes } from "../adapters/useAutoCodes";
+import type { AutoCode } from "../adapters/autoMode";
 
 const label: CSSProperties = { fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 5 };
 const input: CSSProperties = { width: "100%", padding: "11px 13px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 600, outline: "none" };
@@ -23,7 +24,7 @@ export default function GeneralSettings({
   profileOpen, onToggleProfile,
   printerIdx, printerOpen, onTogglePrinter, onPickPrinter, onPrintPattern,
   onSubscription, onSupport, onDelete,
-  account = null, onSaveProfile, onManageChannel,
+  account = null, onSaveProfile, onManageChannel, onAutoCodesSaved,
 }: {
   theme: ThemeMode; accent: AccentKey; onSetTheme: (t: ThemeMode) => void; onSetAccent: (a: AccentKey) => void;
   auto: AutoControls; cur: string;
@@ -37,9 +38,12 @@ export default function GeneralSettings({
   onSaveProfile?: (fields: { fullName: string; storeName: string; phone: string }) => Promise<{ ok: boolean; error?: string }>;
   // Channels card is DISPLAY-only here; tapping a row opens the Manage screen (C).
   onManageChannel?: (platform: "tiktok" | "facebook") => void;
+  // 5b — after a successful Save, hand the persisted code map + stock up so the live
+  // matcher applies it immediately (no reload).
+  onAutoCodesSaved?: (codes: AutoCode[], stock: Map<number, number>) => void;
 }) {
   const t = useT();
-  const ac = useAutoCodes(); // Auto Mode: real code→product→inventory map (read-on-load)
+  const ac = useAutoCodes(true, onAutoCodesSaved); // Auto Mode: real code→product→inventory map (read-on-load)
   const [apLangOpen, setApLangOpen] = useState(false);
   const [apCurOpen, setApCurOpen] = useState(false);
   const curLang = LANGS.find((l) => l.code === lang) || LANGS[0];

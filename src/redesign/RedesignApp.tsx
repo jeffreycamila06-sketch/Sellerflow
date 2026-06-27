@@ -2,7 +2,7 @@
 // [data-theme]/[data-accent] on the [data-redesign] root (tokens resolve from
 // src/styles/design-tokens.css), and renders all built screens + bottom nav.
 // Self-contained preview — does NOT import or touch the existing app.
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import { CURRENCIES, curSymbol, type ThemeMode, type AccentKey, type AutoControls, type AutoWord } from "./data";
 import Dashboard from "./screens/Dashboard";
 import Orders from "./screens/Orders";
@@ -56,7 +56,7 @@ type Screen =
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
 const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels"];
 
-const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set", autowords: "sfl_rd_autowords", pp: "sfl_rd_pp", printer: "sfl_rd_printer" } as const;
+const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set", autowords: "sfl_rd_autowords", automode: "sfl_rd_automode", pp: "sfl_rd_pp", printer: "sfl_rd_printer" } as const;
 const readLS = (k: string, fallback: string): string => {
   try { return localStorage.getItem(k) || fallback; } catch { return fallback; }
 };
@@ -156,6 +156,15 @@ export default function RedesignApp() {
     })();
     return () => { active = false; };
   }, [authed]);
+
+  // 5b — apply a just-saved code map immediately (no reload): push the persisted
+  // codes + each product's stock into the live matcher refs the onComment handler
+  // reads. Restocked products clear their sold-out latch so they can sell + toast
+  // again. Stable (refs only) → no re-render churn. Still no polling.
+  const liftAutoCodes = useCallback((codes: AutoCode[], stock: Map<number, number>) => {
+    autoCodesRef.current = codes;
+    for (const [lid, n] of stock) { autoStockRef.current.set(lid, n); autoSoldRef.current.delete(lid); }
+  }, []);
   // Phase 5f — free-tier cap status + popups (M2 visibility-guarded poll).
   const freeCap = useFreeCap(authed, auth.profile?.plan);
   // Phase 5g — print config snapshot (filled after print-pattern/printer state is
@@ -342,9 +351,9 @@ export default function RedesignApp() {
     settings: buildSettingsFromRedesign({ pp, psType, psOut, psSize }),
   };
 
-  // Auto-detect keyword feature (visual only). v3: each trigger is a
-  // {word, price} pair; default OFF (dc.html v3 autoDetect:false L1548).
-  const [autoDetect, setAutoDetect] = useState(false);
+  // Auto Mode on/off. Default OFF, but PERSISTED (sfl_rd_automode) so the toggle
+  // stays where the seller left it across refresh — same pattern as theme/currency.
+  const [autoDetect, setAutoDetect] = useState<boolean>(() => readLS(LS.automode, "0") === "1");
   const [autoSetupOpen, setAutoSetupOpen] = useState(false);
   const [autoAction, setAutoAction] = useState<"slip" | "sticker">("slip");
   // Phase 5i — auto-detect trigger words persist across refresh (sfl_rd_autowords).
@@ -437,6 +446,7 @@ export default function RedesignApp() {
   useEffect(() => { try { localStorage.setItem(LS.accent, accent); } catch { /* ignore */ } }, [accent]);
   useEffect(() => { try { localStorage.setItem(LS.lang, lang); } catch { /* ignore */ } }, [lang]);
   useEffect(() => { try { localStorage.setItem(LS.currency, currency); } catch { /* ignore */ } }, [currency]);
+  useEffect(() => { try { localStorage.setItem(LS.automode, autoDetect ? "1" : "0"); } catch { /* ignore */ } }, [autoDetect]);
 
   // Phase 5a — auth-driven navigation + currency pin. Authed: leave the auth
   // screens. Anon (incl. after logout): force the login screen. On first real
@@ -550,6 +560,7 @@ export default function RedesignApp() {
               theme={theme} accent={accent} onSetTheme={setTheme} onSetAccent={setAccent}
               auto={autoControls} cur={cur} account={auth.profile} onSaveProfile={saveProfile}
               onManageChannel={(p) => setScreen(p === "tiktok" ? "ttchannels" : "fbchannels")}
+              onAutoCodesSaved={liftAutoCodes}
               lang={lang} onSetLang={setLang} currency={currency} onSetCurrency={setCurrencyExplicit}
               profileOpen={profileOpen} onToggleProfile={() => setProfileOpen((o) => !o)}
               printerIdx={printerIdx} printerOpen={printerOpen}

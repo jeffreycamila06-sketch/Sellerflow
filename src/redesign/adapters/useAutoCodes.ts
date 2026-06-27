@@ -59,7 +59,10 @@ export interface UseAutoCodes {
   save: () => Promise<boolean>;
 }
 
-export function useAutoCodes(enabled: boolean = true): UseAutoCodes {
+// onSaved (5b): fired after a SUCCESSFUL save with the persisted code list + a
+// {productLocalId → stock} map, so the caller can lift the just-saved data straight
+// into the live matcher refs — codes apply immediately, no reload, still no polling.
+export function useAutoCodes(enabled: boolean = true, onSaved?: (codes: AutoCode[], stock: Map<number, number>) => void): UseAutoCodes {
   const [products, setProducts] = useState<Product[]>([]);
   const [codes, setCodes] = useState<AutoCode[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -110,10 +113,18 @@ export function useAutoCodes(enabled: boolean = true): UseAutoCodes {
 
   const save = useCallback(async () => {
     setSaving(true); setSaved(false);
-    const ok = await saveCodes(codesForSave(codes));
+    const toSave = codesForSave(codes);
+    const ok = await saveCodes(toSave);
     setSaving(false); setSaved(ok);
+    if (ok) {
+      // 5b — hand the persisted map + each code's product stock to the caller so the
+      // live matcher applies it immediately (no reload). Stock from the catalog state.
+      const stock = new Map<number, number>();
+      for (const c of toSave) { const p = products.find((x) => x.id === c.productLocalId); if (p) stock.set(p.id, p.stock); }
+      onSaved?.(toSave, stock);
+    }
     return ok;
-  }, [codes]);
+  }, [codes, products, onSaved]);
 
   return { products, codes, loaded, saving, saved, addCode, removeCode, setCode, setProduct, setPrice, setStock, stockFor, save };
 }
