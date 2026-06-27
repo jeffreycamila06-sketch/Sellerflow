@@ -1,11 +1,19 @@
 // Screen 9 — Support (contact + user guide). dc.html v2 L733–757.
-// Visual/sample only — Telegram contact is a static link (Phase 5).
+// Telegram contact is a static link; the 4 guide items are tap-to-expand accordions
+// (inline body via rd_sup_g*_body, \n paragraph breaks rendered with pre-line).
+import { useState } from "react";
 import { headerBar, headerTitle } from "../ui";
 import { useT } from "../i18n";
 
 export default function Support({ onLegal }: { onLegal: () => void }) {
   const t = useT();
-  const GUIDE = [t.rd_sup_g1, t.rd_sup_g2, t.rd_sup_g3, t.rd_sup_g4];
+  const GUIDE = [
+    { title: t.rd_sup_g1, body: t.rd_sup_g1_body },
+    { title: t.rd_sup_g2, body: t.rd_sup_g2_body },
+    { title: t.rd_sup_g3, body: t.rd_sup_g3_body },
+    { title: t.rd_sup_g4, body: t.rd_sup_g4_body },
+  ];
+  const [open, setOpen] = useState<number | null>(null);
   return (
     <div>
       <div style={headerBar}><div style={headerTitle}>{t.rd_sup_title}</div></div>
@@ -21,13 +29,21 @@ export default function Support({ onLegal }: { onLegal: () => void }) {
 
         <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14.5, color: "var(--text)", margin: "18px 2px 10px" }}>{t.rd_sup_guide}</div>
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, boxShadow: "var(--shadow)", overflow: "hidden" }}>
-          {GUIDE.map((g, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: 14, borderBottom: i < GUIDE.length - 1 ? "1px solid var(--border)" : "none" }}>
-              <span style={{ width: 30, height: 30, borderRadius: 9, background: "var(--accent-soft)", color: "var(--accent-fg)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13 }}>{i + 1}</span>
-              <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{g}</span>
-              <span style={{ color: "var(--text-muted)" }}>›</span>
-            </div>
-          ))}
+          {GUIDE.map((g, i) => {
+            const isOpen = open === i;
+            return (
+              <div key={i} style={{ borderBottom: i < GUIDE.length - 1 ? "1px solid var(--border)" : "none" }}>
+                <button onClick={() => setOpen(isOpen ? null : i)} aria-expanded={isOpen} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
+                  <span style={{ width: 30, height: 30, borderRadius: 9, background: "var(--accent-soft)", color: "var(--accent-fg)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, flexShrink: 0 }}>{i + 1}</span>
+                  <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600, color: "var(--text)" }}>{g.title}</span>
+                  <span style={{ color: "var(--text-muted)", fontSize: 12, transition: "transform .2s", transform: isOpen ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block", flexShrink: 0 }}>▾</span>
+                </button>
+                {isOpen && (
+                  <div style={{ padding: "0 14px 14px 56px", fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.6, whiteSpace: "pre-line" }}>{g.body}</div>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         <div style={{ textAlign: "center", fontSize: 11.5, color: "var(--text-muted)", marginTop: 18 }}>{t.rd_sup_ver}<span onClick={onLegal} style={{ color: "var(--accent-fg)", fontWeight: 600, cursor: "pointer" }}>{t.lg_pt_title}</span></div>
