@@ -134,7 +134,6 @@ const RAW: Record<string, Row> = {
 
   // ════ Products ════
   rd_prd_title: { en: "Products", fil: "Mga Produkto", zh: "产品", "zh-TW": "產品", vi: "Sản phẩm", th: "สินค้า", id: "Produk" },
-  rd_prd_soon: { en: "Soon · cross-device", fil: "Soon · cross-device", zh: "即将推出 · 跨设备", "zh-TW": "即將推出 · 跨裝置", vi: "Sắp có · đa thiết bị", th: "เร็วๆ นี้ · ข้ามอุปกรณ์", id: "Segera · lintas perangkat" },
   rd_prd_add: { en: "+ Add", fil: "+ Magdagdag", zh: "+ 添加", "zh-TW": "+ 新增", vi: "+ Thêm", th: "+ เพิ่ม", id: "+ Tambah" },
   rd_prd_search: { en: "Search name or SKU", fil: "Maghanap ng pangalan o SKU", zh: "搜索名称或 SKU", "zh-TW": "搜尋名稱或 SKU", vi: "Tìm tên hoặc SKU", th: "ค้นหาชื่อหรือ SKU", id: "Cari nama atau SKU" },
   rd_prd_confirm_del: { en: "Delete this product?", fil: "Burahin ang produktong ito?", zh: "删除此产品？", "zh-TW": "刪除此產品？", vi: "Xóa sản phẩm này?", th: "ลบสินค้านี้?", id: "Hapus produk ini?" },

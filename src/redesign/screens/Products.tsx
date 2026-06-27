@@ -1,12 +1,14 @@
-// Screen 3 — Products. REAL local CRUD wired to the SAME backend as production
-// (localStorage "sf_prods") via the products adapter — add/edit/delete/search/CSV,
-// status auto-derived from stock (App.tsx Products). ⚠️ Supabase cross-device sync
-// is NOT in main → only that stays "Soon".
-import { useMemo, useState, type CSSProperties } from "react";
+// Screen 3 — Products. REAL CRUD with CROSS-DEVICE sync: the local "sf_prods"
+// cache (instant render + offline) is reconciled on load with the per-user
+// public.products table via the productsDb adapter (DB wins; first signed-in load
+// migrates pre-existing local products once). Add/edit/delete write through to the
+// DB; search/CSV/status (derived from stock) unchanged. Read-on-load + write-on-
+// action only — NO polling.
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { avColor, initials, fmt } from "../data";
-import SoonBadge from "../components/SoonBadge";
 import { csvDL } from "../adapters/csv";
 import { loadProducts, saveProducts, upsertProduct, deleteProduct, filterProducts, statusForStock, type Product, type ProductForm } from "../adapters/products";
+import { resolveInitialProducts, saveProductDb, deleteProductDb } from "../adapters/productsDb";
 import { useT } from "../i18n";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px" };
@@ -25,10 +27,28 @@ export default function Products({ cur }: { cur: string }) {
   const [eid, setEid] = useState<number | null>(null);
   const [form, setForm] = useState<ProductForm>(EMPTY);
   const save = (p: Product[]) => { setProds(p); saveProducts(p); };
+  // Cross-device load: reconcile local cache with public.products (DB wins; first
+  // signed-in load migrates pre-existing local products once). Read-on-load only.
+  useEffect(() => {
+    let active = true;
+    void resolveInitialProducts(loadProducts()).then(({ products }) => {
+      if (!active) return;
+      setProds(products);
+      saveProducts(products); // mirror the resolved list back to the local cache
+    });
+    return () => { active = false; };
+  }, []);
   const openAdd = () => { setForm(EMPTY); setEid(null); setShow(true); };
   const openEdit = (p: Product) => { setForm({ name: p.name, sku: p.sku, price: String(p.price), stock: String(p.stock), platform: p.platform }); setEid(p.id); setShow(true); };
-  const del = (id: number) => { if (!window.confirm(t.rd_prd_confirm_del)) return; save(deleteProduct(prods, id)); };
-  const submit = (e: React.FormEvent) => { e.preventDefault(); save(upsertProduct(prods, form, eid, Date.now())); setShow(false); };
+  const del = (id: number) => { if (!window.confirm(t.rd_prd_confirm_del)) return; save(deleteProduct(prods, id)); void deleteProductDb(id); };
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const next = upsertProduct(prods, form, eid, Date.now());
+    save(next);
+    const changed = eid !== null ? next.find((p) => p.id === eid) : next[next.length - 1];
+    if (changed) void saveProductDb(changed); // write-through (add/edit)
+    setShow(false);
+  };
   const exportCsv = () => csvDL("products.csv", ["Name", "SKU", "Price", "Stock", "Platform", "Status"], prods.map((p) => [p.name, p.sku, p.price, p.stock, p.platform, p.status]));
   const filtered = useMemo(() => filterProducts(prods, q), [prods, q]);
   const count = (s: string) => prods.filter((p) => p.status === s).length;
@@ -39,7 +59,7 @@ export default function Products({ cur }: { cur: string }) {
     <div>
       <div style={headerBar}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 9 }}><div style={title}>{t.rd_prd_title}</div><SoonBadge label={t.rd_prd_soon} /></div>
+          <div style={title}>{t.rd_prd_title}</div>
           <div style={{ display: "flex", gap: 7 }}>
             {prods.length > 0 && <button onClick={exportCsv} style={{ fontSize: 12, fontWeight: 700, background: "rgba(255,255,255,.16)", color: "var(--on-header)", border: "none", padding: "7px 11px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_export}</button>}
             <button onClick={openAdd} style={{ display: "flex", alignItems: "center", gap: 5, background: "#fff", color: "var(--accent)", fontSize: 12.5, fontWeight: 700, padding: "7px 12px", border: "none", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_prd_add}</button>
