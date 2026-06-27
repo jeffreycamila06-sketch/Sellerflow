@@ -1,0 +1,239 @@
+// Phase 5d — LIVE COMMENT FEED adapter. Reuses the EXACT production socket.io
+// setup (same SERVER URL, same event names, same room-join) and the EXACT
+// commentKey dedup formula. Imports the shared supabase singleton for the auth
+// token. Does NOT touch App.tsx / socket event names / the server / lib/*.
+//
+// Tangled zones handled here:
+//   • #1 commentKey dedup — copied VERBATIM from App.tsx:111-114 and guarded by
+//     a parity test (useLiveFeed.test.ts). If App.tsx ever changes the formula,
+//     the parity test must be updated in lockstep — they can never silently drift.
+//   • #3 feed scroll — the Dashboard owns feedRef + a useLayoutEffect; this hook
+//     only produces the newest-first list.
+//
+// READ-ONLY: receives comments, dedups, caps. NO order writes (that is 5e).
+//
+// ⚠️ PREVIEW (F2): the Vercel preview cannot TikTok-connect (Render
+// CLIENT_ORIGIN=sellerflowlive.com), so a real socket yields no comments there.
+// `injectSynthetic()` pushes a test comment through the SAME dedup pipeline so the
+// feed/dedup/scroll can be verified without a real socket. It is gated to
+// non-production hosts via isPreviewEnv() so real users never see it.
+import { useCallback, useEffect, useRef, useState } from "react";
+import { io, type Socket } from "socket.io-client";
+import { supabase } from "../../supabase";
+import type { Comment as ProdComment } from "../../lib/orderTypes";
+import type { Comment as RDComment } from "../data";
+import { cleanLiveAccount, connectPlatform, type Platform, type ConnectResult } from "./connect";
+
+// SERVER — same resolution as App.tsx:169-173 (do NOT change names/URLs).
+const DEFAULT_SERVER =
+  typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname)
+    ? "http://localhost:3001"
+    : "https://sellerflow-live-server.onrender.com";
+const SERVER = String(import.meta.env.VITE_SERVER_URL || DEFAULT_SERVER).replace(/\/$/, "");
+const LIVE_COMMENT_LIMIT = 5000;
+
+const sellerIdOf = (email: string) => email.trim().toLowerCase();
+
+// Same browser-session id production uses (App.tsx:147), same storage key/format
+// (LS.get/LS.set use JSON) so the redesign joins the SAME live room as the prod
+// tab in this browser.
+const browserSessionId = (): string => {
+  try {
+    const raw = localStorage.getItem("sf_browser_session");
+    if (raw) return JSON.parse(raw);
+  } catch { /* ignore */ }
+  const next = `sf-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  try { localStorage.setItem("sf_browser_session", JSON.stringify(next)); } catch { /* ignore */ }
+  return next;
+};
+
+// commentKey — COPIED VERBATIM from src/App.tsx:111-114 (tangled-zone #1).
+// Parity-guarded by useLiveFeed.test.ts. DO NOT edit independently of App.tsx.
+export const commentKey = (c: ProdComment | null | undefined): string => {
+  if (!c) return "missing-comment";
+  return `${c.platform || "TikTok"}|${c.sourceUsername || ""}|${c.sessionId || ""}|${c.handle || "buyer"}|${c.timestamp || c.time || ""}|${c.comment || ""}`;
+};
+
+// Newest-first + dedup, mirroring App.tsx sortCommentsNewest + cleanComments.
+const commentMs = (c: ProdComment): number => { const t = Date.parse(c?.timestamp || ""); return Number.isFinite(t) ? t : 0; };
+const sortNewest = (list: ProdComment[]): ProdComment[] => [...list].sort((a, b) => commentMs(b) - commentMs(a));
+const dedup = (list: ProdComment[]): ProdComment[] => {
+  const seen = new Set<string>();
+  return list.filter((c) => { const k = commentKey(c); if (seen.has(k)) return false; seen.add(k); return true; });
+};
+
+// production Comment → redesign Comment (Dashboard shape).
+export const toRedesignComment = (c: ProdComment): RDComment => ({
+  id: commentKey(c),
+  name: c.name || c.handle,
+  handle: c.handle ? (c.handle.startsWith("@") ? c.handle : `@${c.handle}`) : "",
+  text: c.comment,
+  mine: !!c.isBuy,
+  time: c.time || "",
+});
+
+// Synthetic injector is shown everywhere EXCEPT the real production domain.
+export const isPreviewEnv = (): boolean => {
+  if (import.meta.env.DEV) return true;
+  if (typeof window === "undefined") return false;
+  const h = window.location.hostname;
+  return h !== "www.sellerflowlive.com" && h !== "sellerflowlive.com";
+};
+
+const SYNTH: { name: string; handle: string; text: string; platform: "TikTok" | "Facebook"; isBuy: boolean }[] = [
+  { name: "Aileen Go", handle: "jojo_tw", text: "mine red lipstick 💄", platform: "TikTok", isBuy: true },
+  { name: "Mei Lin", handle: "meidolltw", text: "how much po the tumbler?", platform: "TikTok", isBuy: false },
+  { name: "Benny Tan", handle: "bennytw", text: "mine size M white tee", platform: "Facebook", isBuy: true },
+  { name: "Cara Yu", handle: "caralivetw", text: "claim skincare set", platform: "TikTok", isBuy: true },
+  { name: "Don Sy", handle: "donsytw", text: "get the rose gold watch ✨", platform: "Facebook", isBuy: true },
+  { name: "Ella Ng", handle: "ella.ng", text: "avail pa ba yung sneakers?", platform: "TikTok", isBuy: false },
+];
+
+export interface ActiveAccounts { TikTok: string; Facebook: string }
+
+export interface UseLiveFeed {
+  comments: RDComment[];
+  connected: boolean;
+  canInject: boolean;
+  injectSynthetic: (text?: string) => void;
+  getComment: (id: string) => ProdComment | undefined; // 5e — resolve a feed id (commentKey) → raw comment
+  // #6 connect — real platform connect + server-driven active-account switching.
+  activeAccounts: ActiveAccounts;     // which account is live per platform (from platform_status)
+  ttConnected: boolean;               // server says TikTok is connected (not reconnecting)
+  fbConnected: boolean;
+  connect: (platform: Platform, data: Record<string, string>) => Promise<ConnectResult>;
+}
+
+export function useLiveFeed(enabled: boolean, email: string | undefined, onComment?: (c: ProdComment) => void): UseLiveFeed {
+  const [feed, setFeed] = useState<ProdComment[]>([]);
+  const [connected, setConnected] = useState(false);
+  // Auto Mode seam — held in a ref so a changing handler identity NEVER re-subscribes
+  // the socket (the effect deps deliberately exclude onComment). Fired per ACCEPTED
+  // comment, after all filters, alongside pushComment. Does NOT touch commentKey/dedup.
+  const onCommentRef = useRef(onComment);
+  onCommentRef.current = onComment;
+  // #6 — active live account per platform + per-platform connected flags. Driven by
+  // the server `platform_status` event (App.tsx 4072-4080); the ref lets the comment
+  // handler filter by the active account without re-subscribing.
+  const [activeAccounts, setActiveAccounts] = useState<ActiveAccounts>({ TikTok: "", Facebook: "" });
+  const [ttConnected, setTtConnected] = useState(false);
+  const [fbConnected, setFbConnected] = useState(false);
+  const activeRef = useRef<ActiveAccounts>(activeAccounts);
+  activeRef.current = activeAccounts;
+  const synthIdx = useRef(0);
+  // Latest feed readable from a stable getter (for 5e order creation by id).
+  const feedRef = useRef<ProdComment[]>(feed);
+  feedRef.current = feed;
+  const getComment = useCallback((id: string) => feedRef.current.find((c) => commentKey(c) === id), []);
+
+  const pushComment = useCallback((c: ProdComment) => {
+    setFeed((prev) => dedup(sortNewest([c, ...prev])).slice(0, LIVE_COMMENT_LIMIT));
+  }, []);
+
+  useEffect(() => {
+    if (!enabled || !email) return;
+    const sellerId = sellerIdOf(email);
+    const sessionId = browserSessionId();
+    const s: Socket = io(SERVER, {
+      path: "/socket.io/",
+      transports: ["websocket"],
+      auth: (cb: (d: { token: string }) => void) => {
+        if (!supabase) { cb({ token: "" }); return; }
+        supabase.auth.getSession().then(({ data }) => cb({ token: data.session?.access_token || "" }));
+      },
+    });
+    const joinRoom = () => s.emit("join_live_room", { sellerId, sessionId });
+    s.on("connect", () => { setConnected(true); joinRoom(); });
+    s.on("disconnect", () => setConnected(false));
+    s.on("connect_error", () => setConnected(false));
+    joinRoom();
+    s.on("comment", (d: ProdComment) => {
+      if (!d || typeof d !== "object") return;
+      // Light coercion to guarantee commentKey works; FULL normalizeComment parity
+      // is deferred with the real socket (F2 — preview can't connect).
+      const c: ProdComment = {
+        ...d,
+        platform: d.platform === "Facebook" ? "Facebook" : "TikTok",
+        handle: String(d.handle || d.name || "").trim(),
+        name: String(d.name || d.handle || "").trim(),
+        comment: String(d.comment || "").trim(),
+        timestamp: d.timestamp || new Date().toISOString(),
+        time: d.time || new Date().toLocaleTimeString(),
+      };
+      if (!c.handle || !c.comment) return;
+      if (c.sellerId && c.sellerId !== sellerId) return;
+      if (c.sessionId && c.sessionId !== sessionId) return;
+      // #6 — filter to the active account for this platform (App.tsx 4045-4047).
+      if (c.sourceUsername) {
+        const selected = cleanLiveAccount(activeRef.current[c.platform === "Facebook" ? "Facebook" : "TikTok"]);
+        if (selected && cleanLiveAccount(c.sourceUsername) !== selected) return;
+      }
+      // Auto Mode seam — fire on the ACCEPTED comment (after every filter above),
+      // before pushComment. commentKey/dedup below are unchanged (tangled zone #1).
+      try { onCommentRef.current?.(c); } catch (err) { console.warn("onComment handler failed", err); }
+      pushComment(c);
+    });
+    // #6 — server-driven connection status + active account (App.tsx 4072-4082).
+    s.on("platform_status", (p: { platform?: string; connected?: boolean; reconnecting?: boolean; sellerId?: string; username?: string; sessionId?: string }) => {
+      if (p.sellerId && p.sellerId !== sellerId) return;
+      if (p.sessionId && p.sessionId !== sessionId) return;
+      const visible = !!p.connected && !p.reconnecting;
+      if (p.platform === "TikTok") { setTtConnected(visible); if (!visible) setActiveAccounts((a) => ({ ...a, TikTok: "" })); }
+      if (p.platform === "Facebook") { setFbConnected(visible); if (!visible) setActiveAccounts((a) => ({ ...a, Facebook: "" })); }
+      if (p.connected && p.platform === "TikTok" && p.username) setActiveAccounts((a) => ({ ...a, TikTok: p.username as string }));
+      if (p.connected && p.platform === "Facebook" && p.username) setActiveAccounts((a) => ({ ...a, Facebook: p.username as string }));
+    });
+    s.on("live_session_ended", (e: { sellerId?: string; sessionId?: string } = {}) => {
+      if (e.sellerId && e.sellerId !== sellerId) return;
+      if (e.sessionId && e.sessionId !== sessionId) return;
+      setActiveAccounts({ TikTok: "", Facebook: "" }); setTtConnected(false); setFbConnected(false); setFeed([]);
+    });
+    return () => { s.disconnect(); };
+  }, [enabled, email, pushComment]);
+
+  // #6 — real connect: POST to the live server, then optimistically set the active
+  // account (the authoritative value still arrives via platform_status). Clears the
+  // feed like production's clearLiveCommentMemory.
+  const connect = useCallback(async (platform: Platform, data: Record<string, string>): Promise<ConnectResult> => {
+    if (!email) return { ok: false, error: "Not signed in", account: "" };
+    const r = await connectPlatform(platform, data, email);
+    if (r.ok) { setFeed([]); setActiveAccounts((a) => ({ ...a, [platform]: r.account })); }
+    return r;
+  }, [email]);
+
+  // Preview-only injector. With no arg it cycles the canned SYNTH comments; with a
+  // `text` it injects that EXACT comment from a fresh unique commenter (each call =
+  // a distinct buyer → distinct commentKey → its own auto-order) — this is how Step 7
+  // exercises Auto Mode on preview (the real socket only works in the APK). Routes
+  // through the SAME onComment seam + dedup pipeline a real comment would.
+  const injectSynthetic = useCallback((text?: string) => {
+    const i = synthIdx.current;
+    synthIdx.current += 1;
+    const now = new Date();
+    const base = SYNTH[i % SYNTH.length];
+    const c: ProdComment = {
+      handle: text != null ? `tester${i}` : base.handle,
+      name: text != null ? "Preview Tester" : base.name,
+      comment: text != null ? text : base.text,
+      platform: base.platform,
+      isBuy: text != null ? true : base.isBuy,
+      buyerNum: null,
+      buyerData: null,
+      time: now.toLocaleTimeString(),
+      timestamp: now.toISOString(),
+      sessionId: browserSessionId(),
+    } as ProdComment;
+    try { onCommentRef.current?.(c); } catch (err) { console.warn("onComment handler failed", err); }
+    pushComment(c);
+  }, [pushComment]);
+
+  // Preview convenience: expose the injector on window so a tester can drive Auto
+  // Mode from the console, e.g. __sflInject("D"). Gated to non-production hosts.
+  useEffect(() => {
+    if (!isPreviewEnv() || typeof window === "undefined") return;
+    (window as unknown as { __sflInject?: (t?: string) => void }).__sflInject = injectSynthetic;
+    return () => { try { delete (window as unknown as { __sflInject?: unknown }).__sflInject; } catch { /* ignore */ } };
+  }, [injectSynthetic]);
+
+  return { comments: feed.map(toRedesignComment), connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, connect };
+}

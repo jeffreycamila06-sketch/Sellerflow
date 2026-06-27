@@ -3,10 +3,13 @@
 Guidance for Claude Code (and humans). Read this first — it captures
 load-bearing context that is NOT obvious from the code.
 
-_Last substantial update: 2026-06-24 (Google Play production PUBLISHED — signed
-AAB versionCode 2 / "1.1", full rollout all countries; capacitor.config.ts
-production-URL restore gotcha; M3 billing doc fix; full audit; final APK to
-Telegram — see "SESSION 2026-06-24")._
+_Last substantial update: 2026-06-26 (branch `claude/full-redesign`: **i18n
+CODE-COMPLETE + zh-TW NATIVE-VERIFIED** — all 21 redesign screens wired to `useT()`,
+504 new keys × 7 langs (en byte-exact, zh-TW confirmed correct by Jeff's Taiwan
+friend, th/id = AI draft), 281 vitest green, `main` UNTOUCHED — see "i18n /
+translation phase" block. Prior: **Phase 5 COMPLETE** (5a–5j) + **MULTI-DAY LIVE
+SESSION** code-complete; 2026-06-24 Google Play prod PUBLISHED AAB v2/"1.1". Next =
+per-language VISUAL/layout pass on preview, then Phase 6 preview testing.)_
 
 ## What it is
 Capacitor-based live-selling assistant app para sa TikTok/Facebook sellers sa Taiwan.
@@ -61,6 +64,73 @@ npm run agent:check # lint + typecheck + test + build
 - **Fastest (no rebuild):** Vercel → Deployments → previous production deploy →
   **Instant Rollback / Promote to Production**.
 - **Git:** `git push origin <prev-sha>:main --force` → Vercel redeploys it.
+
+## Local-bundle Redesign APK (for device testing only — branch `claude/full-redesign`)
+**PURPOSE:** build a DEBUG APK that bundles the redesign (`redesign.html`) **locally**
+so real native testing works on a device (Connect, live socket comments, printing,
+Auto Mode). TESTING ONLY — not production. (Production stays the thin shell that
+loads `https://www.sellerflowlive.com`.)
+
+### 🔴 CRITICAL — `.env` MUST contain ALL THREE before building:
+```
+VITE_SUPABASE_URL=https://sqeuyuktdpidmlfpqgoc.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=<publishable key>          # or VITE_SUPABASE_ANON_KEY
+VITE_SERVER_URL=https://sellerflow-live-server.onrender.com   ← MUST HAVE
+```
+`.env` is gitignored (won't commit). The keys are baked into the bundle at **build
+time** — a local build without them = no Supabase / wrong socket.
+
+### ⚠️ WHY `VITE_SERVER_URL` IS MANDATORY (cost hours to debug)
+Both `connect.ts` and `useLiveFeed.ts` resolve the server as
+`VITE_SERVER_URL || DEFAULT_SERVER`, where `DEFAULT_SERVER` is
+`window.location.hostname ∈ {localhost,127.0.0.1} ? http://localhost:3001 : <Render>`.
+A local bundle loads at **origin `https://localhost`**, so WITHOUT `VITE_SERVER_URL`
+the socket/connect point to **`http://localhost:3001`** (a dev server that does NOT
+exist on the phone) → Connect fails with the red toast **"Can't reach the live
+server. Check your connection."** Setting `VITE_SERVER_URL` to the real Render URL
+fixes it. `https://localhost` IS already in Render's hardcoded allow-list (`server.js`
+`allowedOrigins`), so once the URL is right, **real TikTok connect + live socket work
+on the device** — no `CLIENT_ORIGIN` change needed.
+
+### BUILD STEPS (order matters)
+1. `git fetch origin && git status` → if **behind**, `git pull` (a stale local repo
+   bundles OLD code while the Vercel preview shows NEW — another time-sink root cause).
+2. Ensure `.env` has all three vars above (especially `VITE_SERVER_URL`).
+3. `rm -rf dist && npm run build`
+4. **Verify the baked URL:** grep the built `dist/assets/redesign-*.js` for
+   `sellerflow-live-server.onrender.com` (**must exist**) and `localhost:3001`
+   (**must NOT exist**).
+5. Copy `dist` into the WebView dir: `rm -rf mobile/android/app/src/main/assets/public`,
+   `mkdir -p` it, `cp -R dist/. ` into it, then
+   `cp …/assets/public/redesign.html …/assets/public/index.html` (redesign becomes
+   the served entry).
+6. Strip `server.url` from `mobile/android/app/src/main/assets/capacitor.config.json`
+   (forces LOCAL load → origin `https://localhost`).
+7. `cd mobile/android && ./gradlew assembleDebug`
+   (APK → `mobile/android/app/build/outputs/apk/debug/app-debug.apk`).
+
+### GOTCHAS
+- `npx cap sync` **RESTORES** `server.url` (the preview/prod URL) into the configs —
+  do NOT run it for a local-bundle build, or re-strip `server.url` afterward.
+- `mobile/android/app/src/main/assets/public` + `…/assets/capacitor.config.json` are
+  **gitignored build artifacts** → `git checkout` CANNOT restore them. To revert to the
+  prod thin shell, **back them up first** and restore from backup (or rebuild via the
+  normal sync).
+- `mobile/capacitor.config.ts` (tracked source) still points at the Vercel **preview**
+  URL — that's for the separate *preview-load* APK variant, NOT the local bundle.
+- **Preview URLs cannot real-connect** (Render `CLIENT_ORIGIN=sellerflowlive.com` →
+  CORS-blocks the `*.vercel.app` origin → same "Can't reach" toast). Local-bundle
+  `https://localhost` is the workaround for real device testing. For preview-browser
+  testing, use the **synthetic injector** `window.__sflInject("D")` (gated by
+  `isPreviewEnv()`) — it feeds the SAME real `onComment → createOrder` pipeline,
+  bypassing the socket.
+
+### ✅ DEVICE-TESTED 2026-06-27 (real Android device, local-bundle APK)
+ALL VERIFIED WORKING: TikTok **Connect (green)** · **live socket comments** · **Auto
+Mode** (code→product, auto-order, stock decrement, sold-out toast, dedup, toggle
+persist) · **order capture** · **sticker print (AIMO D520BT)** · **slip print** ·
+**free-cap popup** · **Channels** · **Products cross-device sync**. (Slip "blank
+print" was just **reversed thermal paper**, not a bug.)
 
 ## ⚠️ Critical rules — WAG GALAWIN
 - **billing `orders` ledger** (~31k rows) + its `check_and_increment_free_order`
@@ -246,10 +316,306 @@ Handoff: **`settings-redesign-handoff.md`**; approved mockup
   2. **Scope** — which settings groups are in scope for v1?
   3. **Ship method** — phased rollout vs single merge?
 
+## SESSION 2026-06-25 — FULL REDESIGN (branch `claude/full-redesign`, NOT main)
+
+A complete app-wide visual redesign, built as a **fully ISOLATED sandbox** so it
+can never break production. Phases 1–4 DONE (visual-only); Phase 5 (wire to real
+logic) is **PLAN APPROVED-PENDING — no code yet**.
+
+### Architecture (load-bearing)
+- **Separate Vite entry:** `redesign.html` → `src/redesign/main.tsx` →
+  `RedesignApp.tsx`. vite.config multi-page: `main: index.html` (prod) +
+  `redesign: redesign.html` (preview). **Zero imports** from `App.tsx`/`db.ts`/
+  `lib/*` → production code path UNTOUCHED.
+- **20 screens DONE** (visual + sample data only): Login, Signup, Dashboard(LIVE),
+  Orders, Products, Miners, SettingsHub, GeneralSettings, Customers, Subscription,
+  Support, Admin(+13 panel kinds), Print, SalesReport, Shipping, CustomerData,
+  Legal, DeleteAccount, PrinterSettings, PrintPattern.
+- **All sample data** in `src/redesign/data.ts` (SEED_COMMENTS, ORDERS, PRODUCTS,
+  CUSTOMERS, SELLERS, etc. — Maria/₱ demo). Theme/accent/lang/currency persisted to
+  localStorage `sfl_rd_*`. **No Supabase, no socket.io, no native calls yet.**
+- Design source: `design-redesign/SellerFlowLive.dc.html` (v3) +
+  `design-redesign/README.md` (handoff). Parity confirmed 1:1 (commit `8a2c344`).
+- Shared helpers: `src/redesign/ui.ts`, design tokens `src/styles/design-tokens.css`
+  (`[data-theme]`/`[data-accent]`), 6 accents, dark/light.
+
+### Phase 5 PLAN (wire redesign → real logic + Taiwan NT$ swap) — APPROVED-PENDING
+**Core strategy: NEW adapter layer `src/redesign/adapters/*` that COMPOSES the
+already-exported safe pieces — DO NOT touch protected logic files.**
+- ✅ **Safe to import directly:** `supabase.ts` singleton (auth auto-shared via
+  `localStorage["sf_supabase_auth"]`), `db.ts` (`saveLiveSessionOrder`,
+  `loadTodaysLiveSession`, `saveOrderToDatabase`, `saveCustomerToDatabase`,
+  `getCustomersFromDatabase`), `accountDb.ts` (`getMyProfile`, `createMyProfile`,
+  `listUsers`, `upsertUser`, `adminUpdatePlan`, `listAuditLogs`), pure `lib/*`
+  (`buildOrderFromComment`, `rebuildSessionFromRows`, `taipeiDayId`,
+  `printerRouting`, `slipFields`).
+- ❌ **Tangled inside `App.tsx` (NOT exported → reimplement in adapter using the
+  SAME pure cores, zero App.tsx touch):** `createOrderFromComment` fan-out (4326),
+  socket.io (4025), `commentKey`/dedup (111), `refreshFreeStatus`+cap popup (4157),
+  `printSlip`+`buildNativeStickerPayload` (538–707).
+- **END GOAL = REPLACEMENT (F3):** redesign eventually BECOMES the real app. So
+  prefer **EXTRACTING shared logic into reusable modules (one source of truth)**
+  over adapter-duplication — BUT only when extraction is SAFE (does NOT risk the 6
+  tangled zones or require risky App.tsx surgery). If risky → fall back to
+  adapter-copy + parity-test and FLAG. **`main` stays UNTOUCHED until the very end**
+  (after iOS approval + Jeff's explicit "merge to production"). Diff + "go" per
+  sub-step, always.
+- **Taiwan swap:** default currency `TWD`/`NT$`; Maria→real `getMyProfile`; demo
+  arrays→live RLS-scoped queries. **Subscription stays Wise+Telegram manual (NO
+  Play billing).**
+- **Testing:** `googletest@sellerflowlive.com` on **production Supabase** (no
+  staging) — RLS `user_id=auth.uid()` isolates it from the 45–53 real sellers;
+  set it FREE tier to test the cap without touching the real ledger. **Socket
+  flows (5d/5e) tested with SYNTHETIC comments on preview** (Render origin NOT
+  changed); real socket deferred to post-merge / behind a flag.
+
+### Phase 5 — RESOLVED decisions (2026-06-25)
+- **F1 printing → Option B:** COPY `printSlip`/`buildNativeStickerPayload` into a
+  redesign adapter + a **parity unit test guarding byte-equality** vs the real
+  payload. Do NOT touch App.tsx unless Jeff approves an extraction.
+- **F2 socket → (a):** synthetic comments on preview; real socket deferred. Do NOT
+  change Render `CLIENT_ORIGIN`.
+- **F3 → REPLACEMENT** (see END GOAL above): extract-when-safe, adapter-copy when
+  risky, `main` untouched till the end.
+- **F4 → WIRING ONLY** (no new backends this phase). Screens with no real backend
+  get a clear **"Soon" badge/label** so Jeff can see what's not functional:
+  **Shipping** (whole screen), **Sales Report** (aggregation), **Miners**
+  (aggregation), **self-serve Signup**, **self-serve Delete Account**,
+  **Products→Supabase cross-device** (Products still wires to localStorage
+  `sf_prods` = its real current backend). New backends = later phase.
+- **F5 admin → JEFF OVERRIDE (2026-06-25):** will test using the REAL admin/owner
+  account **`camilajeffrey1@gmail.com`** (not a temp role). ⚠️ RISKS noted:
+  - **R1** — free-cap (5f) CANNOT be tested with this account (owner is Master/Pro,
+    not free) → still need a FREE-tier account (e.g. `googletest` set free) for 5f.
+  - **R2** — admin writes (5h) on the real owner are DANGEROUS (set-password /
+    adminUpdatePlan affect real sellers, not RLS-protected). Safeguard: create a
+    dummy/throwaway seller row as the target; NEVER test against a real seller.
+  - **R3** — order writes (5e) land under the owner's own `user_id`
+    (live_session_orders/customers) — contained + deletable, but pollutes owner's
+    own session. (Open: use `googletest` for order-write tests instead?)
+- **F6 → YES:** include the visibility-guarded free-cap poll fix (M2 egress) during
+  5f.
+- **Per-sub-step approach (extract-vs-adapter, F3-aware):** 5a auth = adapter hook
+  (zone 6, extraction risky) · 5b read-only = DIRECT calls (already one-source) ·
+  5c load = adapter effect (pure fns already exported) · 5d feed = adapter +
+  copy `commentKey` + parity test (zone 1) · 5e fan-out = adapter reimpl over pure
+  `buildOrderFromComment` (zone 5) · 5f free-cap = adapter RPC + M2 fix · 5g
+  printing = Option B copy + parity test · 5h admin = DIRECT `accountDb`/edge +
+  temp admin acct · 5i settings = DIRECT `upsertUser`/localStorage · 5j tail =
+  wire CSV export (real) + "Soon" badges on F4 screens.
+- Recommended start: **5a (auth)**.
+
+## SESSION 2026-06-26 — PHASE 5 COMPLETE ✅ (branch `claude/full-redesign`, NOT main)
+All 10 sub-steps coded, approved + verified on the Vercel preview (login
+`googletest@sellerflowlive.com`). **`main` STILL UNTOUCHED.** 156 vitest green ·
+typecheck clean · build green at every step. Each sub-step: diff + tests + preview
+verify + Jeff "go" before commit.
+
+### Adapter architecture (load-bearing — how the wiring works)
+**All real wiring lives in `src/redesign/adapters/*` (NEW) + a few screen edits —
+ZERO edits to App.tsx / db.ts / accountDb.ts / supabase.ts / lib/* / native / cap
+SQL.** Adapters COMPOSE the already-exported safe pieces; tangled-zone logic is
+reimplemented over the SAME pure cores (parity-tested), per the F1/F3 plan.
+- `useAuthSession.ts` — real Supabase auth (shared singleton) + `getMyProfile`;
+  zone-6 split-brain handled (getSession + onAuthStateChange + cross-tab `storage`
+  event); `reloadProfile`. Pure: `profileToDisplay`, `planLabel`, `DEFAULT_CURRENCY`.
+- `useReadData.ts` — read-only: `useLiveOrders`/`useCustomers`/`useAdminUsers`
+  (loadTodaysLiveSession+rebuild / getCustomersFromDatabase / listUsers) + reload.
+- `useLiveSession.ts` — cross-device load (hydrate-on-empty) + optimistic
+  `applyOrder`/`getBuyers`/`dayId`; pure `sessionSummary`.
+- `useLiveFeed.ts` — real socket.io (same SERVER/events) + `commentKey` copied
+  VERBATIM (parity test) + dedup/scroll; preview synthetic injector (`isPreviewEnv`).
+- `useOrders.ts` — 1-Click/Enterprise fan-out reimplemented over pure
+  `buildOrderFromComment` + SAME 3 db writes; free-cap soft-block + onPrint hooks.
+- `useFreeCap.ts` — free-tier RPCs (`free_tier_status_for_user`/`mark_warned`) +
+  near/hard popups + **M2 visibility-guarded poll** (no bg-tab egress).
+- `useAdmin.ts` — admin writes (adminUpdatePlan / deleteUser / admin-set-password
+  edge fn / saveAuditLog); pure `approvePlanPatch` (parity test).
+- `printing.ts` — **F1 Option B**: `buildNativeStickerPayload`/`buildSlipPayload`
+  + native bridge COPIED VERBATIM + byte-parity test; web/preview = no-op.
+- `csv.ts` — `csvDL`/`toCSV` copied verbatim (byte-parity test).
+- `components/SoonBadge.tsx` — design-token "Soon" pill for no-backend features.
+
+### Sub-steps + commits (on `claude/full-redesign`)
+- **5a** auth — `5565678`
+- **5b** read-only data + real Taiwan prices (Basic NT$500/Pro NT$1,200/Master NT$1,700) — `9d8c74b`
+- **5c** cross-device live-session load (hydrate-on-empty) — `99aa07e`
+- **5d** real live comment feed (socket + dedup + scroll + synthetic) — `20941f2`
+- **5e** real 1-Click/Enterprise order fan-out (writes) — `4ed7035`
+- **5f** free-cap popups + M2 visibility-guarded poll — `f72a827`
+- **5g** printing (slip + sticker) Option-B copy + byte-parity — `0b53423`
+- **5h** admin-gating (owner-only) + admin writes — `fe039ab` (+ fix `37ef053`)
+- **5i** settings persistence (real profile save via `upsertUser` + sticky `sfl_rd_*`) — `36d86d5`
+- **5j** real CSV export + "Soon" badges; Miners DERIVED real — `571bb88`
+
+### Verified / decisions realized
+- **Real DB writes** (googletest, RLS-scoped): orders→`live_session_orders`+billing
+  `orders`+`customers`; profile→`seller_profiles` (self-edit, plan/role untouched);
+  admin→plan/role/expire/set-pw/delete (is_admin gate intact). All test data
+  cleaned up; googletest restored to seller/basic.
+- **200-cap DB trigger + `seller_profiles_on_update` trigger = untouched/authoritative.**
+- **NEW backends deferred → "Soon" badges:** Shipping, Sales Report, self-serve
+  Signup, self-serve Delete Account, Products→Supabase (local Products unchanged).
+- Currency default **NT$/TWD**; subscription stays Wise+Telegram (no Play billing).
+
+## SESSION 2026-06-26 (cont.) — MULTI-DAY LIVE SESSION feature ✅ CODE-COMPLETE (branch `claude/full-redesign`, NOT main)
+NEW feature (separate from Phase 5/6): the Dashboard session-length pill (1/2/3
+days) is now REAL. Default 1-day = current behavior (buyer# resets each Taipei
+day). 2/3-day = buyer# + session continue CONTINUOUSLY across N consecutive Taipei
+calendar days, then reset to #1. **Verified on preview** (pill="3d" → continuous
+#1–6 across 3 days). 178 vitest green · typecheck · build green. **`main` untouched.**
+
+### Design (load-bearing)
+- **ACTIVITY-ANCHORED window:** a window opens on the day selling starts
+  (`window_start`) + runs N consecutive Taipei calendar days; `today − window_start
+  ≥ N` → EXPIRED → next order opens a fresh window → buyer #1. **Reset is
+  COMPUTED-ON-LOAD** (no cron/background). Stale day-pin survives only one open
+  session; any refresh/re-login re-evaluates + resets correctly (same as 5c pin).
+- **session_date on order rows stays the ACTUAL Taipei day** (production-compatible,
+  `saveLiveSessionOrder` UNTOUCHED). Only the config tracks the window.
+- **Buyer continuation is automatic** — pure `buildOrderFromComment` +
+  `rebuildSessionFromRows` are UNCHANGED; they just operate on whatever rows the
+  LOAD returns. Multi-day = load the full window range; reset = load returns empty.
+- **EGRESS-SAFE: READ-ON-LOAD ONLY, zero poll.** One config read + one session read
+  per open/login (folded into the 5c load effect). `window_start` write = ONCE per
+  window-open (not per order; `shouldOpenWindow` + sync refs). N=1 = byte-identical
+  (no config read-gate side effects beyond the single read; no config WRITE at all).
+
+### Persistence — NEW table `seller_session_config` (production Supabase, applied)
+Cols: `user_id` (PK → auth.users), `window_days smallint default 1 check 1..3`,
+`window_start date null`, `updated_at`. RLS: select/insert/update scoped to
+`user_id = auth.uid()`. **Additive, nullable, production-IGNORES-it** (App.tsx never
+reads it → production stays 1-day). This is the ONLY shared change.
+
+### Adapter (all in `src/redesign/adapters/*` — no protected/lib/db/App.tsx edits)
+- `useSessionWindow.ts` — config read/write (supabase singleton, `getSession` local)
+  + PURE (unit-tested): `clampWindowDays`, `daysBetween`, `addDays`,
+  `computeWindowState` (active/expired/dayOfWindow/loadStart), `chooseSessionLoad`
+  (day vs range), `shouldOpenWindow`, `loadLiveSessionWindow` (ranged read, SAME
+  cols/RLS/order as `loadTodaysLiveSession`, `session_date BETWEEN`). Hook:
+  `setWindowDays` (fresh window from today — decision 3), `ensureWindowOpen`
+  (once/window, N=1 no-op, idempotent cross-device via refs).
+- `useLiveSession.ts` (5c) — load gated on config `ready`; `chooseSessionLoad`
+  picks single-day (N=1/day1/expired/fresh → `loadTodaysLiveSession`, byte-identical)
+  vs window range (active multi-day day≥2). + `reset()` (clear + reload on N-switch).
+- `useOrders.ts` (5e) — `onEnsureWindow()` fire-and-forget before build; 5e fan-out /
+  dedup / orderNum epoch ms / 3 writes all UNCHANGED.
+- `RedesignApp.tsx` — pill reads `windowDays`, picks → `setWindowDays` + `reset`.
+
+### Steps + commits (on `claude/full-redesign`)
+- **1** migration `seller_session_config` (applied via Supabase MCP — no code commit)
+- **2** `useSessionWindow` + pure window-calc + tests — `583db73`
+- **3** window-range load in `useLiveSession` (N=1 byte-identical) — `1912d3e`
+- **4** open-window logic in `useOrders` (once/window, N=1 no-op) — `c376d6b`
+- **5** wire session-length pill → real N (switch = fresh window) — `3743c6e`
+
+### ⚠️ MERGE-TIME caveat (remember at F3 merge)
+Multi-day stores CONTINUED `buyer_number`s on day-2/3 rows. The 1-day production app
+reads stored `buyer_number` + loads today-only → if the SAME user ever loaded
+multi-day data in the 1-day app, day 2/3 would show continued numbers (not #1).
+**Contained now** (real sellers = production-only 1-day; multi-day = googletest/
+redesign only). After F3 merge the redesign is the only app → no conflict. Just
+don't run both apps for the same user across a multi-day window before merge.
+- **Open mid-day N-switch nuance:** switching N opens a fresh window from today;
+  clean #1 only when today has no orders yet (switch-at-session-start = normal use).
+  Mid-day switch with existing today rows continues from them (no hard #1) — by design.
+
 ## Current state / NEXT
-- `main` HEAD has all of the above. **101/101 vitest green.** Egress small. Billing
-  `orders` untouched.
-- ✅ **DONE:** Google Play production **PUBLISHED** (AAB v2 / "1.1", full rollout —
-  live); final APK (native sticker + language) distributed via Telegram.
-- ⚠️ **NEXT:** bump versionCode ≥3 before the next AAB upload.
-  Open watch items: M1 sticker clipping at high scale, M2 free-tier 30s poll egress.
+- **`main`** HEAD = Play-published prod (all pre-redesign work). **101/101 vitest
+  green.** Egress small. Billing `orders` untouched. **NOT touched.**
+- **`claude/full-redesign`** HEAD `3743c6e` = 20-screen redesign **fully wired
+  (Phase 5 a–j)** + **multi-day live session feature (code-complete)**, isolated
+  Vite entry. **178 vitest green.**
+- ✅ **DONE:** Google Play prod PUBLISHED (AAB v2/"1.1"); final APK via Telegram;
+  full redesign Phases 1–4 (visual) + **Phase 5 COMPLETE** + **multi-day session
+  feature** (verified on preview).
+- ⚠️ **NEXT:** **Phase 6 = full preview testing** (Jeff returns fresh). Then, only
+  after iOS approval + Jeff's explicit "merge to production" (F3), the redesign
+  replaces prod on `main` — **remember the multi-day merge-time caveat above**.
+  Also: bump versionCode ≥3 before the next AAB upload.
+  Open watch items: M1 sticker clipping at high scale (M2 egress fixed in redesign).
+
+## SESSION (Phase 6 cont.) — admin perfection, open registration, i18n (branch `claude/full-redesign`, NOT main)
+Post-Phase-5 wiring on the redesign. Each step = diff + tests + Jeff "go" before
+commit. Highlights:
+- **100% main-parity wiring pass:** Signup (real registration), Delete Account,
+  Sales Report, Print, Products (local `sf_prods` CRUD), Shipping (full 7-ELEVEN
+  MyShip xlsx port), Connect (#6) + Printer (#7) native/socket (PREVIEW-UNVERIFIABLE
+  — only work in APK/post-merge with the live socket), Admin (Audit Log + make-admin
+  full payload + remove-admin self-guard + expire backdate + expiring-bucket =
+  `expiringSoonSellers`), **User Base monitoring** (paid/free by PLAN, derived, no
+  new backend). Telegram handle fixed everywhere → **t.me/SellerFlowLive1995**.
+  ~267 vitest green pre-i18n.
+- **Open registration (PRODUCTION DB change, DECIDED):** edit the
+  `seller_profiles_on_insert` trigger so normal signups get `plan='free',
+  plan_status='active'` (was `'pending'`) → no admin approval. ⚠️ **Production
+  Supabase migration** (NOT redesign-only); App.tsx PendingApprovalWall becomes
+  inert. The redesign's **Sign-ups approval admin panel was REMOVED** (obsolete).
+  Free-cap trigger still gates `plan='free'` at 200/30-day. (Research snapshot:
+  23 paid / 3 free, 0 pending.) Still TODO: apply + verify the migration.
+
+### i18n / translation phase (✅ CODE-COMPLETE — all 21 screens wired, all 7 langs)
+Redesign was English-only (picker cosmetic). Now FULLY translated by REUSING
+production's system. **NEVER edit `translations.ts` / `useTranslation.ts` / `lib` —
+import only.** Done in ONE PASS (commits `27d3598` WIP-18-screens + `1212334`
+Admin/Login/Signup + verification). **`main` UNTOUCHED.**
+- **Plumbing (DONE):** `src/redesign/i18n/index.tsx` — `normalizeLang` (shims
+  `"zh-tw"`→`"zh-TW"`; 7 langs; unknown→en), `tpl()` `{placeholder}` interp,
+  `RAW` authoring map (key → all-7-langs object) transposed into `REDESIGN_STRINGS`,
+  `buildT(lang)` = `{...TRANSLATIONS[norm], ...REDESIGN_STRINGS[norm]}` (supplement
+  wins), `TProvider`/`useT` context wrapping `RedesignApp`. Exposes `RAW_KEYS`,
+  `LANGS_ALL`, `RedesignT` for tests. Tests in `i18n/__tests__/`.
+- **All screens converted (DONE):** Login, Signup, Dashboard, Orders, Products,
+  Miners, Customers, CustomerData, SalesReport, Subscription, Support, Legal,
+  DeleteAccount, CapPopup, SettingsHub, GeneralSettings, PrintPattern,
+  PrinterSettings, Shipping, Print, ConnectModal, Admin (+~14 panels). literals →
+  `t.<key>` / `tpl(t.<key>, vars)`.
+- **Key strategy — NEW keys, NOT reused production keys:** every redesign string is
+  a NEW `rd_*` key (zero collision w/ prod's 624 keys; verified). Decided AGAINST
+  reusing prod keys because prod `zh-TW`/`th`/`id` are English-base → reuse would
+  leave English fallback, violating "all 7 langs filled". New keys guarantee BOTH
+  en-byte-identical behavior AND complete fill. **504 redesign keys total** (`rd_*`
+  + 11 `lg_*`), each filled in ALL 7 langs (Admin 142, GeneralSettings 48, Dashboard
+  34, Shipping 33, PrinterSettings 32, Products 26, Login 24, Subscription 21, …).
+- **Verified:** 504 used keys == 504 defined (zero undefined/orphan, grep
+  cross-ref) · no leftover placeholder/title/label literals · vitest **281 green**
+  (incl. no-blank-in-any-lang + en-byte-exact spot-checks) · tsc clean · vite build
+  green · only `src/redesign/*` touched.
+- **Intentional non-translations** (documented): brand/feature names literal in all
+  langs (TikTok, Facebook, SellerFlowLive, 1-Click, Enterprise, Miners, "MINE"
+  badge, `AIMO D520BT…` spec); **state-equality identifiers** left English on
+  purpose (`PS_SIZES` `100x60mm (Standard)`, Product `<option>` platform values,
+  default `product="CLOTHING"`) — translating would break selection logic; demo/
+  sample data (`Juan Dela Cruz`/`JC`, sample revenue, NOTIFS, slip-preview
+  placeholders `Comment`/`Maria Santos`/`Buyer #12`).
+- ✅ **zh-TW NATIVE-VERIFIED (2026-06-26):** Jeff's Taiwan friend reviewed the FULL
+  zh-TW master list and confirmed all Traditional Chinese correct **as-is (nothing to
+  change)** → zh-TW values are now FINAL. `en` is byte-exact. `fil/vi/zh` and
+  **`th`/`id` remain AI drafts** (no native verifier for those — Jeff accepted;
+  re-verify before any high-stakes reliance). NEVER treat AI Thai/Indonesian as final.
+- ⚠️ **ONLY REMAINING i18n TO-DO — visual/layout pass (NOT self-verifiable):** Jeff
+  to eyeball the preview per-language. Longer `fil`/`vi`/`th` strings + CJK suffix
+  ordering may wrap/overflow buttons/pills. Translation ACCURACY is settled (en exact,
+  zh-TW native-verified); this is purely a visual check.
+- **Deviation note:** CLAUDE.md plan called for chunked one-screen-per-step review;
+  per Jeff's explicit instruction this was done in ONE PASS instead.
+
+## FUTURE FEATURE (PLAN-FIRST, AFTER i18n) — AUTO MODE (code→price auction)
+Build in the redesign tree only; **propose a full plan for Jeff's review BEFORE any
+code.** Builds on the existing redesign `autoWords {word,price}` concept.
+- **Vision:** seller sets a CODE→PRICE map (A=150, B=200, C=250, D=300 … up to
+  ~J/K), saves, goes live, announces a code ("code D") → system auto-creates an
+  order at that code's price off the live socket feed.
+- **LOCKED decisions:** (1) **SINGLE-WINNER** — only the FIRST commenter of the
+  exact code gets the order (auction-style). (2) **ALL CODES ALWAYS ACTIVE** —
+  automatic, no tap-to-activate. (3) **MATCH = EXACTLY the code alone** ("D" only,
+  not "D po" / "Daming" / "ok D") — main guard against accidental orders.
+  (4) **WINNER = earliest comment timestamp.** (5) **FAST/real-time off the live
+  socket** (NOT DB polling — egress-safe like multi-day).
+- **OPEN questions for the plan:** case-sensitivity ("D" vs "d"); tie-break for
+  near-simultaneous identical codes (timestamp precision / arrival order); dedup
+  (winner re-commenting = still 1 order — reuse `commentKey` dedup); multiple
+  always-active codes at once; interaction with the 5e order fan-out + dedup
+  **tangled zone**.
+- **Plan-first deliverable:** files, matching logic, dedup, egress, edge cases →
+  Jeff approves before code.

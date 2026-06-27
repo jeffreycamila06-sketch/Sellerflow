@@ -449,7 +449,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         let printBuyerNumber = boolSetting("printBuyerNumber")
         let printBuyerUsername = boolSetting("printBuyerUsername")
         let printOrderItems = boolSetting("printOrderItems")
-        let printTotal = boolSetting("printTotal")
+        // (slip TOTAL removed below — printTotal no longer read for the slip)
 
         // init
         raw([0x1B, 0x40])   // ESC @ -- reset to power-on defaults
@@ -483,10 +483,8 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                     text((order["item"] as? String) ?? "")
                     setCharSize(0x00)                                    // === normal -- order details ===
                     text("Qty: \(asInt(order["qty"]) ?? 1)")
-                    let price = (order["price"] as? Double) ?? Double((order["price"] as? Int) ?? 0)
-                    let total = (order["total"] as? Double) ?? Double((order["total"] as? Int) ?? 0)
-                    if price > 0 { text("Price: \(currency) \(money(price))") }
-                    if total > 0 { text("Total: \(currency) \(money(total))") }
+                    // Per-order "Price:" + per-row "Total:" permanently removed (redundant
+                    // with the item/price-code line above; slip de-cluttered, all slips).
 
                     if let t = order["time"] as? String, !t.isEmpty { text(t) }  // normal -- timestamp
                     line()                                                        // normal -- divider
@@ -500,12 +498,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             }
         }
 
-        let totalSpent = (buyer["totalSpent"] as? Double) ?? Double((buyer["totalSpent"] as? Int) ?? 0)
-        if printTotal && totalSpent > 0 {
-            setCharSize(Self.ESC_POS_IMPORTANT_SIZE)                 // === 2x BLOCK ===
-            bold(true); text("TOTAL: \(currency) \(money(totalSpent))"); bold(false)
-            setCharSize(0x00)                                        // === END 2x ===
-        }
+        // Grand "TOTAL:" permanently removed (fixed; no setting can re-enable it).
         text("Created: \(createdAt)")                                // normal -- timestamp
         feed(4)
         cut()

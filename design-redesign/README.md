@@ -5,6 +5,8 @@ SellerFlowLive is a **live-selling assistant** for TikTok / Facebook live seller
 
 This package contains a **complete redesign of all 16 screens** in a clean, modern SaaS aesthetic (Stripe/Linear feel), with **dark and light themes** and **6 selectable accent colors**.
 
+> **Note:** This README has two parts. The sections below describe the core 16-screen system. The **"Added features (v2)"** section at the very end documents everything layered on afterward (1-Click order tiers, channel account pickers, auto-detect setup, language picker, profile edit, printer consolidation, Admin control panels, notification bell). Read both — the v2 section is authoritative where it overlaps.
+
 ---
 
 ## About the Design Files
@@ -238,3 +240,82 @@ Top "Delete account" with back (→ Settings). Danger banner card (`--danger` bo
 - `SellerFlowLive.dc.html` — the full interactive prototype (all 16 screens, theme/accent engine, live feed). Open in a browser to explore; use the left workbench to switch theme, accent, and screen. **The workbench is a demo harness — do not build it.**
 - `support.js` — the prototype's component runtime (required to render the HTML; **not** for production).
 - `assets/icon-180.png`, `uploads/icon-180.png` — the client logo.
+
+---
+
+## Added features (v2) — authoritative
+
+Everything below was added after the initial 16-screen system. All of it lives on the **Dashboard** and inside **Settings** / **Admin**, reusing the same tokens, card styles, and the theme/accent engine. State is React-class component state in the prototype; recreate with your app's state/store.
+
+### Dashboard / Live
+- **Header counters:** the app-bar shows live **viewer count** (eye icon) and **claims** count (bag icon); both tick during the live. The big "Claims this live" / "Elapsed" stat cards and the bottom order-slip card were **removed** so the live comment feed fills the screen.
+- **Channel account pickers:** the TikTok and Facebook connection chips are **dropdown buttons**. Tapping one opens a panel listing connected accounts to pick from (TikTok: @maria_shops / @maria_beauty / @mariadeals with follower counts; Facebook: Maria's Live Shop / Maria Beauty Hub / Reseller Group PH). Selected account shows a ✓; opening one closes the other. State: `ttOpen/fbOpen`, `ttIdx/fbIdx`.
+- **Auto-detect / Manual toggle:** in the "Live comments" header, a switch toggles auto-detect of "mine" (accent = on, label "Auto-detect") vs "Manual mode" (off, claims stop auto-incrementing). State: `autoDetect`. Bound to the same state as the Settings → Auto mode toggle (changing one changes both).
+- **Per-comment actions:** every comment shows two right-aligned buttons on a second line — an outlined **Enterprise** button and a filled **1-Click** button (lightning icon). 1-Click = create the order instantly from that buyer's comment; Enterprise = the premium auto-order tier.
+
+### Settings (General Settings detail screen)
+- **Profile → Edit:** the Edit button on the profile card expands a **Basic Information** form (Shop name; Owner name + Phone row; Username handle in the readable `--handle` color; Email; Pickup/return address) with a Save button. Button label flips Edit ↔ Close. State: `profileOpen`.
+- **Appearance:** theme segmented control (drives live theme), 6 accent swatches (selected = ring + ✓), Readable @handles toggle, and a **Language** row.
+- **LIVE SESSION → Auto mode:** a row with an on/off toggle (same `autoDetect` state as the Dashboard). Tapping the row label **expands an auto-detect setup**: **Trigger word sets** — chips for 5 defaults (mine, claim, sold, get, take), each removable with ×, plus a **text input** ("Type word, press Enter") to add custom trigger words up to a **/ 20** limit (ignores blanks/dupes). State: `autoSetupOpen`, `autoWords[]`, `autoInput`. A comment matching any trigger word auto-creates the order.
+- **Printer & Display:** all printers are consolidated into ONE **Printer** row showing the selected printer; tapping it expands a **CHOOSE PRINTER** list (Receipt printer LAN · Bluetooth printer · Label/sticker printer USB) with radio selection + live status. Then a **Display & text size** row. State: `printerOpen`, `printerIdx`.
+
+### Settings hub (full-screen, opened by the bottom-nav Settings tab)
+- The hub grid tiles each have a **unique icon**. The **Language** tile opens a **language picker modal** listing **7 languages with country flags**: English 🇺🇸, Filipino 🇵🇭, Bahasa Indonesia 🇮🇩, Tiếng Việt 🇻🇳, 中文 简体 🇨🇳, 中文 繁體 🇹🇼, ไทย 🇹🇭 (current is checked; picking applies + closes). State: `lang`, `langPickerOpen`. The same 7-language picker also appears as a popover on the Login screen.
+
+### Admin → owner control panel
+The Admin screen is an **owner control center**: owner identity card (Juan Dela Cruz · Platform owner · SUPER ADMIN), **notification bell** (icon-only, in the header, with an urgent red dot), KPI grid (Total sellers 12,480 · Monthly revenue ₱4.2M · New today 38 · Open tickets 7), a Subscriptions health row (Active 9,842 / Expiring 418 / Expired 2,220), and a **Controls** grid of 6 tiles. Each control tile opens a **bottom-sheet panel** (title + × close). State: `adminPanel` (= null | 'sellers' | 'plans' | 'payments' | 'reports' | 'system' | 'broadcast').
+- **Sellers** — search, status filter chips, Add seller / Suspend / Message actions.
+- **Plans** — the three subscription tiers (Starter ₱199, Pro ₱499, Enterprise ₱1,499) with seller counts + features + New plan.
+- **Payments** — collected-today + pending summary and a recent transactions list (seller, method GCash/Maya/Bank, amount, Paid/Pending).
+- **Reports** — MRR / Growth / Churn / ARPU cards, report links, Export CSV.
+- **System (assign plan by payment)** — type the amount a new seller paid; it **auto-matches the plan** (`amt ≥ 1499 → Enterprise`, `≥ 499 → Pro`, `≥ 199 → Starter`, else —) shown in a highlighted card, then a seller selector and a **Grant {plan} plan** button. State: `assignAmount`, derived `matchedPlan`.
+- **Broadcast** — audience chips + message composer + Send.
+
+### New state summary (v2)
+`ttOpen, fbOpen, ttIdx, fbIdx, autoDetect, oneClickTier, autoSetupOpen, autoWords[], autoInput, profileOpen, printerOpen, printerIdx, lang, langPickerOpen, adminPanel, assignAmount`. All sample lists (TT_ACCOUNTS, FB_ACCOUNTS, LANGS, PLANS, PAYMENTS, PRINTERS, sellers, etc.) are static prototype data — wire to real APIs.
+
+### Interaction patterns introduced
+- **Expandable inline panels** (Auto mode setup, Printer chooser, Profile edit): a row toggles a panel beneath it within the same card; chevron rotates.
+- **Dropdowns** (channel pickers): absolute-positioned panel under a header button; opening one closes the other.
+- **Modals / bottom sheets** (language picker = centered modal; Admin control panels = bottom sheet with `sflSheet` slide-up keyframe): dismiss via × or selecting an item.
+- **Editable chip input** (trigger words): typed input + Enter appends a chip; × removes; capped at a max.
+- **Derived/computed value** (System assign-by-payment): a number input drives a computed matched-plan label live.
+
+---
+
+## Added features (v3) — authoritative (supersedes v2 where they overlap)
+
+Refinements after v2, all theme/accent-aware, same patterns.
+
+### Dashboard / Live
+- The big stat cards were replaced; header now has a **Session length selector** (top-down dropdown: **1 / 2 / 3 days**, default 1 — "ship same day" vs multi-day live before shipping). State: `sessionDays`, `sessionOpen`.
+- The header title reads **"SellerFlowLive"**. The **Auto-detect toggle was removed from the Dashboard** (now lives only in Settings → Auto mode); default is **Manual mode (auto-detect OFF)** — sellers opt in.
+- **Channel chips → connect flow:** chips start **not connected** (neutral). Pick an account in the dropdown, then press **Connect** → "Connecting…" → chip turns **green** (connected highlight: green bg + inset border + glowing pulsing dot). **Disconnect** returns to neutral. Each dropdown has **Refresh** + **Connect** footer buttons. State: `ttConnected/fbConnected`, `ttConnecting/fbConnecting`.
+- **Per-comment auto-print:** with Auto-detect ON, any comment containing a trigger word **auto-prints** and shows an **"Auto-printed {price}"** badge (price comes from the trigger word's set price). **1-Click** = manual print (shows "Printed {price}" ~1.6s then reverts to the buttons). **Enterprise** = tap → inline price input → **Enter** auto-prints at the typed price, then reverts. Trigger words now carry a **price** (e.g. `hello = 150`) editable in Settings → Auto mode.
+
+### Settings
+- **Profile → Edit** form: Pickup/return address field removed (now Shop name, Owner+Phone, Username handle, Email).
+- **Auto mode setup** (trigger word sets): each chip shows **word + price**; type `word=price` then **Enter** to add (up to 20).
+- **Printer & Display:** the **"LIVE print pattern"** row opens a full screen — a live **slip preview** (fixed SellerFlowLive logo + Session date + Shop name + Buyer # + TikTok name/username + Comment) where each field has a **toggle + size stepper (− 1× +)**; toggling/​resizing updates the preview live (off = field disappears, freeing space); the logo is fixed. **Printer Test** + **Save settings** buttons. State: `pp{...}`.
+- The **Printer** row's chooser items open a **Printer settings** screen: **Receipt printer → WiFi/LAN** view (saved-printer status, OUTPUT FORMAT Receipt/Sticker, IP + Port, Find/Test Connection/Connect/Test Print). **Bluetooth printer →** Bluetooth view (No-printer status, **Sticker size** dropdown with 100×60/80×60/80×50/70×50/60×40mm, Scan paired Bluetooth printers). Compact, WiFi-only on the receipt page. State: `psType`, `psOut`, `psSize`, `psSizeOpen`.
+- **Appearance** is compact; **Language** and **Currency** are two aligned **top-down dropdown rows**. **Currency** is a **global app-wide setting** (default **USD $**) with 7 options matching the 7 languages: USD $, PHP ₱, IDR Rp, VND ₫, CNY ¥, TWD NT$, THB ฿. Changing it re-renders **every price in the app** via a `cur` symbol token. State: `currency`, `apLangOpen`, `apCurOpen`.
+
+### Login / Auth
+- **Forgot password?** → Telegram popup ("Reset your password" — admin-only reset; "Maybe next time" / **Next →** opens `https://t.me/SellerFlowSupport`). State: `loginModal`.
+- **Create account** → a real **signup screen** (pre-auth, no bottom nav): Shop name, Owner name + Phone, Username handle, Email, Password + Confirm; "Create account" → Dashboard; "Already have an account? Log in". Screen id `signup`.
+
+### Admin → owner control center (expanded)
+- Owner card trimmed (no caption line). **KPI grid** = **Monthly revenue** (clickable) + **New today / sign-ups to approve** (clickable). Total sellers & Open tickets cards and the "Recent sellers" list were **removed** (sellers now live in the Sellers → Users panel).
+- **Notification bell** is functional: a **live counter badge** (currently 5 = new sign-ups + subscriptions expiring ≤5 days) opens a **Notifications** panel listing each (color-coded: accent = sign-up, amber = expiring). Panel id `notifs`.
+- **Subscriptions** = **4 clickable boxes** (2×2): **Active paid**, **Expiring ‹15d**, **Free tier** (new — free shops with plan + free cycle), **Expired**. Each opens a detail panel listing the relevant shops. Panel ids `subActive/subExpiring/subFree/subExpired`.
+- **New today** card → **New sign-ups to approve** panel: pending accounts from the signup flow, each with **Approve / Reject**. Panel id `signups`; data `SIGNUPS`.
+- **Monthly revenue** card → **App revenue** panel: this-month total, platform fees, **net profit**, **revenue by plan** (subscribers × price), Export. Panel id `revenue`.
+- **Sellers** control → full **Users management** list (replaces old seller cards): per-user card with email + note, **Role** badge (Admin/Seller), **Plan** badge, **Days** + **Accounts**, **plan tier quick-set** (Free/Basic/Pro/Master), and actions (Edit · Reset PW · Make Admin/Remove Admin · Expire · Delete). Data `USERS`.
+  - **+ Add days** per user: tap → number input → **Enter** adds to that user's remaining **Days** (e.g. paid 2 months → type 60 → +60). State: `userDays{}`, `addIdx`, `addVal`.
+  - **Dynamic revenue:** the plan tier buttons actually **change the user's plan**, and the change is **detected as profit** in the App revenue panel (a live "Detected from plan changes: +{cur}{amount}" line). Prices: **Basic NT$500 · Pro NT$1,200 · Master NT$1,700 · Free 0** (`PLAN_PRICE` map). State: `userPlans{}`.
+
+### Currency note
+All prices in the prototype are rendered through a single `cur` symbol (from `CURRENCIES[currency]`). Numeric values are stored without a symbol; in production keep currency as a user/region setting and format centrally.
+
+### Full state summary (v3 additions)
+`sessionDays, sessionOpen, ttConnected, fbConnected, ttConnecting, fbConnecting, autoDetect(false default), autoWords[{word,price}], printed{}, entId, entPrice, pp{...}, psType, psOut, psSize, psSizeOpen, currency, apLangOpen, apCurOpen, loginModal, screen:'signup', adminPanel(+ subActive/subExpiring/subFree/subExpired/signups/revenue/notifs), userDays{}, userPlans{}, addIdx, addVal`.

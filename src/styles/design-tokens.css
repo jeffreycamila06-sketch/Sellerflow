@@ -1,0 +1,110 @@
+/* ============================================================================
+ * SellerFlowLive — Redesign Design Tokens  (Phase 1 · foundation only)
+ *
+ * SCOPED + ADDITIVE. Every rule below is namespaced under [data-redesign], an
+ * attribute the CURRENT app never sets — so this file has ZERO effect on the
+ * existing production UI (.app / --sf-* / --m-* / .theme-dark / .theme-regular).
+ * Nothing here is applied to any existing screen. Later phases (P2+) will mount
+ * the redesigned screens under a [data-redesign] root and consume these tokens.
+ *
+ * Values are byte-for-byte from the design handoff:
+ *   - design-redesign/README.md (Themes / Accent / Tokens tables)
+ *   - design-redesign/SellerFlowLive.dc.html token engine (lines 871–1019),
+ *     rgba() helper at line 989: rgba(hex,a) -> rgba(r,g,b,a).
+ *
+ * Defaults: Light theme + Indigo accent (per README "default is Light + Indigo").
+ * Theme is selected via [data-theme="light"|"dark"]; accent via
+ * [data-accent="indigo"|"violet"|"emerald"|"rose"|"sky"|"amber"].
+ * ============================================================================ */
+
+/* ── Accent presets: base / light / dark shades (+ rgb for soft alphas) ──────
+ * Source: dc.html L871–876. `--_accent*` are PRIVATE (underscore) inputs; the
+ * theme blocks below derive the public --accent* tokens from them. */
+[data-redesign][data-accent="indigo"]  { --_accent:#4f46e5; --_accent-light:#a5b4fc; --_accent-dark:#3730a3; --_accent-rgb:79,70,229; }
+[data-redesign][data-accent="violet"]  { --_accent:#7c3aed; --_accent-light:#c4b5fd; --_accent-dark:#5b21b6; --_accent-rgb:124,58,237; }
+[data-redesign][data-accent="emerald"] { --_accent:#059669; --_accent-light:#34d399; --_accent-dark:#065f46; --_accent-rgb:5,150,105; }
+[data-redesign][data-accent="rose"]    { --_accent:#e11d48; --_accent-light:#fda4af; --_accent-dark:#9f1239; --_accent-rgb:225,29,72; }
+[data-redesign][data-accent="sky"]     { --_accent:#0284c7; --_accent-light:#7dd3fc; --_accent-dark:#075985; --_accent-rgb:2,132,199; }
+[data-redesign][data-accent="amber"]   { --_accent:#d97706; --_accent-light:#fcd34d; --_accent-dark:#b45309; --_accent-rgb:217,119,6; }
+
+/* Default accent = Indigo when [data-accent] is absent. */
+[data-redesign]:not([data-accent]) { --_accent:#4f46e5; --_accent-light:#a5b4fc; --_accent-dark:#3730a3; --_accent-rgb:79,70,229; }
+
+/* ── LIGHT theme (default) — dc.html L1010–1019 + common L996–997 ────────────
+ * Applies to [data-redesign] with no theme attr OR [data-theme="light"]. */
+[data-redesign],
+[data-redesign][data-theme="light"] {
+  /* surfaces / text */
+  --app-bg: #f3f4fb;
+  --surface: #ffffff;
+  --surface-2: #f6f7fc;
+  --surface-3: #eef0f9;
+  --border: rgba(28,26,53,.09);
+  --border-strong: rgba(28,26,53,.16);
+  --text: #1c1a35;
+  --text-dim: #5a5872;
+  --text-muted: #9795ad;
+  --on-header: #ffffff;
+  --nav-bg: #ffffff;
+  --shadow: 0 1px 3px rgba(28,26,53,.08), 0 12px 28px rgba(28,26,53,.07);
+  --chip-bg: #f1f2fa;
+  --ok: #059669;
+  --warn: #d97706;
+  --danger: #e11d48;
+  /* accent-derived — light theme: accent *text* uses the DARK shade;
+     soft = base @ 12%, softer = base @ 7%; header band = solid accent. */
+  --accent: var(--_accent);
+  --accent-text: #ffffff;
+  --accent-chip: rgba(var(--_accent-rgb), .20);
+  --accent-fg: var(--_accent-dark);
+  --handle: var(--_accent-dark);
+  --accent-soft: rgba(var(--_accent-rgb), .12);
+  --accent-softer: rgba(var(--_accent-rgb), .07);
+  --header-bg: var(--_accent);
+  --glow-a: rgba(var(--_accent-rgb), .5);
+}
+
+/* ── DARK theme ("automation" indigo look) — dc.html L999–1008 + common ──────
+ * accent *text* uses the LIGHT shade; soft = base @ 24%, softer = base @ 14%;
+ * app-bg is a radial gradient whose first stop swaps with the accent's dark. */
+[data-redesign][data-theme="dark"] {
+  --app-bg: radial-gradient(125% 95% at 50% -12%, var(--_accent-dark) 0%, #15123f 46%, #0a0824 100%);
+  --surface: rgba(255,255,255,.055);
+  --surface-2: rgba(255,255,255,.03);
+  --surface-3: rgba(255,255,255,.09);
+  --border: rgba(255,255,255,.10);
+  --border-strong: rgba(255,255,255,.18);
+  --text: #ffffff;
+  --text-dim: #c2c9ee;
+  --text-muted: rgba(224,231,255,.5);
+  --on-header: #ffffff;
+  --nav-bg: rgba(16,12,46,.66);
+  --shadow: 0 10px 30px rgba(0,0,0,.45);
+  --chip-bg: rgba(255,255,255,.07);
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --danger: #fb7185;
+  --accent: var(--_accent);
+  --accent-text: #ffffff;
+  --accent-chip: rgba(var(--_accent-rgb), .20);
+  --accent-fg: var(--_accent-light);
+  --handle: var(--_accent-light);
+  --accent-soft: rgba(var(--_accent-rgb), .24);
+  --accent-softer: rgba(var(--_accent-rgb), .14);
+  --header-bg: rgba(16,12,46,.62);
+  --glow-a: rgba(var(--_accent-rgb), .55);
+  /* decorative dark-bg layers (README "Themes"): cyan glow + animated grid.
+     dc.html L87 cyan glow rgba(34,211,238,.34); grid 1px rgba(255,255,255,.045). */
+  --glow-cyan: rgba(34,211,238,.34);
+  --grid-line: rgba(255,255,255,.045);
+}
+
+/* ── Typography families (Google Fonts loaded via index.html; NOT applied to
+ * any existing screen — later phases set font-family on redesigned elements).
+ * README "Typography": Space Grotesk = display/titles/big numbers; Plus Jakarta
+ * Sans = all UI/body; JetBrains Mono = numeric/tabular (₱, #order, counts). */
+[data-redesign] {
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-ui: 'Plus Jakarta Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}

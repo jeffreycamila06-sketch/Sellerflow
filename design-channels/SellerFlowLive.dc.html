@@ -729,16 +729,18 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
       <div>
         <div style="font-size:11px;letter-spacing:.12em;font-weight:800;color:var(--text-muted);margin:0 4px 9px;">CHANNELS</div>
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow);overflow:hidden;">
-          <div style="display:flex;align-items:center;gap:12px;padding:14px;border-bottom:1px solid var(--border);">
-            <div style="width:38px;height:38px;border-radius:11px;background:#000;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;">t</div>
-            <div style="flex:1;"><div style="font-size:13.5px;font-weight:700;color:var(--text);">TikTok Live</div><div style="font-size:11.5px;font-weight:600;color:var(--handle);">@maria_shops</div></div>
+          <button onClick="{{ goTtChannels }}" style="width:100%;display:flex;align-items:center;gap:12px;padding:14px;border:none;border-bottom:1px solid var(--border);background:transparent;cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;">
+            <div style="width:38px;height:38px;border-radius:11px;background:#000;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;flex-shrink:0;">t</div>
+            <div style="flex:1;"><div style="font-size:13.5px;font-weight:700;color:var(--text);">TikTok Live</div></div>
             <span style="display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:var(--ok);"><span style="width:7px;height:7px;border-radius:50%;background:var(--ok);"></span>Connected</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:12px;padding:14px;">
-            <div style="width:38px;height:38px;border-radius:11px;background:#1877f2;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;color:#fff;font-family:'Space Grotesk',sans-serif;">f</div>
-            <div style="flex:1;"><div style="font-size:13.5px;font-weight:700;color:var(--text);">Facebook Live</div><div style="font-size:11.5px;font-weight:600;color:var(--handle);">Maria's Live Shop</div></div>
+            <span style="font-size:16px;color:var(--text-muted);margin-left:2px;">›</span>
+          </button>
+          <button onClick="{{ goFbChannels }}" style="width:100%;display:flex;align-items:center;gap:12px;padding:14px;border:none;background:transparent;cursor:pointer;text-align:left;font-family:'Plus Jakarta Sans',sans-serif;">
+            <div style="width:38px;height:38px;border-radius:11px;background:#1877f2;display:flex;align-items:center;justify-content:center;font-size:17px;font-weight:800;color:#fff;font-family:'Space Grotesk',sans-serif;flex-shrink:0;">f</div>
+            <div style="flex:1;"><div style="font-size:13.5px;font-weight:700;color:var(--text);">Facebook Live</div></div>
             <span style="display:flex;align-items:center;gap:5px;font-size:11.5px;font-weight:700;color:var(--ok);"><span style="width:7px;height:7px;border-radius:50%;background:var(--ok);"></span>Connected</span>
-          </div>
+            <span style="font-size:16px;color:var(--text-muted);margin-left:2px;">›</span>
+          </button>
         </div>
       </div>
 
@@ -1236,6 +1238,105 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
     </div>
   </div>
 </sc-if>
+
+<sc-if value="{{ show.ttchannels }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="position:sticky;top:0;z-index:5;background:var(--header-bg);backdrop-filter:saturate(1.5) blur(14px);color:var(--on-header);padding:14px 16px;display:flex;align-items:center;gap:12px;">
+      <button onClick="{{ goSettings }}" style="display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.18);border:none;padding:7px 12px 7px 9px;border-radius:9px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">‹ Back</button>
+      <div style="display:flex;align-items:center;gap:9px;">
+        <span style="width:26px;height:26px;border-radius:8px;background:#000;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;flex-shrink:0;">t</span>
+        <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:17px;letter-spacing:-.01em;">Manage TikTok channels</div>
+      </div>
+    </div>
+
+    <div style="padding:16px 14px 24px;">
+      <sc-for list="{{ ttChannels }}" as="c" hint-placeholder-count="3">
+        <div style="margin-bottom:16px;">
+          <label style="font-size:13px;font-weight:800;color:var(--text);display:block;margin-bottom:8px;">ID TikTok {{ c.idx }}</label>
+          <div style="display:flex;gap:9px;align-items:stretch;">
+            <div style="flex:1;display:flex;align-items:center;gap:4px;border:1px solid var(--border-strong);border-radius:12px;background:var(--surface-2);padding:0 13px;">
+              <span style="font-family:'JetBrains Mono',monospace;font-size:14px;font-weight:700;color:var(--text-muted);">@</span>
+              <input value="{{ c.handleBare }}" style="flex:1;min-width:0;border:none;background:transparent;color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:700;padding:13px 0;outline:none;">
+            </div>
+            <span style="display:flex;align-items:center;padding:0 16px;border-radius:12px;background:{{ c.badgeBg }};color:{{ c.badgeFg }};font-size:12px;font-weight:800;letter-spacing:.04em;flex-shrink:0;">{{ c.badge }}</span>
+          </div>
+        </div>
+      </sc-for>
+
+      <div style="font-size:12px;color:var(--text-muted);line-height:1.5;margin:2px 2px 16px;">Username can only contain lowercase letters, numbers, underscores and periods.</div>
+
+      <button onClick="{{ openTtAdd }}" style="width:100%;padding:15px 0;border:none;border-radius:13px;background:var(--accent);color:var(--accent-text);font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:800;letter-spacing:.02em;cursor:pointer;box-shadow:0 6px 18px var(--accent-soft);">Add TikTok — Multi Account</button>
+    </div>
+
+    <sc-if value="{{ ttAddOpen }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ closeTtAdd }}" style="position:absolute;inset:0;z-index:9;background:rgba(8,6,24,.55);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:28px;">
+        <div style="width:100%;max-width:300px;background:var(--surface);border:1px solid var(--border);border-radius:20px;box-shadow:0 24px 60px rgba(0,0,0,.4);overflow:hidden;">
+          <div style="padding:22px 20px 18px;">
+            <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:17px;color:var(--text);line-height:1.25;">Add TikTok — Multi Account</div>
+            <div style="font-size:13px;color:var(--text-dim);line-height:1.55;margin-top:9px;">To add a TikTok ID for LIVE multi-account, please message our admin on Telegram and we'll set it up for you.</div>
+            <div style="display:flex;align-items:center;justify-content:center;gap:7px;margin-top:14px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:9px;">
+              <span style="width:18px;height:18px;border-radius:5px;background:#0088cc;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="11" height="11" viewBox="0 0 24 24" fill="#fff"><path d="M21.5 4.3 3.2 11.4c-1 .4-1 1.8.1 2.1l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.3l2.5-2.6 4.7 3.4c.6.4 1.4.1 1.6-.6l3-15c.2-1-.7-1.8-1.6-1.3Z"/></svg></span>
+              <span style="font-size:13px;font-weight:700;color:var(--text);">@sellerflowlive1995</span>
+            </div>
+          </div>
+          <div style="display:flex;border-top:1px solid var(--border);">
+            <button onClick="{{ closeTtAdd }}" style="flex:1;padding:15px 0;border:none;border-right:1px solid var(--border);background:transparent;color:var(--text-dim);font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;">Cancel</button>
+            <a href="https://t.me/sellerflowlive1995" target="_blank" onClick="{{ closeTtAdd }}" style="flex:1;padding:15px 0;background:#0088cc;color:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:6px;">OK<span style="font-size:15px;">→</span></a>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+</sc-if>
+
+<sc-if value="{{ show.fbchannels }}" hint-placeholder-val="{{ false }}">
+  <div>
+    <div style="position:sticky;top:0;z-index:5;background:var(--header-bg);backdrop-filter:saturate(1.5) blur(14px);color:var(--on-header);padding:14px 16px;display:flex;align-items:center;gap:12px;">
+      <button onClick="{{ goSettings }}" style="display:flex;align-items:center;gap:5px;background:rgba(255,255,255,.18);border:none;padding:7px 12px 7px 9px;border-radius:9px;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:'Plus Jakarta Sans',sans-serif;">‹ Back</button>
+      <div style="display:flex;align-items:center;gap:9px;">
+        <span style="width:26px;height:26px;border-radius:8px;background:#1877f2;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:800;color:#fff;font-family:'Space Grotesk',sans-serif;flex-shrink:0;">f</span>
+        <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:17px;letter-spacing:-.01em;">Manage Facebook channels</div>
+      </div>
+    </div>
+
+    <div style="padding:16px 14px 24px;">
+      <sc-for list="{{ fbChannels }}" as="c" hint-placeholder-count="1">
+        <div style="margin-bottom:16px;">
+          <label style="font-size:13px;font-weight:800;color:var(--text);display:block;margin-bottom:8px;">Facebook page {{ c.idx }}</label>
+          <div style="display:flex;gap:9px;align-items:stretch;">
+            <div style="flex:1;display:flex;align-items:center;border:1px solid var(--border-strong);border-radius:12px;background:var(--surface-2);padding:0 13px;">
+              <input value="{{ c.handle }}" style="flex:1;min-width:0;border:none;background:transparent;color:var(--text);font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:700;padding:13px 0;outline:none;">
+            </div>
+            <span style="display:flex;align-items:center;padding:0 16px;border-radius:12px;background:{{ c.badgeBg }};color:{{ c.badgeFg }};font-size:12px;font-weight:800;letter-spacing:.04em;flex-shrink:0;">{{ c.badge }}</span>
+          </div>
+        </div>
+      </sc-for>
+
+      <div style="font-size:12px;color:var(--text-muted);line-height:1.5;margin:2px 2px 16px;">Connect a Facebook Page or Group you manage to capture live comments.</div>
+
+      <button onClick="{{ openFbAdd }}" style="width:100%;padding:15px 0;border:none;border-radius:13px;background:var(--accent);color:var(--accent-text);font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:800;letter-spacing:.02em;cursor:pointer;box-shadow:0 6px 18px var(--accent-soft);">Add Facebook — Multi Account</button>
+    </div>
+
+    <sc-if value="{{ fbAddOpen }}" hint-placeholder-val="{{ false }}">
+      <div onClick="{{ closeFbAdd }}" style="position:absolute;inset:0;z-index:9;background:rgba(8,6,24,.55);backdrop-filter:blur(2px);display:flex;align-items:center;justify-content:center;padding:28px;">
+        <div style="width:100%;max-width:300px;background:var(--surface);border:1px solid var(--border);border-radius:20px;box-shadow:0 24px 60px rgba(0,0,0,.4);overflow:hidden;">
+          <div style="padding:22px 20px 18px;">
+            <div style="font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:17px;color:var(--text);line-height:1.25;">Add Facebook — Multi Account</div>
+            <div style="font-size:13px;color:var(--text-dim);line-height:1.55;margin-top:9px;">To add a Facebook page or group for LIVE multi-account, please message our admin on Telegram and we'll set it up for you.</div>
+            <div style="display:flex;align-items:center;justify-content:center;gap:7px;margin-top:14px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:9px;">
+              <span style="width:18px;height:18px;border-radius:5px;background:#0088cc;display:flex;align-items:center;justify-content:center;flex-shrink:0;"><svg width="11" height="11" viewBox="0 0 24 24" fill="#fff"><path d="M21.5 4.3 3.2 11.4c-1 .4-1 1.8.1 2.1l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.3l2.5-2.6 4.7 3.4c.6.4 1.4.1 1.6-.6l3-15c.2-1-.7-1.8-1.6-1.3Z"/></svg></span>
+              <span style="font-size:13px;font-weight:700;color:var(--text);">@sellerflowlive1995</span>
+            </div>
+          </div>
+          <div style="display:flex;border-top:1px solid var(--border);">
+            <button onClick="{{ closeFbAdd }}" style="flex:1;padding:15px 0;border:none;border-right:1px solid var(--border);background:transparent;color:var(--text-dim);font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;">Cancel</button>
+            <a href="https://t.me/sellerflowlive1995" target="_blank" onClick="{{ closeFbAdd }}" style="flex:1;padding:15px 0;background:#0088cc;color:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:6px;">OK<span style="font-size:15px;">→</span></a>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+</sc-if>
 <!--SCREENS-->
         </div>
 
@@ -1545,7 +1646,7 @@ body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; background: #0b0
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1180,&quot;height&quot;:860}}">
 class Component extends DCLogic {
-  state = { theme:'light', accent:'indigo', screen:'dashboard', moreOpen:false, comments:[], slipFlash:false, liveClaims:47, viewers:1284, sessionDays:1, sessionOpen:false, langOpen:false, lang:'en', currency:'USD', apLangOpen:false, apCurOpen:false, loginModal:null, ttOpen:false, fbOpen:false, ttIdx:0, fbIdx:0, ttConnected:false, fbConnected:false, ttConnecting:false, fbConnecting:false, oneClickTier:'sellerflow', autoDetect:false, autoSetupOpen:false, autoAction:'slip', autoWords:[{word:'mine',price:'150'},{word:'claim',price:'150'},{word:'sold',price:'150'},{word:'get',price:'150'},{word:'take',price:'150'}], autoInput:'', printed:{}, entId:null, entPrice:'', profileOpen:false, printerOpen:false, printerIdx:0, psType:'wifi', psOut:'receipt', psSize:'100x60mm (Standard)', psSizeOpen:false, langPickerOpen:false, adminPanel:null, addIdx:null, addVal:'', userDays:{}, userPlans:{}, assignAmount:'499', pp:{ shopName:true, shopNameSize:1, dateTime:true, dateTimeSize:1, buyerNum:true, buyerNumSize:1, tiktokName:true, tiktokNameSize:1, tiktokUser:true, tiktokUserSize:1, comment:true, commentSize:1 } };
+  state = { theme:'light', accent:'indigo', screen:'dashboard', moreOpen:false, comments:[], slipFlash:false, liveClaims:47, viewers:1284, sessionDays:1, sessionOpen:false, langOpen:false, lang:'en', currency:'USD', apLangOpen:false, apCurOpen:false, loginModal:null, ttAddOpen:false, fbAddOpen:false, ttOpen:false, fbOpen:false, ttIdx:0, fbIdx:0, ttConnected:false, fbConnected:false, ttConnecting:false, fbConnecting:false, oneClickTier:'sellerflow', autoDetect:false, autoSetupOpen:false, autoAction:'slip', autoWords:[{word:'mine',price:'150'},{word:'claim',price:'150'},{word:'sold',price:'150'},{word:'get',price:'150'},{word:'take',price:'150'}], autoInput:'', printed:{}, entId:null, entPrice:'', profileOpen:false, printerOpen:false, printerIdx:0, psType:'wifi', psOut:'receipt', psSize:'100x60mm (Standard)', psSizeOpen:false, langPickerOpen:false, adminPanel:null, addIdx:null, addVal:'', userDays:{}, userPlans:{}, assignAmount:'499', pp:{ shopName:true, shopNameSize:1, dateTime:true, dateTimeSize:1, buyerNum:true, buyerNumSize:1, tiktokName:true, tiktokNameSize:1, tiktokUser:true, tiktokUserSize:1, comment:true, commentSize:1 } };
 
   PLANS = [
     {name:'Starter',price:'199',per:'/mo',sellers:'4,120 sellers',feats:['1 live channel','Auto-detect "mine"','Order slips']},
@@ -1641,7 +1742,7 @@ class Component extends DCLogic {
     dashboard:'Dashboard', menu:'Settings', miners:'Miners', orders:'Orders', products:'Products', login:'Login / Landing',
     settings:'Settings', customers:'Customers', subscription:'Subscription', support:'Support',
     admin:'Admin', print:'Print Slip', sales:'Sales Report', shipping:'Shipping',
-    customerdata:'Customer Data', legal:'Privacy & Terms', delete:'Delete Account', printpattern:'LIVE Print Pattern', printersettings:'Printer settings', signup:'Create account'
+    customerdata:'Customer Data', legal:'Privacy & Terms', delete:'Delete Account', printpattern:'LIVE Print Pattern', printersettings:'Printer settings', signup:'Create account', ttchannels:'Manage TikTok channels', fbchannels:'Manage Facebook channels'
   };
 
   INCOMING = [
@@ -1848,7 +1949,7 @@ class Component extends DCLogic {
       tint: id==='delete'?this.rgba('#e11d48',.13):'var(--accent-soft)',
       ink: id==='delete'?'var(--danger)':'var(--accent-fg)'}));
 
-    const extra=['settings','customers','subscription','support','admin','print','sales','shipping','customerdata','legal','delete','printpattern','printersettings'];
+    const extra=['settings','customers','subscription','support','admin','print','sales','shipping','customerdata','legal','delete','printpattern','printersettings','ttchannels','fbchannels'];
     const navOn=(b)=>b?'var(--accent-fg)':'var(--text-muted)';
     const navBg=(b)=>b?'var(--accent-soft)':'transparent';
     const nDash=screen==='dashboard', nMin=screen==='miners', nOrd=screen==='orders', nProd=screen==='products', nMore=screen==='menu'||extra.includes(screen);
@@ -1889,6 +1990,18 @@ class Component extends DCLogic {
       goDelete:this.go('delete'), goSettings:this.go('settings'), goCustomers:this.go('customers'),
       goAdmin:this.go('admin'), goSales:this.go('sales'), goShipping:this.go('shipping'), goCustomerData:this.go('customerdata'),
       goPrintPattern:this.go('printpattern'),
+      goTtChannels:this.go('ttchannels'),
+      goFbChannels:this.go('fbchannels'),
+      fbChannels:this.FB_ACCOUNTS.slice(0,1).map((a,i)=>({...a, idx:i+1, badge:i===0?'TRIAL':'PRO',
+        badgeBg:i===0?'var(--surface-3)':'var(--accent-soft)', badgeFg:i===0?'var(--text-muted)':'var(--accent-fg)'})),
+      fbAddOpen:this.state.fbAddOpen,
+      openFbAdd:()=>this.setState({fbAddOpen:true}),
+      closeFbAdd:()=>this.setState({fbAddOpen:false}),
+      ttAddOpen:this.state.ttAddOpen,
+      openTtAdd:()=>this.setState({ttAddOpen:true}),
+      closeTtAdd:()=>this.setState({ttAddOpen:false}),
+      ttChannels:this.TT_ACCOUNTS.slice(0,1).map((a,i)=>({...a, idx:i+1, handleBare:a.handle.replace(/^@/,''), badge:i===0?'TRIAL':'PRO',
+        badgeBg:i===0?'var(--surface-3)':'var(--accent-soft)', badgeFg:i===0?'var(--text-muted)':'var(--accent-fg)'})),
       openReceiptPrinter:()=>this.setState({screen:'printersettings', psType:'wifi', printerOpen:false}),
       openBTPrinter:()=>this.setState({screen:'printersettings', psType:'bt', printerOpen:false}),
       psWifi:this.state.psType==='wifi', psBT:this.state.psType==='bt',
