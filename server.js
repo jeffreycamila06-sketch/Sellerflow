@@ -270,6 +270,29 @@ function liveKey(sellerId, platform, username) {
   return `${cleanSellerId(sellerId)}:${platform}:${cleanAccountKey(username)}`;
 }
 
+// Forward a comment only to the sockets in this seller's room that are VIEWING the
+// source account (or that sent no selection at all → they get everything, which
+// keeps production main byte-identical: it never emits select_account). Single-node
+// socket.io (no Redis adapter) → fetchSockets() is a cheap in-memory iteration.
+// If fetchSockets() ever fails, fall back to the old room broadcast so a comment is
+// never silently dropped.
+async function emitCommentScoped(sellerId, platform, sourceUsername, payload) {
+  const src = cleanAccountKey(sourceUsername || "");
+  let sockets = [];
+  try {
+    sockets = await io.in(sellerRoom(sellerId)).fetchSockets();
+  } catch {
+    io.to(sellerRoom(sellerId)).emit("comment", payload);
+    return;
+  }
+  for (const s of sockets) {
+    const sel = s.data && s.data.selected ? s.data.selected[platform] || "" : "";
+    // No selection on this socket → ALL comments (main-compatible). Otherwise only
+    // the selected account's comments. Missing src → send (never hide on bad data).
+    if (!sel || !src || sel === src) s.emit("comment", payload);
+  }
+}
+
 function isTikTokRateLimitError(error) {
   const message = String(error?.message || error || "").toLowerCase();
   return message.includes("rate_limit") || message.includes("too many connections");
@@ -442,6 +465,19 @@ io.on("connection", (socket) => {
         sessionId: active.sessionId,
       });
     }
+  });
+
+  // Per-socket comment scoping. The client tells the server which account it is
+  // currently VIEWING per platform; the server then only forwards that account's
+  // comments to this socket (see emitCommentScoped). Multiple accounts stay live
+  // simultaneously — this only governs what THIS socket receives.
+  // ⚠️ Backward-compat: a client that never emits select_account leaves
+  // socket.data.selected undefined → emitCommentScoped treats it as "no selection"
+  // → that socket receives ALL comments, exactly like before (production main).
+  socket.on("select_account", ({ platform, username } = {}) => {
+    if (!socket.data.selected) socket.data.selected = {};
+    const p = String(platform) === "Facebook" ? "Facebook" : "TikTok";
+    socket.data.selected[p] = cleanAccountKey(username || "");
   });
 });
 
@@ -755,7 +791,7 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
     const name = data.nickname || data.uniqueId || "Unknown";
     const handle = data.uniqueId || "unknown";
 
-    io.to(sellerRoom(sellerId)).emit("comment", {
+    void emitCommentScoped(sellerId, "TikTok", cleanUsername, {
       handle,
       name,
       comment,
@@ -768,7 +804,7 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
       isBuy: false,
       buyerNum: null,
       buyerData: null,
-      time: new Date().toLocaleTimeString(),
+      time: new Date().toLocaleTimeString("en-US", { timeZone: "Asia/Taipei" }),
       timestamp: new Date().toISOString(),
     });
   });
@@ -912,7 +948,7 @@ app.get("/test-comment", (req, res) => {
     isBuy: false,
     buyerNum: null,
     buyerData: null,
-    time: new Date().toLocaleTimeString(),
+    time: new Date().toLocaleTimeString("en-US", { timeZone: "Asia/Taipei" }),
     timestamp: new Date().toISOString(),
   });
 
