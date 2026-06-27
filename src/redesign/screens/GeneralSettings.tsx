@@ -8,9 +8,9 @@ import { ACCENT_ORDER, ACCENTS, PRINTERS, LANGS, CURRENCIES, CURRENCY_ORDER, typ
 import { headerBar, headerTitle, card, sectionLabel } from "../ui";
 import { profileToDisplay, planLabel, renewLabel } from "../adapters/useAuthSession";
 import type { AccountUser } from "../../accountDb";
-import SoonBadge from "../components/SoonBadge";
 import { useT, tpl } from "../i18n";
 import { accountList } from "../adapters/connect";
+import { useAutoCodes } from "../adapters/useAutoCodes";
 
 const label: CSSProperties = { fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 5 };
 const input: CSSProperties = { width: "100%", padding: "11px 13px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 600, outline: "none" };
@@ -39,6 +39,7 @@ export default function GeneralSettings({
   onManageChannel?: (platform: "tiktok" | "facebook") => void;
 }) {
   const t = useT();
+  const ac = useAutoCodes(); // Auto Mode: real code→product→inventory map (read-on-load)
   const [apLangOpen, setApLangOpen] = useState(false);
   const [apCurOpen, setApCurOpen] = useState(false);
   const curLang = LANGS.find((l) => l.code === lang) || LANGS[0];
@@ -150,7 +151,7 @@ export default function GeneralSettings({
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
               <button onClick={auto.toggleSetup} style={{ flex: 1, display: "flex", alignItems: "flex-start", gap: 9, background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: 0, fontFamily: "var(--font-ui)" }}>
                 <span style={{ flex: 1 }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_auto_mode} <SoonBadge /></span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_auto_mode}</span>
                   <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{t.rd_set_auto_desc}</span>
                 </span>
                 <span style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 1, transition: "transform .2s", transform: autoChevron, display: "inline-block" }}>▾</span>
@@ -164,18 +165,49 @@ export default function GeneralSettings({
             {auto.setupOpen && (
               <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_trigger_sets}</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{auto.words.length} / 20</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>{t.rd_auto_codes_title}</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{tpl(t.rd_auto_count, { n: ac.codes.length })}</span>
                 </div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.45, marginBottom: 11 }}>{t.rd_set_auto_help_pre}<span style={{ color: "var(--accent-fg)", fontWeight: 700 }}>{t.rd_set_auto_help_eg}</span>{tpl(t.rd_set_auto_help_post, { cur })}</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 7 }}>
-                  {auto.words.map((w, i) => (
-                    <span key={w.word} style={{ display: "flex", alignItems: "center", gap: 7, background: "var(--accent-soft)", border: "1px solid var(--accent)", color: "var(--accent-fg)", padding: "6px 8px 6px 11px", borderRadius: 9, fontSize: 12, fontWeight: 700 }}>{w.word}<span style={{ fontFamily: "var(--font-mono)", fontWeight: 700, opacity: 0.85 }}>{cur}{w.price}</span><button onClick={() => auto.removeWord(i)} title={t.rd_set_remove} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--accent-fg)", fontSize: 15, lineHeight: 1, padding: 0, display: "flex", alignItems: "center" }}>×</button></span>
-                  ))}
-                  {auto.words.length < 20 && (
-                    <input value={auto.input} onChange={(e) => auto.setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); auto.addWord(); } }} placeholder={t.rd_set_word_ph} style={{ background: "transparent", border: "1.3px dashed var(--border-strong)", color: "var(--text)", padding: "6px 11px", borderRadius: 9, fontSize: 12, fontWeight: 700, fontFamily: "var(--font-ui)", outline: "none", width: 188 }} />
-                  )}
-                </div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.45, marginBottom: 11 }}>{t.rd_auto_help}</div>
+
+                {ac.products.length === 0 ? (
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 0" }}>{t.rd_auto_no_products}</div>
+                ) : (
+                  <>
+                    {ac.codes.map((row, i) => {
+                      const stock = ac.stockFor(row.productLocalId);
+                      const soldOut = stock <= 0;
+                      return (
+                        <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 11, padding: 10, marginBottom: 8, background: "var(--surface-2)" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <input value={row.code} onChange={(e) => ac.setCode(i, e.target.value)} placeholder={t.rd_auto_code_ph} style={{ width: 76, textAlign: "center", textTransform: "uppercase", padding: "8px 6px", border: "1px solid var(--border-strong)", borderRadius: 9, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 800, outline: "none" }} />
+                            <span style={{ flex: 1 }} />
+                            <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".02em", padding: "4px 9px", borderRadius: 999, color: soldOut ? "var(--danger)" : "var(--ok)", background: soldOut ? "var(--danger-soft, rgba(239,68,68,.12))" : "var(--accent-softer)" }}>{soldOut ? t.rd_auto_soldout : t.rd_auto_active}</span>
+                            <button onClick={() => ac.removeCode(i)} title={t.rd_auto_remove} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 18, lineHeight: 1, padding: "0 2px" }}>×</button>
+                          </div>
+                          <div style={{ marginTop: 8 }}>
+                            <label style={label}>{t.rd_auto_product}</label>
+                            <select value={row.productLocalId} onChange={(e) => ac.setProduct(i, Number(e.target.value))} style={input}>
+                              {ac.products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                            </select>
+                          </div>
+                          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                            <div style={{ flex: 1, minWidth: 0 }}><label style={label}>{t.rd_auto_price} ({cur})</label><input type="number" min="0" value={row.price} onChange={(e) => ac.setPrice(i, Number(e.target.value) || 0)} style={{ ...input, fontFamily: "var(--font-mono)" }} /></div>
+                            <div style={{ flex: 1, minWidth: 0 }}><label style={label}>{t.rd_auto_stock}</label><input type="number" min="0" value={stock} onChange={(e) => ac.setStock(row.productLocalId, parseInt(e.target.value, 10) || 0)} style={{ ...input, fontFamily: "var(--font-mono)" }} /></div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                      {ac.codes.length < 26 && (
+                        <button onClick={ac.addCode} style={{ background: "transparent", border: "1.3px dashed var(--border-strong)", color: "var(--accent-fg)", padding: "8px 12px", borderRadius: 9, fontSize: 12, fontWeight: 700, fontFamily: "var(--font-ui)", cursor: "pointer" }}>{t.rd_auto_add}</button>
+                      )}
+                      <span style={{ flex: 1 }} />
+                      {ac.saved && <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ok)" }}>{t.rd_auto_saved}</span>}
+                      <button onClick={() => { void ac.save(); }} disabled={ac.saving} style={{ background: "var(--accent)", color: "var(--accent-text)", border: "none", padding: "8px 16px", borderRadius: 9, fontSize: 12.5, fontWeight: 700, fontFamily: "var(--font-ui)", cursor: ac.saving ? "default" : "pointer", opacity: ac.saving ? 0.7 : 1 }}>{ac.saving ? t.rd_auto_saving : t.rd_auto_save}</button>
+                    </div>
+                  </>
+                )}
               </div>
             )}
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>

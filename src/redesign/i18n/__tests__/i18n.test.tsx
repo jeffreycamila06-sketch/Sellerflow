@@ -98,7 +98,7 @@ describe("en values are byte-exact for the shipped English (no en drift)", () =>
     expect(t.rd_dash_1click).toBe("1-Click");
     // Wave 4 (settings)
     expect(t.rd_set_save_changes).toBe("Save changes");
-    expect(t.rd_set_auto_help_post).toBe(" → prints {cur}150.");
+    expect(t.rd_auto_codes_title).toBe("Code → product");
     expect(t.rd_pp_save_settings).toBe("Save settings");
     expect(t.rd_ps_test_print).toBe("Test Print");
     expect(t.rd_back).toBe("‹ Back");
