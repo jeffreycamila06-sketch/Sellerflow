@@ -130,6 +130,22 @@ export async function migrateLocalProducts(local: Product[]): Promise<boolean> {
   return true;
 }
 
+// Auto Mode — atomic inventory decrement + Part-2 link in ONE write, via the
+// SECURITY DEFINER RPC decrement_product_stock (anti-oversell across devices). The
+// RPC enforces ownership internally (user_id = auth.uid()) and only decrements when
+// stock > 0, also stamping last_ordered_at (= the product↔order link Part 2 needs).
+// Returns the NEW stock on success, -1 when nothing was decremented (sold out / not
+// found / not owner), or null when the call couldn't run (unconfigured / no session
+// / error) so the caller can leave its live count untouched.
+export async function decrementStockAndTouch(localId: number): Promise<number | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+  const id = await uid();
+  if (!id) return null;
+  const { data, error } = await supabase.rpc("decrement_product_stock", { p_local_id: localId });
+  if (error) { console.error("Decrement stock error:", error.message); return null; }
+  return data == null ? null : Number(data);
+}
+
 // Orchestrates the initial load: DB wins when it has rows; an empty DB triggers the
 // one-time local→DB migration (when the local list is real, non-seed data); any
 // failure / no-session keeps the local cache untouched. The caller mirrors the
