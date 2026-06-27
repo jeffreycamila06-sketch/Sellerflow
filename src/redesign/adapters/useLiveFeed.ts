@@ -104,7 +104,7 @@ export interface UseLiveFeed {
   connect: (platform: Platform, data: Record<string, string>) => Promise<ConnectResult>;
 }
 
-export function useLiveFeed(enabled: boolean, email: string | undefined, onComment?: (c: ProdComment) => void): UseLiveFeed {
+export function useLiveFeed(enabled: boolean, email: string | undefined, onComment?: (c: ProdComment) => void, selected?: ActiveAccounts): UseLiveFeed {
   const [feed, setFeed] = useState<ProdComment[]>([]);
   const [connected, setConnected] = useState(false);
   // Auto Mode seam — held in a ref so a changing handler identity NEVER re-subscribes
@@ -113,13 +113,23 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   const onCommentRef = useRef(onComment);
   onCommentRef.current = onComment;
   // #6 — active live account per platform + per-platform connected flags. Driven by
-  // the server `platform_status` event (App.tsx 4072-4080); the ref lets the comment
-  // handler filter by the active account without re-subscribing.
+  // the server `platform_status` event (App.tsx 4072-4080). These still drive the
+  // connected-status indicators; they no longer drive the comment filter.
   const [activeAccounts, setActiveAccounts] = useState<ActiveAccounts>({ TikTok: "", Facebook: "" });
   const [ttConnected, setTtConnected] = useState(false);
   const [fbConnected, setFbConnected] = useState(false);
   const activeRef = useRef<ActiveAccounts>(activeAccounts);
   activeRef.current = activeAccounts;
+  // Account-leak fix: the comment filter follows the USER's dropdown selection, NOT
+  // the server-driven activeAccounts (last-platform_status-wins, drifts when multiple
+  // accounts are live). The ref lets the comment handler read the latest selection
+  // without re-subscribing the socket. We ALSO tell the server this selection via
+  // `select_account` so the wrong account's comments never reach this socket.
+  const ttSel = selected?.TikTok || "";
+  const fbSel = selected?.Facebook || "";
+  const selectedRef = useRef<ActiveAccounts>({ TikTok: ttSel, Facebook: fbSel });
+  selectedRef.current = { TikTok: ttSel, Facebook: fbSel };
+  const socketRef = useRef<Socket | null>(null);
   const synthIdx = useRef(0);
   // Latest feed readable from a stable getter (for 5e order creation by id).
   const feedRef = useRef<ProdComment[]>(feed);
@@ -142,11 +152,19 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
         supabase.auth.getSession().then(({ data }) => cb({ token: data.session?.access_token || "" }));
       },
     });
+    socketRef.current = s;
     const joinRoom = () => s.emit("join_live_room", { sellerId, sessionId });
-    s.on("connect", () => { setConnected(true); joinRoom(); });
+    // Tell the server which account this socket is viewing (account-leak fix). Re-sent
+    // on every (re)connect so the server's per-socket selection survives reconnects.
+    const emitSelection = () => {
+      s.emit("select_account", { platform: "TikTok", username: selectedRef.current.TikTok });
+      s.emit("select_account", { platform: "Facebook", username: selectedRef.current.Facebook });
+    };
+    s.on("connect", () => { setConnected(true); joinRoom(); emitSelection(); });
     s.on("disconnect", () => setConnected(false));
     s.on("connect_error", () => setConnected(false));
     joinRoom();
+    emitSelection();
     s.on("comment", (d: ProdComment) => {
       if (!d || typeof d !== "object") return;
       // Light coercion to guarantee commentKey works; FULL normalizeComment parity
@@ -163,10 +181,13 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       if (!c.handle || !c.comment) return;
       if (c.sellerId && c.sellerId !== sellerId) return;
       if (c.sessionId && c.sessionId !== sessionId) return;
-      // #6 — filter to the active account for this platform (App.tsx 4045-4047).
+      // Account-leak fix — filter to the USER-SELECTED account for this platform
+      // (the dropdown), not the server-driven activeAccounts. Empty selection → show
+      // all (no dropdown choice yet). The server gate (emitCommentScoped) is the
+      // first line of defense; this is the client-side guarantee.
       if (c.sourceUsername) {
-        const selected = cleanLiveAccount(activeRef.current[c.platform === "Facebook" ? "Facebook" : "TikTok"]);
-        if (selected && cleanLiveAccount(c.sourceUsername) !== selected) return;
+        const sel = cleanLiveAccount(selectedRef.current[c.platform === "Facebook" ? "Facebook" : "TikTok"]);
+        if (sel && cleanLiveAccount(c.sourceUsername) !== sel) return;
       }
       // Auto Mode seam — fire on the ACCEPTED comment (after every filter above),
       // before pushComment. commentKey/dedup below are unchanged (tangled zone #1).
@@ -188,8 +209,19 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       if (e.sessionId && e.sessionId !== sessionId) return;
       setActiveAccounts({ TikTok: "", Facebook: "" }); setTtConnected(false); setFbConnected(false); setFeed([]);
     });
-    return () => { s.disconnect(); };
+    return () => { socketRef.current = null; s.disconnect(); };
   }, [enabled, email, pushComment]);
+
+  // Account-leak fix — when the user changes the dropdown selection mid-session,
+  // push it to the server so the per-socket gate updates immediately (no reconnect).
+  // The comment filter already reads selectedRef synchronously; this keeps the wire
+  // scoped too. socket.io buffers the emit if briefly disconnected.
+  useEffect(() => {
+    const s = socketRef.current;
+    if (!s) return;
+    s.emit("select_account", { platform: "TikTok", username: ttSel });
+    s.emit("select_account", { platform: "Facebook", username: fbSel });
+  }, [ttSel, fbSel, connected]);
 
   // #6 — real connect: POST to the live server, then optimistically set the active
   // account (the authoritative value still arrives via platform_status). Clears the

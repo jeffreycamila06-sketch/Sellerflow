@@ -133,10 +133,21 @@ export default function RedesignApp() {
   const autoSoldRef = useRef<Set<number>>(new Set());            // sold-out toast fired once per product
   const autoProcessedRef = useRef<Set<string>>(new Set());       // commentKey → already handled (sync dedup)
 
+  // Dashboard account-picker selection (declared before useLiveFeed so the feed can
+  // scope comments to the chosen account). registeredAccountsFor is pure.
+  const [ttIdx, setTtIdx] = useState(0);
+  const [fbIdx, setFbIdx] = useState(0);
+  const ttAccounts = auth.profile ? registeredAccountsFor(auth.profile, "TikTok") : [];
+  const fbAccounts = auth.profile ? registeredAccountsFor(auth.profile, "Facebook") : [];
+  // Account-leak fix — the account the user has picked per platform. Passed to
+  // useLiveFeed so ONLY this account's comments show, even with up to 5 accounts live.
+  const liveSelected = { TikTok: ttAccounts[ttIdx] || "", Facebook: fbAccounts[fbIdx] || "" };
+
   // Phase 5d — real live comment feed (socket + dedup). Replaces the sample
   // SEED_COMMENTS/INCOMING stream. Read-only (order writes are 5e). The 3rd arg is the
   // Auto Mode seam — a stable wrapper calling the latest handler via ref (no re-subscribe).
-  const liveFeed = useLiveFeed(authed, auth.profile?.email, (c) => autoCommentRef.current(c));
+  // 4th arg = the user's account selection (comment scoping).
+  const liveFeed = useLiveFeed(authed, auth.profile?.email, (c) => autoCommentRef.current(c), liveSelected);
   const comments = liveFeed.comments;
 
   // Auto Mode — READ-ON-LOAD only (on auth change): load the code map + seed live
@@ -247,11 +258,10 @@ export default function RedesignApp() {
   // Session-length pill — real N from seller_session_config (sessionWindow). Open/close is local UI.
   const [sessionOpen, setSessionOpen] = useState(false);
 
-  // Dashboard account pickers (visual only — Phase 5 wires real switching).
+  // Dashboard account pickers (open/close state; ttIdx/fbIdx declared above
+  // useLiveFeed for comment scoping).
   const [ttOpen, setTtOpen] = useState(false);
   const [fbOpen, setFbOpen] = useState(false);
-  const [ttIdx, setTtIdx] = useState(0);
-  const [fbIdx, setFbIdx] = useState(0);
 
   // General Settings local UI state (visual only).
   const [profileOpen, setProfileOpen] = useState(false);
@@ -263,8 +273,6 @@ export default function RedesignApp() {
   // server. ⚠️ Preview-unverifiable (Render + socket) — only active post-merge/APK.
   const ttConnected = liveFeed.ttConnected;
   const fbConnected = liveFeed.fbConnected;
-  const ttAccounts = auth.profile ? registeredAccountsFor(auth.profile, "TikTok") : [];
-  const fbAccounts = auth.profile ? registeredAccountsFor(auth.profile, "Facebook") : [];
   const [connectOpen, setConnectOpen] = useState<Platform | null>(null);
   // ConnectModal action: real connect → on success register the account on the
   // profile (same as App.tsx connectPlatform) + reload so it appears in the picker.
