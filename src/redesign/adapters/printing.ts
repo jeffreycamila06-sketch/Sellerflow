@@ -64,7 +64,12 @@ export function buildNativeStickerPayload(buyer: Buyer, cur: string, storeName: 
       printBuyerNumber: cfg.printBuyerNumber,
       printBuyerUsername: cfg.printBuyerUsername,
       printOrderItems: cfg.printOrderItems,
-      printTotal: cfg.printTotal,
+      // STICKER-ONLY: Total line permanently removed from the BT sticker on ALL
+      // sizes (Jeff). The native TsplBuilder gate is `printTotal && showTotal`, so
+      // forcing false here drops "Total:" + amount everywhere. The slip keeps Total
+      // (buildSlipPayload passes the full cfg) and production main + the shared
+      // native builder are untouched.
+      printTotal: false,
       printStoreScale: cfg.printStoreScale,
       printBuyerNumberScale: cfg.printBuyerNumberScale,
       printBuyerNameScale: cfg.printBuyerNameScale,

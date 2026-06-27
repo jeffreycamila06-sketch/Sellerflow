@@ -19,7 +19,7 @@ function refSticker(buyer: Buyer, cur: string, storeName: string, cfg: Settings)
     return { ...o, time };
   });
   const label = refLabel(cfg.stickerSize);
-  return { storeName, sessionDate, currency: cur, buyer: { ...buyer, orders: localizedOrders }, labelWidthMm: label.w, labelHeightMm: label.h, settings: { printStoreName: cfg.printStoreName, printBuyerNumber: cfg.printBuyerNumber, printBuyerUsername: cfg.printBuyerUsername, printOrderItems: cfg.printOrderItems, printTotal: cfg.printTotal, printStoreScale: cfg.printStoreScale, printBuyerNumberScale: cfg.printBuyerNumberScale, printBuyerNameScale: cfg.printBuyerNameScale, printUsernameScale: cfg.printUsernameScale, printOrderScale: cfg.printOrderScale, printCommentScale: cfg.printCommentScale, printTotalScale: cfg.printTotalScale } };
+  return { storeName, sessionDate, currency: cur, buyer: { ...buyer, orders: localizedOrders }, labelWidthMm: label.w, labelHeightMm: label.h, settings: { printStoreName: cfg.printStoreName, printBuyerNumber: cfg.printBuyerNumber, printBuyerUsername: cfg.printBuyerUsername, printOrderItems: cfg.printOrderItems, printTotal: false, printStoreScale: cfg.printStoreScale, printBuyerNumberScale: cfg.printBuyerNumberScale, printBuyerNameScale: cfg.printBuyerNameScale, printUsernameScale: cfg.printUsernameScale, printOrderScale: cfg.printOrderScale, printCommentScale: cfg.printCommentScale, printTotalScale: cfg.printTotalScale } };
 }
 function refSlip(buyer: Buyer, cur: string, storeName: string, cfg: Settings) {
   const sess = new Date().toLocaleDateString("en-PH", { timeZone: "Asia/Taipei", month: "long", day: "numeric", year: "numeric" });
@@ -56,6 +56,14 @@ describe("buildNativeStickerPayload — byte-parity with App.tsx", () => {
   });
   it("clamps unknown sticker size to 100x60 (fallback)", () => {
     expect(buildNativeStickerPayload(buyer(), "NT$", "Shop", cfg({ stickerSize: "999x999" })).labelWidthMm).toBe(100);
+  });
+  it("ALWAYS forces printTotal:false on the sticker (Total removed, all sizes) even when cfg.printTotal is true", () => {
+    for (const stickerSize of ["100x60", "80x60", "80x50", "70x50", "60x40"]) {
+      expect(buildNativeStickerPayload(buyer(), "NT$", "Shop", cfg({ stickerSize, printTotal: true })).settings.printTotal).toBe(false);
+    }
+  });
+  it("does NOT strip Total from the SLIP payload (sticker-only change)", () => {
+    expect(buildSlipPayload(buyer(), "NT$", "Shop", cfg({ printTotal: true })).settings.printTotal).toBe(true);
   });
 });
 
