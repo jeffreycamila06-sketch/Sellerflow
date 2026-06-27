@@ -69,6 +69,14 @@ export function composeChannelSave<P extends { tiktok: string; facebook: string 
   return { tiktok: fitted.tiktok, facebook: fitted.facebook };
 }
 
+// Toast decision for a chip connect result — success vs honest error (App.tsx parity:
+// success "Connected to …!" vs "Connection failed: <reason>"). Passes r.error through
+// verbatim (carries the real server/network reason); empty error → the generic fallback.
+// Pure → unit-tested; RedesignApp renders the {msg, kind}.
+export function connectToast(r: { ok: boolean; error?: string }, okMsg: string, failMsg: string): { msg: string; kind: "ok" | "err" } {
+  return r.ok ? { msg: okMsg, kind: "ok" } : { msg: r.error || failMsg, kind: "err" };
+}
+
 // Registered accounts for a platform, capped to the plan limit (ConnectModal 3762-3763).
 export function registeredAccountsFor(u: AccountUser, platform: Platform): string[] {
   const field = platform === "TikTok" ? u.profile.tiktok : u.profile.facebook;

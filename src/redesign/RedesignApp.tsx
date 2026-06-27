@@ -37,7 +37,7 @@ import { upsertUser } from "../accountDb";
 import { csvDL, dayStamp } from "./adapters/csv";
 import { computeSales } from "./adapters/sales";
 import { printSlip, buildSettingsFromRedesign, type Settings as PrintSettings } from "./adapters/printing";
-import { registeredAccountsFor, appendAccount, maxAcc, composeChannelSave, type Platform } from "./adapters/connect";
+import { registeredAccountsFor, appendAccount, maxAcc, composeChannelSave, connectToast, type Platform } from "./adapters/connect";
 import type { Buyer } from "../lib/orderTypes";
 import CapPopup from "./screens/CapPopup";
 import ConnectModal from "./screens/ConnectModal";
@@ -182,10 +182,11 @@ export default function RedesignApp() {
   const [lang, setLang] = useState<string>(() => readLS(LS.lang, "en"));
   const [langOpen, setLangOpen] = useState(false);
   const tApp = buildT(lang); // RedesignApp is the TProvider parent → resolve strings directly here
-  // Auto-dismissing toast (no OK button) — used for the chip "Connected!" confirmation.
-  const [toast, setToast] = useState("");
+  // Auto-dismissing toast (no buttons) — chip connect feedback. kind "ok" = success
+  // ("Connected!"), "err" = honest failure reason. Errors linger a bit longer to read.
+  const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
   /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(""), 1800); return () => clearTimeout(id); }, [toast]);
+  useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(null), toast.kind === "err" ? 3200 : 1800); return () => clearTimeout(id); }, [toast]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Currency switcher (dc.html v3). `cur` is the derived symbol threaded through
@@ -265,7 +266,9 @@ export default function RedesignApp() {
     setConnecting(true);
     try {
       const r = await liveFeed.connect(platform, { username: acct });
-      if (r.ok) setToast(tApp.rd_dash_connected_toast); // success only — no false toast on preview/failure
+      // Honest feedback: success "Connected!"; failure → the real server/network reason
+      // (r.error verbatim) with the generic fallback. Chip still reverts to neutral.
+      setToast(connectToast(r, tApp.rd_dash_connected_toast, tApp.rd_cm_conn_failed));
     } finally { setConnecting(false); }
   };
   // Refresh = one-shot full dashboard reload (pull-to-refresh style; NO polling).
@@ -570,10 +573,10 @@ export default function RedesignApp() {
           />
         )}
 
-        {/* Auto-dismissing toast (e.g. chip "Connected!") — no buttons, fades on its own */}
+        {/* Auto-dismissing toast (no buttons). ok = neutral dark pill; err = danger tint + ⚠ */}
         {toast && (
-          <div style={{ position: "absolute", left: 0, right: 0, bottom: 80, display: "flex", justifyContent: "center", zIndex: 1200, pointerEvents: "none" }}>
-            <div style={{ background: "var(--text)", color: "var(--surface)", fontSize: 13, fontWeight: 700, padding: "10px 18px", borderRadius: 999, boxShadow: "0 8px 24px rgba(0,0,0,.3)" }}>{toast}</div>
+          <div style={{ position: "absolute", left: 0, right: 0, bottom: 80, display: "flex", justifyContent: "center", padding: "0 24px", zIndex: 1200, pointerEvents: "none" }}>
+            <div style={{ maxWidth: "100%", background: toast.kind === "err" ? "var(--danger)" : "var(--text)", color: toast.kind === "err" ? "#fff" : "var(--surface)", fontSize: 13, fontWeight: 700, padding: "10px 18px", borderRadius: 999, boxShadow: "0 8px 24px rgba(0,0,0,.3)", textAlign: "center", lineHeight: 1.35 }}>{toast.kind === "err" ? `⚠ ${toast.msg}` : toast.msg}</div>
           </div>
         )}
       </div>

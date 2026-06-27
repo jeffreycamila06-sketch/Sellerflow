@@ -4,7 +4,7 @@ import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import {
   cleanLiveAccount, maxAcc, accountList, accountText, registeredAccountCount, canConnectMore,
   registeredAccountsFor, appendAccount, connectPlatform, accountSlots, keepLockedAccounts, fitProfileAccounts,
-  composeChannelSave,
+  composeChannelSave, connectToast,
 } from "../connect";
 import type { AccountUser } from "../../../accountDb";
 
@@ -85,6 +85,20 @@ describe("composeChannelSave — Channels save compose (App.tsx handleSaveProfil
     const out = composeChannelSave({ tiktok: "a", facebook: "" }, { tiktok: "x\nb\nc\nd\ne\nf", facebook: "g" }, 3, true);
     expect(out.tiktok).toBe("x\nb\nc\nd\ne\nf");
     expect(out.facebook).toBe("g");
+  });
+});
+
+describe("connectToast — honest success/error toast for the chip connect", () => {
+  it("ok → success toast with the given message", () => {
+    expect(connectToast({ ok: true }, "Connected!", "Connection failed.")).toEqual({ msg: "Connected!", kind: "ok" });
+  });
+  it("failure → error toast passing the real reason through verbatim", () => {
+    expect(connectToast({ ok: false, error: "Can't reach the live server. Check your connection." }, "Connected!", "Connection failed."))
+      .toEqual({ msg: "Can't reach the live server. Check your connection.", kind: "err" });
+  });
+  it("failure with empty error → generic fallback", () => {
+    expect(connectToast({ ok: false, error: "" }, "Connected!", "Connection failed.")).toEqual({ msg: "Connection failed.", kind: "err" });
+    expect(connectToast({ ok: false }, "Connected!", "Connection failed.")).toEqual({ msg: "Connection failed.", kind: "err" });
   });
 });
 
