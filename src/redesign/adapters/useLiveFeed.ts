@@ -95,7 +95,7 @@ export interface UseLiveFeed {
   comments: RDComment[];
   connected: boolean;
   canInject: boolean;
-  injectSynthetic: () => void;
+  injectSynthetic: (text?: string) => void;
   getComment: (id: string) => ProdComment | undefined; // 5e — resolve a feed id (commentKey) → raw comment
   // #6 connect — real platform connect + server-driven active-account switching.
   activeAccounts: ActiveAccounts;     // which account is live per platform (from platform_status)
@@ -104,9 +104,14 @@ export interface UseLiveFeed {
   connect: (platform: Platform, data: Record<string, string>) => Promise<ConnectResult>;
 }
 
-export function useLiveFeed(enabled: boolean, email: string | undefined): UseLiveFeed {
+export function useLiveFeed(enabled: boolean, email: string | undefined, onComment?: (c: ProdComment) => void): UseLiveFeed {
   const [feed, setFeed] = useState<ProdComment[]>([]);
   const [connected, setConnected] = useState(false);
+  // Auto Mode seam — held in a ref so a changing handler identity NEVER re-subscribes
+  // the socket (the effect deps deliberately exclude onComment). Fired per ACCEPTED
+  // comment, after all filters, alongside pushComment. Does NOT touch commentKey/dedup.
+  const onCommentRef = useRef(onComment);
+  onCommentRef.current = onComment;
   // #6 — active live account per platform + per-platform connected flags. Driven by
   // the server `platform_status` event (App.tsx 4072-4080); the ref lets the comment
   // handler filter by the active account without re-subscribing.
@@ -163,6 +168,9 @@ export function useLiveFeed(enabled: boolean, email: string | undefined): UseLiv
         const selected = cleanLiveAccount(activeRef.current[c.platform === "Facebook" ? "Facebook" : "TikTok"]);
         if (selected && cleanLiveAccount(c.sourceUsername) !== selected) return;
       }
+      // Auto Mode seam — fire on the ACCEPTED comment (after every filter above),
+      // before pushComment. commentKey/dedup below are unchanged (tangled zone #1).
+      try { onCommentRef.current?.(c); } catch (err) { console.warn("onComment handler failed", err); }
       pushComment(c);
     });
     // #6 — server-driven connection status + active account (App.tsx 4072-4082).
@@ -193,23 +201,39 @@ export function useLiveFeed(enabled: boolean, email: string | undefined): UseLiv
     return r;
   }, [email]);
 
-  const injectSynthetic = useCallback(() => {
-    const t = SYNTH[synthIdx.current % SYNTH.length];
+  // Preview-only injector. With no arg it cycles the canned SYNTH comments; with a
+  // `text` it injects that EXACT comment from a fresh unique commenter (each call =
+  // a distinct buyer → distinct commentKey → its own auto-order) — this is how Step 7
+  // exercises Auto Mode on preview (the real socket only works in the APK). Routes
+  // through the SAME onComment seam + dedup pipeline a real comment would.
+  const injectSynthetic = useCallback((text?: string) => {
+    const i = synthIdx.current;
     synthIdx.current += 1;
     const now = new Date();
-    pushComment({
-      handle: t.handle,
-      name: t.name,
-      comment: t.text,
-      platform: t.platform,
-      isBuy: t.isBuy,
+    const base = SYNTH[i % SYNTH.length];
+    const c: ProdComment = {
+      handle: text != null ? `tester${i}` : base.handle,
+      name: text != null ? "Preview Tester" : base.name,
+      comment: text != null ? text : base.text,
+      platform: base.platform,
+      isBuy: text != null ? true : base.isBuy,
       buyerNum: null,
       buyerData: null,
       time: now.toLocaleTimeString(),
       timestamp: now.toISOString(),
       sessionId: browserSessionId(),
-    } as ProdComment);
+    } as ProdComment;
+    try { onCommentRef.current?.(c); } catch (err) { console.warn("onComment handler failed", err); }
+    pushComment(c);
   }, [pushComment]);
+
+  // Preview convenience: expose the injector on window so a tester can drive Auto
+  // Mode from the console, e.g. __sflInject("D"). Gated to non-production hosts.
+  useEffect(() => {
+    if (!isPreviewEnv() || typeof window === "undefined") return;
+    (window as unknown as { __sflInject?: (t?: string) => void }).__sflInject = injectSynthetic;
+    return () => { try { delete (window as unknown as { __sflInject?: unknown }).__sflInject; } catch { /* ignore */ } };
+  }, [injectSynthetic]);
 
   return { comments: feed.map(toRedesignComment), connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, connect };
 }

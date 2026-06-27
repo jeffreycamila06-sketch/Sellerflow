@@ -20,6 +20,7 @@ import { buildOrderFromComment } from "../../lib/orderLogic";
 import type { Comment as ProdComment, Buyer, LiveOrder } from "../../lib/orderTypes";
 import { saveOrderToDatabase, saveLiveSessionOrder, saveCustomerToDatabase } from "../../db";
 import { isCapError } from "./useFreeCap";
+import { decrementStockAndTouch } from "./productsDb";
 
 // ── Pure write-payload builders — mirror App.tsx:4348-4372 EXACTLY (parity-tested) ──
 
@@ -67,13 +68,19 @@ export interface UseOrdersDeps {
   onEnsureWindow?: () => void;                             // multi-day — open window if needed (once/window; N=1 no-op)
 }
 
+// Auto Mode (Step 4): an order created from a code carries its product's local_id so
+// the SAME fan-out can also decrement that product's stock + stamp last_ordered_at
+// (the Part-2 link) via the atomic RPC. Manual 1-Click/Enterprise pass no opts → the
+// three writes are byte-identical (no RPC), preserving 5e parity.
+export interface CreateOrderOpts { productLocalId?: number }
+
 export interface UseOrders {
   // returns null when the free-tier soft block prevented creation.
-  createOrder: (c: ProdComment, price: number) => LiveOrder | null;
+  createOrder: (c: ProdComment, price: number, opts?: CreateOrderOpts) => LiveOrder | null;
 }
 
 export function useOrders({ getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, afterWrite, onPrint, onEnsureWindow }: UseOrdersDeps): UseOrders {
-  const createOrder = useCallback((c: ProdComment, price: number): LiveOrder | null => {
+  const createOrder = useCallback((c: ProdComment, price: number, opts?: CreateOrderOpts): LiveOrder | null => {
     // 0) Free-tier HARD STOP soft block (App.tsx:4330). The DB trigger is still
     //    authoritative; this is the friendly block before we try.
     if (isCapped?.()) { onCapBlocked?.(); return null; }
@@ -100,6 +107,10 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, isCapped, onCapB
       if (isCapError(err)) onCapReached?.(err);
       else console.warn("Background database save failed", err);
     });
+    // 4b) Auto Mode linkage (gated): for a code-driven order, atomically decrement the
+    //     product stock + stamp last_ordered_at via the RPC. Fire-and-forget, like the
+    //     writes above. Manual orders pass no opts → this never runs (5e byte-identical).
+    if (opts?.productLocalId) void decrementStockAndTouch(opts.productLocalId).catch(() => {});
     // 5) resync the usage counter (App.tsx:4384 — free users).
     afterWrite?.();
     return order;

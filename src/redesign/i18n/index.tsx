@@ -282,6 +282,7 @@ const RAW: Record<string, Row> = {
   rd_auto_saved: { en: "Saved", fil: "Na-save", zh: "已保存", "zh-TW": "已儲存", vi: "Đã lưu", th: "บันทึกแล้ว", id: "Tersimpan" },
   rd_auto_no_products: { en: "Add products first to map codes.", fil: "Magdagdag muna ng mga produkto para i-map ang mga code.", zh: "请先添加产品以映射代码。", "zh-TW": "請先新增產品以對應代碼。", vi: "Hãy thêm sản phẩm trước để gán mã.", th: "เพิ่มสินค้าก่อนเพื่อจับคู่โค้ด", id: "Tambah produk dulu untuk memetakan kode." },
   rd_auto_remove: { en: "Remove", fil: "Alisin", zh: "移除", "zh-TW": "移除", vi: "Xóa", th: "ลบ", id: "Hapus" },
+  rd_auto_soldout_toast: { en: "Code {code} — Sold out", fil: "Code {code} — Ubos na", zh: "代码 {code} — 已售罄", "zh-TW": "代碼 {code} — 已售完", vi: "Mã {code} — Hết hàng", th: "โค้ด {code} — ขายหมด", id: "Kode {code} — Habis" },
   rd_set_auto_detect: { en: "Auto-detect", fil: "Auto-detect", zh: "自动识别", "zh-TW": "自動辨識", vi: "Tự động phát hiện", th: "ตรวจจับอัตโนมัติ", id: "Deteksi otomatis" },
   rd_set_manual_mode: { en: "Manual mode", fil: "Manual mode", zh: "手动模式", "zh-TW": "手動模式", vi: "Chế độ thủ công", th: "โหมดแมนนวล", id: "Mode manual" },
   rd_set_currently_active: { en: "currently active", fil: "kasalukuyang aktibo", zh: "当前启用", "zh-TW": "目前啟用", vi: "đang hoạt động", th: "กำลังใช้งาน", id: "sedang aktif" },

@@ -1,6 +1,6 @@
 // Auto Mode — pure match + inventory tests (no DB / socket / React).
 import { describe, it, expect } from "vitest";
-import { normalizeCode, matchCode, claimStock, type AutoCode } from "../autoMode";
+import { normalizeCode, matchCode, claimStock, planAutoOrder, type AutoCode } from "../autoMode";
 
 const code = (over: Partial<AutoCode> = {}): AutoCode => ({ code: "D", productLocalId: 1, price: 52, productName: "Brief", ...over });
 const CODES: AutoCode[] = [
@@ -74,5 +74,26 @@ describe("claimStock — inventory decrement boundaries", () => {
     expect(results.map((r) => r.soldOut)).toEqual([false, false, true]);
     expect(stock).toBe(0);
     expect(claimStock(stock)).toEqual({ ok: false, nextStock: 0, soldOut: true }); // 4th attempt blocked
+  });
+});
+
+describe("planAutoOrder — match + claim decision (PURE)", () => {
+  const stockMap = new Map<number, number>([[14, 2], [11, 0]]);
+  const stockOf = (lid: number) => stockMap.get(lid) ?? 0;
+
+  it("non-code comment → none", () => {
+    expect(planAutoOrder("D po", CODES, stockOf)).toEqual({ kind: "none" });
+    expect(planAutoOrder("", CODES, stockOf)).toEqual({ kind: "none" });
+  });
+  it("code with stock → order, with nextStock + soldOut flag", () => {
+    expect(planAutoOrder("D", CODES, stockOf)).toEqual({ kind: "order", code: CODES[1], nextStock: 1, soldOut: false });
+  });
+  it("code whose last unit is claimed → order with soldOut true", () => {
+    const one = new Map([[14, 1]]);
+    const plan = planAutoOrder("d", CODES, (lid) => one.get(lid) ?? 0);
+    expect(plan).toEqual({ kind: "order", code: CODES[1], nextStock: 0, soldOut: true });
+  });
+  it("code already at 0 → soldout (no order)", () => {
+    expect(planAutoOrder("A", CODES, stockOf)).toEqual({ kind: "soldout", code: CODES[0] });
   });
 });

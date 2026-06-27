@@ -29,8 +29,12 @@ import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
 import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
 import { useLiveSession } from "./adapters/useLiveSession";
 import { useSessionWindow, type WindowDays } from "./adapters/useSessionWindow";
-import { useLiveFeed } from "./adapters/useLiveFeed";
+import { useLiveFeed, commentKey } from "./adapters/useLiveFeed";
 import { useOrders } from "./adapters/useOrders";
+import { planAutoOrder, type AutoCode } from "./adapters/autoMode";
+import { loadCodes } from "./adapters/autoCodesDb";
+import { resolveInitialProducts } from "./adapters/productsDb";
+import { loadProducts } from "./adapters/products";
 import { useFreeCap } from "./adapters/useFreeCap";
 import { useAdmin } from "./adapters/useAdmin";
 import { upsertUser } from "../accountDb";
@@ -38,10 +42,10 @@ import { csvDL, dayStamp } from "./adapters/csv";
 import { computeSales } from "./adapters/sales";
 import { printSlip, buildSettingsFromRedesign, type Settings as PrintSettings } from "./adapters/printing";
 import { registeredAccountsFor, appendAccount, maxAcc, composeChannelSave, connectToast, type Platform } from "./adapters/connect";
-import type { Buyer } from "../lib/orderTypes";
+import type { Buyer, Comment as ProdComment } from "../lib/orderTypes";
 import CapPopup from "./screens/CapPopup";
 import ConnectModal from "./screens/ConnectModal";
-import { TProvider, buildT } from "./i18n";
+import { TProvider, buildT, tpl } from "./i18n";
 
 type Screen =
   | "login" | "signup" | "dashboard" | "miners" | "orders" | "products"
@@ -119,10 +123,39 @@ export default function RedesignApp() {
   // wiring come in later steps.
   const sessionWindow = useSessionWindow(authed);
   const liveSession = useLiveSession(authed, { ready: sessionWindow.loaded, windowDays: sessionWindow.windowDays, windowStart: sessionWindow.windowStart });
+  // Auto Mode (Step 4) — code map + ref-backed live stock for socket matching. Refs
+  // (not state) so the socket handler reads the latest without re-subscribing and so
+  // concurrent same-code comments claim stock SYNCHRONOUSLY (no double-decrement).
+  const autoCommentRef = useRef<(c: ProdComment) => void>(() => {});
+  const autoCodesRef = useRef<AutoCode[]>([]);
+  const autoStockRef = useRef<Map<number, number>>(new Map());   // productLocalId → live remaining
+  const autoSoldRef = useRef<Set<number>>(new Set());            // sold-out toast fired once per product
+  const autoProcessedRef = useRef<Set<string>>(new Set());       // commentKey → already handled (sync dedup)
+
   // Phase 5d — real live comment feed (socket + dedup). Replaces the sample
-  // SEED_COMMENTS/INCOMING stream. Read-only (order writes are 5e).
-  const liveFeed = useLiveFeed(authed, auth.profile?.email);
+  // SEED_COMMENTS/INCOMING stream. Read-only (order writes are 5e). The 3rd arg is the
+  // Auto Mode seam — a stable wrapper calling the latest handler via ref (no re-subscribe).
+  const liveFeed = useLiveFeed(authed, auth.profile?.email, (c) => autoCommentRef.current(c));
   const comments = liveFeed.comments;
+
+  // Auto Mode — READ-ON-LOAD only (on auth change): load the code map + seed live
+  // stock from the catalog. No poll. Codes/stock edited in Settings apply on next
+  // load (same reseed-on-reload model as multi-day; decided with Jeff).
+  useEffect(() => {
+    if (!authed) { autoCodesRef.current = []; autoStockRef.current = new Map(); autoSoldRef.current = new Set(); autoProcessedRef.current = new Set(); return; }
+    let active = true;
+    void (async () => {
+      const [resolved, codes] = await Promise.all([resolveInitialProducts(loadProducts()), loadCodes()]);
+      if (!active) return;
+      autoCodesRef.current = codes ?? [];
+      const m = new Map<number, number>();
+      for (const p of resolved.products) m.set(p.id, p.stock);
+      autoStockRef.current = m;
+      autoSoldRef.current = new Set();
+      autoProcessedRef.current = new Set();
+    })();
+    return () => { active = false; };
+  }, [authed]);
   // Phase 5f — free-tier cap status + popups (M2 visibility-guarded poll).
   const freeCap = useFreeCap(authed, auth.profile?.plan);
   // Phase 5g — print config snapshot (filled after print-pattern/printer state is
@@ -367,6 +400,35 @@ export default function RedesignApp() {
     const order = prod && !printed[id] ? orders.createOrder(prod, price) : null;
     if (order) setPrinted((p) => ({ ...p, [id]: price > 0 ? cur + price : "order" })); // null = blocked
     setEntId(null); setEntPrice("");
+  };
+
+  // Auto Mode (Step 4) — socket match → ref-locked inventory claim → auto-order via
+  // 5e. Reassigned each render so it closes over the latest state; useLiveFeed calls
+  // it through autoCommentRef (no re-subscribe). Event-driven off the feed — NO poll.
+  const autoSoldOutToast = (code: AutoCode) => {
+    if (autoSoldRef.current.has(code.productLocalId)) return; // once per product
+    autoSoldRef.current.add(code.productLocalId);
+    setToast({ msg: tpl(tApp.rd_auto_soldout_toast, { code: code.code }), kind: "err" });
+  };
+  autoCommentRef.current = (c: ProdComment) => {
+    if (!autoDetect) return;                                    // Auto Mode OFF → ignore
+    const key = commentKey(c);
+    if (autoProcessedRef.current.has(key) || printed[key]) return; // this comment already handled
+    const plan = planAutoOrder(c.comment || "", autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0);
+    if (plan.kind === "none") return;
+    if (plan.kind === "soldout") { autoSoldOutToast(plan.code); return; }
+    // plan.kind === "order": claim SYNCHRONOUSLY before any await (anti double-decrement)
+    autoProcessedRef.current.add(key);
+    autoStockRef.current.set(plan.code.productLocalId, plan.nextStock);
+    const order = orders.createOrder(c, plan.code.price, { productLocalId: plan.code.productLocalId });
+    if (order) {
+      setPrinted((p) => ({ ...p, [key]: cur + plan.code.price }));
+      if (plan.soldOut) autoSoldOutToast(plan.code);
+    } else {
+      // free-cap soft block prevented creation → refund the claim so it can retry.
+      autoStockRef.current.set(plan.code.productLocalId, plan.nextStock + 1);
+      autoProcessedRef.current.delete(key);
+    }
   };
 
 

@@ -55,3 +55,22 @@ export function claimStock(stock: number): StockClaim {
   }
   return { ok: false, nextStock: 0, soldOut: true };
 }
+
+// PURE decision for one incoming comment: match a code, then claim its inventory.
+//   • "none"    → not a code (do nothing)
+//   • "soldout" → matched a code that's already out of stock (no order; caller toasts)
+//   • "order"   → create the auto-order; caller commits nextStock + toasts if soldOut
+// Dedup of the same comment, the ref-backed stock mutation, the toast, and order
+// creation are the CALLER's job (they're stateful/side-effecting) — this just decides.
+export type AutoPlan =
+  | { kind: "none" }
+  | { kind: "soldout"; code: AutoCode }
+  | { kind: "order"; code: AutoCode; nextStock: number; soldOut: boolean };
+
+export function planAutoOrder(text: string, codes: AutoCode[], stockOf: (localId: number) => number): AutoPlan {
+  const code = matchCode(text, codes);
+  if (!code) return { kind: "none" };
+  const claim = claimStock(stockOf(code.productLocalId));
+  if (!claim.ok) return { kind: "soldout", code };
+  return { kind: "order", code, nextStock: claim.nextStock, soldOut: claim.soldOut };
+}
