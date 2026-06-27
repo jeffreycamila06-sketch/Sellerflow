@@ -506,7 +506,7 @@ public class SellerFlowPrinterPlugin extends Plugin {
         boolean printBuyerNumber   = settings == null || settings.optBoolean("printBuyerNumber", true);
         boolean printBuyerUsername = settings == null || settings.optBoolean("printBuyerUsername", true);
         boolean printOrderItems    = settings == null || settings.optBoolean("printOrderItems", true);
-        boolean printTotal         = settings == null || settings.optBoolean("printTotal", true);
+        // (slip TOTAL removed below — printTotal no longer read for the slip)
 
         out.init();
         out.alignCenter();
@@ -537,10 +537,8 @@ public class SellerFlowPrinterPlugin extends Plugin {
                     out.text(order.optString("item", ""));
                     out.setCharSize(0x00);                              // === normal -- order details ===
                     out.text("Qty: " + order.optInt("qty", 1));
-                    double price = order.optDouble("price", 0);
-                    double total = order.optDouble("total", price);
-                    if (price > 0) out.text("Price: " + currency + " " + money(price));
-                    if (total > 0) out.text("Total: " + currency + " " + money(total));
+                    // Per-order "Price:" + per-row "Total:" permanently removed (redundant
+                    // with the item/price-code line above; slip de-cluttered, all slips).
 
                     String time = order.optString("time", "");
                     if (!time.isEmpty()) out.text(time);                // normal -- timestamp
@@ -555,14 +553,7 @@ public class SellerFlowPrinterPlugin extends Plugin {
             }
         }
 
-        double totalSpent = buyer.optDouble("totalSpent", 0);
-        if (printTotal && totalSpent > 0) {
-            out.setCharSize(ESC_POS_IMPORTANT_SIZE);                    // === IMPORTANT ===
-            out.bold(true);
-            out.text("TOTAL: " + currency + " " + money(totalSpent));
-            out.bold(false);
-            out.setCharSize(0x00);                                      // === END IMPORTANT ===
-        }
+        // Grand "TOTAL:" permanently removed (fixed; no setting can re-enable it).
         out.text("Created: " + payload.optString("createdAt", ""));     // normal -- timestamp
         out.feed(4);
         out.cut();

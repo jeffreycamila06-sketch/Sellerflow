@@ -27,12 +27,15 @@ const sizeLabel = (n: number) => (n % 1 === 0 ? n.toFixed(0) : n.toFixed(1)) + "
 const stepBtn: CSSProperties = { width: 28, height: 28, borderRadius: "50%", border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--accent-fg)", fontSize: 16, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 };
 
 export default function PrintPattern({
-  onBack, pp, onToggle, onStep,
+  onBack, pp, onToggle, onStep, onTestPrint,
 }: {
   onBack: () => void;
   pp: PrintPatternState;
   onToggle: (k: PpBoolKey) => void;
   onStep: (k: PpSizeKey, dir: 1 | -1) => void;
+  // Printer Test — real BT test-sticker (wired in RedesignApp). Optional so the
+  // screen still renders standalone; the button is a no-op only when unwired.
+  onTestPrint?: () => void;
 }) {
   const t = useT();
   const ROWS = rowsFor(t);
@@ -59,7 +62,7 @@ export default function PrintPattern({
           </div>
         </div>
 
-        <button style={{ width: "100%", marginTop: 11, padding: "12px 0", border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 5px 14px var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+        <button onClick={onTestPrint} style={{ width: "100%", marginTop: 11, padding: "12px 0", border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 5px 14px var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="6" y="3" width="12" height="6" stroke="currentColor" strokeWidth="1.8" /><rect x="4" y="9" width="16" height="8" rx="2" stroke="currentColor" strokeWidth="1.8" /><rect x="7" y="14" width="10" height="7" stroke="currentColor" strokeWidth="1.8" /></svg>
           {t.rd_pp_printer_test}
         </button>

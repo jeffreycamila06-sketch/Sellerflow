@@ -41,6 +41,7 @@ import { upsertUser } from "../accountDb";
 import { csvDL, dayStamp } from "./adapters/csv";
 import { computeSales } from "./adapters/sales";
 import { printSlip, buildSettingsFromRedesign, type Settings as PrintSettings } from "./adapters/printing";
+import { btCall, hasBtBridge, buildTestStickerPayload, type StickerPrintResult } from "./adapters/printerBridge";
 import { registeredAccountsFor, appendAccount, maxAcc, composeChannelSave, connectToast, type Platform } from "./adapters/connect";
 import type { Buyer, Comment as ProdComment } from "../lib/orderTypes";
 import CapPopup from "./screens/CapPopup";
@@ -351,6 +352,17 @@ export default function RedesignApp() {
     settings: buildSettingsFromRedesign({ pp, psType, psOut, psSize }),
   };
 
+  // Printer Test (PrintPattern) — real BT test sticker, mirroring PrinterSettings
+  // testBt: builds the test payload from the live print config + fires the native
+  // bridge, with a toast for the result. No-op-safe off-device (no BT bridge).
+  const onTestPrint = async () => {
+    if (!hasBtBridge()) { setToast({ msg: tApp.rd_ps_open_app_test, kind: "err" }); return; }
+    const storeName = auth.profile?.profile.storeName || "SellerFlowLive";
+    const settings = buildSettingsFromRedesign({ pp, psType, psOut, psSize });
+    const r = await btCall<StickerPrintResult>("printStickerNative", buildTestStickerPayload(cur, storeName, settings));
+    setToast({ msg: r?.ok ? (r.message || tApp.rd_ps_test_sent) : (r?.message || tApp.rd_ps_test_failed), kind: r?.ok ? "ok" : "err" });
+  };
+
   // Auto Mode on/off. Default OFF, but PERSISTED (sfl_rd_automode) so the toggle
   // stays where the seller left it across refresh — same pattern as theme/currency.
   const [autoDetect, setAutoDetect] = useState<boolean>(() => readLS(LS.automode, "0") === "1");
@@ -596,7 +608,7 @@ export default function RedesignApp() {
             />
           )}
           {screen === "printpattern" && (
-            <PrintPattern onBack={() => setScreen("settings")} pp={pp} onToggle={togglePp} onStep={stepPp} />
+            <PrintPattern onBack={() => setScreen("settings")} pp={pp} onToggle={togglePp} onStep={stepPp} onTestPrint={() => void onTestPrint()} />
           )}
         </div>
 
