@@ -497,15 +497,11 @@ export default function RedesignApp() {
           </>
         )}
 
-        {/* faux status bar (dc.html L91–98) */}
-        <div style={{ position: "relative", zIndex: 2, display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 22px 5px", fontSize: 13, fontWeight: 700, color: "var(--text)", flexShrink: 0 }}>
-          <span style={{ fontFamily: "var(--font-mono)", letterSpacing: "-.02em" }}>9:41</span>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <svg width="17" height="11" viewBox="0 0 18 12" fill="none"><rect x="0" y="7" width="3" height="5" rx="1" fill="currentColor" /><rect x="5" y="4" width="3" height="8" rx="1" fill="currentColor" /><rect x="10" y="1.5" width="3" height="10.5" rx="1" fill="currentColor" opacity=".4" /><rect x="15" y="0" width="3" height="12" rx="1" fill="currentColor" opacity=".4" /></svg>
-            <svg width="16" height="11" viewBox="0 0 16 12" fill="none"><path d="M8 10.5 1.5 4a9 9 0 0 1 13 0L8 10.5Z" stroke="currentColor" strokeWidth="1.4" fill="none" opacity=".55" /><circle cx="8" cy="9.5" r="1.3" fill="currentColor" /></svg>
-            <svg width="24" height="12" viewBox="0 0 26 13" fill="none"><rect x="1" y="1" width="21" height="11" rx="3" stroke="currentColor" strokeWidth="1.3" opacity=".5" /><rect x="3" y="3" width="15" height="7" rx="1.5" fill="currentColor" /><rect x="23.5" y="4" width="2" height="5" rx="1" fill="currentColor" opacity=".5" /></svg>
-          </div>
-        </div>
+        {/* Safe-area top spacer — replaces the old faux "9:41" status bar (a design
+            mockup leftover that double-stacked under the real system status bar).
+            On a device this reserves exactly the system inset; on desktop/preview
+            env(safe-area-inset-top) = 0, so there is no gap. */}
+        <div style={{ height: "env(safe-area-inset-top)", flexShrink: 0 }} />
 
         <div className="sfl-scroll">
           {auth.status === "loading" && (
