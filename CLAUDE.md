@@ -65,6 +65,73 @@ npm run agent:check # lint + typecheck + test + build
   **Instant Rollback / Promote to Production**.
 - **Git:** `git push origin <prev-sha>:main --force` → Vercel redeploys it.
 
+## Local-bundle Redesign APK (for device testing only — branch `claude/full-redesign`)
+**PURPOSE:** build a DEBUG APK that bundles the redesign (`redesign.html`) **locally**
+so real native testing works on a device (Connect, live socket comments, printing,
+Auto Mode). TESTING ONLY — not production. (Production stays the thin shell that
+loads `https://www.sellerflowlive.com`.)
+
+### 🔴 CRITICAL — `.env` MUST contain ALL THREE before building:
+```
+VITE_SUPABASE_URL=https://sqeuyuktdpidmlfpqgoc.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=<publishable key>          # or VITE_SUPABASE_ANON_KEY
+VITE_SERVER_URL=https://sellerflow-live-server.onrender.com   ← MUST HAVE
+```
+`.env` is gitignored (won't commit). The keys are baked into the bundle at **build
+time** — a local build without them = no Supabase / wrong socket.
+
+### ⚠️ WHY `VITE_SERVER_URL` IS MANDATORY (cost hours to debug)
+Both `connect.ts` and `useLiveFeed.ts` resolve the server as
+`VITE_SERVER_URL || DEFAULT_SERVER`, where `DEFAULT_SERVER` is
+`window.location.hostname ∈ {localhost,127.0.0.1} ? http://localhost:3001 : <Render>`.
+A local bundle loads at **origin `https://localhost`**, so WITHOUT `VITE_SERVER_URL`
+the socket/connect point to **`http://localhost:3001`** (a dev server that does NOT
+exist on the phone) → Connect fails with the red toast **"Can't reach the live
+server. Check your connection."** Setting `VITE_SERVER_URL` to the real Render URL
+fixes it. `https://localhost` IS already in Render's hardcoded allow-list (`server.js`
+`allowedOrigins`), so once the URL is right, **real TikTok connect + live socket work
+on the device** — no `CLIENT_ORIGIN` change needed.
+
+### BUILD STEPS (order matters)
+1. `git fetch origin && git status` → if **behind**, `git pull` (a stale local repo
+   bundles OLD code while the Vercel preview shows NEW — another time-sink root cause).
+2. Ensure `.env` has all three vars above (especially `VITE_SERVER_URL`).
+3. `rm -rf dist && npm run build`
+4. **Verify the baked URL:** grep the built `dist/assets/redesign-*.js` for
+   `sellerflow-live-server.onrender.com` (**must exist**) and `localhost:3001`
+   (**must NOT exist**).
+5. Copy `dist` into the WebView dir: `rm -rf mobile/android/app/src/main/assets/public`,
+   `mkdir -p` it, `cp -R dist/. ` into it, then
+   `cp …/assets/public/redesign.html …/assets/public/index.html` (redesign becomes
+   the served entry).
+6. Strip `server.url` from `mobile/android/app/src/main/assets/capacitor.config.json`
+   (forces LOCAL load → origin `https://localhost`).
+7. `cd mobile/android && ./gradlew assembleDebug`
+   (APK → `mobile/android/app/build/outputs/apk/debug/app-debug.apk`).
+
+### GOTCHAS
+- `npx cap sync` **RESTORES** `server.url` (the preview/prod URL) into the configs —
+  do NOT run it for a local-bundle build, or re-strip `server.url` afterward.
+- `mobile/android/app/src/main/assets/public` + `…/assets/capacitor.config.json` are
+  **gitignored build artifacts** → `git checkout` CANNOT restore them. To revert to the
+  prod thin shell, **back them up first** and restore from backup (or rebuild via the
+  normal sync).
+- `mobile/capacitor.config.ts` (tracked source) still points at the Vercel **preview**
+  URL — that's for the separate *preview-load* APK variant, NOT the local bundle.
+- **Preview URLs cannot real-connect** (Render `CLIENT_ORIGIN=sellerflowlive.com` →
+  CORS-blocks the `*.vercel.app` origin → same "Can't reach" toast). Local-bundle
+  `https://localhost` is the workaround for real device testing. For preview-browser
+  testing, use the **synthetic injector** `window.__sflInject("D")` (gated by
+  `isPreviewEnv()`) — it feeds the SAME real `onComment → createOrder` pipeline,
+  bypassing the socket.
+
+### ✅ DEVICE-TESTED 2026-06-27 (real Android device, local-bundle APK)
+ALL VERIFIED WORKING: TikTok **Connect (green)** · **live socket comments** · **Auto
+Mode** (code→product, auto-order, stock decrement, sold-out toast, dedup, toggle
+persist) · **order capture** · **sticker print (AIMO D520BT)** · **slip print** ·
+**free-cap popup** · **Channels** · **Products cross-device sync**. (Slip "blank
+print" was just **reversed thermal paper**, not a bug.)
+
 ## ⚠️ Critical rules — WAG GALAWIN
 - **billing `orders` ledger** (~31k rows) + its `check_and_increment_free_order`
   **200-cap trigger** — wag galawin. Cross-device uses a SEPARATE table.
