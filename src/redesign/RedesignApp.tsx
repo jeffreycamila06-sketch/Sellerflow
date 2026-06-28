@@ -292,11 +292,12 @@ export default function RedesignApp() {
     }
     return r;
   };
-  // Switch the active account (connect to the picked registered account).
+  // Pick the active account — SELECT ONLY. Tapping a row just moves the checkmark
+  // (setTtIdx/setFbIdx) and updates comment scoping (liveSelected derives from the idx);
+  // it does NOT close the dropdown and does NOT connect. Connect is the sole action that
+  // connects + closes (doConnect). No connect.ts/useLiveFeed change — selection state only.
   const switchAccount = (platform: Platform, i: number) => {
-    const acct = (platform === "TikTok" ? ttAccounts : fbAccounts)[i];
-    if (platform === "TikTok") { setTtIdx(i); setTtOpen(false); } else { setFbIdx(i); setFbOpen(false); }
-    if (acct) void liveFeed.connect(platform, { username: acct });
+    if (platform === "TikTok") setTtIdx(i); else setFbIdx(i);
   };
   // Surface B — chip 3-state connect (neutral → connecting → connected → Disconnect).
   // `connected` is server truth (liveFeed.tt/fbConnected). We add a LOCAL connecting
@@ -317,11 +318,13 @@ export default function RedesignApp() {
     const eff = platform === "TikTok" ? ttEff : fbEff;
     const setOff = platform === "TikTok" ? setTtOff : setFbOff;
     const setConnecting = platform === "TikTok" ? setTtConnecting : setFbConnecting;
+    const setOpen = platform === "TikTok" ? setTtOpen : setFbOpen;
     const accts = platform === "TikTok" ? ttAccounts : fbAccounts;
     const idx = platform === "TikTok" ? ttIdx : fbIdx;
     if (eff) { setOff(true); return; }               // Disconnect (local UI; no server unbind in the redesign)
     const acct = accts[idx] || accts[0];
     if (!acct) { setConnectOpen(platform); return; } // no registered account → add-new modal (real connect)
+    setOpen(false);                                  // Connect uses the selected account → close the dropdown
     setConnecting(true);
     try {
       const r = await liveFeed.connect(platform, { username: acct });
