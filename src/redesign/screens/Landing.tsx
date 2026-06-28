@@ -6,7 +6,7 @@
 // sections (features / how / pricing / faq / cta) land in Step Lb.
 import { type CSSProperties } from "react";
 import { LANGS } from "../data";
-import { useT } from "../i18n";
+import { useT, tpl } from "../i18n";
 
 // Handoff palette (README → "all hex values are authoritative"; indigo only).
 const C = {
@@ -60,6 +60,18 @@ export default function Landing({
     { v: "12k+", l: t.rd_lp_m1_l }, { v: "1.4M", l: t.rd_lp_m2_l },
     { v: "<2s", l: t.rd_lp_m3_l }, { v: "4.9★", l: t.rd_lp_m4_l },
   ];
+  // Pricing — real NT$ tiers (names reuse plan_*). All CTAs → signup. Pro highlighted,
+  // Master = dark card. Prices/period are mono literals; perks are rd_lp_p*_* keys.
+  const PLANS = [
+    { name: t.plan_free, price: "NT$0", per: t.rd_lp_price_forever, tag: t.rd_lp_price_free_tag, cta: t.rd_lp_start_free, kind: "free" as const,
+      perks: [t.rd_lp_pf_1, t.rd_lp_pf_2, t.rd_lp_pf_3, t.rd_lp_pf_4] },
+    { name: t.plan_basic, price: "NT$500", per: t.rd_lp_per_mo, tag: t.rd_lp_price_basic_tag, cta: tpl(t.rd_lp_choose, { plan: t.plan_basic }), kind: "basic" as const,
+      perks: [t.rd_lp_pb_1, t.rd_lp_pb_2, t.rd_lp_pb_3, t.rd_lp_pb_4, t.rd_lp_pb_5] },
+    { name: t.plan_pro, price: "NT$1,200", per: t.rd_lp_per_mo, tag: t.rd_lp_price_pro_tag, cta: tpl(t.rd_lp_choose, { plan: t.plan_pro }), kind: "pro" as const,
+      perks: [t.rd_lp_pp_1, t.rd_lp_pp_2, t.rd_lp_pp_3, t.rd_lp_pp_4, t.rd_lp_pp_5, t.rd_lp_pp_6] },
+    { name: t.plan_master, price: "NT$1,700", per: t.rd_lp_per_mo, tag: t.rd_lp_price_master_tag, cta: tpl(t.rd_lp_choose, { plan: t.plan_master }), kind: "master" as const,
+      perks: [t.rd_lp_pm_1, t.rd_lp_pm_2, t.rd_lp_pm_3, t.rd_lp_pm_4, t.rd_lp_pm_5] },
+  ];
 
   return (
     <div style={{ minHeight: "100%", background: C.bg, color: C.body, fontFamily: FU }}>
@@ -74,6 +86,7 @@ export default function Landing({
           <div className="sfl-lp-navlinks" style={{ display: "flex", alignItems: "center", gap: 22 }}>
             <button onClick={() => scrollToId("features")} style={navLink}>{t.rd_lp_nav_features}</button>
             <button onClick={() => scrollToId("how")} style={navLink}>{t.rd_lp_nav_how}</button>
+            <button onClick={() => scrollToId("pricing")} style={navLink}>{t.rd_lp_nav_pricing}</button>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {/* language switcher */}
@@ -211,6 +224,52 @@ export default function Landing({
             ))}
           </div>
         </div>
+      </section>
+
+      {/* ── Pricing ── */}
+      <section id="pricing" style={{ maxWidth: 1200, margin: "96px auto 0", padding: "0 32px", scrollMarginTop: 80 }}>
+        <div style={{ textAlign: "center", maxWidth: 640, margin: "0 auto 40px" }}>
+          <div style={{ fontSize: 12.5, fontWeight: 800, letterSpacing: ".12em", color: C.indigo }}>{t.rd_lp_price_eyebrow}</div>
+          <h2 style={{ fontFamily: FD, fontWeight: 700, fontSize: 44, lineHeight: 1.1, color: C.ink, margin: "12px 0 0", letterSpacing: "-1px" }}>{t.rd_lp_price_h2}</h2>
+          <p style={{ fontSize: 16.5, color: C.body, marginTop: 14, lineHeight: 1.6 }}>{t.rd_lp_price_sub}</p>
+        </div>
+        <div className="sfl-lp-pricing" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 18, alignItems: "stretch" }}>
+          {PLANS.map((p) => {
+            const dark = p.kind === "master";
+            const pro = p.kind === "pro";
+            const ink = dark ? "#fff" : C.ink;
+            const check = dark ? "#818CF8" : p.kind === "pro" ? C.indigo : C.green;
+            const cardBg = dark ? C.ink : C.card;
+            const btnStyle: CSSProperties = pro
+              ? { background: C.grad, color: "#fff", border: "none" }
+              : dark
+                ? { background: "#fff", color: C.ink, border: "none" }
+                : p.kind === "basic"
+                  ? { background: C.ink, color: "#fff", border: "none" }
+                  : { background: "#fff", color: C.ink, border: `1px solid ${C.border2}` };
+            return (
+              <div key={p.name} style={{ position: "relative", background: cardBg, border: pro ? `2px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 22, padding: "26px 22px", display: "flex", flexDirection: "column", transform: pro ? "translateY(-8px)" : "none", boxShadow: pro ? "0 30px 60px -24px rgba(79,70,229,.45)" : dark ? "0 30px 60px -24px rgba(23,21,48,.5)" : "none" }}>
+                {pro && <span style={{ position: "absolute", top: -11, left: "50%", transform: "translateX(-50%)", background: C.grad, color: "#fff", fontSize: 10.5, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase", padding: "5px 12px", borderRadius: 99 }}>{t.lp_price_popular}</span>}
+                <div style={{ fontFamily: FD, fontWeight: 700, fontSize: 18, color: ink }}>{p.name}</div>
+                <div style={{ fontSize: 12.5, color: dark ? "#b9b7d8" : C.muted, marginTop: 3 }}>{p.tag}</div>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 4, marginTop: 16 }}>
+                  <span style={{ fontFamily: FM, fontWeight: 700, fontSize: 34, color: ink }}>{p.price}</span>
+                  <span style={{ fontSize: 12.5, color: dark ? "#9d9bc0" : C.faint }}>{p.per}</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 9, margin: "18px 0 22px", flex: 1 }}>
+                  {p.perks.map((perk) => (
+                    <div key={perk} style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13.5, color: dark ? "#cfcde6" : C.body, lineHeight: 1.45 }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={check} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, marginTop: 1 }}><path d="M20 6 9 17l-5-5" /></svg>
+                      {perk}
+                    </div>
+                  ))}
+                </div>
+                <button onClick={onSignup} style={{ ...btnStyle, width: "100%", height: 46, borderRadius: 13, fontFamily: FU, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{p.cta}</button>
+              </div>
+            );
+          })}
+        </div>
+        <p style={{ textAlign: "center", fontSize: 12.5, color: C.faint, marginTop: 18 }}>{t.rd_lp_price_fine}</p>
       </section>
 
       {/* ── Footer ── */}
