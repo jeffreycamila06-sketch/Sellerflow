@@ -143,9 +143,16 @@ async function printStickerViaLan(buyer: Buyer, cur: string, storeName: string, 
   } catch (err) { console.warn("printStickerLan bridge call failed:", err); return false; }
 }
 
-// ── Router — mirrors App.tsx printSlip routing (538-660), native paths only.
-// Web/preview (no bridge) → no-op, no browser dialog. Returns where it went.
-export type PrintVia = "bluetooth" | "lan" | "native-slip" | "none";
+// HTML-escape + buyer-number color — copied VERBATIM from App.tsx:196, 227 (used by
+// the browser-print slip below).
+const esc = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] || ch));
+const nc = (n: number) => (n === 1 ? "#26215C" : n <= 3 ? "#534AB7" : "#7F77DD");
+
+// ── Router — mirrors App.tsx printSlip routing (620-704). Native paths fire first
+// (BT/iOS-LAN/native-slip via the bridge); on a plain WEB browser (no bridge) it falls
+// through to the SAME browser-print path as old main (hidden iframe + window.print),
+// copied verbatim so web output is byte-identical. Returns where it went.
+export type PrintVia = "bluetooth" | "lan" | "native-slip" | "browser" | "none";
 export interface PrintResult { ok: boolean; via: PrintVia; }
 
 export function printSlip(buyer: Buyer, cur: string, storeName: string, printSettings: Settings | string): PrintResult {
@@ -161,9 +168,66 @@ export function printSlip(buyer: Buyer, cur: string, storeName: string, printSet
   }
   const nativePayload = buildSlipPayload(buyer, cur, storeName, cfg);
   if (hasNativeMobilePrinter() && sendSlipToNativePrinter(nativePayload)) return { ok: true, via: "native-slip" };
-  // Web/preview: no native bridge → no-op (the "Printed" badge is the would-print
-  // indication; real device print is APK-only).
-  return { ok: false, via: "none" };
+  // ── WEB FALLBACK: browser print — COPIED VERBATIM from App.tsx:646-703 (hidden
+  // iframe + window.print of the slip HTML). Restores old-main web behavior. ──────
+  const size = cfg.stickerSize;
+  // Size is an INTEGER LEVEL 1-8 (was 60-180%); use the level directly as the
+  // browser-print font multiplier so web matches the sticker (1 = base).
+  const scale = (v: number | undefined, fallback = 1) => Math.max(1, Math.min(8, Number(v || fallback || 1)));
+  const storeScale = scale(cfg.printStoreScale, cfg.printLabelScale);
+  const buyerNumberScale = scale(cfg.printBuyerNumberScale, 1);
+  const buyerNameScale = scale(cfg.printBuyerNameScale, cfg.printLabelScale);
+  const usernameScale = scale(cfg.printUsernameScale, cfg.printLabelScale);
+  const orderScale = scale(cfg.printOrderScale, cfg.printLabelScale);
+  const commentScale = scale(cfg.printCommentScale, cfg.printLabelScale);
+  const totalScale = scale(cfg.printTotalScale, cfg.printLabelScale);
+  const pos = (v: number | undefined) => Math.max(-40, Math.min(40, v || 0));
+  const sess = new Date().toLocaleDateString("en-PH", { timeZone: "Asia/Taipei", month: "long", day: "numeric", year: "numeric" });
+  const color = nc(buyer.num);
+  const [w] = size.split("x").map(Number);
+  const safeSess = esc(sess);
+  const safeStoreName = esc(storeName);
+  const safeBuyerNum = esc(buyer.num);
+  const safeBuyerName = esc(buyer.name);
+  const safeBuyerHandle = esc(buyer.handle);
+  const safeCurrency = esc(cur);
+  const safeTotal = buyer.totalSpent > 0 ? `${safeCurrency}${esc(buyer.totalSpent.toLocaleString())}` : "";
+  const commentOnlyHtml = buyer.orders.map((o) => `<div class="order-entry"><div class="order-time">${esc(o.time)}</div><div class="order-comment">${esc(o.item)}</div></div>`).join("");
+  const scaledOrderHtml = commentOnlyHtml;
+  if (typeof document === "undefined") return { ok: false, via: "none" };
+  const frame = document.createElement("iframe");
+  frame.title = `Slip #${safeBuyerNum}`;
+  frame.style.position = "fixed";
+  frame.style.right = "0";
+  frame.style.bottom = "0";
+  frame.style.width = "0";
+  frame.style.height = "0";
+  frame.style.border = "0";
+  frame.style.opacity = "0";
+  document.body.appendChild(frame);
+  const win = frame.contentWindow;
+  if (!win) { frame.remove(); console.warn("Printer was not ready. Try again."); return { ok: false, via: "browser" }; }
+  win.onafterprint = () => setTimeout(() => frame.remove(), 50);
+  const doc = win.document;
+  doc.open();
+  doc.write(`<!DOCTYPE html><html><head><title>Slip #${safeBuyerNum}</title><style>@page{size:${size.replace("x", "mm ")}mm;margin:3mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;width:${w}mm;color:#000}.head{display:flex;align-items:flex-start;justify-content:space-between;gap:3mm;margin-bottom:2.5mm}.brand{font-size:${14 * storeScale}px;font-weight:800;transform:translate(${pos(cfg.printStoreX)}mm,${pos(cfg.printStoreY)}mm)}.brand span{color:#7F77DD}.session{font-size:${12 * totalScale}px;font-weight:800;text-align:right;transform:translate(${pos(cfg.printSessionX)}mm,${pos(cfg.printSessionY)}mm)}.grid{display:grid;grid-template-columns:52% 48%;gap:3mm;align-items:start}.left{display:flex;flex-direction:column;gap:1.5mm;padding-top:1mm}.seller{font-size:${13 * storeScale}px;font-weight:800;line-height:1.1;transform:translate(${pos(cfg.printStoreX)}mm,${pos(cfg.printStoreY)}mm)}.line{font-size:${13 * buyerNameScale}px;font-weight:800;line-height:1.1}.muted{font-size:${10 * usernameScale}px;font-weight:700;color:#333}.buyer-num{font-size:${13 * buyerNumberScale}px;color:${color};font-weight:900;transform:translate(${pos(cfg.printBuyerNumberX)}mm,${pos(cfg.printBuyerNumberY)}mm)}.buyer-name{transform:translate(${pos(cfg.printBuyerNameX)}mm,${pos(cfg.printBuyerNameY)}mm)}.username{transform:translate(${pos(cfg.printUsernameX)}mm,${pos(cfg.printUsernameY)}mm)}.order-box{min-height:38mm;padding:0;transform:translate(${pos(cfg.printOrderX)}mm,${pos(cfg.printOrderY)}mm)}.order-title{font-size:${15 * orderScale}px;font-weight:900;margin-bottom:2mm}.order-entry{border-left:2px solid #000;padding-left:2mm;margin-bottom:2mm}.order-time{font-size:${9 * orderScale}px;color:#111;font-weight:500;line-height:1.1}.order-comment{font-size:${10 * commentScale}px;font-weight:800;line-height:1.1;margin-top:.8mm}.total{border-top:1px dashed #777;margin-top:2mm;padding-top:1.5mm;display:flex;justify-content:space-between;gap:2mm;font-size:${11 * totalScale}px;font-weight:800;transform:translate(${pos(cfg.printTotalX)}mm,${pos(cfg.printTotalY)}mm)}@media print{body{margin:0}}</style></head><body>
+  <div class="head"><div class="brand">Seller<span>FlowLive</span></div><div class="session">Session: ${safeSess}</div></div>
+  <div class="grid"><div class="left">
+  ${cfg.printStoreName ? `<div class="seller">${safeStoreName}</div>` : ""}
+  ${cfg.printBuyerNumber ? `<div class="line buyer-num">Buyer #${safeBuyerNum}</div>` : ""}
+  <div class="line buyer-name">${safeBuyerName}</div>
+  ${cfg.printBuyerUsername ? `<div class="muted username">@${safeBuyerHandle}</div>` : ""}
+  </div>
+  ${(cfg.printOrderItems || cfg.printTotal) ? `<div class="order-box">${cfg.printOrderItems ? `<div class="order-title">Order here</div>${scaledOrderHtml}` : ""}${cfg.printTotal ? `<div class="total"><span>Total</span><span>${safeTotal}</span></div>` : ""}</div>` : ""}
+  </div>
+  </body></html>`);
+  doc.close();
+  setTimeout(() => {
+    win.focus();
+    win.print();
+    if (cfg.printAutoClose) window.setTimeout(() => frame.remove(), 8000);
+  }, 120);
+  return { ok: true, via: "browser" };
 }
 
 // ── Redesign state → Settings mapper (NEW; not byte-parity-critical). Maps the
