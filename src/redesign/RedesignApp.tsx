@@ -488,9 +488,9 @@ export default function RedesignApp() {
 
   const showNav = screen !== "login" && auth.status === "authed";
   const ordersActive = screen === "orders" || screen === "print";
-  const navColor = (on: boolean) => (on ? "var(--accent-fg)" : "var(--text-muted)");
-  const navBg = (on: boolean) => (on ? "var(--accent-soft)" : "transparent");
-  const navBtn = (on: boolean): CSSProperties => ({ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "7px 0", border: "none", background: navBg(on), borderRadius: 12, cursor: "pointer", color: navColor(on), fontFamily: "var(--font-ui)" });
+  // Nav item = .sfl-navbtn (+ .is-active). All visual styling lives in redesign.css
+  // (mobile baseline byte-equal to the old inline navBtn; desktop sidebar via @media).
+  const navCls = (on: boolean) => "sfl-navbtn" + (on ? " is-active" : "");
   const settingsActive = SETTINGS_GROUP.includes(screen);
 
   return (
@@ -617,27 +617,39 @@ export default function RedesignApp() {
         </div>
 
         {showNav && (
-          <div style={{ position: "relative", zIndex: 3, flexShrink: 0, display: "flex", alignItems: "stretch", justifyContent: "space-around", padding: "8px 8px calc(8px + env(safe-area-inset-bottom))", background: "var(--nav-bg)", borderTop: "1px solid var(--border)", backdropFilter: "saturate(1.4) blur(14px)" }}>
-            <button onClick={() => setScreen("dashboard")} style={navBtn(screen === "dashboard")}>
+          <div className="sfl-nav">
+            {/* Brand header — sidebar only (display:none below 900px). */}
+            <div className="sfl-nav-logo">
+              <img src="/redesign/icon-180.png" alt="" style={{ width: 30, height: 30, borderRadius: 8, objectFit: "cover" }} />
+              <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, color: "var(--text)", letterSpacing: "-.01em" }}>SellerFlowLive</span>
+            </div>
+            <button onClick={() => setScreen("dashboard")} className={navCls(screen === "dashboard")}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" fill="currentColor" /><circle cx="12" cy="12" r="8.2" stroke="currentColor" strokeWidth="1.7" opacity=".55" /></svg>
               <span style={{ fontSize: 10, fontWeight: 700 }}>Live</span>
             </button>
-            <button onClick={() => setScreen("miners")} style={navBtn(screen === "miners")}>
+            <button onClick={() => setScreen("miners")} className={navCls(screen === "miners")}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 19V11M9 19V5M14 19v-6M19 19V9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
               <span style={{ fontSize: 10, fontWeight: 700 }}>Miners</span>
             </button>
-            <button onClick={() => setScreen("orders")} style={navBtn(ordersActive)}>
+            <button onClick={() => setScreen("orders")} className={navCls(ordersActive)}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M6 7h12l-1 12a2 2 0 0 1-2 1.8H9A2 2 0 0 1 7 19L6 7Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M9 7a3 3 0 0 1 6 0" stroke="currentColor" strokeWidth="1.7" /></svg>
               <span style={{ fontSize: 10, fontWeight: 700 }}>Orders</span>
             </button>
-            <button onClick={() => setScreen("products")} style={navBtn(screen === "products")}>
+            <button onClick={() => setScreen("products")} className={navCls(screen === "products")}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 8.5 12 4l8 4.5v7L12 20l-8-4.5v-7Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="m4 8.5 8 4.5 8-4.5M12 13v7" stroke="currentColor" strokeWidth="1.7" /></svg>
               <span style={{ fontSize: 10, fontWeight: 700 }}>Products</span>
             </button>
-            <button onClick={() => setScreen("menu")} style={navBtn(settingsActive)}>
+            <button onClick={() => setScreen("menu")} className={navCls(settingsActive)}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.7" /><path d="M19.4 13c.04-.3.06-.66.06-1s-.02-.7-.06-1l2.1-1.6-2-3.5-2.5 1a7.5 7.5 0 0 0-1.7-1l-.4-2.6H9.1l-.4 2.6c-.6.25-1.18.58-1.7 1l-2.5-1-2 3.5L4.6 11c-.04.3-.06.66-.06 1s.02.7.06 1l-2.1 1.6 2 3.5 2.5-1c.52.42 1.1.75 1.7 1l.4 2.6h5.8l.4-2.6c.6-.25 1.18-.58 1.7-1l2.5 1 2-3.5-2.1-1.6Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>
               <span style={{ fontSize: 10, fontWeight: 700 }}>Settings</span>
             </button>
+            {/* Admin — owner only, sidebar only (display:none below 900px). */}
+            {isAdmin && (
+              <button onClick={() => setScreen("admin")} className={navCls(screen === "admin") + " sfl-nav-admin"}>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 3 5 6v5c0 4 2.8 6.9 7 8 4.2-1.1 7-4 7-8V6l-7-3Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /></svg>
+                <span style={{ fontSize: 10, fontWeight: 700 }}>Admin</span>
+              </button>
+            )}
           </div>
         )}
 
