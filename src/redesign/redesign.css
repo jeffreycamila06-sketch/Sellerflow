@@ -181,3 +181,18 @@
 }
 
 [data-redesign] .sfl-comm-row { animation: sflComm .4s ease-out; }
+
+/* ── Auth pop-up split-screen (web landing only — AuthModal). DEFAULT = single column:
+ * the brand panel is hidden and the form fills the card (BYTE-IDENTICAL to before, so
+ * phones/narrow web + the APK full-screen path are unchanged). At ≥720px viewport the
+ * card widens and becomes a two-column split: brand panel | form. CSS-only collapse —
+ * no JS, no media query in inline styles. Renders ONLY when screen === "landing". */
+[data-redesign] .sfl-authcard { max-width: 420px; }
+[data-redesign] .sfl-authbrand { display: none; }       /* hidden on narrow */
+[data-redesign] .sfl-authform { width: 100%; }
+@media (min-width: 720px) {
+  [data-redesign] .sfl-authcard { max-width: 860px; }
+  [data-redesign] .sfl-authsplit { display: flex; align-items: stretch; }
+  [data-redesign] .sfl-authbrand { display: flex; flex: 1 1 0; }
+  [data-redesign] .sfl-authform { flex: 1 1 0; min-width: 0; }
+}
