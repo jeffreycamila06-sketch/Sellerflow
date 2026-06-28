@@ -35,6 +35,31 @@ export default function Landing({
 }) {
   const t = useT();
   const cur = LANGS.find((l) => l.code === lang) || LANGS[0];
+  // Smooth-scroll to an in-page section. Robust inside the .sfl-scroll container
+  // (anchor hrefs are unreliable there), so nav links + "See how it works" use this.
+  const scrollToId = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const navLink: CSSProperties = { background: "none", border: "none", cursor: "pointer", fontFamily: FU, fontSize: 14.5, fontWeight: 600, color: C.body, padding: "0 4px" };
+
+  const ic = (p: string) => <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={C.indigo} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d={p} /></svg>;
+  // Feature cards — titles reuse lp_feat_*_t (already 7-lang); descriptions are new
+  // rd_lp_feat_*_d (handoff copy). Icon tints are the handoff's authoritative hex.
+  const FEATURES = [
+    { title: t.lp_feat_print_t, desc: t.rd_lp_feat_print_d, tint: "#EEF2FF", icon: ic("M6 9V3h12v6M6 18H4v-7h16v7h-2M8 14h8v7H8z") },
+    { title: t.lp_feat_capture_t, desc: t.rd_lp_feat_capture_d, tint: "#FEF2F4", icon: ic("M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12z") },
+    { title: t.lp_feat_orders_t, desc: t.rd_lp_feat_orders_d, tint: "#ECFDF5", icon: ic("M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11") },
+    { title: t.lp_feat_db_t, desc: t.rd_lp_feat_db_d, tint: "#EFF6FF", icon: ic("M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8") },
+    { title: t.lp_feat_bt_t, desc: t.rd_lp_feat_bt_d, tint: "#F5F3FF", icon: ic("M6.5 6.5 17.5 17.5 12 23V1l5.5 5.5L6.5 17.5") },
+    { title: t.lp_feat_analytics_t, desc: t.rd_lp_feat_analytics_d, tint: "#FFFBEB", icon: ic("M3 3v18h18M7 16l4-5 3 3 5-7") },
+  ];
+  const STEPS = [
+    { n: "01", title: t.rd_lp_how_s1_t, desc: t.rd_lp_how_s1_d },
+    { n: "02", title: t.rd_lp_how_s2_t, desc: t.rd_lp_how_s2_d },
+    { n: "03", title: t.rd_lp_how_s3_t, desc: t.rd_lp_how_s3_d },
+  ];
+  const METRICS = [
+    { v: "12k+", l: t.rd_lp_m1_l }, { v: "1.4M", l: t.rd_lp_m2_l },
+    { v: "<2s", l: t.rd_lp_m3_l }, { v: "4.9★", l: t.rd_lp_m4_l },
+  ];
 
   return (
     <div style={{ minHeight: "100%", background: C.bg, color: C.body, fontFamily: FU }}>
@@ -44,6 +69,11 @@ export default function Landing({
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <img src="/landing-logo.png" alt="" style={{ width: 38, height: 38, objectFit: "contain" }} />
             <span style={{ fontFamily: FD, fontWeight: 700, fontSize: 19, color: C.ink, letterSpacing: "-.01em" }}>SellerFlow<span style={{ color: C.indigo }}>Live</span></span>
+          </div>
+          {/* center nav anchors (Pricing/FAQ added in Lc/Ld) */}
+          <div className="sfl-lp-navlinks" style={{ display: "flex", alignItems: "center", gap: 22 }}>
+            <button onClick={() => scrollToId("features")} style={navLink}>{t.rd_lp_nav_features}</button>
+            <button onClick={() => scrollToId("how")} style={navLink}>{t.rd_lp_nav_how}</button>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {/* language switcher */}
@@ -81,7 +111,10 @@ export default function Landing({
           <p style={{ fontSize: 18, lineHeight: 1.6, color: C.body, maxWidth: 480, margin: "20px 0 0" }}>{t.rd_lp_hero_sub}</p>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 28 }}>
             <button onClick={onSignup} style={primaryBtn}>{t.rd_lp_start_free}</button>
-            <button onClick={onLogin} style={ghostBtn}>{t.lp_login}</button>
+            <button onClick={() => scrollToId("how")} style={ghostBtn}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
+              {t.lp_hero_how}
+            </button>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 28 }}>
             <div style={{ display: "flex" }}>
@@ -126,6 +159,56 @@ export default function Landing({
           <div style={{ display: "flex", gap: 9, marginTop: 12 }}>
             <span style={{ flex: 1, textAlign: "center", padding: "11px 0", borderRadius: 12, background: C.ink, color: "#fff", fontSize: 13, fontWeight: 700 }}>{t.rd_lp_pc_print}</span>
             <span style={{ flex: 1, textAlign: "center", padding: "11px 0", borderRadius: 12, background: "#fff", color: C.ink, border: `1px solid ${C.border2}`, fontSize: 13, fontWeight: 700 }}>{t.rd_lp_pc_paylink}</span>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Metrics strip ── */}
+      <section style={{ maxWidth: 1200, margin: "0 auto", padding: "0 32px" }}>
+        <div className="sfl-lp-metrics" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 18 }}>
+          {METRICS.map((m) => (
+            <div key={m.l} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 18, padding: "20px 18px", textAlign: "center" }}>
+              <div style={{ fontFamily: FM, fontWeight: 700, fontSize: 30, color: C.indigo }}>{m.v}</div>
+              <div style={{ fontSize: 13, color: C.muted, fontWeight: 600, marginTop: 4 }}>{m.l}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Features ── */}
+      <section id="features" style={{ maxWidth: 1200, margin: "0 auto", padding: "96px 32px 0", scrollMarginTop: 80 }}>
+        <div style={{ textAlign: "center", maxWidth: 640, margin: "0 auto 40px" }}>
+          <div style={{ fontSize: 12.5, fontWeight: 800, letterSpacing: ".12em", color: C.indigo }}>{t.rd_lp_feat_eyebrow}</div>
+          <h2 style={{ fontFamily: FD, fontWeight: 700, fontSize: 44, lineHeight: 1.1, color: C.ink, margin: "12px 0 0", letterSpacing: "-1px" }}>{t.rd_lp_feat_h2}</h2>
+          <p style={{ fontSize: 16.5, color: C.body, marginTop: 14, lineHeight: 1.6 }}>{t.rd_lp_feat_sub}</p>
+        </div>
+        <div className="sfl-lp-features" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
+          {FEATURES.map((f) => (
+            <div key={f.title} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 20, padding: 24 }}>
+              <div style={{ width: 50, height: 50, borderRadius: 14, background: f.tint, display: "flex", alignItems: "center", justifyContent: "center" }}>{f.icon}</div>
+              <div style={{ fontFamily: FD, fontWeight: 600, fontSize: 19, color: C.ink, marginTop: 16 }}>{f.title}</div>
+              <p style={{ fontSize: 14.5, lineHeight: 1.6, color: C.muted, marginTop: 8 }}>{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── How it works (dark band) ── */}
+      <section id="how" style={{ maxWidth: 1200, margin: "96px auto 0", padding: "0 32px", scrollMarginTop: 80 }}>
+        <div style={{ background: C.ink, borderRadius: 28, padding: "56px 48px" }}>
+          <div style={{ textAlign: "center", maxWidth: 620, margin: "0 auto 40px" }}>
+            <div style={{ fontSize: 12.5, fontWeight: 800, letterSpacing: ".12em", color: "#A5B4FC" }}>{t.rd_lp_how_eyebrow}</div>
+            <h2 style={{ fontFamily: FD, fontWeight: 700, fontSize: 40, lineHeight: 1.12, color: "#fff", margin: "12px 0 0", letterSpacing: "-1px" }}>{t.rd_lp_how_h2}</h2>
+          </div>
+          <div className="sfl-lp-steps" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 32 }}>
+            {STEPS.map((s) => (
+              <div key={s.n}>
+                <div style={{ fontFamily: FM, fontWeight: 700, fontSize: 30, color: "#818CF8" }}>{s.n}</div>
+                <div style={{ height: 1, background: "rgba(255,255,255,.12)", margin: "14px 0" }} />
+                <div style={{ fontFamily: FD, fontWeight: 600, fontSize: 21, color: "#fff" }}>{s.title}</div>
+                <p style={{ fontSize: 14.5, lineHeight: 1.6, color: "#b9b7d8", marginTop: 8 }}>{s.desc}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>

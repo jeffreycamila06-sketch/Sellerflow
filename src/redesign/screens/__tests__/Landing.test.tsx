@@ -55,4 +55,33 @@ describe("Landing (Step La)", () => {
     renderLanding();
     expect(screen.getByText(/Available in 7 languages/)).toBeTruthy();
   });
+
+  // Step Lb sections
+  it("renders the metrics strip", () => {
+    renderLanding();
+    expect(screen.getByText("Active sellers")).toBeTruthy();
+    expect(screen.getByText("12k+")).toBeTruthy();
+  });
+
+  it("renders the features section (eyebrow + H2 + 6 feature titles)", () => {
+    renderLanding();
+    expect(screen.getByText("EVERYTHING YOU NEED")).toBeTruthy();
+    expect(screen.getByText("One toolkit for the whole live sale")).toBeTruthy();
+    ["1-Click Print", "Live Comment Capture", "Order Management", "Customer Database", "Bluetooth Printer Support", "Sales Analytics"].forEach((title) =>
+      expect(screen.getByText(title)).toBeTruthy(),
+    );
+  });
+
+  it("renders the how-it-works section (3 steps)", () => {
+    renderLanding();
+    expect(screen.getByText("From comment to cash in three steps")).toBeTruthy();
+    expect(screen.getByText("Go live & connect")).toBeTruthy();
+    expect(screen.getByText("Print & get paid")).toBeTruthy();
+  });
+
+  it("center nav anchors (Features, How it works) are present", () => {
+    renderLanding();
+    expect(screen.getByText("Features")).toBeTruthy();
+    expect(screen.getByText("How it works")).toBeTruthy();
+  });
 });
