@@ -79,9 +79,29 @@ describe("Landing (Step La)", () => {
     expect(screen.getByText("Print & get paid")).toBeTruthy();
   });
 
-  it("center nav anchors (Features, How it works) are present", () => {
+  it("center nav anchors (Features, How it works, Pricing) are present", () => {
     renderLanding();
     expect(screen.getByText("Features")).toBeTruthy();
     expect(screen.getByText("How it works")).toBeTruthy();
+    expect(screen.getAllByText("Pricing").length).toBeGreaterThan(0);
+  });
+
+  // Step Lc — pricing
+  it("renders 4 pricing tiers with NT$ prices + Most popular badge", () => {
+    renderLanding();
+    expect(screen.getByText("Simple plans that scale with your lives")).toBeTruthy();
+    expect(screen.getByText("NT$0")).toBeTruthy();
+    expect(screen.getByText("NT$500")).toBeTruthy();
+    expect(screen.getByText("NT$1,200")).toBeTruthy();
+    expect(screen.getByText("NT$1,700")).toBeTruthy();
+    expect(screen.getByText("Most popular")).toBeTruthy();
+  });
+
+  it("every pricing CTA routes to signup", () => {
+    const onSignup = vi.fn();
+    renderLanding({ onSignup });
+    // Choose Basic / Pro / Master + Free's "Start free" (hero + nav also have Start free)
+    fireEvent.click(screen.getByText("Choose Pro"));
+    expect(onSignup).toHaveBeenCalled();
   });
 });
