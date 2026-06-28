@@ -20,6 +20,10 @@ const C = {
 };
 const FD = "var(--font-display)"; const FU = "var(--font-ui)"; const FM = "var(--font-mono)";
 
+const footHead: CSSProperties = { fontSize: 12, fontWeight: 800, letterSpacing: ".06em", color: "#fff", marginBottom: 12 };
+const footLink: CSSProperties = { display: "block", background: "none", border: "none", cursor: "pointer", padding: "5px 0", fontFamily: FU, fontSize: 13.5, color: "#9d9bc0", textAlign: "left" };
+const footLinkA: CSSProperties = { display: "block", padding: "5px 0", fontFamily: FU, fontSize: 13.5, color: "#9d9bc0", textDecoration: "none" };
+
 const primaryBtn: CSSProperties = { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "0 22px", height: 54, borderRadius: 14, border: "none", background: C.grad, color: "#fff", fontFamily: FU, fontSize: 15.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 16px 30px -10px rgba(79,70,229,.5)", textDecoration: "none" };
 const ghostBtn: CSSProperties = { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "0 20px", height: 54, borderRadius: 14, background: "#fff", color: C.ink, border: `1px solid ${C.border2}`, fontFamily: FU, fontSize: 15.5, fontWeight: 700, cursor: "pointer", textDecoration: "none" };
 
@@ -301,19 +305,54 @@ export default function Landing({
         </div>
       </section>
 
-      {/* ── Footer ── */}
-      <footer style={{ background: C.ink, color: "#cfcde6", marginTop: 8 }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "40px 32px 28px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <img src="/landing-logo.png" alt="" style={{ width: 34, height: 34, objectFit: "contain" }} />
-            <span style={{ fontFamily: FD, fontWeight: 700, fontSize: 18, color: "#fff" }}>SellerFlowLive</span>
+      {/* ── CTA band ── */}
+      <section style={{ maxWidth: 1200, margin: "96px auto 0", padding: "0 32px" }}>
+        <div style={{ background: "linear-gradient(135deg, #4F46E5, #6366F1 55%, #818CF8)", borderRadius: 28, padding: "56px 40px", textAlign: "center", color: "#fff" }}>
+          <h2 style={{ fontFamily: FD, fontWeight: 700, fontSize: 40, lineHeight: 1.1, letterSpacing: "-1px", margin: 0 }}>{t.rd_lp_cta_h2}</h2>
+          <p style={{ fontSize: 16.5, opacity: 0.92, marginTop: 12, lineHeight: 1.6 }}>{t.rd_lp_cta_sub}</p>
+          <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap", marginTop: 26 }}>
+            <button onClick={onSignup} style={{ ...primaryBtn, background: "#fff", color: C.indigo, boxShadow: "0 16px 30px -12px rgba(0,0,0,.3)" }}>{t.rd_lp_start_free}</button>
+            <a href="https://t.me/SellerFlowLive1995" target="_blank" rel="noreferrer" style={{ ...ghostBtn, background: "transparent", color: "#fff", border: "1px solid rgba(255,255,255,.5)" }}>{t.rd_lp_cta_telegram}</a>
           </div>
-          <p style={{ fontSize: 13.5, color: "#9d9bc0", marginTop: 12, maxWidth: 420, lineHeight: 1.6 }}>{t.lp_footer_tagline}</p>
-          <a href="https://t.me/SellerFlowLive1995" target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 14, padding: "8px 13px", borderRadius: 10, background: "rgba(39,167,231,.16)", color: "#7fd3ff", fontSize: 13, fontWeight: 700, textDecoration: "none" }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M21.5 4.3 3.2 11.4c-1 .4-1 1.8.1 2.1l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.3l2.5-2.6 4.7 3.4c.6.4 1.4.1 1.6-.6l3-15c.2-1-.7-1.8-1.6-1.3Z" /></svg>
-            @SellerFlowLive1995
-          </a>
-          <div style={{ borderTop: "1px solid rgba(255,255,255,.1)", marginTop: 22, paddingTop: 18, display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "space-between", fontSize: 12, color: "#807ea0" }}>
+        </div>
+      </section>
+
+      {/* ── Footer (4 columns) ── */}
+      <footer style={{ background: C.ink, color: "#cfcde6", marginTop: 64 }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "48px 32px 28px" }}>
+          <div className="sfl-lp-footcols" style={{ display: "grid", gridTemplateColumns: "1.7fr 1fr 1fr 1fr", gap: 32 }}>
+            {/* brand */}
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <img src="/landing-logo.png" alt="" style={{ width: 34, height: 34, objectFit: "contain" }} />
+                <span style={{ fontFamily: FD, fontWeight: 700, fontSize: 18, color: "#fff" }}>SellerFlowLive</span>
+              </div>
+              <p style={{ fontSize: 13.5, color: "#9d9bc0", marginTop: 12, maxWidth: 320, lineHeight: 1.6 }}>{t.lp_footer_tagline}</p>
+              <a href="https://t.me/SellerFlowLive1995" target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 14, padding: "8px 13px", borderRadius: 10, background: "rgba(39,167,231,.16)", color: "#7fd3ff", fontSize: 13, fontWeight: 700, textDecoration: "none" }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M21.5 4.3 3.2 11.4c-1 .4-1 1.8.1 2.1l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.3l2.5-2.6 4.7 3.4c.6.4 1.4.1 1.6-.6l3-15c.2-1-.7-1.8-1.6-1.3Z" /></svg>
+                @SellerFlowLive1995
+              </a>
+            </div>
+            {/* Product */}
+            <div>
+              <div style={footHead}>{t.rd_lp_foot_product}</div>
+              <button onClick={() => scrollToId("features")} style={footLink}>{t.rd_lp_nav_features}</button>
+              <button onClick={() => scrollToId("pricing")} style={footLink}>{t.rd_lp_nav_pricing}</button>
+              <button onClick={() => scrollToId("faq")} style={footLink}>{t.rd_lp_nav_faq}</button>
+            </div>
+            {/* Support */}
+            <div>
+              <div style={footHead}>{t.rd_lp_foot_support}</div>
+              <a href="https://t.me/SellerFlowLive1995" target="_blank" rel="noreferrer" style={footLinkA}>{t.rd_lp_foot_tgchat}</a>
+              <a href="https://t.me/SellerFlowLive1995" target="_blank" rel="noreferrer" style={footLinkA}>{t.rd_lp_foot_help}</a>
+            </div>
+            {/* Language */}
+            <div>
+              <div style={footHead}>{t.rd_lp_foot_language}</div>
+              <div style={{ fontSize: 13.5, color: "#9d9bc0" }}>{cur.flag} {cur.label}</div>
+            </div>
+          </div>
+          <div style={{ borderTop: "1px solid rgba(255,255,255,.1)", marginTop: 28, paddingTop: 18, display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "space-between", fontSize: 12, color: "#807ea0" }}>
             <span>{t.rd_lp_foot_bottom}</span>
             <span>{t.rd_lp_foot_langs}</span>
           </div>
