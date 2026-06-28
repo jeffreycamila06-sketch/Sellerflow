@@ -37,7 +37,10 @@
 [data-redesign] .sfl-phone {
   position: relative;
   width: 100%;
-  max-width: 430px;
+  /* No max-width: the column fills the viewport. Phones (<430px) are byte-identical
+   * (width:100% already < 430). Tablets now FILL the screen instead of pinning a
+   * 430px column to the left with blank space. Desktop/laptop get the sidebar via the
+   * pointer:fine @media below; touch devices (tablets/phones) stay full-width mobile. */
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
@@ -95,10 +98,13 @@
 [data-redesign] .sfl-nav-logo { display: none; }
 [data-redesign] .sfl-nav-admin { display: none; }
 
-/* ── Desktop / tablet-landscape (≥900px): the bottom nav becomes a LEFT SIDEBAR
- * and the content goes full-width. DESKTOP-ONLY — none of this exists ≤899px, so
- * mobile/APK is byte-identical (bottom nav + 430 column + flex-column). */
-@media (min-width: 900px) {
+/* ── DESKTOP/LAPTOP ONLY (≥900px AND a fine pointer = mouse/trackpad): the bottom
+ * nav becomes a LEFT SIDEBAR and content goes full-width. `pointer: fine` excludes
+ * ALL touch devices — Samsung tablets (portrait OR landscape) + phones + the APK
+ * (pointer: coarse) NEVER get the sidebar; they stay full-width mobile. This fixes
+ * the tablet-portrait bug where ~800px width hit min-width:900 partially / left a
+ * 430px column pinned left. Mobile (<900 or any touch) is byte-identical to before. */
+@media (min-width: 900px) and (pointer: fine) {
   [data-redesign] .sfl-phone {
     max-width: none;            /* full-width content on desktop */
     flex-direction: row;        /* sidebar | content */
