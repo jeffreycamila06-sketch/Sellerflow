@@ -6,14 +6,14 @@ export default defineConfig({
   plugins: [react()],
   build: {
     cssMinify: false,
-    // Multi-page build. The production app (index.html -> src/main.tsx -> App.tsx)
-    // is UNCHANGED. redesign.html is a SEPARATE entry for the Phase 2+ redesign
-    // preview, emitted at /redesign.html. Adding this input does not alter the
-    // index.html bundle or how production renders.
+    // Multi-page build. As of the redesign switch, index.html IS the redesign
+    // (src/redesign/main.tsx -> RedesignApp) and is served at "/". The previous
+    // production app (src/main.tsx -> App.tsx) is parked at app.html, emitted at
+    // /app.html as an untouched escape hatch / rollback target.
     rollupOptions: {
       input: {
         main: 'index.html',
-        redesign: 'redesign.html',
+        app: 'app.html',
       },
     },
   },
