@@ -11,10 +11,14 @@ import { useEffect, type ReactNode } from "react";
 export default function AuthModal({
   onClose,
   closeLabel,
+  brand,
   children,
 }: {
   onClose: () => void;
   closeLabel: string;
+  // Optional left brand panel (web split-screen). Hidden on narrow via CSS; the form
+  // (children) always shows. Omitting it = the original single-column modal.
+  brand?: ReactNode;
   children: ReactNode;
 }) {
   // Esc to close (window-level; cleaned up on unmount).
@@ -46,10 +50,10 @@ export default function AuthModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
+        className="sfl-authcard"
         style={{
           position: "relative",
           width: "100%",
-          maxWidth: 420,
           maxHeight: "92dvh",
           overflowY: "auto",
           overflowX: "hidden",
@@ -84,7 +88,12 @@ export default function AuthModal({
         >
           ✕
         </button>
-        {children}
+        {/* Split row: brand panel (left, ≥720px only) | form (right, children). On narrow
+            screens .sfl-authbrand is display:none, so the form shows alone as before. */}
+        <div className="sfl-authsplit">
+          {brand}
+          <div className="sfl-authform">{children}</div>
+        </div>
       </div>
     </div>
   );

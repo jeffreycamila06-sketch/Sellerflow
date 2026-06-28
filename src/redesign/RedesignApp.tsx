@@ -11,6 +11,7 @@ import Miners from "./screens/Miners";
 import Login from "./screens/Login";
 import Landing from "./screens/Landing";
 import AuthModal from "./components/AuthModal";
+import AuthBrandPanel from "./components/AuthBrandPanel";
 import { anonScreen } from "./adapters/appShell";
 import SettingsHub from "./screens/SettingsHub";
 import GeneralSettings from "./screens/GeneralSettings";
@@ -540,7 +541,7 @@ export default function RedesignApp() {
                   behind. Same components, same auth logic — only the presentation differs.
                   On success, the auth effect clears authModal + navigates to the dashboard. */}
               {authModal && (
-                <AuthModal onClose={() => setAuthModal("")} closeLabel={tApp.rd_close}>
+                <AuthModal onClose={() => setAuthModal("")} closeLabel={tApp.rd_close} brand={<AuthBrandPanel />}>
                   {authModal === "login" ? (
                     <Login
                       onLogin={(email, password) => auth.signIn(email, password)}

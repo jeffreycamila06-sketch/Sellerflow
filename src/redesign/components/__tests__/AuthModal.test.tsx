@@ -92,4 +92,24 @@ describe("AuthModal — landing auth pop-up wrapper", () => {
     );
     expect(screen.getByText("SHOP PROFILE")).toBeTruthy(); // signup-only group label
   });
+
+  it("renders the optional brand panel alongside the form (split-screen)", () => {
+    render(
+      <AuthModal onClose={noop} closeLabel="Close" brand={<div>BRAND-PANEL</div>}>
+        <div>FORM</div>
+      </AuthModal>,
+    );
+    expect(screen.getByText("BRAND-PANEL")).toBeTruthy();
+    expect(screen.getByText("FORM")).toBeTruthy();
+  });
+
+  it("without a brand prop, only the form renders (single-column, unchanged)", () => {
+    render(
+      <AuthModal onClose={noop} closeLabel="Close">
+        <div>FORM-ONLY</div>
+      </AuthModal>,
+    );
+    expect(screen.getByText("FORM-ONLY")).toBeTruthy();
+    expect(screen.queryByText("BRAND-PANEL")).toBeNull();
+  });
 });
