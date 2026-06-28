@@ -81,7 +81,8 @@ describe("Landing (Step La)", () => {
 
   it("center nav anchors (Features, How it works, Pricing) are present", () => {
     renderLanding();
-    expect(screen.getByText("Features")).toBeTruthy();
+    // "Features"/"Pricing" appear in both the nav and the footer (Step Le) → use getAllByText
+    expect(screen.getAllByText("Features").length).toBeGreaterThan(0);
     expect(screen.getByText("How it works")).toBeTruthy();
     expect(screen.getAllByText("Pricing").length).toBeGreaterThan(0);
   });
@@ -125,5 +126,29 @@ describe("Landing (Step La)", () => {
   it("FAQ nav anchor present", () => {
     renderLanding();
     expect(screen.getAllByText("FAQ").length).toBeGreaterThan(0);
+  });
+
+  // Step Le — CTA band + 4-column footer
+  it("renders the CTA band with headline + Telegram link", () => {
+    renderLanding();
+    expect(screen.getByText("Ready to sell faster?")).toBeTruthy();
+    const tg = screen.getByText("Talk on Telegram");
+    expect(tg.getAttribute("href")).toBe("https://t.me/SellerFlowLive1995");
+  });
+
+  it("CTA band 'Start free' routes to signup", () => {
+    const onSignup = vi.fn();
+    renderLanding({ onSignup });
+    // nav + hero + pricing(Free) + CTA all have "Start free"
+    const btns = screen.getAllByText("Start free");
+    fireEvent.click(btns[btns.length - 1]); // CTA band is last
+    expect(onSignup).toHaveBeenCalled();
+  });
+
+  it("renders the 4-column footer headings", () => {
+    renderLanding();
+    expect(screen.getByText("Product")).toBeTruthy();
+    expect(screen.getByText("Support")).toBeTruthy();
+    expect(screen.getByText("Language")).toBeTruthy();
   });
 });
