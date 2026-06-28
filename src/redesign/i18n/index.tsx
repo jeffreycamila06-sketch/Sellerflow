@@ -525,6 +525,13 @@ const RAW: Record<string, Row> = {
   rd_adm_act_make_admin: { en: "Make admin", fil: "Gawing admin", zh: "设为管理员", "zh-TW": "設為管理員", vi: "Đặt làm quản trị", th: "ตั้งเป็นแอดมิน", id: "Jadikan admin" },
   rd_adm_act_expire: { en: "Expire plan", fil: "I-expire ang plan", zh: "使方案过期", "zh-TW": "使方案過期", vi: "Hết hạn gói", th: "ทำให้แผนหมดอายุ", id: "Kedaluwarsakan paket" },
   rd_adm_act_delete: { en: "DELETE seller profile", fil: "BURAHIN ang seller profile", zh: "删除卖家资料", "zh-TW": "刪除賣家資料", vi: "XÓA hồ sơ người bán", th: "ลบโปรไฟล์ผู้ขาย", id: "HAPUS profil penjual" },
+  rd_adm_act_edit_accounts: { en: "edit accounts", fil: "i-edit ang mga account", zh: "编辑账号", "zh-TW": "編輯帳號", vi: "sửa tài khoản", th: "แก้ไขบัญชี", id: "edit akun" },
+  rd_adm_edit_accounts: { en: "Edit accounts", fil: "I-edit ang mga account", zh: "编辑账号", "zh-TW": "編輯帳號", vi: "Sửa tài khoản", th: "แก้ไขบัญชี", id: "Edit akun" },
+  rd_adm_tiktok_accounts: { en: "TikTok accounts", fil: "Mga TikTok account", zh: "TikTok 账号", "zh-TW": "TikTok 帳號", vi: "Tài khoản TikTok", th: "บัญชี TikTok", id: "Akun TikTok" },
+  rd_adm_fb_pages: { en: "Facebook pages", fil: "Mga Facebook page", zh: "Facebook 主页", "zh-TW": "Facebook 粉專", vi: "Trang Facebook", th: "เพจ Facebook", id: "Halaman Facebook" },
+  rd_adm_one_per_line: { en: "One per line", fil: "Isa kada linya", zh: "每行一个", "zh-TW": "每行一個", vi: "Mỗi dòng một tài khoản", th: "หนึ่งบรรทัดต่อหนึ่งบัญชี", id: "Satu per baris" },
+  rd_adm_edit_helper: { en: "One per line · max {n} (plan) · plan and role stay unchanged", fil: "Isa kada linya · max {n} (plan) · hindi nagbabago ang plan at role", zh: "每行一个 · 最多 {n}（按方案）· 方案与角色不变", "zh-TW": "每行一個 · 最多 {n}（依方案）· 方案與角色不變", vi: "Mỗi dòng một tài khoản · tối đa {n} (theo gói) · gói và vai trò giữ nguyên", th: "หนึ่งบรรทัดต่อหนึ่งบัญชี · สูงสุด {n} (ตามแผน) · แผนและบทบาทไม่เปลี่ยน", id: "Satu per baris · maks {n} (paket) · paket dan peran tetap" },
+  rd_adm_save_accounts: { en: "Save accounts", fil: "I-save ang mga account", zh: "保存账号", "zh-TW": "儲存帳號", vi: "Lưu tài khoản", th: "บันทึกบัญชี", id: "Simpan akun" },
 
   // ════ Admin — plans / payments / reports / system / broadcast ════
   rd_adm_new_plan: { en: "+ New plan", fil: "+ Bagong plan", zh: "+ 新方案", "zh-TW": "+ 新方案", vi: "+ Gói mới", th: "+ แผนใหม่", id: "+ Paket baru" },

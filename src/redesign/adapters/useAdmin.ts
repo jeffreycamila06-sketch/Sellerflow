@@ -10,7 +10,8 @@
 // adds a window.confirm() per action so a wrong target can't be hit by accident.
 import { useCallback } from "react";
 import { supabase } from "../../supabase";
-import { adminUpdatePlan, deleteUser, saveAuditLog, type Role } from "../../accountDb";
+import { adminUpdatePlan, deleteUser, saveAuditLog, upsertUser, type Role, type AccountUser } from "../../accountDb";
+import { maxAcc, accountList, accountText } from "./connect";
 
 export type Plan = "free" | "trial" | "basic" | "pro" | "master";
 export interface AdminResult { ok: boolean; error?: string }
@@ -56,6 +57,19 @@ export interface AdminActions {
   // Extends planExpiry by `days` (cumulative) and reactivates — same adminUpdatePlan
   // path production uses for "Add Months". Returns the new expiry on success.
   addDays: (email: string, planExpiry: string, planStatus: string, days: number) => Promise<AdminResult & { planExpiry?: string }>;
+  // Edit a seller's locked TikTok/Facebook usernames — mirrors App.tsx saveEditSeller.
+  // Writes ONLY profile fields via upsertUser (NO includePlan) → plan/role untouched.
+  editAccounts: (rawUser: AccountUser, ttText: string, fbText: string) => Promise<AdminResult>;
+}
+
+// PURE — parse + plan-cap split, copied VERBATIM from App.tsx saveEditSeller
+// (3227-3229): TikTok fills the budget first, Facebook gets the remainder. Reuses
+// accountList/accountText/maxAcc (the same helpers production uses). Parity-tested.
+export function fitEditAccounts(plan: string, ttText: string, fbText: string): { tiktok: string; facebook: string } {
+  const limit = maxAcc(plan);
+  const tt = accountList(ttText).slice(0, limit);
+  const fb = accountList(fbText).slice(0, Math.max(0, limit - tt.length));
+  return { tiktok: accountText(tt), facebook: accountText(fb) };
 }
 
 export function useAdmin(adminEmail: string | undefined): AdminActions {
@@ -120,5 +134,20 @@ export function useAdmin(adminEmail: string | undefined): AdminActions {
     } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "error" }; }
   }, [audit]);
 
-  return { changePlan, setRole, expire, setPassword, removeUser, addDays };
+  // Edit locked accounts — same DB path as App.tsx saveEditSeller: reconstruct the
+  // AccountUser with the parsed/capped usernames and upsertUser WITHOUT includePlan,
+  // so the UPDATE payload carries only profile fields (full_name/store_name/phone/
+  // tiktok/facebook/connected_accounts/updated_at). plan/role/status/expiry are NEVER
+  // sent; and the admin session bypasses the seller_profiles_on_update revert anyway.
+  const editAccounts = useCallback(async (rawUser: AccountUser, ttText: string, fbText: string): Promise<AdminResult> => {
+    try {
+      const { tiktok, facebook } = fitEditAccounts(rawUser.plan, ttText, fbText);
+      const updated: AccountUser = { ...rawUser, profile: { ...rawUser.profile, tiktok, facebook } };
+      await upsertUser(updated); // NO includePlan → plan/role omitted from the UPDATE
+      audit("edited seller accounts", rawUser.email, `TikTok ${accountList(tiktok).length}, Facebook ${accountList(facebook).length}`);
+      return { ok: true };
+    } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "error" }; }
+  }, [audit]);
+
+  return { changePlan, setRole, expire, setPassword, removeUser, addDays, editAccounts };
 }

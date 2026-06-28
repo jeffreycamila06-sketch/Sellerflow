@@ -224,26 +224,32 @@ export function useCustomers(enabled: boolean): { customers: Customer[]; state: 
 // Admin user list. enabled should be true ONLY for an admin profile — a seller's
 // listUsers returns just their own row (RLS), which would look broken, so callers
 // gate on role and otherwise keep sample.
-export function useAdminUsers(enabled: boolean): { users: User[]; state: ReadState; reload: () => void } {
+export function useAdminUsers(enabled: boolean): { users: User[]; rawByEmail: Record<string, AccountUser>; state: ReadState; reload: () => void } {
   const [users, setUsers] = useState<User[]>(SAMPLE_USERS);
+  // Raw profiles keyed by email so the admin account-editor can prefill the real
+  // tiktok/facebook usernames (the display User only carries the account COUNT).
+  const [rawByEmail, setRawByEmail] = useState<Record<string, AccountUser>>({});
   const [state, setState] = useState<ReadState>("sample");
   // 5h — reusable loader so the panel can refresh after an admin write.
   const load = useCallback(() => {
-    if (!enabled || !isSupabaseConfigured) { setState("sample"); setUsers(SAMPLE_USERS); return () => {}; }
+    if (!enabled || !isSupabaseConfigured) { setState("sample"); setUsers(SAMPLE_USERS); setRawByEmail({}); return () => {}; }
     let active = true;
     setState("loading");
     listUsers()
       .then((list) => {
         if (!active) return;
+        const map: Record<string, AccountUser> = {};
+        for (const u of list) map[u.email] = u;
+        setRawByEmail(map);
         const mapped = accountUsersToRedesign(list);
         if (mapped.length) { setUsers(mapped); setState("live"); }
         else { setUsers([]); setState("empty"); }
       })
-      .catch(() => { if (active) { setUsers(SAMPLE_USERS); setState("sample"); } });
+      .catch(() => { if (active) { setUsers(SAMPLE_USERS); setRawByEmail({}); setState("sample"); } });
     return () => { active = false; };
   }, [enabled]);
   useEffect(() => load(), [load]);
-  return { users, state, reload: load };
+  return { users, rawByEmail, state, reload: load };
 }
 
 // Audit log — same exported fn as App.tsx admin refresh (3017). Admin-only;

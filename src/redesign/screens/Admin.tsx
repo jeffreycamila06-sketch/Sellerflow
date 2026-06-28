@@ -8,7 +8,8 @@ import { PLANS, PAYMENTS, USERS, SUBS, PLAN_PRICE, type Sub, type User } from ".
 import { headerBar, card, mono } from "../ui";
 import { planDaysLeft, deriveSubBuckets, deriveUserBase, freeUsersSummary, auditActionColor, filterAuditLogs, type ReadState, type SubBuckets, type FreeUserRow } from "../adapters/useReadData";
 import type { AdminActions, Plan } from "../adapters/useAdmin";
-import type { AccountAuditLog } from "../../accountDb";
+import { maxAcc } from "../adapters/connect";
+import type { AccountAuditLog, AccountUser } from "../../accountDb";
 import { csvDL, dayStamp } from "../adapters/csv";
 import SoonBadge from "../components/SoonBadge";
 import { useT, tpl, type RedesignT } from "../i18n";
@@ -117,6 +118,7 @@ const miniNum: CSSProperties = { fontFamily: mono, fontWeight: 700, fontSize: 19
 const sheetBtn: CSSProperties = { width: "100%", padding: "13px 0", border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 4px 14px var(--accent-soft)" };
 const planBtn: CSSProperties = { fontSize: 10.5, fontWeight: 700, color: "var(--accent-fg)", background: "var(--accent-soft)", border: "none", padding: "5px 9px", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" };
 const actBtn: CSSProperties = { fontSize: 10.5, fontWeight: 700, color: "var(--text)", background: "var(--surface)", border: "1px solid var(--border-strong)", padding: "5px 9px", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" };
+const editTa: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", resize: "vertical", boxSizing: "border-box" };
 
 // Real Taiwan prices: Master NT$1,700 · Pro NT$1,200 · Basic NT$500.
 const matchPlan = (amt: string) => { const a = +amt || 0; return a >= 1700 ? "Master" : a >= 1200 ? "Pro" : a >= 500 ? "Basic" : "—"; };
@@ -183,7 +185,7 @@ function SubList({ list, statusLabel, statusColor, note, showPlan = true }: { li
   );
 }
 
-export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", actions, onChanged, freeUsers = [], freeUsersState = "sample", auditLogs = [], auditState = "sample", onOpenPanel }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; actions?: AdminActions; onChanged?: () => void; freeUsers?: FreeUserRow[]; freeUsersState?: ReadState; auditLogs?: AccountAuditLog[]; auditState?: ReadState; onOpenPanel?: (k: AdminPanelKind) => void }) {
+export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", rawByEmail = {}, actions, onChanged, freeUsers = [], freeUsersState = "sample", auditLogs = [], auditState = "sample", onOpenPanel }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; rawByEmail?: Record<string, AccountUser>; actions?: AdminActions; onChanged?: () => void; freeUsers?: FreeUserRow[]; freeUsersState?: ReadState; auditLogs?: AccountAuditLog[]; auditState?: ReadState; onOpenPanel?: (k: AdminPanelKind) => void }) {
   const t = useT();
   // Real subscription buckets (derived) when the users list is live; else sample.
   const realSubs = usersState === "live" || usersState === "empty";
@@ -246,6 +248,26 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
       }
     }
     setAddIdx(null); setAddVal("");
+  };
+
+  // Edit accounts modal (Option B — centered overlay above the sheet). Prefilled
+  // from the RAW profile (the display User only carries the account count). Save
+  // writes ONLY tiktok/facebook via actions.editAccounts (upsertUser, no plan/role).
+  const [editEmail, setEditEmail] = useState<string | null>(null);
+  const [editTt, setEditTt] = useState("");
+  const [editFb, setEditFb] = useState("");
+  const editRaw = editEmail ? rawByEmail[editEmail] : undefined;
+  const editLimit = maxAcc(editRaw?.plan || "free");
+  const openEdit = (email: string) => {
+    const raw = rawByEmail[email];
+    setEditTt(raw?.profile.tiktok || "");
+    setEditFb(raw?.profile.facebook || "");
+    setEditEmail(email);
+  };
+  const closeEdit = () => setEditEmail(null);
+  const doEditAccounts = () => {
+    if (!editRaw) { closeEdit(); return; }
+    void run(t.rd_adm_act_edit_accounts, editRaw.email, () => actions!.editAccounts(editRaw, editTt, editFb), () => closeEdit());
   };
 
   return (
@@ -314,6 +336,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                         </div>
                       )}
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6, paddingTop: 9, borderTop: "1px solid var(--border)" }}>
+                        <button onClick={() => openEdit(u.email)} style={{ ...actBtn, color: "var(--accent-fg)", borderColor: "var(--accent)" }} disabled={!actions}>{t.rd_set_edit}</button>
                         <button onClick={() => { setPwIdx(pwIdx === i ? null : i); setPwVal(""); }} style={actBtn} disabled={!actions}>{t.rd_adm_reset_pw}</button>
                         <button onClick={() => void run(isAdmin ? t.rd_adm_act_remove_admin : t.rd_adm_act_make_admin, u.email, () => actions!.setRole(u.email, isAdmin ? "seller" : "admin"))} style={actBtn} disabled={!actions}>{isAdmin ? t.rd_adm_remove_admin : t.rd_adm_make_admin}</button>
                         <button onClick={() => void run(t.rd_adm_act_expire, u.email, () => actions!.expire(u.email))} style={{ ...actBtn, color: "var(--warn)" }} disabled={!actions}>{t.rd_adm_expire}</button>
@@ -572,6 +595,33 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
 
         </div>
       </div>
+
+      {/* Edit accounts modal (Option B) — centered overlay ABOVE the sheet (z 30 > 9).
+          Backdrop / X / Cancel close without saving. Writes only tiktok/facebook. */}
+      {editEmail && (
+        <div onClick={(e) => { e.stopPropagation(); closeEdit(); }} style={{ position: "absolute", inset: 0, zIndex: 30, background: "rgba(8,6,24,.6)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 360, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 18, boxShadow: "0 24px 60px rgba(0,0,0,.45)", overflow: "hidden" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "15px 16px 12px", borderBottom: "1px solid var(--border)" }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, color: "var(--text)" }}>{t.rd_adm_edit_accounts}</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{editEmail}</div>
+              </div>
+              <button onClick={closeEdit} style={{ width: 30, height: 30, borderRadius: 9, border: "none", background: "var(--surface-2)", color: "var(--text-dim)", fontSize: 16, cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+            </div>
+            <div style={{ padding: "14px 16px" }}>
+              <label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", display: "block", marginBottom: 6 }}>{t.rd_adm_tiktok_accounts}</label>
+              <textarea value={editTt} onChange={(e) => setEditTt(e.target.value)} rows={3} placeholder={t.rd_adm_one_per_line} style={editTa} />
+              <label style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", display: "block", margin: "12px 0 6px" }}>{t.rd_adm_fb_pages}</label>
+              <textarea value={editFb} onChange={(e) => setEditFb(e.target.value)} rows={3} placeholder={t.rd_adm_one_per_line} style={editTa} />
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8, lineHeight: 1.5 }}>{tpl(t.rd_adm_edit_helper, { n: editLimit })}</div>
+            </div>
+            <div style={{ display: "flex", borderTop: "1px solid var(--border)" }}>
+              <button onClick={closeEdit} style={{ flex: 1, padding: "13px 0", border: "none", borderRight: "1px solid var(--border)", background: "transparent", color: "var(--text-dim)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>{t.rd_prd_cancel}</button>
+              <button onClick={doEditAccounts} disabled={busy || !editRaw} style={{ flex: 1, padding: "13px 0", border: "none", background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: busy ? "default" : "pointer", opacity: busy || !editRaw ? 0.6 : 1 }}>{t.rd_adm_save_accounts}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
