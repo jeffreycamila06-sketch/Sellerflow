@@ -104,4 +104,26 @@ describe("Landing (Step La)", () => {
     fireEvent.click(screen.getByText("Choose Pro"));
     expect(onSignup).toHaveBeenCalled();
   });
+
+  // Step Ld — FAQ accordion
+  it("renders the FAQ section with questions (answers hidden until opened)", () => {
+    renderLanding();
+    expect(screen.getByText("Questions, answered")).toBeTruthy();
+    expect(screen.getByText("Do I need a credit card to start?")).toBeTruthy();
+    expect(screen.queryByText(/Billing is via Wise/)).toBeNull(); // collapsed by default
+  });
+
+  it("tapping a question opens it; single-open closes the previous", () => {
+    renderLanding();
+    fireEvent.click(screen.getByText("Do I need a credit card to start?"));
+    expect(screen.getByText(/Billing is via Wise/)).toBeTruthy(); // opened
+    fireEvent.click(screen.getByText("Is there really a free plan?"));
+    expect(screen.queryByText(/Billing is via Wise/)).toBeNull(); // first closed (single-open)
+    expect(screen.getByText(/200 orders per cycle, free forever/)).toBeTruthy(); // second open
+  });
+
+  it("FAQ nav anchor present", () => {
+    renderLanding();
+    expect(screen.getAllByText("FAQ").length).toBeGreaterThan(0);
+  });
 });

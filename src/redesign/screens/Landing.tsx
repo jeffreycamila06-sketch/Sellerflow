@@ -4,7 +4,7 @@
 // palette so the marketing page looks consistent regardless of a visitor's saved
 // theme/accent. support.js is NOT used. STEP La = nav + hero + footer; the marketing
 // sections (features / how / pricing / faq / cta) land in Step Lb.
-import { type CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import { LANGS } from "../data";
 import { useT, tpl } from "../i18n";
 
@@ -35,6 +35,7 @@ export default function Landing({
 }) {
   const t = useT();
   const cur = LANGS.find((l) => l.code === lang) || LANGS[0];
+  const [faqOpen, setFaqOpen] = useState(-1); // single-open accordion (-1 = none)
   // Smooth-scroll to an in-page section. Robust inside the .sfl-scroll container
   // (anchor hrefs are unreliable there), so nav links + "See how it works" use this.
   const scrollToId = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -72,6 +73,11 @@ export default function Landing({
     { name: t.plan_master, price: "NT$1,700", per: t.rd_lp_per_mo, tag: t.rd_lp_price_master_tag, cta: tpl(t.rd_lp_choose, { plan: t.plan_master }), kind: "master" as const,
       perks: [t.rd_lp_pm_1, t.rd_lp_pm_2, t.rd_lp_pm_3, t.rd_lp_pm_4, t.rd_lp_pm_5] },
   ];
+  const FAQS = [
+    { q: t.rd_lp_faq_q1, a: t.rd_lp_faq_a1 }, { q: t.rd_lp_faq_q2, a: t.rd_lp_faq_a2 },
+    { q: t.rd_lp_faq_q3, a: t.rd_lp_faq_a3 }, { q: t.rd_lp_faq_q4, a: t.rd_lp_faq_a4 },
+    { q: t.rd_lp_faq_q5, a: t.rd_lp_faq_a5 },
+  ];
 
   return (
     <div style={{ minHeight: "100%", background: C.bg, color: C.body, fontFamily: FU }}>
@@ -87,6 +93,7 @@ export default function Landing({
             <button onClick={() => scrollToId("features")} style={navLink}>{t.rd_lp_nav_features}</button>
             <button onClick={() => scrollToId("how")} style={navLink}>{t.rd_lp_nav_how}</button>
             <button onClick={() => scrollToId("pricing")} style={navLink}>{t.rd_lp_nav_pricing}</button>
+            <button onClick={() => scrollToId("faq")} style={navLink}>{t.rd_lp_nav_faq}</button>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {/* language switcher */}
@@ -270,6 +277,28 @@ export default function Landing({
           })}
         </div>
         <p style={{ textAlign: "center", fontSize: 12.5, color: C.faint, marginTop: 18 }}>{t.rd_lp_price_fine}</p>
+      </section>
+
+      {/* ── FAQ (single-open accordion) ── */}
+      <section id="faq" style={{ maxWidth: 760, margin: "96px auto 0", padding: "0 32px", scrollMarginTop: 80 }}>
+        <div style={{ textAlign: "center", marginBottom: 36 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 800, letterSpacing: ".12em", color: C.indigo }}>{t.rd_lp_faq_eyebrow}</div>
+          <h2 style={{ fontFamily: FD, fontWeight: 700, fontSize: 40, lineHeight: 1.12, color: C.ink, margin: "12px 0 0", letterSpacing: "-1px" }}>{t.rd_lp_faq_h2}</h2>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {FAQS.map((f, i) => {
+            const open = faqOpen === i;
+            return (
+              <div key={f.q} style={{ background: C.card, border: `1px solid ${open ? C.indigo2 : C.border}`, borderRadius: 16, overflow: "hidden" }}>
+                <button onClick={() => setFaqOpen(open ? -1 : i)} aria-expanded={open} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "18px 20px", background: "none", border: "none", cursor: "pointer", textAlign: "left", fontFamily: FU }}>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: C.ink }}>{f.q}</span>
+                  <span style={{ flexShrink: 0, fontSize: 22, lineHeight: 1, color: C.indigo2, transition: "transform .2s", transform: open ? "rotate(45deg)" : "rotate(0deg)" }}>+</span>
+                </button>
+                {open && <div style={{ padding: "0 20px 18px", fontSize: 14.5, lineHeight: 1.65, color: C.body }}>{f.a}</div>}
+              </div>
+            );
+          })}
+        </div>
       </section>
 
       {/* ── Footer ── */}
