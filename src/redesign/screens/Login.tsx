@@ -3,6 +3,7 @@
 import { useState, type CSSProperties } from "react";
 import { LANGS } from "../data";
 import { useT } from "../i18n";
+import PasswordInput from "../components/PasswordInput";
 
 const card: CSSProperties = { flex: 1, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 13, padding: 11, textAlign: "center", boxShadow: "var(--shadow)" };
 const statNum: CSSProperties = { fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 17, color: "var(--accent-fg)" };
@@ -67,7 +68,7 @@ export default function Login({
         <input value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={onKey} autoComplete="username" inputMode="email" placeholder={t.rd_login_email_ph} style={{ ...input, fontWeight: 600, marginBottom: 14 }} />
 
         <label style={label}>{t.rd_login_password}</label>
-        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={onKey} autoComplete="current-password" placeholder={t.rd_login_password_ph} style={{ ...input, marginBottom: 8 }} />
+        <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={onKey} autoComplete="current-password" placeholder={t.rd_login_password_ph} style={input} wrapStyle={{ marginBottom: 8 }} />
 
         <div style={{ textAlign: "right", marginBottom: 16 }}><span onClick={() => setForgotOpen(true)} style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-fg)", cursor: "pointer" }}>{t.rd_login_forgot}</span></div>
 

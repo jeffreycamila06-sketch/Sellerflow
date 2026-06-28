@@ -614,6 +614,8 @@ const RAW: Record<string, Row> = {
   rd_login_email_ph: { en: "you@example.com", fil: "you@example.com", zh: "you@example.com", "zh-TW": "you@example.com", vi: "you@example.com", th: "you@example.com", id: "you@example.com" },
   rd_login_password: { en: "Password", fil: "Password", zh: "密码", "zh-TW": "密碼", vi: "Mật khẩu", th: "รหัสผ่าน", id: "Kata sandi" },
   rd_login_password_ph: { en: "Your password", fil: "Iyong password", zh: "你的密码", "zh-TW": "你的密碼", vi: "Mật khẩu của bạn", th: "รหัสผ่านของคุณ", id: "Kata sandi Anda" },
+  rd_pw_show: { en: "Show password", fil: "Ipakita ang password", zh: "显示密码", "zh-TW": "顯示密碼", vi: "Hiện mật khẩu", th: "แสดงรหัสผ่าน", id: "Tampilkan kata sandi" },
+  rd_pw_hide: { en: "Hide password", fil: "Itago ang password", zh: "隐藏密码", "zh-TW": "隱藏密碼", vi: "Ẩn mật khẩu", th: "ซ่อนรหัสผ่าน", id: "Sembunyikan kata sandi" },
   rd_login_forgot: { en: "Forgot password?", fil: "Nakalimutan ang password?", zh: "忘记密码？", "zh-TW": "忘記密碼？", vi: "Quên mật khẩu?", th: "ลืมรหัสผ่าน?", id: "Lupa kata sandi?" },
   rd_login_err_empty: { en: "Enter your email and password.", fil: "Ilagay ang iyong email at password.", zh: "请输入邮箱和密码。", "zh-TW": "請輸入電子郵件與密碼。", vi: "Nhập email và mật khẩu của bạn.", th: "กรอกอีเมลและรหัสผ่านของคุณ", id: "Masukkan email dan kata sandi Anda." },
   rd_login_err_failed: { en: "Sign-in failed. Check your details and try again.", fil: "Nabigo ang pag-sign-in. Suriin ang iyong detalye at subukan ulit.", zh: "登录失败。请检查信息后重试。", "zh-TW": "登入失敗。請檢查資料後重試。", vi: "Đăng nhập thất bại. Kiểm tra thông tin và thử lại.", th: "เข้าสู่ระบบไม่สำเร็จ ตรวจสอบข้อมูลแล้วลองใหม่", id: "Gagal masuk. Periksa detail Anda dan coba lagi." },

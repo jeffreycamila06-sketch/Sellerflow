@@ -5,6 +5,7 @@
 import { useState, type CSSProperties } from "react";
 import type { RegisterFields, RegisterResult } from "../adapters/useAuthSession";
 import { useT } from "../i18n";
+import PasswordInput from "../components/PasswordInput";
 
 const label: CSSProperties = { fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 5 };
 const input: CSSProperties = { width: "100%", padding: "12px 13px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 600, outline: "none" };
@@ -61,8 +62,8 @@ export default function Signup({ onBack, onLegal, onRegister }: {
 
         <div style={{ ...groupLabel, margin: "16px 2px 9px" }}>{t.rd_su_password_h}</div>
         <div style={groupCard}>
-          <div><label style={label}>{t.rd_login_password}</label><input type="password" value={form.password} onChange={(e) => set("password", e.target.value)} placeholder={t.rd_su_pw_ph} autoComplete="new-password" style={input} /></div>
-          <div><label style={label}>{t.rd_su_confirm}</label><input type="password" value={form.confirm} onChange={(e) => set("confirm", e.target.value)} placeholder={t.rd_su_confirm_ph} autoComplete="new-password" style={input} /></div>
+          <div><label style={label}>{t.rd_login_password}</label><PasswordInput value={form.password} onChange={(e) => set("password", e.target.value)} placeholder={t.rd_su_pw_ph} autoComplete="new-password" style={input} /></div>
+          <div><label style={label}>{t.rd_su_confirm}</label><PasswordInput value={form.confirm} onChange={(e) => set("confirm", e.target.value)} placeholder={t.rd_su_confirm_ph} autoComplete="new-password" style={input} /></div>
         </div>
 
         {err && <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--danger)", background: "var(--danger-soft, rgba(225,29,72,.1))", border: "1px solid var(--danger)", borderRadius: 10, padding: "9px 12px", marginTop: 14 }}>{err}</div>}
