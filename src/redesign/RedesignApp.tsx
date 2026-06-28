@@ -10,6 +10,7 @@ import Products from "./screens/Products";
 import Miners from "./screens/Miners";
 import Login from "./screens/Login";
 import Landing from "./screens/Landing";
+import AuthModal from "./components/AuthModal";
 import { anonScreen } from "./adapters/appShell";
 import SettingsHub from "./screens/SettingsHub";
 import GeneralSettings from "./screens/GeneralSettings";
@@ -234,6 +235,9 @@ export default function RedesignApp() {
   const [theme, setTheme] = useState<ThemeMode>(() => (readLS(LS.theme, "light") === "dark" ? "dark" : "light"));
   const [accent, setAccent] = useState<AccentKey>(() => safeAccent(readLS(LS.accent, "indigo")));
   const [screen, setScreen] = useState<Screen>(anonScreen());
+  // Web-landing auth pop-up: "" = none, else Login/Signup renders in a modal OVER the
+  // still-mounted landing (web only; the APK starts at screen "login" and never sets this).
+  const [authModal, setAuthModal] = useState<"" | "login" | "signup">("");
   const [adminPanel, setAdminPanel] = useState<AdminPanelKind | null>(null);
   const [assignAmount, setAssignAmount] = useState("499");
   const [lang, setLang] = useState<string>(() => readLS(LS.lang, "en"));
@@ -477,6 +481,7 @@ export default function RedesignApp() {
   const currencyPinnedRef = useRef(false);
   useEffect(() => {
     if (auth.status === "authed") {
+      setAuthModal(""); // close the landing auth pop-up once signed in
       setScreen((s) => (s === "login" || s === "signup" || s === "landing" ? "dashboard" : s));
       if (!currencyPinnedRef.current) {
         currencyPinnedRef.current = true;
@@ -522,14 +527,40 @@ export default function RedesignApp() {
             </div>
           )}
           {screen === "landing" && auth.status !== "loading" && (
-            <Landing
-              onLogin={() => setScreen("login")}
-              onSignup={() => setScreen("signup")}
-              lang={lang}
-              langOpen={langOpen}
-              onToggleLang={() => setLangOpen((o) => !o)}
-              onPickLang={(code) => { setLang(code); setLangOpen(false); }}
-            />
+            <>
+              <Landing
+                onLogin={() => setAuthModal("login")}
+                onSignup={() => setAuthModal("signup")}
+                lang={lang}
+                langOpen={langOpen}
+                onToggleLang={() => setLangOpen((o) => !o)}
+                onPickLang={(code) => { setLang(code); setLangOpen(false); }}
+              />
+              {/* Web-landing auth pop-up: Login/Signup overlay; the landing stays mounted
+                  behind. Same components, same auth logic — only the presentation differs.
+                  On success, the auth effect clears authModal + navigates to the dashboard. */}
+              {authModal && (
+                <AuthModal onClose={() => setAuthModal("")} closeLabel={tApp.rd_close}>
+                  {authModal === "login" ? (
+                    <Login
+                      onLogin={(email, password) => auth.signIn(email, password)}
+                      configured={auth.configured}
+                      onSignup={() => setAuthModal("signup")}
+                      lang={lang}
+                      langOpen={langOpen}
+                      onToggleLang={() => setLangOpen((o) => !o)}
+                      onPickLang={(code) => { setLang(code); setLangOpen(false); }}
+                    />
+                  ) : (
+                    <Signup
+                      onBack={() => setAuthModal("login")}
+                      onLegal={() => { setAuthModal(""); setScreen("legal"); }}
+                      onRegister={auth.register}
+                    />
+                  )}
+                </AuthModal>
+              )}
+            </>
           )}
           {screen === "login" && auth.status !== "loading" && (
             <Login
