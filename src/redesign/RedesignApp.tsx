@@ -9,6 +9,8 @@ import Orders from "./screens/Orders";
 import Products from "./screens/Products";
 import Miners from "./screens/Miners";
 import Login from "./screens/Login";
+import Landing from "./screens/Landing";
+import { anonScreen } from "./adapters/appShell";
 import SettingsHub from "./screens/SettingsHub";
 import GeneralSettings from "./screens/GeneralSettings";
 import Customers from "./screens/Customers";
@@ -49,13 +51,14 @@ import ConnectModal from "./screens/ConnectModal";
 import { TProvider, buildT, tpl } from "./i18n";
 
 type Screen =
-  | "login" | "signup" | "dashboard" | "miners" | "orders" | "products"
+  | "landing" | "login" | "signup" | "dashboard" | "miners" | "orders" | "products"
   | "menu" | "settings" | "customers" | "subscription" | "support"
   | "admin" | "print" | "sales" | "shipping" | "customerdata" | "legal" | "delete"
   | "printersettings" | "printpattern" | "ttchannels" | "fbchannels";
 
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
 const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels"];
+
 
 const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set", autowords: "sfl_rd_autowords", automode: "sfl_rd_automode", pp: "sfl_rd_pp", printer: "sfl_rd_printer" } as const;
 const readLS = (k: string, fallback: string): string => {
@@ -230,7 +233,7 @@ export default function RedesignApp() {
 
   const [theme, setTheme] = useState<ThemeMode>(() => (readLS(LS.theme, "light") === "dark" ? "dark" : "light"));
   const [accent, setAccent] = useState<AccentKey>(() => safeAccent(readLS(LS.accent, "indigo")));
-  const [screen, setScreen] = useState<Screen>("login");
+  const [screen, setScreen] = useState<Screen>(anonScreen());
   const [adminPanel, setAdminPanel] = useState<AdminPanelKind | null>(null);
   const [assignAmount, setAssignAmount] = useState("499");
   const [lang, setLang] = useState<string>(() => readLS(LS.lang, "en"));
@@ -474,7 +477,7 @@ export default function RedesignApp() {
   const currencyPinnedRef = useRef(false);
   useEffect(() => {
     if (auth.status === "authed") {
-      setScreen((s) => (s === "login" || s === "signup" ? "dashboard" : s));
+      setScreen((s) => (s === "login" || s === "signup" || s === "landing" ? "dashboard" : s));
       if (!currencyPinnedRef.current) {
         currencyPinnedRef.current = true;
         let explicit = false;
@@ -482,7 +485,7 @@ export default function RedesignApp() {
         if (!explicit) setCurrency(DEFAULT_CURRENCY);
       }
     } else if (auth.status === "anon") {
-      setScreen("login");
+      setScreen(anonScreen());
     }
   }, [auth.status]);
 
@@ -517,6 +520,16 @@ export default function RedesignApp() {
               <img src="/redesign/icon-180.png" alt="SellerFlowLive" style={{ width: 56, height: 56, borderRadius: 15, objectFit: "cover", opacity: 0.9 }} />
               <div style={{ fontSize: 13, fontWeight: 600, fontFamily: "var(--font-ui)" }}>Loading…</div>
             </div>
+          )}
+          {screen === "landing" && auth.status !== "loading" && (
+            <Landing
+              onLogin={() => setScreen("login")}
+              onSignup={() => setScreen("signup")}
+              lang={lang}
+              langOpen={langOpen}
+              onToggleLang={() => setLangOpen((o) => !o)}
+              onPickLang={(code) => { setLang(code); setLangOpen(false); }}
+            />
           )}
           {screen === "login" && auth.status !== "loading" && (
             <Login

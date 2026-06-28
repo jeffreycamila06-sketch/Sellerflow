@@ -1,0 +1,153 @@
+// Public marketing landing (web only — NEVER shown in the APK; gated by isAppShell
+// in RedesignApp). Recreated from design-landing/ handoff (README authoritative) in
+// React with the redesign FONT tokens; colors use the handoff's fixed light-indigo
+// palette so the marketing page looks consistent regardless of a visitor's saved
+// theme/accent. support.js is NOT used. STEP La = nav + hero + footer; the marketing
+// sections (features / how / pricing / faq / cta) land in Step Lb.
+import { type CSSProperties } from "react";
+import { LANGS } from "../data";
+import { useT } from "../i18n";
+
+// Handoff palette (README → "all hex values are authoritative"; indigo only).
+const C = {
+  bg: "#FAFAFE", card: "#FFFFFF", border: "#ECECF5", border2: "#E0DDF0",
+  ink: "#171530", body: "#4A4860", muted: "#6A6880", faint: "#8A88A0",
+  indigo: "#4F46E5", indigo2: "#6366F1", indigo3: "#818CF8",
+  pill: "#EFEEFE", pillBorder: "#E0DDFA",
+  green: "#10B981", rose: "#F43F5E", tg: "#27A7E7",
+  grad: "linear-gradient(135deg, #4F46E5, #6366F1)",
+  heroGrad: "linear-gradient(120deg, #4F46E5, #6366F1 60%, #818CF8)",
+};
+const FD = "var(--font-display)"; const FU = "var(--font-ui)"; const FM = "var(--font-mono)";
+
+const primaryBtn: CSSProperties = { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "0 22px", height: 54, borderRadius: 14, border: "none", background: C.grad, color: "#fff", fontFamily: FU, fontSize: 15.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 16px 30px -10px rgba(79,70,229,.5)", textDecoration: "none" };
+const ghostBtn: CSSProperties = { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "0 20px", height: 54, borderRadius: 14, background: "#fff", color: C.ink, border: `1px solid ${C.border2}`, fontFamily: FU, fontSize: 15.5, fontWeight: 700, cursor: "pointer", textDecoration: "none" };
+
+export default function Landing({
+  onLogin, onSignup, lang, langOpen, onToggleLang, onPickLang,
+}: {
+  onLogin: () => void;
+  onSignup: () => void;
+  lang: string;
+  langOpen: boolean;
+  onToggleLang: () => void;
+  onPickLang: (code: string) => void;
+}) {
+  const t = useT();
+  const cur = LANGS.find((l) => l.code === lang) || LANGS[0];
+
+  return (
+    <div style={{ minHeight: "100%", background: C.bg, color: C.body, fontFamily: FU }}>
+      {/* ── Sticky nav ── */}
+      <nav style={{ position: "sticky", top: 0, zIndex: 30, height: 72, background: "rgba(250,250,254,.82)", backdropFilter: "blur(14px)", borderBottom: `1px solid ${C.border}`, display: "flex", alignItems: "center" }}>
+        <div style={{ width: "100%", maxWidth: 1200, margin: "0 auto", padding: "0 32px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <img src="/landing-logo.png" alt="" style={{ width: 38, height: 38, objectFit: "contain" }} />
+            <span style={{ fontFamily: FD, fontWeight: 700, fontSize: 19, color: C.ink, letterSpacing: "-.01em" }}>SellerFlow<span style={{ color: C.indigo }}>Live</span></span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {/* language switcher */}
+            <div style={{ position: "relative" }}>
+              <button onClick={onToggleLang} style={{ display: "flex", alignItems: "center", gap: 6, height: 40, padding: "0 12px", borderRadius: 11, border: `1px solid ${C.border2}`, background: "#fff", cursor: "pointer", fontFamily: FU, fontSize: 13.5, fontWeight: 600, color: C.body }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke={C.muted} strokeWidth="1.6" /><path d="M3 12h18M12 3c2.5 2.5 2.5 15 0 18M12 3c-2.5 2.5-2.5 15 0 18" stroke={C.muted} strokeWidth="1.3" /></svg>
+                <span>{cur.flag} {String(cur.code).toUpperCase()}</span>
+                <span style={{ fontSize: 10, color: C.faint }}>▾</span>
+              </button>
+              {langOpen && (
+                <div style={{ position: "absolute", top: "calc(100% + 8px)", right: 0, width: 200, background: "#fff", border: `1px solid ${C.border}`, borderRadius: 13, boxShadow: "0 14px 34px rgba(23,21,48,.16)", padding: 6, zIndex: 40 }}>
+                  {LANGS.map((l) => (
+                    <button key={l.code} onClick={() => onPickLang(l.code)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "9px 10px", border: "none", borderRadius: 9, background: l.code === lang ? C.pill : "transparent", cursor: "pointer", textAlign: "left", fontFamily: FU }}>
+                      <span style={{ fontSize: 16 }}>{l.flag}</span>
+                      <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: C.ink }}>{l.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button onClick={onLogin} style={{ height: 40, padding: "0 14px", borderRadius: 11, border: "none", background: "transparent", color: C.body, fontFamily: FU, fontSize: 14.5, fontWeight: 700, cursor: "pointer" }}>{t.lp_login}</button>
+            <button onClick={onSignup} style={{ height: 42, padding: "0 18px", borderRadius: 12, border: "none", background: C.grad, color: "#fff", fontFamily: FU, fontSize: 14.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 10px 22px -8px rgba(79,70,229,.5)" }}>{t.rd_lp_start_free}</button>
+          </div>
+        </div>
+      </nav>
+
+      {/* ── Hero ── */}
+      <section style={{ maxWidth: 1200, margin: "0 auto", padding: "72px 32px 80px", display: "grid", gridTemplateColumns: "1.05fr 0.95fr", gap: 56, alignItems: "center" }} className="sfl-lp-hero">
+        <div>
+          <span style={{ display: "inline-block", padding: "7px 13px", borderRadius: 99, background: C.pill, border: `1px solid ${C.pillBorder}`, color: C.indigo, fontSize: 12.5, fontWeight: 700 }}>{t.rd_lp_hero_kicker}</span>
+          <h1 style={{ fontFamily: FD, fontWeight: 700, fontSize: 64, lineHeight: 1.04, letterSpacing: "-2px", color: C.ink, margin: "20px 0 0" }}>
+            {t.rd_lp_hero_l1}<br />
+            <span style={{ background: C.heroGrad, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>{t.rd_lp_hero_l2}</span>
+          </h1>
+          <p style={{ fontSize: 18, lineHeight: 1.6, color: C.body, maxWidth: 480, margin: "20px 0 0" }}>{t.rd_lp_hero_sub}</p>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 28 }}>
+            <button onClick={onSignup} style={primaryBtn}>{t.rd_lp_start_free}</button>
+            <button onClick={onLogin} style={ghostBtn}>{t.lp_login}</button>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 28 }}>
+            <div style={{ display: "flex" }}>
+              {["#a5b4fc", "#818cf8", "#6366f1", "#4f46e5"].map((bg, i) => (
+                <span key={i} style={{ width: 32, height: 32, borderRadius: "50%", background: bg, border: "2px solid #fff", marginLeft: i ? -10 : 0 }} />
+              ))}
+            </div>
+            <span style={{ fontSize: 13.5, color: C.muted, fontWeight: 600 }}>{t.rd_lp_social}</span>
+          </div>
+        </div>
+
+        {/* Product visual card — the "money shot" (demo data = literals). */}
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 24, padding: 18, boxShadow: "0 40px 80px -30px rgba(79,70,229,.4)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "5px 11px", borderRadius: 99, background: "rgba(244,63,94,.1)", color: C.rose, fontSize: 12, fontWeight: 800 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: C.rose }} />{t.rd_lp_pc_live}</span>
+            <span style={{ fontFamily: FM, fontSize: 14, fontWeight: 700, color: C.ink }}>32:14</span>
+          </div>
+          <div style={{ background: "#F6F6FC", borderRadius: 16, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
+              <span style={{ width: 28, height: 28, borderRadius: "50%", background: "#c7d2fe", flexShrink: 0 }} />
+              <div><div style={{ fontSize: 12.5, fontWeight: 700, color: C.ink }}>Jamie R.</div><div style={{ fontSize: 12.5, color: C.body }}>How much for the floral set? 😍</div></div>
+            </div>
+            <div style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
+              <span style={{ width: 28, height: 28, borderRadius: "50%", background: "#a7f3d0", flexShrink: 0 }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: C.ink }}>Crystal L.</div>
+                <div style={{ fontSize: 12.5, color: C.body }}>mine 04 ✋</div>
+                <div style={{ display: "flex", gap: 7, marginTop: 5 }}>
+                  <span style={{ fontSize: 10.5, fontWeight: 800, color: C.indigo, background: C.pill, padding: "3px 7px", borderRadius: 6 }}>MINE 04</span>
+                  <span style={{ fontSize: 10.5, fontWeight: 800, color: C.green, display: "inline-flex", alignItems: "center", gap: 4 }}>✓ {t.rd_lp_pc_captured}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style={{ marginTop: 12, background: C.grad, borderRadius: 16, padding: "12px 14px", color: "#fff" }}>
+            <div style={{ fontSize: 10.5, fontWeight: 800, opacity: .9, letterSpacing: ".04em" }}>{t.rd_lp_pc_auto}</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
+              <span style={{ fontSize: 13, fontWeight: 700 }}>Crystal Lim · Item 04</span>
+              <span style={{ fontFamily: FM, fontSize: 15, fontWeight: 700 }}>₱980</span>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 9, marginTop: 12 }}>
+            <span style={{ flex: 1, textAlign: "center", padding: "11px 0", borderRadius: 12, background: C.ink, color: "#fff", fontSize: 13, fontWeight: 700 }}>{t.rd_lp_pc_print}</span>
+            <span style={{ flex: 1, textAlign: "center", padding: "11px 0", borderRadius: 12, background: "#fff", color: C.ink, border: `1px solid ${C.border2}`, fontSize: 13, fontWeight: 700 }}>{t.rd_lp_pc_paylink}</span>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Footer ── */}
+      <footer style={{ background: C.ink, color: "#cfcde6", marginTop: 8 }}>
+        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "40px 32px 28px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <img src="/landing-logo.png" alt="" style={{ width: 34, height: 34, objectFit: "contain" }} />
+            <span style={{ fontFamily: FD, fontWeight: 700, fontSize: 18, color: "#fff" }}>SellerFlowLive</span>
+          </div>
+          <p style={{ fontSize: 13.5, color: "#9d9bc0", marginTop: 12, maxWidth: 420, lineHeight: 1.6 }}>{t.lp_footer_tagline}</p>
+          <a href="https://t.me/SellerFlowLive1995" target="_blank" rel="noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 8, marginTop: 14, padding: "8px 13px", borderRadius: 10, background: "rgba(39,167,231,.16)", color: "#7fd3ff", fontSize: 13, fontWeight: 700, textDecoration: "none" }}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M21.5 4.3 3.2 11.4c-1 .4-1 1.8.1 2.1l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.3l2.5-2.6 4.7 3.4c.6.4 1.4.1 1.6-.6l3-15c.2-1-.7-1.8-1.6-1.3Z" /></svg>
+            @SellerFlowLive1995
+          </a>
+          <div style={{ borderTop: "1px solid rgba(255,255,255,.1)", marginTop: 22, paddingTop: 18, display: "flex", flexWrap: "wrap", gap: 10, justifyContent: "space-between", fontSize: 12, color: "#807ea0" }}>
+            <span>{t.rd_lp_foot_bottom}</span>
+            <span>{t.rd_lp_foot_langs}</span>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
