@@ -212,11 +212,17 @@ export default function RedesignApp() {
 
   // Phase 5j — Miners DERIVED from already-loaded real customers (no new backend),
   // + CSV exports of already-loaded real data (csvDL copied from App.tsx).
-  const minersLive = customersData.state === "live";
-  const minerList = [...customersData.customers].sort((a, b) => b.spent - a.spent).slice(0, 5)
+  // Miners is ALWAYS real-mode — never the sample MINERS demo. Derive only from REAL
+  // customer rows: "live"/"empty" = the authed query result; any other state
+  // (unauthed / DB error → customersData holds SAMPLE_CUSTOMERS) is forced to [] so a
+  // new user (0 customers) or a transient error shows clean 0s + the guidance empty-state,
+  // not fake "1,284 buyers". googletest (33 rows → "live") still shows its real numbers.
+  const minersReal = customersData.state === "live" || customersData.state === "empty";
+  const minerCustomers = minersReal ? customersData.customers : [];
+  const minerList = [...minerCustomers].sort((a, b) => b.spent - a.spent).slice(0, 5)
     .map((c) => ({ name: c.name, handle: c.handle, orders: c.orders, spent: c.spent, platform: c.platform }));
   const minerStats = (() => {
-    const cs = customersData.customers;
+    const cs = minerCustomers;
     const buyers = cs.length;
     const orderCount = cs.reduce((s, c) => s + c.orders, 0);
     const spent = cs.reduce((s, c) => s + c.spent, 0);
@@ -604,7 +610,7 @@ export default function RedesignApp() {
           )}
           {screen === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} orders={ordersList} state={ordersState} onExport={exportOrders} />}
           {screen === "products" && <Products cur={cur} />}
-          {screen === "miners" && <Miners cur={cur} miners={minersLive ? minerList : undefined} stats={minersLive ? minerStats : undefined} live={minersLive} onExport={exportMiners} />}
+          {screen === "miners" && <Miners cur={cur} miners={minerList} stats={minerStats} live onExport={exportMiners} />}
           {screen === "menu" && (
             <SettingsHub
               onGeneral={() => setScreen("settings")}
