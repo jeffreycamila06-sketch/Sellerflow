@@ -12,7 +12,7 @@
 //
 // SAFETY: every write is RLS-scoped to the signed-in user (googletest) — the db
 // functions read supabase.auth.getUser() and stamp user_id. The billing `orders`
-// 200-cap trigger (check_and_increment_free_order) stays authoritative and
+// free-cap trigger (check_and_increment_free_order, now 100) stays authoritative and
 // UNTOUCHED — we insert via the existing saveOrderToDatabase; if a free account
 // is over cap the trigger rejects the insert and we surface it in 5f.
 import { useCallback } from "react";

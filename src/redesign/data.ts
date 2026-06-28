@@ -224,9 +224,9 @@ export const SUBS: { active: Sub[]; expiring: Sub[]; free: Sub[]; expired: Sub[]
     { shop: "JoyMart", owner: "Joy Aquino", plan: "Starter", info: "Expires in 14 days · Jul 09" },
   ],
   free: [
-    { shop: "Baba Store", owner: "danishaqil194", plan: "Free", info: "0 / 200 orders · 14d cycle" },
-    { shop: "Atlas Shop", owner: "khalidkhadem2023", plan: "Free", info: "0 / 200 orders · 14d cycle" },
-    { shop: "Zam Picks", owner: "barakatullahkhan12", plan: "Free", info: "12 / 200 orders · 9d left" },
+    { shop: "Baba Store", owner: "danishaqil194", plan: "Free", info: "0 / 100 orders · 14d cycle" },
+    { shop: "Atlas Shop", owner: "khalidkhadem2023", plan: "Free", info: "0 / 100 orders · 14d cycle" },
+    { shop: "Zam Picks", owner: "barakatullahkhan12", plan: "Free", info: "12 / 100 orders · 9d left" },
   ],
   expired: [
     { shop: "BudgetBuys", owner: "Rico Tan", plan: "Starter", info: "Expired Jun 20 · not renewed" },

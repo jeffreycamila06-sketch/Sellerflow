@@ -119,7 +119,7 @@ describe("Landing (Step La)", () => {
     expect(screen.getByText(/Billing is via Wise/)).toBeTruthy(); // opened
     fireEvent.click(screen.getByText("Is there really a free plan?"));
     expect(screen.queryByText(/Billing is via Wise/)).toBeNull(); // first closed (single-open)
-    expect(screen.getByText(/200 orders per cycle, free forever/)).toBeTruthy(); // second open
+    expect(screen.getByText(/100 orders per cycle, free forever/)).toBeTruthy(); // second open
   });
 
   it("FAQ nav anchor present", () => {

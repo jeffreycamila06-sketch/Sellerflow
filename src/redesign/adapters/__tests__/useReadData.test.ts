@@ -176,13 +176,13 @@ describe("deriveUserBase — tier headcount by PLAN (not status)", () => {
 });
 
 describe("freeUsersSummary — cap-progress aggregate from the RPC rows", () => {
-  const f = (over: Partial<FreeUserRow>): FreeUserRow => ({ email: "f@x.com", store_name: "S", full_name: "F", count: 0, cap: 200, near_cap: false, capped: false, cycle_resets_in_days: 30, ...over });
+  const f = (over: Partial<FreeUserRow>): FreeUserRow => ({ email: "f@x.com", store_name: "S", full_name: "F", count: 0, cap: 100, near_cap: false, capped: false, cycle_resets_in_days: 30, ...over });
   it("totals users, near-cap (not capped), capped, and summed orders", () => {
-    const rows = [f({ count: 10 }), f({ count: 160, near_cap: true }), f({ count: 200, near_cap: true, capped: true })];
-    expect(freeUsersSummary(rows)).toEqual({ total: 3, nearCap: 1, capped: 1, orders: 370, cap: 200 });
+    const rows = [f({ count: 10 }), f({ count: 80, near_cap: true }), f({ count: 100, near_cap: true, capped: true })];
+    expect(freeUsersSummary(rows)).toEqual({ total: 3, nearCap: 1, capped: 1, orders: 190, cap: 100 });
   });
-  it("empty → zeros, default cap 200", () => {
-    expect(freeUsersSummary([])).toEqual({ total: 0, nearCap: 0, capped: 0, orders: 0, cap: 200 });
+  it("empty → zeros, default cap 100", () => {
+    expect(freeUsersSummary([])).toEqual({ total: 0, nearCap: 0, capped: 0, orders: 0, cap: 100 });
   });
 });
 

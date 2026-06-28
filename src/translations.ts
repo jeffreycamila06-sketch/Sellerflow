@@ -236,7 +236,7 @@ const BASE_TRANSLATIONS = {
     ship_order_singular:"order",
     ship_order_plural:"orders",
     ship_edit_amount:"Edit amount",
-    // Freemium free tier (200 orders / 30-day cycle). {count} {cap} {left} {days} filled in by the app.
+    // Freemium free tier (100 orders / 30-day cycle). {count} {cap} {left} {days} filled in by the app.
     plan_free:"Free",
     free_orders_progress:"{count}/{cap} orders this cycle",
     free_cycle_resets_in:"Resets in {days} days",
@@ -273,7 +273,7 @@ const BASE_TRANSLATIONS = {
       {q:"Why aren't any comments showing?",a:"Make sure you're connected to your TikTok or Facebook live session and that you're actually LIVE (broadcasting). When you're connected and LIVE, comments should appear in real time."},
       {q:"How do I create an order (1-click)?",a:"In the Live comments, click the buyer's username and enter the price — the order is created automatically and the customer is registered. For shipping, the customer appears in the Customer Data section (admin-only)."},
       {q:"How do I set up a WiFi printer?",a:"Go to Settings → Printer and enter the WiFi printer's IP address and port (default 9100). Test the connection and do a test print. Your phone/device and the printer must be on the same WiFi. Use 80mm thermal paper. Note: setup differs on phone vs laptop — follow the correct method."},
-      {q:"How much is the subscription, and is it free to start?",a:"The Free plan lets you create up to 200 orders every 30-day cycle (it starts once admin approves your account). To go beyond that, subscribe: Basic = $15/month (1 account), Pro = $25/month (3 accounts), Master = $40/month (5 accounts)."},
+      {q:"How much is the subscription, and is it free to start?",a:"The Free plan lets you create up to 100 orders every 30-day cycle (it starts once admin approves your account). To go beyond that, subscribe: Basic = $15/month (1 account), Pro = $25/month (3 accounts), Master = $40/month (5 accounts)."},
       {q:"Login / password issues",a:'To log in, use your email and password. If you forgot your password, click the "Forgot password?" link on the login page to reset it yourself. For any other issue, type below for admin support.'},
     ],
     // ── Phase 2a: SettingsPage extracted strings ──
@@ -796,7 +796,7 @@ const BASE_TRANSLATIONS = {
     ship_order_singular:"order",
     ship_order_plural:"order",
     ship_edit_amount:"I-edit ang halaga",
-    // Freemium free tier (200 orders / 30-day cycle). {count} {cap} {left} {days} filled in by the app.
+    // Freemium free tier (100 orders / 30-day cycle). {count} {cap} {left} {days} filled in by the app.
     plan_free:"Free",
     free_orders_progress:"{count}/{cap} orders ngayong cycle",
     free_cycle_resets_in:"Mag-reset sa {days} araw",
@@ -832,7 +832,7 @@ const BASE_TRANSLATIONS = {
       {q:"Bakit walang lumalabas na comments?",a:"Siguraduhing connected ka sa TikTok o Facebook live session, at LIVE ka talaga (nagbo-broadcast). Kapag connected at LIVE, dapat lumabas ang comments in real time."},
       {q:"Paano mag-create ng order (1-click)?",a:"Sa Live comments, i-click ang username ng buyer at ilagay ang price — automatic na magagawa ang order at maire-register ang customer. Para sa shipping, makikita ang customer sa Customer Data section (admin-only)."},
       {q:"Paano mag-setup ng WiFi printer?",a:"Pumunta sa Settings → Printer, ilagay ang WiFi printer IP address at port (default 9100). I-test ang connection at test print. Dapat nasa parehong WiFi ang phone/device at printer. Gumagamit ng 80mm thermal paper. Note: magkaiba ang setup sa phone vs laptop — sundin ang tamang paraan."},
-      {q:"Magkano ang subscription at libre ba magsimula?",a:"Ang Free plan ay pumapayag ng hanggang 200 orders kada 30-araw na cycle (magsisimula kapag na-approve ng admin ang account mo). Para lumagpas dito, mag-subscribe: Basic = $15/buwan (1 account), Pro = $25/buwan (3 accounts), Master = $40/buwan (5 accounts)."},
+      {q:"Magkano ang subscription at libre ba magsimula?",a:"Ang Free plan ay pumapayag ng hanggang 100 orders kada 30-araw na cycle (magsisimula kapag na-approve ng admin ang account mo). Para lumagpas dito, mag-subscribe: Basic = $15/buwan (1 account), Pro = $25/buwan (3 accounts), Master = $40/buwan (5 accounts)."},
       {q:"Login / password issues",a:'Para sa login, gamitin ang email at password mo. Kung nakalimutan ang password, i-click ang "Forgot password?" link sa login page para makapagbago ka mismo. Kung may iba pang issue, mag-type sa baba para sa admin support.'},
     ],
     // ── Phase 2a: SettingsPage extracted strings ──
@@ -1355,7 +1355,7 @@ const BASE_TRANSLATIONS = {
     ship_order_singular:"笔订单",
     ship_order_plural:"笔订单",
     ship_edit_amount:"编辑金额",
-    // Freemium free tier (200 orders / 30-day cycle). {count} {cap} {left} {days} filled in by the app.
+    // Freemium free tier (100 orders / 30-day cycle). {count} {cap} {left} {days} filled in by the app.
     plan_free:"免费",
     free_orders_progress:"本周期 {count}/{cap} 个订单",
     free_cycle_resets_in:"{days} 天后重置",
@@ -1391,7 +1391,7 @@ const BASE_TRANSLATIONS = {
       {q:"为什么没有评论显示？",a:"请确认你已连接到 TikTok 或 Facebook 直播，并且你确实正在直播（正在播出）。连接并开始直播后，评论应会实时显示。"},
       {q:"如何创建订单（一键）？",a:"在直播评论中，点击买家的用户名并输入价格 — 订单会自动创建，客户也会被登记。关于发货，客户会显示在“客户数据”（Customer Data）区域（仅管理员可见）。"},
       {q:"如何设置 WiFi 打印机？",a:"进入 设置 → 打印机，输入 WiFi 打印机的 IP 地址和端口（默认 9100）。测试连接并进行测试打印。手机/设备和打印机必须在同一个 WiFi 网络中。使用 80mm 热敏纸。注意：手机和笔记本电脑的设置不同 — 请按正确方法操作。"},
-      {q:"订阅多少钱？可以免费开始吗？",a:"免费版每个 30 天周期可创建最多 200 个订单（在管理员批准你的账号后开始）。如需超出此限制，请订阅：基础版 = $15/月（1 个账号），专业版 = $25/月（3 个账号），大师版 = $40/月（5 个账号）。"},
+      {q:"订阅多少钱？可以免费开始吗？",a:"免费版每个 30 天周期可创建最多 100 个订单（在管理员批准你的账号后开始）。如需超出此限制，请订阅：基础版 = $15/月（1 个账号），专业版 = $25/月（3 个账号），大师版 = $40/月（5 个账号）。"},
       {q:"登录 / 密码问题",a:'登录时请使用你的邮箱和密码。如果忘记密码，点击登录页面的 "Forgot password?" 链接即可自行重置。如有其他问题，请在下方输入以联系管理员支持。'},
     ],
     // ── Phase 2a: SettingsPage extracted strings ──
@@ -1914,7 +1914,7 @@ const BASE_TRANSLATIONS = {
     ship_order_singular:"đơn",
     ship_order_plural:"đơn",
     ship_edit_amount:"Sửa số tiền",
-    // Freemium free tier (200 orders / 30-day cycle). {count} {cap} {left} {days} filled in by the app.
+    // Freemium free tier (100 orders / 30-day cycle). {count} {cap} {left} {days} filled in by the app.
     plan_free:"Miễn phí",
     free_orders_progress:"{count}/{cap} đơn trong chu kỳ này",
     free_cycle_resets_in:"Đặt lại sau {days} ngày",
@@ -1950,7 +1950,7 @@ const BASE_TRANSLATIONS = {
       {q:"Vì sao không có bình luận hiển thị?",a:"Hãy chắc chắn bạn đã kết nối với phiên live TikTok hoặc Facebook và bạn đang thực sự LIVE (đang phát). Khi đã kết nối và đang LIVE, bình luận sẽ hiển thị theo thời gian thực."},
       {q:"Làm sao để tạo đơn hàng (1-click)?",a:"Trong phần bình luận Live, nhấn vào tên người mua và nhập giá — đơn hàng được tạo tự động và khách hàng được đăng ký. Về giao hàng, khách hàng sẽ xuất hiện trong mục Customer Data (chỉ admin)."},
       {q:"Làm sao để cài đặt máy in WiFi?",a:"Vào Settings → Printer, nhập địa chỉ IP và cổng của máy in WiFi (mặc định 9100). Kiểm tra kết nối và in thử. Điện thoại/thiết bị và máy in phải cùng một mạng WiFi. Dùng giấy nhiệt 80mm. Lưu ý: cách cài trên điện thoại và laptop khác nhau — hãy làm theo đúng cách."},
-      {q:"Giá đăng ký bao nhiêu, có miễn phí để bắt đầu không?",a:"Gói Miễn phí cho phép tạo tối đa 200 đơn mỗi chu kỳ 30 ngày (bắt đầu khi admin duyệt tài khoản của bạn). Để vượt quá mức đó, hãy đăng ký: Basic = $15/tháng (1 tài khoản), Pro = $25/tháng (3 tài khoản), Master = $40/tháng (5 tài khoản)."},
+      {q:"Giá đăng ký bao nhiêu, có miễn phí để bắt đầu không?",a:"Gói Miễn phí cho phép tạo tối đa 100 đơn mỗi chu kỳ 30 ngày (bắt đầu khi admin duyệt tài khoản của bạn). Để vượt quá mức đó, hãy đăng ký: Basic = $15/tháng (1 tài khoản), Pro = $25/tháng (3 tài khoản), Master = $40/tháng (5 tài khoản)."},
       {q:"Vấn đề đăng nhập / mật khẩu",a:'Để đăng nhập, dùng email và mật khẩu của bạn. Nếu quên mật khẩu, nhấn liên kết "Forgot password?" trên trang đăng nhập để tự đặt lại. Nếu có vấn đề khác, hãy nhập bên dưới để được admin hỗ trợ.'},
     ],
     // ── Phase 2a: SettingsPage extracted strings ──
@@ -2393,7 +2393,7 @@ const THAI_TRANSLATIONS: T = {
   ship_order_singular:"ออเดอร์",
   ship_order_plural:"ออเดอร์",
   ship_edit_amount:"แก้ไขจำนวนเงิน",
-  // Freemium free tier (200 orders / 30-day cycle). {count} {cap} {left} {days} filled in by the app.
+  // Freemium free tier (100 orders / 30-day cycle). {count} {cap} {left} {days} filled in by the app.
   plan_free:"ฟรี",
   free_orders_progress:"{count}/{cap} ออเดอร์ในรอบนี้",
   free_cycle_resets_in:"รีเซ็ตใน {days} วัน",
@@ -3092,7 +3092,7 @@ const INDONESIAN_TRANSLATIONS: T = {
   ship_order_singular:"pesanan",
   ship_order_plural:"pesanan",
   ship_edit_amount:"Edit jumlah",
-  // Freemium free tier (200 orders / 30-day cycle). {count} {cap} {left} {days} filled in by the app.
+  // Freemium free tier (100 orders / 30-day cycle). {count} {cap} {left} {days} filled in by the app.
   plan_free:"Gratis",
   free_orders_progress:"{count}/{cap} pesanan siklus ini",
   free_cycle_resets_in:"Reset dalam {days} hari",
@@ -3108,7 +3108,7 @@ const INDONESIAN_TRANSLATIONS: T = {
     {q:"Kenapa tidak ada komentar yang muncul?",a:"Pastikan Anda terhubung ke sesi live TikTok atau Facebook, dan Anda benar-benar sedang LIVE (menyiarkan). Saat terhubung dan LIVE, komentar akan muncul secara real-time."},
     {q:"Bagaimana cara membuat pesanan (1-click)?",a:"Di komentar Live, klik username pembeli dan masukkan harga — pesanan dibuat otomatis dan pelanggan terdaftar. Untuk pengiriman, pelanggan muncul di bagian Customer Data (khusus admin)."},
     {q:"Bagaimana cara mengatur printer WiFi?",a:"Buka Settings → Printer, masukkan alamat IP dan port printer WiFi (default 9100). Tes koneksi dan tes cetak. Ponsel/perangkat dan printer harus berada di WiFi yang sama. Gunakan kertas termal 80mm. Catatan: pengaturan di ponsel dan laptop berbeda — ikuti cara yang benar."},
-    {q:"Berapa biaya langganan, dan apakah gratis untuk memulai?",a:"Paket Gratis memungkinkan hingga 200 pesanan setiap siklus 30 hari (dimulai setelah admin menyetujui akun Anda). Untuk melebihi itu, berlangganan: Basic = $15/bulan (1 akun), Pro = $25/bulan (3 akun), Master = $40/bulan (5 akun)."},
+    {q:"Berapa biaya langganan, dan apakah gratis untuk memulai?",a:"Paket Gratis memungkinkan hingga 100 pesanan setiap siklus 30 hari (dimulai setelah admin menyetujui akun Anda). Untuk melebihi itu, berlangganan: Basic = $15/bulan (1 akun), Pro = $25/bulan (3 akun), Master = $40/bulan (5 akun)."},
     {q:"Masalah login / kata sandi",a:'Untuk masuk, gunakan email dan kata sandi Anda. Jika lupa kata sandi, klik tautan "Forgot password?" di halaman login untuk meresetnya sendiri. Untuk masalah lain, ketik di bawah untuk dukungan admin.'},
   ],
   // ── Completed Indonesian overrides for previously English-fallback keys ──
@@ -3899,7 +3899,7 @@ const ZH_TW_TRANSLATIONS: T = {
   ship_order_singular:"筆訂單",
   ship_order_plural:"筆訂單",
   ship_edit_amount:"編輯金額",
-  // Freemium free tier (200 orders / 30-day cycle). {count} {cap} {left} {days} filled in by the app.
+  // Freemium free tier (100 orders / 30-day cycle). {count} {cap} {left} {days} filled in by the app.
   plan_free:"免費",
   free_orders_progress:"本週期 {count}/{cap} 筆訂單",
   free_cycle_resets_in:"{days} 天後重設",
@@ -3935,7 +3935,7 @@ const ZH_TW_TRANSLATIONS: T = {
     {q:"為什麼沒有留言顯示？",a:"請確認您已連接到 TikTok 或 Facebook 直播，並且您確實正在直播（正在播出）。連接並開始直播後，留言應會即時顯示。"},
     {q:"如何建立訂單（一鍵）？",a:"在直播留言中，點選買家的使用者名稱並輸入價格 — 訂單會自動建立，客戶也會被登記。關於出貨，客戶會顯示在「客戶資料」（Customer Data）區域（僅管理員可見）。"},
     {q:"如何設定 WiFi 印表機？",a:"進入 設定 → 印表機，輸入 WiFi 印表機的 IP 位址與連接埠（預設 9100）。測試連線並進行測試列印。手機／裝置與印表機必須在同一個 WiFi 網路中。使用 80mm 熱感應紙。注意：手機與筆記型電腦的設定不同 — 請依正確方法操作。"},
-    {q:"訂閱多少錢？可以免費開始嗎？",a:"免費版每個 30 天週期可建立最多 200 筆訂單（在管理員核准您的帳號後開始）。如需超出此限制，請訂閱：基礎版 = $15/月（1 個帳號），專業版 = $25/月（3 個帳號），旗艦版 = $40/月（5 個帳號）。"},
+    {q:"訂閱多少錢？可以免費開始嗎？",a:"免費版每個 30 天週期可建立最多 100 筆訂單（在管理員核准您的帳號後開始）。如需超出此限制，請訂閱：基礎版 = $15/月（1 個帳號），專業版 = $25/月（3 個帳號），旗艦版 = $40/月（5 個帳號）。"},
     {q:"登入 / 密碼問題",a:'登入時請使用您的電子郵件與密碼。如果忘記密碼，點選登入頁面的 "Forgot password?" 連結即可自行重設。如有其他問題，請在下方輸入以聯絡管理員客服。'},
   ],
   // ── Phase 2a: SettingsPage extracted strings ──

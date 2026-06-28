@@ -116,7 +116,7 @@ describe("en values are byte-exact for the shipped English (no en drift)", () =>
     expect(t.rd_terms).toBe("Terms");
   });
   it("tpl interpolates placeholders in en (matches the old template output)", () => {
-    expect(tpl(t.rd_cap_near_msg, { left: 5, cap: 200 })).toBe("Only 5 of your 200 free orders left this cycle. Upgrade for unlimited orders.");
+    expect(tpl(t.rd_cap_near_msg, { left: 5, cap: 100 })).toBe("Only 5 of your 100 free orders left this cycle. Upgrade for unlimited orders.");
     expect(tpl(t.rd_pr_print_all, { n: 7 })).toBe("🖨 Print all (7)");
     expect(tpl(t.rd_adm_act_setplan, { plan: "Pro" })).toBe("Set plan → Pro");
   });

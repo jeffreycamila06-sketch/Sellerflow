@@ -52,7 +52,7 @@ export default function Subscription({ cur, account = null, isFreeUser = false, 
         </div>
 
         {isFreeUser && freeStatus && (() => {
-          const cnt = freeStatus.count ?? 0, fcap = freeStatus.cap ?? 200, rd = freeStatus.cycle_resets_in_days ?? 30;
+          const cnt = freeStatus.count ?? 0, fcap = freeStatus.cap ?? 100, rd = freeStatus.cycle_resets_in_days ?? 30;
           const pct = Math.min(100, Math.round((cnt / Math.max(1, fcap)) * 100));
           const barColor = freeStatus.capped ? "var(--danger)" : freeStatus.near_cap ? "var(--warn)" : "var(--ok)";
           return (

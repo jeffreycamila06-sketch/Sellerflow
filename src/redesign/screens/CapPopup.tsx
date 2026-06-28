@@ -23,7 +23,7 @@ export default function CapPopup({
   const t = useT();
   const isHard = kind === "hard";
   const count = freeStatus?.count ?? 0;
-  const cap = freeStatus?.cap ?? 200;
+  const cap = freeStatus?.cap ?? 100;
   const resetDays = freeStatus?.cycle_resets_in_days ?? 30;
   const left = Math.max(0, cap - count);
   const title = isHard ? tpl(t.rd_cap_hard_title, { cap }) : t.rd_cap_near_title;

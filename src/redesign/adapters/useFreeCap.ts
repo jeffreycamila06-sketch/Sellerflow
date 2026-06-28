@@ -7,7 +7,7 @@
 // always-on interval (App.tsx:4168). This avoids the background-tab polling that
 // caused the earlier egress crisis.
 //
-// The DB trigger check_and_increment_free_order stays the authoritative 200-cap;
+// The DB trigger check_and_increment_free_order stays the authoritative cap (100);
 // this is the friendly in-app status + soft block + popups only.
 import { useCallback, useEffect, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";

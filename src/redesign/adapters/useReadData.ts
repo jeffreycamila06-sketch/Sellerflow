@@ -159,7 +159,7 @@ export function freeUsersSummary(freeUsers: FreeUserRow[]): FreeSummary {
     nearCap: freeUsers.filter((f) => f.near_cap && !f.capped).length,
     capped: freeUsers.filter((f) => f.capped).length,
     orders: freeUsers.reduce((s, f) => s + (f.count || 0), 0),
-    cap: freeUsers[0]?.cap ?? 200,
+    cap: freeUsers[0]?.cap ?? 100,
   };
 }
 
