@@ -208,7 +208,7 @@ const RAW: Record<string, Row> = {
   rd_min_avg_order: { en: "avg order", fil: "avg na order", zh: "平均订单", "zh-TW": "平均訂單", vi: "đơn trung bình", th: "เฉลี่ยต่อออเดอร์", id: "rata-rata pesanan" },
   rd_min_platforms: { en: "Platforms", fil: "Mga platform", zh: "平台", "zh-TW": "平台", vi: "Nền tảng", th: "แพลตฟอร์ม", id: "Platform" },
   rd_min_top_buyers: { en: "Top buyers", fil: "Nangungunang mamimili", zh: "顶级买家", "zh-TW": "頂尖買家", vi: "Người mua hàng đầu", th: "ผู้ซื้อยอดนิยม", id: "Pembeli teratas" },
-  rd_min_empty: { en: "No buyers yet.", fil: "Wala pang mamimili.", zh: "还没有买家。", "zh-TW": "還沒有買家。", vi: "Chưa có người mua.", th: "ยังไม่มีผู้ซื้อ", id: "Belum ada pembeli." },
+  rd_min_empty: { en: "No buyers yet — connect an account and start a live session to see your top buyers here.", fil: "Wala pang mamimili — ikonekta ang account at magsimula ng live session para makita rito ang iyong mga top buyer.", zh: "还没有买家——连接账号并开始直播，即可在此查看你的顶级买家。", "zh-TW": "還沒有買家——連接帳號並開始直播，即可在此查看你的頂級買家。", vi: "Chưa có người mua — kết nối tài khoản và bắt đầu phiên live để xem những người mua hàng đầu của bạn ở đây.", th: "ยังไม่มีผู้ซื้อ — เชื่อมต่อบัญชีและเริ่มไลฟ์เพื่อดูผู้ซื้อยอดนิยมของคุณที่นี่", id: "Belum ada pembeli — hubungkan akun dan mulai sesi live untuk melihat pembeli teratas Anda di sini." },
 
   // ════ Sales report ════
   rd_sal_title: { en: "Sales report", fil: "Sales report", zh: "销售报表", "zh-TW": "銷售報表", vi: "Báo cáo doanh số", th: "รายงานยอดขาย", id: "Laporan penjualan" },
