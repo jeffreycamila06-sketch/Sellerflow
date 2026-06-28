@@ -6,13 +6,15 @@ export default defineConfig({
   plugins: [react()],
   build: {
     cssMinify: false,
-    // Multi-page build. As of the redesign switch, index.html IS the redesign
-    // (src/redesign/main.tsx -> RedesignApp) and is served at "/". The previous
-    // production app (src/main.tsx -> App.tsx) is parked at app.html, emitted at
-    // /app.html as an untouched escape hatch / rollback target.
+    // Multi-page build (3 entries):
+    //  - index.html  -> redesign (src/redesign/main.tsx), served at "/"      (web + prod APK)
+    //  - redesign.html -> redesign (same entry), served at "/redesign.html"  (test APK path —
+    //    restored so the prod-pointed test APK that loads /redesign.html never 404s)
+    //  - app.html    -> the previous App.tsx app, served at "/app.html"      (rollback escape hatch)
     rollupOptions: {
       input: {
         main: 'index.html',
+        redesign: 'redesign.html',
         app: 'app.html',
       },
     },
