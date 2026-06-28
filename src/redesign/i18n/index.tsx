@@ -143,6 +143,7 @@ const RAW: Record<string, Row> = {
   rd_cap_upgrade: { en: "Upgrade plan", fil: "Mag-upgrade ng plan", zh: "升级方案", "zh-TW": "升級方案", vi: "Nâng cấp gói", th: "อัปเกรดแผน", id: "Upgrade paket" },
   rd_cap_view_orders: { en: "View my orders", fil: "Tingnan ang aking mga order", zh: "查看我的订单", "zh-TW": "查看我的訂單", vi: "Xem đơn hàng của tôi", th: "ดูออเดอร์ของฉัน", id: "Lihat pesanan saya" },
   rd_cap_later: { en: "Maybe later", fil: "Sa susunod na lang", zh: "以后再说", "zh-TW": "稍後再說", vi: "Để sau", th: "ไว้ก่อน", id: "Nanti saja" },
+  rd_close: { en: "Close", fil: "Isara", zh: "关闭", "zh-TW": "關閉", vi: "Đóng", th: "ปิด", id: "Tutup" },
 
   // ════ Shared ════
   rd_export: { en: "⬇ Export", fil: "⬇ I-export", zh: "⬇ 导出", "zh-TW": "⬇ 匯出", vi: "⬇ Xuất", th: "⬇ ส่งออก", id: "⬇ Ekspor" },
