@@ -74,11 +74,44 @@ describe("buildSlipPayload — byte-parity with App.tsx", () => {
   });
 });
 
-describe("printSlip — web/preview no-op (no native bridge)", () => {
-  it("returns {ok:false, via:'none'} and never throws when there's no SellerFlowPrinter", () => {
-    // jsdom has no window.SellerFlowPrinter → all native paths skip → safe no-op.
-    expect(printSlip(buyer(), "NT$", "Shop", cfg())).toEqual({ ok: false, via: "none" });
-    expect(printSlip(buyer(), "NT$", "Shop", "80x50")).toEqual({ ok: false, via: "none" }); // string-settings overload
+describe("printSlip — web browser print (no native bridge) matches old main", () => {
+  // Capture the iframe printSlip creates so we can spy its contentWindow.print.
+  let captured: HTMLIFrameElement | null;
+  beforeEach(() => {
+    captured = null;
+    vi.useFakeTimers();
+    const orig = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
+      const el = orig(tag);
+      if (tag === "iframe") captured = el as HTMLIFrameElement;
+      return el;
+    });
+  });
+  afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); document.querySelectorAll("iframe").forEach((f) => f.remove()); });
+
+  it("appends a hidden iframe, writes the slip HTML, calls win.print(), returns via:'browser'", () => {
+    // jsdom has no window.SellerFlowPrinter → native paths skip → browser fallback runs.
+    const r = printSlip(buyer({ num: 1, name: "Ann Cruz", handle: "annc", totalSpent: 320 }), "NT$", "My Shop", cfg());
+    expect(r).toEqual({ ok: true, via: "browser" });
+    // iframe appended to the DOM
+    expect(captured).not.toBeNull();
+    expect(document.body.contains(captured)).toBe(true);
+    // slip HTML written into the iframe (verbatim layout markers)
+    const html = captured!.contentDocument?.body.innerHTML || "";
+    expect(html).toContain("Buyer #1");
+    expect(html).toContain("Ann Cruz");
+    expect(html).toContain("@annc");
+    expect(html).toContain("SellerFlowLive".slice(0, 6)); // brand "Seller"
+    // window.print fires after the 120ms timeout
+    const printSpy = vi.spyOn(captured!.contentWindow as Window, "print").mockImplementation(() => {});
+    vi.advanceTimersByTime(150);
+    expect(printSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("string-settings overload also browser-prints", () => {
+    const r = printSlip(buyer(), "NT$", "Shop", "80x50");
+    expect(r).toEqual({ ok: true, via: "browser" });
+    expect(captured).not.toBeNull();
   });
 });
 
