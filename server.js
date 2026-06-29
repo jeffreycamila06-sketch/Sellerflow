@@ -216,11 +216,24 @@ const TIKTOK_RECONNECT_JITTER_MS = 30 * 1000;
 const TIKTOK_RATE_LIMIT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const TIKTOK_MAX_PARALLEL_RECONNECTS = 1;
 const TIKTOK_MAX_RECONNECT_QUEUE = 50;
+// Hard rate cap: minimum spacing between successive reconnect connect() starts. With
+// MAX_PARALLEL=1 this guarantees at most ~6 reconnects/min regardless of backlog size,
+// so a stale-wave (many sockets dead at once) or a restart storm can NEVER spike the
+// single Render IP into TikTok's rate limit. Backoff/jitter/max-parallel are unchanged.
+const TIKTOK_RECONNECT_MIN_GAP_MS = 10 * 1000;
 const TIKTOK_HEALTH_CHECK_MS = 60 * 1000;
-const TIKTOK_STALE_MS = 18 * 60 * 1000;
-const TIKTOK_CHAT_STALE_MS = 35 * 60 * 1000;
+// Faster stale recovery (was 18m/35m). Only the DETECTION delay changes — the reconnect
+// throttle (backoff + jitter + max-parallel + MIN_GAP) is untouched, so the per-reconnect
+// rate is unchanged; sockets just recover in minutes instead of tens of minutes. Kept
+// conservative (12m event / 10m chat) so normal live lulls don't false-positive into an
+// unnecessary reconnect (each reconnect costs a connect() against the per-IP budget; a
+// real rate-limit benches the account for 24h).
+const TIKTOK_STALE_MS = 12 * 60 * 1000;
+const TIKTOK_CHAT_STALE_MS = 10 * 60 * 1000;
 const TIKTOK_CHAT_WATCH_START_MS = 5 * 60 * 1000;
 let activeTikTokReconnects = 0;
+let lastTikTokReconnectStartedAt = 0;
+let tiktokDrainTimer = null;
 const pendingTikTokReconnects = [];
 const tiktokConnections = new Map();
 const facebookConnections = new Map();
@@ -341,7 +354,19 @@ function runQueuedTikTokReconnect(task) {
 
 function drainTikTokReconnectQueue() {
   while (activeTikTokReconnects < TIKTOK_MAX_PARALLEL_RECONNECTS && pendingTikTokReconnects.length) {
+    // Hard rate cap: never start two reconnects within TIKTOK_RECONNECT_MIN_GAP_MS. If the
+    // last connect() started too recently, defer one re-drain to the remaining gap (single
+    // pending timer; new pushes won't stack it) instead of firing now. Effective rate =
+    // max(connect-time, MIN_GAP) per reconnect ≈ ≤6/min even with a full 50-item backlog.
+    const sinceLast = Date.now() - lastTikTokReconnectStartedAt;
+    if (sinceLast < TIKTOK_RECONNECT_MIN_GAP_MS) {
+      if (!tiktokDrainTimer) {
+        tiktokDrainTimer = setTimeout(() => { tiktokDrainTimer = null; drainTikTokReconnectQueue(); }, TIKTOK_RECONNECT_MIN_GAP_MS - sinceLast);
+      }
+      return;
+    }
     const task = pendingTikTokReconnects.shift();
+    lastTikTokReconnectStartedAt = Date.now();
     activeTikTokReconnects += 1;
     Promise.resolve()
       .then(task)
