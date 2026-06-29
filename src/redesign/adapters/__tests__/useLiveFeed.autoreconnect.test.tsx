@@ -29,7 +29,7 @@ describe("useLiveFeed Fix B — auto-reconnect after restart", () => {
   it("FIRST socket connect does NOT re-POST (nothing was connected yet)", () => {
     renderHook(() => useLiveFeed(true, "g@x.com"));
     fireConnect();                         // first connect
-    act(() => vi.advanceTimersByTime(60000));
+    act(() => vi.advanceTimersByTime(25000));
     expect(connectPlatformMock).not.toHaveBeenCalled();
   });
 
@@ -40,7 +40,7 @@ describe("useLiveFeed Fix B — auto-reconnect after restart", () => {
     connectPlatformMock.mockClear();
     fireConnect();                         // RE-connect (socket dropped/restart)
     expect(rePostCalls("TikTok").length).toBe(0); // still waiting on jitter
-    act(() => vi.advanceTimersByTime(60000));      // jitter elapses
+    act(() => vi.advanceTimersByTime(25000));      // jitter elapses
     expect(rePostCalls("TikTok").length).toBe(1);
     expect(connectPlatformMock).toHaveBeenCalledWith("TikTok", { username: "shop_tt" }, "g@x.com");
   });
@@ -52,7 +52,7 @@ describe("useLiveFeed Fix B — auto-reconnect after restart", () => {
     act(() => { result.current.markDisconnected("TikTok"); }); // user turned it off
     connectPlatformMock.mockClear();
     fireConnect();                         // reconnect
-    act(() => vi.advanceTimersByTime(60000));
+    act(() => vi.advanceTimersByTime(25000));
     expect(rePostCalls("TikTok").length).toBe(0);
   });
 
@@ -63,7 +63,7 @@ describe("useLiveFeed Fix B — auto-reconnect after restart", () => {
     firePlatformStatus({ platform: "TikTok", connected: true, username: "shop_tt" }); // server still has it
     connectPlatformMock.mockClear();
     fireConnect();                         // reconnect
-    act(() => vi.advanceTimersByTime(60000));
+    act(() => vi.advanceTimersByTime(25000));
     expect(rePostCalls("TikTok").length).toBe(0);
   });
 
@@ -74,7 +74,7 @@ describe("useLiveFeed Fix B — auto-reconnect after restart", () => {
     await act(async () => { await result.current.connect("Facebook", { username: "fbpage" }); });
     connectPlatformMock.mockClear();
     fireConnect();
-    act(() => vi.advanceTimersByTime(60000));
+    act(() => vi.advanceTimersByTime(25000));
     expect(rePostCalls("Facebook").length).toBe(1);
     expect(connectPlatformMock).toHaveBeenCalledWith("Facebook", { username: "fbpage" }, "g@x.com");
   });

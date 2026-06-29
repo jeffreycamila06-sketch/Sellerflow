@@ -32,9 +32,9 @@ const DEFAULT_SERVER =
 const SERVER = String(import.meta.env.VITE_SERVER_URL || DEFAULT_SERVER).replace(/\/$/, "");
 const LIVE_COMMENT_LIMIT = 5000;
 // Fix B — max random delay before an auto re-POST of /connect after a socket drop /
-// server restart. 0–60s spread so a fleet-wide simultaneous reconnect never storms
-// /connect at once (pairs with the server-side MIN_GAP ≤6/min hard cap).
-const AUTO_RECONNECT_JITTER_MS = 60 * 1000;
+// server restart. 0–25s spread for fast recovery; the server-side MIN_GAP ≤6/min hard cap
+// is the actual storm guard, so a tighter window stays safe even with a fleet reconnect.
+const AUTO_RECONNECT_JITTER_MS = 25 * 1000;
 
 const sellerIdOf = (email: string) => email.trim().toLowerCase();
 
