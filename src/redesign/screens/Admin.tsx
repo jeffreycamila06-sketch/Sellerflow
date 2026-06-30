@@ -13,6 +13,7 @@ import type { AccountAuditLog, AccountUser } from "../../accountDb";
 import { csvDL, dayStamp } from "../adapters/csv";
 import SoonBadge from "../components/SoonBadge";
 import { useT, tpl, type RedesignT } from "../i18n";
+import { isIOS } from "../adapters/platform";
 
 const deadBtn: CSSProperties = { opacity: 0.45, cursor: "not-allowed" };
 // Sample/not-wired marker for the Admin panels that have no real backend yet
@@ -73,7 +74,7 @@ export default function Admin({ onOpenPanel, cur, counts, live = false, userBase
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-          <button onClick={() => onOpenPanel("revenue")} style={topStat}><div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>{t.rd_adm_monthly_revenue}</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 22, color: "var(--text)", marginTop: 3, letterSpacing: "-.02em" }}>{cur}4.2M</div><div style={{ fontSize: 11, fontWeight: 700, color: "var(--ok)", marginTop: 3 }}>{t.rd_adm_mom}</div></button>
+          {!isIOS() && <button onClick={() => onOpenPanel("revenue")} style={topStat}><div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>{t.rd_adm_monthly_revenue}</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 22, color: "var(--text)", marginTop: 3, letterSpacing: "-.02em" }}>{cur}4.2M</div><div style={{ fontSize: 11, fontWeight: 700, color: "var(--ok)", marginTop: 3 }}>{t.rd_adm_mom}</div></button>}
           <button onClick={() => onOpenPanel("userbase")} style={topStat}><div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>{t.rd_adm_user_base}</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 22, color: "var(--accent-fg)", marginTop: 3, letterSpacing: "-.02em" }}>{userBase ? userBase.paid : "—"}</div><div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", marginTop: 3 }}>{userBase ? tpl(t.rd_adm_paying_free, { free: userBase.free }) : t.rd_adm_paid_free_split}</div></button>
         </div>
 
@@ -91,8 +92,8 @@ export default function Admin({ onOpenPanel, cur, counts, live = false, userBase
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 9, marginBottom: 16 }}>
           <Ctrl icon={cic.userbase} label={t.rd_adm_ctrl_userbase} onClick={() => onOpenPanel("userbase")} />
           <Ctrl icon={cic.sellers} label={t.rd_adm_ctrl_sellers} onClick={() => onOpenPanel("sellers")} />
-          <Ctrl icon={cic.plans} label={t.rd_adm_ctrl_plans} onClick={() => onOpenPanel("plans")} />
-          <Ctrl icon={cic.payments} label={t.rd_adm_ctrl_payments} onClick={() => onOpenPanel("payments")} />
+          {!isIOS() && <Ctrl icon={cic.plans} label={t.rd_adm_ctrl_plans} onClick={() => onOpenPanel("plans")} />}
+          {!isIOS() && <Ctrl icon={cic.payments} label={t.rd_adm_ctrl_payments} onClick={() => onOpenPanel("payments")} />}
           <Ctrl icon={cic.broadcast} label={t.rd_adm_ctrl_broadcast} onClick={() => onOpenPanel("broadcast")} />
           <Ctrl icon={cic.reports} label={t.rd_adm_ctrl_reports} onClick={() => onOpenPanel("reports")} />
           <Ctrl icon={cic.system} label={t.rd_adm_ctrl_system} onClick={() => onOpenPanel("system")} />
@@ -349,7 +350,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
             </div>
           )}
 
-          {panel === "plans" && (
+          {panel === "plans" && !isIOS() && (
             <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
               <SampleNote />
               {PLANS.map((p) => (
@@ -368,7 +369,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
             </div>
           )}
 
-          {panel === "payments" && (
+          {panel === "payments" && !isIOS() && (
             <div>
               <SampleNote />
               <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
@@ -466,7 +467,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
             </div>
           )}
 
-          {panel === "revenue" && (
+          {panel === "revenue" && !isIOS() && (
             <div>
               <SampleNote />
               <div style={{ background: "var(--accent)", borderRadius: 14, padding: 15, color: "#fff", boxShadow: "0 8px 22px var(--accent-soft)" }}>
