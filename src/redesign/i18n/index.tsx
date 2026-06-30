@@ -153,6 +153,31 @@ const RAW: Record<string, Row> = {
   rd_ios_expired_msg: { en: "Your plan is inactive. Please contact support.", fil: "Hindi aktibo ang iyong plan. Makipag-ugnayan sa support.", zh: "你的套餐未激活。请联系客服。", "zh-TW": "你的方案未啟用。請聯絡客服。", vi: "Gói của bạn không hoạt động. Vui lòng liên hệ hỗ trợ.", th: "แผนของคุณไม่ทำงาน กรุณาติดต่อฝ่ายสนับสนุน", id: "Paket Anda tidak aktif. Silakan hubungi dukungan." },
   rd_ios_cm_limit: { en: "⚠ Your plan's account limit is reached.", fil: "⚠ Naabot na ang limitasyon ng account ng iyong plan.", zh: "⚠ 已达到你套餐的账户上限。", "zh-TW": "⚠ 已達到你方案的帳號上限。", vi: "⚠ Đã đạt giới hạn tài khoản của gói.", th: "⚠ ถึงขีดจำกัดบัญชีของแผนคุณแล้ว", id: "⚠ Batas akun paket Anda tercapai." },
 
+  // ════ Business Pulse (WEB-ONLY admin activity view — counts only, no revenue) ════
+  rd_pulse_ctrl: { en: "Live Pulse", fil: "Live Pulse", zh: "实时动态", "zh-TW": "即時動態", vi: "Nhịp trực tiếp", th: "พัลส์สด", id: "Pulse Langsung" },
+  rd_pulse_title: { en: "Business Pulse", fil: "Business Pulse", zh: "业务动态", "zh-TW": "業務動態", vi: "Nhịp kinh doanh", th: "พัลส์ธุรกิจ", id: "Pulse Bisnis" },
+  rd_pulse_sub: { en: "Live selling activity across all sellers.", fil: "Live na selling activity ng lahat ng seller.", zh: "所有卖家的实时销售动态。", "zh-TW": "所有賣家的即時銷售動態。", vi: "Hoạt động bán hàng trực tiếp của tất cả người bán.", th: "กิจกรรมการขายสดของผู้ขายทั้งหมด", id: "Aktivitas penjualan langsung semua penjual." },
+  rd_pulse_as_of: { en: "as of {time}", fil: "noong {time}", zh: "截至 {time}", "zh-TW": "截至 {time}", vi: "tính đến {time}", th: "ณ {time}", id: "per {time}" },
+  rd_pulse_refresh: { en: "Refresh", fil: "I-refresh", zh: "刷新", "zh-TW": "重新整理", vi: "Làm mới", th: "รีเฟรช", id: "Segarkan" },
+  rd_pulse_loading: { en: "Loading…", fil: "Naglo-load…", zh: "加载中…", "zh-TW": "載入中…", vi: "Đang tải…", th: "กำลังโหลด…", id: "Memuat…" },
+  rd_pulse_error: { en: "Couldn't load activity. Admin access required.", fil: "Hindi ma-load ang activity. Kailangan ng admin access.", zh: "无法加载动态。需要管理员权限。", "zh-TW": "無法載入動態。需要管理員權限。", vi: "Không tải được hoạt động. Cần quyền quản trị.", th: "โหลดกิจกรรมไม่ได้ ต้องมีสิทธิ์ผู้ดูแล", id: "Tidak dapat memuat aktivitas. Perlu akses admin." },
+  rd_pulse_empty: { en: "No selling activity yet today.", fil: "Wala pang selling activity ngayong araw.", zh: "今天还没有销售动态。", "zh-TW": "今天還沒有銷售動態。", vi: "Hôm nay chưa có hoạt động bán hàng.", th: "วันนี้ยังไม่มีกิจกรรมการขาย", id: "Belum ada aktivitas penjualan hari ini." },
+  rd_pulse_active_now: { en: "Active now", fil: "Aktibo ngayon", zh: "当前活跃", "zh-TW": "目前活躍", vi: "Đang hoạt động", th: "ใช้งานอยู่ตอนนี้", id: "Aktif sekarang" },
+  rd_pulse_active_now_sub: { en: "Sellers with orders in the last 15 min", fil: "Mga seller na may order sa huling 15 min", zh: "近 15 分钟有订单的卖家", "zh-TW": "近 15 分鐘有訂單的賣家", vi: "Người bán có đơn trong 15 phút qua", th: "ผู้ขายที่มีออเดอร์ใน 15 นาทีล่าสุด", id: "Penjual dengan pesanan dalam 15 menit terakhir" },
+  rd_pulse_active_60m: { en: "Active (last hour)", fil: "Aktibo (huling oras)", zh: "活跃（近一小时）", "zh-TW": "活躍（近一小時）", vi: "Hoạt động (giờ qua)", th: "ใช้งาน (ชั่วโมงล่าสุด)", id: "Aktif (jam terakhir)" },
+  rd_pulse_orders_60m: { en: "{n} orders in last hour", fil: "{n} order sa huling oras", zh: "近一小时 {n} 笔订单", "zh-TW": "近一小時 {n} 筆訂單", vi: "{n} đơn trong giờ qua", th: "{n} ออเดอร์ในชั่วโมงล่าสุด", id: "{n} pesanan dalam jam terakhir" },
+  rd_pulse_orders_today: { en: "Orders today", fil: "Order ngayon", zh: "今日订单", "zh-TW": "今日訂單", vi: "Đơn hôm nay", th: "ออเดอร์วันนี้", id: "Pesanan hari ini" },
+  rd_pulse_sellers_today: { en: "Sellers active today", fil: "Aktibong seller ngayon", zh: "今日活跃卖家", "zh-TW": "今日活躍賣家", vi: "Người bán hoạt động hôm nay", th: "ผู้ขายที่ใช้งานวันนี้", id: "Penjual aktif hari ini" },
+  rd_pulse_by_hour: { en: "Orders per hour (Taipei)", fil: "Order kada oras (Taipei)", zh: "每小时订单（台北）", "zh-TW": "每小時訂單（台北）", vi: "Đơn theo giờ (Đài Bắc)", th: "ออเดอร์ต่อชั่วโมง (ไทเป)", id: "Pesanan per jam (Taipei)" },
+  rd_pulse_no_hours: { en: "No orders yet today.", fil: "Wala pang order ngayong araw.", zh: "今天还没有订单。", "zh-TW": "今天還沒有訂單。", vi: "Hôm nay chưa có đơn.", th: "วันนี้ยังไม่มีออเดอร์", id: "Belum ada pesanan hari ini." },
+  rd_pulse_sellers_h_one: { en: "{n} seller today", fil: "{n} seller ngayon", zh: "今日 {n} 位卖家", "zh-TW": "今日 {n} 位賣家", vi: "{n} người bán hôm nay", th: "ผู้ขาย {n} รายวันนี้", id: "{n} penjual hari ini" },
+  rd_pulse_sellers_h_many: { en: "{n} sellers today", fil: "{n} seller ngayon", zh: "今日 {n} 位卖家", "zh-TW": "今日 {n} 位賣家", vi: "{n} người bán hôm nay", th: "ผู้ขาย {n} รายวันนี้", id: "{n} penjual hari ini" },
+  rd_pulse_no_sellers: { en: "No sellers active today.", fil: "Walang aktibong seller ngayon.", zh: "今天没有活跃卖家。", "zh-TW": "今天沒有活躍賣家。", vi: "Hôm nay không có người bán hoạt động.", th: "วันนี้ไม่มีผู้ขายที่ใช้งาน", id: "Tidak ada penjual aktif hari ini." },
+  rd_pulse_unknown: { en: "Unknown seller", fil: "Hindi kilalang seller", zh: "未知卖家", "zh-TW": "未知賣家", vi: "Người bán không rõ", th: "ผู้ขายไม่ทราบชื่อ", id: "Penjual tidak dikenal" },
+  rd_pulse_last: { en: "last {ago}", fil: "huli {ago}", zh: "最后 {ago}", "zh-TW": "最後 {ago}", vi: "lần cuối {ago}", th: "ล่าสุด {ago}", id: "terakhir {ago}" },
+  rd_pulse_in_hour: { en: "{n} in last hour", fil: "{n} sa huling oras", zh: "近一小时 {n} 笔", "zh-TW": "近一小時 {n} 筆", vi: "{n} trong giờ qua", th: "{n} ในชั่วโมงล่าสุด", id: "{n} dalam jam terakhir" },
+  rd_pulse_today_lbl: { en: "today", fil: "ngayon", zh: "今天", "zh-TW": "今天", vi: "hôm nay", th: "วันนี้", id: "hari ini" },
+
   // ════ Shared ════
   rd_export: { en: "⬇ Export", fil: "⬇ I-export", zh: "⬇ 导出", "zh-TW": "⬇ 匯出", vi: "⬇ Xuất", th: "⬇ ส่งออก", id: "⬇ Ekspor" },
 

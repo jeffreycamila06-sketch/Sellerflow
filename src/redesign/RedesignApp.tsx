@@ -12,7 +12,7 @@ import Login from "./screens/Login";
 import Landing from "./screens/Landing";
 import AuthModal from "./components/AuthModal";
 import AuthBrandPanel from "./components/AuthBrandPanel";
-import { anonScreen } from "./adapters/appShell";
+import { anonScreen, isAppShell } from "./adapters/appShell";
 import SettingsHub from "./screens/SettingsHub";
 import GeneralSettings from "./screens/GeneralSettings";
 import Customers from "./screens/Customers";
@@ -31,6 +31,7 @@ import PrintPattern, { DEFAULT_PP, type PrintPatternState, type PpBoolKey, type 
 import ManageChannels from "./screens/ManageChannels";
 import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
 import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
+import { useBusinessPulse } from "./adapters/useBusinessPulse";
 import { useLiveSession } from "./adapters/useLiveSession";
 import { useSessionWindow, type WindowDays } from "./adapters/useSessionWindow";
 import { useLiveFeed, commentKey } from "./adapters/useLiveFeed";
@@ -253,6 +254,10 @@ export default function RedesignApp() {
   // still-mounted landing (web only; the APK starts at screen "login" and never sets this).
   const [authModal, setAuthModal] = useState<"" | "login" | "signup">("");
   const [adminPanel, setAdminPanel] = useState<AdminPanelKind | null>(null);
+  // Business Pulse — WEB-ONLY admin activity view (admin_business_pulse RPC).
+  // Enabled ONLY while the pulse panel is open (read-on-open) and never in the app
+  // shell (isAppShell → phone/APK/iOS) → zero polling, zero phone egress.
+  const pulse = useBusinessPulse(authed && isAdmin && !isAppShell() && adminPanel === "pulse");
   const [assignAmount, setAssignAmount] = useState("499");
   const [lang, setLang] = useState<string>(() => readLS(LS.lang, "en"));
   const [langOpen, setLangOpen] = useState(false);
@@ -719,7 +724,7 @@ export default function RedesignApp() {
 
         {/* Admin control bottom-sheet (absolute within the phone, like the v2 prototype) */}
         {adminPanel && isAdmin && (
-          <AdminPanel panel={adminPanel} onClose={() => setAdminPanel(null)} assignAmount={assignAmount} onAssignAmount={setAssignAmount} cur={cur} users={adminUsers.users} usersState={adminUsers.state} rawByEmail={adminUsers.rawByEmail} actions={admin} onChanged={() => { adminUsers.reload(); freeUsersData.reload(); auditData.reload(); }} freeUsers={freeUsersData.freeUsers} freeUsersState={freeUsersData.state} auditLogs={auditData.logs} auditState={auditData.state} onOpenPanel={setAdminPanel} />
+          <AdminPanel panel={adminPanel} onClose={() => setAdminPanel(null)} assignAmount={assignAmount} onAssignAmount={setAssignAmount} cur={cur} users={adminUsers.users} usersState={adminUsers.state} rawByEmail={adminUsers.rawByEmail} actions={admin} onChanged={() => { adminUsers.reload(); freeUsersData.reload(); auditData.reload(); }} freeUsers={freeUsersData.freeUsers} freeUsersState={freeUsersData.state} auditLogs={auditData.logs} auditState={auditData.state} onOpenPanel={setAdminPanel} pulse={pulse.data} pulseState={pulse.state} onRefreshPulse={pulse.refresh} />
         )}
 
         {/* #6 — real connect modal (registered-account picker / add account) */}
