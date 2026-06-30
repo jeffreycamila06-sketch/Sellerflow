@@ -619,3 +619,86 @@ code.** Builds on the existing redesign `autoWords {word,price}` concept.
   **tangled zone**.
 - **Plan-first deliverable:** files, matching logic, dedup, egress, edge cases →
   Jeff approves before code.
+
+## SESSION 2026-06-30 — CONNECTION HARDENING + iOS COMPLIANCE + ADMIN PULSE (all on `main`, LIVE)
+Post-redesign-merge production work. Redesign is now THE live app at `/`. Protocol
+per step: diff + tests, preview-branch-first (frontend), STOP for Jeff "go"/"merge".
+
+### SHIPPED TODAY (all LIVE on production)
+1. **Fix A + Fix B (TikTok connection stability).** Server `4901576`: stale-detection
+   35→10min + reconnect `MIN_GAP` 10s hard cap (≤6/min). Redesign `useLiveFeed`
+   `a183156`: client auto-reconnect after socket drop/restart, 0–25s jitter. **0
+   rate-limit verified** (Eulerstream 4xx = 0).
+2. **iOS payment-hiding (Apple Guideline 2.1b).** Merged `aeac3608`. New `isIOS()`
+   (`Capacitor.getPlatform()==='ios'` || `?ios=1`). ALL payment/subscription UI
+   hidden/neutralized on iOS only (Android/web byte-unchanged): Subscription screen,
+   Admin price panels, GeneralSettings plan/subscribe row, Support renew guide,
+   ConnectModal limit copy; free-cap/expired popups → neutral `ContactSupportPopup`
+   (Telegram). Payment stays 100% external (Wise/Telegram). **RESUBMITTED to Apple —
+   awaiting review.**
+3. **Business Pulse (admin web-only activity dashboard).** Merged `076377d`. New RPC
+   `admin_business_pulse()` (`is_admin()`-gated, SECURITY DEFINER, aggregates
+   `live_session_orders`, **counts/timestamps ONLY — no prices/revenue** → coexists
+   w/ iOS gate). Adapter `useBusinessPulse.ts` = 1 RPC/panel-open + manual Refresh,
+   **ZERO poll**. WEB-ONLY via `!isAppShell()` (hidden phone/APK/iOS). Shows active
+   now (15/60min) + orders/hour today (Taipei) + per-seller breakdown. 25 `rd_pulse_*`
+   keys ×7. Verified accurate vs raw DB.
+4. **Eulerstream Community FREE tier = NOT a bottleneck.** 152 req/6hr (cap 1000/day),
+   **0 Client Errors (4xx)**, 94.1% success. No upgrade needed. The 9 Server Errors
+   (5xx) on `/webcast/rooms/.../connect` = offline-account connect attempts correctly
+   failing (Branch B) — healthy, no action.
+5. **Cron** = every-12h off-peak (`0 4,16 * * *`); memory flat (no leak).
+
+### OFFLINE-DETECTION FIX ("Connected but offline") — Phase 0 + Phase 1 DONE, Phase 2 PENDING
+TikTok/Eulerstream is inconsistent on offline accounts: **Branch A** = `connect()`
+RESOLVES (→ old bug: fake "Connected"); **Branch B** = `connect()` THROWS (→ 5xx,
+correct error). `fetchRoomInfoOnConnect:true` → each connect hits the Euler route.
+- **Phase 0 probe** (`2ad8c49`, LOG-ONLY, deployed then replaced) captured:
+  LIVE (`seclothingtw`) = `roomInfo.status:1`, `status_code:0`. OFFLINE
+  (`rubycarillo18`) = NO probe line (connect threw = Branch B, "user not online").
+- **Phase 1 is-LIVE gate.** Server `65f9b96` (Render MANUAL deploy — REPLACED the
+  probe in ONE restart, branched off main so no probe present) + client merged
+  `a6167c6` (Vercel). Gate (in `startTikTokConnection` after `connect()`):
+  `roomInfo.status===1` → Connected; **status present+numeric+!==1 → BLOCK** (throw
+  tagged `notLive` → `connectTikTok` catch returns **409**; reconnect catch =
+  TERMINAL like `streamEnd`, clear+emit+return, **NO reschedule** so Fix A/B never
+  loop a dead room); **status missing/non-numeric → FAIL-OPEN** (allow, never
+  false-block a real live seller). Records `not_live` attempt (NOT a health `fail`).
+  Client `connect.ts` maps 409 `notLive` → `{ok:false,notLive:true}`; `useLiveFeed`
+  tracks accounts ONLY on `ok` → **Fix B won't auto-retry not-live**. `doConnect` →
+  distinct localized toast `rd_cm_not_live` (7 langs) "Account is not live right now
+  — start your TikTok LIVE first". 462 vitest green. ⚠️ `server.js` has NO vitest
+  harness — covered by `node --check` + structural review (both catch sites check
+  `error.notLive` before any reschedule).
+- **PRODUCTION VALIDATION:**
+  * `status:2` offline account → `[NOT-LIVE] block` → correctly rejected (**Branch A
+    caught**) ✓
+  * `chentrendyukay` (LIVE, ambiguous roomInfo, `status_code:4003110`, NO clean
+    numeric `status`) → `[NOT-LIVE] fail-open` allowed → Connected ✓ (proves
+    fail-open protects a real-live account with an odd roomInfo shape).
+
+### ⚠️ PHASE 2 PENDING — residual gap (the exact risk flagged at design time)
+- `chentrendyukay` was also observed OFFLINE once BUT its roomInfo had **no numeric
+  `status===2`, only `status_code:4003110` (non-zero)** → fail-opened → a fake
+  "Connected" is STILL possible for this shape.
+- **Hypothesis:** LIVE = `status_code:0`; this offline = `status_code:4003110`
+  (non-zero). Possible Phase 2: ALSO block when `status_code` is numeric AND `!==0`
+  (still fail-open if neither `status` nor `status_code` readable).
+- ⚠️ **NOT YET SAFE TO SHIP** — must FIRST confirm a real LIVE account NEVER has a
+  non-zero `status_code` (else we false-block live sellers). **Plan: keep the
+  `[NOT-LIVE] fail-open` logging running, collect more offline-ambiguous + live
+  samples over a few days, confirm the `status_code:0` pattern, THEN tighten. Do NOT
+  rush — fail-open is correct for now.**
+
+### STILL PENDING (next sessions)
+- **iOS:** await Apple review (24–48h).
+- **Connection monitor 2–3 days:** `/health/tiktok` `rateLimitedAccounts` must stay
+  **0** → then turn the cron OFF.
+- **Phase 2 offline gate** (`status_code`) — LOG first, confirm pattern, then tighten.
+- **PostHog port** to `src/redesign/main.tsx` (redesign has ZERO tracking).
+- **Delete merged branches:** `claude/roominfo-probe-phase0`,
+  `claude/tiktok-islive-gate`, `claude/admin-business-pulse`, `claude/ios-hide-payments`.
+
+### USER DATA snapshot (2026-06-30)
+**28 total** — 24 paid (16 Basic + 6 Pro + 2 Master) · 3 free-active + 1 free-expired.
+~513 orders today, 8 sellers active, peak ~9 concurrent. **26 signups/30d (fast growth).**
