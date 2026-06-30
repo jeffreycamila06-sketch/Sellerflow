@@ -74,6 +74,19 @@ export function shouldOpenWindow(today: string, windowStart: string | null, days
   return !computeWindowState(today, windowStart, days).active;
 }
 
+// PURE — on a Taipei day rollover, should the live session RESET (buyers→#1 /
+// orders→0 / revenue→0)? Yes ONLY when the window no longer covers the NEW day:
+//   • N=1 → window is never "active" (window_start stays null) → EVERY Taipei
+//     midnight resets (matches the existing daily reset).
+//   • N=2/3 → reset ONLY when the new day is past the window (expired); an
+//     intermediate midnight INSIDE an active window keeps counting (no reset).
+// Returns false when the day did not actually change (guards the no-op case).
+// Unit-tested.
+export function shouldResetOnDayChange(oldDay: string, newDay: string, windowStart: string | null, days: number): boolean {
+  if (!newDay || newDay === oldDay) return false;
+  return !computeWindowState(newDay, windowStart, days).active;
+}
+
 // Ranged read of live_session_orders — SAME columns / RLS / ascending order as
 // db.ts loadTodaysLiveSession (db.ts UNTOUCHED), just session_date BETWEEN a range.
 // Read-on-load only. getSession() is local (no extra network); RLS + the explicit
@@ -94,6 +107,47 @@ export async function loadLiveSessionWindow(start: string, end: string): Promise
   return (data || []) as LiveSessionRow[];
 }
 
+// ms from now until the NEXT Asia/Taipei midnight (00:00 UTC+8). Egress-free
+// (reads the local clock only). Used to arm a SINGLE self-correcting timeout —
+// NOT a poll/interval. Falls back to a 1h re-check if Intl is unavailable.
+function msUntilNextTaipeiMidnight(): number {
+  try {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Taipei", hourCycle: "h23", hour: "2-digit", minute: "2-digit", second: "2-digit",
+    }).formatToParts(new Date());
+    const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? "0");
+    const elapsedMs = ((get("hour") * 60 + get("minute")) * 60 + get("second")) * 1000;
+    // +1s cushion so the timer fires just AFTER the boundary; clamp to (0, 24h].
+    return Math.min(86400000, Math.max(1000, 86400000 - elapsedMs + 1000));
+  } catch {
+    return 60 * 60 * 1000;
+  }
+}
+
+// Live Asia/Taipei calendar day (YYYY-MM-DD) that ADVANCES while the app stays
+// open — WITHOUT polling. Re-checks taipeiDayId() on tab focus / visibility
+// return, plus ONE self-correcting timeout to the next Taipei midnight (cleared +
+// rescheduled on each fire). Egress-free; respects the zero-poll rule. Replaces the
+// old `useState(() => taipeiDayId())` pin so day-boundary logic re-evaluates live.
+export function useTaipeiDayId(): string {
+  const [day, setDay] = useState(() => taipeiDayId());
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const recheck = () => setDay((prev) => { const now = taipeiDayId(); return now !== prev ? now : prev; });
+    const onVisible = () => { if (typeof document === "undefined" || document.visibilityState === "visible") recheck(); };
+    const scheduleMidnight = () => { timer = setTimeout(() => { recheck(); scheduleMidnight(); }, msUntilNextTaipeiMidnight()); };
+    if (typeof window !== "undefined") window.addEventListener("focus", recheck);
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVisible);
+    scheduleMidnight();
+    return () => {
+      if (timer) clearTimeout(timer);
+      if (typeof window !== "undefined") window.removeEventListener("focus", recheck);
+      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, []);
+  return day;
+}
+
 // ── Hook: config read/write (read-on-load only) ──────────────────────────────
 
 export interface UseSessionWindow {
@@ -110,7 +164,7 @@ export function useSessionWindow(enabled: boolean): UseSessionWindow {
   const [windowDays, setDays] = useState<WindowDays>(1);
   const [windowStart, setStart] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [dayId] = useState(() => taipeiDayId()); // pinned at load, like 5c (refresh re-evaluates)
+  const dayId = useTaipeiDayId(); // advances live on focus/visibility + Taipei midnight (was pinned)
   // Synchronous mirrors so ensureWindowOpen sees the just-opened window even on
   // rapid back-to-back orders (before React re-renders) → guarantees ONE write
   // per window, not per order.

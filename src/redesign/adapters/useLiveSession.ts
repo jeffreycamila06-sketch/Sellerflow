@@ -15,8 +15,7 @@ import { isSupabaseConfigured } from "../../supabase";
 import { loadTodaysLiveSession } from "../../db";
 import { rebuildSessionFromRows, type RebuiltSession } from "../../lib/orderLogic";
 import type { Buyer, LiveOrder } from "../../lib/orderTypes";
-import { taipeiDayId } from "../../lib/dateHelpers";
-import { chooseSessionLoad, loadLiveSessionWindow } from "./useSessionWindow";
+import { chooseSessionLoad, loadLiveSessionWindow, useTaipeiDayId, shouldResetOnDayChange } from "./useSessionWindow";
 
 // "idle" = not wired / unconfigured / error · "loading" = query in flight ·
 // "live" = today's session hydrated · "empty" = no session rows today.
@@ -57,9 +56,9 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
   // this is the hydrate-on-empty guard (read current, don't re-run on change).
   const sessionRef = useRef(session);
   sessionRef.current = session;
-  // Pin today's Taipei day once (matches App.tsx currentLiveDayId init); the
-  // existing helper owns the timezone logic — we do not change it.
-  const [dayId] = useState(() => taipeiDayId());
+  // Live Taipei day — advances on focus/visibility + Taipei midnight (no polling)
+  // so the day-boundary reset fires even with the app open (was pinned-at-mount).
+  const dayId = useTaipeiDayId();
   const [reloadKey, setReloadKey] = useState(0); // step 5 — bump to force a reload
 
   const winReady = win ? win.ready : true;
@@ -99,6 +98,22 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
   // step 5 — clear local session + force the load effect to re-run (fresh window
   // after changing N). The hydrate-on-empty guard passes (now empty) → reload.
   const reset = useCallback(() => { setSession(EMPTY); setReloadKey((k) => k + 1); }, []);
+
+  // Window-aware LIVE reset on Taipei day rollover. dayId now advances while the
+  // app is open (useTaipeiDayId — focus/visibility + midnight timeout, no poll), so
+  // when the day changes we reset buyers→#1 / orders→0 / revenue→0 ONLY when the new
+  // day falls OUTSIDE the session window (shouldResetOnDayChange): N=1 → every
+  // midnight; N=2/3 → only at window expiry (intermediate midnights keep counting →
+  // no mid-session break). reset() clears + reloads via the load effect (which then
+  // picks up the new dayId). When the window is still active, we do nothing (the
+  // hydrate-on-empty guard in the load effect leaves the running session intact).
+  const prevDayRef = useRef(dayId);
+  useEffect(() => {
+    const prev = prevDayRef.current;
+    if (dayId === prev) return;
+    prevDayRef.current = dayId;
+    if (shouldResetOnDayChange(prev, dayId, winStart, winDays)) reset();
+  }, [dayId, winStart, winDays, reset]);
 
   return { session, state, dayId, getBuyers, applyOrder, reset };
 }
