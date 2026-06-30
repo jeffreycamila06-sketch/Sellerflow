@@ -706,6 +706,17 @@ function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "d
         console.log(`Reconnected TikTok LIVE: ${username} for ${sellerId}`);
       } catch (error) {
         console.log(`TikTok reconnect failed for ${username}: ${error.message}`);
+        if (error && error.notLive) {
+          // Stream ended / went offline on reconnect → TERMINAL, like streamEnd: stop
+          // the loop entirely (no re-schedule) so Fix A/B never retry a dead room.
+          clearTikTokReconnect(key);
+          tiktokReconnectAttempts.delete(key);
+          emitTikTokStatus({ sellerId, username, sessionId, connected: false, reconnecting: false, reason: "not_live" });
+          io.to(sellerRoom(sellerId)).emit("live_session_ended", {
+            platform: "TikTok", username, sellerId, sessionId, timestamp: new Date().toISOString(),
+          });
+          return;
+        }
         if (isTikTokRateLimitError(error)) {
           rememberTikTokRateLimit(key, sellerId, username, sessionId, error);
           return;
@@ -759,6 +770,27 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
     signApiKey: process.env.EULER_API_KEY,
   });
   const state = await tiktokConnection.connect();
+  // Phase 1 — is-LIVE gate (FAIL-OPEN). Fixes "Connected but offline": only BLOCK
+  // when roomInfo POSITIVELY reports not-live (roomInfo present + numeric status
+  // !== 1; LIVE = status:1 confirmed by the Phase 0 probe). Any ambiguity
+  // (status===1, missing roomInfo, non-numeric status) ALLOWS the connection so a
+  // real live seller is NEVER false-blocked. Logs both the block AND the ambiguous
+  // fail-open so a real Branch-A (resolved-but-not-live) sample is captured in prod.
+  const liveRoomInfo = tiktokConnection.roomInfo;
+  const liveStatus = liveRoomInfo && typeof liveRoomInfo.status === "number" ? liveRoomInfo.status : null;
+  if (liveStatus !== null && liveStatus !== 1) {
+    try { console.log("[NOT-LIVE] block", cleanUsername, "status=", liveStatus, JSON.stringify(liveRoomInfo)); }
+    catch { console.log("[NOT-LIVE] block", cleanUsername, "status=", liveStatus); }
+    try { await tiktokConnection.disconnect(); } catch {}
+    const notLiveError = new Error("not_live");
+    notLiveError.notLive = true;
+    notLiveError.liveStatus = liveStatus;
+    throw notLiveError; // terminal, do-not-retry (handled in both callers)
+  }
+  if (liveStatus === null) {
+    try { console.log("[NOT-LIVE] fail-open (ambiguous, allowed)", cleanUsername, JSON.stringify(liveRoomInfo ?? null)); }
+    catch { console.log("[NOT-LIVE] fail-open (ambiguous, allowed)", cleanUsername, "roomInfo unstringifiable"); }
+  }
   const now = Date.now();
   tiktokReconnectAttempts.delete(key);
   tiktokConnections.set(key, {
@@ -914,6 +946,16 @@ async function connectTikTok(username, res, meta = {}) {
     });
   } catch (error) {
     console.log(error);
+    if (error && error.notLive) {
+      // Account resolved connect() but is not live → distinct 409 (NOT a 500/red
+      // "can't reach server"). No reconnect is scheduled from this catch.
+      recordTikTokAttempt("not_live", `status=${error.liveStatus}`);
+      return res.status(409).json({
+        success: false,
+        notLive: true,
+        error: "Account is not live right now. Start your TikTok LIVE first.",
+      });
+    }
     if (key && isTikTokRateLimitError(error)) {
       recordTikTokAttempt("rate_limit", error?.message);
       rememberTikTokRateLimit(key, sellerId, cleanUsername, sessionId, error);

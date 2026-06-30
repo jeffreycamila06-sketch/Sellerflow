@@ -349,6 +349,9 @@ export default function RedesignApp() {
       // iOS: an expired plan (server 403 "plan_expired") shows a NEUTRAL "plan inactive"
       // popup → Contact Support, NOT a payment-tinged toast. Android/web keep the toast.
       if (ios && !r.ok && (r.error || "").includes("plan_expired")) { setIosExpired(true); return; }
+      // Phase 1 — account resolved but is NOT live (server 409 notLive): a distinct,
+      // localized "start your LIVE first" toast, NOT the generic server-error toast.
+      if (r.notLive) { setToast({ msg: tApp.rd_cm_not_live, kind: "err" }); return; }
       // Honest feedback: success "Connected!"; failure → the real server/network reason
       // (r.error verbatim) with the generic fallback. Chip still reverts to neutral.
       setToast(connectToast(r, tApp.rd_dash_connected_toast, tApp.rd_cm_conn_failed));
