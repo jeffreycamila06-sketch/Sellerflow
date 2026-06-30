@@ -14,6 +14,9 @@ import { csvDL, dayStamp } from "../adapters/csv";
 import SoonBadge from "../components/SoonBadge";
 import { useT, tpl, type RedesignT } from "../i18n";
 import { isIOS } from "../adapters/platform";
+import { isAppShell } from "../adapters/appShell";
+import { relativeTime } from "../adapters/useReadData";
+import { maxHourlyOrders, hourLabel, type PulseData, type PulseState } from "../adapters/useBusinessPulse";
 
 const deadBtn: CSSProperties = { opacity: 0.45, cursor: "not-allowed" };
 // Sample/not-wired marker for the Admin panels that have no real backend yet
@@ -22,7 +25,7 @@ const SampleNote = () => { const t = useT(); return <div style={{ marginBottom: 
 
 export type AdminPanelKind =
   | "sellers" | "plans" | "payments" | "reports" | "system" | "broadcast"
-  | "subActive" | "subExpiring" | "subFree" | "subExpired" | "notifs" | "revenue" | "audit" | "userbase";
+  | "subActive" | "subExpiring" | "subFree" | "subExpired" | "notifs" | "revenue" | "audit" | "userbase" | "pulse";
 
 const ctrlTile: CSSProperties = { display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "14px 6px", border: "1px solid var(--border)", borderRadius: 14, background: "var(--surface)", boxShadow: "var(--shadow)", cursor: "pointer" };
 const ctrlChip: CSSProperties = { width: 34, height: 34, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)" };
@@ -41,6 +44,7 @@ const cic = {
   system: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 6h14M5 12h14M5 18h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><circle cx="9" cy="6" r="2" fill="var(--surface)" stroke="currentColor" strokeWidth="1.8" /><circle cx="15" cy="12" r="2" fill="var(--surface)" stroke="currentColor" strokeWidth="1.8" /><circle cx="9" cy="18" r="2" fill="var(--surface)" stroke="currentColor" strokeWidth="1.8" /></svg>,
   audit: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v14H6z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M9 13h6M9 16.5h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>,
   userbase: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3a9 9 0 1 0 9 9h-9V3Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" strokeWidth="1.7" opacity=".5" /></svg>,
+  pulse: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 12h4l2.5-6 4 13 2.5-7H21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>,
 };
 
 function Ctrl({ icon, label, onClick }: { icon: ReactNode; label: string; onClick: () => void }) {
@@ -90,6 +94,9 @@ export default function Admin({ onOpenPanel, cur, counts, live = false, userBase
 
         <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14.5, color: "var(--text)", margin: "2px 2px 10px" }}>{t.rd_adm_controls}</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 9, marginBottom: 16 }}>
+          {/* Live Pulse — WEB-ONLY (hidden in the APK / phone shell, incl. iOS which
+              carries Capacitor → isAppShell()). Activity counts only, no revenue. */}
+          {!isAppShell() && <Ctrl icon={cic.pulse} label={t.rd_pulse_ctrl} onClick={() => onOpenPanel("pulse")} />}
           <Ctrl icon={cic.userbase} label={t.rd_adm_ctrl_userbase} onClick={() => onOpenPanel("userbase")} />
           <Ctrl icon={cic.sellers} label={t.rd_adm_ctrl_sellers} onClick={() => onOpenPanel("sellers")} />
           {!isIOS() && <Ctrl icon={cic.plans} label={t.rd_adm_ctrl_plans} onClick={() => onOpenPanel("plans")} />}
@@ -110,6 +117,7 @@ const panelTitle = (t: RedesignT, k: AdminPanelKind): string => ({
   system: t.rd_adm_pt_system, broadcast: t.rd_adm_ctrl_broadcast, subActive: t.rd_adm_pt_subActive,
   subExpiring: t.rd_adm_pt_subExpiring, subFree: t.rd_adm_pt_subFree, subExpired: t.rd_adm_pt_subExpired,
   revenue: t.rd_adm_pt_revenue, notifs: t.rd_adm_notifications, audit: t.rd_adm_pt_audit, userbase: t.rd_adm_user_base,
+  pulse: t.rd_pulse_title,
 } as Record<AdminPanelKind, string>)[k];
 const chipOn: CSSProperties = { fontSize: 11.5, fontWeight: 700, color: "var(--accent-text)", background: "var(--accent)", padding: "6px 11px", borderRadius: 8 };
 const chipOff: CSSProperties = { fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", background: "var(--surface-2)", border: "1px solid var(--border)", padding: "6px 11px", borderRadius: 8 };
@@ -186,7 +194,97 @@ function SubList({ list, statusLabel, statusColor, note, showPlan = true }: { li
   );
 }
 
-export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", rawByEmail = {}, actions, onChanged, freeUsers = [], freeUsersState = "sample", auditLogs = [], auditState = "sample", onOpenPanel }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; rawByEmail?: Record<string, AccountUser>; actions?: AdminActions; onChanged?: () => void; freeUsers?: FreeUserRow[]; freeUsersState?: ReadState; auditLogs?: AccountAuditLog[]; auditState?: ReadState; onOpenPanel?: (k: AdminPanelKind) => void }) {
+// Business Pulse — WEB-ONLY admin activity view. Counts + timestamps only (NO
+// prices/revenue → coexists with the iOS payment-hiding gate). Data from the
+// admin_business_pulse RPC; read-on-open + manual Refresh (zero polling).
+function PulsePanel({ pulse, state, onRefresh }: { pulse: PulseData | null; state: PulseState; onRefresh?: () => void }) {
+  const t = useT();
+  const s = pulse?.summary;
+  const maxHr = maxHourlyOrders(pulse?.hourly || []);
+  const asOf = pulse?.generatedAt ? new Date(pulse.generatedAt).toLocaleTimeString() : "";
+  const statCard: CSSProperties = { flex: 1, minWidth: 0, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 13, padding: "12px 13px" };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.45 }}>
+          {t.rd_pulse_sub}{asOf ? <> · <span style={{ fontFamily: mono }}>{tpl(t.rd_pulse_as_of, { time: asOf })}</span></> : null}
+        </div>
+        <button onClick={onRefresh} disabled={state === "loading"} style={{ ...planBtn, flexShrink: 0, opacity: state === "loading" ? 0.6 : 1 }}>{state === "loading" ? t.rd_pulse_loading : t.rd_pulse_refresh}</button>
+      </div>
+
+      {state === "loading" && !pulse && <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "8px 2px" }}>{t.rd_pulse_loading}</div>}
+      {state === "error" && <div style={{ fontSize: 12.5, color: "var(--danger)", padding: "8px 2px" }}>{t.rd_pulse_error}</div>}
+      {state === "empty" && <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "8px 2px" }}>{t.rd_pulse_empty}</div>}
+
+      {pulse && (state === "live" || state === "empty") && (
+        <>
+          {/* Headline — active sellers right now (proxy: order activity in last 15/60 min) */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <div style={{ background: "var(--accent)", borderRadius: 14, padding: "14px 15px", color: "#fff", boxShadow: "0 8px 22px var(--accent-soft)" }}>
+              <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 30, letterSpacing: "-.02em" }}>{s?.active_15m ?? 0}</div>
+              <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.95 }}>{t.rd_pulse_active_now}</div>
+              <div style={{ fontSize: 10.5, opacity: 0.85, marginTop: 2 }}>{t.rd_pulse_active_now_sub}</div>
+            </div>
+            <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 14, padding: "14px 15px" }}>
+              <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 30, color: "var(--accent-fg)", letterSpacing: "-.02em" }}>{s?.active_60m ?? 0}</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>{t.rd_pulse_active_60m}</div>
+              <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>{tpl(t.rd_pulse_orders_60m, { n: s?.orders_60m ?? 0 })}</div>
+            </div>
+          </div>
+
+          {/* Today totals */}
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={statCard}><div style={miniLbl}>{t.rd_pulse_orders_today}</div><div style={miniNum}>{(s?.orders_today ?? 0).toLocaleString("en-US")}</div></div>
+            <div style={statCard}><div style={miniLbl}>{t.rd_pulse_sellers_today}</div><div style={{ ...miniNum, color: "var(--accent-fg)" }}>{s?.active_today ?? 0}</div></div>
+          </div>
+
+          {/* Orders per hour today (Taipei) */}
+          <div style={{ ...card, padding: "14px 15px" }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", marginBottom: 11 }}>{t.rd_pulse_by_hour}</div>
+            {(pulse.hourly.length === 0) && <div style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_pulse_no_hours}</div>}
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              {pulse.hourly.map((h) => (
+                <div key={h.hr} style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                  <span style={{ fontFamily: mono, fontSize: 11, color: "var(--text-muted)", width: 42, flexShrink: 0 }}>{hourLabel(h.hr)}</span>
+                  <div style={{ flex: 1, height: 8, borderRadius: 4, background: "var(--surface-2)", overflow: "hidden" }}>
+                    <div style={{ height: "100%", width: `${Math.round((h.orders / maxHr) * 100)}%`, background: "var(--accent)", borderRadius: 4 }} />
+                  </div>
+                  <span style={{ fontFamily: mono, fontSize: 12, fontWeight: 700, color: "var(--text)", width: 38, textAlign: "right", flexShrink: 0 }}>{h.orders}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Per-seller breakdown today */}
+          <div>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", margin: "2px 2px 9px" }}>{tpl(pulse.sellers.length === 1 ? t.rd_pulse_sellers_h_one : t.rd_pulse_sellers_h_many, { n: pulse.sellers.length })}</div>
+            {pulse.sellers.length === 0 && <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "6px 2px" }}>{t.rd_pulse_no_sellers}</div>}
+            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+              {pulse.sellers.map((u, i) => {
+                const live = u.orders_60m > 0;
+                return (
+                  <div key={(u.email || "") + i} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 12px", border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface-2)" }}>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: live ? "#4ade80" : "var(--border-strong)", flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.store_name || u.email || t.rd_pulse_unknown}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email || ""}{u.last_order_at ? <> · {tpl(t.rd_pulse_last, { ago: relativeTime(u.last_order_at, Date.now()) })}</> : null}</div>
+                    </div>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <div style={{ fontFamily: mono, fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{u.orders_today}</div>
+                      <div style={{ fontSize: 10, color: live ? "var(--ok)" : "var(--text-muted)", fontWeight: 700, marginTop: 1 }}>{live ? tpl(t.rd_pulse_in_hour, { n: u.orders_60m }) : t.rd_pulse_today_lbl}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", rawByEmail = {}, actions, onChanged, freeUsers = [], freeUsersState = "sample", auditLogs = [], auditState = "sample", onOpenPanel, pulse = null, pulseState = "idle", onRefreshPulse }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; rawByEmail?: Record<string, AccountUser>; actions?: AdminActions; onChanged?: () => void; freeUsers?: FreeUserRow[]; freeUsersState?: ReadState; auditLogs?: AccountAuditLog[]; auditState?: ReadState; onOpenPanel?: (k: AdminPanelKind) => void; pulse?: PulseData | null; pulseState?: PulseState; onRefreshPulse?: () => void }) {
   const t = useT();
   // Real subscription buckets (derived) when the users list is live; else sample.
   const realSubs = usersState === "live" || usersState === "empty";
@@ -593,6 +691,10 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
               </div>
             </div>
           )}
+
+          {/* WEB-ONLY (defensive: the tile is hidden in the app shell, but guard the
+              body too so the panel never renders on a phone / APK / iOS). */}
+          {panel === "pulse" && !isAppShell() && <PulsePanel pulse={pulse} state={pulseState} onRefresh={onRefreshPulse} />}
 
         </div>
       </div>
