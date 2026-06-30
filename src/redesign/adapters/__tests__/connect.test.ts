@@ -147,4 +147,15 @@ describe("connectPlatform — POST to the live server", () => {
     fetchMock.mockImplementationOnce(() => Promise.reject(new Error("down")));
     expect((await connectPlatform("TikTok", { username: "a" }, "s@x.com")).ok).toBe(false);
   });
+  it("maps 409 notLive → ok:false + notLive:true + the server message (distinct from a server error)", async () => {
+    fetchMock.mockReturnValueOnce(okResp({ success: false, notLive: true, error: "Account is not live right now. Start your TikTok LIVE first." }, 409));
+    const r = await connectPlatform("TikTok", { username: "a" }, "s@x.com");
+    expect(r).toMatchObject({ ok: false, notLive: true, error: "Account is not live right now. Start your TikTok LIVE first." });
+  });
+  it("does NOT set notLive when 409 lacks the flag (treated as a generic failure)", async () => {
+    fetchMock.mockReturnValueOnce(okResp({ success: false, error: "conflict" }, 409));
+    const r = await connectPlatform("TikTok", { username: "a" }, "s@x.com");
+    expect(r.ok).toBe(false);
+    expect(r.notLive).toBeUndefined();
+  });
 });

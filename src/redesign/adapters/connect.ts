@@ -101,7 +101,7 @@ const browserSessionId = (): string => {
   return next;
 };
 
-export interface ConnectResult { ok: boolean; error?: string; account: string }
+export interface ConnectResult { ok: boolean; error?: string; account: string; notLive?: boolean }
 
 // connectPlatform — verbatim POST from App.tsx:4269-4296 (without the posthog/toast
 // side-effects). Returns the cleaned active account on success.
@@ -124,6 +124,10 @@ export async function connectPlatform(platform: Platform, data: Record<string, s
     const j = await r.json().catch(() => ({} as { success?: boolean; error?: string }));
     if (r.status === 401) return { ok: false, error: j.error || "Unauthorized", account };
     if (r.status === 500) return { ok: false, error: j.error || "Server error", account };
+    // 409 = account resolved connect() but is NOT live (Phase 1 is-LIVE gate). Distinct
+    // from a server/network error → surfaces a friendly "start your LIVE first" toast,
+    // and never marks the account connected (so Fix B won't auto-retry a non-live room).
+    if (r.status === 409 && (j as { notLive?: boolean }).notLive) return { ok: false, notLive: true, error: j.error || "Account is not live right now.", account };
     if (!j.success) return { ok: false, error: j.error || r.statusText || `HTTP ${r.status}`, account };
     return { ok: true, account };
   } catch {
