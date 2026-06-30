@@ -1,6 +1,6 @@
 // Multi-day live session — PURE window-math tests (no Supabase / React).
 import { describe, it, expect } from "vitest";
-import { clampWindowDays, daysBetween, addDays, computeWindowState, chooseSessionLoad, shouldOpenWindow } from "../useSessionWindow";
+import { clampWindowDays, daysBetween, addDays, computeWindowState, chooseSessionLoad, shouldOpenWindow, shouldResetOnDayChange } from "../useSessionWindow";
 
 describe("clampWindowDays", () => {
   it("keeps 1/2/3, defaults everything else to 1", () => {
@@ -118,5 +118,29 @@ describe("shouldOpenWindow — when an order writes window_start", () => {
   });
   it("N=3 expired (day 4) → open a fresh window (write once)", () => {
     expect(shouldOpenWindow("2026-06-25", "2026-06-22", 3)).toBe(true);
+  });
+});
+
+describe("shouldResetOnDayChange — window-aware live reset on Taipei day rollover", () => {
+  it("no actual day change → never resets (no-op guard)", () => {
+    expect(shouldResetOnDayChange("2026-06-30", "2026-06-30", null, 1)).toBe(false);
+    expect(shouldResetOnDayChange("2026-06-30", "", null, 1)).toBe(false); // empty newDay
+  });
+  it("(a) 1-day: EVERY Taipei midnight resets (window_start stays null)", () => {
+    expect(shouldResetOnDayChange("2026-06-30", "2026-07-01", null, 1)).toBe(true);
+    expect(shouldResetOnDayChange("2026-07-01", "2026-07-02", null, 1)).toBe(true);
+  });
+  it("(b) 2-day: intermediate midnight INSIDE the window → NO reset", () => {
+    // window_start 06-30, N=2 → days 06-30 & 07-01 are in-window.
+    expect(shouldResetOnDayChange("2026-06-30", "2026-07-01", "2026-06-30", 2)).toBe(false);
+  });
+  it("(c) 2-day: window EXPIRY (day past N) → reset", () => {
+    // 07-02 is daysIn=2 ≥ N=2 → expired.
+    expect(shouldResetOnDayChange("2026-07-01", "2026-07-02", "2026-06-30", 2)).toBe(true);
+  });
+  it("(d) 3-day: two intermediate midnights → NO reset, then expiry on day 4 → reset", () => {
+    expect(shouldResetOnDayChange("2026-06-22", "2026-06-23", "2026-06-22", 3)).toBe(false); // → day 2
+    expect(shouldResetOnDayChange("2026-06-23", "2026-06-24", "2026-06-22", 3)).toBe(false); // → day 3
+    expect(shouldResetOnDayChange("2026-06-24", "2026-06-25", "2026-06-22", 3)).toBe(true);  // → day 4 (expired)
   });
 });
