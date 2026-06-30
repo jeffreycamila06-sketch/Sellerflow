@@ -144,6 +144,14 @@ const RAW: Record<string, Row> = {
   rd_cap_view_orders: { en: "View my orders", fil: "Tingnan ang aking mga order", zh: "查看我的订单", "zh-TW": "查看我的訂單", vi: "Xem đơn hàng của tôi", th: "ดูออเดอร์ของฉัน", id: "Lihat pesanan saya" },
   rd_cap_later: { en: "Maybe later", fil: "Sa susunod na lang", zh: "以后再说", "zh-TW": "稍後再說", vi: "Để sau", th: "ไว้ก่อน", id: "Nanti saja" },
   rd_close: { en: "Close", fil: "Isara", zh: "关闭", "zh-TW": "關閉", vi: "Đóng", th: "ปิด", id: "Tutup" },
+  // iOS App Store compliance (no paid-content wording): neutral cap / expired / support copy.
+  rd_ios_contact_support: { en: "Contact Support", fil: "Makipag-ugnayan sa Support", zh: "联系客服", "zh-TW": "聯絡客服", vi: "Liên hệ hỗ trợ", th: "ติดต่อฝ่ายสนับสนุน", id: "Hubungi Dukungan" },
+  rd_ios_cap_hard_title: { en: "Free limit reached", fil: "Naabot ang libreng limitasyon", zh: "已达免费上限", "zh-TW": "已達免費上限", vi: "Đã đạt giới hạn miễn phí", th: "ถึงขีดจำกัดฟรีแล้ว", id: "Batas gratis tercapai" },
+  rd_ios_cap_hard_msg: { en: "You've reached this cycle's free order limit. Please contact support.", fil: "Naabot mo na ang libreng limitasyon ng order ngayong cycle. Makipag-ugnayan sa support.", zh: "你已达到本周期的免费订单上限。请联系客服。", "zh-TW": "你已達到本週期的免費訂單上限。請聯絡客服。", vi: "Bạn đã đạt giới hạn đơn miễn phí của chu kỳ này. Vui lòng liên hệ hỗ trợ.", th: "คุณถึงขีดจำกัดออเดอร์ฟรีของรอบนี้แล้ว กรุณาติดต่อฝ่ายสนับสนุน", id: "Anda telah mencapai batas pesanan gratis siklus ini. Silakan hubungi dukungan." },
+  rd_ios_cap_near_msg: { en: "Only {left} of your {cap} free orders left this cycle.", fil: "{left} na lang sa iyong {cap} libreng order ang natitira ngayong cycle.", zh: "本周期你的 {cap} 个免费订单只剩 {left} 个。", "zh-TW": "本週期你的 {cap} 筆免費訂單只剩 {left} 筆。", vi: "Chỉ còn {left} trong {cap} đơn miễn phí chu kỳ này.", th: "เหลือเพียง {left} จาก {cap} ออเดอร์ฟรีในรอบนี้", id: "Hanya tersisa {left} dari {cap} pesanan gratis siklus ini." },
+  rd_ios_expired_title: { en: "Plan inactive", fil: "Hindi aktibo ang plan", zh: "套餐未激活", "zh-TW": "方案未啟用", vi: "Gói không hoạt động", th: "แผนไม่ทำงาน", id: "Paket tidak aktif" },
+  rd_ios_expired_msg: { en: "Your plan is inactive. Please contact support.", fil: "Hindi aktibo ang iyong plan. Makipag-ugnayan sa support.", zh: "你的套餐未激活。请联系客服。", "zh-TW": "你的方案未啟用。請聯絡客服。", vi: "Gói của bạn không hoạt động. Vui lòng liên hệ hỗ trợ.", th: "แผนของคุณไม่ทำงาน กรุณาติดต่อฝ่ายสนับสนุน", id: "Paket Anda tidak aktif. Silakan hubungi dukungan." },
+  rd_ios_cm_limit: { en: "⚠ Your plan's account limit is reached.", fil: "⚠ Naabot na ang limitasyon ng account ng iyong plan.", zh: "⚠ 已达到你套餐的账户上限。", "zh-TW": "⚠ 已達到你方案的帳號上限。", vi: "⚠ Đã đạt giới hạn tài khoản của gói.", th: "⚠ ถึงขีดจำกัดบัญชีของแผนคุณแล้ว", id: "⚠ Batas akun paket Anda tercapai." },
 
   // ════ Shared ════
   rd_export: { en: "⬇ Export", fil: "⬇ I-export", zh: "⬇ 导出", "zh-TW": "⬇ 匯出", vi: "⬇ Xuất", th: "⬇ ส่งออก", id: "⬇ Ekspor" },

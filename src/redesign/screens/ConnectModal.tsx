@@ -5,6 +5,7 @@ import { useState, type CSSProperties } from "react";
 import { registeredAccountsFor, canConnectMore, type Platform, type ConnectResult } from "../adapters/connect";
 import type { AccountUser } from "../../accountDb";
 import { useT, tpl } from "../i18n";
+import { isIOS } from "../adapters/platform";
 
 const input: CSSProperties = { width: "100%", padding: "11px 13px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 600, outline: "none" };
 const lbl: CSSProperties = { fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 5 };
@@ -54,7 +55,7 @@ export default function ConnectModal({ profile, initialTab = "TikTok", onClose, 
           <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 8, border: "none", background: "var(--surface-2)", color: "var(--text-dim)", fontSize: 15, cursor: "pointer" }}>×</button>
         </div>
         <div style={{ padding: 16 }}>
-          {!canConnect && <div style={{ fontSize: 12, fontWeight: 600, color: "var(--warn)", background: "rgba(217,119,6,.12)", border: "1px solid var(--warn)", borderRadius: 10, padding: "9px 11px", marginBottom: 12 }}>{t.rd_cm_limit}</div>}
+          {!canConnect && <div style={{ fontSize: 12, fontWeight: 600, color: "var(--warn)", background: "rgba(217,119,6,.12)", border: "1px solid var(--warn)", borderRadius: 10, padding: "9px 11px", marginBottom: 12 }}>{isIOS() ? t.rd_ios_cm_limit : t.rd_cm_limit}</div>}
           <div style={{ display: "flex", gap: 6, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 11, padding: 4, marginBottom: 13 }}>
             {(["TikTok", "Facebook"] as const).map((tb) => <button key={tb} onClick={() => { setTab(tb); setErr(""); }} style={tabBtn(tab === tb)}>{tb}</button>)}
           </div>

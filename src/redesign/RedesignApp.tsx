@@ -50,6 +50,8 @@ import { registeredAccountsFor, appendAccount, maxAcc, composeChannelSave, conne
 import type { Buyer, Comment as ProdComment } from "../lib/orderTypes";
 import CapPopup from "./screens/CapPopup";
 import ConnectModal from "./screens/ConnectModal";
+import ContactSupportPopup from "./components/ContactSupportPopup";
+import { isIOS } from "./adapters/platform";
 import { TProvider, buildT, tpl } from "./i18n";
 
 type Screen =
@@ -242,6 +244,11 @@ export default function RedesignApp() {
   const [theme, setTheme] = useState<ThemeMode>(() => (readLS(LS.theme, "light") === "dark" ? "dark" : "light"));
   const [accent, setAccent] = useState<AccentKey>(() => safeAccent(readLS(LS.accent, "indigo")));
   const [screen, setScreen] = useState<Screen>(anonScreen());
+  // iOS App Store compliance: hide/neutralize all payment & subscription UI on iOS only
+  // (Android/web unchanged). `ios` is evaluated once per render; `?ios=1` overrides for
+  // browser testing. iosExpired = the neutral "plan inactive" popup (connect-403 on iOS).
+  const ios = isIOS();
+  const [iosExpired, setIosExpired] = useState(false);
   // Web-landing auth pop-up: "" = none, else Login/Signup renders in a modal OVER the
   // still-mounted landing (web only; the APK starts at screen "login" and never sets this).
   const [authModal, setAuthModal] = useState<"" | "login" | "signup">("");
@@ -334,6 +341,9 @@ export default function RedesignApp() {
     setConnecting(true);
     try {
       const r = await liveFeed.connect(platform, { username: acct });
+      // iOS: an expired plan (server 403 "plan_expired") shows a NEUTRAL "plan inactive"
+      // popup → Contact Support, NOT a payment-tinged toast. Android/web keep the toast.
+      if (ios && !r.ok && (r.error || "").includes("plan_expired")) { setIosExpired(true); return; }
       // Honest feedback: success "Connected!"; failure → the real server/network reason
       // (r.error verbatim) with the generic fallback. Chip still reverts to neutral.
       setToast(connectToast(r, tApp.rd_dash_connected_toast, tApp.rd_cm_conn_failed));
@@ -646,7 +656,7 @@ export default function RedesignApp() {
             <ManageChannels platform={screen === "ttchannels" ? "tiktok" : "facebook"} account={auth.profile} onBack={() => setScreen("settings")} onSaveChannels={saveChannels} />
           )}
           {screen === "customers" && <Customers cur={cur} customers={customersData.customers} state={customersData.state} onExport={exportCustomers} />}
-          {screen === "subscription" && <Subscription cur={cur} account={auth.profile} isFreeUser={freeCap.isFreeUser} freeStatus={freeCap.freeStatus} />}
+          {screen === "subscription" && !ios && <Subscription cur={cur} account={auth.profile} isFreeUser={freeCap.isFreeUser} freeStatus={freeCap.freeStatus} />}
           {screen === "support" && <Support onLegal={() => setScreen("legal")} />}
           {screen === "admin" && isAdmin && <Admin onOpenPanel={setAdminPanel} cur={cur} counts={adminCounts} live={adminLive} userBase={adminLive ? { paid: userBase.paid, free: userBase.free, total: userBase.total } : undefined} />}
           {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} buyers={liveSession.session.buyers} storeName={auth.profile?.profile.storeName || "SellerFlowLive"} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
@@ -717,14 +727,32 @@ export default function RedesignApp() {
           <ConnectModal profile={auth.profile} initialTab={connectOpen} onClose={() => setConnectOpen(null)} onConnect={handleConnect} />
         )}
 
-        {/* Phase 5f — free-tier cap popup (near / hard) */}
-        {freeCap.capPopup && (
+        {/* Phase 5f — free-tier cap popup (near / hard). iOS: neutral Contact-Support
+            popup (no upgrade/subscription wording). Android/web: original CapPopup. */}
+        {freeCap.capPopup && ios && (
+          <ContactSupportPopup
+            title={freeCap.capPopup === "hard" ? tApp.rd_ios_cap_hard_title : tApp.rd_cap_near_title}
+            message={freeCap.capPopup === "hard"
+              ? tApp.rd_ios_cap_hard_msg
+              : tpl(tApp.rd_ios_cap_near_msg, { left: Math.max(0, (freeCap.freeStatus?.cap ?? 100) - (freeCap.freeStatus?.count ?? 0)), cap: freeCap.freeStatus?.cap ?? 100 })}
+            onClose={() => freeCap.setCapPopup("")}
+          />
+        )}
+        {freeCap.capPopup && !ios && (
           <CapPopup
             kind={freeCap.capPopup}
             freeStatus={freeCap.freeStatus}
             onUpgrade={() => { freeCap.setCapPopup(""); setScreen("subscription"); }}
             onViewOrders={() => { freeCap.setCapPopup(""); setScreen("orders"); }}
             onClose={() => freeCap.setCapPopup("")}
+          />
+        )}
+        {/* iOS expired-plan neutral popup (triggered by a connect-403). */}
+        {ios && iosExpired && (
+          <ContactSupportPopup
+            title={tApp.rd_ios_expired_title}
+            message={tApp.rd_ios_expired_msg}
+            onClose={() => setIosExpired(false)}
           />
         )}
 

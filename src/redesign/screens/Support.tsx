@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { headerBar, headerTitle } from "../ui";
 import { useT } from "../i18n";
+import { isIOS } from "../adapters/platform";
 
 export default function Support({ onLegal }: { onLegal: () => void }) {
   const t = useT();
@@ -11,7 +12,8 @@ export default function Support({ onLegal }: { onLegal: () => void }) {
     { title: t.rd_sup_g1, body: t.rd_sup_g1_body },
     { title: t.rd_sup_g2, body: t.rd_sup_g2_body },
     { title: t.rd_sup_g3, body: t.rd_sup_g3_body },
-    { title: t.rd_sup_g4, body: t.rd_sup_g4_body },
+    // g4 = "Renewing your subscription" (prices + subscribe/renew) → hidden on iOS.
+    ...(isIOS() ? [] : [{ title: t.rd_sup_g4, body: t.rd_sup_g4_body }]),
   ];
   const [open, setOpen] = useState<number | null>(null);
   return (
