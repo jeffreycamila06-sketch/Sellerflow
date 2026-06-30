@@ -826,3 +826,61 @@ from STILL PENDING — it is resolved.)
 - ⚠️ **VERIFY (next):** on the PostHog dashboard in 24–48h, identified persons should rise
   (no longer ~1). If not: confirm `VITE_PUBLIC_POSTHOG_KEY` is set on Vercel **PRODUCTION**
   env (not just preview).
+
+## SESSION 2026-07-01 — session_date misfiling bug + A2 BEFORE-INSERT trigger (FIXED, production)
+**BUG (discovered 2026-07-01 via Gani / `leahsangalang1215`):** the TODAY bar + buyer# of
+24-hour live sellers did NOT reset at Taipei midnight. **Root cause:** `session_date` was
+**100% CLIENT-SUPPLIED** (= `liveSession.dayId`, pinned at mount via
+`useState(() => taipeiDayId())`). An app left open for days (Gani: since 06-24/06-29) =
+stale dayId → new orders land in the OLD `session_date` bucket + a continuous buyer#
+(#405+). DB layer: `session_date` NOT NULL, **NO default/trigger** (pre-fix); no server.js
+in the write-path (client→Supabase direct). Scope: **9 sellers, 1,327 misfiled rows**.
+
+⚠️ **CRITICAL realization:** buyer# is the **operational backbone** of high-volume sellers
+(their team sorts parcels by buyer#). A correct buyer# reset at 00:00 is **mission-critical,
+NOT cosmetic.**
+
+### FIX = Option C (server backstop + client reset)
+1. **A2 BEFORE-INSERT trigger** (APPLIED to production Supabase `sqeuyuktdpidmlfpqgoc`,
+   dual-Claude GO — chat-Claude DB MCP + Claude Code repo):
+   ```sql
+   CREATE FUNCTION public.set_session_date_taipei() RETURNS trigger ... AS $$
+   BEGIN NEW.session_date := (COALESCE(NEW.created_at, now()) AT TIME ZONE 'Asia/Taipei')::date;
+         RETURN NEW; END; $$;
+   CREATE TRIGGER trg_session_date_taipei BEFORE INSERT ON public.live_session_orders
+     FOR EACH ROW EXECUTE FUNCTION public.set_session_date_taipei();
+   ```
+   → **server-authoritative `session_date`**: even a stale/pinned client lands in the correct
+   bucket. `created_at`-based (backfill-safe; consistent with the 7-day purge logic).
+   **Multi-day-SAFE:** `session_date` = the order's ACTUAL creation day; the window is tracked
+   separately in `seller_session_config.window_start`; **`buyer_number` is NOT touched =
+   client-authoritative by design** (multi-day continues buyer# across days). Reversible
+   (`DROP TRIGGER`/`FUNCTION`). **ZERO mutation of existing rows** (BEFORE INSERT = new rows
+   only). Verified: insert with a deliberate wrong `session_date 2026-01-01` → overridden to
+   `2026-07-01` (trigger_worked=true); test row cleaned up.
+2. **Client reset** (06-30 `useTaipeiDayId`, already merged `7d87f2f`) — buyer#/dashboard
+   DISPLAY reset; picked up on the NEXT app reload.
+
+### APP-SHELL LOAD (verified — how a stale seller gets the fix)
+- **NO service worker**; thin shell (`capacitor.config.ts` `server.url =
+  sellerflowlive.com/?apk`). **FULL CLOSE (swipe-away)** = WebView destroyed → re-fetch
+  Vercel → **fresh hashed JS** (06-30 fix). **LOG OUT/LOGIN = NOT enough** (the old in-memory
+  JS keeps running; the component never remounts → dayId stays pinned). **Instruction to
+  stale sellers: "full close (swipe-away) + reopen."**
+
+### GANI RESOLUTION (2026-07-01) — end-to-end
+(a) A2 applied → new writes correct (07-01 bucket); (b) Gani full close-open → stale writes
+stopped (verified 5 min no new row) + fresh code loaded; (c) deleted **8 transition-artifact
+rows** in the 07-01 bucket (#311–409, the A2-corrected stale writes at 01:41–01:58);
+(d) Gani refresh → **buyer #1 confirmed**. RESOLVED.
+
+### REMAINING (forward-safe)
+- **A2 protects the DATA for ALL** (correct bucket even without refresh).
+- **DISPLAY reset = client-dependent:** new/refreshed sellers auto-reset at midnight;
+  ⚠️ **residual edge** = an always-on 24/7 device (Gani-type) with no interaction → the
+  midnight `setTimeout` may be OS-throttled → a manual refresh fixes it if needed. New
+  sellers get the fresh code immediately (no issue).
+- **8 other stale sellers (06-30 vintage):** Jeff handles (ask to refresh + explain there's
+  an update).
+- **OLD DATA (1,327 misfiled rows):** LEAVE — auto-purged by the 7-day pg_cron;
+  `admin_business_pulse` uses `created_at` (NOT `session_date`) so analytics is unaffected.
