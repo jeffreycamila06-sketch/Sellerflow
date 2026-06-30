@@ -5,5 +5,11 @@ import { createRoot } from "react-dom/client";
 import "../styles/design-tokens.css";
 import "./redesign.css";
 import RedesignApp from "./RedesignApp";
+import { initAnalytics } from "./analytics";
+
+// PostHog analytics — production `/` loads THIS entry (index.html → redesign), so
+// init must live here (the src/main.tsx PostHog only runs on the app.html rollback).
+// No-op when VITE_PUBLIC_POSTHOG_KEY is absent. Single init for the redesign entry.
+initAnalytics();
 
 createRoot(document.getElementById("redesign-root")!).render(<RedesignApp />);
