@@ -764,3 +764,31 @@ chat-Claude (DB MCP) + Claude Code (repo) before applying.
 - **TODO next session:** verify the first scheduled run —
   `SELECT * FROM cron.job_run_details WHERE jobid=1 ORDER BY end_time DESC LIMIT 3;`
   (confirm non-zero / no error).
+
+### Phase 2 offline-gate — CLOSED (NO-GO, intentional) — supersedes "PHASE 2 PENDING" above
+**DECISION (2026-06-30):** Phase 2 `status_code` tightening = **NOT pursued.** Phase 1
+fail-open is sufficient. Closed DELIBERATELY (investigated, NOT merely deferred).
+
+**WHY (data-driven NO-GO):** the hypothesis ("LIVE = always `status_code:0`") is
+**FALSIFIED by real production data**:
+- `seclothingtw`: LIVE → `status_code 0`
+- `chentrendyukay`: **LIVE → `status_code 4003110` (NON-ZERO!)**
+- `chentrendyukay`: OFFLINE → `status_code 4003110` (same value)
+→ `status_code` does **NOT** separate live vs offline for ambiguous-shape accounts
+(it's an account/region-specific code, not a live-state signal). Blocking on
+`status_code !== 0` would **FALSE-BLOCK `chentrendyukay` while LIVE** = break a real
+seller's connect = exactly the disaster the gate must avoid.
+
+**LOGGING GAP (secondary):** Phase 1 does NOT log `status_code` on the CONFIRMED-LIVE
+(`status:1`) path — only `"Connected to TikTok LIVE" + room id`, no `roomInfo`. So even
+exporting the Render logs cannot build a proper live-vs-offline `status_code`
+distribution. (If ever revisited: would first need a log-only `[LIVE-PROBE]` on the
+`status:1` branch to collect a live distribution — but per `chentrendyukay`,
+`status_code` is unlikely to ever be a usable discriminator.)
+
+**RESOLUTION:** Phase 1 is-LIVE gate (server `65f9b96`) is the FINAL state — catches
+clean-numeric offline (`status:2`-type); fail-open on ambiguous so a live seller is
+never false-blocked. Residual gap (ambiguous-shape offline occasionally fake-Connects)
+= small + ACCEPTABLE; not worth blocking at the cost of false-blocking live sellers.
+**NO further code change. Phase 2 = CLOSED.** (Remove the "Phase 2 offline gate" item
+from STILL PENDING — it is resolved.)
