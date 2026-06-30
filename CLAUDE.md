@@ -695,7 +695,7 @@ correct error). `fetchRoomInfoOnConnect:true` → each connect hits the Euler ro
 - **Connection monitor 2–3 days:** `/health/tiktok` `rateLimitedAccounts` must stay
   **0** → then turn the cron OFF.
 - **Phase 2 offline gate** (`status_code`) — LOG first, confirm pattern, then tighten.
-- **PostHog port** to `src/redesign/main.tsx` (redesign has ZERO tracking).
+- ~~**PostHog port** to `src/redesign/main.tsx` (redesign has ZERO tracking).~~ ✅ **DONE** (merged `617a998` — see "PostHog port" log below).
 - **Delete merged branches:** `claude/roominfo-probe-phase0`,
   `claude/tiktok-islive-gate`, `claude/admin-business-pulse`, `claude/ios-hide-payments`.
 
@@ -792,3 +792,37 @@ never false-blocked. Residual gap (ambiguous-shape offline occasionally fake-Con
 = small + ACCEPTABLE; not worth blocking at the cost of false-blocking live sellers.
 **NO further code change. Phase 2 = CLOSED.** (Remove the "Phase 2 offline gate" item
 from STILL PENDING — it is resolved.)
+
+### PostHog port to the redesign — MERGED + LIVE (basic parity)
+- **PROBLEM (root cause):** production `/` = `index.html` → `src/redesign/main.tsx` →
+  `RedesignApp` (the redesign IS the live app). PostHog init lived in `src/main.tsx`
+  ONLY (= `app.html` rollback, NOT served in prod) → redesign = **ZERO tracking** → only
+  ~1 person seen in analytics despite ~9 active sellers.
+- **FIX:** COPY (not move) the App.tsx PostHog tracking into the redesign tree. Basic
+  parity with the old app — **NO order event**.
+- **Config (verbatim copy):** `posthog.init(VITE_PUBLIC_POSTHOG_KEY, { api_host:
+  VITE_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com", person_profiles:
+  "identified_only", capture_pageview: true, capture_pageleave: true })`. Key already in
+  Vercel env.
+- **Events:** `identify(email, {plan, store_name, role})` on authed+profile;
+  `connect_attempt`/`connect_success`/`connect_failed {platform, reason}` in `doConnect`;
+  `reset()` on logout; auto `pageview`/`pageleave`.
+- **Files (redesign-only):** NEW `src/redesign/analytics.ts` (SSR-safe wrapper, **THE
+  single `posthog-js` import in the redesign tree**: `initAnalytics`/`identifySeller`/
+  `track`/`resetAnalytics`, all no-op without key/window); NEW `__tests__/analytics.test.ts`
+  (+5 tests); `src/redesign/main.tsx` (+`initAnalytics()` before render); `RedesignApp.tsx`
+  (identify effect + connect captures + logout reset).
+- **Design note:** init lives in `analytics.ts` (`initAnalytics()`), called from
+  `main.tsx` — keeps a single `posthog-js` import. Config = verbatim copy still.
+- **Branch** `claude/redesign-posthog` (off `main` `0e37258`) → **merged `main` `617a998`**;
+  Vercel prod `dpl_FBDfyzAH` READY.
+- **Validation:** **472 vitest green** (467+5), typecheck + build clean, **zero protected
+  files touched** (`App.tsx`/`src/main.tsx`/`db.ts`/`lib/*`/native UNTOUCHED), single
+  posthog init in the redesign tree. Preview-verified on the PostHog dashboard: events
+  arriving (Pageview, "clicked Log in", "clicked input") from the preview redesign URL.
+- **Double-tracking:** negligible (`/` = redesign only is live; `app.html` = rollback-only;
+  same event names = clean merge).
+- Pure web/JS → APK/iOS pick it up on NEXT OPEN, **no AAB rebuild**.
+- ⚠️ **VERIFY (next):** on the PostHog dashboard in 24–48h, identified persons should rise
+  (no longer ~1). If not: confirm `VITE_PUBLIC_POSTHOG_KEY` is set on Vercel **PRODUCTION**
+  env (not just preview).
