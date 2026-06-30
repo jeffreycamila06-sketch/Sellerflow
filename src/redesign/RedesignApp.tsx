@@ -13,6 +13,7 @@ import Landing from "./screens/Landing";
 import AuthModal from "./components/AuthModal";
 import AuthBrandPanel from "./components/AuthBrandPanel";
 import { anonScreen, isAppShell } from "./adapters/appShell";
+import { identifySeller, track, resetAnalytics } from "./analytics";
 import SettingsHub from "./screens/SettingsHub";
 import GeneralSettings from "./screens/GeneralSettings";
 import Customers from "./screens/Customers";
@@ -79,6 +80,11 @@ const safeAccent = (v: string): AccentKey => (ACCENT_KEYS.includes(v as AccentKe
 export default function RedesignApp() {
   // Phase 5a — REAL auth (adapter composes the supabase singleton + getMyProfile).
   const auth = useAuthSession();
+  // Analytics — identify the signed-in seller once authed (parity with App.tsx
+  // 735/757: email + plan/store_name/role). No-op when PostHog has no key.
+  useEffect(() => {
+    if (auth.status === "authed" && auth.profile) identifySeller(auth.profile);
+  }, [auth.status, auth.profile]);
 
   // Phase 5b — READ-ONLY real data (no writes). Enabled only when authed; admin
   // users list only when the profile is admin (else a seller would see just their
@@ -344,8 +350,13 @@ export default function RedesignApp() {
     if (!acct) { setConnectOpen(platform); return; } // no registered account → add-new modal (real connect)
     setOpen(false);                                  // Connect uses the selected account → close the dropdown
     setConnecting(true);
+    track("connect_attempt", { platform });          // analytics parity (App.tsx:4277)
     try {
       const r = await liveFeed.connect(platform, { username: acct });
+      // connect_success / connect_failed — captured for EVERY outcome (App.tsx:4289-4311),
+      // before the early returns below. reason: not-live → "not_live"; else the real error.
+      if (r.ok) track("connect_success", { platform });
+      else track("connect_failed", { platform, reason: r.notLive ? "not_live" : (r.error || "unknown") });
       // iOS: an expired plan (server 403 "plan_expired") shows a NEUTRAL "plan inactive"
       // popup → Contact Support, NOT a payment-tinged toast. Android/web keep the toast.
       if (ios && !r.ok && (r.error || "").includes("plan_expired")) { setIosExpired(true); return; }
@@ -639,7 +650,7 @@ export default function RedesignApp() {
               onCustomerData={() => setScreen("customerdata")}
               onLegal={() => setScreen("legal")}
               onDelete={() => setScreen("delete")}
-              onLogout={() => { void auth.signOut(); setScreen("login"); }}
+              onLogout={() => { resetAnalytics(); void auth.signOut(); setScreen("login"); }}
               isAdmin={isAdmin}
             />
           )}
