@@ -702,3 +702,65 @@ correct error). `fetchRoomInfoOnConnect:true` → each connect hits the Euler ro
 ### USER DATA snapshot (2026-06-30)
 **28 total** — 24 paid (16 Basic + 6 Pro + 2 Master) · 3 free-active + 1 free-expired.
 ~513 orders today, 8 sellers active, peak ~9 concurrent. **26 signups/30d (fast growth).**
+
+## SESSION 2026-06-30 (continuation) — TODAY-bar live reset + live_session_orders 7-day auto-delete
+Two more features shipped same day (both LIVE). Same protocol: preview-branch-first
+(frontend), diff + tests, STOP for Jeff "go"/"merge"; DB changes reviewed by BOTH
+chat-Claude (DB MCP) + Claude Code (repo) before applying.
+
+### 1. TODAY-bar window-aware LIVE reset (MERGED + LIVE on `main`)
+- **Problem:** the Live-screen TODAY bar (buyers · orders · revenue) was pinned to the
+  mount-time Taipei day (`useState(() => taipeiDayId())`) → never reset while the app
+  stayed open.
+- **Fix:** window-aware auto-reset at the session-window boundary, even mid-live.
+  - **1-day** session → reset every Taipei midnight (00:00 UTC+8).
+  - **2/3-day** session → reset ONLY at window expiry; intermediate midnights keep
+    counting (continuous buyer# + orders).
+- **Mechanism:** new `useTaipeiDayId()` (`useSessionWindow.ts`) — a LIVE Taipei
+  day-key that advances via `focus`/`visibilitychange` + ONE self-correcting
+  `setTimeout` to the next Taipei midnight (cleared+rescheduled; **zero-poll,
+  egress-safe**). Pure `shouldResetOnDayChange()` =
+  `!computeWindowState(newDay, windowStart, windowDays).active` → calls the EXISTING
+  `reset()`. Buyer# + orders reset together (one `liveSession.session`).
+- **Files (redesign adapters ONLY — no protected file touched):**
+  `useLiveSession.ts` (+25/−7: `dayId`→`useTaipeiDayId()` + day-rollover reset effect),
+  `useSessionWindow.ts` (+56: `useTaipeiDayId` + `msUntilNextTaipeiMidnight` +
+  `shouldResetOnDayChange`), `__tests__/useSessionWindow.test.ts` (+26, 5 new tests).
+  NO `lib/*` / `db.ts` / `App.tsx` / native.
+- **Branch** `claude/today-bar-window-reset` (off `main` `126d00b`) → **merged `main`
+  `7d87f2f`**; Vercel prod deploy `dpl_Hu1DEr9f` READY.
+- **Validation:** **467 vitest green**, typecheck + build clean. Production-verified via
+  Supabase MCP — googletest 5 orders (2 buyers, NT$1,000), correct buyer# + Taipei
+  `session_date 2026-06-30`. True-midnight reset best confirmed on-device at real 00:00
+  (pure logic fully unit-tested for 1/2/3-day).
+- ⚠️ **Note:** 1-day mode = `window_start` always null → never "active" → EVERY midnight
+  resets (intended). Pure web/JS fix → APK/iOS pick it up on NEXT OPEN, **no AAB rebuild**.
+
+### 2. live_session_orders 7-day auto-delete (pg_cron) — APPLIED to production Supabase
+- **Goal:** free-tier DB hygiene (Supabase Pro canceled 06-21; DB ~9% / egress ~10% —
+  not urgent, future-proofing). `live_session_orders` grows ~1,700 rows/day with no
+  prior cleanup.
+- **Investigation (chat-Claude DB MCP + Claude Code repo — both GO):** ZERO existing
+  auto-delete/cron in the DB; `pg_cron` was NOT installed. Deepest read of
+  `live_session_orders` = **3 days** (N=3 window); `admin_business_pulse` = today+60min;
+  `useTaipeiDayId` = pure clock (zero DB read). No FK/view/aggregate depends on it →
+  7-day retention = **5–6 day margin**.
+- ⚠️ **CRITICAL:** `public.orders` (NOT `live_session_orders`) = billing / free-tier-cap
+  ledger read by `check_and_increment_free_order` (rolling 30-day cap) — **UNTOUCHED**.
+  Retention is `live_session_orders` ONLY.
+- **Applied** (project `sqeuyuktdpidmlfpqgoc`, via MCP as `postgres` = bypasses RLS,
+  confirmed NON-ZERO delete):
+  1. One-time `DELETE WHERE session_date < (now() AT TIME ZONE 'Asia/Taipei')::date - 7`
+     → **116 rows (all `2026-06-22`) deleted**. Remaining 15,356 (06-23→06-30), 0 older.
+  2. `CREATE EXTENSION pg_cron` (now installed).
+  3. `cron.schedule('purge-old-live-session-orders', '0 17 * * *', <same DELETE>)` →
+     **jobid 1, active**. 17:00 UTC = **01:00 Taipei** (1 h buffer after the midnight
+     reset; SEPARATE from the cron-job.org Render restart — zero conflict).
+- **Reversible:** `cron.unschedule('purge-old-live-session-orders')`. Hard-delete is
+  PERMANENT (no PITR on free tier; acceptable — >7-day rows have no reader).
+- ⚠️ **RLS caveat (why it works):** `lso_delete` policy is `user_id = auth.uid()`; the
+  DELETE must run as `postgres`/owner (BYPASSRLS) or it would silently delete 0. MCP +
+  pg_cron-as-postgres satisfy this — verified by the non-zero one-time delete.
+- **TODO next session:** verify the first scheduled run —
+  `SELECT * FROM cron.job_run_details WHERE jobid=1 ORDER BY end_time DESC LIMIT 3;`
+  (confirm non-zero / no error).
