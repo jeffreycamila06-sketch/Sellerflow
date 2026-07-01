@@ -10,7 +10,7 @@
 // adds a window.confirm() per action so a wrong target can't be hit by accident.
 import { useCallback } from "react";
 import { supabase } from "../../supabase";
-import { adminUpdatePlan, deleteUser, saveAuditLog, upsertUser, type Role, type AccountUser } from "../../accountDb";
+import { adminUpdatePlan, adminUpdateContactNote, deleteUser, saveAuditLog, upsertUser, type Role, type AccountUser } from "../../accountDb";
 import { maxAcc, accountList, accountText } from "./connect";
 
 export type Plan = "free" | "trial" | "basic" | "pro" | "master";
@@ -60,6 +60,9 @@ export interface AdminActions {
   // Edit a seller's locked TikTok/Facebook usernames — mirrors App.tsx saveEditSeller.
   // Writes ONLY profile fields via upsertUser (NO includePlan) → plan/role untouched.
   editAccounts: (rawUser: AccountUser, ttText: string, fbText: string) => Promise<AdminResult>;
+  // Set the admin contact note (seller_profiles.admin_contact_note) — mirrors
+  // App.tsx saveContactNote (3170-3180). "<platform>:<name>" or "" to clear.
+  setContactNote: (email: string, note: string) => Promise<AdminResult>;
 }
 
 // PURE — parse + plan-cap split, copied VERBATIM from App.tsx saveEditSeller
@@ -149,5 +152,17 @@ export function useAdmin(adminEmail: string | undefined): AdminActions {
     } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "error" }; }
   }, [audit]);
 
-  return { changePlan, setRole, expire, setPassword, removeUser, addDays, editAccounts };
+  // Admin contact note write (App.tsx saveContactNote 3170-3180). admin_contact_note
+  // is a plain profile field — adminUpdateContactNote UPDATEs only that column,
+  // admin-gated by RLS. No plan/role touched.
+  const setContactNote = useCallback(async (email: string, note: string): Promise<AdminResult> => {
+    try {
+      const trimmed = note.trim();
+      await adminUpdateContactNote(email, trimmed);
+      audit("edited contact", email, trimmed || "(cleared)");
+      return { ok: true };
+    } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "error" }; }
+  }, [audit]);
+
+  return { changePlan, setRole, expire, setPassword, removeUser, addDays, editAccounts, setContactNote };
 }

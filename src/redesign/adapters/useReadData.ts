@@ -94,6 +94,9 @@ export function accountUsersToRedesign(users: AccountUser[], nowMs: number = Dat
   return users.map((u) => ({
     email: u.email,
     note: u.profile.adminContactNote || u.profile.fullName || "",
+    // RAW contact note (no fullName fallback) so ContactChip parses the real
+    // "<platform>:<name>" value — never misreads a full name as a contact.
+    contactNote: u.profile.adminContactNote || "",
     role: u.role === "admin" ? "Admin" : "Seller",
     plan: planLabel(u.plan),
     days: planDaysLeft(u.planExpiry, nowMs), // real days remaining

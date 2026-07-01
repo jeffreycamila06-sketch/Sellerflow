@@ -647,6 +647,8 @@ const RAW: Record<string, Row> = {
   rd_adm_pw_ph: { en: "New password (≥6 chars)", fil: "Bagong password (≥6 char)", zh: "新密码（≥6 个字符）", "zh-TW": "新密碼（≥6 個字元）", vi: "Mật khẩu mới (≥6 ký tự)", th: "รหัสผ่านใหม่ (≥6 ตัว)", id: "Kata sandi baru (≥6 karakter)" },
   rd_adm_set: { en: "Set", fil: "I-set", zh: "设置", "zh-TW": "設定", vi: "Đặt", th: "ตั้ง", id: "Atur" },
   rd_adm_reset_pw: { en: "Reset PW", fil: "Reset PW", zh: "重置密码", "zh-TW": "重設密碼", vi: "Đặt lại MK", th: "รีเซ็ตรหัส", id: "Reset PW" },
+  rd_adm_add_contact: { en: "add contact…", fil: "magdagdag ng contact…", zh: "添加联系方式…", "zh-TW": "新增聯絡方式…", vi: "thêm liên hệ…", th: "เพิ่มการติดต่อ…", id: "tambah kontak…" },
+  rd_adm_contact_name_ph: { en: "name / handle", fil: "pangalan / handle", zh: "名称 / 帐号", "zh-TW": "名稱 / 帳號", vi: "tên / tài khoản", th: "ชื่อ / แฮนเดิล", id: "nama / handle" },
   rd_adm_make_admin: { en: "Make Admin", fil: "Gawing Admin", zh: "设为管理员", "zh-TW": "設為管理員", vi: "Đặt làm Admin", th: "ตั้งเป็นแอดมิน", id: "Jadikan Admin" },
   rd_adm_remove_admin: { en: "Remove Admin", fil: "Alisin ang Admin", zh: "取消管理员", "zh-TW": "取消管理員", vi: "Gỡ Admin", th: "ลบแอดมิน", id: "Hapus Admin" },
   rd_adm_expire: { en: "Expire", fil: "I-expire", zh: "使过期", "zh-TW": "使過期", vi: "Hết hạn", th: "ทำให้หมดอายุ", id: "Kedaluwarsakan" },

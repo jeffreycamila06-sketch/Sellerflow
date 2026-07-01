@@ -12,6 +12,7 @@ import { maxAcc } from "../adapters/connect";
 import type { AccountAuditLog, AccountUser } from "../../accountDb";
 import { csvDL, dayStamp } from "../adapters/csv";
 import SoonBadge from "../components/SoonBadge";
+import ContactChip from "../components/ContactChip";
 import { useT, tpl, type RedesignT } from "../i18n";
 import { isIOS } from "../adapters/platform";
 import { isAppShell } from "../adapters/appShell";
@@ -401,7 +402,11 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
                         <div style={{ minWidth: 0, flex: 1 }}>
                           <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div>
-                          <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{u.note}</div>
+                          {/* Admin contact note — inline parse + click-to-edit (parity with old App.tsx
+                              ContactDisplay/ContactEditor). Editable only when real admin actions exist. */}
+                          <div style={{ marginTop: 3 }} onClick={(e) => e.stopPropagation()}>
+                            <ContactChip note={u.contactNote || ""} onSave={actions ? (v) => { void actions.setContactNote(u.email, v).then((r) => { if (r.ok) onChanged?.(); }); } : undefined} />
+                          </div>
                         </div>
                         <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
                           <span style={{ fontSize: 10, fontWeight: 800, color: isAdmin ? "var(--accent-fg)" : "var(--text-dim)", background: isAdmin ? "var(--accent-soft)" : "var(--surface-3)", padding: "3px 7px", borderRadius: 6 }}>{u.role}</span>
