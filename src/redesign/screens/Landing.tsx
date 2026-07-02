@@ -4,7 +4,7 @@
 // palette so the marketing page looks consistent regardless of a visitor's saved
 // theme/accent. support.js is NOT used. STEP La = nav + hero + footer; the marketing
 // sections (features / how / pricing / faq / cta) land in Step Lb.
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { LANGS } from "../data";
 import { useT, tpl } from "../i18n";
 
@@ -27,6 +27,112 @@ const footLinkA: CSSProperties = { display: "block", padding: "5px 0", fontFamil
 const primaryBtn: CSSProperties = { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "0 22px", height: 54, borderRadius: 14, border: "none", background: C.grad, color: "#fff", fontFamily: FU, fontSize: 15.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 16px 30px -10px rgba(79,70,229,.5)", textDecoration: "none" };
 const ghostBtn: CSSProperties = { display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "0 20px", height: 54, borderRadius: 14, background: "#fff", color: C.ink, border: `1px solid ${C.border2}`, fontFamily: FU, fontSize: 15.5, fontWeight: 700, cursor: "pointer", textDecoration: "none" };
 
+// ── Animation helpers (landing-only) ─────────────────────────────────────────
+// Staggered hero entrance (CSS sflRise via .sfl-lp-rise; delay per element).
+const rise = (d: number): CSSProperties => ({ animationDelay: `${d}s` });
+// Scroll-reveal stagger delay (consumed by .sfl-lp-reveal's transition-delay var).
+const rv = (i: number, step = 0.08): CSSProperties => ({ "--rv-delay": `${(i * step).toFixed(2)}s` } as CSSProperties);
+
+// Scroll-triggered fade-ins: adds .sfl-lp-in ONCE when a .sfl-lp-reveal element
+// enters the viewport (never re-hides on scroll-back). Falls back to showing
+// everything immediately when IntersectionObserver is unavailable (old browsers,
+// jsdom tests). The ONLY JS in the animation work — everything else is pure CSS.
+function useScrollReveal() {
+  useEffect(() => {
+    const els = Array.from(document.querySelectorAll<HTMLElement>(".sfl-lp-reveal"));
+    if (typeof IntersectionObserver === "undefined") { els.forEach((e) => e.classList.add("sfl-lp-in")); return; }
+    const io = new IntersectionObserver((entries) => {
+      for (const en of entries) if (en.isIntersecting) { en.target.classList.add("sfl-lp-in"); io.unobserve(en.target); }
+    }, { threshold: 0.12 });
+    els.forEach((e) => io.observe(e));
+    return () => io.disconnect();
+  }, []);
+}
+
+// ── Hero scene mockups (decorative; demo literals by design, like the old card) ──
+// Generic thermal printer with a sticker label continuously printing out of the
+// slot. `delayed` offsets the loop so the two printers never print in sync.
+function PrinterMock({ delayed, num, handle }: { delayed?: boolean; num: string; handle: string }) {
+  // uniform-height barcode: varied widths read as a real barcode
+  const bars = [2, 1, 3, 1, 2, 1, 1, 3, 1, 2, 1, 2];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+      <div style={{ width: 74, height: 56, borderRadius: 12, background: "#23213E", position: "relative", zIndex: 1, boxShadow: "0 10px 22px -10px rgba(23,21,48,.5)" }}>
+        <span className="sfl-lp-printlight" style={{ position: "absolute", top: 9, right: 10 }} />
+        <div style={{ position: "absolute", left: 10, right: 10, bottom: 10, height: 5, borderRadius: 3, background: "#141227" }} />
+      </div>
+      <div style={{ width: 58, height: 74, overflow: "hidden", marginTop: -3 }}>
+        <div className={`sfl-lp-print${delayed ? " sfl-lp-print-b" : ""}`} style={{ background: "#fff", border: "1px solid #ECECF5", borderTop: "none", borderRadius: "0 0 8px 8px", padding: "7px 7px 8px", boxShadow: "0 8px 18px -8px rgba(23,21,48,.25)" }}>
+          <div style={{ fontFamily: FM, fontWeight: 700, fontSize: 17, color: C.ink, lineHeight: 1 }}>{num}</div>
+          <div style={{ fontSize: 8.5, color: C.muted, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{handle}</div>
+          <div style={{ display: "flex", gap: 1.5, marginTop: 5, height: 12 }}>
+            {bars.map((w, i) => <span key={i} style={{ width: w, height: "100%", background: C.ink, flexShrink: 0 }} />)}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PhoneMock() {
+  return (
+    <div style={{ width: 96, borderRadius: 16, border: "1px solid #E0DDF0", background: "#fff", padding: 6, boxShadow: "0 14px 30px -14px rgba(79,70,229,.35)", flexShrink: 0 }}>
+      <div style={{ borderRadius: 11, background: "#F6F6FC", padding: 7, display: "flex", flexDirection: "column", gap: 6, minHeight: 118 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <span className="sfl-lp-livedot" />
+          <span style={{ fontSize: 8.5, fontWeight: 800, color: C.rose, letterSpacing: ".05em" }}>LIVE</span>
+        </div>
+        <div style={{ background: "#fff", borderRadius: 8, padding: "6px 7px", border: "1px solid #ECECF5" }}>
+          <div style={{ fontSize: 8.5, fontWeight: 800, color: C.ink }}>Buyer #23</div>
+          <div style={{ fontSize: 8, color: C.body, marginTop: 1 }}>@handle mine!</div>
+        </div>
+        <div style={{ marginTop: "auto", background: C.grad, borderRadius: 7, padding: "5px 7px", color: "#fff", fontSize: 8, fontWeight: 800 }}>Captured ✓</div>
+      </div>
+    </div>
+  );
+}
+
+function LaptopMock() {
+  return (
+    <div style={{ flexShrink: 0 }}>
+      <div style={{ width: 150, borderRadius: "12px 12px 4px 4px", border: "1px solid #E0DDF0", background: "#fff", padding: 5, boxShadow: "0 14px 30px -14px rgba(79,70,229,.35)" }}>
+        <div style={{ borderRadius: 8, background: "#F6F6FC", padding: 7, display: "flex", flexDirection: "column", gap: 6, minHeight: 96 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+            <span className="sfl-lp-livedot" />
+            <span style={{ fontSize: 8.5, fontWeight: 800, color: C.rose, letterSpacing: ".05em" }}>LIVE</span>
+            <span style={{ marginLeft: "auto", fontFamily: FM, fontSize: 8, fontWeight: 700, color: C.muted }}>1.2k 👀</span>
+          </div>
+          <div style={{ display: "flex", gap: 5 }}>
+            <div style={{ flex: 1, background: "#fff", border: "1px solid #ECECF5", borderRadius: 7, padding: "5px 6px" }}>
+              <div style={{ fontSize: 8, fontWeight: 800, color: C.ink }}>#23</div>
+              <div style={{ fontSize: 7.5, color: C.body }}>mine!</div>
+            </div>
+            <div style={{ flex: 1, background: "#fff", border: "1px solid #ECECF5", borderRadius: 7, padding: "5px 6px" }}>
+              <div style={{ fontSize: 8, fontWeight: 800, color: C.ink }}>#24</div>
+              <div style={{ fontSize: 7.5, color: C.body }}>+1 po</div>
+            </div>
+          </div>
+          <div style={{ marginTop: "auto", background: C.grad, borderRadius: 7, padding: "5px 7px", color: "#fff", fontSize: 8, fontWeight: 800 }}>Captured ✓</div>
+        </div>
+      </div>
+      {/* laptop base / hinge */}
+      <div style={{ width: 168, height: 7, background: "#E7E5F4", borderRadius: "0 0 10px 10px", margin: "0 0 0 -9px" }} />
+    </div>
+  );
+}
+
+// One "device | printer" card of the hero scene ("PHONE" / "COMPUTER" label on top).
+function DeviceCard({ label, delayed, children }: { label: string; delayed?: boolean; children: ReactNode }) {
+  return (
+    <div style={{ flex: "1 1 230px", minWidth: 0, background: C.card, border: `1px solid ${C.border}`, borderRadius: 20, padding: "14px 14px 10px", boxShadow: "0 24px 50px -24px rgba(79,70,229,.35)" }}>
+      <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".14em", color: C.faint, marginBottom: 10, textTransform: "uppercase" }}>{label}</div>
+      <div className={delayed ? "sfl-lp-float-b" : "sfl-lp-float"} style={{ display: "flex", gap: 12, alignItems: "flex-start", justifyContent: "center" }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export default function Landing({
   onLogin, onSignup, lang, langOpen, onToggleLang, onPickLang,
 }: {
@@ -40,6 +146,7 @@ export default function Landing({
   const t = useT();
   const cur = LANGS.find((l) => l.code === lang) || LANGS[0];
   const [faqOpen, setFaqOpen] = useState(-1); // single-open accordion (-1 = none)
+  useScrollReveal(); // scroll-triggered fade-ins for Features/How/Pricing/FAQ
   // Smooth-scroll to an in-page section. Robust inside the .sfl-scroll container
   // (anchor hrefs are unreliable there), so nav links + "See how it works" use this.
   const scrollToId = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -127,20 +234,20 @@ export default function Landing({
       {/* ── Hero ── */}
       <section style={{ maxWidth: 1200, margin: "0 auto", padding: "72px 32px 80px", display: "grid", gridTemplateColumns: "1.05fr 0.95fr", gap: 56, alignItems: "center" }} className="sfl-lp-hero">
         <div>
-          <span style={{ display: "inline-block", padding: "7px 13px", borderRadius: 99, background: C.pill, border: `1px solid ${C.pillBorder}`, color: C.indigo, fontSize: 12.5, fontWeight: 700 }}>{t.rd_lp_hero_kicker}</span>
-          <h1 style={{ fontFamily: FD, fontWeight: 700, fontSize: 64, lineHeight: 1.04, letterSpacing: "-2px", color: C.ink, margin: "20px 0 0" }}>
+          <span className="sfl-lp-rise" style={{ display: "inline-block", padding: "7px 13px", borderRadius: 99, background: C.pill, border: `1px solid ${C.pillBorder}`, color: C.indigo, fontSize: 12.5, fontWeight: 700, ...rise(0.05) }}>{t.rd_lp_hero_kicker}</span>
+          <h1 className="sfl-lp-rise" style={{ fontFamily: FD, fontWeight: 700, fontSize: 64, lineHeight: 1.04, letterSpacing: "-2px", color: C.ink, margin: "20px 0 0", ...rise(0.18) }}>
             {t.rd_lp_hero_l1}<br />
             <span style={{ background: C.heroGrad, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>{t.rd_lp_hero_l2}</span>
           </h1>
-          <p style={{ fontSize: 18, lineHeight: 1.6, color: C.body, maxWidth: 480, margin: "20px 0 0" }}>{t.rd_lp_hero_sub}</p>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 28 }}>
-            <button onClick={onSignup} style={primaryBtn}>{t.rd_lp_start_free}</button>
-            <button onClick={() => scrollToId("how")} style={ghostBtn}>
+          <p className="sfl-lp-rise" style={{ fontSize: 18, lineHeight: 1.6, color: C.body, maxWidth: 480, margin: "20px 0 0", ...rise(0.32) }}>{t.rd_lp_hero_sub}</p>
+          <div className="sfl-lp-rise" style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 28, ...rise(0.46) }}>
+            <button onClick={onSignup} className="sfl-lp-lift" style={primaryBtn}>{t.rd_lp_start_free}</button>
+            <button onClick={() => scrollToId("how")} className="sfl-lp-lift" style={ghostBtn}>
               <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z" /></svg>
               {t.lp_hero_how}
             </button>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 28 }}>
+          <div className="sfl-lp-rise" style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 28, ...rise(0.58) }}>
             <div style={{ display: "flex" }}>
               {["#a5b4fc", "#818cf8", "#6366f1", "#4f46e5"].map((bg, i) => (
                 <span key={i} style={{ width: 32, height: 32, borderRadius: "50%", background: bg, border: "2px solid #fff", marginLeft: i ? -10 : 0 }} />
@@ -150,39 +257,27 @@ export default function Landing({
           </div>
         </div>
 
-        {/* Product visual card — the "money shot" (demo data = literals). */}
-        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 24, padding: 18, boxShadow: "0 40px 80px -30px rgba(79,70,229,.4)" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 7, padding: "5px 11px", borderRadius: 99, background: "rgba(244,63,94,.1)", color: C.rose, fontSize: 12, fontWeight: 800 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: C.rose }} />{t.rd_lp_pc_live}</span>
-            <span style={{ fontFamily: FM, fontSize: 14, fontWeight: 700, color: C.ink }}>32:14</span>
-          </div>
-          <div style={{ background: "#F6F6FC", borderRadius: 16, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
-              <span style={{ width: 28, height: 28, borderRadius: "50%", background: "#c7d2fe", flexShrink: 0 }} />
-              <div><div style={{ fontSize: 12.5, fontWeight: 700, color: C.ink }}>Jamie R.</div><div style={{ fontSize: 12.5, color: C.body }}>How much for the floral set? 😍</div></div>
-            </div>
-            <div style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
-              <span style={{ width: 28, height: 28, borderRadius: "50%", background: "#a7f3d0", flexShrink: 0 }} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: C.ink }}>Crystal L.</div>
-                <div style={{ fontSize: 12.5, color: C.body }}>mine 04 ✋</div>
-                <div style={{ display: "flex", gap: 7, marginTop: 5 }}>
-                  <span style={{ fontSize: 10.5, fontWeight: 800, color: C.indigo, background: C.pill, padding: "3px 7px", borderRadius: 6 }}>MINE 04</span>
-                  <span style={{ fontSize: 10.5, fontWeight: 800, color: C.green, display: "inline-flex", alignItems: "center", gap: 4 }}>✓ {t.rd_lp_pc_captured}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div style={{ marginTop: 12, background: C.grad, borderRadius: 16, padding: "12px 14px", color: "#fff" }}>
-            <div style={{ fontSize: 10.5, fontWeight: 800, opacity: .9, letterSpacing: ".04em" }}>{t.rd_lp_pc_auto}</div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
-              <span style={{ fontSize: 13, fontWeight: 700 }}>Crystal Lim · Item 04</span>
-              <span style={{ fontFamily: FM, fontSize: 15, fontWeight: 700 }}>₱980</span>
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 9, marginTop: 12 }}>
-            <span style={{ flex: 1, textAlign: "center", padding: "11px 0", borderRadius: 12, background: C.ink, color: "#fff", fontSize: 13, fontWeight: 700 }}>{t.rd_lp_pc_print}</span>
-            <span style={{ flex: 1, textAlign: "center", padding: "11px 0", borderRadius: 12, background: "#fff", color: C.ink, border: `1px solid ${C.border2}`, fontSize: 13, fontWeight: 700 }}>{t.rd_lp_pc_paylink}</span>
+        {/* Hero visual — "PHONE | COMPUTER" dual-device print scene (decorative demo
+            literals). Glow blobs float behind; comment bubbles drift up; each device
+            gently floats while its printer loops a sticker label out of the slot
+            (card B delayed 1.6s so the printers never sync). */}
+        <div className="sfl-lp-rise" style={{ position: "relative", ...rise(0.3) }}>
+          <div className="sfl-lp-blob sfl-lp-blob-a" />
+          <div className="sfl-lp-blob sfl-lp-blob-b" />
+          {/* floating live-comment bubbles (intentionally mixed-language flavor) */}
+          <span className="sfl-lp-bub" style={{ top: -14, left: "16%" }}>mine! 🙋</span>
+          <span className="sfl-lp-bub" style={{ top: "38%", right: -10, animationDelay: "2s" }}>+1 po ❤️</span>
+          <span className="sfl-lp-bub" style={{ bottom: "6%", left: "-2%", animationDelay: "4s" }}>我要+1 ✅</span>
+
+          <div style={{ position: "relative", zIndex: 1, display: "flex", gap: 14, flexWrap: "wrap" }}>
+            <DeviceCard label={t.rd_lp_device_phone}>
+              <PhoneMock />
+              <PrinterMock num="#23" handle="@lhey.shop" />
+            </DeviceCard>
+            <DeviceCard label={t.rd_lp_device_computer} delayed>
+              <LaptopMock />
+              <PrinterMock delayed num="#24" handle="@mingfinds" />
+            </DeviceCard>
           </div>
         </div>
       </section>
@@ -207,8 +302,8 @@ export default function Landing({
           <p style={{ fontSize: 16.5, color: C.body, marginTop: 14, lineHeight: 1.6 }}>{t.rd_lp_feat_sub}</p>
         </div>
         <div className="sfl-lp-features" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
-          {FEATURES.map((f) => (
-            <div key={f.title} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 20, padding: 24 }}>
+          {FEATURES.map((f, i) => (
+            <div key={f.title} className="sfl-lp-reveal sfl-lp-lift sfl-lp-hovshadow" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 20, padding: 24, ...rv(i) }}>
               <div style={{ width: 50, height: 50, borderRadius: 14, background: f.tint, display: "flex", alignItems: "center", justifyContent: "center" }}>{f.icon}</div>
               <div style={{ fontFamily: FD, fontWeight: 600, fontSize: 19, color: C.ink, marginTop: 16 }}>{f.title}</div>
               <p style={{ fontSize: 14.5, lineHeight: 1.6, color: C.muted, marginTop: 8 }}>{f.desc}</p>
@@ -225,8 +320,8 @@ export default function Landing({
             <h2 style={{ fontFamily: FD, fontWeight: 700, fontSize: 40, lineHeight: 1.12, color: "#fff", margin: "12px 0 0", letterSpacing: "-1px" }}>{t.rd_lp_how_h2}</h2>
           </div>
           <div className="sfl-lp-steps" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 32 }}>
-            {STEPS.map((s) => (
-              <div key={s.n}>
+            {STEPS.map((s, i) => (
+              <div key={s.n} className="sfl-lp-reveal" style={rv(i, 0.1)}>
                 <div style={{ fontFamily: FM, fontWeight: 700, fontSize: 30, color: "#818CF8" }}>{s.n}</div>
                 <div style={{ height: 1, background: "rgba(255,255,255,.12)", margin: "14px 0" }} />
                 <div style={{ fontFamily: FD, fontWeight: 600, fontSize: 21, color: "#fff" }}>{s.title}</div>
@@ -245,7 +340,7 @@ export default function Landing({
           <p style={{ fontSize: 16.5, color: C.body, marginTop: 14, lineHeight: 1.6 }}>{t.rd_lp_price_sub}</p>
         </div>
         <div className="sfl-lp-pricing" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 18, alignItems: "stretch" }}>
-          {PLANS.map((p) => {
+          {PLANS.map((p, pi) => {
             const dark = p.kind === "master";
             const pro = p.kind === "pro";
             const ink = dark ? "#fff" : C.ink;
@@ -259,7 +354,10 @@ export default function Landing({
                   ? { background: C.ink, color: "#fff", border: "none" }
                   : { background: "#fff", color: C.ink, border: `1px solid ${C.border2}` };
             return (
-              <div key={p.name} style={{ position: "relative", background: cardBg, border: pro ? `2px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 22, padding: "26px 22px", display: "flex", flexDirection: "column", transform: pro ? "translateY(-8px)" : "none", boxShadow: pro ? "0 30px 60px -24px rgba(79,70,229,.45)" : dark ? "0 30px 60px -24px rgba(23,21,48,.5)" : "none" }}>
+              // reveal/lift live on a WRAPPER so the pro card's own translateY(-8px)
+              // raise never fights the reveal/hover transforms (they compose).
+              <div key={p.name} className="sfl-lp-reveal sfl-lp-lift" style={{ display: "flex", ...rv(pi) }}>
+              <div style={{ position: "relative", flex: 1, background: cardBg, border: pro ? `2px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 22, padding: "26px 22px", display: "flex", flexDirection: "column", transform: pro ? "translateY(-8px)" : "none", boxShadow: pro ? "0 30px 60px -24px rgba(79,70,229,.45)" : dark ? "0 30px 60px -24px rgba(23,21,48,.5)" : "none" }}>
                 {pro && <span style={{ position: "absolute", top: -11, left: "50%", transform: "translateX(-50%)", background: C.grad, color: "#fff", fontSize: 10.5, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase", padding: "5px 12px", borderRadius: 99 }}>{t.lp_price_popular}</span>}
                 <div style={{ fontFamily: FD, fontWeight: 700, fontSize: 18, color: ink }}>{p.name}</div>
                 <div style={{ fontSize: 12.5, color: dark ? "#b9b7d8" : C.muted, marginTop: 3 }}>{p.tag}</div>
@@ -277,6 +375,7 @@ export default function Landing({
                 </div>
                 <button onClick={onSignup} style={{ ...btnStyle, width: "100%", height: 46, borderRadius: 13, fontFamily: FU, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{p.cta}</button>
               </div>
+              </div>
             );
           })}
         </div>
@@ -293,7 +392,7 @@ export default function Landing({
           {FAQS.map((f, i) => {
             const open = faqOpen === i;
             return (
-              <div key={f.q} style={{ background: C.card, border: `1px solid ${open ? C.indigo2 : C.border}`, borderRadius: 16, overflow: "hidden" }}>
+              <div key={f.q} className="sfl-lp-reveal" style={{ background: C.card, border: `1px solid ${open ? C.indigo2 : C.border}`, borderRadius: 16, overflow: "hidden", ...rv(i, 0.06) }}>
                 <button onClick={() => setFaqOpen(open ? -1 : i)} aria-expanded={open} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "18px 20px", background: "none", border: "none", cursor: "pointer", textAlign: "left", fontFamily: FU }}>
                   <span style={{ fontSize: 16, fontWeight: 700, color: C.ink }}>{f.q}</span>
                   <span style={{ flexShrink: 0, fontSize: 22, lineHeight: 1, color: C.indigo2, transition: "transform .2s", transform: open ? "rotate(45deg)" : "rotate(0deg)" }}>+</span>
@@ -311,8 +410,8 @@ export default function Landing({
           <h2 style={{ fontFamily: FD, fontWeight: 700, fontSize: 40, lineHeight: 1.1, letterSpacing: "-1px", margin: 0 }}>{t.rd_lp_cta_h2}</h2>
           <p style={{ fontSize: 16.5, opacity: 0.92, marginTop: 12, lineHeight: 1.6 }}>{t.rd_lp_cta_sub}</p>
           <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap", marginTop: 26 }}>
-            <button onClick={onSignup} style={{ ...primaryBtn, background: "#fff", color: C.indigo, boxShadow: "0 16px 30px -12px rgba(0,0,0,.3)" }}>{t.rd_lp_start_free}</button>
-            <a href="https://t.me/SellerFlowLive1995" target="_blank" rel="noreferrer" style={{ ...ghostBtn, background: "transparent", color: "#fff", border: "1px solid rgba(255,255,255,.5)" }}>{t.rd_lp_cta_telegram}</a>
+            <button onClick={onSignup} className="sfl-lp-lift" style={{ ...primaryBtn, background: "#fff", color: C.indigo, boxShadow: "0 16px 30px -12px rgba(0,0,0,.3)" }}>{t.rd_lp_start_free}</button>
+            <a href="https://t.me/SellerFlowLive1995" target="_blank" rel="noreferrer" className="sfl-lp-lift" style={{ ...ghostBtn, background: "transparent", color: "#fff", border: "1px solid rgba(255,255,255,.5)" }}>{t.rd_lp_cta_telegram}</a>
           </div>
         </div>
       </section>
