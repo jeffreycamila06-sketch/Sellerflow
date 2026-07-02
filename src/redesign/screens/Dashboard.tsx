@@ -3,10 +3,12 @@
 // TikTok/Facebook account pickers with connect flow. Each comment row carries
 // the 1-Click / Enterprise order flow (printed / Enterprise price-entry), all
 // visual-only — real account switching / order creation is Phase 5.
-import { useLayoutEffect, useRef, type CSSProperties } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { avColor, initials, type Comment } from "../data";
 import { sessionSummary, type SessionState } from "../adapters/useLiveSession";
 import { useRaffleConfig } from "../adapters/useRaffleConfig";
+import { computeRaffleEntries, type RaffleEntry } from "../adapters/raffle";
+import RaffleWheel from "../components/RaffleWheel";
 import type { RebuiltSession } from "../../lib/orderLogic";
 import { useT, tpl } from "../i18n";
 
@@ -87,6 +89,17 @@ export default function Dashboard({
   const raffleSince = raffle.enabledAt
     ? new Date(raffle.enabledAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : "";
+  // Phase 2 — entries are COMPUTED from the already-loaded session orders
+  // (orderNum = epoch ms ≥ enabled_at; group by buyer; cap 3). Zero new queries.
+  // Winner/excluded live HERE (not in the overlay) so closing/reopening the
+  // raffle screen never loses the result.
+  const [raffleOpen, setRaffleOpen] = useState(false);
+  const [raffleWinner, setRaffleWinner] = useState<RaffleEntry | null>(null);
+  const [raffleExcluded, setRaffleExcluded] = useState<string[]>([]);
+  const enabledAtMs = raffle.enabledAt ? Date.parse(raffle.enabledAt) : NaN;
+  const raffleEntries = raffle.enabled && Number.isFinite(enabledAtMs)
+    ? computeRaffleEntries(session.orders, enabledAtMs)
+    : [];
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
       <div style={headerBar}>
@@ -216,13 +229,30 @@ export default function Dashboard({
           </div>
         </div>
 
-        {/* Raffle collecting indicator — visible only while Games is ON. */}
+        {/* Raffle collecting indicator — visible only while Games is ON. Tapping it
+            opens the full-screen roleta (entries count + › affordance). */}
         {raffle.enabled && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, margin: "-3px 2px 8px", fontSize: 11, fontWeight: 700, color: "var(--accent-fg)" }}>
+          <button onClick={() => setRaffleOpen(true)} style={{ display: "flex", alignItems: "center", gap: 6, margin: "-3px 2px 8px", padding: 0, background: "none", border: "none", cursor: "pointer", fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", fontFamily: "var(--font-ui)", textAlign: "left" }}>
             <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)", animation: "sflDot 1.4s infinite", flexShrink: 0 }} />
             <span>{t.rd_raffle_collecting}</span>
             {raffleSince && <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>· {tpl(t.rd_raffle_since, { time: raffleSince })}</span>}
-          </div>
+            <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>· {tpl(t.rd_raffle_entries, { n: raffleEntries.reduce((s, e) => s + e.entries, 0), b: raffleEntries.length })}</span>
+            <span style={{ color: "var(--accent-fg)", fontWeight: 800 }}>›</span>
+          </button>
+        )}
+
+        {/* Full-screen roleta overlay */}
+        {raffleOpen && raffle.enabled && (
+          <RaffleWheel
+            entries={raffleEntries}
+            sinceLabel={raffleSince ? tpl(t.rd_raffle_since, { time: raffleSince }) : ""}
+            winner={raffleWinner}
+            excluded={raffleExcluded}
+            onWinner={setRaffleWinner}
+            onExclude={(key) => { setRaffleExcluded((x) => [...x, key]); setRaffleWinner(null); }}
+            onReset={() => { setRaffleWinner(null); setRaffleExcluded([]); }}
+            onClose={() => setRaffleOpen(false)}
+          />
         )}
 
         <div ref={feedRef} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 7, boxShadow: "var(--shadow)", flex: 1, minHeight: 0, overflowY: "auto" }}>

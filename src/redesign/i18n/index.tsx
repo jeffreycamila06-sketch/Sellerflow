@@ -182,6 +182,16 @@ const RAW: Record<string, Row> = {
   rd_raffle_games: { en: "Games", fil: "Games", zh: "游戏", "zh-TW": "遊戲", vi: "Trò chơi", th: "เกม", id: "Game" },
   rd_raffle_collecting: { en: "Collecting entries…", fil: "Kinokolekta ang entries…", zh: "正在收集参与名单…", "zh-TW": "正在收集參與名單…", vi: "Đang thu thập lượt tham gia…", th: "กำลังรวบรวมรายชื่อผู้ร่วมสนุก…", id: "Mengumpulkan entri…" },
   rd_raffle_since: { en: "since {time}", fil: "mula {time}", zh: "自 {time} 起", "zh-TW": "自 {time} 起", vi: "từ {time}", th: "ตั้งแต่ {time}", id: "sejak {time}" },
+  rd_raffle_title: { en: "Raffle", fil: "Raffle", zh: "抽奖", "zh-TW": "抽獎", vi: "Quay thưởng", th: "จับรางวัล", id: "Undian" },
+  rd_raffle_entries: { en: "{n} entries · {b} buyers", fil: "{n} entries · {b} buyers", zh: "{n} 次机会 · {b} 位买家", "zh-TW": "{n} 次機會 · {b} 位買家", vi: "{n} lượt · {b} người mua", th: "{n} สิทธิ์ · {b} ผู้ซื้อ", id: "{n} entri · {b} pembeli" },
+  rd_raffle_max_note: { en: "1 order = 1 entry · max 3 per buyer", fil: "1 order = 1 entry · max 3 kada buyer", zh: "1 单 = 1 次机会 · 每位买家最多 3 次", "zh-TW": "1 單 = 1 次機會 · 每位買家最多 3 次", vi: "1 đơn = 1 lượt · tối đa 3 mỗi người", th: "1 ออเดอร์ = 1 สิทธิ์ · สูงสุด 3 ต่อคน", id: "1 pesanan = 1 entri · maks 3 per pembeli" },
+  rd_raffle_spin: { en: "Spin", fil: "Ikutin", zh: "开转", "zh-TW": "開轉", vi: "Quay", th: "หมุน", id: "Putar" },
+  rd_raffle_spinning: { en: "Spinning…", fil: "Umiikot…", zh: "转动中…", "zh-TW": "轉動中…", vi: "Đang quay…", th: "กำลังหมุน…", id: "Berputar…" },
+  rd_raffle_winner: { en: "Winner", fil: "Panalo", zh: "中奖者", "zh-TW": "中獎者", vi: "Người thắng", th: "ผู้ชนะ", id: "Pemenang" },
+  rd_raffle_no_entries: { en: "No entries yet — orders placed while Games is ON join automatically.", fil: "Wala pang entries — ang mga order habang naka-ON ang Games ay kusang sasali.", zh: "还没有参与者——游戏开启期间的订单会自动加入。", "zh-TW": "還沒有參與者——遊戲開啟期間的訂單會自動加入。", vi: "Chưa có lượt nào — đơn đặt khi Trò chơi BẬT sẽ tự động tham gia.", th: "ยังไม่มีสิทธิ์ — ออเดอร์ระหว่างเปิดเกมจะเข้าร่วมอัตโนมัติ", id: "Belum ada entri — pesanan saat Game AKTIF otomatis ikut." },
+  rd_raffle_exclude: { en: "Exclude & spin again", fil: "I-exclude at ikutin ulit", zh: "排除后再转", "zh-TW": "排除後再轉", vi: "Loại ra & quay lại", th: "ตัดออกแล้วหมุนอีก", id: "Keluarkan & putar lagi" },
+  rd_raffle_reset: { en: "Reset", fil: "I-reset", zh: "重置", "zh-TW": "重置", vi: "Đặt lại", th: "รีเซ็ต", id: "Reset" },
+  rd_raffle_participants: { en: "Participants", fil: "Mga Kasali", zh: "参与者", "zh-TW": "參與者", vi: "Người tham gia", th: "ผู้เข้าร่วม", id: "Peserta" },
 
   // ════ Shared ════
   rd_export: { en: "⬇ Export", fil: "⬇ I-export", zh: "⬇ 导出", "zh-TW": "⬇ 匯出", vi: "⬇ Xuất", th: "⬇ ส่งออก", id: "⬇ Ekspor" },
