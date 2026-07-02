@@ -9,6 +9,8 @@ import { sessionSummary, type SessionState } from "../adapters/useLiveSession";
 import { useRaffleConfig } from "../adapters/useRaffleConfig";
 import { computeRaffleEntries, type RaffleEntry } from "../adapters/raffle";
 import RaffleWheel from "../components/RaffleWheel";
+import { AnnouncementBanner, BellIcon } from "../components/Announcements";
+import type { Announcement } from "../adapters/useAnnouncements";
 import type { RebuiltSession } from "../../lib/orderLogic";
 import { useT, tpl } from "../i18n";
 
@@ -50,10 +52,13 @@ export default function Dashboard({
   printed, entId, entPrice, onOneClick, onOpenEnt, onEntPrice, onEntKey,
   session = { buyers: [], orders: [] }, sessionState = "idle",
   canInject = false, onInjectSynthetic,
+  announcement = null, annDismissedId = "", onDismissAnn, annUnread = false, onOpenAnn,
 }: {
   comments: Comment[]; cur: string;
   session?: RebuiltSession; sessionState?: SessionState;
   canInject?: boolean; onInjectSynthetic?: () => void;
+  announcement?: Announcement | null; annDismissedId?: string; onDismissAnn?: (id: string) => void;
+  annUnread?: boolean; onOpenAnn?: () => void;
   ttOpen: boolean; fbOpen: boolean; ttIdx: number; fbIdx: number;
   onToggleTT: () => void; onToggleFB: () => void;
   onPickTT: (i: number) => void; onPickFB: (i: number) => void;
@@ -104,13 +109,22 @@ export default function Dashboard({
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
       <div style={headerBar}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#e11d48", padding: "4px 9px 4px 7px", borderRadius: 20, animation: "sflLive 1.8s ease-out infinite" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#e11d48", padding: "4px 9px 4px 7px", borderRadius: 20, animation: "sflLive 1.8s ease-out infinite", flexShrink: 0 }}>
               <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#fff", animation: "sflDot 1s ease-in-out infinite" }} />
               <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".06em", color: "#fff" }}>LIVE</span>
             </div>
-            <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, letterSpacing: "-.01em" }}>SellerFlowLive</div>
+            <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, letterSpacing: "-.01em", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>SellerFlowLive</div>
           </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          {/* 🔔 Announcements bell — same rgba pill styling as the header controls;
+              red dot = newest announcement not yet seen (sfl_rd_ann_last_seen). */}
+          {onOpenAnn && (
+            <button onClick={onOpenAnn} title={t.rd_ann_title} style={{ position: "relative", width: 36, height: 31, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(255,255,255,.18)", border: "none", borderRadius: 9, color: "var(--on-header)", cursor: "pointer", flexShrink: 0 }}>
+              <BellIcon />
+              {annUnread && <span style={{ position: "absolute", top: 5, right: 7, width: 7, height: 7, borderRadius: "50%", background: "#f87171", boxShadow: "0 0 0 1.5px rgba(0,0,0,.28)" }} />}
+            </button>
+          )}
           {/* Live-session-length pill (dc.html v3 L112) */}
           <div style={{ position: "relative", zIndex: 7 }}>
             <button onClick={onToggleSession} title={t.rd_dash_session_title} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.18)", border: "none", padding: "6px 10px", borderRadius: 9, fontSize: 12, fontWeight: 700, color: "var(--on-header)", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
@@ -134,6 +148,7 @@ export default function Dashboard({
                 <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.4, padding: "7px 9px 4px" }}>{t.rd_dash_session_foot}</div>
               </div>
             )}
+          </div>
           </div>
         </div>
 
@@ -193,6 +208,11 @@ export default function Dashboard({
       </div>
 
       <div style={{ padding: "14px 14px 18px", flex: 1, display: "flex", flexDirection: "column" }}>
+        {/* Admin announcement banner — newest ACTIVE, hidden once dismissed on
+            this device (localStorage id match). In-flow above the TODAY bar. */}
+        {announcement && announcement.id !== annDismissedId && onDismissAnn && (
+          <AnnouncementBanner ann={announcement} onDismiss={onDismissAnn} />
+        )}
         {/* Phase 5c — today's cross-device session summary (read-only). Shows
             when a session exists for today; stays hidden when empty. */}
         {sessionState === "loading" && (

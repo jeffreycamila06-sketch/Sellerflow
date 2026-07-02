@@ -193,6 +193,15 @@ const RAW: Record<string, Row> = {
   rd_raffle_reset: { en: "Reset", fil: "I-reset", zh: "重置", "zh-TW": "重置", vi: "Đặt lại", th: "รีเซ็ต", id: "Reset" },
   rd_raffle_participants: { en: "Participants", fil: "Mga Kasali", zh: "参与者", "zh-TW": "參與者", vi: "Người tham gia", th: "ผู้เข้าร่วม", id: "Peserta" },
   rd_raffle_open: { en: "Open", fil: "Buksan", zh: "打开", "zh-TW": "打開", vi: "Mở", th: "เปิด", id: "Buka" },
+  // Announcements — admin banner + 🔔 bell (the message itself is admin-written
+  // raw text, one language; only the UI chrome is translated).
+  rd_ann_title: { en: "Announcements", fil: "Mga Anunsyo", zh: "公告", "zh-TW": "公告", vi: "Thông báo", th: "ประกาศ", id: "Pengumuman" },
+  rd_ann_banner_label: { en: "Announcement", fil: "Anunsyo", zh: "公告", "zh-TW": "公告", vi: "Thông báo", th: "ประกาศ", id: "Pengumuman" },
+  rd_ann_got_it: { en: "Got it", fil: "Nakuha ko", zh: "知道了", "zh-TW": "知道了", vi: "Đã hiểu", th: "รับทราบ", id: "Mengerti" },
+  rd_ann_publish: { en: "Publish", fil: "I-publish", zh: "发布", "zh-TW": "發布", vi: "Đăng", th: "เผยแพร่", id: "Terbitkan" },
+  rd_ann_unpublish: { en: "Unpublish", fil: "I-unpublish", zh: "取消发布", "zh-TW": "取消發布", vi: "Gỡ xuống", th: "เลิกเผยแพร่", id: "Batalkan terbit" },
+  rd_ann_active_now: { en: "Active now", fil: "Aktibo ngayon", zh: "当前生效", "zh-TW": "目前生效", vi: "Đang hiển thị", th: "ใช้งานอยู่", id: "Aktif sekarang" },
+  rd_ann_none: { en: "No announcements yet", fil: "Wala pang anunsyo", zh: "暂无公告", "zh-TW": "尚無公告", vi: "Chưa có thông báo", th: "ยังไม่มีประกาศ", id: "Belum ada pengumuman" },
 
   // ════ Shared ════
   rd_export: { en: "⬇ Export", fil: "⬇ I-export", zh: "⬇ 导出", "zh-TW": "⬇ 匯出", vi: "⬇ Xuất", th: "⬇ ส่งออก", id: "⬇ Ekspor" },

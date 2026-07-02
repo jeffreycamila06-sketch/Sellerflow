@@ -18,6 +18,7 @@ import { isIOS } from "../adapters/platform";
 import { isAppShell } from "../adapters/appShell";
 import { relativeTime } from "../adapters/useReadData";
 import { maxHourlyOrders, hourLabel, type PulseData, type PulseState } from "../adapters/useBusinessPulse";
+import { pickLatestActive, type Announcement } from "../adapters/useAnnouncements";
 
 const deadBtn: CSSProperties = { opacity: 0.45, cursor: "not-allowed" };
 // Sample/not-wired marker for the Admin panels that have no real backend yet
@@ -121,7 +122,6 @@ const panelTitle = (t: RedesignT, k: AdminPanelKind): string => ({
   pulse: t.rd_pulse_title,
 } as Record<AdminPanelKind, string>)[k];
 const chipOn: CSSProperties = { fontSize: 11.5, fontWeight: 700, color: "var(--accent-text)", background: "var(--accent)", padding: "6px 11px", borderRadius: 8 };
-const chipOff: CSSProperties = { fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", background: "var(--surface-2)", border: "1px solid var(--border)", padding: "6px 11px", borderRadius: 8 };
 const miniStat: CSSProperties = { background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 13, padding: "12px 13px" };
 const miniLbl: CSSProperties = { fontSize: 11, color: "var(--text-muted)", fontWeight: 600 };
 const miniNum: CSSProperties = { fontFamily: mono, fontWeight: 700, fontSize: 19, color: "var(--text)", marginTop: 3 };
@@ -285,7 +285,7 @@ function PulsePanel({ pulse, state, onRefresh }: { pulse: PulseData | null; stat
   );
 }
 
-export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", rawByEmail = {}, actions, onChanged, freeUsers = [], freeUsersState = "sample", auditLogs = [], auditState = "sample", onOpenPanel, pulse = null, pulseState = "idle", onRefreshPulse }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; rawByEmail?: Record<string, AccountUser>; actions?: AdminActions; onChanged?: () => void; freeUsers?: FreeUserRow[]; freeUsersState?: ReadState; auditLogs?: AccountAuditLog[]; auditState?: ReadState; onOpenPanel?: (k: AdminPanelKind) => void; pulse?: PulseData | null; pulseState?: PulseState; onRefreshPulse?: () => void }) {
+export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", rawByEmail = {}, actions, onChanged, freeUsers = [], freeUsersState = "sample", auditLogs = [], auditState = "sample", onOpenPanel, pulse = null, pulseState = "idle", onRefreshPulse, ann }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; rawByEmail?: Record<string, AccountUser>; actions?: AdminActions; onChanged?: () => void; freeUsers?: FreeUserRow[]; freeUsersState?: ReadState; auditLogs?: AccountAuditLog[]; auditState?: ReadState; onOpenPanel?: (k: AdminPanelKind) => void; pulse?: PulseData | null; pulseState?: PulseState; onRefreshPulse?: () => void; ann?: { list: Announcement[]; publish: (m: string) => Promise<{ ok: boolean; error?: string }>; unpublish: (id: string) => Promise<{ ok: boolean; error?: string }> } }) {
   const t = useT();
   // Real subscription buckets (derived) when the users list is live; else sample.
   const realSubs = usersState === "live" || usersState === "empty";
@@ -318,6 +318,21 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
     return `${u.email} ${handles} ${u.contactNote || ""}`.toLowerCase().includes(sellerQuery);
   };
   const noSellerMatches = sellerQuery.length > 0 && !users.some(matchesSeller);
+  // Announcements composer (broadcast panel). Writes go through the ann hook —
+  // RLS is_admin-gated. No confirm dialog: Unpublish IS the undo.
+  const [annMsg, setAnnMsg] = useState("");
+  const [annBusy, setAnnBusy] = useState(false);
+  const annActive = ann ? pickLatestActive(ann.list) : null;
+  const annDate = (iso: string) => { const d = new Date(iso); return isNaN(d.getTime()) ? "" : d.toLocaleDateString([], { month: "short", day: "numeric" }); };
+  const doAnn = async (label: string, fn: () => Promise<{ ok: boolean; error?: string }>, onOk?: () => void) => {
+    if (!ann || annBusy) return;
+    setAnnBusy(true);
+    try {
+      const r = await fn();
+      if (r.ok) onOk?.();
+      else window.alert(tpl(t.rd_adm_failed, { label, err: r.error || t.rd_adm_err }));
+    } finally { setAnnBusy(false); }
+  };
   const setPlan = (email: string, plan: string) => setUserPlans((p) => ({ ...p, [email]: plan }));
   const revAdded = users.reduce((sum, u) => sum + ((PLAN_PRICE[userPlans[u.email] || u.plan] || 0) - (PLAN_PRICE[u.plan] || 0)), 0);
   const userCount = usersState === "live" || usersState === "empty" ? `${users.length}` : "12,480";
@@ -544,14 +559,38 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
 
           {panel === "broadcast" && (
             <div>
-              <SampleNote />
+              {/* Announcements — publishes the banner + 🔔 bell entry every seller
+                  sees. Real when the ann hook is wired; sample note otherwise. */}
+              {!ann && <SampleNote />}
+              <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 8 }}>{t.rd_ann_active_now}</label>
+              {annActive ? (
+                <div style={{ border: "1px solid var(--accent)", borderRadius: 12, background: "var(--surface-2)", padding: "11px 12px", marginBottom: 15 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-muted)", marginBottom: 5 }}>{annDate(annActive.createdAt)}</div>
+                  <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text)", lineHeight: 1.5, whiteSpace: "pre-wrap", overflowWrap: "anywhere", marginBottom: 9 }}>{annActive.message}</div>
+                  <button disabled={annBusy} onClick={() => void doAnn(t.rd_ann_unpublish, () => ann!.unpublish(annActive.id))} style={{ ...actBtn, color: "var(--danger)", opacity: annBusy ? 0.6 : 1 }}>{t.rd_ann_unpublish}</button>
+                </div>
+              ) : (
+                <div style={{ border: "1px dashed var(--border-strong)", borderRadius: 12, padding: "13px 12px", fontSize: 12, color: "var(--text-muted)", marginBottom: 15 }}>{t.rd_ann_none}</div>
+              )}
               <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 8 }}>{t.rd_adm_audience}</label>
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 15 }}>
-                <span style={chipOn}>{t.rd_adm_all_sellers}</span><span style={chipOff}>{t.rd_adm_pro_only}</span><span style={chipOff}>{t.rd_adm_bc_expiring}</span>
+                <span style={chipOn}>{t.rd_adm_all_sellers}</span>
               </div>
               <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 6 }}>{t.rd_adm_message}</label>
-              <div style={{ border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface-2)", padding: "12px 13px", minHeight: 84, fontSize: 13, color: "var(--text-muted)", marginBottom: 15 }}>{t.rd_adm_announce_ph}</div>
-              <button disabled title={t.rd_adm_coming_soon} style={{ ...sheetBtn, ...deadBtn }}>{t.rd_adm_send_broadcast}</button>
+              <textarea value={annMsg} onChange={(e) => setAnnMsg(e.target.value)} placeholder={t.rd_adm_announce_ph} rows={4} style={{ ...editTa, minHeight: 84, marginBottom: 15 }} />
+              <button disabled={!ann || annBusy || !annMsg.trim()} onClick={() => void doAnn(t.rd_ann_publish, () => ann!.publish(annMsg), () => setAnnMsg(""))} style={{ ...sheetBtn, ...(!ann || annBusy || !annMsg.trim() ? deadBtn : {}) }}>{t.rd_ann_publish}</button>
+              {ann && ann.list.length > 0 && (
+                <div style={{ marginTop: 17 }}>
+                  <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 4 }}>{t.rd_ann_title}</label>
+                  {ann.list.slice(0, 5).map((a) => (
+                    <div key={a.id} style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "8px 2px", borderBottom: "1px solid var(--border)" }}>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-muted)", flexShrink: 0 }}>{annDate(a.createdAt)}</span>
+                      <span style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600, color: a.active ? "var(--text)" : "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.message}</span>
+                      {a.active && <span style={{ fontSize: 9.5, fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "2px 7px", borderRadius: 6, flexShrink: 0 }}>{t.rd_ann_active_now}</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

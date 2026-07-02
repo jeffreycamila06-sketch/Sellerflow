@@ -33,6 +33,7 @@ import ManageChannels from "./screens/ManageChannels";
 import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
 import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
 import { useBusinessPulse } from "./adapters/useBusinessPulse";
+import { useAnnouncements } from "./adapters/useAnnouncements";
 import { useLiveSession } from "./adapters/useLiveSession";
 import { useSessionWindow, type WindowDays } from "./adapters/useSessionWindow";
 import { useLiveFeed, commentKey } from "./adapters/useLiveFeed";
@@ -53,6 +54,7 @@ import type { Buyer, Comment as ProdComment } from "../lib/orderTypes";
 import CapPopup from "./screens/CapPopup";
 import ConnectModal from "./screens/ConnectModal";
 import ContactSupportPopup from "./components/ContactSupportPopup";
+import { AnnouncementsSheet } from "./components/Announcements";
 import { isIOS } from "./adapters/platform";
 import { TProvider, buildT, tpl } from "./i18n";
 
@@ -264,6 +266,10 @@ export default function RedesignApp() {
   // Enabled ONLY while the pulse panel is open (read-on-open) and never in the app
   // shell (isAppShell → phone/APK/iOS) → zero polling, zero phone egress.
   const pulse = useBusinessPulse(authed && isAdmin && !isAppShell() && adminPanel === "pulse");
+  // Announcements — ONE read of the latest 10 rows on app open (zero poll);
+  // banner + 🔔 bell state. Admin publish/unpublish flow through the same hook.
+  const ann = useAnnouncements(authed);
+  const [annOpen, setAnnOpen] = useState(false);
   const [assignAmount, setAssignAmount] = useState("499");
   const [lang, setLang] = useState<string>(() => readLS(LS.lang, "en"));
   const [langOpen, setLangOpen] = useState(false);
@@ -635,6 +641,8 @@ export default function RedesignApp() {
               onEntPrice={(v) => setEntPrice(v.replace(/[^0-9]/g, ""))} onEntKey={onEntKey}
               session={liveSession.session} sessionState={liveSession.state}
               canInject={liveFeed.canInject} onInjectSynthetic={liveFeed.injectSynthetic}
+              announcement={ann.latest} annDismissedId={ann.dismissedId} onDismissAnn={ann.dismiss}
+              annUnread={ann.unread} onOpenAnn={() => { setAnnOpen(true); if (ann.list[0]) ann.markSeen(ann.list[0].id); }}
             />
           )}
           {screen === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} orders={ordersList} state={ordersState} onExport={exportOrders} />}
@@ -738,8 +746,11 @@ export default function RedesignApp() {
 
         {/* Admin control bottom-sheet (absolute within the phone, like the v2 prototype) */}
         {adminPanel && isAdmin && (
-          <AdminPanel panel={adminPanel} onClose={() => setAdminPanel(null)} assignAmount={assignAmount} onAssignAmount={setAssignAmount} cur={cur} users={adminUsers.users} usersState={adminUsers.state} rawByEmail={adminUsers.rawByEmail} actions={admin} onChanged={() => { adminUsers.reload(); freeUsersData.reload(); auditData.reload(); }} freeUsers={freeUsersData.freeUsers} freeUsersState={freeUsersData.state} auditLogs={auditData.logs} auditState={auditData.state} onOpenPanel={setAdminPanel} pulse={pulse.data} pulseState={pulse.state} onRefreshPulse={pulse.refresh} />
+          <AdminPanel panel={adminPanel} onClose={() => setAdminPanel(null)} assignAmount={assignAmount} onAssignAmount={setAssignAmount} cur={cur} users={adminUsers.users} usersState={adminUsers.state} rawByEmail={adminUsers.rawByEmail} actions={admin} onChanged={() => { adminUsers.reload(); freeUsersData.reload(); auditData.reload(); }} freeUsers={freeUsersData.freeUsers} freeUsersState={freeUsersData.state} auditLogs={auditData.logs} auditState={auditData.state} onOpenPanel={setAdminPanel} pulse={pulse.data} pulseState={pulse.state} onRefreshPulse={pulse.refresh} ann={{ list: ann.list, publish: ann.publish, unpublish: ann.unpublish }} />
         )}
+
+        {/* 🔔 Announcements list bottom-sheet (same pattern as AdminPanel) */}
+        {annOpen && <AnnouncementsSheet list={ann.list} onClose={() => setAnnOpen(false)} />}
 
         {/* #6 — real connect modal (registered-account picker / add account) */}
         {connectOpen && auth.profile && (
