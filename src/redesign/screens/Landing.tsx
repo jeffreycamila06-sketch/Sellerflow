@@ -32,6 +32,8 @@ const ghostBtn: CSSProperties = { display: "inline-flex", alignItems: "center", 
 const rise = (d: number): CSSProperties => ({ animationDelay: `${d}s` });
 // Scroll-reveal stagger delay (consumed by .sfl-lp-reveal's transition-delay var).
 const rv = (i: number, step = 0.08): CSSProperties => ({ "--rv-delay": `${(i * step).toFixed(2)}s` } as CSSProperties);
+// Heartbeat stagger delay (consumed by .sfl-lp-beat[-pro]'s animation-delay var).
+const beat = (i: number, step = 0.3): CSSProperties => ({ "--beat-delay": `${(i * step).toFixed(2)}s` } as CSSProperties);
 
 // Scroll-triggered fade-ins: adds .sfl-lp-in ONCE when a .sfl-lp-reveal element
 // enters the viewport (never re-hides on scroll-back). Falls back to showing
@@ -285,8 +287,8 @@ export default function Landing({
       {/* ── Metrics strip ── */}
       <section style={{ maxWidth: 1200, margin: "0 auto", padding: "0 32px" }}>
         <div className="sfl-lp-metrics" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 18 }}>
-          {METRICS.map((m) => (
-            <div key={m.l} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 18, padding: "20px 18px", textAlign: "center" }}>
+          {METRICS.map((m, i) => (
+            <div key={m.l} className="sfl-lp-beat" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 18, padding: "20px 18px", textAlign: "center", ...beat(i) }}>
               <div style={{ fontFamily: FM, fontWeight: 700, fontSize: 30, color: C.indigo }}>{m.v}</div>
               <div style={{ fontSize: 13, color: C.muted, fontWeight: 600, marginTop: 4 }}>{m.l}</div>
             </div>
@@ -303,10 +305,14 @@ export default function Landing({
         </div>
         <div className="sfl-lp-features" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
           {FEATURES.map((f, i) => (
-            <div key={f.title} className="sfl-lp-reveal sfl-lp-lift sfl-lp-hovshadow" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 20, padding: 24, ...rv(i) }}>
-              <div style={{ width: 50, height: 50, borderRadius: 14, background: f.tint, display: "flex", alignItems: "center", justifyContent: "center" }}>{f.icon}</div>
-              <div style={{ fontFamily: FD, fontWeight: 600, fontSize: 19, color: C.ink, marginTop: 16 }}>{f.title}</div>
-              <p style={{ fontSize: 14.5, lineHeight: 1.6, color: C.muted, marginTop: 8 }}>{f.desc}</p>
+            // reveal + hover-lift on the WRAPPER, heartbeat on the CARD — the beat's
+            // animated transform would otherwise override the reveal/lift transforms.
+            <div key={f.title} className="sfl-lp-reveal sfl-lp-lift sfl-lp-hovshadow" style={{ display: "flex", borderRadius: 20, ...rv(i) }}>
+              <div className="sfl-lp-beat" style={{ flex: 1, background: C.card, border: `1px solid ${C.border}`, borderRadius: 20, padding: 24, ...beat(i, 0.25) }}>
+                <div style={{ width: 50, height: 50, borderRadius: 14, background: f.tint, display: "flex", alignItems: "center", justifyContent: "center" }}>{f.icon}</div>
+                <div style={{ fontFamily: FD, fontWeight: 600, fontSize: 19, color: C.ink, marginTop: 16 }}>{f.title}</div>
+                <p style={{ fontSize: 14.5, lineHeight: 1.6, color: C.muted, marginTop: 8 }}>{f.desc}</p>
+              </div>
             </div>
           ))}
         </div>
@@ -354,10 +360,11 @@ export default function Landing({
                   ? { background: C.ink, color: "#fff", border: "none" }
                   : { background: "#fff", color: C.ink, border: `1px solid ${C.border2}` };
             return (
-              // reveal/lift live on a WRAPPER so the pro card's own translateY(-8px)
-              // raise never fights the reveal/hover transforms (they compose).
-              <div key={p.name} className="sfl-lp-reveal sfl-lp-lift" style={{ display: "flex", ...rv(pi) }}>
-              <div style={{ position: "relative", flex: 1, background: cardBg, border: pro ? `2px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 22, padding: "26px 22px", display: "flex", flexDirection: "column", transform: pro ? "translateY(-8px)" : "none", boxShadow: pro ? "0 30px 60px -24px rgba(79,70,229,.45)" : dark ? "0 30px 60px -24px rgba(23,21,48,.5)" : "none" }}>
+              // reveal/lift on the WRAPPER, heartbeat on the CARD. The pro raise is a
+              // wrapper MARGIN (not transform) so the beat's animated transform never
+              // overrides it — margins and transforms compose freely.
+              <div key={p.name} className="sfl-lp-reveal sfl-lp-lift" style={{ display: "flex", marginTop: pro ? -8 : 0, ...rv(pi) }}>
+              <div className={pro ? "sfl-lp-beat-pro" : "sfl-lp-beat"} style={{ position: "relative", flex: 1, background: cardBg, border: pro ? `2px solid ${C.indigo}` : `1px solid ${C.border}`, borderRadius: 22, padding: "26px 22px", display: "flex", flexDirection: "column", boxShadow: pro ? "0 30px 60px -24px rgba(79,70,229,.45)" : dark ? "0 30px 60px -24px rgba(23,21,48,.5)" : "none", ...beat(pi) }}>
                 {pro && <span style={{ position: "absolute", top: -11, left: "50%", transform: "translateX(-50%)", background: C.grad, color: "#fff", fontSize: 10.5, fontWeight: 800, letterSpacing: ".06em", textTransform: "uppercase", padding: "5px 12px", borderRadius: 99 }}>{t.lp_price_popular}</span>}
                 <div style={{ fontFamily: FD, fontWeight: 700, fontSize: 18, color: ink }}>{p.name}</div>
                 <div style={{ fontSize: 12.5, color: dark ? "#b9b7d8" : C.muted, marginTop: 3 }}>{p.tag}</div>

@@ -255,3 +255,23 @@
   .sfl-lp-reveal { opacity: 1; transform: none; transition: none; }
   .sfl-lp-lift, .sfl-lp-lift:hover { transition: none; transform: none; }
 }
+
+/* ═══ Landing heartbeat pulse (ADDITIVE — Indigo Classic accent). Cards "beat"
+   with a soft indigo glow + a 1px indigo ring at the peak. Lives on the CARD
+   element while reveal/hover-lift live on a WRAPPER, so the transforms compose
+   (animation transform would otherwise override the reveal/lift transforms). */
+@keyframes sflLpBeat {
+  0%, 100% { transform: scale(1);    box-shadow: 0 10px 26px -14px rgba(83,74,183,.12), 0 0 0 1px rgba(99,102,241,0); }
+  50%      { transform: scale(1.02); box-shadow: 0 14px 34px -12px rgba(83,74,183,.28), 0 0 0 1px rgba(99,102,241,.22); }
+}
+/* "Most Popular" (Pro) — slightly stronger beat; keeps the card's big indigo
+   drop-shadow inside the keyframe so the pulse never flattens its depth. */
+@keyframes sflLpBeatPro {
+  0%, 100% { transform: scale(1);     box-shadow: 0 30px 60px -24px rgba(79,70,229,.45), 0 0 0 1px rgba(99,102,241,.08); }
+  50%      { transform: scale(1.035); box-shadow: 0 32px 64px -20px rgba(79,70,229,.62), 0 0 0 1px rgba(99,102,241,.35); }
+}
+.sfl-lp-beat     { animation: sflLpBeat 2.2s ease-in-out infinite;    animation-delay: var(--beat-delay, 0s); }
+.sfl-lp-beat-pro { animation: sflLpBeatPro 2.2s ease-in-out infinite; animation-delay: var(--beat-delay, 0s); }
+@media (prefers-reduced-motion: reduce) {
+  .sfl-lp-beat, .sfl-lp-beat-pro { animation: none; } /* static: inline shadows show as before */
+}
