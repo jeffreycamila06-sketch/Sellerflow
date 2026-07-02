@@ -196,3 +196,62 @@
   [data-redesign] .sfl-authbrand { display: flex; flex: 1 1 0; }
   [data-redesign] .sfl-authform { flex: 1 1 0; min-width: 0; }
 }
+
+/* ═══ Landing page animations (ADDITIVE — landing-only .sfl-lp-* classes).
+   Reuses the existing sflRise / sflGlow / sflLive / sflDot keyframes (untouched);
+   only the landing-specific loops below are new. The landing never renders in the
+   app shell (anonScreen gate), so none of this affects the APK/iOS. */
+@keyframes sflLpFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+@keyframes sflLpPrint {
+  0%   { transform: translateY(-88%); opacity: 1; }
+  62%  { transform: translateY(0);    opacity: 1; }
+  86%  { transform: translateY(0);    opacity: 1; }
+  100% { transform: translateY(6%);   opacity: 0; }
+}
+@keyframes sflLpBub {
+  0%   { opacity: 0; transform: translateY(14px) scale(.92); }
+  14%  { opacity: 1; transform: translateY(4px)  scale(1); }
+  62%  { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-46px) scale(1.02); }
+}
+
+/* hero entrance (staggered via inline animation-delay) */
+.sfl-lp-rise { animation: sflRise .6s ease-out both; }
+
+/* soft floating glow blobs behind the hero scene */
+.sfl-lp-blob { position: absolute; border-radius: 50%; filter: blur(46px); pointer-events: none; z-index: 0; }
+.sfl-lp-blob-a { width: 260px; height: 260px; top: -40px; left: -50px; background: radial-gradient(circle, rgba(99,102,241,.42), rgba(99,102,241,0) 70%); animation: sflGlow 9s ease-in-out infinite; }
+.sfl-lp-blob-b { width: 220px; height: 220px; bottom: -30px; right: -40px; background: radial-gradient(circle, rgba(45,212,191,.36), rgba(45,212,191,0) 70%); animation: sflGlow 11s ease-in-out infinite reverse; }
+
+/* gentle device float (card B offset so the two scenes de-sync) */
+.sfl-lp-float   { animation: sflLpFloat 5.5s ease-in-out infinite; }
+.sfl-lp-float-b { animation: sflLpFloat 6s   ease-in-out infinite; animation-delay: .8s; }
+
+/* thermal printer: label continuously printing out of the slot */
+.sfl-lp-print   { animation: sflLpPrint 3.2s ease-in-out infinite; }
+.sfl-lp-print-b { animation-delay: 1.6s; }
+
+/* floating live-comment bubbles */
+.sfl-lp-bub { position: absolute; z-index: 2; padding: 6px 12px; border-radius: 999px; background: #fff; border: 1px solid #E0DDF0; color: #4F46E5; font-size: 12px; font-weight: 700; box-shadow: 0 10px 24px -10px rgba(23,21,48,.25); pointer-events: none; opacity: 0; animation: sflLpBub 6s ease-in-out infinite; white-space: nowrap; }
+
+/* status dots (reuse existing pulse/blink keyframes) */
+.sfl-lp-livedot    { width: 7px; height: 7px; border-radius: 50%; background: #F43F5E; animation: sflLive 1.8s infinite, sflDot 1.8s infinite; }
+.sfl-lp-printlight { width: 6px; height: 6px; border-radius: 50%; background: #34D399; animation: sflDot 1.4s infinite; }
+
+/* micro-interactions: hover lift (cards + CTAs) */
+.sfl-lp-lift { transition: transform .25s ease, box-shadow .25s ease; }
+.sfl-lp-lift:hover { transform: translateY(-3px); }
+.sfl-lp-hovshadow:hover { box-shadow: 0 18px 40px -18px rgba(23,21,48,.2); }
+
+/* scroll-triggered reveal (IntersectionObserver adds .sfl-lp-in once) */
+.sfl-lp-reveal { opacity: 0; transform: translateY(18px); transition: opacity .6s ease, transform .6s ease; transition-delay: var(--rv-delay, 0s); }
+.sfl-lp-reveal.sfl-lp-in { opacity: 1; transform: translateY(0); }
+
+/* reduced motion: static fallback — kill every loop, show everything immediately */
+@media (prefers-reduced-motion: reduce) {
+  .sfl-lp-rise, .sfl-lp-blob-a, .sfl-lp-blob-b, .sfl-lp-float, .sfl-lp-float-b,
+  .sfl-lp-print, .sfl-lp-livedot, .sfl-lp-printlight { animation: none; }
+  .sfl-lp-bub { display: none; }
+  .sfl-lp-reveal { opacity: 1; transform: none; transition: none; }
+  .sfl-lp-lift, .sfl-lp-lift:hover { transition: none; transform: none; }
+}
