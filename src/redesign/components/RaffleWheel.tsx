@@ -7,6 +7,7 @@
 // close/reopen — the WINNER BOX stays visible until the next spin/Reset (the
 // seller must never lose the result).
 import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { pickWeightedWinner, spinTarget, wheelGradient, RAFFLE_COLORS, type RaffleEntry } from "../adapters/raffle";
 import { useT, tpl } from "../i18n";
 
@@ -52,8 +53,13 @@ export default function RaffleWheel({ entries, sinceLabel, winner, excluded, onW
   const showNames = pool.length <= 20;
   const btn: CSSProperties = { padding: "12px 18px", borderRadius: 12, border: "none", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer" };
 
-  return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 1300, background: "var(--bg)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+  // PORTAL to document.body — the Dashboard content lives inside .sfl-scroll
+  // (position:relative + z-index:2 = a stacking context, overflow hidden), so a
+  // fixed overlay rendered in place would sit BELOW the bottom nav (z:3) and get
+  // clipped. The portal escapes every stacking context / overflow / backdrop-
+  // filter containing block → a true full-screen overlay on web AND in the APK.
+  return createPortal(
+    <div data-redesign style={{ position: "fixed", inset: 0, zIndex: 1300, background: "var(--bg)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
       {/* Header (indigo gradient) */}
       <div style={{ background: "linear-gradient(135deg, #4F46E5, #6366F1)", color: "#fff", padding: "calc(12px + env(safe-area-inset-top)) 16px 12px", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -134,6 +140,7 @@ export default function RaffleWheel({ entries, sinceLabel, winner, excluded, onW
           🎉 {t.rd_raffle_winner}: #{winner.bNum} {winner.label}
         </div>
       )}
-    </div>
+    </div>,
+    document.body,
   );
 }

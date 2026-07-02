@@ -192,6 +192,7 @@ const RAW: Record<string, Row> = {
   rd_raffle_exclude: { en: "Exclude & spin again", fil: "I-exclude at ikutin ulit", zh: "排除后再转", "zh-TW": "排除後再轉", vi: "Loại ra & quay lại", th: "ตัดออกแล้วหมุนอีก", id: "Keluarkan & putar lagi" },
   rd_raffle_reset: { en: "Reset", fil: "I-reset", zh: "重置", "zh-TW": "重置", vi: "Đặt lại", th: "รีเซ็ต", id: "Reset" },
   rd_raffle_participants: { en: "Participants", fil: "Mga Kasali", zh: "参与者", "zh-TW": "參與者", vi: "Người tham gia", th: "ผู้เข้าร่วม", id: "Peserta" },
+  rd_raffle_open: { en: "Open", fil: "Buksan", zh: "打开", "zh-TW": "打開", vi: "Mở", th: "เปิด", id: "Buka" },
 
   // ════ Shared ════
   rd_export: { en: "⬇ Export", fil: "⬇ I-export", zh: "⬇ 导出", "zh-TW": "⬇ 匯出", vi: "⬇ Xuất", th: "⬇ ส่งออก", id: "⬇ Ekspor" },
