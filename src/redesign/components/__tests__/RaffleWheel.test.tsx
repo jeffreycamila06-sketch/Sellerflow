@@ -34,10 +34,11 @@ describe("RaffleWheel", () => {
     expect(screen.queryByText(/Spin/)).toBeNull();
   });
 
-  it("renders chips + participants with entry counts", () => {
+  it("renders chips + participants with entry counts (label on wheel slice AND list)", () => {
     render(<Harness />);
     expect(screen.getByText("5 entries · 2 buyers")).toBeTruthy(); // 2+3
-    expect(screen.getByText("@ana")).toBeTruthy();
+    expect(screen.getAllByText("@ana")).toHaveLength(2); // wheel slice label + participants row
+    expect(screen.getAllByText("#1").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("×3")).toBeTruthy();
   });
 

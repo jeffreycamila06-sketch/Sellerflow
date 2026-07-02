@@ -86,10 +86,19 @@ export default function RaffleWheel({ entries, sinceLabel, winner, excluded, onW
                 onTransitionEnd={undefined /* settle handled by the one-shot timer (reliable in WebView + tests) */}
                 style={{ width: "100%", height: "100%", borderRadius: "50%", background: wheelGradient(pool), border: "6px solid var(--surface)", boxShadow: "0 18px 44px -14px rgba(23,21,48,.45), inset 0 0 0 1px rgba(0,0,0,.08)", transform: `rotate(${rotation}deg)`, transition: spinning ? `transform ${SPIN_MS}ms cubic-bezier(.17,.67,.12,.99)` : "none", position: "relative" }}
               >
+                {/* Slice labels — SPOKE pattern: a full-size container rotated to the
+                    slice's CENTER angle (conic starts at 12 o'clock, so rotating the
+                    container by (i+.5)·slice points its top axis down the slice), then
+                    the label sits near the OUTER edge (top ≈6.5% → ~0.8R), radial like
+                    wheel-of-fortune spokes. The old translateY(-31%) was a % of the
+                    SPAN's own height (~4px) — every label hugged the hub. */}
                 {pool.map((e, i) => (
-                  <span key={e.key} style={{ position: "absolute", left: "50%", top: "50%", transform: `rotate(${(i + 0.5) * slice}deg) translateY(-31%)`, transformOrigin: "0 0", fontSize: showNames ? 9.5 : 12, fontWeight: 800, color: "#fff", textShadow: "0 1px 2px rgba(0,0,0,.45)", whiteSpace: "nowrap", maxWidth: 86, overflow: "hidden", textOverflow: "ellipsis", marginLeft: -28, width: 56, textAlign: "center", display: "block" }}>
-                    #{e.bNum}{showNames ? ` ${e.label}` : ""}
-                  </span>
+                  <div key={e.key} style={{ position: "absolute", inset: 0, transform: `rotate(${pool.length === 1 ? 0 : (i + 0.5) * slice}deg)`, pointerEvents: "none" }}>
+                    <div style={{ position: "absolute", top: "6.5%", left: "50%", transform: "translateX(-50%)", width: "38%", textAlign: "center", color: "#fff", textShadow: "0 1px 2px rgba(0,0,0,.5)" }}>
+                      <div style={{ fontFamily: "var(--font-mono)", fontWeight: 800, fontSize: showNames ? 14 : 12, lineHeight: 1 }}>#{e.bNum}</div>
+                      {showNames && <div style={{ fontSize: 8.5, fontWeight: 700, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.label}</div>}
+                    </div>
+                  </div>
                 ))}
               </div>
               <div style={{ position: "absolute", left: "50%", top: "50%", transform: "translate(-50%,-50%)", width: 52, height: 52, borderRadius: "50%", background: "var(--surface)", border: "1px solid var(--border)", boxShadow: "0 6px 16px rgba(0,0,0,.25)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, zIndex: 2 }}>🎁</div>
