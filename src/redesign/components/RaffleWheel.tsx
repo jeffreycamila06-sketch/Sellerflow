@@ -12,7 +12,7 @@
 // state live in the PARENT (Dashboard) so they survive close/reopen.
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
-import { pickWeightedWinner, spinTarget, wheelGradient, RAFFLE_COLORS, type RaffleEntry } from "../adapters/raffle";
+import { pickWeightedWinner, spinTarget, wheelGradient, entryDisplay, RAFFLE_COLORS, type RaffleEntry } from "../adapters/raffle";
 import { useT, tpl } from "../i18n";
 
 const SPIN_MS = 4200;
@@ -30,7 +30,7 @@ const FD = "'Space Grotesk', 'Plus Jakarta Sans', sans-serif";
 const FU = "'Plus Jakarta Sans', system-ui, sans-serif";
 const FM = "'JetBrains Mono', monospace";
 
-export default function RaffleWheel({ entries, sinceLabel, winner, excluded, onWinner, onExclude, onReset, onClose }: {
+export default function RaffleWheel({ entries, sinceLabel, winner, excluded, onWinner, onExclude, onReset, onClose, onPrintWinner }: {
   entries: RaffleEntry[];
   sinceLabel: string;                       // "since HH:MM" (pre-localized by the caller)
   winner: RaffleEntry | null;               // persistent (parent state)
@@ -39,6 +39,10 @@ export default function RaffleWheel({ entries, sinceLabel, winner, excluded, onW
   onExclude: (key: string) => void;         // exclude current winner → pool shrinks
   onReset: () => void;                       // clear winner + excluded
   onClose: () => void;
+  // Prints the winner ticket via the EXISTING printSlip pipeline (wired in
+  // RedesignApp, where the print settings/store name live). Optional — the
+  // button only renders when provided. Returns where the print went.
+  onPrintWinner?: (w: RaffleEntry) => { ok: boolean; via: string };
 }) {
   const t = useT();
   const pool = entries.filter((e) => !excluded.includes(e.key));
@@ -46,6 +50,7 @@ export default function RaffleWheel({ entries, sinceLabel, winner, excluded, onW
   const [rotation, setRotation] = useState(0);
   const [spinning, setSpinning] = useState(false);
   const [toast, setToast] = useState(false);
+  const [printNote, setPrintNote] = useState("");
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
@@ -61,7 +66,7 @@ export default function RaffleWheel({ entries, sinceLabel, winner, excluded, onW
     const winIdx = pickWeightedWinner(pool, Math.random());
     if (winIdx < 0) return;
     const target = spinTarget(rotation, winIdx, pool.length, Math.random());
-    onWinner(null); setToast(false);
+    onWinner(null); setToast(false); setPrintNote("");
     setSpinning(true);
     setRotation(target);
     // one-shot settle timer (matches the CSS transition; no polling)
@@ -128,7 +133,16 @@ export default function RaffleWheel({ entries, sinceLabel, winner, excluded, onW
             {winner && (
               <div style={{ width: "100%", maxWidth: 340, background: P.card, border: `2px solid ${P.indigo}`, borderRadius: 14, padding: "12px 15px", textAlign: "center", boxShadow: "0 14px 34px rgba(0,0,0,.35)" }}>
                 <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".1em", color: P.indigoFg }}>{t.rd_raffle_winner.toUpperCase()}</div>
-                <div style={{ fontFamily: FD, fontWeight: 700, fontSize: 21, color: P.ink, marginTop: 3 }}>#{winner.bNum} {winner.label} 🎉</div>
+                <div style={{ fontFamily: FD, fontWeight: 700, fontSize: 21, color: P.ink, marginTop: 3, overflowWrap: "anywhere" }}>#{winner.bNum} {entryDisplay(winner)} 🎉</div>
+                {onPrintWinner && !spinning && (
+                  <button
+                    onClick={() => { const r = onPrintWinner(winner); setPrintNote(r.ok ? tpl(t.rd_pr_sent, { via: r.via }) : t.rd_pr_native_note); }}
+                    style={{ ...btn, padding: "9px 16px", marginTop: 9, background: P.btnGrad, color: "#fff", boxShadow: "0 8px 20px -8px rgba(99,102,241,.7)" }}
+                  >
+                    🖨 {t.rd_raffle_print}
+                  </button>
+                )}
+                {printNote && <div style={{ fontSize: 11, fontWeight: 600, color: P.muted, marginTop: 7 }}>{printNote}</div>}
               </div>
             )}
 
@@ -141,7 +155,7 @@ export default function RaffleWheel({ entries, sinceLabel, winner, excluded, onW
                 <button onClick={() => onExclude(winner.key)} style={{ ...btn, background: P.card, color: P.ink }}>{t.rd_raffle_exclude}</button>
               )}
               {(winner || excluded.length > 0) && !spinning && (
-                <button onClick={onReset} style={{ ...btn, background: "transparent", color: "rgba(255,255,255,.85)", border: "1px solid rgba(255,255,255,.4)" }}>{t.rd_raffle_reset}</button>
+                <button onClick={() => { setPrintNote(""); onReset(); }} style={{ ...btn, background: "transparent", color: "rgba(255,255,255,.85)", border: "1px solid rgba(255,255,255,.4)" }}>{t.rd_raffle_reset}</button>
               )}
             </div>
 
@@ -153,7 +167,7 @@ export default function RaffleWheel({ entries, sinceLabel, winner, excluded, onW
                   <div key={e.key} style={{ display: "flex", alignItems: "center", gap: 9, background: P.card, borderRadius: 10, padding: "9px 12px", boxShadow: "0 4px 14px rgba(0,0,0,.25)" }}>
                     <span style={{ width: 9, height: 9, borderRadius: "50%", background: RAFFLE_COLORS[e.colorIndex], flexShrink: 0 }} />
                     <span style={{ fontFamily: FM, fontSize: 12, fontWeight: 700, color: P.ink, flexShrink: 0 }}>#{e.bNum}</span>
-                    <span style={{ fontSize: 12, color: P.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{e.label}</span>
+                    <span style={{ fontSize: 12, color: P.body, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>{entryDisplay(e)}</span>
                     <span style={{ fontSize: 10.5, fontWeight: 800, color: P.indigoFg, background: P.soft, padding: "2px 8px", borderRadius: 99, flexShrink: 0 }}>×{e.entries}</span>
                   </div>
                 ))}
@@ -166,7 +180,7 @@ export default function RaffleWheel({ entries, sinceLabel, winner, excluded, onW
       {/* Winner toast — celebratory, auto-fades; the winner BOX above persists. */}
       {toast && winner && (
         <div style={{ position: "absolute", top: "calc(78px + env(safe-area-inset-top))", left: "50%", transform: "translateX(-50%)", zIndex: 5, background: "#fff", color: P.ink, padding: "10px 18px", borderRadius: 12, fontSize: 13.5, fontWeight: 800, boxShadow: "0 14px 34px rgba(0,0,0,.5)", whiteSpace: "nowrap", animation: "sflRise .3s ease-out" }}>
-          🎉 {t.rd_raffle_winner}: #{winner.bNum} {winner.label}
+          🎉 {t.rd_raffle_winner}: #{winner.bNum} {entryDisplay(winner)}
         </div>
       )}
     </div>,

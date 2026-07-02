@@ -193,6 +193,7 @@ const RAW: Record<string, Row> = {
   rd_raffle_reset: { en: "Reset", fil: "I-reset", zh: "重置", "zh-TW": "重置", vi: "Đặt lại", th: "รีเซ็ต", id: "Reset" },
   rd_raffle_participants: { en: "Participants", fil: "Mga Kasali", zh: "参与者", "zh-TW": "參與者", vi: "Người tham gia", th: "ผู้เข้าร่วม", id: "Peserta" },
   rd_raffle_open: { en: "Open", fil: "Buksan", zh: "打开", "zh-TW": "打開", vi: "Mở", th: "เปิด", id: "Buka" },
+  rd_raffle_print: { en: "Print winner", fil: "I-print ang winner", zh: "打印中奖者", "zh-TW": "列印中獎者", vi: "In người thắng", th: "พิมพ์ผู้ชนะ", id: "Cetak pemenang" },
   // Announcements — admin banner + 🔔 bell (the message itself is admin-written
   // raw text, one language; only the UI chrome is translated).
   rd_ann_title: { en: "Announcements", fil: "Mga Anunsyo", zh: "公告", "zh-TW": "公告", vi: "Thông báo", th: "ประกาศ", id: "Pengumuman" },

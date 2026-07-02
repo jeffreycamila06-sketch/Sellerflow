@@ -8,8 +8,8 @@ import { TProvider } from "../../i18n";
 import type { RaffleEntry } from "../../adapters/raffle";
 
 const entries: RaffleEntry[] = [
-  { key: "a|TikTok", bNum: 1, label: "@ana", entries: 2, colorIndex: 0 },
-  { key: "b|TikTok", bNum: 2, label: "@bea", entries: 3, colorIndex: 1 },
+  { key: "a|TikTok", bNum: 1, label: "@ana", displayName: "Ana Cruz", entries: 2, colorIndex: 0 },
+  { key: "b|TikTok", bNum: 2, label: "@bea", displayName: "", entries: 3, colorIndex: 1 },
 ];
 
 function Harness({ start = entries }: { start?: RaffleEntry[] }) {
@@ -37,7 +37,11 @@ describe("RaffleWheel", () => {
   it("renders chips + participants with entry counts (label on wheel slice AND list)", () => {
     render(<Harness />);
     expect(screen.getByText("5 entries · 2 buyers")).toBeTruthy(); // 2+3
-    expect(screen.getAllByText("@ana")).toHaveLength(2); // wheel slice label + participants row
+    // Wheel slice keeps the compact @handle; the participants row shows the
+    // display name "Name (@handle)" when the buyer has one, plain @handle when not.
+    expect(screen.getAllByText("@ana")).toHaveLength(1);            // wheel slice
+    expect(screen.getByText("Ana Cruz (@ana)")).toBeTruthy();       // participants row
+    expect(screen.getAllByText("@bea")).toHaveLength(2);            // no name → both plain
     expect(screen.getAllByText("#1").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("×3")).toBeTruthy();
   });

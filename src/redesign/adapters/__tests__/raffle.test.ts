@@ -1,7 +1,7 @@
 // Raffle pure logic — entries compute (filter/group/cap-3), weighted draw
 // (deterministic via injected rand), and the deterministic wheel-landing math.
 import { describe, it, expect } from "vitest";
-import { computeRaffleEntries, pickWeightedWinner, spinTarget, wheelGradient, RAFFLE_COLORS, type RaffleEntry } from "../raffle";
+import { computeRaffleEntries, pickWeightedWinner, spinTarget, wheelGradient, entryDisplay, buildWinnerTicketBuyer, RAFFLE_COLORS, type RaffleEntry } from "../raffle";
 import type { LiveOrder } from "../../../lib/orderTypes";
 
 const T0 = 1_782_990_000_000; // enabled_at anchor (epoch ms)
@@ -49,7 +49,7 @@ describe("computeRaffleEntries", () => {
 });
 
 const pool = (weights: number[]): RaffleEntry[] =>
-  weights.map((w, i) => ({ key: `k${i}`, bNum: i, label: `@b${i}`, entries: w, colorIndex: i % 8 }));
+  weights.map((w, i) => ({ key: `k${i}`, bNum: i, label: `@b${i}`, displayName: "", entries: w, colorIndex: i % 8 }));
 
 describe("pickWeightedWinner", () => {
   it("empty pool → -1", () => {
@@ -92,5 +92,41 @@ describe("wheelGradient", () => {
     expect(g).toContain("conic-gradient(");
     expect(g).toContain(`${RAFFLE_COLORS[0]} 0.00deg 120.00deg`);
     expect(g).toContain(`${RAFFLE_COLORS[2]} 240.00deg 360.00deg`);
+  });
+});
+
+describe("displayName + entryDisplay", () => {
+  it("computeRaffleEntries carries the order's name (trimmed) as displayName", () => {
+    const entries = computeRaffleEntries([order({ handle: "lhey", name: "  Lhey Cruz  " })], T0);
+    expect(entries[0]).toMatchObject({ label: "@lhey", displayName: "Lhey Cruz" });
+  });
+  it("entryDisplay = 'Name (@handle)' with a name, label alone without", () => {
+    const e = (over: Partial<RaffleEntry>): RaffleEntry => ({ key: "k|TikTok", bNum: 5, label: "@lhey", displayName: "", entries: 1, colorIndex: 0, ...over });
+    expect(entryDisplay(e({ displayName: "Lhey Cruz" }))).toBe("Lhey Cruz (@lhey)");
+    expect(entryDisplay(e({}))).toBe("@lhey");
+    // no handle → label already IS the name; never "Name (Name)"
+    expect(entryDisplay(e({ key: "#7", label: "Walk-in", displayName: "Walk-in" }))).toBe("Walk-in");
+  });
+});
+
+describe("buildWinnerTicketBuyer — synthetic buyer for the EXISTING printSlip pipeline", () => {
+  const winner: RaffleEntry = { key: "lhey|Facebook", bNum: 12, label: "@lhey", displayName: "Lhey Cruz", entries: 2, colorIndex: 0 };
+  const NOW = Date.UTC(2026, 6, 2, 4, 5, 0); // 12:05 Taipei (UTC+8)
+  it("maps winner → Buyer #, name, handle, platform + a single RAFFLE WINNER order", () => {
+    const b = buildWinnerTicketBuyer(winner, NOW);
+    expect(b).toMatchObject({ num: 12, handle: "lhey", name: "Lhey Cruz", platform: "Facebook", totalSpent: 0, totalOrders: 1 });
+    expect(b.orders).toHaveLength(1);
+    expect(b.orders[0]).toMatchObject({ orderNum: NOW, item: "RAFFLE WINNER", bNum: 12, total: 0 });
+  });
+  it("derives Taipei time from the injected nowMs (orderNum stays epoch ms > 1e12)", () => {
+    const b = buildWinnerTicketBuyer(winner, NOW);
+    expect(b.orders[0].orderNum).toBeGreaterThan(1e12);
+    expect(b.orders[0].time).toBe("12:05");
+  });
+  it("no-handle winner → empty handle, name falls back to the label", () => {
+    const b = buildWinnerTicketBuyer({ key: "#7", bNum: 7, label: "#7", displayName: "", entries: 1, colorIndex: 1 }, NOW);
+    expect(b.handle).toBe("");
+    expect(b.name).toBe("#7");
+    expect(b.platform).toBe("TikTok"); // fallback when the key carries no platform
   });
 });

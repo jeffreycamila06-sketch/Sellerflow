@@ -39,6 +39,7 @@ import { useSessionWindow, type WindowDays } from "./adapters/useSessionWindow";
 import { useLiveFeed, commentKey } from "./adapters/useLiveFeed";
 import { useOrders } from "./adapters/useOrders";
 import { planAutoOrder, type AutoCode } from "./adapters/autoMode";
+import { buildWinnerTicketBuyer, type RaffleEntry } from "./adapters/raffle";
 import { loadCodes } from "./adapters/autoCodesDb";
 import { resolveInitialProducts } from "./adapters/productsDb";
 import { loadProducts } from "./adapters/products";
@@ -201,6 +202,14 @@ export default function RedesignApp() {
   const onPrint = (b: Buyer) => {
     const pc = printCfgRef.current;
     if (pc) printSlip(b, pc.cur, pc.storeName, pc.settings); // native in APK; no-op on web
+  };
+  // Raffle winner ticket — SYNTHETIC buyer through the SAME printSlip pipeline
+  // (routing + fallbacks identical to 1-Click auto-print / the Print screen).
+  const onPrintWinner = (w: RaffleEntry): { ok: boolean; via: string } => {
+    const pc = printCfgRef.current;
+    if (!pc) return { ok: false, via: "none" };
+    const r = printSlip(buildWinnerTicketBuyer(w, Date.now()), pc.cur, pc.storeName, pc.settings);
+    return { ok: r.ok, via: r.via };
   };
   // Phase 5e — real order creation fan-out (writes). Composes the SAME pure
   // builder + db writes; updates the live session optimistically. 5f: soft-block
@@ -643,6 +652,7 @@ export default function RedesignApp() {
               canInject={liveFeed.canInject} onInjectSynthetic={liveFeed.injectSynthetic}
               announcement={ann.latest} annDismissedId={ann.dismissedId} onDismissAnn={ann.dismiss}
               annUnread={ann.unread} onOpenAnn={() => { setAnnOpen(true); if (ann.list[0]) ann.markSeen(ann.list[0].id); }}
+              onPrintWinner={onPrintWinner}
             />
           )}
           {screen === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} orders={ordersList} state={ordersState} onExport={exportOrders} />}

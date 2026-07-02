@@ -53,12 +53,14 @@ export default function Dashboard({
   session = { buyers: [], orders: [] }, sessionState = "idle",
   canInject = false, onInjectSynthetic,
   announcement = null, annDismissedId = "", onDismissAnn, annUnread = false, onOpenAnn,
+  onPrintWinner,
 }: {
   comments: Comment[]; cur: string;
   session?: RebuiltSession; sessionState?: SessionState;
   canInject?: boolean; onInjectSynthetic?: () => void;
   announcement?: Announcement | null; annDismissedId?: string; onDismissAnn?: (id: string) => void;
   annUnread?: boolean; onOpenAnn?: () => void;
+  onPrintWinner?: (w: RaffleEntry) => { ok: boolean; via: string };
   ttOpen: boolean; fbOpen: boolean; ttIdx: number; fbIdx: number;
   onToggleTT: () => void; onToggleFB: () => void;
   onPickTT: (i: number) => void; onPickFB: (i: number) => void;
@@ -279,6 +281,7 @@ export default function Dashboard({
             onExclude={(key) => { setRaffleExcluded((x) => [...x, key]); setRaffleWinner(null); }}
             onReset={() => { setRaffleWinner(null); setRaffleExcluded([]); }}
             onClose={() => setRaffleOpen(false)}
+            onPrintWinner={onPrintWinner}
           />
         )}
 

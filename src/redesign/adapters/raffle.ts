@@ -5,14 +5,15 @@
 // The winner is picked FIRST via a weighted draw (entries = weights, rand
 // injected for testability), THEN the wheel animates deterministically onto the
 // winner's slice (spinTarget). All unit-tested.
-import type { LiveOrder } from "../../lib/orderTypes";
+import type { LiveOrder, Buyer } from "../../lib/orderTypes";
 
 export interface RaffleEntry {
-  key: string;        // stable buyer identity (handle+platform, fallback #bNum)
+  key: string;         // stable buyer identity (handle+platform, fallback #bNum)
   bNum: number;
-  label: string;      // display: @handle, else name, else #bNum
-  entries: number;    // 1..3 (MAX 3 per buyer — fairness cap)
-  colorIndex: number; // 0..7 — stable per buyer; wheel slice + legend dot match
+  label: string;       // display: @handle, else name, else #bNum
+  displayName: string; // buyer's name from the order ("" when the order has none)
+  entries: number;     // 1..3 (MAX 3 per buyer — fairness cap)
+  colorIndex: number;  // 0..7 — stable per buyer; wheel slice + legend dot match
 }
 
 export const RAFFLE_MAX_ENTRIES = 3;
@@ -36,7 +37,7 @@ export function computeRaffleEntries(orders: LiveOrder[], enabledAtMs: number): 
     const key = buyerKey(o);
     const existing = byBuyer.get(key);
     if (existing) existing.entries = Math.min(existing.entries + 1, RAFFLE_MAX_ENTRIES);
-    else byBuyer.set(key, { key, bNum: o.bNum, label: buyerLabel(o), entries: 1, colorIndex: byBuyer.size % RAFFLE_COLORS.length });
+    else byBuyer.set(key, { key, bNum: o.bNum, label: buyerLabel(o), displayName: (o.name || "").trim(), entries: 1, colorIndex: byBuyer.size % RAFFLE_COLORS.length });
   }
   return Array.from(byBuyer.values());
 }
@@ -75,4 +76,30 @@ export function wheelGradient(pool: RaffleEntry[]): string {
   return `conic-gradient(${pool
     .map((e, i) => `${RAFFLE_COLORS[e.colorIndex]} ${(i * slice).toFixed(2)}deg ${((i + 1) * slice).toFixed(2)}deg`)
     .join(", ")})`;
+}
+
+// Winner display: "Name (@handle)" when both exist. When there is no handle the
+// label already IS the name (or #bNum), so the label alone avoids "Name (Name)".
+export function entryDisplay(e: RaffleEntry): string {
+  return e.displayName && e.label.startsWith("@") ? `${e.displayName} (${e.label})` : e.label;
+}
+
+// Winner ticket → SYNTHETIC Buyer fed through the EXISTING printSlip pipeline
+// (same idiom as buildTestStickerPayload's test buyer). No TSPL/native touch:
+// buyer.num → "Buyer #N", name/handle → the existing name/@handle lines, the
+// single order's item carries the ticket label. orderNum = nowMs (epoch ms
+// > 1e12) so the native builder derives the correct Taipei print time; nowMs is
+// injected for deterministic tests. ASCII-only label — the AIMO D520BT renders
+// ASCII + Simplified Chinese only, so no emoji in printable text.
+export function buildWinnerTicketBuyer(e: RaffleEntry, nowMs: number): Buyer {
+  const handle = e.label.startsWith("@") ? e.label.slice(1) : "";
+  const platform = e.key.includes("|") ? e.key.split("|")[1] : "TikTok";
+  const taipei = (opt: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Taipei", ...opt }).format(new Date(nowMs));
+  const order: LiveOrder = {
+    orderNum: nowMs, item: "RAFFLE WINNER", qty: 1, price: 0, total: 0,
+    time: taipei({ hour: "2-digit", minute: "2-digit", hour12: false }),
+    handle, name: e.displayName || e.label, bNum: e.bNum, platform, status: "New",
+    date: taipei({ year: "numeric", month: "2-digit", day: "2-digit" }),
+  };
+  return { handle, name: e.displayName || e.label, platform, num: e.bNum, orders: [order], totalSpent: 0, totalOrders: 1 };
 }
