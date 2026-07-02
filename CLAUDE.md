@@ -884,3 +884,48 @@ rows** in the 07-01 bucket (#311–409, the A2-corrected stale writes at 01:41�
   an update).
 - **OLD DATA (1,327 misfiled rows):** LEAVE — auto-purged by the 7-day pg_cron;
   `admin_business_pulse` uses `created_at` (NOT `session_date`) so analytics is unaffected.
+
+## SESSION 2026-07-02 — Admin seller search + Landing motion package + iOS 3.1.1 progress
+
+### 1. Admin seller search (`937697b`, LIVE)
+Manage Sellers "Search soon" placeholder → working client-side filter (email +
+@handle via `rawByEmail` connectedAccounts + contactNote), case-insensitive,
+return-null-in-map approach so the index-based inline editors (addIdx/pwIdx)
+never shift. 1 file (`Admin.tsx`), existing i18n keys, 485 tests green.
+
+### 2. Landing motion package (`76142ac`, LIVE, web-only — zero APK impact via `anonScreen` gate)
+- Hero staggered entrance (`sflRise` reuse), 2 floating glow blobs,
+  **PHONE|COMPUTER dual-device scene** with thermal printers continuously printing
+  labels (3.2s loop, 1.6s offset), 3 floating comment bubbles, scroll-triggered
+  reveals (IntersectionObserver, once-only), hover lifts.
+- **Heartbeat pulse (Indigo Classic):** `sflLpBeat` (scale 1.02 + indigo glow,
+  2.2s) on stats/features/pricing cards, staggered; Pro card = `sflLpBeatPro`
+  (1.035, stronger). Wrapper-vs-inner transform separation so beat/reveal/lift
+  never conflict. Pro raise = margin (NOT transform). `prefers-reduced-motion`
+  = full static fallback.
+- 2 new i18n keys: `rd_lp_device_phone/computer` ×7 langs. Old hero product card
+  replaced; `rd_lp_pc_*` keys = harmless orphans.
+- ⚠️ **PENDING CONTENT ISSUE:** landing claims "12,000+ sellers / 12k+ / 1.4M
+  orders / 4.9★" = NOT true (26 real users); "Free 100 orders per cycle" vs the
+  real 200-order cap wording. Fix in a follow-up PR.
+
+### 3. iOS 3.1.1 status (App ID 6783770354)
+- **Root cause of 3.1.1:** our own reply wording ("active business arrangement" /
+  "individual sellers") — NOT the app UI.
+- **Competitor research:** LIVTAG (6755175243) + ChotDon (1554820536) = same
+  function, both passed via Utilities category + pure-function description,
+  zero business-model language.
+- **DONE:** Category Business→Utilities (saved), description → pure-function
+  (saved), new tool-framing reply sent to Apple (no tier-gating on iOS, workflow
+  tool framing + precedent).
+- **Claude Code verify:** iOS build is CLEAN (thin-shell → production web,
+  `isIOS()` bridge-level gating intact, zero payment/plan UI; product prices =
+  seller-to-buyer physical goods, not covered by 3.1.1).
+- **BLOCKER:** Xcode Archive fails — "Communication with Apple failed / No
+  profiles for com.sellerflow.live / 0 Provisioned Devices" despite the correct
+  Developer Team (H27M37QY52, Admin, certificates access OK) + Download Manual
+  Profiles + restart. Build 1 = EXPIRED on TestFlight. Apple Developer Support
+  emailed (code signing case). **WAITING:** Apple Support reply + Apple review
+  reply. Once signing is resolved: new build (Build number 2, from
+  `~/Sellerflow/mobile`, verify `capacitor.config.ts` `server.url` = PRODUCTION
+  before archiving) → TestFlight → resubmit.
