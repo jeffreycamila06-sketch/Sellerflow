@@ -112,11 +112,12 @@ describe("displayName + entryDisplay", () => {
 describe("buildWinnerTicketBuyer — synthetic buyer for the EXISTING printSlip pipeline", () => {
   const winner: RaffleEntry = { key: "lhey|Facebook", bNum: 12, label: "@lhey", displayName: "Lhey Cruz", entries: 2, colorIndex: 0 };
   const NOW = Date.UTC(2026, 6, 2, 4, 5, 0); // 12:05 Taipei (UTC+8)
-  it("maps winner → Buyer #, name, handle, platform + a single RAFFLE WINNER order", () => {
+  it("maps winner → Buyer #, name, handle, platform + a single WINNER order (≤12 chars — the item column truncates at 12)", () => {
     const b = buildWinnerTicketBuyer(winner, NOW);
     expect(b).toMatchObject({ num: 12, handle: "lhey", name: "Lhey Cruz", platform: "Facebook", totalSpent: 0, totalOrders: 1 });
     expect(b.orders).toHaveLength(1);
-    expect(b.orders[0]).toMatchObject({ orderNum: NOW, item: "RAFFLE WINNER", bNum: 12, total: 0 });
+    expect(b.orders[0]).toMatchObject({ orderNum: NOW, item: "WINNER", bNum: 12, total: 0 });
+    expect(b.orders[0].item.length).toBeLessThanOrEqual(12); // never cut by the print truncate
   });
   it("derives Taipei time from the injected nowMs (orderNum stays epoch ms > 1e12)", () => {
     const b = buildWinnerTicketBuyer(winner, NOW);

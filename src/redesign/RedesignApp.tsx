@@ -49,7 +49,7 @@ import { upsertUser } from "../accountDb";
 import { csvDL, dayStamp } from "./adapters/csv";
 import { computeSales } from "./adapters/sales";
 import { printSlip, buildSettingsFromRedesign, type Settings as PrintSettings } from "./adapters/printing";
-import { btCall, hasBtBridge, buildTestStickerPayload, type StickerPrintResult } from "./adapters/printerBridge";
+import { btCall, hasBtBridge, buildTestStickerPayload, buildTestBuyer, type StickerPrintResult } from "./adapters/printerBridge";
 import { registeredAccountsFor, appendAccount, maxAcc, composeChannelSave, connectToast, type Platform } from "./adapters/connect";
 import type { Buyer, Comment as ProdComment } from "../lib/orderTypes";
 import CapPopup from "./screens/CapPopup";
@@ -201,7 +201,9 @@ export default function RedesignApp() {
   const printCfgRef = useRef<{ cur: string; storeName: string; settings: PrintSettings } | null>(null);
   const onPrint = (b: Buyer) => {
     const pc = printCfgRef.current;
-    if (pc) printSlip(b, pc.cur, pc.storeName, pc.settings); // native in APK; no-op on web
+    if (!pc) return;
+    const r = printSlip(b, pc.cur, pc.storeName, pc.settings); // sticker in APK; browser print on web
+    track("print", { via: r.via }); // web-vs-native print usage (PostHog)
   };
   // Raffle winner ticket — SYNTHETIC buyer through the SAME printSlip pipeline
   // (routing + fallbacks identical to 1-Click auto-print / the Print screen).
@@ -425,9 +427,15 @@ export default function RedesignApp() {
   // testBt: builds the test payload from the live print config + fires the native
   // bridge, with a toast for the result. No-op-safe off-device (no BT bridge).
   const onTestPrint = async () => {
-    if (!hasBtBridge()) { setToast({ msg: tApp.rd_ps_open_app_test, kind: "err" }); return; }
     const storeName = auth.profile?.profile.storeName || "SellerFlowLive";
     const settings = buildSettingsFromRedesign({ pp, psType, psOut, psSize });
+    // No BT bridge (web/desktop) → browser-print the SAME test pattern through
+    // printSlip, so desktop sellers can preview their pattern settings too.
+    if (!hasBtBridge()) {
+      const wr = printSlip(buildTestBuyer(), cur, storeName, settings);
+      setToast(wr.ok ? { msg: tpl(tApp.rd_pr_sent, { via: wr.via }), kind: "ok" } : { msg: tApp.rd_ps_test_failed, kind: "err" });
+      return;
+    }
     const r = await btCall<StickerPrintResult>("printStickerNative", buildTestStickerPayload(cur, storeName, settings));
     setToast({ msg: r?.ok ? (r.message || tApp.rd_ps_test_sent) : (r?.message || tApp.rd_ps_test_failed), kind: r?.ok ? "ok" : "err" });
   };

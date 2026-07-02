@@ -74,7 +74,7 @@ describe("buildSlipPayload — byte-parity with App.tsx", () => {
   });
 });
 
-describe("printSlip — web browser print (no native bridge) matches old main", () => {
+describe("printSlip — web browser print MIRRORS the native TSPL sticker layout", () => {
   // Capture the iframe printSlip creates so we can spy its contentWindow.print.
   let captured: HTMLIFrameElement | null;
   beforeEach(() => {
@@ -88,24 +88,78 @@ describe("printSlip — web browser print (no native bridge) matches old main", 
     });
   });
   afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); document.querySelectorAll("iframe").forEach((f) => f.remove()); });
+  const webHtml = () => captured?.contentDocument?.documentElement.outerHTML || "";
 
-  it("appends a hidden iframe, writes the slip HTML, calls win.print(), returns via:'browser'", () => {
+  it("appends a hidden iframe, writes the sticker-mirror HTML, calls win.print(), returns via:'browser'", () => {
     // jsdom has no window.SellerFlowPrinter → native paths skip → browser fallback runs.
     const r = printSlip(buyer({ num: 1, name: "Ann Cruz", handle: "annc", totalSpent: 320 }), "NT$", "My Shop", cfg());
     expect(r).toEqual({ ok: true, via: "browser" });
-    // iframe appended to the DOM
     expect(captured).not.toBeNull();
     expect(document.body.contains(captured)).toBe(true);
-    // slip HTML written into the iframe (verbatim layout markers)
-    const html = captured!.contentDocument?.body.innerHTML || "";
+    const html = webHtml();
+    // Sticker content parity: brand header, dominant Buyer #, name, @username.
+    expect(html).toContain("SellerFlowLive");
     expect(html).toContain("Buyer #1");
     expect(html).toContain("Ann Cruz");
     expect(html).toContain("@annc");
-    expect(html).toContain("SellerFlowLive".slice(0, 6)); // brand "Seller"
     // window.print fires after the 120ms timeout
     const printSpy = vi.spyOn(captured!.contentWindow as Window, "print").mockImplementation(() => {});
     vi.advanceTimersByTime(150);
     expect(printSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("NO Total and NO 'Order here' — the old 2-column slip layout is gone", () => {
+    printSlip(buyer({ totalSpent: 999, num: 3 }), "NT$", "Shop", cfg({ printTotal: true }));
+    const html = webHtml();
+    expect(html).not.toContain("Total");   // sticker parity (printTotal forced off)
+    expect(html).not.toContain("Order here");
+    expect(html).not.toContain("999");     // no amount anywhere
+  });
+
+  it("caps order rows at 2 (native maxOrders) with the enlarged price-code element, item truncated to 12", () => {
+    const b = buyer();
+    b.orders = [1, 2, 3].map((i) => ({ ...b.orders[0], orderNum: i, time: `10:0${i}`, item: `CODE-${i}-VERYLONGTAIL` }));
+    printSlip(b, "NT$", "Shop", cfg());
+    const html = webHtml();
+    expect(html.match(/class="orow"/g)).toHaveLength(2);          // max 2 rows
+    expect(html).toContain('class="oitem"');                       // enlarged price code
+    expect(html).toContain("CODE-1-VERYL");                        // truncate(12)
+    expect(html).not.toContain("CODE-3");                          // 3rd order dropped
+  });
+
+  it("uses the label size for @page and the compact 40mm tier for 60x40", () => {
+    printSlip(buyer(), "NT$", "Shop", cfg({ stickerSize: "60x40" }));
+    expect(webHtml()).toContain("size:60mm 40mm");
+    printSlip(buyer(), "NT$", "Shop", cfg({ stickerSize: "80x50" }));
+    expect(webHtml()).toContain("size:80mm 50mm");
+  });
+
+  it("prints the Taipei date (MM/DD/YYYY family), not the old en-PH long date", () => {
+    printSlip(buyer(), "NT$", "Shop", cfg());
+    const html = webHtml();
+    expect(html).toMatch(/\d{2}\/\d{2}\/\d{4}/); // en-US Taipei date
+    expect(html).not.toContain("Session:");        // old slip header removed
+  });
+
+  it("respects the print-pattern toggles (store name / buyer# / username off)", () => {
+    printSlip(buyer({ handle: "annc" }), "NT$", "My Shop", cfg({ printStoreName: false, printBuyerNumber: false, printBuyerUsername: false }));
+    const html = webHtml();
+    expect(html).not.toContain("My Shop");
+    expect(html).not.toContain("Buyer #");
+    expect(html).not.toContain("@annc");
+  });
+
+  it("scales each field by its pattern-settings multiplier (per-element, like the native cmul)", () => {
+    // 100x60 base tier: bnum 9mm, name 5.4mm. Level 2 doubles them.
+    printSlip(buyer(), "NT$", "Shop", cfg({ printBuyerNumberScale: 2, printBuyerNameScale: 2 }));
+    let html = webHtml();
+    expect(html).toContain(".bnum{font-size:18mm");   // 9 * 2
+    expect(html).toContain(".name{font-size:10.8mm"); // 5.4 * 2
+    // level 1 (default) stays at base
+    printSlip(buyer(), "NT$", "Shop", cfg());
+    html = webHtml();
+    expect(html).toContain(".bnum{font-size:9mm");
+    expect(html).toContain(".name{font-size:5.4mm");
   });
 
   it("string-settings overload also browser-prints", () => {

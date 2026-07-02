@@ -87,16 +87,17 @@ export function entryDisplay(e: RaffleEntry): string {
 // Winner ticket → SYNTHETIC Buyer fed through the EXISTING printSlip pipeline
 // (same idiom as buildTestStickerPayload's test buyer). No TSPL/native touch:
 // buyer.num → "Buyer #N", name/handle → the existing name/@handle lines, the
-// single order's item carries the ticket label. orderNum = nowMs (epoch ms
-// > 1e12) so the native builder derives the correct Taipei print time; nowMs is
-// injected for deterministic tests. ASCII-only label — the AIMO D520BT renders
-// ASCII + Simplified Chinese only, so no emoji in printable text.
+// single order's item carries the ticket label — "WINNER" (≤12 chars: the
+// order-item column truncates at 12, so "RAFFLE WINNER" printed cut off).
+// orderNum = nowMs (epoch ms > 1e12) so the native builder derives the correct
+// Taipei print time; nowMs is injected for deterministic tests. ASCII-only
+// label — the AIMO D520BT renders ASCII + Simplified Chinese only.
 export function buildWinnerTicketBuyer(e: RaffleEntry, nowMs: number): Buyer {
   const handle = e.label.startsWith("@") ? e.label.slice(1) : "";
   const platform = e.key.includes("|") ? e.key.split("|")[1] : "TikTok";
   const taipei = (opt: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Taipei", ...opt }).format(new Date(nowMs));
   const order: LiveOrder = {
-    orderNum: nowMs, item: "RAFFLE WINNER", qty: 1, price: 0, total: 0,
+    orderNum: nowMs, item: "WINNER", qty: 1, price: 0, total: 0,
     time: taipei({ hour: "2-digit", minute: "2-digit", hour12: false }),
     handle, name: e.displayName || e.label, bNum: e.bNum, platform, status: "New",
     date: taipei({ year: "numeric", month: "2-digit", day: "2-digit" }),

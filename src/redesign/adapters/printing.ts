@@ -9,8 +9,8 @@
 // builder (TsplBuilder.java / Swift). This adapter only assembles the JS payload
 // those builders consume — copied exactly so the native side is unaffected.
 //
-// Web / preview (no native bridge) → NO-OP (returns {ok:false, via:"none"}); it does
-// NOT open a browser print dialog. Real device printing is APK-only.
+// Web / preview (no native bridge) → browser print (hidden iframe + window.print)
+// that MIRRORS the native TSPL sticker layout, so 1-Click output matches the APK.
 import { shouldUseBluetoothSticker, shouldUseLanSticker } from "../../lib/printerRouting";
 import type { Buyer } from "../../lib/orderTypes";
 
@@ -143,15 +143,13 @@ async function printStickerViaLan(buyer: Buyer, cur: string, storeName: string, 
   } catch (err) { console.warn("printStickerLan bridge call failed:", err); return false; }
 }
 
-// HTML-escape + buyer-number color — copied VERBATIM from App.tsx:196, 227 (used by
-// the browser-print slip below).
+// HTML-escape (used by the browser-print template below).
 const esc = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] || ch));
-const nc = (n: number) => (n === 1 ? "#26215C" : n <= 3 ? "#534AB7" : "#7F77DD");
 
 // ── Router — mirrors App.tsx printSlip routing (620-704). Native paths fire first
 // (BT/iOS-LAN/native-slip via the bridge); on a plain WEB browser (no bridge) it falls
-// through to the SAME browser-print path as old main (hidden iframe + window.print),
-// copied verbatim so web output is byte-identical. Returns where it went.
+// through to a browser print (hidden iframe + window.print) whose layout MIRRORS the
+// native TSPL sticker (Jeff 2026-07-02: one format everywhere). Returns where it went.
 export type PrintVia = "bluetooth" | "lan" | "native-slip" | "browser" | "none";
 export interface PrintResult { ok: boolean; via: PrintVia; }
 
@@ -168,35 +166,35 @@ export function printSlip(buyer: Buyer, cur: string, storeName: string, printSet
   }
   const nativePayload = buildSlipPayload(buyer, cur, storeName, cfg);
   if (hasNativeMobilePrinter() && sendSlipToNativePrinter(nativePayload)) return { ok: true, via: "native-slip" };
-  // ── WEB FALLBACK: browser print — COPIED VERBATIM from App.tsx:646-703 (hidden
-  // iframe + window.print of the slip HTML). Restores old-main web behavior. ──────
-  const size = cfg.stickerSize;
-  // Size is an INTEGER LEVEL 1-8 (was 60-180%); use the level directly as the
-  // browser-print font multiplier so web matches the sticker (1 = base).
-  const scale = (v: number | undefined, fallback = 1) => Math.max(1, Math.min(8, Number(v || fallback || 1)));
-  const storeScale = scale(cfg.printStoreScale, cfg.printLabelScale);
-  const buyerNumberScale = scale(cfg.printBuyerNumberScale, 1);
-  const buyerNameScale = scale(cfg.printBuyerNameScale, cfg.printLabelScale);
-  const usernameScale = scale(cfg.printUsernameScale, cfg.printLabelScale);
-  const orderScale = scale(cfg.printOrderScale, cfg.printLabelScale);
-  const commentScale = scale(cfg.printCommentScale, cfg.printLabelScale);
-  const totalScale = scale(cfg.printTotalScale, cfg.printLabelScale);
-  const pos = (v: number | undefined) => Math.max(-40, Math.min(40, v || 0));
-  const sess = new Date().toLocaleDateString("en-PH", { timeZone: "Asia/Taipei", month: "long", day: "numeric", year: "numeric" });
-  const color = nc(buyer.num);
-  const [w] = size.split("x").map(Number);
-  const safeSess = esc(sess);
-  const safeStoreName = esc(storeName);
-  const safeBuyerNum = esc(buyer.num);
-  const safeBuyerName = esc(buyer.name);
-  const safeBuyerHandle = esc(buyer.handle);
-  const safeCurrency = esc(cur);
-  const safeTotal = buyer.totalSpent > 0 ? `${safeCurrency}${esc(buyer.totalSpent.toLocaleString())}` : "";
-  const commentOnlyHtml = buyer.orders.map((o) => `<div class="order-entry"><div class="order-time">${esc(o.time)}</div><div class="order-comment">${esc(o.item)}</div></div>`).join("");
-  const scaledOrderHtml = commentOnlyHtml;
+  // ── WEB FALLBACK: browser print — MIRRORS the native TSPL sticker layout
+  // (tsplReference.ts / TsplBuilder tiers), replacing the old 2-column slip
+  // (Jeff 2026-07-02: ONE format everywhere). Content parity with the sticker:
+  // single column, brand header + Taipei date, dominant Buyer #, name,
+  // @username, max 2 order rows with the ENLARGED price code, NO Total
+  // (stickers force printTotal off). The browser renders every script natively,
+  // so the TSPL-only transliteration/CJK-font tiers don't apply here — raw
+  // name/handle text is already correct. Native TSPL/goldens untouched. ──────
   if (typeof document === "undefined") return { ok: false, via: "none" };
+  const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n) : s); // native truncate()
+  const lvl = (v: number | undefined) => Math.max(1, Math.min(8, Number(v || 1)));
+  const { w: labelW, h: labelH } = resolveStickerLabel(cfg.stickerSize);
+  // Height tiers mirror the native SizeConfig tiers (60 / 50 / 40mm). Fonts and
+  // gaps are in mm so the layout scales with the physical label; the 40mm tier
+  // is compact with a half-height buyer# (native 2x1) — same hierarchy. The
+  // 60mm tier's larger gaps approximate the native 100x60 fill-height spread.
+  const T = labelH >= 60
+    ? { bnum: 9,   name: 5.4, user: 3.8, store: 4.2, brand: 3.6, date: 2.8, time: 2.6, item: 5.4, gap: 2.2, pad: 2.5 }
+    : labelH >= 50
+      ? { bnum: 8,   name: 4.8, user: 3.4, store: 3.8, brand: 3.4, date: 2.7, time: 2.4, item: 4.8, gap: 1.6, pad: 2.2 }
+      : { bnum: 5.2, name: 4,   user: 3,   store: 3.2, brand: 3,   date: 2.4, time: 2.2, item: 4,   gap: 1.1, pad: 1.8 };
+  // Taipei date, same source/format family as buildNativeStickerPayload + the
+  // native truncate(12) — NOT the old en-PH long date.
+  const sess = trunc(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()), 12);
+  // Max 2 order rows (native maxOrders=2): small time + enlarged price code
+  // (font-4 2x-width feel via scaleX), truncated like the native columns.
+  const rows = buyer.orders.slice(0, 2).map((o) => `<div class="orow"><span class="otime">${esc(trunc(String(o.time ?? ""), 10))}</span><span class="oitem">${esc(trunc(String(o.item ?? ""), 12))}</span></div>`).join("");
   const frame = document.createElement("iframe");
-  frame.title = `Slip #${safeBuyerNum}`;
+  frame.title = `Sticker #${buyer.num}`;
   frame.style.position = "fixed";
   frame.style.right = "0";
   frame.style.bottom = "0";
@@ -210,16 +208,14 @@ export function printSlip(buyer: Buyer, cur: string, storeName: string, printSet
   win.onafterprint = () => setTimeout(() => frame.remove(), 50);
   const doc = win.document;
   doc.open();
-  doc.write(`<!DOCTYPE html><html><head><title>Slip #${safeBuyerNum}</title><style>@page{size:${size.replace("x", "mm ")}mm;margin:3mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;width:${w}mm;color:#000}.head{display:flex;align-items:flex-start;justify-content:space-between;gap:3mm;margin-bottom:2.5mm}.brand{font-size:${14 * storeScale}px;font-weight:800;transform:translate(${pos(cfg.printStoreX)}mm,${pos(cfg.printStoreY)}mm)}.brand span{color:#7F77DD}.session{font-size:${12 * totalScale}px;font-weight:800;text-align:right;transform:translate(${pos(cfg.printSessionX)}mm,${pos(cfg.printSessionY)}mm)}.grid{display:grid;grid-template-columns:52% 48%;gap:3mm;align-items:start}.left{display:flex;flex-direction:column;gap:1.5mm;padding-top:1mm}.seller{font-size:${13 * storeScale}px;font-weight:800;line-height:1.1;transform:translate(${pos(cfg.printStoreX)}mm,${pos(cfg.printStoreY)}mm)}.line{font-size:${13 * buyerNameScale}px;font-weight:800;line-height:1.1}.muted{font-size:${10 * usernameScale}px;font-weight:700;color:#333}.buyer-num{font-size:${13 * buyerNumberScale}px;color:${color};font-weight:900;transform:translate(${pos(cfg.printBuyerNumberX)}mm,${pos(cfg.printBuyerNumberY)}mm)}.buyer-name{transform:translate(${pos(cfg.printBuyerNameX)}mm,${pos(cfg.printBuyerNameY)}mm)}.username{transform:translate(${pos(cfg.printUsernameX)}mm,${pos(cfg.printUsernameY)}mm)}.order-box{min-height:38mm;padding:0;transform:translate(${pos(cfg.printOrderX)}mm,${pos(cfg.printOrderY)}mm)}.order-title{font-size:${15 * orderScale}px;font-weight:900;margin-bottom:2mm}.order-entry{border-left:2px solid #000;padding-left:2mm;margin-bottom:2mm}.order-time{font-size:${9 * orderScale}px;color:#111;font-weight:500;line-height:1.1}.order-comment{font-size:${10 * commentScale}px;font-weight:800;line-height:1.1;margin-top:.8mm}.total{border-top:1px dashed #777;margin-top:2mm;padding-top:1.5mm;display:flex;justify-content:space-between;gap:2mm;font-size:${11 * totalScale}px;font-weight:800;transform:translate(${pos(cfg.printTotalX)}mm,${pos(cfg.printTotalY)}mm)}@media print{body{margin:0}}</style></head><body>
-  <div class="head"><div class="brand">Seller<span>FlowLive</span></div><div class="session">Session: ${safeSess}</div></div>
-  <div class="grid"><div class="left">
-  ${cfg.printStoreName ? `<div class="seller">${safeStoreName}</div>` : ""}
-  ${cfg.printBuyerNumber ? `<div class="line buyer-num">Buyer #${safeBuyerNum}</div>` : ""}
-  <div class="line buyer-name">${safeBuyerName}</div>
-  ${cfg.printBuyerUsername ? `<div class="muted username">@${safeBuyerHandle}</div>` : ""}
-  </div>
-  ${(cfg.printOrderItems || cfg.printTotal) ? `<div class="order-box">${cfg.printOrderItems ? `<div class="order-title">Order here</div>${scaledOrderHtml}` : ""}${cfg.printTotal ? `<div class="total"><span>Total</span><span>${safeTotal}</span></div>` : ""}</div>` : ""}
-  </div>
+  doc.write(`<!DOCTYPE html><html><head><title>Sticker #${esc(buyer.num)}</title><style>@page{size:${labelW}mm ${labelH}mm;margin:${T.pad}mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;width:${labelW - 2 * T.pad}mm;color:#000}.head{display:flex;align-items:flex-end;justify-content:space-between;gap:2mm}.brand{font-size:${T.brand}mm;font-weight:800}.date{font-size:${T.date}mm;font-weight:600}.bar{height:.8mm;background:#000;margin:.8mm 0 ${T.gap}mm}.store{font-size:${T.store * lvl(cfg.printStoreScale)}mm;font-weight:800;margin-bottom:${T.gap}mm}.bnum{font-size:${T.bnum * lvl(cfg.printBuyerNumberScale)}mm;font-weight:900;line-height:1.02;margin-bottom:${T.gap}mm}.name{font-size:${T.name * lvl(cfg.printBuyerNameScale)}mm;font-weight:800;line-height:1.05;margin-bottom:${T.gap}mm;overflow-wrap:anywhere}.user{font-size:${T.user * lvl(cfg.printUsernameScale)}mm;font-weight:700;margin-bottom:${T.gap}mm}.sep{height:.5mm;background:#000;width:65%;margin:${T.gap}mm 0}.orow{display:flex;align-items:baseline;gap:3mm;margin-bottom:${T.gap * 0.7}mm}.otime{font-size:${T.time * lvl(cfg.printOrderScale)}mm;font-weight:600;flex-shrink:0}.oitem{font-size:${T.item * lvl(cfg.printCommentScale)}mm;font-weight:900;display:inline-block;transform:scaleX(1.35);transform-origin:0 50%;white-space:nowrap}@media print{body{margin:0}}</style></head><body>
+  <div class="head"><span class="brand">SellerFlowLive</span><span class="date">${esc(sess)}</span></div>
+  <div class="bar"></div>
+  ${cfg.printStoreName && storeName ? `<div class="store">${esc(trunc(storeName, 36))}</div>` : ""}
+  ${cfg.printBuyerNumber ? `<div class="bnum">Buyer #${esc(buyer.num)}</div>` : ""}
+  ${buyer.name ? `<div class="name">${esc(trunc(buyer.name, 30))}</div>` : ""}
+  ${cfg.printBuyerUsername && buyer.handle ? `<div class="user">@${esc(trunc(buyer.handle.replace(/^@+/, ""), 30))}</div>` : ""}
+  ${cfg.printOrderItems && rows ? `<div class="sep"></div>${rows}` : ""}
   </body></html>`);
   doc.close();
   setTimeout(() => {
