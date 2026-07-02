@@ -275,3 +275,9 @@
 @media (prefers-reduced-motion: reduce) {
   .sfl-lp-beat, .sfl-lp-beat-pro { animation: none; } /* static: inline shadows show as before */
 }
+
+/* Raffle compact header — below 360px the center "Collecting · n" TEXT hides
+   (the pulsing dot stays) so the one-line header never wraps or overflows. */
+@media (max-width: 359px) {
+  [data-redesign] .sfl-raffle-collect-txt { display: none; }
+}

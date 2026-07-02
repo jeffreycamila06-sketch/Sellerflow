@@ -205,51 +205,51 @@ export default function Dashboard({
             <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{cur}{summary.total.toLocaleString("en-US")}</span>
           </div>
         )}
-        {/* flexWrap: at narrow widths the right controls wrap to their own line
-            instead of overflowing into .sfl-scroll's overflow-x clip — an
-            overflowing row made taps land on the WRONG control (toggle vs
-            injector). Every control also stops propagation so clicks never leak. */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", rowGap: 6, marginBottom: 9, padding: "0 2px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
+        {/* COMPACT one-line header: [Live comments ●] … [● Collecting · n] … [🎮][pill]
+            — the full-width collecting chip is gone (no extra row). The 🎮 boxed
+            button OPENS the roleta (even when OFF → empty state); the pill alone
+            toggles. When OFF the 🎮 button carries the "Games" label; when ON the
+            label hides so the center indicator gets the space. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 9, padding: "0 2px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
             <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14.5, color: "var(--text)", whiteSpace: "nowrap" }}>{t.rd_dash_live_comments}</span>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#e11d48", animation: "sflDot 1s infinite", flexShrink: 0 }} />
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0, marginLeft: "auto" }}>
+          {/* center: tiny collecting indicator (ON only) — shrinks/ellipsizes; the
+              text hides <360px via .sfl-raffle-collect-txt (dot stays). */}
+          <div style={{ flex: 1, minWidth: 0, display: "flex", justifyContent: "center" }}>
+            {raffle.enabled && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 5, minWidth: 0, fontSize: 10, fontWeight: 700, color: "var(--text-muted)" }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--ok)", animation: "sflDot 1.4s infinite", flexShrink: 0 }} />
+                <span className="sfl-raffle-collect-txt" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {t.rd_raffle_collecting} · {raffleEntries.reduce((s, e) => s + e.entries, 0)}
+                </span>
+              </span>
+            )}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
             {/* Preview-only synthetic comment injector (F2) — hidden on the real
-                production domain (isPreviewEnv). Lets us verify feed/dedup/scroll
-                without a real socket. */}
+                production domain (isPreviewEnv). */}
             {canInject && (
               <button onClick={(e) => { e.stopPropagation(); onInjectSynthetic?.(); }} title={t.rd_dash_inject_title} style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".02em", color: "var(--accent-fg)", background: "var(--accent-soft)", border: "1px dashed var(--accent)", padding: "4px 9px", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)", flexShrink: 0 }}>{t.rd_dash_test_comment}</button>
             )}
-            {/* 🎮 Games (raffle) toggle — the PILL alone toggles; opening the raffle
-                screen is the separate indicator row below (clear tap separation). */}
-            <button onClick={(e) => { e.stopPropagation(); void raffle.toggle(!raffle.enabled); }} role="switch" aria-checked={raffle.enabled} title={t.rd_raffle_games} disabled={raffle.loading} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "var(--font-ui)", opacity: raffle.loading ? 0.6 : 1, flexShrink: 0 }}>
-              <span style={{ fontSize: 14, lineHeight: 1 }}>🎮</span>
-              <span style={{ fontSize: 11.5, fontWeight: 800, color: raffle.enabled ? "var(--accent-fg)" : "var(--text-muted)" }}>{t.rd_raffle_games}</span>
-              <span style={{ width: 40, height: 23, borderRadius: 12, background: raffle.enabled ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s", flexShrink: 0 }}>
+            {/* 🎮 = OPEN the roleta (boxed button; works even when the toggle is OFF).
+                Carries the "Games" label only while OFF. */}
+            <button onClick={(e) => { e.stopPropagation(); setRaffleOpen(true); }} title={t.rd_raffle_title} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "5px 9px", minHeight: 28, background: "var(--accent-softer)", border: "1px solid var(--accent-soft)", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)", flexShrink: 0 }}>
+              <span style={{ fontSize: 15, lineHeight: 1 }}>🎮</span>
+              {!raffle.enabled && <span style={{ fontSize: 11, fontWeight: 800, color: "var(--accent-fg)" }}>{t.rd_raffle_games}</span>}
+            </button>
+            {/* toggle pill — ON/OFF ONLY, clearly separated from the 🎮 open button */}
+            <button onClick={(e) => { e.stopPropagation(); void raffle.toggle(!raffle.enabled); }} role="switch" aria-checked={raffle.enabled} title={t.rd_raffle_games} disabled={raffle.loading} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, opacity: raffle.loading ? 0.6 : 1, flexShrink: 0, display: "block" }}>
+              <span style={{ width: 40, height: 23, borderRadius: 12, background: raffle.enabled ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s" }}>
                 <span style={{ position: "absolute", top: 3, left: raffle.enabled ? 20 : 3, width: 17, height: 17, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
               </span>
             </button>
           </div>
         </div>
 
-        {/* Raffle collecting indicator — visible only while Games is ON. A FULL-WIDTH
-            chip row (big tap target, visually separate from the toggle above) that
-            ONLY opens the full-screen roleta — it never touches the toggle. */}
-        {raffle.enabled && (
-          <button onClick={(e) => { e.stopPropagation(); setRaffleOpen(true); }} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", margin: "0 0 9px", padding: "9px 12px", background: "var(--accent-softer)", border: "1px solid var(--accent-soft)", borderRadius: 11, cursor: "pointer", fontSize: 11.5, fontWeight: 700, color: "var(--accent-fg)", fontFamily: "var(--font-ui)", textAlign: "left" }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", animation: "sflDot 1.4s infinite", flexShrink: 0 }} />
-            <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {t.rd_raffle_collecting}
-              {raffleSince && <span style={{ color: "var(--text-muted)", fontWeight: 500 }}> · {tpl(t.rd_raffle_since, { time: raffleSince })}</span>}
-              <span style={{ color: "var(--text-muted)", fontWeight: 600 }}> · {tpl(t.rd_raffle_entries, { n: raffleEntries.reduce((s, e) => s + e.entries, 0), b: raffleEntries.length })}</span>
-            </span>
-            <span style={{ flexShrink: 0, fontWeight: 800, display: "inline-flex", alignItems: "center", gap: 3 }}>{t.rd_raffle_open} ›</span>
-          </button>
-        )}
-
-        {/* Full-screen roleta overlay */}
-        {raffleOpen && raffle.enabled && (
+        {/* Full-screen roleta overlay — opens regardless of the toggle (OFF → empty state) */}
+        {raffleOpen && (
           <RaffleWheel
             entries={raffleEntries}
             sinceLabel={raffleSince ? tpl(t.rd_raffle_since, { time: raffleSince }) : ""}
