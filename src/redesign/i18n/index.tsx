@@ -178,6 +178,11 @@ const RAW: Record<string, Row> = {
   rd_pulse_in_hour: { en: "{n} in last hour", fil: "{n} sa huling oras", zh: "近一小时 {n} 笔", "zh-TW": "近一小時 {n} 筆", vi: "{n} trong giờ qua", th: "{n} ในชั่วโมงล่าสุด", id: "{n} dalam jam terakhir" },
   rd_pulse_today_lbl: { en: "today", fil: "ngayon", zh: "今天", "zh-TW": "今天", vi: "hôm nay", th: "วันนี้", id: "hari ini" },
 
+  // ════ Raffle Roleta (Games) — Phase 1 ════
+  rd_raffle_games: { en: "Games", fil: "Games", zh: "游戏", "zh-TW": "遊戲", vi: "Trò chơi", th: "เกม", id: "Game" },
+  rd_raffle_collecting: { en: "Collecting entries…", fil: "Kinokolekta ang entries…", zh: "正在收集参与名单…", "zh-TW": "正在收集參與名單…", vi: "Đang thu thập lượt tham gia…", th: "กำลังรวบรวมรายชื่อผู้ร่วมสนุก…", id: "Mengumpulkan entri…" },
+  rd_raffle_since: { en: "since {time}", fil: "mula {time}", zh: "自 {time} 起", "zh-TW": "自 {time} 起", vi: "từ {time}", th: "ตั้งแต่ {time}", id: "sejak {time}" },
+
   // ════ Shared ════
   rd_export: { en: "⬇ Export", fil: "⬇ I-export", zh: "⬇ 导出", "zh-TW": "⬇ 匯出", vi: "⬇ Xuất", th: "⬇ ส่งออก", id: "⬇ Ekspor" },
 
