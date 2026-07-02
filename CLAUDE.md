@@ -996,3 +996,67 @@ ang natitirang landing content fix = fake stats lang (12k+ sellers atbp).
 Audit rin: 506/506 tests green · typecheck clean · main = origin/main ·
 `admin_business_pulse` + `list_free_users_status` RPCs verified may `is_admin()`
 check SA LOOB ng body (secure).
+
+## SESSION 2026-07-02/03 (part 3) — Announcements, Raffle polish, Web print alignment
+
+### 1. ANNOUNCEMENTS (banner + 🔔 bell + admin Broadcast) — LIVE
+- **`announcements` table** (uuid, message, active, created_at, created_by; RLS:
+  authenticated read ALL, admin-only insert/update via `is_admin()`) — APPLIED via
+  MCP. SQL sa `sql/08_announcements.sql`.
+- **`useAnnouncements` adapter:** 1 read on mount (limit 10), ZERO poll;
+  localStorage `sfl_rd_ann_dismissed` (banner) + `sfl_rd_ann_last_seen` (bell dot).
+- **Seller:** dismissible indigo banner sa taas ng Dashboard (bago ang TODAY bar);
+  🔔 bell sa purple header (katabi ng Session pill) na may red dot; bottom-sheet
+  list (huling 10 — may babalikan kahit dismissed na ang banner).
+- **Admin:** binuhay ang dating "soon" Broadcast panel (Admin.tsx) — textarea +
+  Publish (unpublish old active + insert new = single-active), Active-now card +
+  Unpublish, history 5.
+- Verified end-to-end sa preview (publish → banner → got it → bell persistence →
+  unpublish). ~7 `rd_ann_*` keys ×7 langs.
+
+### 2. RAFFLE COMPACT + SOLID (kasama sa raffle merges)
+- **Compact one-line header:** full-width collecting chip TANGGAL; 🎮 boxed button
+  = OPEN ng roleta ("Games" label kapag OFF lang), toggle pill hiwalay na tap
+  target, "● Collecting · n" sa gitna kapag ON, <360px = dot-only.
+- **Solid full-screen roleta:** portal escape sa `[data-redesign]` tokens =
+  `var()` unresolved = TRANSPARENT overlay → fixed explicit palette (deep-indigo
+  gradient + glow blobs, solid white cards, body scroll lock).
+
+### 3. RAFFLE WINNER PRINT — LIVE
+- `displayName` sa `RaffleEntry` (order name, fallback handle); winner display
+  **"Name (@handle)"** sa box/toast/participants.
+- **🖨 Print winner** button → EXISTING `printSlip` (printCfgRef snapshot) =
+  **SIZE-AWARE** (lahat ng 5 paper sizes sunod sa user setting), language-agnostic
+  name rendering (writeTextSmart), **TSPL core untouched**. `buildWinnerTicketBuyer`
+  pure + tested.
+- **"RAFFLE WINNER"→"WINNER"** label (13 chars > truncate-12 = putol sa print;
+  fixed + guard assertion `item.length ≤ 12`).
+
+### 4. WEB PRINT = TSPL STICKER MIRROR — LIVE (`19ece1b`)
+- **Investigation finding:** ang web 1-Click print ay LUMANG 2-column slip
+  (sadyang frozen sa old main via `40e834f` "match old main" — classic drift);
+  ang native ay ang 2026-06 sticker overhaul. Dalawang magkaibang format.
+- **Desisyon ni Jeff: full mirror (Option A).** Web template rewritten (web-fallback
+  branch LANG ng `printSlip`): single column, Buyer# dominant (900), name raw
+  Unicode + @username, 65% separator, max-2 rows, enlarged price code (bold-900
+  scaleX 1.35, truncate 12), WALANG Total, Taipei date truncate-12, monochrome.
+- **PATTERN SETTINGS FUNCTIONAL sa web:** per-field toggles + size multipliers
+  (parehong settings source: printCfgRef → `buildSettingsFromRedesign`). ⚠️ TikTok
+  name ON/OFF + Date&time ON/OFF + logo = HINDI gated — mirror ng AKTWAL na native
+  sticker behavior (ang payload pick ay walang mga gate na iyon) — SADYA.
+- **Per-size:** @page + 3 mm-based tiers mirror ng SizeConfig (60 full / 50 mid /
+  40 compact half-height Buyer#).
+- **PRINTER TEST gumagana na sa WEB** (dating "open the app" dead-end) — browser
+  print ng test pattern; `printerBridge.ts` additive refactor (`buildTestBuyer`
+  exported).
+- **`track("print", {via})` telemetry** — web-vs-APK print split makikita sa
+  PostHog.
+- **Protected untouched:** TsplBuilder.java, Swift, native SizeConfig, JVM
+  goldens, useOrders. Ang lumang "matches old main" JS parity test ay sadyang
+  pinalitan ng "mirrors sticker layout + respects pattern settings" contract.
+  **526/526 tests green.**
+
+### 5. BACKLOG
+Branch cleanup (18 merged) · APK device test (Games + winner print + web-align
+verify sa AIMO) · unang Games announcement via Broadcast · landing fake stats ·
+Apple review + signing replies pending.
