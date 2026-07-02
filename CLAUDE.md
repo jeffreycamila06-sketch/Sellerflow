@@ -929,3 +929,55 @@ never shift. 1 file (`Admin.tsx`), existing i18n keys, 485 tests green.
   reply. Once signing is resolved: new build (Build number 2, from
   `~/Sellerflow/mobile`, verify `capacitor.config.ts` `server.url` = PRODUCTION
   before archiving) → TestFlight → resubmit.
+
+## SESSION 2026-07-02 (part 2) — Games/Raffle feature (BUONG feature LIVE) + landing follow-ups
+
+### 1. GAMES/RAFFLE ROLETA — complete feature, LIVE on production (3 branches, all merged)
+- **CONCEPT:** Seller giveaway tool — pinapalitan ang thermal-paper raffle. Toggle
+  ON = collect entries; buyers na nag-order habang ON = automatic kasali; 1 order =
+  1 entry, MAX 3 per buyer (fairness cap); makulay na roleta → weighted random
+  draw → winner.
+- **PHASE 1 (`claude/raffle-phase1`):** 🎮 Games toggle sa Live comments header row
+  + `raffle_config` table (`user_id` PK, `enabled`, `enabled_at`; RLS ×3, mirror ng
+  `seller_session_config`) + `useRaffleConfig` adapter (1 read on mount, 1 upsert
+  per toggle, ZERO poll). DB-backed = collection survives app close/break. OFF→ON
+  = sariwang `enabled_at` = panibagong collection (walang carry-over).
+- **PHASE 2 (`claude/raffle-phase2`):** `adapters/raffle.ts` pure functions
+  (`computeRaffleEntries`: filter `orderNum >= enabledAtMs`, group by
+  handle+platform, cap 3, stable colorIndex; `pickWeightedWinner`: entries=weights,
+  rand injected/deterministic; `spinTarget`: deterministic landing) +
+  `RaffleWheel.tsx` full-screen (CSS conic-gradient wheel — HINDI canvas, mas
+  magaan sa WebView; ≤20 buyers = #bNum+@handle sa slices, >20 = #bNum lang;
+  spoke-pattern labels) + winner toast (3s + confetti) + PERSISTENT winner box +
+  Exclude & spin again + Reset + participants list na may ×N badges. Entries =
+  puro client compute mula `session.orders` (ZERO bagong query). Winner =
+  session-memory lang (DB-persist = Phase 4 kung gusto).
+- **PHASE 3:** pg_cron **jobid=2** `raffle-config-auto-off` (`0 17 * * *` = 01:00
+  Taipei): auto-OFF ang `raffle_config` na `enabled_at < now() - 3 days`.
+  APPLIED + VERIFIED sa prod.
+- **BUG FIXES sa daan:** (a) portal sa `document.body` para tumakas sa stacking
+  context (`.sfl-scroll` z-index trap — overlay nakukulong/napuputol); (b) portal
+  escape sa `[data-redesign]` tokens = `var()` hindi nagre-resolve = TRANSPARENT
+  overlay → fix: explicit fixed palette (Landing pattern); (c) slice label math:
+  `translateY(-31%)` = % ng span height ~4px → fix: spoke pattern (full-size
+  rotated container, label sa ~0.8R); (d) compact one-line header: tinanggal ang
+  full-width collecting chip, 🎮 boxed button (Games label kapag OFF lang, icon
+  lang kapag ON), maliit na "● Collecting · n" sa gitna, <360px = dot lang;
+  (e) 🎮 nabubuksan kahit OFF (`raffleOpen` lang ang condition); (f) body scroll
+  lock + solid deep-indigo gradient backdrop + glow blobs.
+- **Tests:** 506 green (490 + 16 raffle). **i18n:** ~14 `rd_raffle_*` keys ×7 langs.
+- **KEY UX:** within-one-session ang saklaw (session reset sa midnight = entries
+  reset); daily lifecycle = OFF→ON bago mag-live = malinis na simula; 3-day
+  auto-off safety net.
+
+### 2. LANDING (kasama sa part 1 pero final state)
+Animations + heartbeat LIVE (`76142ac`). ⚠️ **PENDING PA RIN:** fake claims sa
+landing ("12,000+ sellers / 12k+ / 1.4M orders / 4.9★"; "Free 100 orders" vs
+totoong 200-order cap) — kailangang palitan ng totoong claims sa follow-up.
+
+### 3. PENDING/WAITING
+Apple review reply (3.1.1 tool-framing + LIVTAG/ChotDon precedent) · Apple Dev
+Support (signing: No profiles/Communication failed, Team H27M37QY52) · connection
+monitor → cron-job.org OFF kapag stable · redesign full merge (APK build + device
+testing + User Guide + approval) · MyAI UGC videos · payroll Supabase idle-pause
+watch.
