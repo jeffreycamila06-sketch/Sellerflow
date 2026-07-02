@@ -308,6 +308,16 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
   const [pwIdx, setPwIdx] = useState<number | null>(null);
   const [pwVal, setPwVal] = useState("");
   const [busy, setBusy] = useState(false);
+  // Client-side seller search — email + connected @handles + contact note. Filters
+  // the already-loaded users array (rawByEmail carries the real handles); no new query.
+  const [sellerQ, setSellerQ] = useState("");
+  const sellerQuery = sellerQ.trim().toLowerCase();
+  const matchesSeller = (u: User) => {
+    if (!sellerQuery) return true;
+    const handles = (rawByEmail[u.email]?.connectedAccounts || []).join(" ");
+    return `${u.email} ${handles} ${u.contactNote || ""}`.toLowerCase().includes(sellerQuery);
+  };
+  const noSellerMatches = sellerQuery.length > 0 && !users.some(matchesSeller);
   const setPlan = (email: string, plan: string) => setUserPlans((p) => ({ ...p, [email]: plan }));
   const revAdded = users.reduce((sum, u) => sum + ((PLAN_PRICE[userPlans[u.email] || u.plan] || 0) - (PLAN_PRICE[u.plan] || 0)), 0);
   const userCount = usersState === "live" || usersState === "empty" ? `${users.length}` : "12,480";
@@ -383,8 +393,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 11, padding: "10px 12px", marginBottom: 11 }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="var(--text-muted)" strokeWidth="1.8" /><path d="m20 20-3.5-3.5" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round" /></svg>
-                <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{t.rd_adm_search_email}</span>
-                <span style={{ marginLeft: "auto" }}><SoonBadge label={t.rd_adm_search_soon} /></span>
+                <input value={sellerQ} onChange={(e) => setSellerQ(e.target.value)} placeholder={t.rd_adm_search_email} style={{ flex: 1, border: "none", background: "transparent", color: "var(--text)", fontSize: 12.5, outline: "none", fontFamily: "var(--font-ui)" }} />
               </div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 11 }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>{t.rd_adm_users} · {userCount}</span>
@@ -392,8 +401,10 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
               </div>
               {usersState === "loading" && <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 2px" }}>{t.rd_adm_loading_sellers}</div>}
               {usersState === "empty" && <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 2px" }}>{t.rd_adm_no_sellers}</div>}
+              {noSellerMatches && <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 2px" }}>{t.rd_adm_no_sellers}</div>}
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {users.map((u, i) => {
+                  if (!matchesSeller(u)) return null;
                   const plan = userPlans[u.email] || u.plan;
                   const days = userDays[u.email] != null ? userDays[u.email] : u.days;
                   const isAdmin = u.role === "Admin";
