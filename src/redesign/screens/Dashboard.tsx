@@ -6,6 +6,7 @@
 import { useLayoutEffect, useRef, type CSSProperties } from "react";
 import { avColor, initials, type Comment } from "../data";
 import { sessionSummary, type SessionState } from "../adapters/useLiveSession";
+import { useRaffleConfig } from "../adapters/useRaffleConfig";
 import type { RebuiltSession } from "../../lib/orderLogic";
 import { useT, tpl } from "../i18n";
 
@@ -80,6 +81,12 @@ export default function Dashboard({
   useLayoutEffect(() => {
     feedRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, [newestId]);
+  // Raffle Roleta Phase 1 — DB-backed Games on/off + enabled_at anchor (1 read on
+  // mount, 1 write per toggle; entries/wheel = Phase 2). Self-contained adapter.
+  const raffle = useRaffleConfig();
+  const raffleSince = raffle.enabledAt
+    ? new Date(raffle.enabledAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : "";
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
       <div style={headerBar}>
@@ -190,13 +197,33 @@ export default function Dashboard({
             <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14.5, color: "var(--text)" }}>{t.rd_dash_live_comments}</span>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#e11d48", animation: "sflDot 1s infinite" }} />
           </div>
-          {/* Preview-only synthetic comment injector (F2) — hidden on the real
-              production domain (isPreviewEnv). Lets us verify feed/dedup/scroll
-              without a real socket. */}
-          {canInject && (
-            <button onClick={onInjectSynthetic} title={t.rd_dash_inject_title} style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".02em", color: "var(--accent-fg)", background: "var(--accent-soft)", border: "1px dashed var(--accent)", padding: "4px 9px", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_dash_test_comment}</button>
-          )}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+            {/* Preview-only synthetic comment injector (F2) — hidden on the real
+                production domain (isPreviewEnv). Lets us verify feed/dedup/scroll
+                without a real socket. */}
+            {canInject && (
+              <button onClick={onInjectSynthetic} title={t.rd_dash_inject_title} style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".02em", color: "var(--accent-fg)", background: "var(--accent-soft)", border: "1px dashed var(--accent)", padding: "4px 9px", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_dash_test_comment}</button>
+            )}
+            {/* 🎮 Games (raffle) toggle — Phase 1: DB-backed state only. Pill switch
+                styled after PrintPattern's (40×23 track, accent when ON). */}
+            <button onClick={() => void raffle.toggle(!raffle.enabled)} role="switch" aria-checked={raffle.enabled} title={t.rd_raffle_games} disabled={raffle.loading} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "var(--font-ui)", opacity: raffle.loading ? 0.6 : 1 }}>
+              <span style={{ fontSize: 14, lineHeight: 1 }}>🎮</span>
+              <span style={{ fontSize: 11.5, fontWeight: 800, color: raffle.enabled ? "var(--accent-fg)" : "var(--text-muted)" }}>{t.rd_raffle_games}</span>
+              <span style={{ width: 40, height: 23, borderRadius: 12, background: raffle.enabled ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s", flexShrink: 0 }}>
+                <span style={{ position: "absolute", top: 3, left: raffle.enabled ? 20 : 3, width: 17, height: 17, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
+              </span>
+            </button>
+          </div>
         </div>
+
+        {/* Raffle collecting indicator — visible only while Games is ON. */}
+        {raffle.enabled && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, margin: "-3px 2px 8px", fontSize: 11, fontWeight: 700, color: "var(--accent-fg)" }}>
+            <span style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--accent)", animation: "sflDot 1.4s infinite", flexShrink: 0 }} />
+            <span>{t.rd_raffle_collecting}</span>
+            {raffleSince && <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>· {tpl(t.rd_raffle_since, { time: raffleSince })}</span>}
+          </div>
+        )}
 
         <div ref={feedRef} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 7, boxShadow: "var(--shadow)", flex: 1, minHeight: 0, overflowY: "auto" }}>
           {comments.length === 0 && (
