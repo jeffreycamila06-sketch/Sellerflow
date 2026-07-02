@@ -1,8 +1,8 @@
 -- ============================================================================
--- SellerFlow — Step 4: Freemium "free" tier with a 200-order / 30-day cap
+-- SellerFlow — Step 4: Freemium "free" tier with a 100-order / 30-day cap
 -- ============================================================================
 -- Replaces the old 7-day trial for NEW sign-ups with a lifetime FREE tier that
--- has full features but a usage cap of 200 CREATED orders per rolling 30-day
+-- has full features but a usage cap of 100 CREATED orders per rolling 30-day
 -- cycle (cycle anchored at the seller's free_cycle_started_at = signup time).
 --
 -- SAFETY / GRANDFATHER GUARANTEE:
@@ -28,19 +28,21 @@
 -- ============================================================================
 
 
--- 1) Cap value — THE ONE place the number 200 lives ---------------------------
+-- 1) Cap value — THE ONE place the cap number lives ---------------------------
+-- Live values as of 2026-07-02: cap=100, near-cap warn=75. Cap was manually
+-- changed 200→100 in prod; near_cap fixed 150→75 (was unreachable).
 create or replace function public.free_tier_cap()
 returns integer
 language sql
 immutable
-as $$ select 200 $$;
+as $$ select 100 $$;
 
 -- Near-cap warning threshold (used by the admin dashboard + status RPC).
 create or replace function public.free_tier_near_cap()
 returns integer
 language sql
 immutable
-as $$ select 150 $$;
+as $$ select 75 $$;
 
 
 -- 2) New columns on seller_profiles (non-destructive, defaults only) ----------
@@ -50,7 +52,7 @@ alter table public.seller_profiles
 alter table public.seller_profiles
   add column if not exists free_cycle_started_at timestamptz;
 
--- One-time warning-shown flag so the 150 pop-up appears once per cycle only.
+-- One-time warning-shown flag so the near-cap pop-up appears once per cycle only.
 alter table public.seller_profiles
   add column if not exists free_warned_at timestamptz;
 
@@ -99,7 +101,7 @@ before insert on public.seller_profiles
 for each row execute function public.seller_profiles_on_insert();
 
 
--- 4) HARD CAP: enforce the 200-order limit on the orders table ----------------
+-- 4) HARD CAP: enforce the free-tier order cap on the orders table ----------------
 -- BEFORE INSERT on orders. Paid users early-exit on the very first check.
 create or replace function public.check_and_increment_free_order()
 returns trigger
@@ -133,7 +135,7 @@ begin
     update public.seller_profiles
       set free_cycle_started_at = cycle_start,
           free_orders_count     = 0,
-          free_warned_at        = null   -- new cycle re-arms the 150 warning
+          free_warned_at        = null   -- new cycle re-arms the near-cap warning
       where auth_user_id = new.user_id;
   end if;
 
@@ -218,7 +220,7 @@ end;
 $$;
 
 
--- 6) Mark the 150 near-cap warning as shown (called once by the frontend) -----
+-- 6) Mark the near-cap warning as shown (called once by the frontend) -----
 create or replace function public.free_tier_mark_warned()
 returns void
 language plpgsql

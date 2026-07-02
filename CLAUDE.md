@@ -15,8 +15,8 @@ per-language VISUAL/layout pass on preview, then Phase 6 preview testing.)_
 Capacitor-based live-selling assistant app para sa TikTok/Facebook sellers sa Taiwan.
 ~45–53 active paying users. App is FREE to download; subscriptions (Basic/Pro/Master)
 bayad manually via Wise + Telegram, LABAS ng Google Play. Free tier = cap-limited
-sa 200 orders kada rolling 30-day cycle (nagre-reset bawat cycle, HINDI lifetime;
-tugma sa `sql/04_free_tier_cap.sql`). Almost all UI lives in one big file:
+sa 100 orders kada rolling 30-day cycle (nagre-reset bawat cycle, HINDI lifetime;
+tugma sa `sql/04_free_tier_cap.sql`; live cap verified 2026-07-02 = 100, near-cap warn = 75). Almost all UI lives in one big file:
 `src/App.tsx` (~4.3k lines); pure/testable logic is extracted to `src/lib/*`
 (`orderLogic.ts`, `dateHelpers.ts`, `slipFields.ts`, …).
 
@@ -134,7 +134,7 @@ print" was just **reversed thermal paper**, not a bug.)
 
 ## ⚠️ Critical rules — WAG GALAWIN
 - **billing `orders` ledger** (~31k rows) + its `check_and_increment_free_order`
-  **200-cap trigger** — wag galawin. Cross-device uses a SEPARATE table.
+  **free-tier-cap trigger** (cap=100 live) — wag galawin. Cross-device uses a SEPARATE table.
 - **`live_session_orders`** table = SEPARATE sa billing ledger. RLS 4 policies
   `user_id=auth.uid()`, keyed per `user_id`+`session_date` (Taipei).
   Write-on-1click + read-on-load LANG (zero poll — para wag maulit ang egress crisis).
@@ -300,6 +300,7 @@ trigger intact + DB-enforced · RLS all scoped · zero hardcoded secrets.
   - 🟡 **M2** — free-tier RPC poll every 30s, not visibility-guarded (egress watch).
   - 🟢 **M3** — billing doc fixed: free tier = 200 orders / rolling 30-day cycle
     (resets, NOT lifetime) — matches `sql/04_free_tier_cap.sql`. (Applied above.)
+    (SUPERSEDED 2026-07-02: live cap ay 100 na pala — see audit log below.)
 
 ## Settings Redesign (planned, not yet coded)
 Handoff: **`settings-redesign-handoff.md`**; approved mockup
@@ -453,7 +454,7 @@ reimplemented over the SAME pure cores (parity-tested), per the F1/F3 plan.
   `orders`+`customers`; profile→`seller_profiles` (self-edit, plan/role untouched);
   admin→plan/role/expire/set-pw/delete (is_admin gate intact). All test data
   cleaned up; googletest restored to seller/basic.
-- **200-cap DB trigger + `seller_profiles_on_update` trigger = untouched/authoritative.**
+- **Free-cap DB trigger + `seller_profiles_on_update` trigger = untouched/authoritative.**
 - **NEW backends deferred → "Soon" badges:** Shipping, Sales Report, self-serve
   Signup, self-serve Delete Account, Products→Supabase (local Products unchanged).
 - Currency default **NT$/TWD**; subscription stays Wise+Telegram (no Play billing).
@@ -551,7 +552,7 @@ commit. Highlights:
   plan_status='active'` (was `'pending'`) → no admin approval. ⚠️ **Production
   Supabase migration** (NOT redesign-only); App.tsx PendingApprovalWall becomes
   inert. The redesign's **Sign-ups approval admin panel was REMOVED** (obsolete).
-  Free-cap trigger still gates `plan='free'` at 200/30-day. (Research snapshot:
+  Free-cap trigger still gates `plan='free'` (100/30-day live). (Research snapshot:
   23 paid / 3 free, 0 pending.) Still TODO: apply + verify the migration.
 
 ### i18n / translation phase (✅ CODE-COMPLETE — all 21 screens wired, all 7 langs)
@@ -906,8 +907,8 @@ never shift. 1 file (`Admin.tsx`), existing i18n keys, 485 tests green.
 - 2 new i18n keys: `rd_lp_device_phone/computer` ×7 langs. Old hero product card
   replaced; `rd_lp_pc_*` keys = harmless orphans.
 - ⚠️ **PENDING CONTENT ISSUE:** landing claims "12,000+ sellers / 12k+ / 1.4M
-  orders / 4.9★" = NOT true (26 real users); "Free 100 orders per cycle" vs the
-  real 200-order cap wording. Fix in a follow-up PR.
+  orders / 4.9★" = NOT true (26 real users). Fix in a follow-up PR. (The "Free 100
+  orders per cycle" copy turned out CORRECT — live cap = 100, verified 2026-07-02.)
 
 ### 3. iOS 3.1.1 status (App ID 6783770354)
 - **Root cause of 3.1.1:** our own reply wording ("active business arrangement" /
@@ -972,8 +973,9 @@ never shift. 1 file (`Admin.tsx`), existing i18n keys, 485 tests green.
 
 ### 2. LANDING (kasama sa part 1 pero final state)
 Animations + heartbeat LIVE (`76142ac`). ⚠️ **PENDING PA RIN:** fake claims sa
-landing ("12,000+ sellers / 12k+ / 1.4M orders / 4.9★"; "Free 100 orders" vs
-totoong 200-order cap) — kailangang palitan ng totoong claims sa follow-up.
+landing ("12,000+ sellers / 12k+ / 1.4M orders / 4.9★") — kailangang palitan ng
+totoong claims sa follow-up. (Ang "Free 100 orders" copy ay TAMA pala — live cap
+= 100, verified 2026-07-02 audit.)
 
 ### 3. PENDING/WAITING
 Apple review reply (3.1.1 tool-framing + LIVTAG/ChotDon precedent) · Apple Dev
@@ -981,3 +983,16 @@ Support (signing: No profiles/Communication failed, Team H27M37QY52) · connecti
 monitor → cron-job.org OFF kapag stable · redesign full merge (APK build + device
 testing + User Guide + approval) · MyAI UGC videos · payroll Supabase idle-pause
 watch.
+
+## 2026-07-02 — AUDIT FINDING: free-tier cap ay 100 pala (hindi 200) + near_cap fix
+Full repo audit discovery: ang LIVE DB `free_tier_cap()` = **100** (may nag-manual
+change ng 200→100 sa prod SQL editor; hindi na-update ang repo/docs). Dahil dito,
+ang `free_tier_near_cap()` = 150 ay **UNREACHABLE** (150 > 100 hard cap → hindi
+kailanman nagpa-fire ang near-cap warning). **FIXED via MCP: near_cap 150→75.**
+Docs synced: `sql/04_free_tier_cap.sql` (cap `select 100`, near `select 75`, may
+live-values comment) + lahat ng "200-order cap" mentions dito sa CLAUDE.md ay
+itinama/na-annotate. Ang landing copy na "Free 100 orders per cycle" ay TAMA —
+ang natitirang landing content fix = fake stats lang (12k+ sellers atbp).
+Audit rin: 506/506 tests green · typecheck clean · main = origin/main ·
+`admin_business_pulse` + `list_free_users_status` RPCs verified may `is_admin()`
+check SA LOOB ng body (secure).
