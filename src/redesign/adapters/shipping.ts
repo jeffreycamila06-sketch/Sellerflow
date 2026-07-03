@@ -43,6 +43,7 @@ export interface ShippingEntry {
   status: ShipStatus;
   exportBatchId: string | null;
   exportedAt: string | null;
+  shippedAt: string | null;   // P3b mark-as-shipped stamp (status stays 'exported')
 }
 
 // ── Session-window key ────────────────────────────────────────────────────────
@@ -104,6 +105,7 @@ export function draftEntryFor(g: BuyerGroup, sessionKey: string, id: string): Sh
     status: "draft",
     exportBatchId: null,
     exportedAt: null,
+    shippedAt: null,
   };
 }
 
@@ -207,6 +209,7 @@ export function buildBagEntries(g: BuyerGroup, sessionKey: string, bags: BagSumm
     status: "encoded" as const,
     exportBatchId: null,
     exportedAt: null,
+    shippedAt: null,
   }));
 }
 
@@ -226,4 +229,57 @@ export function validateSplit(orderList: GroupOrder[], assignment: Record<number
 }
 export function splitIsValid(e: SplitErrors): boolean {
   return e.unassigned === 0 && e.emptyBags.length === 0 && e.bagAmounts.length === 0 && !e.name && !e.phone && !e.store;
+}
+
+// ── Late orders (P3b) — a buyer mines MORE items AFTER their group was
+// exported. Exported entries are IMMUTABLE (RLS + UI), so the remainder ships
+// as a NEW entry/bag: orders not covered by any EXPORTED bag, on the next free
+// bag_number, recipient prefilled from the exported bag. ─────────────────────
+
+// Late desc deliberately has NO "/n" — the already-printed 寄件單 labels
+// (e.g. "Bag 1/2") must not be retro-invalidated by a new bag count.
+export function lateBagDesc(bNum: number, items: number, bagNo: number): string {
+  return `${defaultProductDesc(bNum, items)} Bag ${bagNo}`;
+}
+
+// Orders in the live group that no EXPORTED bag covers (the shippable remainder).
+export function lateOrdersFor(g: BuyerGroup, bags: ShippingEntry[]): GroupOrder[] {
+  const exported = bags.filter((e) => e.status === "exported");
+  if (!exported.length) return []; // not a late-order case — normal edit flows cover it
+  const covered = new Set(exported.flatMap((e) => e.includedOrderIds));
+  return g.orderList.filter((o) => !covered.has(o.id));
+}
+
+// The ready-to-open form entry for the remainder — CREATE mode (no non-exported
+// bag yet: next bag_number, recipient copied from the latest exported bag) or
+// EDIT mode (a draft/encoded late bag exists: reuse its id/bag_number and the
+// seller's edits, but ALWAYS refresh the covered orders/amount from the live
+// group — new mines keep flowing in until export). Returns null when the group
+// has no exported bag or nothing is uncovered.
+export function lateFormEntry(g: BuyerGroup, bags: ShippingEntry[], sessionKey: string, newIdVal: string, fee: number): ShippingEntry | null {
+  const lateOrders = lateOrdersFor(g, bags);
+  if (!lateOrders.length) return null;
+  const exported = bags.filter((e) => e.status === "exported").sort((a, b) => a.bagNumber - b.bagNumber);
+  const editable = bags.find((e) => e.status !== "exported") ?? null;
+  const prev = exported[exported.length - 1];
+  const bagNumber = editable?.bagNumber ?? Math.max(...bags.map((b) => b.bagNumber)) + 1;
+  return {
+    id: editable?.id ?? newIdVal,
+    sessionKey,
+    buyerNumber: g.bNum,
+    bagNumber,
+    includedOrderIds: lateOrders.map((o) => o.id),
+    recipientName: editable?.recipientName ?? prev.recipientName,
+    phone: editable?.phone ?? prev.phone,
+    storeId: editable?.storeId ?? prev.storeId,
+    tempLayer: editable?.tempLayer ?? prev.tempLayer,
+    productDesc: lateBagDesc(g.bNum, lateOrders.length, bagNumber),
+    orderAmount: lateOrders.reduce((s, o) => s + o.total, 0),
+    shippingFee: editable?.shippingFee ?? fee,
+    buyerUsername: g.handle,
+    status: "draft",
+    exportBatchId: null,
+    exportedAt: null,
+    shippedAt: null,
+  };
 }

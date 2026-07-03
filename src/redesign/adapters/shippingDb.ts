@@ -31,12 +31,13 @@ export function rowToEntry(row: Record<string, unknown>): ShippingEntry {
     status: (status === "encoded" || status === "exported" ? status : "draft") as ShipStatus,
     exportBatchId: row.export_batch_id ? String(row.export_batch_id) : null,
     exportedAt: row.exported_at ? String(row.exported_at) : null,
+    shippedAt: row.shipped_at ? String(row.shipped_at) : null,
   };
 }
 
-// `now` injectable for deterministic tests. export_batch_id / exported_at are
-// OMITTED — they are stamped exclusively by the P2 export RPC, so an encode
-// upsert can never clobber them.
+// `now` injectable for deterministic tests. export_batch_id / exported_at /
+// shipped_at are OMITTED — they are stamped exclusively by their RPCs (export /
+// mark-shipped), so an encode upsert can never clobber them.
 export function entryToRow(e: ShippingEntry, userId: string, nowIso: string): Record<string, unknown> {
   return {
     id: e.id,

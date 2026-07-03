@@ -10,14 +10,19 @@ import type { Buyer } from "../../lib/orderTypes";
 import {
   buyerGroupsFrom, draftEntryFor, validateEntry, entryIsValid, codTotal,
   mustSplit, splitSummary, buildBagEntries, validateSplit, splitIsValid, defaultProductDesc,
+  lateOrdersFor, lateFormEntry,
   SHIP_TEMP_AMBIENT, SHIP_TEMP_FROZEN, SHIP_DEFAULT_FEE, SHIP_MAX_DESC, STORE_LOOKUP_URL, SPLIT_MAX_BAGS,
   type BuyerGroup, type ShippingEntry, type EntryErrors, type SharedRecipient,
 } from "../adapters/shipping";
 import { loadShippingEntries, upsertShippingEntry, deleteShippingEntry } from "../adapters/shippingDb";
 import {
   quotaForPlan, callExportRpc, loadExportedCount, entryToXlsRow, exportFilename,
-  fetchShipTemplate, buildXlsmFromTemplate, deliverXlsm, hasNativeFileShare,
+  fetchShipTemplate, buildXlsmFromTemplate, deliverXlsm, hasNativeFileShare, markBatchShipped,
 } from "../adapters/shippingExport";
+import {
+  defaultFeeFor, legacyLocalSettings, mirrorLegacyFee, loadShippingSettings, saveShippingSettings,
+  clampThreshold, type ShippingSettings,
+} from "../adapters/shippingSettings";
 import { isAppShell } from "../adapters/appShell";
 import { useT, tpl, type RedesignT } from "../i18n";
 
@@ -45,15 +50,22 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
   const [showErr, setShowErr] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
-  // Editable DEFAULT fee for NEW entries. NT$38 is the STANDARD OPEN POINT/賣貨便
-  // fee in Taiwan (the factory default); 賣貨便 also rejects fees above site-wide
-  // caps, so this must never be hardcoded. Quick presets persisted per device
-  // (sfl_rd_ship_fee); the full configurable Settings field is P3. Per-entry
-  // edit in the form stays; validator range 0–100 unchanged (outer islands etc.).
-  const [defaultFee, setDefaultFee] = useState<number>(() => {
-    try { const raw = localStorage.getItem("sfl_rd_ship_fee"); const v = Number(raw); return raw != null && Number.isFinite(v) && v >= 0 && v <= 100 ? v : SHIP_DEFAULT_FEE; } catch { return SHIP_DEFAULT_FEE; }
-  });
-  const pickDefaultFee = (v: number) => { setDefaultFee(v); try { localStorage.setItem("sfl_rd_ship_fee", String(v)); } catch { /* ignore */ } };
+  // P3b shipping defaults — DB-BACKED (cross-device, seller_shipping_settings).
+  // Starts from the legacy per-device preset (sfl_rd_ship_fee) / factory NT$38;
+  // the DB row overrides once loaded. defaultFee feeds NEW entries + the Free
+  // toggle pair (0 ↔ defaultFee); freeThreshold = free-shipping auto-rule
+  // (null = off). Per-entry edit stays; validator range 0–100 unchanged.
+  const [settings, setSettings] = useState<ShippingSettings>(() => legacyLocalSettings());
+  const [thrDraft, setThrDraft] = useState<string>("");
+  const applySettings = (patch: Partial<ShippingSettings>) => {
+    const next = { ...settings, ...patch };
+    setSettings(next);
+    mirrorLegacyFee(next.defaultFee);              // offline fallback stays fresh
+    void saveShippingSettings(next);               // one upsert per change
+  };
+  const pickDefaultFee = (v: number) => applySettings({ defaultFee: v });
+  // P3b mark-as-shipped — per-batch RPC; status stays 'exported' (quota-safe).
+  const [markBusy, setMarkBusy] = useState<string | null>(null);
   // P2 export — quota meter (ONE count read on mount), selection, RPC-then-file.
   const [exportedCount, setExportedCount] = useState<number | null>(null);
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -69,7 +81,8 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
   const [sBusy, setSBusy] = useState(false);
   const [sNote, setSNote] = useState("");
 
-  // READ-ON-LOAD ONLY — one select for this session window's entries; no poll.
+  // READ-ON-LOAD ONLY — one entries select + one count + one settings read for
+  // this screen open; no poll.
   useEffect(() => {
     let active = true;
     void loadShippingEntries(sessionKey).then((rows) => {
@@ -78,6 +91,11 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
       setSel(new Set(rows.filter((e) => e.status === "encoded").map((e) => e.id))); // default: all encoded
     });
     void loadExportedCount().then((n) => { if (active) setExportedCount(n); });
+    void loadShippingSettings().then((s) => {
+      if (!active || !s) return; // no row yet → keep legacy/factory
+      setSettings(s);
+      setThrDraft(s.freeThreshold != null ? String(s.freeThreshold) : "");
+    });
     return () => { active = false; };
   }, [sessionKey]);
 
@@ -89,11 +107,21 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
   const bagCountFor = (bNum: number): number => bagsFor(bNum).length;
 
   // Open the encode form: saved fields kept; amount/items ALWAYS refreshed from
-  // the live group (order sums are source-of-truth; manual splits = P3).
+  // the live group (order sums are source-of-truth). New drafts take the
+  // configured default fee — or 0 when the free-shipping auto-rule qualifies.
   const openForm = (g: BuyerGroup) => {
     const saved = entryFor(g.bNum);
-    const base = saved ?? { ...draftEntryFor(g, sessionKey, newId()), shippingFee: defaultFee };
+    const base = saved ?? { ...draftEntryFor(g, sessionKey, newId()), shippingFee: defaultFeeFor(g.total, settings) };
     setForm({ ...base, includedOrderIds: g.orderIds, orderAmount: g.total });
+    setOpenB(g.bNum); setShowErr(false); setNote("");
+  };
+  // Late orders (P3b): the buyer mined MORE after export — open the SAME encode
+  // form on the remainder entry (new/next bag, recipient prefilled from the
+  // exported bag). Exported rows stay immutable; this saves a NEW row.
+  const openLate = (g: BuyerGroup) => {
+    const late = lateFormEntry(g, bagsFor(g.bNum), sessionKey, newId(), defaultFeeFor(g.total, settings));
+    if (!late) return;
+    setForm(late);
     setOpenB(g.bNum); setShowErr(false); setNote("");
   };
   const closeForm = () => { setOpenB(null); setForm(null); setShowErr(false); };
@@ -106,7 +134,7 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
     const r = await upsertShippingEntry(encoded);
     setBusy(false);
     if (!r.ok) { setNote(tpl(t.rd_shp_save_failed, { err: r.error || "?" })); return; }
-    setEntries((list) => [...list.filter((e) => !(e.buyerNumber === encoded.buyerNumber && e.bagNumber === 1)), encoded]);
+    setEntries((list) => [...list.filter((e) => !(e.buyerNumber === encoded.buyerNumber && e.bagNumber === encoded.bagNumber)), encoded]);
     setSel((old) => new Set([...old, encoded.id]));
     closeForm();
   };
@@ -129,7 +157,7 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
       setNBags(2);
       setAssign({});
       setSShared({ recipientName: single?.recipientName ?? "", phone: single?.phone ?? "", storeId: single?.storeId ?? "", tempLayer: single?.tempLayer ?? SHIP_TEMP_AMBIENT });
-      setSFee(single?.shippingFee ?? defaultFee);
+      setSFee(single?.shippingFee ?? defaultFeeFor(g.total, settings));
     }
     setSplitB(g.bNum); setSShowErr(false); setSNote(""); closeForm();
   };
@@ -192,7 +220,14 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
       const r = await callExportRpc(chosen.map((e) => e.id));
       if (!r.ok) {
         if (r.error === "quota_exceeded") setExNote({ kind: "err", text: tpl(t.rd_shp_quota_block, { used: r.used ?? 0, quota: r.quota ?? 0, n: r.selected ?? chosen.length }) });
-        else setExNote({ kind: "err", text: tpl(t.rd_shp_export_failed, { err: r.error || "?" }) });
+        else if (r.error === "nothing_to_export") {
+          // Stale selection (another device already exported these rows — the
+          // sql/10 stamped=0 guard). Refresh once so the list matches the DB.
+          setExNote({ kind: "err", text: t.rd_shp_none_encoded });
+          const rows = await loadShippingEntries(sessionKey);
+          setEntries(rows);
+          setSel(new Set(rows.filter((e) => e.status === "encoded").map((e) => e.id)));
+        } else setExNote({ kind: "err", text: tpl(t.rd_shp_export_failed, { err: r.error || "?" }) });
         return;
       }
       // server has stamped exported — reflect locally regardless of file outcome
@@ -216,6 +251,35 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
     }
   };
 
+  // ── P3b: exported batches (mark-as-shipped). Derived from the already-loaded
+  // entries — zero new reads; one RPC per tap. Status stays 'exported'.
+  const batches = useMemo(() => {
+    const m = new Map<string, { id: string; exportedAt: string; count: number; shipped: boolean }>();
+    for (const e of entries) {
+      if (e.status !== "exported" || !e.exportBatchId) continue;
+      const b = m.get(e.exportBatchId);
+      if (b) {
+        b.count++;
+        b.shipped = b.shipped && !!e.shippedAt;
+        if (e.exportedAt && e.exportedAt > b.exportedAt) b.exportedAt = e.exportedAt;
+      } else m.set(e.exportBatchId, { id: e.exportBatchId, exportedAt: e.exportedAt ?? "", count: 1, shipped: !!e.shippedAt });
+    }
+    return [...m.values()].sort((a, b) => (a.exportedAt < b.exportedAt ? 1 : -1));
+  }, [entries]);
+  const batchDate = (iso: string): string =>
+    iso ? new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Taipei", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(iso)) : "—";
+  const doMarkShipped = async (batchId: string, shipped: boolean) => {
+    if (markBusy) return;
+    setMarkBusy(batchId);
+    try {
+      const r = await markBatchShipped(batchId, shipped);
+      if (r.ok) {
+        const nowIso = new Date().toISOString();
+        setEntries((list) => list.map((e) => (e.exportBatchId === batchId && e.status === "exported" ? { ...e, shippedAt: shipped ? nowIso : null } : e)));
+      }
+    } finally { setMarkBusy(null); }
+  };
+
   return (
     <div>
       <div style={headerBar}>
@@ -231,16 +295,42 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
       </div>
 
       <div style={{ padding: "14px 14px 22px" }}>
-        {/* HOTFIX: default-fee presets (applies to NEW entries; per-entry edit stays) */}
-        <div style={{ ...card, padding: "10px 13px", marginBottom: 12, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-          <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", flexShrink: 0 }}>{t.rd_shp_default_fee}</span>
-          <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
-            {[38, 60, 100, 0].map((v) => (
-              <button key={v} onClick={() => pickDefaultFee(v)} style={{ minWidth: 44, padding: "6px 0", borderRadius: 8, fontFamily: mono, fontSize: 12, fontWeight: 700, cursor: "pointer", border: defaultFee === v ? "1.4px solid var(--accent)" : "1px solid var(--border-strong)", background: defaultFee === v ? "var(--accent-soft)" : "var(--surface-2)", color: defaultFee === v ? "var(--accent-fg)" : "var(--text-dim)" }}>
-                {v === 0 ? t.rd_shp_free : `$${v}`}
-              </button>
-            ))}
+        {/* P3b shipping defaults — DB-backed (cross-device): default fee presets +
+            the free-shipping auto-rule threshold. Applies to NEW entries;
+            per-entry edit stays. */}
+        <div style={{ ...card, padding: "10px 13px", marginBottom: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", flexShrink: 0 }}>{t.rd_shp_default_fee}</span>
+            <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
+              {[38, 60, 100, 0].map((v) => (
+                <button key={v} onClick={() => pickDefaultFee(v)} style={{ minWidth: 44, padding: "6px 0", borderRadius: 8, fontFamily: mono, fontSize: 12, fontWeight: 700, cursor: "pointer", border: settings.defaultFee === v ? "1.4px solid var(--accent)" : "1px solid var(--border-strong)", background: settings.defaultFee === v ? "var(--accent-soft)" : "var(--surface-2)", color: settings.defaultFee === v ? "var(--accent-fg)" : "var(--text-dim)" }}>
+                  {v === 0 ? t.rd_shp_free : `$${v}`}
+                </button>
+              ))}
+            </div>
           </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 9, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", flexShrink: 0 }}>{t.rd_shp_free_rule}</span>
+            <div style={{ display: "flex", gap: 6, marginLeft: "auto", alignItems: "center" }}>
+              <button onClick={() => { setThrDraft(""); applySettings({ freeThreshold: null }); }} style={{ minWidth: 44, padding: "6px 8px", borderRadius: 8, fontFamily: "var(--font-ui)", fontSize: 11.5, fontWeight: 700, cursor: "pointer", border: settings.freeThreshold == null ? "1.4px solid var(--accent)" : "1px solid var(--border-strong)", background: settings.freeThreshold == null ? "var(--accent-soft)" : "var(--surface-2)", color: settings.freeThreshold == null ? "var(--accent-fg)" : "var(--text-dim)" }}>
+                {t.rd_shp_off}
+              </button>
+              <input
+                value={thrDraft}
+                onChange={(e) => setThrDraft(e.target.value.replace(/[^\d]/g, ""))}
+                onBlur={() => {
+                  const v = clampThreshold(thrDraft);
+                  setThrDraft(v != null ? String(v) : "");
+                  if (v !== settings.freeThreshold) applySettings({ freeThreshold: v });
+                }}
+                inputMode="numeric" placeholder="≥ 1000"
+                style={{ ...input, width: 88, padding: "6px 9px", fontFamily: mono, fontSize: 12, borderColor: settings.freeThreshold != null ? "var(--accent)" : "var(--border-strong)" }}
+              />
+            </div>
+          </div>
+          {settings.freeThreshold != null && (
+            <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.45 }}>{tpl(t.rd_shp_free_rule_hint, { amt: `${cur}${settings.freeThreshold.toLocaleString()}` })}</div>
+          )}
         </div>
         {loading && <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "14px 0" }}>{t.rd_shp_loading}</div>}
         {!loading && groups.length === 0 && (
@@ -256,6 +346,10 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
             const done = bags.length > 0 && bags.every((e) => e.status !== "draft");
             const isExported = bags.some((e) => e.status === "exported"); // immutable — no re-edit
             const needsSplit = mustSplit(g.total) && !isSplit;
+            // P3b: shipped = every exported bag carries the mark-as-shipped stamp;
+            // lateN = orders mined AFTER export (not covered by any exported bag).
+            const isShipped = isExported && bags.filter((e) => e.status === "exported").every((e) => e.shippedAt);
+            const lateN = isExported ? lateOrdersFor(g, bags).length : 0;
             return (
               <div key={g.bNum} style={{ ...card, padding: "12px 14px" }}>
                 {/* Group row — mirrors the physical bag: Buyer # is the anchor */}
@@ -266,8 +360,8 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
                     <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{tpl(t.rd_shp_items, { n: g.items })} · {cur}{g.total.toLocaleString()}</div>
                   </div>
                   {isExported ? (
-                    <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "6px 11px", borderRadius: 8, flexShrink: 0 }}>
-                      ✓ {t.rd_shp_exported}{isSplit ? ` · ${tpl(t.rd_shp_bags_n, { n: bags.length })}` : ""}
+                    <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 800, color: isShipped ? "var(--ok)" : "var(--accent-fg)", background: isShipped ? "rgba(16,185,129,.12)" : "var(--accent-soft)", padding: "6px 11px", borderRadius: 8, flexShrink: 0 }}>
+                      ✓ {isShipped ? t.rd_shp_shipped : t.rd_shp_exported}{isSplit ? ` · ${tpl(t.rd_shp_bags_n, { n: bags.length })}` : ""}
                     </span>
                   ) : needsSplit ? (
                     <button onClick={() => (isSplitOpen ? closeSplit() : openSplit(g))} style={{ fontSize: 11.5, fontWeight: 700, color: "#fff", background: "var(--danger)", border: "none", padding: "7px 12px", borderRadius: 8, cursor: "pointer", fontFamily: "var(--font-ui)", flexShrink: 0 }}>
@@ -295,6 +389,14 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
                 {/* Optional split entry point (2+ items, not exported, not yet split) */}
                 {!isExported && !isSplit && !needsSplit && g.items >= 2 && !isSplitOpen && (
                   <button onClick={() => openSplit(g)} style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", background: "transparent", border: "none", padding: 0, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_shp_split} ›</button>
+                )}
+                {/* P3b late orders: mined AFTER export → encode the remainder as a
+                    NEW bag (exported rows stay immutable). Chip stays until the
+                    remainder itself is exported (re-tap = re-edit). */}
+                {lateN > 0 && !isOpen && (
+                  <button onClick={() => openLate(g)} style={{ marginTop: 8, display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 800, color: "var(--warn, #b45309)", background: "rgba(245,158,11,.12)", border: "1px solid rgba(245,158,11,.4)", padding: "6px 11px", borderRadius: 8, cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+                    + {tpl(t.rd_shp_late_chip, { n: lateN })} ›
+                  </button>
                 )}
 
                 {/* ── Split editor: N bags, item assignment, shared recipient ── */}
@@ -428,7 +530,7 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
                         <label style={lbl}>{t.rd_shp_fee}</label>
                         <input value={String(form.shippingFee)} onChange={(e) => F({ shippingFee: Number(e.target.value.replace(/[^\d]/g, "")) || 0 })} inputMode="numeric" style={{ ...input, fontFamily: mono }} />
                       </div>
-                      <button onClick={() => F({ shippingFee: form.shippingFee === 0 ? defaultFee : 0 })} style={{ flexShrink: 0, padding: "9px 11px", borderRadius: 9, fontFamily: "var(--font-ui)", fontSize: 11.5, fontWeight: 700, cursor: "pointer", border: form.shippingFee === 0 ? "1.4px solid var(--ok)" : "1px solid var(--border-strong)", background: form.shippingFee === 0 ? "rgba(16,185,129,.12)" : "var(--surface-2)", color: form.shippingFee === 0 ? "var(--ok)" : "var(--text-dim)" }}>
+                      <button onClick={() => F({ shippingFee: form.shippingFee === 0 ? settings.defaultFee : 0 })} style={{ flexShrink: 0, padding: "9px 11px", borderRadius: 9, fontFamily: "var(--font-ui)", fontSize: 11.5, fontWeight: 700, cursor: "pointer", border: form.shippingFee === 0 ? "1.4px solid var(--ok)" : "1px solid var(--border-strong)", background: form.shippingFee === 0 ? "rgba(16,185,129,.12)" : "var(--surface-2)", color: form.shippingFee === 0 ? "var(--ok)" : "var(--text-dim)" }}>
                         {t.rd_shp_free}
                       </button>
                     </div>
@@ -486,6 +588,26 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── P3b: exported batches — one-tap mark-as-shipped (optional/manual;
+            status stays 'exported', quota untouched; tap again to undo) ── */}
+        {batches.length > 0 && (
+          <div style={{ ...card, marginTop: 14, padding: "13px 14px" }}>
+            <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, color: "var(--text)", marginBottom: 9 }}>{t.rd_shp_batches}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+              {batches.map((b) => (
+                <div key={b.id} style={{ display: "flex", alignItems: "center", gap: 9 }}>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    📦 {batchDate(b.exportedAt)} · {tpl(t.rd_shp_bags_n, { n: b.count })}
+                  </span>
+                  <button onClick={() => void doMarkShipped(b.id, !b.shipped)} disabled={markBusy === b.id} style={{ flexShrink: 0, fontSize: 11, fontWeight: 800, padding: "6px 11px", borderRadius: 8, cursor: "pointer", fontFamily: "var(--font-ui)", opacity: markBusy === b.id ? 0.6 : 1, border: b.shipped ? "1px solid rgba(16,185,129,.35)" : "none", background: b.shipped ? "rgba(16,185,129,.12)" : "var(--accent)", color: b.shipped ? "var(--ok)" : "var(--accent-text)" }}>
+                    {markBusy === b.id ? "…" : b.shipped ? `✓ ${t.rd_shp_shipped}` : t.rd_shp_mark_shipped}
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>

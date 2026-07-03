@@ -30,7 +30,7 @@ const entry: ShippingEntry = {
   includedOrderIds: [1750000000001, 1750000000002],
   recipientName: "王小明", phone: "0912345678", storeId: "123456",
   tempLayer: "常溫", productDesc: "#4 商品x2", orderAmount: 780, shippingFee: 60,
-  buyerUsername: "ana", status: "encoded", exportBatchId: null, exportedAt: null,
+  buyerUsername: "ana", status: "encoded", exportBatchId: null, exportedAt: null, shippedAt: null,
 };
 
 beforeEach(() => {
@@ -43,11 +43,17 @@ describe("row mappers", () => {
   it("entryToRow → rowToEntry round-trips every field (snake_case ↔ camelCase)", () => {
     const row = entryToRow(entry, "u1", "2026-07-03T00:00:00.000Z");
     expect(row).toMatchObject({ user_id: "u1", session_key: "2026-07-02~3d", buyer_number: 4, bag_number: 1, status: "encoded", updated_at: "2026-07-03T00:00:00.000Z" });
-    // export stamps are OMITTED from the upsert payload — only the P2 RPC writes them
+    // RPC-owned stamps are OMITTED from the upsert payload — only the export /
+    // mark-shipped RPCs write them, so an encode upsert can never clobber them
     expect("export_batch_id" in row).toBe(false);
     expect("exported_at" in row).toBe(false);
+    expect("shipped_at" in row).toBe(false);
     const back = rowToEntry({ ...row, id: "e-1" });
     expect(back).toEqual(entry);
+  });
+  it("rowToEntry maps shipped_at (P3b mark-as-shipped stamp)", () => {
+    const row = { ...entryToRow(entry, "u1", "2026-07-03T00:00:00.000Z"), id: "e-1", shipped_at: "2026-07-04T01:00:00.000Z" };
+    expect(rowToEntry(row).shippedAt).toBe("2026-07-04T01:00:00.000Z");
   });
   it("rowToEntry is defensive: bad temp/status fall back, numeric strings coerce", () => {
     const e = rowToEntry({ id: "x", session_key: "d", buyer_number: "7", bag_number: null, included_order_ids: ["5", "bad"], temp_layer: "weird", status: "weird", order_amount: "150.5", shipping_fee: "0" });
