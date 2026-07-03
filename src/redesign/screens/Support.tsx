@@ -14,6 +14,7 @@ export default function Support({ onLegal }: { onLegal: () => void }) {
     { title: t.rd_sup_g3, body: t.rd_sup_g3_body },
     // g4 = "Renewing your subscription" (prices + subscribe/renew) → hidden on iOS.
     ...(isIOS() ? [] : [{ title: t.rd_sup_g4, body: t.rd_sup_g4_body }]),
+    { title: t.rd_sup_g5, body: t.rd_sup_g5_body },
   ];
   const [open, setOpen] = useState<number | null>(null);
   return (

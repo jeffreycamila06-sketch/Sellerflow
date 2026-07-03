@@ -58,7 +58,7 @@ export default function SettingsHub({
           {/* Owner-only (production: isAdminUser) */}
           {isAdmin && <Tile icon={ic.shield} label={t.rd_sh_admin} onClick={onAdmin} />}
           <Tile icon={ic.chart} label={t.rd_sh_sales} onClick={onSales} />
-          {isAdmin && <Tile icon={ic.truck} label={t.rd_sh_shipping} onClick={onShipping} />}
+          <Tile icon={ic.truck} label={t.rd_sh_shipping} onClick={onShipping} />
           {isAdmin && <Tile icon={ic.database} label={t.rd_sh_customer_data} onClick={onCustomerData} />}
           <Tile icon={ic.doclock} label={t.lg_pt_title} onClick={onLegal} />
           <Tile icon={ic.trash} label={t.rd_sh_delete} onClick={onDelete} variant="danger" />

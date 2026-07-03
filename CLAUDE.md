@@ -1060,3 +1060,135 @@ check SA LOOB ng body (secure).
 Branch cleanup (18 merged) · APK device test (Games + winner print + web-align
 verify sa AIMO) · unang Games announcement via Broadcast · landing fake stats ·
 Apple review + signing replies pending.
+
+## SESSION 2026-07-03 — 7-11 交貨便 SHIPPING EXPORT (branch `claude/shipping-711-p1`, P1→P3a COMPLETE, P4 GATE GREEN — NOT YET MERGED)
+Buong feature saga sa isang branch (off `main` `a32f9d5`): encode → validate →
+quota-gated export → REAL 賣貨便 import na TANGGAP. Bawat phase: full diff + tests +
+Jeff "go" bago commit; **walang merge hangga't walang explicit merge decision.**
+Commits: `247e9b6` (P1) → `9d4e5ed`+`5cf72d0` (template scaffold+upload) → `b43d03b`
+(P2) → `a3460d5` (zip-patch) → `2462d9c` (NT$38) → `ba877c5` (P3a + RLS doc-sync).
+**549/549 vitest green · typecheck clean · lint 54 = main parity.** Preview-tested
+PASADO (encode, export, split bags); **P4 gate = actual import sa 賣貨便 website =
+GREEN.**
+
+### Concept + architecture (load-bearing)
+- **One bag = one buyer group = one `shipping_entries` row = one Excel row = one
+  寄件單.** Grouping key = buyer# sa CURRENT session window — tugma sa pisikal na
+  pag-sort ng mga item per buyer# bag. REPLACES ang lumang localStorage shipment
+  manager (admin-gated old-main port, walang real user data — desisyon ni Jeff).
+- **Files (redesign adapters ONLY — zero protected-file touch):**
+  `adapters/shipping.ts` (PURE: grouping, validators, split logic),
+  `shippingDb.ts` (Supabase CRUD, productsDb pattern), `shippingExport.ts`
+  (xls row mapping, quota mirror, RPC call, file delivery), `shippingXlsmPatch.ts`
+  (raw ZIP patcher, ZERO deps), `screens/Shipping.tsx` (rewritten), i18n
+  **57 `rd_shp_*` keys ×7 langs**. Orders header may 🚚 → Shipping; SettingsHub
+  tile ungated (dating admin-only).
+- **Session-window key** `sessionKeyFor(todayId, windowStart, windowDays)`:
+  active multi-day → `"<windowStart>~<N>d"` (isang bucket buong window, tugma sa
+  continued buyer#s); 1-day/expired → Taipei day id (byte-identical sa dating
+  single-day bucket). Reuses `computeWindowState` — walang bagong window logic.
+- **EGRESS-SAFE:** one select per screen-open (current session_key) + one upsert
+  per encode save + one RPC per export. ZERO poll.
+
+### DB (applied to prod via MCP ni Jeff/chat-Claude; repo = doc mirrors)
+- **`sql/09_shipping_entries.sql`** — 19 cols (`bag_number` default 1,
+  `included_order_ids` jsonb, status `draft→encoded→exported`, export stamps).
+  **Unique index `(user_id, session_key, buyer_number, bag_number)` = ang upsert
+  conflict target** (re-save = update in place cross-device, walang dupes). FK
+  `on delete cascade` (applied live pagkatapos ng verify).
+- **RLS exported-immutability hardening** (migration
+  `shipping_entries_exported_immutable`, chat-Claude): UPDATE/DELETE policies =
+  `auth.uid() = user_id AND status <> 'exported'` → exported rows HINDI na
+  magagalaw/madedelete via direct API (walang quota-freeing revert). Ang RPC ay
+  SECURITY DEFINER/owner = bypasses RLS by design. Stale-device re-save ng
+  exported row → "Save failed" (desired). sql/09 doc = synced sa LIVE definitions
+  (fetched via MCP, hindi hinulaan).
+- **`sql/10_shipping_export_rpc.sql`** — `check_and_export_shipping(uuid[])`:
+  SECURITY DEFINER; plan mula `seller_profiles.auth_user_id` (**NEVER
+  client-writable**); quota free 50 · basic 200 · pro 500 · master UNLIMITED;
+  **30-day SLIDING window** (`exported_at >= now() - interval '30 days'`, direct
+  row count = zero drift, walang counter table);
+  **`pg_advisory_xact_lock(hashtext('ship_export_'||caller))`** = two-device
+  export races can never double-spend quota; atomic UPDATE stamps
+  exported+batch+timestamp sa caller's ENCODED rows lang. **Client builds the
+  file ONLY after RPC ok** — ang quota ay puro server-side; client meter =
+  display mirror lang. Line-by-line review ni chat-Claude bago in-apply.
+
+### ⚠️ THE ZIP-PATCH LESSON (P4 rejection → fallback — pinaka-load-bearing)
+- **SheetJS full rebuild = REJECTED ng 賣貨便** ("Failed to read Excel file").
+  Ang `bookVBA:true` round-trip ay nagre-rebuild ng BUONG zip (36KB → 73KB) —
+  nabubuhay ang VBA pero iba na ang internal structure → ayaw ng importer.
+- **Fix (`shippingXlsmPatch.ts`, ~205 lines, ZERO deps): raw ZIP patching** —
+  ang data sheet XML LANG (`訂單匯入` = sheet1.xml, resolved via workbook.xml +
+  rels) ang pinapalitan; lahat ng ibang 16 zip entries = **compressed bytes
+  VERBATIM** (VBA 47,616 bytes exact). Patched sheet = STORED (method 0) na may
+  fresh crc32; inflate via `DecompressionStream("deflate-raw")` (jsdom Blob may
+  walang `.stream()` → direct `ReadableStream` construction). Cells = `inlineStr`
+  (iwas sharedStrings churn); **empty value = NO cell emitted** para ang column
+  Text `@` styles ang masunod; `<dimension>` updated; insert bago `</sheetData>`.
+- **Guard tests (shippingExport.test.ts, real-template fixture):** output size
+  30–60KB window · lahat ng non-sheet entries BYTE-IDENTICAL · vbaProject exact ·
+  B1="1.4" sa 填寫說明 untouched · headers preserved · strings sa A7 · leading-0
+  phone survives · `!ref A1:K{n}`.
+- **Plan B kung kailanganin (bonus info ni Jeff):** tumatanggap din ang 賣貨便 ng
+  **.xlsx** (walang VBA) at may **2MB** file limit.
+- **TEMPLATE = SACRED BYTES:** `public/templates/myship-import-template.xlsm`
+  (git-mv mula Chinese filename; Vite copies public/ → served sa
+  `/templates/`). SHA-256
+  `1d1b9219780edbe85133cf61818d56eb9f2fa32ba1f59393f105fdb4725fcabb`, 36,032
+  bytes. **HUWAG kailanman i-re-save sa Excel** — byte-identity ang buhay ng
+  zip-patch. (Git-bridge saga: 2× nabigo ang upload bago tumama — laging
+  i-verify via ls-remote/API bago maniwalang nakalanding.)
+
+### 賣貨便 template rules (verified sa actual file, enforced ng validators)
+Cols A–J LAHAT strings; data starts **row 7**; only sheet `訂單匯入`; col K =
+macro's 驗證結果. 取件人姓名 ≤10 width (CJK=2), BAWAL digits/symbols (username
+shapes fail by design — **NEVER auto-fill name from username**; username → col J
+其他資訊 lang). Phone `^09\d{8}$` · store `^\d{6}$` (emap.pcsc.com.tw lookup
+link) · fee 0–100 · order 0–20,000 · **55 ≤ order+fee ≤ 20,000 per row** · desc
+≤200 · max 500 rows. Validators return ERROR CODES → screen maps sa i18n.
+
+### NT$38 MARKET CORRECTION (huwag ibalik sa 60)
+P4 business-rule rejection `[運費金額]：不可大於全站活動運費38元` → akala namin
+July promo; **korrek ni Jeff: NT$38 = STANDARD OPEN POINT/賣貨便 fee sa Taiwan
+(hindi promo).** `SHIP_DEFAULT_FEE = 38` factory default lahat ng dulo; Free
+toggle = 0 ↔ 38; presets card $38/$60/$100/Free (persisted
+`sfl_rd_ship_fee`, validated 0–100). **Validator range 0–100 SADYANG hindi
+ginalaw** (outer islands ang use case). Live column default ay 60 pa rin
+(cosmetic — client always sends explicit fee; optional one-liner ALTER sa sql/09
+note).
+
+### P3a split bags (model)
+- `bag_number` 1..N (max 6); **item-assignment model** — bawat order/item
+  itinuturo sa isang bag; per-bag amounts DERIVED sa assigned orders; recipient
+  fields SHARED (isang beses ie-enter); **bawat bag may SARILING fee** (own
+  NT$38 each). Desc = `#4 商品x2 Bag 1/2` (寄件單↔bag match).
+- **Mandatory split** pag group total > NT$20,000 (`mustSplit`) — imposible ang
+  single row sa importer cap. Red chip + walang single-form path.
+- **Id reuse per bag_number** sa re-edit (iwas PK churn sa upsert conflict
+  target); shrink bags → delete ng sobra; "Remove split" guarded vs mustSplit.
+- Quota counting: **one exported row = one count** → split bags count
+  individually (isang parcel bawat isa — tama).
+
+### APK / device flow
+Ang APK shell ay WALANG Capacitor Filesystem/Share plugins → sa app shell
+(`isAppShell() && !hasNativeFileShare()`), ang Export button ay pinapalitan ng
+guidance card ("buksan sa computer/browser para i-export"). **Expected main
+flow: encode-on-phone habang live → export-on-laptop pagkatapos.** Web =
+blob download `sellerflow_711_YYYYMMDD_HHmm.xlsm` (Taipei time).
+
+### User Guide (in-app, Support screen)
+`rd_sup_g5`/`rd_sup_g5_body` accordion sa Support — 9-step 賣貨便 how-to (encode →
+export → myship.7-11.com.tw import → OPEN POINT/ibon label print → 4-day ship
+deadline + NT$55–20,000 per-bag rule). **ENGLISH content sa LAHAT ng 7 langs
+muna** (sadya, Jeff 2026-07-03 — keys ready para translatable later). Visible din
+sa iOS (walang payment content, hindi kasama sa g4 iOS gate).
+
+### Status + P3b backlog (post-merge follow-ups, explicitly deferred)
+- Rollout decision (Jeff 2026-07-03): **buong sellers agad, walang admin gate** —
+  end-to-end validated na kasama mismo ang 賣貨便 importer.
+- **P3b:** free-shipping auto-rule (`free_shipping_threshold` setting) ·
+  configurable Settings default fee (factory NT$38) · mark-batch-as-shipped ·
+  late-order handling (bagong item pagkatapos ng export → additional entry/bag) ·
+  **90-day retention purge** pg_cron (`status='exported' and exported_at <
+  now() - interval '90 days'`) · optional cosmetic ALTER (fee default 60→38).

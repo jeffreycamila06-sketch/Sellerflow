@@ -1,173 +1,493 @@
-// Screen 13 — Shipping. REAL manual shipment manager, ported from App.tsx Shipping
-// (1508-1754): reads the SAME localStorage (sf_shipments / sf_shipping_customer_data
-// per seller), groups orders into a daily-numbered shipment per buyer, edit/delete,
-// 7-ELEVEN MyShip xlsx export → auto-closes (marks shipped). NOT courier tracking —
-// production has none. Admin-only (gated by the caller, like App.tsx).
-import { useState, type CSSProperties } from "react";
+// Screen 13 — Shipping (7-11 交貨便, P1). REPLACES the old localStorage shipment
+// manager (Jeff 2026-07-03): groups the CURRENT session window's orders per
+// buyer# (one bag = one buyer group = one row), encode form (recipient / phone /
+// 7-11 store) with live 賣貨便 validation, entries persisted to shipping_entries
+// (RLS, cross-device). Export (.xlsm template round-trip + plan quota RPC) = P2;
+// split bags / free-shipping auto-rule = P3.
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { headerBar, headerTitle, card, mono } from "../ui";
+import type { Buyer } from "../../lib/orderTypes";
 import {
-  loadShipments, saveShipments, loadShippingCustomers, today as shipToday,
-  applyAddOrder, applyDeleteOrder, applyEditPrice, applyUpdateFee, applyMarkShipped,
-  buildMyShipRows, shipmentSubtotal, shipmentGrandTotal, findOpenShipment, nextDailyNum, isNumericPrice,
-  SHIP_MAX, MYSHIP_HEADERS, type Shipment, type ShippingCustomer,
+  buyerGroupsFrom, draftEntryFor, validateEntry, entryIsValid, codTotal,
+  mustSplit, splitSummary, buildBagEntries, validateSplit, splitIsValid, defaultProductDesc,
+  SHIP_TEMP_AMBIENT, SHIP_TEMP_FROZEN, SHIP_DEFAULT_FEE, SHIP_MAX_DESC, STORE_LOOKUP_URL, SPLIT_MAX_BAGS,
+  type BuyerGroup, type ShippingEntry, type EntryErrors, type SharedRecipient,
 } from "../adapters/shipping";
-import { useT, tpl } from "../i18n";
+import { loadShippingEntries, upsertShippingEntry, deleteShippingEntry } from "../adapters/shippingDb";
+import {
+  quotaForPlan, callExportRpc, loadExportedCount, entryToXlsRow, exportFilename,
+  fetchShipTemplate, buildXlsmFromTemplate, deliverXlsm, hasNativeFileShare,
+} from "../adapters/shippingExport";
+import { isAppShell } from "../adapters/appShell";
+import { useT, tpl, type RedesignT } from "../i18n";
 
-const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none" };
+const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
 const lbl: CSSProperties = { fontSize: 11, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 4 };
-const rid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+const errTxt: CSSProperties = { fontSize: 10.5, fontWeight: 600, color: "var(--danger)", marginTop: 3 };
+const newId = (): string => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`);
 
-export default function Shipping({ email = "", cur }: { email?: string; cur: string }) {
+// Error-code → localized message (validators return codes, not copy).
+const nameErrText = (t: RedesignT, e: EntryErrors["name"]): string =>
+  e === "required" ? t.rd_shp_err_required : e === "too_long" ? t.rd_shp_err_name_len : e === "forbidden" ? t.rd_shp_err_name_chars : "";
+const amountErrText = (t: RedesignT, e: EntryErrors["amounts"]): string =>
+  e === "fee_range" ? t.rd_shp_err_fee : e === "order_range" ? t.rd_shp_err_order : e === "total_low" ? t.rd_shp_err_total_low : e === "total_high" ? t.rd_shp_err_total_high : "";
+
+export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1, plan, onUpgrade }: {
+  cur: string; buyers?: Buyer[]; sessionKey: string; windowDays?: number;
+  plan?: string; onUpgrade?: () => void; // upgrade prompt hidden on iOS (no prop)
+}) {
   const t = useT();
-  const day = shipToday();
-  const [shipments, setShipments] = useState<Shipment[]>(() => loadShipments(email));
-  const [customers] = useState<ShippingCustomer[]>(() => loadShippingCustomers(email));
-  const [sel, setSel] = useState("");
-  const [product, setProduct] = useState("CLOTHING");
-  const [price, setPrice] = useState("");
-  const [err, setErr] = useState("");
-  const [msg, setMsg] = useState("");
-  const [editing, setEditing] = useState<{ shipmentId: string; orderId: string; value: string } | null>(null);
+  const groups = useMemo(() => buyerGroupsFrom(buyers), [buyers]);
+  const [entries, setEntries] = useState<ShippingEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [openB, setOpenB] = useState<number | null>(null); // expanded buyer group
+  const [form, setForm] = useState<ShippingEntry | null>(null);
+  const [showErr, setShowErr] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  // Editable DEFAULT fee for NEW entries. NT$38 is the STANDARD OPEN POINT/賣貨便
+  // fee in Taiwan (the factory default); 賣貨便 also rejects fees above site-wide
+  // caps, so this must never be hardcoded. Quick presets persisted per device
+  // (sfl_rd_ship_fee); the full configurable Settings field is P3. Per-entry
+  // edit in the form stays; validator range 0–100 unchanged (outer islands etc.).
+  const [defaultFee, setDefaultFee] = useState<number>(() => {
+    try { const raw = localStorage.getItem("sfl_rd_ship_fee"); const v = Number(raw); return raw != null && Number.isFinite(v) && v >= 0 && v <= 100 ? v : SHIP_DEFAULT_FEE; } catch { return SHIP_DEFAULT_FEE; }
+  });
+  const pickDefaultFee = (v: number) => { setDefaultFee(v); try { localStorage.setItem("sfl_rd_ship_fee", String(v)); } catch { /* ignore */ } };
+  // P2 export — quota meter (ONE count read on mount), selection, RPC-then-file.
+  const [exportedCount, setExportedCount] = useState<number | null>(null);
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [exporting, setExporting] = useState(false);
+  const [exNote, setExNote] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  // P3a split bags — item-assignment editor state (one open group at a time).
+  const [splitB, setSplitB] = useState<number | null>(null);
+  const [nBags, setNBags] = useState(2);
+  const [assign, setAssign] = useState<Record<number, number>>({});
+  const [sShared, setSShared] = useState<SharedRecipient>({ recipientName: "", phone: "", storeId: "", tempLayer: SHIP_TEMP_AMBIENT });
+  const [sFee, setSFee] = useState<number>(SHIP_DEFAULT_FEE);
+  const [sShowErr, setSShowErr] = useState(false);
+  const [sBusy, setSBusy] = useState(false);
+  const [sNote, setSNote] = useState("");
 
-  const persist = (next: Shipment[]) => { setShipments(next); saveShipments(email, next); };
-  const todayShipments = shipments.filter((s) => s.dayId === day);
-  const openToday = todayShipments.filter((s) => s.status === "open");
-  const shippedToday = todayShipments.filter((s) => s.status === "shipped");
-  const selected = customers.find((c) => c.username === sel) || null;
-  const existingForSelected = selected ? findOpenShipment(shipments, selected.username, day) : null;
-  const sorted = [...todayShipments].sort((a, b) => a.num - b.num);
+  // READ-ON-LOAD ONLY — one select for this session window's entries; no poll.
+  useEffect(() => {
+    let active = true;
+    void loadShippingEntries(sessionKey).then((rows) => {
+      if (!active) return;
+      setEntries(rows); setLoading(false);
+      setSel(new Set(rows.filter((e) => e.status === "encoded").map((e) => e.id))); // default: all encoded
+    });
+    void loadExportedCount().then((n) => { if (active) setExportedCount(n); });
+    return () => { active = false; };
+  }, [sessionKey]);
 
-  function addOrder(e: React.FormEvent) {
-    e.preventDefault(); setErr(""); setMsg("");
-    if (!selected) { setErr(t.rd_ship_err_select); return; }
-    const pr = product.trim(), pc = price.trim();
-    if (!pr) { setErr(t.rd_ship_err_product); return; }
-    if (!isNumericPrice(pc)) { setErr(t.rd_ship_err_price); return; }
-    if (!existingForSelected && openToday.length >= SHIP_MAX) { setErr(tpl(t.rd_ship_err_limit, { max: SHIP_MAX })); return; }
-    const r = applyAddOrder(shipments, selected, pr, pc, day, { shipment: rid(), order: rid() }, new Date().toISOString());
-    persist(r.next);
-    setMsg(r.existing ? tpl(t.rd_ship_added_existing, { num: r.num, name: selected.name }) : tpl(t.rd_ship_created_new, { num: r.num, name: selected.name }));
-    setSel(""); setPrice("");
-  }
-  function deleteOrder(shipmentId: string, orderId: string) {
-    if (!window.confirm(t.rd_ship_confirm_remove)) return;
-    persist(applyDeleteOrder(shipments, shipmentId, orderId)); setMsg(""); setErr("");
-  }
-  function saveEdit() {
-    if (!editing) return;
-    const v = editing.value.trim();
-    if (!isNumericPrice(v)) { setErr(t.rd_ship_err_price); return; }
-    persist(applyEditPrice(shipments, editing.shipmentId, editing.orderId, v));
-    setEditing(null); setMsg(t.rd_ship_amount_updated); setErr("");
-  }
-  function updateFee(shipmentId: string, fee: string) { persist(applyUpdateFee(shipments, shipmentId, fee)); }
+  const entryFor = (bNum: number): ShippingEntry | null =>
+    entries.find((e) => e.buyerNumber === bNum && e.bagNumber === 1) || null;
+  const bagsFor = (bNum: number): ShippingEntry[] =>
+    entries.filter((e) => e.buyerNumber === bNum).sort((a, b) => a.bagNumber - b.bagNumber);
+  const encodedCount = groups.filter((g) => { const bs = bagsFor(g.bNum); return bs.length > 0 && bs.every((e) => e.status !== "draft"); }).length;
+  const bagCountFor = (bNum: number): number => bagsFor(bNum).length;
 
-  async function exportXlsx() {
-    setErr(""); setMsg("");
-    if (!openToday.length) { setErr(t.rd_ship_no_open); return; }
-    if (openToday.some((s) => !s.name.trim())) { setErr(t.rd_ship_missing_name); return; }
+  // Open the encode form: saved fields kept; amount/items ALWAYS refreshed from
+  // the live group (order sums are source-of-truth; manual splits = P3).
+  const openForm = (g: BuyerGroup) => {
+    const saved = entryFor(g.bNum);
+    const base = saved ?? { ...draftEntryFor(g, sessionKey, newId()), shippingFee: defaultFee };
+    setForm({ ...base, includedOrderIds: g.orderIds, orderAmount: g.total });
+    setOpenB(g.bNum); setShowErr(false); setNote("");
+  };
+  const closeForm = () => { setOpenB(null); setForm(null); setShowErr(false); };
+
+  const save = async () => {
+    if (!form || busy) return;
+    if (!entryIsValid(form)) { setShowErr(true); return; }
     setBusy(true);
-    try {
-      const XLSX = await import("xlsx");
-      const rows = buildMyShipRows(openToday);
-      const ws = XLSX.utils.aoa_to_sheet([MYSHIP_HEADERS, ...rows]);
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-      XLSX.writeFile(wb, `myship-${day}.xlsx`);
-      const ids = new Set(openToday.map((s) => s.id));
-      persist(applyMarkShipped(shipments, ids));      // auto-close: open → shipped
-      setMsg(tpl(openToday.length === 1 ? t.rd_ship_exported_one : t.rd_ship_exported_many, { n: openToday.length }));
-    } catch (error) {
-      setErr(tpl(t.rd_ship_export_failed, { msg: error instanceof Error ? error.message : "unknown error" }));
-    } finally { setBusy(false); }
-  }
+    const encoded: ShippingEntry = { ...form, status: "encoded" };
+    const r = await upsertShippingEntry(encoded);
+    setBusy(false);
+    if (!r.ok) { setNote(tpl(t.rd_shp_save_failed, { err: r.error || "?" })); return; }
+    setEntries((list) => [...list.filter((e) => !(e.buyerNumber === encoded.buyerNumber && e.bagNumber === 1)), encoded]);
+    setSel((old) => new Set([...old, encoded.id]));
+    closeForm();
+  };
 
-  const stat = (l: string, v: number | string, c?: string) => (
-    <div style={{ ...card, padding: "10px 12px", textAlign: "center" }}><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 18, color: c || "var(--text)" }}>{v}</div><div style={{ fontSize: 10.5, color: "var(--text-muted)", fontWeight: 600 }}>{l}</div></div>
-  );
+  const errs = form ? validateEntry(form) : null;
+  const F = (patch: Partial<ShippingEntry>) => setForm((f) => (f ? { ...f, ...patch } : f));
+
+  // ── P3a split bags — open/prefill, save (upsert N + delete shrunk), remove. ──
+  const openSplit = (g: BuyerGroup) => {
+    const bags = bagsFor(g.bNum);
+    if (bags.length > 1) {
+      setNBags(Math.min(bags.length, SPLIT_MAX_BAGS));
+      const a: Record<number, number> = {};
+      bags.forEach((b) => b.includedOrderIds.forEach((oid) => { a[oid] = b.bagNumber; }));
+      setAssign(a);
+      setSShared({ recipientName: bags[0].recipientName, phone: bags[0].phone, storeId: bags[0].storeId, tempLayer: bags[0].tempLayer });
+      setSFee(bags[0].shippingFee);
+    } else {
+      const single = bags[0] ?? null;
+      setNBags(2);
+      setAssign({});
+      setSShared({ recipientName: single?.recipientName ?? "", phone: single?.phone ?? "", storeId: single?.storeId ?? "", tempLayer: single?.tempLayer ?? SHIP_TEMP_AMBIENT });
+      setSFee(single?.shippingFee ?? defaultFee);
+    }
+    setSplitB(g.bNum); setSShowErr(false); setSNote(""); closeForm();
+  };
+  const closeSplit = () => { setSplitB(null); setSShowErr(false); setSNote(""); };
+  const saveSplit = async (g: BuyerGroup) => {
+    if (sBusy) return;
+    const errsS = validateSplit(g.orderList, assign, nBags, sShared, sFee);
+    if (!splitIsValid(errsS)) { setSShowErr(true); return; }
+    setSBusy(true);
+    try {
+      const existing = bagsFor(g.bNum);
+      const { bags } = splitSummary(g.orderList, assign, nBags);
+      const ids = bags.map((_, i) => existing.find((e) => e.bagNumber === i + 1)?.id ?? newId());
+      const rows = buildBagEntries(g, sessionKey, bags, sShared, sFee, ids);
+      for (const row of rows) {
+        const r = await upsertShippingEntry(row);
+        if (!r.ok) { setSNote(tpl(t.rd_shp_save_failed, { err: r.error || "?" })); return; }
+      }
+      for (const old of existing.filter((e) => e.bagNumber > nBags)) await deleteShippingEntry(old.id);
+      setEntries((list) => [...list.filter((e) => e.buyerNumber !== g.bNum), ...rows]);
+      setSel((old) => new Set([...old, ...rows.map((r) => r.id)]));
+      closeSplit();
+    } finally { setSBusy(false); }
+  };
+  const removeSplit = async (g: BuyerGroup) => {
+    if (sBusy || mustSplit(g.total)) return; // >20k must stay split
+    setSBusy(true);
+    try {
+      const bags = bagsFor(g.bNum);
+      const first = bags[0];
+      if (!first) { closeSplit(); return; }
+      const merged: ShippingEntry = { ...first, includedOrderIds: g.orderIds, orderAmount: g.total, productDesc: defaultProductDesc(g.bNum, g.items), status: entryIsValid({ ...first, includedOrderIds: g.orderIds, orderAmount: g.total, productDesc: defaultProductDesc(g.bNum, g.items) }) ? "encoded" : "draft" };
+      const r = await upsertShippingEntry(merged);
+      if (!r.ok) { setSNote(tpl(t.rd_shp_save_failed, { err: r.error || "?" })); return; }
+      for (const old of bags.filter((e) => e.bagNumber > 1)) await deleteShippingEntry(old.id);
+      setEntries((list) => [...list.filter((e) => e.buyerNumber !== g.bNum), merged]);
+      closeSplit();
+    } finally { setSBusy(false); }
+  };
+
+  // ── P2 export — RPC first (server-side quota, atomic stamping), THEN the file.
+  const encodedEntries = entries.filter((e) => e.status === "encoded").sort((a, b) => a.buyerNumber - b.buyerNumber);
+  const quota = quotaForPlan(plan);
+  // Encode works everywhere; the FILE needs a browser (or a future APK with
+  // Filesystem+Share). Current APK shell → guidance card instead of a dead button.
+  const canExportHere = !isAppShell() || hasNativeFileShare();
+  const toggleSel = (id: string) => setSel((old) => { const n = new Set(old); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const doExport = async () => {
+    if (exporting) return;
+    const chosen = encodedEntries.filter((e) => sel.has(e.id));
+    if (chosen.length === 0) return;
+    setExNote(null);
+    // client pre-check (UX only — the RPC re-checks atomically server-side)
+    if (quota != null && exportedCount != null && exportedCount + chosen.length > quota) {
+      setExNote({ kind: "err", text: tpl(t.rd_shp_quota_block, { used: exportedCount, quota, n: chosen.length }) });
+      return;
+    }
+    setExporting(true);
+    try {
+      const r = await callExportRpc(chosen.map((e) => e.id));
+      if (!r.ok) {
+        if (r.error === "quota_exceeded") setExNote({ kind: "err", text: tpl(t.rd_shp_quota_block, { used: r.used ?? 0, quota: r.quota ?? 0, n: r.selected ?? chosen.length }) });
+        else setExNote({ kind: "err", text: tpl(t.rd_shp_export_failed, { err: r.error || "?" }) });
+        return;
+      }
+      // server has stamped exported — reflect locally regardless of file outcome
+      const ids = new Set(chosen.map((e) => e.id));
+      const nowIso = new Date().toISOString();
+      setEntries((list) => list.map((e) => (ids.has(e.id) ? { ...e, status: "exported" as const, exportBatchId: r.batchId ?? e.exportBatchId, exportedAt: nowIso } : e)));
+      setSel(new Set());
+      if (r.used != null) setExportedCount(r.used);
+      try {
+        const bytes = await buildXlsmFromTemplate(await fetchShipTemplate(), chosen.map(entryToXlsRow));
+        const file = exportFilename(Date.now());
+        const d = await deliverXlsm(bytes, file);
+        if (!d.ok) throw new Error(d.error || d.via);
+        setExNote({ kind: "ok", text: tpl(t.rd_shp_export_ok, { n: r.count ?? chosen.length, file }) });
+      } catch (fileErr) {
+        // entries are already exported server-side — say so honestly
+        setExNote({ kind: "err", text: tpl(t.rd_shp_dl_failed, { err: fileErr instanceof Error ? fileErr.message : String(fileErr) }) });
+      }
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div>
       <div style={headerBar}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={headerTitle}>{t.rd_sh_shipping}</div>
-          <button onClick={() => void exportXlsx()} disabled={busy || openToday.length === 0} style={{ fontSize: 12, fontWeight: 700, background: "rgba(255,255,255,.16)", color: "var(--on-header)", border: "none", padding: "7px 12px", borderRadius: 9, cursor: busy || !openToday.length ? "default" : "pointer", opacity: busy || !openToday.length ? 0.55 : 1, fontFamily: "var(--font-ui)" }}>{t.rd_ship_export}</button>
+          <span style={{ fontSize: 11.5, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "5px 10px", borderRadius: 8 }}>
+            {tpl(t.rd_shp_encoded_of, { done: encodedCount, total: groups.length })}
+          </span>
         </div>
-        <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 6 }}>{t.rd_ship_sub}</div>
+        <div style={{ fontSize: 11.5, opacity: 0.85, marginTop: 6 }}>
+          {t.rd_shp_sub} · {windowDays > 1 ? tpl(t.rd_shp_window_nd, { n: windowDays }) : t.rd_shp_window_today}
+        </div>
       </div>
 
       <div style={{ padding: "14px 14px 22px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
-          {stat(t.rd_ship_open, openToday.length, "var(--accent-fg)")}
-          {stat(t.rd_ord_shipped, shippedToday.length, "var(--ok)")}
-          {stat(t.rd_ship_next, nextDailyNum(shipments, day))}
-          {stat(t.rd_ship_remaining, SHIP_MAX - openToday.length, openToday.length >= SHIP_MAX ? "var(--danger)" : "var(--text)")}
+        {/* HOTFIX: default-fee presets (applies to NEW entries; per-entry edit stays) */}
+        <div style={{ ...card, padding: "10px 13px", marginBottom: 12, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", flexShrink: 0 }}>{t.rd_shp_default_fee}</span>
+          <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
+            {[38, 60, 100, 0].map((v) => (
+              <button key={v} onClick={() => pickDefaultFee(v)} style={{ minWidth: 44, padding: "6px 0", borderRadius: 8, fontFamily: mono, fontSize: 12, fontWeight: 700, cursor: "pointer", border: defaultFee === v ? "1.4px solid var(--accent)" : "1px solid var(--border-strong)", background: defaultFee === v ? "var(--accent-soft)" : "var(--surface-2)", color: defaultFee === v ? "var(--accent-fg)" : "var(--text-dim)" }}>
+                {v === 0 ? t.rd_shp_free : `$${v}`}
+              </button>
+            ))}
+          </div>
         </div>
-
-        {customers.length === 0 ? (
-          <div style={{ ...card, fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5 }}>{t.rd_ship_no_customers}</div>
-        ) : (
-          <form onSubmit={addOrder} style={{ ...card, display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
-            <div><label style={lbl}>{t.rd_ship_customer}</label>
-              <select value={sel} onChange={(e) => { setSel(e.target.value); setErr(""); }} style={input}>
-                <option value="">{t.rd_ship_select_customer}</option>
-                {customers.map((c) => <option key={c.username} value={c.username}>{c.name} · {c.phone} · {c.sevenCode}</option>)}
-              </select>
-            </div>
-            <div style={{ display: "flex", gap: 9 }}>
-              <div style={{ flex: 2, minWidth: 0 }}><label style={lbl}>{t.rd_ship_product}</label><input value={product} onChange={(e) => setProduct(e.target.value)} placeholder={t.rd_ship_product_ph} style={input} /></div>
-              <div style={{ flex: 1, minWidth: 0 }}><label style={lbl}>{tpl(t.rd_ship_amount, { cur })}</label><input value={price} onChange={(e) => setPrice(e.target.value.replace(/[^\d.]/g, ""))} inputMode="decimal" placeholder="0" style={{ ...input, fontFamily: mono }} /></div>
-            </div>
-            {selected && <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{existingForSelected ? tpl(t.rd_ship_will_add, { num: existingForSelected.num }) : t.rd_ship_will_create}</div>}
-            <button type="submit" style={{ padding: "11px 0", border: "none", borderRadius: 10, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{t.rd_ship_add_order}</button>
-          </form>
+        {loading && <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "14px 0" }}>{t.rd_shp_loading}</div>}
+        {!loading && groups.length === 0 && (
+          <div style={{ ...card, fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.55 }}>{t.rd_shp_empty}</div>
         )}
 
-        {err && <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--danger)", marginBottom: 10 }}>{err}</div>}
-        {msg && <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ok)", marginBottom: 10 }}>{msg}</div>}
-
-        {sorted.length === 0 && <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "16px 0" }}>{t.rd_ship_empty}</div>}
         <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-          {sorted.map((s) => (
-            <div key={s.id} style={{ ...card, padding: "12px 14px", opacity: s.status === "shipped" ? 0.6 : 1 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ fontFamily: mono, fontSize: 17, fontWeight: 700, color: "var(--accent-fg)" }}>#{s.num}</div>
-                <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{s.name}</div><div style={{ fontSize: 11, color: "var(--text-muted)" }}>{s.phone} · 7-11 {s.store}</div></div>
-                {s.status === "shipped" && <span style={{ fontSize: 10, fontWeight: 800, color: "var(--ok)", background: "var(--surface-2)", border: "1px solid var(--border)", padding: "3px 8px", borderRadius: 6 }}>{t.rd_ship_shipped_badge}</span>}
-                <div style={{ fontFamily: mono, fontSize: 14, fontWeight: 700, color: "var(--ok)" }}>{cur}{shipmentGrandTotal(s).toLocaleString()}</div>
-              </div>
-              <div style={{ marginTop: 9, paddingTop: 9, borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 6 }}>
-                {s.orders.map((o, i) => (
-                  <div key={o.id} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5 }}>
-                    <span style={{ color: "var(--text-muted)", width: 16 }}>{i + 1}.</span>
-                    <span style={{ flex: 1, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.product}</span>
-                    {editing && editing.shipmentId === s.id && editing.orderId === o.id ? (
-                      <>
-                        <input value={editing.value} onChange={(e) => setEditing({ ...editing, value: e.target.value.replace(/[^\d.]/g, "") })} autoFocus style={{ width: 64, padding: "3px 7px", border: "1.3px solid var(--accent)", borderRadius: 7, background: "var(--surface)", color: "var(--text)", fontFamily: mono, fontSize: 12, fontWeight: 700, outline: "none" }} />
-                        <button onClick={saveEdit} style={{ fontSize: 10.5, fontWeight: 700, color: "var(--accent-fg)", background: "var(--accent-soft)", border: "none", padding: "4px 8px", borderRadius: 6, cursor: "pointer" }}>{t.rd_prd_save}</button>
-                        <button onClick={() => setEditing(null)} style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-dim)", background: "var(--surface-2)", border: "1px solid var(--border)", padding: "4px 8px", borderRadius: 6, cursor: "pointer" }}>×</button>
-                      </>
-                    ) : (
-                      <>
-                        <span style={{ fontFamily: mono, fontWeight: 700, color: "var(--text)" }}>{cur}{(Number(o.price) || 0).toLocaleString()}</span>
-                        {s.status === "open" && <>
-                          <button onClick={() => setEditing({ shipmentId: s.id, orderId: o.id, value: o.price })} style={{ fontSize: 10.5, fontWeight: 700, color: "var(--accent-fg)", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>{t.rd_ship_edit}</button>
-                          <button onClick={() => deleteOrder(s.id, o.id)} style={{ fontSize: 10.5, fontWeight: 700, color: "var(--danger)", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>{t.rd_ship_del}</button>
-                        </>}
-                      </>
-                    )}
+          {groups.map((g) => {
+            const bags = bagsFor(g.bNum);
+            const isSplit = bags.length > 1;
+            const isOpen = openB === g.bNum && form;
+            const isSplitOpen = splitB === g.bNum;
+            const done = bags.length > 0 && bags.every((e) => e.status !== "draft");
+            const isExported = bags.some((e) => e.status === "exported"); // immutable — no re-edit
+            const needsSplit = mustSplit(g.total) && !isSplit;
+            return (
+              <div key={g.bNum} style={{ ...card, padding: "12px 14px" }}>
+                {/* Group row — mirrors the physical bag: Buyer # is the anchor */}
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ fontFamily: mono, fontSize: 17, fontWeight: 700, color: "var(--accent-fg)", flexShrink: 0 }}>#{g.bNum}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.handle ? `@${g.handle}` : g.name || `#${g.bNum}`}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{tpl(t.rd_shp_items, { n: g.items })} · {cur}{g.total.toLocaleString()}</div>
                   </div>
-                ))}
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, fontSize: 11.5, color: "var(--text-muted)" }}>
-                  <span style={{ flex: 1 }}>{t.rd_ship_subtotal} {cur}{shipmentSubtotal(s).toLocaleString()}</span>
-                  <span>{t.rd_ship_fee} {cur}</span>
-                  <input value={s.fee} disabled={s.status === "shipped"} onChange={(e) => updateFee(s.id, e.target.value)} style={{ width: 56, padding: "3px 7px", border: "1px solid var(--border-strong)", borderRadius: 7, background: "var(--surface-2)", color: "var(--text)", fontFamily: mono, fontSize: 11.5, fontWeight: 700, outline: "none" }} />
+                  {isExported ? (
+                    <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "6px 11px", borderRadius: 8, flexShrink: 0 }}>
+                      ✓ {t.rd_shp_exported}{isSplit ? ` · ${tpl(t.rd_shp_bags_n, { n: bags.length })}` : ""}
+                    </span>
+                  ) : needsSplit ? (
+                    <button onClick={() => (isSplitOpen ? closeSplit() : openSplit(g))} style={{ fontSize: 11.5, fontWeight: 700, color: "#fff", background: "var(--danger)", border: "none", padding: "7px 12px", borderRadius: 8, cursor: "pointer", fontFamily: "var(--font-ui)", flexShrink: 0 }}>
+                      {t.rd_shp_split}
+                    </button>
+                  ) : isSplit ? (
+                    <button onClick={() => (isSplitOpen ? closeSplit() : openSplit(g))} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 800, color: "var(--ok)", background: "rgba(16,185,129,.12)", border: "1px solid rgba(16,185,129,.35)", padding: "6px 11px", borderRadius: 8, cursor: "pointer", fontFamily: "var(--font-ui)", flexShrink: 0 }}>
+                      ✓ {t.rd_shp_encoded} · {tpl(t.rd_shp_bags_n, { n: bags.length })}
+                    </button>
+                  ) : done ? (
+                    <button onClick={() => (isOpen ? closeForm() : openForm(g))} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 800, color: "var(--ok)", background: "rgba(16,185,129,.12)", border: "1px solid rgba(16,185,129,.35)", padding: "6px 11px", borderRadius: 8, cursor: "pointer", fontFamily: "var(--font-ui)", flexShrink: 0 }}>
+                      ✓ {t.rd_shp_encoded}
+                    </button>
+                  ) : (
+                    <button onClick={() => (isOpen ? closeForm() : openForm(g))} style={{ fontSize: 11.5, fontWeight: 700, color: "var(--accent-text)", background: "var(--accent)", border: "none", padding: "7px 12px", borderRadius: 8, cursor: "pointer", fontFamily: "var(--font-ui)", flexShrink: 0 }}>
+                      {t.rd_shp_add_info}
+                    </button>
+                  )}
                 </div>
+
+                {/* Mandatory split banner (> NT$20,000 can never ship as one row) */}
+                {needsSplit && (
+                  <div style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: "var(--danger)", lineHeight: 1.45 }}>{t.rd_shp_split_must}</div>
+                )}
+                {/* Optional split entry point (2+ items, not exported, not yet split) */}
+                {!isExported && !isSplit && !needsSplit && g.items >= 2 && !isSplitOpen && (
+                  <button onClick={() => openSplit(g)} style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", background: "transparent", border: "none", padding: 0, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_shp_split} ›</button>
+                )}
+
+                {/* ── Split editor: N bags, item assignment, shared recipient ── */}
+                {isSplitOpen && (() => {
+                  const sum = splitSummary(g.orderList, assign, nBags);
+                  const errsS = validateSplit(g.orderList, assign, nBags, sShared, sFee);
+                  const maxBags = Math.min(SPLIT_MAX_BAGS, Math.max(2, g.items));
+                  return (
+                    <div style={{ marginTop: 11, paddingTop: 11, borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 10 }}>
+                      <div>
+                        <label style={lbl}>{t.rd_shp_split_bags_lbl}</label>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          {Array.from({ length: maxBags - 1 }, (_, i) => i + 2).map((n) => (
+                            <button key={n} onClick={() => { setNBags(n); setAssign((a) => { const c: Record<number, number> = {}; for (const [k, v] of Object.entries(a)) if (v <= n) c[Number(k)] = v; return c; }); }} style={{ minWidth: 40, padding: "7px 0", borderRadius: 8, fontFamily: mono, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: nBags === n ? "1.4px solid var(--accent)" : "1px solid var(--border-strong)", background: nBags === n ? "var(--accent-soft)" : "var(--surface-2)", color: nBags === n ? "var(--accent-fg)" : "var(--text-dim)" }}>{n}</button>
+                          ))}
+                        </div>
+                      </div>
+                      {/* item → bag assignment */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {g.orderList.map((o) => (
+                          <div key={o.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.item || "—"}</span>
+                            <span style={{ fontFamily: mono, fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)", flexShrink: 0 }}>{cur}{o.total.toLocaleString()}</span>
+                            <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                              {Array.from({ length: nBags }, (_, i) => i + 1).map((b) => (
+                                <button key={b} onClick={() => setAssign((a) => ({ ...a, [o.id]: b }))} style={{ width: 26, height: 24, borderRadius: 6, fontFamily: mono, fontSize: 11, fontWeight: 700, cursor: "pointer", border: assign[o.id] === b ? "1.4px solid var(--accent)" : "1px solid var(--border-strong)", background: assign[o.id] === b ? "var(--accent-soft)" : "var(--surface-2)", color: assign[o.id] === b ? "var(--accent-fg)" : "var(--text-dim)" }}>{b}</button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {/* per-bag summary + validation */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                        {sum.bags.map((b, i) => {
+                          const amtErr = errsS.bagAmounts.find((x) => x.bag === i + 1)?.err ?? "";
+                          const empty = errsS.emptyBags.includes(i + 1);
+                          const bad = sShowErr && (amtErr || empty);
+                          return (
+                            <div key={i} style={{ fontSize: 11.5, fontWeight: 600, color: bad ? "var(--danger)" : "var(--text-muted)" }}>
+                              {tpl(t.rd_shp_bag_sum, { i: i + 1, n: nBags, k: b.items, amt: `${cur}${b.amount.toLocaleString()}`, fee: `${cur}${sFee}` })}
+                              {sShowErr && empty ? ` — ${tpl(t.rd_shp_split_empty, { i: i + 1 })}` : sShowErr && amtErr ? ` — ${amountErrText(t, amtErr)}` : ""}
+                            </div>
+                          );
+                        })}
+                        {sShowErr && sum.unassigned > 0 && <div style={{ ...errTxt, marginTop: 2 }}>{tpl(t.rd_shp_split_unassigned, { n: sum.unassigned })}</div>}
+                      </div>
+                      {/* shared recipient (copied to every bag) */}
+                      <div>
+                        <label style={lbl}>{t.rd_shp_name}</label>
+                        <input value={sShared.recipientName} onChange={(e) => setSShared((x) => ({ ...x, recipientName: e.target.value }))} placeholder={t.rd_shp_name_ph} style={input} />
+                        {sShowErr && errsS.name && <div style={errTxt}>{nameErrText(t, errsS.name)}</div>}
+                      </div>
+                      <div style={{ display: "flex", gap: 9 }}>
+                        <div style={{ flex: 1.2, minWidth: 0 }}>
+                          <label style={lbl}>{t.rd_shp_phone}</label>
+                          <input value={sShared.phone} onChange={(e) => setSShared((x) => ({ ...x, phone: e.target.value.replace(/[^\d]/g, "").slice(0, 10) }))} inputMode="numeric" placeholder="09xxxxxxxx" style={{ ...input, fontFamily: mono }} />
+                          {sShowErr && errsS.phone && <div style={errTxt}>{t.rd_shp_err_phone}</div>}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <label style={lbl}>{t.rd_shp_store}</label>
+                          <input value={sShared.storeId} onChange={(e) => setSShared((x) => ({ ...x, storeId: e.target.value.replace(/[^\d]/g, "").slice(0, 6) }))} inputMode="numeric" placeholder="123456" style={{ ...input, fontFamily: mono }} />
+                          {sShowErr && errsS.store && <div style={errTxt}>{t.rd_shp_err_store}</div>}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 9, alignItems: "flex-end" }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <label style={lbl}>{t.rd_shp_temp}</label>
+                          <div style={{ display: "flex", gap: 7 }}>
+                            {([SHIP_TEMP_AMBIENT, SHIP_TEMP_FROZEN] as const).map((tl) => (
+                              <button key={tl} onClick={() => setSShared((x) => ({ ...x, tempLayer: tl }))} style={{ flex: 1, padding: "8px 0", borderRadius: 9, fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: sShared.tempLayer === tl ? "1.4px solid var(--accent)" : "1px solid var(--border-strong)", background: sShared.tempLayer === tl ? "var(--accent-soft)" : "var(--surface-2)", color: sShared.tempLayer === tl ? "var(--accent-fg)" : "var(--text-dim)" }}>{tl}</button>
+                            ))}
+                          </div>
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <label style={lbl}>{t.rd_shp_fee}</label>
+                          <input value={String(sFee)} onChange={(e) => setSFee(Number(e.target.value.replace(/[^\d]/g, "")) || 0)} inputMode="numeric" style={{ ...input, fontFamily: mono }} />
+                        </div>
+                      </div>
+                      {sNote && <div style={errTxt}>{sNote}</div>}
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button onClick={() => void saveSplit(g)} disabled={sBusy} style={{ flex: 1, padding: "11px 0", border: "none", borderRadius: 10, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: sBusy ? 0.6 : 1 }}>{sBusy ? "…" : tpl(t.rd_shp_split_save, { n: nBags })}</button>
+                        {isSplit && !mustSplit(g.total) && (
+                          <button onClick={() => void removeSplit(g)} disabled={sBusy} style={{ padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--danger)", fontFamily: "var(--font-ui)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{t.rd_shp_split_remove}</button>
+                        )}
+                        <button onClick={closeSplit} style={{ padding: "11px 14px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text-dim)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{t.rd_shp_cancel}</button>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Encode form — live 賣貨便 validation; save blocked until clean */}
+                {isOpen && form && errs && (
+                  <div style={{ marginTop: 11, paddingTop: 11, borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 10 }}>
+                    <div>
+                      <label style={lbl}>{t.rd_shp_name}</label>
+                      <input value={form.recipientName} onChange={(e) => F({ recipientName: e.target.value })} placeholder={t.rd_shp_name_ph} style={input} />
+                      {showErr && errs.name && <div style={errTxt}>{nameErrText(t, errs.name)}</div>}
+                    </div>
+                    <div style={{ display: "flex", gap: 9 }}>
+                      <div style={{ flex: 1.2, minWidth: 0 }}>
+                        <label style={lbl}>{t.rd_shp_phone}</label>
+                        <input value={form.phone} onChange={(e) => F({ phone: e.target.value.replace(/[^\d]/g, "").slice(0, 10) })} inputMode="numeric" placeholder="09xxxxxxxx" style={{ ...input, fontFamily: mono }} />
+                        {showErr && errs.phone && <div style={errTxt}>{t.rd_shp_err_phone}</div>}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <label style={lbl}>{t.rd_shp_store}</label>
+                        <input value={form.storeId} onChange={(e) => F({ storeId: e.target.value.replace(/[^\d]/g, "").slice(0, 6) })} inputMode="numeric" placeholder="123456" style={{ ...input, fontFamily: mono }} />
+                        {showErr && errs.store && <div style={errTxt}>{t.rd_shp_err_store}</div>}
+                      </div>
+                    </div>
+                    <a href={STORE_LOOKUP_URL} target="_blank" rel="noreferrer" style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", textDecoration: "none" }}>{t.rd_shp_store_lookup} ↗</a>
+                    <div>
+                      <label style={lbl}>{t.rd_shp_temp}</label>
+                      <div style={{ display: "flex", gap: 7 }}>
+                        {([SHIP_TEMP_AMBIENT, SHIP_TEMP_FROZEN] as const).map((tl) => (
+                          <button key={tl} onClick={() => F({ tempLayer: tl })} style={{ flex: 1, padding: "8px 0", borderRadius: 9, fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: form.tempLayer === tl ? "1.4px solid var(--accent)" : "1px solid var(--border-strong)", background: form.tempLayer === tl ? "var(--accent-soft)" : "var(--surface-2)", color: form.tempLayer === tl ? "var(--accent-fg)" : "var(--text-dim)" }}>{tl}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <label style={lbl}>{t.rd_shp_desc} ({form.productDesc.length}/{SHIP_MAX_DESC})</label>
+                      <textarea value={form.productDesc} onChange={(e) => F({ productDesc: e.target.value })} rows={2} style={{ ...input, resize: "vertical" }} />
+                      {showErr && errs.desc && <div style={errTxt}>{t.rd_shp_err_desc}</div>}
+                    </div>
+                    <div style={{ display: "flex", gap: 9, alignItems: "flex-end" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <label style={lbl}>{t.rd_shp_amount}</label>
+                        <div style={{ ...input, fontFamily: mono, background: "var(--surface)", color: "var(--text-muted)" }}>{cur}{form.orderAmount.toLocaleString()}</div>
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <label style={lbl}>{t.rd_shp_fee}</label>
+                        <input value={String(form.shippingFee)} onChange={(e) => F({ shippingFee: Number(e.target.value.replace(/[^\d]/g, "")) || 0 })} inputMode="numeric" style={{ ...input, fontFamily: mono }} />
+                      </div>
+                      <button onClick={() => F({ shippingFee: form.shippingFee === 0 ? defaultFee : 0 })} style={{ flexShrink: 0, padding: "9px 11px", borderRadius: 9, fontFamily: "var(--font-ui)", fontSize: 11.5, fontWeight: 700, cursor: "pointer", border: form.shippingFee === 0 ? "1.4px solid var(--ok)" : "1px solid var(--border-strong)", background: form.shippingFee === 0 ? "rgba(16,185,129,.12)" : "var(--surface-2)", color: form.shippingFee === 0 ? "var(--ok)" : "var(--text-dim)" }}>
+                        {t.rd_shp_free}
+                      </button>
+                    </div>
+                    {showErr && errs.amounts && <div style={errTxt}>{amountErrText(t, errs.amounts)}</div>}
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>{tpl(t.rd_shp_cod, { amt: `${cur}${codTotal(form.orderAmount, form.shippingFee).toLocaleString()}` })}</div>
+                    {note && <div style={errTxt}>{note}</div>}
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button onClick={() => void save()} disabled={busy} style={{ flex: 1, padding: "11px 0", border: "none", borderRadius: 10, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: busy ? 0.6 : 1 }}>{busy ? "…" : t.rd_shp_save}</button>
+                      <button onClick={closeForm} style={{ padding: "11px 16px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text-dim)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{t.rd_shp_cancel}</button>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
+
+        {/* ── P2: Ready to export — meter + selection + RPC-then-file ── */}
+        {!loading && groups.length > 0 && (
+          <div style={{ ...card, marginTop: 14, padding: "13px 14px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 9 }}>
+              <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, color: "var(--text)", flex: 1 }}>{t.rd_shp_ready}</span>
+              <span style={{ fontSize: 10.5, fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "3px 9px", borderRadius: 99 }}>
+                {exportedCount == null ? "…" : quota == null ? tpl(t.rd_shp_meter_unl, { used: exportedCount }) : tpl(t.rd_shp_meter, { used: exportedCount, quota })}
+              </span>
+            </div>
+            {!canExportHere ? (
+              <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.55, background: "var(--surface-2)", border: "1px dashed var(--border-strong)", borderRadius: 11, padding: "11px 12px" }}>
+                {t.rd_shp_export_browser}
+              </div>
+            ) : encodedEntries.length === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t.rd_shp_none_encoded}</div>
+            ) : (
+              <>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 11 }}>
+                  {encodedEntries.map((e) => (
+                    <label key={e.id} style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 12.5, color: "var(--text)", cursor: "pointer" }}>
+                      <input type="checkbox" checked={sel.has(e.id)} onChange={() => toggleSel(e.id)} style={{ accentColor: "var(--accent)", width: 15, height: 15 }} />
+                      <span style={{ fontFamily: mono, fontWeight: 700, color: "var(--accent-fg)", flexShrink: 0 }}>#{e.buyerNumber}{bagCountFor(e.buyerNumber) > 1 ? ` · ${tpl(t.rd_shp_bag_chip, { i: e.bagNumber, n: bagCountFor(e.buyerNumber) })}` : ""}</span>
+                      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }}>{e.recipientName} · 7-11 {e.storeId}</span>
+                      <span style={{ fontFamily: mono, fontWeight: 700, flexShrink: 0 }}>{cur}{codTotal(e.orderAmount, e.shippingFee).toLocaleString()}</span>
+                    </label>
+                  ))}
+                </div>
+                <button onClick={() => void doExport()} disabled={exporting || sel.size === 0} style={{ width: "100%", padding: "12px 0", border: "none", borderRadius: 11, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", opacity: exporting || sel.size === 0 ? 0.55 : 1 }}>
+                  {exporting ? "…" : tpl(t.rd_shp_export, { n: sel.size })}
+                </button>
+              </>
+            )}
+            {exNote && (
+              <div style={{ marginTop: 9, fontSize: 12, fontWeight: 600, lineHeight: 1.5, color: exNote.kind === "ok" ? "var(--ok)" : "var(--danger)" }}>
+                {exNote.text}
+                {exNote.kind === "err" && onUpgrade && quota != null && exNote.text.includes(String(quota)) && (
+                  <button onClick={onUpgrade} style={{ display: "block", marginTop: 7, fontSize: 11.5, fontWeight: 700, color: "var(--accent-fg)", background: "var(--accent-soft)", border: "none", padding: "6px 12px", borderRadius: 8, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_shp_upgrade}</button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
