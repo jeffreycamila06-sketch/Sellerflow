@@ -103,43 +103,52 @@ describe("accountUsersToRedesign", () => {
   });
 });
 
-describe("planDaysLeft", () => {
+describe("planDaysLeft (shared lib/planWindow)", () => {
   const now = Date.parse("2026-06-26T00:00:00.000Z");
-  it("ceils partial days; floors at 0; handles empty/invalid", () => {
+  it("ceils partial days; floors at 0; missing/invalid = NO expiry (Infinity)", () => {
     expect(planDaysLeft("2026-07-06T00:00:00.000Z", now)).toBe(10);
     expect(planDaysLeft("2026-06-26T06:00:00.000Z", now)).toBe(1); // partial day → ceil
     expect(planDaysLeft("2026-06-01T00:00:00.000Z", now)).toBe(0); // past → 0
-    expect(planDaysLeft("", now)).toBe(0);
-    expect(planDaysLeft(undefined, now)).toBe(0);
+    expect(planDaysLeft("", now)).toBe(Infinity);        // NULL expiry ≠ expired today
+    expect(planDaysLeft(undefined, now)).toBe(Infinity);
   });
 });
 
-describe("deriveSubBuckets — parity with App.tsx Plan Monitoring (3346-3350)", () => {
+describe("deriveSubBuckets — shared lib/planWindow buckets (paid-only, 7d window)", () => {
   const u = (over: Partial<User>): User => ({ email: "x@x.com", note: "", role: "Seller", plan: "Pro", days: 30, accounts: "1", planStatus: "active", ...over });
-  it("active = active status & days>0; excludes admins", () => {
+  it("active = paid, active status & days>0; excludes admins and free", () => {
     const users = [
       u({ email: "admin@x.com", role: "Admin", plan: "Master", days: 3000, planStatus: "active" }),
       u({ email: "a@x.com", planStatus: "active", days: 30 }),
       u({ email: "b@x.com", planStatus: "active", days: 0 }),   // lapsed → not active
+      u({ email: "free@x.com", plan: "Free", planStatus: "active", days: Infinity }), // cap-limited → out
     ];
     const { active } = deriveSubBuckets(users);
     expect(active.map((x) => x.email)).toEqual(["a@x.com"]);
   });
-  it("expired = expired status OR days==0", () => {
-    const users = [u({ email: "c@x.com", planStatus: "expired", days: 5 }), u({ email: "d@x.com", planStatus: "active", days: 0 }), u({ email: "e@x.com", planStatus: "active", days: 9 })];
+  it("expired = paid, non-pending, (expired status OR days==0); free/no-expiry/pending out", () => {
+    const users = [
+      u({ email: "c@x.com", planStatus: "expired", days: 5 }),
+      u({ email: "d@x.com", planStatus: "active", days: 0 }),
+      u({ email: "e@x.com", planStatus: "active", days: 9 }),
+      u({ email: "free@x.com", plan: "Free", planStatus: "expired", days: 0 }),  // cap-limited → out
+      u({ email: "noexp@x.com", planStatus: "active", days: Infinity }),          // no expiry → out
+      u({ email: "pend@x.com", planStatus: "pending", days: 0 }),                 // pending flow sets expiry=now → out
+    ];
     expect(deriveSubBuckets(users).expired.map((x) => x.email).sort()).toEqual(["c@x.com", "d@x.com"]);
   });
-  it("expiring = paid, non-pending, (expired or days<=1), sorted asc (App.tsx expiringSoonSellers)", () => {
+  it("expiring = paid, non-pending, (expired or days<=7), sorted asc", () => {
     const users = [
-      u({ email: "p1@x.com", plan: "Pro", planStatus: "active", days: 1 }),    // ≤1 → in
+      u({ email: "p1@x.com", plan: "Pro", planStatus: "active", days: 1 }),    // ≤7 → in
       u({ email: "p0@x.com", plan: "Pro", planStatus: "active", days: 0 }),    // 0 → in
-      u({ email: "q@x.com", plan: "Pro", planStatus: "active", days: 5 }),     // >1 → out
+      u({ email: "q@x.com", plan: "Pro", planStatus: "active", days: 5 }),     // ≤7 → in (was out at the old 1d window)
+      u({ email: "r@x.com", plan: "Pro", planStatus: "active", days: 8 }),     // >7 → out
       u({ email: "exp@x.com", plan: "Basic", planStatus: "expired", days: 9 }),// expired → in
       u({ email: "f@x.com", plan: "Free", planStatus: "active", days: 1 }),    // free → out
       u({ email: "pend@x.com", plan: "Pro", planStatus: "pending", days: 0 }), // pending → out
     ];
-    // sorted by days asc → p0(0), p1(1), exp(9)
-    expect(deriveSubBuckets(users).expiring.map((x) => x.email)).toEqual(["p0@x.com", "p1@x.com", "exp@x.com"]);
+    // sorted by days asc → p0(0), p1(1), q(5), exp(9)
+    expect(deriveSubBuckets(users).expiring.map((x) => x.email)).toEqual(["p0@x.com", "p1@x.com", "q@x.com", "exp@x.com"]);
   });
 });
 
@@ -150,8 +159,8 @@ describe("deriveUserBase — tier headcount by PLAN (not status)", () => {
     ...Array.from({ length: 17 }, (_, i) => u({ email: `b${i}@x.com`, plan: "Basic", planStatus: "active", days: 30 })),
     ...Array.from({ length: 5 }, (_, i) => u({ email: `p${i}@x.com`, plan: "Pro", planStatus: "active", days: 30 })),
     u({ email: "owner@x.com", plan: "Master", role: "Admin", planStatus: "active", days: 3600 }),
-    u({ email: "f1@x.com", plan: "Free", planStatus: "active", days: 0 }),   // free: expiry null → days 0
-    u({ email: "f2@x.com", plan: "Free", planStatus: "active", days: 0 }),
+    u({ email: "f1@x.com", plan: "Free", planStatus: "active", days: Infinity }),   // free: expiry null → no expiry
+    u({ email: "f2@x.com", plan: "Free", planStatus: "active", days: Infinity }),
     u({ email: "f3@x.com", plan: "Free", planStatus: "expired", days: 0 }),
   ];
   it("matches the real distribution: 23 paid / 3 free; free counted by plan, not status", () => {
@@ -168,7 +177,12 @@ describe("deriveUserBase — tier headcount by PLAN (not status)", () => {
     const b = deriveUserBase(live);
     expect(b.paidActive).toBe(23);  // all paid currently active w/ days>0
     expect(b.paidExpired).toBe(0);
-    expect(b.paidExpiring).toBe(0);
+    expect(b.paidExpiring).toBe(0); // all at 30d — outside the 7d window
+  });
+  it("paidExpiring uses the shared 7-day window", () => {
+    const b = deriveUserBase([...live, u({ email: "soon@x.com", plan: "Basic", planStatus: "active", days: 4 })]);
+    expect(b.paidExpiring).toBe(1);
+    expect(b.paidActive).toBe(24); // still active (days>0) while inside the window
   });
   it("counts trial separately when present", () => {
     expect(deriveUserBase([u({ plan: "Trial", planStatus: "active", days: 7 })]).trial).toBe(1);

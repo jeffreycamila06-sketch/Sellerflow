@@ -20,10 +20,7 @@ export interface SellerExpiryState {
   expiryDate: string;
 }
 
-// Mirror of App.tsx dLeft — same formula, kept private here so this module
-// stays dependency-free. Clamps at 0 (already-expired never goes negative).
-const daysLeft = (expiry: string, now: number) =>
-  Math.max(0, Math.ceil((new Date(expiry).getTime() - now) / 86400000));
+import { planDaysLeft } from "./planWindow";
 
 // Fixed en-GB locale so the date renders identically on every device and in
 // tests ("15 Aug 2026"); the surrounding label text is what gets translated.
@@ -41,7 +38,9 @@ export function sellerExpiryState(user: SellerExpiryUser | null | undefined, now
   if (user.planStatus === "pending") return null;   // not yet approved — different flow
   if (!user.planExpiry) return null;
 
-  const days = daysLeft(user.planExpiry, now);
+  // Shared core (lib/planWindow); invalid dates come back Infinity = no expiry.
+  const days = planDaysLeft(user.planExpiry, now);
+  if (!Number.isFinite(days)) return null;
   const tier: SellerExpiryTier = days <= 2 ? "urgent" : days <= 7 ? "warning" : "normal";
 
   return { show: true, days, tier, expiryDate: formatExpiry(user.planExpiry) };

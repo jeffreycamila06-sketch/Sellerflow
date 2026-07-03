@@ -22,6 +22,7 @@ import { taipeiDayId } from "./lib/dateHelpers";
 import type { LiveOrder, Buyer, Comment } from "./lib/orderTypes";
 import { buildOrderFromComment, rebuildSessionFromRows } from "./lib/orderLogic";
 import { sellerExpiryState } from "./lib/sellerExpiry";
+import { planDaysLeft, daysDisplay, isActivePaid, isExpiredPaid, isExpiringSoon, isInMonitorWindow, monitorWindowDays } from "./lib/planWindow";
 import { shouldUseBluetoothSticker, shouldUseLanSticker } from "./lib/printerRouting";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -231,11 +232,9 @@ const addDays=(n:number)=>{const d=new Date();d.setDate(d.getDate()+n);return d.
 const addMonths=(n:number)=>addDays(Math.max(1,n)*30);
 // Single source of truth for the support/renewal Telegram contact.
 const TELEGRAM_URL="https://t.me/SELLERFLOWLIVE1995";
-// Days left until expiry, clamped at 0. Missing/invalid expiry = NO expiry
-// (Infinity: excluded from expired/expiring buckets and the account lock) —
-// a NULL plan_expiry must not read as "expires today".
-const dLeft=(e:string,now=Date.now())=>{const ms=e?new Date(e).getTime():NaN;return Number.isFinite(ms)?Math.max(0,Math.ceil((ms-now)/86400000)):Infinity;};
-const daysDisplay=(days:number)=>Number.isFinite(days)?String(days):"—";
+// Days left until expiry — SHARED core (lib/planWindow, also used by the
+// redesign app): clamped at 0; missing/invalid expiry = NO expiry (Infinity).
+const dLeft=(e:string,now=Date.now())=>planDaysLeft(e,now);
 // Value-only renewal that ADDS to remaining time instead of resetting from now.
 // Active+days-left → current expiry + n*30d; otherwise (expired) from now + n*30d.
 // Module-scope so the impure Date reads stay out of the component render path
@@ -3347,24 +3346,21 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   ].some(v=>String(v||"").toLowerCase().includes(q)));
   const sellerUsers=users.filter(u=>!(u.role==="admin"));
   const pendingApprovalUsers=sellerUsers.filter(u=>u.planStatus==="pending");
-  // Active/Expired tiles + Plan Monitoring cover TIME-LIMITED plans only:
-  // free is cap-limited (200 orders), never time-expired, so it stays out.
-  // Pending also stays out of Expired/Monitoring — its plan_expiry is set to
-  // now() as part of the pending flow (see setPlan), which would otherwise
-  // read as "expired today"; pending has its own Pending Approvals card.
-  const timedSellers=sellerUsers.filter(u=>u.plan!=="free");
-  const activeSellers=timedSellers.filter(u=>u.planStatus==="active"&&dLeft(u.planExpiry)>0);
-  const expiredSellers=timedSellers.filter(u=>u.planStatus!=="pending"&&(u.planStatus==="expired"||dLeft(u.planExpiry)===0));
-  const planMonitorUsers=timedSellers
-    .filter(u=>u.planStatus!=="pending"&&(u.planStatus==="expired"||dLeft(u.planExpiry)<=(u.plan==="trial"?3:7)))
+  // Active/Expired tiles + Plan Monitoring + the expiring banner all derive
+  // from the SHARED lib/planWindow predicates (single source of truth with
+  // the redesign app): time-limited plans only (free = cap-limited, never
+  // here), pending excluded (its plan_expiry is set to now() by the pending
+  // flow — it has its own Pending Approvals card), 7-day expiring window
+  // (trial monitors at 3). Pure derivation from the existing `users` state —
+  // zero new Supabase queries.
+  const planState=(u:User)=>({plan:u.plan,planStatus:u.planStatus,daysLeft:dLeft(u.planExpiry)});
+  const activeSellers=sellerUsers.filter(u=>isActivePaid(planState(u)));
+  const expiredSellers=sellerUsers.filter(u=>isExpiredPaid(planState(u)));
+  const planMonitorUsers=sellerUsers
+    .filter(u=>isInMonitorWindow(planState(u)))
     .sort((a,b)=>dLeft(a.planExpiry)-dLeft(b.planExpiry));
-  // 7-day / already-expired urgency feed for the top-of-page banner (manual
-  // Wise+Telegram renewals need lead time — 24h was too late to follow up).
-  // Pure derivation from the existing `users` state — zero new Supabase
-  // queries. Excludes admin (already filtered by sellerUsers), free, and
-  // pending (same reasons as above). Sorted most-urgent first.
-  const expiringSoonSellers=timedSellers
-    .filter(u=>u.planStatus!=="pending"&&(u.planStatus==="expired"||dLeft(u.planExpiry)<=7))
+  const expiringSoonSellers=sellerUsers
+    .filter(u=>isExpiringSoon(planState(u)))
     .sort((a,b)=>dLeft(a.planExpiry)-dLeft(b.planExpiry));
   // Free-tier monitoring (from list_free_users_status RPC).
   const q2=adminSearch.trim().toLowerCase();
@@ -3543,7 +3539,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                 {planMonitorUsers.map(u=>{
                   const days=dLeft(u.planExpiry);
                   const expired=u.planStatus==="expired"||days===0;
-                  const warnDays=u.plan==="trial"?3:7;
+                  const warnDays=monitorWindowDays(u.plan);
                   return(
                     <tr key={`monitor-${u.email}`}>
                       <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>
@@ -3689,7 +3685,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                 {planMonitorUsers.map(u=>{
                   const days=dLeft(u.planExpiry);
                   const expired=u.planStatus==="expired"||days===0;
-                  const warnDays=u.plan==="trial"?3:7;
+                  const warnDays=monitorWindowDays(u.plan);
                   return(
                     <tr key={`expanded-monitor-${u.email}`}>
                       <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>
@@ -4152,7 +4148,7 @@ export default function App(){
       void listUsers().then(list=>{
         const sellers=list.filter(u=>u.role!=="admin");
         setPendingUsersCount(sellers.filter(u=>u.planStatus==="pending").length);
-        setExpiringSoonCount(sellers.filter(u=>u.plan!=="free"&&u.planStatus!=="pending"&&(u.planStatus==="expired"||dLeft(u.planExpiry)<=7)).length);
+        setExpiringSoonCount(sellers.filter(u=>isExpiringSoon({plan:u.plan,planStatus:u.planStatus,daysLeft:dLeft(u.planExpiry)})).length);
       });
     };
     refreshPendingUsers();

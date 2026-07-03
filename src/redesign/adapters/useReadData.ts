@@ -15,7 +15,12 @@ import { isSupabaseConfigured, supabase } from "../../supabase";
 import { loadTodaysLiveSession, getCustomersFromDatabase } from "../../db";
 import { listUsers, listAuditLogs, type AccountUser, type AccountAuditLog } from "../../accountDb";
 import { rebuildSessionFromRows, type RebuiltSession } from "../../lib/orderLogic";
+import { planDaysLeft, daysDisplay, isActivePaid, isExpiredPaid, isExpiringSoon, EXPIRING_WINDOW_DAYS } from "../../lib/planWindow";
 import { planLabel } from "./useAuthSession";
+
+// Shared plan-expiry core (single source of truth with App.tsx) — re-exported
+// so screens keep importing from this adapter.
+export { planDaysLeft, daysDisplay, EXPIRING_WINDOW_DAYS };
 import {
   ORDERS as SAMPLE_ORDERS,
   CUSTOMERS as SAMPLE_CUSTOMERS,
@@ -80,13 +85,6 @@ export function customerRowsToRedesign(rows: Record<string, unknown>[], nowMs: n
   });
 }
 
-// Days remaining on a plan (Taipei-agnostic; ceil so a partial day counts). Pure.
-export function planDaysLeft(planExpiry: string | undefined | null, nowMs: number): number {
-  const t = new Date(planExpiry || "").getTime();
-  if (isNaN(t)) return 0;
-  return Math.max(0, Math.ceil((t - nowMs) / 86400000));
-}
-
 // AccountUser[] (real profiles) → redesign admin User[]. `days` = real days left on
 // the plan; planExpiry/planStatus are carried so admin "Add days" can extend the
 // EXISTING expiry (cumulative) via adminUpdatePlan (5h).
@@ -107,20 +105,23 @@ export function accountUsersToRedesign(users: AccountUser[], nowMs: number = Dat
   }));
 }
 
-// ── Admin subscription buckets — derived from the real seller list, byte-faithful
-// to App.tsx (3344-3358). Admins excluded (sellerUsers). `days` = dLeft(planExpiry).
-//   active   = active & days>0                                   (activeSellers 3346)
-//   expired  = expired or days==0                                (expiredSellers 3347)
-//   expiring = paid, non-pending, (expired or days<=1), sorted   (expiringSoonSellers 3356-3358,
-//              the same definition behind main's "expiring soon" admin count)
+// ── Admin subscription buckets — derived from the real seller list via the
+// SHARED lib/planWindow predicates (single source of truth with App.tsx).
+// Admins excluded. Time-limited plans only (free = cap-limited, never here);
+// pending excluded from expired/expiring (its expiry is set to now() by the
+// pending flow). `days` = planDaysLeft (Infinity = no expiry).
+//   active   = paid, status active, days>0
+//   expired  = paid, non-pending, (status expired or days==0)
+//   expiring = paid, non-pending, (expired or days<=EXPIRING_WINDOW_DAYS), sorted
 export interface SubBuckets { active: User[]; expiring: User[]; expired: User[] }
+const planState = (u: User) => ({ plan: u.plan, planStatus: u.planStatus || "", daysLeft: u.days ?? Infinity });
 export function deriveSubBuckets(users: User[]): SubBuckets {
   const sellers = users.filter((u) => u.role !== "Admin");
-  const days = (u: User) => u.days ?? 0;
-  const active = sellers.filter((u) => u.planStatus === "active" && days(u) > 0);
-  const expired = sellers.filter((u) => u.planStatus === "expired" || days(u) === 0);
+  const days = (u: User) => u.days ?? Infinity;
+  const active = sellers.filter((u) => isActivePaid(planState(u)));
+  const expired = sellers.filter((u) => isExpiredPaid(planState(u)));
   const expiring = sellers
-    .filter((u) => u.plan !== "Free" && u.planStatus !== "pending" && (u.planStatus === "expired" || days(u) <= 1))
+    .filter((u) => isExpiringSoon(planState(u)))
     .sort((a, b) => days(a) - days(b));
   return { active, expiring, expired };
 }
@@ -129,9 +130,9 @@ export function deriveSubBuckets(users: User[]): SubBuckets {
 export interface FreeUserRow { email: string; store_name: string; full_name: string; count: number; cap: number; near_cap: boolean; capped: boolean; cycle_resets_in_days: number }
 
 // ── User-base overview — DERIVED from the already-loaded seller list (no new
-// backend). Tier headcount is grouped by PLAN LABEL (not status): free users have
-// plan_expiry=null → days=0, so a status-based split would wrongly drop them into
-// "expired". Free is identified by plan==="Free" only.
+// backend). Tier headcount is grouped by PLAN LABEL (not status): free users are
+// cap-limited (plan_expiry null → days=Infinity), so a status-based split would
+// misplace them. Free is identified by plan==="Free" only.
 export interface UserBase {
   total: number; admins: number;
   free: number; trial: number; basic: number; pro: number; master: number;
@@ -147,10 +148,10 @@ export function deriveUserBase(users: User[]): UserBase {
   const admins = users.filter((u) => u.role === "Admin").length;
   const paidUsers = users.filter((u) => u.plan === "Basic" || u.plan === "Pro" || u.plan === "Master");
   const paidSellers = paidUsers.filter((u) => u.role !== "Admin").length;
-  const days = (u: User) => u.days ?? 0;
-  const paidActive = paidUsers.filter((u) => u.planStatus === "active" && days(u) > 0).length;
-  const paidExpired = paidUsers.filter((u) => u.planStatus === "expired" || days(u) === 0).length;
-  const paidExpiring = paidUsers.filter((u) => u.planStatus !== "pending" && (u.planStatus === "expired" || days(u) <= 1)).length;
+  // Shared lib/planWindow predicates — same 7-day expiring window as everywhere.
+  const paidActive = paidUsers.filter((u) => isActivePaid(planState(u))).length;
+  const paidExpired = paidUsers.filter((u) => isExpiredPaid(planState(u))).length;
+  const paidExpiring = paidUsers.filter((u) => isExpiringSoon(planState(u))).length;
   return { total: users.length, admins, free, trial, basic, pro, master, paid, paidSellers, paidActive, paidExpiring, paidExpired };
 }
 
