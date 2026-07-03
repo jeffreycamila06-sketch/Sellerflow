@@ -261,6 +261,14 @@ const RAW: Record<string, Row> = {
   rd_shp_split_save: { en: "Save {n} bags", fil: "I-save ang {n} bag", zh: "保存 {n} 袋", "zh-TW": "儲存 {n} 袋", vi: "Lưu {n} túi", th: "บันทึก {n} ถุง", id: "Simpan {n} tas" },
   rd_shp_split_remove: { en: "Remove split", fil: "Alisin ang split", zh: "取消分袋", "zh-TW": "取消分袋", vi: "Bỏ chia túi", th: "ยกเลิกการแบ่งถุง", id: "Hapus pembagian" },
   rd_shp_bag_chip: { en: "Bag {i}/{n}", fil: "Bag {i}/{n}", zh: "袋 {i}/{n}", "zh-TW": "袋 {i}/{n}", vi: "Túi {i}/{n}", th: "ถุง {i}/{n}", id: "Tas {i}/{n}" },
+  // P3b — configurable defaults, free-shipping auto-rule, mark-as-shipped, late orders.
+  rd_shp_free_rule: { en: "Free shipping when total ≥", fil: "Free shipping kapag total ≥", zh: "总额 ≥ 时免运费", "zh-TW": "總額 ≥ 時免運費", vi: "Miễn phí ship khi tổng ≥", th: "ส่งฟรีเมื่อยอดรวม ≥", id: "Gratis ongkir jika total ≥" },
+  rd_shp_free_rule_hint: { en: "New entries for buyers totaling {amt} or more start with fee 0. The NT$55 minimum per row still applies.", fil: "Ang mga bagong entry para sa buyer na umabot ng {amt} pataas ay magsisimula sa fee 0. Lalapat pa rin ang NT$55 minimum kada row.", zh: "买家总额达 {amt} 及以上的新条目运费默认为 0。每行仍须满足 NT$55 最低总额。", "zh-TW": "買家總額達 {amt} 及以上的新條目運費預設為 0。每行仍須滿足 NT$55 最低總額。", vi: "Mục mới cho người mua có tổng từ {amt} trở lên bắt đầu với phí 0. Vẫn áp dụng mức tối thiểu NT$55 mỗi dòng.", th: "รายการใหม่ของผู้ซื้อที่ยอดรวมถึง {amt} ขึ้นไปจะเริ่มที่ค่าส่ง 0 ยังคงใช้ขั้นต่ำ NT$55 ต่อแถว", id: "Entri baru untuk pembeli dengan total {amt} ke atas mulai dengan ongkir 0. Minimum NT$55 per baris tetap berlaku." },
+  rd_shp_off: { en: "Off", fil: "Naka-off", zh: "关闭", "zh-TW": "關閉", vi: "Tắt", th: "ปิด", id: "Mati" },
+  rd_shp_batches: { en: "Exported batches", fil: "Mga na-export na batch", zh: "已导出批次", "zh-TW": "已匯出批次", vi: "Các lô đã xuất", th: "ชุดที่ส่งออกแล้ว", id: "Batch yang diekspor" },
+  rd_shp_mark_shipped: { en: "Mark shipped", fil: "Markahang shipped", zh: "标记已寄件", "zh-TW": "標記已寄件", vi: "Đánh dấu đã gửi", th: "ทำเครื่องหมายส่งแล้ว", id: "Tandai terkirim" },
+  rd_shp_shipped: { en: "Shipped", fil: "Shipped", zh: "已寄件", "zh-TW": "已寄件", vi: "Đã gửi", th: "ส่งแล้ว", id: "Terkirim" },
+  rd_shp_late_chip: { en: "{n} new item(s) since export", fil: "{n} bagong item mula nang ma-export", zh: "导出后新增 {n} 件", "zh-TW": "匯出後新增 {n} 件", vi: "{n} món mới sau khi xuất", th: "{n} ชิ้นใหม่หลังส่งออก", id: "{n} item baru sejak ekspor" },
   // Announcements — admin banner + 🔔 bell (the message itself is admin-written
   // raw text, one language; only the UI chrome is translated).
   rd_ann_title: { en: "Announcements", fil: "Mga Anunsyo", zh: "公告", "zh-TW": "公告", vi: "Thông báo", th: "ประกาศ", id: "Pengumuman" },

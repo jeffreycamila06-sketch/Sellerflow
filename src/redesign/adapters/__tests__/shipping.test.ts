@@ -176,3 +176,64 @@ describe("split bags (P3a)", () => {
     expect(mustSplit(20001)).toBe(true);
   });
 });
+
+// ── P3b late orders — remainder after export, new-bag form entry ──────────────
+import { lateOrdersFor, lateFormEntry, lateBagDesc } from "../shipping";
+
+describe("late orders (P3b)", () => {
+  const g = buyerGroupsFrom([buyer(4, "ana", [
+    order({ orderNum: 1, item: "A100", total: 100 }),
+    order({ orderNum: 2, item: "B200", total: 200 }),
+    order({ orderNum: 3, item: "C300", total: 300 }),
+  ])])[0];
+  const exported = (over: Partial<import("../shipping").ShippingEntry>): import("../shipping").ShippingEntry => ({
+    ...draftEntryFor(g, "2026-07-03", "ex-1"),
+    recipientName: "王小明", phone: "0912345678", storeId: "123456",
+    status: "exported", exportBatchId: "b-1", exportedAt: "2026-07-03T02:00:00Z",
+    includedOrderIds: [1, 2], orderAmount: 300, ...over,
+  });
+
+  it("lateBagDesc has NO /n — printed labels must not be retro-invalidated", () => {
+    expect(lateBagDesc(4, 2, 3)).toBe("#4 商品x2 Bag 3");
+  });
+
+  it("lateOrdersFor: only orders not covered by an EXPORTED bag; empty when no export", () => {
+    expect(lateOrdersFor(g, [exported({})]).map((o) => o.id)).toEqual([3]);
+    expect(lateOrdersFor(g, [{ ...exported({}), status: "encoded" }])).toEqual([]); // no exported bag → normal edit flow
+    expect(lateOrdersFor(g, [exported({ includedOrderIds: [1, 2, 3] })])).toEqual([]); // fully covered
+  });
+
+  it("CREATE mode: next bag_number, recipient prefilled from the exported bag, remainder ids/amount, draft status", () => {
+    const e = lateFormEntry(g, [exported({})], "2026-07-03", "new-id", 38);
+    expect(e).toMatchObject({
+      id: "new-id", buyerNumber: 4, bagNumber: 2, includedOrderIds: [3], orderAmount: 300,
+      recipientName: "王小明", phone: "0912345678", storeId: "123456",
+      productDesc: "#4 商品x1 Bag 2", shippingFee: 38, status: "draft",
+      exportBatchId: null, exportedAt: null, shippedAt: null,
+    });
+  });
+
+  it("EDIT mode: reuses the existing late bag's id/bag_number + seller edits, but REFRESHES covered orders from the live group", () => {
+    const lateSaved: import("../shipping").ShippingEntry = {
+      ...exported({}), id: "late-1", bagNumber: 2, status: "encoded",
+      includedOrderIds: [3], orderAmount: 300, recipientName: "陳大文", shippingFee: 0,
+      exportBatchId: null, exportedAt: null,
+    };
+    // a 4th order arrives after the late bag was encoded
+    const g4 = buyerGroupsFrom([buyer(4, "ana", [
+      order({ orderNum: 1, total: 100 }), order({ orderNum: 2, total: 200 }),
+      order({ orderNum: 3, total: 300 }), order({ orderNum: 4, item: "D50", total: 50 }),
+    ])])[0];
+    const e = lateFormEntry(g4, [exported({}), lateSaved], "2026-07-03", "unused", 38);
+    expect(e).toMatchObject({
+      id: "late-1", bagNumber: 2, includedOrderIds: [3, 4], orderAmount: 350,
+      recipientName: "陳大文", shippingFee: 0, // seller's edits kept
+      productDesc: "#4 商品x2 Bag 2",
+    });
+  });
+
+  it("null when nothing is uncovered or nothing was exported", () => {
+    expect(lateFormEntry(g, [exported({ includedOrderIds: [1, 2, 3] })], "2026-07-03", "x", 38)).toBeNull();
+    expect(lateFormEntry(g, [], "2026-07-03", "x", 38)).toBeNull();
+  });
+});

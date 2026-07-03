@@ -1192,3 +1192,57 @@ sa iOS (walang payment content, hindi kasama sa g4 iOS gate).
   late-order handling (bagong item pagkatapos ng export → additional entry/bag) ·
   **90-day retention purge** pg_cron (`status='exported' and exported_at <
   now() - interval '90 days'`) · optional cosmetic ALTER (fee default 60→38).
+
+## SESSION 2026-07-03 (part 2) — SHIPPING P3b ✅ COMPLETE (branch `claude/shipping-p3b` → merged to main)
+Buong P3b batch (ang "post-merge follow-ups" sa itaas — DONE na lahat, isang
+commit `7951110`). Preview-tested PASADO lahat (defaults card, auto-rule,
+mark-shipped, late-order flow). **568/568 vitest green (549+19) · typecheck ·
+lint 54 = main parity · build green.** Zero protected files. 7 bagong
+`rd_shp_*` keys ×7.
+
+### DB (4 SQL texts, applied via MCP ni chat-Claude — dependency order 11→12→10→13)
+- **`sql/11_shipping_settings.sql`** — NEW `seller_shipping_settings`
+  (`user_id` PK, `default_fee` factory 38, `free_threshold` null=off, RLS ×3,
+  raffle_config pattern). Cross-device shipping defaults.
+- **`sql/12_shipping_shipped.sql`** — `shipped_at timestamptz` column + RPC
+  `mark_shipping_batch_shipped(batch, is_shipped)`. ⚠️ **SADYANG HINDI status
+  change:** ang quota ay bumibilang ng `status='exported'` (status flip =
+  quota-freeing exploit) AT ang RLS exported-immutability ay humaharang sa
+  client updates — ang SECURITY DEFINER RPC ang tanging makitid na write path
+  (shipped_at/updated_at lang, caller's own rows ng ISANG batch, reversible).
+- **`sql/10` RE-APPLIED** — dinagdag ang **stamped=0 race guard** after GET
+  DIAGNOSTICS → `nothing_to_export` (two-device race na na-flag ni chat-Claude
+  sa P2 review; reachable sa master path na walang advisory lock — walang
+  "ok" na magbi-build ng duplicate file).
+- **`sql/13_retention_crons.sql`** — 2 bagong pg_cron (daily 01:00 Taipei,
+  postgres/owner = RLS bypass): **jobid 3** `purge-exported-shipping-entries`
+  (`status='exported' AND exported_at < now()-90d` — draft/encoded NEVER
+  purged; 90d > 30d quota window = purge can never touch quota, may SQL
+  contract test) + **jobid 4** `purge-stale-products` (**CONFIRMED rule ni
+  Jeff:** `stock=0 AND last_ordered_at IS NOT NULL AND < now()-90d` — ang
+  never-ordered/hand-maintained at may-stock na products ay HINDI ginagalaw;
+  ito ang matagal nang reserved Part-2 ng `products.last_ordered_at`).
+
+### Frontend (redesign adapters + Shipping.tsx lang)
+- **`shippingSettings.ts` (NEW):** pure `clampFee` (null≠free!), `clampThreshold`,
+  mappers, **`defaultFeeFor(groupTotal, s)`** = auto-rule core (≥threshold → 0,
+  else default; ang ≥NT$55 validator pa rin ang gate sa save) + one-read/
+  one-upsert DB ops. Legacy `sfl_rd_ship_fee` = fallback bago mag-DB row +
+  offline mirror lang; **DB row ang source of truth** pag-load.
+- **Defaults card (DB-backed):** presets $38/$60/$100/Free + **free-rule row**
+  (Off button ↔ threshold input, blur = save = isang upsert) + hint kapag ON.
+- **Mark-as-shipped:** "Exported batches" card (derived sa loaded entries,
+  ZERO bagong read) — one-tap Mark shipped / tap-ulit = undo (isang RPC per
+  tap); group chip → berde "✓ Shipped" kapag lahat ng exported bags shipped.
+- **Late orders:** `lateOrdersFor` (orders na HINDI covered ng anumang EXPORTED
+  bag) + `lateFormEntry` (CREATE: next bag_number, recipient prefilled mula sa
+  exported bag; EDIT: keep seller edits, refresh covered orders habang may
+  bagong mines) + `lateBagDesc` **walang "/n"** (huwag i-invalidate ang mga
+  naka-print nang label). Amber chip "+{n} new item(s) since export ›" → SAME
+  encode form → save = bagong encoded bag → normal exportable. Exported rows
+  mananatiling immutable.
+- **`nothing_to_export` client handling:** localized note + ONE-time entries
+  refresh (stale selection mula sa ibang device).
+- **SQL contract tests** (`shippingSql.test.ts`, binabasa mismo ang sql/ files):
+  purge-vs-quota invariant (90>30, exported-only), stamped-guard placement
+  (after row_count, bago ang ok-return), mark-shipped never touches status.

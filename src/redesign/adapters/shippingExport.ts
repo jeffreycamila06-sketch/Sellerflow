@@ -6,6 +6,14 @@
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import type { ShippingEntry } from "./shipping";
 
+// ── Retention vs quota windows (mirrors of the SQL — contract-tested) ─────────
+// The quota RPC counts exported rows in a 30-day sliding window (sql/10); the
+// pg_cron purge (sql/13) only deletes exported rows older than 90 days. PURGE
+// must stay STRICTLY ABOVE quota — a purged row must already be outside every
+// quota count, so the purge can never free or shrink quota.
+export const SHIP_QUOTA_WINDOW_DAYS = 30;
+export const SHIP_PURGE_AFTER_DAYS = 90;
+
 // ── Plan quotas (display mirror of the RPC's CASE — server is authoritative) ──
 export function quotaForPlan(plan: string | undefined | null): number | null {
   switch ((plan || "free").toLowerCase()) {
@@ -63,6 +71,17 @@ export async function callExportRpc(entryIds: string[]): Promise<ExportRpcResult
   };
 }
 
+// ── Mark-as-shipped (P3b) — one RPC per tap (write-on-action). Status stays
+// 'exported' (quota-safe); the RPC (sql/12) only stamps/clears shipped_at on
+// the caller's own rows of ONE batch. Optional/manual — nothing enforces it.
+export async function markBatchShipped(batchId: string, shipped: boolean): Promise<{ ok: boolean; count?: number; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
+  const { data, error } = await supabase.rpc("mark_shipping_batch_shipped", { batch: batchId, is_shipped: shipped });
+  if (error) return { ok: false, error: error.message };
+  const r = (data ?? {}) as Record<string, unknown>;
+  return { ok: !!r.ok, count: r.count != null ? Number(r.count) : undefined, error: r.error ? String(r.error) : undefined };
+}
+
 // Usage meter — ONE count read per Shipping-screen open (read-on-load; the RPC
 // result refreshes it after an export). head:true = count only, zero row egress.
 export async function loadExportedCount(): Promise<number> {
@@ -70,7 +89,7 @@ export async function loadExportedCount(): Promise<number> {
   const { data: sess } = await supabase.auth.getSession(); // local, no network
   const uid = sess.session?.user?.id;
   if (!uid) return 0;
-  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const since = new Date(Date.now() - SHIP_QUOTA_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
   const { count, error } = await supabase
     .from("shipping_entries")
     .select("id", { count: "exact", head: true })

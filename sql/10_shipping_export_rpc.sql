@@ -1,5 +1,7 @@
 -- 10_shipping_export_rpc.sql
 -- 7-11 shipping export quota RPC (P2). Applied to prod via MCP (not from code).
+-- P3b: added the stamped=0 race guard — RE-APPLY this whole file (CREATE OR
+-- REPLACE) to pick it up.
 --
 -- check_and_export_shipping(entry_ids) — SERVER-SIDE + ATOMIC (one transaction):
 --   1. reads the caller's plan (seller_profiles — NEVER client-writable),
@@ -73,6 +75,14 @@ begin
          updated_at = now()
    where id = any(entry_ids) and user_id = caller and status = 'encoded';
   get diagnostics stamped = row_count;
+
+  -- P3b guard (chat-Claude P2 review flag): if ANOTHER device exported these
+  -- rows between our count and this UPDATE (reachable on the master path,
+  -- which skips the advisory lock), stamped = 0 — do NOT hand the client an
+  -- "ok" that would build a duplicate file for rows this call never stamped.
+  if stamped = 0 then
+    return json_build_object('ok', false, 'error', 'nothing_to_export');
+  end if;
 
   return json_build_object('ok', true, 'batch_id', batch, 'count', stamped,
                            'used', used + stamped, 'quota', quota);
