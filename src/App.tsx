@@ -231,7 +231,11 @@ const addDays=(n:number)=>{const d=new Date();d.setDate(d.getDate()+n);return d.
 const addMonths=(n:number)=>addDays(Math.max(1,n)*30);
 // Single source of truth for the support/renewal Telegram contact.
 const TELEGRAM_URL="https://t.me/SELLERFLOWLIVE1995";
-const dLeft=(e:string,now=Date.now())=>Math.max(0,Math.ceil((new Date(e).getTime()-now)/86400000));
+// Days left until expiry, clamped at 0. Missing/invalid expiry = NO expiry
+// (Infinity: excluded from expired/expiring buckets and the account lock) —
+// a NULL plan_expiry must not read as "expires today".
+const dLeft=(e:string,now=Date.now())=>{const ms=e?new Date(e).getTime():NaN;return Number.isFinite(ms)?Math.max(0,Math.ceil((ms-now)/86400000)):Infinity;};
+const daysDisplay=(days:number)=>Number.isFinite(days)?String(days):"—";
 // Value-only renewal that ADDS to remaining time instead of resetting from now.
 // Active+days-left → current expiry + n*30d; otherwise (expired) from now + n*30d.
 // Module-scope so the impure Date reads stay out of the component render path
@@ -1224,7 +1228,7 @@ function SubPage({user,t}:{user:User;onActivate:(plan:Plan,status:PlanStatus,exp
   }
   return(
     <div className="subpage">
-      <div className="subpage-hd"><div><h2>{t.sub_plans_title}</h2><p>{t.plan_current}: <Badge label={pName(user.plan,t)} color={pColor(user.plan)}/> · {days>0?`${days} ${t.days_remaining}`:t.expired_label}</p></div></div>
+      <div className="subpage-hd"><div><h2>{t.sub_plans_title}</h2><p>{t.plan_current}: <Badge label={pName(user.plan,t)} color={pColor(user.plan)}/>{Number.isFinite(days)&&<> · {days>0?`${days} ${t.days_remaining}`:t.expired_label}</>}</p></div></div>
       {done&&<div className="auth-ok" style={{marginBottom:8}}>✓ {t.plan_activated}</div>}
 
       <div className="plans-grid">
@@ -3343,18 +3347,24 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
   ].some(v=>String(v||"").toLowerCase().includes(q)));
   const sellerUsers=users.filter(u=>!(u.role==="admin"));
   const pendingApprovalUsers=sellerUsers.filter(u=>u.planStatus==="pending");
-  const activeSellers=sellerUsers.filter(u=>u.planStatus==="active"&&dLeft(u.planExpiry)>0);
-  const expiredSellers=sellerUsers.filter(u=>u.planStatus==="expired"||dLeft(u.planExpiry)===0);
-  const planMonitorUsers=sellerUsers
-    .filter(u=>u.planStatus==="expired"||dLeft(u.planExpiry)<=(u.plan==="trial"?3:5))
+  // Active/Expired tiles + Plan Monitoring cover TIME-LIMITED plans only:
+  // free is cap-limited (200 orders), never time-expired, so it stays out.
+  // Pending also stays out of Expired/Monitoring — its plan_expiry is set to
+  // now() as part of the pending flow (see setPlan), which would otherwise
+  // read as "expired today"; pending has its own Pending Approvals card.
+  const timedSellers=sellerUsers.filter(u=>u.plan!=="free");
+  const activeSellers=timedSellers.filter(u=>u.planStatus==="active"&&dLeft(u.planExpiry)>0);
+  const expiredSellers=timedSellers.filter(u=>u.planStatus!=="pending"&&(u.planStatus==="expired"||dLeft(u.planExpiry)===0));
+  const planMonitorUsers=timedSellers
+    .filter(u=>u.planStatus!=="pending"&&(u.planStatus==="expired"||dLeft(u.planExpiry)<=(u.plan==="trial"?3:7)))
     .sort((a,b)=>dLeft(a.planExpiry)-dLeft(b.planExpiry));
-  // 1-day / already-expired urgency feed for the top-of-page banner. Pure
-  // derivation from the existing `users` state — zero new Supabase queries.
-  // Excludes admin (already filtered by sellerUsers), free (cap-limited not
-  // time-limited), and pending (different flow — they appear in Pending
-  // Approvals). Sorted most-urgent first.
-  const expiringSoonSellers=sellerUsers
-    .filter(u=>u.plan!=="free"&&u.planStatus!=="pending"&&(u.planStatus==="expired"||dLeft(u.planExpiry)<=1))
+  // 7-day / already-expired urgency feed for the top-of-page banner (manual
+  // Wise+Telegram renewals need lead time — 24h was too late to follow up).
+  // Pure derivation from the existing `users` state — zero new Supabase
+  // queries. Excludes admin (already filtered by sellerUsers), free, and
+  // pending (same reasons as above). Sorted most-urgent first.
+  const expiringSoonSellers=timedSellers
+    .filter(u=>u.planStatus!=="pending"&&(u.planStatus==="expired"||dLeft(u.planExpiry)<=7))
     .sort((a,b)=>dLeft(a.planExpiry)-dLeft(b.planExpiry));
   // Free-tier monitoring (from list_free_users_status RPC).
   const q2=adminSearch.trim().toLowerCase();
@@ -3371,7 +3381,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
 
   function exportUsers(){
     csvDL(`sellerflow-users-${dayStamp}.csv`,["Email","Role","Plan","Plan Status","Days Left","Connected Accounts","Full Name","Store Name","Phone","TikTok","Facebook"],filteredUsers.map(u=>[
-      u.email,(u.role==="admin")?"Admin":"Seller",pName(u.plan,t),u.planStatus,dLeft(u.planExpiry),registeredAccountCount(u),u.profile.fullName,u.profile.storeName,u.profile.phone,u.profile.tiktok,u.profile.facebook
+      u.email,(u.role==="admin")?"Admin":"Seller",pName(u.plan,t),u.planStatus,daysDisplay(dLeft(u.planExpiry)),registeredAccountCount(u),u.profile.fullName,u.profile.storeName,u.profile.phone,u.profile.tiktok,u.profile.facebook
     ]));
   }
   function exportAudit(){
@@ -3495,7 +3505,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                       <td><Badge label={(u.role==="admin")?"Admin":"Seller"} color={(u.role==="admin")?"amber":"gray"}/></td>
                       <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
                       <td>{u.plan==="free"&&fr?<span style={{color:fr.capped?"#A32D2D":fr.near_cap?"#BA7517":"#1D9E75",fontWeight:600}}>{fr.count}/{fr.cap} · {fr.cycle_resets_in_days}d</span>:<span className="muted">—</span>}</td>
-                      <td style={u.plan==="free"?undefined:daysCellStyle(dLeft(u.planExpiry))}>{dLeft(u.planExpiry)}</td>
+                      <td style={u.plan==="free"?undefined:daysCellStyle(dLeft(u.planExpiry))}>{daysDisplay(dLeft(u.planExpiry))}</td>
                       <td>{renderUserMonthsSelect(u)}</td>
                       <td>{renderAddMonthsControl(u)}</td>
                       <td>{registeredAccountCount(u)} / {maxAcc(u.plan)}</td>
@@ -3533,12 +3543,12 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                 {planMonitorUsers.map(u=>{
                   const days=dLeft(u.planExpiry);
                   const expired=u.planStatus==="expired"||days===0;
-                  const warnDays=u.plan==="trial"?3:5;
+                  const warnDays=u.plan==="trial"?3:7;
                   return(
                     <tr key={`monitor-${u.email}`}>
                       <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>
                       <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
-                      <td>{days}</td>
+                      <td>{daysDisplay(days)}</td>
                       <td><Badge label={expired?"Expired":"Expiring"} color={expired?"red":"amber"}/></td>
                       <td className="muted">{expired?"Sent on expiry day":`Sends ${warnDays} days before expiry`}</td>
                       <td><button className="tbl-btn ed" onClick={()=>approve(u.email,u.plan==="trial"?"basic":u.plan,monthsForUser(u))}>Extend / approve</button></td>
@@ -3650,7 +3660,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                   <td><Badge label={(u.role==="admin")?"Admin":"Seller"} color={(u.role==="admin")?"amber":"gray"}/></td>
                   <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
                   <td>{u.plan==="free"&&fr?<span style={{color:fr.capped?"#A32D2D":fr.near_cap?"#BA7517":"#1D9E75",fontWeight:600}}>{fr.count}/{fr.cap} · {fr.cycle_resets_in_days}d</span>:<span className="muted">—</span>}</td>
-                  <td style={u.plan==="free"?undefined:daysCellStyle(dLeft(u.planExpiry))}>{dLeft(u.planExpiry)}</td>
+                  <td style={u.plan==="free"?undefined:daysCellStyle(dLeft(u.planExpiry))}>{daysDisplay(dLeft(u.planExpiry))}</td>
                   <td>{renderUserMonthsSelect(u)}</td>
                   <td>{renderAddMonthsControl(u)}</td>
                   <td>{registeredAccountCount(u)} / {maxAcc(u.plan)}</td>
@@ -3679,12 +3689,12 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
                 {planMonitorUsers.map(u=>{
                   const days=dLeft(u.planExpiry);
                   const expired=u.planStatus==="expired"||days===0;
-                  const warnDays=u.plan==="trial"?3:5;
+                  const warnDays=u.plan==="trial"?3:7;
                   return(
                     <tr key={`expanded-monitor-${u.email}`}>
                       <td><strong>{u.email}</strong><div className="muted" style={{fontSize:11}}>{u.profile.storeName||u.profile.fullName}</div></td>
                       <td><Badge label={pName(u.plan,t)} color={pColor(u.plan)}/></td>
-                      <td>{days}</td>
+                      <td>{daysDisplay(days)}</td>
                       <td><Badge label={expired?"Expired":"Expiring"} color={expired?"red":"amber"}/></td>
                       <td className="muted">{expired?"Sent on expiry day":`Sends ${warnDays} days before expiry`}</td>
                       <td><button className="tbl-btn ed" onClick={()=>approve(u.email,u.plan==="trial"?"basic":u.plan,monthsForUser(u))}>Extend / approve</button></td>
@@ -4142,7 +4152,7 @@ export default function App(){
       void listUsers().then(list=>{
         const sellers=list.filter(u=>u.role!=="admin");
         setPendingUsersCount(sellers.filter(u=>u.planStatus==="pending").length);
-        setExpiringSoonCount(sellers.filter(u=>u.plan!=="free"&&u.planStatus!=="pending"&&(u.planStatus==="expired"||dLeft(u.planExpiry)<=1)).length);
+        setExpiringSoonCount(sellers.filter(u=>u.plan!=="free"&&u.planStatus!=="pending"&&(u.planStatus==="expired"||dLeft(u.planExpiry)<=7)).length);
       });
     };
     refreshPendingUsers();
@@ -4506,7 +4516,7 @@ export default function App(){
         <div className="nav-sec-lbl">{t.nav_analytics}</div>
         {navItems.slice(7).map(([id,ic,lb])=><button key={id} onClick={()=>setPage(id)} className={navClass(id)}><span className="nav-ic">{ic}</span><span className="nav-lb">{lb}</span></button>)}
         <button onClick={()=>setPage("support")} className={`nav-it ${page==="support"?"on":""}`}><span className="nav-ic">💬</span><span className="nav-lb">{t.support_label}</span></button>
-        {isAdminUser(user)&&(()=>{const adminAlertCount=pendingUsersCount+expiringSoonCount;return <button onClick={()=>setPage("admin")} className={`nav-it ${page==="admin"?"on":""}`}><span className="nav-ic">👑</span><span className="nav-lb">{t.admin_label}</span>{adminAlertCount>0&&<span className="nav-alert-badge" title={`${pendingUsersCount} pending approval${pendingUsersCount===1?"":"s"}, ${expiringSoonCount} expiring within 24h`}>{adminAlertCount>9?"9+":adminAlertCount}</span>}</button>;})()}
+        {isAdminUser(user)&&(()=>{const adminAlertCount=pendingUsersCount+expiringSoonCount;return <button onClick={()=>setPage("admin")} className={`nav-it ${page==="admin"?"on":""}`}><span className="nav-ic">👑</span><span className="nav-lb">{t.admin_label}</span>{adminAlertCount>0&&<span className="nav-alert-badge" title={`${pendingUsersCount} pending approval${pendingUsersCount===1?"":"s"}, ${expiringSoonCount} expiring within 7 days`}>{adminAlertCount>9?"9+":adminAlertCount}</span>}</button>;})()}
         <button onClick={()=>setPage("settings")} className={navClass("settings")} style={{marginTop:"auto"}}><span className="nav-ic">⚙️</span><span className="nav-lb">{t.nav_settings}</span></button>
         <div className="trial-box">
           {isFreeUser?(()=>{
@@ -4520,8 +4530,8 @@ export default function App(){
               <button className="upgrade-btn" onClick={()=>setPage("subscription")}>{t.free_upgrade_btn}</button>
             </>;
           })():<>
-            <div className="trial-row"><span className="trial-pill">{pName(user.plan,t)}</span><span className="trial-exp">{days}d {t.days_remaining}</span></div>
-            <div className="trial-cd" style={{color:days<=2?"#A32D2D":"#26215C"}}>{days===0?t.expired_label:`${days} ${t.days_remaining}`}</div>
+            <div className="trial-row"><span className="trial-pill">{pName(user.plan,t)}</span><span className="trial-exp">{Number.isFinite(days)&&`${days}d ${t.days_remaining}`}</span></div>
+            <div className="trial-cd" style={{color:days<=2?"#A32D2D":"#26215C"}}>{days===0?t.expired_label:Number.isFinite(days)?`${days} ${t.days_remaining}`:""}</div>
             <button className="upgrade-btn" onClick={()=>setPage("subscription")}>{t.upgrade_btn}</button>
           </>}
         </div>
