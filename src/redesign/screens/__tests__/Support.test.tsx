@@ -31,6 +31,15 @@ describe("Support user-guide accordions", () => {
     expect(screen.queryByText(/add your account in Channels/)).toBeNull();
   });
 
+  it("g5 shipping-export guide is present and expands to the step list", () => {
+    renderSupport();
+    expect(screen.queryByText(/grouped by buyer number/)).toBeNull();  // collapsed
+    fireEvent.click(screen.getByText("How to use: 7-11 shipping export"));
+    expect(screen.getByText(/grouped by buyer number/)).toBeTruthy();
+    expect(screen.getByText(/NT\$38/)).toBeTruthy();
+    expect(screen.getByText(/Ship within 4 days/)).toBeTruthy();
+  });
+
   it("only one accordion is open at a time", () => {
     renderSupport();
     fireEvent.click(screen.getByText("Connecting TikTok & Facebook live"));
