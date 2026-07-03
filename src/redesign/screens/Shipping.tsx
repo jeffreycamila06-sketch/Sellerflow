@@ -9,10 +9,11 @@ import { headerBar, headerTitle, card, mono } from "../ui";
 import type { Buyer } from "../../lib/orderTypes";
 import {
   buyerGroupsFrom, draftEntryFor, validateEntry, entryIsValid, codTotal,
-  SHIP_TEMP_AMBIENT, SHIP_TEMP_FROZEN, SHIP_DEFAULT_FEE, SHIP_MAX_DESC, STORE_LOOKUP_URL,
-  type BuyerGroup, type ShippingEntry, type EntryErrors,
+  mustSplit, splitSummary, buildBagEntries, validateSplit, splitIsValid, defaultProductDesc,
+  SHIP_TEMP_AMBIENT, SHIP_TEMP_FROZEN, SHIP_DEFAULT_FEE, SHIP_MAX_DESC, STORE_LOOKUP_URL, SPLIT_MAX_BAGS,
+  type BuyerGroup, type ShippingEntry, type EntryErrors, type SharedRecipient,
 } from "../adapters/shipping";
-import { loadShippingEntries, upsertShippingEntry } from "../adapters/shippingDb";
+import { loadShippingEntries, upsertShippingEntry, deleteShippingEntry } from "../adapters/shippingDb";
 import {
   quotaForPlan, callExportRpc, loadExportedCount, entryToXlsRow, exportFilename,
   fetchShipTemplate, buildXlsmFromTemplate, deliverXlsm, hasNativeFileShare,
@@ -58,6 +59,15 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [exporting, setExporting] = useState(false);
   const [exNote, setExNote] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  // P3a split bags — item-assignment editor state (one open group at a time).
+  const [splitB, setSplitB] = useState<number | null>(null);
+  const [nBags, setNBags] = useState(2);
+  const [assign, setAssign] = useState<Record<number, number>>({});
+  const [sShared, setSShared] = useState<SharedRecipient>({ recipientName: "", phone: "", storeId: "", tempLayer: SHIP_TEMP_AMBIENT });
+  const [sFee, setSFee] = useState<number>(SHIP_DEFAULT_FEE);
+  const [sShowErr, setSShowErr] = useState(false);
+  const [sBusy, setSBusy] = useState(false);
+  const [sNote, setSNote] = useState("");
 
   // READ-ON-LOAD ONLY — one select for this session window's entries; no poll.
   useEffect(() => {
@@ -73,7 +83,10 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
 
   const entryFor = (bNum: number): ShippingEntry | null =>
     entries.find((e) => e.buyerNumber === bNum && e.bagNumber === 1) || null;
-  const encodedCount = groups.filter((g) => { const e = entryFor(g.bNum); return e && e.status !== "draft"; }).length;
+  const bagsFor = (bNum: number): ShippingEntry[] =>
+    entries.filter((e) => e.buyerNumber === bNum).sort((a, b) => a.bagNumber - b.bagNumber);
+  const encodedCount = groups.filter((g) => { const bs = bagsFor(g.bNum); return bs.length > 0 && bs.every((e) => e.status !== "draft"); }).length;
+  const bagCountFor = (bNum: number): number => bagsFor(bNum).length;
 
   // Open the encode form: saved fields kept; amount/items ALWAYS refreshed from
   // the live group (order sums are source-of-truth; manual splits = P3).
@@ -100,6 +113,62 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
 
   const errs = form ? validateEntry(form) : null;
   const F = (patch: Partial<ShippingEntry>) => setForm((f) => (f ? { ...f, ...patch } : f));
+
+  // ── P3a split bags — open/prefill, save (upsert N + delete shrunk), remove. ──
+  const openSplit = (g: BuyerGroup) => {
+    const bags = bagsFor(g.bNum);
+    if (bags.length > 1) {
+      setNBags(Math.min(bags.length, SPLIT_MAX_BAGS));
+      const a: Record<number, number> = {};
+      bags.forEach((b) => b.includedOrderIds.forEach((oid) => { a[oid] = b.bagNumber; }));
+      setAssign(a);
+      setSShared({ recipientName: bags[0].recipientName, phone: bags[0].phone, storeId: bags[0].storeId, tempLayer: bags[0].tempLayer });
+      setSFee(bags[0].shippingFee);
+    } else {
+      const single = bags[0] ?? null;
+      setNBags(2);
+      setAssign({});
+      setSShared({ recipientName: single?.recipientName ?? "", phone: single?.phone ?? "", storeId: single?.storeId ?? "", tempLayer: single?.tempLayer ?? SHIP_TEMP_AMBIENT });
+      setSFee(single?.shippingFee ?? defaultFee);
+    }
+    setSplitB(g.bNum); setSShowErr(false); setSNote(""); closeForm();
+  };
+  const closeSplit = () => { setSplitB(null); setSShowErr(false); setSNote(""); };
+  const saveSplit = async (g: BuyerGroup) => {
+    if (sBusy) return;
+    const errsS = validateSplit(g.orderList, assign, nBags, sShared, sFee);
+    if (!splitIsValid(errsS)) { setSShowErr(true); return; }
+    setSBusy(true);
+    try {
+      const existing = bagsFor(g.bNum);
+      const { bags } = splitSummary(g.orderList, assign, nBags);
+      const ids = bags.map((_, i) => existing.find((e) => e.bagNumber === i + 1)?.id ?? newId());
+      const rows = buildBagEntries(g, sessionKey, bags, sShared, sFee, ids);
+      for (const row of rows) {
+        const r = await upsertShippingEntry(row);
+        if (!r.ok) { setSNote(tpl(t.rd_shp_save_failed, { err: r.error || "?" })); return; }
+      }
+      for (const old of existing.filter((e) => e.bagNumber > nBags)) await deleteShippingEntry(old.id);
+      setEntries((list) => [...list.filter((e) => e.buyerNumber !== g.bNum), ...rows]);
+      setSel((old) => new Set([...old, ...rows.map((r) => r.id)]));
+      closeSplit();
+    } finally { setSBusy(false); }
+  };
+  const removeSplit = async (g: BuyerGroup) => {
+    if (sBusy || mustSplit(g.total)) return; // >20k must stay split
+    setSBusy(true);
+    try {
+      const bags = bagsFor(g.bNum);
+      const first = bags[0];
+      if (!first) { closeSplit(); return; }
+      const merged: ShippingEntry = { ...first, includedOrderIds: g.orderIds, orderAmount: g.total, productDesc: defaultProductDesc(g.bNum, g.items), status: entryIsValid({ ...first, includedOrderIds: g.orderIds, orderAmount: g.total, productDesc: defaultProductDesc(g.bNum, g.items) }) ? "encoded" : "draft" };
+      const r = await upsertShippingEntry(merged);
+      if (!r.ok) { setSNote(tpl(t.rd_shp_save_failed, { err: r.error || "?" })); return; }
+      for (const old of bags.filter((e) => e.bagNumber > 1)) await deleteShippingEntry(old.id);
+      setEntries((list) => [...list.filter((e) => e.buyerNumber !== g.bNum), merged]);
+      closeSplit();
+    } finally { setSBusy(false); }
+  };
 
   // ── P2 export — RPC first (server-side quota, atomic stamping), THEN the file.
   const encodedEntries = entries.filter((e) => e.status === "encoded").sort((a, b) => a.buyerNumber - b.buyerNumber);
@@ -180,10 +249,13 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
 
         <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
           {groups.map((g) => {
-            const saved = entryFor(g.bNum);
+            const bags = bagsFor(g.bNum);
+            const isSplit = bags.length > 1;
             const isOpen = openB === g.bNum && form;
-            const done = saved && saved.status !== "draft";
-            const isExported = saved?.status === "exported"; // immutable — no re-edit
+            const isSplitOpen = splitB === g.bNum;
+            const done = bags.length > 0 && bags.every((e) => e.status !== "draft");
+            const isExported = bags.some((e) => e.status === "exported"); // immutable — no re-edit
+            const needsSplit = mustSplit(g.total) && !isSplit;
             return (
               <div key={g.bNum} style={{ ...card, padding: "12px 14px" }}>
                 {/* Group row — mirrors the physical bag: Buyer # is the anchor */}
@@ -195,8 +267,16 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
                   </div>
                   {isExported ? (
                     <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "6px 11px", borderRadius: 8, flexShrink: 0 }}>
-                      ✓ {t.rd_shp_exported}
+                      ✓ {t.rd_shp_exported}{isSplit ? ` · ${tpl(t.rd_shp_bags_n, { n: bags.length })}` : ""}
                     </span>
+                  ) : needsSplit ? (
+                    <button onClick={() => (isSplitOpen ? closeSplit() : openSplit(g))} style={{ fontSize: 11.5, fontWeight: 700, color: "#fff", background: "var(--danger)", border: "none", padding: "7px 12px", borderRadius: 8, cursor: "pointer", fontFamily: "var(--font-ui)", flexShrink: 0 }}>
+                      {t.rd_shp_split}
+                    </button>
+                  ) : isSplit ? (
+                    <button onClick={() => (isSplitOpen ? closeSplit() : openSplit(g))} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 800, color: "var(--ok)", background: "rgba(16,185,129,.12)", border: "1px solid rgba(16,185,129,.35)", padding: "6px 11px", borderRadius: 8, cursor: "pointer", fontFamily: "var(--font-ui)", flexShrink: 0 }}>
+                      ✓ {t.rd_shp_encoded} · {tpl(t.rd_shp_bags_n, { n: bags.length })}
+                    </button>
                   ) : done ? (
                     <button onClick={() => (isOpen ? closeForm() : openForm(g))} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 800, color: "var(--ok)", background: "rgba(16,185,129,.12)", border: "1px solid rgba(16,185,129,.35)", padding: "6px 11px", borderRadius: 8, cursor: "pointer", fontFamily: "var(--font-ui)", flexShrink: 0 }}>
                       ✓ {t.rd_shp_encoded}
@@ -207,6 +287,103 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
                     </button>
                   )}
                 </div>
+
+                {/* Mandatory split banner (> NT$20,000 can never ship as one row) */}
+                {needsSplit && (
+                  <div style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: "var(--danger)", lineHeight: 1.45 }}>{t.rd_shp_split_must}</div>
+                )}
+                {/* Optional split entry point (2+ items, not exported, not yet split) */}
+                {!isExported && !isSplit && !needsSplit && g.items >= 2 && !isSplitOpen && (
+                  <button onClick={() => openSplit(g)} style={{ marginTop: 8, fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", background: "transparent", border: "none", padding: 0, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_shp_split} ›</button>
+                )}
+
+                {/* ── Split editor: N bags, item assignment, shared recipient ── */}
+                {isSplitOpen && (() => {
+                  const sum = splitSummary(g.orderList, assign, nBags);
+                  const errsS = validateSplit(g.orderList, assign, nBags, sShared, sFee);
+                  const maxBags = Math.min(SPLIT_MAX_BAGS, Math.max(2, g.items));
+                  return (
+                    <div style={{ marginTop: 11, paddingTop: 11, borderTop: "1px solid var(--border)", display: "flex", flexDirection: "column", gap: 10 }}>
+                      <div>
+                        <label style={lbl}>{t.rd_shp_split_bags_lbl}</label>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          {Array.from({ length: maxBags - 1 }, (_, i) => i + 2).map((n) => (
+                            <button key={n} onClick={() => { setNBags(n); setAssign((a) => { const c: Record<number, number> = {}; for (const [k, v] of Object.entries(a)) if (v <= n) c[Number(k)] = v; return c; }); }} style={{ minWidth: 40, padding: "7px 0", borderRadius: 8, fontFamily: mono, fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: nBags === n ? "1.4px solid var(--accent)" : "1px solid var(--border-strong)", background: nBags === n ? "var(--accent-soft)" : "var(--surface-2)", color: nBags === n ? "var(--accent-fg)" : "var(--text-dim)" }}>{n}</button>
+                          ))}
+                        </div>
+                      </div>
+                      {/* item → bag assignment */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {g.orderList.map((o) => (
+                          <div key={o.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{o.item || "—"}</span>
+                            <span style={{ fontFamily: mono, fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)", flexShrink: 0 }}>{cur}{o.total.toLocaleString()}</span>
+                            <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                              {Array.from({ length: nBags }, (_, i) => i + 1).map((b) => (
+                                <button key={b} onClick={() => setAssign((a) => ({ ...a, [o.id]: b }))} style={{ width: 26, height: 24, borderRadius: 6, fontFamily: mono, fontSize: 11, fontWeight: 700, cursor: "pointer", border: assign[o.id] === b ? "1.4px solid var(--accent)" : "1px solid var(--border-strong)", background: assign[o.id] === b ? "var(--accent-soft)" : "var(--surface-2)", color: assign[o.id] === b ? "var(--accent-fg)" : "var(--text-dim)" }}>{b}</button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {/* per-bag summary + validation */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                        {sum.bags.map((b, i) => {
+                          const amtErr = errsS.bagAmounts.find((x) => x.bag === i + 1)?.err ?? "";
+                          const empty = errsS.emptyBags.includes(i + 1);
+                          const bad = sShowErr && (amtErr || empty);
+                          return (
+                            <div key={i} style={{ fontSize: 11.5, fontWeight: 600, color: bad ? "var(--danger)" : "var(--text-muted)" }}>
+                              {tpl(t.rd_shp_bag_sum, { i: i + 1, n: nBags, k: b.items, amt: `${cur}${b.amount.toLocaleString()}`, fee: `${cur}${sFee}` })}
+                              {sShowErr && empty ? ` — ${tpl(t.rd_shp_split_empty, { i: i + 1 })}` : sShowErr && amtErr ? ` — ${amountErrText(t, amtErr)}` : ""}
+                            </div>
+                          );
+                        })}
+                        {sShowErr && sum.unassigned > 0 && <div style={{ ...errTxt, marginTop: 2 }}>{tpl(t.rd_shp_split_unassigned, { n: sum.unassigned })}</div>}
+                      </div>
+                      {/* shared recipient (copied to every bag) */}
+                      <div>
+                        <label style={lbl}>{t.rd_shp_name}</label>
+                        <input value={sShared.recipientName} onChange={(e) => setSShared((x) => ({ ...x, recipientName: e.target.value }))} placeholder={t.rd_shp_name_ph} style={input} />
+                        {sShowErr && errsS.name && <div style={errTxt}>{nameErrText(t, errsS.name)}</div>}
+                      </div>
+                      <div style={{ display: "flex", gap: 9 }}>
+                        <div style={{ flex: 1.2, minWidth: 0 }}>
+                          <label style={lbl}>{t.rd_shp_phone}</label>
+                          <input value={sShared.phone} onChange={(e) => setSShared((x) => ({ ...x, phone: e.target.value.replace(/[^\d]/g, "").slice(0, 10) }))} inputMode="numeric" placeholder="09xxxxxxxx" style={{ ...input, fontFamily: mono }} />
+                          {sShowErr && errsS.phone && <div style={errTxt}>{t.rd_shp_err_phone}</div>}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <label style={lbl}>{t.rd_shp_store}</label>
+                          <input value={sShared.storeId} onChange={(e) => setSShared((x) => ({ ...x, storeId: e.target.value.replace(/[^\d]/g, "").slice(0, 6) }))} inputMode="numeric" placeholder="123456" style={{ ...input, fontFamily: mono }} />
+                          {sShowErr && errsS.store && <div style={errTxt}>{t.rd_shp_err_store}</div>}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 9, alignItems: "flex-end" }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <label style={lbl}>{t.rd_shp_temp}</label>
+                          <div style={{ display: "flex", gap: 7 }}>
+                            {([SHIP_TEMP_AMBIENT, SHIP_TEMP_FROZEN] as const).map((tl) => (
+                              <button key={tl} onClick={() => setSShared((x) => ({ ...x, tempLayer: tl }))} style={{ flex: 1, padding: "8px 0", borderRadius: 9, fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer", border: sShared.tempLayer === tl ? "1.4px solid var(--accent)" : "1px solid var(--border-strong)", background: sShared.tempLayer === tl ? "var(--accent-soft)" : "var(--surface-2)", color: sShared.tempLayer === tl ? "var(--accent-fg)" : "var(--text-dim)" }}>{tl}</button>
+                            ))}
+                          </div>
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <label style={lbl}>{t.rd_shp_fee}</label>
+                          <input value={String(sFee)} onChange={(e) => setSFee(Number(e.target.value.replace(/[^\d]/g, "")) || 0)} inputMode="numeric" style={{ ...input, fontFamily: mono }} />
+                        </div>
+                      </div>
+                      {sNote && <div style={errTxt}>{sNote}</div>}
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button onClick={() => void saveSplit(g)} disabled={sBusy} style={{ flex: 1, padding: "11px 0", border: "none", borderRadius: 10, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer", opacity: sBusy ? 0.6 : 1 }}>{sBusy ? "…" : tpl(t.rd_shp_split_save, { n: nBags })}</button>
+                        {isSplit && !mustSplit(g.total) && (
+                          <button onClick={() => void removeSplit(g)} disabled={sBusy} style={{ padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--danger)", fontFamily: "var(--font-ui)", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>{t.rd_shp_split_remove}</button>
+                        )}
+                        <button onClick={closeSplit} style={{ padding: "11px 14px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text-dim)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>{t.rd_shp_cancel}</button>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Encode form — live 賣貨便 validation; save blocked until clean */}
                 {isOpen && form && errs && (
@@ -290,7 +467,7 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
                   {encodedEntries.map((e) => (
                     <label key={e.id} style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 12.5, color: "var(--text)", cursor: "pointer" }}>
                       <input type="checkbox" checked={sel.has(e.id)} onChange={() => toggleSel(e.id)} style={{ accentColor: "var(--accent)", width: 15, height: 15 }} />
-                      <span style={{ fontFamily: mono, fontWeight: 700, color: "var(--accent-fg)", flexShrink: 0 }}>#{e.buyerNumber}</span>
+                      <span style={{ fontFamily: mono, fontWeight: 700, color: "var(--accent-fg)", flexShrink: 0 }}>#{e.buyerNumber}{bagCountFor(e.buyerNumber) > 1 ? ` · ${tpl(t.rd_shp_bag_chip, { i: e.bagNumber, n: bagCountFor(e.buyerNumber) })}` : ""}</span>
                       <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }}>{e.recipientName} · 7-11 {e.storeId}</span>
                       <span style={{ fontFamily: mono, fontWeight: 700, flexShrink: 0 }}>{cur}{codTotal(e.orderAmount, e.shippingFee).toLocaleString()}</span>
                     </label>

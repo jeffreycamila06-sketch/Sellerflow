@@ -92,3 +92,13 @@ export async function upsertShippingEntry(e: ShippingEntry): Promise<{ ok: boole
     .upsert(entryToRow(e, id, new Date().toISOString()), { onConflict: "user_id,session_key,buyer_number,bag_number" });
   return error ? { ok: false, error: error.message } : { ok: true };
 }
+
+// One delete per action (split shrink / remove-split). RLS delete policy scopes
+// to the caller; exported rows are guarded in the UI (immutable).
+export async function deleteShippingEntry(id: string): Promise<{ ok: boolean; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
+  const me = await uid();
+  if (!me) return { ok: false, error: "not signed in" };
+  const { error } = await supabase.from("shipping_entries").delete().eq("id", id).eq("user_id", me);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}

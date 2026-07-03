@@ -127,3 +127,52 @@ describe("validateEntry / entryIsValid — full-form gate", () => {
     expect(validateEntry({ ...valid, orderAmount: 0, shippingFee: 0 }).amounts).toBe("total_low");
   });
 });
+
+// ── P3a split bags — pure: summary/labels/entries/validation ──────────────────
+import { splitSummary, buildBagEntries, validateSplit, splitIsValid, bagDesc, mustSplit, type SharedRecipient } from "../shipping";
+
+describe("split bags (P3a)", () => {
+  const g = buyerGroupsFrom([buyer(4, "ana", [
+    order({ orderNum: 1, item: "A100", total: 100 }),
+    order({ orderNum: 2, item: "B200", total: 200 }),
+    order({ orderNum: 3, item: "C300", total: 300 }),
+  ])])[0];
+  const shared: SharedRecipient = { recipientName: "王小明", phone: "0912345678", storeId: "123456", tempLayer: "常溫" };
+
+  it("splitSummary groups assigned items per bag; unassigned counted", () => {
+    const { bags, unassigned } = splitSummary(g.orderList, { 1: 1, 2: 2, 3: 2 }, 2);
+    expect(bags[0]).toEqual({ orderIds: [1], items: 1, amount: 100 });
+    expect(bags[1]).toEqual({ orderIds: [2, 3], items: 2, amount: 500 });
+    expect(unassigned).toBe(0);
+    expect(splitSummary(g.orderList, { 1: 1 }, 2).unassigned).toBe(2);
+  });
+
+  it("bagDesc carries buyer# + Bag i/n for the 寄件單↔bag match", () => {
+    expect(bagDesc(4, 2, 1, 2)).toBe("#4 商品x2 Bag 1/2");
+  });
+
+  it("buildBagEntries: shared recipient copied to every bag, own fee each, ids preserved", () => {
+    const { bags } = splitSummary(g.orderList, { 1: 1, 2: 2, 3: 2 }, 2);
+    const rows = buildBagEntries(g, "2026-07-03", bags, shared, 38, ["id-a", "id-b"]);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ id: "id-a", bagNumber: 1, orderAmount: 100, shippingFee: 38, recipientName: "王小明", phone: "0912345678", storeId: "123456", productDesc: "#4 商品x1 Bag 1/2", status: "encoded", buyerUsername: "ana" });
+    expect(rows[1]).toMatchObject({ id: "id-b", bagNumber: 2, orderAmount: 500, includedOrderIds: [2, 3], productDesc: "#4 商品x2 Bag 2/2" });
+  });
+
+  it("validateSplit blocks: unassigned items, empty bags, per-bag amount rules", () => {
+    expect(splitIsValid(validateSplit(g.orderList, { 1: 1, 2: 2, 3: 2 }, 2, shared, 38))).toBe(true);
+    expect(validateSplit(g.orderList, { 1: 1 }, 2, shared, 38).unassigned).toBe(2);
+    expect(validateSplit(g.orderList, { 1: 1, 2: 1, 3: 1 }, 2, shared, 38).emptyBags).toEqual([2]);
+    // bag below the NT$55 floor (100 assigned alone is fine w/ fee 0? 100+0 ≥ 55 ok → use tiny order)
+    const tiny = buyerGroupsFrom([buyer(5, "b", [order({ orderNum: 9, total: 10 }), order({ orderNum: 10, total: 500 })])])[0];
+    const r = validateSplit(tiny.orderList, { 9: 1, 10: 2 }, 2, shared, 0);
+    expect(r.bagAmounts).toEqual([{ bag: 1, err: "total_low" }]);
+    // shared recipient rules still enforced once
+    expect(validateSplit(g.orderList, { 1: 1, 2: 2, 3: 2 }, 2, { ...shared, recipientName: "maria88" }, 38).name).toBe("forbidden");
+  });
+
+  it("mustSplit: only above the NT$20,000 per-row cap", () => {
+    expect(mustSplit(20000)).toBe(false);
+    expect(mustSplit(20001)).toBe(true);
+  });
+});

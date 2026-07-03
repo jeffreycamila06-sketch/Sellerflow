@@ -56,13 +56,15 @@ export function sessionKeyFor(todayId: string, windowStart: string | null, windo
 
 // ── Buyer grouping — one group per buyer# from the already-loaded session ─────
 // (RebuiltSession.buyers is already consolidated per buyer; zero new queries.)
+export interface GroupOrder { id: number; item: string; total: number } // id = orderNum epoch-ms
 export interface BuyerGroup {
   bNum: number;
   handle: string;
   name: string;
   items: number;
   total: number;
-  orderIds: number[]; // orderNum epoch-ms
+  orderIds: number[];       // orderNum epoch-ms
+  orderList: GroupOrder[];  // per-item detail (split-bags assignment UI)
 }
 export function buyerGroupsFrom(buyers: Buyer[]): BuyerGroup[] {
   return buyers
@@ -73,6 +75,7 @@ export function buyerGroupsFrom(buyers: Buyer[]): BuyerGroup[] {
       items: b.orders.length,
       total: b.orders.reduce((s, o) => s + (Number(o.total) || 0), 0),
       orderIds: b.orders.map((o) => o.orderNum),
+      orderList: b.orders.map((o) => ({ id: o.orderNum, item: o.item || "", total: Number(o.total) || 0 })),
     }))
     .sort((a, b) => a.bNum - b.bNum);
 }
@@ -150,4 +153,77 @@ export function entryIsValid(e: ShippingEntry): boolean {
 // COD preview — the buyer pays 訂單金額 + 運費金額 at pickup.
 export function codTotal(orderAmount: number, fee: number): number {
   return (Number(orderAmount) || 0) + (Number(fee) || 0);
+}
+
+// ── Split bags (P3a) — one bag = one shipping_entries row (bag_number 1..N),
+// items assigned per bag, per-bag amounts derived from the assigned orders,
+// recipient fields shared across bags, each bag pays its own fee. ────────────
+export const SPLIT_MAX_BAGS = 6;
+// A group whose total exceeds the per-row order cap CANNOT ship as one row —
+// the split prompt is mandatory (spec: total > NT$20,000).
+export const mustSplit = (total: number): boolean => total > SHIP_MAX_ORDER;
+
+export function bagDesc(bNum: number, items: number, i: number, n: number): string {
+  return `${defaultProductDesc(bNum, items)} Bag ${i}/${n}`;
+}
+
+export interface BagSummary { orderIds: number[]; items: number; amount: number }
+// assignment: orderNum → bag index (1-based). Orders missing from the map are
+// UNASSIGNED (blocks save).
+export function splitSummary(orderList: GroupOrder[], assignment: Record<number, number>, nBags: number): { bags: BagSummary[]; unassigned: number } {
+  const bags: BagSummary[] = Array.from({ length: nBags }, () => ({ orderIds: [], items: 0, amount: 0 }));
+  let unassigned = 0;
+  for (const o of orderList) {
+    const b = assignment[o.id];
+    if (!b || b < 1 || b > nBags) { unassigned++; continue; }
+    const bag = bags[b - 1];
+    bag.orderIds.push(o.id);
+    bag.items++;
+    bag.amount += o.total;
+  }
+  return { bags, unassigned };
+}
+
+export interface SharedRecipient { recipientName: string; phone: string; storeId: string; tempLayer: TempLayer }
+// Builds the N entries for a valid split. ids[i] keeps the EXISTING row id for
+// that bag_number when re-editing (the upsert conflict target is the group key,
+// so reusing ids avoids primary-key churn); fee applies per bag (own NT$38 each).
+export function buildBagEntries(g: BuyerGroup, sessionKey: string, bags: BagSummary[], shared: SharedRecipient, fee: number, ids: string[]): ShippingEntry[] {
+  const n = bags.length;
+  return bags.map((bag, idx) => ({
+    id: ids[idx],
+    sessionKey,
+    buyerNumber: g.bNum,
+    bagNumber: idx + 1,
+    includedOrderIds: bag.orderIds,
+    recipientName: shared.recipientName,
+    phone: shared.phone,
+    storeId: shared.storeId,
+    tempLayer: shared.tempLayer,
+    productDesc: bagDesc(g.bNum, bag.items, idx + 1, n),
+    orderAmount: bag.amount,
+    shippingFee: fee,
+    buyerUsername: g.handle,
+    status: "encoded" as const,
+    exportBatchId: null,
+    exportedAt: null,
+  }));
+}
+
+// Full split validation: every item assigned, every bag non-empty, every bag's
+// amounts inside the 賣貨便 rules, shared recipient fields valid.
+export interface SplitErrors { unassigned: number; emptyBags: number[]; bagAmounts: { bag: number; err: AmountError }[]; name: NameError; phone: boolean; store: boolean }
+export function validateSplit(orderList: GroupOrder[], assignment: Record<number, number>, nBags: number, shared: SharedRecipient, fee: number): SplitErrors {
+  const { bags, unassigned } = splitSummary(orderList, assignment, nBags);
+  return {
+    unassigned,
+    emptyBags: bags.map((b, i) => (b.items === 0 ? i + 1 : 0)).filter(Boolean),
+    bagAmounts: bags.map((b, i) => ({ bag: i + 1, err: validateAmounts(b.amount, fee) })).filter((x) => x.err),
+    name: validateRecipientName(shared.recipientName),
+    phone: !validPhone(shared.phone),
+    store: !validStore(shared.storeId),
+  };
+}
+export function splitIsValid(e: SplitErrors): boolean {
+  return e.unassigned === 0 && e.emptyBags.length === 0 && e.bagAmounts.length === 0 && !e.name && !e.phone && !e.store;
 }
