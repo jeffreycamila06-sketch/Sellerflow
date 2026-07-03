@@ -13,6 +13,11 @@ import {
   type BuyerGroup, type ShippingEntry, type EntryErrors,
 } from "../adapters/shipping";
 import { loadShippingEntries, upsertShippingEntry } from "../adapters/shippingDb";
+import {
+  quotaForPlan, callExportRpc, loadExportedCount, entryToXlsRow, exportFilename,
+  fetchShipTemplate, buildXlsmFromTemplate, deliverXlsm, hasNativeFileShare,
+} from "../adapters/shippingExport";
+import { isAppShell } from "../adapters/appShell";
 import { useT, tpl, type RedesignT } from "../i18n";
 
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
@@ -26,8 +31,9 @@ const nameErrText = (t: RedesignT, e: EntryErrors["name"]): string =>
 const amountErrText = (t: RedesignT, e: EntryErrors["amounts"]): string =>
   e === "fee_range" ? t.rd_shp_err_fee : e === "order_range" ? t.rd_shp_err_order : e === "total_low" ? t.rd_shp_err_total_low : e === "total_high" ? t.rd_shp_err_total_high : "";
 
-export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1 }: {
+export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1, plan, onUpgrade }: {
   cur: string; buyers?: Buyer[]; sessionKey: string; windowDays?: number;
+  plan?: string; onUpgrade?: () => void; // upgrade prompt hidden on iOS (no prop)
 }) {
   const t = useT();
   const groups = useMemo(() => buyerGroupsFrom(buyers), [buyers]);
@@ -38,11 +44,21 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1 
   const [showErr, setShowErr] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
+  // P2 export — quota meter (ONE count read on mount), selection, RPC-then-file.
+  const [exportedCount, setExportedCount] = useState<number | null>(null);
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [exporting, setExporting] = useState(false);
+  const [exNote, setExNote] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
   // READ-ON-LOAD ONLY — one select for this session window's entries; no poll.
   useEffect(() => {
     let active = true;
-    void loadShippingEntries(sessionKey).then((rows) => { if (active) { setEntries(rows); setLoading(false); } });
+    void loadShippingEntries(sessionKey).then((rows) => {
+      if (!active) return;
+      setEntries(rows); setLoading(false);
+      setSel(new Set(rows.filter((e) => e.status === "encoded").map((e) => e.id))); // default: all encoded
+    });
+    void loadExportedCount().then((n) => { if (active) setExportedCount(n); });
     return () => { active = false; };
   }, [sessionKey]);
 
@@ -69,11 +85,58 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1 
     setBusy(false);
     if (!r.ok) { setNote(tpl(t.rd_shp_save_failed, { err: r.error || "?" })); return; }
     setEntries((list) => [...list.filter((e) => !(e.buyerNumber === encoded.buyerNumber && e.bagNumber === 1)), encoded]);
+    setSel((old) => new Set([...old, encoded.id]));
     closeForm();
   };
 
   const errs = form ? validateEntry(form) : null;
   const F = (patch: Partial<ShippingEntry>) => setForm((f) => (f ? { ...f, ...patch } : f));
+
+  // ── P2 export — RPC first (server-side quota, atomic stamping), THEN the file.
+  const encodedEntries = entries.filter((e) => e.status === "encoded").sort((a, b) => a.buyerNumber - b.buyerNumber);
+  const quota = quotaForPlan(plan);
+  // Encode works everywhere; the FILE needs a browser (or a future APK with
+  // Filesystem+Share). Current APK shell → guidance card instead of a dead button.
+  const canExportHere = !isAppShell() || hasNativeFileShare();
+  const toggleSel = (id: string) => setSel((old) => { const n = new Set(old); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const doExport = async () => {
+    if (exporting) return;
+    const chosen = encodedEntries.filter((e) => sel.has(e.id));
+    if (chosen.length === 0) return;
+    setExNote(null);
+    // client pre-check (UX only — the RPC re-checks atomically server-side)
+    if (quota != null && exportedCount != null && exportedCount + chosen.length > quota) {
+      setExNote({ kind: "err", text: tpl(t.rd_shp_quota_block, { used: exportedCount, quota, n: chosen.length }) });
+      return;
+    }
+    setExporting(true);
+    try {
+      const r = await callExportRpc(chosen.map((e) => e.id));
+      if (!r.ok) {
+        if (r.error === "quota_exceeded") setExNote({ kind: "err", text: tpl(t.rd_shp_quota_block, { used: r.used ?? 0, quota: r.quota ?? 0, n: r.selected ?? chosen.length }) });
+        else setExNote({ kind: "err", text: tpl(t.rd_shp_export_failed, { err: r.error || "?" }) });
+        return;
+      }
+      // server has stamped exported — reflect locally regardless of file outcome
+      const ids = new Set(chosen.map((e) => e.id));
+      const nowIso = new Date().toISOString();
+      setEntries((list) => list.map((e) => (ids.has(e.id) ? { ...e, status: "exported" as const, exportBatchId: r.batchId ?? e.exportBatchId, exportedAt: nowIso } : e)));
+      setSel(new Set());
+      if (r.used != null) setExportedCount(r.used);
+      try {
+        const bytes = await buildXlsmFromTemplate(await fetchShipTemplate(), chosen.map(entryToXlsRow));
+        const file = exportFilename(Date.now());
+        const d = await deliverXlsm(bytes, file);
+        if (!d.ok) throw new Error(d.error || d.via);
+        setExNote({ kind: "ok", text: tpl(t.rd_shp_export_ok, { n: r.count ?? chosen.length, file }) });
+      } catch (fileErr) {
+        // entries are already exported server-side — say so honestly
+        setExNote({ kind: "err", text: tpl(t.rd_shp_dl_failed, { err: fileErr instanceof Error ? fileErr.message : String(fileErr) }) });
+      }
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div>
@@ -100,6 +163,7 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1 
             const saved = entryFor(g.bNum);
             const isOpen = openB === g.bNum && form;
             const done = saved && saved.status !== "draft";
+            const isExported = saved?.status === "exported"; // immutable — no re-edit
             return (
               <div key={g.bNum} style={{ ...card, padding: "12px 14px" }}>
                 {/* Group row — mirrors the physical bag: Buyer # is the anchor */}
@@ -109,7 +173,11 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1 
                     <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.handle ? `@${g.handle}` : g.name || `#${g.bNum}`}</div>
                     <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{tpl(t.rd_shp_items, { n: g.items })} · {cur}{g.total.toLocaleString()}</div>
                   </div>
-                  {done ? (
+                  {isExported ? (
+                    <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "6px 11px", borderRadius: 8, flexShrink: 0 }}>
+                      ✓ {t.rd_shp_exported}
+                    </span>
+                  ) : done ? (
                     <button onClick={() => (isOpen ? closeForm() : openForm(g))} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 800, color: "var(--ok)", background: "rgba(16,185,129,.12)", border: "1px solid rgba(16,185,129,.35)", padding: "6px 11px", borderRadius: 8, cursor: "pointer", fontFamily: "var(--font-ui)", flexShrink: 0 }}>
                       ✓ {t.rd_shp_encoded}
                     </button>
@@ -181,9 +249,47 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1 
           })}
         </div>
 
-        {/* Export (.xlsm) lands in P2 — encoded entries are already persisted. */}
+        {/* ── P2: Ready to export — meter + selection + RPC-then-file ── */}
         {!loading && groups.length > 0 && (
-          <div style={{ fontSize: 11, color: "var(--text-muted)", textAlign: "center", marginTop: 14, lineHeight: 1.5 }}>{t.rd_shp_export_soon}</div>
+          <div style={{ ...card, marginTop: 14, padding: "13px 14px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 9 }}>
+              <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14, color: "var(--text)", flex: 1 }}>{t.rd_shp_ready}</span>
+              <span style={{ fontSize: 10.5, fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "3px 9px", borderRadius: 99 }}>
+                {exportedCount == null ? "…" : quota == null ? tpl(t.rd_shp_meter_unl, { used: exportedCount }) : tpl(t.rd_shp_meter, { used: exportedCount, quota })}
+              </span>
+            </div>
+            {!canExportHere ? (
+              <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.55, background: "var(--surface-2)", border: "1px dashed var(--border-strong)", borderRadius: 11, padding: "11px 12px" }}>
+                {t.rd_shp_export_browser}
+              </div>
+            ) : encodedEntries.length === 0 ? (
+              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t.rd_shp_none_encoded}</div>
+            ) : (
+              <>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 11 }}>
+                  {encodedEntries.map((e) => (
+                    <label key={e.id} style={{ display: "flex", alignItems: "center", gap: 9, fontSize: 12.5, color: "var(--text)", cursor: "pointer" }}>
+                      <input type="checkbox" checked={sel.has(e.id)} onChange={() => toggleSel(e.id)} style={{ accentColor: "var(--accent)", width: 15, height: 15 }} />
+                      <span style={{ fontFamily: mono, fontWeight: 700, color: "var(--accent-fg)", flexShrink: 0 }}>#{e.buyerNumber}</span>
+                      <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }}>{e.recipientName} · 7-11 {e.storeId}</span>
+                      <span style={{ fontFamily: mono, fontWeight: 700, flexShrink: 0 }}>{cur}{codTotal(e.orderAmount, e.shippingFee).toLocaleString()}</span>
+                    </label>
+                  ))}
+                </div>
+                <button onClick={() => void doExport()} disabled={exporting || sel.size === 0} style={{ width: "100%", padding: "12px 0", border: "none", borderRadius: 11, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", opacity: exporting || sel.size === 0 ? 0.55 : 1 }}>
+                  {exporting ? "…" : tpl(t.rd_shp_export, { n: sel.size })}
+                </button>
+              </>
+            )}
+            {exNote && (
+              <div style={{ marginTop: 9, fontSize: 12, fontWeight: 600, lineHeight: 1.5, color: exNote.kind === "ok" ? "var(--ok)" : "var(--danger)" }}>
+                {exNote.text}
+                {exNote.kind === "err" && onUpgrade && quota != null && exNote.text.includes(String(quota)) && (
+                  <button onClick={onUpgrade} style={{ display: "block", marginTop: 7, fontSize: 11.5, fontWeight: 700, color: "var(--accent-fg)", background: "var(--accent-soft)", border: "none", padding: "6px 12px", borderRadius: 8, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_shp_upgrade}</button>
+                )}
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>

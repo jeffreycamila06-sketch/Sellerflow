@@ -38,17 +38,19 @@ create table if not exists public.shipping_entries (
 );
 
 -- One entry per (user, session window, buyer, bag) — the upsert target.
-create unique index if not exists shipping_entries_group_key
+create unique index if not exists shipping_entries_user_session_buyer_bag
   on public.shipping_entries (user_id, session_key, buyer_number, bag_number);
 
 alter table public.shipping_entries enable row level security;
 
--- A seller may only ever see / write their OWN rows.
-create policy shp_select on public.shipping_entries
-  for select using (user_id = auth.uid());
-create policy shp_insert on public.shipping_entries
-  for insert with check (user_id = auth.uid());
-create policy shp_update on public.shipping_entries
-  for update using (user_id = auth.uid());
-create policy shp_delete on public.shipping_entries
-  for delete using (user_id = auth.uid());
+-- A seller may only ever see / write their OWN rows. (Names + the UPDATE
+-- with_check match the LIVE schema as applied 2026-07-03 — the with_check
+-- means user_id can never be reassigned by an update.)
+create policy shipping_entries_select on public.shipping_entries
+  for select using (auth.uid() = user_id);
+create policy shipping_entries_insert on public.shipping_entries
+  for insert with check (auth.uid() = user_id);
+create policy shipping_entries_update on public.shipping_entries
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy shipping_entries_delete on public.shipping_entries
+  for delete using (auth.uid() = user_id);
