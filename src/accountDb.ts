@@ -70,7 +70,9 @@ function rowToUser(row: SupabaseRow): AccountUser {
     },
     plan: ["free", "trial", "basic", "pro", "master"].includes(textValue(row.plan)) ? textValue(row.plan) as Plan : "free",
     planStatus: ["active", "expired", "pending"].includes(textValue(row.plan_status)) ? textValue(row.plan_status) as PlanStatus : "active",
-    planExpiry: textValue(row.plan_expiry, new Date().toISOString()),
+    // NULL plan_expiry = NO expiry (dLeft treats "" as Infinity) — defaulting
+    // to now() made every NULL-expiry seller read as "expired today".
+    planExpiry: textValue(row.plan_expiry),
     trialStartedAt: textValue(row.trial_started_at),
     connectedAccounts: stringArrayValue(row.connected_accounts),
     role: textValue(row.role) === "admin" ? "admin" : "seller",
