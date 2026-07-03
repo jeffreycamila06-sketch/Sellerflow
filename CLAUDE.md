@@ -16,9 +16,19 @@ Capacitor-based live-selling assistant app para sa TikTok/Facebook sellers sa Ta
 ~45–53 active paying users. App is FREE to download; subscriptions (Basic/Pro/Master)
 bayad manually via Wise + Telegram, LABAS ng Google Play. Free tier = cap-limited
 sa 100 orders kada rolling 30-day cycle (nagre-reset bawat cycle, HINDI lifetime;
-tugma sa `sql/04_free_tier_cap.sql`; live cap verified 2026-07-02 = 100, near-cap warn = 75). Almost all UI lives in one big file:
-`src/App.tsx` (~4.3k lines); pure/testable logic is extracted to `src/lib/*`
-(`orderLogic.ts`, `dateHelpers.ts`, `slipFields.ts`, …).
+tugma sa `sql/04_free_tier_cap.sql`; live cap verified 2026-07-02 = 100, near-cap warn = 75).
+
+### 🔴 PRODUCTION = ANG REDESIGN APP — App.tsx ay ROLLBACK na lang
+**Ang production entry (`/` = `index.html` → `#redesign-root` →
+`src/redesign/main.tsx` → `RedesignApp`) ay ang REDESIGN.** Ang lumang
+`src/App.tsx` (~4.8k lines) ay ang **rollback app lang** (`app.html`, hindi
+served sa prod). **LAHAT ng fix sa user-facing screens: sa `src/redesign/*`
+MUNA tumingin** — isang App.tsx-only fix ay HINDI lalabas sa production
+(napatunayan 2026-07-04: ang admin "Expiring" fix sa App.tsx ay walang epekto
+dahil may sariling counter-logic copy ang redesign — ayaw ulitin).
+Pure/testable logic ay nasa `src/lib/*` (`orderLogic.ts`, `dateHelpers.ts`,
+`slipFields.ts`, `planWindow.ts`, …) — SHARED ng dalawang app; doon ilagay ang
+anumang logic na kailangan ng pareho.
 
 ## Stack & infra
 - Frontend: Vercel (auto-deploy `main`) — sellerflowlive.com / www.sellerflowlive.com
@@ -43,9 +53,10 @@ npm run agent:check # lint + typecheck + test + build
 **The APK is a THIN SHELL.** `mobile/capacitor.config.ts` hard-codes
 `server.url = https://www.sellerflowlive.com/...`, so the running app = whatever
 **production** (Vercel `main`) serves.
-- ✅ **FRONTEND changes** (`src/App.tsx`, `src/db.ts`, `src/lib/*`, timezone
-  strings) → merge to `main` → Vercel deploy → **live on web AND APK instantly,
-  NO APK rebuild.**
+- ✅ **FRONTEND changes** (`src/redesign/*` = ang production UI; `src/db.ts`,
+  `src/lib/*`, timezone strings) → merge to `main` → Vercel deploy → **live on
+  web AND APK instantly, NO APK rebuild.** (`src/App.tsx` = rollback app lang —
+  fixes doon ay HINDI nakikita sa prod; see the PRODUCTION = REDESIGN note.)
 - 🔧 **NATIVE changes** (`TsplBuilder.java`, Swift plugin, ESC/POS, mipmaps,
   Capacitor config) → **APK rebuild + Telegram distribution.** CI can't build these.
 - **TSPL goldens** (`src/lib/__tests__/tspl.test.ts` vs `tsplReference.ts`) are
@@ -1246,3 +1257,56 @@ lint 54 = main parity · build green.** Zero protected files. 7 bagong
 - **SQL contract tests** (`shippingSql.test.ts`, binabasa mismo ang sql/ files):
   purge-vs-quota invariant (90>30, exported-only), stamped-guard placement
   (after row_count, bago ang ok-return), mark-shipped never touches status.
+
+## SESSION 2026-07-04 — Admin "Expiring" fix saga → `lib/planWindow.ts` = SOURCE OF TRUTH ng LAHAT ng expiry logic
+Admin panel nagpapakita ng "Expiring 0" kahit may paid seller na 4 days na lang
+(kylerkao, Jul 7). Dalawang merge ang kinailangan — ang una ay LESSON mismo:
+
+### Ang 3 display-logic fixes (LIVE, merges `0050376` + `2841f17`)
+1. **Expiring window 24h → 7 DAYS** (banner, nav badge, tooltip, Plan
+   Monitoring, "Sends N days before expiry" copy; trial monitor nanatiling 3d).
+   Banner strings updated ×7 langs; redesign User Base tile → "Expiring ≤7d"
+   (`rd_adm_expiring_1d` key renamed `rd_adm_expiring_7d`).
+2. **NULL `plan_expiry` = NO expiry, HINDI "expired today".** Tinanggal ang
+   `now()` default sa `accountDb.rowToUser`; days-left ng missing/invalid
+   expiry = **Infinity** (hindi kailanman expired/expiring/locked); display
+   sites nagpapakita ng "—" via `daysDisplay`.
+3. **Active/Expired/Expiring buckets = TIME-LIMITED plans lang** (free =
+   cap-limited, exclude; **pending exclude rin** — ang pending flow ay
+   nagse-set ng expiry=now() na dating nagmumukhang "expired today").
+   Verified vs live DB: dating Active 29/Expired 2/Expiring 0 → ngayon
+   **Active 27/Expired 0/Expiring 1** (tugma sa ground truth).
+
+### ⚠️ ANG LESSON (bakit 2 merges): App.tsx fix ≠ production fix
+Unang merge (`0050376`) = App.tsx AdminPage lang → **WALANG nagbago sa live
+Admin panel**, dahil ang production ay ang REDESIGN app at may SARILING kopya
+ito ng counter logic (`useReadData.ts`: sariling `planDaysLeft` NULL→0,
+`deriveSubBuckets` ≤1-day window na kasama ang free, `deriveUserBase`
+"Expiring ≤1d"). May PANGATLONG kopya pa (`lib/sellerExpiry.ts` sariling
+`daysLeft` mirror). TATLONG magkakahiwalay na kopya = ang tunay na bug.
+
+### Root fix (`2841f17`): NEW **`src/lib/planWindow.ts`** — nag-iisang shared pure core
+`planDaysLeft` (missing/invalid → Infinity) · `daysDisplay` (Infinity → "—") ·
+`isTimeLimitedPlan` (case-insensitive: gumagana sa App.tsx `"free"` AT redesign
+label `"Free"`) · `isActivePaid` / `isExpiredPaid` / `isExpiringSoon` (7d) /
+`isInMonitorWindow` (trial 3d/paid 7d) · `EXPIRING_WINDOW_DAYS=7`. **LAHAT ng
+tatlong dating kopya ay nakaturo na dito:** App.tsx `dLeft`+buckets (delegate),
+redesign `useReadData` (`deriveSubBuckets`/`deriveUserBase` sa shared
+predicates; `planDaysLeft`/`daysDisplay` re-exported para sa screens),
+`sellerExpiry.ts` (shared `planDaysLeft`; invalid date = banner hidden, hindi
+na "NaN days"). May sariling unit tests (`lib/__tests__/planWindow.test.ts`).
+**RULE: anumang bagong expiry/days-left/bucket logic → `lib/planWindow.ts`
+LANG. HUWAG nang gumawa ng bagong lokal na kopya.**
+
+### Iba pang na-verify/na-deliver ngayong session
+- **Vercel prod verify tightened:** hindi sapat ang "deploy READY sa tamang
+  SHA" — i-verify din na ang SERVED BUNDLE (`main-*.js` ng redesign entry) ay
+  nagbago at may expected marker string. (Ito ang nakahuli sana ng unang miss.)
+- **578/578 vitest green** (568 + 10 planWindow) · typecheck · build · lint 54
+  = baseline.
+- ⚠️ **OPEN BRANCH (hindi pa merged): `claude/dead-code-cleanup`** — verified
+  dead-code removal (6 dead Settings fields sa App.tsx + ~174 lines ng
+  100%-dead CSS: admin-messenger/support-chat/sf-bot clusters; `--sf-*` vars
+  INIWAN dahil 48 live consumers pala). Gates green sa branch. Naghihintay ng
+  merge decision ni Jeff — pero NOTE: App.tsx/App.css = rollback app na, kaya
+  mababa na ang urgency nito.
