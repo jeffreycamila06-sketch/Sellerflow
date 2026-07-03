@@ -92,6 +92,44 @@ describe("buildXlsmFromTemplate — 賣貨便 template round-trip (real file)", 
     expect(ws["!ref"]).toBe("A1:K8");                                    // extended by 2 rows only
   });
 
+  it("ZIP PATCH: output stays near the original size (no SheetJS rebuild bloat)", async () => {
+    // The 73KB SheetJS rebuild was REJECTED by 賣貨便; the patch only adds the
+    // stored sheet XML delta, so the output must stay well under 60KB.
+    const out = await buildXlsmFromTemplate(new Uint8Array(template), rows);
+    expect(out.length).toBeGreaterThan(30_000);
+    expect(out.length).toBeLessThan(60_000);
+  });
+
+  it("ZIP PATCH: every entry EXCEPT the data sheet keeps byte-identical compressed data + crc (VBA exact)", async () => {
+    const { parseZip, readEntryRaw, resolveSheetPath, readEntryText } = await import("../shippingXlsmPatch");
+    const src = new Uint8Array(template);
+    const out = await buildXlsmFromTemplate(src, rows);
+    const before = parseZip(src);
+    const after = parseZip(out);
+    expect(after.map((e) => e.name)).toEqual(before.map((e) => e.name)); // same entries, same order
+    const byName = new Map(before.map((e) => [e.name, e]));
+    const sheetPath = resolveSheetPath(
+      await readEntryText(src, byName.get("xl/workbook.xml")!),
+      await readEntryText(src, byName.get("xl/_rels/workbook.xml.rels")!),
+      "訂單匯入",
+    );
+    expect(sheetPath).toBe("xl/worksheets/sheet1.xml");
+    for (const b of before) {
+      const a = after.find((e) => e.name === b.name)!;
+      if (b.name === sheetPath) {
+        expect(a.method).toBe(0); // patched sheet is STORED
+        continue;
+      }
+      expect(a.crc).toBe(b.crc);
+      expect(a.method).toBe(b.method);
+      expect(Buffer.from(readEntryRaw(out, a)).equals(Buffer.from(readEntryRaw(src, b)))).toBe(true);
+    }
+    // the macro payload specifically, byte-for-byte
+    const vbaB = byName.get("xl/vbaProject.bin")!;
+    const vbaA = after.find((e) => e.name === "xl/vbaProject.bin")!;
+    expect(Buffer.from(readEntryRaw(out, vbaA)).equals(Buffer.from(readEntryRaw(src, vbaB)))).toBe(true);
+  });
+
   it("throws when the data sheet is missing (corrupt/wrong template)", async () => {
     const XLSX = await import("xlsx");
     const wrong = XLSX.utils.book_new();

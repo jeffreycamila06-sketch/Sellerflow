@@ -118,13 +118,13 @@ export async function deliverXlsm(bytes: Uint8Array, filename: string): Promise<
   return { ok: true, via: "browser" };
 }
 
-// ── .xlsm build — the bundled 賣貨便 template round-trip (INSPECTED 2026-07-03:
-// 2 sheets 訂單匯入+填寫說明; 訂單匯入 rows 1–4 instructions, row 5 blank, row 6
-// headers, col K = the macro's 驗證結果 column; 填寫說明 B1 = "1.4"; VBA
-// vbaProject 47,616 bytes). We ONLY add value rows at A7 — headers, the other
-// sheet, and the macro ride through untouched. ⚠️ SheetJS CE does not carry
-// full cell STYLING through a write (values/sheets/VBA survive; instruction-row
-// colors may flatten) — the P4 dummy upload to 賣貨便 is the acceptance gate.
+// ── .xlsm build — RAW ZIP PATCH of the bundled 賣貨便 template (P4 fallback:
+// the SheetJS full-rebuild ballooned 36KB → 73KB and 賣貨便 rejected it with
+// "Failed to read Excel file"). shippingXlsmPatch keeps every zip entry's
+// compressed bytes VERBATIM (VBA, styles, sharedStrings, 填寫說明, …) and only
+// splices our rows into the 訂單匯入 sheet XML at row 7+ (inlineStr cells,
+// dimension updated). Same interface as before; unit-tested against the REAL
+// bundled template. The next 賣貨便 dummy upload re-runs the P4 gate.
 export const SHIP_TEMPLATE_URL = "/templates/myship-import-template.xlsm";
 export const SHIP_DATA_SHEET = "訂單匯入";
 
@@ -136,11 +136,7 @@ export async function fetchShipTemplate(): Promise<ArrayBuffer> {
 
 // Pure given bytes+rows (unit-tested against the REAL bundled template).
 export async function buildXlsmFromTemplate(templateBytes: ArrayBuffer | Uint8Array, rows: string[][]): Promise<Uint8Array> {
-  const XLSX = await import("xlsx"); // dynamic import — same pattern as the Print screen
-  const wb = XLSX.read(templateBytes, { type: templateBytes instanceof Uint8Array ? "buffer" : "array", bookVBA: true });
-  const ws = wb.Sheets[SHIP_DATA_SHEET];
-  if (!ws) throw new Error(`${SHIP_DATA_SHEET} sheet missing from template`);
-  XLSX.utils.sheet_add_aoa(ws, rows, { origin: "A7" }); // data starts row 7; strings stay strings
-  const out = XLSX.write(wb, { bookType: "xlsm", type: "array", bookVBA: true }) as ArrayBuffer;
-  return new Uint8Array(out);
+  const bytes = templateBytes instanceof Uint8Array ? templateBytes : new Uint8Array(templateBytes);
+  const { patchXlsmTemplate } = await import("./shippingXlsmPatch");
+  return patchXlsmTemplate(bytes, rows);
 }
