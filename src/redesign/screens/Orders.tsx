@@ -13,7 +13,7 @@ const filterActive: CSSProperties = { background: "#fff", color: "var(--accent)"
 const filterIdle: CSSProperties = { background: "rgba(255,255,255,.16)", fontSize: 12, fontWeight: 600, padding: "6px 13px", borderRadius: 20, whiteSpace: "nowrap" };
 const mono = "var(--font-mono)";
 
-export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sample", onExport }: { onGoPrint: () => void; cur: string; orders?: Order[]; state?: ReadState; onExport?: () => void }) {
+export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sample", onExport, onGoShipping }: { onGoPrint: () => void; cur: string; orders?: Order[]; state?: ReadState; onExport?: () => void; onGoShipping?: () => void }) {
   const t = useT();
   const live = state === "live";
   const countBy = (s: string) => orders.filter((o) => o.status === s).length;
@@ -24,6 +24,8 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={title}>{t.rd_ord_title}</div>
           <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            {/* 7-11 shipping entry point (Jeff: inside Orders) */}
+            {onGoShipping && <button onClick={onGoShipping} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, background: "rgba(255,255,255,.16)", border: "none", color: "var(--on-header)", padding: "6px 10px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>🚚 {t.rd_sh_shipping}</button>}
             {onExport && orders.length > 0 && <button onClick={onExport} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, background: "rgba(255,255,255,.16)", border: "none", color: "var(--on-header)", padding: "6px 10px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_export}</button>}
             <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "6px 11px", borderRadius: 9 }}>{badge}</div>
           </div>
