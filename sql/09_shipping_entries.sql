@@ -28,7 +28,7 @@ create table if not exists public.shipping_entries (
   temp_layer         text not null default '常溫',
   product_desc       text,                             -- auto-gen, seller-editable, ≤200
   order_amount       numeric not null default 0,
-  shipping_fee       numeric not null default 60,
+  shipping_fee       numeric not null default 38,  -- NT$38 = standard 賣貨便 fee. NOTE: live column default is still 60 (cosmetic — the client always sends an explicit fee); optional sync: alter table public.shipping_entries alter column shipping_fee set default 38;
   buyer_username     text,
   status             text not null default 'draft',    -- draft → encoded → exported
   export_batch_id    uuid,

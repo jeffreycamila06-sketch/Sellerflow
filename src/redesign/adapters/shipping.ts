@@ -14,7 +14,7 @@ import { computeWindowState } from "./useSessionWindow";
 export const SHIP_MAX = 500;              // max rows per upload
 export const SHIP_TEMP_AMBIENT = "常溫";  // template enum values — NEVER translate
 export const SHIP_TEMP_FROZEN = "冷凍";
-export const SHIP_DEFAULT_FEE = 60;       // NT$60 standard 本島
+export const SHIP_DEFAULT_FEE = 38;       // NT$38 — the standard OPEN POINT/賣貨便 fee in Taiwan (Jeff market correction 2026-07-03; NOT a promo)
 export const SHIP_MAX_FEE = 100;          // 運費金額 0–100
 export const SHIP_MAX_ORDER = 20000;      // 訂單金額 0–20,000
 export const SHIP_MIN_TOTAL = 55;         // 55 ≤ 訂單+運費 ≤ 20,000 per row

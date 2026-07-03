@@ -42,7 +42,7 @@ describe("entryToXlsRow — cols A–J, ALL strings", () => {
     const g = buyerGroupsFrom(buyers)[0];
     const e = { ...draftEntryFor(g, "2026-07-02~3d", "id"), recipientName: "王小明", phone: "0912345678", storeId: "123456" };
     const row = entryToXlsRow(e);
-    expect(row).toEqual(["王小明", "0912345678", "123456", "常溫", "#5 商品x2", "2100", "60", "2026/7/2", "", "kuyajohn_"]);
+    expect(row).toEqual(["王小明", "0912345678", "123456", "常溫", "#5 商品x2", "2100", "38", "2026/7/2", "", "kuyajohn_"]);
     expect(row.every((c) => typeof c === "string")).toBe(true); // required cols are Text (@)
     expect(row[0]).not.toContain("kuyajohn_");
   });

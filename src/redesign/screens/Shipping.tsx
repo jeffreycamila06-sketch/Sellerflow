@@ -44,6 +44,15 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
   const [showErr, setShowErr] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
+  // Editable DEFAULT fee for NEW entries. NT$38 is the STANDARD OPEN POINT/賣貨便
+  // fee in Taiwan (the factory default); 賣貨便 also rejects fees above site-wide
+  // caps, so this must never be hardcoded. Quick presets persisted per device
+  // (sfl_rd_ship_fee); the full configurable Settings field is P3. Per-entry
+  // edit in the form stays; validator range 0–100 unchanged (outer islands etc.).
+  const [defaultFee, setDefaultFee] = useState<number>(() => {
+    try { const raw = localStorage.getItem("sfl_rd_ship_fee"); const v = Number(raw); return raw != null && Number.isFinite(v) && v >= 0 && v <= 100 ? v : SHIP_DEFAULT_FEE; } catch { return SHIP_DEFAULT_FEE; }
+  });
+  const pickDefaultFee = (v: number) => { setDefaultFee(v); try { localStorage.setItem("sfl_rd_ship_fee", String(v)); } catch { /* ignore */ } };
   // P2 export — quota meter (ONE count read on mount), selection, RPC-then-file.
   const [exportedCount, setExportedCount] = useState<number | null>(null);
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -70,7 +79,7 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
   // the live group (order sums are source-of-truth; manual splits = P3).
   const openForm = (g: BuyerGroup) => {
     const saved = entryFor(g.bNum);
-    const base = saved ?? draftEntryFor(g, sessionKey, newId());
+    const base = saved ?? { ...draftEntryFor(g, sessionKey, newId()), shippingFee: defaultFee };
     setForm({ ...base, includedOrderIds: g.orderIds, orderAmount: g.total });
     setOpenB(g.bNum); setShowErr(false); setNote("");
   };
@@ -153,6 +162,17 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
       </div>
 
       <div style={{ padding: "14px 14px 22px" }}>
+        {/* HOTFIX: default-fee presets (applies to NEW entries; per-entry edit stays) */}
+        <div style={{ ...card, padding: "10px 13px", marginBottom: 12, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", flexShrink: 0 }}>{t.rd_shp_default_fee}</span>
+          <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
+            {[38, 60, 100, 0].map((v) => (
+              <button key={v} onClick={() => pickDefaultFee(v)} style={{ minWidth: 44, padding: "6px 0", borderRadius: 8, fontFamily: mono, fontSize: 12, fontWeight: 700, cursor: "pointer", border: defaultFee === v ? "1.4px solid var(--accent)" : "1px solid var(--border-strong)", background: defaultFee === v ? "var(--accent-soft)" : "var(--surface-2)", color: defaultFee === v ? "var(--accent-fg)" : "var(--text-dim)" }}>
+                {v === 0 ? t.rd_shp_free : `$${v}`}
+              </button>
+            ))}
+          </div>
+        </div>
         {loading && <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "14px 0" }}>{t.rd_shp_loading}</div>}
         {!loading && groups.length === 0 && (
           <div style={{ ...card, fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.55 }}>{t.rd_shp_empty}</div>
@@ -231,7 +251,7 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
                         <label style={lbl}>{t.rd_shp_fee}</label>
                         <input value={String(form.shippingFee)} onChange={(e) => F({ shippingFee: Number(e.target.value.replace(/[^\d]/g, "")) || 0 })} inputMode="numeric" style={{ ...input, fontFamily: mono }} />
                       </div>
-                      <button onClick={() => F({ shippingFee: form.shippingFee === 0 ? SHIP_DEFAULT_FEE : 0 })} style={{ flexShrink: 0, padding: "9px 11px", borderRadius: 9, fontFamily: "var(--font-ui)", fontSize: 11.5, fontWeight: 700, cursor: "pointer", border: form.shippingFee === 0 ? "1.4px solid var(--ok)" : "1px solid var(--border-strong)", background: form.shippingFee === 0 ? "rgba(16,185,129,.12)" : "var(--surface-2)", color: form.shippingFee === 0 ? "var(--ok)" : "var(--text-dim)" }}>
+                      <button onClick={() => F({ shippingFee: form.shippingFee === 0 ? defaultFee : 0 })} style={{ flexShrink: 0, padding: "9px 11px", borderRadius: 9, fontFamily: "var(--font-ui)", fontSize: 11.5, fontWeight: 700, cursor: "pointer", border: form.shippingFee === 0 ? "1.4px solid var(--ok)" : "1px solid var(--border-strong)", background: form.shippingFee === 0 ? "rgba(16,185,129,.12)" : "var(--surface-2)", color: form.shippingFee === 0 ? "var(--ok)" : "var(--text-dim)" }}>
                         {t.rd_shp_free}
                       </button>
                     </div>
