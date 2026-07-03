@@ -836,7 +836,7 @@ const RAW: Record<string, Row> = {
   rd_adm_incl_you: { en: " (incl. you)", fil: " (kasama ka)", zh: "（含你）", "zh-TW": "（含你）", vi: " (gồm bạn)", th: " (รวมคุณ)", id: " (termasuk Anda)" },
   rd_adm_trial: { en: "Trial:", fil: "Trial:", zh: "试用：", "zh-TW": "試用：", vi: "Dùng thử:", th: "ทดลอง:", id: "Uji coba:" },
   rd_adm_paid_status: { en: "Paid status", fil: "Status ng bayad", zh: "付费状态", "zh-TW": "付費狀態", vi: "Trạng thái trả phí", th: "สถานะการจ่ายเงิน", id: "Status berbayar" },
-  rd_adm_expiring_1d: { en: "Expiring ≤1d", fil: "Mag-e-expire ≤1d", zh: "≤1 天到期", "zh-TW": "≤1 天到期", vi: "Hết hạn ≤1 ngày", th: "หมดอายุ ≤1 วัน", id: "Kedaluwarsa ≤1h" },
+  rd_adm_expiring_7d: { en: "Expiring ≤7d", fil: "Mag-e-expire ≤7d", zh: "≤7 天到期", "zh-TW": "≤7 天到期", vi: "Hết hạn ≤7 ngày", th: "หมดอายุ ≤7 วัน", id: "Kedaluwarsa ≤7h" },
   rd_adm_free_cap_usage: { en: "Free tier — cap usage", fil: "Libreng tier — paggamit ng cap", zh: "免费版 — 上限用量", "zh-TW": "免費版 — 上限用量", vi: "Gói miễn phí — mức dùng giới hạn", th: "ระดับฟรี — การใช้ตามขีดจำกัด", id: "Tingkat gratis — penggunaan batas" },
   rd_adm_view: { en: "View ›", fil: "Tingnan ›", zh: "查看 ›", "zh-TW": "查看 ›", vi: "Xem ›", th: "ดู ›", id: "Lihat ›" },
   rd_adm_free_users: { en: "Free users", fil: "Mga libreng user", zh: "免费用户", "zh-TW": "免費用戶", vi: "Người dùng miễn phí", th: "ผู้ใช้ฟรี", id: "Pengguna gratis" },

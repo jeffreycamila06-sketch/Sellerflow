@@ -90,9 +90,7 @@ describe("expiryDate formatting", () => {
     expect(s?.expiryDate).toBe("15 Aug 2026");
   });
 
-  it("invalid date yields empty string but still shows", () => {
-    const s = sellerExpiryState(paidUser({ planExpiry: "not-a-date" }), NOW);
-    expect(s?.expiryDate).toBe("");
-    expect(s?.show).toBe(true);
+  it("invalid date = no expiry — hidden (was a 'NaN days' banner before the shared core)", () => {
+    expect(sellerExpiryState(paidUser({ planExpiry: "not-a-date" }), NOW)).toBeNull();
   });
 });

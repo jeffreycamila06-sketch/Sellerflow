@@ -6,7 +6,7 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { PLANS, PAYMENTS, USERS, SUBS, PLAN_PRICE, type Sub, type User } from "../data";
 import { headerBar, card, mono } from "../ui";
-import { planDaysLeft, deriveSubBuckets, deriveUserBase, freeUsersSummary, auditActionColor, filterAuditLogs, type ReadState, type SubBuckets, type FreeUserRow } from "../adapters/useReadData";
+import { planDaysLeft, daysDisplay, deriveSubBuckets, deriveUserBase, freeUsersSummary, auditActionColor, filterAuditLogs, type ReadState, type SubBuckets, type FreeUserRow } from "../adapters/useReadData";
 import type { AdminActions, Plan } from "../adapters/useAdmin";
 import { maxAcc } from "../adapters/connect";
 import type { AccountAuditLog, AccountUser } from "../../accountDb";
@@ -153,7 +153,7 @@ function SellerSubList({ list, statusLabel, statusColor, note }: { list: User[];
       {list.map((u) => (
         <div key={u.email} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 12px", border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface-2)" }}>
           <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.note || u.email}</div><div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email} · {u.plan}</div></div>
-          <div style={{ textAlign: "right", flexShrink: 0 }}><div style={{ fontSize: 10.5, fontWeight: 800, color: statusColor }}>{statusLabel}</div><div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>{tpl(u.days === 1 ? t.rd_adm_days_left_one : t.rd_adm_days_left_many, { n: u.days })}</div></div>
+          <div style={{ textAlign: "right", flexShrink: 0 }}><div style={{ fontSize: 10.5, fontWeight: 800, color: statusColor }}>{statusLabel}</div><div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>{tpl(u.days === 1 ? t.rd_adm_days_left_one : t.rd_adm_days_left_many, { n: daysDisplay(u.days) })}</div></div>
         </div>
       ))}
     </div>
@@ -441,7 +441,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                         </div>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 9, fontSize: 11, color: "var(--text-dim)" }}>
-                        <span><span style={{ color: "var(--text-muted)" }}>{t.rd_adm_days}</span> <span style={{ fontFamily: mono, fontWeight: 700, color: "var(--text)" }}>{days}</span></span>
+                        <span><span style={{ color: "var(--text-muted)" }}>{t.rd_adm_days}</span> <span style={{ fontFamily: mono, fontWeight: 700, color: "var(--text)" }}>{daysDisplay(days)}</span></span>
                         <span><span style={{ color: "var(--text-muted)" }}>{t.rd_adm_accounts}</span> <span style={{ fontFamily: mono, fontWeight: 700, color: "var(--text)" }}>{u.accounts}</span></span>
                         {addIdx === i ? (
                           <span style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: "auto" }}>
@@ -689,7 +689,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
               <div style={{ ...card, padding: "13px 15px" }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", marginBottom: 9 }}>{t.rd_adm_paid_status}</div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  {([[t.rd_adm_st_active, userBase.paidActive, "var(--ok)"], [t.rd_adm_expiring_1d, userBase.paidExpiring, "var(--warn)"], [t.rd_adm_st_expired, userBase.paidExpired, "var(--danger)"]] as const).map(([l, n, c]) => (
+                  {([[t.rd_adm_st_active, userBase.paidActive, "var(--ok)"], [t.rd_adm_expiring_7d, userBase.paidExpiring, "var(--warn)"], [t.rd_adm_st_expired, userBase.paidExpired, "var(--danger)"]] as const).map(([l, n, c]) => (
                     <div key={l} style={{ flex: 1, textAlign: "center", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: "10px 0" }}>
                       <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 17, color: c }}>{n}</div>
                       <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600, marginTop: 2 }}>{l}</div>
