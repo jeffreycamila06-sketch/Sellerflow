@@ -933,14 +933,17 @@ never shift. 1 file (`Admin.tsx`), existing i18n keys, 485 tests green.
 - **Claude Code verify:** iOS build is CLEAN (thin-shell → production web,
   `isIOS()` bridge-level gating intact, zero payment/plan UI; product prices =
   seller-to-buyer physical goods, not covered by 3.1.1).
-- **BLOCKER:** Xcode Archive fails — "Communication with Apple failed / No
-  profiles for com.sellerflow.live / 0 Provisioned Devices" despite the correct
-  Developer Team (H27M37QY52, Admin, certificates access OK) + Download Manual
-  Profiles + restart. Build 1 = EXPIRED on TestFlight. Apple Developer Support
-  emailed (code signing case). **WAITING:** Apple Support reply + Apple review
-  reply. Once signing is resolved: new build (Build number 2, from
-  `~/Sellerflow/mobile`, verify `capacitor.config.ts` `server.url` = PRODUCTION
-  before archiving) → TestFlight → resubmit.
+- ~~**BLOCKER:** Xcode Archive fails — "Communication with Apple failed / No
+  profiles for com.sellerflow.live / 0 Provisioned Devices"~~ ✅ **SIGNING
+  RESOLVED (2026-07-04).** Root cause: **walang registered device sa Apple
+  Developer account** (HINDI account/agreement issue) — dev provisioning
+  profiles ay hindi ma-generate nang walang kahit isang device. **Fix: connect
+  physical iPhone via USB → auto-register → signing ok.** Archive verified
+  working end-to-end (arm64, 1.0(1)). Build 1 = EXPIRED on TestFlight; bagong
+  binary builds ay **UNBLOCKED na**. **Next build (Build number 2, from
+  `~/Sellerflow/mobile`): verify `capacitor.config.ts` `server.url` = PRODUCTION
+  before archiving** → TestFlight → resubmit. **WAITING:** Apple review reply
+  (3.1.1 tool-framing) na lang.
 
 ## SESSION 2026-07-02 (part 2) — Games/Raffle feature (BUONG feature LIVE) + landing follow-ups
 
@@ -989,8 +992,9 @@ totoong claims sa follow-up. (Ang "Free 100 orders" copy ay TAMA pala — live c
 = 100, verified 2026-07-02 audit.)
 
 ### 3. PENDING/WAITING
-Apple review reply (3.1.1 tool-framing + LIVTAG/ChotDon precedent) · Apple Dev
-Support (signing: No profiles/Communication failed, Team H27M37QY52) · connection
+Apple review reply (3.1.1 tool-framing + LIVTAG/ChotDon precedent) · ~~Apple Dev
+Support (signing)~~ ✅ RESOLVED 2026-07-04 (no registered device — see iOS 3.1.1
+status) · connection
 monitor → cron-job.org OFF kapag stable · redesign full merge (APK build + device
 testing + User Guide + approval) · MyAI UGC videos · payroll Supabase idle-pause
 watch.
@@ -1070,7 +1074,7 @@ check SA LOOB ng body (secure).
 ### 5. BACKLOG
 Branch cleanup (18 merged) · APK device test (Games + winner print + web-align
 verify sa AIMO) · unang Games announcement via Broadcast · landing fake stats ·
-Apple review + signing replies pending.
+Apple review reply pending (signing ✅ RESOLVED 2026-07-04).
 
 ## SESSION 2026-07-03 — 7-11 交貨便 SHIPPING EXPORT (branch `claude/shipping-711-p1`, P1→P3a COMPLETE, P4 GATE GREEN — NOT YET MERGED)
 Buong feature saga sa isang branch (off `main` `a32f9d5`): encode → validate →
@@ -1299,6 +1303,13 @@ na "NaN days"). May sariling unit tests (`lib/__tests__/planWindow.test.ts`).
 LANG. HUWAG nang gumawa ng bagong lokal na kopya.**
 
 ### Iba pang na-verify/na-deliver ngayong session
+- ✅ **iOS Xcode signing RESOLVED (2026-07-04):** root cause = walang registered
+  device sa Apple Developer account (hindi account/agreement issue) — dev
+  provisioning profiles ay hindi ma-generate nang walang kahit isang device.
+  Fix: connect physical iPhone via USB → auto-register → signing ok. **Archive
+  verified end-to-end (arm64, 1.0(1)); bagong binary builds UNBLOCKED.**
+  Natitira sa iOS: Apple review reply (3.1.1) + Build 2 → TestFlight (verify
+  `server.url` = PRODUCTION bago mag-archive).
 - **Vercel prod verify tightened:** hindi sapat ang "deploy READY sa tamang
   SHA" — i-verify din na ang SERVED BUNDLE (`main-*.js` ng redesign entry) ay
   nagbago at may expected marker string. (Ito ang nakahuli sana ng unang miss.)
