@@ -126,6 +126,17 @@ describe("deriveSubBuckets — shared lib/planWindow buckets (paid-only, 7d wind
     const { active } = deriveSubBuckets(users);
     expect(active.map((x) => x.email)).toEqual(["a@x.com"]);
   });
+  it("active sorts days-left ASC (soonest expiry first), ties alphabetical, no-expiry last", () => {
+    const users = [
+      u({ email: "far@x.com", planStatus: "active", days: 90 }),
+      u({ email: "soon@x.com", planStatus: "active", days: 3 }),
+      u({ email: "mid-b@x.com", planStatus: "active", days: 30 }),
+      u({ email: "mid-a@x.com", planStatus: "active", days: 30 }),           // tie w/ mid-b → alphabetical
+      u({ email: "noexp@x.com", planStatus: "active", days: Infinity }),     // no expiry → bottom
+    ];
+    expect(deriveSubBuckets(users).active.map((x) => x.email))
+      .toEqual(["soon@x.com", "mid-a@x.com", "mid-b@x.com", "far@x.com", "noexp@x.com"]);
+  });
   it("expired = paid, non-pending, (expired status OR days==0); free/no-expiry/pending out", () => {
     const users = [
       u({ email: "c@x.com", planStatus: "expired", days: 5 }),

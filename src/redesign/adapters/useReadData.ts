@@ -112,17 +112,22 @@ export function accountUsersToRedesign(users: AccountUser[], nowMs: number = Dat
 // pending flow). `days` = planDaysLeft (Infinity = no expiry).
 //   active   = paid, status active, days>0
 //   expired  = paid, non-pending, (status expired or days==0)
-//   expiring = paid, non-pending, (expired or days<=EXPIRING_WINDOW_DAYS), sorted
+//   expiring = paid, non-pending, (expired or days<=EXPIRING_WINDOW_DAYS)
+// ALL three lists sort by days-left ASC (soonest expiry on top — the order
+// self-updates as days pass), ties alphabetical by email. Infinity-safe:
+// no-expiry rows sink to the bottom without a NaN comparator.
 export interface SubBuckets { active: User[]; expiring: User[]; expired: User[] }
 const planState = (u: User) => ({ plan: u.plan, planStatus: u.planStatus || "", daysLeft: u.days ?? Infinity });
+export function compareByDaysLeft(a: User, b: User): number {
+  const da = a.days ?? Infinity, db = b.days ?? Infinity;
+  if (da !== db) return da < db ? -1 : 1;
+  return a.email.localeCompare(b.email);
+}
 export function deriveSubBuckets(users: User[]): SubBuckets {
   const sellers = users.filter((u) => u.role !== "Admin");
-  const days = (u: User) => u.days ?? Infinity;
-  const active = sellers.filter((u) => isActivePaid(planState(u)));
-  const expired = sellers.filter((u) => isExpiredPaid(planState(u)));
-  const expiring = sellers
-    .filter((u) => isExpiringSoon(planState(u)))
-    .sort((a, b) => days(a) - days(b));
+  const active = sellers.filter((u) => isActivePaid(planState(u))).sort(compareByDaysLeft);
+  const expired = sellers.filter((u) => isExpiredPaid(planState(u))).sort(compareByDaysLeft);
+  const expiring = sellers.filter((u) => isExpiringSoon(planState(u))).sort(compareByDaysLeft);
   return { active, expiring, expired };
 }
 
