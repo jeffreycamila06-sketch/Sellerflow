@@ -1504,17 +1504,19 @@ Buong numbered findings report ay naibigay kay Jeff (25 items, severity-ranked).
 Mga HEADLINE findings na NAKAPILA PA (hindi pa inaayos, hinihintay ang batch decision):
 - ~~**S2 ⚠️ `listUsers .limit(100)`**~~ ✅ FIXED sa Batch A (2026-07-05, merge
   `da814f2`) — paged na (see part 5 log).
-- 🔴 Orders filter chips = di-clickable na dekorasyon (walang status lifecycle;
-  Unpaid/Paid/Shipped laging 0) · 🔴 Customers search bar = static div (hindi input)
+- ~~🔴 Orders filter chips~~ + ~~🔴 Customers search bar~~ ✅ FIXED sa Batch B
+  (2026-07-05, merge `1d77b0b` — chips tanggal, search totoo na; see part 6 log)
 - 🟡 FAKE STATS sa LOGIN screen (12k+/2.4M/4.9★ — ang APK logged-out screen!) na
-  salungat pa sa Landing (1.4M) · Landing fake stats (kilala na)
-- 🟡 Admin home permanent fakes: Monthly Revenue 4.2M/▲12%, bell badge "5",
-  "Juan Dela Cruz" owner card, "Systems OK" chip · 🟡 Customers "Comment archive" =
-  laging Maria demo, walang marker · 🟡 printer picker fake hardware names ·
-  🔴 "Readable comment colors" toggle = static div ("@maria_shops" hardcoded)
+  salungat pa sa Landing (1.4M) · Landing fake stats — **INIWAN as-is, desisyon
+  ni Jeff (Batch B scope change): huwag galawin hangga't walang bagong utos.**
+- ~~🟡 Admin home permanent fakes~~ + ~~🟡 Customers "Comment archive" demo~~ +
+  ~~🟡 printer picker fake hardware~~ ✅ FIXED sa Batch B (see part 6 log) ·
+  🔴 "Readable comment colors" toggle = static div ("@maria_shops" hardcoded) —
+  NAKAPILA PA
 - ~~⚠️ S4 free-cap poll kahit paid~~ + ~~⚠️ Subscription 4th expiry copy~~ ✅ pareho
   FIXED sa Batch A (2026-07-05, merge `da814f2` — see part 5 log) ·
-  ⚠️ export gaps (Customers/Miners/Audit CSV truncated scopes) · ⚠️ audit-log RLS
+  ~~⚠️ export gaps~~ ✅ LABELED sa Batch B (visible scope captions + live-gated
+  Customers/CustomerData export) · ⚠️ audit-log RLS
   at seller_profiles DELETE ay chineck ko sa DB — LIGTAS pareho (admin-only /
   own-or-admin) · ⚠️ LATENT: `orders` ledger RLS = own-OR-admin → anumang future
   client-side read nito ay Miners-bug regression (laging RPC!) · `db.ts
@@ -1580,3 +1582,40 @@ Tatlong audit fixes sa isang branch, walang SQL na kailangan:
   chunk na-grep buo): `.limit(100)` WALA na (ang tanging limits = 10 announcements
   + 80 audit, tama) · `free_tier_status_for_user` buhay · ang bagong `.range()`
   pager kita sa esm chunk.
+
+
+## SESSION 2026-07-05 (part 6) — AUDIT BATCH B ✅ (branch `claude/audit-batch-b` → merged `1d77b0b`, LIVE + prod-verified)
+Anim na fake/dead-display fixes (items #2-7 ng audit; **#1 Login/Landing fake
+stats = INIWAN as-is per Jeff scope change**). 11 files, redesign tree lang,
+walang SQL:
+1. **Admin home — zero peke na natira:** owner card = TOTOONG signed-in admin
+   (bagong `owner` prop); Monthly Revenue = TOTOONG MRR via pure `deriveMrr`
+   (active paid × NT$ tier prices mula sa loaded users list, zero bagong query;
+   ~NT$18,600 sa kasalukuyang base) — tanggal ang 4.2M/▲12%/"Revenue: sample"
+   badge; tanggal ang bell badge "5" at "Systems OK" chip (walang source).
+2. **Orders:** dead All/Unpaid/Paid/Shipped chip row TANGGAL (walang status
+   lifecycle; laging 0 ang tatlo). Header badge pa rin ang count.
+3. **Customers search = TOTOO na:** input + pure `filterCustomers` (loaded pages,
+   name/@handle contains), ✕ clear, no-match note, match-count chip; placeholder
+   ×7 nagsasabi ng loaded-scope.
+4. **Comment archive demo TANGGAL** (walang backing table by design — egress
+   lesson): honest note ×7; ARCHIVE + PRINTERS burado na sa data.ts.
+5. **Printer picker — honest slots:** 2 capability slots (WiFi/LAN slip · BT
+   sticker) mula i18n; meta = TOTOONG saved device (BT name / LAN host:port) na
+   inexpose ng `usePrinterStatus` mula sa PAREHONG bridge calls (zero dagdag
+   native call); stale 3-slot index nagko-clamp.
+6. **Export-scope labels:** visible captions + tooltips — Customers/CustomerData
+   "loaded rows only" · Miners "top 5 only" · Audit "last 80 entries". PLUS
+   safety: Customers/CustomerData export naka-gate sa LIVE state (hindi na
+   maida-download ang sample fallback bilang totoong CSV).
+- i18n: 10 bagong/updated `rd_*` ×7; removed-usage keys = harmless orphans.
+- **Tests +10** (auditBatchB.test.tsx: deriveMrr, Admin/Orders/Customers render
+  asserts na WALA na ang mga peke, filterCustomers matrix). **635/635 vitest ·
+  typecheck · build · lint 54 = parity.**
+- **Prod-verified 6/6 sa SERVED bundles** (main-CNDdmFdP.js + esm-BeuhjLL3.js,
+  buong body): present ang "from active paid plans" / "Comment history isn't
+  stored yet" / "Search loaded customers"; ABSENT ang "Juan Dela Cruz" /
+  "Xprinter XP-365B" / "Mine! Red lipstick".
+- **Natitira sa audit backlog:** Login/Landing fake stats (Jeff decision) ·
+  "Readable comment colors" dead toggle · Sales-report/session corner items ·
+  S1-adjacent minors (see part 4 findings).
