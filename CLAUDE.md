@@ -1537,7 +1537,7 @@ writes) = zero touch. Tests: 1,200-row heavy-seller scenario + boundary + error.
 - **Period pills:** Today (orihinal na session view — BYTE-UNCHANGED, export
   dito lang) · 7 Days · This Month · Last Month = HISTORICAL mula sa billing
   `orders` ledger (buo ang history, never purged).
-- **`sql/16`?? HINDI — `sql/15_sales_report.sql`** — RPC `sales_report(p_period)`:
+- **`sql/15_sales_report.sql`** — RPC `sales_report(p_period)`:
   miners_stats pattern (SECURITY INVOKER + ISANG explicit `auth.uid()` filter sa
   `own` CTE na pinagmumulan ng lahat — ang orders RLS ay own-OR-admin!). Isang
   jsonb per call, cached per period, ZERO poll, walang mount read. Applied +
