@@ -579,8 +579,12 @@ export default function RedesignApp() {
         {/* Safe-area top spacer — replaces the old faux "9:41" status bar (a design
             mockup leftover that double-stacked under the real system status bar).
             On a device this reserves exactly the system inset; on desktop/preview
-            env(safe-area-inset-top) = 0, so there is no gap. */}
-        <div style={{ height: "env(safe-area-inset-top)", flexShrink: 0 }} />
+            env(safe-area-inset-top) = 0, so there is no gap. iOS shell gets a
+            20px FLOOR: every iPhone status bar is ≥20pt, and WKWebView has been
+            observed resolving env() to 0 on remote loads — without the floor the
+            header slides under the clock/battery. Android/web keep plain env()
+            (Android WebView draws below the status bar; env()=0 there, no gap). */}
+        <div style={{ height: isIOS() ? "max(env(safe-area-inset-top), 20px)" : "env(safe-area-inset-top)", flexShrink: 0 }} />
 
         <div className="sfl-scroll">
           {auth.status === "loading" && (
