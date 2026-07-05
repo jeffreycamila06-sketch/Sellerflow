@@ -59,6 +59,7 @@ import ConnectModal from "./screens/ConnectModal";
 import ContactSupportPopup from "./components/ContactSupportPopup";
 import { AnnouncementsSheet } from "./components/Announcements";
 import { isIOS, STATUS_BAR_BACKDROP_HEIGHT } from "./adapters/platform";
+import { isAdminRole } from "../lib/roles";
 import { TProvider, buildT, tpl } from "./i18n";
 
 type Screen =
@@ -95,7 +96,7 @@ export default function RedesignApp() {
   // users list only when the profile is admin (else a seller would see just their
   // own row, so we keep sample).
   const authed = auth.status === "authed";
-  const isAdmin = auth.profile?.role === "admin";
+  const isAdmin = isAdminRole(auth.profile?.role); // Batch E #16 — shared predicate
   const customersData = useCustomers(authed);
   const adminUsers = useAdminUsers(authed && isAdmin);
   // Admin subscription buckets — real free-tier monitor (RPC) + derived active/
@@ -129,7 +130,7 @@ export default function RedesignApp() {
   const saveChannels = async (lists: { tiktok: string; facebook: string }) => {
     if (!auth.profile) return { ok: false, error: "Not signed in" };
     const cur = auth.profile;
-    const next = composeChannelSave(cur.profile, lists, maxAcc(cur.plan), cur.role === "admin");
+    const next = composeChannelSave(cur.profile, lists, maxAcc(cur.plan), isAdminRole(cur.role));
     const updated = { ...cur, profile: { ...cur.profile, tiktok: next.tiktok, facebook: next.facebook } };
     try {
       await upsertUser(updated);

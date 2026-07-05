@@ -18,6 +18,7 @@ import { loadTodaysLiveSession } from "../../db";
 import { listUsers, listAuditLogs, type AccountUser, type AccountAuditLog } from "../../accountDb";
 import { rebuildSessionFromRows, type RebuiltSession } from "../../lib/orderLogic";
 import { planDaysLeft, daysDisplay, isActivePaid, isExpiredPaid, isExpiringSoon, EXPIRING_WINDOW_DAYS } from "../../lib/planWindow";
+import { isAdminRole } from "../../lib/roles";
 import { planLabel } from "./useAuthSession";
 
 // Shared plan-expiry core (single source of truth with App.tsx) — re-exported
@@ -98,7 +99,7 @@ export function accountUsersToRedesign(users: AccountUser[], nowMs: number = Dat
     // RAW contact note (no fullName fallback) so ContactChip parses the real
     // "<platform>:<name>" value — never misreads a full name as a contact.
     contactNote: u.profile.adminContactNote || "",
-    role: u.role === "admin" ? "Admin" : "Seller",
+    role: isAdminRole(u.role) ? "Admin" : "Seller", // Batch E #16 — shared predicate (db-cased "admin")
     plan: planLabel(u.plan),
     days: planDaysLeft(u.planExpiry, nowMs), // real days remaining
     accounts: String(u.connectedAccounts.length),
@@ -127,7 +128,7 @@ export function compareByDaysLeft(a: User, b: User): number {
   return a.email.localeCompare(b.email);
 }
 export function deriveSubBuckets(users: User[]): SubBuckets {
-  const sellers = users.filter((u) => u.role !== "Admin");
+  const sellers = users.filter((u) => !isAdminRole(u.role)); // Batch E #16
   const active = sellers.filter((u) => isActivePaid(planState(u))).sort(compareByDaysLeft);
   const expired = sellers.filter((u) => isExpiredPaid(planState(u))).sort(compareByDaysLeft);
   const expiring = sellers.filter((u) => isExpiringSoon(planState(u))).sort(compareByDaysLeft);
@@ -153,9 +154,9 @@ export function deriveUserBase(users: User[]): UserBase {
   const tally = (label: string) => users.filter((u) => u.plan === label).length;
   const free = tally("Free"), trial = tally("Trial"), basic = tally("Basic"), pro = tally("Pro"), master = tally("Master");
   const paid = basic + pro + master;
-  const admins = users.filter((u) => u.role === "Admin").length;
+  const admins = users.filter((u) => isAdminRole(u.role)).length; // Batch E #16
   const paidUsers = users.filter((u) => u.plan === "Basic" || u.plan === "Pro" || u.plan === "Master");
-  const paidSellers = paidUsers.filter((u) => u.role !== "Admin").length;
+  const paidSellers = paidUsers.filter((u) => !isAdminRole(u.role)).length;
   // Shared lib/planWindow predicates — same 7-day expiring window as everywhere.
   const paidActive = paidUsers.filter((u) => isActivePaid(planState(u))).length;
   const paidExpired = paidUsers.filter((u) => isExpiredPaid(planState(u))).length;

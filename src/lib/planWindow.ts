@@ -31,7 +31,13 @@ export const daysDisplay = (days: number): string => (Number.isFinite(days) ? St
 
 // Plan strings differ per app (App.tsx "free"/"pro" vs redesign labels
 // "Free"/"Pro") — normalize case so both sides share the predicates.
-export const isTimeLimitedPlan = (plan: string): boolean => String(plan || "").trim().toLowerCase() !== "free";
+export const isTimeLimitedPlan = (plan: string | undefined | null): boolean => String(plan || "").trim().toLowerCase() !== "free";
+
+// Batch E (#12): THE free-plan predicate — the exact complement of
+// isTimeLimitedPlan, exported so callers stop growing local copies (useFreeCap
+// had one; sellerExpiry compared plan === "free" directly). Same case-insensitive
+// normalization as every other planWindow predicate.
+export const isFreePlan = (plan: string | undefined | null): boolean => !isTimeLimitedPlan(plan);
 
 const isTrialPlan = (plan: string): boolean => String(plan || "").trim().toLowerCase() === "trial";
 

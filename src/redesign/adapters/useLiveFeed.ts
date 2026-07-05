@@ -23,33 +23,16 @@ import { supabase } from "../../supabase";
 import type { Comment as ProdComment } from "../../lib/orderTypes";
 import type { Comment as RDComment } from "../data";
 import { cleanLiveAccount, connectPlatform, type Platform, type ConnectResult } from "./connect";
+// Batch E (#13): server URL + seller/browser identity now come from the ONE
+// shared module (was a local copy identical to connect.ts's — parity-tested;
+// do NOT change names/URLs/storage key).
+import { SERVER, sellerIdOf, browserSessionId } from "./serverIdentity";
 
-// SERVER — same resolution as App.tsx:169-173 (do NOT change names/URLs).
-const DEFAULT_SERVER =
-  typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname)
-    ? "http://localhost:3001"
-    : "https://sellerflow-live-server.onrender.com";
-const SERVER = String(import.meta.env.VITE_SERVER_URL || DEFAULT_SERVER).replace(/\/$/, "");
 const LIVE_COMMENT_LIMIT = 5000;
 // Fix B — max random delay before an auto re-POST of /connect after a socket drop /
 // server restart. 0–25s spread for fast recovery; the server-side MIN_GAP ≤6/min hard cap
 // is the actual storm guard, so a tighter window stays safe even with a fleet reconnect.
 const AUTO_RECONNECT_JITTER_MS = 25 * 1000;
-
-const sellerIdOf = (email: string) => email.trim().toLowerCase();
-
-// Same browser-session id production uses (App.tsx:147), same storage key/format
-// (LS.get/LS.set use JSON) so the redesign joins the SAME live room as the prod
-// tab in this browser.
-const browserSessionId = (): string => {
-  try {
-    const raw = localStorage.getItem("sf_browser_session");
-    if (raw) return JSON.parse(raw);
-  } catch { /* ignore */ }
-  const next = `sf-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  try { localStorage.setItem("sf_browser_session", JSON.stringify(next)); } catch { /* ignore */ }
-  return next;
-};
 
 // commentKey — COPIED VERBATIM from src/App.tsx:111-114 (tangled-zone #1).
 // Parity-guarded by useLiveFeed.test.ts. DO NOT edit independently of App.tsx.

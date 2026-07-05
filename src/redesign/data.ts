@@ -181,8 +181,10 @@ export const PAYMENTS: Payment[] = [
 
 // ── Expanded Admin (dc.html v3) ──────────────────────────────────────────────
 // Plan price table — drives the "revenue detected from plan changes" calc
-// (dc.html v3 PLAN_PRICE L1556 / revAdded L1984).
-export const PLAN_PRICE: Record<string, number> = { Free: 0, Basic: 500, Pro: 1200, Master: 1700, Business: 1700, Starter: 500 };
+// (dc.html v3 PLAN_PRICE L1556 / revAdded L1984). Batch E (#14): the table now
+// lives in lib/planPricing (one source with the Admin matchPlan thresholds);
+// re-exported here so existing imports keep working.
+export { PLAN_PRICE } from "../lib/planPricing";
 
 // Users management list (dc.html v3 USERS L1557). Sample data only.
 export interface User { email: string; note: string; role: string; plan: string; days: number; accounts: string; status?: string; planExpiry?: string; planStatus?: string; contactNote?: string; }

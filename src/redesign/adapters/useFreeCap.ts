@@ -11,6 +11,7 @@
 // this is the friendly in-app status + soft block + popups only.
 import { useCallback, useEffect, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
+import { isFreePlan } from "../../lib/planWindow";
 
 // Shape of the free_tier_status_for_user RPC (copied from App.tsx:57).
 export interface FreeStatus {
@@ -65,8 +66,12 @@ export interface UseFreeCap {
 // for a status that can only say is_free:false. Plan comes from the already-
 // loaded profile — no extra query. Unknown plan (profile still loading) → no
 // poll yet; the effect re-runs when the plan arrives. Pure — unit-tested.
-export const isFreePlan = (plan: string | undefined): boolean =>
-  String(plan || "").trim().toLowerCase() === "free";
+// Batch E (#12): the predicate itself moved to lib/planWindow (single source of
+// truth); re-exported so existing imports keep working. Same behavior —
+// parity-tested (libConsolidation.parity.test.ts). NOTE: computeFreeFlags above
+// keeps its literal plan === "free" — it is a VERBATIM behavior mirror of
+// App.tsx:4178 (tangled-zone 5f); left byte-identical on purpose.
+export { isFreePlan } from "../../lib/planWindow";
 
 export function useFreeCap(enabled: boolean, plan: string | undefined): UseFreeCap {
   const [freeStatus, setFreeStatus] = useState<FreeStatus | null>(null);

@@ -7,6 +7,7 @@
 // Table: sql/09_shipping_entries.sql — RLS user_id = auth.uid(); unique
 // (user_id, session_key, buyer_number, bag_number) is the upsert target.
 import { isSupabaseConfigured, supabase } from "../../supabase";
+import { fetchAllPages } from "../../lib/fetchAllPages";
 import { SHIP_TEMP_AMBIENT, SHIP_TEMP_FROZEN, type ShippingEntry, type ShipStatus, type TempLayer } from "./shipping";
 
 // ── Pure mappers (no Supabase / React — unit-tested) ──────────────────────────
@@ -75,14 +76,16 @@ async function uid(): Promise<string | null> {
 // (same contract as before; a partial list would mislabel real parcels).
 // Regression: shippingDb.paging.test.
 export const SHIPPING_PAGE_SIZE = 1000;
+// Batch E (#15): the page loop now goes through the shared lib/fetchAllPages
+// (one pager for users/shipping). Contract unchanged: complete rows, [] on any
+// page error — never partial.
 export async function loadShippingEntries(sessionKey: string): Promise<ShippingEntry[]> {
   if (!isSupabaseConfigured || !supabase) return [];
   const id = await uid();
   if (!id) return [];
-  const all: ShippingEntry[] = [];
-  for (let page = 0; ; page++) {
+  const rows = await fetchAllPages<ShippingEntry>(async (page) => {
     const from = page * SHIPPING_PAGE_SIZE;
-    const { data, error } = await supabase
+    const { data, error } = await supabase!
       .from("shipping_entries")
       .select("*")
       .eq("user_id", id)
@@ -90,10 +93,10 @@ export async function loadShippingEntries(sessionKey: string): Promise<ShippingE
       .order("buyer_number", { ascending: true })
       .order("bag_number", { ascending: true })
       .range(from, from + SHIPPING_PAGE_SIZE - 1);
-    if (error || !data) return [];
-    all.push(...data.map((r) => rowToEntry(r as Record<string, unknown>)));
-    if (data.length < SHIPPING_PAGE_SIZE) return all;
-  }
+    if (error || !data) return null;
+    return data.map((r) => rowToEntry(r as Record<string, unknown>));
+  }, SHIPPING_PAGE_SIZE);
+  return rows === null ? [] : rows;
 }
 
 // One upsert per encode save (write-on-action). Conflict target = the group key,
