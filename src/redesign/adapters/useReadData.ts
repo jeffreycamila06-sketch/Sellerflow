@@ -27,6 +27,7 @@ import {
   ORDERS as SAMPLE_ORDERS,
   CUSTOMERS as SAMPLE_CUSTOMERS,
   USERS as SAMPLE_USERS,
+  PLAN_PRICE,
   type Order, type Customer, type User,
 } from "../data";
 
@@ -160,6 +161,23 @@ export function deriveUserBase(users: User[]): UserBase {
   const paidExpired = paidUsers.filter((u) => isExpiredPaid(planState(u))).length;
   const paidExpiring = paidUsers.filter((u) => isExpiringSoon(planState(u))).length;
   return { total: users.length, admins, free, trial, basic, pro, master, paid, paidSellers, paidActive, paidExpiring, paidExpired };
+}
+
+// REAL monthly recurring revenue estimate for the Admin home tile (Batch B #2 —
+// replaced the hardcoded "4.2M / ▲12% MoM" sample). Derived from data the admin
+// screen ALREADY loads (zero new queries): ACTIVE paid plans × real NT$ tier
+// price. Estimate semantics: what active subscriptions are worth per month —
+// not cash collected (payments are manual Wise+Telegram; no ledger exists).
+export function deriveMrr(users: User[]): number {
+  return deriveSubBuckets(users).active.reduce((sum, u) => sum + (PLAN_PRICE[u.plan] ?? 0), 0);
+}
+
+// Client-side search over the LOADED customer pages (Batch B #4 — the search bar
+// was a dead decoration). Case-insensitive contains on name + handle. Pure.
+export function filterCustomers(customers: Customer[], query: string): Customer[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return customers;
+  return customers.filter((c) => `${c.name} ${c.handle}`.toLowerCase().includes(q));
 }
 
 // Free-tier cap-progress summary from the already-wired list_free_users_status RPC.

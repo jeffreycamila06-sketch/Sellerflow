@@ -26,41 +26,51 @@ export function lanStatusFrom(hasBridge: boolean, host: string, pingOk: boolean)
   return hasBridge && !!host && pingOk ? "connected" : "disconnected";
 }
 
-export interface PrinterStatuses { lan: PrinterConnState; bt: PrinterConnState; refresh: () => void }
+// Batch B #6 — the picker also shows the REAL saved-device detail (BT device
+// name / LAN host:port) instead of the old fictional hardware labels
+// ("192.168.1.42", "Xprinter XP-365B"). "" = nothing saved → the screen shows
+// an honest generic label. The detail comes from the SAME bridge calls the
+// status check already makes — zero extra native calls.
+export interface PrinterStatuses { lan: PrinterConnState; bt: PrinterConnState; lanDetail: string; btDetail: string; refresh: () => void }
 
 // `enabled` = the picker is open. BT and LAN are checked in parallel so the slow
 // LAN ping never blocks the fast BT query.
 export function usePrinterStatus(enabled: boolean): PrinterStatuses {
   const [lan, setLan] = useState<PrinterConnState>("disconnected");
   const [bt, setBt] = useState<PrinterConnState>("disconnected");
+  const [lanDetail, setLanDetail] = useState("");
+  const [btDetail, setBtDetail] = useState("");
   const btBusy = useRef(false);
   const lanBusy = useRef(false);
 
   const checkBt = useCallback(async () => {
     if (btBusy.current) return;
-    if (!hasBtBridge()) { setBt("disconnected"); return; }
+    if (!hasBtBridge()) { setBt("disconnected"); setBtDetail(""); return; }
     btBusy.current = true;
     setBt("checking");
     try {
       const r = await btCall<BluetoothScanResult>("getBluetoothLabelPrinter");
       setBt(btStatusFrom(true, r?.savedPrinter));
-    } catch { setBt("disconnected"); }
+      const saved = r?.savedPrinter as { name?: string; address?: string } | undefined;
+      setBtDetail(saved ? saved.name || saved.address || "" : "");
+    } catch { setBt("disconnected"); setBtDetail(""); }
     finally { btBusy.current = false; }
   }, []);
 
   const checkLan = useCallback(async () => {
     if (lanBusy.current) return;
-    if (!hasNativePrinter()) { setLan("disconnected"); return; }
+    if (!hasNativePrinter()) { setLan("disconnected"); setLanDetail(""); return; }
     lanBusy.current = true;
     setLan("checking");
     try {
       const g = await callMobilePrinterBridge("getPrinter");
       const host = g.host || g.savedPrinter?.host || "";
-      if (!host) { setLan(lanStatusFrom(true, "", false)); return; }
+      if (!host) { setLan(lanStatusFrom(true, "", false)); setLanDetail(""); return; }
       const port = g.port || g.savedPrinter?.port || 9100;
+      setLanDetail(`${host}:${port}`);
       const ping = await callMobilePrinterBridge("testConnection", { host, port });
       setLan(lanStatusFrom(true, host, !!ping.ok));
-    } catch { setLan("disconnected"); }
+    } catch { setLan("disconnected"); setLanDetail(""); }
     finally { lanBusy.current = false; }
   }, []);
 
@@ -69,5 +79,5 @@ export function usePrinterStatus(enabled: boolean): PrinterStatuses {
   // Read-on-open: run once each time the picker opens. No poll.
   useEffect(() => { if (enabled) refresh(); }, [enabled, refresh]);
 
-  return { lan, bt, refresh };
+  return { lan, bt, lanDetail, btDetail, refresh };
 }

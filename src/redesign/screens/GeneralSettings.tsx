@@ -4,7 +4,7 @@
 // Printer & display · Account links. Visual/sample only; theme+accent drive the
 // redesign preview state.
 import { useEffect, useState, type CSSProperties } from "react";
-import { ACCENT_ORDER, ACCENTS, PRINTERS, LANGS, CURRENCIES, CURRENCY_ORDER, type ThemeMode, type AccentKey, type AutoControls } from "../data";
+import { ACCENT_ORDER, ACCENTS, LANGS, CURRENCIES, CURRENCY_ORDER, type ThemeMode, type AccentKey, type AutoControls } from "../data";
 import { headerBar, headerTitle, card, sectionLabel } from "../ui";
 import { profileToDisplay, planLabel, renewLabel } from "../adapters/useAuthSession";
 import type { AccountUser } from "../../accountDb";
@@ -92,12 +92,20 @@ export default function GeneralSettings({
   const autoKnobLg = auto.detect ? 21 : 3;
   const autoChevron = auto.setupOpen ? "rotate(180deg)" : "rotate(0deg)";
   const seg = (active: boolean): CSSProperties => ({ flex: 1, padding: "9px 0", border: "none", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, ...(active ? { background: "var(--accent)", color: "#fff" } : { background: "transparent", color: "var(--text-dim)" }) });
-  const printer = PRINTERS[printerIdx];
-  // Real printer connection status (read-on-open only). Slot 0 = LAN/wifi, slot 1 =
-  // Bluetooth (per onPickPrinter's i===0?wifi:bt); any other slot has no real signal
-  // → disconnected. Labels/colors map "checking"/"connected"/"disconnected".
+  // Batch B #6 — the picker's fictional PRINTERS sample hardware ("192.168.1.42",
+  // "Xprinter XP-365B USB") is gone. TWO honest slots matching the app's REAL
+  // printing capabilities (slot 0 = WiFi/LAN slip, slot 1 = Bluetooth sticker);
+  // the meta line shows the REAL saved device (BT name / LAN host:port) from the
+  // native bridge when one exists, else the generic capability description.
   const printerStatus = usePrinterStatus(printerOpen);
-  const slotState = (i: number): PrinterConnState => (i === 0 ? printerStatus.lan : i === 1 ? printerStatus.bt : "disconnected");
+  const printerSlots = [
+    { name: t.rd_set_prn_wifi, meta: printerStatus.lanDetail || t.rd_set_prn_wifi_meta },
+    { name: t.rd_set_prn_bt, meta: printerStatus.btDetail || t.rd_set_prn_bt_meta },
+  ];
+  // A stale persisted index (the old picker had 3 slots) clamps to the last slot.
+  const printerSlotIdx = Math.min(Math.max(printerIdx, 0), printerSlots.length - 1);
+  const printer = printerSlots[printerSlotIdx];
+  const slotState = (i: number): PrinterConnState => (i === 0 ? printerStatus.lan : printerStatus.bt);
   const stateLabel = (s: PrinterConnState): string => (s === "connected" ? t.rd_ps_connected : s === "checking" ? t.rd_ps_checking : t.rd_ps_disconnected);
   const stateColor = (s: PrinterConnState): string => (s === "connected" ? "var(--ok)" : s === "checking" ? "var(--warn)" : "var(--text-muted)");
 
@@ -328,8 +336,8 @@ export default function GeneralSettings({
             {printerOpen && (
               <div style={{ background: "var(--surface-2)", borderBottom: "1px solid var(--border)", padding: 7 }}>
                 <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--text-muted)", padding: "6px 9px 8px" }}>{t.rd_set_choose_printer}</div>
-                {PRINTERS.map((p, i) => {
-                  const on = i === printerIdx;
+                {printerSlots.map((p, i) => {
+                  const on = i === printerSlotIdx;
                   const st = slotState(i);
                   return (
                     <button key={p.name} onClick={() => onPickPrinter(i)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 11, padding: 10, border: "none", borderRadius: 10, background: on ? "var(--accent-softer)" : "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>

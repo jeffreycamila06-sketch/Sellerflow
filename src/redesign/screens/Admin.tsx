@@ -4,7 +4,7 @@
 // full users-management panel (per-user plan + days, visual only). Sample data
 // only — no real seller management (Phase 5).
 import { useState, type CSSProperties, type ReactNode } from "react";
-import { PLANS, PAYMENTS, USERS, SUBS, PLAN_PRICE, type Sub, type User } from "../data";
+import { PLANS, PAYMENTS, USERS, SUBS, PLAN_PRICE, initials, fmt, type Sub, type User } from "../data";
 import { headerBar, card, mono } from "../ui";
 import { planDaysLeft, daysDisplay, deriveSubBuckets, deriveUserBase, freeUsersSummary, auditActionColor, filterAuditLogs, type ReadState, type SubBuckets, type FreeUserRow } from "../adapters/useReadData";
 import type { AdminActions, Plan } from "../adapters/useAdmin";
@@ -53,34 +53,37 @@ function Ctrl({ icon, label, onClick }: { icon: ReactNode; label: string; onClic
   return <div onClick={onClick} style={ctrlTile}><span style={ctrlChip}>{icon}</span><span style={ctrlLbl}>{label}</span></div>;
 }
 
-export default function Admin({ onOpenPanel, cur, counts, live = false, userBase }: { onOpenPanel: (k: AdminPanelKind) => void; cur: string; counts?: { active: number; expiring: number; expired: number; free: number }; live?: boolean; userBase?: { paid: number; free: number; total: number } }) {
+export default function Admin({ onOpenPanel, cur, counts, live = false, userBase, mrr = null, owner = null }: { onOpenPanel: (k: AdminPanelKind) => void; cur: string; counts?: { active: number; expiring: number; expired: number; free: number }; live?: boolean; userBase?: { paid: number; free: number; total: number }; mrr?: number | null; owner?: { name: string; email: string } | null }) {
   const t = useT();
   const subCount = (k: "active" | "expiring" | "expired" | "free", sample: string) => (live && counts ? String(counts[k]) : sample);
+  // Batch B #2 — the owner card shows the REAL signed-in admin (was the
+  // hardcoded "Juan Dela Cruz / JC" demo persona). The bell badge "5" and the
+  // "Systems OK" chip had no data source at all and were removed outright.
+  const ownerName = owner?.name || owner?.email || "—";
   return (
     <div>
       <div style={headerBar}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div><div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" }}>{t.rd_adm_title}</div><div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}><span style={{ fontSize: 12, opacity: 0.85 }}>{t.rd_adm_subtitle}</span><SoonBadge label={t.rd_adm_revenue_sample} /></div></div>
-          <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-            <button onClick={() => onOpenPanel("notifs")} title={t.rd_adm_notifications} style={{ position: "relative", width: 32, height: 32, borderRadius: 9, border: "none", background: "rgba(255,255,255,.16)", color: "var(--on-header)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" strokeWidth="1.7" /></svg>
-              <span style={{ position: "absolute", top: -4, right: -4, minWidth: 16, height: 16, padding: "0 3px", borderRadius: 8, background: "#fb7185", border: "1.5px solid var(--accent)", color: "#fff", fontSize: 9.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: mono }}>5</span>
-            </button>
-            <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "6px 11px", borderRadius: 9 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: "#4ade80" }} />{t.rd_adm_systems_ok}</div>
-          </div>
+          <div><div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" }}>{t.rd_adm_title}</div><div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>{t.rd_adm_subtitle}</div></div>
+          <button onClick={() => onOpenPanel("notifs")} title={t.rd_adm_notifications} style={{ position: "relative", width: 32, height: 32, borderRadius: 9, border: "none", background: "rgba(255,255,255,.16)", color: "var(--on-header)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" strokeWidth="1.7" /></svg>
+          </button>
         </div>
       </div>
       <div style={{ padding: "14px 14px 22px" }}>
         <div style={{ ...card, marginBottom: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
-            <div style={{ width: 50, height: 50, borderRadius: 15, background: "linear-gradient(150deg,#7c3aed,#4f46e5)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 800, color: "#fff", fontFamily: "var(--font-display)" }}>JC</div>
-            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 15.5, fontWeight: 700, color: "var(--text)" }}>Juan Dela Cruz</div><div style={{ fontSize: 12, fontWeight: 600, color: "var(--handle)" }}>{t.rd_adm_platform_owner}</div></div>
+            <div style={{ width: 50, height: 50, borderRadius: 15, background: "linear-gradient(150deg,#7c3aed,#4f46e5)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 800, color: "#fff", fontFamily: "var(--font-display)" }}>{initials(ownerName)}</div>
+            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 15.5, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ownerName}</div><div style={{ fontSize: 12, fontWeight: 600, color: "var(--handle)" }}>{t.rd_adm_platform_owner}</div></div>
             <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 800, letterSpacing: ".03em", color: "var(--accent-text)", background: "var(--accent)", padding: "5px 9px", borderRadius: 7 }}><svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 5v6c0 4.4 3.1 7.6 8 9 4.9-1.4 8-4.6 8-9V5l-8-3Z" /></svg>{t.rd_adm_super_admin}</span>
           </div>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
-          {!isIOS() && <button onClick={() => onOpenPanel("revenue")} style={topStat}><div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>{t.rd_adm_monthly_revenue}</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 22, color: "var(--text)", marginTop: 3, letterSpacing: "-.02em" }}>{cur}4.2M</div><div style={{ fontSize: 11, fontWeight: 700, color: "var(--ok)", marginTop: 3 }}>{t.rd_adm_mom}</div></button>}
+          {/* Batch B #2 — REAL monthly recurring revenue (deriveMrr: active paid
+              plans × real NT$ tier price, from the already-loaded users list) —
+              was hardcoded "4.2M / ▲12% MoM" with only a small sample badge. */}
+          {!isIOS() && <button onClick={() => onOpenPanel("revenue")} style={topStat}><div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>{t.rd_adm_monthly_revenue}</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 22, color: "var(--text)", marginTop: 3, letterSpacing: "-.02em" }}>{mrr != null ? `${cur}${fmt(mrr)}` : "—"}</div><div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", marginTop: 3 }}>{t.rd_adm_mrr_note}</div></button>}
           <button onClick={() => onOpenPanel("userbase")} style={topStat}><div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>{t.rd_adm_user_base}</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 22, color: "var(--accent-fg)", marginTop: 3, letterSpacing: "-.02em" }}>{userBase ? userBase.paid : "—"}</div><div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", marginTop: 3 }}>{userBase ? tpl(t.rd_adm_paying_free, { free: userBase.free }) : t.rd_adm_paid_free_split}</div></button>
         </div>
 
@@ -725,8 +728,10 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="var(--text-muted)" strokeWidth="1.8" /><path d="m20 20-3.5-3.5" stroke="var(--text-muted)" strokeWidth="1.8" strokeLinecap="round" /></svg>
                   <input value={auditQ} onChange={(e) => setAuditQ(e.target.value)} placeholder={t.rd_adm_audit_search} style={{ flex: 1, border: "none", background: "transparent", color: "var(--text)", fontSize: 12.5, outline: "none", fontFamily: "var(--font-ui)" }} />
                 </div>
-                {auditLogs.length > 0 && <button onClick={exportAudit} style={{ ...actBtn, color: "var(--accent-fg)", borderColor: "var(--accent)" }}>{t.rd_adm_csv}</button>}
+                {auditLogs.length > 0 && <button onClick={exportAudit} title={t.rd_exp_audit_note} style={{ ...actBtn, color: "var(--accent-fg)", borderColor: "var(--accent)" }}>{t.rd_adm_csv}</button>}
               </div>
+              {/* #7 export-scope label: the loader reads the last 80 entries only */}
+              {auditLogs.length > 0 && <div style={{ fontSize: 10.5, color: "var(--text-muted)", margin: "6px 2px 0" }}>{t.rd_exp_audit_note}</div>}
               {auditState === "loading" && <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "10px 2px" }}>{t.rd_adm_loading_audit}</div>}
               {auditState !== "loading" && auditFiltered.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "10px 2px" }}>{auditLogs.length === 0 ? t.rd_adm_no_activity : t.rd_adm_no_records}</div>}
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

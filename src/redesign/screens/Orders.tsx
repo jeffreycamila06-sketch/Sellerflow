@@ -9,14 +9,11 @@ import { useT } from "../i18n";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px" };
 const title: CSSProperties = { fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" };
-const filterActive: CSSProperties = { background: "#fff", color: "var(--accent)", fontSize: 12, fontWeight: 700, padding: "6px 13px", borderRadius: 20, whiteSpace: "nowrap" };
-const filterIdle: CSSProperties = { background: "rgba(255,255,255,.16)", fontSize: 12, fontWeight: 600, padding: "6px 13px", borderRadius: 20, whiteSpace: "nowrap" };
 const mono = "var(--font-mono)";
 
 export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sample", onExport, onGoShipping }: { onGoPrint: () => void; cur: string; orders?: Order[]; state?: ReadState; onExport?: () => void; onGoShipping?: () => void }) {
   const t = useT();
   const live = state === "live";
-  const countBy = (s: string) => orders.filter((o) => o.status === s).length;
   const badge = state === "loading" ? `${t.rd_ord_today} · …` : `${t.rd_ord_today} · ${orders.length}`;
   return (
     <div>
@@ -30,12 +27,10 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
             <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "6px 11px", borderRadius: 9 }}>{badge}</div>
           </div>
         </div>
-        <div className="sfl-scroll" style={{ display: "flex", gap: 7, marginTop: 13, overflowX: "auto" }}>
-          <div style={filterActive}>{t.rd_ord_all} · {orders.length}</div>
-          <div style={filterIdle}>{t.rd_ord_unpaid} · {countBy("Unpaid")}</div>
-          <div style={filterIdle}>{t.rd_ord_paid} · {countBy("Paid")}</div>
-          <div style={filterIdle}>{t.rd_ord_shipped} · {countBy("Shipped")}</div>
-        </div>
+        {/* Batch B #3 — the All/Unpaid/Paid/Shipped chip row was removed: the
+            chips were non-clickable divs and there is NO status lifecycle
+            behind them (every real order is "New" → the three counts were
+            permanently 0). The real order count lives in the header badge. */}
       </div>
       <div style={{ padding: "14px 14px 22px", display: "flex", flexDirection: "column", gap: 11 }}>
         {state === "loading" && <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "24px 0" }}>{t.rd_ord_loading}</div>}

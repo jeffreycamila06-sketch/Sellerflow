@@ -14,8 +14,10 @@ export default function CustomerData({ onLegal, cur, customers = CUSTOMERS, onEx
             <div style={headerTitle}>{t.rd_cd_title}</div>
             <div style={{ fontSize: 12, opacity: 0.85 }}>{t.rd_cd_admin_export}</div>
           </div>
-          <button onClick={onExport} disabled={!onExport || customers.length === 0} style={{ background: "#fff", color: "var(--accent)", fontSize: 12, fontWeight: 700, padding: "7px 12px", border: "none", borderRadius: 9, cursor: onExport && customers.length ? "pointer" : "default", opacity: onExport && customers.length ? 1 : 0.6, fontFamily: "var(--font-ui)" }}>{t.rd_cd_export_csv}</button>
+          <button onClick={onExport} disabled={!onExport || customers.length === 0} title={t.rd_exp_loaded_note} style={{ background: "#fff", color: "var(--accent)", fontSize: 12, fontWeight: 700, padding: "7px 12px", border: "none", borderRadius: 9, cursor: onExport && customers.length ? "pointer" : "default", opacity: onExport && customers.length ? 1 : 0.6, fontFamily: "var(--font-ui)" }}>{t.rd_cd_export_csv}</button>
         </div>
+        {/* #7 export-scope label: this table + its CSV cover the LOADED pages only */}
+        <div style={{ fontSize: 10.5, opacity: 0.75, marginTop: 7 }}>{t.rd_exp_loaded_note}</div>
       </div>
       <div style={{ padding: 14 }}>
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden" }}>
