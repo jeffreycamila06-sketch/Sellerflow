@@ -1,7 +1,9 @@
 // Phase 5c — CROSS-DEVICE live-session LOAD (read-only). Tangled-zone #4.
 // Composes the EXISTING exported functions production uses:
-//   • loadTodaysLiveSession(dayId) (db.ts)   → select live_session_orders for
-//     today's Asia/Taipei session_date, RLS-scoped to the signed-in user
+//   • loadLiveSessionDay / loadLiveSessionWindow (useSessionWindow adapter) →
+//     PAGED select of live_session_orders (S1 fix 2026-07-05: complete rows
+//     past the 1,000-row PostgREST cap; same columns/filter/order/RLS as the
+//     old db.ts loadTodaysLiveSession, which the rollback app keeps using)
 //   • rebuildSessionFromRows(rows) (lib, pure) → rows → {buyers, orders}
 //   • taipeiDayId() (lib/dateHelpers)         → today's Taipei calendar day
 //
@@ -12,10 +14,9 @@
 // NO writes here — load only.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isSupabaseConfigured } from "../../supabase";
-import { loadTodaysLiveSession } from "../../db";
 import { rebuildSessionFromRows, type RebuiltSession } from "../../lib/orderLogic";
 import type { Buyer, LiveOrder } from "../../lib/orderTypes";
-import { chooseSessionLoad, loadLiveSessionWindow, useTaipeiDayId, shouldResetOnDayChange } from "./useSessionWindow";
+import { chooseSessionLoad, loadLiveSessionWindow, loadLiveSessionDay, useTaipeiDayId, shouldResetOnDayChange } from "./useSessionWindow";
 
 // "idle" = not wired / unconfigured / error · "loading" = query in flight ·
 // "live" = today's session hydrated · "empty" = no session rows today.
@@ -71,10 +72,12 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
     if (sessionRef.current.orders.length) return;   // hydrate-on-empty guard (unchanged)
     let active = true;
     setState("loading");
-    // N=1 / day1 / expired / fresh → single-day (loadTodaysLiveSession, byte-identical
-    // to 5c). Active multi-day (day ≥2) → window range.
+    // N=1 / day1 / expired / fresh → single-day; active multi-day (day ≥2) →
+    // window range. BOTH go through the paged adapter loader (S1: complete rows
+    // past the 1,000-row cap → buyer# stays correct for heavy sellers). Same
+    // columns/filter/order as the old db.ts single-day path.
     const choice = chooseSessionLoad(dayId, winStart, winDays);
-    const loader = choice.mode === "range" ? loadLiveSessionWindow(choice.start, choice.end) : loadTodaysLiveSession(dayId);
+    const loader = choice.mode === "range" ? loadLiveSessionWindow(choice.start, choice.end) : loadLiveSessionDay(dayId);
     loader
       .then((rows) => {
         if (!active) return;

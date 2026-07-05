@@ -144,3 +144,47 @@ describe("shouldResetOnDayChange — window-aware live reset on Taipei day rollo
     expect(shouldResetOnDayChange("2026-06-24", "2026-06-25", "2026-06-22", 3)).toBe(true);  // → day 4 (expired)
   });
 });
+
+// ── S1: paged session loads (the 1,000-row PostgREST cap fix) ────────────────
+// fetchAllSessionPages accumulates injected pages until a short page; ANY page
+// error (null) → [] — a PARTIAL result would recreate the duplicate-buyer# bug.
+import { fetchAllSessionPages, SESSION_PAGE_SIZE } from "../useSessionWindow";
+import type { LiveSessionRow } from "../../../db";
+
+const mkRows = (start: number, n: number): LiveSessionRow[] =>
+  Array.from({ length: n }, (_, i) => ({
+    buyer_number: start + i, handle: `h${start + i}`, customer_name: `n${start + i}`,
+    platform: "TikTok", product: "P", price: 100,
+    created_at: new Date(1780000000000 + (start + i) * 1000).toISOString(),
+    session_date: "2026-07-05",
+  } as LiveSessionRow));
+
+describe("fetchAllSessionPages (S1 — >1,000-row window)", () => {
+  it("heavy-seller scenario: 1,200 rows across 2 pages, order preserved, nothing dropped", async () => {
+    const pages = [mkRows(1, SESSION_PAGE_SIZE), mkRows(SESSION_PAGE_SIZE + 1, 200)];
+    const calls: number[] = [];
+    const rows = await fetchAllSessionPages(async (p) => { calls.push(p); return pages[p] ?? []; });
+    expect(rows).toHaveLength(1200);                       // the old un-paged path capped at 1,000
+    expect(calls).toEqual([0, 1]);
+    expect(rows[0].buyer_number).toBe(1);
+    expect(rows[999].buyer_number).toBe(1000);
+    expect(rows[1199].buyer_number).toBe(1200);            // NEWEST rows retained (were the ones dropped)
+  });
+  it("exactly one full page → fetches the next (empty) page to confirm completeness", async () => {
+    const pages = [mkRows(1, SESSION_PAGE_SIZE), []];
+    const calls: number[] = [];
+    const rows = await fetchAllSessionPages(async (p) => { calls.push(p); return pages[p] ?? []; });
+    expect(rows).toHaveLength(SESSION_PAGE_SIZE);
+    expect(calls).toEqual([0, 1]);
+  });
+  it("short first page (normal seller) → single fetch", async () => {
+    const calls: number[] = [];
+    const rows = await fetchAllSessionPages(async (p) => { calls.push(p); return mkRows(1, 5); });
+    expect(rows).toHaveLength(5);
+    expect(calls).toEqual([0]);
+  });
+  it("error on a LATER page → [] (never a partial set — partial = wrong buyer#)", async () => {
+    const rows = await fetchAllSessionPages(async (p) => (p === 0 ? mkRows(1, SESSION_PAGE_SIZE) : null));
+    expect(rows).toEqual([]);
+  });
+});
