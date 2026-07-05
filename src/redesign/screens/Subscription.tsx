@@ -8,19 +8,23 @@ import { planLabel } from "../adapters/useAuthSession";
 import { useT, tpl } from "../i18n";
 import type { AccountUser } from "../../accountDb";
 import type { FreeStatus } from "../adapters/useFreeCap";
+import { planDaysLeft, daysDisplay } from "../../lib/planWindow";
 
 const tgPlane = <svg width="19" height="19" viewBox="0 0 24 24" fill="#fff"><path d="M21.5 4.3 3.2 11.4c-1 .4-1 1.8.1 2.1l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.3l2.5-2.6 4.7 3.4c.6.4 1.4.1 1.6-.6l3-15c.2-1-.7-1.8-1.6-1.3Z" /></svg>;
 const check = <span style={{ color: "var(--ok)", fontWeight: 800 }}>✓</span>;
 
+// Date FORMATTING only (presentation, not expiry math — that lives in
+// lib/planWindow, the single source of truth per the 2026-07-04 rule).
 const fmtDate = (iso: string): string => {
   const d = new Date(iso);
   return isNaN(d.getTime()) ? "—" : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 };
-const daysLeft = (iso: string): number => {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return 0;
-  return Math.max(0, Math.ceil((d.getTime() - Date.now()) / 86400000));
-};
+// Shared planDaysLeft replaces the private 4th expiry copy that rendered a
+// NULL/invalid expiry as "0 days left": missing/invalid → Infinity (no expiry)
+// → daysDisplay(∞) = "—". Finite negatives clamp to 0 for display (an expired
+// plan shows "0", same as before — the status chip already says Expired).
+const daysLeftDisplay = (iso: string): string =>
+  daysDisplay(Math.max(0, planDaysLeft(iso, Date.now())));
 
 export default function Subscription({ cur, account = null, isFreeUser = false, freeStatus = null }: { cur: string; account?: AccountUser | null; isFreeUser?: boolean; freeStatus?: FreeStatus | null }) {
   const t = useT();
@@ -46,7 +50,7 @@ export default function Subscription({ cur, account = null, isFreeUser = false, 
             <div style={{ fontFamily: mono, fontSize: 14, fontWeight: 600, opacity: 0.92, marginTop: 2 }}>{priceLine}</div>
             <div style={{ display: "flex", gap: 18, marginTop: 18 }}>
               <div><div style={{ fontSize: 11, opacity: 0.85 }}>{t.rd_sub_renews}</div><div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>{fmtDate(expiry)}</div></div>
-              <div><div style={{ fontSize: 11, opacity: 0.85 }}>{t.rd_sub_days_left}</div><div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>{daysLeft(expiry)} {t.rd_sub_days_unit}</div></div>
+              <div><div style={{ fontSize: 11, opacity: 0.85 }}>{t.rd_sub_days_left}</div><div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>{daysLeftDisplay(expiry) === "—" ? "—" : `${daysLeftDisplay(expiry)} ${t.rd_sub_days_unit}`}</div></div>
             </div>
           </div>
         </div>
