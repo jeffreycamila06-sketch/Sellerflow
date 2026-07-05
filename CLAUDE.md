@@ -1321,3 +1321,66 @@ LANG. HUWAG nang gumawa ng bagong lokal na kopya.**
   INIWAN dahil 48 live consumers pala). Gates green sa branch. Naghihintay ng
   merge decision ni Jeff — pero NOTE: App.tsx/App.css = rollback app na, kaya
   mababa na ang urgency nito.
+
+## SESSION 2026-07-05 — iOS SAFE-AREA REDO (branch `claude/ios-safe-area-redesign-2kdxz0`, NOT merged — Jeff reviews A+B diffs bago merge/build)
+STOP sa patch-patch (puting strip sa taas, hiwalay ang purple header). Research-first
+redo sa CANONICAL Capacitor pattern (verified vs official sources: plugin READMEs,
+`cli/src/declarations.ts`, mismong Capacitor Swift source — capacitorjs.com blocked ng
+proxy pero ang GitHub upstream ng docs ang binasa).
+
+### ROOT CAUSE + canonical findings (load-bearing)
+- **`ios.contentInset:"always"` ang puting strip:** ang WKWebView scroll view mismo ang
+  nagre-reserve ng status-bar area nang NATIVE → walang CSS na makakaabot doon. Canonical
+  = DEFAULT `"never"` (full-bleed) + `viewport-fit=cover` + `env(safe-area-inset-*)`.
+- **Status-bar plugin (Cap 8):** `Style.Dark` = PUTING text. Ang "not supported on iOS"
+  ng setBackgroundColor/setOverlaysWebView = v≤6 docs lang (iOS support since v7); sa
+  Android 15+/16 nag-INVERT (edge-to-edge system-enforced). Plugin requirement
+  `UIViewControllerBasedStatusBarAppearance=YES` — nakaset na. Plist `UIStatusBarStyle`
+  = documented pre-JS DEFAULT ng plugin.
+- **Remote `server.url` shell: gumagana ang bridge/plugins/env()** — plugin JS ay
+  WKUserScript injected sa BAWAT main-frame page anuman ang origin (JSExport.swift).
+- **WKWebView ≠ Safari sa zoom:** `maximum-scale/user-scalable` ay NIRERESPETO ng
+  WKWebView (`ignoresViewportScaleLimits` default false); Safari-web binabalewala →
+  web accessibility buo. Pero ang TAMANG fix sa input-focus auto-zoom = **16px floor
+  sa inputs** (lahat ng redesign inputs ay 9.5–15px dati).
+- `constant()` fallback = patay (iOS 11 lang; Cap 8 min = iOS 15). White flash sa load
+  = `ios.backgroundColor` (default systemBackground = puti).
+
+### Commit A `5909d94` — WEB layer (redesign tree lang; Vercel pagka-merge)
+- **Status-bar backdrop** (RedesignApp): tinanggal ang transparent spacer + ang
+  `hasNativeTopInset()` screen-height heuristic (TANGING consumer = ang spacer mismo);
+  pinalitan ng `height: STATUS_BAR_BACKDROP_HEIGHT` (= pure `env(safe-area-inset-top)`,
+  WALANG px floor/max()) na may `background: var(--header-bg)` + header backdrop-filter →
+  edge-to-edge purple sa LAHAT ng screens (lahat ng 21 in-app screens ay nagsisimula sa
+  `--header-bg`: shared `headerBar` sa ui.ts o lokal na kopya o Login/Signup hero).
+- **`applyIOSShellClass`** → `html.sfl-ios-shell` gates ng bagong redesign.css rule:
+  input/select/textarea **16px !important** (iOS shell + `?ios=1` preview lang).
+  Viewport zoom lock RETAINED bilang backstop (exact Ionic template tag).
+- **`applyIOSStatusBarStyle`** → `Capacitor.Plugins.StatusBar.setStyle({style:"DARK"})`,
+  feature-detected + `isCapacitorIOS()`-gated (hindi `?ios=1`) — no-op sa Android/web/
+  lumang binary; WALANG bagong npm dep sa root.
+- **ANDROID SAFETY (hard req ni Jeff): EXPLICIT no-op tests** — backdrop pure-env
+  zero-height contract (regex guard vs px/max/calc), StatusBar NEVER called sa Android,
+  shell class NEVER set sa Android. Android WebView: env()=0 → 0-height backdrop →
+  byte-identical visuals. **592 vitest green · typecheck · build · lint 54 = parity.**
+
+### Commit B `0a5090d` — NATIVE layer (KAILANGAN NG BAGONG iOS BINARY = Build 2)
+- `capacitor.config.ts`: **`contentInset:"always"` TANGGAL** (balik default `never`);
+  `ios.backgroundColor:"#4f46e5"` (white-flash killer). ⚠️ **SADYANG WALANG
+  `plugins.StatusBar` config block** — binabasa iyon ng PAREHONG platforms sa sync →
+  future Android rebuild = puting Android status icons. iOS launch style sa Info.plist.
+- `Info.plist`: `UIStatusBarStyle=UIStatusBarStyleLightContent` (white from launch) +
+  **`ITSAppUsesNonExemptEncryption=NO`** (Jeff addition — skip export-compliance dialog
+  sa bawat TestFlight upload; standard HTTPS lang).
+- `mobile/package.json`: `@capacitor/status-bar` **8.0.2** (= npm `latest`, Cap-8 line).
+
+### BUILD 2 steps (Mac, pagka-approve ng B)
+`cd mobile && npm install && npx cap sync ios` (wire ng plugin sa CapApp-SPM +
+packageClassList) → verify `server.url` = PRODUCTION → bump build number (≥2) →
+Archive → TestFlight. **WEB (A) dapat naka-merge/live sa Vercel BAGO ang device test**
+(ang backdrop/16px/StatusBar call ay galing sa production site).
+- Rollback: web = Vercel instant rollback (env-gated lahat); native = ibalik ang
+  `contentInset:"always"` + rebuild (TestFlight-only, walang store users).
+- Device-test checklist: purple hanggang pinakataas (lahat ng screens + login) · puting
+  clock/battery · walang zoom sa input focus · bottom nav clear sa home indicator ·
+  dark+light theme · Android APK + web = walang pagbabago.

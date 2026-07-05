@@ -57,7 +57,7 @@ import CapPopup from "./screens/CapPopup";
 import ConnectModal from "./screens/ConnectModal";
 import ContactSupportPopup from "./components/ContactSupportPopup";
 import { AnnouncementsSheet } from "./components/Announcements";
-import { isIOS, hasNativeTopInset } from "./adapters/platform";
+import { isIOS, STATUS_BAR_BACKDROP_HEIGHT } from "./adapters/platform";
 import { TProvider, buildT, tpl } from "./i18n";
 
 type Screen =
@@ -82,11 +82,6 @@ const ACCENT_KEYS: AccentKey[] = ["indigo", "violet", "emerald", "rose", "sky", 
 const safeAccent = (v: string): AccentKey => (ACCENT_KEYS.includes(v as AccentKey) ? (v as AccentKey) : "indigo");
 
 export default function RedesignApp() {
-  // Status-bar spacer height — snapshot ONCE at mount (see the spacer comment
-  // below): 0 when the iOS WKWebView already insets natively, env()+floor when
-  // the iOS shell is full-bleed, plain env() on Android/web.
-  const [topSpacerH] = useState(() =>
-    hasNativeTopInset() ? "0px" : isIOS() ? "max(env(safe-area-inset-top), 20px)" : "env(safe-area-inset-top)");
   // Phase 5a — REAL auth (adapter composes the supabase singleton + getMyProfile).
   const auth = useAuthSession();
   // Analytics — identify the signed-in seller once authed (parity with App.tsx
@@ -581,21 +576,18 @@ export default function RedesignApp() {
           </>
         )}
 
-        {/* Safe-area top spacer — replaces the old faux "9:41" status bar (a design
-            mockup leftover that double-stacked under the real system status bar).
-            EXACTLY ONE layer must reserve the status-bar space:
-            • iOS shell with ios.contentInset:"always" (the current TestFlight
-              config) → the WKWebView reserves it NATIVELY → spacer collapses to
-              0 (hasNativeTopInset; a web spacer on top produced the ~100px
-              double-inset gap).
-            • iOS shell WITHOUT native insets (if a future build drops "always")
-              → spacer = max(env(safe-area-inset-top), 20px) (20px floor: every
-              iPhone status bar is ≥20pt even when env() resolves 0 on remote
-              loads).
-            • Android/web → plain env(): Android WebView draws below the status
-              bar and desktop has none, so env()=0 → no gap. Snapshot ONCE at
-            mount so keyboard-driven innerHeight changes never flip it mid-live. */}
-        <div style={{ height: topSpacerH, flexShrink: 0 }} />
+        {/* Status-bar backdrop — the canonical full-bleed pattern. The iOS shell
+            draws BEHIND the status bar (ios.contentInset default "never" +
+            viewport-fit=cover), so this strip paints var(--header-bg) under the
+            system clock/battery: every screen starts with the same header color
+            (headerBar / the Login+Signup hero), making the purple run
+            edge-to-edge like a native opaque nav bar. White text on top comes
+            from the StatusBar plugin (style DARK, set natively + in main.tsx).
+            Android WebView draws BELOW its status bar and desktop has none, so
+            env(safe-area-inset-top)=0 → zero height → byte-identical there.
+            backdrop-filter mirrors headerBar so the dark theme's translucent
+            header-bg reads as one continuous surface. */}
+        <div style={{ height: STATUS_BAR_BACKDROP_HEIGHT, flexShrink: 0, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)" }} />
 
         <div className="sfl-scroll">
           {auth.status === "loading" && (
