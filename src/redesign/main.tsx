@@ -6,12 +6,16 @@ import "../styles/design-tokens.css";
 import "./redesign.css";
 import RedesignApp from "./RedesignApp";
 import { initAnalytics } from "./analytics";
-import { applyIOSViewportZoomLock } from "./adapters/platform";
+import { applyIOSShellClass, applyIOSStatusBarStyle, applyIOSViewportZoomLock } from "./adapters/platform";
 
-// iOS app shell: lock viewport zoom BEFORE first render — kills the WKWebView
-// input-focus auto-zoom that clipped the layout on both edges and panned the
-// header under the status bar (TestFlight display bug). No-op on Android/web.
+// iOS app shell display setup, BEFORE first render (all three no-op on
+// Android/web): the sfl-ios-shell class turns on the 16px input floor (the
+// real fix for the WKWebView input-focus auto-zoom), the viewport zoom lock
+// stays as the Ionic-standard backstop, and the StatusBar plugin call sets
+// white status-bar text over the edge-to-edge purple header.
+applyIOSShellClass();
 applyIOSViewportZoomLock();
+applyIOSStatusBarStyle();
 
 // PostHog analytics — production `/` loads THIS entry (index.html → redesign), so
 // init must live here (the src/main.tsx PostHog only runs on the app.html rollback).

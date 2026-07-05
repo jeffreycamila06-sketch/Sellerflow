@@ -27,35 +27,23 @@ export function isCapacitorIOS(): boolean {
   }
 }
 
-// The iOS shell ships `ios.contentInset: "always"` (mobile/capacitor.config.ts),
-// so the WKWebView scroll view ALREADY reserves the status-bar area natively.
-// In that mode the in-page safe-area spacer must collapse to 0 — otherwise the
-// header gets a DOUBLE inset (the ~100px blank gap seen on TestFlight after the
-// zoom lock exposed the real layout). Detection: with native insets the layout
-// viewport is SHORTER than the physical screen by roughly top+bottom insets
-// (>30pt); a full-bleed webview (contentInset "never") leaves them equal.
-// ADAPTIVE: if a future iOS build drops "always", this returns false and the
-// env() spacer takes over — either native config renders correctly with no
-// coordinated web deploy. Callers should snapshot the value ONCE at mount
-// (keyboard-driven innerHeight changes must not flip the spacer mid-session).
-export function hasNativeTopInset(): boolean {
-  if (!isCapacitorIOS()) return false;
-  try {
-    return window.screen.height - window.innerHeight > 30;
-  } catch {
-    return false;
-  }
-}
+// ── iOS native-quality display (canonical Capacitor pattern) ────────────────
+// The iOS shell is FULL-BLEED (`ios.contentInset` = default "never" — the
+// "always" experiment and its hasNativeTopInset() heuristic are gone): the
+// WKWebView draws behind the status bar, viewport-fit=cover keeps
+// env(safe-area-inset-*) live, and the app root paints a var(--header-bg)
+// backdrop under the status bar so every screen's header runs edge-to-edge.
+// The three helpers below are called once from main.tsx before first render.
 
-// iOS WKWebView auto-ZOOMS the page when a focused <input> has font-size <16px
-// (the redesign uses 13–14px inputs everywhere). Once zoomed, the layout pans:
-// content clips on BOTH edges, the whole page scrolls horizontally, and the
-// header slides under the status bar — the TestFlight display bug. Android
-// WebView and desktop browsers never auto-zoom, so this is iOS-only.
-// Fix: on the iOS app shell ONLY, lock the viewport zoom (an app, not a web
-// page — pinch-zoom lock is standard for Capacitor shells). Web/Safari users
-// are untouched (no Capacitor, no ?ios → no-op), so browser accessibility
-// zoom is preserved everywhere else.
+// iOS WKWebView auto-ZOOMS the page when a focused <input> has font-size <16px.
+// Once zoomed, the layout pans: content clips on BOTH edges and the header
+// slides under the status bar. PRIMARY fix: the html.sfl-ios-shell CSS floor
+// bumps every redesign input/select/textarea to 16px, removing the trigger at
+// the source (redesign.css). This viewport lock stays as the BACKSTOP — it is
+// the exact tag the official Ionic/Capacitor app templates ship, and WKWebView
+// (unlike Safari, which ignores user-scalable since iOS 10) honors it. Web
+// browsers never get it (no Capacitor, no ?ios → no-op), so browser
+// accessibility zoom is preserved everywhere else.
 export const IOS_LOCKED_VIEWPORT = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover";
 export function applyIOSViewportZoomLock(): boolean {
   if (typeof document === "undefined" || !isIOS()) return false;
@@ -63,4 +51,44 @@ export function applyIOSViewportZoomLock(): boolean {
   if (!meta) return false;
   meta.setAttribute("content", IOS_LOCKED_VIEWPORT);
   return true;
+}
+
+// Height of the app-root status-bar backdrop (RedesignApp). Pure env(), NO
+// pixel floor, NO platform branch: iOS full-bleed resolves it to the real
+// status-bar inset (purple runs edge-to-edge); Android WebView draws BELOW its
+// status bar so the inset is 0 → ZERO height → the backdrop paints nothing
+// (Android/desktop visuals byte-identical to before). Guarded by tests.
+export const STATUS_BAR_BACKDROP_HEIGHT = "env(safe-area-inset-top)";
+
+// Root class gating the iOS-shell-only CSS (the 16px input floor). On the
+// <html> element (NOT [data-redesign]) so plain descendant selectors work.
+// isIOS() includes the ?ios=1 browser override → the input sizing is
+// previewable in a desktop browser before an iOS build exists.
+export const IOS_SHELL_CLASS = "sfl-ios-shell";
+export function applyIOSShellClass(): boolean {
+  if (typeof document === "undefined" || !isIOS()) return false;
+  document.documentElement.classList.add(IOS_SHELL_CLASS);
+  return true;
+}
+
+// White status-bar text (clock/battery) over the purple header via the
+// @capacitor/status-bar plugin — "DARK" = the plugin's Style.Dark = light text
+// for dark backgrounds. The plugin JS is injected by the native bridge even for
+// remote-loaded pages (server.url thin shell), same as SellerFlowPrinter.
+// Feature-detected: a binary without the plugin (or Android/web) is a clean
+// no-op, so this needs no npm dependency and never throws. The native config
+// (`plugins.StatusBar.style: "DARK"`) already sets the style at launch; this
+// call is the in-page mirror so a config-less binary still ends up white.
+type StatusBarPlugin = { setStyle?: (o: { style: string }) => Promise<void> };
+export function applyIOSStatusBarStyle(): boolean {
+  if (!isCapacitorIOS()) return false;
+  try {
+    const sb = (window as unknown as { Capacitor?: { Plugins?: { StatusBar?: StatusBarPlugin } } })
+      .Capacitor?.Plugins?.StatusBar;
+    if (!sb?.setStyle) return false;
+    void sb.setStyle({ style: "DARK" }).catch(() => undefined);
+    return true;
+  } catch {
+    return false;
+  }
 }

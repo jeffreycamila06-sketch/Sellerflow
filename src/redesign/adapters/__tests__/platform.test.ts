@@ -1,6 +1,6 @@
 // isIOS() — Capacitor iOS app OR ?ios=1 browser override → true; everything else false.
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { isIOS, isCapacitorIOS, hasNativeTopInset, applyIOSViewportZoomLock, IOS_LOCKED_VIEWPORT } from "../platform";
+import { isIOS, isCapacitorIOS, applyIOSViewportZoomLock, applyIOSShellClass, applyIOSStatusBarStyle, IOS_LOCKED_VIEWPORT, IOS_SHELL_CLASS, STATUS_BAR_BACKDROP_HEIGHT } from "../platform";
 
 const setSearch = (s: string) => {
   Object.defineProperty(window, "location", { value: { ...window.location, search: s }, writable: true });
@@ -65,34 +65,79 @@ describe("applyIOSViewportZoomLock", () => {
   });
 });
 
-// hasNativeTopInset() — WKWebView native content insets (ios.contentInset:"always")
-// shrink the layout viewport vs the physical screen; full-bleed leaves them equal.
-describe("isCapacitorIOS / hasNativeTopInset", () => {
-  const setViewport = (screenH: number, innerH: number) => {
-    Object.defineProperty(window.screen, "height", { value: screenH, configurable: true });
-    Object.defineProperty(window, "innerHeight", { value: innerH, configurable: true, writable: true });
-  };
-  it("isCapacitorIOS: true only for the real Capacitor ios platform (NOT ?ios=1)", () => {
+// STATUS_BAR_BACKDROP_HEIGHT — the app-root purple strip under the status bar.
+// ANDROID SAFETY CONTRACT: the height must be PURE env(safe-area-inset-top) —
+// the Android WebView draws below its status bar, so that inset is 0 there and
+// the backdrop collapses to ZERO height (paints nothing; Android visuals
+// byte-identical). Any pixel floor or max() would break this and put a visible
+// purple strip on Android — these assertions exist to make that impossible.
+describe("STATUS_BAR_BACKDROP_HEIGHT (Android = zero height, no-op)", () => {
+  it("Android shell: pure env() with NO pixel floor → resolves to 0 → backdrop paints nothing", () => {
+    (window as unknown as { Capacitor?: { getPlatform: () => string } }).Capacitor = { getPlatform: () => "android" };
+    expect(STATUS_BAR_BACKDROP_HEIGHT).toBe("env(safe-area-inset-top)");
+    expect(STATUS_BAR_BACKDROP_HEIGHT).not.toMatch(/px|max\(|calc\(/); // no floor, no minimum — 0 stays 0
+  });
+  it("same value on every platform (no branch that could diverge later)", () => {
+    setSearch("");
+    expect(STATUS_BAR_BACKDROP_HEIGHT).toBe("env(safe-area-inset-top)");
+  });
+});
+
+describe("isCapacitorIOS", () => {
+  it("true only for the real Capacitor ios platform (NOT ?ios=1)", () => {
     setSearch("?ios=1");
     expect(isCapacitorIOS()).toBe(false); // browser preview override is not the real shell
     (window as unknown as { Capacitor?: { getPlatform: () => string } }).Capacitor = { getPlatform: () => "ios" };
     expect(isCapacitorIOS()).toBe(true);
   });
-  it("native insets detected: iOS shell + layout viewport shorter than the screen", () => {
+});
+
+// applyIOSShellClass() — html.sfl-ios-shell gates the 16px input floor CSS
+// (the WKWebView input-focus auto-zoom fix). iOS shell + ?ios=1 preview only.
+describe("applyIOSShellClass", () => {
+  afterEach(() => { document.documentElement.classList.remove(IOS_SHELL_CLASS); });
+  it("iOS shell: adds the class to <html>", () => {
     (window as unknown as { Capacitor?: { getPlatform: () => string } }).Capacitor = { getPlatform: () => "ios" };
-    setViewport(844, 763); // iPhone 12-class: 47 top + 34 bottom consumed natively
-    expect(hasNativeTopInset()).toBe(true);
+    expect(applyIOSShellClass()).toBe(true);
+    expect(document.documentElement.classList.contains(IOS_SHELL_CLASS)).toBe(true);
   });
-  it("full-bleed webview (contentInset never): equal heights -> false (env spacer takes over)", () => {
-    (window as unknown as { Capacitor?: { getPlatform: () => string } }).Capacitor = { getPlatform: () => "ios" };
-    setViewport(844, 844);
-    expect(hasNativeTopInset()).toBe(false);
-  });
-  it("false off the real iOS shell (Android / plain web / ?ios=1 preview)", () => {
-    setViewport(844, 700); // desktop browser chrome shrinks innerHeight too -- must NOT trigger
+  it("?ios=1 browser preview: adds the class (input sizing previewable on desktop)", () => {
     setSearch("?ios=1");
-    expect(hasNativeTopInset()).toBe(false);
+    expect(applyIOSShellClass()).toBe(true);
+    expect(document.documentElement.classList.contains(IOS_SHELL_CLASS)).toBe(true);
+  });
+  it("Android shell / plain web: NO-OP — class never set", () => {
     (window as unknown as { Capacitor?: { getPlatform: () => string } }).Capacitor = { getPlatform: () => "android" };
-    expect(hasNativeTopInset()).toBe(false);
+    expect(applyIOSShellClass()).toBe(false);
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+    setSearch("");
+    expect(applyIOSShellClass()).toBe(false);
+    expect(document.documentElement.classList.contains(IOS_SHELL_CLASS)).toBe(false);
+  });
+});
+
+// applyIOSStatusBarStyle() — white status-bar text via the injected
+// @capacitor/status-bar bridge; feature-detected so binaries without the
+// plugin (and Android/web/?ios=1 preview) are clean no-ops.
+describe("applyIOSStatusBarStyle", () => {
+  type CapWindow = { Capacitor?: { getPlatform: () => string; Plugins?: { StatusBar?: { setStyle: (o: { style: string }) => Promise<void> } } } };
+  it("real iOS shell + plugin present: calls setStyle with DARK (white text)", () => {
+    const setStyle = vi.fn().mockResolvedValue(undefined);
+    (window as unknown as CapWindow).Capacitor = { getPlatform: () => "ios", Plugins: { StatusBar: { setStyle } } };
+    expect(applyIOSStatusBarStyle()).toBe(true);
+    expect(setStyle).toHaveBeenCalledWith({ style: "DARK" });
+  });
+  it("iOS shell WITHOUT the plugin (old binary): clean no-op, never throws", () => {
+    (window as unknown as CapWindow).Capacitor = { getPlatform: () => "ios", Plugins: {} };
+    expect(applyIOSStatusBarStyle()).toBe(false);
+  });
+  it("Android shell / ?ios=1 preview: NO-OP even if a StatusBar plugin exists", () => {
+    const setStyle = vi.fn().mockResolvedValue(undefined);
+    (window as unknown as CapWindow).Capacitor = { getPlatform: () => "android", Plugins: { StatusBar: { setStyle } } };
+    expect(applyIOSStatusBarStyle()).toBe(false);
+    delete (window as unknown as { Capacitor?: unknown }).Capacitor;
+    setSearch("?ios=1");
+    expect(applyIOSStatusBarStyle()).toBe(false);
+    expect(setStyle).not.toHaveBeenCalled();
   });
 });

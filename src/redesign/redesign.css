@@ -24,6 +24,16 @@
 [data-redesign] button { font-family: var(--font-ui); }
 [data-redesign] input { font-family: var(--font-ui); }
 
+/* iOS app shell ONLY (html.sfl-ios-shell — set by applyIOSShellClass, incl. the
+ * ?ios=1 browser preview). WKWebView auto-zooms the whole page when a focused
+ * form control's font-size is <16px; every redesign input is 9.5–15px, so a
+ * 16px floor removes the zoom trigger at the source (the accessibility-correct
+ * fix; the viewport zoom lock remains only as a backstop). !important because
+ * most controls carry an inline fontSize. Android/web: class never set → 0 diff. */
+html.sfl-ios-shell [data-redesign] input,
+html.sfl-ios-shell [data-redesign] select,
+html.sfl-ios-shell [data-redesign] textarea { font-size: 16px !important; }
+
 /* Phone column: status bar -> scrollable content (flex:1) -> bottom nav.
  * max-width 430px keeps the mobile design phone-accurate on desktop preview;
  * on a real phone it is full-bleed. (No workbench/sidebar — per the spec.) */
