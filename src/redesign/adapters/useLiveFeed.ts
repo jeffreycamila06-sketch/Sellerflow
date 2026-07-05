@@ -17,7 +17,7 @@
 // `injectSynthetic()` pushes a test comment through the SAME dedup pipeline so the
 // feed/dedup/scroll can be verified without a real socket. It is gated to
 // non-production hosts via isPreviewEnv() so real users never see it.
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { supabase } from "../../supabase";
 import type { Comment as ProdComment } from "../../lib/orderTypes";
@@ -329,5 +329,11 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     return () => { try { delete (window as unknown as { __sflInject?: unknown }).__sflInject; } catch { /* ignore */ } };
   }, [injectSynthetic]);
 
-  return { comments: feed.map(toRedesignComment), connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, connect, markDisconnected };
+  // Audit #2a — memoized: the mapping recomputes ONLY when the feed changes.
+  // Un-memoized, EVERY host render (e.g. each Enterprise-price keystroke)
+  // re-mapped up to 5,000 comments and forced a full list reconcile.
+  // Regression: feedComments.memo.test. The feed pipeline itself (commentKey /
+  // dedup / sortNewest — tangled zone #1) is untouched.
+  const comments = useMemo(() => feed.map(toRedesignComment), [feed]);
+  return { comments, connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, connect, markDisconnected };
 }

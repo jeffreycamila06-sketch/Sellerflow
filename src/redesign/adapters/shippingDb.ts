@@ -66,20 +66,34 @@ async function uid(): Promise<string | null> {
   return data.session?.user?.id ?? null;
 }
 
-// ONE read per screen open — all of the seller's rows for this session window.
+// ONE read per screen open — ALL of the seller's rows for this session window.
+// Audit #12: PAGED to completeness (the old un-ranged select hit the silent
+// 1,000-row PostgREST cap — a heavy multi-day seller with split bags would have
+// lost the HIGHEST buyer numbers, and re-saves could double-create bags).
+// Ordering (buyer_number, bag_number) is UNIQUE per (user, session_key) — the
+// upsert conflict target — so page boundaries are stable. ANY page error → []
+// (same contract as before; a partial list would mislabel real parcels).
+// Regression: shippingDb.paging.test.
+export const SHIPPING_PAGE_SIZE = 1000;
 export async function loadShippingEntries(sessionKey: string): Promise<ShippingEntry[]> {
   if (!isSupabaseConfigured || !supabase) return [];
   const id = await uid();
   if (!id) return [];
-  const { data, error } = await supabase
-    .from("shipping_entries")
-    .select("*")
-    .eq("user_id", id)
-    .eq("session_key", sessionKey)
-    .order("buyer_number", { ascending: true })
-    .order("bag_number", { ascending: true });
-  if (error || !data) return [];
-  return data.map((r) => rowToEntry(r as Record<string, unknown>));
+  const all: ShippingEntry[] = [];
+  for (let page = 0; ; page++) {
+    const from = page * SHIPPING_PAGE_SIZE;
+    const { data, error } = await supabase
+      .from("shipping_entries")
+      .select("*")
+      .eq("user_id", id)
+      .eq("session_key", sessionKey)
+      .order("buyer_number", { ascending: true })
+      .order("bag_number", { ascending: true })
+      .range(from, from + SHIPPING_PAGE_SIZE - 1);
+    if (error || !data) return [];
+    all.push(...data.map((r) => rowToEntry(r as Record<string, unknown>)));
+    if (data.length < SHIPPING_PAGE_SIZE) return all;
+  }
 }
 
 // One upsert per encode save (write-on-action). Conflict target = the group key,

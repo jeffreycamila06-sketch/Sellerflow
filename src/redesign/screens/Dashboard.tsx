@@ -22,6 +22,14 @@ const ddName: CSSProperties = { display: "block", fontSize: 12.5, fontWeight: 70
 const ddMeta: CSSProperties = { display: "block", fontSize: 10.5, color: "var(--text-muted)" };
 const ddCheck: CSSProperties = { color: "var(--accent-fg)", fontWeight: 800, fontSize: 13, width: 12, flexShrink: 0 };
 const bolt = <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4.5 13.5H11l-1 8.5 9-12h-6.5L13 2Z" /></svg>;
+
+// Audit #2b — feed WINDOWING: only the newest N comment rows are mounted in the
+// DOM (comments arrive newest-first). The full feed (up to 5,000) stays in
+// state/refs for order capture + dedup — this caps DOM size (~15 nodes/row) and
+// per-comment reconcile cost, the biggest long-live jank source on low-end
+// Android WebViews. An honest note shows the real total when rows are hidden.
+// Regression: Dashboard.rendercap.test.
+export const FEED_RENDER_CAP = 150;
 const bolt12 = <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4.5 13.5H11l-1 8.5 9-12h-6.5L13 2Z" /></svg>;
 const printerIcon = <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><rect x="6" y="3" width="12" height="6" stroke="currentColor" strokeWidth="1.9" /><rect x="4" y="9" width="16" height="8" rx="2" stroke="currentColor" strokeWidth="1.9" /><rect x="7" y="14" width="10" height="7" stroke="currentColor" strokeWidth="1.9" /></svg>;
 const calIcon = <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3.5" y="5" width="17" height="16" rx="2.5" stroke="currentColor" strokeWidth="1.7" /><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>;
@@ -292,7 +300,7 @@ export default function Dashboard({
               <span style={{ fontSize: 11.5 }}>{t.rd_dash_connect_start}{canInject ? t.rd_dash_preview_hint : ""}</span>
             </div>
           )}
-          {comments.map((c) => {
+          {comments.slice(0, FEED_RENDER_CAP).map((c) => {
             // Auto-detect is Soon-badged (not wired) — capture is ALWAYS manual, so
             // every comment keeps its 1-Click / Enterprise buttons until it is ordered.
             // "printed" is only ever set by a real manual order → no comment is ever
@@ -343,6 +351,11 @@ export default function Dashboard({
               </div>
             );
           })}
+          {comments.length > FEED_RENDER_CAP && (
+            <div style={{ textAlign: "center", padding: "10px 8px", fontSize: 11, color: "var(--text-muted)" }}>
+              {tpl(t.rd_dash_feed_hidden, { shown: FEED_RENDER_CAP, total: comments.length })}
+            </div>
+          )}
         </div>
       </div>
     </div>

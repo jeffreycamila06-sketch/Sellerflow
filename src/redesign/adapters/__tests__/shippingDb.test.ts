@@ -16,7 +16,8 @@ vi.mock("../../../supabase", () => ({
   supabase: {
     auth: { getSession: (...a: unknown[]) => getSession(...(a as [])) },
     from: () => ({
-      select: () => ({ eq: () => ({ eq: () => ({ order: () => ({ order: async () => ({ data: selectChain.rows, error: selectChain.error }) }) }) }) }),
+      // .range(from,to) added for the audit-#12 pager — a short page (< page size) ends the loop.
+      select: () => ({ eq: () => ({ eq: () => ({ order: () => ({ order: () => ({ range: async (from: number, to: number) => ({ data: selectChain.error ? null : (selectChain.rows as unknown[]).slice(from, to + 1), error: selectChain.error }) }) }) }) }) }),
       upsert: (...a: unknown[]) => upsert(...(a as [unknown, unknown])),
     }),
   },
