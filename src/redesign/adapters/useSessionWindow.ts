@@ -91,20 +91,65 @@ export function shouldResetOnDayChange(oldDay: string, newDay: string, windowSta
 // db.ts loadTodaysLiveSession (db.ts UNTOUCHED), just session_date BETWEEN a range.
 // Read-on-load only. getSession() is local (no extra network); RLS + the explicit
 // user_id filter both scope to the signed-in user.
+//
+// S1 fix (2026-07-05 audit): PAGED to completeness. PostgREST silently caps an
+// un-ranged select at 1,000 rows; a heavy seller (~405 orders/day observed) on a
+// 3-day window is over that TODAY. Because rows are created_at ASC, the cap
+// dropped the NEWEST orders → rebuildSessionFromRows under-counted → the next
+// order after a reload/second-device open got a DUPLICATE buyer number (the
+// parcel-sorting backbone). Now we loop .range() pages until a short page.
+// • Ordering: created_at ASC + id ASC tiebreaker — a deterministic total order,
+//   required for stable page boundaries (created_at alone can tie).
+// • ANY page error → return [] (same contract as the old single-query error
+//   path): the hydrate-on-empty guard then leaves the local session alone.
+//   Returning a PARTIAL set would silently recreate the duplicate-buyer# bug.
+export const SESSION_PAGE_SIZE = 1000;
+
+// One page of the window read. Split out so the pager below is a pure loop.
+async function loadSessionPage(userId: string, start: string, end: string, page: number): Promise<LiveSessionRow[] | null> {
+  const from = page * SESSION_PAGE_SIZE;
+  const { data, error } = await supabase!
+    .from("live_session_orders")
+    .select("buyer_number,handle,customer_name,platform,product,price,created_at,session_date")
+    .eq("user_id", userId)
+    .gte("session_date", start)
+    .lte("session_date", end)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true })
+    .range(from, from + SESSION_PAGE_SIZE - 1);
+  if (error) { console.error("Load live session window error:", error.message); return null; }
+  return (data || []) as LiveSessionRow[];
+}
+
+// Pure pager over an injected page fetcher — unit-tested with a >1,000-row
+// scenario. Accumulates pages until a short page; null (page error) → [].
+export async function fetchAllSessionPages(
+  fetchPage: (page: number) => Promise<LiveSessionRow[] | null>,
+): Promise<LiveSessionRow[]> {
+  const all: LiveSessionRow[] = [];
+  for (let page = 0; ; page++) {
+    const rows = await fetchPage(page);
+    if (rows === null) return []; // error on any page → empty (never partial)
+    all.push(...rows);
+    if (rows.length < SESSION_PAGE_SIZE) return all;
+  }
+}
+
 export async function loadLiveSessionWindow(start: string, end: string): Promise<LiveSessionRow[]> {
   if (!isSupabaseConfigured || !supabase) return [];
   const { data: { session } } = await supabase.auth.getSession();
   const id = session?.user?.id;
   if (!id) return [];
-  const { data, error } = await supabase
-    .from("live_session_orders")
-    .select("buyer_number,handle,customer_name,platform,product,price,created_at,session_date")
-    .eq("user_id", id)
-    .gte("session_date", start)
-    .lte("session_date", end)
-    .order("created_at", { ascending: true });
-  if (error) { console.error("Load live session window error:", error.message); return []; }
-  return (data || []) as LiveSessionRow[];
+  return fetchAllSessionPages((page) => loadSessionPage(id, start, end, page));
+}
+
+// Single-day read through the SAME paged path (start == end == the Taipei day).
+// Replaces the redesign's use of db.ts loadTodaysLiveSession, whose un-ranged
+// select hits the same 1,000-row cap on a >1,000-order day. Identical columns,
+// filter shape, RLS scope, and ascending order — db.ts itself stays UNTOUCHED
+// (the rollback App.tsx keeps using it).
+export async function loadLiveSessionDay(day: string): Promise<LiveSessionRow[]> {
+  return loadLiveSessionWindow(day, day);
 }
 
 // ms from now until the NEXT Asia/Taipei midnight (00:00 UTC+8). Egress-free
