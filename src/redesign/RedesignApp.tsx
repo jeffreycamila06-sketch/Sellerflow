@@ -2,7 +2,7 @@
 // [data-theme]/[data-accent] on the [data-redesign] root (tokens resolve from
 // src/styles/design-tokens.css), and renders all built screens + bottom nav.
 // Self-contained preview — does NOT import or touch the existing app.
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { CURRENCIES, curSymbol, type ThemeMode, type AccentKey, type AutoControls, type AutoWord } from "./data";
 import Dashboard from "./screens/Dashboard";
 import Orders from "./screens/Orders";
@@ -279,7 +279,10 @@ export default function RedesignApp() {
   const [assignAmount, setAssignAmount] = useState("499");
   const [lang, setLang] = useState<string>(() => readLS(LS.lang, "en"));
   const [langOpen, setLangOpen] = useState(false);
-  const tApp = buildT(lang); // RedesignApp is the TProvider parent → resolve strings directly here
+  // RedesignApp is the TProvider parent → resolve strings directly here.
+  // Memoized (audit #2): buildT merges ~1,100 keys — rebuilding that object on
+  // EVERY app render (which happens per incoming live comment) was pure waste.
+  const tApp = useMemo(() => buildT(lang), [lang]);
   // Auto-dismissing toast (no buttons) — chip connect feedback. kind "ok" = success
   // ("Connected!"), "err" = honest failure reason. Errors linger a bit longer to read.
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
