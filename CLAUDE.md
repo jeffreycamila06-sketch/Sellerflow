@@ -1619,3 +1619,73 @@ walang SQL:
 - **Natitira sa audit backlog:** Login/Landing fake stats (Jeff decision) ·
   "Readable comment colors" dead toggle · Sales-report/session corner items ·
   S1-adjacent minors (see part 4 findings).
+
+## SESSION 2026-07-05 (part 7) — FULL CODEBASE AUDIT → Batch C (auth+perf, MERGED LIVE) + Batch D/E (BRANCHES, awaiting Jeff review)
+Post-Batch-B: 6-parallel-agent FULL codebase audit (duplicate logic · dead code ·
+architecture drift · error-handling gaps · egress/perf · test gaps · i18n) → 26
+ranked findings → fixes in batches, EVIDENCE-FIRST (failing repro test recorded
+BEFORE the fix; the test stays as the regression guard).
+
+### MERGED + LIVE on main (prod-verified sa served bundles)
+1. **Auth cascade #1 (`456da62`):** TOKEN_REFRESHED (~50min) → profile reload →
+   `authed` flip → socket teardown+rebuild. Fix = same-user guard
+   (`authedUserIdRef`) sa `onAuthStateChange` — MINIMAL, walang ibang socket/auth
+   galaw. Repro/regression: `useAuthSession.tokenRefresh.test.tsx` (deferred-
+   promise pattern — instant mocks get batched by React 18 and HIDE the flip).
+2. **Batch C2 (`9288613`):** feed perf #2 (useLiveFeed `comments` useMemo +
+   Dashboard `FEED_RENDER_CAP=150` windowing + honest "older hidden" note ×7 +
+   `tApp` buildT memo) + shipping pager #12 (`loadShippingEntries` paged,
+   never-partial). Evidence tests: `feedComments.memo.test.tsx`,
+   `Dashboard.rendercap.test.tsx`, `shippingDb.paging.test.ts`. Verify:
+   `dpl_84UrgRCD5Leax14LNTNTgJ1d6zh4` READY sa `9288613`, bundle
+   `main-CCuajsHt.js` may `rd_dash_feed_hidden` ×7.
+
+### ⏸ BRANCH `claude/batch-d-silent-failures` (`649dab1`) — HINDI PA MERGED (Jeff go muna)
+Silent failures #6-#11: bawat nilulunok na write/read failure ay may toast/notice
+na + revert kung DB ang source of truth. 659 vitest · lint 54 parity. Per-item
+proving tests (failure-path: notice shown / revert / walang maling optimistic
+state):
+- #7 order fan-out non-cap write fail → `onWriteError` → toast (LOCAL ORDER KEPT
+  by design — prod parity). `useOrders.writeFailure.test.tsx`
+- #8 session load fail: pager error → **null na (dating [] = mukhang FRESH DAY =
+  duplicate-buyer# trap sa 2nd device!)**; display pa rin "empty" pero may
+  `loadError` → warning toast. `useLiveSession.loadError.test.tsx`
+- #9 window-config persist fail → REVERT pill/refs (next order nagre-retry ng
+  open) + `persistErrors` → toast. `useSessionWindow.persistError.test.tsx`
+- #10 raffle toggle fail → revert pill + Dashboard header notice.
+  `useRaffleConfig.revert.test.tsx` + `Dashboard.raffleNotice.test.tsx`
+- #11 products save/delete fail → pill; failed DELETE ay NAGRE-RESTORE ng product
+  (DB-wins reconcile would resurrect it anyway). `Products.syncFailure.test.tsx`
+- #6 shipping export: `SHIP_MAX` 500 ENFORCED na bago ang quota RPC (dating dead
+  const — oversized file ay gumagastos ng quota tapos tatanggihan ng 賣貨便).
+  `Shipping.exportCap.test.tsx`
+- 7 bagong `rd_*` keys ×7 (ord/sess/win/raffle/prd×2/shp_max_rows).
+
+### ⏸ BRANCH `claude/batch-e-consolidation` (`3334fa6`) — HINDI PA MERGED (Jeff go muna)
+Consolidation #12-#16, ZERO behavior change, bawat extraction may parity test vs
+VERBATIM na lumang kopya. 701 vitest · lint 54 parity. App.tsx untouched.
+- #12 `isFreePlan` → `lib/planWindow` (useFreeCap re-export; sellerExpiry routed;
+  `computeFreeFlags` INIWAN literal — verbatim App.tsx:4178 5f mirror).
+- #13 **`adapters/serverIdentity.ts`** = SERVER (pure `resolveServer`) +
+  `sellerIdOf` + `browserSessionId`, pinalitan ang magkaparehong kopya sa
+  connect.ts + useLiveFeed.ts. CONNECTIVITY-CRITICAL — parity vs LAHAT ng 3 kopya
+  kasama App.tsx LS-JSON semantics (same key `sf_browser_session`, same room).
+  `serverIdentity.parity.test.ts`
+- #14 `lib/planPricing.ts` (PLAN_PRICE + matchPlan; thresholds = tier prices;
+  data.ts re-export, Admin.tsx copy burado).
+- #15 `lib/fetchAllPages.ts` — ISANG generic pager; accountDb + shippingDb routed.
+  ⚠️ useSessionWindow pager SADYANG hindi ni-route (Batch D ang gumagalaw doon —
+  i-unify pagkatapos ng D merge para walang cross-branch conflict).
+- #16 `lib/roles.ts` `isAdminRole` — db-cased "admin" + display-cased "Admin" sa
+  isang case-insensitive predicate (connect/useReadData/RedesignApp/Admin routed).
+- Parity proofs: `lib/__tests__/libConsolidation.parity.test.ts` +
+  `serverIdentity.parity.test.ts`.
+
+### FLAGS / natitira
+- Batch D at E ay pareho galing sa main `9288613` — pwedeng i-merge sa KAHIT ANONG
+  ORDER; ang #15 useSessionWindow unification lang ang follow-up after BOTH.
+- Hindi ginalaw (labas sa no-behavior-change rule, flagged lang): `dayStamp()`
+  UTC-vs-Taipei sa CSV filenames · Shipping bare `toLocaleString` · config-load
+  error sa useSessionWindow (defaults sa 1-day nang tahimik).
+- Audit backlog pa rin: Login/Landing fake stats (Jeff decision) · "Readable
+  comment colors" dead toggle · iOS gate test matrix (#10) · nav labels i18n (#11).
