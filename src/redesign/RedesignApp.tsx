@@ -48,6 +48,7 @@ import { useAdmin } from "./adapters/useAdmin";
 import { upsertUser } from "../accountDb";
 import { csvDL, dayStamp } from "./adapters/csv";
 import { computeSales } from "./adapters/sales";
+import { useSalesReport } from "./adapters/salesReport";
 import { sessionKeyFor } from "./adapters/shipping";
 import { printSlip, buildSettingsFromRedesign, type Settings as PrintSettings } from "./adapters/printing";
 import { btCall, hasBtBridge, buildTestStickerPayload, buildTestBuyer, type StickerPrintResult } from "./adapters/printerBridge";
@@ -250,6 +251,9 @@ export default function RedesignApp() {
   // Sales report — session-derived aggregation (App.tsx Sales). CSV row shape
   // matches App.tsx:1988 exactly: [#SF{orderNum}, name, item, qty, cur+total, platform, time].
   const sales = computeSales(liveSession.session.orders, liveSession.session.buyers);
+  // Sales Report v2 — historical periods from the orders ledger (sql/15 RPC,
+  // Taipei-bucketed server-side). One RPC per period switch, cached; zero poll.
+  const salesHist = useSalesReport(authed);
   const exportSales = () => csvDL(`sales-${dayStamp()}.csv`, ["Order", "Buyer", "Item", "Qty", "Total", "Platform", "Time"], liveSession.session.orders.map((o) => [`#SF${o.orderNum}`, o.name, o.item, o.qty, `${cur}${o.total}`, o.platform, o.time]));
 
   const [theme, setTheme] = useState<ThemeMode>(() => (readLS(LS.theme, "light") === "dark" ? "dark" : "light"));
@@ -704,7 +708,7 @@ export default function RedesignApp() {
           {screen === "support" && <Support onLegal={() => setScreen("legal")} />}
           {screen === "admin" && isAdmin && <Admin onOpenPanel={setAdminPanel} cur={cur} counts={adminCounts} live={adminLive} userBase={adminLive ? { paid: userBase.paid, free: userBase.free, total: userBase.total } : undefined} />}
           {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} buyers={liveSession.session.buyers} storeName={auth.profile?.profile.storeName || "SellerFlowLive"} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
-          {screen === "sales" && <SalesReport cur={cur} sales={sales} onExport={exportSales} />}
+          {screen === "sales" && <SalesReport cur={cur} sales={sales} onExport={exportSales} hist={salesHist} />}
           {screen === "shipping" && <Shipping cur={cur} buyers={liveSession.session.buyers} sessionKey={sessionKeyFor(liveSession.dayId, sessionWindow.windowStart, sessionWindow.windowDays)} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}
           {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} cur={cur} customers={customersData.customers} onExport={exportCustomers} />}
           {screen === "legal" && <Legal />}
