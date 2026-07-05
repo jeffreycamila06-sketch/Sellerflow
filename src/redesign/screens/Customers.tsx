@@ -7,9 +7,10 @@ import { headerBar, headerTitle, mono } from "../ui";
 import type { ReadState } from "../adapters/useReadData";
 import { useT } from "../i18n";
 
-export default function Customers({ cur, customers = CUSTOMERS, state = "sample", onExport }: { cur: string; customers?: Customer[]; state?: ReadState; onExport?: () => void }) {
+export default function Customers({ cur, customers = CUSTOMERS, state = "sample", onExport, hasMore = false, loadingMore = false, onLoadMore }: { cur: string; customers?: Customer[]; state?: ReadState; onExport?: () => void; hasMore?: boolean; loadingMore?: boolean; onLoadMore?: () => void }) {
   const t = useT();
-  const total = state === "loading" ? "…" : `${customers.length}`;
+  // "+" = paged list, more rows on the server (own-filtered pages of 200).
+  const total = state === "loading" ? "…" : `${customers.length}${hasMore ? "+" : ""}`;
   return (
     <div>
       <div style={headerBar}>
@@ -43,6 +44,12 @@ export default function Customers({ cur, customers = CUSTOMERS, state = "sample"
             </div>
           ))}
         </div>
+
+        {state === "live" && hasMore && onLoadMore && (
+          <button onClick={onLoadMore} disabled={loadingMore} style={{ display: "block", width: "100%", marginTop: -8, marginBottom: 18, padding: "11px 0", background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, color: "var(--accent-fg)", fontSize: 13, fontWeight: 700, cursor: loadingMore ? "default" : "pointer", opacity: loadingMore ? 0.6 : 1, fontFamily: "var(--font-ui)" }}>
+            {loadingMore ? "…" : t.rd_cus_load_more}
+          </button>
+        )}
 
         <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14.5, color: "var(--text)", margin: "0 2px 10px" }}>{t.rd_cus_archive}</div>
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 15, boxShadow: "var(--shadow)", padding: 6 }}>

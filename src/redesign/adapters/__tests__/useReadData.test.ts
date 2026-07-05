@@ -4,6 +4,8 @@ import {
   relativeTime,
   liveOrdersToRedesign,
   customerRowsToRedesign,
+  minersRpcToStats,
+  ZERO_MINERS_STATS,
   accountUsersToRedesign,
   planDaysLeft,
   deriveSubBuckets,
@@ -70,6 +72,35 @@ describe("customerRowsToRedesign", () => {
     ], now);
     expect(out[0].name).toBe("bob");
     expect(out[0].last).toBe("now");
+  });
+});
+
+// miners_stats RPC jsonb → screen shapes. Must mirror the OLD client-side
+// derivation exactly (pct rounded off buyers; avg = spent/orders rounded).
+describe("minersRpcToStats", () => {
+  it("maps totals + pct + avg + top buyers (with @handle)", () => {
+    const { stats, top } = minersRpcToStats({
+      buyers: 3, orders: 10, spent: "500", tiktok: 2,
+      top: [
+        { name: "Ann", handle: "ann", platform: "TikTok", orders: "6", spent: "300" },
+        { name: "", handle: "@bob", platform: "Facebook", orders: 4, spent: 200 },
+      ],
+    });
+    expect(stats).toEqual({ buyers: 3, orders: 10, spent: 500, avg: 50, tiktokPct: 67, fbPct: 33 });
+    expect(top).toEqual([
+      { name: "Ann", handle: "@ann", orders: 6, spent: 300, platform: "TikTok" },
+      { name: "@bob", handle: "@bob", orders: 4, spent: 200, platform: "Facebook" }, // name falls back to handle
+    ]);
+  });
+  it("zero rows → clean zeros (no NaN/divide-by-zero)", () => {
+    const { stats, top } = minersRpcToStats({ buyers: 0, orders: 0, spent: 0, tiktok: 0, top: [] });
+    expect(stats).toEqual(ZERO_MINERS_STATS);
+    expect(top).toEqual([]);
+  });
+  it("garbage/missing payload → zeros, never throws", () => {
+    expect(minersRpcToStats(null).stats).toEqual(ZERO_MINERS_STATS);
+    expect(minersRpcToStats("nope").stats).toEqual(ZERO_MINERS_STATS);
+    expect(minersRpcToStats({ top: "not-an-array" }).top).toEqual([]);
   });
 });
 

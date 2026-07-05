@@ -31,7 +31,7 @@ import PrinterSettings from "./screens/PrinterSettings";
 import PrintPattern, { DEFAULT_PP, type PrintPatternState, type PpBoolKey, type PpSizeKey } from "./screens/PrintPattern";
 import ManageChannels from "./screens/ManageChannels";
 import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
-import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
+import { useCustomers, useMinerStats, ZERO_MINERS_STATS, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
 import { useBusinessPulse } from "./adapters/useBusinessPulse";
 import { useAnnouncements } from "./adapters/useAnnouncements";
 import { useLiveSession } from "./adapters/useLiveSession";
@@ -233,26 +233,16 @@ export default function RedesignApp() {
   const ordersList = liveOrdersToRedesign(liveSession.session);
   const ordersState: ReadState = liveSession.state === "idle" ? "sample" : liveSession.state;
 
-  // Phase 5j — Miners DERIVED from already-loaded real customers (no new backend),
-  // + CSV exports of already-loaded real data (csvDL copied from App.tsx).
-  // Miners is ALWAYS real-mode — never the sample MINERS demo. Derive only from REAL
-  // customer rows: "live"/"empty" = the authed query result; any other state
-  // (unauthed / DB error → customersData holds SAMPLE_CUSTOMERS) is forced to [] so a
-  // new user (0 customers) or a transient error shows clean 0s + the guidance empty-state,
-  // not fake "1,284 buyers". googletest (33 rows → "live") still shows its real numbers.
-  const minersReal = customersData.state === "live" || customersData.state === "empty";
-  const minerCustomers = minersReal ? customersData.customers : [];
-  const minerList = [...minerCustomers].sort((a, b) => b.spent - a.spent).slice(0, 5)
-    .map((c) => ({ name: c.name, handle: c.handle, orders: c.orders, spent: c.spent, platform: c.platform }));
-  const minerStats = (() => {
-    const cs = minerCustomers;
-    const buyers = cs.length;
-    const orderCount = cs.reduce((s, c) => s + c.orders, 0);
-    const spent = cs.reduce((s, c) => s + c.spent, 0);
-    const tt = cs.filter((c) => c.platform === "TikTok").length;
-    const tiktokPct = buyers ? Math.round((tt / buyers) * 100) : 0;
-    return { buyers, orders: orderCount, spent, avg: orderCount ? Math.round(spent / orderCount) : 0, tiktokPct, fbPct: buyers ? 100 - tiktokPct : 0 };
-  })();
+  // Miners — aggregate RPC (sql/14 miners_stats: own totals + top-5 in one tiny
+  // response). Replaces the old client-side derivation over the full customers
+  // download, which was PostgREST-capped at 1,000 rows AND admin-RLS-scoped to
+  // ALL sellers (the 2026-07-05 "1,000 buyers" bug). Still ALWAYS real-mode —
+  // never the sample MINERS demo: any non-live/empty state (unauthed / RPC
+  // error) is forced to clean 0s + the guidance empty-state.
+  const minersData = useMinerStats(authed);
+  const minersReal = minersData.state === "live" || minersData.state === "empty";
+  const minerList = minersReal ? minersData.top : [];
+  const minerStats = minersReal ? minersData.stats : ZERO_MINERS_STATS;
   const exportOrders = () => csvDL(`orders-${dayStamp()}.csv`, ["Order", "#", "Customer", "Item", "Qty", "Total", "Platform", "Time", "Status"], liveSession.session.orders.map((o) => [`#SF${o.orderNum}`, o.bNum, `@${o.handle}`, o.item, o.qty, `${cur}${o.total}`, o.platform, o.time, o.status]));
   const exportCustomers = () => csvDL(`customers-${dayStamp()}.csv`, ["Name", "Username", "Platform", "Orders", "Total"], customersData.customers.map((c) => [c.name, c.handle, c.platform, c.orders, `${cur}${c.spent}`]));
   const exportMiners = () => csvDL(`miners-${dayStamp()}.csv`, ["#", "Name", "Username", "Platform", "Orders", "Total"], minerList.map((m, i) => [i + 1, m.name, m.handle, m.platform, m.orders, `${cur}${m.spent}`]));
@@ -396,7 +386,8 @@ export default function RedesignApp() {
     setRefreshing(true);
     try {
       liveSession.reset();        // reload today's live session from DB
-      customersData.reload();     // reload customers/miners read data
+      customersData.reload();     // reload the paged customers list
+      minersData.reload();        // re-run the miners_stats aggregate RPC
       await auth.reloadProfile(); // reload profile + registered accounts
     } finally { setRefreshing(false); }
   };
@@ -708,7 +699,7 @@ export default function RedesignApp() {
           {(screen === "ttchannels" || screen === "fbchannels") && (
             <ManageChannels platform={screen === "ttchannels" ? "tiktok" : "facebook"} account={auth.profile} onBack={() => setScreen("settings")} onSaveChannels={saveChannels} />
           )}
-          {screen === "customers" && <Customers cur={cur} customers={customersData.customers} state={customersData.state} onExport={exportCustomers} />}
+          {screen === "customers" && <Customers cur={cur} customers={customersData.customers} state={customersData.state} onExport={exportCustomers} hasMore={customersData.hasMore} loadingMore={customersData.loadingMore} onLoadMore={customersData.loadMore} />}
           {screen === "subscription" && !ios && <Subscription cur={cur} account={auth.profile} isFreeUser={freeCap.isFreeUser} freeStatus={freeCap.freeStatus} />}
           {screen === "support" && <Support onLegal={() => setScreen("legal")} />}
           {screen === "admin" && isAdmin && <Admin onOpenPanel={setAdminPanel} cur={cur} counts={adminCounts} live={adminLive} userBase={adminLive ? { paid: userBase.paid, free: userBase.free, total: userBase.total } : undefined} />}
