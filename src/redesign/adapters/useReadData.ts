@@ -2,7 +2,9 @@
 // functions (db.ts, accountDb.ts) + pure lib cores. NO writes happen here:
 //   • loadTodaysLiveSession (db.ts)  → select live_session_orders (today, RLS)
 //   • rebuildSessionFromRows (lib)   → pure rows → {buyers, orders}
-//   • getCustomersFromDatabase (db.ts) → select customers (RLS)
+//   • customers: own-filtered paged select + miners_stats() aggregate RPC
+//     (sql/14) — NOT db.ts getCustomersFromDatabase, whose unfiltered select
+//     hit the 1,000-row PostgREST cap and the admin-wide RLS scope (2026-07-05)
 //   • listUsers (accountDb.ts)       → select seller_profiles (RLS; admin sees all)
 //
 // Imports only — does NOT touch App.tsx / supabase.ts / db.ts / accountDb.ts /
@@ -12,7 +14,7 @@
 // account reads as empty rather than fake).
 import { useCallback, useEffect, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
-import { loadTodaysLiveSession, getCustomersFromDatabase } from "../../db";
+import { loadTodaysLiveSession } from "../../db";
 import { listUsers, listAuditLogs, type AccountUser, type AccountAuditLog } from "../../accountDb";
 import { rebuildSessionFromRows, type RebuiltSession } from "../../lib/orderLogic";
 import { planDaysLeft, daysDisplay, isActivePaid, isExpiredPaid, isExpiringSoon, EXPIRING_WINDOW_DAYS } from "../../lib/planWindow";
@@ -209,25 +211,128 @@ export function useLiveOrders(enabled: boolean): { orders: Order[]; state: ReadS
   return { orders, state };
 }
 
-export function useCustomers(enabled: boolean): { customers: Customer[]; state: ReadState; reload: () => void } {
+// ── Customers (paginated, OWN rows only) ─────────────────────────────────────
+// 2026-07-05 accuracy fix. The old path (getCustomersFromDatabase = select *
+// with no filter/limit) had two real bugs: PostgREST caps at 1,000 rows (4
+// sellers already exceed that → silently truncated lists), and the customers
+// SELECT RLS is (own OR is_admin()) → an ADMIN downloaded EVERYONE's rows.
+// Now: explicit user_id filter (admin sees own data, like every seller) +
+// range() pages of 200 accumulated behind a "Load more" button (egress-safe:
+// one page per tap, no full-table download on app open).
+export const CUSTOMERS_PAGE_SIZE = 200;
+// Returns the page's raw rows, or null on any failure (caller keeps prior state).
+async function loadOwnCustomersPage(page: number): Promise<Record<string, unknown>[] | null> {
+  if (!supabase) return null;
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+    const from = page * CUSTOMERS_PAGE_SIZE;
+    const { data, error } = await supabase
+      .from("customers")
+      .select("*")
+      .eq("user_id", user.id) // explicit — RLS alone would give an admin ALL sellers' rows
+      .order("created_at", { ascending: false })
+      .range(from, from + CUSTOMERS_PAGE_SIZE - 1);
+    if (error) return null;
+    return (data || []) as Record<string, unknown>[];
+  } catch {
+    return null;
+  }
+}
+
+export function useCustomers(enabled: boolean): { customers: Customer[]; state: ReadState; hasMore: boolean; loadingMore: boolean; loadMore: () => void; reload: () => void } {
   const [customers, setCustomers] = useState<Customer[]>(SAMPLE_CUSTOMERS);
   const [state, setState] = useState<ReadState>("sample");
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(0); // next page index to fetch
   const [reloadKey, setReloadKey] = useState(0); // one-shot reload trigger (no polling)
   useEffect(() => {
-    if (!enabled || !isSupabaseConfigured) { setState("sample"); setCustomers(SAMPLE_CUSTOMERS); return; }
+    if (!enabled || !isSupabaseConfigured) { setState("sample"); setCustomers(SAMPLE_CUSTOMERS); setHasMore(false); return; }
     let active = true;
     setState("loading");
-    getCustomersFromDatabase()
-      .then((rows) => {
-        if (!active) return;
-        const mapped = customerRowsToRedesign((rows || []) as Record<string, unknown>[], Date.now());
-        if (mapped.length) { setCustomers(mapped); setState("live"); }
-        else { setCustomers([]); setState("empty"); }
-      })
-      .catch(() => { if (active) { setCustomers(SAMPLE_CUSTOMERS); setState("sample"); } });
+    loadOwnCustomersPage(0).then((rows) => {
+      if (!active) return;
+      if (rows === null) { setCustomers(SAMPLE_CUSTOMERS); setState("sample"); setHasMore(false); return; }
+      const mapped = customerRowsToRedesign(rows, Date.now());
+      setCustomers(mapped);
+      setPage(1);
+      setHasMore(rows.length === CUSTOMERS_PAGE_SIZE);
+      if (mapped.length) setState("live");
+      else setState("empty");
+    });
     return () => { active = false; };
   }, [enabled, reloadKey]);
-  return { customers, state, reload: () => setReloadKey((k) => k + 1) };
+  const loadMore = useCallback(() => {
+    if (!hasMore || loadingMore || state !== "live") return;
+    setLoadingMore(true);
+    loadOwnCustomersPage(page).then((rows) => {
+      setLoadingMore(false);
+      if (rows === null) return; // transient failure: keep the list, button stays for retry
+      setCustomers((prev) => [...prev, ...customerRowsToRedesign(rows, Date.now())]);
+      setPage((p) => p + 1);
+      setHasMore(rows.length === CUSTOMERS_PAGE_SIZE);
+    });
+  }, [page, hasMore, loadingMore, state]);
+  return { customers, state, hasMore, loadingMore, loadMore, reload: () => { setPage(0); setReloadKey((k) => k + 1); } };
+}
+
+// ── Miners (aggregate RPC — own totals + top-5, one tiny response) ───────────
+// Same 2026-07-05 accuracy fix, server-side: sql/14 `miners_stats()` aggregates
+// the caller's OWN customers in Postgres (SECURITY INVOKER + explicit
+// user_id = auth.uid()), immune to the 1,000-row cap and to the admin RLS
+// scope, and costs one small JSON instead of the whole table. ZERO POLL —
+// one RPC per app open + manual reload.
+export interface MinersTopBuyer { name: string; handle: string; orders: number; spent: number; platform: string }
+export interface MinersStats { buyers: number; orders: number; spent: number; avg: number; tiktokPct: number; fbPct: number }
+export const ZERO_MINERS_STATS: MinersStats = { buyers: 0, orders: 0, spent: 0, avg: 0, tiktokPct: 0, fbPct: 0 };
+
+// miners_stats RPC jsonb → screen shapes (pure — unit-tested). Mirrors the old
+// client-side derivation exactly: pct rounded off buyers, avg = spent/orders.
+export function minersRpcToStats(raw: unknown): { stats: MinersStats; top: MinersTopBuyer[] } {
+  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const buyers = Number(r.buyers) || 0;
+  const orders = Number(r.orders) || 0;
+  const spent = Number(r.spent) || 0;
+  const tiktok = Number(r.tiktok) || 0;
+  const tiktokPct = buyers ? Math.round((tiktok / buyers) * 100) : 0;
+  const top = Array.isArray(r.top)
+    ? (r.top as Record<string, unknown>[]).map((t) => ({
+        name: (t.name as string) || (t.handle as string) || "",
+        handle: atHandle((t.handle as string) || ""),
+        orders: Number(t.orders) || 0,
+        spent: Number(t.spent) || 0,
+        platform: (t.platform as string) || "",
+      }))
+    : [];
+  return {
+    stats: { buyers, orders, spent, avg: orders ? Math.round(spent / orders) : 0, tiktokPct, fbPct: buyers ? 100 - tiktokPct : 0 },
+    top,
+  };
+}
+
+export function useMinerStats(enabled: boolean): { stats: MinersStats; top: MinersTopBuyer[]; state: ReadState; reload: () => void } {
+  const [data, setData] = useState<{ stats: MinersStats; top: MinersTopBuyer[] }>({ stats: ZERO_MINERS_STATS, top: [] });
+  // "loading" until the RPC resolves; the guard below derives "sample" when
+  // disabled/unconfigured (no sync setState inside the effect).
+  const [state, setState] = useState<ReadState>("loading");
+  const [reloadKey, setReloadKey] = useState(0);
+  useEffect(() => {
+    if (!enabled || !isSupabaseConfigured || !supabase) return;
+    let active = true;
+    supabase.rpc("miners_stats").then(
+      ({ data: raw, error }) => {
+        if (!active) return;
+        if (error) { setState("sample"); return; } // RPC missing/failed → screen shows clean 0s
+        const mapped = minersRpcToStats(raw);
+        setData(mapped);
+        setState(mapped.stats.buyers > 0 ? "live" : "empty");
+      },
+      () => { if (active) setState("sample"); },
+    );
+    return () => { active = false; };
+  }, [enabled, reloadKey]);
+  return { ...data, state: enabled && isSupabaseConfigured ? state : "sample", reload: () => setReloadKey((k) => k + 1) };
 }
 
 // Admin user list. enabled should be true ONLY for an admin profile — a seller's

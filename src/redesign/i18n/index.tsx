@@ -300,6 +300,7 @@ const RAW: Record<string, Row> = {
   rd_cus_search: { en: "Search name or @handle", fil: "Maghanap ng pangalan o @handle", zh: "搜索名称或 @handle", "zh-TW": "搜尋名稱或 @handle", vi: "Tìm tên hoặc @handle", th: "ค้นหาชื่อหรือ @handle", id: "Cari nama atau @handle" },
   rd_cus_loading: { en: "Loading customers…", fil: "Nilo-load ang mga customer…", zh: "正在加载客户…", "zh-TW": "正在載入客戶…", vi: "Đang tải khách hàng…", th: "กำลังโหลดลูกค้า…", id: "Memuat pelanggan…" },
   rd_cus_empty: { en: "No customers yet.", fil: "Wala pang customer.", zh: "还没有客户。", "zh-TW": "還沒有客戶。", vi: "Chưa có khách hàng.", th: "ยังไม่มีลูกค้า", id: "Belum ada pelanggan." },
+  rd_cus_load_more: { en: "Load more", fil: "Mag-load pa", zh: "加载更多", "zh-TW": "載入更多", vi: "Tải thêm", th: "โหลดเพิ่มเติม", id: "Muat lebih banyak" },
   rd_cus_orders_suffix: { en: "orders", fil: "order", zh: "订单", "zh-TW": "訂單", vi: "đơn", th: "ออเดอร์", id: "pesanan" },
   rd_cus_archive: { en: "Comment archive", fil: "Archive ng komento", zh: "评论存档", "zh-TW": "留言封存", vi: "Lưu trữ bình luận", th: "คลังคอมเมนต์", id: "Arsip komentar" },
 
