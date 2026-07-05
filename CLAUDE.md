@@ -1456,3 +1456,42 @@ view sa likod ng status bar + rotation handled + nagpe-persist sa reloads.
   (walang gap/strip) · puting clock/battery · rotation test · keyboard open/close ·
   navigate + reload screens · dark+light theme · Android APK/web untouched.
 - **Rollback:** burahin ang `plugins.StatusBar` block → rebuild (TestFlight-only).
+
+## SESSION 2026-07-05 (part 3) — MINERS DATA ACCURACY ✅ (merged `4da05b1`, LIVE + prod-verified)
+**BUG (Jeff report):** Miners panel = 1,000 buyers (kahina-hinalang bilog) · 2,385
+orders · NT$53,605 — walang tugma sa owner ground truth (orders ledger: 1,606 ·
+620 names · NT$181,957). **ROOT CAUSE (DB-verified byte-exact):** ang Miners ay
+nag-a-aggregate ng BUONG client-side download ng `customers` na (a) pinuputol ng
+PostgREST default sa 1,000 rows (4 sellers ay lampas na: 2,420/2,231/1,218/1,125)
+at (b) dahil ang customers SELECT RLS ay `own OR is_admin()`, ang ADMIN login ni
+Jeff ay nagda-download ng customers ng LAHAT — ang 1,000/2,385/53,605 ay eksaktong
+tugma sa GLOBAL newest-1000 slice (18 sellers, 12,531 total rows). Walang
+sample/demo data na nakahalo (ang Miners literals ay non-live fallback lang);
+ang "may laman agad" ay ang lifetime CRM aggregates — totoo, mali lang ang saklaw.
+
+### Fix (branch `claude/miners-rpc-accuracy` → merged; SQL applied via MCP)
+- **`sql/14_miners_stats.sql`** — RPC `miners_stats()`: SECURITY INVOKER +
+  **explicit `user_id = (select auth.uid())` sa PAREHONG aggregate** (ang explicit
+  filter, hindi RLS, ang pumipigil sa admin-wide scope); own totals + top-5 sa
+  ISANG maliit na jsonb; authenticated-only execute. Applied + verified ni
+  chat-Claude (owner: 447/998/176665). Guarded ng SQL contract test
+  (`minersSql.test.ts`: invoker-only, 2 own-row filters, limit 5, grants).
+- **`useMinerStats` adapter** — isang RPC per app open + manual reload, ZERO poll;
+  pure `minersRpcToStats` (unit-tested, eksaktong mirror ng lumang math); RPC
+  missing/error → malinis na 0s, hindi kailanman sample demo.
+- **`useCustomers` REWORK** — own-filtered (`.eq user_id`) paged select
+  (**200/page** + "Load more" button + "N+" total chip; `rd_cus_load_more` ×7) —
+  parehong dalawang bug ang inaayos para sa Customers screen. `db.ts` UNTOUCHED
+  (hindi na lang ini-import ang `getCustomersFromDatabase`).
+- **Egress win:** dating buong-table download bawat app open (admin = 1,000 full
+  rows) → ngayon isang maliit na JSON + isang 200-row page.
+- **599/599 vitest · typecheck · build · lint 54 = parity.** Prod-verified sa
+  SERVED bundle (`main-CyBFWTCu.js`): `miners_stats` present, lumang import wala na.
+
+### Alam na natitira (hindi bug, by design — hiwalay na usapan kung poproblemahin)
+- **CRM-vs-ledger drift:** customers aggregates (owner: 447/998/176,665) ≠ orders
+  ledger (1,606/620/181,957) — keyed by handle vs name, fire-and-forget writes,
+  posibleng later table introduction. Ang Miners ngayon ay TAMANG salamin ng
+  customers table; kung ledger-exact ang gusto, bagong aggregation sa `orders`.
+- **CSV export = loaded pages lang** (hindi buong table) — full-export follow-up
+  kung kakailanganin.
