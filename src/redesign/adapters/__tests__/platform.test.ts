@@ -1,6 +1,6 @@
 // isIOS() — Capacitor iOS app OR ?ios=1 browser override → true; everything else false.
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { isIOS, applyIOSViewportZoomLock, IOS_LOCKED_VIEWPORT } from "../platform";
+import { isIOS, isCapacitorIOS, hasNativeTopInset, applyIOSViewportZoomLock, IOS_LOCKED_VIEWPORT } from "../platform";
 
 const setSearch = (s: string) => {
   Object.defineProperty(window, "location", { value: { ...window.location, search: s }, writable: true });
@@ -62,5 +62,37 @@ describe("applyIOSViewportZoomLock", () => {
   it("returns false when no viewport meta exists (never throws)", () => {
     (window as unknown as { Capacitor?: { getPlatform: () => string } }).Capacitor = { getPlatform: () => "ios" };
     expect(applyIOSViewportZoomLock()).toBe(false);
+  });
+});
+
+// hasNativeTopInset() — WKWebView native content insets (ios.contentInset:"always")
+// shrink the layout viewport vs the physical screen; full-bleed leaves them equal.
+describe("isCapacitorIOS / hasNativeTopInset", () => {
+  const setViewport = (screenH: number, innerH: number) => {
+    Object.defineProperty(window.screen, "height", { value: screenH, configurable: true });
+    Object.defineProperty(window, "innerHeight", { value: innerH, configurable: true, writable: true });
+  };
+  it("isCapacitorIOS: true only for the real Capacitor ios platform (NOT ?ios=1)", () => {
+    setSearch("?ios=1");
+    expect(isCapacitorIOS()).toBe(false); // browser preview override is not the real shell
+    (window as unknown as { Capacitor?: { getPlatform: () => string } }).Capacitor = { getPlatform: () => "ios" };
+    expect(isCapacitorIOS()).toBe(true);
+  });
+  it("native insets detected: iOS shell + layout viewport shorter than the screen", () => {
+    (window as unknown as { Capacitor?: { getPlatform: () => string } }).Capacitor = { getPlatform: () => "ios" };
+    setViewport(844, 763); // iPhone 12-class: 47 top + 34 bottom consumed natively
+    expect(hasNativeTopInset()).toBe(true);
+  });
+  it("full-bleed webview (contentInset never): equal heights -> false (env spacer takes over)", () => {
+    (window as unknown as { Capacitor?: { getPlatform: () => string } }).Capacitor = { getPlatform: () => "ios" };
+    setViewport(844, 844);
+    expect(hasNativeTopInset()).toBe(false);
+  });
+  it("false off the real iOS shell (Android / plain web / ?ios=1 preview)", () => {
+    setViewport(844, 700); // desktop browser chrome shrinks innerHeight too -- must NOT trigger
+    setSearch("?ios=1");
+    expect(hasNativeTopInset()).toBe(false);
+    (window as unknown as { Capacitor?: { getPlatform: () => string } }).Capacitor = { getPlatform: () => "android" };
+    expect(hasNativeTopInset()).toBe(false);
   });
 });

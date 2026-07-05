@@ -14,6 +14,39 @@ export function isIOS(): boolean {
   }
 }
 
+// REAL Capacitor iOS app only (not the ?ios=1 browser override) — for checks
+// that depend on the actual WKWebView environment (e.g. native content insets),
+// where a desktop-browser preview would measure garbage.
+export function isCapacitorIOS(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const cap = (window as unknown as { Capacitor?: { getPlatform?: () => string } }).Capacitor;
+    return cap?.getPlatform?.() === "ios";
+  } catch {
+    return false;
+  }
+}
+
+// The iOS shell ships `ios.contentInset: "always"` (mobile/capacitor.config.ts),
+// so the WKWebView scroll view ALREADY reserves the status-bar area natively.
+// In that mode the in-page safe-area spacer must collapse to 0 — otherwise the
+// header gets a DOUBLE inset (the ~100px blank gap seen on TestFlight after the
+// zoom lock exposed the real layout). Detection: with native insets the layout
+// viewport is SHORTER than the physical screen by roughly top+bottom insets
+// (>30pt); a full-bleed webview (contentInset "never") leaves them equal.
+// ADAPTIVE: if a future iOS build drops "always", this returns false and the
+// env() spacer takes over — either native config renders correctly with no
+// coordinated web deploy. Callers should snapshot the value ONCE at mount
+// (keyboard-driven innerHeight changes must not flip the spacer mid-session).
+export function hasNativeTopInset(): boolean {
+  if (!isCapacitorIOS()) return false;
+  try {
+    return window.screen.height - window.innerHeight > 30;
+  } catch {
+    return false;
+  }
+}
+
 // iOS WKWebView auto-ZOOMS the page when a focused <input> has font-size <16px
 // (the redesign uses 13–14px inputs everywhere). Once zoomed, the layout pans:
 // content clips on BOTH edges, the whole page scrolls horizontally, and the
