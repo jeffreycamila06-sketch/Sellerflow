@@ -166,22 +166,49 @@ export async function createMyProfile(
 }
 
 // Admin-only: lists every seller profile. Sellers calling this only see their
-// own row because of RLS. Capped at 100 rows — we have ~9 paying sellers and
-// a handful of free, so this is a safety ceiling, not a real pagination point.
+// own row because of RLS.
+//
+// S2 fix (2026-07-05 audit): the old hard `.limit(100)` was a silent time bomb —
+// every admin number (Manage Sellers, Active/Expiring/Expired buckets, User Base,
+// search corpus) derived from at most 100 rows, and with `created_at ASC` the
+// NEWEST signups would vanish first (~26 signups/30d → breach in ~a quarter).
+// Now PAGED to completeness (same pattern as the S1 session paging): .range()
+// pages until a short page; ANY page error → [] — complete or empty, never a
+// silent partial. Ordering adds an email tiebreaker (unique) so page boundaries
+// are stable when created_at ties.
+export const USERS_PAGE_SIZE = 1000;
+
+// Pure pager over an injected page fetcher — unit-tested with a >100-user
+// scenario. null (page error) → [].
+export async function fetchAllProfilePages<T>(
+  fetchPage: (page: number) => Promise<T[] | null>,
+): Promise<T[]> {
+  const all: T[] = [];
+  for (let page = 0; ; page++) {
+    const rows = await fetchPage(page);
+    if (rows === null) return [];
+    all.push(...rows);
+    if (rows.length < USERS_PAGE_SIZE) return all;
+  }
+}
+
 export async function listUsers(): Promise<AccountUser[]> {
   if (!isSupabaseConfigured || !supabase) return [];
 
-  const { data, error } = await supabase
-    .from("seller_profiles")
-    .select("*")
-    .order("created_at", { ascending: true })
-    .limit(100);
-
-  if (error) {
-    console.error("Load users error:", error.message);
-    return [];
-  }
-  return (data || []).map(rowToUser);
+  return fetchAllProfilePages<AccountUser>(async (page) => {
+    const from = page * USERS_PAGE_SIZE;
+    const { data, error } = await supabase!
+      .from("seller_profiles")
+      .select("*")
+      .order("created_at", { ascending: true })
+      .order("email", { ascending: true })
+      .range(from, from + USERS_PAGE_SIZE - 1);
+    if (error) {
+      console.error("Load users error:", error.message);
+      return null;
+    }
+    return (data || []).map(rowToUser);
+  });
 }
 
 // Saves profile changes. For a seller this only affects their own row (RLS),

@@ -59,9 +59,19 @@ export interface UseFreeCap {
   noteCapError: (err: unknown) => void; // hard popup + resync if the trigger rejected
 }
 
+// Only the FREE tier has a cap — S4 fix (2026-07-05 audit): the status RPC and
+// its 30s visibility-guarded poll now run ONLY for plan="free". Paid sellers
+// (basic/pro/master) previously fired ~120 pointless RPCs/hour per visible tab
+// for a status that can only say is_free:false. Plan comes from the already-
+// loaded profile — no extra query. Unknown plan (profile still loading) → no
+// poll yet; the effect re-runs when the plan arrives. Pure — unit-tested.
+export const isFreePlan = (plan: string | undefined): boolean =>
+  String(plan || "").trim().toLowerCase() === "free";
+
 export function useFreeCap(enabled: boolean, plan: string | undefined): UseFreeCap {
   const [freeStatus, setFreeStatus] = useState<FreeStatus | null>(null);
   const [capPopup, setCapPopup] = useState<CapPopupKind>("");
+  const freePlan = isFreePlan(plan);
 
   const refresh = useCallback(async () => {
     if (!enabled || !isSupabaseConfigured || !supabase) { setFreeStatus(null); return; }
@@ -72,15 +82,18 @@ export function useFreeCap(enabled: boolean, plan: string | undefined): UseFreeC
   }, [enabled]);
 
   // M2 FIX — poll every 30s but ONLY when visible; also refresh on return-to-visible.
+  // S4: the whole poller is additionally gated on the FREE plan (isFreePlan). The
+  // free-cap flow for free users is untouched: same RPC, same cadence, same
+  // near/hard popup logic below (protected zone — behavior mirror of App.tsx 5f).
   useEffect(() => {
-    if (!enabled) { setFreeStatus(null); return; }
+    if (!enabled || !freePlan) { setFreeStatus(null); return; }
     void refresh();
     const tick = () => { if (document.visibilityState === "visible") void refresh(); };
     const timer = window.setInterval(tick, 30000);
     const onVis = () => { if (document.visibilityState === "visible") void refresh(); };
     document.addEventListener("visibilitychange", onVis);
     return () => { window.clearInterval(timer); document.removeEventListener("visibilitychange", onVis); };
-  }, [enabled, refresh]);
+  }, [enabled, freePlan, refresh]);
 
   const { isFreeUser, freeCapped } = computeFreeFlags(plan, freeStatus);
 
