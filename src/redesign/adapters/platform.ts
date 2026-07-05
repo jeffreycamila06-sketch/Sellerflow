@@ -13,3 +13,21 @@ export function isIOS(): boolean {
     return false;
   }
 }
+
+// iOS WKWebView auto-ZOOMS the page when a focused <input> has font-size <16px
+// (the redesign uses 13–14px inputs everywhere). Once zoomed, the layout pans:
+// content clips on BOTH edges, the whole page scrolls horizontally, and the
+// header slides under the status bar — the TestFlight display bug. Android
+// WebView and desktop browsers never auto-zoom, so this is iOS-only.
+// Fix: on the iOS app shell ONLY, lock the viewport zoom (an app, not a web
+// page — pinch-zoom lock is standard for Capacitor shells). Web/Safari users
+// are untouched (no Capacitor, no ?ios → no-op), so browser accessibility
+// zoom is preserved everywhere else.
+export const IOS_LOCKED_VIEWPORT = "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover";
+export function applyIOSViewportZoomLock(): boolean {
+  if (typeof document === "undefined" || !isIOS()) return false;
+  const meta = document.querySelector('meta[name="viewport"]');
+  if (!meta) return false;
+  meta.setAttribute("content", IOS_LOCKED_VIEWPORT);
+  return true;
+}
