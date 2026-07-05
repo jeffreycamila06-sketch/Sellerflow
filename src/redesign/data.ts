@@ -113,22 +113,10 @@ export const CUSTOMERS: Customer[] = [
   { name: "Joy Aquino", handle: "@joyaquino", orders: 7, spent: 4310, last: "40m", platform: "TikTok" },
   { name: "Rico Tan", handle: "@ricotan", orders: 4, spent: 2180, last: "1h", platform: "Facebook" },
 ];
-export interface ArchiveItem { name: string; handle: string; text: string; time: string; }
-export const ARCHIVE: ArchiveItem[] = [
-  { name: "Maria Santos", handle: "@maria_shops", text: "Mine! Red lipstick 2pcs 💄", time: "9:41 PM" },
-  { name: "Kim Tan", handle: "@kimtanph", text: "Mine size M white tee", time: "9:39 PM" },
-  { name: "Liza Reyes", handle: "@lizareyes", text: "Mine black tumbler", time: "9:36 PM" },
-  { name: "Joy Aquino", handle: "@joyaquino", text: "How much the bundle po?", time: "9:34 PM" },
-  { name: "Grace Lim", handle: "@gracelim", text: "Mine rose gold watch ✨", time: "9:31 PM" },
-];
-
-// Printer & display picker (dc.html PRINTERS L1176–1179).
-export interface Printer { name: string; meta: string; status: string; }
-export const PRINTERS: Printer[] = [
-  { name: "Receipt printer", meta: "LAN · 192.168.1.42 · 58mm", status: "Ready" },
-  { name: "Bluetooth printer", meta: "Portable · not paired", status: "Off" },
-  { name: "Label / sticker printer", meta: "USB · Xprinter XP-365B · 40mm", status: "Ready" },
-];
+// (Batch B: the ARCHIVE comment-demo rows and the fictional PRINTERS hardware
+// list were removed — Customers now shows an honest no-archive note, and the
+// Settings picker builds honest capability slots from i18n + the real saved
+// devices reported by the native bridge.)
 
 // Auto-detect keyword controls (visual only). Lives in General Settings;
 // shared from RedesignApp state. (Removed from the Dashboard per Jeff's call.)

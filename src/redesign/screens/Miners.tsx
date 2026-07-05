@@ -25,9 +25,11 @@ export default function Miners({ cur, miners = MINERS, stats, live = false, onEx
             <div style={{ fontSize: 12, opacity: 0.85, marginTop: 1 }}>{t.rd_min_sub}</div>
           </div>
           {onExport
-            ? <button onClick={onExport} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, background: "rgba(255,255,255,.16)", border: "none", color: "var(--on-header)", padding: "6px 11px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_export}</button>
+            ? <button onClick={onExport} title={t.rd_exp_top5_note} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, background: "rgba(255,255,255,.16)", border: "none", color: "var(--on-header)", padding: "6px 11px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_export}</button>
             : <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "6px 11px", borderRadius: 9 }}>{t.rd_min_30days}</div>}
         </div>
+        {/* #7 export-scope label: the CSV covers the top-5 buyers the RPC returns */}
+        {onExport && <div style={{ fontSize: 10.5, opacity: 0.75, marginTop: 7 }}>{t.rd_exp_top5_note}</div>}
       </div>
       <div style={{ padding: "14px 14px 22px" }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
