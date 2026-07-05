@@ -1495,3 +1495,63 @@ ang "may laman agad" ay ang lifetime CRM aggregates — totoo, mali lang ang sak
   customers table; kung ledger-exact ang gusto, bagong aggregation sa `orders`.
 - **CSV export = loaded pages lang** (hindi buong table) — full-export follow-up
   kung kakailanganin.
+
+## SESSION 2026-07-05 (part 4) — FULL AUDIT SWEEP + S1 FIX + SALES REPORT v2 ✅ (merges `5e4ce9b` + `bf63168`, LIVE + prod-verified)
+
+### FULL "dead functions / fake displays" AUDIT (read-only, 5 parallel agents + DB/RLS cross-checks)
+Lahat ng ~21 redesign screens + lahat ng adapter DB reads na-classify (✅/🟡/🔴/⚠️).
+Buong numbered findings report ay naibigay kay Jeff (25 items, severity-ranked).
+Mga HEADLINE findings na NAKAPILA PA (hindi pa inaayos, hinihintay ang batch decision):
+- **S2 ⚠️ `listUsers .limit(100)`** (`accountDb.ts:178`) — LAHAT ng admin numbers ay
+  puputulin sa 100 sellers; ~26 signups/buwan → sisirain nang tahimik sa ~3 buwan;
+  `created_at ASC` kaya ang mga BAGONG signup ang unang mawawala. TIME BOMB.
+- 🔴 Orders filter chips = di-clickable na dekorasyon (walang status lifecycle;
+  Unpaid/Paid/Shipped laging 0) · 🔴 Customers search bar = static div (hindi input)
+- 🟡 FAKE STATS sa LOGIN screen (12k+/2.4M/4.9★ — ang APK logged-out screen!) na
+  salungat pa sa Landing (1.4M) · Landing fake stats (kilala na)
+- 🟡 Admin home permanent fakes: Monthly Revenue 4.2M/▲12%, bell badge "5",
+  "Juan Dela Cruz" owner card, "Systems OK" chip · 🟡 Customers "Comment archive" =
+  laging Maria demo, walang marker · 🟡 printer picker fake hardware names ·
+  🔴 "Readable comment colors" toggle = static div ("@maria_shops" hardcoded)
+- ⚠️ S4 free-cap 30s poll kahit PAID sellers (egress) · ⚠️ Subscription screen =
+  PANG-4 na expiry-logic copy (NULL → "0 days"; labag sa planWindow rule) ·
+  ⚠️ export gaps (Customers/Miners/Audit CSV truncated scopes) · ⚠️ audit-log RLS
+  at seller_profiles DELETE ay chineck ko sa DB — LIGTAS pareho (admin-only /
+  own-or-admin) · ⚠️ LATENT: `orders` ledger RLS = own-OR-admin → anumang future
+  client-side read nito ay Miners-bug regression (laging RPC!) · `db.ts
+  getCustomersFromDatabase` = buhay pa ang orihinal na Miners bug (unused ng
+  redesign; huwag i-re-import).
+
+### S1 FIX ✅ (branch `claude/s1-session-paged-load` → merged `5e4ce9b`)
+Unlimited session reads → PostgREST 1,000-row cap → putol ang NEWEST rows →
+DUPLICATE buyer# sa reload/2nd-device para sa heavy sellers (~405/day × 3-day
+window = lampas na NGAYON). Fix: `loadLiveSessionWindow` ay PAGED na (pure
+`fetchAllSessionPages`, 1,000/page, `id ASC` tiebreaker para stable boundaries);
+bagong `loadLiveSessionDay` = parehong paged path sa single-day (pinalitan ang
+db.ts `loadTodaysLiveSession` na tawag ng redesign — `db.ts` UNTOUCHED, rollback
+app ang gumagamit doon). Page error → `[]` NEVER partial (ang partial = balik
+ang duplicate-buyer# bug). Tangled zones (hydrate-on-empty, rebuild, dedup,
+writes) = zero touch. Tests: 1,200-row heavy-seller scenario + boundary + error.
+
+### SALES REPORT v2 ✅ (branch `claude/sales-report-v2` → merged `bf63168`)
+- **Period pills:** Today (orihinal na session view — BYTE-UNCHANGED, export
+  dito lang) · 7 Days · This Month · Last Month = HISTORICAL mula sa billing
+  `orders` ledger (buo ang history, never purged).
+- **`sql/16`?? HINDI — `sql/15_sales_report.sql`** — RPC `sales_report(p_period)`:
+  miners_stats pattern (SECURITY INVOKER + ISANG explicit `auth.uid()` filter sa
+  `own` CTE na pinagmumulan ng lahat — ang orders RLS ay own-OR-admin!). Isang
+  jsonb per call, cached per period, ZERO poll, walang mount read. Applied +
+  verified ni chat-Claude (INVOKER ✓, tz spot-check ✓, owner 7d = 140/NT$3,600 ✓).
+- **⚠️ TAIPEI BUCKETING (kritikal):** lahat ng day/month windows =
+  `(created_at AT TIME ZONE 'Asia/Taipei')::date` — order sa 23:00 UTC = SUSUNOD
+  na Taipei day. SQL contract test ang nagbabawal ng bare `created_at::date` +
+  test ng 15:59Z/16:00Z boundary.
+- **Historical UI:** 4 KPI cards (Revenue/Orders/Unique Buyers/AOV) na may
+  ▲berde/▼pula delta chips vs katumbas na previous period (prev=0 → "—", hindi
+  pekeng ±100%) · revenue-per-day bars (best day highlighted) · Best day +
+  Repeat-buyer % · Top-5 products + Top-5 buyers (PERIOD-scoped, hindi lifetime).
+- Adapter `salesReport.ts` (pure `pctDelta`/`mapSalesReport` unit-tested,
+  `useSalesReport` fetch-on-tap na may per-period cache). 15 `rd_sr2_*` keys ×7.
+- **615/615 vitest · typecheck · build · lint 54 = parity** sa pinagsamang tree.
+  Prod-verified sa SERVED bundle (`main-CJKlA9LX.js`): `sales_report` +
+  `rd_sr2_today` + empty-state string FOUND, kumpletong bundle body.
