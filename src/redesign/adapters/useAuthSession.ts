@@ -46,15 +46,24 @@ export function useAuthSession(): UseAuthSession {
   const [status, setStatus] = useState<AuthStatus>(isSupabaseConfigured ? "loading" : "anon");
   const [profile, setProfile] = useState<AccountUser | null>(null);
   const activeRef = useRef(true);
+  // The user id whose profile is currently AUTHED (null until then). Backs the
+  // same-user guard below — audit finding #1: supabase fires TOKEN_REFRESHED
+  // ~every 50 min, and re-running the loading→authed flip for the SAME user
+  // turned `authed` false across the async profile re-fetch, tearing down the
+  // LIVE socket mid-live (lost comments in the gap) + re-firing every
+  // enabled=authed data hook. Repro + regression: useAuthSession.tokenRefresh.test.
+  const authedUserIdRef = useRef<string | null>(null);
 
   // Resolve a session's user id to a real profile (or anon).
   const loadProfile = useCallback(async (userId: string | null | undefined) => {
     if (!userId) {
+      authedUserIdRef.current = null;
       if (activeRef.current) { setProfile(null); setStatus("anon"); }
       return;
     }
     const p = await getMyProfile(userId);
     if (!activeRef.current) return;
+    authedUserIdRef.current = userId;
     setProfile(p);
     setStatus("authed");
   }, []);
@@ -73,7 +82,13 @@ export function useAuthSession(): UseAuthSession {
     // (b) same-tab auth events
     const { data: sub } = client.auth.onAuthStateChange((_event, session) => {
       if (!activeRef.current) return;
-      if (!session?.user) { setProfile(null); setStatus("anon"); return; }
+      if (!session?.user) { authedUserIdRef.current = null; setProfile(null); setStatus("anon"); return; }
+      // SAME-USER GUARD (finding #1): TOKEN_REFRESHED / USER_UPDATED for the
+      // already-authed user must be a no-op — status stays "authed", so the
+      // live socket and every enabled=authed hook keep running untouched.
+      // A genuine user change (sign-in after sign-out, different user) still
+      // goes through the full loading→loadProfile path below.
+      if (session.user.id === authedUserIdRef.current) return;
       setStatus("loading");
       void loadProfile(session.user.id);
     });
