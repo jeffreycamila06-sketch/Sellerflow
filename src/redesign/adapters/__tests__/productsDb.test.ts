@@ -79,8 +79,9 @@ describe("DB ops are safe no-ops when Supabase is unconfigured", () => {
     expect(await loadProductsDb()).toBeNull();
   });
   it("save/delete/migrate resolve without throwing and don't mark migrated", async () => {
-    await expect(saveProductDb(real[0])).resolves.toBeUndefined();
-    await expect(deleteProductDb(real[0].id)).resolves.toBeUndefined();
+    // Batch D #11: unconfigured = nothing to sync = true (NOT a failure note)
+    await expect(saveProductDb(real[0])).resolves.toBe(true);
+    await expect(deleteProductDb(real[0].id)).resolves.toBe(true);
     expect(await migrateLocalProducts(real)).toBe(false);
     expect(alreadyMigrated()).toBe(false); // failed migration must NOT set the flag
   });

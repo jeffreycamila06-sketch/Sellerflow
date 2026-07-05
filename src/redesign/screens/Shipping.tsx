@@ -11,7 +11,7 @@ import {
   buyerGroupsFrom, draftEntryFor, validateEntry, entryIsValid, codTotal,
   mustSplit, splitSummary, buildBagEntries, validateSplit, splitIsValid, defaultProductDesc,
   lateOrdersFor, lateFormEntry,
-  SHIP_TEMP_AMBIENT, SHIP_TEMP_FROZEN, SHIP_DEFAULT_FEE, SHIP_MAX_DESC, STORE_LOOKUP_URL, SPLIT_MAX_BAGS,
+  SHIP_TEMP_AMBIENT, SHIP_TEMP_FROZEN, SHIP_DEFAULT_FEE, SHIP_MAX, SHIP_MAX_DESC, STORE_LOOKUP_URL, SPLIT_MAX_BAGS,
   type BuyerGroup, type ShippingEntry, type EntryErrors, type SharedRecipient,
 } from "../adapters/shipping";
 import { loadShippingEntries, upsertShippingEntry, deleteShippingEntry } from "../adapters/shippingDb";
@@ -210,6 +210,13 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
     const chosen = encodedEntries.filter((e) => sel.has(e.id));
     if (chosen.length === 0) return;
     setExNote(null);
+    // 賣貨便 importer hard limit: max 500 rows per file (Batch D / audit #6 —
+    // SHIP_MAX existed but was never enforced; an oversized file would be built
+    // fine here and rejected only by the importer, after quota was spent).
+    if (chosen.length > SHIP_MAX) {
+      setExNote({ kind: "err", text: tpl(t.rd_shp_max_rows, { max: SHIP_MAX, n: chosen.length }) });
+      return;
+    }
     // client pre-check (UX only — the RPC re-checks atomically server-side)
     if (quota != null && exportedCount != null && exportedCount + chosen.length > quota) {
       setExNote({ kind: "err", text: tpl(t.rd_shp_quota_block, { used: exportedCount, quota, n: chosen.length }) });

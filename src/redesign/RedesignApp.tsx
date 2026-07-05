@@ -215,6 +215,10 @@ export default function RedesignApp() {
     const r = printSlip(buildWinnerTicketBuyer(w, Date.now()), pc.cur, pc.storeName, pc.settings);
     return { ok: r.ok, via: r.via };
   };
+  // Batch D (#7): counts non-cap background write failures from the order
+  // fan-out. A toast effect below (after tApp exists) converts bumps into the
+  // localized "cloud save failed" toast — the local order is kept (see useOrders).
+  const [orderWriteErrs, setOrderWriteErrs] = useState(0);
   // Phase 5e — real order creation fan-out (writes). Composes the SAME pure
   // builder + db writes; updates the live session optimistically. 5f: soft-block
   // when capped, resync counter after write, surface hard popup on trigger reject.
@@ -225,6 +229,7 @@ export default function RedesignApp() {
     isCapped: () => freeCap.freeCapped,
     onCapBlocked: () => freeCap.setCapPopup("hard"),
     onCapReached: freeCap.noteCapError,
+    onWriteError: () => setOrderWriteErrs((c) => c + 1), // Batch D #7 — toast below
     afterWrite: freeCap.afterOrder,
     onPrint,
     onEnsureWindow: () => { void sessionWindow.ensureWindowOpen(); }, // multi-day; N=1 no-op
@@ -288,6 +293,28 @@ export default function RedesignApp() {
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(null), toast.kind === "err" ? 3200 : 1800); return () => clearTimeout(id); }, [toast]);
+  // Batch D silent-failure surfacing (#7/#8/#9) — converts adapter error signals
+  // into the existing toast. Effects (not inline callbacks) because tApp is
+  // declared after the hooks that emit the signals; counters/flags only ever
+  // ADVANCE, so a prev-ref guard makes each bump toast exactly once.
+  const prevOrderWriteErrs = useRef(0);
+  useEffect(() => {
+    if (orderWriteErrs <= prevOrderWriteErrs.current) return;
+    prevOrderWriteErrs.current = orderWriteErrs;
+    setToast({ msg: tApp.rd_ord_save_failed, kind: "err" });
+  }, [orderWriteErrs, tApp]);
+  const prevWinPersistErrs = useRef(0);
+  useEffect(() => {
+    if (sessionWindow.persistErrors <= prevWinPersistErrs.current) return;
+    prevWinPersistErrs.current = sessionWindow.persistErrors;
+    setToast({ msg: tApp.rd_win_save_failed, kind: "err" });
+  }, [sessionWindow.persistErrors, tApp]);
+  const prevLoadError = useRef(false);
+  useEffect(() => {
+    const was = prevLoadError.current;
+    prevLoadError.current = liveSession.loadError;
+    if (liveSession.loadError && !was) setToast({ msg: tApp.rd_sess_load_failed, kind: "err" });
+  }, [liveSession.loadError, tApp]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Currency switcher (dc.html v3). `cur` is the derived symbol threaded through

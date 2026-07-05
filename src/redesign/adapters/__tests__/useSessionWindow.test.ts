@@ -147,7 +147,8 @@ describe("shouldResetOnDayChange — window-aware live reset on Taipei day rollo
 
 // ── S1: paged session loads (the 1,000-row PostgREST cap fix) ────────────────
 // fetchAllSessionPages accumulates injected pages until a short page; ANY page
-// error (null) → [] — a PARTIAL result would recreate the duplicate-buyer# bug.
+// error (null) → null = load FAILED (Batch D #8 — was [], indistinguishable from
+// a fresh day). NEVER partial — partial would recreate the duplicate-buyer# bug.
 import { fetchAllSessionPages, SESSION_PAGE_SIZE } from "../useSessionWindow";
 import type { LiveSessionRow } from "../../../db";
 
@@ -183,8 +184,8 @@ describe("fetchAllSessionPages (S1 — >1,000-row window)", () => {
     expect(rows).toHaveLength(5);
     expect(calls).toEqual([0]);
   });
-  it("error on a LATER page → [] (never a partial set — partial = wrong buyer#)", async () => {
+  it("error on a LATER page → null = FAILED (never a partial set — partial = wrong buyer#; Batch D #8: null ≠ [] so a broken read is no longer mistaken for an empty day)", async () => {
     const rows = await fetchAllSessionPages(async (p) => (p === 0 ? mkRows(1, SESSION_PAGE_SIZE) : null));
-    expect(rows).toEqual([]);
+    expect(rows).toBeNull();
   });
 });

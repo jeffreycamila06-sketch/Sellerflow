@@ -4,7 +4,7 @@
 // migrates pre-existing local products once). Add/edit/delete write through to the
 // DB; search/CSV/status (derived from stock) unchanged. Read-on-load + write-on-
 // action only — NO polling.
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { avColor, initials, fmt } from "../data";
 import { csvDL } from "../adapters/csv";
 import { loadProducts, saveProducts, upsertProduct, deleteProduct, filterProducts, statusForStock, type Product, type ProductForm } from "../adapters/products";
@@ -26,6 +26,18 @@ export default function Products({ cur }: { cur: string }) {
   const [show, setShow] = useState(false);
   const [eid, setEid] = useState<number | null>(null);
   const [form, setForm] = useState<ProductForm>(EMPTY);
+  // Batch D (#11): cloud-sync failure notice — the write-throughs used to be
+  // fire-and-forget, so a failed upsert/delete was invisible (the seller thought
+  // the product was cross-device / gone everywhere). Auto-dismissing pill in the
+  // app-toast style; no new UI system.
+  const [note, setNote] = useState<string | null>(null);
+  const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showNote = (msg: string) => {
+    if (noteTimer.current) clearTimeout(noteTimer.current);
+    setNote(msg);
+    noteTimer.current = setTimeout(() => setNote(null), 3200);
+  };
+  useEffect(() => () => { if (noteTimer.current) clearTimeout(noteTimer.current); }, []);
   const save = (p: Product[]) => { setProds(p); saveProducts(p); };
   // Cross-device load: reconcile local cache with public.products (DB wins; first
   // signed-in load migrates pre-existing local products once). Read-on-load only.
@@ -40,13 +52,23 @@ export default function Products({ cur }: { cur: string }) {
   }, []);
   const openAdd = () => { setForm(EMPTY); setEid(null); setShow(true); };
   const openEdit = (p: Product) => { setForm({ name: p.name, sku: p.sku, price: String(p.price), stock: String(p.stock), platform: p.platform }); setEid(p.id); setShow(true); };
-  const del = (id: number) => { if (!window.confirm(t.rd_prd_confirm_del)) return; save(deleteProduct(prods, id)); void deleteProductDb(id); };
+  // Delete: if the CLOUD delete fails, the local delete is REVERTED (the DB row
+  // survived and the DB-wins reconcile would resurrect it on next load anyway —
+  // showing it gone now would be a lie) + the failure pill explains.
+  const del = (id: number) => {
+    if (!window.confirm(t.rd_prd_confirm_del)) return;
+    const before = prods;
+    save(deleteProduct(prods, id));
+    void deleteProductDb(id).then((ok) => { if (ok === false) { save(before); showNote(t.rd_prd_delete_failed); } });
+  };
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     const next = upsertProduct(prods, form, eid, Date.now());
     save(next);
     const changed = eid !== null ? next.find((p) => p.id === eid) : next[next.length - 1];
-    if (changed) void saveProductDb(changed); // write-through (add/edit)
+    // Add/edit: the local save is KEPT on cloud failure (localStorage is this
+    // screen's primary store; the pill says the CLOUD copy didn't sync).
+    if (changed) void saveProductDb(changed).then((ok) => { if (ok === false) showNote(t.rd_prd_sync_failed); });
     setShow(false);
   };
   const exportCsv = () => csvDL("products.csv", ["Name", "SKU", "Price", "Stock", "Platform", "Status"], prods.map((p) => [p.name, p.sku, p.price, p.stock, p.platform, p.status]));
@@ -103,6 +125,13 @@ export default function Products({ cur }: { cur: string }) {
           </div>
         ))}
       </div>
+
+      {/* Batch D #11 — cloud-sync failure pill (app-toast style, auto-dismiss) */}
+      {note && (
+        <div style={{ position: "sticky", bottom: 14, zIndex: 900, display: "flex", justifyContent: "center", padding: "0 16px", pointerEvents: "none" }}>
+          <div style={{ maxWidth: "100%", background: "var(--danger)", color: "#fff", fontSize: 13, fontWeight: 700, padding: "10px 18px", borderRadius: 999, boxShadow: "0 8px 24px rgba(0,0,0,.3)", textAlign: "center", lineHeight: 1.35 }}>⚠ {note}</div>
+        </div>
+      )}
 
       {show && (
         <div onClick={(e) => e.target === e.currentTarget && setShow(false)} style={{ position: "absolute", inset: 0, zIndex: 1000, background: "rgba(8,6,24,.5)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 22 }}>
