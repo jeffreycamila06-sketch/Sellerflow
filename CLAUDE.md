@@ -1502,9 +1502,8 @@ ang "may laman agad" ay ang lifetime CRM aggregates — totoo, mali lang ang sak
 Lahat ng ~21 redesign screens + lahat ng adapter DB reads na-classify (✅/🟡/🔴/⚠️).
 Buong numbered findings report ay naibigay kay Jeff (25 items, severity-ranked).
 Mga HEADLINE findings na NAKAPILA PA (hindi pa inaayos, hinihintay ang batch decision):
-- **S2 ⚠️ `listUsers .limit(100)`** (`accountDb.ts:178`) — LAHAT ng admin numbers ay
-  puputulin sa 100 sellers; ~26 signups/buwan → sisirain nang tahimik sa ~3 buwan;
-  `created_at ASC` kaya ang mga BAGONG signup ang unang mawawala. TIME BOMB.
+- ~~**S2 ⚠️ `listUsers .limit(100)`**~~ ✅ FIXED sa Batch A (2026-07-05, merge
+  `da814f2`) — paged na (see part 5 log).
 - 🔴 Orders filter chips = di-clickable na dekorasyon (walang status lifecycle;
   Unpaid/Paid/Shipped laging 0) · 🔴 Customers search bar = static div (hindi input)
 - 🟡 FAKE STATS sa LOGIN screen (12k+/2.4M/4.9★ — ang APK logged-out screen!) na
@@ -1513,8 +1512,8 @@ Mga HEADLINE findings na NAKAPILA PA (hindi pa inaayos, hinihintay ang batch dec
   "Juan Dela Cruz" owner card, "Systems OK" chip · 🟡 Customers "Comment archive" =
   laging Maria demo, walang marker · 🟡 printer picker fake hardware names ·
   🔴 "Readable comment colors" toggle = static div ("@maria_shops" hardcoded)
-- ⚠️ S4 free-cap 30s poll kahit PAID sellers (egress) · ⚠️ Subscription screen =
-  PANG-4 na expiry-logic copy (NULL → "0 days"; labag sa planWindow rule) ·
+- ~~⚠️ S4 free-cap poll kahit paid~~ + ~~⚠️ Subscription 4th expiry copy~~ ✅ pareho
+  FIXED sa Batch A (2026-07-05, merge `da814f2` — see part 5 log) ·
   ⚠️ export gaps (Customers/Miners/Audit CSV truncated scopes) · ⚠️ audit-log RLS
   at seller_profiles DELETE ay chineck ko sa DB — LIGTAS pareho (admin-only /
   own-or-admin) · ⚠️ LATENT: `orders` ledger RLS = own-OR-admin → anumang future
@@ -1555,3 +1554,29 @@ writes) = zero touch. Tests: 1,200-row heavy-seller scenario + boundary + error.
 - **615/615 vitest · typecheck · build · lint 54 = parity** sa pinagsamang tree.
   Prod-verified sa SERVED bundle (`main-CJKlA9LX.js`): `sales_report` +
   `rd_sr2_today` + empty-state string FOUND, kumpletong bundle body.
+
+
+## SESSION 2026-07-05 (part 5) — AUDIT BATCH A ✅ (branch `claude/audit-batch-a` → merged `da814f2`, LIVE + prod-verified)
+Tatlong audit fixes sa isang branch, walang SQL na kailangan:
+1. **S2 — `listUsers` paged** (`accountDb.ts`): tanggal ang hard `.limit(100)`
+   time bomb → pure `fetchAllProfilePages` pager (1,000/page, email tiebreaker;
+   page error → [] NEVER partial). Shared function — ang rollback App.tsx admin
+   ay nakikinabang din. Lahat ng admin numbers ay kumpleto na kahit lumampas sa
+   100 sellers.
+2. **S4 — free-cap poller sa FREE lang** (`useFreeCap.ts`): bagong pure
+   `isFreePlan` gate — ang 30s visibility-guarded poll ay hindi na tumatakbo
+   para sa paid (basic/pro/master); plan mula sa loaded profile (zero dagdag
+   query); unknown plan → walang poll hanggang mag-resolve. Free-tier flow
+   (RPC/cadence/popups/afterOrder/DB trigger) UNTOUCHED. ~86% ng free-cap RPC
+   traffic tanggal (24/28 sellers ay paid).
+3. **Subscription expiry → shared planWindow**: burado ang private 4th copy;
+   NULL/invalid expiry → "—" (dating "0 days left"), expired → "0" pa rin.
+   `fmtDate` iniwan sa local (presentation formatting lang, hindi expiry math).
+- **Tests +10** (auditBatchA.test.ts): 150-user + 1,200-user pager + never-partial ·
+  isFreePlan matrix · paid = ZERO rpc sa 35s fake-timers, free = intact, unknown →
+  no rpc until resolve · planWindow display triple. **625/625 vitest · typecheck ·
+  build · lint 54 = parity.**
+- **Prod-verified sa SERVED bundles** (main-B7Ge4IU1.js + esm-BfLcFDMm.js, parehong
+  chunk na-grep buo): `.limit(100)` WALA na (ang tanging limits = 10 announcements
+  + 80 audit, tama) · `free_tier_status_for_user` buhay · ang bagong `.range()`
+  pager kita sa esm chunk.
