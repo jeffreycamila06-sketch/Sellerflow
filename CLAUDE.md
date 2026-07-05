@@ -1384,3 +1384,61 @@ Archive → TestFlight. **WEB (A) dapat naka-merge/live sa Vercel BAGO ang devic
 - Device-test checklist: purple hanggang pinakataas (lahat ng screens + login) · puting
   clock/battery · walang zoom sa input focus · bottom nav clear sa home indicator ·
   dark+light theme · Android APK + web = walang pagbabago.
+
+## SESSION 2026-07-05 (part 2) — iOS STATUS BAR: ANDROID-MODEL FIX (branch `claude/ios-safe-area-redesign-2kdxz0`, diff-review muna bago merge)
+Ang Build 2 (full-bleed + CSS env()) ay MALI PA RIN sa device — mas gumulo. RESET
+per Jeff: i-document ang gumaganang Android model → hanapin ang eksaktong iOS
+analog → gayahin. **Ang CSS/env() approach sa iOS ay ABANDONED** (Capacitor
+issues #6688/#8121/#2149: env() ay unreliable sa WKWebView, lalo sa remote
+server.url shell — kapag 0 ang report, pumapailalim ang header sa status bar).
+
+### Ang gumaganang Android model (in-document mula sa actual files)
+ZERO custom status-bar code sa Android project (stock BridgeActivity, walang
+statusBarColor/insets/edge-to-edge sa styles.xml/Manifest/MainActivity; wala ring
+insets code sa Capacitor 8.3.4 Android core — verified sa source). Ang OS window
+manager MISMO ang naglalagay ng WebView SA ILALIM ng status bar; ang status bar ay
+system-owned na hiwalay na strip; env(safe-area-inset-top)=0 sa page → walang CSS
+na kasali. Frame-based split ng OS — iyon ang "perfect".
+
+### Ang iOS analog (verified sa Capacitor iOS + StatusBar plugin Swift source)
+**`StatusBar.setOverlaysWebView(false)`** = literal na Android model: nire-resize
+ang WKWebView frame (`origin.y = statusBarHeight`) + naglalagay ng native colored
+view sa likod ng status bar + rotation handled + nagpe-persist sa reloads.
+- **Config, HINDI JS call** — `capacitorViewDidAppear` ay nagre-re-apply ng config
+  sa bawat VC appear (isang JS-only na setting ay babalik sa overlay).
+- **Manual Swift constraints sa VC subclass = DEAD END** — `view === webView`
+  (root view mismo ang webview, `loadView` ay `final`), at ang plugin ay
+  nag-a-assign ng `webView.frame` sa bawat rotation (aaway sa Auto Layout).
+- Pagka-resize, `env(safe-area-inset-top)` = 0 sa page (Apple safeAreaInsets
+  semantics) = EKSAKTONG katulad ng Android → **ZERO web changes kailangan**;
+  ang env() backdrop (07-05 part 1) ay nagko-collapse sa 0 — iniwan dahil ito
+  rin ang sumasalo sa Android 15/16 edge-to-edge devices.
+
+### Ang fix (ISANG file: `mobile/capacitor.config.ts`)
+- `plugins.StatusBar = { overlaysWebView:false, backgroundColor:"#4f46e5",
+  style:"DARK" }` — ⚠️ "DARK" = Style.Dark = PUTING text (verified sa
+  `style(fromString:)`: "dark"→.lightContent; ang "light" ay ITIM na text).
+- **`android.includePlugins: []` = ANDROID SAFETY LOCK** — verified sa 8.3.4
+  `cli/src/plugin.ts`: `getIncludedPluginPackages(...) ?? getDependencies(...)`
+  ay nullish coalescing → ang EMPTY array ay ginagamit as-is (hindi bumabagsak sa
+  package.json) → zero npm plugins sa anumang future Android sync/rebuild → ang
+  StatusBar block ay strukturally hindi maaabot ng Android. (Ang Android
+  SellerFlowPrinterPlugin ay manual registration sa MainActivity — di apektado.)
+- Iniwan: Info.plist `UIStatusBarStyle=LightContent` (binabasa ng Capacitor CORE
+  `setStatusBarDefaults()` sa launch, bago pa ang plugin) · `ios.backgroundColor`
+  (white-flash killer) · lahat ng web layer (16px inputs/zoom lock = ayos sa
+  IBANG bug na totoo; backdrop = 0-height sa parehong platforms).
+
+### 🔨 BUILD 3 STEPS (Mac — gawin pagkatapos ng merge)
+1. `cd ~/Sellerflow && git pull` (kunin ang merge)
+2. `cd mobile && npx cap sync ios` — ito ang magsusulat ng bagong
+   `plugins.StatusBar` config sa iOS native copy (`ios/App/App/capacitor.config.json`)
+3. **Verify:** buksan ang `mobile/ios/App/App/capacitor.config.json` — dapat may
+   `"StatusBar": { "overlaysWebView": false, ... }` at ang `server.url` =
+   `https://www.sellerflowlive.com/?apk=20260523-dark-mobile` (PRODUCTION)
+4. Xcode: bump **Build number → 3** → Archive → Distribute → TestFlight
+5. WALANG Vercel deploy na kailangan (native-only ang pagbabago)
+- **Device-test checklist:** indigo sa likod ng status bar, dikit sa purple header
+  (walang gap/strip) · puting clock/battery · rotation test · keyboard open/close ·
+  navigate + reload screens · dark+light theme · Android APK/web untouched.
+- **Rollback:** burahin ang `plugins.StatusBar` block → rebuild (TestFlight-only).
