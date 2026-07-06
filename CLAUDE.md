@@ -1697,3 +1697,51 @@ VERBATIM na lumang kopya. 701 vitest · lint 54 parity. App.tsx untouched.
   error sa useSessionWindow (defaults sa 1-day nang tahimik).
 - Audit backlog pa rin: Login/Landing fake stats (Jeff decision) · "Readable
   comment colors" dead toggle · iOS gate test matrix (#10) · nav labels i18n (#11).
+
+## SESSION 2026-07-06 — F-BATCH ✅ (merge `d8c93d5`, LIVE + prod-verified) — huling audit leftovers
+Apat na item sa isang branch (`claude/audit-batch-f` `dfb34f4`), 19 files
++270/−371 (net −101). **733/733 vitest (714+19) · typecheck · build · lint 53
+= baseline−1** (ang nawalang error ay nasa loob ng tinanggal na dead code).
+1. **NAV/last-strings i18n (8 bagong `rd_*` ×7):** bottom-nav
+   `rd_nav_live/orders/products/settings/admin` (**"Miners" INIWANG literal** —
+   documented brand name) · connect "can't reach" = bagong additive
+   `ConnectResult.unreachable` flag → `rd_cm_cant_reach` (chip toast +
+   ConnectModal; server reasons verbatim pa rin) · printing alert fallback =
+   `setNativePrintAlertText()` module setter na sine-set ng RedesignApp kada
+   language (payload builders/byte-parity untouched) · Orders "New" chip =
+   display-translate `rd_ord_st_new` (canonical value nanatiling English para sa
+   statusColor). Proof: `i18nWiring.fbatch.test.tsx`.
+2. **Dead toggle tanggal:** GeneralSettings "Readable @handles" = static div na
+   nagpapanggap na toggle (walang wired behavior) + 2 keys nito.
+3. **iOS payment-gate MATRIX** (`iosGates.matrix.test.tsx`, 11 tests): bawat
+   gate rendered web vs `?ios=1` — payment UI PRESENT sa web (hindi vacuous) /
+   ABSENT sa iOS (Support g4 · Admin revenue+plans+payments · GeneralSettings
+   subscription row · ConnectModal limit copy) + RedesignApp-level gates bilang
+   source contracts (Subscription mount · CapPopup→ContactSupportPopup ·
+   Shipping onUpgrade). Regression insurance habang pending ang Apple review.
+4. **Dead-code sweep (bawat isa grep-verified bago tanggalin):** `useLiveOrders`
+   (sample-fallback risk) · autoWords block + `AutoWord` + `sfl_rd_autowords` +
+   trimmed `AutoControls` (walang renderer; ang totoong Auto Mode = useAutoCodes)
+   · data.ts samples (INCOMING/SEED_COMMENTS/PRODUCTS/MINERS/TT+FB_ACCOUNTS/
+   SELLERS/SHIPPING/SALES + orphan types; INIWAN ang ORDERS/CUSTOMERS/USERS/
+   SUBS/PLANS/PAYMENTS = buhay pang fallbacks/sample panels) · `lib/slipFields.ts`
+   + test (orphan, 0 refs pati App.tsx) · Miners `!live` unreachable branch
+   (live-only na ang screen, tanggal ang `live` prop) · dead exports
+   `SALES_PERIODS`/`RAW_KEYS`/`LANGS_ALL` · `--accent-chip` ×2 themes ·
+   **53 orphan i18n keys** (~371 dead strings).
+- **DYNAMIC-KEY GUARD (pre-merge sanity, 5 layers):** (1) zero template-literal
+  key construction (`` `rd_${…}` ``) · (2) zero string-concat (`"rd_"+`) ·
+  (3) zero computed/bracket access sa translation objects — lahat ng consumer ay
+  static `t.key`/`tApp.key` (chineck bawat file na may useT/buildT) · (4) zero
+  `tpl(t[...])` · (5) bawat isa sa 53 removed keys ay individually re-grepped sa
+  BUONG src (app+tests+App.tsx+css) sa MERGED tree = 0 residual refs.
+- **Prod-verified** (`dpl_FuHDTGR3…` READY sa `d8c93d5`, bundle `main-Mtn672Ib.js`
+  buo): 5 good markers present (`rd_nav_live/orders`, `rd_cm_cant_reach`,
+  `rd_print_native_failed`, `rd_ord_st_new`) · 4 dead markers wala na
+  ("Mine! Red lipstick 2pcs", `rd_ship_add_order`, `rd_adm_systems_ok`,
+  `sfl_rd_autowords`).
+- ⚠️ **FLAGGED, hindi ginalaw:** `POST /disconnect/tiktok` sa server.js = dead
+  (walang caller) pero kailangan ng manual Render deploy — isama sa susunod na
+  server change. · Natitira sa backlog: Login/Landing fake stats (desisyon ni
+  Jeff) · RLS `(select auth.uid())` SQL = TAPOS NA ni chat-Claude (26 policies,
+  advisor clean).
