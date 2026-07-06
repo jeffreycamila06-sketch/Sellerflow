@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SellerFlowLive — Turn every live comment into a paid order</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#17143a; --ink-soft:#4b4770;
+  --paper:#f7f7fd; --card:#ffffff;
+  --indigo:#4f46e5; --indigo-deep:#3730a3; --violet:#8b5cf6;
+  --live:#ef3e5c; --mint:#10b981; --amber:#f59e0b;
+  --line:#e6e5f4;
+  --disp:'Space Grotesk',sans-serif; --body:'Plus Jakarta Sans',sans-serif; --mono:'JetBrains Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{font-family:var(--body);color:var(--ink);background:var(--paper);line-height:1.6;overflow-x:hidden}
+a{color:inherit;text-decoration:none}
+img{max-width:100%}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+
+/* ---------- NAV ---------- */
+nav{position:sticky;top:0;z-index:50;background:rgba(247,247,253,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.nav-in{display:flex;align-items:center;gap:28px;height:64px}
+.logo{font-family:var(--disp);font-weight:700;font-size:1.15rem;display:flex;align-items:center;gap:9px}
+.logo-mark{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,var(--indigo),var(--violet));display:grid;place-items:center;color:#fff;font-size:.85rem;font-weight:700}
+.nav-links{display:flex;gap:22px;font-size:.92rem;font-weight:600;color:var(--ink-soft)}
+.nav-links a:hover{color:var(--indigo)}
+.nav-cta{margin-left:auto;display:flex;gap:12px;align-items:center}
+.btn{display:inline-flex;align-items:center;gap:8px;font-weight:700;font-size:.95rem;border-radius:12px;padding:11px 20px;transition:transform .18s,box-shadow .18s;cursor:pointer;border:none;font-family:var(--body)}
+.btn-primary{background:var(--indigo);color:#fff;box-shadow:0 6px 18px rgba(79,70,229,.28)}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 10px 26px rgba(79,70,229,.36)}
+.btn-ghost{color:var(--ink-soft);padding:11px 10px}
+.btn-ghost:hover{color:var(--indigo)}
+@media(max-width:820px){.nav-links{display:none}}
+
+/* ---------- HERO ---------- */
+.hero{position:relative;padding:72px 0 84px;overflow:hidden}
+.hero::before{content:"";position:absolute;inset:-40% -20% auto;height:120%;background:
+  radial-gradient(600px 420px at 18% 20%,rgba(139,92,246,.14),transparent 60%),
+  radial-gradient(700px 480px at 85% 8%,rgba(79,70,229,.16),transparent 65%);pointer-events:none}
+.hero-grid{position:relative;display:grid;grid-template-columns:1.05fr .95fr;gap:56px;align-items:center}
+@media(max-width:900px){.hero-grid{grid-template-columns:1fr;gap:44px}}
+.live-eyebrow{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:6px 14px;font-size:.8rem;font-weight:700;color:var(--ink-soft);margin-bottom:22px}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--live);animation:pulse 1.6s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(239,62,92,.5)}50%{box-shadow:0 0 0 7px rgba(239,62,92,0)}}
+h1{font-family:var(--disp);font-size:clamp(2.3rem,5vw,3.6rem);line-height:1.08;letter-spacing:-.02em;font-weight:700}
+h1 .hl{color:var(--indigo);position:relative;white-space:nowrap}
+.hero-sub{margin:20px 0 30px;font-size:1.12rem;color:var(--ink-soft);max-width:32rem}
+.hero-ctas{display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+.btn-hero{font-size:1.05rem;padding:15px 26px;border-radius:14px}
+.cta-note{font-size:.82rem;color:var(--ink-soft);margin-top:12px}
+.stores{display:flex;gap:12px;margin-top:26px;flex-wrap:wrap}
+.store-badge{display:flex;align-items:center;gap:10px;background:var(--ink);color:#fff;border-radius:12px;padding:9px 16px;transition:transform .18s}
+.store-badge:hover{transform:translateY(-2px)}
+.store-badge small{display:block;font-size:.62rem;opacity:.75;line-height:1.1}
+.store-badge b{font-family:var(--disp);font-size:.98rem;line-height:1.15}
+.store-ic{font-size:1.35rem}
+.stats-row{display:flex;gap:34px;margin-top:34px}
+.stat b{font-family:var(--mono);font-size:1.45rem;color:var(--indigo);font-weight:700}
+.stat span{display:block;font-size:.82rem;color:var(--ink-soft)}
+
+/* phone mock */
+.phone{position:relative;width:min(340px,86vw);margin:0 auto;background:var(--ink);border-radius:38px;padding:12px;box-shadow:0 30px 70px rgba(23,20,58,.28)}
+.screen{background:var(--paper);border-radius:28px;overflow:hidden;height:560px;display:flex;flex-direction:column}
+.scr-head{background:linear-gradient(120deg,var(--indigo),var(--violet));color:#fff;padding:14px 16px 12px}
+.scr-title{display:flex;align-items:center;gap:8px;font-family:var(--disp);font-weight:700;font-size:.95rem}
+.badge-live{background:var(--live);border-radius:999px;font-size:.6rem;letter-spacing:.06em;padding:3px 8px;display:inline-flex;align-items:center;gap:5px}
+.badge-live::before{content:"";width:5px;height:5px;border-radius:50%;background:#fff}
+.scr-sub{font-size:.68rem;opacity:.85;margin-top:4px}
+.feed{flex:1;padding:12px;display:flex;flex-direction:column;gap:9px;overflow:hidden;position:relative}
+.c-row{display:flex;gap:8px;align-items:flex-start;opacity:0;animation:feedin 12s linear infinite}
+.c-av{width:26px;height:26px;border-radius:50%;flex:none;display:grid;place-items:center;font-size:.62rem;font-weight:800;color:#fff}
+.c-b{background:#fff;border:1px solid var(--line);border-radius:12px;padding:7px 11px;font-size:.76rem;box-shadow:0 2px 6px rgba(23,20,58,.05)}
+.c-b b{font-weight:700}
+.c-mine .c-b{border-color:rgba(79,70,229,.5)}
+.order-chip{margin-top:5px;display:inline-flex;gap:7px;align-items:center;background:rgba(16,185,129,.1);border:1px dashed var(--mint);color:#0b7a58;border-radius:9px;padding:4px 9px;font-family:var(--mono);font-size:.66rem;font-weight:700;opacity:0;animation:chipin 12s linear infinite}
+.r1{animation-delay:.4s}.r1 .order-chip{animation-delay:1.1s}
+.r2{animation-delay:2.1s}
+.r3{animation-delay:3.4s}.r3 .order-chip{animation-delay:4.1s}
+.r4{animation-delay:5.2s}
+.r5{animation-delay:6.6s}.r5 .order-chip{animation-delay:7.3s}
+.r6{animation-delay:8.4s}.r6 .order-chip{animation-delay:9.1s}
+@keyframes feedin{0%{opacity:0;transform:translateY(14px)}4%{opacity:1;transform:translateY(0)}86%{opacity:1}94%,100%{opacity:0}}
+@keyframes chipin{0%,6%{opacity:0;transform:scale(.85)}9%{opacity:1;transform:scale(1)}86%{opacity:1}94%,100%{opacity:0}}
+.scr-foot{border-top:1px dashed var(--line);background:#fff;padding:10px 14px;display:flex;justify-content:space-between;align-items:center}
+.foot-lab{font-size:.64rem;color:var(--ink-soft)}
+.foot-num{font-family:var(--mono);font-weight:700;color:var(--indigo);font-size:.95rem}
+.slip{position:absolute;right:-26px;bottom:64px;background:#fff;border:1px dashed #c9c6e8;border-radius:10px;padding:10px 13px;font-family:var(--mono);font-size:.62rem;line-height:1.7;box-shadow:0 14px 34px rgba(23,20,58,.16);transform:rotate(4deg);animation:slipfloat 5s ease-in-out infinite}
+.slip b{color:var(--indigo)}
+@keyframes slipfloat{0%,100%{transform:rotate(4deg) translateY(0)}50%{transform:rotate(4deg) translateY(-8px)}}
+@media(max-width:900px){.slip{right:2px}}
+
+/* livestream scene */
+.scene{position:relative;padding:34px 0 26px}
+.ringlight{position:absolute;top:46%;left:50%;width:430px;height:430px;transform:translate(-50%,-50%);border-radius:50%;border:14px solid rgba(255,255,255,.95);box-shadow:0 0 0 6px rgba(139,92,246,.12),0 0 90px 30px rgba(139,92,246,.28),inset 0 0 70px rgba(255,255,255,.9);background:radial-gradient(circle,rgba(255,255,255,.75),rgba(247,247,253,0) 68%);z-index:0;animation:ringGlow 4.5s ease-in-out infinite}
+@keyframes ringGlow{0%,100%{box-shadow:0 0 0 6px rgba(139,92,246,.12),0 0 90px 30px rgba(139,92,246,.26),inset 0 0 70px rgba(255,255,255,.9)}50%{box-shadow:0 0 0 6px rgba(139,92,246,.18),0 0 120px 44px rgba(139,92,246,.38),inset 0 0 90px rgba(255,255,255,1)}}
+.phone{position:relative;z-index:2}
+.tripod{position:relative;z-index:1;width:0;margin:-6px auto 0;border-left:52px solid transparent;border-right:52px solid transparent;border-top:0;height:58px}
+.tripod::before,.tripod::after{content:"";position:absolute;top:0;width:7px;height:60px;background:linear-gradient(#2a2650,#17143a);border-radius:4px}
+.tripod::before{left:-40px;transform:rotate(20deg)}
+.tripod::after{right:-40px;transform:rotate(-20deg)}
+.seller-photo-card{position:absolute;left:-64px;bottom:44px;z-index:3;width:190px;background:#fff;padding:9px 9px 30px;border-radius:14px;box-shadow:0 22px 50px rgba(23,20,58,.22);transform:rotate(-5deg);animation:sellerBob 4.5s ease-in-out infinite}
+@keyframes sellerBob{0%,100%{transform:rotate(-5deg) translateY(0)}50%{transform:rotate(-5deg) translateY(-7px)}}
+.seller-photo-card img{width:100%;height:210px;object-fit:cover;border-radius:9px;display:block}
+.seller-photo-card .ph-cap{position:absolute;bottom:8px;left:0;right:0;text-align:center;font-family:var(--mono);font-size:.6rem;color:var(--ink-soft);letter-spacing:.05em}
+.ph-fallback{width:100%;height:210px;border-radius:9px;border:2px dashed #c9c6e8;display:none;place-items:center;text-align:center;font-size:.72rem;color:var(--ink-soft);padding:14px;background:var(--paper)}
+@media(max-width:900px){.seller-photo-card{left:-10px;width:150px}.seller-photo-card img,.ph-fallback{height:165px}}
+
+/* thermal printer emitting slip */
+.printer{position:absolute;right:-88px;top:120px;z-index:3;width:150px;filter:drop-shadow(0 18px 36px rgba(23,20,58,.22));animation:printerBob 5s ease-in-out infinite}
+@keyframes printerBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
+@media(max-width:900px){.printer{right:-6px;width:124px;top:96px}}
+.pr-body{position:relative;z-index:2;background:linear-gradient(160deg,#26224e,#17143a);border-radius:16px;padding:14px 14px 10px}
+.pr-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:9px}
+.pr-brand{font-family:var(--mono);font-size:.52rem;letter-spacing:.12em;color:#8a86b8}
+.pr-led{width:7px;height:7px;border-radius:50%;background:var(--mint);animation:pulse 1.4s infinite}
+.pr-slot{height:7px;border-radius:4px;background:#0c0a22;box-shadow:inset 0 2px 4px rgba(0,0,0,.7)}
+.pr-paper{position:relative;z-index:1;margin:0 12px;background:#fff;border:1px solid #e4e2f2;border-top:none;border-radius:0 0 9px 9px;padding:9px 11px 11px;font-family:var(--mono);font-size:.56rem;line-height:1.75;color:var(--ink);clip-path:inset(0 0 0 0);transform-origin:top;animation:printOut 5.5s ease-in-out infinite}
+.pr-paper b{color:var(--indigo)}
+.pr-paper .cut{color:#b6b3d6;letter-spacing:.18em}
+@keyframes printOut{0%{transform:scaleY(.06)}10%{transform:scaleY(.06)}55%{transform:scaleY(1)}86%{transform:scaleY(1);opacity:1}92%{opacity:0}93%,100%{transform:scaleY(.06);opacity:0}}
+.viewers{position:absolute;top:16px;left:-14px;z-index:4;background:#fff;border:1px solid var(--line);border-radius:999px;padding:7px 14px;font-size:.78rem;font-weight:700;box-shadow:0 8px 22px rgba(23,20,58,.1);display:flex;gap:7px;align-items:center}
+.viewers .live-dot{width:7px;height:7px}
+.hearts{position:absolute;right:-8px;bottom:120px;z-index:4;width:40px;height:220px;pointer-events:none}
+.heart{position:absolute;bottom:0;left:8px;font-size:1.15rem;opacity:0;animation:heartUp 3.6s linear infinite}
+.h1{animation-delay:0s}.h2{animation-delay:.9s;left:0}.h3{animation-delay:1.7s;left:16px}.h4{animation-delay:2.6s;left:6px}
+@keyframes heartUp{0%{opacity:0;transform:translateY(0) scale(.7)}12%{opacity:1}70%{opacity:.9}100%{opacity:0;transform:translateY(-190px) scale(1.15) rotate(8deg)}}
+
+/* ---------- SOCIAL BAR ---------- */
+.social-bar{border-block:1px solid var(--line);background:#fff;padding:18px 0}
+.sb-in{display:flex;align-items:center;gap:26px;justify-content:center;flex-wrap:wrap;font-weight:700;color:var(--ink-soft);font-size:.9rem}
+.plat{display:inline-flex;gap:8px;align-items:center;font-family:var(--disp)}
+.plat i{font-style:normal}
+
+/* ---------- SECTIONS ---------- */
+section{padding:86px 0}
+.eyebrow{font-family:var(--mono);font-size:.74rem;letter-spacing:.14em;text-transform:uppercase;color:var(--indigo);font-weight:700}
+h2{font-family:var(--disp);font-size:clamp(1.7rem,3.4vw,2.4rem);letter-spacing:-.015em;margin:10px 0 14px;line-height:1.15}
+.sec-sub{color:var(--ink-soft);max-width:36rem;font-size:1.02rem}
+.center{text-align:center}.center .sec-sub{margin:0 auto}
+
+/* reveal */
+.rv{opacity:0;transform:translateY(24px);transition:opacity .6s ease,transform .6s ease}
+.rv.on{opacity:1;transform:none}
+
+/* how it works */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:46px}
+@media(max-width:820px){.steps{grid-template-columns:1fr}}
+.step{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:28px 24px;position:relative;transition:transform .2s,box-shadow .2s}
+.step:hover{transform:translateY(-4px);box-shadow:0 16px 38px rgba(23,20,58,.09)}
+.step-ic{width:46px;height:46px;border-radius:13px;display:grid;place-items:center;font-size:1.3rem;margin-bottom:16px}
+.s1 .step-ic{background:rgba(239,62,92,.1)}
+.s2 .step-ic{background:rgba(79,70,229,.1)}
+.s3 .step-ic{background:rgba(16,185,129,.1)}
+.step h3{font-family:var(--disp);font-size:1.12rem;margin-bottom:8px}
+.step p{font-size:.93rem;color:var(--ink-soft)}
+.step .tag{position:absolute;top:22px;right:22px;font-family:var(--mono);font-size:.68rem;color:#b6b3d6;font-weight:700}
+
+/* bento features */
+.bento{display:grid;grid-template-columns:repeat(6,1fr);gap:18px;margin-top:46px}
+.cell{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:24px;transition:transform .2s,box-shadow .2s,border-color .2s}
+.cell:hover{transform:translateY(-4px);box-shadow:0 16px 38px rgba(23,20,58,.09);border-color:#d4d1f0}
+.cell h3{font-family:var(--disp);font-size:1.04rem;margin:12px 0 6px}
+.cell p{font-size:.88rem;color:var(--ink-soft)}
+.cell .ic{font-size:1.5rem}
+.span3{grid-column:span 3}.span2{grid-column:span 2}
+@media(max-width:900px){.span3,.span2{grid-column:span 6}}
+.cell.feature-hero{background:linear-gradient(135deg,var(--indigo),var(--violet));color:#fff;border:none}
+.cell.feature-hero p{color:rgba(255,255,255,.82)}
+.mini-slip{margin-top:14px;background:rgba(255,255,255,.14);border:1px dashed rgba(255,255,255,.45);border-radius:10px;padding:9px 12px;font-family:var(--mono);font-size:.68rem;line-height:1.7}
+
+/* video */
+.video-shell{margin-top:44px;background:var(--ink);border-radius:24px;aspect-ratio:16/9;display:grid;place-items:center;position:relative;overflow:hidden;cursor:pointer}
+.video-shell::before{content:"";position:absolute;inset:0;background:radial-gradient(500px 300px at 30% 20%,rgba(139,92,246,.35),transparent),radial-gradient(500px 320px at 75% 80%,rgba(79,70,229,.4),transparent)}
+.play{position:relative;width:74px;height:74px;border-radius:50%;background:#fff;display:grid;place-items:center;font-size:1.5rem;color:var(--indigo);box-shadow:0 14px 40px rgba(0,0,0,.35);transition:transform .2s}
+.video-shell:hover .play{transform:scale(1.08)}
+.video-cap{position:absolute;bottom:20px;left:24px;color:rgba(255,255,255,.85);font-size:.85rem;font-weight:600}
+
+/* pricing */
+.plans{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:46px}
+@media(max-width:980px){.plans{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:620px){.plans{grid-template-columns:1fr}}
+.plan{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:26px 22px;display:flex;flex-direction:column;transition:transform .2s,box-shadow .2s}
+.plan:hover{transform:translateY(-4px);box-shadow:0 16px 38px rgba(23,20,58,.09)}
+.plan.pop{border:2px solid var(--indigo);position:relative;box-shadow:0 18px 44px rgba(79,70,229,.16)}
+.pop-tag{position:absolute;top:-13px;left:50%;transform:translateX(-50%);background:var(--indigo);color:#fff;font-size:.68rem;font-weight:800;letter-spacing:.06em;border-radius:999px;padding:4px 14px}
+.plan h3{font-family:var(--disp);font-size:1.08rem}
+.plan .for{font-size:.8rem;color:var(--ink-soft);margin:2px 0 14px}
+.price{font-family:var(--mono);font-weight:700;font-size:1.7rem}
+.price small{font-size:.78rem;color:var(--ink-soft);font-family:var(--body);font-weight:600}
+.plan ul{list-style:none;margin:18px 0 22px;display:grid;gap:9px;font-size:.86rem;color:var(--ink-soft)}
+.plan li::before{content:"✓";color:var(--mint);font-weight:800;margin-right:8px}
+.plan .btn{margin-top:auto;justify-content:center}
+.pay-note{text-align:center;margin-top:22px;font-size:.84rem;color:var(--ink-soft)}
+
+/* FAQ */
+.faq{max-width:720px;margin:44px auto 0;display:grid;gap:12px}
+.qa{background:var(--card);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+.qa summary{list-style:none;cursor:pointer;padding:18px 22px;font-weight:700;font-family:var(--disp);display:flex;justify-content:space-between;align-items:center;font-size:.98rem}
+.qa summary::-webkit-details-marker{display:none}
+.qa summary::after{content:"+";font-size:1.3rem;color:var(--indigo);transition:transform .2s}
+.qa[open] summary::after{transform:rotate(45deg)}
+.qa .a{padding:0 22px 18px;color:var(--ink-soft);font-size:.92rem}
+
+/* final CTA */
+.final{background:linear-gradient(130deg,var(--indigo-deep),var(--indigo) 55%,var(--violet));border-radius:28px;color:#fff;text-align:center;padding:70px 28px;position:relative;overflow:hidden}
+.final::before{content:"";position:absolute;inset:0;background:radial-gradient(420px 260px at 80% 15%,rgba(255,255,255,.14),transparent)}
+.final h2{color:#fff}
+.final .sec-sub{color:rgba(255,255,255,.85);margin:0 auto 30px}
+.final .btn-primary{background:#fff;color:var(--indigo);box-shadow:0 10px 30px rgba(0,0,0,.25)}
+.final .stores{justify-content:center}
+
+/* footer */
+footer{border-top:1px solid var(--line);background:#fff;padding:52px 0 34px;margin-top:86px}
+.f-grid{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:34px}
+@media(max-width:820px){.f-grid{grid-template-columns:1fr 1fr}}
+.f-col h4{font-family:var(--disp);font-size:.9rem;margin-bottom:14px}
+.f-col a{display:block;font-size:.88rem;color:var(--ink-soft);margin-bottom:9px}
+.f-col a:hover{color:var(--indigo)}
+.f-desc{font-size:.88rem;color:var(--ink-soft);margin-top:12px;max-width:24rem}
+.f-social{display:flex;gap:10px;margin-top:16px}
+.f-social a{width:36px;height:36px;border-radius:10px;background:var(--paper);border:1px solid var(--line);display:grid;place-items:center;font-size:1rem}
+.f-bottom{border-top:1px solid var(--line);margin-top:40px;padding-top:22px;display:flex;justify-content:space-between;gap:14px;flex-wrap:wrap;font-size:.8rem;color:var(--ink-soft)}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+  .rv{opacity:1;transform:none}
+  .piece{opacity:1!important;transform:none!important}
+}
+
+/* nav dropdown */
+.dd{position:relative}
+.dd>a::after{content:" ▾";font-size:.7em}
+.dd-menu{position:absolute;top:130%;left:-14px;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 18px 44px rgba(23,20,58,.14);padding:10px;min-width:230px;opacity:0;visibility:hidden;transform:translateY(8px);transition:.22s}
+.dd:hover .dd-menu{opacity:1;visibility:visible;transform:none}
+.dd-menu a{display:block;padding:10px 12px;border-radius:9px;font-size:.88rem;color:var(--ink)}
+.dd-menu a:hover{background:var(--paper);color:var(--indigo)}
+.dd-menu small{display:block;font-weight:500;color:var(--ink-soft);font-size:.74rem}
+
+/* door-closing dashboard assembly */
+.dash-stage{margin-top:50px;background:linear-gradient(160deg,#1d1946,#17143a);border-radius:26px;padding:26px;overflow:hidden}
+.dash{display:grid;grid-template-columns:170px 1fr;gap:14px;max-width:860px;margin:0 auto}
+@media(max-width:760px){.dash{grid-template-columns:1fr}}
+.piece{transition:transform .9s cubic-bezier(.22,.9,.3,1),opacity .9s;opacity:0}
+.p-top{grid-column:1/-1;transform:translateY(-140%)}
+.p-left{transform:translateX(-130%)}
+.p-right{transform:translateX(130%)}
+.dash-stage.on .piece{transform:none;opacity:1}
+.dash-stage.on .p-top{transition-delay:.05s}
+.dash-stage.on .p-left{transition-delay:.3s}
+.dash-stage.on .p-right{transition-delay:.3s}
+.dash-bar{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:14px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;color:#fff}
+.dash-bar b{font-family:var(--disp);font-size:.92rem}
+.dash-bar .pill{font-family:var(--mono);font-size:.64rem;background:rgba(16,185,129,.18);color:#6ee7c3;border-radius:999px;padding:4px 10px}
+.dash-side{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.dash-side a{font-size:.78rem;color:#b9b5e6;padding:8px 10px;border-radius:8px}
+.dash-side a.act{background:var(--indigo);color:#fff;font-weight:700}
+.dash-main{display:grid;gap:14px}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media(max-width:560px){.kpis{grid-template-columns:1fr}}
+.kpi{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:13px;padding:13px 15px;color:#fff}
+.kpi small{font-size:.64rem;color:#a5a1d6;letter-spacing:.05em}
+.kpi b{display:block;font-family:var(--mono);font-size:1.12rem;margin-top:3px}
+.kpi .up{color:#6ee7c3;font-size:.62rem;font-family:var(--mono)}
+.chart{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:13px;padding:15px;color:#fff}
+.chart small{font-size:.64rem;color:#a5a1d6}
+.bars{display:flex;align-items:flex-end;gap:7px;height:90px;margin-top:12px}
+.bar{flex:1;background:linear-gradient(180deg,var(--violet),var(--indigo));border-radius:5px 5px 0 0;transform:scaleY(0);transform-origin:bottom;transition:transform .7s cubic-bezier(.22,.9,.3,1)}
+.dash-stage.on .bar{transform:scaleY(1)}
+.dash-stage.on .bar:nth-child(1){transition-delay:.9s}.dash-stage.on .bar:nth-child(2){transition-delay:1s}.dash-stage.on .bar:nth-child(3){transition-delay:1.1s}.dash-stage.on .bar:nth-child(4){transition-delay:1.2s}.dash-stage.on .bar:nth-child(5){transition-delay:1.3s}.dash-stage.on .bar:nth-child(6){transition-delay:1.4s}.dash-stage.on .bar:nth-child(7){transition-delay:1.5s}
+.dash-cap{text-align:center;color:#8f8bc4;font-size:.78rem;margin-top:18px}
+
+/* deep-dive rows */
+.deep{display:grid;grid-template-columns:1fr 1fr;gap:46px;align-items:center;margin-top:64px}
+@media(max-width:820px){.deep{grid-template-columns:1fr;gap:26px}}
+.deep.flip .deep-vis{order:2}
+@media(max-width:820px){.deep.flip .deep-vis{order:0}}
+.deep h3{font-family:var(--disp);font-size:1.5rem;margin-bottom:12px;letter-spacing:-.01em}
+.deep p{color:var(--ink-soft);font-size:.98rem}
+.deep ul{list-style:none;margin-top:14px;display:grid;gap:9px;font-size:.92rem;color:var(--ink-soft)}
+.deep li::before{content:"✓";color:var(--mint);font-weight:800;margin-right:9px}
+.deep-vis{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:26px;box-shadow:0 18px 44px rgba(23,20,58,.08)}
+.mono-slip{font-family:var(--mono);font-size:.74rem;line-height:2;background:var(--paper);border:1px dashed #c9c6e8;border-radius:12px;padding:14px 16px}
+.mono-slip b{color:var(--indigo)}
+
+/* guide center teaser */
+.guides{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:44px}
+@media(max-width:900px){.guides{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.guides{grid-template-columns:1fr}}
+.g-card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:22px;transition:transform .2s,box-shadow .2s}
+.g-card:hover{transform:translateY(-4px);box-shadow:0 14px 34px rgba(23,20,58,.09)}
+.g-card .ic{font-size:1.4rem}
+.g-card h3{font-family:var(--disp);font-size:.98rem;margin:10px 0 5px}
+.g-card p{font-size:.82rem;color:var(--ink-soft)}
+.g-card .go{display:inline-block;margin-top:12px;font-size:.8rem;font-weight:700;color:var(--indigo)}
+
+/* testimonials */
+.quotes{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:44px}
+@media(max-width:820px){.quotes{grid-template-columns:1fr}}
+.quote{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:24px;font-size:.92rem}
+.quote .stars{color:var(--amber);letter-spacing:2px;margin-bottom:10px;font-size:.85rem}
+.quote p{color:var(--ink)}
+.quote .who{margin-top:14px;display:flex;gap:10px;align-items:center;font-size:.8rem;color:var(--ink-soft)}
+.quote .who .av{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:800;font-size:.72rem}
+
+/* floating help bubble */
+.help-fab{position:fixed;right:22px;bottom:22px;z-index:60;background:var(--indigo);color:#fff;border-radius:999px;padding:13px 20px;font-weight:700;font-size:.9rem;display:flex;gap:9px;align-items:center;box-shadow:0 14px 36px rgba(79,70,229,.4);transition:transform .18s}
+.help-fab:hover{transform:translateY(-3px)}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap nav-in">
+    <a class="logo" href="#"><span class="logo-mark">S</span>SellerFlowLive</a>
+    <div class="nav-links">
+      <a href="#how">How it works</a>
+      <span class="dd"><a href="#features">Features</a>
+        <span class="dd-menu">
+          <a href="#features">Scan comments — close the sale<small>Auto-capture every "mine" claim</small></a>
+          <a href="#inside">Orders &amp; buyer numbers<small>Sort bags without mistakes</small></a>
+          <a href="#deep-print">Printing &amp; 7-11 shipping<small>Slips, stickers, 交貨便 export</small></a>
+          <a href="#inside">Reports &amp; statistics<small>Know your best nights</small></a>
+        </span>
+      </span>
+      <a href="#guide">Guide</a>
+      <a href="#faq">FAQ</a>
+    </div>
+    <div class="nav-cta">
+      <a class="btn btn-ghost" href="#">Log in</a>
+      <a class="btn btn-primary" href="#">Create free account</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="live-eyebrow"><span class="live-dot"></span>Built for TikTok &amp; Facebook live sellers</span>
+      <h1>Turn every live comment into a <span class="hl">paid order.</span></h1>
+      <p class="hero-sub">SellerFlowLive captures "mine" claims from your live automatically, gives every buyer a number, builds the order slip, and prints it — so you sell, not scribble.</p>
+      <div class="hero-ctas">
+        <a class="btn btn-primary btn-hero" href="#">Try it for free →</a>
+        <a class="btn btn-ghost" href="#how">See how it works ↓</a>
+      </div>
+      <div class="stores">
+        <a class="store-badge" href="#"><span class="store-ic">▶</span><span><small>GET IT ON</small><b>Google Play</b></span></a>
+        <a class="store-badge" href="#"><span class="store-ic"></span><span><small>Download on the</small><b>App Store</b></span></a>
+      </div>
+      <div class="stats-row">
+        <div class="stat"><b>12k+</b><span>sellers</span></div>
+        <div class="stat"><b>2.4M</b><span>orders</span></div>
+        <div class="stat"><b>4.9★</b><span>rating</span></div>
+      </div>
+    </div>
+
+    <div class="phone-zone scene" style="position:relative">
+      <div class="ringlight"></div>
+      <div class="viewers"><span class="live-dot"></span>1.2k watching</div>
+      <div class="seller-photo-card">
+        <img src="seller-photo.jpg" alt="Live seller streaming with ring light"
+             onerror="this.style.display='none';this.nextElementSibling.style.display='grid'">
+        <div class="ph-fallback">📸<br><b>seller-photo.jpg</b><br>ilagay sa same folder — totoong litrato ng naglalive</div>
+        <span class="ph-cap">LIVE NOW · @yourshop</span>
+      </div>
+      <div class="hearts">
+        <span class="heart h1">❤️</span><span class="heart h2">🧡</span><span class="heart h3">💜</span><span class="heart h4">❤️</span>
+      </div>
+      <div class="phone">
+        <div class="screen">
+          <div class="scr-head">
+            <div class="scr-title"><span class="badge-live">LIVE</span> SellerFlowLive</div>
+            <div class="scr-sub">@yourshop · Session — Day 1</div>
+          </div>
+          <div class="feed">
+            <div class="c-row r1 c-mine">
+              <span class="c-av" style="background:#f472b6">M</span>
+              <div><div class="c-b"><b>mei.chen88</b> — mine! 🙋‍♀️</div>
+              <span class="order-chip">✓ ORDER · Buyer #12 · NT$390</span></div>
+            </div>
+            <div class="c-row r2">
+              <span class="c-av" style="background:#60a5fa">J</span>
+              <div class="c-b"><b>jaso_tw</b> — ganda ng kulay 😍</div>
+            </div>
+            <div class="c-row r3 c-mine">
+              <span class="c-av" style="background:#fbbf24">A</span>
+              <div><div class="c-b"><b>abby.shopaholic</b> — M +1</div>
+              <span class="order-chip">✓ ORDER · Buyer #13 · NT$250</span></div>
+            </div>
+            <div class="c-row r4">
+              <span class="c-av" style="background:#34d399">L</span>
+              <div class="c-b"><b>lin_grace</b> — may medium pa?</div>
+            </div>
+            <div class="c-row r5 c-mine">
+              <span class="c-av" style="background:#a78bfa">K</span>
+              <div><div class="c-b"><b>kuya.dave</b> — mine 2pcs!</div>
+              <span class="order-chip">✓ ORDER · Buyer #14 · NT$780</span></div>
+            </div>
+            <div class="c-row r6 c-mine">
+              <span class="c-av" style="background:#f87171">C</span>
+              <div><div class="c-b"><b>cherry_go</b> — MINE!!</div>
+              <span class="order-chip">✓ ORDER · Buyer #15 · NT$450</span></div>
+            </div>
+          </div>
+          <div class="scr-foot">
+            <span class="foot-lab">Tonight's session</span>
+            <span class="foot-num">47 orders · NT$18,420</span>
+          </div>
+        </div>
+      </div>
+      <div class="tripod"></div>
+      <div class="printer">
+        <div class="pr-body">
+          <div class="pr-top"><span class="pr-brand">SELLERFLOW PRINT</span><span class="pr-led"></span></div>
+          <div class="pr-slot"></div>
+        </div>
+        <div class="pr-paper">
+          SELLERFLOW SLIP<br>
+          <b>Buyer #14</b> · kuya.dave<br>
+          2× Summer dress<br>
+          TOTAL <b>NT$780</b><br>
+          <span class="cut">✂ - - - - - - -</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="social-bar">
+  <div class="wrap sb-in">
+    <span>Works with</span>
+    <span class="plat"><i>🎵</i> TikTok LIVE</span>
+    <span class="plat"><i>📘</i> Facebook Live</span>
+    <span style="opacity:.4">|</span>
+    <span>Trusted by live sellers across Taiwan 🇹🇼</span>
+  </div>
+</div>
+
+<section id="how">
+  <div class="wrap center">
+    <span class="eyebrow rv">How it works</span>
+    <h2 class="rv">From "mine!" to shipped — in three steps</h2>
+    <p class="sec-sub rv">No more pausing your live to write orders in a notebook. The app watches the comments while you sell.</p>
+    <div class="steps">
+      <div class="step s1 rv"><span class="tag">STEP 1</span><div class="step-ic">📡</div><h3>Connect your live</h3><p>Link your TikTok or Facebook account once. When you go live, SellerFlowLive listens to every comment in real time.</p></div>
+      <div class="step s2 rv"><span class="tag">STEP 2</span><div class="step-ic">⚡</div><h3>Comments become orders</h3><p>Every "mine" claim is captured instantly — buyer gets a number, order gets a price, nothing is missed even in a fast live.</p></div>
+      <div class="step s3 rv"><span class="tag">STEP 3</span><div class="step-ic">🖨️</div><h3>Print &amp; ship</h3><p>Print thermal slips per buyer, sort bags by number, and export straight to 7-11 交貨便 for store pickup.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="inside">
+  <div class="wrap center">
+    <span class="eyebrow rv">Inside the app</span>
+    <h2 class="rv">Your whole live business, on one screen</h2>
+    <p class="sec-sub rv">Watch it come together — orders, buyers, and revenue assembling into one clear picture.</p>
+    <div class="dash-stage" id="dashStage">
+      <div class="dash">
+        <div class="piece p-top dash-bar"><b>📊 Sales Report — This Month</b><span class="pill">● LIVE DATA</span></div>
+        <div class="piece p-left dash-side">
+          <a>🔴 Live</a><a>⛏️ Miners</a><a class="act">🛍️ Orders</a><a>📦 Products</a><a>📈 Reports</a><a>⚙️ Settings</a>
+        </div>
+        <div class="piece p-right dash-main">
+          <div class="kpis">
+            <div class="kpi"><small>REVENUE</small><b>NT$186,420</b><span class="up">▲ 18% vs last month</span></div>
+            <div class="kpi"><small>ORDERS</small><b>1,284</b><span class="up">▲ 11%</span></div>
+            <div class="kpi"><small>BUYERS</small><b>447</b><span class="up">▲ 9%</span></div>
+          </div>
+          <div class="chart">
+            <small>REVENUE PER DAY</small>
+            <div class="bars">
+              <div class="bar" style="height:38%"></div><div class="bar" style="height:56%"></div><div class="bar" style="height:44%"></div><div class="bar" style="height:78%"></div><div class="bar" style="height:62%"></div><div class="bar" style="height:92%"></div><div class="bar" style="height:70%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="dash-cap">Live · Miners · Orders · Products · Reports — isang app, kumpleto.</p>
+    </div>
+
+    <div class="deep" id="deep-print">
+      <div>
+        <span class="eyebrow rv">Print &amp; ship</span>
+        <h3 class="rv">From screen to shipping bag — no handwriting</h3>
+        <p class="rv">Every order becomes a printed slip with the buyer's number, name, items, and total. Stick it, bag it, ship it.</p>
+        <ul class="rv">
+          <li>Bluetooth sticker printers &amp; LAN receipt printers</li>
+          <li>Chinese buyer names print correctly</li>
+          <li>7-11 交貨便 export — one Excel, all your waybills</li>
+        </ul>
+      </div>
+      <div class="deep-vis rv">
+        <div class="mono-slip">
+          ============================<br>
+          &nbsp;&nbsp;SELLERFLOW · ORDER SLIP<br>
+          ============================<br>
+          <b>BUYER #14</b> · kuya.dave<br>
+          2× Summer dress ······ NT$780<br>
+          1× Hair clip set ····· NT$120<br>
+          ----------------------------<br>
+          TOTAL ············ <b>NT$900</b><br>
+          7-11 pickup · 中山門市<br>
+          ✂ - - - - - - - - - - - - -
+        </div>
+      </div>
+    </div>
+
+    <div class="deep flip">
+      <div>
+        <span class="eyebrow rv">Multi-day sessions</span>
+        <h3 class="rv">Same buyer numbers, even on a 3-day live</h3>
+        <p class="rv">Running a weekend sale? Keep one session open across days — the same buyer keeps the same number, on every device you own.</p>
+        <ul class="rv">
+          <li>1, 2, or 3-day session windows</li>
+          <li>Phone + computer, synced live</li>
+          <li>No duplicate bags, no mixed-up parcels</li>
+        </ul>
+      </div>
+      <div class="deep-vis rv">
+        <div class="mono-slip">
+          SESSION — Day 2 of 3<br>
+          ----------------------------<br>
+          <b>#12</b> mei.chen88 ···· 3 orders<br>
+          <b>#13</b> abby.shop ····· 1 order<br>
+          <b>#14</b> kuya.dave ····· 2 orders<br>
+          <b>#15</b> cherry_go ····· 4 orders<br>
+          ----------------------------<br>
+          same numbers · both devices ✓
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="features" style="background:#fff;border-block:1px solid var(--line)">
+  <div class="wrap">
+    <span class="eyebrow rv">Everything a live seller needs</span>
+    <h2 class="rv">Built from 8 years of real live selling</h2>
+    <p class="sec-sub rv">Not a generic tool — every feature exists because a real seller needed it during a real live.</p>
+    <div class="bento">
+      <div class="cell span3 feature-hero rv">
+        <span class="ic">🧲</span><h3>Auto-capture every "mine"</h3>
+        <p>Fast lives lose orders. SellerFlowLive never blinks — every claim is caught, numbered, and priced the moment it appears.</p>
+        <div class="mini-slip">mine! → ✓ Buyer #12 · NT$390<br>M +1 → ✓ Buyer #13 · NT$250</div>
+      </div>
+      <div class="cell span3 rv"><span class="ic">#️⃣</span><h3>Buyer numbers that match your bags</h3><p>One buyer, one number, one bag. The same sorting system you already use — now automatic and mistake-proof, even across multi-day sessions.</p></div>
+      <div class="cell span2 rv"><span class="ic">🖨️</span><h3>Thermal printing</h3><p>Sticker and receipt slips on Bluetooth &amp; LAN printers — Chinese names included.</p></div>
+      <div class="cell span2 rv"><span class="ic">📦</span><h3>7-11 shipping export</h3><p>One Excel file, straight into 交貨便. Print all waybills in a single ibon scan.</p></div>
+      <div class="cell span2 rv"><span class="ic">🎡</span><h3>Raffle games</h3><p>Spin a live roleta from real commenters and keep the audience glued.</p></div>
+      <div class="cell span2 rv"><span class="ic">📊</span><h3>Sales reports</h3><p>Daily and monthly revenue, top buyers, top products — know your best nights.</p></div>
+      <div class="cell span2 rv"><span class="ic">🌏</span><h3>7 languages</h3><p>中文, English, Tagalog, Tiếng Việt, ไทย, Bahasa — sell in your language.</p></div>
+      <div class="cell span2 rv"><span class="ic">🔄</span><h3>Works on every device</h3><p>Phone, tablet, computer — your session follows you, live.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap center">
+    <span class="eyebrow rv">See it live</span>
+    <h2 class="rv">Watch a real live session</h2>
+    <div class="video-shell rv">
+      <div class="play">▶</div>
+      <span class="video-cap">2-minute demo · from live comments to printed slips</span>
+    </div>
+  </div>
+</section>
+
+<section id="faq" style="background:#fff;border-block:1px solid var(--line)">
+  <div class="wrap center">
+    <span class="eyebrow rv">FAQ</span>
+    <h2 class="rv">Questions live sellers ask</h2>
+    <div class="faq">
+      <details class="qa rv"><summary>Can I try it for free?</summary><div class="a">Yes — create an account and start selling for free, no credit card needed. Upgrade anytime when your lives grow.</div></details>
+      <details class="qa rv"><summary>Which platforms does it work with?</summary><div class="a">TikTok LIVE and Facebook Live. Connect your account once and the app captures comments automatically each time you go live.</div></details>
+      <details class="qa rv"><summary>What printers are supported?</summary><div class="a">Bluetooth thermal sticker printers (like AIMO) and LAN receipt printers (like Xprinter). Chinese buyer names print correctly.</div></details>
+      <details class="qa rv"><summary>How does 7-11 shipping work?</summary><div class="a">Encode your buyers' pickup details in the app, export one Excel file, upload it to 賣貨便, and print all your waybills with one ibon scan.</div></details>
+      <details class="qa rv"><summary>How do I pay for a plan?</summary><div class="a">Via Wise transfer — message our Telegram and your plan is activated within minutes. No app-store fees, no hidden charges.</div></details>
+      <details class="qa rv"><summary>Can I cancel anytime?</summary><div class="a">Yes. Plans are month-to-month. If you stop, your account simply returns to the free tier — your data stays.</div></details>
+    </div>
+  </div>
+</section>
+
+<section style="background:#fff;border-block:1px solid var(--line)">
+  <div class="wrap center">
+    <span class="eyebrow rv">Loved by live sellers</span>
+    <h2 class="rv">Sellers who stopped scribbling</h2>
+    <div class="quotes">
+      <div class="quote rv"><div class="stars">★★★★★</div><p>"Dati may notebook ako at kada live may namimiss akong order. Ngayon lahat nahuhuli — kahit mabilis yung comments."</p><div class="who"><span class="av" style="background:#f472b6">C</span>Cherry · Fashion live seller</div></div>
+      <div class="quote rv"><div class="stars">★★★★★</div><p>"Yung buyer numbers ang pinaka-sulit. Hindi na ako nagkakamali sa bags, at yung slip printing — sobrang bilis maghanda ng padala."</p><div class="who"><span class="av" style="background:#60a5fa">N</span>Nicole · Accessories shop</div></div>
+      <div class="quote rv"><div class="stars">★★★★★</div><p>"3-day live kami tuwing weekend at parehong numbers pa rin sa phone at computer ko. Yung 7-11 export, isang upload lang lahat ng waybill."</p><div class="who"><span class="av" style="background:#34d399">M</span>Mrs. Ho · Home goods</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="guide">
+  <div class="wrap center">
+    <span class="eyebrow rv">Guidance center</span>
+    <h2 class="rv">Learn it in one afternoon</h2>
+    <p class="sec-sub rv">Step-by-step guides for everything — from your first live to printing and shipping.</p>
+    <div class="guides">
+      <div class="g-card rv"><span class="ic">🚀</span><h3>Start fast</h3><p>Create an account, connect your live, capture your first order.</p><span class="go">Read guide →</span></div>
+      <div class="g-card rv"><span class="ic">🖨️</span><h3>Printer setup</h3><p>Pair your Bluetooth sticker printer or LAN receipt printer.</p><span class="go">Read guide →</span></div>
+      <div class="g-card rv"><span class="ic">🔴</span><h3>Operations on LIVE</h3><p>Buyer numbers, raffle games, and real-time order management.</p><span class="go">Read guide →</span></div>
+      <div class="g-card rv"><span class="ic">📦</span><h3>7-11 shipping</h3><p>Encode, export, upload to 賣貨便, print waybills at ibon.</p><span class="go">Read guide →</span></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="final rv">
+      <h2>Your next live could run itself.</h2>
+      <p class="sec-sub">Join thousands of live sellers who stopped scribbling orders and started selling more.</p>
+      <a class="btn btn-primary btn-hero" href="#">Try it for free →</a>
+      <div class="stores">
+        <a class="store-badge" href="#"><span class="store-ic">▶</span><span><small>GET IT ON</small><b>Google Play</b></span></a>
+        <a class="store-badge" href="#"><span class="store-ic"></span><span><small>Download on the</small><b>App Store</b></span></a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="f-grid">
+      <div class="f-col">
+        <a class="logo" href="#"><span class="logo-mark">S</span>SellerFlowLive</a>
+        <p class="f-desc">The live-selling assistant for TikTok &amp; Facebook sellers — auto-capture orders, print slips, and ship via 7-11, all in one app.</p>
+        <div class="f-social">
+          <a href="#" title="Telegram">✈️</a><a href="#" title="TikTok">🎵</a><a href="#" title="Facebook">📘</a>
+        </div>
+      </div>
+      <div class="f-col"><h4>Product</h4><a href="#how">How it works</a><a href="#features">Features</a><a href="#faq">FAQ</a></div>
+      <div class="f-col"><h4>Support</h4><a href="#">User guide</a><a href="#faq">FAQ</a><a href="#">Telegram support</a></div>
+      <div class="f-col"><h4>Get the app</h4><a href="#">Google Play</a><a href="#">App Store</a><a href="#">Web app</a></div>
+    </div>
+    <div class="f-bottom">
+      <span>© 2026 SellerFlowLive · Made in Taiwan 🇹🇼</span>
+      <span><a href="#">Terms</a> · <a href="#">Privacy</a></span>
+    </div>
+  </div>
+</footer>
+
+<a class="help-fab" href="#">💬 Need help? Message us</a>
+
+<script>
+const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('on');io.unobserve(e.target)}}),{threshold:.12});
+document.querySelectorAll('.rv').forEach(el=>io.observe(el));
+const ds=document.getElementById('dashStage');
+if(ds){const io2=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){ds.classList.add('on');io2.disconnect()}}),{threshold:.35});io2.observe(ds)}
+</script>
+</body>
+</html>
