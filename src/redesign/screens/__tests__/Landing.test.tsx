@@ -1,8 +1,10 @@
-// Marketing landing (Step La) — renders nav/hero/footer + routing: "Start free"
-// → onSignup, "Log in" → onLogin, language switcher.
+// Marketing landing v2 — blueprint design-landing/sellerflow-landing-preview.html.
+// Asserts routing (CTAs → signup, Log in → login, guides → signup), the REAL
+// store links, the no-prices rule (Jeff decision), the as-is stats row, section
+// presence, FAQ single-open, and the Telegram help fab.
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import Landing from "../Landing";
+import Landing, { PLAY_URL, APPSTORE_URL } from "../Landing";
 import { TProvider } from "../../i18n";
 
 const noop = () => {};
@@ -20,135 +22,128 @@ const renderLanding = (over: { onLogin?: () => void; onSignup?: () => void; onPi
     </TProvider>,
   );
 
-describe("Landing (Step La)", () => {
+describe("Landing v2", () => {
   it("renders the hero headline + sub", () => {
     renderLanding();
-    expect(screen.getByText("Stop typing.")).toBeTruthy();
-    expect(screen.getByText("Start selling.")).toBeTruthy();
-    expect(screen.getByText(/Turn every live comment into a paid order/)).toBeTruthy();
+    expect(screen.getByText(/Turn every live comment into a/)).toBeTruthy();
+    expect(screen.getByText("paid order.")).toBeTruthy();
+    expect(screen.getByText(/so you sell, not scribble/)).toBeTruthy();
   });
 
-  it("'Start free' routes to signup (onSignup)", () => {
+  it("'Try it for free' CTAs route to signup (hero + final CTA)", () => {
     const onSignup = vi.fn();
     renderLanding({ onSignup });
-    fireEvent.click(screen.getAllByText("Start free")[0]); // nav + hero both have it
+    const ctas = screen.getAllByText("Try it for free →");
+    expect(ctas.length).toBe(2); // hero + final CTA band
+    fireEvent.click(ctas[0]);
+    fireEvent.click(ctas[1]);
+    expect(onSignup).toHaveBeenCalledTimes(2);
+  });
+
+  it("nav 'Create free account' routes to signup; 'Log in' routes to login", () => {
+    const onSignup = vi.fn(); const onLogin = vi.fn();
+    renderLanding({ onSignup, onLogin });
+    fireEvent.click(screen.getByText("Create free account"));
+    fireEvent.click(screen.getByText("Log in"));
+    expect(onSignup).toHaveBeenCalledTimes(1);
+    expect(onLogin).toHaveBeenCalledTimes(1);
+  });
+
+  it("store badges link to the REAL Play Store and App Store URLs (hero + CTA + footer)", () => {
+    renderLanding();
+    const links = Array.from(document.querySelectorAll("a"));
+    const play = links.filter((a) => a.getAttribute("href") === PLAY_URL);
+    const ios = links.filter((a) => a.getAttribute("href") === APPSTORE_URL);
+    expect(PLAY_URL).toBe("https://play.google.com/store/apps/details?id=com.sellerflow.live");
+    expect(APPSTORE_URL).toBe("https://apps.apple.com/app/id6783770354");
+    expect(play.length).toBeGreaterThanOrEqual(3); // hero badge + CTA badge + footer link
+    expect(ios.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("NO prices anywhere (Jeff decision) — no NT$ plan prices, no plan cards", () => {
+    renderLanding();
+    for (const price of ["NT$0", "NT$500", "NT$1,200", "NT$1,700"]) {
+      expect(screen.queryByText(price)).toBeNull();
+    }
+    expect(screen.queryByText("Most popular")).toBeNull();
+    expect(screen.queryByText(/\/mo/)).toBeNull();
+  });
+
+  it("existing stats row stays as-is (12k+ / 1.4M / <2s / 4.9★)", () => {
+    renderLanding();
+    ["12k+", "1.4M", "<2s", "4.9★"].forEach((v) => expect(screen.getByText(v)).toBeTruthy());
+    expect(screen.getByText("Active sellers")).toBeTruthy();
+  });
+
+  it("renders the 3 how-it-works steps", () => {
+    renderLanding();
+    ["Connect your live", "Comments become orders", "Print & ship"].forEach((s) =>
+      expect(screen.getAllByText(s).length).toBeGreaterThan(0),
+    );
+  });
+
+  it("renders the dashboard assembly stage + bento feature titles", () => {
+    renderLanding();
+    expect(document.getElementById("sflDashStage")).toBeTruthy();
+    ["Auto-capture every \"mine\"", "Buyer numbers that match your bags", "Thermal printing",
+      "7-11 shipping export", "Raffle games", "Sales reports", "7 languages", "Works on every device"]
+      .forEach((ti) => expect(screen.getByText(ti)).toBeTruthy());
+  });
+
+  it("FAQ: single-open accordion, answers hidden until opened", () => {
+    renderLanding();
+    expect(screen.getByText("Can I try it for free?")).toBeTruthy();
+    expect(screen.queryByText(/no credit card needed/)).toBeNull();
+    fireEvent.click(screen.getByText("Can I try it for free?"));
+    expect(screen.getByText(/no credit card needed/)).toBeTruthy();
+    fireEvent.click(screen.getByText("How do I pay for a plan?"));
+    expect(screen.queryByText(/no credit card needed/)).toBeNull(); // first closed (single-open)
+    expect(screen.getByText(/Via Wise transfer/)).toBeTruthy();
+  });
+
+  it("renders the localized testimonials", () => {
+    renderLanding();
+    expect(screen.getByText(/even when the comments fly/)).toBeTruthy();
+    expect(screen.getByText("Cherry · Fashion live seller")).toBeTruthy();
+    expect(screen.getByText("Mrs. Ho · Home goods")).toBeTruthy();
+  });
+
+  it("guide cards route to signup (guides live in-app, post-login)", () => {
+    const onSignup = vi.fn();
+    renderLanding({ onSignup });
+    fireEvent.click(screen.getByText("Printer setup"));
     expect(onSignup).toHaveBeenCalledTimes(1);
   });
 
-  it("'Log in' routes to login (onLogin)", () => {
-    const onLogin = vi.fn();
-    renderLanding({ onLogin });
-    fireEvent.click(screen.getAllByText("Log in")[0]);
-    expect(onLogin).toHaveBeenCalledTimes(1);
+  it("help fab + footer Telegram links point at @SellerFlowLive1995", () => {
+    renderLanding();
+    const fab = screen.getByText(/Need help\? Message us/);
+    expect(fab.getAttribute("href")).toBe("https://t.me/SellerFlowLive1995");
+  });
+
+  it("video slot renders as a poster placeholder with the demo caption", () => {
+    renderLanding();
+    expect(screen.getByText(/2-minute demo/)).toBeTruthy();
+  });
+
+  it("seller-photo slot falls back gracefully when the asset is missing", () => {
+    renderLanding();
+    const img = document.querySelector("img.sfl-l2-sellerimg") as HTMLImageElement;
+    expect(img).toBeTruthy(); // tries /landing-seller.jpg first
+    fireEvent.error(img);     // asset missing → fallback frame with localized note
+    expect(screen.getByText(/photo coming soon/)).toBeTruthy();
   });
 
   it("language dropdown lists languages and picks one", () => {
     const onPickLang = vi.fn();
     renderLanding({ langOpen: true, onPickLang });
-    // a language row (e.g., Filipino) is visible when open → click it
-    const fil = screen.getByText("Filipino");
-    fireEvent.click(fil);
+    fireEvent.click(screen.getByText("Filipino"));
     expect(onPickLang).toHaveBeenCalled();
   });
 
-  it("footer shows the billing/lang line", () => {
+  it("footer shows Made in Taiwan + the real privacy link", () => {
     renderLanding();
-    expect(screen.getByText(/Available in 7 languages/)).toBeTruthy();
-  });
-
-  // Step Lb sections
-  it("renders the metrics strip", () => {
-    renderLanding();
-    expect(screen.getByText("Active sellers")).toBeTruthy();
-    expect(screen.getByText("12k+")).toBeTruthy();
-  });
-
-  it("renders the features section (eyebrow + H2 + 6 feature titles)", () => {
-    renderLanding();
-    expect(screen.getByText("EVERYTHING YOU NEED")).toBeTruthy();
-    expect(screen.getByText("One toolkit for the whole live sale")).toBeTruthy();
-    ["1-Click Print", "Live Comment Capture", "Order Management", "Customer Database", "Bluetooth Printer Support", "Sales Analytics"].forEach((title) =>
-      expect(screen.getByText(title)).toBeTruthy(),
-    );
-  });
-
-  it("renders the how-it-works section (3 steps)", () => {
-    renderLanding();
-    expect(screen.getByText("From comment to cash in three steps")).toBeTruthy();
-    expect(screen.getByText("Go live & connect")).toBeTruthy();
-    expect(screen.getByText("Print & get paid")).toBeTruthy();
-  });
-
-  it("center nav anchors (Features, How it works, Pricing) are present", () => {
-    renderLanding();
-    // "Features"/"Pricing" appear in both the nav and the footer (Step Le) → use getAllByText
-    expect(screen.getAllByText("Features").length).toBeGreaterThan(0);
-    expect(screen.getByText("How it works")).toBeTruthy();
-    expect(screen.getAllByText("Pricing").length).toBeGreaterThan(0);
-  });
-
-  // Step Lc — pricing
-  it("renders 4 pricing tiers with NT$ prices + Most popular badge", () => {
-    renderLanding();
-    expect(screen.getByText("Simple plans that scale with your lives")).toBeTruthy();
-    expect(screen.getByText("NT$0")).toBeTruthy();
-    expect(screen.getByText("NT$500")).toBeTruthy();
-    expect(screen.getByText("NT$1,200")).toBeTruthy();
-    expect(screen.getByText("NT$1,700")).toBeTruthy();
-    expect(screen.getByText("Most popular")).toBeTruthy();
-  });
-
-  it("every pricing CTA routes to signup", () => {
-    const onSignup = vi.fn();
-    renderLanding({ onSignup });
-    // Choose Basic / Pro / Master + Free's "Start free" (hero + nav also have Start free)
-    fireEvent.click(screen.getByText("Choose Pro"));
-    expect(onSignup).toHaveBeenCalled();
-  });
-
-  // Step Ld — FAQ accordion
-  it("renders the FAQ section with questions (answers hidden until opened)", () => {
-    renderLanding();
-    expect(screen.getByText("Questions, answered")).toBeTruthy();
-    expect(screen.getByText("Do I need a credit card to start?")).toBeTruthy();
-    expect(screen.queryByText(/Billing is via Wise/)).toBeNull(); // collapsed by default
-  });
-
-  it("tapping a question opens it; single-open closes the previous", () => {
-    renderLanding();
-    fireEvent.click(screen.getByText("Do I need a credit card to start?"));
-    expect(screen.getByText(/Billing is via Wise/)).toBeTruthy(); // opened
-    fireEvent.click(screen.getByText("Is there really a free plan?"));
-    expect(screen.queryByText(/Billing is via Wise/)).toBeNull(); // first closed (single-open)
-    expect(screen.getByText(/100 orders per cycle, free forever/)).toBeTruthy(); // second open
-  });
-
-  it("FAQ nav anchor present", () => {
-    renderLanding();
-    expect(screen.getAllByText("FAQ").length).toBeGreaterThan(0);
-  });
-
-  // Step Le — CTA band + 4-column footer
-  it("renders the CTA band with headline + Telegram link", () => {
-    renderLanding();
-    expect(screen.getByText("Ready to sell faster?")).toBeTruthy();
-    const tg = screen.getByText("Talk on Telegram");
-    expect(tg.getAttribute("href")).toBe("https://t.me/SellerFlowLive1995");
-  });
-
-  it("CTA band 'Start free' routes to signup", () => {
-    const onSignup = vi.fn();
-    renderLanding({ onSignup });
-    // nav + hero + pricing(Free) + CTA all have "Start free"
-    const btns = screen.getAllByText("Start free");
-    fireEvent.click(btns[btns.length - 1]); // CTA band is last
-    expect(onSignup).toHaveBeenCalled();
-  });
-
-  it("renders the 4-column footer headings", () => {
-    renderLanding();
-    expect(screen.getByText("Product")).toBeTruthy();
-    expect(screen.getByText("Support")).toBeTruthy();
-    expect(screen.getByText("Language")).toBeTruthy();
+    expect(screen.getByText(/Made in Taiwan/)).toBeTruthy();
+    expect(screen.getByText("Privacy").getAttribute("href")).toBe("/privacy/");
   });
 });
