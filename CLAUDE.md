@@ -1745,3 +1745,38 @@ Apat na item sa isang branch (`claude/audit-batch-f` `dfb34f4`), 19 files
   server change. · Natitira sa backlog: Login/Landing fake stats (desisyon ni
   Jeff) · RLS `(select auth.uid())` SQL = TAPOS NA ni chat-Claude (26 policies,
   advisor clean).
+
+## SESSION 2026-07-06 (part 2) — LANDING v2 ✅ (merge `b62e3e0`, LIVE + prod-verified)
+Buong marketing landing rebuild mula sa approved blueprint ni chat-Claude
+(`design-landing/sellerflow-landing-preview.html` — pinush ni Jeff via git bridge
+pagkatapos ma-flag na wala ito sa repo). Branch `claude/landing-v2` (`e1ddd51`),
+4 files +802/−422. **732/732 vitest · typecheck · build · lint 53 = baseline.**
+- **Hero livestream scene:** ring-light glow · animated comment feed → order
+  chips (12s loop, blueprint delays) · floating hearts · viewers pill ·
+  seller-photo polaroid (**`/landing-seller.jpg`** sa public/ — ilalagay ni Jeff;
+  may localized dashed-frame fallback) · tripod · thermal printer na tuloy-tuloy
+  naglalabas ng slip.
+- **Sections:** social bar · 3-step how · **dashboard door-closing assembly**
+  (pieces slide-in + staggered growing bars, IO-triggered `#sflDashStage`) ·
+  2 deep dives (mono receipt-slip cards) · 8-cell bento · **video poster
+  placeholder** (demo video gagawin pa ni Jeff) · FAQ single-open ·
+  testimonials (Taglish fil, natural ×7) · 4 guide cards · final CTA · footer ·
+  Telegram help fab.
+- **Rules:** WALANG presyo kahit saan (may test na nag-a-assert) · stats row
+  as-is (12k+/1.4M/<2s/4.9★) · REAL store links (Play `com.sellerflow.live`,
+  App Store `id6783770354`) · CTAs → signup · fab/support → Telegram · Privacy →
+  `/privacy/` · Login screen + RedesignApp UNTOUCHED (same props API).
+- **CSS:** additive `.sfl-l2-*` block sa redesign.css (reuses v1 `.sfl-lp-*`
+  helpers); 2 IntersectionObservers lang ang JS; `prefers-reduced-motion` = full
+  static; zero new deps; blueprint breakpoints (900/820/760/560).
+- **i18n:** 121 bagong `rd_l2_*` ×7. Ang mga napalitang v1 `rd_lp_*` keys
+  (hero/features/pricing/faq) = INIWANG harmless orphans — linisin sa susunod
+  na orphan sweep.
+- **Prod-verified** (`dpl_611thopd…` READY sa `b62e3e0`): bundle
+  `main-JTw4bGs4.js` may `rd_l2_hero_sub`/`rd_l2_dash_cap`/real store URLs/
+  `sflDashStage`; ABSENT ang old pricing grid; CSS `main-DSkY1b_F.css` may
+  `.sfl-l2-ring`/`.sfl-l2-bar`.
+- **Flags/naiwan:** guide cards + footer "User guide"/"Web app" → signup (walang
+  anon destination; palitan kung may ibang gusto si Jeff) · footer socials =
+  Telegram lang (walang TikTok/FB page URLs) · walang Terms page (Privacy lang) ·
+  seller photo + demo video = assets ni Jeff na susunod.
