@@ -1640,7 +1640,7 @@ BEFORE the fix; the test stays as the regression guard).
    `dpl_84UrgRCD5Leax14LNTNTgJ1d6zh4` READY sa `9288613`, bundle
    `main-CCuajsHt.js` may `rd_dash_feed_hidden` ×7.
 
-### ⏸ BRANCH `claude/batch-d-silent-failures` (`649dab1`) — HINDI PA MERGED (Jeff go muna)
+### ✅ Batch D MERGED + LIVE (`649dab1` → merge `ce29317`; Vercel `dpl_GrVBByci…` verified, bundle `main-CaOVtI5M.js` may lahat ng 4 markers)
 Silent failures #6-#11: bawat nilulunok na write/read failure ay may toast/notice
 na + revert kung DB ang source of truth. 659 vitest · lint 54 parity. Per-item
 proving tests (failure-path: notice shown / revert / walang maling optimistic
@@ -1661,7 +1661,7 @@ state):
   `Shipping.exportCap.test.tsx`
 - 7 bagong `rd_*` keys ×7 (ord/sess/win/raffle/prd×2/shp_max_rows).
 
-### ⏸ BRANCH `claude/batch-e-consolidation` (`3334fa6`) — HINDI PA MERGED (Jeff go muna)
+### ✅ Batch E MERGED + LIVE (`3334fa6` → merge `2c07c4d`; Vercel `dpl_GwVBjR8F…` verified — connectivity strings + Batch D markers intact sa `main-DI_TytP0.js`)
 Consolidation #12-#16, ZERO behavior change, bawat extraction may parity test vs
 VERBATIM na lumang kopya. 701 vitest · lint 54 parity. App.tsx untouched.
 - #12 `isFreePlan` → `lib/planWindow` (useFreeCap re-export; sellerExpiry routed;
@@ -1682,8 +1682,16 @@ VERBATIM na lumang kopya. 701 vitest · lint 54 parity. App.tsx untouched.
   `serverIdentity.parity.test.ts`.
 
 ### FLAGS / natitira
-- Batch D at E ay pareho galing sa main `9288613` — pwedeng i-merge sa KAHIT ANONG
-  ORDER; ang #15 useSessionWindow unification lang ang follow-up after BOTH.
+- ✅ (2026-07-06) Batch D at E MERGED isa-isa (D muna, verify, tapos E, verify) +
+  ang #15 follow-up: `claude/session-pager-unify` (`d0bd8cb` → merge `6cb0965`,
+  Vercel `dpl_FjKcKHBH…` verified, bundle `main-STQq9kEE.js`) — ang
+  `fetchAllSessionPages` ay naka-route na rin sa shared `lib/fetchAllPages`;
+  720/720 vitest · lint 54 sa bawat merge.
+- Branch cleanup: ang 4 merged branches (batch-c-auth-cascade / batch-c2 /
+  batch-d / batch-e) ay DELETED locally; ⚠️ ang REMOTE delete ay hindi kaya mula
+  sa remote-session environment (git proxy 403 sa delete pushes, walang MCP
+  delete-branch tool) — burahin sa GitHub UI (Branches page). Dagdag na pwedeng
+  burahin doon: session-pager-unify + lahat ng lumang merged claude/* branches.
 - Hindi ginalaw (labas sa no-behavior-change rule, flagged lang): `dayStamp()`
   UTC-vs-Taipei sa CSV filenames · Shipping bare `toLocaleString` · config-load
   error sa useSessionWindow (defaults sa 1-day nang tahimik).
