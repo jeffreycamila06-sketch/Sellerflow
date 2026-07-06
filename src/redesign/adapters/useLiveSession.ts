@@ -38,6 +38,12 @@ export function sessionSummary(s: RebuiltSession): SessionSummary {
 export interface UseLiveSession {
   session: RebuiltSession;
   state: SessionState;
+  // Batch D (#8): true when the last load FAILED (network/db error) — previously a
+  // failed load was silently indistinguishable from "not wired" (state "idle"),
+  // so a seller's second device could look empty with zero explanation. The state
+  // machine itself is UNCHANGED (error still lands on "idle"); this is a purely
+  // additive flag the app surfaces as a toast. Cleared when a load starts.
+  loadError: boolean;
   dayId: string;
   getBuyers: () => Buyer[];
   applyOrder: (nextBuyers: Buyer[], order: LiveOrder) => void;
@@ -53,6 +59,7 @@ export interface LiveSessionWindowOpts { ready: boolean; windowDays: number; win
 export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): UseLiveSession {
   const [session, setSession] = useState<RebuiltSession>(EMPTY);
   const [state, setState] = useState<SessionState>("idle");
+  const [loadError, setLoadError] = useState(false); // Batch D #8 — see UseLiveSession
   // Keep the latest session readable inside the effect WITHOUT making it a dep —
   // this is the hydrate-on-empty guard (read current, don't re-run on change).
   const sessionRef = useRef(session);
@@ -72,6 +79,7 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
     if (sessionRef.current.orders.length) return;   // hydrate-on-empty guard (unchanged)
     let active = true;
     setState("loading");
+    setLoadError(false); // a new attempt clears the previous failure flag
     // N=1 / day1 / expired / fresh → single-day; active multi-day (day ≥2) →
     // window range. BOTH go through the paged adapter loader (S1: complete rows
     // past the 1,000-row cap → buyer# stays correct for heavy sellers). Same
@@ -81,11 +89,17 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
     loader
       .then((rows) => {
         if (!active) return;
+        // Batch D (#8): null = the READ FAILED (network/db error). Display keeps
+        // the pre-fix behavior (an errored load looked "empty") so no screen
+        // changes mode — but loadError now tells the app to warn the seller,
+        // because "empty" on a broken connection is the duplicate-buyer# trap
+        // (a second device would happily resell from #1).
+        if (rows === null) { setState("empty"); setLoadError(true); return; }
         const rebuilt = rebuildSessionFromRows(rows); // UNCHANGED — handles multi-day rows
         if (rebuilt.orders.length) { setSession(rebuilt); setState("live"); }
         else setState("empty");
       })
-      .catch(() => { if (active) setState("idle"); });
+      .catch(() => { if (active) { setState("idle"); setLoadError(true); } });
     return () => { active = false; };
   }, [enabled, dayId, winReady, winDays, winStart, reloadKey]);
 
@@ -118,5 +132,5 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
     if (shouldResetOnDayChange(prev, dayId, winStart, winDays)) reset();
   }, [dayId, winStart, winDays, reset]);
 
-  return { session, state, dayId, getBuyers, applyOrder, reset };
+  return { session, state, loadError, dayId, getBuyers, applyOrder, reset };
 }

@@ -3,7 +3,7 @@
 // TikTok/Facebook account pickers with connect flow. Each comment row carries
 // the 1-Click / Enterprise order flow (printed / Enterprise price-entry), all
 // visual-only — real account switching / order creation is Phase 5.
-import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { avColor, initials, type Comment } from "../data";
 import { sessionSummary, type SessionState } from "../adapters/useLiveSession";
 import { useRaffleConfig } from "../adapters/useRaffleConfig";
@@ -115,6 +115,18 @@ export default function Dashboard({
   const raffleEntries = raffle.enabled && Number.isFinite(enabledAtMs)
     ? computeRaffleEntries(session.orders, enabledAtMs)
     : [];
+  // Batch D (#10): transient notice when a raffle-toggle DB write failed (the
+  // hook reverts the pill; this explains WHY it flipped back). Shown in the
+  // center header slot for ~3s, same footprint as the collecting indicator.
+  const [raffleErrShown, setRaffleErrShown] = useState(false);
+  const prevToggleErrs = useRef(0);
+  useEffect(() => {
+    if (raffle.toggleErrors <= prevToggleErrs.current) return;
+    prevToggleErrs.current = raffle.toggleErrors;
+    setRaffleErrShown(true);
+    const id = setTimeout(() => setRaffleErrShown(false), 3200);
+    return () => clearTimeout(id);
+  }, [raffle.toggleErrors]);
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column" }}>
       <div style={headerBar}>
@@ -248,7 +260,10 @@ export default function Dashboard({
           {/* center: tiny collecting indicator (ON only) — shrinks/ellipsizes; the
               text hides <360px via .sfl-raffle-collect-txt (dot stays). */}
           <div style={{ flex: 1, minWidth: 0, display: "flex", justifyContent: "center" }}>
-            {raffle.enabled && (
+            {raffleErrShown && (
+              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 10, fontWeight: 700, color: "var(--danger)" }}>⚠ {t.rd_raffle_save_failed}</span>
+            )}
+            {!raffleErrShown && raffle.enabled && (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 5, minWidth: 0, fontSize: 10, fontWeight: 700, color: "var(--text-muted)" }}>
                 <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--ok)", animation: "sflDot 1.4s infinite", flexShrink: 0 }} />
                 <span className="sfl-raffle-collect-txt" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>

@@ -100,21 +100,29 @@ export async function loadProductsDb(): Promise<Product[] | null> {
 }
 
 // Write-through for a single add/edit. Upsert keyed (user_id, local_id).
-export async function saveProductDb(p: Product): Promise<void> {
-  if (!isSupabaseConfigured || !supabase) return;
+// Batch D (#11): returns false on a DB error so the screen can say the cloud
+// copy didn't sync (before, the result was thrown away — the seller believed
+// the product was cross-device when it existed on this phone only). Sample/
+// unauthed mode returns true — nothing to sync is not a failure.
+export async function saveProductDb(p: Product): Promise<boolean> {
+  if (!isSupabaseConfigured || !supabase) return true;
   const id = await uid();
-  if (!id) return;
+  if (!id) return true;
   const { error } = await supabase.from("products").upsert(productToRow(p, id), { onConflict: "user_id,local_id" });
   if (error) console.error("Save product error:", error.message);
+  return !error;
 }
 
-// Write-through for a delete.
-export async function deleteProductDb(localId: number): Promise<void> {
-  if (!isSupabaseConfigured || !supabase) return;
+// Write-through for a delete. Same Batch D (#11) contract as saveProductDb —
+// false = the DB row survived (it would RESURRECT on the next load, since the
+// cross-device reconcile is DB-wins), so the screen must undo the local delete.
+export async function deleteProductDb(localId: number): Promise<boolean> {
+  if (!isSupabaseConfigured || !supabase) return true;
   const id = await uid();
-  if (!id) return;
+  if (!id) return true;
   const { error } = await supabase.from("products").delete().eq("user_id", id).eq("local_id", localId);
   if (error) console.error("Delete product error:", error.message);
+  return !error;
 }
 
 // Bulk upload of the local list (one-time migration). Marks the device migrated on

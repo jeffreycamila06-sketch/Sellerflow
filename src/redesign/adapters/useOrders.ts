@@ -63,6 +63,7 @@ export interface UseOrdersDeps {
   isCapped?: () => boolean;                                // soft block before creating
   onCapBlocked?: () => void;                               // show hard popup when blocked
   onCapReached?: (err: unknown) => void;                   // DB trigger rejected (over cap)
+  onWriteError?: (err: unknown) => void;                   // Batch D (#7): non-cap background write failed — surface it
   afterWrite?: () => void;                                 // resync usage counter (free users)
   onPrint?: (singleOrderBuyer: Buyer) => void;             // 5g — print the slip (App.tsx:4341)
   onEnsureWindow?: () => void;                             // multi-day — open window if needed (once/window; N=1 no-op)
@@ -79,7 +80,7 @@ export interface UseOrders {
   createOrder: (c: ProdComment, price: number, opts?: CreateOrderOpts) => LiveOrder | null;
 }
 
-export function useOrders({ getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, afterWrite, onPrint, onEnsureWindow }: UseOrdersDeps): UseOrders {
+export function useOrders({ getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, onWriteError, afterWrite, onPrint, onEnsureWindow }: UseOrdersDeps): UseOrders {
   const createOrder = useCallback((c: ProdComment, price: number, opts?: CreateOrderOpts): LiveOrder | null => {
     // 0) Free-tier HARD STOP soft block (App.tsx:4330). The DB trigger is still
     //    authoritative; this is the friendly block before we try.
@@ -103,9 +104,12 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, isCapped, onCapB
       saveCustomerToDatabase(customerDbPayload(c, order)),
     ]).catch((err) => {
       // If a race got past the soft block, the DB cap trigger rejects the insert —
-      // surface the hard-stop popup (5f). Other errors: log only.
+      // surface the hard-stop popup (5f). Other errors (Batch D #7): tell the
+      // seller the cloud save failed — the local order is KEPT (matches production
+      // fire-and-forget semantics; no revert — the order is real, only its cloud
+      // copy is missing, and the toast tells them to check the connection).
       if (isCapError(err)) onCapReached?.(err);
-      else console.warn("Background database save failed", err);
+      else { console.warn("Background database save failed", err); onWriteError?.(err); }
     });
     // 4b) Auto Mode linkage (gated): for a code-driven order, atomically decrement the
     //     product stock + stamp last_ordered_at via the RPC. Fire-and-forget, like the
@@ -114,7 +118,7 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, isCapped, onCapB
     // 5) resync the usage counter (App.tsx:4384 — free users).
     afterWrite?.();
     return order;
-  }, [getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, afterWrite, onPrint, onEnsureWindow]);
+  }, [getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, onWriteError, afterWrite, onPrint, onEnsureWindow]);
 
   return { createOrder };
 }

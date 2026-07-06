@@ -100,9 +100,11 @@ export function shouldResetOnDayChange(oldDay: string, newDay: string, windowSta
 // parcel-sorting backbone). Now we loop .range() pages until a short page.
 // • Ordering: created_at ASC + id ASC tiebreaker — a deterministic total order,
 //   required for stable page boundaries (created_at alone can tie).
-// • ANY page error → return [] (same contract as the old single-query error
-//   path): the hydrate-on-empty guard then leaves the local session alone.
-//   Returning a PARTIAL set would silently recreate the duplicate-buyer# bug.
+// • ANY page error → return null (Batch D #8: was [], which made a FAILED load
+//   indistinguishable from a genuinely empty day — a second device could show
+//   "fresh session" on a network blip and resell from buyer #1). null = "load
+//   failed, show nothing AND say so"; [] = "really no rows". NEVER partial —
+//   a partial set would silently recreate the duplicate-buyer# bug.
 export const SESSION_PAGE_SIZE = 1000;
 
 // One page of the window read. Split out so the pager below is a pure loop.
@@ -122,20 +124,23 @@ async function loadSessionPage(userId: string, start: string, end: string, page:
 }
 
 // Pure pager over an injected page fetcher — unit-tested with a >1,000-row
-// scenario. Accumulates pages until a short page; null (page error) → [].
+// scenario. Accumulates pages until a short page; null (page error) → null
+// (load FAILED — Batch D #8; never partial).
 export async function fetchAllSessionPages(
   fetchPage: (page: number) => Promise<LiveSessionRow[] | null>,
-): Promise<LiveSessionRow[]> {
+): Promise<LiveSessionRow[] | null> {
   const all: LiveSessionRow[] = [];
   for (let page = 0; ; page++) {
     const rows = await fetchPage(page);
-    if (rows === null) return []; // error on any page → empty (never partial)
+    if (rows === null) return null; // error on any page → FAILED (never partial)
     all.push(...rows);
     if (rows.length < SESSION_PAGE_SIZE) return all;
   }
 }
 
-export async function loadLiveSessionWindow(start: string, end: string): Promise<LiveSessionRow[]> {
+// Returns null when the READ FAILED (so the caller can tell the seller), [] when
+// there are genuinely no rows. Unauthed/unconfigured → [] (not an error).
+export async function loadLiveSessionWindow(start: string, end: string): Promise<LiveSessionRow[] | null> {
   if (!isSupabaseConfigured || !supabase) return [];
   const { data: { session } } = await supabase.auth.getSession();
   const id = session?.user?.id;
@@ -148,7 +153,7 @@ export async function loadLiveSessionWindow(start: string, end: string): Promise
 // select hits the same 1,000-row cap on a >1,000-order day. Identical columns,
 // filter shape, RLS scope, and ascending order — db.ts itself stays UNTOUCHED
 // (the rollback App.tsx keeps using it).
-export async function loadLiveSessionDay(day: string): Promise<LiveSessionRow[]> {
+export async function loadLiveSessionDay(day: string): Promise<LiveSessionRow[] | null> {
   return loadLiveSessionWindow(day, day);
 }
 
@@ -203,12 +208,19 @@ export interface UseSessionWindow {
   setWindowDays: (n: WindowDays) => Promise<void>; // decision 3: opens a FRESH window from today
   ensureWindowOpen: () => Promise<string>;          // open a window today if none active; returns active start
   reload: () => Promise<void>;
+  // Batch D (#9): bumps every time a config WRITE fails (setWindowDays /
+  // ensureWindowOpen upsert error). Before, the upsert result was ignored — the
+  // pill showed "3 days" while the DB (and every other device) still had 1 day.
+  // The optimistic state is REVERTED on failure; the app watches this counter
+  // and toasts. A counter (not a flag) so repeated failures re-notify.
+  persistErrors: number;
 }
 
 export function useSessionWindow(enabled: boolean): UseSessionWindow {
   const [windowDays, setDays] = useState<WindowDays>(1);
   const [windowStart, setStart] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [persistErrors, setPersistErrors] = useState(0); // Batch D #9 — see UseSessionWindow
   const dayId = useTaipeiDayId(); // advances live on focus/visibility + Taipei midnight (was pinned)
   // Synchronous mirrors so ensureWindowOpen sees the just-opened window even on
   // rapid back-to-back orders (before React re-renders) → guarantees ONE write
@@ -241,34 +253,53 @@ export function useSessionWindow(enabled: boolean): UseSessionWindow {
 
   useEffect(() => { void load(); }, [load]); // READ-ON-LOAD ONLY — no interval/poll
 
-  const persist = useCallback(async (n: WindowDays, start: string | null) => {
-    if (!isSupabaseConfigured || !supabase) return;
+  // Batch D (#9): the upsert result is now CHECKED — true = written, false =
+  // failed (the callers revert their optimistic state and bump persistErrors).
+  // Unauthed/unconfigured (sample mode) stays "true": nothing to persist ≠ error.
+  const persist = useCallback(async (n: WindowDays, start: string | null): Promise<boolean> => {
+    if (!isSupabaseConfigured || !supabase) return true;
     const id = await uid();
-    if (!id) return;
-    await supabase.from("seller_session_config").upsert({ user_id: id, window_days: n, window_start: start, updated_at: new Date().toISOString() });
+    if (!id) return true;
+    const { error } = await supabase.from("seller_session_config").upsert({ user_id: id, window_days: n, window_start: start, updated_at: new Date().toISOString() });
+    if (error) console.error("Session window save error:", error.message);
+    return !error;
   }, [uid]);
 
   // Changing N opens a FRESH window from today (decision 3) → resets to #1.
+  // On a failed write the optimistic pill/refs REVERT to the previous values —
+  // otherwise this device would run a 3-day window the DB (and the seller's
+  // other devices) never heard about.
   const setWindowDays = useCallback(async (n: WindowDays) => {
+    const prevDays = windowDaysRef.current, prevStart = windowStartRef.current;
     windowDaysRef.current = n; windowStartRef.current = dayId; // sync mirrors
     setDays(n); setStart(dayId); // optimistic
-    await persist(n, dayId);
+    if (!(await persist(n, dayId))) {
+      windowDaysRef.current = prevDays; windowStartRef.current = prevStart;
+      setDays(prevDays); setStart(prevStart);
+      setPersistErrors((c) => c + 1);
+    }
   }, [dayId, persist]);
 
   // Called on every order; WRITES window_start only when actually opening a new
   // window (shouldOpenWindow). N=1 → no-op (no config write). Idempotent (always
   // today) → two devices opening at once converge; refs prevent rapid-order dupes.
+  // On a failed write the ref/state REVERT so the NEXT order retries the open
+  // (idempotent — always today) instead of silently believing the window exists.
   const ensureWindowOpen = useCallback(async (): Promise<string> => {
     if (!shouldOpenWindow(dayId, windowStartRef.current, windowDaysRef.current)) {
       const st = computeWindowState(dayId, windowStartRef.current, windowDaysRef.current);
       return st.loadStart || dayId; // already open (or N=1) — NO write
     }
+    const prevStart = windowStartRef.current;
     windowStartRef.current = dayId; // sync FIRST so a rapid 2nd order sees it open → no 2nd write
     setStart(dayId);                // optimistic for render
-    await persist(windowDaysRef.current, dayId);
+    if (!(await persist(windowDaysRef.current, dayId))) {
+      windowStartRef.current = prevStart; setStart(prevStart); // next order retries
+      setPersistErrors((c) => c + 1);
+    }
     return dayId;
   }, [dayId, persist]);
 
   const state = computeWindowState(dayId, windowStart, windowDays);
-  return { windowDays, windowStart, state, loaded, setWindowDays, ensureWindowOpen, reload: load };
+  return { windowDays, windowStart, state, loaded, setWindowDays, ensureWindowOpen, reload: load, persistErrors };
 }

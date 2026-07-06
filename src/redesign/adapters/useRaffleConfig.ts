@@ -15,12 +15,19 @@ export interface UseRaffleConfig {
   enabledAt: string | null; // ISO timestamp when collecting started (null = off)
   loading: boolean;         // initial row read in flight
   toggle: (on: boolean) => Promise<void>;
+  // Batch D (#10): bumps when a toggle's DB write fails. Before, the upsert
+  // result was ignored — the pill showed "collecting" while raffle_config never
+  // flipped, so an app close/reopen (or the seller's other device) lost the
+  // raffle. On failure the optimistic pill REVERTS; the UI watches this counter
+  // to show a notice. Sample mode (no supabase/uid) is NOT an error.
+  toggleErrors: number;
 }
 
 export function useRaffleConfig(): UseRaffleConfig {
   const [enabled, setEnabled] = useState(false); // default OFF (no row = off)
   const [enabledAt, setEnabledAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [toggleErrors, setToggleErrors] = useState(0); // Batch D #10 — see UseRaffleConfig
 
   // getSession() is LOCAL (no network) — same uid pattern as useSessionWindow.
   const uid = useCallback(async (): Promise<string | null> => {
@@ -52,14 +59,20 @@ export function useRaffleConfig(): UseRaffleConfig {
 
   const toggle = useCallback(async (on: boolean) => {
     const at = on ? new Date().toISOString() : null;
+    const prevOn = enabled, prevAt = enabledAt; // for the failure revert (Batch D #10)
     setEnabled(on); setEnabledAt(at); // optimistic; local-only in sample mode
     if (!isSupabaseConfigured || !supabase) return;
     const id = await uid();
     if (!id) return;
-    await supabase
+    const { error } = await supabase
       .from("raffle_config")
       .upsert({ user_id: id, enabled: on, enabled_at: at, updated_at: new Date().toISOString() });
-  }, [uid]);
+    if (error) {
+      console.error("Raffle toggle save error:", error.message);
+      setEnabled(prevOn); setEnabledAt(prevAt); // revert — the DB is the raffle's source of truth
+      setToggleErrors((c) => c + 1);
+    }
+  }, [uid, enabled, enabledAt]);
 
-  return { enabled, enabledAt, loading, toggle };
+  return { enabled, enabledAt, loading, toggle, toggleErrors };
 }
