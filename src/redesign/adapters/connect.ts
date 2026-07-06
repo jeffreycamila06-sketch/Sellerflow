@@ -92,7 +92,10 @@ export function appendAccount(u: AccountUser, platform: Platform, account: strin
   return { ...u, profile: { ...u.profile, [field]: accountText([...existing, account]) }, connectedAccounts: connected };
 }
 
-export interface ConnectResult { ok: boolean; error?: string; account: string; notLive?: boolean }
+// unreachable = the fetch itself threw (client network failure, no server reason) —
+// the app shows a localized "can't reach the live server" toast for this case
+// (F-batch i18n; the English error string stays as the analytics/log reason).
+export interface ConnectResult { ok: boolean; error?: string; account: string; notLive?: boolean; unreachable?: boolean }
 
 // connectPlatform — verbatim POST from App.tsx:4269-4296 (without the posthog/toast
 // side-effects). Returns the cleaned active account on success.
@@ -122,6 +125,6 @@ export async function connectPlatform(platform: Platform, data: Record<string, s
     if (!j.success) return { ok: false, error: j.error || r.statusText || `HTTP ${r.status}`, account };
     return { ok: true, account };
   } catch {
-    return { ok: false, error: "Can't reach the live server. Check your connection.", account };
+    return { ok: false, error: "Can't reach the live server. Check your connection.", account, unreachable: true };
   }
 }

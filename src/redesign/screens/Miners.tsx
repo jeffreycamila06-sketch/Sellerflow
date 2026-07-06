@@ -1,9 +1,10 @@
 // Screen 4 — Miners (analytics). dc.html L363–419.
-// Phase 5j: top buyers + totals are DERIVED from the already-loaded real customers
-// (no dedicated aggregation backend) when `live`; sample fallback otherwise. Real
-// CSV export of the derived data.
+// Real data ONLY (miners_stats RPC via useMinerStats since 2026-07-05; the app
+// always passes live data or clean zeros). F-batch sweep: the old sample-mode
+// fallback (`live` prop + fake 1,284/3,947/1.28M/64% literals + MINERS demo
+// default) was UNREACHABLE — RedesignApp always rendered with live — removed.
 import type { CSSProperties } from "react";
-import { MINERS, avColor, initials, fmt, type Miner } from "../data";
+import { avColor, initials, fmt, type Miner } from "../data";
 import { useT } from "../i18n";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px" };
@@ -14,7 +15,7 @@ const mono = "var(--font-mono)";
 
 export interface MinerStats { buyers: number; orders: number; spent: number; avg: number; tiktokPct: number; fbPct: number }
 
-export default function Miners({ cur, miners = MINERS, stats, live = false, onExport }: { cur: string; miners?: Miner[]; stats?: MinerStats; live?: boolean; onExport?: () => void }) {
+export default function Miners({ cur, miners = [], stats, onExport }: { cur: string; miners?: Miner[]; stats?: MinerStats; onExport?: () => void }) {
   const t = useT();
   return (
     <div>
@@ -35,28 +36,26 @@ export default function Miners({ cur, miners = MINERS, stats, live = false, onEx
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
           <div style={statCard}>
             <div style={statLbl}>{t.rd_min_total_buyers}</div>
-            <div style={bigNum}>{live && stats ? fmt(stats.buyers) : "1,284"}</div>
-            {!live && <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ok)", marginTop: 3 }}>{t.rd_min_up12}</div>}
+            <div style={bigNum}>{fmt(stats?.buyers ?? 0)}</div>
           </div>
           <div style={statCard}>
             <div style={statLbl}>{t.rd_min_total_orders}</div>
-            <div style={bigNum}>{live && stats ? fmt(stats.orders) : "3,947"}</div>
-            {!live && <div style={{ fontSize: 11, fontWeight: 700, color: "var(--ok)", marginTop: 3 }}>{t.rd_min_up8}</div>}
+            <div style={bigNum}>{fmt(stats?.orders ?? 0)}</div>
           </div>
           <div style={statCard}>
             <div style={statLbl}>{t.rd_min_total_spent}</div>
-            <div style={{ ...bigNum, fontSize: 22 }}>{cur}{live && stats ? fmt(stats.spent) : "1.28M"}</div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", marginTop: 3 }}>{cur}{live && stats ? fmt(stats.avg) : "325"} {t.rd_min_avg_order}</div>
+            <div style={{ ...bigNum, fontSize: 22 }}>{cur}{fmt(stats?.spent ?? 0)}</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", marginTop: 3 }}>{cur}{fmt(stats?.avg ?? 0)} {t.rd_min_avg_order}</div>
           </div>
           <div style={statCard}>
             <div style={statLbl}>{t.rd_min_platforms}</div>
             <div style={{ display: "flex", gap: 7, marginTop: 9 }}>
               <div style={{ flex: 1, textAlign: "center", background: "var(--surface-2)", borderRadius: 9, padding: "7px 0" }}>
-                <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{live && stats ? stats.tiktokPct : 64}%</div>
+                <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{stats?.tiktokPct ?? 0}%</div>
                 <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600 }}>TikTok</div>
               </div>
               <div style={{ flex: 1, textAlign: "center", background: "var(--surface-2)", borderRadius: 9, padding: "7px 0" }}>
-                <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{live && stats ? stats.fbPct : 36}%</div>
+                <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 15, color: "var(--text)" }}>{stats?.fbPct ?? 0}%</div>
                 <div style={{ fontSize: 10, color: "var(--text-muted)", fontWeight: 600 }}>Facebook</div>
               </div>
             </div>
@@ -64,7 +63,7 @@ export default function Miners({ cur, miners = MINERS, stats, live = false, onEx
         </div>
 
         <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14.5, color: "var(--text)", margin: "4px 2px 10px" }}>{t.rd_min_top_buyers}</div>
-        {live && miners.length === 0 && <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "16px 0" }}>{t.rd_min_empty}</div>}
+        {miners.length === 0 && <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "16px 0" }}>{t.rd_min_empty}</div>}
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 15, boxShadow: "var(--shadow)", overflow: "hidden", display: miners.length ? "block" : "none" }}>
           {miners.map((m, i) => (
             <div key={m.handle} style={{ display: "flex", alignItems: "center", gap: 11, padding: "12px 14px", borderBottom: "1px solid var(--border)" }}>

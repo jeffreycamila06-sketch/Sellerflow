@@ -9,10 +9,7 @@ import type { AccountUser } from "../../../accountDb";
 import type { AutoControls } from "../../data";
 import { PRODUCT_DEFAULTS } from "../../adapters/products";
 
-const auto: AutoControls = {
-  detect: true, setupOpen: true, action: "slip", words: [], input: "",
-  toggle: () => {}, toggleSetup: () => {}, setAction: () => {}, removeWord: () => {}, setInput: () => {}, addWord: () => {},
-};
+const auto: AutoControls = { detect: true, setupOpen: true, toggle: () => {}, toggleSetup: () => {} }; // F-batch: trimmed shape
 const account: AccountUser = {
   authUserId: "u1", email: "googletest@sellerflowlive.com",
   profile: { fullName: "Test Owner", storeName: "Test Shop", phone: "0900", tiktok: "", facebook: "", adminContactNote: "" },

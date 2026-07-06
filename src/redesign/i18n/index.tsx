@@ -199,7 +199,6 @@ const RAW: Record<string, Row> = {
   rd_raffle_exclude: { en: "Exclude & spin again", fil: "I-exclude at ikutin ulit", zh: "排除后再转", "zh-TW": "排除後再轉", vi: "Loại ra & quay lại", th: "ตัดออกแล้วหมุนอีก", id: "Keluarkan & putar lagi" },
   rd_raffle_reset: { en: "Reset", fil: "I-reset", zh: "重置", "zh-TW": "重置", vi: "Đặt lại", th: "รีเซ็ต", id: "Reset" },
   rd_raffle_participants: { en: "Participants", fil: "Mga Kasali", zh: "参与者", "zh-TW": "參與者", vi: "Người tham gia", th: "ผู้เข้าร่วม", id: "Peserta" },
-  rd_raffle_open: { en: "Open", fil: "Buksan", zh: "打开", "zh-TW": "打開", vi: "Mở", th: "เปิด", id: "Buka" },
   rd_raffle_print: { en: "Print winner", fil: "I-print ang winner", zh: "打印中奖者", "zh-TW": "列印中獎者", vi: "In người thắng", th: "พิมพ์ผู้ชนะ", id: "Cetak pemenang" },
   // 7-11 交貨便 shipping (P1). 常溫/冷凍 + template column names stay literal
   // (賣貨便 enum/format identifiers — never translate). Old rd_ship_* keys are
@@ -237,13 +236,22 @@ const RAW: Record<string, Row> = {
   rd_shp_save: { en: "Save shipping info", fil: "I-save ang shipping info", zh: "保存寄件信息", "zh-TW": "儲存寄件資訊", vi: "Lưu thông tin gửi", th: "บันทึกข้อมูลจัดส่ง", id: "Simpan info kirim" },
   rd_shp_cancel: { en: "Cancel", fil: "Kanselahin", zh: "取消", "zh-TW": "取消", vi: "Hủy", th: "ยกเลิก", id: "Batal" },
   rd_shp_save_failed: { en: "Save failed: {err}", fil: "Hindi na-save: {err}", zh: "保存失败：{err}", "zh-TW": "儲存失敗：{err}", vi: "Lưu thất bại: {err}", th: "บันทึกไม่สำเร็จ: {err}", id: "Gagal menyimpan: {err}" },
-  rd_shp_export_soon: { en: "Encoded entries are saved — the 賣貨便 .xlsm export arrives in the next update.", fil: "Naka-save na ang mga na-encode — ang 賣貨便 .xlsm export ay darating sa susunod na update.", zh: "已填写的资料已保存——賣貨便 .xlsm 导出将在下次更新推出。", "zh-TW": "已填寫的資料已儲存——賣貨便 .xlsm 匯出將在下次更新推出。", vi: "Dữ liệu đã lưu — xuất file 賣貨便 .xlsm sẽ có trong bản cập nhật tới.", th: "บันทึกข้อมูลแล้ว — การส่งออก 賣貨便 .xlsm จะมาในอัปเดตถัดไป", id: "Data tersimpan — ekspor 賣貨便 .xlsm hadir di pembaruan berikutnya." },
   rd_shp_ready: { en: "Ready to export", fil: "Handa nang i-export", zh: "准备导出", "zh-TW": "準備匯出", vi: "Sẵn sàng xuất", th: "พร้อมส่งออก", id: "Siap diekspor" },
   rd_shp_export: { en: "Export .xlsm ({n})", fil: "I-export ang .xlsm ({n})", zh: "导出 .xlsm（{n}）", "zh-TW": "匯出 .xlsm（{n}）", vi: "Xuất .xlsm ({n})", th: "ส่งออก .xlsm ({n})", id: "Ekspor .xlsm ({n})" },
   rd_shp_meter: { en: "{used}/{quota} this cycle", fil: "{used}/{quota} ngayong cycle", zh: "本周期 {used}/{quota}", "zh-TW": "本週期 {used}/{quota}", vi: "{used}/{quota} chu kỳ này", th: "{used}/{quota} รอบนี้", id: "{used}/{quota} siklus ini" },
   rd_shp_meter_unl: { en: "{used} this cycle · unlimited", fil: "{used} ngayong cycle · unlimited", zh: "本周期 {used} · 无上限", "zh-TW": "本週期 {used} · 無上限", vi: "{used} chu kỳ này · không giới hạn", th: "{used} รอบนี้ · ไม่จำกัด", id: "{used} siklus ini · tanpa batas" },
   rd_shp_quota_block: { en: "Export limit reached: {used}/{quota} in the last 30 days — {n} selected won't fit. Upgrade for a higher limit.", fil: "Naabot na ang export limit: {used}/{quota} sa nakaraang 30 araw — hindi kasya ang {n} na napili. Mag-upgrade para sa mas mataas na limit.", zh: "已达导出上限：过去30天 {used}/{quota}——所选 {n} 笔超出额度。升级可提高上限。", "zh-TW": "已達匯出上限：過去30天 {used}/{quota}——所選 {n} 筆超出額度。升級可提高上限。", vi: "Đã đạt giới hạn xuất: {used}/{quota} trong 30 ngày — {n} mục đã chọn vượt hạn mức. Nâng cấp để tăng giới hạn.", th: "ถึงขีดจำกัดการส่งออก: {used}/{quota} ใน 30 วัน — ที่เลือก {n} รายการเกินโควตา อัปเกรดเพื่อเพิ่มขีดจำกัด", id: "Batas ekspor tercapai: {used}/{quota} dalam 30 hari — {n} terpilih melebihi kuota. Upgrade untuk batas lebih tinggi." },
   rd_shp_upgrade: { en: "Upgrade plan", fil: "Mag-upgrade ng plan", zh: "升级方案", "zh-TW": "升級方案", vi: "Nâng cấp gói", th: "อัปเกรดแพ็กเกจ", id: "Upgrade paket" },
+  // ── F-batch (2026-07-06) — nav labels + last hardcoded UI strings ──
+  // ("Miners" stays literal in the nav — documented brand/feature name.)
+  rd_nav_live: { en: "Live", fil: "Live", zh: "直播", "zh-TW": "直播", vi: "Live", th: "ไลฟ์", id: "Live" },
+  rd_nav_orders: { en: "Orders", fil: "Orders", zh: "订单", "zh-TW": "訂單", vi: "Đơn hàng", th: "คำสั่งซื้อ", id: "Pesanan" },
+  rd_nav_products: { en: "Products", fil: "Produkto", zh: "商品", "zh-TW": "商品", vi: "Sản phẩm", th: "สินค้า", id: "Produk" },
+  rd_nav_settings: { en: "Settings", fil: "Settings", zh: "设置", "zh-TW": "設定", vi: "Cài đặt", th: "ตั้งค่า", id: "Pengaturan" },
+  rd_nav_admin: { en: "Admin", fil: "Admin", zh: "管理", "zh-TW": "管理", vi: "Quản trị", th: "ผู้ดูแล", id: "Admin" },
+  rd_cm_cant_reach: { en: "Can't reach the live server. Check your connection.", fil: "Hindi ma-reach ang live server. Suriin ang koneksyon.", zh: "无法连接直播服务器。请检查网络连接。", "zh-TW": "無法連接直播伺服器。請檢查網路連線。", vi: "Không thể kết nối máy chủ live. Hãy kiểm tra kết nối.", th: "ติดต่อเซิร์ฟเวอร์ไลฟ์ไม่ได้ โปรดตรวจสอบการเชื่อมต่อ", id: "Tidak bisa menghubungi server live. Periksa koneksi Anda." },
+  rd_print_native_failed: { en: "Native printer failed.", fil: "Nabigo ang native printer.", zh: "本机打印失败。", "zh-TW": "本機列印失敗。", vi: "In qua máy in thất bại.", th: "การพิมพ์ผ่านเครื่องพิมพ์ล้มเหลว", id: "Pencetakan printer gagal." },
+  rd_ord_st_new: { en: "New", fil: "Bago", zh: "新订单", "zh-TW": "新訂單", vi: "Mới", th: "ใหม่", id: "Baru" },
   // ── Batch D (2026-07-05) — silent-failure surfacing (#6-#11) ──
   rd_shp_max_rows: { en: "Max {max} rows per export file — {n} selected. Export in smaller batches.", fil: "Max {max} rows kada export file — {n} ang napili. I-export sa mas maliliit na batch.", zh: "每个导出文件最多 {max} 行——已选 {n} 行。请分批导出。", "zh-TW": "每個匯出檔案最多 {max} 列——已選 {n} 列。請分批匯出。", vi: "Tối đa {max} dòng mỗi tệp xuất — đã chọn {n}. Hãy xuất theo lô nhỏ hơn.", th: "สูงสุด {max} แถวต่อไฟล์ส่งออก — เลือกไว้ {n} แถว โปรดส่งออกเป็นชุดย่อย", id: "Maks {max} baris per file ekspor — {n} terpilih. Ekspor dalam batch lebih kecil." },
   rd_ord_save_failed: { en: "Order kept on this device, but the cloud save failed — check your connection.", fil: "Naitala ang order sa device na ito, pero nabigo ang cloud save — suriin ang koneksyon.", zh: "订单已保留在本设备，但云端保存失败——请检查网络连接。", "zh-TW": "訂單已保留在本裝置，但雲端儲存失敗——請檢查網路連線。", vi: "Đơn hàng được giữ trên thiết bị này, nhưng lưu lên đám mây thất bại — hãy kiểm tra kết nối.", th: "คำสั่งซื้อถูกเก็บไว้ในเครื่องนี้ แต่บันทึกขึ้นคลาวด์ไม่สำเร็จ — โปรดตรวจสอบการเชื่อมต่อ", id: "Pesanan tersimpan di perangkat ini, tapi penyimpanan cloud gagal — periksa koneksi Anda." },
@@ -293,10 +301,6 @@ const RAW: Record<string, Row> = {
   // ════ Orders ════
   rd_ord_title: { en: "Orders", fil: "Mga Order", zh: "订单", "zh-TW": "訂單", vi: "Đơn hàng", th: "ออเดอร์", id: "Pesanan" },
   rd_ord_today: { en: "Today", fil: "Ngayon", zh: "今天", "zh-TW": "今天", vi: "Hôm nay", th: "วันนี้", id: "Hari ini" },
-  rd_ord_all: { en: "All", fil: "Lahat", zh: "全部", "zh-TW": "全部", vi: "Tất cả", th: "ทั้งหมด", id: "Semua" },
-  rd_ord_unpaid: { en: "Unpaid", fil: "Hindi bayad", zh: "未付款", "zh-TW": "未付款", vi: "Chưa thanh toán", th: "ยังไม่ชำระ", id: "Belum bayar" },
-  rd_ord_paid: { en: "Paid", fil: "Bayad", zh: "已付款", "zh-TW": "已付款", vi: "Đã thanh toán", th: "ชำระแล้ว", id: "Sudah bayar" },
-  rd_ord_shipped: { en: "Shipped", fil: "Naipadala", zh: "已发货", "zh-TW": "已出貨", vi: "Đã giao", th: "จัดส่งแล้ว", id: "Dikirim" },
   rd_ord_loading: { en: "Loading today’s orders…", fil: "Nilo-load ang mga order ngayon…", zh: "正在加载今天的订单…", "zh-TW": "正在載入今天的訂單…", vi: "Đang tải đơn hàng hôm nay…", th: "กำลังโหลดออเดอร์วันนี้…", id: "Memuat pesanan hari ini…" },
   rd_ord_empty: { en: "No orders yet today.", fil: "Wala pang order ngayon.", zh: "今天还没有订单。", "zh-TW": "今天還沒有訂單。", vi: "Chưa có đơn hàng nào hôm nay.", th: "ยังไม่มีออเดอร์วันนี้", id: "Belum ada pesanan hari ini." },
   rd_ord_print_slip: { en: "Print slip", fil: "I-print ang slip", zh: "打印单据", "zh-TW": "列印單據", vi: "In phiếu", th: "พิมพ์ใบออเดอร์", id: "Cetak slip" },
@@ -347,9 +351,7 @@ const RAW: Record<string, Row> = {
   rd_min_sub: { en: 'Buyers who claimed "mine"', fil: 'Mga mamimiling nag-claim ng "mine"', zh: '认领了"mine"的买家', "zh-TW": "認領「mine」的買家", vi: 'Người mua đã nhận "mine"', th: 'ผู้ซื้อที่พิมพ์ "mine"', id: 'Pembeli yang klaim "mine"' },
   rd_min_30days: { en: "30 days ▾", fil: "30 araw ▾", zh: "30 天 ▾", "zh-TW": "30 天 ▾", vi: "30 ngày ▾", th: "30 วัน ▾", id: "30 hari ▾" },
   rd_min_total_buyers: { en: "Total buyers", fil: "Kabuuang mamimili", zh: "买家总数", "zh-TW": "買家總數", vi: "Tổng người mua", th: "ผู้ซื้อทั้งหมด", id: "Total pembeli" },
-  rd_min_up12: { en: "▲ 12% this month", fil: "▲ 12% ngayong buwan", zh: "▲ 本月 12%", "zh-TW": "▲ 本月 12%", vi: "▲ 12% tháng này", th: "▲ 12% เดือนนี้", id: "▲ 12% bulan ini" },
   rd_min_total_orders: { en: "Total orders", fil: "Kabuuang order", zh: "订单总数", "zh-TW": "訂單總數", vi: "Tổng đơn hàng", th: "ออเดอร์ทั้งหมด", id: "Total pesanan" },
-  rd_min_up8: { en: "▲ 8% this month", fil: "▲ 8% ngayong buwan", zh: "▲ 本月 8%", "zh-TW": "▲ 本月 8%", vi: "▲ 8% tháng này", th: "▲ 8% เดือนนี้", id: "▲ 8% bulan ini" },
   rd_min_total_spent: { en: "Total spent", fil: "Kabuuang nagastos", zh: "总消费", "zh-TW": "總消費", vi: "Tổng chi tiêu", th: "ยอดใช้จ่ายรวม", id: "Total belanja" },
   rd_min_avg_order: { en: "avg order", fil: "avg na order", zh: "平均订单", "zh-TW": "平均訂單", vi: "đơn trung bình", th: "เฉลี่ยต่อออเดอร์", id: "rata-rata pesanan" },
   rd_min_platforms: { en: "Platforms", fil: "Mga platform", zh: "平台", "zh-TW": "平台", vi: "Nền tảng", th: "แพลตฟอร์ม", id: "Platform" },
@@ -490,8 +492,6 @@ const RAW: Record<string, Row> = {
   rd_set_light: { en: "☀ Light", fil: "☀ Maliwanag", zh: "☀ 浅色", "zh-TW": "☀ 淺色", vi: "☀ Sáng", th: "☀ สว่าง", id: "☀ Terang" },
   rd_set_dark: { en: "☾ Dark", fil: "☾ Madilim", zh: "☾ 深色", "zh-TW": "☾ 深色", vi: "☾ Tối", th: "☾ มืด", id: "☾ Gelap" },
   rd_set_accent_color: { en: "Accent color", fil: "Accent na kulay", zh: "强调色", "zh-TW": "強調色", vi: "Màu nhấn", th: "สีเน้น", id: "Warna aksen" },
-  rd_set_readable: { en: "Readable @handles", fil: "Nababasang @handles", zh: "易读的 @用户名", "zh-TW": "易讀的 @使用者名稱", vi: "@handle dễ đọc", th: "@handle ที่อ่านง่าย", id: "@handle yang mudah dibaca" },
-  rd_set_readable_sub_pre: { en: "High-contrast usernames — ", fil: "High-contrast na username — ", zh: "高对比度用户名 — ", "zh-TW": "高對比使用者名稱 — ", vi: "Tên người dùng tương phản cao — ", th: "ชื่อผู้ใช้คอนทราสต์สูง — ", id: "Nama pengguna kontras tinggi — " },
   rd_set_language: { en: "Language", fil: "Wika", zh: "语言", "zh-TW": "語言", vi: "Ngôn ngữ", th: "ภาษา", id: "Bahasa" },
   rd_set_currency: { en: "Currency", fil: "Pera", zh: "货币", "zh-TW": "貨幣", vi: "Tiền tệ", th: "สกุลเงิน", id: "Mata uang" },
   rd_set_currency_sub: { en: "Applies to all prices", fil: "Para sa lahat ng presyo", zh: "适用于所有价格", "zh-TW": "適用於所有價格", vi: "Áp dụng cho mọi giá", th: "ใช้กับทุกราคา", id: "Berlaku untuk semua harga" },
@@ -542,11 +542,6 @@ const RAW: Record<string, Row> = {
   rd_lp_social: { en: "12,000+ sellers closing orders live every day", fil: "12,000+ sellers na nagsasara ng order nang live araw-araw", zh: "每天有超过 12,000 名卖家在直播中成交", "zh-TW": "每天超過 12,000 名賣家在直播中成交", vi: "Hơn 12.000 người bán chốt đơn live mỗi ngày", th: "ผู้ขายกว่า 12,000 รายปิดออเดอร์สดทุกวัน", id: "12.000+ penjual menutup pesanan live setiap hari" },
   rd_lp_device_phone: { en: "PHONE", fil: "TELEPONO", zh: "手机", "zh-TW": "手機", vi: "ĐIỆN THOẠI", th: "โทรศัพท์", id: "PONSEL" },
   rd_lp_device_computer: { en: "COMPUTER", fil: "KOMPYUTER", zh: "电脑", "zh-TW": "電腦", vi: "MÁY TÍNH", th: "คอมพิวเตอร์", id: "KOMPUTER" },
-  rd_lp_pc_live: { en: "LIVE · 128 watching", fil: "LIVE · 128 nanonood", zh: "直播中 · 128 人观看", "zh-TW": "直播中 · 128 人觀看", vi: "TRỰC TIẾP · 128 đang xem", th: "ไลฟ์ · 128 กำลังดู", id: "LIVE · 128 menonton" },
-  rd_lp_pc_captured: { en: "captured", fil: "nakuha", zh: "已捕捉", "zh-TW": "已擷取", vi: "đã ghi nhận", th: "บันทึกแล้ว", id: "tertangkap" },
-  rd_lp_pc_auto: { en: "AUTO-CREATED ORDER · #1042", fil: "AUTO-CREATED ORDER · #1042", zh: "自动创建订单 · #1042", "zh-TW": "自動建立訂單 · #1042", vi: "ĐƠN TẠO TỰ ĐỘNG · #1042", th: "ออเดอร์สร้างอัตโนมัติ · #1042", id: "PESANAN OTOMATIS · #1042" },
-  rd_lp_pc_print: { en: "1-click print", fil: "1-click print", zh: "一键打印", "zh-TW": "一鍵列印", vi: "In 1 chạm", th: "พิมพ์คลิกเดียว", id: "Cetak 1-klik" },
-  rd_lp_pc_paylink: { en: "Send pay link", fil: "Magpadala ng pay link", zh: "发送付款链接", "zh-TW": "傳送付款連結", vi: "Gửi link thanh toán", th: "ส่งลิงก์ชำระเงิน", id: "Kirim link bayar" },
   rd_lp_foot_bottom: { en: "© 2026 SellerFlowLive · Live selling, simplified.", fil: "© 2026 SellerFlowLive · Live selling, pinadali.", zh: "© 2026 SellerFlowLive · 让直播销售更简单。", "zh-TW": "© 2026 SellerFlowLive · 讓直播銷售更簡單。", vi: "© 2026 SellerFlowLive · Bán live, đơn giản hơn.", th: "© 2026 SellerFlowLive · ขายสดง่ายขึ้น", id: "© 2026 SellerFlowLive · Jualan live, disederhanakan." },
   rd_lp_foot_langs: { en: "Available in 7 languages · Wise + Telegram billing", fil: "Available sa 7 wika · Wise + Telegram billing", zh: "支持 7 种语言 · Wise + Telegram 付款", "zh-TW": "支援 7 種語言 · Wise + Telegram 付款", vi: "Hỗ trợ 7 ngôn ngữ · Thanh toán Wise + Telegram", th: "รองรับ 7 ภาษา · ชำระผ่าน Wise + Telegram", id: "Tersedia dalam 7 bahasa · Pembayaran Wise + Telegram" },
 
@@ -685,51 +680,17 @@ const RAW: Record<string, Row> = {
   rd_pr_print_btn: { en: "🖨 Print", fil: "🖨 I-print", zh: "🖨 打印", "zh-TW": "🖨 列印", vi: "🖨 In", th: "🖨 พิมพ์", id: "🖨 Cetak" },
 
   // ════ Shipping ════
-  rd_ship_export: { en: "⬇ Export 7-11", fil: "⬇ I-export 7-11", zh: "⬇ 导出 7-11", "zh-TW": "⬇ 匯出 7-11", vi: "⬇ Xuất 7-11", th: "⬇ ส่งออก 7-11", id: "⬇ Ekspor 7-11" },
   rd_ship_sub: { en: "Today's shipments · 7-ELEVEN MyShip export", fil: "Mga shipment ngayon · 7-ELEVEN MyShip export", zh: "今天的发货 · 7-ELEVEN MyShip 导出", "zh-TW": "今天的出貨 · 7-ELEVEN MyShip 匯出", vi: "Lô hàng hôm nay · Xuất 7-ELEVEN MyShip", th: "การจัดส่งวันนี้ · ส่งออก 7-ELEVEN MyShip", id: "Pengiriman hari ini · Ekspor 7-ELEVEN MyShip" },
-  rd_ship_open: { en: "Open", fil: "Bukas", zh: "未结", "zh-TW": "未結", vi: "Đang mở", th: "เปิดอยู่", id: "Terbuka" },
-  rd_ship_next: { en: "Next #", fil: "Susunod #", zh: "下一个 #", "zh-TW": "下一個 #", vi: "Tiếp #", th: "ถัดไป #", id: "Berikutnya #" },
-  rd_ship_remaining: { en: "Remaining", fil: "Natitira", zh: "剩余", "zh-TW": "剩餘", vi: "Còn lại", th: "คงเหลือ", id: "Sisa" },
-  rd_ship_no_customers: { en: "No registered customers yet. Customers with a name, phone and 6-digit 7-ELEVEN store code appear here for shipping.", fil: "Wala pang nakarehistrong customer. Lumalabas dito para sa shipping ang mga customer na may pangalan, telepono at 6-digit na 7-ELEVEN store code.", zh: "还没有已注册的客户。拥有姓名、电话和 6 位 7-ELEVEN 门店代码的客户会显示在此处以供发货。", "zh-TW": "還沒有已註冊的客戶。擁有姓名、電話與 6 位 7-ELEVEN 門市代碼的客戶會顯示在此處以供出貨。", vi: "Chưa có khách hàng đăng ký. Khách hàng có tên, số điện thoại và mã cửa hàng 7-ELEVEN 6 chữ số sẽ xuất hiện ở đây để giao hàng.", th: "ยังไม่มีลูกค้าที่ลงทะเบียน ลูกค้าที่มีชื่อ เบอร์โทร และรหัสร้าน 7-ELEVEN 6 หลักจะแสดงที่นี่เพื่อจัดส่ง", id: "Belum ada pelanggan terdaftar. Pelanggan dengan nama, telepon, dan kode toko 7-ELEVEN 6 digit muncul di sini untuk pengiriman." },
-  rd_ship_customer: { en: "Customer", fil: "Customer", zh: "客户", "zh-TW": "客戶", vi: "Khách hàng", th: "ลูกค้า", id: "Pelanggan" },
-  rd_ship_select_customer: { en: "Select customer…", fil: "Pumili ng customer…", zh: "选择客户…", "zh-TW": "選擇客戶…", vi: "Chọn khách hàng…", th: "เลือกลูกค้า…", id: "Pilih pelanggan…" },
-  rd_ship_product: { en: "Product", fil: "Produkto", zh: "产品", "zh-TW": "產品", vi: "Sản phẩm", th: "สินค้า", id: "Produk" },
-  rd_ship_product_ph: { en: "CLOTHING", fil: "CLOTHING", zh: "CLOTHING", "zh-TW": "CLOTHING", vi: "CLOTHING", th: "CLOTHING", id: "CLOTHING" },
-  rd_ship_amount: { en: "Amount ({cur})", fil: "Halaga ({cur})", zh: "金额（{cur}）", "zh-TW": "金額（{cur}）", vi: "Số tiền ({cur})", th: "จำนวนเงิน ({cur})", id: "Jumlah ({cur})" },
-  rd_ship_will_add: { en: "Will add to open shipment #{num}.", fil: "Idaragdag sa bukas na shipment #{num}.", zh: "将添加到未结发货 #{num}。", "zh-TW": "將新增到未結出貨 #{num}。", vi: "Sẽ thêm vào lô hàng đang mở #{num}.", th: "จะเพิ่มเข้าการจัดส่งที่เปิดอยู่ #{num}", id: "Akan ditambahkan ke pengiriman terbuka #{num}." },
-  rd_ship_will_create: { en: "Will create a new shipment.", fil: "Gagawa ng bagong shipment.", zh: "将创建新的发货。", "zh-TW": "將建立新的出貨。", vi: "Sẽ tạo lô hàng mới.", th: "จะสร้างการจัดส่งใหม่", id: "Akan membuat pengiriman baru." },
-  rd_ship_add_order: { en: "+ Add order", fil: "+ Magdagdag ng order", zh: "+ 添加订单", "zh-TW": "+ 新增訂單", vi: "+ Thêm đơn", th: "+ เพิ่มออเดอร์", id: "+ Tambah pesanan" },
-  rd_ship_err_select: { en: "Select a registered customer first.", fil: "Pumili muna ng nakarehistrong customer.", zh: "请先选择已注册的客户。", "zh-TW": "請先選擇已註冊的客戶。", vi: "Hãy chọn khách hàng đã đăng ký trước.", th: "กรุณาเลือกลูกค้าที่ลงทะเบียนก่อน", id: "Pilih pelanggan terdaftar dulu." },
-  rd_ship_err_product: { en: "Product is required.", fil: "Kailangan ang produkto.", zh: "产品为必填项。", "zh-TW": "產品為必填。", vi: "Sản phẩm là bắt buộc.", th: "ต้องระบุสินค้า", id: "Produk wajib diisi." },
-  rd_ship_err_price: { en: "Enter a valid price.", fil: "Maglagay ng wastong presyo.", zh: "请输入有效价格。", "zh-TW": "請輸入有效價格。", vi: "Nhập giá hợp lệ.", th: "กรอกราคาที่ถูกต้อง", id: "Masukkan harga yang valid." },
-  rd_ship_err_limit: { en: "Daily shipment limit reached ({max}).", fil: "Naabot ang daily shipment limit ({max}).", zh: "已达到每日发货上限（{max}）。", "zh-TW": "已達到每日出貨上限（{max}）。", vi: "Đã đạt giới hạn lô hàng hàng ngày ({max}).", th: "ถึงขีดจำกัดการจัดส่งรายวันแล้ว ({max})", id: "Batas pengiriman harian tercapai ({max})." },
-  rd_ship_added_existing: { en: "Added to existing #{num} {name}.", fil: "Naidagdag sa umiiral na #{num} {name}.", zh: "已添加到现有 #{num} {name}。", "zh-TW": "已新增到現有 #{num} {name}。", vi: "Đã thêm vào #{num} {name} hiện có.", th: "เพิ่มเข้า #{num} {name} ที่มีอยู่แล้ว", id: "Ditambahkan ke #{num} {name} yang ada." },
-  rd_ship_created_new: { en: "Created new #{num} {name}.", fil: "Gumawa ng bagong #{num} {name}.", zh: "已创建新的 #{num} {name}。", "zh-TW": "已建立新的 #{num} {name}。", vi: "Đã tạo mới #{num} {name}.", th: "สร้างใหม่ #{num} {name}", id: "Membuat baru #{num} {name}." },
-  rd_ship_confirm_remove: { en: "Remove this order?", fil: "Alisin ang order na ito?", zh: "移除此订单？", "zh-TW": "移除此訂單？", vi: "Xóa đơn này?", th: "ลบออเดอร์นี้?", id: "Hapus pesanan ini?" },
-  rd_ship_amount_updated: { en: "Amount updated.", fil: "Na-update ang halaga.", zh: "金额已更新。", "zh-TW": "金額已更新。", vi: "Đã cập nhật số tiền.", th: "อัปเดตจำนวนเงินแล้ว", id: "Jumlah diperbarui." },
-  rd_ship_no_open: { en: "No open shipments to export.", fil: "Walang bukas na shipment na ie-export.", zh: "没有可导出的未结发货。", "zh-TW": "沒有可匯出的未結出貨。", vi: "Không có lô hàng đang mở để xuất.", th: "ไม่มีการจัดส่งที่เปิดอยู่ให้ส่งออก", id: "Tidak ada pengiriman terbuka untuk diekspor." },
-  rd_ship_missing_name: { en: "A shipment is missing a customer name.", fil: "May shipment na walang pangalan ng customer.", zh: "有一个发货缺少客户姓名。", "zh-TW": "有一個出貨缺少客戶姓名。", vi: "Một lô hàng thiếu tên khách hàng.", th: "มีการจัดส่งที่ขาดชื่อลูกค้า", id: "Sebuah pengiriman tidak memiliki nama pelanggan." },
-  rd_ship_exported_one: { en: "Exported {n} buyer.", fil: "Na-export ang {n} mamimili.", zh: "已导出 {n} 位买家。", "zh-TW": "已匯出 {n} 位買家。", vi: "Đã xuất {n} người mua.", th: "ส่งออก {n} ผู้ซื้อแล้ว", id: "Mengekspor {n} pembeli." },
-  rd_ship_exported_many: { en: "Exported {n} buyers.", fil: "Na-export ang {n} mamimili.", zh: "已导出 {n} 位买家。", "zh-TW": "已匯出 {n} 位買家。", vi: "Đã xuất {n} người mua.", th: "ส่งออก {n} ผู้ซื้อแล้ว", id: "Mengekspor {n} pembeli." },
-  rd_ship_export_failed: { en: "Export failed: {msg}", fil: "Nabigo ang pag-export: {msg}", zh: "导出失败：{msg}", "zh-TW": "匯出失敗：{msg}", vi: "Xuất thất bại: {msg}", th: "ส่งออกไม่สำเร็จ: {msg}", id: "Ekspor gagal: {msg}" },
-  rd_ship_empty: { en: "No shipments yet today.", fil: "Wala pang shipment ngayon.", zh: "今天还没有发货。", "zh-TW": "今天還沒有出貨。", vi: "Chưa có lô hàng nào hôm nay.", th: "ยังไม่มีการจัดส่งวันนี้", id: "Belum ada pengiriman hari ini." },
-  rd_ship_shipped_badge: { en: "SHIPPED", fil: "NAIPADALA", zh: "已发货", "zh-TW": "已出貨", vi: "ĐÃ GIAO", th: "จัดส่งแล้ว", id: "DIKIRIM" },
-  rd_ship_edit: { en: "edit", fil: "i-edit", zh: "编辑", "zh-TW": "編輯", vi: "sửa", th: "แก้ไข", id: "edit" },
-  rd_ship_del: { en: "del", fil: "burahin", zh: "删除", "zh-TW": "刪除", vi: "xóa", th: "ลบ", id: "hapus" },
-  rd_ship_subtotal: { en: "Subtotal", fil: "Subtotal", zh: "小计", "zh-TW": "小計", vi: "Tạm tính", th: "ยอดรวมย่อย", id: "Subtotal" },
   rd_ship_fee: { en: "Fee", fil: "Bayad", zh: "费用", "zh-TW": "費用", vi: "Phí", th: "ค่าธรรมเนียม", id: "Biaya" },
 
   // ════ Admin — main screen ════
   rd_adm_title: { en: "Admin panel", fil: "Admin panel", zh: "管理面板", "zh-TW": "管理面板", vi: "Bảng quản trị", th: "แผงผู้ดูแล", id: "Panel admin" },
   rd_adm_subtitle: { en: "Owner control center", fil: "Owner control center", zh: "店主控制中心", "zh-TW": "店主控制中心", vi: "Trung tâm điều khiển của chủ", th: "ศูนย์ควบคุมของเจ้าของ", id: "Pusat kontrol pemilik" },
-  rd_adm_revenue_sample: { en: "Revenue: sample", fil: "Revenue: sample", zh: "营收：示例", "zh-TW": "營收：範例", vi: "Doanh thu: mẫu", th: "รายได้: ตัวอย่าง", id: "Pendapatan: sampel" },
   rd_adm_notifications: { en: "Notifications", fil: "Mga abiso", zh: "通知", "zh-TW": "通知", vi: "Thông báo", th: "การแจ้งเตือน", id: "Notifikasi" },
-  rd_adm_systems_ok: { en: "Systems OK", fil: "Systems OK", zh: "系统正常", "zh-TW": "系統正常", vi: "Hệ thống OK", th: "ระบบปกติ", id: "Sistem OK" },
   rd_adm_platform_owner: { en: "Platform owner", fil: "May-ari ng platform", zh: "平台所有者", "zh-TW": "平台擁有者", vi: "Chủ nền tảng", th: "เจ้าของแพลตฟอร์ม", id: "Pemilik platform" },
   rd_adm_super_admin: { en: "SUPER ADMIN", fil: "SUPER ADMIN", zh: "超级管理员", "zh-TW": "超級管理員", vi: "SIÊU QUẢN TRỊ", th: "ซูเปอร์แอดมิน", id: "SUPER ADMIN" },
   rd_adm_monthly_revenue: { en: "Monthly revenue", fil: "Buwanang kita", zh: "月营收", "zh-TW": "月營收", vi: "Doanh thu tháng", th: "รายได้ต่อเดือน", id: "Pendapatan bulanan" },
   rd_adm_mrr_note: { en: "from active paid plans", fil: "mula sa mga aktibong paid plan", zh: "来自有效付费方案", "zh-TW": "來自有效付費方案", vi: "từ các gói trả phí đang hoạt động", th: "จากแผนชำระเงินที่ใช้งานอยู่", id: "dari paket berbayar aktif" },
-  rd_adm_mom: { en: "▲ 12% MoM ›", fil: "▲ 12% MoM ›", zh: "▲ 环比 12% ›", "zh-TW": "▲ 環比 12% ›", vi: "▲ 12% so tháng trước ›", th: "▲ 12% เทียบเดือนก่อน ›", id: "▲ 12% MoM ›" },
   rd_adm_user_base: { en: "User base", fil: "User base", zh: "用户群", "zh-TW": "用戶群", vi: "Cơ sở người dùng", th: "ฐานผู้ใช้", id: "Basis pengguna" },
   rd_adm_paying_free: { en: "paying · {free} free ›", fil: "nagbabayad · {free} libre ›", zh: "付费 · {free} 免费 ›", "zh-TW": "付費 · {free} 免費 ›", vi: "trả phí · {free} miễn phí ›", th: "จ่ายเงิน · {free} ฟรี ›", id: "berbayar · {free} gratis ›" },
   rd_adm_paid_free_split: { en: "paid / free split ›", fil: "paid / free split ›", zh: "付费 / 免费 占比 ›", "zh-TW": "付費 / 免費 占比 ›", vi: "tỷ lệ trả phí / miễn phí ›", th: "สัดส่วนจ่าย / ฟรี ›", id: "rasio berbayar / gratis ›" },
@@ -772,7 +733,6 @@ const RAW: Record<string, Row> = {
 
   // ════ Admin — sellers panel ════
   rd_adm_search_email: { en: "Search email or @handle", fil: "Maghanap ng email o @handle", zh: "搜索邮箱或 @handle", "zh-TW": "搜尋電子郵件或 @handle", vi: "Tìm email hoặc @handle", th: "ค้นหาอีเมลหรือ @handle", id: "Cari email atau @handle" },
-  rd_adm_search_soon: { en: "Search soon", fil: "Search soon", zh: "搜索即将推出", "zh-TW": "搜尋即將推出", vi: "Tìm kiếm sắp có", th: "ค้นหาเร็วๆ นี้", id: "Pencarian segera" },
   rd_adm_users: { en: "Users", fil: "Mga user", zh: "用户", "zh-TW": "用戶", vi: "Người dùng", th: "ผู้ใช้", id: "Pengguna" },
   rd_adm_add_user: { en: "+ Add user", fil: "+ Magdagdag ng user", zh: "+ 添加用户", "zh-TW": "+ 新增用戶", vi: "+ Thêm người dùng", th: "+ เพิ่มผู้ใช้", id: "+ Tambah pengguna" },
   rd_adm_coming_soon: { en: "Coming soon", fil: "Malapit na", zh: "即将推出", "zh-TW": "即將推出", vi: "Sắp có", th: "เร็วๆ นี้", id: "Segera hadir" },
@@ -833,11 +793,8 @@ const RAW: Record<string, Row> = {
   rd_adm_grant: { en: "Grant {plan} plan", fil: "Igawad ang {plan} plan", zh: "授予 {plan} 方案", "zh-TW": "授予 {plan} 方案", vi: "Cấp gói {plan}", th: "ให้แผน {plan}", id: "Berikan paket {plan}" },
   rd_adm_audience: { en: "Audience", fil: "Audience", zh: "受众", "zh-TW": "受眾", vi: "Đối tượng", th: "ผู้รับ", id: "Audiens" },
   rd_adm_all_sellers: { en: "All sellers", fil: "Lahat ng seller", zh: "所有卖家", "zh-TW": "所有賣家", vi: "Tất cả người bán", th: "ผู้ขายทั้งหมด", id: "Semua penjual" },
-  rd_adm_pro_only: { en: "Pro only", fil: "Pro lang", zh: "仅 Pro", "zh-TW": "僅 Pro", vi: "Chỉ Pro", th: "เฉพาะ Pro", id: "Pro saja" },
-  rd_adm_bc_expiring: { en: "Expiring", fil: "Mag-e-expire", zh: "即将到期", "zh-TW": "即將到期", vi: "Sắp hết hạn", th: "ใกล้หมดอายุ", id: "Akan kedaluwarsa" },
   rd_adm_message: { en: "Message", fil: "Mensahe", zh: "消息", "zh-TW": "訊息", vi: "Tin nhắn", th: "ข้อความ", id: "Pesan" },
   rd_adm_announce_ph: { en: "Type your announcement to sellers…", fil: "I-type ang iyong anunsyo sa mga seller…", zh: "输入要发给卖家的公告…", "zh-TW": "輸入要發給賣家的公告…", vi: "Nhập thông báo gửi người bán…", th: "พิมพ์ประกาศถึงผู้ขาย…", id: "Ketik pengumuman untuk penjual…" },
-  rd_adm_send_broadcast: { en: "Send broadcast", fil: "Magpadala ng broadcast", zh: "发送广播", "zh-TW": "傳送廣播", vi: "Gửi thông báo", th: "ส่งประกาศ", id: "Kirim siaran" },
 
   // ════ Admin — sub-bucket notes / statuses ════
   rd_adm_st_active: { en: "Active", fil: "Aktibo", zh: "有效", "zh-TW": "有效", vi: "Hoạt động", th: "ใช้งานอยู่", id: "Aktif" },
@@ -969,10 +926,6 @@ export const REDESIGN_STRINGS: RedesignStrings = (() => {
   }
   return out;
 })();
-
-// Exposed for verification scripts/tests: the raw key→langs map + the lang list.
-export const RAW_KEYS = RAW;
-export const LANGS_ALL = VALID_LANGS;
 
 // Pure merge — supplement (new keys) wins over the production base. Exposed for tests.
 export function applySupplement(base: T, supp: Record<string, string>): RedesignT {

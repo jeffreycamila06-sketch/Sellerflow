@@ -1,7 +1,5 @@
 // Phase 5b — READ-ONLY data adapters. Compose the EXISTING exported read
-// functions (db.ts, accountDb.ts) + pure lib cores. NO writes happen here:
-//   • loadTodaysLiveSession (db.ts)  → select live_session_orders (today, RLS)
-//   • rebuildSessionFromRows (lib)   → pure rows → {buyers, orders}
+// functions (accountDb.ts) + pure lib cores. NO writes happen here:
 //   • customers: own-filtered paged select + miners_stats() aggregate RPC
 //     (sql/14) — NOT db.ts getCustomersFromDatabase, whose unfiltered select
 //     hit the 1,000-row PostgREST cap and the admin-wide RLS scope (2026-07-05)
@@ -14,9 +12,8 @@
 // account reads as empty rather than fake).
 import { useCallback, useEffect, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
-import { loadTodaysLiveSession } from "../../db";
 import { listUsers, listAuditLogs, type AccountUser, type AccountAuditLog } from "../../accountDb";
-import { rebuildSessionFromRows, type RebuiltSession } from "../../lib/orderLogic";
+import type { RebuiltSession } from "../../lib/orderLogic";
 import { planDaysLeft, daysDisplay, isActivePaid, isExpiredPaid, isExpiringSoon, EXPIRING_WINDOW_DAYS } from "../../lib/planWindow";
 import { isAdminRole } from "../../lib/roles";
 import { planLabel } from "./useAuthSession";
@@ -25,7 +22,6 @@ import { planLabel } from "./useAuthSession";
 // so screens keep importing from this adapter.
 export { planDaysLeft, daysDisplay, EXPIRING_WINDOW_DAYS };
 import {
-  ORDERS as SAMPLE_ORDERS,
   CUSTOMERS as SAMPLE_CUSTOMERS,
   USERS as SAMPLE_USERS,
   PLAN_PRICE,
@@ -209,26 +205,10 @@ export function filterAuditLogs(logs: AccountAuditLog[], query: string): Account
 }
 
 // ── Read hooks ────────────────────────────────────────────────────────────────
-
-export function useLiveOrders(enabled: boolean): { orders: Order[]; state: ReadState } {
-  const [orders, setOrders] = useState<Order[]>(SAMPLE_ORDERS);
-  const [state, setState] = useState<ReadState>("sample");
-  useEffect(() => {
-    if (!enabled || !isSupabaseConfigured) { setState("sample"); setOrders(SAMPLE_ORDERS); return; }
-    let active = true;
-    setState("loading");
-    loadTodaysLiveSession()
-      .then((rows) => {
-        if (!active) return;
-        const mapped = liveOrdersToRedesign(rebuildSessionFromRows(rows));
-        if (mapped.length) { setOrders(mapped); setState("live"); }
-        else { setOrders([]); setState("empty"); }
-      })
-      .catch(() => { if (active) { setOrders(SAMPLE_ORDERS); setState("sample"); } });
-    return () => { active = false; };
-  }, [enabled]);
-  return { orders, state };
-}
+// (F-batch sweep: the 5b useLiveOrders hook is gone — superseded in 5e when the
+// Orders tab + Dashboard summary switched to the ONE live-session source
+// (liveOrdersToRedesign(liveSession.session) in RedesignApp). Nothing called it,
+// and its .catch fell back to the sample ORDERS demo — a fake-display risk.)
 
 // ── Customers (paginated, OWN rows only) ─────────────────────────────────────
 // 2026-07-05 accuracy fix. The old path (getCustomersFromDatabase = select *

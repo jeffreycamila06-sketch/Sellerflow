@@ -55,7 +55,6 @@
      soft = base @ 12%, softer = base @ 7%; header band = solid accent. */
   --accent: var(--_accent);
   --accent-text: #ffffff;
-  --accent-chip: rgba(var(--_accent-rgb), .20);
   --accent-fg: var(--_accent-dark);
   --handle: var(--_accent-dark);
   --accent-soft: rgba(var(--_accent-rgb), .12);
@@ -86,7 +85,6 @@
   --danger: #fb7185;
   --accent: var(--_accent);
   --accent-text: #ffffff;
-  --accent-chip: rgba(var(--_accent-rgb), .20);
   --accent-fg: var(--_accent-light);
   --handle: var(--_accent-light);
   --accent-soft: rgba(var(--_accent-rgb), .24);
