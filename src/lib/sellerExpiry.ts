@@ -20,7 +20,8 @@ export interface SellerExpiryState {
   expiryDate: string;
 }
 
-import { planDaysLeft } from "./planWindow";
+import { planDaysLeft, isFreePlan } from "./planWindow";
+import { isAdminRole } from "./roles";
 
 // Fixed en-GB locale so the date renders identically on every device and in
 // tests ("15 Aug 2026"); the surrounding label text is what gets translated.
@@ -33,8 +34,8 @@ const formatExpiry = (expiry: string) => {
 
 export function sellerExpiryState(user: SellerExpiryUser | null | undefined, now: number): SellerExpiryState | null {
   if (!user) return null;
-  if (user.role === "admin") return null;           // admin is master/120mo — never shown
-  if (user.plan === "free") return null;            // cap-limited, not time-limited
+  if (isAdminRole(user.role)) return null;          // admin is master/120mo — never shown
+  if (isFreePlan(user.plan)) return null;           // cap-limited, not time-limited
   if (user.planStatus === "pending") return null;   // not yet approved — different flow
   if (!user.planExpiry) return null;
 

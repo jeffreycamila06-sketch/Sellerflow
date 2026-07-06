@@ -19,6 +19,8 @@ import { isAppShell } from "../adapters/appShell";
 import { relativeTime } from "../adapters/useReadData";
 import { maxHourlyOrders, hourLabel, type PulseData, type PulseState } from "../adapters/useBusinessPulse";
 import { pickLatestActive, type Announcement } from "../adapters/useAnnouncements";
+import { matchPlan } from "../../lib/planPricing";
+import { isAdminRole } from "../../lib/roles";
 
 const deadBtn: CSSProperties = { opacity: 0.45, cursor: "not-allowed" };
 // Sample/not-wired marker for the Admin panels that have no real backend yet
@@ -134,7 +136,8 @@ const actBtn: CSSProperties = { fontSize: 10.5, fontWeight: 700, color: "var(--t
 const editTa: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", resize: "vertical", boxSizing: "border-box" };
 
 // Real Taiwan prices: Master NT$1,700 · Pro NT$1,200 · Basic NT$500.
-const matchPlan = (amt: string) => { const a = +amt || 0; return a >= 1700 ? "Master" : a >= 1200 ? "Pro" : a >= 500 ? "Basic" : "—"; };
+// Batch E (#14): matchPlan now imported from lib/planPricing — thresholds ARE
+// the PLAN_PRICE tier values, one source with deriveMrr (was a re-typed copy here).
 const planFg = (plan: string) => ({ Master: "#7c3aed", Pro: "#0284c7", Basic: "#059669", Free: "#9795ad" } as Record<string, string>)[plan] || "var(--text-dim)";
 
 const NOTIFS = [
@@ -425,7 +428,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                   if (!matchesSeller(u)) return null;
                   const plan = userPlans[u.email] || u.plan;
                   const days = userDays[u.email] != null ? userDays[u.email] : u.days;
-                  const isAdmin = u.role === "Admin";
+                  const isAdmin = isAdminRole(u.role); // Batch E #16 — shared predicate (display-cased "Admin")
                   return (
                     <div key={u.email} style={{ border: "1px solid var(--border)", borderRadius: 13, background: "var(--surface-2)", padding: 12 }}>
                       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>

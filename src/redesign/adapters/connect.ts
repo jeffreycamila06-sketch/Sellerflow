@@ -10,13 +10,12 @@
 // fails gracefully (toast) and nothing activates.
 import { supabase } from "../../supabase";
 import type { AccountUser } from "../../accountDb";
+// Batch E (#13): server URL + seller/browser identity now come from the ONE
+// shared module (was a local copy identical to useLiveFeed's — parity-tested).
+import { SERVER, sellerIdOf, browserSessionId } from "./serverIdentity";
+import { isAdminRole } from "../../lib/roles";
 
 export type Platform = "TikTok" | "Facebook";
-
-// SERVER — same resolution as useLiveFeed / App.tsx:169-173.
-const DEFAULT_SERVER = typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname)
-  ? "http://localhost:3001" : "https://sellerflow-live-server.onrender.com";
-const SERVER = String(import.meta.env.VITE_SERVER_URL || DEFAULT_SERVER).replace(/\/$/, "");
 
 // ── Pure helpers (verbatim) — unit-tested ────────────────────────────────────
 export const cleanLiveAccount = (value: string): string => String(value || "").trim().replace(/^@+/, "").toLowerCase(); // 159
@@ -24,7 +23,7 @@ export const maxAcc = (plan: string): number => (({ free: 1, trial: 1, basic: 1,
 export const accountList = (value: string): string[] => Array.from(new Set((value || "").split(/[,\n]/).map((v) => v.trim()).filter(Boolean))); // 259
 export const accountText = (values: string[]): string => values.map((v) => v.trim()).filter(Boolean).join("\n"); // 260
 export const registeredAccountCount = (u: AccountUser): number => accountList(u.profile.tiktok).length + accountList(u.profile.facebook).length; // 262
-export const isAdminUser = (u: AccountUser): boolean => u.role === "admin";
+export const isAdminUser = (u: AccountUser): boolean => isAdminRole(u.role); // Batch E #16 — shared predicate (db-cased "admin")
 export const canConnectMore = (u: AccountUser): boolean => isAdminUser(u) || registeredAccountCount(u) < maxAcc(u.plan); // 276
 
 // Plan-capped slot array: parsed accounts (capped to limit) padded with "" to `limit`
@@ -92,14 +91,6 @@ export function appendAccount(u: AccountUser, platform: Platform, account: strin
   const connected = [...u.connectedAccounts.filter((a) => a !== platform), platform];
   return { ...u, profile: { ...u.profile, [field]: accountText([...existing, account]) }, connectedAccounts: connected };
 }
-
-const sellerIdOf = (email: string) => email.trim().toLowerCase();
-const browserSessionId = (): string => {
-  try { const raw = localStorage.getItem("sf_browser_session"); if (raw) return JSON.parse(raw); } catch { /* ignore */ }
-  const next = `sf-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  try { localStorage.setItem("sf_browser_session", JSON.stringify(next)); } catch { /* ignore */ }
-  return next;
-};
 
 export interface ConnectResult { ok: boolean; error?: string; account: string; notLive?: boolean }
 

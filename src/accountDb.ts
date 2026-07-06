@@ -1,4 +1,5 @@
 import { isSupabaseConfigured, supabase, supabaseConfigHint } from "./supabase";
+import { fetchAllPages } from "./lib/fetchAllPages";
 
 type Plan = "free" | "trial" | "basic" | "pro" | "master";
 type PlanStatus = "active" | "expired" | "pending";
@@ -179,17 +180,14 @@ export async function createMyProfile(
 export const USERS_PAGE_SIZE = 1000;
 
 // Pure pager over an injected page fetcher — unit-tested with a >100-user
-// scenario. null (page error) → [].
+// scenario. null (page error) → []. Batch E (#15): the loop itself now lives in
+// lib/fetchAllPages (shared with the shipping pager); this keeps the original
+// contract ([] on error) and export so callers/tests are unchanged.
 export async function fetchAllProfilePages<T>(
   fetchPage: (page: number) => Promise<T[] | null>,
 ): Promise<T[]> {
-  const all: T[] = [];
-  for (let page = 0; ; page++) {
-    const rows = await fetchPage(page);
-    if (rows === null) return [];
-    all.push(...rows);
-    if (rows.length < USERS_PAGE_SIZE) return all;
-  }
+  const rows = await fetchAllPages(fetchPage, USERS_PAGE_SIZE);
+  return rows === null ? [] : rows;
 }
 
 export async function listUsers(): Promise<AccountUser[]> {
