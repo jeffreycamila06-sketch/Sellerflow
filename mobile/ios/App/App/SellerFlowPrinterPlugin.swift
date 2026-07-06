@@ -9,6 +9,7 @@
 // SellerFlowPrinter) works without any platform branching.
 
 import Capacitor
+import CoreBluetooth
 import Foundation
 import Network
 import WebKit
@@ -23,6 +24,15 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "testConnection", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "printSlip", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "printStickerLan", returnType: CAPPluginReturnPromise),
+        // BLE sticker (AIMO D520BT dual-mode) — mirrors the Android Bluetooth
+        // method names/shapes so the existing web BT UI + routing light up on
+        // iOS with zero web changes (hasBtBridge / btCall / shouldUseBluetoothSticker).
+        CAPPluginMethod(name: "scanBluetoothLabelPrinters", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getBluetoothLabelPrinter", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setBluetoothLabelPrinter", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "clearBluetoothLabelPrinter", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "testStickerPrint", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "printStickerNative", returnType: CAPPluginReturnPromise),
     ]
 
     /// Default AIMO-class sticker stock: 100x60mm @ 203 DPI (800x480 dots).
@@ -127,6 +137,17 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
       // web's printerType==="lan" sticker branch (which gates on this method)
       // can never fire on Android and never disturbs the BT path.
       window.SellerFlowPrinter.printStickerLan = function(p){ return cap.printStickerLan(p); };
+      // iOS BLE sticker (AIMO D520BT dual-mode: iPhone talks BLE, Android talks
+      // Classic SPP). SAME method names as Android's MainActivity shim, so the
+      // web's BT UI (hasBtBridge) + routing (shouldUseBluetoothSticker) activate
+      // on iOS automatically. Android is untouched — this shim only ever runs
+      // inside the iOS WKWebView.
+      window.SellerFlowPrinter.scanBluetoothLabelPrinters = function(){ return cap.scanBluetoothLabelPrinters(); };
+      window.SellerFlowPrinter.getBluetoothLabelPrinter = function(){ return cap.getBluetoothLabelPrinter(); };
+      window.SellerFlowPrinter.setBluetoothLabelPrinter = function(p){ return cap.setBluetoothLabelPrinter(p || {}); };
+      window.SellerFlowPrinter.clearBluetoothLabelPrinter = function(){ return cap.clearBluetoothLabelPrinter(); };
+      window.SellerFlowPrinter.testStickerPrint = function(p){ return cap.testStickerPrint(p || {}); };
+      window.SellerFlowPrinter.printStickerNative = function(payload){ return cap.printStickerNative(payload || {}); };
       window.SellerFlowPrinter.status = function(){ return cap.getPrinter(); };
       window.SellerFlowPrinter.printerStatus = function(){ return cap.getPrinter(); };
       window.SellerFlowPrinter.scanPrinters = function(){ return cap.getPrinter(); };
@@ -900,5 +921,647 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         while start < end && scalars[start].value <= 0x20 { start += 1 }
         while end > start && scalars[end - 1].value <= 0x20 { end -= 1 }
         return String(String.UnicodeScalarView(scalars[start..<end]))
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // MARK: - BLE sticker printing (AIMO D520BT dual-mode)
+    //
+    // The D520BT is dual-mode Bluetooth: Android talks Classic SPP (the Java
+    // plugin), iPhone talks BLE (verified on real hardware: Labelife iOS test
+    // print + nRF Connect GATT dump). GATT layout (verified):
+    //   • Advertisement: services AF30 + HID(1812) only — FF00 is NOT advertised
+    //   • After connect: PRIMARY SERVICE FF00
+    //       FF02: Write, Write Without Response   ← TSPL bytes go here
+    //       FF03: Notify                          ← ASCII status, e.g.
+    //                                               "SSGETPRINTING:DONE"
+    //
+    // TSPL bytes come from the SAME buildTsplSticker used by printStickerLan —
+    // the golden-parity port of Android's TsplBuilder — so iOS BLE stickers are
+    // byte-identical to Android SPP stickers (all 5 sizes, per-size isolation,
+    // 3-tier buyer names/GBK, price code, Taipei time). Transport lives in
+    // BleStickerTransport (bottom of this file); pure decisions (chunking, DONE
+    // parsing, scan filter) live in BleStickerLogic — unit-tested by
+    // mobile/ios/tspl-parity/swift/BleStickerLogicTests.swift (Mac-run).
+    //
+    // Method names + return/reject shapes mirror the Android plugin exactly so
+    // the web's existing BT UI + routing activate with ZERO web changes.
+    // ════════════════════════════════════════════════════════════════════════
+
+    private static let bleIdKey = "sellerflow_ble_label_id"
+    private static let bleNameKey = "sellerflow_ble_label_name"
+    private let bleTransport = BleStickerTransport()
+
+    private func savedBleId() -> String {
+        return (defaults.string(forKey: SellerFlowPrinterPlugin.bleIdKey) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Mirrors Android savedBluetoothPrinter(): nil (→ JS null) when unset.
+    private func savedBlePrinterDict() -> [String: Any]? {
+        let id = savedBleId()
+        if id.isEmpty { return nil }
+        let name = (defaults.string(forKey: SellerFlowPrinterPlugin.bleNameKey) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return [
+            "id": "bluetooth:\(id)",
+            "address": id, // iOS has no MAC access; the BLE identifier UUID plays the address role
+            "name": name.isEmpty ? "Bluetooth printer" : name,
+            "paired": true,
+        ]
+    }
+
+    private func savedBlePrinterOrNull() -> Any {
+        return savedBlePrinterDict() ?? NSNull()
+    }
+
+    @objc func scanBluetoothLabelPrinters(_ call: CAPPluginCall) {
+        bleTransport.scan(timeoutSeconds: 4.5) { [weak self] printers, error in
+            guard let self = self else { return }
+            if let error = error {
+                // Resolve (not reject) so PrinterSettings can show the reason inline.
+                call.resolve(["ok": false, "printers": [], "savedPrinter": self.savedBlePrinterOrNull(), "message": error.message])
+                return
+            }
+            let found = printers ?? []
+            let list: [[String: Any]] = found.map {
+                ["id": "bluetooth:\($0.id)", "address": $0.id, "name": $0.name, "paired": false, "signal": $0.rssi]
+            }
+            let message = found.isEmpty
+                ? "No label printer found. Make sure it is ON and not connected to another phone or app (e.g. Labelife)."
+                : "Found \(found.count) label printer\(found.count == 1 ? "" : "s")."
+            call.resolve(["ok": true, "printers": list, "savedPrinter": self.savedBlePrinterOrNull(), "message": message])
+        }
+    }
+
+    @objc func getBluetoothLabelPrinter(_ call: CAPPluginCall) {
+        call.resolve(["ok": true, "savedPrinter": savedBlePrinterOrNull()])
+    }
+
+    @objc func setBluetoothLabelPrinter(_ call: CAPPluginCall) {
+        let address = (call.getString("address") ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = (call.getString("name") ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if address.isEmpty {
+            call.reject("No printer selected. Tap Scan and pick a printer first.", "BT_NOT_SET")
+            return
+        }
+        defaults.set(address, forKey: SellerFlowPrinterPlugin.bleIdKey)
+        defaults.set(name, forKey: SellerFlowPrinterPlugin.bleNameKey)
+        call.resolve(["ok": true, "savedPrinter": savedBlePrinterOrNull(), "message": "Saved Bluetooth printer: \(name.isEmpty ? address : name)"])
+    }
+
+    @objc func clearBluetoothLabelPrinter(_ call: CAPPluginCall) {
+        defaults.removeObject(forKey: SellerFlowPrinterPlugin.bleIdKey)
+        defaults.removeObject(forKey: SellerFlowPrinterPlugin.bleNameKey)
+        call.resolve(["ok": true, "savedPrinter": NSNull(), "message": "Bluetooth printer cleared"])
+    }
+
+    @objc func testStickerPrint(_ call: CAPPluginCall) {
+        let savedId = savedBleId()
+        if savedId.isEmpty {
+            call.reject("No Bluetooth printer saved. Tap Scan in Settings and pick a printer first.", "BT_NOT_SET")
+            return
+        }
+        let storeName = call.getString("storeName") ?? "SellerFlowLive"
+        let data = buildTsplTestPage(storeName: storeName)
+        bleTransport.printJob(data: data, preferredId: savedId) { error in
+            if let error = error {
+                call.reject("Test sticker failed: \(error.message)", error.code)
+            } else {
+                call.resolve(["ok": true, "bytes": data.count, "message": "Test sticker sent (\(data.count) bytes)"])
+            }
+        }
+    }
+
+    /// iOS BLE counterpart of Android's printStickerNative: SAME payload, SAME
+    /// TSPL builder (buildTsplSticker — golden parity), SAME return shape.
+    @objc func printStickerNative(_ call: CAPPluginCall) {
+        let savedId = savedBleId()
+        if savedId.isEmpty {
+            call.reject("No Bluetooth printer saved. Tap Scan in Settings and pick a printer first.", "BT_NOT_SET")
+            return
+        }
+        let buyer = call.getObject("buyer") ?? [:]
+        let settings = call.getObject("settings")
+        let storeName = call.getString("storeName") ?? "SellerFlowLive"
+        let currency = call.getString("currency") ?? ""
+        let sessionDate = call.getString("sessionDate") ?? ""
+        let labelWidthMm = call.getInt("labelWidthMm", defaultLabelWidthMm)
+        let labelHeightMm = call.getInt("labelHeightMm", defaultLabelHeightMm)
+
+        let data = buildTsplSticker(
+            buyer: buyer,
+            settings: settings,
+            storeName: storeName,
+            currency: currency,
+            sessionDate: sessionDate,
+            labelWidthMm: labelWidthMm,
+            labelHeightMm: labelHeightMm
+        )
+
+        bleTransport.printJob(data: data, preferredId: savedId) { [weak self] error in
+            guard let self = self else { return }
+            if let error = error {
+                call.reject("Bluetooth print failed: \(error.message)", error.code)
+            } else {
+                call.resolve([
+                    "ok": true,
+                    "bytes": data.count,
+                    "savedPrinter": self.savedBlePrinterOrNull(),
+                    "message": "Printed sticker via Bluetooth (TEXT+BAR, \(data.count) bytes)",
+                ])
+            }
+        }
+    }
+
+    /// Byte-faithful port of TsplBuilder.textTestPage (Java) — the diagnostic
+    /// page the Android BT test print uses, including the CJK encoding probes.
+    func buildTsplTestPage(storeName: String) -> Data {
+        var out = Data()
+        func writeAscii(_ s: String) {
+            out.append(contentsOf: tsplAsciiBytes(s))
+            out.append(contentsOf: [0x0D, 0x0A])
+        }
+        func writeEncodedLine(_ prefix: String, _ text: String, _ bytes: [UInt8]?) {
+            guard let bytes = bytes else { return } // encoding unavailable → skip probe (diagnostic only)
+            out.append(contentsOf: tsplAsciiBytes(prefix))
+            out.append(contentsOf: bytes)
+            out.append(contentsOf: tsplAsciiBytes("\""))
+            out.append(contentsOf: [0x0D, 0x0A])
+        }
+        func big5Bytes(_ s: String) -> [UInt8]? {
+            let cfEnc = CFStringEncoding(CFStringEncodings.big5.rawValue)
+            let nsEnc = CFStringConvertEncodingToNSStringEncoding(cfEnc)
+            guard let data = s.data(using: String.Encoding(rawValue: nsEnc), allowLossyConversion: true) else { return nil }
+            return [UInt8](data)
+        }
+        let safeStore = storeName.replacingOccurrences(of: "\"", with: "'")
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        fmt.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        let stamp = fmt.string(from: Date())
+
+        writeAscii("SIZE \(defaultLabelWidthMm) mm, \(defaultLabelHeightMm) mm")
+        writeAscii("GAP 2 mm, 0")
+        writeAscii("DIRECTION 1")
+        writeAscii("REFERENCE 0,0")
+        writeAscii("DENSITY 8")
+        writeAscii("CLS")
+        writeAscii("TEXT 20,20,\"4\",0,1,1,\"SellerFlowLive\"")
+        writeAscii("TEXT 20,80,\"3\",0,1,1,\"Bluetooth printer OK\"")
+        writeAscii("TEXT 20,140,\"3\",0,1,1,\"\(safeStore)\"")
+        writeAscii("TEXT 20,200,\"2\",0,1,1,\"\(stamp)\"")
+        let cjk = "\u{9673}\u{5C0F}\u{7F8E}" // 陳小美 — same probes as the Java test page
+        writeAscii("TEXT 20,250,\"2\",0,1,1,\"A:\"")
+        writeEncodedLine("TEXT 70,244,\"TST24.BF2\",0,1,1,\"", cjk, big5Bytes(cjk))
+        writeAscii("TEXT 20,300,\"2\",0,1,1,\"B:\"")
+        writeEncodedLine("TEXT 70,294,\"3\",0,1,1,\"", cjk, big5Bytes(cjk))
+        writeAscii("TEXT 20,350,\"2\",0,1,1,\"D:\"")
+        writeEncodedLine("TEXT 70,344,\"TSS24.BF2\",0,1,1,\"", cjk, gbkBytes(cjk))
+        writeAscii("CODEPAGE UTF-8")
+        writeAscii("TEXT 20,400,\"2\",0,1,1,\"C:\"")
+        writeEncodedLine("TEXT 70,394,\"TST24.BF2\",0,1,1,\"", cjk, [UInt8](cjk.utf8))
+        writeAscii("CODEPAGE 437")
+        writeAscii("PRINT 1")
+        return out
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// MARK: - BLE pure logic (no CoreBluetooth types — unit-testable standalone)
+//
+// Every DECISION the transport makes lives here so it can be tested without
+// hardware: chunk sizing/splitting, DONE detection, and the scan filter.
+// Tests: mobile/ios/tspl-parity/swift/BleStickerLogicTests.swift (Mac-run,
+// same convention as MobileTsplBuilderTests — CI cannot compile Swift).
+// ═════════════════════════════════════════════════════════════════════════════
+
+enum BleStickerLogic {
+    /// Advertised service on the D520BT (FF00 is NOT advertised — verified).
+    static let advertisedService = "AF30"
+    /// Device-name prefix; the suffix varies per unit ("D520BT-Z", …).
+    static let namePrefix = "D520BT"
+    /// Proven-safe ceiling for write-without-response payloads on this printer
+    /// class, and the BLE minimum (ATT default MTU 23 − 3 header).
+    static let maxChunk = 180
+    static let minChunk = 20
+
+    /// Usable chunk size: the iOS-negotiated maximumWriteValueLength clamped to
+    /// [minChunk, maxChunk]; non-positive (unknown) → maxChunk default.
+    static func clampChunkSize(_ reported: Int) -> Int {
+        if reported <= 0 { return maxChunk }
+        return max(minChunk, min(reported, maxChunk))
+    }
+
+    /// Split the TSPL buffer into write-without-response chunks. The final
+    /// chunk carries the remainder; empty data → empty array.
+    static func chunks(_ data: Data, chunkSize: Int) -> [Data] {
+        let size = max(1, chunkSize)
+        var out: [Data] = []
+        var index = data.startIndex
+        while index < data.endIndex {
+            let end = data.index(index, offsetBy: size, limitedBy: data.endIndex) ?? data.endIndex
+            out.append(data.subdata(in: index..<end))
+            index = end
+        }
+        return out
+    }
+
+    /// Success signal: the ACCUMULATED FF03 ASCII stream contains
+    /// "PRINTING:DONE". Suffix-tolerant (the printer sends e.g.
+    /// "SSGETPRINTING:DONE") and split-tolerant (a status line can arrive
+    /// across several notifications — callers accumulate, we just match).
+    static func containsPrintDone(_ buffer: String) -> Bool {
+        return buffer.uppercased().contains("PRINTING:DONE")
+    }
+
+    /// Scan filter: advertised service AF30 (16-bit or full-128 form) OR name
+    /// prefix "D520BT" (case-insensitive). NEVER FF00 — it is not advertised.
+    static func isTargetPrinter(name: String?, advertisedServices: [String]) -> Bool {
+        for raw in advertisedServices {
+            let s = raw.uppercased()
+            if s == advertisedService || s.hasPrefix("0000\(advertisedService)-") { return true }
+        }
+        if let n = name?.uppercased(), n.hasPrefix(namePrefix) { return true }
+        return false
+    }
+}
+
+/// Honest, code-tagged BLE failure — codes mirror the Android plugin's reject
+/// codes so the web result handling stays uniform.
+struct BleError {
+    let message: String
+    let code: String
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// MARK: - BLE transport (CoreBluetooth) — one job at a time
+//
+// Job pipeline: ensure poweredOn → resolve peripheral (saved identifier →
+// system-connected FF00 → scan w/ BleStickerLogic filter) → connect →
+// discover FF00 → FF02/FF03 → subscribe FF03 FIRST → chunked
+// write-without-response to FF02 (negotiated MTU clamped, canSend
+// backpressure + 8ms pacing) → success only on "PRINTING:DONE" notify →
+// ALWAYS disconnect (single-connection etiquette — never hold the printer).
+// Timeouts fail honestly; there is no fake success path.
+// ═════════════════════════════════════════════════════════════════════════════
+
+final class BleStickerTransport: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
+
+    struct DiscoveredPrinter {
+        let id: String   // CBPeripheral.identifier UUID string (iOS's stable handle)
+        let name: String
+        let rssi: Int
+    }
+
+    private let queue = DispatchQueue(label: "com.sellerflow.ble")
+    private var central: CBCentralManager?
+
+    // manager-state waiters (first call also triggers the permission prompt)
+    private var stateWaiters: [(BleError?) -> Void] = []
+    private var stateTimer: DispatchWorkItem?
+
+    // scan-only (Settings → Scan)
+    private var scanFound: [String: DiscoveredPrinter] = [:]
+    private var scanDone: (([DiscoveredPrinter]) -> Void)?
+    private var scanTimer: DispatchWorkItem?
+
+    // print job (single-flight)
+    private var jobActive = false
+    private var jobDone: ((BleError?) -> Void)?
+    private var overallTimer: DispatchWorkItem?
+    private var phaseTimer: DispatchWorkItem?
+    private var pacingTimer: DispatchWorkItem?
+    private var preferredId: String?
+    private var fallbackTarget: CBPeripheral?
+    private var peripheral: CBPeripheral?
+    private var writeChar: CBCharacteristic?
+    private var notifyChar: CBCharacteristic?
+    private var pendingChunks: [Data] = []
+    private var nextChunk = 0
+    private var allChunksSent = false
+    private var notifyBuffer = ""
+    private var payload = Data()
+
+    private let uuidService = CBUUID(string: "FF00")
+    private let uuidWrite = CBUUID(string: "FF02")
+    private let uuidNotify = CBUUID(string: "FF03")
+
+    // MARK: public API (callable from any thread; completions hop to main)
+
+    func scan(timeoutSeconds: TimeInterval, completion: @escaping ([DiscoveredPrinter]?, BleError?) -> Void) {
+        ensurePoweredOn { [weak self] error in
+            guard let self = self else { return }
+            if let error = error { DispatchQueue.main.async { completion(nil, error) }; return }
+            self.queue.async {
+                if self.jobActive || self.scanDone != nil {
+                    DispatchQueue.main.async { completion(nil, BleError(message: "Bluetooth is busy with another printer task.", code: "BT_BUSY")) }
+                    return
+                }
+                self.scanFound = [:]
+                self.scanDone = { found in DispatchQueue.main.async { completion(found, nil) } }
+                self.central?.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
+                let t = DispatchWorkItem { [weak self] in self?.finishScan() }
+                self.scanTimer = t
+                self.queue.asyncAfter(deadline: .now() + timeoutSeconds, execute: t)
+            }
+        }
+    }
+
+    func printJob(data: Data, preferredId: String?, completion: @escaping (BleError?) -> Void) {
+        ensurePoweredOn { [weak self] error in
+            guard let self = self else { return }
+            if let error = error { DispatchQueue.main.async { completion(error) }; return }
+            self.queue.async {
+                if self.jobActive || self.scanDone != nil {
+                    DispatchQueue.main.async { completion(BleError(message: "Another printer task is still in progress.", code: "BT_BUSY")) }
+                    return
+                }
+                self.jobActive = true
+                self.jobDone = { err in DispatchQueue.main.async { completion(err) } }
+                self.payload = data
+                self.preferredId = (preferredId?.isEmpty == false) ? preferredId : nil
+                self.fallbackTarget = nil
+                self.notifyBuffer = ""
+                self.pendingChunks = []
+                self.nextChunk = 0
+                self.allChunksSent = false
+                self.writeChar = nil
+                self.notifyChar = nil
+
+                // hard cap: a stuck job can never hang the seller's print flow
+                self.overallTimer = self.schedule(seconds: 30) { [weak self] in
+                    self?.finishJob(BleError(message: "Print timed out.", code: "BT_PRINT_FAILED"))
+                }
+
+                // fast paths: known identifier, or already system-connected (FF00)
+                var target: CBPeripheral?
+                if let id = self.preferredId, let uuid = UUID(uuidString: id) {
+                    target = self.central?.retrievePeripherals(withIdentifiers: [uuid]).first
+                }
+                if target == nil {
+                    target = self.central?.retrieveConnectedPeripherals(withServices: [self.uuidService]).first
+                }
+                if let p = target { self.connect(p) } else { self.scanForJob() }
+            }
+        }
+    }
+
+    // MARK: manager state
+
+    private func ensurePoweredOn(_ completion: @escaping (BleError?) -> Void) {
+        queue.async {
+            if CBCentralManager.authorization == .denied || CBCentralManager.authorization == .restricted {
+                completion(BleError(message: "Bluetooth permission denied. Allow Bluetooth for SellerFlowLive in iPhone Settings.", code: "BT_PERMISSION"))
+                return
+            }
+            if self.central == nil {
+                // First creation triggers the iOS Bluetooth permission prompt.
+                self.central = CBCentralManager(delegate: self, queue: self.queue)
+            }
+            guard let central = self.central else {
+                completion(BleError(message: "Bluetooth unavailable on this device.", code: "BT_UNAVAILABLE"))
+                return
+            }
+            switch central.state {
+            case .poweredOn:
+                completion(nil)
+            case .unknown, .resetting:
+                self.stateWaiters.append(completion)
+                if self.stateTimer == nil {
+                    self.stateTimer = self.schedule(seconds: 6) { [weak self] in
+                        self?.flushStateWaiters(BleError(message: "Bluetooth did not become ready.", code: "BT_UNAVAILABLE"))
+                    }
+                }
+            default:
+                completion(self.stateError(central.state))
+            }
+        }
+    }
+
+    private func stateError(_ state: CBManagerState) -> BleError {
+        switch state {
+        case .unauthorized:
+            return BleError(message: "Bluetooth permission denied. Allow Bluetooth for SellerFlowLive in iPhone Settings.", code: "BT_PERMISSION")
+        case .poweredOff:
+            return BleError(message: "Bluetooth is off. Turn it on in Control Center and try again.", code: "BT_OFF")
+        case .unsupported:
+            return BleError(message: "Bluetooth LE is not supported on this device.", code: "BT_UNAVAILABLE")
+        default:
+            return BleError(message: "Bluetooth is not ready.", code: "BT_UNAVAILABLE")
+        }
+    }
+
+    private func flushStateWaiters(_ error: BleError?) {
+        stateTimer?.cancel()
+        stateTimer = nil
+        let waiters = stateWaiters
+        stateWaiters = []
+        waiters.forEach { $0(error) }
+    }
+
+    func centralManagerDidUpdateState(_ central: CBCentralManager) {
+        switch central.state {
+        case .poweredOn:
+            flushStateWaiters(nil)
+        case .unknown, .resetting:
+            break // still settling — keep waiting
+        default:
+            let err = stateError(central.state)
+            flushStateWaiters(err)
+            if jobActive { finishJob(err) }
+            if scanDone != nil { finishScan() }
+        }
+    }
+
+    // MARK: scanning
+
+    private func finishScan() {
+        scanTimer?.cancel()
+        scanTimer = nil
+        if !jobActive { central?.stopScan() }
+        let done = scanDone
+        scanDone = nil
+        done?(Array(scanFound.values).sorted { $0.rssi > $1.rssi })
+    }
+
+    private func scanForJob() {
+        central?.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
+        phaseTimer = schedule(seconds: 8) { [weak self] in
+            guard let self = self else { return }
+            // saved printer not seen — but if exactly one target printer showed
+            // up, use it (single-printer reality; identifier may have rotated).
+            if let fallback = self.fallbackTarget {
+                self.connect(fallback)
+                return
+            }
+            self.finishJob(BleError(message: "Printer not found. Make sure it is ON and not connected to another phone or app (e.g. Labelife).", code: "BT_NOT_FOUND"))
+        }
+    }
+
+    func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String: Any], rssi RSSI: NSNumber) {
+        let advName = advertisementData[CBAdvertisementDataLocalNameKey] as? String
+        let name = advName ?? peripheral.name
+        let services = (advertisementData[CBAdvertisementDataServiceUUIDsKey] as? [CBUUID])?.map { $0.uuidString } ?? []
+        let isTarget = BleStickerLogic.isTargetPrinter(name: name, advertisedServices: services)
+
+        if scanDone != nil && isTarget {
+            let id = peripheral.identifier.uuidString
+            scanFound[id] = DiscoveredPrinter(id: id, name: name ?? id, rssi: RSSI.intValue)
+        }
+        guard jobActive, self.peripheral == nil else { return }
+        if let wanted = preferredId {
+            if peripheral.identifier.uuidString.caseInsensitiveCompare(wanted) == .orderedSame {
+                connect(peripheral)
+            } else if isTarget && fallbackTarget == nil {
+                fallbackTarget = peripheral // remembered for the scan-timeout fallback
+            }
+        } else if isTarget {
+            connect(peripheral)
+        }
+    }
+
+    // MARK: connect + discover
+
+    private func connect(_ p: CBPeripheral) {
+        phaseTimer?.cancel()
+        if !jobActive { return }
+        if scanDone == nil { central?.stopScan() }
+        peripheral = p
+        p.delegate = self
+        phaseTimer = schedule(seconds: 8) { [weak self] in
+            self?.finishJob(BleError(message: "Could not connect to the printer.", code: "BT_PRINT_FAILED"))
+        }
+        central?.connect(p, options: nil)
+    }
+
+    func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        guard jobActive, peripheral === self.peripheral else { return }
+        phaseTimer?.cancel()
+        phaseTimer = schedule(seconds: 6) { [weak self] in
+            self?.finishJob(BleError(message: "Printer services did not respond.", code: "BT_PRINT_FAILED"))
+        }
+        peripheral.discoverServices([uuidService])
+    }
+
+    func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        guard jobActive, peripheral === self.peripheral else { return }
+        finishJob(BleError(message: "Could not connect: \(error?.localizedDescription ?? "unknown error")", code: "BT_PRINT_FAILED"))
+    }
+
+    func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        guard jobActive, peripheral === self.peripheral else { return }
+        finishJob(BleError(message: "Printer disconnected during printing.", code: "BT_PRINT_FAILED"))
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
+        guard jobActive, peripheral === self.peripheral else { return }
+        if let error = error {
+            finishJob(BleError(message: "Service discovery failed: \(error.localizedDescription)", code: "BT_PRINT_FAILED"))
+            return
+        }
+        guard let service = peripheral.services?.first(where: { $0.uuid == uuidService }) else {
+            finishJob(BleError(message: "This device is not a supported label printer (service FF00 missing).", code: "BT_PRINT_FAILED"))
+            return
+        }
+        peripheral.discoverCharacteristics([uuidWrite, uuidNotify], for: service)
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+        guard jobActive, peripheral === self.peripheral, service.uuid == uuidService else { return }
+        if let error = error {
+            finishJob(BleError(message: "Characteristic discovery failed: \(error.localizedDescription)", code: "BT_PRINT_FAILED"))
+            return
+        }
+        writeChar = service.characteristics?.first(where: { $0.uuid == uuidWrite })
+        notifyChar = service.characteristics?.first(where: { $0.uuid == uuidNotify })
+        guard let notify = notifyChar, writeChar != nil else {
+            finishJob(BleError(message: "Printer write/status channels (FF02/FF03) not found.", code: "BT_PRINT_FAILED"))
+            return
+        }
+        // Subscribe to status FIRST — never write before notifications are live.
+        peripheral.setNotifyValue(true, for: notify)
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
+        guard jobActive, peripheral === self.peripheral, characteristic.uuid == uuidNotify else { return }
+        if let error = error {
+            finishJob(BleError(message: "Could not subscribe to printer status: \(error.localizedDescription)", code: "BT_PRINT_FAILED"))
+            return
+        }
+        phaseTimer?.cancel()
+        let chunkSize = BleStickerLogic.clampChunkSize(peripheral.maximumWriteValueLength(for: .withoutResponse))
+        pendingChunks = BleStickerLogic.chunks(payload, chunkSize: chunkSize)
+        nextChunk = 0
+        pump()
+    }
+
+    // MARK: chunk pump (backpressure via canSend + peripheralIsReady; 8ms pacing)
+
+    private func pump() {
+        guard jobActive, let p = peripheral, let w = writeChar else { return }
+        if nextChunk < pendingChunks.count {
+            if !p.canSendWriteWithoutResponse { return } // resumes on peripheralIsReady
+            let chunk = pendingChunks[nextChunk]
+            nextChunk += 1
+            p.writeValue(chunk, for: w, type: .withoutResponse)
+            if nextChunk < pendingChunks.count {
+                let t = DispatchWorkItem { [weak self] in self?.pump() }
+                pacingTimer = t
+                queue.asyncAfter(deadline: .now() + .milliseconds(8), execute: t)
+                return
+            }
+        }
+        if nextChunk >= pendingChunks.count && !allChunksSent {
+            allChunksSent = true
+            // All TSPL bytes are out — success requires the printer's own DONE.
+            phaseTimer = schedule(seconds: 10) { [weak self] in
+                self?.finishJob(BleError(message: "Printer did not confirm within 10s — check the printer.", code: "BT_PRINT_FAILED"))
+            }
+        }
+    }
+
+    func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
+        pump()
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+        guard jobActive, peripheral === self.peripheral, characteristic.uuid == uuidNotify else { return }
+        guard let value = characteristic.value, !value.isEmpty else { return }
+        notifyBuffer += String(data: value, encoding: .utf8)
+            ?? String(decoding: value, as: UTF8.self)
+        if BleStickerLogic.containsPrintDone(notifyBuffer) {
+            finishJob(nil)
+        }
+    }
+
+    // MARK: finish (idempotent; ALWAYS releases the printer)
+
+    private func schedule(seconds: TimeInterval, _ block: @escaping () -> Void) -> DispatchWorkItem {
+        let t = DispatchWorkItem(block: block)
+        queue.asyncAfter(deadline: .now() + seconds, execute: t)
+        return t
+    }
+
+    private func finishJob(_ error: BleError?) {
+        guard jobActive else { return }
+        jobActive = false
+        overallTimer?.cancel(); overallTimer = nil
+        phaseTimer?.cancel(); phaseTimer = nil
+        pacingTimer?.cancel(); pacingTimer = nil
+        if scanDone == nil { central?.stopScan() }
+        if let p = peripheral {
+            if let notify = notifyChar, p.state == .connected { p.setNotifyValue(false, for: notify) }
+            central?.cancelPeripheralConnection(p)
+        }
+        peripheral = nil
+        writeChar = nil
+        notifyChar = nil
+        fallbackTarget = nil
+        pendingChunks = []
+        payload = Data()
+        notifyBuffer = ""
+        let done = jobDone
+        jobDone = nil
+        done?(error)
     }
 }

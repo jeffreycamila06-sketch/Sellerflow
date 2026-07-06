@@ -26,6 +26,8 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>SellerFlow connects to your Bluetooth label printer to print order stickers.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>SellerFlow uses local network access to send print jobs to your WiFi thermal printer.</string>
 	<key>UILaunchStoryboardName</key>
