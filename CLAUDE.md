@@ -178,8 +178,11 @@ Write-on-action + read-on-load lang.**
 ## Native printing (pinaka-active na front)
 Slip + sticker have independent on/off toggles (5 native flags).
 - **Slip:** ESC/POS (Android + iOS), XP-N160II via WiFi/LAN TCP 9100.
-- **Sticker:** TSPL, AIMO D520BT (Bluetooth Classic SPP — DI compatible sa iOS
-  BLE; iOS sticker permanently parked).
+- **Sticker:** TSPL, AIMO D520BT — **DUAL-MODE Bluetooth**: Android = Bluetooth
+  Classic SPP (protected zone, wag galawin); **iOS = BLE (CoreBluetooth) —
+  IMPLEMENTED 2026-07-07** (merge `df01807`; ang dating "permanently parked / BLE
+  incompat" ay MALI — hardware-verified dual-mode via nRF Connect + Labelife).
+  See "SESSION 2026-07-07 — iOS BLE STICKER" log.
 - Three mirrored builders kept byte-identical: **`TsplBuilder.java`** (Android),
   the **Swift** plugin, and the **TS reference** (`tsplReference.ts`, golden-tested).
 - **5 paper sizes** via PER-SIZE CONFIG TABLE (total isolation: bawat size own
@@ -224,8 +227,10 @@ see the same buyers + orders. Fixes data-loss + "reset to #1" complaints.
 
 ## iOS status
 Apple Developer enrolled (W1850218684). iOS slip printing via XP-N160II viable.
-iOS sticker = parked (BLE incompat). Capacitor 8.3.4; iOS app loads remote
-sellerflowlive.com.
+iOS sticker = ~~parked (BLE incompat)~~ **UNPARKED 2026-07-07** — AIMO D520BT ay
+dual-mode pala; iOS BLE path implemented (merge `df01807`, kailangan ng bagong
+binary = Build 5; see the 2026-07-07 BLE session log). Capacitor 8.3.4; iOS app
+loads remote sellerflowlive.com.
 
 ## Google Play
 - Account: **`camilajeffrey1@gmail.com` (u/1)** — **NOT** `jeffreycamila06@gmail.com`.
@@ -1811,3 +1816,84 @@ pagkatapos ma-flag na wala ito sa repo). Branch `claude/landing-v2` (`e1ddd51`),
    Pagka-approve: auto-release; lahat ng store downloads = tamang display na.
 - **Kasalukuyang estado:** Landing v2 = LIVE · App Store listing = LIVE (1.0,
   lumang binary) · **1.1 nasa review**. Backlog unchanged.
+
+## SESSION 2026-07-07 — iOS BLE STICKER PRINTING (AIMO D520BT) ✅ MERGED `df01807` (native-only — kailangan ng BAGONG iOS BINARY = Build 5; hindi pa device-tested)
+**UNPARKS iOS sticker printing.** Ang matagal nang "iOS sticker = parked (BLE
+incompat)" ay napatunayang MALI: ang AIMO D520BT-Z ay **DUAL-MODE Bluetooth**
+(Android = Classic SPP; iPhone = **BLE** — pinatunayan ng Labelife app sa mismong
+hardware ni Jeff). Branch `claude/ios-ble-sticker` → merge on Jeff's "merge".
+**3 files, +784 lines, ZERO web changes, Android BYTE-UNTOUCHED.** 732 vitest ·
+typecheck · build · lint 53 = baseline. **Walang Vercel verify na kailangan**
+(walang web-bundle change).
+
+### Hardware ground truth (verified via nRF Connect sa totoong D520BT-Z)
+- **Advertisement = AF30 + HID(1812) LANG — ang FF00 ay HINDI advertised.** Kaya
+  ang scan filter ay AF30 (16-bit O full-128-bit form) OR name prefix `D520BT`,
+  **KAILANMAN hindi FF00** (may test na nagba-ban dito).
+- **Pagka-connect:** PRIMARY SERVICE `FF00` → `FF02` (Write + Write Without
+  Response = TSPL bytes) + `FF03` (Notify = ASCII status, e.g.
+  `SSGETPRINTING:DONE`).
+
+### Architecture (Option A — native CoreBluetooth, walang bagong dependency)
+Lahat sa EXISTING `mobile/ios/App/App/SellerFlowPrinterPlugin.swift` (+663 —
+sadyang walang bagong .swift file para IWAS pbxproj surgery; explicit
+PBXFileReference style ang project):
+- **6 bagong bridge methods na MIRROR ng Android BT names/shapes/codes:**
+  `scanBluetoothLabelPrinters` / `get`/`set`/`clearBluetoothLabelPrinter` /
+  `testStickerPrint` / `printStickerNative` (+ WKUserScript shim entries). Dahil
+  ang web routing ay **method-presence based** (`hasBtBridge()` /
+  `shouldUseBluetoothSticker`), ang buong existing PrinterSettings + 1-Click
+  sticker UI ay bumubuhay sa iOS nang **ZERO web change**. Error codes mirrored:
+  `BT_NOT_SET`/`BT_PERMISSION`/`BT_PRINT_FAILED` + bagong `BT_BUSY`/`BT_OFF`/
+  `BT_NOT_FOUND`/`BT_UNAVAILABLE`.
+- **BYTE-PARITY BY CONSTRUCTION:** `printStickerNative` ay tumatawag sa EXISTING
+  golden-parity Swift `buildTsplSticker` (same payload parse gaya ng
+  printStickerLan) — walang bagong TSPL code. `buildTsplTestPage` = byte-faithful
+  port ng Java `textTestPage` (kasama ang 陳小美 Big5/GBK/UTF-8 CJK probes +
+  CODEPAGE 437 reset).
+- **`BleStickerLogic`** (top-level enum, PURE, hardware-free testable):
+  `clampChunkSize` (unknown→180, clamp [20,180]) · `chunks` · `containsPrintDone`
+  (case-insensitive `PRINTING:DONE` sa ACCUMULATED buffer — kaya split-across-
+  notifications ay pumapasa) · `isTargetPrinter` (AF30/name-prefix, never FF00).
+- **`BleStickerTransport`** (CBCentralManager + CBPeripheralDelegate, serial
+  queue): single-flight (`BT_BUSY` guard — isang printer connection at a time);
+  fast paths `retrievePeripherals`/`retrieveConnectedPeripherals([FF00])` bago
+  mag-scan; scan 8s / connect 8s / **DONE timeout 10s** / overall cap 30s;
+  **subscribe FF03 MUNA bago magsulat** (order-critical); chunked
+  Write-Without-Response na may `canSendWriteWithoutResponse` backpressure +
+  8ms pacing; **success = FF03 `PRINTING:DONE` LANG — walang fake success**;
+  timeout/fail = tapat na error na may hint ("not connected to another phone or
+  app (e.g. Labelife)"); `finishJob` idempotent — laging naglilinis
+  (unsubscribe + cancel connection + timers).
+- **`Info.plist`:** +`NSBluetoothAlwaysUsageDescription`.
+- **Tests:** `mobile/ios/tspl-parity/swift/BleStickerLogicTests.swift` (15 XCTest
+  cases sa pure logic — Mac-run artifact convention, HINDI naka-wire sa xcodeproj,
+  CI can't compile Swift).
+
+### ⚠️ ANDROID SAFETY (protected zone — verified untouched)
+Ang Android Classic-SPP path (`SellerFlowPrinterPlugin.java`/`MainActivity.java`)
+ay READ-ONLY lang sa buong task (pinagkunan ng method shapes). Zero Android file
+sa diff. Ang `android.includePlugins: []` lock ay hindi rin ginalaw.
+
+### 🔨 BUILD 5 STEPS (Mac — ito ang magpapabuhay ng feature)
+1. `cd ~/Sellerflow && git pull` (kunin ang merge `df01807`)
+2. **Verify `mobile/capacitor.config.ts` `server.url` = PRODUCTION** (✅ verified
+   sa merge time: `https://www.sellerflowlive.com/?apk=20260523-dark-mobile`)
+3. Xcode: bump **Build number → 5** → Archive → Distribute **"App Store
+   Connect"** (per 2026-07-07 DISTRIBUTE RULE) → TestFlight. (Walang `npx cap
+   sync` na kailangan — walang config/plugin-list change; Swift + plist lang.)
+4. WALANG Vercel deploy na kailangan (native-only).
+
+### 📱 DEVICE-TEST CHECKLIST (TestFlight Build 5, totoong D520BT-Z)
+⚠️ **UNA: i-disconnect/isara ang Labelife** (o anumang app na nakahawak sa
+printer) — BLE ay single-connection; nakaw ang printer = honest "not found/busy"
+error (by design). Tapos: first print → Bluetooth permission prompt lalabas ·
+Printer Settings → scan → makikita ang "D520BT-Z" → save · **Test print** (may
+CJK probes — dapat lumabas ang 陳小美 sa Big5/GBK lines ayon sa hardware support)
+· 1-Click order → auto sticker print · Chinese buyer name print · ibang paper
+sizes · busy case (Labelife hawak ang printer → honest error, hindi hang) ·
+permission-deny case (Settings → Bluetooth off para sa app → `BT_PERMISSION`
+error) · Android APK regression check (sticker print pa rin via SPP — dapat
+walang pagbabago).
+- **Rollback:** native-only → ibalik ang dating binary sa TestFlight, o revert
+  merge + rebuild. Walang web/DB impact.
