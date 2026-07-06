@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { taipeiDayId } from "../../lib/dateHelpers";
+import { fetchAllPages } from "../../lib/fetchAllPages";
 import type { LiveSessionRow } from "../../lib/orderLogic";
 
 export type WindowDays = 1 | 2 | 3;
@@ -125,17 +126,14 @@ async function loadSessionPage(userId: string, start: string, end: string, page:
 
 // Pure pager over an injected page fetcher — unit-tested with a >1,000-row
 // scenario. Accumulates pages until a short page; null (page error) → null
-// (load FAILED — Batch D #8; never partial).
+// (load FAILED — Batch D #8; never partial). Post-D/E follow-up: the loop now
+// routes through the shared lib/fetchAllPages (same contract, one pager for
+// sessions/users/shipping); this export + signature stay so callers/tests are
+// unchanged and the S1/Batch-D guarantees keep their existing guards.
 export async function fetchAllSessionPages(
   fetchPage: (page: number) => Promise<LiveSessionRow[] | null>,
 ): Promise<LiveSessionRow[] | null> {
-  const all: LiveSessionRow[] = [];
-  for (let page = 0; ; page++) {
-    const rows = await fetchPage(page);
-    if (rows === null) return null; // error on any page → FAILED (never partial)
-    all.push(...rows);
-    if (rows.length < SESSION_PAGE_SIZE) return all;
-  }
+  return fetchAllPages(fetchPage, SESSION_PAGE_SIZE);
 }
 
 // Returns null when the READ FAILED (so the caller can tell the seller), [] when
