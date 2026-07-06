@@ -257,13 +257,9 @@ export default function GeneralSettings({
                 );
               })}
             </div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 12, borderTop: "1px solid var(--border)" }}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_readable}</div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{t.rd_set_readable_sub_pre}<span style={{ color: "var(--handle)", fontWeight: 700 }}>@maria_shops</span></div>
-              </div>
-              <div style={{ width: 44, height: 26, borderRadius: 13, background: "var(--accent)", position: "relative", flexShrink: 0 }}><div style={{ width: 20, height: 20, borderRadius: "50%", background: "#fff", position: "absolute", top: 3, right: 3, boxShadow: "0 1px 3px rgba(0,0,0,.3)" }} /></div>
-            </div>
+            {/* F-batch #2: the "Readable @handles" row was a STATIC div dressed
+                as a toggle (always-on, wired to nothing, demo @maria_shops
+                handle) — removed rather than faked. */}
             {/* Language — inline accordion (dc.html v3 L686) */}
             <div style={{ paddingTop: 12, marginTop: 12, borderTop: "1px solid var(--border)" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>

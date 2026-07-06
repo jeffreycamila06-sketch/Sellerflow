@@ -52,7 +52,9 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
               </div>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 11, paddingTop: 11, borderTop: "1px solid var(--border)" }}>
-              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".03em", color: statusColor(o.status), background: "var(--surface-2)", border: "1px solid var(--border)", padding: "3px 9px", borderRadius: 7 }}>{o.status}</span>
+              {/* F-batch i18n: canonical status value ("New") stays English for
+                  statusColor state-equality; only the DISPLAY translates. */}
+              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".03em", color: statusColor(o.status), background: "var(--surface-2)", border: "1px solid var(--border)", padding: "3px 9px", borderRadius: 7 }}>{o.status === "New" ? t.rd_ord_st_new : o.status}</span>
               <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)" }}>{o.platform}</span>
               <span style={{ fontSize: 11.5, color: "var(--text-muted)", marginLeft: "auto" }}>{live ? o.time : `${o.time} ${t.rd_ord_ago}`}</span>
             </div>

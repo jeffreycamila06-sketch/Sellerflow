@@ -9,10 +9,7 @@ import { TProvider } from "../../i18n";
 import type { AccountUser } from "../../../accountDb";
 import type { AutoControls } from "../../data";
 
-const auto: AutoControls = {
-  detect: false, setupOpen: false, action: "slip", words: [], input: "",
-  toggle: () => {}, toggleSetup: () => {}, setAction: () => {}, removeWord: () => {}, setInput: () => {}, addWord: () => {},
-};
+const auto: AutoControls = { detect: false, setupOpen: false, toggle: () => {}, toggleSetup: () => {} }; // F-batch: trimmed shape
 
 const account: AccountUser = {
   authUserId: "u1", email: "googletest@sellerflowlive.com",

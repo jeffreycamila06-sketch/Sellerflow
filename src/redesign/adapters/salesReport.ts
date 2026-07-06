@@ -9,7 +9,6 @@ import { useCallback, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 
 export type SalesPeriod = "7d" | "month" | "last_month";
-export const SALES_PERIODS: SalesPeriod[] = ["7d", "month", "last_month"];
 
 export interface SalesDay { d: string; rev: number; orders: number }
 export interface SalesTopProduct { name: string; rev: number; orders: number }

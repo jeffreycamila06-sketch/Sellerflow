@@ -3,7 +3,7 @@
 // src/styles/design-tokens.css), and renders all built screens + bottom nav.
 // Self-contained preview — does NOT import or touch the existing app.
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { CURRENCIES, curSymbol, type ThemeMode, type AccentKey, type AutoControls, type AutoWord } from "./data";
+import { CURRENCIES, curSymbol, type ThemeMode, type AccentKey, type AutoControls } from "./data";
 import Dashboard from "./screens/Dashboard";
 import Orders from "./screens/Orders";
 import Products from "./screens/Products";
@@ -50,7 +50,7 @@ import { csvDL, dayStamp } from "./adapters/csv";
 import { computeSales } from "./adapters/sales";
 import { useSalesReport } from "./adapters/salesReport";
 import { sessionKeyFor } from "./adapters/shipping";
-import { printSlip, buildSettingsFromRedesign, type Settings as PrintSettings } from "./adapters/printing";
+import { printSlip, buildSettingsFromRedesign, setNativePrintAlertText, type Settings as PrintSettings } from "./adapters/printing";
 import { btCall, hasBtBridge, buildTestStickerPayload, buildTestBuyer, type StickerPrintResult } from "./adapters/printerBridge";
 import { registeredAccountsFor, appendAccount, maxAcc, composeChannelSave, connectToast, type Platform } from "./adapters/connect";
 import type { Buyer, Comment as ProdComment } from "../lib/orderTypes";
@@ -72,7 +72,7 @@ type Screen =
 const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels"];
 
 
-const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set", autowords: "sfl_rd_autowords", automode: "sfl_rd_automode", pp: "sfl_rd_pp", printer: "sfl_rd_printer" } as const;
+const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set", automode: "sfl_rd_automode", pp: "sfl_rd_pp", printer: "sfl_rd_printer" } as const;
 const readLS = (k: string, fallback: string): string => {
   try { return localStorage.getItem(k) || fallback; } catch { return fallback; }
 };
@@ -289,6 +289,9 @@ export default function RedesignApp() {
   // Memoized (audit #2): buildT merges ~1,100 keys — rebuilding that object on
   // EVERY app render (which happens per incoming live comment) was pure waste.
   const tApp = useMemo(() => buildT(lang), [lang]);
+  // F-batch i18n: localize the native-printer failure alert (printing.ts module
+  // fallback — the one string that module generates itself).
+  useEffect(() => { setNativePrintAlertText(tApp.rd_print_native_failed); }, [tApp]);
   // Auto-dismissing toast (no buttons) — chip connect feedback. kind "ok" = success
   // ("Connected!"), "err" = honest failure reason. Errors linger a bit longer to read.
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
@@ -406,6 +409,9 @@ export default function RedesignApp() {
       // Phase 1 — account resolved but is NOT live (server 409 notLive): a distinct,
       // localized "start your LIVE first" toast, NOT the generic server-error toast.
       if (r.notLive) { setToast({ msg: tApp.rd_cm_not_live, kind: "err" }); return; }
+      // F-batch i18n: a CLIENT-side network failure (fetch threw — no server reason)
+      // gets its own localized toast instead of the hardcoded English fallback.
+      if (!r.ok && r.unreachable) { setToast({ msg: tApp.rd_cm_cant_reach, kind: "err" }); return; }
       // Honest feedback: success "Connected!"; failure → the real server/network reason
       // (r.error verbatim) with the generic fallback. Chip still reverts to neutral.
       setToast(connectToast(r, tApp.rd_dash_connected_toast, tApp.rd_cm_conn_failed));
@@ -471,31 +477,13 @@ export default function RedesignApp() {
   // stays where the seller left it across refresh — same pattern as theme/currency.
   const [autoDetect, setAutoDetect] = useState<boolean>(() => readLS(LS.automode, "0") === "1");
   const [autoSetupOpen, setAutoSetupOpen] = useState(false);
-  const [autoAction, setAutoAction] = useState<"slip" | "sticker">("slip");
-  // Phase 5i — auto-detect trigger words persist across refresh (sfl_rd_autowords).
-  const [autoWords, setAutoWords] = useState<AutoWord[]>(() => readJSON<AutoWord[]>(LS.autowords, [
-    { word: "mine", price: "150" }, { word: "claim", price: "150" }, { word: "sold", price: "150" },
-    { word: "get", price: "150" }, { word: "take", price: "150" },
-  ]));
-  const [autoInput, setAutoInput] = useState("");
-  useEffect(() => { try { localStorage.setItem(LS.autowords, JSON.stringify(autoWords)); } catch { /* ignore */ } }, [autoWords]);
-  // Parse "word = price" / "word price" / "word" (default price 150). dc.html v3 onAutoKey L2063.
-  const addAutoWord = () => {
-    const raw = autoInput.trim().toLowerCase();
-    const m = raw.match(/^(.*?)[\s=]*(\d+)?$/);
-    const word = ((m && m[1]) || raw).trim();
-    const price = (m && m[2]) || "150";
-    if (word && !autoWords.some((x) => x.word === word) && autoWords.length < 20) setAutoWords((ws) => [...ws, { word, price }]);
-    setAutoInput("");
-  };
+  // F-batch sweep: the old word-list plumbing (autoWords/sfl_rd_autowords/
+  // addAutoWord) is gone — it had no renderer and the REAL Auto Mode matches
+  // product CODES (useAutoCodes). The toggle + setup accordion remain real.
   const autoControls: AutoControls = {
-    detect: autoDetect, setupOpen: autoSetupOpen, action: autoAction, words: autoWords, input: autoInput,
+    detect: autoDetect, setupOpen: autoSetupOpen,
     toggle: () => setAutoDetect((v) => !v),
     toggleSetup: () => setAutoSetupOpen((o) => !o),
-    setAction: setAutoAction,
-    removeWord: (i) => setAutoWords((ws) => ws.filter((_, j) => j !== i)),
-    setInput: setAutoInput,
-    addWord: addAutoWord,
   };
 
   // Dashboard order flow (dc.html v3 L1796–1810 / onEntKey L2058). Phase 5e: now
@@ -699,7 +687,7 @@ export default function RedesignApp() {
           )}
           {screen === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} orders={ordersList} state={ordersState} onExport={exportOrders} onGoShipping={() => setScreen("shipping")} />}
           {screen === "products" && <Products cur={cur} />}
-          {screen === "miners" && <Miners cur={cur} miners={minerList} stats={minerStats} live onExport={exportMiners} />}
+          {screen === "miners" && <Miners cur={cur} miners={minerList} stats={minerStats} onExport={exportMiners} />}
           {screen === "menu" && (
             <SettingsHub
               onGeneral={() => setScreen("settings")}
@@ -770,7 +758,7 @@ export default function RedesignApp() {
             </div>
             <button onClick={() => setScreen("dashboard")} className={navCls(screen === "dashboard")}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" fill="currentColor" /><circle cx="12" cy="12" r="8.2" stroke="currentColor" strokeWidth="1.7" opacity=".55" /></svg>
-              <span style={{ fontSize: 10, fontWeight: 700 }}>Live</span>
+              <span style={{ fontSize: 10, fontWeight: 700 }}>{tApp.rd_nav_live}</span>
             </button>
             <button onClick={() => setScreen("miners")} className={navCls(screen === "miners")}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 19V11M9 19V5M14 19v-6M19 19V9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
@@ -778,21 +766,21 @@ export default function RedesignApp() {
             </button>
             <button onClick={() => setScreen("orders")} className={navCls(ordersActive)}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M6 7h12l-1 12a2 2 0 0 1-2 1.8H9A2 2 0 0 1 7 19L6 7Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M9 7a3 3 0 0 1 6 0" stroke="currentColor" strokeWidth="1.7" /></svg>
-              <span style={{ fontSize: 10, fontWeight: 700 }}>Orders</span>
+              <span style={{ fontSize: 10, fontWeight: 700 }}>{tApp.rd_nav_orders}</span>
             </button>
             <button onClick={() => setScreen("products")} className={navCls(screen === "products")}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 8.5 12 4l8 4.5v7L12 20l-8-4.5v-7Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="m4 8.5 8 4.5 8-4.5M12 13v7" stroke="currentColor" strokeWidth="1.7" /></svg>
-              <span style={{ fontSize: 10, fontWeight: 700 }}>Products</span>
+              <span style={{ fontSize: 10, fontWeight: 700 }}>{tApp.rd_nav_products}</span>
             </button>
             <button onClick={() => setScreen("menu")} className={navCls(settingsActive)}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.7" /><path d="M19.4 13c.04-.3.06-.66.06-1s-.02-.7-.06-1l2.1-1.6-2-3.5-2.5 1a7.5 7.5 0 0 0-1.7-1l-.4-2.6H9.1l-.4 2.6c-.6.25-1.18.58-1.7 1l-2.5-1-2 3.5L4.6 11c-.04.3-.06.66-.06 1s.02.7.06 1l-2.1 1.6 2 3.5 2.5-1c.52.42 1.1.75 1.7 1l.4 2.6h5.8l.4-2.6c.6-.25 1.18-.58 1.7-1l2.5 1 2-3.5-2.1-1.6Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>
-              <span style={{ fontSize: 10, fontWeight: 700 }}>Settings</span>
+              <span style={{ fontSize: 10, fontWeight: 700 }}>{tApp.rd_nav_settings}</span>
             </button>
             {/* Admin — owner only, sidebar only (display:none below 900px). */}
             {isAdmin && (
               <button onClick={() => setScreen("admin")} className={navCls(screen === "admin") + " sfl-nav-admin"}>
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 3 5 6v5c0 4 2.8 6.9 7 8 4.2-1.1 7-4 7-8V6l-7-3Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /></svg>
-                <span style={{ fontSize: 10, fontWeight: 700 }}>Admin</span>
+                <span style={{ fontSize: 10, fontWeight: 700 }}>{tApp.rd_nav_admin}</span>
               </button>
             )}
           </div>

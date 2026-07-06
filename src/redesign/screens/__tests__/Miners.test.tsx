@@ -1,4 +1,4 @@
-// Miners empty-state vs real-data (Option a). New user (0 customers) must see clean zeros
+// Miners empty-state vs real-data (Option a; F-batch: the `live` prop is gone — the screen is live-only). New user (0 customers) must see clean zeros
 // + guidance, NEVER the "1,284 / 1.28M / +12%" demo. A user with data sees real numbers.
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
@@ -15,7 +15,7 @@ const renderM = (props: Parameters<typeof Miners>[0]) =>
 
 describe("Miners — empty-state (new user) never shows demo", () => {
   it("live + 0 buyers → clean zeros, guidance message, NO demo numbers/badges", () => {
-    renderM({ cur: "NT$", live: true, miners: [], stats: zeroStats });
+    renderM({ cur: "NT$", miners: [], stats: zeroStats });
     // guidance empty-state
     expect(screen.getByText(/connect an account and start a live session/i)).toBeTruthy();
     // real zeros shown
@@ -33,7 +33,6 @@ describe("Miners — empty-state (new user) never shows demo", () => {
   it("live + real data → shows real numbers + real top buyer, no demo", () => {
     renderM({
       cur: "NT$",
-      live: true,
       miners: [{ name: "Ann Cruz", handle: "@anncruz", orders: 4, spent: 1200, platform: "TikTok" }],
       stats: { buyers: 33, orders: 62, spent: 24500, avg: 395, tiktokPct: 70, fbPct: 30 },
     });

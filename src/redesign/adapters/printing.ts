@@ -87,6 +87,14 @@ export function buildSlipPayload(buyer: Buyer, cur: string, storeName: string, c
   return { type: "sellerflow.printSlip", buyer, currency: cur, storeName, settings: cfg, sessionDate: sess, createdAt: new Date().toISOString() };
 }
 
+// F-batch i18n: the ONLY user-visible string this module generates itself (the
+// alert fallback when the native bridge reports a failure without a message).
+// Default = the verbatim App.tsx copy; RedesignApp overrides it with the
+// seller's language whenever the language changes. Native-provided messages
+// still pass through untouched.
+let nativeFailAlertText = "Native printer failed.";
+export function setNativePrintAlertText(text: string): void { if (text) nativeFailAlertText = text; }
+
 // ── Native bridge — copied verbatim from App.tsx:445-451, 475-509, 591-618 ───
 function hasNativeMobilePrinter(): boolean {
   if (typeof window === "undefined") return false;
@@ -104,7 +112,7 @@ function sendSlipToNativePrinter(payload: NativePrinterPayload): boolean {
       if (msg && typeof msg === "object") {
         const m = msg as { ok?: boolean; message?: string };
         if (m.ok) return;
-        const text = m.message || "Native printer failed.";
+        const text = m.message || nativeFailAlertText; // F-batch i18n (was hardcoded English)
         console.warn(text);
         window.alert(text);
         return;

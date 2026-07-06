@@ -35,31 +35,10 @@ export const curSymbol = (code: string): string => CURRENCIES[code] || "$";
 
 export interface Comment { id: string; name: string; handle: string; text: string; mine: boolean; time: string; }
 
-export const INCOMING: Omit<Comment, "id" | "time">[] = [
-  { name: "Grace Lim", handle: "@gracelim", text: "Mine! 1pc rose gold ⌚", mine: true },
-  { name: "Paolo Reyes", handle: "@paoloreyes", text: "How much shipping po?", mine: false },
-  { name: "Nene Bautista", handle: "@nene.b", text: "Mine 2pcs size 7", mine: true },
-  { name: "Daisy Ong", handle: "@daisy.ong", text: "Pa-mine din po 🙋", mine: true },
-  { name: "Rico Tan", handle: "@ricotan", text: "Still available?", mine: false },
-  { name: "Mae Villar", handle: "@mae.villar", text: "Mine the bundle set", mine: true },
-  { name: "Joy Aquino", handle: "@joyaquino", text: "Mine! black medium", mine: true },
-  { name: "Ben Co", handle: "@benco", text: "Claiming mine — red 1pc", mine: true },
-];
-
-export const SEED_COMMENTS: Comment[] = [
-  { id: "s1", name: "Maria Santos", handle: "@maria_shops", text: "Mine! Red lipstick 2pcs 💄", mine: true, time: "now" },
-  { id: "s2", name: "Jenny Cruz", handle: "@jen.cruz", text: "How much po the bundle?", mine: false, time: "12s" },
-  { id: "s3", name: "Liza Reyes", handle: "@lizareyes", text: "Mine black tumbler", mine: true, time: "28s" },
-  { id: "s4", name: "Aira Dela Cruz", handle: "@aira.dc", text: "Sold na po ba?", mine: false, time: "45s" },
-  { id: "s5", name: "Kim Tan", handle: "@kimtanph", text: "Mine! size M white", mine: true, time: "1m" },
-  { id: "s6", name: "Joy Aquino", handle: "@joyaquino", text: "How to pay po? GCash?", mine: false, time: "1m" },
-  { id: "s7", name: "Mae Villar", handle: "@mae.villar", text: "Mine the bundle set 🙋", mine: true, time: "2m" },
-  { id: "s8", name: "Rico Tan", handle: "@ricotan", text: "Sana available pa 🙏", mine: false, time: "2m" },
-  { id: "s9", name: "Grace Lim", handle: "@gracelim", text: "Mine rose gold ✨", mine: true, time: "3m" },
-];
+// (F-batch sweep: the INCOMING/SEED_COMMENTS sample streams are gone — the live
+// feed has been the real socket since 5d; nothing consumed them.)
 
 export interface Order { id: string; buyer: string; handle: string; items: string; qty: number; total: number; status: string; platform: string; time: string; }
-export interface Product { name: string; sku: string; price: number; stock: number; cat: string; }
 export interface Miner { name: string; handle: string; orders: number; spent: number; platform: string; }
 
 export const ORDERS: Order[] = [
@@ -71,36 +50,9 @@ export const ORDERS: Order[] = [
   { id: "#10467", buyer: "Joy Aquino", handle: "@joyaquino", items: "Skincare Bundle Set", qty: 1, total: 649, status: "Unpaid", platform: "TikTok", time: "40m" },
 ];
 
-export const PRODUCTS: Product[] = [
-  { name: "Matte Lipstick", sku: "LIP-RED", price: 249, stock: 42, cat: "Beauty" },
-  { name: "Insulated Tumbler", sku: "TUM-BLK", price: 399, stock: 8, cat: "Home" },
-  { name: "Cotton Tee — White", sku: "TEE-WHT-M", price: 349, stock: 120, cat: "Apparel" },
-  { name: "Rose Gold Watch", sku: "WTCH-RG", price: 1299, stock: 5, cat: "Accessories" },
-  { name: "Running Sneakers", sku: "SNK-07", price: 899, stock: 0, cat: "Footwear" },
-  { name: "Skincare Bundle", sku: "BND-SKN", price: 649, stock: 31, cat: "Beauty" },
-];
-
-export const MINERS: Miner[] = [
-  { name: "Maria Santos", handle: "@maria_shops", orders: 24, spent: 18420, platform: "TikTok" },
-  { name: "Grace Lim", handle: "@gracelim", orders: 18, spent: 14250, platform: "TikTok" },
-  { name: "Liza Reyes", handle: "@lizareyes", orders: 16, spent: 12990, platform: "Facebook" },
-  { name: "Kim Tan", handle: "@kimtanph", orders: 15, spent: 9870, platform: "TikTok" },
-  { name: "Nene Bautista", handle: "@nene.b", orders: 9, spent: 7640, platform: "Facebook" },
-];
-
-// Dashboard header account pickers (dc.html v2 L1182–1191). SAMPLE data only —
-// Phase 5 wires real connected TikTok/Facebook accounts + actual switching.
-export interface Account { handle: string; name: string; meta: string; }
-export const TT_ACCOUNTS: Account[] = [
-  { handle: "@maria_shops", name: "Maria's Live Shop", meta: "128K followers" },
-  { handle: "@maria_beauty", name: "Maria Beauty Hub", meta: "54K followers" },
-  { handle: "@mariadeals", name: "Maria Deals PH", meta: "31K followers" },
-];
-export const FB_ACCOUNTS: Account[] = [
-  { handle: "Maria's Live Shop", name: "Page · 86K likes", meta: "Page" },
-  { handle: "Maria Beauty Hub", name: "Page · 22K likes", meta: "Page" },
-  { handle: "Reseller Group PH", name: "Group · 12K members", meta: "Group" },
-];
+// (F-batch sweep: sample PRODUCTS/MINERS/TT_ACCOUNTS/FB_ACCOUNTS removed — the
+// Products screen has real local+DB CRUD, Miners is RPC-only since 2026-07-05,
+// and the account pickers show the seller's real registered accounts.)
 
 // Customers + Comment archive (dc.html DATA.customers L922–930, archive L931–937).
 export interface Customer { name: string; handle: string; orders: number; spent: number; last: string; platform: string; }
@@ -122,44 +74,20 @@ export const CUSTOMERS: Customer[] = [
 // shared from RedesignApp state. (Removed from the Dashboard per Jeff's call.)
 // v3: each trigger is a {word, price} pair — a matching comment auto-prints an
 // order at that price (dc.html v3 autoWords L1548 / onAutoKey L2063).
-export interface AutoWord { word: string; price: string; }
+// F-batch sweep: AutoControls trimmed to the fields GeneralSettings actually
+// renders (toggle + setup accordion). The old word-list editor plumbing
+// (words/input/addWord/…) never had a renderer — the REAL Auto Mode matcher is
+// useAutoCodes (code→product), configured in the same accordion.
 export interface AutoControls {
   detect: boolean;
   setupOpen: boolean;
-  action: "slip" | "sticker";
-  words: AutoWord[];
-  input: string;
   toggle: () => void;
   toggleSetup: () => void;
-  setAction: (a: "slip" | "sticker") => void;
-  removeWord: (i: number) => void;
-  setInput: (v: string) => void;
-  addWord: () => void;
 }
 
-// ── Phase 4 (admin/occasional) sample data ──────────────────────────────────
-// Admin sellers (dc.html DATA.sellers L944–950).
-export interface Seller { shop: string; owner: string; plan: string; expiry: string; status: string; }
-export const SELLERS: Seller[] = [
-  { shop: "Maria Beauty Hub", owner: "Maria Santos", plan: "Pro", expiry: "Jul 28, 2026", status: "Active" },
-  { shop: "TanwearPH", owner: "Kim Tan", plan: "Starter", expiry: "Jun 30, 2026", status: "Expiring" },
-  { shop: "Reyes Finds", owner: "Liza Reyes", plan: "Pro", expiry: "Sep 12, 2026", status: "Active" },
-  { shop: "Grace Luxe", owner: "Grace Lim", plan: "Business", expiry: "Dec 01, 2026", status: "Active" },
-  { shop: "BudgetBuys", owner: "Rico Tan", plan: "Starter", expiry: "Jun 20, 2026", status: "Expired" },
-];
-// Shipping (dc.html DATA.shipping L938–943).
-export interface Shipment { id: string; buyer: string; courier: string; track: string; status: string; }
-export const SHIPPING: Shipment[] = [
-  { id: "#10469", buyer: "Grace Lim", courier: "J&T Express", track: "JT882190455", status: "Shipped" },
-  { id: "#10470", buyer: "Liza Reyes", courier: "LBC", track: "LBC772019", status: "Packed" },
-  { id: "#10468", buyer: "Nene Bautista", courier: "Flash", track: "FL552281", status: "Shipped" },
-  { id: "#10465", buyer: "Rico Tan", courier: "J&T Express", track: "JT882110023", status: "Delivered" },
-];
-// Sales report daily bars (dc.html DATA.sales L951).
-export const SALES: { d: string; v: number }[] = [
-  { d: "Mon", v: 8200 }, { d: "Tue", v: 11400 }, { d: "Wed", v: 9800 }, { d: "Thu", v: 15200 },
-  { d: "Fri", v: 21800 }, { d: "Sat", v: 28400 }, { d: "Sun", v: 19600 },
-];
+// (F-batch sweep: sample SELLERS/SHIPPING/SALES + the Seller/Shipment types
+// removed — Admin sellers are real seller_profiles, Shipping is the real 7-11
+// export, Sales Report v2 is ledger-RPC-driven.)
 // Admin plans (dc.html v3 PLANS L1550). Prices are bare — the currency symbol
 // `cur` is prepended at render. Phase 5b: REAL Taiwan production prices/tiers
 // (Basic NT$500 · Pro NT$1,200 · Master NT$1,700). Subscriptions stay manual

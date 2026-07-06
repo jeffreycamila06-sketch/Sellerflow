@@ -43,7 +43,9 @@ export default function ConnectModal({ profile, initialTab = "TikTok", onClose, 
       ? await onConnect("TikTok", { username: ttValue })
       : await onConnect("Facebook", { liveVideoId: fbValue, accessToken: fbTok });
     setBusy(false);
-    if (!r.ok) { setErr(r.error || t.rd_cm_conn_failed); return; }
+    // F-batch i18n: a client network failure shows the localized "can't reach"
+    // copy; a real server reason still passes through verbatim.
+    if (!r.ok) { setErr(r.unreachable ? t.rd_cm_cant_reach : (r.error || t.rd_cm_conn_failed)); return; }
     onClose();
   };
 
