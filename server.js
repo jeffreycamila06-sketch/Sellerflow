@@ -573,43 +573,6 @@ app.post("/connect/tiktok", requireAuth, requirePlanActive, async (req, res) => 
   });
 });
 
-app.post("/disconnect/tiktok", requireAuth, async (req, res) => {
-  const sellerId = req.sellerId;
-  const username = cleanAccountKey(req.body.username);
-  const sessionId = String(req.body.sessionId || "");
-
-  if (!sellerId || !username) {
-    return res.status(400).json({
-      success: false,
-      error: "Seller account and TikTok username are required",
-    });
-  }
-
-  const key = liveKey(sellerId, "TikTok", username);
-  await disconnectTikTokConnection(key, { manual: true });
-  clearTikTokReconnect(key);
-  emitTikTokStatus({
-    sellerId,
-    username,
-    sessionId,
-    connected: false,
-    reconnecting: false,
-    reason: "manual",
-  });
-  io.to(sellerRoom(sellerId)).emit("live_session_ended", {
-    platform: "TikTok",
-    username,
-    sellerId,
-    sessionId,
-    timestamp: new Date().toISOString(),
-  });
-
-  return res.json({
-    success: true,
-    message: `Disconnected TikTok LIVE: ${username}`,
-  });
-});
-
 app.post("/connect/facebook", requireAuth, requirePlanActive, (req, res) => {
   const sellerId = req.sellerId;
   const username = cleanAccountKey(req.body.username || req.body.liveVideoId || req.body.pageName);
