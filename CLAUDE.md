@@ -228,9 +228,10 @@ see the same buyers + orders. Fixes data-loss + "reset to #1" complaints.
 ## iOS status
 Apple Developer enrolled (W1850218684). iOS slip printing via XP-N160II viable.
 iOS sticker = ~~parked (BLE incompat)~~ **UNPARKED 2026-07-07** — AIMO D520BT ay
-dual-mode pala; iOS BLE path implemented (merge `df01807`, kailangan ng bagong
-binary = Build 5; see the 2026-07-07 BLE session log). Capacitor 8.3.4; iOS app
-loads remote sellerflowlive.com.
+dual-mode pala; iOS BLE path implemented (merge `df01807`) + **hardware-verified
+Jul 7 sa iPhone ni Jeff**; ship binary = **Build 6 / 1.2 (nasa review)** — see
+the 2026-07-07 BLE session log. Capacitor 8.3.4; iOS app loads remote
+sellerflowlive.com.
 
 ## Google Play
 - Account: **`camilajeffrey1@gmail.com` (u/1)** — **NOT** `jeffreycamila06@gmail.com`.
@@ -1702,6 +1703,11 @@ VERBATIM na lumang kopya. 701 vitest · lint 54 parity. App.tsx untouched.
   sa remote-session environment (git proxy 403 sa delete pushes, walang MCP
   delete-branch tool) — burahin sa GitHub UI (Branches page). Dagdag na pwedeng
   burahin doon: session-pager-unify + lahat ng lumang merged claude/* branches.
+  ✅ **RESOLVED 2026-07-07:** 21 merged `claude/*` remote branches DELETED ni
+  Jeff via Mac terminal (`git branch -r --merged` filter). Natira sa remote:
+  **`main` + `claude/full-redesign` lang** — ang full-redesign ay hindi lumabas
+  sa merged list (hindi branch-merged ang redesign history; iniwan as-is,
+  HINDI basura).
 - Hindi ginalaw (labas sa no-behavior-change rule, flagged lang): `dayStamp()`
   UTC-vs-Taipei sa CSV filenames · Shipping bare `toLocaleString` · config-load
   error sa useSessionWindow (defaults sa 1-day nang tahimik).
@@ -1750,11 +1756,12 @@ Apat na item sa isang branch (`claude/audit-batch-f` `dfb34f4`), 19 files
   `rd_print_native_failed`, `rd_ord_st_new`) · 4 dead markers wala na
   ("Mine! Red lipstick 2pcs", `rd_ship_add_order`, `rd_adm_systems_ok`,
   `sfl_rd_autowords`).
-- ⚠️ **FLAGGED, hindi ginalaw:** `POST /disconnect/tiktok` sa server.js = dead
-  (walang caller) pero kailangan ng manual Render deploy — isama sa susunod na
-  server change. · Natitira sa backlog: Login/Landing fake stats (desisyon ni
-  Jeff) · RLS `(select auth.uid())` SQL = TAPOS NA ni chat-Claude (26 policies,
-  advisor clean).
+- ⚠️ **FLAGGED, hindi ginalaw:** ~~`POST /disconnect/tiktok` sa server.js = dead~~
+  ✅ REMOVED 2026-07-07 (`claude/f-batch-cleanup`) — pero **hindi pa deployed sa
+  Render** (manual deploy; isabay sa susunod na server deploy — see the
+  2026-07-07 f-batch-cleanup log). · Natitira sa backlog: Login/Landing fake
+  stats (desisyon ni Jeff) · RLS `(select auth.uid())` SQL = TAPOS NA ni
+  chat-Claude (26 policies, advisor clean).
 
 ## SESSION 2026-07-06 (part 2) — LANDING v2 ✅ (merge `b62e3e0`, LIVE + prod-verified)
 Buong marketing landing rebuild mula sa approved blueprint ni chat-Claude
@@ -1812,12 +1819,14 @@ pagkatapos ma-flag na wala ito sa repo). Branch `claude/landing-v2` (`e1ddd51`),
    screenshots (IMG_3270-3276) ang final set.
 4. **SUBMITTED: 1.1 (Build 4)** — kumpletong metadata (Promotional Text,
    What's New "Display improvements and performance updates", keywords,
-   googletest demo account sa Sign-In). Status: **Waiting for Review.**
-   Pagka-approve: auto-release; lahat ng store downloads = tamang display na.
-- **Kasalukuyang estado:** Landing v2 = LIVE · App Store listing = LIVE (1.0,
-  lumang binary) · **1.1 nasa review**. Backlog unchanged.
+   googletest demo account sa Sign-In). ✅ **SAGA SARADO (2026-07-07):
+   APPROVED + LIVE sa store Jul 7 (auto-released)** — display fix confirmed
+   shipped; lahat ng store downloads = tamang display na.
+- **Kasalukuyang estado (updated 2026-07-07 hapon):** Landing v2 = LIVE ·
+  App Store = **LIVE 1.1** (display fix shipped) · **1.2 = SUBMITTED Jul 7
+  ~14:26, Waiting for Review** (Build 6, BLE sticker — see the BLE session log).
 
-## SESSION 2026-07-07 — iOS BLE STICKER PRINTING (AIMO D520BT) ✅ MERGED `df01807` (native-only — kailangan ng BAGONG iOS BINARY = Build 5; hindi pa device-tested)
+## SESSION 2026-07-07 — iOS BLE STICKER PRINTING (AIMO D520BT) ✅ MERGED `df01807` (native-only; ✅ HARDWARE-VERIFIED Jul 7 — official ship binary = **Build 6 / version 1.2**, nasa review)
 **UNPARKS iOS sticker printing.** Ang matagal nang "iOS sticker = parked (BLE
 incompat)" ay napatunayang MALI: ang AIMO D520BT-Z ay **DUAL-MODE Bluetooth**
 (Android = Classic SPP; iPhone = **BLE** — pinatunayan ng Labelife app sa mismong
@@ -1897,3 +1906,45 @@ error) · Android APK regression check (sticker print pa rin via SPP — dapat
 walang pagbabago).
 - **Rollback:** native-only → ibalik ang dating binary sa TestFlight, o revert
   merge + rebuild. Walang web/DB impact.
+
+### ✅ CLOSING NOTE (2026-07-07 hapon) — HARDWARE-VERIFIED + Build 5→6 saga
+- **DEVICE-TESTED PASADO** sa iPhone ni Jeff + totoong AIMO D520BT-Z: scan →
+  connect → **"sobrang linis ng print"** · **1-Click auto-print WORKING**.
+  Ang iOS BLE sticker ay KUMPIRMADONG gumagana end-to-end.
+- ⚠️ **Build 5 = na-distribute na "TestFlight Internal Only" BY MISTAKE** —
+  hindi lumalabas sa version submission picker, kaya HINDI ito ang ship binary
+  (iniwang harmless sa TestFlight). Ito ang **PANGALAWANG beses** na tumama ang
+  Internal-Only trap → kumpirmadong tama ang DEPLOYMENT MODEL iOS DISTRIBUTE
+  RULE. **OFFICIAL BINARY = Build 6** (same code, re-archive na may tamang
+  **"App Store Connect"** distribute) → **submitted bilang version 1.2, Jul 7
+  ~14:26, Waiting for Review.**
+- **Promotional Text:** kasalukuyang naka-**Option 2 (generic)**; i-swap sa
+  printing-focused version kapag LIVE na ang 1.2 (naka-bundle sa broadcast
+  trigger).
+
+## SESSION 2026-07-07 (part 2) — F-BATCH LEFTOVERS + DOCS CLOSEOUT (branch `claude/f-batch-cleanup`, awaiting Jeff review/merge)
+Tatlong maliit na items, isang branch:
+1. **server.js dead route REMOVED:** `POST /disconnect/tiktok` (F-batch audit
+   finding — zero caller sa buong repo, re-verified bago tanggalin; ang mga
+   helper nito — `disconnectTikTokConnection`/`clearTikTokReconnect`/
+   `emitTikTokStatus` — ay may 16 pang ibang call sites, buhay lahat). Stale
+   endpoint row sa `agents/sellerflow-maintenance-agent.md` in-update din.
+   ⚠️ **MERGED-BUT-NOT-DEPLOYED:** Render = MANUAL deploy — ang removal ay
+   HINDI live hangga't hindi pinipindot ni Jeff ang "Deploy latest commit" sa
+   Render dashboard. WALANG urgency (dead code lang) — **isabay sa susunod na
+   manual Render deploy.**
+2. **Orphan `rd_lp_*` keys sweep:** 75 orphan keys ng lumang Landing v1
+   (pricing/FAQ/CTA/features/how blocks — pinalitan ng `rd_l2_*` sa Landing v2)
+   REMOVED sa `src/redesign/i18n/index.tsx` (~525 dead strings). **11 keys
+   INIWAN = live pa rin** (ginagamit ng Landing v2 + AuthBrandPanel):
+   `rd_lp_hero_l1/l2`, `rd_lp_m1_l…m4_l`, `rd_lp_nav_features/how/faq`,
+   `rd_lp_foot_product/support`. Dynamic-key guard inulit (F-batch 5-layer):
+   zero template/concat/bracket construction; ang 2 kahina-hinalang grep hits
+   (`rd_lp_m`, `rd_lp_pc_`) = comment mentions lang. Entry-line removal LANG
+   (walang restructuring/reformat ng i18n file); ang naging-empty na "Step Lc:
+   pricing" section header ay tinanggal din.
+3. **Docs closeout (CLAUDE.md):** 1.1 saga SARADO (approved + live Jul 7) ·
+   1.2/Build 6 submitted (Build 5 Internal-Only trap — 2nd hit) · BLE
+   hardware-verified closing note · branch cleanup resolved (21 remote deletes
+   via Mac) · Promotional Text Option-2 note. (Lahat sa mga kaukulang section
+   sa itaas.)
