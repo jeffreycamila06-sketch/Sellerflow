@@ -150,9 +150,12 @@ describe("Landing v2", () => {
         expect(i.getAttribute("loading")).toBe("lazy");
         expect((i.getAttribute("alt") || "").length).toBeGreaterThan(0);
       });
-    // montage strip heading + captions rendered
+    // montage gallery = 3-up (seller1 + seller3 + seller4), not Taiwan-only
+    const gallery = document.querySelector(".sfl-l2-sellers");
+    expect(gallery?.querySelectorAll("figure").length).toBe(3);
     expect(screen.getByText(/Live sellers across Asia/)).toBeTruthy();
     expect(screen.getByText("Viewer comments become orders in real time.")).toBeTruthy();
+    expect(screen.getByText("Present your products live and let buyers reserve on the spot.")).toBeTruthy();
   });
 
   it("language dropdown lists languages and picks one", () => {

@@ -372,7 +372,7 @@ html.sfl-ios-shell [data-redesign] textarea { font-size: 16px !important; }
 .sfl-l2-deep { display: grid; grid-template-columns: 1fr 1fr; gap: 46px; align-items: center; }
 .sfl-l2-guides { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
 .sfl-l2-quotes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
-.sfl-l2-sellers { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+.sfl-l2-sellers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
 .sfl-l2-fgrid { display: grid; grid-template-columns: 1.4fr 1fr 1fr 1fr; gap: 34px; }
 @media (max-width: 900px) {
   .sfl-l2-hero { grid-template-columns: 1fr; gap: 44px; }

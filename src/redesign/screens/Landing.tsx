@@ -489,9 +489,7 @@ export default function Landing({
           <span className="sfl-lp-reveal" style={eyebrow}>{t.rd_l2_v_eyebrow}</span>
           <h2 className="sfl-lp-reveal" style={h2Style}>{t.rd_l2_v_h2}</h2>
           <div className="sfl-lp-reveal" style={{ marginTop: 44, background: C.ink, borderRadius: 24, aspectRatio: "16/9", display: "grid", placeItems: "center", position: "relative", overflow: "hidden" }}>
-            {/* real live-seller poster behind the play button (demo video to follow) */}
-            <img src="/landing-seller1.jpg" alt="A live seller presenting clothing to the camera with a ring light" loading="lazy" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.5 }} />
-            <div aria-hidden style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(23,20,58,.35), rgba(23,20,58,.62)), radial-gradient(500px 300px at 30% 20%, rgba(139,92,246,.35), transparent), radial-gradient(500px 320px at 75% 80%, rgba(79,70,229,.4), transparent)" }} />
+            <div aria-hidden style={{ position: "absolute", inset: 0, background: "radial-gradient(500px 300px at 30% 20%, rgba(139,92,246,.35), transparent), radial-gradient(500px 320px at 75% 80%, rgba(79,70,229,.4), transparent)" }} />
             <div style={{ position: "relative", width: 74, height: 74, borderRadius: "50%", background: "#fff", display: "grid", placeItems: "center", fontSize: 24, color: C.indigo, boxShadow: "0 14px 40px rgba(0,0,0,.35)" }}>▶</div>
             <span style={{ position: "absolute", bottom: 20, left: 24, color: "rgba(255,255,255,.85)", fontSize: 13.5, fontWeight: 600 }}>{t.rd_l2_v_cap}</span>
           </div>
@@ -548,6 +546,7 @@ export default function Landing({
           <p className="sfl-lp-reveal" style={secSub}>{t.rd_l2_sellers_sub}</p>
           <div className="sfl-l2-sellers" style={{ marginTop: 44, textAlign: "left" }}>
             {[
+              { src: "/landing-seller1.jpg", alt: "A live seller presenting clothing to the camera with a ring light", cap: t.rd_l2_sellers_c3 },
               { src: "/landing-seller3.jpg", alt: "A live seller's screen where viewer comments become orders with one tap", cap: t.rd_l2_sellers_c1 },
               { src: "/landing-seller4.jpg", alt: "A live seller welcoming buyers and showing a new-arrival garment", cap: t.rd_l2_sellers_c2 },
             ].map((p, i) => (
