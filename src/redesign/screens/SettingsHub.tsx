@@ -2,6 +2,7 @@
 import type { CSSProperties, ReactNode } from "react";
 import { headerBar, headerTitle } from "../ui";
 import { useT } from "../i18n";
+import InviteFriendsCard from "../components/InviteFriendsCard";
 
 const tile: CSSProperties = { display: "flex", alignItems: "center", gap: 11, padding: "15px 13px", border: "1px solid var(--border)", borderRadius: 15, background: "var(--surface)", boxShadow: "var(--shadow)", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" };
 const chip = (variant: "accent" | "danger" | "neutral"): CSSProperties => ({
@@ -53,6 +54,8 @@ export default function SettingsHub({
       </div>
       <div style={{ padding: "16px 14px 22px" }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          {/* Share-the-app card — first thing seen; full-width, lightly tinted */}
+          <InviteFriendsCard />
           <Tile icon={ic.gear} label={t.rd_sh_general} onClick={onGeneral} />
           <Tile icon={ic.people} label={t.rd_cus_title} onClick={onCustomers} />
           {/* Owner-only (production: isAdminUser) */}
