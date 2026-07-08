@@ -60,6 +60,8 @@ import ContactSupportPopup from "./components/ContactSupportPopup";
 import { AnnouncementsSheet } from "./components/Announcements";
 import { isIOS, STATUS_BAR_BACKDROP_HEIGHT } from "./adapters/platform";
 import { isAdminRole } from "../lib/roles";
+import UpdateModal from "./components/UpdateModal";
+import { currentNativePlatform, readBinaryBuild, shouldShowUpdate, wasDismissed, markDismissed, storeUrlFor, bridgeBuildNumber, isUpdatePreview, IOS_BLE_BUILD, type NativePlatform, type NativeVersionConfig } from "./adapters/nativeVersion";
 import { TProvider, buildT, tpl } from "./i18n";
 
 type Screen =
@@ -297,6 +299,40 @@ export default function RedesignApp() {
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(null), toast.kind === "err" ? 3200 : 1800); return () => clearTimeout(id); }, [toast]);
+
+  // ── Native "time for an update" modal (thin-shell: nudge stale binaries to the
+  // store). NATIVE-only (currentNativePlatform → null on web browsers). Fires ONCE
+  // on cold app open — at mount nothing is live yet, so it never interrupts an
+  // active live session (the approved cold-open guard). ONE same-origin static
+  // fetch, zero poll. Dev/preview (?preview_update=1) force-shows a demo.
+  const [update, setUpdate] = useState<{ platform: NativePlatform; messageKey: string; force: boolean; latest: number } | null>(null);
+  useEffect(() => {
+    if (isUpdatePreview()) { setUpdate({ platform: "ios", messageKey: "rd_upd_msg_ble", force: false, latest: IOS_BLE_BUILD + 1 }); return; }
+    const platform = currentNativePlatform();
+    if (!platform) return; // web browser → never
+    let cancelled = false;
+    fetch("/native-version.json", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((cfg: NativeVersionConfig | null) => {
+        if (cancelled || !cfg) return;
+        const pcfg = cfg[platform];
+        if (!pcfg) return;
+        const build = readBinaryBuild(platform, { bridgeBuild: bridgeBuildNumber(), hasBle: hasBtBridge() });
+        if (shouldShowUpdate(pcfg, build, wasDismissed(platform, pcfg.latest))) {
+          setUpdate({ platform, messageKey: pcfg.message_key, force: pcfg.force, latest: pcfg.latest });
+        }
+      })
+      .catch(() => { /* JSON missing/unreachable → no modal, silent */ });
+    return () => { cancelled = true; };
+  }, []);
+  const dismissUpdate = () => { if (update) markDismissed(update.platform, update.latest); setUpdate(null); };
+  const openUpdateStore = () => {
+    const plat = update?.platform ?? "ios";
+    const { app, web } = storeUrlFor(plat);
+    if (isUpdatePreview()) { try { window.open(web, "_blank", "noopener"); } catch { /* */ } return; }
+    if (update) markDismissed(update.platform, update.latest);
+    try { window.location.href = app; } catch { try { window.location.href = web; } catch { /* */ } }
+  };
   // Batch D silent-failure surfacing (#7/#8/#9) — converts adapter error signals
   // into the existing toast. Effects (not inline callbacks) because tApp is
   // declared after the hooks that emit the signals; counters/flags only ever
@@ -826,6 +862,11 @@ export default function RedesignApp() {
             message={tApp.rd_ios_expired_msg}
             onClose={() => setIosExpired(false)}
           />
+        )}
+
+        {/* Native update nudge — cold-open, native-only (see effect above) */}
+        {update && (
+          <UpdateModal messageKey={update.messageKey} force={update.force} onDismiss={dismissUpdate} onComplete={openUpdateStore} />
         )}
 
         {/* Auto-dismissing toast (no buttons). ok = neutral dark pill; err = danger tint + ⚠ */}
