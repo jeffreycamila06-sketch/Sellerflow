@@ -129,9 +129,30 @@ describe("Landing v2", () => {
   it("seller-photo slot falls back gracefully when the asset is missing", () => {
     renderLanding();
     const img = document.querySelector("img.sfl-l2-sellerimg") as HTMLImageElement;
-    expect(img).toBeTruthy(); // tries /landing-seller.jpg first
+    expect(img).toBeTruthy();
+    expect(img.getAttribute("src")).toBe("/landing-seller2.jpg"); // Taiwan hero shot
     fireEvent.error(img);     // asset missing → fallback frame with localized note
     expect(screen.getByText(/photo coming soon/)).toBeTruthy();
+  });
+
+  it("wires the real seller photos: hero + video poster + montage strip, all lazy", () => {
+    renderLanding();
+    const srcs = Array.from(document.querySelectorAll("img"))
+      .map((i) => i.getAttribute("src"));
+    // all four assets present exactly once each
+    for (const n of [1, 2, 3, 4]) {
+      expect(srcs.filter((s) => s === `/landing-seller${n}.jpg`).length).toBe(1);
+    }
+    // every wired seller photo is lazy-loaded with non-empty alt text
+    Array.from(document.querySelectorAll("img"))
+      .filter((i) => (i.getAttribute("src") || "").startsWith("/landing-seller"))
+      .forEach((i) => {
+        expect(i.getAttribute("loading")).toBe("lazy");
+        expect((i.getAttribute("alt") || "").length).toBeGreaterThan(0);
+      });
+    // montage strip heading + captions rendered
+    expect(screen.getByText(/Live sellers across Asia/)).toBeTruthy();
+    expect(screen.getByText("Viewer comments become orders in real time.")).toBeTruthy();
   });
 
   it("language dropdown lists languages and picks one", () => {
