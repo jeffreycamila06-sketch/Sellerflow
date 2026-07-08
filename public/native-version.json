@@ -1,0 +1,4 @@
+{
+  "ios": { "latest": 0, "message_key": "rd_upd_msg_ble", "force": false },
+  "android": { "latest": 0, "message_key": "rd_upd_msg_ble", "force": false }
+}
