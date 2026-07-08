@@ -2,7 +2,7 @@
 // [data-theme]/[data-accent] on the [data-redesign] root (tokens resolve from
 // src/styles/design-tokens.css), and renders all built screens + bottom nav.
 // Self-contained preview — does NOT import or touch the existing app.
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CURRENCIES, curSymbol, type ThemeMode, type AccentKey, type AutoControls } from "./data";
 import Dashboard from "./screens/Dashboard";
 import Orders from "./screens/Orders";
@@ -64,6 +64,7 @@ import UpdateModal from "./components/UpdateModal";
 import ExpiryModal from "./components/ExpiryModal";
 import { currentNativePlatform, readBinaryBuild, shouldShowUpdate, wasDismissed, markDismissed, storeUrlFor, bridgeBuildNumber, isUpdatePreview, IOS_BLE_BUILD, type NativePlatform, type NativeVersionConfig } from "./adapters/nativeVersion";
 import { computeExpiryTier, wasExpiryDismissed, markExpiryDismissed, previewExpiryTier, type ExpiryTier } from "./adapters/planExpiryModal";
+import { openExternalLink } from "./adapters/externalLink";
 import { planDaysLeft } from "../lib/planWindow";
 import { TProvider, buildT, tpl } from "./i18n";
 
@@ -356,8 +357,10 @@ export default function RedesignApp() {
   };
   const dismissExpiry = () => { if (expiry) markExpiryDismissed(expiry.tier, auth.profile?.planExpiry); setExpiry(null); };
   const openRenew = () => {
+    // Open FIRST, synchronously in the gesture (iOS needs the gesture context and
+    // window.open is blocked there) — mirrors the working Settings anchor redirect.
+    openExternalLink("https://t.me/SellerFlowLive1995");
     if (expiry) markExpiryDismissed(expiry.tier, auth.profile?.planExpiry);
-    try { window.open("https://t.me/SellerFlowLive1995", "_blank", "noopener"); } catch { /* */ }
   };
   // Batch D silent-failure surfacing (#7/#8/#9) — converts adapter error signals
   // into the existing toast. Effects (not inline callbacks) because tApp is
