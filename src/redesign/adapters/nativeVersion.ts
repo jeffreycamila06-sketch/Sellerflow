@@ -78,17 +78,6 @@ export function storeUrlFor(platform: NativePlatform): { app: string; web: strin
   return { app: "market://details?id=com.sellerflow.live", web: "https://play.google.com/store/apps/details?id=com.sellerflow.live" };
 }
 
-// Slide-to-update gesture math (pure, unit-tested). progress 0..1.
-export function slideProgress(travelledPx: number, maxTravelPx: number): number {
-  if (!(maxTravelPx > 0)) return 0;
-  const p = travelledPx / maxTravelPx;
-  return p < 0 ? 0 : p > 1 ? 1 : p;
-}
-export const SLIDE_THRESHOLD = 0.95;
-export function reachedThreshold(progress: number, threshold = SLIDE_THRESHOLD): boolean {
-  return progress >= threshold;
-}
-
 // ── runtime probes (guarded; not the unit-test surface) ────────────────────────
 
 // The real native platform. Web browsers (no Capacitor) → null → modal never shows.

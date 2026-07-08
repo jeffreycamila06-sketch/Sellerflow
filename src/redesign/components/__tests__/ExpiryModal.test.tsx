@@ -1,13 +1,15 @@
-// ExpiryModal — per-tier render, the platform split (Android "plan/renew" vs iOS
-// "account/contact support"), iOS 3.1.1 copy safety, ✕ dismiss, and the shared
-// slide gesture driving onComplete.
-import { describe, it, expect, vi, afterEach } from "vitest";
+// ExpiryModal — per-tier render, platform split (Android "plan"/"Renew now" vs
+// iOS "account"/"Contact support"), iOS 3.1.1 copy safety, ✕ dismiss, and the
+// action rendered as a REAL anchor to the Telegram support link (onAction =
+// dismissal side-effect on tap; the href does the opening natively).
+import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import ExpiryModal from "../ExpiryModal";
 import type { ExpiryTier } from "../../adapters/planExpiryModal";
 import { TProvider } from "../../i18n";
 
-const renderModal = (over: { tier?: ExpiryTier; daysLeft?: number; ios?: boolean; onDismiss?: () => void; onComplete?: () => void } = {}) =>
+const TG = "https://t.me/SellerFlowLive1995";
+const renderModal = (over: { tier?: ExpiryTier; daysLeft?: number; ios?: boolean; onDismiss?: () => void; onAction?: () => void } = {}) =>
   render(
     <TProvider lang="en">
       <ExpiryModal
@@ -15,24 +17,17 @@ const renderModal = (over: { tier?: ExpiryTier; daysLeft?: number; ios?: boolean
         daysLeft={over.daysLeft ?? 7}
         ios={over.ios ?? false}
         onDismiss={over.onDismiss ?? (() => {})}
-        onComplete={over.onComplete ?? (() => {})}
+        onAction={over.onAction ?? (() => {})}
       />
     </TProvider>,
   );
 
-afterEach(() => vi.restoreAllMocks());
-function mockTrackWidth(width: number) {
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
-    width, height: 56, top: 0, left: 0, right: width, bottom: 56, x: 0, y: 0, toJSON: () => ({}),
-  } as DOMRect);
-}
-
 describe("ExpiryModal", () => {
-  it("Android/web variant: plan + renew wording, actual day count", () => {
+  it("Android/web variant: plan + Renew now, actual day count", () => {
     renderModal({ tier: "3d", daysLeft: 3, ios: false });
     expect(screen.getByText("Your plan expires in 3 days")).toBeTruthy();
     expect(screen.getByText(/Renew to keep your live sessions/)).toBeTruthy();
-    expect(screen.getByText("Slide to renew")).toBeTruthy();
+    expect(screen.getByText("Renew now")).toBeTruthy();
   });
 
   it("today + expired tiers use the fixed headlines", () => {
@@ -43,11 +38,27 @@ describe("ExpiryModal", () => {
     expect(screen.getByText("Your plan has expired")).toBeTruthy();
   });
 
-  it("iOS variant swaps to account + contact-support wording", () => {
+  it("iOS variant swaps to account + Contact support wording", () => {
     renderModal({ tier: "7d", daysLeft: 7, ios: true });
     expect(screen.getByText("Your account expires in 7 days")).toBeTruthy();
     expect(screen.getByText(/Contact support to keep your account active/)).toBeTruthy();
-    expect(screen.getByText("Slide to contact support")).toBeTruthy();
+    expect(screen.getByText("Contact support")).toBeTruthy();
+  });
+
+  it("action is a real anchor to the Telegram support link", () => {
+    renderModal({ tier: "7d" });
+    const a = screen.getByTestId("expiry-action");
+    expect(a.tagName).toBe("A");
+    expect(a.getAttribute("href")).toBe(TG);
+    expect(a.getAttribute("target")).toBe("_blank");
+    expect(a.getAttribute("rel")).toBe("noreferrer");
+  });
+
+  it("tapping the action fires onAction (dismissal side-effect)", () => {
+    const onAction = vi.fn();
+    renderModal({ onAction });
+    fireEvent.click(screen.getByTestId("expiry-action"));
+    expect(onAction).toHaveBeenCalledTimes(1);
   });
 
   it("iOS copy stays 3.1.1-safe (no plan/renew/pay/subscribe/price/upgrade), every tier", () => {
@@ -66,16 +77,5 @@ describe("ExpiryModal", () => {
     renderModal({ onDismiss });
     fireEvent.click(screen.getByTestId("expiry-close"));
     expect(onDismiss).toHaveBeenCalledTimes(1);
-  });
-
-  it("sliding past threshold fires onComplete (renew/support redirect)", () => {
-    mockTrackWidth(300); // maxTravel 250
-    const onComplete = vi.fn();
-    renderModal({ onComplete });
-    const knob = screen.getByTestId("expiry-knob");
-    fireEvent.pointerDown(knob, { clientX: 0 });
-    fireEvent.pointerMove(window, { clientX: 245 });
-    fireEvent.pointerUp(window, { clientX: 245 });
-    expect(onComplete).toHaveBeenCalledTimes(1);
   });
 });
