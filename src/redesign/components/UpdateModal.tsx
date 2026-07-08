@@ -1,11 +1,11 @@
-// "Time for an update" modal (OKX-style) — shown on a cold app open when the
-// running native binary is older than the web-declared latest. NATIVE-only
-// (RedesignApp gates it); web browsers never mount it. Slide-to-update opens the
-// store. All copy is i18n ×7 and deliberately payment-free (iOS 3.1.1-safe).
+// "Time for an update" modal (OKX-style) — cold-open nudge when the running
+// native binary is older than the web-declared latest. NATIVE-only (RedesignApp
+// gates it). The action is a REAL <a target="_blank" rel="noreferrer"> styled as
+// a button (opens the store — the proven anchor mechanism, not JS window.open).
+// All copy is i18n ×7 and payment-free (iOS 3.1.1-safe).
 import { type CSSProperties } from "react";
 import { useT } from "../i18n";
 import { resolveMessageKey } from "../adapters/nativeVersion";
-import SlideAction from "./SlideAction";
 
 const rocket = (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
@@ -15,18 +15,20 @@ const rocket = (
 );
 
 export default function UpdateModal({
-  messageKey, force, onDismiss, onComplete,
+  messageKey, force, href, onDismiss, onAction,
 }: {
   messageKey: string;
   force: boolean;
+  href: string;      // per-platform store link (anchor href = native store open)
   onDismiss: () => void;
-  onComplete: () => void;
+  onAction: () => void; // dismissal side-effect on tap; the anchor href opens the store
 }) {
   const t = useT() as unknown as Record<string, string>;
   const msg = t[resolveMessageKey(messageKey)] ?? t.rd_upd_msg_generic;
 
   const overlay: CSSProperties = { position: "fixed", inset: 0, zIndex: 1300, background: "rgba(9,7,24,.45)", display: "flex", alignItems: "flex-end", justifyContent: "center", padding: 16 };
   const cardStyle: CSSProperties = { width: "100%", maxWidth: 440, background: "var(--surface)", borderRadius: 22, padding: "22px 20px 20px", boxShadow: "0 24px 60px rgba(9,7,24,.5)", fontFamily: "var(--font-ui)", position: "relative", marginBottom: "max(8px, env(safe-area-inset-bottom))" };
+  const btn: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "center", width: "100%", padding: "15px 0", borderRadius: 14, background: "var(--accent)", color: "#fff", fontFamily: "var(--font-ui)", fontSize: 15, fontWeight: 700, textDecoration: "none", cursor: "pointer", boxShadow: "0 8px 20px rgba(9,7,24,.28)" };
 
   return (
     <div style={overlay} role="dialog" aria-modal="true" aria-label={t.rd_upd_title}>
@@ -37,7 +39,7 @@ export default function UpdateModal({
         <div style={{ width: 52, height: 52, borderRadius: 15, background: "var(--accent-soft)", color: "var(--accent-fg)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>{rocket}</div>
         <div style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 700, color: "var(--text)", letterSpacing: "-.01em" }}>{t.rd_upd_title}</div>
         <p style={{ fontSize: 14, color: "var(--text-dim)", margin: "8px 0 20px", lineHeight: 1.5 }}>{msg}</p>
-        <SlideAction label={t.rd_upd_slide} doneLabel={t.rd_upd_opening} onComplete={onComplete} testid="update" />
+        <a href={href} target="_blank" rel="noreferrer" onClick={onAction} data-testid="update-action" style={btn}>{t.rd_upd_action}</a>
       </div>
     </div>
   );

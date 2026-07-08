@@ -64,7 +64,6 @@ import UpdateModal from "./components/UpdateModal";
 import ExpiryModal from "./components/ExpiryModal";
 import { currentNativePlatform, readBinaryBuild, shouldShowUpdate, wasDismissed, markDismissed, storeUrlFor, bridgeBuildNumber, isUpdatePreview, IOS_BLE_BUILD, type NativePlatform, type NativeVersionConfig } from "./adapters/nativeVersion";
 import { computeExpiryTier, wasExpiryDismissed, markExpiryDismissed, previewExpiryTier, type ExpiryTier } from "./adapters/planExpiryModal";
-import { openExternalLink } from "./adapters/externalLink";
 import { planDaysLeft } from "../lib/planWindow";
 import { TProvider, buildT, tpl } from "./i18n";
 
@@ -348,20 +347,11 @@ export default function RedesignApp() {
     return () => { cancelled = true; };
   }, [auth.status, auth.profile]);
   const dismissUpdate = () => { if (update) markDismissed(update.platform, update.latest); setUpdate(null); };
-  const openUpdateStore = () => {
-    const plat = update?.platform ?? "ios";
-    const { app, web } = storeUrlFor(plat);
-    if (isUpdatePreview()) { try { window.open(web, "_blank", "noopener"); } catch { /* */ } return; }
-    if (update) markDismissed(update.platform, update.latest);
-    try { window.location.href = app; } catch { try { window.location.href = web; } catch { /* */ } }
-  };
+  // Tap side-effect only — the modal's anchor href does the store open natively.
+  const onUpdateTap = () => { if (update) markDismissed(update.platform, update.latest); };
   const dismissExpiry = () => { if (expiry) markExpiryDismissed(expiry.tier, auth.profile?.planExpiry); setExpiry(null); };
-  const openRenew = () => {
-    // Open FIRST, synchronously in the gesture (iOS needs the gesture context and
-    // window.open is blocked there) — mirrors the working Settings anchor redirect.
-    openExternalLink("https://t.me/SellerFlowLive1995");
-    if (expiry) markExpiryDismissed(expiry.tier, auth.profile?.planExpiry);
-  };
+  // Tap side-effect only — the modal's anchor href opens Telegram natively.
+  const onRenewTap = () => { if (expiry) markExpiryDismissed(expiry.tier, auth.profile?.planExpiry); };
   // Batch D silent-failure surfacing (#7/#8/#9) — converts adapter error signals
   // into the existing toast. Effects (not inline callbacks) because tApp is
   // declared after the hooks that emit the signals; counters/flags only ever
@@ -896,10 +886,10 @@ export default function RedesignApp() {
         {/* Cold-open nudges — expiry (priority) then native update. Mutually
             exclusive per open (see the coordinator effect above). */}
         {expiry && (
-          <ExpiryModal tier={expiry.tier} daysLeft={expiry.daysLeft} ios={ios} onDismiss={dismissExpiry} onComplete={openRenew} />
+          <ExpiryModal tier={expiry.tier} daysLeft={expiry.daysLeft} ios={ios} onDismiss={dismissExpiry} onAction={onRenewTap} />
         )}
         {!expiry && update && (
-          <UpdateModal messageKey={update.messageKey} force={update.force} onDismiss={dismissUpdate} onComplete={openUpdateStore} />
+          <UpdateModal messageKey={update.messageKey} force={update.force} href={storeUrlFor(update.platform).web} onDismiss={dismissUpdate} onAction={onUpdateTap} />
         )}
 
         {/* Auto-dismissing toast (no buttons). ok = neutral dark pill; err = danger tint + ⚠ */}

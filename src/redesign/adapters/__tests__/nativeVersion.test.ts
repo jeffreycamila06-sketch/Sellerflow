@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   isStale, readBinaryBuild, shouldShowUpdate, storeUrlFor,
-  slideProgress, reachedThreshold, resolveMessageKey, IOS_BLE_BUILD,
+  resolveMessageKey, IOS_BLE_BUILD,
   dismissKey, wasDismissed, markDismissed,
 } from "../nativeVersion";
 
@@ -49,20 +49,6 @@ describe("nativeVersion — store URLs", () => {
     expect(storeUrlFor("ios").web).toBe("https://apps.apple.com/app/id6783770354");
     expect(storeUrlFor("android").app).toBe("market://details?id=com.sellerflow.live");
     expect(storeUrlFor("android").web).toContain("id=com.sellerflow.live");
-  });
-});
-
-describe("nativeVersion — slide gesture math", () => {
-  it("clamps progress to [0,1] and handles a zero-width track", () => {
-    expect(slideProgress(122, 244)).toBeCloseTo(0.5);
-    expect(slideProgress(-10, 244)).toBe(0);
-    expect(slideProgress(300, 244)).toBe(1);
-    expect(slideProgress(10, 0)).toBe(0);
-  });
-  it("threshold trips at ~95%", () => {
-    expect(reachedThreshold(0.95)).toBe(true);
-    expect(reachedThreshold(0.96)).toBe(true);
-    expect(reachedThreshold(0.94)).toBe(false);
   });
 });
 
