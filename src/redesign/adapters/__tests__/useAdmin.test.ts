@@ -1,7 +1,7 @@
 // Phase 5h — parity test for the admin plan-approval payload (vs App.tsx
 // handleAdminApprove:4254-4259). No Supabase / React.
 import { describe, it, expect } from "vitest";
-import { approvePlanPatch, addDaysToExpiry, addDaysIso, makeAdminPatch, type Plan } from "../useAdmin";
+import { approvePlanPatch, planChangePatch, addDaysToExpiry, addDaysIso, makeAdminPatch, type Plan } from "../useAdmin";
 
 // VERBATIM reference from App.tsx:230-231 (addDays/addMonths) + 4256-4257.
 const refPatch = (plan: Plan, months: number, now: Date) => {
@@ -35,6 +35,50 @@ describe("approvePlanPatch — parity with App.tsx handleAdminApprove", () => {
   it("months clamps to >=1 (Math.max(1,n))", () => {
     expect(approvePlanPatch("basic", 0, NOW).planExpiry).toBe(refPatch("basic", 0, NOW).planExpiry);
     expect(approvePlanPatch("basic", 0, NOW).planExpiry).toBe(new Date("2026-07-26T05:30:00.000Z").toISOString()); // +30 days
+  });
+});
+
+describe("planChangePatch — tier switch preserves expiry, activation opens a window", () => {
+  const at = (days: number) => new Date(NOW.getTime() + days * 86400000).toISOString();
+
+  it("UPGRADE on an active paid plan preserves plan_expiry (Basic→Pro, 28 days left)", () => {
+    const p = planChangePatch("pro", 1, { plan: "Basic", status: "active", expiry: at(28) }, NOW);
+    expect(p.plan).toBe("pro");
+    expect(p.planStatus).toBe("active");
+    expect(p.planExpiry).toBeUndefined(); // omitted → adminUpdatePlan won't touch plan_expiry
+  });
+
+  it("DOWNGRADE on an active paid plan preserves plan_expiry (Pro→Basic, 10 days left)", () => {
+    const p = planChangePatch("basic", 1, { plan: "Pro", status: "active", expiry: at(10) }, NOW);
+    expect(p.plan).toBe("basic");
+    expect(p.planExpiry).toBeUndefined();
+  });
+
+  it("ACTIVATION from free opens a fresh 30-day window", () => {
+    const p = planChangePatch("basic", 1, { plan: "Free", status: "active", expiry: "" }, NOW);
+    expect(p.planExpiry).toBe(approvePlanPatch("basic", 1, NOW).planExpiry); // now + 30
+  });
+
+  it("ACTIVATION from an expired plan opens a fresh window", () => {
+    const p = planChangePatch("pro", 2, { plan: "Pro", status: "expired", expiry: at(-3) }, NOW);
+    expect(p.planExpiry).toBe(approvePlanPatch("pro", 2, NOW).planExpiry); // now + 60
+  });
+
+  it("ACTIVATION when active but 0 days left (expiry today/past) opens a fresh window", () => {
+    const p = planChangePatch("basic", 1, { plan: "Basic", status: "active", expiry: at(0) }, NOW);
+    expect(p.planExpiry).toBe(approvePlanPatch("basic", 1, NOW).planExpiry);
+  });
+
+  it("granting a TRIAL always opens a fresh 7-day trial window (activation)", () => {
+    const p = planChangePatch("trial", 1, { plan: "Pro", status: "active", expiry: at(28) }, NOW);
+    expect(p.planExpiry).toBe(approvePlanPatch("trial", 1, NOW).planExpiry); // +7
+    expect(p.trialStartedAt).toBe(NOW.toISOString());
+  });
+
+  it("switching an active paid seller to Free preserves expiry (free ignores it anyway)", () => {
+    const p = planChangePatch("free", 1, { plan: "Pro", status: "active", expiry: at(28) }, NOW);
+    expect(p.plan).toBe("free");
+    expect(p.planExpiry).toBeUndefined();
   });
 });
 
