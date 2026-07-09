@@ -358,8 +358,14 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
       setBusy(false); // never leave the panel stuck (was the bug blocking later actions)
     }
   };
-  const doPlan = (email: string, plan: Plan, label: string) =>
-    void run(tpl(t.rd_adm_act_setplan, { plan: label }), email, async () => { const r = await actions!.changePlan(email, plan); if (r.ok) setPlan(email, label); return r; });
+  // Pass the seller's CURRENT plan/status/expiry so a tier switch preserves
+  // plan_expiry (only activation from free/expired opens a fresh window).
+  const doPlan = (u: User, plan: Plan, label: string) =>
+    void run(tpl(t.rd_adm_act_setplan, { plan: label }), u.email, async () => {
+      const r = await actions!.changePlan(u.email, plan, { plan: u.plan, status: u.planStatus || "active", expiry: u.planExpiry || "" });
+      if (r.ok) setPlan(u.email, label);
+      return r;
+    });
   const doPassword = (email: string) =>
     void run(t.rd_adm_act_setpw, email, () => actions!.setPassword(email, pwVal), () => { setPwIdx(null); setPwVal(""); });
   // Real add-days: extends the seller's planExpiry (cumulative) via actions.addDays
@@ -459,10 +465,10 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                         )}
                       </div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 10 }}>
-                        <button onClick={() => actions ? doPlan(u.email, "free", "Free") : setPlan(u.email, "Free")} style={planBtn}>Free</button>
-                        <button onClick={() => actions ? doPlan(u.email, "basic", "Basic") : setPlan(u.email, "Basic")} style={planBtn}>Basic</button>
-                        <button onClick={() => actions ? doPlan(u.email, "pro", "Pro") : setPlan(u.email, "Pro")} style={planBtn}>Pro</button>
-                        <button onClick={() => actions ? doPlan(u.email, "master", "Master") : setPlan(u.email, "Master")} style={planBtn}>Master</button>
+                        <button onClick={() => actions ? doPlan(u, "free", "Free") : setPlan(u.email, "Free")} style={planBtn}>Free</button>
+                        <button onClick={() => actions ? doPlan(u, "basic", "Basic") : setPlan(u.email, "Basic")} style={planBtn}>Basic</button>
+                        <button onClick={() => actions ? doPlan(u, "pro", "Pro") : setPlan(u.email, "Pro")} style={planBtn}>Pro</button>
+                        <button onClick={() => actions ? doPlan(u, "master", "Master") : setPlan(u.email, "Master")} style={planBtn}>Master</button>
                       </div>
                       {pwIdx === i && (
                         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
