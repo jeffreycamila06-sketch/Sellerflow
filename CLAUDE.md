@@ -1948,3 +1948,97 @@ Tatlong maliit na items, isang branch:
    hardware-verified closing note · branch cleanup resolved (21 remote deletes
    via Mac) · Promotional Text Option-2 note. (Lahat sa mga kaukulang section
    sa itaas.)
+
+## SESSION 2026-07-08/09 — EXPIRY + UPDATE MODAL SAGA ✅ (merges on `main`, LIVE)
+Dalawang cold-open modal (OKX-inspired) para sa redesign, plus ang malaking
+SLIDE→BUTTON lesson. Lahat merged + prod-verified. Bawat step: branch + diff +
+Vercel preview (may dev-gated toggles) + Jeff "merge" + prod verify.
+
+### 1. UPDATE MODAL (native version nudge — thin-shell)
+- **Bakit:** thin-shell — web features dumarating agad, pero native changes (BLE
+  printing) ay kailangan ng store update; may users na naiiwan (1.0/1.1 → 1.2 BLE).
+- **Source of truth:** `public/native-version.json` (`{ios,android}: {latest,
+  message_key, force}`; latest = build/versionCode int). Web-bundled, ONE
+  same-origin static fetch per cold open, ZERO poll.
+- **⚠️ VERSION DETECTION = CAPABILITY SYNTHESIS (load-bearing):** walang
+  `@capacitor/app`/getInfo, at ang mga NA-SHIP nang lumang binary ay WALANG version
+  bridge — kaya IMPOSIBLE ang integer build-read sa kanila mula pure web. Solusyon:
+  `readBinaryBuild` (`adapters/nativeVersion.ts`) — (1) kung may future
+  `window.SellerFlowPrinter.getBuildNumber()` bridge → gamitin (exact); (2) kung
+  wala → **iOS: BLE bridge present (`hasBtBridge`) ⇒ build 6 (=1.2), absent ⇒ 0
+  (legacy 1.0/1.1); Android: walang bridge ⇒ Infinity (fail-safe, never stale).**
+  Ito ang tanging paraan na maaabot ang mga lumang binary nang pure-web.
+- **Modal:** `components/UpdateModal.tsx` — "Update now" anchor button → store link
+  per platform. Dismiss-once-per-open (`sessionStorage`, keyed sa target build;
+  bagong release = bagong key). `force:true` = walang ✕ (reserved).
+- **DORMANT→ACTIVE (2026-07-09):** `ios.latest 0→6` (iOS 1.2 = Build 6, LIVE sa App
+  Store since Jul 8, store-verified). **Android nananatiling 0/dormant** (walang
+  pending Android native update; versionCode 2 latest). Effect: lahat ng non-BLE
+  iOS (1.0/1.1) → "Update now" sa susunod na cold open → App Store; 1.2 users +
+  Android + web = walang makikita.
+
+### 2. EXPIRY MODAL (plan-expiry nudge)
+- **Tiers:** 7d (amber) · 3d (orange) · 1d/today (red) · expired (red) — bawat isa
+  isang beses per session, dismissible, keyed `sfl_exp_seen_<tier>_<expiry-date>`
+  (bagong tier/date = bagong prompt; max 4 sightings sa window).
+- **Data source:** ang EXISTING `lib/planWindow.planDaysLeft` (iisang math ng
+  Settings expiry display — zero drift, zero bagong query/poll; galing sa
+  naka-load nang `auth.profile.planExpiry/plan/planStatus`).
+- **⚠️ PLATFORM SPLIT (iOS 3.1.1):** Android/web = "Your **plan** expires…" +
+  "Renew to keep your live sessions and printing running" + **"Renew now"**; iOS =
+  "Your **account** expires…" + "Contact support to keep your account active" +
+  **"Contact support"** — ZERO plan/renew/pay/subscribe/price/upgrade words (test-
+  asserted per tier). Parehong destination: `t.me/SellerFlowLive1995` (ang existing
+  Settings support/renew link).
+- **Always dismissible** (walang force) — UI nudge lang; server-side gates ang
+  totoong enforcement.
+
+### 3. COLD-OPEN COORDINATOR (RedesignApp)
+Isang effect (after auth resolves): **expiry priority → else update**; isa lang
+lalabas per open (expiry mas time-critical), ang isa sa susunod na open
+(`coldModalPriority` pure-tested). Cold-open timing = walang live session na
+maiistorbo (wala pang naka-connect sa mount). NATIVE/app-shell gating; web
+browsers hindi nakakakita ng update modal (Capacitor.getPlatform), pero
+NAKIKITA ang expiry modal (walang Apple restriction sa web).
+
+### 4. ⚠️ SLIDE→BUTTON PIVOT — PERMANENT LESSON (huwag ulitin)
+Unang disenyo = "slide to renew/update" gesture. **HINDI ito gumagana sa iOS
+WKWebView para sa external opens** — 2 failed device tests: (a) `window.open()` =
+SILENTLY BLOCKED sa iOS; (b) kahit synchronous anchor-click helper (`document.
+createElement('a').click()`) sa loob ng gesture-completion chain = HINDI PA RIN
+nagbukas. **WORKING PATTERN: totoong `<a href target="_blank" rel="noreferrer">`
+element na TINAP nang direkta** (native anchor navigation — eksaktong mekanismo ng
+Settings Telegram redirect na gumagana araw-araw sa iOS). **RULE: lahat ng future
+external-open UI sa iOS shell = REAL ANCHOR ELEMENTS — HINDI JS-triggered opens,
+HINDI gesture-completion opens.** (SlideAction component + externalLink helper +
+slide math = tinanggal nang mag-pivot; both modals = anchor tap buttons na.)
+
+### Merges (chronological, lahat prod-verified sa served bundle)
+- update modal (dormant) + expiry modal — stacked merge `5cded08`
+- iOS Telegram open fix (anchor-click helper, later superseded) — `1fd98ba`
+- **SLIDE→BUTTON** (real anchor tap buttons, both modals) — `cac063c`
+- **UPDATE MODAL ACTIVATION** (`ios.latest 0→6`) + docs — this branch
+
+### Test matrix (Jeff, real devices)
+iOS full ladder verified via `?preview_expiry=7|3|1|0` (+`&ios=1`): 7d/3d/today/
+expired copy correct + neutral · Android wording pass · **Telegram anchor tap
+opens on real iOS** (button, not slide) · update modal `?preview_update=1`.
+768 vitest green sa buong saga (capability synthesis / tier boundaries / dismiss /
+priority / iOS copy safety / i18n ×7).
+
+### googletest demo account (Apple-reviewer hygiene)
+`plan_expiry` restored to **2027-07-09 (+1yr)** — sadyang malayo para WALANG expiry
+modal sa mukha ng Apple reviewer sa future reviews. ⚠️ `plan_expiry` ay
+trigger-protected (`seller_profiles_on_update`) — in-edit via chat-Claude/Supabase
+MCP na may TEMPORARY trigger disable → update → re-enable (dokumentado ang pattern;
+gamitin ulit kung kailangang baguhin ang protected profile fields).
+
+### Live watch (unang totoong sellers na makakakita ng expiry modal)
+**Juvie** (nasa 7-day window) + **JAZZIE** — monitor kung tama ang tier + kung
+gumagana ang Telegram tap → renew flow sa totoong paggamit.
+
+### ⚠️ NEXT native-version bumps (operating model)
+Bawat release na may iOS native change: itaas ang `ios.latest` sa bagong iOS
+buildNumber sa `native-version.json` SABAY sa deploy. Android: mag-add muna ng
+`getBuildNumber` bridge sa susunod na Android binary bago i-activate ang
+`android.latest` (kasalukuyang capability = Infinity/fail-safe, hindi mani-nudge).
