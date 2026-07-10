@@ -12,6 +12,7 @@ import { useCallback } from "react";
 import { supabase } from "../../supabase";
 import { adminUpdatePlan, adminUpdateContactNote, deleteUser, saveAuditLog, upsertUser, type Role, type AccountUser } from "../../accountDb";
 import { maxAcc, accountList, accountText } from "./connect";
+import { planDaysLeft, isTimeLimitedPlan } from "../../lib/planWindow";
 
 export type Plan = "free" | "trial" | "basic" | "pro" | "master";
 export interface AdminResult { ok: boolean; error?: string }
@@ -25,6 +26,29 @@ export function approvePlanPatch(plan: Plan, months: number, now: Date): PlanPat
   const planExpiry = plan === "trial" ? addDays(7) : addMonths(months);
   const trialStartedAt = plan === "trial" ? now.toISOString() : undefined;
   return { plan, planStatus: "active", planExpiry, ...(trialStartedAt ? { trialStartedAt } : {}) };
+}
+
+// PURE — the patch for an admin PLAN-TIER change. A tier switch on an already-
+// active, time-limited plan must NOT reset plan_expiry (the paid time is theirs
+// regardless of tier — the Jul-2026 bug: Basic→Pro reset a seller with 28 days
+// left to now+30). Only a real ACTIVATION (free / expired / no window) opens a
+// fresh window. Omitting planExpiry preserves the DB value — adminUpdatePlan only
+// writes plan_expiry when the patch includes it (no DB/RPC change needed).
+export interface PlanChangePatch { plan: Plan; planStatus: "active"; planExpiry?: string; trialStartedAt?: string }
+export function planChangePatch(
+  plan: Plan, months: number,
+  current: { plan: string; status: string; expiry: string },
+  now: Date,
+): PlanChangePatch {
+  // Granting a trial always opens a fresh 7-day trial window (activation).
+  if (plan === "trial") return approvePlanPatch(plan, months, now);
+  const daysLeft = planDaysLeft(current.expiry, now.getTime());
+  const activeWindow = isTimeLimitedPlan(current.plan) && current.status === "active"
+    && Number.isFinite(daysLeft) && daysLeft > 0;
+  // TIER SWITCH — change ONLY the tier; PRESERVE plan_expiry (omit it).
+  if (activeWindow) return { plan, planStatus: "active" };
+  // ACTIVATION — open a fresh window (verbatim approvePlanPatch behavior).
+  return approvePlanPatch(plan, months, now);
 }
 
 // PURE — extend a plan's expiry by `days`, mirroring App.tsx addMonthsToExpiry
@@ -49,7 +73,9 @@ export function makeAdminPatch(now: Date): { role: Role; plan: Plan; planStatus:
 }
 
 export interface AdminActions {
-  changePlan: (email: string, plan: Plan, months?: number) => Promise<AdminResult>;
+  // `current` = the seller's plan/status/expiry NOW, so a tier switch on an active
+  // paid plan preserves plan_expiry (only activation opens a fresh window).
+  changePlan: (email: string, plan: Plan, current: { plan: string; status: string; expiry: string }, months?: number) => Promise<AdminResult>;
   setRole: (email: string, role: Role) => Promise<AdminResult>;
   expire: (email: string) => Promise<AdminResult>;
   setPassword: (email: string, newPassword: string) => Promise<AdminResult>;
@@ -80,10 +106,15 @@ export function useAdmin(adminEmail: string | undefined): AdminActions {
     void saveAuditLog({ actorEmail: adminEmail || "admin", action, targetEmail: target, details });
   }, [adminEmail]);
 
-  const changePlan = useCallback(async (email: string, plan: Plan, months = 1): Promise<AdminResult> => {
+  const changePlan = useCallback(async (email: string, plan: Plan, current: { plan: string; status: string; expiry: string }, months = 1): Promise<AdminResult> => {
     try {
-      await adminUpdatePlan(email, approvePlanPatch(plan, months, new Date())); // same payload as handleAdminApprove
-      audit("changed plan", email, `→ ${plan}${plan === "trial" ? "" : ` (${months}mo)`}`);
+      const patch = planChangePatch(plan, months, current, new Date());
+      await adminUpdatePlan(email, patch);
+      // Tier switch (expiry preserved) → patch omits planExpiry; activation sets a window.
+      const detail = plan === "trial" ? "→ trial"
+        : patch.planExpiry === undefined ? `→ ${plan} (tier change, expiry kept)`
+          : `→ ${plan} (${months}mo, activated)`;
+      audit("changed plan", email, detail);
       return { ok: true };
     } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "error" }; }
   }, [audit]);

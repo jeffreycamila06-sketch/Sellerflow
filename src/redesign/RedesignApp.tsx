@@ -2,7 +2,7 @@
 // [data-theme]/[data-accent] on the [data-redesign] root (tokens resolve from
 // src/styles/design-tokens.css), and renders all built screens + bottom nav.
 // Self-contained preview — does NOT import or touch the existing app.
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CURRENCIES, curSymbol, type ThemeMode, type AccentKey, type AutoControls } from "./data";
 import Dashboard from "./screens/Dashboard";
 import Orders from "./screens/Orders";
@@ -60,6 +60,11 @@ import ContactSupportPopup from "./components/ContactSupportPopup";
 import { AnnouncementsSheet } from "./components/Announcements";
 import { isIOS, STATUS_BAR_BACKDROP_HEIGHT } from "./adapters/platform";
 import { isAdminRole } from "../lib/roles";
+import UpdateModal from "./components/UpdateModal";
+import ExpiryModal from "./components/ExpiryModal";
+import { currentNativePlatform, readBinaryBuild, shouldShowUpdate, wasDismissed, markDismissed, storeUrlFor, bridgeBuildNumber, isUpdatePreview, IOS_BLE_BUILD, type NativePlatform, type NativeVersionConfig } from "./adapters/nativeVersion";
+import { computeExpiryTier, wasExpiryDismissed, markExpiryDismissed, previewExpiryTier, type ExpiryTier } from "./adapters/planExpiryModal";
+import { planDaysLeft } from "../lib/planWindow";
 import { TProvider, buildT, tpl } from "./i18n";
 
 type Screen =
@@ -297,6 +302,56 @@ export default function RedesignApp() {
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(null), toast.kind === "err" ? 3200 : 1800); return () => clearTimeout(id); }, [toast]);
+
+  // ── Cold-open modal coordinator: plan-EXPIRY nudge (priority) then native
+  // UPDATE nudge. Runs ONCE after auth resolves — at that point nothing is live
+  // (the socket connect is a deliberate post-open tap), so neither modal ever
+  // interrupts an active live session. At most ONE shows per open (expiry wins,
+  // it's time-critical); the other waits for the next open. Zero poll — expiry is
+  // computed from the already-loaded profile via the shared lib/planWindow math
+  // (no new query); update is ONE same-origin static fetch. Dev/preview toggles
+  // (?preview_expiry=7|3|1|0, ?preview_update=1) force-show demos in a browser.
+  const [expiry, setExpiry] = useState<{ tier: ExpiryTier; daysLeft: number } | null>(null);
+  const [update, setUpdate] = useState<{ platform: NativePlatform; messageKey: string; force: boolean; latest: number } | null>(null);
+  const coldDone = useRef(false);
+  useEffect(() => {
+    if (auth.status === "loading" || coldDone.current) return;
+    coldDone.current = true;
+    // preview overrides (dev/non-prod only)
+    const pExp = previewExpiryTier();
+    if (pExp) { setExpiry({ tier: pExp, daysLeft: pExp === "7d" ? 7 : pExp === "3d" ? 3 : pExp === "1d" ? 1 : 0 }); return; }
+    if (isUpdatePreview()) { setUpdate({ platform: "ios", messageKey: "rd_upd_msg_ble", force: false, latest: IOS_BLE_BUILD + 1 }); return; }
+    // 1) expiry (priority, sync — no query)
+    const prof = auth.profile;
+    if (prof) {
+      const daysLeft = planDaysLeft(prof.planExpiry, Date.now());
+      const tier = computeExpiryTier(prof.plan, prof.planStatus, daysLeft);
+      if (tier && !wasExpiryDismissed(tier, prof.planExpiry)) { setExpiry({ tier, daysLeft }); return; }
+    }
+    // 2) native update (async, native platforms only)
+    const platform = currentNativePlatform();
+    if (!platform) return; // web browser → never
+    let cancelled = false;
+    fetch("/native-version.json", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((cfg: NativeVersionConfig | null) => {
+        if (cancelled || !cfg) return;
+        const pcfg = cfg[platform];
+        if (!pcfg) return;
+        const build = readBinaryBuild(platform, { bridgeBuild: bridgeBuildNumber(), hasBle: hasBtBridge() });
+        if (shouldShowUpdate(pcfg, build, wasDismissed(platform, pcfg.latest))) {
+          setUpdate({ platform, messageKey: pcfg.message_key, force: pcfg.force, latest: pcfg.latest });
+        }
+      })
+      .catch(() => { /* JSON missing/unreachable → no modal, silent */ });
+    return () => { cancelled = true; };
+  }, [auth.status, auth.profile]);
+  const dismissUpdate = () => { if (update) markDismissed(update.platform, update.latest); setUpdate(null); };
+  // Tap side-effect only — the modal's anchor href does the store open natively.
+  const onUpdateTap = () => { if (update) markDismissed(update.platform, update.latest); };
+  const dismissExpiry = () => { if (expiry) markExpiryDismissed(expiry.tier, auth.profile?.planExpiry); setExpiry(null); };
+  // Tap side-effect only — the modal's anchor href opens Telegram natively.
+  const onRenewTap = () => { if (expiry) markExpiryDismissed(expiry.tier, auth.profile?.planExpiry); };
   // Batch D silent-failure surfacing (#7/#8/#9) — converts adapter error signals
   // into the existing toast. Effects (not inline callbacks) because tApp is
   // declared after the hooks that emit the signals; counters/flags only ever
@@ -788,7 +843,7 @@ export default function RedesignApp() {
 
         {/* Admin control bottom-sheet (absolute within the phone, like the v2 prototype) */}
         {adminPanel && isAdmin && (
-          <AdminPanel panel={adminPanel} onClose={() => setAdminPanel(null)} assignAmount={assignAmount} onAssignAmount={setAssignAmount} cur={cur} users={adminUsers.users} usersState={adminUsers.state} rawByEmail={adminUsers.rawByEmail} actions={admin} onChanged={() => { adminUsers.reload(); freeUsersData.reload(); auditData.reload(); }} freeUsers={freeUsersData.freeUsers} freeUsersState={freeUsersData.state} auditLogs={auditData.logs} auditState={auditData.state} onOpenPanel={setAdminPanel} pulse={pulse.data} pulseState={pulse.state} onRefreshPulse={pulse.refresh} ann={{ list: ann.list, publish: ann.publish, unpublish: ann.unpublish }} />
+          <AdminPanel panel={adminPanel} onClose={() => setAdminPanel(null)} assignAmount={assignAmount} onAssignAmount={setAssignAmount} cur={cur} users={adminUsers.users} usersState={adminUsers.state} rawByEmail={adminUsers.rawByEmail} actions={admin} onChanged={() => { adminUsers.reload(); freeUsersData.reload(); auditData.reload(); }} freeUsers={freeUsersData.freeUsers} freeUsersState={freeUsersData.state} auditLogs={auditData.logs} auditState={auditData.state} onOpenPanel={setAdminPanel} pulse={pulse.data} pulseState={pulse.state} onRefreshPulse={pulse.refresh} ann={{ list: ann.list, publish: ann.publish, unpublish: ann.unpublish, remove: ann.remove }} />
         )}
 
         {/* 🔔 Announcements list bottom-sheet (same pattern as AdminPanel) */}
@@ -826,6 +881,15 @@ export default function RedesignApp() {
             message={tApp.rd_ios_expired_msg}
             onClose={() => setIosExpired(false)}
           />
+        )}
+
+        {/* Cold-open nudges — expiry (priority) then native update. Mutually
+            exclusive per open (see the coordinator effect above). */}
+        {expiry && (
+          <ExpiryModal tier={expiry.tier} daysLeft={expiry.daysLeft} ios={ios} onDismiss={dismissExpiry} onAction={onRenewTap} />
+        )}
+        {!expiry && update && (
+          <UpdateModal messageKey={update.messageKey} force={update.force} href={storeUrlFor(update.platform).web} onDismiss={dismissUpdate} onAction={onUpdateTap} />
         )}
 
         {/* Auto-dismissing toast (no buttons). ok = neutral dark pill; err = danger tint + ⚠ */}

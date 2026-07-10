@@ -29,3 +29,11 @@ create policy ann_insert on public.announcements
   for insert with check (public.is_admin());
 create policy ann_update on public.announcements
   for update using (public.is_admin());
+
+-- Admin-only HARD DELETE. Sellers can hide-by-unpublish (ann_update sets
+-- active=false), but a true delete removes the row entirely so it disappears
+-- from EVERY seller surface (banner + 🔔 bell history) on their next app open.
+-- Without this policy RLS default-denies DELETE (a seller's direct API delete
+-- silently affects 0 rows); with it, only public.is_admin() may delete.
+create policy ann_delete on public.announcements
+  for delete using (public.is_admin());

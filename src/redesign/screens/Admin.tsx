@@ -291,7 +291,7 @@ function PulsePanel({ pulse, state, onRefresh }: { pulse: PulseData | null; stat
   );
 }
 
-export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", rawByEmail = {}, actions, onChanged, freeUsers = [], freeUsersState = "sample", auditLogs = [], auditState = "sample", onOpenPanel, pulse = null, pulseState = "idle", onRefreshPulse, ann }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; rawByEmail?: Record<string, AccountUser>; actions?: AdminActions; onChanged?: () => void; freeUsers?: FreeUserRow[]; freeUsersState?: ReadState; auditLogs?: AccountAuditLog[]; auditState?: ReadState; onOpenPanel?: (k: AdminPanelKind) => void; pulse?: PulseData | null; pulseState?: PulseState; onRefreshPulse?: () => void; ann?: { list: Announcement[]; publish: (m: string) => Promise<{ ok: boolean; error?: string }>; unpublish: (id: string) => Promise<{ ok: boolean; error?: string }> } }) {
+export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", rawByEmail = {}, actions, onChanged, freeUsers = [], freeUsersState = "sample", auditLogs = [], auditState = "sample", onOpenPanel, pulse = null, pulseState = "idle", onRefreshPulse, ann }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; rawByEmail?: Record<string, AccountUser>; actions?: AdminActions; onChanged?: () => void; freeUsers?: FreeUserRow[]; freeUsersState?: ReadState; auditLogs?: AccountAuditLog[]; auditState?: ReadState; onOpenPanel?: (k: AdminPanelKind) => void; pulse?: PulseData | null; pulseState?: PulseState; onRefreshPulse?: () => void; ann?: { list: Announcement[]; publish: (m: string) => Promise<{ ok: boolean; error?: string }>; unpublish: (id: string) => Promise<{ ok: boolean; error?: string }>; remove: (id: string) => Promise<{ ok: boolean; error?: string }> } }) {
   const t = useT();
   // Real subscription buckets (derived) when the users list is live; else sample.
   const realSubs = usersState === "live" || usersState === "empty";
@@ -339,6 +339,13 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
       else window.alert(tpl(t.rd_adm_failed, { label, err: r.error || t.rd_adm_err }));
     } finally { setAnnBusy(false); }
   };
+  // Hard delete (trash) — confirm first, then remove the row entirely. RLS
+  // is_admin() gates the DB write; sellers stop seeing it on their next open.
+  const delAnn = (id: string) => {
+    if (!ann || annBusy) return;
+    if (!window.confirm(t.rd_ann_del_confirm)) return;
+    void doAnn(t.rd_ann_delete, () => ann!.remove(id));
+  };
   const setPlan = (email: string, plan: string) => setUserPlans((p) => ({ ...p, [email]: plan }));
   const revAdded = users.reduce((sum, u) => sum + ((PLAN_PRICE[userPlans[u.email] || u.plan] || 0) - (PLAN_PRICE[u.plan] || 0)), 0);
   const userCount = usersState === "live" || usersState === "empty" ? `${users.length}` : "12,480";
@@ -358,8 +365,14 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
       setBusy(false); // never leave the panel stuck (was the bug blocking later actions)
     }
   };
-  const doPlan = (email: string, plan: Plan, label: string) =>
-    void run(tpl(t.rd_adm_act_setplan, { plan: label }), email, async () => { const r = await actions!.changePlan(email, plan); if (r.ok) setPlan(email, label); return r; });
+  // Pass the seller's CURRENT plan/status/expiry so a tier switch preserves
+  // plan_expiry (only activation from free/expired opens a fresh window).
+  const doPlan = (u: User, plan: Plan, label: string) =>
+    void run(tpl(t.rd_adm_act_setplan, { plan: label }), u.email, async () => {
+      const r = await actions!.changePlan(u.email, plan, { plan: u.plan, status: u.planStatus || "active", expiry: u.planExpiry || "" });
+      if (r.ok) setPlan(u.email, label);
+      return r;
+    });
   const doPassword = (email: string) =>
     void run(t.rd_adm_act_setpw, email, () => actions!.setPassword(email, pwVal), () => { setPwIdx(null); setPwVal(""); });
   // Real add-days: extends the seller's planExpiry (cumulative) via actions.addDays
@@ -459,10 +472,10 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                         )}
                       </div>
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 10 }}>
-                        <button onClick={() => actions ? doPlan(u.email, "free", "Free") : setPlan(u.email, "Free")} style={planBtn}>Free</button>
-                        <button onClick={() => actions ? doPlan(u.email, "basic", "Basic") : setPlan(u.email, "Basic")} style={planBtn}>Basic</button>
-                        <button onClick={() => actions ? doPlan(u.email, "pro", "Pro") : setPlan(u.email, "Pro")} style={planBtn}>Pro</button>
-                        <button onClick={() => actions ? doPlan(u.email, "master", "Master") : setPlan(u.email, "Master")} style={planBtn}>Master</button>
+                        <button onClick={() => actions ? doPlan(u, "free", "Free") : setPlan(u.email, "Free")} style={planBtn}>Free</button>
+                        <button onClick={() => actions ? doPlan(u, "basic", "Basic") : setPlan(u.email, "Basic")} style={planBtn}>Basic</button>
+                        <button onClick={() => actions ? doPlan(u, "pro", "Pro") : setPlan(u.email, "Pro")} style={planBtn}>Pro</button>
+                        <button onClick={() => actions ? doPlan(u, "master", "Master") : setPlan(u.email, "Master")} style={planBtn}>Master</button>
                       </div>
                       {pwIdx === i && (
                         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>
@@ -593,6 +606,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                       <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-muted)", flexShrink: 0 }}>{annDate(a.createdAt)}</span>
                       <span style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600, color: a.active ? "var(--text)" : "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.message}</span>
                       {a.active && <span style={{ fontSize: 9.5, fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "2px 7px", borderRadius: 6, flexShrink: 0 }}>{t.rd_ann_active_now}</span>}
+                      <button aria-label={t.rd_ann_delete} title={t.rd_ann_delete} disabled={annBusy} onClick={() => delAnn(a.id)} style={{ flexShrink: 0, background: "none", border: "none", padding: "0 2px", cursor: annBusy ? "not-allowed" : "pointer", color: "var(--danger)", fontSize: 13, opacity: annBusy ? 0.5 : 1, lineHeight: 1 }}>🗑</button>
                     </div>
                   ))}
                 </div>

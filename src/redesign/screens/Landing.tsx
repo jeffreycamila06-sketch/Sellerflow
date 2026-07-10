@@ -101,10 +101,10 @@ function HeroScene({ t }: { t: Record<string, string> }) {
       <div style={{ position: "absolute", top: 16, left: -14, zIndex: 4, background: "#fff", border: `1px solid ${C.line}`, borderRadius: 999, padding: "7px 14px", fontSize: 12.5, fontWeight: 700, color: C.ink, boxShadow: "0 8px 22px rgba(23,20,58,.1)", display: "flex", gap: 7, alignItems: "center" }}>
         <span className="sfl-lp-livedot" style={{ width: 7, height: 7 }} />{t.rd_l2_viewers}
       </div>
-      {/* seller photo polaroid — real asset /landing-seller.jpg; graceful fallback frame */}
+      {/* seller photo polaroid — real Taiwan-market asset; graceful fallback frame */}
       <div className="sfl-l2-sellerbob sfl-l2-sellercard" style={{ position: "absolute", left: -64, bottom: 44, zIndex: 3, width: 190, background: "#fff", padding: "9px 9px 30px", borderRadius: 14, boxShadow: "0 22px 50px rgba(23,20,58,.22)" }}>
         {photoOk ? (
-          <img src="/landing-seller.jpg" alt="" className="sfl-l2-sellerimg" onError={() => setPhotoOk(false)} style={{ width: "100%", height: 210, objectFit: "cover", borderRadius: 9, display: "block" }} />
+          <img src="/landing-seller2.jpg" alt="A live seller in a Taiwan boutique showing a garment to the camera" loading="lazy" className="sfl-l2-sellerimg" onError={() => setPhotoOk(false)} style={{ width: "100%", height: 210, objectFit: "cover", borderRadius: 9, display: "block" }} />
         ) : (
           <div className="sfl-l2-sellerimg" style={{ width: "100%", height: 210, borderRadius: 9, border: "2px dashed #c9c6e8", display: "grid", placeItems: "center", textAlign: "center", fontSize: 12, color: C.inkSoft, padding: 14, background: C.paper }}>
             📸<br />{t.rd_l2_photo_fallback}
@@ -533,6 +533,27 @@ export default function Landing({
                   {q.who}
                 </div>
               </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── REAL SELLERS (photo montage — additive) ── */}
+      <section style={{ padding: "86px 0" }}>
+        <div style={{ ...wrap, textAlign: "center" }}>
+          <span className="sfl-lp-reveal" style={eyebrow}>{t.rd_l2_sellers_eyebrow}</span>
+          <h2 className="sfl-lp-reveal" style={h2Style}>{t.rd_l2_sellers_h2}</h2>
+          <p className="sfl-lp-reveal" style={secSub}>{t.rd_l2_sellers_sub}</p>
+          <div className="sfl-l2-sellers" style={{ marginTop: 44, textAlign: "left" }}>
+            {[
+              { src: "/landing-seller1.jpg", alt: "A live seller presenting clothing to the camera with a ring light", cap: t.rd_l2_sellers_c3 },
+              { src: "/landing-seller3.jpg", alt: "A live seller's screen where viewer comments become orders with one tap", cap: t.rd_l2_sellers_c1 },
+              { src: "/landing-seller4.jpg", alt: "A live seller welcoming buyers and showing a new-arrival garment", cap: t.rd_l2_sellers_c2 },
+            ].map((p, i) => (
+              <figure key={p.src} className="sfl-lp-reveal sfl-lp-lift sfl-lp-hovshadow" style={{ margin: 0, background: C.card, border: `1px solid ${C.line}`, borderRadius: 20, overflow: "hidden", ...rv(i, 0.1) }}>
+                <img src={p.src} alt={p.alt} loading="lazy" style={{ width: "100%", height: 280, objectFit: "cover", display: "block" }} />
+                <figcaption style={{ padding: "16px 20px", fontSize: 14.5, color: C.inkSoft, fontWeight: 600 }}>{p.cap}</figcaption>
+              </figure>
             ))}
           </div>
         </div>
