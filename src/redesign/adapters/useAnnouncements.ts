@@ -40,6 +40,7 @@ export interface UseAnnouncements {
   refresh: () => Promise<void>;
   publish: (message: string) => Promise<{ ok: boolean; error?: string }>;
   unpublish: (id: string) => Promise<{ ok: boolean; error?: string }>;
+  remove: (id: string) => Promise<{ ok: boolean; error?: string }>; // hard delete
 }
 
 export function useAnnouncements(enabled: boolean): UseAnnouncements {
@@ -96,6 +97,23 @@ export function useAnnouncements(enabled: boolean): UseAnnouncements {
     return { ok: true };
   }, [load]);
 
+  // Admin hard delete — removes the row entirely (unlike unpublish, which only
+  // clears the active flag). Because sellers fetch the latest rows fresh on every
+  // app open (zero poll), a deleted announcement disappears everywhere on their
+  // NEXT open — the banner AND the 🔔 bell history. Sellers with the app already
+  // open keep seeing the rendered banner until they reopen (accepted egress
+  // trade-off — no realtime/poll added). RLS is_admin() gates the delete path, so
+  // a non-admin call errors server-side. Any stale localStorage dismiss/last-seen
+  // key pointing at a deleted id is a harmless orphan (pickLatestActive/hasUnread
+  // just never match it again).
+  const remove = useCallback(async (id: string): Promise<{ ok: boolean; error?: string }> => {
+    if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
+    const { error } = await supabase.from("announcements").delete().eq("id", id);
+    if (error) return { ok: false, error: error.message };
+    await load();
+    return { ok: true };
+  }, [load]);
+
   return {
     list,
     latest: pickLatestActive(list),
@@ -108,5 +126,6 @@ export function useAnnouncements(enabled: boolean): UseAnnouncements {
     refresh: load,
     publish,
     unpublish,
+    remove,
   };
 }

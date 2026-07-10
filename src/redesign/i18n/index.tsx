@@ -422,6 +422,8 @@ const RAW: Record<string, Row> = {
   rd_ann_unpublish: { en: "Unpublish", fil: "I-unpublish", zh: "取消发布", "zh-TW": "取消發布", vi: "Gỡ xuống", th: "เลิกเผยแพร่", id: "Batalkan terbit" },
   rd_ann_active_now: { en: "Active now", fil: "Aktibo ngayon", zh: "当前生效", "zh-TW": "目前生效", vi: "Đang hiển thị", th: "ใช้งานอยู่", id: "Aktif sekarang" },
   rd_ann_none: { en: "No announcements yet", fil: "Wala pang anunsyo", zh: "暂无公告", "zh-TW": "尚無公告", vi: "Chưa có thông báo", th: "ยังไม่มีประกาศ", id: "Belum ada pengumuman" },
+  rd_ann_delete: { en: "Delete", fil: "Burahin", zh: "删除", "zh-TW": "刪除", vi: "Xóa", th: "ลบ", id: "Hapus" },
+  rd_ann_del_confirm: { en: "Delete this broadcast? Sellers will no longer see it. This cannot be undone.", fil: "Burahin ang broadcast na ito? Hindi na ito makikita ng mga seller. Hindi na ito maibabalik.", zh: "删除此广播？卖家将不再看到它。此操作无法撤销。", "zh-TW": "刪除此廣播？賣家將不再看到它。此操作無法復原。", vi: "Xóa thông báo này? Người bán sẽ không còn thấy nó. Không thể hoàn tác.", th: "ลบการประกาศนี้หรือไม่? ผู้ขายจะไม่เห็นอีกต่อไป การกระทำนี้ไม่สามารถย้อนกลับได้", id: "Hapus siaran ini? Penjual tidak akan melihatnya lagi. Ini tidak dapat dibatalkan." },
 
   // ════ Shared ════
   rd_export: { en: "⬇ Export", fil: "⬇ I-export", zh: "⬇ 导出", "zh-TW": "⬇ 匯出", vi: "⬇ Xuất", th: "⬇ ส่งออก", id: "⬇ Ekspor" },

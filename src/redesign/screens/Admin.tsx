@@ -291,7 +291,7 @@ function PulsePanel({ pulse, state, onRefresh }: { pulse: PulseData | null; stat
   );
 }
 
-export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", rawByEmail = {}, actions, onChanged, freeUsers = [], freeUsersState = "sample", auditLogs = [], auditState = "sample", onOpenPanel, pulse = null, pulseState = "idle", onRefreshPulse, ann }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; rawByEmail?: Record<string, AccountUser>; actions?: AdminActions; onChanged?: () => void; freeUsers?: FreeUserRow[]; freeUsersState?: ReadState; auditLogs?: AccountAuditLog[]; auditState?: ReadState; onOpenPanel?: (k: AdminPanelKind) => void; pulse?: PulseData | null; pulseState?: PulseState; onRefreshPulse?: () => void; ann?: { list: Announcement[]; publish: (m: string) => Promise<{ ok: boolean; error?: string }>; unpublish: (id: string) => Promise<{ ok: boolean; error?: string }> } }) {
+export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", rawByEmail = {}, actions, onChanged, freeUsers = [], freeUsersState = "sample", auditLogs = [], auditState = "sample", onOpenPanel, pulse = null, pulseState = "idle", onRefreshPulse, ann }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; rawByEmail?: Record<string, AccountUser>; actions?: AdminActions; onChanged?: () => void; freeUsers?: FreeUserRow[]; freeUsersState?: ReadState; auditLogs?: AccountAuditLog[]; auditState?: ReadState; onOpenPanel?: (k: AdminPanelKind) => void; pulse?: PulseData | null; pulseState?: PulseState; onRefreshPulse?: () => void; ann?: { list: Announcement[]; publish: (m: string) => Promise<{ ok: boolean; error?: string }>; unpublish: (id: string) => Promise<{ ok: boolean; error?: string }>; remove: (id: string) => Promise<{ ok: boolean; error?: string }> } }) {
   const t = useT();
   // Real subscription buckets (derived) when the users list is live; else sample.
   const realSubs = usersState === "live" || usersState === "empty";
@@ -338,6 +338,13 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
       if (r.ok) onOk?.();
       else window.alert(tpl(t.rd_adm_failed, { label, err: r.error || t.rd_adm_err }));
     } finally { setAnnBusy(false); }
+  };
+  // Hard delete (trash) — confirm first, then remove the row entirely. RLS
+  // is_admin() gates the DB write; sellers stop seeing it on their next open.
+  const delAnn = (id: string) => {
+    if (!ann || annBusy) return;
+    if (!window.confirm(t.rd_ann_del_confirm)) return;
+    void doAnn(t.rd_ann_delete, () => ann!.remove(id));
   };
   const setPlan = (email: string, plan: string) => setUserPlans((p) => ({ ...p, [email]: plan }));
   const revAdded = users.reduce((sum, u) => sum + ((PLAN_PRICE[userPlans[u.email] || u.plan] || 0) - (PLAN_PRICE[u.plan] || 0)), 0);
@@ -599,6 +606,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                       <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-muted)", flexShrink: 0 }}>{annDate(a.createdAt)}</span>
                       <span style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600, color: a.active ? "var(--text)" : "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.message}</span>
                       {a.active && <span style={{ fontSize: 9.5, fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "2px 7px", borderRadius: 6, flexShrink: 0 }}>{t.rd_ann_active_now}</span>}
+                      <button aria-label={t.rd_ann_delete} title={t.rd_ann_delete} disabled={annBusy} onClick={() => delAnn(a.id)} style={{ flexShrink: 0, background: "none", border: "none", padding: "0 2px", cursor: annBusy ? "not-allowed" : "pointer", color: "var(--danger)", fontSize: 13, opacity: annBusy ? 0.5 : 1, lineHeight: 1 }}>🗑</button>
                     </div>
                   ))}
                 </div>
