@@ -1,0 +1,53 @@
+-- 16_free_tier_column_lockdown.sql
+-- SECURITY FIX S1 (audit Batch A) — close the free-tier cap bypass.
+--
+-- PROBLEM: the `authenticated` (and `anon`) roles hold a column-level UPDATE
+-- grant on seller_profiles.free_orders_count / free_cycle_started_at /
+-- free_warned_at. RLS lets a seller UPDATE their OWN row, and the
+-- seller_profiles_on_update trigger reverts plan/role/etc. for non-admins but
+-- NOT these free-tier columns. So a free seller can bypass the 100-order cap with
+-- a direct PostgREST call:
+--   PATCH /rest/v1/seller_profiles?auth_user_id=eq.<self>  {"free_orders_count":0}
+-- → counter reset → unlimited free orders.
+--
+-- FIX: revoke the column-level UPDATE grant from the API roles. This is the
+-- correct fix (NOT adding the columns to the trigger revert-list — that would
+-- break the nested increment done under the seller's context).
+--
+-- WHY IT DOESN'T BREAK ENFORCEMENT (verified read-only before writing this):
+--   Every function that WRITES these columns is SECURITY DEFINER owned by
+--   `postgres`, so it keeps the privilege after the revoke:
+--     * check_and_increment_free_order  (DEFINER, postgres) — cap check + increment + cycle reset
+--     * free_tier_mark_warned           (DEFINER, postgres) — writes free_warned_at
+--     * seller_profiles_on_insert       (DEFINER, postgres) — sets defaults on insert
+--   (free_tier_status_for_user / list_free_users_status only READ them.)
+--   No client or server code writes these columns directly (only comments
+--   reference them). Column-level REVOKE UPDATE only blocks statements that SET
+--   these columns; a normal profile update (store_name, full_name, …) is
+--   unaffected because it does not touch them.
+--
+-- REVERSIBLE: GRANT UPDATE (…) ON public.seller_profiles TO authenticated, anon;
+
+-- ── BEFORE: confirm the grants exist (expect rows for authenticated + anon) ──
+-- select grantee, privilege_type, column_name
+-- from information_schema.column_privileges
+-- where table_schema='public' and table_name='seller_profiles'
+--   and grantee in ('authenticated','anon') and privilege_type='UPDATE'
+--   and column_name in ('free_orders_count','free_cycle_started_at','free_warned_at')
+-- order by grantee, column_name;
+
+-- ── THE FIX ──
+revoke update (free_orders_count, free_cycle_started_at, free_warned_at)
+  on public.seller_profiles from authenticated, anon;
+
+-- ── AFTER: the same query should now return ZERO rows for these 3 columns ──
+-- select grantee, privilege_type, column_name
+-- from information_schema.column_privileges
+-- where table_schema='public' and table_name='seller_profiles'
+--   and grantee in ('authenticated','anon') and privilege_type='UPDATE'
+--   and column_name in ('free_orders_count','free_cycle_started_at','free_warned_at')
+-- order by grantee, column_name;
+--
+-- OPTIONAL defense-in-depth (the update trigger already reverts these for
+-- non-admins, so this is belt-and-suspenders, not required):
+--   revoke update (plan, role, plan_status, plan_expiry) on public.seller_profiles from authenticated, anon;

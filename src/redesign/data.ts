@@ -116,15 +116,18 @@ export { PLAN_PRICE } from "../lib/planPricing";
 
 // Users management list (dc.html v3 USERS L1557). Sample data only.
 export interface User { email: string; note: string; role: string; plan: string; days: number; accounts: string; status?: string; planExpiry?: string; planStatus?: string; contactNote?: string; }
+// Placeholder sample rows ONLY — never real users. Real seller data is loaded at
+// runtime (useAdminUsers → listUsers); this array is the visual fallback for the
+// "sample" state and ships in the client bundle, so it must contain NO real PII.
 export const USERS: User[] = [
-  { email: "camilajeffrey1@gmail.com", note: "admin", role: "Admin", plan: "Master", days: 3600, accounts: "5 / 5" },
-  { email: "lheyukay@gmail.com", note: "Lheyukay", role: "Seller", plan: "Pro", days: 118, accounts: "3 / 3" },
-  { email: "cmosiclar@icloud.com", note: "Kycher taiwan", role: "Seller", plan: "Basic", days: 42, accounts: "1 / 1" },
-  { email: "alishariq3660@gmail.com", note: "ALUKAY", role: "Seller", plan: "Basic", days: 43, accounts: "1 / 1" },
-  { email: "googletest@sellerflowlive.com", note: "googletest", role: "Seller", plan: "Basic", days: 29, accounts: "1 / 1" },
-  { email: "nliboon7@gmail.com", note: "@bby_dolltw.ph", role: "Seller", plan: "Basic", days: 14, accounts: "1 / 1" },
-  { email: "danishaqil194@gmail.com", note: "Baba", role: "Seller", plan: "Free", days: 3587, accounts: "0 / 1" },
-  { email: "khalidkhadem2023@gmail.com", note: "Atlas", role: "Seller", plan: "Free", days: 3587, accounts: "0 / 1" },
+  { email: "owner@example.com", note: "admin", role: "Admin", plan: "Master", days: 3600, accounts: "5 / 5" },
+  { email: "seller1@example.com", note: "Sample Seller 1", role: "Seller", plan: "Pro", days: 118, accounts: "3 / 3" },
+  { email: "seller2@example.com", note: "Sample Seller 2", role: "Seller", plan: "Basic", days: 42, accounts: "1 / 1" },
+  { email: "seller3@example.com", note: "Sample Seller 3", role: "Seller", plan: "Basic", days: 43, accounts: "1 / 1" },
+  { email: "seller4@example.com", note: "Sample Seller 4", role: "Seller", plan: "Basic", days: 29, accounts: "1 / 1" },
+  { email: "seller5@example.com", note: "Sample Seller 5", role: "Seller", plan: "Basic", days: 14, accounts: "1 / 1" },
+  { email: "seller6@example.com", note: "Sample Seller 6", role: "Seller", plan: "Free", days: 3587, accounts: "0 / 1" },
+  { email: "seller7@example.com", note: "Sample Seller 7", role: "Seller", plan: "Free", days: 3587, accounts: "0 / 1" },
 ];
 
 // Subscription buckets (dc.html v3 SUBS L1572).
