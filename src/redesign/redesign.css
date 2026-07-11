@@ -108,6 +108,14 @@ html.sfl-ios-shell [data-redesign] textarea { font-size: 16px !important; }
 [data-redesign] .sfl-nav-logo { display: none; }
 [data-redesign] .sfl-nav-admin { display: none; }
 
+/* 🛒 basket badge (Live feed) — size is PLATFORM-SCOPED (Jeff-verified on real
+ * devices): the DEFAULT is the slightly larger pill (Android APK + web/desktop
+ * both read too small at the compact size); the iOS shell alone keeps the
+ * compact pill via the html.sfl-ios-shell override below (same proven scoping
+ * as the iOS 16px input fix). */
+[data-redesign] .sfl-basket-badge { font-size: 12.5px; gap: 3px; padding: 3px 9px; }
+html.sfl-ios-shell [data-redesign] .sfl-basket-badge { font-size: 10px; gap: 2px; padding: 1px 6px; }
+
 /* ── DESKTOP/LAPTOP ONLY (≥900px AND a fine pointer = mouse/trackpad): the bottom
  * nav becomes a LEFT SIDEBAR and content goes full-width. `pointer: fine` excludes
  * ALL touch devices — Samsung tablets (portrait OR landscape) + phones + the APK

@@ -72,6 +72,17 @@ describe("Dashboard 🛒 badge", () => {
     expect(rows[1].textContent).not.toContain("🛒");  // newbie — subtle: no badge at all
   });
 
+  it("badge sits in the action row BESIDE the Enterprise button (Jeff's spot)", () => {
+    const counts = buildBasketCounts([buyer("maria", "TikTok", 3)]);
+    const { container } = render(
+      <TProvider lang="en"><Dashboard {...props([comment("maria", "TikTok")], counts)} /></TProvider>,
+    );
+    const row = container.querySelector(".sfl-comm-row")!;
+    // DOM order: the badge renders after the comment text (bottom action row),
+    // immediately before the Enterprise button — not up in the name header.
+    expect(row.textContent).toMatch(/mine.*🛒3.*Enterprise/s);
+  });
+
   it("reactive: a new order (updated counts map) bumps the badge on rerender", () => {
     const c = [comment("maria", "TikTok")];
     const { container, rerender } = render(
