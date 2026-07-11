@@ -57,7 +57,9 @@ export function planChangePatch(
 export function addDaysToExpiry(planExpiry: string, planStatus: string, days: number, now: Date): string {
   const exp = new Date(planExpiry).getTime();
   const valid = !isNaN(exp);
-  const daysLeft = valid ? Math.max(0, Math.ceil((exp - now.getTime()) / 86400000)) : 0;
+  // C1 — days-left via the shared planWindow source (identical max/ceil math for
+  // valid dates); the `valid` guard covers its Infinity-on-invalid semantics.
+  const daysLeft = valid ? planDaysLeft(planExpiry, now.getTime()) : 0;
   const active = planStatus === "active" && daysLeft > 0;
   const base = active && valid ? exp : now.getTime();
   return new Date(base + Math.max(1, days) * 86400000).toISOString();

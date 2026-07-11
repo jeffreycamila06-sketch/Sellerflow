@@ -42,12 +42,15 @@ describe.each([["web", false], ["iOS", true]] as const)("iOS payment-gate matrix
     assertGate("Renewing your subscription");
   });
 
-  it(`gate 2 — Admin home: Monthly Revenue card + Plans/Payments controls (${label})`, () => {
+  it(`gate 2 — Admin home: Monthly Revenue card; Plans/Payments GONE everywhere (${label})`, () => {
     setIOS(ios);
     wrap(<Admin onOpenPanel={noop} cur="NT$" mrr={12900} />);
     assertGate(/Monthly revenue/i);
-    assertGate(/^Plans$/);
-    assertGate(/^Payments$/);
+    // C2 (audit) — the Plans/Payments panels were REMOVED entirely (permanently-
+    // fake sample data, no backend by design). Absent on BOTH platforms is a
+    // strictly stronger Apple-compliance contract than the old iOS-only gate.
+    expect(screen.queryByText(/^Plans$/)).toBeNull();
+    expect(screen.queryByText(/^Payments$/)).toBeNull();
   });
 
   it(`gate 3 — GeneralSettings: plan line + Subscription row (${label})`, () => {

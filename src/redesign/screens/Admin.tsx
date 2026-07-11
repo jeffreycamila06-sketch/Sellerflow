@@ -4,7 +4,7 @@
 // full users-management panel (per-user plan + days, visual only). Sample data
 // only — no real seller management (Phase 5).
 import { useState, type CSSProperties, type ReactNode } from "react";
-import { PLANS, PAYMENTS, USERS, SUBS, PLAN_PRICE, initials, fmt, type Sub, type User } from "../data";
+import { USERS, SUBS, PLAN_PRICE, initials, fmt, type Sub, type User } from "../data";
 import { headerBar, card, mono } from "../ui";
 import { planDaysLeft, daysDisplay, deriveSubBuckets, deriveUserBase, freeUsersSummary, auditActionColor, filterAuditLogs, type ReadState, type SubBuckets, type FreeUserRow } from "../adapters/useReadData";
 import type { AdminActions, Plan } from "../adapters/useAdmin";
@@ -30,7 +30,7 @@ const deadBtn: CSSProperties = { opacity: 0.45, cursor: "not-allowed" };
 const SampleNote = () => { const t = useT(); return <div style={{ marginBottom: 12 }}><SoonBadge label={t.rd_adm_sample_note} /></div>; };
 
 export type AdminPanelKind =
-  | "sellers" | "plans" | "payments" | "reports" | "system" | "broadcast"
+  | "sellers" | "reports" | "system" | "broadcast"
   | "subActive" | "subExpiring" | "subFree" | "subExpired" | "notifs" | "revenue" | "audit" | "userbase" | "pulse";
 
 const ctrlTile: CSSProperties = { display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "14px 6px", border: "1px solid var(--border)", borderRadius: 14, background: "var(--surface)", boxShadow: "var(--shadow)", cursor: "pointer" };
@@ -43,8 +43,6 @@ const topStat: CSSProperties = { textAlign: "left", background: "var(--surface)"
 
 const cic = {
   sellers: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3.2" stroke="currentColor" strokeWidth="1.7" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M17 14.3a5.5 5.5 0 0 1 3.5 4.7" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>,
-  plans: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 8a2 2 0 0 1 2-2h7l9 9-7 7-9-9V8Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><circle cx="8" cy="11" r="1.4" fill="currentColor" /></svg>,
-  payments: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="13" rx="2" stroke="currentColor" strokeWidth="1.7" /><path d="M3 10h18" stroke="currentColor" strokeWidth="1.7" /></svg>,
   broadcast: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 10v4a1 1 0 0 0 1 1h3l5 4V5L8 9H5a1 1 0 0 0-1 1Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M17 8a5 5 0 0 1 0 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>,
   reports: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 19V11M10 19V5M15 19v-6M20 19V9" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" /></svg>,
   system: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 6h14M5 12h14M5 18h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><circle cx="9" cy="6" r="2" fill="var(--surface)" stroke="currentColor" strokeWidth="1.8" /><circle cx="15" cy="12" r="2" fill="var(--surface)" stroke="currentColor" strokeWidth="1.8" /><circle cx="9" cy="18" r="2" fill="var(--surface)" stroke="currentColor" strokeWidth="1.8" /></svg>,
@@ -108,8 +106,9 @@ export default function Admin({ onOpenPanel, cur, counts, live = false, userBase
           {!isAppShell() && <Ctrl icon={cic.pulse} label={t.rd_pulse_ctrl} onClick={() => onOpenPanel("pulse")} />}
           <Ctrl icon={cic.userbase} label={t.rd_adm_ctrl_userbase} onClick={() => onOpenPanel("userbase")} />
           <Ctrl icon={cic.sellers} label={t.rd_adm_ctrl_sellers} onClick={() => onOpenPanel("sellers")} />
-          {!isIOS() && <Ctrl icon={cic.plans} label={t.rd_adm_ctrl_plans} onClick={() => onOpenPanel("plans")} />}
-          {!isIOS() && <Ctrl icon={cic.payments} label={t.rd_adm_ctrl_payments} onClick={() => onOpenPanel("payments")} />}
+          {/* C2 (audit) — the Plans/Payments panels were removed: they only ever
+              rendered fabricated sample data (no payments backend by design —
+              subscriptions are Wise+Telegram outside the app). */}
           <Ctrl icon={cic.broadcast} label={t.rd_adm_ctrl_broadcast} onClick={() => onOpenPanel("broadcast")} />
           <Ctrl icon={cic.reports} label={t.rd_adm_ctrl_reports} onClick={() => onOpenPanel("reports")} />
           <Ctrl icon={cic.system} label={t.rd_adm_ctrl_system} onClick={() => onOpenPanel("system")} />
@@ -122,7 +121,7 @@ export default function Admin({ onOpenPanel, cur, counts, live = false, userBase
 
 // ── Admin control bottom-sheet (overlay; rendered at the phone root) ─────────
 const panelTitle = (t: RedesignT, k: AdminPanelKind): string => ({
-  sellers: t.rd_adm_pt_sellers, plans: t.rd_adm_pt_plans, payments: t.rd_adm_ctrl_payments, reports: t.rd_adm_pt_reports,
+  sellers: t.rd_adm_pt_sellers, reports: t.rd_adm_pt_reports,
   system: t.rd_adm_pt_system, broadcast: t.rd_adm_ctrl_broadcast, subActive: t.rd_adm_pt_subActive,
   subExpiring: t.rd_adm_pt_subExpiring, subFree: t.rd_adm_pt_subFree, subExpired: t.rd_adm_pt_subExpired,
   revenue: t.rd_adm_pt_revenue, notifs: t.rd_adm_notifications, audit: t.rd_adm_pt_audit, userbase: t.rd_adm_user_base,
@@ -536,43 +535,8 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
             </div>
           )}
 
-          {panel === "plans" && !isIOS() && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 11 }}>
-              <SampleNote />
-              {PLANS.map((p) => (
-                <div key={p.name} style={{ border: "1px solid var(--border)", borderRadius: 14, padding: 14, background: "var(--surface-2)" }}>
-                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
-                    <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, color: "var(--text)" }}>{p.name}</span>
-                    <span><span style={{ fontFamily: mono, fontWeight: 700, fontSize: 18, color: "var(--text)" }}>{cur}{p.price}</span><span style={{ fontSize: 11, color: "var(--text-muted)" }}>{p.per}</span></span>
-                  </div>
-                  <div style={{ fontSize: 11, color: "var(--accent-fg)", fontWeight: 700, marginTop: 2 }}>{p.sellers}</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 10 }}>
-                    {p.feats.map((f) => (<span key={f} style={{ fontSize: 11.5, color: "var(--text-dim)" }}><span style={{ color: "var(--accent-fg)", fontWeight: 800 }}>✓</span> {f}</span>))}
-                  </div>
-                </div>
-              ))}
-              <button disabled title={t.rd_adm_coming_soon} style={{ width: "100%", padding: "12px 0", border: "1px dashed var(--border-strong)", borderRadius: 12, background: "transparent", color: "var(--accent-fg)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, ...deadBtn }}>{t.rd_adm_new_plan}</button>
-            </div>
-          )}
-
-          {panel === "payments" && !isIOS() && (
-            <div>
-              <SampleNote />
-              <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-                <div style={{ ...miniStat, flex: 1 }}><div style={miniLbl}>{t.rd_adm_collected_today}</div><div style={miniNum}>{cur}48,200</div></div>
-                <div style={{ ...miniStat, flex: 1 }}><div style={miniLbl}>{t.rd_adm_pending}</div><div style={{ ...miniNum, color: "var(--warn)" }}>12</div></div>
-              </div>
-              <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", marginBottom: 9 }}>{t.rd_adm_recent_tx}</div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {PAYMENTS.map((p, i) => (
-                  <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", border: "1px solid var(--border)", borderRadius: 11 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{p.seller}</div><div style={{ fontSize: 11, color: "var(--text-muted)" }}>{p.method} · {p.time} {t.rd_ord_ago}</div></div>
-                    <div style={{ textAlign: "right" }}><div style={{ fontFamily: mono, fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{cur}{p.amount}</div><div style={{ fontSize: 10.5, fontWeight: 800, color: p.status === "Paid" ? "var(--ok)" : "var(--warn)" }}>{p.status}</div></div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* C2 (audit) — the "plans" and "payments" panels were removed here:
+              permanently-fake sample data with no backend by design. */}
 
           {panel === "reports" && (
             <div>

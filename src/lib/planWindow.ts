@@ -34,9 +34,11 @@ export const daysDisplay = (days: number): string => (Number.isFinite(days) ? St
 export const isTimeLimitedPlan = (plan: string | undefined | null): boolean => String(plan || "").trim().toLowerCase() !== "free";
 
 // Batch E (#12): THE free-plan predicate — the exact complement of
-// isTimeLimitedPlan, exported so callers stop growing local copies (useFreeCap
-// had one; sellerExpiry compared plan === "free" directly). Same case-insensitive
-// normalization as every other planWindow predicate.
+// isTimeLimitedPlan, exported so callers stop growing local copies (sellerExpiry
+// compared plan === "free" directly; now routed here). Same case-insensitive
+// normalization as every other planWindow predicate. ONE deliberate exception:
+// useFreeCap.computeFreeFlags keeps its own `plan === "free"` literal — it is a
+// VERBATIM App.tsx 5f mirror (db-cased input), kept byte-identical on purpose.
 export const isFreePlan = (plan: string | undefined | null): boolean => !isTimeLimitedPlan(plan);
 
 const isTrialPlan = (plan: string): boolean => String(plan || "").trim().toLowerCase() === "trial";

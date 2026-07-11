@@ -88,24 +88,9 @@ export interface AutoControls {
 // (F-batch sweep: sample SELLERS/SHIPPING/SALES + the Seller/Shipment types
 // removed — Admin sellers are real seller_profiles, Shipping is the real 7-11
 // export, Sales Report v2 is ledger-RPC-driven.)
-// Admin plans (dc.html v3 PLANS L1550). Prices are bare — the currency symbol
-// `cur` is prepended at render. Phase 5b: REAL Taiwan production prices/tiers
-// (Basic NT$500 · Pro NT$1,200 · Master NT$1,700). Subscriptions stay manual
-// via Wise + Telegram (no Play billing). Seller counts are sample.
-export interface Plan { name: string; price: string; per: string; sellers: string; feats: string[]; }
-export const PLANS: Plan[] = [
-  { name: "Basic", price: "500", per: "/mo", sellers: "sample", feats: ["1 live channel", "Auto-detect \"mine\"", "Order slips"] },
-  { name: "Pro", price: "1,200", per: "/mo", sellers: "sample", feats: ["TikTok + Facebook", "1-Click order", "Printer & shipping"] },
-  { name: "Master", price: "1,700", per: "/mo", sellers: "sample", feats: ["Everything in Pro", "Auto-print + stickers", "Bulk claim · priority sync"] },
-];
-// Admin payments (dc.html v3 PAYMENTS L1594). Bare amounts — `cur` prepended at render.
-export interface Payment { seller: string; method: string; amount: string; status: string; time: string; }
-export const PAYMENTS: Payment[] = [
-  { seller: "TanwearPH", method: "GCash", amount: "499", status: "Paid", time: "2m" },
-  { seller: "Reyes Finds", method: "Maya", amount: "499", status: "Paid", time: "18m" },
-  { seller: "Grace Luxe", method: "Bank transfer", amount: "1,499", status: "Pending", time: "1h" },
-  { seller: "BudgetBuys", method: "GCash", amount: "199", status: "Paid", time: "3h" },
-];
+// (C2 audit sweep: the sample PLANS/PAYMENTS arrays + Plan/Payment types were
+// removed with their Admin panels — permanently-fake data with no backend by
+// design; real tier prices live in lib/planPricing.)
 
 // ── Expanded Admin (dc.html v3) ──────────────────────────────────────────────
 // Plan price table — drives the "revenue detected from plan changes" calc
