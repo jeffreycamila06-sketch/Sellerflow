@@ -93,6 +93,10 @@ export interface ActiveAccounts { TikTok: string; Facebook: string }
 
 export interface UseLiveFeed {
   comments: RDComment[];
+  // Comment persistence — read-only reference to the post-dedup feed STATE so the
+  // history layer can save strictly AFTER dedup/sort/cap, outside the socket
+  // handler (additive export, same pattern as ttRecovering; zero behavior change).
+  rawFeed: ProdComment[];
   connected: boolean;
   canInject: boolean;
   injectSynthetic: (text?: string) => void;
@@ -404,5 +408,5 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   // Regression: feedComments.memo.test. The feed pipeline itself (commentKey /
   // dedup / sortNewest — tangled zone #1) is untouched.
   const comments = useMemo(() => feed.map(toRedesignComment), [feed]);
-  return { comments, connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, ttRecovering, fbRecovering, connect, markDisconnected };
+  return { comments, rawFeed: feed, connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, ttRecovering, fbRecovering, connect, markDisconnected };
 }

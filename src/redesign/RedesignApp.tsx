@@ -38,6 +38,7 @@ import { useLiveSession } from "./adapters/useLiveSession";
 import { buildBasketCounts } from "./adapters/basketCounts";
 import { useSessionWindow, type WindowDays } from "./adapters/useSessionWindow";
 import { useLiveFeed, commentKey } from "./adapters/useLiveFeed";
+import { useCommentHistory, mergeForDisplay } from "./adapters/commentHistory";
 import { useOrders } from "./adapters/useOrders";
 import { planAutoOrder, type AutoCode } from "./adapters/autoMode";
 import { buildWinnerTicketBuyer, type RaffleEntry } from "./adapters/raffle";
@@ -174,7 +175,18 @@ export default function RedesignApp() {
   // Auto Mode seam — a stable wrapper calling the latest handler via ref (no re-subscribe).
   // 4th arg = the user's account selection (comment scoping).
   const liveFeed = useLiveFeed(authed, auth.profile?.email, (c) => autoCommentRef.current(c), liveSelected);
-  const comments = liveFeed.comments;
+
+  // Comment persistence (Chotdon-parity session history). sessionKey = the SAME
+  // window bucket the shipping feature uses (zero new window math); gated on the
+  // window config being loaded so the restore never reads a wrong bucket. The
+  // restored array is DISPLAY-ONLY (merged below) — it never enters useLiveFeed,
+  // so the Auto-Mode seam above and getComment/feedRef can never see it
+  // (duplicate-order layers 1+2; layer 3 = the Dashboard's restored branch).
+  const sessionKey = sessionKeyFor(liveSession.dayId, sessionWindow.windowStart, sessionWindow.windowDays);
+  const history = useCommentHistory(authed && sessionWindow.loaded, auth.profile?.email, sessionKey, liveFeed.rawFeed);
+  // Display merge: history rows append BELOW the live block (older by
+  // construction); overlap collapses by commentKey with the live copy winning.
+  const comments = useMemo(() => mergeForDisplay(liveFeed.comments, history.restored), [liveFeed.comments, history.restored]);
 
   // Auto Mode — READ-ON-LOAD only (on auth change): load the code map + seed live
   // stock from the catalog. No poll. Codes/stock edited in Settings apply on next
@@ -796,7 +808,7 @@ export default function RedesignApp() {
           {screen === "admin" && isAdmin && <Admin onOpenPanel={setAdminPanel} cur={cur} counts={adminCounts} live={adminLive} userBase={adminLive ? { paid: userBase.paid, free: userBase.free, total: userBase.total } : undefined} mrr={adminLive ? deriveMrr(adminUsers.users) : null} owner={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : null} />}
           {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} buyers={liveSession.session.buyers} storeName={auth.profile?.profile.storeName || "SellerFlowLive"} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
           {screen === "sales" && <SalesReport cur={cur} sales={sales} onExport={exportSales} hist={salesHist} />}
-          {screen === "shipping" && <Shipping cur={cur} buyers={liveSession.session.buyers} sessionKey={sessionKeyFor(liveSession.dayId, sessionWindow.windowStart, sessionWindow.windowDays)} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}
+          {screen === "shipping" && <Shipping cur={cur} buyers={liveSession.session.buyers} sessionKey={sessionKey} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}
           {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} cur={cur} customers={customersData.state === "live" ? customersData.customers : []} onExport={customersData.state === "live" ? exportCustomers : undefined} />}
           {screen === "legal" && <Legal />}
           {screen === "delete" && <DeleteAccount onBack={() => setScreen("settings")} email={auth.profile?.email} onConfirm={auth.deleteAccount} />}
