@@ -174,7 +174,17 @@ export default function RedesignApp() {
   // Auto Mode seam — a stable wrapper calling the latest handler via ref (no re-subscribe).
   // 4th arg = the user's account selection (comment scoping).
   const liveFeed = useLiveFeed(authed, auth.profile?.email, (c) => autoCommentRef.current(c), liveSelected);
-  const comments = liveFeed.comments;
+  // Approach A (FLive parity) — TikTok's pre-connect room buffer renders as a
+  // muted display-only history block BELOW the live feed. initialComments ids
+  // are unresolvable by getComment (never in feedRef) → the 1-Click/Enterprise
+  // handlers hard-return for them; the Dashboard restored branch renders them
+  // with zero action buttons.
+  // (optional-chained: test harnesses that mock useLiveFeed without the
+  // additive initialComments field must degrade to live-only, not throw.)
+  const comments = useMemo(
+    () => (liveFeed.initialComments?.length ? [...liveFeed.comments, ...liveFeed.initialComments] : liveFeed.comments),
+    [liveFeed.comments, liveFeed.initialComments],
+  );
 
   // Auto Mode — READ-ON-LOAD only (on auth change): load the code map + seed live
   // stock from the catalog. No poll. Codes/stock edited in Settings apply on next

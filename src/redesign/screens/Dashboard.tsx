@@ -3,7 +3,7 @@
 // TikTok/Facebook account pickers with connect flow. Each comment row carries
 // the 1-Click / Enterprise order flow (printed / Enterprise price-entry), all
 // visual-only — real account switching / order creation is Phase 5.
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { avColor, initials, type Comment } from "../data";
 import { basketCountFor } from "../adapters/basketCounts";
 import { sessionSummary, type SessionState } from "../adapters/useLiveSession";
@@ -320,21 +320,34 @@ export default function Dashboard({
               <span style={{ fontSize: 11.5 }}>{t.rd_dash_connect_start}{canInject ? t.rd_dash_preview_hint : ""}</span>
             </div>
           )}
-          {comments.slice(0, FEED_RENDER_CAP).map((c) => {
+          {comments.slice(0, FEED_RENDER_CAP).map((c, i, visible) => {
             // Auto-detect is Soon-badged (not wired) — capture is ALWAYS manual, so
-            // every comment keeps its 1-Click / Enterprise buttons until it is ordered.
-            // "printed" is only ever set by a real manual order → no comment is ever
-            // silently marked done / left uncapturable.
+            // every LIVE comment keeps its 1-Click / Enterprise buttons until it is
+            // ordered. "printed" is only ever set by a real manual order → no comment
+            // is ever silently marked done / left uncapturable.
+            // RESTORED rows (initial-comments feature) are DISPLAY-ONLY history from
+            // TikTok's pre-connect buffer: muted, NO action row of any kind —
+            // duplicate-order layer 3 (layers 1+2 = initial comments never enter the
+            // Auto-Mode seam or feedRef → getComment(id) === undefined). Test-pinned:
+            // a restored row renders ZERO <button> elements (Dashboard.restored.test).
+            const isRestored = !!c.restored;
+            const firstRestored = isRestored && (i === 0 || !visible[i - 1].restored);
             const manP = printed[c.id];
-            const isPrinted = !!manP;
+            const isPrinted = !isRestored && !!manP;
             const printedLabel = manP && manP !== "order" ? manP : "";
-            const entOpen = entId === c.id;
-            const showActions = !isPrinted && !entOpen;
+            const entOpen = !isRestored && entId === c.id;
+            const showActions = !isRestored && !isPrinted && !entOpen;
             // 🛒 basket count — this buyer's CREATED ORDERS in the current session
             // window (O(1) map lookup). 0 → no badge (keeps a busy feed clean).
             const basketN = basketCounts ? basketCountFor(basketCounts, c.handle, c.platform) : 0;
             return (
-              <div key={c.id} className="sfl-comm-row" style={{ display: "flex", gap: 10, padding: "9px 8px", borderRadius: 11 }}>
+              <Fragment key={c.id}>
+              {firstRestored && (
+                <div style={{ textAlign: "center", padding: "8px 6px 2px", fontSize: 10.5, fontWeight: 700, letterSpacing: ".04em", color: "var(--text-muted)" }}>
+                  {t.rd_dash_restored_note}
+                </div>
+              )}
+              <div className="sfl-comm-row" style={{ display: "flex", gap: 10, padding: "9px 8px", borderRadius: 11, ...(isRestored ? { opacity: 0.62 } : null) }}>
                 <div style={{ width: 34, height: 34, borderRadius: "50%", background: avColor(c.name), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{initials(c.name)}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
@@ -349,8 +362,12 @@ export default function Dashboard({
                     )}
                   </div>
                   {/* Order flow (dc.html v3 L210–227): printed badge · Enterprise
-                      price-entry · 1-Click / Enterprise actions. */}
-                  <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 6, marginTop: 8, minHeight: 27 }}>
+                      price-entry · 1-Click /
+                      Enterprise actions. Restored rows keep ONLY the basket badge
+                      (session-derived, still meaningful on history) — no buttons,
+                      no printed/price UI. */}
+                  {(!isRestored || basketN > 0) && (
+                  <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 6, marginTop: 8, minHeight: isRestored ? 0 : 27 }}>
                     {/* 🛒 badge — beside the Enterprise button (Jeff's requested spot);
                         shown in every row state (printed / price-entry / actions).
                         SIZE lives in .sfl-basket-badge (redesign.css), PLATFORM-scoped:
@@ -379,8 +396,10 @@ export default function Dashboard({
                       </>
                     )}
                   </div>
+                  )}
                 </div>
               </div>
+              </Fragment>
             );
           })}
           {comments.length > FEED_RENDER_CAP && (
