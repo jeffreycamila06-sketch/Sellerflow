@@ -5,6 +5,7 @@ import http from "http";
 import { Server } from "socket.io";
 import { createClient } from "@supabase/supabase-js";
 import { translateBroadcast } from "./server/broadcastTranslate.js";
+import { shouldForceFreshConnect, LIVENESS_EVENTS } from "./server/connectionHealth.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -849,7 +850,9 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
     }
     handleTikTokDisconnected(key, tiktokConnection, "error");
   });
-  ["member", "like", "gift", "social", "emote", "envelope"].forEach((eventName) => {
+  // F1 (audit) — liveness list now includes roomUser/follow/share (see
+  // server/connectionHealth.js) so quiet-but-alive rooms stay demonstrably fresh.
+  LIVENESS_EVENTS.forEach((eventName) => {
     tiktokConnection.on(eventName, () => touchTikTokConnection(key, tiktokConnection));
   });
 
@@ -887,6 +890,7 @@ async function connectTikTok(username, res, meta = {}) {
   let sellerId = "";
   let sessionId = "";
   let cleanUsername = "";
+  let forcedFresh = false; // B2 — a stale existing connection was replaced on this tap
   try {
     if (!username) {
       return res.status(400).json({
@@ -922,22 +926,32 @@ async function connectTikTok(username, res, meta = {}) {
     }
 
     const existing = tiktokConnections.get(key);
+    // STATUS-TRUTH (B2): reuse the existing connection ONLY when it is demonstrably
+    // alive (event within CONNECT_REUSE_FRESH_MS). An event-silent connection on an
+    // EXPLICIT Connect tap = force a fresh TikTok connection through the normal path
+    // below (lock → clean disconnect → startTikTokConnection) — this is the seller's
+    // self-service zombie fix (DoD #5: disconnect → refresh → connect just works).
+    // NOTE: touchTikTokConnection is NOT called before the check — it would stamp
+    // lastEventAt=now and mask the very staleness being measured.
     if (existing) {
-      existing.sessionId = sessionId || existing.sessionId;
-      touchTikTokConnection(key, existing.connection);
-      emitTikTokStatus({
-        sellerId,
-        username: cleanUsername,
-        sessionId: existing.sessionId,
-        connected: true,
-        reconnecting: false,
-        reason: "already_connected",
-      });
-      return res.json({
-        success: true,
-        reused: true,
-        message: `TikTok LIVE already connected: ${cleanUsername}`,
-      });
+      if (!shouldForceFreshConnect(existing.lastEventAt, Date.now())) {
+        existing.sessionId = sessionId || existing.sessionId;
+        emitTikTokStatus({
+          sellerId,
+          username: cleanUsername,
+          sessionId: existing.sessionId,
+          connected: true,
+          reconnecting: false,
+          reason: "already_connected",
+        });
+        return res.json({
+          success: true,
+          reused: true,
+          message: `TikTok LIVE already connected: ${cleanUsername}`,
+        });
+      }
+      forcedFresh = true;
+      console.log(`[CONNECT] force_fresh for ${cleanUsername}: event-silent ${Math.round((Date.now() - (existing.lastEventAt || 0)) / 1000)}s — replacing stale connection`);
     }
 
     if (tiktokConnectLocks.has(key)) {
@@ -957,6 +971,21 @@ async function connectTikTok(username, res, meta = {}) {
     });
   } catch (error) {
     console.log(error);
+    // B2 — if this tap REPLACED a stale connection and the fresh connect failed,
+    // the old (possibly green) status is now definitively dead: emit a terminal
+    // gray so the pill never shows a stale green after a failed force-fresh.
+    // Deliberately ONLY when forcedFresh (rate-limit already emits its own): a
+    // plain failed connect for account B must not gray a live account A's pill.
+    if (forcedFresh && !isTikTokRateLimitError(error)) {
+      emitTikTokStatus({
+        sellerId,
+        username: cleanUsername,
+        sessionId,
+        connected: false,
+        reconnecting: false,
+        reason: error && error.notLive ? "not_live" : "connect_failed",
+      });
+    }
     if (error && error.notLive) {
       // Account resolved connect() but is not live → distinct 409 (NOT a 500/red
       // "can't reach server"). No reconnect is scheduled from this catch.

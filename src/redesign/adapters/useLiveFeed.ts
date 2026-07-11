@@ -33,6 +33,18 @@ const LIVE_COMMENT_LIMIT = 5000;
 // server restart. 0–25s spread for fast recovery; the server-side MIN_GAP ≤6/min hard cap
 // is the actual storm guard, so a tighter window stays safe even with a fleet reconnect.
 const AUTO_RECONNECT_JITTER_MS = 25 * 1000;
+// STATUS-TRUTH (connection-status fix, exported for tests) — the green pill is a
+// PROMISE ("I am capturing your orders right now"), so it must track stream truth:
+//   • RECONNECT_GRACE_MS: a server health-cycle reconnect (chat-stale/silent) emits
+//     reconnecting:true then usually recovers in 10–45s. Keep the pill GREEN through
+//     this grace so a SUCCESSFUL self-heal is invisible (zero flapping — symptom A);
+//     if no connected:true lands within the grace, fall to an HONEST gray.
+//   • SOCKET_GRACE_MS: a dead socket cannot deliver comments, so green must not
+//     outlive it (symptom B's stale-green enabler) — but socket.io usually recovers
+//     a transport blip in 1–2s, so a short grace avoids flapping on blips. On
+//     recovery the join_live_room snapshot re-asserts the true state.
+export const RECONNECT_GRACE_MS = 60 * 1000;
+export const SOCKET_GRACE_MS = 8 * 1000;
 
 // commentKey — COPIED VERBATIM from src/App.tsx:111-114 (tangled-zone #1).
 // Parity-guarded by useLiveFeed.test.ts. DO NOT edit independently of App.tsx.
@@ -133,6 +145,12 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   const serverConnectedRef = useRef<{ TikTok: boolean; Facebook: boolean }>({ TikTok: false, Facebook: false });
   serverConnectedRef.current = { TikTok: ttConnected, Facebook: fbConnected };
   const reconnectTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // STATUS-TRUTH — pending fall-to-gray timers per platform. A timer is armed when
+  // the stream's health is IN DOUBT (server reconnecting / socket dead) and cancelled
+  // the moment the server re-asserts connected:true. "Keep earliest deadline": arming
+  // while armed is a no-op, so repeated reconnecting/connect_error events can never
+  // extend a false green.
+  const grayTimersRef = useRef<{ TikTok: ReturnType<typeof setTimeout> | null; Facebook: ReturnType<typeof setTimeout> | null }>({ TikTok: null, Facebook: null });
   const synthIdx = useRef(0);
   // Latest feed readable from a stable getter (for 5e order creation by id).
   const feedRef = useRef<ProdComment[]>(feed);
@@ -186,13 +204,37 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       s.emit("select_account", { platform: "TikTok", username: selectedRef.current.TikTok });
       s.emit("select_account", { platform: "Facebook", username: selectedRef.current.Facebook });
     };
+    // STATUS-TRUTH helpers (status layer ONLY — comment handler/dedup untouched).
+    const setPlatformGray = (platform: Platform) => {
+      if (platform === "TikTok") setTtConnected(false); else setFbConnected(false);
+      setActiveAccounts((a) => ({ ...a, [platform]: "" }));
+    };
+    const cancelGray = (platform: Platform) => {
+      const t = grayTimersRef.current[platform];
+      if (t) { clearTimeout(t); grayTimersRef.current[platform] = null; }
+    };
+    const scheduleGray = (platform: Platform, delayMs: number) => {
+      if (grayTimersRef.current[platform]) return; // keep the EARLIEST deadline
+      grayTimersRef.current[platform] = setTimeout(() => {
+        grayTimersRef.current[platform] = null;
+        setPlatformGray(platform); // honest gray — health didn't recover within grace
+      }, delayMs);
+    };
+    // A dead socket cannot deliver comments → green must not outlive it (short grace
+    // so a 1–2s transport blip never flaps the pill; the join snapshot restores truth).
+    const onSocketDown = () => {
+      setConnected(false);
+      (["TikTok", "Facebook"] as Platform[]).forEach((p) => {
+        if (serverConnectedRef.current[p]) scheduleGray(p, SOCKET_GRACE_MS);
+      });
+    };
     s.on("connect", () => {
       setConnected(true); joinRoom(); emitSelection();
       if (hasConnectedSocketRef.current) autoReconnectAfterDrop(); // RE-connect → restore accounts
       else hasConnectedSocketRef.current = true;                   // first connect → nothing to restore
     });
-    s.on("disconnect", () => setConnected(false));
-    s.on("connect_error", () => setConnected(false));
+    s.on("disconnect", onSocketDown);
+    s.on("connect_error", onSocketDown);
     joinRoom();
     emitSelection();
     s.on("comment", (d: ProdComment) => {
@@ -224,24 +266,46 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       try { onCommentRef.current?.(c); } catch (err) { console.warn("onComment handler failed", err); }
       pushComment(c);
     });
-    // #6 — server-driven connection status + active account (App.tsx 4072-4082).
+    // #6 — server-driven connection status + active account (App.tsx 4072-4082),
+    // upgraded to STATUS-TRUTH three-way handling:
+    //   • connected (visible) → green NOW + cancel any pending gray.
+    //   • reconnecting → TRANSITIONAL: the server health cycle usually self-heals in
+    //     10–45s, so keep the current green through RECONNECT_GRACE_MS instead of
+    //     flapping (symptom A); the armed timer falls to honest gray if it doesn't.
+    //   • terminal not-connected (streamEnd / not_live / manual / rate_limited /
+    //     stale snapshot) → honest gray IMMEDIATELY.
     s.on("platform_status", (p: { platform?: string; connected?: boolean; reconnecting?: boolean; sellerId?: string; username?: string; sessionId?: string }) => {
       if (p.sellerId && p.sellerId !== sellerId) return;
       if (p.sessionId && p.sessionId !== sessionId) return;
-      const visible = !!p.connected && !p.reconnecting;
-      if (p.platform === "TikTok") { setTtConnected(visible); if (!visible) setActiveAccounts((a) => ({ ...a, TikTok: "" })); }
-      if (p.platform === "Facebook") { setFbConnected(visible); if (!visible) setActiveAccounts((a) => ({ ...a, Facebook: "" })); }
-      if (p.connected && p.platform === "TikTok" && p.username) setActiveAccounts((a) => ({ ...a, TikTok: p.username as string }));
-      if (p.connected && p.platform === "Facebook" && p.username) setActiveAccounts((a) => ({ ...a, Facebook: p.username as string }));
+      const plat: Platform | "" = p.platform === "TikTok" ? "TikTok" : p.platform === "Facebook" ? "Facebook" : "";
+      if (!plat) return;
+      if (p.connected && !p.reconnecting) {
+        cancelGray(plat);
+        if (plat === "TikTok") setTtConnected(true); else setFbConnected(true);
+        if (p.username) setActiveAccounts((a) => ({ ...a, [plat]: p.username as string }));
+      } else if (p.reconnecting) {
+        // F2 (audit) — ALWAYS arm the grace (no currently-green gate): the gate
+        // read a render-mirrored ref that could be stale when connected:true and
+        // reconnecting:true land in the same batch (fresh connection dying at
+        // birth), silently skipping the arm and delaying the honest gray by a
+        // full retry cycle. Arming while already gray is a harmless no-op (the
+        // timer just re-asserts gray). Green still only returns on connected:true.
+        scheduleGray(plat, RECONNECT_GRACE_MS);
+      } else {
+        cancelGray(plat);
+        setPlatformGray(plat);
+      }
     });
     s.on("live_session_ended", (e: { sellerId?: string; sessionId?: string } = {}) => {
       if (e.sellerId && e.sellerId !== sellerId) return;
       if (e.sessionId && e.sessionId !== sessionId) return;
+      cancelGray("TikTok"); cancelGray("Facebook"); // terminal — no pending grace needed
       setActiveAccounts({ TikTok: "", Facebook: "" }); setTtConnected(false); setFbConnected(false); setFeed([]);
     });
     return () => {
       reconnectTimersRef.current.forEach(clearTimeout);
       reconnectTimersRef.current = [];
+      cancelGray("TikTok"); cancelGray("Facebook");
       socketRef.current = null;
       s.disconnect();
     };
