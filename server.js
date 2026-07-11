@@ -656,7 +656,9 @@ app.post("/admin/broadcast-translate", requireAuth, requireAdmin, async (req, re
   }
   const result = await translateBroadcast(text, { apiKey: ANTHROPIC_API_KEY });
   if (!result.ok) {
-    console.log(`[BROADCAST_TRANSLATE] FAIL error=${result.error}`);
+    // Log the raw model reply (server console ONLY — never sent to the client) so
+    // a recurring parse failure can be diagnosed from its exact shape.
+    console.log(`[BROADCAST_TRANSLATE] FAIL error=${result.error}${result.raw ? ` raw=${JSON.stringify(result.raw)}` : ""}`);
     return res.status(502).json({ success: false, error: result.error });
   }
   return res.json({ success: true, i18n: result.i18n });
