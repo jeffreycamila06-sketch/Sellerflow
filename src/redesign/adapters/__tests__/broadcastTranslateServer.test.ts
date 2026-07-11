@@ -6,6 +6,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   TARGET_LANGS,
   TRANSLATE_MODEL,
+  TRANSLATE_MAX_TOKENS,
   buildSystemPrompt,
   parseTranslateResult,
   translateBroadcast,
@@ -33,6 +34,11 @@ describe("buildSystemPrompt", () => {
     expect(p).toMatch(/Taglish/i);
     expect(p).toMatch(/JSON/);
   });
+  it("hardens the JSON-only contract (start with {, end with }, no fences)", () => {
+    const p = buildSystemPrompt();
+    expect(p).toMatch(/Start your response with \{ and end/);
+    expect(p).toMatch(/no code fences|no markdown/);
+  });
 });
 
 describe("parseTranslateResult", () => {
@@ -44,6 +50,27 @@ describe("parseTranslateResult", () => {
   it("extracts JSON even when wrapped in prose / code fences", () => {
     const r = parseTranslateResult("Here you go:\n```json\n" + JSON.stringify(full()) + "\n```");
     expect(r.ok).toBe(true);
+  });
+  it("tolerates a bare ```json fence (no surrounding prose)", () => {
+    const r = parseTranslateResult("```json\n" + JSON.stringify(full()) + "\n```");
+    expect(r.ok).toBe(true);
+    expect(r.i18n?.th).toBe("ลดราคา!");
+  });
+  it("tolerates a plain-text preamble before the object", () => {
+    const r = parseTranslateResult("Sure! Here are the translations: " + JSON.stringify(full()));
+    expect(r.ok).toBe(true);
+  });
+  it("truncated JSON (no closing brace = max_tokens cutoff) → no_json_in_response + raw snippet for logs", () => {
+    const cut = '{"en":"A very long promo that got cut off mid-string because the token budget';
+    const r = parseTranslateResult(cut);
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe("no_json_in_response");
+    expect(r.raw).toContain("A very long promo"); // raw returned for server-side logging
+  });
+  it("failure results carry a bounded raw snippet (≤800 chars) for logging", () => {
+    const r = parseTranslateResult("x".repeat(5000));
+    expect(r.ok).toBe(false);
+    expect((r.raw || "").length).toBeLessThanOrEqual(800);
   });
   it("rejects a missing language", () => {
     const partial = full(); delete (partial as Record<string, string>).th;
@@ -78,7 +105,7 @@ describe("translateBroadcast (injected fetch)", () => {
     expect(r).toEqual({ ok: false, error: "translation_not_configured" });
   });
 
-  it("success → full 7-lang map; sends model + x-api-key + version", async () => {
+  it("success → full 7-lang map; sends model + x-api-key + version + generous max_tokens", async () => {
     const f = vi.fn(async () => okResp(full()));
     const r = await translateBroadcast("Big sale NT$500 🎉", { apiKey: "sk-test", fetchImpl: f });
     expect(r.ok).toBe(true);
@@ -87,7 +114,30 @@ describe("translateBroadcast (injected fetch)", () => {
     expect(url).toBe("https://api.anthropic.com/v1/messages");
     expect(init.headers["x-api-key"]).toBe("sk-test");
     expect(init.headers["anthropic-version"]).toBe("2023-06-01");
-    expect(JSON.parse(init.body).model).toBe("claude-haiku-4-5");
+    const body = JSON.parse(init.body);
+    expect(body.model).toBe("claude-haiku-4-5");
+    expect(body.max_tokens).toBe(TRANSLATE_MAX_TOKENS);
+    expect(TRANSLATE_MAX_TOKENS).toBeGreaterThanOrEqual(4096); // enough for 7 long translations
+  });
+
+  it("long message that fits (bumped max_tokens) → parses fine, no truncation", async () => {
+    const longEn = "Refer a friend and you BOTH get NT$100 off! ".repeat(20);
+    const long = { ...full(), en: longEn };
+    const f = vi.fn(async () => okResp(long));
+    const r = await translateBroadcast(longEn, { apiKey: "k", fetchImpl: f });
+    expect(r.ok).toBe(true);
+    expect(r.i18n?.en).toBe(longEn);
+  });
+
+  it("stop_reason max_tokens with cut-off JSON → 'truncated' (clearer than a parse error) + raw", async () => {
+    const f = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ stop_reason: "max_tokens", content: [{ type: "text", text: '{"en":"long promo cut off' }] }),
+    }));
+    const r = await translateBroadcast("really long promo", { apiKey: "k", fetchImpl: f });
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe("truncated");
+    expect(r.raw).toContain("long promo cut off");
   });
 
   it("non-2xx from Anthropic → anthropic_http_<status>, no partial", async () => {
