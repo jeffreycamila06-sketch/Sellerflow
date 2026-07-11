@@ -19,6 +19,8 @@ import { isAppShell } from "../adapters/appShell";
 import { relativeTime } from "../adapters/useReadData";
 import { maxHourlyOrders, hourLabel, type PulseData, type PulseState } from "../adapters/useBusinessPulse";
 import { pickLatestActive, type Announcement } from "../adapters/useAnnouncements";
+import { translateBroadcast } from "../adapters/broadcastTranslate";
+import { LANGS } from "../data";
 import { matchPlan } from "../../lib/planPricing";
 import { isAdminRole } from "../../lib/roles";
 
@@ -291,7 +293,7 @@ function PulsePanel({ pulse, state, onRefresh }: { pulse: PulseData | null; stat
   );
 }
 
-export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", rawByEmail = {}, actions, onChanged, freeUsers = [], freeUsersState = "sample", auditLogs = [], auditState = "sample", onOpenPanel, pulse = null, pulseState = "idle", onRefreshPulse, ann }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; rawByEmail?: Record<string, AccountUser>; actions?: AdminActions; onChanged?: () => void; freeUsers?: FreeUserRow[]; freeUsersState?: ReadState; auditLogs?: AccountAuditLog[]; auditState?: ReadState; onOpenPanel?: (k: AdminPanelKind) => void; pulse?: PulseData | null; pulseState?: PulseState; onRefreshPulse?: () => void; ann?: { list: Announcement[]; publish: (m: string) => Promise<{ ok: boolean; error?: string }>; unpublish: (id: string) => Promise<{ ok: boolean; error?: string }>; remove: (id: string) => Promise<{ ok: boolean; error?: string }> } }) {
+export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", rawByEmail = {}, actions, onChanged, freeUsers = [], freeUsersState = "sample", auditLogs = [], auditState = "sample", onOpenPanel, pulse = null, pulseState = "idle", onRefreshPulse, ann }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; rawByEmail?: Record<string, AccountUser>; actions?: AdminActions; onChanged?: () => void; freeUsers?: FreeUserRow[]; freeUsersState?: ReadState; auditLogs?: AccountAuditLog[]; auditState?: ReadState; onOpenPanel?: (k: AdminPanelKind) => void; pulse?: PulseData | null; pulseState?: PulseState; onRefreshPulse?: () => void; ann?: { list: Announcement[]; publish: (m: string, i18n?: Record<string, string> | null) => Promise<{ ok: boolean; error?: string }>; unpublish: (id: string) => Promise<{ ok: boolean; error?: string }>; remove: (id: string) => Promise<{ ok: boolean; error?: string }> } }) {
   const t = useT();
   // Real subscription buckets (derived) when the users list is live; else sample.
   const realSubs = usersState === "live" || usersState === "empty";
@@ -346,6 +348,38 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
     if (!window.confirm(t.rd_ann_del_confirm)) return;
     void doAnn(t.rd_ann_delete, () => ann!.remove(id));
   };
+  // Auto-translate composer flow: type ONE message → Translate (1 server call)
+  // → preview all 7 langs → Confirm send (writes EN + message_i18n) / Edit
+  // (back, text intact) / Send English only (skip translations, legacy render).
+  const [annStage, setAnnStage] = useState<"compose" | "translating" | "preview">("compose");
+  const [annPreview, setAnnPreview] = useState<Record<string, string> | null>(null);
+  const [annErr, setAnnErr] = useState("");
+  const resetAnn = () => { setAnnMsg(""); setAnnPreview(null); setAnnStage("compose"); setAnnErr(""); };
+  const startTranslate = async () => {
+    if (!ann || annBusy || !annMsg.trim()) return;
+    setAnnErr(""); setAnnStage("translating"); setAnnBusy(true);
+    try {
+      const r = await translateBroadcast(annMsg);
+      if (r.ok && r.i18n) { setAnnPreview(r.i18n); setAnnStage("preview"); }
+      else { setAnnStage("compose"); setAnnErr(r.error || t.rd_adm_err); }
+    } finally { setAnnBusy(false); }
+  };
+  const confirmSend = () => {
+    if (!ann || !annPreview) return;
+    void doAnn(t.rd_ann_confirm_send, () => ann!.publish(annPreview!.en || annMsg, annPreview), resetAnn);
+  };
+  const sendEnglishOnly = () => {
+    if (!ann || !annMsg.trim()) return;
+    void doAnn(t.rd_ann_english_only, () => ann!.publish(annMsg, null), resetAnn);
+  };
+  const editBack = () => { setAnnStage("compose"); setAnnPreview(null); };
+  // Preview rows in the canonical i18n order, labelled via the LANGS picker
+  // (LANGS codes are lowercase "zh-tw" → matched case-insensitively).
+  const annLangRows = (i18n: Record<string, string>) =>
+    (["en", "fil", "zh", "zh-TW", "vi", "th", "id"] as const).map((code) => {
+      const meta = LANGS.find((l) => l.code.toLowerCase() === code.toLowerCase());
+      return { code, label: meta?.label || code, flag: meta?.flag || "", text: i18n[code] || "" };
+    });
   const setPlan = (email: string, plan: string) => setUserPlans((p) => ({ ...p, [email]: plan }));
   const revAdded = users.reduce((sum, u) => sum + ((PLAN_PRICE[userPlans[u.email] || u.plan] || 0) - (PLAN_PRICE[u.plan] || 0)), 0);
   const userCount = usersState === "live" || usersState === "empty" ? `${users.length}` : "12,480";
@@ -595,9 +629,42 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 15 }}>
                 <span style={chipOn}>{t.rd_adm_all_sellers}</span>
               </div>
-              <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 6 }}>{t.rd_adm_message}</label>
-              <textarea value={annMsg} onChange={(e) => setAnnMsg(e.target.value)} placeholder={t.rd_adm_announce_ph} rows={4} style={{ ...editTa, minHeight: 84, marginBottom: 15 }} />
-              <button disabled={!ann || annBusy || !annMsg.trim()} onClick={() => void doAnn(t.rd_ann_publish, () => ann!.publish(annMsg), () => setAnnMsg(""))} style={{ ...sheetBtn, ...(!ann || annBusy || !annMsg.trim() ? deadBtn : {}) }}>{t.rd_ann_publish}</button>
+              {annStage !== "preview" ? (
+                <>
+                  <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 6 }}>{t.rd_adm_message}</label>
+                  <textarea value={annMsg} onChange={(e) => setAnnMsg(e.target.value)} placeholder={t.rd_adm_announce_ph} rows={4} disabled={annStage === "translating"} style={{ ...editTa, minHeight: 84, marginBottom: 8 }} />
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 13, lineHeight: 1.45 }}>{t.rd_ann_auto_note}</div>
+                  {annErr && (
+                    <div style={{ border: "1px solid var(--danger)", background: "var(--surface-2)", borderRadius: 10, padding: "10px 12px", marginBottom: 12 }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--danger)", marginBottom: 8, lineHeight: 1.45 }}>{tpl(t.rd_ann_translate_fail, { err: annErr })}</div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button disabled={annBusy || !annMsg.trim()} onClick={() => void startTranslate()} style={{ ...actBtn, opacity: annBusy ? 0.6 : 1 }}>{t.rd_ann_retry}</button>
+                        <button disabled={annBusy || !annMsg.trim()} onClick={sendEnglishOnly} style={{ ...actBtn, opacity: annBusy ? 0.6 : 1 }}>{t.rd_ann_english_only}</button>
+                      </div>
+                    </div>
+                  )}
+                  <button disabled={!ann || annBusy || !annMsg.trim()} onClick={() => void startTranslate()} style={{ ...sheetBtn, ...(!ann || annBusy || !annMsg.trim() ? deadBtn : {}) }}>
+                    {annStage === "translating" ? t.rd_ann_translating : t.rd_ann_translate_btn}
+                  </button>
+                </>
+              ) : (
+                <div>
+                  <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 8 }}>{t.rd_ann_preview_title}</label>
+                  <div className="sfl-scroll" style={{ maxHeight: 300, overflowY: "auto", border: "1px solid var(--border)", borderRadius: 12, padding: "4px 2px", marginBottom: 13 }}>
+                    {annPreview && annLangRows(annPreview).map((r) => (
+                      <div key={r.code} style={{ padding: "9px 11px", borderBottom: "1px solid var(--border)" }}>
+                        <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".04em", color: "var(--text-muted)", marginBottom: 4, textTransform: "uppercase" }}>{r.flag} {r.label}</div>
+                        <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text)", lineHeight: 1.5, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{r.text}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <button disabled={annBusy} onClick={confirmSend} style={{ ...sheetBtn, ...(annBusy ? deadBtn : {}), marginBottom: 9 }}>{t.rd_ann_confirm_send}</button>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button disabled={annBusy} onClick={editBack} style={{ ...actBtn, flex: 1, textAlign: "center", opacity: annBusy ? 0.6 : 1 }}>{t.rd_ann_edit}</button>
+                    <button disabled={annBusy} onClick={sendEnglishOnly} style={{ ...actBtn, flex: 1, textAlign: "center", opacity: annBusy ? 0.6 : 1 }}>{t.rd_ann_english_only}</button>
+                  </div>
+                </div>
+              )}
               {ann && ann.list.length > 0 && (
                 <div style={{ marginTop: 17 }}>
                   <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 4 }}>{t.rd_ann_title}</label>
@@ -605,6 +672,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                     <div key={a.id} style={{ display: "flex", alignItems: "baseline", gap: 8, padding: "8px 2px", borderBottom: "1px solid var(--border)" }}>
                       <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-muted)", flexShrink: 0 }}>{annDate(a.createdAt)}</span>
                       <span style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600, color: a.active ? "var(--text)" : "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.message}</span>
+                      {a.messageI18n && <span title={t.rd_ann_langs_badge} style={{ fontSize: 9, fontWeight: 800, color: "var(--text-muted)", background: "var(--surface-2)", border: "1px solid var(--border)", padding: "2px 6px", borderRadius: 6, flexShrink: 0 }}>{t.rd_ann_langs_badge}</span>}
                       {a.active && <span style={{ fontSize: 9.5, fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "2px 7px", borderRadius: 6, flexShrink: 0 }}>{t.rd_ann_active_now}</span>}
                       <button aria-label={t.rd_ann_delete} title={t.rd_ann_delete} disabled={annBusy} onClick={() => delAnn(a.id)} style={{ flexShrink: 0, background: "none", border: "none", padding: "0 2px", cursor: annBusy ? "not-allowed" : "pointer", color: "var(--danger)", fontSize: 13, opacity: annBusy ? 0.5 : 1, lineHeight: 1 }}>🗑</button>
                     </div>

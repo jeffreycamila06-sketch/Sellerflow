@@ -4,8 +4,9 @@
 // RedesignApp — inside the [data-redesign] token scope, so var() tokens apply
 // (the RaffleWheel fixed-palette lesson is only for document.body portals).
 import type { CSSProperties } from "react";
-import type { Announcement } from "../adapters/useAnnouncements";
+import { pickAnnMessage, type Announcement } from "../adapters/useAnnouncements";
 import { useT } from "../i18n";
+import { useLang } from "../i18n/langContext";
 
 export function BellIcon() {
   return (
@@ -27,6 +28,7 @@ const msgStyle: CSSProperties = { fontSize: 12.5, fontWeight: 600, lineHeight: 1
 // ACTIVE announcement hasn't been dismissed on this device.
 export function AnnouncementBanner({ ann, onDismiss }: { ann: Announcement; onDismiss: (id: string) => void }) {
   const t = useT();
+  const lang = useLang();
   return (
     <div style={{ background: "linear-gradient(135deg, #4F46E5, #6366F1)", borderRadius: 14, padding: "11px 13px 10px", marginBottom: 11, color: "#fff", boxShadow: "0 6px 18px rgba(79,70,229,.32)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
@@ -34,7 +36,7 @@ export function AnnouncementBanner({ ann, onDismiss }: { ann: Announcement; onDi
         <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", opacity: 0.92 }}>{t.rd_ann_banner_label}</span>
         <span style={{ fontSize: 10, fontWeight: 600, opacity: 0.75, marginLeft: "auto", flexShrink: 0 }}>{fmtDate(ann.createdAt)}</span>
       </div>
-      <div style={{ ...msgStyle, margin: "7px 1px 9px" }}>{ann.message}</div>
+      <div style={{ ...msgStyle, margin: "7px 1px 9px" }}>{pickAnnMessage(ann, lang)}</div>
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <button onClick={() => onDismiss(ann.id)} style={{ border: "none", background: "rgba(255,255,255,.18)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,.4)", color: "#fff", fontSize: 11.5, fontWeight: 700, padding: "6px 13px", borderRadius: 8, cursor: "pointer", fontFamily: "var(--font-ui)" }}>
           {t.rd_ann_got_it} ✓
@@ -48,6 +50,7 @@ export function AnnouncementBanner({ ann, onDismiss }: { ann: Announcement; onDi
 // gets a subtle "Active now" chip. Rendered at the phone root (RedesignApp).
 export function AnnouncementsSheet({ list, onClose }: { list: Announcement[]; onClose: () => void }) {
   const t = useT();
+  const lang = useLang();
   return (
     <div onClick={onClose} style={{ position: "absolute", inset: 0, zIndex: 9, background: "rgba(8,6,24,.5)", backdropFilter: "blur(2px)", display: "flex", alignItems: "flex-end" }}>
       <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxHeight: "76%", background: "var(--surface)", borderRadius: "22px 22px 0 0", display: "flex", flexDirection: "column", boxShadow: "0 -16px 40px rgba(0,0,0,.3)", animation: "sflSheet .26s cubic-bezier(.22,1,.36,1)" }}>
@@ -68,7 +71,7 @@ export function AnnouncementsSheet({ list, onClose }: { list: Announcement[]; on
                 <span style={{ fontSize: 10.5, fontWeight: 700, color: "var(--text-muted)" }}>{fmtDate(a.createdAt)}</span>
                 {a.active && <span style={{ fontSize: 9.5, fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "2px 7px", borderRadius: 6 }}>{t.rd_ann_active_now}</span>}
               </div>
-              <div style={{ ...msgStyle, color: "var(--text)" }}>{a.message}</div>
+              <div style={{ ...msgStyle, color: "var(--text)" }}>{pickAnnMessage(a, lang)}</div>
             </div>
           ))}
         </div>
