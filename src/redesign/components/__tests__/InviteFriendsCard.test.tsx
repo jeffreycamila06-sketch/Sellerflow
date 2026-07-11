@@ -53,6 +53,21 @@ describe("InviteFriendsCard", () => {
     expect(await screen.findByText("Link copied")).toBeTruthy();
   });
 
+  // U5 — when native share is unavailable AND clipboard + execCommand both fail,
+  // the card gives honest feedback instead of a dead tap with no response.
+  it("shows a fallback message when both share and clipboard copy fail", async () => {
+    delete (navigator as unknown as { share?: unknown }).share;
+    const writeText = vi.fn().mockRejectedValue(new Error("blocked"));
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true, writable: true });
+    const origExec = document.execCommand;
+    document.execCommand = vi.fn().mockReturnValue(false); // legacy fallback also fails
+    renderCard();
+    fireEvent.click(screen.getByText("Invite friends"));
+    expect(await screen.findByText(/Couldn't copy/)).toBeTruthy();
+    expect(screen.queryByText("Link copied")).toBeNull();
+    document.execCommand = origExec;
+  });
+
   it("share copy stays iOS 3.1.1-safe (no pricing/subscription wording)", async () => {
     const share = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "share", { value: share, configurable: true, writable: true });

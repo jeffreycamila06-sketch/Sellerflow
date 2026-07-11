@@ -18,6 +18,7 @@ const megaphone = (
 export default function InviteFriendsCard() {
   const t = useT();
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false); // U5 — honest feedback when copy can't happen
   const message = t.rd_inv_share;
   const full = `${message} ${INVITE_URL}`;
 
@@ -33,8 +34,15 @@ export default function InviteFriendsCard() {
     }
     const ok = await copyText(full);
     if (ok) {
+      setCopyFailed(false);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
+    } else {
+      // Neither native share nor clipboard worked — tell the seller instead of
+      // leaving the tap with zero feedback.
+      setCopied(false);
+      setCopyFailed(true);
+      window.setTimeout(() => setCopyFailed(false), 3000);
     }
   };
 
@@ -60,6 +68,8 @@ export default function InviteFriendsCard() {
       </span>
       {copied ? (
         <span style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 700, color: "#fff", background: "var(--accent)", borderRadius: 999, padding: "5px 11px" }}>{t.rd_inv_copied}</span>
+      ) : copyFailed ? (
+        <span style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 700, color: "var(--danger)" }}>{t.rd_inv_copy_failed}</span>
       ) : (
         <span style={{ fontSize: 16, color: "var(--accent-fg)", flexShrink: 0 }}>›</span>
       )}

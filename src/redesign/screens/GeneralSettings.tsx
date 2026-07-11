@@ -224,9 +224,12 @@ export default function GeneralSettings({
                         <button onClick={ac.addCode} style={{ background: "transparent", border: "1.3px dashed var(--border-strong)", color: "var(--accent-fg)", padding: "8px 12px", borderRadius: 9, fontSize: 12, fontWeight: 700, fontFamily: "var(--font-ui)", cursor: "pointer" }}>{t.rd_auto_add}</button>
                       )}
                       <span style={{ flex: 1 }} />
-                      {ac.saved && <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ok)" }}>{t.rd_auto_saved}</span>}
+                      {ac.saveError
+                        ? <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--danger)" }}>{t.rd_auto_save_failed}</span>
+                        : ac.saved && <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ok)" }}>{t.rd_auto_saved}</span>}
                       <button onClick={() => { void ac.save(); }} disabled={ac.saving} style={{ background: "var(--accent)", color: "var(--accent-text)", border: "none", padding: "8px 16px", borderRadius: 9, fontSize: 12.5, fontWeight: 700, fontFamily: "var(--font-ui)", cursor: ac.saving ? "default" : "pointer", opacity: ac.saving ? 0.7 : 1 }}>{ac.saving ? t.rd_auto_saving : t.rd_auto_save}</button>
                     </div>
+                    {ac.stockError && <div style={{ fontSize: 12, fontWeight: 600, color: "var(--danger)", marginTop: 8 }}>{t.rd_auto_stock_failed}</div>}
                   </>
                 )}
               </div>

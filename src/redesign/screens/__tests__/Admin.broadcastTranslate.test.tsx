@@ -82,4 +82,17 @@ describe("Admin broadcast — auto-translate composer", () => {
     fireEvent.click(screen.getByText("Send English only"));
     await waitFor(() => expect(publish).toHaveBeenCalledWith("Server is down", null));
   });
+
+  // U9 — a 403 "forbidden" (caller isn't admin) shows a distinct message and hides
+  // the Retry button, which would just 403 again.
+  it("forbidden (403) → distinct message, NO Retry button", async () => {
+    translateBroadcast.mockResolvedValue({ ok: false, error: "forbidden" });
+    renderComposer();
+    typeMsg("Nope");
+    fireEvent.click(screen.getByText("Translate & preview"));
+    await waitFor(() => expect(screen.getByText(/don't have permission/i)).toBeTruthy());
+    expect(screen.queryByText("Try again")).toBeNull();       // Retry hidden
+    expect(screen.queryByText(/Couldn't translate/)).toBeNull(); // generic message not used
+    expect(screen.getByText("Send English only")).toBeTruthy(); // still offered
+  });
 });
