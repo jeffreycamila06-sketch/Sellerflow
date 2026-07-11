@@ -2261,3 +2261,112 @@ batch: branch + full diff + Jeff review + merge. **Test count 810 → 845 (+35).
 - Lahat ng 14 public tables may RLS; lahat ng SECURITY DEFINER functions ay
   gated (admin-gate / uid-scope / trigger-only); walang secrets sa client
   bundle; walang raw string-built SQL.
+
+## SESSION 2026-07-11/12 — CONNECTION SAGA ✅ CLOSED (status truth + F3; F4 CANCELLED; connect-speed PARKED)
+Ang pinaka-kritikal na sacred-zone work ng app: ang green status ay HINDI tumutugma
+sa comment-stream reality (LAHAT ng ~30 sellers apektado — systemic). Buong daloy:
+**diagnosis → Jeff clarifications → fix → independent chief-engineer audit →
+audit fixes → merge → F4/F3 follow-up evaluation → F4 cancelled → connect-speed
+parked → F3 shipped.** Bawat phase: report muna → Jeff go → code → diff review →
+merge. WALANG shortcut sa sacred zone.
+
+### Ang 3 symptoms + totoong ugat
+- **A (false-negative):** nawawala ang green pero tuloy ang comments = ang server
+  health-cycle reconnect (chat-stale 10min/silent 12min) ay nag-e-emit ng
+  `reconnecting` → pill gray → balik green pag success. Display flap, hindi outage.
+- **B (zombie green, pinakamalala):** green pero walang comments. DALAWANG ugat:
+  (1) `ttConnected` ay HINDI kailanman na-clear sa socket death (stale green
+  habang patay ang pipe — kasama ang stale-token reconnect window); (2) ang
+  `POST /connect` `already_connected` fast-path ay nagbabalik ng success nang
+  HINDI chine-check kung tumatanggap pa ang TikTok websocket — at ang app
+  Disconnect ay client-local lang (walang server unbind) → WALANG self-service
+  escape; tanging ang 10–12min server health timer ang nakakabasag ng zombie.
+  **Ang "2× logout/login fix" ni Jeff = ELAPSED TIME lang** (health cycle),
+  hindi auth. Token-refresh hypothesis: DISPROVEN para sa buhay na socket — ang
+  server ay nagva-validate LANG sa handshake (`io.use`), hindi nagre-re-check;
+  ang socket.io `auth` ay FUNCTION (fresh `getSession()` bawat reconnect attempt).
+- **C (slow first comment):** pipe setup ~2.5–9s (dominado ng EulerStream sign +
+  TikTok roomInfo — third-party, hindi natin kontrolado; Supabase double-auth
+  ~0.3–0.8s lang) + pagkatapos ng green, ang unang comment = ang SUSUNOD na
+  totoong chat (walang replay; `processInitialData:false` ay SADYA — history
+  redelivery = duplicate-order trap). Sa tahimik na room = unbounded wait na
+  mukhang sira pero gumagana.
+
+### SHIPPED (merges sa main, LIVE)
+- **`39a2ed5` — status truth + audit F1/F2** (branch `claude/connection-status-truth`):
+  * CLIENT (`useLiveFeed`, status layer LANG): 3-way `platform_status` — connected
+    → green agad; `reconnecting` → 60s grace (`RECONNECT_GRACE_MS`, exported) na
+    nagpapanatili ng estado para INVISIBLE ang successful self-heal (zero flap);
+    terminal → honest gray AGAD. Dead socket (`disconnect`/`connect_error`) →
+    8s grace (`SOCKET_GRACE_MS`) → hindi na kailanman mabubuhay ang green nang
+    patay ang socket. EARLIEST-deadline semantics (paulit-ulit na events ay HINDI
+    nakaka-extend ng false green).
+  * SERVER (`connectTikTok` + NEW pure `server/connectionHealth.js`): **B2 zombie
+    escape** — ang reuse ay para LANG sa demonstrably-alive na connection (event
+    sa loob ng `CONNECT_REUSE_FRESH_MS=60s`, pure `shouldForceFreshConnect`);
+    event-silent + explicit Connect tap = force fresh sa EXISTING path (lock →
+    clean disconnect → connect, buo ang cooldown/rate-limit machinery). Forced-
+    fresh failure → terminal status emit (scoped sa forced case LANG — ang failed
+    connect ng account B ay hindi maggre-gray ng buhay na account A).
+  * AUDIT FIXES: **F1** — `LIVENESS_EVENTS` sa connectionHealth.js: dinagdag ang
+    `roomUser` (high-frequency viewer-count — kaya ang tahimik-pero-buhay na room
+    ay hindi na mukhang patay) + `follow`/`share` (verified sa connector 2.1.1-beta1
+    enum; WALANG `subscribe` doon). **F2** — tinanggal ang render-mirrored
+    `serverConnectedRef` gate sa reconnecting branch (same-batch race na nag-i-skip
+    ng grace arm) — arming habang gray ay harmless no-op.
+- **`39506e2` — F3 amber "Connecting…"** (branch `claude/f3-connecting-state`,
+  CLIENT-ONLY): bagong `ttRecovering`/`fbRecovering` sa `useLiveFeed` (true habang
+  armed ang grace, stable/walang flicker, cleared sa totoong `connected:true` o sa
+  grace expiry) + display derivation sa RedesignApp (**recovering > connected**):
+  `ttConnected={ttEff && !recovering}`, `ttConnecting={ttConnecting || recovering}`
+  → EXISTING amber pulsing visuals + `rd_dash_connecting` (dati nang ×7, zero
+  bagong i18n; Dashboard.tsx UNTOUCHED). Green = TOTOONG tumatanggap. Kilalang
+  consequence: nakikita na ngayon ang health-cycle/blip windows bilang amber
+  (dating tinatago ng green-hold) + disabled ang Connect button sa amber (max 60s).
+- ⚠️ **FALLBACK kung nakaka-alarma ang amber sa sellers:** ONE-LINE revert ng
+  display derivation sa RedesignApp (ibalik `ttConnected={ttEff}` /
+  `ttConnecting={ttConnecting}`) = balik green-hold; walang ibang gagalawin
+  (nananatiling tama ang grace/honest-gray state machine sa ilalim).
+
+### CANCELLED / PARKED (may dahilan — huwag balikan nang walang bagong audit)
+- **F4 (socket.io Connection State Recovery / comment replay) = CANCELLED.**
+  Tatlong nadiskubre: (1) ang CSR ay nagre-replay ng ROOM BROADCASTS pero ang
+  comments natin ay per-socket emit (`emitCommentScoped` + `fetchSockets`) —
+  WALANG mare-replay; (2) CSR = same-session lang, hindi sasagot sa fresh-open
+  (slow-first-comment); (3) **DUPLICATE-ORDER RISK ang naging pumatay**: ang
+  `commentKey` ay may SERVER-stamped timestamp (hindi TikTok-sourced) — ang
+  re-relay/history redelivery ay magmi-mint ng BAGONG key → dodoble ang auto-order
+  (ang Auto-Mode `autoProcessedRef` ay in-memory, WALANG laman sa fresh open).
+  Ang ring-buffer+`replayed`-flag design ay dumaan sa 2 adversarial audits at
+  NEEDS-GUARD ang verdict, pero desisyon ni Jeff: hindi sulit ang delivery-path
+  risk. Kung babalikan: kailangan ng G1/G2/G3 guards ng audit + sariling audit.
+- 🔴 **G1 LATENT HOLE (nadiskubre ng audit, HINDI PA NAAAYOS, pre-existing):**
+  ang server `chat` handler ay nagre-relay nang WALANG active-connection guard
+  (ang `touchTikTokConnection` ay MAY guard, ang relay wala) — kung ang lumang
+  connection ay hindi tuluyang namatay (failed `disconnect()` sa empty catch),
+  posibleng mag-double-relay ang luma+bago = 2 magkaibang key = **DOUBLE
+  AUTO-ORDER**. Isang linyang guard sa taas ng chat handler
+  (`if (tiktokConnections.get(key)?.connection !== tiktokConnection) return;`).
+  Mababa ang probability pero catastrophic — KANDIDATO para sa susunod na maliit
+  na server batch. TikTok `common.msgId` ay available bilang stable id
+  (long-term na tamang key, pero tangled zone #1 + FB walang msgId).
+- **Connect-speed optimization = PARKED.** Ang plano (token→user TTL cache +
+  ALLOW-only plan cache + `[CONNECT-TIMING]` instrumentation + empty-feed
+  "waiting" placeholder) ay dumaan sa audit (verdict: fix-plan-first sa 4 na
+  maliit na amendments, tapos safe) pero desisyon ni Jeff: maliit ang benepisyo
+  (~0.3–0.8s) vs EulerStream bottleneck (2–8s, hindi natin kontrolado) — hindi
+  sulit ang connection-code risk. Nakadokumento ang buong plano+audit sa session
+  history kung babalikan. Long-term na tamang sagot sa auth round trip: Supabase
+  asymmetric JWT + `getClaims()` (local verification, JWKS) — project-level key
+  migration, backlog.
+
+### ⚠️ OPERATIONAL
+- Ang `39a2ed5` SERVER half (B2 zombie escape + F1 liveness + forced-fresh
+  terminal emit) = **MANUAL RENDER DEPLOY** — hindi buhay hangga't hindi
+  pinipindot ang "Deploy latest commit". Ang client halves = Vercel na.
+- **Validation sa susunod na live ni Jeff:** green habang dumadaloy · maikling
+  amber sa health cycle na bumabalik sa green mag-isa (normal na, hindi sira) ·
+  patayin ang live → amber → honest gray sa loob ng ~1min → i-restart ang live →
+  ISANG Connect tap → green (wala nang logout/login ritual — ito ang DoD#5 test).
+- Test counts sa saga: 845 → 872 (+27: statusTruth 20 incl. 7 F3 + connectionHealth 7).
+  Tangled-zone parity suites (commentKey, autoreconnect) = UNMODIFIED sa buong saga.
