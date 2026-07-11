@@ -104,7 +104,7 @@ function HeroScene({ t }: { t: Record<string, string> }) {
       {/* seller photo polaroid — real Taiwan-market asset; graceful fallback frame */}
       <div className="sfl-l2-sellerbob sfl-l2-sellercard" style={{ position: "absolute", left: -64, bottom: 44, zIndex: 3, width: 190, background: "#fff", padding: "9px 9px 30px", borderRadius: 14, boxShadow: "0 22px 50px rgba(23,20,58,.22)" }}>
         {photoOk ? (
-          <img src="/landing-seller2.jpg" alt="A live seller in a Taiwan boutique showing a garment to the camera" loading="lazy" className="sfl-l2-sellerimg" onError={() => setPhotoOk(false)} style={{ width: "100%", height: 210, objectFit: "cover", borderRadius: 9, display: "block" }} />
+          <img src="/landing-seller2.jpg" alt={t.rd_l2_photo_alt} loading="lazy" className="sfl-l2-sellerimg" onError={() => setPhotoOk(false)} style={{ width: "100%", height: 210, objectFit: "cover", borderRadius: 9, display: "block" }} />
         ) : (
           <div className="sfl-l2-sellerimg" style={{ width: "100%", height: 210, borderRadius: 9, border: "2px dashed #c9c6e8", display: "grid", placeItems: "center", textAlign: "center", fontSize: 12, color: C.inkSoft, padding: 14, background: C.paper }}>
             📸<br />{t.rd_l2_photo_fallback}
@@ -546,9 +546,9 @@ export default function Landing({
           <p className="sfl-lp-reveal" style={secSub}>{t.rd_l2_sellers_sub}</p>
           <div className="sfl-l2-sellers" style={{ marginTop: 44, textAlign: "left" }}>
             {[
-              { src: "/landing-seller1.jpg", alt: "A live seller presenting clothing to the camera with a ring light", cap: t.rd_l2_sellers_c3 },
-              { src: "/landing-seller3.jpg", alt: "A live seller's screen where viewer comments become orders with one tap", cap: t.rd_l2_sellers_c1 },
-              { src: "/landing-seller4.jpg", alt: "A live seller welcoming buyers and showing a new-arrival garment", cap: t.rd_l2_sellers_c2 },
+              { src: "/landing-seller1.jpg", alt: t.rd_l2_gallery_alt1, cap: t.rd_l2_sellers_c3 },
+              { src: "/landing-seller3.jpg", alt: t.rd_l2_gallery_alt2, cap: t.rd_l2_sellers_c1 },
+              { src: "/landing-seller4.jpg", alt: t.rd_l2_gallery_alt3, cap: t.rd_l2_sellers_c2 },
             ].map((p, i) => (
               <figure key={p.src} className="sfl-lp-reveal sfl-lp-lift sfl-lp-hovshadow" style={{ margin: 0, background: C.card, border: `1px solid ${C.line}`, borderRadius: 20, overflow: "hidden", ...rv(i, 0.1) }}>
                 <img src={p.src} alt={p.alt} loading="lazy" style={{ width: "100%", height: 280, objectFit: "cover", display: "block" }} />
