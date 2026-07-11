@@ -154,3 +154,79 @@ describe("status truth — green ⇔ stream health", () => {
     expect(result.current.fbConnected).toBe(false);
   });
 });
+
+// F3 — amber "Connecting…" display signal: `recovering` is true exactly while a
+// grace window is armed (health in doubt), STABLE across repeated events (no
+// green/amber flicker), and cleared by a real connected:true (→ green) or by the
+// grace expiring (→ honest gray). The hook-level ttConnected state machine from
+// F1/F2 is asserted UNCHANGED alongside.
+describe("F3 — recovering (amber) display signal", () => {
+  it("reconnecting arms recovering while ttConnected holds (amber over green)", () => {
+    const { result } = setup();
+    fire("platform_status", green);
+    expect(result.current.ttRecovering).toBe(false);
+    fire("platform_status", reconnecting);
+    expect(result.current.ttRecovering).toBe(true);   // display: amber
+    expect(result.current.ttConnected).toBe(true);    // state machine unchanged (grace hold)
+  });
+
+  it("NO FLICKER: repeated reconnecting events keep recovering continuously true", () => {
+    const { result } = setup();
+    fire("platform_status", green);
+    fire("platform_status", reconnecting);
+    expect(result.current.ttRecovering).toBe(true);
+    act(() => vi.advanceTimersByTime(10_000));
+    fire("platform_status", reconnecting);            // retry announcement
+    expect(result.current.ttRecovering).toBe(true);   // still amber — never bounced
+    act(() => vi.advanceTimersByTime(10_000));
+    fire("platform_status", reconnecting);
+    expect(result.current.ttRecovering).toBe(true);
+  });
+
+  it("recovery within grace → recovering clears (back to green)", () => {
+    const { result } = setup();
+    fire("platform_status", green);
+    fire("platform_status", reconnecting);
+    fire("platform_status", green);                   // reconnect succeeded
+    expect(result.current.ttRecovering).toBe(false);
+    expect(result.current.ttConnected).toBe(true);
+  });
+
+  it("grace expiry → recovering clears AND honest gray (amber → gray, not stuck amber)", () => {
+    const { result } = setup();
+    fire("platform_status", green);
+    fire("platform_status", reconnecting);
+    act(() => vi.advanceTimersByTime(RECONNECT_GRACE_MS + 1000));
+    expect(result.current.ttRecovering).toBe(false);
+    expect(result.current.ttConnected).toBe(false);
+  });
+
+  it("terminal not-connected → recovering clears immediately", () => {
+    const { result } = setup();
+    fire("platform_status", green);
+    fire("platform_status", reconnecting);
+    fire("platform_status", terminal);
+    expect(result.current.ttRecovering).toBe(false);
+    expect(result.current.ttConnected).toBe(false);
+  });
+
+  it("socket blip: recovering true during socket grace, clears on snapshot recovery", () => {
+    const { result } = setup();
+    fire("platform_status", green);
+    fire("disconnect");
+    expect(result.current.ttRecovering).toBe(true);   // amber during doubt
+    fire("connect");
+    fire("platform_status", green);                   // join snapshot re-asserts
+    expect(result.current.ttRecovering).toBe(false);  // green again
+    expect(result.current.ttConnected).toBe(true);
+  });
+
+  it("Facebook parity: socket-down grace arms fbRecovering too", () => {
+    const { result } = setup();
+    fire("platform_status", { platform: "Facebook", connected: true, username: "fbpage" });
+    fire("disconnect");
+    expect(result.current.fbRecovering).toBe(true);
+    act(() => vi.advanceTimersByTime(SOCKET_GRACE_MS + 1000));
+    expect(result.current.fbRecovering).toBe(false);  // resolved to honest gray
+  });
+});

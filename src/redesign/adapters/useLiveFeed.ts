@@ -100,6 +100,11 @@ export interface UseLiveFeed {
   activeAccounts: ActiveAccounts;     // which account is live per platform (from platform_status)
   ttConnected: boolean;               // server says TikTok is connected (not reconnecting)
   fbConnected: boolean;
+  // F3 — stream health in doubt (grace window armed): display maps this to the
+  // amber "Connecting…" visuals instead of a solid green. Recovering has display
+  // precedence over connected; green returns only on a real connected:true.
+  ttRecovering: boolean;
+  fbRecovering: boolean;
   connect: (platform: Platform, data: Record<string, string>) => Promise<ConnectResult>;
   // Fix B — RedesignApp calls this when the USER manually disconnects a platform, so the
   // auto-reconnect-after-restart logic won't restore an account they turned off on purpose.
@@ -120,6 +125,14 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   const [activeAccounts, setActiveAccounts] = useState<ActiveAccounts>({ TikTok: "", Facebook: "" });
   const [ttConnected, setTtConnected] = useState(false);
   const [fbConnected, setFbConnected] = useState(false);
+  // F3 — TRUE while a fall-to-gray grace window is armed (server health-cycle
+  // reconnect or socket-down grace): the stream's health is IN DOUBT. Display
+  // layer maps this to the existing amber "Connecting…" visuals instead of
+  // holding a solid green. Cleared the moment the server re-asserts
+  // connected:true, or when the grace expires into an honest gray. DISPLAY
+  // SIGNAL ONLY — the grace timers / honest-gray state machine are unchanged.
+  const [ttRecovering, setTtRecovering] = useState(false);
+  const [fbRecovering, setFbRecovering] = useState(false);
   const activeRef = useRef<ActiveAccounts>(activeAccounts);
   activeRef.current = activeAccounts;
   // Account-leak fix: the comment filter follows the USER's dropdown selection, NOT
@@ -205,18 +218,26 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       s.emit("select_account", { platform: "Facebook", username: selectedRef.current.Facebook });
     };
     // STATUS-TRUTH helpers (status layer ONLY — comment handler/dedup untouched).
+    const setRecovering = (platform: Platform, v: boolean) => {
+      if (platform === "TikTok") setTtRecovering(v); else setFbRecovering(v);
+    };
     const setPlatformGray = (platform: Platform) => {
       if (platform === "TikTok") setTtConnected(false); else setFbConnected(false);
       setActiveAccounts((a) => ({ ...a, [platform]: "" }));
     };
     const cancelGray = (platform: Platform) => {
+      setRecovering(platform, false);
       const t = grayTimersRef.current[platform];
       if (t) { clearTimeout(t); grayTimersRef.current[platform] = null; }
     };
     const scheduleGray = (platform: Platform, delayMs: number) => {
+      // F3 — health in doubt from the moment the grace arms (repeated arms while
+      // armed are same-value no-ops → the amber state is STABLE, no flicker).
+      setRecovering(platform, true);
       if (grayTimersRef.current[platform]) return; // keep the EARLIEST deadline
       grayTimersRef.current[platform] = setTimeout(() => {
         grayTimersRef.current[platform] = null;
+        setRecovering(platform, false); // doubt resolved: honestly NOT connected
         setPlatformGray(platform); // honest gray — health didn't recover within grace
       }, delayMs);
     };
@@ -382,5 +403,5 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   // Regression: feedComments.memo.test. The feed pipeline itself (commentKey /
   // dedup / sortNewest — tangled zone #1) is untouched.
   const comments = useMemo(() => feed.map(toRedesignComment), [feed]);
-  return { comments, connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, connect, markDisconnected };
+  return { comments, connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, ttRecovering, fbRecovering, connect, markDisconnected };
 }

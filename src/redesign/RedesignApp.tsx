@@ -723,7 +723,13 @@ export default function RedesignApp() {
               onToggleFB={() => { setFbOpen((o) => !o); setTtOpen(false); setSessionOpen(false); }}
               onPickTT={(i) => switchAccount("TikTok", i)}
               onPickFB={(i) => switchAccount("Facebook", i)}
-              ttConnected={ttEff} fbConnected={fbEff} ttConnecting={ttConnecting} fbConnecting={fbConnecting}
+              /* F3 — recovering has DISPLAY precedence over connected: while a grace
+                 window is armed (health-cycle reconnect / socket blip) the pill shows
+                 the existing amber pulsing "Connecting…" instead of a solid green; a
+                 real connected:true clears recovering → green. The hook-level state
+                 machine (grace timers, honest gray) is untouched — display-only. */
+              ttConnected={ttEff && !liveFeed.ttRecovering} fbConnected={fbEff && !liveFeed.fbRecovering}
+              ttConnecting={ttConnecting || liveFeed.ttRecovering} fbConnecting={fbConnecting || liveFeed.fbRecovering}
               onConnectTT={() => void doConnect("TikTok")} onConnectFB={() => void doConnect("Facebook")}
               onRefreshTT={() => void refreshDashboard()} onRefreshFB={() => void refreshDashboard()} refreshing={refreshing}
               ttAccounts={ttAccounts} fbAccounts={fbAccounts}
