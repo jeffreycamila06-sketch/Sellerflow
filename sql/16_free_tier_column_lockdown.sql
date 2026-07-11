@@ -1,53 +1,96 @@
 -- 16_free_tier_column_lockdown.sql
 -- SECURITY FIX S1 (audit Batch A) — close the free-tier cap bypass.
 --
--- PROBLEM: the `authenticated` (and `anon`) roles hold a column-level UPDATE
--- grant on seller_profiles.free_orders_count / free_cycle_started_at /
--- free_warned_at. RLS lets a seller UPDATE their OWN row, and the
--- seller_profiles_on_update trigger reverts plan/role/etc. for non-admins but
--- NOT these free-tier columns. So a free seller can bypass the 100-order cap with
--- a direct PostgREST call:
---   PATCH /rest/v1/seller_profiles?auth_user_id=eq.<self>  {"free_orders_count":0}
--- → counter reset → unlimited free orders.
+-- PROBLEM: a free seller can bypass the 100-order cap with a direct PostgREST
+-- call that resets their own counter:
+--   PATCH /rest/v1/seller_profiles?auth_user_id=eq.<self> {"free_orders_count":0}
+-- RLS allows the own-row UPDATE and the seller_profiles_on_update trigger reverts
+-- plan/role/etc for non-admins but NOT the free-tier columns.
 --
--- FIX: revoke the column-level UPDATE grant from the API roles. This is the
--- correct fix (NOT adding the columns to the trigger revert-list — that would
--- break the nested increment done under the seller's context).
+-- ⚠️ WHY A COLUMN-ONLY REVOKE DID NOT WORK (chat-Claude found this on apply):
+--   `authenticated`/`anon` hold a TABLE-LEVEL UPDATE grant on seller_profiles.
+--   A table-level UPDATE privilege lets the role update ANY column, so a bare
+--   `REVOKE UPDATE (free_orders_count, …)` is overridden and has no effect.
 --
--- WHY IT DOESN'T BREAK ENFORCEMENT (verified read-only before writing this):
---   Every function that WRITES these columns is SECURITY DEFINER owned by
---   `postgres`, so it keeps the privilege after the revoke:
---     * check_and_increment_free_order  (DEFINER, postgres) — cap check + increment + cycle reset
---     * free_tier_mark_warned           (DEFINER, postgres) — writes free_warned_at
---     * seller_profiles_on_insert       (DEFINER, postgres) — sets defaults on insert
---   (free_tier_status_for_user / list_free_users_status only READ them.)
---   No client or server code writes these columns directly (only comments
---   reference them). Column-level REVOKE UPDATE only blocks statements that SET
---   these columns; a normal profile update (store_name, full_name, …) is
---   unaffected because it does not touch them.
+-- CORRECT FIX: revoke the broad table-level UPDATE, then re-grant UPDATE on ONLY
+-- the columns the app legitimately updates. The three free-tier columns are left
+-- OUT of the grant, so no API-role statement can ever SET them.
 --
--- REVERSIBLE: GRANT UPDATE (…) ON public.seller_profiles TO authenticated, anon;
+-- EXHAUSTIVE ENUMERATION (read-only, every seller_profiles write in the repo —
+-- all funnel through src/accountDb.ts; server.js only SELECTs):
+--   userToRow (upsertUser, seller self-edit): full_name, store_name, phone,
+--       tiktok, facebook, connected_accounts, updated_at
+--   planRow (upsertUser includePlan, ADMIN): plan, plan_status, plan_expiry,
+--       trial_started_at, role
+--   adminUpdatePlan (ADMIN): plan, plan_status, plan_expiry, trial_started_at,
+--       role, updated_at
+--   adminUpdateContactNote (ADMIN): admin_contact_note, updated_at
+--   createMyProfile is an INSERT (separate privilege, unaffected).
+--   → UNION of UPDATEd columns = the 13 in the GRANT below.
+--
+-- Columns deliberately EXCLUDED from the grant:
+--   free_orders_count, free_cycle_started_at, free_warned_at  ← THE FIX
+--   auth_user_id, email, created_at  ← app never UPDATEs them (defense-in-depth;
+--       email/auth_user_id are also reverted by the update trigger).
+--
+-- plan / role / plan_status / plan_expiry / trial_started_at ARE granted because
+-- ADMINS update them through the same `authenticated` role (there is no separate
+-- admin DB role); the seller_profiles_on_update trigger reverts them for
+-- non-admins, so granting the column is safe.
+--
+-- WHY ENFORCEMENT STILL WORKS (verified): every function that WRITES the free-tier
+-- columns is SECURITY DEFINER owned by postgres — check_and_increment_free_order,
+-- free_tier_mark_warned, seller_profiles_on_insert — so they keep the privilege
+-- after the revoke and are unaffected by the API-role grants. No client/server
+-- code writes these columns.
+--
+-- REVERSIBLE:  grant update on public.seller_profiles to authenticated, anon;
 
--- ── BEFORE: confirm the grants exist (expect rows for authenticated + anon) ──
--- select grantee, privilege_type, column_name
--- from information_schema.column_privileges
+-- ── BEFORE (expect a broad table-level UPDATE grant, no column list) ──
+-- select grantee, privilege_type
+-- from information_schema.role_table_grants
 -- where table_schema='public' and table_name='seller_profiles'
---   and grantee in ('authenticated','anon') and privilege_type='UPDATE'
---   and column_name in ('free_orders_count','free_cycle_started_at','free_warned_at')
--- order by grantee, column_name;
+--   and grantee in ('authenticated','anon') and privilege_type='UPDATE';
 
 -- ── THE FIX ──
-revoke update (free_orders_count, free_cycle_started_at, free_warned_at)
-  on public.seller_profiles from authenticated, anon;
+-- 1) drop the broad table-level UPDATE that overrides column grants.
+revoke update on public.seller_profiles from authenticated, anon;
 
--- ── AFTER: the same query should now return ZERO rows for these 3 columns ──
--- select grantee, privilege_type, column_name
+-- 2) re-grant UPDATE on ONLY the app-updated columns (to authenticated only —
+--    the app never updates seller_profiles as anon; RLS requires auth.uid()).
+grant update (
+  full_name,
+  store_name,
+  phone,
+  tiktok,
+  facebook,
+  connected_accounts,
+  plan,
+  plan_status,
+  plan_expiry,
+  trial_started_at,
+  role,
+  admin_contact_note,
+  updated_at
+) on public.seller_profiles to authenticated;
+
+-- ── AFTER (verify) ──
+-- (a) authenticated has UPDATE on EXACTLY the 13 columns above, and NOT on
+--     free_orders_count / free_cycle_started_at / free_warned_at / auth_user_id /
+--     email / created_at:
+-- select grantee, column_name
 -- from information_schema.column_privileges
 -- where table_schema='public' and table_name='seller_profiles'
---   and grantee in ('authenticated','anon') and privilege_type='UPDATE'
---   and column_name in ('free_orders_count','free_cycle_started_at','free_warned_at')
--- order by grantee, column_name;
+--   and grantee='authenticated' and privilege_type='UPDATE'
+-- order by column_name;
 --
--- OPTIONAL defense-in-depth (the update trigger already reverts these for
--- non-admins, so this is belt-and-suspenders, not required):
---   revoke update (plan, role, plan_status, plan_expiry) on public.seller_profiles from authenticated, anon;
+-- (b) neither role retains a table-level UPDATE (this query returns 0 rows):
+-- select grantee, privilege_type
+-- from information_schema.role_table_grants
+-- where table_schema='public' and table_name='seller_profiles'
+--   and grantee in ('authenticated','anon') and privilege_type='UPDATE';
+--
+-- (c) functional smoke test — a normal seller profile save still works
+--     (updates only granted columns), and a counter-reset attempt now fails:
+--     UPDATE seller_profiles SET free_orders_count = 0 WHERE auth_user_id = auth.uid();
+--     → ERROR: permission denied for column free_orders_count.
