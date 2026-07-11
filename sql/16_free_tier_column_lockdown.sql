@@ -1,6 +1,11 @@
 -- 16_free_tier_column_lockdown.sql
 -- SECURITY FIX S1 (audit Batch A) — close the free-tier cap bypass.
 --
+-- ✅ APPLIED to production by chat-Claude (Supabase MCP) 2026-07-11. Verified
+--    UPDATE column grants on seller_profiles: anon=0, authenticated=13 (the list
+--    below), postgres/service_role=19 (all columns). This file is the repo mirror
+--    of the live state.
+--
 -- PROBLEM: a free seller can bypass the 100-order cap with a direct PostgREST
 -- call that resets their own counter:
 --   PATCH /rest/v1/seller_profiles?auth_user_id=eq.<self> {"free_orders_count":0}
