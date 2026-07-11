@@ -284,8 +284,13 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
         if (plat === "TikTok") setTtConnected(true); else setFbConnected(true);
         if (p.username) setActiveAccounts((a) => ({ ...a, [plat]: p.username as string }));
       } else if (p.reconnecting) {
-        if (serverConnectedRef.current[plat]) scheduleGray(plat, RECONNECT_GRACE_MS);
-        // not currently green → stay gray; green only returns on connected:true
+        // F2 (audit) — ALWAYS arm the grace (no currently-green gate): the gate
+        // read a render-mirrored ref that could be stale when connected:true and
+        // reconnecting:true land in the same batch (fresh connection dying at
+        // birth), silently skipping the arm and delaying the honest gray by a
+        // full retry cycle. Arming while already gray is a harmless no-op (the
+        // timer just re-asserts gray). Green still only returns on connected:true.
+        scheduleGray(plat, RECONNECT_GRACE_MS);
       } else {
         cancelGray(plat);
         setPlatformGray(plat);

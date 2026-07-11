@@ -86,6 +86,28 @@ describe("status truth — green ⇔ stream health", () => {
     expect(result.current.ttConnected).toBe(false);
   });
 
+  // F2 (audit) — connected:true + reconnecting:true landing in the SAME batch
+  // (fresh connection dying at birth): the old currently-green gate read a
+  // render-mirrored ref that was still stale-false here, silently SKIPPING the
+  // grace arm → the pill stayed green indefinitely until the next retry cycle.
+  // With the gate removed the grace always arms.
+  it("F2 RACE: same-batch connected→reconnecting still arms the grace → honest gray at deadline", () => {
+    const { result } = setup();
+    act(() => { handlerFor("platform_status")?.(green); handlerFor("platform_status")?.(reconnecting); });
+    expect(result.current.ttConnected).toBe(true);               // green, grace armed
+    act(() => vi.advanceTimersByTime(RECONNECT_GRACE_MS + 1000));
+    expect(result.current.ttConnected).toBe(false);              // race no longer skips the arm
+  });
+
+  it("F2 RACE + recovery: same-batch sequence that then recovers stays green (no flap)", () => {
+    const { result } = setup();
+    act(() => { handlerFor("platform_status")?.(green); handlerFor("platform_status")?.(reconnecting); });
+    act(() => vi.advanceTimersByTime(RECONNECT_GRACE_MS - 5000));
+    fire("platform_status", green);                              // reconnect succeeded in time
+    act(() => vi.advanceTimersByTime(RECONNECT_GRACE_MS * 2));
+    expect(result.current.ttConnected).toBe(true);
+  });
+
   it("DEAD SOCKET: green must not outlive the socket (zombie fix, DoD #3)", () => {
     const { result } = setup();
     fire("platform_status", green);

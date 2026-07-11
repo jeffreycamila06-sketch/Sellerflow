@@ -5,7 +5,7 @@ import http from "http";
 import { Server } from "socket.io";
 import { createClient } from "@supabase/supabase-js";
 import { translateBroadcast } from "./server/broadcastTranslate.js";
-import { shouldForceFreshConnect } from "./server/connectionHealth.js";
+import { shouldForceFreshConnect, LIVENESS_EVENTS } from "./server/connectionHealth.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -850,7 +850,9 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
     }
     handleTikTokDisconnected(key, tiktokConnection, "error");
   });
-  ["member", "like", "gift", "social", "emote", "envelope"].forEach((eventName) => {
+  // F1 (audit) — liveness list now includes roomUser/follow/share (see
+  // server/connectionHealth.js) so quiet-but-alive rooms stay demonstrably fresh.
+  LIVENESS_EVENTS.forEach((eventName) => {
     tiktokConnection.on(eventName, () => touchTikTokConnection(key, tiktokConnection));
   });
 

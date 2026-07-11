@@ -4,7 +4,7 @@
 // pinned here: reuse ONLY a demonstrably-alive connection; an event-silent one
 // on an explicit Connect tap is forced fresh (the seller's zombie escape).
 import { describe, it, expect } from "vitest";
-import { shouldForceFreshConnect, CONNECT_REUSE_FRESH_MS } from "../../../../server/connectionHealth.js";
+import { shouldForceFreshConnect, CONNECT_REUSE_FRESH_MS, LIVENESS_EVENTS } from "../../../../server/connectionHealth.js";
 
 const NOW = 1_760_000_000_000;
 
@@ -25,5 +25,26 @@ describe("shouldForceFreshConnect", () => {
   });
   it("threshold is 60s — tight enough for a zombie, loose enough for an active live", () => {
     expect(CONNECT_REUSE_FRESH_MS).toBe(60_000);
+  });
+});
+
+// F1 (audit) — lastEventAt must be a TRUE liveness signal: the original six
+// events plus roomUser (the high-frequency viewer-count signal present in any
+// live room) and follow/share. Without roomUser a quiet-but-alive room read as
+// "dead" → unnecessary force-reconnects (health timer + B2 taps).
+describe("LIVENESS_EVENTS (F1)", () => {
+  it("keeps the original six (regression guard)", () => {
+    for (const e of ["member", "like", "gift", "social", "emote", "envelope"]) {
+      expect(LIVENESS_EVENTS).toContain(e);
+    }
+  });
+  it("adds roomUser + follow + share (verified in tiktok-live-connector 2.1.1-beta1)", () => {
+    expect(LIVENESS_EVENTS).toContain("roomUser");
+    expect(LIVENESS_EVENTS).toContain("follow");
+    expect(LIVENESS_EVENTS).toContain("share");
+  });
+  it("no duplicates, and chat stays SEPARATE (it stamps lastCommentAt too)", () => {
+    expect(new Set(LIVENESS_EVENTS).size).toBe(LIVENESS_EVENTS.length);
+    expect(LIVENESS_EVENTS).not.toContain("chat");
   });
 });
