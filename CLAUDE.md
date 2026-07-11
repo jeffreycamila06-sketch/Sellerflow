@@ -2197,3 +2197,67 @@ first-`{`/last-`}` extraction — hindi sila ang trigger; TRUNCATION ang totoong
 - **`SF_SERVER_SECRET`: DELETED sa Render** — **WALANG code na bumabasa nito**
   (confirmed via exhaustive sweep + git history: zero refs, walang `VITE_` counterpart,
   hindi bahagi ng Supabase-JWT auth). Safe na tinanggal, **zero impact**.
+
+## SENIOR-LEVEL AUDIT — CLOSED (2026-07-11)
+Full senior-level audit (4 kategorya: security / UX / i18n / code health, 4
+parallel read-only investigations + live-DB checks) → findings report → **5 fix
+batches, LAHAT MERGED + PROD-VERIFIED sa served bundle (ni chat-Claude)**. Bawat
+batch: branch + full diff + Jeff review + merge. **Test count 810 → 845 (+35).**
+
+### 5 batches merged
+- **A (`757a8db`) — Security.** S1 free-cap lockdown: ang column-only REVOKE ay
+  na-override ng TABLE-LEVEL UPDATE grant → tamang fix = table-level revoke +
+  column-level GRANT sa **13 allowed columns LANG** (WALA ang
+  `free_orders_count` / `free_cycle_started_at` / `free_warned_at`); applied sa
+  prod via chat-Claude/MCP, **verified anon=0 / authenticated=13 / postgres=19 /
+  service_role=19** (mirror: `sql/16_free_tier_column_lockdown.sql`). Sarado na
+  ang direct-PATCH counter-reset bypass ng 100-order cap. + S2: real seller PII
+  sa `data.ts` USERS (bundled sa public JS) → fake placeholders.
+- **B (`3592b1c`) — Honest errors.** U1 auto-codes save silent failure (inline
+  danger error) · U2 stock write-through no-sync (`stockError` notice) · U3
+  announcements false-empty habang naglo-load (loading placeholder) · U5 invite
+  copy fallback feedback · U9 broadcast 403 → distinct message, walang useless
+  Retry.
+- **C (`6c9cb8a`) — Zero-Taglish fil cleanup.** L1 hero split (Taglish +
+  maling highlight → "Ang bawat live comment, gawing **bayad na order.**") ·
+  L2 **~24 verbatim-English `fil` strings → natural Filipino** (KITA/ORDER/
+  MAMIMILI, Ulat ng benta, Naipadala na, atbp.) · L3 Landing image alts →
+  localized ×7. Established loanwords (Settings/Email/Stock/SKU/Password/OK…)
+  INIWAN by design; **zh-TW untouched** (native-verified).
+- **D (`076e95d`) — UX polish.** U4 admin `window.alert` → app toast (bagong
+  `onToast` prop; ang WebView "prevent dialogs" checkbox ay lumulunok ng alert;
+  `window.confirm` gates INIWAN — confirmations, hindi errors; `printing.ts`
+  alerts INIWAN — parity zone) · U6 aria-labels sa 2 unlabeled close × ·
+  U8 announcement banner → accent tokens (sumusunod na sa seller accent/theme) ·
+  U10 `--danger-soft` token DEFINED sa parehong themes (dating undefined, 4
+  screens may divergent inline fallbacks).
+- **E (`7c635bf`) — Code health.** C1 `addDaysToExpiry` days-left math →
+  `lib/planWindow.planDaysLeft` single source · C2 **fake Plans+Payments admin
+  panels REMOVED** (grep-verified: PLANS/PAYMENTS ay isang consumer lang, zero
+  test refs; 7 orphaned i18n keys removed with per-key re-grep;
+  `iosGates.matrix` gate 2 STRENGTHENED — absent sa BOTH platforms) · C4 xlsm
+  patcher pure helpers +13 unit tests · C8 `copyText` +4 tests · C5+C9 comment
+  fixes (`computeFreeFlags` literal = DELIBERATE verbatim 5f mirror, documented
+  sa parehong dulo; stale "(150)" → live 75/100). C6/C7/C10 = no-action by
+  classification.
+
+### OPEN carry-overs (kay Jeff)
+- **U7:** iOS blob-download (`csv.ts`/`shippingExport.ts` programmatic
+  `a.click()`) — maaaring silent no-op sa iOS shell; kailangan ng iPhone device
+  test, hiwalay na pass.
+- **S4:** Supabase dashboard toggle — Auth → Password settings → enable
+  leaked-password protection (HaveIBeenPwned).
+- **S3:** kumpirmahin na ang `TEST_COMMENT_TOKEN` ay UNSET sa prod Render env
+  (kapag unset, ang `/test-comment` ay 404 — doc-check lang).
+
+### KEY FACTS na na-verify sa audit (future reference)
+- **Request auth = 100% Supabase JWT** (`sb.auth.getUser(token)`, HTTP Bearer +
+  socket handshake); WALANG custom shared secret sa auth path.
+- **Real tier prices = `lib/planPricing`**; payments = Wise+Telegram by design —
+  WALANG payments backend (kaya tinanggal ang fake panels, hindi wina-wire).
+- **`SF_SERVER_SECRET` deleted sa Render** (walang code reader, verified via
+  exhaustive sweep + git history) · **`EULER_API_KEY` rotated Jul 11** (lumang
+  key revoked sa EulerStream dashboard).
+- Lahat ng 14 public tables may RLS; lahat ng SECURITY DEFINER functions ay
+  gated (admin-gate / uid-scope / trigger-only); walang secrets sa client
+  bundle; walang raw string-built SQL.
