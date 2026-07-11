@@ -4,12 +4,17 @@ import { WebcastPushConnection } from "tiktok-live-connector";
 import http from "http";
 import { Server } from "socket.io";
 import { createClient } from "@supabase/supabase-js";
+import { translateBroadcast } from "./server/broadcastTranslate.js";
 
 const app = express();
 const server = http.createServer(app);
 const TEST_COMMENT_TOKEN = process.env.TEST_COMMENT_TOKEN || "";
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || "";
+// Broadcast auto-translation (admin-only). Set on Render → Environment. When
+// absent the /admin/broadcast-translate endpoint returns an honest
+// "translation_not_configured" error (never a silent/partial success).
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
 const sb = (SUPABASE_URL && SUPABASE_KEY)
   ? createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false, autoRefreshToken: false } })
   : null;
@@ -101,6 +106,27 @@ async function requireAuth(req, res, next) {
   req.authUserId = user.id || "";
   req.authToken = token || "";
   return next();
+}
+
+// Admin gate — SERVER-SIDE (not a UI-only check). Runs AFTER requireAuth. Uses a
+// JWT-scoped client so the DB's public.is_admin() SECURITY DEFINER helper (the
+// same gate behind the announcements RLS + admin_business_pulse) evaluates for
+// THIS caller's auth.uid(). Non-admin (or any doubt) → 403. FAIL-CLOSED: unlike
+// plan enforcement, an admin gate must deny on error, never allow.
+async function requireAdmin(req, res, next) {
+  const deny = () => res.status(403).json({ success: false, error: "forbidden" });
+  if (!sb || !SUPABASE_URL || !SUPABASE_KEY || !req.authToken) return deny();
+  try {
+    const userSb = createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+      global: { headers: { Authorization: `Bearer ${req.authToken}` } },
+    });
+    const { data, error } = await userSb.rpc("is_admin");
+    if (error || data !== true) return deny();
+    return next();
+  } catch {
+    return deny();
+  }
 }
 
 // ============================================================================
@@ -614,6 +640,26 @@ app.post("/connect/facebook", requireAuth, requirePlanActive, (req, res) => {
     success: true,
     message: `Connected to Facebook page: ${username}`,
   });
+});
+
+// Admin broadcast auto-translation. Admin types ONE message; this translates it
+// into all 7 supported languages in a SINGLE Anthropic call at SEND time. The
+// admin previews + confirms; the row is written client-side (message = EN,
+// message_i18n = all 7). Server-side admin gate (requireAdmin). On any failure
+// returns success:false so the composer can offer "send English only" — it never
+// ships a partial translation. Requires ANTHROPIC_API_KEY in the Render env; when
+// absent it returns { success:false, error:"translation_not_configured" }.
+app.post("/admin/broadcast-translate", requireAuth, requireAdmin, async (req, res) => {
+  const text = String((req.body && req.body.text) || "").trim();
+  if (!text) {
+    return res.status(400).json({ success: false, error: "empty" });
+  }
+  const result = await translateBroadcast(text, { apiKey: ANTHROPIC_API_KEY });
+  if (!result.ok) {
+    console.log(`[BROADCAST_TRANSLATE] FAIL error=${result.error}`);
+    return res.status(502).json({ success: false, error: result.error });
+  }
+  return res.json({ success: true, i18n: result.i18n });
 });
 
 function emitTikTokStatus({ sellerId, username, sessionId, connected, reconnecting = false, reason = "", nextRetryMs = 0 }) {

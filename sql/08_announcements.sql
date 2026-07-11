@@ -16,6 +16,14 @@ create table if not exists public.announcements (
   created_by uuid references auth.users(id)
 );
 
+-- Auto-translated multilingual broadcasts (additive, applied via MCP). At SEND
+-- time the admin's single message is translated into all 7 supported languages
+-- in ONE Anthropic call; the per-language result is stored here keyed by the
+-- canonical i18n codes: {"en":"...","fil":"...","zh":"...","zh-TW":"...",
+-- "vi":"...","th":"...","id":"..."}. NULL for legacy rows and "English only"
+-- sends → sellers fall back to the plain `message` column. No backfill.
+alter table public.announcements add column if not exists message_i18n jsonb;
+
 alter table public.announcements enable row level security;
 
 -- ALL authenticated users read ALL rows — the bell history shows past

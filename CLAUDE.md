@@ -2042,3 +2042,91 @@ Bawat release na may iOS native change: itaas ang `ios.latest` sa bagong iOS
 buildNumber sa `native-version.json` SABAY sa deploy. Android: mag-add muna ng
 `getBuildNumber` bridge sa susunod na Android binary bago i-activate ang
 `android.latest` (kasalukuyang capability = Infinity/fail-safe, hindi mani-nudge).
+
+## SESSION 2026-07-11 — AUTO-TRANSLATED MULTILINGUAL BROADCASTS (branch `claude/broadcast-autotranslate`, awaiting Jeff review/merge)
+Admin broadcasts are now AUTO-TRANSLATED. Jeff types ONE message (English/Taglish)
+in the composer → **Translate & preview** → confirm → the system stores all 7
+languages; **each seller sees the broadcast in their OWN language**. No manual tabs.
+Isang branch off `main` `b4024a2`. **810 vitest green · typecheck · build · lint
+54 = baseline parity · `node --check server.js` OK.** Zero protected files
+(App.tsx/db.ts/lib/*/native/translations.ts UNTOUCHED).
+
+### 🔴🔴 TWO MANUAL RENDER STEPS REQUIRED — endpoint is DEAD until BOTH done
+The translation endpoint lives in **server.js** (backend). server.js = **MANUAL
+Render deploy** (not auto). **Until Jeff does BOTH of the following, the composer's
+"Translate & preview" returns an HONEST error** (no silent/partial send — it always
+offers "Send English only" as the fallback):
+1. **Render dashboard → "Deploy latest commit"** (deploys the new
+   `/admin/broadcast-translate` endpoint). ⚠️ This same deploy also carries the
+   **already-merged-but-not-deployed dead-route removal** (`POST /disconnect/tiktok`,
+   from `claude/f-batch-cleanup`) — they ride together, expected.
+2. **Render dashboard → Environment → Add `ANTHROPIC_API_KEY`** (the Anthropic API
+   key). Without it the endpoint returns `translation_not_configured` (honest error,
+   never a partial). This is a NEW env var — not previously on Render.
+Before both: sellers/broadcasts are 100% unaffected (legacy plain-text path); admins
+can still "Send English only".
+
+### Design (load-bearing)
+- **DB (applied via MCP, mirrored in `sql/08_announcements.sql`):** additive
+  nullable `announcements.message_i18n jsonb` — `{"en":..,"fil":..,"zh":..,"zh-TW":..,
+  "vi":..,"th":..,"id":..}` keyed by the EXACT 7 canonical i18n codes
+  (`VALID_LANGS` in `src/redesign/i18n/index.tsx`; a test cross-checks the server's
+  `TARGET_LANGS` == these). `message` column STAYS (legacy/EN source + backward
+  compat). No backfill. RLS is column-agnostic → the existing ann_select /
+  ann_insert / ann_update / ann_delete policies cover the new column; NO new policy.
+- **Translation = SEND-TIME, ONCE per broadcast, SERVER-SIDE.** New endpoint
+  `POST /admin/broadcast-translate` (`requireAuth` → **`requireAdmin`** — a NEW
+  server-side gate that calls the DB `is_admin()` RPC via a JWT-scoped client,
+  FAIL-CLOSED / 403 on any doubt; not a UI-only check). One Anthropic call
+  (`claude-haiku-4-5`) translates into all 7 langs in a single structured-JSON
+  response. Taglish/mixed input → normalized to clean English for `en` +
+  faithfully translated for the rest. Emojis / numbers / NT$ prices / dates / URLs
+  kept VERBATIM (prompt-enforced). **Egress: 1 outbound API call per SEND — zero
+  Supabase egress, zero client polling.**
+- **Shared core `server/broadcastTranslate.js`** (ESM, imported by server.js AND
+  unit-tested by vitest — server.js has no test harness). Pure `parseTranslateResult`
+  (extracts JSON, validates all 7 langs non-empty → never a blank banner) +
+  `translateBroadcast(text,{apiKey,fetchImpl})` (injectable fetch). NEVER partial:
+  any failure → `{ok:false,error}` so the composer offers English-only.
+- **Client adapter `src/redesign/adapters/broadcastTranslate.ts`** — POSTs to the
+  endpoint with the Supabase JWT; 403 → forbidden, success → i18n map, network
+  fail → `unreachable` (server not deployed yet → English-only fallback).
+- **Composer flow (`Admin.tsx`, broadcast panel):** one textbox → **Translate &
+  preview** (stage machine `compose→translating→preview`) → scrollable 7-lang
+  preview → **Confirm & send** (writes `message`=EN, `message_i18n`=all 7) /
+  **Edit** (back, text intact) / **Send English only** (publish raw text, no i18n
+  → legacy render). History rows get a small **"7 langs"** badge when translated;
+  the delete/active lifecycle (incl. the new trash delete) is UNCHANGED.
+- **Seller side (`useAnnouncements` + `components/Announcements.tsx`):** render-time
+  pick `pickAnnMessage(ann, lang)` = `message_i18n[lang] → message_i18n["en"] →
+  legacy message` (blank values fall through — never a blank banner). Current lang
+  comes from a NEW **`src/redesign/i18n/langContext.ts`** (`useLang()` — split into
+  its own component-free module to keep lint at 54; `TProvider` now also provides
+  the normalized `Lang`). A language switch re-picks reactively — **no refetch**
+  (translation happened once at send time; the SAME static rows arrive on read).
+  **Zero-poll intact.**
+
+### ⚠️ Already-open sellers (documented egress trade-off)
+Because the feed is zero-poll, a seller with the app ALREADY open + a rendered
+banner does NOT get a live re-translation/removal — they see the update on their
+NEXT app open (fresh fetch). ACCEPTED (no realtime/poll added just for this —
+egress discipline). New opens after a send show the translated version in the
+seller's language immediately.
+
+### Files
+- NEW: `server/broadcastTranslate.js`, `src/redesign/adapters/broadcastTranslate.ts`,
+  `src/redesign/i18n/langContext.ts` + 3 test files (server core / client adapter /
+  composer flow).
+- EDIT: `server.js` (+import, +ANTHROPIC_API_KEY env, +requireAdmin, +route),
+  `sql/08_announcements.sql` (mirror), `src/redesign/adapters/useAnnouncements.ts`
+  (messageI18n + pickAnnMessage + publish i18n arg + load mapping),
+  `src/redesign/components/Announcements.tsx` (useLang + pick),
+  `src/redesign/i18n/index.tsx` (LangContext provider), `src/redesign/screens/Admin.tsx`
+  (composer flow + 7-langs badge), i18n (11 new `rd_ann_*` keys ×7).
+- **Tests:** server-core (TARGET_LANGS == i18n codes, parse/validate, http/network
+  paths) · client 403/success/unreachable · pickAnnMessage (lang/en/legacy/blank) ·
+  publish stores message_i18n + load maps it · composer send→preview→confirm /
+  edit-back / english-only / translate-failure. Server auth guard = `node --check` +
+  structural review (requireAuth→requireAdmin→403) + client-403 test (server.js
+  convention). `is_admin` RPC verified: SECURITY DEFINER, authenticated-EXECUTE,
+  returns boolean.

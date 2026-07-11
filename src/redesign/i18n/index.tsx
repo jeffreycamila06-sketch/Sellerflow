@@ -13,6 +13,7 @@
 // Reused production keys (if any) keep production's values. New keys live ONLY here,
 // never in translations.ts.
 import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { LangContext } from "./langContext";
 import { TRANSLATIONS, type Lang, type T } from "../../translations";
 
 export type RedesignT = T & Record<string, string>;
@@ -424,6 +425,16 @@ const RAW: Record<string, Row> = {
   rd_ann_none: { en: "No announcements yet", fil: "Wala pang anunsyo", zh: "暂无公告", "zh-TW": "尚無公告", vi: "Chưa có thông báo", th: "ยังไม่มีประกาศ", id: "Belum ada pengumuman" },
   rd_ann_delete: { en: "Delete", fil: "Burahin", zh: "删除", "zh-TW": "刪除", vi: "Xóa", th: "ลบ", id: "Hapus" },
   rd_ann_del_confirm: { en: "Delete this broadcast? Sellers will no longer see it. This cannot be undone.", fil: "Burahin ang broadcast na ito? Hindi na ito makikita ng mga seller. Hindi na ito maibabalik.", zh: "删除此广播？卖家将不再看到它。此操作无法撤销。", "zh-TW": "刪除此廣播？賣家將不再看到它。此操作無法復原。", vi: "Xóa thông báo này? Người bán sẽ không còn thấy nó. Không thể hoàn tác.", th: "ลบการประกาศนี้หรือไม่? ผู้ขายจะไม่เห็นอีกต่อไป การกระทำนี้ไม่สามารถย้อนกลับได้", id: "Hapus siaran ini? Penjual tidak akan melihatnya lagi. Ini tidak dapat dibatalkan." },
+  rd_ann_auto_note: { en: "On send, this is auto-translated into all 7 languages — each seller sees it in their own. Emojis, prices, and links stay as-is.", fil: "Kapag na-send, awtomatiko itong isasalin sa lahat ng 7 wika — makikita ito ng bawat seller sa sarili niyang wika. Ang mga emoji, presyo, at link ay mananatili.", zh: "发送时会自动翻译成全部 7 种语言——每位卖家都会看到自己语言的版本。表情符号、价格和链接保持不变。", "zh-TW": "發送時會自動翻譯成全部 7 種語言——每位賣家都會看到自己語言的版本。表情符號、價格與連結維持不變。", vi: "Khi gửi, tin này được tự động dịch sang cả 7 ngôn ngữ — mỗi người bán thấy bằng ngôn ngữ của họ. Emoji, giá và liên kết giữ nguyên.", th: "เมื่อส่ง ระบบจะแปลอัตโนมัติเป็นทั้ง 7 ภาษา — ผู้ขายแต่ละคนจะเห็นในภาษาของตน อีโมจิ ราคา และลิงก์จะคงเดิม", id: "Saat dikirim, ini otomatis diterjemahkan ke 7 bahasa — setiap penjual melihatnya dalam bahasa mereka. Emoji, harga, dan tautan tetap." },
+  rd_ann_translate_btn: { en: "Translate & preview", fil: "Isalin at i-preview", zh: "翻译并预览", "zh-TW": "翻譯並預覽", vi: "Dịch & xem trước", th: "แปลและดูตัวอย่าง", id: "Terjemahkan & pratinjau" },
+  rd_ann_translating: { en: "Translating…", fil: "Isinasalin…", zh: "正在翻译…", "zh-TW": "正在翻譯…", vi: "Đang dịch…", th: "กำลังแปล…", id: "Menerjemahkan…" },
+  rd_ann_preview_title: { en: "Preview — all languages", fil: "Preview — lahat ng wika", zh: "预览——所有语言", "zh-TW": "預覽——所有語言", vi: "Xem trước — tất cả ngôn ngữ", th: "ดูตัวอย่าง — ทุกภาษา", id: "Pratinjau — semua bahasa" },
+  rd_ann_confirm_send: { en: "Confirm & send", fil: "Kumpirmahin at i-send", zh: "确认并发送", "zh-TW": "確認並發送", vi: "Xác nhận & gửi", th: "ยืนยันและส่ง", id: "Konfirmasi & kirim" },
+  rd_ann_edit: { en: "Edit", fil: "I-edit", zh: "编辑", "zh-TW": "編輯", vi: "Sửa", th: "แก้ไข", id: "Edit" },
+  rd_ann_english_only: { en: "Send English only", fil: "I-send sa English lang", zh: "仅发送英文", "zh-TW": "僅發送英文", vi: "Chỉ gửi tiếng Anh", th: "ส่งภาษาอังกฤษเท่านั้น", id: "Kirim bahasa Inggris saja" },
+  rd_ann_translate_fail: { en: "Couldn't translate ({err}). Send in English only, or try again.", fil: "Hindi naisalin ({err}). I-send sa English lang, o subukan ulit.", zh: "翻译失败（{err}）。仅发送英文，或重试。", "zh-TW": "翻譯失敗（{err}）。僅發送英文，或重試。", vi: "Không dịch được ({err}). Chỉ gửi tiếng Anh, hoặc thử lại.", th: "แปลไม่สำเร็จ ({err}) ส่งภาษาอังกฤษเท่านั้น หรือลองใหม่", id: "Gagal menerjemahkan ({err}). Kirim bahasa Inggris saja, atau coba lagi." },
+  rd_ann_retry: { en: "Try again", fil: "Subukan ulit", zh: "重试", "zh-TW": "重試", vi: "Thử lại", th: "ลองอีกครั้ง", id: "Coba lagi" },
+  rd_ann_langs_badge: { en: "7 langs", fil: "7 wika", zh: "7 种语言", "zh-TW": "7 種語言", vi: "7 ngôn ngữ", th: "7 ภาษา", id: "7 bahasa" },
 
   // ════ Shared ════
   rd_export: { en: "⬇ Export", fil: "⬇ I-export", zh: "⬇ 导出", "zh-TW": "⬇ 匯出", vi: "⬇ Xuất", th: "⬇ ส่งออก", id: "⬇ Ekspor" },
@@ -1012,7 +1023,14 @@ export function buildT(lang: string, supplement: RedesignStrings = REDESIGN_STRI
 const TContext = createContext<RedesignT | null>(null);
 export function TProvider({ lang, children }: { lang: string; children: ReactNode }) {
   const value = useMemo(() => buildT(lang), [lang]);
-  return <TContext.Provider value={value}>{children}</TContext.Provider>;
+  // Normalized current language provided alongside T so language-agnostic DATA
+  // (an auto-translated broadcast's message_i18n) renders per-seller, reactively.
+  const norm = useMemo(() => normalizeLang(lang), [lang]);
+  return (
+    <LangContext.Provider value={norm}>
+      <TContext.Provider value={value}>{children}</TContext.Provider>
+    </LangContext.Provider>
+  );
 }
 export function useT(): RedesignT {
   const ctx = useContext(TContext);

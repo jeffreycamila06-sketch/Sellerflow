@@ -10,10 +10,27 @@ import { isSupabaseConfigured, supabase } from "../../supabase";
 
 export interface Announcement {
   id: string;
-  message: string;
+  message: string;                              // legacy / EN source (always present)
+  messageI18n?: Record<string, string> | null;  // {en,fil,zh,zh-TW,vi,th,id} — auto-translated
   active: boolean;
   createdAt: string; // ISO
 }
+
+// Render-time language pick. A seller sees the broadcast in THEIR language:
+// message_i18n[lang] → message_i18n["en"] → legacy plain `message`. Empty/blank
+// translations fall through (never render a blank banner). Pure + unit-tested;
+// the seller UI calls this with the reactive useLang() value so switching
+// language re-picks with no refetch (translation happened once, at send time).
+export const pickAnnMessage = (ann: Announcement, lang: string): string => {
+  const i18n = ann.messageI18n;
+  if (i18n) {
+    const v = i18n[lang];
+    if (typeof v === "string" && v.trim() !== "") return v;
+    const en = i18n.en;
+    if (typeof en === "string" && en.trim() !== "") return en;
+  }
+  return ann.message;
+};
 
 export const ANN_LS_DISMISSED = "sfl_rd_ann_dismissed";
 export const ANN_LS_LAST_SEEN = "sfl_rd_ann_last_seen";
@@ -38,7 +55,7 @@ export interface UseAnnouncements {
   markSeen: (id: string) => void;  // bell list opened → red dot off
   unread: boolean;
   refresh: () => Promise<void>;
-  publish: (message: string) => Promise<{ ok: boolean; error?: string }>;
+  publish: (message: string, messageI18n?: Record<string, string> | null) => Promise<{ ok: boolean; error?: string }>;
   unpublish: (id: string) => Promise<{ ok: boolean; error?: string }>;
   remove: (id: string) => Promise<{ ok: boolean; error?: string }>; // hard delete
 }
@@ -55,13 +72,16 @@ export function useAnnouncements(enabled: boolean): UseAnnouncements {
     if (!enabled || !isSupabaseConfigured || !supabase) return;
     const { data, error } = await supabase
       .from("announcements")
-      .select("id,message,active,created_at")
+      .select("id,message,message_i18n,active,created_at")
       .order("created_at", { ascending: false })
       .limit(10);
     if (!error && data) {
       setList(data.map((r) => ({
         id: String(r.id),
         message: String(r.message ?? ""),
+        messageI18n: (r.message_i18n && typeof r.message_i18n === "object")
+          ? (r.message_i18n as Record<string, string>)
+          : null,
         active: !!r.active,
         createdAt: String(r.created_at ?? ""),
       })));
@@ -76,14 +96,20 @@ export function useAnnouncements(enabled: boolean): UseAnnouncements {
 
   // Admin publish: deactivate the current active row, then insert the new one —
   // keeps exactly one active. Both statements pass through the is_admin() RLS.
-  const publish = useCallback(async (message: string): Promise<{ ok: boolean; error?: string }> => {
+  // messageI18n (when provided) is the auto-translated {7-langs} map from the
+  // send-time translation. `message` is the EN/source stored on the legacy
+  // column (kept for backward-compat rendering). "English only" sends pass no
+  // map → message_i18n stays NULL and every seller falls back to `message`.
+  const publish = useCallback(async (message: string, messageI18n?: Record<string, string> | null): Promise<{ ok: boolean; error?: string }> => {
     const msg = message.trim();
     if (!msg) return { ok: false, error: "empty" };
     if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
     const { data: sess } = await supabase.auth.getSession(); // local, no network
     const off = await supabase.from("announcements").update({ active: false }).eq("active", true);
     if (off.error) return { ok: false, error: off.error.message };
-    const ins = await supabase.from("announcements").insert({ message: msg, created_by: sess.session?.user?.id ?? null });
+    const row: Record<string, unknown> = { message: msg, created_by: sess.session?.user?.id ?? null };
+    if (messageI18n) row.message_i18n = messageI18n;
+    const ins = await supabase.from("announcements").insert(row);
     if (ins.error) return { ok: false, error: ins.error.message };
     await load();
     return { ok: true };

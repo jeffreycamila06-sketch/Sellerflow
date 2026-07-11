@@ -24,9 +24,9 @@ vi.mock("../../../supabase", () => ({
   },
 }));
 
-import { useAnnouncements, pickLatestActive, hasUnread, ANN_LS_DISMISSED, ANN_LS_LAST_SEEN, type Announcement } from "../useAnnouncements";
+import { useAnnouncements, pickLatestActive, pickAnnMessage, hasUnread, ANN_LS_DISMISSED, ANN_LS_LAST_SEEN, type Announcement } from "../useAnnouncements";
 
-const row = (id: string, active: boolean, at: string) => ({ id, message: `msg ${id}`, active, created_at: at });
+const row = (id: string, active: boolean, at: string, i18n?: Record<string, string> | null) => ({ id, message: `msg ${id}`, message_i18n: i18n ?? null, active, created_at: at });
 const ann = (id: string, active: boolean): Announcement => ({ id, message: `msg ${id}`, active, createdAt: "2026-07-02T00:00:00Z" });
 
 beforeEach(() => {
@@ -46,6 +46,27 @@ describe("pure helpers", () => {
     expect(hasUnread([ann("a", true)], "")).toBe(true);
     expect(hasUnread([ann("a", true)], "a")).toBe(false);
     expect(hasUnread([], "")).toBe(false);
+  });
+});
+
+describe("pickAnnMessage — per-seller language pick", () => {
+  const withI18n = (i18n: Record<string, string>): Announcement => ({ id: "x", message: "LEGACY EN", messageI18n: i18n, active: true, createdAt: "2026-07-02T00:00:00Z" });
+  const i18n = { en: "Hello", fil: "Kumusta", zh: "你好", "zh-TW": "你好嗎", vi: "Xin chào", th: "สวัสดี", id: "Halo" };
+
+  it("returns the seller's language when present", () => {
+    expect(pickAnnMessage(withI18n(i18n), "zh-TW")).toBe("你好嗎");
+    expect(pickAnnMessage(withI18n(i18n), "th")).toBe("สวัสดี");
+  });
+  it("falls back to en when the seller's language is missing/blank", () => {
+    expect(pickAnnMessage(withI18n({ ...i18n, th: "" }), "th")).toBe("Hello");        // blank → en
+    expect(pickAnnMessage(withI18n({ en: "Hello" }), "vi")).toBe("Hello");            // absent → en
+  });
+  it("falls back to the legacy plain message when no i18n map (old rows / English-only)", () => {
+    const legacy: Announcement = { id: "x", message: "Just plain text", messageI18n: null, active: true, createdAt: "2026-07-02T00:00:00Z" };
+    expect(pickAnnMessage(legacy, "zh-TW")).toBe("Just plain text");
+    expect(pickAnnMessage({ ...legacy, messageI18n: undefined }, "en")).toBe("Just plain text");
+    // i18n present but even en is blank → still the legacy column, never blank
+    expect(pickAnnMessage(withI18n({ en: "  " } as Record<string, string>), "en")).toBe("LEGACY EN");
   });
 });
 
@@ -94,6 +115,25 @@ describe("useAnnouncements", () => {
     expect(updateEq).toHaveBeenCalledWith("active", true); // single-active invariant
     expect(insert).toHaveBeenCalledWith({ message: "Big sale tonight!", created_by: "admin1" }); // trimmed
     expect(limitFn).toHaveBeenCalledTimes(2); // mount + reload after publish
+  });
+
+  it("publish with a translated map stores message_i18n alongside the EN message", async () => {
+    const { result } = renderHook(() => useAnnouncements(true));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const i18n = { en: "Sale", fil: "Sale", zh: "促销", "zh-TW": "促銷", vi: "Sale", th: "ลด", id: "Diskon" };
+    let r: { ok: boolean } = { ok: false };
+    await act(async () => { r = await result.current.publish("Sale", i18n); });
+    expect(r.ok).toBe(true);
+    expect(insert).toHaveBeenCalledWith({ message: "Sale", created_by: "admin1", message_i18n: i18n });
+  });
+
+  it("load maps message_i18n from the row (or null when absent)", async () => {
+    const i18n = { en: "Hi", fil: "Hi", zh: "你好", "zh-TW": "你好", vi: "Hi", th: "หวัดดี", id: "Hai" };
+    limitFn.mockResolvedValue({ data: [row("n1", true, "2026-07-02T10:00:00Z", i18n), row("n2", false, "2026-07-01T10:00:00Z")], error: null });
+    const { result } = renderHook(() => useAnnouncements(true));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.list[0].messageI18n).toEqual(i18n);
+    expect(result.current.list[1].messageI18n).toBeNull();
   });
 
   it("publish rejects an empty/whitespace message without touching the DB", async () => {
