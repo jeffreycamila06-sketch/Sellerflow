@@ -353,9 +353,10 @@ export default function Dashboard({
                   <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 6, marginTop: 8, minHeight: 27 }}>
                     {/* 🛒 badge — beside the Enterprise button (Jeff's requested spot);
                         shown in every row state (printed / price-entry / actions).
-                        SIZE lives in .sfl-basket-badge (redesign.css): phone keeps the
-                        compact pill (Jeff-verified on device); ONLY the desktop/laptop
-                        breakpoint (sidebar media query) renders it slightly larger. */}
+                        SIZE lives in .sfl-basket-badge (redesign.css), PLATFORM-scoped:
+                        default = slightly larger (Android APK + web/desktop); the iOS
+                        shell keeps the compact pill via html.sfl-ios-shell (same proven
+                        scoping as the iOS 16px input fix). */}
                     {basketN > 0 && (
                       <span className="sfl-basket-badge" title={t.rd_dash_basket_tip} style={{ display: "inline-flex", alignItems: "center", fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", borderRadius: 999, flexShrink: 0 }}>🛒{basketN}</span>
                     )}
