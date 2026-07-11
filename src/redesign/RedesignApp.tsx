@@ -35,6 +35,7 @@ import { useCustomers, useMinerStats, ZERO_MINERS_STATS, useAdminUsers, useFreeU
 import { useBusinessPulse } from "./adapters/useBusinessPulse";
 import { useAnnouncements } from "./adapters/useAnnouncements";
 import { useLiveSession } from "./adapters/useLiveSession";
+import { buildBasketCounts } from "./adapters/basketCounts";
 import { useSessionWindow, type WindowDays } from "./adapters/useSessionWindow";
 import { useLiveFeed, commentKey } from "./adapters/useLiveFeed";
 import { useOrders } from "./adapters/useOrders";
@@ -243,6 +244,10 @@ export default function RedesignApp() {
   // Orders tab + Dashboard summary now share ONE source (the live session), so a
   // newly created order shows immediately. (5b's useLiveOrders is superseded here.)
   const ordersList = liveOrdersToRedesign(liveSession.session);
+  // 🛒 basket counts — per-buyer order count for the feed rows, derived from the
+  // SAME window-scoped session state (Buyer.totalOrders). ONE map per session
+  // change; each feed row is an O(1) lookup. New window/reset → empty → all 0.
+  const basketCounts = useMemo(() => buildBasketCounts(liveSession.session.buyers), [liveSession.session]);
   const ordersState: ReadState = liveSession.state === "idle" ? "sample" : liveSession.state;
 
   // Miners — aggregate RPC (sql/14 miners_stats: own totals + top-5 in one tiny
@@ -717,7 +722,7 @@ export default function RedesignApp() {
           )}
           {screen === "dashboard" && (
             <Dashboard
-              comments={comments} cur={cur}
+              comments={comments} cur={cur} basketCounts={basketCounts}
               ttOpen={ttOpen} fbOpen={fbOpen} ttIdx={ttIdx} fbIdx={fbIdx}
               onToggleTT={() => { setTtOpen((o) => !o); setFbOpen(false); setSessionOpen(false); }}
               onToggleFB={() => { setFbOpen((o) => !o); setTtOpen(false); setSessionOpen(false); }}

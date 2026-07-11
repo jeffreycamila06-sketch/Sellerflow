@@ -5,6 +5,7 @@
 // visual-only — real account switching / order creation is Phase 5.
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { avColor, initials, type Comment } from "../data";
+import { basketCountFor } from "../adapters/basketCounts";
 import { sessionSummary, type SessionState } from "../adapters/useLiveSession";
 import { useRaffleConfig } from "../adapters/useRaffleConfig";
 import { computeRaffleEntries, type RaffleEntry } from "../adapters/raffle";
@@ -62,8 +63,12 @@ export default function Dashboard({
   canInject = false, onInjectSynthetic,
   announcement = null, annDismissedId = "", onDismissAnn, annUnread = false, onOpenAnn,
   onPrintWinner,
+  basketCounts,
 }: {
   comments: Comment[]; cur: string;
+  // 🛒 per-buyer order count for the current session window (key: "handle platform").
+  // Display-only lookup map built upstream (RedesignApp memo) — O(1) per row.
+  basketCounts?: Map<string, number>;
   session?: RebuiltSession; sessionState?: SessionState;
   canInject?: boolean; onInjectSynthetic?: () => void;
   announcement?: Announcement | null; annDismissedId?: string; onDismissAnn?: (id: string) => void;
@@ -332,6 +337,14 @@ export default function Dashboard({
                   <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
                     <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{c.name}</span>
                     <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)" }}>{c.handle}</span>
+                    {/* 🛒 basket count — this buyer's CREATED ORDERS in the current
+                        session window. 0 → no badge (keeps a busy feed clean). */}
+                    {(() => {
+                      const n = basketCounts ? basketCountFor(basketCounts, c.handle, c.platform) : 0;
+                      return n > 0 ? (
+                        <span title={t.rd_dash_basket_tip} style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: 10, fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "1px 6px", borderRadius: 999, flexShrink: 0 }}>🛒{n}</span>
+                      ) : null;
+                    })()}
                     <span style={{ fontSize: 10.5, color: "var(--text-muted)", marginLeft: "auto", flexShrink: 0 }}>{c.time}</span>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 2 }}>

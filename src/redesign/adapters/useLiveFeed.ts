@@ -69,6 +69,7 @@ export const toRedesignComment = (c: ProdComment): RDComment => ({
   text: c.comment,
   mine: !!c.isBuy,
   time: c.time || "",
+  platform: c.platform, // additive — basket-count identity (handle+platform)
 });
 
 // Synthetic injector is shown everywhere EXCEPT the real production domain.

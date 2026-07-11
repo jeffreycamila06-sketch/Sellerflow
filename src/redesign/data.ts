@@ -33,7 +33,9 @@ export const CURRENCIES: Record<string, string> = { USD: "$", PHP: "₱", IDR: "
 export const CURRENCY_ORDER: string[] = ["USD", "PHP", "IDR", "VND", "CNY", "TWD", "THB"];
 export const curSymbol = (code: string): string => CURRENCIES[code] || "$";
 
-export interface Comment { id: string; name: string; handle: string; text: string; mine: boolean; time: string; }
+// platform is optional (additive, basket-count identity): comment→buyer matching
+// keys on handle+platform, the same composite the order logic uses.
+export interface Comment { id: string; name: string; handle: string; text: string; mine: boolean; time: string; platform?: string; }
 
 // (F-batch sweep: the INCOMING/SEED_COMMENTS sample streams are gone — the live
 // feed has been the real socket since 5d; nothing consumed them.)
