@@ -49,6 +49,8 @@ export interface UseAutoCodes {
   loaded: boolean;
   saving: boolean;
   saved: boolean;
+  saveError: boolean;   // U1 — the code-map Save write failed (honest error, not silent)
+  stockError: boolean;  // U2 — a stock write-through to the DB failed
   addCode: () => void;
   removeCode: (i: number) => void;
   setCode: (i: number, code: string) => void;
@@ -68,6 +70,8 @@ export function useAutoCodes(enabled: boolean = true, onSaved?: (codes: AutoCode
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState(false);
+  const [stockError, setStockError] = useState(false);
 
   // READ-ON-LOAD: catalog (DB-wins, local fallback) + the saved code map. No poll.
   useEffect(() => {
@@ -83,7 +87,7 @@ export function useAutoCodes(enabled: boolean = true, onSaved?: (codes: AutoCode
     return () => { active = false; };
   }, [enabled]);
 
-  const dirty = () => setSaved(false);
+  const dirty = () => { setSaved(false); setSaveError(false); };
   const addCode = useCallback(() => { setCodes((cs) => (cs.length >= MAX_CODES ? cs : [...cs, blankRow(products)])); dirty(); }, [products]);
   const removeCode = useCallback((i: number) => { setCodes((cs) => cs.filter((_, j) => j !== i)); dirty(); }, []);
   const setCode = useCallback((i: number, code: string) => { setCodes((cs) => cs.map((r, j) => (j === i ? { ...r, code } : r))); dirty(); }, []);
@@ -100,10 +104,13 @@ export function useAutoCodes(enabled: boolean = true, onSaved?: (codes: AutoCode
   // Editing inventory writes the PRODUCT stock (local cache mirror + DB write-through),
   // exactly like the Products screen. Status is re-derived from stock.
   const setStock = useCallback((localId: number, stock: number) => {
+    setStockError(false);
     setProducts((prev) => {
       const next = prev.map((p) => (p.id === localId ? { ...p, stock, status: statusForStock(stock) } : p));
       const changed = next.find((p) => p.id === localId);
-      if (changed) { saveProducts(next); void saveProductDb(changed); }
+      // U2 — surface a failed cloud write-through (was silently discarded). Local
+      // cache still updates; the honest error tells the seller the DB copy is stale.
+      if (changed) { saveProducts(next); void saveProductDb(changed).then((ok) => { if (!ok) setStockError(true); }); }
       return next;
     });
     dirty();
@@ -112,10 +119,10 @@ export function useAutoCodes(enabled: boolean = true, onSaved?: (codes: AutoCode
   const stockFor = useCallback((localId: number) => products.find((p) => p.id === localId)?.stock ?? 0, [products]);
 
   const save = useCallback(async () => {
-    setSaving(true); setSaved(false);
+    setSaving(true); setSaved(false); setSaveError(false);
     const toSave = codesForSave(codes);
     const ok = await saveCodes(toSave);
-    setSaving(false); setSaved(ok);
+    setSaving(false); setSaved(ok); setSaveError(!ok); // U1 — no longer silent on failure
     if (ok) {
       // 5b — hand the persisted map + each code's product stock to the caller so the
       // live matcher applies it immediately (no reload). Stock from the catalog state.
@@ -126,5 +133,5 @@ export function useAutoCodes(enabled: boolean = true, onSaved?: (codes: AutoCode
     return ok;
   }, [codes, products, onSaved]);
 
-  return { products, codes, loaded, saving, saved, addCode, removeCode, setCode, setProduct, setPrice, setStock, stockFor, save };
+  return { products, codes, loaded, saving, saved, saveError, stockError, addCode, removeCode, setCode, setProduct, setPrice, setStock, stockFor, save };
 }

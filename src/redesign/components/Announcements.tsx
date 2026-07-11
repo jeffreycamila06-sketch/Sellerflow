@@ -48,7 +48,7 @@ export function AnnouncementBanner({ ann, onDismiss }: { ann: Announcement; onDi
 
 // 🔔 list bottom-sheet — last 10 announcements, newest first; the active one
 // gets a subtle "Active now" chip. Rendered at the phone root (RedesignApp).
-export function AnnouncementsSheet({ list, onClose }: { list: Announcement[]; onClose: () => void }) {
+export function AnnouncementsSheet({ list, onClose, loading = false }: { list: Announcement[]; onClose: () => void; loading?: boolean }) {
   const t = useT();
   const lang = useLang();
   return (
@@ -63,7 +63,7 @@ export function AnnouncementsSheet({ list, onClose }: { list: Announcement[]; on
         </div>
         <div className="sfl-scroll" style={{ padding: "14px 16px calc(22px + env(safe-area-inset-bottom))" }}>
           {list.length === 0 && (
-            <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "26px 0" }}>{t.rd_ann_none}</div>
+            <div style={{ fontSize: 12.5, color: "var(--text-muted)", textAlign: "center", padding: "26px 0" }}>{loading ? t.rd_ann_loading : t.rd_ann_none}</div>
           )}
           {list.map((a) => (
             <div key={a.id} style={{ background: "var(--surface-2)", border: a.active ? "1px solid var(--accent)" : "1px solid var(--border)", borderRadius: 12, padding: "10px 12px", marginBottom: 9 }}>

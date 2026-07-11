@@ -843,11 +843,11 @@ export default function RedesignApp() {
 
         {/* Admin control bottom-sheet (absolute within the phone, like the v2 prototype) */}
         {adminPanel && isAdmin && (
-          <AdminPanel panel={adminPanel} onClose={() => setAdminPanel(null)} assignAmount={assignAmount} onAssignAmount={setAssignAmount} cur={cur} users={adminUsers.users} usersState={adminUsers.state} rawByEmail={adminUsers.rawByEmail} actions={admin} onChanged={() => { adminUsers.reload(); freeUsersData.reload(); auditData.reload(); }} freeUsers={freeUsersData.freeUsers} freeUsersState={freeUsersData.state} auditLogs={auditData.logs} auditState={auditData.state} onOpenPanel={setAdminPanel} pulse={pulse.data} pulseState={pulse.state} onRefreshPulse={pulse.refresh} ann={{ list: ann.list, publish: ann.publish, unpublish: ann.unpublish, remove: ann.remove }} />
+          <AdminPanel panel={adminPanel} onClose={() => setAdminPanel(null)} assignAmount={assignAmount} onAssignAmount={setAssignAmount} cur={cur} users={adminUsers.users} usersState={adminUsers.state} rawByEmail={adminUsers.rawByEmail} actions={admin} onChanged={() => { adminUsers.reload(); freeUsersData.reload(); auditData.reload(); }} freeUsers={freeUsersData.freeUsers} freeUsersState={freeUsersData.state} auditLogs={auditData.logs} auditState={auditData.state} onOpenPanel={setAdminPanel} pulse={pulse.data} pulseState={pulse.state} onRefreshPulse={pulse.refresh} ann={{ list: ann.list, loading: ann.loading, publish: ann.publish, unpublish: ann.unpublish, remove: ann.remove }} />
         )}
 
         {/* 🔔 Announcements list bottom-sheet (same pattern as AdminPanel) */}
-        {annOpen && <AnnouncementsSheet list={ann.list} onClose={() => setAnnOpen(false)} />}
+        {annOpen && <AnnouncementsSheet list={ann.list} loading={ann.loading} onClose={() => setAnnOpen(false)} />}
 
         {/* #6 — real connect modal (registered-account picker / add account) */}
         {connectOpen && auth.profile && (

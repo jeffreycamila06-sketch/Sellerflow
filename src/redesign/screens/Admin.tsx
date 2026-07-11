@@ -293,7 +293,7 @@ function PulsePanel({ pulse, state, onRefresh }: { pulse: PulseData | null; stat
   );
 }
 
-export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", rawByEmail = {}, actions, onChanged, freeUsers = [], freeUsersState = "sample", auditLogs = [], auditState = "sample", onOpenPanel, pulse = null, pulseState = "idle", onRefreshPulse, ann }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; rawByEmail?: Record<string, AccountUser>; actions?: AdminActions; onChanged?: () => void; freeUsers?: FreeUserRow[]; freeUsersState?: ReadState; auditLogs?: AccountAuditLog[]; auditState?: ReadState; onOpenPanel?: (k: AdminPanelKind) => void; pulse?: PulseData | null; pulseState?: PulseState; onRefreshPulse?: () => void; ann?: { list: Announcement[]; publish: (m: string, i18n?: Record<string, string> | null) => Promise<{ ok: boolean; error?: string }>; unpublish: (id: string) => Promise<{ ok: boolean; error?: string }>; remove: (id: string) => Promise<{ ok: boolean; error?: string }> } }) {
+export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", rawByEmail = {}, actions, onChanged, freeUsers = [], freeUsersState = "sample", auditLogs = [], auditState = "sample", onOpenPanel, pulse = null, pulseState = "idle", onRefreshPulse, ann }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; rawByEmail?: Record<string, AccountUser>; actions?: AdminActions; onChanged?: () => void; freeUsers?: FreeUserRow[]; freeUsersState?: ReadState; auditLogs?: AccountAuditLog[]; auditState?: ReadState; onOpenPanel?: (k: AdminPanelKind) => void; pulse?: PulseData | null; pulseState?: PulseState; onRefreshPulse?: () => void; ann?: { list: Announcement[]; loading?: boolean; publish: (m: string, i18n?: Record<string, string> | null) => Promise<{ ok: boolean; error?: string }>; unpublish: (id: string) => Promise<{ ok: boolean; error?: string }>; remove: (id: string) => Promise<{ ok: boolean; error?: string }> } }) {
   const t = useT();
   // Real subscription buckets (derived) when the users list is live; else sample.
   const realSubs = usersState === "live" || usersState === "empty";
@@ -623,7 +623,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                   <button disabled={annBusy} onClick={() => void doAnn(t.rd_ann_unpublish, () => ann!.unpublish(annActive.id))} style={{ ...actBtn, color: "var(--danger)", opacity: annBusy ? 0.6 : 1 }}>{t.rd_ann_unpublish}</button>
                 </div>
               ) : (
-                <div style={{ border: "1px dashed var(--border-strong)", borderRadius: 12, padding: "13px 12px", fontSize: 12, color: "var(--text-muted)", marginBottom: 15 }}>{t.rd_ann_none}</div>
+                <div style={{ border: "1px dashed var(--border-strong)", borderRadius: 12, padding: "13px 12px", fontSize: 12, color: "var(--text-muted)", marginBottom: 15 }}>{ann?.loading ? t.rd_ann_loading : t.rd_ann_none}</div>
               )}
               <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 8 }}>{t.rd_adm_audience}</label>
               <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 15 }}>
@@ -636,9 +636,11 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                   <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 13, lineHeight: 1.45 }}>{t.rd_ann_auto_note}</div>
                   {annErr && (
                     <div style={{ border: "1px solid var(--danger)", background: "var(--surface-2)", borderRadius: 10, padding: "10px 12px", marginBottom: 12 }}>
-                      <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--danger)", marginBottom: 8, lineHeight: 1.45 }}>{tpl(t.rd_ann_translate_fail, { err: annErr })}</div>
+                      {/* U9 — a 403 "forbidden" means the caller isn't admin: retrying just 403s
+                          again, so show a distinct message and hide the (useless) Retry. */}
+                      <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--danger)", marginBottom: 8, lineHeight: 1.45 }}>{annErr === "forbidden" ? t.rd_ann_forbidden : tpl(t.rd_ann_translate_fail, { err: annErr })}</div>
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        <button disabled={annBusy || !annMsg.trim()} onClick={() => void startTranslate()} style={{ ...actBtn, opacity: annBusy ? 0.6 : 1 }}>{t.rd_ann_retry}</button>
+                        {annErr !== "forbidden" && <button disabled={annBusy || !annMsg.trim()} onClick={() => void startTranslate()} style={{ ...actBtn, opacity: annBusy ? 0.6 : 1 }}>{t.rd_ann_retry}</button>}
                         <button disabled={annBusy || !annMsg.trim()} onClick={sendEnglishOnly} style={{ ...actBtn, opacity: annBusy ? 0.6 : 1 }}>{t.rd_ann_english_only}</button>
                       </div>
                     </div>
