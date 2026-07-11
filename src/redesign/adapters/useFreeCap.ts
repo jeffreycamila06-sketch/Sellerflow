@@ -29,12 +29,15 @@ export type CapPopupKind = "" | "near" | "hard";
 // ── Pure logic (unit-tested) ──────────────────────────────────────────────────
 
 export function computeFreeFlags(plan: string | undefined, fs: FreeStatus | null): { isFreeUser: boolean; freeCapped: boolean } {
+  // DELIBERATE literal (not lib/planWindow.isFreePlan): VERBATIM App.tsx 5f
+  // mirror over the db-cased plan value — kept byte-identical on purpose.
   const isFreeUser = plan === "free" && !!fs?.is_free;
   return { isFreeUser, freeCapped: isFreeUser && !!fs?.capped };
 }
 
-// Near-cap (150) celebration shows ONCE per cycle, and never while capped / when a
-// popup is already open. Mirrors App.tsx:4178-4187 conditions exactly.
+// Near-cap celebration (threshold comes from the RPC — live values: warn at 75 of
+// the 100-order cap) shows ONCE per cycle, and never while capped / when a popup
+// is already open. Mirrors App.tsx:4178-4187 conditions exactly.
 export function shouldShowNearCap(isFreeUser: boolean, fs: FreeStatus | null, capPopup: CapPopupKind): boolean {
   if (!isFreeUser || !fs) return false;
   if (fs.capped) return false;

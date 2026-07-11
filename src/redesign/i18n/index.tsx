@@ -794,8 +794,6 @@ const RAW: Record<string, Row> = {
   rd_adm_controls: { en: "Controls", fil: "Mga kontrol", zh: "控制", "zh-TW": "控制", vi: "Điều khiển", th: "การควบคุม", id: "Kontrol" },
   rd_adm_ctrl_userbase: { en: "User Base", fil: "User Base", zh: "用户群", "zh-TW": "用戶群", vi: "Người dùng", th: "ฐานผู้ใช้", id: "Basis Pengguna" },
   rd_adm_ctrl_sellers: { en: "Sellers", fil: "Mga seller", zh: "卖家", "zh-TW": "賣家", vi: "Người bán", th: "ผู้ขาย", id: "Penjual" },
-  rd_adm_ctrl_plans: { en: "Plans", fil: "Mga plan", zh: "方案", "zh-TW": "方案", vi: "Gói", th: "แผน", id: "Paket" },
-  rd_adm_ctrl_payments: { en: "Payments", fil: "Mga bayad", zh: "付款", "zh-TW": "付款", vi: "Thanh toán", th: "การชำระเงิน", id: "Pembayaran" },
   rd_adm_ctrl_broadcast: { en: "Broadcast", fil: "Broadcast", zh: "广播", "zh-TW": "廣播", vi: "Phát thông báo", th: "ประกาศ", id: "Siaran" },
   rd_adm_ctrl_reports: { en: "Reports", fil: "Mga ulat", zh: "报表", "zh-TW": "報表", vi: "Báo cáo", th: "รายงาน", id: "Laporan" },
   rd_adm_ctrl_system: { en: "System", fil: "System", zh: "系统", "zh-TW": "系統", vi: "Hệ thống", th: "ระบบ", id: "Sistem" },
@@ -803,7 +801,6 @@ const RAW: Record<string, Row> = {
 
   // ════ Admin — panel titles ════
   rd_adm_pt_sellers: { en: "Manage sellers", fil: "Pamahalaan ang mga seller", zh: "管理卖家", "zh-TW": "管理賣家", vi: "Quản lý người bán", th: "จัดการผู้ขาย", id: "Kelola penjual" },
-  rd_adm_pt_plans: { en: "Subscription plans", fil: "Mga subscription plan", zh: "订阅方案", "zh-TW": "訂閱方案", vi: "Gói đăng ký", th: "แผนสมาชิก", id: "Paket langganan" },
   rd_adm_pt_reports: { en: "Platform reports", fil: "Mga ulat ng platform", zh: "平台报表", "zh-TW": "平台報表", vi: "Báo cáo nền tảng", th: "รายงานแพลตฟอร์ม", id: "Laporan platform" },
   rd_adm_pt_system: { en: "Assign plan by payment", fil: "Magtalaga ng plan ayon sa bayad", zh: "按付款分配方案", "zh-TW": "依付款分配方案", vi: "Gán gói theo thanh toán", th: "กำหนดแผนตามการชำระเงิน", id: "Tetapkan paket per pembayaran" },
   rd_adm_pt_subActive: { en: "Active paid subscriptions", fil: "Aktibong bayad na subscription", zh: "有效付费订阅", "zh-TW": "有效付費訂閱", vi: "Đăng ký trả phí đang hoạt động", th: "การสมัครจ่ายเงินที่ใช้งานอยู่", id: "Langganan berbayar aktif" },
@@ -864,10 +861,6 @@ const RAW: Record<string, Row> = {
   rd_adm_save_accounts: { en: "Save accounts", fil: "I-save ang mga account", zh: "保存账号", "zh-TW": "儲存帳號", vi: "Lưu tài khoản", th: "บันทึกบัญชี", id: "Simpan akun" },
 
   // ════ Admin — plans / payments / reports / system / broadcast ════
-  rd_adm_new_plan: { en: "+ New plan", fil: "+ Bagong plan", zh: "+ 新方案", "zh-TW": "+ 新方案", vi: "+ Gói mới", th: "+ แผนใหม่", id: "+ Paket baru" },
-  rd_adm_collected_today: { en: "Collected today", fil: "Nakolekta ngayon", zh: "今日收款", "zh-TW": "今日收款", vi: "Thu hôm nay", th: "เก็บได้วันนี้", id: "Terkumpul hari ini" },
-  rd_adm_pending: { en: "Pending", fil: "Nakabinbin", zh: "待处理", "zh-TW": "待處理", vi: "Đang chờ", th: "รอดำเนินการ", id: "Tertunda" },
-  rd_adm_recent_tx: { en: "Recent transactions", fil: "Mga kamakailang transaksyon", zh: "最近交易", "zh-TW": "最近交易", vi: "Giao dịch gần đây", th: "ธุรกรรมล่าสุด", id: "Transaksi terbaru" },
   rd_adm_mrr: { en: "MRR", fil: "MRR", zh: "MRR", "zh-TW": "MRR", vi: "MRR", th: "MRR", id: "MRR" },
   rd_adm_growth: { en: "Growth", fil: "Paglago", zh: "增长", "zh-TW": "成長", vi: "Tăng trưởng", th: "การเติบโต", id: "Pertumbuhan" },
   rd_adm_churn: { en: "Churn", fil: "Churn", zh: "流失率", "zh-TW": "流失率", vi: "Tỷ lệ rời bỏ", th: "อัตราเลิกใช้", id: "Churn" },
