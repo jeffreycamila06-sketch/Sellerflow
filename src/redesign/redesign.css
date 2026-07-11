@@ -108,6 +108,11 @@ html.sfl-ios-shell [data-redesign] textarea { font-size: 16px !important; }
 [data-redesign] .sfl-nav-logo { display: none; }
 [data-redesign] .sfl-nav-admin { display: none; }
 
+/* 🛒 basket badge (Live feed) — size is VIEWPORT-SCOPED: phones/tablets/APK keep
+ * this compact pill (Jeff-verified correct on device); only the desktop/laptop
+ * breakpoint below renders it slightly larger (small at desk distance). */
+[data-redesign] .sfl-basket-badge { font-size: 10px; gap: 2px; padding: 1px 6px; }
+
 /* ── DESKTOP/LAPTOP ONLY (≥900px AND a fine pointer = mouse/trackpad): the bottom
  * nav becomes a LEFT SIDEBAR and content goes full-width. `pointer: fine` excludes
  * ALL touch devices — Samsung tablets (portrait OR landscape) + phones + the APK
@@ -115,6 +120,8 @@ html.sfl-ios-shell [data-redesign] textarea { font-size: 16px !important; }
  * the tablet-portrait bug where ~800px width hit min-width:900 partially / left a
  * 430px column pinned left. Mobile (<900 or any touch) is byte-identical to before. */
 @media (min-width: 900px) and (pointer: fine) {
+  /* 🛒 basket badge — desktop-only size bump (mobile stays compact, see base rule). */
+  [data-redesign] .sfl-basket-badge { font-size: 12.5px; gap: 3px; padding: 3px 9px; }
   [data-redesign] .sfl-phone {
     max-width: none;            /* full-width content on desktop */
     flex-direction: row;        /* sidebar | content */

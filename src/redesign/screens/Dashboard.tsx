@@ -352,9 +352,12 @@ export default function Dashboard({
                       price-entry · 1-Click / Enterprise actions. */}
                   <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 6, marginTop: 8, minHeight: 27 }}>
                     {/* 🛒 badge — beside the Enterprise button (Jeff's requested spot);
-                        shown in every row state (printed / price-entry / actions). */}
+                        shown in every row state (printed / price-entry / actions).
+                        SIZE lives in .sfl-basket-badge (redesign.css): phone keeps the
+                        compact pill (Jeff-verified on device); ONLY the desktop/laptop
+                        breakpoint (sidebar media query) renders it slightly larger. */}
                     {basketN > 0 && (
-                      <span title={t.rd_dash_basket_tip} style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 12.5, fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "3px 9px", borderRadius: 999, flexShrink: 0 }}>🛒{basketN}</span>
+                      <span className="sfl-basket-badge" title={t.rd_dash_basket_tip} style={{ display: "inline-flex", alignItems: "center", fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", borderRadius: 999, flexShrink: 0 }}>🛒{basketN}</span>
                     )}
                     {isPrinted && (
                       <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 800, letterSpacing: ".02em", color: "var(--text-dim)", background: "var(--surface-3)", padding: "5px 10px", borderRadius: 7 }}>{printerIcon}{t.rd_dash_printed} {printedLabel}</span>
