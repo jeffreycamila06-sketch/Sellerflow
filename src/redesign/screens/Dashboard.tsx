@@ -330,6 +330,9 @@ export default function Dashboard({
             const printedLabel = manP && manP !== "order" ? manP : "";
             const entOpen = entId === c.id;
             const showActions = !isPrinted && !entOpen;
+            // 🛒 basket count — this buyer's CREATED ORDERS in the current session
+            // window (O(1) map lookup). 0 → no badge (keeps a busy feed clean).
+            const basketN = basketCounts ? basketCountFor(basketCounts, c.handle, c.platform) : 0;
             return (
               <div key={c.id} className="sfl-comm-row" style={{ display: "flex", gap: 10, padding: "9px 8px", borderRadius: 11 }}>
                 <div style={{ width: 34, height: 34, borderRadius: "50%", background: avColor(c.name), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{initials(c.name)}</div>
@@ -337,14 +340,6 @@ export default function Dashboard({
                   <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
                     <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{c.name}</span>
                     <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)" }}>{c.handle}</span>
-                    {/* 🛒 basket count — this buyer's CREATED ORDERS in the current
-                        session window. 0 → no badge (keeps a busy feed clean). */}
-                    {(() => {
-                      const n = basketCounts ? basketCountFor(basketCounts, c.handle, c.platform) : 0;
-                      return n > 0 ? (
-                        <span title={t.rd_dash_basket_tip} style={{ display: "inline-flex", alignItems: "center", gap: 2, fontSize: 10, fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "1px 6px", borderRadius: 999, flexShrink: 0 }}>🛒{n}</span>
-                      ) : null;
-                    })()}
                     <span style={{ fontSize: 10.5, color: "var(--text-muted)", marginLeft: "auto", flexShrink: 0 }}>{c.time}</span>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 2 }}>
@@ -356,6 +351,11 @@ export default function Dashboard({
                   {/* Order flow (dc.html v3 L210–227): printed badge · Enterprise
                       price-entry · 1-Click / Enterprise actions. */}
                   <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 6, marginTop: 8, minHeight: 27 }}>
+                    {/* 🛒 badge — beside the Enterprise button (Jeff's requested spot);
+                        shown in every row state (printed / price-entry / actions). */}
+                    {basketN > 0 && (
+                      <span title={t.rd_dash_basket_tip} style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: 12.5, fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "3px 9px", borderRadius: 999, flexShrink: 0 }}>🛒{basketN}</span>
+                    )}
                     {isPrinted && (
                       <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 800, letterSpacing: ".02em", color: "var(--text-dim)", background: "var(--surface-3)", padding: "5px 10px", borderRadius: 7 }}>{printerIcon}{t.rd_dash_printed} {printedLabel}</span>
                     )}
