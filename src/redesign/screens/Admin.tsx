@@ -293,7 +293,7 @@ function PulsePanel({ pulse, state, onRefresh }: { pulse: PulseData | null; stat
   );
 }
 
-export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", rawByEmail = {}, actions, onChanged, freeUsers = [], freeUsersState = "sample", auditLogs = [], auditState = "sample", onOpenPanel, pulse = null, pulseState = "idle", onRefreshPulse, ann }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; rawByEmail?: Record<string, AccountUser>; actions?: AdminActions; onChanged?: () => void; freeUsers?: FreeUserRow[]; freeUsersState?: ReadState; auditLogs?: AccountAuditLog[]; auditState?: ReadState; onOpenPanel?: (k: AdminPanelKind) => void; pulse?: PulseData | null; pulseState?: PulseState; onRefreshPulse?: () => void; ann?: { list: Announcement[]; loading?: boolean; publish: (m: string, i18n?: Record<string, string> | null) => Promise<{ ok: boolean; error?: string }>; unpublish: (id: string) => Promise<{ ok: boolean; error?: string }>; remove: (id: string) => Promise<{ ok: boolean; error?: string }> } }) {
+export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", rawByEmail = {}, actions, onChanged, freeUsers = [], freeUsersState = "sample", auditLogs = [], auditState = "sample", onOpenPanel, pulse = null, pulseState = "idle", onRefreshPulse, ann, onToast }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; rawByEmail?: Record<string, AccountUser>; actions?: AdminActions; onChanged?: () => void; freeUsers?: FreeUserRow[]; freeUsersState?: ReadState; auditLogs?: AccountAuditLog[]; auditState?: ReadState; onOpenPanel?: (k: AdminPanelKind) => void; pulse?: PulseData | null; pulseState?: PulseState; onRefreshPulse?: () => void; ann?: { list: Announcement[]; loading?: boolean; publish: (m: string, i18n?: Record<string, string> | null) => Promise<{ ok: boolean; error?: string }>; unpublish: (id: string) => Promise<{ ok: boolean; error?: string }>; remove: (id: string) => Promise<{ ok: boolean; error?: string }> }; onToast?: (msg: string, kind: "ok" | "err") => void }) {
   const t = useT();
   // Real subscription buckets (derived) when the users list is live; else sample.
   const realSubs = usersState === "live" || usersState === "empty";
@@ -332,13 +332,17 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
   const [annBusy, setAnnBusy] = useState(false);
   const annActive = ann ? pickLatestActive(ann.list) : null;
   const annDate = (iso: string) => { const d = new Date(iso); return isNaN(d.getTime()) ? "" : d.toLocaleDateString([], { month: "short", day: "numeric" }); };
+  // U4 — surface results through the app's non-blocking toast when wired (the
+  // WebView "prevent additional dialogs" checkbox can swallow window.alert,
+  // hiding the only failure signal). Standalone/test renders fall back to alert.
+  const notify = (msg: string, kind: "ok" | "err") => { if (onToast) onToast(msg, kind); else window.alert(msg); };
   const doAnn = async (label: string, fn: () => Promise<{ ok: boolean; error?: string }>, onOk?: () => void) => {
     if (!ann || annBusy) return;
     setAnnBusy(true);
     try {
       const r = await fn();
       if (r.ok) onOk?.();
-      else window.alert(tpl(t.rd_adm_failed, { label, err: r.error || t.rd_adm_err }));
+      else notify(tpl(t.rd_adm_failed, { label, err: r.error || t.rd_adm_err }), "err");
     } finally { setAnnBusy(false); }
   };
   // Hard delete (trash) — confirm first, then remove the row entirely. RLS
@@ -391,10 +395,10 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
     setBusy(true);
     try {
       const r = await fn();
-      if (r.ok) { onOk?.(); onChanged?.(); window.alert(tpl(t.rd_adm_ok, { label, email })); } // refresh real list
-      else window.alert(tpl(t.rd_adm_failed, { label, err: r.error || t.rd_adm_err }));
+      if (r.ok) { onOk?.(); onChanged?.(); notify(tpl(t.rd_adm_ok, { label, email }), "ok"); } // refresh real list
+      else notify(tpl(t.rd_adm_failed, { label, err: r.error || t.rd_adm_err }), "err");
     } catch (e) {
-      window.alert(tpl(t.rd_adm_failed, { label, err: e instanceof Error ? e.message : t.rd_adm_err }));
+      notify(tpl(t.rd_adm_failed, { label, err: e instanceof Error ? e.message : t.rd_adm_err }), "err");
     } finally {
       setBusy(false); // never leave the panel stuck (was the bug blocking later actions)
     }
@@ -453,7 +457,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
       <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxHeight: "86%", background: "var(--surface)", borderRadius: "22px 22px 0 0", display: "flex", flexDirection: "column", boxShadow: "0 -16px 40px rgba(0,0,0,.3)", animation: "sflSheet .26s cubic-bezier(.22,1,.36,1)" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 18px 13px", borderBottom: "1px solid var(--border)", flexShrink: 0 }}>
           <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 17, color: "var(--text)" }}>{panelTitle(t, panel)}</span>
-          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 9, border: "none", background: "var(--surface-2)", color: "var(--text-dim)", fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+          <button onClick={onClose} aria-label={t.rd_close} title={t.rd_close} style={{ width: 30, height: 30, borderRadius: 9, border: "none", background: "var(--surface-2)", color: "var(--text-dim)", fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
         </div>
         <div className="sfl-scroll" style={{ padding: "16px 16px calc(22px + env(safe-area-inset-bottom))" }}>
 

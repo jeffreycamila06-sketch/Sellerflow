@@ -51,6 +51,9 @@
   --ok: #059669;
   --warn: #d97706;
   --danger: #e11d48;
+  /* U10 — danger tint (danger @ 10%): screens referenced var(--danger-soft, …)
+     with divergent inline fallbacks; defining it makes the tint theme-consistent. */
+  --danger-soft: rgba(225,29,72,.1);
   /* accent-derived — light theme: accent *text* uses the DARK shade;
      soft = base @ 12%, softer = base @ 7%; header band = solid accent. */
   --accent: var(--_accent);
@@ -83,6 +86,7 @@
   --ok: #34d399;
   --warn: #fbbf24;
   --danger: #fb7185;
+  --danger-soft: rgba(251,113,133,.16);
   --accent: var(--_accent);
   --accent-text: #ffffff;
   --accent-fg: var(--_accent-light);

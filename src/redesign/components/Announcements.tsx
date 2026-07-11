@@ -24,13 +24,15 @@ const fmtDate = (iso: string): string => {
 
 const msgStyle: CSSProperties = { fontSize: 12.5, fontWeight: 600, lineHeight: 1.5, whiteSpace: "pre-wrap", overflowWrap: "anywhere" };
 
-// Indigo gradient banner card — shown above the TODAY bar while the newest
-// ACTIVE announcement hasn't been dismissed on this device.
+// Accent banner card — shown above the TODAY bar while the newest ACTIVE
+// announcement hasn't been dismissed on this device. U8: renders IN-FLOW inside
+// the [data-redesign] token scope (unlike the RaffleWheel body-portal), so it
+// uses the accent tokens and follows the seller's chosen accent/theme.
 export function AnnouncementBanner({ ann, onDismiss }: { ann: Announcement; onDismiss: (id: string) => void }) {
   const t = useT();
   const lang = useLang();
   return (
-    <div style={{ background: "linear-gradient(135deg, #4F46E5, #6366F1)", borderRadius: 14, padding: "11px 13px 10px", marginBottom: 11, color: "#fff", boxShadow: "0 6px 18px rgba(79,70,229,.32)" }}>
+    <div style={{ background: "var(--accent)", borderRadius: 14, padding: "11px 13px 10px", marginBottom: 11, color: "var(--accent-text)", boxShadow: "0 6px 18px var(--accent-soft)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
         <span style={{ fontSize: 13, lineHeight: 1 }}>📢</span>
         <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", opacity: 0.92 }}>{t.rd_ann_banner_label}</span>
@@ -38,7 +40,7 @@ export function AnnouncementBanner({ ann, onDismiss }: { ann: Announcement; onDi
       </div>
       <div style={{ ...msgStyle, margin: "7px 1px 9px" }}>{pickAnnMessage(ann, lang)}</div>
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <button onClick={() => onDismiss(ann.id)} style={{ border: "none", background: "rgba(255,255,255,.18)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,.4)", color: "#fff", fontSize: 11.5, fontWeight: 700, padding: "6px 13px", borderRadius: 8, cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+        <button onClick={() => onDismiss(ann.id)} style={{ border: "none", background: "rgba(255,255,255,.18)", boxShadow: "inset 0 0 0 1px rgba(255,255,255,.4)", color: "var(--accent-text)", fontSize: 11.5, fontWeight: 700, padding: "6px 13px", borderRadius: 8, cursor: "pointer", fontFamily: "var(--font-ui)" }}>
           {t.rd_ann_got_it} ✓
         </button>
       </div>
@@ -59,7 +61,7 @@ export function AnnouncementsSheet({ list, onClose, loading = false }: { list: A
             <span style={{ color: "var(--accent-fg)", display: "flex" }}><BellIcon /></span>
             {t.rd_ann_title}
           </span>
-          <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 9, border: "none", background: "var(--surface-2)", color: "var(--text-dim)", fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+          <button onClick={onClose} aria-label={t.rd_close} title={t.rd_close} style={{ width: 30, height: 30, borderRadius: 9, border: "none", background: "var(--surface-2)", color: "var(--text-dim)", fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
         </div>
         <div className="sfl-scroll" style={{ padding: "14px 16px calc(22px + env(safe-area-inset-bottom))" }}>
           {list.length === 0 && (

@@ -28,4 +28,9 @@ describe("AnnouncementsSheet — loading vs empty (U3)", () => {
     expect(screen.queryByText("Loading…")).toBeNull();
     expect(screen.queryByText("No announcements yet")).toBeNull();
   });
+
+  it("sheet close × is labeled for screen readers (U6)", () => {
+    wrap(<AnnouncementsSheet list={[]} onClose={() => {}} />);
+    expect(screen.getByLabelText("Close")).toBeTruthy();
+  });
 });
