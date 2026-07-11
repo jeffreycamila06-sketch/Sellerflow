@@ -2130,3 +2130,70 @@ seller's language immediately.
   structural review (requireAuth→requireAdmin→403) + client-403 test (server.js
   convention). `is_admin` RPC verified: SECURITY DEFINER, authenticated-EXECUTE,
   returns boolean.
+
+## SESSION 2026-07-11 (part 2) — BROADCAST AUTO-TRANSLATE ✅ SHIPPED + LIVE + docs/env closeout
+Ang auto-translated multilingual broadcasts (session part 1 sa itaas) ay **MERGED,
+DEPLOYED, at VERIFIED LIVE sa production (2026-07-11)**. Kasama rito ang JSON-fix +
+env-var inventory + key rotations.
+
+### 1. Feature (LIVE) — one type, 7 languages
+- Admin Broadcast composer = **isang textbox**. Sa Send, tumatawag ang server ng
+  Anthropic API (`claude-haiku-4-5`) **ONCE** → isinasalin sa lahat ng 7 langs sa
+  isang call. Bawat seller nakikita ang broadcast sa **sariling wika** (per language
+  setting) — hindi mahaba/hindi mixed sa seller side.
+- **Composer flow:** textbox → **Translate & preview** → 7-lang preview → **Confirm
+  send** / **Edit** (text intact) / **Send English only** (honest fallback kung fail
+  ang translate — never partial/silent).
+- **DB:** `announcements.message_i18n jsonb` (keyed sa 7 canonical codes:
+  `en, fil, zh, zh-TW, vi, th, id`), additive nullable; existing `message` column
+  preserved (backward compat — legacy plain-text broadcasts render as-is). RLS
+  column-agnostic (existing policies cover it, walang bagong policy).
+- **Seller pick:** `pickAnnMessage` = `message_i18n[userLang] → en → legacy message`;
+  reactive sa language switch (via `useLang()` / `i18n/langContext.ts`); **zero-poll
+  intact** (translation = **send-time only**, hindi read-time — SAME static rows ang
+  dumarating on read).
+- **Branches/SHAs:** feature = `claude/broadcast-autotranslate` (merge `0603ada`);
+  delete-button precursor = `claude/announcement-delete` (merge `b4024a2`); JSON-fix =
+  `claude/broadcast-translate-json-fix` (merge **`6a4f6f6`**).
+
+### 2. ⚠️ JSON-truncation fix (root cause — TRUNCATION, hindi parsing)
+Live prod test = **"Couldn't translate (no_json_in_response)"**. Root cause:
+`max_tokens` = **2000**, kulang para sa **7 versions ng mahabang message** (Thai/CJK
+= token-heavy). Na-truncate ang JSON mid-string → walang closing `}` → walang
+ma-extract → `no_json_in_response`. (Ang preamble/```json fences ay TOLERATED NA ng
+first-`{`/last-`}` extraction — hindi sila ang trigger; TRUNCATION ang totoong sanhi.)
+- **Fix (`6a4f6f6`, parsing/prompt lang):** `max_tokens` 2000→**4096**
+  (`TRANSLATE_MAX_TOKENS`; bayad lang sa generated tokens, kaya libre sa maikli) ·
+  truncation-detect (`stop_reason === "max_tokens"` → clear error `"truncated"`) ·
+  robust parse (strip markdown fence bago ang `{…}` extract) · prompt hardening
+  ("Start with `{` end with `}`, no preamble/fences" + exact keys).
+- **Server-side raw logging on parse-fail:** `[BROADCAST_TRANSLATE] FAIL error=… raw=…`
+  (≤800 chars, **Render console ONLY, never client**) — para ma-debug kung maulit.
+
+### 3. ⚠️ OPERATIONAL — BROADCAST TRANSLATE = MANUAL RENDER DEPLOY
+- Ang translation logic ay nasa **`server.js` / `server/broadcastTranslate.js`**
+  (Render = MANUAL deploy). Anumang future change dito = **"Deploy latest commit"**
+  sa Render dashboard bago mabuhay.
+- **Bagong env var: `ANTHROPIC_API_KEY`** (nasa Render env na). Kung mawala/mag-rotate
+  → endpoint ay **honest error** (`translation_not_configured`), hindi silent fail.
+- **Cost:** ~NT$0.50–1 kada broadcast (`claude-haiku-4-5`, 1 call per send, bayad lang
+  sa generated tokens).
+
+### 4. ENV-VAR INVENTORY (exhaustive code sweep — doc reference)
+- **SERVER (Render) reads:** `ANTHROPIC_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`,
+  `EULER_API_KEY`, `TEST_COMMENT_TOKEN`, `CLIENT_ORIGIN`, `PORT`, `RENDER_EXTERNAL_URL`.
+- **CLIENT (Vercel, `VITE_*`) reads:** `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`,
+  `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_SERVER_URL`, `VITE_OWNER_EMAIL`,
+  `VITE_PUBLIC_POSTHOG_KEY`/`_HOST`, `VITE_DEBUG_SOCKET`, `DEV`.
+- **KEY FACT:** request auth = **100% Supabase JWT** (`sb.auth.getUser(token)`) sa HTTP
+  `Bearer` + socket handshake `auth.token`. **WALANG custom shared secret** na
+  nagba-gate ng auth. Vite inlines **`VITE_`-prefixed lang** sa client bundle (kaya
+  imposibleng may client copy ng isang non-`VITE_` server var).
+
+### 5. KEY ROTATIONS (2026-07-11 — na-expose sa screenshot)
+- **`EULER_API_KEY`: ROTATED** — lumang key **REVOKED** sa EulerStream dashboard,
+  bagong key sa Render env, deployed. (Rotation = Render-only; sockets auto-reconnect
+  sa restart — gawin sa low-traffic window.)
+- **`SF_SERVER_SECRET`: DELETED sa Render** — **WALANG code na bumabasa nito**
+  (confirmed via exhaustive sweep + git history: zero refs, walang `VITE_` counterpart,
+  hindi bahagi ng Supabase-JWT auth). Safe na tinanggal, **zero impact**.
