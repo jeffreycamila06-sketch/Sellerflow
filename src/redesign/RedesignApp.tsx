@@ -442,28 +442,12 @@ export default function RedesignApp() {
   const ttConnected = liveFeed.ttConnected;
   const fbConnected = liveFeed.fbConnected;
   const [connectOpen, setConnectOpen] = useState<Platform | null>(null);
-  // ConnectModal action: real connect → on success register the account on the
-  // profile (same as App.tsx connectPlatform) + reload so it appears in the picker.
-  const handleConnect = async (platform: Platform, data: Record<string, string>) => {
-    const r = await liveFeed.connect(platform, data);
-    if (r.ok && auth.profile) {
-      const np = appendAccount(auth.profile, platform, r.account);
-      if (np) { try { await upsertUser(np); await auth.reloadProfile(); } catch { /* non-fatal */ } }
-    }
-    return r;
-  };
-  // Pick the active account — SELECT ONLY. Tapping a row just moves the checkmark
-  // (setTtIdx/setFbIdx) and updates comment scoping (liveSelected derives from the idx);
-  // it does NOT close the dropdown and does NOT connect. Connect is the sole action that
-  // connects + closes (doConnect). No connect.ts/useLiveFeed change — selection state only.
-  const switchAccount = (platform: Platform, i: number) => {
-    if (platform === "TikTok") setTtIdx(i); else setFbIdx(i);
-  };
   // Surface B — chip 3-state connect (neutral → connecting → connected → Disconnect).
   // `connected` is server truth (liveFeed.tt/fbConnected). We add a LOCAL connecting
   // flag for the in-flight POST and a LOCAL disconnect gesture (the redesign has no
   // server unbind), cleared whenever the server pushes a fresh platform_status. The
-  // real connect path (liveFeed.connect / ConnectModal) is unchanged.
+  // real connect path (liveFeed.connect / ConnectModal) is unchanged. (Declared
+  // ABOVE handleConnect — both connect doors clear the off-latch on success.)
   const [ttConnecting, setTtConnecting] = useState(false);
   const [fbConnecting, setFbConnecting] = useState(false);
   const [ttOff, setTtOff] = useState(false);
@@ -474,6 +458,32 @@ export default function RedesignApp() {
   /* eslint-enable react-hooks/set-state-in-effect */
   const ttEff = ttConnected && !ttOff;
   const fbEff = fbConnected && !fbOff;
+  // ConnectModal action: real connect → on success register the account on the
+  // profile (same as App.tsx connectPlatform) + reload so it appears in the picker.
+  const handleConnect = async (platform: Platform, data: Record<string, string>) => {
+    const r = await liveFeed.connect(platform, data);
+    if (r.ok && auth.profile) {
+      const np = appendAccount(auth.profile, platform, r.account);
+      if (np) { try { await upsertUser(np); await auth.reloadProfile(); } catch { /* non-fatal */ } }
+    }
+    // OFF-LATCH FIX (Jeff repro, 2026-07-12) — the ConnectModal path is the
+    // SECOND door into connected state (doConnect early-returns here when no
+    // account is registered): a connect SUCCESS voids any prior local
+    // Disconnect gesture, or the pill stays gray forever (ttOff's only other
+    // clear is a ttConnected TRANSITION, which never comes while some
+    // connection stays alive server-side). Success-only — a FAILED connect
+    // must NOT clear the latch (ttConnected is still true from the old
+    // account, so an attempt-time clear would flash a mislabeled green).
+    if (r.ok) (platform === "TikTok" ? setTtOff : setFbOff)(false);
+    return r;
+  };
+  // Pick the active account — SELECT ONLY. Tapping a row just moves the checkmark
+  // (setTtIdx/setFbIdx) and updates comment scoping (liveSelected derives from the idx);
+  // it does NOT close the dropdown and does NOT connect. Connect is the sole action that
+  // connects + closes (doConnect). No connect.ts/useLiveFeed change — selection state only.
+  const switchAccount = (platform: Platform, i: number) => {
+    if (platform === "TikTok") setTtIdx(i); else setFbIdx(i);
+  };
   const doConnect = async (platform: Platform) => {
     const eff = platform === "TikTok" ? ttEff : fbEff;
     const setOff = platform === "TikTok" ? setTtOff : setFbOff;
@@ -493,6 +503,19 @@ export default function RedesignApp() {
       // before the early returns below. reason: not-live → "not_live"; else the real error.
       if (r.ok) track("connect_success", { platform });
       else track("connect_failed", { platform, reason: r.notLive ? "not_live" : (r.error || "unknown") });
+      // OFF-LATCH FIX (Jeff repro, 2026-07-12 — deterministic permanent gray on
+      // Disconnect → switch account → Connect): a connect SUCCESS voids the
+      // prior local Disconnect gesture. Without this, ttOff stays latched —
+      // its only other clear is the ttConnected-TRANSITION effect below, and
+      // ttConnected never transitions while any connection stays alive
+      // server-side (the local Disconnect has no server unbind) → ttEff stays
+      // false → pill gray forever while comments flow. SUCCESS-ONLY on
+      // purpose: on a FAILED connect ttConnected is still true from the OLD
+      // account, so an attempt-time clear would turn the pill green under the
+      // NEWLY SELECTED account's name — a mislabeled green (worse than gray).
+      // Background recoveries (health cycle / join snapshot) deliberately do
+      // NOT clear the latch — no green without a fresh user tap.
+      if (r.ok) setOff(false);
       // iOS: an expired plan (server 403 "plan_expired") shows a NEUTRAL "plan inactive"
       // popup → Contact Support, NOT a payment-tinged toast. Android/web keep the toast.
       if (ios && !r.ok && (r.error || "").includes("plan_expired")) { setIosExpired(true); return; }
