@@ -4044,6 +4044,11 @@ export default function App(){
     s.on("connect_error",(err:Error)=>{if(DEBUG_SOCKET)console.warn("[SellerFlowLive] socket connect_error",{server:SERVER,message:err.message});});
     joinRoom();
     s.on("comment", (d: Comment) => {
+      // Initial-history relay (redesign feature, audit F4): initial:true =
+      // TikTok's pre-connect buffer, meant for the redesign's DISPLAY-ONLY
+      // history lane. This rollback app has no such lane — drop them so
+      // minutes-old comments can never appear here as orderable rows.
+      if ((d as Comment & { initial?: unknown })?.initial === true) return;
       const incoming=normalizeComment(d);
       if(!incoming)return;
       if(incoming.sellerId&&incoming.sellerId!==sellerId)return;

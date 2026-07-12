@@ -35,7 +35,9 @@ export const curSymbol = (code: string): string => CURRENCIES[code] || "$";
 
 // platform is optional (additive, basket-count identity): comment→buyer matching
 // keys on handle+platform, the same composite the order logic uses.
-export interface Comment { id: string; name: string; handle: string; text: string; mine: boolean; time: string; platform?: string; }
+// restored (additive, initial-comments feature): true = display-only history
+// row (TikTok's pre-connect buffer) — muted, NO action row (dupe-safety layer 3).
+export interface Comment { id: string; name: string; handle: string; text: string; mine: boolean; time: string; platform?: string; restored?: boolean; }
 
 // (F-batch sweep: the INCOMING/SEED_COMMENTS sample streams are gone — the live
 // feed has been the real socket since 5d; nothing consumed them.)

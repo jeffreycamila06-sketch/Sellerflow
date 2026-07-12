@@ -6,6 +6,7 @@ import { Server } from "socket.io";
 import { createClient } from "@supabase/supabase-js";
 import { translateBroadcast } from "./server/broadcastTranslate.js";
 import { shouldForceFreshConnect, LIVENESS_EVENTS } from "./server/connectionHealth.js";
+import { buildInitialCommentPayloads } from "./server/initialComments.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -777,11 +778,28 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
 
   const cleanUsername = cleanAccountKey(username);
   const tiktokConnection = new WebcastPushConnection(cleanUsername, {
-    processInitialData: false,
+    // Approach A (FLive parity) — decode TikTok's buffered "last minutes"
+    // messages from the signed-websocket fetch (they were previously discarded;
+    // enabling this costs ZERO extra requests). They are captured by the
+    // temporary collector below and relayed DISPLAY-ONLY (initial:true).
+    processInitialData: true,
     fetchRoomInfoOnConnect: true,
     signApiKey: process.env.EULER_API_KEY,
   });
-  const state = await tiktokConnection.connect();
+  // ⚠️ Initial-batch boundary (structural, not a timing heuristic): the library
+  // processes the initial buffer INSIDE connect(), BEFORE the websocket is even
+  // created — so every "chat" that fires before connect() resolves is history
+  // BY CONSTRUCTION. The live chat handler is attached AFTER connect() (below),
+  // exactly as before, so the live relay path is unchanged.
+  const initialChats = [];
+  const initialCollector = (data) => { initialChats.push(data); };
+  tiktokConnection.on("chat", initialCollector);
+  let state;
+  try {
+    state = await tiktokConnection.connect();
+  } finally {
+    tiktokConnection.off("chat", initialCollector);
+  }
   // Phase 1 — is-LIVE gate (FAIL-OPEN). Fixes "Connected but offline": only BLOCK
   // when roomInfo POSITIVELY reports not-live (roomInfo present + numeric status
   // !== 1; LIVE = status:1 confirmed by the Phase 0 probe). Any ambiguity
@@ -837,6 +855,33 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
       roomId: state?.roomId || "",
       timestamp: new Date().toISOString(),
     });
+  }
+
+  // Approach A — relay the collected initial batch (TikTok's recent room
+  // buffer) as DISPLAY-ONLY history: every payload carries initial:true +
+  // msgId; the client routes them BEFORE its Auto-Mode seam / order path and
+  // only shows them on a fresh open (empty feed). Same scoped relay as live
+  // comments (select_account gate applies). Dedup + shaping: server/initialComments.js.
+  if (initialChats.length) {
+    // Audit F3 — best-effort by contract: the connect is ALREADY successful and
+    // registered above, so a relay failure must never fail it (an uncaught
+    // throw here would emit a terminal status while the live connection stays
+    // in the map).
+    try {
+      const initialPayloads = buildInitialCommentPayloads(initialChats, {
+        sellerId,
+        sessionId,
+        sourceUsername: cleanUsername,
+        roomId: state?.roomId || "",
+        nowMs: now,
+      });
+      console.log(`[INITIAL] relaying ${initialPayloads.length}/${initialChats.length} buffered comments for ${cleanUsername} (${sellerId})`);
+      for (const payload of initialPayloads) {
+        void emitCommentScoped(sellerId, "TikTok", cleanUsername, payload);
+      }
+    } catch (err) {
+      console.warn(`[INITIAL] relay failed for ${cleanUsername} (connect unaffected):`, err?.message || err);
+    }
   }
 
   tiktokConnection.on("disconnected", () => handleTikTokDisconnected(key, tiktokConnection, "disconnected"));

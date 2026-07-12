@@ -29,6 +29,9 @@ import { cleanLiveAccount, connectPlatform, type Platform, type ConnectResult } 
 import { SERVER, sellerIdOf, browserSessionId } from "./serverIdentity";
 
 const LIVE_COMMENT_LIMIT = 5000;
+// Approach A (FLive parity) — cap for the DISPLAY-ONLY initial history block
+// (TikTok's pre-connect room buffer is typically ~5–20 chats; 100 is generous).
+const INITIAL_COMMENT_LIMIT = 100;
 // Fix B — max random delay before an auto re-POST of /connect after a socket drop /
 // server restart. 0–25s spread for fast recovery; the server-side MIN_GAP ≤6/min hard cap
 // is the actual storm guard, so a tighter window stays safe even with a fleet reconnect.
@@ -60,6 +63,13 @@ const dedup = (list: ProdComment[]): ProdComment[] => {
   const seen = new Set<string>();
   return list.filter((c) => { const k = commentKey(c); if (seen.has(k)) return false; seen.add(k); return true; });
 };
+
+// Approach A — identity key for the initial history block: TikTok's stable
+// per-message id (msgId, relayed by the server) when present, else a content
+// key. Display-only dedup — completely separate from commentKey (tangled zone
+// #1, untouched).
+export const initialKey = (c: ProdComment & { msgId?: string }): string =>
+  c.msgId ? `m:${c.msgId}` : `c:${c.platform}|${c.sourceUsername || ""}|${c.handle}|${c.comment}`;
 
 // production Comment → redesign Comment (Dashboard shape).
 export const toRedesignComment = (c: ProdComment): RDComment => ({
@@ -93,6 +103,11 @@ export interface ActiveAccounts { TikTok: string; Facebook: string }
 
 export interface UseLiveFeed {
   comments: RDComment[];
+  // Approach A — DISPLAY-ONLY history block (TikTok's pre-connect room buffer,
+  // relayed with initial:true). Never enters `feed`/`feedRef` → getComment
+  // can't resolve these ids → order creation structurally impossible; rendered
+  // as muted restored rows with zero action buttons.
+  initialComments: RDComment[];
   connected: boolean;
   canInject: boolean;
   injectSynthetic: (text?: string) => void;
@@ -114,6 +129,17 @@ export interface UseLiveFeed {
 
 export function useLiveFeed(enabled: boolean, email: string | undefined, onComment?: (c: ProdComment) => void, selected?: ActiveAccounts): UseLiveFeed {
   const [feed, setFeed] = useState<ProdComment[]>([]);
+  // Approach A — the display-only initial history block, SEPARATE from `feed`
+  // (never in feedRef, never through the Auto-Mode seam).
+  const [initialFeed, setInitialFeed] = useState<ProdComment[]>([]);
+  // The history block never carries across users (login/user switch): reset it
+  // when the subscription identity changes — the React-sanctioned
+  // adjust-during-render pattern ("Adjusting some state when a prop changes").
+  const [initialFor, setInitialFor] = useState(email);
+  if (initialFor !== email) {
+    setInitialFor(email);
+    setInitialFeed([]);
+  }
   const [connected, setConnected] = useState(false);
   // Auto Mode seam — held in a ref so a changing handler identity NEVER re-subscribes
   // the socket (the effect deps deliberately exclude onComment). Fired per ACCEPTED
@@ -175,6 +201,17 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     setFeed((prev) => dedup(sortNewest([c, ...prev])).slice(0, LIVE_COMMENT_LIMIT));
   }, []);
 
+  // Approach A — accept an initial (history) comment into the display-only
+  // block: dedup by msgId/content key (repeated connects on a quiet room must
+  // not double the block), newest-first, capped. Never touches feed/dedup.
+  const pushInitial = useCallback((c: ProdComment & { msgId?: string }) => {
+    setInitialFeed((prev) => {
+      const k = initialKey(c);
+      if (prev.some((p) => initialKey(p) === k)) return prev;
+      return sortNewest([c, ...prev]).slice(0, INITIAL_COMMENT_LIMIT);
+    });
+  }, []);
+
   useEffect(() => {
     if (!enabled || !email) return;
     const em = email; // narrowed to string for the closures below
@@ -182,7 +219,8 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     const sessionId = browserSessionId();
     // New socket subscription (mount or user/email change): the upcoming first connect
     // must be treated as first-connect, and connected-account tracking must not carry
-    // across users. (Effect deps are [enabled, email, pushComment]; pushComment is stable.)
+    // across users. (Effect deps are [enabled, email, pushComment, pushInitial]; both
+    // callbacks are stable.)
     hasConnectedSocketRef.current = false;
     connectedAcctsRef.current = { TikTok: "", Facebook: "" };
     // Fix B — on a RE-connect (socket dropped / server restart), restore the accounts THIS
@@ -283,6 +321,17 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
         const sel = cleanLiveAccount(selectedRef.current[c.platform === "Facebook" ? "Facebook" : "TikTok"]);
         if (sel && cleanLiveAccount(c.sourceUsername) !== sel) return;
       }
+      // ⚠️ Approach A — DISPLAY-ONLY early branch (BEFORE the Auto-Mode seam and
+      // pushComment): initial:true = TikTok's pre-connect room buffer, relayed by
+      // the server as history. These must NEVER create orders — they skip the
+      // seam and never enter feed/feedRef (getComment can't resolve them).
+      // EMPTY-FEED GUARD: only a fresh open (empty feed) shows the block — a
+      // health-cycle / forced-fresh reconnect mid-live would otherwise render
+      // recent comments twice (the live copies are already in the feed).
+      if ((c as ProdComment & { initial?: unknown }).initial === true) {
+        if (feedRef.current.length === 0) pushInitial(c);
+        return;
+      }
       // Auto Mode seam — fire on the ACCEPTED comment (after every filter above),
       // before pushComment. commentKey/dedup below are unchanged (tangled zone #1).
       try { onCommentRef.current?.(c); } catch (err) { console.warn("onComment handler failed", err); }
@@ -323,6 +372,7 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       if (e.sessionId && e.sessionId !== sessionId) return;
       cancelGray("TikTok"); cancelGray("Facebook"); // terminal — no pending grace needed
       setActiveAccounts({ TikTok: "", Facebook: "" }); setTtConnected(false); setFbConnected(false); setFeed([]);
+      setInitialFeed([]); // session over — the history block goes with it
     });
     return () => {
       reconnectTimersRef.current.forEach(clearTimeout);
@@ -331,7 +381,7 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       socketRef.current = null;
       s.disconnect();
     };
-  }, [enabled, email, pushComment]);
+  }, [enabled, email, pushComment, pushInitial]);
 
   // Account-leak fix — when the user changes the dropdown selection mid-session,
   // push it to the server so the per-socket gate updates immediately (no reconnect).
@@ -353,6 +403,11 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     if (r.ok) {
       connectedAcctsRef.current = { ...connectedAcctsRef.current, [platform]: r.account }; // Fix B — track for auto-restore
       setFeed([]);
+      // Audit F2 — the previous account's history block must not survive a
+      // connect/account switch (the arrival-time selection filter passed for
+      // the OLD account; nothing re-filters at render). The new connect's own
+      // initial batch (if any) repopulates the block.
+      setInitialFeed([]);
       setActiveAccounts((a) => ({ ...a, [platform]: r.account }));
     }
     return r;
@@ -404,5 +459,8 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   // Regression: feedComments.memo.test. The feed pipeline itself (commentKey /
   // dedup / sortNewest — tangled zone #1) is untouched.
   const comments = useMemo(() => feed.map(toRedesignComment), [feed]);
-  return { comments, connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, ttRecovering, fbRecovering, connect, markDisconnected };
+  // Approach A — history block mapped with restored:true so the Dashboard's
+  // muted zero-action display branch handles it (duplicate-order layer 3).
+  const initialComments = useMemo(() => initialFeed.map((c) => ({ ...toRedesignComment(c), restored: true })), [initialFeed]);
+  return { comments, initialComments, connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, ttRecovering, fbRecovering, connect, markDisconnected };
 }
