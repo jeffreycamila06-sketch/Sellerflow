@@ -142,6 +142,37 @@ describe("dedup + lifecycle", () => {
     expect(result.current.initialComments.length).toBe(1); // NOT wiped by the connect-ok handler
   });
 
+  it("EXITPATH (live Test 3 repro): page-alive return — batch arrives while the OLD feed is populated + connect in flight → BUFFERED, then flushed after the connect-ok feed clear", async () => {
+    let resolveConnect!: (v: { ok: boolean; account: string }) => void;
+    const { result } = renderHook(() => useLiveFeed(true, "s@x.com"));
+    fire("comment", wire(50));                                       // pre-exit live feed still in memory
+    expect(result.current.comments.length).toBe(1);
+    connectPlatformMock.mockReturnValueOnce(new Promise((res) => { resolveConnect = res; }));
+    let pending!: Promise<unknown>;
+    act(() => { pending = result.current.connect("TikTok", { username: "shop_b" }); });
+    fire("comment", initial(1));                                     // ring re-emit lands mid-POST, feed NOT empty
+    expect(result.current.initialComments.length).toBe(0);          // held in the buffer, not dropped
+    await act(async () => { resolveConnect({ ok: true, account: "shop_b" }); await pending; });
+    expect(result.current.comments.length).toBe(0);                  // connect-ok cleared the old feed…
+    expect(result.current.initialComments.length).toBe(1);           // …and the history block appears
+    expect(result.current.initialComments[0].handle).toBe("@buyer1");
+  });
+
+  it("EXITPATH: a FAILED connect discards the buffered batch (old feed keeps showing — no double display)", async () => {
+    let rejectConnect!: (v: { ok: boolean; error: string; account: string }) => void;
+    const { result } = renderHook(() => useLiveFeed(true, "s@x.com"));
+    fire("comment", wire(50));
+    connectPlatformMock.mockReturnValueOnce(new Promise((res) => { rejectConnect = res; }));
+    let pending!: Promise<unknown>;
+    act(() => { pending = result.current.connect("TikTok", { username: "shop_b" }); });
+    fire("comment", initial(1));
+    await act(async () => { rejectConnect({ ok: false, error: "not_live", account: "" }); await pending; });
+    expect(result.current.comments.length).toBe(1);                  // old feed intact
+    expect(result.current.initialComments.length).toBe(0);           // buffer discarded
+    fire("comment", initial(2));                                     // late arrival, no connect in flight
+    expect(result.current.initialComments.length).toBe(0);           // plain guard drop — unchanged semantics
+  });
+
   it("F2 (audit): a successful connect/account switch CLEARS the old history block (no cross-account leak)", async () => {
     const { result } = renderHook(() => useLiveFeed(true, "s@x.com"));
     fire("comment", initial(1, { sourceUsername: "shop_a" }));       // account A's history accepted
