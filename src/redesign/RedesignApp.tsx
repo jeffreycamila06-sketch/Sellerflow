@@ -56,6 +56,7 @@ import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/
 import { btCall, hasBtBridge, buildTestStickerPayload, buildTestBuyer, type StickerPrintResult } from "./adapters/printerBridge";
 import { registeredAccountsFor, appendAccount, maxAcc, composeChannelSave, type Platform } from "./adapters/connect";
 import { useConnectToastGate } from "./adapters/connectToastGate";
+import { useWakeLock, shouldHoldWakeLock } from "./adapters/useWakeLock";
 import type { Buyer, Comment as ProdComment } from "../lib/orderTypes";
 import CapPopup from "./screens/CapPopup";
 import ConnectModal from "./screens/ConnectModal";
@@ -80,7 +81,7 @@ type Screen =
 const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels"];
 
 
-const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set", automode: "sfl_rd_automode", pp: "sfl_rd_pp", printer: "sfl_rd_printer" } as const;
+const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set", automode: "sfl_rd_automode", pp: "sfl_rd_pp", printer: "sfl_rd_printer", keepAwake: "sfl_rd_keepawake" } as const;
 const readLS = (k: string, fallback: string): string => {
   try { return localStorage.getItem(k) || fallback; } catch { return fallback; }
 };
@@ -485,6 +486,25 @@ export default function RedesignApp() {
   /* eslint-enable react-hooks/set-state-in-effect */
   const ttEff = ttConnected && !ttOff;
   const fbEff = fbConnected && !fbOff;
+  // KEEP-AWAKE habang naka-live (FLive/Chotdon parity) — web Screen Wake Lock,
+  // held while GREEN or AMBER (kasama ang connecting/recovering — ang 60s grace
+  // ay karaniwang bumabalik sa green; ang natutulog na phone mid-heal ay
+  // pumapatay sa recovery), released on honest GRAY. Toggle sa GeneralSettings
+  // (default ON, sfl_rd_keepawake). iOS <16.4 = graceful no-op (feature-detect
+  // sa hook). Client-side ang order capture — sleeping phone = nawawalang mines.
+  const [keepAwake, setKeepAwake] = useState<boolean>(() => readLS(LS.keepAwake, "1") !== "0");
+  const toggleKeepAwake = () => {
+    setKeepAwake((v) => {
+      const next = !v;
+      try { localStorage.setItem(LS.keepAwake, next ? "1" : "0"); } catch { /* ignore */ }
+      return next;
+    });
+  };
+  useWakeLock(shouldHoldWakeLock(keepAwake, {
+    ttEff, fbEff,
+    ttConnecting, fbConnecting,
+    ttRecovering: liveFeed.ttRecovering, fbRecovering: liveFeed.fbRecovering,
+  }));
   const doConnect = async (platform: Platform) => {
     const eff = platform === "TikTok" ? ttEff : fbEff;
     const setOff = platform === "TikTok" ? setTtOff : setFbOff;
@@ -841,6 +861,7 @@ export default function RedesignApp() {
               onSubscription={() => setScreen("subscription")}
               onSupport={() => setScreen("support")}
               onDelete={() => setScreen("delete")}
+              keepAwake={keepAwake} onToggleKeepAwake={toggleKeepAwake}
             />
           )}
           {(screen === "ttchannels" || screen === "fbchannels") && (

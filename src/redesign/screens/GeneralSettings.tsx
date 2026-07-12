@@ -27,6 +27,7 @@ export default function GeneralSettings({
   printerIdx, printerOpen, onTogglePrinter, onPickPrinter, onPrintPattern,
   onSubscription, onSupport, onDelete,
   account = null, onSaveProfile, onManageChannel, onAutoCodesSaved,
+  keepAwake = true, onToggleKeepAwake,
 }: {
   theme: ThemeMode; accent: AccentKey; onSetTheme: (t: ThemeMode) => void; onSetAccent: (a: AccentKey) => void;
   auto: AutoControls; cur: string;
@@ -43,6 +44,9 @@ export default function GeneralSettings({
   // 5b — after a successful Save, hand the persisted code map + stock up so the live
   // matcher applies it immediately (no reload).
   onAutoCodesSaved?: (codes: AutoCode[], stock: Map<number, number>) => void;
+  // Keep-awake habang naka-live (web Screen Wake Lock) — display toggle only;
+  // the lock lifecycle lives in RedesignApp (useWakeLock on green/amber).
+  keepAwake?: boolean; onToggleKeepAwake?: () => void;
 }) {
   const t = useT();
   const ac = useAutoCodes(true, onAutoCodesSaved); // Auto Mode: real code→product→inventory map (read-on-load)
@@ -180,6 +184,19 @@ export default function GeneralSettings({
               <button onClick={auto.toggle} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }}>
                 <span style={{ width: 44, height: 26, borderRadius: 13, background: autoTrack, position: "relative", display: "block", transition: "background .15s" }}>
                   <span style={{ position: "absolute", top: 3, left: autoKnobLg, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
+                </span>
+              </button>
+            </div>
+            {/* KEEP-AWAKE toggle — same pill pattern as Auto Mode above. Display
+                only; RedesignApp owns the wake-lock lifecycle (green/amber hold). */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+              <span style={{ flex: 1 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_keepawake}</span>
+                <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{t.rd_set_keepawake_desc}</span>
+              </span>
+              <button onClick={onToggleKeepAwake} title={t.rd_set_keepawake} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }}>
+                <span style={{ width: 44, height: 26, borderRadius: 13, background: keepAwake ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s" }}>
+                  <span style={{ position: "absolute", top: 3, left: keepAwake ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
                 </span>
               </button>
             </div>
