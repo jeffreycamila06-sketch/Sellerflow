@@ -39,7 +39,7 @@ export const curSymbol = (code: string): string => CURRENCIES[code] || "$";
 // TikTok's pre-connect buffer. Orderable since sql/18: msgId = the stable
 // per-message id (ordered-check identity), ordered = an order for this exact
 // message already exists in the loaded window ("Ordered ✓", no buttons).
-export interface Comment { id: string; name: string; handle: string; text: string; mine: boolean; time: string; platform?: string; restored?: boolean; msgId?: string; ordered?: boolean; }
+export interface Comment { id: string; name: string; handle: string; text: string; mine: boolean; time: string; platform?: string; restored?: boolean; msgId?: string; ordered?: boolean; avatar?: string; }
 
 // (F-batch sweep: the INCOMING/SEED_COMMENTS sample streams are gone — the live
 // feed has been the real socket since 5d; nothing consumed them.)

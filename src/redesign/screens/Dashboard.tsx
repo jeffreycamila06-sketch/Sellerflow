@@ -24,6 +24,36 @@ const ddMeta: CSSProperties = { display: "block", fontSize: 10.5, color: "var(--
 const ddCheck: CSSProperties = { color: "var(--accent-fg)", fontWeight: 800, fontSize: 13, width: 12, flexShrink: 0 };
 const bolt = <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4.5 13.5H11l-1 8.5 9-12h-6.5L13 2Z" /></svg>;
 
+// Commenter profile picture (FLive/Chotdon parity) — DISPLAY-ONLY. The colored
+// initials circle is ALWAYS rendered as the base layer; when the relay payload
+// carries an avatar URL (TikTok CDN 100x100 webp, signed/expiring), the <img>
+// overlays it once loaded. ZERO layout shift/flicker by construction: the
+// wrapper is a fixed 34px in every state (loading shows initials, error hides
+// the img → initials again). URLs are never stored anywhere (expiring, display
+// only); referrerPolicy avoids CDN hotlink referer quirks; lazy keeps a fast
+// feed cheap. Module-level component — a stable identity so Dashboard renders
+// never remount rows (a remount would refetch every visible avatar).
+function CommentAvatar({ name, avatar }: { name: string; avatar?: string }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <div style={{ position: "relative", width: 34, height: 34, borderRadius: "50%", background: avColor(name), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: "#fff", flexShrink: 0 }}>
+      {initials(name)}
+      {!!avatar && !failed && (
+        <img
+          src={avatar}
+          alt=""
+          width={34}
+          height={34}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+          style={{ position: "absolute", top: 0, left: 0, width: 34, height: 34, borderRadius: "50%", objectFit: "cover" }}
+        />
+      )}
+    </div>
+  );
+}
+
 // Audit #2b — feed WINDOWING: only the newest N comment rows are mounted in the
 // DOM (comments arrive newest-first). The full feed (up to 5,000) stays in
 // state/refs for order capture + dedup — this caps DOM size (~15 nodes/row) and
@@ -424,7 +454,7 @@ export default function Dashboard({
                 </div>
               )}
               <div className="sfl-comm-row" style={{ display: "flex", gap: 10, padding: "9px 8px", borderRadius: 11, ...(isRestored && !rowActionable && !orderedPrior ? { opacity: 0.62 } : null) }}>
-                <div style={{ width: 34, height: 34, borderRadius: "50%", background: avColor(c.name), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{initials(c.name)}</div>
+                <CommentAvatar name={c.name} avatar={c.avatar} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
                     <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{c.name}</span>
