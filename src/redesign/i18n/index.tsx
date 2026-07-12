@@ -581,6 +581,7 @@ const RAW: Record<string, Row> = {
   rd_dash_printed: { en: "Printed", fil: "Na-print", zh: "已打印", "zh-TW": "已列印", vi: "Đã in", th: "พิมพ์แล้ว", id: "Tercetak" },
   rd_dash_basket_tip: { en: "Orders this session", fil: "Mga order ngayong session", zh: "本场订单数", "zh-TW": "本場訂單數", vi: "Đơn trong phiên này", th: "ออเดอร์ในเซสชันนี้", id: "Pesanan sesi ini" },
   rd_dash_restored_note: { en: "— Earlier comments —", fil: "— Mga naunang komento —", zh: "— 之前的留言 —", "zh-TW": "— 之前的留言 —", vi: "— Bình luận trước đó —", th: "— ความคิดเห็นก่อนหน้า —", id: "— Komentar sebelumnya —" },
+  rd_dash_ordered_prior: { en: "Ordered ✓", fil: "Na-order na ✓", zh: "已下单 ✓", "zh-TW": "已下單 ✓", vi: "Đã đặt ✓", th: "สั่งแล้ว ✓", id: "Sudah dipesan ✓" },
   rd_dash_type_price: { en: "Type price, Enter to print", fil: "I-type ang presyo, Enter para i-print", zh: "输入价格，按 Enter 打印", "zh-TW": "輸入價格，按 Enter 列印", vi: "Nhập giá, Enter để in", th: "พิมพ์ราคา กด Enter เพื่อพิมพ์", id: "Ketik harga, Enter untuk cetak" },
   rd_dash_ent_title: { en: "Enterprise — type a price, then Enter to auto-print", fil: "Enterprise — mag-type ng presyo, tapos Enter para auto-print", zh: "Enterprise——输入价格后按 Enter 自动打印", "zh-TW": "Enterprise——輸入價格後按 Enter 自動列印", vi: "Enterprise — nhập giá rồi Enter để tự in", th: "Enterprise — พิมพ์ราคาแล้วกด Enter เพื่อพิมพ์อัตโนมัติ", id: "Enterprise — ketik harga, lalu Enter untuk cetak otomatis" },
   rd_dash_enterprise: { en: "Enterprise", fil: "Enterprise", zh: "Enterprise", "zh-TW": "Enterprise", vi: "Enterprise", th: "Enterprise", id: "Enterprise" },

@@ -34,6 +34,10 @@ export function orderDbPayload(c: ProdComment, order: LiveOrder) {
 }
 
 export function liveSessionPayload(c: ProdComment, order: LiveOrder, sessionDate: string) {
+  // Orderable earlier-comments (sql/18): store the source comment's TikTok
+  // msgId so a later restored copy of the same message renders "Ordered ✓".
+  // E3 hygiene: empty → undefined → NULL in the row (never a matchable "").
+  const msgId = String((c as ProdComment & { msgId?: string }).msgId || "").trim();
   return {
     buyer_number: order.bNum,
     handle: c.handle,
@@ -42,6 +46,7 @@ export function liveSessionPayload(c: ProdComment, order: LiveOrder, sessionDate
     product: order.item,
     price: order.price,
     session_date: sessionDate,
+    comment_msg_id: msgId || undefined,
   };
 }
 

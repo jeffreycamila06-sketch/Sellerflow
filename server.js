@@ -948,6 +948,10 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
       isBuy: false,
       buyerNum: null,
       buyerData: null,
+      // Orderable earlier-comments (sql/18): the client stores this on the order
+      // row so a later restored copy of the same message can render "Ordered ✓".
+      // Legacy top-level shape (see server/initialComments.js msgIdOf).
+      msgId: String(data.msgId || ""),
       time: new Date().toLocaleTimeString("en-US", { timeZone: "Asia/Taipei" }),
       timestamp: new Date().toISOString(),
     };
@@ -957,7 +961,7 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
     const activeEntry = tiktokConnections.get(key);
     if (activeEntry && activeEntry.connection === tiktokConnection) {
       if (!activeEntry.recentComments) activeEntry.recentComments = [];
-      pushRecent(activeEntry.recentComments, { ...payload, msgId: String(data.msgId || "") });
+      pushRecent(activeEntry.recentComments, { ...payload }); // payload carries msgId now
     }
   });
 

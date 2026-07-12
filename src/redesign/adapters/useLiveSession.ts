@@ -48,6 +48,14 @@ export interface UseLiveSession {
   getBuyers: () => Buyer[];
   applyOrder: (nextBuyers: Buyer[], order: LiveOrder) => void;
   reset: () => void; // step 5 — clear + reload (used when changing N opens a fresh window)
+  // Orderable earlier-comments (sql/18): msgIds of every order in the loaded
+  // window + in-session additions; orderedLoaded = the E1 gate (restored rows
+  // show buttons only after the load resolved — before that an already-ordered
+  // comment would look orderable). addOrderedMsgId is called after every
+  // successful createOrder so the Set stays complete between loads.
+  orderedMsgIds: Set<string>;
+  orderedLoaded: boolean;
+  addOrderedMsgId: (msgId?: string) => void;
 }
 
 // Multi-day window options (from useSessionWindow). When omitted → pure 5c
@@ -56,10 +64,31 @@ export interface UseLiveSession {
 // byte-identical; active multi-day day≥2 → window range).
 export interface LiveSessionWindowOpts { ready: boolean; windowDays: number; windowStart: string | null }
 
+// Orderable earlier-comments (sql/18) — PURE: the ordered-check Set from raw
+// window rows. E3 hygiene: empty/null msgIds NEVER enter the set (an order
+// without a msgId must never match a comment without a msgId — that would mark
+// whole classes falsely "Ordered ✓"). Rows are read as an adapter-side extended
+// shape; LiveSessionRow / rebuildSessionFromRows (lib) stay untouched.
+export function buildOrderedMsgIds(rows: unknown[]): Set<string> {
+  const set = new Set<string>();
+  for (const r of rows as Array<{ comment_msg_id?: string | null }>) {
+    const m = String(r?.comment_msg_id || "").trim();
+    if (m) set.add(m);
+  }
+  return set;
+}
+
 export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): UseLiveSession {
   const [session, setSession] = useState<RebuiltSession>(EMPTY);
   const [state, setState] = useState<SessionState>("idle");
   const [loadError, setLoadError] = useState(false); // Batch D #8 — see UseLiveSession
+  // Orderable earlier-comments: msgIds of every order in the loaded window +
+  // in-session additions. orderedLoaded = the E1 gate — restored rows may show
+  // order buttons ONLY after the window load has RESOLVED (before that, the Set
+  // is empty and an already-ordered comment would look orderable → duplicate
+  // window). A failed load keeps the gate CLOSED (safe direction: display-only).
+  const [orderedMsgIds, setOrderedMsgIds] = useState<Set<string>>(new Set());
+  const [orderedLoaded, setOrderedLoaded] = useState(false);
   // Keep the latest session readable inside the effect WITHOUT making it a dep —
   // this is the hydrate-on-empty guard (read current, don't re-run on change).
   const sessionRef = useRef(session);
@@ -95,6 +124,11 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
         // because "empty" on a broken connection is the duplicate-buyer# trap
         // (a second device would happily resell from #1).
         if (rows === null) { setState("empty"); setLoadError(true); return; }
+        // Orderable earlier-comments — the ordered-check Set is built from the
+        // LOAD RESULT regardless of the hydrate decision below (audit note c):
+        // hydrate-on-empty is a display concern; the Set is a safety concern.
+        setOrderedMsgIds(buildOrderedMsgIds(rows));
+        setOrderedLoaded(true); // E1 gate opens only on a RESOLVED load
         const rebuilt = rebuildSessionFromRows(rows); // UNCHANGED — handles multi-day rows
         if (rebuilt.orders.length) { setSession(rebuilt); setState("live"); }
         else setState("empty");
@@ -114,7 +148,22 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
   }, []);
   // step 5 — clear local session + force the load effect to re-run (fresh window
   // after changing N). The hydrate-on-empty guard passes (now empty) → reload.
-  const reset = useCallback(() => { setSession(EMPTY); setReloadKey((k) => k + 1); }, []);
+  // The ordered-check Set clears with it (the reload rebuilds it for the new window).
+  const reset = useCallback(() => { setSession(EMPTY); setOrderedMsgIds(new Set()); setReloadKey((k) => k + 1); }, []);
+
+  // Orderable earlier-comments — in-session addition after every successful
+  // createOrder (belt-and-braces beside the printed map: keeps the Set complete
+  // between loads on THIS device). E3: empty msgIds never enter.
+  const addOrderedMsgId = useCallback((msgId?: string) => {
+    const m = String(msgId || "").trim();
+    if (!m) return;
+    setOrderedMsgIds((prev) => {
+      if (prev.has(m)) return prev;
+      const next = new Set(prev);
+      next.add(m);
+      return next;
+    });
+  }, []);
 
   // Window-aware LIVE reset on Taipei day rollover. dayId now advances while the
   // app is open (useTaipeiDayId — focus/visibility + midnight timeout, no poll), so
@@ -132,5 +181,5 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
     if (shouldResetOnDayChange(prev, dayId, winStart, winDays)) reset();
   }, [dayId, winStart, winDays, reset]);
 
-  return { session, state, loadError, dayId, getBuyers, applyOrder, reset };
+  return { session, state, loadError, dayId, getBuyers, applyOrder, reset, orderedMsgIds, orderedLoaded, addOrderedMsgId };
 }

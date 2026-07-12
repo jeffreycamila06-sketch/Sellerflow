@@ -59,6 +59,7 @@ export default function Dashboard({
   ttAccounts = [], fbAccounts = [],
   sessionDays, sessionOpen, onToggleSession, onPickSession,
   printed, entId, entPrice, onOneClick, onOpenEnt, onEntPrice, onEntKey,
+  historyReady = false,
   session = { buyers: [], orders: [] }, sessionState = "idle",
   canInject = false, onInjectSynthetic,
   announcement = null, annDismissedId = "", onDismissAnn, annUnread = false, onOpenAnn,
@@ -83,6 +84,10 @@ export default function Dashboard({
   ttAccounts?: string[]; fbAccounts?: string[];
   sessionDays: number; sessionOpen: boolean; onToggleSession: () => void; onPickSession: (n: number) => void;
   printed: Record<string, string>; entId: string | null; entPrice: string;
+  // Orderable earlier-comments (sql/18) — the E1 gate: history rows may show
+  // order buttons ONLY after the session-window load resolved (before that, an
+  // already-ordered comment would look orderable — the duplicate window).
+  historyReady?: boolean;
   onOneClick: (id: string) => void; onOpenEnt: (id: string) => void;
   onEntPrice: (v: string) => void; onEntKey: (e: React.KeyboardEvent<HTMLInputElement>) => void;
 }) {
@@ -325,18 +330,27 @@ export default function Dashboard({
             // every LIVE comment keeps its 1-Click / Enterprise buttons until it is
             // ordered. "printed" is only ever set by a real manual order → no comment
             // is ever silently marked done / left uncapturable.
-            // RESTORED rows (initial-comments feature) are DISPLAY-ONLY history from
-            // TikTok's pre-connect buffer: muted, NO action row of any kind —
-            // duplicate-order layer 3 (layers 1+2 = initial comments never enter the
-            // Auto-Mode seam or feedRef → getComment(id) === undefined). Test-pinned:
-            // a restored row renders ZERO <button> elements (Dashboard.restored.test).
+            // RESTORED rows (initial-comments feature) = history from TikTok's
+            // pre-connect buffer — ORDERABLE since sql/18 (Jeff's use case: a
+            // "mine" that landed while he was away must be orderable on return).
+            // Duplicate protection moved to the DB-backed ordered-check:
+            //   • orderedPrior (an order for this exact msgId exists in the
+            //     loaded window) → "Ordered ✓" chip, NO buttons;
+            //   • historyReady=false (window load not yet resolved — E1 gate)
+            //     → display-only (muted, no buttons) until the check is possible;
+            //   • otherwise → live action row (1-Click / Enterprise).
+            // Auto Mode still NEVER runs on history (structural — the initial
+            // branch precedes the seam in useLiveFeed). Test-pinned:
+            // Dashboard.restored.test.
             const isRestored = !!c.restored;
             const firstRestored = isRestored && (i === 0 || !visible[i - 1].restored);
+            const orderedPrior = isRestored && !!c.ordered;
+            const rowActionable = !isRestored || (historyReady && !orderedPrior);
             const manP = printed[c.id];
-            const isPrinted = !isRestored && !!manP;
+            const isPrinted = rowActionable && !!manP;
             const printedLabel = manP && manP !== "order" ? manP : "";
-            const entOpen = !isRestored && entId === c.id;
-            const showActions = !isRestored && !isPrinted && !entOpen;
+            const entOpen = rowActionable && entId === c.id;
+            const showActions = rowActionable && !isPrinted && !entOpen;
             // 🛒 basket count — this buyer's CREATED ORDERS in the current session
             // window (O(1) map lookup). 0 → no badge (keeps a busy feed clean).
             const basketN = basketCounts ? basketCountFor(basketCounts, c.handle, c.platform) : 0;
@@ -347,7 +361,7 @@ export default function Dashboard({
                   {t.rd_dash_restored_note}
                 </div>
               )}
-              <div className="sfl-comm-row" style={{ display: "flex", gap: 10, padding: "9px 8px", borderRadius: 11, ...(isRestored ? { opacity: 0.62 } : null) }}>
+              <div className="sfl-comm-row" style={{ display: "flex", gap: 10, padding: "9px 8px", borderRadius: 11, ...(isRestored && !rowActionable && !orderedPrior ? { opacity: 0.62 } : null) }}>
                 <div style={{ width: 34, height: 34, borderRadius: "50%", background: avColor(c.name), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{initials(c.name)}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
@@ -362,12 +376,12 @@ export default function Dashboard({
                     )}
                   </div>
                   {/* Order flow (dc.html v3 L210–227): printed badge · Enterprise
-                      price-entry · 1-Click /
-                      Enterprise actions. Restored rows keep ONLY the basket badge
-                      (session-derived, still meaningful on history) — no buttons,
-                      no printed/price UI. */}
-                  {(!isRestored || basketN > 0) && (
-                  <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 6, marginTop: 8, minHeight: isRestored ? 0 : 27 }}>
+                      price-entry · 1-Click / Enterprise actions. History rows show
+                      the full action row when actionable, the "Ordered ✓" chip when
+                      an order already exists, or just the basket badge while the
+                      ordered-check is not yet possible (E1 gate). */}
+                  {(rowActionable || orderedPrior || basketN > 0) && (
+                  <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 6, marginTop: 8, minHeight: rowActionable ? 27 : 0 }}>
                     {/* 🛒 badge — beside the Enterprise button (Jeff's requested spot);
                         shown in every row state (printed / price-entry / actions).
                         SIZE lives in .sfl-basket-badge (redesign.css), PLATFORM-scoped:
@@ -376,6 +390,9 @@ export default function Dashboard({
                         scoping as the iOS 16px input fix). */}
                     {basketN > 0 && (
                       <span className="sfl-basket-badge" title={t.rd_dash_basket_tip} style={{ display: "inline-flex", alignItems: "center", fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", borderRadius: 999, flexShrink: 0 }}>🛒{basketN}</span>
+                    )}
+                    {orderedPrior && (
+                      <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 800, letterSpacing: ".02em", color: "var(--text-dim)", background: "var(--surface-3)", padding: "5px 10px", borderRadius: 7 }}>{t.rd_dash_ordered_prior}</span>
                     )}
                     {isPrinted && (
                       <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 800, letterSpacing: ".02em", color: "var(--text-dim)", background: "var(--surface-3)", padding: "5px 10px", borderRadius: 7 }}>{printerIcon}{t.rd_dash_printed} {printedLabel}</span>

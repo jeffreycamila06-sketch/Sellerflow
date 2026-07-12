@@ -175,16 +175,20 @@ export default function RedesignApp() {
   // 4th arg = the user's account selection (comment scoping).
   const liveFeed = useLiveFeed(authed, auth.profile?.email, (c) => autoCommentRef.current(c), liveSelected);
   // Approach A (FLive parity) — TikTok's pre-connect room buffer renders as a
-  // muted display-only history block BELOW the live feed. initialComments ids
-  // are unresolvable by getComment (never in feedRef) → the 1-Click/Enterprise
-  // handlers hard-return for them; the Dashboard restored branch renders them
-  // with zero action buttons.
+  // history block BELOW the live feed. ORDERABLE since sql/18: each history row
+  // is stamped `ordered` when an order for that exact message (msgId) already
+  // exists in the loaded window — those render "Ordered ✓" with no buttons; the
+  // rest get live 1-Click/Enterprise buttons once the window load resolves
+  // (historyReady, the E1 gate — passed to the Dashboard below).
   // (optional-chained: test harnesses that mock useLiveFeed without the
   // additive initialComments field must degrade to live-only, not throw.)
-  const comments = useMemo(
-    () => (liveFeed.initialComments?.length ? [...liveFeed.comments, ...liveFeed.initialComments] : liveFeed.comments),
-    [liveFeed.comments, liveFeed.initialComments],
-  );
+  const orderedMsgIds = liveSession.orderedMsgIds;
+  const comments = useMemo(() => {
+    const init = liveFeed.initialComments;
+    if (!init?.length) return liveFeed.comments;
+    const flagged = init.map((c) => (c.msgId && orderedMsgIds.has(c.msgId) ? { ...c, ordered: true } : c));
+    return [...liveFeed.comments, ...flagged];
+  }, [liveFeed.comments, liveFeed.initialComments, orderedMsgIds]);
 
   // Auto Mode — READ-ON-LOAD only (on auth change): load the code map + seed live
   // stock from the catalog. No poll. Codes/stock edited in Settings apply on next
@@ -566,10 +570,13 @@ export default function RedesignApp() {
   // 1-Click: production passes price 0 (captures buyer + comment; total 0).
   const onOneClick = (id: string) => {
     if (printed[id]) return; // already ordered — no duplicate
-    const prod = liveFeed.getComment(id);
+    const prod = liveFeed.getComment(id); // resolves live AND history rows (sql/18 unlock)
     if (!prod) return;
     const order = orders.createOrder(prod, 0);
-    if (order) setPrinted((p) => ({ ...p, [id]: "order" })); // null = free-cap blocked
+    if (order) {
+      setPrinted((p) => ({ ...p, [id]: "order" })); // null = free-cap blocked
+      liveSession.addOrderedMsgId((prod as ProdComment & { msgId?: string }).msgId); // ordered-check stays complete
+    }
   };
   const onOpenEnt = (id: string) => { setEntId(id); setEntPrice(""); };
   // Enterprise: create the order at the typed price.
@@ -578,10 +585,13 @@ export default function RedesignApp() {
     e.preventDefault();
     const id = entId;
     if (!id) return;
-    const prod = liveFeed.getComment(id);
+    const prod = liveFeed.getComment(id); // resolves live AND history rows (sql/18 unlock)
     const price = Number(entPrice || "0") || 0;
     const order = prod && !printed[id] ? orders.createOrder(prod, price) : null;
-    if (order) setPrinted((p) => ({ ...p, [id]: price > 0 ? cur + price : "order" })); // null = blocked
+    if (order) {
+      setPrinted((p) => ({ ...p, [id]: price > 0 ? cur + price : "order" })); // null = blocked
+      liveSession.addOrderedMsgId((prod as ProdComment & { msgId?: string }).msgId);
+    }
     setEntId(null); setEntPrice("");
   };
 
@@ -606,6 +616,7 @@ export default function RedesignApp() {
     const order = orders.createOrder(c, plan.code.price, { productLocalId: plan.code.productLocalId });
     if (order) {
       setPrinted((p) => ({ ...p, [key]: cur + plan.code.price }));
+      liveSession.addOrderedMsgId((c as ProdComment & { msgId?: string }).msgId); // ordered-check stays complete
       if (plan.soldOut) autoSoldOutToast(plan.code);
     } else {
       // free-cap soft block prevented creation → refund the claim so it can retry.
@@ -752,6 +763,7 @@ export default function RedesignApp() {
               onToggleSession={() => { setSessionOpen((o) => !o); setTtOpen(false); setFbOpen(false); }}
               onPickSession={(n) => { void sessionWindow.setWindowDays(n as WindowDays); liveSession.reset(); setSessionOpen(false); }}
               printed={printed} entId={entId} entPrice={entPrice}
+              historyReady={liveSession.orderedLoaded}
               onOneClick={onOneClick} onOpenEnt={onOpenEnt}
               onEntPrice={(v) => setEntPrice(v.replace(/[^0-9]/g, ""))} onEntKey={onEntKey}
               session={liveSession.session} sessionState={liveSession.state}

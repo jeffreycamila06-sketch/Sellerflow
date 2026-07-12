@@ -2,8 +2,10 @@
 // the cancelled F4: history redelivered through the live pipeline mints new
 // commentKeys → duplicate auto-orders. This suite pins the safety contract:
 //   • initial:true comments NEVER fire the onComment (Auto-Mode) seam;
-//   • they NEVER enter feed/feedRef → getComment(initialId) === undefined →
-//     the 1-Click/Enterprise handlers hard-return (order creation impossible);
+//   • they never enter feed/feedRef — but since the ORDERABLE-history spec
+//     (sql/18) getComment DELIBERATELY resolves initial ids too, so MANUAL
+//     1-Click/Enterprise on history works; the duplicate guard is now the
+//     DB-backed ordered-check (useLiveSession.orderedMsgIds + the E1 gate);
 //   • EMPTY-FEED GUARD: a reconnect with a populated feed drops the initial
 //     batch entirely (no double-display on health-cycle reconnects);
 //   • msgId dedup: repeated connects on a quiet room never double the block;
@@ -44,17 +46,19 @@ beforeEach(() => {
 });
 
 describe("THE DUPE GATE — initial comments are display-only", () => {
-  it("initial batch → onComment seam ZERO times, getComment(initialId) undefined; live comment still fires ONCE", () => {
+  it("initial batch → onComment seam ZERO times (Auto Mode unreachable); getComment resolves them for MANUAL orders (sql/18 unlock); live comment still fires ONCE", () => {
     const seam = vi.fn();
     const { result } = renderHook(() => useLiveFeed(true, "s@x.com", seam));
     fire("comment", initial(1));
     fire("comment", initial(2));
     expect(result.current.initialComments.length).toBe(2);       // displayed as history
-    expect(seam).toHaveBeenCalledTimes(0);                        // Auto Mode unreachable
+    expect(seam).toHaveBeenCalledTimes(0);                        // Auto Mode unreachable — LAYER 1 INTACT
     expect(result.current.comments.length).toBe(0);               // never in the live feed
     for (const c of result.current.initialComments) {
-      expect(result.current.getComment(c.id)).toBeUndefined();    // orders impossible
-      expect(c.restored).toBe(true);                              // Dashboard layer-3 branch
+      expect(result.current.getComment(c.id)).toBeDefined();      // sql/18: manual ordering works
+      expect(result.current.getComment(c.id)?.handle).toBe(c.handle.slice(1)); // resolves to the raw comment
+      expect(c.restored).toBe(true);                              // Dashboard history branch
+      expect(c.msgId).toBeTruthy();                               // ordered-check identity carried
     }
     fire("comment", wire(99));                                     // real live comment
     expect(seam).toHaveBeenCalledTimes(1);                         // seam intact
@@ -62,13 +66,12 @@ describe("THE DUPE GATE — initial comments are display-only", () => {
     expect(result.current.getComment(result.current.comments[0].id)).toBeDefined();
   });
 
-  it("RACE SAFETY: a live comment mis-classified as initial = display-only, NEVER an order (the safe failure direction)", () => {
+  it("RACE SAFETY: a live comment mis-classified as initial NEVER auto-orders (seam zero) — manual-only, the safe direction", () => {
     const seam = vi.fn();
     const { result } = renderHook(() => useLiveFeed(true, "s@x.com", seam));
     fire("comment", wire(7, { initial: true, msgId: "race-1" }));  // actually-live, flagged initial
-    expect(seam).not.toHaveBeenCalled();                            // no auto-order
-    expect(result.current.initialComments.length).toBe(1);          // seller still SEES it
-    expect(result.current.getComment(result.current.initialComments[0].id)).toBeUndefined();
+    expect(seam).not.toHaveBeenCalled();                            // no auto-order, ever
+    expect(result.current.initialComments.length).toBe(1);          // seller still SEES it (and may order manually)
   });
 });
 
