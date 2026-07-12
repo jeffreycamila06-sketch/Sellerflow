@@ -77,6 +77,11 @@ export const toRedesignComment = (c: ProdComment): RDComment => ({
   time: c.time || "",
   platform: c.platform, // additive — basket-count identity (handle+platform)
   msgId: (c as ProdComment & { msgId?: string }).msgId || "", // additive — ordered-check identity (sql/18)
+  // additive — commenter profile picture (FLive/Chotdon parity). Already in the
+  // relay payload (server.js avatar: profilePictureUrl — 100x100 webp TikTok CDN
+  // thumbnail, signed/expiring). DISPLAY-ONLY: loaded device→CDN by <img>, never
+  // stored anywhere (DB/localStorage) — expiring URLs, zero egress.
+  avatar: c.avatar || "",
 });
 
 // Synthetic injector is shown everywhere EXCEPT the real production domain.
