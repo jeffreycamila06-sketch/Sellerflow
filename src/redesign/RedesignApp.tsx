@@ -461,7 +461,7 @@ export default function RedesignApp() {
     const setOpen = platform === "TikTok" ? setTtOpen : setFbOpen;
     const accts = platform === "TikTok" ? ttAccounts : fbAccounts;
     const idx = platform === "TikTok" ? ttIdx : fbIdx;
-    if (eff) { liveFeed.markDisconnected(platform); setOff(true); return; } // Disconnect (local UI; forget for auto-reconnect; no server unbind)
+    if (eff) { setOff(true); return; } // Disconnect (local UI; no server unbind — manual-connect-only: no auto-reconnect to forget)
     const acct = accts[idx] || accts[0];
     if (!acct) { setConnectOpen(platform); return; } // no registered account → add-new modal (real connect)
     setOpen(false);                                  // Connect uses the selected account → close the dropdown
