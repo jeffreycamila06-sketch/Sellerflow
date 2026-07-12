@@ -21,13 +21,16 @@ import { useLiveFeed } from "../useLiveFeed";
 beforeEach(() => { vi.clearAllMocks(); H.sockets.length = 0; localStorage.clear(); });
 
 describe("useLiveFeed.connect — state machine + cleanup", () => {
-  it("success → ok + active account set for the platform", async () => {
+  it("success → ok returned; account is confirmed by the STATUS EVENT, never by r.ok (connect-truth)", async () => {
     connectPlatformMock.mockResolvedValue({ ok: true, account: "shop_tt" });
     const { result } = renderHook(() => useLiveFeed(true, "g@x.com"));
     let r: { ok: boolean; account: string } | undefined;
     await act(async () => { r = await result.current.connect("TikTok", { username: "shop_tt" }); });
     expect(r).toMatchObject({ ok: true, account: "shop_tt" });
-    expect(result.current.activeAccounts.TikTok).toBe("shop_tt");
+    expect(result.current.activeAccounts.TikTok).toBe("");           // r.ok is not truth (reuse/fail-open lesson)
+    const status = H.sockets[0].on.mock.calls.find((c) => c[0] === "platform_status")?.[1] as ((d: unknown) => void);
+    act(() => { status({ platform: "TikTok", connected: true, username: "shop_tt" }); });
+    expect(result.current.activeAccounts.TikTok).toBe("shop_tt");    // server-driven
     expect(connectPlatformMock).toHaveBeenCalledWith("TikTok", { username: "shop_tt" }, "g@x.com");
   });
 
