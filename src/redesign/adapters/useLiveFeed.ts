@@ -80,6 +80,7 @@ export const toRedesignComment = (c: ProdComment): RDComment => ({
   mine: !!c.isBuy,
   time: c.time || "",
   platform: c.platform, // additive — basket-count identity (handle+platform)
+  msgId: (c as ProdComment & { msgId?: string }).msgId || "", // additive — ordered-check identity (sql/18)
 });
 
 // Synthetic injector is shown everywhere EXCEPT the real production domain.
@@ -211,7 +212,15 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   // Latest feed readable from a stable getter (for 5e order creation by id).
   const feedRef = useRef<ProdComment[]>(feed);
   feedRef.current = feed;
-  const getComment = useCallback((id: string) => feedRef.current.find((c) => commentKey(c) === id), []);
+  // Orderable earlier-comments — DELIBERATE layer-2 unlock (final spec + audit):
+  // getComment now ALSO resolves initial/restored ids so the 1-Click/Enterprise
+  // handlers can order history rows. The Auto-Mode seam is untouched (initial
+  // comments still never reach it — layer 1 structural); the duplicate guard
+  // moves to the DB-backed ordered-check (stronger than the old no-buttons rule).
+  const initialRef = useRef<ProdComment[]>(initialFeed);
+  useEffect(() => { initialRef.current = initialFeed; }, [initialFeed]); // effect mirror — getComment reads at tap time, long after commit
+  const getComment = useCallback((id: string) =>
+    feedRef.current.find((c) => commentKey(c) === id) ?? initialRef.current.find((c) => commentKey(c) === id), []);
 
   const pushComment = useCallback((c: ProdComment) => {
     setFeed((prev) => dedup(sortNewest([c, ...prev])).slice(0, LIVE_COMMENT_LIMIT));

@@ -138,6 +138,10 @@ export interface LiveSessionOrderInput {
   // Asia/Taipei calendar day. Defaults to today so all devices agree on the
   // session bucket regardless of their own timezone.
   session_date?: string;
+  // TikTok per-message id of the source comment (orderable earlier-comments
+  // feature, sql/18). OPTIONAL + additive: callers that don't pass it (the
+  // rollback app) write NULL, which simply never matches an ordered-check.
+  comment_msg_id?: string;
 }
 
 // Fire-and-forget write on the 1-click order create. One INSERT per order; no
@@ -166,6 +170,7 @@ export async function saveLiveSessionOrder(order: LiveSessionOrderInput) {
         platform: order.platform,
         product: order.product,
         price: order.price,
+        comment_msg_id: order.comment_msg_id || null,
       },
     ])
     .select();
