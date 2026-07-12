@@ -2787,3 +2787,21 @@ devices ay sumasakay sa iisang flight; `REUSE_VERIFY_TIMEOUT_MS=4s`).
 5. Flip LANG kapag ang Phase-1 logs ay nagpakita ng (a) zero false-`not_live`
    sa mga totoong naglilive at (b) katanggap-tanggap na latency (~≤2s tipikal).
 6. Rollback ng alinmang phase: Render one-click rollback sa previous deploy.
+
+## COMMENT AVATARS ✅ LIVE-VALIDATED (merge `acd42cd` Jul 12; validated ni Jeff Jul 13)
+Commenter profile pictures sa live feed (FLive/Chotdon parity) — **DISPLAY-ONLY,
+zero server/payload/delivery touch**: ang `avatar` (TikTok CDN 100x100 webp,
+signed/expiring) ay matagal nang sakay ng relay payload (`server.js:942` +
+initial batch + ring re-emit) — walang gumagamit lang. Client: `data.ts Comment
++avatar` · `toRedesignComment` map · Dashboard `CommentAvatar` (module-level,
+stable identity — walang row remount/refetch; **initials circle = laging base
+layer, ang <img> ay overlay** → zero layout shift/flicker sa lahat ng states;
+`loading="lazy"` + `referrerPolicy="no-referrer"`; onError → balik initials).
+**URLs ay HINDI iniimbak kahit saan** (walang DB/localStorage — expiring signed
+links); images = device→CDN direkta = zero Supabase/Render egress. History rows
+ay MAY pictures din (ang initial/ring relay ay may dalang sariwang URLs — hindi
+DB ang source ng comment rows). 5 tests (`Dashboard.avatars.test.tsx`); 980
+vitest sa merge.
+- ✅ **LIVE-VALIDATED ni Jeff (Jul 13):** live comments may profile pictures ·
+  close-open + reconnect → "Earlier comments" may pictures pa rin.
+- Branch cleanup: `claude/comment-avatars` = **deleted na sa remote** (Jul 13).
