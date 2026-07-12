@@ -192,13 +192,20 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   // scheduleTikTokReconnect) keep an established session alive, and the join
   // snapshot re-asserts true status after any socket blip.
   //
-  // FIX2 (manual-connect-only was INCOMPLETE): removing Fix B did not stop the
-  // auto-green — the room join itself was still automatic. On every fresh
-  // open/login the socket joined `join_live_room`, and the server's JOIN
-  // SNAPSHOT (server.js — emits platform_status connected for the seller's
-  // still-alive server-side connection, which the health machinery keeps alive
-  // indefinitely) re-greened the pill with zero user action. The join is
-  // therefore gated on USER INTENT:
+  // FIX2 (corrected diagnosis, Jeff 2026-07-12): the true bug was a ZOMBIE
+  // GREEN on fresh open — the server-side connection is genuinely alive (app
+  // close never kills it), and the automatic `join_live_room` + the server's
+  // JOIN SNAPSHOT re-greened the pill with zero user action. But that green
+  // carried NO attach guarantees: the snapshot is a status event only —
+  //   • the history/ring re-emit fires ONLY on the connect POST's B2 reuse
+  //     branch, never on join → earlier comments structurally absent;
+  //   • live comments run a SEPARATE filter chain (server per-socket
+  //     select_account gate + client selection/sessionId filters) that the
+  //     status green never validates → "green but not receiving" was possible,
+  //     and only a manual disconnect→connect (the full attach sequence)
+  //     recovered it. GREEN MUST MEAN RECEIVING — so a state the client
+  //     cannot attach cleanly must render as an honest gray + Connect button.
+  // The join is therefore gated on USER INTENT:
   //   • hasUserConnectedRef — false on every socket (re)subscription (fresh
   //     open, login, user switch, account-init). No join happens until the
   //     seller taps Connect → fresh open/login lands on gray + Connect button.

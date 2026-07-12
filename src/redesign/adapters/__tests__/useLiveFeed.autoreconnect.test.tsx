@@ -63,13 +63,15 @@ describe("manual-connect-only — no socket event ever auto-POSTs /connect", () 
     expect(connectPlatformMock).toHaveBeenCalledTimes(1);            // NO auto re-POST — the tap is the only entry
   });
 
-  it("FIX2 — fresh mount + socket connect → ZERO join_live_room (no join snapshot, no auto-green)", () => {
-    renderHook(() => useLiveFeed(true, "g@x.com", undefined, { TikTok: "shop_tt", Facebook: "" }));
-    fireConnect();                                                   // fresh open / login
+  it("FIX2 — fresh open with an ALIVE server connection → ZERO join_live_room + HONEST GRAY (no zombie green: outside the room, no status event can even reach this socket)", () => {
+    const { result } = renderHook(() => useLiveFeed(true, "g@x.com", undefined, { TikTok: "shop_tt", Facebook: "" }));
+    fireConnect();                                                   // fresh open / login — server connection still alive
     act(() => { vi.advanceTimersByTime(120_000); });
     const joins = sock().emit.mock.calls.filter((c) => c[0] === "join_live_room");
-    expect(joins.length).toBe(0);                                    // gray + Connect button — the ONLY entry is the tap
-    expect(connectPlatformMock).not.toHaveBeenCalled();
+    expect(joins.length).toBe(0);                                    // never in the room → the join snapshot can't green us
+    expect(result.current.ttConnected).toBe(false);                  // honest gray + Connect button (Jeff's option b)
+    expect(result.current.fbConnected).toBe(false);
+    expect(connectPlatformMock).not.toHaveBeenCalled();              // and nothing auto-POSTs
   });
 
   it("FIX2 — the Connect tap joins the room AT INITIATION (before the POST resolves: the initial batch is relayed mid-POST)", async () => {
