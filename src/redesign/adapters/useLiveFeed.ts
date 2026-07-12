@@ -132,6 +132,17 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   // Approach A — the display-only initial history block, SEPARATE from `feed`
   // (never in feedRef, never through the Auto-Mode seam).
   const [initialFeed, setInitialFeed] = useState<ProdComment[]>([]);
+  // EXIT-RETURN buffering (exitpath fix): when the page is STILL ALIVE from a
+  // previous session (app backgrounded → returned, NOT a refresh), the old feed
+  // is still in memory at the moment the server's initial batch arrives mid-POST
+  // — so the empty-feed guard dropped it, and then the connect-ok feed clear
+  // wiped the old comments too: no history, no old feed (live Test 3). While a
+  // connect WE initiated is in flight, initial arrivals are BUFFERED instead of
+  // dropped; they flush into the history block on r.ok (right after the feed
+  // clears) and are DISCARDED on failure (the old feed keeps showing — showing
+  // the block too would double-display those same comments).
+  const connectInFlightRef = useRef(false);
+  const pendingInitialRef = useRef<ProdComment[]>([]);
   // The history block never carries across users (login/user switch): reset it
   // when the subscription identity changes — the React-sanctioned
   // adjust-during-render pattern ("Adjusting some state when a prop changes").
@@ -340,6 +351,12 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
         if (feedRef.current.length === 0) {
           pushInitial(c);
           console.info("[initial] accepted", c.handle, (c as ProdComment & { msgId?: string }).msgId || "");
+        } else if (connectInFlightRef.current) {
+          // exitpath — page-alive reconnect: the OLD feed still occupies memory
+          // while OUR connect's batch arrives mid-POST. Buffer; connect() flushes
+          // on success (after the feed clear) or discards on failure.
+          pendingInitialRef.current.push(c);
+          console.info("[initial] buffered (connect in flight)", c.handle);
         } else {
           console.info("[initial] dropped (feed not empty:", feedRef.current.length, ")", c.handle);
         }
@@ -437,15 +454,32 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     // Clearing here still covers the F2 account-switch leak — the old
     // account's block is gone the moment a new connect starts.
     setInitialFeed([]);
-    const r = await connectPlatform(platform, data, email);
-    if (r.ok) {
-      connectedAcctsRef.current = { ...connectedAcctsRef.current, [platform]: r.account }; // Fix B — track for auto-restore
-      setFeed([]);
-      setActiveAccounts((a) => ({ ...a, [platform]: r.account }));
-      trackedAcctRef.current[platform] = r.account; // H1 — optimistic tracking, same as activeAccounts
+    // exitpath — open the in-flight buffering window (see the handler's
+    // buffered branch): batches arriving while the OLD feed still occupies
+    // memory are held here instead of dropped.
+    connectInFlightRef.current = true;
+    pendingInitialRef.current = [];
+    try {
+      const r = await connectPlatform(platform, data, email);
+      if (r.ok) {
+        connectedAcctsRef.current = { ...connectedAcctsRef.current, [platform]: r.account }; // Fix B — track for auto-restore
+        setFeed([]);
+        setActiveAccounts((a) => ({ ...a, [platform]: r.account }));
+        trackedAcctRef.current[platform] = r.account; // H1 — optimistic tracking, same as activeAccounts
+        // exitpath — the feed is cleared now: flush the buffered batch into the
+        // history block (this is the page-alive exit-return case; on a fresh
+        // page the batch was accepted directly and this buffer is empty).
+        for (const c of pendingInitialRef.current) pushInitial(c);
+        if (pendingInitialRef.current.length) console.info("[initial] flushed", pendingInitialRef.current.length, "buffered after connect ok");
+      }
+      return r;
+    } finally {
+      // failure/exception → the buffer is discarded: the old feed keeps
+      // showing, and rendering the block too would double-display it.
+      connectInFlightRef.current = false;
+      pendingInitialRef.current = [];
     }
-    return r;
-  }, [email]);
+  }, [email, pushInitial]);
 
   // Fix B — user manually turned a platform off: forget it so auto-reconnect-after-restart
   // won't bring it back. (RedesignApp doConnect calls this in its disconnect branch.)
