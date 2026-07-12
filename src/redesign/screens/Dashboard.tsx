@@ -100,6 +100,41 @@ export default function Dashboard({
   const dayUnit = (n: number) => `${n} ${n > 1 ? t.rd_dash_days : t.rd_dash_day}`;
   const sessionLabel = dayUnit(sessionDays);
   const summary = sessionSummary(session); // Phase 5c — today's hydrated session
+  // Dropdown dismiss (Jeff bug, 2026-07-12): the header dropdowns (TikTok/FB
+  // account pickers + session pill) only closed via their own toggles — a tap
+  // anywhere else left the panel hanging (sellers reached for Disconnect just
+  // to dismiss it). Standard click-outside-to-close: a document-level
+  // pointerdown OUTSIDE the open dropdown's wrapper (chip + panel) closes it
+  // with NO action; taps INSIDE (account rows, Refresh, Connect/Disconnect)
+  // are untouched. Escape closes too. A listener (not an overlay) because the
+  // sticky header's backdrop-filter creates a containing block/stacking
+  // context that would trap a fixed overlay. Closing calls the OPEN one's
+  // toggle — the toggles are mutually exclusive upstream (RedesignApp), so at
+  // most one is open. Listener attaches only while one is open.
+  const ttWrapRef = useRef<HTMLDivElement>(null);
+  const fbWrapRef = useRef<HTMLDivElement>(null);
+  const sessionWrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!ttOpen && !fbOpen && !sessionOpen) return;
+    const close = () => {
+      if (ttOpen) onToggleTT();
+      else if (fbOpen) onToggleFB();
+      else if (sessionOpen) onToggleSession();
+    };
+    const onDown = (e: Event) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (ttWrapRef.current?.contains(target) || fbWrapRef.current?.contains(target) || sessionWrapRef.current?.contains(target)) return;
+      close();
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [ttOpen, fbOpen, sessionOpen, onToggleTT, onToggleFB, onToggleSession]);
   // Phase 5d — feed scroll (tangled-zone #3). Newest is prepended at the top, so
   // we scroll the feed container to top when a new comment arrives. useLayoutEffect
   // (not setTimeout) so it runs after DOM mutation, before paint.
@@ -158,7 +193,7 @@ export default function Dashboard({
             </button>
           )}
           {/* Live-session-length pill (dc.html v3 L112) */}
-          <div style={{ position: "relative", zIndex: 7 }}>
+          <div ref={sessionWrapRef} style={{ position: "relative", zIndex: 7 }}>
             <button onClick={onToggleSession} title={t.rd_dash_session_title} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.18)", border: "none", padding: "6px 10px", borderRadius: 9, fontSize: 12, fontWeight: 700, color: "var(--on-header)", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
               {calIcon}
               {t.rd_dash_session} · {sessionLabel}
@@ -186,7 +221,7 @@ export default function Dashboard({
 
         {/* Account pickers (TikTok / Facebook) with connect/connecting/connected states */}
         <div style={{ display: "flex", gap: 8, marginTop: 11, position: "relative", zIndex: 6 }}>
-          <div style={{ position: "relative", flex: 1 }}>
+          <div ref={ttWrapRef} style={{ position: "relative", flex: 1 }}>
             <button onClick={onToggleTT} title={ttTitle} style={{ ...pickerBtn, background: tt.chipBg, boxShadow: tt.chipShadow }}>
               <span style={{ width: 16, height: 16, borderRadius: 5, background: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, color: "#fff", flexShrink: 0 }}>t</span>
               <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ttAccounts.length ? (ttAccounts[ttIdx] || ttAccounts[0]) : t.rd_dash_connect_tiktok}</span>
@@ -211,7 +246,7 @@ export default function Dashboard({
               </div>
             )}
           </div>
-          <div style={{ position: "relative", flex: 1 }}>
+          <div ref={fbWrapRef} style={{ position: "relative", flex: 1 }}>
             <button onClick={onToggleFB} title={fbTitle} style={{ ...pickerBtn, background: fb.chipBg, boxShadow: fb.chipShadow }}>
               <span style={{ width: 16, height: 16, borderRadius: 5, background: "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: "#fff", flexShrink: 0, fontFamily: "var(--font-display)" }}>f</span>
               <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fbAccounts.length ? (fbAccounts[fbIdx] || fbAccounts[0]) : t.rd_dash_connect_facebook}</span>
