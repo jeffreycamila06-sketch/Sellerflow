@@ -2506,13 +2506,11 @@ survives refresh + cross-device).
   latency benefit sa use case natin); Community free tier = sapat pa rin.
 
 ### ⚠️ OPERATIONAL (natitira pagkatapos ng saga)
-- **MANUAL RENDER DEPLOY pending pa rin para sa orderable server half** (`52fde07`:
-  msgId sa live chat relay payload). Hangga't hindi deployed: bagong orders ay
-  WALANG stored msgId → walang "Ordered ✓" match sa history (SAFE direction lang —
-  full action row ang lalabas, tulad ng dati). Ang mga naunang server halves ng saga
-  (collector/ring/RC2/RC3) ay na-deploy na ni Jeff sa live-testing mismo. Isabay na
-  rin dito ang anumang hindi pa nade-deploy na server commits sa susunod na "Deploy
-  latest commit".
+- ~~**MANUAL RENDER DEPLOY pending pa rin para sa orderable server half**~~
+  ✅ **DEPLOYED (Jul 12 23:10, `d9363dd` live sa Render — kasama sa B4 Phase 1
+  deploy):** ang `52fde07` msgId relay ay LIVE na (bagong orders ay may stored
+  msgId → gumagana na ang "Ordered ✓"/Reprint matching sa history). **Wala nang
+  anumang undeployed server commit** as of Jul 12 23:10.
 - **G1 relay-level guard = bukas pa rin bilang kandidato** (ang RC3 lock ay sumasara
   sa scheduler-level path; ang one-line guard sa taas ng chat handler ay hindi pa
   nailalagay — tingnan ang 2026-07-11/12 section).
@@ -2765,10 +2763,11 @@ devices ay sumasakay sa iisang flight; `REUSE_VERIFY_TIMEOUT_MS=4s`).
   Sa listener-less probe, ang handleError ay structural no-op (verified:
   client.js `listenerCount < 1 → return`). Ang probe ay hindi kailanman
   kino-connect — standalone HTML→API→Euler status read lang.
-- **⚠️ MANUAL RENDER DEPLOY** sa 04:30–06:00 Taipei window (Business Pulse = 0
-  active muna; bawat restart = lahat ng naka-live ay magre-re-tap ng Connect).
-  Si Jeff ang pipili ng araw. Pagkatapos ng 2–3 araw: kolektahin ang verdict
-  distribution + latency mula sa logs → i-report bago ang Phase-2 usapan.
+- ✅ **DEPLOYED sa Render: Jul 12 23:10 (`d9363dd` live)** — tumatakbo na ang
+  `[REUSE-VERIFY]` log collection mula noon. (Sakay din ng deploy na ito ang
+  `52fde07` msgId relay — wala nang undeployed server commit.) **48hr mark =
+  ~Jul 14 23:00 Taipei** → kolektahin ang verdict distribution + latency mula
+  sa Render logs → i-report kay Jeff bago ang Phase-2 usapan.
 
 ### PHASE 2 (enforcement flip — HIWALAY na diff+audit+deploy; huwag kalimutan)
 1. **Await** ang verification sa reuse branch (hindi na fire-and-forget);
