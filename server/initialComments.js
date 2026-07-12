@@ -105,3 +105,12 @@ export function pushRecent(ring, payload, cap = RECENT_RING_CAP) {
   if (ring.length > cap) ring.splice(0, ring.length - cap);
   return ring;
 }
+
+// M1 (clientfix audit) — the reuse re-emit payload. Ring entries carry the
+// sessionId of the session that CREATED the connection; the client drops
+// comments whose sessionId differs from its own, so a two-device seller's
+// second device would silently lose the whole block. Re-emits therefore carry
+// the REQUESTING session's id (from the reuse POST), falling back to the
+// stored one only when the requester sent none.
+export const reuseReEmitPayload = (p, requesterSessionId) =>
+  ({ ...p, initial: true, sessionId: requesterSessionId || p.sessionId });

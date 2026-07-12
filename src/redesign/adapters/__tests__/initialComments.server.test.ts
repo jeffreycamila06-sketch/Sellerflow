@@ -113,3 +113,18 @@ describe("recent-comments ring (clientfix RC2 — the B2-reuse history source)",
     expect(ring.length).toBe(1);
   });
 });
+
+describe("reuseReEmitPayload (clientfix M1 — requester sessionId)", () => {
+  it("overrides the stored sessionId with the requester's (second device must not drop the block)", async () => {
+    const { reuseReEmitPayload } = await import("../../../../server/initialComments.js");
+    const stored = { handle: "b1", comment: "mine", sessionId: "device-A" };
+    const out = reuseReEmitPayload(stored, "device-B");
+    expect(out.sessionId).toBe("device-B");
+    expect(out.initial).toBe(true);
+    expect(out.handle).toBe("b1");
+  });
+  it("falls back to the stored sessionId when the requester sent none", async () => {
+    const { reuseReEmitPayload } = await import("../../../../server/initialComments.js");
+    expect(reuseReEmitPayload({ sessionId: "device-A" }, "").sessionId).toBe("device-A");
+  });
+});

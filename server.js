@@ -6,7 +6,7 @@ import { Server } from "socket.io";
 import { createClient } from "@supabase/supabase-js";
 import { translateBroadcast } from "./server/broadcastTranslate.js";
 import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS } from "./server/connectionHealth.js";
-import { buildInitialCommentPayloads, pushRecent, RECENT_RING_CAP } from "./server/initialComments.js";
+import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -1035,7 +1035,9 @@ async function connectTikTok(username, res, meta = {}) {
           if (ring.length) {
             console.log(`[INITIAL] reuse re-emit ${ring.length} recent comments for ${cleanUsername} (${sellerId})`);
             for (const p of ring) {
-              void emitCommentScoped(sellerId, "TikTok", cleanUsername, { ...p, initial: true });
+              // M1 — carry the REQUESTER's sessionId so a second device's
+              // client doesn't drop the block on its own sessionId filter.
+              void emitCommentScoped(sellerId, "TikTok", cleanUsername, reuseReEmitPayload(p, sessionId));
             }
           }
         } catch (err) {

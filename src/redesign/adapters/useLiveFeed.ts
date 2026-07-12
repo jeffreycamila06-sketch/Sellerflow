@@ -162,6 +162,11 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   const [fbRecovering, setFbRecovering] = useState(false);
   const activeRef = useRef<ActiveAccounts>(activeAccounts);
   activeRef.current = activeAccounts;
+  // H1 (clientfix audit) — the account each pill currently TRACKS (the username
+  // that made it green), updated SYNCHRONOUSLY inside the status handler — NOT
+  // render-mirrored, so a same-batch green→reconnecting sequence (the F2 race)
+  // reads the fresh value. Cleared when the pill honestly grays.
+  const trackedAcctRef = useRef<{ TikTok: string; Facebook: string }>({ TikTok: "", Facebook: "" });
   // Account-leak fix: the comment filter follows the USER's dropdown selection, NOT
   // the server-driven activeAccounts (last-platform_status-wins, drifts when multiple
   // accounts are live). The ref lets the comment handler read the latest selection
@@ -263,6 +268,7 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     const setPlatformGray = (platform: Platform) => {
       if (platform === "TikTok") setTtConnected(false); else setFbConnected(false);
       setActiveAccounts((a) => ({ ...a, [platform]: "" }));
+      trackedAcctRef.current[platform] = ""; // H1 — a gray pill tracks no account
     };
     const cancelGray = (platform: Platform) => {
       setRecovering(platform, false);
@@ -360,8 +366,25 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       if (p.connected && !p.reconnecting) {
         cancelGray(plat);
         if (plat === "TikTok") setTtConnected(true); else setFbConnected(true);
-        if (p.username) setActiveAccounts((a) => ({ ...a, [plat]: p.username as string }));
-      } else if (p.reconnecting) {
+        if (p.username) {
+          setActiveAccounts((a) => ({ ...a, [plat]: p.username as string }));
+          trackedAcctRef.current[plat] = p.username; // sync — same-batch-safe (F2 race)
+        }
+        return;
+      }
+      // H1 (clientfix audit) — ACCOUNT SCOPING for the non-connected branches:
+      // the server's reconnect chains are account-keyed, so a stale chain for a
+      // PREVIOUSLY connected account keeps emitting reconnecting / terminal
+      // not_live events that pass the sellerId+sessionId filters. Without this
+      // guard they gray (or amber) a pill that is green on a DIFFERENT, healthy
+      // account — the observed false-gray: comments flowing while gray. Rule:
+      // an event that names an account other than the one this pill currently
+      // tracks (trackedAcctRef — the username that made it green, updated
+      // SYNCHRONOUSLY so the F2 same-batch race can't stale-read it) is
+      // IGNORED; events without a username still apply (backward compat).
+      const evAcct = cleanLiveAccount(p.username || "");
+      if (evAcct && evAcct !== cleanLiveAccount(trackedAcctRef.current[plat] || "")) return;
+      if (p.reconnecting) {
         // F2 (audit) — ALWAYS arm the grace (no currently-green gate): the gate
         // read a render-mirrored ref that could be stale when connected:true and
         // reconnecting:true land in the same batch (fresh connection dying at
@@ -419,6 +442,7 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       connectedAcctsRef.current = { ...connectedAcctsRef.current, [platform]: r.account }; // Fix B — track for auto-restore
       setFeed([]);
       setActiveAccounts((a) => ({ ...a, [platform]: r.account }));
+      trackedAcctRef.current[platform] = r.account; // H1 — optimistic tracking, same as activeAccounts
     }
     return r;
   }, [email]);
