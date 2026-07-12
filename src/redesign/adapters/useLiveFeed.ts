@@ -32,10 +32,6 @@ const LIVE_COMMENT_LIMIT = 5000;
 // Approach A (FLive parity) — cap for the DISPLAY-ONLY initial history block
 // (TikTok's pre-connect room buffer is typically ~5–20 chats; 100 is generous).
 const INITIAL_COMMENT_LIMIT = 100;
-// Fix B — max random delay before an auto re-POST of /connect after a socket drop /
-// server restart. 0–25s spread for fast recovery; the server-side MIN_GAP ≤6/min hard cap
-// is the actual storm guard, so a tighter window stays safe even with a fleet reconnect.
-const AUTO_RECONNECT_JITTER_MS = 25 * 1000;
 // STATUS-TRUTH (connection-status fix, exported for tests) — the green pill is a
 // PROMISE ("I am capturing your orders right now"), so it must track stream truth:
 //   • RECONNECT_GRACE_MS: a server health-cycle reconnect (chat-stale/silent) emits
@@ -123,9 +119,6 @@ export interface UseLiveFeed {
   ttRecovering: boolean;
   fbRecovering: boolean;
   connect: (platform: Platform, data: Record<string, string>) => Promise<ConnectResult>;
-  // Fix B — RedesignApp calls this when the USER manually disconnects a platform, so the
-  // auto-reconnect-after-restart logic won't restore an account they turned off on purpose.
-  markDisconnected: (platform: Platform) => void;
 }
 
 export function useLiveFeed(enabled: boolean, email: string | undefined, onComment?: (c: ProdComment) => void, selected?: ActiveAccounts): UseLiveFeed {
@@ -189,19 +182,19 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   const selectedRef = useRef<ActiveAccounts>({ TikTok: ttSel, Facebook: fbSel });
   selectedRef.current = { TikTok: ttSel, Facebook: fbSel };
   const socketRef = useRef<Socket | null>(null);
-  // Fix B — auto-reconnect after a socket drop / server restart.
-  //   • connectedAcctsRef: the account THIS client genuinely connected per platform (set on
-  //     connect success, cleared on user disconnect) → we only ever restore these.
-  //   • hasConnectedSocketRef: false until the FIRST socket connect; the first connect must
-  //     NOT re-POST (no TikTok connection existed yet) — only RE-connects restore.
-  //   • serverConnectedRef: mirror of tt/fbConnected (server truth) → dedupe; skip re-POST
-  //     if the server already reports the account live (e.g. a brief drop, not a restart).
-  //   • reconnectTimersRef: pending jittered re-POST timers, cleared on teardown.
-  const connectedAcctsRef = useRef<{ TikTok: string; Facebook: string }>({ TikTok: "", Facebook: "" });
-  const hasConnectedSocketRef = useRef(false);
+  // MANUAL-CONNECT-ONLY (Jeff decision, 2026-07-12): the Fix B client
+  // auto-reconnect (re-POST /connect after a socket reconnect — the app-open /
+  // return-from-background auto path) is REMOVED. It bypassed the hook's
+  // connect() (direct connectPlatform) so the initial-comments flow broke on
+  // every auto trigger, while the manual Connect tap is the one perfect path.
+  // The seller's tap is now the ONLY way a connection starts. Mid-live
+  // resilience is UNTOUCHED: the SERVER-side health-cycle reconnects (B2,
+  // scheduleTikTokReconnect) keep an established session alive, and the join
+  // snapshot re-asserts true status after any socket blip.
+  //   • serverConnectedRef: mirror of tt/fbConnected (server truth) — still
+  //     used by onSocketDown to arm the dead-socket grace only when green.
   const serverConnectedRef = useRef<{ TikTok: boolean; Facebook: boolean }>({ TikTok: false, Facebook: false });
   serverConnectedRef.current = { TikTok: ttConnected, Facebook: fbConnected };
-  const reconnectTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   // STATUS-TRUTH — pending fall-to-gray timers per platform. A timer is armed when
   // the stream's health is IN DOUBT (server reconnecting / socket dead) and cancelled
   // the moment the server re-asserts connected:true. "Keep earliest deadline": arming
@@ -242,29 +235,9 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     const em = email; // narrowed to string for the closures below
     const sellerId = sellerIdOf(em);
     const sessionId = browserSessionId();
-    // New socket subscription (mount or user/email change): the upcoming first connect
-    // must be treated as first-connect, and connected-account tracking must not carry
-    // across users. (Effect deps are [enabled, email, pushComment, pushInitial]; both
-    // callbacks are stable.)
-    hasConnectedSocketRef.current = false;
-    connectedAcctsRef.current = { TikTok: "", Facebook: "" };
-    // Fix B — on a RE-connect (socket dropped / server restart), restore the accounts THIS
-    // client had connected by re-POSTing /connect, each after a 0–60s random jitter so a
-    // fleet-wide reconnect never hits /connect at once. First connect restores nothing.
-    const autoReconnectAfterDrop = () => {
-      (["TikTok", "Facebook"] as Platform[]).forEach((platform) => {
-        const acct = connectedAcctsRef.current[platform];
-        if (!acct) return;                                  // only restore genuinely-connected
-        if (serverConnectedRef.current[platform]) return;   // dedupe: server still has it live
-        const delay = Math.floor(Math.random() * AUTO_RECONNECT_JITTER_MS);
-        const timer = setTimeout(() => {
-          if (serverConnectedRef.current[platform]) return;          // re-check at fire time
-          if (connectedAcctsRef.current[platform] !== acct) return;  // user changed/off during wait
-          void connectPlatform(platform, { username: acct }, em).then((r) => { if (r.ok) setFeed([]); }).catch(() => {});
-        }, delay);
-        reconnectTimersRef.current.push(timer);
-      });
-    };
+    // (Manual-connect-only: no per-subscription reconnect tracking — the seller's
+    // tap is the only connect entry point. Effect deps are [enabled, email,
+    // pushComment, pushInitial]; both callbacks are stable.)
     const s: Socket = io(SERVER, {
       path: "/socket.io/",
       transports: ["websocket"],
@@ -315,9 +288,10 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       });
     };
     s.on("connect", () => {
+      // Manual-connect-only: a socket (re)connect just re-joins the room +
+      // re-asserts selection; the join snapshot restores TRUE status. No
+      // auto re-POST of /connect — the seller's tap is the only entry point.
       setConnected(true); joinRoom(); emitSelection();
-      if (hasConnectedSocketRef.current) autoReconnectAfterDrop(); // RE-connect → restore accounts
-      else hasConnectedSocketRef.current = true;                   // first connect → nothing to restore
     });
     s.on("disconnect", onSocketDown);
     s.on("connect_error", onSocketDown);
@@ -431,8 +405,6 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       setInitialFeed([]); // session over — the history block goes with it
     });
     return () => {
-      reconnectTimersRef.current.forEach(clearTimeout);
-      reconnectTimersRef.current = [];
       cancelGray("TikTok"); cancelGray("Facebook");
       socketRef.current = null;
       s.disconnect();
@@ -471,7 +443,6 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     try {
       const r = await connectPlatform(platform, data, email);
       if (r.ok) {
-        connectedAcctsRef.current = { ...connectedAcctsRef.current, [platform]: r.account }; // Fix B — track for auto-restore
         setFeed([]);
         setActiveAccounts((a) => ({ ...a, [platform]: r.account }));
         trackedAcctRef.current[platform] = r.account; // H1 — optimistic tracking, same as activeAccounts
@@ -489,12 +460,6 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       pendingInitialRef.current = [];
     }
   }, [email, pushInitial]);
-
-  // Fix B — user manually turned a platform off: forget it so auto-reconnect-after-restart
-  // won't bring it back. (RedesignApp doConnect calls this in its disconnect branch.)
-  const markDisconnected = useCallback((platform: Platform) => {
-    connectedAcctsRef.current = { ...connectedAcctsRef.current, [platform]: "" };
-  }, []);
 
   // Preview-only injector. With no arg it cycles the canned SYNTH comments; with a
   // `text` it injects that EXACT comment from a fresh unique commenter (each call =
@@ -539,5 +504,5 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   // Approach A — history block mapped with restored:true so the Dashboard's
   // muted zero-action display branch handles it (duplicate-order layer 3).
   const initialComments = useMemo(() => initialFeed.map((c) => ({ ...toRedesignComment(c), restored: true })), [initialFeed]);
-  return { comments, initialComments, connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, ttRecovering, fbRecovering, connect, markDisconnected };
+  return { comments, initialComments, connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, ttRecovering, fbRecovering, connect };
 }
