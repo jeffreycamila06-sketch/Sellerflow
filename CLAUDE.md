@@ -2748,3 +2748,43 @@ test, hindi reuse** · (4) Disconnect→Connect parehong account → GREEN ✅ �
 **SARADO ang connect-truth fix. Ang B4 (B2-reuse zombie green) ay NANANATILING
 OPEN — hindi ito na-close ng fix na ito** (server-side is-LIVE check sa reuse
 branch = hiwalay na plan+audit, see the B4 entry above).
+
+## B4 PHASE 1 (log-only) — REUSE-VERIFY ✅ CODED (branch `claude/b4-reuse-verify`) + PHASE 2 NOTES
+Ang B2 reuse branch ay may FIRE-AND-FORGET is-LIVE verification na (log-only,
+ZERO behavior change, ZERO added latency): bawat reuse tap → `[REUSE-VERIFY]
+<live|not_live|ambiguous> <account> <ms>` sa Render logs. Decision core sa
+`server/connectionHealth.js` (pure `reuseVerdict` — KONSERBATIBO: TikTok's own
+`false` lang ang not_live; error/timeout/odd shape = ambiguous → Phase-2
+fail-open; + `singleFlight` R1 — isang verification per key, tap spam / 2
+devices ay sumasakay sa iisang flight; `REUSE_VERIFY_TIMEOUT_MS=4s`).
+- **⚠️ R3 (audit catch, load-bearing):** ang verify ay sa THROWAWAY
+  LISTENER-LESS `WebcastPushConnection` — KAILANMAN hindi sa buhay na instance.
+  Ang `fetchIsLive()` fallback tiers ay tumatawag ng `handleError()` sa bawat
+  intermediate failure (routine ang HTML-tier fail); may listener = `error`
+  event = ang server error listener ay magte-teardown ng MALUSOG na connection.
+  Sa listener-less probe, ang handleError ay structural no-op (verified:
+  client.js `listenerCount < 1 → return`). Ang probe ay hindi kailanman
+  kino-connect — standalone HTML→API→Euler status read lang.
+- **⚠️ MANUAL RENDER DEPLOY** sa 04:30–06:00 Taipei window (Business Pulse = 0
+  active muna; bawat restart = lahat ng naka-live ay magre-re-tap ng Connect).
+  Si Jeff ang pipili ng araw. Pagkatapos ng 2–3 araw: kolektahin ang verdict
+  distribution + latency mula sa logs → i-report bago ang Phase-2 usapan.
+
+### PHASE 2 (enforcement flip — HIWALAY na diff+audit+deploy; huwag kalimutan)
+1. **Await** ang verification sa reuse branch (hindi na fire-and-forget);
+   `not_live` → huwag mag-reuse.
+2. **R2 OWNERSHIP GUARD (required sa Phase 2, wala sa Phase 1 by design):**
+   pagkatapos ng await, `tiktokConnections.get(key) === existing` bago ang
+   ANUMANG aksyon (health timer discipline). Mismatch (napalitan ng health
+   cycle / na-force-fresh ng iba / nabura) → HUWAG gumalaw batay sa lumang
+   reference → fall through sa normal fresh-connect path (idempotent).
+3. `not_live` teardown = fresh-path 409 mirror: clearTikTokHealthTimer →
+   disconnect() try/catch → tiktokConnections.delete → clearTikTokReconnect →
+   `recordTikTokAttempt("not_live", "reuse-verify")` → terminal
+   `emitTikTokStatus(connected:false, reason:"not_live")` → 409
+   `{success:false, notLive:true}` (client ZERO change — existing toast/mapping).
+4. `live`/`ambiguous` → existing reuse flow, byte-unchanged (fail-open sa
+   ambiguous — huwag kailanman i-false-block ang totoong naglilive).
+5. Flip LANG kapag ang Phase-1 logs ay nagpakita ng (a) zero false-`not_live`
+   sa mga totoong naglilive at (b) katanggap-tanggap na latency (~≤2s tipikal).
+6. Rollback ng alinmang phase: Render one-click rollback sa previous deploy.
