@@ -4,8 +4,9 @@
 //   • historyReady=false (window load unresolved — the E1 gate): DISPLAY-ONLY —
 //     muted, ZERO buttons (an already-ordered comment must not look orderable
 //     before the check is possible);
-//   • historyReady + ordered (msgId matched a loaded order): "Ordered ✓" chip,
-//     ZERO buttons;
+//   • historyReady + ordered (msgId matched a loaded order): the REPRINT
+//     button (2026-07-12 — replaced the "Ordered ✓" chip; still NO order
+//     buttons, so no re-order path);
 //   • historyReady + not ordered: full live action row (1-Click + Enterprise).
 // Plus: divider renders once above the first restored row; basket badge shows
 // in every state; live rows unaffected.
@@ -61,12 +62,15 @@ describe("history rows — the three states (sql/18)", () => {
     expect(row.style.opacity).toBe("");                       // orderable history is not muted
   });
 
-  it("historyReady + ORDERED (msgId matched) → 'Ordered ✓' chip, ZERO buttons", () => {
+  it("historyReady + ORDERED (msgId matched) → the REPRINT button (chip replaced, 2026-07-12), NO order buttons", () => {
     const { container } = renderFeed([hist("histbuyer", "c-hist", { ordered: true })], true);
     const row = container.querySelector(".sfl-comm-row") as HTMLElement;
-    expect(row.querySelectorAll("button").length).toBe(0);
-    expect(row.textContent).toContain("Ordered ✓");
-    expect(row.textContent).not.toContain("1-Click");
+    const buttons = row.querySelectorAll("button");
+    expect(buttons.length).toBe(1);                          // exactly ONE clean button (FLive style)
+    expect(buttons[0].textContent).toContain("Reprint");
+    expect(row.textContent).not.toContain("Ordered ✓");      // the old chip is gone
+    expect(row.textContent).not.toContain("1-Click");        // still no re-order path
+    expect(row.textContent).not.toContain("Enterprise");
   });
 
   it("live rows are unaffected by the gate (buttons with historyReady=false too)", () => {
@@ -101,14 +105,15 @@ describe("history block chrome (unchanged)", () => {
     }
   });
 
-  it("printed marks work on an ordered-now history row (same flow as live rows)", () => {
+  it("printed marks work on an ordered-now history row (same flow as live rows): REPRINT button replaces the actions", () => {
     const p = props([hist("histbuyer", "c-hist")], true);
     const { container } = render(
       <TProvider lang="en"><Dashboard {...p} printed={{ "c-hist": "NT$100" }} /></TProvider>,
     );
     const row = container.querySelector(".sfl-comm-row")!;
-    expect(row.textContent).toContain("Printed");            // ordered-now → printed chip, like live
-    expect(row.textContent).toContain("NT$100");
-    expect(row.querySelectorAll("button").length).toBe(0);   // actions replaced by the printed chip
+    const buttons = row.querySelectorAll("button");
+    expect(buttons.length).toBe(1);                          // one clean Reprint button (chip replaced, 2026-07-12)
+    expect(buttons[0].textContent).toContain("Reprint");
+    expect(row.textContent).not.toContain("1-Click");        // order actions stay gone after ordering
   });
 });

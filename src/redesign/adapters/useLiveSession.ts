@@ -17,6 +17,7 @@ import { isSupabaseConfigured } from "../../supabase";
 import { rebuildSessionFromRows, type RebuiltSession } from "../../lib/orderLogic";
 import type { Buyer, LiveOrder } from "../../lib/orderTypes";
 import { chooseSessionLoad, loadLiveSessionWindow, loadLiveSessionDay, useTaipeiDayId, shouldResetOnDayChange } from "./useSessionWindow";
+import type { ReprintRow } from "./reprint";
 
 // "idle" = not wired / unconfigured / error · "loading" = query in flight ·
 // "live" = today's session hydrated · "empty" = no session rows today.
@@ -48,14 +49,20 @@ export interface UseLiveSession {
   getBuyers: () => Buyer[];
   applyOrder: (nextBuyers: Buyer[], order: LiveOrder) => void;
   reset: () => void; // step 5 — clear + reload (used when changing N opens a fresh window)
-  // Orderable earlier-comments (sql/18): msgIds of every order in the loaded
+  // Orderable earlier-comments (sql/18): msgId of every order in the loaded
   // window + in-session additions; orderedLoaded = the E1 gate (restored rows
   // show buttons only after the load resolved — before that an already-ordered
   // comment would look orderable). addOrderedMsgId is called after every
-  // successful createOrder so the Set stays complete between loads.
-  orderedMsgIds: Set<string>;
+  // successful createOrder so the map stays complete between loads.
+  // REPRINT upgrade (2026-07-12): Set<string> → Map<msgId, row snapshot>. The
+  // `.has()` ordered-check semantics are IDENTICAL; the value now carries the
+  // order's row (already in the load result — previously discarded) so the
+  // Reprint button can rebuild + reprint the ORIGINAL sticker with zero new
+  // queries. null value = ordered-known but no snapshot (defensive; the three
+  // create sites always pass one).
+  orderedMsgIds: ReadonlyMap<string, ReprintRow | null>;
   orderedLoaded: boolean;
-  addOrderedMsgId: (msgId?: string) => void;
+  addOrderedMsgId: (msgId?: string, snap?: ReprintRow) => void;
 }
 
 // Multi-day window options (from useSessionWindow). When omitted → pure 5c
@@ -64,18 +71,22 @@ export interface UseLiveSession {
 // byte-identical; active multi-day day≥2 → window range).
 export interface LiveSessionWindowOpts { ready: boolean; windowDays: number; windowStart: string | null }
 
-// Orderable earlier-comments (sql/18) — PURE: the ordered-check Set from raw
-// window rows. E3 hygiene: empty/null msgIds NEVER enter the set (an order
+// Orderable earlier-comments (sql/18) — PURE: the ordered-check map from raw
+// window rows. E3 hygiene: empty/null msgIds NEVER enter the map (an order
 // without a msgId must never match a comment without a msgId — that would mark
 // whole classes falsely "Ordered ✓"). Rows are read as an adapter-side extended
 // shape; LiveSessionRow / rebuildSessionFromRows (lib) stay untouched.
-export function buildOrderedMsgIds(rows: unknown[]): Set<string> {
-  const set = new Set<string>();
-  for (const r of rows as Array<{ comment_msg_id?: string | null }>) {
+// REPRINT: the value = the order's row itself (was discarded before), so the
+// Reprint button can rebuild the original sticker. FIRST-WINS per msgId (rows
+// arrive oldest-first — the first is the original order, matching the
+// "Ordered ✓" semantics; duplicates should not exist, this is defensive).
+export function buildOrderedMsgIds(rows: unknown[]): Map<string, ReprintRow | null> {
+  const map = new Map<string, ReprintRow | null>();
+  for (const r of rows as Array<ReprintRow & { comment_msg_id?: string | null }>) {
     const m = String(r?.comment_msg_id || "").trim();
-    if (m) set.add(m);
+    if (m && !map.has(m)) map.set(m, r || null);
   }
-  return set;
+  return map;
 }
 
 export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): UseLiveSession {
@@ -87,7 +98,7 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
   // order buttons ONLY after the window load has RESOLVED (before that, the Set
   // is empty and an already-ordered comment would look orderable → duplicate
   // window). A failed load keeps the gate CLOSED (safe direction: display-only).
-  const [orderedMsgIds, setOrderedMsgIds] = useState<Set<string>>(new Set());
+  const [orderedMsgIds, setOrderedMsgIds] = useState<Map<string, ReprintRow | null>>(new Map());
   const [orderedLoaded, setOrderedLoaded] = useState(false);
   // Keep the latest session readable inside the effect WITHOUT making it a dep —
   // this is the hydrate-on-empty guard (read current, don't re-run on change).
@@ -149,18 +160,21 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
   // step 5 — clear local session + force the load effect to re-run (fresh window
   // after changing N). The hydrate-on-empty guard passes (now empty) → reload.
   // The ordered-check Set clears with it (the reload rebuilds it for the new window).
-  const reset = useCallback(() => { setSession(EMPTY); setOrderedMsgIds(new Set()); setReloadKey((k) => k + 1); }, []);
+  const reset = useCallback(() => { setSession(EMPTY); setOrderedMsgIds(new Map()); setReloadKey((k) => k + 1); }, []);
 
   // Orderable earlier-comments — in-session addition after every successful
-  // createOrder (belt-and-braces beside the printed map: keeps the Set complete
-  // between loads on THIS device). E3: empty msgIds never enter.
-  const addOrderedMsgId = useCallback((msgId?: string) => {
+  // createOrder (belt-and-braces beside the printed map: keeps the map complete
+  // between loads on THIS device). E3: empty msgIds never enter. REPRINT: the
+  // snapshot (row-shaped, from snapshotFromCreate at the call site) rides along
+  // so the order stays reprintable without waiting for the next window load.
+  // First-wins: an existing entry (from the load) is never overwritten.
+  const addOrderedMsgId = useCallback((msgId?: string, snap?: ReprintRow) => {
     const m = String(msgId || "").trim();
     if (!m) return;
     setOrderedMsgIds((prev) => {
       if (prev.has(m)) return prev;
-      const next = new Set(prev);
-      next.add(m);
+      const next = new Map(prev);
+      next.set(m, snap || null);
       return next;
     });
   }, []);
