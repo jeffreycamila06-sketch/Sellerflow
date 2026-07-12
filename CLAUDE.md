@@ -2739,8 +2739,12 @@ account na HINDI pa na-connect ngayong server session, O maghintay 60s+ mula sa
 huling event nito (forced-fresh); ang 409 ay may "not live" toast + Render log
 `[NOT-LIVE] block`; ang reuse ay walang toast + `[INITIAL] reuse re-emit`.
 
-### Acceptance ni Jeff (LIVE test, pending)
-(1) A→Disconnect→pili B→Connect → GREEN · (2) pabalik B→A → GREEN · (3) pili ng
-not-live via 409 path → GRAY + not-live toast (⚠️ reuse/fail-open = green pa rin,
-B4 residual — expected) · (4) Disconnect→Connect parehong account → GREEN ·
-(A) walang "Connected!" toast sa background reconnect habang tahimik na live.
+### ✅ LIVE-VALIDATED ni Jeff (Jul 12) — LAHAT ng 5 checks PASADO
+(1) A→Disconnect→pili B→Connect → GREEN ✅ · (2) pabalik B→A → GREEN ✅ ·
+(3) not-live account, FRESH (hindi na-connect buong araw, zero server entry) →
+GRAY + "the request user is not online" toast ✅ — **TOTOONG 409 is-LIVE-gate
+test, hindi reuse** · (4) Disconnect→Connect parehong account → GREEN ✅ ·
+(A) walang spontaneous "Connected!" toast habang tahimik na live ✅.
+**SARADO ang connect-truth fix. Ang B4 (B2-reuse zombie green) ay NANANATILING
+OPEN — hindi ito na-close ng fix na ito** (server-side is-LIVE check sa reuse
+branch = hiwalay na plan+audit, see the B4 entry above).
