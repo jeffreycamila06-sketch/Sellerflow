@@ -54,7 +54,8 @@ import { sessionKeyFor } from "./adapters/shipping";
 import { printSlip, buildSettingsFromRedesign, setNativePrintAlertText, type Settings as PrintSettings } from "./adapters/printing";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
 import { btCall, hasBtBridge, buildTestStickerPayload, buildTestBuyer, type StickerPrintResult } from "./adapters/printerBridge";
-import { registeredAccountsFor, appendAccount, maxAcc, composeChannelSave, connectToast, type Platform } from "./adapters/connect";
+import { registeredAccountsFor, appendAccount, maxAcc, composeChannelSave, type Platform } from "./adapters/connect";
+import { useConnectToastGate } from "./adapters/connectToastGate";
 import type { Buyer, Comment as ProdComment } from "../lib/orderTypes";
 import CapPopup from "./screens/CapPopup";
 import ConnectModal from "./screens/ConnectModal";
@@ -442,10 +443,20 @@ export default function RedesignApp() {
   const ttConnected = liveFeed.ttConnected;
   const fbConnected = liveFeed.fbConnected;
   const [connectOpen, setConnectOpen] = useState<Platform | null>(null);
+  // CONNECT-TRUTH Item A — "Connected!" fires on the ttConnected RISE (server
+  // truth), gated to a recent Connect tap: background rises (health-cycle
+  // recovery, join snapshot after a socket blip) never pop a surprise toast
+  // mid-live. Armed at the tap (BEFORE the POST — the server emits the status
+  // event before the HTTP response), disarmed on a failed attempt.
+  const ttToastGate = useConnectToastGate(ttConnected, () => setToast({ msg: tApp.rd_dash_connected_toast, kind: "ok" }));
+  const fbToastGate = useConnectToastGate(fbConnected, () => setToast({ msg: tApp.rd_dash_connected_toast, kind: "ok" }));
+  const toastGateFor = (platform: Platform) => (platform === "TikTok" ? ttToastGate : fbToastGate);
   // ConnectModal action: real connect → on success register the account on the
   // profile (same as App.tsx connectPlatform) + reload so it appears in the picker.
   const handleConnect = async (platform: Platform, data: Record<string, string>) => {
+    toastGateFor(platform).arm(); // the modal's Connect tap = an attempt (2nd door)
     const r = await liveFeed.connect(platform, data);
+    if (!r.ok) toastGateFor(platform).disarm(); // a later background rise must not claim this
     if (r.ok && auth.profile) {
       const np = appendAccount(auth.profile, platform, r.account);
       if (np) { try { await upsertUser(np); await auth.reloadProfile(); } catch { /* non-fatal */ } }
@@ -487,12 +498,13 @@ export default function RedesignApp() {
     setOpen(false);                                  // Connect uses the selected account → close the dropdown
     setConnecting(true);
     track("connect_attempt", { platform });          // analytics parity (App.tsx:4277)
+    toastGateFor(platform).arm();                    // Item A — the tap arms the success toast
     try {
       const r = await liveFeed.connect(platform, { username: acct });
       // connect_success / connect_failed — captured for EVERY outcome (App.tsx:4289-4311),
       // before the early returns below. reason: not-live → "not_live"; else the real error.
       if (r.ok) track("connect_success", { platform });
-      else track("connect_failed", { platform, reason: r.notLive ? "not_live" : (r.error || "unknown") });
+      else { track("connect_failed", { platform, reason: r.notLive ? "not_live" : (r.error || "unknown") }); toastGateFor(platform).disarm(); }
       // iOS: an expired plan (server 403 "plan_expired") shows a NEUTRAL "plan inactive"
       // popup → Contact Support, NOT a payment-tinged toast. Android/web keep the toast.
       if (ios && !r.ok && (r.error || "").includes("plan_expired")) { setIosExpired(true); return; }
@@ -502,9 +514,10 @@ export default function RedesignApp() {
       // F-batch i18n: a CLIENT-side network failure (fetch threw — no server reason)
       // gets its own localized toast instead of the hardcoded English fallback.
       if (!r.ok && r.unreachable) { setToast({ msg: tApp.rd_cm_cant_reach, kind: "err" }); return; }
-      // Honest feedback: success "Connected!"; failure → the real server/network reason
-      // (r.error verbatim) with the generic fallback. Chip still reverts to neutral.
-      setToast(connectToast(r, tApp.rd_dash_connected_toast, tApp.rd_cm_conn_failed));
+      // CONNECT-TRUTH Item A: the old r.ok "Connected!" toast is GONE (the same
+      // POST-ok-as-truth lie the branch removes) — success now toasts via the
+      // gated ttConnected rise above. Failures keep the honest r-based toast.
+      if (!r.ok) setToast({ msg: r.error || tApp.rd_cm_conn_failed, kind: "err" });
     } finally { setConnecting(false); }
   };
   // Refresh = one-shot full dashboard reload (pull-to-refresh style; NO polling).

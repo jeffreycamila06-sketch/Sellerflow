@@ -123,7 +123,7 @@ describe("manual-connect-only — no socket event ever auto-POSTs /connect", () 
     expect(connectPlatformMock).not.toHaveBeenCalled(); // manual is the only way back
   });
 
-  it("the manual connect() path is unchanged: POST + optimistic account", async () => {
+  it("the manual connect() path: POST + account confirmed via the STATUS EVENT (connect-truth: no more optimistic r.ok account)", async () => {
     const { result } = renderHook(() => useLiveFeed(true, "g@x.com"));
     fireConnect();
     await act(async () => {
@@ -131,6 +131,9 @@ describe("manual-connect-only — no socket event ever auto-POSTs /connect", () 
       expect(r.ok).toBe(true);
     });
     expect(connectPlatformMock).toHaveBeenCalledTimes(1);
-    expect(result.current.activeAccounts.TikTok).toBe("shop_tt");
+    expect(result.current.activeAccounts.TikTok).toBe("");           // r.ok alone sets nothing (connect-truth)
+    firePlatformStatus({ platform: "TikTok", connected: true, username: "shop_tt" }); // the server's assertion
+    expect(result.current.activeAccounts.TikTok).toBe("shop_tt");    // server-driven
+    expect(result.current.ttConnected).toBe(true);
   });
 });

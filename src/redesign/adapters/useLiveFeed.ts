@@ -400,6 +400,19 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       const plat: Platform | "" = p.platform === "TikTok" ? "TikTok" : p.platform === "Facebook" ? "Facebook" : "";
       if (!plat) return;
       if (p.connected && !p.reconnecting) {
+        // CONNECT-TRUTH intent guard (the audit's real find): after connect()
+        // honest-falses the pill at initiation, a spontaneous connected:true
+        // for a DIFFERENT account (the OLD account's health-cycle success, or
+        // the join snapshot after a socket blip — its connection stays alive
+        // server-side) must NOT re-green the pill under the newly intended
+        // account's name. Green only for the account this pill tracks/intends
+        // (trackedAcctRef — set synchronously at the Connect tap). Events
+        // without a username still apply (backward compat, mirror of H1).
+        // Side effect (documented): the single-device "last-wins" label flap
+        // when two accounts are live on one platform is fixed by this guard.
+        const okAcct = cleanLiveAccount(p.username || "");
+        const intent = cleanLiveAccount(trackedAcctRef.current[plat] || "");
+        if (okAcct && intent && okAcct !== intent) return;
         cancelGray(plat);
         if (plat === "TikTok") setTtConnected(true); else setFbConnected(true);
         if (p.username) {
@@ -484,12 +497,35 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     // transport is still handshaking.
     hasUserConnectedRef.current = true;
     joinRoomRef.current?.();
+    // CONNECT-TRUTH (post-revert redesign of the off-latch fix; audited):
+    // honest-false the platform at INITIATION. From here, GREEN can return
+    // ONLY via a platform_status connected:true whose username matches this
+    // tap's intent — the one account-attributed server assertion. This is
+    // what makes the POST result irrelevant to the pill (the r.ok=true paths
+    // with no real live — reuse/fail-open — can no longer green it by
+    // themselves), gives RedesignApp's [ttConnected] transition effect a real
+    // false→true edge to clear the local-Disconnect latch on, and kills the
+    // stale-green window while switching accounts. Pending gray timers +
+    // recovering (F3 amber) are cleared too — the old platform state is void;
+    // the pill is amber via the caller's connecting flag for the POST's
+    // lifetime, then gray until the server asserts the new account.
+    trackedAcctRef.current[platform] = cleanLiveAccount(data.username || ""); // intent — synchronous (H1-safe)
+    if (platform === "TikTok") { setTtConnected(false); setTtRecovering(false); }
+    else { setFbConnected(false); setFbRecovering(false); }
+    setActiveAccounts((a) => ({ ...a, [platform]: "" })); // stale server-truth voided too (same rule as setPlatformGray)
+    const pendingGray = grayTimersRef.current[platform];
+    if (pendingGray) { clearTimeout(pendingGray); grayTimersRef.current[platform] = null; }
     try {
       const r = await connectPlatform(platform, data, email);
       if (r.ok) {
         setFeed([]);
-        setActiveAccounts((a) => ({ ...a, [platform]: r.account }));
-        trackedAcctRef.current[platform] = r.account; // H1 — optimistic tracking, same as activeAccounts
+        // CONNECT-TRUTH: the optimistic setActiveAccounts + trackedAcctRef
+        // writes that lived here are GONE — r.ok is "the server accepted the
+        // request", not "the new account is live and this client is
+        // receiving" (the reuse/fail-open 200s proved it). activeAccounts is
+        // now purely server-driven (the connected:true handler sets it);
+        // tracked intent moved to INITIATION (synchronous, H1-safe, and it
+        // feeds the connected-branch intent guard).
         // exitpath — the feed is cleared now: flush the buffered batch into the
         // history block (this is the page-alive exit-return case; on a fresh
         // page the batch was accepted directly and this buffer is empty).
