@@ -2364,9 +2364,160 @@ merge. WALANG shortcut sa sacred zone.
 - Ang `39a2ed5` SERVER half (B2 zombie escape + F1 liveness + forced-fresh
   terminal emit) = **MANUAL RENDER DEPLOY** — hindi buhay hangga't hindi
   pinipindot ang "Deploy latest commit". Ang client halves = Vercel na.
+  ✅ **DEPLOYED na (2026-07-12, kasama sa initial-comments live-testing deploys —
+  see the 2026-07-12 saga closeout; ang natitirang pending = `52fde07` msgId
+  relay).**
 - **Validation sa susunod na live ni Jeff:** green habang dumadaloy · maikling
   amber sa health cycle na bumabalik sa green mag-isa (normal na, hindi sira) ·
   patayin ang live → amber → honest gray sa loob ng ~1min → i-restart ang live →
   ISANG Connect tap → green (wala nang logout/login ritual — ito ang DoD#5 test).
 - Test counts sa saga: 845 → 872 (+27: statusTruth 20 incl. 7 F3 + connectionHealth 7).
   Tangled-zone parity suites (commentKey, autoreconnect) = UNMODIFIED sa buong saga.
+
+## SESSION 2026-07-12 — INITIAL COMMENTS + ORDERABLE HISTORY + MANUAL-CONNECT-ONLY ✅ SAGA CLOSED (live-verified ni Jeff)
+Kasunod ng connection saga: ang "fresh open mid-live = walang makikita" problema ay
+sinolusyunan end-to-end sa APAT na merged features + 3 live-test fix rounds. Bawat
+step: branch + diff + (adversarial audit kung delivery-path) + Jeff "merge" + prod
+verify. **FINAL LIVE TEST PASADO (2026-07-12).** Test count sa saga: 872 → **935**.
+Tangled-zone parity suites (commentKey/dedup/order fan-out) = UNMODIFIED sa lahat.
+
+### 1. FLive-parity INITIAL COMMENTS (Approach A) — merge `a5f5025`
+TikTok's pre-connect room buffer (~5–20 chats, dating tinatapon via
+`processInitialData:false`) ay nire-relay na bilang history block sa connect. Zero
+DB / zero egress / zero storage — ang buffer ay KASAMA NA sa signed-websocket fetch;
+tinigil lang ang pagtapon.
+- **SERVER:** `processInitialData:true` + **temporary collector attached BEFORE
+  `connect()`** (structural boundary: ang library ay nagde-decode ng buffer SA LOOB
+  ng connect(), bago pa mag-exist ang websocket — execution order, hindi timing
+  heuristic); batch relayed via `emitCommentScoped` na may **`initial:true` + msgId**;
+  shaping/dedup sa NEW **`server/initialComments.js`** (pure, vitest-covered:
+  `msgIdOf`/`createTimeOf`/`dedupInitialChats`/`buildInitialCommentPayloads`).
+- **CLIENT (`useLiveFeed`):** display-only lane — early branch **PAGKATAPOS ng
+  scoping filters, BAGO ang Auto-Mode seam at pushComment** (initial comments ay
+  HINDI kailanman nakaka-abot sa seam = layer-1 structural dupe guard); hiwalay na
+  `initialFeed` + `initialKey` (msgId-first) dedup + `INITIAL_COMMENT_LIMIT=100`;
+  **EMPTY-FEED GUARD** (tinatanggap lang kapag walang laman ang feed sa arrival —
+  health-cycle reconnect mid-live ay hindi nagdodoble ng display); muted "— Earlier
+  comments —" block (`rd_dash_restored_note` ×7).
+- **⚠️ F1 LESSON (legacy field shape — fixtures masked it):** ang server ay gumagamit
+  ng LEGACY `WebcastPushConnection`; ang `simplifyObject` nito ay **nagfa-flatten ng
+  protobuf `common` sa top level at binubura ito** (data-converter.js:19-24) →
+  production chat events ay may TOP-LEVEL `data.msgId`/`data.createTime`, HINDI
+  `data.common.*`. Lahat ng accessor ay dual-shape (top-level muna, common.*
+  fallback). Tandaan ito sa anumang future field na kukunin sa TikTok events.
+- **THE DUPE GATE** (`useLiveFeed.initialComments.test.tsx`) = ang F4-lesson bilang
+  regression suite: seam ZERO sa initial · empty-feed guard · msgId dedup ·
+  mis-flagged live comment = display-only (safe direction) · scoping/lifecycle.
+
+### 2. Live-test fix rounds (3 merges — mekanismo, hindi logs lang, ang diagnosis)
+- **`55afa13` (clientfix):** **RC1** — ang history clear ay lumipat sa connect
+  INITIATION (ang server ay nagre-relay ng batch HABANG pinoproseso ang POST → ang
+  clear-on-r.ok ay nagwa-wipe ng kararating lang) · **RC2** — per-connection
+  **recent-comments ring** (`RECENT_RING_CAP=20`, guarded sa owning connection) na
+  nire-re-emit ng B2 reuse branch → may history na rin ang refresh-mid-live ·
+  **RC3** — stale queued reconnect guard (`shouldSkipQueuedReconnect`) + ang
+  reconnect path ay kumukuha na ng connect lock (pumapatay sa not_live/ended clobber
+  at sa scheduler-reachable G1 overwrite) · **H1** — account-scoped non-connected
+  status events via `trackedAcctRef` na **SYNCHRONOUSLY updated sa handler**
+  (render-mirrored refs ay bumabagsak sa F2 same-batch race — nahuli mismo ng
+  existing test nang subukan) · **M1** — reuse re-emit ay may requester's sessionId.
+- **`c18f70e` (exitpath):** page-alive return (backgrounded → balik, hindi refresh)
+  = buhay pa ang lumang feed sa memory pagdating ng batch mid-POST → guard drop +
+  connect-ok clear = wala parehong history at lumang feed. Fix: **buffer habang may
+  connect na in flight** (`connectInFlightRef`/`pendingInitialRef`) → flush
+  pagkatapos ng feed clear sa r.ok, discard sa failure.
+- **Console diagnostics na naging susi:** client `[initial] accepted/buffered/
+  dropped/flushed` · server `[INITIAL] relaying N/M` + `[INITIAL] reuse re-emit N` +
+  `[RECONNECT] skip stale queued reconnect` — gamitin ang mga marker na ito sa
+  anumang future initial-comments debugging.
+
+### 3. ORDERABLE earlier comments — merge `52fde07` (sql/18 APPLIED via chat-Claude)
+Jeff use case: ang "mine" ng buyer habang wala si Jeff ay dapat ma-order pagbalik.
+History rows = hindi na display-only; ang duplicate protection ay lumipat sa
+**DB-backed ordered-check** (mas malakas sa pinalitan nitong in-memory printed map —
+survives refresh + cross-device).
+- **⚠️ IDENTITY INSIGHT (load-bearing):** ang TikTok **msgId ang NAG-IISANG id na
+  stable** sa live copy at sa later initial/restored copy ng parehong comment — ang
+  commentKey ay server-stamped timestamps kaya iba per relay (ito ang F4 lesson na
+  naging solusyon). FB comments = walang msgId (walang ordered-check, ok lang).
+- **`sql/09`-pattern additive:** `live_session_orders.comment_msg_id text NULL`
+  (`sql/18_order_msgid.sql`); `db.ts` = additive-only optional field (protected file,
+  insert line lang); orders sa lahat ng 3 sites (1-Click/Enterprise/auto) ay
+  nag-iimbak ng source msgId.
+- **Zero bagong query:** `orderedMsgIds` Set ay binubuo mula sa EXISTING window load
+  (`useLiveSession`) + in-session `addOrderedMsgId`. **E1 gate** (`orderedLoaded`):
+  history action buttons LANG kapag RESOLVED na ang load (failed load = nakasara ang
+  gate — hindi kailanman lalabas ang buttons na walang ordered data = dupe window
+  sarado). **E3:** empty msgIds ay hindi pumapasok sa Set/rows.
+- **3 history states sa Dashboard:** checking (muted, walang buttons) → "Ordered ✓"
+  chip (`rd_dash_ordered_prior` ×7) → full action row. Auto Mode ay hindi pa rin
+  tumatakbo sa history (layer 1 untouched); ang layer-2 getComment ay SADYANG
+  in-unlock para sa manual ordering (documented sa DUPE GATE test header).
+- **E2 accepted limitation:** kung ang order write ay nabigo nang tahimik sa ibang
+  device, posibleng walang "Ordered ✓" — manual double-order risk = pareho sa dating
+  manual double-tap exposure (pre-existing, out of scope).
+
+### 4. MANUAL-CONNECT-ONLY + ZOMBIE-GREEN FIX — merges `02fe7e7` → `93ae874` ✅ LIVE-VERIFIED
+- **`02fe7e7`:** ang Fix B client auto-reconnect (app-open/return auto re-POST) ay
+  TINANGGAL, hindi inayos — desisyon ni Jeff pagkatapos ng live tests: ang auto path
+  ay nag-bypass ng hook `connect()` (direct connectPlatform → walang exitpath
+  buffering → sira ang initial comments sa bawat auto trigger) samantalang ang
+  manual tap ay perpekto. `markDisconnected` API tanggal na rin.
+- **`93ae874` (fix2 — ang CORRECTED diagnosis ni Jeff):** ang totoong bug = **ZOMBIE
+  GREEN**: buhay talaga ang server-side connection sa fresh open (hindi napapatay
+  ng app close), at ang automatic `join_live_room` + server JOIN SNAPSHOT ay
+  nag-gre-green ng pill nang walang attach guarantees — (a) ang **ring re-emit ay
+  nangyayari LANG sa connect POST B2 reuse branch, kailanman hindi sa join** →
+  walang history, garantisado; (b) ang live comments ay may HIWALAY na filter chain
+  (server per-socket `select_account` gate + client selection/sessionId filters) na
+  hindi vinavalidate ng status green → "green pero walang comment," na dating
+  naaayos lang ng disconnect→connect. **FIX: intent-gated join** —
+  `hasUserConnectedRef` (reset bawat socket subscription: fresh open/login/user
+  switch) → **walang room join hangga't walang Connect tap**; ang `connect()` ay
+  nagse-set ng intent + **sumasali sa room SA INITIATION, bago ang POST**
+  (ordering-critical: ang initial batch ay relayed mid-POST — kailangang nasa room
+  na ang socket); pagkatapos ng tap, bawat socket reconnect ay nagre-re-join sa
+  connect handler (buo ang mid-live resilience).
+- **🔒 RULE (bagong invariant, huwag sirain): GREEN = RECEIVING.** Bago ang tap,
+  ang socket ay wala sa room at LAHAT ng status emit ay room-scoped (join snapshot =
+  direct-on-join; broadcasts = `io.to(room)`) → structurally imposible ang green.
+  Anumang future status path ay dapat dumaan sa parehong invariant.
+- **UX/trade-off (sadya):** fresh open / login / refresh / pagkatapos ng Render
+  restart = **gray + Connect button, laging** — ISANG tap → B2 reuse → instant
+  green + history block + live flow (wala nang disconnect→connect dance). Ang
+  server-side mid-live resilience (health cycle, B2, grace/amber/honest-gray) ay
+  hindi ginalaw.
+
+### 5. PARKED / research verdicts (huwag balikan nang walang bagong basehan)
+- **Approach B comment persistence = PARKED intact** (utos ni Jeff: huwag burahin):
+  branch **`claude/comment-persistence`** (buong implementation: batch-blob table,
+  500-cap restore RPC, zero-tail-loss localStorage mirror) + `sql/17` = mirror LANG,
+  **HINDI applied**. ⚠️ **A at B ay HINDI pwedeng sabay i-ship** (magbabanggaan ang
+  restored-vs-initial identity/keys) — kung bubuhayin ang B, i-reconcile muna vs A.
+- **Live-session boundary research (report-only):** `roomId` = unique per broadcast
+  (HIGH confidence) = ang tamang boundary key; `streamEnd` = structurally unreliable
+  (hindi laging dumarating); industry pattern = display-scoping, never-delete-at-
+  boundary. Rekomendasyon noon: room-scoped display (Option C) — hindi kinodigo,
+  ang Approach A + manual-connect ang sumagot sa praktikal na pangangailangan.
+- **FLive/EulerStream speed research (report-only):** ang "instant comments" ng
+  FLive = ang initial buffer (na-ship na bilang Approach A); ang connect latency ay
+  dominado ng EulerStream sign + TikTok roomInfo (2–8s, labas sa kontrol natin);
+  **EulerStream Business $50/mo = HINDI sulit para sa speed** (walang materyal na
+  latency benefit sa use case natin); Community free tier = sapat pa rin.
+
+### ⚠️ OPERATIONAL (natitira pagkatapos ng saga)
+- **MANUAL RENDER DEPLOY pending pa rin para sa orderable server half** (`52fde07`:
+  msgId sa live chat relay payload). Hangga't hindi deployed: bagong orders ay
+  WALANG stored msgId → walang "Ordered ✓" match sa history (SAFE direction lang —
+  full action row ang lalabas, tulad ng dati). Ang mga naunang server halves ng saga
+  (collector/ring/RC2/RC3) ay na-deploy na ni Jeff sa live-testing mismo. Isabay na
+  rin dito ang anumang hindi pa nade-deploy na server commits sa susunod na "Deploy
+  latest commit".
+- **G1 relay-level guard = bukas pa rin bilang kandidato** (ang RC3 lock ay sumasara
+  sa scheduler-level path; ang one-line guard sa taas ng chat handler ay hindi pa
+  nailalagay — tingnan ang 2026-07-11/12 section).
+- Merged branches na pwedeng burahin sa GitHub UI: `claude/initial-comments`,
+  `claude/initial-comments-clientfix`, `claude/initial-comments-exitpath`,
+  `claude/initial-orderable`, `claude/manual-connect-only`,
+  `claude/manual-connect-fix2` (remote delete = blocked sa remote session). **HUWAG
+  burahin: `claude/comment-persistence`** (parked by design).
