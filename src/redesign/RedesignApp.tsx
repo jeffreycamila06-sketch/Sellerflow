@@ -52,6 +52,7 @@ import { computeSales } from "./adapters/sales";
 import { useSalesReport } from "./adapters/salesReport";
 import { sessionKeyFor } from "./adapters/shipping";
 import { printSlip, buildSettingsFromRedesign, setNativePrintAlertText, type Settings as PrintSettings } from "./adapters/printing";
+import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
 import { btCall, hasBtBridge, buildTestStickerPayload, buildTestBuyer, type StickerPrintResult } from "./adapters/printerBridge";
 import { registeredAccountsFor, appendAccount, maxAcc, composeChannelSave, connectToast, type Platform } from "./adapters/connect";
 import type { Buyer, Comment as ProdComment } from "../lib/orderTypes";
@@ -235,6 +236,21 @@ export default function RedesignApp() {
     if (!pc) return { ok: false, via: "none" };
     const r = printSlip(buildWinnerTicketBuyer(w, Date.now()), pc.cur, pc.storeName, pc.settings);
     return { ok: r.ok, via: r.via };
+  };
+  // REPRINT (FLive-parity) — print a COPY of an existing order's sticker: NO new
+  // order, NO buyer#, NO stock change, NO DB write (zero-write contract, tested).
+  // Resolution: in-session snapshot by comment id (covers rows without a msgId,
+  // e.g. Facebook) → else the ordered-check map by msgId (covers restored rows
+  // after a refresh — DB-backed, cross-device). Same printCfgRef snapshot + the
+  // proven onPrintWinner pattern (print-without-create through printSlip).
+  const reprintByIdRef = useRef<Map<string, ReprintRow>>(new Map());
+  const onReprint = (id: string, msgId?: string) => {
+    const pc = printCfgRef.current;
+    if (!pc) return;
+    const snap = reprintByIdRef.current.get(id) || (msgId ? orderedMsgIds.get(msgId) : null);
+    if (!snap) return;
+    const r = performReprint(snap, pc.cur, pc.storeName, pc.settings);
+    track("reprint", { via: r.via }); // reprint usage (PostHog), mirrors track("print")
   };
   // Batch D (#7): counts non-cap background write failures from the order
   // fan-out. A toast effect below (after tApp exists) converts bumps into the
@@ -575,7 +591,9 @@ export default function RedesignApp() {
     const order = orders.createOrder(prod, 0);
     if (order) {
       setPrinted((p) => ({ ...p, [id]: "order" })); // null = free-cap blocked
-      liveSession.addOrderedMsgId((prod as ProdComment & { msgId?: string }).msgId); // ordered-check stays complete
+      const snap = snapshotFromCreate(prod, order); // reprint — the original order, row-shaped
+      reprintByIdRef.current.set(id, snap);
+      liveSession.addOrderedMsgId((prod as ProdComment & { msgId?: string }).msgId, snap); // ordered-check stays complete
     }
   };
   const onOpenEnt = (id: string) => { setEntId(id); setEntPrice(""); };
@@ -590,7 +608,9 @@ export default function RedesignApp() {
     const order = prod && !printed[id] ? orders.createOrder(prod, price) : null;
     if (order) {
       setPrinted((p) => ({ ...p, [id]: price > 0 ? cur + price : "order" })); // null = blocked
-      liveSession.addOrderedMsgId((prod as ProdComment & { msgId?: string }).msgId);
+      const snap = snapshotFromCreate(prod as ProdComment, order); // reprint snapshot
+      reprintByIdRef.current.set(id, snap);
+      liveSession.addOrderedMsgId((prod as ProdComment & { msgId?: string }).msgId, snap);
     }
     setEntId(null); setEntPrice("");
   };
@@ -616,7 +636,9 @@ export default function RedesignApp() {
     const order = orders.createOrder(c, plan.code.price, { productLocalId: plan.code.productLocalId });
     if (order) {
       setPrinted((p) => ({ ...p, [key]: cur + plan.code.price }));
-      liveSession.addOrderedMsgId((c as ProdComment & { msgId?: string }).msgId); // ordered-check stays complete
+      const snap = snapshotFromCreate(c, order); // reprint snapshot (auto orders reprint too)
+      reprintByIdRef.current.set(key, snap);
+      liveSession.addOrderedMsgId((c as ProdComment & { msgId?: string }).msgId, snap); // ordered-check stays complete
       if (plan.soldOut) autoSoldOutToast(plan.code);
     } else {
       // free-cap soft block prevented creation → refund the claim so it can retry.
@@ -764,6 +786,7 @@ export default function RedesignApp() {
               onPickSession={(n) => { void sessionWindow.setWindowDays(n as WindowDays); liveSession.reset(); setSessionOpen(false); }}
               printed={printed} entId={entId} entPrice={entPrice}
               historyReady={liveSession.orderedLoaded}
+              onReprint={onReprint}
               onOneClick={onOneClick} onOpenEnt={onOpenEnt}
               onEntPrice={(v) => setEntPrice(v.replace(/[^0-9]/g, ""))} onEntKey={onEntKey}
               session={liveSession.session} sessionState={liveSession.state}

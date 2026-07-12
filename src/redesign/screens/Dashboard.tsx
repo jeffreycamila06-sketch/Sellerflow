@@ -60,6 +60,7 @@ export default function Dashboard({
   sessionDays, sessionOpen, onToggleSession, onPickSession,
   printed, entId, entPrice, onOneClick, onOpenEnt, onEntPrice, onEntKey,
   historyReady = false,
+  onReprint,
   session = { buyers: [], orders: [] }, sessionState = "idle",
   canInject = false, onInjectSynthetic,
   announcement = null, annDismissedId = "", onDismissAnn, annUnread = false, onOpenAnn,
@@ -90,6 +91,9 @@ export default function Dashboard({
   historyReady?: boolean;
   onOneClick: (id: string) => void; onOpenEnt: (id: string) => void;
   onEntPrice: (v: string) => void; onEntKey: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  // REPRINT — print a COPY of this comment's existing order (no new order, no
+  // writes; RedesignApp resolves the original order + calls printSlip).
+  onReprint?: (id: string, msgId?: string) => void;
 }) {
   const t = useT();
   const tt = conn(ttConnected, ttConnecting);
@@ -143,6 +147,30 @@ export default function Dashboard({
   useLayoutEffect(() => {
     feedRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, [newestId]);
+  // REPRINT — per-row double-tap guard: after a tap the button shows
+  // "Printing…" and ignores taps for ~2s (a reprint has ZERO writes, so the
+  // worst a slip-through could cause is a duplicate piece of paper — the
+  // cooldown is purely UX). Timer cleared on unmount.
+  const [reprintingId, setReprintingId] = useState<string | null>(null);
+  const reprintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (reprintTimerRef.current) clearTimeout(reprintTimerRef.current); }, []);
+  const fireReprint = (c: Comment) => {
+    if (!onReprint || reprintingId) return;
+    setReprintingId(c.id);
+    onReprint(c.id, c.msgId);
+    reprintTimerRef.current = setTimeout(() => setReprintingId(null), 2000);
+  };
+  // Green (--ok, theme-aware) outline button — mirrors the Enterprise button
+  // geometry; ONE clean button replaces the old "Ordered ✓" / "🖨 Printed"
+  // chips (Jeff: FLive style, no chip beside it).
+  const reprintBtn = (c: Comment) => {
+    const busy = reprintingId === c.id;
+    return (
+      <button onClick={() => fireReprint(c)} disabled={busy} title={t.rd_dash_reprint_title} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 800, letterSpacing: ".02em", color: "var(--ok)", background: "transparent", border: "1.3px solid var(--ok)", padding: "5px 12px", borderRadius: 7, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1, fontFamily: "var(--font-ui)" }}>
+        {printerIcon}{busy ? t.rd_dash_reprinting : t.rd_dash_reprint}
+      </button>
+    );
+  };
   // Raffle Roleta Phase 1 — DB-backed Games on/off + enabled_at anchor (1 read on
   // mount, 1 write per toggle; entries/wheel = Phase 2). Self-contained adapter.
   const raffle = useRaffleConfig();
@@ -383,7 +411,6 @@ export default function Dashboard({
             const rowActionable = !isRestored || (historyReady && !orderedPrior);
             const manP = printed[c.id];
             const isPrinted = rowActionable && !!manP;
-            const printedLabel = manP && manP !== "order" ? manP : "";
             const entOpen = rowActionable && entId === c.id;
             const showActions = rowActionable && !isPrinted && !entOpen;
             // 🛒 basket count — this buyer's CREATED ORDERS in the current session
@@ -426,12 +453,13 @@ export default function Dashboard({
                     {basketN > 0 && (
                       <span className="sfl-basket-badge" title={t.rd_dash_basket_tip} style={{ display: "inline-flex", alignItems: "center", fontWeight: 800, color: "var(--accent-fg)", background: "var(--accent-soft)", borderRadius: 999, flexShrink: 0 }}>🛒{basketN}</span>
                     )}
-                    {orderedPrior && (
-                      <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 800, letterSpacing: ".02em", color: "var(--text-dim)", background: "var(--surface-3)", padding: "5px 10px", borderRadius: 7 }}>{t.rd_dash_ordered_prior}</span>
-                    )}
-                    {isPrinted && (
-                      <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, fontWeight: 800, letterSpacing: ".02em", color: "var(--text-dim)", background: "var(--surface-3)", padding: "5px 10px", borderRadius: 7 }}>{printerIcon}{t.rd_dash_printed} {printedLabel}</span>
-                    )}
+                    {/* REPRINT — the ONE button for every already-ordered row
+                        (FLive style, Jeff 2026-07-12): replaces both the
+                        "Ordered ✓" chip (restored rows whose msgId matched a
+                        loaded order) and the "🖨 Printed" chip (rows ordered
+                        this session). Tap = printSlip copy of the ORIGINAL
+                        order — no new order, no writes. */}
+                    {(orderedPrior || isPrinted) && reprintBtn(c)}
                     {entOpen && (
                       <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)" }}>{t.rd_dash_type_price}</span>
