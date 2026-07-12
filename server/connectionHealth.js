@@ -62,3 +62,54 @@ export function shouldForceFreshConnect(lastEventAt, nowMs) {
 export function shouldSkipQueuedReconnect(hasActiveConnection, connectLockHeld) {
   return Boolean(hasActiveConnection || connectLockHeld);
 }
+
+// ── B4 PHASE 1 (log-only) — REUSE is-LIVE verification, pure decision core ──
+// The B2 reuse branch never checks whether the account is STILL LIVE — an
+// entry whose room died <60s ago (streamEnd is structurally unreliable) reuses
+// and asserts connected:true → the B4 zombie green (Jeff's check-#3 repro).
+// Phase 1 measures before enforcing: the reuse branch fires a FIRE-AND-FORGET
+// verification (zero added latency, zero behavior change) and logs the verdict
+// distribution; the Phase-2 flip (await + teardown + 409) ships only after the
+// logs confirm no false-not_live on genuinely-live accounts.
+//
+// ⚠️ R3 (audit catch, load-bearing): the verification must run on a THROWAWAY
+// listener-less WebcastPushConnection — NEVER on the live connection instance.
+// fetchIsLive()'s fallback tiers call handleError() on every intermediate
+// failure (the HTML tier fails routinely), and handleError EMITS the `error`
+// event when a listener exists — server.js's error listener responds with
+// handleTikTokDisconnected, i.e. verifying on the live instance would tear
+// down a healthy connection on a mere tier hiccup. On a listener-less
+// instance handleError is a structural no-op (client.js: returns when
+// listenerCount(ERROR) < 1).
+
+export const REUSE_VERIFY_TIMEOUT_MS = 4 * 1000;
+
+// Pure verdict from a settled fetchIsLive outcome. CONSERVATIVE by design
+// (Phase-1 fail-open philosophy — never risk false-blocking a live seller):
+//   • value === false  → "not_live"  (TikTok's own ended-signal — high confidence)
+//   • value === true   → "live"
+//   • error / timeout / any non-boolean → "ambiguous" (Phase 2 will FAIL-OPEN)
+export function reuseVerdict(outcome) {
+  if (!outcome || outcome.error !== undefined) return "ambiguous";
+  if (outcome.value === false) return "not_live";
+  if (outcome.value === true) return "live";
+  return "ambiguous";
+}
+
+// R1 (audit) — SINGLE-FLIGHT per key: one verification per account at a time;
+// concurrent Connect taps (double-tap, two devices on the same account) ride
+// the SAME pending promise instead of spawning duplicate fetches. The entry
+// is removed when the flight settles, so the next tap after that re-verifies.
+export function singleFlight(inFlightMap, key, factory) {
+  const pending = inFlightMap.get(key);
+  if (pending) return pending;
+  let started;
+  try {
+    started = Promise.resolve(factory()); // synchronous start — riders arriving in the same tick share it
+  } catch (err) {
+    started = Promise.reject(err);        // a synchronously-throwing factory still yields a normal rejection
+  }
+  const flight = started.finally(() => { inFlightMap.delete(key); });
+  inFlightMap.set(key, flight);
+  return flight;
+}

@@ -5,7 +5,7 @@ import http from "http";
 import { Server } from "socket.io";
 import { createClient } from "@supabase/supabase-js";
 import { translateBroadcast } from "./server/broadcastTranslate.js";
-import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS } from "./server/connectionHealth.js";
+import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS } from "./server/connectionHealth.js";
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
 
 const app = express();
@@ -970,6 +970,45 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
   return tiktokConnection;
 }
 
+// ── B4 PHASE 1 (log-only) — reuse is-LIVE verification ─────────────────────
+// Decision core (reuseVerdict / singleFlight / timeout) lives in
+// server/connectionHealth.js (vitest-covered — server.js has no harness).
+const reuseVerifyInFlight = new Map();
+
+// R3 (audit catch): a THROWAWAY, LISTENER-LESS connection — NEVER the live
+// instance. fetchIsLive()'s fallback tiers call handleError() on intermediate
+// failures (the HTML tier fails routinely); with a listener attached that
+// becomes an `error` event, and OUR error listener answers with
+// handleTikTokDisconnected — i.e. verifying on the live instance would tear
+// down a healthy connection on a mere tier hiccup. On this listener-less
+// probe, handleError is a structural no-op (tiktok-live-connector client.js:
+// returns when listenerCount(ERROR) < 1). The probe is never connect()ed —
+// fetchIsLive() is a standalone HTML → API → Euler status read.
+async function fetchIsLiveOutcome(cleanUsername) {
+  try {
+    const probe = new WebcastPushConnection(cleanUsername, {
+      processInitialData: false,
+      fetchRoomInfoOnConnect: false,
+      signApiKey: process.env.EULER_API_KEY,
+    });
+    const timeout = new Promise((_, reject) => {
+      const t = setTimeout(() => reject(new Error("reuse-verify timeout")), REUSE_VERIFY_TIMEOUT_MS);
+      if (typeof t.unref === "function") t.unref();
+    });
+    const value = await Promise.race([probe.fetchIsLive(), timeout]);
+    return { value };
+  } catch (error) {
+    return { error };
+  }
+}
+
+async function logReuseVerification(key, cleanUsername) {
+  const startedAt = Date.now();
+  const outcome = await singleFlight(reuseVerifyInFlight, key, () => fetchIsLiveOutcome(cleanUsername));
+  const verdict = reuseVerdict(outcome);
+  console.log(`[REUSE-VERIFY] ${verdict} ${cleanUsername} ${Date.now() - startedAt}ms (log-only)${outcome.error ? ` reason=${String(outcome.error?.message || outcome.error).slice(0, 120)}` : ""}`);
+}
+
 async function connectTikTok(username, res, meta = {}) {
   let key = "";
   let sellerId = "";
@@ -1020,6 +1059,14 @@ async function connectTikTok(username, res, meta = {}) {
     // lastEventAt=now and mask the very staleness being measured.
     if (existing) {
       if (!shouldForceFreshConnect(existing.lastEventAt, Date.now())) {
+        // B4 PHASE 1 (log-only) — measure whether reused entries are STILL LIVE.
+        // FIRE-AND-FORGET (R4): zero added latency, ZERO behavior change — the
+        // reuse proceeds exactly as before regardless of the verdict. The logs'
+        // live/not_live/ambiguous distribution + latency decide the Phase-2
+        // enforcement flip (await + ownership-guarded teardown + 409 — see the
+        // B4 Phase 2 notes in CLAUDE.md). Single-flight per key (R1): tap spam /
+        // two devices share ONE verification. Throwaway instance inside (R3).
+        void logReuseVerification(key, cleanUsername).catch(() => {});
         existing.sessionId = sessionId || existing.sessionId;
         emitTikTokStatus({
           sellerId,

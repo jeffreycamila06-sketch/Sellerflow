@@ -68,3 +68,71 @@ describe("shouldSkipQueuedReconnect (clientfix RC3 — stale-reconnect guard)", 
     expect(shouldSkipQueuedReconnect(true, true)).toBe(true);
   });
 });
+
+// ── B4 PHASE 1 (log-only) — reuse is-LIVE verification decision core ────────
+// reuseVerdict is CONSERVATIVE by design (never risk false-blocking a live
+// seller): only TikTok's own `false` (room ended) maps to not_live; every
+// error/timeout/odd shape is "ambiguous" → Phase 2 will FAIL-OPEN on it.
+// singleFlight (R1): concurrent Connect taps on the same account ride ONE
+// pending verification — no duplicate fetches on tap spam / two devices.
+import { reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS } from "../../../../server/connectionHealth.js";
+
+describe("reuseVerdict (B4 Phase 1 — pure matrix)", () => {
+  it("fetchIsLive true → live", () => {
+    expect(reuseVerdict({ value: true })).toBe("live");
+  });
+  it("fetchIsLive false → not_live (TikTok's own ended-signal — the only blocker)", () => {
+    expect(reuseVerdict({ value: false })).toBe("not_live");
+  });
+  it("throw → ambiguous (Phase 2 fail-open)", () => {
+    expect(reuseVerdict({ error: new Error("all sources failed") })).toBe("ambiguous");
+  });
+  it("timeout → ambiguous (the wrapper surfaces timeouts as errors)", () => {
+    expect(reuseVerdict({ error: new Error("reuse-verify timeout") })).toBe("ambiguous");
+  });
+  it("non-boolean / malformed / missing outcome → ambiguous (never guess)", () => {
+    expect(reuseVerdict({ value: 1 as unknown as boolean })).toBe("ambiguous");
+    expect(reuseVerdict({ value: undefined })).toBe("ambiguous");
+    expect(reuseVerdict(undefined as unknown as { value?: boolean })).toBe("ambiguous");
+    expect(reuseVerdict({} as { value?: boolean })).toBe("ambiguous");
+  });
+  it("timeout constant sane (bounded wait, well under the health-cycle scale)", () => {
+    expect(REUSE_VERIFY_TIMEOUT_MS).toBeGreaterThanOrEqual(1000);
+    expect(REUSE_VERIFY_TIMEOUT_MS).toBeLessThanOrEqual(10_000);
+  });
+});
+
+describe("singleFlight (B4 R1 — one verification per key at a time)", () => {
+  it("concurrent calls on the SAME key share one flight (factory runs once); a new call after settle re-runs", async () => {
+    const map = new Map<string, Promise<unknown>>();
+    let resolveFlight!: (v: string) => void;
+    const factory = vi.fn(() => new Promise<string>((res) => { resolveFlight = res; }));
+    const p1 = singleFlight(map, "seller:TikTok:acct", factory);
+    const p2 = singleFlight(map, "seller:TikTok:acct", factory); // tap spam / 2nd device
+    expect(factory).toHaveBeenCalledTimes(1);                    // ONE fetch
+    expect(p2).toBe(p1);                                         // riders share the promise
+    resolveFlight("live");
+    await expect(p1).resolves.toBe("live");
+    expect(map.size).toBe(0);                                    // cleaned on settle
+    const p3 = singleFlight(map, "seller:TikTok:acct", factory); // next tap re-verifies
+    expect(factory).toHaveBeenCalledTimes(2);
+    resolveFlight("live");
+    await p3;
+  });
+
+  it("different keys fly independently", () => {
+    const map = new Map<string, Promise<unknown>>();
+    const factory = vi.fn(() => new Promise(() => {}));
+    void singleFlight(map, "k1", factory);
+    void singleFlight(map, "k2", factory);
+    expect(factory).toHaveBeenCalledTimes(2);
+    expect(map.size).toBe(2);
+  });
+
+  it("a REJECTED flight is also cleaned up (the next tap can retry)", async () => {
+    const map = new Map<string, Promise<unknown>>();
+    const factory = vi.fn(() => Promise.reject(new Error("boom")));
+    await expect(singleFlight(map, "k", factory)).rejects.toThrow("boom");
+    expect(map.size).toBe(0);
+  });
+});
