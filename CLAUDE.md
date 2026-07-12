@@ -2680,3 +2680,67 @@ live confirmation na lang — si Lheyukay mismo ang ebidensyang gumagana).
 - **HUWAG AYUSIN nang walang bagong ebidensya na nangyayari ito sa production.
   SACRED ZONE — comment delivery.** (Candidate fix kung sakali: basahin ang
   `activeEntry.sessionId` sa relay time — sariling plan + adversarial audit.)
+
+## SESSION 2026-07-12 (part 3) — OFF-LATCH SAGA → CONNECT-TRUTH ✅ (merge `8df8a5a`, LIVE) + B4 residual
+Ang permanent-gray bug (Disconnect → switch account → Connect → gray forever) ay
+dumaan sa buong saga: fix (`18ea760`) → **REGRESSION sa live test #3 (zombie green
+sa not-live account)** → REVERT (`176ebfa`) → audited redesign → **connect-truth
+(`8df8a5a`, LIVE)**. Test count 951 → **966**.
+
+### Ang mga lesson ng saga (permanent record)
+- **PERMANENT-GRAY ROOT CAUSE:** ang `ttOff` local-Disconnect latch ay nakli-clear
+  LANG ng `ttConnected` TRANSITION effect — at walang transition habang may buhay
+  na server-side connection (walang server unbind ang Disconnect). Deterministic.
+- **⚠️ ANG REGRESSION LESSON (bakit na-revert ang unang fix): r.ok ≠ katotohanan.**
+  Ang `setOff(false)` sa POST success ay nag-green ng pill sa not-live account —
+  dahil may DALAWANG server path na nagbabalik ng 200 nang walang totoong live:
+  ang **B2 reuse branch (WALANG is-LIVE check, kailanman)** at ang Phase-1
+  fail-open. Ang "success-only" guard ay tama ang lohika pero mali ang assumption
+  kung ano ang "success". **RULE: ang POST result ay hindi kailanman pwedeng
+  magpakulay ng pill.**
+- **TWO-DOORS LESSON:** dalawang connect entry point — `doConnect` (picker) AT
+  `handleConnect` (ConnectModal; ang doConnect ay nag-e-early-return dito kapag
+  walang registered account). Anumang connect-side na galaw ay dapat sumakop sa
+  PAREHONG pinto.
+
+### Ang connect-truth fix (client-only, status layer; useLiveFeed + RedesignApp)
+- **Initiation honest-false:** ang Connect tap ay nagvo-void ng buong lumang
+  platform state (connected=false, recovering=false, pending gray timer cleared,
+  stale activeAccounts cleared) + **intent = trackedAcctRef naka-set nang
+  SYNCHRONOUS sa tap** (nalipat mula r.ok — sarado ang mid-POST H1 window).
+- **INTENT GUARD sa connected branch (ang tunay na tuklas ng audit):** green LANG
+  kapag ang event username ay tugma sa intent — ang spontaneous `connected:true`
+  ng IBANG account (health-cycle ni A / join snapshot after blip) ay hindi na
+  maka-green sa ilalim ng bagong intent. Walang-username events = apply pa rin
+  (H1 mirror). Bonus: ayos na ang documented single-device last-wins label flap.
+- **Latch clearing = ZERO bagong code:** ang initiation false → event true ay
+  totoo nang transition → ang EXISTING `[ttConnected]` effect ang naglilinis.
+- **Optimistic r.ok writes TANGGAL:** `activeAccounts` ay puro server-driven na
+  (verified: ZERO production consumer — grep+spread+destructure+prop-pass;
+  iniwan bilang server-truth observable/API, hindi dead code).
+- **Attempt-gated success toast (`adapters/connectToastGate.ts`):** ang
+  "Connected!" ay sa ttConnected RISE na, gated sa recent tap (arm sa tap BAGO
+  ang POST — ang event ay dumarating bago ang response; disarm sa failure; 15s
+  window; isang fire) — walang surprise toast sa background recoveries. Failure
+  toasts = r-based pa rin (tapat ang mga iyon). `connectToast` helper ok-side ay
+  hindi na ginagamit.
+- Tests: `useLiveFeed.connectTruth` (unang test = ang regression pin: r.ok +
+  walang event → GRAY) + `connectToastGate` suite (background rise → zero toast).
+
+### 🐛 B4 (KNOWN ISSUE, per audit item 3 — eksaktong wording): "latch bug fixed;
+B2-reuse zombie green REMAINS OPEN (server-side, needs is-LIVE check sa reuse
+branch — hiwalay na plan+audit)." Ang fail-open ay ganoon din (dokumentadong
+Phase-1 residual). Ibig sabihin: ang Connect sa not-live account ay pwede pa
+ring mag-green KAPAG reuse/fail-open ang tinamaan (ang server mismo ang
+nag-a-assert ng connected:true) — client-side ay wala nang magagawa; server fix
+= is-LIVE re-validation sa reuse branch + manual Render deploy. **Paano
+masiguro sa test na 409 ang tinatamaan (hindi reuse):** gumamit ng not-live
+account na HINDI pa na-connect ngayong server session, O maghintay 60s+ mula sa
+huling event nito (forced-fresh); ang 409 ay may "not live" toast + Render log
+`[NOT-LIVE] block`; ang reuse ay walang toast + `[INITIAL] reuse re-emit`.
+
+### Acceptance ni Jeff (LIVE test, pending)
+(1) A→Disconnect→pili B→Connect → GREEN · (2) pabalik B→A → GREEN · (3) pili ng
+not-live via 409 path → GRAY + not-live toast (⚠️ reuse/fail-open = green pa rin,
+B4 residual — expected) · (4) Disconnect→Connect parehong account → GREEN ·
+(A) walang "Connected!" toast sa background reconnect habang tahimik na live.
