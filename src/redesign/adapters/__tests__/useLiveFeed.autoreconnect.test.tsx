@@ -6,8 +6,16 @@
 // This suite pins the NEW contract (it replaces the old Fix B suite):
 //   • NO socket event — first connect, RE-connect, drop→reconnect — ever
 //     re-POSTs /connect (zero connectPlatform calls without a user tap);
-//   • a socket (re)connect still re-joins the room + re-sends the account
-//     selection (the join snapshot re-asserts true status — untouched);
+//   • FIX2 — the room join itself is gated on USER INTENT: a fresh mount /
+//     login NEVER emits join_live_room (the automatic join + the server's
+//     join snapshot were what auto-greened the pill with zero user action —
+//     the server-side connection stays alive via the health machinery);
+//   • the Connect tap joins at connect INITIATION (before the POST — the
+//     initial batch is relayed mid-POST and needs the socket in the room),
+//     and AFTER the tap every socket reconnect re-joins + re-sends the
+//     selection (mid-live join-snapshot resilience intact);
+//   • a user switch (new email) resets the intent — the next page session
+//     starts gray again;
 //   • the manual connect() path is unchanged;
 //   • the dead-socket grace (SOCKET_GRACE_MS honest gray) still works —
 //     mid-live STATUS resilience is intact (server-side health-cycle
@@ -55,13 +63,53 @@ describe("manual-connect-only — no socket event ever auto-POSTs /connect", () 
     expect(connectPlatformMock).toHaveBeenCalledTimes(1);            // NO auto re-POST — the tap is the only entry
   });
 
-  it("socket (re)connect still re-joins the room + re-sends selection (snapshot machinery intact)", () => {
-    renderHook(() => useLiveFeed(true, "g@x.com", undefined, { TikTok: "shop_tt", Facebook: "" }));
-    fireConnect();
+  it("FIX2 — fresh open with an ALIVE server connection → ZERO join_live_room + HONEST GRAY (no zombie green: outside the room, no status event can even reach this socket)", () => {
+    const { result } = renderHook(() => useLiveFeed(true, "g@x.com", undefined, { TikTok: "shop_tt", Facebook: "" }));
+    fireConnect();                                                   // fresh open / login — server connection still alive
+    act(() => { vi.advanceTimersByTime(120_000); });
     const joins = sock().emit.mock.calls.filter((c) => c[0] === "join_live_room");
-    const selects = sock().emit.mock.calls.filter((c) => c[0] === "select_account");
-    expect(joins.length).toBeGreaterThanOrEqual(1);
-    expect(selects.length).toBeGreaterThanOrEqual(2); // both platforms re-asserted
+    expect(joins.length).toBe(0);                                    // never in the room → the join snapshot can't green us
+    expect(result.current.ttConnected).toBe(false);                  // honest gray + Connect button (Jeff's option b)
+    expect(result.current.fbConnected).toBe(false);
+    expect(connectPlatformMock).not.toHaveBeenCalled();              // and nothing auto-POSTs
+  });
+
+  it("FIX2 — the Connect tap joins the room AT INITIATION (before the POST resolves: the initial batch is relayed mid-POST)", async () => {
+    let resolveConnect!: (v: { ok: boolean; account: string }) => void;
+    connectPlatformMock.mockReturnValueOnce(new Promise((res) => { resolveConnect = res; }));
+    const { result } = renderHook(() => useLiveFeed(true, "g@x.com", undefined, { TikTok: "shop_tt", Facebook: "" }));
+    fireConnect();
+    let pending!: Promise<unknown>;
+    act(() => { pending = result.current.connect("TikTok", { username: "shop_tt" }); });
+    // join + selection already on the wire while the POST is still in flight:
+    expect(sock().emit.mock.calls.filter((c) => c[0] === "join_live_room").length).toBe(1);
+    expect(sock().emit.mock.calls.filter((c) => c[0] === "select_account").length).toBeGreaterThanOrEqual(2);
+    await act(async () => { resolveConnect({ ok: true, account: "shop_tt" }); await pending; });
+  });
+
+  it("FIX2 — AFTER the tap, a socket drop→reconnect re-joins + re-sends selection (mid-live snapshot resilience intact)", async () => {
+    const { result } = renderHook(() => useLiveFeed(true, "g@x.com", undefined, { TikTok: "shop_tt", Facebook: "" }));
+    fireConnect();
+    await act(async () => { await result.current.connect("TikTok", { username: "shop_tt" }); }); // the user's tap
+    const joinsAfterTap = sock().emit.mock.calls.filter((c) => c[0] === "join_live_room").length;
+    fireDisconnect();                                                // transport blip / server restart
+    fireConnect();                                                   // socket comes back
+    const joins = sock().emit.mock.calls.filter((c) => c[0] === "join_live_room");
+    expect(joins.length).toBe(joinsAfterTap + 1);                    // re-joined — the join snapshot re-asserts truth
+    expect(connectPlatformMock).toHaveBeenCalledTimes(1);            // still zero auto re-POSTs
+  });
+
+  it("FIX2 — a user switch (new email) RESETS the intent: the new subscription never joins until its own tap", async () => {
+    const { result, rerender } = renderHook(({ em }) => useLiveFeed(true, em), { initialProps: { em: "a@x.com" } });
+    fireConnect();
+    await act(async () => { await result.current.connect("TikTok", { username: "shop_tt" }); }); // user A taps
+    expect(H.sockets[0].emit.mock.calls.filter((c) => c[0] === "join_live_room").length).toBe(1);
+    rerender({ em: "b@x.com" });                                     // logout/login as another user → new socket
+    expect(H.sockets.length).toBe(2);
+    const s2 = H.sockets[1];
+    const connect2 = s2.on.mock.calls.find((c) => c[0] === "connect")?.[1] as (() => void) | undefined;
+    act(() => { connect2?.(); });                                    // new socket connects
+    expect(s2.emit.mock.calls.filter((c) => c[0] === "join_live_room").length).toBe(0); // no inherited intent
   });
 
   it("dead-socket honest gray still works: drop with a green pill → gray after SOCKET_GRACE_MS, and NOTHING reconnects for the seller", async () => {

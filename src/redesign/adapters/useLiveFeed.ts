@@ -191,6 +191,33 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   // resilience is UNTOUCHED: the SERVER-side health-cycle reconnects (B2,
   // scheduleTikTokReconnect) keep an established session alive, and the join
   // snapshot re-asserts true status after any socket blip.
+  //
+  // FIX2 (corrected diagnosis, Jeff 2026-07-12): the true bug was a ZOMBIE
+  // GREEN on fresh open — the server-side connection is genuinely alive (app
+  // close never kills it), and the automatic `join_live_room` + the server's
+  // JOIN SNAPSHOT re-greened the pill with zero user action. But that green
+  // carried NO attach guarantees: the snapshot is a status event only —
+  //   • the history/ring re-emit fires ONLY on the connect POST's B2 reuse
+  //     branch, never on join → earlier comments structurally absent;
+  //   • live comments run a SEPARATE filter chain (server per-socket
+  //     select_account gate + client selection/sessionId filters) that the
+  //     status green never validates → "green but not receiving" was possible,
+  //     and only a manual disconnect→connect (the full attach sequence)
+  //     recovered it. GREEN MUST MEAN RECEIVING — so a state the client
+  //     cannot attach cleanly must render as an honest gray + Connect button.
+  // The join is therefore gated on USER INTENT:
+  //   • hasUserConnectedRef — false on every socket (re)subscription (fresh
+  //     open, login, user switch, account-init). No join happens until the
+  //     seller taps Connect → fresh open/login lands on gray + Connect button.
+  //   • connect() sets it true and joins IMMEDIATELY AT INITIATION (before the
+  //     POST — ordering-critical: the server relays the initial batch WHILE
+  //     processing the POST, and a socket outside the room would miss it).
+  //   • After the tap, every socket reconnect re-joins in the connect handler —
+  //     the mid-live join-snapshot/status resilience is fully intact.
+  const hasUserConnectedRef = useRef(false);
+  // connect() (a stable useCallback outside the socket effect) joins via this
+  // ref — set while the effect's socket is live, nulled on teardown.
+  const joinRoomRef = useRef<(() => void) | null>(null);
   //   • serverConnectedRef: mirror of tt/fbConnected (server truth) — still
   //     used by onSocketDown to arm the dead-socket grace only when green.
   const serverConnectedRef = useRef<{ TikTok: boolean; Facebook: boolean }>({ TikTok: false, Facebook: false });
@@ -247,6 +274,9 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       },
     });
     socketRef.current = s;
+    // FIX2 — fresh subscription (fresh open / login / user switch): no user
+    // intent yet, so no room join. The seller's Connect tap flips this.
+    hasUserConnectedRef.current = false;
     const joinRoom = () => s.emit("join_live_room", { sellerId, sessionId });
     // Tell the server which account this socket is viewing (account-leak fix). Re-sent
     // on every (re)connect so the server's per-socket selection survives reconnects.
@@ -254,6 +284,9 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       s.emit("select_account", { platform: "TikTok", username: selectedRef.current.TikTok });
       s.emit("select_account", { platform: "Facebook", username: selectedRef.current.Facebook });
     };
+    // Exposed to connect() (the tap handler) — join at connect INITIATION so
+    // the socket is in the room BEFORE the server relays the initial batch.
+    joinRoomRef.current = () => { joinRoom(); emitSelection(); };
     // STATUS-TRUTH helpers (status layer ONLY — comment handler/dedup untouched).
     const setRecovering = (platform: Platform, v: boolean) => {
       if (platform === "TikTok") setTtRecovering(v); else setFbRecovering(v);
@@ -288,15 +321,18 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       });
     };
     s.on("connect", () => {
-      // Manual-connect-only: a socket (re)connect just re-joins the room +
-      // re-asserts selection; the join snapshot restores TRUE status. No
-      // auto re-POST of /connect — the seller's tap is the only entry point.
-      setConnected(true); joinRoom(); emitSelection();
+      setConnected(true);
+      // FIX2 — join ONLY after the seller has tapped Connect this page session.
+      // Without the gate, the automatic join + the server's join snapshot
+      // re-greened the pill on every fresh open/login (the server-side
+      // connection stays alive via the health machinery). After the tap, this
+      // re-join on every socket reconnect keeps mid-live resilience intact:
+      // the join snapshot re-asserts TRUE status after any blip. No auto
+      // re-POST of /connect — the seller's tap is the only entry point.
+      if (hasUserConnectedRef.current) { joinRoom(); emitSelection(); }
     });
     s.on("disconnect", onSocketDown);
     s.on("connect_error", onSocketDown);
-    joinRoom();
-    emitSelection();
     s.on("comment", (d: ProdComment) => {
       if (!d || typeof d !== "object") return;
       // Light coercion to guarantee commentKey works; FULL normalizeComment parity
@@ -406,6 +442,7 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     });
     return () => {
       cancelGray("TikTok"); cancelGray("Facebook");
+      joinRoomRef.current = null;
       socketRef.current = null;
       s.disconnect();
     };
@@ -440,6 +477,13 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     // memory are held here instead of dropped.
     connectInFlightRef.current = true;
     pendingInitialRef.current = [];
+    // FIX2 — the tap IS the user intent: join the live room NOW, before the
+    // POST (the server relays the initial batch mid-POST; a socket outside
+    // the room would miss it). From here on, socket reconnects re-join
+    // automatically (mid-live resilience). socket.io buffers the emit if the
+    // transport is still handshaking.
+    hasUserConnectedRef.current = true;
+    joinRoomRef.current?.();
     try {
       const r = await connectPlatform(platform, data, email);
       if (r.ok) {
