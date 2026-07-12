@@ -230,3 +230,45 @@ describe("F3 — recovering (amber) display signal", () => {
     expect(result.current.fbRecovering).toBe(false);  // resolved to honest gray
   });
 });
+
+// H1 (clientfix audit) — ACCOUNT SCOPING on the non-connected branches. The
+// server's reconnect chains are account-keyed: a stale chain for a PREVIOUSLY
+// connected account keeps emitting reconnecting / terminal events that pass
+// the sellerId+sessionId filters. Those must never touch a pill that is green
+// on a DIFFERENT, healthy account (the observed false-gray after exit/refresh:
+// gray pill, comments flowing). Events without a username still apply.
+describe("H1 — stale events for ANOTHER account never touch this pill", () => {
+  it("terminal not_live for old account B → pill STAYS green on account A", () => {
+    const { result } = setup();
+    fire("platform_status", green);                               // green on shop_tt
+    fire("platform_status", { platform: "TikTok", connected: false, reconnecting: false, username: "old_dead_acct" });
+    expect(result.current.ttConnected).toBe(true);                // untouched
+    expect(result.current.activeAccounts.TikTok).toBe("shop_tt");
+  });
+
+  it("reconnecting for old account B → NO grace armed, NO amber on account A", () => {
+    const { result } = setup();
+    fire("platform_status", green);
+    fire("platform_status", { platform: "TikTok", connected: false, reconnecting: true, username: "old_dead_acct" });
+    expect(result.current.ttRecovering).toBe(false);              // no amber noise
+    act(() => vi.advanceTimersByTime(RECONNECT_GRACE_MS + 1000)); // no hidden timer either
+    expect(result.current.ttConnected).toBe(true);                // still green
+  });
+
+  it("terminal WITHOUT a username still applies (backward compat) — and same-account terminal still grays", () => {
+    const { result } = setup();
+    fire("platform_status", green);
+    fire("platform_status", { platform: "TikTok", connected: false, reconnecting: false }); // no username
+    expect(result.current.ttConnected).toBe(false);               // applied
+    fire("platform_status", green);                               // green again
+    fire("platform_status", terminal);                            // same-account (shop_tt) terminal
+    expect(result.current.ttConnected).toBe(false);               // B2/honest-gray behavior intact
+  });
+
+  it("untracked pill (gray, no account) ignores another account's chain noise entirely", () => {
+    const { result } = setup();
+    fire("platform_status", { platform: "TikTok", connected: false, reconnecting: true, username: "somebody_else" });
+    expect(result.current.ttRecovering).toBe(false);              // no amber on a gray pill
+    expect(result.current.ttConnected).toBe(false);
+  });
+});

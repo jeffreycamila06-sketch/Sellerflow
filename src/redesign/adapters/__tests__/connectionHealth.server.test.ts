@@ -48,3 +48,23 @@ describe("LIVENESS_EVENTS (F1)", () => {
     expect(LIVENESS_EVENTS).not.toContain("chat");
   });
 });
+
+// clientfix RC3 — a queued reconnect closure (past clearTikTokReconnect's reach)
+// must be a NO-OP when the account already has a live connection or a connect
+// is in flight: running it either clobbers a healthy green with a terminal
+// not_live + live_session_ended (the observed false-gray after exit/refresh →
+// connect) or overwrites the healthy connection (orphaned double-relay, G1).
+import { shouldSkipQueuedReconnect } from "../../../../server/connectionHealth.js";
+
+describe("shouldSkipQueuedReconnect (clientfix RC3 — stale-reconnect guard)", () => {
+  it("skips when a connection already exists (the seller's tap restored it)", () => {
+    expect(shouldSkipQueuedReconnect(true, false)).toBe(true);
+  });
+  it("skips when a connect is in flight (lock held — user tap or another reconnect)", () => {
+    expect(shouldSkipQueuedReconnect(false, true)).toBe(true);
+  });
+  it("runs only on a genuinely dead, idle key", () => {
+    expect(shouldSkipQueuedReconnect(false, false)).toBe(false);
+    expect(shouldSkipQueuedReconnect(true, true)).toBe(true);
+  });
+});

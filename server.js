@@ -5,8 +5,8 @@ import http from "http";
 import { Server } from "socket.io";
 import { createClient } from "@supabase/supabase-js";
 import { translateBroadcast } from "./server/broadcastTranslate.js";
-import { shouldForceFreshConnect, LIVENESS_EVENTS } from "./server/connectionHealth.js";
-import { buildInitialCommentPayloads } from "./server/initialComments.js";
+import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS } from "./server/connectionHealth.js";
+import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -714,6 +714,23 @@ function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "d
   const timer = setTimeout(async () => {
     tiktokReconnectTimers.delete(key);
     runQueuedTikTokReconnect(async () => {
+      // clientfix RC3 — STALE-RECONNECT GUARD. Once this closure is queued,
+      // clearTikTokReconnect can no longer cancel it. If the seller's own
+      // Connect tap already restored the account (map entry) or a connect is
+      // in flight (lock), this reconnect is STALE: running it would either
+      // clobber a healthy green with a terminal not_live + live_session_ended
+      // (the observed false-gray: comments flowing while gray) or silently
+      // overwrite the healthy connection (orphaned double-relay — the G1
+      // hole reached from the scheduler). Skip = the correct outcome.
+      if (shouldSkipQueuedReconnect(tiktokConnections.has(key), tiktokConnectLocks.has(key))) {
+        console.log(`[RECONNECT] skip stale queued reconnect for ${username} (${sellerId}) — connection already restored or connect in flight`);
+        tiktokReconnectAttempts.delete(key);
+        return;
+      }
+      // Hold the SAME connect lock the /connect route uses, so a user tap and a
+      // reconnect can never run startTikTokConnection for one key in parallel
+      // (the tap sees 429 "already starting" for a few seconds — honest).
+      tiktokConnectLocks.add(key);
       try {
         await startTikTokConnection(key, username, sellerId, sessionId, { emitStart: false });
         console.log(`Reconnected TikTok LIVE: ${username} for ${sellerId}`);
@@ -735,6 +752,8 @@ function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "d
           return;
         }
         scheduleTikTokReconnect(key, username, sellerId, sessionId, "retry_failed");
+      } finally {
+        tiktokConnectLocks.delete(key);
       }
     });
   }, retryMs);
@@ -833,6 +852,10 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
     lastEventAt: now,
     lastCommentAt: now,
     healthTimer: null,
+    // clientfix RC2 — last relayed comments (seeded below with the connect-time
+    // buffer, appended by the chat relay). Re-emitted initial:true on B2 reuse
+    // so a refresh mid-live still gets its FLive-parity history block.
+    recentComments: [],
   });
 
   console.log(`Connected to TikTok LIVE: ${cleanUsername} for ${sellerId} room ${state?.roomId || "unknown"}`);
@@ -879,6 +902,11 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
       for (const payload of initialPayloads) {
         void emitCommentScoped(sellerId, "TikTok", cleanUsername, payload);
       }
+      // RC2 — seed the reuse ring with the connect-time buffer.
+      const entry = tiktokConnections.get(key);
+      if (entry && entry.connection === tiktokConnection) {
+        entry.recentComments = initialPayloads.slice(-RECENT_RING_CAP);
+      }
     } catch (err) {
       console.warn(`[INITIAL] relay failed for ${cleanUsername} (connect unaffected):`, err?.message || err);
     }
@@ -907,7 +935,7 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
     const name = data.nickname || data.uniqueId || "Unknown";
     const handle = data.uniqueId || "unknown";
 
-    void emitCommentScoped(sellerId, "TikTok", cleanUsername, {
+    const payload = {
       handle,
       name,
       comment,
@@ -922,7 +950,15 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
       buyerData: null,
       time: new Date().toLocaleTimeString("en-US", { timeZone: "Asia/Taipei" }),
       timestamp: new Date().toISOString(),
-    });
+    };
+    void emitCommentScoped(sellerId, "TikTok", cleanUsername, payload);
+    // RC2 — keep the reuse ring fresh with the latest relayed comments. Guarded
+    // to THIS connection (an orphaned old connection must never write the ring).
+    const activeEntry = tiktokConnections.get(key);
+    if (activeEntry && activeEntry.connection === tiktokConnection) {
+      if (!activeEntry.recentComments) activeEntry.recentComments = [];
+      pushRecent(activeEntry.recentComments, { ...payload, msgId: String(data.msgId || "") });
+    }
   });
 
   startTikTokHealthTimer(key, tiktokConnection);
@@ -989,6 +1025,24 @@ async function connectTikTok(username, res, meta = {}) {
           reconnecting: false,
           reason: "already_connected",
         });
+        // clientfix RC2 — the reuse branch never runs startTikTokConnection, so
+        // a refresh mid-live (healthy connection) previously got NO history
+        // block at all. Re-emit the connection's recent-comments ring flagged
+        // initial:true (display-only lane; the client's empty-feed guard drops
+        // it whenever these comments are already showing live). Best-effort.
+        try {
+          const ring = existing.recentComments || [];
+          if (ring.length) {
+            console.log(`[INITIAL] reuse re-emit ${ring.length} recent comments for ${cleanUsername} (${sellerId})`);
+            for (const p of ring) {
+              // M1 — carry the REQUESTER's sessionId so a second device's
+              // client doesn't drop the block on its own sessionId filter.
+              void emitCommentScoped(sellerId, "TikTok", cleanUsername, reuseReEmitPayload(p, sessionId));
+            }
+          }
+        } catch (err) {
+          console.warn(`[INITIAL] reuse re-emit failed for ${cleanUsername} (reuse unaffected):`, err?.message || err);
+        }
         return res.json({
           success: true,
           reused: true,
