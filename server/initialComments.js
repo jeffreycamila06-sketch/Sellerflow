@@ -87,3 +87,21 @@ export function initialCommentPayload(data, { sellerId, sessionId, sourceUsernam
 export function buildInitialCommentPayloads(chats, ctx) {
   return dedupInitialChats(chats).map((data) => initialCommentPayload(data, ctx));
 }
+
+// ── recent-comments ring (clientfix RC2) ─────────────────────────────────────
+// The B2 REUSE branch never runs startTikTokConnection, so a refresh mid-live
+// (the PRIMARY FLive-parity case: healthy connection reused) had NO initial
+// batch at all. Each connection entry keeps a small ring of the last relayed
+// comments (seeded with the connect-time buffer, appended by the live chat
+// relay); on reuse the ring is re-emitted flagged initial:true — the same
+// display-only lane, so the cancelled-F4 duplicate-order concern does not
+// apply (flagged comments can never reach the order path, test-pinned
+// client-side; the client's empty-feed guard also drops the re-emit whenever
+// the feed already shows those comments live).
+export const RECENT_RING_CAP = 20;
+
+export function pushRecent(ring, payload, cap = RECENT_RING_CAP) {
+  ring.push(payload);
+  if (ring.length > cap) ring.splice(0, ring.length - cap);
+  return ring;
+}

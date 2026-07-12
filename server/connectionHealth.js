@@ -47,3 +47,18 @@ export function shouldForceFreshConnect(lastEventAt, nowMs) {
   if (!Number.isFinite(last) || last <= 0) return true;
   return nowMs - last >= CONNECT_REUSE_FRESH_MS;
 }
+
+// clientfix RC3 — STALE-RECONNECT GUARD. clearTikTokReconnect can only cancel a
+// PENDING TIMER; once the timer has fired, the reconnect work sits in the
+// MIN_GAP queue as a closure that nothing could cancel. If the seller's own
+// Connect tap restored the account in the meantime, that stale closure would
+// either (a) fail (not_live / retry) and emit a TERMINAL status +
+// live_session_ended that grays a perfectly healthy pill (false-gray: comments
+// flowing while gray), or (b) succeed and silently OVERWRITE the healthy
+// connection in the map — an orphaned-but-still-relaying old connection (the
+// documented G1 double-relay hole, reachable from the scheduler). A queued
+// reconnect must therefore be a NO-OP whenever the account already has a live
+// connection or a connect is currently in flight (lock held).
+export function shouldSkipQueuedReconnect(hasActiveConnection, connectLockHeld) {
+  return Boolean(hasActiveConnection || connectLockHeld);
+}

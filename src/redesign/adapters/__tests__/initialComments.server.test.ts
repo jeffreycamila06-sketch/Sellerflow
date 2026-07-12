@@ -4,7 +4,7 @@
 // msgId/content dedup, createTime-derived timestamps (a buffered comment really
 // happened minutes ago), and the payload shape matching the live chat relay.
 import { describe, it, expect } from "vitest";
-import { parseCreateTimeMs, dedupInitialChats, initialCommentPayload, buildInitialCommentPayloads, msgIdOf, createTimeOf } from "../../../../server/initialComments.js";
+import { parseCreateTimeMs, dedupInitialChats, initialCommentPayload, buildInitialCommentPayloads, msgIdOf, createTimeOf, pushRecent, RECENT_RING_CAP } from "../../../../server/initialComments.js";
 
 const NOW = 1760000000000;
 const CTX = { sellerId: "seller1", sessionId: "sess1", sourceUsername: "shop_tt", roomId: "7638634089886223124", nowMs: NOW };
@@ -95,5 +95,21 @@ describe("buildInitialCommentPayloads (full batch)", () => {
     const out = buildInitialCommentPayloads([chat(1), chat(1), chat(2)], CTX);
     expect(out.length).toBe(2);
     expect(out.every((p: { initial: boolean }) => p.initial === true)).toBe(true);
+  });
+});
+
+describe("recent-comments ring (clientfix RC2 — the B2-reuse history source)", () => {
+  it(`keeps only the NEWEST ${RECENT_RING_CAP}, in arrival order`, () => {
+    const ring: number[] = [];
+    for (let i = 0; i < RECENT_RING_CAP + 7; i++) pushRecent(ring as unknown[], i as unknown as Record<string, unknown>);
+    expect(ring.length).toBe(RECENT_RING_CAP);
+    expect(ring[0]).toBe(7);                       // oldest 7 evicted
+    expect(ring[ring.length - 1]).toBe(RECENT_RING_CAP + 6); // newest kept last
+  });
+  it("mutates the given ring in place (the connection entry owns it) and returns it", () => {
+    const ring: unknown[] = [];
+    const out = pushRecent(ring, { a: 1 } as Record<string, unknown>);
+    expect(out).toBe(ring);
+    expect(ring.length).toBe(1);
   });
 });

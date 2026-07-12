@@ -129,6 +129,19 @@ describe("dedup + lifecycle", () => {
     expect(result.current.initialComments[0].handle).toBe("@buyer2");
   });
 
+  it("RC1 (clientfix): an initial batch arriving WHILE connect() is in flight SURVIVES the response (the wipe bug)", async () => {
+    let resolveConnect!: (v: { ok: boolean; account: string }) => void;
+    connectPlatformMock.mockReturnValueOnce(new Promise((res) => { resolveConnect = res; }));
+    const { result } = renderHook(() => useLiveFeed(true, "s@x.com"));
+    let pending!: Promise<unknown>;
+    act(() => { pending = result.current.connect("TikTok", { username: "shop_b" }); });
+    // the server relays the batch DURING the POST — it lands before r.ok:
+    fire("comment", initial(1, { sourceUsername: "shop_b" }));
+    expect(result.current.initialComments.length).toBe(1);
+    await act(async () => { resolveConnect({ ok: true, account: "shop_b" }); await pending; });
+    expect(result.current.initialComments.length).toBe(1); // NOT wiped by the connect-ok handler
+  });
+
   it("F2 (audit): a successful connect/account switch CLEARS the old history block (no cross-account leak)", async () => {
     const { result } = renderHook(() => useLiveFeed(true, "s@x.com"));
     fire("comment", initial(1, { sourceUsername: "shop_a" }));       // account A's history accepted

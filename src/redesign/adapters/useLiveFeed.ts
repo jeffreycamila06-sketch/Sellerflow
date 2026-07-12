@@ -329,7 +329,14 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       // health-cycle / forced-fresh reconnect mid-live would otherwise render
       // recent comments twice (the live copies are already in the feed).
       if ((c as ProdComment & { initial?: unknown }).initial === true) {
-        if (feedRef.current.length === 0) pushInitial(c);
+        // Terse diagnostics (clientfix): lets a live test confirm arrival +
+        // classification from the browser console (≤ring-size lines per connect).
+        if (feedRef.current.length === 0) {
+          pushInitial(c);
+          console.info("[initial] accepted", c.handle, (c as ProdComment & { msgId?: string }).msgId || "");
+        } else {
+          console.info("[initial] dropped (feed not empty:", feedRef.current.length, ")", c.handle);
+        }
         return;
       }
       // Auto Mode seam — fire on the ACCEPTED comment (after every filter above),
@@ -399,15 +406,18 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   // feed like production's clearLiveCommentMemory.
   const connect = useCallback(async (platform: Platform, data: Record<string, string>): Promise<ConnectResult> => {
     if (!email) return { ok: false, error: "Not signed in", account: "" };
+    // Audit F2, ORDERING FIX (clientfix RC1): clear the history block at connect
+    // INITIATION — never on the response. The server relays the initial batch
+    // WHILE it processes the POST, so those socket events land BEFORE r.ok; a
+    // clear on r.ok wiped the batch that had just arrived (live-verified:
+    // Render logged "[INITIAL] relaying N/M" yet no block ever rendered).
+    // Clearing here still covers the F2 account-switch leak — the old
+    // account's block is gone the moment a new connect starts.
+    setInitialFeed([]);
     const r = await connectPlatform(platform, data, email);
     if (r.ok) {
       connectedAcctsRef.current = { ...connectedAcctsRef.current, [platform]: r.account }; // Fix B — track for auto-restore
       setFeed([]);
-      // Audit F2 — the previous account's history block must not survive a
-      // connect/account switch (the arrival-time selection filter passed for
-      // the OLD account; nothing re-filters at render). The new connect's own
-      // initial batch (if any) repopulates the block.
-      setInitialFeed([]);
       setActiveAccounts((a) => ({ ...a, [platform]: r.account }));
     }
     return r;
