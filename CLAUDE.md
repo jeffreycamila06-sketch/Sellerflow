@@ -2658,3 +2658,44 @@ live confirmation na lang — si Lheyukay mismo ang ebidensyang gumagana).
 - **Renewal follow-ups:** eliza, Jewel Tee, at ang Jul 17–19 expiry wave —
   bantayan sa admin Expiring bucket (7-day window) + expiry modal tiers.
 - Landing/Login fake stats (desisyon ni Jeff, nakabinbin pa rin).
+
+## 🐛 KNOWN BUG B3 (2026-07-12) — reuse-branch session mismatch: "green + history + ZERO live comments"
+RECLASSIFIED mula sa "single-active-viewer semantics" → KNOWN BUG, pagkatapos ng
+follow-up closure trace. **HINDI pa naka-schedule ang fix — sacred zone (comment
+delivery); kailangan ng sariling plan + adversarial audit. HUWAG i-quick-fix.**
+
+- **SYMPTOM:** parehong TikTok account, BAGONG browser session (ibang device /
+  cleared storage / incognito — HINDI normal refresh, ang `sf_browser_session`
+  ay localStorage-stable) → Connect tap ay tumama sa REUSE branch → **GREEN
+  pill + lumalabas ang "Earlier comments" + ZERO live comments.** Self-heals
+  LANG pagkatapos ng health-cycle reconnect (chat-stale 10min / silent 12min).
+- **ROOT CAUSE (line-exact):** ang chat relay ay gumagamit ng **closure
+  `sessionId`** (creation-time — `startTikTokConnection` arg `server.js:795`,
+  payload `:938-947`). Ang reuse branch (`:1023`) ay nag-a-update ng
+  `existing.sessionId` (entry — binabasa ng status emits + reconnect scheduler)
+  pero **HINDI ng relay closure** → status/history = bagong session ✓, live
+  relay = LUMANG session ✗ → client sessionId filter ang nagda-drop ng bawat
+  live comment sa bagong device.
+- **IMPACT:** seller na lumipat ng phone mid-live sa parehong account = hanggang
+  10–12 min na bingi habang mukhang green — silent order loss sa gap.
+  **Mitigation na built-in:** sa self-heal (health-cycle fresh connect), ang
+  initial buffer/history block ay ORDERABLE (sql/18) — ang mga "mine" sa gap ay
+  malaking bahagi ay nare-recover via history rows (bounded ng TikTok buffer).
+- **CANDIDATE FIX (not scheduled):** basahin ang `activeEntry.sessionId` sa
+  relay time imbes na closure. ⚠️ Papalitan nito ang single-viewer handoff
+  semantics — plan + audit muna.
+- **⚠️ INTERIM GUIDANCE sa sellers (CODE-VERIFIED — ang "tap Disconnect muna"
+  ay HINDI gumagana):** ang app Disconnect ay CLIENT-LOCAL lang (walang server
+  unbind — `doConnect` `setOff`; walang client-reachable disconnect endpoint,
+  ang dead `POST /disconnect/tiktok` ay tanggal na) at ang explicit Connect sa
+  buhay/event-fresh na connection ay laging reuse (`CONNECT_REUSE_FRESH_MS=60s`)
+  — WALANG self-service force-fresh. Ang totoong gabay: (1) **iwasang lumipat
+  ng device mid-live sa parehong account** — magpalit sa pagitan ng lives;
+  (2) kung kailangan talaga mid-live: mag-Connect sa bagong device at asahan
+  ang hanggang 10–12 min gap bago dumaloy (ang reuse ay nag-update na ng entry
+  sessionId, kaya ang health-cycle reconnect ay awtomatikong maghahatid ng live
+  flow sa BAGONG device); (3) pinakamabilis na puwersahan: i-END at i-restart
+  ang TikTok live mismo (streamEnd ay pumapatay sa lumang connection → ang
+  Connect sa bagong device = fresh, tugma agad ang sessionId).
+- Ang multi-device caveat (4) sa "SESSION 2026-07-12 (part 2)" §5b ay ITO ang
+  tinutukoy — basahin ang entry na ito bilang authoritative.
