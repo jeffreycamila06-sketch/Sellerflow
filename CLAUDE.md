@@ -2521,3 +2521,140 @@ survives refresh + cross-device).
   `claude/initial-orderable`, `claude/manual-connect-only`,
   `claude/manual-connect-fix2` (remote delete = blocked sa remote session). **HUWAG
   burahin: `claude/comment-persistence`** (parked by design).
+
+## SESSION 2026-07-12 (part 2) — REPRINT + UI fixes + MULTI-ACCOUNT RESOLUTION ✅ + session closeout (Jul 11–12 handoff)
+Kasunod ng saga closeout sa itaas: apat pang merges (lahat LIVE + prod-verified) +
+dalawang investigation reports + ang business-critical na multi-device resolution.
+Test count: 935 → **951**.
+
+### 1. Manual-connect/zombie-green fix (`93ae874`) — ✅ LIVE-VALIDATED
+Ang fix2 (intent-gated join, GREEN = RECEIVING — see the saga closeout) ay
+**pasado sa totoong live test ni Jeff (1hr10min)**. Ang connect ay MANUAL LANG
+na ngayon sa lahat ng dulo: fresh open / login / refresh = honest gray + Connect
+button, isang tap = green + history + live flow. SARADO.
+
+### 2. Dropdown tap-outside close (`8df01d7`, LIVE)
+Jeff bug (screenshot): ang TikTok account dropdown ay hindi nagsasara sa
+tap-outside — kailangang pumindot ng Disconnect para lang mawala. Fix: standard
+click-outside-to-close para sa LAHAT ng 3 header dropdowns (TT/FB pickers +
+session pill) — document-level `pointerdown` habang bukas (press sa labas ng
+wrapper = sara, ZERO action; press sa loob = untouched) + Escape. **Listener,
+HINDI overlay** — ang sticky header `backdrop-filter` ay gumagawa ng containing
+block/stacking context na magti-trap sa fixed overlay (tandaan sa future
+dropdowns). 6 tests (`Dashboard.dropdownClose.test.tsx`).
+
+### 3. REPRINT feature (`1eabab0`, LIVE) — FLive parity, ZERO-WRITE
+Bawat na-order nang comment (live row na na-1-Click/Enterprise/Auto ngayong
+session O restored row na may msgId match) = **isang green ↻ Reprint button**
+(pinalitan ang "Ordered ✓" AT "🖨 Printed" chips — desisyon ni Jeff: isang
+malinis na button, FLive style, `--ok` token outline). Tap = kopya ng ORIHINAL
+na sticker — walang bagong order/buyer#/stock/DB write; survives refresh
+(DB-backed msgId check; deployed na ang msgId relay sa Render bago ito).
+- **Architecture:** NEW `adapters/reprint.ts` — ang reprint Buyer ay binubuo ng
+  MISMONG `rebuildSessionFromRows` sa isang row (**parity by construction**,
+  walang kinopyang math); `orderNum` round-trips `created_at` (epoch↔ISO exact)
+  kaya orihinal na Taiwan time ang nasa sticker; `performReprint` = `printSlip`
+  at wala nang iba (ang onPrintWinner precedent). Ang ordered-check ay
+  `Set<msgId>` → **`Map<msgId, row>`** (same `.has()` semantics, E1/E3 buo —
+  ang row na dating itinatapon pagkatapos ng load ay ang reprint data, ZERO
+  bagong query); in-session snapshots naka-record sa 3 create-success sites
+  (`snapshotFromCreate`), by-id map ang sumasakop sa msgId-less rows (FB).
+- **⚠️ ZERO-WRITE CONTRACT test** (`reprint.test.ts`) = ang gate ni Jeff:
+  reprint tap → `saveOrderToDatabase`/`saveLiveSessionOrder`/
+  `saveCustomerToDatabase`/stock RPC lahat ZERO; `printSlip` isang beses na may
+  original bNum/product/price/orderNum. May adversarial audit bago merge:
+  **SAFE TO MERGE, 0 critical/high, L1–L4 informational** (header date =
+  print-date by design; web-fallback time string = rebuild semantics; GLOBAL 2s
+  cooldown sa lahat ng rows = sadya/BLE-protective; RedesignApp onReprint
+  handler walang direct test — code-review ang bantay).
+- Orphan keys ngayon: `rd_dash_printed`, `rd_dash_ordered_prior` (harmless,
+  isama sa susunod na orphan sweep).
+- ⏳ **PENDING live test ni Jeff:** parehong sticker sa reprint · TODAY bar
+  hindi gumagalaw · walang bagong row sa Orders tab/Supabase.
+
+### 4. Basket count badge (🛒N) — LIVE (pre-saga merges `7d2c390`→`bdf316b`, docs dito)
+Per-buyer order count sa bawat comment row, katabi ng Enterprise button sa
+action row (lahat ng row states). Identity = `handle+platform` sa CURRENT
+session window (`adapters/basketCounts`, display-only lookup map). SIZE =
+platform-scoped sa `.sfl-basket-badge` (redesign.css): default mas malaki
+(Android APK + web/desktop), iOS shell = compact via `html.sfl-ios-shell`
+(parehong proven scoping ng iOS 16px input fix). Device-verified ni Jeff.
+
+### 5. MULTI-ACCOUNT — dalawang investigation, RESOLVED (business-critical)
+**(a) Single-device switch (expected-behavior trace):** ang account pick sa
+dropdown = SELECT LANG (scoping + checkmark; hindi nagko-connect, hindi
+nagsasara); ang switch mid-live = pili → tap "Disconnect" (platform-level ang
+label!) → tap "Connect" — dalawang tap, by design. Feed: frozen ang lumang
+account's comments hanggang mag-connect sa bago (clear sa r.ok + bagong
+"Earlier comments"). Status pill = PER PLATFORM (chip = selected name + platform
+dot — pwedeng pangalan ni B na may green ni A, display nuance). H1 = walang
+multong gray mula sa ibang account; ⚠️ ang `connected:true` branch ay WALANG
+account guard (last-wins) — label flap/delayed-gray posible LANG kapag 2
+accounts sabay na live sa IISANG device+platform (dokumentadong limitation).
+May 8-step test checklist sa session history — ⏳ PENDING test ni Jeff.
+**(b) 🔴→✅ MULTI-DEVICE SABAYANG LIVE (ang totoong Pro/Master use case —
+Lheyukay: 3 TT accounts, 3 phones, 3 printers, iisang email): SUPORTADO ng
+architecture, code-trace-verified.** Ang naunang "view-one-at-a-time" na
+konklusyon ay tungkol LANG sa isang device na nagpapalit — HINDI ito
+limitasyon ng multi-device. Ebidensya sa code: `emitCommentScoped` = per-socket
+selection gate (magkakaibang account sa magkakaibang socket nang sabay, iisang
+room) · connections keyed per ACCOUNT (`seller:platform:username`) — 3 sabay na
+connections, walang server-side na per-seller cap (ang cap ay client
+registered-accounts: pro=3/master=5 via `maxAcc`) · triple scoping sa client
+(selection + sessionId + server gate) = walang paghahalo · orders lahat
+pumapasok sa iisang session bucket · printing per device (local printer config;
+auto-print sa device na gumawa ng order). **Ang tier value proposition ay
+INTACT.** ⚠️ **5 operational caveats (i-brief sa sellers):** (1) ang account na
+walang gising/green na device ay HINDI naka-capture (client-created ang orders;
+ring/initial buffer lang ang babalik sa reconnect — pero ORDERABLE ang history
+rows); (2) **buyer# ay LOCAL PER DEVICE, hindi globally unique** — tatlong
+phone = posibleng tatlong buyer #1 (magkaibang buyers); AYOS operationally
+dahil per-phone/per-printer ang parcel stacks — HUWAG paghaluin ang stacks
+(existing production behavior, hindi bago); (3) refresh mid-day = TODAY bar
+nagiging COMBINED ng lahat ng accounts + numbering jump; (4) DALAWANG device sa
+IISANG account = single-active-viewer ang live flow (creation-time sessionId sa
+chat relay closure; ang reuse ay history block lang via M1); (5) basket 🛒 =
+per-device view. May 6-step multi-device test checklist sa session history.
+**Restricted-account switch (use case 2): malinis** — pili ng ibang account →
+Connect; ang is-LIVE gate ay honest "not live" toast sa banned/offline account.
+
+### KEY LESSONS ng Jul 11–12 (record para sa future)
+- **F1 legacy-shape:** ang legacy `WebcastPushConnection` `simplifyObject` ay
+  nagfa-flatten ng protobuf `common` sa top level at BINUBURA ito — laging
+  basahin ang PAREHONG shapes sa anumang TikTok event field.
+- **H1 account-scoping:** ang status events ng ibang account ay hindi dapat
+  makapag-gray ng pill ng iba; tracking refs = SYNCHRONOUS update sa handler
+  (render-mirrored refs ay bumabagsak sa same-batch races).
+- **Ang audit-bago-merge process ay nakahuli ng 5 bugs na hindi lalabas sa
+  testing** (F1 inert dedup, H1, M1, E1 load-race, RC1 wipe-ordering) —
+  panatilihin ang protocol sa delivery-path/sacred-zone work.
+- **FLive research verdict:** walang secret data source ang kakumpitensya —
+  lahat sakay ng parehong reverse-engineered webcast protocol; ang "bilis"
+  nila = ang initial buffer na tinatapon natin dati (na-ship na bilang
+  Approach A).
+- **HINDI kailangan ang upgrades:** EulerStream Business $50/mo (walang
+  materyal na latency benefit; connect latency ay Euler sign + TikTok roomInfo,
+  2–8s, labas sa kontrol; Community free = 152 req/6hr sa 1000/day cap, 0
+  rate-limit) at Supabase Pro (free tier ~9% DB / ~10% egress na may 7-day
+  purge + zero-poll discipline). Dokumentado ang reasoning — huwag i-upgrade
+  nang walang bagong datos.
+
+### ⏳ PENDING TESTS ni Jeff
+REPRINT live test (checklist sa §3) · single-device multi-account switch
+(8-step) · multi-device sabayang live confirmation (6-step; code-verified na,
+live confirmation na lang — si Lheyukay mismo ang ebidensyang gumagana).
+
+### CARRY-OVERS (mula sa mga naunang session, buhay pa)
+- **U7:** iOS blob-download (`csv.ts`/`shippingExport.ts` programmatic
+  `a.click()`) — kailangan ng iPhone device test.
+- **S4:** Supabase dashboard → Auth → enable leaked-password protection.
+- **S3:** kumpirmahin `TEST_COMMENT_TOKEN` = UNSET sa prod Render env.
+- **G1 relay-level guard** — one-line chat-handler guard, kandidato sa susunod
+  na server batch (RC3 ang sumasara sa scheduler-level path).
+- **Branch cleanup (GitHub UI):** merged na pwedeng burahin — initial-comments
+  ×3, initial-orderable, manual-connect-only, manual-connect-fix2,
+  dropdown-close, reprint, basket-position-size, broadcast branches. **HUWAG
+  burahin: `claude/comment-persistence`** (parked) at `claude/full-redesign`.
+- **Renewal follow-ups:** eliza, Jewel Tee, at ang Jul 17–19 expiry wave —
+  bantayan sa admin Expiring bucket (7-day window) + expiry modal tiers.
+- Landing/Login fake stats (desisyon ni Jeff, nakabinbin pa rin).
