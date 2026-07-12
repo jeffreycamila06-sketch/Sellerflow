@@ -403,6 +403,11 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     if (r.ok) {
       connectedAcctsRef.current = { ...connectedAcctsRef.current, [platform]: r.account }; // Fix B — track for auto-restore
       setFeed([]);
+      // Audit F2 — the previous account's history block must not survive a
+      // connect/account switch (the arrival-time selection filter passed for
+      // the OLD account; nothing re-filters at render). The new connect's own
+      // initial batch (if any) repopulates the block.
+      setInitialFeed([]);
       setActiveAccounts((a) => ({ ...a, [platform]: r.account }));
     }
     return r;

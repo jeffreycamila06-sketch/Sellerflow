@@ -20,6 +20,8 @@ const H = vi.hoisted(() => ({ sockets: [] as Array<{ on: ReturnType<typeof vi.fn
 vi.mock("socket.io-client", () => ({
   io: vi.fn(() => { const s = { on: vi.fn(), emit: vi.fn(), disconnect: vi.fn() }; H.sockets.push(s); return s; }),
 }));
+const connectPlatformMock = vi.fn();
+vi.mock("../connect", async (orig) => ({ ...(await orig() as object), connectPlatform: (...a: unknown[]) => connectPlatformMock(...a) }));
 
 import { useLiveFeed, commentKey, initialKey } from "../useLiveFeed";
 
@@ -36,7 +38,10 @@ const initial = (n: number, over: WireComment = {}): WireComment =>
 const handlerFor = (event: string) => H.sockets[0].on.mock.calls.find((c) => c[0] === event)?.[1] as ((d?: unknown) => void) | undefined;
 const fire = (event: string, d?: unknown) => act(() => { handlerFor(event)?.(d); });
 
-beforeEach(() => { vi.clearAllMocks(); H.sockets.length = 0; localStorage.clear(); });
+beforeEach(() => {
+  vi.clearAllMocks(); H.sockets.length = 0; localStorage.clear();
+  connectPlatformMock.mockResolvedValue({ ok: true, account: "shop_b" });
+});
 
 describe("THE DUPE GATE — initial comments are display-only", () => {
   it("initial batch → onComment seam ZERO times, getComment(initialId) undefined; live comment still fires ONCE", () => {
@@ -120,6 +125,17 @@ describe("dedup + lifecycle", () => {
       useLiveFeed(true, "s@x.com", undefined, { TikTok: "shopA", Facebook: "" }));
     fire("comment", initial(1, { sourceUsername: "shopB" }));        // other account's history
     fire("comment", initial(2, { sourceUsername: "shopA" }));        // selected account
+    expect(result.current.initialComments.length).toBe(1);
+    expect(result.current.initialComments[0].handle).toBe("@buyer2");
+  });
+
+  it("F2 (audit): a successful connect/account switch CLEARS the old history block (no cross-account leak)", async () => {
+    const { result } = renderHook(() => useLiveFeed(true, "s@x.com"));
+    fire("comment", initial(1, { sourceUsername: "shop_a" }));       // account A's history accepted
+    expect(result.current.initialComments.length).toBe(1);
+    await act(async () => { await result.current.connect("TikTok", { username: "shop_b" }); }); // switch to B
+    expect(result.current.initialComments.length).toBe(0);          // A's block gone with the feed
+    fire("comment", initial(2, { sourceUsername: "shop_b" }));       // B's own batch repopulates
     expect(result.current.initialComments.length).toBe(1);
     expect(result.current.initialComments[0].handle).toBe("@buyer2");
   });

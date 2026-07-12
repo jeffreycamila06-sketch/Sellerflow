@@ -863,16 +863,24 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
   // only shows them on a fresh open (empty feed). Same scoped relay as live
   // comments (select_account gate applies). Dedup + shaping: server/initialComments.js.
   if (initialChats.length) {
-    const initialPayloads = buildInitialCommentPayloads(initialChats, {
-      sellerId,
-      sessionId,
-      sourceUsername: cleanUsername,
-      roomId: state?.roomId || "",
-      nowMs: now,
-    });
-    console.log(`[INITIAL] relaying ${initialPayloads.length}/${initialChats.length} buffered comments for ${cleanUsername} (${sellerId})`);
-    for (const payload of initialPayloads) {
-      void emitCommentScoped(sellerId, "TikTok", cleanUsername, payload);
+    // Audit F3 — best-effort by contract: the connect is ALREADY successful and
+    // registered above, so a relay failure must never fail it (an uncaught
+    // throw here would emit a terminal status while the live connection stays
+    // in the map).
+    try {
+      const initialPayloads = buildInitialCommentPayloads(initialChats, {
+        sellerId,
+        sessionId,
+        sourceUsername: cleanUsername,
+        roomId: state?.roomId || "",
+        nowMs: now,
+      });
+      console.log(`[INITIAL] relaying ${initialPayloads.length}/${initialChats.length} buffered comments for ${cleanUsername} (${sellerId})`);
+      for (const payload of initialPayloads) {
+        void emitCommentScoped(sellerId, "TikTok", cleanUsername, payload);
+      }
+    } catch (err) {
+      console.warn(`[INITIAL] relay failed for ${cleanUsername} (connect unaffected):`, err?.message || err);
     }
   }
 

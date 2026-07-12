@@ -13,7 +13,7 @@
 // BEFORE the Auto-Mode seam and pushComment — they can never create orders.
 // The flag is the contract; do not remove it.
 
-// TikTok's common.createTime is an epoch string — seconds (10-digit) or
+// TikTok's createTime is an epoch string — seconds (10-digit) or
 // milliseconds (13-digit) depending on message vintage. Returns ms, or null
 // when unparseable (caller falls back to "now").
 export function parseCreateTimeMs(v) {
@@ -24,9 +24,21 @@ export function parseCreateTimeMs(v) {
   return null;                               // micro/nano or garbage — refuse to guess
 }
 
+// ⚠️ FIELD SHAPE (audit F1 — verified against the shipped library, not the raw
+// protocol): server.js instantiates the LEGACY WebcastPushConnection, whose
+// simplifyObject FLATTENS the protobuf `common` block into the top level and
+// DELETES `common` (data-converter.js:19-24, with msgId/createTime stringified
+// at :161-164). So in production the chat event carries data.msgId /
+// data.createTime — data.common never exists. The common.* fallbacks below
+// only serve a future migration to the non-legacy TikTokLiveConnection (raw
+// CommonMessageData shape); both shapes are unit-tested.
+export const msgIdOf = (data) => String(data?.msgId ?? data?.common?.msgId ?? "").trim();
+export const createTimeOf = (data) => data?.createTime ?? data?.common?.createTime;
+
 // Dedup the collected initial batch by TikTok's stable per-message id
-// (common.msgId); entries without a msgId fall back to a content key so a
-// double-buffered message still collapses. Preserves arrival order.
+// (msgId — top-level in the legacy shape, see msgIdOf); entries without a
+// msgId fall back to a content key so a double-buffered message still
+// collapses. Preserves arrival order.
 export function dedupInitialChats(chats) {
   const seen = new Set();
   const out = [];
@@ -34,7 +46,7 @@ export function dedupInitialChats(chats) {
     if (!data || typeof data !== "object") continue;
     const comment = String(data.comment || "").trim();
     if (!comment) continue; // non-chat / empty — nothing to display
-    const msgId = String(data?.common?.msgId || "").trim();
+    const msgId = msgIdOf(data);
     const key = msgId ? `m:${msgId}` : `c:${data.uniqueId || ""}|${comment}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -48,7 +60,7 @@ export function dedupInitialChats(chats) {
 // derive from the message's own createTime when parseable (the comment really
 // happened minutes ago), else `nowMs`.
 export function initialCommentPayload(data, { sellerId, sessionId, sourceUsername, roomId, nowMs }) {
-  const atMs = parseCreateTimeMs(data?.common?.createTime) ?? nowMs;
+  const atMs = parseCreateTimeMs(createTimeOf(data)) ?? nowMs;
   const at = new Date(atMs);
   return {
     handle: data.uniqueId || "unknown",
@@ -64,7 +76,7 @@ export function initialCommentPayload(data, { sellerId, sessionId, sourceUsernam
     buyerNum: null,
     buyerData: null,
     initial: true,                                     // ⚠️ the display-only contract
-    msgId: String(data?.common?.msgId || ""),          // stable id for client-side dedup
+    msgId: msgIdOf(data),                              // stable id for client-side dedup
     time: at.toLocaleTimeString("en-US", { timeZone: "Asia/Taipei" }),
     timestamp: at.toISOString(),
   };
