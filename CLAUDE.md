@@ -2866,10 +2866,14 @@ numeric gates ay ang `WindowDays` type + `clampWindowDays` (+ ang pill
   hangga't walang pumipili ng 4. Zero i18n (lahat templated), zero server,
   zero protected files. `rebuildSessionFromRows` = linear (verified) sa ~3.1k
   rows.
-- ⏳ **VALIDATION PENDING (huwag pa ituring na sarado):** day-crossing test
-  ni Jeff sa googletest, Jul 14 umaga — order pagkatapos ng Taipei midnight
-  sa loob ng 4d window → dapat **tuloy ang numbering (buyer #4)**, hindi
-  reset sa #1. Kapag pumasa, i-stamp ang ✅ dito.
+- ⏳ **VALIDATION PENDING (huwag pa ituring na sarado):** ang unang
+  day-crossing test (Jul 14) ay NA-RESET — binago ni Jeff ang session setting
+  Jul 13 → sariwang window Jul 14 na may buyers #1–4 na. **Bagong pass
+  criteria: Jul 15 umaga, isang bagong order sa googletest nang HINDI
+  ginagalaw ang setting → dapat buyer #5 (tuloy ang numbering), hindi #1.**
+  Kapag pumasa, i-stamp ang ✅ dito. (Operational na aral: ang pagpalit ng N
+  ay nagbubukas ng sariwang window — kaya ang day-crossing test ay dapat
+  walang setting change sa pagitan.)
 
 ## ENTERPRISE ✓ (iPhone typed-price print fix) ✅ DEVICE-VALIDATED (merge `b9b6040` Jul 13; validated + approved ni Jeff Jul 13, totoong hardware session)
 **BUG:** ang Enterprise typed-price sa iPhone ay walang paraang mag-print —
@@ -2983,3 +2987,49 @@ ang bawat iOS Archive na may printing change.**
   `ios.latest` 6→7 (ligtas na dahil may exact `getBuildNumber` na ang Build
   7; ang Build 6 users ay mano-nudge sa update modal). Ito na lang ang
   natitirang follow-up ng saga.
+
+## UNIFIED ORDERS SEARCH + 7-DAY HISTORY ✅ LIVE-VALIDATED (merge `45a31e2` Jul 13; validated ni Jeff Jul 14)
+Torn-sticker recovery para sa sorting teams: ISANG search box sa Orders tab,
+i-type ang KAHIT ANONG nabasa sa punit na sticker — walang decision tree.
+Prod-verified sa served bundle (`dpl_FspbJEb1…`, `main-CSFeURzM.js`).
+- **`filterOrders`** (`useReadData.ts`): isang haystack per row — `#bNum`
+  (tumatama pareho ang "23" at "#23"; ang `o.id` ay `#${bNum}`, hindi UUID),
+  buyer name, @handle (may @ o wala), item/price-code text, oras, total,
+  platform. Contains, case-insensitive — `filterCustomers` mechanics.
+- **7-DAY HISTORY REACH** (`adapters/ordersSearch.ts`, NEW): ang punit ay
+  madalas madiskubre PAGKATAPOS mag-expire ng window, kaya ang search ay
+  umaabot sa buong 7-day DB retention. **LAZY**: zero read sa app open; isang
+  ranged paged fetch sa UNANG search keystroke; **once-per-open cache (walang
+  TTL, audited)**; pager error → honest "error", never partial; logout ay
+  naglilinis. Pinakamabigat na seller ≈ 5.5k rows ≈ 1.1MB, user-initiated
+  lang, zero poll. **`historyRangeFor`** = `[today−7 .. araw bago ang loaded
+  window start]` via `chooseSessionLoad` → **ZERO overlap sa window rows by
+  construction** (walang dedupe logic), tama sa 1/2/3/4-day + expired.
+- **DISPLAY-ONLY STRUCTURAL:** ang adapter ay hindi tumatanggap ng
+  `liveSession` — walang daan sa applyOrder/TODAY bar/window semantics
+  (source-pinned, comments-stripped regex). History rows ay lumalabas LANG
+  sa search results, may **date chip** (`07/10` style) sa bawat row na hindi
+  galing today (pati day-2+ ng multi-day window sa plain list — bonus).
+- **↻ REPRINT sa bawat result row** (bagong entry point sa audited zero-write
+  path): history = ang fetched RAW DB row verbatim; window = reconstruction
+  mula sa session order (`created_at` round-trips ang `orderNum`) —
+  **PARITY-pinned** sa totoong `rebuildSessionFromRows` (Supabase "+00:00"
+  format vs `toISOString()` = identical na Buyer). `RedesignApp.onReprintOrder`
+  = `resolveReprintRow → performReprint` LANG (zero-write source contract).
+  2s global cooldown, `stopPropagation` vs row onClick. NOTE: ang rebuilt
+  `LiveOrder` ay WALANG msgId kaya ang window route ay laging constructed —
+  ang msgId-map route ng orihinal na plan ay hindi maaabot mula sa Orders row.
+- UI: input sa pwesto ng dating patay na chip row · ✕ clear · match count sa
+  badge · "Searching the last 7 days…" chip · 7-day boundary note ("older
+  orders are no longer stored") · honest fetch-error note. 5 bagong
+  `rd_ord_*` keys ×7. Customers search = untouched (lifetime CRM, ibang gamit).
+- Tests +20 (1054 vitest sa merge): filter matrix · range matrix ·
+  3 reprint routes + parity · lazy/once/error/logout · display-only +
+  zero-write pins · render matrix. Hooks-lint lesson inulit: state reset =
+  adjust-during-render, ref reset = effect (hiwalay — ang `react-hooks/refs`
+  ay nagba-ban din ng ref writes during render).
+- ✅ **LIVE-VALIDATED ni Jeff (Jul 14):** kahapon (07/13) rows lumalabas sa
+  search na may date chip · Reprint sa history row gumagana.
+- (Kasama sa investigation na nauna rito: ang QR-code option sa sticker ay
+  hindi itinuloy — TSPL `QRCODE` ay hindi pa device-verified sa D520BT-Z,
+  walang scan-lookup infra, at ang search na ito ang sumara sa gap.)
