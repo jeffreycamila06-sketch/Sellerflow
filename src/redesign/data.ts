@@ -44,7 +44,12 @@ export interface Comment { id: string; name: string; handle: string; text: strin
 // (F-batch sweep: the INCOMING/SEED_COMMENTS sample streams are gone — the live
 // feed has been the real socket since 5d; nothing consumed them.)
 
-export interface Order { id: string; buyer: string; handle: string; items: string; qty: number; total: number; status: string; platform: string; time: string; }
+export interface Order {
+  id: string; buyer: string; handle: string; items: string; qty: number; total: number; status: string; platform: string; time: string;
+  // Orders search (2026-07-13, additive/optional): orderNum = epoch-ms identity
+  // for Reprint resolution; date = Taipei session_date for the row date chip.
+  orderNum?: number; date?: string;
+}
 export interface Miner { name: string; handle: string; orders: number; spent: number; platform: string; }
 
 export const ORDERS: Order[] = [

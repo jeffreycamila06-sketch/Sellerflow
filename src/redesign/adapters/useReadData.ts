@@ -66,8 +66,26 @@ export function liveOrdersToRedesign(rebuilt: RebuiltSession): Order[] {
       status: o.status,
       platform: o.platform,
       time: o.time, // clock string from created_at; screen renders without "ago" in live mode
+      // Orders search (2026-07-13) — additive: orderNum identifies the order
+      // for Reprint resolution; date drives the per-row date chip (history
+      // rows + earlier days of a multi-day window).
+      orderNum: o.orderNum,
+      date: o.date,
     }))
     .reverse();
+}
+
+// Unified Orders search (torn-sticker recovery, 2026-07-13) — ONE input, every
+// field: the sorter types WHATEVER survived the tear and never picks a field.
+// Haystack per row: "#bNum" (both "23" and "#23" hit — o.id IS `#${bNum}`,
+// verified not a UUID), buyer name, @handle (with or without @ — stored with
+// @), item/price-code text, clock time, total, platform. Contains match,
+// case-insensitive — same mechanics as filterCustomers, wider net.
+export function filterOrders(orders: Order[], query: string): Order[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return orders;
+  return orders.filter((o) =>
+    `${o.id} ${o.buyer} ${o.handle} ${o.items} ${o.time} ${o.total} ${o.platform}`.toLowerCase().includes(q));
 }
 
 // customers rows (Supabase) → redesign Customer[].
