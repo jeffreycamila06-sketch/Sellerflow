@@ -90,6 +90,50 @@ describe("call sites — the fix must actually be wired in", () => {
   });
 });
 
+describe("3-tier language detection — RANGE-based and identical across all three builders (never encoder-dependent)", () => {
+  // Jeff's 2026-07-13 scope question: could the broken gbkBytes have corrupted
+  // tier ROUTING (Thai → wrong tier)? No — and this pins WHY, forever: the
+  // classifier walks code points against fixed CJK ranges and never consults
+  // an encoder, so converter availability can only affect RENDERING of the
+  // already-chosen CJK tier. Latin/Vietnamese → font 4 and Thai/Arabic/emoji
+  // → @handle were correct even on the broken Build 6.
+  const java = readFileSync(
+    resolve(__dirname, "../../../mobile/android/app/src/main/java/com/sellerflow/live/TsplBuilder.java"),
+    "utf8",
+  );
+  const tsRef = readFileSync(resolve(__dirname, "./tsplReference.ts"), "utf8");
+  const RANGES = [
+    [0x4e00, 0x9fff], // CJK Unified Ideographs
+    [0x3400, 0x4dbf], // Extension A
+    [0xf900, 0xfaff], // Compatibility Ideographs
+  ] as const;
+  const hasRanges = (src: string): boolean =>
+    RANGES.every(([lo, hi]) => {
+      const re = new RegExp(
+        `0x${lo.toString(16)}\\s*&&\\s*cp\\s*<=\\s*0x${hi.toString(16)}`,
+        "i",
+      );
+      return re.test(src);
+    });
+
+  it("Java, Swift, and the TS reference share the exact same three CJK ranges", () => {
+    expect(hasRanges(java)).toBe(true);
+    expect(hasRanges(swift)).toBe(true);
+    expect(hasRanges(tsRef)).toBe(true);
+  });
+
+  it("the Swift classifier and unsupported→@handle fallback never touch the encoders", () => {
+    const classify = swift.match(/private func classifyScript[\s\S]*?\n {4}}/)?.[0] ?? "";
+    expect(classify).toContain("isCjkIdeograph(cp)");
+    expect(classify).not.toMatch(/gbkBytes|big5Bytes|losslessBytes|CjkEncoding/);
+    // The Android-mirrored tier-3 fallback (Arabic/Korean/Thai → romanized
+    // @handle if ASCII, else omit) is intact — the fix never touched it.
+    expect(swift).toMatch(
+      /if nameTier == SellerFlowPrinterPlugin\.scriptUnsupported \{/,
+    );
+  });
+});
+
 describe("getBuildNumber shim (exact-build bridge for the update modal)", () => {
   const webSrc = readFileSync(
     resolve(__dirname, "../../redesign/adapters/nativeVersion.ts"),
