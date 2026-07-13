@@ -123,11 +123,27 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
+    // Running binary's CFBundleVersion as a JS NUMBER literal. 0 = unparseable
+    // → the getBuildNumber line below is OMITTED entirely (see
+    // CjkEncoding.buildNumberLiteral for why emitting 0 would be harmful).
+    private static let iosBuildNumber = CjkEncoding.buildNumberLiteral(
+        from: Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String)
+    // Exact-build bridge for the web update modal (adapters/nativeVersion.ts
+    // bridgeBuildNumber): SYNCHRONOUS and returns a NUMBER (not a string, not a
+    // Promise — the web does Number(fn()) on the direct return). Without this,
+    // capability synthesis caps every BLE-bearing binary at IOS_BLE_BUILD=6,
+    // so a native-version.json ios.latest bump past 6 would nag Build 7+
+    // users forever.
+    private static let buildNumberShimLine = iosBuildNumber > 0
+        ? "window.SellerFlowPrinter.getBuildNumber = function(){ return \(iosBuildNumber); };"
+        : ""
+
     private static let bridgeShimJS = """
     (function(){
       var cap = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SellerFlowPrinter;
       if (!cap) return;
       window.SellerFlowPrinter = window.SellerFlowPrinter || {};
+      \(buildNumberShimLine)
       window.SellerFlowPrinter.setPrinter = function(c){ return cap.setPrinter(c || {}); };
       window.SellerFlowPrinter.getPrinter = function(){ return cap.getPrinter(); };
       window.SellerFlowPrinter.testConnection = function(c){ return cap.testConnection(c || {}); };
@@ -423,15 +439,14 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             let cleaned = stripEmoji(s)
             // Big5 (Traditional Chinese) -- the XP-N160II receipt printer's resident
             // character set (confirmed on its self-test page). This DIFFERS from the
-            // AIMO TSPL sticker path, which is GBK (a different printer); only the
-            // receipt encoder changes here -- gbkBytes() for the sticker stays GBK_95.
-            let cfEnc = CFStringEncoding(CFStringEncodings.big5.rawValue)
-            let nsEnc = CFStringConvertEncodingToNSStringEncoding(cfEnc)
-            if let d = (cleaned as NSString).data(using: nsEnc) {
-                out.append(d)
-            } else if let d = cleaned.data(using: .utf8) {
-                out.append(d) // fallback
-            }
+            // AIMO TSPL sticker path, which is GBK (a different printer). 3-tier
+            // never-fail encoder (CjkEncoding.big5Bytes, Android slip parity):
+            // the old whole-string-or-UTF-8 fallback printed GARBAGE bytes in
+            // FS& Kanji mode whenever the big5 converter was missing or any one
+            // char was unmappable (same iOS-device converter gap as GBK_95,
+            // found 2026-07-13); unmappable chars are now DROPPED like
+            // Android's stripUnencodable.
+            out.append(contentsOf: CjkEncoding.big5Bytes(cleaned))
             out.append(0x0A)
         }
         func line() { text("--------------------------------") }
@@ -540,9 +555,10 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
     //     by Character/grapheme -- see truncate16().
     //   - writeAscii encodes US-ASCII with '?' (0x3F) for unmappable units,
     //     matching Java getBytes(US_ASCII) -- see tsplAsciiBytes().
-    //   - GBK uses CFStringEncodings.GBK_95, the same encoding the ESC/POS path
-    //     uses and which matches Android's Charset.forName("GBK") byte-for-byte
-    //     on the BMP (CJK ideographs live here).
+    //   - GBK rides CjkEncoding.gbkBytes (GBK_95 → GB18030 ≤2-byte → '?'),
+    //     which matches Android's Charset.forName("GBK") byte-for-byte on the
+    //     BMP (CJK ideographs live here). The ESC/POS receipt path is Big5
+    //     (a different printer) via CjkEncoding.big5Bytes.
     // Internal (not private) so the Phase-3 XCTest (mobile/ios/tspl-parity/
     // swift/MobileTsplBuilderTests.swift) can assert it byte-for-byte against
     // the Android golden fixtures via @testable import.
@@ -860,13 +876,15 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         return s.utf16.map { $0 <= 127 ? UInt8($0) : 0x3F }
     }
 
-    /// GBK_95 bytes, the same encoding the ESC/POS path uses; matches Android
-    /// Charset.forName("GBK") byte-for-byte on the BMP. nil if unavailable.
+    /// GBK bytes for the sticker path; matches Android Charset.forName("GBK")
+    /// byte-for-byte on the BMP. Delegates to the never-fail 3-tier encoder
+    /// (CjkEncoding.gbkBytes) — the old single-tier GBK_95 body returned nil on
+    /// real iOS devices (converter missing) and every Chinese name fell to the
+    /// writeTextSmart ASCII path = literal '?' (found 2026-07-13). The Optional
+    /// signature is kept so writeTextSmart stays byte-untouched; its else
+    /// branch is now an unreachable safety net.
     private func gbkBytes(_ s: String) -> [UInt8]? {
-        let cfEnc = CFStringEncoding(CFStringEncodings.GBK_95.rawValue)
-        let nsEnc = CFStringConvertEncodingToNSStringEncoding(cfEnc)
-        guard let d = (s as NSString).data(using: nsEnc) else { return nil }
-        return [UInt8](d)
+        return CjkEncoding.gbkBytes(s)
     }
 
     /// Truncate by UTF-16 code units to match Java String.substring(0, maxLen).
@@ -1088,11 +1106,13 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             out.append(contentsOf: tsplAsciiBytes("\""))
             out.append(contentsOf: [0x0D, 0x0A])
         }
+        // Probe encoders ride the never-fail 3-tier CjkEncoding (2026-07-13):
+        // the old local lossy big5/gbk encodes returned nil when the OS lacked
+        // the converter, so the A/B/D probe lines were silently SKIPPED — which
+        // is exactly why the missing-GBK_95 device bug stayed invisible on the
+        // Jul 7 hardware test. Now the probes always emit bytes.
         func big5Bytes(_ s: String) -> [UInt8]? {
-            let cfEnc = CFStringEncoding(CFStringEncodings.big5.rawValue)
-            let nsEnc = CFStringConvertEncodingToNSStringEncoding(cfEnc)
-            guard let data = s.data(using: String.Encoding(rawValue: nsEnc), allowLossyConversion: true) else { return nil }
-            return [UInt8](data)
+            return CjkEncoding.big5Bytes(s)
         }
         let safeStore = storeName.replacingOccurrences(of: "\"", with: "'")
         let fmt = DateFormatter()
@@ -1121,10 +1141,126 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         writeAscii("TEXT 20,400,\"2\",0,1,1,\"C:\"")
         writeEncodedLine("TEXT 70,394,\"TST24.BF2\",0,1,1,\"", cjk, [UInt8](cjk.utf8))
         writeAscii("CODEPAGE 437")
+        // E: iOS-only EXTRA probe — a deliberate deviation from the otherwise
+        // byte-faithful Java test page (lines A–D above stay byte-identical).
+        // 北部還有嗎 is the real production string that exposed the missing
+        // GBK_95 converter (2026-07-13, printed as ?????); this line verifies
+        // the 3-tier gbkBytes encoder on hardware, in the same TSS24.BF2 +
+        // CODEPAGE 437 regime as line D. Diagnostic page only — not golden-
+        // guarded, Android's textTestPage is untouched.
+        let cjkE = "\u{5317}\u{90E8}\u{9084}\u{6709}\u{55CE}" // 北部還有嗎
+        writeAscii("TEXT 20,450,\"2\",0,1,1,\"E:\"")
+        writeEncodedLine("TEXT 70,444,\"TSS24.BF2\",0,1,1,\"", cjkE, gbkBytes(cjkE))
         writeAscii("PRINT 1")
         return out
     }
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// MARK: - CJK printer encoders (pure, hardware-free — same convention as
+// BleStickerLogic below; tests: tspl-parity/swift/CjkEncodingTests.swift AND
+// the pre-Archive simulator gate tspl-parity/run-encoders-sim.sh)
+//
+// WHY THIS EXISTS (2026-07-13 device finding): CFStringEncodings.GBK_95's
+// converter is MISSING on real iOS devices — (s as NSString).data(using:)
+// returned nil for every CJK string, writeTextSmart fell to its ASCII path,
+// and buyers' Chinese names printed as literal '?' (0x3F) on the AIMO
+// D520BT-Z (production evidence: 北部還有嗎 → ?????). The Mac-run logic tests
+// never caught it because macOS ships the converter, so these encoders are
+// covered by tests that run against the iOS runtime (Simulator).
+// ═════════════════════════════════════════════════════════════════════════════
+
+// CJK-ENCODING-BEGIN (extracted VERBATIM by tspl-parity/run-encoders-sim.sh —
+// keep this block Foundation-only: no Capacitor/UIKit/CoreBluetooth.)
+enum CjkEncoding {
+
+    /// NSStringEncoding for a CF encoding, or nil when this OS runtime does
+    /// not ship the converter (the iOS-device gap that broke GBK_95).
+    static func nsEncoding(_ enc: CFStringEncodings) -> UInt? {
+        let cf = CFStringEncoding(enc.rawValue)
+        guard CFStringIsEncodingAvailable(cf) else { return nil }
+        return CFStringConvertEncodingToNSStringEncoding(cf)
+    }
+
+    /// Lossless whole-string bytes, nil if the converter is unavailable OR any
+    /// character has no mapping (NSString.data(using:) is all-or-nothing).
+    static func losslessBytes(_ s: String, _ enc: CFStringEncodings) -> [UInt8]? {
+        guard let ns = nsEncoding(enc) else { return nil }
+        guard let d = (s as NSString).data(using: ns) else { return nil }
+        return [UInt8](d)
+    }
+
+    /// GBK bytes for the AIMO sticker ROM — Java String.getBytes("GBK")
+    /// semantics ('?' per unmappable code point) and NEVER fails the string.
+    ///  Tier 1: whole-string GBK_95 — byte-identical to the pre-fix path
+    ///          wherever that converter exists, so working environments are
+    ///          unchanged.
+    ///  Tier 2: per-scalar GBK_95, else GB_18030_2000 accepting only 1–2 byte
+    ///          output. GB18030's 1–2 byte range is byte-identical to GBK; a
+    ///          4-byte sequence means the char is NOT in GBK — the AIMO's GBK
+    ///          ROM can't render it, so it becomes '?' exactly like Java's
+    ///          replacement (TsplBuilder.writeTextSmart's getBytes("GBK")).
+    ///  Tier 3: '?' (0x3F) for anything still unmapped.
+    /// Per-scalar == whole-string for GBK/GB18030 (stateless, no shift
+    /// states; fixture-verified in CjkEncodingTests).
+    static func gbkBytes(_ s: String) -> [UInt8] {
+        if let whole = losslessBytes(s, .GBK_95) { return whole }
+        var out: [UInt8] = []
+        out.reserveCapacity(s.unicodeScalars.count * 2)
+        for scalar in s.unicodeScalars {
+            if scalar.value <= 127 { out.append(UInt8(scalar.value)); continue }
+            let ch = String(scalar)
+            if let b = losslessBytes(ch, .GBK_95), b.count <= 2 {
+                out.append(contentsOf: b)
+            } else if let b = losslessBytes(ch, .GB_18030_2000), b.count <= 2 {
+                out.append(contentsOf: b)
+            } else {
+                out.append(0x3F)
+            }
+        }
+        return out
+    }
+
+    /// Big5 bytes for the XP-N160II receipt ROM — Android slip parity
+    /// (SellerFlowPrinterPlugin.java PRINTER_CHARSET=Big5 + stripUnencodable):
+    /// unmappable code points are DROPPED, not '?'-substituted, and the string
+    /// itself never fails.
+    ///  Tier 1: whole-string big5 (byte-identical wherever available).
+    ///  Tier 2: per-scalar big5, else dosChineseTrad (Windows CP950 — Big5
+    ///          superset, byte-identical on the standard Big5 range;
+    ///          fixture-verified) accepting only 1–2 byte output.
+    ///  Tier 3: DROP — a simplified-only char like 简 vanishes exactly as it
+    ///          does on Android, and the old whole-string-or-UTF-8 fallback
+    ///          that printed GARBAGE bytes in FS& Kanji mode is gone.
+    static func big5Bytes(_ s: String) -> [UInt8] {
+        if let whole = losslessBytes(s, .big5) { return whole }
+        var out: [UInt8] = []
+        out.reserveCapacity(s.unicodeScalars.count * 2)
+        for scalar in s.unicodeScalars {
+            if scalar.value <= 127 { out.append(UInt8(scalar.value)); continue }
+            let ch = String(scalar)
+            if let b = losslessBytes(ch, .big5), b.count <= 2 {
+                out.append(contentsOf: b)
+            } else if let b = losslessBytes(ch, .dosChineseTrad), b.count <= 2 {
+                out.append(contentsOf: b)
+            }
+            // else: drop (Android stripUnencodable parity — never garbage)
+        }
+        return out
+    }
+
+    /// Strict integer parse of CFBundleVersion for the JS shim's
+    /// getBuildNumber. Returns 0 for anything unparseable/non-positive, and 0
+    /// means "do NOT emit the shim line": the web's bridgeBuildNumber()
+    /// (adapters/nativeVersion.ts) treats ANY finite number as the real build,
+    /// so a parse-failure 0 would read as "build 0 = stale" and nag forever —
+    /// omitting the function instead falls back to capability synthesis.
+    static func buildNumberLiteral(from raw: String?) -> Int {
+        guard let raw = raw, let n = Int(raw), n > 0 else { return 0 }
+        return n
+    }
+}
+// CJK-ENCODING-END
 
 // ═════════════════════════════════════════════════════════════════════════════
 // MARK: - BLE pure logic (no CoreBluetooth types — unit-testable standalone)
