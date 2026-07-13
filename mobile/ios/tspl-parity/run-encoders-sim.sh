@@ -56,7 +56,9 @@ let big5Avail = CjkEncoding.nsEncoding(.big5) != nil
 let cp950Avail = CjkEncoding.nsEncoding(.dosChineseTrad) != nil
 print("[CJK-ENV] GBK_95=\(gbkAvail) GB18030=\(gb18030Avail) big5=\(big5Avail) CP950=\(cp950Avail)")
 if !(gbkAvail || gb18030Avail) { failures += 1; print("FAIL no GBK-family converter — CONTINGENCY C") }
-if !(big5Avail || cp950Avail) { failures += 1; print("FAIL no Big5-family converter — CONTINGENCY C") }
+// big5/CP950 are REPORT-ONLY: the slip path keeps its legacy encoder in this
+// release (deferred fix — one binary, one confirmed bug). big5=false here is
+// the evidence that greenlights the follow-up Big5 branch (staged at b44f5b5).
 
 // gbkBytes — sticker (Java getBytes("GBK") parity)
 eq("gbk 北部還有嗎 (the production bug string)",
@@ -72,16 +74,8 @@ eq("gbk U+07C0 not-in-GBK → single '?' (4-byte GB18030 rejected)",
 eq("gbk 陳+U+07C0+美 → '?' only for the unmappable char",
    CjkEncoding.gbkBytes("\u{9673}\u{07C0}\u{7F8E}"), [0xEA, 0x90, 0x3F, 0xC3, 0xC0])
 
-// big5Bytes — receipt (Android Big5 + stripUnencodable parity: DROP)
-eq("big5 北部還有嗎",
-   CjkEncoding.big5Bytes("\u{5317}\u{90E8}\u{9084}\u{6709}\u{55CE}"),
-   [0xA5, 0x5F, 0xB3, 0xA1, 0xC1, 0xD9, 0xA6, 0xB3, 0xB6, 0xDC])
-eq("big5 陳小美", CjkEncoding.big5Bytes("\u{9673}\u{5C0F}\u{7F8E}"),
-   [0xB3, 0xAF, 0xA4, 0x70, 0xAC, 0xFC])
-eq("big5 mixed A陳b", CjkEncoding.big5Bytes("A\u{9673}b"), [0x41, 0xB3, 0xAF, 0x62])
-eq("big5 简 dropped (Android parity — no '?', no garbage)",
-   CjkEncoding.big5Bytes("\u{9673}\u{7B80}\u{7F8E}"), [0xB3, 0xAF, 0xAC, 0xFC])
-eq("big5 pure ASCII identity", CjkEncoding.big5Bytes("Total: 150"), Array("Total: 150".utf8))
+// (big5Bytes fixtures removed with the deferred Big5 slip fix — staged at
+// git b44f5b5 for the follow-up branch.)
 
 // buildNumberLiteral — getBuildNumber shim source
 eqInt("buildNumber '7' → 7", CjkEncoding.buildNumberLiteral(from: "7"), 7)

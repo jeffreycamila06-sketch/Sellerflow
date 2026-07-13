@@ -19,8 +19,7 @@
 // Fixture derivation (committed expectations, cross-checked 3 ways):
 //   python3 -c "print('北部還有嗎'.encode('gbk').hex(' '))"
 //   — gbk == gb18030 for every fixture char (2-byte range is byte-identical);
-//   — big5 == cp950 for every fixture char (standard Big5 range);
-//   — per-scalar joins == whole-string encodes (both charsets are stateless).
+//   — per-scalar joins == whole-string encodes (GBK/GB18030 are stateless).
 
 import XCTest
 @testable import App
@@ -66,34 +65,9 @@ final class CjkEncodingTests: XCTestCase {
         XCTAssertFalse(CjkEncoding.gbkBytes("\u{5317}\u{90E8}").isEmpty)
     }
 
-    // MARK: big5Bytes — receipt path (Android PRINTER_CHARSET=Big5 +
-    // stripUnencodable parity: unmappable chars DROP, never garbage)
-
-    func testBig5ProductionString() {
-        XCTAssertEqual(CjkEncoding.big5Bytes("\u{5317}\u{90E8}\u{9084}\u{6709}\u{55CE}"),
-                       [0xA5, 0x5F, 0xB3, 0xA1, 0xC1, 0xD9, 0xA6, 0xB3, 0xB6, 0xDC])
-    }
-
-    func testBig5ProbeName() {
-        XCTAssertEqual(CjkEncoding.big5Bytes("\u{9673}\u{5C0F}\u{7F8E}"),
-                       [0xB3, 0xAF, 0xA4, 0x70, 0xAC, 0xFC])
-    }
-
-    func testBig5MixedAsciiAndCjk() {
-        XCTAssertEqual(CjkEncoding.big5Bytes("A\u{9673}b"), [0x41, 0xB3, 0xAF, 0x62])
-    }
-
-    func testBig5UnmappableCharIsDroppedNotSubstituted() {
-        // 简 (simplified-only, U+7B80) has no Big5 mapping. Android drops it
-        // via stripUnencodable — so must we: 陳简美 → bytes of 陳美, no '?',
-        // and absolutely no UTF-8 garbage.
-        XCTAssertEqual(CjkEncoding.big5Bytes("\u{9673}\u{7B80}\u{7F8E}"),
-                       [0xB3, 0xAF, 0xAC, 0xFC])
-    }
-
-    func testBig5PureAsciiIsIdentity() {
-        XCTAssertEqual(CjkEncoding.big5Bytes("Total: 150"), Array("Total: 150".utf8))
-    }
+    // (A big5Bytes twin suite existed here and was REMOVED with the deferred
+    // Big5 slip fix — 2026-07-13 audit: one binary = one confirmed fix. It
+    // lives at git b44f5b5 for the follow-up branch.)
 
     // MARK: converter availability — the environment report + Contingency-C gate
 
@@ -103,12 +77,14 @@ final class CjkEncodingTests: XCTestCase {
         let big5 = CjkEncoding.nsEncoding(.big5) != nil
         let cp950 = CjkEncoding.nsEncoding(.dosChineseTrad) != nil
         print("[CJK-ENV] GBK_95=\(gbk) GB18030=\(gb18030) big5=\(big5) CP950=\(cp950)")
-        // PRE-ARCHIVE GATE: at least one converter per family must exist on
-        // this runtime, else the encoders degrade to '?'/drop for everything —
-        // STOP the release and fall back to the Contingency C plan (embedded
-        // Unicode→GBK lookup table, separate plan + audit).
+        // PRE-ARCHIVE GATE: a GBK-family converter must exist on this runtime,
+        // else gbkBytes degrades to '?' for everything — STOP the release and
+        // fall back to the Contingency C plan (embedded Unicode→GBK lookup
+        // table, separate plan + audit).
         XCTAssertTrue(gbk || gb18030, "No GBK-family converter on this runtime — Contingency C")
-        XCTAssertTrue(big5 || cp950, "No Big5-family converter on this runtime — Contingency C")
+        // big5/CP950 are REPORT-ONLY here: the slip path still rides the
+        // legacy encoder (deferred fix). big5=false in [CJK-ENV] is the
+        // evidence that greenlights the follow-up Big5 branch.
     }
 
     // MARK: buildNumberLiteral — the getBuildNumber shim's number source

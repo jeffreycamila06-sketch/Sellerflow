@@ -439,14 +439,23 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             let cleaned = stripEmoji(s)
             // Big5 (Traditional Chinese) -- the XP-N160II receipt printer's resident
             // character set (confirmed on its self-test page). This DIFFERS from the
-            // AIMO TSPL sticker path, which is GBK (a different printer). 3-tier
-            // never-fail encoder (CjkEncoding.big5Bytes, Android slip parity):
-            // the old whole-string-or-UTF-8 fallback printed GARBAGE bytes in
-            // FS& Kanji mode whenever the big5 converter was missing or any one
-            // char was unmappable (same iOS-device converter gap as GBK_95,
-            // found 2026-07-13); unmappable chars are now DROPPED like
-            // Android's stripUnencodable.
-            out.append(contentsOf: CjkEncoding.big5Bytes(cleaned))
+            // AIMO TSPL sticker path, which is GBK (a different printer).
+            // ⚠️ DELIBERATELY left on the legacy whole-string encoder in the
+            // Build 7 release (2026-07-13 audit rule: one binary = one
+            // CONFIRMED fix; only GBK_95 has device evidence). Known latent
+            // risk: if the big5 converter is ALSO missing on-device (unproven
+            // — watch the [CJK-ENV] gate line and blank A/B test-print lines),
+            // this returns nil and the UTF-8 fallback prints garbage in FS&
+            // Kanji mode. The staged never-fail twin (CjkEncoding.big5Bytes,
+            // Android stripUnencodable parity) lives at git b44f5b5 — restore
+            // it in its own audited branch once a device probe confirms.
+            let cfEnc = CFStringEncoding(CFStringEncodings.big5.rawValue)
+            let nsEnc = CFStringConvertEncodingToNSStringEncoding(cfEnc)
+            if let d = (cleaned as NSString).data(using: nsEnc) {
+                out.append(d)
+            } else if let d = cleaned.data(using: .utf8) {
+                out.append(d) // fallback
+            }
             out.append(0x0A)
         }
         func line() { text("--------------------------------") }
@@ -558,7 +567,8 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
     //   - GBK rides CjkEncoding.gbkBytes (GBK_95 → GB18030 ≤2-byte → '?'),
     //     which matches Android's Charset.forName("GBK") byte-for-byte on the
     //     BMP (CJK ideographs live here). The ESC/POS receipt path is Big5
-    //     (a different printer) via CjkEncoding.big5Bytes.
+    //     (a different printer, legacy whole-string encoder — see the
+    //     deliberate-deferral note in the receipt text() func).
     // Internal (not private) so the Phase-3 XCTest (mobile/ios/tspl-parity/
     // swift/MobileTsplBuilderTests.swift) can assert it byte-for-byte against
     // the Android golden fixtures via @testable import.
@@ -1106,13 +1116,15 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             out.append(contentsOf: tsplAsciiBytes("\""))
             out.append(contentsOf: [0x0D, 0x0A])
         }
-        // Probe encoders ride the never-fail 3-tier CjkEncoding (2026-07-13):
-        // the old local lossy big5/gbk encodes returned nil when the OS lacked
-        // the converter, so the A/B/D probe lines were silently SKIPPED — which
-        // is exactly why the missing-GBK_95 device bug stayed invisible on the
-        // Jul 7 hardware test. Now the probes always emit bytes.
+        // (If lines A/B come out BLANK on a device test print, the big5
+        // converter is missing on that runtime — that blank IS the device
+        // probe for the deferred Big5 slip fix; see the deferral note in the
+        // receipt text() encoder.)
         func big5Bytes(_ s: String) -> [UInt8]? {
-            return CjkEncoding.big5Bytes(s)
+            let cfEnc = CFStringEncoding(CFStringEncodings.big5.rawValue)
+            let nsEnc = CFStringConvertEncodingToNSStringEncoding(cfEnc)
+            guard let data = s.data(using: String.Encoding(rawValue: nsEnc), allowLossyConversion: true) else { return nil }
+            return [UInt8](data)
         }
         let safeStore = storeName.replacingOccurrences(of: "\"", with: "'")
         let fmt = DateFormatter()
@@ -1221,33 +1233,13 @@ enum CjkEncoding {
         return out
     }
 
-    /// Big5 bytes for the XP-N160II receipt ROM — Android slip parity
-    /// (SellerFlowPrinterPlugin.java PRINTER_CHARSET=Big5 + stripUnencodable):
-    /// unmappable code points are DROPPED, not '?'-substituted, and the string
-    /// itself never fails.
-    ///  Tier 1: whole-string big5 (byte-identical wherever available).
-    ///  Tier 2: per-scalar big5, else dosChineseTrad (Windows CP950 — Big5
-    ///          superset, byte-identical on the standard Big5 range;
-    ///          fixture-verified) accepting only 1–2 byte output.
-    ///  Tier 3: DROP — a simplified-only char like 简 vanishes exactly as it
-    ///          does on Android, and the old whole-string-or-UTF-8 fallback
-    ///          that printed GARBAGE bytes in FS& Kanji mode is gone.
-    static func big5Bytes(_ s: String) -> [UInt8] {
-        if let whole = losslessBytes(s, .big5) { return whole }
-        var out: [UInt8] = []
-        out.reserveCapacity(s.unicodeScalars.count * 2)
-        for scalar in s.unicodeScalars {
-            if scalar.value <= 127 { out.append(UInt8(scalar.value)); continue }
-            let ch = String(scalar)
-            if let b = losslessBytes(ch, .big5), b.count <= 2 {
-                out.append(contentsOf: b)
-            } else if let b = losslessBytes(ch, .dosChineseTrad), b.count <= 2 {
-                out.append(contentsOf: b)
-            }
-            // else: drop (Android stripUnencodable parity — never garbage)
-        }
-        return out
-    }
+    // NOTE (2026-07-13 audit): a never-fail big5Bytes twin for the receipt
+    // path (big5 → per-scalar big5/CP950 → DROP, Android stripUnencodable
+    // parity) was built and fixture-verified, then REMOVED from this release
+    // — only GBK_95 has device evidence; one binary = one confirmed fix. It
+    // lives at git b44f5b5; restore in its own audited branch once the
+    // [CJK-ENV] gate or a blank-A/B test print proves the big5 converter is
+    // also missing on the iOS runtime.
 
     /// Strict integer parse of CFBundleVersion for the JS shim's
     /// getBuildNumber. Returns 0 for anything unparseable/non-positive, and 0

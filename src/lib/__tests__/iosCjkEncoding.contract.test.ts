@@ -50,15 +50,19 @@ describe("CjkEncoding block (extracted by run-encoders-sim.sh)", () => {
     expect(gbk).toContain("static func gbkBytes(_ s: String) -> [UInt8] {");
   });
 
-  it("big5Bytes: 3-tier — big5 → CP950 (dosChineseTrad, ≤2 bytes), unmappable chars DROPPED (Android parity, never '?')", () => {
-    const big5 = fnBody("big5Bytes");
-    expect(big5).toMatch(/if let whole = losslessBytes\(s, \.big5\) \{ return whole \}/);
-    expect(big5).toContain(".dosChineseTrad");
-    expect(big5.match(/b\.count <= 2/g)?.length).toBe(2);
-    // Android slip parity (PRINTER_CHARSET=Big5 + stripUnencodable): DROP —
-    // no '?' substitution in the receipt encoder.
-    expect(big5).not.toContain("0x3F");
-    expect(big5).toContain("static func big5Bytes(_ s: String) -> [UInt8] {");
+  it("the Big5 slip twin is DEFERRED out of this release (one binary = one confirmed fix)", () => {
+    // 2026-07-13 audit: only GBK_95 has device evidence; the never-fail
+    // big5Bytes twin was removed (staged at git b44f5b5). The follow-up Big5
+    // branch flips these pins deliberately.
+    expect(block).not.toContain("static func big5Bytes");
+    // The [CJK-ENV] gate (sim script + XCTest) still REPORTS big5/CP950
+    // availability — that report is the evidence for the follow-up.
+    const gateScript = readFileSync(
+      resolve(__dirname, "../../../mobile/ios/tspl-parity/run-encoders-sim.sh"),
+      "utf8",
+    );
+    expect(gateScript).toContain("CjkEncoding.nsEncoding(.big5)");
+    expect(gateScript).toContain("CjkEncoding.nsEncoding(.dosChineseTrad)");
   });
 });
 
@@ -72,12 +76,16 @@ describe("call sites — the fix must actually be wired in", () => {
     expect(swift).toContain("if let gbk = gbkBytes(fitted) {");
   });
 
-  it("the receipt text() encoder uses CjkEncoding.big5Bytes and the UTF-8 garbage fallback is GONE", () => {
+  it("the receipt text() encoder is BYTE-UNTOUCHED this release — legacy big5 + documented deferral", () => {
     const textFn = swift.match(/func text\(_ s: String\) \{[\s\S]*?\n {8}\}/)?.[0] ?? "";
-    expect(textFn).toContain("CjkEncoding.big5Bytes(cleaned)");
-    // The old fallback appended raw UTF-8 bytes, which the XP-N160II renders
-    // as garbage in FS& Kanji mode — worse than dropping.
-    expect(textFn).not.toContain("utf8");
+    // Deliberately NOT migrated (audit: only GBK_95 has device evidence). The
+    // legacy whole-string big5 encode and its UTF-8 fallback must remain
+    // exactly as shipped, alongside the deferral note. The follow-up Big5
+    // branch flips this pin.
+    expect(textFn).toContain("CFStringEncodings.big5.rawValue");
+    expect(textFn).toContain("cleaned.data(using: .utf8)");
+    expect(textFn).toContain("DELIBERATELY left on the legacy whole-string encoder");
+    expect(textFn).not.toContain("CjkEncoding.big5Bytes("); // no CALL (the deferral note may name it)
   });
 
   it("the test page's E-probe prints the production bug string via gbkBytes (D line stays byte-identical)", () => {
