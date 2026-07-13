@@ -62,6 +62,26 @@ describe("platform_viewers — account-scoped count", () => {
     fire("platform_viewers", { platform: "Facebook", username: "shop_a", count: 7 });
     expect(result.current.ttViewers).toBe(null);
   });
+
+  // ⚠️ SERVER-CONTRACT CASING PIN (diff-review blocker): this seam is DORMANT
+  // in integration — each side ships with its own fixtures, so a casing
+  // mismatch would silently drop every event and surface first in production
+  // on deploy morning. The server follows the existing platform_status
+  // convention: platform:"TikTok" (emitTikTokStatus, server.js). If the
+  // server branch changes that casing, THIS test goes red on the client side.
+  it('SERVER CONTRACT: the exact convention payload platform:"TikTok" is accepted', async () => {
+    const { result } = renderHook(() => useLiveFeed(true, "g@x.com"));
+    await connectTo(result, "shop_a");
+    fire("platform_viewers", { platform: "TikTok", username: "shop_a", count: 77 }); // verbatim server shape
+    expect(result.current.ttViewers).toBe(77);
+  });
+
+  it("DEFENSE: casing drift on either side still works (comparison is case-insensitive)", async () => {
+    const { result } = renderHook(() => useLiveFeed(true, "g@x.com"));
+    await connectTo(result, "shop_a");
+    fire("platform_viewers", { platform: "tiktok", username: "shop_a", count: 12 });
+    expect(result.current.ttViewers).toBe(12);
+  });
 });
 
 describe("resets — no stale count, ever", () => {

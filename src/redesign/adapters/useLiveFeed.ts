@@ -477,7 +477,13 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     //     mirror); a different account's count is never shown, even one frame.
     s.on("platform_viewers", (p: { platform?: string; username?: string; count?: unknown; sellerId?: string } = {}) => {
       if (p.sellerId && p.sellerId !== sellerId) return;
-      if (p.platform !== "TikTok") return; // FB has no viewer pipeline
+      // CONTRACT: the server emits platform:"TikTok" (the existing
+      // platform_status convention — emitTikTokStatus, server.js). Compared
+      // case-insensitively as DEFENSE: a casing drift on either side of this
+      // dormant integration seam would otherwise silently drop every event,
+      // and nothing would catch it before production. Pinned by the
+      // "server-contract casing" tests in useLiveFeed.viewers.test.
+      if (String(p.platform || "").toLowerCase() !== "tiktok") return; // FB has no viewer pipeline
       const tracked = cleanLiveAccount(trackedAcctRef.current.TikTok || "");
       if (!tracked) return;
       const acct = cleanLiveAccount(p.username || "");
