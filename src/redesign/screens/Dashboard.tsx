@@ -89,6 +89,7 @@ export default function Dashboard({
   ttAccounts = [], fbAccounts = [],
   sessionDays, sessionOpen, onToggleSession, onPickSession,
   printed, entId, entPrice, onOneClick, onOpenEnt, onEntPrice, onEntKey,
+  onEntSubmit,
   historyReady = false,
   onReprint,
   session = { buyers: [], orders: [] }, sessionState = "idle",
@@ -121,6 +122,10 @@ export default function Dashboard({
   historyReady?: boolean;
   onOneClick: (id: string) => void; onOpenEnt: (id: string) => void;
   onEntPrice: (v: string) => void; onEntKey: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  // iPhone fix (2026-07-13) — the in-app ✓ submit for the Enterprise price:
+  // the iOS number pad has NO return key, so Enter can never fire there. Same
+  // code path as Enter (RedesignApp submitEnt).
+  onEntSubmit?: () => void;
   // REPRINT — print a COPY of this comment's existing order (no new order, no
   // writes; RedesignApp resolves the original order + calls printSlip).
   onReprint?: (id: string, msgId?: string) => void;
@@ -493,9 +498,23 @@ export default function Dashboard({
                     {entOpen && (
                       <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)" }}>{t.rd_dash_type_price}</span>
-                        <span style={{ display: "flex", alignItems: "center", gap: 3, border: "1.3px solid var(--accent)", borderRadius: 7, background: "var(--surface-2)", padding: "0 9px" }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 3, border: "1.3px solid var(--accent)", borderRadius: 7, background: "var(--surface-2)", padding: "0 0 0 9px" }}>
                           <span style={{ fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 700, color: "var(--text-muted)" }}>{cur}</span>
+                          {/* NO onBlur — deliberate and test-pinned: blur (keyboard
+                              dismiss / row unmount in a fast feed) must never print
+                              NOR clear the typed price (ghost-print protection). */}
                           <input value={entPrice} onChange={(e) => onEntPrice(e.target.value)} onKeyDown={onEntKey} inputMode="numeric" autoFocus style={{ width: 48, border: "none", background: "transparent", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: 12, fontWeight: 700, padding: "5px 0", outline: "none" }} />
+                          {/* iPhone fix — in-app ✓ submit, ALWAYS visible while the
+                              price flow is open (the iOS number pad has no return
+                              key). onPointerDown + preventDefault: fires BEFORE any
+                              blur, so the tap can never lose a race to focus loss;
+                              no onClick (single fire per tap). ≥38px thumb hitbox. */}
+                          <button
+                            onPointerDown={(e) => { e.preventDefault(); onEntSubmit?.(); }}
+                            title={t.rd_dash_ent_go}
+                            aria-label={t.rd_dash_ent_go}
+                            style={{ minWidth: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", border: "none", borderRadius: "0 6px 6px 0", background: "var(--accent)", color: "var(--accent-text)", fontSize: 16, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-ui)", flexShrink: 0 }}
+                          >✓</button>
                         </span>
                       </span>
                     )}
