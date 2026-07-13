@@ -992,7 +992,7 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
   return tiktokConnection;
 }
 
-// ── B4 PHASE 1 (log-only) — reuse is-LIVE verification ─────────────────────
+// ── B4 reuse is-LIVE verification (Phase 2: ENFORCED since 2026-07-14) ──────
 // Decision core (reuseVerdict / singleFlight / timeout) lives in
 // server/connectionHealth.js (vitest-covered — server.js has no harness).
 const reuseVerifyInFlight = new Map();
@@ -1006,6 +1006,16 @@ const reuseVerifyInFlight = new Map();
 // probe, handleError is a structural no-op (tiktok-live-connector client.js:
 // returns when listenerCount(ERROR) < 1). The probe is never connect()ed —
 // fetchIsLive() is a standalone HTML → API → Euler status read.
+// C1 (2026-07-14, Euler-quota review) — verify source. Default = DIRECT Euler
+// room_id: exactly ONE GET per verify, no dead-tier walk (the HTML/API tiers
+// add latency and, per the quota trace, are not what resolves on Render).
+// The legacy 3-tier walk (HTML-first) is NOT deleted: set
+// REUSE_VERIFY_SOURCE=tiers in the Render env to re-enable it without a code
+// change (if the hosting/IP situation ever makes the free direct tiers viable
+// again). Strict-boolean acceptance either way: anything that isn't a clean
+// boolean is_live falls to reuseVerdict "ambiguous" → FAIL-OPEN.
+const REUSE_VERIFY_SOURCE = process.env.REUSE_VERIFY_SOURCE || "euler";
+
 async function fetchIsLiveOutcome(cleanUsername) {
   try {
     const probe = new WebcastPushConnection(cleanUsername, {
@@ -1017,18 +1027,33 @@ async function fetchIsLiveOutcome(cleanUsername) {
       const t = setTimeout(() => reject(new Error("reuse-verify timeout")), REUSE_VERIFY_TIMEOUT_MS);
       if (typeof t.unref === "function") t.unref();
     });
-    const value = await Promise.race([probe.fetchIsLive(), timeout]);
+    const fetchPromise = REUSE_VERIFY_SOURCE === "tiers"
+      ? probe.fetchIsLive()
+      : probe.webClient.fetchRoomIdFromEuler({ uniqueId: cleanUsername })
+          .then((d) => (d && d.code === 200 && typeof d.is_live === "boolean") ? d.is_live : undefined);
+    const value = await Promise.race([fetchPromise, timeout]);
     return { value };
   } catch (error) {
     return { error };
   }
 }
 
-async function logReuseVerification(key, cleanUsername) {
+// B4 PHASE 2 — AWAITED verification (was fire-and-forget log-only). Same
+// single-flight (R1: tap spam / two devices share ONE probe). The log line
+// keeps the Phase-1 [REUSE-VERIFY] format and ADDS the enforced outcome
+// marker for the 48hr post-flip watch:
+//   not_live  → "BLOCKED"             (the 409 teardown fired)
+//   live      → "allowed"
+//   ambiguous → "allowed (fail-open)" (error/timeout/odd shape — never block)
+// KILL SIGNAL: a BLOCKED line on an account that is actually live. Expected
+// count across the watch: ZERO. Any hit → rollback / REUSE_VERIFY_SOURCE=tiers.
+async function verifyReuse(key, cleanUsername) {
   const startedAt = Date.now();
   const outcome = await singleFlight(reuseVerifyInFlight, key, () => fetchIsLiveOutcome(cleanUsername));
   const verdict = reuseVerdict(outcome);
-  console.log(`[REUSE-VERIFY] ${verdict} ${cleanUsername} ${Date.now() - startedAt}ms (log-only)${outcome.error ? ` reason=${String(outcome.error?.message || outcome.error).slice(0, 120)}` : ""}`);
+  const marker = verdict === "not_live" ? "BLOCKED" : verdict === "live" ? "allowed" : "allowed (fail-open)";
+  console.log(`[REUSE-VERIFY] ${verdict} ${cleanUsername} ${Date.now() - startedAt}ms ${marker}${outcome.error ? ` reason=${String(outcome.error?.message || outcome.error).slice(0, 120)}` : ""}`);
+  return verdict;
 }
 
 async function connectTikTok(username, res, meta = {}) {
@@ -1081,14 +1106,42 @@ async function connectTikTok(username, res, meta = {}) {
     // lastEventAt=now and mask the very staleness being measured.
     if (existing) {
       if (!shouldForceFreshConnect(existing.lastEventAt, Date.now())) {
-        // B4 PHASE 1 (log-only) — measure whether reused entries are STILL LIVE.
-        // FIRE-AND-FORGET (R4): zero added latency, ZERO behavior change — the
-        // reuse proceeds exactly as before regardless of the verdict. The logs'
-        // live/not_live/ambiguous distribution + latency decide the Phase-2
-        // enforcement flip (await + ownership-guarded teardown + 409 — see the
-        // B4 Phase 2 notes in CLAUDE.md). Single-flight per key (R1): tap spam /
-        // two devices share ONE verification. Throwaway instance inside (R3).
-        void logReuseVerification(key, cleanUsername).catch(() => {});
+        // B4 PHASE 2 (ENFORCED, 2026-07-14 GO — Phase-1 distribution 257 live /
+        // 0 not_live / 2 ambiguous-fail-open, zero false blocks): the reuse tap
+        // now AWAITS the is-LIVE verification. Same single-flight (R1), same
+        // throwaway listener-less probe (R3), C1 Euler-first source (one GET).
+        // Latency trade: the reuse tap gains ~0.2-0.8s typical (4s worst →
+        // ambiguous → fail-open reuse) — the pill is already amber during the
+        // POST, no new UX state.
+        const verdict = await verifyReuse(key, cleanUsername);
+        // R2 OWNERSHIP GUARD — the await yielded; the health cycle / another
+        // tap may have replaced or deleted the entry. NEVER act on the stale
+        // reference: on mismatch, fall through to the normal fresh path below
+        // (idempotent — worst case one extra clean connect, correct end state).
+        const owned = tiktokConnections.get(key);
+        if (owned && owned === existing && verdict === "not_live") {
+          // ZOMBIE ESCAPE (the B4 fix itself) — TikTok's own signal says this
+          // room is over: tear down the dead connection and answer exactly like
+          // the fresh-path 409 (client toast/gray handling needs ZERO change;
+          // byte-parity pinned by b4Phase2.contract.test).
+          // ⚠️ 3b SEAM (Jeff requirement, 2026-07-13): this teardown RETURNS
+          // BEFORE the ring re-emit and the A4 viewer re-emit below — no stale
+          // history/count emit may accompany a 409.
+          clearTikTokHealthTimer(existing);
+          tiktokConnections.delete(key);
+          try { existing.connection.disconnect(); } catch { /* already dead */ }
+          clearTikTokReconnect(key);
+          tiktokReconnectAttempts.delete(key);
+          recordTikTokAttempt("not_live", "reuse-verify");
+          emitTikTokStatus({ sellerId, username: cleanUsername, sessionId, connected: false, reconnecting: false, reason: "not_live" });
+          return res.status(409).json({
+            success: false,
+            notLive: true,
+            error: "Account is not live right now. Start your TikTok LIVE first.",
+          });
+        }
+        if (owned && owned === existing) {
+        // live / ambiguous (fail-open) → the EXISTING reuse flow, byte-unchanged.
         existing.sessionId = sessionId || existing.sessionId;
         emitTikTokStatus({
           sellerId,
@@ -1133,9 +1186,17 @@ async function connectTikTok(username, res, meta = {}) {
           reused: true,
           message: `TikTok LIVE already connected: ${cleanUsername}`,
         });
+        }
+        // R2 fall-through: ownership moved mid-verify (health cycle replaced /
+        // deleted the entry while we awaited). The stale reference is dead to
+        // us — take the normal fresh path below, which operates on the KEY
+        // (disconnect whatever holds it now → clean connect). Idempotent.
+        forcedFresh = true;
+        console.log(`[CONNECT] ownership moved mid-verify for ${cleanUsername} — fresh connect instead of stale reuse`);
+      } else {
+        forcedFresh = true;
+        console.log(`[CONNECT] force_fresh for ${cleanUsername}: event-silent ${Math.round((Date.now() - (existing.lastEventAt || 0)) / 1000)}s — replacing stale connection`);
       }
-      forcedFresh = true;
-      console.log(`[CONNECT] force_fresh for ${cleanUsername}: event-silent ${Math.round((Date.now() - (existing.lastEventAt || 0)) / 1000)}s — replacing stale connection`);
     }
 
     if (tiktokConnectLocks.has(key)) {
