@@ -3,7 +3,7 @@
 // src/styles/design-tokens.css), and renders all built screens + bottom nav.
 // Self-contained preview — does NOT import or touch the existing app.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { CURRENCIES, curSymbol, type ThemeMode, type AccentKey, type AutoControls } from "./data";
+import { CURRENCIES, curSymbol, type ThemeMode, type AccentKey, type AutoControls, type Order as RDOrder } from "./data";
 import Dashboard from "./screens/Dashboard";
 import Orders from "./screens/Orders";
 import Products from "./screens/Products";
@@ -53,6 +53,7 @@ import { useSalesReport } from "./adapters/salesReport";
 import { sessionKeyFor } from "./adapters/shipping";
 import { printSlip, buildSettingsFromRedesign, setNativePrintAlertText, type Settings as PrintSettings } from "./adapters/printing";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
+import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
 import { btCall, hasBtBridge, buildTestStickerPayload, buildTestBuyer, type StickerPrintResult } from "./adapters/printerBridge";
 import { registeredAccountsFor, appendAccount, maxAcc, composeChannelSave, type Platform } from "./adapters/connect";
 import { useConnectToastGate } from "./adapters/connectToastGate";
@@ -153,6 +154,9 @@ export default function RedesignApp() {
   // wiring come in later steps.
   const sessionWindow = useSessionWindow(authed);
   const liveSession = useLiveSession(authed, { ready: sessionWindow.loaded, windowDays: sessionWindow.windowDays, windowStart: sessionWindow.windowStart });
+  // Orders search 7-day history (LAZY — fetches on the first search only,
+  // once per open; display-only lane, structurally isolated from liveSession).
+  const ordersHistory = useOrdersHistory(authed, liveSession.dayId, sessionWindow.windowStart, sessionWindow.windowDays);
   // Auto Mode (Step 4) — code map + ref-backed live stock for socket matching. Refs
   // (not state) so the socket handler reads the latest without re-subscribing and so
   // concurrent same-code comments claim stock SYNCHRONOUSLY (no double-decrement).
@@ -253,6 +257,19 @@ export default function RedesignApp() {
     if (!snap) return;
     const r = performReprint(snap, pc.cur, pc.storeName, pc.settings);
     track("reprint", { via: r.via }); // reprint usage (PostHog), mirrors track("print")
+  };
+  // Orders-tab reprint (torn-sticker search, 2026-07-13) — ZERO-WRITE like the
+  // Dashboard ↻: resolveReprintRow picks the history fetch's RAW DB row when
+  // present, else reconstructs from the window session order (parity-tested);
+  // both feed the SAME performReprint (= printSlip only — no order/session/
+  // customer/stock writes; pinned by the ordersSearch zero-write contract).
+  const onReprintOrder = (o: RDOrder) => {
+    const pc = printCfgRef.current;
+    if (!pc || o.orderNum == null) return;
+    const row = resolveReprintRow(o.orderNum, ordersHistory.rowFor(o.orderNum), liveSession.session.orders);
+    if (!row) return;
+    const r = performReprint(row, pc.cur, pc.storeName, pc.settings);
+    track("reprint", { via: r.via });
   };
   // Batch D (#7): counts non-cap background write failures from the order
   // fan-out. A toast effect below (after tApp exists) converts bumps into the
@@ -856,7 +873,8 @@ export default function RedesignApp() {
               onPrintWinner={onPrintWinner}
             />
           )}
-          {screen === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} orders={ordersList} state={ordersState} onExport={exportOrders} onGoShipping={() => setScreen("shipping")} />}
+          {screen === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} orders={ordersList} state={ordersState} onExport={exportOrders} onGoShipping={() => setScreen("shipping")}
+            historyOrders={ordersHistory.orders} historyState={ordersHistory.state} onEnsureHistory={ordersHistory.ensureLoaded} onReprintOrder={onReprintOrder} todayId={liveSession.dayId} />}
           {screen === "products" && <Products cur={cur} />}
           {screen === "miners" && <Miners cur={cur} miners={minerList} stats={minerStats} onExport={exportMiners} />}
           {screen === "menu" && (
