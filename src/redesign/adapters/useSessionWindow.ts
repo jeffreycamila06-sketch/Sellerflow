@@ -13,12 +13,21 @@ import { taipeiDayId } from "../../lib/dateHelpers";
 import { fetchAllPages } from "../../lib/fetchAllPages";
 import type { LiveSessionRow } from "../../lib/orderLogic";
 
-export type WindowDays = 1 | 2 | 3;
+// 4-day window (2026-07-13, seller requests; egress verified safe by chat-Claude
+// vs real 30-day data — worst ~3,164 rows ≈ 630KB per open, zero-poll unchanged).
+// DB check widened 1..3 → 1..4 FIRST (migration widen_session_window_days_to_4,
+// applied+verified before this code). Everything downstream of this clamp is
+// generic in N — this type + clamp are the ONLY numeric gates in the codebase.
+// ⚠️ TRANSITIONAL (multi-device): an OLD bundle reading window_days=4 clamps to
+// 1 (not 3) → that device runs single-day until a full close-open. Rollout note:
+// full close-open ALL phones before picking 4d (same hazard class as when 2/3
+// first shipped).
+export type WindowDays = 1 | 2 | 3 | 4;
 
 // ── PURE window math (YYYY-MM-DD Taipei calendar-day strings) — unit-tested ──
 
 export function clampWindowDays(n: number): WindowDays {
-  return n === 2 ? 2 : n === 3 ? 3 : 1; // anything else → 1 (safe default)
+  return n === 2 ? 2 : n === 3 ? 3 : n === 4 ? 4 : 1; // anything else → 1 (safe default)
 }
 
 // Whole calendar days from `from` to `to` (parsed as UTC midnight to avoid any

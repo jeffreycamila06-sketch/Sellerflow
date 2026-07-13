@@ -3,12 +3,13 @@ import { describe, it, expect } from "vitest";
 import { clampWindowDays, daysBetween, addDays, computeWindowState, chooseSessionLoad, shouldOpenWindow, shouldResetOnDayChange } from "../useSessionWindow";
 
 describe("clampWindowDays", () => {
-  it("keeps 1/2/3, defaults everything else to 1", () => {
+  it("keeps 1/2/3/4 (4-day added 2026-07-13), defaults everything else to 1", () => {
     expect(clampWindowDays(1)).toBe(1);
     expect(clampWindowDays(2)).toBe(2);
     expect(clampWindowDays(3)).toBe(3);
+    expect(clampWindowDays(4)).toBe(4);
     expect(clampWindowDays(0)).toBe(1);
-    expect(clampWindowDays(5)).toBe(1);
+    expect(clampWindowDays(5)).toBe(1); // ceiling stays HARD — 5+ must never pass (the 7-day purge is the physical limit)
     expect(clampWindowDays(NaN)).toBe(1);
   });
 });
@@ -69,6 +70,23 @@ describe("computeWindowState — 2-day window", () => {
   });
 });
 
+describe("computeWindowState — 4-day window (start 2026-07-13)", () => {
+  const start = "2026-07-13";
+  it("days 1–4 → active with continuous dayOfWindow; loadStart pinned to the window start", () => {
+    expect(computeWindowState("2026-07-13", start, 4)).toMatchObject({ n: 4, active: true, dayOfWindow: 1, loadStart: start, windowEnd: "2026-07-16" });
+    expect(computeWindowState("2026-07-14", start, 4)).toMatchObject({ active: true, dayOfWindow: 2, loadStart: start });
+    expect(computeWindowState("2026-07-15", start, 4)).toMatchObject({ active: true, dayOfWindow: 3, loadStart: start });
+    expect(computeWindowState("2026-07-16", start, 4)).toMatchObject({ active: true, dayOfWindow: 4, windowEnd: "2026-07-16" });
+  });
+  it("day 5 (N+1) → EXPIRED → reset (loadStart null → buyers empty → #1)", () => {
+    expect(computeWindowState("2026-07-17", start, 4)).toMatchObject({ active: false, expired: true, loadStart: null });
+  });
+  it("month crossing inside a 4-day window (start Jul 30 → active through Aug 2, expired Aug 3)", () => {
+    expect(computeWindowState("2026-08-02", "2026-07-30", 4)).toMatchObject({ active: true, dayOfWindow: 4 });
+    expect(computeWindowState("2026-08-03", "2026-07-30", 4)).toMatchObject({ expired: true });
+  });
+});
+
 describe("computeWindowState — fresh / edge", () => {
   it("window_start null → fresh (not active, not expired, no load)", () => {
     expect(computeWindowState("2026-06-22", null, 3)).toEqual({ n: 3, active: false, expired: false, dayOfWindow: 0, loadStart: null, windowEnd: null });
@@ -101,6 +119,14 @@ describe("chooseSessionLoad — single-day vs window-range", () => {
   it("N=3 fresh (null start) → single-day today", () => {
     expect(chooseSessionLoad("2026-06-22", null, 3)).toEqual({ mode: "day", start: "2026-06-22", end: "2026-06-22" });
   });
+  it("N=4 ranged load: day 1 single-day; days 2–4 → RANGE [start, today] (day 4 spans the full window); day 5 expired → single-day fresh", () => {
+    const start = "2026-07-13";
+    expect(chooseSessionLoad("2026-07-13", start, 4)).toEqual({ mode: "day", start, end: start });
+    expect(chooseSessionLoad("2026-07-14", start, 4)).toEqual({ mode: "range", start, end: "2026-07-14" });
+    expect(chooseSessionLoad("2026-07-15", start, 4)).toEqual({ mode: "range", start, end: "2026-07-15" });
+    expect(chooseSessionLoad("2026-07-16", start, 4)).toEqual({ mode: "range", start, end: "2026-07-16" }); // full 4-day span — ang worst-case ~3.1k-row read (S1 pager handles it)
+    expect(chooseSessionLoad("2026-07-17", start, 4)).toEqual({ mode: "day", start: "2026-07-17", end: "2026-07-17" });
+  });
 });
 
 describe("shouldOpenWindow — when an order writes window_start", () => {
@@ -118,6 +144,13 @@ describe("shouldOpenWindow — when an order writes window_start", () => {
   });
   it("N=3 expired (day 4) → open a fresh window (write once)", () => {
     expect(shouldOpenWindow("2026-06-25", "2026-06-22", 3)).toBe(true);
+  });
+  it("N=4: fresh → open once; days 1–4 active → no write; day 5 expired → open again", () => {
+    expect(shouldOpenWindow("2026-07-13", null, 4)).toBe(true);
+    for (const day of ["2026-07-13", "2026-07-14", "2026-07-15", "2026-07-16"]) {
+      expect(shouldOpenWindow(day, "2026-07-13", 4)).toBe(false); // once-per-window holds at N=4
+    }
+    expect(shouldOpenWindow("2026-07-17", "2026-07-13", 4)).toBe(true);
   });
 });
 
@@ -142,6 +175,12 @@ describe("shouldResetOnDayChange — window-aware live reset on Taipei day rollo
     expect(shouldResetOnDayChange("2026-06-22", "2026-06-23", "2026-06-22", 3)).toBe(false); // → day 2
     expect(shouldResetOnDayChange("2026-06-23", "2026-06-24", "2026-06-22", 3)).toBe(false); // → day 3
     expect(shouldResetOnDayChange("2026-06-24", "2026-06-25", "2026-06-22", 3)).toBe(true);  // → day 4 (expired)
+  });
+  it("(e) 4-day: three intermediate midnights → NO reset, then expiry on day 5 → reset", () => {
+    expect(shouldResetOnDayChange("2026-07-13", "2026-07-14", "2026-07-13", 4)).toBe(false); // → day 2
+    expect(shouldResetOnDayChange("2026-07-14", "2026-07-15", "2026-07-13", 4)).toBe(false); // → day 3
+    expect(shouldResetOnDayChange("2026-07-15", "2026-07-16", "2026-07-13", 4)).toBe(false); // → day 4
+    expect(shouldResetOnDayChange("2026-07-16", "2026-07-17", "2026-07-13", 4)).toBe(true);  // → day 5 (expired)
   });
 });
 
