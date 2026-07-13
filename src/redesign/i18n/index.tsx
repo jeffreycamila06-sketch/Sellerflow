@@ -573,6 +573,7 @@ const RAW: Record<string, Row> = {
   rd_dash_buyers: { en: "buyers", fil: "mamimili", zh: "买家", "zh-TW": "買家", vi: "người mua", th: "ผู้ซื้อ", id: "pembeli" },
   rd_dash_loading_session: { en: "Loading today’s session…", fil: "Nilo-load ang session ngayon…", zh: "正在加载今天的场次…", "zh-TW": "正在載入今天的場次…", vi: "Đang tải phiên hôm nay…", th: "กำลังโหลดรอบของวันนี้…", id: "Memuat sesi hari ini…" },
   rd_dash_live_comments: { en: "Live comments", fil: "Mga live na komento", zh: "直播评论", "zh-TW": "直播留言", vi: "Bình luận trực tiếp", th: "คอมเมนต์สด", id: "Komentar live" },
+  rd_dash_viewers_aria: { en: "Live viewers", fil: "Mga live viewer", zh: "直播观众", "zh-TW": "直播觀眾", vi: "Người xem trực tiếp", th: "ผู้ชมสด", id: "Penonton live" },
   rd_dash_inject_title: { en: "Preview only — inject a synthetic test comment", fil: "Preview lang — maglagay ng synthetic na test comment", zh: "仅预览——注入一条模拟测试评论", "zh-TW": "僅預覽——注入一則模擬測試留言", vi: "Chỉ xem trước — chèn bình luận thử nghiệm", th: "พรีวิวเท่านั้น — แทรกคอมเมนต์ทดสอบ", id: "Pratinjau saja — sisipkan komentar uji" },
   rd_dash_test_comment: { en: "+ Test comment", fil: "+ Test comment", zh: "+ 测试评论", "zh-TW": "+ 測試留言", vi: "+ Bình luận thử", th: "+ คอมเมนต์ทดสอบ", id: "+ Komentar uji" },
   rd_dash_waiting: { en: "Waiting for live comments…", fil: "Naghihintay ng mga live na komento…", zh: "正在等待直播评论…", "zh-TW": "正在等待直播留言…", vi: "Đang chờ bình luận trực tiếp…", th: "กำลังรอคอมเมนต์สด…", id: "Menunggu komentar live…" },
