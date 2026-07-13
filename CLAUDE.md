@@ -2835,3 +2835,28 @@ feature-detect — walang crash, natutulog gaya ng dati).
   green. (Native `@capacitor-community/keep-awake` fallback plan = dokumentado
   sa session history kung sakaling may shell na pumalya — hindi kinailangan.)
 - Branch cleanup: idagdag ang `claude/wake-lock` sa GitHub UI cleanup list.
+
+## 4-DAY SESSION WINDOW ✅ (branch `claude/4day-session`; DB constraint APPLIED muna ni chat-Claude)
+Pinalawak ang multi-day session sa **4 days** (seller requests; egress verified
+ni chat-Claude vs totoong 30-day data: worst ~3,164 rows ≈ 630KB per open,
+zero-poll hindi nagbabago; storage zero epekto). **ANG BUONG DIFF AY ~4 LINYA
+ng production code** — ang lahat ng window math ay generic sa N; ang tanging
+numeric gates ay ang `WindowDays` type + `clampWindowDays` (+ ang pill
+`SESSION_OPTS`). DB: migration `widen_session_window_days_to_4` (check 1..3 →
+1..4) — **APPLIED + VERIFIED bago ang code merge** (DB-first ordering).
+- **⚠️ PURGE MARGIN:** ang 7-day pg_cron purge vs 4-day window = **3 araw na
+  lang ang margin** (dating 4 sa N=3). LIGTAS pa rin — pero **ang purge na ito
+  ang hard ceiling: HUWAG magdagdag ng 5+ days nang hindi muna pinapalawak ang
+  retention.** May test na nagpi-pin na ang `clampWindowDays(5) === 1`.
+- **⚠️ MULTI-DEVICE TRANSITIONAL CAVEAT:** ang LUMANG bundle na makakabasa ng
+  `window_days=4` ay nagki-clamp sa **1** (hindi 3) → single-day ang device na
+  iyon hanggang full close-open. Parehong hazard class noong ni-ship ang 2/3.
+  **Operational mitigation, hindi code.**
+- **ROLLOUT DECISION (chat-Claude): WALANG broadcast muna.** Ang mga sellers
+  lang na humingi ng 4-day ang sasabihan one-on-one (Telegram), kasama ang
+  "**i-full-close-open ang LAHAT ng phones bago pumili ng 4d**." Broadcast sa
+  lahat = pagkalipas ng ilang araw.
+- Additive/opt-in: 1/2/3 = byte-identical; default 1 pa rin; walang gumagalaw
+  hangga't walang pumipili ng 4. Zero i18n (lahat templated), zero server,
+  zero protected files. `rebuildSessionFromRows` = linear (verified) sa ~3.1k
+  rows.
