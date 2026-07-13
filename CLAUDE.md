@@ -3033,3 +3033,35 @@ Prod-verified sa served bundle (`dpl_FspbJEb1…`, `main-CSFeURzM.js`).
 - (Kasama sa investigation na nauna rito: ang QR-code option sa sticker ay
   hindi itinuloy — TSPL `QRCODE` ay hindi pa device-verified sa D520BT-Z,
   walang scan-lookup infra, at ang search na ito ang sumara sa gap.)
+
+## EULER QUOTA — BUSINESS NOTES (2026-07-14, log-verified ni Jeff + code trace)
+- **Steady-state organic rate: ~300–350 requests/araw** (ang 515 sa Jul 13-14
+  window ay may kasamang testing day ni Jeff). **Headroom sa 1000/day free
+  tier: hanggang ~80–100 sellers** sa kasalukuyang usage shape. Susunod na
+  tier ≈ $50/buwan ≈ 10k/day (third-party source; ang eulerstream.com ay
+  proxy-blocked sa remote env — i-verify sa dashboard kung may intermediate
+  tier).
+- **Ang /connect volume ay naka-scale sa (naglilive × oras × katahimikan ng
+  room), HINDI sa total users** — ang `chat_stale` (10min walang komento) ang
+  dominant driver: busy room ≈ 0 churn, tahimik na mahabang live ≈ hanggang
+  ~6 reconnects/oras. Health check mismo (60s timer) = puro lokal na math,
+  ZERO network — Euler ay sa aktwal na reconnect lang.
+- **Euler calls per operation (code-traced sa 2.1.1-beta1):** isang CONNECT =
+  1–2 (fetchSignedWebSocketFromEuler LAGING 1 = ang "/connect" route sa
+  dashboard; +1 `room_id` LANG kapag pumalya ang direct HTML/API tiers — sa
+  dashboard, 491 /connect vs 24 non-connect = KARANIWANG GUMAGANA ang direct
+  tiers mula Render). Isang `fetchIsLive` VERIFY = **max ISANG** Euler call
+  (tier-3 `retrieveRoomId` lang; tiers 1–2 ay `signRequest:false` = direct;
+  WALANG preflight, WALANG SDK retry — ang "2-3 per verify" na hinala ay
+  hindi umiiral sa code). Ang [REUSE-VERIFY] ay walang per-tier logging
+  (handleError = silent no-op sa listener-less probe) — latency ang tier hint.
+- **Phase-2 enforcement flip = ZERO incremental Euler** (parehong verify call,
+  awaited lang; single-flight intact).
+- **C1 (approved Jul 14, kasama sa Phase-2 diff):** verify = DIREKTANG
+  `fetchRoomIdFromEuler` (eksaktong ISANG Euler call, walang dead-tier walk)
+  bilang default sa Render; ang 3-tier/HTML walk ay HINDI binubura — nasa
+  likod ng env flag (re-enable kung magbago ang hosting/IP na magpapagana
+  ulit ng libreng direct tiers).
+- **Libreng lever bago magbayad** kung lalapit sa cap: luwagan ang 10-min
+  `chat_stale` threshold (~33% bawas sa churn sa 15min) — connection sacred
+  zone, sariling plan+audit.
