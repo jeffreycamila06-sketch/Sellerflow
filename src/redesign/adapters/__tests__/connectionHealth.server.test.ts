@@ -136,3 +136,44 @@ describe("singleFlight (B4 R1 — one verification per key at a time)", () => {
     expect(map.size).toBe(0);
   });
 });
+
+// ── Viewer-count relay throttle (platform_viewers) ────────────────────────────
+import { shouldRelayViewers, VIEWER_RELAY_MIN_MS, VIEWER_REFRESH_MS } from "../../../../server/connectionHealth.js";
+
+// The relay must stay cheap AND self-healing: change-gated with a MIN floor,
+// plus a 30s unchanged heartbeat (the client nulls its count at connect
+// initiation, so a quiet room needs the heartbeat for the chip to reappear).
+// Throttle state lives ON the tiktokConnections entry (dies with the
+// connection) — pinned here via the prev=undefined first-relay case.
+describe("shouldRelayViewers", () => {
+  const NOW2 = 1_760_000_000_000;
+
+  it("a fresh connection's FIRST count always relays (prev undefined ≠ count — entry-scoped state)", () => {
+    expect(shouldRelayViewers(undefined, 0, 152, NOW2)).toBe(true);
+    expect(shouldRelayViewers(undefined, 0, 0, NOW2)).toBe(true); // real 0 is data
+  });
+
+  it("unchanged count within the heartbeat window → silent", () => {
+    expect(shouldRelayViewers(152, NOW2 - VIEWER_RELAY_MIN_MS, 152, NOW2)).toBe(false);
+    expect(shouldRelayViewers(152, NOW2 - (VIEWER_REFRESH_MS - 1), 152, NOW2)).toBe(false);
+  });
+
+  it("changed count relays — but never faster than the MIN floor (busy-room bound)", () => {
+    expect(shouldRelayViewers(152, NOW2 - VIEWER_RELAY_MIN_MS, 153, NOW2)).toBe(true);
+    expect(shouldRelayViewers(152, NOW2 - (VIEWER_RELAY_MIN_MS - 1), 153, NOW2)).toBe(false);
+  });
+
+  it("30s heartbeat: an UNCHANGED count re-emits so late joiners/reuse taps recover the chip", () => {
+    expect(shouldRelayViewers(152, NOW2 - VIEWER_REFRESH_MS, 152, NOW2)).toBe(true);
+  });
+
+  it("invalid counts never relay (non-finite / negative)", () => {
+    expect(shouldRelayViewers(undefined, 0, NaN, NOW2)).toBe(false);
+    expect(shouldRelayViewers(undefined, 0, Number.POSITIVE_INFINITY, NOW2)).toBe(false);
+    expect(shouldRelayViewers(undefined, 0, -1, NOW2)).toBe(false);
+  });
+
+  it("missing lastRelayAt is treated as 0 (relays immediately — first-event path)", () => {
+    expect(shouldRelayViewers(undefined, undefined as unknown as number, 5, NOW2)).toBe(true);
+  });
+});

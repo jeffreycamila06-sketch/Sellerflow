@@ -5,7 +5,7 @@ import http from "http";
 import { Server } from "socket.io";
 import { createClient } from "@supabase/supabase-js";
 import { translateBroadcast } from "./server/broadcastTranslate.js";
-import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS } from "./server/connectionHealth.js";
+import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers } from "./server/connectionHealth.js";
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
 
 const app = express();
@@ -929,6 +929,28 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
     tiktokConnection.on(eventName, () => touchTikTokConnection(key, tiktokConnection));
   });
 
+  // Viewer-count relay (FLive parity) — the roomUser entry in LIVENESS_EVENTS
+  // above only stamps lastEventAt; this SECOND listener reads the payload.
+  // DISPLAY DATA ONLY (never a liveness/status signal): the owning-connection
+  // guard (G1 discipline) stops a replaced/orphaned connection from emitting,
+  // and the throttle state lives ON the tiktokConnections entry so it dies
+  // with the connection — a fresh connection's first count always relays.
+  // viewerCount is TOP-LEVEL on the legacy simplified shape (the F1 lesson:
+  // `common` gets flattened+deleted by data-converter.js).
+  // ⚠️ CONTRACT: platform:"TikTok" casing (the platform_status convention) is
+  // PINNED by the client's useLiveFeed.viewers.test — read it before changing
+  // this payload shape.
+  tiktokConnection.on("roomUser", (data) => {
+    const entry = tiktokConnections.get(key);
+    if (!entry || entry.connection !== tiktokConnection) return; // owning guard
+    const count = Number(data?.viewerCount);
+    const now = Date.now();
+    if (!shouldRelayViewers(entry.lastViewerCount, entry.lastViewerRelayAt || 0, count, now)) return;
+    entry.lastViewerCount = count;
+    entry.lastViewerRelayAt = now;
+    io.to(sellerRoom(sellerId)).emit("platform_viewers", { platform: "TikTok", username: cleanUsername, count, ts: now });
+  });
+
   tiktokConnection.on("chat", (data) => {
     touchTikTokConnection(key, tiktokConnection, "chat");
     const comment = data.comment || "";
@@ -1093,6 +1115,18 @@ async function connectTikTok(username, res, meta = {}) {
           }
         } catch (err) {
           console.warn(`[INITIAL] reuse re-emit failed for ${cleanUsername} (reuse unaffected):`, err?.message || err);
+        }
+        // Viewer chip instant-on for the reuse tap (plan A4, audit-approved):
+        // the client NULLS its count at connect initiation, and the throttle
+        // stays silent while the count is unchanged — without this re-emit a
+        // quiet room's chip would wait for the 30s heartbeat after EVERY reuse
+        // tap. Pure re-emit of the last known count (throttle state untouched).
+        // Inherits the open B4 caveat: a zombie reuse re-emits a stale count —
+        // cosmetic, same root, closed by B4 Phase 2. Best-effort.
+        if (Number.isFinite(existing.lastViewerCount) && existing.lastViewerCount >= 0) {
+          io.to(sellerRoom(sellerId)).emit("platform_viewers", {
+            platform: "TikTok", username: cleanUsername, count: existing.lastViewerCount, ts: Date.now(),
+          });
         }
         return res.json({
           success: true,

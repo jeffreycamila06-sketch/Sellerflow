@@ -113,3 +113,26 @@ export function singleFlight(inFlightMap, key, factory) {
   inFlightMap.set(key, flight);
   return flight;
 }
+
+// ── Viewer-count relay throttle (platform_viewers, FLive parity) ─────────────
+// TikTok pushes roomUser (WebcastRoomUserSeqMessage → viewerCount) roughly
+// every 1–10s. The relay is DISPLAY DATA ONLY and must stay cheap:
+//   • MIN floor: never more than one emit per VIEWER_RELAY_MIN_MS per account
+//     (a busy room churning ±1 every second stays bounded);
+//   • change-gated: a static count emits nothing…
+//   • …except the VIEWER_REFRESH_MS heartbeat: the client NULLS its count at
+//     connect initiation (account-switch zero-frame rule), so without a
+//     periodic unchanged re-emit a late joiner / reuse tap on a QUIET room
+//     would wait indefinitely for the chip to reappear. ≤2 msgs/min worst.
+// The caller keeps (prevCount, lastRelayAt) ON the tiktokConnections entry —
+// a replaced/killed connection drops its throttle state with the entry, so a
+// fresh connection's FIRST count always relays (prev undefined ≠ count).
+export const VIEWER_RELAY_MIN_MS = 3 * 1000;
+export const VIEWER_REFRESH_MS = 30 * 1000;
+
+export function shouldRelayViewers(prevCount, lastRelayAt, nextCount, nowMs) {
+  if (!Number.isFinite(nextCount) || nextCount < 0) return false;
+  const last = Number(lastRelayAt) || 0;
+  if (nowMs - last < VIEWER_RELAY_MIN_MS) return false;
+  return nextCount !== prevCount || nowMs - last >= VIEWER_REFRESH_MS;
+}
