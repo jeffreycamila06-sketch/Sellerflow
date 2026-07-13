@@ -502,7 +502,10 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                         {addIdx === i ? (
                           <span style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: "auto" }}>
                             <input value={addVal} onChange={(e) => setAddVal(e.target.value.replace(/[^0-9]/g, ""))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doAddDays(u, parseInt(addVal || "0", 10) || 0); } }} inputMode="numeric" autoFocus placeholder={t.rd_adm_days_ph} style={{ width: 54, padding: "4px 7px", border: "1.3px solid var(--accent)", borderRadius: 7, background: "var(--surface)", color: "var(--text)", fontFamily: mono, fontSize: 11, fontWeight: 700, outline: "none" }} />
-                            <span style={{ fontSize: 9.5, color: "var(--text-muted)" }}>{t.rd_adm_enter}</span>
+                            {/* iPhone fix (same class as the Enterprise ✓ — the iOS
+                                number pad has no return key, Enter can never fire).
+                                onPointerDown+preventDefault: no blur race. */}
+                            <button onPointerDown={(e) => { e.preventDefault(); doAddDays(u, parseInt(addVal || "0", 10) || 0); }} title={t.rd_adm_add_days} aria-label={t.rd_adm_add_days} style={{ minWidth: 34, height: 30, display: "flex", alignItems: "center", justifyContent: "center", border: "none", borderRadius: 7, background: "var(--accent)", color: "var(--accent-text)", fontSize: 13, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-ui)", flexShrink: 0 }}>✓</button>
                           </span>
                         ) : (
                           <button onClick={() => { setAddIdx(i); setAddVal(""); }} style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 3, fontSize: 10.5, fontWeight: 800, color: "var(--accent-text)", background: "var(--accent)", border: "none", padding: "4px 10px", borderRadius: 7, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_adm_add_days}</button>

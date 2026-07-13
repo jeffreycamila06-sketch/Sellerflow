@@ -630,22 +630,46 @@ export default function RedesignApp() {
     }
   };
   const onOpenEnt = (id: string) => { setEntId(id); setEntPrice(""); };
-  // Enterprise: create the order at the typed price.
-  const onEntKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key !== "Enter") return;
-    e.preventDefault();
+  // Enterprise: create the order at the typed price. ONE code path for BOTH
+  // triggers — Enter (desktop/Android/iPad) AND the in-app ✓ button (the
+  // iPhone fix: the iOS number pad has NO return key, so Enter can never be
+  // delivered there — the keyboard's ✓ is a plain dismiss/blur with no
+  // distinguishing event, and blur-as-print would ghost-print on row unmount
+  // in a fast feed; see the 2026-07-13 investigation).
+  // Sync double-tap guard (money path): `printed` is React state — two taps
+  // in the same batch would both read it stale → double order; the ref is
+  // marked SYNCHRONOUSLY before the create.
+  const entSubmittedRef = useRef<Set<string>>(new Set());
+  const submitEnt = () => {
     const id = entId;
     if (!id) return;
-    const prod = liveFeed.getComment(id); // resolves live AND history rows (sql/18 unlock)
+    // VALIDATION (2026-07-13, with the ✓ button): a typed price is REQUIRED
+    // and must be > 0 — empty/zero/invalid creates NOTHING and keeps the
+    // field open so the seller can fix it. (Deliberate change from the old
+    // Enter behavior, which turned an empty field into a price-0 order —
+    // 1-Click is the price-0 path; an accidental submit on an empty field
+    // must not mint a duplicate-looking zero order.)
     const price = Number(entPrice || "0") || 0;
-    const order = prod && !printed[id] ? orders.createOrder(prod, price) : null;
+    if (price <= 0) return;
+    if (entSubmittedRef.current.has(id) || printed[id]) return; // double-tap / already-ordered guard
+    entSubmittedRef.current.add(id);
+    const prod = liveFeed.getComment(id); // resolves live AND history rows (sql/18 unlock)
+    const order = prod ? orders.createOrder(prod, price) : null;
     if (order) {
-      setPrinted((p) => ({ ...p, [id]: price > 0 ? cur + price : "order" })); // null = blocked
+      setPrinted((p) => ({ ...p, [id]: cur + price }));
       const snap = snapshotFromCreate(prod as ProdComment, order); // reprint snapshot
       reprintByIdRef.current.set(id, snap);
       liveSession.addOrderedMsgId((prod as ProdComment & { msgId?: string }).msgId, snap);
+    } else {
+      entSubmittedRef.current.delete(id); // free-cap soft block / unresolved id → allow retry
+      if (!prod) return;
     }
     setEntId(null); setEntPrice("");
+  };
+  const onEntKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    submitEnt();
   };
 
   // Auto Mode (Step 4) — socket match → ref-locked inventory claim → auto-order via
@@ -821,7 +845,7 @@ export default function RedesignApp() {
               historyReady={liveSession.orderedLoaded}
               onReprint={onReprint}
               onOneClick={onOneClick} onOpenEnt={onOpenEnt}
-              onEntPrice={(v) => setEntPrice(v.replace(/[^0-9]/g, ""))} onEntKey={onEntKey}
+              onEntPrice={(v) => setEntPrice(v.replace(/[^0-9]/g, ""))} onEntKey={onEntKey} onEntSubmit={submitEnt}
               session={liveSession.session} sessionState={liveSession.state}
               canInject={liveFeed.canInject} onInjectSynthetic={liveFeed.injectSynthetic}
               announcement={ann.latest} annDismissedId={ann.dismissedId} onDismissAnn={ann.dismiss}
