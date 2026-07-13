@@ -2860,6 +2860,38 @@ numeric gates ay ang `WindowDays` type + `clampWindowDays` (+ ang pill
   hangga't walang pumipili ng 4. Zero i18n (lahat templated), zero server,
   zero protected files. `rebuildSessionFromRows` = linear (verified) sa ~3.1k
   rows.
+- ⏳ **VALIDATION PENDING (huwag pa ituring na sarado):** day-crossing test
+  ni Jeff sa googletest, Jul 14 umaga — order pagkatapos ng Taipei midnight
+  sa loob ng 4d window → dapat **tuloy ang numbering (buyer #4)**, hindi
+  reset sa #1. Kapag pumasa, i-stamp ang ✅ dito.
+
+## ENTERPRISE ✓ (iPhone typed-price print fix) ✅ DEVICE-VALIDATED (merge `b9b6040` Jul 13; validated + approved ni Jeff Jul 13, totoong hardware session)
+**BUG:** ang Enterprise typed-price sa iPhone ay walang paraang mag-print —
+ang iOS number pad (`inputMode="numeric"`) ay **WALANG return key** (ang
+Enter ay hindi kailanman maipapadala; ang keyboard "✓" ay bare dismiss/blur
+lang). **BLUR-AS-PRINT = NAPATUNAYANG HINDI LIGTAS** bago pa i-code: ang
+mabilis na feed ay nagtutulak ng row lampas sa `FEED_RENDER_CAP=150` →
+input unmount → ghost print. Kaya **in-app ✓ button** ang disenyo:
+- **Dashboard ✓** sa loob ng price chip: `onPointerDown` + `preventDefault`
+  (nauunahan ang blur, walang focus race; walang onClick double-fire),
+  ≥38px thumb hitbox, `--accent` tokens. i18n `rd_dash_ent_go` ×7;
+  `rd_dash_type_price` reworded ("tap ✓ to print"); orphan `rd_adm_enter`
+  (isama sa susunod na orphan sweep).
+- **ISANG code path (`RedesignApp.submitEnt`)** para sa Enter AT ✓: sync
+  double-tap dedup (`entSubmittedRef` minamarkahan BAGO ang `createOrder` —
+  same-batch taps blocked; binabawi sa failure) + **price>0 validation** —
+  ⚠️ SADYANG pagbabago, kumpirmado ni Jeff: ang lumang empty→price-0-order
+  ay BUG, hindi behavior na dapat i-preserve; empty = walang order na.
+  Valid-price Enter = byte-identical sa dati.
+- **Blur = NO print, NO clear** (sadyang walang onBlur — comment-pinned) at
+  **row unmount = NO submit** (ghost-print protection) — test-pinned
+  (`Dashboard.entSubmit.test.tsx`, 8 tests + submitEnt source contract,
+  iosGates pattern).
+- Kasama sa parehong merge: **Admin add-days** (+N days sa expiry, shared
+  `lib/planWindow` math).
+- ✅ **DEVICE-VALIDATED Jul 13 (iPhone, totoong hardware session):** type
+  price → tap ✓ → print gumagana; walang sobrang pindot sa totoong daloy —
+  pumasa sa "kung ayaw ko tatanggalin" na deal ni Jeff.
 
 ## SESSION 2026-07-13 — iOS CHINESE PRINT "?" SAGA ✅ (merge `83d651b`, HARDWARE-VALIDATED; v1.3/Build 7 SUBMITTED sa App Store)
 Chinese buyer names sa iPhone BLE sticker = literal "?" (production:
