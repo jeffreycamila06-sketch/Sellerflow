@@ -835,6 +835,9 @@ export default function RedesignApp() {
                  machine (grace timers, honest gray) is untouched — display-only. */
               ttConnected={ttEff && !liveFeed.ttRecovering} fbConnected={fbEff && !liveFeed.fbRecovering}
               ttConnecting={ttConnecting || liveFeed.ttRecovering} fbConnecting={fbConnecting || liveFeed.fbRecovering}
+              /* Viewer chip: GREEN-only (exact same booleans as ttConnected above) —
+                 amber/gray → null → hidden. Data-side resets live in useLiveFeed. */
+              viewers={ttEff && !liveFeed.ttRecovering ? liveFeed.ttViewers : null}
               onConnectTT={() => void doConnect("TikTok")} onConnectFB={() => void doConnect("Facebook")}
               onRefreshTT={() => void refreshDashboard()} onRefreshFB={() => void refreshDashboard()} refreshing={refreshing}
               ttAccounts={ttAccounts} fbAccounts={fbAccounts}

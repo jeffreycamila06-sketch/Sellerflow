@@ -90,6 +90,7 @@ export default function Dashboard({
   sessionDays, sessionOpen, onToggleSession, onPickSession,
   printed, entId, entPrice, onOneClick, onOpenEnt, onEntPrice, onEntKey,
   onEntSubmit,
+  viewers = null,
   historyReady = false,
   onReprint,
   session = { buyers: [], orders: [] }, sessionState = "idle",
@@ -126,6 +127,10 @@ export default function Dashboard({
   // the iOS number pad has NO return key, so Enter can never fire there. Same
   // code path as Enter (RedesignApp submitEnt).
   onEntSubmit?: () => void;
+  // Live viewer count (FLive parity) — 👥 N next to the "Live comments" label.
+  // null = hidden entirely (no data / not green — RedesignApp gates on the
+  // same booleans as ttConnected); a real 0 renders as "👥 0".
+  viewers?: number | null;
   // REPRINT — print a COPY of this comment's existing order (no new order, no
   // writes; RedesignApp resolves the original order + calls printSlip).
   onReprint?: (id: string, msgId?: string) => void;
@@ -364,6 +369,12 @@ export default function Dashboard({
           <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
             <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14.5, color: "var(--text)", whiteSpace: "nowrap" }}>{t.rd_dash_live_comments}</span>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#e11d48", animation: "sflDot 1s infinite", flexShrink: 0 }} />
+            {viewers != null && (
+              <span title={t.rd_dash_viewers_aria} aria-label={t.rd_dash_viewers_aria}
+                style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                👥 {viewers.toLocaleString()}
+              </span>
+            )}
           </div>
           {/* center: tiny collecting indicator (ON only) — shrinks/ellipsizes; the
               text hides <360px via .sfl-raffle-collect-txt (dot stays). */}

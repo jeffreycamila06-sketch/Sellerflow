@@ -123,6 +123,12 @@ export interface UseLiveFeed {
   // precedence over connected; green returns only on a real connected:true.
   ttRecovering: boolean;
   fbRecovering: boolean;
+  // Viewer count (FLive parity) — the tracked TikTok account's live viewer
+  // count from the server's `platform_viewers` relay (roomUser → viewerCount).
+  // null = no data for the CURRENT connection (hidden chip); a real 0 shows.
+  // TikTok-only: our FB pipeline has no viewer events. DISPLAY DATA ONLY —
+  // this never feeds the status machine or the comment pipeline.
+  ttViewers: number | null;
   connect: (platform: Platform, data: Record<string, string>) => Promise<ConnectResult>;
 }
 
@@ -142,6 +148,13 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   // the block too would double-display those same comments).
   const connectInFlightRef = useRef(false);
   const pendingInitialRef = useRef<ProdComment[]>([]);
+  // Viewer count — null until the first platform_viewers event of the CURRENT
+  // connection. Reset to null at: connect initiation (account switch shows no
+  // stale count for even one frame), honest gray (terminal/grace-expiry/
+  // session-end), and user switch (below). Kept through the amber grace
+  // (display hides it there; a recovery resumes with ≤30s-stale data refreshed
+  // by the server heartbeat). DISPLAY DATA ONLY — never feeds the status machine.
+  const [ttViewers, setTtViewers] = useState<number | null>(null);
   // The history block never carries across users (login/user switch): reset it
   // when the subscription identity changes — the React-sanctioned
   // adjust-during-render pattern ("Adjusting some state when a prop changes").
@@ -149,6 +162,7 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   if (initialFor !== email) {
     setInitialFor(email);
     setInitialFeed([]);
+    setTtViewers(null); // viewer chip never carries across users either
   }
   const [connected, setConnected] = useState(false);
   // Auto Mode seam — held in a ref so a changing handler identity NEVER re-subscribes
@@ -297,7 +311,8 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       if (platform === "TikTok") setTtRecovering(v); else setFbRecovering(v);
     };
     const setPlatformGray = (platform: Platform) => {
-      if (platform === "TikTok") setTtConnected(false); else setFbConnected(false);
+      if (platform === "TikTok") { setTtConnected(false); setTtViewers(null); } // gray = no stale viewer count either
+      else setFbConnected(false);
       setActiveAccounts((a) => ({ ...a, [platform]: "" }));
       trackedAcctRef.current[platform] = ""; // H1 — a gray pill tracks no account
     };
@@ -451,12 +466,39 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
         setPlatformGray(plat);
       }
     });
+    // Viewer count relay (FLive parity) — DISPLAY DATA ONLY, read-only next to
+    // the status machine (this handler may never touch connected/recovering/
+    // gray timers — pinned by useLiveFeed.viewers.test). Server throttles
+    // (change + interval + heartbeat); we just filter and store:
+    //   • account filter mirrors the comment/status scoping — only the account
+    //     this pill TRACKS (trackedAcctRef, set synchronously at the Connect
+    //     tap) may update the count; no tracked account (gray) → drop;
+    //   • events without a username apply when tracked (H1 backward-compat
+    //     mirror); a different account's count is never shown, even one frame.
+    s.on("platform_viewers", (p: { platform?: string; username?: string; count?: unknown; sellerId?: string } = {}) => {
+      if (p.sellerId && p.sellerId !== sellerId) return;
+      // CONTRACT: the server emits platform:"TikTok" (the existing
+      // platform_status convention — emitTikTokStatus, server.js). Compared
+      // case-insensitively as DEFENSE: a casing drift on either side of this
+      // dormant integration seam would otherwise silently drop every event,
+      // and nothing would catch it before production. Pinned by the
+      // "server-contract casing" tests in useLiveFeed.viewers.test.
+      if (String(p.platform || "").toLowerCase() !== "tiktok") return; // FB has no viewer pipeline
+      const tracked = cleanLiveAccount(trackedAcctRef.current.TikTok || "");
+      if (!tracked) return;
+      const acct = cleanLiveAccount(p.username || "");
+      if (acct && acct !== tracked) return;
+      const n = Number(p.count);
+      if (!Number.isFinite(n) || n < 0) return;
+      setTtViewers(n);
+    });
     s.on("live_session_ended", (e: { sellerId?: string; sessionId?: string } = {}) => {
       if (e.sellerId && e.sellerId !== sellerId) return;
       if (e.sessionId && e.sessionId !== sessionId) return;
       cancelGray("TikTok"); cancelGray("Facebook"); // terminal — no pending grace needed
       setActiveAccounts({ TikTok: "", Facebook: "" }); setTtConnected(false); setFbConnected(false); setFeed([]);
       setInitialFeed([]); // session over — the history block goes with it
+      setTtViewers(null); // …and the viewer count with it
     });
     return () => {
       cancelGray("TikTok"); cancelGray("Facebook");
@@ -515,7 +557,7 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     // the pill is amber via the caller's connecting flag for the POST's
     // lifetime, then gray until the server asserts the new account.
     trackedAcctRef.current[platform] = cleanLiveAccount(data.username || ""); // intent — synchronous (H1-safe)
-    if (platform === "TikTok") { setTtConnected(false); setTtRecovering(false); }
+    if (platform === "TikTok") { setTtConnected(false); setTtRecovering(false); setTtViewers(null); } // no stale count for even one frame across an account switch
     else { setFbConnected(false); setFbRecovering(false); }
     setActiveAccounts((a) => ({ ...a, [platform]: "" })); // stale server-truth voided too (same rule as setPlatformGray)
     const pendingGray = grayTimersRef.current[platform];
@@ -589,5 +631,5 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   // Approach A — history block mapped with restored:true so the Dashboard's
   // muted zero-action display branch handles it (duplicate-order layer 3).
   const initialComments = useMemo(() => initialFeed.map((c) => ({ ...toRedesignComment(c), restored: true })), [initialFeed]);
-  return { comments, initialComments, connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, ttRecovering, fbRecovering, connect };
+  return { comments, initialComments, connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, ttRecovering, fbRecovering, ttViewers, connect };
 }
