@@ -2782,6 +2782,12 @@ devices ay sumasakay sa iisang flight; `REUSE_VERIFY_TIMEOUT_MS=4s`).
    `recordTikTokAttempt("not_live", "reuse-verify")` → terminal
    `emitTikTokStatus(connected:false, reason:"not_live")` → 409
    `{success:false, notLive:true}` (client ZERO change — existing toast/mapping).
+3b. **⚠️ SEAM sa viewers relay (Jeff requirement, 2026-07-13):** ang `not_live`
+   teardown ay dapat mag-**RETURN BAGO** ang ring re-emit AT ang A4 viewer
+   re-emit (`platform_viewers` last-count sa reuse branch, merge `1517d44`) —
+   WALANG stale count/history emit kasabay ng 409. Magkahiwalay na sinulat ang
+   dalawang branches; ito ang kanilang seam — isulat nang TAHASAN sa Phase-2
+   plan + i-verify sa diff na ang teardown return ay nauuna sa parehong emit.
 4. `live`/`ambiguous` → existing reuse flow, byte-unchanged (fail-open sa
    ambiguous — huwag kailanman i-false-block ang totoong naglilive).
 5. Flip LANG kapag ang Phase-1 logs ay nagpakita ng (a) zero false-`not_live`
