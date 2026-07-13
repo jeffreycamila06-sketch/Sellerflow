@@ -2805,3 +2805,33 @@ vitest sa merge.
 - ✅ **LIVE-VALIDATED ni Jeff (Jul 13):** live comments may profile pictures ·
   close-open + reconnect → "Earlier comments" may pictures pa rin.
 - Branch cleanup: `claude/comment-avatars` = **deleted na sa remote** (Jul 13).
+
+## KEEP-AWAKE (wake lock habang naka-live) ✅ DEVICE-VALIDATED (merge `3f73874` Jul 13; validated ni Jeff Jul 13)
+Ang phone ay natutulog dati habang naka-live — **KRITIKAL dahil client-side ang
+order capture: natutulog na phone = nawawalang mines** (FLive/Chotdon ay may
+keep-awake; tayo wala noon). Fix: **web Screen Wake Lock API LANG** — walang
+native plugin, walang `includePlugins: []` touch (protektado pa rin ang iOS
+StatusBar lock), Vercel-only; supported sa parehong thin shells (Android
+WebView 84+ · WKWebView/iOS 16.4+; **iOS <16.4 = graceful no-op** via
+feature-detect — walang crash, natutulog gaya ng dati).
+- **`adapters/useWakeLock.ts`:** pure `shouldHoldWakeLock` matrix — hawak habang
+  **GREEN o AMBER** (kasama ang connecting/recovering — ang 60s grace ay
+  karaniwang bumabalik sa green; matutulog mid-heal = patay ang recovery),
+  bitaw sa **honest GRAY** (baterya) o toggle OFF. `useWakeLock(hold)`:
+  request/release lifecycle + **visibilitychange re-acquire na triple-guarded**
+  (visible chineck sa acquire; still-holding + toggle-ON = STRUCTURAL — ang
+  listener ay nabubuhay lang habang hold=true) + OS-release event handling +
+  mid-await race guards + unmount release.
+- **RedesignApp:** isang `useWakeLock(shouldHoldWakeLock(...))` call sa
+  display-truth states (ttEff/fbEff + connecting + recovering) — READ-ONLY
+  listener sa connection state, zero galaw sa status machine/delivery path.
+  Toggle state: default ON, `sfl_rd_keepawake` localStorage.
+- **GeneralSettings:** "Keep screen awake while live" pill toggle sa LIVE
+  SESSION card (Auto Mode pattern). i18n `rd_set_keepawake(_desc)` ×7.
+- **Dim ≠ sleep (sadya):** ang OS ay pwedeng mag-dim pero hindi magla-lock —
+  tuloy ang capture nang mas tipid; parehong semantics ng native
+  FLAG_KEEP_SCREEN_ON. 10 tests (`useWakeLock.test.tsx`); 990 vitest sa merge.
+- ✅ **DEVICE-VALIDATED ni Jeff (Jul 13):** hindi na natutulog ang phone habang
+  green. (Native `@capacitor-community/keep-awake` fallback plan = dokumentado
+  sa session history kung sakaling may shell na pumalya — hindi kinailangan.)
+- Branch cleanup: idagdag ang `claude/wake-lock` sa GitHub UI cleanup list.
