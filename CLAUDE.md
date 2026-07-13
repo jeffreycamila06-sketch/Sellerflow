@@ -2860,3 +2860,88 @@ numeric gates ay ang `WindowDays` type + `clampWindowDays` (+ ang pill
   hangga't walang pumipili ng 4. Zero i18n (lahat templated), zero server,
   zero protected files. `rebuildSessionFromRows` = linear (verified) sa ~3.1k
   rows.
+
+## SESSION 2026-07-13 — iOS CHINESE PRINT "?" SAGA ✅ (merge `83d651b`, HARDWARE-VALIDATED; v1.3/Build 7 SUBMITTED sa App Store)
+Chinese buyer names sa iPhone BLE sticker = literal "?" (production:
+北部還有嗎 → `?????` eksakto); Android tama sa PAREHONG payload at printer.
+Buong protocol: read-only trace → diagnostic → plan → adversarial audit →
+code → conditional-audit response → merge → sim gate → hardware validation.
+
+### ROOT CAUSE (device-confirmed, mechanism A)
+**Ang `CFStringEncodings.GBK_95` converter ay WALA sa totoong iOS runtime** —
+`(s as NSString).data(using:)` = nil sa BAWAT CJK string → ang `writeTextSmart`
+ay bumagsak sa ASCII fallback → `tsplAsciiBytes` = **0x3F ("?") per char na
+TAYO MISMO ang nagpadala** (hindi printer confusion). Ang Mac-run Swift tests
+ay HINDI ito kayang mahuli — may converter ang macOS. Runtime evidence
+(`[CJK-ENV]` sa sim gate): `GBK_95=false GB18030=true big5=true CP950=true`.
+- **Tier detection = HINDI apektado:** ang 3-tier classification
+  (Latin→font4 / CJK→TSS24.BF2+GBK / iba→@handle) ay puro RANGE-based
+  (0x4E00–0x9FFF, 0x3400–0x4DBF, 0xF900–0xFAFF), identical sa lahat ng 3
+  builders (Java/Swift/TS), kailanman hindi kumukonsulta sa encoder —
+  **CI-pinned na ito** sa `iosCjkEncoding.contract.test.ts`. Kaya tama pa rin
+  ang Thai/emoji→@handle at Latin kahit sa sirang Build 6; ang RENDERING lang
+  ng CJK tier ang nasira.
+
+### FIX (branch `claude/ios-gbk-fix`: `b44f5b5`→`ace244f`→`595a23b`, merge `83d651b`)
+- **`CjkEncoding` enum** (top-level pure, marker-delimited, BleStickerLogic
+  pattern) — **`gbkBytes` 3-tier never-fail:** GBK_95 whole-string fast path
+  (byte-identical kung may converter) → per-scalar GBK_95/GB_18030_2000 na
+  **tumatanggap LANG ng 1–2 byte output** (ang GB18030 1–2 byte range ay
+  byte-identical sa GBK; ang 4-byte = WALA sa GBK → 0x3F gaya ng Java
+  `getBytes("GBK")` replacement — huwag ipadala ang 4-byte sa GBK ROM!) →
+  0x3F. Member `gbkBytes` = pure delegate; **`writeTextSmart`/layout/goldens
+  = ZERO touch** (ang ASCII else-branch = unreachable safety net na).
+  Sakop ng isang fix: sticker BLE + sticker LAN + reprint + test page.
+- **`getBuildNumber` shim** — synchronous JS **number** literal mula
+  CFBundleVersion (strict `Int` parse; unparseable → INOOMIT ang line, dahil
+  ang 0 ay babasahin ng web bilang "build 0 = stale" = walang-hanggang nag).
+  **KINAKAILANGAN ito bago ang anumang `native-version.json` `ios.latest`
+  bump >6** — kung wala, ang capability synthesis ay nagka-cap sa 6 at ang
+  Build 7+ users ay mana-nag habambuhay.
+- **E-probe** sa test page (iOS-only deviation, documented): 北部還有嗎 —
+  ang production bug string mismo, D-line regime (TSS24.BF2 + CP437).
+
+### ⚠️ BIG5 SLIP TWIN — binuo, tinanggal ng audit, NAPATUNAYANG TAMA ang removal
+Isang never-fail Big5 twin para sa slip path ay isinama ko preemptively →
+**audit conditional: walang device evidence ang Big5 (inference lang), one
+binary = one CONFIRMED fix → TINANGGAL** (`595a23b`; receipt `text()` =
+byte-exact revert + deferral comment; staged code sa `b44f5b5`).
+**Validation Jul 13: SLIP PASADO sa iPhone na may Chinese** + `big5=true` sa
+sim → **walang sira ang slip path; ang deferred Big5 branch ay HINDI NA
+KAILANGAN** (ang b44f5b5 pointer = historical na lang). Lesson din ito:
+tama ang audit rule — ang "kapareho ng pamilya" na hinala ay hindi ebidensya.
+
+### TESTS / GATES (bakit hindi na ito mauulit)
+- **`mobile/ios/tspl-parity/run-encoders-sim.sh` = PRE-ARCHIVE GATE:**
+  ine-extract ang CjkEncoding VERBATIM sa production source (markers),
+  kino-compile para sa iOS SIMULATOR, pinapatakbo ang fixtures SA iOS runtime
+  + `[CJK-ENV]` availability report; `GB18030=false` → HINTO (Contingency C =
+  embedded lookup table, hiwalay na plan+audit — hindi na-trigger).
+- `CjkEncodingTests.swift` (XCTest, sim destination) — fixtures
+  cross-verified vs Python gbk/gb18030 (北部還有嗎 = `b1b1 b2bf df80 d3d0
+  86e1`, U+07C0 → single `3f`).
+- `iosCjkEncoding.contract.test.ts` (11 tests, CI): 3-tier shape, call-site
+  wiring, unquoted-number shim interpolation, cross-builder range parity,
+  classifier-walang-encoder, slip-deferral pin. **1015 vitest · lint 51.**
+- Bonus na natuklasan: ang existing `MobileTsplBuilderTests` (goldens) na
+  pinatakbo sa SIM DESTINATION = full-matrix language parity proof sa iOS
+  runtime — sana nahuli nito ang bug noong Jul 7.
+
+### 🔒 PERMANENTENG LESSON (bagong required step)
+**BAWAT bagong print path ay dapat may CHINESE TEST sa TOTOONG DEVICE bago
+i-ship — HINDI SAPAT ang Mac tests** (macOS ≠ iOS runtime sa CF converter
+availability; ito rin ang dahilan kung bakit ang test-page probes noon ay
+tahimik na nag-skip sa nil = invisible ang bug sa Jul 7 hardware test).
+**Ang sim-destination encoder gate (`run-encoders-sim.sh`) ay REQUIRED bago
+ang bawat iOS Archive na may printing change.**
+
+### VALIDATION + STATUS
+- ✅ **HARDWARE-VALIDATED Jul 13 (Jeff):** test print D/E malinis na Chinese
+  (陳小美 + 北部還有嗎) · Chinese buyer order → tamang sticker · iPhone AT
+  iPad pasado · AIMO sticker pasado · slip pasado (Big5 removal validated).
+- **v1.3 / Build 7 = SUBMITTED sa App Store** (tamang "App Store Connect"
+  distribute — hindi na-hit ang Internal-Only trap).
+- ⏳ **PAGKA-APPROVE ni Apple + LIVE:** web diff `public/native-version.json`
+  `ios.latest` 6→7 (ligtas na dahil may exact `getBuildNumber` na ang Build
+  7; ang Build 6 users ay mano-nudge sa update modal). Ito na lang ang
+  natitirang follow-up ng saga.
