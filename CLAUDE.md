@@ -2658,22 +2658,27 @@ live confirmation na lang — si Lheyukay mismo ang ebidensyang gumagana).
 - Landing/Login fake stats (desisyon ni Jeff, nakabinbin pa rin).
 
 ## 🐛 KNOWN ISSUES
-### ⚠️ FB-functional-status: NEEDS PRODUCT DECISION FROM JEFF (discovered 2026-07-15 audit)
-- **Finding:** ang Facebook ay **NON-FUNCTIONAL server-side** — WALANG FB comment
-  listener / streamEnd / health path kahit saan sa `server.js`. Ang
-  `facebookConnections` entry ay status-marker LANG; walang FB comment na dumadaloy
-  sa server. Ang green FB pill ay **nangangako ng live-comment capture na HINDI
-  ginagawa ng server.**
-- **Ang #2 fix (stopgap, merged sa audit batch) = COSMETIC + LEAK LANG:** 6h
-  time-boxed green (`server/fbLiveness.js`, `fbConnectedNow`) → honest gray → prune
-  ng `facebookConnections` entry sa join snapshot (dating never-deleted → lumalaki
-  hanggang restart). **HINDI nito ginagawang gumagana ang FB** — cosmetic pill +
-  leak-plug lang. TikTok path untouched (may totoong `lastEventAt` liveness).
-- **PRODUCT DECISION (hiwalay na item, kay Jeff):** (a) tapusin ang FB —
-  server-side comment listener + streamEnd + health (malaking bagong work), O
-  (b) itago/i-disable ang FB sa UI hanggang gumana (para hindi mangako ng
-  capture na wala), O (c) iwan as-is (cosmetic stopgap) kung sapat na. **Hindi
-  ito engineering bug — product scope call.**
+### ⚠️ FB-functional-status: INTENTIONALLY NON-FUNCTIONAL, PENDING REQUIREMENTS (Jeff clarified 2026-07-15)
+- **Katotohanan (mula kay Jeff):** ang Facebook ay **SADYANG hindi pa gumagana** —
+  kulang sa requirements (**Meta Business Verification / FB Live API**), hindi pa
+  na-asikaso. HINDI ito engineering bug; **blocked sa external onboarding.**
+- **Server-side finding (audit):** WALANG FB comment listener / streamEnd / health
+  path sa `server.js`; ang `facebookConnections` entry ay status-marker LANG;
+  walang FB comment na dumadaloy. Ang green FB pill ay **PANGAKO na hindi
+  natutupad** — seller connects → green → walang orders → **nalilito.**
+- **Ang #2 fix (stopgap, merged) = COSMETIC + LEAK LANG:** 6h time-boxed green
+  (`server/fbLiveness.js`) → honest gray → prune ng entry. HINDI ginagawang
+  gumagana ang FB; **hindi rin nito inaalis ang maling pangako ng green pill.**
+  TikTok untouched.
+- **✅ DESISYON NI JEFF: "display muna" PERO HINDI dapat mangako ng capture via
+  green pill.** Susunod na maliit na item (client-side UI, Vercel-only, HINDI
+  sacred, follow-up PAGKATAPOS ng batch) — **TANONG kay Jeff, pumili muna bago
+  i-code:** **Option A** = "Coming Soon" badge (button visible + coming-soon
+  label, HINDI nagko-connect/nagpi-green) o **Option B** = disabled/grayed button.
+- **⚠️ INTERACTION SA #2 STOPGAP:** kapag na-disable ang FB connect (Option A/B),
+  WALA nang FB connection na gagawin → ang **6h-green fix (`fbConnectedNow` gate)
+  ay pwedeng TANGGALIN** (dead code na); **PANATILIHIN ang Map-leak prune** bilang
+  defensive. **HUWAG galawin hangga't hindi napili ni Jeff ang A/B.**
 
 ### B3 — reuse-branch session mismatch (LOW PRIORITY — hindi tumatama sa kasalukuyang seller flows)
 - **Trigger:** parehong account, BAGONG browser session (ibang device / cleared
