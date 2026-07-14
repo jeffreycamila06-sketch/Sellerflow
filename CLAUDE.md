@@ -3077,6 +3077,13 @@ Prod-verified sa served bundle (`dpl_FspbJEb1…`, `main-CSFeURzM.js`).
 - **Libreng lever bago magbayad** kung lalapit sa cap: luwagan ang 10-min
   `chat_stale` threshold (~33% bawas sa churn sa 15min) — connection sacred
   zone, sariling plan+audit.
+- **⚠️ PAYWALL FINDING (Jul 14):** ang direct Euler `/webcast/room_id` ay
+  **Business-plan-only** (`401 This endpoint requires a Business plan.`) —
+  ang free tier ay signing routes lang ang kaya. Verify = tiers walk
+  (~500ms, libre). **FUTURE LEVER:** kapag lumaki ang sellers at naging isyu
+  ang ~500ms verify latency, ang Euler Business plan (~$50/mo) ang unlock ng
+  ~100ms direct route — env change lang (`REUSE_VERIFY_SOURCE=euler`), zero
+  code; presyo-vs-bilis na desisyon sa hinaharap.
 
 ## 2026-07-14 — B4 PHASE 2 + C1 + VIEWERS RELAY MERGED & DEPLOYED · iOS 1.3 LIVE · ios.latest→7
 - **B4 Phase 2 ENFORCED + C1 Euler-first verify** (branch `claude/b4-phase2`,
@@ -3222,13 +3229,13 @@ server relay sumakay sa Phase-2 deploy).
   IMPOSIBLENG i-discriminate — ang Euler is_live ang unang gumana) ·
   rominakao nag-live nang totoo → `live allowed` → green + comments +
   **👥 21 viewers chip** (dobleng validation) · ZERO false-block.
-- **⏳ W1 (nakabinbin, hindi urgent):** ang 440-584ms latencies = tiers-walk
-  timing → malamang ang fallback ang tumatakbo sa bawat verify (pumapalya pa
-  rin ang euler-direct). Basahin ang `[VERIFY-FALLBACK]`/`euler_shape` line
-  sa logs → kung auth/plan config lang = ayusin; kung hindi = i-retire ang
-  direct route sa susunod na maliit na batch (default sa tiers). Fully
-  functional ang gate alinman.
-- **W2:** kung ~100% ang fallback rate, ang direct GET ay puro sayang (+1
-  Euler/verify) — kasama sa W1 decision.
+- **✅ W1/W2 RESOLVED (Jul 14 gabi):** ang `[VERIFY-FALLBACK]` capture =
+  `euler_shape code=401 msg=This endpoint requires a Business plan.` sa BAWAT
+  verify — ang direct `/webcast/room_id` ay **PAYWALLED sa free tier** (hindi
+  bug, pricing wall). DESISYON: default = **tiers** (`REUSE_VERIFY_SOURCE ||
+  "tiers"`, merge sa `claude/verify-tiers-default`) — tinanggal ang patay na
+  401 GET bawat verify (+quota, ~100ms); ang euler-direct ay RETAINED bilang
+  env option (`REUSE_VERIFY_SOURCE=euler`) kung bibili ng Business plan
+  balang araw.
 - 48hr BLOCKED watch: tuloy — kill signal pa rin ang BLOCKED sa aktwal na
   naglilive (wala pang tumama; lahat ng BLOCKED ay verified offline).

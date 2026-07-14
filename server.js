@@ -1034,15 +1034,19 @@ const reuseVerifyInFlight = new Map();
 // probe, handleError is a structural no-op (tiktok-live-connector client.js:
 // returns when listenerCount(ERROR) < 1). The probe is never connect()ed —
 // fetchIsLive() is a standalone HTML → API → Euler status read.
-// C1 (2026-07-14, Euler-quota review) — verify source. Default = DIRECT Euler
-// room_id: exactly ONE GET per verify, no dead-tier walk (the HTML/API tiers
-// add latency and, per the quota trace, are not what resolves on Render).
-// The legacy 3-tier walk (HTML-first) is NOT deleted: set
-// REUSE_VERIFY_SOURCE=tiers in the Render env to re-enable it without a code
-// change (if the hosting/IP situation ever makes the free direct tiers viable
-// again). Strict-boolean acceptance either way: anything that isn't a clean
-// boolean is_live falls to reuseVerdict "ambiguous" → FAIL-OPEN.
-const REUSE_VERIFY_SOURCE = process.env.REUSE_VERIFY_SOURCE || "euler";
+// C1 → RETIRED TO OPTION (2026-07-14 W1 verdict): the direct Euler
+// /webcast/room_id turned out to be PAYWALLED on the free tier — every call
+// returned 401 "This endpoint requires a Business plan." (production
+// [VERIFY-FALLBACK] capture). Not a bug — a pricing wall. The tiers walk is
+// free-tier endpoints and carried the ENTIRE trilogy validation (~500ms,
+// correct live/not_live verdicts), so it is now the DEFAULT — this also
+// removes the dead 401 GET (+quota, ~100ms) every verify was burning before
+// falling back. REUSE_VERIFY_SOURCE=euler stays as the env option: if we ever
+// buy the Business plan, the ~100ms direct route (with the same diagnostic
+// throw + tiers fallback) unlocks with an env change, zero code. Strict-
+// boolean acceptance either way: anything that isn't a clean boolean is_live
+// falls to reuseVerdict "ambiguous" → FAIL-OPEN.
+const REUSE_VERIFY_SOURCE = process.env.REUSE_VERIFY_SOURCE || "tiers";
 
 async function fetchIsLiveOutcome(cleanUsername) {
   try {
