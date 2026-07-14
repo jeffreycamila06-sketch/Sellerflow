@@ -5,7 +5,7 @@ import http from "http";
 import { Server } from "socket.io";
 import { createClient } from "@supabase/supabase-js";
 import { translateBroadcast } from "./server/broadcastTranslate.js";
-import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers } from "./server/connectionHealth.js";
+import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs } from "./server/connectionHealth.js";
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
 import { sanitizeCommentPayload } from "./server/sanitize.js";
 
@@ -242,7 +242,9 @@ async function requirePlanActive(req, res, next) {
 const TIKTOK_RECONNECT_BASE_MS = 5 * 1000;
 const TIKTOK_RECONNECT_MAX_MS = 30 * 60 * 1000;
 const TIKTOK_RECONNECT_JITTER_MS = 30 * 1000;
-const TIKTOK_RATE_LIMIT_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+// #4 — the rate-limit cooldown is no longer a fixed 24h constant; it is resolved
+// per-429 from Euler's own reset headers (resolveRateLimitCooldownMs in
+// server/connectionHealth.js), defaulting to 30 min when no header is present.
 const TIKTOK_MAX_PARALLEL_RECONNECTS = 1;
 const TIKTOK_MAX_RECONNECT_QUEUE = 50;
 // Hard rate cap: minimum spacing between successive reconnect connect() starts. With
@@ -347,7 +349,10 @@ function isTikTokRateLimitError(error) {
 }
 
 function rememberTikTokRateLimit(key, sellerId, username, sessionId, error) {
-  const retryAt = Date.now() + TIKTOK_RATE_LIMIT_COOLDOWN_MS;
+  // #4 — honor Euler's own reset window (Retry-After / X-RateLimit-Reset carried
+  // on the SignatureRateLimitError); fall back to 30 min, not a fixed 24h.
+  const cooldownMs = resolveRateLimitCooldownMs(error, Date.now());
+  const retryAt = Date.now() + cooldownMs;
   tiktokRateLimitCooldowns.set(key, retryAt);
   clearTikTokReconnect(key);
   tiktokReconnectAttempts.delete(key);
@@ -358,9 +363,10 @@ function rememberTikTokRateLimit(key, sellerId, username, sessionId, error) {
     connected: false,
     reconnecting: false,
     reason: "rate_limited",
-    nextRetryMs: TIKTOK_RATE_LIMIT_COOLDOWN_MS,
+    nextRetryMs: cooldownMs,
   });
-  console.log(`TikTok rate limit cooldown for ${username} until ${new Date(retryAt).toISOString()}: ${error?.message || error}`);
+  console.log(`TikTok rate limit cooldown for ${username} until ${new Date(retryAt).toISOString()} (${Math.round(cooldownMs / 60000)}m): ${error?.message || error}`);
+  return cooldownMs;
 }
 
 function getTikTokCooldownMs(key) {
@@ -1312,11 +1318,15 @@ async function connectTikTok(username, res, meta = {}) {
     }
     if (key && isTikTokRateLimitError(error)) {
       recordTikTokAttempt("rate_limit", error?.message);
-      rememberTikTokRateLimit(key, sellerId, cleanUsername, sessionId, error);
+      // #4 — the cooldown now reflects Euler's own reset window (else 30 min),
+      // not a fixed 24h. Report the real duration in the response.
+      const cooldownMs = rememberTikTokRateLimit(key, sellerId, cleanUsername, sessionId, error);
+      const mins = Math.max(1, Math.round(cooldownMs / 60000));
+      const wait = mins >= 60 ? `${Math.round(mins / 60)} hour(s)` : `${mins} minute(s)`;
       return res.status(429).json({
         success: false,
-        error: `TikTok rate limit reached. Auto reconnect stopped for ${Math.round(TIKTOK_RATE_LIMIT_COOLDOWN_MS / 3600000)} hours.`,
-        cooldownMs: TIKTOK_RATE_LIMIT_COOLDOWN_MS,
+        error: `TikTok rate limit reached. Try again in about ${wait}.`,
+        cooldownMs,
       });
     }
 
