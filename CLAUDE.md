@@ -3172,3 +3172,30 @@ Euler `is_live` boolean.** Naka-pin din ito sa code comment sa
   Post-deploy validation: ang rominakao/kimmyukay-class na natapos na live
   ay dapat mag-`[FRESH-VERIFY] not_live <user> ...ms BLOCKED` + honest gray
   sa UNANG reconnect — ihambing sa before-captures sa itaas.
+
+## LIVE VIEWER COUNT (👥 sa Live-comments row) ✅ LIVE-VALIDATED (client `351e7de` + server `1517d44`; deployed Jul 14 7:07 AM; validated ni Jeff Jul 14 hapon)
+FLive-parity viewer count, dalawang-halves na ship (client muna = dormant,
+server relay sumakay sa Phase-2 deploy).
+- **Server:** pangalawang `roomUser` listener (ang liveness stamping = ang
+  UNANG listener, F1 — walang health-semantics na nagbago); pure
+  `shouldRelayViewers` throttle (3s floor + change gate + **30s unchanged
+  heartbeat** — kailangan dahil ang client ay nagnu-null sa initiation);
+  owning-connection guard (G1 discipline); **throttle state SA
+  tiktokConnections entry** = namamatay kasama ng connection (bagong
+  connection = laging nagre-relay ang unang count); A4 = instant re-emit ng
+  last count sa B2 reuse tap. Emit: `platform_viewers {platform:"TikTok",
+  username, count, ts}` — **ang casing ay PINNED ng client test** (ang
+  dormant-seam casing lesson: "tiktok" vs "TikTok" ay tahimik na magdo-drop
+  ng lahat, unang sisira sa production — kaya may verbatim-payload pin).
+- **Client (`useLiveFeed.ttViewers`):** account-scoped sa tracked/intent
+  account (connect-truth ref), case-insensitive platform defense, finite≥0
+  guard; resets sa initiation (**zero-frame stale sa account switch** —
+  test-pinned), honest gray, session-end, user switch; READ-ONLY sa tabi ng
+  status machine (test-pinned). Display: maliit na muted **👥 N sa tabi ng
+  "Live comments" label** (desisyon ni Jeff — hindi sa header); GREEN lang
+  (parehong booleans ng pill); null = walang node; totoong 0 = "👥 0";
+  TikTok lang (walang FB viewer pipeline). 1 i18n key `rd_dash_viewers_aria`
+  ×7. Tests: 11 client + 6 server throttle.
+- ✅ **LIVE-VALIDATED ni Jeff (Jul 14 hapon):** lumitaw ang 👥 sa totoong
+  live. B4-zombie stale-count caveat sa reuse = sarado na rin ng Phase 2
+  (deployed kasabay).
