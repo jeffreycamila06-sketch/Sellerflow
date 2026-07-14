@@ -164,3 +164,23 @@ export function resolveRateLimitCooldownMs(error, nowMs) {
   if (Number.isFinite(retry) && retry > 0) return clampCooldown(retry);
   return RATE_LIMIT_DEFAULT_MS;
 }
+
+// ── Connect rate limit (#5a) — per-seller anti-abuse on /connect ─────────────
+// Defense-in-depth: #6 (account-cap) already 403s an UNregistered account before
+// any Euler call, but a seller with an empty registered list (#6 fail-open) or one
+// rapid-re-tapping their own account could still hammer Euler/Supabase. Cap the
+// number of /connect attempts per seller per rolling window. Legit use (a Master
+// seller connecting 5 accounts + a few re-taps during setup) stays well under; a
+// hostile loop (hundreds/min) is crushed. In-memory (Render restart clears it),
+// same as the other cooldown maps.
+export const CONNECT_RATE_MAX = 20;
+export const CONNECT_RATE_WINDOW_MS = 60 * 1000;
+
+// PURE: prune a seller's recent /connect timestamps to the window and decide if a
+// NEW attempt is allowed. Returns { allowed, kept } — kept is the list to store
+// back (with `nowMs` appended when allowed). Non-array input → treated as empty.
+export function checkConnectRate(timestamps, nowMs, max = CONNECT_RATE_MAX, windowMs = CONNECT_RATE_WINDOW_MS) {
+  const kept = (Array.isArray(timestamps) ? timestamps : []).filter((t) => nowMs - t < windowMs);
+  if (kept.length >= max) return { allowed: false, kept };
+  return { allowed: true, kept: [...kept, nowMs] };
+}

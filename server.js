@@ -5,7 +5,7 @@ import http from "http";
 import { Server } from "socket.io";
 import { createClient } from "@supabase/supabase-js";
 import { translateBroadcast } from "./server/broadcastTranslate.js";
-import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs } from "./server/connectionHealth.js";
+import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs, checkConnectRate, CONNECT_RATE_WINDOW_MS } from "./server/connectionHealth.js";
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
 import { sanitizeCommentPayload } from "./server/sanitize.js";
 import { accountCapVerdict } from "./server/accountCap.js";
@@ -269,6 +269,26 @@ function accountCapReject(req, platform, username) {
   };
 }
 
+// #5a — per-seller /connect rate limit (defense-in-depth for the shared Euler
+// quota + the checkPlanActive read). Runs AFTER requireAuth (req.authUserId
+// available) and BEFORE requirePlanActive (so a throttled attempt never even hits
+// Supabase). Fail-open if no identity. In-memory; a Render restart clears it.
+function requireConnectRate(req, res, next) {
+  const uid = req.authUserId;
+  if (!uid) return next(); // fail-open — downstream auth handles a missing identity
+  const { allowed, kept } = checkConnectRate(connectAttempts.get(uid), Date.now());
+  connectAttempts.set(uid, kept);
+  if (!allowed) {
+    console.log(`[CONNECT-RATE] throttle seller=${req.sellerId} (${kept.length} attempts in ${CONNECT_RATE_WINDOW_MS / 1000}s)`);
+    return res.status(429).json({
+      success: false,
+      error: "too_many_requests",
+      message: "Too many connection attempts. Please wait a moment and try again.",
+    });
+  }
+  return next();
+}
+
 const TIKTOK_RECONNECT_BASE_MS = 5 * 1000;
 const TIKTOK_RECONNECT_MAX_MS = 30 * 60 * 1000;
 const TIKTOK_RECONNECT_JITTER_MS = 30 * 1000;
@@ -301,6 +321,8 @@ const facebookConnections = new Map();
 const tiktokReconnectTimers = new Map();
 const tiktokReconnectAttempts = new Map();
 const tiktokRateLimitCooldowns = new Map();
+// #5a — per-seller /connect attempt timestamps (rolling-window rate limit).
+const connectAttempts = new Map();
 const tiktokConnectLocks = new Set();
 const manualTikTokDisconnects = new Set();
 
@@ -643,7 +665,7 @@ app.get("/health/tiktok", (_req, res) => {
 });
 
 
-app.post("/connect/tiktok", requireAuth, requirePlanActive, async (req, res) => {
+app.post("/connect/tiktok", requireAuth, requireConnectRate, requirePlanActive, async (req, res) => {
   const reject = accountCapReject(req, "TikTok", req.body.username);
   if (reject) return res.status(403).json(reject);
   return connectTikTok(req.body.username, res, {
@@ -652,7 +674,7 @@ app.post("/connect/tiktok", requireAuth, requirePlanActive, async (req, res) => 
   });
 });
 
-app.post("/connect/facebook", requireAuth, requirePlanActive, (req, res) => {
+app.post("/connect/facebook", requireAuth, requireConnectRate, requirePlanActive, (req, res) => {
   const sellerId = req.sellerId;
   const username = cleanAccountKey(req.body.username || req.body.liveVideoId || req.body.pageName);
   const sessionId = String(req.body.sessionId || "");
