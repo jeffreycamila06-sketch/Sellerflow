@@ -5,7 +5,7 @@ import http from "http";
 import { Server } from "socket.io";
 import { createClient } from "@supabase/supabase-js";
 import { translateBroadcast } from "./server/broadcastTranslate.js";
-import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs, checkConnectRate, CONNECT_RATE_WINDOW_MS } from "./server/connectionHealth.js";
+import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs, checkConnectRate, CONNECT_RATE_WINDOW_MS, isOwningConnection } from "./server/connectionHealth.js";
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
 import { sanitizeCommentPayload } from "./server/sanitize.js";
 import { accountCapVerdict } from "./server/accountCap.js";
@@ -1062,9 +1062,11 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
     // seller's active connection for this key may relay. An orphaned old
     // connection (a failed disconnect() left its listeners alive) would otherwise
     // double-relay the SAME comment with a fresh server-stamped commentKey → a
-    // DUPLICATE order (Auto Mode) / duplicate feed row. The ring write below had
-    // this guard; the relay + touch did not — this closes that gap.
-    if (tiktokConnections.get(key)?.connection !== tiktokConnection) return;
+    // DUPLICATE order (Auto Mode) / duplicate feed row. The ring write below shared
+    // this predicate; both now go through isOwningConnection (one source of truth).
+    // For Facebook (no msgId → no DB unique-index backstop) this guard is the ONLY
+    // double-relay protection, so it is load-bearing enough for a pure unit test.
+    if (!isOwningConnection(tiktokConnections, key, tiktokConnection)) return;
     touchTikTokConnection(key, tiktokConnection, "chat");
     const comment = data.comment || "";
     const name = data.nickname || data.uniqueId || "Unknown";
@@ -1091,10 +1093,12 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
       timestamp: new Date().toISOString(),
     };
     void emitCommentScoped(sellerId, "TikTok", cleanUsername, payload);
-    // RC2 — keep the reuse ring fresh with the latest relayed comments. Guarded
-    // to THIS connection (an orphaned old connection must never write the ring).
-    const activeEntry = tiktokConnections.get(key);
-    if (activeEntry && activeEntry.connection === tiktokConnection) {
+    // RC2 — keep the reuse ring fresh with the latest relayed comments. Same
+    // owning predicate as the top guard (consolidated to isOwningConnection); the
+    // top guard already returned for a non-owning connection, so this is defensive
+    // + a single source of truth for the check.
+    if (isOwningConnection(tiktokConnections, key, tiktokConnection)) {
+      const activeEntry = tiktokConnections.get(key);
       if (!activeEntry.recentComments) activeEntry.recentComments = [];
       pushRecent(activeEntry.recentComments, { ...payload }); // payload carries msgId now
     }
