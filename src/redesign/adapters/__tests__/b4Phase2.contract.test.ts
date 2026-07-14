@@ -76,13 +76,16 @@ describe("R2 ownership guard — never act on a stale reference after the await"
   });
 });
 
-describe("C1 — Euler-first verify with the HTML walk retained behind a flag", () => {
-  it("defaults to the single-GET Euler source; strict-boolean acceptance", () => {
-    expect(server).toMatch(/REUSE_VERIFY_SOURCE = process\.env\.REUSE_VERIFY_SOURCE \|\| "euler"/);
-    expect(server).toContain("fetchRoomIdFromEuler({ uniqueId: cleanUsername })");
+describe("C1 retired to option (W1: direct room_id is Business-plan paywalled) — tiers default, euler behind the flag", () => {
+  it("defaults to the free-tier tiers walk (no dead 401 GET per verify); strict-boolean acceptance kept", () => {
+    // W1 production capture: euler-direct returned 401 "This endpoint
+    // requires a Business plan." on every call — the tiers walk carried the
+    // whole trilogy validation, so it is the default now.
+    expect(server).toMatch(/REUSE_VERIFY_SOURCE = process\.env\.REUSE_VERIFY_SOURCE \|\| "tiers"/);
     expect(server).toMatch(/d\.code === 200 && typeof d\.is_live === "boolean"/);
   });
-  it("the legacy 3-tier walk is NOT deleted — env-flag re-enable", () => {
+  it("the euler direct route is RETAINED behind the env flag (Business-plan unlock, zero code change)", () => {
+    expect(server).toContain("fetchRoomIdFromEuler({ uniqueId: cleanUsername })");
     expect(server).toMatch(/REUSE_VERIFY_SOURCE === "tiers"\s*\n?\s*\? probe\.fetchIsLive\(\)/);
   });
 });
