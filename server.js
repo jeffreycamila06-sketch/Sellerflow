@@ -7,6 +7,7 @@ import { createClient } from "@supabase/supabase-js";
 import { translateBroadcast } from "./server/broadcastTranslate.js";
 import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers } from "./server/connectionHealth.js";
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
+import { sanitizeCommentPayload } from "./server/sanitize.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -319,18 +320,24 @@ function liveKey(sellerId, platform, username) {
 // never silently dropped.
 async function emitCommentScoped(sellerId, platform, sourceUsername, payload) {
   const src = cleanAccountKey(sourceUsername || "");
+  // #3 PRINTING INJECTION — the SINGLE choke-point for every client-bound comment
+  // (live relay + initial history + reuse re-emit all pass through here). Strip
+  // control bytes from the buyer-text fields (comment/name/handle) so a raw
+  // newline/ESC can never reach the thermal-printer command stream. CJK/emoji and
+  // all other fields (msgId/avatar/timestamps) are untouched; idempotent.
+  const safe = sanitizeCommentPayload(payload);
   let sockets = [];
   try {
     sockets = await io.in(sellerRoom(sellerId)).fetchSockets();
   } catch {
-    io.to(sellerRoom(sellerId)).emit("comment", payload);
+    io.to(sellerRoom(sellerId)).emit("comment", safe);
     return;
   }
   for (const s of sockets) {
     const sel = s.data && s.data.selected ? s.data.selected[platform] || "" : "";
     // No selection on this socket → ALL comments (main-compatible). Otherwise only
     // the selected account's comments. Missing src → send (never hide on bad data).
-    if (!sel || !src || sel === src) s.emit("comment", payload);
+    if (!sel || !src || sel === src) s.emit("comment", safe);
   }
 }
 
