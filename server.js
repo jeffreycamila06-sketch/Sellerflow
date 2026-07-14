@@ -9,6 +9,7 @@ import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, re
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
 import { sanitizeCommentPayload } from "./server/sanitize.js";
 import { accountCapVerdict } from "./server/accountCap.js";
+import { fbConnectedNow } from "./server/fbLiveness.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -550,11 +551,17 @@ io.on("connection", (socket) => {
         sessionId: active.sessionId,
       });
     }
-    for (const active of facebookConnections.values()) {
+    // #2 — FB has no server-side receive signal, so "connected" is a time-boxed
+    // assertion (6h since Connect, then honest gray). Expired entries are PRUNED
+    // here (facebookConnections was never deleted → grew until a restart).
+    for (const [fbKey, active] of facebookConnections) {
       if (active.sellerId !== cleanId) continue;
+      const live = fbConnectedNow(active.startedAt, Date.now());
+      if (!live) facebookConnections.delete(fbKey); // prune expired (leak fix)
       socket.emit("platform_status", {
         platform: "Facebook",
-        connected: true,
+        connected: live,
+        stale: !live,
         sellerId: cleanId,
         username: active.username,
         sessionId: active.sessionId,
@@ -668,7 +675,9 @@ app.post("/connect/facebook", requireAuth, requirePlanActive, (req, res) => {
   if (reject) return res.status(403).json(reject);
 
   const key = liveKey(sellerId, "Facebook", username);
-  facebookConnections.set(key, { username, sessionId, sellerId });
+  // #2 — stamp startedAt so the status pill can time-box "connected" (FB has no
+  // server-side liveness signal; see server/fbLiveness.js). A re-connect refreshes it.
+  facebookConnections.set(key, { username, sessionId, sellerId, startedAt: Date.now() });
 
   io.to(sellerRoom(sellerId)).emit("platform_status", {
     platform: "Facebook",
