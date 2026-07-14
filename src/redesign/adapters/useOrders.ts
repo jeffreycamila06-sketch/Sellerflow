@@ -15,12 +15,22 @@
 // free-cap trigger (check_and_increment_free_order, now 100) stays authoritative and
 // UNTOUCHED — we insert via the existing saveOrderToDatabase; if a free account
 // is over cap the trigger rejects the insert and we surface it in 5f.
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { buildOrderFromComment } from "../../lib/orderLogic";
 import type { Comment as ProdComment, Buyer, LiveOrder } from "../../lib/orderTypes";
-import { saveOrderToDatabase, saveLiveSessionOrder, saveCustomerToDatabase } from "../../db";
+import { saveOrderToDatabase, saveLiveSessionOrder, saveCustomerToDatabase, type LiveSessionOrderInput } from "../../db";
 import { isCapError } from "./useFreeCap";
 import { decrementStockAndTouch } from "./productsDb";
+
+const msgIdOf = (c: ProdComment): string => String((c as ProdComment & { msgId?: string }).msgId || "").trim();
+// A returned db-write result is a FAILURE only when it is an object with
+// success===false. void/undefined (the real skip path + the test mocks) = success
+// — this is Trap 1: db.ts RETURNS {success:false,error}, it does not throw it, so
+// the old Promise.all(...).catch() never saw returned failures.
+const writeError = (res: unknown): unknown =>
+  res && typeof res === "object" && (res as { success?: boolean }).success === false
+    ? (res as { error?: unknown }).error
+    : undefined;
 
 // ── Pure write-payload builders — mirror App.tsx:4348-4372 EXACTLY (parity-tested) ──
 
@@ -69,9 +79,19 @@ export interface UseOrdersDeps {
   onCapBlocked?: () => void;                               // show hard popup when blocked
   onCapReached?: (err: unknown) => void;                   // DB trigger rejected (over cap)
   onWriteError?: (err: unknown) => void;                   // Batch D (#7): non-cap background write failed — surface it
+  onStockError?: (err: unknown) => void;                   // M1: the stock-decrement RPC failed — surface it (was a silent empty catch → Auto Mode could oversell)
   afterWrite?: () => void;                                 // resync usage counter (free users)
   onPrint?: (singleOrderBuyer: Buyer) => void;             // 5g — print the slip (App.tsx:4341)
   onEnsureWindow?: () => void;                             // multi-day — open window if needed (once/window; N=1 no-op)
+  // FAMILY A (#1 durability): route the live_session_orders write through the
+  // retry outbox. Only msgId-bearing writes are enqueued (idempotent via
+  // ux_lso_user_msgid); when absent (Facebook) or unwired (tests) the write
+  // falls back to the direct fire-and-forget path below — byte-unchanged.
+  enqueueLiveSession?: (payload: LiveSessionOrderInput, msgId: string) => void;
+  // FAMILY A (#7 dedup): "already ordered by this stable msgId" from the loaded
+  // window (liveSession.orderedMsgIds). Complements the in-hook synchronous
+  // same-tick guard; covers restored/cross-load rows.
+  isMsgIdOrdered?: (msgId: string) => boolean;
 }
 
 // Auto Mode (Step 4): an order created from a code carries its product's local_id so
@@ -85,45 +105,82 @@ export interface UseOrders {
   createOrder: (c: ProdComment, price: number, opts?: CreateOrderOpts) => LiveOrder | null;
 }
 
-export function useOrders({ getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, onWriteError, afterWrite, onPrint, onEnsureWindow }: UseOrdersDeps): UseOrders {
+export function useOrders({ getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, onWriteError, onStockError, afterWrite, onPrint, onEnsureWindow, enqueueLiveSession, isMsgIdOrdered }: UseOrdersDeps): UseOrders {
+  // FAMILY A (#7): synchronous same-tick dedup by stable TikTok msgId. Two relays
+  // of the SAME comment carry DIFFERENT commentKeys (server-stamped timestamp),
+  // so the printed/autoProcessed guards (keyed on commentKey) can't stop the
+  // double order — this ref does. msgIds are globally unique per message, so an
+  // entry never needs clearing (blocking a duplicate forever is the correct,
+  // idempotent, safe direction). The DB unique index is the cross-device backstop.
+  const processedMsgIdsRef = useRef<Set<string>>(new Set());
   const createOrder = useCallback((c: ProdComment, price: number, opts?: CreateOrderOpts): LiveOrder | null => {
-    // 0) Free-tier HARD STOP soft block (App.tsx:4330). The DB trigger is still
+    // 0) #7 DEDUP FIRST — an already-ordered msgId creates NOTHING (returns null
+    //    WITHOUT the cap popup; the seams treat null exactly like a soft block →
+    //    Auto Mode refunds its synchronous stock claim, so no stock leaks).
+    const msgId = msgIdOf(c);
+    if (msgId && (processedMsgIdsRef.current.has(msgId) || isMsgIdOrdered?.(msgId))) return null;
+    // 0b) Free-tier HARD STOP soft block (App.tsx:4330). The DB trigger is still
     //    authoritative; this is the friendly block before we try.
     if (isCapped?.()) { onCapBlocked?.(); return null; }
-    // 0b) Multi-day: open the window if none active (writes window_start once per
+    // 0c) Multi-day: open the window if none active (writes window_start once per
     //     window; N=1 → no-op). Does NOT affect this order's numbering (that comes
     //     from the loaded window buyers); fire-and-forget, like the DB writes.
     onEnsureWindow?.();
     // 1) SAME pure builder production uses (buyer numbering + orderNum epoch ms).
     const { order, nextBuyers, singleOrderBuyer } = buildOrderFromComment(c, getBuyers(), price, new Date());
+    // 1b) mark this msgId processed SYNCHRONOUSLY, before any write, so a same-tick
+    //     second relay is blocked at step 0 above.
+    if (msgId) processedMsgIdsRef.current.add(msgId);
     // 2) optimistic local update so the summary strip + Orders tab reflect it now.
     applyOrder(nextBuyers, order);
     // 3) print the slip BEFORE the writes (App.tsx:4341-4345) — singleOrderBuyer is
     //    the buyer carrying just this order, exactly what production prints.
     onPrint?.(singleOrderBuyer);
-    // 4) SAME three exported writes, SAME payload shapes, fire-and-forget (non-atomic
-    //    by design — matches production; do not "improve").
+    // 4) BILLING + CRM writes: SAME payload shapes, fire-and-forget-once (NOT retried
+    //    — the `orders` free-cap trigger and the `customers` +1 tally are not
+    //    idempotent, so a retry would double-count; the billing ledger is sacred).
+    //    Trap 1: inspect the RETURNED result (db.ts returns {success:false}, it does
+    //    not throw) AND catch a network throw. The local order is KEPT either way
+    //    (production fire-and-forget semantics — the order is real, only its cloud
+    //    copy is missing; the toast tells the seller to check the connection).
     void Promise.all([
       saveOrderToDatabase(orderDbPayload(c, order)),
-      saveLiveSessionOrder(liveSessionPayload(c, order, sessionDate)),
       saveCustomerToDatabase(customerDbPayload(c, order)),
-    ]).catch((err) => {
-      // If a race got past the soft block, the DB cap trigger rejects the insert —
-      // surface the hard-stop popup (5f). Other errors (Batch D #7): tell the
-      // seller the cloud save failed — the local order is KEPT (matches production
-      // fire-and-forget semantics; no revert — the order is real, only its cloud
-      // copy is missing, and the toast tells them to check the connection).
+    ]).then(([orderRes, custRes]) => {
+      const orderErr = writeError(orderRes);
+      if (orderErr) { if (isCapError(orderErr)) onCapReached?.(orderErr); else onWriteError?.(orderErr); }
+      const custErr = writeError(custRes);
+      if (custErr) onWriteError?.(custErr);
+    }).catch((err) => {
       if (isCapError(err)) onCapReached?.(err);
       else { console.warn("Background database save failed", err); onWriteError?.(err); }
     });
-    // 4b) Auto Mode linkage (gated): for a code-driven order, atomically decrement the
-    //     product stock + stamp last_ordered_at via the RPC. Fire-and-forget, like the
-    //     writes above. Manual orders pass no opts → this never runs (5e byte-identical).
-    if (opts?.productLocalId) void decrementStockAndTouch(opts.productLocalId).catch(() => {});
+    // 4b) SESSION write (the operational backbone). msgId-bearing → the durable
+    //     retry outbox (idempotent via ux_lso_user_msgid). No msgId (Facebook) or
+    //     no outbox wired (tests) → direct fire-and-forget, byte-unchanged, with the
+    //     same failure surfacing.
+    const livePayload = liveSessionPayload(c, order, sessionDate);
+    if (msgId && enqueueLiveSession) {
+      enqueueLiveSession(livePayload, msgId);
+    } else {
+      void Promise.resolve(saveLiveSessionOrder(livePayload)).then((res) => {
+        const err = writeError(res);
+        if (err && !isCapError(err)) onWriteError?.(err);
+      }).catch((err) => { if (!isCapError(err)) onWriteError?.(err); });
+    }
+    // 4c) Auto Mode linkage (gated): atomically decrement stock + stamp
+    //     last_ordered_at. M1: a failure is SURFACED now (was a silent empty catch
+    //     → Auto Mode could oversell with no signal). Manual orders pass no opts →
+    //     never runs (5e byte-identical).
+    if (opts?.productLocalId) {
+      void decrementStockAndTouch(opts.productLocalId).catch((err) => {
+        console.warn("Stock decrement failed", err); onStockError?.(err);
+      });
+    }
     // 5) resync the usage counter (App.tsx:4384 — free users).
     afterWrite?.();
     return order;
-  }, [getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, onWriteError, afterWrite, onPrint, onEnsureWindow]);
+  }, [getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, onWriteError, onStockError, afterWrite, onPrint, onEnsureWindow, enqueueLiveSession, isMsgIdOrdered]);
 
   return { createOrder };
 }

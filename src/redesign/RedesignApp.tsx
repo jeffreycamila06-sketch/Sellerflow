@@ -39,6 +39,8 @@ import { buildBasketCounts } from "./adapters/basketCounts";
 import { useSessionWindow, type WindowDays } from "./adapters/useSessionWindow";
 import { useLiveFeed, commentKey } from "./adapters/useLiveFeed";
 import { useOrders } from "./adapters/useOrders";
+import { useOutbox } from "./adapters/outbox";
+import { saveLiveSessionOrder } from "../db";
 import { planAutoOrder, type AutoCode } from "./adapters/autoMode";
 import { buildWinnerTicketBuyer, type RaffleEntry } from "./adapters/raffle";
 import { loadCodes } from "./adapters/autoCodesDb";
@@ -275,6 +277,16 @@ export default function RedesignApp() {
   // fan-out. A toast effect below (after tApp exists) converts bumps into the
   // localized "cloud save failed" toast — the local order is kept (see useOrders).
   const [orderWriteErrs, setOrderWriteErrs] = useState(0);
+  const [stockErrs, setStockErrs] = useState(0); // M1 — stock-decrement RPC failure (Auto Mode oversell risk)
+  // FAMILY A (#1 durability): the retry outbox for the live_session_orders write.
+  // Drains on mount / return-to-visible / a connection rise; idempotent via the
+  // ux_lso_user_msgid index, so a lost-ACK retry can never duplicate. An exhausted
+  // item reuses the existing "cloud save failed" toast.
+  const outbox = useOutbox({
+    write: saveLiveSessionOrder,
+    onExhausted: () => setOrderWriteErrs((c) => c + 1),
+    drainSignal: liveFeed.ttConnected || liveFeed.fbConnected,
+  });
   // Phase 5e — real order creation fan-out (writes). Composes the SAME pure
   // builder + db writes; updates the live session optimistically. 5f: soft-block
   // when capped, resync counter after write, surface hard popup on trigger reject.
@@ -286,9 +298,12 @@ export default function RedesignApp() {
     onCapBlocked: () => freeCap.setCapPopup("hard"),
     onCapReached: freeCap.noteCapError,
     onWriteError: () => setOrderWriteErrs((c) => c + 1), // Batch D #7 — toast below
+    onStockError: () => setStockErrs((c) => c + 1),      // M1 — stock RPC failure toast below
     afterWrite: freeCap.afterOrder,
     onPrint,
     onEnsureWindow: () => { void sessionWindow.ensureWindowOpen(); }, // multi-day; N=1 no-op
+    enqueueLiveSession: outbox.enqueue,                  // FAMILY A #1 — durable retry (msgId writes)
+    isMsgIdOrdered: (m) => liveSession.orderedMsgIds.has(m), // FAMILY A #7 — restored/loaded dedup
   });
   // Orders tab + Dashboard summary now share ONE source (the live session), so a
   // newly created order shows immediately. (5b's useLiveOrders is superseded here.)
@@ -416,6 +431,12 @@ export default function RedesignApp() {
     prevOrderWriteErrs.current = orderWriteErrs;
     setToast({ msg: tApp.rd_ord_save_failed, kind: "err" });
   }, [orderWriteErrs, tApp]);
+  const prevStockErrs = useRef(0); // M1 — stock-decrement RPC failure (Auto Mode oversell risk)
+  useEffect(() => {
+    if (stockErrs <= prevStockErrs.current) return;
+    prevStockErrs.current = stockErrs;
+    setToast({ msg: tApp.rd_auto_stock_failed, kind: "err" });
+  }, [stockErrs, tApp]);
   const prevWinPersistErrs = useRef(0);
   useEffect(() => {
     if (sessionWindow.persistErrors <= prevWinPersistErrs.current) return;
