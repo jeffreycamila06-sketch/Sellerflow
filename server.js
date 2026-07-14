@@ -8,6 +8,7 @@ import { translateBroadcast } from "./server/broadcastTranslate.js";
 import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs } from "./server/connectionHealth.js";
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
 import { sanitizeCommentPayload } from "./server/sanitize.js";
+import { accountCapVerdict } from "./server/accountCap.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -182,7 +183,7 @@ async function checkPlanActive(email, authUserId, token) {
 
     const { data, error } = await userSb
       .from("seller_profiles")
-      .select("plan, plan_status, plan_expiry")
+      .select("plan, plan_status, plan_expiry, role, tiktok, facebook")
       .eq("auth_user_id", authUserId)
       .maybeSingle();
 
@@ -199,11 +200,14 @@ async function checkPlanActive(email, authUserId, token) {
     const status = String(data.plan_status || "");
     const expiry = data.plan_expiry ? String(data.plan_expiry) : "";
     const ctx2 = `${ctx} plan=${plan} status=${status} expiry=${expiry}`;
+    // #6 — the account-cap fields ride along on the ALLOW returns (same read, zero
+    // extra egress) so requirePlanActive can attach them to the request.
+    const capFields = { plan, role: String(data.role || ""), tiktok: data.tiktok, facebook: data.facebook };
 
     // Free plan is cap-limited (DB trigger), never time-blocked at /connect.
     if (plan === "free") {
       console.log(`[PLAN_CHECK] ALLOW ${ctx2} (free-tier exempt)`);
-      return { allowed: true };
+      return { allowed: true, ...capFields };
     }
 
     const expiredStatus = status === "expired";
@@ -220,7 +224,7 @@ async function checkPlanActive(email, authUserId, token) {
     }
 
     console.log(`[PLAN_CHECK] ALLOW ${ctx2}`);
-    return { allowed: true };
+    return { allowed: true, ...capFields };
   } catch (err) {
     console.log(`[PLAN_CHECK] ERROR ${ctx} err=${err && err.message ? err.message : String(err)} -> FAIL-OPEN (allowing)`);
     return { allowed: true };
@@ -236,7 +240,32 @@ async function requirePlanActive(req, res, next) {
       message: "Your plan has expired. Please upgrade.",
     });
   }
+  // #6 — carry the account-cap context from the SAME plan read (fail-open paths
+  // leave these undefined → accountCapVerdict fails open, never blocks on infra).
+  req.sellerPlan = result.plan;
+  req.sellerRole = result.role;
+  req.sellerTiktok = result.tiktok;
+  req.sellerFacebook = result.facebook;
   return next();
+}
+
+// #6 — returns a 403 body when the requested account exceeds the seller's plan
+// cap (Option B: must be a REGISTERED account within maxAccountsForPlan), else
+// null. Reuses the plan/role/tiktok/facebook attached by requirePlanActive — no
+// extra query. Fail-open on unknown plan / admin / broken registered list.
+function accountCapReject(req, platform, username) {
+  const v = accountCapVerdict({
+    plan: req.sellerPlan, role: req.sellerRole,
+    tiktok: req.sellerTiktok, facebook: req.sellerFacebook,
+    platform, username,
+  });
+  if (v.allowed) return null;
+  console.log(`[ACCOUNT-CAP] block seller=${req.sellerId} plan=${v.plan} platform=${platform} (max ${v.max}, account not registered)`);
+  return {
+    success: false,
+    error: "account_limit",
+    message: `Your ${v.plan} plan allows ${v.max} live account(s). Contact support to add more.`,
+  };
 }
 
 const TIKTOK_RECONNECT_BASE_MS = 5 * 1000;
@@ -608,6 +637,8 @@ app.get("/health/tiktok", (_req, res) => {
 
 
 app.post("/connect/tiktok", requireAuth, requirePlanActive, async (req, res) => {
+  const reject = accountCapReject(req, "TikTok", req.body.username);
+  if (reject) return res.status(403).json(reject);
   return connectTikTok(req.body.username, res, {
     sellerId: req.sellerId,
     sessionId: req.body.sessionId,
@@ -632,6 +663,9 @@ app.post("/connect/facebook", requireAuth, requirePlanActive, (req, res) => {
       error: "Facebook page is required",
     });
   }
+
+  const reject = accountCapReject(req, "Facebook", username);
+  if (reject) return res.status(403).json(reject);
 
   const key = liveKey(sellerId, "Facebook", username);
   facebookConnections.set(key, { username, sessionId, sellerId });
