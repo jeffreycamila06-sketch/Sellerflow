@@ -3095,7 +3095,7 @@ Prod-verified sa served bundle (`dpl_FspbJEb1…`, `main-CSFeURzM.js`).
   deploy-window protocol ay nalabag ulit — na-deploy nang 7:07 AM na may
   DALAWANG naka-live na seller sa halip na sa 04:30 na tahimik na window.
   **Ang Business Pulse / DB check ("may naka-live ba ngayon?") bago ang
-  ANUMANG Render deploy ay HINDI optional, kahit umaga, kahag mukhang
+  ANUMANG Render deploy ay HINDI optional, kahit umaga, kahit mukhang
   tahimik.** Bawat Render restart = lahat ng naka-live ay kailangang
   mag-re-tap ng Connect (manual-connect world). Suwerteng naka-recover ang
   dalawa — huwag nang umasa sa suwerte sa pangatlo.
