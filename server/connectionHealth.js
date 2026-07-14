@@ -136,3 +136,31 @@ export function shouldRelayViewers(prevCount, lastRelayAt, nextCount, nowMs) {
   if (nowMs - last < VIEWER_RELAY_MIN_MS) return false;
   return nextCount !== prevCount || nowMs - last >= VIEWER_REFRESH_MS;
 }
+
+// ── Rate-limit cooldown (#4) — honor Euler's own reset window ────────────────
+// When EulerStream returns HTTP 429, the tiktok-live-connector throws a
+// SignatureRateLimitError that already parses the response headers into:
+//   • retryAfter (ms)  = Retry-After: <delay-seconds> * 1000   (RFC 6585/9110)
+//   • resetTime  (ms)  = X-RateLimit-Reset: <epoch-seconds> * 1000
+// The old code ignored both and benched the account for a FIXED 24h — far
+// longer than Euler's real (daily) reset, with no self-service clear, so a
+// single spurious 429 could lock a paying seller out of going live for a full
+// day. Correct behavior (RFC 9110 §10.2.3): honor the server's own reset
+// signal; only fall back to a SANE default when no header is present.
+export const RATE_LIMIT_DEFAULT_MS = 30 * 60 * 1000;    // no header → 30 min (was 24h)
+export const RATE_LIMIT_MIN_MS = 60 * 1000;             // 1 min floor (never thrash)
+export const RATE_LIMIT_MAX_MS = 24 * 60 * 60 * 1000;   // 24h ceiling (never WORSE than before)
+
+const clampCooldown = (ms) => Math.min(RATE_LIMIT_MAX_MS, Math.max(RATE_LIMIT_MIN_MS, ms));
+
+// PURE: resolve how long to bench an account after a 429. Prefer the absolute
+// reset time, then Retry-After, then the default. Defensive on a wrapped error
+// that lost the fields (→ default). Clamped so a pathological header can't over-
+// or under-bench.
+export function resolveRateLimitCooldownMs(error, nowMs) {
+  const reset = Number(error && error.resetTime);
+  if (Number.isFinite(reset) && reset > nowMs) return clampCooldown(reset - nowMs);
+  const retry = Number(error && error.retryAfter);
+  if (Number.isFinite(retry) && retry > 0) return clampCooldown(retry);
+  return RATE_LIMIT_DEFAULT_MS;
+}
