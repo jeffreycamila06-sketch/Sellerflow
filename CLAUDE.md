@@ -3118,7 +3118,7 @@ Prod-verified sa served bundle (`dpl_FspbJEb1…`, `main-CSFeURzM.js`).
   1.0/1.1 = synthesis 0, nudged na dati pa). `message_key` nanatiling
   `rd_upd_msg_ble` ("Sticker printing and fixes" — tumpak sa 1.3).
 
-## 2026-07-14 (part 2) — FRESH-PATH FAIL-OPEN SAGA → FRESH-VERIFY (merge `be6ad34`, ⏳ NAKAPILA sa Miy 04:30 deploy)
+## 2026-07-14 (part 2) — FRESH-PATH FAIL-OPEN SAGA → FRESH-VERIFY ✅ DEPLOYED + LIVE-VALIDATED (merges `be6ad34` + fix `d32f52c`; validated Jul 14 gabi)
 Ang pangatlo at HULING pinto ng zombie green, nahuli LIVE sa production sa
 parehong araw ng Phase-2 deploy.
 
@@ -3199,3 +3199,36 @@ server relay sumakay sa Phase-2 deploy).
 - ✅ **LIVE-VALIDATED ni Jeff (Jul 14 hapon):** lumitaw ang 👥 sa totoong
   live. B4-zombie stale-count caveat sa reuse = sarado na rin ng Phase 2
   (deployed kasabay).
+
+### FRESH-VERIFY SAGA CLOSEOUT (Jul 14 gabi) — deployed, sinira, inayos, validated
+- **Unang deploy = GATELESS:** lahat ng verdict ay `ambiguous ~85-128ms na
+  WALANG reason`. ROOT CAUSE (SDK source): ang Euler SDK ay may
+  `validateStatus: () => true` (`SignConfig.baseOptions`) — ang HTTP
+  401/403/429 ay RESOLVES na may error body, hindi nagre-reject; ang C1
+  shape-check (`? d.is_live : undefined`) ay tahimik na nilunok ang
+  diagnosable failure. **WIRE-SHAPE LESSON + BAGONG PERMANENTENG RULE: bawat
+  bagong EXTERNAL call path = SHADOW-FIRST (ang B4 Phase-1 discipline),
+  walang exception** — ang source-contract pins ay hindi nakakakita ng wire
+  reality, at walang CI na nakakaabot sa Euler.
+- **Ang fix (`claude/fresh-verify-fix` → merge `d32f52c`, senior-audit
+  approved): dalawang rules** — (1) NEVER SILENT: shape mismatch → diagnostic
+  throw (`euler_shape code=/ok=/msg=/keys=` sa reason suffix); (2) NEVER
+  GATELESS: direct-route failure → fallback sa Phase-1-PROVEN tiers walk
+  (`[VERIFY-FALLBACK]` marker), buong chain sa iisang 4s race.
+- **✅ LIVE-VALIDATED (Jul 14 gabi, Render logs + app):** post-deploy
+  verdicts = totoong `live ... allowed` / `not_live ... BLOCKED` sa
+  440-584ms · kimmyukay + cathpaldo + cathpaldo1 + **chentrendyukay** =
+  BLOCKED nang tama habang offline (ang chentrendyukay ay ang dating
+  IMPOSIBLENG i-discriminate — ang Euler is_live ang unang gumana) ·
+  rominakao nag-live nang totoo → `live allowed` → green + comments +
+  **👥 21 viewers chip** (dobleng validation) · ZERO false-block.
+- **⏳ W1 (nakabinbin, hindi urgent):** ang 440-584ms latencies = tiers-walk
+  timing → malamang ang fallback ang tumatakbo sa bawat verify (pumapalya pa
+  rin ang euler-direct). Basahin ang `[VERIFY-FALLBACK]`/`euler_shape` line
+  sa logs → kung auth/plan config lang = ayusin; kung hindi = i-retire ang
+  direct route sa susunod na maliit na batch (default sa tiers). Fully
+  functional ang gate alinman.
+- **W2:** kung ~100% ang fallback rate, ang direct GET ay puro sayang (+1
+  Euler/verify) — kasama sa W1 decision.
+- 48hr BLOCKED watch: tuloy — kill signal pa rin ang BLOCKED sa aktwal na
+  naglilive (wala pang tumama; lahat ng BLOCKED ay verified offline).
