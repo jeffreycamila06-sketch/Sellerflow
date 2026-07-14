@@ -184,3 +184,15 @@ export function checkConnectRate(timestamps, nowMs, max = CONNECT_RATE_MAX, wind
   if (kept.length >= max) return { allowed: false, kept };
   return { allowed: true, kept: [...kept, nowMs] };
 }
+
+// ── Connection ownership (G1) — the single source of truth for "is THIS the
+// seller's currently-active connection for this key?" ─────────────────────────
+// Used by the chat handler's owning guard (drop an orphaned old connection's
+// events before any relay/liveness stamp — a failed disconnect() that left its
+// listeners alive would otherwise double-relay the same comment with a fresh
+// commentKey → a DUPLICATE order; for Facebook, which has no msgId, this is the
+// ONLY protection — there is no DB unique-index backstop) AND the reuse-ring
+// write. One predicate, one place.
+export function isOwningConnection(connections, key, connection) {
+  return connections.get(key)?.connection === connection;
+}
