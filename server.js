@@ -1055,10 +1055,32 @@ async function fetchIsLiveOutcome(cleanUsername) {
       const t = setTimeout(() => reject(new Error("reuse-verify timeout")), REUSE_VERIFY_TIMEOUT_MS);
       if (typeof t.unref === "function") t.unref();
     });
+    // ⚠️ WIRE-SHAPE LESSON (2026-07-14 production capture — every verdict came
+    // back "ambiguous" with NO reason at ~80-120ms): the Euler SDK ships
+    // validateStatus:()=>true (SignConfig.baseOptions), so HTTP 401/403/429
+    // RESOLVE with an error BODY instead of rejecting — and the original
+    // silent shape-check (`? is_live : undefined`) swallowed exactly that
+    // diagnosable failure. Two rules encoded here:
+    //   1. A shape mismatch THROWS a diagnostic (code/ok/message/keys) so the
+    //      [FRESH-VERIFY]/[REUSE-VERIFY] ambiguous line always carries the
+    //      wire truth in its reason= suffix.
+    //   2. A direct-route failure FALLS BACK to the tiers walk
+    //      (probe.fetchIsLive()) — the path the Phase-1 shadow PROVED in
+    //      production (257 correct live verdicts) — so the gate keeps
+    //      functioning even while the direct route misbehaves. The whole
+    //      chain still races the same 4s timeout.
+    const eulerDirect = () =>
+      probe.webClient.fetchRoomIdFromEuler({ uniqueId: cleanUsername }).then((d) => {
+        if (d && d.code === 200 && typeof d.is_live === "boolean") return d.is_live;
+        const keys = d && typeof d === "object" ? Object.keys(d).join(",") : typeof d;
+        throw new Error(`euler_shape code=${d?.code} ok=${d?.ok} msg=${String(d?.message || "").slice(0, 60)} keys=${keys}`);
+      });
     const fetchPromise = REUSE_VERIFY_SOURCE === "tiers"
       ? probe.fetchIsLive()
-      : probe.webClient.fetchRoomIdFromEuler({ uniqueId: cleanUsername })
-          .then((d) => (d && d.code === 200 && typeof d.is_live === "boolean") ? d.is_live : undefined);
+      : eulerDirect().catch((directErr) => {
+          console.log(`[VERIFY-FALLBACK] euler-direct failed for ${cleanUsername} (${String(directErr?.message || directErr).slice(0, 140)}) — using tiers walk`);
+          return probe.fetchIsLive();
+        });
     const value = await Promise.race([fetchPromise, timeout]);
     return { value };
   } catch (error) {
