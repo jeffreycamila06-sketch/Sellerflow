@@ -796,6 +796,34 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
   clearTikTokReconnect(key);
 
   const cleanUsername = cleanAccountKey(username);
+  // FRESH-VERIFY (fresh-path fail-open fix, 2026-07-14 — the kimmyukay
+  // capture): BEFORE any connect work, ONE authoritative Euler is_live GET via
+  // the SAME C1 core as the reuse verify (throwaway listener-less probe, 4s
+  // timeout, strict-boolean, REUSE_VERIFY_SOURCE flag, shared single-flight).
+  // Covers ALL callers of this function — fresh tap, forced-fresh, and the
+  // health-cycle reconnect. not_live → the EXISTING notLiveError plumbing:
+  //   • fresh tap → connectTikTok's catch → the byte-pinned 409 + client toast
+  //     (a just-went-live seller who races Euler's view simply taps again —
+  //     not_live is never a cooldown, so the block is retry-able by design);
+  //   • health reconnect → the reconnect catch's TERMINAL path (clear
+  //     reconnect, not_live status emit, live_session_ended) — the ZOMBIE-LOOP
+  //     KILL: a just-ended live stops at its FIRST reconnect instead of
+  //     looping fake Branch-A connects every 10-12min forever.
+  // live → proceed. ambiguous → FAIL-OPEN, proceed to connect() — the
+  // chentrendyukay protection: a real live seller with an odd-shape response
+  // is NEVER blocked; the post-connect roomInfo gate below stays as layer 2.
+  // ⚠️ STATUS-CODE MAPPING DELIBERATELY REJECTED — do NOT re-propose blocking
+  // on roomInfo.status_code (e.g. 4003110, the kimmyukay shape): production
+  // capture 2026-06-30 observed chentrendyukay LIVE with status_code 4003110
+  // (and OFFLINE with the same value) — it is an availability/blocking code,
+  // NOT a live-state signal. Only Euler's is_live boolean discriminates.
+  const preVerdict = await verifyIsLive(key, cleanUsername, "FRESH-VERIFY");
+  if (preVerdict === "not_live") {
+    const notLiveError = new Error("not_live");
+    notLiveError.notLive = true;
+    notLiveError.liveStatus = "euler_is_live_false";
+    throw notLiveError;
+  }
   const tiktokConnection = new WebcastPushConnection(cleanUsername, {
     // Approach A (FLive parity) — decode TikTok's buffered "last minutes"
     // messages from the signed-websocket fetch (they were previously discarded;
@@ -1047,13 +1075,21 @@ async function fetchIsLiveOutcome(cleanUsername) {
 //   ambiguous → "allowed (fail-open)" (error/timeout/odd shape — never block)
 // KILL SIGNAL: a BLOCKED line on an account that is actually live. Expected
 // count across the watch: ZERO. Any hit → rollback / REUSE_VERIFY_SOURCE=tiers.
-async function verifyReuse(key, cleanUsername) {
+async function verifyIsLive(key, cleanUsername, tag) {
   const startedAt = Date.now();
   const outcome = await singleFlight(reuseVerifyInFlight, key, () => fetchIsLiveOutcome(cleanUsername));
   const verdict = reuseVerdict(outcome);
   const marker = verdict === "not_live" ? "BLOCKED" : verdict === "live" ? "allowed" : "allowed (fail-open)";
-  console.log(`[REUSE-VERIFY] ${verdict} ${cleanUsername} ${Date.now() - startedAt}ms ${marker}${outcome.error ? ` reason=${String(outcome.error?.message || outcome.error).slice(0, 120)}` : ""}`);
+  console.log(`[${tag}] ${verdict} ${cleanUsername} ${Date.now() - startedAt}ms ${marker}${outcome.error ? ` reason=${String(outcome.error?.message || outcome.error).slice(0, 120)}` : ""}`);
   return verdict;
+}
+
+// FRESH-VERIFY shares the core (and the single-flight map — a concurrent
+// reuse-verify and fresh-verify on the same key ride ONE probe); the separate
+// [FRESH-VERIFY] tag keeps the running [REUSE-VERIFY] 48hr watch clean. The
+// combined kill-signal grep is simply "BLOCKED" on an actually-live account.
+async function verifyReuse(key, cleanUsername) {
+  return verifyIsLive(key, cleanUsername, "REUSE-VERIFY");
 }
 
 async function connectTikTok(username, res, meta = {}) {

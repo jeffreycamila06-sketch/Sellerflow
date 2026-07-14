@@ -3057,6 +3057,18 @@ Prod-verified sa served bundle (`dpl_FspbJEb1…`, `main-CSFeURzM.js`).
   (handleError = silent no-op sa listener-less probe) — latency ang tier hint.
 - **Phase-2 enforcement flip = ZERO incremental Euler** (parehong verify call,
   awaited lang; single-flight intact).
+- **⚠️ UPDATED (Jul 14, fresh-verify):** ang FRESH-VERIFY pre-connect check ay
+  +1 Euler GET bawat connect/reconnect → **bagong steady state ≈ 450–550/day;
+  headroom bumaba sa ~50–60 sellers** bago kailanganin ang paid tier (mula
+  ~80–100). Kabawi: pinapatay nito ang dead-room zombie reconnect loops
+  (dating ~5–6 walang-kabuluhang connects/oras bawat natapos na live) — sa
+  mga araw na maraming natapos na live, NET na mas mura.
+- **JUST-WENT-LIVE edge (dokumentado, hindi pa na-te-test):** kung ang Euler
+  `is_live` ay `false` sa KAKASIMULANG live (Euler view lag), ang fresh tap ay
+  makakakuha ng not-live toast — pero **retry-able by design**: ang `not_live`
+  ay hindi nagse-set ng cooldown at walang reconnect na naka-schedule; ang
+  susunod na tap (segundo lang ang pagitan) ay inaasahang `is_live=true` →
+  normal connect. HINDI ito permanent block.
 - **C1 (approved Jul 14, kasama sa Phase-2 diff):** verify = DIREKTANG
   `fetchRoomIdFromEuler` (eksaktong ISANG Euler call, walang dead-tier walk)
   bilang default sa Render; ang 3-tier/HTML walk ay HINDI binubura — nasa
