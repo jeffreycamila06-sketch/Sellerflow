@@ -3117,3 +3117,58 @@ Prod-verified sa served bundle (`dpl_FspbJEb1…`, `main-CSFeURzM.js`).
   na cold open (Build 7 = exact `getBuildNumber` → hindi nagse-self-nag;
   1.0/1.1 = synthesis 0, nudged na dati pa). `message_key` nanatiling
   `rd_upd_msg_ble` ("Sticker printing and fixes" — tumpak sa 1.3).
+
+## 2026-07-14 (part 2) — FRESH-PATH FAIL-OPEN SAGA → FRESH-VERIFY (merge `be6ad34`, ⏳ NAKAPILA sa Miy 04:30 deploy)
+Ang pangatlo at HULING pinto ng zombie green, nahuli LIVE sa production sa
+parehong araw ng Phase-2 deploy.
+
+### Ang dalawang production captures (ebidensya — before/after ng fresh-verify)
+- **kimmyukay (Jul 14 11:11 Taipei):** natapos ang live → 600s event-silent →
+  health reconnect → `connect()` RESOLVED na may ambiguous roomInfo
+  (`{"data":{"prompts":""},"status_code":4003110}`) → `[NOT-LIVE] fail-open`
+  → **Connected/green sa patay na live**.
+- **rominakao (Jul 14 11:06:58 + loop):** unang connect ng araw (fresh path,
+  web tap ni Jeff) → parehong fail-open → green sa hindi naka-live na
+  account. **BONUS capture:** ang buong zombie reconnect loop — kada ~10min
+  mula 11:19 hanggang 12:00+, fail-open → Connected sa patay na room, WALANG
+  user (nasa biyahe si Jeff). Pangalawang kimmyukay-class loop = bawat ikot,
+  Euler burn + pekeng green, walang katapusan hangga't walang fresh-verify.
+- **"Nawawalang" Rominakao logs = mali lang ang time window ng unang grep**
+  (03:06:58 UTC ang aktwal) — WALANG connect-truth anomalya; ang architecture
+  ay tumupad sa pangako nitong may server log line sa bawat green. SARADO.
+
+### ⚠️ 4a REJECTION (huwag nang imungkahi muli): status_code ≠ live-state
+Ang mungkahing i-map ang `status_code 4003110` → not_live ay TINANGGIHAN nang
+may ebidensya: ang 2026-06-30 production capture ay nagpakita kay
+**chentrendyukay na LIVE na may `status_code 4003110`** (at OFFLINE na may
+parehong value) — availability/blocking code ito, hindi live signal. Walang
+public documentation ang 4003xxx family. **Ang tanging discriminator = ang
+Euler `is_live` boolean.** Naka-pin din ito sa code comment sa
+`startTikTokConnection` + sa `freshVerify.contract.test.ts`.
+
+### Ang fix (branch `claude/fresh-verify` `77b2e33`, merge `be6ad34`)
+- **`verifyIsLive(key, user, tag)`** = ang Phase-2 verify core, generalized
+  (parehong throwaway probe / 4s timeout / strict-boolean / `REUSE_VERIFY_
+  SOURCE` flag / SHARED single-flight); `verifyReuse` = thin wrapper na
+  nagpapanatili ng `[REUSE-VERIFY]` tag (malinis ang 48hr watch). Bagong tag
+  `[FRESH-VERIFY]`, parehong markers — combined kill grep = `BLOCKED`.
+- **Pre-connect gate sa `startTikTokConnection`** BAGO pa ma-construct ang
+  connection → sakop LAHAT ng caller (fresh tap + forced-fresh + health
+  reconnect). `not_live` → EXISTING `notLiveError` plumbing: fresh tap = ang
+  byte-pinned 409 + toast (retry-able — walang cooldown; ang just-went-live
+  Euler-lag ay naaayos ng muling tap); reconnect = TERMINAL
+  (`live_session_ended`, walang re-schedule) = **ang zombie-loop kill**.
+  `live`/`ambiguous` → tuloy (fail-open — ang chentrendyukay protection);
+  ang post-connect roomInfo gate = layer 2 pa rin.
+- **Quota:** +1 Euler GET per connect/reconnect → steady ~450–550/day,
+  headroom ~50–60 sellers (see the Euler business notes sa itaas); NET
+  savings sa mga araw na may zombie loops (ang rominakao loop mismo = ~5–6
+  connects/oras na nasayang).
+- Tests: `freshVerify.contract.test.ts` (8 pins: placement-before-connect ·
+  terminal-on-reconnect ordering · 409 non-drift/eksaktong-2-bodies ·
+  only-not_live-gates · 4a rejection doc). **1069 vitest · lint 51.**
+- ⏳ **DEPLOY: Miyerkules 04:30 window, may Business Pulse check BAGO ang
+  pindot** (dalawang beses nang nalabag ang protocol — hindi na optional).
+  Post-deploy validation: ang rominakao/kimmyukay-class na natapos na live
+  ay dapat mag-`[FRESH-VERIFY] not_live <user> ...ms BLOCKED` + honest gray
+  sa UNANG reconnect — ihambing sa before-captures sa itaas.
