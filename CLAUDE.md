@@ -3084,6 +3084,23 @@ Prod-verified sa served bundle (`dpl_FspbJEb1…`, `main-CSFeURzM.js`).
   ang ~500ms verify latency, ang Euler Business plan (~$50/mo) ang unlock ng
   ~100ms direct route — env change lang (`REUSE_VERIFY_SOURCE=euler`), zero
   code; presyo-vs-bilis na desisyon sa hinaharap.
+- **✅ QUOTA PANIC = SARADO (Jul 14 gabi, Rate Limits tab verified ni Jeff):**
+  sa 533-request spike day (pinakamabigat na connection-engineering araw:
+  3 Render deploys + gateless zombie loops + live testing), ang **Rate Limits
+  tab = 0 events / 0 unique limiters — KAILANMAN hindi pa naka-429 ang buong
+  account history.** Ang app-side 24hr lock (`TIKTOK_RATE_LIMIT_COOLDOWN_MS`,
+  server.js — kapag na-429 ang account, 24hr ang SARILING lock natin;
+  in-memory, Render restart ang escape) ay hindi pa kailanman na-trigger.
+  **Ang "1000/day" ay mas maluwag kaysa inakala** — ang TAMANG bantay ay ang
+  Analytics daily count TREND + zero-events baseline sa Rate Limits tab,
+  hindi panic sa isang spike day. Spike decomposition (12h, 08:00–20:00):
+  460 `/connect` (deploys×3 + zombie loops hanggang gabi + testing + organic)
+  + 73 `room_id` = LAHAT ang patay na 401 (Client Errors 73 = exact match;
+  **zero successful room_id = hindi umaabot sa tier-3 ang tiers walk →
+  verify = ZERO Euler quota pagka-deploy ng `71b8662`**, na nagtanggal din
+  ng ~150/day na patay na 401). Kahit tumama sa cap: ang naka-connect nang
+  websockets ay tuloy (Euler = connect-time signing lang) — bagong
+  connects/reconnects lang ang mabibigo.
 
 ## 2026-07-14 — B4 PHASE 2 + C1 + VIEWERS RELAY MERGED & DEPLOYED · iOS 1.3 LIVE · ios.latest→7
 - **B4 Phase 2 ENFORCED + C1 Euler-first verify** (branch `claude/b4-phase2`,
