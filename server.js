@@ -1058,6 +1058,13 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
   });
 
   tiktokConnection.on("chat", (data) => {
+    // G1 — OWNING GUARD (money path): only the connection that is CURRENTLY the
+    // seller's active connection for this key may relay. An orphaned old
+    // connection (a failed disconnect() left its listeners alive) would otherwise
+    // double-relay the SAME comment with a fresh server-stamped commentKey → a
+    // DUPLICATE order (Auto Mode) / duplicate feed row. The ring write below had
+    // this guard; the relay + touch did not — this closes that gap.
+    if (tiktokConnections.get(key)?.connection !== tiktokConnection) return;
     touchTikTokConnection(key, tiktokConnection, "chat");
     const comment = data.comment || "";
     const name = data.nickname || data.uniqueId || "Unknown";
