@@ -2658,6 +2658,23 @@ live confirmation na lang — si Lheyukay mismo ang ebidensyang gumagana).
 - Landing/Login fake stats (desisyon ni Jeff, nakabinbin pa rin).
 
 ## 🐛 KNOWN ISSUES
+### ⚠️ FB-functional-status: NEEDS PRODUCT DECISION FROM JEFF (discovered 2026-07-15 audit)
+- **Finding:** ang Facebook ay **NON-FUNCTIONAL server-side** — WALANG FB comment
+  listener / streamEnd / health path kahit saan sa `server.js`. Ang
+  `facebookConnections` entry ay status-marker LANG; walang FB comment na dumadaloy
+  sa server. Ang green FB pill ay **nangangako ng live-comment capture na HINDI
+  ginagawa ng server.**
+- **Ang #2 fix (stopgap, merged sa audit batch) = COSMETIC + LEAK LANG:** 6h
+  time-boxed green (`server/fbLiveness.js`, `fbConnectedNow`) → honest gray → prune
+  ng `facebookConnections` entry sa join snapshot (dating never-deleted → lumalaki
+  hanggang restart). **HINDI nito ginagawang gumagana ang FB** — cosmetic pill +
+  leak-plug lang. TikTok path untouched (may totoong `lastEventAt` liveness).
+- **PRODUCT DECISION (hiwalay na item, kay Jeff):** (a) tapusin ang FB —
+  server-side comment listener + streamEnd + health (malaking bagong work), O
+  (b) itago/i-disable ang FB sa UI hanggang gumana (para hindi mangako ng
+  capture na wala), O (c) iwan as-is (cosmetic stopgap) kung sapat na. **Hindi
+  ito engineering bug — product scope call.**
+
 ### B3 — reuse-branch session mismatch (LOW PRIORITY — hindi tumatama sa kasalukuyang seller flows)
 - **Trigger:** parehong account, BAGONG browser session (ibang device / cleared
   storage / incognito) → reuse branch. **HINDI** tinatamaan ng refresh
