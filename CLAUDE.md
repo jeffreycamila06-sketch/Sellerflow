@@ -3065,3 +3065,43 @@ Prod-verified sa served bundle (`dpl_FspbJEb1…`, `main-CSFeURzM.js`).
 - **Libreng lever bago magbayad** kung lalapit sa cap: luwagan ang 10-min
   `chat_stale` threshold (~33% bawas sa churn sa 15min) — connection sacred
   zone, sariling plan+audit.
+
+## 2026-07-14 — B4 PHASE 2 + C1 + VIEWERS RELAY MERGED & DEPLOYED · iOS 1.3 LIVE · ios.latest→7
+- **B4 Phase 2 ENFORCED + C1 Euler-first verify** (branch `claude/b4-phase2`,
+  merge `2e4a0f0`; Phase-1 gate pasado: 257 live / 0 not_live / 2
+  ambiguous-fail-open): awaited verify (single-flight, throwaway probe) →
+  R2 ownership guard (re-read pagkatapos ng await; mismatch = fall-through
+  sa fresh path) → `not_live` = buong teardown + **409 na BYTE-IDENTICAL sa
+  fresh path** (zero client change; parity + 3b seam + C1 flag + watch
+  markers = pinned sa `b4Phase2.contract.test.ts`, 7 tests). **3b seam:**
+  ang teardown ay nagre-RETURN bago ang ring re-emit AT A4 viewer re-emit.
+  **C1:** verify = ISANG direct Euler `room_id` GET (`REUSE_VERIFY_SOURCE`
+  default `"euler"`); ang legacy HTML 3-tier walk ay RETAINED sa likod ng
+  `REUSE_VERIFY_SOURCE=tiers` (env-only re-enable). Rejection path verified:
+  fetch rejection → `{error}` → ambiguous → fail-open (never 500).
+- **VIEWERS RELAY (server half, merge `1517d44`)** — sakay ng parehong deploy;
+  ang client chip (`351e7de`) ay bubuhayin nito. TATLONG independent rollback
+  paths: enforcement = Render rollback · C1 = `REUSE_VERIFY_SOURCE=tiers` ·
+  viewers = dormant-safe.
+- **DEPLOYED sa Render: Jul 14, 7:07 AM** (hindi 04:30 — see protocol note).
+  Dalawang seller ang naka-live sa deploy (2–6 min gap, PAREHONG naka-recover;
+  ang kanilang reconnects ay DUMAAN sa Phase-2 verify na may tamang `allowed`
+  verdict = **unang production validation ng enforcement**).
+- **⏱ 48hr BLOCKED WATCH: simula 7:08 AM Jul 14 → ~Jul 16 umaga.** Kill
+  signal = `[REUSE-VERIFY] not_live <account> BLOCKED` sa account na AKTWAL
+  na naglilive — inaasahang ZERO. Kung may tumama: Render rollback o
+  `REUSE_VERIFY_SOURCE=tiers`. Ang `allowed` / `allowed (fail-open)` = normal.
+- **🔴 PROTOCOL VIOLATION (PANGALAWANG beses — itigil na ito):** ang
+  deploy-window protocol ay nalabag ulit — na-deploy nang 7:07 AM na may
+  DALAWANG naka-live na seller sa halip na sa 04:30 na tahimik na window.
+  **Ang Business Pulse / DB check ("may naka-live ba ngayon?") bago ang
+  ANUMANG Render deploy ay HINDI optional, kahit umaga, kahag mukhang
+  tahimik.** Bawat Render restart = lahat ng naka-live ay kailangang
+  mag-re-tap ng Connect (manual-connect world). Suwerteng naka-recover ang
+  dalawa — huwag nang umasa sa suwerte sa pangatlo.
+- **🎉 iOS 1.3 / Build 7 = APPROVED + LIVE (Jul 14):** ang Chinese-print fix
+  ay nasa store na. **`native-version.json` `ios.latest` 6→7 MERGED**
+  (`e982804`) — ang Build 6 users ay mano-nudge sa update modal sa susunod
+  na cold open (Build 7 = exact `getBuildNumber` → hindi nagse-self-nag;
+  1.0/1.1 = synthesis 0, nudged na dati pa). `message_key` nanatiling
+  `rd_upd_msg_ble` ("Sticker printing and fixes" — tumpak sa 1.3).
