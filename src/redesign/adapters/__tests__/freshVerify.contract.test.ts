@@ -84,3 +84,18 @@ describe("pin 3 — fail-open: only not_live blocks (the chentrendyukay protecti
     expect(startFn).toContain("chentrendyukay LIVE with status_code 4003110");
   });
 });
+
+describe("wire-shape fix (2026-07-14 silent-ambiguous capture) — never silent, never gateless", () => {
+  it("a shape mismatch THROWS a diagnostic instead of resolving undefined (the reason= suffix always carries the wire truth)", () => {
+    expect(server).toContain("euler_shape code=");
+    // The silent form that swallowed the failure must never return:
+    expect(server).not.toMatch(/typeof d\.is_live === "boolean"\) \? d\.is_live : undefined/);
+  });
+  it("a direct-route failure falls back to the Phase-1-PROVEN tiers walk (the gate keeps functioning)", () => {
+    expect(server).toContain("[VERIFY-FALLBACK] euler-direct failed");
+    expect(server).toMatch(/eulerDirect\(\)\.catch\([\s\S]*?return probe\.fetchIsLive\(\);/);
+  });
+  it("the whole chain still races the single 4s timeout", () => {
+    expect(server).toMatch(/Promise\.race\(\[fetchPromise, timeout\]\)/);
+  });
+});
