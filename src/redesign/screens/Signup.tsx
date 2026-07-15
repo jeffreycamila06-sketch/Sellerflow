@@ -3,7 +3,7 @@
 // `reg` (App.tsx:738-758) via auth.register: signUp → createMyProfile → the auth
 // listener logs the user in (dashboard appears). No Telegram redirect, no Soon badge.
 import { useState, type CSSProperties } from "react";
-import type { RegisterFields, RegisterResult } from "../adapters/useAuthSession";
+import { registrationErrorCode, REG_ERROR_KEYS, type RegisterFields, type RegisterResult } from "../adapters/useAuthSession";
 import { useT } from "../i18n";
 import PasswordInput from "../components/PasswordInput";
 
@@ -25,15 +25,25 @@ export default function Signup({ onBack, onLegal, onRegister }: {
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const set = (k: keyof typeof form, v: string) => { setForm((f) => ({ ...f, [k]: v })); setErr(""); };
+  // All six fields present (the "kulang" signal → button disabled). FORMAT errors
+  // (bad Taiwan phone / short-or-mismatched password) surface on submit instead —
+  // matching Jeff's "disabled OR error" split.
+  const complete = !!(form.storeName.trim() && form.fullName.trim() && form.phone.trim() && form.email.trim() && form.password && form.confirm);
 
   const submit = async () => {
     if (busy) return;
     setErr(""); setOk("");
-    setBusy(true);
-    const r = await onRegister({
+    // Client-first, TRANSLATED validation (same rule the register() hook enforces
+    // as an English backstop). Blocks submit on a missing field / bad Taiwan phone
+    // / short-or-mismatched password BEFORE any network call.
+    const fields: RegisterFields = {
       email: form.email, password: form.password, confirm: form.confirm,
       fullName: form.fullName, storeName: form.storeName, phone: form.phone,
-    });
+    };
+    const code = registrationErrorCode(fields);
+    if (code) { setErr((t as unknown as Record<string, string>)[REG_ERROR_KEYS[code]]); return; }
+    setBusy(true);
+    const r = await onRegister(fields);
     if (r.ok && r.needsConfirm) { setOk(t.rd_su_ok_confirm); setBusy(false); return; }
     if (!r.ok) { setErr(r.error || t.rd_su_err); setBusy(false); return; }
     // success with a session: leave busy=true; the auth listener navigates to the dashboard.
@@ -69,7 +79,7 @@ export default function Signup({ onBack, onLegal, onRegister }: {
         {err && <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--danger)", background: "var(--danger-soft, rgba(225,29,72,.1))", border: "1px solid var(--danger)", borderRadius: 10, padding: "9px 12px", marginTop: 14 }}>{err}</div>}
         {ok && <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ok)", background: "rgba(16,185,129,.1)", border: "1px solid var(--ok)", borderRadius: 10, padding: "9px 12px", marginTop: 14 }}>{ok}</div>}
 
-        <button onClick={() => void submit()} disabled={busy} style={{ width: "100%", marginTop: 18, padding: "14px 0", border: "none", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14.5, fontWeight: 700, cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1, boxShadow: "0 6px 18px var(--accent-soft)" }}>{busy ? t.rd_su_creating : t.rd_login_create_account}</button>
+        <button onClick={() => void submit()} disabled={busy || !complete} style={{ width: "100%", marginTop: 18, padding: "14px 0", border: "none", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14.5, fontWeight: 700, cursor: busy || !complete ? "default" : "pointer", opacity: busy || !complete ? 0.6 : 1, boxShadow: "0 6px 18px var(--accent-soft)" }}>{busy ? t.rd_su_creating : t.rd_login_create_account}</button>
         <div style={{ textAlign: "center", fontSize: 11.5, color: "var(--text-muted)", marginTop: 11, lineHeight: 1.5 }}>{t.rd_su_terms_pre}<span onClick={onLegal} style={{ color: "var(--accent-fg)", fontWeight: 700, cursor: "pointer" }}>{t.rd_terms}</span></div>
         <div style={{ textAlign: "center", fontSize: 12.5, color: "var(--text-dim)", marginTop: 8 }}>{t.rd_su_have_account} <span onClick={onBack} style={{ fontWeight: 700, color: "var(--accent-fg)", cursor: "pointer" }}>{t.rd_login_login_btn}</span></div>
       </div>
