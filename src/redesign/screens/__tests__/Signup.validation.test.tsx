@@ -57,6 +57,17 @@ describe("Signup — required fields + phone validation", () => {
     expect(s.onRegister).not.toHaveBeenCalled();
   });
 
+  it("REGRESSION (prod bug 2026-07-16): Jeff's exact '1234567890' → rejected, onRegister NOT called", async () => {
+    // 10 digits but NOT 09-prefixed. Accepted in prod ONLY because a stale
+    // pre-deploy bundle ran the old >=8-digit rule; the CURRENT code rejects it.
+    const s = renderSignup();
+    s.fillAll({ phone: "1234567890" });
+    expect(s.button().disabled).toBe(false);        // all fields filled → button enabled
+    fireEvent.click(s.button());
+    await waitFor(() => expect(screen.getByText(/valid Taiwan mobile/i)).toBeTruthy());
+    expect(s.onRegister).not.toHaveBeenCalled();     // blocked BEFORE any account create
+  });
+
   it("a mismatched password → translated error, onRegister NOT called", async () => {
     const s = renderSignup();
     s.fillAll({ confirm: "different1" });

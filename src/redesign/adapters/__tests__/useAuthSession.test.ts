@@ -139,6 +139,7 @@ describe("validateRegistration — parity with App.tsx reg (739-742)", () => {
     expect(validateRegistration(regFields({ phone: "12-34" }))).toBe("Enter a valid phone number.");
     expect(validateRegistration(regFields({ phone: "1234567" }))).toBe("Enter a valid phone number.");
     expect(validateRegistration(regFields({ phone: "12345678" }))).toBe("Enter a valid phone number."); // 8 digits but not a TW mobile
+    expect(validateRegistration(regFields({ phone: "1234567890" }))).toBe("Enter a valid phone number."); // Jeff's exact prod input: 10 digits, NOT 09
     expect(validateRegistration(regFields({ phone: "0812345678" }))).toBe("Enter a valid phone number."); // 10 digits but not 09
     expect(validateRegistration(regFields({ phone: "0912345" }))).toBe("Enter a valid phone number."); // too short
     expect(validateRegistration(regFields({ phone: "09123456789" }))).toBe("Enter a valid phone number."); // too long
