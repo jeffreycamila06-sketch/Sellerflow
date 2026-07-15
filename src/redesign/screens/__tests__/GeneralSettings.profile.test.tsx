@@ -43,6 +43,54 @@ it("Profile card 'Save changes' sends name/store/phone only — no tiktok/facebo
   expect(onManageChannel).not.toHaveBeenCalled(); // saving the profile must not navigate to Manage
 });
 
+// ── Profile-edit phone validation — the THIRD path (Jeff saw invalid accepted in
+// Settings). SAME single-source validateTaiwanPhone as signup, but GRANDFATHER:
+// validate only when the phone is CHANGED. BEHAVIORAL — drives the real Save button.
+function renderSettings(over: { phone?: string } = {}) {
+  const onSaveProfile = vi.fn().mockResolvedValue({ ok: true });
+  const acct: AccountUser = { ...account, profile: { ...account.profile, phone: over.phone ?? account.profile.phone } };
+  render(
+    <TProvider lang="en">
+      <GeneralSettings
+        theme="light" accent="indigo" onSetTheme={noop} onSetAccent={noop}
+        auto={auto} cur="NT$" lang="en" onSetLang={noop} currency="TWD" onSetCurrency={noop}
+        profileOpen onToggleProfile={noop}
+        printerIdx={0} printerOpen={false} onTogglePrinter={noop} onPickPrinter={noop} onPrintPattern={noop}
+        onSubscription={noop} onSupport={noop} onDelete={noop}
+        account={acct} onSaveProfile={onSaveProfile} onManageChannel={noop}
+      />
+    </TProvider>,
+  );
+  const phoneInput = () => screen.getByDisplayValue(acct.profile.phone) as HTMLInputElement;
+  const save = () => fireEvent.click(screen.getByText("Save changes"));
+  return { onSaveProfile, phoneInput, save };
+}
+
+describe("Profile edit — phone validation (single-source, grandfathered)", () => {
+  it("changing the phone to an INVALID value blocks the save (onSaveProfile NOT called)", async () => {
+    const s = renderSettings({ phone: "0912345678" });        // starts valid
+    fireEvent.change(s.phoneInput(), { target: { value: "1234567890" } }); // Jeff's exact input
+    s.save();
+    await waitFor(() => expect(screen.getByText(/valid Taiwan mobile/i)).toBeTruthy());
+    expect(s.onSaveProfile).not.toHaveBeenCalled();           // no write
+  });
+
+  it("changing the phone to a VALID value saves it NORMALIZED", async () => {
+    const s = renderSettings({ phone: "0912345678" });
+    fireEvent.change(s.phoneInput(), { target: { value: "0955 123 456" } });
+    s.save();
+    await waitFor(() => expect(s.onSaveProfile).toHaveBeenCalledTimes(1));
+    expect(s.onSaveProfile.mock.calls[0][0].phone).toBe("0955123456"); // clean digits
+  });
+
+  it("GRANDFATHER: an UNCHANGED malformed stored phone still saves (edit other fields freely)", async () => {
+    const s = renderSettings({ phone: "0900" });              // grandfathered bad data
+    s.save();                                                  // phone untouched
+    await waitFor(() => expect(s.onSaveProfile).toHaveBeenCalledTimes(1));
+    expect(s.onSaveProfile.mock.calls[0][0].phone).toBe("0900"); // kept as-is, not blocked
+  });
+});
+
 describe("guard recap", () => {
   it("documents the single-writer invariant", () => {
     // Channels editor → onSaveChannels (tiktok/facebook). Profile card → onSaveProfile (name/store/phone).

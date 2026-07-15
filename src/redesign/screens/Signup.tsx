@@ -3,7 +3,7 @@
 // `reg` (App.tsx:738-758) via auth.register: signUp → createMyProfile → the auth
 // listener logs the user in (dashboard appears). No Telegram redirect, no Soon badge.
 import { useState, type CSSProperties } from "react";
-import { registrationErrorCode, REG_ERROR_KEYS, type RegisterFields, type RegisterResult } from "../adapters/useAuthSession";
+import { registrationErrorCode, REG_ERROR_KEYS, validateTaiwanPhone, type RegisterFields, type RegisterResult } from "../adapters/useAuthSession";
 import { useT } from "../i18n";
 import PasswordInput from "../components/PasswordInput";
 
@@ -25,10 +25,13 @@ export default function Signup({ onBack, onLegal, onRegister }: {
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const set = (k: keyof typeof form, v: string) => { setForm((f) => ({ ...f, [k]: v })); setErr(""); };
-  // All six fields present (the "kulang" signal → button disabled). FORMAT errors
-  // (bad Taiwan phone / short-or-mismatched password) surface on submit instead —
-  // matching Jeff's "disabled OR error" split.
-  const complete = !!(form.storeName.trim() && form.fullName.trim() && form.phone.trim() && form.email.trim() && form.password && form.confirm);
+  // SINGLE-SOURCE phone rule: the button-disable AND the submit both go through
+  // validateTaiwanPhone (no drift — a loose second check was the 2026-07-16 bug).
+  const phoneValid = validateTaiwanPhone(form.phone).valid;
+  const phoneErr = form.phone.trim().length > 0 && !phoneValid; // inline hint (why the button is disabled)
+  // Button enabled only when every field is present AND the phone is a valid TW
+  // mobile — same validateTaiwanPhone the submit re-checks.
+  const complete = !!(form.storeName.trim() && form.fullName.trim() && form.email.trim() && form.password && form.confirm && phoneValid);
 
   const submit = async () => {
     if (busy) return;
@@ -65,7 +68,7 @@ export default function Signup({ onBack, onLegal, onRegister }: {
           <div><label style={label}>{t.rd_set_shop_name}</label><input value={form.storeName} onChange={(e) => set("storeName", e.target.value)} placeholder={t.rd_su_shop_ph} style={input} /></div>
           <div style={{ display: "flex", gap: 9 }}>
             <div style={{ flex: 1, minWidth: 0 }}><label style={label}>{t.rd_set_owner_name}</label><input value={form.fullName} onChange={(e) => set("fullName", e.target.value)} placeholder={t.rd_su_fullname_ph} style={input} /></div>
-            <div style={{ flex: 1, minWidth: 0 }}><label style={label}>{t.rd_set_phone}</label><input value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder={t.rd_su_phone_ph} inputMode="tel" style={{ ...input, fontFamily: "var(--font-mono)", fontSize: 13 }} /></div>
+            <div style={{ flex: 1, minWidth: 0 }}><label style={label}>{t.rd_set_phone}</label><input value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder={t.rd_su_phone_ph} inputMode="tel" style={{ ...input, fontFamily: "var(--font-mono)", fontSize: 13 }} />{phoneErr && <div data-testid="phone-hint" style={{ fontSize: 11, fontWeight: 600, color: "var(--danger)", marginTop: 4 }}>{t.rd_su_err_phone}</div>}</div>
           </div>
           <div><label style={label}>{t.rd_set_email}</label><input value={form.email} onChange={(e) => set("email", e.target.value)} placeholder={t.rd_su_email_ph} autoComplete="email" inputMode="email" style={input} /></div>
         </div>

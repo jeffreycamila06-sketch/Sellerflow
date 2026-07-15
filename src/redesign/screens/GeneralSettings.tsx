@@ -6,7 +6,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { ACCENT_ORDER, ACCENTS, LANGS, CURRENCIES, CURRENCY_ORDER, type ThemeMode, type AccentKey, type AutoControls } from "../data";
 import { headerBar, headerTitle, card, sectionLabel } from "../ui";
-import { profileToDisplay, planLabel, renewLabel } from "../adapters/useAuthSession";
+import { profileToDisplay, planLabel, renewLabel, validateTaiwanPhone } from "../adapters/useAuthSession";
 import type { AccountUser } from "../../accountDb";
 import { useT, tpl } from "../i18n";
 import { accountList } from "../adapters/connect";
@@ -71,12 +71,21 @@ export default function GeneralSettings({
   const handleSaveProfile = async () => {
     if (!onSaveProfile || saveState === "saving") return;
     if (!form.fullName.trim() || !form.storeName.trim()) { setSaveState("error"); setSaveErr(t.rd_set_err_required); return; }
+    // Phone: SAME single-source validateTaiwanPhone as signup. GRANDFATHER — only
+    // validate when the phone was CHANGED, so an existing seller with an empty OR
+    // malformed stored phone can still edit their other fields (their pre-filled
+    // value passes untouched). A NEWLY-typed phone must be a valid TW mobile
+    // (blocks "1234567890"); a valid change is stored normalized (clean 09xxxxxxxx).
+    const ph = form.phone.trim();
+    const originalPh = (account?.profile.phone || "").trim();
+    const phChanged = ph !== originalPh;
+    if (phChanged && ph && !validateTaiwanPhone(ph).valid) { setSaveState("error"); setSaveErr(t.rd_su_err_phone); return; }
     setSaveState("saving"); setSaveErr("");
     // ⚠️ name/store/phone ONLY — never tiktok/facebook (Channels editor owns accounts).
     const r = await onSaveProfile({
       fullName: form.fullName.trim(),
       storeName: form.storeName.trim(),
-      phone: form.phone.trim(),
+      phone: phChanged && ph ? validateTaiwanPhone(ph).normalized : ph, // normalize a valid change; else keep as-is (grandfather)
     });
     if (r.ok) { setSaveState("saved"); }
     else { setSaveState("error"); setSaveErr(r.error || t.rd_set_err_save_failed); }

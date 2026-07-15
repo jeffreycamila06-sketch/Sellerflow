@@ -168,6 +168,14 @@ describe("validateTaiwanPhone — BEHAVIORAL: exercise the validator, assert {va
   it("REGRESSION (prod bug 2026-07-16): '1234567890' is INVALID", () => {
     expect(validateTaiwanPhone("1234567890").valid).toBe(false); // MUST go red if the loose >=8 rule ever returns
   });
+  it("SINGLE SOURCE: registrationErrorCode's phone verdict never drifts from validateTaiwanPhone", () => {
+    // The 2026-07-16 bug was TWO different phone checks. This pins that the signup
+    // rule IS validateTaiwanPhone — if a divergent second check is ever added, red.
+    for (const phone of ["1234567890", "0812345678", "0912345678", "0912 345 678", "+886912345678", "091234567", ""]) {
+      const rejectedByReg = registrationErrorCode(regFields({ phone })) === "phone";
+      expect(rejectedByReg).toBe(!validateTaiwanPhone(phone).valid);
+    }
+  });
 });
 
 describe("isValidTaiwanMobile — normalize, don't reject legit formats", () => {
