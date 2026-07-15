@@ -222,6 +222,37 @@ export function filterAuditLogs(logs: AccountAuditLog[], query: string): Account
   return logs.filter((log) => [log.actorEmail, log.action, log.targetEmail, log.details, log.timestamp].some((v) => String(v || "").toLowerCase().includes(q)));
 }
 
+// Phone normalization for the Manage Sellers search: digits-only + a Taiwan
+// +886/886 → local 0 fold, so a number typed with spaces/dashes/a +886 prefix
+// still matches the clean stored format (09xxxxxxxx). Defensive — the DB data is
+// already clean, but the QUERY comes from a human. Non-string → "".
+export function normPhone(value: string | null | undefined): string {
+  let d = String(value ?? "").replace(/\D/g, "");
+  if (d.startsWith("886")) d = "0" + d.slice(3); // +886 958… → 0958…
+  return d;
+}
+
+// Manage Sellers search predicate (ADMIN-ONLY panel; RLS + useAdminUsers gate).
+// Text haystack = email + connected @handles + admin contact note (the existing
+// behavior, byte-unchanged). PLUS a phone match: the phone lives on the already-
+// loaded rawByEmail AccountUser (listUsers select("*")), NOT on the trimmed
+// display User — so it is pulled from `raw`. The phone match is SCOPED to the
+// phone field only (never dates/ids), normalized both sides, and gated on a
+// >=3-digit query so a short/no-digit text search can't phone-match everyone.
+// A seller with no phone still matches on the text fields (no crash on "").
+export function sellerMatchesQuery(u: User, raw: AccountUser | undefined, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  const handles = (raw?.connectedAccounts || []).join(" ");
+  if (`${u.email} ${handles} ${u.contactNote || ""}`.toLowerCase().includes(q)) return true;
+  const qDigits = normPhone(query);
+  if (qDigits.length >= 3) {
+    const phone = normPhone(raw?.profile.phone);
+    if (phone && phone.includes(qDigits)) return true;
+  }
+  return false;
+}
+
 // ── Read hooks ────────────────────────────────────────────────────────────────
 // (F-batch sweep: the 5b useLiveOrders hook is gone — superseded in 5e when the
 // Orders tab + Dashboard summary switched to the ONE live-session source

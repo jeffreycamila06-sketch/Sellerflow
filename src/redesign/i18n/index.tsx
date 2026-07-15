@@ -840,7 +840,7 @@ const RAW: Record<string, Row> = {
   rd_adm_resets_nd: { en: "resets {n}d", fil: "magre-reset {n}d", zh: "{n} 天后重置", "zh-TW": "{n} 天後重置", vi: "đặt lại {n}d", th: "รีเซ็ต {n}d", id: "reset {n}h" },
 
   // ════ Admin — sellers panel ════
-  rd_adm_search_email: { en: "Search email or @handle", fil: "Maghanap ng email o @handle", zh: "搜索邮箱或 @handle", "zh-TW": "搜尋電子郵件或 @handle", vi: "Tìm email hoặc @handle", th: "ค้นหาอีเมลหรือ @handle", id: "Cari email atau @handle" },
+  rd_adm_search_email: { en: "Search email, @handle, or phone", fil: "Maghanap ng email, @handle, o phone", zh: "搜索邮箱、@handle 或电话", "zh-TW": "搜尋電子郵件、@handle 或電話", vi: "Tìm email, @handle hoặc số điện thoại", th: "ค้นหาอีเมล @handle หรือเบอร์โทร", id: "Cari email, @handle, atau telepon" },
   rd_adm_users: { en: "Users", fil: "Mga user", zh: "用户", "zh-TW": "用戶", vi: "Người dùng", th: "ผู้ใช้", id: "Pengguna" },
   rd_adm_add_user: { en: "+ Add user", fil: "+ Magdagdag ng user", zh: "+ 添加用户", "zh-TW": "+ 新增用戶", vi: "+ Thêm người dùng", th: "+ เพิ่มผู้ใช้", id: "+ Tambah pengguna" },
   rd_adm_coming_soon: { en: "Coming soon", fil: "Malapit na", zh: "即将推出", "zh-TW": "即將推出", vi: "Sắp có", th: "เร็วๆ นี้", id: "Segera hadir" },

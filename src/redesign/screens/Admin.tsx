@@ -6,7 +6,7 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { USERS, SUBS, PLAN_PRICE, initials, fmt, type Sub, type User } from "../data";
 import { headerBar, card, mono } from "../ui";
-import { planDaysLeft, daysDisplay, deriveSubBuckets, deriveUserBase, freeUsersSummary, auditActionColor, filterAuditLogs, type ReadState, type SubBuckets, type FreeUserRow } from "../adapters/useReadData";
+import { planDaysLeft, daysDisplay, deriveSubBuckets, deriveUserBase, freeUsersSummary, auditActionColor, filterAuditLogs, sellerMatchesQuery, type ReadState, type SubBuckets, type FreeUserRow } from "../adapters/useReadData";
 import type { AdminActions, Plan } from "../adapters/useAdmin";
 import { maxAcc } from "../adapters/connect";
 import type { AccountAuditLog, AccountUser } from "../../accountDb";
@@ -315,16 +315,12 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
   const [pwIdx, setPwIdx] = useState<number | null>(null);
   const [pwVal, setPwVal] = useState("");
   const [busy, setBusy] = useState(false);
-  // Client-side seller search — email + connected @handles + contact note. Filters
-  // the already-loaded users array (rawByEmail carries the real handles); no new query.
+  // Client-side seller search — email + connected @handles + contact note + PHONE.
+  // Filters the already-loaded users array (rawByEmail carries the real handles AND
+  // the phone from listUsers select("*")); no new query, admin-only panel.
   const [sellerQ, setSellerQ] = useState("");
-  const sellerQuery = sellerQ.trim().toLowerCase();
-  const matchesSeller = (u: User) => {
-    if (!sellerQuery) return true;
-    const handles = (rawByEmail[u.email]?.connectedAccounts || []).join(" ");
-    return `${u.email} ${handles} ${u.contactNote || ""}`.toLowerCase().includes(sellerQuery);
-  };
-  const noSellerMatches = sellerQuery.length > 0 && !users.some(matchesSeller);
+  const matchesSeller = (u: User) => sellerMatchesQuery(u, rawByEmail[u.email], sellerQ);
+  const noSellerMatches = sellerQ.trim().length > 0 && !users.some(matchesSeller);
   // Announcements composer (broadcast panel). Writes go through the ann hook —
   // RLS is_admin-gated. No confirm dialog: Unpublish IS the undo.
   const [annMsg, setAnnMsg] = useState("");
