@@ -3132,6 +3132,28 @@ Prod-verified sa served bundle (`dpl_FspbJEb1…`, `main-CSFeURzM.js`).
   ng ~150/day na patay na 401). Kahit tumama sa cap: ang naka-connect nang
   websockets ay tuloy (Euler = connect-time signing lang) — bagong
   connects/reconnects lang ang mabibigo.
+- **📊 MEASURED STEADY-STATE BASELINE (2026-07-16, ~3:40 AM Taipei — CLEAN 24h,
+  deploy spike EXCLUDED):** ang Euler Analytics **24-HOUR** window (verified: ang
+  dashboard toggle = "24 Hours", HINDI 12h) = **379 total requests**, success
+  **71.8%**, **0 rate-limit events**. Decomposition: **279 `/connect`** (signed-
+  websocket fetch, one per socket connect = fresh taps + health-cycle reconnects;
+  ang tier-1/2 verify HTML/API ay `signRequest:false` = direct sa TikTok = HINDI
+  bilang sa Euler, kaya ang tunay na verify volume ay mas mataas pero LIBRE) +
+  **100 `/webcast/anchors/{id}/room_id`** (LAHAT 401 = harmless offline/ambiguous-
+  account verify tier-3 fallbacks; paywalled Business route → bumabagsak sa free
+  tiers walk) + **7 5xx** (offline-account connect attempts, Branch B = healthy).
+  Per-active-seller: **18 active sellers** (DB `live_session_orders` distinct
+  user_id / 24h, 2,865 orders) → **~15.5 connect/seller** at **~21 euler-req/
+  seller** = NORMAL (multi-hour live + quiet-room `chat_stale` reconnects). **~2.6×
+  headroom** sa 1000/day cap. **VERDICT: (A) normal steady-state — walang leak/
+  driver; ang bahagyang mataas-sa-lumang-estimate (~250-350) ay dahil sa MAS
+  MARAMING active sellers (18 vs historikal na ~8), hindi sa waste.** Ang deploy
+  (2:21 AM Jul 15 Taipei = 18:21 UTC Jul 14) ay ~90 min BAGO ang window start
+  (19:40 UTC Jul 14) → ang reconnect burst ay LABAS na sa 24h count. ⚠️ Ang
+  eksaktong Render-log split ([FRESH-VERIFY]/[REUSE-VERIFY]/health-reconnect) ay
+  kailangan ng Render dashboard grep (walang Render-log tool sa remote session);
+  ang `[VERIFY-FALLBACK]` grep = ang disambiguator kung tiers (absent) o euler
+  (present) ang deployed na verify source — hindi nagbabago ang verdict.
 
 ## 2026-07-14 — B4 PHASE 2 + C1 + VIEWERS RELAY MERGED & DEPLOYED · iOS 1.3 LIVE · ios.latest→7
 - **B4 Phase 2 ENFORCED + C1 Euler-first verify** (branch `claude/b4-phase2`,
