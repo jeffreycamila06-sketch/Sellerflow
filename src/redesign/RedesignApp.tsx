@@ -53,7 +53,7 @@ import { csvDL, dayStamp } from "./adapters/csv";
 import { computeSales } from "./adapters/sales";
 import { useSalesReport } from "./adapters/salesReport";
 import { sessionKeyFor } from "./adapters/shipping";
-import { printSlip, buildSettingsFromRedesign, setNativePrintAlertText, type Settings as PrintSettings } from "./adapters/printing";
+import { printSlip, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, isPrinterNotSetup, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
 import { btCall, hasBtBridge, buildTestStickerPayload, buildTestBuyer, type StickerPrintResult } from "./adapters/printerBridge";
@@ -69,6 +69,7 @@ import { isIOS, STATUS_BAR_BACKDROP_HEIGHT } from "./adapters/platform";
 import { isAdminRole } from "../lib/roles";
 import UpdateModal from "./components/UpdateModal";
 import ExpiryModal from "./components/ExpiryModal";
+import PrinterModal from "./components/PrinterModal";
 import { currentNativePlatform, readBinaryBuild, shouldShowUpdate, wasDismissed, markDismissed, storeUrlFor, bridgeBuildNumber, isUpdatePreview, IOS_BLE_BUILD, type NativePlatform, type NativeVersionConfig } from "./adapters/nativeVersion";
 import { computeExpiryTier, wasExpiryDismissed, markExpiryDismissed, previewExpiryTier, type ExpiryTier } from "./adapters/planExpiryModal";
 import { planDaysLeft } from "../lib/planWindow";
@@ -371,6 +372,26 @@ export default function RedesignApp() {
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(null), toast.kind === "err" ? 3200 : 1800); return () => clearTimeout(id); }, [toast]);
+
+  // "No printer connected" modal — an order printed but the native bridge said no
+  // printer is set up yet (BT_NOT_SET / PRINTER_NOT_SET). The order is ALREADY
+  // saved (Option A); this only nudges the seller to finish setup. Registered
+  // ONCE; reads screen via a ref so it can suppress itself while the seller is
+  // already on the printer setup screens. No-stack: a burst of failed auto-prints
+  // keeps the single open instance (functional set-state) — 3 orders, 1 modal.
+  const [printerModal, setPrinterModal] = useState<{ via: PrintVia } | null>(null);
+  const screenRef = useRef(screen);
+  useEffect(() => { screenRef.current = screen; }, [screen]); // ref write in an effect (react-hooks/refs)
+  useEffect(() => {
+    setNativePrintFailureHandler(({ code, message, via }) => {
+      if (!isPrinterNotSetup(code, message)) return false; // other codes keep their legacy path
+      // Consume (suppress the legacy alert) but don't nag while they're setting up.
+      if (screenRef.current === "printersettings" || screenRef.current === "printpattern") return true;
+      setPrinterModal((cur) => cur || { via });
+      return true;
+    });
+    return () => setNativePrintFailureHandler(null);
+  }, []);
 
   // ── Cold-open modal coordinator: plan-EXPIRY nudge (priority) then native
   // UPDATE nudge. Runs ONCE after auth resolves — at that point nothing is live
@@ -1046,6 +1067,16 @@ export default function RedesignApp() {
         )}
         {!expiry && update && (
           <UpdateModal messageKey={update.messageKey} force={update.force} href={storeUrlFor(update.platform).web} onDismiss={dismissUpdate} onAction={onUpdateTap} />
+        )}
+
+        {/* "No printer connected" — order saved, but nothing printed (no printer
+            set up yet). Primary button = the verified deep-link straight to the
+            printer setup screen (right tab pre-selected by the failing path). */}
+        {printerModal && (
+          <PrinterModal
+            onGoSettings={() => { const via = printerModal.via; setPrinterModal(null); setPsType(via === "bluetooth" ? "bt" : "wifi"); setScreen("printersettings"); }}
+            onDismiss={() => setPrinterModal(null)}
+          />
         )}
 
         {/* Auto-dismissing toast (no buttons). ok = neutral dark pill; err = danger tint + ⚠ */}
