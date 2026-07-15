@@ -3309,3 +3309,58 @@ server relay sumakay sa Phase-2 deploy).
   balang araw.
 - 48hr BLOCKED watch: tuloy — kill signal pa rin ang BLOCKED sa aktwal na
   naglilive (wala pang tumama; lahat ng BLOCKED ay verified offline).
+
+## SESSION 2026-07-15/16 — 9-FINDING AUDIT BATCH DEPLOYED + printer modal + phone search (all LIVE)
+
+### AUDIT BATCH ✅ DEPLOYED sa Render (2:21 AM Jul 15) + Vercel — buong 9-finding remediation LIVE
+Ang full senior-audit (2 HIGH + 7 MEDIUM) ay KUMPLETO NA at LIVE. Bawat item:
+branch → diff → adversarial audit (sacred-zone) → Jeff merge. Server-half items ay
+sabay na na-deploy sa 2:21 AM Jul 15 Render restart (BUDGETUKAY5 reconnected clean
+post-deploy = live validation).
+- **#3 (🔴 HIGH) printing injection** — `server/sanitize.js`: control-byte strip
+  (C0 0x00-0x1F + DEL 0x7F → space) sa `emitCommentScoped` choke-point (live +
+  initial + reuse re-emit). CJK/emoji byte-identical; msgId/avatar/ts untouched;
+  TSPL builders NOT modified. CWE-77/93/150.
+- **#1 (🔴 HIGH) order durability** — Family A (EARLIER Vercel deploy, live):
+  localStorage outbox retry (live_session_orders ONLY — orders/customers NOT
+  idempotent) + msgId dedup + `ux_lso_user_msgid` index backstop.
+- **#4 rate-limit cooldown** — `resolveRateLimitCooldownMs` honors Euler
+  reset/Retry-After, 30min default (was fixed 24h lock). RFC 9110.
+- **#6 account cap** — server-side per-plan registered-account verification
+  (`server/accountCap.js`); was client-only. CWE-602/API5.
+- **#2 FB liveness stopgap** — time-boxed 6h green + Map prune (`server/fbLiveness.js`).
+  ⚠️ COSMETIC lang — FB non-functional pa rin (see KNOWN ISSUES FB-functional-status).
+- **#5a connect throttle** — per-authUserId 20/60s middleware (`checkConnectRate`).
+- **G1 owning guard** — `isOwningConnection` sa chat-handler top + ring write (the
+  ONLY double-relay protection for FB no-msgId). Byte-equivalent, zero behavior change.
+- **#8 CSV injection** — `csvSafeCell` prepends `'` sa formula-trigger cells (6 export
+  sinks). EARLIER Vercel deploy, live. CWE-1236.
+- **tiers-flip (71b8662)** — `REUSE_VERIFY_SOURCE` default → tiers (euler-direct
+  room_id = Business-paywalled 401). Live.
+- **Note:** walang natitirang undeployed server commit as of the 2:21 AM Jul 15 deploy.
+
+### NO-PRINTER-CONNECTED MODAL ✅ LIVE (merge `9e6d18c`, Vercel `dpl_ABqjmE9U…`)
+Client-only. An order that auto-prints/manual-prints with NO printer set up saved the
+order but printed nothing SILENTLY (sticker = console.warn; slip = window.alert
+swallowed by the WebView "prevent dialogs" toggle) → sellers called support. Fix:
+`printing.ts` `setNativePrintFailureHandler` hook captures the native `{code,message}`
+from BOTH failure shapes (resolved `{ok:false}` + Capacitor reject); pure
+`isPrinterNotSetup` = only `BT_NOT_SET`/`PRINTER_NOT_SET` (Jeff's two triggers). New
+`PrinterModal.tsx` (ExpiryModal shape, amber) → "Go to Printer Settings" INTERNAL nav
+(`setScreen("printersettings")` + psType pre-select). Option A: order saved FIRST
+(onPrint fires after applyOrder + the DB writes are kicked off; modal only fires when
+an order was created). No-stack (single state slot + functional set-state). Suppressed
+on the printer-settings screens. TSPL byte-parity untouched. 4 `rd_prn_*` ×7. ⏳
+PENDING Jeff APK device test (web has no bridge → won't fire there).
+
+### MANAGE SELLERS PHONE SEARCH ✅ LIVE-VALIDATED (merge `d3dd34b`, Vercel `dpl_88PYoDdj…`)
+The admin Manage Sellers search covered email + @handles + contact note ONLY, so a
+phone lookup returned "No sellers found" even though `seller_profiles.phone` is
+populated (36/38) and ALREADY loaded on the admin client (`listUsers` select("*") →
+rawByEmail — NOT an RPC). Fix (100% client-side, admin-only): pure `normPhone`
+(digits-only, +886/886 → local 0) + `sellerMatchesQuery` in useReadData — text
+haystack BYTE-UNCHANGED + phone-field-scoped normalized match, ≥3-digit guard. Phone
+used ONLY in the predicate, NEVER rendered → zero new exposure (RLS own-or-is_admin +
+useAdminUsers gate already applied). Placeholder → "Search email, @handle, or phone"
+×7. ⚠️ `0958704782` (Jeff's test #) is NOT in the DB — validated with `0958161233`
+(leinapan). No RPC/server/DB change.
