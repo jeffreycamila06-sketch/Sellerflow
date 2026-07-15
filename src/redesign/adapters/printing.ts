@@ -95,6 +95,47 @@ export function buildSlipPayload(buyer: Buyer, cur: string, storeName: string, c
 let nativeFailAlertText = "Native printer failed.";
 export function setNativePrintAlertText(text: string): void { if (text) nativeFailAlertText = text; }
 
+// ── No-printer-connected surfacing ───────────────────────────────────────────
+// The native bridge fails an order-print SILENTLY today (console.warn for the
+// sticker paths; window.alert for the slip path — swallowed by the WebView
+// "prevent dialogs" toggle). This lets RedesignApp register ONE handler that
+// receives the captured {code, message, via} and shows the "No printer
+// connected" modal. printSlip's signature is UNCHANGED — the handler fires from
+// the async tail, AFTER the order is already saved (Option A: the sale is never
+// lost). If the handler CONSUMES the failure (returns true) the legacy
+// console.warn/alert is suppressed; otherwise the old behavior runs unchanged,
+// so non-config failure codes (BT_OFF/permission/print-failed/…) are untouched.
+export interface NativePrintFailure { code: string; message: string; via: PrintVia; }
+let nativePrintFailureHandler: ((info: NativePrintFailure) => boolean) | null = null;
+export function setNativePrintFailureHandler(fn: ((info: NativePrintFailure) => boolean) | null): void {
+  nativePrintFailureHandler = fn;
+}
+// Extract {code, message} from either failure shape: a resolved {ok:false,...}
+// object OR a Capacitor call.reject error (err.code / err.message).
+function readFailure(x: unknown): { code: string; message: string } {
+  const o = (x && typeof x === "object" ? x : {}) as { code?: unknown; message?: unknown };
+  return { code: typeof o.code === "string" ? o.code : "", message: typeof o.message === "string" ? o.message : "" };
+}
+// Route a native print failure to the registered handler. Returns true when the
+// handler consumed it (caller should skip the legacy console.warn/alert).
+function reportNativePrintFailure(via: PrintVia, code: string, message: string): boolean {
+  if (!nativePrintFailureHandler) return false;
+  try { return nativePrintFailureHandler({ code, message, via }) === true; }
+  catch { return false; }
+}
+
+// PURE — is this native failure the "no printer set up yet" case (Jeff's two
+// triggers: BT no device saved / LAN no IP saved)? Code-first; message-regex
+// fallback for older binaries that reject without a code. Every OTHER code
+// (BT_NOT_FOUND / BT_OFF / BT_PERMISSION / BT_PRINT_FAILED / BT_BUSY /
+// BT_UNAVAILABLE) returns false → keeps its existing behavior. Unit-tested.
+const NOT_SETUP_CODES = new Set(["BT_NOT_SET", "PRINTER_NOT_SET"]);
+export function isPrinterNotSetup(code: string, message: string): boolean {
+  if (code && NOT_SETUP_CODES.has(code)) return true;
+  if (code) return false; // a known non-setup code — never guess from the message
+  return /no\s+(?:bluetooth\s+)?(?:wifi\s+)?printer\s+saved|enter\s+printer\s+ip|no\s+printer\s+selected/i.test(message || "");
+}
+
 // ── Native bridge — copied verbatim from App.tsx:445-451, 475-509, 591-618 ───
 function hasNativeMobilePrinter(): boolean {
   if (typeof window === "undefined") return false;
@@ -112,13 +153,16 @@ function sendSlipToNativePrinter(payload: NativePrinterPayload): boolean {
       if (msg && typeof msg === "object") {
         const m = msg as { ok?: boolean; message?: string };
         if (m.ok) return;
-        const text = m.message || nativeFailAlertText; // F-batch i18n (was hardcoded English)
+        const { code, message } = readFailure(m);
+        const text = message || nativeFailAlertText; // F-batch i18n (was hardcoded English)
+        if (reportNativePrintFailure("native-slip", code, text)) return; // consumed by the no-printer modal
         console.warn(text);
         window.alert(text);
         return;
       }
       if (typeof msg !== "string" || !msg.trim()) return;
       if (/printed to/i.test(msg)) return;
+      if (reportNativePrintFailure("native-slip", "", msg)) return; // consumed by the no-printer modal
       console.warn(msg);
       window.alert(msg);
     }).catch((err) => console.warn("Native printer bridge failed.", err));
@@ -138,8 +182,15 @@ async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: st
   if (!bridge?.printStickerNative) return false;
   try {
     const result = await bridge.printStickerNative(buildNativeStickerPayload(buyer, cur, storeName, cfg));
-    return !!result?.ok;
-  } catch (err) { console.warn("printStickerNative bridge call failed:", err); return false; }
+    if (result?.ok) return true;
+    const { code, message } = readFailure(result);
+    if (!reportNativePrintFailure("bluetooth", code, message)) console.warn("[BT sticker] print failed:", message || "check pairing/selection.");
+    return false;
+  } catch (err) {
+    const { code, message } = readFailure(err);
+    if (!reportNativePrintFailure("bluetooth", code, message)) console.warn("printStickerNative bridge call failed:", err);
+    return false;
+  }
 }
 
 async function printStickerViaLan(buyer: Buyer, cur: string, storeName: string, cfg: Settings): Promise<boolean> {
@@ -147,8 +198,15 @@ async function printStickerViaLan(buyer: Buyer, cur: string, storeName: string, 
   if (!bridge?.printStickerLan) return false;
   try {
     const result = await bridge.printStickerLan(buildNativeStickerPayload(buyer, cur, storeName, cfg));
-    return !!result?.ok;
-  } catch (err) { console.warn("printStickerLan bridge call failed:", err); return false; }
+    if (result?.ok) return true;
+    const { code, message } = readFailure(result);
+    if (!reportNativePrintFailure("lan", code, message)) console.warn("[LAN sticker] print failed:", message || "check WiFi printer IP.");
+    return false;
+  } catch (err) {
+    const { code, message } = readFailure(err);
+    if (!reportNativePrintFailure("lan", code, message)) console.warn("printStickerLan bridge call failed:", err);
+    return false;
+  }
 }
 
 // HTML-escape (used by the browser-print template below).
@@ -165,11 +223,11 @@ export function printSlip(buyer: Buyer, cur: string, storeName: string, printSet
   const cfg: Settings = typeof printSettings === "string" ? { ...DEF_SETTINGS, stickerSize: printSettings } : printSettings;
   const nativePrinter = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
   if (shouldUseBluetoothSticker(cfg.printerType, !!nativePrinter?.printStickerNative)) {
-    void printStickerViaBluetooth(buyer, cur, storeName, cfg).then((ok) => { if (!ok) console.warn("[BT sticker] print failed — check pairing/selection."); });
+    void printStickerViaBluetooth(buyer, cur, storeName, cfg); // failure surfaced inside (no-printer modal or console.warn)
     return { ok: true, via: "bluetooth" };
   }
   if (shouldUseLanSticker(cfg.printerType, cfg.lanFormat, !!nativePrinter?.printStickerLan)) {
-    void printStickerViaLan(buyer, cur, storeName, cfg).then((ok) => { if (!ok) console.warn("[LAN sticker] print failed — check WiFi printer IP."); });
+    void printStickerViaLan(buyer, cur, storeName, cfg); // failure surfaced inside (no-printer modal or console.warn)
     return { ok: true, via: "lan" };
   }
   const nativePayload = buildSlipPayload(buyer, cur, storeName, cfg);
