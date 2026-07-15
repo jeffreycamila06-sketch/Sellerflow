@@ -9,6 +9,9 @@ import {
   DEFAULT_CURRENCY,
   normalizePhone,
   phoneDisplay,
+  isValidTaiwanMobile,
+  registrationErrorCode,
+  REG_ERROR_KEYS,
   validateRegistration,
   mapSignUpError,
   localKeysToClear,
@@ -18,7 +21,7 @@ import type { AccountUser } from "../../../accountDb";
 
 const regFields = (over: Partial<RegisterFields> = {}): RegisterFields => ({
   email: "new@shop.com", password: "secret1", confirm: "secret1",
-  fullName: "New Owner", storeName: "New Shop", phone: "0917 000 0000", ...over,
+  fullName: "New Owner", storeName: "New Shop", phone: "0912 345 678", ...over,
 });
 
 function makeUser(over: Partial<AccountUser> = {}): AccountUser {
@@ -132,14 +135,49 @@ describe("validateRegistration — parity with App.tsx reg (739-742)", () => {
     expect(validateRegistration(regFields({ email: "" }))).toBe("Please fill in all fields.");
     expect(validateRegistration(regFields({ password: "" }))).toBe("Please fill in all fields.");
   });
-  it("requires phone >= 8 digits", () => {
+  it("requires a valid Taiwan mobile (09xxxxxxxx) — garbage/short rejected", () => {
     expect(validateRegistration(regFields({ phone: "12-34" }))).toBe("Enter a valid phone number.");
     expect(validateRegistration(regFields({ phone: "1234567" }))).toBe("Enter a valid phone number.");
-    expect(validateRegistration(regFields({ phone: "12345678" }))).toBe("");
+    expect(validateRegistration(regFields({ phone: "12345678" }))).toBe("Enter a valid phone number."); // 8 digits but not a TW mobile
+    expect(validateRegistration(regFields({ phone: "0812345678" }))).toBe("Enter a valid phone number."); // 10 digits but not 09
+    expect(validateRegistration(regFields({ phone: "0912345" }))).toBe("Enter a valid phone number."); // too short
+    expect(validateRegistration(regFields({ phone: "09123456789" }))).toBe("Enter a valid phone number."); // too long
   });
   it("requires password >= 6 and matching confirm", () => {
     expect(validateRegistration(regFields({ password: "abc", confirm: "abc" }))).toBe("Password must be at least 6 characters.");
     expect(validateRegistration(regFields({ password: "secret1", confirm: "secret2" }))).toBe("Passwords do not match.");
+  });
+});
+
+describe("isValidTaiwanMobile — normalize, don't reject legit formats", () => {
+  it("accepts 09xxxxxxxx with spaces / dashes / +886", () => {
+    expect(isValidTaiwanMobile("0912345678")).toBe(true);
+    expect(isValidTaiwanMobile("0912 345 678")).toBe(true);
+    expect(isValidTaiwanMobile("0912-345-678")).toBe(true);
+    expect(isValidTaiwanMobile("+886912345678")).toBe(true); // +886 → 0
+    expect(isValidTaiwanMobile("886 912 345 678")).toBe(true);
+  });
+  it("rejects non-TW-mobile / wrong length / empty", () => {
+    expect(isValidTaiwanMobile("12345678")).toBe(false);   // no 09
+    expect(isValidTaiwanMobile("0812345678")).toBe(false);  // 08, not 09
+    expect(isValidTaiwanMobile("0912345")).toBe(false);     // short
+    expect(isValidTaiwanMobile("09123456789")).toBe(false); // long
+    expect(isValidTaiwanMobile("")).toBe(false);
+  });
+});
+
+describe("registrationErrorCode + REG_ERROR_KEYS — single source, i18n mapping", () => {
+  it("returns the right code per failure (first-fail order)", () => {
+    expect(registrationErrorCode(regFields())).toBe("");
+    expect(registrationErrorCode(regFields({ storeName: " " }))).toBe("fields");
+    expect(registrationErrorCode(regFields({ phone: "123" }))).toBe("phone");
+    expect(registrationErrorCode(regFields({ password: "abc", confirm: "abc" }))).toBe("pw_len");
+    expect(registrationErrorCode(regFields({ confirm: "different1" }))).toBe("pw_match");
+  });
+  it("every non-empty code maps to an rd_su_err_* i18n key", () => {
+    for (const code of ["fields", "phone", "pw_len", "pw_match"] as const) {
+      expect(REG_ERROR_KEYS[code]).toMatch(/^rd_su_err_/);
+    }
   });
 });
 

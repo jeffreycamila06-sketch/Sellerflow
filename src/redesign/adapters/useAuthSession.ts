@@ -186,14 +186,47 @@ export function useAuthSession(): UseAuthSession {
 export const normalizePhone = (value: string): string => String(value || "").replace(/\D/g, "");
 export const phoneDisplay = (value: string): string => String(value || "").trim();
 
-// Mirrors App.tsx `reg` validation (739-742): all fields required, phone ≥ 8
-// digits, password ≥ 6, password === confirm. Returns an error string or "".
-export function validateRegistration(f: RegisterFields): string {
-  if (!f.fullName.trim() || !f.storeName.trim() || !f.email.trim() || !f.password) return "Please fill in all fields.";
-  if (normalizePhone(f.phone).length < 8) return "Enter a valid phone number.";
-  if (f.password.length < 6) return "Password must be at least 6 characters.";
-  if (f.password !== f.confirm) return "Passwords do not match.";
+// A valid Taiwan mobile after normalization: strip non-digits, fold a +886/886
+// country prefix to the local 0, then require 09 + 8 digits (09xxxxxxxx, 10
+// total). NORMALIZE, don't reject — "0912 345 678", "0912-345-678" and
+// "+886912345678" all pass; garbage like "12345678" (no 09 prefix) does not.
+export function isValidTaiwanMobile(phone: string): boolean {
+  let d = normalizePhone(phone); // strip non-digits (reuse)
+  if (d.startsWith("886")) d = "0" + d.slice(3);
+  return /^09\d{8}$/.test(d);
+}
+
+// SINGLE-SOURCE registration rule → an error CODE (or ""). Both the English
+// backstop (validateRegistration, used by the register() hook) and the
+// translated client layer (Signup via REG_ERROR_KEYS) derive from this, so the
+// two can never diverge. All fields required, phone = Taiwan mobile, password
+// ≥ 6, password === confirm.
+export type RegErrorCode = "" | "fields" | "phone" | "pw_len" | "pw_match";
+export function registrationErrorCode(f: RegisterFields): RegErrorCode {
+  if (!f.fullName.trim() || !f.storeName.trim() || !f.email.trim() || !f.password) return "fields";
+  if (!isValidTaiwanMobile(f.phone)) return "phone";
+  if (f.password.length < 6) return "pw_len";
+  if (f.password !== f.confirm) return "pw_match";
   return "";
+}
+
+// code → i18n key (translated client-facing errors, filled ×7).
+export const REG_ERROR_KEYS: Record<Exclude<RegErrorCode, "">, string> = {
+  fields: "rd_su_err_fields", phone: "rd_su_err_phone", pw_len: "rd_su_err_pw_len", pw_match: "rd_su_err_pw_match",
+};
+
+// English backstop for the register() hook (no `t` in a hook). Same shape/strings
+// as before (parity) EXCEPT phone is now the Taiwan-mobile rule. Only reached if a
+// caller bypasses the translated client validation — defense in depth.
+const REG_ERROR_EN: Record<Exclude<RegErrorCode, "">, string> = {
+  fields: "Please fill in all fields.",
+  phone: "Enter a valid phone number.",
+  pw_len: "Password must be at least 6 characters.",
+  pw_match: "Passwords do not match.",
+};
+export function validateRegistration(f: RegisterFields): string {
+  const code = registrationErrorCode(f);
+  return code ? REG_ERROR_EN[code] : "";
 }
 
 // Mirrors App.tsx (746): existing-email detection.
