@@ -2888,14 +2888,23 @@ numeric gates ay ang `WindowDays` type + `clampWindowDays` (+ ang pill
   hangga't walang pumipili ng 4. Zero i18n (lahat templated), zero server,
   zero protected files. `rebuildSessionFromRows` = linear (verified) sa ~3.1k
   rows.
-- ⏳ **VALIDATION PENDING (huwag pa ituring na sarado):** ang unang
-  day-crossing test (Jul 14) ay NA-RESET — binago ni Jeff ang session setting
-  Jul 13 → sariwang window Jul 14 na may buyers #1–4 na. **Bagong pass
-  criteria: Jul 15 umaga, isang bagong order sa googletest nang HINDI
-  ginagalaw ang setting → dapat buyer #5 (tuloy ang numbering), hindi #1.**
-  Kapag pumasa, i-stamp ang ✅ dito. (Operational na aral: ang pagpalit ng N
-  ay nagbubukas ng sariwang window — kaya ang day-crossing test ay dapat
-  walang setting change sa pagitan.)
+- ✅ **DAY-CROSSING TEST PASADO (Jul 15, googletest) — 4-DAY SESSION SARADO:**
+  ang buyer numbering ay TUMULOY tumawid sa Taipei midnight nang WALANG setting
+  change — **#5/#6/#7 sa `session_date 2026-07-14` → #8/#9/#10/#11 sa
+  2026-07-15, IISANG 4-day window** (`window_start 2026-07-14`, `window_days 4`),
+  HINDI nag-reset sa #1. DB-verified: 11 buyers sa window, orders spanning
+  07-14→07-15. (Operational na aral na napatunayan: ang pagpalit ng N ay
+  nagbubukas ng sariwang window — kaya ang day-crossing test ay dapat walang
+  setting change sa pagitan; ito ang dahilan ng Jul 14 false-reset.)
+- ✅ **BONUS — Family A LIVE-PROVEN sa production (Jul 15):** buyer #9 (Adam💕)
+  ay 3 orders sa 6 segundo pero **LAHAT #9** (hindi 3 magkaibang buyer#) —
+  live proof na tama ang buyer-number stability + Family A dedup/idempotency
+  (msgId dedup + `ux_lso_user_msgid` index) post-deploy: rapid-fire orders mula
+  sa iisang buyer ay tama ang pagka-attribute, walang duplicate-buyer# na bug.
+- ⏳ **ROLLOUT (handa na):** pwede nang i-Telegram ni Jeff sa mga humihiling na
+  sellers — **full-close-open LAHAT ng phones, pili ng 4d BAGO ang bagong
+  cycle, per-phone ang buyer#** (draft message ready). Broadcast sa lahat =
+  pagkalipas ng ilang araw (per naunang rollout decision).
 
 ## ENTERPRISE ✓ (iPhone typed-price print fix) ✅ DEVICE-VALIDATED (merge `b9b6040` Jul 13; validated + approved ni Jeff Jul 13, totoong hardware session)
 **BUG:** ang Enterprise typed-price sa iPhone ay walang paraang mag-print —
