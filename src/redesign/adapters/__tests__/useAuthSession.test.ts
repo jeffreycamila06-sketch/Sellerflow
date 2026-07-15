@@ -9,6 +9,7 @@ import {
   DEFAULT_CURRENCY,
   normalizePhone,
   phoneDisplay,
+  validateTaiwanPhone,
   isValidTaiwanMobile,
   registrationErrorCode,
   REG_ERROR_KEYS,
@@ -147,6 +148,25 @@ describe("validateRegistration — parity with App.tsx reg (739-742)", () => {
   it("requires password >= 6 and matching confirm", () => {
     expect(validateRegistration(regFields({ password: "abc", confirm: "abc" }))).toBe("Password must be at least 6 characters.");
     expect(validateRegistration(regFields({ password: "secret1", confirm: "secret2" }))).toBe("Passwords do not match.");
+  });
+});
+
+describe("validateTaiwanPhone — BEHAVIORAL: exercise the validator, assert {valid, normalized}", () => {
+  it("VALID formats all pass and normalize to 0912345678", () => {
+    for (const input of ["0912345678", "0912 345 678", "0912-345-678", "+886912345678", "886 912 345 678", "(0912) 345-678"]) {
+      const r = validateTaiwanPhone(input);
+      expect(r.valid).toBe(true);
+      expect(r.normalized).toBe("0912345678"); // clean stored form
+    }
+  });
+  it("INVALID inputs are rejected (valid=false)", () => {
+    // 1234567890 = the exact prod input that slipped in on a STALE bundle.
+    for (const input of ["1234567890", "0812345678", "091234567", "09123456789", "abcd123456", "12-34", "", "0900000"]) {
+      expect(validateTaiwanPhone(input).valid).toBe(false);
+    }
+  });
+  it("REGRESSION (prod bug 2026-07-16): '1234567890' is INVALID", () => {
+    expect(validateTaiwanPhone("1234567890").valid).toBe(false); // MUST go red if the loose >=8 rule ever returns
   });
 });
 

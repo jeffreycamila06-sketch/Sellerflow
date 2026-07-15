@@ -83,4 +83,15 @@ describe("Signup — required fields + phone validation", () => {
     await waitFor(() => expect(s.onRegister).toHaveBeenCalledTimes(1));
     expect(s.onRegister).toHaveBeenCalledWith(expect.objectContaining({ phone: "0912 345 678", email: "new@shop.com" }));
   });
+
+  it("NO Enter-key bypass: pressing Enter (invalid phone) never submits", async () => {
+    const s = renderSignup();
+    s.fillAll({ phone: "1234567890" });             // filled but invalid
+    // There is no <form>, so Enter has no submit handler — it must NOT reach onRegister.
+    const inputs = Array.from(document.querySelectorAll("input"));
+    fireEvent.keyDown(inputs[IDX.phone], { key: "Enter", code: "Enter" });
+    fireEvent.keyDown(inputs[IDX.pw], { key: "Enter", code: "Enter" });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(s.onRegister).not.toHaveBeenCalled();    // Enter is not a submit/bypass path
+  });
 });
