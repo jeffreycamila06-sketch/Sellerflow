@@ -1086,12 +1086,19 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("No Bluetooth printer saved. Tap Scan in Settings and pick a printer first.", "BT_NOT_SET")
             return
         }
-        // PHASE 0 GUARD: the Phomemo 241 builder does not exist yet — the AIMO
-        // stream renders wrong on it. Refuse the ORDER path with a zero-byte
-        // no-op so no seller accidentally prints a broken sticker (test-print
-        // diagnostics only until Phase 1). AIMO (.aimo) prints normally below.
+        // PHASE 0 (Phomemo 241 only): ⚠️ the redesign's Test Print button calls
+        // THIS method (printStickerNative + a test payload tagged isTest:true) —
+        // NOT testStickerPrint. That mis-wiring made v1 of this guard reject the
+        // Test button itself ("check pairing", zero labels, 2026-07-16 device
+        // test). So: a TEST tap runs the Phase 0 probes; a REAL order stays a
+        // zero-byte PROFILE_NOT_READY no-op until the Phase 1 builder exists —
+        // no seller can print a broken sticker. AIMO (.aimo) prints normally.
         if BleStickerLogic.resolveProfile(name: savedBleName()) == .phomemo241 {
-            call.reject("Phomemo 241 order printing isn't enabled yet (diagnostics only). Run Test Print in Printer Settings.", "PROFILE_NOT_READY")
+            if call.getBool("isTest") ?? false {
+                runPhase0Probes(savedId: savedId, call: call)
+            } else {
+                call.reject("Phomemo 241 order printing isn't enabled yet (diagnostics only). Run Test Print in Printer Settings.", "PROFILE_NOT_READY")
+            }
             return
         }
         let buyer = call.getObject("buyer") ?? [:]
@@ -1294,28 +1301,24 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         return out
     }
 
-    /// F1 fix: emit the 3 probes as SEPARATE DONE-gated jobs, in sequence — each
-    /// a complete label numbered N/3 so a missing one is obvious, never silently
-    /// truncated by a shared multi-PRINT stream.
+    /// F1 fix: the 3 probes ride ONE connection as a DONE-gated SEQUENCE — label
+    /// N+1 is sent only after label N's PRINTING:DONE (no truncation possible),
+    /// and there is no per-label reconnect (sequential printJob calls raced the
+    /// previous job's in-flight disconnect). Labels are numbered 1/3..3/3 so a
+    /// missing one is visible on paper; on failure the label count on paper +
+    /// the error message locate the failing stage.
     private func runPhase0Probes(savedId: String, call: CAPPluginCall) {
-        let p1 = buildPhomemoProbeLatin()
-        let p2 = buildPhomemoProbeCjk()
-        let p3 = buildPhomemoProbeRaster()
-        bleTransport.printJob(data: p1, preferredId: savedId) { [weak self] e1 in
-            guard let self = self else { return }
-            if let e1 = e1 { call.reject("Phase 0 P1 (Latin) failed: \(e1.message)", e1.code); return }
-            self.bleTransport.printJob(data: p2, preferredId: savedId) { [weak self] e2 in
-                guard let self = self else { return }
-                if let e2 = e2 { call.reject("Phase 0 P2 (CJK) failed: \(e2.message)", e2.code); return }
-                self.bleTransport.printJob(data: p3, preferredId: savedId) { e3 in
-                    if let e3 = e3 { call.reject("Phase 0 P3 (raster) failed: \(e3.message)", e3.code); return }
-                    call.resolve([
-                        "ok": true,
-                        "phase0": true,
-                        "labels": 3,
-                        "message": "Phase 0 probes sent: 3 labels (P1 Latin, P2 CJK+receipts, P3 raster).",
-                    ])
-                }
+        let payloads = [buildPhomemoProbeLatin(), buildPhomemoProbeCjk(), buildPhomemoProbeRaster()]
+        bleTransport.printJobSequence(payloads: payloads, preferredId: savedId) { error in
+            if let error = error {
+                call.reject("Phase 0 probe sequence failed (count the printed labels — numbered 1/3..3/3 — to locate the stage): \(error.message)", error.code)
+            } else {
+                call.resolve([
+                    "ok": true,
+                    "phase0": true,
+                    "labels": 3,
+                    "message": "Phase 0 probes sent: 3 labels (P1 Latin, P2 CJK+receipts, P3 raster).",
+                ])
             }
         }
     }
@@ -1548,6 +1551,13 @@ final class BleStickerTransport: NSObject, CBCentralManagerDelegate, CBPeriphera
     private var allChunksSent = false
     private var notifyBuffer = ""
     private var payload = Data()
+    // Multi-label queue (printJobSequence ONLY — always [] for printJob, so the
+    // single-payload AIMO path is provably byte-identical). Each queued payload
+    // is its own PRINT 1 label, DONE-gated before the next is sent, all inside
+    // ONE connection (sequential printJob calls raced: job N+1's connect vs job
+    // N's in-flight cancelPeripheralConnection → stale didDisconnectPeripheral
+    // killed job N+1).
+    private var remainingPayloads: [Data] = []
 
     private let uuidService = CBUUID(string: "FF00")
     private let uuidWrite = CBUUID(string: "FF02")
@@ -1586,6 +1596,7 @@ final class BleStickerTransport: NSObject, CBCentralManagerDelegate, CBPeriphera
                 self.jobActive = true
                 self.jobDone = { err in DispatchQueue.main.async { completion(err) } }
                 self.payload = data
+                self.remainingPayloads = []   // single-payload job (AIMO path) — queue always empty
                 self.preferredId = (preferredId?.isEmpty == false) ? preferredId : nil
                 self.fallbackTarget = nil
                 self.notifyBuffer = ""
@@ -1601,6 +1612,54 @@ final class BleStickerTransport: NSObject, CBCentralManagerDelegate, CBPeriphera
                 }
 
                 // fast paths: known identifier, or already system-connected (FF00)
+                var target: CBPeripheral?
+                if let id = self.preferredId, let uuid = UUID(uuidString: id) {
+                    target = self.central?.retrievePeripherals(withIdentifiers: [uuid]).first
+                }
+                if target == nil {
+                    target = self.central?.retrieveConnectedPeripherals(withServices: [self.uuidService]).first
+                }
+                if let p = target { self.connect(p) } else { self.scanForJob() }
+            }
+        }
+    }
+
+    /// Multi-label job: ONE connection, each payload its own PRINT 1 label,
+    /// DONE-gated per label (label N+1 is sent only after label N's
+    /// PRINTING:DONE — the F1 no-truncation guarantee), disconnect only after
+    /// the LAST label. Used by the Phomemo Phase 0 probes; printJob (the AIMO
+    /// path) is untouched and keeps its exact single-payload behavior.
+    func printJobSequence(payloads: [Data], preferredId: String?, completion: @escaping (BleError?) -> Void) {
+        guard let first = payloads.first else {
+            DispatchQueue.main.async { completion(nil) }
+            return
+        }
+        ensurePoweredOn { [weak self] error in
+            guard let self = self else { return }
+            if let error = error { DispatchQueue.main.async { completion(error) }; return }
+            self.queue.async {
+                if self.jobActive || self.scanDone != nil {
+                    DispatchQueue.main.async { completion(BleError(message: "Another printer task is still in progress.", code: "BT_BUSY")) }
+                    return
+                }
+                self.jobActive = true
+                self.jobDone = { err in DispatchQueue.main.async { completion(err) } }
+                self.payload = first
+                self.remainingPayloads = Array(payloads.dropFirst())
+                self.preferredId = (preferredId?.isEmpty == false) ? preferredId : nil
+                self.fallbackTarget = nil
+                self.notifyBuffer = ""
+                self.pendingChunks = []
+                self.nextChunk = 0
+                self.allChunksSent = false
+                self.writeChar = nil
+                self.notifyChar = nil
+
+                // wider cap than the single-label 30s: N labels ride one job
+                self.overallTimer = self.schedule(seconds: 75) { [weak self] in
+                    self?.finishJob(BleError(message: "Print sequence timed out.", code: "BT_PRINT_FAILED"))
+                }
+
                 var target: CBPeripheral?
                 if let id = self.preferredId, let uuid = UUID(uuidString: id) {
                     target = self.central?.retrievePeripherals(withIdentifiers: [uuid]).first
@@ -1837,8 +1896,30 @@ final class BleStickerTransport: NSObject, CBCentralManagerDelegate, CBPeriphera
         notifyBuffer += String(data: value, encoding: .utf8)
             ?? String(decoding: value, as: UTF8.self)
         if BleStickerLogic.containsPrintDone(notifyBuffer) {
-            finishJob(nil)
+            // Single-payload job (AIMO): queue is always empty → finish, exactly
+            // as before. Sequence job: this label is CONFIRMED printed → send the
+            // next one on the SAME connection.
+            if remainingPayloads.isEmpty {
+                finishJob(nil)
+            } else {
+                advancePayload()
+            }
         }
+    }
+
+    /// Sequence jobs only: label N confirmed (DONE) → reset the per-label state
+    /// and pump label N+1 over the live connection. Never reached by printJob
+    /// (its queue is always empty).
+    private func advancePayload() {
+        guard jobActive, let p = peripheral else { return }
+        phaseTimer?.cancel(); phaseTimer = nil
+        notifyBuffer = ""
+        payload = remainingPayloads.removeFirst()
+        let chunkSize = BleStickerLogic.clampChunkSize(p.maximumWriteValueLength(for: .withoutResponse))
+        pendingChunks = BleStickerLogic.chunks(payload, chunkSize: chunkSize)
+        nextChunk = 0
+        allChunksSent = false
+        pump()
     }
 
     // MARK: finish (idempotent; ALWAYS releases the printer)
@@ -1865,6 +1946,7 @@ final class BleStickerTransport: NSObject, CBCentralManagerDelegate, CBPeriphera
         notifyChar = nil
         fallbackTarget = nil
         pendingChunks = []
+        remainingPayloads = []
         payload = Data()
         notifyBuffer = ""
         let done = jobDone

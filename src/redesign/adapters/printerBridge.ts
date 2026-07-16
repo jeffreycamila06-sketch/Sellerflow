@@ -65,7 +65,16 @@ export async function btCall<T>(action: BtBridgeAction, arg?: unknown): Promise<
   const fn = bridge?.[action];
   if (typeof fn !== "function") return null;
   try { return (arg === undefined ? await fn() : await fn(arg)) as T; }
-  catch { return null; }
+  catch (err) {
+    // A native call.reject(message, code) lands here. Surfacing it (instead of
+    // the old `return null`) lets the screens show the REAL failure — the null
+    // swallow reduced every reject to the generic "check pairing" toast, which
+    // hid the actual stage during the 2026-07-16 Phomemo Phase 0 device test.
+    // Callers only read `ok`/`message` (or optional fields that stay undefined),
+    // so the absent-bridge `null` contract is unchanged.
+    const e = err as { message?: string; code?: string };
+    return { ok: false, message: e?.message || String(err) || "Printer bridge failed", code: e?.code } as T;
+  }
 }
 
 // Test-sticker buyer — verbatim from App.tsx:2086. Exported so the web Printer
@@ -75,7 +84,11 @@ export function buildTestBuyer(): Buyer {
 }
 
 // Fed through the byte-parity buildNativeStickerPayload (printing.ts) into
-// printStickerNative.
+// printStickerNative. isTest marks it as the Test-Print button (the redesign's
+// test goes through printStickerNative, NOT testStickerPrint) so the native
+// side can route a Phomemo-241 TEST to the Phase 0 diagnostics while a real
+// order stays PROFILE_NOT_READY-gated. The AIMO native path ignores the flag —
+// the underlying payload is byte-unchanged.
 export function buildTestStickerPayload(cur: string, storeName: string, settings: Settings) {
-  return buildNativeStickerPayload(buildTestBuyer(), cur || "NT$", storeName || "SellerFlowLive", settings);
+  return { ...buildNativeStickerPayload(buildTestBuyer(), cur || "NT$", storeName || "SellerFlowLive", settings), isTest: true };
 }
