@@ -1144,30 +1144,11 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             ? buildTsplSticker241(buyer: buyer, settings: settings, storeName: storeName, currency: currency, sessionDate: sessionDate, labelWidthMm: labelWidthMm, labelHeightMm: labelHeightMm)
             : buildTsplSticker(buyer: buyer, settings: settings, storeName: storeName, currency: currency, sessionDate: sessionDate, labelWidthMm: labelWidthMm, labelHeightMm: labelHeightMm)
 
-        // 241 TEST print: also emit a FONT-STEPPING PROBE label (internal fonts
-        // "1".."8" at rot-180) so ONE photo shows which fonts the 241 renders + their
-        // sizes — the data to decide whether internal-font stepping (the ROM-typeface
-        // route, no band) can replace the raster bands. TWO labels, one connection.
-        // AIMO + real orders are untouched (single label via printJob below).
-        if is241 && (call.getBool("isTest") ?? false) {
-            let probe = buildPhomemoFontProbe(labelWidthMm: labelWidthMm, labelHeightMm: labelHeightMm)
-            bleTransport.printJobSequence(payloads: [data, probe], preferredId: savedId) { [weak self] error in
-                guard let self = self else { return }
-                if let error = error {
-                    call.reject("Bluetooth print failed: \(error.message)", error.code)
-                } else {
-                    call.resolve([
-                        "ok": true,
-                        "bytes": data.count + probe.count,
-                        "labels": 2,
-                        "savedPrinter": self.savedBlePrinterOrNull(),
-                        "message": "241 test: sticker + font-stepping probe (fonts 1–8 at rot-180) sent.",
-                    ])
-                }
-            }
-            return
-        }
-
+        // NOTE (2026-07-17): the font-stepping PROBE that briefly rode the test print
+        // is REMOVED — its verdict is in. The 241 renders internal fonts "1".."5"
+        // (no "6".."8") and "5" is UPPERCASE-ONLY, so internal-font stepping can give
+        // neither the full scale range nor a case-clean typeface. The raster band
+        // (with the (xMul,yMul) glyph stretch) is the FINAL scaling architecture.
         bleTransport.printJob(data: data, preferredId: savedId) { [weak self] error in
             guard let self = self else { return }
             if let error = error {
@@ -1181,29 +1162,6 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                 ])
             }
         }
-    }
-
-    /// Font-stepping PROBE (241 diagnostic only). Prints the internal fonts "1".."8"
-    /// at rotation 180 (the real sticker path) so a single photo reveals which the
-    /// 241 renders and their relative sizes — the evidence to decide font-stepping
-    /// (clean ROM typeface, no band) vs the raster bands. rot-180 anchor = (W−x, H−y).
-    private func buildPhomemoFontProbe(labelWidthMm: Int, labelHeightMm: Int) -> Data {
-        var out = Data()
-        func w(_ s: String) { out.append(contentsOf: tsplAsciiBytes(s)); out.append(contentsOf: [0x0D, 0x0A]) }
-        let W = labelWidthMm * 8, H = labelHeightMm * 8
-        w("SIZE \(labelWidthMm) mm, \(labelHeightMm) mm")
-        w("GAP 2 mm, 0")
-        w("DIRECTION 0")
-        w("REFERENCE 0,0")
-        w("DENSITY 8")
-        w("CLS")
-        var y = 16
-        for f in ["1", "2", "3", "4", "5", "6", "7", "8"] {
-            w("TEXT \(W - 16),\(H - y),\"\(f)\",180,1,1,\"F\(f) Ag80\"")
-            y += 34
-        }
-        w("PRINT 1")
-        return out
     }
 
     /// Byte-faithful port of TsplBuilder.textTestPage (Java) — the diagnostic
@@ -1460,13 +1418,21 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         // to (W−x−boxW, H−y−h). The layout math below (top-down y, gaps, guards,
         // Total) is the VERBATIM AIMO layout — only these emit primitives carry the
         // rotation. W/H = label in dots (203 DPI = 8 dot/mm), matching c.wDots.
+        //   EDGE_GUARD: the AIMO's 16-dot LEFT margin maps to a 16-dot RIGHT margin
+        //   under the 180° flip, but the 241's DIRECTION-0 printable window is
+        //   narrower/offset on that side (60×40 device: the FIRST letter of every
+        //   line — the right-hugging one after the flip — clipped). So pull the whole
+        //   layout LEFT by EDGE_GUARD: the flipped layout is right-heavy (its left
+        //   side has ~200 dots of slack), so this clears the right edge without
+        //   clipping the left. Applied to text + bands (BAR clamps at 0).
         let W = labelWidthMm * 8
         let H = labelHeightMm * 8
+        let edgeGuard = 32
         func emitText(_ x: Int, _ y: Int, _ font: String, _ xMul: Int, _ yMul: Int, _ content: String) {
-            writeAscii("TEXT \(W - x),\(H - y),\"\(font)\",180,\(xMul),\(yMul),\"\(content)\"")
+            writeAscii("TEXT \(W - x - edgeGuard),\(H - y),\"\(font)\",180,\(xMul),\(yMul),\"\(content)\"")
         }
         func emitBar(_ x: Int, _ y: Int, _ w: Int, _ h: Int) {
-            writeAscii("BAR \(W - x - w),\(H - y - h),\(w),\(h)")
+            writeAscii("BAR \(max(0, W - x - w - edgeGuard)),\(H - y - h),\(w),\(h)")
         }
         // Emit `content` as a pre-rotated raster band at height `bandH`, box
         // re-anchored under the 180° map: top-left → (W−x−boxW, H−y−h). boxW =
@@ -1479,7 +1445,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             let fitted = truncate16(content, budget)
             guard let band = renderBand(fitted, max(1, xMul), max(1, yMul), max(8, rightEdge - x)),
                   band.height > 0, band.widthBytes > 0, !band.bytes.isEmpty else { return }
-            let bx = W - x - band.widthBytes * 8
+            let bx = max(0, W - x - band.widthBytes * 8 - edgeGuard)
             let by = H - y - band.height
             out.append(contentsOf: tsplAsciiBytes("BITMAP \(bx),\(by),\(band.widthBytes),\(band.height),0,"))
             out.append(contentsOf: band.bytes)

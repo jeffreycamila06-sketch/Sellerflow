@@ -54,7 +54,9 @@ final class Phomemo241BuilderTests: XCTestCase {
 
     /// Deterministic 180°-about-centre rewrite of an AIMO TSPL stream on the ASCII
     /// lines the parity fixture produces (fixture content has no quoted commas).
-    /// W/H = label dots (mm × 8).
+    /// W/H = label dots (mm × 8). EDGE_GUARD (32) mirrors the fork's right-edge inset
+    /// (the 60×40 DIR-0 clip fix): text x → W−x−32, BAR x → max(0, W−x−w−32).
+    private let edgeGuard = 32
     private func rotate180(_ aimo: String, _ W: Int, _ H: Int) -> String {
         return aimo.components(separatedBy: "\r\n").map { line -> String in
             if line == "DIRECTION 1" { return "DIRECTION 0" }
@@ -62,12 +64,12 @@ final class Phomemo241BuilderTests: XCTestCase {
                 let f = line.dropFirst(5).components(separatedBy: ",")
                 guard f.count >= 7, let x = Int(f[0]), let y = Int(f[1]) else { return line }
                 let content = f[6...].joined(separator: ",")
-                return "TEXT \(W - x),\(H - y),\(f[2]),180,\(f[4]),\(f[5]),\(content)"
+                return "TEXT \(W - x - edgeGuard),\(H - y),\(f[2]),180,\(f[4]),\(f[5]),\(content)"
             }
             if line.hasPrefix("BAR ") {
                 let f = line.dropFirst(4).components(separatedBy: ",")
                 guard f.count == 4, let x = Int(f[0]), let y = Int(f[1]), let w = Int(f[2]), let h = Int(f[3]) else { return line }
-                return "BAR \(W - x - w),\(H - y - h),\(w),\(h)"
+                return "BAR \(max(0, W - x - w - edgeGuard)),\(H - y - h),\(w),\(h)"
             }
             return line
         }.joined(separator: "\r\n")
@@ -155,7 +157,7 @@ final class Phomemo241BuilderTests: XCTestCase {
         XCTAssertTrue(bandTexts[0].contains("\u{0E2A}"), "band text keeps the Thai glyphs (no stripUnrenderable — D4)")
         let s = String(decoding: out, as: UTF8.self)
         // Band box re-anchored under the 180° map: x = W(800) − 16 − widthBytes*8(32) = 752.
-        XCTAssertTrue(s.contains("BITMAP 752,"), "band emits a BITMAP at the 180°-mapped name x origin (800−16−32)")
+        XCTAssertTrue(s.contains("BITMAP 720,"), "band emits a BITMAP at the 180°-mapped name x origin (800−16−32)")
         XCTAssertFalse(s.contains("@thaiseller"), "the name line must not silently become the handle")
     }
 
@@ -183,7 +185,7 @@ final class Phomemo241BuilderTests: XCTestCase {
         let s = String(decoding: out, as: UTF8.self)
         // BITMAP x,y,widthBytes,height,0, — the exact mode/order the P3 probe printed
         // (x = 800 − 16 − 4*8 = 752 under the 180° map).
-        XCTAssertNotNil(s.range(of: #"BITMAP 752,\d+,4,48,0,"#, options: .regularExpression),
+        XCTAssertNotNil(s.range(of: #"BITMAP 720,\d+,4,48,0,"#, options: .regularExpression),
                         "BITMAP header must be x,y,widthBytes,height,mode0 (P3-proven syntax) at the mapped anchor")
     }
 
