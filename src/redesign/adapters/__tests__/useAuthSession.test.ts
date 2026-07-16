@@ -9,8 +9,6 @@ import {
   DEFAULT_CURRENCY,
   normalizePhone,
   phoneDisplay,
-  validateTaiwanPhone,
-  isValidTaiwanMobile,
   registrationErrorCode,
   REG_ERROR_KEYS,
   validateRegistration,
@@ -18,11 +16,12 @@ import {
   localKeysToClear,
   type RegisterFields,
 } from "../useAuthSession";
+import { validatePhone } from "../phone";
 import type { AccountUser } from "../../../accountDb";
 
 const regFields = (over: Partial<RegisterFields> = {}): RegisterFields => ({
   email: "new@shop.com", password: "secret1", confirm: "secret1",
-  fullName: "New Owner", storeName: "New Shop", phone: "0912 345 678", ...over,
+  fullName: "New Owner", storeName: "New Shop", phone: "0912 345 678", phoneCountry: "TW", ...over,
 });
 
 function makeUser(over: Partial<AccountUser> = {}): AccountUser {
@@ -136,14 +135,15 @@ describe("validateRegistration — parity with App.tsx reg (739-742)", () => {
     expect(validateRegistration(regFields({ email: "" }))).toBe("Please fill in all fields.");
     expect(validateRegistration(regFields({ password: "" }))).toBe("Please fill in all fields.");
   });
-  it("requires a valid Taiwan mobile (09xxxxxxxx) — garbage/short rejected", () => {
+  it("rejects an invalid phone (default TW context) — incl. the 1234567890 regression", () => {
     expect(validateRegistration(regFields({ phone: "12-34" }))).toBe("Enter a valid phone number.");
-    expect(validateRegistration(regFields({ phone: "1234567" }))).toBe("Enter a valid phone number.");
-    expect(validateRegistration(regFields({ phone: "12345678" }))).toBe("Enter a valid phone number."); // 8 digits but not a TW mobile
-    expect(validateRegistration(regFields({ phone: "1234567890" }))).toBe("Enter a valid phone number."); // Jeff's exact prod input: 10 digits, NOT 09
-    expect(validateRegistration(regFields({ phone: "0812345678" }))).toBe("Enter a valid phone number."); // 10 digits but not 09
+    expect(validateRegistration(regFields({ phone: "1234567890" }))).toBe("Enter a valid phone number."); // Jeff's exact prod input
     expect(validateRegistration(regFields({ phone: "0912345" }))).toBe("Enter a valid phone number."); // too short
-    expect(validateRegistration(regFields({ phone: "09123456789" }))).toBe("Enter a valid phone number."); // too long
+    expect(validateRegistration(regFields({ phone: "abcd" }))).toBe("Enter a valid phone number."); // garbage
+  });
+  it("accepts a valid PH phone when the country is PH (international)", () => {
+    expect(validateRegistration(regFields({ phone: "09154081462", phoneCountry: "PH" }))).toBe(""); // PH mobile OK
+    expect(validateRegistration(regFields({ phone: "09154081462", phoneCountry: "TW" }))).toBe("Enter a valid phone number."); // 11-digit invalid for TW
   });
   it("requires password >= 6 and matching confirm", () => {
     expect(validateRegistration(regFields({ password: "abc", confirm: "abc" }))).toBe("Password must be at least 6 characters.");
@@ -151,47 +151,16 @@ describe("validateRegistration — parity with App.tsx reg (739-742)", () => {
   });
 });
 
-describe("validateTaiwanPhone — BEHAVIORAL: exercise the validator, assert {valid, normalized}", () => {
-  it("VALID formats all pass and normalize to 0912345678", () => {
-    for (const input of ["0912345678", "0912 345 678", "0912-345-678", "+886912345678", "886 912 345 678", "(0912) 345-678"]) {
-      const r = validateTaiwanPhone(input);
-      expect(r.valid).toBe(true);
-      expect(r.normalized).toBe("0912345678"); // clean stored form
+describe("SINGLE SOURCE: registrationErrorCode's phone verdict === validatePhone (no drift)", () => {
+  it("never drifts across inputs/countries — the 2026-07-16 two-check bug can't recur", () => {
+    const cases: Array<[string, string]> = [
+      ["1234567890", "TW"], ["0812345678", "TW"], ["0912345678", "TW"], ["+886912345678", "TW"],
+      ["09154081462", "PH"], ["09154081462", "TW"], ["", "TW"],
+    ];
+    for (const [phone, phoneCountry] of cases) {
+      const rejectedByReg = registrationErrorCode(regFields({ phone, phoneCountry })) === "phone";
+      expect(rejectedByReg).toBe(!validatePhone(phone, phoneCountry).valid);
     }
-  });
-  it("INVALID inputs are rejected (valid=false)", () => {
-    // 1234567890 = the exact prod input that slipped in on a STALE bundle.
-    for (const input of ["1234567890", "0812345678", "091234567", "09123456789", "abcd123456", "12-34", "", "0900000"]) {
-      expect(validateTaiwanPhone(input).valid).toBe(false);
-    }
-  });
-  it("REGRESSION (prod bug 2026-07-16): '1234567890' is INVALID", () => {
-    expect(validateTaiwanPhone("1234567890").valid).toBe(false); // MUST go red if the loose >=8 rule ever returns
-  });
-  it("SINGLE SOURCE: registrationErrorCode's phone verdict never drifts from validateTaiwanPhone", () => {
-    // The 2026-07-16 bug was TWO different phone checks. This pins that the signup
-    // rule IS validateTaiwanPhone — if a divergent second check is ever added, red.
-    for (const phone of ["1234567890", "0812345678", "0912345678", "0912 345 678", "+886912345678", "091234567", ""]) {
-      const rejectedByReg = registrationErrorCode(regFields({ phone })) === "phone";
-      expect(rejectedByReg).toBe(!validateTaiwanPhone(phone).valid);
-    }
-  });
-});
-
-describe("isValidTaiwanMobile — normalize, don't reject legit formats", () => {
-  it("accepts 09xxxxxxxx with spaces / dashes / +886", () => {
-    expect(isValidTaiwanMobile("0912345678")).toBe(true);
-    expect(isValidTaiwanMobile("0912 345 678")).toBe(true);
-    expect(isValidTaiwanMobile("0912-345-678")).toBe(true);
-    expect(isValidTaiwanMobile("+886912345678")).toBe(true); // +886 → 0
-    expect(isValidTaiwanMobile("886 912 345 678")).toBe(true);
-  });
-  it("rejects non-TW-mobile / wrong length / empty", () => {
-    expect(isValidTaiwanMobile("12345678")).toBe(false);   // no 09
-    expect(isValidTaiwanMobile("0812345678")).toBe(false);  // 08, not 09
-    expect(isValidTaiwanMobile("0912345")).toBe(false);     // short
-    expect(isValidTaiwanMobile("09123456789")).toBe(false); // long
-    expect(isValidTaiwanMobile("")).toBe(false);
   });
 });
 

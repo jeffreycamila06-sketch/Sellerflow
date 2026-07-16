@@ -3,9 +3,15 @@
 // `reg` (App.tsx:738-758) via auth.register: signUp → createMyProfile → the auth
 // listener logs the user in (dashboard appears). No Telegram redirect, no Soon badge.
 import { useState, type CSSProperties } from "react";
-import { registrationErrorCode, REG_ERROR_KEYS, validateTaiwanPhone, type RegisterFields, type RegisterResult } from "../adapters/useAuthSession";
+import { registrationErrorCode, REG_ERROR_KEYS, type RegisterFields, type RegisterResult } from "../adapters/useAuthSession";
+import { validatePhone, DEFAULT_COUNTRY } from "../adapters/phone";
 import { useT } from "../i18n";
+import { useLang } from "../i18n/langContext";
 import PasswordInput from "../components/PasswordInput";
+import CountryPhoneField from "../components/CountryPhoneField";
+
+const PHONE_COUNTRY_KEY = "sfl_rd_phone_country";
+const readCountry = () => { try { return localStorage.getItem(PHONE_COUNTRY_KEY) || DEFAULT_COUNTRY; } catch { return DEFAULT_COUNTRY; } };
 
 const label: CSSProperties = { fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 5 };
 const input: CSSProperties = { width: "100%", padding: "12px 13px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 600, outline: "none" };
@@ -20,28 +26,30 @@ export default function Signup({ onBack, onLegal, onRegister }: {
   onRegister: (f: RegisterFields) => Promise<RegisterResult>;
 }) {
   const t = useT();
+  const lang = useLang();
   const [form, setForm] = useState({ storeName: "", fullName: "", phone: "", email: "", password: "", confirm: "" });
+  const [phoneCountry, setPhoneCountry] = useState(readCountry);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
   const set = (k: keyof typeof form, v: string) => { setForm((f) => ({ ...f, [k]: v })); setErr(""); };
+  const pickCountry = (iso: string) => { setPhoneCountry(iso); setErr(""); try { localStorage.setItem(PHONE_COUNTRY_KEY, iso); } catch { /* ignore */ } };
   // SINGLE-SOURCE phone rule: the button-disable AND the submit both go through
-  // validateTaiwanPhone (no drift — a loose second check was the 2026-07-16 bug).
-  const phoneValid = validateTaiwanPhone(form.phone).valid;
+  // the SAME validatePhone(number, country) (no drift). International via
+  // libphonenumber against the picked country (default TW).
+  const phoneValid = validatePhone(form.phone, phoneCountry).valid;
   const phoneErr = form.phone.trim().length > 0 && !phoneValid; // inline hint (why the button is disabled)
-  // Button enabled only when every field is present AND the phone is a valid TW
-  // mobile — same validateTaiwanPhone the submit re-checks.
   const complete = !!(form.storeName.trim() && form.fullName.trim() && form.email.trim() && form.password && form.confirm && phoneValid);
 
   const submit = async () => {
     if (busy) return;
     setErr(""); setOk("");
     // Client-first, TRANSLATED validation (same rule the register() hook enforces
-    // as an English backstop). Blocks submit on a missing field / bad Taiwan phone
-    // / short-or-mismatched password BEFORE any network call.
+    // as an English backstop). Blocks submit on a missing field / bad phone /
+    // short-or-mismatched password BEFORE any network call.
     const fields: RegisterFields = {
       email: form.email, password: form.password, confirm: form.confirm,
-      fullName: form.fullName, storeName: form.storeName, phone: form.phone,
+      fullName: form.fullName, storeName: form.storeName, phone: form.phone, phoneCountry,
     };
     const code = registrationErrorCode(fields);
     if (code) { setErr((t as unknown as Record<string, string>)[REG_ERROR_KEYS[code]]); return; }
@@ -68,7 +76,7 @@ export default function Signup({ onBack, onLegal, onRegister }: {
           <div><label style={label}>{t.rd_set_shop_name}</label><input value={form.storeName} onChange={(e) => set("storeName", e.target.value)} placeholder={t.rd_su_shop_ph} style={input} /></div>
           <div style={{ display: "flex", gap: 9 }}>
             <div style={{ flex: 1, minWidth: 0 }}><label style={label}>{t.rd_set_owner_name}</label><input value={form.fullName} onChange={(e) => set("fullName", e.target.value)} placeholder={t.rd_su_fullname_ph} style={input} /></div>
-            <div style={{ flex: 1, minWidth: 0 }}><label style={label}>{t.rd_set_phone}</label><input value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder={t.rd_su_phone_ph} inputMode="tel" style={{ ...input, fontFamily: "var(--font-mono)", fontSize: 13 }} />{phoneErr && <div data-testid="phone-hint" style={{ fontSize: 11, fontWeight: 600, color: "var(--danger)", marginTop: 4 }}>{t.rd_su_err_phone}</div>}</div>
+            <div style={{ flex: 1, minWidth: 0 }}><label style={label}>{t.rd_set_phone}</label><CountryPhoneField value={form.phone} onChange={(v) => set("phone", v)} country={phoneCountry} onCountryChange={pickCountry} lang={lang} invalid={phoneErr} hint={t.rd_su_err_phone} placeholder={t.rd_su_phone_ph} countryLabel={t.rd_ph_country} searchLabel={t.rd_ph_search} /></div>
           </div>
           <div><label style={label}>{t.rd_set_email}</label><input value={form.email} onChange={(e) => set("email", e.target.value)} placeholder={t.rd_su_email_ph} autoComplete="email" inputMode="email" style={input} /></div>
         </div>

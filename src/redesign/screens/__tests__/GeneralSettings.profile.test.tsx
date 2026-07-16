@@ -44,7 +44,7 @@ it("Profile card 'Save changes' sends name/store/phone only — no tiktok/facebo
 });
 
 // ── Profile-edit phone validation — the THIRD path (Jeff saw invalid accepted in
-// Settings). SAME single-source validateTaiwanPhone as signup, but GRANDFATHER:
+// Settings). SAME single-source validatePhone as signup, but GRANDFATHER:
 // validate only when the phone is CHANGED. BEHAVIORAL — drives the real Save button.
 function renderSettings(over: { phone?: string } = {}) {
   const onSaveProfile = vi.fn().mockResolvedValue({ ok: true });
@@ -71,7 +71,7 @@ describe("Profile edit — phone validation (single-source, grandfathered)", () 
     const s = renderSettings({ phone: "0912345678" });        // starts valid
     fireEvent.change(s.phoneInput(), { target: { value: "1234567890" } }); // Jeff's exact input
     s.save();
-    await waitFor(() => expect(screen.getByText(/valid Taiwan mobile/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getAllByText(/valid phone/i).length).toBeGreaterThan(0));
     expect(s.onSaveProfile).not.toHaveBeenCalled();           // no write
   });
 

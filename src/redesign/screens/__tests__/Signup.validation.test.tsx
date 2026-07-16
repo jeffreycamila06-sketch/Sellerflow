@@ -40,12 +40,12 @@ describe("Signup — required fields + phone validation", () => {
     expect(s.button().disabled).toBe(false);       // now complete
   });
 
-  it("BUTTON gate uses validateTaiwanPhone: an invalid phone keeps it DISABLED + shows the hint", () => {
+  it("BUTTON gate uses validatePhone: an invalid phone keeps it DISABLED + shows the hint", () => {
     const s = renderSignup();
-    for (const bad of ["12345", "0812345678", "091234567", "09123456789"]) {
+    for (const bad of ["12345", "091234567", "09123456789", "1234567890"]) {
       s.fillAll({ phone: bad });                     // every field filled, phone invalid
       expect(s.button().disabled).toBe(true);        // button-disable rejects it (same rule as submit)
-      expect(screen.getByTestId("phone-hint").textContent).toMatch(/valid Taiwan mobile/i);
+      expect(screen.getByTestId("phone-hint").textContent).toMatch(/valid phone/i);
     }
     s.fill(IDX.phone, "0912345678");                 // fix it
     expect(s.button().disabled).toBe(false);         // now enabled
