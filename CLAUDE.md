@@ -3365,7 +3365,7 @@ useAdminUsers gate already applied). Placeholder → "Search email, @handle, or 
 ×7. ⚠️ `0958704782` (Jeff's test #) is NOT in the DB — validated with `0958161233`
 (leinapan). No RPC/server/DB change.
 
-### SIGNUP REQUIRED FIELDS + TAIWAN PHONE — single-source `validateTaiwanPhone` (merges `8d4e489` → `8f59956`, LIVE; ⏳ feature stamp pending Jeff re-registration test)
+### SIGNUP REQUIRED FIELDS + TAIWAN PHONE — single-source `validateTaiwanPhone` (merges `8d4e489` → `8f59956`, LIVE) ⚠️ SUPERSEDED 2026-07-16 by INTERNATIONAL PHONE VALIDATION (see below) — `validateTaiwanPhone`→`validatePhone`, TW-only rule replaced by libphonenumber+picker
 New self-serve signups must fill all 6 fields + a valid **Taiwan mobile**
 (`^09\d{8}$` after normalize: strip non-digits, `+886`/`886`→`0`). Login UNTOUCHED
 (`signInWithPassword` only) — existing phone-less sellers (BUDGETUKAY5, predates the
@@ -3395,3 +3395,48 @@ redesign; googletest test acct) log in fine (grandfathered). Client-side (Vercel
    confirm the OLD marker is gone. Only then call it verified. (Sellers with an app
    already open still need a FULL close-reopen to pick up new JS — the documented
    thin-shell staleness.)
+
+### INTERNATIONAL PHONE VALIDATION ✅ (merge `2aba239` validation + `1599e21` layout, LIVE + served-bundle-verified + Jeff web-approved 2026-07-16) — SUPERSEDES the Taiwan-only rule above
+The Taiwan-only `^09\d{8}$` was REJECTING real non-TW sellers (DB investigation:
+3 PH sellers, 1 MY, +886 E.164 rows). Replaced with **full libphonenumber-js/min
+international validation + a country picker**, Taiwan default. Client-side (Vercel),
+zero server/DB/migration.
+- **`adapters/phone.ts` (NEW) = the SINGLE SOURCE.** `validatePhone(input, country)
+  → {valid, national}` (renamed from `validateTaiwanPhone`): `isValidPhoneNumber`
+  in-country (⚠️ **THROWS on empty/garbage — wrapped in try/catch** → `{valid:false}`),
+  then `parsePhoneNumber(...).formatNational()` stripped to digits for storage.
+  ⚠️ **libphonenumber accepts BOTH mobile AND landline** (e.g. `0812345678` is a
+  valid TW landline) — by design for a contact field; garbage still rejects. Also:
+  `CORE_COUNTRIES = [TW,PH,VN,TH,ID,CN,SG,MY]` (pinned on top), `DEFAULT_COUNTRY=TW`,
+  `listCountries(lang)` (all ~245 via `getCountries()`, names auto-localized by
+  **`Intl.DisplayNames([lang],{type:'region'})`** — no translation table), `flagOf`,
+  `filterCountries` (name/iso/dial contains).
+- **`components/CountryPhoneField.tsx` (NEW)** — one component reused by BOTH Signup +
+  GeneralSettings (no drift). Compact country button (flag+dial+▾, `data-testid=
+  phone-country-btn`) + number input (`data-testid=phone-input`, `flex:1,minWidth:0`)
+  + inline hint (`data-testid=phone-hint`) + searchable dropdown (`data-testid=
+  country-list`, pointerdown-outside/Escape close, core pinned first). Picked country
+  persisted `localStorage sfl_rd_phone_country`.
+- **Single-source across 4 paths** (same as before, now international): signup
+  button-disable, signup submit (`registrationErrorCode`), `register()` English
+  backstop (`RegisterFields += phoneCountry`), profile edit (GeneralSettings).
+- **Backward-compat = validate-on-change GRANDFATHER** (behavioral-tested vs the REAL
+  36 stored DB values → all valid in-country; a malformed/empty stored phone can still
+  edit OTHER fields — only validated when the phone actually CHANGES). **National-local
+  storage** (clean `0912345678`, NOT E.164) → matches existing rows, zero migration,
+  admin phone-search unchanged.
+- **⚠️ LAYOUT FIX (`1599e21`, follow-up):** the picker+input were crammed into a 50/50
+  flex row shared with "Owner name" → on mobile the number input was ~75px and a
+  10–11 digit number CLIPPED. Fix: phone on its OWN full-width row (unwrap the shared
+  flex row in BOTH screens; owner also full-width). Verified at 360px: TW input 171px,
+  PH 178px, full number visible. Served-bundle-verified structurally (the `{display:
+  flex,gap:9}` wrapper with two `{flex:1,minWidth:0}` children is GONE in both screens).
+- **BEHAVIORAL tests** (`adapters/__tests__/phone.test.ts` + the register hook test):
+  per-core-country valid+invalid, the `1234567890` regression (stays invalid), the
+  real existing DB values (backward-compat), single-source drift pin
+  (`registrationErrorCode` phone verdict === `validatePhone`). 1227 vitest green.
+- ✅ **Jeff web-approved 2026-07-16** (picker + validation + full-width layout all work
+  on web view). Login UNTOUCHED (grandfathered phone-less sellers still log in).
+- **Lessons re-applied:** BEHAVIORAL not structural (aral ng `1234567890`) · SERVED-
+  BUNDLE VERIFY (fresh cache-MISS hash + marker grep; layout change verified via
+  minified structure since a pure unwrap adds no unique string) · single-source.
