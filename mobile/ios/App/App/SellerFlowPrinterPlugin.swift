@@ -1071,7 +1071,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         if BleStickerLogic.resolveProfile(name: savedBleName()) == .phomemo241 {
             let testBuyer: [String: Any] = [
                 "num": 88, "name": "Test Print", "handle": "sellerflow", "totalSpent": 350,
-                "orders": [["item": "SellerFlowLive sticker test", "time": ""]] as [[String: Any]],
+                "orders": [["item": "PRICE", "time": ""]] as [[String: Any]],
             ]
             let data241 = buildTsplSticker241(
                 buyer: testBuyer, settings: call.getObject("settings"),
