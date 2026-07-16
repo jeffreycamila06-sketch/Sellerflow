@@ -1330,7 +1330,21 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
     // ⚠️ FORK-OF buildTsplSticker — deliberate deltas, COMPLETE list (the drift
     // rule lives in CLAUDE.md: any AIMO layout edit must be mirrored here or
     // consciously declined, in writing):
-    //   D1. DIRECTION 0 (AIMO: 1). Phase-0 P1 hardware-proven upright on the 241.
+    //   D1. (RESOLVED 2026-07-17 — DIRECTION is NO LONGER a delta: = 1, same as
+    //       AIMO. ⏳ pending the verification photo.) Phase-0 P1 (a SHORT centered
+    //       probe) read "upright" at DIRECTION 0, but the full Phase-1 header→total
+    //       layout fed 180°-INVERTED on the 241 (Total exits first, reads upside-
+    //       down to the operator; content correct + NO mirror — Jeff's photo). The
+    //       241 shares AIMO DIRECTION semantics, so DIRECTION 1 restores header-
+    //       first + upright AND carries ZERO coordinate risk: the whole layout is
+    //       the verbatim AIMO layout, AUTHORED for DIRECTION 1 (this is the F5
+    //       "flipping DIRECTION moves the origin" hazard resolving itself — the
+    //       coords are back on their home turf, not reshuffled). Net: the ASCII
+    //       output is now BYTE-IDENTICAL to AIMO; only the raster deltas remain.
+    //       ⚠️ RASTER BAND ORIENTATION under DIRECTION 1 is a device-decided
+    //       unknown — standard TSPL rotates the whole composed buffer (TEXT + all
+    //       BITMAPs) 180° together, so the band should read upright with no extra
+    //       work (default). The escape hatch is `rasterBandFlip180` — see its doc.
     //   D2. Non-ASCII renders as a BITMAP raster band (the 241 font ROM has NO
     //       working CJK font — all 5 Phase-0 P2 probes failed with verified-good
     //       app-side encoding). Band height = 24 × cjkYMul — the SAME multiplied
@@ -1345,9 +1359,23 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
     //       what the AIMO ROM cannot). Latin/ASCII path byte-identical.
     // Everything else (header, SizeConfig table, gaps, guards, settings gates,
     // truncations, Total anchor) is a verbatim copy. Drift guard: the Mac-run
-    // ASCII-parity test pins all-ASCII output == AIMO output modulo DIRECTION.
-    // AIMO's buildTsplSticker is UNTOUCHED and golden-locked.
+    // ASCII-parity test pins all-ASCII output == AIMO output EXACTLY (DIRECTION
+    // now matches). AIMO's buildTsplSticker is UNTOUCHED and golden-locked.
     // ═══════════════════════════════════════════════════════════════════════
+
+    /// ⚠️ 241 RASTER BAND ORIENTATION under DIRECTION 1 — a DEVICE-DECIDED unknown
+    /// (behavioral, un-testable on Mac/sim). Standard TSPL applies DIRECTION to the
+    /// WHOLE composed label buffer, so a BITMAP band rotates 180° WITH the TEXT and
+    /// the operator sees both upright — that is what `false` assumes, and the P3
+    /// probe already proved the 241 honors the image buffer for BITMAP (at DIR0).
+    /// FALLBACK: if the verification photo shows header-first + Latin/Buyer# UPRIGHT
+    /// but 陳小美 / 紅色洋裝 UPSIDE-DOWN, the 241 decouples BITMAP from DIRECTION —
+    /// set this `true` to pre-rotate every band 180° so DIRECTION's rotate cancels
+    /// back to upright. One line, isolated: ASCII/TEXT output is unaffected (bands
+    /// only), the anti-drift parity pin is unaffected, and packBits(flip180:) is
+    /// unit-pinned both ways. (If the band is also MIS-POSITIONED, not just flipped,
+    /// that is the deeper DIR0-manual-layout case — re-diagnose, don't guess.)
+    private static let rasterBandFlip180 = false
 
     func buildTsplSticker241(
         buyer: [String: Any],
@@ -1435,7 +1463,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
 
         writeAscii("SIZE \(labelWidthMm) mm, \(labelHeightMm) mm")
         writeAscii("GAP 2 mm, 0")
-        writeAscii("DIRECTION 0")   // D1 — the only header delta vs AIMO
+        writeAscii("DIRECTION 1")   // = AIMO — feed-orientation fix; see FORK-OF D1
         writeAscii("REFERENCE 0,0")
         writeAscii("DENSITY 8")
         writeAscii("CLS")
@@ -1561,7 +1589,10 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         guard let gctx = CGContext(data: &gray, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w,
                                    space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return nil }
         gctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
-        return Phomemo241Raster.packBits(gray: gray, width: w, height: h)
+        // flip180: default false = trust DIRECTION to rotate the band with the
+        // whole buffer. true = pre-rotate 180° (the device fallback — see
+        // rasterBandFlip180). No effect on the ASCII/TEXT path (bands only).
+        return Phomemo241Raster.packBits(gray: gray, width: w, height: h, flip180: SellerFlowPrinterPlugin.rasterBandFlip180)
     }
 
     /// Phase-1 verification sticker (the 241 Test Print, single entry point for
@@ -1593,7 +1624,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                     "ok": true,
                     "phase1": true,
                     "bytes": data.count,
-                    "message": "241 verification sticker sent (\(data.count) bytes) — check: upright, Latin sharp, 陳小美 + 紅色洋裝 legible.",
+                    "message": "241 verification sticker sent (\(data.count) bytes) — check: HEADER exits first + everything upright, Latin sharp, 陳小美 + 紅色洋裝 legible (if only the CJK bands are upside-down, flip rasterBandFlip180).",
                 ])
             }
         }
@@ -1709,13 +1740,21 @@ enum Phomemo241Raster {
     /// TSPL's width field is in BYTES — with pad bits = 1 (white). Invalid
     /// dimensions / short pixel buffer → nil (caller emits nothing; a 0-width
     /// BITMAP is a malformed command).
-    static func packBits(gray: [UInt8], width: Int, height: Int, threshold: UInt8 = 128) -> Band? {
+    /// flip180 (default false): rotate the band 180° while packing — output
+    /// (row,col) reads from source (height-1-row, width-1-col). The DEVICE fallback
+    /// for a 241 that does not rotate BITMAP with DIRECTION (see rasterBandFlip180).
+    /// false is byte-identical to the un-flipped pack.
+    static func packBits(gray: [UInt8], width: Int, height: Int, threshold: UInt8 = 128, flip180: Bool = false) -> Band? {
         guard width > 0, height > 0, gray.count >= width * height else { return nil }
         let widthBytes = (width + 7) / 8
         var out = [UInt8](repeating: 0xFF, count: widthBytes * height)
         for row in 0..<height {
-            for col in 0..<width where gray[row * width + col] < threshold {
-                out[row * widthBytes + (col >> 3)] &= ~(UInt8(0x80) >> (col & 7))
+            for col in 0..<width {
+                let srcRow = flip180 ? (height - 1 - row) : row
+                let srcCol = flip180 ? (width - 1 - col) : col
+                if gray[srcRow * width + srcCol] < threshold {
+                    out[row * widthBytes + (col >> 3)] &= ~(UInt8(0x80) >> (col & 7))
+                }
             }
         }
         return Band(widthBytes: widthBytes, height: height, bytes: out)

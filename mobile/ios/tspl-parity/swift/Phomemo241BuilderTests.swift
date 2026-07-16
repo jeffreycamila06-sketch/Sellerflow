@@ -6,9 +6,10 @@
 // builder (buildTsplSticker241) + the pure raster logic (Phomemo241Raster):
 //
 //   • THE ANTI-DRIFT PIN: an all-ASCII buyer through buildTsplSticker241 must
-//     produce EXACTLY buildTsplSticker's bytes with "DIRECTION 1" → "DIRECTION 0"
-//     — any future AIMO layout edit that isn't mirrored in the fork turns this
-//     test red (the Q2 guardrail; rule in CLAUDE.md).
+//     produce EXACTLY buildTsplSticker's bytes (DIRECTION resolved to 1 = AIMO on
+//     2026-07-17, so the fork is now byte-identical for ASCII — a direct equality,
+//     no substitution) — any future AIMO layout edit that isn't mirrored in the
+//     fork turns this test red (the Q2 guardrail; rule in CLAUDE.md).
 //   • F1: the band height requested from the renderer = 24 × cjkYMul where
 //     cjkYMul respects the seller size-adjuster (nameCjkYMul × level, clamped
 //     1-8) — NEVER a fixed 48.
@@ -43,26 +44,25 @@ final class Phomemo241BuilderTests: XCTestCase {
     }
 
     // MARK: THE ANTI-DRIFT PIN (Q2 guardrail)
+    // DIRECTION resolved to 1 (= AIMO) on 2026-07-17, so the all-ASCII fork output
+    // is now BYTE-IDENTICAL to AIMO — a direct equality, no DIRECTION substitution.
 
-    func testAsciiParityWithAimoModuloDirection() {
+    func testAsciiFullParityWithAimo() {
         let p = plugin()
         let buyer = asciiBuyer()
         let aimo = p.buildTsplSticker(buyer: buyer, settings: nil, storeName: "My Shop", currency: "NT$", sessionDate: "07/17/2026", labelWidthMm: 100, labelHeightMm: 60)
         let fork = p.buildTsplSticker241(buyer: buyer, settings: nil, storeName: "My Shop", currency: "NT$", sessionDate: "07/17/2026", labelWidthMm: 100, labelHeightMm: 60, bandRenderer: { _, _, _ in XCTFail("all-ASCII input must never render a band"); return nil })
-        let aimoStr = String(decoding: aimo, as: UTF8.self)
-        let forkStr = String(decoding: fork, as: UTF8.self)
-        XCTAssertEqual(forkStr, aimoStr.replacingOccurrences(of: "DIRECTION 1", with: "DIRECTION 0"),
-                       "FORK DRIFT: buildTsplSticker241 no longer matches buildTsplSticker (modulo DIRECTION) for ASCII input — mirror the AIMO layout change into the fork or consciously decline it (see the FORK-OF header + CLAUDE.md rule)")
+        XCTAssertEqual(String(decoding: fork, as: UTF8.self), String(decoding: aimo, as: UTF8.self),
+                       "FORK DRIFT: buildTsplSticker241 no longer matches buildTsplSticker for ASCII input — mirror the AIMO layout change into the fork or consciously decline it (see the FORK-OF header + CLAUDE.md rule)")
     }
 
-    func testAsciiParityHoldsOnEverySizeConfig() {
+    func testAsciiFullParityHoldsOnEverySizeConfig() {
         let p = plugin()
         let buyer = asciiBuyer()
         for (w, h) in [(100, 60), (80, 60), (80, 50), (70, 50), (60, 40)] {
             let aimo = p.buildTsplSticker(buyer: buyer, settings: nil, storeName: "My Shop", currency: "NT$", sessionDate: "07/17/2026", labelWidthMm: w, labelHeightMm: h)
             let fork = p.buildTsplSticker241(buyer: buyer, settings: nil, storeName: "My Shop", currency: "NT$", sessionDate: "07/17/2026", labelWidthMm: w, labelHeightMm: h, bandRenderer: { _, _, _ in nil })
-            XCTAssertEqual(String(decoding: fork, as: UTF8.self),
-                           String(decoding: aimo, as: UTF8.self).replacingOccurrences(of: "DIRECTION 1", with: "DIRECTION 0"),
+            XCTAssertEqual(String(decoding: fork, as: UTF8.self), String(decoding: aimo, as: UTF8.self),
                            "fork drift at \(w)x\(h)")
         }
     }
@@ -147,6 +147,25 @@ final class Phomemo241BuilderTests: XCTestCase {
     func testPackBitsThresholdBoundary() {
         let band = Phomemo241Raster.packBits(gray: [127, 128], width: 2, height: 1)!
         XCTAssertEqual(band.bytes, [0b0111_1111], "gray < 128 = black; gray >= 128 = white")
+    }
+
+    func testPackBitsFlip180RotatesBothAxes() {
+        // 2x2: black only at top-left (0,0). 180° → black moves to bottom-right (1,1).
+        let gray: [UInt8] = [0, 255,
+                             255, 255]
+        let normal = Phomemo241Raster.packBits(gray: gray, width: 2, height: 2)!
+        // row0 = 0b0111_1111 (col0 black), row1 = 0b1111_1111 (all white)
+        XCTAssertEqual(normal.bytes, [0b0111_1111, 0b1111_1111])
+        let flipped = Phomemo241Raster.packBits(gray: gray, width: 2, height: 2, flip180: true)!
+        // row0 all white, row1 col1 black → 0b1011_1111
+        XCTAssertEqual(flipped.bytes, [0b1111_1111, 0b1011_1111], "flip180 rotates 180° (both row and column reversed)")
+    }
+
+    func testPackBitsFlip180DefaultFalseIsByteIdentical() {
+        let gray: [UInt8] = [0, 128, 200, 10, 255, 60]
+        let a = Phomemo241Raster.packBits(gray: gray, width: 3, height: 2)!
+        let b = Phomemo241Raster.packBits(gray: gray, width: 3, height: 2, flip180: false)!
+        XCTAssertEqual(a.bytes, b.bytes, "the default (false) must be byte-identical to the un-flipped pack")
     }
 
     func testPackBitsInvalidInputsReturnNil() {

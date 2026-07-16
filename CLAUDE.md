@@ -3486,12 +3486,25 @@ peripheral — nil sa retrievePeripherals). **AIMO path = ZERO edits** (goldens 
   hindi fixed 48) + identical d/extra reflow math — test-pinned (lvl 1→48, 3→144, 8→192).
 - **F3:** UNSUPPORTED script (Thai/Korean/…) → raster band na rin (tanggal ang AIMO
   downgrade-to-handle sa fork); stripEmoji nananatili (emoji = v2).
+- **⚠️ FEED ORIENTATION (change request 2026-07-17, ⏳ awaiting device photo):** ang
+  Phase-1 print ay TAMA ang laman (陳小美 malinis, Latin matalas, NO mirror) pero lumabas
+  **180°-INVERTED** (Total-first, upside-down sa operator; Jeff photo). Fix: **DIRECTION 0 →
+  DIRECTION 1** (= AIMO). Ang buong fork ay verbatim AIMO layout na AUTHORED para sa DIRECTION 1,
+  kaya ang pagbalik dito = zero coordinate risk (home turf, resolves the F5 origin hazard na
+  dulot ng DIR1-coords-sa-DIR0). Phase-0 "DIR0 = tuwid" ay short centered probe lang — hindi
+  nakita ang feed order; ang full header→total layout ang nagpakita. **Net: ASCII fork =
+  BYTE-IDENTICAL na sa AIMO.** ⚠️ **RASTER BAND ORIENTATION sa DIR1 = device-decided unknown:**
+  standard TSPL rotates the whole buffer (TEXT + BITMAP) 180° together (default, `rasterBandFlip180
+  = false`). Kung ang photo ay header-first + Latin upright PERO 陳小美/紅色洋裝 UPSIDE-DOWN → ang
+  241 decouples BITMAP from DIRECTION → **flip `rasterBandFlip180` = true** (one-line, pre-rotates
+  every band 180°; packBits(flip180:) unit-pinned both ways) at rebuild.
 - **🔒 FORK-DRIFT RULE (permanent):** ang `buildTsplSticker241` ay VERBATIM FORK ng
-  `buildTsplSticker` maliban sa 4 dokumentadong deltas (FORK-OF header sa code: D1 DIRECTION 0,
-  D2 CJK→band 24×cjkYMul, D3 walang UNSUPPORTED downgrade, D4 walang stripUnrenderable).
+  `buildTsplSticker` maliban sa 3 dokumentadong deltas (FORK-OF header sa code: D2 CJK→band
+  24×cjkYMul, D3 walang UNSUPPORTED downgrade, D4 walang stripUnrenderable; **D1 DIRECTION =
+  RESOLVED, = AIMO na**).
   **ANUMANG AIMO layout edit ⇒ i-mirror sa 241 fork O consciously decline (nakasulat).**
-  Drift guard = Mac-run `Phomemo241BuilderTests.testAsciiParityWithAimoModuloDirection`
-  (all-ASCII output == AIMO modulo DIRECTION, lahat ng 5 SizeConfig) — CI can't compile Swift,
+  Drift guard = Mac-run `Phomemo241BuilderTests.testAsciiFullParityWithAimo`
+  (all-ASCII output == AIMO EXACTLY, lahat ng 5 SizeConfig) — CI can't compile Swift,
   kaya ang test na ito ay dapat patakbuhin sa Mac bago ang bawat printing-related Archive.
 - **Order path = `PROFILE_NOT_READY` pa rin** (zero-byte no-op) — ang 241 Test Print
   (parehong entries: `testStickerPrint` + `printStickerNative`+isTest → isang
