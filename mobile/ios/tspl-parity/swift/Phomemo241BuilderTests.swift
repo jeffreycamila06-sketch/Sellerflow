@@ -44,16 +44,40 @@ final class Phomemo241BuilderTests: XCTestCase {
     }
 
     // MARK: THE ANTI-DRIFT PIN (Q2 guardrail)
-    // DIRECTION resolved to 1 (= AIMO) on 2026-07-17, so the all-ASCII fork output
-    // is now BYTE-IDENTICAL to AIMO — a direct equality, no DIRECTION substitution.
+    // The 241 fork runs DIRECTION 0 + an in-layout 180° rotation (the DIR1
+    // rasterizer is broken on hardware). So the ASCII fork is byte-equal to
+    // rotate180(AIMO): each `TEXT x,y,"f",0,a,b,c` → `TEXT W-x,H-y,"f",180,a,b,c`,
+    // each `BAR x,y,w,h` → `BAR W-x-w,H-y-h,w,h`, and `DIRECTION 1` → `DIRECTION 0`.
+    // Any un-mirrored AIMO layout edit still turns this red.
+
+    /// Deterministic 180°-about-centre rewrite of an AIMO TSPL stream on the ASCII
+    /// lines the parity fixture produces (fixture content has no quoted commas).
+    /// W/H = label dots (mm × 8).
+    private func rotate180(_ aimo: String, _ W: Int, _ H: Int) -> String {
+        return aimo.components(separatedBy: "\r\n").map { line -> String in
+            if line == "DIRECTION 1" { return "DIRECTION 0" }
+            if line.hasPrefix("TEXT ") {
+                let f = line.dropFirst(5).components(separatedBy: ",")
+                guard f.count >= 7, let x = Int(f[0]), let y = Int(f[1]) else { return line }
+                let content = f[6...].joined(separator: ",")
+                return "TEXT \(W - x),\(H - y),\(f[2]),180,\(f[4]),\(f[5]),\(content)"
+            }
+            if line.hasPrefix("BAR ") {
+                let f = line.dropFirst(4).components(separatedBy: ",")
+                guard f.count == 4, let x = Int(f[0]), let y = Int(f[1]), let w = Int(f[2]), let h = Int(f[3]) else { return line }
+                return "BAR \(W - x - w),\(H - y - h),\(w),\(h)"
+            }
+            return line
+        }.joined(separator: "\r\n")
+    }
 
     func testAsciiFullParityWithAimo() {
         let p = plugin()
         let buyer = asciiBuyer()
         let aimo = p.buildTsplSticker(buyer: buyer, settings: nil, storeName: "My Shop", currency: "NT$", sessionDate: "07/17/2026", labelWidthMm: 100, labelHeightMm: 60)
         let fork = p.buildTsplSticker241(buyer: buyer, settings: nil, storeName: "My Shop", currency: "NT$", sessionDate: "07/17/2026", labelWidthMm: 100, labelHeightMm: 60, bandRenderer: { _, _, _ in XCTFail("all-ASCII input must never render a band"); return nil })
-        XCTAssertEqual(String(decoding: fork, as: UTF8.self), String(decoding: aimo, as: UTF8.self),
-                       "FORK DRIFT: buildTsplSticker241 no longer matches buildTsplSticker for ASCII input — mirror the AIMO layout change into the fork or consciously decline it (see the FORK-OF header + CLAUDE.md rule)")
+        XCTAssertEqual(String(decoding: fork, as: UTF8.self), rotate180(String(decoding: aimo, as: UTF8.self), 800, 480),
+                       "FORK DRIFT: buildTsplSticker241 no longer matches rotate180(buildTsplSticker) for ASCII input — mirror the AIMO layout change into the fork or consciously decline it (see the FORK-OF header + CLAUDE.md rule)")
     }
 
     func testAsciiFullParityHoldsOnEverySizeConfig() {
@@ -62,7 +86,7 @@ final class Phomemo241BuilderTests: XCTestCase {
         for (w, h) in [(100, 60), (80, 60), (80, 50), (70, 50), (60, 40)] {
             let aimo = p.buildTsplSticker(buyer: buyer, settings: nil, storeName: "My Shop", currency: "NT$", sessionDate: "07/17/2026", labelWidthMm: w, labelHeightMm: h)
             let fork = p.buildTsplSticker241(buyer: buyer, settings: nil, storeName: "My Shop", currency: "NT$", sessionDate: "07/17/2026", labelWidthMm: w, labelHeightMm: h, bandRenderer: { _, _, _ in nil })
-            XCTAssertEqual(String(decoding: fork, as: UTF8.self), String(decoding: aimo, as: UTF8.self),
+            XCTAssertEqual(String(decoding: fork, as: UTF8.self), rotate180(String(decoding: aimo, as: UTF8.self), w * 8, h * 8),
                            "fork drift at \(w)x\(h)")
         }
     }
@@ -104,8 +128,24 @@ final class Phomemo241BuilderTests: XCTestCase {
         XCTAssertEqual(bandTexts.count, 1, "the Thai name must reach the band renderer — the AIMO downgrade-to-handle is deliberately absent (D3)")
         XCTAssertTrue(bandTexts[0].contains("\u{0E2A}"), "band text keeps the Thai glyphs (no stripUnrenderable — D4)")
         let s = String(decoding: out, as: UTF8.self)
-        XCTAssertTrue(s.contains("BITMAP 16,"), "band emits a BITMAP command at the name x origin")
+        // Band box re-anchored under the 180° map: x = W(800) − 16 − widthBytes*8(32) = 752.
+        XCTAssertTrue(s.contains("BITMAP 752,"), "band emits a BITMAP at the 180°-mapped name x origin (800−16−32)")
         XCTAssertFalse(s.contains("@thaiseller"), "the name line must not silently become the handle")
+    }
+
+    // MARK: DIRECTION 0 + in-layout 180° rotation (D1)
+
+    func testLayoutIsDirection0WithRotated180Text() {
+        let p = plugin()
+        let out = p.buildTsplSticker241(buyer: asciiBuyer(), settings: nil, storeName: "My Shop", currency: "NT$", sessionDate: "07/17/2026", labelWidthMm: 100, labelHeightMm: 60, bandRenderer: { _, _, _ in nil })
+        let s = String(decoding: out, as: UTF8.self)
+        XCTAssertTrue(s.contains("DIRECTION 0"), "the 241 fork must run DIRECTION 0 (DIR1 rasterizer is broken)")
+        XCTAssertFalse(s.contains("DIRECTION 1"), "DIRECTION 1 must never be emitted by the fork")
+        // Header 'SellerFlowLive' was at rot-0 (16,10); 180°-mapped → rot-180 at (800−16, 480−10).
+        XCTAssertTrue(s.contains("TEXT 784,470,\"3\",180,1,1,\"SellerFlowLive\""),
+                      "header must be rotation-180 at the mapped anchor (W−x, H−y)")
+        XCTAssertNil(s.range(of: #"TEXT \d+,\d+,"[^"]*",0,"#, options: .regularExpression),
+                     "no element may stay rotation 0 — the whole layout is rotated 180°")
     }
 
     // MARK: BITMAP command shape + failed-render safety
@@ -116,8 +156,9 @@ final class Phomemo241BuilderTests: XCTestCase {
         let out = p.buildTsplSticker241(buyer: buyer, settings: ["printStoreName": false, "printBuyerUsername": false, "printOrderItems": false, "printTotal": false], storeName: "S", currency: "NT$", sessionDate: "", labelWidthMm: 100, labelHeightMm: 60, bandRenderer: fakeBand)
         let s = String(decoding: out, as: UTF8.self)
         // BITMAP x,y,widthBytes,height,0, — the exact mode/order the P3 probe printed
-        XCTAssertNotNil(s.range(of: #"BITMAP 16,\d+,4,48,0,"#, options: .regularExpression),
-                        "BITMAP header must be x,y,widthBytes,height,mode0 (P3-proven syntax)")
+        // (x = 800 − 16 − 4*8 = 752 under the 180° map).
+        XCTAssertNotNil(s.range(of: #"BITMAP 752,\d+,4,48,0,"#, options: .regularExpression),
+                        "BITMAP header must be x,y,widthBytes,height,mode0 (P3-proven syntax) at the mapped anchor")
     }
 
     func testFailedRenderEmitsNothingNeverMalformed() {

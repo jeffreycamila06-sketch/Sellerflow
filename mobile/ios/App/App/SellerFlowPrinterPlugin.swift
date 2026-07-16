@@ -1330,21 +1330,21 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
     // ⚠️ FORK-OF buildTsplSticker — deliberate deltas, COMPLETE list (the drift
     // rule lives in CLAUDE.md: any AIMO layout edit must be mirrored here or
     // consciously declined, in writing):
-    //   D1. (RESOLVED 2026-07-17 — DIRECTION is NO LONGER a delta: = 1, same as
-    //       AIMO. ⏳ pending the verification photo.) Phase-0 P1 (a SHORT centered
-    //       probe) read "upright" at DIRECTION 0, but the full Phase-1 header→total
-    //       layout fed 180°-INVERTED on the 241 (Total exits first, reads upside-
-    //       down to the operator; content correct + NO mirror — Jeff's photo). The
-    //       241 shares AIMO DIRECTION semantics, so DIRECTION 1 restores header-
-    //       first + upright AND carries ZERO coordinate risk: the whole layout is
-    //       the verbatim AIMO layout, AUTHORED for DIRECTION 1 (this is the F5
-    //       "flipping DIRECTION moves the origin" hazard resolving itself — the
-    //       coords are back on their home turf, not reshuffled). Net: the ASCII
-    //       output is now BYTE-IDENTICAL to AIMO; only the raster deltas remain.
-    //       ⚠️ RASTER BAND ORIENTATION under DIRECTION 1 is a device-decided
-    //       unknown — standard TSPL rotates the whole composed buffer (TEXT + all
-    //       BITMAPs) 180° together, so the band should read upright with no extra
-    //       work (default). The escape hatch is `rasterBandFlip180` — see its doc.
+    //   D1. DIRECTION 0 + IN-LAYOUT 180° ROTATION (2026-07-17). The 241's
+    //       DIRECTION 1 rasterizer is BROKEN — garbled/durog font on BOTH 100x60
+    //       and 60x40 (hardware-confirmed, 2 sizes; DIR1 was the original "durog"
+    //       too). Only DIRECTION 0 renders clean. So we keep DIRECTION 0 (verified)
+    //       and rotate the WHOLE layout 180° at emit time so the header still ejects
+    //       FIRST + upright: a rot-0 element at (x,y) → rot-180 at (W−x, H−y); BAR →
+    //       (W−x−w, H−y−h); a raster band pre-rotates its pixels 180° (flip180) and
+    //       re-anchors its box. The layout MATH is still the verbatim AIMO layout —
+    //       only the emit primitives (emitText / emitBar / the BITMAP anchor) carry
+    //       the rotation. ⚠️ rotation-180 TEXT rendering on the 241 is NOT yet
+    //       device-verified (it uses the clean DIR0 output path, so it SHOULD be
+    //       fine — different engine from the broken DIR1 transform). The CJK bands
+    //       are guaranteed-clean (BITMAP-at-DIR0, pixels we control). If a photo
+    //       shows rotated TEXT garbled like DIR1, the last resort is ALL-RASTER
+    //       (render every element to a band). Anti-drift pin: fork == rotate180(AIMO).
     //   D2. Non-ASCII renders as a BITMAP raster band (the 241 font ROM has NO
     //       working CJK font — all 5 Phase-0 P2 probes failed with verified-good
     //       app-side encoding). Band height = 24 × cjkYMul — the SAME multiplied
@@ -1358,24 +1358,11 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
     //   D4. writeTextSmart241 does NOT stripUnrenderable (the band can render
     //       what the AIMO ROM cannot). Latin/ASCII path byte-identical.
     // Everything else (header, SizeConfig table, gaps, guards, settings gates,
-    // truncations, Total anchor) is a verbatim copy. Drift guard: the Mac-run
-    // ASCII-parity test pins all-ASCII output == AIMO output EXACTLY (DIRECTION
-    // now matches). AIMO's buildTsplSticker is UNTOUCHED and golden-locked.
+    // truncations, Total anchor) is a verbatim copy — only the emit primitives
+    // apply the 180° map. Drift guard: the Mac-run ASCII-parity test pins all-ASCII
+    // output == rotate180(AIMO output). AIMO's buildTsplSticker is UNTOUCHED and
+    // golden-locked.
     // ═══════════════════════════════════════════════════════════════════════
-
-    /// ⚠️ 241 RASTER BAND ORIENTATION under DIRECTION 1 — a DEVICE-DECIDED unknown
-    /// (behavioral, un-testable on Mac/sim). Standard TSPL applies DIRECTION to the
-    /// WHOLE composed label buffer, so a BITMAP band rotates 180° WITH the TEXT and
-    /// the operator sees both upright — that is what `false` assumes, and the P3
-    /// probe already proved the 241 honors the image buffer for BITMAP (at DIR0).
-    /// FALLBACK: if the verification photo shows header-first + Latin/Buyer# UPRIGHT
-    /// but 陳小美 / 紅色洋裝 UPSIDE-DOWN, the 241 decouples BITMAP from DIRECTION —
-    /// set this `true` to pre-rotate every band 180° so DIRECTION's rotate cancels
-    /// back to upright. One line, isolated: ASCII/TEXT output is unaffected (bands
-    /// only), the anti-drift parity pin is unaffected, and packBits(flip180:) is
-    /// unit-pinned both ways. (If the band is also MIS-POSITIONED, not just flipped,
-    /// that is the deeper DIR0-manual-layout case — re-diagnose, don't guess.)
-    private static let rasterBandFlip180 = false
 
     func buildTsplSticker241(
         buyer: [String: Any],
@@ -1393,15 +1380,35 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             out.append(contentsOf: tsplAsciiBytes(s))
             out.append(contentsOf: [0x0D, 0x0A])
         }
-        // FORK writer (D2/D4): ASCII → the exact AIMO TEXT command; non-ASCII →
-        // raster band at (x,y), height 24×cjkYMul (F1), width clamped to
-        // rightEdge−x, char budget = the AIMO CJK formula (parity). Empty/blank
-        // or a failed render → emit NOTHING (a 0-width BITMAP is malformed).
+        // ── DIRECTION 0 + in-layout 180° rotation (D1) ──────────────────────
+        // The 241's DIRECTION 1 rasterizer is BROKEN (garbled font on BOTH 100x60
+        // and 60x40 — hardware-confirmed); only DIRECTION 0 renders clean. To still
+        // eject HEADER-first + upright, every element is rotated 180° IN THE LAYOUT
+        // at DIRECTION 0: a rotation-0 element at (x,y) becomes a rotation-180
+        // element whose anchor is the 180°-about-centre image of its top-left,
+        // (W−x, H−y). A BAR (a rectangle) just re-anchors to (W−x−w, H−y−h). A
+        // raster band pre-rotates its pixels 180° (flip180) and re-anchors its box
+        // to (W−x−boxW, H−y−h). The layout math below (top-down y, gaps, guards,
+        // Total) is the VERBATIM AIMO layout — only these emit primitives carry the
+        // rotation. W/H = label in dots (203 DPI = 8 dot/mm), matching c.wDots.
+        let W = labelWidthMm * 8
+        let H = labelHeightMm * 8
+        func emitText(_ x: Int, _ y: Int, _ font: String, _ xMul: Int, _ yMul: Int, _ content: String) {
+            writeAscii("TEXT \(W - x),\(H - y),\"\(font)\",180,\(xMul),\(yMul),\"\(content)\"")
+        }
+        func emitBar(_ x: Int, _ y: Int, _ w: Int, _ h: Int) {
+            writeAscii("BAR \(W - x - w),\(H - y - h),\(w),\(h)")
+        }
+        // FORK writer (D2/D4): ASCII → the AIMO TEXT content, rotation 180 at the
+        // mapped anchor; non-ASCII → a 180°-PRE-ROTATED raster band, box re-anchored
+        // to the mapped corner. Band height = 24×cjkYMul (F1), width clamped to
+        // rightEdge−x, char budget = the AIMO CJK formula (parity). Empty/blank or a
+        // failed render → emit NOTHING (a 0-width BITMAP is malformed).
         func writeSmart241(_ x: Int, _ y: Int, _ asciiFont: String, _ rawContent: String, _ xMul: Int, _ yMul: Int, _ cjkXMul: Int, _ cjkYMul: Int, _ rightEdge: Int) {
             let content = transliterateLatin(rawContent)
             if content.isEmpty { return }   // same emptiness rule as writeTextSmart (parity)
             if !hasNonAscii(content) {
-                writeAscii("TEXT \(x),\(y),\"\(asciiFont)\",0,\(xMul),\(yMul),\"\(content)\"")
+                emitText(x, y, asciiFont, xMul, yMul, content)
                 return
             }
             let budget = Phomemo241Raster.maxChars(x: x, rightEdge: rightEdge, cjkXMul: cjkXMul)
@@ -1409,7 +1416,12 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             let bandH = 24 * max(1, cjkYMul)
             guard let band = renderBand(fitted, bandH, max(8, rightEdge - x)),
                   band.height > 0, band.widthBytes > 0, !band.bytes.isEmpty else { return }
-            out.append(contentsOf: tsplAsciiBytes("BITMAP \(x),\(y),\(band.widthBytes),\(band.height),0,"))
+            // 180° map of the band box: top-left → (W−x−boxW, H−y−h). boxW =
+            // widthBytes*8 (left-aligned content shifts ≤7 dots, sub-mm — the true
+            // pixel width is not retained). Pixels are pre-rotated (render flips).
+            let bx = W - x - band.widthBytes * 8
+            let by = H - y - band.height
+            out.append(contentsOf: tsplAsciiBytes("BITMAP \(bx),\(by),\(band.widthBytes),\(band.height),0,"))
             out.append(contentsOf: band.bytes)
             out.append(contentsOf: [0x0D, 0x0A])
         }
@@ -1463,18 +1475,18 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
 
         writeAscii("SIZE \(labelWidthMm) mm, \(labelHeightMm) mm")
         writeAscii("GAP 2 mm, 0")
-        writeAscii("DIRECTION 1")   // = AIMO — feed-orientation fix; see FORK-OF D1
+        writeAscii("DIRECTION 0")   // 241 DIR1 rasterizer is broken; rotate in-layout (D1)
         writeAscii("REFERENCE 0,0")
         writeAscii("DENSITY 8")
         writeAscii("CLS")
 
         let c = stickerConfig(labelWidthMm, labelHeightMm)
 
-        writeAscii("TEXT 16,10,\"3\",0,1,1,\"SellerFlowLive\"")
+        emitText(16, 10, "3", 1, 1, "SellerFlowLive")
         if !sessionDate.isEmpty {
-            writeAscii("TEXT 290,18,\"2\",0,1,1,\"\(tsplSafe(truncate16(sessionDate, 12)))\"")
+            emitText(290, 18, "2", 1, 1, tsplSafe(truncate16(sessionDate, 12)))
         }
-        writeAscii("BAR 0,48,\(c.wDots),3")
+        emitBar(0, 48, c.wDots, 3)
 
         let cleanStoreName = stripEmoji(storeName)
         let cleanBuyerName = stripEmoji(buyerName)
@@ -1501,7 +1513,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
 
         if printBuyerNumber {
             let ym = cmul(c.buyerNumYMul * lvlBuyerNum)
-            writeAscii("TEXT 16,\(y),\"4\",0,2,\(ym),\"Buyer #\(buyerNum)\"")
+            emitText(16, y, "4", 2, ym, "Buyer #\(buyerNum)")
             let d = (ym - c.buyerNumYMul) * F4
             y += c.buyerNumGap + d
             extra += d
@@ -1527,7 +1539,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         }
 
         if printOrderItems && !orders.isEmpty && y < c.orderEntryGuard + extra {
-            writeAscii("BAR 16,\(y),\(c.sepWidth),2")
+            emitBar(16, y, c.sepWidth, 2)
             y += c.sepGap
             let maxOrders = 2
             var i = 0
@@ -1539,7 +1551,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                 let tm = cmul(lvlOrder)
                 let pm = cmul(lvlComment)
                 if !time.isEmpty {
-                    writeAscii("TEXT 16,\(y),\"2\",0,\(tm),\(tm),\"\(tsplSafe(truncate16(time, 10)))\"")
+                    emitText(16, y, "2", tm, tm, tsplSafe(truncate16(time, 10)))
                 }
                 if !cleanItem.isEmpty {
                     writeSmart241(180, y, "4", tsplSafe(truncate16(cleanItem, 12)), 2, pm, 2, pm, c.rightEdge)
@@ -1553,10 +1565,10 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         if printTotal && totalSpent > 0 && c.showTotal {
             let totalY = c.totalY + extra
             let lm = cmul(lvlTotal)
-            writeAscii("TEXT 16,\(totalY),\"3\",0,\(lm),\(lm),\"Total:\"")
+            emitText(16, totalY, "3", lm, lm, "Total:")
             let am = cmul(lvlTotal)
             let totalStr = tsplSafe(currency) + tsplMoney(totalSpent)
-            writeAscii("TEXT \(c.totalAmountX),\(totalY),\"4\",0,2,\(am),\"\(tsplSafe(truncate16(totalStr, 18)))\"")
+            emitText(c.totalAmountX, totalY, "4", 2, am, tsplSafe(truncate16(totalStr, 18)))
         }
 
         writeAscii("PRINT 1")
@@ -1589,10 +1601,10 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         guard let gctx = CGContext(data: &gray, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w,
                                    space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return nil }
         gctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
-        // flip180: default false = trust DIRECTION to rotate the band with the
-        // whole buffer. true = pre-rotate 180° (the device fallback — see
-        // rasterBandFlip180). No effect on the ASCII/TEXT path (bands only).
-        return Phomemo241Raster.packBits(gray: gray, width: w, height: h, flip180: SellerFlowPrinterPlugin.rasterBandFlip180)
+        // flip180: TRUE always — the 241 builder runs DIRECTION 0 + in-layout 180°
+        // (the DIR1 rasterizer is broken), so every band is pre-rotated 180° so it
+        // reads upright once the whole label is rotated. Unit-pinned in packBits.
+        return Phomemo241Raster.packBits(gray: gray, width: w, height: h, flip180: true)
     }
 
     /// Phase-1 verification sticker (the 241 Test Print, single entry point for
@@ -1612,9 +1624,14 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                 ["item": "Blue jeans M", "time": "20:18"],
             ] as [[String: Any]],
         ]
+        // Use the SELLER's configured label size (the web Test payload carries it) so
+        // the verification matches the actual paper — Jeff's production stock is 60×40
+        // now, not 100×60. Falls back to the 100×60 default if the call omits it.
+        let labelWidthMm = call.getInt("labelWidthMm", defaultLabelWidthMm)
+        let labelHeightMm = call.getInt("labelHeightMm", defaultLabelHeightMm)
         let data = buildTsplSticker241(
             buyer: buyer, settings: nil, storeName: storeName, currency: "NT$",
-            sessionDate: "07/17/2026", labelWidthMm: defaultLabelWidthMm, labelHeightMm: defaultLabelHeightMm
+            sessionDate: "07/17/2026", labelWidthMm: labelWidthMm, labelHeightMm: labelHeightMm
         )
         bleTransport.printJob(data: data, preferredId: savedId) { error in
             if let error = error {
@@ -1624,7 +1641,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                     "ok": true,
                     "phase1": true,
                     "bytes": data.count,
-                    "message": "241 verification sticker sent (\(data.count) bytes) — check: HEADER exits first + everything upright, Latin sharp, 陳小美 + 紅色洋裝 legible (if only the CJK bands are upside-down, flip rasterBandFlip180).",
+                    "message": "241 verification sticker sent (\(data.count) bytes) — check: HEADER exits first + everything upright, Latin sharp, 陳小美 + 紅色洋裝 legible. If the Latin/Buyer# TEXT is garbled but the CJK bands are clean, the 241 can't render rotated TEXT → all-raster is the next step.",
                 ])
             }
         }
@@ -1741,9 +1758,10 @@ enum Phomemo241Raster {
     /// dimensions / short pixel buffer → nil (caller emits nothing; a 0-width
     /// BITMAP is a malformed command).
     /// flip180 (default false): rotate the band 180° while packing — output
-    /// (row,col) reads from source (height-1-row, width-1-col). The DEVICE fallback
-    /// for a 241 that does not rotate BITMAP with DIRECTION (see rasterBandFlip180).
-    /// false is byte-identical to the un-flipped pack.
+    /// (row,col) reads from source (height-1-row, width-1-col). The 241 builder runs
+    /// DIRECTION 0 + in-layout 180°, so it packs bands with flip180=true (they read
+    /// upright once the whole label is rotated). false is byte-identical to the
+    /// un-flipped pack (kept for the unit pins).
     static func packBits(gray: [UInt8], width: Int, height: Int, threshold: UInt8 = 128, flip180: Bool = false) -> Band? {
         guard width > 0, height > 0, gray.count >= width * height else { return nil }
         let widthBytes = (width + 7) / 8

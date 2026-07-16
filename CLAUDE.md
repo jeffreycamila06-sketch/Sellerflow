@@ -3486,25 +3486,31 @@ peripheral — nil sa retrievePeripherals). **AIMO path = ZERO edits** (goldens 
   hindi fixed 48) + identical d/extra reflow math — test-pinned (lvl 1→48, 3→144, 8→192).
 - **F3:** UNSUPPORTED script (Thai/Korean/…) → raster band na rin (tanggal ang AIMO
   downgrade-to-handle sa fork); stripEmoji nananatili (emoji = v2).
-- **⚠️ FEED ORIENTATION (change request 2026-07-17, ⏳ awaiting device photo):** ang
-  Phase-1 print ay TAMA ang laman (陳小美 malinis, Latin matalas, NO mirror) pero lumabas
-  **180°-INVERTED** (Total-first, upside-down sa operator; Jeff photo). Fix: **DIRECTION 0 →
-  DIRECTION 1** (= AIMO). Ang buong fork ay verbatim AIMO layout na AUTHORED para sa DIRECTION 1,
-  kaya ang pagbalik dito = zero coordinate risk (home turf, resolves the F5 origin hazard na
-  dulot ng DIR1-coords-sa-DIR0). Phase-0 "DIR0 = tuwid" ay short centered probe lang — hindi
-  nakita ang feed order; ang full header→total layout ang nagpakita. **Net: ASCII fork =
-  BYTE-IDENTICAL na sa AIMO.** ⚠️ **RASTER BAND ORIENTATION sa DIR1 = device-decided unknown:**
-  standard TSPL rotates the whole buffer (TEXT + BITMAP) 180° together (default, `rasterBandFlip180
-  = false`). Kung ang photo ay header-first + Latin upright PERO 陳小美/紅色洋裝 UPSIDE-DOWN → ang
-  241 decouples BITMAP from DIRECTION → **flip `rasterBandFlip180` = true** (one-line, pre-rotates
-  every band 180°; packBits(flip180:) unit-pinned both ways) at rebuild.
+- **⚠️ FEED ORIENTATION SAGA (2026-07-17, ⏳ awaiting 60×40 device photo):**
+  1. **DIR0 (Phase-1)** = malinis ang laman pero **180°-INVERTED ang labas** (Total-first,
+     upside-down sa operator; Jeff photo).
+  2. **DIR1 = SIRA.** Sinubukan (feed orientation TAMA na, header-first) pero **durog/sabog
+     ang font sa BOTH 100×60 AT 60×40** (2 sizes, hardware-confirmed) — parehong itsura ng
+     pinakaunang garbled. → **Sira ang DIRECTION 1 rasterizer ng 241 firmware; ito rin pala
+     ang tunay na sanhi ng original na "durog."** DIR0 lang ang malinis.
+  3. **FINAL FIX = DIRECTION 0 + IN-LAYOUT 180° ROTATION.** Panatilihin ang verified-clean na
+     DIR0; i-rotate ang BUONG layout 180° sa emit time: rot-0 `(x,y)` → rot-180 `(W−x, H−y)`;
+     BAR → `(W−x−w, H−y−h)`; raster band = pixels pre-rotated 180° (`flip180=true`) + box
+     re-anchored. Header ejects first + upright. Layout MATH = verbatim AIMO pa rin; ang emit
+     primitives (`emitText`/`emitBar`/BITMAP anchor) lang ang may rotation.
+  - ⚠️ **rotation-180 TEXT sa 241 = HINDI pa device-verified** — pero gumagamit ito ng
+    clean DIR0 output path (ibang engine sa sirang DIR1 transform), kaya **malamang OK**. Ang
+    CJK bands = guaranteed-clean (BITMAP-at-DIR0, kontrolado ang pixels). **Kung durog ang
+    rotated TEXT tulad ng DIR1 → last resort = ALL-RASTER** (bawat element = band).
+  - **Production size = 60×40 na** (wala nang 100×60 papel si Jeff); lahat ng verification sa
+    60×40 mula ngayon.
 - **🔒 FORK-DRIFT RULE (permanent):** ang `buildTsplSticker241` ay VERBATIM FORK ng
-  `buildTsplSticker` maliban sa 3 dokumentadong deltas (FORK-OF header sa code: D2 CJK→band
-  24×cjkYMul, D3 walang UNSUPPORTED downgrade, D4 walang stripUnrenderable; **D1 DIRECTION =
-  RESOLVED, = AIMO na**).
+  `buildTsplSticker` maliban sa 4 dokumentadong deltas (FORK-OF header sa code: **D1 =
+  DIRECTION 0 + in-layout 180° rotation**, D2 CJK→band 24×cjkYMul, D3 walang UNSUPPORTED
+  downgrade, D4 walang stripUnrenderable).
   **ANUMANG AIMO layout edit ⇒ i-mirror sa 241 fork O consciously decline (nakasulat).**
   Drift guard = Mac-run `Phomemo241BuilderTests.testAsciiFullParityWithAimo`
-  (all-ASCII output == AIMO EXACTLY, lahat ng 5 SizeConfig) — CI can't compile Swift,
+  (all-ASCII output == **`rotate180(AIMO)`**, lahat ng 5 SizeConfig) — CI can't compile Swift,
   kaya ang test na ito ay dapat patakbuhin sa Mac bago ang bawat printing-related Archive.
 - **Order path = `PROFILE_NOT_READY` pa rin** (zero-byte no-op) — ang 241 Test Print
   (parehong entries: `testStickerPrint` + `printStickerNative`+isTest → isang
