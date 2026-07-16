@@ -3453,3 +3453,52 @@ zero server/DB/migration.
 - **Lessons re-applied:** BEHAVIORAL not structural (aral ng `1234567890`) · SERVED-
   BUNDLE VERIFY (fresh cache-MISS hash + marker grep; layout change verified via
   minified structure since a pure unwrap adds no unique string) · single-source.
+
+## SESSION 2026-07-16/17 — PHOMEMO 241BT SUPPORT (Phase 0 ✅ hardware-verified → Phase 1 CODED, awaiting device verification)
+Bagong printer: PHOMEMO PM-241Z-BT (thermal label, BLE FF00/FF02/FF03, `SSGETPRINTING:DONE`
+— same OEM/Labelife family ng AIMO D520BT, 203dpi). Ang AIMO stream dito = baliktad + durog.
+**Architecture: hiwalay na PRINTER PROFILE** — `BleStickerLogic.resolveProfile(name)` (pure,
+single-source; `PM-241…` prefix LANG → `.phomemo241`, lahat ng iba incl. empty/nil → `.aimo`)
++ additive `PM-241` scan-match. Profile resolved sa PERSISTED `bleNameKey` (hindi live
+peripheral — nil sa retrievePeripherals). **AIMO path = ZERO edits** (goldens + sim gate intact).
+
+### Phase 0 (diagnostic probes) — hardware verdict (Jeff, real PM-241Z + 100×60 media)
+- **P1 Latin TSPL TEXT @ DIRECTION 0 = MALINIS at TUWID** (fonts 2/3/4 sharp) → TEXT works,
+  hindi raster-first, DIR0 = tamang orientation.
+- **P2 CJK = LAHAT ng 5 font/codepage probes FAILED** (TSS24.BF2+GBK, TST24.BF2+Big5,
+  font"3"+Big5, UTF-8) na may TAMANG app-side encoding (printed hex receipts verified: Big5
+  ng 陳小美 = `B3 AF A4 70 AC FC`) → **ang 241 font ROM ay WALANG usable CJK font**.
+- **P3 TSPL BITMAP raster = GUMANA** (0=black polarity hardware-proven) — kabaligtaran ng
+  AIMO-class na nag-i-ignore ng BITMAP.
+- **Saga lessons:** (a) ang redesign Test Print button ay tumatawag ng `printStickerNative`
+  + `isTest:true` payload tag, HINDI `testStickerPrint` — ang unang guard ay nag-block sa
+  mismong test button ("check pairing", zero labels); (b) `btCall` dating `catch{return null}`
+  = nilulunok ang native reject → generic toast; ngayon sine-surface na `{ok:false,message,code}`;
+  (c) multi-label = `printJobSequence` (ISANG connection, DONE-gated kada label) — ang
+  sequential printJob chaining ay may disconnect race.
+
+### Phase 1 (CODED — `buildTsplSticker241`, hybrid TEXT + raster; awaiting Jeff device test)
+- **Hybrid:** ASCII/Latin → TSPL TEXT (proven sharp); **non-ASCII → BITMAP raster band**
+  (UIGraphicsImageRenderer + system-font cascade → PingFang TC; **BANNED ang
+  UIGraphicsBeginImageContext** — hindi thread-safe, Capacitor calls = off-main). Pure
+  packing sa `Phomemo241Raster` (0=black, byte-pad puti, threshold 128).
+- **F1 (audit hard req):** band height = **24 × cjkYMul** (seller size-adjuster respected,
+  hindi fixed 48) + identical d/extra reflow math — test-pinned (lvl 1→48, 3→144, 8→192).
+- **F3:** UNSUPPORTED script (Thai/Korean/…) → raster band na rin (tanggal ang AIMO
+  downgrade-to-handle sa fork); stripEmoji nananatili (emoji = v2).
+- **🔒 FORK-DRIFT RULE (permanent):** ang `buildTsplSticker241` ay VERBATIM FORK ng
+  `buildTsplSticker` maliban sa 4 dokumentadong deltas (FORK-OF header sa code: D1 DIRECTION 0,
+  D2 CJK→band 24×cjkYMul, D3 walang UNSUPPORTED downgrade, D4 walang stripUnrenderable).
+  **ANUMANG AIMO layout edit ⇒ i-mirror sa 241 fork O consciously decline (nakasulat).**
+  Drift guard = Mac-run `Phomemo241BuilderTests.testAsciiParityWithAimoModuloDirection`
+  (all-ASCII output == AIMO modulo DIRECTION, lahat ng 5 SizeConfig) — CI can't compile Swift,
+  kaya ang test na ito ay dapat patakbuhin sa Mac bago ang bawat printing-related Archive.
+- **Order path = `PROFILE_NOT_READY` pa rin** (zero-byte no-op) — ang 241 Test Print
+  (parehong entries: `testStickerPrint` + `printStickerNative`+isTest → isang
+  `run241VerificationPrint`) ay nagpi-print ng VERIFICATION STICKER: 陳小美 name band +
+  紅色洋裝 x2 product band (multi-BITMAP proof) + Latin lines + Buyer #88 + Total. Phase-0
+  probes RETAINED sa tree (`runPhase0Probes`, walang UI entry) para sa re-diagnosis.
+- **Phase 2 (pagkatapos pumasa ang verification photo):** flip ang order guard → real 1-Click
+  order na may Chinese buyer name sa 241 = final acceptance. ⚠️ Verification matrix gap
+  (flagged): 100×60 + default scales lang ang na-verify ng test print; ibang sizes/scale
+  levels = subukan sa Phase 2 kung gagamitin ng seller.

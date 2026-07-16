@@ -12,6 +12,7 @@ import Capacitor
 import CoreBluetooth
 import Foundation
 import Network
+import UIKit
 import WebKit
 
 @objc(SellerFlowPrinterPlugin)
@@ -1059,12 +1060,12 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("No Bluetooth printer saved. Tap Scan in Settings and pick a printer first.", "BT_NOT_SET")
             return
         }
-        // PHASE 0 (Phomemo 241 only): the AIMO stream printed baliktad+durog on
-        // this printer, so a PM-241 Test Print emits the DIAGNOSTIC probe
-        // sequence (P1 Latin / P2 CJK+receipts / P3 raster) instead. The AIMO
+        // PHASE 1 (Phomemo 241 only): a PM-241 Test Print prints the VERIFICATION
+        // STICKER (buildTsplSticker241 — hybrid TEXT + raster bands). The AIMO
         // path below is untouched — a D520BT resolves to .aimo and skips this.
+        // (Phase-0 probes retained in-tree via runPhase0Probes for re-diagnosis.)
         if BleStickerLogic.resolveProfile(name: savedBleName()) == .phomemo241 {
-            runPhase0Probes(savedId: savedId, call: call)
+            run241VerificationPrint(savedId: savedId, storeName: call.getString("storeName") ?? "SellerFlowLive", call: call)
             return
         }
         let storeName = call.getString("storeName") ?? "SellerFlowLive"
@@ -1095,7 +1096,9 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         // no seller can print a broken sticker. AIMO (.aimo) prints normally.
         if BleStickerLogic.resolveProfile(name: savedBleName()) == .phomemo241 {
             if call.getBool("isTest") ?? false {
-                runPhase0Probes(savedId: savedId, call: call)
+                // PHASE 1: the Test button prints the verification sticker (same
+                // single entry as testStickerPrint — one 241 test implementation).
+                run241VerificationPrint(savedId: savedId, storeName: call.getString("storeName") ?? "SellerFlowLive", call: call)
             } else {
                 call.reject("Phomemo 241 order printing isn't enabled yet (diagnostics only). Run Test Print in Printer Settings.", "PROFILE_NOT_READY")
             }
@@ -1301,12 +1304,10 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         return out
     }
 
-    /// F1 fix: the 3 probes ride ONE connection as a DONE-gated SEQUENCE — label
-    /// N+1 is sent only after label N's PRINTING:DONE (no truncation possible),
-    /// and there is no per-label reconnect (sequential printJob calls raced the
-    /// previous job's in-flight disconnect). Labels are numbered 1/3..3/3 so a
-    /// missing one is visible on paper; on failure the label count on paper +
-    /// the error message locate the failing stage.
+    /// Phase 0 probe sequence — RETAINED FOR RE-DIAGNOSIS (no UI entry since
+    /// Phase 1; the 241 Test Print now prints the verification sticker). The 3
+    /// probes ride ONE connection as a DONE-gated SEQUENCE (label N+1 only after
+    /// label N's PRINTING:DONE — no truncation; no per-label reconnect race).
     private func runPhase0Probes(savedId: String, call: CAPPluginCall) {
         let payloads = [buildPhomemoProbeLatin(), buildPhomemoProbeCjk(), buildPhomemoProbeRaster()]
         bleTransport.printJobSequence(payloads: payloads, preferredId: savedId) { error in
@@ -1318,6 +1319,281 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                     "phase0": true,
                     "labels": 3,
                     "message": "Phase 0 probes sent: 3 labels (P1 Latin, P2 CJK+receipts, P3 raster).",
+                ])
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // MARK: - PHASE 1: Phomemo 241 sticker builder (hybrid TEXT + raster)
+    //
+    // ⚠️ FORK-OF buildTsplSticker — deliberate deltas, COMPLETE list (the drift
+    // rule lives in CLAUDE.md: any AIMO layout edit must be mirrored here or
+    // consciously declined, in writing):
+    //   D1. DIRECTION 0 (AIMO: 1). Phase-0 P1 hardware-proven upright on the 241.
+    //   D2. Non-ASCII renders as a BITMAP raster band (the 241 font ROM has NO
+    //       working CJK font — all 5 Phase-0 P2 probes failed with verified-good
+    //       app-side encoding). Band height = 24 × cjkYMul — the SAME multiplied
+    //       value the AIMO TSS24.BF2 path uses, so the seller size-adjuster and
+    //       the d/extra reflow math stay identical (audit F1 hard requirement).
+    //   D3. NO UNSUPPORTED-script downgrade-to-handle (audit F3 decision): the
+    //       band renders ANY script (Thai/Korean/Vietnamese full glyphs...), so
+    //       the AIMO name fallback block is dropped and the gap math keys on
+    //       hasNonAscii (band) instead of nameTier==CJK. stripEmoji STAYS (v1);
+    //       emoji rendering = v2.
+    //   D4. writeTextSmart241 does NOT stripUnrenderable (the band can render
+    //       what the AIMO ROM cannot). Latin/ASCII path byte-identical.
+    // Everything else (header, SizeConfig table, gaps, guards, settings gates,
+    // truncations, Total anchor) is a verbatim copy. Drift guard: the Mac-run
+    // ASCII-parity test pins all-ASCII output == AIMO output modulo DIRECTION.
+    // AIMO's buildTsplSticker is UNTOUCHED and golden-locked.
+    // ═══════════════════════════════════════════════════════════════════════
+
+    func buildTsplSticker241(
+        buyer: [String: Any],
+        settings: [String: Any]?,
+        storeName: String,
+        currency: String,
+        sessionDate: String,
+        labelWidthMm: Int,
+        labelHeightMm: Int,
+        bandRenderer: ((String, Int, Int) -> Phomemo241Raster.Band?)? = nil
+    ) -> Data {
+        let renderBand = bandRenderer ?? { [weak self] text, h, w in self?.render241TextBand(text, heightDots: h, maxWidthDots: w) }
+        var out = Data()
+        func writeAscii(_ s: String) {
+            out.append(contentsOf: tsplAsciiBytes(s))
+            out.append(contentsOf: [0x0D, 0x0A])
+        }
+        // FORK writer (D2/D4): ASCII → the exact AIMO TEXT command; non-ASCII →
+        // raster band at (x,y), height 24×cjkYMul (F1), width clamped to
+        // rightEdge−x, char budget = the AIMO CJK formula (parity). Empty/blank
+        // or a failed render → emit NOTHING (a 0-width BITMAP is malformed).
+        func writeSmart241(_ x: Int, _ y: Int, _ asciiFont: String, _ rawContent: String, _ xMul: Int, _ yMul: Int, _ cjkXMul: Int, _ cjkYMul: Int, _ rightEdge: Int) {
+            let content = transliterateLatin(rawContent)
+            if content.isEmpty { return }   // same emptiness rule as writeTextSmart (parity)
+            if !hasNonAscii(content) {
+                writeAscii("TEXT \(x),\(y),\"\(asciiFont)\",0,\(xMul),\(yMul),\"\(content)\"")
+                return
+            }
+            let budget = Phomemo241Raster.maxChars(x: x, rightEdge: rightEdge, cjkXMul: cjkXMul)
+            let fitted = truncate16(content, budget)
+            let bandH = 24 * max(1, cjkYMul)
+            guard let band = renderBand(fitted, bandH, max(8, rightEdge - x)),
+                  band.height > 0, band.widthBytes > 0, !band.bytes.isEmpty else { return }
+            out.append(contentsOf: tsplAsciiBytes("BITMAP \(x),\(y),\(band.widthBytes),\(band.height),0,"))
+            out.append(contentsOf: band.bytes)
+            out.append(contentsOf: [0x0D, 0x0A])
+        }
+        func asInt(_ v: Any?) -> Int? {
+            if let i = v as? Int { return i }
+            if let d = v as? Double { return Int(d) }
+            return (v as? NSNumber)?.intValue
+        }
+        func asDouble(_ v: Any?) -> Double {
+            if let d = v as? Double { return d }
+            if let i = v as? Int { return Double(i) }
+            return (v as? NSNumber)?.doubleValue ?? 0
+        }
+        func boolSetting(_ key: String) -> Bool {
+            guard let settings = settings else { return true }
+            if let b = settings[key] as? Bool { return b }
+            if let n = settings[key] as? NSNumber { return n.boolValue }
+            return true
+        }
+
+        let buyerNum = asInt(buyer["num"]) ?? asInt(buyer["bNum"]) ?? 0
+        let buyerName = (buyer["name"] as? String) ?? ""
+        let buyerHandle = (buyer["handle"] as? String) ?? ""
+        let totalSpent = asDouble(buyer["totalSpent"])
+        let orders = (buyer["orders"] as? [[String: Any]]) ?? []
+
+        let printStoreName = boolSetting("printStoreName")
+        let printBuyerNumber = boolSetting("printBuyerNumber")
+        let printBuyerUsername = boolSetting("printBuyerUsername")
+        let printOrderItems = boolSetting("printOrderItems")
+        let printTotal = boolSetting("printTotal")
+
+        let F2 = 24, F3 = 24, F4 = 32
+        func cmul(_ m: Int) -> Int { return max(1, min(8, m)) }
+        func lvlSetting(_ key: String) -> Int {
+            guard let settings = settings else { return 1 }
+            let v: Int
+            if let n = settings[key] as? NSNumber { v = n.intValue }
+            else if let i = settings[key] as? Int { v = i }
+            else if let d = settings[key] as? Double { v = Int(d) }
+            else { v = 1 }
+            return max(1, min(8, v == 0 ? 1 : v))
+        }
+        let lvlStore = lvlSetting("printStoreScale")
+        let lvlBuyerNum = lvlSetting("printBuyerNumberScale")
+        let lvlName = lvlSetting("printBuyerNameScale")
+        let lvlUser = lvlSetting("printUsernameScale")
+        let lvlOrder = lvlSetting("printOrderScale")
+        let lvlComment = lvlSetting("printCommentScale")
+        let lvlTotal = lvlSetting("printTotalScale")
+
+        writeAscii("SIZE \(labelWidthMm) mm, \(labelHeightMm) mm")
+        writeAscii("GAP 2 mm, 0")
+        writeAscii("DIRECTION 0")   // D1 — the only header delta vs AIMO
+        writeAscii("REFERENCE 0,0")
+        writeAscii("DENSITY 8")
+        writeAscii("CLS")
+
+        let c = stickerConfig(labelWidthMm, labelHeightMm)
+
+        writeAscii("TEXT 16,10,\"3\",0,1,1,\"SellerFlowLive\"")
+        if !sessionDate.isEmpty {
+            writeAscii("TEXT 290,18,\"2\",0,1,1,\"\(tsplSafe(truncate16(sessionDate, 12)))\"")
+        }
+        writeAscii("BAR 0,48,\(c.wDots),3")
+
+        let cleanStoreName = stripEmoji(storeName)
+        let cleanBuyerName = stripEmoji(buyerName)
+        let cleanBuyerHandle = stripEmoji(buyerHandle)
+
+        // D3: name resolution WITHOUT the UNSUPPORTED downgrade — the band
+        // renders any script. Emoji-only names still fall back (stripEmoji, v1).
+        var nameSource = cleanBuyerName
+        if !buyerName.isEmpty && cleanBuyerName.isEmpty {
+            nameSource = !cleanBuyerHandle.isEmpty ? cleanBuyerHandle : "Buyer #\(buyerNum)"
+        }
+        let nameOut = transliterateLatin(nameSource)
+        let bandName = hasNonAscii(nameOut)   // D3: replaces nameTier==CJK for the gap math
+
+        var extra = 0
+        var y = 60
+        if printStoreName && !cleanStoreName.isEmpty {
+            let m = cmul(lvlStore)
+            writeSmart241(16, y, "3", tsplSafe(truncate16(cleanStoreName, 36)), m, m, m, m, c.rightEdge)
+            let d = (m - 1) * F3
+            y += c.storeGap + d
+            extra += d
+        }
+
+        if printBuyerNumber {
+            let ym = cmul(c.buyerNumYMul * lvlBuyerNum)
+            writeAscii("TEXT 16,\(y),\"4\",0,2,\(ym),\"Buyer #\(buyerNum)\"")
+            let d = (ym - c.buyerNumYMul) * F4
+            y += c.buyerNumGap + d
+            extra += d
+        }
+
+        if !nameOut.isEmpty {
+            let asciiX = cmul(lvlName), asciiY = cmul(lvlName)
+            let cjkX = cmul(c.nameCjkXMul * lvlName), cjkY = cmul(c.nameCjkYMul * lvlName)
+            writeSmart241(16, y, "4", tsplSafe(truncate16(nameOut, 30)), asciiX, asciiY, cjkX, cjkY, c.rightEdge)
+            let usedY = bandName ? cjkY : asciiY
+            let refBaseY = bandName ? c.nameCjkYMul : 1
+            let d = (usedY - refBaseY) * F4
+            y += (bandName ? c.nameCjkGap : c.nameGap) + d
+            extra += (bandName ? (c.nameCjkGap - c.nameGap) : 0) + d
+        }
+
+        if printBuyerUsername && !cleanBuyerHandle.isEmpty {
+            let m = cmul(lvlUser)
+            writeSmart241(16, y, "3", "@" + tsplSafe(truncate16(cleanBuyerHandle, 30)), m, m, m, m, c.rightEdge)
+            let d = (m - 1) * F3
+            y += c.usernameGap + d
+            extra += d
+        }
+
+        if printOrderItems && !orders.isEmpty && y < c.orderEntryGuard + extra {
+            writeAscii("BAR 16,\(y),\(c.sepWidth),2")
+            y += c.sepGap
+            let maxOrders = 2
+            var i = 0
+            while i < min(orders.count, maxOrders) && y < c.orderLoopGuard + extra {
+                let order = orders[i]
+                let time = (order["time"] as? String) ?? ""
+                let item = (order["item"] as? String) ?? ""
+                let cleanItem = stripEmoji(item)
+                let tm = cmul(lvlOrder)
+                let pm = cmul(lvlComment)
+                if !time.isEmpty {
+                    writeAscii("TEXT 16,\(y),\"2\",0,\(tm),\(tm),\"\(tsplSafe(truncate16(time, 10)))\"")
+                }
+                if !cleanItem.isEmpty {
+                    writeSmart241(180, y, "4", tsplSafe(truncate16(cleanItem, 12)), 2, pm, 2, pm, c.rightEdge)
+                }
+                let d = max((tm - 1) * F2, (pm - 1) * F4)
+                y += 38 + d
+                i += 1
+            }
+        }
+
+        if printTotal && totalSpent > 0 && c.showTotal {
+            let totalY = c.totalY + extra
+            let lm = cmul(lvlTotal)
+            writeAscii("TEXT 16,\(totalY),\"3\",0,\(lm),\(lm),\"Total:\"")
+            let am = cmul(lvlTotal)
+            let totalStr = tsplSafe(currency) + tsplMoney(totalSpent)
+            writeAscii("TEXT \(c.totalAmountX),\(totalY),\"4\",0,2,\(am),\"\(tsplSafe(truncate16(totalStr, 18)))\"")
+        }
+
+        writeAscii("PRINT 1")
+        return out
+    }
+
+    /// Render a text band for the 241 raster path — UIGraphicsImageRenderer
+    /// ONLY (documented thread-safe; UIGraphicsBeginImageContext is NOT and is
+    /// BANNED here — Capacitor invokes plugin calls off-main). 1 point = 1 pixel
+    /// = 1 printer dot (203dpi). System font cascade resolves CJK to PingFang TC
+    /// (Traditional-correct) and other scripts to their system fonts.
+    private func render241TextBand(_ text: String, heightDots: Int, maxWidthDots: Int) -> Phomemo241Raster.Band? {
+        if text.isEmpty || heightDots <= 0 || maxWidthDots <= 0 { return nil }
+        let font = UIFont.systemFont(ofSize: CGFloat(heightDots) * 0.82, weight: .medium)
+        let str = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: UIColor.black])
+        let measured = str.size()
+        let width = min(Int(ceil(measured.width)), maxWidthDots)
+        if width <= 0 { return nil }
+        let fmt = UIGraphicsImageRendererFormat()
+        fmt.scale = 1
+        let size = CGSize(width: CGFloat(width), height: CGFloat(heightDots))
+        let img = UIGraphicsImageRenderer(size: size, format: fmt).image { ctx in
+            UIColor.white.setFill()
+            ctx.fill(CGRect(origin: .zero, size: size))
+            str.draw(at: CGPoint(x: 0, y: max(0, (CGFloat(heightDots) - measured.height) / 2)))
+        }
+        guard let cg = img.cgImage else { return nil }
+        let w = cg.width, h = cg.height
+        var gray = [UInt8](repeating: 255, count: w * h)
+        guard let gctx = CGContext(data: &gray, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w,
+                                   space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return nil }
+        gctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
+        return Phomemo241Raster.packBits(gray: gray, width: w, height: h)
+    }
+
+    /// Phase-1 verification sticker (the 241 Test Print, single entry point for
+    /// BOTH testStickerPrint and printStickerNative+isTest). FIXED payload so the
+    /// photo review is deterministic; exercises every proving case: CJK name
+    /// band (陳小美), CJK product band (紅色洋裝 x2) = MULTIPLE BITMAPs per label,
+    /// Latin TEXT lines (Blue jeans M), buyer#, date, Total. Order path stays
+    /// PROFILE_NOT_READY until this print passes photo review (Phase 2 flips it).
+    private func run241VerificationPrint(savedId: String, storeName: String, call: CAPPluginCall) {
+        let buyer: [String: Any] = [
+            "num": 88,
+            "name": "\u{9673}\u{5C0F}\u{7F8E}",          // 陳小美
+            "handle": "sellerflow",
+            "totalSpent": 1200,
+            "orders": [
+                ["item": "\u{7D05}\u{8272}\u{6D0B}\u{88DD} x2", "time": "20:15"],  // 紅色洋裝 x2
+                ["item": "Blue jeans M", "time": "20:18"],
+            ] as [[String: Any]],
+        ]
+        let data = buildTsplSticker241(
+            buyer: buyer, settings: nil, storeName: storeName, currency: "NT$",
+            sessionDate: "07/17/2026", labelWidthMm: defaultLabelWidthMm, labelHeightMm: defaultLabelHeightMm
+        )
+        bleTransport.printJob(data: data, preferredId: savedId) { error in
+            if let error = error {
+                call.reject("241 verification sticker failed: \(error.message)", error.code)
+            } else {
+                call.resolve([
+                    "ok": true,
+                    "phase1": true,
+                    "bytes": data.count,
+                    "message": "241 verification sticker sent (\(data.count) bytes) — check: upright, Latin sharp, 陳小美 + 紅色洋裝 legible.",
                 ])
             }
         }
@@ -1409,6 +1685,49 @@ enum CjkEncoding {
     }
 }
 // CJK-ENCODING-END
+
+// ═════════════════════════════════════════════════════════════════════════════
+// MARK: - Phomemo 241 raster pure logic (no UIKit — unit-testable standalone)
+//
+// The DECISIONS of the 241 band pipeline: 1-bit packing (polarity/padding/
+// threshold) + the AIMO-mirror char budget. The UIKit glyph render stays
+// isolated in render241TextBand (device-verified only — the Mac/sim runtime
+// cannot prove printer glyph output; the GBK_95 lesson).
+// Tests: mobile/ios/tspl-parity/swift/Phomemo241BuilderTests.swift (Mac-run).
+// ═════════════════════════════════════════════════════════════════════════════
+
+enum Phomemo241Raster {
+    struct Band {
+        let widthBytes: Int
+        let height: Int
+        let bytes: [UInt8]
+    }
+
+    /// Pack row-major 8-bit grayscale (0=black…255=white) into TSPL BITMAP
+    /// mode-0 bytes. Bit 0 = BLACK dot (hardware-proven by the Phase-0 P3 probe:
+    /// 0x00 printed black, 0xFF background). Width pads UP to a whole byte —
+    /// TSPL's width field is in BYTES — with pad bits = 1 (white). Invalid
+    /// dimensions / short pixel buffer → nil (caller emits nothing; a 0-width
+    /// BITMAP is a malformed command).
+    static func packBits(gray: [UInt8], width: Int, height: Int, threshold: UInt8 = 128) -> Band? {
+        guard width > 0, height > 0, gray.count >= width * height else { return nil }
+        let widthBytes = (width + 7) / 8
+        var out = [UInt8](repeating: 0xFF, count: widthBytes * height)
+        for row in 0..<height {
+            for col in 0..<width where gray[row * width + col] < threshold {
+                out[row * widthBytes + (col >> 3)] &= ~(UInt8(0x80) >> (col & 7))
+            }
+        }
+        return Band(widthBytes: widthBytes, height: height, bytes: out)
+    }
+
+    /// AIMO-mirror character budget for a band from its x origin (full-width
+    /// cells of 24×cjkXMul dots) — same formula as writeTextSmart's CJK clamp,
+    /// so truncation behavior matches the AIMO path.
+    static func maxChars(x: Int, rightEdge: Int, cjkXMul: Int) -> Int {
+        return max(1, (rightEdge - x) / (24 * max(1, cjkXMul)))
+    }
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // MARK: - BLE pure logic (no CoreBluetooth types — unit-testable standalone)
