@@ -40,24 +40,29 @@ describe("Signup — required fields + phone validation", () => {
     expect(s.button().disabled).toBe(false);       // now complete
   });
 
-  it("NO BYPASS: an invalid phone → translated error, onRegister NOT called", async () => {
+  it("BUTTON gate uses validateTaiwanPhone: an invalid phone keeps it DISABLED + shows the hint", () => {
     const s = renderSignup();
-    s.fillAll({ phone: "12345" });                  // all filled → button enabled, but phone invalid
-    expect(s.button().disabled).toBe(false);
-    fireEvent.click(s.button());
-    await waitFor(() => expect(screen.getByText(/valid Taiwan mobile/i)).toBeTruthy());
-    expect(s.onRegister).not.toHaveBeenCalled();    // blocked before the network call
+    for (const bad of ["12345", "0812345678", "091234567", "09123456789"]) {
+      s.fillAll({ phone: bad });                     // every field filled, phone invalid
+      expect(s.button().disabled).toBe(true);        // button-disable rejects it (same rule as submit)
+      expect(screen.getByTestId("phone-hint").textContent).toMatch(/valid Taiwan mobile/i);
+    }
+    s.fill(IDX.phone, "0912345678");                 // fix it
+    expect(s.button().disabled).toBe(false);         // now enabled
+    expect(screen.queryByTestId("phone-hint")).toBeNull(); // hint gone
   });
 
-  it("a bad Taiwan format (08…, wrong length) is also rejected", async () => {
+  it("REGRESSION (prod bug 2026-07-16): Jeff's exact '1234567890' → button DISABLED, cannot submit", () => {
+    // 10 digits but NOT 09-prefixed. Accepted in prod ONLY because a stale
+    // pre-deploy bundle ran the old >=8-digit rule; the CURRENT rule rejects it.
     const s = renderSignup();
-    s.fillAll({ phone: "0812345678" });             // 10 digits but not 09
-    fireEvent.click(s.button());
-    await waitFor(() => expect(screen.getByText(/valid Taiwan mobile/i)).toBeTruthy());
-    expect(s.onRegister).not.toHaveBeenCalled();
+    s.fillAll({ phone: "1234567890" });
+    expect(s.button().disabled).toBe(true);          // MUST go red if the loose rule returns
+    fireEvent.click(s.button());                     // click a disabled button = no-op
+    expect(s.onRegister).not.toHaveBeenCalled();     // no account create path
   });
 
-  it("a mismatched password → translated error, onRegister NOT called", async () => {
+  it("a mismatched password → translated error on submit, onRegister NOT called", async () => {
     const s = renderSignup();
     s.fillAll({ confirm: "different1" });
     fireEvent.click(s.button());
@@ -71,5 +76,16 @@ describe("Signup — required fields + phone validation", () => {
     fireEvent.click(s.button());
     await waitFor(() => expect(s.onRegister).toHaveBeenCalledTimes(1));
     expect(s.onRegister).toHaveBeenCalledWith(expect.objectContaining({ phone: "0912 345 678", email: "new@shop.com" }));
+  });
+
+  it("NO Enter-key bypass: pressing Enter (invalid phone) never submits", async () => {
+    const s = renderSignup();
+    s.fillAll({ phone: "1234567890" });             // filled but invalid
+    // There is no <form>, so Enter has no submit handler — it must NOT reach onRegister.
+    const inputs = Array.from(document.querySelectorAll("input"));
+    fireEvent.keyDown(inputs[IDX.phone], { key: "Enter", code: "Enter" });
+    fireEvent.keyDown(inputs[IDX.pw], { key: "Enter", code: "Enter" });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(s.onRegister).not.toHaveBeenCalled();    // Enter is not a submit/bypass path
   });
 });
