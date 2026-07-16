@@ -85,10 +85,11 @@ export function buildTestBuyer(): Buyer {
 
 // Fed through the byte-parity buildNativeStickerPayload (printing.ts) into
 // printStickerNative. isTest marks it as the Test-Print button (the redesign's
-// test goes through printStickerNative, NOT testStickerPrint) so the native
-// side can route a Phomemo-241 TEST to the Phase 0 diagnostics while a real
-// order stays PROFILE_NOT_READY-gated. The AIMO native path ignores the flag —
-// the underlying payload is byte-unchanged.
+// test goes through printStickerNative, NOT testStickerPrint). On the 241 the
+// native side prints this test through the SAME buildTsplSticker241 + full
+// settings/scales a real order uses (identical output) — isTest only lets it
+// past the temporary 241 order guard that still no-ops REAL orders. The AIMO
+// native path ignores the flag — the underlying payload is byte-unchanged.
 export function buildTestStickerPayload(cur: string, storeName: string, settings: Settings) {
   return { ...buildNativeStickerPayload(buildTestBuyer(), cur || "NT$", storeName || "SellerFlowLive", settings), isTest: true };
 }

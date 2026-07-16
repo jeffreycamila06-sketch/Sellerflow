@@ -1060,12 +1060,33 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("No Bluetooth printer saved. Tap Scan in Settings and pick a printer first.", "BT_NOT_SET")
             return
         }
-        // PHASE 1 (Phomemo 241 only): a PM-241 Test Print prints the VERIFICATION
-        // STICKER (buildTsplSticker241 — hybrid TEXT + raster bands). The AIMO
-        // path below is untouched — a D520BT resolves to .aimo and skips this.
-        // (Phase-0 probes retained in-tree via runPhase0Probes for re-diagnosis.)
+        // Phomemo 241: print the SAME sticker any real print produces
+        // (buildTsplSticker241, DIRECTION 0 + in-layout 180°) from a fixed ASCII
+        // test buyer + this call's real settings/size — so even this legacy entry
+        // reflects the pattern settings and never garbles (buildTsplTestPage below
+        // is DIRECTION 1 + GBK CJK, which the 241 can't render). The old hardcoded
+        // verification sticker (run241VerificationPrint) stays in-tree, UNCALLED,
+        // for CJK re-diagnosis. NOTE: the redesign's Test button uses
+        // printStickerNative+isTest, not this method — this path is legacy/unused.
         if BleStickerLogic.resolveProfile(name: savedBleName()) == .phomemo241 {
-            run241VerificationPrint(savedId: savedId, storeName: call.getString("storeName") ?? "SellerFlowLive", call: call)
+            let testBuyer: [String: Any] = [
+                "num": 88, "name": "Test Print", "handle": "sellerflow", "totalSpent": 350,
+                "orders": [["item": "SellerFlowLive sticker test", "time": ""]] as [[String: Any]],
+            ]
+            let data241 = buildTsplSticker241(
+                buyer: testBuyer, settings: call.getObject("settings"),
+                storeName: call.getString("storeName") ?? "SellerFlowLive",
+                currency: call.getString("currency") ?? "NT$", sessionDate: "",
+                labelWidthMm: call.getInt("labelWidthMm", defaultLabelWidthMm),
+                labelHeightMm: call.getInt("labelHeightMm", defaultLabelHeightMm)
+            )
+            bleTransport.printJob(data: data241, preferredId: savedId) { error in
+                if let error = error {
+                    call.reject("Test sticker failed: \(error.message)", error.code)
+                } else {
+                    call.resolve(["ok": true, "bytes": data241.count, "message": "Test sticker sent (\(data241.count) bytes)"])
+                }
+            }
             return
         }
         let storeName = call.getString("storeName") ?? "SellerFlowLive"
@@ -1087,21 +1108,25 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("No Bluetooth printer saved. Tap Scan in Settings and pick a printer first.", "BT_NOT_SET")
             return
         }
-        // PHASE 0 (Phomemo 241 only): ⚠️ the redesign's Test Print button calls
-        // THIS method (printStickerNative + a test payload tagged isTest:true) —
-        // NOT testStickerPrint. That mis-wiring made v1 of this guard reject the
-        // Test button itself ("check pairing", zero labels, 2026-07-16 device
-        // test). So: a TEST tap runs the Phase 0 probes; a REAL order stays a
-        // zero-byte PROFILE_NOT_READY no-op until the Phase 1 builder exists —
-        // no seller can print a broken sticker. AIMO (.aimo) prints normally.
-        if BleStickerLogic.resolveProfile(name: savedBleName()) == .phomemo241 {
-            if call.getBool("isTest") ?? false {
-                // PHASE 1: the Test button prints the verification sticker (same
-                // single entry as testStickerPrint — one 241 test implementation).
-                run241VerificationPrint(savedId: savedId, storeName: call.getString("storeName") ?? "SellerFlowLive", call: call)
-            } else {
-                call.reject("Phomemo 241 order printing isn't enabled yet (diagnostics only). Run Test Print in Printer Settings.", "PROFILE_NOT_READY")
-            }
+        // Phomemo 241 = a DELIBERATE PARITY with AIMO. This method is the single
+        // native choke-point for EVERY sticker in the redesign — 1-Click order,
+        // reprint, raffle winner, batch, desktop test, AND the Test Print button
+        // (which calls THIS method with isTest:true, not testStickerPrint). The
+        // 241 must consume the exact same payload — buyer + all pattern settings
+        // (5 toggles + 7 scale adjusters) + label size — as the AIMO path, so a
+        // seller who just swapped printers changes nothing else. So below: ONE
+        // flow, the profile only picks the builder (buildTsplSticker241 vs
+        // buildTsplSticker); no hardcoded content on any path.
+        let is241 = BleStickerLogic.resolveProfile(name: savedBleName()) == .phomemo241
+        // ⚠️ ORDER GUARD (241 only, temporary): a REAL order/reprint (isTest=false)
+        // stays a zero-byte no-op until Jeff confirms the 241 sticker on paper — no
+        // seller prints a real order on an unverified path. A TEST print (isTest,
+        // the redesign Test button) IS allowed through and runs the IDENTICAL
+        // payload+settings flow a real order will (buildTsplSticker241) — so what
+        // the seller verifies is exactly what a real order prints. To SHIP the
+        // order path: delete this one `if` block (nothing else changes).
+        if is241 && !(call.getBool("isTest") ?? false) {
+            call.reject("Phomemo 241 order printing isn't enabled yet — run Test Print in Printer Settings to verify it first.", "PROFILE_NOT_READY")
             return
         }
         let buyer = call.getObject("buyer") ?? [:]
@@ -1112,15 +1137,12 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         let labelWidthMm = call.getInt("labelWidthMm", defaultLabelWidthMm)
         let labelHeightMm = call.getInt("labelHeightMm", defaultLabelHeightMm)
 
-        let data = buildTsplSticker(
-            buyer: buyer,
-            settings: settings,
-            storeName: storeName,
-            currency: currency,
-            sessionDate: sessionDate,
-            labelWidthMm: labelWidthMm,
-            labelHeightMm: labelHeightMm
-        )
+        // SAME payload in — the profile picks the builder. buildTsplSticker241
+        // reads the identical settings/scales/size/buyer that buildTsplSticker does
+        // (grep-audited parity), so every Printer & Display setting flows equally.
+        let data = is241
+            ? buildTsplSticker241(buyer: buyer, settings: settings, storeName: storeName, currency: currency, sessionDate: sessionDate, labelWidthMm: labelWidthMm, labelHeightMm: labelHeightMm)
+            : buildTsplSticker(buyer: buyer, settings: settings, storeName: storeName, currency: currency, sessionDate: sessionDate, labelWidthMm: labelWidthMm, labelHeightMm: labelHeightMm)
 
         bleTransport.printJob(data: data, preferredId: savedId) { [weak self] error in
             guard let self = self else { return }
@@ -1131,7 +1153,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                     "ok": true,
                     "bytes": data.count,
                     "savedPrinter": self.savedBlePrinterOrNull(),
-                    "message": "Printed sticker via Bluetooth (TEXT+BAR, \(data.count) bytes)",
+                    "message": "Printed sticker via Bluetooth (\(data.count) bytes)",
                 ])
             }
         }
