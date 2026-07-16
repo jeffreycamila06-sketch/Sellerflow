@@ -3154,6 +3154,19 @@ Prod-verified sa served bundle (`dpl_FspbJEb1…`, `main-CSFeURzM.js`).
   kailangan ng Render dashboard grep (walang Render-log tool sa remote session);
   ang `[VERIFY-FALLBACK]` grep = ang disambiguator kung tiers (absent) o euler
   (present) ang deployed na verify source — hindi nagbabago ang verdict.
+- **✅ FINAL CONFIRMED BASELINE + INVESTIGATION CLOSED (2026-07-16, clean 24h read ni
+  Jeff):** ang TOTOONG steady-state ay **~147 req/24h** (mas mababa pa sa naunang 379
+  snapshot at sa lumang ~250-400 estimate), **Client Errors 0** (dating 73 = ang patay
+  na room_id 401s — **tiers-flip `71b8662` CONFIRMED gumagana**: tinanggal ang paywalled
+  Business `/room_id` GET kaya wala nang 401 fallback churn), **Success 98%** (dating
+  84.4%), **Server Errors 3** (normal offline-account connects, Branch B = healthy).
+  Ang pagbaba mula 379→147 = (a) tanggal na ang ~100/day patay na 401s (tiers-flip) +
+  (b) patay na ang zombie reconnect loops (fresh-verify `be6ad34` — natapos-nang-live
+  na rooms = terminal gray, hindi na nag-uulit na connect). **Headroom ~200+ sellers**
+  bago ang 1000/day cap sa kasalukuyang usage shape. **VERDICT: malinis, malusog, malayo
+  sa cap — ang buong Euler/quota investigation ay SARADO.** (Bantay-lang-kung-lalapit:
+  Analytics daily-count trend + zero-events sa Rate Limits tab; walang aksyon habang
+  <~150-200 sellers.)
 
 ## 2026-07-14 — B4 PHASE 2 + C1 + VIEWERS RELAY MERGED & DEPLOYED · iOS 1.3 LIVE · ios.latest→7
 - **B4 Phase 2 ENFORCED + C1 Euler-first verify** (branch `claude/b4-phase2`,
