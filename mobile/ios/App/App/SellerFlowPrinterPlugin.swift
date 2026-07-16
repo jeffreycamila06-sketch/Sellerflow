@@ -1421,31 +1421,49 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         func emitBar(_ x: Int, _ y: Int, _ w: Int, _ h: Int) {
             writeAscii("BAR \(W - x - w),\(H - y - h),\(w),\(h)")
         }
-        // FORK writer (D2/D4): ASCII → the AIMO TEXT content, rotation 180 at the
-        // mapped anchor; non-ASCII → a 180°-PRE-ROTATED raster band, box re-anchored
-        // to the mapped corner. Band height = 24×cjkYMul (F1), width clamped to
-        // rightEdge−x, char budget = the AIMO CJK formula (parity). Empty/blank or a
-        // failed render → emit NOTHING (a 0-width BITMAP is malformed).
-        func writeSmart241(_ x: Int, _ y: Int, _ asciiFont: String, _ rawContent: String, _ xMul: Int, _ yMul: Int, _ cjkXMul: Int, _ cjkYMul: Int, _ rightEdge: Int) {
-            let content = transliterateLatin(rawContent)
-            if content.isEmpty { return }   // same emptiness rule as writeTextSmart (parity)
-            if !hasNonAscii(content) {
-                emitText(x, y, asciiFont, xMul, yMul, content)
-                return
-            }
-            let budget = Phomemo241Raster.maxChars(x: x, rightEdge: rightEdge, cjkXMul: cjkXMul)
+        // Emit `content` as a pre-rotated raster band at height `bandH`, box
+        // re-anchored under the 180° map: top-left → (W−x−boxW, H−y−h). boxW =
+        // widthBytes*8 (left-aligned content shifts ≤7 dots, sub-mm — the true
+        // pixel width is not retained). Pixels are pre-rotated (render flips).
+        // Empty/blank or a failed render → emit NOTHING (a 0-width BITMAP is malformed).
+        func emitBand(_ x: Int, _ y: Int, _ content: String, _ bandH: Int, _ xBudget: Int, _ rightEdge: Int) {
+            if content.isEmpty { return }
+            let budget = Phomemo241Raster.maxChars(x: x, rightEdge: rightEdge, cjkXMul: max(1, xBudget))
             let fitted = truncate16(content, budget)
-            let bandH = 24 * max(1, cjkYMul)
-            guard let band = renderBand(fitted, bandH, max(8, rightEdge - x)),
+            guard let band = renderBand(fitted, max(1, bandH), max(8, rightEdge - x)),
                   band.height > 0, band.widthBytes > 0, !band.bytes.isEmpty else { return }
-            // 180° map of the band box: top-left → (W−x−boxW, H−y−h). boxW =
-            // widthBytes*8 (left-aligned content shifts ≤7 dots, sub-mm — the true
-            // pixel width is not retained). Pixels are pre-rotated (render flips).
             let bx = W - x - band.widthBytes * 8
             let by = H - y - band.height
             out.append(contentsOf: tsplAsciiBytes("BITMAP \(bx),\(by),\(band.widthBytes),\(band.height),0,"))
             out.append(contentsOf: band.bytes)
             out.append(contentsOf: [0x0D, 0x0A])
+        }
+        // FORK writer (D2/D4): ASCII at 1× → the AIMO TEXT content, rotation 180 at
+        // the mapped anchor (byte-identical default). CJK → always a raster band.
+        // SCALED ASCII (yMul>1) → ALSO a band — the 241 firmware does NOT honor the
+        // TSPL font x/y-multiplier on rotation-180 TEXT (BUG: scale adjusters had no
+        // effect), so a scaled element must be sized in PIXELS. Band height =
+        // 24×(effective yMul) matches the AIMO font's scaled height (24×ym). All the
+        // writeSmart241 elements have a base yMul of 1, so yMul>1 ⇔ the seller scaled
+        // it; the inline base-2 elements use emitScaled (which keys on the lvl).
+        func writeSmart241(_ x: Int, _ y: Int, _ asciiFont: String, _ rawContent: String, _ xMul: Int, _ yMul: Int, _ cjkXMul: Int, _ cjkYMul: Int, _ rightEdge: Int) {
+            let content = transliterateLatin(rawContent)
+            if content.isEmpty { return }   // same emptiness rule as writeTextSmart (parity)
+            let isCjk = hasNonAscii(content)
+            if !isCjk && yMul <= 1 {
+                emitText(x, y, asciiFont, xMul, yMul, content)
+                return
+            }
+            let bandH = 24 * max(1, isCjk ? cjkYMul : yMul)
+            emitBand(x, y, content, bandH, isCjk ? cjkXMul : xMul, rightEdge)
+        }
+        // Inline scalable element (Buyer# / order time / Total). lvl = the seller's
+        // 1–8 adjuster (base 1). lvl 1 → the verified TEXT (byte-identical default);
+        // lvl>1 → a pixel-sized band at 24×yMul, so the scale has an effect despite
+        // the 241 not scaling rotated internal-font TEXT. rightEdge = W−16 (= c.rightEdge).
+        func emitScaled(_ x: Int, _ y: Int, _ font: String, _ xMul: Int, _ yMul: Int, _ lvl: Int, _ content: String) {
+            if lvl <= 1 { emitText(x, y, font, xMul, yMul, content); return }
+            emitBand(x, y, transliterateLatin(content), 24 * max(1, yMul), xMul, W - 16)
         }
         func asInt(_ v: Any?) -> Int? {
             if let i = v as? Int { return i }
@@ -1535,7 +1553,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
 
         if printBuyerNumber {
             let ym = cmul(c.buyerNumYMul * lvlBuyerNum)
-            emitText(16, y, "4", 2, ym, "Buyer #\(buyerNum)")
+            emitScaled(16, y, "4", 2, ym, lvlBuyerNum, "Buyer #\(buyerNum)")
             let d = (ym - c.buyerNumYMul) * F4
             y += c.buyerNumGap + d
             extra += d
@@ -1573,7 +1591,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                 let tm = cmul(lvlOrder)
                 let pm = cmul(lvlComment)
                 if !time.isEmpty {
-                    emitText(16, y, "2", tm, tm, tsplSafe(truncate16(time, 10)))
+                    emitScaled(16, y, "2", tm, tm, lvlOrder, tsplSafe(truncate16(time, 10)))
                 }
                 if !cleanItem.isEmpty {
                     writeSmart241(180, y, "4", tsplSafe(truncate16(cleanItem, 12)), 2, pm, 2, pm, c.rightEdge)
@@ -1587,10 +1605,10 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         if printTotal && totalSpent > 0 && c.showTotal {
             let totalY = c.totalY + extra
             let lm = cmul(lvlTotal)
-            emitText(16, totalY, "3", lm, lm, "Total:")
+            emitScaled(16, totalY, "3", lm, lm, lvlTotal, "Total:")
             let am = cmul(lvlTotal)
             let totalStr = tsplSafe(currency) + tsplMoney(totalSpent)
-            emitText(c.totalAmountX, totalY, "4", 2, am, tsplSafe(truncate16(totalStr, 18)))
+            emitScaled(c.totalAmountX, totalY, "4", 2, am, lvlTotal, tsplSafe(truncate16(totalStr, 18)))
         }
 
         writeAscii("PRINT 1")

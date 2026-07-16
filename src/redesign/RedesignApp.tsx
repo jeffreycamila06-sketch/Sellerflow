@@ -652,7 +652,11 @@ export default function RedesignApp() {
       return;
     }
     const r = await btCall<StickerPrintResult>("printStickerNative", buildTestStickerPayload(cur, storeName, settings));
-    setToast({ msg: r?.ok ? (r.message || tApp.rd_ps_test_sent) : (r?.message || tApp.rd_ps_test_failed), kind: r?.ok ? "ok" : "err" });
+    // On a real device the printed sticker IS the success feedback — no success
+    // toast (Jeff: an unrequested confirmation toast now popped on every print).
+    // Only surface a REAL failure. (Desktop/web preview above keeps its toast —
+    // there's no physical output there.)
+    if (!r?.ok) setToast({ msg: r?.message || tApp.rd_ps_test_failed, kind: "err" });
   };
 
   // Auto Mode on/off. Default OFF, but PERSISTED (sfl_rd_automode) so the toggle

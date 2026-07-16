@@ -114,6 +114,30 @@ final class Phomemo241BuilderTests: XCTestCase {
         XCTAssertEqual(requestedHeights, [192], "multiplier clamps at the TSPL 8x ceiling")
     }
 
+    // MARK: BUG-1 — scale adjusters take effect (ASCII scaled → raster band)
+    // The 241 firmware ignores the TSPL font x/y-multiplier on rotation-180 TEXT,
+    // so a SCALED ASCII element must be sized in PIXELS (a band) to have any effect.
+    // At scale 1 it stays the verified font-multiplier TEXT (byte-identical default).
+
+    func testScaledAsciiBuyerNumberBecomesBand() {
+        let p = plugin()
+        let buyer: [String: Any] = ["num": 88, "name": "", "handle": "s", "totalSpent": 0, "orders": []]
+        var bandHeights: [Int] = []
+        let cap: (String, Int, Int) -> Phomemo241Raster.Band? = { _, h, _ in
+            bandHeights.append(h); return Phomemo241Raster.Band(widthBytes: 4, height: h, bytes: [UInt8](repeating: 0xAA, count: 4 * h))
+        }
+        let off: [String: Any] = ["printStoreName": false, "printBuyerUsername": false, "printOrderItems": false, "printTotal": false]
+        // scale 1 → the Buyer# stays a TEXT command; NO band requested.
+        let s1 = String(decoding: p.buildTsplSticker241(buyer: buyer, settings: off.merging(["printBuyerNumberScale": 1]) { a, _ in a }, storeName: "S", currency: "NT$", sessionDate: "", labelWidthMm: 60, labelHeightMm: 40, bandRenderer: cap), as: UTF8.self)
+        XCTAssertTrue(s1.contains("\"Buyer #88\""), "scale 1 → the Buyer# is a plain TEXT (verified default)")
+        XCTAssertTrue(bandHeights.isEmpty, "scale 1 → no band is requested")
+        // scale 5 → the Buyer# must become a BITMAP band at 24 × cmul(buyerNumYMul(1)×5) = 120.
+        bandHeights = []
+        let s5 = String(decoding: p.buildTsplSticker241(buyer: buyer, settings: off.merging(["printBuyerNumberScale": 5]) { a, _ in a }, storeName: "S", currency: "NT$", sessionDate: "", labelWidthMm: 60, labelHeightMm: 40, bandRenderer: cap), as: UTF8.self)
+        XCTAssertFalse(s5.contains("\"Buyer #88\""), "scale 5 → the Buyer# must NOT stay a font-multiplier TEXT (the 241 wouldn't scale it)")
+        XCTAssertEqual(bandHeights, [120], "scale 5 → a pixel-sized band at 24 × 5 (60x40 buyerNumYMul=1)")
+    }
+
     // MARK: F3 — UNSUPPORTED script renders as a band (no downgrade)
 
     func testThaiNameRendersAsBandNotHandle() {
