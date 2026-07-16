@@ -32,7 +32,7 @@ import { useAuthSession } from "../useAuthSession";
 
 const fields = (over: Record<string, string> = {}) => ({
   email: "new@shop.com", password: "secret1", confirm: "secret1",
-  fullName: "Owner", storeName: "Shop", phone: "0912345678", ...over,
+  fullName: "Owner", storeName: "Shop", phone: "0912345678", phoneCountry: "TW", ...over,
 });
 
 describe("register() — phone enforced before any account create", () => {
@@ -48,20 +48,28 @@ describe("register() — phone enforced before any account create", () => {
     expect(createMyProfile).not.toHaveBeenCalled();
   });
 
-  it("other invalid phones (08…, 9-digit, 11-digit, letters) also never reach signUp", async () => {
+  it("other invalid phones (9-digit, 11-digit under TW, letters) also never reach signUp", async () => {
     const { result } = renderHook(() => useAuthSession());
-    for (const phone of ["0812345678", "091234567", "09123456789", "abcd123456"]) {
+    for (const phone of ["091234567", "09123456789", "abcd123456"]) {
       await act(async () => { await result.current.register(fields({ phone })); });
     }
     expect(signUp).not.toHaveBeenCalled();
   });
 
-  it("valid phone → signUp IS called and the NORMALIZED phone is stored", async () => {
+  it("valid PH phone under PH country → reaches signUp (international, not TW-only)", async () => {
+    signUp.mockResolvedValueOnce({ data: { user: { id: "u2" }, session: { access_token: "t" } }, error: null });
+    const { result } = renderHook(() => useAuthSession());
+    await act(async () => { await result.current.register(fields({ phone: "0915 408 1462", phoneCountry: "PH" })); });
+    expect(signUp).toHaveBeenCalledTimes(1);
+    expect(createMyProfile).toHaveBeenCalledWith("u2", "new@shop.com", expect.objectContaining({ phone: "09154081462" }));
+  });
+
+  it("valid phone → signUp IS called and the NATIONAL phone is stored", async () => {
     signUp.mockResolvedValueOnce({ data: { user: { id: "u1" }, session: { access_token: "t" } }, error: null });
     const { result } = renderHook(() => useAuthSession());
     await act(async () => { await result.current.register(fields({ phone: "0912 345 678" })); });
     expect(signUp).toHaveBeenCalledTimes(1);     // reached the network
     expect(createMyProfile).toHaveBeenCalledTimes(1);
-    expect(createMyProfile).toHaveBeenCalledWith("u1", "new@shop.com", expect.objectContaining({ phone: "0912345678" })); // normalized
+    expect(createMyProfile).toHaveBeenCalledWith("u1", "new@shop.com", expect.objectContaining({ phone: "0912345678" })); // clean national
   });
 });

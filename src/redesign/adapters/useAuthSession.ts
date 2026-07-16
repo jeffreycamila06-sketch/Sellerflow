@@ -18,11 +18,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { getMyProfile, createMyProfile, deleteUser, type AccountUser } from "../../accountDb";
+import { validatePhone, DEFAULT_COUNTRY } from "./phone";
 import { initials as deriveInitials } from "../data";
 
 export type AuthStatus = "loading" | "authed" | "anon";
 
-export interface RegisterFields { email: string; password: string; confirm: string; fullName: string; storeName: string; phone: string }
+export interface RegisterFields { email: string; password: string; confirm: string; fullName: string; storeName: string; phone: string; phoneCountry?: string }
 export interface RegisterResult { ok: boolean; error?: string; needsConfirm?: boolean }
 
 export interface UseAuthSession {
@@ -155,7 +156,7 @@ export function useAuthSession(): UseAuthSession {
       await createMyProfile(data.user.id, cleanEmail, {
         // Store the NORMALIZED phone (clean 09xxxxxxxx) — register only reaches
         // here after validateRegistration passed, so it is a valid TW mobile.
-        fullName: f.fullName.trim(), storeName: f.storeName.trim(), phone: validateTaiwanPhone(f.phone).normalized,
+        fullName: f.fullName.trim(), storeName: f.storeName.trim(), phone: validatePhone(f.phone, f.phoneCountry || DEFAULT_COUNTRY).national,
         tiktok: "", facebook: "", adminContactNote: "",
       });
     } catch (e) {
@@ -188,31 +189,16 @@ export function useAuthSession(): UseAuthSession {
 export const normalizePhone = (value: string): string => String(value || "").replace(/\D/g, "");
 export const phoneDisplay = (value: string): string => String(value || "").trim();
 
-// PURE Taiwan-mobile validator → { valid, normalized }. Strip non-digits, fold a
-// +886/886 country prefix to the local 0, then require 09 + 8 digits (09xxxxxxxx,
-// 10 total). NORMALIZE, don't reject — "0912 345 678", "0912-345-678",
-// "+886912345678" all pass and normalize to "0912345678"; "1234567890" (10 digits
-// but not 09), "0812345678", "091234567" (9), "09123456789" (11), "abcd123456"
-// all fail. `normalized` is the clean digit form (used as the STORED phone on a
-// successful signup, so new rows are consistent 09xxxxxxxx).
-export function validateTaiwanPhone(raw: string): { valid: boolean; normalized: string } {
-  let d = normalizePhone(raw); // strip non-digits
-  if (d.startsWith("886")) d = "0" + d.slice(3);
-  return { valid: /^09\d{8}$/.test(d), normalized: d };
-}
-export function isValidTaiwanMobile(phone: string): boolean {
-  return validateTaiwanPhone(phone).valid;
-}
-
 // SINGLE-SOURCE registration rule → an error CODE (or ""). Both the English
 // backstop (validateRegistration, used by the register() hook) and the
 // translated client layer (Signup via REG_ERROR_KEYS) derive from this, so the
-// two can never diverge. All fields required, phone = Taiwan mobile, password
-// ≥ 6, password === confirm.
+// two can never diverge. Phone is validated INTERNATIONALLY via adapters/phone
+// (libphonenumber) against the picked country (default TW). All fields required,
+// password ≥ 6, password === confirm.
 export type RegErrorCode = "" | "fields" | "phone" | "pw_len" | "pw_match";
 export function registrationErrorCode(f: RegisterFields): RegErrorCode {
   if (!f.fullName.trim() || !f.storeName.trim() || !f.email.trim() || !f.password) return "fields";
-  if (!isValidTaiwanMobile(f.phone)) return "phone";
+  if (!validatePhone(f.phone, f.phoneCountry || DEFAULT_COUNTRY).valid) return "phone";
   if (f.password.length < 6) return "pw_len";
   if (f.password !== f.confirm) return "pw_match";
   return "";

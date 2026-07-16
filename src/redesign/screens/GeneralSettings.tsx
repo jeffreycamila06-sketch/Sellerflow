@@ -6,7 +6,9 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { ACCENT_ORDER, ACCENTS, LANGS, CURRENCIES, CURRENCY_ORDER, type ThemeMode, type AccentKey, type AutoControls } from "../data";
 import { headerBar, headerTitle, card, sectionLabel } from "../ui";
-import { profileToDisplay, planLabel, renewLabel, validateTaiwanPhone } from "../adapters/useAuthSession";
+import { profileToDisplay, planLabel, renewLabel } from "../adapters/useAuthSession";
+import { validatePhone, DEFAULT_COUNTRY } from "../adapters/phone";
+import CountryPhoneField from "../components/CountryPhoneField";
 import type { AccountUser } from "../../accountDb";
 import { useT, tpl } from "../i18n";
 import { accountList } from "../adapters/connect";
@@ -57,6 +59,7 @@ export default function GeneralSettings({
   // Phase 5i — controlled profile-edit form, initialized from the real profile and
   // re-synced when it changes (e.g. after a save reload). Only user-editable fields.
   const [form, setForm] = useState({ fullName: "", storeName: "", phone: "" });
+  const [phoneCountry, setPhoneCountry] = useState(() => { try { return localStorage.getItem("sfl_rd_phone_country") || DEFAULT_COUNTRY; } catch { return DEFAULT_COUNTRY; } });
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [saveErr, setSaveErr] = useState("");
   useEffect(() => {
@@ -68,24 +71,28 @@ export default function GeneralSettings({
     setSaveState("idle"); setSaveErr("");
   }, [account]);
   const setField = (k: keyof typeof form, v: string) => { setForm((f) => ({ ...f, [k]: v })); setSaveState("idle"); };
+  const pickPhoneCountry = (iso: string) => { setPhoneCountry(iso); setSaveState("idle"); try { localStorage.setItem("sfl_rd_phone_country", iso); } catch { /* ignore */ } };
+  // Inline hint only when the phone was CHANGED to an invalid value (grandfathered
+  // pre-filled values are never flagged — validate-on-change).
+  const phoneChangedInvalid = form.phone.trim() !== (account?.profile.phone || "").trim() && form.phone.trim().length > 0 && !validatePhone(form.phone, phoneCountry).valid;
   const handleSaveProfile = async () => {
     if (!onSaveProfile || saveState === "saving") return;
     if (!form.fullName.trim() || !form.storeName.trim()) { setSaveState("error"); setSaveErr(t.rd_set_err_required); return; }
-    // Phone: SAME single-source validateTaiwanPhone as signup. GRANDFATHER — only
-    // validate when the phone was CHANGED, so an existing seller with an empty OR
-    // malformed stored phone can still edit their other fields (their pre-filled
-    // value passes untouched). A NEWLY-typed phone must be a valid TW mobile
-    // (blocks "1234567890"); a valid change is stored normalized (clean 09xxxxxxxx).
+    // Phone: SAME single-source validatePhone(number, country) as signup. GRANDFATHER
+    // — only validate when the phone was CHANGED, so an existing seller with an empty
+    // OR malformed stored phone can still edit their other fields (their pre-filled
+    // value passes untouched). A NEWLY-typed phone must be valid for the picked
+    // country (blocks "1234567890"); a valid change is stored as clean national digits.
     const ph = form.phone.trim();
     const originalPh = (account?.profile.phone || "").trim();
     const phChanged = ph !== originalPh;
-    if (phChanged && ph && !validateTaiwanPhone(ph).valid) { setSaveState("error"); setSaveErr(t.rd_su_err_phone); return; }
+    if (phChanged && ph && !validatePhone(ph, phoneCountry).valid) { setSaveState("error"); setSaveErr(t.rd_su_err_phone); return; }
     setSaveState("saving"); setSaveErr("");
     // ⚠️ name/store/phone ONLY — never tiktok/facebook (Channels editor owns accounts).
     const r = await onSaveProfile({
       fullName: form.fullName.trim(),
       storeName: form.storeName.trim(),
-      phone: phChanged && ph ? validateTaiwanPhone(ph).normalized : ph, // normalize a valid change; else keep as-is (grandfather)
+      phone: phChanged && ph ? validatePhone(ph, phoneCountry).national : ph, // clean national on a valid change; else keep as-is (grandfather)
     });
     if (r.ok) { setSaveState("saved"); }
     else { setSaveState("error"); setSaveErr(r.error || t.rd_set_err_save_failed); }
@@ -165,7 +172,7 @@ export default function GeneralSettings({
                 <div><label style={label}>{t.rd_set_shop_name}</label><input value={form.storeName} onChange={(e) => setField("storeName", e.target.value)} style={input} /></div>
                 <div style={{ display: "flex", gap: 9 }}>
                   <div style={{ flex: 1, minWidth: 0 }}><label style={label}>{t.rd_set_owner_name}</label><input value={form.fullName} onChange={(e) => setField("fullName", e.target.value)} style={input} /></div>
-                  <div style={{ flex: 1, minWidth: 0 }}><label style={label}>{t.rd_set_phone}</label><input value={form.phone} onChange={(e) => setField("phone", e.target.value)} style={{ ...input, fontFamily: "var(--font-mono)", fontSize: 13 }} /></div>
+                  <div style={{ flex: 1, minWidth: 0 }}><label style={label}>{t.rd_set_phone}</label><CountryPhoneField value={form.phone} onChange={(v) => setField("phone", v)} country={phoneCountry} onCountryChange={pickPhoneCountry} lang={lang} invalid={phoneChangedInvalid} hint={t.rd_su_err_phone} countryLabel={t.rd_ph_country} searchLabel={t.rd_ph_search} /></div>
                 </div>
                 {/* Username handle moved to the Channels editor (sole account writer). */}
                 {/* Email is identity — changing it needs the secure server step (production blocks it too). */}
