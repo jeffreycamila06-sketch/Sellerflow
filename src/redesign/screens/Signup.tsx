@@ -74,10 +74,9 @@ export default function Signup({ onBack, onLegal, onRegister }: {
         <div style={groupLabel}>{t.rd_su_shop_profile}</div>
         <div style={groupCard}>
           <div><label style={label}>{t.rd_set_shop_name}</label><input value={form.storeName} onChange={(e) => set("storeName", e.target.value)} placeholder={t.rd_su_shop_ph} style={input} /></div>
-          <div style={{ display: "flex", gap: 9 }}>
-            <div style={{ flex: 1, minWidth: 0 }}><label style={label}>{t.rd_set_owner_name}</label><input value={form.fullName} onChange={(e) => set("fullName", e.target.value)} placeholder={t.rd_su_fullname_ph} style={input} /></div>
-            <div style={{ flex: 1, minWidth: 0 }}><label style={label}>{t.rd_set_phone}</label><CountryPhoneField value={form.phone} onChange={(v) => set("phone", v)} country={phoneCountry} onCountryChange={pickCountry} lang={lang} invalid={phoneErr} hint={t.rd_su_err_phone} placeholder={t.rd_su_phone_ph} countryLabel={t.rd_ph_country} searchLabel={t.rd_ph_search} /></div>
-          </div>
+          <div><label style={label}>{t.rd_set_owner_name}</label><input value={form.fullName} onChange={(e) => set("fullName", e.target.value)} placeholder={t.rd_su_fullname_ph} style={input} /></div>
+          {/* Phone on its OWN full-width row — the picker + number input need the full width so a 10–11 digit number stays fully visible on mobile (was clipped in a 50/50 split). */}
+          <div><label style={label}>{t.rd_set_phone}</label><CountryPhoneField value={form.phone} onChange={(v) => set("phone", v)} country={phoneCountry} onCountryChange={pickCountry} lang={lang} invalid={phoneErr} hint={t.rd_su_err_phone} placeholder={t.rd_su_phone_ph} countryLabel={t.rd_ph_country} searchLabel={t.rd_ph_search} /></div>
           <div><label style={label}>{t.rd_set_email}</label><input value={form.email} onChange={(e) => set("email", e.target.value)} placeholder={t.rd_su_email_ph} autoComplete="email" inputMode="email" style={input} /></div>
         </div>
 

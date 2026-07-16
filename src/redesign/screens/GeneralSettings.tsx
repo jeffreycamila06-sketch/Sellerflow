@@ -170,10 +170,9 @@ export default function GeneralSettings({
               <div style={{ fontSize: 11, letterSpacing: ".1em", fontWeight: 800, color: "var(--text-muted)", marginBottom: 13 }}>{t.rd_set_basic_info}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                 <div><label style={label}>{t.rd_set_shop_name}</label><input value={form.storeName} onChange={(e) => setField("storeName", e.target.value)} style={input} /></div>
-                <div style={{ display: "flex", gap: 9 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}><label style={label}>{t.rd_set_owner_name}</label><input value={form.fullName} onChange={(e) => setField("fullName", e.target.value)} style={input} /></div>
-                  <div style={{ flex: 1, minWidth: 0 }}><label style={label}>{t.rd_set_phone}</label><CountryPhoneField value={form.phone} onChange={(v) => setField("phone", v)} country={phoneCountry} onCountryChange={pickPhoneCountry} lang={lang} invalid={phoneChangedInvalid} hint={t.rd_su_err_phone} countryLabel={t.rd_ph_country} searchLabel={t.rd_ph_search} /></div>
-                </div>
+                <div><label style={label}>{t.rd_set_owner_name}</label><input value={form.fullName} onChange={(e) => setField("fullName", e.target.value)} style={input} /></div>
+                {/* Phone on its OWN full-width row — the picker + number input need the full width so a 10–11 digit number stays fully visible on mobile (was clipped in a 50/50 split). */}
+                <div><label style={label}>{t.rd_set_phone}</label><CountryPhoneField value={form.phone} onChange={(v) => setField("phone", v)} country={phoneCountry} onCountryChange={pickPhoneCountry} lang={lang} invalid={phoneChangedInvalid} hint={t.rd_su_err_phone} countryLabel={t.rd_ph_country} searchLabel={t.rd_ph_search} /></div>
                 {/* Username handle moved to the Channels editor (sole account writer). */}
                 {/* Email is identity — changing it needs the secure server step (production blocks it too). */}
                 <div><label style={label}>{t.rd_set_email}</label><input value={pEmail} disabled style={{ ...input, opacity: 0.6 }} /></div>
