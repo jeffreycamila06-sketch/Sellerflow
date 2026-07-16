@@ -37,9 +37,11 @@ final class Phomemo241BuilderTests: XCTestCase {
         ]
     }
 
-    /// Deterministic fake band so tests never depend on UIKit glyph rendering.
-    private func fakeBand(_ text: String, _ h: Int, _ maxW: Int) -> Phomemo241Raster.Band? {
-        let widthBytes = 4
+    /// Deterministic fake band so tests never depend on UIKit glyph rendering. The
+    /// renderer now takes (text, xMul, yMul, maxW) and the band height = 24×yMul
+    /// (base cell × the vertical multiplier), computed inside the real renderer.
+    private func fakeBand(_ text: String, _ xMul: Int, _ yMul: Int, _ maxW: Int) -> Phomemo241Raster.Band? {
+        let widthBytes = 4, h = 24 * max(1, yMul)
         return Phomemo241Raster.Band(widthBytes: widthBytes, height: h, bytes: [UInt8](repeating: 0xAA, count: widthBytes * h))
     }
 
@@ -75,7 +77,7 @@ final class Phomemo241BuilderTests: XCTestCase {
         let p = plugin()
         let buyer = asciiBuyer()
         let aimo = p.buildTsplSticker(buyer: buyer, settings: nil, storeName: "My Shop", currency: "NT$", sessionDate: "07/17/2026", labelWidthMm: 100, labelHeightMm: 60)
-        let fork = p.buildTsplSticker241(buyer: buyer, settings: nil, storeName: "My Shop", currency: "NT$", sessionDate: "07/17/2026", labelWidthMm: 100, labelHeightMm: 60, bandRenderer: { _, _, _ in XCTFail("all-ASCII input must never render a band"); return nil })
+        let fork = p.buildTsplSticker241(buyer: buyer, settings: nil, storeName: "My Shop", currency: "NT$", sessionDate: "07/17/2026", labelWidthMm: 100, labelHeightMm: 60, bandRenderer: { _, _, _, _ in XCTFail("all-ASCII input must never render a band"); return nil })
         XCTAssertEqual(String(decoding: fork, as: UTF8.self), rotate180(String(decoding: aimo, as: UTF8.self), 800, 480),
                        "FORK DRIFT: buildTsplSticker241 no longer matches rotate180(buildTsplSticker) for ASCII input — mirror the AIMO layout change into the fork or consciously decline it (see the FORK-OF header + CLAUDE.md rule)")
     }
@@ -85,7 +87,7 @@ final class Phomemo241BuilderTests: XCTestCase {
         let buyer = asciiBuyer()
         for (w, h) in [(100, 60), (80, 60), (80, 50), (70, 50), (60, 40)] {
             let aimo = p.buildTsplSticker(buyer: buyer, settings: nil, storeName: "My Shop", currency: "NT$", sessionDate: "07/17/2026", labelWidthMm: w, labelHeightMm: h)
-            let fork = p.buildTsplSticker241(buyer: buyer, settings: nil, storeName: "My Shop", currency: "NT$", sessionDate: "07/17/2026", labelWidthMm: w, labelHeightMm: h, bandRenderer: { _, _, _ in nil })
+            let fork = p.buildTsplSticker241(buyer: buyer, settings: nil, storeName: "My Shop", currency: "NT$", sessionDate: "07/17/2026", labelWidthMm: w, labelHeightMm: h, bandRenderer: { _, _, _, _ in nil })
             XCTAssertEqual(String(decoding: fork, as: UTF8.self), rotate180(String(decoding: aimo, as: UTF8.self), w * 8, h * 8),
                            "fork drift at \(w)x\(h)")
         }
@@ -97,9 +99,9 @@ final class Phomemo241BuilderTests: XCTestCase {
         let p = plugin()
         let buyer: [String: Any] = ["num": 88, "name": "\u{9673}\u{5C0F}\u{7F8E}", "handle": "sellerflow", "orders": []]
         var requestedHeights: [Int] = []
-        let capture: (String, Int, Int) -> Phomemo241Raster.Band? = { text, h, maxW in
-            requestedHeights.append(h)
-            return self.fakeBand(text, h, maxW)
+        let capture: (String, Int, Int, Int) -> Phomemo241Raster.Band? = { text, xMul, yMul, maxW in
+            requestedHeights.append(24 * max(1, yMul))   // effective band height = 24 × yMul
+            return self.fakeBand(text, xMul, yMul, maxW)
         }
         // level 1: cjkYMul = nameCjkYMul(2) × 1 = 2 → band height 48
         _ = p.buildTsplSticker241(buyer: buyer, settings: ["printBuyerNameScale": 1, "printStoreName": false, "printBuyerUsername": false, "printOrderItems": false, "printTotal": false], storeName: "S", currency: "NT$", sessionDate: "", labelWidthMm: 100, labelHeightMm: 60, bandRenderer: capture)
@@ -123,8 +125,8 @@ final class Phomemo241BuilderTests: XCTestCase {
         let p = plugin()
         let buyer: [String: Any] = ["num": 88, "name": "", "handle": "s", "totalSpent": 0, "orders": []]
         var bandHeights: [Int] = []
-        let cap: (String, Int, Int) -> Phomemo241Raster.Band? = { _, h, _ in
-            bandHeights.append(h); return Phomemo241Raster.Band(widthBytes: 4, height: h, bytes: [UInt8](repeating: 0xAA, count: 4 * h))
+        let cap: (String, Int, Int, Int) -> Phomemo241Raster.Band? = { _, _, yMul, _ in
+            let h = 24 * max(1, yMul); bandHeights.append(h); return Phomemo241Raster.Band(widthBytes: 4, height: h, bytes: [UInt8](repeating: 0xAA, count: 4 * h))
         }
         let off: [String: Any] = ["printStoreName": false, "printBuyerUsername": false, "printOrderItems": false, "printTotal": false]
         // scale 1 → the Buyer# stays a TEXT command; NO band requested.
@@ -144,9 +146,9 @@ final class Phomemo241BuilderTests: XCTestCase {
         let p = plugin()
         let buyer: [String: Any] = ["num": 5, "name": "\u{0E2A}\u{0E27}\u{0E31}\u{0E2A}\u{0E14}\u{0E35}", "handle": "thaiseller", "orders": []] // สวัสดี
         var bandTexts: [String] = []
-        let capture: (String, Int, Int) -> Phomemo241Raster.Band? = { text, h, maxW in
+        let capture: (String, Int, Int, Int) -> Phomemo241Raster.Band? = { text, xMul, yMul, maxW in
             bandTexts.append(text)
-            return self.fakeBand(text, h, maxW)
+            return self.fakeBand(text, xMul, yMul, maxW)
         }
         let out = p.buildTsplSticker241(buyer: buyer, settings: ["printStoreName": false, "printBuyerUsername": false, "printOrderItems": false, "printTotal": false], storeName: "S", currency: "NT$", sessionDate: "", labelWidthMm: 100, labelHeightMm: 60, bandRenderer: capture)
         XCTAssertEqual(bandTexts.count, 1, "the Thai name must reach the band renderer — the AIMO downgrade-to-handle is deliberately absent (D3)")
@@ -161,7 +163,7 @@ final class Phomemo241BuilderTests: XCTestCase {
 
     func testLayoutIsDirection0WithRotated180Text() {
         let p = plugin()
-        let out = p.buildTsplSticker241(buyer: asciiBuyer(), settings: nil, storeName: "My Shop", currency: "NT$", sessionDate: "07/17/2026", labelWidthMm: 100, labelHeightMm: 60, bandRenderer: { _, _, _ in nil })
+        let out = p.buildTsplSticker241(buyer: asciiBuyer(), settings: nil, storeName: "My Shop", currency: "NT$", sessionDate: "07/17/2026", labelWidthMm: 100, labelHeightMm: 60, bandRenderer: { _, _, _, _ in nil })
         let s = String(decoding: out, as: UTF8.self)
         XCTAssertTrue(s.contains("DIRECTION 0"), "the 241 fork must run DIRECTION 0 (DIR1 rasterizer is broken)")
         XCTAssertFalse(s.contains("DIRECTION 1"), "DIRECTION 1 must never be emitted by the fork")
@@ -188,7 +190,7 @@ final class Phomemo241BuilderTests: XCTestCase {
     func testFailedRenderEmitsNothingNeverMalformed() {
         let p = plugin()
         let buyer: [String: Any] = ["num": 88, "name": "\u{9673}\u{5C0F}\u{7F8E}", "handle": "s", "orders": []]
-        let out = p.buildTsplSticker241(buyer: buyer, settings: nil, storeName: "S", currency: "NT$", sessionDate: "", labelWidthMm: 100, labelHeightMm: 60, bandRenderer: { _, _, _ in nil })
+        let out = p.buildTsplSticker241(buyer: buyer, settings: nil, storeName: "S", currency: "NT$", sessionDate: "", labelWidthMm: 100, labelHeightMm: 60, bandRenderer: { _, _, _, _ in nil })
         let s = String(decoding: out, as: UTF8.self)
         XCTAssertFalse(s.contains("BITMAP"), "a failed band render must emit NOTHING (0-width BITMAP would be malformed)")
         XCTAssertTrue(s.hasSuffix("PRINT 1\r\n"), "the label still terminates normally")

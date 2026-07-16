@@ -1144,6 +1144,30 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             ? buildTsplSticker241(buyer: buyer, settings: settings, storeName: storeName, currency: currency, sessionDate: sessionDate, labelWidthMm: labelWidthMm, labelHeightMm: labelHeightMm)
             : buildTsplSticker(buyer: buyer, settings: settings, storeName: storeName, currency: currency, sessionDate: sessionDate, labelWidthMm: labelWidthMm, labelHeightMm: labelHeightMm)
 
+        // 241 TEST print: also emit a FONT-STEPPING PROBE label (internal fonts
+        // "1".."8" at rot-180) so ONE photo shows which fonts the 241 renders + their
+        // sizes — the data to decide whether internal-font stepping (the ROM-typeface
+        // route, no band) can replace the raster bands. TWO labels, one connection.
+        // AIMO + real orders are untouched (single label via printJob below).
+        if is241 && (call.getBool("isTest") ?? false) {
+            let probe = buildPhomemoFontProbe(labelWidthMm: labelWidthMm, labelHeightMm: labelHeightMm)
+            bleTransport.printJobSequence(payloads: [data, probe], preferredId: savedId) { [weak self] error in
+                guard let self = self else { return }
+                if let error = error {
+                    call.reject("Bluetooth print failed: \(error.message)", error.code)
+                } else {
+                    call.resolve([
+                        "ok": true,
+                        "bytes": data.count + probe.count,
+                        "labels": 2,
+                        "savedPrinter": self.savedBlePrinterOrNull(),
+                        "message": "241 test: sticker + font-stepping probe (fonts 1–8 at rot-180) sent.",
+                    ])
+                }
+            }
+            return
+        }
+
         bleTransport.printJob(data: data, preferredId: savedId) { [weak self] error in
             guard let self = self else { return }
             if let error = error {
@@ -1157,6 +1181,29 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                 ])
             }
         }
+    }
+
+    /// Font-stepping PROBE (241 diagnostic only). Prints the internal fonts "1".."8"
+    /// at rotation 180 (the real sticker path) so a single photo reveals which the
+    /// 241 renders and their relative sizes — the evidence to decide font-stepping
+    /// (clean ROM typeface, no band) vs the raster bands. rot-180 anchor = (W−x, H−y).
+    private func buildPhomemoFontProbe(labelWidthMm: Int, labelHeightMm: Int) -> Data {
+        var out = Data()
+        func w(_ s: String) { out.append(contentsOf: tsplAsciiBytes(s)); out.append(contentsOf: [0x0D, 0x0A]) }
+        let W = labelWidthMm * 8, H = labelHeightMm * 8
+        w("SIZE \(labelWidthMm) mm, \(labelHeightMm) mm")
+        w("GAP 2 mm, 0")
+        w("DIRECTION 0")
+        w("REFERENCE 0,0")
+        w("DENSITY 8")
+        w("CLS")
+        var y = 16
+        for f in ["1", "2", "3", "4", "5", "6", "7", "8"] {
+            w("TEXT \(W - 16),\(H - y),\"\(f)\",180,1,1,\"F\(f) Ag80\"")
+            y += 34
+        }
+        w("PRINT 1")
+        return out
     }
 
     /// Byte-faithful port of TsplBuilder.textTestPage (Java) — the diagnostic
@@ -1394,9 +1441,9 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         sessionDate: String,
         labelWidthMm: Int,
         labelHeightMm: Int,
-        bandRenderer: ((String, Int, Int) -> Phomemo241Raster.Band?)? = nil
+        bandRenderer: ((String, Int, Int, Int) -> Phomemo241Raster.Band?)? = nil
     ) -> Data {
-        let renderBand = bandRenderer ?? { [weak self] text, h, w in self?.render241TextBand(text, heightDots: h, maxWidthDots: w) }
+        let renderBand = bandRenderer ?? { [weak self] text, xMul, yMul, w in self?.render241TextBand(text, xMul: xMul, yMul: yMul, maxWidthDots: w) }
         var out = Data()
         func writeAscii(_ s: String) {
             out.append(contentsOf: tsplAsciiBytes(s))
@@ -1426,11 +1473,11 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         // widthBytes*8 (left-aligned content shifts ≤7 dots, sub-mm — the true
         // pixel width is not retained). Pixels are pre-rotated (render flips).
         // Empty/blank or a failed render → emit NOTHING (a 0-width BITMAP is malformed).
-        func emitBand(_ x: Int, _ y: Int, _ content: String, _ bandH: Int, _ xBudget: Int, _ rightEdge: Int) {
+        func emitBand(_ x: Int, _ y: Int, _ content: String, _ xMul: Int, _ yMul: Int, _ rightEdge: Int) {
             if content.isEmpty { return }
-            let budget = Phomemo241Raster.maxChars(x: x, rightEdge: rightEdge, cjkXMul: max(1, xBudget))
+            let budget = Phomemo241Raster.maxChars(x: x, rightEdge: rightEdge, cjkXMul: max(1, xMul))
             let fitted = truncate16(content, budget)
-            guard let band = renderBand(fitted, max(1, bandH), max(8, rightEdge - x)),
+            guard let band = renderBand(fitted, max(1, xMul), max(1, yMul), max(8, rightEdge - x)),
                   band.height > 0, band.widthBytes > 0, !band.bytes.isEmpty else { return }
             let bx = W - x - band.widthBytes * 8
             let by = H - y - band.height
@@ -1442,10 +1489,11 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         // the mapped anchor (byte-identical default). CJK → always a raster band.
         // SCALED ASCII (yMul>1) → ALSO a band — the 241 firmware does NOT honor the
         // TSPL font x/y-multiplier on rotation-180 TEXT (BUG: scale adjusters had no
-        // effect), so a scaled element must be sized in PIXELS. Band height =
-        // 24×(effective yMul) matches the AIMO font's scaled height (24×ym). All the
-        // writeSmart241 elements have a base yMul of 1, so yMul>1 ⇔ the seller scaled
-        // it; the inline base-2 elements use emitScaled (which keys on the lvl).
+        // effect), so a scaled element must be sized in PIXELS. The band renderer
+        // STRETCHES a base ROM-like glyph by (xMul, yMul) so the LETTER itself grows
+        // (AIMO-like), not just the whitespace. All the writeSmart241 elements have a
+        // base yMul of 1, so yMul>1 ⇔ the seller scaled it; the inline base-2
+        // elements use emitScaled (which keys on the lvl).
         func writeSmart241(_ x: Int, _ y: Int, _ asciiFont: String, _ rawContent: String, _ xMul: Int, _ yMul: Int, _ cjkXMul: Int, _ cjkYMul: Int, _ rightEdge: Int) {
             let content = transliterateLatin(rawContent)
             if content.isEmpty { return }   // same emptiness rule as writeTextSmart (parity)
@@ -1454,16 +1502,15 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                 emitText(x, y, asciiFont, xMul, yMul, content)
                 return
             }
-            let bandH = 24 * max(1, isCjk ? cjkYMul : yMul)
-            emitBand(x, y, content, bandH, isCjk ? cjkXMul : xMul, rightEdge)
+            emitBand(x, y, content, isCjk ? cjkXMul : xMul, isCjk ? cjkYMul : yMul, rightEdge)
         }
         // Inline scalable element (Buyer# / order time / Total). lvl = the seller's
         // 1–8 adjuster (base 1). lvl 1 → the verified TEXT (byte-identical default);
-        // lvl>1 → a pixel-sized band at 24×yMul, so the scale has an effect despite
-        // the 241 not scaling rotated internal-font TEXT. rightEdge = W−16 (= c.rightEdge).
+        // lvl>1 → a (xMul, yMul)-stretched band so the scale has an effect despite the
+        // 241 not scaling rotated internal-font TEXT. rightEdge = W−16 (= c.rightEdge).
         func emitScaled(_ x: Int, _ y: Int, _ font: String, _ xMul: Int, _ yMul: Int, _ lvl: Int, _ content: String) {
             if lvl <= 1 { emitText(x, y, font, xMul, yMul, content); return }
-            emitBand(x, y, transliterateLatin(content), 24 * max(1, yMul), xMul, W - 16)
+            emitBand(x, y, transliterateLatin(content), xMul, yMul, W - 16)
         }
         func asInt(_ v: Any?) -> Int? {
             if let i = v as? Int { return i }
@@ -1620,20 +1667,54 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
     /// BANNED here — Capacitor invokes plugin calls off-main). 1 point = 1 pixel
     /// = 1 printer dot (203dpi). System font cascade resolves CJK to PingFang TC
     /// (Traditional-correct) and other scripts to their system fonts.
-    private func render241TextBand(_ text: String, heightDots: Int, maxWidthDots: Int) -> Phomemo241Raster.Band? {
-        if text.isEmpty || heightDots <= 0 || maxWidthDots <= 0 { return nil }
-        let font = UIFont.systemFont(ofSize: CGFloat(heightDots) * 0.82, weight: .medium)
-        let str = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: UIColor.black])
-        let measured = str.size()
-        let width = min(Int(ceil(measured.width)), maxWidthDots)
-        if width <= 0 { return nil }
+    /// The band's TARGET size is a base glyph cell STRETCHED by (xMul, yMul) — the
+    /// same thing the AIMO `TEXT …,"4",0,xMul,yMul` does (a stretched bitmap). So
+    /// the LETTER grows tall/narrow with the scale (not just the whitespace), and a
+    /// wide string doesn't clip the way a uniform blow-up would. ASCII → a MONOSPACE
+    /// BOLD face (closest to the TSPL ROM look), cap sized to the base cell so caps/
+    /// digits fill top-to-bottom. CJK → unchanged (systemFont, em ≈ fills — the
+    /// device-verified 陳小美/紅色洋裝 path). base cell = 24 dots (~ TSPL font "4").
+    private func render241TextBand(_ text: String, xMul: Int, yMul: Int, maxWidthDots: Int) -> Phomemo241Raster.Band? {
+        if text.isEmpty || xMul <= 0 || yMul <= 0 || maxWidthDots <= 0 { return nil }
+        let baseCell = 24
+        let outH = baseCell * yMul
+        let isCjk = text.unicodeScalars.contains {
+            ($0.value >= 0x2E80 && $0.value <= 0x9FFF) || ($0.value >= 0x3400 && $0.value <= 0x4DBF) || ($0.value >= 0xF900 && $0.value <= 0xFAFF)
+        }
+        let img: UIImage
+        let outW: Int
         let fmt = UIGraphicsImageRendererFormat()
         fmt.scale = 1
-        let size = CGSize(width: CGFloat(width), height: CGFloat(heightDots))
-        let img = UIGraphicsImageRenderer(size: size, format: fmt).image { ctx in
-            UIColor.white.setFill()
-            ctx.fill(CGRect(origin: .zero, size: size))
-            str.draw(at: CGPoint(x: 0, y: max(0, (CGFloat(heightDots) - measured.height) / 2)))
+        if isCjk {
+            // CJK — verified path, unchanged: system font at outH×0.82, width natural.
+            let font = UIFont.systemFont(ofSize: CGFloat(outH) * 0.82, weight: .medium)
+            let str = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: UIColor.black])
+            let m = str.size()
+            let w = min(Int(ceil(m.width)), maxWidthDots)
+            if w <= 0 { return nil }
+            outW = w
+            img = UIGraphicsImageRenderer(size: CGSize(width: outW, height: outH), format: fmt).image { ctx in
+                UIColor.white.setFill(); ctx.fill(CGRect(x: 0, y: 0, width: outW, height: outH))
+                str.draw(at: CGPoint(x: 0, y: max(0, (CGFloat(outH) - m.height) / 2)))
+            }
+        } else {
+            // ASCII/Latin — monospace bold, cap == baseCell, then STRETCH by (xMul,
+            // yMul): scaleBy(xMul, yMul) makes the letter itself grow (AIMO-like),
+            // cap-aligned so it fills the cell top-to-bottom (descenders crop, fine).
+            let ref = UIFont.monospacedSystemFont(ofSize: 100, weight: .bold)
+            let capRatio = ref.capHeight > 0 ? ref.capHeight / 100 : 0.7
+            let font = UIFont.monospacedSystemFont(ofSize: CGFloat(baseCell) / capRatio, weight: .bold)
+            let str = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: UIColor.black])
+            let m = str.size()
+            if m.width < 1 { return nil }
+            outW = min(Int(ceil(m.width * CGFloat(xMul))), maxWidthDots)
+            if outW <= 0 { return nil }
+            let hStretch = CGFloat(outW) / CGFloat(m.width)   // = xMul unless width-clamped
+            img = UIGraphicsImageRenderer(size: CGSize(width: outW, height: outH), format: fmt).image { ctx in
+                UIColor.white.setFill(); ctx.fill(CGRect(x: 0, y: 0, width: outW, height: outH))
+                ctx.cgContext.scaleBy(x: hStretch, y: CGFloat(yMul))
+                str.draw(at: CGPoint(x: 0, y: font.capHeight - font.ascender)) // cap-top → 0
+            }
         }
         guard let cg = img.cgImage else { return nil }
         let w = cg.width, h = cg.height
