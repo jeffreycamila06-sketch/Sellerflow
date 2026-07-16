@@ -38,10 +38,10 @@ final class Phomemo241BuilderTests: XCTestCase {
     }
 
     /// Deterministic fake band so tests never depend on UIKit glyph rendering. The
-    /// renderer now takes (text, xMul, yMul, maxW) and the band height = 24×yMul
-    /// (base cell × the vertical multiplier), computed inside the real renderer.
-    private func fakeBand(_ text: String, _ xMul: Int, _ yMul: Int, _ maxW: Int) -> Phomemo241Raster.Band? {
-        let widthBytes = 4, h = 24 * max(1, yMul)
+    /// renderer takes (text, xMul, yMul, maxW) with DECIMAL muls (the 241 raster sizes
+    /// in pixels so it honors every 0.1 seller step); band height = round(24 × yMul).
+    private func fakeBand(_ text: String, _ xMul: Double, _ yMul: Double, _ maxW: Int) -> Phomemo241Raster.Band? {
+        let widthBytes = 4, h = max(1, Int((24 * yMul).rounded()))
         return Phomemo241Raster.Band(widthBytes: widthBytes, height: h, bytes: [UInt8](repeating: 0xAA, count: widthBytes * h))
     }
 
@@ -101,8 +101,8 @@ final class Phomemo241BuilderTests: XCTestCase {
         let p = plugin()
         let buyer: [String: Any] = ["num": 88, "name": "\u{9673}\u{5C0F}\u{7F8E}", "handle": "sellerflow", "orders": []]
         var requestedHeights: [Int] = []
-        let capture: (String, Int, Int, Int) -> Phomemo241Raster.Band? = { text, xMul, yMul, maxW in
-            requestedHeights.append(24 * max(1, yMul))   // effective band height = 24 × yMul
+        let capture: (String, Double, Double, Int) -> Phomemo241Raster.Band? = { text, xMul, yMul, maxW in
+            requestedHeights.append(max(1, Int((24 * yMul).rounded())))   // effective band height = 24 × yMul
             return self.fakeBand(text, xMul, yMul, maxW)
         }
         // level 1: cjkYMul = nameCjkYMul(2) × 1 = 2 → band height 48
@@ -127,8 +127,8 @@ final class Phomemo241BuilderTests: XCTestCase {
         let p = plugin()
         let buyer: [String: Any] = ["num": 88, "name": "", "handle": "s", "totalSpent": 0, "orders": []]
         var bandHeights: [Int] = []
-        let cap: (String, Int, Int, Int) -> Phomemo241Raster.Band? = { _, _, yMul, _ in
-            let h = 24 * max(1, yMul); bandHeights.append(h); return Phomemo241Raster.Band(widthBytes: 4, height: h, bytes: [UInt8](repeating: 0xAA, count: 4 * h))
+        let cap: (String, Double, Double, Int) -> Phomemo241Raster.Band? = { _, _, yMul, _ in
+            let h = max(1, Int((24 * yMul).rounded())); bandHeights.append(h); return Phomemo241Raster.Band(widthBytes: 4, height: h, bytes: [UInt8](repeating: 0xAA, count: 4 * h))
         }
         let off: [String: Any] = ["printStoreName": false, "printBuyerUsername": false, "printOrderItems": false, "printTotal": false]
         // scale 1 → the Buyer# stays a TEXT command; NO band requested.
@@ -142,13 +142,73 @@ final class Phomemo241BuilderTests: XCTestCase {
         XCTAssertEqual(bandHeights, [120], "scale 5 → a pixel-sized band at 24 × 5 (60x40 buyerNumYMul=1)")
     }
 
+    // MARK: BUG 3 — DECIMAL scales from scalesRaw size the band to the exact 0.1 step
+    // The redesign size adjuster is a fine decimal (0.5–3.0 / 0.1), but the AIMO TSPL
+    // path rounds it to an int 1–8. scalesRaw carries the exact decimal so the 241
+    // raster (pixel-sized) honors every step: band height = round(24 × baseY × scale).
+
+    func testDecimalScaleFromScalesRawSizesBandToExactStep() {
+        let p = plugin()
+        let buyer: [String: Any] = ["num": 88, "name": "", "handle": "s", "totalSpent": 0, "orders": []]
+        let off: [String: Any] = ["printStoreName": false, "printBuyerUsername": false, "printOrderItems": false, "printTotal": false]
+        // 60x40 buyerNumYMul = 1, so band height = round(24 × 1 × scale).
+        for (scale, expected) in [(1.3, 31), (0.7, 17), (1.1, 26), (2.4, 58)] {
+            var heights: [Int] = []
+            let cap: (String, Double, Double, Int) -> Phomemo241Raster.Band? = { _, _, yMul, _ in
+                let h = max(1, Int((24 * yMul).rounded())); heights.append(h)
+                return Phomemo241Raster.Band(widthBytes: 4, height: h, bytes: [UInt8](repeating: 0xAA, count: 4 * h))
+            }
+            // integer settings say 1 (rounded); scalesRaw carries the real decimal → the
+            // raster must use the decimal, NOT the rounded 1.
+            _ = p.buildTsplSticker241(buyer: buyer, settings: off.merging(["printBuyerNumberScale": 1]) { a, _ in a },
+                                      storeName: "S", currency: "NT$", sessionDate: "", labelWidthMm: 60, labelHeightMm: 40,
+                                      scalesRaw: ["printBuyerNumberScale": scale], bandRenderer: cap)
+            XCTAssertEqual(heights, [expected], "scale \(scale) → band height round(24 × \(scale)) = \(expected) (decimal honored, not rounded to 1)")
+        }
+    }
+
+    func testExactlyOnePointZeroStaysTextEveryOtherValueBands() {
+        let p = plugin()
+        let buyer: [String: Any] = ["num": 88, "name": "", "handle": "s", "totalSpent": 0, "orders": []]
+        let off: [String: Any] = ["printStoreName": false, "printBuyerUsername": false, "printOrderItems": false, "printTotal": false]
+        // exactly 1.0 → the verified TEXT default (no band requested).
+        var bands = 0
+        _ = p.buildTsplSticker241(buyer: buyer, settings: off, storeName: "S", currency: "NT$", sessionDate: "", labelWidthMm: 60, labelHeightMm: 40,
+                                  scalesRaw: ["printBuyerNumberScale": 1.0], bandRenderer: { _, _, _, _ in bands += 1; return nil })
+        XCTAssertEqual(bands, 0, "scale exactly 1.0 → TEXT, never a band (byte-identical default)")
+        // 0.9 (just under 1) → band (TEXT can't shrink; a rounded gate would miss this).
+        var bands09 = 0
+        _ = p.buildTsplSticker241(buyer: buyer, settings: off, storeName: "S", currency: "NT$", sessionDate: "", labelWidthMm: 60, labelHeightMm: 40,
+                                  scalesRaw: ["printBuyerNumberScale": 0.9], bandRenderer: { _, _, _, _ in bands09 += 1; return Phomemo241Raster.Band(widthBytes: 4, height: 22, bytes: [UInt8](repeating: 0xAA, count: 88)) })
+        XCTAssertEqual(bands09, 1, "scale 0.9 → band (it must SHRINK below 1 — the old round()d gate treated 0.7–1.4 as 1)")
+    }
+
+    // MARK: BUG 1/2 — the order-line TIME is FIXED, decoupled from the comment scale
+    // The redesign has no separate time-size control; the single "comment" scale drove
+    // BOTH the price code AND the time, so a scaled time band overran the price column
+    // ("7:07PRICE"). The 241 time is now a fixed TEXT font "2" 1×1 regardless of scale.
+
+    func testOrderTimeIsFixedRegardlessOfCommentScale() {
+        let p = plugin()
+        let buyer: [String: Any] = ["num": 7, "name": "", "handle": "s", "totalSpent": 0, "orders": [["item": "250", "time": "7:07"]]]
+        let on: [String: Any] = ["printStoreName": false, "printBuyerNumber": false, "printBuyerUsername": false, "printOrderItems": true, "printTotal": false]
+        // Comment scale enlarged (both the OLD integer coupling AND a big raw decimal):
+        // the PRICE becomes a band, but the TIME must stay the fixed TEXT command.
+        let out = p.buildTsplSticker241(buyer: buyer, settings: on.merging(["printOrderScale": 8, "printCommentScale": 8]) { a, _ in a },
+                                        storeName: "S", currency: "NT$", sessionDate: "", labelWidthMm: 60, labelHeightMm: 40,
+                                        scalesRaw: ["printCommentScale": 3.0], bandRenderer: self.fakeBand)
+        let s = String(decoding: out, as: UTF8.self)
+        XCTAssertTrue(s.contains("\"2\",180,1,1,\"7:07\""), "the time must stay a FIXED font-2 1×1 TEXT even when the comment/order scale is enlarged (BUG 1/2)")
+        XCTAssertTrue(s.contains("BITMAP"), "the enlarged PRICE must still become a band (BUG 3) — only the time is pinned")
+    }
+
     // MARK: F3 — UNSUPPORTED script renders as a band (no downgrade)
 
     func testThaiNameRendersAsBandNotHandle() {
         let p = plugin()
         let buyer: [String: Any] = ["num": 5, "name": "\u{0E2A}\u{0E27}\u{0E31}\u{0E2A}\u{0E14}\u{0E35}", "handle": "thaiseller", "orders": []] // สวัสดี
         var bandTexts: [String] = []
-        let capture: (String, Int, Int, Int) -> Phomemo241Raster.Band? = { text, xMul, yMul, maxW in
+        let capture: (String, Double, Double, Int) -> Phomemo241Raster.Band? = { text, xMul, yMul, maxW in
             bandTexts.append(text)
             return self.fakeBand(text, xMul, yMul, maxW)
         }

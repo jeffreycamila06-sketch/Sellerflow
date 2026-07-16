@@ -7,7 +7,7 @@
 // web or the Vercel preview, so every call returns the friendly "open the app"
 // result and the UI is a safe no-op. Real connection/scan/test only works inside
 // the APK. (The slip/sticker payload builders live in printing.ts, byte-parity.)
-import { buildNativeStickerPayload, type Settings } from "./printing";
+import { buildNativeStickerPayload, buildScalesRaw, type Settings } from "./printing";
 import type { Buyer } from "../../lib/orderTypes";
 
 // Result/config shapes — structurally identical to App.tsx:39-54.
@@ -94,5 +94,10 @@ export function buildTestBuyer(): Buyer {
 // past the temporary 241 order guard that still no-ops REAL orders. The AIMO
 // native path ignores the flag — the underlying payload is byte-unchanged.
 export function buildTestStickerPayload(cur: string, storeName: string, settings: Settings) {
-  return { ...buildNativeStickerPayload(buildTestBuyer(), cur || "NT$", storeName || "SellerFlowLive", settings), isTest: true };
+  // scalesRaw (241-only): carries the exact decimal size adjusters to the raster path
+  // so the Test Print reflects each 0.1 step (AIMO ignores it). Absent → 241 falls
+  // back to the rounded integer scale. See printing.buildScalesRaw.
+  const scalesRaw = buildScalesRaw(settings);
+  const base = { ...buildNativeStickerPayload(buildTestBuyer(), cur || "NT$", storeName || "SellerFlowLive", settings), isTest: true };
+  return scalesRaw ? { ...base, scalesRaw } : base;
 }

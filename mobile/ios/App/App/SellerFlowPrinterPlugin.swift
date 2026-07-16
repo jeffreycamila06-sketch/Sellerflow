@@ -1078,7 +1078,8 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                 storeName: call.getString("storeName") ?? "SellerFlowLive",
                 currency: call.getString("currency") ?? "NT$", sessionDate: "",
                 labelWidthMm: call.getInt("labelWidthMm", defaultLabelWidthMm),
-                labelHeightMm: call.getInt("labelHeightMm", defaultLabelHeightMm)
+                labelHeightMm: call.getInt("labelHeightMm", defaultLabelHeightMm),
+                scalesRaw: call.getObject("scalesRaw")
             )
             bleTransport.printJob(data: data241, preferredId: savedId) { error in
                 if let error = error {
@@ -1136,12 +1137,15 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         let sessionDate = call.getString("sessionDate") ?? ""
         let labelWidthMm = call.getInt("labelWidthMm", defaultLabelWidthMm)
         let labelHeightMm = call.getInt("labelHeightMm", defaultLabelHeightMm)
+        // 241-only raw decimal scales (absent on AIMO/legacy payloads → nil → the fork
+        // falls back to the rounded integer scale). AIMO's buildTsplSticker never reads it.
+        let scalesRaw = call.getObject("scalesRaw")
 
         // SAME payload in — the profile picks the builder. buildTsplSticker241
         // reads the identical settings/scales/size/buyer that buildTsplSticker does
         // (grep-audited parity), so every Printer & Display setting flows equally.
         let data = is241
-            ? buildTsplSticker241(buyer: buyer, settings: settings, storeName: storeName, currency: currency, sessionDate: sessionDate, labelWidthMm: labelWidthMm, labelHeightMm: labelHeightMm)
+            ? buildTsplSticker241(buyer: buyer, settings: settings, storeName: storeName, currency: currency, sessionDate: sessionDate, labelWidthMm: labelWidthMm, labelHeightMm: labelHeightMm, scalesRaw: scalesRaw)
             : buildTsplSticker(buyer: buyer, settings: settings, storeName: storeName, currency: currency, sessionDate: sessionDate, labelWidthMm: labelWidthMm, labelHeightMm: labelHeightMm)
 
         // NOTE (2026-07-17): the font-stepping PROBE that briefly rode the test print
@@ -1399,7 +1403,8 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         sessionDate: String,
         labelWidthMm: Int,
         labelHeightMm: Int,
-        bandRenderer: ((String, Int, Int, Int) -> Phomemo241Raster.Band?)? = nil
+        scalesRaw: [String: Any]? = nil,
+        bandRenderer: ((String, Double, Double, Int) -> Phomemo241Raster.Band?)? = nil
     ) -> Data {
         let renderBand = bandRenderer ?? { [weak self] text, xMul, yMul, w in self?.render241TextBand(text, xMul: xMul, yMul: yMul, maxWidthDots: w) }
         var out = Data()
@@ -1434,16 +1439,24 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         func emitBar(_ x: Int, _ y: Int, _ w: Int, _ h: Int) {
             writeAscii("BAR \(max(0, W - x - w - edgeGuard)),\(H - y - h),\(w),\(h)")
         }
-        // Emit `content` as a pre-rotated raster band at height `bandH`, box
-        // re-anchored under the 180° map: top-left → (W−x−boxW, H−y−h). boxW =
-        // widthBytes*8 (left-aligned content shifts ≤7 dots, sub-mm — the true
-        // pixel width is not retained). Pixels are pre-rotated (render flips).
-        // Empty/blank or a failed render → emit NOTHING (a 0-width BITMAP is malformed).
-        func emitBand(_ x: Int, _ y: Int, _ content: String, _ xMul: Int, _ yMul: Int, _ rightEdge: Int) {
+        // Clamp a raster multiplier to the usable range. Ceiling 8 mirrors AIMO's cmul
+        // (the TSPL font 8× ceiling) so INTEGER scales stay height-parity with the
+        // goldens; floor 0.5 lets sub-1 decimals genuinely SHRINK on the band path
+        // (AIMO's cmul floors at 1 = can't shrink; the 241 raster can — BUG 3).
+        func clampF(_ v: Double) -> Double { return min(8.0, max(0.5, v)) }
+        // Emit `content` as a pre-rotated raster band, box re-anchored under the 180°
+        // map: top-left → (W−x−boxW, H−y−h). boxW = widthBytes*8 (left-aligned content
+        // shifts ≤7 dots, sub-mm). Pixels are pre-rotated (render flips). Empty/blank or
+        // a failed render → emit NOTHING (a 0-width BITMAP is malformed). Muls are
+        // DECIMAL (Double): the seller size adjuster is a fine 0.1 step and the band
+        // renderer sizes in PIXELS (24 × yMul), so it honors every step (BUG 3), unlike
+        // rotation-180 TEXT which the 241 firmware won't scale.
+        func emitBand(_ x: Int, _ y: Int, _ content: String, _ xMulRaw: Double, _ yMulRaw: Double, _ rightEdge: Int) {
             if content.isEmpty { return }
-            let budget = Phomemo241Raster.maxChars(x: x, rightEdge: rightEdge, cjkXMul: max(1, xMul))
+            let xMul = clampF(xMulRaw), yMul = clampF(yMulRaw)
+            let budget = Phomemo241Raster.maxChars(x: x, rightEdge: rightEdge, cjkXMul: max(1, Int(xMul.rounded(.up))))
             let fitted = truncate16(content, budget)
-            guard let band = renderBand(fitted, max(1, xMul), max(1, yMul), max(8, rightEdge - x)),
+            guard let band = renderBand(fitted, xMul, yMul, max(8, rightEdge - x)),
                   band.height > 0, band.widthBytes > 0, !band.bytes.isEmpty else { return }
             let bx = max(0, W - x - band.widthBytes * 8 - edgeGuard)
             let by = H - y - band.height
@@ -1451,32 +1464,40 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             out.append(contentsOf: band.bytes)
             out.append(contentsOf: [0x0D, 0x0A])
         }
-        // FORK writer (D2/D4): ASCII at 1× → the AIMO TEXT content, rotation 180 at
-        // the mapped anchor (byte-identical default). CJK → always a raster band.
-        // SCALED ASCII (yMul>1) → ALSO a band — the 241 firmware does NOT honor the
-        // TSPL font x/y-multiplier on rotation-180 TEXT (BUG: scale adjusters had no
-        // effect), so a scaled element must be sized in PIXELS. The band renderer
-        // STRETCHES a base ROM-like glyph by (xMul, yMul) so the LETTER itself grows
-        // (AIMO-like), not just the whitespace. All the writeSmart241 elements have a
-        // base yMul of 1, so yMul>1 ⇔ the seller scaled it; the inline base-2
-        // elements use emitScaled (which keys on the lvl).
-        func writeSmart241(_ x: Int, _ y: Int, _ asciiFont: String, _ rawContent: String, _ xMul: Int, _ yMul: Int, _ cjkXMul: Int, _ cjkYMul: Int, _ rightEdge: Int) {
+        // SYMMETRIC scalable element (store / ASCII name / @username): AIMO scales BOTH
+        // axes by the level, so the band scales both by the decimal. scale EXACTLY 1.0
+        // (ASCII) → the verified TEXT command (byte-identical default). CJK or scale≠1
+        // → a (scale, scale)-stretched band. base TEXT muls are (1,1).
+        func emitSym(_ x: Int, _ y: Int, _ font: String, _ scale: Double, _ rawContent: String, _ rightEdge: Int) {
             let content = transliterateLatin(rawContent)
             if content.isEmpty { return }   // same emptiness rule as writeTextSmart (parity)
             let isCjk = hasNonAscii(content)
-            if !isCjk && yMul <= 1 {
-                emitText(x, y, asciiFont, xMul, yMul, content)
-                return
-            }
-            emitBand(x, y, content, isCjk ? cjkXMul : xMul, isCjk ? cjkYMul : yMul, rightEdge)
+            if !isCjk && scale == 1.0 { emitText(x, y, font, 1, 1, content); return }
+            emitBand(x, y, content, scale, scale, rightEdge)
         }
-        // Inline scalable element (Buyer# / order time / Total). lvl = the seller's
-        // 1–8 adjuster (base 1). lvl 1 → the verified TEXT (byte-identical default);
-        // lvl>1 → a (xMul, yMul)-stretched band so the scale has an effect despite the
-        // 241 not scaling rotated internal-font TEXT. rightEdge = W−16 (= c.rightEdge).
-        func emitScaled(_ x: Int, _ y: Int, _ font: String, _ xMul: Int, _ yMul: Int, _ lvl: Int, _ content: String) {
-            if lvl <= 1 { emitText(x, y, font, xMul, yMul, content); return }
-            emitBand(x, y, transliterateLatin(content), xMul, yMul, W - 16)
+        // HEIGHT-PRIORITY scalable element (Buyer# / price code): AIMO keeps the width
+        // multiplier FIXED (baseX) and scales only HEIGHT with the level; mirror that —
+        // band width = baseX (glyph stays baseX× wide), band height = baseY × scale.
+        // scale EXACTLY 1.0 (ASCII) → TEXT at (baseX, baseY) [byte-identical]. CJK or
+        // scale≠1 → band.
+        func emitHeightScaled(_ x: Int, _ y: Int, _ font: String, _ baseX: Int, _ baseY: Int, _ scale: Double, _ rawContent: String, _ rightEdge: Int) {
+            let content = transliterateLatin(rawContent)
+            if content.isEmpty { return }
+            let isCjk = hasNonAscii(content)
+            if !isCjk && scale == 1.0 { emitText(x, y, font, baseX, baseY, content); return }
+            emitBand(x, y, content, Double(baseX), Double(baseY) * scale, rightEdge)
+        }
+        // Decimal scale for `key`: the 241 raster path reads the exact seller adjuster
+        // from scalesRaw (BUG 3 — the redesign rounds it to an int for the AIMO TSPL
+        // path, losing 0.1 steps). Falls back to the rounded integer (Double) when
+        // scalesRaw is absent (App.tsx / legacy / native test payloads), so those stay
+        // byte-identical. 0 → 1 (never a zero-size element).
+        func sclD(_ key: String) -> Double {
+            if let raw = scalesRaw, let n = raw[key] as? NSNumber {
+                let d = n.doubleValue
+                return clampF(d == 0 ? 1 : d)
+            }
+            return Double(lvlSetting(key))
         }
         func asInt(_ v: Any?) -> Int? {
             if let i = v as? Int { return i }
@@ -1507,8 +1528,10 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         let printOrderItems = boolSetting("printOrderItems")
         let printTotal = boolSetting("printTotal")
 
-        let F2 = 24, F3 = 24, F4 = 32
-        func cmul(_ m: Int) -> Int { return max(1, min(8, m)) }
+        // F3/F4 = the 1× TSPL font heights (dots) used only to reflow the layout down
+        // so a grown element never overlaps the next. (No F2: the order-line time is
+        // fixed at base size — see the order loop — so it never shifts the layout.)
+        let F3 = 24, F4 = 32
         func lvlSetting(_ key: String) -> Int {
             guard let settings = settings else { return 1 }
             let v: Int
@@ -1518,13 +1541,17 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             else { v = 1 }
             return max(1, min(8, v == 0 ? 1 : v))
         }
-        let lvlStore = lvlSetting("printStoreScale")
-        let lvlBuyerNum = lvlSetting("printBuyerNumberScale")
-        let lvlName = lvlSetting("printBuyerNameScale")
-        let lvlUser = lvlSetting("printUsernameScale")
-        let lvlOrder = lvlSetting("printOrderScale")
-        let lvlComment = lvlSetting("printCommentScale")
-        let lvlTotal = lvlSetting("printTotalScale")
+        // DECIMAL seller scales for the raster path (BUG 3). sclD reads the exact 0.1
+        // step from scalesRaw, falling back to the rounded integer when absent. Note:
+        // NO order/time scale — the 241 order-line TIME is FIXED at base size (BUG 1/2:
+        // the redesign's single "comment" control drove BOTH price + time, so a scaled
+        // time band collided with the price column → "7:07PRICE"). AIMO is untouched.
+        let sStore = sclD("printStoreScale")
+        let sBuyerNum = sclD("printBuyerNumberScale")
+        let sName = sclD("printBuyerNameScale")
+        let sUser = sclD("printUsernameScale")
+        let sComment = sclD("printCommentScale")
+        let sTotal = sclD("printTotalScale")
 
         writeAscii("SIZE \(labelWidthMm) mm, \(labelHeightMm) mm")
         writeAscii("GAP 2 mm, 0")
@@ -1557,36 +1584,39 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         var extra = 0
         var y = 60
         if printStoreName && !cleanStoreName.isEmpty {
-            let m = cmul(lvlStore)
-            writeSmart241(16, y, "3", tsplSafe(truncate16(cleanStoreName, 36)), m, m, m, m, c.rightEdge)
-            let d = (m - 1) * F3
+            emitSym(16, y, "3", sStore, tsplSafe(truncate16(cleanStoreName, 36)), c.rightEdge)
+            let d = Int(((clampF(sStore) - 1) * Double(F3)).rounded())
             y += c.storeGap + d
             extra += d
         }
 
         if printBuyerNumber {
-            let ym = cmul(c.buyerNumYMul * lvlBuyerNum)
-            emitScaled(16, y, "4", 2, ym, lvlBuyerNum, "Buyer #\(buyerNum)")
-            let d = (ym - c.buyerNumYMul) * F4
+            let effY = clampF(Double(c.buyerNumYMul) * sBuyerNum)   // height mul (width stays 2×)
+            emitHeightScaled(16, y, "4", 2, c.buyerNumYMul, sBuyerNum, "Buyer #\(buyerNum)", c.rightEdge)
+            let d = Int(((effY - Double(c.buyerNumYMul)) * Double(F4)).rounded())
             y += c.buyerNumGap + d
             extra += d
         }
 
         if !nameOut.isEmpty {
-            let asciiX = cmul(lvlName), asciiY = cmul(lvlName)
-            let cjkX = cmul(c.nameCjkXMul * lvlName), cjkY = cmul(c.nameCjkYMul * lvlName)
-            writeSmart241(16, y, "4", tsplSafe(truncate16(nameOut, 30)), asciiX, asciiY, cjkX, cjkY, c.rightEdge)
-            let usedY = bandName ? cjkY : asciiY
-            let refBaseY = bandName ? c.nameCjkYMul : 1
-            let d = (usedY - refBaseY) * F4
-            y += (bandName ? c.nameCjkGap : c.nameGap) + d
-            extra += (bandName ? (c.nameCjkGap - c.nameGap) : 0) + d
+            if bandName {
+                // CJK / UNSUPPORTED name → band on both axes (base nameCjk*Mul), scaled.
+                emitBand(16, y, tsplSafe(truncate16(nameOut, 30)), Double(c.nameCjkXMul) * sName, Double(c.nameCjkYMul) * sName, c.rightEdge)
+                let effY = clampF(Double(c.nameCjkYMul) * sName)
+                let d = Int(((effY - Double(c.nameCjkYMul)) * Double(F4)).rounded())
+                y += c.nameCjkGap + d
+                extra += (c.nameCjkGap - c.nameGap) + d
+            } else {
+                emitSym(16, y, "4", sName, tsplSafe(truncate16(nameOut, 30)), c.rightEdge)
+                let d = Int(((clampF(sName) - 1) * Double(F4)).rounded())
+                y += c.nameGap + d
+                extra += d
+            }
         }
 
         if printBuyerUsername && !cleanBuyerHandle.isEmpty {
-            let m = cmul(lvlUser)
-            writeSmart241(16, y, "3", "@" + tsplSafe(truncate16(cleanBuyerHandle, 30)), m, m, m, m, c.rightEdge)
-            let d = (m - 1) * F3
+            emitSym(16, y, "3", sUser, "@" + tsplSafe(truncate16(cleanBuyerHandle, 30)), c.rightEdge)
+            let d = Int(((clampF(sUser) - 1) * Double(F3)).rounded())
             y += c.usernameGap + d
             extra += d
         }
@@ -1601,15 +1631,19 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                 let time = (order["time"] as? String) ?? ""
                 let item = (order["item"] as? String) ?? ""
                 let cleanItem = stripEmoji(item)
-                let tm = cmul(lvlOrder)
-                let pm = cmul(lvlComment)
+                // TIME — FIXED at base size (BUG 1/2). It has no dedicated size control,
+                // the shared "comment" scale drove it, and a scaled time BAND grew wide
+                // enough to overrun the price column at x=180 ("7:07PRICE"). A timestamp
+                // stays small: plain TEXT font "2" 1×1 (byte-identical to the scale-1 default).
                 if !time.isEmpty {
-                    emitScaled(16, y, "2", tm, tm, lvlOrder, tsplSafe(truncate16(time, 10)))
+                    emitText(16, y, "2", 1, 1, tsplSafe(truncate16(time, 10)))
                 }
+                // PRICE CODE — height-priority (base 2× width, 1× height); height honors
+                // the comment decimal (BUG 3). ASCII scale 1.0 → TEXT (byte-identical).
                 if !cleanItem.isEmpty {
-                    writeSmart241(180, y, "4", tsplSafe(truncate16(cleanItem, 12)), 2, pm, 2, pm, c.rightEdge)
+                    emitHeightScaled(180, y, "4", 2, 1, sComment, tsplSafe(truncate16(cleanItem, 12)), c.rightEdge)
                 }
-                let d = max((tm - 1) * F2, (pm - 1) * F4)
+                let d = max(0, Int(((clampF(sComment) - 1) * Double(F4)).rounded()))
                 y += 38 + d
                 i += 1
             }
@@ -1617,11 +1651,9 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
 
         if printTotal && totalSpent > 0 && c.showTotal {
             let totalY = c.totalY + extra
-            let lm = cmul(lvlTotal)
-            emitScaled(16, totalY, "3", lm, lm, lvlTotal, "Total:")
-            let am = cmul(lvlTotal)
+            emitSym(16, totalY, "3", sTotal, "Total:", c.rightEdge)
             let totalStr = tsplSafe(currency) + tsplMoney(totalSpent)
-            emitScaled(c.totalAmountX, totalY, "4", 2, am, lvlTotal, tsplSafe(truncate16(totalStr, 18)))
+            emitHeightScaled(c.totalAmountX, totalY, "4", 2, 1, sTotal, tsplSafe(truncate16(totalStr, 18)), W - 16)
         }
 
         writeAscii("PRINT 1")
@@ -1640,10 +1672,13 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
     /// BOLD face (closest to the TSPL ROM look), cap sized to the base cell so caps/
     /// digits fill top-to-bottom. CJK → unchanged (systemFont, em ≈ fills — the
     /// device-verified 陳小美/紅色洋裝 path). base cell = 24 dots (~ TSPL font "4").
-    private func render241TextBand(_ text: String, xMul: Int, yMul: Int, maxWidthDots: Int) -> Phomemo241Raster.Band? {
+    private func render241TextBand(_ text: String, xMul: Double, yMul: Double, maxWidthDots: Int) -> Phomemo241Raster.Band? {
         if text.isEmpty || xMul <= 0 || yMul <= 0 || maxWidthDots <= 0 { return nil }
         let baseCell = 24
-        let outH = baseCell * yMul
+        // Height in PIXELS from the EXACT decimal (24 × yMul), so every 0.1 step of the
+        // seller size adjuster changes the rendered glyph (BUG 3) — a rotation-180 TEXT
+        // multiplier the 241 ignores, a pixel dimension it can't. min 1 dot.
+        let outH = max(1, Int((Double(baseCell) * yMul).rounded()))
         let isCjk = text.unicodeScalars.contains {
             ($0.value >= 0x2E80 && $0.value <= 0x9FFF) || ($0.value >= 0x3400 && $0.value <= 0x4DBF) || ($0.value >= 0xF900 && $0.value <= 0xFAFF)
         }
