@@ -984,6 +984,16 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// The PERSISTED printer name (captured at scan/save time — the live
+    /// peripheral is nil on retrievePeripherals). This is what the printer
+    /// PROFILE is resolved from, so a PM-241 gets its own diagnostic/builder
+    /// path while a D520BT stays on the AIMO path. Empty when unset or when the
+    /// scan advertised no name (→ resolveProfile falls back to .aimo).
+    private func savedBleName() -> String {
+        return (defaults.string(forKey: SellerFlowPrinterPlugin.bleNameKey) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     /// Mirrors Android savedBluetoothPrinter(): nil (→ JS null) when unset.
     private func savedBlePrinterDict() -> [String: Any]? {
         let id = savedBleId()
@@ -1049,6 +1059,14 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("No Bluetooth printer saved. Tap Scan in Settings and pick a printer first.", "BT_NOT_SET")
             return
         }
+        // PHASE 0 (Phomemo 241 only): the AIMO stream printed baliktad+durog on
+        // this printer, so a PM-241 Test Print emits the DIAGNOSTIC probe
+        // sequence (P1 Latin / P2 CJK+receipts / P3 raster) instead. The AIMO
+        // path below is untouched — a D520BT resolves to .aimo and skips this.
+        if BleStickerLogic.resolveProfile(name: savedBleName()) == .phomemo241 {
+            runPhase0Probes(savedId: savedId, call: call)
+            return
+        }
         let storeName = call.getString("storeName") ?? "SellerFlowLive"
         let data = buildTsplTestPage(storeName: storeName)
         bleTransport.printJob(data: data, preferredId: savedId) { error in
@@ -1066,6 +1084,14 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         let savedId = savedBleId()
         if savedId.isEmpty {
             call.reject("No Bluetooth printer saved. Tap Scan in Settings and pick a printer first.", "BT_NOT_SET")
+            return
+        }
+        // PHASE 0 GUARD: the Phomemo 241 builder does not exist yet — the AIMO
+        // stream renders wrong on it. Refuse the ORDER path with a zero-byte
+        // no-op so no seller accidentally prints a broken sticker (test-print
+        // diagnostics only until Phase 1). AIMO (.aimo) prints normally below.
+        if BleStickerLogic.resolveProfile(name: savedBleName()) == .phomemo241 {
+            call.reject("Phomemo 241 order printing isn't enabled yet (diagnostics only). Run Test Print in Printer Settings.", "PROFILE_NOT_READY")
             return
         }
         let buyer = call.getObject("buyer") ?? [:]
@@ -1165,6 +1191,133 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         writeEncodedLine("TEXT 70,444,\"TSS24.BF2\",0,1,1,\"", cjkE, gbkBytes(cjkE))
         writeAscii("PRINT 1")
         return out
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // MARK: - PHASE 0 diagnostic probes (Phomemo 241 ONLY — never the AIMO path)
+    //
+    // Goal: decide the Phase-1 241 builder from PHOTOS, not guesses. Three
+    // SEPARATE labels (each its own PRINT 1, sent as its own DONE-gated job — a
+    // 241 that emits one DONE per PRINT would truncate a single multi-PRINT
+    // stream, so we NEVER do that). All probes DIRECTION 0 (the AIMO DIRECTION 1
+    // printed baliktad here) with content in a central band so a DIR0 origin
+    // shift can't clip it into looking "durog". Every CJK line carries an ASCII
+    // encode-RECEIPT (byte count + hex) so a blank glyph is diagnosable as an
+    // APP encode failure (enc=NIL) vs a PRINTER render failure — the Big5
+    // converter is known-missing on some iOS runtimes (the GBK_95 saga).
+    // buildTsplSticker / buildTsplTestPage (AIMO) are NOT touched.
+    // ═══════════════════════════════════════════════════════════════════════
+
+    private func probeHeader(_ w: (String) -> Void) {
+        w("SIZE \(defaultLabelWidthMm) mm, \(defaultLabelHeightMm) mm")
+        w("GAP 2 mm, 0")
+        w("DIRECTION 0")        // AIMO uses DIRECTION 1; 241 printed baliktad → test 0
+        w("REFERENCE 0,0")
+        w("DENSITY 8")
+        w("CLS")
+    }
+
+    /// P1 (label 1/3) — Latin internal fonts 4/3/2. Reads: does the 241 render
+    /// TSPL internal-font TEXT clean AND right-side-up (not mirrored) at DIR0?
+    func buildPhomemoProbeLatin() -> Data {
+        var out = Data()
+        func w(_ s: String) { out.append(contentsOf: tsplAsciiBytes(s)); out.append(contentsOf: [0x0D, 0x0A]) }
+        probeHeader(w)
+        w("TEXT 24,110,\"4\",0,1,1,\"P1 LATIN 1/3 DIR0\"")
+        w("TEXT 24,165,\"3\",0,1,1,\"SellerFlowLive\"")
+        w("TEXT 24,215,\"4\",0,2,2,\"Buyer #12\"")
+        w("TEXT 24,315,\"2\",0,1,1,\"abc XYZ 0123456789\"")
+        w("TEXT 24,355,\"2\",0,1,1,\"clipped != font-broken\"")
+        w("PRINT 1")
+        return out
+    }
+
+    /// P2 (label 2/3) — CJK font/codepage matrix for 陳小美, each line preceded by
+    /// its ENCODE RECEIPT. A=TSS24.BF2+GBK (trusted 3-tier encoder, never nil),
+    /// B=TST24.BF2+Big5, C=font3+Big5, D=CODEPAGE UTF-8+TST24.BF2+UTF-8. A blank
+    /// A = printer can't render GBK; a blank B/C with "enc=NIL" = the APP couldn't
+    /// Big5-encode (not the printer). Cross-check the hex vs known Big5/GBK bytes.
+    func buildPhomemoProbeCjk() -> Data {
+        var out = Data()
+        func w(_ s: String) { out.append(contentsOf: tsplAsciiBytes(s)); out.append(contentsOf: [0x0D, 0x0A]) }
+        func receipt(_ label: String, _ bytes: [UInt8]?) -> String {
+            guard let b = bytes else { return "\(label) enc=NIL(app)" }
+            let hex = b.prefix(8).map { String(format: "%02X", Int($0)) }.joined(separator: " ")
+            return "\(label) n=\(b.count) \(hex)"
+        }
+        func encoded(_ prefix: String, _ bytes: [UInt8]?) {
+            guard let b = bytes else { return }   // app couldn't encode → skip (receipt already said enc=NIL)
+            out.append(contentsOf: tsplAsciiBytes(prefix))
+            out.append(contentsOf: b)
+            out.append(contentsOf: tsplAsciiBytes("\""))
+            out.append(contentsOf: [0x0D, 0x0A])
+        }
+        let cjk = "\u{9673}\u{5C0F}\u{7F8E}"                 // 陳小美 (Traditional)
+        let gbk = CjkEncoding.gbkBytes(cjk)                  // trusted, never nil
+        let big5 = CjkEncoding.losslessBytes(cjk, .big5)     // nil if the iOS runtime lacks the Big5 converter
+        let utf8 = [UInt8](cjk.utf8)
+        probeHeader(w)
+        w("TEXT 20,14,\"4\",0,1,1,\"P2 CJK 2/3 DIR0\"")
+        w("TEXT 20,56,\"2\",0,1,1,\"\(receipt("A TSS/GBK", gbk))\"")
+        encoded("TEXT 20,84,\"TSS24.BF2\",0,1,1,\"", gbk)
+        w("TEXT 20,138,\"2\",0,1,1,\"\(receipt("B TST/BIG5", big5))\"")
+        encoded("TEXT 20,166,\"TST24.BF2\",0,1,1,\"", big5)
+        w("TEXT 20,220,\"2\",0,1,1,\"\(receipt("C F3/BIG5", big5))\"")
+        encoded("TEXT 20,248,\"3\",0,1,1,\"", big5)
+        w("CODEPAGE UTF-8")
+        w("TEXT 20,302,\"2\",0,1,1,\"\(receipt("D UTF8", utf8))\"")
+        encoded("TEXT 20,330,\"TST24.BF2\",0,1,1,\"", utf8)
+        w("CODEPAGE 437")
+        w("PRINT 1")
+        return out
+    }
+
+    /// P3 (label 3/3) — a standalone hardcoded TSPL BITMAP (NOT the dormant
+    /// printSticker path). 160x80-dot asymmetric block (solid top-left quadrant +
+    /// top/bottom rules) so orientation is readable regardless of bit polarity.
+    /// Reads: if P1 garbles but this raster prints clean → the 241 is raster-first.
+    /// NOTE the uncovered case: if BOTH P1 and this blank, the real path may be a
+    /// vendor "SS" raster (per SSGETPRINTING:DONE), which this does NOT test.
+    func buildPhomemoProbeRaster() -> Data {
+        var out = Data()
+        func w(_ s: String) { out.append(contentsOf: tsplAsciiBytes(s)); out.append(contentsOf: [0x0D, 0x0A]) }
+        let widthBytes = 20, height = 80   // 160 dots wide x 80 tall
+        var bmp = [UInt8](repeating: 0xFF, count: widthBytes * height) // 0xFF background
+        for row in 0..<40 { for col in 0..<10 { bmp[row * widthBytes + col] = 0x00 } } // solid top-left quadrant
+        for col in 0..<widthBytes { bmp[col] = 0x00; bmp[(height - 1) * widthBytes + col] = 0x00 } // top+bottom rules
+        probeHeader(w)
+        w("TEXT 24,20,\"4\",0,1,1,\"P3 RASTER 3/3 DIR0\"")
+        out.append(contentsOf: tsplAsciiBytes("BITMAP 24,70,\(widthBytes),\(height),0,"))
+        out.append(contentsOf: bmp)            // raw bitmap data (unquoted, per TSPL BITMAP syntax)
+        out.append(contentsOf: [0x0D, 0x0A])
+        w("PRINT 1")
+        return out
+    }
+
+    /// F1 fix: emit the 3 probes as SEPARATE DONE-gated jobs, in sequence — each
+    /// a complete label numbered N/3 so a missing one is obvious, never silently
+    /// truncated by a shared multi-PRINT stream.
+    private func runPhase0Probes(savedId: String, call: CAPPluginCall) {
+        let p1 = buildPhomemoProbeLatin()
+        let p2 = buildPhomemoProbeCjk()
+        let p3 = buildPhomemoProbeRaster()
+        bleTransport.printJob(data: p1, preferredId: savedId) { [weak self] e1 in
+            guard let self = self else { return }
+            if let e1 = e1 { call.reject("Phase 0 P1 (Latin) failed: \(e1.message)", e1.code); return }
+            self.bleTransport.printJob(data: p2, preferredId: savedId) { [weak self] e2 in
+                guard let self = self else { return }
+                if let e2 = e2 { call.reject("Phase 0 P2 (CJK) failed: \(e2.message)", e2.code); return }
+                self.bleTransport.printJob(data: p3, preferredId: savedId) { e3 in
+                    if let e3 = e3 { call.reject("Phase 0 P3 (raster) failed: \(e3.message)", e3.code); return }
+                    call.resolve([
+                        "ok": true,
+                        "phase0": true,
+                        "labels": 3,
+                        "message": "Phase 0 probes sent: 3 labels (P1 Latin, P2 CJK+receipts, P3 raster).",
+                    ])
+                }
+            }
+        }
     }
 }
 
@@ -1268,6 +1421,12 @@ enum BleStickerLogic {
     static let advertisedService = "AF30"
     /// Device-name prefix; the suffix varies per unit ("D520BT-Z", …).
     static let namePrefix = "D520BT"
+    /// Phomemo 241 device-name prefix (scanned as "PM-241Z-BT-…"). Additive: it
+    /// makes the 241 discoverable AND routes it to its own profile. It can NEVER
+    /// match a D520BT, so the AIMO path is unaffected. (Fix: PM-241 only, not
+    /// "PM-2" — a broader prefix could grab a different printer that already
+    /// works via the AIMO/AF30 path.)
+    static let phomemoNamePrefix = "PM-241"
     /// Proven-safe ceiling for write-without-response payloads on this printer
     /// class, and the BLE minimum (ATT default MTU 23 − 3 header).
     static let maxChunk = 180
@@ -1309,9 +1468,29 @@ enum BleStickerLogic {
             let s = raw.uppercased()
             if s == advertisedService || s.hasPrefix("0000\(advertisedService)-") { return true }
         }
-        if let n = name?.uppercased(), n.hasPrefix(namePrefix) { return true }
+        if let n = name?.uppercased(), n.hasPrefix(namePrefix) || n.hasPrefix(phomemoNamePrefix) { return true }
         return false
     }
+
+    /// Which printer PROFILE a saved device name maps to — the SINGLE SOURCE for
+    /// the routing decision (scan discovery uses isTargetPrinter above; print
+    /// paths use this). Case-normalized like isTargetPrinter. Only a name that
+    /// starts "PM-241" is .phomemo241; everything else (incl. D520BT, empty, nil)
+    /// is .aimo, so the live AIMO path is the provable default and a PM-241 can
+    /// never be misrouted onto it (nor a D520BT onto the 241 diagnostics).
+    static func resolveProfile(name: String?) -> PrinterProfile {
+        if let n = name?.uppercased(), n.hasPrefix(phomemoNamePrefix) { return .phomemo241 }
+        return .aimo
+    }
+}
+
+/// Printer command/behavior profile. .aimo = the live, golden-locked TSPL stream
+/// (AIMO D520BT and any non-PM-241 device). .phomemo241 = the new isolated path
+/// (Phase 0 = diagnostics only; Phase 1 = its own builder). NEVER a mutation of
+/// the AIMO builder.
+enum PrinterProfile {
+    case aimo
+    case phomemo241
 }
 
 /// Honest, code-tagged BLE failure — codes mirror the Android plugin's reject

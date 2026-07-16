@@ -116,4 +116,34 @@ final class BleStickerLogicTests: XCTestCase {
         // and matching it would pick up unrelated peripherals.
         XCTAssertFalse(BleStickerLogic.isTargetPrinter(name: nil, advertisedServices: ["FF00"]))
     }
+
+    // MARK: isTargetPrinter — Phomemo 241 (additive, must not broaden)
+
+    func testFilterMatchesPhomemo241NamePrefixAnyCase() {
+        XCTAssertTrue(BleStickerLogic.isTargetPrinter(name: "PM-241Z-BT-C842", advertisedServices: []))
+        XCTAssertTrue(BleStickerLogic.isTargetPrinter(name: "pm-241z-bt", advertisedServices: []))
+    }
+
+    func testFilterDoesNotBroadenToOtherPmModels() {
+        // Fix: the matcher is PM-241 ONLY, never "PM-2" — a different PM model
+        // must not be grabbed by the 241 addition.
+        XCTAssertFalse(BleStickerLogic.isTargetPrinter(name: "PM-260", advertisedServices: []))
+        XCTAssertFalse(BleStickerLogic.isTargetPrinter(name: "PM-201", advertisedServices: []))
+    }
+
+    // MARK: resolveProfile (single-source routing gate)
+
+    func testResolveProfilePhomemo241() {
+        XCTAssertEqual(BleStickerLogic.resolveProfile(name: "PM-241Z-BT-C842"), .phomemo241)
+        XCTAssertEqual(BleStickerLogic.resolveProfile(name: "pm-241z-bt"), .phomemo241) // case-normalized
+    }
+
+    func testResolveProfileDefaultsToAimo() {
+        XCTAssertEqual(BleStickerLogic.resolveProfile(name: "D520BT-Z"), .aimo)   // the live printer
+        XCTAssertEqual(BleStickerLogic.resolveProfile(name: "d520bt_7"), .aimo)
+        XCTAssertEqual(BleStickerLogic.resolveProfile(name: "PM-260"), .aimo)     // other PM model → NOT 241
+        XCTAssertEqual(BleStickerLogic.resolveProfile(name: ""), .aimo)           // empty saved name → AIMO default
+        XCTAssertEqual(BleStickerLogic.resolveProfile(name: nil), .aimo)          // unset → AIMO default
+        XCTAssertEqual(BleStickerLogic.resolveProfile(name: "AirPods Pro"), .aimo)
+    }
 }
