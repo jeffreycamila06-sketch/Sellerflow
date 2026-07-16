@@ -3364,3 +3364,34 @@ used ONLY in the predicate, NEVER rendered → zero new exposure (RLS own-or-is_
 useAdminUsers gate already applied). Placeholder → "Search email, @handle, or phone"
 ×7. ⚠️ `0958704782` (Jeff's test #) is NOT in the DB — validated with `0958161233`
 (leinapan). No RPC/server/DB change.
+
+### SIGNUP REQUIRED FIELDS + TAIWAN PHONE — single-source `validateTaiwanPhone` (merges `8d4e489` → `8f59956`, LIVE; ⏳ feature stamp pending Jeff re-registration test)
+New self-serve signups must fill all 6 fields + a valid **Taiwan mobile**
+(`^09\d{8}$` after normalize: strip non-digits, `+886`/`886`→`0`). Login UNTOUCHED
+(`signInWithPassword` only) — existing phone-less sellers (BUDGETUKAY5, predates the
+redesign; googletest test acct) log in fine (grandfathered). Client-side (Vercel).
+- **Pure `validateTaiwanPhone(raw) → {valid, normalized}`** (`useAuthSession.ts`) is
+  the SINGLE SOURCE across ALL phone-write paths: signup **button-disable** (+ inline
+  hint), signup **submit** (`registrationErrorCode`), the **register() English
+  backstop**, and **profile edit** (`GeneralSettings`, grandfather = validate only
+  when CHANGED so a malformed stored phone can still edit other fields). New rows
+  store the **normalized** clean `09xxxxxxxx`. i18n `rd_su_err_*` ×7.
+
+### 🔴🔴 TWO PERMANENT LESSONS FROM THIS SAGA (validation slipped to prod TWICE)
+1. **VALIDATION = BEHAVIORAL TEST MANDATORY (never structural-only).** A test must
+   ACTUALLY exercise the submit/validate path with the bad input and assert the
+   REJECT/normalized OUTPUT — not "the regex is at line X" / "the function is called."
+   The bug hid behind structural confidence twice. Pattern: extract the rule into ONE
+   pure function (`validateTaiwanPhone`), behavioral-test it exhaustively (valid +
+   invalid + normalized), and pin that EVERY path (button/submit/backstop/profile)
+   uses it (drift → red). The `register()` hook test (mocked supabase: invalid →
+   `signUp` NEVER called) is the gold-standard "direct call" behavioral proof.
+2. **SERVED-BUNDLE VERIFY IS REQUIRED — "READY at SHA" is NOT enough.** The first
+   "invalid phone accepted in prod" report was a STALE BUNDLE (SPA/thin-shell running
+   old JS ~3 min post-deploy; the correct code was already live). After EVERY
+   frontend deploy: cache-bust the prod index (`?nocache=…` → `x-vercel-cache: MISS`),
+   read the new `main-*.js` hash, and grep the served bundle for a marker string
+   UNIQUE to the change (here: `^09\d{8}`, `09xxxxxxxx`, the `phone-hint` testid) AND
+   confirm the OLD marker is gone. Only then call it verified. (Sellers with an app
+   already open still need a FULL close-reopen to pick up new JS — the documented
+   thin-shell staleness.)
