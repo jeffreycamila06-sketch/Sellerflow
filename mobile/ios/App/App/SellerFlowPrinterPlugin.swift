@@ -1119,17 +1119,14 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         // flow, the profile only picks the builder (buildTsplSticker241 vs
         // buildTsplSticker); no hardcoded content on any path.
         let is241 = BleStickerLogic.resolveProfile(name: savedBleName()) == .phomemo241
-        // ⚠️ ORDER GUARD (241 only, temporary): a REAL order/reprint (isTest=false)
-        // stays a zero-byte no-op until Jeff confirms the 241 sticker on paper — no
-        // seller prints a real order on an unverified path. A TEST print (isTest,
-        // the redesign Test button) IS allowed through and runs the IDENTICAL
-        // payload+settings flow a real order will (buildTsplSticker241) — so what
-        // the seller verifies is exactly what a real order prints. To SHIP the
-        // order path: delete this one `if` block (nothing else changes).
-        if is241 && !(call.getBool("isTest") ?? false) {
-            call.reject("Phomemo 241 order printing isn't enabled yet — run Test Print in Printer Settings to verify it first.", "PROFILE_NOT_READY")
-            return
-        }
+        // ORDER PATH LIVE (2026-07-17): the temporary 241 order guard (PROFILE_NOT_READY
+        // no-op for isTest=false) is REMOVED — the sticker was hardware-verified on paper
+        // (60×40, four edges clean at scale 1/0.9/1.1/1.5, decimal scales, PRICE). REAL
+        // prints (1-Click order, reprint, raffle, batch) now run the IDENTICAL flow the
+        // Test Print validated: this one choke-point, same payload/settings/size/scalesRaw,
+        // the profile only picks the builder (buildTsplSticker241 vs buildTsplSticker). The
+        // `isTest` flag is now inert here (both real + test take the same path); it stays
+        // on the test payload harmlessly. AIMO path unchanged.
         let buyer = call.getObject("buyer") ?? [:]
         let settings = call.getObject("settings")
         let storeName = call.getString("storeName") ?? "SellerFlowLive"
