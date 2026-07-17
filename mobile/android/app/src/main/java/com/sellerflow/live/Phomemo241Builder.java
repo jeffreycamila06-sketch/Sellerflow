@@ -139,6 +139,86 @@ final class Phomemo241Builder {
     // floor 0.5 lets sub-1 decimals genuinely SHRINK on the band path.
     private static double clampF(double v) { return Math.min(8.0, Math.max(0.5, v)); }
 
+    // ── P1 RULER TEST PAGE (margin/dead-zone measurement diagnostic) ─────────
+    // Prints tick marks measured from every edge so Jeff can READ the unit's real
+    // printable window instead of us guessing it (the 3-print drift-envelope
+    // protocol: print, reload the roll, print again, mid-roll print — the WORST
+    // surviving tick per edge across the 3 prints = that edge's dead-zone
+    // envelope; margin offset = envelope + 8-dot buffer).
+    //
+    // ⚠️ DELIBERATELY BYPASSES EDGE_GUARD + the production Emit primitives: the
+    // ruler must measure the PHYSICAL edges, and routing it through the guard
+    // would shift every tick by the very margin we're trying to replace. These
+    // helpers apply ONLY the DIR0+180 coordinate flip (so the ejected label reads
+    // upright, same as production) with ZERO guard: an authoring/READING-space
+    // coordinate maps bar (ax,ay,w,h) -> BAR (W-ax-w),(H-ay-h) and text (ax,ay)
+    // -> TEXT (W-ax),(H-ay),180. Reading-left tick distances therefore measure
+    // the physical edge that clips the layout's LEFT column — the number Jeff
+    // reads is DIRECTLY the safe authoring-x margin for that edge, no mapping.
+    private static void rulerBar(ByteArrayOutputStream out, int W, int H, int ax, int ay, int w, int h) {
+        writeBytes(out, ("BAR " + (W - ax - w) + "," + (H - ay - h) + "," + w + "," + h).getBytes(StandardCharsets.US_ASCII));
+        writeBytes(out, CRLF);
+    }
+    private static void rulerText(ByteArrayOutputStream out, int W, int H, int ax, int ay, String font, String content) {
+        writeBytes(out, ("TEXT " + (W - ax) + "," + (H - ay) + ",\"" + font + "\",180,1,1,\"" + content + "\"").getBytes(StandardCharsets.US_ASCII));
+        writeBytes(out, CRLF);
+    }
+
+    /**
+     * P1 ruler pattern at the seller's current label size. Reading-space layout:
+     *  - FRAME on the exact label boundary (the 0-dot reference all around).
+     *  - LEFT + RIGHT edges: 9 vertical ticks each at 0,4,8,...,32 dots from the
+     *    edge, VERTICALLY STAGGERED (own y band per tick, so each also samples a
+     *    different point along the feed) with its dot-number label printed well
+     *    inboard (left labels at x=40; right labels ending 40 dots from the edge).
+     *  - TOP + BOTTOM edges: horizontal ticks at 0,8,16,24,32 (8-dot step — a
+     *    4-dot step leaves 2-dot gaps between 2-dot bars, uncountable on paper;
+     *    feed-direction drift is governed by GAP calibration and is coarser).
+     *  - CENTER: size + "RULER" + a print-number blank Jeff pen-fills (1-3).
+     * BAR-only at the edges (no font dependency where clipping happens); TEXT only
+     * appears >=40 dots inboard. Pure bytes — no renderer, no settings, no buyer.
+     */
+    static byte[] rulerTestPage(int labelWidthMm, int labelHeightMm) {
+        final int W = labelWidthMm * 8, H = labelHeightMm * 8;
+        ByteArrayOutputStream out = new ByteArrayOutputStream(1024);
+        for (String cmd : new String[]{
+                "SIZE " + labelWidthMm + " mm, " + labelHeightMm + " mm",
+                "GAP 2 mm, 0", "DIRECTION 0", "REFERENCE 0,0", "DENSITY 8", "CLS"}) {
+            writeBytes(out, cmd.getBytes(StandardCharsets.US_ASCII));
+            writeBytes(out, CRLF);
+        }
+        // FRAME on the exact boundary (doubles as the 0-dot mark on all 4 edges).
+        rulerBar(out, W, H, 0, 0, W, 2);
+        rulerBar(out, W, H, 0, H - 2, W, 2);
+        rulerBar(out, W, H, 0, 0, 2, H);
+        rulerBar(out, W, H, W - 2, 0, 2, H);
+        // LEFT + RIGHT vertical ticks: 9 each at d = 0..32 step 4, staggered bands.
+        final int bandTop = 40, tickLen = 20;
+        final int pitch = (H - 100) / 8;   // 9 bands between the top/bottom combs
+        for (int i = 0; i <= 8; i++) {
+            int d = i * 4;
+            int yB = bandTop + i * pitch;
+            rulerBar(out, W, H, d, yB, 2, tickLen);                    // left tick
+            rulerText(out, W, H, 40, yB, "2", String.valueOf(d));       // left label (inboard)
+            rulerBar(out, W, H, W - 2 - d, yB, 2, tickLen);            // right tick
+            rulerText(out, W, H, W - 64, yB, "2", String.valueOf(d));   // right label (ends 40 in)
+        }
+        // TOP + BOTTOM horizontal ticks: d = 0..32 step 8, alternating lengths.
+        for (int i = 0; i <= 4; i++) {
+            int d = i * 8;
+            int len = (i % 2 == 0) ? 120 : 70;
+            rulerBar(out, W, H, W / 2 - len / 2, d, len, 2);            // top
+            rulerBar(out, W, H, W / 2 - len / 2, H - 2 - d, len, 2);    // bottom
+        }
+        // CENTER info block.
+        rulerText(out, W, H, W / 2 - 90, H / 2 - 40, "3", "RULER " + labelWidthMm + "x" + labelHeightMm);
+        rulerText(out, W, H, W / 2 - 90, H / 2 - 12, "2", "PRINT #__ (1-3)");
+        rulerText(out, W, H, W / 2 - 90, H / 2 + 12, "2", "SIDE TICKS 0-32 STEP 4");
+        writeBytes(out, "PRINT 1".getBytes(StandardCharsets.US_ASCII));
+        writeBytes(out, CRLF);
+        return out.toByteArray();
+    }
+
     /**
      * Build a Phomemo 241 sticker from the SAME payload the AIMO
      * {@link TsplBuilder#forStickerNative} consumes (buyer + settings + storeName

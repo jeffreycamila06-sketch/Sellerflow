@@ -62,6 +62,16 @@ public class SellerFlowPrinterPlugin extends Plugin {
     // `if (!CONSTANT)` still compiles either way (Java does NOT constant-fold `if`
     // for reachability). AIMO is entirely unaffected.
     private static final boolean PHOMEMO_241_ORDERS_ENABLED = true;
+    // P1 RULER TEST MODE (margin/dead-zone measurement window). While true, the 241
+    // TEST PRINT prints the ruler/tick measurement pattern (Phomemo241Builder
+    // .rulerTestPage) INSTEAD of the CJK verification sticker, so Jeff can run the
+    // 3-print drift-envelope protocol (print → reload roll → print → mid-roll
+    // print; worst surviving tick per edge = that edge's envelope). DELIBERATELY
+    // COMMITTED true so the measurement build prints rulers immediately — FLIP
+    // BACK to false in a one-line follow-up commit once the measurements are in.
+    // Scope: the 241 Test Print ONLY — real 241 orders and everything AIMO are
+    // untouched either way.
+    private static final boolean RULER_TEST_MODE = true;
 
     /**
      * ESC/POS character-size mode (GS ! n) applied to prominent slip fields:
@@ -529,6 +539,21 @@ public class SellerFlowPrinterPlugin extends Plugin {
         Phomemo241Builder.BandRenderer renderer = new Phomemo241Raster();
 
         if (payload.optBoolean("isTest", false)) {
+            // P1 measurement window: the ruler pattern replaces the verification
+            // sticker while RULER_TEST_MODE is on (see the constant's doc).
+            if (RULER_TEST_MODE) {
+                byte[] ruler = Phomemo241Builder.rulerTestPage(labelWidthMm, labelHeightMm);
+                sendViaBluetoothSpp(address, ruler);
+                JSObject rret = new JSObject();
+                rret.put("ok", true);
+                rret.put("ruler", true);
+                rret.put("bytes", ruler.length);
+                rret.put("savedPrinter", savedBluetoothPrinter());
+                rret.put("message", "RULER test print sent (" + ruler.length + " bytes) — pen-mark the print number, note the smallest surviving tick on each edge.");
+                Log.i(TAG, "print241 RULER test bytes=" + ruler.length);
+                call.resolve(rret);
+                return;
+            }
             byte[] tspl = Phomemo241Builder.forStickerNative241(build241VerificationPayload(payload, labelWidthMm, labelHeightMm), labelWidthMm, labelHeightMm, renderer);
             sendViaBluetoothSpp(address, tspl);
             JSObject ret = new JSObject();

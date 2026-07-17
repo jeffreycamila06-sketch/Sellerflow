@@ -276,6 +276,40 @@ public final class Phomemo241ParityTest {
         check(bands6040 >= 4, "60x40: long store+name+@username+price all compress to bands (got " + bands6040 + ")");
     }
 
+    // P1 — the ruler test page measures the PHYSICAL edges, so it must bypass
+    // EDGE_GUARD entirely: a guarded emit would shift every tick by the very margin
+    // the ruler exists to replace. Pins: frame on the exact boundary, tick distances
+    // 0..32 from BOTH physical edges, labels inboard, and the no-guard proof.
+    private static void testRulerTestPage() {
+        System.out.println("testRulerTestPage (P1 ruler — raw physical edges, no EDGE_GUARD)");
+        String s = utf8(Phomemo241Builder.rulerTestPage(60, 40));   // W=480 H=320
+        contains(s, "DIRECTION 0", "ruler runs DIRECTION 0 like production");
+        check(!s.contains("BITMAP"), "ruler is BAR+TEXT only (no renderer dependency)");
+        // Frame on the exact label boundary (0-dot reference on all 4 edges).
+        contains(s, "BAR 0,318,480,2", "frame: boundary bar (physical top)");
+        contains(s, "BAR 0,0,480,2", "frame: boundary bar (physical bottom)");
+        contains(s, "BAR 478,0,2,320", "frame: boundary bar (physical right/W edge)");
+        contains(s, "BAR 0,0,2,320", "frame: boundary bar (physical left/0 edge)");
+        // NO-GUARD PROOF: the d=0 side tick sits AT the physical W edge (478) — a
+        // guarded emit would have placed it at 430 (48 in). Same for d=32 -> 446.
+        contains(s, "BAR 478,260,2,20", "d=0 tick at the raw physical edge (no 48-dot guard shift)");
+        contains(s, "BAR 446,44,2,20", "d=32 tick exactly 32 dots in from the W edge");
+        contains(s, "BAR 32,44,2,20", "d=32 tick exactly 32 dots in from the 0 edge");
+        // Labels are TEXT, inboard (>=40 dots from the edge they annotate).
+        contains(s, "TEXT 440,64,\"2\",180,1,1,\"32\"", "left-column label inboard at physical 440");
+        contains(s, "TEXT 64,64,\"2\",180,1,1,\"32\"", "right-column label inboard at physical 64");
+        // Top/bottom combs (step 8) + center info + terminator.
+        contains(s, "BAR 180,302,120,2", "top comb d=16 long tick");
+        contains(s, "BAR 180,16,120,2", "bottom comb d=16 long tick");
+        contains(s, "\"RULER 60x40\"", "center size label");
+        contains(s, "\"PRINT #__ (1-3)\"", "print-number blank for the 3-print protocol");
+        check(s.endsWith("PRINT 1\r\n"), "ruler terminates normally");
+        // Size-parametric: the 100x60 ruler uses its own W/H.
+        String big = utf8(Phomemo241Builder.rulerTestPage(100, 60));
+        contains(big, "SIZE 100 mm, 60 mm", "ruler follows the seller's label size");
+        contains(big, "BAR 798,0,2,480", "100x60 frame bar at ITS physical W edge (798)");
+    }
+
     private static void test6040CapsToOneOrderRow() {
         System.out.println("test6040CapsToOneOrderRow");
         JSONObject buyer = new JSONObject();
@@ -461,6 +495,7 @@ public final class Phomemo241ParityTest {
         testBespoke6040();
         testNoRightEdgeOverflow60x40();
         testM1LongAsciiCompressesNotClips();
+        testRulerTestPage();
         test6040CapsToOneOrderRow();
         testDirection0Rotated180();
         testBandHeightScaleCoupled();
