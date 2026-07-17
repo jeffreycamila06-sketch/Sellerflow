@@ -121,7 +121,7 @@ final class Phomemo241Builder {
         "80x60",  new Size(640, 624, 35, 2, 95, 40, 35, 10, 360, 350, 360, false, 395, 250, 2, 2, 58),
         "80x50",  new Size(640, 624, 35, 2, 95, 40, 35, 10, 360, 270, 280, false, 315, 250, 2, 2, 58),
         "70x50",  new Size(560, 544, 35, 2, 95, 40, 35, 10, 280, 270, 280, false, 315, 170, 2, 2, 58),
-        "60x40",  new Size(480, 464, 30, 1, 46, 34, 30, 6, 200, 240, 264, false, 0, 0, 2, 2, 58)
+        "60x40",  new Size(480, 464, 30, 1, 46, 34, 30, 6, 200, 240, 264, false, 0, 0, 2, 2, 60)
     );
     private static Size sizeFor(int wMm, int hMm) {
         Size c = LAYOUTS.get(wMm + "x" + hMm);
@@ -208,18 +208,19 @@ final class Phomemo241Builder {
         // drop the bar/2nd row/Total below (every `is6040 ? ... : <lit>` off 60x40
         // resolves to the big-size literal).
         boolean is6040 = (labelWidthMm == 60 && labelHeightMm == 40);
-        // 60x40 revision (Jeff, 2026-07-18 Layout Designer). The spec y's are in the
-        // CJK-NAME column (a taller band), so the gaps below are derived in the SAME
-        // system: store 64 -> buyer# 92 (storeGap 28) -> name 136 (buyerNumGap 44) ->
-        // @user 194 (nameCjkGap 58, unchanged) -> time 242 (usernameGap 48) -> price
-        // 254 (+12 below time). An ASCII name flows tighter (nameGap 44 keeps the
-        // band-vs-text delta), so the JVM parity fixture (ASCII "Maria Santos") pins
-        // the ASCII column; the CJK column is documented in the report.
-        int storeGap    = is6040 ? 28 : c.storeGap;
-        int buyerNumGap = is6040 ? 44 : c.buyerNumGap;
+        // 60x40 revision v2 (Jeff, Layout Designer). The spec y's are in the CJK-NAME
+        // column (a taller band), so the gaps below are derived in the SAME system:
+        // shop 54 -> buyer# 78 (storeGap 24) -> name 132 (buyerNumGap 54) -> @user 192
+        // (nameCjkGap 60, in the 60x40 LAYOUTS row) -> time 240 (usernameGap 48) ->
+        // price 254 (+14 below time). Applied AS-IS: the x's (8/10/14) sit inside the
+        // old ~32 physical-left clip zone ON PURPOSE (Jeff's experiment — the print
+        // judges; NOT clamped). An ASCII name flows tighter (nameGap 44), so the JVM
+        // fixture (ASCII "Maria Santos") pins the ASCII column; CJK column in the report.
+        int storeGap    = is6040 ? 24 : c.storeGap;
+        int buyerNumGap = is6040 ? 54 : c.buyerNumGap;
         int nameGap     = is6040 ? 44 : c.nameGap;
         int usernameGap = is6040 ? 48 : c.usernameGap;
-        int headerX = is6040 ? 18  : 16;
+        int headerX = is6040 ? 8   : 16;
         int headerY = is6040 ? 12  : 10;
         // RIGHT-EDGE FIT (60x40): the DIR0+180 emit places a rot-180 element's
         // reading-right at (W - anchor + width), so it fits the label iff its width
@@ -227,13 +228,13 @@ final class Phomemo241Builder {
         // x=260 (anchor 172 >= its ~120-dot width) so "07/17/2026" fits whole.
         int dateX   = is6040 ? 260 : 290;
         int dateY   = is6040 ? 20  : 18;
-        int storeX  = is6040 ? 64  : 16;
-        int buyerX  = is6040 ? 20  : 16;
-        int nameX   = is6040 ? 22  : 16;
-        int userX   = is6040 ? 22  : 16;
-        int timeX   = is6040 ? 28  : 16;
-        int priceX  = is6040 ? 104 : 180;
-        int startY  = is6040 ? 64  : 60;
+        int storeX  = is6040 ? 36  : 16;
+        int buyerX  = is6040 ? 10  : 16;
+        int nameX   = is6040 ? 8   : 16;
+        int userX   = is6040 ? 8   : 16;
+        int timeX   = is6040 ? 14  : 16;
+        int priceX  = is6040 ? 108 : 180;
+        int startY  = is6040 ? 54  : 60;
 
         e.emitText(headerX, headerY, "3", 1, 1, "SellerFlowLive");
         if (!sessionDate.isEmpty()) {
@@ -242,7 +243,7 @@ final class Phomemo241Builder {
         // TOP separator bar. 60x40: printable-width span (the old x=0 w=480 bar ran
         // off the 241's DIRECTION-0 right non-printable edge).
         if (is6040) {
-            e.emitBar(40, 48, 376, 3);
+            e.emitBar(18, 42, 376, 3);
         } else {
             e.emitBar(0, 48, c.wDots, 3);
         }
@@ -336,7 +337,7 @@ final class Phomemo241Builder {
                 // PRICE CODE — height-priority (base 2x width, 1x height); height honors
                 // the comment decimal (BUG 3). ASCII scale 1.0 → TEXT (byte-identical).
                 if (!cleanItem.isEmpty()) {
-                    e.emitHeightScaled(priceX, is6040 ? y + 12 : y, "4", 2, 1, sComment, safe(truncate(cleanItem, 12)), c.rightEdge);
+                    e.emitHeightScaled(priceX, is6040 ? y + 14 : y, "4", 2, 1, sComment, safe(truncate(cleanItem, 12)), c.rightEdge);
                 }
                 int d = Math.max(0, r241((clampF(sComment) - 1) * F4));
                 y += 38 + d;

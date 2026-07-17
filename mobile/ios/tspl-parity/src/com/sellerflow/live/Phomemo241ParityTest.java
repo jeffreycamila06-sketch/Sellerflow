@@ -154,20 +154,21 @@ public final class Phomemo241ParityTest {
         orders.put(new JSONObject().put("item", "250").put("time", "20:15"));
         buyer.put("orders", orders);
         JSONObject payload = new JSONObject().put("buyer", buyer).put("storeName", "My Shop").put("currency", "NT$").put("sessionDate", "07/17/2026");
-        // Jeff's 60x40 revision (2026-07-18). The fixture name is ASCII "Maria Santos",
-        // so @user/time/price pin the ASCII column; Jeff's spec y's (194/242/254) are the
-        // CJK-name column (a taller band → +14 below the name). Rows above the name gap
-        // (header/date/bar/shop/buyer#/name) are identical in both columns.
+        // Jeff's 60x40 revision v2. The fixture name is ASCII "Maria Santos", so
+        // @user/time/price pin the ASCII column; Jeff's spec y's (192/240/254) are the
+        // CJK-name column (a taller band → +16 below the name). Rows above the name gap
+        // (header/date/bar/shop/buyer#/name) are identical in both columns. The x's
+        // (8/10/14) sit inside the old ~32 physical-left clip zone ON PURPOSE (Jeff).
         String s = utf8(Phomemo241Builder.forStickerNative241(payload, 60, 40, nullBand()));
-        contains(s, "TEXT 414,308,\"3\",180,1,1,\"SellerFlowLive\"", "header authoring (18,12)");
+        contains(s, "TEXT 424,308,\"3\",180,1,1,\"SellerFlowLive\"", "header authoring (8,12)");
         contains(s, "TEXT 172,300,\"2\",180,1,1,\"07/17/2026\"", "date authoring (260,20)");
-        contains(s, "BAR 16,269,376,3", "top bar printable-width (40,48,376,3) -> physical [16,392]");
-        contains(s, "TEXT 368,256,\"3\",180,1,1,\"My Shop\"", "shop authoring (64,64)");
-        contains(s, "TEXT 412,228,\"4\",180,1,1,\"Buyer #12\"", "buyer# authoring (20,92) 1x1 (1x width)");
-        contains(s, "TEXT 410,184,\"4\",180,1,1,\"Maria Santos\"", "name authoring (22,136)");
-        contains(s, "TEXT 410,140,\"3\",180,1,1,\"@maria_shops\"", "@username authoring (22,180 ASCII col; 194 CJK col)");
-        contains(s, "TEXT 404,92,\"2\",180,1,1,\"20:15\"", "time authoring (28,228 ASCII col; 242 CJK col) = row anchor");
-        contains(s, "TEXT 328,80,\"4\",180,2,1,\"250\"", "price authoring (104,240 ASCII col; 254 CJK col) = +12 BELOW time");
+        contains(s, "BAR 38,275,376,3", "top bar authoring (18,42,376,3) -> physical span");
+        contains(s, "TEXT 396,266,\"3\",180,1,1,\"My Shop\"", "shop authoring (36,54)");
+        contains(s, "TEXT 422,242,\"4\",180,1,1,\"Buyer #12\"", "buyer# authoring (10,78) 1x1 (1x width)");
+        contains(s, "TEXT 424,188,\"4\",180,1,1,\"Maria Santos\"", "name authoring (8,132)");
+        contains(s, "TEXT 424,144,\"3\",180,1,1,\"@maria_shops\"", "@username authoring (8,176 ASCII col; 192 CJK col)");
+        contains(s, "TEXT 418,96,\"2\",180,1,1,\"20:15\"", "time authoring (14,224 ASCII col; 240 CJK col) = row anchor");
+        contains(s, "TEXT 324,82,\"4\",180,2,1,\"250\"", "price authoring (108,238 ASCII col; 254 CJK col) = +14 BELOW time");
         int bars = s.split("BAR ", -1).length - 1;
         check(bars == 1, "order separator bar REMOVED on 60x40 -> only the top bar remains (got " + bars + ")");
     }
@@ -349,14 +350,14 @@ public final class Phomemo241ParityTest {
         System.out.println("testOverTallBandClampsPhysicalYNeverNegative");
         JSONObject buyer = new JSONObject().put("num", 1).put("name", "陳小美").put("handle", "s").put("orders", new JSONArray());
         // A band TALLER than the space below its authoring y (60x40, name-only at
-        // startY 64): H - y - height = 320 - 64 - 400 = -144, which WITHOUT the clamp
+        // startY 54): H - y - height = 320 - 54 - 400 = -134, which WITHOUT the clamp
         // would be a malformed negative-y BITMAP that drops content. Clamp -> 0.
         Phomemo241Builder.BandRenderer cap = (t, x, y, m) -> { byte[] b = new byte[4 * 400]; java.util.Arrays.fill(b, (byte) 0xAA); return new Phomemo241Builder.Band(4, 400, b); };
         JSONObject off = new JSONObject().put("printStoreName", false).put("printBuyerNumber", false).put("printBuyerUsername", false).put("printOrderItems", false).put("printTotal", false);
         JSONObject payload = new JSONObject().put("buyer", buyer).put("settings", off).put("storeName", "S").put("currency", "NT$").put("sessionDate", "");
         String s = utf8(Phomemo241Builder.forStickerNative241(payload, 60, 40, cap));
         check(!s.matches("(?s).*BITMAP \\d+,-\\d+,.*"), "no band may have a negative physical y");
-        contains(s, "BITMAP 378,0,4,400,0,", "over-tall band clamps y to 0 (name x=22 -> bx 378; y 320-64-400=-144 -> 0)");
+        contains(s, "BITMAP 392,0,4,400,0,", "over-tall band clamps y to 0 (name x=8 -> bx 392; y 320-54-400=-134 -> 0)");
     }
 
     private static void testFailedRenderEmitsNothing() {
