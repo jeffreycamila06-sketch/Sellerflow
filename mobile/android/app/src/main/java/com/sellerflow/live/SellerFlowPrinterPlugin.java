@@ -49,17 +49,16 @@ public class SellerFlowPrinterPlugin extends Plugin {
     // Default label dimensions for AIMO D520BT sticker stock.
     private static final int LABEL_WIDTH_MM = 100;
     private static final int LABEL_HEIGHT_MM = 60;
-    // Phomemo 241 ORDER GUARD (Phase 1). The 241 raster/BITMAP path is not yet
-    // verified over Classic-SPP on real hardware (Jeff's Test Print proves connect
-    // + print + the CJK band; a real-order photo confirms the rest). While false,
-    // a REAL 241 order no-ops with PROFILE_NOT_READY — the order is already saved
-    // by the caller (print fires AFTER the DB writes), so nothing is lost. The 241
-    // Test Print always works. FLIP TO true after the device Test Print passes
-    // photo review (one line — the real-order path below is already complete).
-    // `if (!CONSTANT)` compiles even when the constant is false: unlike `while`,
-    // Java does NOT constant-fold `if` for reachability, so the code after stays
-    // compilable. AIMO is entirely unaffected either way.
-    private static final boolean PHOMEMO_241_ORDERS_ENABLED = false;
+    // Phomemo 241 ORDER GUARD — Phase 2 ENABLED (Jeff hardware-verified the 241
+    // over Classic-SPP: v3 60x40 layout approved incl. the left-edge experiment,
+    // CJK bands clean, BITMAP-over-SPP confirmed). Real 241 orders (1-Click,
+    // reprint, raffle, Enterprise, Auto Mode, batch) now flow through the SAME
+    // forStickerNative241 builder + Phomemo241Raster renderer + label size + CJK
+    // band path as the Test Print — only the payload content differs (real buyer
+    // vs the fixed verification sticker). Flip back to false to re-gate if needed;
+    // `if (!CONSTANT)` still compiles either way (Java does NOT constant-fold `if`
+    // for reachability). AIMO is entirely unaffected.
+    private static final boolean PHOMEMO_241_ORDERS_ENABLED = true;
 
     /**
      * ESC/POS character-size mode (GS ! n) applied to prominent slip fields:
