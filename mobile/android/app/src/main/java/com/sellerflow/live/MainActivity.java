@@ -98,6 +98,11 @@ public class MainActivity extends BridgeActivity {
             + "window.SellerFlowPrinter.clearBluetoothLabelPrinter=function(){return cap.clearBluetoothLabelPrinter();};"
             + "window.SellerFlowPrinter.printStickerNative=function(payload){return cap.printStickerNative(payload||{});};"
             + "window.SellerFlowPrinter.testStickerPrint=function(args){return cap.testStickerPrint(args||{});};"
+            // In-app nearby discovery + pairing (so a seller need not open Android
+            // Settings to pair a new printer). Feature-detected by the web (absent on
+            // iOS / old binaries), so they are safe additive wrappers.
+            + "window.SellerFlowPrinter.discoverBluetoothPrinters=function(){return cap.discoverBluetoothPrinters();};"
+            + "window.SellerFlowPrinter.bondBluetoothDevice=function(args){return cap.bondBluetoothDevice(args||{});};"
             + "}else{"
             + "window.SellerFlowPrinter.status=function(){return window.SellerFlowPrinterAndroid.status();};"
             + "window.SellerFlowPrinter.scanPrinters=function(){return window.SellerFlowPrinterAndroid.scanPrinters();};"

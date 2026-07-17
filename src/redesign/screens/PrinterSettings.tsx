@@ -8,8 +8,8 @@
 // a real APK.
 import { useEffect, useState, type CSSProperties } from "react";
 import {
-  callMobilePrinterBridge, btCall, hasNativePrinter, hasBtBridge, buildTestStickerPayload,
-  type MobilePrinterResult, type BluetoothScanResult, type BluetoothPrinterDevice, type StickerPrintResult,
+  callMobilePrinterBridge, btCall, hasNativePrinter, hasBtBridge, hasDiscoverBridge, buildTestStickerPayload,
+  type MobilePrinterResult, type BluetoothScanResult, type BluetoothPrinterDevice, type StickerPrintResult, type BluetoothBondResult,
 } from "../adapters/printerBridge";
 import type { Settings } from "../adapters/printing";
 import { useT } from "../i18n";
@@ -39,6 +39,7 @@ export default function PrinterSettings({
   const [host, setHost] = useState("");
   const [port, setPort] = useState("9100");
   const [btScanning, setBtScanning] = useState(false);
+  const [btDiscovering, setBtDiscovering] = useState(false);
   const [btPrinters, setBtPrinters] = useState<BluetoothPrinterDevice[]>([]);
   const [btSaved, setBtSaved] = useState<BluetoothPrinterDevice | null>(null);
   const [btMsg, setBtMsg] = useState("");
@@ -66,7 +67,27 @@ export default function PrinterSettings({
     if (r) { setBtPrinters(r.printers || []); if (r.savedPrinter) setBtSaved(r.savedPrinter); setBtMsg(r.message || ""); }
     else setBtMsg(t.rd_ps_scan_unavail);
   }
+  // Nearby discovery (Android classic-SPP only; feature-gated). Merges UNPAIRED
+  // devices into the list — the "Scan" (bonded-only) button stays byte-unchanged, so
+  // the AIMO flow is untouched. Dedup by address (bonded entries win).
+  async function discoverBt() {
+    if (!hasDiscoverBridge()) { setBtMsg(t.rd_ps_open_app_scan); return; }
+    setBtDiscovering(true); setBtMsg(t.rd_ps_searching_nearby);
+    const r = await btCall<BluetoothScanResult>("discoverBluetoothPrinters");
+    setBtDiscovering(false);
+    if (r?.printers) {
+      setBtPrinters((prev) => { const have = new Set(prev.map((x) => x.address)); return [...prev, ...(r.printers || []).filter((x) => !have.has(x.address))]; });
+      setBtMsg(r.message || "");
+    } else setBtMsg(r?.message || t.rd_ps_scan_unavail);
+  }
   async function selectBt(p: BluetoothPrinterDevice) {
+    // A nearby (unpaired) device must be bonded first — createBond() shows the system
+    // pairing dialog in-app — then saved. A paired device saves directly (unchanged).
+    if (p.paired === false && hasDiscoverBridge()) {
+      setBtMsg(t.rd_ps_pairing);
+      const b = await btCall<BluetoothBondResult>("bondBluetoothDevice", { address: p.address });
+      if (!b?.bonded) { setBtMsg(b?.message || t.rd_ps_pair_failed); return; }
+    }
     const r = await btCall<BluetoothScanResult>("setBluetoothLabelPrinter", { address: p.address, name: p.name });
     setBtSaved(r?.savedPrinter || p); setBtMsg(r?.message || t.rd_ps_bt_saved);
   }
@@ -150,6 +171,11 @@ export default function PrinterSettings({
               <button onClick={() => void scanBt()} disabled={btScanning} style={{ ...gridBtn, border: "none", background: "var(--accent)", color: "var(--accent-text)", boxShadow: "0 4px 14px var(--accent-soft)", opacity: btScanning ? 0.6 : 1 }}>🔍 {btScanning ? t.rd_ps_scanning : t.rd_ps_scan}</button>
               {btSaved && <button onClick={() => void testBt()} style={gridBtn}>{t.rd_ps_test_print}</button>}
             </div>
+            {/* In-app nearby discovery + pairing — no trip to Android Settings. Only shown
+                when the native discovery bridge exists (Android classic-SPP; hidden on iOS/web). */}
+            {hasDiscoverBridge() && (
+              <button onClick={() => void discoverBt()} disabled={btDiscovering} style={{ ...gridBtn, width: "100%", marginTop: 9, opacity: btDiscovering ? 0.6 : 1 }}>📡 {btDiscovering ? t.rd_ps_searching_nearby : t.rd_ps_find_nearby}</button>
+            )}
             {btPrinters.length > 0 && (
               <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, marginTop: 12, overflow: "hidden" }}>
                 {btPrinters.map((p) => (

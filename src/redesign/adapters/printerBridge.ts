@@ -17,12 +17,17 @@ export interface PrinterLanConfig { host: string; port?: number }
 export interface BluetoothPrinterDevice { id: string; address: string; name: string; paired?: boolean; signal?: number }
 export interface BluetoothScanResult { ok?: boolean; message?: string; printers?: BluetoothPrinterDevice[]; savedPrinter?: BluetoothPrinterDevice | null }
 export interface StickerPrintResult { ok?: boolean; message?: string }
+// In-app pairing result (Android nearby-discovery flow). bonded === paired ok.
+export interface BluetoothBondResult { ok?: boolean; bonded?: boolean; address?: string; name?: string; message?: string; code?: string }
 
 export type LanBridgeAction = "scanPrinters" | "printerStatus" | "testPrint" | "connectPrinter" | "setPrinter" | "getPrinter" | "testConnection";
-export type BtBridgeAction = "scanBluetoothLabelPrinters" | "getBluetoothLabelPrinter" | "setBluetoothLabelPrinter" | "clearBluetoothLabelPrinter" | "testStickerPrint" | "printStickerNative";
+export type BtBridgeAction = "scanBluetoothLabelPrinters" | "getBluetoothLabelPrinter" | "setBluetoothLabelPrinter" | "clearBluetoothLabelPrinter" | "testStickerPrint" | "printStickerNative" | "discoverBluetoothPrinters" | "bondBluetoothDevice";
 
 export const hasNativePrinter = (): boolean => typeof window !== "undefined" && !!window.SellerFlowPrinter;
 export const hasBtBridge = (): boolean => typeof window !== "undefined" && !!window.SellerFlowPrinter?.scanBluetoothLabelPrinters;
+// Nearby-discovery + in-app pairing (Android classic-SPP only). Absent on iOS (BLE
+// bridge) and on old binaries, so the web feature-gates the "Find nearby" UI on this.
+export const hasDiscoverBridge = (): boolean => typeof window !== "undefined" && !!(window.SellerFlowPrinter as Record<string, unknown> | undefined)?.discoverBluetoothPrinters;
 
 // PURE — normalize a raw bridge return (string | object | void) into MobilePrinterResult.
 // Verbatim from App.tsx:464-470. Unit-tested.

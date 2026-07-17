@@ -5,7 +5,10 @@ import android.annotation.SuppressLint;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothSocket;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.os.Build;
@@ -274,6 +277,178 @@ public class SellerFlowPrinterPlugin extends Plugin {
     }
 
     /**
+     * NEARBY discovery for in-app pairing — lets a seller find an UNPAIRED printer
+     * (e.g. a brand-new PM-241) without leaving for Android Settings. This is a
+     * SEPARATE, additive method: {@link #scanBluetoothLabelPrinters} stays bonded-only
+     * and byte-unchanged, so the AIMO scan flow is untouched (a seller whose AIMO is
+     * already paired keeps using Scan exactly as before). Mirrors the proven receiver
+     * pattern in {@code MainActivity.discoverNearbyBluetooth}: register an ACTION_FOUND
+     * receiver, startDiscovery, collect for a fixed window, then stop + unregister.
+     * Returns only UNPAIRED devices (paired:false) not already bonded — bonded ones
+     * are already offered by the normal Scan.
+     */
+    @PluginMethod
+    public void discoverBluetoothPrinters(PluginCall call) {
+        BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
+        if (adapter == null) {
+            call.reject("Bluetooth not supported on this device", "BT_NO_ADAPTER");
+            return;
+        }
+        if (!adapter.isEnabled()) {
+            call.reject("Bluetooth is off. Turn it on then tap Find nearby again.", "BT_DISABLED");
+            return;
+        }
+        if (!hasBluetoothScanPermission()) {
+            requestBluetoothScanPermissions();
+            call.reject("Bluetooth permission needed. Allow it in the system prompt and tap Find nearby again.", "BT_PERMISSION");
+            return;
+        }
+        executor.execute(() -> {
+            final java.util.List<JSObject> found = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+            final java.util.Set<String> seen = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+            // Skip already-bonded devices — they're returned by the normal Scan.
+            try {
+                @SuppressLint("MissingPermission")
+                Set<BluetoothDevice> bonded = adapter.getBondedDevices();
+                if (bonded != null) for (BluetoothDevice d : bonded) { String a = d.getAddress(); if (a != null) seen.add(a); }
+            } catch (Exception ignored) {}
+            BroadcastReceiver receiver = new BroadcastReceiver() {
+                @Override
+                @SuppressLint("MissingPermission")
+                public void onReceive(Context context, Intent intent) {
+                    if (!BluetoothDevice.ACTION_FOUND.equals(intent.getAction())) return;
+                    BluetoothDevice device = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                    if (device == null) return;
+                    String addr = device.getAddress();
+                    if (addr == null || !seen.add(addr)) return;   // dedup + skip bonded
+                    found.add(bluetoothDeviceJson(device, false));
+                }
+            };
+            boolean denied = false;
+            try {
+                getContext().registerReceiver(receiver, new IntentFilter(BluetoothDevice.ACTION_FOUND));
+                try { adapter.cancelDiscovery(); } catch (Exception ignored) {}
+                adapter.startDiscovery();
+                Thread.sleep(8000);   // classic BT inquiry window (~8s covers a full inquiry)
+            } catch (SecurityException e) {
+                Log.e(TAG, "discoverBluetoothPrinters permission denied", e);
+                denied = true;
+            } catch (Exception e) {
+                Log.w(TAG, "discoverBluetoothPrinters discovery error: " + e.getMessage());
+            } finally {
+                try { adapter.cancelDiscovery(); } catch (Exception ignored) {}
+                try { getContext().unregisterReceiver(receiver); } catch (Exception ignored) {}
+            }
+            if (denied) { call.reject("Bluetooth permission denied. Allow it then tap Find nearby again.", "BT_PERMISSION"); return; }
+            JSObject ret = new JSObject();
+            JSONArray printers = new JSONArray();
+            synchronized (found) { for (JSObject d : found) printers.put(d); }
+            ret.put("ok", true);
+            ret.put("printers", printers);
+            ret.put("message", printers.length() == 0
+                ? "No new nearby devices found. Make sure the printer is ON and in range, then try again."
+                : "Found " + printers.length() + " nearby device" + (printers.length() == 1 ? "" : "s") + ". Tap yours to pair it.");
+            Log.i(TAG, "discoverBluetoothPrinters count=" + printers.length());
+            call.resolve(ret);
+        });
+    }
+
+    /**
+     * In-app pairing — {@code createBond()} triggers the system pairing dialog inside
+     * the app, so the seller never has to open Android Settings. Blocks (on the
+     * executor thread) on an ACTION_BOND_STATE_CHANGED receiver until BONDED / NONE /
+     * timeout. On success the web then calls {@link #setBluetoothLabelPrinter} to save
+     * it. AIMO is unaffected (this is only called for freshly-discovered, unpaired
+     * devices; already-bonded devices skip straight to save).
+     */
+    @PluginMethod
+    public void bondBluetoothDevice(PluginCall call) {
+        String addressRaw = call.getString("address", "");
+        final String address = addressRaw == null ? "" : addressRaw.trim();
+        if (address.isEmpty()) {
+            call.reject("Bluetooth address is required", "BT_ADDR_REQUIRED");
+            return;
+        }
+        if (!hasBluetoothConnectPermission()) {
+            requestBluetoothPermissions();
+            call.reject("Bluetooth permission needed. Allow it then tap Pair again.", "BT_PERMISSION");
+            return;
+        }
+        BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
+        if (adapter == null) {
+            call.reject("Bluetooth not supported on this device", "BT_NO_ADAPTER");
+            return;
+        }
+        executor.execute(() -> {
+            BroadcastReceiver receiver = null;
+            try {
+                try { adapter.cancelDiscovery(); } catch (Exception ignored) {}
+                @SuppressLint("MissingPermission")
+                BluetoothDevice device = adapter.getRemoteDevice(address);
+                if (device.getBondState() == BluetoothDevice.BOND_BONDED) {
+                    resolveBond(call, device, true, "Already paired.");
+                    return;
+                }
+                final Object lock = new Object();
+                final boolean[] settled = {false};
+                final boolean[] bonded = {false};
+                receiver = new BroadcastReceiver() {
+                    @Override
+                    public void onReceive(Context context, Intent intent) {
+                        if (!BluetoothDevice.ACTION_BOND_STATE_CHANGED.equals(intent.getAction())) return;
+                        BluetoothDevice d = intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                        if (d == null || !address.equals(d.getAddress())) return;
+                        int state = intent.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.BOND_NONE);
+                        if (state == BluetoothDevice.BOND_BONDED || state == BluetoothDevice.BOND_NONE) {
+                            synchronized (lock) { bonded[0] = state == BluetoothDevice.BOND_BONDED; settled[0] = true; lock.notifyAll(); }
+                        }
+                    }
+                };
+                getContext().registerReceiver(receiver, new IntentFilter(BluetoothDevice.ACTION_BOND_STATE_CHANGED));
+                @SuppressLint("MissingPermission")
+                boolean started = device.createBond();
+                if (!started && device.getBondState() != BluetoothDevice.BOND_BONDING) {
+                    boolean already = device.getBondState() == BluetoothDevice.BOND_BONDED;
+                    resolveBond(call, device, already, already ? "Already paired." : "Couldn't start pairing. Make sure the printer is on and in range.");
+                    return;
+                }
+                // Wait for the user to complete the system pairing dialog (30s cap).
+                synchronized (lock) {
+                    long end = System.currentTimeMillis() + 30000;
+                    long remaining;
+                    while (!settled[0] && (remaining = end - System.currentTimeMillis()) > 0) {
+                        lock.wait(remaining);
+                    }
+                }
+                boolean ok = bonded[0] || device.getBondState() == BluetoothDevice.BOND_BONDED;
+                resolveBond(call, device, ok, ok ? "Paired successfully." : "Pairing timed out or was cancelled. Try again.");
+            } catch (SecurityException e) {
+                Log.e(TAG, "bondBluetoothDevice permission denied", e);
+                call.reject("Bluetooth permission denied: " + e.getMessage(), "BT_PERMISSION", e);
+            } catch (Exception e) {
+                Log.e(TAG, "bondBluetoothDevice failed", e);
+                call.reject("Pairing failed: " + e.getMessage(), "BT_BOND_FAILED", e);
+            } finally {
+                if (receiver != null) try { getContext().unregisterReceiver(receiver); } catch (Exception ignored) {}
+            }
+        });
+    }
+
+    @SuppressLint("MissingPermission")
+    private void resolveBond(PluginCall call, BluetoothDevice device, boolean bonded, String message) {
+        JSObject ret = new JSObject();
+        ret.put("ok", bonded);
+        ret.put("bonded", bonded);
+        ret.put("address", device.getAddress());
+        String name;
+        try { name = device.getName(); } catch (Exception e) { name = null; }
+        ret.put("name", name == null || name.trim().isEmpty() ? device.getAddress() : name);
+        ret.put("message", message);
+        Log.i(TAG, "bondBluetoothDevice result address=" + device.getAddress() + " bonded=" + bonded);
+        call.resolve(ret);
+    }
+
+    /**
      * Primary sticker print path for printers (like the AIMO D520BT) that
      * accept TSPL TEXT + BAR but ignore BITMAP. The frontend hands over
      * structured slip data (storeName / sessionDate / currency / buyer with
@@ -416,7 +591,11 @@ public class SellerFlowPrinterPlugin extends Plugin {
     /**
      * Fixed CJK verification payload for the 241 Test Print — 陳小美 name band +
      * 紅色洋裝 x2 (CJK product band) + a Latin order, at the seller's own label size
-     * + store name. Deterministic so the photo review is repeatable.
+     * + store name. Deterministic content so the CJK render stays a repeatable proof,
+     * but the seller's LIVE print-pattern settings + decimal size adjusters are now
+     * carried through (was dropped) so the Test Print reflects the pattern the seller
+     * is editing — matching the AIMO test-print behaviour. Without this the pattern
+     * toggles/sizes had no effect on the 241 test ("LIVE print pattern not working").
      */
     private JSONObject build241VerificationPayload(JSONObject src, int labelWidthMm, int labelHeightMm) throws org.json.JSONException {
         JSONObject buyer = new JSONObject();
@@ -442,7 +621,14 @@ public class SellerFlowPrinterPlugin extends Plugin {
         p.put("sessionDate", "07/17/2026");
         p.put("labelWidthMm", labelWidthMm);
         p.put("labelHeightMm", labelHeightMm);
-        return p;   // no settings → defaults; no scalesRaw → integer fallback
+        // Carry the seller's LIVE print-pattern settings + decimal scalesRaw so the
+        // Test Print honours the pattern (field toggles + per-field sizes) exactly
+        // like a real order / the AIMO test. Absent → builder defaults (unchanged).
+        JSONObject settings = src.optJSONObject("settings");
+        if (settings != null) p.put("settings", settings);
+        JSONObject scalesRaw = src.optJSONObject("scalesRaw");
+        if (scalesRaw != null) p.put("scalesRaw", scalesRaw);
+        return p;
     }
 
 
@@ -528,6 +714,34 @@ public class SellerFlowPrinterPlugin extends Plugin {
             } catch (Exception e) {
                 Log.w(TAG, "requestBluetoothPermissions failed: " + e.getMessage());
             }
+        }
+    }
+
+    // Scan/discovery permission (distinct from CONNECT): Android 12+ = BLUETOOTH_SCAN;
+    // Android 6–11 (discovery still needs location) = ACCESS_FINE_LOCATION. Only the
+    // NEW nearby-discovery path calls these — the bonded-only Scan + print flows keep
+    // using hasBluetoothConnectPermission (unchanged), so AIMO users get no extra prompt.
+    private boolean hasBluetoothScanPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            return getContext().checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED;
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            return getContext().checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+        }
+        return true;   // pre-M: install-time permissions
+    }
+
+    private void requestBluetoothScanPermissions() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                getActivity().runOnUiThread(() -> getActivity().requestPermissions(
+                    new String[]{Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT}, 8589));
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                getActivity().runOnUiThread(() -> getActivity().requestPermissions(
+                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION}, 8589));
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "requestBluetoothScanPermissions failed: " + e.getMessage());
         }
     }
 

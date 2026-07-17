@@ -764,6 +764,10 @@ const RAW: Record<string, Row> = {
   rd_ps_bt_device: { en: "Bluetooth printer", fil: "Bluetooth printer", zh: "蓝牙打印机", "zh-TW": "藍牙印表機", vi: "Máy in Bluetooth", th: "เครื่องพิมพ์ Bluetooth", id: "Printer Bluetooth" },
   rd_ps_paired: { en: "Paired", fil: "Naka-pair", zh: "已配对", "zh-TW": "已配對", vi: "Đã ghép nối", th: "จับคู่แล้ว", id: "Terpasang" },
   rd_ps_nearby: { en: "Nearby", fil: "Malapit", zh: "附近", "zh-TW": "附近", vi: "Gần đây", th: "ใกล้เคียง", id: "Terdekat" },
+  rd_ps_find_nearby: { en: "Find nearby printer", fil: "Maghanap ng malapit na printer", zh: "查找附近的打印机", "zh-TW": "尋找附近的印表機", vi: "Tìm máy in gần đây", th: "ค้นหาเครื่องพิมพ์ใกล้เคียง", id: "Cari printer terdekat" },
+  rd_ps_searching_nearby: { en: "Searching nearby…", fil: "Naghahanap sa paligid…", zh: "正在搜索附近…", "zh-TW": "正在搜尋附近…", vi: "Đang tìm gần đây…", th: "กำลังค้นหาใกล้เคียง…", id: "Mencari di sekitar…" },
+  rd_ps_pairing: { en: "Pairing… confirm on the pop-up", fil: "Nagpe-pair… kumpirmahin sa pop-up", zh: "正在配对…请在弹窗中确认", "zh-TW": "正在配對…請在彈窗中確認", vi: "Đang ghép nối… xác nhận trên cửa sổ", th: "กำลังจับคู่… ยืนยันในป๊อปอัพ", id: "Menyandingkan… konfirmasi di pop-up" },
+  rd_ps_pair_failed: { en: "Couldn't pair. Make sure the printer is on and in range.", fil: "Hindi na-pair. Siguraduhing naka-ON at malapit ang printer.", zh: "配对失败。请确保打印机已开机并在范围内。", "zh-TW": "配對失敗。請確認印表機已開機並在範圍內。", vi: "Không thể ghép nối. Đảm bảo máy in đang bật và trong phạm vi.", th: "จับคู่ไม่สำเร็จ ตรวจสอบว่าเครื่องพิมพ์เปิดอยู่และอยู่ในระยะ", id: "Gagal menyandingkan. Pastikan printer menyala dan dalam jangkauan." },
   rd_ps_done: { en: "Done", fil: "Tapos", zh: "完成", "zh-TW": "完成", vi: "Xong", th: "เสร็จ", id: "Selesai" },
 
   // ════ Connect modal ════
