@@ -247,11 +247,11 @@ final class Phomemo241BuilderTests: XCTestCase {
         XCTAssertTrue(s.contains("TEXT 142,302,\"2\",180,1,1,\"07/17/2026\""), "date authoring (290,18)")
         XCTAssertTrue(s.contains("BAR 0,269,480,3"), "top separator bar authoring (0,48,w=480,h=3)")
         XCTAssertTrue(s.contains("TEXT 396,260,\"3\",180,1,1,\"My Shop\""), "shop authoring (36,60)")
-        XCTAssertTrue(s.contains("TEXT 412,228,\"4\",180,2,1,\"Buyer #12\""), "buyer# authoring (20,92), 2×1")
-        XCTAssertTrue(s.contains("TEXT 414,184,\"4\",180,1,1,\"Maria Santos\""), "name authoring (18,136)")
-        XCTAssertTrue(s.contains("TEXT 414,140,\"3\",180,1,1,\"@maria_shops\""), "@username authoring (18,180)")
-        XCTAssertTrue(s.contains("TEXT 398,90,\"2\",180,1,1,\"20:15\""), "time authoring (34,230)")
-        XCTAssertTrue(s.contains("TEXT 232,92,\"4\",180,2,1,\"250\""), "price authoring (200,228)")
+        XCTAssertTrue(s.contains("TEXT 400,226,\"4\",180,2,1,\"Buyer #12\""), "buyer# authoring (32,94), 2×1")
+        XCTAssertTrue(s.contains("TEXT 396,184,\"4\",180,1,1,\"Maria Santos\""), "name authoring (36,136)")
+        XCTAssertTrue(s.contains("TEXT 400,142,\"3\",180,1,1,\"@maria_shops\""), "@username authoring (32,178)")
+        XCTAssertTrue(s.contains("TEXT 384,90,\"2\",180,1,1,\"20:15\""), "time authoring (48,230) — the row anchor")
+        XCTAssertTrue(s.contains("TEXT 232,78,\"4\",180,2,1,\"250\""), "price authoring (200,242) — +12 BELOW the time")
         XCTAssertEqual(s.components(separatedBy: "BAR ").count - 1, 1, "order separator bar REMOVED on 60×40 → only the top bar remains")
     }
 

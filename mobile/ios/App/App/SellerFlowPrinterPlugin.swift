@@ -1613,22 +1613,23 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
 
         let c = stickerConfig(labelWidthMm, labelHeightMm)
 
-        // 60×40 = Jeff's bespoke layout (final spec). A CONSCIOUS divergence from AIMO
+        // 60×40 = Jeff's bespoke layout (final spec v2). A CONSCIOUS divergence from AIMO
         // (the FORK-DRIFT rule permits a documented decline) — so x + gaps are FORK-LOCAL
         // here; the shared SizeConfig (AIMO's buildTsplSticker reads the SAME table) is
         // UNTOUCHED and the other 4 sizes stay byte-identical (every `is6040 ? … : <lit>`
         // resolves to the current literal off 60×40). Gaps derived from Jeff's y's:
-        //   shop 60 →+32→ buyer# 92 →+44→ name 136 →+44→ @user 180 →+48→ order row 228.
+        //   shop 60 →+34→ buyer# 94 →+42→ name 136 →+42→ @user 178 →+52→ order row 230.
+        //   The order row anchors at the TIME (230); the price sits +12 BELOW it (242).
         let is6040 = (labelWidthMm == 60 && labelHeightMm == 40)
-        let storeGap    = is6040 ? 32 : c.storeGap
-        let buyerNumGap = is6040 ? 44 : c.buyerNumGap
-        let nameGap     = is6040 ? 44 : c.nameGap
-        let usernameGap = is6040 ? 48 : c.usernameGap
+        let storeGap    = is6040 ? 34 : c.storeGap
+        let buyerNumGap = is6040 ? 42 : c.buyerNumGap
+        let nameGap     = is6040 ? 42 : c.nameGap
+        let usernameGap = is6040 ? 52 : c.usernameGap
         let storeX = is6040 ? 36  : 16
-        let buyerX = is6040 ? 20  : 16
-        let nameX  = is6040 ? 18  : 16
-        let userX  = is6040 ? 18  : 16
-        let timeX  = is6040 ? 34  : 16
+        let buyerX = is6040 ? 32  : 16
+        let nameX  = is6040 ? 36  : 16
+        let userX  = is6040 ? 32  : 16
+        let timeX  = is6040 ? 48  : 16
         let priceX = is6040 ? 200 : 180
 
         emitText(16, 10, "3", 1, 1, "SellerFlowLive")
@@ -1708,14 +1709,16 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                 // TIME — FIXED at base size (BUG 1/2). It has no dedicated size control,
                 // the shared "comment" scale drove it, and a scaled time BAND grew wide
                 // enough to overrun the price column ("7:07PRICE"). A timestamp stays
-                // small: plain TEXT font "2" 1×1. 60×40 authoring: x=34, y+2 (Jeff spec).
+                // small: plain TEXT font "2" 1×1. 60×40 authoring (v2): x=48, y=row (230),
+                // the row anchor — the price now sits BELOW it.
                 if !time.isEmpty {
-                    emitText(timeX, is6040 ? y + 2 : y, "2", 1, 1, tsplSafe(truncate16(time, 10)))
+                    emitText(timeX, y, "2", 1, 1, tsplSafe(truncate16(time, 10)))
                 }
                 // PRICE CODE — height-priority (base 2× width, 1× height); height honors
                 // the comment decimal (BUG 3). ASCII scale 1.0 → TEXT (byte-identical).
+                // 60×40 authoring (v2): x=200, y+12 (242) — price BELOW the time.
                 if !cleanItem.isEmpty {
-                    emitHeightScaled(priceX, y, "4", 2, 1, sComment, tsplSafe(truncate16(cleanItem, 12)), c.rightEdge)
+                    emitHeightScaled(priceX, is6040 ? y + 12 : y, "4", 2, 1, sComment, tsplSafe(truncate16(cleanItem, 12)), c.rightEdge)
                 }
                 let d = max(0, Int(((clampF(sComment) - 1) * Double(F4)).rounded()))
                 y += 38 + d
