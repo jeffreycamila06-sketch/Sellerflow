@@ -62,16 +62,14 @@ public class SellerFlowPrinterPlugin extends Plugin {
     // `if (!CONSTANT)` still compiles either way (Java does NOT constant-fold `if`
     // for reachability). AIMO is entirely unaffected.
     private static final boolean PHOMEMO_241_ORDERS_ENABLED = true;
-    // P1 RULER TEST MODE (margin/dead-zone measurement window). While true, the 241
-    // TEST PRINT prints the ruler/tick measurement pattern (Phomemo241Builder
-    // .rulerTestPage) INSTEAD of the CJK verification sticker, so Jeff can run the
-    // 3-print drift-envelope protocol (print → reload roll → print → mid-roll
-    // print; worst surviving tick per edge = that edge's envelope). DELIBERATELY
-    // COMMITTED true so the measurement build prints rulers immediately — FLIP
-    // BACK to false in a one-line follow-up commit once the measurements are in.
-    // Scope: the 241 Test Print ONLY — real 241 orders and everything AIMO are
-    // untouched either way.
-    private static final boolean RULER_TEST_MODE = true;
+    // P1 RULER TEST MODE — MEASUREMENT COMPLETE (2026-07-18, Jeff's PM-241, 3-print
+    // drift-envelope protocol: reading-left worst 16 [16/16/12], reading-right worst
+    // 8 [8/8/8]). The measured guards now live in Phomemo241Builder
+    // (LEFT_GUARD_MEASURED = 24, EDGE_GUARD = 16) and the Test Print is back to the
+    // CJK verification sticker. Flip to true only for a future re-measurement (new
+    // unit / suspected drift change); the ruler pattern itself stays in the tree
+    // (Phomemo241Builder.rulerTestPage).
+    private static final boolean RULER_TEST_MODE = false;
 
     /**
      * ESC/POS character-size mode (GS ! n) applied to prominent slip fields:

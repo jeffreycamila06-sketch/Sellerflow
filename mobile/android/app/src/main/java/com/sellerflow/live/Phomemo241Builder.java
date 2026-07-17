@@ -25,9 +25,11 @@ import org.json.JSONObject;
  *  - The 241 IGNORES the TSPL font x/y-multiplier on rotation-180 TEXT, so a
  *    SCALED element must be sized in PIXELS (a band). At scale EXACTLY 1.0 an
  *    ASCII element stays the verified rotation-180 TEXT (byte-identical default).
- *  - The 60x40 printable window starts ~authoring x=32 (hardware: x=16 sliced,
- *    x=36 whole), so EDGE_GUARD pulls the whole (right-heavy under the flip)
- *    layout left by 48 to clear the right non-printable edge.
+ *  - Margins are MEASURED, not guessed (P1 ruler, 3-print drift-envelope
+ *    protocol, Jeff's PM-241, 2026-07-18): reading-LEFT edge worst 16 dots
+ *    (drifting), reading-RIGHT worst 8 (stable). Guards = worst + 8 buffer:
+ *    reading-left is covered by the authoring-x floor + EDGE_GUARD (see the
+ *    Emit class), reading-right by the per-size rightEdge inset (16 dots).
  *
  * The FORK-DRIFT rule (mirrored from the iOS FORK-OF header + CLAUDE.md):
  * as of Jeff's 2026-07-18 revision EVERY size is a documented divergence from AIMO
@@ -291,28 +293,30 @@ final class Phomemo241Builder {
         // 60x40 = Jeff's v3 vertical arrangement (the y-flow / gaps below are his design,
         // UNCHANGED): shop 64 -> buyer# 92 (storeGap 28) -> name 136 (buyerNumGap 44) ->
         // @user 192 (nameCjkGap 56) -> time 242 (usernameGap 50) -> price 242 (offset 0,
-        // same line as the time). M2 SAFETY (margin audit): every left-column x is
-        // floored to MIN_X_6040 = 24 (was 8/10/14/18/22 — inside the ~1-2mm calibration-
-        // drift zone that clipped on other units). The vertical arrangement is preserved;
-        // only the sub-24 x's lift to a common safe left margin. store(64)/date(260)/
-        // price(92) already clear it and are untouched.
-        final int MIN_X_6040 = 24;
+        // same line as the time).
+        // LEFT_GUARD_MEASURED = 24 — P1 MEASURED (3-print drift-envelope protocol on
+        // Jeff's PM-241, 2026-07-18): reading-left worst 16 dots (16/16/12, drifting)
+        // + 8 buffer. Every 60x40 left-column x is floored here; the big sizes author
+        // at x=16 and clear the same envelope via EDGE_GUARD (16+16 = 32 >= 24 — see
+        // Emit), so their AIMO-parity x's stay untouched. The measurement is a
+        // property of the MACHINE, not the size — both mechanisms enforce it.
+        final int LEFT_GUARD_MEASURED = 24;
         int storeGap    = is6040 ? 28 : c.storeGap;
         int buyerNumGap = is6040 ? 44 : c.buyerNumGap;
         int nameGap     = is6040 ? 44 : c.nameGap;
         int usernameGap = is6040 ? 50 : c.usernameGap;
-        int headerX = is6040 ? MIN_X_6040 : 16;
+        int headerX = is6040 ? LEFT_GUARD_MEASURED : 16;
         int headerY = is6040 ? 14  : 10;
         // RIGHT-EDGE FIT (60x40): the DIR0+180 emit places a rot-180 element's
         // reading-right at (W - anchor + width). Jeff's revision keeps the date at
-        // x=260 (clears MIN_X, fits its ~120-dot width).
+        // x=260 (clears LEFT_GUARD_MEASURED, fits its ~120-dot width).
         int dateX   = is6040 ? 260 : 290;
         int dateY   = is6040 ? 20  : 18;
         int storeX  = is6040 ? 64  : 16;
-        int buyerX  = is6040 ? MIN_X_6040 : 16;
-        int nameX   = is6040 ? MIN_X_6040 : 16;
-        int userX   = is6040 ? MIN_X_6040 : 16;
-        int timeX   = is6040 ? MIN_X_6040 : 16;
+        int buyerX  = is6040 ? LEFT_GUARD_MEASURED : 16;
+        int nameX   = is6040 ? LEFT_GUARD_MEASURED : 16;
+        int userX   = is6040 ? LEFT_GUARD_MEASURED : 16;
+        int timeX   = is6040 ? LEFT_GUARD_MEASURED : 16;
         int priceX  = is6040 ? 92  : 180;
         int startY  = is6040 ? 64  : 60;
 
@@ -324,9 +328,9 @@ final class Phomemo241Builder {
         // full label width (x=0, w=wDots) so its right end ran into the 241's DIRECTION-0
         // right non-printable dead-zone and clipped. A printable-width bar physically
         // spans [W-rightEdge .. W-64] = the same band-content bounds, clearing both
-        // dead-zones. 60x40 keeps Jeff's bespoke bar (now x=24 per MIN_X_6040).
+        // dead-zones. 60x40 keeps Jeff's bespoke bar (x=24 per LEFT_GUARD_MEASURED).
         if (is6040) {
-            e.emitBar(MIN_X_6040, 46, 376, 3);
+            e.emitBar(LEFT_GUARD_MEASURED, 46, 376, 3);
         } else {
             e.emitBar(16, 48, c.rightEdge - 64, 3);
         }
@@ -462,12 +466,17 @@ final class Phomemo241Builder {
     // A rot-0 element authored at (x,y) becomes a rot-180 element anchored at
     // (W-x, H-y); a BAR re-anchors to (W-x-w, H-y-h); a band pre-rotates its
     // pixels (flip180, done in the renderer) and re-anchors its box. W/H = label
-    // in dots (203 DPI = 8 dot/mm). EDGE_GUARD pulls the (right-heavy under the
-    // flip) layout LEFT so the 241's narrower DIRECTION-0 right printable edge
-    // never clips the leading letter (48: the 32-dot pull still half-clipped the
-    // first letter of the x=16 lines at 60x40).
+    // in dots (203 DPI = 8 dot/mm).
+    // EDGE_GUARD = 16 — P1 MEASURED (was a blanket 48). It shifts the whole layout
+    // toward reading-right, padding the READING-LEFT edge (physical W side — the
+    // drifting edge that clipped first letters). With it every edge clears its
+    // measured envelope on Jeff's PM-241 (3-print protocol, 2026-07-18):
+    //   reading-left  = authoring-x floor + EDGE_GUARD = 24+16 = 40 (60x40) /
+    //                   16+16 = 32 (big sizes)  >= 24 needed (worst 16 + 8)
+    //   reading-right = W - rightEdge = 16 = exactly needed (worst 8 + 8)
+    // The +32-dot reclaim vs the blanket 48 widens every line's usable width.
     private static final class Emit {
-        static final int EDGE_GUARD = 48;
+        static final int EDGE_GUARD = 16;
         final ByteArrayOutputStream out = new ByteArrayOutputStream(1024);
         final int W, H;
         final BandRenderer renderer;
@@ -534,9 +543,10 @@ final class Phomemo241Builder {
             // reading bottom), losing content silently. Clamp to 0 so the band stays
             // fully on the label (top-aligned worst case). Horizontal is bounded by
             // `avail`: a band's physical span is [W-rightEdge .. W-x-EDGE_GUARD], i.e.
-            // left >= W-rightEdge (16 dots) and right = W-x-48. With the 60x40 MIN_X of
-            // 24 the right margin is >=72 dots; the M1 width guard routes any over-wide
-            // TEXT here too, so NOTHING escapes to the raw-TEXT clip path.
+            // left >= W-rightEdge (16 dots = measured reading-right guard) and right =
+            // W-x-EDGE_GUARD (reading-left margin >= x-floor+16 = the measured 24+
+            // envelope); the M1 width guard routes any over-wide TEXT here too, so
+            // NOTHING escapes to the raw-TEXT clip path.
             int by = Math.max(0, H - y - band.height);
             writeBytes(out, ("BITMAP " + bx + "," + by + "," + band.widthBytes + "," + band.height + ",0,").getBytes(StandardCharsets.US_ASCII));
             writeBytes(out, band.bytes);

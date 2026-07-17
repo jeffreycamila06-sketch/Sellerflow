@@ -23,7 +23,7 @@ import org.json.JSONObject;
  */
 public final class Phomemo241ParityTest {
 
-    private static final int EDGE_GUARD = 48;
+    private static final int EDGE_GUARD = 16;   // P1 MEASURED (reading-left worst 16 + covered with the x floor; see the builder Emit doc)
     private static int failures = 0;
 
     // ── tiny assert harness ─────────────────────────────────────────────────
@@ -72,8 +72,10 @@ public final class Phomemo241ParityTest {
     }
 
     // ── rotate180: deterministic 180-about-centre rewrite of the AIMO stream ───
-    // (fixture content has no quoted commas). W/H = label dots. Mirrors the Swift
-    // test's rotate180 exactly (EDGE_GUARD 48).
+    // (fixture content has no quoted commas). W/H = label dots. Same transform shape
+    // as the Swift twin's rotate180, but with the ANDROID measured EDGE_GUARD (16);
+    // the iOS builder/tests still carry the old blanket 48 (iOS untouched — its P1
+    // measurement pass is a future task).
     private static String rotate180(String aimo, int W, int H) {
         String[] lines = aimo.split("\r\n", -1);
         List<String> out = new ArrayList<>();
@@ -156,8 +158,8 @@ public final class Phomemo241ParityTest {
             // TEXT parity (every shared line keeps AIMO drift protection); bars compared apart.
             eq(stripBars(fork), stripBars(exp),
                "fork TEXT == rotate180(AIMO) minus {sep bar, 2nd row, Total} at " + s[0] + "x" + s[1]);
-            contains(fork, "BAR 16," + (H - 51) + "," + (rE - 64) + ",3",
-               "printable-width top bar at " + s[0] + "x" + s[1] + " (physical [16.." + (W - 64) + "])");
+            contains(fork, "BAR 48," + (H - 51) + "," + (rE - 64) + ",3",
+               "printable-width top bar at " + s[0] + "x" + s[1] + " (reading [32.." + (rE - 32) + "])");
             check(fork.split("BAR ", -1).length - 1 == 1, "exactly one (top) bar at " + s[0] + "x" + s[1]);
         }
     }
@@ -179,15 +181,15 @@ public final class Phomemo241ParityTest {
         // shares the TIME's row (offset 0). All fixture content FITS → raw TEXT (M1
         // width guard is a no-op here; the long-content case is a separate test).
         String s = utf8(Phomemo241Builder.forStickerNative241(payload, 60, 40, nullBand()));
-        contains(s, "TEXT 408,306,\"3\",180,1,1,\"SellerFlowLive\"", "header authoring (24,14)");
-        contains(s, "TEXT 172,300,\"2\",180,1,1,\"07/17/2026\"", "date authoring (260,20)");
-        contains(s, "BAR 32,271,376,3", "top bar authoring (24,46,376,3) -> physical span");
-        contains(s, "TEXT 368,256,\"3\",180,1,1,\"My Shop\"", "shop authoring (64,64)");
-        contains(s, "TEXT 408,228,\"4\",180,1,1,\"Buyer #12\"", "buyer# authoring (24,92) 1x1 (1x width)");
-        contains(s, "TEXT 408,184,\"4\",180,1,1,\"Maria Santos\"", "name authoring (24,136)");
-        contains(s, "TEXT 408,140,\"3\",180,1,1,\"@maria_shops\"", "@username authoring (24,180 ASCII col)");
-        contains(s, "TEXT 408,90,\"2\",180,1,1,\"20:15\"", "time authoring (24,230 ASCII col) = row anchor");
-        contains(s, "TEXT 340,90,\"4\",180,2,1,\"250\"", "price authoring (92,230 ASCII col) = SAME row as time (offset 0)");
+        contains(s, "TEXT 440,306,\"3\",180,1,1,\"SellerFlowLive\"", "header authoring (24,14)");
+        contains(s, "TEXT 204,300,\"2\",180,1,1,\"07/17/2026\"", "date authoring (260,20)");
+        contains(s, "BAR 64,271,376,3", "top bar authoring (24,46,376,3) -> physical span");
+        contains(s, "TEXT 400,256,\"3\",180,1,1,\"My Shop\"", "shop authoring (64,64)");
+        contains(s, "TEXT 440,228,\"4\",180,1,1,\"Buyer #12\"", "buyer# authoring (24,92) 1x1 (1x width)");
+        contains(s, "TEXT 440,184,\"4\",180,1,1,\"Maria Santos\"", "name authoring (24,136)");
+        contains(s, "TEXT 440,140,\"3\",180,1,1,\"@maria_shops\"", "@username authoring (24,180 ASCII col)");
+        contains(s, "TEXT 440,90,\"2\",180,1,1,\"20:15\"", "time authoring (24,230 ASCII col) = row anchor");
+        contains(s, "TEXT 372,90,\"4\",180,2,1,\"250\"", "price authoring (92,230 ASCII col) = SAME row as time (offset 0)");
         int bars = s.split("BAR ", -1).length - 1;
         check(bars == 1, "order separator bar REMOVED on 60x40 -> only the top bar remains (got " + bars + ")");
     }
@@ -248,7 +250,7 @@ public final class Phomemo241ParityTest {
         System.out.println("testM1LongAsciiCompressesNotClips (M1: wide ASCII -> compressed band, never clipped TEXT)");
         // control: PROVE the pre-M1 raw-TEXT path would have clipped — a 13-char @2x
         // price is 624 dots but its 60x40 anchor (priceX 92 -> ax 340) is far smaller.
-        check(!textFits("TEXT 340,90,\"4\",180,2,1,\"Blue jeans Me\""), "control: raw 13ch @2x price WOULD overflow (624 > 340)");
+        check(!textFits("TEXT 372,90,\"4\",180,2,1,\"Blue jeans Me\""), "control: raw 13ch @2x price WOULD overflow (624 > 372)");
         JSONObject buyer = new JSONObject();
         buyer.put("num", 888).put("name", "Very Long Buyer Display Name")
              .put("handle", "verylongusername_tiktok9999").put("totalSpent", 0);
@@ -291,8 +293,8 @@ public final class Phomemo241ParityTest {
         contains(s, "BAR 478,0,2,320", "frame: boundary bar (physical right/W edge)");
         contains(s, "BAR 0,0,2,320", "frame: boundary bar (physical left/0 edge)");
         // NO-GUARD PROOF: the d=0 side tick sits AT the physical W edge (478) — a
-        // guarded emit would have placed it at 430 (48 in). Same for d=32 -> 446.
-        contains(s, "BAR 478,260,2,20", "d=0 tick at the raw physical edge (no 48-dot guard shift)");
+        // guarded emit would have shifted it inboard by EDGE_GUARD. Same for d=32 -> 446.
+        contains(s, "BAR 478,260,2,20", "d=0 tick at the raw physical edge (no guard shift)");
         contains(s, "BAR 446,44,2,20", "d=32 tick exactly 32 dots in from the W edge");
         contains(s, "BAR 32,44,2,20", "d=32 tick exactly 32 dots in from the 0 edge");
         // Labels are TEXT, inboard (>=40 dots from the edge they annotate).
@@ -329,7 +331,7 @@ public final class Phomemo241ParityTest {
         String s = utf8(Phomemo241Builder.forStickerNative241(asciiPayload(), 100, 60, nullBand()));
         contains(s, "DIRECTION 0", "241 fork runs DIRECTION 0 (DIR1 rasterizer broken)");
         check(!s.contains("DIRECTION 1"), "DIRECTION 1 must never be emitted");
-        contains(s, "TEXT 736,470,\"3\",180,1,1,\"SellerFlowLive\"", "header rot-180 at mapped anchor (800-16-48,480-10)");
+        contains(s, "TEXT 768,470,\"3\",180,1,1,\"SellerFlowLive\"", "header rot-180 at mapped anchor (800-16-16,480-10)");
         check(!s.matches("(?s).*TEXT \\d+,\\d+,\"[^\"]*\",0,.*"), "no element may stay rotation 0");
     }
 
@@ -431,7 +433,7 @@ public final class Phomemo241ParityTest {
         String s = utf8(Phomemo241Builder.forStickerNative241(payload, 100, 60, cap));
         check(texts.size() == 1, "Thai name reaches the band renderer (no downgrade-to-handle, D3) (got " + texts.size() + ")");
         check(texts.size() == 1 && texts.get(0).contains("ส"), "band text keeps Thai glyphs (no stripUnrenderable, D4)");
-        contains(s, "BITMAP 704,", "band BITMAP at 180-mapped name x (800-16-32-48)");
+        contains(s, "BITMAP 736,", "band BITMAP at 180-mapped name x (800-16-32-16)");
         check(!s.contains("@thaiseller"), "the name line must not silently become the handle");
     }
 
@@ -446,7 +448,7 @@ public final class Phomemo241ParityTest {
         JSONObject payload = new JSONObject().put("buyer", buyer).put("settings", off).put("storeName", "S").put("currency", "NT$").put("sessionDate", "");
         String s = utf8(Phomemo241Builder.forStickerNative241(payload, 60, 40, cap));
         check(!s.matches("(?s).*BITMAP \\d+,-\\d+,.*"), "no band may have a negative physical y");
-        contains(s, "BITMAP 376,0,4,400,0,", "over-tall band clamps y to 0 (name x=24 -> bx 376; y 320-64-400=-144 -> 0)");
+        contains(s, "BITMAP 408,0,4,400,0,", "over-tall band clamps y to 0 (name x=24 -> bx 408; y 320-64-400=-144 -> 0)");
     }
 
     private static void testFailedRenderEmitsNothing() {
