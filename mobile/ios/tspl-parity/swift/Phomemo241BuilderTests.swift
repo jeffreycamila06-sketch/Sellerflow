@@ -243,14 +243,14 @@ final class Phomemo241BuilderTests: XCTestCase {
         let out = p.buildTsplSticker241(buyer: buyer, settings: nil, storeName: "My Shop", currency: "NT$",
                                         sessionDate: "07/17/2026", labelWidthMm: 60, labelHeightMm: 40, bandRenderer: { _, _, _, _ in nil })
         let s = String(decoding: out, as: UTF8.self)
-        XCTAssertTrue(s.contains("TEXT 416,310,\"3\",180,1,1,\"SellerFlowLive\""), "header authoring (16,10)")
-        XCTAssertTrue(s.contains("TEXT 142,302,\"2\",180,1,1,\"07/17/2026\""), "date authoring (290,18)")
-        XCTAssertTrue(s.contains("BAR 0,269,480,3"), "top separator bar authoring (0,48,w=480,h=3)")
-        XCTAssertTrue(s.contains("TEXT 396,260,\"3\",180,1,1,\"My Shop\""), "shop authoring (36,60)")
-        XCTAssertTrue(s.contains("TEXT 400,226,\"4\",180,2,1,\"Buyer #12\""), "buyer# authoring (32,94), 2×1")
-        XCTAssertTrue(s.contains("TEXT 396,184,\"4\",180,1,1,\"Maria Santos\""), "name authoring (36,136)")
-        XCTAssertTrue(s.contains("TEXT 400,142,\"3\",180,1,1,\"@maria_shops\""), "@username authoring (32,178)")
-        XCTAssertTrue(s.contains("TEXT 384,90,\"2\",180,1,1,\"20:15\""), "time authoring (48,230) — the row anchor")
+        XCTAssertTrue(s.contains("TEXT 392,308,\"3\",180,1,1,\"SellerFlowLive\""), "header authoring (40,12)")
+        XCTAssertTrue(s.contains("TEXT 102,300,\"2\",180,1,1,\"07/17/2026\""), "date authoring (330,20)")
+        XCTAssertTrue(s.contains("BAR 16,269,376,3"), "top separator bar printable-width authoring (40,48,w=376,h=3) → physical [16,392]")
+        XCTAssertTrue(s.contains("TEXT 368,256,\"3\",180,1,1,\"My Shop\""), "shop authoring (64,64)")
+        XCTAssertTrue(s.contains("TEXT 392,226,\"4\",180,2,1,\"Buyer #12\""), "buyer# authoring (40,94), 2×1")
+        XCTAssertTrue(s.contains("TEXT 386,184,\"4\",180,1,1,\"Maria Santos\""), "name authoring (46,136)")
+        XCTAssertTrue(s.contains("TEXT 384,140,\"3\",180,1,1,\"@maria_shops\""), "@username authoring (48,180)")
+        XCTAssertTrue(s.contains("TEXT 374,90,\"2\",180,1,1,\"20:15\""), "time authoring (58,230) — the row anchor")
         XCTAssertTrue(s.contains("TEXT 232,78,\"4\",180,2,1,\"250\""), "price authoring (200,242) — +12 BELOW the time")
         XCTAssertEqual(s.components(separatedBy: "BAR ").count - 1, 1, "order separator bar REMOVED on 60×40 → only the top bar remains")
     }
@@ -267,6 +267,23 @@ final class Phomemo241BuilderTests: XCTestCase {
         let s = String(decoding: out, as: UTF8.self)
         XCTAssertTrue(s.contains("\"250\""), "the first (only) order row prints")
         XCTAssertFalse(s.contains("\"999\""), "60×40 caps at ONE row — the 2nd order becomes its own sticker (printStickerNative split)")
+    }
+
+    // MARK: Task 3 — vertical margin protection (a band never falls off the bottom edge)
+    func testOverTallBandClampsPhysicalYNeverNegative() {
+        let p = plugin()
+        let buyer: [String: Any] = ["num": 1, "name": "\u{9673}\u{5C0F}\u{7F8E}", "handle": "s", "orders": []] // CJK → band
+        // A deliberately over-tall band (taller than the space below its authoring y):
+        // H−y−height would be NEGATIVE without the clamp → a malformed negative-y BITMAP
+        // that drops content. name authoring y=136, height 250 → 320−136−250 = −66 → clamp 0.
+        let cap: (String, Double, Double, Int) -> Phomemo241Raster.Band? = { _, _, _, _ in
+            Phomemo241Raster.Band(widthBytes: 4, height: 250, bytes: [UInt8](repeating: 0xAA, count: 4 * 250))
+        }
+        let off: [String: Any] = ["printStoreName": false, "printBuyerNumber": false, "printBuyerUsername": false, "printOrderItems": false, "printTotal": false]
+        let out = p.buildTsplSticker241(buyer: buyer, settings: off, storeName: "S", currency: "NT$", sessionDate: "", labelWidthMm: 60, labelHeightMm: 40, bandRenderer: cap)
+        let s = String(decoding: out, as: UTF8.self)
+        XCTAssertNil(s.range(of: #"BITMAP \d+,-\d+,"#, options: .regularExpression), "no band may have a negative physical y — the clamp keeps content on the label")
+        XCTAssertTrue(s.contains("BITMAP 354,0,4,250,0,"), "over-tall band clamps its y to 0 (name authoring x=46 → bx 354; y −66 → 0)")
     }
 
     // MARK: BUG 1/2 — the order-line TIME is FIXED, decoupled from the comment scale

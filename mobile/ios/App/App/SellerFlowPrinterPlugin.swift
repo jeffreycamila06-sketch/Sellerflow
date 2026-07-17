@@ -1510,7 +1510,15 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             guard let band = renderBand(fitted, xMul, yMul, avail),
                   band.height > 0, band.widthBytes > 0, !band.bytes.isEmpty else { return }
             let bx = max(0, W - x - band.widthBytes * 8 - edgeGuard)
-            let by = H - y - band.height
+            // VERTICAL margin protection (Task 3): a scaled band grown + pushed down by
+            // reflow could drive H−y−height NEGATIVE (its top row falling off the physical
+            // top edge = reading bottom), losing content silently. Clamp to 0 so the band
+            // stays fully on the label (top-aligned worst case). Horizontal is already
+            // bounded by `avail` (rightEdge−x−guard) + every element's x ≥ 32, keeping the
+            // physical span inside [16, 392]. At 60×40 the price (y=242) at scale 3.0 =
+            // by 6 (≥0, safe); the clamp only engages beyond the 0.5–3.0 range / heavy
+            // stacked reflow — a last-resort no-lose-content guard, not the normal path.
+            let by = max(0, H - y - band.height)
             out.append(contentsOf: tsplAsciiBytes("BITMAP \(bx),\(by),\(band.widthBytes),\(band.height),0,"))
             out.append(contentsOf: band.bytes)
             out.append(contentsOf: [0x0D, 0x0A])
@@ -1613,30 +1621,45 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
 
         let c = stickerConfig(labelWidthMm, labelHeightMm)
 
-        // 60×40 = Jeff's bespoke layout (final spec v2). A CONSCIOUS divergence from AIMO
+        // 60×40 = Jeff's bespoke layout (final spec v3). A CONSCIOUS divergence from AIMO
         // (the FORK-DRIFT rule permits a documented decline) — so x + gaps are FORK-LOCAL
         // here; the shared SizeConfig (AIMO's buildTsplSticker reads the SAME table) is
         // UNTOUCHED and the other 4 sizes stay byte-identical (every `is6040 ? … : <lit>`
-        // resolves to the current literal off 60×40). Gaps derived from Jeff's y's:
-        //   shop 60 →+34→ buyer# 94 →+42→ name 136 →+42→ @user 178 →+52→ order row 230.
+        // resolves to the current literal off 60×40). v3 shifts every x right — the 241's
+        // 60×40 printable window starts ≈ authoring x 32 (hardware: x=16 sliced, x=36 whole).
+        // Gaps derived from Jeff's y's:
+        //   shop 64 →+30→ buyer# 94 →+42→ name 136 →+44→ @user 180 →+50→ order row 230.
         //   The order row anchors at the TIME (230); the price sits +12 BELOW it (242).
         let is6040 = (labelWidthMm == 60 && labelHeightMm == 40)
-        let storeGap    = is6040 ? 34 : c.storeGap
+        let storeGap    = is6040 ? 30 : c.storeGap
         let buyerNumGap = is6040 ? 42 : c.buyerNumGap
-        let nameGap     = is6040 ? 42 : c.nameGap
-        let usernameGap = is6040 ? 52 : c.usernameGap
-        let storeX = is6040 ? 36  : 16
-        let buyerX = is6040 ? 32  : 16
-        let nameX  = is6040 ? 36  : 16
-        let userX  = is6040 ? 32  : 16
-        let timeX  = is6040 ? 48  : 16
+        let nameGap     = is6040 ? 44 : c.nameGap
+        let usernameGap = is6040 ? 50 : c.usernameGap
+        let headerX = is6040 ? 40  : 16
+        let headerY = is6040 ? 12  : 10
+        let dateX   = is6040 ? 330 : 290
+        let dateY   = is6040 ? 20  : 18
+        let storeX = is6040 ? 64  : 16
+        let buyerX = is6040 ? 40  : 16
+        let nameX  = is6040 ? 46  : 16
+        let userX  = is6040 ? 48  : 16
+        let timeX  = is6040 ? 58  : 16
         let priceX = is6040 ? 200 : 180
+        let startY = is6040 ? 64  : 60
 
-        emitText(16, 10, "3", 1, 1, "SellerFlowLive")
+        emitText(headerX, headerY, "3", 1, 1, "SellerFlowLive")
         if !sessionDate.isEmpty {
-            emitText(290, 18, "2", 1, 1, tsplSafe(truncate16(sessionDate, 12)))
+            emitText(dateX, dateY, "2", 1, 1, tsplSafe(truncate16(sessionDate, 12)))
         }
-        emitBar(0, 48, c.wDots, 3)
+        // TOP separator bar. 60×40: printable-width span — the old x=0 w=480 bar ran off
+        // the 241's DIRECTION-0 right non-printable edge. emitBar(40,48,376,3) →
+        // BAR 16,269,376,3 = physical [16, 392]: right end 392 = the header's verified-
+        // visible position, left 16 = margin; 40+376+48 = 464 ≤ 480 so no anchor clamp.
+        if is6040 {
+            emitBar(40, 48, 376, 3)
+        } else {
+            emitBar(0, 48, c.wDots, 3)
+        }
 
         let cleanStoreName = stripEmoji(storeName)
         let cleanBuyerName = stripEmoji(buyerName)
@@ -1652,7 +1675,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         let bandName = hasNonAscii(nameOut)   // D3: replaces nameTier==CJK for the gap math
 
         var extra = 0
-        var y = 60
+        var y = startY
         if printStoreName && !cleanStoreName.isEmpty {
             emitSym(storeX, y, "3", sStore, tsplSafe(truncate16(cleanStoreName, 36)), c.rightEdge)
             let d = Int(((clampF(sStore) - 1) * Double(F3)).rounded())
