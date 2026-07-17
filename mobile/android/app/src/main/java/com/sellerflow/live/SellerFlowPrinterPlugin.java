@@ -49,6 +49,17 @@ public class SellerFlowPrinterPlugin extends Plugin {
     // Default label dimensions for AIMO D520BT sticker stock.
     private static final int LABEL_WIDTH_MM = 100;
     private static final int LABEL_HEIGHT_MM = 60;
+    // Phomemo 241 ORDER GUARD (Phase 1). The 241 raster/BITMAP path is not yet
+    // verified over Classic-SPP on real hardware (Jeff's Test Print proves connect
+    // + print + the CJK band; a real-order photo confirms the rest). While false,
+    // a REAL 241 order no-ops with PROFILE_NOT_READY — the order is already saved
+    // by the caller (print fires AFTER the DB writes), so nothing is lost. The 241
+    // Test Print always works. FLIP TO true after the device Test Print passes
+    // photo review (one line — the real-order path below is already complete).
+    // `if (!CONSTANT)` compiles even when the constant is false: unlike `while`,
+    // Java does NOT constant-fold `if` for reachability, so the code after stays
+    // compilable. AIMO is entirely unaffected either way.
+    private static final boolean PHOMEMO_241_ORDERS_ENABLED = false;
 
     /**
      * ESC/POS character-size mode (GS ! n) applied to prominent slip fields:
@@ -287,6 +298,10 @@ public class SellerFlowPrinterPlugin extends Plugin {
             return;
         }
         final JSObject jsPayload = call.getData();
+        // Saved printer NAME picks the builder profile (read on the main thread,
+        // like `address`): a name starting "PM-241" routes to the Phomemo 241 fork,
+        // everything else (incl. AIMO D520BT) stays the golden-locked AIMO path.
+        final String savedName = prefs().getString(PREF_BT_NAME, "");
         executor.execute(() -> {
             try {
                 JSONObject payload = jsPayload == null
@@ -296,6 +311,13 @@ public class SellerFlowPrinterPlugin extends Plugin {
                 // stickerSize setting); fall back to the AIMO default if absent.
                 int labelWidthMm = payload.optInt("labelWidthMm", LABEL_WIDTH_MM);
                 int labelHeightMm = payload.optInt("labelHeightMm", LABEL_HEIGHT_MM);
+
+                // ── Phomemo 241 profile (isolated fork; AIMO untouched below) ──
+                if (Phomemo241Builder.isPhomemo241(savedName)) {
+                    print241(call, payload, address, labelWidthMm, labelHeightMm);
+                    return;
+                }
+
                 byte[] tspl = TsplBuilder.forStickerNative(payload, labelWidthMm, labelHeightMm);
                 sendViaBluetoothSpp(address, tspl);
                 JSObject ret = new JSObject();
@@ -313,6 +335,110 @@ public class SellerFlowPrinterPlugin extends Plugin {
                 call.reject("Bluetooth print failed: " + e.getMessage(), "BT_PRINT_FAILED", e);
             }
         });
+    }
+
+    /**
+     * Phomemo 241 sticker print (isolated from the AIMO path). Runs on the
+     * executor thread; the caller wraps it in the shared SPP/permission try/catch.
+     *
+     *  - isTest → a fixed CJK VERIFICATION sticker (陳小美 name band + 紅色洋裝 x2
+     *    product band = multiple BITMAPs + Latin lines) so a device photo proves
+     *    the Noto CJK raster path. Mirrors iOS run241VerificationPrint.
+     *  - real order → gated by {@link #PHOMEMO_241_ORDERS_ENABLED} (Phase 1). When
+     *    enabled: ORDER-PER-STICKER on 60x40 (a >1-order buyer prints N single-order
+     *    labels concatenated on ONE SPP write — SPP has no DONE notify, so
+     *    sequencing is stream + tail-out, not DONE-gated). Live flows pass a
+     *    single-order buyer → N=1 (byte-identical to the single path).
+     */
+    private void print241(PluginCall call, JSONObject payload, String address, int labelWidthMm, int labelHeightMm) throws Exception {
+        Phomemo241Builder.BandRenderer renderer = new Phomemo241Raster();
+
+        if (payload.optBoolean("isTest", false)) {
+            byte[] tspl = Phomemo241Builder.forStickerNative241(build241VerificationPayload(payload, labelWidthMm, labelHeightMm), labelWidthMm, labelHeightMm, renderer);
+            sendViaBluetoothSpp(address, tspl);
+            JSObject ret = new JSObject();
+            ret.put("ok", true);
+            ret.put("phase1", true);
+            ret.put("bytes", tspl.length);
+            ret.put("savedPrinter", savedBluetoothPrinter());
+            ret.put("message", "241 verification sticker sent (" + tspl.length + " bytes) — check: HEADER exits first + upright, Latin sharp, \u9673\u5C0F\u7F8E + \u7D05\u8272\u6D0B\u88DD legible.");
+            Log.i(TAG, "print241 verification bytes=" + tspl.length);
+            call.resolve(ret);
+            return;
+        }
+
+        // PHASE 1 ORDER GUARD — see PHOMEMO_241_ORDERS_ENABLED. Flip that constant to
+        // true (one line) once the device Test Print passes photo review.
+        if (!PHOMEMO_241_ORDERS_ENABLED) {
+            Log.i(TAG, "print241 real order gated (PROFILE_NOT_READY) — order already saved by caller");
+            call.reject("Phomemo 241 sticker printing is being verified — run a Test Print first.", "PROFILE_NOT_READY");
+            return;
+        }
+
+        JSONObject buyer = payload.optJSONObject("buyer");
+        JSONArray orders = buyer == null ? null : buyer.optJSONArray("orders");
+        byte[] tspl;
+        int labels = 1;
+        if (labelWidthMm == 60 && labelHeightMm == 40 && orders != null && orders.length() > 1) {
+            ByteArrayOutputStream combined = new ByteArrayOutputStream();
+            for (int i = 0; i < orders.length(); i++) {
+                JSONObject o = orders.optJSONObject(i);
+                if (o == null) continue;
+                JSONObject singlePayload = new JSONObject(payload.toString());
+                JSONObject singleBuyer = new JSONObject(buyer.toString());
+                JSONArray one = new JSONArray();
+                one.put(o);
+                singleBuyer.put("orders", one);
+                singlePayload.put("buyer", singleBuyer);
+                byte[] part = Phomemo241Builder.forStickerNative241(singlePayload, labelWidthMm, labelHeightMm, renderer);
+                combined.write(part, 0, part.length);
+            }
+            tspl = combined.toByteArray();
+            labels = orders.length();
+        } else {
+            tspl = Phomemo241Builder.forStickerNative241(payload, labelWidthMm, labelHeightMm, renderer);
+        }
+        sendViaBluetoothSpp(address, tspl);
+        JSObject ret = new JSObject();
+        ret.put("ok", true);
+        ret.put("bytes", tspl.length);
+        ret.put("labels", labels);
+        ret.put("savedPrinter", savedBluetoothPrinter());
+        ret.put("message", "Printed " + labels + " sticker(s) via Bluetooth (" + tspl.length + " bytes)");
+        Log.i(TAG, "print241 success labels=" + labels + " bytes=" + tspl.length);
+        call.resolve(ret);
+    }
+
+    /**
+     * Fixed CJK verification payload for the 241 Test Print — 陳小美 name band +
+     * 紅色洋裝 x2 (CJK product band) + a Latin order, at the seller's own label size
+     * + store name. Deterministic so the photo review is repeatable.
+     */
+    private JSONObject build241VerificationPayload(JSONObject src, int labelWidthMm, int labelHeightMm) throws org.json.JSONException {
+        JSONObject buyer = new JSONObject();
+        buyer.put("num", 88);
+        buyer.put("name", "\u9673\u5C0F\u7F8E");   // 陳小美
+        buyer.put("handle", "sellerflow");
+        buyer.put("totalSpent", 1200);
+        JSONArray orders = new JSONArray();
+        JSONObject o1 = new JSONObject();
+        o1.put("item", "\u7D05\u8272\u6D0B\u88DD x2");   // 紅色洋裝 x2
+        o1.put("time", "20:15");
+        JSONObject o2 = new JSONObject();
+        o2.put("item", "Blue jeans M");
+        o2.put("time", "20:18");
+        orders.put(o1);
+        orders.put(o2);
+        buyer.put("orders", orders);
+
+        JSONObject p = new JSONObject();
+        p.put("buyer", buyer);
+        p.put("storeName", src.optString("storeName", "SellerFlowLive"));
+        p.put("currency", "NT$");
+        p.put("sessionDate", "07/17/2026");
+        p.put("labelWidthMm", labelWidthMm);
+        p.put("labelHeightMm", labelHeightMm);
+        return p;   // no settings → defaults; no scalesRaw → integer fallback
     }
 
 

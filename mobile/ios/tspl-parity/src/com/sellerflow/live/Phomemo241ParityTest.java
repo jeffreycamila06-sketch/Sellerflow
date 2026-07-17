@@ -1,0 +1,344 @@
+package com.sellerflow.live;
+
+import java.util.ArrayList;
+import java.util.List;
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+/**
+ * JVM-runnable parity test for the Android Phomemo 241 builder
+ * ({@link Phomemo241Builder}). Unlike the Swift XCTest twin
+ * (Phomemo241BuilderTests.swift, Mac-only), this compiles + runs with plain
+ * javac/java against the org.json stubs + the UNMODIFIED production TsplBuilder +
+ * Phomemo241Builder — so CI/any JDK can prove the LAYOUT. It uses a FAKE
+ * BandRenderer (no android.graphics), so the actual glyph raster is out of scope
+ * (device-verified only); this pins the command stream.
+ *
+ * THE ANTI-DRIFT PIN (FORK-DRIFT rule): an all-ASCII buyer through
+ * forStickerNative241 must equal rotate180(TsplBuilder.forStickerNative) for the
+ * 4 AIMO-mirrored sizes; 60x40 is Jeff's bespoke v3 (pinned separately). Any
+ * un-mirrored AIMO layout edit turns this red.
+ *
+ * Run:  mobile/ios/tspl-parity/run-241-parity.sh
+ */
+public final class Phomemo241ParityTest {
+
+    private static final int EDGE_GUARD = 48;
+    private static int failures = 0;
+
+    // ── tiny assert harness ─────────────────────────────────────────────────
+    private static void check(boolean cond, String msg) {
+        if (cond) { System.out.println("  ok   " + msg); }
+        else { System.out.println("  FAIL " + msg); failures++; }
+    }
+    private static void eq(String a, String b, String msg) {
+        if (a.equals(b)) { System.out.println("  ok   " + msg); }
+        else {
+            System.out.println("  FAIL " + msg);
+            System.out.println("        expected: " + b.replace("\r\n", "\\r\\n"));
+            System.out.println("        actual:   " + a.replace("\r\n", "\\r\\n"));
+            failures++;
+        }
+    }
+    private static void contains(String haystack, String needle, String msg) {
+        check(haystack.contains(needle), msg + "  [missing: " + needle + "]");
+    }
+
+    // ── fakes ────────────────────────────────────────────────────────────────
+    private static int r241(double v) { return (int) (v < 0 ? Math.ceil(v - 0.5) : Math.floor(v + 0.5)); }
+
+    /** Deterministic fake band: widthBytes 4, height = round(24 x yMul). */
+    private static Phomemo241Builder.BandRenderer fakeBand() {
+        return (text, xMul, yMul, maxW) -> {
+            int h = Math.max(1, r241(24 * yMul));
+            byte[] bytes = new byte[4 * h];
+            java.util.Arrays.fill(bytes, (byte) 0xAA);
+            return new Phomemo241Builder.Band(4, h, bytes);
+        };
+    }
+    private static Phomemo241Builder.BandRenderer nullBand() {
+        return (text, xMul, yMul, maxW) -> null;
+    }
+
+    // ── payload builders ──────────────────────────────────────────────────────
+    private static JSONObject asciiPayload() {
+        JSONObject buyer = new JSONObject();
+        buyer.put("num", 12).put("name", "Maria Santos").put("handle", "maria_shops").put("totalSpent", 700.0);
+        JSONArray orders = new JSONArray();
+        orders.put(new JSONObject().put("item", "250").put("time", "20:15"));
+        orders.put(new JSONObject().put("item", "Blue jeans M").put("time", "20:18"));
+        buyer.put("orders", orders);
+        return new JSONObject().put("buyer", buyer).put("storeName", "My Shop").put("currency", "NT$").put("sessionDate", "07/17/2026");
+    }
+
+    // ── rotate180: deterministic 180-about-centre rewrite of the AIMO stream ───
+    // (fixture content has no quoted commas). W/H = label dots. Mirrors the Swift
+    // test's rotate180 exactly (EDGE_GUARD 48).
+    private static String rotate180(String aimo, int W, int H) {
+        String[] lines = aimo.split("\r\n", -1);
+        List<String> out = new ArrayList<>();
+        for (String line : lines) {
+            if (line.equals("DIRECTION 1")) { out.add("DIRECTION 0"); continue; }
+            if (line.startsWith("TEXT ")) {
+                String[] f = line.substring(5).split(",");
+                if (f.length >= 7) {
+                    int x = Integer.parseInt(f[0]);
+                    int y = Integer.parseInt(f[1]);
+                    StringBuilder content = new StringBuilder();
+                    for (int i = 6; i < f.length; i++) { if (i > 6) content.append(","); content.append(f[i]); }
+                    out.add("TEXT " + (W - x - EDGE_GUARD) + "," + (H - y) + "," + f[2] + ",180," + f[4] + "," + f[5] + "," + content);
+                    continue;
+                }
+            }
+            if (line.startsWith("BAR ")) {
+                String[] f = line.substring(4).split(",");
+                if (f.length == 4) {
+                    int x = Integer.parseInt(f[0]);
+                    int y = Integer.parseInt(f[1]);
+                    int w = Integer.parseInt(f[2]);
+                    int h = Integer.parseInt(f[3]);
+                    out.add("BAR " + Math.max(0, W - x - w - EDGE_GUARD) + "," + (H - y - h) + "," + w + "," + h);
+                    continue;
+                }
+            }
+            out.add(line);
+        }
+        return String.join("\r\n", out);
+    }
+
+    private static String utf8(byte[] b) { return new String(b, java.nio.charset.StandardCharsets.UTF_8); }
+
+    // ── tests ──────────────────────────────────────────────────────────────────
+
+    private static void testAsciiFullParityEverySize() {
+        System.out.println("testAsciiFullParityEverySize (4 AIMO-mirrored sizes)");
+        int[][] sizes = {{100, 60}, {80, 60}, {80, 50}, {70, 50}};
+        for (int[] s : sizes) {
+            JSONObject payload = asciiPayload();
+            byte[] aimo = TsplBuilder.forStickerNative(payload, s[0], s[1]);
+            byte[] fork = Phomemo241Builder.forStickerNative241(payload, s[0], s[1], nullBand());
+            eq(utf8(fork), rotate180(utf8(aimo), s[0] * 8, s[1] * 8), "fork == rotate180(AIMO) at " + s[0] + "x" + s[1]);
+        }
+    }
+
+    private static void testBespoke6040() {
+        System.out.println("testBespoke6040LayoutMatchesJeffSpec");
+        JSONObject buyer = new JSONObject();
+        buyer.put("num", 12).put("name", "Maria Santos").put("handle", "maria_shops").put("totalSpent", 700.0);
+        JSONArray orders = new JSONArray();
+        orders.put(new JSONObject().put("item", "250").put("time", "20:15"));
+        buyer.put("orders", orders);
+        JSONObject payload = new JSONObject().put("buyer", buyer).put("storeName", "My Shop").put("currency", "NT$").put("sessionDate", "07/17/2026");
+        String s = utf8(Phomemo241Builder.forStickerNative241(payload, 60, 40, nullBand()));
+        contains(s, "TEXT 392,308,\"3\",180,1,1,\"SellerFlowLive\"", "header authoring (40,12)");
+        contains(s, "TEXT 102,300,\"2\",180,1,1,\"07/17/2026\"", "date authoring (330,20)");
+        contains(s, "BAR 16,269,376,3", "top bar printable-width (40,48,376,3) -> physical [16,392]");
+        contains(s, "TEXT 368,256,\"3\",180,1,1,\"My Shop\"", "shop authoring (64,64)");
+        contains(s, "TEXT 392,226,\"4\",180,2,1,\"Buyer #12\"", "buyer# authoring (40,94) 2x1");
+        contains(s, "TEXT 386,184,\"4\",180,1,1,\"Maria Santos\"", "name authoring (46,136)");
+        contains(s, "TEXT 384,140,\"3\",180,1,1,\"@maria_shops\"", "@username authoring (48,180)");
+        contains(s, "TEXT 374,90,\"2\",180,1,1,\"20:15\"", "time authoring (58,230) = row anchor");
+        contains(s, "TEXT 232,78,\"4\",180,2,1,\"250\"", "price authoring (200,242) = +12 BELOW time");
+        int bars = s.split("BAR ", -1).length - 1;
+        check(bars == 1, "order separator bar REMOVED on 60x40 -> only the top bar remains (got " + bars + ")");
+    }
+
+    private static void test6040CapsToOneOrderRow() {
+        System.out.println("test6040CapsToOneOrderRow");
+        JSONObject buyer = new JSONObject();
+        buyer.put("num", 5).put("name", "Ann").put("handle", "a").put("totalSpent", 0);
+        JSONArray orders = new JSONArray();
+        orders.put(new JSONObject().put("item", "250").put("time", "20:15"));
+        orders.put(new JSONObject().put("item", "999").put("time", "20:18"));
+        buyer.put("orders", orders);
+        JSONObject payload = new JSONObject().put("buyer", buyer).put("storeName", "S").put("currency", "NT$").put("sessionDate", "");
+        String s = utf8(Phomemo241Builder.forStickerNative241(payload, 60, 40, nullBand()));
+        contains(s, "\"250\"", "the first (only) order row prints");
+        check(!s.contains("\"999\""), "60x40 caps at ONE row (2nd order becomes its own sticker in the plugin)");
+    }
+
+    private static void testDirection0Rotated180() {
+        System.out.println("testDirection0Rotated180");
+        String s = utf8(Phomemo241Builder.forStickerNative241(asciiPayload(), 100, 60, nullBand()));
+        contains(s, "DIRECTION 0", "241 fork runs DIRECTION 0 (DIR1 rasterizer broken)");
+        check(!s.contains("DIRECTION 1"), "DIRECTION 1 must never be emitted");
+        contains(s, "TEXT 736,470,\"3\",180,1,1,\"SellerFlowLive\"", "header rot-180 at mapped anchor (800-16-48,480-10)");
+        check(!s.matches("(?s).*TEXT \\d+,\\d+,\"[^\"]*\",0,.*"), "no element may stay rotation 0");
+    }
+
+    private static void testBandHeightScaleCoupled() {
+        System.out.println("testBandHeightScaleCoupled (F1)");
+        final List<Integer> heights = new ArrayList<>();
+        Phomemo241Builder.BandRenderer capture = (text, xMul, yMul, maxW) -> {
+            int h = Math.max(1, r241(24 * yMul));
+            heights.add(h);
+            byte[] b = new byte[4 * h];
+            java.util.Arrays.fill(b, (byte) 0xAA);
+            return new Phomemo241Builder.Band(4, h, b);
+        };
+        // CJK name, everything else off. level 1 -> cjkYMul = nameCjkYMul(2) x 1 = 2 -> 48.
+        JSONObject buyer = new JSONObject().put("num", 88).put("name", "陳小美").put("handle", "s").put("orders", new JSONArray());
+        for (int[] pair : new int[][]{{1, 48}, {3, 144}, {8, 192}}) {
+            heights.clear();
+            JSONObject settings = new JSONObject()
+                .put("printStoreName", false).put("printBuyerUsername", false).put("printOrderItems", false).put("printTotal", false)
+                .put("printBuyerNameScale", pair[0]);
+            JSONObject payload = new JSONObject().put("buyer", buyer).put("settings", settings).put("storeName", "S").put("currency", "NT$").put("sessionDate", "");
+            Phomemo241Builder.forStickerNative241(payload, 100, 60, capture);
+            check(heights.size() == 1 && heights.get(0) == pair[1], "name-scale " + pair[0] + " -> band height " + pair[1] + " (got " + heights + ")");
+        }
+    }
+
+    private static void testDecimalScaleFromScalesRaw() {
+        System.out.println("testDecimalScaleFromScalesRaw (BUG 3)");
+        JSONObject buyer = new JSONObject().put("num", 88).put("name", "").put("handle", "s").put("totalSpent", 0).put("orders", new JSONArray());
+        double[][] cases = {{1.3, 31}, {0.7, 17}, {1.1, 26}, {2.4, 58}};
+        for (double[] cse : cases) {
+            final List<Integer> heights = new ArrayList<>();
+            Phomemo241Builder.BandRenderer cap = (text, xMul, yMul, maxW) -> {
+                int h = Math.max(1, r241(24 * yMul));
+                heights.add(h);
+                byte[] b = new byte[4 * h];
+                java.util.Arrays.fill(b, (byte) 0xAA);
+                return new Phomemo241Builder.Band(4, h, b);
+            };
+            // integer setting says 1 (rounded); scalesRaw carries the real decimal.
+            JSONObject settings = new JSONObject()
+                .put("printStoreName", false).put("printBuyerUsername", false).put("printOrderItems", false).put("printTotal", false)
+                .put("printBuyerNumberScale", 1);
+            JSONObject scalesRaw = new JSONObject().put("printBuyerNumberScale", cse[0]);
+            JSONObject payload = new JSONObject().put("buyer", buyer).put("settings", settings).put("scalesRaw", scalesRaw)
+                .put("storeName", "S").put("currency", "NT$").put("sessionDate", "");
+            Phomemo241Builder.forStickerNative241(payload, 60, 40, cap);
+            check(heights.size() == 1 && heights.get(0) == (int) cse[1], "scale " + cse[0] + " -> band height " + (int) cse[1] + " (got " + heights + ")");
+        }
+    }
+
+    private static void testExactlyOnePointZeroStaysText() {
+        System.out.println("testExactlyOnePointZeroStaysText");
+        JSONObject buyer = new JSONObject().put("num", 88).put("name", "").put("handle", "s").put("totalSpent", 0).put("orders", new JSONArray());
+        JSONObject off = new JSONObject().put("printStoreName", false).put("printBuyerUsername", false).put("printOrderItems", false).put("printTotal", false);
+        final int[] bands = {0};
+        Phomemo241Builder.BandRenderer count = (t, x, yy, m) -> { bands[0]++; return null; };
+        JSONObject p10 = new JSONObject().put("buyer", buyer).put("settings", off).put("scalesRaw", new JSONObject().put("printBuyerNumberScale", 1.0))
+            .put("storeName", "S").put("currency", "NT$").put("sessionDate", "");
+        String s10 = utf8(Phomemo241Builder.forStickerNative241(p10, 60, 40, count));
+        check(bands[0] == 0, "scale exactly 1.0 -> TEXT, never a band");
+        contains(s10, "\"Buyer #88\"", "scale 1.0 -> Buyer# is a plain TEXT");
+        // 0.9 (just under 1) -> band (TEXT cannot shrink; a rounded gate would miss this).
+        final int[] b09 = {0};
+        Phomemo241Builder.BandRenderer r09 = (t, x, yy, m) -> { b09[0]++; byte[] by = new byte[88]; java.util.Arrays.fill(by, (byte) 0xAA); return new Phomemo241Builder.Band(4, 22, by); };
+        JSONObject p09 = new JSONObject().put("buyer", buyer).put("settings", off).put("scalesRaw", new JSONObject().put("printBuyerNumberScale", 0.9))
+            .put("storeName", "S").put("currency", "NT$").put("sessionDate", "");
+        Phomemo241Builder.forStickerNative241(p09, 60, 40, r09);
+        check(b09[0] == 1, "scale 0.9 -> band (must SHRINK below 1)");
+    }
+
+    private static void testOrderTimeFixed() {
+        System.out.println("testOrderTimeFixedRegardlessOfCommentScale (BUG 1/2)");
+        JSONArray orders = new JSONArray();
+        orders.put(new JSONObject().put("item", "250").put("time", "7:07"));
+        JSONObject buyer = new JSONObject().put("num", 7).put("name", "").put("handle", "s").put("totalSpent", 0).put("orders", orders);
+        JSONObject on = new JSONObject().put("printStoreName", false).put("printBuyerNumber", false).put("printBuyerUsername", false)
+            .put("printOrderItems", true).put("printTotal", false).put("printOrderScale", 8).put("printCommentScale", 8);
+        JSONObject payload = new JSONObject().put("buyer", buyer).put("settings", on).put("scalesRaw", new JSONObject().put("printCommentScale", 3.0))
+            .put("storeName", "S").put("currency", "NT$").put("sessionDate", "");
+        String s = utf8(Phomemo241Builder.forStickerNative241(payload, 60, 40, fakeBand()));
+        contains(s, "\"2\",180,1,1,\"7:07\"", "time stays FIXED font-2 1x1 even when comment/order scale is enlarged");
+        contains(s, "BITMAP", "the enlarged PRICE still becomes a band (only the time is pinned)");
+    }
+
+    private static void testThaiRendersAsBand() {
+        System.out.println("testThaiNameRendersAsBand (F3/D3/D4)");
+        JSONObject buyer = new JSONObject().put("num", 5).put("name", "สวัสดี").put("handle", "thaiseller").put("orders", new JSONArray());
+        final List<String> texts = new ArrayList<>();
+        Phomemo241Builder.BandRenderer cap = (text, xMul, yMul, maxW) -> {
+            texts.add(text);
+            int h = Math.max(1, r241(24 * yMul));
+            byte[] b = new byte[4 * h];
+            java.util.Arrays.fill(b, (byte) 0xAA);
+            return new Phomemo241Builder.Band(4, h, b);
+        };
+        JSONObject settings = new JSONObject().put("printStoreName", false).put("printBuyerUsername", false).put("printOrderItems", false).put("printTotal", false);
+        JSONObject payload = new JSONObject().put("buyer", buyer).put("settings", settings).put("storeName", "S").put("currency", "NT$").put("sessionDate", "");
+        String s = utf8(Phomemo241Builder.forStickerNative241(payload, 100, 60, cap));
+        check(texts.size() == 1, "Thai name reaches the band renderer (no downgrade-to-handle, D3) (got " + texts.size() + ")");
+        check(texts.size() == 1 && texts.get(0).contains("ส"), "band text keeps Thai glyphs (no stripUnrenderable, D4)");
+        contains(s, "BITMAP 704,", "band BITMAP at 180-mapped name x (800-16-32-48)");
+        check(!s.contains("@thaiseller"), "the name line must not silently become the handle");
+    }
+
+    private static void testOverTallBandClampsY() {
+        System.out.println("testOverTallBandClampsPhysicalYNeverNegative");
+        JSONObject buyer = new JSONObject().put("num", 1).put("name", "陳小美").put("handle", "s").put("orders", new JSONArray());
+        // A band TALLER than the space below its authoring y (60x40, name-only at
+        // startY 64): H - y - height = 320 - 64 - 400 = -144, which WITHOUT the clamp
+        // would be a malformed negative-y BITMAP that drops content. Clamp -> 0.
+        Phomemo241Builder.BandRenderer cap = (t, x, y, m) -> { byte[] b = new byte[4 * 400]; java.util.Arrays.fill(b, (byte) 0xAA); return new Phomemo241Builder.Band(4, 400, b); };
+        JSONObject off = new JSONObject().put("printStoreName", false).put("printBuyerNumber", false).put("printBuyerUsername", false).put("printOrderItems", false).put("printTotal", false);
+        JSONObject payload = new JSONObject().put("buyer", buyer).put("settings", off).put("storeName", "S").put("currency", "NT$").put("sessionDate", "");
+        String s = utf8(Phomemo241Builder.forStickerNative241(payload, 60, 40, cap));
+        check(!s.matches("(?s).*BITMAP \\d+,-\\d+,.*"), "no band may have a negative physical y");
+        contains(s, "BITMAP 354,0,4,400,0,", "over-tall band clamps y to 0 (name x=46 -> bx 354; y 320-64-400=-144 -> 0)");
+    }
+
+    private static void testFailedRenderEmitsNothing() {
+        System.out.println("testFailedRenderEmitsNothingNeverMalformed");
+        JSONObject buyer = new JSONObject().put("num", 88).put("name", "陳小美").put("handle", "s").put("orders", new JSONArray());
+        JSONObject payload = new JSONObject().put("buyer", buyer).put("storeName", "S").put("currency", "NT$").put("sessionDate", "");
+        String s = utf8(Phomemo241Builder.forStickerNative241(payload, 100, 60, nullBand()));
+        check(!s.contains("BITMAP"), "a failed band render emits NOTHING (0-width BITMAP would be malformed)");
+        check(s.endsWith("PRINT 1\r\n"), "the label still terminates normally");
+    }
+
+    // ── pure packBits ──────────────────────────────────────────────────────────
+    private static void testPackBits() {
+        System.out.println("packBits (pure)");
+        Phomemo241Builder.Band b1 = Phomemo241Builder.packBits(new byte[]{0, 0, 0, 0, (byte) 255, (byte) 255, (byte) 255, (byte) 255}, 8, 1, 128, false);
+        check(b1 != null && b1.bytes.length == 1 && (b1.bytes[0] & 0xFF) == 0x0F, "polarity: 0=black clears bit, white keeps 1 (0b0000_1111)");
+        byte[] allBlack = new byte[10];
+        Phomemo241Builder.Band b2 = Phomemo241Builder.packBits(allBlack, 10, 1, 128, false);
+        check(b2 != null && b2.widthBytes == 2 && (b2.bytes[0] & 0xFF) == 0x00 && (b2.bytes[1] & 0xFF) == 0x3F, "pad bits beyond true width stay white (0x00,0b0011_1111)");
+        Phomemo241Builder.Band b3 = Phomemo241Builder.packBits(new byte[]{127, (byte) 128}, 2, 1, 128, false);
+        check(b3 != null && (b3.bytes[0] & 0xFF) == 0x7F, "threshold: <128 black, >=128 white");
+        // flip180 2x2: black at top-left -> bottom-right
+        byte[] gray = {0, (byte) 255, (byte) 255, (byte) 255};
+        Phomemo241Builder.Band n = Phomemo241Builder.packBits(gray, 2, 2, 128, false);
+        check(n != null && (n.bytes[0] & 0xFF) == 0x7F && (n.bytes[1] & 0xFF) == 0xFF, "no flip: row0=0b0111_1111 row1=all white");
+        Phomemo241Builder.Band fl = Phomemo241Builder.packBits(gray, 2, 2, 128, true);
+        check(fl != null && (fl.bytes[0] & 0xFF) == 0xFF && (fl.bytes[1] & 0xFF) == 0xBF, "flip180 rotates both axes: row0 white, row1=0b1011_1111");
+        check(Phomemo241Builder.packBits(new byte[0], 0, 1, 128, false) == null, "invalid width -> null");
+        check(Phomemo241Builder.packBits(new byte[]{0, 0}, 2, 2, 128, false) == null, "short pixel buffer -> null");
+        check(Phomemo241Builder.maxChars(16, 784, 2) == (784 - 16) / 48, "maxChars mirrors AIMO formula");
+        check(Phomemo241Builder.maxChars(780, 784, 2) == 1, "maxChars floor of 1");
+    }
+
+    private static void testProfileRouting() {
+        System.out.println("isPhomemo241 routing");
+        check(Phomemo241Builder.isPhomemo241("PM-241Z-BT-1234"), "PM-241 prefix -> 241");
+        check(Phomemo241Builder.isPhomemo241("pm-241z-bt"), "case-insensitive");
+        check(!Phomemo241Builder.isPhomemo241("D520BT-Z"), "AIMO -> not 241");
+        check(!Phomemo241Builder.isPhomemo241(""), "empty -> not 241");
+        check(!Phomemo241Builder.isPhomemo241(null), "null -> not 241");
+        check(!Phomemo241Builder.isPhomemo241("PM-220"), "PM-220 (different printer) -> not 241");
+    }
+
+    public static void main(String[] args) {
+        testAsciiFullParityEverySize();
+        testBespoke6040();
+        test6040CapsToOneOrderRow();
+        testDirection0Rotated180();
+        testBandHeightScaleCoupled();
+        testDecimalScaleFromScalesRaw();
+        testExactlyOnePointZeroStaysText();
+        testOrderTimeFixed();
+        testThaiRendersAsBand();
+        testOverTallBandClampsY();
+        testFailedRenderEmitsNothing();
+        testPackBits();
+        testProfileRouting();
+        System.out.println();
+        if (failures == 0) { System.out.println("ALL PASS"); }
+        else { System.out.println(failures + " FAILURE(S)"); System.exit(1); }
+    }
+}
