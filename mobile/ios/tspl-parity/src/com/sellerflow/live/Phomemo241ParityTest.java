@@ -132,17 +132,33 @@ public final class Phomemo241ParityTest {
         return String.join("\r\n", out);
     }
 
+    // Drop every BAR line — the top bar is now a documented printable-width divergence
+    // (M5), so the TEXT stream is compared bar-free and the bar is pinned separately.
+    private static String stripBars(String s) {
+        List<String> out = new ArrayList<>();
+        for (String line : s.split("\r\n", -1)) if (!line.startsWith("BAR ")) out.add(line);
+        return String.join("\r\n", out);
+    }
+
     // ── tests ──────────────────────────────────────────────────────────────────
 
     private static void testAsciiFullParityEverySize() {
-        System.out.println("testAsciiBigSizesEqualFilteredAimo (4 sizes: one row, no bar, no Total)");
-        int[][] sizes = {{100, 60}, {80, 60}, {80, 50}, {70, 50}};
+        System.out.println("testAsciiBigSizesEqualFilteredAimo (one row, no sep bar, no Total, printable-width top bar)");
+        // {w, h, rightEdge}. The M5 top bar spans physical [16 .. W-64] = emitBar(16,48,
+        // rightEdge-64,3) -> "BAR 16,(H-51),(rightEdge-64),3".
+        int[][] sizes = {{100, 60, 784}, {80, 60, 624}, {80, 50, 624}, {70, 50, 544}};
         for (int[] s : sizes) {
+            int W = s[0] * 8, H = s[1] * 8, rE = s[2];
             JSONObject payload = asciiPayload();
             byte[] aimo = TsplBuilder.forStickerNative(payload, s[0], s[1]);
-            byte[] fork = Phomemo241Builder.forStickerNative241(payload, s[0], s[1], nullBand());
-            eq(utf8(fork), stripForkRemovals(rotate180(utf8(aimo), s[0] * 8, s[1] * 8)),
-               "fork == rotate180(AIMO) minus {sep bar, 2nd row, Total} at " + s[0] + "x" + s[1]);
+            String fork = utf8(Phomemo241Builder.forStickerNative241(payload, s[0], s[1], nullBand()));
+            String exp = stripForkRemovals(rotate180(utf8(aimo), W, H));
+            // TEXT parity (every shared line keeps AIMO drift protection); bars compared apart.
+            eq(stripBars(fork), stripBars(exp),
+               "fork TEXT == rotate180(AIMO) minus {sep bar, 2nd row, Total} at " + s[0] + "x" + s[1]);
+            contains(fork, "BAR 16," + (H - 51) + "," + (rE - 64) + ",3",
+               "printable-width top bar at " + s[0] + "x" + s[1] + " (physical [16.." + (W - 64) + "])");
+            check(fork.split("BAR ", -1).length - 1 == 1, "exactly one (top) bar at " + s[0] + "x" + s[1]);
         }
     }
 
@@ -154,22 +170,24 @@ public final class Phomemo241ParityTest {
         orders.put(new JSONObject().put("item", "250").put("time", "20:15"));
         buyer.put("orders", orders);
         JSONObject payload = new JSONObject().put("buyer", buyer).put("storeName", "My Shop").put("currency", "NT$").put("sessionDate", "07/17/2026");
-        // Jeff's 60x40 revision v3. The fixture name is ASCII "Maria Santos", so
-        // @user/time/price pin the ASCII column; Jeff's spec y's (192/242/242) are the
-        // CJK-name column (a taller band → +12 below the name). Rows above the name gap
-        // (header/date/bar/shop/buyer#/name) are identical in both columns. The x's
-        // (8/10/14/18/22) sit inside the old ~32 physical-left clip zone ON PURPOSE (Jeff).
-        // v3: the PRICE shares the TIME's row (offset 0) — both pin the SAME y anchor.
+        // Jeff's 60x40 v3 VERTICAL arrangement (y-flow unchanged), with M2 SAFETY:
+        // every left-column x floored to MIN_X_6040=24 (was 8/10/14/18/22) — so the
+        // lifted rows (header/buyer#/name/@user/time) share ax = W-24-48 = 408. The
+        // fixture name is ASCII "Maria Santos", so @user/time/price pin the ASCII
+        // column; the CJK column sits a bit lower (taller name band). store(64)/
+        // date(260)/price(92) already cleared MIN_X and are unmoved. v3: the PRICE
+        // shares the TIME's row (offset 0). All fixture content FITS → raw TEXT (M1
+        // width guard is a no-op here; the long-content case is a separate test).
         String s = utf8(Phomemo241Builder.forStickerNative241(payload, 60, 40, nullBand()));
-        contains(s, "TEXT 424,306,\"3\",180,1,1,\"SellerFlowLive\"", "header authoring (8,14)");
+        contains(s, "TEXT 408,306,\"3\",180,1,1,\"SellerFlowLive\"", "header authoring (24,14)");
         contains(s, "TEXT 172,300,\"2\",180,1,1,\"07/17/2026\"", "date authoring (260,20)");
-        contains(s, "BAR 34,271,376,3", "top bar authoring (22,46,376,3) -> physical span");
+        contains(s, "BAR 32,271,376,3", "top bar authoring (24,46,376,3) -> physical span");
         contains(s, "TEXT 368,256,\"3\",180,1,1,\"My Shop\"", "shop authoring (64,64)");
-        contains(s, "TEXT 424,228,\"4\",180,1,1,\"Buyer #12\"", "buyer# authoring (8,92) 1x1 (1x width)");
-        contains(s, "TEXT 418,184,\"4\",180,1,1,\"Maria Santos\"", "name authoring (14,136)");
-        contains(s, "TEXT 422,140,\"3\",180,1,1,\"@maria_shops\"", "@username authoring (10,180 ASCII col; 192 CJK col)");
-        contains(s, "TEXT 414,90,\"2\",180,1,1,\"20:15\"", "time authoring (18,230 ASCII col; 242 CJK col) = row anchor");
-        contains(s, "TEXT 340,90,\"4\",180,2,1,\"250\"", "price authoring (92,230 ASCII col; 242 CJK col) = SAME row as time (offset 0)");
+        contains(s, "TEXT 408,228,\"4\",180,1,1,\"Buyer #12\"", "buyer# authoring (24,92) 1x1 (1x width)");
+        contains(s, "TEXT 408,184,\"4\",180,1,1,\"Maria Santos\"", "name authoring (24,136)");
+        contains(s, "TEXT 408,140,\"3\",180,1,1,\"@maria_shops\"", "@username authoring (24,180 ASCII col)");
+        contains(s, "TEXT 408,90,\"2\",180,1,1,\"20:15\"", "time authoring (24,230 ASCII col) = row anchor");
+        contains(s, "TEXT 340,90,\"4\",180,2,1,\"250\"", "price authoring (92,230 ASCII col) = SAME row as time (offset 0)");
         int bars = s.split("BAR ", -1).length - 1;
         check(bars == 1, "order separator bar REMOVED on 60x40 -> only the top bar remains (got " + bars + ")");
     }
@@ -220,6 +238,42 @@ public final class Phomemo241ParityTest {
             if (line.startsWith("TEXT ")) allFit &= textFits(line);
         }
         check(allFit, "every 60x40 TEXT element fits (width <= anchor), incl. worst-case Buyer #888");
+    }
+
+    // M1 — wide ASCII content must COMPRESS to a band (shrink-to-fit), never emit as a
+    // raw font-multiplier TEXT that the printer clips at the reading-last edge. This is
+    // the case the benign-fixture guard above missed (it used short/CJK content). A fake
+    // band renderer lets the compressed elements actually emit so we can assert them.
+    private static void testM1LongAsciiCompressesNotClips() {
+        System.out.println("testM1LongAsciiCompressesNotClips (M1: wide ASCII -> compressed band, never clipped TEXT)");
+        // control: PROVE the pre-M1 raw-TEXT path would have clipped — a 13-char @2x
+        // price is 624 dots but its 60x40 anchor (priceX 92 -> ax 340) is far smaller.
+        check(!textFits("TEXT 340,90,\"4\",180,2,1,\"Blue jeans Me\""), "control: raw 13ch @2x price WOULD overflow (624 > 340)");
+        JSONObject buyer = new JSONObject();
+        buyer.put("num", 888).put("name", "Very Long Buyer Display Name")
+             .put("handle", "verylongusername_tiktok9999").put("totalSpent", 0);
+        JSONArray orders = new JSONArray();
+        orders.put(new JSONObject().put("item", "Blue jeans Medium").put("time", "20:15"));   // long ASCII price
+        buyer.put("orders", orders);
+        JSONObject on = new JSONObject().put("printStoreName", true).put("printBuyerNumber", true)
+            .put("printBuyerUsername", true).put("printOrderItems", true).put("printTotal", true);
+        JSONObject payload = new JSONObject().put("buyer", buyer).put("settings", on)
+            .put("storeName", "My Very Long Shop Name Here").put("currency", "NT$").put("sessionDate", "07/17/2026");
+        for (int[] wh : new int[][]{{100, 60}, {80, 60}, {80, 50}, {70, 50}, {60, 40}}) {
+            String s = utf8(Phomemo241Builder.forStickerNative241(payload, wh[0], wh[1], fakeBand()));
+            boolean allFit = true; int bands = 0;
+            for (String line : s.split("\r\n")) {
+                if (line.startsWith("TEXT ")) allFit &= textFits(line);
+                if (line.startsWith("BITMAP ")) bands++;
+            }
+            check(allFit, "no raw TEXT overflows at " + wh[0] + "x" + wh[1] + " — wide ASCII shrunk to bands");
+        }
+        // 60x40 (smallest) — the long store, name, @username, AND price all overflow the
+        // budget from x, so all four must become compressed bands (none lost, none clipped).
+        String s6040 = utf8(Phomemo241Builder.forStickerNative241(payload, 60, 40, fakeBand()));
+        int bands6040 = 0;
+        for (String line : s6040.split("\r\n")) if (line.startsWith("BITMAP ")) bands6040++;
+        check(bands6040 >= 4, "60x40: long store+name+@username+price all compress to bands (got " + bands6040 + ")");
     }
 
     private static void test6040CapsToOneOrderRow() {
@@ -358,7 +412,7 @@ public final class Phomemo241ParityTest {
         JSONObject payload = new JSONObject().put("buyer", buyer).put("settings", off).put("storeName", "S").put("currency", "NT$").put("sessionDate", "");
         String s = utf8(Phomemo241Builder.forStickerNative241(payload, 60, 40, cap));
         check(!s.matches("(?s).*BITMAP \\d+,-\\d+,.*"), "no band may have a negative physical y");
-        contains(s, "BITMAP 386,0,4,400,0,", "over-tall band clamps y to 0 (name x=14 -> bx 386; y 320-64-400=-144 -> 0)");
+        contains(s, "BITMAP 376,0,4,400,0,", "over-tall band clamps y to 0 (name x=24 -> bx 376; y 320-64-400=-144 -> 0)");
     }
 
     private static void testFailedRenderEmitsNothing() {
@@ -406,6 +460,7 @@ public final class Phomemo241ParityTest {
         testAsciiFullParityEverySize();
         testBespoke6040();
         testNoRightEdgeOverflow60x40();
+        testM1LongAsciiCompressesNotClips();
         test6040CapsToOneOrderRow();
         testDirection0Rotated180();
         testBandHeightScaleCoupled();

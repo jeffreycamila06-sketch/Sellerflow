@@ -208,45 +208,47 @@ final class Phomemo241Builder {
         // drop the bar/2nd row/Total below (every `is6040 ? ... : <lit>` off 60x40
         // resolves to the big-size literal).
         boolean is6040 = (labelWidthMm == 60 && labelHeightMm == 40);
-        // 60x40 revision v3 (Jeff, Layout Designer). The spec y's are in the CJK-NAME
-        // column (a taller band), so the gaps below are derived in the SAME system:
-        // shop 64 -> buyer# 92 (storeGap 28) -> name 136 (buyerNumGap 44) -> @user 192
-        // (nameCjkGap 56, in the 60x40 LAYOUTS row) -> time 242 (usernameGap 50) ->
-        // price 242 (offset 0 = SAME line as the time). Applied AS-IS: the small x's
-        // (8/10/14/18/22) sit inside the old ~32 physical-left clip zone ON PURPOSE
-        // (Jeff's experiment — the print judges; NOT clamped). An ASCII name flows
-        // tighter (nameGap 44), so the JVM fixture (ASCII "Maria Santos") pins the
-        // ASCII column; CJK column in the report.
+        // 60x40 = Jeff's v3 vertical arrangement (the y-flow / gaps below are his design,
+        // UNCHANGED): shop 64 -> buyer# 92 (storeGap 28) -> name 136 (buyerNumGap 44) ->
+        // @user 192 (nameCjkGap 56) -> time 242 (usernameGap 50) -> price 242 (offset 0,
+        // same line as the time). M2 SAFETY (margin audit): every left-column x is
+        // floored to MIN_X_6040 = 24 (was 8/10/14/18/22 — inside the ~1-2mm calibration-
+        // drift zone that clipped on other units). The vertical arrangement is preserved;
+        // only the sub-24 x's lift to a common safe left margin. store(64)/date(260)/
+        // price(92) already clear it and are untouched.
+        final int MIN_X_6040 = 24;
         int storeGap    = is6040 ? 28 : c.storeGap;
         int buyerNumGap = is6040 ? 44 : c.buyerNumGap;
         int nameGap     = is6040 ? 44 : c.nameGap;
         int usernameGap = is6040 ? 50 : c.usernameGap;
-        int headerX = is6040 ? 8   : 16;
+        int headerX = is6040 ? MIN_X_6040 : 16;
         int headerY = is6040 ? 14  : 10;
         // RIGHT-EDGE FIT (60x40): the DIR0+180 emit places a rot-180 element's
-        // reading-right at (W - anchor + width), so it fits the label iff its width
-        // <= anchor (anchor = W - x - EDGE_GUARD). Jeff's revision keeps the date at
-        // x=260 (anchor 172 >= its ~120-dot width) so "07/17/2026" fits whole.
+        // reading-right at (W - anchor + width). Jeff's revision keeps the date at
+        // x=260 (clears MIN_X, fits its ~120-dot width).
         int dateX   = is6040 ? 260 : 290;
         int dateY   = is6040 ? 20  : 18;
         int storeX  = is6040 ? 64  : 16;
-        int buyerX  = is6040 ? 8   : 16;
-        int nameX   = is6040 ? 14  : 16;
-        int userX   = is6040 ? 10  : 16;
-        int timeX   = is6040 ? 18  : 16;
+        int buyerX  = is6040 ? MIN_X_6040 : 16;
+        int nameX   = is6040 ? MIN_X_6040 : 16;
+        int userX   = is6040 ? MIN_X_6040 : 16;
+        int timeX   = is6040 ? MIN_X_6040 : 16;
         int priceX  = is6040 ? 92  : 180;
         int startY  = is6040 ? 64  : 60;
 
-        e.emitText(headerX, headerY, "3", 1, 1, "SellerFlowLive");
+        e.emitText(headerX, headerY, "3", 1, 1, "SellerFlowLive", c.rightEdge);
         if (!sessionDate.isEmpty()) {
-            e.emitText(dateX, dateY, "2", 1, 1, safe(truncate(sessionDate, 12)));
+            e.emitText(dateX, dateY, "2", 1, 1, safe(truncate(sessionDate, 12)), c.rightEdge);
         }
-        // TOP separator bar. 60x40: printable-width span (the old x=0 w=480 bar ran
-        // off the 241's DIRECTION-0 right non-printable edge).
+        // TOP bar — PRINTABLE-WIDTH on every size (M5). The old big-size bar spanned the
+        // full label width (x=0, w=wDots) so its right end ran into the 241's DIRECTION-0
+        // right non-printable dead-zone and clipped. A printable-width bar physically
+        // spans [W-rightEdge .. W-64] = the same band-content bounds, clearing both
+        // dead-zones. 60x40 keeps Jeff's bespoke bar (now x=24 per MIN_X_6040).
         if (is6040) {
-            e.emitBar(22, 46, 376, 3);
+            e.emitBar(MIN_X_6040, 46, 376, 3);
         } else {
-            e.emitBar(0, 48, c.wDots, 3);
+            e.emitBar(16, 48, c.rightEdge - 64, 3);
         }
 
         String cleanStoreName = stripEmoji(storeName);
@@ -333,7 +335,7 @@ final class Phomemo241Builder {
                 String cleanItem = stripEmoji(item);
                 // TIME — FIXED at base size (BUG 1/2). Plain TEXT font "2" 1x1.
                 if (!time.isEmpty()) {
-                    e.emitText(timeX, y, "2", 1, 1, safe(truncate(time, 10)));
+                    e.emitText(timeX, y, "2", 1, 1, safe(truncate(time, 10)), c.rightEdge);
                 }
                 // PRICE CODE — height-priority (base 2x width, 1x height); height honors
                 // the comment decimal (BUG 3). ASCII scale 1.0 → TEXT (byte-identical).
@@ -396,7 +398,26 @@ final class Phomemo241Builder {
             writeBytes(out, CRLF);
         }
 
-        void emitText(int x, int y, String font, int xMul, int yMul, String content) {
+        // 1x TSPL font dot-width (per char) / cell-height, used for the M1 fit check.
+        // Same width model as the JVM overflow test (font 2=12, 3=16, 4=24 dots).
+        static int fontDots(String font) {
+            switch (font) { case "2": return 12; case "3": return 16; case "4": return 24; default: return 24; }
+        }
+
+        // M1 WIDTH GUARD: previously raw TEXT with NO width check, so wide ASCII
+        // (long price/item, @username, store, Buyer #NNN) overran the reading-last
+        // (physical-left) edge and the printer silently CLIPPED it. Now: if the TSPL
+        // text width exceeds the printable budget from x, render it as a COMPRESSED
+        // band (shrink-to-fit, exactly like the CJK path) so NO content is ever lost.
+        // Content that fits stays byte-identical raw TEXT (parity + defaults unchanged).
+        void emitText(int x, int y, String font, int xMul, int yMul, String content, int rightEdge) {
+            int budget = Math.max(8, rightEdge - x - EDGE_GUARD);
+            if (content.length() * fontDots(font) * xMul > budget) {
+                // Band height matches the font cell (font 2/3/4 → 12/16/24 dots) so the
+                // shrunk element keeps its intended height and the y-flow is unchanged.
+                emitBand(x, y, content, (double) xMul, fontDots(font) / 24.0 * yMul, rightEdge);
+                return;
+            }
             writeAscii("TEXT " + (W - x - EDGE_GUARD) + "," + (H - y) + ",\"" + font + "\",180," + xMul + "," + yMul + ",\"" + content + "\"");
         }
 
@@ -432,7 +453,10 @@ final class Phomemo241Builder {
             // could drive H-y-height NEGATIVE (top row off the physical top edge =
             // reading bottom), losing content silently. Clamp to 0 so the band stays
             // fully on the label (top-aligned worst case). Horizontal is bounded by
-            // `avail` + every element's x >= 32, keeping the physical span in [16, 392].
+            // `avail`: a band's physical span is [W-rightEdge .. W-x-EDGE_GUARD], i.e.
+            // left >= W-rightEdge (16 dots) and right = W-x-48. With the 60x40 MIN_X of
+            // 24 the right margin is >=72 dots; the M1 width guard routes any over-wide
+            // TEXT here too, so NOTHING escapes to the raw-TEXT clip path.
             int by = Math.max(0, H - y - band.height);
             writeBytes(out, ("BITMAP " + bx + "," + by + "," + band.widthBytes + "," + band.height + ",0,").getBytes(StandardCharsets.US_ASCII));
             writeBytes(out, band.bytes);
@@ -446,7 +470,7 @@ final class Phomemo241Builder {
             String content = TsplBuilder.transliterateLatin(rawContent);
             if (content.isEmpty()) return;   // same emptiness rule as writeTextSmart (parity)
             boolean isCjk = hasNonAscii(content);
-            if (!isCjk && scale == 1.0) { emitText(x, y, font, 1, 1, content); return; }
+            if (!isCjk && scale == 1.0) { emitText(x, y, font, 1, 1, content, rightEdge); return; }
             emitBand(x, y, content, scale, scale, rightEdge);
         }
 
@@ -458,7 +482,7 @@ final class Phomemo241Builder {
             String content = TsplBuilder.transliterateLatin(rawContent);
             if (content.isEmpty()) return;
             boolean isCjk = hasNonAscii(content);
-            if (!isCjk && scale == 1.0) { emitText(x, y, font, baseX, baseY, content); return; }
+            if (!isCjk && scale == 1.0) { emitText(x, y, font, baseX, baseY, content, rightEdge); return; }
             emitBand(x, y, content, (double) baseX, (double) baseY * scale, rightEdge);
         }
     }
