@@ -1454,9 +1454,26 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         func emitBand(_ x: Int, _ y: Int, _ content: String, _ xMulRaw: Double, _ yMulRaw: Double, _ rightEdge: Int) {
             if content.isEmpty { return }
             let xMul = clampF(xMulRaw), yMul = clampF(yMulRaw)
-            let budget = Phomemo241Raster.maxChars(x: x, rightEdge: rightEdge, cjkXMul: max(1, Int(xMul.rounded(.up))))
-            let fitted = truncate16(content, budget)
-            guard let band = renderBand(fitted, xMul, yMul, max(8, rightEdge - x)),
+            // Usable width RESERVES the EDGE_GUARD on the far side too. The placed box is
+            // bx = W−x−bandW−edgeGuard; capping bandW ≤ rightEdge−x−edgeGuard keeps bx ≥
+            // W−rightEdge (= the 16-dot margin, always ≥0) so it NEVER hits the max(0,…)
+            // clamp that shifted a too-wide band and sliced its leading letter. The band
+            // then reads [x+edgeGuard, ≤rightEdge] — the same left margin as the TEXT
+            // elements, both edges clear at every scale.
+            let avail = max(8, rightEdge - x - edgeGuard)
+            // CJK is drawn at NATURAL width and CLIPPED to the canvas, so truncate to the
+            // cells that fit (≈24×xMul dots each) — from the ACTUAL decimal, NOT rounded
+            // up (1.1 rounded to 2 halved the budget → "@sellerfl"). ASCII is monospace and
+            // the renderer COMPRESSES it to `avail` (AIMO-like), so pass it WHOLE (only the
+            // caller's source truncate applies) → a long name shrinks to fit, never right-clips.
+            let fitted: String
+            if hasNonAscii(content) {
+                let cell = max(1, Int((24 * xMul).rounded()))
+                fitted = truncate16(content, max(1, avail / cell))
+            } else {
+                fitted = content
+            }
+            guard let band = renderBand(fitted, xMul, yMul, avail),
                   band.height > 0, band.widthBytes > 0, !band.bytes.isEmpty else { return }
             let bx = max(0, W - x - band.widthBytes * 8 - edgeGuard)
             let by = H - y - band.height

@@ -183,6 +183,50 @@ final class Phomemo241BuilderTests: XCTestCase {
         XCTAssertEqual(bands09, 1, "scale 0.9 → band (it must SHRINK below 1 — the old round()d gate treated 0.7–1.4 as 1)")
     }
 
+    // MARK: scaled bands must not CLIP either edge (compress to fit, guard both margins)
+    // A too-small char budget right-truncated ASCII ("Test Print" → "Test Prin"); a
+    // maxWidthDots that ignored the EDGE_GUARD let a wide band overflow rightEdge and
+    // clamp its anchor to 0, slicing the leading letter. Fix: ASCII passes WHOLE (the
+    // renderer compresses) + maxWidthDots reserves the edge guard so the box always fits.
+
+    func testAsciiBandPassesFullContentAndEdgeGuardedWidth() {
+        let p = plugin()
+        let buyer: [String: Any] = ["num": 1, "name": "Test Print", "handle": "s", "orders": []]
+        var seenText: String? = nil
+        var seenMaxW = -1
+        let cap: (String, Double, Double, Int) -> Phomemo241Raster.Band? = { text, _, _, maxW in
+            seenText = text; seenMaxW = maxW
+            return Phomemo241Raster.Band(widthBytes: 4, height: 36, bytes: [UInt8](repeating: 0xAA, count: 4 * 36))
+        }
+        let off: [String: Any] = ["printStoreName": false, "printBuyerNumber": false, "printBuyerUsername": false, "printOrderItems": false, "printTotal": false]
+        // name scaled (2×) → a band; the FULL "Test Print" must reach the renderer (no
+        // char-budget right-truncation), and maxWidthDots = rightEdge − x − EDGE_GUARD.
+        _ = p.buildTsplSticker241(buyer: buyer, settings: off.merging(["printBuyerNameScale": 2]) { a, _ in a },
+                                  storeName: "S", currency: "NT$", sessionDate: "", labelWidthMm: 100, labelHeightMm: 60, bandRenderer: cap)
+        XCTAssertEqual(seenText, "Test Print", "ASCII band must pass the FULL name (renderer compresses to fit — no 'Test Prin' char-truncation)")
+        XCTAssertEqual(seenMaxW, 784 - 16 - 32, "maxWidthDots must reserve EDGE_GUARD (rightEdge − x − 32) so a wide band never overflows / clamps its anchor")
+    }
+
+    func testWideBandAnchorStaysWithinLabelNeverClampsToZero() {
+        let p = plugin()
+        let buyer: [String: Any] = ["num": 1, "name": "A very long buyer display name here", "handle": "s", "orders": []]
+        // Renderer returns a band exactly as wide as the guarded maxWidthDots (worst case).
+        let cap: (String, Double, Double, Int) -> Phomemo241Raster.Band? = { _, _, _, maxW in
+            let wb = max(1, (maxW + 7) / 8)
+            return Phomemo241Raster.Band(widthBytes: wb, height: 48, bytes: [UInt8](repeating: 0xAA, count: wb * 48))
+        }
+        let off: [String: Any] = ["printStoreName": false, "printBuyerNumber": false, "printBuyerUsername": false, "printOrderItems": false, "printTotal": false]
+        let out = p.buildTsplSticker241(buyer: buyer, settings: off.merging(["printBuyerNameScale": 3]) { a, _ in a },
+                                        storeName: "S", currency: "NT$", sessionDate: "", labelWidthMm: 60, labelHeightMm: 40, bandRenderer: cap)
+        let s = String(decoding: out, as: UTF8.self)
+        // Extract the BITMAP x and assert it's the un-clamped 16-dot margin (W−rightEdge),
+        // NOT 0 — proof the leading edge is never sliced. 60×40: W=480, rightEdge=464.
+        let m = s.range(of: #"BITMAP (\d+),"#, options: .regularExpression)
+        XCTAssertNotNil(m, "a band must be emitted")
+        let bxStr = s[m!].dropFirst(7).dropLast(1)
+        XCTAssertEqual(Int(bxStr), 16, "wide band anchor = W − rightEdge = 16 (margin preserved), never clamped to 0")
+    }
+
     // MARK: BUG 1/2 — the order-line TIME is FIXED, decoupled from the comment scale
     // The redesign has no separate time-size control; the single "comment" scale drove
     // BOTH the price code AND the time, so a scaled time band overran the price column
