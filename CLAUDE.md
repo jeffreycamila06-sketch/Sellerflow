@@ -3521,3 +3521,92 @@ peripheral — nil sa retrievePeripherals). **AIMO path = ZERO edits** (goldens 
   order na may Chinese buyer name sa 241 = final acceptance. ⚠️ Verification matrix gap
   (flagged): 100×60 + default scales lang ang na-verify ng test print; ibang sizes/scale
   levels = subukan sa Phase 2 kung gagamitin ng seller.
+
+## SESSION 2026-07-17 — PHOMEMO 241 SAGA ✅ COMPLETE + MERGED sa `main` (hardware-verified, chat-Claude + Jeff approved)
+Buong 241 saga (16 commits `0b129cb`→`c880f8c`, branch `claude/announcement-delete-wwtmhf`)
+ay **MERGED sa `main` via FAST-FORWARD** — 6 files lang: `SellerFlowPrinterPlugin.swift`
+(native), `Phomemo241BuilderTests.swift` (Mac test), `RedesignApp.tsx` (toast fix), web
+adapters `printerBridge.ts` + `printing.ts` (scalesRaw), CLAUDE.md. **AIMO builder
+(`buildTsplSticker` / `writeTextSmart` / `DIRECTION 1`) + shared `SizeConfig`/`stickerLayouts`
+= ZERO-touch sa buong net diff (grep-proven). Ibang 4 sizes = byte-identical.** Gates sa
+merge: typecheck 0 · 1229 vitest · lint 51 · build 0.
+
+### 241 FIRMWARE QUIRKS (load-bearing — lahat ng disenyo ay dahil dito)
+- **WALANG usable CJK font ROM** → Chinese/kanji/Thai/anumang non-ASCII name = **raster
+  BITMAP band** (rendered via `render241TextBand`, UIGraphicsImageRenderer → system font
+  cascade → PingFang TC). ASCII = internal TEXT font. (AIMO D520BT = may Chinese ROM;
+  ang 241 wala — kaya raster.)
+- **DIRECTION 1 rasterizer SIRA** (durog font sa 100×60 AT 60×40, hardware-confirmed) →
+  ang fork ay **DIRECTION 0 + IN-LAYOUT 180° rotation** (D1): bawat element authored
+  top-left → transformed `TEXT (W−x−guard),(H−y),…,180,…`; BAR → `(W−x−w−guard, H−y−h)`;
+  BAND → pixels pre-rotated 180° (`flip180`) + box re-anchored. Header ejects first, upright.
+- **Font x/y-MULTIPLIERS binabalewala sa rotation-180 TEXT** → ang scaling ay HINDI kaya
+  ng TSPL font mult; kaya **raster band STRETCH** (`scaleBy(xMul,yMul)` sa base glyph) ang
+  ginagamit para lumaki ang LETRA mismo (AIMO-like), hindi lang whitespace.
+- **PRINTABLE margin nagsisimula ~authoring x=32 sa 60×40** (hardware: x=16 sliced, x=36
+  whole; physical right non-printable edge ~400). Kaya v3 = lahat ng x ≥ 40, at EDGE_GUARD
+  = **48** (pull-left para linisin ang right non-printable edge).
+
+### ARCHITECTURE (nakalatag)
+- **`buildTsplSticker241` = VERBATIM FORK ng `buildTsplSticker`** maliban sa dokumentadong
+  deltas (FORK-OF header sa code). **🔒 FORK-DRIFT RULE:** anumang AIMO layout edit ⇒
+  i-mirror sa fork O consciously decline (nakasulat). Drift guard = Mac-run
+  `testAsciiFullParityHoldsOnEverySizeConfig` (ASCII == `rotate180(AIMO)`) para sa **4 na
+  AIMO-mirrored sizes**; ang **60×40 ay EXCLUDED** (bespoke na — pinned ng
+  `testBespoke6040LayoutMatchesJeffSpec`).
+- **UNIFIED SETTINGS FLOW:** LAHAT ng sticker (1-Click order · reprint · raffle · batch ·
+  Test Print) = ISANG native choke-point `printStickerNative`; ang profile lang
+  (`resolveProfile(savedBleName)` — `PM-241…` → `.phomemo241`, iba → `.aimo`) ang pumipili
+  ng builder. Parehong payload/buyer/settings (5 toggles + 7 scale adjusters)/size.
+- **DECIMAL SCALES (`scalesRaw`):** ang redesign size stepper ay decimal (0.5–3.0/0.1) pero
+  ang AIMO TSPL path ay integer-round. Kaya **additive `scalesRaw` payload field**
+  (`printing.ts buildScalesRaw`/`withScalesRaw` + `buildTestStickerPayload`) na dala ng
+  EXACT decimal — binabasa LANG ng 241 raster (`render241TextBand` sizes in pixels =
+  `round(24×scale)`); **AIMO IGNORE-s ito** (reads integer `printXScale` = byte-unchanged
+  para sa mga AIMO seller). `buildNativeStickerPayload` = byte-parity locked, hindi ginalaw
+  (scalesRaw attached sa bridge boundary lang).
+- **ORDER-PER-STICKER (60×40):** buyer na may >1 order = N hiwalay na single-order sticker,
+  DONE-gated sequential sa ISANG BLE connection (`printJobSequence`, Phase-0 proven). Live
+  flows (1-Click/reprint/raffle) = laging single-order buyer → N=1 no-op (single `printJob`,
+  byte-identical); nag-e-engage lang sa multi-order buyer, 60×40 lang. Builder = 1-row cap.
+- **EDGE GUARD + MARGIN CLAMPS:** EDGE_GUARD 48 (all sizes). Horizontal: band compress sa
+  `avail = rightEdge−x−guard`; sa v3 lahat ng x ≥ 32 → physical span laging nasa [16,392].
+  Vertical: `by = max(0, H−y−band.height)` — walang band na tutulak palabas ng bottom edge
+  (no silent content loss). Descender fix: ASCII band font sized para `cap+descender` kasya
+  sa base cell (dating cap==baseCell = putol ang "y" sa "Buyer").
+
+### BESPOKE 60×40 v3 LAYOUT (disenyo ni Jeff via Layout Designer tool; fork-local, test-pinned)
+Authoring coords (pre-transform, top-left): Header 40,12 · Date 330,20 · Top BAR 40,48
+w=376 (printable-width, physical [16,392] — dating x=0 w=480 laging putol) · Shop 64,64 ·
+Buyer# 40,94 · Name 46,136 · @user 48,180 · Time 58,230 · Price 200,242 (+12 sa ibaba ng
+time) · order sep bar OFF · row 1 OFF. Gaps (dynamic-y reflow, scale reflow intact): start
+64 →+30→ 94 →+42→ 136 →+44→ 180 →+50→ 230. LAHAT fork-local (`is6040 ? … : <lit>`) — shared
+SizeConfig hindi ginalaw. ⚠️ Kapag may bagong v4 spec: baguhin lang ang `is6040` literals +
+`testBespoke6040LayoutMatchesJeffSpec` pins.
+
+### DEVICE-VERIFIED (Jeff, real PM-241Z + 60×40, final build)
+CJK sa TOTOONG order path (Chinese buyer name malinis) · v3 layout · decimal scales +
+margin protection sa lahat ng scale (0.5–3.0) · order-per-sticker · buong top bar · AIMO
+regression smooth. Quote: "mas maganda pa kesa sa aimo setup."
+
+### ⚠️ LOCAL-BUNDLE GOTCHA (test builds — huwag kalimutan)
+Ang iOS thin shell ay nagло-load ng REMOTE `server.url` (production web). Para sa LOCAL
+test build (bundled web para ma-test ang native nang walang production deploy): **burahin
+ang `server.url` sa `mobile/ios/App/App/capacitor.config.json` PAGKATAPOS ng `npx cap
+sync ios`** (ang cap sync ang nagsu-sulat nito mula `capacitor.config.ts`). ⚠️ Ang
+`capacitor.config.json` ay **GITIGNORED build artifact** — `git checkout` HINDI makakabalik
+nito. **IBALIK ang `server.url` (o mag-cap-sync ulit) BAGO ang App Store Archive** — kung
+hindi, mag-a-Archive ka ng broken shell na nagло-load ng localhost. (Ito ang nag-cost ng
+oras sa "PRICE not showing" debug: production remote URL ang na-load, hindi ang bundle.)
+
+### POST-MERGE STATE
+- **NATIVE (iOS) ay HINDI pa live sa production** — ang buong 241 = native Swift na
+  bubuhay LANG kapag nag-build/distribute ng bagong iOS binary (TestFlight/App Store).
+  Ang web half (scalesRaw, PRICE test text, toast fix) ay live sa Vercel pagka-deploy —
+  **AIMO-unaffected** (scalesRaw additive/ignored; PRICE test text = test print lang;
+  toast fix = redesign-only). Walang production seller na maaapektuhan hangga't walang
+  bagong iOS binary.
+- **NEXT iOS build:** bump build number → `npx cap sync ios` → verify `server.url` =
+  PRODUCTION (`https://www.sellerflowlive.com/?apk=…`) sa `capacitor.config.json` → Archive
+  → Distribute **"App Store Connect"** (hindi Internal Only — DISTRIBUTE RULE) → i-run muna
+  ang `run-encoders-sim.sh` + `MobileTsplBuilderTests` sa sim (printing-change Archive gate).
