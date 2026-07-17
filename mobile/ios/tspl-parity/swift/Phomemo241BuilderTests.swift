@@ -56,7 +56,7 @@ final class Phomemo241BuilderTests: XCTestCase {
     /// lines the parity fixture produces (fixture content has no quoted commas).
     /// W/H = label dots (mm × 8). EDGE_GUARD (32) mirrors the fork's right-edge inset
     /// (the 60×40 DIR-0 clip fix): text x → W−x−32, BAR x → max(0, W−x−w−32).
-    private let edgeGuard = 32
+    private let edgeGuard = 48
     private func rotate180(_ aimo: String, _ W: Int, _ H: Int) -> String {
         return aimo.components(separatedBy: "\r\n").map { line -> String in
             if line == "DIRECTION 1" { return "DIRECTION 0" }
@@ -204,7 +204,7 @@ final class Phomemo241BuilderTests: XCTestCase {
         _ = p.buildTsplSticker241(buyer: buyer, settings: off.merging(["printBuyerNameScale": 2]) { a, _ in a },
                                   storeName: "S", currency: "NT$", sessionDate: "", labelWidthMm: 100, labelHeightMm: 60, bandRenderer: cap)
         XCTAssertEqual(seenText, "Test Print", "ASCII band must pass the FULL name (renderer compresses to fit — no 'Test Prin' char-truncation)")
-        XCTAssertEqual(seenMaxW, 784 - 16 - 32, "maxWidthDots must reserve EDGE_GUARD (rightEdge − x − 32) so a wide band never overflows / clamps its anchor")
+        XCTAssertEqual(seenMaxW, 784 - 16 - 48, "maxWidthDots must reserve EDGE_GUARD (rightEdge − x − 48) so a wide band never overflows / clamps its anchor")
     }
 
     func testWideBandAnchorStaysWithinLabelNeverClampsToZero() {
@@ -260,8 +260,8 @@ final class Phomemo241BuilderTests: XCTestCase {
         XCTAssertEqual(bandTexts.count, 1, "the Thai name must reach the band renderer — the AIMO downgrade-to-handle is deliberately absent (D3)")
         XCTAssertTrue(bandTexts[0].contains("\u{0E2A}"), "band text keeps the Thai glyphs (no stripUnrenderable — D4)")
         let s = String(decoding: out, as: UTF8.self)
-        // Band box re-anchored under the 180° map: x = W(800) − 16 − widthBytes*8(32) = 752.
-        XCTAssertTrue(s.contains("BITMAP 720,"), "band emits a BITMAP at the 180°-mapped name x origin (800−16−32)")
+        // Band box re-anchored under the 180° map: x = W(800) − 16 − widthBytes*8(32) − edgeGuard(48) = 704.
+        XCTAssertTrue(s.contains("BITMAP 704,"), "band emits a BITMAP at the 180°-mapped name x origin (800−16−32−48)")
         XCTAssertFalse(s.contains("@thaiseller"), "the name line must not silently become the handle")
     }
 
@@ -273,9 +273,10 @@ final class Phomemo241BuilderTests: XCTestCase {
         let s = String(decoding: out, as: UTF8.self)
         XCTAssertTrue(s.contains("DIRECTION 0"), "the 241 fork must run DIRECTION 0 (DIR1 rasterizer is broken)")
         XCTAssertFalse(s.contains("DIRECTION 1"), "DIRECTION 1 must never be emitted by the fork")
-        // Header 'SellerFlowLive' was at rot-0 (16,10); 180°-mapped → rot-180 at (800−16, 480−10).
-        XCTAssertTrue(s.contains("TEXT 784,470,\"3\",180,1,1,\"SellerFlowLive\""),
-                      "header must be rotation-180 at the mapped anchor (W−x, H−y)")
+        // Header 'SellerFlowLive' was at rot-0 (16,10); 180°-mapped − edgeGuard(48) →
+        // rot-180 at (800−16−48, 480−10) = (736, 470).
+        XCTAssertTrue(s.contains("TEXT 736,470,\"3\",180,1,1,\"SellerFlowLive\""),
+                      "header must be rotation-180 at the mapped anchor (W−x−edgeGuard, H−y)")
         XCTAssertNil(s.range(of: #"TEXT \d+,\d+,"[^"]*",0,"#, options: .regularExpression),
                      "no element may stay rotation 0 — the whole layout is rotated 180°")
     }
@@ -288,8 +289,8 @@ final class Phomemo241BuilderTests: XCTestCase {
         let out = p.buildTsplSticker241(buyer: buyer, settings: ["printStoreName": false, "printBuyerUsername": false, "printOrderItems": false, "printTotal": false], storeName: "S", currency: "NT$", sessionDate: "", labelWidthMm: 100, labelHeightMm: 60, bandRenderer: fakeBand)
         let s = String(decoding: out, as: UTF8.self)
         // BITMAP x,y,widthBytes,height,0, — the exact mode/order the P3 probe printed
-        // (x = 800 − 16 − 4*8 = 752 under the 180° map).
-        XCTAssertNotNil(s.range(of: #"BITMAP 720,\d+,4,48,0,"#, options: .regularExpression),
+        // (x = 800 − 16 − 4*8(widthBytes) − 48(edgeGuard) = 704 under the 180° map).
+        XCTAssertNotNil(s.range(of: #"BITMAP 704,\d+,4,48,0,"#, options: .regularExpression),
                         "BITMAP header must be x,y,widthBytes,height,mode0 (P3-proven syntax) at the mapped anchor")
     }
 

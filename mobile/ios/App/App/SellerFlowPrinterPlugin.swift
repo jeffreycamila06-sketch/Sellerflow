@@ -1430,9 +1430,14 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         //   layout LEFT by EDGE_GUARD: the flipped layout is right-heavy (its left
         //   side has ~200 dots of slack), so this clears the right edge without
         //   clipping the left. Applied to text + bands (BAR clamps at 0).
+        //   48 (was 32): the 32-dot pull left the FIRST letter of the x=16 lines
+        //   (SellerFlowLive / shop / name / @handle / time) still half-clipped on the
+        //   241's DIRECTION-0 right edge at 60×40. +16 clears it; the right-side date
+        //   (x=290) keeps ample slack (≈200-dot right-heavy layout), so nothing else
+        //   clips. All sizes share it — larger labels have even more room.
         let W = labelWidthMm * 8
         let H = labelHeightMm * 8
-        let edgeGuard = 32
+        let edgeGuard = 48
         func emitText(_ x: Int, _ y: Int, _ font: String, _ xMul: Int, _ yMul: Int, _ content: String) {
             writeAscii("TEXT \(W - x - edgeGuard),\(H - y),\"\(font)\",180,\(xMul),\(yMul),\"\(content)\"")
         }
@@ -1716,12 +1721,18 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                 str.draw(at: CGPoint(x: 0, y: max(0, (CGFloat(outH) - m.height) / 2)))
             }
         } else {
-            // ASCII/Latin — monospace bold, cap == baseCell, then STRETCH by (xMul,
-            // yMul): scaleBy(xMul, yMul) makes the letter itself grow (AIMO-like),
-            // cap-aligned so it fills the cell top-to-bottom (descenders crop, fine).
+            // ASCII/Latin — monospace bold, then STRETCH by (xMul, yMul) so the letter
+            // itself grows (AIMO-like). Size so the FULL glyph — cap-top DOWN TO the
+            // descender-bottom — fits the base cell (cap + |descender| == baseCell). The
+            // old sizing pinned CAP == baseCell and put descenders BELOW the canvas, so
+            // the "y" in "Buyer" (and g/p/q/j) clipped at the bottom at every band scale.
+            // Now cap-top → 0 and descender-bottom → baseCell, so the whole glyph lands
+            // in [0, baseCell] → [0, outH] after the yMul scale — no top/bottom clip.
             let ref = UIFont.monospacedSystemFont(ofSize: 100, weight: .bold)
-            let capRatio = ref.capHeight > 0 ? ref.capHeight / 100 : 0.7
-            let font = UIFont.monospacedSystemFont(ofSize: CGFloat(baseCell) / capRatio, weight: .bold)
+            let capRatio = ref.capHeight > 0 ? ref.capHeight / 100 : 0.70
+            let descRatio = ref.descender < 0 ? -ref.descender / 100 : 0.21   // |descender| / size
+            let glyphExtent = max(0.5, capRatio + descRatio)                  // cap-top → descender-bottom
+            let font = UIFont.monospacedSystemFont(ofSize: CGFloat(baseCell) / glyphExtent, weight: .bold)
             let str = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: UIColor.black])
             let m = str.size()
             if m.width < 1 { return nil }
@@ -1731,7 +1742,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             img = UIGraphicsImageRenderer(size: CGSize(width: outW, height: outH), format: fmt).image { ctx in
                 UIColor.white.setFill(); ctx.fill(CGRect(x: 0, y: 0, width: outW, height: outH))
                 ctx.cgContext.scaleBy(x: hStretch, y: CGFloat(yMul))
-                str.draw(at: CGPoint(x: 0, y: font.capHeight - font.ascender)) // cap-top → 0
+                str.draw(at: CGPoint(x: 0, y: font.capHeight - font.ascender)) // cap-top → 0; descender-bottom → baseCell
             }
         }
         guard let cg = img.cgImage else { return nil }
