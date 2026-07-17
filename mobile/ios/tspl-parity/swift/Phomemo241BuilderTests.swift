@@ -87,7 +87,11 @@ final class Phomemo241BuilderTests: XCTestCase {
     func testAsciiFullParityHoldsOnEverySizeConfig() {
         let p = plugin()
         let buyer = asciiBuyer()
-        for (w, h) in [(100, 60), (80, 60), (80, 50), (70, 50), (60, 40)] {
+        // 60×40 is EXCLUDED — it is now Jeff's bespoke layout (a CONSCIOUS FORK-DRIFT
+        // decline, fork-local x + gaps), no longer a rotate180 of AIMO. Its layout is
+        // pinned by testBespoke6040LayoutMatchesJeffSpec instead. The other 4 sizes still
+        // mirror AIMO exactly (parity guard active).
+        for (w, h) in [(100, 60), (80, 60), (80, 50), (70, 50)] {
             let aimo = p.buildTsplSticker(buyer: buyer, settings: nil, storeName: "My Shop", currency: "NT$", sessionDate: "07/17/2026", labelWidthMm: w, labelHeightMm: h)
             let fork = p.buildTsplSticker241(buyer: buyer, settings: nil, storeName: "My Shop", currency: "NT$", sessionDate: "07/17/2026", labelWidthMm: w, labelHeightMm: h, bandRenderer: { _, _, _, _ in nil })
             XCTAssertEqual(String(decoding: fork, as: UTF8.self), rotate180(String(decoding: aimo, as: UTF8.self), w * 8, h * 8),
@@ -216,15 +220,53 @@ final class Phomemo241BuilderTests: XCTestCase {
             return Phomemo241Raster.Band(widthBytes: wb, height: 48, bytes: [UInt8](repeating: 0xAA, count: wb * 48))
         }
         let off: [String: Any] = ["printStoreName": false, "printBuyerNumber": false, "printBuyerUsername": false, "printOrderItems": false, "printTotal": false]
+        // 100×60 (an AIMO-mirrored size, name x=16 — stable under the 60×40 redesign).
         let out = p.buildTsplSticker241(buyer: buyer, settings: off.merging(["printBuyerNameScale": 3]) { a, _ in a },
-                                        storeName: "S", currency: "NT$", sessionDate: "", labelWidthMm: 60, labelHeightMm: 40, bandRenderer: cap)
+                                        storeName: "S", currency: "NT$", sessionDate: "", labelWidthMm: 100, labelHeightMm: 60, bandRenderer: cap)
         let s = String(decoding: out, as: UTF8.self)
         // Extract the BITMAP x and assert it's the un-clamped 16-dot margin (W−rightEdge),
-        // NOT 0 — proof the leading edge is never sliced. 60×40: W=480, rightEdge=464.
+        // NOT 0 — proof the leading edge is never sliced. 100×60: W=800, rightEdge=784.
         let m = s.range(of: #"BITMAP (\d+),"#, options: .regularExpression)
         XCTAssertNotNil(m, "a band must be emitted")
         let bxStr = s[m!].dropFirst(7).dropLast(1)
         XCTAssertEqual(Int(bxStr), 16, "wide band anchor = W − rightEdge = 16 (margin preserved), never clamped to 0")
+    }
+
+    // MARK: 60×40 = Jeff's bespoke layout (fork-local x + gaps; AIMO SizeConfig untouched)
+    // Authoring coords → physical (W−x−48, H−y), W=480 H=320. Pins every element to Jeff's
+    // final spec so a future AIMO/other-size edit can't silently drift the 60×40 design.
+
+    func testBespoke6040LayoutMatchesJeffSpec() {
+        let p = plugin()
+        let buyer: [String: Any] = ["num": 12, "name": "Maria Santos", "handle": "maria_shops", "totalSpent": 700.0,
+                                    "orders": [["item": "250", "time": "20:15"]]]
+        let out = p.buildTsplSticker241(buyer: buyer, settings: nil, storeName: "My Shop", currency: "NT$",
+                                        sessionDate: "07/17/2026", labelWidthMm: 60, labelHeightMm: 40, bandRenderer: { _, _, _, _ in nil })
+        let s = String(decoding: out, as: UTF8.self)
+        XCTAssertTrue(s.contains("TEXT 416,310,\"3\",180,1,1,\"SellerFlowLive\""), "header authoring (16,10)")
+        XCTAssertTrue(s.contains("TEXT 142,302,\"2\",180,1,1,\"07/17/2026\""), "date authoring (290,18)")
+        XCTAssertTrue(s.contains("BAR 0,269,480,3"), "top separator bar authoring (0,48,w=480,h=3)")
+        XCTAssertTrue(s.contains("TEXT 396,260,\"3\",180,1,1,\"My Shop\""), "shop authoring (36,60)")
+        XCTAssertTrue(s.contains("TEXT 412,228,\"4\",180,2,1,\"Buyer #12\""), "buyer# authoring (20,92), 2×1")
+        XCTAssertTrue(s.contains("TEXT 414,184,\"4\",180,1,1,\"Maria Santos\""), "name authoring (18,136)")
+        XCTAssertTrue(s.contains("TEXT 414,140,\"3\",180,1,1,\"@maria_shops\""), "@username authoring (18,180)")
+        XCTAssertTrue(s.contains("TEXT 398,90,\"2\",180,1,1,\"20:15\""), "time authoring (34,230)")
+        XCTAssertTrue(s.contains("TEXT 232,92,\"4\",180,2,1,\"250\""), "price authoring (200,228)")
+        XCTAssertEqual(s.components(separatedBy: "BAR ").count - 1, 1, "order separator bar REMOVED on 60×40 → only the top bar remains")
+    }
+
+    func test6040CapsToOneOrderRow() {
+        // 60×40 renders at most ONE order row (Jeff: row 2 removed). A multi-order buyer
+        // becomes N separate stickers in printStickerNative (order-per-sticker split);
+        // this pins the builder-level cap that backs it.
+        let p = plugin()
+        let buyer: [String: Any] = ["num": 5, "name": "Ann", "handle": "a", "totalSpent": 0,
+                                    "orders": [["item": "250", "time": "20:15"], ["item": "999", "time": "20:18"]]]
+        let out = p.buildTsplSticker241(buyer: buyer, settings: nil, storeName: "S", currency: "NT$",
+                                        sessionDate: "", labelWidthMm: 60, labelHeightMm: 40, bandRenderer: { _, _, _, _ in nil })
+        let s = String(decoding: out, as: UTF8.self)
+        XCTAssertTrue(s.contains("\"250\""), "the first (only) order row prints")
+        XCTAssertFalse(s.contains("\"999\""), "60×40 caps at ONE row — the 2nd order becomes its own sticker (printStickerNative split)")
     }
 
     // MARK: BUG 1/2 — the order-line TIME is FIXED, decoupled from the comment scale

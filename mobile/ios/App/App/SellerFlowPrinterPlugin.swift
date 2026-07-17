@@ -1138,6 +1138,38 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         // falls back to the rounded integer scale). AIMO's buildTsplSticker never reads it.
         let scalesRaw = call.getObject("scalesRaw")
 
+        // ORDER-PER-STICKER (241 60×40, Jeff): a buyer with >1 order prints as N SEPARATE
+        // single-order stickers, sent DONE-gated on ONE BLE connection (printJobSequence,
+        // proven in Phase 0). The live flows all pass a SINGLE-order buyer (1-Click /
+        // reprint / raffle → onPrint(singleOrderBuyer)), so this split is a no-op in
+        // practice (N=1 → the normal single printJob below, byte-identical); it only
+        // engages a multi-order buyer, and only at 60×40 — every other size + AIMO are
+        // untouched. Each sticker carries its OWN time + comment/price (its one order).
+        let orders241 = (buyer["orders"] as? [[String: Any]]) ?? []
+        if is241 && labelWidthMm == 60 && labelHeightMm == 40 && orders241.count > 1 {
+            let payloads: [Data] = orders241.map { order in
+                var single = buyer
+                single["orders"] = [order]
+                return buildTsplSticker241(buyer: single, settings: settings, storeName: storeName, currency: currency, sessionDate: sessionDate, labelWidthMm: labelWidthMm, labelHeightMm: labelHeightMm, scalesRaw: scalesRaw)
+            }
+            bleTransport.printJobSequence(payloads: payloads, preferredId: savedId) { [weak self] error in
+                guard let self = self else { return }
+                if let error = error {
+                    call.reject("Bluetooth print failed: \(error.message)", error.code)
+                } else {
+                    let total = payloads.reduce(0) { $0 + $1.count }
+                    call.resolve([
+                        "ok": true,
+                        "bytes": total,
+                        "labels": payloads.count,
+                        "savedPrinter": self.savedBlePrinterOrNull(),
+                        "message": "Printed \(payloads.count) stickers via Bluetooth (\(total) bytes)",
+                    ])
+                }
+            }
+            return
+        }
+
         // SAME payload in — the profile picks the builder. buildTsplSticker241
         // reads the identical settings/scales/size/buyer that buildTsplSticker does
         // (grep-audited parity), so every Printer & Display setting flows equally.
@@ -1581,6 +1613,24 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
 
         let c = stickerConfig(labelWidthMm, labelHeightMm)
 
+        // 60×40 = Jeff's bespoke layout (final spec). A CONSCIOUS divergence from AIMO
+        // (the FORK-DRIFT rule permits a documented decline) — so x + gaps are FORK-LOCAL
+        // here; the shared SizeConfig (AIMO's buildTsplSticker reads the SAME table) is
+        // UNTOUCHED and the other 4 sizes stay byte-identical (every `is6040 ? … : <lit>`
+        // resolves to the current literal off 60×40). Gaps derived from Jeff's y's:
+        //   shop 60 →+32→ buyer# 92 →+44→ name 136 →+44→ @user 180 →+48→ order row 228.
+        let is6040 = (labelWidthMm == 60 && labelHeightMm == 40)
+        let storeGap    = is6040 ? 32 : c.storeGap
+        let buyerNumGap = is6040 ? 44 : c.buyerNumGap
+        let nameGap     = is6040 ? 44 : c.nameGap
+        let usernameGap = is6040 ? 48 : c.usernameGap
+        let storeX = is6040 ? 36  : 16
+        let buyerX = is6040 ? 20  : 16
+        let nameX  = is6040 ? 18  : 16
+        let userX  = is6040 ? 18  : 16
+        let timeX  = is6040 ? 34  : 16
+        let priceX = is6040 ? 200 : 180
+
         emitText(16, 10, "3", 1, 1, "SellerFlowLive")
         if !sessionDate.isEmpty {
             emitText(290, 18, "2", 1, 1, tsplSafe(truncate16(sessionDate, 12)))
@@ -1603,47 +1653,52 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         var extra = 0
         var y = 60
         if printStoreName && !cleanStoreName.isEmpty {
-            emitSym(16, y, "3", sStore, tsplSafe(truncate16(cleanStoreName, 36)), c.rightEdge)
+            emitSym(storeX, y, "3", sStore, tsplSafe(truncate16(cleanStoreName, 36)), c.rightEdge)
             let d = Int(((clampF(sStore) - 1) * Double(F3)).rounded())
-            y += c.storeGap + d
+            y += storeGap + d
             extra += d
         }
 
         if printBuyerNumber {
             let effY = clampF(Double(c.buyerNumYMul) * sBuyerNum)   // height mul (width stays 2×)
-            emitHeightScaled(16, y, "4", 2, c.buyerNumYMul, sBuyerNum, "Buyer #\(buyerNum)", c.rightEdge)
+            emitHeightScaled(buyerX, y, "4", 2, c.buyerNumYMul, sBuyerNum, "Buyer #\(buyerNum)", c.rightEdge)
             let d = Int(((effY - Double(c.buyerNumYMul)) * Double(F4)).rounded())
-            y += c.buyerNumGap + d
+            y += buyerNumGap + d
             extra += d
         }
 
         if !nameOut.isEmpty {
             if bandName {
                 // CJK / UNSUPPORTED name → band on both axes (base nameCjk*Mul), scaled.
-                emitBand(16, y, tsplSafe(truncate16(nameOut, 30)), Double(c.nameCjkXMul) * sName, Double(c.nameCjkYMul) * sName, c.rightEdge)
+                emitBand(nameX, y, tsplSafe(truncate16(nameOut, 30)), Double(c.nameCjkXMul) * sName, Double(c.nameCjkYMul) * sName, c.rightEdge)
                 let effY = clampF(Double(c.nameCjkYMul) * sName)
                 let d = Int(((effY - Double(c.nameCjkYMul)) * Double(F4)).rounded())
                 y += c.nameCjkGap + d
-                extra += (c.nameCjkGap - c.nameGap) + d
+                extra += (c.nameCjkGap - nameGap) + d
             } else {
-                emitSym(16, y, "4", sName, tsplSafe(truncate16(nameOut, 30)), c.rightEdge)
+                emitSym(nameX, y, "4", sName, tsplSafe(truncate16(nameOut, 30)), c.rightEdge)
                 let d = Int(((clampF(sName) - 1) * Double(F4)).rounded())
-                y += c.nameGap + d
+                y += nameGap + d
                 extra += d
             }
         }
 
         if printBuyerUsername && !cleanBuyerHandle.isEmpty {
-            emitSym(16, y, "3", sUser, "@" + tsplSafe(truncate16(cleanBuyerHandle, 30)), c.rightEdge)
+            emitSym(userX, y, "3", sUser, "@" + tsplSafe(truncate16(cleanBuyerHandle, 30)), c.rightEdge)
             let d = Int(((clampF(sUser) - 1) * Double(F3)).rounded())
-            y += c.usernameGap + d
+            y += usernameGap + d
             extra += d
         }
 
         if printOrderItems && !orders.isEmpty && y < c.orderEntryGuard + extra {
-            emitBar(16, y, c.sepWidth, 2)
-            y += c.sepGap
-            let maxOrders = 2
+            // 60×40 (Jeff): the order separator BAR is REMOVED and only ONE order row
+            // prints (order-per-sticker — a multi-order buyer splits into N stickers in
+            // printStickerNative). Other sizes keep the bar + sepGap advance + 2 rows.
+            if !is6040 {
+                emitBar(16, y, c.sepWidth, 2)
+                y += c.sepGap
+            }
+            let maxOrders = is6040 ? 1 : 2
             var i = 0
             while i < min(orders.count, maxOrders) && y < c.orderLoopGuard + extra {
                 let order = orders[i]
@@ -1652,15 +1707,15 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                 let cleanItem = stripEmoji(item)
                 // TIME — FIXED at base size (BUG 1/2). It has no dedicated size control,
                 // the shared "comment" scale drove it, and a scaled time BAND grew wide
-                // enough to overrun the price column at x=180 ("7:07PRICE"). A timestamp
-                // stays small: plain TEXT font "2" 1×1 (byte-identical to the scale-1 default).
+                // enough to overrun the price column ("7:07PRICE"). A timestamp stays
+                // small: plain TEXT font "2" 1×1. 60×40 authoring: x=34, y+2 (Jeff spec).
                 if !time.isEmpty {
-                    emitText(16, y, "2", 1, 1, tsplSafe(truncate16(time, 10)))
+                    emitText(timeX, is6040 ? y + 2 : y, "2", 1, 1, tsplSafe(truncate16(time, 10)))
                 }
                 // PRICE CODE — height-priority (base 2× width, 1× height); height honors
                 // the comment decimal (BUG 3). ASCII scale 1.0 → TEXT (byte-identical).
                 if !cleanItem.isEmpty {
-                    emitHeightScaled(180, y, "4", 2, 1, sComment, tsplSafe(truncate16(cleanItem, 12)), c.rightEdge)
+                    emitHeightScaled(priceX, y, "4", 2, 1, sComment, tsplSafe(truncate16(cleanItem, 12)), c.rightEdge)
                 }
                 let d = max(0, Int(((clampF(sComment) - 1) * Double(F4)).rounded()))
                 y += 38 + d
