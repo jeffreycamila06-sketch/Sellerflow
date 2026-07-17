@@ -108,16 +108,41 @@ public final class Phomemo241ParityTest {
 
     private static String utf8(byte[] b) { return new String(b, java.nio.charset.StandardCharsets.UTF_8); }
 
+    // The 4 big sizes are now a DOCUMENTED FORK-DRIFT divergence from AIMO (Jeff,
+    // 2026-07-18): each is "one row, no separator bar, no Total". So the fork equals
+    // rotate180(AIMO) with exactly those elements removed. We still compare against
+    // the (filtered) AIMO stream rather than hand-written bespoke pins, so every
+    // SHARED line — header, date, top bar, store, buyer#, name, @user, and the first
+    // order row — KEEPS full AIMO drift protection; only the declared removals below
+    // are dropped. 60x40 stays a fully bespoke pin (testBespoke6040).
+    private static String stripForkRemovals(String rot180Aimo) {
+        // Removals vs AIMO for the fixed ASCII fixture: the height-2 separator BAR
+        // (the top bar is height 3), the 2nd order row (20:18 / Blue jeans M), and the
+        // Total label + amount (Total: / NT$700). Absent lines are a no-op, so this is
+        // robust across sizes whose order/total guard prints fewer lines.
+        List<String> out = new ArrayList<>();
+        for (String line : rot180Aimo.split("\r\n", -1)) {
+            if (line.startsWith("BAR ") && line.endsWith(",2")) continue;   // separator bar
+            if (line.contains("\"20:18\"")) continue;                        // 2nd order time
+            if (line.contains("\"Blue jeans M\"")) continue;                 // 2nd order price
+            if (line.contains("\"Total:\"")) continue;                       // total label
+            if (line.contains("\"NT$700\"")) continue;                       // total amount
+            out.add(line);
+        }
+        return String.join("\r\n", out);
+    }
+
     // ── tests ──────────────────────────────────────────────────────────────────
 
     private static void testAsciiFullParityEverySize() {
-        System.out.println("testAsciiFullParityEverySize (4 AIMO-mirrored sizes)");
+        System.out.println("testAsciiBigSizesEqualFilteredAimo (4 sizes: one row, no bar, no Total)");
         int[][] sizes = {{100, 60}, {80, 60}, {80, 50}, {70, 50}};
         for (int[] s : sizes) {
             JSONObject payload = asciiPayload();
             byte[] aimo = TsplBuilder.forStickerNative(payload, s[0], s[1]);
             byte[] fork = Phomemo241Builder.forStickerNative241(payload, s[0], s[1], nullBand());
-            eq(utf8(fork), rotate180(utf8(aimo), s[0] * 8, s[1] * 8), "fork == rotate180(AIMO) at " + s[0] + "x" + s[1]);
+            eq(utf8(fork), stripForkRemovals(rotate180(utf8(aimo), s[0] * 8, s[1] * 8)),
+               "fork == rotate180(AIMO) minus {sep bar, 2nd row, Total} at " + s[0] + "x" + s[1]);
         }
     }
 
@@ -129,16 +154,20 @@ public final class Phomemo241ParityTest {
         orders.put(new JSONObject().put("item", "250").put("time", "20:15"));
         buyer.put("orders", orders);
         JSONObject payload = new JSONObject().put("buyer", buyer).put("storeName", "My Shop").put("currency", "NT$").put("sessionDate", "07/17/2026");
+        // Jeff's 60x40 revision (2026-07-18). The fixture name is ASCII "Maria Santos",
+        // so @user/time/price pin the ASCII column; Jeff's spec y's (194/242/254) are the
+        // CJK-name column (a taller band → +14 below the name). Rows above the name gap
+        // (header/date/bar/shop/buyer#/name) are identical in both columns.
         String s = utf8(Phomemo241Builder.forStickerNative241(payload, 60, 40, nullBand()));
-        contains(s, "TEXT 392,308,\"3\",180,1,1,\"SellerFlowLive\"", "header authoring (40,12)");
-        contains(s, "TEXT 172,300,\"2\",180,1,1,\"07/17/2026\"", "date authoring (260,20) — pulled in for right-edge fit");
+        contains(s, "TEXT 414,308,\"3\",180,1,1,\"SellerFlowLive\"", "header authoring (18,12)");
+        contains(s, "TEXT 172,300,\"2\",180,1,1,\"07/17/2026\"", "date authoring (260,20)");
         contains(s, "BAR 16,269,376,3", "top bar printable-width (40,48,376,3) -> physical [16,392]");
         contains(s, "TEXT 368,256,\"3\",180,1,1,\"My Shop\"", "shop authoring (64,64)");
-        contains(s, "TEXT 392,226,\"4\",180,1,1,\"Buyer #12\"", "buyer# authoring (40,94) 1x1 — 1x width for right-edge fit");
-        contains(s, "TEXT 386,184,\"4\",180,1,1,\"Maria Santos\"", "name authoring (46,136)");
-        contains(s, "TEXT 384,140,\"3\",180,1,1,\"@maria_shops\"", "@username authoring (48,180)");
-        contains(s, "TEXT 374,90,\"2\",180,1,1,\"20:15\"", "time authoring (58,230) = row anchor");
-        contains(s, "TEXT 232,78,\"4\",180,2,1,\"250\"", "price authoring (200,242) = +12 BELOW time");
+        contains(s, "TEXT 412,228,\"4\",180,1,1,\"Buyer #12\"", "buyer# authoring (20,92) 1x1 (1x width)");
+        contains(s, "TEXT 410,184,\"4\",180,1,1,\"Maria Santos\"", "name authoring (22,136)");
+        contains(s, "TEXT 410,140,\"3\",180,1,1,\"@maria_shops\"", "@username authoring (22,180 ASCII col; 194 CJK col)");
+        contains(s, "TEXT 404,92,\"2\",180,1,1,\"20:15\"", "time authoring (28,228 ASCII col; 242 CJK col) = row anchor");
+        contains(s, "TEXT 328,80,\"4\",180,2,1,\"250\"", "price authoring (104,240 ASCII col; 254 CJK col) = +12 BELOW time");
         int bars = s.split("BAR ", -1).length - 1;
         check(bars == 1, "order separator bar REMOVED on 60x40 -> only the top bar remains (got " + bars + ")");
     }
@@ -327,7 +356,7 @@ public final class Phomemo241ParityTest {
         JSONObject payload = new JSONObject().put("buyer", buyer).put("settings", off).put("storeName", "S").put("currency", "NT$").put("sessionDate", "");
         String s = utf8(Phomemo241Builder.forStickerNative241(payload, 60, 40, cap));
         check(!s.matches("(?s).*BITMAP \\d+,-\\d+,.*"), "no band may have a negative physical y");
-        contains(s, "BITMAP 354,0,4,400,0,", "over-tall band clamps y to 0 (name x=46 -> bx 354; y 320-64-400=-144 -> 0)");
+        contains(s, "BITMAP 378,0,4,400,0,", "over-tall band clamps y to 0 (name x=22 -> bx 378; y 320-64-400=-144 -> 0)");
     }
 
     private static void testFailedRenderEmitsNothing() {

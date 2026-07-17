@@ -345,10 +345,11 @@ public class SellerFlowPrinterPlugin extends Plugin {
      *    product band = multiple BITMAPs + Latin lines) so a device photo proves
      *    the Noto CJK raster path. Mirrors iOS run241VerificationPrint.
      *  - real order → gated by {@link #PHOMEMO_241_ORDERS_ENABLED} (Phase 1). When
-     *    enabled: ORDER-PER-STICKER on 60x40 (a >1-order buyer prints N single-order
-     *    labels concatenated on ONE SPP write — SPP has no DONE notify, so
-     *    sequencing is stream + tail-out, not DONE-gated). Live flows pass a
-     *    single-order buyer → N=1 (byte-identical to the single path).
+     *    enabled: ORDER-PER-STICKER on EVERY size (all sizes are one-row as of
+     *    2026-07-18) — a >1-order buyer prints N single-order labels concatenated on
+     *    ONE SPP write (SPP has no DONE notify, so sequencing is stream + tail-out,
+     *    not DONE-gated). Live flows pass a single-order buyer → N=1 (byte-identical
+     *    to the single path).
      */
     private void print241(PluginCall call, JSONObject payload, String address, int labelWidthMm, int labelHeightMm) throws Exception {
         Phomemo241Builder.BandRenderer renderer = new Phomemo241Raster();
@@ -379,7 +380,11 @@ public class SellerFlowPrinterPlugin extends Plugin {
         JSONArray orders = buyer == null ? null : buyer.optJSONArray("orders");
         byte[] tspl;
         int labels = 1;
-        if (labelWidthMm == 60 && labelHeightMm == 40 && orders != null && orders.length() > 1) {
+        // ORDER-PER-STICKER on EVERY size now (Jeff, 2026-07-18: all sizes are one-row).
+        // A >1-order buyer prints N single-order labels concatenated on ONE SPP write
+        // (SPP has no DONE notify, so sequencing is stream + tail-out). Live flows pass
+        // a single-order buyer → N=1 (byte-identical to the single path).
+        if (orders != null && orders.length() > 1) {
             ByteArrayOutputStream combined = new ByteArrayOutputStream();
             for (int i = 0; i < orders.length(); i++) {
                 JSONObject o = orders.optJSONObject(i);

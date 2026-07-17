@@ -30,12 +30,16 @@ import org.json.JSONObject;
  *    layout left by 48 to clear the right non-printable edge.
  *
  * The FORK-DRIFT rule (mirrored from the iOS FORK-OF header + CLAUDE.md):
- * this fork tracks {@link TsplBuilder#forStickerNative} for the 4 AIMO-mirrored
- * sizes (an all-ASCII buyer is byte-equal to rotate180(AIMO)); 60x40 is Jeff's
- * bespoke v3 layout (a CONSCIOUS decline, fork-local x + gaps). ANY AIMO layout
- * edit must be mirrored here OR consciously declined in writing. The parity is
- * pinned by the JVM test {@code Phomemo241ParityTest} (rotate180(AIMO) for the 4
- * sizes + the v3 spec for 60x40) — a drift turns it red.
+ * as of Jeff's 2026-07-18 revision EVERY size is a documented divergence from AIMO
+ * — all sizes are "one row, no separator bar, no Total". The 4 big sizes still
+ * SHARE their top block with AIMO (header/date/top bar/store/buyer#/name/@user +
+ * the single order row are byte-equal to rotate180(AIMO)); only the separator bar,
+ * the 2nd order row, and the Total are dropped. 60x40 is Jeff's fully bespoke
+ * layout (fork-local x + gaps). ANY AIMO layout edit to a SHARED line must be
+ * mirrored here OR consciously declined in writing. The parity is pinned by the JVM
+ * test {@code Phomemo241ParityTest}: the 4 big sizes == rotate180(AIMO) MINUS
+ * {sep bar, 2nd row, Total} (shared lines keep full AIMO drift protection); 60x40
+ * is pinned by its own bespoke spec — a drift turns it red.
  *
  * PURITY: this class imports NO android.graphics — the glyph rasterizer is
  * injected as a {@link BandRenderer} (production = Phomemo241Raster with
@@ -108,11 +112,15 @@ final class Phomemo241Builder {
             this.nameCjkXMul = nameCjkXMul; this.nameCjkYMul = nameCjkYMul; this.nameCjkGap = nameCjkGap;
         }
     }
+    // showTotal is FALSE for EVERY size now (Jeff, 2026-07-18: no Total on any 241
+    // sticker). totalY/totalAmountX are retained (harmless data) so a future decision
+    // to restore Total is a one-flag change. The AIMO SizeConfig is a SEPARATE table
+    // (golden-locked) — it still shows Total; this is the fork-local divergence.
     private static final java.util.Map<String, Size> LAYOUTS = java.util.Map.of(
-        "100x60", new Size(800, 784, 55, 2, 110, 58, 58, 10, 520, 390, 400, true, 445, 410, 2, 2, 58),
-        "80x60",  new Size(640, 624, 35, 2, 95, 40, 35, 10, 360, 350, 360, true, 395, 250, 2, 2, 58),
-        "80x50",  new Size(640, 624, 35, 2, 95, 40, 35, 10, 360, 270, 280, true, 315, 250, 2, 2, 58),
-        "70x50",  new Size(560, 544, 35, 2, 95, 40, 35, 10, 280, 270, 280, true, 315, 170, 2, 2, 58),
+        "100x60", new Size(800, 784, 55, 2, 110, 58, 58, 10, 520, 390, 400, false, 445, 410, 2, 2, 58),
+        "80x60",  new Size(640, 624, 35, 2, 95, 40, 35, 10, 360, 350, 360, false, 395, 250, 2, 2, 58),
+        "80x50",  new Size(640, 624, 35, 2, 95, 40, 35, 10, 360, 270, 280, false, 315, 250, 2, 2, 58),
+        "70x50",  new Size(560, 544, 35, 2, 95, 40, 35, 10, 280, 270, 280, false, 315, 170, 2, 2, 58),
         "60x40",  new Size(480, 464, 30, 1, 46, 34, 30, 6, 200, 240, 264, false, 0, 0, 2, 2, 58)
     );
     private static Size sizeFor(int wMm, int hMm) {
@@ -193,34 +201,38 @@ final class Phomemo241Builder {
 
         Size c = sizeFor(labelWidthMm, labelHeightMm);
 
-        // 60x40 = Jeff's bespoke layout (final spec v3). A CONSCIOUS divergence from
-        // AIMO (the FORK-DRIFT rule permits a documented decline) — x + gaps are
-        // FORK-LOCAL here; the shared per-size table (AIMO reads the SAME numbers)
-        // is UNTOUCHED and the other 4 sizes stay byte-identical (every
-        // `is6040 ? ... : <lit>` resolves to the current literal off 60x40).
+        // 60x40 = Jeff's fully bespoke layout. A CONSCIOUS divergence from AIMO (the
+        // FORK-DRIFT rule permits a documented decline) — x + gaps are FORK-LOCAL here.
+        // The shared per-size table (AIMO reads the SAME numbers) is UNTOUCHED; the big
+        // sizes reuse its top-block x/gaps (so those lines stay AIMO-parity) and only
+        // drop the bar/2nd row/Total below (every `is6040 ? ... : <lit>` off 60x40
+        // resolves to the big-size literal).
         boolean is6040 = (labelWidthMm == 60 && labelHeightMm == 40);
-        int storeGap    = is6040 ? 30 : c.storeGap;
-        int buyerNumGap = is6040 ? 42 : c.buyerNumGap;
+        // 60x40 revision (Jeff, 2026-07-18 Layout Designer). The spec y's are in the
+        // CJK-NAME column (a taller band), so the gaps below are derived in the SAME
+        // system: store 64 -> buyer# 92 (storeGap 28) -> name 136 (buyerNumGap 44) ->
+        // @user 194 (nameCjkGap 58, unchanged) -> time 242 (usernameGap 48) -> price
+        // 254 (+12 below time). An ASCII name flows tighter (nameGap 44 keeps the
+        // band-vs-text delta), so the JVM parity fixture (ASCII "Maria Santos") pins
+        // the ASCII column; the CJK column is documented in the report.
+        int storeGap    = is6040 ? 28 : c.storeGap;
+        int buyerNumGap = is6040 ? 44 : c.buyerNumGap;
         int nameGap     = is6040 ? 44 : c.nameGap;
-        int usernameGap = is6040 ? 50 : c.usernameGap;
-        int headerX = is6040 ? 40  : 16;
+        int usernameGap = is6040 ? 48 : c.usernameGap;
+        int headerX = is6040 ? 18  : 16;
         int headerY = is6040 ? 12  : 10;
-        // RIGHT-EDGE FIT (60x40, Android device-found 2026-07-18): the DIR0+180 emit
-        // places a rot-180 element's reading-right at (W - anchor + width), so it fits
-        // the label iff width <= anchor (anchor = W - x - EDGE_GUARD). The date was
-        // authored far-right (x=330 -> anchor 102), too small for its ~120-dot width
-        // -> it overran the reading-right edge ("07/17/2026" clipped to "07/17/2..").
-        // Pull it in to x=260 (anchor 172 >= width) so the full date fits. (This was
-        // byte-identical to iOS, which clips the same content — a shared v3 limit, not
-        // an Android divergence; iOS needs the same nudge in a follow-up.)
+        // RIGHT-EDGE FIT (60x40): the DIR0+180 emit places a rot-180 element's
+        // reading-right at (W - anchor + width), so it fits the label iff its width
+        // <= anchor (anchor = W - x - EDGE_GUARD). Jeff's revision keeps the date at
+        // x=260 (anchor 172 >= its ~120-dot width) so "07/17/2026" fits whole.
         int dateX   = is6040 ? 260 : 290;
         int dateY   = is6040 ? 20  : 18;
         int storeX  = is6040 ? 64  : 16;
-        int buyerX  = is6040 ? 40  : 16;
-        int nameX   = is6040 ? 46  : 16;
-        int userX   = is6040 ? 48  : 16;
-        int timeX   = is6040 ? 58  : 16;
-        int priceX  = is6040 ? 200 : 180;
+        int buyerX  = is6040 ? 20  : 16;
+        int nameX   = is6040 ? 22  : 16;
+        int userX   = is6040 ? 22  : 16;
+        int timeX   = is6040 ? 28  : 16;
+        int priceX  = is6040 ? 104 : 180;
         int startY  = is6040 ? 64  : 60;
 
         e.emitText(headerX, headerY, "3", 1, 1, "SellerFlowLive");
@@ -299,14 +311,17 @@ final class Phomemo241Builder {
         }
 
         if (printOrderItems && orders != null && orders.length() > 0 && y < c.orderEntryGuard + extra) {
-            // 60x40 (Jeff): the order separator BAR is REMOVED and only ONE order row
-            // prints (order-per-sticker — a multi-order buyer splits into N stickers in
-            // the plugin). Other sizes keep the bar + sepGap advance + 2 rows.
+            // ALL SIZES now = one row, no separator bar (Jeff, 2026-07-18: every size
+            // becomes "one row, no bar, no Total", order-per-sticker — a multi-order
+            // buyer splits into N stickers in the plugin). The big sizes KEEP the sepGap
+            // advance so the single order row stays at its prior position ("positions
+            // unchanged"); only the bar DRAW is dropped. 60x40 flows directly (bespoke,
+            // no sepGap). This is the documented FORK-DRIFT divergence from AIMO (which
+            // still draws the bar + 2 rows + Total); the AIMO goldens are untouched.
             if (!is6040) {
-                e.emitBar(16, y, c.sepWidth, 2);
                 y += c.sepGap;
             }
-            int maxOrders = is6040 ? 1 : 2;
+            int maxOrders = 1;
             int i = 0;
             while (i < Math.min(orders.length(), maxOrders) && y < c.orderLoopGuard + extra) {
                 JSONObject order = orders.optJSONObject(i);
