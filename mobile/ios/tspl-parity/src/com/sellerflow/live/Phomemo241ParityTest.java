@@ -131,16 +131,64 @@ public final class Phomemo241ParityTest {
         JSONObject payload = new JSONObject().put("buyer", buyer).put("storeName", "My Shop").put("currency", "NT$").put("sessionDate", "07/17/2026");
         String s = utf8(Phomemo241Builder.forStickerNative241(payload, 60, 40, nullBand()));
         contains(s, "TEXT 392,308,\"3\",180,1,1,\"SellerFlowLive\"", "header authoring (40,12)");
-        contains(s, "TEXT 102,300,\"2\",180,1,1,\"07/17/2026\"", "date authoring (330,20)");
+        contains(s, "TEXT 172,300,\"2\",180,1,1,\"07/17/2026\"", "date authoring (260,20) — pulled in for right-edge fit");
         contains(s, "BAR 16,269,376,3", "top bar printable-width (40,48,376,3) -> physical [16,392]");
         contains(s, "TEXT 368,256,\"3\",180,1,1,\"My Shop\"", "shop authoring (64,64)");
-        contains(s, "TEXT 392,226,\"4\",180,2,1,\"Buyer #12\"", "buyer# authoring (40,94) 2x1");
+        contains(s, "TEXT 392,226,\"4\",180,1,1,\"Buyer #12\"", "buyer# authoring (40,94) 1x1 — 1x width for right-edge fit");
         contains(s, "TEXT 386,184,\"4\",180,1,1,\"Maria Santos\"", "name authoring (46,136)");
         contains(s, "TEXT 384,140,\"3\",180,1,1,\"@maria_shops\"", "@username authoring (48,180)");
         contains(s, "TEXT 374,90,\"2\",180,1,1,\"20:15\"", "time authoring (58,230) = row anchor");
         contains(s, "TEXT 232,78,\"4\",180,2,1,\"250\"", "price authoring (200,242) = +12 BELOW time");
         int bars = s.split("BAR ", -1).length - 1;
         check(bars == 1, "order separator bar REMOVED on 60x40 -> only the top bar remains (got " + bars + ")");
+    }
+
+    // STRENGTHENED GUARD (the pins alone missed the right-edge overflow): every
+    // rot-180 TEXT element fits the label iff its rendered width <= its anchor x
+    // (reading-right = W - anchor + width <= W). This catches the class of bug the
+    // exact-string pins could not — a pin can be "correct" (matches the emit) while
+    // the emit itself overflows. Uses conservative TSPL 203dpi cell widths.
+    private static int charW(String font) {
+        switch (font) { case "2": return 12; case "3": return 16; case "4": return 24; default: return 24; }
+    }
+    private static boolean textFits(String line) {
+        // TEXT ax,ay,"font",180,xmul,ymul,"content"
+        String body = line.substring(5);
+        int ax = Integer.parseInt(body.substring(0, body.indexOf(',')));
+        int q1 = body.indexOf('"'), q2 = body.indexOf('"', q1 + 1);
+        String font = body.substring(q1 + 1, q2);
+        // xmul is the field right after the font's closing quote: ...,"f",180,XMUL,ymul,"content"
+        String afterFont = body.substring(q2 + 1);            // ,180,XMUL,ymul,"content"
+        String[] mf = afterFont.split(",");                    // ["", "180", "XMUL", "ymul", "\"content\""...]
+        int xmul = Integer.parseInt(mf[2]);
+        // content = between the LAST two double-quotes (robust; the line ends "...content\"")
+        int e2 = body.lastIndexOf('"');
+        int e1 = body.lastIndexOf('"', e2 - 1);
+        String content = body.substring(e1 + 1, e2);
+        int width = content.length() * charW(font) * xmul;
+        boolean ok = width <= ax;
+        if (!ok) System.out.println("        overflow: '" + content + "' width=" + width + " > anchor=" + ax);
+        return ok;
+    }
+    private static void testNoRightEdgeOverflow60x40() {
+        System.out.println("testNoRightEdgeOverflow60x40 (width <= anchor for every TEXT element)");
+        // self-check the guard is not vacuous: the OLD (pre-fix) buyer# / date overflow.
+        check(!textFits("TEXT 392,226,\"4\",180,2,1,\"Buyer #88\""), "guard flags the OLD 2x buyer# (432 > 392)");
+        check(!textFits("TEXT 102,300,\"2\",180,1,1,\"07/17/2026\""), "guard flags the OLD far-right date (120 > 102)");
+        // the FIXED verification output must have every TEXT element fit.
+        JSONObject buyer = new JSONObject();
+        buyer.put("num", 888).put("name", "陳小美").put("handle", "sellerflow").put("totalSpent", 1200);   // worst 3-digit #
+        JSONArray orders = new JSONArray();
+        orders.put(new JSONObject().put("item", "紅色洋裝 x2").put("time", "20:15"));
+        buyer.put("orders", orders);
+        JSONObject payload = new JSONObject().put("buyer", buyer).put("storeName", "SellerFlowLive")
+            .put("currency", "NT$").put("sessionDate", "07/17/2026").put("labelWidthMm", 60).put("labelHeightMm", 40);
+        String s = utf8(Phomemo241Builder.forStickerNative241(payload, 60, 40, nullBand()));
+        boolean allFit = true;
+        for (String line : s.split("\r\n")) {
+            if (line.startsWith("TEXT ")) allFit &= textFits(line);
+        }
+        check(allFit, "every 60x40 TEXT element fits (width <= anchor), incl. worst-case Buyer #888");
     }
 
     private static void test6040CapsToOneOrderRow() {
@@ -326,6 +374,7 @@ public final class Phomemo241ParityTest {
     public static void main(String[] args) {
         testAsciiFullParityEverySize();
         testBespoke6040();
+        testNoRightEdgeOverflow60x40();
         test6040CapsToOneOrderRow();
         testDirection0Rotated180();
         testBandHeightScaleCoupled();

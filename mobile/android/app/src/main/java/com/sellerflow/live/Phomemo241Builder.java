@@ -205,7 +205,15 @@ final class Phomemo241Builder {
         int usernameGap = is6040 ? 50 : c.usernameGap;
         int headerX = is6040 ? 40  : 16;
         int headerY = is6040 ? 12  : 10;
-        int dateX   = is6040 ? 330 : 290;
+        // RIGHT-EDGE FIT (60x40, Android device-found 2026-07-18): the DIR0+180 emit
+        // places a rot-180 element's reading-right at (W - anchor + width), so it fits
+        // the label iff width <= anchor (anchor = W - x - EDGE_GUARD). The date was
+        // authored far-right (x=330 -> anchor 102), too small for its ~120-dot width
+        // -> it overran the reading-right edge ("07/17/2026" clipped to "07/17/2..").
+        // Pull it in to x=260 (anchor 172 >= width) so the full date fits. (This was
+        // byte-identical to iOS, which clips the same content — a shared v3 limit, not
+        // an Android divergence; iOS needs the same nudge in a follow-up.)
+        int dateX   = is6040 ? 260 : 290;
         int dateY   = is6040 ? 20  : 18;
         int storeX  = is6040 ? 64  : 16;
         int buyerX  = is6040 ? 40  : 16;
@@ -250,8 +258,18 @@ final class Phomemo241Builder {
         }
 
         if (printBuyerNumber) {
-            double effY = clampF(c.buyerNumYMul * sBuyerNum);   // height mul (width stays 2x)
-            e.emitHeightScaled(buyerX, y, "4", 2, c.buyerNumYMul, sBuyerNum, "Buyer #" + buyerNum, c.rightEdge);
+            double effY = clampF(c.buyerNumYMul * sBuyerNum);   // height mul (width stays baseX)
+            // RIGHT-EDGE FIT (60x40): "Buyer #88" at font4 2x width is 432 dots, but its
+            // anchor is only 392 (width>anchor -> reading-right overflow -> the last digit
+            // clipped: "Buyer #88"->"Buyer #8"). A 2x-width buyer# CANNOT fit on the 480-dot
+            // 60x40 with first-letter clearance (would need anchor>=432 but anchor<=~400).
+            // So drop to 1x width on 60x40 (216 dots for "Buyer #88", 240 for "Buyer #888")
+            // -> fits every real buyer number. Other sizes keep 2x (AIMO parity). Height is
+            // unchanged (buyerNumYMul), so no vertical reflow. (Prominence trade-off: the
+            // buyer# is now 1x wide; a bolder 2x-tall variant would need the y-gaps re-tuned
+            // + a device check — deferred.)
+            int buyerNumBaseX = is6040 ? 1 : 2;
+            e.emitHeightScaled(buyerX, y, "4", buyerNumBaseX, c.buyerNumYMul, sBuyerNum, "Buyer #" + buyerNum, c.rightEdge);
             int d = r241((effY - c.buyerNumYMul) * F4);
             y += buyerNumGap + d;
             extra += d;
