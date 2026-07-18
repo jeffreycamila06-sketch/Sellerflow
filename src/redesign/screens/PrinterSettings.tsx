@@ -8,7 +8,7 @@
 // a real APK.
 import { useEffect, useState, type CSSProperties } from "react";
 import {
-  callMobilePrinterBridge, btCall, hasNativePrinter, hasBtBridge, hasDiscoverBridge, buildTestStickerPayload,
+  callMobilePrinterBridge, btCall, hasNativePrinter, hasBtBridge, hasDiscoverBridge, isLikelyStickerPrinter, buildTestStickerPayload,
   type MobilePrinterResult, type BluetoothScanResult, type BluetoothPrinterDevice, type StickerPrintResult, type BluetoothBondResult,
 } from "../adapters/printerBridge";
 import type { Settings } from "../adapters/printing";
@@ -39,7 +39,6 @@ export default function PrinterSettings({
   const [host, setHost] = useState("");
   const [port, setPort] = useState("9100");
   const [btScanning, setBtScanning] = useState(false);
-  const [btDiscovering, setBtDiscovering] = useState(false);
   const [btPrinters, setBtPrinters] = useState<BluetoothPrinterDevice[]>([]);
   const [btSaved, setBtSaved] = useState<BluetoothPrinterDevice | null>(null);
   const [btMsg, setBtMsg] = useState("");
@@ -59,26 +58,38 @@ export default function PrinterSettings({
   async function testConn() { const r = await callMobilePrinterBridge("testConnection", { host: host.trim(), port: clampPort() }); setStatus(r); if (r.ok) await saveLan(); }
   async function testPrint() { setStatus(await callMobilePrinterBridge("testPrint")); }
 
+  // ONE "Scan" button (Jeff's UX verdict — the separate "Find nearby" confused):
+  // phase 1 lists the BONDED printers exactly as before (the AIMO flow — same
+  // native call, results shown immediately, byte-unchanged), then phase 2
+  // APPENDS nearby-unpaired discovery to the SAME list (additive; PM-241/sticker
+  // name filter via isLikelyStickerPrinter so neighbours' phones/TVs never show;
+  // dedup by address — bonded entries win). Old binaries/iOS have no discovery
+  // bridge → phase 2 silently skips → the button IS the old Scan, unchanged.
   async function scanBt() {
     if (!btReady) { setBtMsg(t.rd_ps_open_app_scan); return; }
     setBtScanning(true); setBtMsg("");
     const r = await btCall<BluetoothScanResult>("scanBluetoothLabelPrinters");
+    if (!r) { setBtScanning(false); setBtMsg(t.rd_ps_scan_unavail); return; }
+    setBtPrinters(r.printers || []);
+    if (r.savedPrinter) setBtSaved(r.savedPrinter);
+    setBtMsg(r.message || "");
+    if (hasDiscoverBridge()) {
+      setBtMsg(t.rd_ps_searching_nearby);
+      const d = await btCall<BluetoothScanResult>("discoverBluetoothPrinters");
+      // Merge computed synchronously off the bonded list we JUST set (only this
+      // handler mutates the list and the button is disabled while it runs) — a
+      // functional-updater `let added` would read 0 here (React 18 runs the
+      // updater at render time, after the setBtMsg below).
+      const bonded = r.printers || [];
+      const have = new Set(bonded.map((x) => x.address));
+      const merge = (d?.printers || []).filter((x) => isLikelyStickerPrinter(x.name) && !have.has(x.address));
+      setBtPrinters([...bonded, ...merge]);
+      // Message: the discovery result when it found something new; otherwise the
+      // bonded scan's own line (a "no NEW nearby devices" note would mislead
+      // when a bonded printer IS already listed above it).
+      setBtMsg(merge.length > 0 ? (d?.message || "") : (r.message || d?.message || ""));
+    }
     setBtScanning(false);
-    if (r) { setBtPrinters(r.printers || []); if (r.savedPrinter) setBtSaved(r.savedPrinter); setBtMsg(r.message || ""); }
-    else setBtMsg(t.rd_ps_scan_unavail);
-  }
-  // Nearby discovery (Android classic-SPP only; feature-gated). Merges UNPAIRED
-  // devices into the list — the "Scan" (bonded-only) button stays byte-unchanged, so
-  // the AIMO flow is untouched. Dedup by address (bonded entries win).
-  async function discoverBt() {
-    if (!hasDiscoverBridge()) { setBtMsg(t.rd_ps_open_app_scan); return; }
-    setBtDiscovering(true); setBtMsg(t.rd_ps_searching_nearby);
-    const r = await btCall<BluetoothScanResult>("discoverBluetoothPrinters");
-    setBtDiscovering(false);
-    if (r?.printers) {
-      setBtPrinters((prev) => { const have = new Set(prev.map((x) => x.address)); return [...prev, ...(r.printers || []).filter((x) => !have.has(x.address))]; });
-      setBtMsg(r.message || "");
-    } else setBtMsg(r?.message || t.rd_ps_scan_unavail);
   }
   async function selectBt(p: BluetoothPrinterDevice) {
     // A nearby (unpaired) device must be bonded first — createBond() shows the system
@@ -177,11 +188,6 @@ export default function PrinterSettings({
               <button onClick={() => void scanBt()} disabled={btScanning} style={{ ...gridBtn, border: "none", background: "var(--accent)", color: "var(--accent-text)", boxShadow: "0 4px 14px var(--accent-soft)", opacity: btScanning ? 0.6 : 1 }}>🔍 {btScanning ? t.rd_ps_scanning : t.rd_ps_scan}</button>
               {btSaved && <button onClick={() => void testBt()} style={gridBtn}>{t.rd_ps_test_print}</button>}
             </div>
-            {/* In-app nearby discovery + pairing — no trip to Android Settings. Only shown
-                when the native discovery bridge exists (Android classic-SPP; hidden on iOS/web). */}
-            {hasDiscoverBridge() && (
-              <button onClick={() => void discoverBt()} disabled={btDiscovering} style={{ ...gridBtn, width: "100%", marginTop: 9, opacity: btDiscovering ? 0.6 : 1 }}>📡 {btDiscovering ? t.rd_ps_searching_nearby : t.rd_ps_find_nearby}</button>
-            )}
             {btPrinters.length > 0 && (
               <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, marginTop: 12, overflow: "hidden" }}>
                 {btPrinters.map((p) => (

@@ -26,8 +26,22 @@ export type BtBridgeAction = "scanBluetoothLabelPrinters" | "getBluetoothLabelPr
 export const hasNativePrinter = (): boolean => typeof window !== "undefined" && !!window.SellerFlowPrinter;
 export const hasBtBridge = (): boolean => typeof window !== "undefined" && !!window.SellerFlowPrinter?.scanBluetoothLabelPrinters;
 // Nearby-discovery + in-app pairing (Android classic-SPP only). Absent on iOS (BLE
-// bridge) and on old binaries, so the web feature-gates the "Find nearby" UI on this.
+// bridge) and on old binaries, so the web feature-gates the nearby half of Scan on it.
 export const hasDiscoverBridge = (): boolean => typeof window !== "undefined" && !!(window.SellerFlowPrinter as Record<string, unknown> | undefined)?.discoverBluetoothPrinters;
+
+// PURE — is a DISCOVERED (unpaired) device likely a sticker printer? The single
+// merged "Scan" appends nearby-unpaired discovery to the bonded list; raw
+// discovery sees EVERY classic BT device around (phones, TVs, speakers), which
+// would read as broken noise in the printer picker. Known families: Phomemo
+// PM-2xx, the AIMO D520 line, plus generic label/printer names. Applied ONLY to
+// the discovery (unpaired) results — the bonded list from
+// scanBluetoothLabelPrinters is NEVER filtered (AIMO flow byte-unchanged).
+// Unit-tested; an unknown new printer model can still be paired once in Android
+// Settings and then appears via the bonded list.
+export function isLikelyStickerPrinter(name: string | undefined): boolean {
+  if (!name) return false;
+  return /^PM-2|D520|AIMO|printer|label/i.test(name.trim());
+}
 
 // PURE — normalize a raw bridge return (string | object | void) into MobilePrinterResult.
 // Verbatim from App.tsx:464-470. Unit-tested.
