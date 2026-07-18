@@ -242,40 +242,78 @@ public final class Phomemo241ParityTest {
         check(allFit, "every 60x40 TEXT element fits (width <= anchor), incl. worst-case Buyer #888");
     }
 
-    // M1 — wide ASCII content must COMPRESS to a band (shrink-to-fit), never emit as a
-    // raw font-multiplier TEXT that the printer clips at the reading-last edge. This is
-    // the case the benign-fixture guard above missed (it used short/CJK content). A fake
-    // band renderer lets the compressed elements actually emit so we can assert them.
-    private static void testM1LongAsciiCompressesNotClips() {
-        System.out.println("testM1LongAsciiCompressesNotClips (M1: wide ASCII -> compressed band, never clipped TEXT)");
-        // control: PROVE the pre-M1 raw-TEXT path would have clipped — a 13-char @2x
-        // price is 624 dots but its 60x40 anchor (priceX 92 -> ax 340) is far smaller.
-        check(!textFits("TEXT 372,90,\"4\",180,2,1,\"Blue jeans Me\""), "control: raw 13ch @2x price WOULD overflow (624 > 372)");
+    // P2 — the FITTING LADDER replaces the M1 compress-to-fit: wide ASCII steps DOWN
+    // the sharp ROM fonts (4x1 -> 3x1 -> 2x1 — NO x2 multiplier rungs, the firmware
+    // ignores multipliers on rot-180 TEXT; larger-than-4 = raster band territory) and
+    // only truncates with ASCII "..." at font 2. NEVER a compressed band from the
+    // TEXT path, and short content stays byte-identical designed TEXT.
+    private static JSONObject p2Payload(String store, String name, String handle, String item) {
         JSONObject buyer = new JSONObject();
-        buyer.put("num", 888).put("name", "Very Long Buyer Display Name")
-             .put("handle", "verylongusername_tiktok9999").put("totalSpent", 0);
+        buyer.put("num", 888).put("name", name).put("handle", handle).put("totalSpent", 0);
         JSONArray orders = new JSONArray();
-        orders.put(new JSONObject().put("item", "Blue jeans Medium").put("time", "20:15"));   // long ASCII price
+        orders.put(new JSONObject().put("item", item).put("time", "20:15"));
         buyer.put("orders", orders);
-        JSONObject on = new JSONObject().put("printStoreName", true).put("printBuyerNumber", true)
-            .put("printBuyerUsername", true).put("printOrderItems", true).put("printTotal", true);
-        JSONObject payload = new JSONObject().put("buyer", buyer).put("settings", on)
-            .put("storeName", "My Very Long Shop Name Here").put("currency", "NT$").put("sessionDate", "07/17/2026");
+        return new JSONObject().put("buyer", buyer).put("storeName", store).put("currency", "NT$").put("sessionDate", "07/17/2026");
+    }
+    private static void testP2FittingLadder() {
+        System.out.println("testP2FittingLadder (sharp step-down 4->3->2, '...' last resort, zero bands from ASCII)");
+        // guard sanity: the raw designed emit for a 13ch x2 price WOULD overflow.
+        check(!textFits("TEXT 372,90,\"4\",180,2,1,\"Blue jeans Me\""), "control: raw 13ch @2x price WOULD overflow (624 > 372)");
+        // 60x40 budgets (rightEdge 464 - x - EDGE_GUARD 16): price(x=92)=356,
+        // name/user/time(x=24)=424, store(x=64)=384.
+        // — SHORT content = byte-identical designed TEXT (the invariant):
+        String s = utf8(Phomemo241Builder.forStickerNative241(p2Payload("My Shop", "Maria Santos", "maria_shops", "250"), 60, 40, nullBand()));
+        contains(s, "TEXT 372,90,\"4\",180,2,1,\"250\"", "short price stays the DESIGNED \"4\"x2 TEXT (byte-identical invariant)");
+        // — price 10ch: 10x48=480 > 356 -> rung 4x1 (240 fits) — same physical size
+        //   (firmware ignores the x2 anyway), honest bytes:
+        s = utf8(Phomemo241Builder.forStickerNative241(p2Payload("My Shop", "Ann", "a", "ABCDEFGHIJ"), 60, 40, nullBand()));
+        contains(s, "TEXT 372,90,\"4\",180,1,1,\"ABCDEFGHIJ\"", "10ch price steps to font 4 @1x (full content, sharp)");
+        // — name 20ch: 20x24=480 > 424 -> font 3 (320 fits):
+        s = utf8(Phomemo241Builder.forStickerNative241(p2Payload("My Shop", "ABCDEFGHIJKLMNOPQRST", "a", "250"), 60, 40, nullBand()));
+        contains(s, "TEXT 440,184,\"3\",180,1,1,\"ABCDEFGHIJKLMNOPQRST\"", "20ch name steps to font 3 (full content)");
+        // — name 28ch: 28x24>424, 28x16=448>424 -> font 2 (336 fits):
+        s = utf8(Phomemo241Builder.forStickerNative241(p2Payload("My Shop", "ABCDEFGHIJKLMNOPQRSTUVWXYZAB", "a", "250"), 60, 40, nullBand()));
+        contains(s, "TEXT 440,184,\"2\",180,1,1,\"ABCDEFGHIJKLMNOPQRSTUVWXYZAB\"", "28ch name steps to font 2 (full content)");
+        // — store 36ch (upstream truncate(36)): 36x16>384, 36x12=432>384 -> ladder
+        //   exhausted -> "..." at font 2: maxChars=384/12=32 -> 29 kept + "...":
+        s = utf8(Phomemo241Builder.forStickerNative241(p2Payload("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789", "Ann", "a", "250"), 60, 40, nullBand()));
+        contains(s, "TEXT 400,256,\"2\",180,1,1,\"ABCDEFGHIJKLMNOPQRSTUVWXYZ012...\"", "36ch store: font-2 still over -> truncate 29 + ASCII '...'");
+        // — @username 28ch handle (content 29ch): 29x16=464>424 -> font 2 (348):
+        s = utf8(Phomemo241Builder.forStickerNative241(p2Payload("My Shop", "Ann", "verylongusername_tiktok_9999", "250"), 60, 40, nullBand()));
+        contains(s, "TEXT 440,140,\"2\",180,1,1,\"@verylongusername_tiktok_9999\"", "28ch handle steps to font 2 (full content)");
+        // — NEVER a band from the ASCII TEXT path (nullBand: a band request would
+        //   vanish; every long element above still printed as TEXT), and every
+        //   emitted TEXT fits (width <= anchor) on every size:
+        JSONObject longAll = p2Payload("My Very Long Shop Name Here", "Very Long Buyer Display Name", "verylongusername_tiktok9999", "Blue jeans Medium");
         for (int[] wh : new int[][]{{100, 60}, {80, 60}, {80, 50}, {70, 50}, {60, 40}}) {
-            String s = utf8(Phomemo241Builder.forStickerNative241(payload, wh[0], wh[1], fakeBand()));
-            boolean allFit = true; int bands = 0;
-            for (String line : s.split("\r\n")) {
-                if (line.startsWith("TEXT ")) allFit &= textFits(line);
-                if (line.startsWith("BITMAP ")) bands++;
-            }
-            check(allFit, "no raw TEXT overflows at " + wh[0] + "x" + wh[1] + " — wide ASCII shrunk to bands");
+            String o = utf8(Phomemo241Builder.forStickerNative241(longAll, wh[0], wh[1], nullBand()));
+            boolean allFit = true;
+            for (String line : o.split("\r\n")) if (line.startsWith("TEXT ")) allFit &= textFits(line);
+            check(allFit, "every TEXT fits after the ladder at " + wh[0] + "x" + wh[1]);
+            check(!o.contains("BITMAP"), "no band from ASCII overflow at " + wh[0] + "x" + wh[1] + " (ladder, not compression)");
         }
-        // 60x40 (smallest) — the long store, name, @username, AND price all overflow the
-        // budget from x, so all four must become compressed bands (none lost, none clipped).
-        String s6040 = utf8(Phomemo241Builder.forStickerNative241(payload, 60, 40, fakeBand()));
-        int bands6040 = 0;
-        for (String line : s6040.split("\r\n")) if (line.startsWith("BITMAP ")) bands6040++;
-        check(bands6040 >= 4, "60x40: long store+name+@username+price all compress to bands (got " + bands6040 + ")");
+    }
+
+    // P2 — mixed CJK+ASCII goes to the renderer WHOLE (measureText-based fitting
+    // lives in Phomemo241Raster now): the old ~24xMul cell model pre-truncated
+    // "陳小美 Anna x2" to 8 chars before the renderer ever saw it.
+    private static void testP2MixedStringReachesRendererWhole() {
+        System.out.println("testP2MixedStringReachesRendererWhole");
+        final List<String> texts = new ArrayList<>();
+        Phomemo241Builder.BandRenderer cap = (text, xMul, yMul, maxW) -> {
+            texts.add(text);
+            byte[] b = new byte[4 * 48];
+            java.util.Arrays.fill(b, (byte) 0xAA);
+            return new Phomemo241Builder.Band(4, 48, b);
+        };
+        String mixed = "陳小美 Anna x2";   // 陳小美 Anna x2 — 11 chars
+        JSONObject payload = p2Payload("S", mixed, "s", "250");
+        JSONObject off = new JSONObject().put("printStoreName", false).put("printBuyerNumber", false)
+            .put("printBuyerUsername", false).put("printOrderItems", false).put("printTotal", false);
+        payload.put("settings", off);
+        Phomemo241Builder.forStickerNative241(payload, 60, 40, cap);
+        check(texts.size() == 1 && texts.get(0).equals(mixed),
+              "the FULL mixed string reaches the renderer (was cell-truncated to 8 chars) — got " + texts);
     }
 
     // P1 — the ruler test page measures the PHYSICAL edges, so it must bypass
@@ -496,7 +534,8 @@ public final class Phomemo241ParityTest {
         testAsciiFullParityEverySize();
         testBespoke6040();
         testNoRightEdgeOverflow60x40();
-        testM1LongAsciiCompressesNotClips();
+        testP2FittingLadder();
+        testP2MixedStringReachesRendererWhole();
         testRulerTestPage();
         test6040CapsToOneOrderRow();
         testDirection0Rotated180();

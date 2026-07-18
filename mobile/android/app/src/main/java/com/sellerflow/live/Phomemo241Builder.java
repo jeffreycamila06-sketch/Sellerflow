@@ -487,27 +487,47 @@ final class Phomemo241Builder {
             writeBytes(out, CRLF);
         }
 
-        // 1x TSPL font dot-width (per char) / cell-height, used for the M1 fit check.
+        // 1x TSPL font dot-width (per char), used by the fit check + the P2 ladder.
         // Same width model as the JVM overflow test (font 2=12, 3=16, 4=24 dots).
         static int fontDots(String font) {
             switch (font) { case "2": return 12; case "3": return 16; case "4": return 24; default: return 24; }
         }
 
-        // M1 WIDTH GUARD: previously raw TEXT with NO width check, so wide ASCII
-        // (long price/item, @username, store, Buyer #NNN) overran the reading-last
-        // (physical-left) edge and the printer silently CLIPPED it. Now: if the TSPL
-        // text width exceeds the printable budget from x, render it as a COMPRESSED
-        // band (shrink-to-fit, exactly like the CJK path) so NO content is ever lost.
-        // Content that fits stays byte-identical raw TEXT (parity + defaults unchanged).
+        // P2 FITTING LADDER (sharp ROM fonts only, largest→smallest, all at 1x —
+        // the 241 firmware ignores font multipliers on rotation-180 TEXT, so ×2
+        // rungs don't exist on this hardware; anything larger than font 4 is a
+        // raster band, not a TEXT rung).
+        private static final String[] FONT_LADDER = {"4", "3", "2"};
+
+        // P2 STEP-DOWN (replaces the M1 compress-to-fit): wide ASCII content is
+        // never squeezed into a thin compressed band — it STEPS DOWN the ladder of
+        // sharp ROM fonts until it fits at full stroke weight, and only at the
+        // smallest font is it truncated (ASCII "..." — the TSPL ROM has no Unicode
+        // ellipsis). Content that fits its DESIGNED font is emitted byte-identical
+        // (the short-content invariant; the width check keeps the JVM overflow
+        // model: nominal chars × fontDots × xMul, conservative on this firmware).
         void emitText(int x, int y, String font, int xMul, int yMul, String content, int rightEdge) {
             int budget = Math.max(8, rightEdge - x - EDGE_GUARD);
-            if (content.length() * fontDots(font) * xMul > budget) {
-                // Band height matches the font cell (font 2/3/4 → 12/16/24 dots) so the
-                // shrunk element keeps its intended height and the y-flow is unchanged.
-                emitBand(x, y, content, (double) xMul, fontDots(font) / 24.0 * yMul, rightEdge);
+            if (content.length() * fontDots(font) * xMul <= budget) {
+                writeAscii("TEXT " + (W - x - EDGE_GUARD) + "," + (H - y) + ",\"" + font + "\",180," + xMul + "," + yMul + ",\"" + content + "\"");
                 return;
             }
-            writeAscii("TEXT " + (W - x - EDGE_GUARD) + "," + (H - y) + ",\"" + font + "\",180," + xMul + "," + yMul + ",\"" + content + "\"");
+            // Ladder start: the designed font itself at 1x (a ×2-designed element
+            // that fits at 1x steps here first — same physical size, honest bytes),
+            // unless it was already 1x (then that width just failed above).
+            int start = FONT_LADDER.length - 1;
+            for (int i = 0; i < FONT_LADDER.length; i++) if (FONT_LADDER[i].equals(font)) { start = i; break; }
+            if (xMul == 1 && yMul == 1) start++;
+            for (int i = start; i < FONT_LADDER.length; i++) {
+                if (content.length() * fontDots(FONT_LADDER[i]) <= budget) {
+                    writeAscii("TEXT " + (W - x - EDGE_GUARD) + "," + (H - y) + ",\"" + FONT_LADDER[i] + "\",180,1,1,\"" + content + "\"");
+                    return;
+                }
+            }
+            // Last resort: truncate with "..." at the smallest sharp font (2 = 12/char).
+            int maxChars = Math.max(1, budget / fontDots("2"));
+            String cut = maxChars <= 4 ? truncate(content, maxChars) : truncate(content, maxChars - 3) + "...";
+            writeAscii("TEXT " + (W - x - EDGE_GUARD) + "," + (H - y) + ",\"2\",180,1,1,\"" + cut + "\"");
         }
 
         void emitBar(int x, int y, int w, int h) {
@@ -524,18 +544,12 @@ final class Phomemo241Builder {
             // box bx = W-x-bandW-EDGE_GUARD never hits the max(0,..) clamp that would
             // slice the leading letter. The band reads [x+EDGE_GUARD, <=rightEdge].
             int avail = Math.max(8, rightEdge - x - EDGE_GUARD);
-            // CJK is drawn at natural width + clipped, so truncate to the cells that
-            // fit (~24 x xMul dots each) from the ACTUAL decimal (NOT rounded up). ASCII
-            // is compressed to `avail` by the renderer, so pass it WHOLE (a long name
-            // shrinks to fit, never right-clips).
-            String fitted;
-            if (hasNonAscii(content)) {
-                int cell = Math.max(1, r241(24 * xMul));
-                fitted = truncate(content, Math.max(1, avail / cell));
-            } else {
-                fitted = content;
-            }
-            Band band = renderer.render(fitted, xMul, yMul, avail);
+            // P2: the content is passed WHOLE — fitting now lives in the renderer,
+            // measureText-based on the ACTUAL string (correct for mixed CJK+ASCII like
+            // "陳小美 Anna x2", where the old ~24×xMul cell model over/under-counted).
+            // The renderer steps the point size down proportionally (100%→85%→70%,
+            // sharp shrink, never a horizontal squish) and only then truncates.
+            Band band = renderer.render(content, xMul, yMul, avail);
             if (band == null || band.height <= 0 || band.widthBytes <= 0 || band.bytes.length == 0) return;
             int bx = Math.max(0, W - x - band.widthBytes * 8 - EDGE_GUARD);
             // VERTICAL margin protection: a scaled band grown + pushed down by reflow

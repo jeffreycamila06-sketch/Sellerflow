@@ -43,14 +43,31 @@ final class Phomemo241Raster implements Phomemo241Builder.BandRenderer {
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         paint.setColor(Color.BLACK);
 
+        // P2 FITTING (measureText-based, proportional): a run that is too wide for
+        // maxWidthDots is NEVER horizontally squished (that produced the thin,
+        // rejected strokes). Instead the whole glyph size steps DOWN proportionally
+        // — factors 1.0 → 0.85 → 0.70 — and only if it still doesn't fit at 0.70 is
+        // the STRING truncated (measure-loop on the actual text, so mixed CJK+ASCII
+        // like "陳小美 Anna x2" is measured correctly, not cell-estimated).
+        final double[] FIT_STEPS = {1.0, 0.85, 0.70};
+
         Bitmap bmp;
         int outW;
         if (isCjk) {
             // CJK — system default typeface resolves to Noto CJK on minSdk 24
-            // (Traditional-correct). Sized at outH x 0.82, width natural + clipped.
+            // (Traditional-correct). Sized at outH x 0.82 x fit-step; width natural.
             paint.setTypeface(Typeface.DEFAULT);
-            paint.setTextSize((float) (outH * 0.82));
-            float measured = paint.measureText(text);
+            double fit = FIT_STEPS[FIT_STEPS.length - 1];
+            for (double f : FIT_STEPS) {
+                paint.setTextSize((float) (outH * 0.82 * f));
+                if (paint.measureText(text) <= maxWidthDots) { fit = f; break; }
+            }
+            paint.setTextSize((float) (outH * 0.82 * fit));
+            String run = text;
+            while (run.length() > 1 && paint.measureText(run) > maxWidthDots) {
+                run = run.substring(0, run.length() - 1);   // last resort: truncate at 0.70
+            }
+            float measured = paint.measureText(run);
             int w = Math.min((int) Math.ceil(measured), maxWidthDots);
             if (w <= 0) return null;
             outW = w;
@@ -60,13 +77,15 @@ final class Phomemo241Raster implements Phomemo241Builder.BandRenderer {
             Paint.FontMetrics fm = paint.getFontMetrics();
             float textH = fm.descent - fm.ascent;
             float top = Math.max(0f, (outH - textH) / 2f);
-            canvas.drawText(text, 0f, top - fm.ascent, paint);   // baseline placed so the run is vertically centered
+            canvas.drawText(run, 0f, top - fm.ascent, paint);   // baseline placed so the run is vertically centered
         } else {
             // ASCII/Latin — monospace bold (closest to the TSPL ROM look), sized so
             // the FULL glyph (ascender-top DOWN TO descender-bottom) fits the base
             // cell, then STRETCH by (xMul, yMul) so the letter itself grows. Fitting
             // the whole ascent+descent extent (not just cap height) keeps the "y" in
             // "Buyer" and g/p/q/j from clipping at the bottom at every band scale.
+            // P2: an over-wide run steps the WHOLE stretch down proportionally (both
+            // axes — sharp shrink), then truncates; never a one-axis squish.
             paint.setTypeface(Typeface.create(Typeface.MONOSPACE, Typeface.BOLD));
             paint.setTextSize(100f);
             Paint.FontMetrics ref = paint.getFontMetrics();
@@ -75,15 +94,26 @@ final class Phomemo241Raster implements Phomemo241Builder.BandRenderer {
             Paint.FontMetrics fm = paint.getFontMetrics();
             float measured = paint.measureText(text);
             if (measured < 1f) return null;
-            outW = Math.min((int) Math.ceil(measured * xMul), maxWidthDots);
+            double fit = FIT_STEPS[FIT_STEPS.length - 1];
+            for (double f : FIT_STEPS) {
+                if (measured * xMul * f <= maxWidthDots) { fit = f; break; }
+            }
+            String run = text;
+            while (run.length() > 1 && paint.measureText(run) * xMul * fit > maxWidthDots) {
+                run = run.substring(0, run.length() - 1);   // last resort: truncate at 0.70
+            }
+            measured = paint.measureText(run);
+            if (measured < 1f) return null;
+            outW = Math.min((int) Math.ceil(measured * xMul * fit), maxWidthDots);
             if (outW <= 0) return null;
-            float hStretch = outW / measured;   // = xMul unless width-clamped
             bmp = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888);
             Canvas canvas = new Canvas(bmp);
             canvas.drawColor(Color.WHITE);
             canvas.save();
-            canvas.scale(hStretch, (float) yMul);   // base coords: glyph occupies [0, BASE_CELL] in y
-            canvas.drawText(text, 0f, -fm.ascent, paint);   // ascent-top → 0, descender-bottom → BASE_CELL
+            // Proportional: BOTH axes carry the same fit factor — the glyph shrinks
+            // as a shape, it is never squeezed on one axis.
+            canvas.scale((float) (xMul * fit), (float) (yMul * fit));
+            canvas.drawText(run, 0f, -fm.ascent, paint);   // ascent-top → 0, descender-bottom → BASE_CELL
             canvas.restore();
         }
 
