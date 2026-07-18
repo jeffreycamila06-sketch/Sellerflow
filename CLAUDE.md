@@ -3610,3 +3610,61 @@ oras sa "PRICE not showing" debug: production remote URL ang na-load, hindi ang 
   PRODUCTION (`https://www.sellerflowlive.com/?apk=…`) sa `capacitor.config.json` → Archive
   → Distribute **"App Store Connect"** (hindi Internal Only — DISTRIBUTE RULE) → i-run muna
   ang `run-encoders-sim.sh` + `MobileTsplBuilderTests` sa sim (printing-change Archive gate).
+
+## SESSION 2026-07-18 — ANDROID TEST-APK "OLD UI" INCIDENT → SCRIPTED PIPELINE ✅ (branch `claude/android-241-layouts-mpojdx`)
+**Symptom:** device test ng P4 → LUMANG UI kahit (a) nasa APK ang bagong
+`main-*.js` (unzip+grep verified), (b) walang server block ang
+`assets/capacitor.config.json`, (c) malinis na install. Browser preview = OK.
+
+### LOADING FLOW (code-traced, Android)
+- **Runtime URL decision = `assets/capacitor.config.json` LANG** (packaged sa APK
+  root `assets/`). May `server.url` → remote thin shell; WALA → Capacitor local
+  server sa `https://localhost` na nagse-serve ng **`assets/public/index.html`**.
+- `MainActivity.java` = stock BridgeActivity: **ZERO url logic** (walang loadUrl/
+  hardcode; cache pa nga ay LOAD_NO_CACHE + clearCache sa onCreate — walang
+  WebView-cache na kayang magpanatili ng lumang UI sa fresh install). Walang
+  service worker sa web. Gradle ay nagpa-package lang ng `src/main/assets` as-is
+  (walang config regeneration).
+- **`index.html` = ang redesign entry mismo** (`#redesign-root`) — WALANG
+  entry-switch/redirect script; `app.html` = rollback (hindi nilo-load ng shell);
+  `redesign.html` = legacy alias ng parehong redesign entry.
+- **`?apk=` param = DISPLAY GATING LANG sa web** (`adapters/appShell.ts
+  isAppShell()`: Capacitor object O `?apk` → login sa halip na marketing landing;
+  `App.tsx` MobileLogin gate din). **HINDI ito entry selection** — walang epekto
+  sa kung ALING html/js ang nilo-load. Ang local bundle (may Capacitor) ay app
+  shell pa rin kahit walang `?apk`.
+
+### ROOT CAUSE CLASS: index↔bundle MISMATCH sa `assets/public` (+ ang `mobile/www` landmine)
+Ang tanging mekanismong tugma sa LAHAT ng facts: ang PACKAGED
+`assets/public/index.html` ay hindi tumuturo sa bagong `main-*.js` na nasa APK
+(lumang/ancient index ang na-package habang buhay ang bagong hashed file sa tabi
+nito). Ang gumagawa ng ganitong estado:
+- 🔴 **`mobile/www` = ANCIENT COMMITTED SNAPSHOT** (pre-redesign,
+  `index-D6ZnYiqt.js`, `div#root`!) at ito ang `webDir` sa
+  `mobile/capacitor.config.ts` → **anumang `npx cap sync android` ay
+  (1) pinapalitan ang `assets/public` ng MAY-2026 na app at (2) nire-restore ang
+  `server.url`.** Kaya "binura ang server block" pagkatapos ng sync = tama ang
+  config pero POSIBLENG ancient/halo-halo na ang public sa ilalim.
+- Partial copy (hal. `dist/assets/*` lang) = bagong JS pero lumang index.
+- Incremental gradle pagkatapos ng mass asset swap = posibleng stale merged assets.
+**Disambiguator (isang command):** `unzip -p app-debug.apk assets/public/index.html
+| grep -o 'main-[^"]*.js'` — kung hindi tugma sa bagong hash (o `div id="root"`
+ang laman) = kumpirmado.
+
+### ✅ FIX: `mobile/build-android-testapk.sh` (ANG tanging paraan mula ngayon)
+Atomic pipeline + **in-APK verification** (ang APK mismo ang chine-check, hindi
+ang tree): build → full-wipe copy dist→public → FRESH config write (hindi
+hand-edit) → `gradlew clean assembleDebug` → unzip-verify (config tama sa mode +
+index.html→referenced main-*.js ay PACKAGED). Dalawang mode:
+- `./build-android-testapk.sh bundle` — offline local bundle (https://localhost;
+  TikTok connect OK kung kumpleto ang `.env` VITE vars — binabantayan ng script
+  ang `localhost:3001` bake).
+- `./build-android-testapk.sh url https://<vercel-branch-preview>` — **pinaka-
+  simpleng branch testing**: thin shell sa Vercel branch preview (zero bundling,
+  laging fresh ang web sa bawat push; native printing bridge gumagana sa kahit
+  anong origin; ⚠️ TikTok connect = CORS-blocked sa preview — UI/print testing
+  lang). Walang http:// (walang cleartext permission ang manifest).
+- `SKIP_GRADLE=1` = staging+verify lang (para sa env na walang Android SDK).
+**RULE: HUWAG mag-`npx cap sync android` pagkatapos ng script** (binabalik nito
+ang ancient www + server.url). Balik-prod thin shell = patakbuhin ang script sa
+`url` mode na may production URL, o mag-cap-sync na alam ang mga gotcha.
