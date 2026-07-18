@@ -802,6 +802,30 @@ final class Phomemo241Builder {
      * {@code flip180} rotates 180 (reverses both row and column) so a band reads
      * upright once the whole DIRECTION-0 label is rotated — TRUE for every 241 band.
      */
+    /**
+     * P3.7 ROM-emulation core — HORIZONTAL nearest-neighbor pixel stretch, exactly
+     * what the AIMO firmware does for a TEXT x-multiplier: every source column is
+     * duplicated {@code factor} times, so a REGULAR-weight glyph's thin strokes
+     * WIDEN geometrically instead of the whole letter fattening (the "payat na
+     * lumalapad" AIMO look vs the bold+stroke "buntis" band). Pure + JVM-pinned;
+     * Phomemo241Raster feeds its regular-weight gray pixels through this before
+     * packBits. factor 1 = identity; invalid input → null.
+     */
+    static byte[] stretchGrayH(byte[] gray, int width, int height, int factor) {
+        if (gray == null || width <= 0 || height <= 0 || factor < 1 || gray.length < width * height) return null;
+        if (factor == 1) return gray;
+        byte[] out = new byte[width * factor * height];
+        for (int row = 0; row < height; row++) {
+            int src = row * width, dst = row * width * factor;
+            for (int col = 0; col < width; col++) {
+                byte v = gray[src + col];
+                int base = dst + col * factor;
+                for (int k = 0; k < factor; k++) out[base + k] = v;
+            }
+        }
+        return out;
+    }
+
     static Band packBits(byte[] gray, int width, int height, int threshold, boolean flip180) {
         if (width <= 0 || height <= 0 || gray == null || gray.length < width * height) return null;
         int widthBytes = (width + 7) / 8;

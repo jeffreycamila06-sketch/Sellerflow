@@ -511,6 +511,33 @@ public final class Phomemo241ParityTest {
               "any non-ASCII script (Thai) -> the gentle CJK tuning (safe default)");
     }
 
+    // P3.7 — the ROM-emulation core: pure HORIZONTAL nearest-neighbor stretch
+    // (exactly the AIMO firmware's TEXT x-multiplier — every source column is
+    // duplicated), so a thin regular-weight stroke WIDENS geometrically instead of
+    // the glyph fattening. The raster feeds regular-weight pixels through this.
+    private static void testP37StretchGrayH() {
+        System.out.println("testP37StretchGrayH (ROM x-multiplier column duplication, pure)");
+        // 2x2 gray [a,b / c,d] x2 -> each column duplicated: [a,a,b,b / c,c,d,d]
+        byte[] src = {10, 20, 30, 40};
+        byte[] out2 = Phomemo241Builder.stretchGrayH(src, 2, 2, 2);
+        check(java.util.Arrays.equals(out2, new byte[]{10, 10, 20, 20, 30, 30, 40, 40}),
+              "x2 duplicates every column in place (got " + java.util.Arrays.toString(out2) + ")");
+        // a 1-column black stroke in a 3-wide row becomes a 2-column stroke at x2 —
+        // the 'thin stroke widens geometrically' property (never fattens vertically).
+        byte[] stroke = {(byte) 255, 0, (byte) 255};
+        byte[] s2 = Phomemo241Builder.stretchGrayH(stroke, 3, 1, 2);
+        check(java.util.Arrays.equals(s2, new byte[]{(byte) 255, (byte) 255, 0, 0, (byte) 255, (byte) 255}),
+              "a 1-dot stroke doubles to exactly 2 dots (columns 2-3)");
+        // factor 1 = identity; invalid inputs -> null.
+        check(Phomemo241Builder.stretchGrayH(src, 2, 2, 1) == src, "factor 1 is the identity (same array)");
+        check(Phomemo241Builder.stretchGrayH(null, 2, 2, 2) == null, "null gray -> null");
+        check(Phomemo241Builder.stretchGrayH(src, 2, 2, 0) == null, "factor 0 -> null");
+        check(Phomemo241Builder.stretchGrayH(new byte[]{1, 2}, 2, 2, 2) == null, "short buffer -> null");
+        // x3 for completeness (non-2 factors used by future stretches).
+        byte[] out3 = Phomemo241Builder.stretchGrayH(new byte[]{5, 6}, 2, 1, 3);
+        check(java.util.Arrays.equals(out3, new byte[]{5, 5, 5, 6, 6, 6}), "x3 triples every column");
+    }
+
     // P1 — the ruler test page measures the PHYSICAL edges, so it must bypass
     // EDGE_GUARD entirely: a guarded emit would shift every tick by the very margin
     // the ruler exists to replace. Pins: frame on the exact boundary, tick distances
@@ -741,6 +768,7 @@ public final class Phomemo241ParityTest {
         testP25DropSignal();
         testP3BoldRouting();
         testP3PerScriptBoldTuning();
+        testP37StretchGrayH();
         testRulerTestPage();
         test6040CapsToOneOrderRow();
         testDirection0Rotated180();

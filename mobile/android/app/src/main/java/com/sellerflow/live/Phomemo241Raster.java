@@ -59,6 +59,65 @@ final class Phomemo241Raster implements Phomemo241Builder.BandRenderer {
         return renderCore(text, mul, mul, maxWidthDots, true, strokeDots, threshold);
     }
 
+    /**
+     * P3.7 ROM-EMULATION render (the AIMO "sexy" look): draw the run in REGULAR
+     * weight (no bold face, no stroke unless a light one is asked for) at the base
+     * cell height, at NATURAL 1x width with optional letter-spacing (the ROM cell's
+     * built-in air between chars), then duplicate pixel COLUMNS xhStretch — exactly
+     * what the AIMO firmware does for a TEXT x-multiplier. Thin strokes widen
+     * geometrically; the letter never "fattens". Used by the FONT SAMPLER (and by
+     * production once Jeff picks a row).
+     *
+     * @param cellH          glyph cell height in dots (32 = the AIMO font-4 cell)
+     * @param hStretch       integer column-duplication factor (2 = the AIMO x2)
+     * @param letterSpacingEm extra tracking in ems (0 = font natural)
+     * @param strokeDots     0 = pure regular; small values = very light bolding
+     */
+    Phomemo241Builder.Band renderRom(String text, int cellH, int hStretch, float letterSpacingEm, float strokeDots, int threshold, int maxWidthDots) {
+        if (text == null || text.isEmpty() || cellH <= 0 || hStretch < 1 || maxWidthDots <= 0) return null;
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        paint.setColor(Color.BLACK);
+        paint.setTypeface(Typeface.MONOSPACE);   // REGULAR weight — the thin-stroke base
+        if (strokeDots > 0f) {
+            paint.setStyle(Paint.Style.FILL_AND_STROKE);
+            paint.setStrokeWidth(strokeDots);
+        }
+        if (letterSpacingEm > 0f) paint.setLetterSpacing(letterSpacingEm);
+        // Size so the full ascent..descent extent fits the cell (same rule as the band path).
+        paint.setTextSize(100f);
+        Paint.FontMetrics ref = paint.getFontMetrics();
+        float extent = Math.max(0.5f, ref.descent - ref.ascent);
+        paint.setTextSize(100f * (cellH / extent));
+        Paint.FontMetrics fm = paint.getFontMetrics();
+        // Natural width at 1x; truncate (measure-loop) so the STRETCHED result fits.
+        String run = text;
+        while (run.length() > 1 && paint.measureText(run) * hStretch > maxWidthDots) {
+            run = run.substring(0, run.length() - 1);
+        }
+        float measured = paint.measureText(run);
+        if (measured < 1f) return null;
+        int w1 = Math.max(1, (int) Math.ceil(measured));
+        Bitmap bmp = Bitmap.createBitmap(w1, cellH, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bmp);
+        canvas.drawColor(Color.WHITE);
+        canvas.drawText(run, 0f, -fm.ascent, paint);
+        int w = bmp.getWidth(), h = bmp.getHeight();
+        int[] pixels = new int[w * h];
+        bmp.getPixels(pixels, 0, w, 0, 0, w, h);
+        bmp.recycle();
+        byte[] gray = new byte[w * h];
+        for (int i = 0; i < pixels.length; i++) {
+            int px = pixels[i];
+            int r = (px >> 16) & 0xFF, g = (px >> 8) & 0xFF, b = px & 0xFF;
+            gray[i] = (byte) ((r * 299 + g * 587 + b * 114) / 1000);
+        }
+        // The ROM x-multiplier: pure column duplication (JVM-pinned in the builder);
+        // the measure-loop above already guarantees w x hStretch <= maxWidthDots.
+        byte[] stretched = Phomemo241Builder.stretchGrayH(gray, w, h, hStretch);
+        if (stretched == null) return null;
+        return Phomemo241Builder.packBits(stretched, w * hStretch, h, threshold, true);
+    }
+
     private Phomemo241Builder.Band renderCore(String text, double xMul, double yMul, int maxWidthDots, boolean bold, float strokeDots, int threshold) {
         if (text == null || text.isEmpty() || xMul <= 0 || yMul <= 0 || maxWidthDots <= 0) return null;
 

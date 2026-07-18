@@ -79,6 +79,15 @@ public class SellerFlowPrinterPlugin extends Plugin {
     // bold hierarchy live). Flip to true only for a future re-tune; the sampler
     // stays in the tree (build241BoldSampler).
     private static final boolean BOLD_SAMPLER_MODE = false;
+    // P3.7 FONT STYLE SAMPLER (the AIMO "sexy" look hunt — Jeff rematch #3: the
+    // size now matches but the 241 bands look "buntis" [bold face + stroke +
+    // threshold all at once] vs the AIMO's thin-stroke, airy, x2-stretched ROM
+    // font). While true, the 241 TEST PRINT prints numbered rows of "Buyer #16" +
+    // "150" in candidate rendering styles (rows below) + a CJK reference line at
+    // the APPROVED P3 tuning (CJK is NOT being changed). Jeff picks a row; its
+    // style becomes the enlarged-ASCII production rendering in a follow-up commit,
+    // then this flips back to false. COMMITTED true. Scope: the 241 Test Print ONLY.
+    private static final boolean FONT_SAMPLER_MODE = true;
 
     /**
      * ESC/POS character-size mode (GS ! n) applied to prominent slip fields:
@@ -546,6 +555,21 @@ public class SellerFlowPrinterPlugin extends Plugin {
         Phomemo241Builder.BandRenderer renderer = new Phomemo241Raster();
 
         if (payload.optBoolean("isTest", false)) {
+            // P3.7 style window: the font sampler replaces the verification sticker
+            // while FONT_SAMPLER_MODE is on (see the constant's doc).
+            if (FONT_SAMPLER_MODE) {
+                byte[] fs = build241FontSampler(labelWidthMm, labelHeightMm);
+                sendViaBluetoothSpp(address, fs);
+                JSObject fret = new JSObject();
+                fret.put("ok", true);
+                fret.put("fontSampler", true);
+                fret.put("bytes", fs.length);
+                fret.put("savedPrinter", savedBluetoothPrinter());
+                fret.put("message", "FONT STYLE SAMPLER sent (" + fs.length + " bytes) — pick the row (1-5) that matches the AIMO look.");
+                Log.i(TAG, "print241 FONT sampler bytes=" + fs.length);
+                call.resolve(fret);
+                return;
+            }
             // P3 tuning window: the bold sampler replaces the verification sticker
             // while BOLD_SAMPLER_MODE is on (see the constant's doc).
             if (BOLD_SAMPLER_MODE) {
@@ -729,6 +753,53 @@ public class SellerFlowPrinterPlugin extends Plugin {
                 out.write(("TEXT " + (W - 65) + "," + (H - ay) + ",\"4\",180,1,1,\"Buyer #88\"").getBytes(ascii));
                 out.write('\r'); out.write('\n');
             }
+        }
+        out.write("PRINT 1".getBytes(ascii)); out.write('\r'); out.write('\n');
+        return out.toByteArray();
+    }
+
+    /**
+     * P3.7 FONT STYLE SAMPLER — one label, numbered rows of "Buyer #16" in candidate
+     * enlarged-ASCII renderings (the AIMO "sexy" hunt):
+     *   row 1: CURRENT production bold band (reference — the "buntis" look)
+     *   row 2: ROM-EMULATION — regular weight @32-cell, x2 column stretch (thin
+     *          strokes that WIDEN, the AIMO x2 mechanism; ~37-dot chars — the
+     *          closest integer-stretch match to the AIMO geometry)
+     *   row 3: ROM-emulation + letter-spacing 0.1em (extra air between chars)
+     *   row 4: NATURAL — regular weight @48-cell, no stretch (~28-dot chars, tall+thin)
+     *   row 5: ROM-emulation + very light stroke 0.5 (gitna)
+     *   row 6: "150 250 600" price digits in ROM-emulation (the price-marquee look)
+     *   row C: 陳小美 at the APPROVED P3 CJK tuning — REFERENCE ONLY, CJK unchanged.
+     * Jeff picks the row; that style becomes the production enlarged-ASCII rendering.
+     */
+    private byte[] build241FontSampler(int labelWidthMm, int labelHeightMm) throws Exception {
+        final int W = labelWidthMm * 8, H = labelHeightMm * 8;
+        final Phomemo241Raster raster = new Phomemo241Raster();
+        ByteArrayOutputStream out = new ByteArrayOutputStream(4096);
+        Charset ascii = Charset.forName("US-ASCII");
+        for (String cmd : new String[]{
+                "SIZE " + labelWidthMm + " mm, " + labelHeightMm + " mm",
+                "GAP 2 mm, 0", "DIRECTION 0", "REFERENCE 0,0", "DENSITY 8", "CLS"}) {
+            out.write(cmd.getBytes(ascii)); out.write('\r'); out.write('\n');
+        }
+        int maxW = W - 60 - 16 - 44;   // sample column budget (label x=24, sample x=60, right inset)
+        String sample = "Buyer #16";
+        for (int row = 1; row <= 7; row++) {
+            int ay = 14 + (row - 1) * 42;
+            String label = row == 7 ? "C" : String.valueOf(row);
+            out.write(("TEXT " + (W - 24) + "," + (H - ay) + ",\"2\",180,1,1,\"" + label + "\"").getBytes(ascii));
+            out.write('\r'); out.write('\n');
+            Phomemo241Builder.Band b;
+            switch (row) {
+                case 1:  b = raster.render(sample, Phomemo241Builder.AIMO_CHAR48_X, 2.0, maxW, true); break;      // current bold
+                case 2:  b = raster.renderRom(sample, 32, 2, 0f, 0f, 128, maxW); break;                            // ROM-emu x2
+                case 3:  b = raster.renderRom(sample, 32, 2, 0.1f, 0f, 128, maxW); break;                          // + spacing
+                case 4:  b = raster.renderRom(sample, 48, 1, 0f, 0f, 128, maxW); break;                            // natural 48
+                case 5:  b = raster.renderRom(sample, 32, 2, 0f, 0.5f, 128, maxW); break;                          // + light stroke
+                case 6:  b = raster.renderRom("150 250 600", 32, 2, 0f, 0f, 128, maxW); break;                     // price digits
+                default: b = raster.render("陳小美", 2.0, 2.0, maxW, true); break;                     // CJK reference
+            }
+            if (b != null) writeSamplerBand(out, ascii, W, H, 60, ay, b);
         }
         out.write("PRINT 1".getBytes(ascii)); out.write('\r'); out.write('\n');
         return out.toByteArray();
