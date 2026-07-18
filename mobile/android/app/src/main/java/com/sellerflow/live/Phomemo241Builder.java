@@ -74,6 +74,17 @@ final class Phomemo241Builder {
             && savedName.toUpperCase(java.util.Locale.ROOT).startsWith(PHOMEMO_NAME_PREFIX);
     }
 
+    // ── P3 per-script BOLD TUNING (hardware-tuned via Jeff's sampler, 2026-07-18) ──
+    // The sampler verdict was PER-SCRIPT, not one setting: ASCII picked row 3
+    // (stroke 1.5, threshold 128) — the mono glyphs take the extra weight cleanly;
+    // CJK picked row 2 (stroke 0, threshold 160) — a widened stroke WELDS the dense
+    // CJK strokes together, so CJK gets weight from the threshold only. A MIXED
+    // string ("陳小美 Anna") uses the CJK tuning for the whole band: the CJK glyphs
+    // are the fragile ones, so they win (documented decision). Pure (JVM-pinned);
+    // Phomemo241Raster consumes these for every bold render.
+    static float boldStrokeFor(String text) { return hasNonAscii(text) ? 0f : 1.5f; }
+    static int boldThresholdFor(String text) { return hasNonAscii(text) ? 160 : 128; }
+
     // ── Injectable glyph rasterizer ─────────────────────────────────────────
     // The ONLY android.graphics dependency of the 241 path lives behind this
     // interface. render() returns the packed 1-bit band (already 180-rotated

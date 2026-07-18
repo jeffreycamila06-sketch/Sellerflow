@@ -30,14 +30,11 @@ final class Phomemo241Raster implements Phomemo241Builder.BandRenderer {
 
     private static final int BASE_CELL = 24;   // ~ TSPL font "4" at 1x
 
-    // ── P3 bold tuning (finalized by the BOLD SAMPLER print — see the plugin's
-    // BOLD_SAMPLER_MODE; these defaults are sampler row 4: stroke 1.5, thr 160) ──
-    // BOLD_STROKE_DOTS widens every glyph stroke (FILL_AND_STROKE) in printer dots;
-    // BOLD_THRESHOLD raises the gray→black cutoff so anti-aliased edge pixels
-    // print (thermal dots fill fuller = heavier stroke). Regular threshold stays
-    // the P3-pre value 128.
-    static final float BOLD_STROKE_DOTS = 1.5f;
-    static final int BOLD_THRESHOLD = 160;
+    // P3 bold tuning is PER-SCRIPT (hardware-tuned via Jeff's sampler, 2026-07-18:
+    // ASCII = row 3 [stroke 1.5, thr 128]; CJK/non-ASCII incl. mixed = row 2
+    // [stroke 0, thr 160] — a widened stroke welds dense CJK strokes together).
+    // The selection lives in the PURE Phomemo241Builder.boldStrokeFor/
+    // boldThresholdFor (JVM-pinned); this class just consumes it.
     static final int REGULAR_THRESHOLD = 128;
 
     @Override
@@ -49,7 +46,8 @@ final class Phomemo241Raster implements Phomemo241Builder.BandRenderer {
     @Override
     public Phomemo241Builder.Band render(String text, double xMul, double yMul, int maxWidthDots, boolean bold) {
         return renderCore(text, xMul, yMul, maxWidthDots, bold,
-                bold ? BOLD_STROKE_DOTS : 0f, bold ? BOLD_THRESHOLD : REGULAR_THRESHOLD);
+                bold ? Phomemo241Builder.boldStrokeFor(text) : 0f,
+                bold ? Phomemo241Builder.boldThresholdFor(text) : REGULAR_THRESHOLD);
     }
 
     /**

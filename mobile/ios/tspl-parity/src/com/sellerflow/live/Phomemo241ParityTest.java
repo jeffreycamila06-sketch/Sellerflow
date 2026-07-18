@@ -492,6 +492,22 @@ public final class Phomemo241ParityTest {
         // with the buyer# ENLARGED (pinned in testP25PriorityProtectsPrimaries).
     }
 
+    // P3 completion — the bold tuning is PER-SCRIPT (Jeff's sampler verdict,
+    // 2026-07-18): ASCII = row 3 (stroke 1.5, thr 128); CJK = row 2 (stroke 0,
+    // thr 160 — a heavier stroke welds CJK strokes together). Mixed strings take
+    // the CJK tuning: the CJK glyphs are the fragile ones, so they win.
+    private static void testP3PerScriptBoldTuning() {
+        System.out.println("testP3PerScriptBoldTuning (ASCII row 3, CJK row 2, mixed -> CJK)");
+        check(Phomemo241Builder.boldStrokeFor("Buyer #88") == 1.5f && Phomemo241Builder.boldThresholdFor("Buyer #88") == 128,
+              "pure ASCII -> ASCII tuning (stroke 1.5, threshold 128)");
+        check(Phomemo241Builder.boldStrokeFor("陳小美") == 0f && Phomemo241Builder.boldThresholdFor("陳小美") == 160,
+              "CJK -> CJK tuning (stroke 0, threshold 160)");
+        check(Phomemo241Builder.boldStrokeFor("陳小美 Anna") == 0f && Phomemo241Builder.boldThresholdFor("陳小美 Anna") == 160,
+              "MIXED -> the CJK tuning wins (protect the fragile glyphs)");
+        check(Phomemo241Builder.boldStrokeFor("สวัสดี") == 0f && Phomemo241Builder.boldThresholdFor("สวัสดี") == 160,
+              "any non-ASCII script (Thai) -> the gentle CJK tuning (safe default)");
+    }
+
     // P1 — the ruler test page measures the PHYSICAL edges, so it must bypass
     // EDGE_GUARD entirely: a guarded emit would shift every tick by the very margin
     // the ruler exists to replace. Pins: frame on the exact boundary, tick distances
@@ -721,6 +737,7 @@ public final class Phomemo241ParityTest {
         testP25ByteIdenticalWhenFits();
         testP25DropSignal();
         testP3BoldRouting();
+        testP3PerScriptBoldTuning();
         testRulerTestPage();
         test6040CapsToOneOrderRow();
         testDirection0Rotated180();

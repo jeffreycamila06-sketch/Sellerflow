@@ -70,14 +70,15 @@ public class SellerFlowPrinterPlugin extends Plugin {
     // unit / suspected drift change); the ruler pattern itself stays in the tree
     // (Phomemo241Builder.rulerTestPage).
     private static final boolean RULER_TEST_MODE = false;
-    // P3 BOLD SAMPLER (weight-tuning window, same pattern as the ruler). While true,
-    // the 241 TEST PRINT prints one label with 7 numbered rows of "Buyer #88" +
-    // 陳小美 at candidate bold settings (3 stroke widths × 2 thresholds + a
-    // double-strike TEXT experiment). Jeff picks the best-looking row number; its
-    // stroke/threshold become Phomemo241Raster.BOLD_STROKE_DOTS/BOLD_THRESHOLD in a
-    // follow-up commit, then this flips back to false. COMMITTED true so the tuning
-    // build prints the sampler immediately. Scope: the 241 Test Print ONLY.
-    private static final boolean BOLD_SAMPLER_MODE = true;
+    // P3 BOLD SAMPLER — TUNING COMPLETE (2026-07-18, Jeff's hardware verdict was
+    // PER-SCRIPT: ASCII best = row 3 [stroke 1.5, thr 128]; CJK best = row 2
+    // [stroke 0, thr 160] — heavier strokes weld CJK together; the double-strike
+    // row 7 was not chosen). The tuning now lives in the pure
+    // Phomemo241Builder.boldStrokeFor/boldThresholdFor (per-script, mixed → CJK)
+    // and the Test Print is back to the CJK verification sticker (now with the
+    // bold hierarchy live). Flip to true only for a future re-tune; the sampler
+    // stays in the tree (build241BoldSampler).
+    private static final boolean BOLD_SAMPLER_MODE = false;
 
     /**
      * ESC/POS character-size mode (GS ! n) applied to prominent slip fields:
