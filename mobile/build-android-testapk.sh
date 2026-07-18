@@ -55,6 +55,35 @@ APK="$HERE/android/app/build/outputs/apk/debug/app-debug.apk"
 fail() { echo "✗ $1" >&2; exit 1; }
 note() { echo "• $1"; }
 
+# ── CLOSURE VERIFY (the packaging-correctness core) ──────────────────────────
+# A modern Vite build's index.html references MORE than one hashed asset — the
+# entry chunk (main-*.js), any code-split chunk (e.g. db-*.js), and the CSS.
+# The "index references X but X is not packaged" failure happens when index.html
+# and the asset files fall out of sync (a partial/interrupted copy, a leftover
+# stale assets/public from a prior run or a stray `npx cap sync`, a
+# case-insensitive-FS hash clash, …). Checking only the first main-*.js misses a
+# dropped db-*.js/CSS entirely. This verifies the COMPLETE closure: every local
+# /assets/* reference in index.html must resolve to a real file under <root>.
+# Runs POST-STAGE (before the expensive gradle — fails fast with the exact
+# missing file) and again INSIDE the APK. Since gradle packages src/main/assets
+# verbatim, a staged tree that passes closure ⟹ a consistent APK.
+#   assert_closure <index.html path> <asset-root dir> <label>
+assert_closure() {
+  local index="$1" root="$2" label="$3" ref rel missing=0
+  [ -f "$index" ] || fail "$label: index.html missing at $index"
+  local refs; refs="$(grep -oE '(src|href)="[^"]*/assets/[^"]*\.(js|css)"' "$index" \
+                      | sed -E 's/.*"([^"]*)".*/\1/' | sed -E 's#^.*/assets/#assets/#' | sort -u)"
+  [ -n "$refs" ] || fail "$label: index.html references NO /assets/*.js|css — stale/ancient index (the 'old UI' bug)"
+  echo "$refs" | grep -q 'assets/main-.*\.js' \
+    || fail "$label: index.html has no main-*.js entry chunk — stale/ancient index"
+  while IFS= read -r ref; do
+    [ -n "$ref" ] || continue
+    if [ ! -f "$root/$ref" ]; then echo "   MISSING: $ref" >&2; missing=1; fi
+  done <<< "$refs"
+  [ "$missing" -eq 0 ] || fail "$label: index.html references asset(s) NOT present (above) — inconsistent bundle; re-run this script (it clean-stages) rather than shipping"
+  note "$label closure OK — $(echo "$refs" | wc -l | tr -d ' ') asset(s), all present"
+}
+
 if [ "$MODE" = "url" ]; then
   [ -n "$URL" ] || fail "url mode needs a URL: ./build-android-testapk.sh url https://..."
   case "$URL" in https://*) ;; *) fail "only https:// URLs (no cleartext permission in the manifest)";; esac
@@ -77,14 +106,22 @@ if [ "$MODE" = "bundle" ]; then
   fi
 fi
 
-# 2 ── Stage assets/public atomically (full wipe + full copy — never partial).
+# 2 ── Stage assets/public DETERMINISTICALLY (clean swap — never a merge into a
+# stale tree). Copy into a fresh sibling dir then atomically replace, so a
+# leftover assets/public from a prior run / stray `npx cap sync` can never
+# survive to mingle with the new bundle (the root cause of an index that
+# references a hash whose file isn't there). `cp` failure is fatal (set -e).
 if [ "$MODE" = "bundle" ]; then
-  note "staging dist -> assets/public ..."
-  rm -rf "$PUBLIC"
-  mkdir -p "$PUBLIC"
-  cp -R "$REPO/dist/." "$PUBLIC/"
+  note "staging dist -> assets/public (clean swap) ..."
+  rm -rf "$PUBLIC" "$PUBLIC.stage"
+  mkdir -p "$PUBLIC.stage"
+  cp -R "$REPO/dist/." "$PUBLIC.stage/"
+  mv "$PUBLIC.stage" "$PUBLIC"
 fi
 [ -f "$PUBLIC/index.html" ] || fail "assets/public/index.html missing (in url mode run 'bundle' once first, or npx cap sync, so the packaged fallback exists)"
+# Verify the FULL index->asset closure NOW, before gradle: a staged tree that
+# passes this packages into a consistent APK (gradle copies assets verbatim).
+if [ "$MODE" = "bundle" ]; then assert_closure "$PUBLIC/index.html" "$PUBLIC" "staged"; fi
 
 # 3 ── Write assets/capacitor.config.json FRESH (never hand-edit it).
 note "writing assets/capacitor.config.json ($MODE mode) ..."
@@ -126,13 +163,11 @@ JSON
 fi
 python3 -m json.tool "$CONFIG" >/dev/null || fail "generated config is not valid JSON"
 
-# 4 ── Pre-gradle verification: the index/bundle chain must be consistent.
-ENTRY_JS="$(grep -o 'assets/main-[^"]*\.js' "$PUBLIC/index.html" | head -1 || true)"
-[ -n "$ENTRY_JS" ] || fail "assets/public/index.html references no assets/main-*.js — STALE/ANCIENT index (this is the 'old UI' bug)"
-[ -f "$PUBLIC/$ENTRY_JS" ] || fail "index.html references $ENTRY_JS but the file is NOT in assets/public — partial copy (this is the 'old UI' bug)"
+# 4 ── Pre-gradle config verification (the asset closure was already verified at
+# stage time in bundle mode; url mode packages web only as an offline fallback).
 if [ "$MODE" = "bundle" ]; then
   grep -q '"server"' "$CONFIG" && fail "bundle mode but config has a server block"
-  note "verified: index.html -> $ENTRY_JS (present), config = local bundle"
+  note "verified: config = local bundle (no server block)"
 else
   note "verified: config server.url = $URL (packaged web is only the offline fallback)"
 fi
@@ -154,11 +189,24 @@ if [ "$MODE" = "bundle" ]; then
 else
   echo "$APK_CONFIG" | grep -qF "$URL" || fail "APK config does not carry the requested url"
 fi
-APK_ENTRY_JS="$(unzip -p "$APK" assets/public/index.html | grep -o 'assets/main-[^"]*\.js' | head -1 || true)"
-[ -n "$APK_ENTRY_JS" ] || fail "APK index.html references no main-*.js — stale index packaged"
-unzip -l "$APK" | grep -q "assets/public/$APK_ENTRY_JS" \
-  || fail "APK index.html references $APK_ENTRY_JS but that file is not packaged"
-note "APK verified: index.html -> $APK_ENTRY_JS (packaged), config = $MODE"
+# FULL closure inside the APK: extract the packaged index.html + the packaged
+# file list, and assert EVERY /assets/* the index references (entry chunk,
+# db-*.js code-split chunk, CSS) is actually in the APK — not just the first
+# main-*.js. This is the authoritative check that no referenced asset was
+# dropped by packaging.
+APK_INDEX="$(unzip -p "$APK" assets/public/index.html)"
+APK_LIST="$(unzip -l "$APK")"
+APK_REFS="$(echo "$APK_INDEX" | grep -oE '(src|href)="[^"]*/assets/[^"]*\.(js|css)"' \
+            | sed -E 's/.*"([^"]*)".*/\1/' | sed -E 's#^.*/assets/#assets/#' | sort -u)"
+[ -n "$APK_REFS" ] || fail "APK index.html references no /assets/*.js|css — stale index packaged"
+echo "$APK_REFS" | grep -q 'assets/main-.*\.js' || fail "APK index.html has no main-*.js entry chunk — stale index"
+APK_MISSING=0
+while IFS= read -r ref; do
+  [ -n "$ref" ] || continue
+  echo "$APK_LIST" | grep -q "assets/public/$ref" || { echo "   NOT PACKAGED: $ref" >&2; APK_MISSING=1; }
+done <<< "$APK_REFS"
+[ "$APK_MISSING" -eq 0 ] || fail "APK index.html references asset(s) NOT packaged (above) — inconsistent APK; re-run this script (clean-stage) before installing"
+note "APK verified: $(echo "$APK_REFS" | wc -l | tr -d ' ') referenced asset(s) all packaged, config = $MODE"
 echo
 echo "✅ $APK"
 echo "   install:  adb install -r \"$APK\"   (or send the file to the phone)"
