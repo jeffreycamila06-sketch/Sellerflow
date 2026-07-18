@@ -101,7 +101,16 @@ final class Phomemo241Builder {
     //  - @username unchanged (24-dot cell) — Jeff: tama na.
     // The 60x40 reflow/planner RESERVES the new heights (buyer# d = 48s-32, ASCII
     // name d = 42(s-1)) so the defaults fit with zero stepping — see finalYFor.
-    static final double BUYER_BOLD_X = 8.0 / 3.0;
+    // P3.6 EXACT AIMO DIMENSION MATCH (dimensions export, 2026-07-18). The AIMO
+    // 60x40 chars: buyer#/price = font 4 x2 = 48x32 dots; @user = font 3 = 16x24.
+    // The Android mono glyph advance at the 24-dot cell is ~14 dots (estimate —
+    // the renderer MEASURES the real width, so these are targets and the fit is
+    // guaranteed by measure + step-down):
+    static final double MONO_CHAR_W = 14.0;
+    static final double AIMO_CHAR48_X = 48.0 / MONO_CHAR_W;   // ~3.43 -> 48-dot chars
+    static final double PRICE_BAND_Y = 4.0 / 3.0;             // 32-dot cell (font-4 height)
+    static final double USER_BOLD_X = 16.0 / MONO_CHAR_W;     // ~1.14 -> 16-dot chars
+    static final double BUYER_BOLD_X = AIMO_CHAR48_X;         // was 8/3 (P3.5) -> full AIMO width
     static final double BUYER_BOLD_Y = 2.0;
     static final double NAME_BOLD_6040 = 1.75;
     static final double NAME_BOLD_BIG = 4.0 / 3.0;
@@ -430,7 +439,7 @@ final class Phomemo241Builder {
         int extra = 0;
         int y = startY;
         if (hasStore) {
-            e.emitSym(storeX, y, "3", sStore, safe(truncate(cleanStoreName, 36)), c.rightEdge, false, 0);
+            e.emitSym(storeX, y, "3", sStore, safe(truncate(cleanStoreName, 36)), c.rightEdge, false, 0, 0);
             int d = r241((clampF(sStore) - 1) * F3);
             y += storeGap + d;
             extra += d;
@@ -467,7 +476,7 @@ final class Phomemo241Builder {
                 y += c.nameCjkGap + d;
                 extra += (c.nameCjkGap - nameGap) + d;
             } else {
-                e.emitSym(nameX, y, "4", sName, safe(truncate(nameOut, 30)), c.rightEdge, true, is6040 ? NAME_BOLD_6040 : NAME_BOLD_BIG);   // P3/P3.5: primary = BOLD band
+                e.emitSym(nameX, y, "4", sName, safe(truncate(nameOut, 30)), c.rightEdge, true, is6040 ? NAME_BOLD_6040 : NAME_BOLD_BIG, is6040 ? NAME_BOLD_6040 : NAME_BOLD_BIG);   // P3/P3.5: primary = BOLD band
                 // P3.5 60x40: the ASCII-name band is 42s tall -> grow by 42/step so
                 // the advance (44 + d) always covers it. Big sizes keep the 32 cell.
                 int d = is6040 ? r241((clampF(sName) - 1) * 24 * NAME_BOLD_6040)
@@ -478,7 +487,7 @@ final class Phomemo241Builder {
         }
 
         if (hasUser) {
-            e.emitSym(userX, y, "3", sUser, "@" + safe(truncate(cleanBuyerHandle, 30)), c.rightEdge, true, 1.0);   // P3: primary = BOLD band (24-cell, unchanged)
+            e.emitSym(userX, y, "3", sUser, "@" + safe(truncate(cleanBuyerHandle, 30)), c.rightEdge, true, USER_BOLD_X, 1.0);   // P3/P3.6: bold band, AIMO 16x24 chars
             int d = r241((clampF(sUser) - 1) * F3);
             y += usernameGap + d;
             extra += d;
@@ -506,13 +515,20 @@ final class Phomemo241Builder {
                 if (!time.isEmpty()) {
                     e.emitText(timeX, y, "2", 1, 1, safe(truncate(time, 10)), c.rightEdge);
                 }
-                // PRICE CODE — height-priority (base 2x width, 1x height); height honors
-                // the comment decimal (BUG 3). ASCII scale 1.0 → TEXT (byte-identical).
-                // v3 (Jeff): the price sits on the SAME row as the time (offset 0) for
-                // EVERY size — priceX places it in its own column to the right of the
-                // time (no overlap), so a shared y is intentional, not a bug.
+                // PRICE CODE — P3.6: ALWAYS a REGULAR-weight band at the AIMO
+                // "enlarged marquee" target (48-dot chars x 32-dot cell). The AIMO
+                // prints this via font-4 x2 (multiplier WORKS on DIR1); the 241
+                // firmware ignores TEXT multipliers, so the band is the only way to
+                // match — regular weight (no bold face gimmicks), height honors the
+                // comment decimal. Long items step down via the renderer measure
+                // ladder before truncating; short codes ("150") get full 48-dot
+                // dominance. v3 (Jeff): the price shares the time's row (offset 0);
+                // priceX keeps it in its own column (no overlap).
                 if (!cleanItem.isEmpty()) {
-                    e.emitHeightScaled(priceX, y, "4", 2, 1, sComment, safe(truncate(cleanItem, 12)), c.rightEdge, false);
+                    String priceOut = TsplBuilder.transliterateLatin(safe(truncate(cleanItem, 12)));
+                    if (!priceOut.isEmpty()) {
+                        e.emitBand(priceX, y, priceOut, AIMO_CHAR48_X, PRICE_BAND_Y * clampF(sComment), c.rightEdge, false);
+                    }
                 }
                 int d = Math.max(0, r241((clampF(sComment) - 1) * F4));
                 y += 38 + d;
@@ -522,7 +538,7 @@ final class Phomemo241Builder {
 
         if (printTotal && totalSpent > 0 && c.showTotal) {
             int totalY = c.totalY + extra;
-            e.emitSym(16, totalY, "3", sTotal, "Total:", c.rightEdge, false, 0);
+            e.emitSym(16, totalY, "3", sTotal, "Total:", c.rightEdge, false, 0, 0);
             String totalStr = safe(currency) + money(totalSpent);
             e.emitHeightScaled(c.totalAmountX, totalY, "4", 2, 1, sTotal, safe(truncate(totalStr, 18)), W - 16, false);
         }
@@ -737,14 +753,14 @@ final class Phomemo241Builder {
         // proportional band, sized so its height matches the designed font's cell
         // (cellH/24 × scale on both axes → a font-4 name band is 32-dot at 1.0,
         // never smaller than the TEXT it replaces).
-        void emitSym(int x, int y, String font, double scale, String rawContent, int rightEdge, boolean bold, double boldMul) {
+        void emitSym(int x, int y, String font, double scale, String rawContent, int rightEdge, boolean bold, double boldMulX, double boldMulY) {
             String content = TsplBuilder.transliterateLatin(rawContent);
             if (content.isEmpty()) return;   // same emptiness rule as writeTextSmart (parity)
             if (bold) {
-                // P3.5: the designed bold cell comes from the CALL SITE (per-size —
-                // e.g. the 60x40 name is 1.75, big sizes 4/3), x scale on both axes.
-                double bm = boldMul * scale;
-                emitBand(x, y, content, bm, bm, rightEdge, true);
+                // P3.5/P3.6: the designed bold cell comes from the CALL SITE, per
+                // axis (x scale) — e.g. the @username is widened to the AIMO 16-dot
+                // char (X only) while keeping its 24-dot height.
+                emitBand(x, y, content, boldMulX * scale, boldMulY * scale, rightEdge, true);
                 return;
             }
             boolean isCjk = hasNonAscii(content);
@@ -763,8 +779,11 @@ final class Phomemo241Builder {
             String content = TsplBuilder.transliterateLatin(rawContent);
             if (content.isEmpty()) return;
             if (bold) {
-                // P3.5 AIMO-proportion buyer#: (8/3 wide, 2.0 tall) x scale on every
-                // size — 48-dot cell with ~37-dot chars (see the design constants).
+                // P3.6 AIMO-match buyer#: (48/14 wide, 2.0 tall) x scale on every
+                // size — 48-dot chars (the AIMO font-4 x2 width) x 48-dot cell. On
+                // 60x40 a 9-char "Buyer #NN" is ~432 dots vs the 424 measured avail,
+                // so the renderer's 0.95 rung trims it to ~46-dot chars (96% AIMO) —
+                // the accepted trade-off; big sizes fit the full 48.
                 emitBand(x, y, content, BUYER_BOLD_X * scale, Math.max(baseY, BUYER_BOLD_Y) * scale, rightEdge, true);
                 return;
             }

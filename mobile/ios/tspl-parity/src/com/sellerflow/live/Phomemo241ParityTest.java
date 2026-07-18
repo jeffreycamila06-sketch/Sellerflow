@@ -134,6 +134,10 @@ public final class Phomemo241ParityTest {
             if (line.contains("\"Buyer #12\"")) continue;
             if (line.contains("\"Maria Santos\"")) continue;
             if (line.contains("\"@maria_shops\"")) continue;
+            // P3.6: the PRICE is an always-band too (the AIMO's font-4 x2 marquee
+            // needs a band on this firmware — TEXT multipliers are dead), so its
+            // AIMO TEXT line is a documented removal as well.
+            if (line.contains("\"250\"")) continue;
             out.add(line);
         }
         return String.join("\r\n", out);
@@ -167,8 +171,8 @@ public final class Phomemo241ParityTest {
                "printable-width top bar at " + s[0] + "x" + s[1] + " (reading [32.." + (rE - 32) + "])");
             check(fork.split("BAR ", -1).length - 1 == 1, "exactly one (top) bar at " + s[0] + "x" + s[1]);
             String forkBands = utf8(Phomemo241Builder.forStickerNative241(payload, s[0], s[1], fakeBand()));
-            check(forkBands.split("BITMAP ", -1).length - 1 == 3,
-                  "the 3 bold primaries emit as bands at " + s[0] + "x" + s[1]);
+            check(forkBands.split("BITMAP ", -1).length - 1 == 4,
+                  "the 3 bold primaries + the price marquee emit as bands at " + s[0] + "x" + s[1]);
         }
     }
 
@@ -197,7 +201,7 @@ public final class Phomemo241ParityTest {
         contains(s, "BITMAP 408,126,4,42,0,", "name authoring (24,152) — P3.5 bold band, 42-dot cell");
         contains(s, "BITMAP 408,100,4,24,0,", "@username authoring (24,196 ASCII col) — bold band, 24-dot cell (unchanged size)");
         contains(s, "TEXT 440,74,\"2\",180,1,1,\"20:15\"", "time authoring (24,246 ASCII col) = row anchor");
-        contains(s, "TEXT 372,74,\"4\",180,2,1,\"250\"", "price authoring (92,246 ASCII col) = SAME row as time (offset 0)");
+        contains(s, "BITMAP 340,42,4,32,0,", "price authoring (92,246 ASCII col) — P3.6 AIMO-marquee band (32-dot cell), SAME row as time");
         int bars = s.split("BAR ", -1).length - 1;
         check(bars == 1, "order separator bar REMOVED on 60x40 -> only the top bar remains (got " + bars + ")");
     }
@@ -269,13 +273,12 @@ public final class Phomemo241ParityTest {
         check(!textFits("TEXT 372,90,\"4\",180,2,1,\"Blue jeans Me\""), "control: raw 13ch @2x price WOULD overflow (624 > 372)");
         // 60x40 budgets (rightEdge 464 - x - EDGE_GUARD 16): price(x=92)=356,
         // name/user/time(x=24)=424, store(x=64)=384.
-        // — SHORT content = byte-identical designed TEXT (the invariant):
-        String s = utf8(Phomemo241Builder.forStickerNative241(p2Payload("My Shop", "Maria Santos", "maria_shops", "250"), 60, 40, nullBand()));
-        contains(s, "TEXT 372,74,\"4\",180,2,1,\"250\"", "short price stays the DESIGNED \"4\"x2 TEXT (byte-identical invariant)");
-        // — price 10ch: 10x48=480 > 356 -> rung 4x1 (240 fits) — same physical size
-        //   (firmware ignores the x2 anyway), honest bytes:
-        s = utf8(Phomemo241Builder.forStickerNative241(p2Payload("My Shop", "Ann", "a", "ABCDEFGHIJ"), 60, 40, nullBand()));
-        contains(s, "TEXT 372,74,\"4\",180,1,1,\"ABCDEFGHIJ\"", "10ch price steps to font 4 @1x (full content, sharp)");
+        // — PRICE (P3.6): ALWAYS a regular-weight band at the AIMO marquee target
+        //   (48-dot chars x 32-dot cell); its fitting lives in the renderer measure
+        //   ladder (device side). Short-content TEXT invariants now cover the
+        //   remaining regular TEXT elements (store/header/date/time) below.
+        String s = utf8(Phomemo241Builder.forStickerNative241(p2Payload("My Shop", "Maria Santos", "maria_shops", "250"), 60, 40, fakeBand()));
+        contains(s, "BITMAP 340,42,4,32,0,", "short price = the full 48-target band at its row (nothing stepped)");
         // — name (P3: a BOLD primary = always a band) — the ladder no longer applies;
         //   the renderer step-down fits it. The FULL 20ch content must reach the
         //   renderer with bold=true (pinned in testP3BoldRouting + the whole-string test).
@@ -396,7 +399,7 @@ public final class Phomemo241ParityTest {
             contains(s, "BITMAP 408,96,4,48,0,", tag + ": name band floored to base (48), directly below, no overlap");
             contains(s, "TEXT 400,256,\"3\",180,1,1,\"My Shop\"", tag + ": store stepped to sharp 1.0 TEXT");
             contains(s, "BITMAP 408,64,4,24,0,", tag + ": @username floored to its base bold band (24)");
-            contains(s, "TEXT 372,38,\"4\",180,2,1,\"250\"", tag + ": price stepped to the designed 1.0 TEXT, row at reading y=282 (fits: 282+38<=320)");
+            contains(s, "BITMAP 340,6,4,32,0,", tag + ": price floored to its 32-cell marquee band, row at reading y=282 (fits: 282+38<=320)");
         }
     }
 
@@ -466,10 +469,10 @@ public final class Phomemo241ParityTest {
               && boldTexts.stream().anyMatch(t -> t.equals("Maria Santos"))
               && boldTexts.stream().anyMatch(t -> t.equals("@maria_shops")),
               "exactly the 3 primaries render as BOLD bands even short at 1.0 (got " + boldTexts + ")");
-        check(regularTexts.isEmpty(), "no REGULAR-weight band at all-1.0 (secondaries stay TEXT; got " + regularTexts + ")");
+        check(regularTexts.equals(java.util.List.of("250")), "exactly ONE regular-weight band at all-1.0 — the price marquee (store/date/time stay TEXT; got " + regularTexts + ")");
         contains(s, "TEXT 400,256,\"3\",180,1,1,\"My Shop\"", "store stays raw TEXT (regular invariant)");
         contains(s, "TEXT 440,74,\"2\",180,1,1,\"20:15\"", "time stays raw TEXT");
-        contains(s, "TEXT 372,74,\"4\",180,2,1,\"250\"", "price stays the designed raw TEXT");
+        contains(s, "BITMAP 340,", "price emits as its regular-weight marquee band");
         check(!s.contains("\"Buyer #12\"") && !s.contains("\"Maria Santos\"") && !s.contains("\"@maria_shops\""),
               "no primary ever appears as raw TEXT");
         // Bold band sizing: the band must never be SMALLER than the ROM text it
@@ -486,8 +489,8 @@ public final class Phomemo241ParityTest {
             }
         };
         Phomemo241Builder.forStickerNative241(asciiPayload(), 60, 40, hcap);
-        check(heights.equals(java.util.List.of(48, 42, 24)),
-              "P3.5 design cells: buyer# 48, name 42, @user 24 — the AIMO-dominance hierarchy (got " + heights + ")");
+        check(heights.equals(java.util.List.of(48, 42, 24, 32)),
+              "P3.6 design cells: buyer# 48, name 42, @user 24, price 32 — the AIMO-match hierarchy (got " + heights + ")");
         // The vertical planner accounts for the bold heights: 60x40 CJK all-1.5 fits
         // with the buyer# ENLARGED (pinned in testP25PriorityProtectsPrimaries).
     }
@@ -551,9 +554,11 @@ public final class Phomemo241ParityTest {
         orders.put(new JSONObject().put("item", "999").put("time", "20:18"));
         buyer.put("orders", orders);
         JSONObject payload = new JSONObject().put("buyer", buyer).put("storeName", "S").put("currency", "NT$").put("sessionDate", "");
-        String s = utf8(Phomemo241Builder.forStickerNative241(payload, 60, 40, nullBand()));
-        contains(s, "\"250\"", "the first (only) order row prints");
-        check(!s.contains("\"999\""), "60x40 caps at ONE row (2nd order becomes its own sticker in the plugin)");
+        final List<String> texts = new ArrayList<>();
+        Phomemo241Builder.BandRenderer cap = (t, x, yy, m) -> { texts.add(t); return null; };
+        Phomemo241Builder.forStickerNative241(payload, 60, 40, cap);
+        check(texts.stream().anyMatch(t -> t.equals("250")), "the first (only) order row prints (price band)");
+        check(texts.stream().noneMatch(t -> t.contains("999")), "60x40 caps at ONE row (2nd order becomes its own sticker in the plugin)");
     }
 
     private static void testDirection0Rotated180() {
@@ -613,28 +618,26 @@ public final class Phomemo241ParityTest {
         }
     }
 
-    // P3 note: the 1.0-stays-TEXT invariant now applies to REGULAR-weight elements
-    // only (bold primaries are always bands) — so this pins the PRICE, not buyer#.
+    // P3.6 note: the 1.0-stays-TEXT invariant now covers STORE/header/date/time
+    // (bold primaries + the price marquee are always bands) — this pins the STORE.
     private static void testExactlyOnePointZeroStaysText() {
-        System.out.println("testExactlyOnePointZeroStaysText (regular elements only — P3)");
-        JSONArray orders = new JSONArray();
-        orders.put(new JSONObject().put("item", "250").put("time", "20:15"));
-        JSONObject buyer = new JSONObject().put("num", 88).put("name", "").put("handle", "s").put("totalSpent", 0).put("orders", orders);
-        JSONObject off = new JSONObject().put("printStoreName", false).put("printBuyerNumber", false).put("printBuyerUsername", false).put("printTotal", false);
+        System.out.println("testExactlyOnePointZeroStaysText (store — the remaining regular scalable)");
+        JSONObject buyer = new JSONObject().put("num", 88).put("name", "").put("handle", "s").put("totalSpent", 0).put("orders", new JSONArray());
+        JSONObject off = new JSONObject().put("printBuyerNumber", false).put("printBuyerUsername", false).put("printOrderItems", false).put("printTotal", false);
         final int[] bands = {0};
         Phomemo241Builder.BandRenderer count = (t, x, yy, m) -> { bands[0]++; return null; };
-        JSONObject p10 = new JSONObject().put("buyer", buyer).put("settings", off).put("scalesRaw", new JSONObject().put("printCommentScale", 1.0))
-            .put("storeName", "S").put("currency", "NT$").put("sessionDate", "");
+        JSONObject p10 = new JSONObject().put("buyer", buyer).put("settings", off).put("scalesRaw", new JSONObject().put("printStoreScale", 1.0))
+            .put("storeName", "My Shop").put("currency", "NT$").put("sessionDate", "");
         String s10 = utf8(Phomemo241Builder.forStickerNative241(p10, 60, 40, count));
-        check(bands[0] == 0, "REGULAR price at scale exactly 1.0 -> TEXT, never a band");
-        contains(s10, "\"250\"", "scale 1.0 -> the price is a plain TEXT");
+        check(bands[0] == 0, "REGULAR store at scale exactly 1.0 -> TEXT, never a band");
+        contains(s10, "\"My Shop\"", "scale 1.0 -> the store is a plain TEXT");
         // 0.9 (just under 1) -> band (TEXT cannot shrink; a rounded gate would miss this).
         final int[] b09 = {0};
         Phomemo241Builder.BandRenderer r09 = (t, x, yy, m) -> { b09[0]++; byte[] by = new byte[88]; java.util.Arrays.fill(by, (byte) 0xAA); return new Phomemo241Builder.Band(4, 22, by); };
-        JSONObject p09 = new JSONObject().put("buyer", buyer).put("settings", off).put("scalesRaw", new JSONObject().put("printCommentScale", 0.9))
-            .put("storeName", "S").put("currency", "NT$").put("sessionDate", "");
+        JSONObject p09 = new JSONObject().put("buyer", buyer).put("settings", off).put("scalesRaw", new JSONObject().put("printStoreScale", 0.9))
+            .put("storeName", "My Shop").put("currency", "NT$").put("sessionDate", "");
         Phomemo241Builder.forStickerNative241(p09, 60, 40, r09);
-        check(b09[0] == 1, "REGULAR price at 0.9 -> band (must SHRINK below 1)");
+        check(b09[0] == 1, "REGULAR store at 0.9 -> band (must SHRINK below 1)");
     }
 
     private static void testOrderTimeFixed() {

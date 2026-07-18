@@ -80,10 +80,12 @@ final class Phomemo241Raster implements Phomemo241Builder.BandRenderer {
         // P2 FITTING (measureText-based, proportional): a run that is too wide for
         // maxWidthDots is NEVER horizontally squished (that produced the thin,
         // rejected strokes). Instead the whole glyph size steps DOWN proportionally
-        // — factors 1.0 → 0.85 → 0.70 — and only if it still doesn't fit at 0.70 is
-        // the STRING truncated (measure-loop on the actual text, so mixed CJK+ASCII
-        // like "陳小美 Anna x2" is measured correctly, not cell-estimated).
-        final double[] FIT_STEPS = {1.0, 0.85, 0.70};
+        // — 1.0 → 0.95 → 0.85 → 0.70 (P3.6 added the 0.95 rung: a 2% near-miss,
+        // e.g. the 432-dot "Buyer #NN" vs the 424-dot 60x40 avail, now trims 5%
+        // instead of dropping a full 15%) — and only if it still doesn't fit at
+        // 0.70 is the STRING truncated (measure-loop on the actual text, so mixed
+        // CJK+ASCII like "陳小美 Anna x2" is measured correctly, not cell-estimated).
+        final double[] FIT_STEPS = {1.0, 0.95, 0.85, 0.70};
 
         Bitmap bmp;
         int outW;
