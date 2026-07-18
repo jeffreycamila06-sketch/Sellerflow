@@ -325,20 +325,6 @@ final class Phomemo241Builder {
         boolean printOrderItems    = settings == null || settings.optBoolean("printOrderItems", true);
         boolean printTotal         = settings == null || settings.optBoolean("printTotal", true);
 
-        // ── P4 per-field WEIGHT routing (additive `weightsRaw` payload object,
-        // same delivery pattern as scalesRaw: absent on AIMO/App.tsx/legacy/old-
-        // binary payloads → the P3 hierarchy DEFAULTS below → byte-identical
-        // output; AIMO ignores the field entirely). true = the PROMINENT designed
-        // rendering (enlarged band; CJK bold face); false = the plain rendering
-        // (TEXT at base size / regular-scaled band). Post-P3.7 the flag never
-        // changes the stroke weight of ASCII — prominence is SIZE.
-        JSONObject weightsRaw = payload.optJSONObject("weightsRaw");
-        boolean wStore = wgt(weightsRaw, "store", false);
-        boolean wBuyer = wgt(weightsRaw, "buyerNum", true);
-        boolean wName  = wgt(weightsRaw, "name", true);
-        boolean wUser  = wgt(weightsRaw, "username", true);
-        boolean wPrice = wgt(weightsRaw, "comment", false);
-
         // F3/F4 = the 1x TSPL font heights (dots) used only to reflow the layout
         // down so a grown element never overlaps the next. No F2: the order-line
         // time is FIXED at base size (BUG 1/2), so it never shifts the layout.
@@ -454,7 +440,7 @@ final class Phomemo241Builder {
         boolean hasName = !nameOut.isEmpty();
         double[] fitS = {sStore, sComment, sUser, sName, sBuyerNum};
         boolean[] fitRows = {hasStore, printBuyerUsername && !cleanBuyerHandle.isEmpty(), printOrderItems && orders != null && orders.length() > 0};
-        fitVertical(fitS, fitRows, printBuyerNumber, hasName, bandName, wBuyer, wName, startY, storeGap, buyerNumGap, nameGap, usernameGap, c, is6040, labelHeightMm * 8, droppedOut);
+        fitVertical(fitS, fitRows, printBuyerNumber, hasName, bandName, startY, storeGap, buyerNumGap, nameGap, usernameGap, c, is6040, labelHeightMm * 8, droppedOut);
         sStore = fitS[0]; sComment = fitS[1]; sUser = fitS[2]; sName = fitS[3]; sBuyerNum = fitS[4];
         hasStore = fitRows[0];
         boolean hasUser = fitRows[1];
@@ -463,7 +449,7 @@ final class Phomemo241Builder {
         int extra = 0;
         int y = startY;
         if (hasStore) {
-            e.emitSym(storeX, y, "3", sStore, safe(truncate(cleanStoreName, 36)), c.rightEdge, wStore, 1.0, 1.0);   // P4: weight-routable (bold store band = same 24-dot cell -> zero flow change)
+            e.emitSym(storeX, y, "3", sStore, safe(truncate(cleanStoreName, 36)), c.rightEdge, false, 0, 0);
             int d = r241((clampF(sStore) - 1) * F3);
             y += storeGap + d;
             extra += d;
@@ -481,14 +467,12 @@ final class Phomemo241Builder {
             // buyer# is now 1x wide; a bolder 2x-tall variant would need the y-gaps re-tuned
             // + a device check — deferred.)
             int buyerNumBaseX = is6040 ? 1 : 2;
-            e.emitHeightScaled(buyerX, y, "4", buyerNumBaseX, c.buyerNumYMul, sBuyerNum, "Buyer #" + buyerNum, c.rightEdge, wBuyer);   // primary band (P3.7 ROM weight; P4: weight-routable)
+            e.emitHeightScaled(buyerX, y, "4", buyerNumBaseX, c.buyerNumYMul, sBuyerNum, "Buyer #" + buyerNum, c.rightEdge, true);   // primary band (P3.7: ROM weight — hierarchy = SIZE)
             // P3.5 60x40: reserve the 48-dot buyer# cell (d = 48s - 32; the v3 gap of
             // 44 was designed around the 32-dot cell). Big sizes keep the AIMO-parity
             // advance (their gap already holds 48s comfortably).
-            // P4: the 48-dot design cell is reserved only when the buyer# IS the
-            // prominent band; a plain buyer# advances by the AIMO-parity formula.
-            int d = (is6040 && wBuyer) ? r241(clampF(sBuyerNum) * 24 * BUYER_BOLD_Y - F4)
-                                       : r241((effY - c.buyerNumYMul) * F4);
+            int d = is6040 ? r241(clampF(sBuyerNum) * 24 * BUYER_BOLD_Y - F4)
+                           : r241((effY - c.buyerNumYMul) * F4);
             y += buyerNumGap + d;
             extra += d;
         }
@@ -496,24 +480,24 @@ final class Phomemo241Builder {
         if (hasName) {
             if (bandName) {
                 // CJK / UNSUPPORTED name → band on both axes (base nameCjk*Mul), scaled.
-                e.emitBand(nameX, y, safe(truncate(nameOut, 30)), c.nameCjkXMul * sName, c.nameCjkYMul * sName, c.rightEdge, wName);   // primary band (CJK approved tuning; P4: weight-routable face)
+                e.emitBand(nameX, y, safe(truncate(nameOut, 30)), c.nameCjkXMul * sName, c.nameCjkYMul * sName, c.rightEdge, true);   // primary band (CJK keeps the approved P3 tuning)
                 double effY = clampF(c.nameCjkYMul * sName);
                 int d = r241((effY - c.nameCjkYMul) * F4);
                 y += c.nameCjkGap + d;
                 extra += (c.nameCjkGap - nameGap) + d;
             } else {
-                e.emitSym(nameX, y, "4", sName, safe(truncate(nameOut, 30)), c.rightEdge, wName, is6040 ? NAME_BOLD_6040 : NAME_BOLD_BIG, is6040 ? NAME_BOLD_6040 : NAME_BOLD_BIG);   // primary band (P3.7 ROM weight; P4: weight-routable)
+                e.emitSym(nameX, y, "4", sName, safe(truncate(nameOut, 30)), c.rightEdge, true, is6040 ? NAME_BOLD_6040 : NAME_BOLD_BIG, is6040 ? NAME_BOLD_6040 : NAME_BOLD_BIG);   // primary band (P3.7: ROM weight)
                 // P3.5 60x40: the ASCII-name band is 42s tall -> grow by 42/step so
                 // the advance (44 + d) always covers it. Big sizes keep the 32 cell.
-                int d = (is6040 && wName) ? r241((clampF(sName) - 1) * 24 * NAME_BOLD_6040)
-                                          : r241((clampF(sName) - 1) * F4);
+                int d = is6040 ? r241((clampF(sName) - 1) * 24 * NAME_BOLD_6040)
+                               : r241((clampF(sName) - 1) * F4);
                 y += nameGap + d;
                 extra += d;
             }
         }
 
         if (hasUser) {
-            e.emitSym(userX, y, "3", sUser, "@" + safe(truncate(cleanBuyerHandle, 30)), c.rightEdge, wUser, USER_BOLD_X, 1.0);   // primary band, AIMO 16x24 chars (P4: weight-routable)
+            e.emitSym(userX, y, "3", sUser, "@" + safe(truncate(cleanBuyerHandle, 30)), c.rightEdge, true, USER_BOLD_X, 1.0);   // primary band, AIMO 16x24 chars (P3.7: ROM weight)
             int d = r241((clampF(sUser) - 1) * F3);
             y += usernameGap + d;
             extra += d;
@@ -553,7 +537,7 @@ final class Phomemo241Builder {
                 if (!cleanItem.isEmpty()) {
                     String priceOut = TsplBuilder.transliterateLatin(safe(truncate(cleanItem, 12)));
                     if (!priceOut.isEmpty()) {
-                        e.emitBand(priceX, y, priceOut, AIMO_CHAR48_X, PRICE_BAND_Y * clampF(sComment), c.rightEdge, wPrice);   // P4: weight-routable (CJK item face; ASCII unchanged)
+                        e.emitBand(priceX, y, priceOut, AIMO_CHAR48_X, PRICE_BAND_Y * clampF(sComment), c.rightEdge, false);
                     }
                 }
                 int d = Math.max(0, r241((clampF(sComment) - 1) * F4));
@@ -583,12 +567,6 @@ final class Phomemo241Builder {
         return (double) lvl(settings, key);
     }
 
-    // P4: per-field weight read from the additive `weightsRaw` payload object.
-    // Absent object / absent key -> the P3 hierarchy default (byte-identical).
-    private static boolean wgt(JSONObject weightsRaw, String key, boolean def) {
-        return weightsRaw == null ? def : weightsRaw.optBoolean(key, def);
-    }
-
     // Per-element size LEVEL read from settings (1-8, default 1 = base size).
     private static int lvl(JSONObject settings, String key) {
         int v = settings == null ? 1 : settings.optInt(key, 1);
@@ -602,23 +580,21 @@ final class Phomemo241Builder {
     // both together. s = {store, comment/price, user, name, buyerNum};
     // rows = {store, user, order} (the droppable rows).
     private static int finalYFor(double[] s, boolean[] rows, boolean hasBuyerNum, boolean hasName, boolean bandName,
-            boolean wBuyer, boolean wName,
             int startY, int storeGap, int buyerNumGap, int nameGap, int usernameGap, Size c, boolean is6040) {
         final int F3 = 24, F4 = 32;
         int y = startY;
         if (rows[0]) y += storeGap + r241((clampF(s[0]) - 1) * F3);
         if (hasBuyerNum) {
-            // P3.5/P4: the 60x40 buyer# reserves its 48-dot design cell only when
-            // PROMINENT (d = 48s - 32); plain buyer# / big sizes keep the
-            // AIMO-parity advance — EXACT mirror of the emit body.
+            // P3.5: the 60x40 buyer# reserves its 48-dot design cell (d = 48s - 32);
+            // big sizes keep the AIMO-parity advance — EXACT mirror of the emit body.
             double effY = clampF(c.buyerNumYMul * s[4]);
-            y += buyerNumGap + ((is6040 && wBuyer) ? r241(clampF(s[4]) * 24 * BUYER_BOLD_Y - F4)
-                                                   : r241((effY - c.buyerNumYMul) * F4));
+            y += buyerNumGap + (is6040 ? r241(clampF(s[4]) * 24 * BUYER_BOLD_Y - F4)
+                                       : r241((effY - c.buyerNumYMul) * F4));
         }
         if (hasName) {
             if (bandName) y += c.nameCjkGap + r241((clampF(c.nameCjkYMul * s[3]) - c.nameCjkYMul) * F4);
-            else y += nameGap + ((is6040 && wName) ? r241((clampF(s[3]) - 1) * 24 * NAME_BOLD_6040)
-                                                   : r241((clampF(s[3]) - 1) * F4));
+            else y += nameGap + (is6040 ? r241((clampF(s[3]) - 1) * 24 * NAME_BOLD_6040)
+                                        : r241((clampF(s[3]) - 1) * F4));
         }
         if (rows[1]) y += usernameGap + r241((clampF(s[2]) - 1) * F3);
         if (rows[2]) {
@@ -638,10 +614,9 @@ final class Phomemo241Builder {
     // drop rows lowest-priority-first — store, @username, order-row — recording each
     // in droppedOut; buyer#/name/header/date are never dropped.
     private static void fitVertical(double[] s, boolean[] rows, boolean hasBuyerNum, boolean hasName, boolean bandName,
-            boolean wBuyer, boolean wName,
             int startY, int storeGap, int buyerNumGap, int nameGap, int usernameGap, Size c, boolean is6040, int H,
             java.util.List<String> droppedOut) {
-        if (finalYFor(s, rows, hasBuyerNum, hasName, bandName, wBuyer, wName, startY, storeGap, buyerNumGap, nameGap, usernameGap, c, is6040) <= H) return;
+        if (finalYFor(s, rows, hasBuyerNum, hasName, bandName, startY, storeGap, buyerNumGap, nameGap, usernameGap, c, is6040) <= H) return;
         double[] floor = new double[s.length];
         for (int i = 0; i < s.length; i++) floor[i] = Math.min(1.0, s[i]);
         int[][] tiers = {{0, 1}, {2}, {3, 4}};
@@ -655,7 +630,7 @@ final class Phomemo241Builder {
                 for (int idx : tier) {
                     if (s[idx] > floor[idx] + 1e-9) {
                         s[idx] = Math.max(floor[idx], s[idx] - 0.5);
-                        if (finalYFor(s, rows, hasBuyerNum, hasName, bandName, wBuyer, wName, startY, storeGap, buyerNumGap, nameGap, usernameGap, c, is6040) <= H) return;
+                        if (finalYFor(s, rows, hasBuyerNum, hasName, bandName, startY, storeGap, buyerNumGap, nameGap, usernameGap, c, is6040) <= H) return;
                     }
                 }
                 stepped = true;
@@ -665,7 +640,7 @@ final class Phomemo241Builder {
         // Extreme fallback: floors everywhere and still over — drop rows, recorded.
         String[] labels = {"store", "@username", "order-row"};
         for (int i = 0; i < rows.length; i++) {
-            if (finalYFor(s, rows, hasBuyerNum, hasName, bandName, wBuyer, wName, startY, storeGap, buyerNumGap, nameGap, usernameGap, c, is6040) <= H) return;
+            if (finalYFor(s, rows, hasBuyerNum, hasName, bandName, startY, storeGap, buyerNumGap, nameGap, usernameGap, c, is6040) <= H) return;
             if (rows[i]) { rows[i] = false; droppedOut.add(labels[i]); }
         }
     }

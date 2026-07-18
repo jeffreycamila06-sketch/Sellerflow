@@ -748,9 +748,6 @@ public class SellerFlowPrinterPlugin extends Plugin {
         if (settings != null) p.put("settings", settings);
         JSONObject scalesRaw = src.optJSONObject("scalesRaw");
         if (scalesRaw != null) p.put("scalesRaw", scalesRaw);
-        // P4: per-field weight routing rides along too (absent -> fork defaults).
-        JSONObject weightsRaw = src.optJSONObject("weightsRaw");
-        if (weightsRaw != null) p.put("weightsRaw", weightsRaw);
         return p;
     }
 
