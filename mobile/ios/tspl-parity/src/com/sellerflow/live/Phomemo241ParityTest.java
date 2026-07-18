@@ -495,6 +495,62 @@ public final class Phomemo241ParityTest {
         // with the buyer# ENLARGED (pinned in testP25PriorityProtectsPrimaries).
     }
 
+    // P4 — per-field WEIGHT routing (additive `weightsRaw`, the scalesRaw
+    // delivery pattern). Back-compat is the hard requirement: a payload WITHOUT
+    // weightsRaw (every saved seller, AIMO, App.tsx, old binaries) must be
+    // byte-identical to the explicit P3-hierarchy defaults; toggles then
+    // re-route each field between its PROMINENT band and the plain rendering.
+    private static void testP4WeightRouting() throws Exception {
+        System.out.println("testP4WeightRouting (weightsRaw: back-compat bytes + per-field toggles)");
+        // BACK-COMPAT: absent weightsRaw == explicit defaults, byte-for-byte, on
+        // the bespoke 60x40 AND an AIMO-mirrored big size.
+        for (int[] size : new int[][]{{60, 40}, {100, 60}}) {
+            String without = utf8(Phomemo241Builder.forStickerNative241(asciiPayload(), size[0], size[1], fakeBand()));
+            JSONObject explicit = asciiPayload();
+            explicit.put("weightsRaw", new JSONObject()
+                    .put("store", false).put("buyerNum", true).put("name", true)
+                    .put("username", true).put("comment", false));
+            String withS = utf8(Phomemo241Builder.forStickerNative241(explicit, size[0], size[1], fakeBand()));
+            check(without.equals(withS),
+                  "explicit default weights == absent weightsRaw (" + size[0] + "x" + size[1] + ")");
+        }
+        // ALL-NORMAL primaries: the 3 primaries fall back to plain rotation-180
+        // TEXT (the plain rendering) — zero bold bands; the price marquee stays
+        // its regular band; the planner mirror follows the normal advances.
+        final List<String> boldTexts = new ArrayList<>();
+        final List<String> regularTexts = new ArrayList<>();
+        Phomemo241Builder.BandRenderer cap = new Phomemo241Builder.BandRenderer() {
+            @Override public Phomemo241Builder.Band render(String text, double xMul, double yMul, int maxW) {
+                return render(text, xMul, yMul, maxW, false);
+            }
+            @Override public Phomemo241Builder.Band render(String text, double xMul, double yMul, int maxW, boolean bold) {
+                (bold ? boldTexts : regularTexts).add(text);
+                int h = Math.max(1, r241(24 * yMul));
+                byte[] b = new byte[4 * h]; java.util.Arrays.fill(b, (byte) 0xAA);
+                return new Phomemo241Builder.Band(4, h, b);
+            }
+        };
+        JSONObject normal = asciiPayload();
+        normal.put("weightsRaw", new JSONObject()
+                .put("buyerNum", false).put("name", false).put("username", false));
+        java.util.List<String> dropped = new ArrayList<>();
+        String s = utf8(Phomemo241Builder.forStickerNative241(normal, 60, 40, cap, dropped));
+        check(boldTexts.isEmpty(), "all-normal -> ZERO bold bands (got " + boldTexts + ")");
+        check(regularTexts.equals(java.util.List.of("250")),
+              "price marquee stays the one regular band (got " + regularTexts + ")");
+        check(s.contains("1,1,\"Buyer #12\"") && s.contains("1,1,\"Maria Santos\"") && s.contains("1,1,\"@maria_shops\""),
+              "normal primaries render as plain rotation-180 TEXT at 1.0");
+        check(dropped.isEmpty(), "normal weights fit without drops");
+        // STORE + PRICE PROMINENT: the flag routes them to bold bands too.
+        boldTexts.clear(); regularTexts.clear();
+        JSONObject prominent = asciiPayload();
+        prominent.put("weightsRaw", new JSONObject().put("store", true).put("comment", true));
+        Phomemo241Builder.forStickerNative241(prominent, 60, 40, cap);
+        check(boldTexts.containsAll(java.util.List.of("My Shop", "250", "Buyer #12", "Maria Santos", "@maria_shops"))
+              && regularTexts.isEmpty(),
+              "store:true + comment:true -> both join the bold-band route (got bold=" + boldTexts + " reg=" + regularTexts + ")");
+    }
+
     // P3.7 completion — ONE-WEIGHT VERDICT (Jeff's font sampler, 2026-07-18):
     // the enlarged-ASCII style is ROW 2's mechanism (ROM-emulation: regular
     // face + pixel stretch) at ROW C's weight (threshold 160, stroke 0 — the
@@ -813,6 +869,7 @@ public final class Phomemo241ParityTest {
         testP25ByteIdenticalWhenFits();
         testP25DropSignal();
         testP3BoldRouting();
+        testP4WeightRouting();
         testP37UnifiedBandWeight();
         testP37RasterSourceContract();
         testP37StretchGrayH();

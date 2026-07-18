@@ -28,7 +28,8 @@ import Legal from "./screens/Legal";
 import DeleteAccount from "./screens/DeleteAccount";
 import Signup from "./screens/Signup";
 import PrinterSettings from "./screens/PrinterSettings";
-import PrintPattern, { DEFAULT_PP, type PrintPatternState, type PpBoolKey, type PpSizeKey } from "./screens/PrintPattern";
+import PrintPattern, { DEFAULT_PP, type PrintPatternState, type PpBoolKey, type PpSizeKey, type PpWeightKey } from "./screens/PrintPattern";
+import { normalizePp, applyLargePreset } from "./adapters/printPattern";
 import ManageChannels from "./screens/ManageChannels";
 import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
 import { useCustomers, useMinerStats, ZERO_MINERS_STATS, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, deriveMrr, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
@@ -53,7 +54,7 @@ import { csvDL, dayStamp } from "./adapters/csv";
 import { computeSales } from "./adapters/sales";
 import { useSalesReport } from "./adapters/salesReport";
 import { sessionKeyFor } from "./adapters/shipping";
-import { printSlip, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, isPrinterNotSetup, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
+import { printSlip, buildSettingsFromRedesign, parseStickerSize, setNativePrintAlertText, setNativePrintFailureHandler, isPrinterNotSetup, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
 import { btCall, hasBtBridge, buildTestStickerPayload, buildTestBuyer, type StickerPrintResult } from "./adapters/printerBridge";
@@ -85,7 +86,7 @@ type Screen =
 const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels"];
 
 
-const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set", automode: "sfl_rd_automode", pp: "sfl_rd_pp", printer: "sfl_rd_printer", keepAwake: "sfl_rd_keepawake" } as const;
+const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set", automode: "sfl_rd_automode", pp: "sfl_rd_pp", ppStash: "sfl_rd_pp_stash", printer: "sfl_rd_printer", keepAwake: "sfl_rd_keepawake" } as const;
 const readLS = (k: string, fallback: string): string => {
   try { return localStorage.getItem(k) || fallback; } catch { return fallback; }
 };
@@ -632,10 +633,31 @@ export default function RedesignApp() {
 
   // LIVE print pattern (visual only).
   // Phase 5i — print pattern persists across refresh (sfl_rd_pp).
-  const [pp, setPp] = useState<PrintPatternState>(() => readJSON(LS.pp, DEFAULT_PP));
+  // P4 back-compat: normalizePp merges over DEFAULT_PP so a pattern saved before
+  // the weight keys existed keeps the P3 hierarchy (readJSON does NOT merge).
+  const [pp, setPp] = useState<PrintPatternState>(() => normalizePp(readJSON(LS.pp, DEFAULT_PP)));
   const togglePp = (k: PpBoolKey) => setPp((p) => ({ ...p, [k]: !p[k] }));
   const stepPp = (k: PpSizeKey, dir: 1 | -1) => setPp((p) => ({ ...p, [k]: Math.min(3, Math.max(0.5, Math.round((p[k] + dir * 0.1) * 10) / 10)) }));
+  const weightPp = (k: PpWeightKey) => setPp((p) => ({ ...p, [k]: !p[k] }));
   useEffect(() => { try { localStorage.setItem(LS.pp, JSON.stringify(pp)); } catch { /* ignore */ } }, [pp]);
+
+  // P4 Large-print preset: tap 1 stashes the current per-field values + applies
+  // ~1.5x + Bold everywhere; tap 2 restores the stash. The stash persists
+  // (sfl_rd_pp_stash) so a refresh mid-preset still restores correctly.
+  const [ppStash, setPpStash] = useState<PrintPatternState | null>(() => {
+    const raw = readJSON<PrintPatternState | null>(LS.ppStash, null);
+    return raw ? normalizePp(raw) : null;
+  });
+  useEffect(() => {
+    try {
+      if (ppStash) localStorage.setItem(LS.ppStash, JSON.stringify(ppStash));
+      else localStorage.removeItem(LS.ppStash);
+    } catch { /* ignore */ }
+  }, [ppStash]);
+  const toggleLargePreset = () => {
+    if (ppStash) { setPp(ppStash); setPpStash(null); }
+    else { setPpStash(pp); setPp(applyLargePreset(pp)); }
+  };
 
   // Phase 5g — snapshot the current print config for onPrint (declared above).
   printCfgRef.current = {
@@ -987,7 +1009,11 @@ export default function RedesignApp() {
             />
           )}
           {screen === "printpattern" && (
-            <PrintPattern onBack={() => setScreen("settings")} pp={pp} onToggle={togglePp} onStep={stepPp} onTestPrint={() => void onTestPrint()} />
+            <PrintPattern
+              onBack={() => setScreen("settings")} pp={pp} onToggle={togglePp} onStep={stepPp} onWeight={weightPp}
+              onTestPrint={() => void onTestPrint()}
+              labelSize={parseStickerSize(psSize)} largeOn={ppStash !== null} onLargeToggle={toggleLargePreset}
+            />
           )}
         </div>
 

@@ -26,6 +26,12 @@ export interface Settings {
   // buildSettingsFromRedesign; surfaced to native as payload.scalesRaw at the sticker
   // bridge call (see buildScalesRaw + printStickerVia*/buildTestStickerPayload).
   printStoreScaleRaw?: number; printBuyerNumberScaleRaw?: number; printBuyerNameScaleRaw?: number; printUsernameScaleRaw?: number; printCommentScaleRaw?: number;
+  // OPTIONAL per-field weights (Phomemo 241 ONLY, P4). true = the field's PROMINENT
+  // designed rendering (enlarged band / CJK bold face), false = the plain base
+  // rendering. Absent on App.tsx/legacy payloads and IGNORED by the AIMO builder;
+  // the 241 falls back to the approved P3 hierarchy (buyer#/name/@user prominent).
+  // Surfaced to native as the additive payload.weightsRaw (see buildWeightsRaw).
+  printStoreBold?: boolean; printBuyerNumberBold?: boolean; printBuyerNameBold?: boolean; printUsernameBold?: boolean; printCommentBold?: boolean;
 }
 export interface NativeStickerPayload { storeName: string; sessionDate: string; currency: string; buyer: Buyer; labelWidthMm: number; labelHeightMm: number; settings: Pick<Settings, "printStoreName" | "printBuyerNumber" | "printBuyerUsername" | "printOrderItems" | "printTotal" | "printStoreScale" | "printBuyerNumberScale" | "printBuyerNameScale" | "printUsernameScale" | "printOrderScale" | "printCommentScale" | "printTotalScale">; }
 export interface NativePrinterPayload { type: "sellerflow.printSlip"; buyer: Buyer; currency: string; storeName: string; settings: Settings; sessionDate: string; createdAt: string; }
@@ -190,7 +196,7 @@ async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: st
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
   if (!bridge?.printStickerNative) return false;
   try {
-    const result = await bridge.printStickerNative(withScalesRaw(buildNativeStickerPayload(buyer, cur, storeName, cfg), cfg));
+    const result = await bridge.printStickerNative(withRasterExtras(buildNativeStickerPayload(buyer, cur, storeName, cfg), cfg));
     if (result?.ok) return true;
     const { code, message } = readFailure(result);
     if (!reportNativePrintFailure("bluetooth", code, message)) console.warn("[BT sticker] print failed:", message || "check pairing/selection.");
@@ -206,7 +212,7 @@ async function printStickerViaLan(buyer: Buyer, cur: string, storeName: string, 
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
   if (!bridge?.printStickerLan) return false;
   try {
-    const result = await bridge.printStickerLan(withScalesRaw(buildNativeStickerPayload(buyer, cur, storeName, cfg), cfg));
+    const result = await bridge.printStickerLan(withRasterExtras(buildNativeStickerPayload(buyer, cur, storeName, cfg), cfg));
     if (result?.ok) return true;
     const { code, message } = readFailure(result);
     if (!reportNativePrintFailure("lan", code, message)) console.warn("[LAN sticker] print failed:", message || "check WiFi printer IP.");
@@ -306,7 +312,7 @@ export function printSlip(buyer: Buyer, cur: string, storeName: string, printSet
 // Settings the payload builders expect. Sizes (0.5–3.0) → integer scale levels
 // (1–8) via round+clamp; field toggles map 1:1.
 export interface RedesignPrintConfig {
-  pp: { shopName: boolean; shopNameSize: number; dateTime: boolean; dateTimeSize: number; buyerNum: boolean; buyerNumSize: number; tiktokName: boolean; tiktokNameSize: number; tiktokUser: boolean; tiktokUserSize: number; comment: boolean; commentSize: number };
+  pp: { shopName: boolean; shopNameSize: number; shopNameBold?: boolean; dateTime: boolean; dateTimeSize: number; buyerNum: boolean; buyerNumSize: number; buyerNumBold?: boolean; tiktokName: boolean; tiktokNameSize: number; tiktokNameBold?: boolean; tiktokUser: boolean; tiktokUserSize: number; tiktokUserBold?: boolean; comment: boolean; commentSize: number; commentBold?: boolean };
   psType: "wifi" | "bt";
   psOut: "receipt" | "sticker";
   psSize: string; // e.g. "100x60mm (Standard)"
@@ -316,7 +322,9 @@ const lvl = (n: number): number => Math.max(1, Math.min(8, Math.round(n || 1)));
 // round), clamped to [0.5, 8] — 0.5–0.9 legitimately SHRINK (a band can), 1.0 stays
 // exactly 1 so the native side keeps the byte-identical TEXT default, >1 enlarges.
 const lvlRaw = (n: number): number => Math.max(0.5, Math.min(8, Number(n) || 1));
-const parseStickerSize = (label: string): string => (label.match(/\d+x\d+/)?.[0] || "100x60");
+// Exported (P4): the PrintPattern screen shows the SAME parsed label size real
+// prints use — one source of truth, no second size picker.
+export const parseStickerSize = (label: string): string => (label.match(/\d+x\d+/)?.[0] || "100x60");
 
 // Collect the raw decimal scales for the native payload's `scalesRaw` (241-only).
 // Keyed by the SAME setting names the native side reads, so the fork can look them up
@@ -340,6 +348,30 @@ export function buildScalesRaw(cfg: Settings): Record<string, number> | undefine
 export function withScalesRaw<T extends object>(payload: T, cfg: Settings): T {
   const scalesRaw = buildScalesRaw(cfg);
   return scalesRaw ? { ...payload, scalesRaw } : payload;
+}
+
+// P4: collect the per-field weights for the native payload's `weightsRaw`
+// (241-only; the scalesRaw delivery pattern). Keys = the native fork's names.
+// Returns undefined when none are present (AIMO/App.tsx/legacy payloads -> no
+// weightsRaw -> the 241 uses its P3-hierarchy defaults, byte-identical).
+export function buildWeightsRaw(cfg: Settings): Record<string, boolean> | undefined {
+  const raw: Record<string, boolean> = {};
+  const add = (k: string, v: boolean | undefined) => { if (typeof v === "boolean") raw[k] = v; };
+  add("store", cfg.printStoreBold);
+  add("buyerNum", cfg.printBuyerNumberBold);
+  add("name", cfg.printBuyerNameBold);
+  add("username", cfg.printUsernameBold);
+  add("comment", cfg.printCommentBold);
+  return Object.keys(raw).length ? raw : undefined;
+}
+
+// P4: attach BOTH additive 241 extras (scalesRaw + weightsRaw) to a native
+// sticker payload — the byte-parity-locked buildNativeStickerPayload output is
+// untouched (extras are additive top-level fields; AIMO ignores both).
+export function withRasterExtras<T extends object>(payload: T, cfg: Settings): T {
+  const weightsRaw = buildWeightsRaw(cfg);
+  const base = withScalesRaw(payload, cfg);
+  return weightsRaw ? { ...base, weightsRaw } : base;
 }
 
 export function buildSettingsFromRedesign(cfg: RedesignPrintConfig): Settings {
@@ -370,5 +402,12 @@ export function buildSettingsFromRedesign(cfg: RedesignPrintConfig): Settings {
     printBuyerNameScaleRaw: lvlRaw(pp.tiktokNameSize),
     printUsernameScaleRaw: lvlRaw(pp.tiktokUserSize),
     printCommentScaleRaw: lvlRaw(pp.commentSize),
+    // P4 per-field weights (241-only; ?? keeps the P3 hierarchy when a stored
+    // pre-P4 pattern has no weight keys — same defaults as DEFAULT_PP/native).
+    printStoreBold: pp.shopNameBold ?? false,
+    printBuyerNumberBold: pp.buyerNumBold ?? true,
+    printBuyerNameBold: pp.tiktokNameBold ?? true,
+    printUsernameBold: pp.tiktokUserBold ?? true,
+    printCommentBold: pp.commentBold ?? false,
   };
 }
