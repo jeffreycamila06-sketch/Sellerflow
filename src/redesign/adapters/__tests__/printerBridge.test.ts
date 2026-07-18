@@ -53,27 +53,4 @@ describe("with a stubbed native bridge", () => {
     (window as { SellerFlowPrinter?: unknown }).SellerFlowPrinter = { testPrint: vi.fn().mockRejectedValue(new Error("boom")) };
     expect((await callMobilePrinterBridge("testPrint"))).toMatchObject({ ok: false, message: "boom" });
   });
-  it("btCall SURFACES a native reject (message + code) instead of null — the 'check pairing' blindfold", async () => {
-    // BEHAVIORAL pin of the 2026-07-16 diagnosis gap: a Capacitor call.reject
-    // used to become `null`, so every screen showed only the generic failure
-    // toast. Now the real message/code reach the caller.
-    const reject = vi.fn().mockRejectedValue({ message: "Phase 0 P1 failed: Printer not found.", code: "BT_NOT_FOUND" });
-    (window as { SellerFlowPrinter?: unknown }).SellerFlowPrinter = { printStickerNative: reject };
-    const r = await btCall<{ ok: boolean; message: string; code?: string }>("printStickerNative", { isTest: true });
-    expect(r).not.toBeNull();
-    expect(r).toMatchObject({ ok: false, message: "Phase 0 P1 failed: Printer not found.", code: "BT_NOT_FOUND" });
-  });
-});
-
-describe("buildTestStickerPayload — isTest tag (Phomemo Phase 0 routing)", () => {
-  it("tags the test payload isTest:true and keeps the sticker payload fields intact", async () => {
-    const { buildTestStickerPayload } = await import("../printerBridge");
-    const { DEF_SETTINGS } = await import("../printing");
-    const p = buildTestStickerPayload("NT$", "My Shop", DEF_SETTINGS) as Record<string, unknown>;
-    expect(p.isTest).toBe(true);                    // the native 241 branch routes on this
-    expect(p.storeName).toBe("My Shop");            // underlying payload unchanged (AIMO ignores isTest)
-    expect(p.labelWidthMm).toBe(100);
-    expect(p.labelHeightMm).toBe(60);
-    expect((p.buyer as { num: number }).num).toBe(88);
-  });
 });

@@ -495,13 +495,7 @@ export default function RedesignApp() {
   // General Settings local UI state (visual only).
   const [profileOpen, setProfileOpen] = useState(false);
   const [printerOpen, setPrinterOpen] = useState(false);
-  // Derive the printer-row slot from the PERSISTED psType (slot 1 = BT sticker,
-  // slot 0 = WiFi/LAN slip). Was useState(0), which reset to the WiFi slot on every
-  // reload — so the General Settings printer row read "WiFi / LAN … not set up yet"
-  // even when a Bluetooth sticker printer (AIMO or PM-241) was saved and printing.
-  // psType already persists (LS.printer) and onPickPrinter keeps the two in sync, so
-  // this keeps the row accurate across reloads. Name-independent (helps AIMO too).
-  const [printerIdx, setPrinterIdx] = useState(() => (readJSON(LS.printer, { psType: "wifi" }).psType === "bt" ? 1 : 0));
+  const [printerIdx, setPrinterIdx] = useState(0);
 
   // #6 — REAL TikTok/FB connect. Connected state + active account come from the
   // server via useLiveFeed (platform_status); the modal/pickers POST to the live
@@ -658,11 +652,7 @@ export default function RedesignApp() {
       return;
     }
     const r = await btCall<StickerPrintResult>("printStickerNative", buildTestStickerPayload(cur, storeName, settings));
-    // On a real device the printed sticker IS the success feedback — no success
-    // toast (Jeff: an unrequested confirmation toast now popped on every print).
-    // Only surface a REAL failure. (Desktop/web preview above keeps its toast —
-    // there's no physical output there.)
-    if (!r?.ok) setToast({ msg: r?.message || tApp.rd_ps_test_failed, kind: "err" });
+    setToast({ msg: r?.ok ? (r.message || tApp.rd_ps_test_sent) : (r?.message || tApp.rd_ps_test_failed), kind: r?.ok ? "ok" : "err" });
   };
 
   // Auto Mode on/off. Default OFF, but PERSISTED (sfl_rd_automode) so the toggle

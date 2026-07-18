@@ -12,7 +12,6 @@ import Capacitor
 import CoreBluetooth
 import Foundation
 import Network
-import UIKit
 import WebKit
 
 @objc(SellerFlowPrinterPlugin)
@@ -985,16 +984,6 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// The PERSISTED printer name (captured at scan/save time — the live
-    /// peripheral is nil on retrievePeripherals). This is what the printer
-    /// PROFILE is resolved from, so a PM-241 gets its own diagnostic/builder
-    /// path while a D520BT stays on the AIMO path. Empty when unset or when the
-    /// scan advertised no name (→ resolveProfile falls back to .aimo).
-    private func savedBleName() -> String {
-        return (defaults.string(forKey: SellerFlowPrinterPlugin.bleNameKey) ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     /// Mirrors Android savedBluetoothPrinter(): nil (→ JS null) when unset.
     private func savedBlePrinterDict() -> [String: Any]? {
         let id = savedBleId()
@@ -1060,36 +1049,6 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("No Bluetooth printer saved. Tap Scan in Settings and pick a printer first.", "BT_NOT_SET")
             return
         }
-        // Phomemo 241: print the SAME sticker any real print produces
-        // (buildTsplSticker241, DIRECTION 0 + in-layout 180°) from a fixed ASCII
-        // test buyer + this call's real settings/size — so even this legacy entry
-        // reflects the pattern settings and never garbles (buildTsplTestPage below
-        // is DIRECTION 1 + GBK CJK, which the 241 can't render). The old hardcoded
-        // verification sticker (run241VerificationPrint) stays in-tree, UNCALLED,
-        // for CJK re-diagnosis. NOTE: the redesign's Test button uses
-        // printStickerNative+isTest, not this method — this path is legacy/unused.
-        if BleStickerLogic.resolveProfile(name: savedBleName()) == .phomemo241 {
-            let testBuyer: [String: Any] = [
-                "num": 88, "name": "Test Print", "handle": "sellerflow", "totalSpent": 350,
-                "orders": [["item": "PRICE", "time": ""]] as [[String: Any]],
-            ]
-            let data241 = buildTsplSticker241(
-                buyer: testBuyer, settings: call.getObject("settings"),
-                storeName: call.getString("storeName") ?? "SellerFlowLive",
-                currency: call.getString("currency") ?? "NT$", sessionDate: "",
-                labelWidthMm: call.getInt("labelWidthMm", defaultLabelWidthMm),
-                labelHeightMm: call.getInt("labelHeightMm", defaultLabelHeightMm),
-                scalesRaw: call.getObject("scalesRaw")
-            )
-            bleTransport.printJob(data: data241, preferredId: savedId) { error in
-                if let error = error {
-                    call.reject("Test sticker failed: \(error.message)", error.code)
-                } else {
-                    call.resolve(["ok": true, "bytes": data241.count, "message": "Test sticker sent (\(data241.count) bytes)"])
-                }
-            }
-            return
-        }
         let storeName = call.getString("storeName") ?? "SellerFlowLive"
         let data = buildTsplTestPage(storeName: storeName)
         bleTransport.printJob(data: data, preferredId: savedId) { error in
@@ -1109,24 +1068,6 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("No Bluetooth printer saved. Tap Scan in Settings and pick a printer first.", "BT_NOT_SET")
             return
         }
-        // Phomemo 241 = a DELIBERATE PARITY with AIMO. This method is the single
-        // native choke-point for EVERY sticker in the redesign — 1-Click order,
-        // reprint, raffle winner, batch, desktop test, AND the Test Print button
-        // (which calls THIS method with isTest:true, not testStickerPrint). The
-        // 241 must consume the exact same payload — buyer + all pattern settings
-        // (5 toggles + 7 scale adjusters) + label size — as the AIMO path, so a
-        // seller who just swapped printers changes nothing else. So below: ONE
-        // flow, the profile only picks the builder (buildTsplSticker241 vs
-        // buildTsplSticker); no hardcoded content on any path.
-        let is241 = BleStickerLogic.resolveProfile(name: savedBleName()) == .phomemo241
-        // ORDER PATH LIVE (2026-07-17): the temporary 241 order guard (PROFILE_NOT_READY
-        // no-op for isTest=false) is REMOVED — the sticker was hardware-verified on paper
-        // (60×40, four edges clean at scale 1/0.9/1.1/1.5, decimal scales, PRICE). REAL
-        // prints (1-Click order, reprint, raffle, batch) now run the IDENTICAL flow the
-        // Test Print validated: this one choke-point, same payload/settings/size/scalesRaw,
-        // the profile only picks the builder (buildTsplSticker241 vs buildTsplSticker). The
-        // `isTest` flag is now inert here (both real + test take the same path); it stays
-        // on the test payload harmlessly. AIMO path unchanged.
         let buyer = call.getObject("buyer") ?? [:]
         let settings = call.getObject("settings")
         let storeName = call.getString("storeName") ?? "SellerFlowLive"
@@ -1134,54 +1075,17 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         let sessionDate = call.getString("sessionDate") ?? ""
         let labelWidthMm = call.getInt("labelWidthMm", defaultLabelWidthMm)
         let labelHeightMm = call.getInt("labelHeightMm", defaultLabelHeightMm)
-        // 241-only raw decimal scales (absent on AIMO/legacy payloads → nil → the fork
-        // falls back to the rounded integer scale). AIMO's buildTsplSticker never reads it.
-        let scalesRaw = call.getObject("scalesRaw")
 
-        // ORDER-PER-STICKER (241 60×40, Jeff): a buyer with >1 order prints as N SEPARATE
-        // single-order stickers, sent DONE-gated on ONE BLE connection (printJobSequence,
-        // proven in Phase 0). The live flows all pass a SINGLE-order buyer (1-Click /
-        // reprint / raffle → onPrint(singleOrderBuyer)), so this split is a no-op in
-        // practice (N=1 → the normal single printJob below, byte-identical); it only
-        // engages a multi-order buyer, and only at 60×40 — every other size + AIMO are
-        // untouched. Each sticker carries its OWN time + comment/price (its one order).
-        let orders241 = (buyer["orders"] as? [[String: Any]]) ?? []
-        if is241 && labelWidthMm == 60 && labelHeightMm == 40 && orders241.count > 1 {
-            let payloads: [Data] = orders241.map { order in
-                var single = buyer
-                single["orders"] = [order]
-                return buildTsplSticker241(buyer: single, settings: settings, storeName: storeName, currency: currency, sessionDate: sessionDate, labelWidthMm: labelWidthMm, labelHeightMm: labelHeightMm, scalesRaw: scalesRaw)
-            }
-            bleTransport.printJobSequence(payloads: payloads, preferredId: savedId) { [weak self] error in
-                guard let self = self else { return }
-                if let error = error {
-                    call.reject("Bluetooth print failed: \(error.message)", error.code)
-                } else {
-                    let total = payloads.reduce(0) { $0 + $1.count }
-                    call.resolve([
-                        "ok": true,
-                        "bytes": total,
-                        "labels": payloads.count,
-                        "savedPrinter": self.savedBlePrinterOrNull(),
-                        "message": "Printed \(payloads.count) stickers via Bluetooth (\(total) bytes)",
-                    ])
-                }
-            }
-            return
-        }
+        let data = buildTsplSticker(
+            buyer: buyer,
+            settings: settings,
+            storeName: storeName,
+            currency: currency,
+            sessionDate: sessionDate,
+            labelWidthMm: labelWidthMm,
+            labelHeightMm: labelHeightMm
+        )
 
-        // SAME payload in — the profile picks the builder. buildTsplSticker241
-        // reads the identical settings/scales/size/buyer that buildTsplSticker does
-        // (grep-audited parity), so every Printer & Display setting flows equally.
-        let data = is241
-            ? buildTsplSticker241(buyer: buyer, settings: settings, storeName: storeName, currency: currency, sessionDate: sessionDate, labelWidthMm: labelWidthMm, labelHeightMm: labelHeightMm, scalesRaw: scalesRaw)
-            : buildTsplSticker(buyer: buyer, settings: settings, storeName: storeName, currency: currency, sessionDate: sessionDate, labelWidthMm: labelWidthMm, labelHeightMm: labelHeightMm)
-
-        // NOTE (2026-07-17): the font-stepping PROBE that briefly rode the test print
-        // is REMOVED — its verdict is in. The 241 renders internal fonts "1".."5"
-        // (no "6".."8") and "5" is UPPERCASE-ONLY, so internal-font stepping can give
-        // neither the full scale range nor a case-clean typeface. The raster band
-        // (with the (xMul,yMul) glyph stretch) is the FINAL scaling architecture.
         bleTransport.printJob(data: data, preferredId: savedId) { [weak self] error in
             guard let self = self else { return }
             if let error = error {
@@ -1191,7 +1095,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                     "ok": true,
                     "bytes": data.count,
                     "savedPrinter": self.savedBlePrinterOrNull(),
-                    "message": "Printed sticker via Bluetooth (\(data.count) bytes)",
+                    "message": "Printed sticker via Bluetooth (TEXT+BAR, \(data.count) bytes)",
                 ])
             }
         }
@@ -1261,618 +1165,6 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         writeEncodedLine("TEXT 70,444,\"TSS24.BF2\",0,1,1,\"", cjkE, gbkBytes(cjkE))
         writeAscii("PRINT 1")
         return out
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // MARK: - PHASE 0 diagnostic probes (Phomemo 241 ONLY — never the AIMO path)
-    //
-    // Goal: decide the Phase-1 241 builder from PHOTOS, not guesses. Three
-    // SEPARATE labels (each its own PRINT 1, sent as its own DONE-gated job — a
-    // 241 that emits one DONE per PRINT would truncate a single multi-PRINT
-    // stream, so we NEVER do that). All probes DIRECTION 0 (the AIMO DIRECTION 1
-    // printed baliktad here) with content in a central band so a DIR0 origin
-    // shift can't clip it into looking "durog". Every CJK line carries an ASCII
-    // encode-RECEIPT (byte count + hex) so a blank glyph is diagnosable as an
-    // APP encode failure (enc=NIL) vs a PRINTER render failure — the Big5
-    // converter is known-missing on some iOS runtimes (the GBK_95 saga).
-    // buildTsplSticker / buildTsplTestPage (AIMO) are NOT touched.
-    // ═══════════════════════════════════════════════════════════════════════
-
-    private func probeHeader(_ w: (String) -> Void) {
-        w("SIZE \(defaultLabelWidthMm) mm, \(defaultLabelHeightMm) mm")
-        w("GAP 2 mm, 0")
-        w("DIRECTION 0")        // AIMO uses DIRECTION 1; 241 printed baliktad → test 0
-        w("REFERENCE 0,0")
-        w("DENSITY 8")
-        w("CLS")
-    }
-
-    /// P1 (label 1/3) — Latin internal fonts 4/3/2. Reads: does the 241 render
-    /// TSPL internal-font TEXT clean AND right-side-up (not mirrored) at DIR0?
-    func buildPhomemoProbeLatin() -> Data {
-        var out = Data()
-        func w(_ s: String) { out.append(contentsOf: tsplAsciiBytes(s)); out.append(contentsOf: [0x0D, 0x0A]) }
-        probeHeader(w)
-        w("TEXT 24,110,\"4\",0,1,1,\"P1 LATIN 1/3 DIR0\"")
-        w("TEXT 24,165,\"3\",0,1,1,\"SellerFlowLive\"")
-        w("TEXT 24,215,\"4\",0,2,2,\"Buyer #12\"")
-        w("TEXT 24,315,\"2\",0,1,1,\"abc XYZ 0123456789\"")
-        w("TEXT 24,355,\"2\",0,1,1,\"clipped != font-broken\"")
-        w("PRINT 1")
-        return out
-    }
-
-    /// P2 (label 2/3) — CJK font/codepage matrix for 陳小美, each line preceded by
-    /// its ENCODE RECEIPT. A=TSS24.BF2+GBK (trusted 3-tier encoder, never nil),
-    /// B=TST24.BF2+Big5, C=font3+Big5, D=CODEPAGE UTF-8+TST24.BF2+UTF-8. A blank
-    /// A = printer can't render GBK; a blank B/C with "enc=NIL" = the APP couldn't
-    /// Big5-encode (not the printer). Cross-check the hex vs known Big5/GBK bytes.
-    func buildPhomemoProbeCjk() -> Data {
-        var out = Data()
-        func w(_ s: String) { out.append(contentsOf: tsplAsciiBytes(s)); out.append(contentsOf: [0x0D, 0x0A]) }
-        func receipt(_ label: String, _ bytes: [UInt8]?) -> String {
-            guard let b = bytes else { return "\(label) enc=NIL(app)" }
-            let hex = b.prefix(8).map { String(format: "%02X", Int($0)) }.joined(separator: " ")
-            return "\(label) n=\(b.count) \(hex)"
-        }
-        func encoded(_ prefix: String, _ bytes: [UInt8]?) {
-            guard let b = bytes else { return }   // app couldn't encode → skip (receipt already said enc=NIL)
-            out.append(contentsOf: tsplAsciiBytes(prefix))
-            out.append(contentsOf: b)
-            out.append(contentsOf: tsplAsciiBytes("\""))
-            out.append(contentsOf: [0x0D, 0x0A])
-        }
-        let cjk = "\u{9673}\u{5C0F}\u{7F8E}"                 // 陳小美 (Traditional)
-        let gbk = CjkEncoding.gbkBytes(cjk)                  // trusted, never nil
-        let big5 = CjkEncoding.losslessBytes(cjk, .big5)     // nil if the iOS runtime lacks the Big5 converter
-        let utf8 = [UInt8](cjk.utf8)
-        probeHeader(w)
-        w("TEXT 20,14,\"4\",0,1,1,\"P2 CJK 2/3 DIR0\"")
-        w("TEXT 20,56,\"2\",0,1,1,\"\(receipt("A TSS/GBK", gbk))\"")
-        encoded("TEXT 20,84,\"TSS24.BF2\",0,1,1,\"", gbk)
-        w("TEXT 20,138,\"2\",0,1,1,\"\(receipt("B TST/BIG5", big5))\"")
-        encoded("TEXT 20,166,\"TST24.BF2\",0,1,1,\"", big5)
-        w("TEXT 20,220,\"2\",0,1,1,\"\(receipt("C F3/BIG5", big5))\"")
-        encoded("TEXT 20,248,\"3\",0,1,1,\"", big5)
-        w("CODEPAGE UTF-8")
-        w("TEXT 20,302,\"2\",0,1,1,\"\(receipt("D UTF8", utf8))\"")
-        encoded("TEXT 20,330,\"TST24.BF2\",0,1,1,\"", utf8)
-        w("CODEPAGE 437")
-        w("PRINT 1")
-        return out
-    }
-
-    /// P3 (label 3/3) — a standalone hardcoded TSPL BITMAP (NOT the dormant
-    /// printSticker path). 160x80-dot asymmetric block (solid top-left quadrant +
-    /// top/bottom rules) so orientation is readable regardless of bit polarity.
-    /// Reads: if P1 garbles but this raster prints clean → the 241 is raster-first.
-    /// NOTE the uncovered case: if BOTH P1 and this blank, the real path may be a
-    /// vendor "SS" raster (per SSGETPRINTING:DONE), which this does NOT test.
-    func buildPhomemoProbeRaster() -> Data {
-        var out = Data()
-        func w(_ s: String) { out.append(contentsOf: tsplAsciiBytes(s)); out.append(contentsOf: [0x0D, 0x0A]) }
-        let widthBytes = 20, height = 80   // 160 dots wide x 80 tall
-        var bmp = [UInt8](repeating: 0xFF, count: widthBytes * height) // 0xFF background
-        for row in 0..<40 { for col in 0..<10 { bmp[row * widthBytes + col] = 0x00 } } // solid top-left quadrant
-        for col in 0..<widthBytes { bmp[col] = 0x00; bmp[(height - 1) * widthBytes + col] = 0x00 } // top+bottom rules
-        probeHeader(w)
-        w("TEXT 24,20,\"4\",0,1,1,\"P3 RASTER 3/3 DIR0\"")
-        out.append(contentsOf: tsplAsciiBytes("BITMAP 24,70,\(widthBytes),\(height),0,"))
-        out.append(contentsOf: bmp)            // raw bitmap data (unquoted, per TSPL BITMAP syntax)
-        out.append(contentsOf: [0x0D, 0x0A])
-        w("PRINT 1")
-        return out
-    }
-
-    /// Phase 0 probe sequence — RETAINED FOR RE-DIAGNOSIS (no UI entry since
-    /// Phase 1; the 241 Test Print now prints the verification sticker). The 3
-    /// probes ride ONE connection as a DONE-gated SEQUENCE (label N+1 only after
-    /// label N's PRINTING:DONE — no truncation; no per-label reconnect race).
-    private func runPhase0Probes(savedId: String, call: CAPPluginCall) {
-        let payloads = [buildPhomemoProbeLatin(), buildPhomemoProbeCjk(), buildPhomemoProbeRaster()]
-        bleTransport.printJobSequence(payloads: payloads, preferredId: savedId) { error in
-            if let error = error {
-                call.reject("Phase 0 probe sequence failed (count the printed labels — numbered 1/3..3/3 — to locate the stage): \(error.message)", error.code)
-            } else {
-                call.resolve([
-                    "ok": true,
-                    "phase0": true,
-                    "labels": 3,
-                    "message": "Phase 0 probes sent: 3 labels (P1 Latin, P2 CJK+receipts, P3 raster).",
-                ])
-            }
-        }
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // MARK: - PHASE 1: Phomemo 241 sticker builder (hybrid TEXT + raster)
-    //
-    // ⚠️ FORK-OF buildTsplSticker — deliberate deltas, COMPLETE list (the drift
-    // rule lives in CLAUDE.md: any AIMO layout edit must be mirrored here or
-    // consciously declined, in writing):
-    //   D1. DIRECTION 0 + IN-LAYOUT 180° ROTATION (2026-07-17). The 241's
-    //       DIRECTION 1 rasterizer is BROKEN — garbled/durog font on BOTH 100x60
-    //       and 60x40 (hardware-confirmed, 2 sizes; DIR1 was the original "durog"
-    //       too). Only DIRECTION 0 renders clean. So we keep DIRECTION 0 (verified)
-    //       and rotate the WHOLE layout 180° at emit time so the header still ejects
-    //       FIRST + upright: a rot-0 element at (x,y) → rot-180 at (W−x, H−y); BAR →
-    //       (W−x−w, H−y−h); a raster band pre-rotates its pixels 180° (flip180) and
-    //       re-anchors its box. The layout MATH is still the verbatim AIMO layout —
-    //       only the emit primitives (emitText / emitBar / the BITMAP anchor) carry
-    //       the rotation. ⚠️ rotation-180 TEXT rendering on the 241 is NOT yet
-    //       device-verified (it uses the clean DIR0 output path, so it SHOULD be
-    //       fine — different engine from the broken DIR1 transform). The CJK bands
-    //       are guaranteed-clean (BITMAP-at-DIR0, pixels we control). If a photo
-    //       shows rotated TEXT garbled like DIR1, the last resort is ALL-RASTER
-    //       (render every element to a band). Anti-drift pin: fork == rotate180(AIMO).
-    //   D2. Non-ASCII renders as a BITMAP raster band (the 241 font ROM has NO
-    //       working CJK font — all 5 Phase-0 P2 probes failed with verified-good
-    //       app-side encoding). Band height = 24 × cjkYMul — the SAME multiplied
-    //       value the AIMO TSS24.BF2 path uses, so the seller size-adjuster and
-    //       the d/extra reflow math stay identical (audit F1 hard requirement).
-    //   D3. NO UNSUPPORTED-script downgrade-to-handle (audit F3 decision): the
-    //       band renders ANY script (Thai/Korean/Vietnamese full glyphs...), so
-    //       the AIMO name fallback block is dropped and the gap math keys on
-    //       hasNonAscii (band) instead of nameTier==CJK. stripEmoji STAYS (v1);
-    //       emoji rendering = v2.
-    //   D4. writeTextSmart241 does NOT stripUnrenderable (the band can render
-    //       what the AIMO ROM cannot). Latin/ASCII path byte-identical.
-    // Everything else (header, SizeConfig table, gaps, guards, settings gates,
-    // truncations, Total anchor) is a verbatim copy — only the emit primitives
-    // apply the 180° map. Drift guard: the Mac-run ASCII-parity test pins all-ASCII
-    // output == rotate180(AIMO output). AIMO's buildTsplSticker is UNTOUCHED and
-    // golden-locked.
-    // ═══════════════════════════════════════════════════════════════════════
-
-    func buildTsplSticker241(
-        buyer: [String: Any],
-        settings: [String: Any]?,
-        storeName: String,
-        currency: String,
-        sessionDate: String,
-        labelWidthMm: Int,
-        labelHeightMm: Int,
-        scalesRaw: [String: Any]? = nil,
-        bandRenderer: ((String, Double, Double, Int) -> Phomemo241Raster.Band?)? = nil
-    ) -> Data {
-        let renderBand = bandRenderer ?? { [weak self] text, xMul, yMul, w in self?.render241TextBand(text, xMul: xMul, yMul: yMul, maxWidthDots: w) }
-        var out = Data()
-        func writeAscii(_ s: String) {
-            out.append(contentsOf: tsplAsciiBytes(s))
-            out.append(contentsOf: [0x0D, 0x0A])
-        }
-        // ── DIRECTION 0 + in-layout 180° rotation (D1) ──────────────────────
-        // The 241's DIRECTION 1 rasterizer is BROKEN (garbled font on BOTH 100x60
-        // and 60x40 — hardware-confirmed); only DIRECTION 0 renders clean. To still
-        // eject HEADER-first + upright, every element is rotated 180° IN THE LAYOUT
-        // at DIRECTION 0: a rotation-0 element at (x,y) becomes a rotation-180
-        // element whose anchor is the 180°-about-centre image of its top-left,
-        // (W−x, H−y). A BAR (a rectangle) just re-anchors to (W−x−w, H−y−h). A
-        // raster band pre-rotates its pixels 180° (flip180) and re-anchors its box
-        // to (W−x−boxW, H−y−h). The layout math below (top-down y, gaps, guards,
-        // Total) is the VERBATIM AIMO layout — only these emit primitives carry the
-        // rotation. W/H = label in dots (203 DPI = 8 dot/mm), matching c.wDots.
-        //   EDGE_GUARD: the AIMO's 16-dot LEFT margin maps to a 16-dot RIGHT margin
-        //   under the 180° flip, but the 241's DIRECTION-0 printable window is
-        //   narrower/offset on that side (60×40 device: the FIRST letter of every
-        //   line — the right-hugging one after the flip — clipped). So pull the whole
-        //   layout LEFT by EDGE_GUARD: the flipped layout is right-heavy (its left
-        //   side has ~200 dots of slack), so this clears the right edge without
-        //   clipping the left. Applied to text + bands (BAR clamps at 0).
-        //   48 (was 32): the 32-dot pull left the FIRST letter of the x=16 lines
-        //   (SellerFlowLive / shop / name / @handle / time) still half-clipped on the
-        //   241's DIRECTION-0 right edge at 60×40. +16 clears it; the right-side date
-        //   (x=290) keeps ample slack (≈200-dot right-heavy layout), so nothing else
-        //   clips. All sizes share it — larger labels have even more room.
-        let W = labelWidthMm * 8
-        let H = labelHeightMm * 8
-        let edgeGuard = 48
-        func emitText(_ x: Int, _ y: Int, _ font: String, _ xMul: Int, _ yMul: Int, _ content: String) {
-            writeAscii("TEXT \(W - x - edgeGuard),\(H - y),\"\(font)\",180,\(xMul),\(yMul),\"\(content)\"")
-        }
-        func emitBar(_ x: Int, _ y: Int, _ w: Int, _ h: Int) {
-            writeAscii("BAR \(max(0, W - x - w - edgeGuard)),\(H - y - h),\(w),\(h)")
-        }
-        // Clamp a raster multiplier to the usable range. Ceiling 8 mirrors AIMO's cmul
-        // (the TSPL font 8× ceiling) so INTEGER scales stay height-parity with the
-        // goldens; floor 0.5 lets sub-1 decimals genuinely SHRINK on the band path
-        // (AIMO's cmul floors at 1 = can't shrink; the 241 raster can — BUG 3).
-        func clampF(_ v: Double) -> Double { return min(8.0, max(0.5, v)) }
-        // Emit `content` as a pre-rotated raster band, box re-anchored under the 180°
-        // map: top-left → (W−x−boxW, H−y−h). boxW = widthBytes*8 (left-aligned content
-        // shifts ≤7 dots, sub-mm). Pixels are pre-rotated (render flips). Empty/blank or
-        // a failed render → emit NOTHING (a 0-width BITMAP is malformed). Muls are
-        // DECIMAL (Double): the seller size adjuster is a fine 0.1 step and the band
-        // renderer sizes in PIXELS (24 × yMul), so it honors every step (BUG 3), unlike
-        // rotation-180 TEXT which the 241 firmware won't scale.
-        func emitBand(_ x: Int, _ y: Int, _ content: String, _ xMulRaw: Double, _ yMulRaw: Double, _ rightEdge: Int) {
-            if content.isEmpty { return }
-            let xMul = clampF(xMulRaw), yMul = clampF(yMulRaw)
-            // Usable width RESERVES the EDGE_GUARD on the far side too. The placed box is
-            // bx = W−x−bandW−edgeGuard; capping bandW ≤ rightEdge−x−edgeGuard keeps bx ≥
-            // W−rightEdge (= the 16-dot margin, always ≥0) so it NEVER hits the max(0,…)
-            // clamp that shifted a too-wide band and sliced its leading letter. The band
-            // then reads [x+edgeGuard, ≤rightEdge] — the same left margin as the TEXT
-            // elements, both edges clear at every scale.
-            let avail = max(8, rightEdge - x - edgeGuard)
-            // CJK is drawn at NATURAL width and CLIPPED to the canvas, so truncate to the
-            // cells that fit (≈24×xMul dots each) — from the ACTUAL decimal, NOT rounded
-            // up (1.1 rounded to 2 halved the budget → "@sellerfl"). ASCII is monospace and
-            // the renderer COMPRESSES it to `avail` (AIMO-like), so pass it WHOLE (only the
-            // caller's source truncate applies) → a long name shrinks to fit, never right-clips.
-            let fitted: String
-            if hasNonAscii(content) {
-                let cell = max(1, Int((24 * xMul).rounded()))
-                fitted = truncate16(content, max(1, avail / cell))
-            } else {
-                fitted = content
-            }
-            guard let band = renderBand(fitted, xMul, yMul, avail),
-                  band.height > 0, band.widthBytes > 0, !band.bytes.isEmpty else { return }
-            let bx = max(0, W - x - band.widthBytes * 8 - edgeGuard)
-            // VERTICAL margin protection (Task 3): a scaled band grown + pushed down by
-            // reflow could drive H−y−height NEGATIVE (its top row falling off the physical
-            // top edge = reading bottom), losing content silently. Clamp to 0 so the band
-            // stays fully on the label (top-aligned worst case). Horizontal is already
-            // bounded by `avail` (rightEdge−x−guard) + every element's x ≥ 32, keeping the
-            // physical span inside [16, 392]. At 60×40 the price (y=242) at scale 3.0 =
-            // by 6 (≥0, safe); the clamp only engages beyond the 0.5–3.0 range / heavy
-            // stacked reflow — a last-resort no-lose-content guard, not the normal path.
-            let by = max(0, H - y - band.height)
-            out.append(contentsOf: tsplAsciiBytes("BITMAP \(bx),\(by),\(band.widthBytes),\(band.height),0,"))
-            out.append(contentsOf: band.bytes)
-            out.append(contentsOf: [0x0D, 0x0A])
-        }
-        // SYMMETRIC scalable element (store / ASCII name / @username): AIMO scales BOTH
-        // axes by the level, so the band scales both by the decimal. scale EXACTLY 1.0
-        // (ASCII) → the verified TEXT command (byte-identical default). CJK or scale≠1
-        // → a (scale, scale)-stretched band. base TEXT muls are (1,1).
-        func emitSym(_ x: Int, _ y: Int, _ font: String, _ scale: Double, _ rawContent: String, _ rightEdge: Int) {
-            let content = transliterateLatin(rawContent)
-            if content.isEmpty { return }   // same emptiness rule as writeTextSmart (parity)
-            let isCjk = hasNonAscii(content)
-            if !isCjk && scale == 1.0 { emitText(x, y, font, 1, 1, content); return }
-            emitBand(x, y, content, scale, scale, rightEdge)
-        }
-        // HEIGHT-PRIORITY scalable element (Buyer# / price code): AIMO keeps the width
-        // multiplier FIXED (baseX) and scales only HEIGHT with the level; mirror that —
-        // band width = baseX (glyph stays baseX× wide), band height = baseY × scale.
-        // scale EXACTLY 1.0 (ASCII) → TEXT at (baseX, baseY) [byte-identical]. CJK or
-        // scale≠1 → band.
-        func emitHeightScaled(_ x: Int, _ y: Int, _ font: String, _ baseX: Int, _ baseY: Int, _ scale: Double, _ rawContent: String, _ rightEdge: Int) {
-            let content = transliterateLatin(rawContent)
-            if content.isEmpty { return }
-            let isCjk = hasNonAscii(content)
-            if !isCjk && scale == 1.0 { emitText(x, y, font, baseX, baseY, content); return }
-            emitBand(x, y, content, Double(baseX), Double(baseY) * scale, rightEdge)
-        }
-        // Decimal scale for `key`: the 241 raster path reads the exact seller adjuster
-        // from scalesRaw (BUG 3 — the redesign rounds it to an int for the AIMO TSPL
-        // path, losing 0.1 steps). Falls back to the rounded integer (Double) when
-        // scalesRaw is absent (App.tsx / legacy / native test payloads), so those stay
-        // byte-identical. 0 → 1 (never a zero-size element).
-        func sclD(_ key: String) -> Double {
-            if let raw = scalesRaw, let n = raw[key] as? NSNumber {
-                let d = n.doubleValue
-                return clampF(d == 0 ? 1 : d)
-            }
-            return Double(lvlSetting(key))
-        }
-        func asInt(_ v: Any?) -> Int? {
-            if let i = v as? Int { return i }
-            if let d = v as? Double { return Int(d) }
-            return (v as? NSNumber)?.intValue
-        }
-        func asDouble(_ v: Any?) -> Double {
-            if let d = v as? Double { return d }
-            if let i = v as? Int { return Double(i) }
-            return (v as? NSNumber)?.doubleValue ?? 0
-        }
-        func boolSetting(_ key: String) -> Bool {
-            guard let settings = settings else { return true }
-            if let b = settings[key] as? Bool { return b }
-            if let n = settings[key] as? NSNumber { return n.boolValue }
-            return true
-        }
-
-        let buyerNum = asInt(buyer["num"]) ?? asInt(buyer["bNum"]) ?? 0
-        let buyerName = (buyer["name"] as? String) ?? ""
-        let buyerHandle = (buyer["handle"] as? String) ?? ""
-        let totalSpent = asDouble(buyer["totalSpent"])
-        let orders = (buyer["orders"] as? [[String: Any]]) ?? []
-
-        let printStoreName = boolSetting("printStoreName")
-        let printBuyerNumber = boolSetting("printBuyerNumber")
-        let printBuyerUsername = boolSetting("printBuyerUsername")
-        let printOrderItems = boolSetting("printOrderItems")
-        let printTotal = boolSetting("printTotal")
-
-        // F3/F4 = the 1× TSPL font heights (dots) used only to reflow the layout down
-        // so a grown element never overlaps the next. (No F2: the order-line time is
-        // fixed at base size — see the order loop — so it never shifts the layout.)
-        let F3 = 24, F4 = 32
-        func lvlSetting(_ key: String) -> Int {
-            guard let settings = settings else { return 1 }
-            let v: Int
-            if let n = settings[key] as? NSNumber { v = n.intValue }
-            else if let i = settings[key] as? Int { v = i }
-            else if let d = settings[key] as? Double { v = Int(d) }
-            else { v = 1 }
-            return max(1, min(8, v == 0 ? 1 : v))
-        }
-        // DECIMAL seller scales for the raster path (BUG 3). sclD reads the exact 0.1
-        // step from scalesRaw, falling back to the rounded integer when absent. Note:
-        // NO order/time scale — the 241 order-line TIME is FIXED at base size (BUG 1/2:
-        // the redesign's single "comment" control drove BOTH price + time, so a scaled
-        // time band collided with the price column → "7:07PRICE"). AIMO is untouched.
-        let sStore = sclD("printStoreScale")
-        let sBuyerNum = sclD("printBuyerNumberScale")
-        let sName = sclD("printBuyerNameScale")
-        let sUser = sclD("printUsernameScale")
-        let sComment = sclD("printCommentScale")
-        let sTotal = sclD("printTotalScale")
-
-        writeAscii("SIZE \(labelWidthMm) mm, \(labelHeightMm) mm")
-        writeAscii("GAP 2 mm, 0")
-        writeAscii("DIRECTION 0")   // 241 DIR1 rasterizer is broken; rotate in-layout (D1)
-        writeAscii("REFERENCE 0,0")
-        writeAscii("DENSITY 8")
-        writeAscii("CLS")
-
-        let c = stickerConfig(labelWidthMm, labelHeightMm)
-
-        // 60×40 = Jeff's bespoke layout (final spec v3). A CONSCIOUS divergence from AIMO
-        // (the FORK-DRIFT rule permits a documented decline) — so x + gaps are FORK-LOCAL
-        // here; the shared SizeConfig (AIMO's buildTsplSticker reads the SAME table) is
-        // UNTOUCHED and the other 4 sizes stay byte-identical (every `is6040 ? … : <lit>`
-        // resolves to the current literal off 60×40). v3 shifts every x right — the 241's
-        // 60×40 printable window starts ≈ authoring x 32 (hardware: x=16 sliced, x=36 whole).
-        // Gaps derived from Jeff's y's:
-        //   shop 64 →+30→ buyer# 94 →+42→ name 136 →+44→ @user 180 →+50→ order row 230.
-        //   The order row anchors at the TIME (230); the price sits +12 BELOW it (242).
-        let is6040 = (labelWidthMm == 60 && labelHeightMm == 40)
-        let storeGap    = is6040 ? 30 : c.storeGap
-        let buyerNumGap = is6040 ? 42 : c.buyerNumGap
-        let nameGap     = is6040 ? 44 : c.nameGap
-        let usernameGap = is6040 ? 50 : c.usernameGap
-        let headerX = is6040 ? 40  : 16
-        let headerY = is6040 ? 12  : 10
-        let dateX   = is6040 ? 330 : 290
-        let dateY   = is6040 ? 20  : 18
-        let storeX = is6040 ? 64  : 16
-        let buyerX = is6040 ? 40  : 16
-        let nameX  = is6040 ? 46  : 16
-        let userX  = is6040 ? 48  : 16
-        let timeX  = is6040 ? 58  : 16
-        let priceX = is6040 ? 200 : 180
-        let startY = is6040 ? 64  : 60
-
-        emitText(headerX, headerY, "3", 1, 1, "SellerFlowLive")
-        if !sessionDate.isEmpty {
-            emitText(dateX, dateY, "2", 1, 1, tsplSafe(truncate16(sessionDate, 12)))
-        }
-        // TOP separator bar. 60×40: printable-width span — the old x=0 w=480 bar ran off
-        // the 241's DIRECTION-0 right non-printable edge. emitBar(40,48,376,3) →
-        // BAR 16,269,376,3 = physical [16, 392]: right end 392 = the header's verified-
-        // visible position, left 16 = margin; 40+376+48 = 464 ≤ 480 so no anchor clamp.
-        if is6040 {
-            emitBar(40, 48, 376, 3)
-        } else {
-            emitBar(0, 48, c.wDots, 3)
-        }
-
-        let cleanStoreName = stripEmoji(storeName)
-        let cleanBuyerName = stripEmoji(buyerName)
-        let cleanBuyerHandle = stripEmoji(buyerHandle)
-
-        // D3: name resolution WITHOUT the UNSUPPORTED downgrade — the band
-        // renders any script. Emoji-only names still fall back (stripEmoji, v1).
-        var nameSource = cleanBuyerName
-        if !buyerName.isEmpty && cleanBuyerName.isEmpty {
-            nameSource = !cleanBuyerHandle.isEmpty ? cleanBuyerHandle : "Buyer #\(buyerNum)"
-        }
-        let nameOut = transliterateLatin(nameSource)
-        let bandName = hasNonAscii(nameOut)   // D3: replaces nameTier==CJK for the gap math
-
-        var extra = 0
-        var y = startY
-        if printStoreName && !cleanStoreName.isEmpty {
-            emitSym(storeX, y, "3", sStore, tsplSafe(truncate16(cleanStoreName, 36)), c.rightEdge)
-            let d = Int(((clampF(sStore) - 1) * Double(F3)).rounded())
-            y += storeGap + d
-            extra += d
-        }
-
-        if printBuyerNumber {
-            let effY = clampF(Double(c.buyerNumYMul) * sBuyerNum)   // height mul (width stays 2×)
-            emitHeightScaled(buyerX, y, "4", 2, c.buyerNumYMul, sBuyerNum, "Buyer #\(buyerNum)", c.rightEdge)
-            let d = Int(((effY - Double(c.buyerNumYMul)) * Double(F4)).rounded())
-            y += buyerNumGap + d
-            extra += d
-        }
-
-        if !nameOut.isEmpty {
-            if bandName {
-                // CJK / UNSUPPORTED name → band on both axes (base nameCjk*Mul), scaled.
-                emitBand(nameX, y, tsplSafe(truncate16(nameOut, 30)), Double(c.nameCjkXMul) * sName, Double(c.nameCjkYMul) * sName, c.rightEdge)
-                let effY = clampF(Double(c.nameCjkYMul) * sName)
-                let d = Int(((effY - Double(c.nameCjkYMul)) * Double(F4)).rounded())
-                y += c.nameCjkGap + d
-                extra += (c.nameCjkGap - nameGap) + d
-            } else {
-                emitSym(nameX, y, "4", sName, tsplSafe(truncate16(nameOut, 30)), c.rightEdge)
-                let d = Int(((clampF(sName) - 1) * Double(F4)).rounded())
-                y += nameGap + d
-                extra += d
-            }
-        }
-
-        if printBuyerUsername && !cleanBuyerHandle.isEmpty {
-            emitSym(userX, y, "3", sUser, "@" + tsplSafe(truncate16(cleanBuyerHandle, 30)), c.rightEdge)
-            let d = Int(((clampF(sUser) - 1) * Double(F3)).rounded())
-            y += usernameGap + d
-            extra += d
-        }
-
-        if printOrderItems && !orders.isEmpty && y < c.orderEntryGuard + extra {
-            // 60×40 (Jeff): the order separator BAR is REMOVED and only ONE order row
-            // prints (order-per-sticker — a multi-order buyer splits into N stickers in
-            // printStickerNative). Other sizes keep the bar + sepGap advance + 2 rows.
-            if !is6040 {
-                emitBar(16, y, c.sepWidth, 2)
-                y += c.sepGap
-            }
-            let maxOrders = is6040 ? 1 : 2
-            var i = 0
-            while i < min(orders.count, maxOrders) && y < c.orderLoopGuard + extra {
-                let order = orders[i]
-                let time = (order["time"] as? String) ?? ""
-                let item = (order["item"] as? String) ?? ""
-                let cleanItem = stripEmoji(item)
-                // TIME — FIXED at base size (BUG 1/2). It has no dedicated size control,
-                // the shared "comment" scale drove it, and a scaled time BAND grew wide
-                // enough to overrun the price column ("7:07PRICE"). A timestamp stays
-                // small: plain TEXT font "2" 1×1. 60×40 authoring (v2): x=48, y=row (230),
-                // the row anchor — the price now sits BELOW it.
-                if !time.isEmpty {
-                    emitText(timeX, y, "2", 1, 1, tsplSafe(truncate16(time, 10)))
-                }
-                // PRICE CODE — height-priority (base 2× width, 1× height); height honors
-                // the comment decimal (BUG 3). ASCII scale 1.0 → TEXT (byte-identical).
-                // 60×40 authoring (v2): x=200, y+12 (242) — price BELOW the time.
-                if !cleanItem.isEmpty {
-                    emitHeightScaled(priceX, is6040 ? y + 12 : y, "4", 2, 1, sComment, tsplSafe(truncate16(cleanItem, 12)), c.rightEdge)
-                }
-                let d = max(0, Int(((clampF(sComment) - 1) * Double(F4)).rounded()))
-                y += 38 + d
-                i += 1
-            }
-        }
-
-        if printTotal && totalSpent > 0 && c.showTotal {
-            let totalY = c.totalY + extra
-            emitSym(16, totalY, "3", sTotal, "Total:", c.rightEdge)
-            let totalStr = tsplSafe(currency) + tsplMoney(totalSpent)
-            emitHeightScaled(c.totalAmountX, totalY, "4", 2, 1, sTotal, tsplSafe(truncate16(totalStr, 18)), W - 16)
-        }
-
-        writeAscii("PRINT 1")
-        return out
-    }
-
-    /// Render a text band for the 241 raster path — UIGraphicsImageRenderer
-    /// ONLY (documented thread-safe; UIGraphicsBeginImageContext is NOT and is
-    /// BANNED here — Capacitor invokes plugin calls off-main). 1 point = 1 pixel
-    /// = 1 printer dot (203dpi). System font cascade resolves CJK to PingFang TC
-    /// (Traditional-correct) and other scripts to their system fonts.
-    /// The band's TARGET size is a base glyph cell STRETCHED by (xMul, yMul) — the
-    /// same thing the AIMO `TEXT …,"4",0,xMul,yMul` does (a stretched bitmap). So
-    /// the LETTER grows tall/narrow with the scale (not just the whitespace), and a
-    /// wide string doesn't clip the way a uniform blow-up would. ASCII → a MONOSPACE
-    /// BOLD face (closest to the TSPL ROM look), cap sized to the base cell so caps/
-    /// digits fill top-to-bottom. CJK → unchanged (systemFont, em ≈ fills — the
-    /// device-verified 陳小美/紅色洋裝 path). base cell = 24 dots (~ TSPL font "4").
-    private func render241TextBand(_ text: String, xMul: Double, yMul: Double, maxWidthDots: Int) -> Phomemo241Raster.Band? {
-        if text.isEmpty || xMul <= 0 || yMul <= 0 || maxWidthDots <= 0 { return nil }
-        let baseCell = 24
-        // Height in PIXELS from the EXACT decimal (24 × yMul), so every 0.1 step of the
-        // seller size adjuster changes the rendered glyph (BUG 3) — a rotation-180 TEXT
-        // multiplier the 241 ignores, a pixel dimension it can't. min 1 dot.
-        let outH = max(1, Int((Double(baseCell) * yMul).rounded()))
-        let isCjk = text.unicodeScalars.contains {
-            ($0.value >= 0x2E80 && $0.value <= 0x9FFF) || ($0.value >= 0x3400 && $0.value <= 0x4DBF) || ($0.value >= 0xF900 && $0.value <= 0xFAFF)
-        }
-        let img: UIImage
-        let outW: Int
-        let fmt = UIGraphicsImageRendererFormat()
-        fmt.scale = 1
-        if isCjk {
-            // CJK — verified path, unchanged: system font at outH×0.82, width natural.
-            let font = UIFont.systemFont(ofSize: CGFloat(outH) * 0.82, weight: .medium)
-            let str = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: UIColor.black])
-            let m = str.size()
-            let w = min(Int(ceil(m.width)), maxWidthDots)
-            if w <= 0 { return nil }
-            outW = w
-            img = UIGraphicsImageRenderer(size: CGSize(width: outW, height: outH), format: fmt).image { ctx in
-                UIColor.white.setFill(); ctx.fill(CGRect(x: 0, y: 0, width: outW, height: outH))
-                str.draw(at: CGPoint(x: 0, y: max(0, (CGFloat(outH) - m.height) / 2)))
-            }
-        } else {
-            // ASCII/Latin — monospace bold, then STRETCH by (xMul, yMul) so the letter
-            // itself grows (AIMO-like). Size so the FULL glyph — cap-top DOWN TO the
-            // descender-bottom — fits the base cell (cap + |descender| == baseCell). The
-            // old sizing pinned CAP == baseCell and put descenders BELOW the canvas, so
-            // the "y" in "Buyer" (and g/p/q/j) clipped at the bottom at every band scale.
-            // Now cap-top → 0 and descender-bottom → baseCell, so the whole glyph lands
-            // in [0, baseCell] → [0, outH] after the yMul scale — no top/bottom clip.
-            let ref = UIFont.monospacedSystemFont(ofSize: 100, weight: .bold)
-            let capRatio = ref.capHeight > 0 ? ref.capHeight / 100 : 0.70
-            let descRatio = ref.descender < 0 ? -ref.descender / 100 : 0.21   // |descender| / size
-            let glyphExtent = max(0.5, capRatio + descRatio)                  // cap-top → descender-bottom
-            let font = UIFont.monospacedSystemFont(ofSize: CGFloat(baseCell) / glyphExtent, weight: .bold)
-            let str = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: UIColor.black])
-            let m = str.size()
-            if m.width < 1 { return nil }
-            outW = min(Int(ceil(m.width * CGFloat(xMul))), maxWidthDots)
-            if outW <= 0 { return nil }
-            let hStretch = CGFloat(outW) / CGFloat(m.width)   // = xMul unless width-clamped
-            img = UIGraphicsImageRenderer(size: CGSize(width: outW, height: outH), format: fmt).image { ctx in
-                UIColor.white.setFill(); ctx.fill(CGRect(x: 0, y: 0, width: outW, height: outH))
-                ctx.cgContext.scaleBy(x: hStretch, y: CGFloat(yMul))
-                str.draw(at: CGPoint(x: 0, y: font.capHeight - font.ascender)) // cap-top → 0; descender-bottom → baseCell
-            }
-        }
-        guard let cg = img.cgImage else { return nil }
-        let w = cg.width, h = cg.height
-        var gray = [UInt8](repeating: 255, count: w * h)
-        guard let gctx = CGContext(data: &gray, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w,
-                                   space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return nil }
-        gctx.draw(cg, in: CGRect(x: 0, y: 0, width: w, height: h))
-        // flip180: TRUE always — the 241 builder runs DIRECTION 0 + in-layout 180°
-        // (the DIR1 rasterizer is broken), so every band is pre-rotated 180° so it
-        // reads upright once the whole label is rotated. Unit-pinned in packBits.
-        return Phomemo241Raster.packBits(gray: gray, width: w, height: h, flip180: true)
-    }
-
-    /// Phase-1 verification sticker (the 241 Test Print, single entry point for
-    /// BOTH testStickerPrint and printStickerNative+isTest). FIXED payload so the
-    /// photo review is deterministic; exercises every proving case: CJK name
-    /// band (陳小美), CJK product band (紅色洋裝 x2) = MULTIPLE BITMAPs per label,
-    /// Latin TEXT lines (Blue jeans M), buyer#, date, Total. Order path stays
-    /// PROFILE_NOT_READY until this print passes photo review (Phase 2 flips it).
-    private func run241VerificationPrint(savedId: String, storeName: String, call: CAPPluginCall) {
-        let buyer: [String: Any] = [
-            "num": 88,
-            "name": "\u{9673}\u{5C0F}\u{7F8E}",          // 陳小美
-            "handle": "sellerflow",
-            "totalSpent": 1200,
-            "orders": [
-                ["item": "\u{7D05}\u{8272}\u{6D0B}\u{88DD} x2", "time": "20:15"],  // 紅色洋裝 x2
-                ["item": "Blue jeans M", "time": "20:18"],
-            ] as [[String: Any]],
-        ]
-        // Use the SELLER's configured label size (the web Test payload carries it) so
-        // the verification matches the actual paper — Jeff's production stock is 60×40
-        // now, not 100×60. Falls back to the 100×60 default if the call omits it.
-        let labelWidthMm = call.getInt("labelWidthMm", defaultLabelWidthMm)
-        let labelHeightMm = call.getInt("labelHeightMm", defaultLabelHeightMm)
-        let data = buildTsplSticker241(
-            buyer: buyer, settings: nil, storeName: storeName, currency: "NT$",
-            sessionDate: "07/17/2026", labelWidthMm: labelWidthMm, labelHeightMm: labelHeightMm
-        )
-        bleTransport.printJob(data: data, preferredId: savedId) { error in
-            if let error = error {
-                call.reject("241 verification sticker failed: \(error.message)", error.code)
-            } else {
-                call.resolve([
-                    "ok": true,
-                    "phase1": true,
-                    "bytes": data.count,
-                    "message": "241 verification sticker sent (\(data.count) bytes) — check: HEADER exits first + everything upright, Latin sharp, 陳小美 + 紅色洋裝 legible. If the Latin/Buyer# TEXT is garbled but the CJK bands are clean, the 241 can't render rotated TEXT → all-raster is the next step.",
-                ])
-            }
-        }
     }
 }
 
@@ -1963,58 +1255,6 @@ enum CjkEncoding {
 // CJK-ENCODING-END
 
 // ═════════════════════════════════════════════════════════════════════════════
-// MARK: - Phomemo 241 raster pure logic (no UIKit — unit-testable standalone)
-//
-// The DECISIONS of the 241 band pipeline: 1-bit packing (polarity/padding/
-// threshold) + the AIMO-mirror char budget. The UIKit glyph render stays
-// isolated in render241TextBand (device-verified only — the Mac/sim runtime
-// cannot prove printer glyph output; the GBK_95 lesson).
-// Tests: mobile/ios/tspl-parity/swift/Phomemo241BuilderTests.swift (Mac-run).
-// ═════════════════════════════════════════════════════════════════════════════
-
-enum Phomemo241Raster {
-    struct Band {
-        let widthBytes: Int
-        let height: Int
-        let bytes: [UInt8]
-    }
-
-    /// Pack row-major 8-bit grayscale (0=black…255=white) into TSPL BITMAP
-    /// mode-0 bytes. Bit 0 = BLACK dot (hardware-proven by the Phase-0 P3 probe:
-    /// 0x00 printed black, 0xFF background). Width pads UP to a whole byte —
-    /// TSPL's width field is in BYTES — with pad bits = 1 (white). Invalid
-    /// dimensions / short pixel buffer → nil (caller emits nothing; a 0-width
-    /// BITMAP is a malformed command).
-    /// flip180 (default false): rotate the band 180° while packing — output
-    /// (row,col) reads from source (height-1-row, width-1-col). The 241 builder runs
-    /// DIRECTION 0 + in-layout 180°, so it packs bands with flip180=true (they read
-    /// upright once the whole label is rotated). false is byte-identical to the
-    /// un-flipped pack (kept for the unit pins).
-    static func packBits(gray: [UInt8], width: Int, height: Int, threshold: UInt8 = 128, flip180: Bool = false) -> Band? {
-        guard width > 0, height > 0, gray.count >= width * height else { return nil }
-        let widthBytes = (width + 7) / 8
-        var out = [UInt8](repeating: 0xFF, count: widthBytes * height)
-        for row in 0..<height {
-            for col in 0..<width {
-                let srcRow = flip180 ? (height - 1 - row) : row
-                let srcCol = flip180 ? (width - 1 - col) : col
-                if gray[srcRow * width + srcCol] < threshold {
-                    out[row * widthBytes + (col >> 3)] &= ~(UInt8(0x80) >> (col & 7))
-                }
-            }
-        }
-        return Band(widthBytes: widthBytes, height: height, bytes: out)
-    }
-
-    /// AIMO-mirror character budget for a band from its x origin (full-width
-    /// cells of 24×cjkXMul dots) — same formula as writeTextSmart's CJK clamp,
-    /// so truncation behavior matches the AIMO path.
-    static func maxChars(x: Int, rightEdge: Int, cjkXMul: Int) -> Int {
-        return max(1, (rightEdge - x) / (24 * max(1, cjkXMul)))
-    }
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
 // MARK: - BLE pure logic (no CoreBluetooth types — unit-testable standalone)
 //
 // Every DECISION the transport makes lives here so it can be tested without
@@ -2028,12 +1268,6 @@ enum BleStickerLogic {
     static let advertisedService = "AF30"
     /// Device-name prefix; the suffix varies per unit ("D520BT-Z", …).
     static let namePrefix = "D520BT"
-    /// Phomemo 241 device-name prefix (scanned as "PM-241Z-BT-…"). Additive: it
-    /// makes the 241 discoverable AND routes it to its own profile. It can NEVER
-    /// match a D520BT, so the AIMO path is unaffected. (Fix: PM-241 only, not
-    /// "PM-2" — a broader prefix could grab a different printer that already
-    /// works via the AIMO/AF30 path.)
-    static let phomemoNamePrefix = "PM-241"
     /// Proven-safe ceiling for write-without-response payloads on this printer
     /// class, and the BLE minimum (ATT default MTU 23 − 3 header).
     static let maxChunk = 180
@@ -2075,29 +1309,9 @@ enum BleStickerLogic {
             let s = raw.uppercased()
             if s == advertisedService || s.hasPrefix("0000\(advertisedService)-") { return true }
         }
-        if let n = name?.uppercased(), n.hasPrefix(namePrefix) || n.hasPrefix(phomemoNamePrefix) { return true }
+        if let n = name?.uppercased(), n.hasPrefix(namePrefix) { return true }
         return false
     }
-
-    /// Which printer PROFILE a saved device name maps to — the SINGLE SOURCE for
-    /// the routing decision (scan discovery uses isTargetPrinter above; print
-    /// paths use this). Case-normalized like isTargetPrinter. Only a name that
-    /// starts "PM-241" is .phomemo241; everything else (incl. D520BT, empty, nil)
-    /// is .aimo, so the live AIMO path is the provable default and a PM-241 can
-    /// never be misrouted onto it (nor a D520BT onto the 241 diagnostics).
-    static func resolveProfile(name: String?) -> PrinterProfile {
-        if let n = name?.uppercased(), n.hasPrefix(phomemoNamePrefix) { return .phomemo241 }
-        return .aimo
-    }
-}
-
-/// Printer command/behavior profile. .aimo = the live, golden-locked TSPL stream
-/// (AIMO D520BT and any non-PM-241 device). .phomemo241 = the new isolated path
-/// (Phase 0 = diagnostics only; Phase 1 = its own builder). NEVER a mutation of
-/// the AIMO builder.
-enum PrinterProfile {
-    case aimo
-    case phomemo241
 }
 
 /// Honest, code-tagged BLE failure — codes mirror the Android plugin's reject
@@ -2155,13 +1369,6 @@ final class BleStickerTransport: NSObject, CBCentralManagerDelegate, CBPeriphera
     private var allChunksSent = false
     private var notifyBuffer = ""
     private var payload = Data()
-    // Multi-label queue (printJobSequence ONLY — always [] for printJob, so the
-    // single-payload AIMO path is provably byte-identical). Each queued payload
-    // is its own PRINT 1 label, DONE-gated before the next is sent, all inside
-    // ONE connection (sequential printJob calls raced: job N+1's connect vs job
-    // N's in-flight cancelPeripheralConnection → stale didDisconnectPeripheral
-    // killed job N+1).
-    private var remainingPayloads: [Data] = []
 
     private let uuidService = CBUUID(string: "FF00")
     private let uuidWrite = CBUUID(string: "FF02")
@@ -2200,7 +1407,6 @@ final class BleStickerTransport: NSObject, CBCentralManagerDelegate, CBPeriphera
                 self.jobActive = true
                 self.jobDone = { err in DispatchQueue.main.async { completion(err) } }
                 self.payload = data
-                self.remainingPayloads = []   // single-payload job (AIMO path) — queue always empty
                 self.preferredId = (preferredId?.isEmpty == false) ? preferredId : nil
                 self.fallbackTarget = nil
                 self.notifyBuffer = ""
@@ -2216,54 +1422,6 @@ final class BleStickerTransport: NSObject, CBCentralManagerDelegate, CBPeriphera
                 }
 
                 // fast paths: known identifier, or already system-connected (FF00)
-                var target: CBPeripheral?
-                if let id = self.preferredId, let uuid = UUID(uuidString: id) {
-                    target = self.central?.retrievePeripherals(withIdentifiers: [uuid]).first
-                }
-                if target == nil {
-                    target = self.central?.retrieveConnectedPeripherals(withServices: [self.uuidService]).first
-                }
-                if let p = target { self.connect(p) } else { self.scanForJob() }
-            }
-        }
-    }
-
-    /// Multi-label job: ONE connection, each payload its own PRINT 1 label,
-    /// DONE-gated per label (label N+1 is sent only after label N's
-    /// PRINTING:DONE — the F1 no-truncation guarantee), disconnect only after
-    /// the LAST label. Used by the Phomemo Phase 0 probes; printJob (the AIMO
-    /// path) is untouched and keeps its exact single-payload behavior.
-    func printJobSequence(payloads: [Data], preferredId: String?, completion: @escaping (BleError?) -> Void) {
-        guard let first = payloads.first else {
-            DispatchQueue.main.async { completion(nil) }
-            return
-        }
-        ensurePoweredOn { [weak self] error in
-            guard let self = self else { return }
-            if let error = error { DispatchQueue.main.async { completion(error) }; return }
-            self.queue.async {
-                if self.jobActive || self.scanDone != nil {
-                    DispatchQueue.main.async { completion(BleError(message: "Another printer task is still in progress.", code: "BT_BUSY")) }
-                    return
-                }
-                self.jobActive = true
-                self.jobDone = { err in DispatchQueue.main.async { completion(err) } }
-                self.payload = first
-                self.remainingPayloads = Array(payloads.dropFirst())
-                self.preferredId = (preferredId?.isEmpty == false) ? preferredId : nil
-                self.fallbackTarget = nil
-                self.notifyBuffer = ""
-                self.pendingChunks = []
-                self.nextChunk = 0
-                self.allChunksSent = false
-                self.writeChar = nil
-                self.notifyChar = nil
-
-                // wider cap than the single-label 30s: N labels ride one job
-                self.overallTimer = self.schedule(seconds: 75) { [weak self] in
-                    self?.finishJob(BleError(message: "Print sequence timed out.", code: "BT_PRINT_FAILED"))
-                }
-
                 var target: CBPeripheral?
                 if let id = self.preferredId, let uuid = UUID(uuidString: id) {
                     target = self.central?.retrievePeripherals(withIdentifiers: [uuid]).first
@@ -2500,30 +1658,8 @@ final class BleStickerTransport: NSObject, CBCentralManagerDelegate, CBPeriphera
         notifyBuffer += String(data: value, encoding: .utf8)
             ?? String(decoding: value, as: UTF8.self)
         if BleStickerLogic.containsPrintDone(notifyBuffer) {
-            // Single-payload job (AIMO): queue is always empty → finish, exactly
-            // as before. Sequence job: this label is CONFIRMED printed → send the
-            // next one on the SAME connection.
-            if remainingPayloads.isEmpty {
-                finishJob(nil)
-            } else {
-                advancePayload()
-            }
+            finishJob(nil)
         }
-    }
-
-    /// Sequence jobs only: label N confirmed (DONE) → reset the per-label state
-    /// and pump label N+1 over the live connection. Never reached by printJob
-    /// (its queue is always empty).
-    private func advancePayload() {
-        guard jobActive, let p = peripheral else { return }
-        phaseTimer?.cancel(); phaseTimer = nil
-        notifyBuffer = ""
-        payload = remainingPayloads.removeFirst()
-        let chunkSize = BleStickerLogic.clampChunkSize(p.maximumWriteValueLength(for: .withoutResponse))
-        pendingChunks = BleStickerLogic.chunks(payload, chunkSize: chunkSize)
-        nextChunk = 0
-        allChunksSent = false
-        pump()
     }
 
     // MARK: finish (idempotent; ALWAYS releases the printer)
@@ -2550,7 +1686,6 @@ final class BleStickerTransport: NSObject, CBCentralManagerDelegate, CBPeriphera
         notifyChar = nil
         fallbackTarget = nil
         pendingChunks = []
-        remainingPayloads = []
         payload = Data()
         notifyBuffer = ""
         let done = jobDone

@@ -17,15 +17,6 @@ import type { Buyer } from "../../lib/orderTypes";
 // ── Types — copied verbatim from App.tsx:38, 53, 56 ──────────────────────────
 export interface Settings {
   darkMode: boolean; autoprint: boolean; soundAlert: boolean; stockAlert: boolean; dailyEmail: boolean; keywords: string; currency: string; paperSize: string; printerType: "auto" | "usb" | "bluetooth" | "lan"; lanFormat: "receipt" | "sticker"; stickerSize: string; printStoreName: boolean; printBuyerNumber: boolean; printBuyerUsername: boolean; printOrderItems: boolean; printTotal: boolean; printAutoClose: boolean; printLogo: boolean; printDateTime: boolean; printBuyerName: boolean; printLabelScale: number; printStoreScale: number; printBuyerNumberScale: number; printBuyerNameScale: number; printUsernameScale: number; printOrderScale: number; printCommentScale: number; printTotalScale: number; printStoreX: number; printStoreY: number; printBuyerLabelX: number; printBuyerLabelY: number; printBuyerNumberX: number; printBuyerNumberY: number; printBuyerNameX: number; printBuyerNameY: number; printUsernameX: number; printUsernameY: number; printSessionX: number; printSessionY: number; printOrderX: number; printOrderY: number; printTotalX: number; printTotalY: number;
-  // OPTIONAL raw decimal scales (Phomemo 241 ONLY). The redesign size adjuster is a
-  // fine decimal (0.5–3.0 in 0.1 steps), but `printXScale` above is rounded to an
-  // integer 1–8 for the AIMO/TSPL font-multiplier path (App.tsx + the golden-locked
-  // native buildTsplSticker read ONLY those integers → byte-unchanged). The 241
-  // renders raster BANDS, so it can honor the exact decimal. These carry it; they are
-  // absent on App.tsx/legacy payloads and IGNORED by the AIMO builder. Populated by
-  // buildSettingsFromRedesign; surfaced to native as payload.scalesRaw at the sticker
-  // bridge call (see buildScalesRaw + printStickerVia*/buildTestStickerPayload).
-  printStoreScaleRaw?: number; printBuyerNumberScaleRaw?: number; printBuyerNameScaleRaw?: number; printUsernameScaleRaw?: number; printCommentScaleRaw?: number;
 }
 export interface NativeStickerPayload { storeName: string; sessionDate: string; currency: string; buyer: Buyer; labelWidthMm: number; labelHeightMm: number; settings: Pick<Settings, "printStoreName" | "printBuyerNumber" | "printBuyerUsername" | "printOrderItems" | "printTotal" | "printStoreScale" | "printBuyerNumberScale" | "printBuyerNameScale" | "printUsernameScale" | "printOrderScale" | "printCommentScale" | "printTotalScale">; }
 export interface NativePrinterPayload { type: "sellerflow.printSlip"; buyer: Buyer; currency: string; storeName: string; settings: Settings; sessionDate: string; createdAt: string; }
@@ -190,7 +181,7 @@ async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: st
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
   if (!bridge?.printStickerNative) return false;
   try {
-    const result = await bridge.printStickerNative(withScalesRaw(buildNativeStickerPayload(buyer, cur, storeName, cfg), cfg));
+    const result = await bridge.printStickerNative(buildNativeStickerPayload(buyer, cur, storeName, cfg));
     if (result?.ok) return true;
     const { code, message } = readFailure(result);
     if (!reportNativePrintFailure("bluetooth", code, message)) console.warn("[BT sticker] print failed:", message || "check pairing/selection.");
@@ -206,7 +197,7 @@ async function printStickerViaLan(buyer: Buyer, cur: string, storeName: string, 
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
   if (!bridge?.printStickerLan) return false;
   try {
-    const result = await bridge.printStickerLan(withScalesRaw(buildNativeStickerPayload(buyer, cur, storeName, cfg), cfg));
+    const result = await bridge.printStickerLan(buildNativeStickerPayload(buyer, cur, storeName, cfg));
     if (result?.ok) return true;
     const { code, message } = readFailure(result);
     if (!reportNativePrintFailure("lan", code, message)) console.warn("[LAN sticker] print failed:", message || "check WiFi printer IP.");
@@ -312,35 +303,7 @@ export interface RedesignPrintConfig {
   psSize: string; // e.g. "100x60mm (Standard)"
 }
 const lvl = (n: number): number => Math.max(1, Math.min(8, Math.round(n || 1)));
-// Raw decimal scale for the 241 raster path: keep the fine 0.1 granularity (no
-// round), clamped to [0.5, 8] — 0.5–0.9 legitimately SHRINK (a band can), 1.0 stays
-// exactly 1 so the native side keeps the byte-identical TEXT default, >1 enlarges.
-const lvlRaw = (n: number): number => Math.max(0.5, Math.min(8, Number(n) || 1));
 const parseStickerSize = (label: string): string => (label.match(/\d+x\d+/)?.[0] || "100x60");
-
-// Collect the raw decimal scales for the native payload's `scalesRaw` (241-only).
-// Keyed by the SAME setting names the native side reads, so the fork can look them up
-// uniformly. Returns undefined when none are present (AIMO/App.tsx/legacy payloads →
-// no scalesRaw → the 241 falls back to the rounded integer, unchanged). AIMO ignores
-// the field entirely, so this is safe on every path.
-export function buildScalesRaw(cfg: Settings): Record<string, number> | undefined {
-  const raw: Record<string, number> = {};
-  const add = (k: string, v: number | undefined) => { if (typeof v === "number" && isFinite(v)) raw[k] = v; };
-  add("printStoreScale", cfg.printStoreScaleRaw);
-  add("printBuyerNumberScale", cfg.printBuyerNumberScaleRaw);
-  add("printBuyerNameScale", cfg.printBuyerNameScaleRaw);
-  add("printUsernameScale", cfg.printUsernameScaleRaw);
-  add("printCommentScale", cfg.printCommentScaleRaw);
-  return Object.keys(raw).length ? raw : undefined;
-}
-
-// Attach the 241 raw-decimal scales to a native sticker payload WITHOUT touching the
-// byte-parity-locked buildNativeStickerPayload output (the parity test builds that in
-// isolation). Additive top-level field; absent when there are no raw scales.
-export function withScalesRaw<T extends object>(payload: T, cfg: Settings): T {
-  const scalesRaw = buildScalesRaw(cfg);
-  return scalesRaw ? { ...payload, scalesRaw } : payload;
-}
 
 export function buildSettingsFromRedesign(cfg: RedesignPrintConfig): Settings {
   const { pp, psType, psOut, psSize } = cfg;
@@ -361,14 +324,5 @@ export function buildSettingsFromRedesign(cfg: RedesignPrintConfig): Settings {
     printUsernameScale: lvl(pp.tiktokUserSize),
     printOrderScale: lvl(pp.commentSize),
     printCommentScale: lvl(pp.commentSize),
-    // Raw decimals for the 241 raster path (AIMO reads the rounded ints above).
-    // NOTE: no printOrderScaleRaw — the 241 renders the order-line TIME at a FIXED
-    // base size (the redesign has no separate time-size control; the shared comment
-    // scale drove both, so a scaled time band collided with the price → "7:07PRICE").
-    printStoreScaleRaw: lvlRaw(pp.shopNameSize),
-    printBuyerNumberScaleRaw: lvlRaw(pp.buyerNumSize),
-    printBuyerNameScaleRaw: lvlRaw(pp.tiktokNameSize),
-    printUsernameScaleRaw: lvlRaw(pp.tiktokUserSize),
-    printCommentScaleRaw: lvlRaw(pp.commentSize),
   };
 }

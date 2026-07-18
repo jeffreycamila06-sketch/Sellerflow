@@ -8,8 +8,8 @@
 // a real APK.
 import { useEffect, useState, type CSSProperties } from "react";
 import {
-  callMobilePrinterBridge, btCall, hasNativePrinter, hasBtBridge, hasDiscoverBridge, isLikelyStickerPrinter, buildTestStickerPayload,
-  type MobilePrinterResult, type BluetoothScanResult, type BluetoothPrinterDevice, type StickerPrintResult, type BluetoothBondResult,
+  callMobilePrinterBridge, btCall, hasNativePrinter, hasBtBridge, buildTestStickerPayload,
+  type MobilePrinterResult, type BluetoothScanResult, type BluetoothPrinterDevice, type StickerPrintResult,
 } from "../adapters/printerBridge";
 import type { Settings } from "../adapters/printing";
 import { useT } from "../i18n";
@@ -58,53 +58,15 @@ export default function PrinterSettings({
   async function testConn() { const r = await callMobilePrinterBridge("testConnection", { host: host.trim(), port: clampPort() }); setStatus(r); if (r.ok) await saveLan(); }
   async function testPrint() { setStatus(await callMobilePrinterBridge("testPrint")); }
 
-  // ONE "Scan" button (Jeff's UX verdict — the separate "Find nearby" confused):
-  // phase 1 lists the BONDED printers exactly as before (the AIMO flow — same
-  // native call, results shown immediately, byte-unchanged), then phase 2
-  // APPENDS nearby-unpaired discovery to the SAME list (additive; PM-241/sticker
-  // name filter via isLikelyStickerPrinter so neighbours' phones/TVs never show;
-  // dedup by address — bonded entries win). Old binaries/iOS have no discovery
-  // bridge → phase 2 silently skips → the button IS the old Scan, unchanged.
   async function scanBt() {
     if (!btReady) { setBtMsg(t.rd_ps_open_app_scan); return; }
     setBtScanning(true); setBtMsg("");
     const r = await btCall<BluetoothScanResult>("scanBluetoothLabelPrinters");
-    if (!r) { setBtScanning(false); setBtMsg(t.rd_ps_scan_unavail); return; }
-    setBtPrinters(r.printers || []);
-    if (r.savedPrinter) setBtSaved(r.savedPrinter);
-    setBtMsg(r.message || "");
-    if (hasDiscoverBridge()) {
-      setBtMsg(t.rd_ps_searching_nearby);
-      const d = await btCall<BluetoothScanResult>("discoverBluetoothPrinters");
-      // Merge computed synchronously off the bonded list we JUST set (only this
-      // handler mutates the list and the button is disabled while it runs) — a
-      // functional-updater `let added` would read 0 here (React 18 runs the
-      // updater at render time, after the setBtMsg below).
-      const bonded = r.printers || [];
-      const have = new Set(bonded.map((x) => x.address));
-      const merge = (d?.printers || []).filter((x) => isLikelyStickerPrinter(x.name) && !have.has(x.address));
-      setBtPrinters([...bonded, ...merge]);
-      // Message: the discovery result when it found something new; otherwise the
-      // bonded scan's own line (a "no NEW nearby devices" note would mislead
-      // when a bonded printer IS already listed above it).
-      setBtMsg(merge.length > 0 ? (d?.message || "") : (r.message || d?.message || ""));
-    }
     setBtScanning(false);
+    if (r) { setBtPrinters(r.printers || []); if (r.savedPrinter) setBtSaved(r.savedPrinter); setBtMsg(r.message || ""); }
+    else setBtMsg(t.rd_ps_scan_unavail);
   }
   async function selectBt(p: BluetoothPrinterDevice) {
-    // A nearby (unpaired) device must be bonded first — createBond() shows the system
-    // pairing dialog in-app — then saved. A paired device saves directly (unchanged).
-    // NEVER silent: every exit sets btMsg, and a failed bond always appends the
-    // localized Settings-pairing fallback instruction (rd_ps_pair_fallback).
-    if (p.paired === false && hasDiscoverBridge()) {
-      setBtMsg(t.rd_ps_pairing);
-      const b = await btCall<BluetoothBondResult>("bondBluetoothDevice", { address: p.address });
-      if (b === null) { setBtMsg(t.rd_ps_open_app_scan); return; }   // bridge vanished (shouldn't happen on-device)
-      if (!b.bonded) {
-        setBtMsg(((b.message || t.rd_ps_pair_failed) + " " + t.rd_ps_pair_fallback).trim());
-        return;
-      }
-    }
     const r = await btCall<BluetoothScanResult>("setBluetoothLabelPrinter", { address: p.address, name: p.name });
     setBtSaved(r?.savedPrinter || p); setBtMsg(r?.message || t.rd_ps_bt_saved);
   }
