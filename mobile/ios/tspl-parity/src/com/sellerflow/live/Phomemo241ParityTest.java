@@ -551,6 +551,39 @@ public final class Phomemo241ParityTest {
               "store:true + comment:true -> both join the bold-band route (got bold=" + boldTexts + " reg=" + regularTexts + ")");
     }
 
+    // P5 pairing fix — SOURCE CONTRACT on SellerFlowPrinterPlugin.java (Android
+    // Bluetooth code can't compile on this JVM gate; the tap-to-bond fixes are
+    // pinned textually, run-241-parity.sh passes -Dsfl.plugin.src). The pinned
+    // invariants close the "tap -> silence" bug:
+    //  1. LE-only discovery sightings are DROPPED (createBond on a dual-mode
+    //     printer's BLE identity = Just-Works LE pairing = no dialog, silent
+    //     30s timeout — the root silence mechanism).
+    //  2. cancelDiscovery is WAITED OUT (isDiscovering poll) before createBond.
+    //  3. The bond end states are DISTINCT + actionable (timeout-with-
+    //     notification-hint vs cancelled/rejected) — never a mute failure.
+    //  4. createBond()==false still resolves with a visible message.
+    private static void testP5BondSourceContract() throws Exception {
+        System.out.println("testP5BondSourceContract (tap-to-pair: LE filter + settle + loud end states)");
+        String path = System.getProperty("sfl.plugin.src", "");
+        if (path.isEmpty()) { System.out.println("  (skipped: -Dsfl.plugin.src not set)"); return; }
+        String src = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(path)),
+                java.nio.charset.StandardCharsets.UTF_8);
+        check(src.contains("discoverBluetoothPrinters skip LE-only"),
+              "discovery drops LE-only sightings (the silent no-dialog bond trap)");
+        check(src.contains("DEVICE_TYPE_LE"), "the LE guard keys off BluetoothDevice.DEVICE_TYPE_LE");
+        int bondIdx = src.indexOf("public void bondBluetoothDevice");
+        check(bondIdx > 0, "bondBluetoothDevice exists");
+        String bond = src.substring(bondIdx);
+        check(bond.contains("isDiscovering()") && bond.indexOf("isDiscovering()") < bond.indexOf("device.createBond()"),
+              "discovery is settled (isDiscovering poll) BEFORE the createBond call");
+        check(bond.contains("No pairing window appeared") && bond.contains("cancelled or rejected"),
+              "timeout vs cancelled end states are distinct + actionable");
+        check(bond.contains("Couldn't start pairing"),
+              "createBond()==false resolves with a visible message");
+        check(bond.contains("BLE identity"),
+              "a stale LE entry tapped from an old list gets an explicit explanation");
+    }
+
     // P3.7 completion — ONE-WEIGHT VERDICT (Jeff's font sampler, 2026-07-18):
     // the enlarged-ASCII style is ROW 2's mechanism (ROM-emulation: regular
     // face + pixel stretch) at ROW C's weight (threshold 160, stroke 0 — the
@@ -870,6 +903,7 @@ public final class Phomemo241ParityTest {
         testP25DropSignal();
         testP3BoldRouting();
         testP4WeightRouting();
+        testP5BondSourceContract();
         testP37UnifiedBandWeight();
         testP37RasterSourceContract();
         testP37StretchGrayH();

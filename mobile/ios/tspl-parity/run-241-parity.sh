@@ -23,4 +23,5 @@ javac -encoding UTF-8 -d "$BUILD" \
 # -Dsfl.raster.src: Phomemo241Raster imports android.graphics so it cannot be
 # compiled here; the P3.7 production-wiring pins read its SOURCE text instead.
 java -Dfile.encoding=UTF-8 -Dsfl.raster.src="$SRC/Phomemo241Raster.java" \
+  -Dsfl.plugin.src="$SRC/SellerFlowPrinterPlugin.java" \
   -cp "$BUILD" com.sellerflow.live.Phomemo241ParityTest

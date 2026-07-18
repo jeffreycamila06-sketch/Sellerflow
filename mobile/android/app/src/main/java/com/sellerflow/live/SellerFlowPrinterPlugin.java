@@ -349,6 +349,21 @@ public class SellerFlowPrinterPlugin extends Plugin {
                     if (device == null) return;
                     String addr = device.getAddress();
                     if (addr == null || !seen.add(addr)) return;   // dedup + skip bonded
+                    // ⚠️ LE-IDENTITY TRAP (the silent tap-to-pair failure): modern
+                    // startDiscovery() ALSO surfaces BLE advertisements, and a
+                    // dual-mode printer like the PM-241 (BLE AF30 + classic SPP)
+                    // can appear under its BLE identity. createBond() on that
+                    // entry attempts an LE pairing — Just-Works, NO system dialog
+                    // — which the printer ignores: a 30s dead-silent timeout. An
+                    // LE-only sighting is also unusable for our classic-SPP print
+                    // path, so drop it; the classic/dual identity (the one that
+                    // pairs with a real dialog) stays listed.
+                    int type = BluetoothDevice.DEVICE_TYPE_UNKNOWN;
+                    try { type = device.getType(); } catch (Exception ignored) {}
+                    if (type == BluetoothDevice.DEVICE_TYPE_LE) {
+                        Log.i(TAG, "discoverBluetoothPrinters skip LE-only " + addr);
+                        return;
+                    }
                     found.add(bluetoothDeviceJson(device, false));
                 }
             };
@@ -410,9 +425,28 @@ public class SellerFlowPrinterPlugin extends Plugin {
         executor.execute(() -> {
             BroadcastReceiver receiver = null;
             try {
-                try { adapter.cancelDiscovery(); } catch (Exception ignored) {}
+                // cancelDiscovery() is ASYNC — createBond() while an inquiry is
+                // still winding down can fail silently on many stacks. Cancel,
+                // then WAIT for discovery to actually stop (<=2s poll) before
+                // bonding — the documented Android requirement, enforced.
+                try {
+                    adapter.cancelDiscovery();
+                    long settleEnd = System.currentTimeMillis() + 2000;
+                    while (adapter.isDiscovering() && System.currentTimeMillis() < settleEnd) {
+                        Thread.sleep(100);
+                    }
+                } catch (Exception ignored) {}
                 @SuppressLint("MissingPermission")
                 BluetoothDevice device = adapter.getRemoteDevice(address);
+                int devType = BluetoothDevice.DEVICE_TYPE_UNKNOWN;
+                try { devType = device.getType(); } catch (Exception ignored) {}
+                Log.i(TAG, "bondBluetoothDevice start address=" + address + " type=" + devType + " bondState=" + device.getBondState());
+                // Same LE-identity guard as discovery (belt-and-braces for stale
+                // lists from an old scan): LE-only createBond = silent no-dialog.
+                if (devType == BluetoothDevice.DEVICE_TYPE_LE) {
+                    resolveBond(call, device, false, "This entry is the printer's BLE identity and can't be paired here. Scan again and tap the printer entry, or pair once in Android Settings > Bluetooth.");
+                    return;
+                }
                 if (device.getBondState() == BluetoothDevice.BOND_BONDED) {
                     resolveBond(call, device, true, "Already paired.");
                     return;
@@ -448,8 +482,15 @@ public class SellerFlowPrinterPlugin extends Plugin {
                         lock.wait(remaining);
                     }
                 }
+                boolean timedOut = !settled[0];
                 boolean ok = bonded[0] || device.getBondState() == BluetoothDevice.BOND_BONDED;
-                resolveBond(call, device, ok, ok ? "Paired successfully." : "Pairing timed out or was cancelled. Try again.");
+                // Distinct end states so a silent failure is impossible to
+                // misread: a TIMEOUT usually means the pairing prompt appeared
+                // as a NOTIFICATION (Samsung et al.) or never appeared at all;
+                // a settled-but-not-bonded means the user/printer rejected it.
+                resolveBond(call, device, ok, ok ? "Paired successfully."
+                    : timedOut ? "No pairing window appeared (or it timed out). Check the notification shade for a pairing request, or pair once in Android Settings > Bluetooth."
+                    : "Pairing was cancelled or rejected. Tap the printer to try again.");
             } catch (SecurityException e) {
                 Log.e(TAG, "bondBluetoothDevice permission denied", e);
                 call.reject("Bluetooth permission denied: " + e.getMessage(), "BT_PERMISSION", e);

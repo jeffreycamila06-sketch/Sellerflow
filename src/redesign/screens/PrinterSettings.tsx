@@ -83,10 +83,16 @@ export default function PrinterSettings({
   async function selectBt(p: BluetoothPrinterDevice) {
     // A nearby (unpaired) device must be bonded first — createBond() shows the system
     // pairing dialog in-app — then saved. A paired device saves directly (unchanged).
+    // NEVER silent: every exit sets btMsg, and a failed bond always appends the
+    // localized Settings-pairing fallback instruction (rd_ps_pair_fallback).
     if (p.paired === false && hasDiscoverBridge()) {
       setBtMsg(t.rd_ps_pairing);
       const b = await btCall<BluetoothBondResult>("bondBluetoothDevice", { address: p.address });
-      if (!b?.bonded) { setBtMsg(b?.message || t.rd_ps_pair_failed); return; }
+      if (b === null) { setBtMsg(t.rd_ps_open_app_scan); return; }   // bridge vanished (shouldn't happen on-device)
+      if (!b.bonded) {
+        setBtMsg(((b.message || t.rd_ps_pair_failed) + " " + t.rd_ps_pair_fallback).trim());
+        return;
+      }
     }
     const r = await btCall<BluetoothScanResult>("setBluetoothLabelPrinter", { address: p.address, name: p.name });
     setBtSaved(r?.savedPrinter || p); setBtMsg(r?.message || t.rd_ps_bt_saved);
