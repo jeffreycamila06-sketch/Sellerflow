@@ -233,6 +233,17 @@ final class Phomemo241Builder {
      * @param renderer glyph rasterizer (production Phomemo241Raster; tests a fake)
      */
     static byte[] forStickerNative241(JSONObject payload, int labelWidthMm, int labelHeightMm, BandRenderer renderer) {
+        return forStickerNative241(payload, labelWidthMm, labelHeightMm, renderer, new java.util.ArrayList<>());
+    }
+
+    /**
+     * P2.5 overload: {@code droppedOut} receives the labels of any rows the vertical
+     * planner had to DROP (extreme case only — after every scale is at its floor the
+     * layout still doesn't fit). Empty in every realistic configuration (the 1.0
+     * layouts fit every size by design). The plugin logs it; a P4 preview warning
+     * will surface it to the seller.
+     */
+    static byte[] forStickerNative241(JSONObject payload, int labelWidthMm, int labelHeightMm, BandRenderer renderer, java.util.List<String> droppedOut) {
         if (payload == null) payload = new JSONObject();
         JSONObject buyer = payload.optJSONObject("buyer");
         if (buyer == null) buyer = new JSONObject();
@@ -348,9 +359,36 @@ final class Phomemo241Builder {
         String nameOut = TsplBuilder.transliterateLatin(nameSource);
         boolean bandName = hasNonAscii(nameOut);   // D3: replaces nameTier==CJK for the gap math
 
+        // ── P2.5 VERTICAL FITTING (priority-based) ──────────────────────────────
+        // The P2 ladder fits WIDTH; this fits HEIGHT. Before emitting, mirror the
+        // exact y-flow math with the requested scales; if the final y runs past the
+        // label, step scales DOWN in reverse priority (0.5 rungs, floor 1.0) until it
+        // fits: tier 1 = store + price-code (secondaries; date/time are fixed-size),
+        // tier 2 = @username, tier 3 (most protected, stepped LAST, buyer# after
+        // name) = name + Buyer# — the parcel-sorting primaries keep their size
+        // longest and stay the largest thing on the label. Only if EVERY floor is
+        // reached and it still doesn't fit (unreachable on real sizes — the 1.0
+        // layout fits by design) are rows dropped, lowest priority first, each
+        // recorded in droppedOut (never silently). When everything fits as
+        // requested — including every all-1.0 case — nothing is touched and the
+        // output is byte-identical (pinned by the scale-1.0 exact-string tests).
+        // This planner REPLACES the old orderEntryGuard/orderLoopGuard y-checks
+        // (which silently skipped the order row) and the by=0 band clamp collisions:
+        // fit guarantees final-y <= H, and every row's advance >= its element height,
+        // so nothing crosses the bottom edge and no two rows overlap.
+        boolean hasStore = printStoreName && !cleanStoreName.isEmpty();
+        boolean hasName = !nameOut.isEmpty();
+        double[] fitS = {sStore, sComment, sUser, sName, sBuyerNum};
+        boolean[] fitRows = {hasStore, printBuyerUsername && !cleanBuyerHandle.isEmpty(), printOrderItems && orders != null && orders.length() > 0};
+        fitVertical(fitS, fitRows, printBuyerNumber, hasName, bandName, startY, storeGap, buyerNumGap, nameGap, usernameGap, c, is6040, labelHeightMm * 8, droppedOut);
+        sStore = fitS[0]; sComment = fitS[1]; sUser = fitS[2]; sName = fitS[3]; sBuyerNum = fitS[4];
+        hasStore = fitRows[0];
+        boolean hasUser = fitRows[1];
+        boolean hasOrder = fitRows[2];
+
         int extra = 0;
         int y = startY;
-        if (printStoreName && !cleanStoreName.isEmpty()) {
+        if (hasStore) {
             e.emitSym(storeX, y, "3", sStore, safe(truncate(cleanStoreName, 36)), c.rightEdge);
             int d = r241((clampF(sStore) - 1) * F3);
             y += storeGap + d;
@@ -375,7 +413,7 @@ final class Phomemo241Builder {
             extra += d;
         }
 
-        if (!nameOut.isEmpty()) {
+        if (hasName) {
             if (bandName) {
                 // CJK / UNSUPPORTED name → band on both axes (base nameCjk*Mul), scaled.
                 e.emitBand(nameX, y, safe(truncate(nameOut, 30)), c.nameCjkXMul * sName, c.nameCjkYMul * sName, c.rightEdge);
@@ -391,27 +429,26 @@ final class Phomemo241Builder {
             }
         }
 
-        if (printBuyerUsername && !cleanBuyerHandle.isEmpty()) {
+        if (hasUser) {
             e.emitSym(userX, y, "3", sUser, "@" + safe(truncate(cleanBuyerHandle, 30)), c.rightEdge);
             int d = r241((clampF(sUser) - 1) * F3);
             y += usernameGap + d;
             extra += d;
         }
 
-        if (printOrderItems && orders != null && orders.length() > 0 && y < c.orderEntryGuard + extra) {
-            // ALL SIZES now = one row, no separator bar (Jeff, 2026-07-18: every size
-            // becomes "one row, no bar, no Total", order-per-sticker — a multi-order
-            // buyer splits into N stickers in the plugin). The big sizes KEEP the sepGap
-            // advance so the single order row stays at its prior position ("positions
-            // unchanged"); only the bar DRAW is dropped. 60x40 flows directly (bespoke,
-            // no sepGap). This is the documented FORK-DRIFT divergence from AIMO (which
-            // still draws the bar + 2 rows + Total); the AIMO goldens are untouched.
+        // ALL SIZES = one row, no separator bar (Jeff, 2026-07-18; order-per-sticker
+        // splits a multi-order buyer in the plugin). The big sizes KEEP the sepGap
+        // advance so the single order row stays at its prior position. P2.5: the old
+        // y < orderEntryGuard/orderLoopGuard checks are GONE — they silently dropped
+        // the row; the vertical planner above now guarantees the fit (or records an
+        // explicit drop in droppedOut), so hasOrder is the single authority.
+        if (hasOrder) {
             if (!is6040) {
                 y += c.sepGap;
             }
             int maxOrders = 1;
             int i = 0;
-            while (i < Math.min(orders.length(), maxOrders) && y < c.orderLoopGuard + extra) {
+            while (i < Math.min(orders.length(), maxOrders)) {
                 JSONObject order = orders.optJSONObject(i);
                 if (order == null) { i++; continue; }
                 String time = order.optString("time", "");
@@ -460,6 +497,74 @@ final class Phomemo241Builder {
     private static int lvl(JSONObject settings, String key) {
         int v = settings == null ? 1 : settings.optInt(key, 1);
         return Math.max(1, Math.min(8, v == 0 ? 1 : v));
+    }
+
+    // ── P2.5 vertical planner (pure, JVM-tested) ───────────────────────────
+    // finalYFor mirrors the emit body's y-flow EXACTLY (same gaps, same r241/clampF
+    // reflow deltas, same conditions) — any drift between this mirror and the emit
+    // math re-opens the silent-drop/overlap hole, so the property tests exercise
+    // both together. s = {store, comment/price, user, name, buyerNum};
+    // rows = {store, user, order} (the droppable rows).
+    private static int finalYFor(double[] s, boolean[] rows, boolean hasBuyerNum, boolean hasName, boolean bandName,
+            int startY, int storeGap, int buyerNumGap, int nameGap, int usernameGap, Size c, boolean is6040) {
+        final int F3 = 24, F4 = 32;
+        int y = startY;
+        if (rows[0]) y += storeGap + r241((clampF(s[0]) - 1) * F3);
+        if (hasBuyerNum) {
+            double effY = clampF(c.buyerNumYMul * s[4]);
+            y += buyerNumGap + r241((effY - c.buyerNumYMul) * F4);
+        }
+        if (hasName) {
+            if (bandName) y += c.nameCjkGap + r241((clampF(c.nameCjkYMul * s[3]) - c.nameCjkYMul) * F4);
+            else y += nameGap + r241((clampF(s[3]) - 1) * F4);
+        }
+        if (rows[1]) y += usernameGap + r241((clampF(s[2]) - 1) * F3);
+        if (rows[2]) {
+            if (!is6040) y += c.sepGap;
+            y += 38 + Math.max(0, r241((clampF(s[1]) - 1) * F4));
+        }
+        return y;
+    }
+
+    // Priority-based step-down: reduce scales in 0.5 rungs (floor = min(1.0,
+    // requested) — sub-1.0 requests only shrink, never raised) until finalYFor fits
+    // within H. Tier order (first shrunk → last): {store, price} → {@username} →
+    // {name, buyerNum} (buyer# stepped after name = the single most protected
+    // element). Every row's advance >= its element height (checked per size/row in
+    // the fork math), so fit ⟹ nothing crosses the bottom edge and no rows overlap.
+    // If every floor is reached and it STILL doesn't fit (unreachable on real sizes),
+    // drop rows lowest-priority-first — store, @username, order-row — recording each
+    // in droppedOut; buyer#/name/header/date are never dropped.
+    private static void fitVertical(double[] s, boolean[] rows, boolean hasBuyerNum, boolean hasName, boolean bandName,
+            int startY, int storeGap, int buyerNumGap, int nameGap, int usernameGap, Size c, boolean is6040, int H,
+            java.util.List<String> droppedOut) {
+        if (finalYFor(s, rows, hasBuyerNum, hasName, bandName, startY, storeGap, buyerNumGap, nameGap, usernameGap, c, is6040) <= H) return;
+        double[] floor = new double[s.length];
+        for (int i = 0; i < s.length; i++) floor[i] = Math.min(1.0, s[i]);
+        int[][] tiers = {{0, 1}, {2}, {3, 4}};
+        boolean stepped = true;
+        while (stepped) {
+            stepped = false;
+            for (int[] tier : tiers) {
+                boolean tierHas = false;
+                for (int idx : tier) if (s[idx] > floor[idx] + 1e-9) tierHas = true;
+                if (!tierHas) continue;
+                for (int idx : tier) {
+                    if (s[idx] > floor[idx] + 1e-9) {
+                        s[idx] = Math.max(floor[idx], s[idx] - 0.5);
+                        if (finalYFor(s, rows, hasBuyerNum, hasName, bandName, startY, storeGap, buyerNumGap, nameGap, usernameGap, c, is6040) <= H) return;
+                    }
+                }
+                stepped = true;
+                break;   // stay on the earliest non-exhausted tier next round
+            }
+        }
+        // Extreme fallback: floors everywhere and still over — drop rows, recorded.
+        String[] labels = {"store", "@username", "order-row"};
+        for (int i = 0; i < rows.length; i++) {
+            if (finalYFor(s, rows, hasBuyerNum, hasName, bandName, startY, storeGap, buyerNumGap, nameGap, usernameGap, c, is6040) <= H) return;
+            if (rows[i]) { rows[i] = false; droppedOut.add(labels[i]); }
+        }
     }
 
     // ── DIRECTION 0 + in-layout 180 rotation emit primitives (D1) ──────────

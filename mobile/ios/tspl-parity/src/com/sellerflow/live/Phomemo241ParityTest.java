@@ -316,6 +316,126 @@ public final class Phomemo241ParityTest {
               "the FULL mixed string reaches the renderer (was cell-truncated to 8 chars) — got " + texts);
     }
 
+    // ── P2.5 vertical fitting ────────────────────────────────────────────────
+    private static JSONObject p25Payload(double sStore, double sBuyerNum, double sName, double sUser, double sComment) {
+        JSONObject buyer = new JSONObject().put("num", 12).put("name", "陳小美").put("handle", "maria_shops").put("totalSpent", 700.0);
+        JSONArray o = new JSONArray();
+        o.put(new JSONObject().put("item", "250").put("time", "20:15"));
+        buyer.put("orders", o);
+        JSONObject sr = new JSONObject()
+            .put("printStoreScale", sStore).put("printBuyerNumberScale", sBuyerNum).put("printBuyerNameScale", sName)
+            .put("printUsernameScale", sUser).put("printCommentScale", sComment);
+        return new JSONObject().put("buyer", buyer).put("scalesRaw", sr).put("storeName", "My Shop").put("currency", "NT$").put("sessionDate", "07/17/2026");
+    }
+
+    // Property: for every size × scale combination — every band stays fully inside
+    // the label, no two bands overlap vertically (the old M6 by=0 clamp collision),
+    // and NOTHING is dropped (buyer#, name band, and the price row all present).
+    private static void testP25VerticalFitProperty() {
+        System.out.println("testP25VerticalFitProperty (all sizes x scale combos: in-bounds, disjoint, nothing lost)");
+        double[][] combos = {
+            {1.0, 1.0, 1.0, 1.0, 1.0}, {1.5, 1.5, 1.5, 1.5, 1.5}, {3.0, 3.0, 3.0, 3.0, 3.0},
+            {1.0, 1.0, 3.0, 1.0, 1.0},   // one element huge (persona A)
+            {2.0, 1.3, 2.7, 1.5, 3.0},   // mixed
+            {8.0, 8.0, 8.0, 8.0, 8.0},   // integer-ceiling extreme
+        };
+        for (int[] wh : new int[][]{{100, 60}, {80, 60}, {80, 50}, {70, 50}, {60, 40}}) {
+            int H = wh[1] * 8;
+            for (double[] cb : combos) {
+                final List<String> bandTexts = new ArrayList<>();
+                Phomemo241Builder.BandRenderer cap = (text, xMul, yMul, maxW) -> {
+                    bandTexts.add(text);
+                    int h = Math.max(1, r241(24 * yMul));
+                    byte[] b = new byte[4 * h];
+                    java.util.Arrays.fill(b, (byte) 0xAA);
+                    return new Phomemo241Builder.Band(4, h, b);
+                };
+                List<String> dropped = new ArrayList<>();
+                String s = utf8(Phomemo241Builder.forStickerNative241(p25Payload(cb[0], cb[1], cb[2], cb[3], cb[4]), wh[0], wh[1], cap, dropped));
+                String tag = wh[0] + "x" + wh[1] + " scales=" + java.util.Arrays.toString(cb);
+                // (a) every band fully inside the label
+                List<int[]> spans = new ArrayList<>();
+                boolean inBounds = true;
+                for (String line : s.split("\r\n")) {
+                    if (!line.startsWith("BITMAP ")) continue;
+                    String[] f = line.substring(7).split(",");
+                    int by = Integer.parseInt(f[1]), h = Integer.parseInt(f[3]);
+                    if (by < 0 || by + h > H) inBounds = false;
+                    spans.add(new int[]{by, by + h});
+                }
+                check(inBounds, "every band inside the label at " + tag);
+                // (b) no two bands overlap vertically (M6 collision class)
+                boolean disjoint = true;
+                for (int i = 0; i < spans.size(); i++)
+                    for (int j = i + 1; j < spans.size(); j++)
+                        if (spans.get(i)[0] < spans.get(j)[1] && spans.get(j)[0] < spans.get(i)[1]) disjoint = false;
+                check(disjoint, "no vertical band overlap at " + tag);
+                // (c) nothing lost: buyer#, the name band, and the price row all present
+                boolean buyerPresent = s.contains("Buyer #12") || bandTexts.stream().anyMatch(t -> t.contains("Buyer #12"));
+                boolean namePresent = bandTexts.stream().anyMatch(t -> t.contains("陳"));
+                boolean pricePresent = s.contains("\"250\"") || bandTexts.stream().anyMatch(t -> t.contains("250"));
+                check(buyerPresent && namePresent && pricePresent && dropped.isEmpty(),
+                      "nothing dropped at " + tag + " (buyer=" + buyerPresent + " name=" + namePresent + " price=" + pricePresent + " dropped=" + dropped + ")");
+            }
+        }
+    }
+
+    // Priority proof (persona B, 60x40): "everything big" steps SECONDARIES down
+    // first and protects the parcel-sorting primaries — the buyer# keeps an enlarged
+    // band (h=36 = 24x1.5) while store/user/price return to sharp 1.0 TEXT; the name
+    // band lands at its base size. Same converged layout for all-1.5 and all-3.0.
+    private static void testP25PriorityProtectsPrimaries() {
+        System.out.println("testP25PriorityProtectsPrimaries (60x40 persona B)");
+        for (double all : new double[]{1.5, 3.0}) {
+            String s = utf8(Phomemo241Builder.forStickerNative241(p25Payload(all, all, all, all, all), 60, 40, fakeBand(), new ArrayList<>()));
+            String tag = "all-" + all;
+            contains(s, "BITMAP 408,192,4,36,0,", tag + ": buyer# keeps an ENLARGED band (24x1.5=36) — most protected");
+            contains(s, "BITMAP 408,120,4,48,0,", tag + ": name band at base size (48), directly below, no overlap");
+            contains(s, "TEXT 400,256,\"3\",180,1,1,\"My Shop\"", tag + ": store stepped to sharp 1.0 TEXT");
+            contains(s, "TEXT 440,112,\"3\",180,1,1,\"@maria_shops\"", tag + ": @username stepped to sharp 1.0 TEXT");
+            contains(s, "TEXT 372,62,\"4\",180,2,1,\"250\"", tag + ": price stepped to the designed 1.0 TEXT, row at reading y=258 (fits: 258+38<=320)");
+        }
+    }
+
+    // When everything FITS as requested the planner must not touch a single byte:
+    // explicit all-1.0 scalesRaw == no scalesRaw at all (both fit, byte-equal). The
+    // scale-1.0 exact-string suites (bespoke + AIMO parity) are the deeper pin.
+    private static void testP25ByteIdenticalWhenFits() {
+        System.out.println("testP25ByteIdenticalWhenFits");
+        byte[] with = Phomemo241Builder.forStickerNative241(p25Payload(1.0, 1.0, 1.0, 1.0, 1.0), 60, 40, fakeBand(), new ArrayList<>());
+        // Same buyer/store/date but NO scalesRaw at all (the org.json stub has no
+        // remove(), so build it directly) — both fit, both must be byte-equal.
+        JSONObject buyer = new JSONObject().put("num", 12).put("name", "陳小美").put("handle", "maria_shops").put("totalSpent", 700.0);
+        JSONArray o = new JSONArray();
+        o.put(new JSONObject().put("item", "250").put("time", "20:15"));
+        buyer.put("orders", o);
+        JSONObject noScales = new JSONObject().put("buyer", buyer).put("storeName", "My Shop").put("currency", "NT$").put("sessionDate", "07/17/2026");
+        byte[] without = Phomemo241Builder.forStickerNative241(noScales, 60, 40, fakeBand(), new ArrayList<>());
+        check(java.util.Arrays.equals(with, without), "all-1.0 output is byte-identical (planner untouched when it fits)");
+    }
+
+    // The drop path NEVER fires silently: on an impossibly short label (unknown
+    // 60x20 falls back to the 100x60 gap table with H=160) rows are dropped lowest-
+    // priority-first and each is RECORDED; buyer# + name are never dropped.
+    private static void testP25DropSignal() {
+        System.out.println("testP25DropSignal (extreme fallback: recorded, primaries kept)");
+        final List<String> bandTexts = new ArrayList<>();
+        Phomemo241Builder.BandRenderer cap = (text, xMul, yMul, maxW) -> {
+            bandTexts.add(text);
+            byte[] b = new byte[4 * 48];
+            java.util.Arrays.fill(b, (byte) 0xAA);
+            return new Phomemo241Builder.Band(4, 48, b);
+        };
+        List<String> dropped = new ArrayList<>();
+        String s = utf8(Phomemo241Builder.forStickerNative241(p25Payload(1.0, 1.0, 1.0, 1.0, 1.0), 60, 20, cap, dropped));
+        check(dropped.contains("store") && dropped.contains("@username") && dropped.contains("order-row"),
+              "every dropped row is RECORDED (got " + dropped + ")");
+        check(!s.contains("\"My Shop\"") && !s.contains("@maria_shops") && !s.contains("\"250\""), "dropped rows are not emitted");
+        boolean buyerKept = s.contains("Buyer #12");
+        boolean nameKept = bandTexts.stream().anyMatch(t -> t.contains("陳"));
+        check(buyerKept && nameKept, "buyer# + name are NEVER dropped (buyer=" + buyerKept + " name=" + nameKept + ")");
+    }
+
     // P1 — the ruler test page measures the PHYSICAL edges, so it must bypass
     // EDGE_GUARD entirely: a guarded emit would shift every tick by the very margin
     // the ruler exists to replace. Pins: frame on the exact boundary, tick distances
@@ -536,6 +656,10 @@ public final class Phomemo241ParityTest {
         testNoRightEdgeOverflow60x40();
         testP2FittingLadder();
         testP2MixedStringReachesRendererWhole();
+        testP25VerticalFitProperty();
+        testP25PriorityProtectsPrimaries();
+        testP25ByteIdenticalWhenFits();
+        testP25DropSignal();
         testRulerTestPage();
         test6040CapsToOneOrderRow();
         testDirection0Rotated180();

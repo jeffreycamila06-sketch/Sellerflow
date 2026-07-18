@@ -577,6 +577,9 @@ public class SellerFlowPrinterPlugin extends Plugin {
         JSONArray orders = buyer == null ? null : buyer.optJSONArray("orders");
         byte[] tspl;
         int labels = 1;
+        // P2.5: the vertical planner reports any dropped rows here (extreme case only)
+        // — logged for now; a P4 preview warning will surface it to the seller.
+        java.util.List<String> dropped = new java.util.ArrayList<>();
         // ORDER-PER-STICKER on EVERY size now (Jeff, 2026-07-18: all sizes are one-row).
         // A >1-order buyer prints N single-order labels concatenated on ONE SPP write
         // (SPP has no DONE notify, so sequencing is stream + tail-out). Live flows pass
@@ -592,13 +595,16 @@ public class SellerFlowPrinterPlugin extends Plugin {
                 one.put(o);
                 singleBuyer.put("orders", one);
                 singlePayload.put("buyer", singleBuyer);
-                byte[] part = Phomemo241Builder.forStickerNative241(singlePayload, labelWidthMm, labelHeightMm, renderer);
+                byte[] part = Phomemo241Builder.forStickerNative241(singlePayload, labelWidthMm, labelHeightMm, renderer, dropped);
                 combined.write(part, 0, part.length);
             }
             tspl = combined.toByteArray();
             labels = orders.length();
         } else {
-            tspl = Phomemo241Builder.forStickerNative241(payload, labelWidthMm, labelHeightMm, renderer);
+            tspl = Phomemo241Builder.forStickerNative241(payload, labelWidthMm, labelHeightMm, renderer, dropped);
+        }
+        if (!dropped.isEmpty()) {
+            Log.w(TAG, "print241 vertical planner dropped rows (extreme layout): " + dropped);
         }
         sendViaBluetoothSpp(address, tspl);
         JSObject ret = new JSObject();
