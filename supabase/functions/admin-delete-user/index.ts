@@ -34,7 +34,7 @@
 //
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { checkDeleteAllowed, type DeleteTarget } from "./guards.ts";
+import { checkDeleteAllowed, checkSelfDeleteAllowed, type DeleteTarget } from "./guards.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -99,18 +99,42 @@ Deno.serve(async (req: Request) => {
   });
   const { data: { user: caller }, error: whoErr } = await userClient.auth.getUser();
   if (whoErr || !caller) return json({ success: false, error: "unauthorized" }, 401);
-  const { data: isAdmin, error: adminErr } = await userClient.rpc("is_admin");
-  if (adminErr || isAdmin !== true) return json({ success: false, error: "forbidden" }, 403);
-
-  // Service client (bypasses RLS + reaches auth.admin). Only ever reached after
-  // the admin gate above.
-  const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 
   let body: any = {};
   try { body = await req.json(); } catch { /* empty body ok */ }
   const mode: string = body.mode || "user";
 
+  // AUTHORIZATION is mode-aware: the admin modes (user / ghost-*) require the
+  // server-side is_admin() gate; the SELF mode is reachable by any authenticated
+  // seller (they can only ever delete themselves, and checkSelfDeleteAllowed
+  // still blocks admin/master self-wipes below). This is why the gate can't sit
+  // before the mode dispatch.
+  if (mode !== "self") {
+    const { data: isAdmin, error: adminErr } = await userClient.rpc("is_admin");
+    if (adminErr || isAdmin !== true) return json({ success: false, error: "forbidden" }, 403);
+  }
+
+  // Service client (bypasses RLS + reaches auth.admin). Only ever reached after
+  // the mode-aware gate above.
+  const admin = createClient(SUPABASE_URL, SERVICE_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
+
   try {
+    // ── mode "self": a seller deletes THEIR OWN account (full wipe) ──────────
+    if (mode === "self") {
+      const { data: prof, error: sErr } = await admin
+        .from("seller_profiles").select("role, plan, email").eq("auth_user_id", caller.id).maybeSingle();
+      if (sErr) throw new Error(`self profile lookup failed: ${sErr.message}`);
+      // Guard: admin/master accounts may NOT self-delete (protected).
+      const guard = checkSelfDeleteAllowed(prof?.role ?? null, prof?.plan ?? null);
+      if (!guard.allowed) return json({ success: false, error: guard.error, code: guard.code }, 403);
+      const email = String(prof?.email ?? caller.email ?? "").trim().toLowerCase();
+      const wiped = await hardWipe(admin, caller.id, email);
+      await admin.from("audit_logs").insert({
+        actor_email: email, action: "self-deleted account", target_email: email, details: JSON.stringify(wiped),
+      });
+      return json({ success: true, mode: "self", deleted: wiped });
+    }
+
     // ── GHOST modes: auth.users with NO seller_profiles row ──────────────────
     if (mode === "ghost-scan" || mode === "ghost-purge") {
       // 1. all profile auth_user_ids (the "has a profile" set)

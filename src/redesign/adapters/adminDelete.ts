@@ -34,6 +34,23 @@ export async function hardDeleteUser(email: string): Promise<HardDeleteResult> {
   }
 }
 
+// SELF-SERVICE full wipe: a seller deletes THEIR OWN account via the same edge
+// function (mode "self" — no admin gate, but the server blocks admin/master
+// self-deletes). Replaces the old client deleteUser() which Phase 1's admin-only
+// DELETE policy now rejects. The caller is derived from the JWT server-side, so
+// no email is sent (a seller can only ever wipe themselves).
+export async function selfDeleteAccount(): Promise<HardDeleteResult> {
+  if (!supabase) return { ok: false, error: "Delete service unavailable" };
+  try {
+    const { data, error } = await supabase.functions.invoke("admin-delete-user", { body: { mode: "self" } });
+    const r = data as { success?: boolean; error?: string; code?: string; deleted?: Record<string, unknown> } | null;
+    if (error || !r?.success) return { ok: false, error: r?.error || error?.message || "Delete failed", code: r?.code };
+    return { ok: true, deleted: r.deleted };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Edge function call failed" };
+  }
+}
+
 // Ghost cleanup (admin-triggered). "ghost-scan" = DRY RUN (list only, no delete);
 // "ghost-purge" = wipe every profile-less auth account. Returns the raw payload.
 export async function ghostCleanup(mode: "ghost-scan" | "ghost-purge"): Promise<{

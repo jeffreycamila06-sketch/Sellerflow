@@ -43,3 +43,19 @@ export function checkDeleteAllowed(callerUserId: string, target: DeleteTarget): 
   }
   return { allowed: true };
 }
+
+// SELF-SERVICE delete guard (mode "self"): a seller may delete THEIR OWN account
+// (the opposite of the admin mode, where self-delete is blocked) — EXCEPT an
+// admin or a master account may NOT self-delete. Protected accounts must go
+// through another admin / a deliberate process, never an accidental self-wipe.
+// role/plan null (a profile-less "ghost" self-deleting) → allowed (not admin/master).
+export function checkSelfDeleteAllowed(role: string | null, plan: string | null): GuardResult {
+  const norm = (s: string | null | undefined) => String(s ?? "").trim().toLowerCase();
+  if (norm(role) === "admin") {
+    return { allowed: false, code: "protected_admin", error: "Admin accounts can't self-delete — please contact another admin." };
+  }
+  if (norm(plan) === "master") {
+    return { allowed: false, code: "protected_master", error: "Master accounts can't self-delete — please contact support." };
+  }
+  return { allowed: true };
+}

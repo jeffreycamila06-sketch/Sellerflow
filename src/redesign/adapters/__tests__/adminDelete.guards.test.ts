@@ -2,7 +2,7 @@
 // These are the "can't shoot your own foot" protections: never delete yourself,
 // never delete a fellow admin or a master account, never a non-existent target.
 import { describe, it, expect } from "vitest";
-import { checkDeleteAllowed, type DeleteTarget } from "../../../../supabase/functions/admin-delete-user/guards";
+import { checkDeleteAllowed, checkSelfDeleteAllowed, type DeleteTarget } from "../../../../supabase/functions/admin-delete-user/guards";
 
 const CALLER = "admin-uid-1";
 const target = (over: Partial<DeleteTarget>): DeleteTarget =>
@@ -41,5 +41,24 @@ describe("checkDeleteAllowed — Phase 2 hard-delete guards", () => {
   it("guard order: self-check beats admin-check (deleting your own admin row = self, not protected_admin)", () => {
     const r = checkDeleteAllowed(CALLER, target({ authUserId: CALLER, role: "admin" }));
     expect(r.code).toBe("self_delete");
+  });
+});
+
+describe("checkSelfDeleteAllowed — Phase 2 self-service guard (opposite of admin mode)", () => {
+  it("ALLOWS a normal seller to self-delete (free/basic/pro)", () => {
+    expect(checkSelfDeleteAllowed("seller", "free").allowed).toBe(true);
+    expect(checkSelfDeleteAllowed("seller", "basic").allowed).toBe(true);
+    expect(checkSelfDeleteAllowed("seller", "pro").allowed).toBe(true);
+  });
+  it("ALLOWS a profile-less ghost self-deleting (role/plan null)", () => {
+    expect(checkSelfDeleteAllowed(null, null).allowed).toBe(true);
+  });
+  it("BLOCKS an admin from self-deleting (protected, any case)", () => {
+    expect(checkSelfDeleteAllowed("admin", "pro").code).toBe("protected_admin");
+    expect(checkSelfDeleteAllowed("Admin", "pro").allowed).toBe(false);
+  });
+  it("BLOCKS a master account from self-deleting (any case)", () => {
+    expect(checkSelfDeleteAllowed("seller", "master").code).toBe("protected_master");
+    expect(checkSelfDeleteAllowed("seller", "Master").allowed).toBe(false);
   });
 });

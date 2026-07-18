@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 const invoke = vi.fn();
 vi.mock("../../../supabase", () => ({ supabase: { functions: { invoke: (...a: unknown[]) => invoke(...a) } } }));
 
-import { hardDeleteUser, confirmEmailMatches, ghostCleanup } from "../adminDelete";
+import { hardDeleteUser, confirmEmailMatches, ghostCleanup, selfDeleteAccount } from "../adminDelete";
 
 beforeEach(() => { invoke.mockReset(); });
 afterEach(() => { vi.restoreAllMocks(); });
@@ -38,6 +38,21 @@ describe("hardDeleteUser — client → edge function", () => {
     invoke.mockRejectedValue(new Error("boom"));
     const r = await hardDeleteUser("s@x.com");
     expect(r).toEqual({ ok: false, error: "boom" });
+  });
+});
+
+describe("selfDeleteAccount — client → edge function (mode self)", () => {
+  it("invokes mode:self with NO email (caller derived server-side), returns ok", async () => {
+    invoke.mockResolvedValue({ data: { success: true, deleted: { orders: 3 } }, error: null });
+    const r = await selfDeleteAccount();
+    expect(invoke).toHaveBeenCalledWith("admin-delete-user", { body: { mode: "self" } });
+    expect(r.ok).toBe(true);
+  });
+  it("surfaces the admin/master self-delete block (403) as ok:false + code", async () => {
+    invoke.mockResolvedValue({ data: { success: false, error: "Master accounts can't self-delete — please contact support.", code: "protected_master" }, error: null });
+    const r = await selfDeleteAccount();
+    expect(r.ok).toBe(false);
+    expect(r.code).toBe("protected_master");
   });
 });
 
