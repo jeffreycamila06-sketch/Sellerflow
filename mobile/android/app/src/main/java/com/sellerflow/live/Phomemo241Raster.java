@@ -30,8 +30,38 @@ final class Phomemo241Raster implements Phomemo241Builder.BandRenderer {
 
     private static final int BASE_CELL = 24;   // ~ TSPL font "4" at 1x
 
+    // ── P3 bold tuning (finalized by the BOLD SAMPLER print — see the plugin's
+    // BOLD_SAMPLER_MODE; these defaults are sampler row 4: stroke 1.5, thr 160) ──
+    // BOLD_STROKE_DOTS widens every glyph stroke (FILL_AND_STROKE) in printer dots;
+    // BOLD_THRESHOLD raises the gray→black cutoff so anti-aliased edge pixels
+    // print (thermal dots fill fuller = heavier stroke). Regular threshold stays
+    // the P3-pre value 128.
+    static final float BOLD_STROKE_DOTS = 1.5f;
+    static final int BOLD_THRESHOLD = 160;
+    static final int REGULAR_THRESHOLD = 128;
+
     @Override
     public Phomemo241Builder.Band render(String text, double xMul, double yMul, int maxWidthDots) {
+        return render(text, xMul, yMul, maxWidthDots, false);
+    }
+
+    /** P3 bold-aware entry — the builder's Emit calls this. */
+    @Override
+    public Phomemo241Builder.Band render(String text, double xMul, double yMul, int maxWidthDots, boolean bold) {
+        return renderCore(text, xMul, yMul, maxWidthDots, bold,
+                bold ? BOLD_STROKE_DOTS : 0f, bold ? BOLD_THRESHOLD : REGULAR_THRESHOLD);
+    }
+
+    /**
+     * BOLD SAMPLER hook: same pipeline with EXPLICIT stroke/threshold so the
+     * sampler print can lay out candidate weights side by side (always bold
+     * typeface). Not used by production printing.
+     */
+    Phomemo241Builder.Band renderTuning(String text, double mul, int maxWidthDots, float strokeDots, int threshold) {
+        return renderCore(text, mul, mul, maxWidthDots, true, strokeDots, threshold);
+    }
+
+    private Phomemo241Builder.Band renderCore(String text, double xMul, double yMul, int maxWidthDots, boolean bold, float strokeDots, int threshold) {
         if (text == null || text.isEmpty() || xMul <= 0 || yMul <= 0 || maxWidthDots <= 0) return null;
 
         // Height in PIXELS from the EXACT decimal (24 x yMul), so every 0.1 step of
@@ -42,6 +72,12 @@ final class Phomemo241Raster implements Phomemo241Builder.BandRenderer {
 
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         paint.setColor(Color.BLACK);
+        // P3 bold: widen every stroke (FILL_AND_STROKE) — the third weight lever
+        // besides the bold typeface and the pack threshold.
+        if (strokeDots > 0f) {
+            paint.setStyle(Paint.Style.FILL_AND_STROKE);
+            paint.setStrokeWidth(strokeDots);
+        }
 
         // P2 FITTING (measureText-based, proportional): a run that is too wide for
         // maxWidthDots is NEVER horizontally squished (that produced the thin,
@@ -56,7 +92,7 @@ final class Phomemo241Raster implements Phomemo241Builder.BandRenderer {
         if (isCjk) {
             // CJK — system default typeface resolves to Noto CJK on minSdk 24
             // (Traditional-correct). Sized at outH x 0.82 x fit-step; width natural.
-            paint.setTypeface(Typeface.DEFAULT);
+            paint.setTypeface(bold ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
             double fit = FIT_STEPS[FIT_STEPS.length - 1];
             for (double f : FIT_STEPS) {
                 paint.setTextSize((float) (outH * 0.82 * f));
@@ -129,7 +165,7 @@ final class Phomemo241Raster implements Phomemo241Builder.BandRenderer {
         }
         // flip180 = TRUE always — the 241 builder runs DIRECTION 0 + in-layout 180,
         // so every band is pre-rotated 180 to read upright once the label is rotated.
-        return Phomemo241Builder.packBits(gray, w, h, 128, true);
+        return Phomemo241Builder.packBits(gray, w, h, threshold, true);
     }
 
     private static boolean containsCjk(String text) {

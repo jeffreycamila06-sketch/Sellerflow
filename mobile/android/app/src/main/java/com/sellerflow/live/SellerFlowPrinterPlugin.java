@@ -70,6 +70,14 @@ public class SellerFlowPrinterPlugin extends Plugin {
     // unit / suspected drift change); the ruler pattern itself stays in the tree
     // (Phomemo241Builder.rulerTestPage).
     private static final boolean RULER_TEST_MODE = false;
+    // P3 BOLD SAMPLER (weight-tuning window, same pattern as the ruler). While true,
+    // the 241 TEST PRINT prints one label with 7 numbered rows of "Buyer #88" +
+    // 陳小美 at candidate bold settings (3 stroke widths × 2 thresholds + a
+    // double-strike TEXT experiment). Jeff picks the best-looking row number; its
+    // stroke/threshold become Phomemo241Raster.BOLD_STROKE_DOTS/BOLD_THRESHOLD in a
+    // follow-up commit, then this flips back to false. COMMITTED true so the tuning
+    // build prints the sampler immediately. Scope: the 241 Test Print ONLY.
+    private static final boolean BOLD_SAMPLER_MODE = true;
 
     /**
      * ESC/POS character-size mode (GS ! n) applied to prominent slip fields:
@@ -537,6 +545,21 @@ public class SellerFlowPrinterPlugin extends Plugin {
         Phomemo241Builder.BandRenderer renderer = new Phomemo241Raster();
 
         if (payload.optBoolean("isTest", false)) {
+            // P3 tuning window: the bold sampler replaces the verification sticker
+            // while BOLD_SAMPLER_MODE is on (see the constant's doc).
+            if (BOLD_SAMPLER_MODE) {
+                byte[] sampler = build241BoldSampler(labelWidthMm, labelHeightMm);
+                sendViaBluetoothSpp(address, sampler);
+                JSObject sret = new JSObject();
+                sret.put("ok", true);
+                sret.put("sampler", true);
+                sret.put("bytes", sampler.length);
+                sret.put("savedPrinter", savedBluetoothPrinter());
+                sret.put("message", "BOLD SAMPLER sent (" + sampler.length + " bytes) — pick the best-looking row number (1-7).");
+                Log.i(TAG, "print241 BOLD sampler bytes=" + sampler.length);
+                call.resolve(sret);
+                return;
+            }
             // P1 measurement window: the ruler pattern replaces the verification
             // sticker while RULER_TEST_MODE is on (see the constant's doc).
             if (RULER_TEST_MODE) {
@@ -660,6 +683,64 @@ public class SellerFlowPrinterPlugin extends Plugin {
         return p;
     }
 
+    /**
+     * P3 BOLD SAMPLER — one label, 7 numbered rows of "Buyer #88" + 陳小美 at
+     * candidate weight settings, so ONE print tunes the bold rendering:
+     *   row 1: stroke 0.0, threshold 128   row 2: stroke 0.0, threshold 160
+     *   row 3: stroke 1.5, threshold 128   row 4: stroke 1.5, threshold 160
+     *   row 5: stroke 2.5, threshold 128   row 6: stroke 2.5, threshold 160
+     *   row 7: DOUBLE-STRIKE TEXT experiment (font 4 printed twice, +1 dot) — ASCII
+     *          only; the 241 has no CJK ROM so 陳小美 cannot appear on this row.
+     * Rows 1-6 use Phomemo241Raster.renderTuning (bold typeface always) at the
+     * production primary size (4/3 mul = 32-dot cell). Reading-space layout with
+     * the same guard-free DIR0+180 flip as the ruler (content sits well inboard).
+     * Jeff picks the best row; its stroke/threshold become BOLD_STROKE_DOTS /
+     * BOLD_THRESHOLD, then BOLD_SAMPLER_MODE flips back to false.
+     */
+    private byte[] build241BoldSampler(int labelWidthMm, int labelHeightMm) throws Exception {
+        final int W = labelWidthMm * 8, H = labelHeightMm * 8;
+        final Phomemo241Raster raster = new Phomemo241Raster();
+        ByteArrayOutputStream out = new ByteArrayOutputStream(4096);
+        Charset ascii = Charset.forName("US-ASCII");
+        for (String cmd : new String[]{
+                "SIZE " + labelWidthMm + " mm, " + labelHeightMm + " mm",
+                "GAP 2 mm, 0", "DIRECTION 0", "REFERENCE 0,0", "DENSITY 8", "CLS"}) {
+            out.write(cmd.getBytes(ascii)); out.write('\r'); out.write('\n');
+        }
+        float[] strokes = {0f, 0f, 1.5f, 1.5f, 2.5f, 2.5f};
+        int[] thresholds = {128, 160, 128, 160, 128, 160};
+        double mul = 4.0 / 3.0;   // the production primary cell (32-dot) at scale 1
+        int maxAsciiW = 200, maxCjkW = 140;
+        for (int row = 1; row <= 7; row++) {
+            int ay = 24 + (row - 1) * 40;
+            // row-number label (reading x=24)
+            out.write(("TEXT " + (W - 24) + "," + (H - ay) + ",\"2\",180,1,1,\"" + row + "\"").getBytes(ascii));
+            out.write('\r'); out.write('\n');
+            if (row <= 6) {
+                Phomemo241Builder.Band a = raster.renderTuning("Buyer #88", mul, maxAsciiW, strokes[row - 1], thresholds[row - 1]);
+                if (a != null) writeSamplerBand(out, ascii, W, H, 64, ay, a);
+                Phomemo241Builder.Band c = raster.renderTuning("陳小美", mul, maxCjkW, strokes[row - 1], thresholds[row - 1]);
+                if (c != null) writeSamplerBand(out, ascii, W, H, 300, ay, c);
+            } else {
+                // double-strike TEXT experiment: the same font-4 line twice, +1 dot.
+                out.write(("TEXT " + (W - 64) + "," + (H - ay) + ",\"4\",180,1,1,\"Buyer #88\"").getBytes(ascii));
+                out.write('\r'); out.write('\n');
+                out.write(("TEXT " + (W - 65) + "," + (H - ay) + ",\"4\",180,1,1,\"Buyer #88\"").getBytes(ascii));
+                out.write('\r'); out.write('\n');
+            }
+        }
+        out.write("PRINT 1".getBytes(ascii)); out.write('\r'); out.write('\n');
+        return out.toByteArray();
+    }
+
+    /** Sampler band emit — the guard-free reading-space flip (bands are pre-rotated). */
+    private static void writeSamplerBand(ByteArrayOutputStream out, Charset ascii, int W, int H, int ax, int ay, Phomemo241Builder.Band b) throws Exception {
+        int bx = Math.max(0, W - ax - b.widthBytes * 8);
+        int by = Math.max(0, H - ay - b.height);
+        out.write(("BITMAP " + bx + "," + by + "," + b.widthBytes + "," + b.height + ",0,").getBytes(ascii));
+        out.write(b.bytes);
+        out.write('\r'); out.write('\n');
+    }
 
     @PluginMethod
     public void testStickerPrint(PluginCall call) {

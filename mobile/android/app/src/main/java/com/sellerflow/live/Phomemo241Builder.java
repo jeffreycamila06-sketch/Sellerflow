@@ -32,16 +32,17 @@ import org.json.JSONObject;
  *    Emit class), reading-right by the per-size rightEdge inset (16 dots).
  *
  * The FORK-DRIFT rule (mirrored from the iOS FORK-OF header + CLAUDE.md):
- * as of Jeff's 2026-07-18 revision EVERY size is a documented divergence from AIMO
- * — all sizes are "one row, no separator bar, no Total". The 4 big sizes still
- * SHARE their top block with AIMO (header/date/top bar/store/buyer#/name/@user +
- * the single order row are byte-equal to rotate180(AIMO)); only the separator bar,
- * the 2nd order row, and the Total are dropped. 60x40 is Jeff's fully bespoke
- * layout (fork-local x + gaps). ANY AIMO layout edit to a SHARED line must be
- * mirrored here OR consciously declined in writing. The parity is pinned by the JVM
- * test {@code Phomemo241ParityTest}: the 4 big sizes == rotate180(AIMO) MINUS
- * {sep bar, 2nd row, Total} (shared lines keep full AIMO drift protection); 60x40
- * is pinned by its own bespoke spec — a drift turns it red.
+ * as of Jeff's 2026-07-18 revisions EVERY size is a documented divergence from
+ * AIMO — all sizes are "one row, no separator bar, no Total", and (P3) the three
+ * sorting PRIMARIES (Buyer#, name, @username) are BOLD raster bands (the TSPL ROM
+ * has no bold). The 4 big sizes still SHARE their remaining TEXT block with AIMO
+ * (header/date/store + the single order row are byte-equal to rotate180(AIMO));
+ * the removals are {sep bar, 2nd row, Total, the 3 bold primaries}. 60x40 is
+ * Jeff's fully bespoke layout (fork-local x + gaps). ANY AIMO layout edit to a
+ * SHARED line must be mirrored here OR consciously declined in writing. The
+ * parity is pinned by the JVM test {@code Phomemo241ParityTest}: big-size TEXT ==
+ * rotate180(AIMO) minus the documented removals + the 3 bold bands pinned
+ * present; 60x40 is pinned by its own bespoke spec — a drift turns it red.
  *
  * PURITY: this class imports NO android.graphics — the glyph rasterizer is
  * injected as a {@link BandRenderer} (production = Phomemo241Raster with
@@ -81,6 +82,14 @@ final class Phomemo241Builder {
     // honors every 0.1 seller step, unlike rotation-180 TEXT the 241 won't scale.
     interface BandRenderer {
         Band render(String text, double xMul, double yMul, int maxWidthDots);
+        // P3: bold-aware variant. Default delegates to the 4-arg form so every
+        // existing fake/lambda keeps compiling; the production Phomemo241Raster
+        // overrides this with real bold rendering (bold typeface + stroke widening
+        // + a higher pack threshold). bold=true is how the weight HIERARCHY reaches
+        // the raster — the TSPL ROM has no bold, so bold elements are always bands.
+        default Band render(String text, double xMul, double yMul, int maxWidthDots, boolean bold) {
+            return render(text, xMul, yMul, maxWidthDots);
+        }
     }
 
     /** A packed TSPL BITMAP band: widthBytes x height, mode-0 bytes (bit 0 = black). */
@@ -389,7 +398,7 @@ final class Phomemo241Builder {
         int extra = 0;
         int y = startY;
         if (hasStore) {
-            e.emitSym(storeX, y, "3", sStore, safe(truncate(cleanStoreName, 36)), c.rightEdge);
+            e.emitSym(storeX, y, "3", sStore, safe(truncate(cleanStoreName, 36)), c.rightEdge, false);
             int d = r241((clampF(sStore) - 1) * F3);
             y += storeGap + d;
             extra += d;
@@ -407,7 +416,7 @@ final class Phomemo241Builder {
             // buyer# is now 1x wide; a bolder 2x-tall variant would need the y-gaps re-tuned
             // + a device check — deferred.)
             int buyerNumBaseX = is6040 ? 1 : 2;
-            e.emitHeightScaled(buyerX, y, "4", buyerNumBaseX, c.buyerNumYMul, sBuyerNum, "Buyer #" + buyerNum, c.rightEdge);
+            e.emitHeightScaled(buyerX, y, "4", buyerNumBaseX, c.buyerNumYMul, sBuyerNum, "Buyer #" + buyerNum, c.rightEdge, true);   // P3: sorting primary = BOLD band
             int d = r241((effY - c.buyerNumYMul) * F4);
             y += buyerNumGap + d;
             extra += d;
@@ -416,13 +425,13 @@ final class Phomemo241Builder {
         if (hasName) {
             if (bandName) {
                 // CJK / UNSUPPORTED name → band on both axes (base nameCjk*Mul), scaled.
-                e.emitBand(nameX, y, safe(truncate(nameOut, 30)), c.nameCjkXMul * sName, c.nameCjkYMul * sName, c.rightEdge);
+                e.emitBand(nameX, y, safe(truncate(nameOut, 30)), c.nameCjkXMul * sName, c.nameCjkYMul * sName, c.rightEdge, true);   // P3: primary = BOLD
                 double effY = clampF(c.nameCjkYMul * sName);
                 int d = r241((effY - c.nameCjkYMul) * F4);
                 y += c.nameCjkGap + d;
                 extra += (c.nameCjkGap - nameGap) + d;
             } else {
-                e.emitSym(nameX, y, "4", sName, safe(truncate(nameOut, 30)), c.rightEdge);
+                e.emitSym(nameX, y, "4", sName, safe(truncate(nameOut, 30)), c.rightEdge, true);   // P3: primary = BOLD band
                 int d = r241((clampF(sName) - 1) * F4);
                 y += nameGap + d;
                 extra += d;
@@ -430,7 +439,7 @@ final class Phomemo241Builder {
         }
 
         if (hasUser) {
-            e.emitSym(userX, y, "3", sUser, "@" + safe(truncate(cleanBuyerHandle, 30)), c.rightEdge);
+            e.emitSym(userX, y, "3", sUser, "@" + safe(truncate(cleanBuyerHandle, 30)), c.rightEdge, true);   // P3: primary = BOLD band
             int d = r241((clampF(sUser) - 1) * F3);
             y += usernameGap + d;
             extra += d;
@@ -464,7 +473,7 @@ final class Phomemo241Builder {
                 // EVERY size — priceX places it in its own column to the right of the
                 // time (no overlap), so a shared y is intentional, not a bug.
                 if (!cleanItem.isEmpty()) {
-                    e.emitHeightScaled(priceX, y, "4", 2, 1, sComment, safe(truncate(cleanItem, 12)), c.rightEdge);
+                    e.emitHeightScaled(priceX, y, "4", 2, 1, sComment, safe(truncate(cleanItem, 12)), c.rightEdge, false);
                 }
                 int d = Math.max(0, r241((clampF(sComment) - 1) * F4));
                 y += 38 + d;
@@ -474,9 +483,9 @@ final class Phomemo241Builder {
 
         if (printTotal && totalSpent > 0 && c.showTotal) {
             int totalY = c.totalY + extra;
-            e.emitSym(16, totalY, "3", sTotal, "Total:", c.rightEdge);
+            e.emitSym(16, totalY, "3", sTotal, "Total:", c.rightEdge, false);
             String totalStr = safe(currency) + money(totalSpent);
-            e.emitHeightScaled(c.totalAmountX, totalY, "4", 2, 1, sTotal, safe(truncate(totalStr, 18)), W - 16);
+            e.emitHeightScaled(c.totalAmountX, totalY, "4", 2, 1, sTotal, safe(truncate(totalStr, 18)), W - 16, false);
         }
 
         e.writeAscii("PRINT 1");
@@ -642,7 +651,7 @@ final class Phomemo241Builder {
         // Emit `content` as a pre-rotated raster band, box re-anchored under the
         // 180 map: top-left → (W-x-boxW-EDGE_GUARD, H-y-h). Empty/blank or a failed
         // render → emit NOTHING (a 0-width BITMAP is malformed).
-        void emitBand(int x, int y, String content, double xMulRaw, double yMulRaw, int rightEdge) {
+        void emitBand(int x, int y, String content, double xMulRaw, double yMulRaw, int rightEdge, boolean bold) {
             if (content.isEmpty()) return;
             double xMul = clampF(xMulRaw), yMul = clampF(yMulRaw);
             // Usable width RESERVES the EDGE_GUARD on the far side too, so the placed
@@ -654,7 +663,7 @@ final class Phomemo241Builder {
             // "陳小美 Anna x2", where the old ~24×xMul cell model over/under-counted).
             // The renderer steps the point size down proportionally (100%→85%→70%,
             // sharp shrink, never a horizontal squish) and only then truncates.
-            Band band = renderer.render(content, xMul, yMul, avail);
+            Band band = renderer.render(content, xMul, yMul, avail, bold);
             if (band == null || band.height <= 0 || band.widthBytes <= 0 || band.bytes.length == 0) return;
             int bx = Math.max(0, W - x - band.widthBytes * 8 - EDGE_GUARD);
             // VERTICAL margin protection: a scaled band grown + pushed down by reflow
@@ -672,27 +681,50 @@ final class Phomemo241Builder {
             writeBytes(out, CRLF);
         }
 
-        // SYMMETRIC scalable element (store / ASCII name / @username): scale BOTH
-        // axes by the decimal. scale EXACTLY 1.0 (ASCII) → the verified TEXT command
-        // (byte-identical default). CJK or scale!=1 → a (scale, scale) band.
-        void emitSym(int x, int y, String font, double scale, String rawContent, int rightEdge) {
-            String content = TsplBuilder.transliterateLatin(rawContent);
-            if (content.isEmpty()) return;   // same emptiness rule as writeTextSmart (parity)
-            boolean isCjk = hasNonAscii(content);
-            if (!isCjk && scale == 1.0) { emitText(x, y, font, 1, 1, content, rightEdge); return; }
-            emitBand(x, y, content, scale, scale, rightEdge);
+        // 1x TSPL font cell HEIGHT (dots), used to size a bold band so it never
+        // prints SMALLER than the ROM text it replaces (font 2=20, 3=24, 4=32).
+        static int fontCellH(String font) {
+            switch (font) { case "2": return 20; case "3": return 24; case "4": return 32; default: return 32; }
         }
 
-        // HEIGHT-PRIORITY scalable element (Buyer# / price code): width mul FIXED
-        // (baseX), height scales with the level. scale EXACTLY 1.0 (ASCII) → TEXT at
-        // (baseX, baseY) [byte-identical]. CJK or scale!=1 → band width = baseX,
-        // height = baseY x scale.
-        void emitHeightScaled(int x, int y, String font, int baseX, int baseY, double scale, String rawContent, int rightEdge) {
+        // SYMMETRIC scalable element (store / ASCII name / @username): scale BOTH
+        // axes by the decimal. REGULAR weight: scale EXACTLY 1.0 (ASCII) → the
+        // verified TEXT command (byte-identical); CJK or scale!=1 → a (scale, scale)
+        // band. P3 BOLD (name/@username — the TSPL ROM has no bold): ALWAYS a
+        // proportional band, sized so its height matches the designed font's cell
+        // (cellH/24 × scale on both axes → a font-4 name band is 32-dot at 1.0,
+        // never smaller than the TEXT it replaces).
+        void emitSym(int x, int y, String font, double scale, String rawContent, int rightEdge, boolean bold) {
+            String content = TsplBuilder.transliterateLatin(rawContent);
+            if (content.isEmpty()) return;   // same emptiness rule as writeTextSmart (parity)
+            if (bold) {
+                double bm = (fontCellH(font) / 24.0) * scale;
+                emitBand(x, y, content, bm, bm, rightEdge, true);
+                return;
+            }
+            boolean isCjk = hasNonAscii(content);
+            if (!isCjk && scale == 1.0) { emitText(x, y, font, 1, 1, content, rightEdge); return; }
+            emitBand(x, y, content, scale, scale, rightEdge, false);
+        }
+
+        // HEIGHT-PRIORITY scalable element (Buyer# / price code). REGULAR: scale
+        // EXACTLY 1.0 (ASCII) → TEXT at (baseX, baseY) [byte-identical]; else band
+        // width = baseX, height = baseY x scale. P3 BOLD (Buyer# — the top sorting
+        // primary): ALWAYS a proportional band at max(baseY, 32/24) × scale on both
+        // axes — >= the printed height of the font-4 TEXT it replaces (the firmware
+        // ignored the old multipliers anyway), and on big sizes the designed 2×
+        // height finally renders for real.
+        void emitHeightScaled(int x, int y, String font, int baseX, int baseY, double scale, String rawContent, int rightEdge, boolean bold) {
             String content = TsplBuilder.transliterateLatin(rawContent);
             if (content.isEmpty()) return;
+            if (bold) {
+                double bm = Math.max(baseY, fontCellH(font) / 24.0) * scale;
+                emitBand(x, y, content, bm, bm, rightEdge, true);
+                return;
+            }
             boolean isCjk = hasNonAscii(content);
             if (!isCjk && scale == 1.0) { emitText(x, y, font, baseX, baseY, content, rightEdge); return; }
-            emitBand(x, y, content, (double) baseX, (double) baseY * scale, rightEdge);
+            emitBand(x, y, content, (double) baseX, (double) baseY * scale, rightEdge, false);
         }
     }
 
