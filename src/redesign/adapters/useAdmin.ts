@@ -10,7 +10,8 @@
 // adds a window.confirm() per action so a wrong target can't be hit by accident.
 import { useCallback } from "react";
 import { supabase } from "../../supabase";
-import { adminUpdatePlan, adminUpdateContactNote, deleteUser, saveAuditLog, upsertUser, type Role, type AccountUser } from "../../accountDb";
+import { adminUpdatePlan, adminUpdateContactNote, saveAuditLog, upsertUser, type Role, type AccountUser } from "../../accountDb";
+import { hardDeleteUser } from "./adminDelete";
 import { maxAcc, accountList, accountText } from "./connect";
 import { planDaysLeft, isTimeLimitedPlan } from "../../lib/planWindow";
 
@@ -156,10 +157,14 @@ export function useAdmin(adminEmail: string | undefined): AdminActions {
     }
   }, [audit]);
 
+  // Phase 2 FULL WIPE — the admin-delete-user edge function removes the auth
+  // account + ALL data (incl. billing orders), server-gated on is_admin() + the
+  // self/admin-master guards. Replaces the old profile-row-only deleteUser().
+  // The edge function writes its own authoritative audit_logs row.
   const removeUser = useCallback(async (email: string): Promise<AdminResult> => {
-    try { await deleteUser(email); audit("deleted seller", email, ""); return { ok: true }; }
-    catch (e) { return { ok: false, error: e instanceof Error ? e.message : "error" }; }
-  }, [audit]);
+    const r = await hardDeleteUser(email);
+    return r.ok ? { ok: true } : { ok: false, error: r.error };
+  }, []);
 
   const addDays = useCallback(async (email: string, planExpiry: string, planStatus: string, days: number): Promise<AdminResult & { planExpiry?: string }> => {
     try {
