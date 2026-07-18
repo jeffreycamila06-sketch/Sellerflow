@@ -33,9 +33,11 @@ import org.json.JSONObject;
  *
  * The FORK-DRIFT rule (mirrored from the iOS FORK-OF header + CLAUDE.md):
  * as of Jeff's 2026-07-18 revisions EVERY size is a documented divergence from
- * AIMO — all sizes are "one row, no separator bar, no Total", and (P3) the three
- * sorting PRIMARIES (Buyer#, name, @username) are BOLD raster bands (the TSPL ROM
- * has no bold). The 4 big sizes still SHARE their remaining TEXT block with AIMO
+ * AIMO — all sizes are "one row, no separator bar, no Total", and the three
+ * sorting PRIMARIES (Buyer#, name, @username) are ENLARGED raster bands (P3.7:
+ * ROM-emulation regular weight — prominence comes from SIZE; the 241 ignores
+ * TEXT multipliers on rotation-180, so bands are the only way to enlarge).
+ * The 4 big sizes still SHARE their remaining TEXT block with AIMO
  * (header/date/store + the single order row are byte-equal to rotate180(AIMO));
  * the removals are {sep bar, 2nd row, Total, the 3 bold primaries}. 60x40 is
  * Jeff's fully bespoke layout (fork-local x + gaps). ANY AIMO layout edit to a
@@ -74,16 +76,23 @@ final class Phomemo241Builder {
             && savedName.toUpperCase(java.util.Locale.ROOT).startsWith(PHOMEMO_NAME_PREFIX);
     }
 
-    // ── P3 per-script BOLD TUNING (hardware-tuned via Jeff's sampler, 2026-07-18) ──
-    // The sampler verdict was PER-SCRIPT, not one setting: ASCII picked row 3
-    // (stroke 1.5, threshold 128) — the mono glyphs take the extra weight cleanly;
-    // CJK picked row 2 (stroke 0, threshold 160) — a widened stroke WELDS the dense
-    // CJK strokes together, so CJK gets weight from the threshold only. A MIXED
-    // string ("陳小美 Anna") uses the CJK tuning for the whole band: the CJK glyphs
-    // are the fragile ones, so they win (documented decision). Pure (JVM-pinned);
-    // Phomemo241Raster consumes these for every bold render.
-    static float boldStrokeFor(String text) { return hasNonAscii(text) ? 0f : 1.5f; }
-    static int boldThresholdFor(String text) { return hasNonAscii(text) ? 160 : 128; }
+    // ── P3 per-script BOLD TUNING → P3.7 ONE-WEIGHT VERDICT (Jeff's samplers) ──
+    // P3's bold sampler picked per-script weights (ASCII stroke 1.5/thr 128, CJK
+    // 0/160). P3.7's FONT STYLE sampler then RETIRED the ASCII bold face: Jeff's
+    // rematch verdict was that the bold+stroke ASCII bands look "buntis" next to
+    // the AIMO's thin x2-stretched ROM font, and the pick was ROW 2's MECHANISM
+    // (ROM-emulation: REGULAR weight drawn sharp, then nearest-neighbor pixel
+    // stretch — see stretchGrayNearest) at ROW C's WEIGHT (the approved CJK
+    // tuning: stroke 0, threshold 160 — the higher threshold packs the AA edge
+    // fuller, giving the Row-C stroke thickness with no bold face). The whole
+    // sticker now carries ONE consistent stroke weight — every enlarged/stretched
+    // ASCII band AND the CJK bands pack at 160 with zero stroke widening — and
+    // the hierarchy comes from SIZE, not boldness. CJK rendering itself is
+    // untouched (approved: bold typeface + 160 when flagged, default face + 128
+    // otherwise). Pure (JVM-pinned); Phomemo241Raster consumes these.
+    static final int ROM_BAND_THRESHOLD = 160;
+    static float boldStrokeFor(String text) { return 0f; }
+    static int boldThresholdFor(String text) { return ROM_BAND_THRESHOLD; }
 
     // ── P3.5 AIMO-PROPORTION primary design (Jeff's side-by-side verdict,
     // 2026-07-18: the AIMO still won on SIZE — its buyer# is a true 2x-wide font 4;
@@ -125,9 +134,10 @@ final class Phomemo241Builder {
         Band render(String text, double xMul, double yMul, int maxWidthDots);
         // P3: bold-aware variant. Default delegates to the 4-arg form so every
         // existing fake/lambda keeps compiling; the production Phomemo241Raster
-        // overrides this with real bold rendering (bold typeface + stroke widening
-        // + a higher pack threshold). bold=true is how the weight HIERARCHY reaches
-        // the raster — the TSPL ROM has no bold, so bold elements are always bands.
+        // overrides it. P3.7: for ASCII the flag no longer changes the face/weight
+        // (every non-CJK band renders ROM-emulation regular at ROM_BAND_THRESHOLD;
+        // hierarchy = SIZE) — it still ROUTES the element to a band, and for CJK
+        // it still selects the approved bold typeface + 160 tuning.
         default Band render(String text, double xMul, double yMul, int maxWidthDots, boolean bold) {
             return render(text, xMul, yMul, maxWidthDots);
         }
@@ -457,7 +467,7 @@ final class Phomemo241Builder {
             // buyer# is now 1x wide; a bolder 2x-tall variant would need the y-gaps re-tuned
             // + a device check — deferred.)
             int buyerNumBaseX = is6040 ? 1 : 2;
-            e.emitHeightScaled(buyerX, y, "4", buyerNumBaseX, c.buyerNumYMul, sBuyerNum, "Buyer #" + buyerNum, c.rightEdge, true);   // P3/P3.5: sorting primary = BOLD band
+            e.emitHeightScaled(buyerX, y, "4", buyerNumBaseX, c.buyerNumYMul, sBuyerNum, "Buyer #" + buyerNum, c.rightEdge, true);   // primary band (P3.7: ROM weight — hierarchy = SIZE)
             // P3.5 60x40: reserve the 48-dot buyer# cell (d = 48s - 32; the v3 gap of
             // 44 was designed around the 32-dot cell). Big sizes keep the AIMO-parity
             // advance (their gap already holds 48s comfortably).
@@ -470,13 +480,13 @@ final class Phomemo241Builder {
         if (hasName) {
             if (bandName) {
                 // CJK / UNSUPPORTED name → band on both axes (base nameCjk*Mul), scaled.
-                e.emitBand(nameX, y, safe(truncate(nameOut, 30)), c.nameCjkXMul * sName, c.nameCjkYMul * sName, c.rightEdge, true);   // P3: primary = BOLD
+                e.emitBand(nameX, y, safe(truncate(nameOut, 30)), c.nameCjkXMul * sName, c.nameCjkYMul * sName, c.rightEdge, true);   // primary band (CJK keeps the approved P3 tuning)
                 double effY = clampF(c.nameCjkYMul * sName);
                 int d = r241((effY - c.nameCjkYMul) * F4);
                 y += c.nameCjkGap + d;
                 extra += (c.nameCjkGap - nameGap) + d;
             } else {
-                e.emitSym(nameX, y, "4", sName, safe(truncate(nameOut, 30)), c.rightEdge, true, is6040 ? NAME_BOLD_6040 : NAME_BOLD_BIG, is6040 ? NAME_BOLD_6040 : NAME_BOLD_BIG);   // P3/P3.5: primary = BOLD band
+                e.emitSym(nameX, y, "4", sName, safe(truncate(nameOut, 30)), c.rightEdge, true, is6040 ? NAME_BOLD_6040 : NAME_BOLD_BIG, is6040 ? NAME_BOLD_6040 : NAME_BOLD_BIG);   // primary band (P3.7: ROM weight)
                 // P3.5 60x40: the ASCII-name band is 42s tall -> grow by 42/step so
                 // the advance (44 + d) always covers it. Big sizes keep the 32 cell.
                 int d = is6040 ? r241((clampF(sName) - 1) * 24 * NAME_BOLD_6040)
@@ -487,7 +497,7 @@ final class Phomemo241Builder {
         }
 
         if (hasUser) {
-            e.emitSym(userX, y, "3", sUser, "@" + safe(truncate(cleanBuyerHandle, 30)), c.rightEdge, true, USER_BOLD_X, 1.0);   // P3/P3.6: bold band, AIMO 16x24 chars
+            e.emitSym(userX, y, "3", sUser, "@" + safe(truncate(cleanBuyerHandle, 30)), c.rightEdge, true, USER_BOLD_X, 1.0);   // primary band, AIMO 16x24 chars (P3.7: ROM weight)
             int d = r241((clampF(sUser) - 1) * F3);
             y += usernameGap + d;
             extra += d;
@@ -519,7 +529,7 @@ final class Phomemo241Builder {
                 // "enlarged marquee" target (48-dot chars x 32-dot cell). The AIMO
                 // prints this via font-4 x2 (multiplier WORKS on DIR1); the 241
                 // firmware ignores TEXT multipliers, so the band is the only way to
-                // match — regular weight (no bold face gimmicks), height honors the
+                // match — ROM-emulation regular weight (P3.7: same as every band), height honors the
                 // comment decimal. Long items step down via the renderer measure
                 // ladder before truncating; short codes ("150") get full 48-dot
                 // dominance. v3 (Jeff): the price shares the time's row (offset 0);
@@ -747,12 +757,12 @@ final class Phomemo241Builder {
         }
 
         // SYMMETRIC scalable element (store / ASCII name / @username): scale BOTH
-        // axes by the decimal. REGULAR weight: scale EXACTLY 1.0 (ASCII) → the
+        // axes by the decimal. Non-primary: scale EXACTLY 1.0 (ASCII) → the
         // verified TEXT command (byte-identical); CJK or scale!=1 → a (scale, scale)
-        // band. P3 BOLD (name/@username — the TSPL ROM has no bold): ALWAYS a
-        // proportional band, sized so its height matches the designed font's cell
-        // (cellH/24 × scale on both axes → a font-4 name band is 32-dot at 1.0,
-        // never smaller than the TEXT it replaces).
+        // band. bold=true (name/@username — the sorting PRIMARIES): ALWAYS a
+        // proportional band at the designed cell (never smaller than the TEXT it
+        // replaces). P3.7: "bold" is a ROUTING/prominence flag — the ASCII band
+        // itself renders ROM-emulation REGULAR weight (hierarchy = SIZE).
         void emitSym(int x, int y, String font, double scale, String rawContent, int rightEdge, boolean bold, double boldMulX, double boldMulY) {
             String content = TsplBuilder.transliterateLatin(rawContent);
             if (content.isEmpty()) return;   // same emptiness rule as writeTextSmart (parity)
@@ -768,13 +778,12 @@ final class Phomemo241Builder {
             emitBand(x, y, content, scale, scale, rightEdge, false);
         }
 
-        // HEIGHT-PRIORITY scalable element (Buyer# / price code). REGULAR: scale
-        // EXACTLY 1.0 (ASCII) → TEXT at (baseX, baseY) [byte-identical]; else band
-        // width = baseX, height = baseY x scale. P3 BOLD (Buyer# — the top sorting
-        // primary): ALWAYS a proportional band at max(baseY, 32/24) × scale on both
-        // axes — >= the printed height of the font-4 TEXT it replaces (the firmware
-        // ignored the old multipliers anyway), and on big sizes the designed 2×
-        // height finally renders for real.
+        // HEIGHT-PRIORITY scalable element (Buyer# / price code). Non-primary:
+        // scale EXACTLY 1.0 (ASCII) → TEXT at (baseX, baseY) [byte-identical]; else
+        // band width = baseX, height = baseY x scale. bold=true (Buyer# — the top
+        // sorting primary): ALWAYS a proportional band at the designed AIMO-match
+        // cell — >= the printed height of the font-4 TEXT it replaces. P3.7: the
+        // band renders ROM-emulation REGULAR weight (prominence = SIZE).
         void emitHeightScaled(int x, int y, String font, int baseX, int baseY, double scale, String rawContent, int rightEdge, boolean bold) {
             String content = TsplBuilder.transliterateLatin(rawContent);
             if (content.isEmpty()) return;
@@ -813,14 +822,33 @@ final class Phomemo241Builder {
      */
     static byte[] stretchGrayH(byte[] gray, int width, int height, int factor) {
         if (gray == null || width <= 0 || height <= 0 || factor < 1 || gray.length < width * height) return null;
-        if (factor == 1) return gray;
-        byte[] out = new byte[width * factor * height];
-        for (int row = 0; row < height; row++) {
-            int src = row * width, dst = row * width * factor;
-            for (int col = 0; col < width; col++) {
-                byte v = gray[src + col];
-                int base = dst + col * factor;
-                for (int k = 0; k < factor; k++) out[base + k] = v;
+        // Integer column duplication == the nearest-neighbor map at outW = w*factor
+        // (srcCol = col*w/(w*f) = col/f floored), so the general core is the single
+        // implementation — the original x2 pins hold byte-for-byte via delegation.
+        return stretchGrayNearest(gray, width, height, width * factor, height);
+    }
+
+    /**
+     * P3.7 completion — the FRACTIONAL generalization of {@link #stretchGrayH},
+     * used by the PRODUCTION enlarged-ASCII path: nearest-neighbor stretch of a
+     * grayscale buffer to an EXACT target (outW x outH), enlarge-only on both
+     * axes. srcCol = col*srcW/outW (and the same for rows) — for an integer
+     * ratio this IS column/row duplication (the AIMO firmware multiplier); for a
+     * fractional target (e.g. the buyer#'s 48/14-wide x 2.0-tall cell → ratio
+     * ~1.71) the duplication is distributed evenly, which is what a firmware
+     * with fractional multipliers would do. Pure + JVM-pinned. Identity when the
+     * target equals the source; shrink targets / invalid input → null.
+     */
+    static byte[] stretchGrayNearest(byte[] gray, int width, int height, int outW, int outH) {
+        if (gray == null || width <= 0 || height <= 0 || outW < width || outH < height
+                || gray.length < width * height) return null;
+        if (outW == width && outH == height) return gray;
+        byte[] out = new byte[outW * outH];
+        for (int row = 0; row < outH; row++) {
+            int srcBase = (row * height / outH) * width;
+            int dstBase = row * outW;
+            for (int col = 0; col < outW; col++) {
+                out[dstBase + col] = gray[srcBase + col * width / outW];
             }
         }
         return out;

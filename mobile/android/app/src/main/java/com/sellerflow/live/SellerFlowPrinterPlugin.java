@@ -79,15 +79,17 @@ public class SellerFlowPrinterPlugin extends Plugin {
     // bold hierarchy live). Flip to true only for a future re-tune; the sampler
     // stays in the tree (build241BoldSampler).
     private static final boolean BOLD_SAMPLER_MODE = false;
-    // P3.7 FONT STYLE SAMPLER (the AIMO "sexy" look hunt — Jeff rematch #3: the
-    // size now matches but the 241 bands look "buntis" [bold face + stroke +
-    // threshold all at once] vs the AIMO's thin-stroke, airy, x2-stretched ROM
-    // font). While true, the 241 TEST PRINT prints numbered rows of "Buyer #16" +
-    // "150" in candidate rendering styles (rows below) + a CJK reference line at
-    // the APPROVED P3 tuning (CJK is NOT being changed). Jeff picks a row; its
-    // style becomes the enlarged-ASCII production rendering in a follow-up commit,
-    // then this flips back to false. COMMITTED true. Scope: the 241 Test Print ONLY.
-    private static final boolean FONT_SAMPLER_MODE = true;
+    // P3.7 FONT STYLE SAMPLER — TUNING COMPLETE (2026-07-18, Jeff's verdict:
+    // ROW 2's MECHANISM — ROM-emulation, regular weight + pixel stretch — at
+    // ROW C's WEIGHT — threshold 160, zero stroke — so the whole sticker carries
+    // ONE consistent stroke weight and the hierarchy comes from SIZE). The style
+    // now lives in the production path (Phomemo241Raster ASCII branch +
+    // Phomemo241Builder.ROM_BAND_THRESHOLD / stretchGrayNearest) and the Test
+    // Print is back to the CJK verification sticker. Flip to true only for a
+    // future re-tune; the sampler stays in the tree (build241FontSampler — note
+    // its row 1 "current bold" reference now renders the shipped ROM style too,
+    // since production itself moved to it).
+    private static final boolean FONT_SAMPLER_MODE = false;
 
     /**
      * ESC/POS character-size mode (GS ! n) applied to prominent slip fields:
@@ -770,7 +772,8 @@ public class SellerFlowPrinterPlugin extends Plugin {
      *   row 5: ROM-emulation + very light stroke 0.5 (gitna)
      *   row 6: "150 250 600" price digits in ROM-emulation (the price-marquee look)
      *   row C: 陳小美 at the APPROVED P3 CJK tuning — REFERENCE ONLY, CJK unchanged.
-     * Jeff picks the row; that style becomes the production enlarged-ASCII rendering.
+     * VERDICT (2026-07-18): ROW 2's mechanism at ROW C's weight — now the shipped
+     * production style (see FONT_SAMPLER_MODE doc). Retained as a diagnostic.
      */
     private byte[] build241FontSampler(int labelWidthMm, int labelHeightMm) throws Exception {
         final int W = labelWidthMm * 8, H = labelHeightMm * 8;

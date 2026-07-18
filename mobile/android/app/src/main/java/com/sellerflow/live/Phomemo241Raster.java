@@ -30,11 +30,12 @@ final class Phomemo241Raster implements Phomemo241Builder.BandRenderer {
 
     private static final int BASE_CELL = 24;   // ~ TSPL font "4" at 1x
 
-    // P3 bold tuning is PER-SCRIPT (hardware-tuned via Jeff's sampler, 2026-07-18:
-    // ASCII = row 3 [stroke 1.5, thr 128]; CJK/non-ASCII incl. mixed = row 2
-    // [stroke 0, thr 160] — a widened stroke welds dense CJK strokes together).
-    // The selection lives in the PURE Phomemo241Builder.boldStrokeFor/
-    // boldThresholdFor (JVM-pinned); this class just consumes it.
+    // Pack threshold for NON-primary CJK bands only (scaled CJK store name / CJK
+    // price item — the pre-P3 behavior, untouched). Everything else packs at the
+    // P3.7 one-weight ROM_BAND_THRESHOLD (160): every non-CJK band regardless of
+    // the bold flag, and CJK primaries (the approved P3 row-C tuning). The
+    // selection lives in the PURE Phomemo241Builder.boldStrokeFor/
+    // boldThresholdFor / ROM_BAND_THRESHOLD (JVM-pinned); this class consumes it.
     static final int REGULAR_THRESHOLD = 128;
 
     @Override
@@ -42,9 +43,20 @@ final class Phomemo241Raster implements Phomemo241Builder.BandRenderer {
         return render(text, xMul, yMul, maxWidthDots, false);
     }
 
-    /** P3 bold-aware entry — the builder's Emit calls this. */
+    /** Bold-aware entry — the builder's Emit calls this. */
     @Override
     public Phomemo241Builder.Band render(String text, double xMul, double yMul, int maxWidthDots, boolean bold) {
+        // P3.7 (Jeff's font-sampler verdict, 2026-07-18): every NON-CJK band —
+        // bold-flagged or not — renders in the ROM-emulation style at the ONE
+        // approved weight: regular face, zero stroke, ROM_BAND_THRESHOLD (160,
+        // the Row-C/CJK weight). "bold" is a prominence/routing flag for ASCII
+        // now (hierarchy = SIZE); stretched (buyer#/price) and non-stretched
+        // (name/@user) ASCII bands therefore carry the SAME visual weight. CJK
+        // keeps the approved P3 tuning: bold typeface + 160 when flagged,
+        // default face + REGULAR_THRESHOLD otherwise.
+        if (!containsCjk(text)) {
+            return renderCore(text, xMul, yMul, maxWidthDots, false, 0f, Phomemo241Builder.ROM_BAND_THRESHOLD);
+        }
         return renderCore(text, xMul, yMul, maxWidthDots, bold,
                 bold ? Phomemo241Builder.boldStrokeFor(text) : 0f,
                 bold ? Phomemo241Builder.boldThresholdFor(text) : REGULAR_THRESHOLD);
@@ -52,8 +64,9 @@ final class Phomemo241Raster implements Phomemo241Builder.BandRenderer {
 
     /**
      * BOLD SAMPLER hook: same pipeline with EXPLICIT stroke/threshold so the
-     * sampler print can lay out candidate weights side by side (always bold
-     * typeface). Not used by production printing.
+     * sampler print can lay out candidate weights side by side. Not used by
+     * production printing. (P3.7 note: the ASCII branch now always draws the
+     * regular ROM face, so this diagnostic varies stroke/threshold only.)
      */
     Phomemo241Builder.Band renderTuning(String text, double mul, int maxWidthDots, float strokeDots, int threshold) {
         return renderCore(text, mul, mul, maxWidthDots, true, strokeDots, threshold);
@@ -129,8 +142,9 @@ final class Phomemo241Raster implements Phomemo241Builder.BandRenderer {
 
         Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
         paint.setColor(Color.BLACK);
-        // P3 bold: widen every stroke (FILL_AND_STROKE) — the third weight lever
-        // besides the bold typeface and the pack threshold.
+        // Stroke widening (FILL_AND_STROKE) — P3.7: production always passes 0
+        // (boldStrokeFor returns 0 for every script); only the retained
+        // renderTuning sampler diagnostic can still exercise it.
         if (strokeDots > 0f) {
             paint.setStyle(Paint.Style.FILL_AND_STROKE);
             paint.setStrokeWidth(strokeDots);
@@ -174,19 +188,25 @@ final class Phomemo241Raster implements Phomemo241Builder.BandRenderer {
             float top = Math.max(0f, (outH - textH) / 2f);
             canvas.drawText(run, 0f, top - fm.ascent, paint);   // baseline placed so the run is vertically centered
         } else {
-            // ASCII/Latin — monospace bold (closest to the TSPL ROM look), sized so
-            // the FULL glyph (ascender-top DOWN TO descender-bottom) fits the base
-            // cell, then STRETCH by (xMul, yMul) so the letter itself grows. Fitting
-            // the whole ascent+descent extent (not just cap height) keeps the "y" in
-            // "Buyer" and g/p/q/j from clipping at the bottom at every band scale.
-            // P2: an over-wide run steps the WHOLE stretch down proportionally (both
-            // axes — sharp shrink), then truncates; never a one-axis squish.
-            paint.setTypeface(Typeface.create(Typeface.MONOSPACE, Typeface.BOLD));
+            // ASCII/Latin — P3.7 ROM-EMULATION, the production enlarged-ASCII style
+            // (Jeff's font-sampler verdict: ROW 2's mechanism at ROW C's weight).
+            // REGULAR monospace — no bold face; weight comes from the pack
+            // threshold alone (render() injects ROM_BAND_THRESHOLD). The run is
+            // drawn as a SHARP VECTOR at the smaller axis' target size, then the
+            // larger axis is nearest-neighbor pixel-stretched to the full target
+            // (Phomemo241Builder.stretchGrayNearest) — the AIMO firmware's own
+            // TEXT-multiplier mechanism (column/row duplication), so the thin
+            // regular strokes WIDEN geometrically instead of the letter fattening
+            // ("payat na lumalapad", never "buntis"). Sizing fits the FULL
+            // ascent..descent extent so descenders (the "y" in "Buyer", g/p/q/j)
+            // never clip. P2 is unchanged: an over-wide run steps the WHOLE
+            // target down proportionally (both axes — sharp shrink), then
+            // truncates; never a one-axis squish.
+            paint.setTypeface(Typeface.MONOSPACE);   // REGULAR — the thin-stroke base
             paint.setTextSize(100f);
             Paint.FontMetrics ref = paint.getFontMetrics();
             float extent = Math.max(0.5f, ref.descent - ref.ascent);   // ascent is negative
             paint.setTextSize(100f * (BASE_CELL / extent));
-            Paint.FontMetrics fm = paint.getFontMetrics();
             float measured = paint.measureText(text);
             if (measured < 1f) return null;
             double fit = FIT_STEPS[FIT_STEPS.length - 1];
@@ -201,15 +221,41 @@ final class Phomemo241Raster implements Phomemo241Builder.BandRenderer {
             if (measured < 1f) return null;
             outW = Math.min((int) Math.ceil(measured * xMul * fit), maxWidthDots);
             if (outW <= 0) return null;
-            bmp = Bitmap.createBitmap(outW, outH, Bitmap.Config.ARGB_8888);
-            Canvas canvas = new Canvas(bmp);
+            // Vector-draw at the SMALLER axis' size (crisp glyph at its natural
+            // aspect), then stretch the remainder by pixel duplication. xMul >=
+            // yMul (buyer#/price/@user) → drawn at the height target, columns
+            // stretched; yMul > xMul (tall regular bands) → drawn at the width
+            // target, rows stretched. Equal muls (name) → pure vector, no stretch.
+            double mDraw = Math.min(xMul, yMul) * fit;
+            paint.setTextSize((float) (100f * (BASE_CELL * mDraw) / extent));
+            Paint.FontMetrics fm = paint.getFontMetrics();
+            int wDraw = Math.max(1, Math.min((int) Math.ceil(paint.measureText(run)), outW));
+            int hDraw = Math.max(1, Math.min(outH, (int) Math.round(BASE_CELL * mDraw)));
+            Bitmap draw = Bitmap.createBitmap(wDraw, hDraw, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(draw);
             canvas.drawColor(Color.WHITE);
-            canvas.save();
-            // Proportional: BOTH axes carry the same fit factor — the glyph shrinks
-            // as a shape, it is never squeezed on one axis.
-            canvas.scale((float) (xMul * fit), (float) (yMul * fit));
-            canvas.drawText(run, 0f, -fm.ascent, paint);   // ascent-top → 0, descender-bottom → BASE_CELL
-            canvas.restore();
+            canvas.drawText(run, 0f, -fm.ascent, paint);   // ascent-top → 0, descender-bottom → cell
+            int[] px = new int[wDraw * hDraw];
+            draw.getPixels(px, 0, wDraw, 0, 0, wDraw, hDraw);
+            draw.recycle();
+            byte[] gray0 = new byte[wDraw * hDraw];
+            for (int i = 0; i < px.length; i++) {
+                int p = px[i];
+                gray0[i] = (byte) ((((p >> 16) & 0xFF) * 299 + ((p >> 8) & 0xFF) * 587 + (p & 0xFF) * 114) / 1000);
+            }
+            // Stretch to the full glyph target; the band stays the reserved outH
+            // cell (24 x yMul) — a stepped-down (fit<1) glyph is top-aligned with
+            // white padding below, exactly the old geometry.
+            int hGlyph = Math.min(outH, Math.max(hDraw, (int) Math.round(BASE_CELL * yMul * fit)));
+            byte[] stretched = Phomemo241Builder.stretchGrayNearest(gray0, wDraw, hDraw, outW, hGlyph);
+            if (stretched == null) return null;
+            byte[] cell = stretched;
+            if (hGlyph < outH) {
+                cell = new byte[outW * outH];
+                java.util.Arrays.fill(cell, (byte) 0xFF);
+                System.arraycopy(stretched, 0, cell, 0, stretched.length);
+            }
+            return Phomemo241Builder.packBits(cell, outW, outH, threshold, true);
         }
 
         int w = bmp.getWidth(), h = bmp.getHeight();

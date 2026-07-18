@@ -495,20 +495,47 @@ public final class Phomemo241ParityTest {
         // with the buyer# ENLARGED (pinned in testP25PriorityProtectsPrimaries).
     }
 
-    // P3 completion — the bold tuning is PER-SCRIPT (Jeff's sampler verdict,
-    // 2026-07-18): ASCII = row 3 (stroke 1.5, thr 128); CJK = row 2 (stroke 0,
-    // thr 160 — a heavier stroke welds CJK strokes together). Mixed strings take
-    // the CJK tuning: the CJK glyphs are the fragile ones, so they win.
-    private static void testP3PerScriptBoldTuning() {
-        System.out.println("testP3PerScriptBoldTuning (ASCII row 3, CJK row 2, mixed -> CJK)");
-        check(Phomemo241Builder.boldStrokeFor("Buyer #88") == 1.5f && Phomemo241Builder.boldThresholdFor("Buyer #88") == 128,
-              "pure ASCII -> ASCII tuning (stroke 1.5, threshold 128)");
+    // P3.7 completion — ONE-WEIGHT VERDICT (Jeff's font sampler, 2026-07-18):
+    // the enlarged-ASCII style is ROW 2's mechanism (ROM-emulation: regular
+    // face + pixel stretch) at ROW C's weight (threshold 160, stroke 0 — the
+    // approved CJK tuning), so the WHOLE sticker carries one consistent stroke
+    // weight and the hierarchy comes from SIZE, not boldness. This supersedes
+    // the P3 per-script split (the retired ASCII 1.5/128 bold face must never
+    // return); CJK's own tuning is numerically unchanged.
+    private static void testP37UnifiedBandWeight() {
+        System.out.println("testP37UnifiedBandWeight (Row-2 mechanism at Row-C weight — one stroke weight)");
+        check(Phomemo241Builder.ROM_BAND_THRESHOLD == 160,
+              "ROM_BAND_THRESHOLD is the approved Row-C 160");
+        check(Phomemo241Builder.boldStrokeFor("Buyer #88") == 0f && Phomemo241Builder.boldThresholdFor("Buyer #88") == 160,
+              "ASCII: zero stroke + threshold 160 (the P3 bold 1.5/128 is retired)");
         check(Phomemo241Builder.boldStrokeFor("陳小美") == 0f && Phomemo241Builder.boldThresholdFor("陳小美") == 160,
-              "CJK -> CJK tuning (stroke 0, threshold 160)");
+              "CJK: the approved tuning unchanged (stroke 0, threshold 160)");
         check(Phomemo241Builder.boldStrokeFor("陳小美 Anna") == 0f && Phomemo241Builder.boldThresholdFor("陳小美 Anna") == 160,
-              "MIXED -> the CJK tuning wins (protect the fragile glyphs)");
+              "MIXED: the same one weight");
         check(Phomemo241Builder.boldStrokeFor("สวัสดี") == 0f && Phomemo241Builder.boldThresholdFor("สวัสดี") == 160,
-              "any non-ASCII script (Thai) -> the gentle CJK tuning (safe default)");
+              "any non-ASCII script (Thai): the same one weight");
+    }
+
+    // P3.7 completion — SOURCE CONTRACT on Phomemo241Raster.java. The raster
+    // imports android.graphics, so this JVM gate cannot compile or execute it;
+    // the production wiring of the chosen style is pinned TEXTUALLY instead
+    // (run-241-parity.sh passes -Dsfl.raster.src; skipped gracefully without it).
+    private static void testP37RasterSourceContract() throws Exception {
+        System.out.println("testP37RasterSourceContract (ROM-emulation wiring in the raster source)");
+        String path = System.getProperty("sfl.raster.src", "");
+        if (path.isEmpty()) { System.out.println("  (skipped: -Dsfl.raster.src not set)"); return; }
+        String src = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(path)),
+                java.nio.charset.StandardCharsets.UTF_8);
+        check(!src.contains("Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)"),
+              "the ASCII bold monospace face is retired (regular ROM face only)");
+        check(src.contains("Phomemo241Builder.ROM_BAND_THRESHOLD"),
+              "non-CJK bands pack at the one approved weight (ROM_BAND_THRESHOLD)");
+        check(src.contains("Phomemo241Builder.stretchGrayNearest"),
+              "the ASCII enlarge mechanism is the ROM nearest-neighbor pixel stretch");
+        check(src.contains("Typeface.DEFAULT_BOLD"),
+              "the approved CJK tuning (bold typeface) is untouched");
+        check(src.contains("if (!containsCjk(text))"),
+              "the one-weight routing is script-based at the render() entry");
     }
 
     // P3.7 — the ROM-emulation core: pure HORIZONTAL nearest-neighbor stretch
@@ -536,6 +563,25 @@ public final class Phomemo241ParityTest {
         // x3 for completeness (non-2 factors used by future stretches).
         byte[] out3 = Phomemo241Builder.stretchGrayH(new byte[]{5, 6}, 2, 1, 3);
         check(java.util.Arrays.equals(out3, new byte[]{5, 5, 5, 6, 6, 6}), "x3 triples every column");
+
+        // P3.7 completion — stretchGrayNearest, the FRACTIONAL generalization the
+        // PRODUCTION enlarged-ASCII path uses (exact target dims; srcCol =
+        // col*srcW/outW): integer ratios stay pure duplication, fractional ratios
+        // (e.g. the buyer#'s ~1.71) distribute the extra columns evenly.
+        byte[] frac = Phomemo241Builder.stretchGrayNearest(new byte[]{10, 20, 30}, 3, 1, 5, 1);
+        check(java.util.Arrays.equals(frac, new byte[]{10, 10, 20, 20, 30}),
+              "fractional 3->5 maps cols 0,0,1,1,2 (got " + java.util.Arrays.toString(frac) + ")");
+        byte[] rows = Phomemo241Builder.stretchGrayNearest(new byte[]{1, 2}, 1, 2, 1, 4);
+        check(java.util.Arrays.equals(rows, new byte[]{1, 1, 2, 2}),
+              "vertical 2->4 duplicates rows (the ROM y-multiplier)");
+        byte[] both = Phomemo241Builder.stretchGrayNearest(src, 2, 2, 4, 2);
+        check(java.util.Arrays.equals(both, out2),
+              "integer-target nearest == stretchGrayH x2 (delegation is byte-equal)");
+        check(Phomemo241Builder.stretchGrayNearest(src, 2, 2, 2, 2) == src,
+              "target == source is the identity (same array)");
+        check(Phomemo241Builder.stretchGrayNearest(src, 2, 2, 1, 2) == null,
+              "shrink target -> null (enlarge-only, the P2 no-squish rule)");
+        check(Phomemo241Builder.stretchGrayNearest(null, 2, 2, 4, 2) == null, "null gray -> null");
     }
 
     // P1 — the ruler test page measures the PHYSICAL edges, so it must bypass
@@ -756,7 +802,7 @@ public final class Phomemo241ParityTest {
         check(!Phomemo241Builder.isPhomemo241("PM-220"), "PM-220 (different printer) -> not 241");
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         testAsciiFullParityEverySize();
         testBespoke6040();
         testNoRightEdgeOverflow60x40();
@@ -767,7 +813,8 @@ public final class Phomemo241ParityTest {
         testP25ByteIdenticalWhenFits();
         testP25DropSignal();
         testP3BoldRouting();
-        testP3PerScriptBoldTuning();
+        testP37UnifiedBandWeight();
+        testP37RasterSourceContract();
         testP37StretchGrayH();
         testRulerTestPage();
         test6040CapsToOneOrderRow();

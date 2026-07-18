@@ -20,4 +20,7 @@ javac -encoding UTF-8 -d "$BUILD" \
   "$SRC/Phomemo241Builder.java" \
   "$HERE/src/com/sellerflow/live/Phomemo241ParityTest.java"
 
-java -Dfile.encoding=UTF-8 -cp "$BUILD" com.sellerflow.live.Phomemo241ParityTest
+# -Dsfl.raster.src: Phomemo241Raster imports android.graphics so it cannot be
+# compiled here; the P3.7 production-wiring pins read its SOURCE text instead.
+java -Dfile.encoding=UTF-8 -Dsfl.raster.src="$SRC/Phomemo241Raster.java" \
+  -cp "$BUILD" com.sellerflow.live.Phomemo241ParityTest
