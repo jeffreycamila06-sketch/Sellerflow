@@ -85,6 +85,27 @@ final class Phomemo241Builder {
     static float boldStrokeFor(String text) { return hasNonAscii(text) ? 0f : 1.5f; }
     static int boldThresholdFor(String text) { return hasNonAscii(text) ? 160 : 128; }
 
+    // ── P3.5 AIMO-PROPORTION primary design (Jeff's side-by-side verdict,
+    // 2026-07-18: the AIMO still won on SIZE — its buyer# is a true 2x-wide font 4;
+    // the P3 241 buyer# was bold but 1x). New DESIGNED sizes (seller scales in the
+    // pattern multiply ON TOP of these; the ladder + vertical planner still apply):
+    //  - Buyer# band = BUYER_BOLD_X x BUYER_BOLD_Y = (8/3, 2.0) on EVERY size:
+    //    48-dot cell, ~37-dot-wide mono chars (2x the P3 width, 1.5x its height —
+    //    the AIMO-dominance proportion; mono glyphs are narrower than the ROM's,
+    //    so ~37 is the 2x-directive result, one constant to widen further).
+    //    Big sizes already drew 48-tall (baseY=2); they now gain the wider X too.
+    //  - ASCII name band: 60x40 = NAME_BOLD_6040 (1.75 -> 42-dot cell, ~1.3x the
+    //    P3 4/3); BIG sizes keep NAME_BOLD_BIG = 4/3 (32) — their nameGap (40) can
+    //    not hold 42 without moving AIMO-parity rows, and their hierarchy is
+    //    already dominant (buyer 48 > name 32 > user 24).
+    //  - @username unchanged (24-dot cell) — Jeff: tama na.
+    // The 60x40 reflow/planner RESERVES the new heights (buyer# d = 48s-32, ASCII
+    // name d = 42(s-1)) so the defaults fit with zero stepping — see finalYFor.
+    static final double BUYER_BOLD_X = 8.0 / 3.0;
+    static final double BUYER_BOLD_Y = 2.0;
+    static final double NAME_BOLD_6040 = 1.75;
+    static final double NAME_BOLD_BIG = 4.0 / 3.0;
+
     // ── Injectable glyph rasterizer ─────────────────────────────────────────
     // The ONLY android.graphics dependency of the 241 path lives behind this
     // interface. render() returns the packed 1-bit band (already 180-rotated
@@ -409,7 +430,7 @@ final class Phomemo241Builder {
         int extra = 0;
         int y = startY;
         if (hasStore) {
-            e.emitSym(storeX, y, "3", sStore, safe(truncate(cleanStoreName, 36)), c.rightEdge, false);
+            e.emitSym(storeX, y, "3", sStore, safe(truncate(cleanStoreName, 36)), c.rightEdge, false, 0);
             int d = r241((clampF(sStore) - 1) * F3);
             y += storeGap + d;
             extra += d;
@@ -427,8 +448,12 @@ final class Phomemo241Builder {
             // buyer# is now 1x wide; a bolder 2x-tall variant would need the y-gaps re-tuned
             // + a device check — deferred.)
             int buyerNumBaseX = is6040 ? 1 : 2;
-            e.emitHeightScaled(buyerX, y, "4", buyerNumBaseX, c.buyerNumYMul, sBuyerNum, "Buyer #" + buyerNum, c.rightEdge, true);   // P3: sorting primary = BOLD band
-            int d = r241((effY - c.buyerNumYMul) * F4);
+            e.emitHeightScaled(buyerX, y, "4", buyerNumBaseX, c.buyerNumYMul, sBuyerNum, "Buyer #" + buyerNum, c.rightEdge, true);   // P3/P3.5: sorting primary = BOLD band
+            // P3.5 60x40: reserve the 48-dot buyer# cell (d = 48s - 32; the v3 gap of
+            // 44 was designed around the 32-dot cell). Big sizes keep the AIMO-parity
+            // advance (their gap already holds 48s comfortably).
+            int d = is6040 ? r241(clampF(sBuyerNum) * 24 * BUYER_BOLD_Y - F4)
+                           : r241((effY - c.buyerNumYMul) * F4);
             y += buyerNumGap + d;
             extra += d;
         }
@@ -442,15 +467,18 @@ final class Phomemo241Builder {
                 y += c.nameCjkGap + d;
                 extra += (c.nameCjkGap - nameGap) + d;
             } else {
-                e.emitSym(nameX, y, "4", sName, safe(truncate(nameOut, 30)), c.rightEdge, true);   // P3: primary = BOLD band
-                int d = r241((clampF(sName) - 1) * F4);
+                e.emitSym(nameX, y, "4", sName, safe(truncate(nameOut, 30)), c.rightEdge, true, is6040 ? NAME_BOLD_6040 : NAME_BOLD_BIG);   // P3/P3.5: primary = BOLD band
+                // P3.5 60x40: the ASCII-name band is 42s tall -> grow by 42/step so
+                // the advance (44 + d) always covers it. Big sizes keep the 32 cell.
+                int d = is6040 ? r241((clampF(sName) - 1) * 24 * NAME_BOLD_6040)
+                               : r241((clampF(sName) - 1) * F4);
                 y += nameGap + d;
                 extra += d;
             }
         }
 
         if (hasUser) {
-            e.emitSym(userX, y, "3", sUser, "@" + safe(truncate(cleanBuyerHandle, 30)), c.rightEdge, true);   // P3: primary = BOLD band
+            e.emitSym(userX, y, "3", sUser, "@" + safe(truncate(cleanBuyerHandle, 30)), c.rightEdge, true, 1.0);   // P3: primary = BOLD band (24-cell, unchanged)
             int d = r241((clampF(sUser) - 1) * F3);
             y += usernameGap + d;
             extra += d;
@@ -494,7 +522,7 @@ final class Phomemo241Builder {
 
         if (printTotal && totalSpent > 0 && c.showTotal) {
             int totalY = c.totalY + extra;
-            e.emitSym(16, totalY, "3", sTotal, "Total:", c.rightEdge, false);
+            e.emitSym(16, totalY, "3", sTotal, "Total:", c.rightEdge, false, 0);
             String totalStr = safe(currency) + money(totalSpent);
             e.emitHeightScaled(c.totalAmountX, totalY, "4", 2, 1, sTotal, safe(truncate(totalStr, 18)), W - 16, false);
         }
@@ -531,12 +559,16 @@ final class Phomemo241Builder {
         int y = startY;
         if (rows[0]) y += storeGap + r241((clampF(s[0]) - 1) * F3);
         if (hasBuyerNum) {
+            // P3.5: the 60x40 buyer# reserves its 48-dot design cell (d = 48s - 32);
+            // big sizes keep the AIMO-parity advance — EXACT mirror of the emit body.
             double effY = clampF(c.buyerNumYMul * s[4]);
-            y += buyerNumGap + r241((effY - c.buyerNumYMul) * F4);
+            y += buyerNumGap + (is6040 ? r241(clampF(s[4]) * 24 * BUYER_BOLD_Y - F4)
+                                       : r241((effY - c.buyerNumYMul) * F4));
         }
         if (hasName) {
             if (bandName) y += c.nameCjkGap + r241((clampF(c.nameCjkYMul * s[3]) - c.nameCjkYMul) * F4);
-            else y += nameGap + r241((clampF(s[3]) - 1) * F4);
+            else y += nameGap + (is6040 ? r241((clampF(s[3]) - 1) * 24 * NAME_BOLD_6040)
+                                        : r241((clampF(s[3]) - 1) * F4));
         }
         if (rows[1]) y += usernameGap + r241((clampF(s[2]) - 1) * F3);
         if (rows[2]) {
@@ -705,11 +737,13 @@ final class Phomemo241Builder {
         // proportional band, sized so its height matches the designed font's cell
         // (cellH/24 × scale on both axes → a font-4 name band is 32-dot at 1.0,
         // never smaller than the TEXT it replaces).
-        void emitSym(int x, int y, String font, double scale, String rawContent, int rightEdge, boolean bold) {
+        void emitSym(int x, int y, String font, double scale, String rawContent, int rightEdge, boolean bold, double boldMul) {
             String content = TsplBuilder.transliterateLatin(rawContent);
             if (content.isEmpty()) return;   // same emptiness rule as writeTextSmart (parity)
             if (bold) {
-                double bm = (fontCellH(font) / 24.0) * scale;
+                // P3.5: the designed bold cell comes from the CALL SITE (per-size —
+                // e.g. the 60x40 name is 1.75, big sizes 4/3), x scale on both axes.
+                double bm = boldMul * scale;
                 emitBand(x, y, content, bm, bm, rightEdge, true);
                 return;
             }
@@ -729,8 +763,9 @@ final class Phomemo241Builder {
             String content = TsplBuilder.transliterateLatin(rawContent);
             if (content.isEmpty()) return;
             if (bold) {
-                double bm = Math.max(baseY, fontCellH(font) / 24.0) * scale;
-                emitBand(x, y, content, bm, bm, rightEdge, true);
+                // P3.5 AIMO-proportion buyer#: (8/3 wide, 2.0 tall) x scale on every
+                // size — 48-dot cell with ~37-dot chars (see the design constants).
+                emitBand(x, y, content, BUYER_BOLD_X * scale, Math.max(baseY, BUYER_BOLD_Y) * scale, rightEdge, true);
                 return;
             }
             boolean isCjk = hasNonAscii(content);

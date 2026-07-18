@@ -193,11 +193,11 @@ public final class Phomemo241ParityTest {
         contains(s, "TEXT 204,300,\"2\",180,1,1,\"07/17/2026\"", "date authoring (260,20)");
         contains(s, "BAR 64,271,376,3", "top bar authoring (24,46,376,3) -> physical span");
         contains(s, "TEXT 400,256,\"3\",180,1,1,\"My Shop\"", "shop authoring (64,64)");
-        contains(s, "BITMAP 408,196,4,32,0,", "buyer# authoring (24,92) — P3 BOLD band, 32-dot cell");
-        contains(s, "BITMAP 408,152,4,32,0,", "name authoring (24,136) — P3 BOLD band, 32-dot cell");
-        contains(s, "BITMAP 408,116,4,24,0,", "@username authoring (24,180 ASCII col) — P3 BOLD band, 24-dot cell");
-        contains(s, "TEXT 440,90,\"2\",180,1,1,\"20:15\"", "time authoring (24,230 ASCII col) = row anchor");
-        contains(s, "TEXT 372,90,\"4\",180,2,1,\"250\"", "price authoring (92,230 ASCII col) = SAME row as time (offset 0)");
+        contains(s, "BITMAP 408,180,4,48,0,", "buyer# authoring (24,92) — P3.5 AIMO-proportion band (48-dot cell)");
+        contains(s, "BITMAP 408,126,4,42,0,", "name authoring (24,152) — P3.5 bold band, 42-dot cell");
+        contains(s, "BITMAP 408,100,4,24,0,", "@username authoring (24,196 ASCII col) — bold band, 24-dot cell (unchanged size)");
+        contains(s, "TEXT 440,74,\"2\",180,1,1,\"20:15\"", "time authoring (24,246 ASCII col) = row anchor");
+        contains(s, "TEXT 372,74,\"4\",180,2,1,\"250\"", "price authoring (92,246 ASCII col) = SAME row as time (offset 0)");
         int bars = s.split("BAR ", -1).length - 1;
         check(bars == 1, "order separator bar REMOVED on 60x40 -> only the top bar remains (got " + bars + ")");
     }
@@ -271,11 +271,11 @@ public final class Phomemo241ParityTest {
         // name/user/time(x=24)=424, store(x=64)=384.
         // — SHORT content = byte-identical designed TEXT (the invariant):
         String s = utf8(Phomemo241Builder.forStickerNative241(p2Payload("My Shop", "Maria Santos", "maria_shops", "250"), 60, 40, nullBand()));
-        contains(s, "TEXT 372,90,\"4\",180,2,1,\"250\"", "short price stays the DESIGNED \"4\"x2 TEXT (byte-identical invariant)");
+        contains(s, "TEXT 372,74,\"4\",180,2,1,\"250\"", "short price stays the DESIGNED \"4\"x2 TEXT (byte-identical invariant)");
         // — price 10ch: 10x48=480 > 356 -> rung 4x1 (240 fits) — same physical size
         //   (firmware ignores the x2 anyway), honest bytes:
         s = utf8(Phomemo241Builder.forStickerNative241(p2Payload("My Shop", "Ann", "a", "ABCDEFGHIJ"), 60, 40, nullBand()));
-        contains(s, "TEXT 372,90,\"4\",180,1,1,\"ABCDEFGHIJ\"", "10ch price steps to font 4 @1x (full content, sharp)");
+        contains(s, "TEXT 372,74,\"4\",180,1,1,\"ABCDEFGHIJ\"", "10ch price steps to font 4 @1x (full content, sharp)");
         // — name (P3: a BOLD primary = always a band) — the ladder no longer applies;
         //   the renderer step-down fits it. The FULL 20ch content must reach the
         //   renderer with bold=true (pinned in testP3BoldRouting + the whole-string test).
@@ -392,11 +392,11 @@ public final class Phomemo241ParityTest {
         for (double all : new double[]{1.5, 3.0}) {
             String s = utf8(Phomemo241Builder.forStickerNative241(p25Payload(all, all, all, all, all), 60, 40, fakeBand(), new ArrayList<>()));
             String tag = "all-" + all;
-            contains(s, "BITMAP 408,180,4,48,0,", tag + ": buyer# keeps its ENLARGED bold band (32x1.5=48) — most protected");
-            contains(s, "BITMAP 408,120,4,48,0,", tag + ": name band floored to base (48), directly below, no overlap");
+            contains(s, "BITMAP 408,156,4,72,0,", tag + ": buyer# keeps its ENLARGED band (48x1.5=72) — most protected");
+            contains(s, "BITMAP 408,96,4,48,0,", tag + ": name band floored to base (48), directly below, no overlap");
             contains(s, "TEXT 400,256,\"3\",180,1,1,\"My Shop\"", tag + ": store stepped to sharp 1.0 TEXT");
-            contains(s, "BITMAP 408,88,4,24,0,", tag + ": @username floored to its base bold band (24)");
-            contains(s, "TEXT 372,62,\"4\",180,2,1,\"250\"", tag + ": price stepped to the designed 1.0 TEXT, row at reading y=258 (fits: 258+38<=320)");
+            contains(s, "BITMAP 408,64,4,24,0,", tag + ": @username floored to its base bold band (24)");
+            contains(s, "TEXT 372,38,\"4\",180,2,1,\"250\"", tag + ": price stepped to the designed 1.0 TEXT, row at reading y=282 (fits: 282+38<=320)");
         }
     }
 
@@ -468,8 +468,8 @@ public final class Phomemo241ParityTest {
               "exactly the 3 primaries render as BOLD bands even short at 1.0 (got " + boldTexts + ")");
         check(regularTexts.isEmpty(), "no REGULAR-weight band at all-1.0 (secondaries stay TEXT; got " + regularTexts + ")");
         contains(s, "TEXT 400,256,\"3\",180,1,1,\"My Shop\"", "store stays raw TEXT (regular invariant)");
-        contains(s, "TEXT 440,90,\"2\",180,1,1,\"20:15\"", "time stays raw TEXT");
-        contains(s, "TEXT 372,90,\"4\",180,2,1,\"250\"", "price stays the designed raw TEXT");
+        contains(s, "TEXT 440,74,\"2\",180,1,1,\"20:15\"", "time stays raw TEXT");
+        contains(s, "TEXT 372,74,\"4\",180,2,1,\"250\"", "price stays the designed raw TEXT");
         check(!s.contains("\"Buyer #12\"") && !s.contains("\"Maria Santos\"") && !s.contains("\"@maria_shops\""),
               "no primary ever appears as raw TEXT");
         // Bold band sizing: the band must never be SMALLER than the ROM text it
@@ -486,8 +486,8 @@ public final class Phomemo241ParityTest {
             }
         };
         Phomemo241Builder.forStickerNative241(asciiPayload(), 60, 40, hcap);
-        check(heights.equals(java.util.List.of(32, 32, 24)),
-              "bold band cells: buyer# 32, name 32, @user 24 — never smaller than the replaced ROM text (got " + heights + ")");
+        check(heights.equals(java.util.List.of(48, 42, 24)),
+              "P3.5 design cells: buyer# 48, name 42, @user 24 — the AIMO-dominance hierarchy (got " + heights + ")");
         // The vertical planner accounts for the bold heights: 60x40 CJK all-1.5 fits
         // with the buyer# ENLARGED (pinned in testP25PriorityProtectsPrimaries).
     }
@@ -591,7 +591,7 @@ public final class Phomemo241ParityTest {
     private static void testDecimalScaleFromScalesRaw() {
         System.out.println("testDecimalScaleFromScalesRaw (BUG 3)");
         JSONObject buyer = new JSONObject().put("num", 88).put("name", "").put("handle", "s").put("totalSpent", 0).put("orders", new JSONArray());
-        double[][] cases = {{1.3, 42}, {0.7, 22}, {1.1, 35}, {2.4, 77}};
+        double[][] cases = {{1.3, 62}, {0.7, 34}, {1.1, 53}, {2.4, 115}};
         for (double[] cse : cases) {
             final List<Integer> heights = new ArrayList<>();
             Phomemo241Builder.BandRenderer cap = (text, xMul, yMul, maxW) -> {
@@ -609,7 +609,7 @@ public final class Phomemo241ParityTest {
             JSONObject payload = new JSONObject().put("buyer", buyer).put("settings", settings).put("scalesRaw", scalesRaw)
                 .put("storeName", "S").put("currency", "NT$").put("sessionDate", "");
             Phomemo241Builder.forStickerNative241(payload, 60, 40, cap);
-            check(heights.size() == 1 && heights.get(0) == (int) cse[1], "scale " + cse[0] + " -> BOLD band height r241(32 x scale) = " + (int) cse[1] + " (got " + heights + ")");
+            check(heights.size() == 1 && heights.get(0) == (int) cse[1], "scale " + cse[0] + " -> P3.5 buyer# band height r241(48 x scale) = " + (int) cse[1] + " (got " + heights + ")");
         }
     }
 
