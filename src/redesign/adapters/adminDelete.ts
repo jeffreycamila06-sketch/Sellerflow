@@ -54,14 +54,15 @@ export async function selfDeleteAccount(): Promise<HardDeleteResult> {
 // Ghost cleanup (admin-triggered). "ghost-scan" = DRY RUN (list only, no delete);
 // "ghost-purge" = wipe every profile-less auth account. Returns the raw payload.
 export async function ghostCleanup(mode: "ghost-scan" | "ghost-purge"): Promise<{
-  ok: boolean; error?: string; count?: number; purged?: number; ghosts?: unknown[]; detail?: unknown[];
+  ok: boolean; error?: string; count?: number; purged?: number; failed?: number; ghosts?: unknown[]; detail?: unknown[]; failures?: unknown[];
 }> {
   if (!supabase) return { ok: false, error: "Delete service unavailable" };
   try {
     const { data, error } = await supabase.functions.invoke("admin-delete-user", { body: { mode } });
-    const r = data as { success?: boolean; error?: string; count?: number; purged?: number; ghosts?: unknown[]; detail?: unknown[] } | null;
+    // purge returns per-ghost failures too (a mid-loop wipe error no longer aborts the batch)
+    const r = data as { success?: boolean; error?: string; count?: number; purged?: number; failed?: number; ghosts?: unknown[]; detail?: unknown[]; failures?: unknown[] } | null;
     if (error || !r?.success) return { ok: false, error: r?.error || error?.message || "Ghost cleanup failed" };
-    return { ok: true, count: r.count, purged: r.purged, ghosts: r.ghosts, detail: r.detail };
+    return { ok: true, count: r.count, purged: r.purged, failed: r.failed, ghosts: r.ghosts, detail: r.detail, failures: r.failures };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Edge function call failed" };
   }

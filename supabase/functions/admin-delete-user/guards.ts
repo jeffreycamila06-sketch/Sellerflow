@@ -44,6 +44,21 @@ export function checkDeleteAllowed(callerUserId: string, target: DeleteTarget): 
   return { allowed: true };
 }
 
+// Idempotency predicate for the auth-account delete. A true cross-system
+// transaction is IMPOSSIBLE here (the wipe spans the GoTrue admin HTTP API AND
+// Postgres SQL — they can't share one DB txn), so hardWipe is instead made
+// RETRY-SAFE: every step is idempotent and re-running converges to fully-wiped.
+// The one non-idempotent-looking step is deleteUserById — but if a PRIOR partial
+// run already removed the auth user, the retry gets a "user not found" error that
+// actually means SUCCESS. This decides that case (pure, so it's unit-tested).
+export function isAlreadyDeletedError(err: { status?: number; code?: string; message?: string } | null | undefined): boolean {
+  if (!err) return false;
+  if (err.status === 404) return true;
+  const code = String(err.code ?? "").toLowerCase();
+  if (code === "user_not_found" || code === "not_found") return true;
+  return /not[\s_-]?found/i.test(String(err.message ?? ""));
+}
+
 // SELF-SERVICE delete guard (mode "self"): a seller may delete THEIR OWN account
 // (the opposite of the admin mode, where self-delete is blocked) — EXCEPT an
 // admin or a master account may NOT self-delete. Protected accounts must go

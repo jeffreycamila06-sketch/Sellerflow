@@ -30,11 +30,18 @@
 //     - announcements.created_by (FK = NO ACTION) → nulled first
 //     - support_messages (email-keyed, no FK)      → deleted (part of the wipe)
 //   audit_logs + admin_password_log are the ADMIN audit trail (not the user's own
-//   data) → KEPT, and a new audit row records this deletion.
+//   data) → KEPT, and a new audit row records this deletion (best-effort — a failed
+//   audit insert never turns a completed wipe into an error).
+//
+// RETRY-SAFETY (NOT atomic): the wipe crosses the GoTrue auth admin HTTP API AND
+// Postgres SQL, so NO single transaction can wrap both. Instead every step is
+// idempotent and hardWipe is RETRY-SAFE — re-invoking it on a partially-wiped user
+// converges to fully-wiped (see hardWipe's contract comment). ghost-purge wraps each
+// wipe in try/catch so one failure neither aborts the batch nor skips the audit.
 //
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { checkDeleteAllowed, checkSelfDeleteAllowed, type DeleteTarget } from "./guards.ts";
+import { checkDeleteAllowed, checkSelfDeleteAllowed, isAlreadyDeletedError, type DeleteTarget } from "./guards.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -61,26 +68,57 @@ async function countRows(admin: any, table: string, uid: string): Promise<number
   return count ?? 0;
 }
 
+// Idempotent + retried auth-account delete. ⚠️ TRANSACTIONAL SAFETY: a real DB
+// transaction CANNOT span this + the SQL steps — deleteUserById is a GoTrue admin
+// HTTP call, not SQL. So the whole wipe is instead RETRY-SAFE (see hardWipe). Here:
+//   • "user already gone" (404 / not_found) = idempotent SUCCESS (a prior partial
+//     run finished it) — never re-throw that as a failure.
+//   • transient errors → bounded retry with small backoff (no infinite loop).
+async function deleteAuthUserIdempotent(admin: any, uid: string): Promise<void> {
+  let lastErr: any = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const { error } = await admin.auth.admin.deleteUserById(uid);
+    if (!error) return;                      // deleted this run
+    if (isAlreadyDeletedError(error)) return; // already gone (prior partial run) → success
+    lastErr = error;
+    await new Promise((r) => setTimeout(r, 200 * attempt)); // 200ms, 400ms
+  }
+  throw new Error(`auth deleteUserById failed after retries: ${lastErr?.message ?? "unknown"}`);
+}
+
 // The single-user FULL WIPE, shared by mode "user" and "ghost-purge". Assumes the
 // caller's admin + self/admin-master guards already passed. Order is load-bearing:
 // non-cascading refs FIRST, then the auth-account delete triggers the cascade.
+//
+// ⚠️ RETRY-SAFETY CONTRACT (atomicity is impossible at the auth-API+SQL boundary):
+// every step is IDEMPOTENT, so re-invoking hardWipe on a PARTIALLY-wiped user
+// converges to fully-wiped — a failed step throws → 500 → the caller simply calls
+// again with the SAME args. On the 2nd run: the row-deletes match 0 rows, the
+// announcements-null matches 0 rows, and deleteUserById treats "already gone" as
+// success. There is NO state a retry cannot finish. The only visible artifact of a
+// mid-wipe failure is that this user's billing `orders` are removed before the auth
+// account (required — FK NO ACTION would otherwise block the cascade); a retry
+// completes the rest. Each SQL step's error is surfaced (throw) so a partial
+// failure is diagnosable + triggers the retry rather than being silently swallowed.
 async function hardWipe(admin: any, uid: string, email: string): Promise<Record<string, number | string>> {
   const wiped: Record<string, number | string> = { email, userId: uid };
   // pre-count the cascade tables (for the report — cascade fires inside deleteUserById)
   for (const t of CASCADE_TABLES) wiped[t] = await countRows(admin, t, uid);
 
-  // 1. orders — FK NO ACTION: MUST go before the auth delete or it blocks (FULL WIPE = delete billing too)
+  // 1. orders — FK NO ACTION: MUST go before the auth delete or it blocks (FULL WIPE = delete billing too). Idempotent (re-run = 0 rows).
   const ord = await admin.from("orders").delete().eq("user_id", uid).select("id");
+  if (ord.error) throw new Error(`orders delete failed: ${ord.error.message}`);
   wiped.orders = ord.data?.length ?? 0;
-  // 2. announcements.created_by — FK NO ACTION: null it so the auth delete isn't blocked
+  // 2. announcements.created_by — FK NO ACTION: null it so the auth delete isn't blocked. Idempotent.
   const ann = await admin.from("announcements").update({ created_by: null }).eq("created_by", uid).select("id");
+  if (ann.error) throw new Error(`announcements clear failed: ${ann.error.message}`);
   wiped.announcements_cleared = ann.data?.length ?? 0;
-  // 3. support_messages — email-keyed, no FK, no cascade → part of the wipe
+  // 3. support_messages — email-keyed, no FK, no cascade → part of the wipe. Idempotent.
   const sm = await admin.from("support_messages").delete().ilike("email", email).select("id");
+  if (sm.error) throw new Error(`support_messages delete failed: ${sm.error.message}`);
   wiped.support_messages = sm.data?.length ?? 0;
-  // 4. the auth account — CASCADE wipes every CASCADE_TABLES row above
-  const { error: delErr } = await admin.auth.admin.deleteUserById(uid);
-  if (delErr) throw new Error(`auth deleteUserById failed: ${delErr.message}`);
+  // 4. the auth account — CASCADE wipes every CASCADE_TABLES row above. Idempotent + retried.
+  await deleteAuthUserIdempotent(admin, uid);
   return wiped;
 }
 
@@ -129,9 +167,12 @@ Deno.serve(async (req: Request) => {
       if (!guard.allowed) return json({ success: false, error: guard.error, code: guard.code }, 403);
       const email = String(prof?.email ?? caller.email ?? "").trim().toLowerCase();
       const wiped = await hardWipe(admin, caller.id, email);
-      await admin.from("audit_logs").insert({
-        actor_email: email, action: "self-deleted account", target_email: email, details: JSON.stringify(wiped),
-      });
+      // Best-effort audit — a failed insert must NOT report a completed wipe as an error.
+      try {
+        await admin.from("audit_logs").insert({
+          actor_email: email, action: "self-deleted account", target_email: email, details: JSON.stringify(wiped),
+        });
+      } catch { /* audit is best-effort; the wipe already happened */ }
       return json({ success: true, mode: "self", deleted: wiped });
     }
 
@@ -162,17 +203,29 @@ Deno.serve(async (req: Request) => {
         }
         return json({ success: true, mode, count: ghosts.length, ghosts: detail });
       }
-      // ghost-purge: FULL WIPE each (ghosts have no profile → cannot be admin/master; still never the caller)
+      // ghost-purge: FULL WIPE each (ghosts have no profile → cannot be admin/master; still never the caller).
+      // Per-ghost try/catch: one failing wipe must NOT abort the batch NOR skip the audit — the loop
+      // continues, failures are collected, and the audit ALWAYS records the real outcome afterward.
       const purged = [];
+      const failed: { userId: string; email: string; error: string }[] = [];
       for (const g of ghosts) {
         if (g.userId === caller.id) continue; // paranoia: caller always has a profile, so never a ghost
-        purged.push(await hardWipe(admin, g.userId, g.email));
+        try {
+          purged.push(await hardWipe(admin, g.userId, g.email));
+        } catch (e) {
+          failed.push({ userId: g.userId, email: g.email, error: e instanceof Error ? e.message : "wipe failed" });
+        }
       }
-      await admin.from("audit_logs").insert({
-        actor_email: caller.email, action: "ghost-purge", target_email: `${purged.length} ghosts`,
-        details: JSON.stringify(purged.map((p) => p.email)),
-      });
-      return json({ success: true, mode, purged: purged.length, detail: purged });
+      // Best-effort audit — ALWAYS attempted (even if some/all wipes failed) and never
+      // allowed to turn a completed purge into a 500. Records purged + failed both.
+      try {
+        await admin.from("audit_logs").insert({
+          actor_email: caller.email, action: "ghost-purge",
+          target_email: `${purged.length} purged${failed.length ? `, ${failed.length} failed` : ""}`,
+          details: JSON.stringify({ purged: purged.map((p) => p.email), failed }),
+        });
+      } catch { /* audit is best-effort; the purge already happened */ }
+      return json({ success: true, mode, purged: purged.length, failed: failed.length, detail: purged, failures: failed });
     }
 
     // ── mode "user": hard-delete ONE seller by email ─────────────────────────
@@ -191,11 +244,15 @@ Deno.serve(async (req: Request) => {
     if (!guard.allowed) return json({ success: false, error: guard.error, code: guard.code }, 400);
 
     const wiped = await hardWipe(admin, target.authUserId!, email);
-    // audit trail (kept — records the deletion; service role bypasses RLS)
-    await admin.from("audit_logs").insert({
-      actor_email: caller.email, action: "hard-deleted seller", target_email: email,
-      details: JSON.stringify(wiped),
-    });
+    // audit trail (kept — records the deletion; service role bypasses RLS). Best-effort:
+    // a failed insert must NOT report a completed wipe as an error (the wipe is retry-safe
+    // but re-running is pointless once it's done — don't mislead the admin into retrying).
+    try {
+      await admin.from("audit_logs").insert({
+        actor_email: caller.email, action: "hard-deleted seller", target_email: email,
+        details: JSON.stringify(wiped),
+      });
+    } catch { /* audit is best-effort; the wipe already happened */ }
     return json({ success: true, mode: "user", deleted: wiped });
   } catch (e) {
     return json({ success: false, error: e instanceof Error ? e.message : "delete_failed" }, 500);
