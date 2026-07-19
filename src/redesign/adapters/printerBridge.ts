@@ -14,7 +14,7 @@ import type { Buyer } from "../../lib/orderTypes";
 export interface MobilePrinterDevice { id: string; type: "bluetooth" | "lan"; name: string; address?: string; host?: string; port?: number; paired?: boolean; online?: boolean; signal?: number; distance?: string; hint?: string }
 export interface MobilePrinterResult { ok?: boolean; message?: string; online?: boolean; host?: string; port?: number; savedPrinter?: MobilePrinterDevice | null; printers?: MobilePrinterDevice[] }
 export interface PrinterLanConfig { host: string; port?: number }
-export interface BluetoothPrinterDevice { id: string; address: string; name: string; paired?: boolean; signal?: number }
+export interface BluetoothPrinterDevice { id: string; address: string; name: string; paired?: boolean; signal?: number; transport?: "ble" | "spp" }
 export interface BluetoothScanResult { ok?: boolean; message?: string; printers?: BluetoothPrinterDevice[]; savedPrinter?: BluetoothPrinterDevice | null }
 export interface StickerPrintResult { ok?: boolean; message?: string }
 

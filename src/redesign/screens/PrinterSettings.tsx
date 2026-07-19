@@ -67,7 +67,7 @@ export default function PrinterSettings({
     else setBtMsg(t.rd_ps_scan_unavail);
   }
   async function selectBt(p: BluetoothPrinterDevice) {
-    const r = await btCall<BluetoothScanResult>("setBluetoothLabelPrinter", { address: p.address, name: p.name });
+    const r = await btCall<BluetoothScanResult>("setBluetoothLabelPrinter", { address: p.address, name: p.name, transport: p.transport });
     setBtSaved(r?.savedPrinter || p); setBtMsg(r?.message || t.rd_ps_bt_saved);
   }
   async function clearBt() { await btCall<BluetoothScanResult>("clearBluetoothLabelPrinter"); setBtSaved(null); setBtMsg(t.rd_ps_bt_cleared); }
