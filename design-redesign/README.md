@@ -179,10 +179,10 @@ Grouped sections, each a labeled card group:
 Top app-bar "Customers" + "1,284 total" + search field ("Search name or @handle"). Customer list rows (avatar, name, @handle · platform, right: spent mono + "N orders · {last}"). Below: **Comment archive** card — past comments (avatar, name, @handle, timestamp, text).
 
 ### 8. Subscription  *(Frequent)*
-Top "Subscription". Large accent **plan card** (gradient `--accent`, white text): "CURRENT PLAN", **ACTIVE** pill, "Pro", "₱499 / month", "Renews Jul 28, 2026", "33 days left". "Included in Pro" checklist (✓ in `--ok`). **Renew via Telegram** button (`#0088cc`, paper-plane). Helper: "Message @SellerFlowSupport to renew or upgrade".
+Top "Subscription". Large accent **plan card** (gradient `--accent`, white text): "CURRENT PLAN", **ACTIVE** pill, "Pro", "₱499 / month", "Renews Jul 28, 2026", "33 days left". "Included in Pro" checklist (✓ in `--ok`). **Renew via Telegram** button (`#0088cc`, paper-plane). Helper: "Message @SellerFlowLive to renew or upgrade".
 
 ### 9. Support  *(Frequent)*
-Top "Support". "Need a hand?" card → **Chat with @SellerFlowSupport** Telegram button. "User guide" numbered list (1–4: connecting channels, how "mine" works, printing/shipping, renewing). Footer: "SellerFlowLive v4.2 · Privacy & Terms".
+Top "Support". "Need a hand?" card → **Chat with @SellerFlowLive** Telegram button. "User guide" numbered list (1–4: connecting channels, how "mine" works, printing/shipping, renewing). Footer: "SellerFlowLive v4.2 · Privacy & Terms".
 
 ### 10. Admin  *(Admin)*
 Top "Admin" + "Seller management" + "12,480 sellers". 3 stat cards (Active 9,842 `--ok` / Expiring 418 `--warn` / Expired 2,220 `--danger`). Sellers list (shop avatar, shop name, owner · plan, right: status color + expiry). **Contact seller via Telegram** button.
@@ -301,7 +301,7 @@ Refinements after v2, all theme/accent-aware, same patterns.
 - **Appearance** is compact; **Language** and **Currency** are two aligned **top-down dropdown rows**. **Currency** is a **global app-wide setting** (default **USD $**) with 7 options matching the 7 languages: USD $, PHP ₱, IDR Rp, VND ₫, CNY ¥, TWD NT$, THB ฿. Changing it re-renders **every price in the app** via a `cur` symbol token. State: `currency`, `apLangOpen`, `apCurOpen`.
 
 ### Login / Auth
-- **Forgot password?** → Telegram popup ("Reset your password" — admin-only reset; "Maybe next time" / **Next →** opens `https://t.me/SellerFlowSupport`). State: `loginModal`.
+- **Forgot password?** → Telegram popup ("Reset your password" — admin-only reset; "Maybe next time" / **Next →** opens `https://t.me/SellerFlowLive`). State: `loginModal`.
 - **Create account** → a real **signup screen** (pre-auth, no bottom nav): Shop name, Owner name + Phone, Username handle, Email, Password + Confirm; "Create account" → Dashboard; "Already have an account? Log in". Screen id `signup`.
 
 ### Admin → owner control center (expanded)
