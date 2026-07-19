@@ -3,7 +3,6 @@
 // the real Taiwan tiers via PLAN_PRICE (Basic 500 · Pro 1,200 · Master 1,700).
 // Renew stays a manual Wise + Telegram flow (no billing API).
 import { headerBar, headerTitle, mono } from "../ui";
-import { PLAN_PRICE, fmt } from "../data";
 import { planLabel } from "../adapters/useAuthSession";
 import { useT, tpl } from "../i18n";
 import type { AccountUser } from "../../accountDb";
@@ -26,15 +25,16 @@ const fmtDate = (iso: string): string => {
 const daysLeftDisplay = (iso: string): string =>
   daysDisplay(Math.max(0, planDaysLeft(iso, Date.now())));
 
-export default function Subscription({ cur, account = null, isFreeUser = false, freeStatus = null }: { cur: string; account?: AccountUser | null; isFreeUser?: boolean; freeStatus?: FreeStatus | null }) {
+export default function Subscription({ account = null, isFreeUser = false, freeStatus = null }: { cur: string; account?: AccountUser | null; isFreeUser?: boolean; freeStatus?: FreeStatus | null }) {
   const t = useT();
-  // Real profile → plan/price/status/expiry; demo fallback when signed out.
+  // Real profile → plan/status/expiry; demo fallback when signed out. (The price
+  // line was removed from the card per owner request — plan/price DATA is unchanged;
+  // only its display on this card is hidden, on web + Android. iOS never mounts this
+  // screen at all — RedesignApp gates it behind `!ios` — so iOS is unaffected.)
   const plan = account ? planLabel(account.plan) : "Pro";
-  const price = account ? (PLAN_PRICE[plan] ?? 0) : PLAN_PRICE["Pro"];
   const status = account ? account.planStatus : "active";
   const expiry = account ? account.planExpiry : "2026-07-28T00:00:00.000Z";
   const statusLabel = status === "active" ? t.rd_sub_active : status === "expired" ? t.rd_sub_expired : t.rd_sub_pending;
-  const priceLine = price > 0 ? `${cur}${fmt(price)} ${t.rd_sub_per_month}` : t.rd_sub_free_tier;
   return (
     <div>
       <div style={headerBar}><div style={headerTitle}>{t.rd_sub_title}</div></div>
@@ -47,7 +47,6 @@ export default function Subscription({ cur, account = null, isFreeUser = false, 
               <span style={{ fontSize: 11, fontWeight: 800, background: "rgba(255,255,255,.22)", padding: "4px 9px", borderRadius: 7 }}>{statusLabel}</span>
             </div>
             <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 30, marginTop: 8, letterSpacing: "-.02em" }}>{plan}</div>
-            <div style={{ fontFamily: mono, fontSize: 14, fontWeight: 600, opacity: 0.92, marginTop: 2 }}>{priceLine}</div>
             <div style={{ display: "flex", gap: 18, marginTop: 18 }}>
               <div><div style={{ fontSize: 11, opacity: 0.85 }}>{t.rd_sub_renews}</div><div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>{fmtDate(expiry)}</div></div>
               <div><div style={{ fontSize: 11, opacity: 0.85 }}>{t.rd_sub_days_left}</div><div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>{daysLeftDisplay(expiry) === "—" ? "—" : `${daysLeftDisplay(expiry)} ${t.rd_sub_days_unit}`}</div></div>
