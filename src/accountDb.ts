@@ -24,6 +24,7 @@ export interface AccountUser {
   trialStartedAt?: string;
   connectedAccounts: string[];
   role?: Role;
+  createdAt?: string;   // seller_profiles.created_at (signup date) — read-only display use
 }
 
 export interface AccountAuditLog {
@@ -77,6 +78,7 @@ function rowToUser(row: SupabaseRow): AccountUser {
     trialStartedAt: textValue(row.trial_started_at),
     connectedAccounts: stringArrayValue(row.connected_accounts),
     role: textValue(row.role) === "admin" ? "admin" : "seller",
+    createdAt: textValue(row.created_at),
   };
 }
 

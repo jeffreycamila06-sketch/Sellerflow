@@ -838,6 +838,7 @@ const RAW: Record<string, Row> = {
   rd_adm_free_shops_many: { en: "{n} free-tier shops · order usage this cycle", fil: "{n} libreng-tier na shop · paggamit ng order ngayong cycle", zh: "{n} 个免费版店铺 · 本周期订单用量", "zh-TW": "{n} 個免費版賣場 · 本週期訂單用量", vi: "{n} cửa hàng gói miễn phí · lượng đơn chu kỳ này", th: "ร้านระดับฟรี {n} ร้าน · การใช้ออเดอร์รอบนี้", id: "{n} toko tingkat gratis · penggunaan pesanan siklus ini" },
   rd_adm_no_free: { en: "No free-tier users.", fil: "Walang libreng-tier na user.", zh: "没有免费版用户。", "zh-TW": "沒有免費版用戶。", vi: "Không có người dùng gói miễn phí.", th: "ไม่มีผู้ใช้ระดับฟรี", id: "Tidak ada pengguna tingkat gratis." },
   rd_adm_resets_nd: { en: "resets {n}d", fil: "magre-reset {n}d", zh: "{n} 天后重置", "zh-TW": "{n} 天後重置", vi: "đặt lại {n}d", th: "รีเซ็ต {n}d", id: "reset {n}h" },
+  rd_adm_joined: { en: "Joined {d}", fil: "Sumali {d}", zh: "加入 {d}", "zh-TW": "加入 {d}", vi: "Tham gia {d}", th: "เข้าร่วม {d}", id: "Bergabung {d}" },
 
   // ════ Admin — sellers panel ════
   rd_adm_search_email: { en: "Search email, @handle, or phone", fil: "Maghanap ng email, @handle, o phone", zh: "搜索邮箱、@handle 或电话", "zh-TW": "搜尋電子郵件、@handle 或電話", vi: "Tìm email, @handle hoặc số điện thoại", th: "ค้นหาอีเมล @handle หรือเบอร์โทร", id: "Cari email, @handle, atau telepon" },

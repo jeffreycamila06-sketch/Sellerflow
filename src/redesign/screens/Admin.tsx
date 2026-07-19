@@ -169,7 +169,17 @@ function SellerSubList({ list, statusLabel, statusColor, note }: { list: User[];
 }
 
 // REAL free-tier monitor (list_free_users_status RPC).
-function FreeUserList({ list }: { list: FreeUserRow[] }) {
+// Signup-date label (Taiwan time) for the free-tier cards. Pure. Returns just the
+// "Jul 18" part (month abbrev + day, no year/time) or "—" when created_at is
+// missing/invalid; the "Joined {d}" wrapper is the translated rd_adm_joined key.
+function joinedDate(createdAt: string | undefined | null): string {
+  if (!createdAt) return "—";
+  const d = new Date(createdAt);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "Asia/Taipei" });
+}
+
+function FreeUserList({ list, rawByEmail }: { list: FreeUserRow[]; rawByEmail: Record<string, AccountUser> }) {
   const t = useT();
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
@@ -179,7 +189,7 @@ function FreeUserList({ list }: { list: FreeUserRow[] }) {
         const color = u.capped ? "var(--danger)" : u.near_cap ? "var(--warn)" : "var(--ok)";
         return (
           <div key={u.email} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 12px", border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface-2)" }}>
-            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.store_name || u.full_name || u.email}</div><div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div></div>
+            <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.store_name || u.full_name || u.email}</div><div style={{ fontSize: 11, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</div><div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tpl(t.rd_adm_joined, { d: joinedDate(rawByEmail[u.email]?.createdAt) })}</div></div>
             <div style={{ textAlign: "right", flexShrink: 0 }}><div style={{ fontFamily: mono, fontSize: 12.5, fontWeight: 700, color }}>{u.count} / {u.cap}</div><div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 }}>{tpl(t.rd_adm_resets_nd, { n: u.cycle_resets_in_days })}</div></div>
           </div>
         );
@@ -678,7 +688,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
             ? <SellerSubList list={subB.expiring} statusLabel={t.rd_adm_st_expiring} statusColor="var(--warn)" note={tpl(t.rd_adm_note_expiring, { n: subB.expiring.length })} />
             : <SubList list={SUBS.expiring} statusLabel={t.rd_adm_st_expiring} statusColor="var(--warn)" note={t.rd_adm_note_expiring_sample} />)}
           {panel === "subFree" && (realFree
-            ? <FreeUserList list={freeUsers} />
+            ? <FreeUserList list={freeUsers} rawByEmail={rawByEmail} />
             : <SubList list={SUBS.free} statusLabel={t.rd_adm_st_free} statusColor="var(--accent-fg)" note={t.rd_adm_note_free_sample} showPlan={false} />)}
           {panel === "subExpired" && (realSubs
             ? <SellerSubList list={subB.expired} statusLabel={t.rd_adm_st_expired} statusColor="var(--danger)" note={tpl(t.rd_adm_note_expired, { n: subB.expired.length })} />
