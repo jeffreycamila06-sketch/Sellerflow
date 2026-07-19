@@ -17,7 +17,8 @@
 // mirrored here.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
-import { getMyProfile, createMyProfile, deleteUser, type AccountUser } from "../../accountDb";
+import { getMyProfile, createMyProfile, type AccountUser } from "../../accountDb";
+import { selfDeleteAccount } from "./adminDelete";
 import { validatePhone, DEFAULT_COUNTRY } from "./phone";
 import { initials as deriveInitials } from "../data";
 
@@ -36,8 +37,8 @@ export interface UseAuthSession {
   // Self-serve registration — mirrors App.tsx PublicAuth `reg` (738-758): signUp →
   // (if a session) createMyProfile → loadProfile (auth listener logs the user in).
   register: (f: RegisterFields) => Promise<RegisterResult>;
-  // Self-serve delete — mirrors App.tsx handleDeleteAccount (4208-4224): deleteUser
-  // (RLS deletes the seller_profiles row) → signOut → clear local keys.
+  // Self-serve delete — Phase 2 FULL WIPE via the admin-delete-user edge function
+  // (mode "self"): server-side wipe of auth + all data → signOut → clear local keys.
   deleteAccount: () => Promise<{ ok: boolean; error?: string }>;
 }
 
@@ -168,11 +169,15 @@ export function useAuthSession(): UseAuthSession {
     return { ok: true };
   }, [loadProfile]);
 
-  // Self-serve delete — same effect as App.tsx handleDeleteAccount (4208-4224).
+  // Self-serve delete — Phase 2 FULL WIPE via the admin-delete-user edge function
+  // (mode "self"). The old client deleteUser() only removed the profile row and,
+  // post-Phase-1 (admin-only DELETE policy), would be rejected by RLS. The edge
+  // function wipes the auth account + ALL data server-side (admin/master blocked).
   const deleteAccount = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
     const email = profile?.email;
     if (!email) return { ok: false, error: "Not signed in" };
-    try { await deleteUser(email); } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "Delete failed" }; }
+    const r = await selfDeleteAccount();
+    if (!r.ok) return { ok: false, error: r.error };
     // Clear the same local keys production clears (parity; harmless if absent here).
     for (const k of localKeysToClear(email)) { try { localStorage.removeItem(k); } catch { /* ignore */ } }
     try { await supabase?.auth.signOut(); } catch { /* listener still flips to anon */ }

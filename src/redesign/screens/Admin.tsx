@@ -23,6 +23,7 @@ import { translateBroadcast } from "../adapters/broadcastTranslate";
 import { LANGS } from "../data";
 import { matchPlan } from "../../lib/planPricing";
 import { isAdminRole } from "../../lib/roles";
+import { confirmEmailMatches } from "../adapters/adminDelete";
 
 const deadBtn: CSSProperties = { opacity: 0.45, cursor: "not-allowed" };
 // Sample/not-wired marker for the Admin panels that have no real backend yet
@@ -408,6 +409,25 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
     });
   const doPassword = (email: string) =>
     void run(t.rd_adm_act_setpw, email, () => actions!.setPassword(email, pwVal), () => { setPwIdx(null); setPwVal(""); });
+  // Phase 2 FULL WIPE — irreversible: the prompt REPLACES the plain confirm and
+  // requires typing the exact email (confirmEmailMatches) to arm the delete of
+  // the auth account + all data incl. billing history. No undo.
+  const doDelete = (u: User) => {
+    if (!actions || busy) return;
+    const typed = window.prompt(tpl(t.rd_adm_del_prompt, { email: u.email }));
+    if (typed === null) return;                                            // cancelled
+    if (!confirmEmailMatches(typed, u.email)) { notify(t.rd_adm_del_mismatch, "err"); return; }
+    void (async () => {
+      setBusy(true);
+      try {
+        const r = await actions.removeUser(u.email);
+        if (r.ok) { onChanged?.(); notify(tpl(t.rd_adm_del_ok, { email: u.email }), "ok"); }
+        else notify(tpl(t.rd_adm_failed, { label: t.rd_adm_act_delete, err: r.error || t.rd_adm_err }), "err");
+      } catch (e) {
+        notify(tpl(t.rd_adm_failed, { label: t.rd_adm_act_delete, err: e instanceof Error ? e.message : t.rd_adm_err }), "err");
+      } finally { setBusy(false); }
+    })();
+  };
   // Real add-days: extends the seller's planExpiry (cumulative) via actions.addDays
   // (→ adminUpdatePlan) so it persists + survives reload. Falls back to local-only
   // when there are no real actions (sample preview).
@@ -525,7 +545,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                         <button onClick={() => { setPwIdx(pwIdx === i ? null : i); setPwVal(""); }} style={actBtn} disabled={!actions}>{t.rd_adm_reset_pw}</button>
                         <button onClick={() => void run(isAdmin ? t.rd_adm_act_remove_admin : t.rd_adm_act_make_admin, u.email, () => actions!.setRole(u.email, isAdmin ? "seller" : "admin"))} style={actBtn} disabled={!actions}>{isAdmin ? t.rd_adm_remove_admin : t.rd_adm_make_admin}</button>
                         <button onClick={() => void run(t.rd_adm_act_expire, u.email, () => actions!.expire(u.email))} style={{ ...actBtn, color: "var(--warn)" }} disabled={!actions}>{t.rd_adm_expire}</button>
-                        <button onClick={() => void run(t.rd_adm_act_delete, u.email, () => actions!.removeUser(u.email))} style={{ ...actBtn, color: "var(--danger)" }} disabled={!actions}>{t.rd_prd_delete_btn}</button>
+                        <button onClick={() => doDelete(u)} style={{ ...actBtn, color: "var(--danger)" }} disabled={!actions}>{t.rd_prd_delete_btn}</button>
                       </div>
                     </div>
                   );
