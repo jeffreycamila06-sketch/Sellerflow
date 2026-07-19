@@ -11,6 +11,9 @@ import {
   deriveSubBuckets,
   deriveUserBase,
   freeUsersSummary,
+  signupTime,
+  signupCompare,
+  sortFreeUsersBySignup,
   auditActionColor,
   filterAuditLogs,
   type FreeUserRow,
@@ -239,6 +242,74 @@ describe("freeUsersSummary — cap-progress aggregate from the RPC rows", () => 
   });
   it("empty → zeros, default cap 100", () => {
     expect(freeUsersSummary([])).toEqual({ total: 0, nearCap: 0, capped: 0, orders: 0, cap: 100 });
+  });
+});
+
+describe("free-tier signup sort — extracted from Admin.tsx FreeUserList (regression guard)", () => {
+  const row = (email: string): FreeUserRow => ({ email, store_name: "S", full_name: "F", count: 0, cap: 100, near_cap: false, capped: false, cycle_resets_in_days: 30 });
+  const raw = (createdAt?: string | null): AccountUser => ({ email: "x", profile: { fullName: "", storeName: "", phone: "", tiktok: "", facebook: "", adminContactNote: "" }, plan: "free", planStatus: "active", planExpiry: "", connectedAccounts: [], createdAt: createdAt ?? undefined });
+
+  describe("signupTime", () => {
+    it("parses a valid ISO string to its epoch ms", () => {
+      expect(signupTime("2026-07-18T00:00:00Z")).toBe(Date.parse("2026-07-18T00:00:00Z"));
+    });
+    it("missing / not-loaded / invalid → -Infinity (so those rows sink)", () => {
+      expect(signupTime(null)).toBe(-Infinity);
+      expect(signupTime(undefined)).toBe(-Infinity);
+      expect(signupTime("")).toBe(-Infinity);
+      expect(signupTime("garbage")).toBe(-Infinity);
+    });
+  });
+
+  describe("signupCompare — MUST stay subtraction-free (the -Infinity − -Infinity = NaN guard)", () => {
+    it("descending: newer (larger ms) sorts first", () => {
+      expect(signupCompare(200, 100)).toBe(-1); // a newer → a first
+      expect(signupCompare(100, 200)).toBe(1);  // a older → a after
+    });
+    it("valid always beats missing", () => {
+      expect(signupCompare(100, -Infinity)).toBe(-1);
+      expect(signupCompare(-Infinity, 100)).toBe(1);
+    });
+    it("equal keys (incl. both-missing) → exactly 0 and NEVER NaN — a `bm - am` rewrite would fail here", () => {
+      expect(signupCompare(100, 100)).toBe(0);
+      expect(signupCompare(-Infinity, -Infinity)).toBe(0);
+      expect(Number.isNaN(signupCompare(-Infinity, -Infinity))).toBe(false);
+    });
+  });
+
+  describe("sortFreeUsersBySignup — the exact production sort path", () => {
+    it("sorts newest-first (newest at index 0, oldest last)", () => {
+      const list = [row("old@x"), row("new@x"), row("mid@x")];
+      const rawBy = { "old@x": raw("2026-07-10T00:00:00Z"), "new@x": raw("2026-07-18T00:00:00Z"), "mid@x": raw("2026-07-14T00:00:00Z") };
+      expect(sortFreeUsersBySignup(list, rawBy).map((u) => u.email)).toEqual(["new@x", "mid@x", "old@x"]);
+    });
+    it("pushes all missing-date variants (null / not-loaded / invalid) below every valid date", () => {
+      const list = [row("nullc@x"), row("valid@x"), row("notloaded@x"), row("bad@x")];
+      const rawBy: Record<string, AccountUser | undefined> = {
+        "nullc@x": raw(null), "valid@x": raw("2026-07-15T00:00:00Z"), "bad@x": raw("garbage"),
+        // "notloaded@x" intentionally absent → rawBy[email] === undefined
+      };
+      const order = sortFreeUsersBySignup(list, rawBy).map((u) => u.email);
+      expect(order[0]).toBe("valid@x");                    // the only valid date is on top
+      expect(order.slice(1).sort()).toEqual(["bad@x", "notloaded@x", "nullc@x"]); // the other three sank
+    });
+    it("is STABLE: equal timestamps keep original relative order", () => {
+      const list = [row("tieA@x"), row("tieB@x")];
+      const rawBy = { "tieA@x": raw("2026-07-15T00:00:00Z"), "tieB@x": raw("2026-07-15T00:00:00Z") };
+      expect(sortFreeUsersBySignup(list, rawBy).map((u) => u.email)).toEqual(["tieA@x", "tieB@x"]);
+    });
+    it("is STABLE for two missing rows too (both -Infinity keep original order, no scramble)", () => {
+      const list = [row("m1@x"), row("m2@x")];
+      expect(sortFreeUsersBySignup(list, {}).map((u) => u.email)).toEqual(["m1@x", "m2@x"]);
+    });
+    it("does NOT mutate the source list (sorts a copy)", () => {
+      const list = [row("a@x"), row("b@x"), row("c@x")];
+      const before = list.map((u) => u.email);
+      const rawBy = { "a@x": raw("2026-07-01T00:00:00Z"), "b@x": raw("2026-07-20T00:00:00Z"), "c@x": raw("2026-07-10T00:00:00Z") };
+      const out = sortFreeUsersBySignup(list, rawBy);
+      expect(list.map((u) => u.email)).toEqual(before);  // original order intact
+      expect(out).not.toBe(list);                        // returned a new array
+    });
   });
 });
 

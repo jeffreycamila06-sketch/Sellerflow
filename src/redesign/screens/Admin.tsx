@@ -6,7 +6,7 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { USERS, SUBS, PLAN_PRICE, initials, fmt, type Sub, type User } from "../data";
 import { headerBar, card, mono } from "../ui";
-import { planDaysLeft, daysDisplay, deriveSubBuckets, deriveUserBase, freeUsersSummary, auditActionColor, filterAuditLogs, sellerMatchesQuery, type ReadState, type SubBuckets, type FreeUserRow } from "../adapters/useReadData";
+import { planDaysLeft, daysDisplay, deriveSubBuckets, deriveUserBase, freeUsersSummary, sortFreeUsersBySignup, auditActionColor, filterAuditLogs, sellerMatchesQuery, type ReadState, type SubBuckets, type FreeUserRow } from "../adapters/useReadData";
 import type { AdminActions, Plan } from "../adapters/useAdmin";
 import { maxAcc } from "../adapters/connect";
 import type { AccountAuditLog, AccountUser } from "../../accountDb";
@@ -179,25 +179,12 @@ function joinedDate(createdAt: string | undefined | null): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "Asia/Taipei" });
 }
 
-// Signup timestamp (ms) for the newest-first sort — same createdAt the Joined line
-// uses. Missing / not-yet-loaded / invalid → -Infinity so those ("Joined —") rows
-// sink to the bottom of a descending sort instead of scrambling it or throwing.
-function signupTime(createdAt: string | undefined | null): number {
-  if (!createdAt) return -Infinity;
-  const ms = new Date(createdAt).getTime();
-  return isNaN(ms) ? -Infinity : ms;
-}
-
 function FreeUserList({ list, rawByEmail }: { list: FreeUserRow[]; rawByEmail: Record<string, AccountUser> }) {
   const t = useT();
-  // Display-only reorder: sort a COPY (never mutate the props array) by signup date,
-  // newest first. Stable comparator — equal keys (incl. both-missing -Infinity) keep
-  // their original relative order and never yield NaN.
-  const sorted = [...list].sort((a, b) => {
-    const am = signupTime(rawByEmail[a.email]?.createdAt);
-    const bm = signupTime(rawByEmail[b.email]?.createdAt);
-    return am === bm ? 0 : am > bm ? -1 : 1;
-  });
+  // Display-only reorder: newest-first by signup date. sortFreeUsersBySignup sorts a
+  // COPY (never mutates props) with a stable, NaN-free comparator; missing dates sink
+  // to the bottom. Extracted + unit-tested in useReadData (guards this exact path).
+  const sorted = sortFreeUsersBySignup(list, rawByEmail);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
       <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 2 }}>{tpl(list.length === 1 ? t.rd_adm_free_shops_one : t.rd_adm_free_shops_many, { n: list.length })}</div>

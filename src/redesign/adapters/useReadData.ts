@@ -207,6 +207,37 @@ export function freeUsersSummary(freeUsers: FreeUserRow[]): FreeSummary {
   };
 }
 
+// ── Free-tier modal: newest-first sort by signup date (extracted from Admin.tsx
+// FreeUserList so it's unit-testable; the component now imports these). Pure.
+
+// Signup timestamp (ms) — the SAME createdAt the "Joined" line shows. Missing /
+// not-yet-loaded / invalid → -Infinity so those ("Joined —") rows sink to the
+// bottom of a descending sort instead of scrambling it or throwing.
+export function signupTime(createdAt: string | undefined | null): number {
+  if (!createdAt) return -Infinity;
+  const ms = new Date(createdAt).getTime();
+  return isNaN(ms) ? -Infinity : ms;
+}
+
+// Subtraction-free DESCENDING comparator for signup timestamps. ⚠️ MUST stay this
+// exact form — `bm - am` would return NaN for two -Infinity (missing) rows, the
+// exact trap this avoids. Equal keys (incl. both-missing) → 0 → stable order.
+export function signupCompare(am: number, bm: number): number {
+  return am === bm ? 0 : am > bm ? -1 : 1;
+}
+
+// Sort a COPY of the free-tier rows newest-first by signup date, joining each row
+// to its createdAt via rawByEmail (same source as the Joined line). NEVER mutates
+// the input list. (Only reads `.createdAt` off the lookup → structural param type.)
+export function sortFreeUsersBySignup<T extends { email: string }>(
+  list: T[],
+  rawByEmail: Record<string, { createdAt?: string } | undefined>,
+): T[] {
+  return [...list].sort((a, b) =>
+    signupCompare(signupTime(rawByEmail[a.email]?.createdAt), signupTime(rawByEmail[b.email]?.createdAt)),
+  );
+}
+
 // Audit-log action → semantic color, byte-faithful to App.tsx:3595 (red/green/purple).
 export function auditActionColor(action: string): "danger" | "ok" | "accent" {
   const a = action.toLowerCase();
