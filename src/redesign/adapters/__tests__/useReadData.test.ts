@@ -182,18 +182,24 @@ describe("deriveSubBuckets — shared lib/planWindow buckets (paid-only, 7d wind
     ];
     expect(deriveSubBuckets(users).expired.map((x) => x.email).sort()).toEqual(["c@x.com", "d@x.com"]);
   });
-  it("expiring = paid, non-pending, (expired or days<=7), sorted asc", () => {
+  it("expiring = paid, non-pending, still-alive days 1..7 — DISJOINT from expired (days==0 / expired status excluded)", () => {
     const users = [
-      u({ email: "p1@x.com", plan: "Pro", planStatus: "active", days: 1 }),    // ≤7 → in
-      u({ email: "p0@x.com", plan: "Pro", planStatus: "active", days: 0 }),    // 0 → in
-      u({ email: "q@x.com", plan: "Pro", planStatus: "active", days: 5 }),     // ≤7 → in (was out at the old 1d window)
+      u({ email: "p1@x.com", plan: "Pro", planStatus: "active", days: 1 }),    // 1..7 alive → in
+      u({ email: "p0@x.com", plan: "Pro", planStatus: "active", days: 0 }),    // days==0 → EXPIRED, NOT expiring
+      u({ email: "q@x.com", plan: "Pro", planStatus: "active", days: 5 }),     // 1..7 alive → in
       u({ email: "r@x.com", plan: "Pro", planStatus: "active", days: 8 }),     // >7 → out
-      u({ email: "exp@x.com", plan: "Basic", planStatus: "expired", days: 9 }),// expired → in
+      u({ email: "exp@x.com", plan: "Basic", planStatus: "expired", days: 9 }),// status expired → EXPIRED, NOT expiring
       u({ email: "f@x.com", plan: "Free", planStatus: "active", days: 1 }),    // free → out
       u({ email: "pend@x.com", plan: "Pro", planStatus: "pending", days: 0 }), // pending → out
     ];
-    // sorted by days asc → p0(0), p1(1), q(5), exp(9)
-    expect(deriveSubBuckets(users).expiring.map((x) => x.email)).toEqual(["p0@x.com", "p1@x.com", "q@x.com", "exp@x.com"]);
+    const { expiring, expired } = deriveSubBuckets(users);
+    // expiring = still-alive only, sorted by days asc → p1(1), q(5). p0/exp moved to Expired.
+    expect(expiring.map((x) => x.email)).toEqual(["p1@x.com", "q@x.com"]);
+    // the two once-overlapping rows now live in Expired only
+    expect(expired.map((x) => x.email).sort()).toEqual(["exp@x.com", "p0@x.com"]);
+    // disjointness: no seller is in both admin lists at once (the bug this fixes)
+    const inExpiring = new Set(expiring.map((x) => x.email));
+    expect(expired.some((x) => inExpiring.has(x.email))).toBe(false);
   });
 });
 

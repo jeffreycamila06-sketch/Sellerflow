@@ -59,6 +59,16 @@ export const isExpiredPaid = (p: PlanState): boolean =>
 export const isExpiringSoon = (p: PlanState): boolean =>
   isTimeLimitedPlan(p.plan) && p.planStatus !== "pending" && (p.planStatus === "expired" || p.daysLeft <= EXPIRING_WINDOW_DAYS);
 
+// Admin "Expiring soon" LIST predicate — the still-alive subset of isExpiringSoon,
+// DISJOINT from isExpiredPaid. isExpiringSoon (the urgency badge/banner signal)
+// deliberately includes expired sellers for renewal follow-up, so it's a superset
+// of isExpiredPaid; reusing it as a mutually-exclusive bucket put a daysLeft===0
+// seller in BOTH the Expiring-soon and Expired lists. This is the difference:
+// expiring AND not-yet-expired (days 1..7, status not expired) — so the two admin
+// lists never overlap. isExpiringSoon/isExpiredPaid themselves are untouched.
+export const isExpiringNotExpired = (p: PlanState): boolean =>
+  isExpiringSoon(p) && !isExpiredPaid(p);
+
 // Plan Monitoring table: same shape, per-plan window (trial 3 / paid 7).
 export const isInMonitorWindow = (p: PlanState): boolean =>
   isTimeLimitedPlan(p.plan) && p.planStatus !== "pending" && (p.planStatus === "expired" || p.daysLeft <= monitorWindowDays(p.plan));

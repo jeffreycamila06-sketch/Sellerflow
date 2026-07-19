@@ -14,7 +14,7 @@ import { useCallback, useEffect, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { listUsers, listAuditLogs, type AccountUser, type AccountAuditLog } from "../../accountDb";
 import type { RebuiltSession } from "../../lib/orderLogic";
-import { planDaysLeft, daysDisplay, isActivePaid, isExpiredPaid, isExpiringSoon, EXPIRING_WINDOW_DAYS } from "../../lib/planWindow";
+import { planDaysLeft, daysDisplay, isActivePaid, isExpiredPaid, isExpiringNotExpired, EXPIRING_WINDOW_DAYS } from "../../lib/planWindow";
 import { isAdminRole } from "../../lib/roles";
 import { planLabel } from "./useAuthSession";
 
@@ -130,7 +130,9 @@ export function accountUsersToRedesign(users: AccountUser[], nowMs: number = Dat
 // pending flow). `days` = planDaysLeft (Infinity = no expiry).
 //   active   = paid, status active, days>0
 //   expired  = paid, non-pending, (status expired or days==0)
-//   expiring = paid, non-pending, (expired or days<=EXPIRING_WINDOW_DAYS)
+//   expiring = paid, non-pending, days 1..EXPIRING_WINDOW_DAYS, NOT expired
+//              (isExpiringNotExpired = still-alive subset, DISJOINT from expired —
+//               so a days==0 seller is in Expired only, never both lists)
 // ALL three lists sort by days-left ASC (soonest expiry on top — the order
 // self-updates as days pass), ties alphabetical by email. Infinity-safe:
 // no-expiry rows sink to the bottom without a NaN comparator.
@@ -145,7 +147,7 @@ export function deriveSubBuckets(users: User[]): SubBuckets {
   const sellers = users.filter((u) => !isAdminRole(u.role)); // Batch E #16
   const active = sellers.filter((u) => isActivePaid(planState(u))).sort(compareByDaysLeft);
   const expired = sellers.filter((u) => isExpiredPaid(planState(u))).sort(compareByDaysLeft);
-  const expiring = sellers.filter((u) => isExpiringSoon(planState(u))).sort(compareByDaysLeft);
+  const expiring = sellers.filter((u) => isExpiringNotExpired(planState(u))).sort(compareByDaysLeft);
   return { active, expiring, expired };
 }
 
@@ -174,7 +176,7 @@ export function deriveUserBase(users: User[]): UserBase {
   // Shared lib/planWindow predicates — same 7-day expiring window as everywhere.
   const paidActive = paidUsers.filter((u) => isActivePaid(planState(u))).length;
   const paidExpired = paidUsers.filter((u) => isExpiredPaid(planState(u))).length;
-  const paidExpiring = paidUsers.filter((u) => isExpiringSoon(planState(u))).length;
+  const paidExpiring = paidUsers.filter((u) => isExpiringNotExpired(planState(u))).length;
   return { total: users.length, admins, free, trial, basic, pro, master, paid, paidSellers, paidActive, paidExpiring, paidExpired };
 }
 

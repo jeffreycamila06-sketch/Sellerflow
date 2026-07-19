@@ -10,6 +10,7 @@ import {
   isActivePaid,
   isExpiredPaid,
   isExpiringSoon,
+  isExpiringNotExpired,
   isInMonitorWindow,
 } from "../planWindow";
 
@@ -76,6 +77,24 @@ describe("bucket predicates", () => {
     expect(isExpiringSoon(p("Basic", "active", Infinity))).toBe(false);
     expect(isExpiringSoon(p("Free", "active", 1))).toBe(false);
     expect(isExpiringSoon(p("Basic", "pending", 0))).toBe(false);
+  });
+  it("expiring-not-expired = the DISJOINT admin bucket: still-alive 1..7d only, expired excluded", () => {
+    // still alive within the window → in Expiring soon
+    expect(isExpiringNotExpired(p("Basic", "active", 1))).toBe(true);
+    expect(isExpiringNotExpired(p("Basic", "active", 4))).toBe(true);
+    expect(isExpiringNotExpired(p("Basic", "active", 7))).toBe(true);
+    // expired → NOT in Expiring soon (belongs to Expired only) — the overlap this fixes
+    expect(isExpiringNotExpired(p("Basic", "active", 0))).toBe(false);   // days==0 (Nicole Tung)
+    expect(isExpiringNotExpired(p("Basic", "expired", 30))).toBe(false); // status expired
+    // outside the window / not time-limited → out
+    expect(isExpiringNotExpired(p("Basic", "active", 8))).toBe(false);
+    expect(isExpiringNotExpired(p("Basic", "active", Infinity))).toBe(false);
+    expect(isExpiringNotExpired(p("Free", "active", 3))).toBe(false);
+    expect(isExpiringNotExpired(p("Basic", "pending", 0))).toBe(false);
+    // disjointness invariant: no PlanState is ever in BOTH buckets
+    for (const s of ["active", "expired", "pending"] as const)
+      for (const d of [0, 1, 4, 7, 8, 30, Infinity])
+        expect(isExpiringNotExpired(p("Basic", s, d)) && isExpiredPaid(p("Basic", s, d))).toBe(false);
   });
   it("monitor window: paid ≤7d, trial ≤3d", () => {
     expect(isInMonitorWindow(p("Basic", "active", 7))).toBe(true);
