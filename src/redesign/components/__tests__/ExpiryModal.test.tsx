@@ -7,8 +7,9 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import ExpiryModal from "../ExpiryModal";
 import type { ExpiryTier } from "../../adapters/planExpiryModal";
 import { TProvider } from "../../i18n";
+import { TELEGRAM_URL } from "../../../lib/telegram";
 
-const TG = "https://t.me/SellerFlowLive1995";
+const TG = TELEGRAM_URL;
 const renderModal = (over: { tier?: ExpiryTier; daysLeft?: number; ios?: boolean; onDismiss?: () => void; onAction?: () => void } = {}) =>
   render(
     <TProvider lang="en">

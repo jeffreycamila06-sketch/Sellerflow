@@ -7,6 +7,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import ManageChannels from "../ManageChannels";
 import { TProvider } from "../../i18n";
 import type { AccountUser } from "../../../accountDb";
+import { TELEGRAM_HANDLE, TELEGRAM_URL } from "../../../lib/telegram";
 
 const acct: AccountUser = {
   authUserId: "u", email: "g@x.com",
@@ -34,11 +35,11 @@ describe("ManageChannels (surface C)", () => {
     expect(arg.tiktok).toContain("newone");     // new typed account included
   });
 
-  it("Add — Multi Account opens the Telegram popup (@sellerflowlive1995 + OK link)", () => {
+  it("Add — Multi Account opens the Telegram popup (@SellerFlowLive + OK link)", () => {
     render(<TProvider lang="en"><ManageChannels platform="tiktok" account={acct} onBack={() => {}} onSaveChannels={async () => ({ ok: true })} /></TProvider>);
     fireEvent.click(screen.getByText("Add TikTok — Multi Account"));
-    expect(screen.getByText("@sellerflowlive1995")).toBeTruthy();
+    expect(screen.getByText(TELEGRAM_HANDLE)).toBeTruthy();
     const ok = screen.getByText("OK").closest("a") as HTMLAnchorElement;
-    expect(ok.getAttribute("href")).toBe("https://t.me/sellerflowlive1995");
+    expect(ok.getAttribute("href")).toBe(TELEGRAM_URL);
   });
 });

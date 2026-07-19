@@ -2,6 +2,7 @@
 import type { CSSProperties } from "react";
 import { headerBar, headerTitle } from "../ui";
 import { useT } from "../i18n";
+import { TELEGRAM_HANDLE } from "../../lib/telegram";
 
 const h: CSSProperties = { fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, color: "var(--text)", marginBottom: 8 };
 const p: CSSProperties = { fontSize: 13, color: "var(--text-dim)", lineHeight: 1.65, margin: "0 0 18px" };
@@ -20,7 +21,7 @@ export default function Legal() {
         <div style={h}>{t.lg_rights_h}</div>
         <p style={p}>{t.lg_rights_p}</p>
         <div style={h}>{t.lg_contact_h}</div>
-        <p style={{ ...p, margin: 0 }}>{t.lg_contact_pre}<span style={{ color: "var(--accent-fg)", fontWeight: 700 }}>@SellerFlowLive1995</span>{t.lg_contact_post}</p>
+        <p style={{ ...p, margin: 0 }}>{t.lg_contact_pre}<span style={{ color: "var(--accent-fg)", fontWeight: 700 }}>{TELEGRAM_HANDLE}</span>{t.lg_contact_post}</p>
       </div>
     </div>
   );

@@ -8,9 +8,7 @@
 import { type CSSProperties } from "react";
 import { useT, tpl } from "../i18n";
 import { expiryTone, type ExpiryTier } from "../adapters/planExpiryModal";
-
-// Renew/contact destination — the SAME link Settings support/subscription use.
-const RENEW_URL = "https://t.me/SellerFlowLive1995";
+import { TELEGRAM_URL } from "../../lib/telegram";
 
 const clock = (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
@@ -49,7 +47,7 @@ export default function ExpiryModal({
         <div style={{ width: 52, height: 52, borderRadius: 15, background: tone.soft, color: tone.accent, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>{clock}</div>
         <div style={{ fontFamily: "var(--font-display)", fontSize: 20, fontWeight: 700, color: "var(--text)", letterSpacing: "-.01em" }}>{headline}</div>
         <p style={{ fontSize: 14, color: "var(--text-dim)", margin: "8px 0 20px", lineHeight: 1.5 }}>{body}</p>
-        <a href={RENEW_URL} target="_blank" rel="noreferrer" onClick={onAction} data-testid="expiry-action" style={btn}>{action}</a>
+        <a href={TELEGRAM_URL} target="_blank" rel="noreferrer" onClick={onAction} data-testid="expiry-action" style={btn}>{action}</a>
       </div>
     </div>
   );

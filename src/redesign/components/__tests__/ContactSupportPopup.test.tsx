@@ -4,6 +4,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import ContactSupportPopup from "../ContactSupportPopup";
 import { TProvider } from "../../i18n";
+import { TELEGRAM_URL } from "../../../lib/telegram";
 
 const renderPopup = (onClose = () => {}) =>
   render(
@@ -25,7 +26,7 @@ describe("ContactSupportPopup", () => {
   it("Contact Support links to the Telegram support chat", () => {
     renderPopup();
     const link = screen.getByText("Contact Support").closest("a") as HTMLAnchorElement;
-    expect(link.getAttribute("href")).toBe("https://t.me/SellerFlowLive1995");
+    expect(link.getAttribute("href")).toBe(TELEGRAM_URL);
   });
 
   it("clicking Contact Support and Close both fire onClose", () => {

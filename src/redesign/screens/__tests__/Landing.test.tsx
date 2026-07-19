@@ -6,6 +6,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import Landing, { PLAY_URL, APPSTORE_URL } from "../Landing";
 import { TProvider } from "../../i18n";
+import { TELEGRAM_URL } from "../../../lib/telegram";
 
 const noop = () => {};
 const renderLanding = (over: { onLogin?: () => void; onSignup?: () => void; onPickLang?: (c: string) => void; langOpen?: boolean } = {}) =>
@@ -115,10 +116,10 @@ describe("Landing v2", () => {
     expect(onSignup).toHaveBeenCalledTimes(1);
   });
 
-  it("help fab + footer Telegram links point at @SellerFlowLive1995", () => {
+  it("help fab + footer Telegram links point at @SellerFlowLive", () => {
     renderLanding();
     const fab = screen.getByText(/Need help\? Message us/);
-    expect(fab.getAttribute("href")).toBe("https://t.me/SellerFlowLive1995");
+    expect(fab.getAttribute("href")).toBe(TELEGRAM_URL);
   });
 
   it("video slot renders as a poster placeholder with the demo caption", () => {

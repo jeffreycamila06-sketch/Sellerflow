@@ -14,11 +14,11 @@
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { LANGS } from "../data";
 import { useT, tpl } from "../i18n";
+import { TELEGRAM_URL } from "../../lib/telegram";
 
 // Store links (verified): Play = com.sellerflow.live · App Store id 6783770354.
 export const PLAY_URL = "https://play.google.com/store/apps/details?id=com.sellerflow.live";
 export const APPSTORE_URL = "https://apps.apple.com/app/id6783770354";
-const TELEGRAM_URL = "https://t.me/SellerFlowLive1995";
 
 // Blueprint palette (authoritative hex values from the preview file).
 const C = {

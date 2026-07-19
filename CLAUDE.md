@@ -575,7 +575,7 @@ commit. Highlights:
   — only work in APK/post-merge with the live socket), Admin (Audit Log + make-admin
   full payload + remove-admin self-guard + expire backdate + expiring-bucket =
   `expiringSoonSellers`), **User Base monitoring** (paid/free by PLAN, derived, no
-  new backend). Telegram handle fixed everywhere → **t.me/SellerFlowLive1995**.
+  new backend). Telegram handle fixed everywhere → **t.me/SellerFlowLive**.
   ~267 vitest green pre-i18n.
 - **Open registration (PRODUCTION DB change, DECIDED):** edit the
   `seller_profiles_on_insert` trigger so normal signups get `plan='free',
@@ -1988,7 +1988,7 @@ Vercel preview (may dev-gated toggles) + Jeff "merge" + prod verify.
   "Renew to keep your live sessions and printing running" + **"Renew now"**; iOS =
   "Your **account** expires…" + "Contact support to keep your account active" +
   **"Contact support"** — ZERO plan/renew/pay/subscribe/price/upgrade words (test-
-  asserted per tier). Parehong destination: `t.me/SellerFlowLive1995` (ang existing
+  asserted per tier). Parehong destination: `t.me/SellerFlowLive` (ang existing
   Settings support/renew link).
 - **Always dismissible** (walang force) — UI nudge lang; server-side gates ang
   totoong enforcement.

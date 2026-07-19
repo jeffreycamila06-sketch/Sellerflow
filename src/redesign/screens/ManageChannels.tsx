@@ -12,9 +12,7 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { accountSlots, accountList, accountText, maxAcc } from "../adapters/connect";
 import type { AccountUser } from "../../accountDb";
 import { useT } from "../i18n";
-
-// Handoff-specified Telegram handle for this feature (lowercase, per CHANNELS-HANDOFF.md).
-const CH_TELEGRAM = "https://t.me/sellerflowlive1995";
+import { TELEGRAM_URL } from "../../lib/telegram";
 const USERNAME_RE = /^[a-z0-9._]*$/; // SOFT guidance only — never hard-blocks (matches main's accept-then-clean).
 
 const input: CSSProperties = { flex: 1, minWidth: 0, border: "none", background: "transparent", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 700, padding: "13px 0", outline: "none" };
@@ -123,7 +121,7 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
             </div>
             <div style={{ display: "flex", borderTop: "1px solid var(--border)" }}>
               <button onClick={() => setAddOpen(false)} style={{ flex: 1, padding: "15px 0", border: "none", borderRight: "1px solid var(--border)", background: "transparent", color: "var(--text-dim)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{t.rd_ch_cancel}</button>
-              <a href={CH_TELEGRAM} target="_blank" rel="noreferrer noopener" onClick={() => setAddOpen(false)} style={{ flex: 1, padding: "15px 0", background: "#0088cc", color: "#fff", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 700, cursor: "pointer", textAlign: "center", textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>{t.rd_ch_ok}<span style={{ fontSize: 15 }}>→</span></a>
+              <a href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener" onClick={() => setAddOpen(false)} style={{ flex: 1, padding: "15px 0", background: "#0088cc", color: "#fff", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 700, cursor: "pointer", textAlign: "center", textDecoration: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>{t.rd_ch_ok}<span style={{ fontSize: 15 }}>→</span></a>
             </div>
           </div>
         </div>

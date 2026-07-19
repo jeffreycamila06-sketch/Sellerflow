@@ -5,8 +5,7 @@
 // Rendered ONLY when isIOS(); Android/web keep the original CapPopup / toast.
 import type { CSSProperties } from "react";
 import { useT } from "../i18n";
-
-const TG_SUPPORT = "https://t.me/SellerFlowLive1995";
+import { TELEGRAM_URL } from "../../lib/telegram";
 
 const overlay: CSSProperties = { position: "absolute", inset: 0, zIndex: 12, background: "rgba(8,6,24,.55)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 };
 const modal: CSSProperties = { width: "100%", maxWidth: 340, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 20, boxShadow: "0 24px 60px rgba(0,0,0,.4)", padding: "24px 22px", textAlign: "center" };
@@ -22,7 +21,7 @@ export default function ContactSupportPopup({ title, message, onClose }: { title
       <div style={modal} onClick={(e) => e.stopPropagation()}>
         <h3 style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, color: "var(--text)", margin: "0 0 8px" }}>{title}</h3>
         <p style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.55, margin: "0 0 18px" }}>{message}</p>
-        <a href={TG_SUPPORT} target="_blank" rel="noreferrer" onClick={onClose} style={supportBtn}>{tgPlane} {t.rd_ios_contact_support}</a>
+        <a href={TELEGRAM_URL} target="_blank" rel="noreferrer" onClick={onClose} style={supportBtn}>{tgPlane} {t.rd_ios_contact_support}</a>
         <button style={outBtn} onClick={onClose}>{t.rd_cap_later}</button>
       </div>
     </div>

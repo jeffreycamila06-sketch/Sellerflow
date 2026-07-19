@@ -22,6 +22,7 @@ import { taipeiDayId } from "./lib/dateHelpers";
 import type { LiveOrder, Buyer, Comment } from "./lib/orderTypes";
 import { buildOrderFromComment, rebuildSessionFromRows } from "./lib/orderLogic";
 import { sellerExpiryState } from "./lib/sellerExpiry";
+import { TELEGRAM_URL } from "./lib/telegram";
 import { planDaysLeft, daysDisplay, isActivePaid, isExpiredPaid, isExpiringSoon, isInMonitorWindow, monitorWindowDays } from "./lib/planWindow";
 import { shouldUseBluetoothSticker, shouldUseLanSticker } from "./lib/printerRouting";
 
@@ -231,7 +232,6 @@ const abg=(h:string)=>{const c=["#7F77DD","#1D9E75","#D85A30","#D4537E","#378ADD
 const addDays=(n:number)=>{const d=new Date();d.setDate(d.getDate()+n);return d.toISOString();};
 const addMonths=(n:number)=>addDays(Math.max(1,n)*30);
 // Single source of truth for the support/renewal Telegram contact.
-const TELEGRAM_URL="https://t.me/SELLERFLOWLIVE1995";
 // Days left until expiry — SHARED core (lib/planWindow, also used by the
 // redesign app): clamped at 0; missing/invalid expiry = NO expiry (Infinity).
 const dLeft=(e:string,now=Date.now())=>planDaysLeft(e,now);

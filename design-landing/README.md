@@ -179,7 +179,7 @@ Eyebrow "FAQ" + H2 "Questions, answered". Each item: white card, question (16/70
 ### 8. Landing — CTA band + Footer
 - CTA band: full primary gradient `linear-gradient(135deg,#4F46E5,#6366F1 55%,#818CF8)`, radius
   28px, "Ready to sell faster?" + "Start free" (white btn) + "Talk on Telegram" (outline).
-- Footer: dark `#171530`, 4 columns (brand + Telegram chip `@SellerFlowLive1995`, Product,
+- Footer: dark `#171530`, 4 columns (brand + Telegram chip `@SellerFlowLive`, Product,
   Support, Language). Bottom bar: "© 2026 SellerFlowLive…" + "Available in 7 languages · Wise + Telegram billing".
 
 ### 9. Dashboard — Login (split screen)
