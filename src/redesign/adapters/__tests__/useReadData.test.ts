@@ -13,7 +13,7 @@ import {
   freeUsersSummary,
   signupTime,
   signupCompare,
-  sortFreeUsersBySignup,
+  sortUsersBySignup,
   auditActionColor,
   filterAuditLogs,
   type FreeUserRow,
@@ -283,11 +283,11 @@ describe("free-tier signup sort — extracted from Admin.tsx FreeUserList (regre
     });
   });
 
-  describe("sortFreeUsersBySignup — the exact production sort path", () => {
+  describe("sortUsersBySignup — the exact production sort path", () => {
     it("sorts newest-first (newest at index 0, oldest last)", () => {
       const list = [row("old@x"), row("new@x"), row("mid@x")];
       const rawBy = { "old@x": raw("2026-07-10T00:00:00Z"), "new@x": raw("2026-07-18T00:00:00Z"), "mid@x": raw("2026-07-14T00:00:00Z") };
-      expect(sortFreeUsersBySignup(list, rawBy).map((u) => u.email)).toEqual(["new@x", "mid@x", "old@x"]);
+      expect(sortUsersBySignup(list, rawBy).map((u) => u.email)).toEqual(["new@x", "mid@x", "old@x"]);
     });
     it("pushes all missing-date variants (null / not-loaded / invalid) below every valid date", () => {
       const list = [row("nullc@x"), row("valid@x"), row("notloaded@x"), row("bad@x")];
@@ -295,24 +295,24 @@ describe("free-tier signup sort — extracted from Admin.tsx FreeUserList (regre
         "nullc@x": raw(null), "valid@x": raw("2026-07-15T00:00:00Z"), "bad@x": raw("garbage"),
         // "notloaded@x" intentionally absent → rawBy[email] === undefined
       };
-      const order = sortFreeUsersBySignup(list, rawBy).map((u) => u.email);
+      const order = sortUsersBySignup(list, rawBy).map((u) => u.email);
       expect(order[0]).toBe("valid@x");                    // the only valid date is on top
       expect(order.slice(1).sort()).toEqual(["bad@x", "notloaded@x", "nullc@x"]); // the other three sank
     });
     it("is STABLE: equal timestamps keep original relative order", () => {
       const list = [row("tieA@x"), row("tieB@x")];
       const rawBy = { "tieA@x": raw("2026-07-15T00:00:00Z"), "tieB@x": raw("2026-07-15T00:00:00Z") };
-      expect(sortFreeUsersBySignup(list, rawBy).map((u) => u.email)).toEqual(["tieA@x", "tieB@x"]);
+      expect(sortUsersBySignup(list, rawBy).map((u) => u.email)).toEqual(["tieA@x", "tieB@x"]);
     });
     it("is STABLE for two missing rows too (both -Infinity keep original order, no scramble)", () => {
       const list = [row("m1@x"), row("m2@x")];
-      expect(sortFreeUsersBySignup(list, {}).map((u) => u.email)).toEqual(["m1@x", "m2@x"]);
+      expect(sortUsersBySignup(list, {}).map((u) => u.email)).toEqual(["m1@x", "m2@x"]);
     });
     it("does NOT mutate the source list (sorts a copy)", () => {
       const list = [row("a@x"), row("b@x"), row("c@x")];
       const before = list.map((u) => u.email);
       const rawBy = { "a@x": raw("2026-07-01T00:00:00Z"), "b@x": raw("2026-07-20T00:00:00Z"), "c@x": raw("2026-07-10T00:00:00Z") };
-      const out = sortFreeUsersBySignup(list, rawBy);
+      const out = sortUsersBySignup(list, rawBy);
       expect(list.map((u) => u.email)).toEqual(before);  // original order intact
       expect(out).not.toBe(list);                        // returned a new array
     });

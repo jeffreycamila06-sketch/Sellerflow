@@ -228,10 +228,12 @@ export function signupCompare(am: number, bm: number): number {
   return am === bm ? 0 : am > bm ? -1 : 1;
 }
 
-// Sort a COPY of the free-tier rows newest-first by signup date, joining each row
-// to its createdAt via rawByEmail (same source as the Joined line). NEVER mutates
-// the input list. (Only reads `.createdAt` off the lookup → structural param type.)
-export function sortFreeUsersBySignup<T extends { email: string }>(
+// Sort a COPY of user-ish rows newest-first by signup date, joining each row to its
+// createdAt via rawByEmail (same source as the Joined line). Used by BOTH the
+// free-tier list AND the full Manage-sellers list (hence the plan-agnostic name).
+// NEVER mutates the input list. (Only reads `.createdAt` off the lookup →
+// structural param type.)
+export function sortUsersBySignup<T extends { email: string }>(
   list: T[],
   rawByEmail: Record<string, { createdAt?: string } | undefined>,
 ): T[] {

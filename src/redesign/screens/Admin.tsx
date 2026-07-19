@@ -6,7 +6,7 @@
 import { useState, type CSSProperties, type ReactNode } from "react";
 import { USERS, SUBS, PLAN_PRICE, initials, fmt, type Sub, type User } from "../data";
 import { headerBar, card, mono } from "../ui";
-import { planDaysLeft, daysDisplay, deriveSubBuckets, deriveUserBase, freeUsersSummary, sortFreeUsersBySignup, auditActionColor, filterAuditLogs, sellerMatchesQuery, type ReadState, type SubBuckets, type FreeUserRow } from "../adapters/useReadData";
+import { planDaysLeft, daysDisplay, deriveSubBuckets, deriveUserBase, freeUsersSummary, sortUsersBySignup, auditActionColor, filterAuditLogs, sellerMatchesQuery, type ReadState, type SubBuckets, type FreeUserRow } from "../adapters/useReadData";
 import type { AdminActions, Plan } from "../adapters/useAdmin";
 import { maxAcc } from "../adapters/connect";
 import type { AccountAuditLog, AccountUser } from "../../accountDb";
@@ -181,10 +181,10 @@ function joinedDate(createdAt: string | undefined | null): string {
 
 function FreeUserList({ list, rawByEmail }: { list: FreeUserRow[]; rawByEmail: Record<string, AccountUser> }) {
   const t = useT();
-  // Display-only reorder: newest-first by signup date. sortFreeUsersBySignup sorts a
+  // Display-only reorder: newest-first by signup date. sortUsersBySignup sorts a
   // COPY (never mutates props) with a stable, NaN-free comparator; missing dates sink
   // to the bottom. Extracted + unit-tested in useReadData (guards this exact path).
-  const sorted = sortFreeUsersBySignup(list, rawByEmail);
+  const sorted = sortUsersBySignup(list, rawByEmail);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
       <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 2 }}>{tpl(list.length === 1 ? t.rd_adm_free_shops_one : t.rd_adm_free_shops_many, { n: list.length })}</div>
@@ -504,7 +504,14 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
               {usersState === "empty" && <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 2px" }}>{t.rd_adm_no_sellers}</div>}
               {noSellerMatches && <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 2px" }}>{t.rd_adm_no_sellers}</div>}
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {users.map((u, i) => {
+                {/* Newest signup first (most recent seller on top). sortUsersBySignup
+                    sorts a COPY (never mutates the users prop) by rawByEmail createdAt;
+                    missing dates sink to the bottom. Map over `sorted` so the index `i`
+                    (which drives the addIdx/pwIdx inline editors) indexes the sorted
+                    array — the sort is stable + deterministic, so `i` stays put across
+                    renders. Search stays as the inline return-null filter (NOT .filter),
+                    preserving index stability; counts/buckets keep using `users`. */}
+                {sortUsersBySignup(users, rawByEmail).map((u, i) => {
                   if (!matchesSeller(u)) return null;
                   const plan = userPlans[u.email] || u.plan;
                   const days = userDays[u.email] != null ? userDays[u.email] : u.days;
