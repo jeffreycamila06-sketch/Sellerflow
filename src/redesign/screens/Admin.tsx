@@ -179,13 +179,30 @@ function joinedDate(createdAt: string | undefined | null): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "Asia/Taipei" });
 }
 
+// Signup timestamp (ms) for the newest-first sort — same createdAt the Joined line
+// uses. Missing / not-yet-loaded / invalid → -Infinity so those ("Joined —") rows
+// sink to the bottom of a descending sort instead of scrambling it or throwing.
+function signupTime(createdAt: string | undefined | null): number {
+  if (!createdAt) return -Infinity;
+  const ms = new Date(createdAt).getTime();
+  return isNaN(ms) ? -Infinity : ms;
+}
+
 function FreeUserList({ list, rawByEmail }: { list: FreeUserRow[]; rawByEmail: Record<string, AccountUser> }) {
   const t = useT();
+  // Display-only reorder: sort a COPY (never mutate the props array) by signup date,
+  // newest first. Stable comparator — equal keys (incl. both-missing -Infinity) keep
+  // their original relative order and never yield NaN.
+  const sorted = [...list].sort((a, b) => {
+    const am = signupTime(rawByEmail[a.email]?.createdAt);
+    const bm = signupTime(rawByEmail[b.email]?.createdAt);
+    return am === bm ? 0 : am > bm ? -1 : 1;
+  });
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
       <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 2 }}>{tpl(list.length === 1 ? t.rd_adm_free_shops_one : t.rd_adm_free_shops_many, { n: list.length })}</div>
       {list.length === 0 && <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "8px 2px" }}>{t.rd_adm_no_free}</div>}
-      {list.map((u) => {
+      {sorted.map((u) => {
         const color = u.capped ? "var(--danger)" : u.near_cap ? "var(--warn)" : "var(--ok)";
         return (
           <div key={u.email} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 12px", border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface-2)" }}>
