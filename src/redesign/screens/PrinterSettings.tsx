@@ -8,10 +8,10 @@
 // a real APK.
 import { useEffect, useState, type CSSProperties } from "react";
 import {
-  callMobilePrinterBridge, btCall, hasNativePrinter, hasBtBridge, buildTestStickerPayload,
-  type MobilePrinterResult, type BluetoothScanResult, type BluetoothPrinterDevice, type StickerPrintResult,
+  callMobilePrinterBridge, btCall, btCallOutcome, hasNativePrinter, hasBtBridge, buildTestStickerPayload,
+  type MobilePrinterResult, type BluetoothScanResult, type BluetoothPrinterDevice,
 } from "../adapters/printerBridge";
-import type { Settings } from "../adapters/printing";
+import { isPrinterNotSetup, type Settings } from "../adapters/printing";
 import { useT } from "../i18n";
 
 const PS_SIZES = ["100x60mm (Standard)", "80x60mm", "80x50mm", "70x50mm", "60x40mm"];
@@ -75,8 +75,9 @@ export default function PrinterSettings({
     if (!btReady) { setBtMsg(t.rd_ps_open_app_test); return; }
     if (!settings) return;
     setBtMsg(t.rd_ps_sending_test);
-    const r = await btCall<StickerPrintResult>("printStickerNative", buildTestStickerPayload(cur, storeName, settings));
-    setBtMsg(r?.ok ? (r.message || t.rd_ps_test_sent) : (r?.message || t.rd_ps_test_failed));
+    const r = await btCallOutcome("printStickerNative", buildTestStickerPayload(cur, storeName, settings));
+    if (r.ok) { setBtMsg(t.rd_ps_test_sent); return; }
+    setBtMsg(isPrinterNotSetup(r.code, r.message) ? t.rd_prn_title : t.rd_ps_test_failed);
   }
 
   const dot = status.ok ? "var(--ok)" : nativeReady ? "var(--warn)" : "var(--text-muted)";

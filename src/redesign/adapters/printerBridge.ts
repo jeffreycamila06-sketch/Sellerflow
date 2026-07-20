@@ -68,6 +68,25 @@ export async function btCall<T>(action: BtBridgeAction, arg?: unknown): Promise<
   catch { return null; }
 }
 
+// Like btCall but PRESERVES the native reject {code, message} instead of
+// collapsing it to null — the Test Print button needs the reject CODE to tell
+// "no printer saved" (BT_NOT_SET) apart from a real print failure. Additive:
+// btCall is untouched, so its null-contract consumers are unaffected.
+export interface BtCallOutcome { ok: boolean; code: string; message: string; }
+export async function btCallOutcome(action: BtBridgeAction, arg?: unknown): Promise<BtCallOutcome> {
+  if (typeof window === "undefined") return { ok: false, code: "", message: "" };
+  const bridge = window.SellerFlowPrinter as Record<string, ((a?: unknown) => Promise<unknown>) | undefined> | undefined;
+  const fn = bridge?.[action];
+  if (typeof fn !== "function") return { ok: false, code: "", message: "" };
+  try {
+    const raw = (arg === undefined ? await fn() : await fn(arg)) as StickerPrintResult | null;
+    return { ok: !!raw?.ok, code: "", message: typeof raw?.message === "string" ? raw.message : "" };
+  } catch (err) {
+    const e = (err && typeof err === "object" ? err : {}) as { code?: unknown; message?: unknown };
+    return { ok: false, code: typeof e.code === "string" ? e.code : "", message: typeof e.message === "string" ? e.message : "" };
+  }
+}
+
 // Test-sticker buyer — verbatim from App.tsx:2086. Exported so the web Printer
 // Test can browser-print the SAME test pattern via printSlip (no BT bridge).
 export function buildTestBuyer(): Buyer {
