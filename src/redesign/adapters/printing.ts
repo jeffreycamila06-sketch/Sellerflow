@@ -165,7 +165,15 @@ function sendSlipToNativePrinter(payload: NativePrinterPayload): boolean {
       if (reportNativePrintFailure("native-slip", "", msg)) return; // consumed by the no-printer modal
       console.warn(msg);
       window.alert(msg);
-    }).catch((err) => console.warn("Native printer bridge failed.", err));
+    }).catch((err) => {
+      // A Capacitor call.reject (e.g. Android/iOS printSlip "No WiFi printer
+      // saved" → PRINTER_NOT_SET) lands here as a rejection, NOT a resolved
+      // {ok:false}. Mirror the BT sticker path (printStickerViaBluetooth) so the
+      // no-printer reject reaches the modal; only console.warn when unconsumed.
+      const { code, message } = readFailure(err);
+      const text = message || nativeFailAlertText;
+      if (!reportNativePrintFailure("native-slip", code, text)) console.warn("Native printer bridge failed.", err);
+    });
   };
   try {
     if (window.SellerFlowPrinter?.printSlip) { showNativePrinterResult(window.SellerFlowPrinter.printSlip(payload)); return true; }

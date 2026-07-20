@@ -6,7 +6,7 @@
 // BOTH failure shapes (resolved {ok:false} AND a Capacitor reject); (3) a consumed
 // failure returns from printSlip's SYNC path as ok:true (Option A — the order flow
 // never sees the async print failure). printSlip's signature is unchanged.
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { printSlip, isPrinterNotSetup, setNativePrintFailureHandler, type NativePrintFailure } from "../printing";
 import type { Buyer } from "../../../lib/orderTypes";
 
@@ -39,7 +39,7 @@ describe("isPrinterNotSetup — Jeff's two triggers only", () => {
 });
 
 // --- Native bridge harness: a fake window.SellerFlowPrinter that fails ---------
-type PrinterStub = { printStickerNative?: (p: unknown) => Promise<unknown>; printStickerLan?: (p: unknown) => Promise<unknown> };
+type PrinterStub = { printStickerNative?: (p: unknown) => Promise<unknown>; printStickerLan?: (p: unknown) => Promise<unknown>; printSlip?: (p: unknown) => Promise<unknown> };
 function withBridge(stub: PrinterStub) {
   (globalThis as unknown as { window: { SellerFlowPrinter: PrinterStub } }).window = { SellerFlowPrinter: stub } as never;
 }
@@ -85,5 +85,55 @@ describe("printSlip → native failure forwarding", () => {
     for (let i = 0; i < 20; i++) printSlip(buyer(), "NT$", "Shop", btSettings as never); // 20 buyers, no printer
     await flush();
     expect(seen).toHaveLength(20); // each surfaces to the handler; the modal state collapses them to one (see PrinterModal no-stack test)
+  });
+});
+
+// The SLIP path (sendSlipToNativePrinter) — the pre-existing gap. A rejected
+// native printSlip (Android/iOS "No WiFi printer saved" → PRINTER_NOT_SET) must
+// reach the modal, mirroring the BT path. These use a handler that mimics
+// RedesignApp's real gate (isPrinterNotSetup) so both the no-printer (consumed)
+// and other-failure (unconsumed → console.warn) outcomes are proven at the
+// integration boundary. Default slip route = printerType "lan" + "receipt".
+const slipSettings = { printerType: "lan" as const, lanFormat: "receipt" as const, stickerSize: "100x60" };
+
+describe("printSlip → native SLIP path reject forwarding (no-printer modal)", () => {
+  let seen: NativePrintFailure[];
+  let warn: ReturnType<typeof vi.spyOn>;
+  beforeEach(() => {
+    seen = [];
+    // Mirror RedesignApp's handler: consume ONLY the config-missing codes.
+    setNativePrintFailureHandler((info) => {
+      if (!isPrinterNotSetup(info.code, info.message)) return false;
+      seen.push(info); return true;
+    });
+    warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+  afterEach(() => { setNativePrintFailureHandler(null); warn.mockRestore(); delete (globalThis as unknown as { window?: unknown }).window; });
+
+  it("no printer → PRINTER_NOT_SET reject reaches the modal {via:native-slip}; sync-returns ok (Option A)", async () => {
+    withBridge({ printSlip: () => Promise.reject(Object.assign(new Error("No WiFi printer saved. Enter printer IP and tap Test Connection first."), { code: "PRINTER_NOT_SET" })) });
+    const r = printSlip(buyer(), "NT$", "Shop", slipSettings as never);
+    expect(r).toEqual({ ok: true, via: "native-slip" }); // order flow never sees the async failure
+    await flush();
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({ code: "PRINTER_NOT_SET", via: "native-slip" });
+    expect(warn).not.toHaveBeenCalled(); // consumed → no legacy console.warn
+  });
+
+  it("genuine failure → PRINT_FAILED reject is NOT modal-consumed (console.warn only, no modal)", async () => {
+    withBridge({ printSlip: () => Promise.reject(Object.assign(new Error("Print failed at 1.2.3.4:9100 - timeout"), { code: "PRINT_FAILED" })) });
+    printSlip(buyer(), "NT$", "Shop", slipSettings as never);
+    await flush();
+    expect(seen).toHaveLength(0); // handler returned false → not surfaced as a no-printer modal
+    expect(warn).toHaveBeenCalled(); // legacy console.warn path preserved, byte-identical to today
+  });
+
+  it("success → resolve {ok:true} → handler never invoked (.catch never runs)", async () => {
+    withBridge({ printSlip: () => Promise.resolve({ ok: true, message: "Printed to WiFi printer 1.2.3.4:9100" }) });
+    const r = printSlip(buyer(), "NT$", "Shop", slipSettings as never);
+    expect(r).toEqual({ ok: true, via: "native-slip" });
+    await flush();
+    expect(seen).toHaveLength(0);
+    expect(warn).not.toHaveBeenCalled();
   });
 });
