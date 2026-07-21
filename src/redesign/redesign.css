@@ -37,7 +37,27 @@
 /* universal per-navigation entrance — opacity fade (safe above sticky headers) */
 [data-redesign] .sfl-anim-screen { animation: sflScreenIn .42s ease both; }
 
-/* staggered rise for NON-sticky content lists (opt-in; full rollout = Slice 2) */
+/* UNIVERSAL slide + fade for screen CONTENT (whole app, every screen). The
+ * screen root's FIRST child is the sticky header; content is nth-child(n+2).
+ * We slide the content (a SIBLING of the header) — never the header or any of
+ * its ancestors — so every sticky header stays pinned on scroll. sflRise =
+ * opacity 0→1 + translateY 12px→0, staggered .04s→.4s. transform/opacity only,
+ * one-shot, GPU-friendly. Gated by prefers-reduced-motion + [data-motion=off]. */
+/* fill: BACKWARDS (not both) so NO transform persists after the entrance — this
+ * protects any content-INTERNAL sticky element (e.g. Products' sub-header): a
+ * lingering translateY(0) would otherwise make it stick to the transformed
+ * content box instead of the scroll viewport. The main screen header is child(1),
+ * never in this set, so it is always safe regardless. */
+[data-redesign] .sfl-anim-screen > * > *:nth-child(n+2) { animation: sflRise .5s cubic-bezier(.22,1,.36,1) backwards; }
+[data-redesign] .sfl-anim-screen > * > *:nth-child(2){animation-delay:.04s}
+[data-redesign] .sfl-anim-screen > * > *:nth-child(3){animation-delay:.10s}
+[data-redesign] .sfl-anim-screen > * > *:nth-child(4){animation-delay:.16s}
+[data-redesign] .sfl-anim-screen > * > *:nth-child(5){animation-delay:.22s}
+[data-redesign] .sfl-anim-screen > * > *:nth-child(6){animation-delay:.28s}
+[data-redesign] .sfl-anim-screen > * > *:nth-child(7){animation-delay:.34s}
+[data-redesign] .sfl-anim-screen > * > *:nth-child(n+8){animation-delay:.40s}
+
+/* staggered rise for NON-sticky content lists (opt-in utility; Slice 2) */
 [data-redesign] .sfl-anim-stagger > * { animation: sflRise .5s cubic-bezier(.22,1,.36,1) both; }
 [data-redesign] .sfl-anim-stagger > *:nth-child(1){animation-delay:.04s}
 [data-redesign] .sfl-anim-stagger > *:nth-child(2){animation-delay:.10s}
@@ -81,6 +101,8 @@
 [data-redesign][data-motion="off"] .sfl-anim-glow,
 [data-redesign][data-motion="off"] .sfl-anim-live::after,
 [data-redesign][data-motion="off"] .sfl-anim-sheen::after { animation: none !important; }
+/* content slide collapses to visible (no slide) under the kill switch */
+[data-redesign][data-motion="off"] .sfl-anim-screen > * > *:nth-child(n+2) { animation: none !important; opacity: 1 !important; transform: none !important; }
 
 /* prefers-reduced-motion — kill loops; keep a minimal one-shot fade */
 @media (prefers-reduced-motion: reduce) {
@@ -91,6 +113,7 @@
   [data-redesign] .sfl-anim-live::after,
   [data-redesign] .sfl-anim-sheen::after { animation: none !important; }
   [data-redesign] .sfl-anim-stagger > * { animation: none; opacity: 1; transform: none; }
+  [data-redesign] .sfl-anim-screen > * > *:nth-child(n+2) { animation: none; opacity: 1; transform: none; }
   [data-redesign] button { transition: none; }
   [data-redesign] button:active { transform: none; }
 }

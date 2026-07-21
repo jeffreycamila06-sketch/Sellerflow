@@ -16,8 +16,11 @@ const css = readFileSync(resolve(__dirname, "..", "redesign.css"), "utf8").repla
 
 // The looping animation classes that MUST be disableable.
 const LOOP_CLASSES = ["sfl-anim-beat", "sfl-anim-float", "sfl-anim-dot", "sfl-anim-glow", "sfl-anim-live", "sfl-anim-sheen"];
-// One-shot entrances that must STAY (never gated by the kill switch).
-const ONESHOT_CLASSES = ["sfl-anim-screen", "sfl-anim-stagger", "sfl-anim-sheet"];
+// One-shot entrances that must STAY (never gated by the kill switch): the
+// opt-in stagger utility + the bottom sheet. (The universal CONTENT slide
+// `.sfl-anim-screen > * > *` IS gated — asserted separately below; and the
+// container fade `.sfl-anim-screen {…}` stays — asserted below too.)
+const ONESHOT_CLASSES = ["sfl-anim-stagger", "sfl-anim-sheet"];
 
 describe("anim system — kill switch [data-motion=off]", () => {
   const killBlock = css.slice(css.indexOf('[data-motion="off"]'));
@@ -30,6 +33,29 @@ describe("anim system — kill switch [data-motion=off]", () => {
   it("does NOT gate the one-shot entrances (they are not motion-sickness loops)", () => {
     const killSelectorArea = css.slice(css.indexOf('[data-motion="off"]'), css.indexOf('@media (prefers-reduced-motion'));
     for (const c of ONESHOT_CLASSES) expect(killSelectorArea).not.toContain(`[data-motion="off"] .${c}`);
+    // the CONTAINER fade itself stays (only its content-slide descendants are gated)
+    expect(killSelectorArea).not.toMatch(/\[data-motion="off"\] \.sfl-anim-screen\s*[{,]/);
+  });
+});
+
+describe("anim system — universal content slide (all screens)", () => {
+  it("slides content BELOW the header (nth-child(n+2)) via sflRise", () => {
+    expect(css).toMatch(/\.sfl-anim-screen\s*>\s*\*\s*>\s*\*:nth-child\(n\+2\)\s*\{\s*animation:\s*sflRise/);
+  });
+  it("uses backwards fill so NO transform persists (protects any content-internal sticky)", () => {
+    expect(css).toMatch(/\.sfl-anim-screen\s*>\s*\*\s*>\s*\*:nth-child\(n\+2\)\s*\{\s*animation:\s*sflRise[^}]*backwards/);
+  });
+  it("never transforms the header (child 1) — only content nth-child(n+2)", () => {
+    expect(css).not.toMatch(/\.sfl-anim-screen\s*>\s*\*\s*>\s*\*:nth-child\(1\)[^}]*sflRise/);
+    expect(css).not.toMatch(/\.sfl-anim-screen\s*>\s*\*\s*>\s*\*:first-child[^}]*sflRise/);
+  });
+  it("collapses to visible (no slide) under the kill switch", () => {
+    const killBlock = css.slice(css.indexOf('[data-motion="off"]'));
+    expect(killBlock).toMatch(/\[data-motion="off"\] \.sfl-anim-screen > \* > \*:nth-child\(n\+2\)\s*\{[^}]*opacity:\s*1[^}]*!important/);
+  });
+  it("collapses to visible under prefers-reduced-motion", () => {
+    const rm = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(rm).toMatch(/\.sfl-anim-screen > \* > \*:nth-child\(n\+2\)\s*\{[^}]*opacity:\s*1/);
   });
 });
 
