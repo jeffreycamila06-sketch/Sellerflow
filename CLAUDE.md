@@ -3473,3 +3473,84 @@ nangyari ang 241 (maliban sa git history).
   graceful sa absence ng 241 payload fields); ang kanilang PM-241 flows ay
   titigil — **sadya at tanggap** (si Jeff lang ang may PM-241).
 - **AIMO = TOTALLY UNAFFECTED** — byte-identical sa pre-saga (golden-verified).
+
+## 2026-07-21 — REDESIGN POLISH BATCH (12 items merged) + PENDING ANDROID 1.5 RELEASE
+`main` tip = **`755b820`**. All 12 items below are MERGED to `main` + served-bundle
+verified. Everything here is FRONTEND — already LIVE for users via Vercel (web +
+APK/iOS thin-shell on next open) — **EXCEPT item 7's BLE native transport, which is
+APK-only** and ships with the pending Android release below. Each item followed the
+standard flow (branch → diff → independent audit → merge → served-bundle verify).
+
+### Completed (all on `main`, live via Vercel except item 7)
+1. **Admin free-tier modal** — "Joined MMM D" signup-date line + newest-first sort by
+   signup. Pure helpers `signupTime` / `signupCompare` / `sortUsersBySignup` extracted
+   to `useReadData.ts` + regression tests (NaN guard for the `-Infinity` comparator).
+2. **Subscription "Current Plan" card** — price line hidden on web + Android (iOS
+   screen already gated off for App Store Guideline 2.1b).
+3. **Telegram handle rename → `@SellerFlowLive`** everywhere via a shared
+   `src/lib/telegram.ts` constant (replaced `@SellerFlowLive1995` all casings + the
+   dead `@SellerFlowSupport` placeholder).
+4. **Admin dashboard Expiring/Expired now disjoint** — new `isExpiringNotExpired`
+   predicate (daysLeft ≥ 1 → Expiring only; 0 or expired → Expired only).
+   `isExpiringSoon` / `isExpiredPaid` UNTOUCHED (nav badge still counts expired).
+5. **Admin "Manage sellers" list newest-first** — reused + renamed the shared sort
+   helper to `sortUsersBySignup`.
+6. **Security & risk triage (read-only)** — verdict: **NO confirmed HIGH**; posture
+   strong (admin writes server-enforced, all 14 tables RLS'd, no leaked secrets). New
+   findings = MEDIUMs M1–M7, all parked.
+7. **Android BLE printer parity** ⚠️ **APK-only — see PENDING RELEASE** — native BLE
+   (GATT) transport mirroring iOS (`connectGatt` TRANSPORT_LE → FF00 → subscribe FF03
+   via CCCD → chunked WWR to FF02 → success ONLY on `PRINTING:DONE`); Classic SPP kept
+   as fallback (`PREF_BT_TRANSPORT`, absent → SPP so existing printers are unaffected).
+   `getBuildNumber` bridge added (update-nudge enabled later; `native-version.json`
+   NOT activated). **versionCode 5→6, versionName 1.4→1.5.** Device-tested 6/6 on the
+   real D520BT.
+8. **Test Print toast fix** — removed the "Printed sticker via Bluetooth LE (406
+   bytes)" byte-count leak on BOTH Test Print buttons (Printer Settings + Print
+   Pattern): success → `rd_ps_test_sent`, no-printer → `rd_prn_title`, other →
+   `rd_ps_test_failed`. Additive `btCallOutcome` helper (`btCall` byte-unchanged).
+9. **No-printer modal fix (pre-existing bug)** — the ESC/POS slip path's `.catch` was
+   swallowing the native `PRINTER_NOT_SET` reject into `console.warn`; now routes
+   through `reportNativePrintFailure` so "No printer connected" shows on 1-Click /
+   Reprint on a fresh open.
+10. **Full animated UI system (Slice 1 + Slice 2)** — plain CSS keyframes + `.sfl-anim-*`
+    classes in `redesign.css`: universal slide+fade screen entrance (all screens,
+    sticky-header-safe), title heartbeats, logo bob, LIVE badge ring (`::after` scale,
+    NOT box-shadow), channel-chip hearts, text-glow, Telegram wiggle, dark ambient
+    glow, button springiness, micro-interactions. **Perf-safe for low-end Android**
+    (transform/opacity only; the 1-Click button stays STATIC — NO per-row loop across
+    the ~150 `FEED_RENDER_CAP` rows). Accent-aware (handoff red → `var(--accent)`; LIVE
+    badge stays `#e11d48`). `prefers-reduced-motion` honored + a HIDDEN motion toggle
+    (`SHOW_MOTION_TOGGLE = false`, plumbing kept). Device-tested (aesthetic + perf, no
+    jank/heat).
+11. **Search-box placeholder fix (pre-existing)** — Orders/Products/Customers header
+    search placeholders were invisible (dark on indigo); fixed via a shared
+    `.sfl-header-search::placeholder` rule (white/on-header). Display-only.
+12. **Printer-row default-slot fix** — the Settings "Printer" row defaulted to the
+    un-configured WiFi/LAN slot showing "…not set up yet"; changed the `printerIdx`
+    default `useState(0) → useState(1)` so it defaults to the Bluetooth sticker slot.
+    **Type-level-proven display-only** (`printerIdx` never reaches print routing —
+    routing uses `buildSettingsFromRedesign({pp, psType, psOut, psSize})`).
+
+### 🚀 PENDING RELEASE — ONE combined Android APK/AAB (production)
+Jeff will build **ONE** production APK/AAB (NOT multiple) that ships everything
+native/APK-dependent together. The build carries the whole current `main`
+(animation/search/WiFi-default/toast/no-printer are already in `main`, all frontend).
+- **Contents:** (1) the **BLE printer native transport** (item 7 — merged +
+  device-tested, but APK-only so not yet live for Android users) = **the main
+  driver**; (2) the **sticker size MULTIPLIER fix IF it turns out fixable** (under
+  investigation — see below).
+- **Version:** already at **versionCode 6 / versionName 1.5**; keystore ready at
+  `keystore/`.
+- **RELEASE PROTOCOL:** release-readiness audit → AAB content inspection
+  (`bundletool`) → **Internal testing** track with the FULL device checklist →
+  **production with STAGED rollout** (~20% → watch 1–2 days → 100%, halt on any
+  problem).
+
+### 🔎 UNDER INVESTIGATION — sticker size MULTIPLIER (Print Pattern)
+Adjusting an element's size in small steps (1.1–1.4) does nothing until 1.5 —
+**quantized, not smooth.** Affects all 47 users (all on the AIMO D520BT). Strong
+hypothesis: **TSPL built-in-font magnification is integer-only** (a hardware/protocol
+limit, NOT a code bug). A read-only investigation is queued to confirm code-bug vs
+hardware-limit and lay out options (snap the UI to integer steps vs bitmap text
+rendering). If fixable → bundled into the pending release above.
