@@ -30,6 +30,7 @@ export default function GeneralSettings({
   onSubscription, onSupport, onDelete,
   account = null, onSaveProfile, onManageChannel, onAutoCodesSaved,
   keepAwake = true, onToggleKeepAwake,
+  motionOn = true, onToggleMotion,
 }: {
   theme: ThemeMode; accent: AccentKey; onSetTheme: (t: ThemeMode) => void; onSetAccent: (a: AccentKey) => void;
   auto: AutoControls; cur: string;
@@ -49,6 +50,9 @@ export default function GeneralSettings({
   // Keep-awake habang naka-live (web Screen Wake Lock) — display toggle only;
   // the lock lifecycle lives in RedesignApp (useWakeLock on green/amber).
   keepAwake?: boolean; onToggleKeepAwake?: () => void;
+  // Motion kill switch — pause looping animations (display toggle; RedesignApp
+  // sets [data-motion] on the root). One-shot entrances stay.
+  motionOn?: boolean; onToggleMotion?: () => void;
 }) {
   const t = useT();
   const ac = useAutoCodes(true, onAutoCodesSaved); // Auto Mode: real code→product→inventory map (read-on-load)
@@ -295,6 +299,20 @@ export default function GeneralSettings({
             {/* F-batch #2: the "Readable @handles" row was a STATIC div dressed
                 as a toggle (always-on, wired to nothing, demo @maria_shops
                 handle) — removed rather than faked. */}
+            {/* MOTION toggle — pause looping animations (kill switch). Same pill
+                pattern as keep-awake; RedesignApp sets [data-motion]. One-shot
+                entrances are not gated. */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingTop: 12, marginTop: 1, borderTop: "1px solid var(--border)" }}>
+              <span style={{ flex: 1 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_motion}</span>
+                <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{t.rd_set_motion_desc}</span>
+              </span>
+              <button onClick={onToggleMotion} title={t.rd_set_motion} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }}>
+                <span style={{ width: 44, height: 26, borderRadius: 13, background: motionOn ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s" }}>
+                  <span style={{ position: "absolute", top: 3, left: motionOn ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
+                </span>
+              </button>
+            </div>
             {/* Language — inline accordion (dc.html v3 L686) */}
             <div style={{ paddingTop: 12, marginTop: 12, borderTop: "1px solid var(--border)" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>

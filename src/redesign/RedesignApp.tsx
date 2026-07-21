@@ -85,7 +85,7 @@ type Screen =
 const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels"];
 
 
-const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set", automode: "sfl_rd_automode", pp: "sfl_rd_pp", printer: "sfl_rd_printer", keepAwake: "sfl_rd_keepawake" } as const;
+const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set", automode: "sfl_rd_automode", pp: "sfl_rd_pp", printer: "sfl_rd_printer", keepAwake: "sfl_rd_keepawake", motion: "sfl_rd_motion" } as const;
 const readLS = (k: string, fallback: string): string => {
   try { return localStorage.getItem(k) || fallback; } catch { return fallback; }
 };
@@ -559,6 +559,16 @@ export default function RedesignApp() {
       return next;
     });
   };
+  // Motion kill switch — default ON. Drives [data-motion] on the root; the CSS
+  // gates ONLY looping animations (one-shot entrances stay). Presentational.
+  const [motionOn, setMotionOn] = useState<boolean>(() => readLS(LS.motion, "1") !== "0");
+  const toggleMotion = () => {
+    setMotionOn((v) => {
+      const next = !v;
+      try { localStorage.setItem(LS.motion, next ? "1" : "0"); } catch { /* ignore */ }
+      return next;
+    });
+  };
   useWakeLock(shouldHoldWakeLock(keepAwake, {
     ttEff, fbEff,
     ttConnecting, fbConnecting,
@@ -800,7 +810,7 @@ export default function RedesignApp() {
 
   return (
     <TProvider lang={lang}>
-    <div data-redesign="" data-theme={theme} data-accent={accent} className="sfl-stage">
+    <div data-redesign="" data-theme={theme} data-accent={accent} data-motion={motionOn ? "on" : "off"} className="sfl-stage">
       <div className="sfl-phone">
         {theme === "dark" && (
           <>
@@ -823,10 +833,15 @@ export default function RedesignApp() {
             header-bg reads as one continuous surface. */}
         <div style={{ height: STATUS_BAR_BACKDROP_HEIGHT, flexShrink: 0, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)" }} />
 
-        <div className="sfl-scroll">
+        {/* key={screen} remounts the scroll subtree on navigation so the
+            one-shot entrance (.sfl-anim-screen) re-fires + scroll resets to top.
+            Screens already unmount/remount per {screen===…}; this adds no new
+            remounts, only the fresh scroll element + fade. Hooks (useLiveFeed /
+            useOrders) live ABOVE this node → comment/order state is untouched. */}
+        <div className="sfl-scroll sfl-anim-screen" key={screen}>
           {auth.status === "loading" && (
             <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, color: "var(--text-muted)" }}>
-              <img src="/redesign/icon-180.png" alt="SellerFlowLive" style={{ width: 56, height: 56, borderRadius: 15, objectFit: "cover", opacity: 0.9 }} />
+              <img src="/redesign/icon-180.png" alt="SellerFlowLive" className="sfl-anim-float" style={{ width: 56, height: 56, borderRadius: 15, objectFit: "cover", opacity: 0.9 }} />
               <div style={{ fontSize: 13, fontWeight: 600, fontFamily: "var(--font-ui)" }}>Loading…</div>
             </div>
           )}
@@ -950,6 +965,7 @@ export default function RedesignApp() {
               onSupport={() => setScreen("support")}
               onDelete={() => setScreen("delete")}
               keepAwake={keepAwake} onToggleKeepAwake={toggleKeepAwake}
+              motionOn={motionOn} onToggleMotion={toggleMotion}
             />
           )}
           {(screen === "ttchannels" || screen === "fbchannels") && (
@@ -986,7 +1002,7 @@ export default function RedesignApp() {
           <div className="sfl-nav">
             {/* Brand header — sidebar only (display:none below 900px). */}
             <div className="sfl-nav-logo">
-              <img src="/redesign/icon-180.png" alt="" style={{ width: 30, height: 30, borderRadius: 8, objectFit: "cover" }} />
+              <img src="/redesign/icon-180.png" alt="" className="sfl-anim-float" style={{ width: 30, height: 30, borderRadius: 8, objectFit: "cover" }} />
               <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 15, color: "var(--text)", letterSpacing: "-.01em" }}>SellerFlowLive</span>
             </div>
             <button onClick={() => setScreen("dashboard")} className={navCls(screen === "dashboard")}>

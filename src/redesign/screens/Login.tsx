@@ -46,11 +46,11 @@ export default function Login({
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", position: "relative" }}>
       {/* hero band */}
-      <div style={{ background: "var(--header-bg)", padding: "34px 24px 30px", color: "var(--on-header)", position: "relative", overflow: "hidden" }}>
+      <div className="sfl-anim-sheen" style={{ background: "var(--header-bg)", padding: "34px 24px 30px", color: "var(--on-header)", position: "relative", overflow: "hidden" }}>
         <div style={{ position: "absolute", width: 160, height: 160, borderRadius: "50%", background: "rgba(255,255,255,.12)", top: -50, right: -30 }} />
         <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 11 }}>
-          <img src="/redesign/icon-180.png" alt="SellerFlowLive" style={{ width: 48, height: 48, borderRadius: 13, objectFit: "cover", boxShadow: "0 6px 16px rgba(0,0,0,.18)" }} />
-          <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 21, letterSpacing: "-.02em" }}>SellerFlowLive</div>
+          <img src="/redesign/icon-180.png" alt="SellerFlowLive" className="sfl-anim-float" style={{ width: 48, height: 48, borderRadius: 13, objectFit: "cover", boxShadow: "0 6px 16px rgba(0,0,0,.18)" }} />
+          <div className="sfl-anim-beat" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 21, letterSpacing: "-.02em" }}>SellerFlowLive</div>
         </div>
         <div style={{ position: "relative", fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 25, lineHeight: 1.2, marginTop: 22, letterSpacing: "-.02em" }}>{t.rd_login_hero_title}</div>
         <div style={{ position: "relative", fontSize: 13.5, opacity: 0.92, marginTop: 10, lineHeight: 1.5 }}>{t.rd_login_hero_sub}</div>
@@ -76,7 +76,7 @@ export default function Login({
         {err && <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--danger)", background: "var(--danger-soft, rgba(225,29,72,.1))", border: "1px solid var(--danger)", borderRadius: 10, padding: "9px 12px", marginBottom: 12 }}>{err}</div>}
         {!configured && <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>{t.rd_login_unavailable}</div>}
 
-        <button onClick={() => void submit()} disabled={busy} style={{ width: "100%", padding: "14px 0", border: "none", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14.5, fontWeight: 700, cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1, boxShadow: "0 6px 18px var(--accent-soft)" }}>{busy ? t.rd_login_logging_in : t.rd_login_login_btn}</button>
+        <button onClick={() => void submit()} disabled={busy} className={busy ? undefined : "sfl-anim-glow"} style={{ width: "100%", padding: "14px 0", border: "none", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14.5, fontWeight: 700, cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1, boxShadow: "0 6px 18px var(--accent-soft)" }}>{busy ? t.rd_login_logging_in : t.rd_login_login_btn}</button>
 
         <div style={{ textAlign: "center", marginTop: 16, fontSize: 12.5, color: "var(--text-dim)" }}>{t.rd_login_new_here} <span onClick={onSignup} style={{ fontWeight: 700, color: "var(--accent-fg)", cursor: "pointer" }}>{t.rd_login_create_account}</span></div>
 

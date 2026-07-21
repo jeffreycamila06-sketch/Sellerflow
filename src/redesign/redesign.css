@@ -14,6 +14,87 @@
 @keyframes sflGlow { 0%,100% { transform: translate(0,0) scale(1); opacity: .8; } 50% { transform: translate(14px,-10px) scale(1.12); opacity: 1; } }
 @keyframes sflSheet { from { transform: translateY(100%); } to { transform: translateY(0); } }
 
+/* ════════════════════════════════════════════════════════════════════════════
+ * ANIMATED UI SYSTEM — Slice 1 (prototype). GPU-friendly BY CONSTRUCTION: loops
+ * animate ONLY transform/opacity; the LIVE ring is a scaling ::after (STATIC
+ * box-shadow, animated transform/opacity) NOT an animated box-shadow; the sheen
+ * is a translating skewed highlight NOT background-position; NO filter:blur on
+ * the app-shell path. Every LOOP class is gated by BOTH prefers-reduced-motion
+ * AND the in-app kill switch [data-motion="off"]. One-shot entrances (screen
+ * fade, rise stagger, bottom sheet) are NOT gated — they are not motion-sickness
+ * loops. Handoff reds map to var(--accent) so motion follows the seller's accent
+ * + light/dark theme; the LIVE badge keeps its intentional #e11d48.
+ * ════════════════════════════════════════════════════════════════════════════ */
+/* one-shots */
+@keyframes sflScreenIn { from { opacity: 0; } to { opacity: 1; } } /* sticky-safe: opacity only (never a transform on a sticky-header ancestor → sticky stays intact) */
+@keyframes sflBeat { 0% { opacity: .25; transform: scale(.96); } 40% { opacity: 1; transform: scale(1); } 54% { transform: scale(1.07); } 66% { transform: scale(.98); } 78% { transform: scale(1.04); } 100% { opacity: 1; transform: scale(1); } }
+/* loops — transform/opacity only */
+@keyframes sflFloat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes sflRingPulse { 0% { transform: scale(1); opacity: .55; } 70%,100% { transform: scale(2.3); opacity: 0; } }
+@keyframes sflSheen { 0% { transform: translateX(-180%) skewX(-18deg); } 100% { transform: translateX(320%) skewX(-18deg); } }
+@keyframes sflLift { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-1.5px); } }
+
+/* universal per-navigation entrance — opacity fade (safe above sticky headers) */
+[data-redesign] .sfl-anim-screen { animation: sflScreenIn .42s ease both; }
+
+/* staggered rise for NON-sticky content lists (opt-in; full rollout = Slice 2) */
+[data-redesign] .sfl-anim-stagger > * { animation: sflRise .5s cubic-bezier(.22,1,.36,1) both; }
+[data-redesign] .sfl-anim-stagger > *:nth-child(1){animation-delay:.04s}
+[data-redesign] .sfl-anim-stagger > *:nth-child(2){animation-delay:.10s}
+[data-redesign] .sfl-anim-stagger > *:nth-child(3){animation-delay:.16s}
+[data-redesign] .sfl-anim-stagger > *:nth-child(4){animation-delay:.22s}
+[data-redesign] .sfl-anim-stagger > *:nth-child(5){animation-delay:.28s}
+[data-redesign] .sfl-anim-stagger > *:nth-child(6){animation-delay:.34s}
+[data-redesign] .sfl-anim-stagger > *:nth-child(n+7){animation-delay:.40s}
+
+/* title heartbeat */
+[data-redesign] .sfl-anim-beat { animation: sflBeat 3.4s ease-in-out infinite; transform-origin: left center; }
+/* logo/avatar bob */
+[data-redesign] .sfl-anim-float { animation: sflFloat 4.5s ease-in-out infinite; }
+/* status-dot pulse — duration via --sfl-dur; reuses the existing sflDot keyframe */
+[data-redesign] .sfl-anim-dot { animation: sflDot var(--sfl-dur, 1.1s) ease-in-out infinite; }
+
+/* LIVE badge ring — GPU: scaling ::after (static box-shadow, animated transform/opacity) */
+[data-redesign] .sfl-anim-live { position: relative; }
+[data-redesign] .sfl-anim-live::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 2px #e11d48; pointer-events: none; animation: sflRingPulse 1.8s ease-out infinite; }
+
+/* diagonal sheen — GPU: a translating skewed highlight (host must clip: overflow hidden) */
+[data-redesign] .sfl-anim-sheen { position: relative; overflow: hidden; }
+[data-redesign] .sfl-anim-sheen::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 35%; background: linear-gradient(100deg, transparent, rgba(255,255,255,.28), transparent); transform: translateX(-180%) skewX(-18deg); pointer-events: none; animation: sflSheen 3.6s linear infinite; }
+
+/* button glow-lift — transform lift loop ONLY; the glow is a STATIC shadow (set
+ * inline where used), so there is zero per-frame box-shadow repaint. */
+[data-redesign] .sfl-anim-glow { animation: sflLift 2.3s ease-in-out infinite; }
+
+/* bottom-sheet entrance (migrated from Admin inline) — one-shot */
+[data-redesign] .sfl-anim-sheet { animation: sflSheet .26s cubic-bezier(.22,1,.36,1); }
+
+/* springy global button press (handoff micro-interaction) */
+[data-redesign] button { transition: transform .14s cubic-bezier(.34,1.56,.64,1), filter .18s ease; }
+[data-redesign] button:active { transform: scale(.92); }
+@media (hover: hover) { [data-redesign] button:hover { filter: brightness(1.06); } }
+
+/* kill switch — in-app motion toggle disables LOOPS only (one-shots stay) */
+[data-redesign][data-motion="off"] .sfl-anim-beat,
+[data-redesign][data-motion="off"] .sfl-anim-float,
+[data-redesign][data-motion="off"] .sfl-anim-dot,
+[data-redesign][data-motion="off"] .sfl-anim-glow,
+[data-redesign][data-motion="off"] .sfl-anim-live::after,
+[data-redesign][data-motion="off"] .sfl-anim-sheen::after { animation: none !important; }
+
+/* prefers-reduced-motion — kill loops; keep a minimal one-shot fade */
+@media (prefers-reduced-motion: reduce) {
+  [data-redesign] .sfl-anim-beat,
+  [data-redesign] .sfl-anim-float,
+  [data-redesign] .sfl-anim-dot,
+  [data-redesign] .sfl-anim-glow,
+  [data-redesign] .sfl-anim-live::after,
+  [data-redesign] .sfl-anim-sheen::after { animation: none !important; }
+  [data-redesign] .sfl-anim-stagger > * { animation: none; opacity: 1; transform: none; }
+  [data-redesign] button { transition: none; }
+  [data-redesign] button:active { transform: none; }
+}
+
 [data-redesign] {
   font-family: var(--font-ui);
   color: var(--text);

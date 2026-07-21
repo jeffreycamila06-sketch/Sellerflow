@@ -71,7 +71,7 @@ const conn = (connected: boolean, connecting: boolean) => ({
   chipShadow: connected ? "inset 0 0 0 1.3px rgba(74,222,128,.6)" : "inset 0 0 0 1px rgba(255,255,255,.22)",
   dotBg: connected ? "#4ade80" : connecting ? "#fbbf24" : "rgba(255,255,255,.45)",
   dotGlow: connected ? "0 0 6px rgba(74,222,128,.9)" : "none",
-  dotAnim: connected ? "sflDot 1.1s ease-in-out infinite" : connecting ? "sflDot .7s ease-in-out infinite" : "none",
+  dotCls: connected || connecting ? "sfl-anim-dot" : "", // class so the kill switch / reduced-motion can disable it (inline animation can't be)
   bg: connected ? "var(--surface-2)" : "var(--accent)",
   fg: connected ? "var(--danger)" : "var(--accent-text)",
   border: connected ? "1px solid var(--border-strong)" : "none",
@@ -245,11 +245,11 @@ export default function Dashboard({
       <div style={headerBar}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 9, minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, background: "#e11d48", padding: "4px 9px 4px 7px", borderRadius: 20, animation: "sflLive 1.8s ease-out infinite", flexShrink: 0 }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#fff", animation: "sflDot 1s ease-in-out infinite" }} />
+            <div className="sfl-anim-live" style={{ display: "flex", alignItems: "center", gap: 6, background: "#e11d48", padding: "4px 9px 4px 7px", borderRadius: 20, flexShrink: 0 }}>
+              <span className="sfl-anim-dot" style={{ width: 7, height: 7, borderRadius: "50%", background: "#fff" }} />
               <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".06em", color: "#fff" }}>LIVE</span>
             </div>
-            <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, letterSpacing: "-.01em", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>SellerFlowLive</div>
+            <div className="sfl-anim-beat" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, letterSpacing: "-.01em", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>SellerFlowLive</div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
           {/* 🔔 Announcements bell — same rgba pill styling as the header controls;
@@ -293,7 +293,7 @@ export default function Dashboard({
             <button onClick={onToggleTT} title={ttTitle} style={{ ...pickerBtn, background: tt.chipBg, boxShadow: tt.chipShadow }}>
               <span style={{ width: 16, height: 16, borderRadius: 5, background: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, color: "#fff", flexShrink: 0 }}>t</span>
               <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ttAccounts.length ? (ttAccounts[ttIdx] || ttAccounts[0]) : t.rd_dash_connect_tiktok}</span>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: tt.dotBg, flexShrink: 0, animation: tt.dotAnim, boxShadow: tt.dotGlow }} />
+              <span className={tt.dotCls} style={{ width: 7, height: 7, borderRadius: "50%", background: tt.dotBg, flexShrink: 0, boxShadow: tt.dotGlow }} />
               <span style={{ fontSize: 9, opacity: 0.85 }}>▾</span>
             </button>
             {ttOpen && (
@@ -318,7 +318,7 @@ export default function Dashboard({
             <button onClick={onToggleFB} title={fbTitle} style={{ ...pickerBtn, background: fb.chipBg, boxShadow: fb.chipShadow }}>
               <span style={{ width: 16, height: 16, borderRadius: 5, background: "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: "#fff", flexShrink: 0, fontFamily: "var(--font-display)" }}>f</span>
               <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fbAccounts.length ? (fbAccounts[fbIdx] || fbAccounts[0]) : t.rd_dash_connect_facebook}</span>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: fb.dotBg, flexShrink: 0, animation: fb.dotAnim, boxShadow: fb.dotGlow }} />
+              <span className={fb.dotCls} style={{ width: 7, height: 7, borderRadius: "50%", background: fb.dotBg, flexShrink: 0, boxShadow: fb.dotGlow }} />
               <span style={{ fontSize: 9, opacity: 0.85 }}>▾</span>
             </button>
             {fbOpen && (
@@ -368,7 +368,7 @@ export default function Dashboard({
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 9, padding: "0 2px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
             <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 14.5, color: "var(--text)", whiteSpace: "nowrap" }}>{t.rd_dash_live_comments}</span>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#e11d48", animation: "sflDot 1s infinite", flexShrink: 0 }} />
+            <span className="sfl-anim-dot" style={{ width: 6, height: 6, borderRadius: "50%", background: "#e11d48", flexShrink: 0 }} />
             {viewers != null && (
               <span title={t.rd_dash_viewers_aria} aria-label={t.rd_dash_viewers_aria}
                 style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
@@ -384,7 +384,7 @@ export default function Dashboard({
             )}
             {!raffleErrShown && raffle.enabled && (
               <span style={{ display: "inline-flex", alignItems: "center", gap: 5, minWidth: 0, fontSize: 10, fontWeight: 700, color: "var(--text-muted)" }}>
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--ok)", animation: "sflDot 1.4s infinite", flexShrink: 0 }} />
+                <span className="sfl-anim-dot" style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--ok)", flexShrink: 0 }} />
                 <span className="sfl-raffle-collect-txt" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {t.rd_raffle_collecting} · {raffleEntries.reduce((s, e) => s + e.entries, 0)}
                 </span>
