@@ -495,7 +495,13 @@ export default function RedesignApp() {
   // General Settings local UI state (visual only).
   const [profileOpen, setProfileOpen] = useState(false);
   const [printerOpen, setPrinterOpen] = useState(false);
-  const [printerIdx, setPrinterIdx] = useState(0);
+  // Default the Settings "Printer" row to the Bluetooth sticker slot (1) — the
+  // real production printer (AIMO D520BT) virtually every seller uses. Slot 0
+  // (WiFi/LAN receipt) stays reachable when the user taps it; this only changes
+  // which slot is SHOWN by default so a BT seller doesn't see the WiFi slot's
+  // "…not set up yet" copy. DISPLAY-ONLY: printerIdx never feeds print routing
+  // (buildSettingsFromRedesign uses psType/psOut/psSize, not printerIdx).
+  const [printerIdx, setPrinterIdx] = useState(1);
 
   // #6 — REAL TikTok/FB connect. Connected state + active account come from the
   // server via useLiveFeed (platform_status); the modal/pickers POST to the live
