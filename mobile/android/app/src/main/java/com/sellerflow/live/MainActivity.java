@@ -10,6 +10,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.net.DhcpInfo;
 import android.net.wifi.WifiManager;
@@ -75,9 +76,25 @@ public class MainActivity extends BridgeActivity {
     }
 
     private void injectPrinterBridge(WebView webView) {
+        // versionCode → getBuildNumber() JS shim (mirror of the iOS
+        // CFBundleVersion shim). Read from PackageInfo; 0/unparseable → OMIT the
+        // line entirely so the web capability layer reads "no bridge" (fail-safe
+        // Infinity) instead of "build 0 = stale". Enables the Android update
+        // nudge later WITHOUT activating native-version.json android.latest now.
+        int versionCode = 0;
+        try {
+            PackageInfo pi = getPackageManager().getPackageInfo(getPackageName(), 0);
+            versionCode = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P)
+                ? (int) pi.getLongVersionCode()
+                : pi.versionCode;
+        } catch (Exception ignored) {}
+        String buildNumberLine = versionCode > 0
+            ? "window.SellerFlowPrinter.getBuildNumber=function(){return " + versionCode + ";};"
+            : "";
         String js = "(function(){"
             + "var cap=window.Capacitor&&window.Capacitor.Plugins&&window.Capacitor.Plugins.SellerFlowPrinter;"
             + "window.SellerFlowPrinter=window.SellerFlowPrinter||{};"
+            + buildNumberLine
             + "if(cap){"
             + "window.SellerFlowPrinter.setPrinter=function(config){return cap.setPrinter(config||{});};"
             + "window.SellerFlowPrinter.getPrinter=function(){return cap.getPrinter();};"

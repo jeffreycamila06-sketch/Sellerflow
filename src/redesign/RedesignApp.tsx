@@ -56,7 +56,7 @@ import { sessionKeyFor } from "./adapters/shipping";
 import { printSlip, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, isPrinterNotSetup, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
-import { btCall, hasBtBridge, buildTestStickerPayload, buildTestBuyer, type StickerPrintResult } from "./adapters/printerBridge";
+import { btCallOutcome, hasBtBridge, buildTestStickerPayload, buildTestBuyer } from "./adapters/printerBridge";
 import { registeredAccountsFor, appendAccount, maxAcc, composeChannelSave, type Platform } from "./adapters/connect";
 import { useConnectToastGate } from "./adapters/connectToastGate";
 import { useWakeLock, shouldHoldWakeLock } from "./adapters/useWakeLock";
@@ -651,8 +651,9 @@ export default function RedesignApp() {
       setToast(wr.ok ? { msg: tpl(tApp.rd_pr_sent, { via: wr.via }), kind: "ok" } : { msg: tApp.rd_ps_test_failed, kind: "err" });
       return;
     }
-    const r = await btCall<StickerPrintResult>("printStickerNative", buildTestStickerPayload(cur, storeName, settings));
-    setToast({ msg: r?.ok ? (r.message || tApp.rd_ps_test_sent) : (r?.message || tApp.rd_ps_test_failed), kind: r?.ok ? "ok" : "err" });
+    const r = await btCallOutcome("printStickerNative", buildTestStickerPayload(cur, storeName, settings));
+    if (r.ok) { setToast({ msg: tApp.rd_ps_test_sent, kind: "ok" }); return; }
+    setToast({ msg: isPrinterNotSetup(r.code, r.message) ? tApp.rd_prn_title : tApp.rd_ps_test_failed, kind: "err" });
   };
 
   // Auto Mode on/off. Default OFF, but PERSISTED (sfl_rd_automode) so the toggle

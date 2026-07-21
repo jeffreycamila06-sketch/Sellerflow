@@ -20,6 +20,9 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.Charset;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
@@ -37,6 +40,10 @@ public class SellerFlowPrinterPlugin extends Plugin {
     // LAN so saving a BT printer never touches the WiFi/LAN config.
     private static final String PREF_BT_ADDR = "bt_label_addr";
     private static final String PREF_BT_NAME = "bt_label_name";
+    // Transport tag for the saved BT printer: "ble" (GATT, no pairing) or "spp"
+    // (Classic RFCOMM). ABSENT → "spp" so every printer saved before this build
+    // keeps using the unchanged Classic path (no migration).
+    private static final String PREF_BT_TRANSPORT = "bt_label_transport";
     private static final int DEFAULT_PORT = 9100;
     private static final int CONNECT_TIMEOUT_MS = 5000;
     // Receipt printer (XP-N160II) resident character set is Big5 (Traditional
@@ -73,6 +80,15 @@ public class SellerFlowPrinterPlugin extends Plugin {
     public static final int ESC_POS_ORDER_SIZE = 0x11;
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
+
+    // BLE (GATT) transport — lazily created, mirrors iOS BleStickerTransport.
+    // ADDITIVE: used only when the saved printer's transport tag is "ble"; the
+    // Classic SPP path below is never touched.
+    private BleStickerTransport bleTransport;
+    private synchronized BleStickerTransport ble() {
+        if (bleTransport == null) bleTransport = new BleStickerTransport(getContext());
+        return bleTransport;
+    }
 
     @PluginMethod
     public void setPrinter(PluginCall call) {
@@ -184,41 +200,63 @@ public class SellerFlowPrinterPlugin extends Plugin {
             call.reject("Bluetooth is off. Turn it on in Android Settings then try again.", "BT_DISABLED");
             return;
         }
-        if (!hasBluetoothConnectPermission()) {
+        // BLE discovery needs BLUETOOTH_SCAN (S+) or runtime ACCESS_FINE_LOCATION
+        // (pre-S); bonded read needs BLUETOOTH_CONNECT (S+). hasBleScanPermission
+        // covers both so the merged scan below has what it needs.
+        if (!hasBleScanPermission()) {
             requestBluetoothPermissions();
             call.reject("Bluetooth permission needed. Allow it in the system prompt and tap Scan again.", "BT_PERMISSION");
             return;
         }
-        executor.execute(() -> {
+        // 1) Classic-SPP paired devices — UNCHANGED enumeration, tagged "spp".
+        // No name-keyword filter: printer model names are wildly inconsistent
+        // (AIMO D520BT may advertise as "d520bt-z", clones as "BT-Printer", some
+        // stacks return the MAC as the name). Showing every paired device lets
+        // the seller pick reliably regardless of brand.
+        final JSONArray bonded = new JSONArray();
+        try {
+            @SuppressLint("MissingPermission")
+            Set<BluetoothDevice> bondedSet = adapter.getBondedDevices();
+            if (bondedSet != null) {
+                for (BluetoothDevice device : bondedSet) {
+                    bonded.put(bluetoothDeviceJson(device, true, "spp"));
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "scanBluetoothLabelPrinters bonded read failed: " + e.getMessage());
+        }
+        // 2) Fresh BLE scan (unpaired — no system pairing), tagged "ble". Merge on
+        // the transport's completion; dedup by MAC with BLE preferred (the whole
+        // point: pick the no-pairing entry). If BOTH lists are empty, keep the
+        // Settings-pairing guidance so a Classic-only printer still has a path.
+        ble().scan(4500, (printers, error) -> {
             try {
-                JSObject ret = new JSObject();
-                JSONArray printers = new JSONArray();
-                @SuppressLint("MissingPermission")
-                Set<BluetoothDevice> bonded = adapter.getBondedDevices();
-                if (bonded != null) {
-                    // No name-keyword filter: printer model names are wildly
-                    // inconsistent (e.g., AIMO D520BT may advertise as
-                    // "d520bt-z", unbranded clones as "BT-Printer", and some
-                    // Android Bluetooth stacks return the MAC address as the
-                    // name on first read). Showing every paired device lets the
-                    // seller pick reliably regardless of the printer brand.
-                    for (BluetoothDevice device : bonded) {
-                        printers.put(bluetoothDeviceJson(device, true));
+                JSONArray merged = new JSONArray();
+                Map<String, Boolean> bleSeen = new HashMap<>();
+                if (printers != null) {
+                    for (BleStickerTransport.Discovered p : printers) {
+                        merged.put(bluetoothScanJson(p.address, p.name, "ble", p.rssi));
+                        if (p.address != null) bleSeen.put(p.address.toUpperCase(Locale.US), true);
                     }
                 }
+                for (int i = 0; i < bonded.length(); i++) {
+                    JSONObject d = bonded.optJSONObject(i);
+                    if (d == null) continue;
+                    String a = d.optString("address", "").toUpperCase(Locale.US);
+                    if (bleSeen.containsKey(a)) continue; // BLE-preferred on MAC clash
+                    merged.put(d);
+                }
+                JSObject ret = new JSObject();
                 ret.put("ok", true);
-                ret.put("printers", printers);
+                ret.put("printers", merged);
                 ret.put("savedPrinter", savedBluetoothPrinter());
-                ret.put("message", printers.length() == 0
-                    ? "No paired Bluetooth devices found. Pair your printer in Android Settings first."
-                    : "Found " + printers.length() + " paired device" + (printers.length() == 1 ? "" : "s") + ". Pick your printer from the list.");
-                Log.i(TAG, "scanBluetoothLabelPrinters success count=" + printers.length());
+                ret.put("message", merged.length() == 0
+                    ? (error != null ? error.message : "No Bluetooth printer found. Turn the printer on, or pair it in Android Settings first.")
+                    : "Found " + merged.length() + " printer" + (merged.length() == 1 ? "" : "s") + ". Pick your printer from the list.");
+                Log.i(TAG, "scanBluetoothLabelPrinters merged count=" + merged.length());
                 call.resolve(ret);
-            } catch (SecurityException e) {
-                Log.e(TAG, "scanBluetoothLabelPrinters permission denied", e);
-                call.reject("Bluetooth permission denied: " + e.getMessage(), "BT_PERMISSION", e);
             } catch (Exception e) {
-                Log.e(TAG, "scanBluetoothLabelPrinters failed", e);
+                Log.e(TAG, "scanBluetoothLabelPrinters merge failed", e);
                 call.reject("Bluetooth scan failed: " + e.getMessage(), "BT_SCAN_FAILED", e);
             }
         });
@@ -240,9 +278,14 @@ public class SellerFlowPrinterPlugin extends Plugin {
             call.reject("Bluetooth address is required", "BT_ADDR_REQUIRED");
             return;
         }
+        // Transport comes from the scan row the seller picked (web forwards it):
+        // "ble" for a BLE-discovered printer, else "spp". Anything unrecognized
+        // (or absent — iOS/old web) falls back to "spp" = the unchanged path.
+        String transport = "ble".equals(call.getString("transport", "")) ? "ble" : "spp";
         prefs().edit()
             .putString(PREF_BT_ADDR, address.trim())
             .putString(PREF_BT_NAME, name == null ? "" : name.trim())
+            .putString(PREF_BT_TRANSPORT, transport)
             .apply();
         JSObject ret = new JSObject();
         ret.put("ok", true);
@@ -254,7 +297,7 @@ public class SellerFlowPrinterPlugin extends Plugin {
 
     @PluginMethod
     public void clearBluetoothLabelPrinter(PluginCall call) {
-        prefs().edit().remove(PREF_BT_ADDR).remove(PREF_BT_NAME).apply();
+        prefs().edit().remove(PREF_BT_ADDR).remove(PREF_BT_NAME).remove(PREF_BT_TRANSPORT).apply();
         JSObject ret = new JSObject();
         ret.put("ok", true);
         ret.put("savedPrinter", JSObject.NULL);
@@ -287,6 +330,7 @@ public class SellerFlowPrinterPlugin extends Plugin {
             return;
         }
         final JSObject jsPayload = call.getData();
+        final String transport = prefs().getString(PREF_BT_TRANSPORT, "spp");
         executor.execute(() -> {
             try {
                 JSONObject payload = jsPayload == null
@@ -296,15 +340,35 @@ public class SellerFlowPrinterPlugin extends Plugin {
                 // stickerSize setting); fall back to the AIMO default if absent.
                 int labelWidthMm = payload.optInt("labelWidthMm", LABEL_WIDTH_MM);
                 int labelHeightMm = payload.optInt("labelHeightMm", LABEL_HEIGHT_MM);
+                // IDENTICAL bytes for both transports — TsplBuilder is the single
+                // source; only the wire (BLE GATT vs Classic SPP) differs.
                 byte[] tspl = TsplBuilder.forStickerNative(payload, labelWidthMm, labelHeightMm);
-                sendViaBluetoothSpp(address, tspl);
-                JSObject ret = new JSObject();
-                ret.put("ok", true);
-                ret.put("bytes", tspl.length);
-                ret.put("savedPrinter", savedBluetoothPrinter());
-                ret.put("message", "Printed sticker via Bluetooth (TEXT+BAR, " + tspl.length + " bytes)");
-                Log.i(TAG, "printStickerNative success bytes=" + tspl.length);
-                call.resolve(ret);
+                if ("ble".equals(transport)) {
+                    ble().printJob(tspl, address, err -> {
+                        if (err == null) {
+                            JSObject ret = new JSObject();
+                            ret.put("ok", true);
+                            ret.put("bytes", tspl.length);
+                            ret.put("savedPrinter", savedBluetoothPrinter());
+                            ret.put("message", "Printed sticker via Bluetooth LE (" + tspl.length + " bytes)");
+                            Log.i(TAG, "printStickerNative (ble) success bytes=" + tspl.length);
+                            call.resolve(ret);
+                        } else {
+                            Log.e(TAG, "printStickerNative (ble) failed: " + err.code + " " + err.message);
+                            call.reject("Bluetooth print failed: " + err.message, err.code);
+                        }
+                    });
+                } else {
+                    // UNCHANGED Classic SPP path (absent transport → here too).
+                    sendViaBluetoothSpp(address, tspl);
+                    JSObject ret = new JSObject();
+                    ret.put("ok", true);
+                    ret.put("bytes", tspl.length);
+                    ret.put("savedPrinter", savedBluetoothPrinter());
+                    ret.put("message", "Printed sticker via Bluetooth (TEXT+BAR, " + tspl.length + " bytes)");
+                    Log.i(TAG, "printStickerNative success bytes=" + tspl.length);
+                    call.resolve(ret);
+                }
             } catch (SecurityException e) {
                 Log.e(TAG, "printStickerNative permission denied", e);
                 call.reject("Bluetooth permission denied: " + e.getMessage(), "BT_PERMISSION", e);
@@ -330,15 +394,32 @@ public class SellerFlowPrinterPlugin extends Plugin {
             return;
         }
         String storeName = call.getString("storeName", "SellerFlowLive");
+        final String transport = prefs().getString(PREF_BT_TRANSPORT, "spp");
         executor.execute(() -> {
             try {
                 byte[] tspl = TsplBuilder.textTestPage(storeName, LABEL_WIDTH_MM, LABEL_HEIGHT_MM);
-                sendViaBluetoothSpp(address, tspl);
-                JSObject ret = new JSObject();
-                ret.put("ok", true);
-                ret.put("bytes", tspl.length);
-                ret.put("message", "Test sticker sent (" + tspl.length + " bytes)");
-                call.resolve(ret);
+                if ("ble".equals(transport)) {
+                    ble().printJob(tspl, address, err -> {
+                        if (err == null) {
+                            JSObject ret = new JSObject();
+                            ret.put("ok", true);
+                            ret.put("bytes", tspl.length);
+                            ret.put("message", "Test sticker sent (" + tspl.length + " bytes)");
+                            call.resolve(ret);
+                        } else {
+                            Log.e(TAG, "testStickerPrint (ble) failed: " + err.code + " " + err.message);
+                            call.reject("Test sticker failed: " + err.message, err.code);
+                        }
+                    });
+                } else {
+                    // UNCHANGED Classic SPP path.
+                    sendViaBluetoothSpp(address, tspl);
+                    JSObject ret = new JSObject();
+                    ret.put("ok", true);
+                    ret.put("bytes", tspl.length);
+                    ret.put("message", "Test sticker sent (" + tspl.length + " bytes)");
+                    call.resolve(ret);
+                }
             } catch (Exception e) {
                 Log.e(TAG, "testStickerPrint failed", e);
                 call.reject("Test sticker failed: " + e.getMessage(), "BT_PRINT_FAILED", e);
@@ -358,11 +439,12 @@ public class SellerFlowPrinterPlugin extends Plugin {
         p.put("address", address);
         p.put("name", name == null || name.isEmpty() ? "Bluetooth printer" : name);
         p.put("paired", true);
+        p.put("transport", prefs().getString(PREF_BT_TRANSPORT, "spp"));
         return p;
     }
 
     @SuppressLint("MissingPermission")
-    private JSObject bluetoothDeviceJson(BluetoothDevice device, boolean paired) {
+    private JSObject bluetoothDeviceJson(BluetoothDevice device, boolean paired, String transport) {
         JSObject d = new JSObject();
         String address = device.getAddress();
         String name = "Bluetooth printer";
@@ -375,6 +457,20 @@ public class SellerFlowPrinterPlugin extends Plugin {
         d.put("address", address);
         d.put("name", name);
         d.put("paired", paired);
+        d.put("transport", transport);
+        return d;
+    }
+
+    // BLE-discovered (unpaired) row — no BluetoothDevice.getName() call (the scan
+    // record already carries the name), tagged transport="ble" + RSSI signal.
+    private JSObject bluetoothScanJson(String address, String name, String transport, int rssi) {
+        JSObject d = new JSObject();
+        d.put("id", "bluetooth:" + address);
+        d.put("address", address);
+        d.put("name", name == null || name.isEmpty() ? address : name);
+        d.put("paired", false);
+        d.put("transport", transport);
+        d.put("signal", rssi);
         return d;
     }
 
@@ -383,21 +479,40 @@ public class SellerFlowPrinterPlugin extends Plugin {
             return getContext().checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED;
         }
         // Pre-Android 12 — BLUETOOTH + BLUETOOTH_ADMIN are normal perms auto-
-        // granted at install; runtime ACCESS_FINE_LOCATION only matters for
-        // discovery, not bonded-device read which we do here.
+        // granted at install; a BLE connect/print (no discovery) needs no
+        // runtime location. Bonded-device read likewise needs none.
         return true;
     }
 
-    private void requestBluetoothPermissions() {
+    // Permission set needed to run the MERGED scan: bonded read (BLUETOOTH_CONNECT
+    // on S+) AND BLE discovery (BLUETOOTH_SCAN on S+, or runtime ACCESS_FINE_
+    // LOCATION on pre-S — a BLE startScan on API ≤30 silently returns nothing
+    // without granted location; this is the audit's flagged gap).
+    private boolean hasBleScanPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            try {
+            return getContext().checkSelfPermission(Manifest.permission.BLUETOOTH_SCAN) == PackageManager.PERMISSION_GRANTED
+                && getContext().checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED;
+        }
+        return getContext().checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void requestBluetoothPermissions() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 getActivity().runOnUiThread(() -> getActivity().requestPermissions(
                     new String[]{Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN},
                     8588
                 ));
-            } catch (Exception e) {
-                Log.w(TAG, "requestBluetoothPermissions failed: " + e.getMessage());
+            } else {
+                // pre-Android 12: BLE discovery requires runtime ACCESS_FINE_LOCATION
+                // (mirrors MainActivity's legacy request path).
+                getActivity().runOnUiThread(() -> getActivity().requestPermissions(
+                    new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
+                    8588
+                ));
             }
+        } catch (Exception e) {
+            Log.w(TAG, "requestBluetoothPermissions failed: " + e.getMessage());
         }
     }
 
@@ -431,6 +546,7 @@ public class SellerFlowPrinterPlugin extends Plugin {
     protected void handleOnDestroy() {
         super.handleOnDestroy();
         executor.shutdownNow();
+        if (bleTransport != null) bleTransport.shutdown();
     }
 
     private SharedPreferences prefs() {
