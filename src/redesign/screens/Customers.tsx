@@ -33,7 +33,7 @@ export default function Customers({ cur, customers = CUSTOMERS, state = "sample"
             client-side filter over the LOADED pages, by name or @handle. */}
         <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.16)", borderRadius: 11, padding: "9px 12px" }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" /><path d="m20 20-3.5-3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t.rd_cus_search} style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", fontSize: 13, color: "var(--on-header)", fontFamily: "var(--font-ui)" }} />
+          <input className="sfl-header-search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t.rd_cus_search} style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", fontSize: 13, color: "var(--on-header)", fontFamily: "var(--font-ui)" }} />
           {query && <button onClick={() => setQuery("")} style={{ background: "transparent", border: "none", color: "var(--on-header)", opacity: 0.8, cursor: "pointer", fontSize: 14, padding: 0 }}>✕</button>}
         </div>
         {onExport && customers.length > 0 && <div style={{ fontSize: 10.5, opacity: 0.75, marginTop: 7 }}>{t.rd_exp_loaded_note}</div>}

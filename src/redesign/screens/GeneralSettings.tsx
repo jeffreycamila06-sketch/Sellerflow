@@ -12,6 +12,11 @@ import CountryPhoneField from "../components/CountryPhoneField";
 import type { AccountUser } from "../../accountDb";
 import { useT, tpl } from "../i18n";
 import { accountList } from "../adapters/connect";
+
+// Motion toggle is INTENTIONALLY HIDDEN for now (Jeff — pending a phone
+// heat/jank report). The whole motion machinery stays live (defaults ON); this
+// only hides the Appearance pill. Flip to `true` to re-show the row in one step.
+const SHOW_MOTION_TOGGLE = false;
 import { isIOS } from "../adapters/platform";
 import { usePrinterStatus, type PrinterConnState } from "../adapters/usePrinterStatus";
 import { useAutoCodes } from "../adapters/useAutoCodes";
@@ -301,7 +306,14 @@ export default function GeneralSettings({
                 handle) — removed rather than faked. */}
             {/* MOTION toggle — pause looping animations (kill switch). Same pill
                 pattern as keep-awake; RedesignApp sets [data-motion]. One-shot
-                entrances are not gated. */}
+                entrances are not gated.
+                ⚠️ INTENTIONALLY HIDDEN (Jeff, pending a perf trigger). All the
+                plumbing stays live — the [data-motion] root attr, sfl_rd_motion
+                persistence, the state/handler, the CSS [data-motion="off"] kill
+                switch, and prefers-reduced-motion. Motion defaults ON. To RE-SHOW
+                the row: flip SHOW_MOTION_TOGGLE (module scope, top of file) to
+                true. Do NOT delete this block. */}
+            {SHOW_MOTION_TOGGLE && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingTop: 12, marginTop: 1, borderTop: "1px solid var(--border)" }}>
               <span style={{ flex: 1 }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_motion}</span>
@@ -313,6 +325,7 @@ export default function GeneralSettings({
                 </span>
               </button>
             </div>
+            )}
             {/* Language — inline accordion (dc.html v3 L686) */}
             <div style={{ paddingTop: 12, marginTop: 12, borderTop: "1px solid var(--border)" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>

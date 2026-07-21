@@ -89,7 +89,7 @@ export default function Products({ cur }: { cur: string }) {
         </div>
         <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,.16)", borderRadius: 11, padding: "9px 12px" }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.8" /><path d="m20 20-3.5-3.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.rd_prd_search} style={{ flex: 1, border: "none", background: "transparent", color: "var(--on-header)", fontSize: 13, fontFamily: "var(--font-ui)", outline: "none" }} />
+          <input className="sfl-header-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.rd_prd_search} style={{ flex: 1, border: "none", background: "transparent", color: "var(--on-header)", fontSize: 13, fontFamily: "var(--font-ui)", outline: "none" }} />
         </div>
       </div>
 

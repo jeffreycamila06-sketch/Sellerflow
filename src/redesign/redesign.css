@@ -187,6 +187,14 @@ html.sfl-ios-shell [data-redesign] input,
 html.sfl-ios-shell [data-redesign] select,
 html.sfl-ios-shell [data-redesign] textarea { font-size: 16px !important; }
 
+/* Header-band search inputs (Orders / Products / Customers) sit on the indigo
+ * --header-bg with color:var(--on-header) (white) typed text. The PLACEHOLDER
+ * had no rule → browser-default dark gray → barely visible on indigo. Scope a
+ * readable translucent-white placeholder to these inputs only (form inputs on
+ * light --surface backgrounds keep their default dark placeholder). opacity:1
+ * because Firefox dims placeholders by default. PRE-EXISTING contrast fix. */
+[data-redesign] .sfl-header-search::placeholder { color: rgba(255,255,255,.72); opacity: 1; }
+
 /* Phone column: status bar -> scrollable content (flex:1) -> bottom nav.
  * max-width 430px keeps the mobile design phone-accurate on desktop preview;
  * on a real phone it is full-bleed. (No workbench/sidebar — per the spec.) */

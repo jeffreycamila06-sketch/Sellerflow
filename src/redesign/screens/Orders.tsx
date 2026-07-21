@@ -116,7 +116,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
         {/* Unified search — sits where the old (dead) status-chip row was. */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 11, background: "rgba(255,255,255,.14)", borderRadius: 11, padding: "8px 12px" }}>
           <span style={{ fontSize: 13, opacity: 0.8 }}>🔍</span>
-          <input value={query} onChange={(e) => onQuery(e.target.value)} placeholder={t.rd_ord_search}
+          <input className="sfl-header-search" value={query} onChange={(e) => onQuery(e.target.value)} placeholder={t.rd_ord_search}
             style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", fontSize: 13, color: "var(--on-header)", fontFamily: "var(--font-ui)" }} />
           {searching && (
             <button onClick={() => setQuery("")} aria-label="clear" style={{ background: "transparent", border: "none", color: "var(--on-header)", fontSize: 14, cursor: "pointer", padding: 0, lineHeight: 1 }}>✕</button>
