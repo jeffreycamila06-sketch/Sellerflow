@@ -158,7 +158,7 @@ export default function SalesReport({ cur, sales, onExport, hist }: {
     <div>
       <div style={headerBar}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={headerTitle}>{t.rd_sal_title}</div>
+          <div className="sfl-anim-beat" style={headerTitle}>{t.rd_sal_title}</div>
           {period === "today" && onExport && sales.orders > 0 && <button onClick={onExport} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, background: "rgba(255,255,255,.16)", border: "none", color: "var(--on-header)", padding: "6px 11px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_export}</button>}
         </div>
         {/* Period pills: Today = session view (original); the rest = ledger history */}

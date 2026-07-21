@@ -81,7 +81,7 @@ export default function Products({ cur }: { cur: string }) {
     <div>
       <div style={headerBar}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={title}>{t.rd_prd_title}</div>
+          <div className="sfl-anim-beat" style={title}>{t.rd_prd_title}</div>
           <div style={{ display: "flex", gap: 7 }}>
             {prods.length > 0 && <button onClick={exportCsv} style={{ fontSize: 12, fontWeight: 700, background: "rgba(255,255,255,.16)", color: "var(--on-header)", border: "none", padding: "7px 11px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_export}</button>}
             <button onClick={openAdd} style={{ display: "flex", alignItems: "center", gap: 5, background: "#fff", color: "var(--accent)", fontSize: 12.5, fontWeight: 700, padding: "7px 12px", border: "none", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_prd_add}</button>

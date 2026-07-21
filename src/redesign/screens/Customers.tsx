@@ -21,7 +21,7 @@ export default function Customers({ cur, customers = CUSTOMERS, state = "sample"
     <div>
       <div style={headerBar}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={headerTitle}>{t.rd_cus_title}</div>
+          <div className="sfl-anim-beat" style={headerTitle}>{t.rd_cus_title}</div>
           <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
             {/* Export = LOADED rows only (paged list) — gated on live so the
                 sample fallback can never be exported as real data (#7). */}

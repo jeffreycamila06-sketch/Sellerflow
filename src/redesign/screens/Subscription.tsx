@@ -38,7 +38,7 @@ export default function Subscription({ account = null, isFreeUser = false, freeS
   const statusLabel = status === "active" ? t.rd_sub_active : status === "expired" ? t.rd_sub_expired : t.rd_sub_pending;
   return (
     <div>
-      <div style={headerBar}><div style={headerTitle}>{t.rd_sub_title}</div></div>
+      <div style={headerBar}><div className="sfl-anim-beat" style={headerTitle}>{t.rd_sub_title}</div></div>
       <div style={{ padding: "16px 14px 22px" }}>
         <div style={{ background: "linear-gradient(150deg,var(--accent),var(--accent))", borderRadius: 18, padding: 20, color: "#fff", position: "relative", overflow: "hidden", boxShadow: "0 10px 28px var(--accent-soft)" }}>
           <div style={{ position: "absolute", width: 140, height: 140, borderRadius: "50%", background: "rgba(255,255,255,.14)", top: -50, right: -30 }} />

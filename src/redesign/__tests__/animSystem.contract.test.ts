@@ -14,8 +14,8 @@ const LANGS_ALL = ["en", "fil", "zh", "zh-TW", "vi", "th", "id"] as const;
 // explanatory prose in the banner (which names properties like background-position).
 const css = readFileSync(resolve(__dirname, "..", "redesign.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 
-// The looping animation classes that MUST be disableable.
-const LOOP_CLASSES = ["sfl-anim-beat", "sfl-anim-float", "sfl-anim-dot", "sfl-anim-glow", "sfl-anim-live", "sfl-anim-sheen"];
+// The looping animation classes that MUST be disableable (Slice 1 + Slice 2).
+const LOOP_CLASSES = ["sfl-anim-beat", "sfl-anim-float", "sfl-anim-dot", "sfl-anim-glow", "sfl-anim-live", "sfl-anim-sheen", "sfl-anim-heart", "sfl-anim-textglow", "sfl-anim-wiggle"];
 // One-shot entrances that must STAY (never gated by the kill switch): the
 // opt-in stagger utility + the bottom sheet. (The universal CONTENT slide
 // `.sfl-anim-screen > * > *` IS gated — asserted separately below; and the
@@ -35,6 +35,39 @@ describe("anim system — kill switch [data-motion=off]", () => {
     for (const c of ONESHOT_CLASSES) expect(killSelectorArea).not.toContain(`[data-motion="off"] .${c}`);
     // the CONTAINER fade itself stays (only its content-slide descendants are gated)
     expect(killSelectorArea).not.toMatch(/\[data-motion="off"\] \.sfl-anim-screen\s*[{,]/);
+  });
+});
+
+describe("anim system — Slice 2 perf + gating", () => {
+  const kwf = (name: string) => { const i = css.indexOf(`@keyframes ${name}`); return css.slice(i, css.indexOf("}", css.indexOf("{", css.indexOf("}", i) + 1)) + 1); };
+  it("sflHeart / sflWiggle animate transform only (no box-shadow loop)", () => {
+    expect(kwf("sflHeart")).toMatch(/transform:\s*scale/);
+    expect(kwf("sflHeart")).not.toMatch(/box-shadow/);
+    expect(kwf("sflWiggle")).toMatch(/transform:/);
+    expect(kwf("sflWiggle")).not.toMatch(/box-shadow/);
+  });
+  it("sflTextGlow is an OPACITY pulse, NOT a text-shadow loop", () => {
+    expect(kwf("sflTextGlow")).toMatch(/opacity:/);
+    expect(kwf("sflTextGlow")).not.toMatch(/text-shadow/);
+  });
+  it("the Live comment enter (sflComm) has no filter:blur", () => {
+    expect(kwf("sflComm")).not.toMatch(/filter:\s*blur/);
+    expect(kwf("sflComm")).toMatch(/translateY/);
+  });
+  it("comment rows use content-visibility:auto (off-viewport rows skip paint)", () => {
+    expect(css).toMatch(/\.sfl-comm-row\s*\{[^}]*content-visibility:\s*auto/);
+  });
+  it("the 1-Click CTA has NO per-row loop class (glow is a static inline shadow)", () => {
+    // No keyframe/animation is attached to the comment-row action buttons in CSS.
+    expect(css).not.toMatch(/\.sfl-comm-row[^{]*button[^{]*animation/);
+  });
+  it("Slice-2 loops + ambient glow layers are gated by BOTH switches", () => {
+    const kill = css.slice(css.indexOf('[data-motion="off"]'), css.indexOf('@media (prefers-reduced-motion'));
+    const rm = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
+    for (const sel of ["sfl-anim-heart", "sfl-anim-textglow", "sfl-anim-wiggle", "sfl-comm-row", "sfl-glow-a", "sfl-glow-cyan"]) {
+      expect(kill).toContain(`.${sel}`);
+      expect(rm).toContain(`.${sel}`);
+    }
   });
 });
 

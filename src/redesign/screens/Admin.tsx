@@ -67,7 +67,7 @@ export default function Admin({ onOpenPanel, cur, counts, live = false, userBase
     <div>
       <div style={headerBar}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div><div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" }}>{t.rd_adm_title}</div><div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>{t.rd_adm_subtitle}</div></div>
+          <div><div className="sfl-anim-beat" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" }}>{t.rd_adm_title}</div><div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>{t.rd_adm_subtitle}</div></div>
           <button onClick={() => onOpenPanel("notifs")} title={t.rd_adm_notifications} style={{ position: "relative", width: 32, height: 32, borderRadius: 9, border: "none", background: "rgba(255,255,255,.16)", color: "var(--on-header)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" strokeWidth="1.7" /></svg>
           </button>

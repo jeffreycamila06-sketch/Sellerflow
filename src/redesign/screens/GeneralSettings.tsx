@@ -143,7 +143,7 @@ export default function GeneralSettings({
     const handle = accts[0] || "";
     return (
       <button onClick={() => onManageChannel?.(platform)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", borderBottom: isTT ? "1px solid var(--border)" : "none", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
-        <div style={{ width: 38, height: 38, borderRadius: 11, background: isTT ? "#000" : "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: isTT ? 15 : 17, fontWeight: 800, color: "#fff", flexShrink: 0, fontFamily: isTT ? undefined : "var(--font-display)" }}>{isTT ? "t" : "f"}</div>
+        <div className="sfl-anim-heart" style={{ width: 38, height: 38, borderRadius: 11, background: isTT ? "#000" : "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: isTT ? 15 : 17, fontWeight: 800, color: "#fff", flexShrink: 0, fontFamily: isTT ? undefined : "var(--font-display)" }}>{isTT ? "t" : "f"}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{isTT ? t.rd_ch_tiktok_live : t.rd_ch_facebook_live}</div>
           {handle && <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{isTT ? `@${handle.replace(/^@/, "")}` : handle}</div>}
@@ -155,7 +155,7 @@ export default function GeneralSettings({
   };
   return (
     <div>
-      <div style={headerBar}><div style={headerTitle}>{t.rd_set_title}</div></div>
+      <div style={headerBar}><div className="sfl-anim-beat" style={headerTitle}>{t.rd_set_title}</div></div>
       <div style={{ padding: "14px 14px 22px", display: "flex", flexDirection: "column", gap: 16 }}>
 
         {/* PROFILE (appears once) */}
@@ -190,7 +190,7 @@ export default function GeneralSettings({
 
         {/* LIVE SESSION — auto-detect (per v2, lives here) */}
         <div>
-          <div style={sectionLabel}>{t.rd_set_live_session}</div>
+          <div className="sfl-anim-textglow" style={sectionLabel}>{t.rd_set_live_session}</div>
           <div style={card}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
               <button onClick={auto.toggleSetup} style={{ flex: 1, display: "flex", alignItems: "flex-start", gap: 9, background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: 0, fontFamily: "var(--font-ui)" }}>
@@ -280,7 +280,7 @@ export default function GeneralSettings({
 
         {/* APPEARANCE — real theme + accent control */}
         <div>
-          <div style={sectionLabel}>{t.rd_set_appearance}</div>
+          <div className="sfl-anim-textglow" style={sectionLabel}>{t.rd_set_appearance}</div>
           <div style={{ ...card, padding: 13 }}>
             <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", marginBottom: 7 }}>{t.rd_set_theme}</div>
             <div style={{ display: "flex", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 11, padding: 4, gap: 4, marginBottom: 13 }}>
@@ -366,7 +366,7 @@ export default function GeneralSettings({
 
         {/* CHANNELS — clean display card (A); each row → Manage screen (C) */}
         <div>
-          <div style={sectionLabel}>{t.rd_set_channels}</div>
+          <div className="sfl-anim-textglow" style={sectionLabel}>{t.rd_set_channels}</div>
           <div style={{ ...card, padding: 0, overflow: "hidden" }}>
             {channelRow("tiktok")}
             {channelRow("facebook")}
@@ -375,7 +375,7 @@ export default function GeneralSettings({
 
         {/* PRINTER & DISPLAY */}
         <div>
-          <div style={sectionLabel}>{t.rd_set_printer_display}</div>
+          <div className="sfl-anim-textglow" style={sectionLabel}>{t.rd_set_printer_display}</div>
           <div style={{ ...card, padding: 0, overflow: "hidden" }}>
             <button onClick={onTogglePrinter} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)", borderBottom: "1px solid var(--border)" }}>
               <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)", flexShrink: 0 }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="6" y="3" width="12" height="6" stroke="currentColor" strokeWidth="1.7" /><rect x="4" y="9" width="16" height="8" rx="2" stroke="currentColor" strokeWidth="1.7" /><rect x="7" y="15" width="10" height="6" stroke="currentColor" strokeWidth="1.7" /></svg></div>
@@ -408,7 +408,7 @@ export default function GeneralSettings({
 
         {/* ACCOUNT */}
         <div>
-          <div style={sectionLabel}>{t.rd_set_account}</div>
+          <div className="sfl-anim-textglow" style={sectionLabel}>{t.rd_set_account}</div>
           <div style={{ ...card, padding: 0, overflow: "hidden" }}>
             {!isIOS() && <button onClick={onSubscription} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", borderBottom: "1px solid var(--border)", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}><span style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_sub_title}</span><span style={{ fontSize: 12, color: "var(--text-muted)" }}>{pSubRow}</span></button>}
             <button onClick={onSupport} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", borderBottom: "1px solid var(--border)", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}><span style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_support_guide}</span><span style={{ fontSize: 16, color: "var(--text-muted)" }}>›</span></button>

@@ -94,13 +94,52 @@
 [data-redesign] button:active { transform: scale(.92); }
 @media (hover: hover) { [data-redesign] button:hover { filter: brightness(1.06); } }
 
+/* ════════════ Slice 2 — remaining animations (same GPU discipline) ═══════════
+ * transform/opacity only; NO box-shadow/background-position/text-shadow/blur
+ * loops on the app-shell path. The 1-Click button is deliberately NOT looped
+ * (its accent glow is a STATIC inline box-shadow) so a 150-row feed never runs
+ * ~150 concurrent loops. Every loop below is gated by BOTH switches (further
+ * down). Handoff reds map to var(--accent); the LIVE badge stays #e11d48. */
+@keyframes sflHeart { 0%,28%,100% { transform: scale(1); } 14% { transform: scale(1.22); } 21% { transform: scale(1.05); } 35% { transform: scale(1.16); } 42% { transform: scale(1); } }
+@keyframes sflTextGlow { 0%,100% { opacity: .66; } 50% { opacity: 1; } } /* opacity-pulse — NOT a text-shadow repaint loop */
+@keyframes sflWiggle { 0%,86%,100% { transform: translateY(0) rotate(0); } 90% { transform: translateY(-2px) rotate(-11deg); } 95% { transform: translateY(-1px) rotate(8deg); } }
+
+/* TikTok/Facebook channel-chip double-thump — scale only */
+[data-redesign] .sfl-anim-heart { animation: sflHeart 1.7s ease-in-out infinite; }
+/* section-label / "Need help?" glow — GENTLE opacity pulse (no text-shadow loop) */
+[data-redesign] .sfl-anim-textglow { animation: sflTextGlow 2.8s ease-in-out infinite; }
+/* Telegram support icon — one element, GPU rotate, infrequent */
+[data-redesign] .sfl-anim-wiggle { animation: sflWiggle 3.2s ease-in-out infinite; }
+
+/* Live comment enter: .sfl-comm-row already carries `animation: sflComm`
+ * (opacity + translateY, no blur). Add content-visibility so off-viewport rows
+ * skip layout+paint; the `auto` intrinsic size remembers the real row height
+ * after first render, keeping scroll jump minimal. */
+[data-redesign] .sfl-comm-row { content-visibility: auto; contain-intrinsic-size: auto 56px; }
+
+/* micro-interactions — hover/active transitions, NOT loops */
+[data-redesign] .sfl-navbtn svg { transition: transform .2s cubic-bezier(.34,1.56,.64,1); }
+[data-redesign] .sfl-navbtn:active svg { transform: scale(.86); }
+@media (hover: hover) {
+  [data-redesign] .sfl-navbtn:hover svg { transform: translateY(-3px) scale(1.16); }
+  [data-redesign] img { transition: transform .25s cubic-bezier(.34,1.56,.64,1); }
+  [data-redesign] img:hover { transform: scale(1.06) rotate(-2deg); }
+}
+
 /* kill switch — in-app motion toggle disables LOOPS only (one-shots stay) */
 [data-redesign][data-motion="off"] .sfl-anim-beat,
 [data-redesign][data-motion="off"] .sfl-anim-float,
 [data-redesign][data-motion="off"] .sfl-anim-dot,
 [data-redesign][data-motion="off"] .sfl-anim-glow,
 [data-redesign][data-motion="off"] .sfl-anim-live::after,
-[data-redesign][data-motion="off"] .sfl-anim-sheen::after { animation: none !important; }
+[data-redesign][data-motion="off"] .sfl-anim-sheen::after,
+[data-redesign][data-motion="off"] .sfl-anim-heart,
+[data-redesign][data-motion="off"] .sfl-anim-textglow,
+[data-redesign][data-motion="off"] .sfl-anim-wiggle,
+[data-redesign][data-motion="off"] .sfl-comm-row,
+[data-redesign][data-motion="off"] .sfl-glow-a,
+[data-redesign][data-motion="off"] .sfl-glow-cyan,
+[data-redesign][data-motion="off"] .sfl-grid { animation: none !important; }
 /* content slide collapses to visible (no slide) under the kill switch */
 [data-redesign][data-motion="off"] .sfl-anim-screen > * > *:nth-child(n+2) { animation: none !important; opacity: 1 !important; transform: none !important; }
 
@@ -111,11 +150,21 @@
   [data-redesign] .sfl-anim-dot,
   [data-redesign] .sfl-anim-glow,
   [data-redesign] .sfl-anim-live::after,
-  [data-redesign] .sfl-anim-sheen::after { animation: none !important; }
+  [data-redesign] .sfl-anim-sheen::after,
+  [data-redesign] .sfl-anim-heart,
+  [data-redesign] .sfl-anim-textglow,
+  [data-redesign] .sfl-anim-wiggle,
+  [data-redesign] .sfl-comm-row,
+  [data-redesign] .sfl-glow-a,
+  [data-redesign] .sfl-glow-cyan,
+  [data-redesign] .sfl-grid { animation: none !important; }
+  [data-redesign] .sfl-anim-textglow { opacity: 1; } /* label stays fully visible */
   [data-redesign] .sfl-anim-stagger > * { animation: none; opacity: 1; transform: none; }
   [data-redesign] .sfl-anim-screen > * > *:nth-child(n+2) { animation: none; opacity: 1; transform: none; }
   [data-redesign] button { transition: none; }
   [data-redesign] button:active { transform: none; }
+  [data-redesign] .sfl-navbtn svg, [data-redesign] img { transition: none; }
+  [data-redesign] .sfl-navbtn:hover svg, [data-redesign] img:hover { transform: none; }
 }
 
 [data-redesign] {

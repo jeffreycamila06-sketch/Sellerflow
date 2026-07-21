@@ -22,7 +22,7 @@ export default function Miners({ cur, miners = [], stats, onExport }: { cur: str
       <div style={headerBar}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div>
-            <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" }}>{t.rd_min_title}</div>
+            <div className="sfl-anim-beat" style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" }}>{t.rd_min_title}</div>
             <div style={{ fontSize: 12, opacity: 0.85, marginTop: 1 }}>{t.rd_min_sub}</div>
           </div>
           {onExport

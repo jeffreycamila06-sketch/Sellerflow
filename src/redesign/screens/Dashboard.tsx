@@ -291,7 +291,7 @@ export default function Dashboard({
         <div style={{ display: "flex", gap: 8, marginTop: 11, position: "relative", zIndex: 6 }}>
           <div ref={ttWrapRef} style={{ position: "relative", flex: 1 }}>
             <button onClick={onToggleTT} title={ttTitle} style={{ ...pickerBtn, background: tt.chipBg, boxShadow: tt.chipShadow }}>
-              <span style={{ width: 16, height: 16, borderRadius: 5, background: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, color: "#fff", flexShrink: 0 }}>t</span>
+              <span className="sfl-anim-heart" style={{ width: 16, height: 16, borderRadius: 5, background: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, color: "#fff", flexShrink: 0 }}>t</span>
               <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ttAccounts.length ? (ttAccounts[ttIdx] || ttAccounts[0]) : t.rd_dash_connect_tiktok}</span>
               <span className={tt.dotCls} style={{ width: 7, height: 7, borderRadius: "50%", background: tt.dotBg, flexShrink: 0, boxShadow: tt.dotGlow }} />
               <span style={{ fontSize: 9, opacity: 0.85 }}>▾</span>
@@ -316,7 +316,7 @@ export default function Dashboard({
           </div>
           <div ref={fbWrapRef} style={{ position: "relative", flex: 1 }}>
             <button onClick={onToggleFB} title={fbTitle} style={{ ...pickerBtn, background: fb.chipBg, boxShadow: fb.chipShadow }}>
-              <span style={{ width: 16, height: 16, borderRadius: 5, background: "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: "#fff", flexShrink: 0, fontFamily: "var(--font-display)" }}>f</span>
+              <span className="sfl-anim-heart" style={{ width: 16, height: 16, borderRadius: 5, background: "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: "#fff", flexShrink: 0, fontFamily: "var(--font-display)" }}>f</span>
               <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fbAccounts.length ? (fbAccounts[fbIdx] || fbAccounts[0]) : t.rd_dash_connect_facebook}</span>
               <span className={fb.dotCls} style={{ width: 7, height: 7, borderRadius: "50%", background: fb.dotBg, flexShrink: 0, boxShadow: fb.dotGlow }} />
               <span style={{ fontSize: 9, opacity: 0.85 }}>▾</span>

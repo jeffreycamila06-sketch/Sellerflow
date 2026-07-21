@@ -20,13 +20,13 @@ export default function Support({ onLegal }: { onLegal: () => void }) {
   const [open, setOpen] = useState<number | null>(null);
   return (
     <div>
-      <div style={headerBar}><div style={headerTitle}>{t.rd_sup_title}</div></div>
+      <div style={headerBar}><div className="sfl-anim-beat" style={headerTitle}>{t.rd_sup_title}</div></div>
       <div style={{ padding: "16px 14px 22px" }}>
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 16, boxShadow: "var(--shadow)", textAlign: "center" }}>
           <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 17, color: "var(--text)" }}>{t.rd_sup_need}</div>
           <div style={{ fontSize: 12.5, color: "var(--text-dim)", marginTop: 5, lineHeight: 1.5 }}>{t.rd_sup_reply}</div>
           <a href={TELEGRAM_URL} target="_blank" rel="noreferrer" style={{ width: "100%", marginTop: 14, padding: "13px 0", border: "none", borderRadius: 12, background: "#0088cc", color: "#fff", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, textDecoration: "none" }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M21.5 4.3 3.2 11.4c-1 .4-1 1.8.1 2.1l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.3l2.5-2.6 4.7 3.4c.6.4 1.4.1 1.6-.6l3-15c.2-1-.7-1.8-1.6-1.3Z" /></svg>
+            <svg className="sfl-anim-wiggle" width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M21.5 4.3 3.2 11.4c-1 .4-1 1.8.1 2.1l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.3l2.5-2.6 4.7 3.4c.6.4 1.4.1 1.6-.6l3-15c.2-1-.7-1.8-1.6-1.3Z" /></svg>
             {t.rd_sup_chat} {TELEGRAM_HANDLE}
           </a>
         </div>

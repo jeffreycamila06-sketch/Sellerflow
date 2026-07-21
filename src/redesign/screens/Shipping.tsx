@@ -291,7 +291,7 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
     <div>
       <div style={headerBar}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={headerTitle}>{t.rd_sh_shipping}</div>
+          <div className="sfl-anim-beat" style={headerTitle}>{t.rd_sh_shipping}</div>
           <span style={{ fontSize: 11.5, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "5px 10px", borderRadius: 8 }}>
             {tpl(t.rd_shp_encoded_of, { done: encodedCount, total: groups.length })}
           </span>

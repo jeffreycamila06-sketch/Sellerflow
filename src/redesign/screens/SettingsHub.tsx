@@ -49,7 +49,7 @@ export default function SettingsHub({
   return (
     <div>
       <div style={headerBar}>
-        <div style={headerTitle}>{t.rd_set_title}</div>
+        <div className="sfl-anim-beat" style={headerTitle}>{t.rd_set_title}</div>
         <div style={{ fontSize: 12, opacity: 0.85, marginTop: 1 }}>{t.rd_sh_sub}</div>
       </div>
       <div style={{ padding: "16px 14px 22px" }}>

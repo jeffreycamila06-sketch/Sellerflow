@@ -105,7 +105,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
     <div>
       <div style={headerBar}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <div style={title}>{t.rd_ord_title}</div>
+          <div className="sfl-anim-beat" style={title}>{t.rd_ord_title}</div>
           <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
             {/* 7-11 shipping entry point (Jeff: inside Orders) */}
             {onGoShipping && <button onClick={onGoShipping} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 700, background: "rgba(255,255,255,.16)", border: "none", color: "var(--on-header)", padding: "6px 10px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>🚚 {t.rd_sh_shipping}</button>}
