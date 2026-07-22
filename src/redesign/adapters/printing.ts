@@ -336,7 +336,14 @@ export function buildSettingsFromRedesign(cfg: RedesignPrintConfig): Settings {
     printBuyerNumberScale: lvl(pp.buyerNumSize),
     printBuyerNameScale: lvl(pp.tiktokNameSize),
     printUsernameScale: lvl(pp.tiktokUserSize),
-    printOrderScale: lvl(pp.commentSize),
+    // TIME DECOUPLE (Jeff 2026-07-22): printOrderScale drives the ORDER-ROW
+    // TIME ("HH:MM", tm in the builders); printCommentScale drives the price
+    // code (pm). Both used to map from pp.commentSize, so raising "Comment"
+    // also grew/moved the printed time. Time is pinned to base — the builders
+    // already treat the two scales separately (native tm/pm + the web-print
+    // .otime), so this one line fully decouples them. The price code still
+    // tracks the Comment control.
+    printOrderScale: 1,
     printCommentScale: lvl(pp.commentSize),
   };
 }

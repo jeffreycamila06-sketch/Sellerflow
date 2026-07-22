@@ -205,7 +205,8 @@ describe("buildSettingsFromRedesign — redesign config → Settings", () => {
     expect(s.printOrderItems).toBe(true);   // comment on
     expect(s.printStoreScale).toBe(2);      // 2 → 2
     expect(s.printBuyerNumberScale).toBe(1); // 1.4 → 1
-    expect(s.printOrderScale).toBe(3);      // 2.6 → 3
+    expect(s.printOrderScale).toBe(1);      // TIME pinned to base (decoupled from commentSize 2026-07-22)
+    expect(s.printCommentScale).toBe(3);    // price code still tracks: 2.6 → 3
     expect(s.printerType).toBe("bluetooth");
     expect(s.lanFormat).toBe("sticker");
     expect(s.stickerSize).toBe("80x50");    // parsed from "80x50mm"
@@ -215,5 +216,28 @@ describe("buildSettingsFromRedesign — redesign config → Settings", () => {
     expect(s.printerType).toBe("lan");
     expect(s.lanFormat).toBe("receipt");
     expect(s.stickerSize).toBe("100x60");
+  });
+});
+
+// ── TIME-DECOUPLE CONTRACT (2026-07-22) ──────────────────────────────────────
+// The order-row TIME (printOrderScale → tm in all 3 builders + the web-print
+// .otime) must NEVER scale with the Comment control; the price code
+// (printCommentScale → pm) must ALWAYS track it. If printOrderScale ever gets
+// re-coupled to commentSize, the printed time grows/moves again — red here.
+describe("time decouple — printOrderScale pinned, printCommentScale tracks", () => {
+  const basePp = { shopName: true, shopNameSize: 1, dateTime: true, dateTimeSize: 1, buyerNum: true, buyerNumSize: 1, tiktokName: true, tiktokNameSize: 1, tiktokUser: true, tiktokUserSize: 1, comment: true, commentSize: 1 };
+  it("printOrderScale is 1 for EVERY commentSize; printCommentScale follows the control", () => {
+    for (let i = 5; i <= 30; i++) {
+      const v = i / 10;
+      const s = buildSettingsFromRedesign({ pp: { ...basePp, commentSize: v }, psType: "bt", psOut: "sticker", psSize: "100x60mm (Standard)" });
+      expect(s.printOrderScale).toBe(1);
+      expect(s.printCommentScale).toBe(Math.max(1, Math.min(8, Math.round(v))));
+    }
+  });
+  it("other element scales are unaffected by commentSize", () => {
+    const s = buildSettingsFromRedesign({ pp: { ...basePp, commentSize: 3, shopNameSize: 2 }, psType: "bt", psOut: "sticker", psSize: "100x60mm (Standard)" });
+    expect(s.printStoreScale).toBe(2);
+    expect(s.printBuyerNumberScale).toBe(1);
+    expect(s.printUsernameScale).toBe(1);
   });
 });
