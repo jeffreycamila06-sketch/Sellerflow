@@ -311,6 +311,12 @@ export interface RedesignPrintConfig {
   psSize: string; // e.g. "100x60mm (Standard)"
 }
 const lvl = (n: number): number => Math.max(1, Math.min(8, Math.round(n || 1)));
+// HONEST-STEPS single source of truth (2026-07-22): the EXACT round+clamp the
+// print path applies to every Print-Pattern size multiplier, exported so the
+// UI (stepper label + live preview) can display the SAME level that prints —
+// preview = print by construction. Pure delegate to `lvl` above; do NOT fork
+// or re-implement this mapping anywhere else.
+export const printScaleLevel: (n: number) => number = lvl;
 const parseStickerSize = (label: string): string => (label.match(/\d+x\d+/)?.[0] || "100x60");
 
 export function buildSettingsFromRedesign(cfg: RedesignPrintConfig): Settings {

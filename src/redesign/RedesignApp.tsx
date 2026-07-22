@@ -28,7 +28,7 @@ import Legal from "./screens/Legal";
 import DeleteAccount from "./screens/DeleteAccount";
 import Signup from "./screens/Signup";
 import PrinterSettings from "./screens/PrinterSettings";
-import PrintPattern, { DEFAULT_PP, type PrintPatternState, type PpBoolKey, type PpSizeKey } from "./screens/PrintPattern";
+import PrintPattern, { DEFAULT_PP, stepScaleLevel, type PrintPatternState, type PpBoolKey, type PpSizeKey } from "./screens/PrintPattern";
 import ManageChannels from "./screens/ManageChannels";
 import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
 import { useCustomers, useMinerStats, ZERO_MINERS_STATS, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, deriveMrr, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
@@ -644,7 +644,14 @@ export default function RedesignApp() {
   // Phase 5i — print pattern persists across refresh (sfl_rd_pp).
   const [pp, setPp] = useState<PrintPatternState>(() => readJSON(LS.pp, DEFAULT_PP));
   const togglePp = (k: PpBoolKey) => setPp((p) => ({ ...p, [k]: !p[k] }));
-  const stepPp = (k: PpSizeKey, dir: 1 | -1) => setPp((p) => ({ ...p, [k]: Math.min(3, Math.max(0.5, Math.round((p[k] + dir * 0.1) * 10) / 10)) }));
+  // HONEST STEPS: one tap = one whole printable level (1→2→3, clamped) — the
+  // printer only produces integer TSPL magnifications, so fractional 0.1 steps
+  // were 26 fake positions that mostly printed identically. stepScaleLevel
+  // starts from printScaleLevel(current), so a legacy stored fraction (e.g.
+  // 1.3, which already PRINTS as 1x) snaps onto the honest ladder on first tap.
+  // Stored legacy fractions are otherwise left as-is (display + print already
+  // quantize them identically; no load-time rewrite → zero migration risk).
+  const stepPp = (k: PpSizeKey, dir: 1 | -1) => setPp((p) => ({ ...p, [k]: stepScaleLevel(p[k], dir) }));
   useEffect(() => { try { localStorage.setItem(LS.pp, JSON.stringify(pp)); } catch { /* ignore */ } }, [pp]);
 
   // Phase 5g — snapshot the current print config for onPrint (declared above).
