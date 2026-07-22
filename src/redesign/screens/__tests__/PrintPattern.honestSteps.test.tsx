@@ -87,7 +87,7 @@ describe("(b) preview and label derive from the SAME mapping as the print settin
     const cfg = mapperCfg(pp);
     renderPP(pp);
     expect(screen.getByText("Maria's Live Shop")).toHaveStyle({ fontSize: `${16 * cfg.printStoreScale}px` });   // 2.4 → 2 → 32px
-    expect(screen.getByText("Buyer #12")).toHaveStyle({ fontSize: `${14 * cfg.printBuyerNumberScale}px` });     // 1.5 → 2 → 28px
+    expect(screen.getByText("Buyer 12")).toHaveStyle({ fontSize: `${14 * cfg.printBuyerNumberScale}px` });     // 1.5 → 2 → 28px (no "#" — matches the split paper layout)
     expect(screen.getByText("Maria Santos")).toHaveStyle({ fontSize: `${14 * cfg.printBuyerNameScale}px` });    // 1.3 → 1 → 14px
     expect(screen.getByText("@maria_live")).toHaveStyle({ fontSize: `${12 * cfg.printUsernameScale}px` });      // 0.8 → 1 → 12px
     expect(screen.getByText("Comment")).toHaveStyle({ fontSize: `${12 * cfg.printCommentScale}px` });           // 3   → 3 → 36px

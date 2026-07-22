@@ -275,9 +275,20 @@ class TsplBuilder {
         // Buyer # is the dominant element — the whole point of the sticker.
         // Height multiplier per size (2x2 on tall labels, 2x1 on 60x40).
         // Height-priority scaling: width stays 2x, height = buyerNumYMul * level.
+        //
+        // BUYER 4-DIGIT FIT (2026-07-22, Jeff): the line is TWO fixed-position
+        // TEXT commands — "Buyer" at x=16 and the BARE number (no "#") at
+        // x=280 = 16 + 5 chars x 48 dots + a 24-dot gap (~3mm, half the old
+        // space+"#" visual gap). Font "4" at 2x width = 48 dots/char, so 4
+        // digits end at 280 + 4x48 = 472 <= 480 (the 60x40 wDots) — buyer
+        // #1002 fits COMPLETELY on the smallest label (old single-command
+        // "Buyer #<n>" clipped the 3rd digit there). Same font/width-pin/ym/y
+        // on both commands, y-advance identical — nothing else moves. Keep the
+        // three builders (Java/Swift/TS reference) byte-identical.
         if (printBuyerNumber) {
             int ym = cmul(c.buyerNumYMul * lvlBuyerNum);
-            writeAscii(out, "TEXT 16," + y + ",\"4\",0,2," + ym + ",\"Buyer #" + buyerNum + "\"");
+            writeAscii(out, "TEXT 16," + y + ",\"4\",0,2," + ym + ",\"Buyer\"");
+            writeAscii(out, "TEXT 280," + y + ",\"4\",0,2," + ym + ",\"" + buyerNum + "\"");
             int d = (ym - c.buyerNumYMul) * F4;
             y += c.buyerNumGap + d;
             extra += d;

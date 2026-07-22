@@ -6,5 +6,6 @@ DENSITY 8
 CLS
 TEXT 16,10,"3",0,1,1,"SellerFlowLive"
 BAR 0,48,800,3
-TEXT 16,60,"4",0,2,2,"Buyer #0"
+TEXT 16,60,"4",0,2,2,"Buyer"
+TEXT 280,60,"4",0,2,2,"0"
 PRINT 1

@@ -704,9 +704,15 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         // Buyer # is the dominant element -- the whole point of the sticker.
         // Height multiplier per size (2x2 on tall labels, 2x1 on 60x40).
         // Height-priority scaling: width stays 2x, height = buyerNumYMul * level.
+        // BUYER 4-DIGIT FIT (2026-07-22): two fixed-position TEXT commands —
+        // "Buyer" at x=16 + BARE number (no "#") at x=280 (= 16 + 5x48 + 24-dot
+        // gap). 4 digits end at 472 <= 480 (60x40 wDots). Same ym/y both
+        // commands; y-advance identical. Mirrors TsplBuilder.java — keep all
+        // three builders byte-identical.
         if printBuyerNumber {
             let ym = cmul(c.buyerNumYMul * lvlBuyerNum)
-            writeAscii("TEXT 16,\(y),\"4\",0,2,\(ym),\"Buyer #\(buyerNum)\"")
+            writeAscii("TEXT 16,\(y),\"4\",0,2,\(ym),\"Buyer\"")
+            writeAscii("TEXT 280,\(y),\"4\",0,2,\(ym),\"\(buyerNum)\"")
             let d = (ym - c.buyerNumYMul) * F4
             y += c.buyerNumGap + d
             extra += d

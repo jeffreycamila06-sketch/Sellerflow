@@ -8,7 +8,8 @@ TEXT 16,10,"3",0,1,1,"SellerFlowLive"
 TEXT 290,18,"2",0,1,1,"A very long "
 BAR 0,48,800,3
 TEXT 16,60,"3",0,1,1,"A store name that is definitely long"
-TEXT 16,115,"4",0,2,2,"Buyer #123"
+TEXT 16,115,"4",0,2,2,"Buyer"
+TEXT 280,115,"4",0,2,2,"123"
 TEXT 16,225,"4",0,1,1,"A very long buyer name that ex"
 TEXT 16,283,"3",0,1,1,"@averylonghandlethatexceedsthir"
 BAR 16,341,520,2

@@ -99,7 +99,8 @@ describe("printSlip — web browser print MIRRORS the native TSPL sticker layout
     const html = webHtml();
     // Sticker content parity: brand header, dominant Buyer #, name, @username.
     expect(html).toContain("SellerFlowLive");
-    expect(html).toContain("Buyer #1");
+    expect(html).toContain("Buyer 1");   // no "#" — mirrors the split native buyer line (4-digit fit)
+    expect(html).not.toContain("Buyer #");
     expect(html).toContain("Ann Cruz");
     expect(html).toContain("@annc");
     // window.print fires after the 120ms timeout

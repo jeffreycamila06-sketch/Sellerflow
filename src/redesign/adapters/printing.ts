@@ -286,7 +286,7 @@ export function printSlip(buyer: Buyer, cur: string, storeName: string, printSet
   <div class="head"><span class="brand">SellerFlowLive</span><span class="date">${esc(sess)}</span></div>
   <div class="bar"></div>
   ${cfg.printStoreName && storeName ? `<div class="store">${esc(trunc(storeName, 36))}</div>` : ""}
-  ${cfg.printBuyerNumber ? `<div class="bnum">Buyer #${esc(buyer.num)}</div>` : ""}
+  ${cfg.printBuyerNumber ? `<div class="bnum">Buyer ${esc(buyer.num)}</div>` : ""}
   ${buyer.name ? `<div class="name">${esc(trunc(buyer.name, 30))}</div>` : ""}
   ${cfg.printBuyerUsername && buyer.handle ? `<div class="user">@${esc(trunc(buyer.handle.replace(/^@+/, ""), 30))}</div>` : ""}
   ${cfg.printOrderItems && rows ? `<div class="sep"></div>${rows}` : ""}
