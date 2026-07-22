@@ -329,9 +329,14 @@ export function buildTsplStickerReference(
 
   // Buyer # — dominant element; 2x1 on the 320 tier (config buyerNumYMul).
   // Height-priority: width stays 2x, height = buyerNumYMul * level (clamped 8).
+  // BUYER 4-DIGIT FIT (2026-07-22): two fixed-position TEXT commands — "Buyer"
+  // at x=16 + BARE number (no "#") at x=280 (= 16 + 5x48 + 24-dot gap). 4
+  // digits end at 472 <= 480 (60x40 wDots). Same ym/y both commands; y-advance
+  // identical. Mirrors TsplBuilder.java/Swift — keep all three byte-identical.
   if (printBuyerNumber) {
     const ym = cmul(c.buyerNumYMul * lvlBuyerNum);
-    writeAscii(`TEXT 16,${y},"4",0,2,${ym},"Buyer #${buyerNum}"`);
+    writeAscii(`TEXT 16,${y},"4",0,2,${ym},"Buyer"`);
+    writeAscii(`TEXT 280,${y},"4",0,2,${ym},"${buyerNum}"`);
     const d = (ym - c.buyerNumYMul) * F4;
     y += c.buyerNumGap + d;
     extra += d;

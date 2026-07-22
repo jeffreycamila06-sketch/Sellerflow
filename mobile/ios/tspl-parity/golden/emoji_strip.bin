@@ -7,7 +7,8 @@ CLS
 TEXT 16,10,"3",0,1,1,"SellerFlowLive"
 BAR 0,48,800,3
 TEXT 16,60,"3",0,1,1,"Shop"
-TEXT 16,115,"4",0,2,2,"Buyer #3"
+TEXT 16,115,"4",0,2,2,"Buyer"
+TEXT 280,115,"4",0,2,2,"3"
 TEXT 16,225,"4",0,1,1,"Maria"
 TEXT 16,283,"3",0,1,1,"@maria_ph"
 TEXT 16,445,"3",0,1,1,"Total:"

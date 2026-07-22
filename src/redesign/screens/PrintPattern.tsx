@@ -120,7 +120,8 @@ export default function PrintPattern({
             </div>
             {/* Preview sizes route through previewFontPx ONLY (kill-switch-gated; honest = base × printScaleLevel = print). */}
             {pp.shopName && <div style={{ fontSize: previewFontPx(16, pp.shopNameSize), fontWeight: 700, color: "#1c1a35", marginTop: 6 }}>Maria's Live Shop</div>}
-            {pp.buyerNum && <div style={{ fontSize: previewFontPx(14, pp.buyerNumSize), fontWeight: 700, color: "#1c1a35", marginTop: 3 }}>Buyer #12</div>}
+            {/* Buyer line matches the new paper layout: "Buyer" + bare number, small gap, no "#". */}
+            {pp.buyerNum && <div style={{ fontSize: previewFontPx(14, pp.buyerNumSize), fontWeight: 700, color: "#1c1a35", marginTop: 3 }}>Buyer 12</div>}
             {pp.tiktokName && <div style={{ fontSize: previewFontPx(14, pp.tiktokNameSize), fontWeight: 700, color: "#1c1a35", marginTop: 3 }}>Maria Santos</div>}
             {pp.tiktokUser && <div style={{ fontSize: previewFontPx(12, pp.tiktokUserSize), fontWeight: 600, color: "#7c3aed", marginTop: 3 }}>@maria_live</div>}
             {pp.comment && <div style={{ fontFamily: "var(--font-mono)", fontSize: previewFontPx(12, pp.commentSize), color: "#5a5872", marginTop: 7 }}>Comment</div>}

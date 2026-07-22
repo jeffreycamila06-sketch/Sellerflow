@@ -8,7 +8,8 @@ TEXT 16,10,"3",0,1,1,"SellerFlowLive"
 TEXT 290,18,"2",0,1,1,"June 18, 202"
 BAR 0,48,480,3
 TEXT 16,60,"3",0,1,1,"My Shop"
-TEXT 16,90,"4",0,2,1,"Buyer #7"
+TEXT 16,90,"4",0,2,1,"Buyer"
+TEXT 280,90,"4",0,2,1,"7"
 TEXT 16,136,"4",0,1,1,"Maria Santos"
 TEXT 16,170,"3",0,1,1,"@maria_s"
 BAR 16,200,200,2
