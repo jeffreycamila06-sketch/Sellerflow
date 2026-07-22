@@ -13,8 +13,10 @@
 //       Settings) → no stepper on its row, preview date never scales.
 // If any of these go red, preview ≠ print again — do not weaken them.
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { cleanup, render, screen, within } from "@testing-library/react";
-import PrintPattern, { DEFAULT_PP, stepScaleLevel, SCALE_STEP_MIN, SCALE_STEP_MAX, type PrintPatternState } from "../PrintPattern";
+import PrintPattern, { DEFAULT_PP, HONEST_SIZE_STEPS, stepScaleLevel, sizeLabel, previewFontPx, previewDateFontPx, SCALE_STEP_MIN, SCALE_STEP_MAX, type PrintPatternState } from "../PrintPattern";
 import { printScaleLevel, buildSettingsFromRedesign } from "../../adapters/printing";
 import { TProvider } from "../../i18n";
 
@@ -110,6 +112,72 @@ describe("(c) legacy fractional stored values display as their print-equivalent 
     const pp = { ...DEFAULT_PP, shopNameSize: 1.7, buyerNumSize: 2.2, tiktokNameSize: 0.6, tiktokUserSize: 2.9, commentSize: 1.1 };
     renderPP(pp);
     expect(screen.queryByText(/\d\.\d×/)).toBeNull();
+  });
+});
+
+describe("(e) KILL SWITCH — HONEST_SIZE_STEPS=false restores the EXACT old behavior", () => {
+  // The verbatim pre-change formulas (copied from main), the ground truth the
+  // legacy branch must match byte-for-byte in behavior.
+  const oldStep = (current: number, dir: 1 | -1) => Math.min(3, Math.max(0.5, Math.round((current + dir * 0.1) * 10) / 10));
+  const oldLabel = (n: number) => (n % 1 === 0 ? n.toFixed(0) : n.toFixed(1)) + "×";
+
+  it("the switch is ON in this build", () => {
+    expect(HONEST_SIZE_STEPS).toBe(true);
+  });
+  it("legacy stepping === the verbatim old 0.1 formula for the whole range, both directions", () => {
+    for (let i = 5; i <= 30; i++) {
+      const v = i / 10;
+      expect(stepScaleLevel(v, 1, false)).toBe(oldStep(v, 1));
+      expect(stepScaleLevel(v, -1, false)).toBe(oldStep(v, -1));
+    }
+    // Spot-check the old semantics are really fractional (not the honest ladder):
+    expect(stepScaleLevel(1, 1, false)).toBe(1.1);
+    expect(stepScaleLevel(1, -1, false)).toBe(0.9);
+    expect(stepScaleLevel(3, 1, false)).toBe(3);
+    expect(stepScaleLevel(0.5, -1, false)).toBe(0.5);
+  });
+  it("legacy label === the verbatim old fractional label", () => {
+    for (let i = 5; i <= 30; i++) {
+      const v = i / 10;
+      expect(sizeLabel(v, false)).toBe(oldLabel(v));
+    }
+    expect(sizeLabel(1.3, false)).toBe("1.3×");
+    expect(sizeLabel(2, false)).toBe("2×");
+  });
+  it("legacy preview === the verbatim old smooth CSS scaling (Math.round(base × raw))", () => {
+    for (const base of [11, 12, 14, 16]) {
+      for (let i = 5; i <= 30; i++) {
+        const v = i / 10;
+        expect(previewFontPx(base, v, false)).toBe(Math.round(base * v));
+      }
+    }
+    expect(previewDateFontPx(3, false)).toBe(33);   // old: date scaled with the stepper
+    expect(previewDateFontPx(1.3, false)).toBe(14);
+  });
+  it("honest branches are unchanged by the flag plumbing (explicit true === default)", () => {
+    expect(stepScaleLevel(1.3, 1, true)).toBe(stepScaleLevel(1.3, 1));
+    expect(sizeLabel(1.3, true)).toBe(sizeLabel(1.3));
+    expect(previewFontPx(16, 2.4, true)).toBe(previewFontPx(16, 2.4));
+    expect(previewDateFontPx(3, true)).toBe(11);
+  });
+  it("SOURCE CONTRACT: the render routes ALL size math through the gated helpers — flipping the const rolls back everything", () => {
+    const src = readFileSync(resolve(__dirname, "../PrintPattern.tsx"), "utf-8");
+    // Every gated decision references the switch exactly where it must:
+    expect(src).toMatch(/fixedSize: HONEST_SIZE_STEPS/);                       // Date & time stepper returns in legacy mode
+    expect((src.match(/honest: boolean = HONEST_SIZE_STEPS/g) || []).length).toBe(4); // all four helpers default to the switch
+    // The component body contains NO inline size arithmetic — helpers only.
+    // (JSX preview must not multiply a base px by a pp value or printScaleLevel directly.)
+    const jsx = src.slice(src.indexOf("export default function PrintPattern"));
+    expect(jsx).not.toMatch(/Math\.round\(\s*\d+\s*\*/);
+    expect(jsx).not.toMatch(/\d+\s*\*\s*printScaleLevel/);
+    expect(jsx).not.toMatch(/\d+\s*\*\s*pp\./);
+    expect(jsx).toMatch(/previewFontPx\(16, pp\.shopNameSize\)/);
+    expect(jsx).toMatch(/previewFontPx\(14, pp\.buyerNumSize\)/);
+    expect(jsx).toMatch(/previewFontPx\(14, pp\.tiktokNameSize\)/);
+    expect(jsx).toMatch(/previewFontPx\(12, pp\.tiktokUserSize\)/);
+    expect(jsx).toMatch(/previewFontPx\(12, pp\.commentSize\)/);
+    expect(jsx).toMatch(/previewDateFontPx\(pp\.dateTimeSize\)/);
+    expect(jsx).toMatch(/sizeLabel\(pp\[r\.sizeKey\]\)/);
   });
 });
 
