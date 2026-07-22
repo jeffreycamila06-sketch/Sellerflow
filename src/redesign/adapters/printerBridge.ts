@@ -87,10 +87,13 @@ export async function btCallOutcome(action: BtBridgeAction, arg?: unknown): Prom
   }
 }
 
-// Test-sticker buyer — verbatim from App.tsx:2086. Exported so the web Printer
-// Test can browser-print the SAME test pattern via printSlip (no BT bridge).
+// Test-sticker buyer — copied from App.tsx:2086 (rollback app keeps its own
+// string by convention). Exported so the web Printer Test can browser-print the
+// SAME test pattern via printSlip (no BT bridge). The sample item prints in the
+// comment/price-code column (12-char truncate) — "PRICE" per Jeff 2026-07-22
+// (the old "SellerFlowLive sticker test" printed as a confusing "SellerFlowLi").
 export function buildTestBuyer(): Buyer {
-  return { handle: "sellerflow", name: "Test Print", platform: "TikTok", num: 88, orders: [{ orderNum: 1, item: "SellerFlowLive sticker test", qty: 1, price: 350, total: 350, time: new Date().toLocaleTimeString(), handle: "sellerflow", name: "Test Print", bNum: 88, platform: "TikTok", status: "New", date: new Date().toISOString().slice(0, 10) }], totalSpent: 350, totalOrders: 1 } as Buyer;
+  return { handle: "sellerflow", name: "Test Print", platform: "TikTok", num: 88, orders: [{ orderNum: 1, item: "PRICE", qty: 1, price: 350, total: 350, time: new Date().toLocaleTimeString(), handle: "sellerflow", name: "Test Print", bNum: 88, platform: "TikTok", status: "New", date: new Date().toISOString().slice(0, 10) }], totalSpent: 350, totalOrders: 1 } as Buyer;
 }
 
 // Fed through the byte-parity buildNativeStickerPayload (printing.ts) into
