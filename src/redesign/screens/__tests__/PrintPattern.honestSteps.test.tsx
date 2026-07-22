@@ -76,7 +76,9 @@ describe("(b) preview and label derive from the SAME mapping as the print settin
       expect(cfg.printBuyerNumberScale).toBe(printScaleLevel(v));
       expect(cfg.printBuyerNameScale).toBe(printScaleLevel(v));
       expect(cfg.printUsernameScale).toBe(printScaleLevel(v));
-      expect(cfg.printOrderScale).toBe(printScaleLevel(v));
+      // printOrderScale (order-row TIME) is deliberately PINNED to 1 — time
+      // never scales with the Comment control (time-decouple, 2026-07-22).
+      expect(cfg.printOrderScale).toBe(1);
       expect(cfg.printCommentScale).toBe(printScaleLevel(v));
     }
   });
