@@ -300,7 +300,13 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         let buyer = call.getObject("buyer") ?? [:]
         let settings = call.getObject("settings")
-        let storeName = call.getString("storeName") ?? "SellerFlowLive"
+        // PARITY (2026-07-23, XCTest golden gate catch): absent storeName must
+        // default to "" like Java forStickerNative optString("storeName","") —
+        // the old "SellerFlowLive" fallback printed a phantom store line + shifted
+        // the buyer pair down on storeName-less payloads. Real app payloads always
+        // send storeName, so this only bit the golden fixtures. testStickerPrint
+        // keeps its "SellerFlowLive" default (its Java twin does the same).
+        let storeName = call.getString("storeName") ?? ""
         let currency = call.getString("currency") ?? ""
         let sessionDate = call.getString("sessionDate") ?? ""
         let labelWidthMm = call.getInt("labelWidthMm", defaultLabelWidthMm)
@@ -1076,7 +1082,13 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         }
         let buyer = call.getObject("buyer") ?? [:]
         let settings = call.getObject("settings")
-        let storeName = call.getString("storeName") ?? "SellerFlowLive"
+        // PARITY (2026-07-23, XCTest golden gate catch): absent storeName must
+        // default to "" like Java forStickerNative optString("storeName","") —
+        // the old "SellerFlowLive" fallback printed a phantom store line + shifted
+        // the buyer pair down on storeName-less payloads. Real app payloads always
+        // send storeName, so this only bit the golden fixtures. testStickerPrint
+        // keeps its "SellerFlowLive" default (its Java twin does the same).
+        let storeName = call.getString("storeName") ?? ""
         let currency = call.getString("currency") ?? ""
         let sessionDate = call.getString("sessionDate") ?? ""
         let labelWidthMm = call.getInt("labelWidthMm", defaultLabelWidthMm)
