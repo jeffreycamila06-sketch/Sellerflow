@@ -14,6 +14,7 @@ import { AnnouncementBanner, BellIcon } from "../components/Announcements";
 import type { Announcement } from "../adapters/useAnnouncements";
 import type { RebuiltSession } from "../../lib/orderLogic";
 import { useT, tpl } from "../i18n";
+import { TELEGRAM_URL } from "../../lib/telegram";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "12px 16px 13px" };
 const pickerBtn: CSSProperties = { width: "100%", display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.18)", padding: "6px 9px", border: "none", borderRadius: 9, fontSize: 11.5, fontWeight: 600, color: "var(--on-header)", cursor: "pointer", fontFamily: "var(--font-ui)" };
@@ -84,8 +85,9 @@ const SESSION_OPTS = [1, 2, 3, 4]; // 4-day added 2026-07-13 (seller requests; e
 
 export default function Dashboard({
   comments, cur,
-  ttOpen, fbOpen, ttIdx, fbIdx, onToggleTT, onToggleFB, onPickTT, onPickFB,
-  ttConnected, fbConnected, ttConnecting, fbConnecting, onConnectTT, onConnectFB, onRefreshTT, onRefreshFB, refreshing = false,
+  ttOpen, fbOpen, ttIdx, fbIdx, onToggleTT, onToggleFB, onPickTT,
+  onManageTT,
+  ttConnected, fbConnected, ttConnecting, fbConnecting, onConnectTT, onRefreshTT, refreshing = false,
   ttAccounts = [], fbAccounts = [],
   sessionDays, sessionOpen, onToggleSession, onPickSession,
   printed, entId, entPrice, onOneClick, onOpenEnt, onEntPrice, onEntKey,
@@ -110,10 +112,17 @@ export default function Dashboard({
   onPrintWinner?: (w: RaffleEntry) => { ok: boolean; via: string };
   ttOpen: boolean; fbOpen: boolean; ttIdx: number; fbIdx: number;
   onToggleTT: () => void; onToggleFB: () => void;
-  onPickTT: (i: number) => void; onPickFB: (i: number) => void;
+  onPickTT: (i: number) => void;
+  // TikTok "Manage / add accounts" row → navigates to the manage screen with a
+  // back target of the Live dashboard (Change 1, 2026-07-23). Optional so the
+  // screen still renders in isolation/tests.
+  onManageTT?: () => void;
+  // FB dropdown is an HONEST GATE now (Change 2): no onConnectFB / onRefreshFB /
+  // onPickFB — Facebook multi-account is non-functional, so its connect/refresh/
+  // pick handlers are intentionally NOT wired into this dropdown.
   ttConnected: boolean; fbConnected: boolean; ttConnecting: boolean; fbConnecting: boolean;
-  onConnectTT: () => void; onConnectFB: () => void;
-  onRefreshTT?: () => void; onRefreshFB?: () => void; refreshing?: boolean;
+  onConnectTT: () => void;
+  onRefreshTT?: () => void; refreshing?: boolean;
   ttAccounts?: string[]; fbAccounts?: string[];
   sessionDays: number; sessionOpen: boolean; onToggleSession: () => void; onPickSession: (n: number) => void;
   printed: Record<string, string>; entId: string | null; entPrice: string;
@@ -307,6 +316,14 @@ export default function Dashboard({
                     <span style={ddCheck}>{i === ttIdx ? "✓" : ""}</span>
                   </button>
                 ))}
+                {/* Manage / add accounts — action row (NOT an account), separated by a
+                    top hairline. Navigates to the manage screen (back → Live). Always
+                    shown; the manage screen self-gates by plan + funnels over-cap to
+                    Telegram. onClick navigation unmounts this dropdown cleanly. */}
+                <button onClick={onManageTT} style={{ ...ddRow(false), marginTop: 4, borderTop: "1px solid var(--border)", borderRadius: 0 }}>
+                  <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent-soft)", color: "var(--accent-fg)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 700, flexShrink: 0 }}>+</span>
+                  <span style={{ flex: 1, minWidth: 0 }}><span style={{ ...ddName, color: "var(--accent-fg)" }}>{t.rd_dash_manage_accounts}</span></span>
+                </button>
                 <div style={connFooterWrap}>
                   <button onClick={onRefreshTT} disabled={refreshing} title={t.rd_dash_refresh} style={{ ...refreshBtn, opacity: refreshing ? 0.6 : 1, cursor: refreshing ? "default" : "pointer" }}>{refreshIcon}{refreshing ? t.rd_dash_refreshing : t.rd_dash_refresh}</button>
                   <button onClick={onConnectTT} disabled={ttConnecting} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: tt.border, borderRadius: 9, background: tt.bg, color: tt.fg, fontSize: 11.5, fontWeight: 700, cursor: ttConnecting ? "default" : "pointer", opacity: ttConnecting ? 0.7 : 1, fontFamily: "var(--font-ui)" }}>{connLabel(ttConnected, ttConnecting)}</button>
@@ -324,18 +341,13 @@ export default function Dashboard({
             {fbOpen && (
               <div style={dropdown("right")}>
                 <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--text-muted)", padding: "6px 8px 7px" }}>{t.rd_dash_fb_page_group}</div>
-                {fbAccounts.length === 0 && <div style={{ padding: "2px 10px 8px", fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_dash_no_pages}</div>}
-                {fbAccounts.map((a, i) => (
-                  <button key={a} onClick={() => onPickFB(i)} style={ddRow(i === fbIdx)}>
-                    <span style={{ width: 30, height: 30, borderRadius: 8, background: "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#fff", flexShrink: 0, fontFamily: "var(--font-display)" }}>f</span>
-                    <span style={{ flex: 1, minWidth: 0 }}><span style={ddName}>{a}</span><span style={ddMeta}>Facebook · {t.rd_dash_tap_go_live}</span></span>
-                    <span style={ddCheck}>{i === fbIdx ? "✓" : ""}</span>
-                  </button>
-                ))}
-                <div style={connFooterWrap}>
-                  <button onClick={onRefreshFB} disabled={refreshing} title={t.rd_dash_refresh} style={{ ...refreshBtn, opacity: refreshing ? 0.6 : 1, cursor: refreshing ? "default" : "pointer" }}>{refreshIcon}{refreshing ? t.rd_dash_refreshing : t.rd_dash_refresh}</button>
-                  <button onClick={onConnectFB} disabled={fbConnecting} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: fb.border, borderRadius: 9, background: fb.bg, color: fb.fg, fontSize: 11.5, fontWeight: 700, cursor: fbConnecting ? "default" : "pointer", opacity: fbConnecting ? 0.7 : 1, fontFamily: "var(--font-ui)" }}>{connLabel(fbConnected, fbConnecting)}</button>
-                </div>
+                {/* HONEST GATE (Change 2, 2026-07-23): Facebook multi-account is
+                    non-functional (blocked on Meta Business Verification). NO
+                    green-able Connect here — an "activation required" notice + a
+                    real Telegram anchor. iOS-safe: a real <a> (never window.open),
+                    and onClick closes the dropdown as the tab opens. */}
+                <div style={{ padding: "2px 10px 11px", fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.5 }}>{t.rd_dash_fb_activation}</div>
+                <a href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener" onClick={onToggleFB} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 0", margin: "0 4px 3px", background: "#0088cc", color: "#fff", borderRadius: 9, fontFamily: "var(--font-ui)", fontSize: 12, fontWeight: 700, textDecoration: "none" }}>{t.rd_dash_fb_contact}<span style={{ fontSize: 14 }}>→</span></a>
               </div>
             )}
           </div>

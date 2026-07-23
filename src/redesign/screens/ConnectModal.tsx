@@ -6,6 +6,7 @@ import { registeredAccountsFor, canConnectMore, type Platform, type ConnectResul
 import type { AccountUser } from "../../accountDb";
 import { useT, tpl } from "../i18n";
 import { isIOS } from "../adapters/platform";
+import { TELEGRAM_URL } from "../../lib/telegram";
 
 const input: CSSProperties = { width: "100%", padding: "11px 13px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 600, outline: "none" };
 const lbl: CSSProperties = { fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 5 };
@@ -20,8 +21,12 @@ export default function ConnectModal({ profile, initialTab = "TikTok", onClose, 
   const t = useT();
   const [tab, setTab] = useState<Platform>(initialTab);
   const [ttu, setTtu] = useState("");
-  const [fbId, setFbId] = useState("");
-  const [fbTok, setFbTok] = useState("");
+  // FB tab is gated (honest gate, addendum 2026-07-23): no FB inputs render, so
+  // these are read-only now (still referenced by fbValue/connect, which stay
+  // byte-unchanged for the untouched TikTok path). Their setters were dropped
+  // with the removed FB input fields.
+  const [fbId] = useState("");
+  const [fbTok] = useState("");
   const [selTT, setSelTT] = useState("");
   const [selFB, setSelFB] = useState("");
   const [busy, setBusy] = useState(false);
@@ -62,37 +67,47 @@ export default function ConnectModal({ profile, initialTab = "TikTok", onClose, 
             {(["TikTok", "Facebook"] as const).map((tb) => <button key={tb} onClick={() => { setTab(tb); setErr(""); }} style={tabBtn(tab === tb)}>{tb}</button>)}
           </div>
 
-          {canUseExisting ? (
-            <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
-              <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{tpl(t.rd_cm_choose, { tab })}</div>
-              {registered.map((a) => {
-                const on = a === current;
-                return (
-                  <button key={a} onClick={() => choose(a)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 13px", border: `1.5px solid ${on ? "var(--accent)" : "var(--border-strong)"}`, borderRadius: 11, background: on ? "var(--accent-softer)" : "var(--surface-2)", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
-                    <strong style={{ fontSize: 13, color: "var(--text)" }}>{a}</strong>
-                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{tab}</span>
-                  </button>
-                );
-              })}
-              {canAdd && tab === "TikTok" && <div><label style={lbl}>{t.rd_cm_add_tt}</label><input value={ttu} onChange={(e) => { setSelTT(""); setTtu(e.target.value); }} placeholder={t.rd_cm_tt_ph} style={input} /></div>}
-              {canAdd && tab === "Facebook" && <div><label style={lbl}>{t.rd_cm_add_fb}</label><input value={fbId} onChange={(e) => { setSelFB(""); setFbId(e.target.value); }} style={input} /></div>}
-            </div>
-          ) : tab === "TikTok" ? (
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 11.5, color: "var(--warn)", background: "rgba(217,119,6,.1)", border: "1px solid var(--warn)", borderRadius: 9, padding: "8px 10px", marginBottom: 9 }}>{t.rd_cm_tt_warn}</div>
-              <label style={lbl}>{t.rd_pp_tiktok_user}</label>
-              <input value={ttValue} onChange={(e) => setTtu(e.target.value)} placeholder={t.rd_cm_tt_ph} disabled={!canAdd} style={input} />
+          {/* HONEST GATE (addendum 2026-07-23): the Facebook TAB stays visible +
+              selectable (deliberate sales hook — sellers should see FB exists and
+              ask about it), but its CONNECT UI is replaced with the same
+              activation gate as the Live dropdown. No onConnect("Facebook") path
+              is reachable from this modal. iOS-safe real <a> (never window.open);
+              closes the modal on click (the modal's dismiss convention). Reuses
+              rd_dash_fb_activation / rd_dash_fb_contact — no duplicate keys. */}
+          {tab === "Facebook" ? (
+            <div style={{ marginBottom: 4 }}>
+              <div style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.5, padding: "2px 2px 13px" }}>{t.rd_dash_fb_activation}</div>
+              <a href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener" onClick={onClose} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "12px 0", background: "#0088cc", color: "#fff", borderRadius: 12, fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, textDecoration: "none" }}>{t.rd_dash_fb_contact}<span style={{ fontSize: 15 }}>→</span></a>
             </div>
           ) : (
-            <div style={{ marginBottom: 12, display: "flex", flexDirection: "column", gap: 9 }}>
-              <div><label style={lbl}>{t.rd_cm_fb_id}</label><input value={fbValue} onChange={(e) => setFbId(e.target.value)} disabled={!canAdd} style={input} /></div>
-              <div><label style={lbl}>{t.rd_cm_access_token}</label><input value={fbTok} onChange={(e) => setFbTok(e.target.value)} type="password" disabled={!canConnect} style={input} /></div>
-            </div>
-          )}
+            <>
+              {canUseExisting ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{tpl(t.rd_cm_choose, { tab })}</div>
+                  {registered.map((a) => {
+                    const on = a === current;
+                    return (
+                      <button key={a} onClick={() => choose(a)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "11px 13px", border: `1.5px solid ${on ? "var(--accent)" : "var(--border-strong)"}`, borderRadius: 11, background: on ? "var(--accent-softer)" : "var(--surface-2)", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+                        <strong style={{ fontSize: 13, color: "var(--text)" }}>{a}</strong>
+                        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{tab}</span>
+                      </button>
+                    );
+                  })}
+                  {canAdd && tab === "TikTok" && <div><label style={lbl}>{t.rd_cm_add_tt}</label><input value={ttu} onChange={(e) => { setSelTT(""); setTtu(e.target.value); }} placeholder={t.rd_cm_tt_ph} style={input} /></div>}
+                </div>
+              ) : (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 11.5, color: "var(--warn)", background: "rgba(217,119,6,.1)", border: "1px solid var(--warn)", borderRadius: 9, padding: "8px 10px", marginBottom: 9 }}>{t.rd_cm_tt_warn}</div>
+                  <label style={lbl}>{t.rd_pp_tiktok_user}</label>
+                  <input value={ttValue} onChange={(e) => setTtu(e.target.value)} placeholder={t.rd_cm_tt_ph} disabled={!canAdd} style={input} />
+                </div>
+              )}
 
-          {err && <div style={{ fontSize: 12, fontWeight: 600, color: "var(--danger)", marginBottom: 10 }}>{err}</div>}
-          <button onClick={() => void connect()} disabled={busy || !canConnect || !current.trim()} style={{ width: "100%", padding: "12px 0", border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: busy || !canConnect ? "default" : "pointer", opacity: busy || !canConnect || !current.trim() ? 0.6 : 1, boxShadow: "0 4px 14px var(--accent-soft)" }}>{busy ? t.rd_cm_connecting : tpl(t.rd_cm_connect_x, { tab })}</button>
-          <div style={{ fontSize: 10.5, color: "var(--text-muted)", textAlign: "center", marginTop: 9, lineHeight: 1.45 }}>{t.rd_cm_footer}</div>
+              {err && <div style={{ fontSize: 12, fontWeight: 600, color: "var(--danger)", marginBottom: 10 }}>{err}</div>}
+              <button onClick={() => void connect()} disabled={busy || !canConnect || !current.trim()} style={{ width: "100%", padding: "12px 0", border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: busy || !canConnect ? "default" : "pointer", opacity: busy || !canConnect || !current.trim() ? 0.6 : 1, boxShadow: "0 4px 14px var(--accent-soft)" }}>{busy ? t.rd_cm_connecting : tpl(t.rd_cm_connect_x, { tab })}</button>
+              <div style={{ fontSize: 10.5, color: "var(--text-muted)", textAlign: "center", marginTop: 9, lineHeight: 1.45 }}>{t.rd_cm_footer}</div>
+            </>
+          )}
         </div>
       </div>
     </div>

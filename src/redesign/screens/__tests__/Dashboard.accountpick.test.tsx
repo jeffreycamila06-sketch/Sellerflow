@@ -56,19 +56,21 @@ describe("Dashboard account pick = select-only (TikTok)", () => {
   });
 });
 
-describe("Dashboard account pick = select-only (Facebook)", () => {
-  it("tapping a FB row fires onPickFB(i), no toggle/connect", () => {
-    const onPickFB = vi.fn(), onToggleFB = vi.fn(), onConnectFB = vi.fn();
-    renderDash({ fbOpen: true, onPickFB, onToggleFB, onConnectFB });
-    fireEvent.click(rowIn(fbPanel(), "fbpage_two"));
-    expect(onPickFB).toHaveBeenCalledWith(1);
-    expect(onToggleFB).not.toHaveBeenCalled();
-    expect(onConnectFB).not.toHaveBeenCalled();
-  });
-
-  it("FB check (✓) on selected row", () => {
-    renderDash({ fbOpen: true, fbIdx: 1 });
-    expect(within(rowIn(fbPanel(), "fbpage_two")).getByText("✓")).toBeTruthy();
-    expect(within(rowIn(fbPanel(), "fbpage_one")).queryByText("✓")).toBeNull();
+// Facebook is now an HONEST GATE (2026-07-23): multi-account is non-functional
+// (blocked on Meta Business Verification), so the dropdown no longer renders
+// account rows or a green-able Connect — it shows an activation notice + a
+// Telegram anchor. The full gate contract lives in Dashboard.accountEntry.test.
+describe("Dashboard Facebook dropdown = honest gate (no account select)", () => {
+  it("renders the activation gate, NOT selectable account rows", () => {
+    const onPickFB = vi.fn();
+    renderDash({ fbOpen: true, onPickFB });
+    expect(within(fbPanel()).getByText("Advanced feature — activation required")).toBeTruthy();
+    expect(within(fbPanel()).getByText("Contact us")).toBeTruthy();
+    // The old dishonest account rows are gone from the PANEL → no select path.
+    // (The chip button still shows the selected name; scope to the panel.)
+    expect(within(fbPanel()).queryByText("fbpage_one")).toBeNull();
+    expect(within(fbPanel()).queryByText("fbpage_two")).toBeNull();
+    fireEvent.click(within(fbPanel()).getByText("Contact us"));
+    expect(onPickFB).not.toHaveBeenCalled();
   });
 });

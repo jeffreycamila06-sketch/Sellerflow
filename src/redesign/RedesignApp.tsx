@@ -491,6 +491,9 @@ export default function RedesignApp() {
   // useLiveFeed for comment scoping).
   const [ttOpen, setTtOpen] = useState(false);
   const [fbOpen, setFbOpen] = useState(false);
+  // Where "Back" returns from the ManageChannels screen — depends on origin
+  // (Change 3): Settings → "settings" (unchanged), Live dashboard → "dashboard".
+  const [chanBack, setChanBack] = useState<Screen>("settings");
 
   // General Settings local UI state (visual only).
   const [profileOpen, setProfileOpen] = useState(false);
@@ -589,7 +592,15 @@ export default function RedesignApp() {
     const idx = platform === "TikTok" ? ttIdx : fbIdx;
     if (eff) { setOff(true); return; } // Disconnect (local UI; no server unbind — manual-connect-only: no auto-reconnect to forget)
     const acct = accts[idx] || accts[0];
-    if (!acct) { setConnectOpen(platform); return; } // no registered account → add-new modal (real connect)
+    if (!acct) {
+      // No registered account (Addendum 2, 2026-07-23). TikTok → the
+      // Manage/add-accounts screen (SAME destination + back-behaviour as the
+      // Live dropdown row), retiring the old ConnectModal add-popup for this
+      // path. The Facebook fallthrough below is KEPT (not deleted) but is
+      // unreachable — nothing in the UI connects Facebook after the prior commits.
+      if (platform === "TikTok") { setTtOpen(false); setChanBack("dashboard"); setScreen("ttchannels"); return; }
+      setConnectOpen(platform); return;
+    }
     setOpen(false);                                  // Connect uses the selected account → close the dropdown
     setConnecting(true);
     track("connect_attempt", { platform });          // analytics parity (App.tsx:4277)
@@ -915,7 +926,9 @@ export default function RedesignApp() {
               onToggleTT={() => { setTtOpen((o) => !o); setFbOpen(false); setSessionOpen(false); }}
               onToggleFB={() => { setFbOpen((o) => !o); setTtOpen(false); setSessionOpen(false); }}
               onPickTT={(i) => switchAccount("TikTok", i)}
-              onPickFB={(i) => switchAccount("Facebook", i)}
+              /* TikTok "Manage / add accounts" row → manage screen, back target =
+                 Live dashboard (Change 3). FB has no onPickFB — honest gate. */
+              onManageTT={() => { setTtOpen(false); setChanBack("dashboard"); setScreen("ttchannels"); }}
               /* F3 — recovering has DISPLAY precedence over connected: while a grace
                  window is armed (health-cycle reconnect / socket blip) the pill shows
                  the existing amber pulsing "Connecting…" instead of a solid green; a
@@ -926,8 +939,8 @@ export default function RedesignApp() {
               /* Viewer chip: GREEN-only (exact same booleans as ttConnected above) —
                  amber/gray → null → hidden. Data-side resets live in useLiveFeed. */
               viewers={ttEff && !liveFeed.ttRecovering ? liveFeed.ttViewers : null}
-              onConnectTT={() => void doConnect("TikTok")} onConnectFB={() => void doConnect("Facebook")}
-              onRefreshTT={() => void refreshDashboard()} onRefreshFB={() => void refreshDashboard()} refreshing={refreshing}
+              onConnectTT={() => void doConnect("TikTok")}
+              onRefreshTT={() => void refreshDashboard()} refreshing={refreshing}
               ttAccounts={ttAccounts} fbAccounts={fbAccounts}
               sessionDays={sessionWindow.windowDays} sessionOpen={sessionOpen}
               onToggleSession={() => { setSessionOpen((o) => !o); setTtOpen(false); setFbOpen(false); }}
@@ -966,7 +979,7 @@ export default function RedesignApp() {
             <GeneralSettings
               theme={theme} accent={accent} onSetTheme={setTheme} onSetAccent={setAccent}
               auto={autoControls} cur={cur} account={auth.profile} onSaveProfile={saveProfile}
-              onManageChannel={(p) => setScreen(p === "tiktok" ? "ttchannels" : "fbchannels")}
+              onManageChannel={(p) => { setChanBack("settings"); setScreen(p === "tiktok" ? "ttchannels" : "fbchannels"); }}
               onAutoCodesSaved={liftAutoCodes}
               lang={lang} onSetLang={setLang} currency={currency} onSetCurrency={setCurrencyExplicit}
               profileOpen={profileOpen} onToggleProfile={() => setProfileOpen((o) => !o)}
@@ -982,7 +995,7 @@ export default function RedesignApp() {
             />
           )}
           {(screen === "ttchannels" || screen === "fbchannels") && (
-            <ManageChannels platform={screen === "ttchannels" ? "tiktok" : "facebook"} account={auth.profile} onBack={() => setScreen("settings")} onSaveChannels={saveChannels} />
+            <ManageChannels platform={screen === "ttchannels" ? "tiktok" : "facebook"} account={auth.profile} onBack={() => setScreen(chanBack)} onSaveChannels={saveChannels} />
           )}
           {/* onExport gated on live (#7): the sample fallback list must never be
               downloadable as a real-looking CSV. */}
