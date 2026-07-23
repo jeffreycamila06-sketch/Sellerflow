@@ -3,7 +3,7 @@
 // (REAL theme + accent control — replaces the old floating toggle) · Channels ·
 // Printer & display · Account links. Visual/sample only; theme+accent drive the
 // redesign preview state.
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { ACCENT_ORDER, ACCENTS, LANGS, CURRENCIES, CURRENCY_ORDER, type ThemeMode, type AccentKey, type AutoControls } from "../data";
 import { headerBar, headerTitle, card, sectionLabel } from "../ui";
 import { profileToDisplay, planLabel, renewLabel } from "../adapters/useAuthSession";
@@ -31,7 +31,7 @@ export default function GeneralSettings({
   theme, accent, onSetTheme, onSetAccent,
   auto, cur, lang, onSetLang, currency, onSetCurrency,
   profileOpen, onToggleProfile,
-  printerIdx, printerOpen, onTogglePrinter, onPickPrinter, onPrintPattern,
+  printerIdx, printerOpen, printerFocus = 0, onTogglePrinter, onPickPrinter, onPrintPattern,
   onSubscription, onSupport, onDelete,
   account = null, onSaveProfile, onManageChannel, onAutoCodesSaved,
   keepAwake = true, onToggleKeepAwake,
@@ -41,7 +41,7 @@ export default function GeneralSettings({
   auto: AutoControls; cur: string;
   lang: string; onSetLang: (c: string) => void; currency: string; onSetCurrency: (c: string) => void;
   profileOpen: boolean; onToggleProfile: () => void;
-  printerIdx: number; printerOpen: boolean; onTogglePrinter: () => void; onPickPrinter: (i: number) => void; onPrintPattern: () => void;
+  printerIdx: number; printerOpen: boolean; printerFocus?: number; onTogglePrinter: () => void; onPickPrinter: (i: number, alreadySetUp: boolean) => void; onPrintPattern: () => void;
   onSubscription: () => void; onSupport: () => void; onDelete: () => void;
   account?: AccountUser | null; // Phase 5a: real signed-in profile (null → demo fallback)
   // Phase 5i — real self-edit save (upsertUser → seller_profiles). Profile card writes
@@ -131,6 +131,14 @@ export default function GeneralSettings({
     { name: t.rd_set_prn_wifi, meta: printerStatus.lanDetail || t.rd_set_prn_wifi_meta },
     { name: t.rd_set_prn_bt, meta: printerStatus.btDetail || t.rd_set_prn_bt_meta },
   ];
+  // "Already set up" per slot = a device is saved (a LAN host:port for WiFi, a
+  // paired device for BT). Native-only truth (web/preview = "" → always false →
+  // the guide always shows on preview). Passed up so RedesignApp shows the setup
+  // guide only when the picked type isn't set up yet.
+  const slotSetUp = (i: number): boolean => (i === 0 ? !!printerStatus.lanDetail : !!printerStatus.btDetail);
+  // Scroll the printer picker into view when arriving from the no-printer modal.
+  const printerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (printerFocus > 0) printerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }, [printerFocus]);
   // A stale persisted index (the old picker had 3 slots) clamps to the last slot.
   const printerSlotIdx = Math.min(Math.max(printerIdx, 0), printerSlots.length - 1);
   const printer = printerSlots[printerSlotIdx];
@@ -387,7 +395,7 @@ export default function GeneralSettings({
         </div>
 
         {/* PRINTER & DISPLAY */}
-        <div>
+        <div ref={printerRef}>
           <div className="sfl-anim-textglow" style={sectionLabel}>{t.rd_set_printer_display}</div>
           <div style={{ ...card, padding: 0, overflow: "hidden" }}>
             <button onClick={onTogglePrinter} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)", borderBottom: "1px solid var(--border)" }}>
@@ -402,7 +410,7 @@ export default function GeneralSettings({
                   const on = i === printerSlotIdx;
                   const st = slotState(i);
                   return (
-                    <button key={p.name} onClick={() => onPickPrinter(i)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 11, padding: 10, border: "none", borderRadius: 10, background: on ? "var(--accent-softer)" : "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
+                    <button key={p.name} onClick={() => onPickPrinter(i, slotSetUp(i))} style={{ width: "100%", display: "flex", alignItems: "center", gap: 11, padding: 10, border: "none", borderRadius: 10, background: on ? "var(--accent-softer)" : "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
                       <span style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${on ? "var(--accent)" : "var(--border-strong)"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><span style={{ width: 10, height: 10, borderRadius: "50%", background: on ? "var(--accent)" : "transparent" }} /></span>
                       <span style={{ flex: 1, minWidth: 0 }}><span style={{ display: "block", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{p.name}</span><span style={{ display: "block", fontSize: 11, color: "var(--text-muted)" }}>{p.meta}</span></span>
                       <span style={{ fontSize: 11, fontWeight: 700, color: stateColor(st), flexShrink: 0 }}>{stateLabel(st)}</span>
