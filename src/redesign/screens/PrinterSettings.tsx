@@ -94,7 +94,11 @@ export default function PrinterSettings({
           <span style={{ width: 13, height: 13, borderRadius: "50%", background: dot, flexShrink: 0, boxShadow: `0 0 7px ${dot}` }} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{wifi ? t.rd_ps_wifi_printer : t.rd_ps_bt_printer}</div>
-            <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{status.message || (wifi ? t.rd_ps_not_connected : t.rd_ps_aimo)}</div>
+            {/* Task D: the BT subtitle must never show the WiFi getPrinter
+                message (`status` is populated by the LAN bridge on mount). WiFi
+                keeps its own status.message; BT shows its paired device or the
+                Bluetooth-accurate "No Bluetooth printer paired". */}
+            <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{wifi ? (status.message || t.rd_ps_not_connected) : (btSaved ? (btSaved.name || t.rd_ps_aimo) : t.rd_ps_bt_none)}</div>
           </div>
         </div>
         {!nativeReady && <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 8, lineHeight: 1.5 }}>{t.rd_ps_native_note}</div>}

@@ -70,6 +70,7 @@ import { isAdminRole } from "../lib/roles";
 import UpdateModal from "./components/UpdateModal";
 import ExpiryModal from "./components/ExpiryModal";
 import PrinterModal from "./components/PrinterModal";
+import PrinterGuideModal from "./components/PrinterGuideModal";
 import { currentNativePlatform, readBinaryBuild, shouldShowUpdate, wasDismissed, markDismissed, storeUrlFor, bridgeBuildNumber, isUpdatePreview, IOS_BLE_BUILD, type NativePlatform, type NativeVersionConfig } from "./adapters/nativeVersion";
 import { computeExpiryTier, wasExpiryDismissed, markExpiryDismissed, previewExpiryTier, type ExpiryTier } from "./adapters/planExpiryModal";
 import { planDaysLeft } from "../lib/planWindow";
@@ -498,6 +499,15 @@ export default function RedesignApp() {
   // General Settings local UI state (visual only).
   const [profileOpen, setProfileOpen] = useState(false);
   const [printerOpen, setPrinterOpen] = useState(false);
+  // Printer setup guide (shown before the setup screen when a not-yet-set-up
+  // printer type is picked) + a nonce that asks Settings to scroll the printer
+  // picker into view when the seller arrives from the no-printer modal.
+  const [printerGuide, setPrinterGuide] = useState<"wifi" | "bt" | null>(null);
+  const [printerFocus, setPrinterFocus] = useState(0);
+  // ONE-SHOT consume: Settings scrolls the picker into view once on arrival, then
+  // calls this to clear the focus intent (stable identity so the child effect only
+  // fires on printerFocus transitions, never on render churn).
+  const consumePrinterFocus = useCallback(() => setPrinterFocus(0), []);
   // Default the Settings "Printer" row to the Bluetooth sticker slot (1) — the
   // real production printer (AIMO D520BT) virtually every seller uses. Slot 0
   // (WiFi/LAN receipt) stays reachable when the user taps it; this only changes
@@ -983,9 +993,17 @@ export default function RedesignApp() {
               onAutoCodesSaved={liftAutoCodes}
               lang={lang} onSetLang={setLang} currency={currency} onSetCurrency={setCurrencyExplicit}
               profileOpen={profileOpen} onToggleProfile={() => setProfileOpen((o) => !o)}
-              printerIdx={printerIdx} printerOpen={printerOpen}
+              printerIdx={printerIdx} printerOpen={printerOpen} printerFocus={printerFocus}
+              onPrinterFocused={consumePrinterFocus}
               onTogglePrinter={() => setPrinterOpen((o) => !o)}
-              onPickPrinter={(i) => { setPrinterIdx(i); setPrinterOpen(false); setPsType(i === 0 ? "wifi" : "bt"); setScreen("printersettings"); }}
+              /* Pick a printer type → set psType, then show the setup GUIDE when
+                 that type isn't set up yet (alreadySetUp from the picker's live
+                 status), else go straight to the technical setup screen. */
+              onPickPrinter={(i, alreadySetUp) => {
+                setPrinterIdx(i); setPrinterOpen(false);
+                const kind = i === 0 ? "wifi" : "bt"; setPsType(kind);
+                if (alreadySetUp) setScreen("printersettings"); else setPrinterGuide(kind);
+              }}
               onPrintPattern={() => setScreen("printpattern")}
               onSubscription={() => setScreen("subscription")}
               onSupport={() => setScreen("support")}
@@ -1117,8 +1135,22 @@ export default function RedesignApp() {
             printer setup screen (right tab pre-selected by the failing path). */}
         {printerModal && (
           <PrinterModal
-            onGoSettings={() => { const via = printerModal.via; setPrinterModal(null); setPsType(via === "bluetooth" ? "bt" : "wifi"); setScreen("printersettings"); }}
+            /* Land on the CHOICE (Settings with the printer picker open), NOT on a
+               pre-committed tab — the seller picks their printer type first. Do
+               this regardless of whether a type is already set up. Focus nonce
+               scrolls the picker into view. */
+            onGoSettings={() => { setPrinterModal(null); setScreen("settings"); setPrinterOpen(true); setPrinterFocus((n) => n + 1); }}
             onDismiss={() => setPrinterModal(null)}
+          />
+        )}
+        {/* Setup guide for the chosen printer type (before the technical screen).
+            OK → the setup screen (psType already set at pick time); ✕ → back to
+            the choice without proceeding. */}
+        {printerGuide && (
+          <PrinterGuideModal
+            kind={printerGuide}
+            onOk={() => { setPrinterGuide(null); setScreen("printersettings"); }}
+            onClose={() => setPrinterGuide(null)}
           />
         )}
 
