@@ -2659,6 +2659,13 @@ live confirmation na lang — si Lheyukay mismo ang ebidensyang gumagana).
 
 ## 🐛 KNOWN ISSUES
 ### ⚠️ FB-functional-status: INTENTIONALLY NON-FUNCTIONAL, PENDING REQUIREMENTS (Jeff clarified 2026-07-15)
+- ✅ **RESOLVED 2026-07-24 (Option A shipped, merge `04b62f6`):** ang FB Connect ay
+  pinalitan EVERYWHERE ng honest **"activation required" gate + Telegram anchor** (kasama
+  ang FB tab sa loob ng ConnectModal, na iniwang visible bilang sales hook). WALA nang
+  reachable path na tumatawag ng `doConnect("Facebook")` → walang green pill na mangangako
+  ng capture. Ang A/B na tanong sa ibaba ay SARADO na (Option A). Detalye sa "2026-07-23
+  PM – 07-24 — LIVE-SCREEN ACCOUNT ENTRY POINTS" block sa dulo. (FB is still non-functional
+  by design — blocked on Meta Business Verification; ito ay UI-honesty fix lang.)
 - **Katotohanan (mula kay Jeff):** ang Facebook ay **SADYANG hindi pa gumagana** —
   kulang sa requirements (**Meta Business Verification / FB Live API**), hindi pa
   na-asikaso. HINDI ito engineering bug; **blocked sa external onboarding.**
@@ -3611,3 +3618,108 @@ dots) fits up to **4 digits** (ends at 472); 5+ digits clip — accepted. ⚠️
 Self-audit reports have understated diff scope before (a "2 file" fix branch actually
 carried **5 files** incl. project wiring). Always confirm with `git show --stat` (or
 `git diff --stat`) before merging — don't trust a narrative file count.
+
+## 2026-07-23 PM – 07-24 — ADMIN DELETE FIX + PRINTER SETUP FLOW + ACCOUNT ENTRY POINTS + PROCESS LESSONS
+`main` tip = **`0037ced`**. Everything below landed AFTER "2026-07-23 — 1.5 SHIPPED".
+Four things: the admin-delete production fix (load-bearing), the printer setup flow, the
+live-screen account entry points, and standing process/security lessons.
+
+### 🔴🔴 ADMIN SELLER DELETE — was silently 500'ing for 5 days (Jul 19→24) — FIXED (merge `a4b06a5`, edge v5)
+**ROOT CAUSE (load-bearing — do NOT reintroduce):** supabase-js
+`auth.admin.deleteUserById` **THROWS a non-AuthError** (while transforming the DELETE
+response into a user object) instead of resolving to `{ error }`. gotrue-js returns
+`{ error }` ONLY for AuthErrors and **RE-THROWS everything else** → the throw jumped the
+retry loop + failure logging and hit the outer catch → a bare **HTTP 500** with the real
+reason swallowed. This broke **EVERY** admin seller-delete from the day the Phase-2 edge
+function deployed (**Jul 19**) until the fix (**Jul 24**) — **zero deletes succeeded in
+that window**, and it was assumed working the whole time (see PROCESS LESSONS).
+- **FIX (⚠️ do NOT revert to the SDK — a guard comment in `index.ts` says exactly this,
+  keep it):** call the **GoTrue admin REST endpoint DIRECTLY** —
+  `DELETE ${SUPABASE_URL}/auth/v1/admin/users/{uid}` with headers `apikey` +
+  `Authorization: Bearer` = **SERVICE_KEY**, body `{should_soft_delete:false}` (= FULL
+  WIPE, unchanged). **Check the HTTP STATUS ONLY:** 200/204 = deleted, **404 = idempotent
+  success** (already gone from a prior partial run), else **bounded retry** (200ms, 400ms;
+  no sleep after the final attempt) then throw with the raw status + body for the outer
+  catch. **NEVER parse the response into a user object — that parse is exactly what the
+  SDK died on.**
+- **`countRows` key column per table:** `seller_profiles` → **`auth_user_id`**; every
+  other user-owned table → **`user_id`**. (The old hard-coded `user_id` 400'd on
+  seller_profiles and was silently swallowed — the "what was wiped" report showed it as 0.)
+- **Verified END-TO-END in PRODUCTION:** a real account fully wiped + an `audit_logs` row
+  written. Edge function **v5** byte-diffed against the merged-main source (`index.ts` +
+  `guards.ts` identical, `verify_jwt:true`).
+
+### EDGE-FUNCTION ERROR SURFACING (`src/redesign/adapters/edgeError.ts`)
+- supabase-js `functions.invoke` returns `FunctionsHttpError` on non-2xx; the real message
+  lives in **`error.context`** (a `Response`), NOT `error.message` (the generic "non-2xx
+  status code" wrapper). `readEdgeError(error, data)` reads `data.error` then
+  `error.context` (JSON → text) — never the bare wrapper.
+- 🔒 **SECURITY RULE (do NOT relax — an audit caught it leaking table names, raw
+  Postgres/GoTrue text, and stack frames to non-admins):** admin-only paths
+  (`hardDeleteUser`, `ghostCleanup`, `admin-set-password`) surface the **FULL** server
+  message. The **self-delete** path is reachable by **ANY authenticated seller**, so it is
+  **GATED** — only known-safe codes (`self_delete` / `protected_admin` / `protected_master`
+  / `not_found`) show the real message; **any codeless 500 shows the localized
+  `rd_del_generic`**. (`adapters/adminDelete.ts` `SAFE_DELETE_CODES` / `isSafeDeleteCode`;
+  gate in `screens/DeleteAccount.tsx`.)
+
+### 🔒 EDGE-FUNCTION DEPLOY RULE (standing — learned the hard way)
+Deploying an edge function **from a branch** means production runs code that is **NOT on
+`main`**. **Always reconcile by merging the branch, and verify by BYTE-DIFFING the deployed
+source against the merged file** (`mcp Supabase get_edge_function` → write to scratch →
+`diff` vs the repo file; confirm `verify_jwt` too). Done for this fix (v5 == merged main,
+byte-identical).
+
+### PRINTER SETUP FLOW (merge `0037ced`; addendum `31cb854`)
+- The **"No printer connected" modal**'s primary button lands on the **CHOOSE PRINTER
+  picker** in Settings (picker open + scrolled into view) — it must **NEVER pre-commit a
+  printer type** (it used to call `setPsType` from the failing path), regardless of whether
+  a type is already set up.
+- Picking a type shows a short **per-type setup guide**, but **only when that type isn't
+  set up yet** (`components/PrinterGuideModal.tsx`, kind `wifi`/`bt`). ⚠️ The **Bluetooth
+  guide must NEVER mention IP/port/network** — it is a pairing flow; the WiFi guide does.
+- The **Bluetooth screen subtitle** reads the Bluetooth saved-device state (`btSaved`), NOT
+  the shared WiFi `status`. **Root cause of the old bug:** the screen's mount effect runs
+  the WiFi `getPrinter`, and its message leaked under the BT heading. The fetch **still
+  runs** (the WiFi tab needs it) — **only the display was corrected.**
+- **"Already set up" is derived from the native bridge** (`usePrinterStatus` lanDetail /
+  btDetail), so on **web/preview it is always false** → the guide **always shows on
+  preview**. Expected; the skip-to-technical-screen path is **APK-only**.
+
+### LIVE-SCREEN ACCOUNT ENTRY POINTS (merge `04b62f6`)
+- The **TikTok dropdown** has a **"Manage / add accounts"** row at the end of the list;
+  tapping **Connect with NO registered account** routes to the **manage screen** instead of
+  opening ConnectModal.
+- **ManageChannels' back target is origin-aware:** entered from Live → returns to Live;
+  from Settings → returns to Settings.
+- **Facebook is design-only** (blocked on **Meta Business Verification / FB Live API** — see
+  the FB-functional-status KNOWN ISSUE). Its Connect was replaced **EVERYWHERE** by an
+  honest **"activation required" gate + Telegram anchor**, including the Facebook tab inside
+  ConnectModal (kept visible as a **sales hook**). **There must be ZERO reachable code path
+  that calls `doConnect("Facebook")`.** (This shipped Option A of the old FB A/B question.)
+- **ConnectModal is now unreachable dead-but-dormant code, deliberately kept.**
+
+### PATTERN LESSON — one-shot UI intent on a conditionally-mounted screen
+`GeneralSettings` is **conditionally mounted** (`screen === "settings"`), so a local flag or
+ref **CANNOT** hold a one-shot UI intent — it resets on every remount and the effect
+re-fires on the next mount. **The PARENT must own and consume it:** a **stable `useCallback`**
+that clears the flag after use (here `printerFocus` is bumped by the modal, then reset to 0
+by `onPrinterFocused` right after the scroll fires once — survives the conditional remount).
+
+### PROCESS LESSONS (standing)
+- **Deployed ≠ works.** The Phase-2 delete was deployed (Jul 19) with no end-to-end test and
+  assumed working for days while it 500'd on every call. **Any feature touching account
+  deletion or billing MUST be exercised END-TO-END in production before it is called done.**
+- **Confirm diff scope with `git show --stat` before merging** — self-audit reports have
+  understated scope (a "2-file" branch that actually carried 5). (See also the Jul 23
+  PROCESS NOTE above.)
+- ⚠️ **The served-bundle body grep is NO LONGER POSSIBLE from the container:** egress now
+  blocks `www.sellerflowlive.com` AND all `*.vercel.app`, and Vercel assets are SSO-gated.
+  **The owner's hard-refresh check on production is now the PRIMARY verification for web
+  deploys** — don't wait on an automated served-bundle grep that cannot run. (Supersedes the
+  in-container served-bundle-grep step in the earlier phone-validation "SERVED-BUNDLE VERIFY"
+  lesson; the principle — verify the running bundle, not just "READY at SHA" — still holds,
+  the mechanism is now the owner's refresh.)
+- **Supabase admin RPCs:** do NOT revoke EXECUTE from `authenticated` — see the Jul 23
+  SUPABASE HARDENING CORRECTION (admins ARE `authenticated`; protection is the internal
+  `is_admin()` guards). Re-confirmed live.
