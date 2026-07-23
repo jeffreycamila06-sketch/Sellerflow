@@ -3360,6 +3360,10 @@ post-deploy = live validation).
 - **Note:** walang natitirang undeployed server commit as of the 2:21 AM Jul 15 deploy.
 
 ### NO-PRINTER-CONNECTED MODAL ✅ LIVE (merge `9e6d18c`, Vercel `dpl_ABqjmE9U…`)
+⚠️ **SUPERSEDED 2026-07-24 — see "2026-07-23 PM – 07-24 → PRINTER SETUP FLOW" (merge
+`0037ced`).** The destination described below (`setScreen("printersettings")` + **psType
+pre-select** = a pre-committed tab) is NO LONGER how it works: the modal now lands on the
+CHOOSE PRINTER picker and must NEVER pre-commit a printer type. Text kept as history.
 Client-only. An order that auto-prints/manual-prints with NO printer set up saved the
 order but printed nothing SILENTLY (sticker = console.warn; slip = window.alert
 swallowed by the WebView "prevent dialogs" toggle) → sellers called support. Fix:
