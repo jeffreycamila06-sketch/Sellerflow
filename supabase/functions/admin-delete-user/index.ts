@@ -63,8 +63,21 @@ const CASCADE_TABLES = [
   "seller_shipping_settings", "shipping_entries",
 ];
 
+// The user-id column differs per table: seller_profiles keys on auth_user_id;
+// every other user-owned table keys on user_id. The old hard-coded "user_id"
+// made the seller_profiles count 400 with "column seller_profiles.user_id does
+// not exist" on EVERY delete — it was swallowed (so it never threw), but it made
+// the "what was wiped" report wrong (seller_profiles always 0). Fixed here.
+function keyColumnFor(table: string): string {
+  return table === "seller_profiles" ? "auth_user_id" : "user_id";
+}
+
+// Best-effort pre-delete count for the report — NEVER throws (a bad count must
+// not abort a wipe). A residual error is now logged (was fully silent) instead
+// of masquerading as 0.
 async function countRows(admin: any, table: string, uid: string): Promise<number> {
-  const { count } = await admin.from(table).select("*", { count: "exact", head: true }).eq("user_id", uid);
+  const { count, error } = await admin.from(table).select("*", { count: "exact", head: true }).eq(keyColumnFor(table), uid);
+  if (error) { console.error(`[admin-delete] countRows(${table}) failed: ${error.message}`); return 0; }
   return count ?? 0;
 }
 
@@ -80,6 +93,10 @@ async function deleteAuthUserIdempotent(admin: any, uid: string): Promise<void> 
     const { error } = await admin.auth.admin.deleteUserById(uid);
     if (!error) return;                      // deleted this run
     if (isAlreadyDeletedError(error)) return; // already gone (prior partial run) → success
+    // TEMP DIAGNOSTIC (2026-07-23): capture the EXACT GoTrue failure — status +
+    // code + message — so the real reason is visible in the edge logs. Safe to
+    // trim once the cause is confirmed (see the deploy note).
+    console.error(`[admin-delete] deleteUserById FAIL attempt=${attempt} status=${error?.status} code=${error?.code} name=${error?.name} msg=${error?.message}`);
     lastErr = error;
     await new Promise((r) => setTimeout(r, 200 * attempt)); // 200ms, 400ms
   }
@@ -102,23 +119,31 @@ async function deleteAuthUserIdempotent(admin: any, uid: string): Promise<void> 
 // failure is diagnosable + triggers the retry rather than being silently swallowed.
 async function hardWipe(admin: any, uid: string, email: string): Promise<Record<string, number | string>> {
   const wiped: Record<string, number | string> = { email, userId: uid };
+  // TEMP DIAGNOSTIC (2026-07-23): step labels so a 500 pinpoints the failing
+  // stage in the edge logs. Trim once the cause is confirmed.
+  console.error(`[admin-delete] hardWipe start uid=${uid} email=${email}`);
   // pre-count the cascade tables (for the report — cascade fires inside deleteUserById)
   for (const t of CASCADE_TABLES) wiped[t] = await countRows(admin, t, uid);
 
   // 1. orders — FK NO ACTION: MUST go before the auth delete or it blocks (FULL WIPE = delete billing too). Idempotent (re-run = 0 rows).
+  console.error(`[admin-delete] step=orders.delete`);
   const ord = await admin.from("orders").delete().eq("user_id", uid).select("id");
   if (ord.error) throw new Error(`orders delete failed: ${ord.error.message}`);
   wiped.orders = ord.data?.length ?? 0;
   // 2. announcements.created_by — FK NO ACTION: null it so the auth delete isn't blocked. Idempotent.
+  console.error(`[admin-delete] step=announcements.clear`);
   const ann = await admin.from("announcements").update({ created_by: null }).eq("created_by", uid).select("id");
   if (ann.error) throw new Error(`announcements clear failed: ${ann.error.message}`);
   wiped.announcements_cleared = ann.data?.length ?? 0;
   // 3. support_messages — email-keyed, no FK, no cascade → part of the wipe. Idempotent.
+  console.error(`[admin-delete] step=support_messages.delete`);
   const sm = await admin.from("support_messages").delete().ilike("email", email).select("id");
   if (sm.error) throw new Error(`support_messages delete failed: ${sm.error.message}`);
   wiped.support_messages = sm.data?.length ?? 0;
   // 4. the auth account — CASCADE wipes every CASCADE_TABLES row above. Idempotent + retried.
+  console.error(`[admin-delete] step=deleteUserById uid=${uid}`);
   await deleteAuthUserIdempotent(admin, uid);
+  console.error(`[admin-delete] hardWipe done uid=${uid}`);
   return wiped;
 }
 
