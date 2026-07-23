@@ -41,7 +41,7 @@
 //
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from "npm:@supabase/supabase-js@2";
-import { checkDeleteAllowed, checkSelfDeleteAllowed, isAlreadyDeletedError, type DeleteTarget } from "./guards.ts";
+import { checkDeleteAllowed, checkSelfDeleteAllowed, type DeleteTarget } from "./guards.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -81,26 +81,70 @@ async function countRows(admin: any, table: string, uid: string): Promise<number
   return count ?? 0;
 }
 
+// Flattens ANY thrown value (AuthError shapes vary; a network throw is a plain
+// Error) into one loggable string — name/message + any status/code/body-ish
+// fields + a short stack. Never throws itself.
+function describeThrow(e: unknown): string {
+  if (e && typeof e === "object") {
+    const o = e as Record<string, unknown>;
+    const extra: Record<string, unknown> = {};
+    for (const k of ["status", "code", "name", "__isAuthError", "body", "error", "error_description", "msg", "cause"]) {
+      if (o[k] !== undefined) extra[k] = o[k];
+    }
+    const msg = typeof o.message === "string" ? o.message : "";
+    const stack = typeof o.stack === "string" ? o.stack.split("\n").slice(0, 4).join(" | ") : "";
+    let extraStr = "";
+    try { extraStr = JSON.stringify(extra); } catch { extraStr = String(extra); }
+    return `name=${o.name ?? "?"} msg=${msg} extra=${extraStr} stack=${stack}`;
+  }
+  try { return `raw=${JSON.stringify(e)}`; } catch { return `raw=${String(e)}`; }
+}
+
 // Idempotent + retried auth-account delete. ⚠️ TRANSACTIONAL SAFETY: a real DB
-// transaction CANNOT span this + the SQL steps — deleteUserById is a GoTrue admin
-// HTTP call, not SQL. So the whole wipe is instead RETRY-SAFE (see hardWipe). Here:
-//   • "user already gone" (404 / not_found) = idempotent SUCCESS (a prior partial
-//     run finished it) — never re-throw that as a failure.
-//   • transient errors → bounded retry with small backoff (no infinite loop).
-async function deleteAuthUserIdempotent(admin: any, uid: string): Promise<void> {
-  let lastErr: any = null;
+// transaction CANNOT span this + the SQL steps — the auth delete is a GoTrue admin
+// HTTP call, not SQL. So the whole wipe is instead RETRY-SAFE (see hardWipe).
+//
+// ⚠️ WHY A DIRECT REST CALL, NOT admin.auth.admin.deleteUserById (2026-07-23):
+// the SDK wrapper was THROWING (not resolving to { error }) in production — the
+// throw jumped the retry loop straight to the outer catch, so the real reason was
+// swallowed (500 with no diagnostic). We call the GoTrue admin REST endpoint
+// DIRECTLY, which (a) surfaces the raw HTTP status + body — the true error — and
+// (b) bypasses whatever the SDK was choking on (the SQL side is already proven to
+// work). Hard delete (should_soft_delete:false) = FULL WIPE, unchanged semantics.
+//   • 200 / 204            → deleted this run.
+//   • 404                  → already gone (prior partial run) → idempotent SUCCESS.
+//   • other status / throw → bounded retry with backoff, then throw with the raw
+//                            status+body / thrown value for the outer catch → 500.
+async function deleteAuthUserIdempotent(_admin: any, uid: string): Promise<void> {
+  const url = `${SUPABASE_URL}/auth/v1/admin/users/${uid}`;
+  const headers = {
+    apikey: SERVICE_KEY,
+    Authorization: `Bearer ${SERVICE_KEY}`,
+    "Content-Type": "application/json",
+  };
+  let last = "unknown";
   for (let attempt = 1; attempt <= 3; attempt++) {
-    const { error } = await admin.auth.admin.deleteUserById(uid);
-    if (!error) return;                      // deleted this run
-    if (isAlreadyDeletedError(error)) return; // already gone (prior partial run) → success
-    // TEMP DIAGNOSTIC (2026-07-23): capture the EXACT GoTrue failure — status +
-    // code + message — so the real reason is visible in the edge logs. Safe to
-    // trim once the cause is confirmed (see the deploy note).
-    console.error(`[admin-delete] deleteUserById FAIL attempt=${attempt} status=${error?.status} code=${error?.code} name=${error?.name} msg=${error?.message}`);
-    lastErr = error;
+    try {
+      const res = await fetch(url, { method: "DELETE", headers, body: JSON.stringify({ should_soft_delete: false }) });
+      if (res.status === 200 || res.status === 204) {
+        console.error(`[admin-delete] deleteUser REST OK attempt=${attempt} status=${res.status}`);
+        return;                                  // deleted this run
+      }
+      if (res.status === 404) {
+        console.error(`[admin-delete] deleteUser REST already-gone attempt=${attempt} status=404`);
+        return;                                  // already gone → idempotent success
+      }
+      const bodyText = (await res.text().catch(() => "")).slice(0, 800);
+      last = `status=${res.status} body=${bodyText}`;
+      console.error(`[admin-delete] deleteUser REST FAIL attempt=${attempt} ${last}`);
+    } catch (e) {
+      // network / fetch throw — capture the RAW value on EVERY attempt.
+      last = describeThrow(e);
+      console.error(`[admin-delete] deleteUser REST THREW attempt=${attempt} ${last}`);
+    }
     await new Promise((r) => setTimeout(r, 200 * attempt)); // 200ms, 400ms
   }
-  throw new Error(`auth deleteUserById failed after retries: ${lastErr?.message ?? "unknown"}`);
+  throw new Error(`auth deleteUser failed after retries: ${last}`);
 }
 
 // The single-user FULL WIPE, shared by mode "user" and "ghost-purge". Assumes the
@@ -111,7 +155,7 @@ async function deleteAuthUserIdempotent(admin: any, uid: string): Promise<void> 
 // every step is IDEMPOTENT, so re-invoking hardWipe on a PARTIALLY-wiped user
 // converges to fully-wiped — a failed step throws → 500 → the caller simply calls
 // again with the SAME args. On the 2nd run: the row-deletes match 0 rows, the
-// announcements-null matches 0 rows, and deleteUserById treats "already gone" as
+// announcements-null matches 0 rows, and the auth delete treats "already gone" as
 // success. There is NO state a retry cannot finish. The only visible artifact of a
 // mid-wipe failure is that this user's billing `orders` are removed before the auth
 // account (required — FK NO ACTION would otherwise block the cascade); a retry
@@ -122,7 +166,7 @@ async function hardWipe(admin: any, uid: string, email: string): Promise<Record<
   // TEMP DIAGNOSTIC (2026-07-23): step labels so a 500 pinpoints the failing
   // stage in the edge logs. Trim once the cause is confirmed.
   console.error(`[admin-delete] hardWipe start uid=${uid} email=${email}`);
-  // pre-count the cascade tables (for the report — cascade fires inside deleteUserById)
+  // pre-count the cascade tables (for the report — cascade fires inside the auth delete)
   for (const t of CASCADE_TABLES) wiped[t] = await countRows(admin, t, uid);
 
   // 1. orders — FK NO ACTION: MUST go before the auth delete or it blocks (FULL WIPE = delete billing too). Idempotent (re-run = 0 rows).
