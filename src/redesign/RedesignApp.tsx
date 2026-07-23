@@ -504,6 +504,10 @@ export default function RedesignApp() {
   // picker into view when the seller arrives from the no-printer modal.
   const [printerGuide, setPrinterGuide] = useState<"wifi" | "bt" | null>(null);
   const [printerFocus, setPrinterFocus] = useState(0);
+  // ONE-SHOT consume: Settings scrolls the picker into view once on arrival, then
+  // calls this to clear the focus intent (stable identity so the child effect only
+  // fires on printerFocus transitions, never on render churn).
+  const consumePrinterFocus = useCallback(() => setPrinterFocus(0), []);
   // Default the Settings "Printer" row to the Bluetooth sticker slot (1) — the
   // real production printer (AIMO D520BT) virtually every seller uses. Slot 0
   // (WiFi/LAN receipt) stays reachable when the user taps it; this only changes
@@ -990,6 +994,7 @@ export default function RedesignApp() {
               lang={lang} onSetLang={setLang} currency={currency} onSetCurrency={setCurrencyExplicit}
               profileOpen={profileOpen} onToggleProfile={() => setProfileOpen((o) => !o)}
               printerIdx={printerIdx} printerOpen={printerOpen} printerFocus={printerFocus}
+              onPrinterFocused={consumePrinterFocus}
               onTogglePrinter={() => setPrinterOpen((o) => !o)}
               /* Pick a printer type → set psType, then show the setup GUIDE when
                  that type isn't set up yet (alreadySetUp from the picker's live

@@ -31,7 +31,7 @@ export default function GeneralSettings({
   theme, accent, onSetTheme, onSetAccent,
   auto, cur, lang, onSetLang, currency, onSetCurrency,
   profileOpen, onToggleProfile,
-  printerIdx, printerOpen, printerFocus = 0, onTogglePrinter, onPickPrinter, onPrintPattern,
+  printerIdx, printerOpen, printerFocus = 0, onPrinterFocused, onTogglePrinter, onPickPrinter, onPrintPattern,
   onSubscription, onSupport, onDelete,
   account = null, onSaveProfile, onManageChannel, onAutoCodesSaved,
   keepAwake = true, onToggleKeepAwake,
@@ -41,7 +41,7 @@ export default function GeneralSettings({
   auto: AutoControls; cur: string;
   lang: string; onSetLang: (c: string) => void; currency: string; onSetCurrency: (c: string) => void;
   profileOpen: boolean; onToggleProfile: () => void;
-  printerIdx: number; printerOpen: boolean; printerFocus?: number; onTogglePrinter: () => void; onPickPrinter: (i: number, alreadySetUp: boolean) => void; onPrintPattern: () => void;
+  printerIdx: number; printerOpen: boolean; printerFocus?: number; onPrinterFocused?: () => void; onTogglePrinter: () => void; onPickPrinter: (i: number, alreadySetUp: boolean) => void; onPrintPattern: () => void;
   onSubscription: () => void; onSupport: () => void; onDelete: () => void;
   account?: AccountUser | null; // Phase 5a: real signed-in profile (null → demo fallback)
   // Phase 5i — real self-edit save (upsertUser → seller_profiles). Profile card writes
@@ -137,8 +137,15 @@ export default function GeneralSettings({
   // guide only when the picked type isn't set up yet.
   const slotSetUp = (i: number): boolean => (i === 0 ? !!printerStatus.lanDetail : !!printerStatus.btDetail);
   // Scroll the printer picker into view when arriving from the no-printer modal.
+  // ONE-SHOT: after scrolling, signal the parent to reset printerFocus to 0 so the
+  // intent is consumed. Otherwise — because this screen is conditionally mounted —
+  // the effect would re-run on EVERY later mount (printerFocus stays > 0) and
+  // auto-scroll to the printer section on plain Settings opens for the rest of the
+  // session. Resetting in the parent (not a local ref) is what survives remount.
   const printerRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (printerFocus > 0) printerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); }, [printerFocus]);
+  useEffect(() => {
+    if (printerFocus > 0) { printerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }); onPrinterFocused?.(); }
+  }, [printerFocus, onPrinterFocused]);
   // A stale persisted index (the old picker had 3 slots) clamps to the last slot.
   const printerSlotIdx = Math.min(Math.max(printerIdx, 0), printerSlots.length - 1);
   const printer = printerSlots[printerSlotIdx];

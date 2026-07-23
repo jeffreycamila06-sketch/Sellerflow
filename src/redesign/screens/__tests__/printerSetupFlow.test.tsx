@@ -3,8 +3,9 @@
 // Bluetooth-accurate. RedesignApp wiring is pinned as a source contract (the full
 // authed app is impractical to mount — same idiom as iosGates / buyerLine); the
 // GeneralSettings picker + PrinterSettings subtitle are pinned behaviorally.
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import { useState } from "react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import GeneralSettings from "../GeneralSettings";
@@ -90,5 +91,50 @@ describe("PrinterSettings subtitle (task D)", () => {
   it("WiFi screen does NOT show the Bluetooth subtitle (left correct)", () => {
     renderPS("wifi");
     expect(screen.queryByText(t.rd_ps_bt_none)).toBeNull();
+  });
+});
+
+// ── (addendum) the focus scroll is a genuine ONE-SHOT ───────────────────────
+// GeneralSettings is CONDITIONALLY mounted (screen === "settings"). Before the
+// one-shot fix, printerFocus stayed > 0 after the modal used it, so the scroll
+// effect re-fired on EVERY later mount — auto-scrolling to the printer section on
+// plain Settings opens for the rest of the session. The fix consumes the intent
+// (onPrinterFocused → parent resets printerFocus to 0). This pins: scroll on the
+// modal-triggered arrival, NOT on a subsequent plain remount.
+describe("printer-focus scroll is one-shot (survives remount)", () => {
+  let scrollSpy: ReturnType<typeof vi.fn>;
+  beforeEach(() => { scrollSpy = vi.fn(); (Element.prototype as unknown as { scrollIntoView: unknown }).scrollIntoView = scrollSpy; });
+  afterEach(() => { delete (Element.prototype as unknown as { scrollIntoView?: unknown }).scrollIntoView; });
+
+  const baseProps = {
+    theme: "light" as const, accent: "indigo" as const, onSetTheme: noop, onSetAccent: noop,
+    auto, cur: "NT$", lang: "en", onSetLang: noop, currency: "TWD", onSetCurrency: noop,
+    profileOpen: false, onToggleProfile: noop,
+    printerIdx: 1, printerOpen: false, onTogglePrinter: noop, onPickPrinter: noop, onPrintPattern: noop,
+    onSubscription: noop, onSupport: noop, onDelete: noop,
+    account, onSaveProfile: async () => ({ ok: true }), onManageChannel: noop,
+  };
+
+  // Mirrors RedesignApp's wiring: printerFocus state, onPrinterFocused resets it to
+  // 0, and GeneralSettings is conditionally mounted (`show` = navigated to Settings).
+  function Harness({ show }: { show: boolean }) {
+    const [pf, setPf] = useState(1); // arrives from the no-printer modal (nonce bumped to 1)
+    return (
+      <TProvider lang="en">
+        {show && <GeneralSettings {...baseProps} printerFocus={pf} onPrinterFocused={() => setPf(0)} />}
+      </TProvider>
+    );
+  }
+
+  it("scrolls on the modal-triggered arrival, but NOT on a later plain open", () => {
+    const { rerender } = render(<Harness show={true} />);
+    // Arrival from the modal (printerFocus starts > 0) → scrolled exactly once.
+    expect(scrollSpy).toHaveBeenCalledTimes(1);
+    // Leave Settings (unmount), then open Settings again normally (remount). The
+    // Harness (and its printerFocus, now consumed to 0) persists across the toggle.
+    rerender(<Harness show={false} />);
+    rerender(<Harness show={true} />);
+    // Still exactly once — the intent was consumed; no auto-scroll on the plain open.
+    expect(scrollSpy).toHaveBeenCalledTimes(1);
   });
 });
