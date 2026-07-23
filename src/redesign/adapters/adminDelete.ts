@@ -12,6 +12,19 @@ export interface HardDeleteResult {
   deleted?: Record<string, unknown>;
 }
 
+// Item-5 containment (self-delete disclosure). The SELF path (mode "self") is
+// reachable by ANY authenticated seller, and the edge function's raw error can
+// include internal detail (table names, Postgres/PostgREST error text, GoTrue
+// response bodies, stack frames). On that path the UI surfaces the server message
+// ONLY for these known-safe guard codes; every other (codeless 500) failure shows
+// a generic localized message. The ADMIN paths (hardDeleteUser / ghostCleanup /
+// setPassword) are admin-reachable only and intentionally keep full surfacing —
+// they do NOT use this gate.
+export const SAFE_DELETE_CODES = new Set(["self_delete", "protected_admin", "protected_master", "not_found"]);
+export function isSafeDeleteCode(code?: string): boolean {
+  return !!code && SAFE_DELETE_CODES.has(code);
+}
+
 // PURE typed-confirmation for the irreversible-wipe dialog: the admin must type
 // the target's EXACT email (trimmed, case-insensitive) to arm the delete. Unit-tested.
 export function confirmEmailMatches(typed: string, targetEmail: string): boolean {

@@ -39,7 +39,7 @@ export interface UseAuthSession {
   register: (f: RegisterFields) => Promise<RegisterResult>;
   // Self-serve delete — Phase 2 FULL WIPE via the admin-delete-user edge function
   // (mode "self"): server-side wipe of auth + all data → signOut → clear local keys.
-  deleteAccount: () => Promise<{ ok: boolean; error?: string }>;
+  deleteAccount: () => Promise<{ ok: boolean; error?: string; code?: string }>;
 }
 
 const AUTH_STORAGE_KEY = "sf_supabase_auth"; // mirror of supabase.ts storageKey
@@ -173,11 +173,13 @@ export function useAuthSession(): UseAuthSession {
   // (mode "self"). The old client deleteUser() only removed the profile row and,
   // post-Phase-1 (admin-only DELETE policy), would be rejected by RLS. The edge
   // function wipes the auth account + ALL data server-side (admin/master blocked).
-  const deleteAccount = useCallback(async (): Promise<{ ok: boolean; error?: string }> => {
+  const deleteAccount = useCallback(async (): Promise<{ ok: boolean; error?: string; code?: string }> => {
     const email = profile?.email;
     if (!email) return { ok: false, error: "Not signed in" };
     const r = await selfDeleteAccount();
-    if (!r.ok) return { ok: false, error: r.error };
+    // Pass the guard `code` through so the DeleteAccount screen can gate what the
+    // seller sees (safe guard messages vs a generic string) — item-5 containment.
+    if (!r.ok) return { ok: false, error: r.error, code: r.code };
     // Clear the same local keys production clears (parity; harmless if absent here).
     for (const k of localKeysToClear(email)) { try { localStorage.removeItem(k); } catch { /* ignore */ } }
     try { await supabase?.auth.signOut(); } catch { /* listener still flips to anon */ }

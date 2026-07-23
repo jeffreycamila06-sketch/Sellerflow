@@ -138,7 +138,7 @@ async function deleteAuthUserIdempotent(_admin: any, uid: string): Promise<void>
       last = describeThrow(e);
       console.error(`[admin-delete] deleteUser REST THREW attempt=${attempt} ${last}`);  // permanent failure-path logging
     }
-    await new Promise((r) => setTimeout(r, 200 * attempt)); // 200ms, 400ms
+    if (attempt < 3) await new Promise((r) => setTimeout(r, 200 * attempt)); // 200ms, 400ms — no sleep after the final attempt
   }
   throw new Error(`auth deleteUser failed after retries: ${last}`);
 }

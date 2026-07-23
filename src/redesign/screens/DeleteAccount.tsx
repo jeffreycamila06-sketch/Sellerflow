@@ -6,11 +6,12 @@
 import { useState } from "react";
 import { card } from "../ui";
 import { useT } from "../i18n";
+import { isSafeDeleteCode } from "../adapters/adminDelete";
 
 export default function DeleteAccount({ onBack, email = "", onConfirm }: {
   onBack: () => void;
   email?: string;
-  onConfirm?: () => Promise<{ ok: boolean; error?: string }>;
+  onConfirm?: () => Promise<{ ok: boolean; error?: string; code?: string }>;
 }) {
   const t = useT();
   const [confirm, setConfirm] = useState("");
@@ -22,7 +23,14 @@ export default function DeleteAccount({ onBack, email = "", onConfirm }: {
     if (!canDelete || busy || !onConfirm) return;
     setBusy(true); setErr("");
     const r = await onConfirm();
-    if (!r.ok) { setErr(r.error || t.rd_del_fail); setBusy(false); }
+    if (!r.ok) {
+      // Item-5 containment: only a known-safe guard code may show the server's own
+      // message (e.g. "Master accounts can't self-delete…"). Any other failure —
+      // the codeless 500 that carries raw internals — shows a generic string; the
+      // detail stays in the edge logs, never on a non-admin seller's screen.
+      setErr(isSafeDeleteCode(r.code) ? (r.error || t.rd_del_fail) : t.rd_del_generic);
+      setBusy(false);
+    }
     // on success the auth listener flips to anon → routes to login (leave busy).
   };
 
