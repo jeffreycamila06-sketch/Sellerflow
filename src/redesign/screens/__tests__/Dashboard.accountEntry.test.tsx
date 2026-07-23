@@ -104,6 +104,29 @@ describe("(b) back-target wiring — RedesignApp source contract (regression gua
   });
 });
 
+describe("(f) no-account Connect → manage screen (Addendum 2 — doConnect source contract)", () => {
+  const src = readFileSync(join(__dirname, "../../RedesignApp.tsx"), "utf-8");
+  // Bound to the doConnect function body so setScreen counts are scoped.
+  const start = src.indexOf("const doConnect = async");
+  const body = src.slice(start, src.indexOf("\n  };", start) + 5); // doConnect fn body
+  it("zero-account TikTok Connect navigates to ttchannels with back=dashboard (no popup)", () => {
+    expect(body).toMatch(/if \(platform === "TikTok"\) \{ setTtOpen\(false\); setChanBack\("dashboard"\); setScreen\("ttchannels"\); return; \}/);
+    // The old one-liner that opened the modal for ALL platforms is gone.
+    expect(body).not.toMatch(/if \(!acct\) \{ setConnectOpen\(platform\); return; \}/);
+  });
+  it("the WITH-account path does NOT navigate — doConnect navigates in exactly ONE branch", () => {
+    // Only the no-account TikTok branch calls setScreen; the direct-connect path
+    // (setConnecting → liveFeed.connect) is byte-unchanged and never navigates.
+    expect((body.match(/setScreen\(/g) || []).length).toBe(1);
+    expect(body).toMatch(/setConnecting\(true\);/);
+    expect(body).toMatch(/track\("connect_attempt", \{ platform \}\);/);
+  });
+  it("the Facebook branch is KEPT (not deleted) but stays UI-unreachable", () => {
+    expect(body).toMatch(/setConnectOpen\(platform\); return;/);       // FB fallthrough kept
+    expect(src).not.toMatch(/doConnect\("Facebook"\)/);                // no caller anywhere
+  });
+});
+
 describe("(e) new i18n keys resolve non-empty in all 7 languages", () => {
   const LANGS = ["en", "fil", "zh", "zh-TW", "vi", "th", "id"] as const;
   for (const key of ["rd_dash_manage_accounts", "rd_dash_fb_activation", "rd_dash_fb_contact"]) {

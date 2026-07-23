@@ -592,7 +592,15 @@ export default function RedesignApp() {
     const idx = platform === "TikTok" ? ttIdx : fbIdx;
     if (eff) { setOff(true); return; } // Disconnect (local UI; no server unbind — manual-connect-only: no auto-reconnect to forget)
     const acct = accts[idx] || accts[0];
-    if (!acct) { setConnectOpen(platform); return; } // no registered account → add-new modal (real connect)
+    if (!acct) {
+      // No registered account (Addendum 2, 2026-07-23). TikTok → the
+      // Manage/add-accounts screen (SAME destination + back-behaviour as the
+      // Live dropdown row), retiring the old ConnectModal add-popup for this
+      // path. The Facebook fallthrough below is KEPT (not deleted) but is
+      // unreachable — nothing in the UI connects Facebook after the prior commits.
+      if (platform === "TikTok") { setTtOpen(false); setChanBack("dashboard"); setScreen("ttchannels"); return; }
+      setConnectOpen(platform); return;
+    }
     setOpen(false);                                  // Connect uses the selected account → close the dropdown
     setConnecting(true);
     track("connect_attempt", { platform });          // analytics parity (App.tsx:4277)
