@@ -564,6 +564,10 @@ const RAW: Record<string, Row> = {
   rd_dash_tiktok_account: { en: "TIKTOK ACCOUNT", fil: "TIKTOK ACCOUNT", zh: "TIKTOK 账户", "zh-TW": "TIKTOK 帳號", vi: "TÀI KHOẢN TIKTOK", th: "บัญชี TIKTOK", id: "AKUN TIKTOK" },
   rd_dash_no_accounts: { en: "No accounts yet — Connect to add one.", fil: "Wala pang account — Mag-Connect para magdagdag.", zh: "还没有账户——点击连接添加。", "zh-TW": "還沒有帳號——點擊連接新增。", vi: "Chưa có tài khoản — Kết nối để thêm.", th: "ยังไม่มีบัญชี — เชื่อมต่อเพื่อเพิ่ม", id: "Belum ada akun — Hubungkan untuk menambah." },
   rd_dash_tap_go_live: { en: "tap to go live", fil: "i-tap para mag-live", zh: "点击开始直播", "zh-TW": "點擊開始直播", vi: "chạm để phát live", th: "แตะเพื่อไลฟ์", id: "ketuk untuk live" },
+  // Live-screen account-management entry points (2026-07-23).
+  rd_dash_manage_accounts: { en: "Manage / add accounts", fil: "Pamahalaan / magdagdag ng account", zh: "管理／添加账号", "zh-TW": "管理／新增帳號", vi: "Quản lý / thêm tài khoản", th: "จัดการ / เพิ่มบัญชี", id: "Kelola / tambah akun" },
+  rd_dash_fb_activation: { en: "Advanced feature — activation required", fil: "Advanced na feature — kailangan ng activation", zh: "高级功能——需要开通", "zh-TW": "進階功能 · 需要開通", vi: "Tính năng nâng cao — cần kích hoạt", th: "ฟีเจอร์ขั้นสูง — ต้องเปิดใช้งาน", id: "Fitur lanjutan — perlu aktivasi" },
+  rd_dash_fb_contact: { en: "Contact us", fil: "Makipag-ugnayan sa amin", zh: "联系我们", "zh-TW": "聯繫開通", vi: "Liên hệ với chúng tôi", th: "ติดต่อเรา", id: "Hubungi kami" },
   rd_dash_connect: { en: "Connect", fil: "Ikonekta", zh: "连接", "zh-TW": "連接", vi: "Kết nối", th: "เชื่อมต่อ", id: "Hubungkan" },
   rd_dash_refresh: { en: "Refresh", fil: "I-refresh", zh: "刷新", "zh-TW": "重新整理", vi: "Làm mới", th: "รีเฟรช", id: "Segarkan" },
   rd_dash_refreshing: { en: "Refreshing…", fil: "Nire-refresh…", zh: "正在刷新…", "zh-TW": "正在重新整理…", vi: "Đang làm mới…", th: "กำลังรีเฟรช…", id: "Menyegarkan…" },
