@@ -138,6 +138,10 @@ const RAW: Record<string, Row> = {
   rd_del_type_email: { en: "Type your email to confirm", fil: "I-type ang iyong email para kumpirmahin", zh: "输入你的邮箱以确认", "zh-TW": "輸入你的電子郵件以確認", vi: "Nhập email của bạn để xác nhận", th: "พิมพ์อีเมลของคุณเพื่อยืนยัน", id: "Ketik email Anda untuk konfirmasi" },
   rd_del_warning_pre: { en: "Warning: ", fil: "Babala: ", zh: "警告：", "zh-TW": "警告：", vi: "Cảnh báo: ", th: "คำเตือน: ", id: "Peringatan: " },
   rd_del_fail: { en: "Delete failed. Please try again.", fil: "Nabigo ang pagbura. Subukan ulit.", zh: "删除失败，请重试。", "zh-TW": "刪除失敗，請重試。", vi: "Xóa thất bại. Vui lòng thử lại.", th: "ลบไม่สำเร็จ กรุณาลองใหม่", id: "Gagal menghapus. Silakan coba lagi." },
+  // Generic self-delete failure message (item-5 containment): shown instead of the
+  // raw edge-function error for any non-guard failure, so server internals never
+  // reach a non-admin seller's screen. The real detail stays in the edge logs.
+  rd_del_generic: { en: "Couldn't delete your account — please contact support.", fil: "Hindi ma-delete ang iyong account — makipag-ugnayan sa support.", zh: "无法删除您的账户，请联系客服。", "zh-TW": "無法刪除你的帳號，請聯繫客服。", vi: "Không thể xóa tài khoản của bạn — vui lòng liên hệ hỗ trợ.", th: "ไม่สามารถลบบัญชีของคุณได้ — กรุณาติดต่อฝ่ายสนับสนุน", id: "Tidak dapat menghapus akun Anda — silakan hubungi dukungan." },
   rd_del_deleting: { en: "Deleting…", fil: "Binubura…", zh: "正在删除…", "zh-TW": "正在刪除…", vi: "Đang xóa…", th: "กำลังลบ…", id: "Menghapus…" },
   rd_del_confirm_btn: { en: "Delete my account", fil: "Burahin ang aking account", zh: "删除我的账户", "zh-TW": "刪除我的帳號", vi: "Xóa tài khoản của tôi", th: "ลบบัญชีของฉัน", id: "Hapus akun saya" },
   rd_del_keep: { en: "Keep my account", fil: "Panatilihin ang aking account", zh: "保留我的账户", "zh-TW": "保留我的帳號", vi: "Giữ tài khoản của tôi", th: "เก็บบัญชีของฉันไว้", id: "Pertahankan akun saya" },
