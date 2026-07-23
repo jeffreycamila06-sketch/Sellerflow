@@ -3,6 +3,7 @@
 // The real delete — auth account + all data incl. billing orders — happens
 // server-side in the edge function; this only invokes it and surfaces the result.
 import { supabase } from "../../supabase";
+import { readEdgeError } from "./edgeError";
 
 export interface HardDeleteResult {
   ok: boolean;
@@ -27,7 +28,9 @@ export async function hardDeleteUser(email: string): Promise<HardDeleteResult> {
       body: { mode: "user", email: email.trim().toLowerCase() },
     });
     const r = data as { success?: boolean; error?: string; code?: string; deleted?: Record<string, unknown> } | null;
-    if (error || !r?.success) return { ok: false, error: r?.error || error?.message || "Delete failed", code: r?.code };
+    // Surface the REAL server error (in error.context) instead of the generic
+    // "non-2xx status code" wrapper — the whole reason deletes were undiagnosable.
+    if (error || !r?.success) { const e = await readEdgeError(error, r); return { ok: false, error: e.message, code: e.code ?? r?.code }; }
     return { ok: true, deleted: r.deleted };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Edge function call failed" };
@@ -44,7 +47,7 @@ export async function selfDeleteAccount(): Promise<HardDeleteResult> {
   try {
     const { data, error } = await supabase.functions.invoke("admin-delete-user", { body: { mode: "self" } });
     const r = data as { success?: boolean; error?: string; code?: string; deleted?: Record<string, unknown> } | null;
-    if (error || !r?.success) return { ok: false, error: r?.error || error?.message || "Delete failed", code: r?.code };
+    if (error || !r?.success) { const e = await readEdgeError(error, r); return { ok: false, error: e.message, code: e.code ?? r?.code }; }
     return { ok: true, deleted: r.deleted };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Edge function call failed" };
@@ -61,7 +64,7 @@ export async function ghostCleanup(mode: "ghost-scan" | "ghost-purge"): Promise<
     const { data, error } = await supabase.functions.invoke("admin-delete-user", { body: { mode } });
     // purge returns per-ghost failures too (a mid-loop wipe error no longer aborts the batch)
     const r = data as { success?: boolean; error?: string; count?: number; purged?: number; failed?: number; ghosts?: unknown[]; detail?: unknown[]; failures?: unknown[] } | null;
-    if (error || !r?.success) return { ok: false, error: r?.error || error?.message || "Ghost cleanup failed" };
+    if (error || !r?.success) { const e = await readEdgeError(error, r); return { ok: false, error: e.message }; }
     return { ok: true, count: r.count, purged: r.purged, failed: r.failed, ghosts: r.ghosts, detail: r.detail, failures: r.failures };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Edge function call failed" };

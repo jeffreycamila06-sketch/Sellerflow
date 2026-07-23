@@ -12,6 +12,7 @@ import { useCallback } from "react";
 import { supabase } from "../../supabase";
 import { adminUpdatePlan, adminUpdateContactNote, saveAuditLog, upsertUser, type Role, type AccountUser } from "../../accountDb";
 import { hardDeleteUser } from "./adminDelete";
+import { readEdgeError } from "./edgeError";
 import { maxAcc, accountList, accountText } from "./connect";
 import { planDaysLeft, isTimeLimitedPlan } from "../../lib/planWindow";
 
@@ -149,7 +150,8 @@ export function useAdmin(adminEmail: string | undefined): AdminActions {
         body: { targetEmail: email.trim().toLowerCase(), newPassword: newPassword.trim() },
       });
       const result = data as { success?: boolean; error?: string } | null;
-      if (error || result?.error) return { ok: false, error: result?.error || error?.message || "Unknown error" };
+      // Same real-error surfacing as the delete path (error.context, not the wrapper).
+      if (error || result?.error) { const e = await readEdgeError(error, result); return { ok: false, error: e.message }; }
       audit("set password", email, "via admin-set-password Edge Function");
       return { ok: true };
     } catch (e) {
