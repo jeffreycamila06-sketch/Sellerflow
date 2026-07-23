@@ -3474,7 +3474,7 @@ nangyari ang 241 (maliban sa git history).
   titigil — **sadya at tanggap** (si Jeff lang ang may PM-241).
 - **AIMO = TOTALLY UNAFFECTED** — byte-identical sa pre-saga (golden-verified).
 
-## 2026-07-21 — REDESIGN POLISH BATCH (12 items merged) + PENDING ANDROID 1.5 RELEASE
+## 2026-07-21 — REDESIGN POLISH BATCH (12 items merged) — 1.5 SINCE SHIPPED (see 2026-07-23 block)
 `main` tip = **`755b820`**. All 12 items below are MERGED to `main` + served-bundle
 verified. Everything here is FRONTEND — already LIVE for users via Vercel (web +
 APK/iOS thin-shell on next open) — **EXCEPT item 7's BLE native transport, which is
@@ -3532,25 +3532,82 @@ standard flow (branch → diff → independent audit → merge → served-bundle
     **Type-level-proven display-only** (`printerIdx` never reaches print routing —
     routing uses `buildSettingsFromRedesign({pp, psType, psOut, psSize})`).
 
-### 🚀 PENDING RELEASE — ONE combined Android APK/AAB (production)
-Jeff will build **ONE** production APK/AAB (NOT multiple) that ships everything
-native/APK-dependent together. The build carries the whole current `main`
-(animation/search/WiFi-default/toast/no-printer are already in `main`, all frontend).
-- **Contents:** (1) the **BLE printer native transport** (item 7 — merged +
-  device-tested, but APK-only so not yet live for Android users) = **the main
-  driver**; (2) the **sticker size MULTIPLIER fix IF it turns out fixable** (under
-  investigation — see below).
-- **Version:** already at **versionCode 6 / versionName 1.5**; keystore ready at
-  `keystore/`.
-- **RELEASE PROTOCOL:** release-readiness audit → AAB content inspection
-  (`bundletool`) → **Internal testing** track with the FULL device checklist →
-  **production with STAGED rollout** (~20% → watch 1–2 days → 100%, halt on any
-  problem).
+## 2026-07-23 — 1.5 SHIPPED (Android + iOS) + STICKER/PRINT DURABLE RULES + iOS GOLDEN GATE
+`main` tip = **`6875533`**. Both platforms' 1.5 shipped today; the sticker-size
+investigation resolved (hardware limit, honest-steps UI); the iOS XCTest golden gate
+is now permanent and caught a real bug on its first run. This block supersedes the
+"PENDING RELEASE" + "sticker size MULTIPLIER (UNDER INVESTIGATION)" subsections.
 
-### 🔎 UNDER INVESTIGATION — sticker size MULTIPLIER (Print Pattern)
-Adjusting an element's size in small steps (1.1–1.4) does nothing until 1.5 —
-**quantized, not smooth.** Affects all 47 users (all on the AIMO D520BT). Strong
-hypothesis: **TSPL built-in-font magnification is integer-only** (a hardware/protocol
-limit, NOT a code bug). A read-only investigation is queued to confirm code-bug vs
-hardware-limit and lay out options (snap the UI to integer steps vs bitmap text
-rendering). If fixable → bundled into the pending release above.
+### ✅ VERSIONS SHIPPED
+- **Android:** **versionCode 6 / versionName 1.5** — PUBLISHED Jul 23, 100% rollout.
+  ⚠️ **Next AAB upload must be versionCode ≥ 7.**
+- **iOS:** **1.5 / build 9** — submitted Jul 23 (Manual release). ⚠️ **Next iOS binary
+  must be build ≥ 10.** (`native-version.json` `ios.latest` → 9 after it goes LIVE.)
+
+### 🔒 iOS XCTEST GOLDEN GATE — PERMANENT + MANDATORY before EVERY iOS archive
+The **AppTests target is COMMITTED in `App.xcodeproj`** (created Jul 23) — do NOT tell
+a future session to create it. Run BOTH gates before any Archive:
+```bash
+cd mobile/ios/App && xcodebuild test -project App.xcodeproj -scheme App \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
+bash ../tspl-parity/run-encoders-sim.sh    # CJK/GBK encoder gate (the Jul 13 rule)
+```
+⚠️ Requires **three untracked, machine-local symlinks** in `mobile/ios/App/` (the test
+resolves fixtures as siblings of `#filePath`; recreate if missing):
+`golden -> ../tspl-parity/golden` · `payloads -> ../tspl-parity/payloads` ·
+`manifest.json -> ../tspl-parity/manifest.json`.
+**This gate is not a formality** — its first-ever run (Jul 23) caught a real Swift/Java
+divergence (below). Swift is never compiled in CI; the Mac gate is the ONLY proof.
+
+### 🔴 SWIFT/JAVA TSPL PARITY RULE (from that catch, merge `06a9f05`)
+Every default value in a Swift TSPL caller MUST be justified against the Java
+equivalent. Specifically: `storeName` now defaults to **`""`** in `printStickerLan` /
+`printStickerNative` (mirrors Java `optString("storeName","")`), NOT `"SellerFlowLive"`
+— the old fallback printed a phantom store line + shifted the buyer pair down on
+storeName-less payloads (the `minimal` fixture). `testStickerPrint`'s `"SellerFlowLive"`
+default is INTENTIONAL (matches its Java twin) — leave it.
+
+### 🖨 STICKER BUYER LINE (current shape — do NOT "fix" back)
+Printed as **TWO fixed-position TEXT commands**: `"Buyer"` at x=16 and the **bare
+number** (no "#") at x=280 (24-dot gap), font "4", width pin 2, shared y and ym. All 3
+builders byte-identical (Java/Swift/`tsplReference.ts`), goldens regenerated. 60×40 (480
+dots) fits up to **4 digits** (ends at 472); 5+ digits clip — accepted. ⚠️ The
+`"Buyer #N"` strings remaining in the **emoji-only-name fallback element** and the
+**ESC/POS slip** are DIFFERENT elements, contract-pinned — do NOT clean them up.
+
+### 🎚 PRINT SETTINGS INVARIANTS (Print Pattern / printing.ts)
+- **`printing.ts` mapper pins `printOrderScale: 1`** (order-row TIME always base size) —
+  do NOT re-couple it to `commentSize`. ⚠️ `DEF_SETTINGS`' own `printOrderScale: 1` is a
+  DIFFERENT literal — don't confuse them (a sabotage test hit exactly this).
+- **`PrintPattern.tsx` exports `const HONEST_SIZE_STEPS` (true).** `false` restores the
+  pre-Jul-22 behavior verbatim (0.1 fractional steps). ⚠️ A production rollback flip ALSO
+  requires updating the "switch is ON" pin in `honestSteps.test.tsx` or CI goes red.
+- **Sizes are 1×/2×/3× ONLY** — TSPL built-in fonts are integer-magnification (proven
+  hardware limit, closed the "nothing until 1.5" investigation). **BITMAP is hardware-dead
+  on the AIMO D520BT** (firmware silently ignores it); the dormant `printSticker` BITMAP
+  path is kept ONLY for a future printer that supports it.
+
+### ⚠️ SUPABASE HARDENING CORRECTION (prevents a damaging "fix")
+- **Do NOT revoke EXECUTE on admin RPCs from the `authenticated` role.** Supabase has no
+  separate admin DB role — admins authenticate as `authenticated`, so revoking locks out
+  the admin panel, not attackers. Admin protection lives INSIDE the functions
+  (`is_admin()` guards), verified live Jul 23.
+- All parameterized SECURITY DEFINER functions verified own-scoped
+  (`auth.uid()`/caller filters) — no IDOR. The Supabase linter's SECURITY DEFINER
+  warnings are **known false positives** for this architecture.
+
+### 📦 RELEASE PIPELINE (both proven end-to-end Jul 23 — THE standard)
+- **Android:** readiness audit → Mac signed AAB (`./gradlew testDebugUnitTest` then
+  `clean bundleRelease`) → `bundletool` manifest verification → Play Internal + full
+  device checklist → production staged rollout.
+- **iOS:** bump pbxproj → **XCTest + encoder gates GREEN** → `npm run build` +
+  `npx cap sync ios` → Archive on **"Any iOS Device (arm64)"** → Distribute =
+  **"App Store Connect"** (⚠️ NOT "TestFlight Internal Only" — this trap has cost two
+  rebuilds) → TestFlight full device checklist → submit with **Manual release**.
+- **Device testing** uses temporary Supabase edits to ONE owned test order
+  (`buyer_number` / CJK name), ALWAYS reverted afterwards.
+
+### 🧾 PROCESS NOTE — verify diff scope before merging
+Self-audit reports have understated diff scope before (a "2 file" fix branch actually
+carried **5 files** incl. project wiring). Always confirm with `git show --stat` (or
+`git diff --stat`) before merging — don't trust a narrative file count.
