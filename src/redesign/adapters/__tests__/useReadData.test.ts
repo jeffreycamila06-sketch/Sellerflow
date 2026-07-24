@@ -225,16 +225,20 @@ describe("deriveUserBase — tier headcount by PLAN (not status)", () => {
     const b = deriveUserBase(live);
     expect(b.free).toBe(3); // 2 active + 1 expired free — all by plan==='Free'
   });
-  it("paid status health is expiry-based over paid plans (active incl. owner's Master)", () => {
+  it("paid status health EXCLUDES the admin/owner (shared deriveSubBuckets source)", () => {
     const b = deriveUserBase(live);
-    expect(b.paidActive).toBe(23);  // all paid currently active w/ days>0
+    // 22 non-admin paid sellers active; the owner's active Master is NOT counted.
+    // (Was 23 — the old paidActive filtered paidUsers directly and left the admin in,
+    // which is exactly the panel drift the headline 38 vs tile 39 exposed.)
+    expect(b.paidActive).toBe(22);
     expect(b.paidExpired).toBe(0);
     expect(b.paidExpiring).toBe(0); // all at 30d — outside the 7d window
+    expect(b.paidActive).toBe(deriveSubBuckets(live).active.length); // tile == Active-paid card
   });
   it("paidExpiring uses the shared 7-day window", () => {
     const b = deriveUserBase([...live, u({ email: "soon@x.com", plan: "Basic", planStatus: "active", days: 4 })]);
     expect(b.paidExpiring).toBe(1);
-    expect(b.paidActive).toBe(24); // still active (days>0) while inside the window
+    expect(b.paidActive).toBe(23); // 22 sellers + soon@ (owner still excluded; was 24 when the admin was wrongly counted)
   });
   it("counts trial separately when present", () => {
     expect(deriveUserBase([u({ plan: "Trial", planStatus: "active", days: 7 })]).trial).toBe(1);
@@ -274,11 +278,27 @@ describe("deriveUserBase.paying — unified paying-customer count (excludes expi
 
   it("excludes the admin owner even though their Master plan is active", () => {
     const b = deriveUserBase(live);
-    // paidActive counts the owner (39); paying excludes them (38) — the difference IS the owner.
-    expect(b.paidActive).toBe(39);
+    // Addendum: paidActive now ALSO excludes the owner (was 39) — it reads from the
+    // same deriveSubBuckets source as paying, so both are 38 and the panel no longer
+    // shows two numbers for the same thing.
+    expect(b.paidActive).toBe(38);
     expect(b.paying).toBe(38);
     // and no admin-role user is in the paying (active) set
     expect(deriveSubBuckets(live).active.some((x) => x.role === "Admin")).toBe(false);
+  });
+
+  it("EVERY paying-family panel number equals the Active-paid / Subscriptions counts", () => {
+    const b = deriveUserBase(live);
+    const { active, expiring, expired } = deriveSubBuckets(live);
+    // headline + status-health "Active" tile == Active-paid card (all 38, one source)
+    expect(b.paying).toBe(active.length);
+    expect(b.paidActive).toBe(active.length);
+    expect(b.paying).toBe(b.paidActive);
+    // and the other two tiles match the Subscriptions Expiring / Expired cards
+    expect(b.paidExpiring).toBe(expiring.length);
+    expect(b.paidExpired).toBe(expired.length);
+    // concrete: 38 / 1 / 2
+    expect([b.paidActive, b.paidExpiring, b.paidExpired]).toEqual([38, 1, 2]);
   });
 
   it("excludes expired plans — the status='expired' basic AND the expiry-past pro", () => {
