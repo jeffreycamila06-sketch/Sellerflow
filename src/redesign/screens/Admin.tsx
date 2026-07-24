@@ -56,7 +56,7 @@ function Ctrl({ icon, label, onClick }: { icon: ReactNode; label: string; onClic
   return <div onClick={onClick} style={ctrlTile}><span style={ctrlChip}>{icon}</span><span style={ctrlLbl}>{label}</span></div>;
 }
 
-export default function Admin({ onOpenPanel, cur, counts, live = false, userBase, mrr = null, owner = null }: { onOpenPanel: (k: AdminPanelKind) => void; cur: string; counts?: { active: number; expiring: number; expired: number; free: number }; live?: boolean; userBase?: { paid: number; free: number; total: number }; mrr?: number | null; owner?: { name: string; email: string } | null }) {
+export default function Admin({ onOpenPanel, cur, counts, live = false, userBase, mrr = null, owner = null }: { onOpenPanel: (k: AdminPanelKind) => void; cur: string; counts?: { active: number; expiring: number; expired: number; free: number }; live?: boolean; userBase?: { paying: number; free: number; total: number }; mrr?: number | null; owner?: { name: string; email: string } | null }) {
   const t = useT();
   const subCount = (k: "active" | "expiring" | "expired" | "free", sample: string) => (live && counts ? String(counts[k]) : sample);
   // Batch B #2 — the owner card shows the REAL signed-in admin (was the
@@ -87,7 +87,7 @@ export default function Admin({ onOpenPanel, cur, counts, live = false, userBase
               plans × real NT$ tier price, from the already-loaded users list) —
               was hardcoded "4.2M / ▲12% MoM" with only a small sample badge. */}
           {!isIOS() && <button onClick={() => onOpenPanel("revenue")} style={topStat}><div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>{t.rd_adm_monthly_revenue}</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 22, color: "var(--text)", marginTop: 3, letterSpacing: "-.02em" }}>{mrr != null ? `${cur}${fmt(mrr)}` : "—"}</div><div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", marginTop: 3 }}>{t.rd_adm_mrr_note}</div></button>}
-          <button onClick={() => onOpenPanel("userbase")} style={topStat}><div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>{t.rd_adm_user_base}</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 22, color: "var(--accent-fg)", marginTop: 3, letterSpacing: "-.02em" }}>{userBase ? userBase.paid : "—"}</div><div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", marginTop: 3 }}>{userBase ? tpl(t.rd_adm_paying_free, { free: userBase.free }) : t.rd_adm_paid_free_split}</div></button>
+          <button onClick={() => onOpenPanel("userbase")} style={topStat}><div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>{t.rd_adm_user_base}</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 22, color: "var(--accent-fg)", marginTop: 3, letterSpacing: "-.02em" }}>{userBase ? userBase.paying : "—"}</div><div style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-fg)", marginTop: 3 }}>{userBase ? tpl(t.rd_adm_paying_free, { free: userBase.free }) : t.rd_adm_paid_free_split}</div></button>
         </div>
 
         <div style={{ ...card, padding: "13px 14px", borderRadius: 15, marginBottom: 16 }}>
@@ -753,9 +753,9 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
               {/* Headline — Paid vs Free */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <div style={{ background: "var(--accent)", borderRadius: 14, padding: "14px 15px", color: "#fff", boxShadow: "0 8px 22px var(--accent-soft)" }}>
-                  <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 30, letterSpacing: "-.02em" }}>{userBase.paid}</div>
+                  <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 30, letterSpacing: "-.02em" }}>{userBase.paying}</div>
                   <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.95 }}>{t.rd_adm_paid_plans}</div>
-                  <div style={{ fontSize: 10.5, opacity: 0.85, marginTop: 2 }}>{tpl(userBase.paidSellers === 1 ? t.rd_adm_paying_plus_one : t.rd_adm_paying_plus_many, { n: userBase.paidSellers })}</div>
+                  <div style={{ fontSize: 10.5, opacity: 0.85, marginTop: 2 }}>{tpl(userBase.paying === 1 ? t.rd_adm_paying_plus_one : t.rd_adm_paying_plus_many, { n: userBase.paying })}</div>
                 </div>
                 <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 14, padding: "14px 15px" }}>
                   <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 30, color: "var(--accent-fg)", letterSpacing: "-.02em" }}>{userBase.free}</div>

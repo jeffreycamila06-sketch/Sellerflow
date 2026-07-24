@@ -10,6 +10,7 @@ import {
   planDaysLeft,
   deriveSubBuckets,
   deriveUserBase,
+  deriveMrr,
   freeUsersSummary,
   signupTime,
   signupCompare,
@@ -224,19 +225,103 @@ describe("deriveUserBase — tier headcount by PLAN (not status)", () => {
     const b = deriveUserBase(live);
     expect(b.free).toBe(3); // 2 active + 1 expired free — all by plan==='Free'
   });
-  it("paid status health is expiry-based over paid plans (active incl. owner's Master)", () => {
+  it("paid status health EXCLUDES the admin/owner (shared deriveSubBuckets source)", () => {
     const b = deriveUserBase(live);
-    expect(b.paidActive).toBe(23);  // all paid currently active w/ days>0
+    // 22 non-admin paid sellers active; the owner's active Master is NOT counted.
+    // (Was 23 — the old paidActive filtered paidUsers directly and left the admin in,
+    // which is exactly the panel drift the headline 38 vs tile 39 exposed.)
+    expect(b.paidActive).toBe(22);
     expect(b.paidExpired).toBe(0);
     expect(b.paidExpiring).toBe(0); // all at 30d — outside the 7d window
+    expect(b.paidActive).toBe(deriveSubBuckets(live).active.length); // tile == Active-paid card
   });
   it("paidExpiring uses the shared 7-day window", () => {
     const b = deriveUserBase([...live, u({ email: "soon@x.com", plan: "Basic", planStatus: "active", days: 4 })]);
     expect(b.paidExpiring).toBe(1);
-    expect(b.paidActive).toBe(24); // still active (days>0) while inside the window
+    expect(b.paidActive).toBe(23); // 22 sellers + soon@ (owner still excluded; was 24 when the admin was wrongly counted)
   });
   it("counts trial separately when present", () => {
     expect(deriveUserBase([u({ plan: "Trial", planStatus: "active", days: 7 })]).trial).toBe(1);
+  });
+});
+
+// ── The "paying" headline UNIFICATION (2026-07-24 bug: User-base card read 41,
+// counting expired plans AND the owner's own admin account, contradicting the
+// Active-paid card + Monthly revenue which read 38). Fix: userBase.paying is the
+// SAME source the Active-paid card + deriveMrr use — deriveSubBuckets(...).active
+// (isActivePaid → excludes expired; non-admin filter → excludes the owner).
+describe("deriveUserBase.paying — unified paying-customer count (excludes expired + admin)", () => {
+  const u = (over: Partial<User>): User => ({ email: "x@x.com", note: "", role: "Seller", plan: "Basic", days: 30, accounts: "1", planStatus: "active", ...over });
+  // Mirrors the live DB exactly: 26 basic active + 1 basic expired; 10 pro active +
+  // 1 pro expiring (days 3, still active) + 1 pro status='active' but expiry PAST
+  // (days 0 → counts as expired); 1 master seller; 1 master ADMIN (owner, active);
+  // 13 free active + 3 free expired.
+  const live: User[] = [
+    ...Array.from({ length: 26 }, (_, i) => u({ email: `b${i}@x.com`, plan: "Basic", planStatus: "active", days: 30 })),
+    u({ email: "bexp@x.com", plan: "Basic", planStatus: "expired", days: 0 }),                 // expired basic
+    ...Array.from({ length: 10 }, (_, i) => u({ email: `p${i}@x.com`, plan: "Pro", planStatus: "active", days: 30 })),
+    u({ email: "psoon@x.com", plan: "Pro", planStatus: "active", days: 3 }),                    // expiring (still active)
+    u({ email: "plapsed@x.com", plan: "Pro", planStatus: "active", days: 0 }),                  // status active but expiry PAST → expired
+    u({ email: "mseller@x.com", plan: "Master", planStatus: "active", days: 100 }),             // paying master seller
+    u({ email: "owner@x.com", plan: "Master", role: "Admin", planStatus: "active", days: 3600 }), // the admin/owner — must NOT count
+    ...Array.from({ length: 13 }, (_, i) => u({ email: `f${i}@x.com`, plan: "Free", planStatus: "active", days: Infinity })),
+    ...Array.from({ length: 3 }, (_, i) => u({ email: `fe${i}@x.com`, plan: "Free", planStatus: "expired", days: 0 })),
+  ];
+
+  it("paying reads 38 — excludes the 2 expired paid AND the admin owner", () => {
+    expect(deriveUserBase(live).paying).toBe(38); // 26 basic + (10+1) pro + 1 master seller
+  });
+
+  it("paying EQUALS the Active-paid card count (same deriveSubBuckets source)", () => {
+    expect(deriveUserBase(live).paying).toBe(deriveSubBuckets(live).active.length);
+  });
+
+  it("excludes the admin owner even though their Master plan is active", () => {
+    const b = deriveUserBase(live);
+    // Addendum: paidActive now ALSO excludes the owner (was 39) — it reads from the
+    // same deriveSubBuckets source as paying, so both are 38 and the panel no longer
+    // shows two numbers for the same thing.
+    expect(b.paidActive).toBe(38);
+    expect(b.paying).toBe(38);
+    // and no admin-role user is in the paying (active) set
+    expect(deriveSubBuckets(live).active.some((x) => x.role === "Admin")).toBe(false);
+  });
+
+  it("EVERY paying-family panel number equals the Active-paid / Subscriptions counts", () => {
+    const b = deriveUserBase(live);
+    const { active, expiring, expired } = deriveSubBuckets(live);
+    // headline + status-health "Active" tile == Active-paid card (all 38, one source)
+    expect(b.paying).toBe(active.length);
+    expect(b.paidActive).toBe(active.length);
+    expect(b.paying).toBe(b.paidActive);
+    // and the other two tiles match the Subscriptions Expiring / Expired cards
+    expect(b.paidExpiring).toBe(expiring.length);
+    expect(b.paidExpired).toBe(expired.length);
+    // concrete: 38 / 1 / 2
+    expect([b.paidActive, b.paidExpiring, b.paidExpired]).toEqual([38, 1, 2]);
+  });
+
+  it("excludes expired plans — the status='expired' basic AND the expiry-past pro", () => {
+    const b = deriveUserBase(live);
+    // plan-label tally (41) counts both expired; paying (38) drops them.
+    expect(b.paid).toBe(41);
+    expect(b.paying).toBe(38);
+    const activeEmails = deriveSubBuckets(live).active.map((x) => x.email);
+    expect(activeEmails).not.toContain("bexp@x.com");    // status expired
+    expect(activeEmails).not.toContain("plapsed@x.com"); // status active but expiry past (days 0)
+  });
+
+  it("Monthly revenue agrees with paying on the SAME seller set (NT$27,900)", () => {
+    expect(deriveMrr(live)).toBe(27900); // 26×500 + 11×1200 + 1×1700
+    // deriveMrr sums over deriveSubBuckets(...).active — the exact set paying counts.
+    expect(deriveSubBuckets(live).active.length).toBe(deriveUserBase(live).paying);
+  });
+
+  it("Subscriptions cards are UNCHANGED — still 38 active / 1 expiring / 2 expired", () => {
+    const { active, expiring, expired } = deriveSubBuckets(live);
+    expect(active.length).toBe(38);
+    expect(expiring.length).toBe(1);  // the days-3 pro
+    expect(expired.length).toBe(2);   // expired basic + expiry-past pro
   });
 });
 

@@ -161,10 +161,17 @@ export interface FreeUserRow { email: string; store_name: string; full_name: str
 export interface UserBase {
   total: number; admins: number;
   free: number; trial: number; basic: number; pro: number; master: number;
-  paid: number;          // basic + pro + master (incl. the owner's Master)
-  paidSellers: number;   // paid excluding admins (the real paying customers)
-  // status health within paid plans (real expiry-based; mutually exclusive active/expired):
+  paid: number;          // basic + pro + master plan-label tally (incl. expired + the owner's Master); internal aggregate, NOT the paying-customer count
+  paidSellers: number;   // paid plan-label tally minus admins (still incl. expired); internal aggregate
+  // status health within paid plans — the SAME deriveSubBuckets source as the
+  // Subscriptions cards + the paying headline (non-admin; shared lib/planWindow
+  // predicates; mutually exclusive active/expired). Admin/owner excluded.
   paidActive: number; paidExpiring: number; paidExpired: number;
+  // THE "paying customers" headline — the ONE definition, shared with the Active-paid
+  // card and deriveMrr via deriveSubBuckets(...).active: active + paid + non-admin,
+  // expired excluded (isActivePaid), admin/owner excluded (deriveSubBuckets filters
+  // !isAdminRole). Use THIS for any "paying" display, never `paid`/`paidSellers`.
+  paying: number;
 }
 export function deriveUserBase(users: User[]): UserBase {
   const tally = (label: string) => users.filter((u) => u.plan === label).length;
@@ -173,11 +180,17 @@ export function deriveUserBase(users: User[]): UserBase {
   const admins = users.filter((u) => isAdminRole(u.role)).length; // Batch E #16
   const paidUsers = users.filter((u) => u.plan === "Basic" || u.plan === "Pro" || u.plan === "Master");
   const paidSellers = paidUsers.filter((u) => !isAdminRole(u.role)).length;
-  // Shared lib/planWindow predicates — same 7-day expiring window as everywhere.
-  const paidActive = paidUsers.filter((u) => isActivePaid(planState(u))).length;
-  const paidExpired = paidUsers.filter((u) => isExpiredPaid(planState(u))).length;
-  const paidExpiring = paidUsers.filter((u) => isExpiringNotExpired(planState(u))).length;
-  return { total: users.length, admins, free, trial, basic, pro, master, paid, paidSellers, paidActive, paidExpiring, paidExpired };
+  // Paid status-health tiles AND the paying headline ALL read from the ONE shared
+  // source (deriveSubBuckets: non-admin, then the shared lib/planWindow predicates),
+  // so the panel tiles agree with the headline AND the Subscriptions cards. No new
+  // predicate. (Was: paidActive filtered paidUsers directly, leaving the admin owner
+  // in → 39, contradicting the headline's 38.)
+  const buckets = deriveSubBuckets(users);
+  const paidActive = buckets.active.length;
+  const paidExpired = buckets.expired.length;
+  const paidExpiring = buckets.expiring.length;
+  const paying = buckets.active.length; // == paidActive; the explicit headline field
+  return { total: users.length, admins, free, trial, basic, pro, master, paid, paidSellers, paidActive, paidExpiring, paidExpired, paying };
 }
 
 // REAL monthly recurring revenue estimate for the Admin home tile (Batch B #2 —
