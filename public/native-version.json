@@ -1,4 +1,4 @@
 {
-  "ios": { "latest": 7, "message_key": "rd_upd_msg_ble", "force": false },
-  "android": { "latest": 0, "message_key": "rd_upd_msg_ble", "force": false }
+  "ios": { "latest": 9, "message_key": "rd_upd_msg_ble", "force": false },
+  "android": { "latest": 0, "message_key": "rd_upd_msg_ble", "force": false, "_comment": "Stays 0 = dormant (isStale returns false for latest<=0, so no Android build is ever nudged). vc6 (1.5) is the newest Android binary, so nobody is behind. Pre-vc6 APKs have no getBuildNumber bridge and readBinaryBuild returns Infinity for Android (never stale); vc6 users already report 6 and are current. Bump this only once a vc7+ ships AND most users are on vc6+ (bridge-bearing), so the comparison is meaningful instead of inert." }
 }
