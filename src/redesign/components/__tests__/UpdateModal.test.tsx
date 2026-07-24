@@ -24,7 +24,7 @@ describe("UpdateModal", () => {
   it("renders headline + message + an Update-now action button", () => {
     renderModal();
     expect(screen.getByText("Time for an update")).toBeTruthy();
-    expect(screen.getByText(/Sticker printing and fixes/)).toBeTruthy();
+    expect(screen.getByText("A new version is available.")).toBeTruthy();
     expect(screen.getByText("Update now")).toBeTruthy();
   });
 
