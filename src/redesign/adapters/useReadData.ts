@@ -161,10 +161,15 @@ export interface FreeUserRow { email: string; store_name: string; full_name: str
 export interface UserBase {
   total: number; admins: number;
   free: number; trial: number; basic: number; pro: number; master: number;
-  paid: number;          // basic + pro + master (incl. the owner's Master)
-  paidSellers: number;   // paid excluding admins (the real paying customers)
+  paid: number;          // basic + pro + master plan-label tally (incl. expired + the owner's Master); internal aggregate, NOT the paying-customer count
+  paidSellers: number;   // paid plan-label tally minus admins (still incl. expired); internal aggregate
   // status health within paid plans (real expiry-based; mutually exclusive active/expired):
   paidActive: number; paidExpiring: number; paidExpired: number;
+  // THE "paying customers" headline — the ONE definition, shared with the Active-paid
+  // card and deriveMrr via deriveSubBuckets(...).active: active + paid + non-admin,
+  // expired excluded (isActivePaid), admin/owner excluded (deriveSubBuckets filters
+  // !isAdminRole). Use THIS for any "paying" display, never `paid`/`paidSellers`.
+  paying: number;
 }
 export function deriveUserBase(users: User[]): UserBase {
   const tally = (label: string) => users.filter((u) => u.plan === label).length;
@@ -177,7 +182,11 @@ export function deriveUserBase(users: User[]): UserBase {
   const paidActive = paidUsers.filter((u) => isActivePaid(planState(u))).length;
   const paidExpired = paidUsers.filter((u) => isExpiredPaid(planState(u))).length;
   const paidExpiring = paidUsers.filter((u) => isExpiringNotExpired(planState(u))).length;
-  return { total: users.length, admins, free, trial, basic, pro, master, paid, paidSellers, paidActive, paidExpiring, paidExpired };
+  // Paying-customer count = the SAME source the Active-paid card + deriveMrr use
+  // (deriveSubBuckets excludes admins, then isActivePaid excludes expired). One
+  // source of truth — do not re-filter here (mirrors deriveMrr calling it).
+  const paying = deriveSubBuckets(users).active.length;
+  return { total: users.length, admins, free, trial, basic, pro, master, paid, paidSellers, paidActive, paidExpiring, paidExpired, paying };
 }
 
 // REAL monthly recurring revenue estimate for the Admin home tile (Batch B #2 —
