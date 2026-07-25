@@ -71,12 +71,15 @@ export default function SettingsHub({
           <Tile icon={ic.doclock} label={t.lg_pt_title} onClick={onLegal} />
           {/* Need help? — support entry point, directly ABOVE Delete Account.
               HIGHLIGHTED (option B): WHITE card like the others, but an accent-FILLED
-              badge (var(--accent) bg + light glyph) with a FINITE 3-beat pulse on
-              mount so sellers notice it. Rendered inline (not <Tile>) so the shared
-              Tile/chip — and every other card — stay byte-unchanged. */}
+              badge (var(--accent) bg + light glyph) that beats CONTINUOUSLY while on
+              Settings (sfl-anim-beat3), and the LABEL reuses the EXACT sfl-anim-beat
+              class the "Settings" screen title uses (opacity-breathing fade, identical
+              look — both gated by reduced-motion + [data-motion=off]). Rendered inline
+              (not <Tile>) so the shared Tile/chip — and every other card — stay
+              byte-unchanged. */}
           <button onClick={() => setHelpOpen(true)} style={tile} data-testid="help-card">
             <span className="sfl-anim-beat3" data-testid="help-badge" style={{ ...chip("accent"), background: "var(--accent)", color: "var(--accent-text)" }}>{ic.help}</span>
-            <span style={tileLabel}>{t.rd_sh_help}</span>
+            <span className="sfl-anim-beat" data-testid="help-label" style={tileLabel}>{t.rd_sh_help}</span>
           </button>
           <Tile icon={ic.trash} label={t.rd_sh_delete} onClick={onDelete} variant="danger" />
           <Tile icon={ic.exit} label={t.rd_sh_logout} onClick={onLogout} variant="neutral" />

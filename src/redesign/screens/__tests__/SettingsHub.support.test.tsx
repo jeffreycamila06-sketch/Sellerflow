@@ -103,28 +103,50 @@ describe("SettingsHub — Need help? highlighted badge", () => {
     expect(badge.style.color).toBe("var(--accent-text)");   // token, not a hardcoded color
   });
 
-  it("the badge carries the FINITE beat class (sfl-anim-beat3), and only the badge does", () => {
+  it("the badge carries the continuous beat class (sfl-anim-beat3)", () => {
     renderHub();
     expect(screen.getByTestId("help-badge").className).toContain("sfl-anim-beat3");
-    // the label + card button themselves are not animated
-    expect(screen.getByTestId("help-card").className).not.toContain("sfl-anim-beat3");
+  });
+
+  it("the LABEL reuses the EXACT class the 'Settings' screen title uses (sfl-anim-beat)", () => {
+    renderHub();
+    // the label animates with sfl-anim-beat…
+    expect(screen.getByTestId("help-label").className).toContain("sfl-anim-beat");
+    expect(screen.getByTestId("help-label").className).not.toContain("sfl-anim-beat3"); // the title class, not the badge's
+    // …and the Settings header title in the same source uses that same class, so they match.
+    const src = readFileSync(join(__dirname, "../SettingsHub.tsx"), "utf-8");
+    expect(src).toMatch(/className="sfl-anim-beat"[^>]*>\{t\.rd_set_title\}/); // header title
+    expect(src).toMatch(/className="sfl-anim-beat"[^>]*data-testid="help-label"/); // the label
   });
 });
 
-describe("redesign.css — .sfl-anim-beat3 is finite + fully motion-gated", () => {
+describe("redesign.css — Need-help animations are CONTINUOUS + fully motion-gated", () => {
   const css = readFileSync(join(__dirname, "../../redesign.css"), "utf-8");
-  const rule = (css.match(/\[data-redesign\]\s*\.sfl-anim-beat3\s*\{[^}]*\}/) || [""])[0];
+  const beat3 = (css.match(/\[data-redesign\]\s*\.sfl-anim-beat3\s*\{[^}]*\}/) || [""])[0];
+  const beat = (css.match(/\[data-redesign\]\s*\.sfl-anim-beat\s*\{[^}]*\}/) || [""])[0];
 
-  it("defined with the shared sflBeat keyframe and iteration-count 3 (NOT infinite)", () => {
-    expect(rule).toContain("sflBeat");
-    expect(rule).toMatch(/ease-in-out\s+3\b/); // finite iteration count = 3
-    expect(rule).not.toContain("infinite");
+  it("badge (.sfl-anim-beat3) reuses sflBeat and is CONTINUOUS (infinite, not finite)", () => {
+    expect(beat3).toContain("sflBeat");
+    expect(beat3).toContain("infinite");
+    expect(beat3).not.toMatch(/ease-in-out\s+3\b/);
   });
-  it("gated by the [data-motion=off] kill switch", () => {
+  it("label (.sfl-anim-beat) = the title's class, sflBeat keyframe, continuous", () => {
+    expect(beat).toContain("sflBeat");
+    expect(beat).toContain("infinite");
+  });
+  it("sflBeat keyframe is opacity/transform ONLY (no color-flash / no layout prop)", () => {
+    const kf = (css.match(/@keyframes\s+sflBeat\s*\{[^}]*\}[^}]*\}/) || [""])[0];
+    expect(kf).toMatch(/opacity/);
+    expect(kf).toMatch(/transform:\s*scale/);
+    expect(kf).not.toMatch(/color|background|width|height|margin|padding|top|left/);
+  });
+  it("BOTH classes are gated by the [data-motion=off] kill switch", () => {
     expect(css).toContain('[data-redesign][data-motion="off"] .sfl-anim-beat3');
+    expect(css).toContain('[data-redesign][data-motion="off"] .sfl-anim-beat,');
   });
-  it("gated by prefers-reduced-motion", () => {
+  it("BOTH classes are gated by prefers-reduced-motion", () => {
     const rm = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
     expect(rm).toContain(".sfl-anim-beat3");
+    expect(rm).toContain(".sfl-anim-beat,");
   });
 });

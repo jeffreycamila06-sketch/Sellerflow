@@ -69,10 +69,11 @@
 
 /* title heartbeat */
 [data-redesign] .sfl-anim-beat { animation: sflBeat 3.4s ease-in-out infinite; transform-origin: left center; }
-/* Settings "Need help?" badge — FINITE attention beat: ~3 beats on mount, then
-   rests (animation-iteration-count: 3, NOT infinite). Reuses the sflBeat keyframe;
-   center-origin so the square badge pulses evenly. Gated below like every loop. */
-[data-redesign] .sfl-anim-beat3 { animation: sflBeat 1.05s ease-in-out 3; transform-origin: center; }
+/* Settings "Need help?" badge — CONTINUOUS attention beat while the Settings
+   screen is mounted (infinite; owner wanted it to keep pulsing, not stop after 3).
+   Reuses the sflBeat keyframe; center-origin so the square badge pulses evenly.
+   Gated below like every loop (kill switch + prefers-reduced-motion). */
+[data-redesign] .sfl-anim-beat3 { animation: sflBeat 1.05s ease-in-out infinite; transform-origin: center; }
 /* logo/avatar bob */
 [data-redesign] .sfl-anim-float { animation: sflFloat 4.5s ease-in-out infinite; }
 /* status-dot pulse — duration via --sfl-dur; reuses the existing sflDot keyframe */
