@@ -16,6 +16,7 @@ import { listUsers, listAuditLogs, type AccountUser, type AccountAuditLog } from
 import type { RebuiltSession } from "../../lib/orderLogic";
 import { planDaysLeft, daysDisplay, isActivePaid, isExpiredPaid, isExpiringNotExpired, EXPIRING_WINDOW_DAYS } from "../../lib/planWindow";
 import { isAdminRole } from "../../lib/roles";
+import { accountList } from "./connect";
 import { planLabel } from "./useAuthSession";
 
 // Shared plan-expiry core (single source of truth with App.tsx) — re-exported
@@ -116,7 +117,12 @@ export function accountUsersToRedesign(users: AccountUser[], nowMs: number = Dat
     role: isAdminRole(u.role) ? "Admin" : "Seller", // Batch E #16 — shared predicate (db-cased "admin")
     plan: planLabel(u.plan),
     days: planDaysLeft(u.planExpiry, nowMs), // real days remaining
-    accounts: String(u.connectedAccounts.length),
+    // "Accounts N" = the ACTUAL saved TikTok handles, parsed with the SAME shared
+    // helper the Edit modal + account-cap + connect flow use (accountList: comma/
+    // newline split, trim, drop blanks, dedup). Was `connectedAccounts.length` —
+    // a DIFFERENT column (connected_accounts = platform markers, often empty) that
+    // undercounted to 0 for sellers whose tiktok field held a handle (2026-07-24).
+    accounts: String(accountList(u.profile.tiktok).length),
     status: u.planStatus, // surfaces "expired"/"pending"/"active" in the panel
     planExpiry: u.planExpiry,
     planStatus: u.planStatus,
