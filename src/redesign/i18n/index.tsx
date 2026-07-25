@@ -618,6 +618,11 @@ const RAW: Record<string, Row> = {
   rd_sh_customer_data: { en: "Customer Data", fil: "Datos ng Customer", zh: "客户数据", "zh-TW": "客戶資料", vi: "Dữ liệu khách hàng", th: "ข้อมูลลูกค้า", id: "Data pelanggan" },
   rd_sh_delete: { en: "Delete Account", fil: "Burahin ang Account", zh: "删除账户", "zh-TW": "刪除帳號", vi: "Xóa tài khoản", th: "ลบบัญชี", id: "Hapus akun" },
   rd_sh_logout: { en: "Log out", fil: "Mag-log out", zh: "退出登录", "zh-TW": "登出", vi: "Đăng xuất", th: "ออกจากระบบ", id: "Keluar" },
+  // "Need help?" support card + Telegram-contact modal (2026-07-24).
+  rd_sh_help: { en: "Need help? Contact us", fil: "Kailangan ng tulong? Makipag-ugnayan sa amin", zh: "需要帮助？联系我们", "zh-TW": "需要協助？聯絡我們", vi: "Cần trợ giúp? Liên hệ với chúng tôi", th: "ต้องการความช่วยเหลือ? ติดต่อเรา", id: "Butuh bantuan? Hubungi kami" },
+  rd_help_body: { en: "Need help? Message us on Telegram and we'll get back to you.", fil: "Kailangan ng tulong? I-message kami sa Telegram at sasagutin ka namin.", zh: "需要帮助？在 Telegram 上给我们留言，我们会尽快回复。", "zh-TW": "需要協助？在 Telegram 上傳訊息給我們，我們會盡快回覆你。", vi: "Cần trợ giúp? Nhắn tin cho chúng tôi trên Telegram, chúng tôi sẽ phản hồi bạn.", th: "ต้องการความช่วยเหลือ? ส่งข้อความหาเราทาง Telegram แล้วเราจะติดต่อกลับ", id: "Butuh bantuan? Kirim pesan ke kami di Telegram dan kami akan membalas." },
+  rd_help_later: { en: "Next time", fil: "Sa susunod", zh: "下次再说", "zh-TW": "下次再說", vi: "Để sau", th: "ไว้คราวหน้า", id: "Lain kali" },
+  rd_help_proceed: { en: "Proceed", fil: "Magpatuloy", zh: "继续", "zh-TW": "繼續", vi: "Tiếp tục", th: "ดำเนินการต่อ", id: "Lanjutkan" },
 
   // ════ General settings ════
   rd_set_title: { en: "Settings", fil: "Settings", zh: "设置", "zh-TW": "設定", vi: "Cài đặt", th: "การตั้งค่า", id: "Pengaturan" },
