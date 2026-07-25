@@ -69,6 +69,11 @@
 
 /* title heartbeat */
 [data-redesign] .sfl-anim-beat { animation: sflBeat 3.4s ease-in-out infinite; transform-origin: left center; }
+/* Settings "Need help?" badge — CONTINUOUS attention beat while the Settings
+   screen is mounted (infinite; owner wanted it to keep pulsing, not stop after 3).
+   Reuses the sflBeat keyframe; center-origin so the square badge pulses evenly.
+   Gated below like every loop (kill switch + prefers-reduced-motion). */
+[data-redesign] .sfl-anim-beat3 { animation: sflBeat 1.05s ease-in-out infinite; transform-origin: center; }
 /* logo/avatar bob */
 [data-redesign] .sfl-anim-float { animation: sflFloat 4.5s ease-in-out infinite; }
 /* status-dot pulse — duration via --sfl-dur; reuses the existing sflDot keyframe */
@@ -128,6 +133,7 @@
 
 /* kill switch — in-app motion toggle disables LOOPS only (one-shots stay) */
 [data-redesign][data-motion="off"] .sfl-anim-beat,
+[data-redesign][data-motion="off"] .sfl-anim-beat3,
 [data-redesign][data-motion="off"] .sfl-anim-float,
 [data-redesign][data-motion="off"] .sfl-anim-dot,
 [data-redesign][data-motion="off"] .sfl-anim-glow,
@@ -146,6 +152,7 @@
 /* prefers-reduced-motion — kill loops; keep a minimal one-shot fade */
 @media (prefers-reduced-motion: reduce) {
   [data-redesign] .sfl-anim-beat,
+  [data-redesign] .sfl-anim-beat3,
   [data-redesign] .sfl-anim-float,
   [data-redesign] .sfl-anim-dot,
   [data-redesign] .sfl-anim-glow,

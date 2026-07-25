@@ -1,8 +1,9 @@
 // Screen 6 — Settings hub (menu). dc.html v2 L204–254.
-import type { CSSProperties, ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { headerBar, headerTitle } from "../ui";
 import { useT } from "../i18n";
 import InviteFriendsCard from "../components/InviteFriendsCard";
+import SupportContactModal from "../components/SupportContactModal";
 
 const tile: CSSProperties = { display: "flex", alignItems: "center", gap: 11, padding: "15px 13px", border: "1px solid var(--border)", borderRadius: 15, background: "var(--surface)", boxShadow: "var(--shadow)", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" };
 const chip = (variant: "accent" | "danger" | "neutral"): CSSProperties => ({
@@ -32,6 +33,7 @@ const ic = {
   truck: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 6h10v9H3z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M13 9h4l3 3v3h-7z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><circle cx="7" cy="17.5" r="1.6" stroke="currentColor" strokeWidth="1.5" /><circle cx="17" cy="17.5" r="1.6" stroke="currentColor" strokeWidth="1.5" /></svg>,
   database: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><ellipse cx="12" cy="6" rx="7" ry="3" stroke="currentColor" strokeWidth="1.6" /><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6" stroke="currentColor" strokeWidth="1.6" /><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3" stroke="currentColor" strokeWidth="1.6" /></svg>,
   doclock: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v14H6z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M13 3v5h5" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><rect x="9" y="12.5" width="6" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.4" /><path d="M10.3 12.5v-1a1.7 1.7 0 0 1 3.4 0v1" stroke="currentColor" strokeWidth="1.4" /></svg>,
+  help: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7" /><path d="M9.4 9.3a2.6 2.6 0 0 1 5 .9c0 1.7-2.4 2-2.4 3.6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="17" r="1.1" fill="currentColor" /></svg>,
   trash: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M5 7h14M10 7V5h4v2M6 7l1 13h10l1-13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>,
   exit: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><path d="M9 8 5 12l4 4M5 12h11" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>,
 };
@@ -46,6 +48,9 @@ export default function SettingsHub({
   isAdmin?: boolean; // Phase 5h — owner-only tiles (matches production isAdminUser gating)
 }) {
   const t = useT();
+  // Local "Need help?" modal (display only — reaches Jeff on Telegram via a real
+  // anchor). Owned here so it never touches RedesignApp's top-level socket/live hooks.
+  const [helpOpen, setHelpOpen] = useState(false);
   return (
     <div>
       <div style={headerBar}>
@@ -64,10 +69,23 @@ export default function SettingsHub({
           <Tile icon={ic.truck} label={t.rd_sh_shipping} onClick={onShipping} />
           {isAdmin && <Tile icon={ic.database} label={t.rd_sh_customer_data} onClick={onCustomerData} />}
           <Tile icon={ic.doclock} label={t.lg_pt_title} onClick={onLegal} />
+          {/* Need help? — support entry point, directly ABOVE Delete Account.
+              HIGHLIGHTED (option B): WHITE card like the others, but an accent-FILLED
+              badge (var(--accent) bg + light glyph) that beats CONTINUOUSLY while on
+              Settings (sfl-anim-beat3), and the LABEL reuses the EXACT sfl-anim-beat
+              class the "Settings" screen title uses (opacity-breathing fade, identical
+              look — both gated by reduced-motion + [data-motion=off]). Rendered inline
+              (not <Tile>) so the shared Tile/chip — and every other card — stay
+              byte-unchanged. */}
+          <button onClick={() => setHelpOpen(true)} style={tile} data-testid="help-card">
+            <span className="sfl-anim-beat3" data-testid="help-badge" style={{ ...chip("accent"), background: "var(--accent)", color: "var(--accent-text)" }}>{ic.help}</span>
+            <span className="sfl-anim-beat" data-testid="help-label" style={tileLabel}>{t.rd_sh_help}</span>
+          </button>
           <Tile icon={ic.trash} label={t.rd_sh_delete} onClick={onDelete} variant="danger" />
           <Tile icon={ic.exit} label={t.rd_sh_logout} onClick={onLogout} variant="neutral" />
         </div>
       </div>
+      {helpOpen && <SupportContactModal onClose={() => setHelpOpen(false)} />}
     </div>
   );
 }
