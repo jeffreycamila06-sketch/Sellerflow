@@ -19,6 +19,7 @@ import {
   filterAuditLogs,
   type FreeUserRow,
 } from "../useReadData";
+import { accountList } from "../connect";
 import type { User } from "../../data";
 import type { AccountAuditLog } from "../../../accountDb";
 import type { RebuiltSession } from "../../../lib/orderLogic";
@@ -120,7 +121,9 @@ describe("accountUsersToRedesign", () => {
     expect(out.role).toBe("Seller");
     expect(out.plan).toBe("Basic");
     expect(out.note).toBe("Sel Ler"); // falls back to fullName
-    expect(out.accounts).toBe("1");
+    // accounts = saved TikTok handles (base.tiktok is empty) → "0". Was "1" when the
+    // count wrongly read connectedAccounts (["tt1"]); those are ignored now.
+    expect(out.accounts).toBe("0");
   });
   it("prefers adminContactNote and maps admin role", () => {
     const out = accountUsersToRedesign([{ ...base, role: "admin", plan: "master", profile: { ...base.profile, adminContactNote: "VIP note" } }])[0];
@@ -135,6 +138,50 @@ describe("accountUsersToRedesign", () => {
     expect(out.days).toBe(10);
     expect(out.planExpiry).toBe("2026-07-06T00:00:00.000Z");
     expect(out.planStatus).toBe("active");
+  });
+});
+
+// ── "Accounts N" bug (2026-07-24): the Manage-sellers row counted `connected_accounts`
+// (platform markers, often empty) → showed 0 for sellers whose `tiktok` field held a
+// handle (e.g. thoankunn5 → laviie2002). Fix: count the ACTUAL saved TikTok handles
+// with the SAME shared `accountList` the Edit modal + account-cap + connect flow use.
+describe("accountUsersToRedesign — 'Accounts N' counts saved TikTok handles (shared accountList, NOT connected_accounts)", () => {
+  const mk = (tiktok: string, connectedAccounts: string[] = []): AccountUser => ({
+    authUserId: "a", email: "s@x.com",
+    profile: { fullName: "S", storeName: "Shop", phone: "", tiktok, facebook: "", adminContactNote: "" },
+    plan: "basic", planStatus: "active", planExpiry: "", connectedAccounts, role: "seller",
+  });
+  const count = (tiktok: string, connectedAccounts: string[] = []) =>
+    accountUsersToRedesign([mk(tiktok, connectedAccounts)])[0].accounts;
+
+  it("single saved account → '1' (the thoankunn5/laviie2002 case; connected_accounts empty)", () => {
+    expect(count("laviie2002", [])).toBe("1"); // was "0" — empty connected_accounts no longer forces 0
+  });
+  it("multiple newline-separated accounts → counts them ALL", () => {
+    expect(count("budgetukay1\nbudgetukay2\nbudgetukay5")).toBe("3");
+  });
+  it("empty tiktok → '0' (and whitespace-only → '0')", () => {
+    expect(count("")).toBe("0");
+    expect(count("   ")).toBe("0");
+  });
+  it("trailing / blank / padded lines are NOT miscounted", () => {
+    expect(count("a\nb\n")).toBe("2");    // trailing newline
+    expect(count("a\n\n\nb")).toBe("2");   // interior blank lines
+    expect(count("\n\n")).toBe("0");       // only blanks
+    expect(count(" a \n b ")).toBe("2");   // padded lines trimmed
+    expect(count("dup\ndup\nother")).toBe("2"); // deduped (matches the cap/connect parser)
+  });
+  it("IGNORES connected_accounts entirely (the old broken source)", () => {
+    expect(count("solo", ["TikTok", "Facebook"])).toBe("1"); // populated array (len 2) must not inflate
+    expect(count("", ["TikTok"])).toBe("0");                 // populated array (len 1) must not un-zero
+  });
+  it("row count EQUALS the Edit modal's TikTok account count for the same seller", () => {
+    // The Edit modal reads raw profile.tiktok; its saved count = accountList(...).length.
+    const u = mk("budgetukay1\nbudgetukay2\nbudgetukay5", ["TikTok"]);
+    const rowCount = accountUsersToRedesign([u])[0].accounts;        // the Manage-sellers row
+    const modalCount = String(accountList(u.profile.tiktok).length); // what Edit shows/saves
+    expect(rowCount).toBe(modalCount);
+    expect(rowCount).toBe("3");
   });
 });
 
