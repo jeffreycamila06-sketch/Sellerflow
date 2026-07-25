@@ -3,6 +3,8 @@
 // (closes, no nav) + a primary "Proceed" that is a REAL iOS-safe anchor to TELEGRAM_URL.
 import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import SettingsHub from "../SettingsHub";
 import { TProvider, buildT } from "../../i18n";
 import { TELEGRAM_URL } from "../../../lib/telegram";
@@ -81,5 +83,48 @@ describe("SettingsHub — Need help? support card", () => {
       for (const k of keys) expect(tt[k] && tt[k].trim().length, `${k}/${lang}`).toBeTruthy();
       if (lang !== "en") expect(tt.rd_sh_help).not.toBe(t.rd_sh_help); // genuinely translated, not en fallback
     }
+  });
+});
+
+// ── Addendum (2026-07-24): highlight the card — WHITE card, accent-FILLED badge
+// with a FINITE 3-beat pulse on mount. Only the badge changes; other cards untouched.
+describe("SettingsHub — Need help? highlighted badge", () => {
+  it("the card stays WHITE (surface), not a full accent card", () => {
+    renderHub();
+    const card = screen.getByTestId("help-card");
+    expect(card.style.background).toContain("var(--surface)"); // same as every other tile
+    expect(card.style.background).not.toContain("var(--accent)");
+  });
+
+  it("the icon BADGE is accent-FILLED (var(--accent) bg + var(--accent-text) glyph) via tokens", () => {
+    renderHub();
+    const badge = screen.getByTestId("help-badge");
+    expect(badge.style.background).toBe("var(--accent)");   // filled, not the light --accent-soft other cards use
+    expect(badge.style.color).toBe("var(--accent-text)");   // token, not a hardcoded color
+  });
+
+  it("the badge carries the FINITE beat class (sfl-anim-beat3), and only the badge does", () => {
+    renderHub();
+    expect(screen.getByTestId("help-badge").className).toContain("sfl-anim-beat3");
+    // the label + card button themselves are not animated
+    expect(screen.getByTestId("help-card").className).not.toContain("sfl-anim-beat3");
+  });
+});
+
+describe("redesign.css — .sfl-anim-beat3 is finite + fully motion-gated", () => {
+  const css = readFileSync(join(__dirname, "../../redesign.css"), "utf-8");
+  const rule = (css.match(/\[data-redesign\]\s*\.sfl-anim-beat3\s*\{[^}]*\}/) || [""])[0];
+
+  it("defined with the shared sflBeat keyframe and iteration-count 3 (NOT infinite)", () => {
+    expect(rule).toContain("sflBeat");
+    expect(rule).toMatch(/ease-in-out\s+3\b/); // finite iteration count = 3
+    expect(rule).not.toContain("infinite");
+  });
+  it("gated by the [data-motion=off] kill switch", () => {
+    expect(css).toContain('[data-redesign][data-motion="off"] .sfl-anim-beat3');
+  });
+  it("gated by prefers-reduced-motion", () => {
+    const rm = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(rm).toContain(".sfl-anim-beat3");
   });
 });
