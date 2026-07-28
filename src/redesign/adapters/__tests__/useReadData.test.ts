@@ -9,6 +9,7 @@ import {
   accountUsersToRedesign,
   planDaysLeft,
   deriveSubBuckets,
+  compareByExpiryDesc,
   deriveUserBase,
   deriveMrr,
   freeUsersSummary,
@@ -248,6 +249,79 @@ describe("deriveSubBuckets — shared lib/planWindow buckets (paid-only, 7d wind
     // disjointness: no seller is in both admin lists at once (the bug this fixes)
     const inExpiring = new Set(expiring.map((x) => x.email));
     expect(expired.some((x) => inExpiring.has(x.email))).toBe(false);
+  });
+});
+
+// The Admin "Expired" modal (Subscriptions → Expired card → SellerSubList) renders
+// deriveSubBuckets(...).expired in array order. Every expired row clamps to
+// "0 days left", so days-left cannot order them — the list sorts by the actual
+// expiry TIMESTAMP, most-recently-expired first / oldest last (2026-07-28).
+describe("deriveSubBuckets.expired — sorted by expiry timestamp, newest-first", () => {
+  const u = (over: Partial<User>): User => ({ email: "x@x.com", note: "", role: "Seller", plan: "Pro", days: 0, accounts: "1", planStatus: "expired", ...over });
+  // All expired (days 0 / status expired) with KNOWN expiry dates, deliberately shuffled.
+  const shuffled: User[] = [
+    u({ email: "oldest@x.com", planExpiry: "2026-01-10T00:00:00.000Z" }),
+    u({ email: "newest@x.com", planExpiry: "2026-07-20T00:00:00.000Z" }),
+    u({ email: "mid@x.com", planExpiry: "2026-05-01T00:00:00.000Z" }),
+  ];
+  it("renders newest-expired at top, oldest at bottom", () => {
+    expect(deriveSubBuckets(shuffled).expired.map((x) => x.email))
+      .toEqual(["newest@x.com", "mid@x.com", "oldest@x.com"]);
+  });
+  it("teeth: a DIFFERENT input order produces the SAME sorted output", () => {
+    const reordered = [shuffled[2], shuffled[0], shuffled[1]]; // mid, oldest, newest
+    expect(deriveSubBuckets(reordered).expired.map((x) => x.email))
+      .toEqual(["newest@x.com", "mid@x.com", "oldest@x.com"]);
+  });
+  it("null/missing expiry sorts LAST (never top, never crash)", () => {
+    const users: User[] = [
+      u({ email: "hasexp@x.com", planExpiry: "2026-06-01T00:00:00.000Z" }),
+      u({ email: "noexp@x.com", planExpiry: undefined }),          // missing
+      u({ email: "blank@x.com", planExpiry: "" }),                 // empty string
+      u({ email: "garbage@x.com", planExpiry: "not-a-date" }),     // invalid → last
+    ];
+    const emails = deriveSubBuckets(users).expired.map((x) => x.email);
+    expect(emails[0]).toBe("hasexp@x.com");                        // the only real ts → top
+    expect(emails.slice(1).sort()).toEqual(["blank@x.com", "garbage@x.com", "noexp@x.com"]);
+  });
+  it("ties on identical expiry fall back to email alphabetical (deterministic)", () => {
+    const users: User[] = [
+      u({ email: "zeta@x.com", planExpiry: "2026-06-01T00:00:00.000Z" }),
+      u({ email: "alpha@x.com", planExpiry: "2026-06-01T00:00:00.000Z" }),
+    ];
+    expect(deriveSubBuckets(users).expired.map((x) => x.email))
+      .toEqual(["alpha@x.com", "zeta@x.com"]);
+  });
+  it("sort is display-only: it never changes the Expired COUNT", () => {
+    expect(deriveSubBuckets(shuffled).expired.length).toBe(shuffled.length);
+  });
+  it("compareByExpiryDesc returns 0 semantics — stable, self-consistent", () => {
+    const a = u({ email: "a@x.com", planExpiry: "2026-06-01T00:00:00.000Z" });
+    const b = u({ email: "b@x.com", planExpiry: "2026-07-01T00:00:00.000Z" });
+    expect(compareByExpiryDesc(b, a)).toBeLessThan(0);   // b (newer) before a
+    expect(compareByExpiryDesc(a, b)).toBeGreaterThan(0);
+  });
+});
+
+// The owner explicitly wants Expiring + Active ordering LEFT ALONE — only Expired
+// changed. Prove the expiry-timestamp sort does NOT leak into the other lists.
+describe("deriveSubBuckets — Active & Expiring still order by days-left (unchanged)", () => {
+  const u = (over: Partial<User>): User => ({ email: "x@x.com", note: "", role: "Seller", plan: "Pro", days: 30, accounts: "1", planStatus: "active", ...over });
+  it("active/expiring ignore planExpiry ordering; days-left ASC wins", () => {
+    const users: User[] = [
+      // far-out days but the MOST-RECENT planExpiry — must stay LAST, not jump to top
+      u({ email: "a-far@x.com", days: 90, planExpiry: "2027-01-01T00:00:00.000Z" }),
+      u({ email: "b-mid@x.com", days: 30, planExpiry: "2026-08-01T00:00:00.000Z" }),
+      // expiring window (1..7); c has an even newer expiry than a, still ordered by days
+      u({ email: "c-5@x.com", days: 5, planExpiry: "2027-06-01T00:00:00.000Z" }),
+      u({ email: "d-2@x.com", days: 2, planExpiry: "2026-08-05T00:00:00.000Z" }),
+    ];
+    const { active, expiring } = deriveSubBuckets(users);
+    // active = all paid/active/days>0 (expiring rows are a sub-view of active),
+    // ordered days-ASC — NOT by planExpiry (else c or a would lead).
+    expect(active.map((x) => x.email)).toEqual(["d-2@x.com", "c-5@x.com", "b-mid@x.com", "a-far@x.com"]);
+    // expiring = still-alive 1..7, also days-ASC not expiry.
+    expect(expiring.map((x) => x.email)).toEqual(["d-2@x.com", "c-5@x.com"]);
   });
 });
 
