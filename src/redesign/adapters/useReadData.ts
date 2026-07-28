@@ -139,9 +139,13 @@ export function accountUsersToRedesign(users: AccountUser[], nowMs: number = Dat
 //   expiring = paid, non-pending, days 1..EXPIRING_WINDOW_DAYS, NOT expired
 //              (isExpiringNotExpired = still-alive subset, DISJOINT from expired —
 //               so a days==0 seller is in Expired only, never both lists)
-// ALL three lists sort by days-left ASC (soonest expiry on top — the order
+// Active + Expiring sort by days-left ASC (soonest expiry on top — the order
 // self-updates as days pass), ties alphabetical by email. Infinity-safe:
 // no-expiry rows sink to the bottom without a NaN comparator.
+// Expired sorts DIFFERENTLY (2026-07-28): days-left is useless there (every
+// past-due row clamps to 0), so the Expired list orders by the actual expiry
+// TIMESTAMP, most-recently-expired first / oldest last, ties alphabetical by
+// email. Missing/invalid expiry sinks to the bottom (never crashes, never top).
 export interface SubBuckets { active: User[]; expiring: User[]; expired: User[] }
 const planState = (u: User) => ({ plan: u.plan, planStatus: u.planStatus || "", daysLeft: u.days ?? Infinity });
 export function compareByDaysLeft(a: User, b: User): number {
@@ -149,10 +153,22 @@ export function compareByDaysLeft(a: User, b: User): number {
   if (da !== db) return da < db ? -1 : 1;
   return a.email.localeCompare(b.email);
 }
+// Parse plan_expiry to epoch ms; missing/invalid → -Infinity (sorts last under
+// the descending comparator). Same new Date(...).getTime() semantics as
+// lib/planWindow.planDaysLeft, so parsing can never diverge between the two.
+const expiryMs = (s?: string): number => {
+  const ms = s ? new Date(s).getTime() : NaN;
+  return Number.isFinite(ms) ? ms : -Infinity;
+};
+export function compareByExpiryDesc(a: User, b: User): number {
+  const ta = expiryMs(a.planExpiry), tb = expiryMs(b.planExpiry);
+  if (ta !== tb) return ta > tb ? -1 : 1; // most-recently-expired (largest ts) first
+  return a.email.localeCompare(b.email);
+}
 export function deriveSubBuckets(users: User[]): SubBuckets {
   const sellers = users.filter((u) => !isAdminRole(u.role)); // Batch E #16
   const active = sellers.filter((u) => isActivePaid(planState(u))).sort(compareByDaysLeft);
-  const expired = sellers.filter((u) => isExpiredPaid(planState(u))).sort(compareByDaysLeft);
+  const expired = sellers.filter((u) => isExpiredPaid(planState(u))).sort(compareByExpiryDesc);
   const expiring = sellers.filter((u) => isExpiringNotExpired(planState(u))).sort(compareByDaysLeft);
   return { active, expiring, expired };
 }
