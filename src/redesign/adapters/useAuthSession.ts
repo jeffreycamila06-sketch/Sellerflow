@@ -258,7 +258,7 @@ export interface ProfileDisplay {
 }
 
 const PLAN_LABELS: Record<string, string> = {
-  free: "Free", trial: "Trial", basic: "Basic", pro: "Pro", master: "Master",
+  free: "Free", trial: "Trial", basic: "Basic", plus: "Plus", pro: "Pro", master: "Master",
 };
 
 export function planLabel(plan: string | undefined | null): string {

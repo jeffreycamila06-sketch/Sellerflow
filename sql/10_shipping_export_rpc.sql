@@ -11,7 +11,8 @@
 --   3. rejects if the selection would exceed the remaining quota,
 --   4. stamps status='exported' + export_batch_id + exported_at on the caller's
 --      own ENCODED entries only.
--- Quotas: free 50 · basic 200 · pro 500 · master UNLIMITED (check skipped).
+-- Quotas (2026-07-28 D2): free 50 · basic/plus/pro/master ALL UNLIMITED
+-- (check skipped for any null-quota plan).
 -- One count = one exported row (one parcel/bag; split bags count individually).
 -- Concurrency: pg_advisory_xact_lock per user serializes two-device exports so
 -- the quota can never be double-spent (lock releases at commit).
@@ -26,7 +27,7 @@ as $$
 declare
   caller    uuid := auth.uid();
   user_plan text;
-  quota     integer;  -- null = unlimited (master)
+  quota     integer;  -- null = unlimited (any paid plan)
   used      integer := 0;
   n         integer;
   batch     uuid := gen_random_uuid();
@@ -37,10 +38,14 @@ begin
   end if;
 
   select plan into user_plan from public.seller_profiles where auth_user_id = caller;
+  -- 2026-07-28 (D2): every PAID plan (basic/plus/pro/master) is UNLIMITED (null);
+  -- only free is capped, at 50 / 30-day window. (Was basic 200 / pro 500 / master
+  -- unlimited; the new "plus" tier and the basic/pro raise-to-unlimited land here.)
   quota := case coalesce(user_plan, 'free')
              when 'master' then null
-             when 'pro'    then 500
-             when 'basic'  then 200
+             when 'pro'    then null
+             when 'plus'   then null
+             when 'basic'  then null
              else 50
            end;
 

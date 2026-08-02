@@ -20,7 +20,7 @@
 
 // VERBATIM parity with the client cap (connect.ts:22 maxAcc). Unknown plan -> 1.
 export function maxAccountsForPlan(plan) {
-  const map = { free: 1, trial: 1, basic: 1, pro: 3, master: 5 };
+  const map = { free: 1, trial: 1, basic: 1, plus: 2, pro: 3, master: 5 };
   return map[String(plan == null ? "" : plan).trim().toLowerCase()] ?? 1;
 }
 

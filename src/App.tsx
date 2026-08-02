@@ -27,7 +27,7 @@ import { planDaysLeft, daysDisplay, isActivePaid, isExpiredPaid, isExpiringSoon,
 import { shouldUseBluetoothSticker, shouldUseLanSticker } from "./lib/printerRouting";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type Plan = "free" | "trial" | "basic" | "pro" | "master";
+type Plan = "free" | "trial" | "basic" | "plus" | "pro" | "master";
 type PlanStatus = "active" | "expired" | "pending";
 type Page = "dashboard"|"miners"|"orders"|"products"|"customers"|"customerData"|"print"|"sales"|"shipping"|"settings"|"subscription"|"support"|"admin"|"privacy"|"terms"|"deleteAccount";
 
@@ -212,7 +212,7 @@ const safeUser=(raw:unknown):User|null=>{
   const u=raw as Partial<User>;
   const email=String(u.email||"").trim().toLowerCase();
   if(!email)return null;
-  const plan:Plan=["free","trial","basic","pro","master"].includes(String(u.plan))?u.plan as Plan:"free";
+  const plan:Plan=["free","trial","basic","plus","pro","master"].includes(String(u.plan))?u.plan as Plan:"free";
   const planStatus:PlanStatus=["active","expired","pending"].includes(String(u.planStatus))?u.planStatus as PlanStatus:"active";
   return {
     authUserId:typeof u.authUserId==="string"?u.authUserId:undefined,
@@ -256,7 +256,7 @@ const daysCellStyle=(days:number):React.CSSProperties|undefined=>{
 };
 const normalizePhone=(value:string)=>String(value||"").replace(/\D/g,"");
 const phoneDisplay=(value:string)=>String(value||"").trim();
-const maxAcc=(p:Plan)=>({free:1,trial:1,basic:1,pro:3,master:5}[p]);
+const maxAcc=(p:Plan)=>({free:1,trial:1,basic:1,plus:2,pro:3,master:5}[p]);
 const LIVE_COMMENT_LIMIT=5000;
 const COMMENT_ARCHIVE_LIMIT=5000;
 const accountList=(value:string)=>Array.from(new Set((value||"").split(/[,\n]/).map(v=>v.trim()).filter(Boolean)));
@@ -278,8 +278,8 @@ const OWNER_EMAIL=(import.meta.env.VITE_OWNER_EMAIL||"admin@sellerflow.app").tri
 const isAdminUser=(u:User|null)=>!!u&&u.role==="admin";
 const canConnectMore=(u:User)=>isAdminUser(u)||registeredAccountCount(u)<maxAcc(u.plan);
 const asAdminPlan=(u:User)=>isAdminUser(u)?{...u,plan:"master" as Plan,planStatus:"active" as PlanStatus,planExpiry:addMonths(120)}:u;
-const pName=(p:Plan,t:T)=>({free:t.plan_free,trial:t.plan_free,basic:t.plan_basic,pro:t.plan_pro,master:t.plan_master}[p]);
-const pColor=(p:Plan)=>({free:"blue",trial:"gray",basic:"green",pro:"purple",master:"amber"}[p] as "gray"|"green"|"purple"|"amber"|"blue");
+const pName=(p:Plan,t:T)=>({free:t.plan_free,trial:t.plan_free,basic:t.plan_basic,plus:"Plus",pro:t.plan_pro,master:t.plan_master}[p]);
+const pColor=(p:Plan)=>({free:"blue",trial:"gray",basic:"green",plus:"teal",pro:"purple",master:"amber"}[p] as "gray"|"green"|"purple"|"amber"|"blue"|"teal");
 const csvDL=(filename:string,headers:string[],rows:(string|number)[][])=>{
   const csv=[headers,...rows].map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(",")).join("\n");
   const a=document.createElement("a");a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));a.download=filename;a.click();
@@ -296,8 +296,8 @@ function Av({name,size=32,image}:{name:string;size?:number;image?:string}){
     {image?<img src={image} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:ini(name)}
   </div>;
 }
-function Badge({label,color}:{label:string;color:"purple"|"green"|"amber"|"red"|"blue"|"gray"}){
-  const m:{[k:string]:[string,string]}={purple:["#EEEDFE","#534AB7"],green:["#E1F5EE","#0F6E56"],amber:["#FAEEDA","#633806"],red:["#FCEBEB","#A32D2D"],blue:["#E6F1FB","#185FA5"],gray:["#F1EFE8","#5F5E5A"]};
+function Badge({label,color}:{label:string;color:"purple"|"green"|"amber"|"red"|"blue"|"gray"|"teal"}){
+  const m:{[k:string]:[string,string]}={purple:["#EEEDFE","#534AB7"],green:["#E1F5EE","#0F6E56"],amber:["#FAEEDA","#633806"],red:["#FCEBEB","#A32D2D"],blue:["#E6F1FB","#185FA5"],gray:["#F1EFE8","#5F5E5A"],teal:["#D7F2EE","#0B6E64"]};
   const [bg,fg]=m[color];
   return <span style={{background:bg,color:fg,fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:500,whiteSpace:"nowrap"}}>{label}</span>;
 }
@@ -718,7 +718,7 @@ function PublicAuth({onLogin,t,lang,setLang}:{onLogin:(u:User)=>void;t:T;lang:La
   const [activeFeature,setActiveFeature]=useState(0);
   const [activeFlow,setActiveFlow]=useState(0);
   const [openFaq,setOpenFaq]=useState(0);
-  const [publicPlanMonths,setPublicPlanMonths]=useState<Record<Exclude<Plan,"free"|"trial">,number>>({basic:1,pro:1,master:1});
+  const [publicPlanMonths,setPublicPlanMonths]=useState<Record<Exclude<Plan,"free"|"trial">,number>>({basic:1,plus:1,pro:1,master:1});
   const [publicLegal,setPublicLegal]=useState<""|"privacy"|"terms">(()=>{
     if(typeof window==="undefined")return "";
     return window.location.hash==="#privacy"?"privacy":window.location.hash==="#terms"?"terms":"";
@@ -1206,9 +1206,9 @@ function SubPage({user,t}:{user:User;onActivate:(plan:Plan,status:PlanStatus,exp
   const [sel,setSel]=useState<Plan|null>(null);
   const [showPay,setShowPay]=useState(false);
   const [done,setDone]=useState(false);
-  const [planMonths,setPlanMonths]=useState<Record<Exclude<Plan,"free"|"trial">,number>>({basic:1,pro:1,master:1});
+  const [planMonths,setPlanMonths]=useState<Record<Exclude<Plan,"free"|"trial">,number>>({basic:1,plus:1,pro:1,master:1});
   const days=dLeft(user.planExpiry);
-  const paidPlanPrices:Record<Exclude<Plan,"free"|"trial">,number>={basic:15,pro:25,master:40};
+  const paidPlanPrices:Record<Exclude<Plan,"free"|"trial">,number>={basic:15,plus:20,pro:25,master:40};
   const monthOptions=Array.from({length:12},(_,i)=>i+1);
   const plans=[
     {id:"basic" as Plan,name:t.plan_basic,basePrice:15,period:t.plan_month,color:"#A855F7",desc:t.sub_basic_desc,features:t.sub_basic_features,bestFor:t.sub_basic_best,action:t.sub_basic_action},

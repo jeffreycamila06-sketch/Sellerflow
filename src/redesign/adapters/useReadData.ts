@@ -182,8 +182,8 @@ export interface FreeUserRow { email: string; store_name: string; full_name: str
 // misplace them. Free is identified by plan==="Free" only.
 export interface UserBase {
   total: number; admins: number;
-  free: number; trial: number; basic: number; pro: number; master: number;
-  paid: number;          // basic + pro + master plan-label tally (incl. expired + the owner's Master); internal aggregate, NOT the paying-customer count
+  free: number; trial: number; basic: number; plus: number; pro: number; master: number;
+  paid: number;          // basic + plus + pro + master plan-label tally (incl. expired + the owner's Master); internal aggregate, NOT the paying-customer count
   paidSellers: number;   // paid plan-label tally minus admins (still incl. expired); internal aggregate
   // status health within paid plans — the SAME deriveSubBuckets source as the
   // Subscriptions cards + the paying headline (non-admin; shared lib/planWindow
@@ -197,10 +197,10 @@ export interface UserBase {
 }
 export function deriveUserBase(users: User[]): UserBase {
   const tally = (label: string) => users.filter((u) => u.plan === label).length;
-  const free = tally("Free"), trial = tally("Trial"), basic = tally("Basic"), pro = tally("Pro"), master = tally("Master");
-  const paid = basic + pro + master;
+  const free = tally("Free"), trial = tally("Trial"), basic = tally("Basic"), plus = tally("Plus"), pro = tally("Pro"), master = tally("Master");
+  const paid = basic + plus + pro + master;
   const admins = users.filter((u) => isAdminRole(u.role)).length; // Batch E #16
-  const paidUsers = users.filter((u) => u.plan === "Basic" || u.plan === "Pro" || u.plan === "Master");
+  const paidUsers = users.filter((u) => u.plan === "Basic" || u.plan === "Plus" || u.plan === "Pro" || u.plan === "Master");
   const paidSellers = paidUsers.filter((u) => !isAdminRole(u.role)).length;
   // Paid status-health tiles AND the paying headline ALL read from the ONE shared
   // source (deriveSubBuckets: non-admin, then the shared lib/planWindow predicates),
@@ -212,7 +212,7 @@ export function deriveUserBase(users: User[]): UserBase {
   const paidExpired = buckets.expired.length;
   const paidExpiring = buckets.expiring.length;
   const paying = buckets.active.length; // == paidActive; the explicit headline field
-  return { total: users.length, admins, free, trial, basic, pro, master, paid, paidSellers, paidActive, paidExpiring, paidExpired, paying };
+  return { total: users.length, admins, free, trial, basic, plus, pro, master, paid, paidSellers, paidActive, paidExpiring, paidExpired, paying };
 }
 
 // REAL monthly recurring revenue estimate for the Admin home tile (Batch B #2 —

@@ -16,7 +16,7 @@ import { readEdgeError } from "./edgeError";
 import { maxAcc, accountList, accountText } from "./connect";
 import { planDaysLeft, isTimeLimitedPlan } from "../../lib/planWindow";
 
-export type Plan = "free" | "trial" | "basic" | "pro" | "master";
+export type Plan = "free" | "trial" | "basic" | "plus" | "pro" | "master";
 export interface AdminResult { ok: boolean; error?: string }
 export interface PlanPatch { plan: Plan; planStatus: "active"; planExpiry: string; trialStartedAt?: string }
 

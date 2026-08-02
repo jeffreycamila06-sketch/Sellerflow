@@ -1,7 +1,7 @@
 import { isSupabaseConfigured, supabase, supabaseConfigHint } from "./supabase";
 import { fetchAllPages } from "./lib/fetchAllPages";
 
-type Plan = "free" | "trial" | "basic" | "pro" | "master";
+type Plan = "free" | "trial" | "basic" | "plus" | "pro" | "master";
 type PlanStatus = "active" | "expired" | "pending";
 export type Role = "seller" | "admin";
 
@@ -58,7 +58,10 @@ type SupabaseRow = Record<string, unknown>;
 const textValue = (value: unknown, fallback = "") => (typeof value === "string" ? value : fallback);
 const stringArrayValue = (value: unknown) => Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 
-function rowToUser(row: SupabaseRow): AccountUser {
+// Exported for the plan-whitelist contract test (Plus tier): a DB row whose
+// plan is a recognized tier must pass through unchanged; only an unknown value
+// falls back to "free". Pure — no behavior change from the export.
+export function rowToUser(row: SupabaseRow): AccountUser {
   return {
     authUserId: textValue(row.auth_user_id),
     email: textValue(row.email),
@@ -70,7 +73,7 @@ function rowToUser(row: SupabaseRow): AccountUser {
       facebook: textValue(row.facebook),
       adminContactNote: textValue(row.admin_contact_note),
     },
-    plan: ["free", "trial", "basic", "pro", "master"].includes(textValue(row.plan)) ? textValue(row.plan) as Plan : "free",
+    plan: ["free", "trial", "basic", "plus", "pro", "master"].includes(textValue(row.plan)) ? textValue(row.plan) as Plan : "free",
     planStatus: ["active", "expired", "pending"].includes(textValue(row.plan_status)) ? textValue(row.plan_status) as PlanStatus : "active",
     // NULL plan_expiry = NO expiry (dLeft treats "" as Infinity) — defaulting
     // to now() made every NULL-expiry seller read as "expired today".
