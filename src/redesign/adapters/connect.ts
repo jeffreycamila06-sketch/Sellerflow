@@ -19,7 +19,7 @@ export type Platform = "TikTok" | "Facebook";
 
 // ── Pure helpers (verbatim) — unit-tested ────────────────────────────────────
 export const cleanLiveAccount = (value: string): string => String(value || "").trim().replace(/^@+/, "").toLowerCase(); // 159
-export const maxAcc = (plan: string): number => (({ free: 1, trial: 1, basic: 1, pro: 3, master: 5 } as Record<string, number>)[plan] ?? 1); // 256
+export const maxAcc = (plan: string): number => (({ free: 1, trial: 1, basic: 1, plus: 2, pro: 3, master: 5 } as Record<string, number>)[plan] ?? 1); // 256
 export const accountList = (value: string): string[] => Array.from(new Set((value || "").split(/[,\n]/).map((v) => v.trim()).filter(Boolean))); // 259
 export const accountText = (values: string[]): string => values.map((v) => v.trim()).filter(Boolean).join("\n"); // 260
 export const registeredAccountCount = (u: AccountUser): number => accountList(u.profile.tiktok).length + accountList(u.profile.facebook).length; // 262

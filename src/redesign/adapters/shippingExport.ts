@@ -15,12 +15,15 @@ export const SHIP_QUOTA_WINDOW_DAYS = 30;
 export const SHIP_PURGE_AFTER_DAYS = 90;
 
 // ── Plan quotas (display mirror of the RPC's CASE — server is authoritative) ──
+// 2026-07-28 (D2): ALL paid plans (basic/plus/pro/master) are UNLIMITED (null);
+// only free is capped at 50. Mirrors check_and_export_shipping — keep in sync.
 export function quotaForPlan(plan: string | undefined | null): number | null {
   switch ((plan || "free").toLowerCase()) {
-    case "master": return null; // unlimited
-    case "pro": return 500;
-    case "basic": return 200;
-    default: return 50;
+    case "master":
+    case "pro":
+    case "plus":
+    case "basic": return null; // unlimited (all paid tiers)
+    default: return 50;        // free
   }
 }
 

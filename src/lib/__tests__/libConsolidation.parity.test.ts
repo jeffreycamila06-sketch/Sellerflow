@@ -31,18 +31,20 @@ describe("isFreePlan — parity with both old copies (#12)", () => {
   });
 });
 
-// ── #14 plan pricing — old copies ────────────────────────────────────────────
-// (a) data.ts:185 (redesign) — the price table literal
-const REF_PLAN_PRICE: Record<string, number> = { Free: 0, Basic: 500, Pro: 1200, Master: 1700, Business: 1700, Starter: 500 };
-// (b) Admin.tsx:137 — the re-typed threshold matcher
-const refMatchPlan = (amt: string) => { const a = +amt || 0; return a >= 1700 ? "Master" : a >= 1200 ? "Pro" : a >= 500 ? "Basic" : "—"; };
+// ── #14 plan pricing — reference table (kept as the drift guard) ─────────────
+// Updated 2026-07-28 for the Plus tier + D1 (Basic 500→600): the lib is still
+// pinned to a known-good reference so PLAN_PRICE and matchPlan can never silently
+// desync. Plus sits between Pro and Basic (NT$1,000).
+const REF_PLAN_PRICE: Record<string, number> = { Free: 0, Basic: 600, Plus: 1000, Pro: 1200, Master: 1700, Business: 1700, Starter: 600 };
+// Price-descending matcher WITH the Plus branch (1000–1199 → Plus).
+const refMatchPlan = (amt: string) => { const a = +amt || 0; return a >= 1700 ? "Master" : a >= 1200 ? "Pro" : a >= 1000 ? "Plus" : a >= 600 ? "Basic" : "—"; };
 
 describe("planPricing — parity with data.ts PLAN_PRICE + Admin.tsx matchPlan (#14)", () => {
-  it("PLAN_PRICE is byte-equal to the old data.ts literal", () => {
+  it("PLAN_PRICE equals the reference literal (Plus + Basic 600)", () => {
     expect(PLAN_PRICE).toEqual(REF_PLAN_PRICE);
   });
-  it.each(["", "0", "1", "499", "500", "501", "1199", "1200", "1699", "1700", "1701", "5000", "abc", "-10"])(
-    "matchPlan(%j) matches the old Admin.tsx thresholds", (amt) => {
+  it.each(["", "0", "1", "599", "600", "601", "999", "1000", "1199", "1200", "1699", "1700", "1701", "5000", "abc", "-10"])(
+    "matchPlan(%j) matches the reference thresholds", (amt) => {
       expect(matchPlan(amt)).toBe(refMatchPlan(amt));
     },
   );

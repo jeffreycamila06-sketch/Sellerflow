@@ -321,7 +321,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
   // User-base overview — derived from the loaded seller list + the free RPC.
   const userBase = deriveUserBase(users);
   const freeSummary = freeUsersSummary(freeUsers);
-  const maxTier = Math.max(1, userBase.basic, userBase.pro, userBase.master);
+  const maxTier = Math.max(1, userBase.basic, userBase.plus, userBase.pro, userBase.master);
   // Per-user optimistic display state. Real writes go through `actions` (5h).
   const [userPlans, setUserPlans] = useState<Record<string, string>>({});
   const [userDays, setUserDays] = useState<Record<string, number>>({});
@@ -551,6 +551,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 10 }}>
                         <button onClick={() => actions ? doPlan(u, "free", "Free") : setPlan(u.email, "Free")} style={planBtn}>Free</button>
                         <button onClick={() => actions ? doPlan(u, "basic", "Basic") : setPlan(u.email, "Basic")} style={planBtn}>Basic</button>
+                        <button onClick={() => actions ? doPlan(u, "plus", "Plus") : setPlan(u.email, "Plus")} style={planBtn}>Plus</button>
                         <button onClick={() => actions ? doPlan(u, "pro", "Pro") : setPlan(u.email, "Pro")} style={planBtn}>Pro</button>
                         <button onClick={() => actions ? doPlan(u, "master", "Master") : setPlan(u.email, "Master")} style={planBtn}>Master</button>
                       </div>
@@ -768,7 +769,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
               <div style={{ ...card, padding: "14px 15px" }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", marginBottom: 11 }}>{t.rd_adm_paid_by_tier}</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {([["Basic", userBase.basic, "#059669"], ["Pro", userBase.pro, "#0284c7"], ["Master", userBase.master, "#7c3aed"]] as const).map(([name, n, col]) => (
+                  {([["Basic", userBase.basic, "#059669"], ["Plus", userBase.plus, "#0d9488"], ["Pro", userBase.pro, "#0284c7"], ["Master", userBase.master, "#7c3aed"]] as const).map(([name, n, col]) => (
                     <div key={name}>
                       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 4 }}>
                         <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{name}{name === "Master" ? t.rd_adm_incl_you : ""}</span>

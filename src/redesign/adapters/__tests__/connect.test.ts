@@ -21,6 +21,7 @@ describe("pure helpers — verbatim from App.tsx", () => {
   });
   it("maxAcc per plan (free/trial/basic=1, pro=3, master=5)", () => {
     expect(maxAcc("free")).toBe(1); expect(maxAcc("basic")).toBe(1);
+    expect(maxAcc("plus")).toBe(2);
     expect(maxAcc("pro")).toBe(3); expect(maxAcc("master")).toBe(5);
     expect(maxAcc("???")).toBe(1);
   });

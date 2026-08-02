@@ -22,13 +22,14 @@ const user = (over: Partial<User>): User => ({
 describe("deriveMrr (#2 — real Monthly Revenue tile)", () => {
   it("sums real NT$ tier prices over ACTIVE paid plans only", () => {
     const users = [
-      user({ plan: "Basic" }),                                  // 500
+      user({ plan: "Basic" }),                                  // 600 (raised 500→600, D1)
+      user({ plan: "Plus" }),                                   // 1000 (new tier)
       user({ plan: "Pro" }),                                    // 1200
       user({ plan: "Master" }),                                 // 1700
       user({ plan: "Free" }),                                   // excluded (not paid)
       user({ plan: "Pro", status: "expired", planStatus: "expired", days: -3 }), // excluded (expired)
     ];
-    expect(deriveMrr(users)).toBe(500 + 1200 + 1700);
+    expect(deriveMrr(users)).toBe(600 + 1000 + 1200 + 1700);
   });
   it("no users → 0", () => {
     expect(deriveMrr([])).toBe(0);

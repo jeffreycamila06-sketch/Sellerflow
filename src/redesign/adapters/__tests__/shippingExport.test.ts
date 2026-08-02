@@ -18,10 +18,11 @@ const buyers: Buyer[] = [{
 }];
 
 describe("quotaForPlan — display mirror of the RPC CASE", () => {
-  it("free 50 · basic 200 · pro 500 · master unlimited(null) · unknown→free", () => {
+  it("free 50 · all paid (basic/plus/pro/master) unlimited(null) · unknown→free (D2)", () => {
     expect(quotaForPlan("free")).toBe(50);
-    expect(quotaForPlan("basic")).toBe(200);
-    expect(quotaForPlan("pro")).toBe(500);
+    expect(quotaForPlan("basic")).toBeNull();
+    expect(quotaForPlan("plus")).toBeNull();
+    expect(quotaForPlan("pro")).toBeNull();
     expect(quotaForPlan("master")).toBeNull();
     expect(quotaForPlan(undefined)).toBe(50);
     expect(quotaForPlan("weird")).toBe(50);

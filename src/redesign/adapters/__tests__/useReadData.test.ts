@@ -432,8 +432,8 @@ describe("deriveUserBase.paying — unified paying-customer count (excludes expi
     expect(activeEmails).not.toContain("plapsed@x.com"); // status active but expiry past (days 0)
   });
 
-  it("Monthly revenue agrees with paying on the SAME seller set (NT$27,900)", () => {
-    expect(deriveMrr(live)).toBe(27900); // 26×500 + 11×1200 + 1×1700
+  it("Monthly revenue agrees with paying on the SAME seller set (NT$30,500)", () => {
+    expect(deriveMrr(live)).toBe(30500); // 26×600 + 11×1200 + 1×1700 (Basic raised 500→600, D1)
     // deriveMrr sums over deriveSubBuckets(...).active — the exact set paying counts.
     expect(deriveSubBuckets(live).active.length).toBe(deriveUserBase(live).paying);
   });

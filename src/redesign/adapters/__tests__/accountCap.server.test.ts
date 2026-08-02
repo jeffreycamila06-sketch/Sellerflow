@@ -13,6 +13,7 @@ describe("maxAccountsForPlan — parity with client connect.ts maxAcc", () => {
     expect(maxAccountsForPlan("free")).toBe(1);
     expect(maxAccountsForPlan("trial")).toBe(1);
     expect(maxAccountsForPlan("basic")).toBe(1);
+    expect(maxAccountsForPlan("plus")).toBe(2);
     expect(maxAccountsForPlan("pro")).toBe(3);
     expect(maxAccountsForPlan("master")).toBe(5);
     expect(maxAccountsForPlan("MASTER")).toBe(5); // case-insensitive
