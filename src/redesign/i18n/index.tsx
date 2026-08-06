@@ -539,6 +539,7 @@ const RAW: Record<string, Row> = {
   rd_pk_loading: { en: "Loading…", fil: "Nilo-load…", zh: "加载中…", "zh-TW": "載入中…", vi: "Đang tải…", th: "กำลังโหลด…", id: "Memuat…" },
   rd_pk_error: { en: "Couldn't load buyers", fil: "Hindi ma-load ang mga mamimili", zh: "无法加载买家", "zh-TW": "無法載入買家", vi: "Không tải được người mua", th: "โหลดผู้ซื้อไม่สำเร็จ", id: "Gagal memuat pembeli" },
   rd_pk_drill_title: { en: "Buyers", fil: "Mga mamimili", zh: "买家", "zh-TW": "買家", vi: "Người mua", th: "ผู้ซื้อ", id: "Pembeli" },
+  rd_pk_back: { en: "Back", fil: "Bumalik", zh: "返回", "zh-TW": "返回", vi: "Quay lại", th: "กลับ", id: "Kembali" },
   rd_pk_drill_recent: { en: "Most recent occurrence · last 7 days", fil: "Pinakabagong pagkakataon · huling 7 araw", zh: "最近一次 · 近 7 天", "zh-TW": "最近一次 · 近 7 天", vi: "Lần gần nhất · 7 ngày qua", th: "ครั้งล่าสุด · 7 วันล่าสุด", id: "Kejadian terbaru · 7 hari terakhir" },
   rd_pk_empty: { en: "No orders in this hour in the last 7 days", fil: "Walang orders sa oras na ito sa huling 7 araw", zh: "近 7 天该时段暂无订单", "zh-TW": "近 7 天此時段尚無訂單", vi: "Không có đơn trong giờ này trong 7 ngày qua", th: "ไม่มีออเดอร์ในชั่วโมงนี้ใน 7 วันล่าสุด", id: "Tidak ada pesanan pada jam ini dalam 7 hari terakhir" },
   rd_pk_drill_count: { en: "{n} buyers", fil: "{n} mamimili", zh: "{n} 位买家", "zh-TW": "{n} 位買家", vi: "{n} người mua", th: "{n} ผู้ซื้อ", id: "{n} pembeli" },

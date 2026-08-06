@@ -85,4 +85,14 @@ describe("drill-down render states (reused modal)", () => {
     const { container } = wrap(<PeakHourDrill cur="NT$" drill={drill} />);
     expect(container.querySelector('[data-testid="peak-drill"]')).toBeNull();
   });
+
+  it("is FULL-SCREEN — fixed, inset 0, and stamps data-redesign so tokens resolve", () => {
+    const drill = drillWith({ state: "live", data: { ...base, rows: [] } });
+    wrap(<PeakHourDrill cur="NT$" drill={drill} />);
+    const root = document.querySelector('[data-testid="peak-drill"]') as HTMLElement;
+    expect(root).toBeTruthy();
+    expect(root.style.position).toBe("fixed");
+    expect(root.style.inset).toBe("0px");
+    expect(root.hasAttribute("data-redesign")).toBe(true);   // tokens resolve inside the portal
+  });
 });
