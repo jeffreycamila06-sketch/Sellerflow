@@ -52,7 +52,7 @@ import { upsertUser } from "../accountDb";
 import { csvDL, dayStamp } from "./adapters/csv";
 import { computeSales } from "./adapters/sales";
 import { useSalesReport } from "./adapters/salesReport";
-import { usePeakHours } from "./adapters/peakHours";
+import { ordersByHour } from "./adapters/peakHours";
 import { sessionKeyFor } from "./adapters/shipping";
 import { printSlip, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, isPrinterNotSetup, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
@@ -337,7 +337,9 @@ export default function RedesignApp() {
   // Sales Report v2 — historical periods from the orders ledger (sql/15 RPC,
   // Taipei-bucketed server-side). One RPC per period switch, cached; zero poll.
   const salesHist = useSalesReport(authed);
-  const salesPeak = usePeakHours(authed);
+  // Today "Orders by hour" — bucket the current session's orders by device-local
+  // hour (pure; orderNum is epoch ms). Derived from data the tab already loads.
+  const salesByHour = ordersByHour(liveSession.session.orders);
   const exportSales = () => csvDL(`sales-${dayStamp()}.csv`, ["Order", "Buyer", "Item", "Qty", "Total", "Platform", "Time"], liveSession.session.orders.map((o) => [`#SF${o.orderNum}`, o.name, o.item, o.qty, `${cur}${o.total}`, o.platform, o.time]));
 
   const [theme, setTheme] = useState<ThemeMode>(() => (readLS(LS.theme, "light") === "dark" ? "dark" : "light"));
@@ -1024,7 +1026,7 @@ export default function RedesignApp() {
           {screen === "support" && <Support onLegal={() => setScreen("legal")} />}
           {screen === "admin" && isAdmin && <Admin onOpenPanel={setAdminPanel} cur={cur} counts={adminCounts} live={adminLive} userBase={adminLive ? { paying: userBase.paying, free: userBase.free, total: userBase.total } : undefined} mrr={adminLive ? deriveMrr(adminUsers.users) : null} owner={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : null} />}
           {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} buyers={liveSession.session.buyers} storeName={auth.profile?.profile.storeName || "SellerFlowLive"} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
-          {screen === "sales" && <SalesReport cur={cur} sales={sales} onExport={exportSales} hist={salesHist} peak={salesPeak} enabled={authed} />}
+          {screen === "sales" && <SalesReport cur={cur} sales={sales} onExport={exportSales} hist={salesHist} byHour={salesByHour} enabled={authed} />}
           {screen === "shipping" && <Shipping cur={cur} buyers={liveSession.session.buyers} sessionKey={sessionKeyFor(liveSession.dayId, sessionWindow.windowStart, sessionWindow.windowDays)} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}
           {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} cur={cur} customers={customersData.state === "live" ? customersData.customers : []} onExport={customersData.state === "live" ? exportCustomers : undefined} />}
           {screen === "legal" && <Legal />}

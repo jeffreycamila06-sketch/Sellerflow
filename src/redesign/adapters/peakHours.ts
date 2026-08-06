@@ -1,12 +1,15 @@
-// Peak Hours — a 7×24 (weekday × hour) heatmap of ORDER COUNT over the last 90
-// days, in the SELLER'S DEVICE timezone, plus a per-cell drill-down of the
-// buyers in that slot. Two RPCs, both own-scoped (SECURITY INVOKER + explicit
-// user_id filter), zero poll:
-//   • peak_hours(p_tz)                    → counts (sql/17, from public.orders, 90d)
-//   • peak_hour_orders(p_dow,p_hour,p_tz) → buyer rows (sql/19, live_session_orders, 7d)
+// Peak Hours — the Sales Report "Today" tab shows an "Orders by hour" bar graph
+// (order COUNT per device-local hour, derived client-side from the current
+// live-session orders — no fetch), and tapping a bar opens a drill-down of the
+// buyers in that hour today. The drill reuses peak_hour_orders(p_dow,p_hour,p_tz)
+// (sql/19, live_session_orders, 7d, own-scoped SECURITY INVOKER + explicit
+// user_id filter). For the Today tab, p_dow = today's weekday, so "most recent
+// occurrence of this weekday+hour in the last 7 days" resolves to TODAY.
+// (The 7×24 90-day heatmap + peak_hours(p_tz) RPC were removed — the RPC is
+// still live in the DB but now unreferenced by the client, which is harmless.)
 // Timezone is the device IANA name (Intl…timeZone); the RPC buckets with
-// AT TIME ZONE p_tz so +6:30 offsets (Yangon) are exact. Pure mappers are
-// unit-tested; the hooks are user-action driven (load-on-tap, cached).
+// AT TIME ZONE p_tz so +6:30 offsets (Yangon) are exact. Pure helpers are
+// unit-tested; the drill hook is user-action driven (fetch-on-tap).
 import { useCallback, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 
@@ -19,62 +22,31 @@ export function deviceTz(): string {
 
 const num = (v: unknown): number => Number(v) || 0;
 
-// ── Heatmap counts ────────────────────────────────────────────────────────────
-export interface PeakCell { dow: number; hour: number; c: number }
-export interface PeakHoursData {
-  tz: string;
-  total: number;
-  cells: PeakCell[];        // only non-empty cells (as returned)
-  grid: number[][];         // [dow 0..6][hour 0..23] dense count grid
-  max: number;              // busiest single cell (for the intensity scale)
-}
-
-// peak_hours jsonb → dense 7×24 grid (pure, garbage-safe).
-export function mapPeakHours(raw: unknown): PeakHoursData {
-  const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  const grid: number[][] = Array.from({ length: 7 }, () => new Array(24).fill(0));
-  const cells: PeakCell[] = [];
-  let max = 0;
-  const rawCells = Array.isArray(r.cells) ? (r.cells as Record<string, unknown>[]) : [];
-  for (const x of rawCells) {
-    const dow = num(x.dow), hour = num(x.hour), c = num(x.c);
-    if (dow >= 0 && dow < 7 && hour >= 0 && hour < 24) {
-      grid[dow][hour] = c;
-      cells.push({ dow, hour, c });
-      if (c > max) max = c;
-    }
-  }
-  return { tz: String(r.tz ?? ""), total: num(r.total), cells, grid, max };
-}
-
 export type PeakState = "idle" | "loading" | "live" | "empty" | "error";
 
-export interface UsePeakHours {
-  data: PeakHoursData | null;
-  state: PeakState;
-  load: () => void;   // one RPC, cached until reload (load-once)
-  reload: () => void;
+// ── Today "Orders by hour" (pure, client-side) ───────────────────────────────
+// Bucket the CURRENT live-session orders by DEVICE-LOCAL hour. orderNum is epoch
+// ms (Date.now()-style — see lib/orderTypes), so new Date(orderNum).getHours()
+// is the device-local hour with no extra fetch/RPC. Returns a dense length-24
+// count array (index = hour 0..23). Rows with a non-finite orderNum are skipped.
+export function ordersByHour(orders: { orderNum: number }[]): number[] {
+  const counts = new Array(24).fill(0);
+  for (const o of orders) {
+    const ms = Number(o?.orderNum);
+    if (!Number.isFinite(ms)) continue;
+    const h = new Date(ms).getHours();
+    if (h >= 0 && h < 24) counts[h] += 1;
+  }
+  return counts;
 }
 
-export function usePeakHours(enabled: boolean): UsePeakHours {
-  const [data, setData] = useState<PeakHoursData | null>(null);
-  const [state, setState] = useState<PeakState>("idle");
-  const fetchNow = useCallback(() => {
-    if (!enabled || !isSupabaseConfigured || !supabase) { setState("error"); return; }
-    setState("loading");
-    supabase.rpc("peak_hours", { p_tz: deviceTz() }).then(
-      ({ data: raw, error }) => {
-        if (error) { setState("error"); return; }
-        const mapped = mapPeakHours(raw);
-        setData(mapped);
-        setState(mapped.total > 0 ? "live" : "empty");
-      },
-      () => setState("error"),
-    );
-  }, [enabled]);
-  const load = useCallback(() => { if (state === "idle" || state === "error") fetchNow(); }, [state, fetchNow]);
-  const reload = useCallback(() => { setData(null); fetchNow(); }, [fetchNow]);
-  return { data, state, load, reload };
+// Index of the busiest hour (for the peak highlight); -1 when all hours are 0.
+export function peakHourIndex(counts: number[]): number {
+  let idx = -1, max = 0;
+  for (let h = 0; h < counts.length; h++) {
+    if (counts[h] > max) { max = counts[h]; idx = h; }
+  }
+  return idx;
 }
 
 // ── Drill-down: buyers in one weekday+hour (most recent, last 7 days) ─────────

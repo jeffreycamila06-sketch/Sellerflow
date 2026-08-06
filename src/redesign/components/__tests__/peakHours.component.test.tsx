@@ -1,7 +1,7 @@
-// Peak Hours — behavioral tests: (1) tapping a heatmap cell calls the drill RPC
-// with the CORRECT dow/hour + a device tz; (2) the drill renders the handle
-// (anti-fraud focus); (3) an empty occurrence shows the friendly empty state
-// (no crash). Supabase is mocked so we assert the exact rpc args.
+// Orders-by-hour graph (Today) + drill-down — behavioral tests: (1) tapping a
+// bar with orders calls peak_hour_orders with TODAY's weekday + the tapped hour
+// + a device tz; (2) an empty hour's bar is disabled (not tappable); (3) the
+// drill renders the handle (anti-fraud); (4) empty occurrence → friendly empty.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 
@@ -11,47 +11,54 @@ vi.mock("../../../supabase", () => ({
   supabase: { rpc: (...a: unknown[]) => rpc(...a) },
 }));
 
-import PeakHours from "../PeakHours";
+import OrdersByHour from "../OrdersByHour";
 import PeakHourDrill from "../PeakHourDrill";
 import { TProvider } from "../../i18n";
-import type { UsePeakHours, UsePeakHourOrders, PeakHoursData } from "../../adapters/peakHours";
+import type { UsePeakHourOrders } from "../../adapters/peakHours";
 
 const wrap = (ui: React.ReactNode) => render(<TProvider lang="en">{ui}</TProvider>);
 
-// A live grid with a single hot cell at dow=3 (Wednesday), hour=21 (9 PM).
-const grid = Array.from({ length: 7 }, () => new Array(24).fill(0));
-grid[3][21] = 8;
-const peakData: PeakHoursData = { tz: "Asia/Taipei", total: 8, cells: [{ dow: 3, hour: 21, c: 8 }], grid, max: 8 };
-const livePeak: UsePeakHours = { data: peakData, state: "live", load: vi.fn(), reload: vi.fn() };
+// A by-hour array with orders at 9 PM (hour 21) = 3 and 10 AM (hour 10) = 1.
+const byHour = new Array(24).fill(0); byHour[21] = 3; byHour[10] = 1;
 
 beforeEach(() => { rpc.mockReset(); rpc.mockResolvedValue({ data: { dow: 3, hour: 21, date: "2026-08-05", rows: [] }, error: null }); });
 
-describe("cell tap → drill RPC with correct dow/hour", () => {
-  it("tapping Wednesday 9 PM calls peak_hour_orders with p_dow:3, p_hour:21 and a tz", async () => {
-    wrap(<PeakHours cur="NT$" enabled peak={livePeak} />);
-    // The cell's aria-label contains "Wed 9 PM"; click it.
-    const cell = screen.getByLabelText(/Wed 9 PM/);
-    fireEvent.click(cell);
+describe("bar tap → drill RPC with today's weekday + tapped hour", () => {
+  it("tapping the 9 PM bar calls peak_hour_orders with p_hour:21, today's p_dow, and a tz", async () => {
+    wrap(<OrdersByHour cur="NT$" enabled byHour={byHour} />);
+    fireEvent.click(screen.getByLabelText(/9 PM · 3/));
     await waitFor(() => expect(rpc).toHaveBeenCalledTimes(1));
     const [fn, args] = rpc.mock.calls[0];
     expect(fn).toBe("peak_hour_orders");
-    expect(args).toMatchObject({ p_dow: 3, p_hour: 21 });
+    expect((args as { p_hour: number }).p_hour).toBe(21);
+    expect((args as { p_dow: number }).p_dow).toBe(new Date().getDay());  // TODAY's weekday
     expect(typeof (args as { p_tz: string }).p_tz).toBe("string");
     expect((args as { p_tz: string }).p_tz.length).toBeGreaterThan(0);
   });
 
-  it("TEETH — a DIFFERENT cell sends its own dow/hour (Sunday 12 AM = 0,0)", async () => {
-    const g2 = Array.from({ length: 7 }, () => new Array(24).fill(0));
-    g2[0][0] = 3;
-    const p2: UsePeakHours = { data: { tz: "Asia/Taipei", total: 3, cells: [{ dow: 0, hour: 0, c: 3 }], grid: g2, max: 3 }, state: "live", load: vi.fn(), reload: vi.fn() };
-    wrap(<PeakHours cur="NT$" enabled peak={p2} />);
-    fireEvent.click(screen.getByLabelText(/Sun 12 AM/));
+  it("TEETH — a DIFFERENT bar (10 AM) sends p_hour:10", async () => {
+    wrap(<OrdersByHour cur="NT$" enabled byHour={byHour} />);
+    fireEvent.click(screen.getByLabelText(/10 AM · 1/));
     await waitFor(() => expect(rpc).toHaveBeenCalledTimes(1));
-    expect(rpc.mock.calls[0][1]).toMatchObject({ p_dow: 0, p_hour: 0 });
+    expect((rpc.mock.calls[0][1] as { p_hour: number }).p_hour).toBe(10);
+  });
+
+  it("an EMPTY hour's bar is disabled → tapping does nothing (no RPC)", () => {
+    wrap(<OrdersByHour cur="NT$" enabled byHour={byHour} />);
+    const emptyBar = screen.getByLabelText(/^12 AM · 0$/);   // hour 0, count 0
+    expect((emptyBar as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(emptyBar);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("no orders today at all → friendly empty state, no crash, no bars", () => {
+    wrap(<OrdersByHour cur="NT$" enabled byHour={new Array(24).fill(0)} />);
+    expect(screen.getByText(/No orders yet today/)).toBeTruthy();
+    expect(rpc).not.toHaveBeenCalled();
   });
 });
 
-describe("drill-down render states", () => {
+describe("drill-down render states (reused modal)", () => {
   const base = { dow: 3, hour: 21, date: "2026-08-05" };
   const drillWith = (over: Partial<UsePeakHourOrders>): UsePeakHourOrders => ({
     data: null, state: "idle", open: true, openCell: vi.fn(), close: vi.fn(), ...over,
@@ -62,12 +69,12 @@ describe("drill-down render states", () => {
       { buyerNumber: 12, name: "Maria", handle: "@maria_shops", platform: "TikTok", product: "Lipstick", price: 250, createdAt: "2026-08-05T13:05:00Z" },
     ] } });
     wrap(<PeakHourDrill cur="NT$" drill={drill} />);
-    expect(screen.getByText("@maria_shops")).toBeTruthy();     // handle shown
-    expect(screen.getByText("#12")).toBeTruthy();               // buyer number
-    expect(screen.getByText(/Lipstick/)).toBeTruthy();          // item
+    expect(screen.getByText("@maria_shops")).toBeTruthy();
+    expect(screen.getByText("#12")).toBeTruthy();
+    expect(screen.getByText(/Lipstick/)).toBeTruthy();
   });
 
-  it("empty occurrence → friendly empty state, no crash, no rows", () => {
+  it("empty occurrence → friendly empty state, no crash", () => {
     const drill = drillWith({ state: "empty", data: { ...base, date: null, rows: [] } });
     wrap(<PeakHourDrill cur="NT$" drill={drill} />);
     expect(screen.getByText(/No orders in this hour in the last 7 days/)).toBeTruthy();

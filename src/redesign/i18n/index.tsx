@@ -532,13 +532,12 @@ const RAW: Record<string, Row> = {
   rd_sr2_vs_prev: { en: "vs previous", fil: "vs nakaraan", zh: "对比上期", "zh-TW": "對比上期", vi: "so kỳ trước", th: "เทียบช่วงก่อน", id: "vs sebelumnya" },
   rd_sr2_rev_per_day: { en: "Revenue per day", fil: "Kita bawat araw", zh: "每日营收", "zh-TW": "每日營收", vi: "Doanh thu mỗi ngày", th: "รายได้ต่อวัน", id: "Pendapatan per hari" },
   rd_sr2_top_buyers: { en: "Top buyers", fil: "Nangungunang mamimili", zh: "买家排行", "zh-TW": "買家排行", vi: "Người mua hàng đầu", th: "ผู้ซื้ออันดับต้น", id: "Pembeli teratas" },
-  // Peak Hours heatmap + drill-down (2026-08-06)
-  rd_pk_title: { en: "Peak Hours", fil: "Peak na Oras", zh: "高峰时段", "zh-TW": "高峰時段", vi: "Giờ cao điểm", th: "ช่วงเวลาขายดี", id: "Jam Puncak" },
-  rd_pk_sub: { en: "Orders by weekday & hour · last 90 days · your timezone", fil: "Orders kada araw at oras · huling 90 araw · timezone mo", zh: "按星期与小时的订单 · 近 90 天 · 你的时区", "zh-TW": "依星期與小時的訂單 · 近 90 天 · 你的時區", vi: "Đơn theo thứ & giờ · 90 ngày qua · múi giờ của bạn", th: "ออเดอร์ตามวันและชั่วโมง · 90 วันล่าสุด · เขตเวลาของคุณ", id: "Pesanan per hari & jam · 90 hari terakhir · zona waktu Anda" },
+  // Orders-by-hour graph (Today) + drill-down (2026-08-06)
+  rd_pk_hh_title: { en: "Orders by hour", fil: "Orders kada oras", zh: "每小时订单", "zh-TW": "每小時訂單", vi: "Đơn theo giờ", th: "ออเดอร์ต่อชั่วโมง", id: "Pesanan per jam" },
+  rd_pk_hh_sub: { en: "Today · tap a bar to see who ordered", fil: "Ngayon · i-tap ang bar para makita kung sino ang nag-order", zh: "今天 · 点按柱状条查看下单的人", "zh-TW": "今天 · 點按長條查看下單的人", vi: "Hôm nay · chạm vào cột để xem ai đã đặt", th: "วันนี้ · แตะแท่งเพื่อดูว่าใครสั่ง", id: "Hari ini · ketuk batang untuk melihat siapa yang memesan" },
+  rd_pk_hh_empty: { en: "No orders yet today", fil: "Wala pang orders ngayon", zh: "今天暂无订单", "zh-TW": "今天尚無訂單", vi: "Chưa có đơn hôm nay", th: "วันนี้ยังไม่มีออเดอร์", id: "Belum ada pesanan hari ini" },
   rd_pk_loading: { en: "Loading…", fil: "Nilo-load…", zh: "加载中…", "zh-TW": "載入中…", vi: "Đang tải…", th: "กำลังโหลด…", id: "Memuat…" },
-  rd_pk_error: { en: "Couldn't load peak hours", fil: "Hindi ma-load ang peak hours", zh: "无法加载高峰时段", "zh-TW": "無法載入高峰時段", vi: "Không tải được giờ cao điểm", th: "โหลดช่วงเวลาขายดีไม่สำเร็จ", id: "Gagal memuat jam puncak" },
-  rd_pk_empty_grid: { en: "No orders in the last 90 days yet", fil: "Wala pang orders sa huling 90 araw", zh: "近 90 天暂无订单", "zh-TW": "近 90 天尚無訂單", vi: "Chưa có đơn trong 90 ngày qua", th: "ยังไม่มีออเดอร์ใน 90 วันล่าสุด", id: "Belum ada pesanan dalam 90 hari terakhir" },
-  rd_pk_cell_orders: { en: "{n} orders", fil: "{n} orders", zh: "{n} 单", "zh-TW": "{n} 單", vi: "{n} đơn", th: "{n} ออเดอร์", id: "{n} pesanan" },
+  rd_pk_error: { en: "Couldn't load buyers", fil: "Hindi ma-load ang mga mamimili", zh: "无法加载买家", "zh-TW": "無法載入買家", vi: "Không tải được người mua", th: "โหลดผู้ซื้อไม่สำเร็จ", id: "Gagal memuat pembeli" },
   rd_pk_drill_title: { en: "Buyers", fil: "Mga mamimili", zh: "买家", "zh-TW": "買家", vi: "Người mua", th: "ผู้ซื้อ", id: "Pembeli" },
   rd_pk_drill_recent: { en: "Most recent occurrence · last 7 days", fil: "Pinakabagong pagkakataon · huling 7 araw", zh: "最近一次 · 近 7 天", "zh-TW": "最近一次 · 近 7 天", vi: "Lần gần nhất · 7 ngày qua", th: "ครั้งล่าสุด · 7 วันล่าสุด", id: "Kejadian terbaru · 7 hari terakhir" },
   rd_pk_empty: { en: "No orders in this hour in the last 7 days", fil: "Walang orders sa oras na ito sa huling 7 araw", zh: "近 7 天该时段暂无订单", "zh-TW": "近 7 天此時段尚無訂單", vi: "Không có đơn trong giờ này trong 7 ngày qua", th: "ไม่มีออเดอร์ในชั่วโมงนี้ใน 7 วันล่าสุด", id: "Tidak ada pesanan pada jam ini dalam 7 hari terakhir" },

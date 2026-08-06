@@ -5,35 +5,46 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
-  mapPeakHours, mapPeakHourOrders, hourLabel, weekdayLabel, weekdayShort, deviceTz,
+  ordersByHour, peakHourIndex, mapPeakHourOrders, hourLabel, weekdayLabel, weekdayShort, deviceTz,
 } from "../peakHours";
 
 const stripSql = (f: string) =>
   readFileSync(resolve(__dirname, "../../../../sql", f), "utf8")
     .split("\n").filter((l) => !l.trimStart().startsWith("--")).join("\n").toLowerCase();
 
-describe("mapPeakHours — jsonb → dense 7×24 grid", () => {
-  it("builds a dense grid, tracks max, keeps only valid cells", () => {
-    const d = mapPeakHours({ tz: "Asia/Taipei", total: 9, cells: [
-      { dow: 3, hour: 21, c: 5 }, { dow: 0, hour: 0, c: 4 },
-      { dow: 9, hour: 5, c: 99 },  // out-of-range dow → ignored
-      { dow: 2, hour: 30, c: 99 }, // out-of-range hour → ignored
-    ] });
-    expect(d.grid.length).toBe(7);
-    expect(d.grid[0].length).toBe(24);
-    expect(d.grid[3][21]).toBe(5);
-    expect(d.grid[0][0]).toBe(4);
-    expect(d.max).toBe(5);          // out-of-range 99s excluded
-    expect(d.total).toBe(9);
-    expect(d.cells).toHaveLength(2);
+// Build an epoch-ms orderNum whose DEVICE-LOCAL hour is `h` on a fixed local day.
+const atHour = (h: number, min = 0): number => new Date(2026, 7, 5, h, min, 0).getTime();
+
+describe("ordersByHour — bucket today's orders by device-local hour", () => {
+  it("orders at 9pm/9pm/10pm → 9PM(21)=2, 10PM(22)=1, rest 0", () => {
+    const counts = ordersByHour([
+      { orderNum: atHour(21) }, { orderNum: atHour(21, 30) }, { orderNum: atHour(22) },
+    ]);
+    expect(counts).toHaveLength(24);
+    expect(counts[21]).toBe(2);
+    expect(counts[22]).toBe(1);
+    expect(counts.reduce((s, c) => s + c, 0)).toBe(3);   // only those 3 counted
+    expect(counts[0]).toBe(0);
   });
-  it("garbage-safe → empty dense grid, max 0", () => {
-    for (const g of [null, undefined, 42, "x", {}, { cells: "nope" }]) {
-      const d = mapPeakHours(g);
-      expect(d.grid.length).toBe(7);
-      expect(d.max).toBe(0);
-      expect(d.total).toBe(0);
-    }
+  it("empty input → all-zero length-24 array (no crash)", () => {
+    const counts = ordersByHour([]);
+    expect(counts).toHaveLength(24);
+    expect(counts.every((c) => c === 0)).toBe(true);
+  });
+  it("skips non-finite orderNum", () => {
+    const counts = ordersByHour([{ orderNum: NaN }, { orderNum: atHour(8) }]);
+    expect(counts[8]).toBe(1);
+    expect(counts.reduce((s, c) => s + c, 0)).toBe(1);
+  });
+});
+
+describe("peakHourIndex — busiest hour (highlight)", () => {
+  it("returns the hour of the max count", () => {
+    const c = new Array(24).fill(0); c[21] = 5; c[9] = 3;
+    expect(peakHourIndex(c)).toBe(21);
+  });
+  it("all-zero → -1 (no peak, no divide-by-zero)", () => {
+    expect(peakHourIndex(new Array(24).fill(0))).toBe(-1);
   });
 });
 
@@ -81,28 +92,6 @@ describe("label helpers", () => {
   });
 });
 
-describe("sql/17 peak_hours() contract", () => {
-  const code = stripSql("17_peak_hours_rpc.sql");
-  it("SECURITY INVOKER, never DEFINER", () => {
-    expect(code).toContain("security invoker");
-    expect(code).not.toContain("security definer");
-  });
-  it("explicit own-row filter (not RLS-only) — pins even an admin to own rows", () => {
-    expect(code).toContain("user_id = (select auth.uid())");
-  });
-  it("buckets by the device tz (AT TIME ZONE tz), 90-day window", () => {
-    expect(code).toContain("at time zone tz");
-    expect(code).toContain("interval '90 days'");
-  });
-  it("validates p_tz against pg_timezone_names, falls back (never throws)", () => {
-    expect(code).toContain("pg_timezone_names");
-    expect(code).toContain("'asia/taipei'");
-  });
-  it("granted to authenticated, revoked from anon/public", () => {
-    expect(code).toContain("grant execute on function public.peak_hours(text) to authenticated");
-    expect(code).toContain("from public, anon");
-  });
-});
 
 describe("sql/19 peak_hour_orders() contract", () => {
   const code = stripSql("19_peak_hour_orders_rpc.sql");
