@@ -13,6 +13,7 @@ import { headerBar, headerTitle, card, mono } from "../ui";
 import { fmt } from "../data";
 import type { SalesSummary } from "../adapters/sales";
 import type { UseSalesReport, SalesPeriod } from "../adapters/salesReport";
+import OrdersByHour from "../components/OrdersByHour";
 import { useT, tpl } from "../i18n";
 
 type ViewPeriod = "today" | SalesPeriod;
@@ -135,11 +136,13 @@ function HistView({ cur, hist }: { cur: string; hist: UseSalesReport }) {
   );
 }
 
-export default function SalesReport({ cur, sales, onExport, hist }: {
+export default function SalesReport({ cur, sales, onExport, hist, byHour = [], enabled = true }: {
   cur: string;
   sales: SalesSummary;
   onExport?: () => void;
   hist: UseSalesReport;
+  byHour?: number[];    // today's order count per device-local hour (0..23)
+  enabled?: boolean;
 }) {
   const t = useT();
   const [period, setPeriod] = useState<ViewPeriod>("today");
@@ -199,6 +202,8 @@ export default function SalesReport({ cur, sales, onExport, hist }: {
                 <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 22, color: "var(--text)", marginTop: 4, letterSpacing: "-.02em" }}>{cur}{fmt(sales.avg)}</div>
               </div>
             </div>
+
+            <OrdersByHour cur={cur} enabled={enabled} byHour={byHour} />
 
             <div style={{ ...card, padding: "16px 14px", marginBottom: 16 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>{t.rd_sal_top_products}</div>
