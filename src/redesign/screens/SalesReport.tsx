@@ -13,6 +13,8 @@ import { headerBar, headerTitle, card, mono } from "../ui";
 import { fmt } from "../data";
 import type { SalesSummary } from "../adapters/sales";
 import type { UseSalesReport, SalesPeriod } from "../adapters/salesReport";
+import type { UsePeakHours } from "../adapters/peakHours";
+import PeakHours from "../components/PeakHours";
 import { useT, tpl } from "../i18n";
 
 type ViewPeriod = "today" | SalesPeriod;
@@ -135,17 +137,19 @@ function HistView({ cur, hist }: { cur: string; hist: UseSalesReport }) {
   );
 }
 
-export default function SalesReport({ cur, sales, onExport, hist }: {
+export default function SalesReport({ cur, sales, onExport, hist, peak, enabled = true }: {
   cur: string;
   sales: SalesSummary;
   onExport?: () => void;
   hist: UseSalesReport;
+  peak: UsePeakHours;
+  enabled?: boolean;
 }) {
   const t = useT();
   const [period, setPeriod] = useState<ViewPeriod>("today");
   const pick = (p: ViewPeriod) => {
     setPeriod(p);
-    if (p !== "today") hist.load(p);
+    if (p !== "today") { hist.load(p); peak.load(); }
   };
   const maxRev = Math.max(1, ...sales.top.map((tp) => tp.rev));
   const pills: { key: ViewPeriod; label: string }[] = [
@@ -175,7 +179,7 @@ export default function SalesReport({ cur, sales, onExport, hist }: {
         )}
       </div>
       <div style={{ padding: "16px 14px 22px" }}>
-        {period !== "today" && <HistView cur={cur} hist={hist} />}
+        {period !== "today" && <><HistView cur={cur} hist={hist} /><PeakHours cur={cur} enabled={enabled} peak={peak} /></>}
         {period === "today" && (
           <>
             {sales.orders === 0 && <div style={{ fontSize: 13, color: "var(--text-muted)", textAlign: "center", padding: "20px 0" }}>{t.rd_sal_empty}</div>}
