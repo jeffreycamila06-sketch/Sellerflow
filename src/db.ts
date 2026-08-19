@@ -142,6 +142,11 @@ export interface LiveSessionOrderInput {
   // feature, sql/18). OPTIONAL + additive: callers that don't pass it (the
   // rollback app) write NULL, which simply never matches an ordered-check.
   comment_msg_id?: string;
+  // Explicit session instance this order belongs to (sql/20). OPTIONAL + additive:
+  // the rollback app and any pre-session-model write pass NULL (legacy row, still
+  // displayed via the per-session_date path until the step-3 cutover). Stamping it
+  // does NOT change numbering or loading in this step.
+  session_id?: string;
 }
 
 // Fire-and-forget write on the 1-click order create. One INSERT per order; no
@@ -171,6 +176,7 @@ export async function saveLiveSessionOrder(order: LiveSessionOrderInput) {
         product: order.product,
         price: order.price,
         comment_msg_id: order.comment_msg_id || null,
+        session_id: order.session_id || null,
       },
     ])
     .select();

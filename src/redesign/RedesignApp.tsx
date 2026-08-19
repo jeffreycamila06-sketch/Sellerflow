@@ -35,6 +35,8 @@ import { useCustomers, useMinerStats, ZERO_MINERS_STATS, useAdminUsers, useFreeU
 import { useBusinessPulse } from "./adapters/useBusinessPulse";
 import { useAnnouncements } from "./adapters/useAnnouncements";
 import { useLiveSession } from "./adapters/useLiveSession";
+import { useSessionInstance } from "./adapters/useSessionInstance";
+import SessionPickerModal from "./components/SessionPickerModal";
 import { buildBasketCounts } from "./adapters/basketCounts";
 import { useSessionWindow, type WindowDays } from "./adapters/useSessionWindow";
 import { useLiveFeed, commentKey } from "./adapters/useLiveFeed";
@@ -159,6 +161,13 @@ export default function RedesignApp() {
   // wiring come in later steps.
   const sessionWindow = useSessionWindow(authed);
   const liveSession = useLiveSession(authed, { ready: sessionWindow.loaded, windowDays: sessionWindow.windowDays, windowStart: sessionWindow.windowStart });
+  // Explicit session model (sub-step 2) — session lifecycle ISOLATED from the old
+  // window model above. Provides the server-authoritative Connect gate + the
+  // current_session_id stamped on new orders. Does NOT drive numbering/loading yet.
+  const sessionInstance = useSessionInstance(authed);
+  // Pending connect awaiting a session pick (the required picker modal). Non-null =
+  // modal open + the platform/account to connect once a length is chosen.
+  const [pickerConnect, setPickerConnect] = useState<{ platform: Platform; acct: string } | null>(null);
   // Orders search 7-day history (LAZY — fetches on the first search only,
   // once per open; display-only lane, structurally isolated from liveSession).
   const ordersHistory = useOrdersHistory(authed, liveSession.dayId, sessionWindow.windowStart, sessionWindow.windowDays);
@@ -297,6 +306,8 @@ export default function RedesignApp() {
     getBuyers: liveSession.getBuyers,
     applyOrder: liveSession.applyOrder,
     sessionDate: liveSession.dayId,
+    sessionId: sessionInstance.currentSessionId, // explicit session stamp (sql/20); additive, numbering unchanged
+
     isCapped: () => freeCap.freeCapped,
     onCapBlocked: () => freeCap.setCapPopup("hard"),
     onCapReached: freeCap.noteCapError,
@@ -597,24 +608,12 @@ export default function RedesignApp() {
     ttConnecting, fbConnecting,
     ttRecovering: liveFeed.ttRecovering, fbRecovering: liveFeed.fbRecovering,
   }));
-  const doConnect = async (platform: Platform) => {
-    const eff = platform === "TikTok" ? ttEff : fbEff;
-    const setOff = platform === "TikTok" ? setTtOff : setFbOff;
+  // The actual socket connect (unchanged) — extracted so BOTH the "session already
+  // running" path and the "after the seller picks a session length" path can call
+  // it. Nothing in this body changed vs the old inline doConnect.
+  const performConnect = async (platform: Platform, acct: string) => {
     const setConnecting = platform === "TikTok" ? setTtConnecting : setFbConnecting;
     const setOpen = platform === "TikTok" ? setTtOpen : setFbOpen;
-    const accts = platform === "TikTok" ? ttAccounts : fbAccounts;
-    const idx = platform === "TikTok" ? ttIdx : fbIdx;
-    if (eff) { setOff(true); return; } // Disconnect (local UI; no server unbind — manual-connect-only: no auto-reconnect to forget)
-    const acct = accts[idx] || accts[0];
-    if (!acct) {
-      // No registered account (Addendum 2, 2026-07-23). TikTok → the
-      // Manage/add-accounts screen (SAME destination + back-behaviour as the
-      // Live dropdown row), retiring the old ConnectModal add-popup for this
-      // path. The Facebook fallthrough below is KEPT (not deleted) but is
-      // unreachable — nothing in the UI connects Facebook after the prior commits.
-      if (platform === "TikTok") { setTtOpen(false); setChanBack("dashboard"); setScreen("ttchannels"); return; }
-      setConnectOpen(platform); return;
-    }
     setOpen(false);                                  // Connect uses the selected account → close the dropdown
     setConnecting(true);
     track("connect_attempt", { platform });          // analytics parity (App.tsx:4277)
@@ -639,6 +638,41 @@ export default function RedesignApp() {
       // gated ttConnected rise above. Failures keep the honest r-based toast.
       if (!r.ok) setToast({ msg: r.error || tApp.rd_cm_conn_failed, kind: "err" });
     } finally { setConnecting(false); }
+  };
+  const doConnect = async (platform: Platform) => {
+    const eff = platform === "TikTok" ? ttEff : fbEff;
+    const setOff = platform === "TikTok" ? setTtOff : setFbOff;
+    const accts = platform === "TikTok" ? ttAccounts : fbAccounts;
+    const idx = platform === "TikTok" ? ttIdx : fbIdx;
+    if (eff) { setOff(true); return; } // Disconnect (local UI; no server unbind — manual-connect-only: no auto-reconnect to forget)
+    const acct = accts[idx] || accts[0];
+    if (!acct) {
+      // No registered account (Addendum 2, 2026-07-23). TikTok → the
+      // Manage/add-accounts screen (SAME destination + back-behaviour as the
+      // Live dropdown row), retiring the old ConnectModal add-popup for this
+      // path. The Facebook fallthrough below is KEPT (not deleted) but is
+      // unreachable — nothing in the UI connects Facebook after the prior commits.
+      if (platform === "TikTok") { setTtOpen(false); setChanBack("dashboard"); setScreen("ttchannels"); return; }
+      setConnectOpen(platform); return;
+    }
+    // EXPLICIT SESSION MODEL (sub-step 2): a session must be running before the feed
+    // starts. Ask the SERVER (authoritative ended-check; never the device clock).
+    // running → straight to the feed with the existing session (no reset). NOT
+    // running → REQUIRED picker; the feed starts only AFTER a pick creates a
+    // session (a dismiss aborts the connect — never a session-less feed).
+    const status = await sessionInstance.checkStatus();
+    if (status.running) { void performConnect(platform, acct); return; }
+    setPickerConnect({ platform, acct });
+  };
+  // Picker "pick a length" → create the session (server-authoritative start), THEN
+  // connect. A null id (RPC failed) surfaces a toast and does NOT start a feed.
+  const onPickSessionLength = async (days: number) => {
+    const pending = pickerConnect;
+    setPickerConnect(null);
+    if (!pending) return;
+    const sid = await sessionInstance.startSession(days);
+    if (!sid) { setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }); return; }
+    void performConnect(pending.platform, pending.acct);
   };
   // Refresh = one-shot full dashboard reload (pull-to-refresh style; NO polling).
   // Reuses the existing load functions: profile/accounts + live session (reset =
@@ -1094,6 +1128,12 @@ export default function RedesignApp() {
         {/* #6 — real connect modal (registered-account picker / add account) */}
         {connectOpen && auth.profile && (
           <ConnectModal profile={auth.profile} initialTab={connectOpen} onClose={() => setConnectOpen(null)} onConnect={handleConnect} />
+        )}
+        {/* Explicit session model (sub-step 2) — required session-length picker shown
+            on Connect when no session is running. Pick → create session → connect;
+            cancel → abort (no feed, no session). */}
+        {pickerConnect && (
+          <SessionPickerModal onPick={(n) => void onPickSessionLength(n)} onCancel={() => setPickerConnect(null)} />
         )}
 
         {/* Phase 5f — free-tier cap popup (near / hard). iOS: neutral Contact-Support

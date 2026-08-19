@@ -43,7 +43,7 @@ export function orderDbPayload(c: ProdComment, order: LiveOrder) {
   };
 }
 
-export function liveSessionPayload(c: ProdComment, order: LiveOrder, sessionDate: string) {
+export function liveSessionPayload(c: ProdComment, order: LiveOrder, sessionDate: string, sessionId?: string | null) {
   // Orderable earlier-comments (sql/18): store the source comment's TikTok
   // msgId so a later restored copy of the same message renders "Ordered ✓".
   // E3 hygiene: empty → undefined → NULL in the row (never a matchable "").
@@ -57,6 +57,10 @@ export function liveSessionPayload(c: ProdComment, order: LiveOrder, sessionDate
     price: order.price,
     session_date: sessionDate,
     comment_msg_id: msgId || undefined,
+    // Explicit session instance (sql/20). Additive: NULL when no session model is
+    // active (legacy / rollback / pre-pick). Numbering + loading are UNCHANGED in
+    // this step — this only records which session the order belongs to.
+    session_id: sessionId || undefined,
   };
 }
 
@@ -74,6 +78,10 @@ export interface UseOrdersDeps {
   getBuyers: () => Buyer[];                                 // current session buyers (live)
   applyOrder: (nextBuyers: Buyer[], order: LiveOrder) => void; // optimistic session update
   sessionDate: string;                                     // Taipei day == write/read bucket
+  // Explicit session model (sql/20/21): the active session instance to stamp on
+  // each order row. NULL/undefined when no session picked → legacy row. Additive:
+  // does NOT change this step's numbering or feed loading (still the old path).
+  sessionId?: string | null;
   // 5f free-cap integration (optional):
   isCapped?: () => boolean;                                // soft block before creating
   onCapBlocked?: () => void;                               // show hard popup when blocked
@@ -105,7 +113,7 @@ export interface UseOrders {
   createOrder: (c: ProdComment, price: number, opts?: CreateOrderOpts) => LiveOrder | null;
 }
 
-export function useOrders({ getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, onWriteError, onStockError, afterWrite, onPrint, onEnsureWindow, enqueueLiveSession, isMsgIdOrdered }: UseOrdersDeps): UseOrders {
+export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCapped, onCapBlocked, onCapReached, onWriteError, onStockError, afterWrite, onPrint, onEnsureWindow, enqueueLiveSession, isMsgIdOrdered }: UseOrdersDeps): UseOrders {
   // FAMILY A (#7): synchronous same-tick dedup by stable TikTok msgId. Two relays
   // of the SAME comment carry DIFFERENT commentKeys (server-stamped timestamp),
   // so the printed/autoProcessed guards (keyed on commentKey) can't stop the
@@ -159,7 +167,7 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, isCapped, onCapB
     //     retry outbox (idempotent via ux_lso_user_msgid). No msgId (Facebook) or
     //     no outbox wired (tests) → direct fire-and-forget, byte-unchanged, with the
     //     same failure surfacing.
-    const livePayload = liveSessionPayload(c, order, sessionDate);
+    const livePayload = liveSessionPayload(c, order, sessionDate, sessionId);
     if (msgId && enqueueLiveSession) {
       enqueueLiveSession(livePayload, msgId);
     } else {
@@ -180,7 +188,7 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, isCapped, onCapB
     // 5) resync the usage counter (App.tsx:4384 — free users).
     afterWrite?.();
     return order;
-  }, [getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, onWriteError, onStockError, afterWrite, onPrint, onEnsureWindow, enqueueLiveSession, isMsgIdOrdered]);
+  }, [getBuyers, applyOrder, sessionDate, sessionId, isCapped, onCapBlocked, onCapReached, onWriteError, onStockError, afterWrite, onPrint, onEnsureWindow, enqueueLiveSession, isMsgIdOrdered]);
 
   return { createOrder };
 }
