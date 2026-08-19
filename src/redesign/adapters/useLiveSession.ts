@@ -16,7 +16,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { isSupabaseConfigured } from "../../supabase";
 import { rebuildSessionFromRows, type RebuiltSession } from "../../lib/orderLogic";
 import type { Buyer, LiveOrder } from "../../lib/orderTypes";
-import { chooseSessionLoad, loadLiveSessionWindow, loadLiveSessionDay, useTaipeiDayId, shouldResetOnDayChange } from "./useSessionWindow";
+import { chooseSessionLoad, loadLiveSessionWindow, loadLiveSessionDay, loadLiveSessionBySessionId, useTaipeiDayId, shouldResetOnDayChange } from "./useSessionWindow";
 import type { ReprintRow } from "./reprint";
 
 // "idle" = not wired / unconfigured / error · "loading" = query in flight ·
@@ -69,7 +69,11 @@ export interface UseLiveSession {
 // single-day behavior. When provided → load gated until config `ready`, then the
 // load shape is decided by chooseSessionLoad (N=1 / day1 / expired → single-day
 // byte-identical; active multi-day day≥2 → window range).
-export interface LiveSessionWindowOpts { ready: boolean; windowDays: number; windowStart: string | null }
+// sessionId (sub-step 3): when set (the seller has an explicit session instance),
+// the feed loads by session_id and numbering is scoped to it — continuous across
+// the session's days, never reset per calendar day. When null (legacy seller who
+// never picked a session), the OLD window/session_date path runs BYTE-UNCHANGED.
+export interface LiveSessionWindowOpts { ready: boolean; windowDays: number; windowStart: string | null; sessionId?: string | null }
 
 // Orderable earlier-comments (sql/18) — PURE: the ordered-check map from raw
 // window rows. E3 hygiene: empty/null msgIds NEVER enter the map (an order
@@ -112,6 +116,7 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
   const winReady = win ? win.ready : true;
   const winDays = win ? win.windowDays : 1;
   const winStart = win ? win.windowStart : null;
+  const winSessionId = win ? (win.sessionId ?? null) : null;
 
   useEffect(() => {
     if (!enabled || !isSupabaseConfigured) { setState("idle"); return; }
@@ -120,12 +125,23 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
     let active = true;
     setState("loading");
     setLoadError(false); // a new attempt clears the previous failure flag
-    // N=1 / day1 / expired / fresh → single-day; active multi-day (day ≥2) →
-    // window range. BOTH go through the paged adapter loader (S1: complete rows
-    // past the 1,000-row cap → buyer# stays correct for heavy sellers). Same
-    // columns/filter/order as the old db.ts single-day path.
-    const choice = chooseSessionLoad(dayId, winStart, winDays);
-    const loader = choice.mode === "range" ? loadLiveSessionWindow(choice.start, choice.end) : loadLiveSessionDay(dayId);
+    // EXPLICIT SESSION MODEL (sub-step 3): if the seller has an active session
+    // instance, load by session_id — the stability fix. This scopes the feed to
+    // exactly the chosen session's rows (across all its days), so a moved
+    // window_start can't hide rows and numbering never resets per calendar day.
+    // LEGACY (winSessionId null → seller never picked a session): the OLD
+    // window/session_date path runs BYTE-UNCHANGED (both coexist per-seller).
+    let loader;
+    if (winSessionId) {
+      loader = loadLiveSessionBySessionId(winSessionId);
+    } else {
+      // N=1 / day1 / expired / fresh → single-day; active multi-day (day ≥2) →
+      // window range. BOTH go through the paged adapter loader (S1: complete rows
+      // past the 1,000-row cap → buyer# stays correct for heavy sellers). Same
+      // columns/filter/order as the old db.ts single-day path.
+      const choice = chooseSessionLoad(dayId, winStart, winDays);
+      loader = choice.mode === "range" ? loadLiveSessionWindow(choice.start, choice.end) : loadLiveSessionDay(dayId);
+    }
     loader
       .then((rows) => {
         if (!active) return;
@@ -146,7 +162,7 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
       })
       .catch(() => { if (active) { setState("idle"); setLoadError(true); } });
     return () => { active = false; };
-  }, [enabled, dayId, winReady, winDays, winStart, reloadKey]);
+  }, [enabled, dayId, winReady, winDays, winStart, winSessionId, reloadKey]);
 
   // 5e — current buyers (read from the ref so callers always see the latest,
   // matching production reading `buyers` state inside the order handler).
@@ -192,8 +208,14 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
     const prev = prevDayRef.current;
     if (dayId === prev) return;
     prevDayRef.current = dayId;
+    // EXPLICIT SESSION MODEL (sub-step 3, decision B): a session_id session
+    // CONTINUES across Taipei midnight — numbering resets ONLY when the seller
+    // starts a NEW session (Connect into an ended session → picker). So skip the
+    // day-rollover reset entirely when a session instance is active. The legacy
+    // (null session_id) path keeps its window-aware midnight reset unchanged.
+    if (winSessionId) return;
     if (shouldResetOnDayChange(prev, dayId, winStart, winDays)) reset();
-  }, [dayId, winStart, winDays, reset]);
+  }, [dayId, winStart, winDays, winSessionId, reset]);
 
   return { session, state, loadError, dayId, getBuyers, applyOrder, reset, orderedMsgIds, orderedLoaded, addOrderedMsgId };
 }

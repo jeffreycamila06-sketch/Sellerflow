@@ -160,11 +160,13 @@ export default function RedesignApp() {
   // range. N=1 → single-day (byte-identical 5c). Pill (setWindowDays) + order-open
   // wiring come in later steps.
   const sessionWindow = useSessionWindow(authed);
-  const liveSession = useLiveSession(authed, { ready: sessionWindow.loaded, windowDays: sessionWindow.windowDays, windowStart: sessionWindow.windowStart });
-  // Explicit session model (sub-step 2) — session lifecycle ISOLATED from the old
-  // window model above. Provides the server-authoritative Connect gate + the
-  // current_session_id stamped on new orders. Does NOT drive numbering/loading yet.
+  // Explicit session model — declared BEFORE useLiveSession so its currentSessionId
+  // + loaded gate the feed load. Sub-step 3: when a session instance exists, the
+  // live feed loads by session_id (stability fix); legacy sellers (null) keep the
+  // window/session_date path. `ready` waits for BOTH config reads so the first load
+  // picks the correct path once (no legacy-then-session double load).
   const sessionInstance = useSessionInstance(authed);
+  const liveSession = useLiveSession(authed, { ready: sessionWindow.loaded && sessionInstance.loaded, windowDays: sessionWindow.windowDays, windowStart: sessionWindow.windowStart, sessionId: sessionInstance.currentSessionId });
   // Pending connect awaiting a session pick (the required picker modal). Non-null =
   // modal open + the platform/account to connect once a length is chosen.
   const [pickerConnect, setPickerConnect] = useState<{ platform: Platform; acct: string } | null>(null);
@@ -672,6 +674,11 @@ export default function RedesignApp() {
     if (!pending) return;
     const sid = await sessionInstance.startSession(days);
     if (!sid) { setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }); return; }
+    // New session_id → clear + reload the live session so it loads by the NEW id
+    // (empty → buyer# restarts at #1). The load effect re-runs on the sessionId
+    // change; reset() clears the prior session's rows so the hydrate-on-empty
+    // guard lets the fresh (empty) session load.
+    liveSession.reset();
     void performConnect(pending.platform, pending.acct);
   };
   // Refresh = one-shot full dashboard reload (pull-to-refresh style; NO polling).
