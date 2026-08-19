@@ -26,7 +26,6 @@ const base = {
   ttConnected: false, fbConnected: false, ttConnecting: false, fbConnecting: false,
   onConnectTT: noop, onRefreshTT: noop,
   ttAccounts: ["maria_shops"], fbAccounts: [] as string[],
-  sessionDays: 1, sessionOpen: false, onToggleSession: noop, onPickSession: noop,
   printed: {}, entId: null, entPrice: "", onOneClick: noop, onOpenEnt: noop, onEntPrice: noop, onEntKey: noop,
 };
 const renderDash = (over: Record<string, unknown> = {}) =>
@@ -114,12 +113,18 @@ describe("(f) no-account Connect → manage screen (Addendum 2 — doConnect sou
     // The old one-liner that opened the modal for ALL platforms is gone.
     expect(body).not.toMatch(/if \(!acct\) \{ setConnectOpen\(platform\); return; \}/);
   });
-  it("the WITH-account path does NOT navigate — doConnect navigates in exactly ONE branch", () => {
-    // Only the no-account TikTok branch calls setScreen; the direct-connect path
-    // (setConnecting → liveFeed.connect) is byte-unchanged and never navigates.
+  it("the WITH-account path does NOT navigate — connect mechanics live in performConnect, which never navigates", () => {
+    // doConnect navigates in exactly ONE branch (no-account TikTok). Sub-step 2
+    // (session model) extracted the actual socket connect into performConnect —
+    // that path (setConnecting → track → liveFeed.connect) is byte-unchanged and
+    // still never navigates; doConnect now also runs the session gate.
     expect((body.match(/setScreen\(/g) || []).length).toBe(1);
-    expect(body).toMatch(/setConnecting\(true\);/);
-    expect(body).toMatch(/track\("connect_attempt", \{ platform \}\);/);
+    expect(body).toMatch(/sessionInstance\.checkStatus\(\)/);            // the new server-authoritative gate
+    const pstart = src.indexOf("const performConnect = async");
+    const pbody = src.slice(pstart, src.indexOf("\n  };", pstart) + 5);  // performConnect fn body
+    expect(pbody).toMatch(/setConnecting\(true\);/);
+    expect(pbody).toMatch(/track\("connect_attempt", \{ platform \}\);/);
+    expect((pbody.match(/setScreen\(/g) || []).length).toBe(0);         // performConnect never navigates
   });
   it("the Facebook branch is KEPT (not deleted) but stays UI-unreachable", () => {
     expect(body).toMatch(/setConnectOpen\(platform\); return;/);       // FB fallthrough kept

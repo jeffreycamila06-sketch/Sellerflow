@@ -1,5 +1,5 @@
 // Dropdown dismiss (Jeff bug, 2026-07-12) — the header dropdowns (TikTok/FB
-// account picker + session pill) must close on a tap ANYWHERE outside them,
+// account pickers) must close on a tap ANYWHERE outside them,
 // with NO action triggered (sellers were forced to tap Disconnect just to
 // dismiss the panel). Escape closes too. Taps INSIDE the panel (account rows,
 // Refresh, Connect/Disconnect) keep working exactly as before. Pure UI — no
@@ -23,7 +23,6 @@ const baseProps = {
   ttConnected: false, fbConnected: false, ttConnecting: false, fbConnecting: false,
   onConnectTT: noop, onConnectFB: noop,
   ttAccounts: ["msgrey46"], fbAccounts: [],
-  sessionDays: 1, sessionOpen: false, onToggleSession: noop, onPickSession: noop,
   printed: {}, entId: null, entPrice: "",
   onOneClick: noop, onOpenEnt: noop, onEntPrice: noop, onEntKey: noop,
 };
@@ -65,13 +64,12 @@ describe("TikTok dropdown — tap-outside / Escape close (the reported bug)", ()
   });
 
   it("closed dropdown → outside taps and Escape do NOTHING (listener only attaches while open)", () => {
-    const onToggleTT = vi.fn(); const onToggleFB = vi.fn(); const onToggleSession = vi.fn();
-    renderDash({ onToggleTT, onToggleFB, onToggleSession });
+    const onToggleTT = vi.fn(); const onToggleFB = vi.fn();
+    renderDash({ onToggleTT, onToggleFB });
     fireEvent.pointerDown(document.body);
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onToggleTT).not.toHaveBeenCalled();
     expect(onToggleFB).not.toHaveBeenCalled();
-    expect(onToggleSession).not.toHaveBeenCalled();
   });
 });
 
@@ -84,14 +82,6 @@ describe("same behavior for the other header dropdowns (same bug class)", () => 
     expect(onConnectFB).not.toHaveBeenCalled();
   });
 
-  it("session pill dropdown: outside tap closes via onToggleSession; picking a day inside still works", () => {
-    const onToggleSession = vi.fn(); const onPickSession = vi.fn();
-    const { getByText } = renderDash({ sessionOpen: true, onToggleSession, onPickSession });
-    fireEvent.pointerDown(getByText("2 days"));                 // press inside the panel → no close
-    expect(onToggleSession).not.toHaveBeenCalled();
-    fireEvent.click(getByText("2 days"));
-    expect(onPickSession).toHaveBeenCalledWith(2);              // pick gumagana pa rin
-    fireEvent.pointerDown(document.body);                       // then an outside tap
-    expect(onToggleSession).toHaveBeenCalledTimes(1);           // closes, walang ibang aksyon
-  });
+  // The session-length pill was REMOVED (sub-step 4) — session length is chosen in
+  // the required picker modal on Connect. Its outside-tap-close test is gone with it.
 });

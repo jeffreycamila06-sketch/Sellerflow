@@ -83,6 +83,13 @@
 [data-redesign] .sfl-anim-live { position: relative; }
 [data-redesign] .sfl-anim-live::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 2px #e11d48; pointer-events: none; animation: sflRingPulse 1.8s ease-out infinite; }
 
+/* "Session continues …" loading dots — opacity-only, staggered (sub-step 5).
+   Gated below with every other loop (kill switch + prefers-reduced-motion). */
+@keyframes sflEllip { 0%, 80%, 100% { opacity: .2; } 40% { opacity: 1; } }
+[data-redesign] .sfl-anim-ellip > i { opacity: .2; animation: sflEllip 1.4s ease-in-out infinite; }
+[data-redesign] .sfl-anim-ellip > i:nth-child(2) { animation-delay: .2s; }
+[data-redesign] .sfl-anim-ellip > i:nth-child(3) { animation-delay: .4s; }
+
 /* diagonal sheen — GPU: a translating skewed highlight (host must clip: overflow hidden) */
 [data-redesign] .sfl-anim-sheen { position: relative; overflow: hidden; }
 [data-redesign] .sfl-anim-sheen::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 35%; background: linear-gradient(100deg, transparent, rgba(255,255,255,.28), transparent); transform: translateX(-180%) skewX(-18deg); pointer-events: none; animation: sflSheen 3.6s linear infinite; }
@@ -145,7 +152,9 @@
 [data-redesign][data-motion="off"] .sfl-comm-row,
 [data-redesign][data-motion="off"] .sfl-glow-a,
 [data-redesign][data-motion="off"] .sfl-glow-cyan,
+[data-redesign][data-motion="off"] .sfl-anim-ellip > i,
 [data-redesign][data-motion="off"] .sfl-grid { animation: none !important; }
+[data-redesign][data-motion="off"] .sfl-anim-ellip > i { opacity: .6 !important; } /* static dots */
 /* content slide collapses to visible (no slide) under the kill switch */
 [data-redesign][data-motion="off"] .sfl-anim-screen > * > *:nth-child(n+2) { animation: none !important; opacity: 1 !important; transform: none !important; }
 
@@ -164,7 +173,9 @@
   [data-redesign] .sfl-comm-row,
   [data-redesign] .sfl-glow-a,
   [data-redesign] .sfl-glow-cyan,
+  [data-redesign] .sfl-anim-ellip > i,
   [data-redesign] .sfl-grid { animation: none !important; }
+  [data-redesign] .sfl-anim-ellip > i { opacity: .6; } /* static dots */
   [data-redesign] .sfl-anim-textglow { opacity: 1; } /* label stays fully visible */
   [data-redesign] .sfl-anim-stagger > * { animation: none; opacity: 1; transform: none; }
   [data-redesign] .sfl-anim-screen > * > *:nth-child(n+2) { animation: none; opacity: 1; transform: none; }

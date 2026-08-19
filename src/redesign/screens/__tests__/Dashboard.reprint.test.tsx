@@ -29,7 +29,6 @@ const baseProps = {
   onToggleTT: noop, onToggleFB: noop, onPickTT: noop, onPickFB: noop,
   ttConnected: false, fbConnected: false, ttConnecting: false, fbConnecting: false,
   onConnectTT: noop, onConnectFB: noop,
-  sessionDays: 1, sessionOpen: false, onToggleSession: noop, onPickSession: noop,
   printed: {} as Record<string, string>, entId: null, entPrice: "",
   onOneClick: noop, onOpenEnt: noop, onEntPrice: noop, onEntKey: noop,
 };

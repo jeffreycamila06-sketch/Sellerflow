@@ -64,7 +64,6 @@ function CommentAvatar({ name, avatar }: { name: string; avatar?: string }) {
 export const FEED_RENDER_CAP = 150;
 const bolt12 = <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M13 2 4.5 13.5H11l-1 8.5 9-12h-6.5L13 2Z" /></svg>;
 const printerIcon = <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><rect x="6" y="3" width="12" height="6" stroke="currentColor" strokeWidth="1.9" /><rect x="4" y="9" width="16" height="8" rx="2" stroke="currentColor" strokeWidth="1.9" /><rect x="7" y="14" width="10" height="7" stroke="currentColor" strokeWidth="1.9" /></svg>;
-const calIcon = <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="3.5" y="5" width="17" height="16" rx="2.5" stroke="currentColor" strokeWidth="1.7" /><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>;
 
 // Connection-flow visuals per platform (dc.html v3 L2009–2028). Visual only.
 const conn = (connected: boolean, connecting: boolean) => ({
@@ -81,7 +80,6 @@ const connFooterWrap: CSSProperties = { display: "flex", gap: 6, padding: "7px 4
 const refreshBtn: CSSProperties = { flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: "1px solid var(--border-strong)", borderRadius: 9, background: "var(--surface-2)", color: "var(--text)", fontSize: 11.5, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" };
 const refreshIcon = <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M20 11a8 8 0 0 0-14-4.5L4 8m0 0V4m0 4h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /><path d="M4 13a8 8 0 0 0 14 4.5L20 16m0 0v4m0-4h-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 
-const SESSION_OPTS = [1, 2, 3, 4]; // 4-day added 2026-07-13 (seller requests; egress-verified)
 
 export default function Dashboard({
   comments, cur,
@@ -89,10 +87,10 @@ export default function Dashboard({
   onManageTT,
   ttConnected, fbConnected, ttConnecting, fbConnecting, onConnectTT, onRefreshTT, refreshing = false,
   ttAccounts = [], fbAccounts = [],
-  sessionDays, sessionOpen, onToggleSession, onPickSession,
   printed, entId, entPrice, onOneClick, onOpenEnt, onEntPrice, onEntKey,
   onEntSubmit,
   viewers = null,
+  sessionEndsAt = null, sessionEnded = false,
   historyReady = false,
   onReprint,
   session = { buyers: [], orders: [] }, sessionState = "idle",
@@ -124,7 +122,6 @@ export default function Dashboard({
   onConnectTT: () => void;
   onRefreshTT?: () => void; refreshing?: boolean;
   ttAccounts?: string[]; fbAccounts?: string[];
-  sessionDays: number; sessionOpen: boolean; onToggleSession: () => void; onPickSession: (n: number) => void;
   printed: Record<string, string>; entId: string | null; entPrice: string;
   // Orderable earlier-comments (sql/18) — the E1 gate: history rows may show
   // order buttons ONLY after the session-window load resolved (before that, an
@@ -140,6 +137,10 @@ export default function Dashboard({
   // null = hidden entirely (no data / not green — RedesignApp gates on the
   // same booleans as ttConnected); a real 0 renders as "👥 0".
   viewers?: number | null;
+  // Sub-step 5 — session-end indicator (old pill slot, top-right). sessionEndsAt =
+  // server-Taipei end label ("Aug 22, 11:59 PM") or null (no session → nothing);
+  // sessionEnded = server says the window passed while still live → "continues …".
+  sessionEndsAt?: string | null; sessionEnded?: boolean;
   // REPRINT — print a COPY of this comment's existing order (no new order, no
   // writes; RedesignApp resolves the original order + calls printSlip).
   onReprint?: (id: string, msgId?: string) => void;
@@ -150,8 +151,6 @@ export default function Dashboard({
   const connLabel = (connected: boolean, connecting: boolean) => (connecting ? t.rd_dash_connecting : connected ? t.rd_dash_disconnect : t.rd_dash_connect);
   const ttTitle = ttConnected ? t.rd_dash_conn_title : t.rd_dash_not_conn_title;
   const fbTitle = fbConnected ? t.rd_dash_conn_title : t.rd_dash_not_conn_title;
-  const dayUnit = (n: number) => `${n} ${n > 1 ? t.rd_dash_days : t.rd_dash_day}`;
-  const sessionLabel = dayUnit(sessionDays);
   const summary = sessionSummary(session); // Phase 5c — today's hydrated session
   // Dropdown dismiss (Jeff bug, 2026-07-12): the header dropdowns (TikTok/FB
   // account pickers + session pill) only closed via their own toggles — a tap
@@ -166,18 +165,16 @@ export default function Dashboard({
   // most one is open. Listener attaches only while one is open.
   const ttWrapRef = useRef<HTMLDivElement>(null);
   const fbWrapRef = useRef<HTMLDivElement>(null);
-  const sessionWrapRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!ttOpen && !fbOpen && !sessionOpen) return;
+    if (!ttOpen && !fbOpen) return;
     const close = () => {
       if (ttOpen) onToggleTT();
       else if (fbOpen) onToggleFB();
-      else if (sessionOpen) onToggleSession();
     };
     const onDown = (e: Event) => {
       const target = e.target as Node | null;
       if (!target) return;
-      if (ttWrapRef.current?.contains(target) || fbWrapRef.current?.contains(target) || sessionWrapRef.current?.contains(target)) return;
+      if (ttWrapRef.current?.contains(target) || fbWrapRef.current?.contains(target)) return;
       close();
     };
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
@@ -187,7 +184,7 @@ export default function Dashboard({
       document.removeEventListener("pointerdown", onDown);
       document.removeEventListener("keydown", onKey);
     };
-  }, [ttOpen, fbOpen, sessionOpen, onToggleTT, onToggleFB, onToggleSession]);
+  }, [ttOpen, fbOpen, onToggleTT, onToggleFB]);
   // Phase 5d — feed scroll (tangled-zone #3). Newest is prepended at the top, so
   // we scroll the feed container to top when a new comment arrives. useLayoutEffect
   // (not setTimeout) so it runs after DOM mutation, before paint.
@@ -269,30 +266,22 @@ export default function Dashboard({
               {annUnread && <span style={{ position: "absolute", top: 5, right: 7, width: 7, height: 7, borderRadius: "50%", background: "#f87171", boxShadow: "0 0 0 1.5px rgba(0,0,0,.28)" }} />}
             </button>
           )}
-          {/* Live-session-length pill (dc.html v3 L112) */}
-          <div ref={sessionWrapRef} style={{ position: "relative", zIndex: 7 }}>
-            <button onClick={onToggleSession} title={t.rd_dash_session_title} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,.18)", border: "none", padding: "6px 10px", borderRadius: 9, fontSize: 12, fontWeight: 700, color: "var(--on-header)", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
-              {calIcon}
-              {t.rd_dash_session} · {sessionLabel}
-              <span style={{ fontSize: 9, opacity: 0.85 }}>▾</span>
-            </button>
-            {sessionOpen && (
-              <div style={{ position: "absolute", top: "calc(100% + 7px)", right: 0, width: 212, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 13, boxShadow: "0 16px 38px rgba(0,0,0,.3)", padding: 6, zIndex: 30 }}>
-                <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--text-muted)", padding: "7px 9px 6px" }}>{t.rd_dash_session_length}</div>
-                {SESSION_OPTS.map((n) => {
-                  const active = n === sessionDays;
-                  return (
-                    <button key={n} onClick={() => onPickSession(n)} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "9px 9px", border: "none", borderRadius: 9, background: active ? "var(--accent-soft)" : "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
-                      <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 700, color: "var(--accent-fg)", flexShrink: 0 }}>{n}</span>
-                      <span style={{ flex: 1, minWidth: 0 }}><span style={{ display: "block", fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{dayUnit(n)}</span><span style={{ display: "block", fontSize: 10.5, color: "var(--text-muted)" }}>{n === 1 ? t.rd_dash_ship_same_day : tpl(t.rd_dash_nday_live, { n })}</span></span>
-                      <span style={{ color: "var(--accent-fg)", fontWeight: 800, fontSize: 13, width: 12, flexShrink: 0 }}>{active ? "✓" : ""}</span>
-                    </button>
-                  );
-                })}
-                <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.4, padding: "7px 9px 4px" }}>{t.rd_dash_session_foot}</div>
-              </div>
-            )}
-          </div>
+          {/* Session-end indicator (sub-step 5) — replaces the removed pill, same
+              top-right slot. STATIC "Session ends {date}" (server-Taipei) while
+              running; "Session continues …" (animated dots) once past the end while
+              still live. Nothing when there is no session. */}
+          {sessionEndsAt && (
+            sessionEnded ? (
+              <span data-testid="session-continues" style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,.18)", padding: "6px 10px", borderRadius: 9, fontSize: 12, fontWeight: 700, color: "var(--on-header)", whiteSpace: "nowrap", flexShrink: 0 }}>
+                {t.rd_ses_continues}
+                <span className="sfl-anim-ellip" aria-hidden="true" style={{ display: "inline-flex", gap: 2, marginLeft: 1 }}><i>.</i><i>.</i><i>.</i></span>
+              </span>
+            ) : (
+              <span data-testid="session-ends" style={{ background: "rgba(255,255,255,.18)", padding: "6px 10px", borderRadius: 9, fontSize: 12, fontWeight: 700, color: "var(--on-header)", whiteSpace: "nowrap", flexShrink: 0 }}>
+                {tpl(t.rd_ses_ends, { date: sessionEndsAt })}
+              </span>
+            )
+          )}
           </div>
         </div>
 

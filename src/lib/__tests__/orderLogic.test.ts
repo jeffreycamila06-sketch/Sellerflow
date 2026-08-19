@@ -233,6 +233,33 @@ describe("rebuildSessionFromRows", () => {
     expect(buyers.map(b => b.num)).toEqual([1, 2, 3]);
   });
 
+  it("buyer# is the PERSISTED value — never re-derived from created_at/device time (session-model stability)", () => {
+    // created_at order DELIBERATELY INVERTED vs buyer_number (newest row = lowest
+    // number). Each order keeps its STORED bNum and buyers sort by the STORED
+    // number — proving nothing recomputes ordering from a clock. This is the
+    // invariant items 2/6 rest on.
+    const { buyers, orders } = rebuildSessionFromRows([
+      row({ handle: "late",  buyer_number: 1, created_at: "2026-06-11T23:59:00.000Z" }),
+      row({ handle: "early", buyer_number: 2, created_at: "2026-06-11T00:01:00.000Z" }),
+    ]);
+    expect(orders.map(o => o.bNum)).toEqual([1, 2]);
+    expect(buyers.map(b => `${b.handle}:${b.num}`)).toEqual(["late:1", "early:2"]);
+  });
+
+  it("session_id continuity: rows spanning TWO days (one session) number 1..N continuously — no per-day reset", () => {
+    // The session_id loader returns all the session's rows across its calendar
+    // days; rebuild groups by handle+platform with the STORED buyer_number, so a
+    // 2-day session stays continuous (#1..#4), never resetting at midnight.
+    const { buyers, orders } = rebuildSessionFromRows([
+      row({ handle: "a", buyer_number: 1, session_date: "2026-06-11", created_at: "2026-06-11T10:00:00.000Z" }),
+      row({ handle: "b", buyer_number: 2, session_date: "2026-06-11", created_at: "2026-06-11T11:00:00.000Z" }),
+      row({ handle: "c", buyer_number: 3, session_date: "2026-06-12", created_at: "2026-06-12T09:00:00.000Z" }),
+      row({ handle: "d", buyer_number: 4, session_date: "2026-06-12", created_at: "2026-06-12T09:05:00.000Z" }),
+    ]);
+    expect(orders).toHaveLength(4);
+    expect(buyers.map(b => b.num)).toEqual([1, 2, 3, 4]); // continuous across the day boundary
+  });
+
   it("blank customer_name falls back to the handle", () => {
     const { buyers, orders } = rebuildSessionFromRows([row({ customer_name: "" })]);
     expect(orders[0].name).toBe("maria_live");

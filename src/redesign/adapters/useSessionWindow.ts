@@ -167,6 +167,37 @@ export async function loadLiveSessionDay(day: string): Promise<LiveSessionRow[] 
   return loadLiveSessionWindow(day, day);
 }
 
+// EXPLICIT SESSION MODEL (sub-step 3) — load a session's rows by session_id, NOT
+// by session_date/window. This is the stability fix: rows are scoped to the exact
+// chosen session instance, so (a) a moved window_start can never hide rows and
+// (b) numbering never resets per calendar day (it's grouped by session_id across
+// all the session's days). SAME columns / order / paging / null-on-error / RLS +
+// explicit own-filter as the window path — only the WHERE swaps session_date-range
+// for session_id. Client-side own-scoped SELECT: no server.js, no RPC.
+async function loadSessionPageById(userId: string, sessionId: string, page: number): Promise<LiveSessionRow[] | null> {
+  const from = page * SESSION_PAGE_SIZE;
+  const { data, error } = await supabase!
+    .from("live_session_orders")
+    .select("buyer_number,handle,customer_name,platform,product,price,created_at,session_date,comment_msg_id")
+    .eq("user_id", userId)
+    .eq("session_id", sessionId)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true })
+    .range(from, from + SESSION_PAGE_SIZE - 1);
+  if (error) { console.error("Load live session by id error:", error.message); return null; }
+  return (data || []) as LiveSessionRow[];
+}
+
+// Returns null when the READ FAILED (never partial — a partial set would recreate
+// the duplicate-buyer# bug), [] when there are genuinely no rows (a fresh session).
+export async function loadLiveSessionBySessionId(sessionId: string): Promise<LiveSessionRow[] | null> {
+  if (!isSupabaseConfigured || !supabase) return [];
+  const { data: { session } } = await supabase.auth.getSession();
+  const id = session?.user?.id;
+  if (!id) return [];
+  return fetchAllSessionPages((page) => loadSessionPageById(id, sessionId, page));
+}
+
 // ms from now until the NEXT Asia/Taipei midnight (00:00 UTC+8). Egress-free
 // (reads the local clock only). Used to arm a SINGLE self-correcting timeout —
 // NOT a poll/interval. Falls back to a 1h re-check if Intl is unavailable.

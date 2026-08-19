@@ -31,7 +31,6 @@ const props = (comments: Comment[], basketCounts?: Map<string, number>) => ({
   onToggleTT: noop, onToggleFB: noop, onPickTT: noop, onPickFB: noop,
   ttConnected: false, fbConnected: false, ttConnecting: false, fbConnecting: false,
   onConnectTT: noop, onConnectFB: noop,
-  sessionDays: 1, sessionOpen: false, onToggleSession: noop, onPickSession: noop,
   printed: {}, entId: null, entPrice: "",
   onOneClick: noop, onOpenEnt: noop, onEntPrice: noop, onEntKey: noop,
 });
