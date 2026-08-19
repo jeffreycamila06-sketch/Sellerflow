@@ -13,6 +13,7 @@
 // new session on pick, (c) exposes current_session_id for stamping new orders.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
+import { useTaipeiDayId } from "./useSessionWindow";
 
 export interface SessionStatus { running: boolean; sessionId: string | null }
 
@@ -29,6 +30,17 @@ export function statusFallback(knownSessionId: string | null): SessionStatus {
 
 export interface UseSessionInstance {
   currentSessionId: string | null;         // for stamping new orders (sql/20)
+  // Sub-step 5 (UI-only): the running session's server start + length, for the
+  // "Session ends: {date}" header label (computed server-Taipei from these — see
+  // sessionEnd.ts). Null until a session exists / config read resolves.
+  sessionStartedAt: string | null;
+  sessionWindowDays: number | null;
+  // Server-authoritative ended flag (from session_status().running — never the
+  // device clock). true = the session's Taipei window has passed but the seller is
+  // still connected (drives the "Session continues …" reassurance animation).
+  // Refreshed at Connect + on each Taipei-day rollover (reuses useTaipeiDayId's
+  // existing day signal to RE-ASK the server; the server decides, not the clock).
+  ended: boolean;
   loaded: boolean;                          // mount read resolved
   // Resolves once the mount read (current_session_id) has completed. Connect awaits
   // this BEFORE deciding running-vs-not, so a tap during a still-pending mount read
@@ -41,6 +53,9 @@ export interface UseSessionInstance {
 
 export function useSessionInstance(enabled: boolean): UseSessionInstance {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [sessionStartedAt, setStartedAt] = useState<string | null>(null);
+  const [sessionWindowDays, setWinDays] = useState<number | null>(null);
+  const [ended, setEnded] = useState(false);
   const [loaded, setLoaded] = useState(false);
   // Synchronous mirror so checkStatus/startSession see the latest id without
   // waiting for a re-render (mirrors the useSessionWindow ref pattern).
@@ -69,11 +84,15 @@ export function useSessionInstance(enabled: boolean): UseSessionInstance {
       if (!id) { if (active) setLoaded(true); return; }
       const { data, error } = await supabase
         .from("seller_session_config")
-        .select("current_session_id")
+        .select("current_session_id,session_started_at,session_window_days")
         .eq("user_id", id)
         .maybeSingle();
       if (!active) return;
-      if (!error) setId((data?.current_session_id as string) || null);
+      if (!error) {
+        setId((data?.current_session_id as string) || null);
+        setStartedAt((data?.session_started_at as string) || null);
+        setWinDays(data?.session_window_days != null ? Number(data.session_window_days) : null);
+      }
       setLoaded(true);
     })();
     mountDoneRef.current = p;
@@ -101,6 +120,10 @@ export function useSessionInstance(enabled: boolean): UseSessionInstance {
       const running = !!row?.running;
       const sessionId = (row?.session_id as string) || null;
       if (running && sessionId) setId(sessionId);
+      // Server-authoritative ended flag: session exists AND server says not running
+      // → its Taipei window has passed (drives the "continues" animation). session_id
+      // is returned regardless of running (it's current_session_id).
+      setEnded(!!sessionId && !running);
       return { running, sessionId: running ? sessionId : null };
     } catch {
       return statusFallback(idRef.current);
@@ -122,5 +145,13 @@ export function useSessionInstance(enabled: boolean): UseSessionInstance {
     }
   }, [setId]);
 
-  return { currentSessionId, loaded, ensureLoaded, checkStatus, startSession };
+  // Refresh the ended flag on each Asia/Taipei day rollover (useTaipeiDayId advances
+  // via focus/visibility + a single midnight timeout — no interval poll). The device
+  // clock only TRIGGERS the re-ask; session_status (server) DECIDES ended, so two
+  // devices agree. Read-only: checkStatus re-syncs the same id (harmless) + sets
+  // ended; it never touches numbering or the feed load. Skips until a session exists.
+  const dayId = useTaipeiDayId();
+  useEffect(() => { if (idRef.current) void checkStatus(); }, [dayId, checkStatus]);
+
+  return { currentSessionId, sessionStartedAt, sessionWindowDays, ended, loaded, ensureLoaded, checkStatus, startSession };
 }

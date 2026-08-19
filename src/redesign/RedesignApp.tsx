@@ -36,6 +36,7 @@ import { useBusinessPulse } from "./adapters/useBusinessPulse";
 import { useAnnouncements } from "./adapters/useAnnouncements";
 import { useLiveSession } from "./adapters/useLiveSession";
 import { useSessionInstance } from "./adapters/useSessionInstance";
+import { sessionEndLabel } from "./adapters/sessionEnd";
 import SessionPickerModal from "./components/SessionPickerModal";
 import { buildBasketCounts } from "./adapters/basketCounts";
 import { useSessionWindow } from "./adapters/useSessionWindow";
@@ -996,6 +997,11 @@ export default function RedesignApp() {
               /* Viewer chip: GREEN-only (exact same booleans as ttConnected above) —
                  amber/gray → null → hidden. Data-side resets live in useLiveFeed. */
               viewers={ttEff && !liveFeed.ttRecovering ? liveFeed.ttViewers : null}
+              /* Sub-step 5 — session-end indicator (old pill slot). Server-Taipei end
+                 date from session_started_at (device-clock-free); ended flag from
+                 session_status. null label → no indicator (defensive: no session). */
+              sessionEndsAt={sessionInstance.currentSessionId && sessionInstance.sessionStartedAt && sessionInstance.sessionWindowDays ? sessionEndLabel(sessionInstance.sessionStartedAt, sessionInstance.sessionWindowDays, lang) : null}
+              sessionEnded={sessionInstance.ended}
               onConnectTT={() => void doConnect("TikTok")}
               onRefreshTT={() => void refreshDashboard()} refreshing={refreshing}
               ttAccounts={ttAccounts} fbAccounts={fbAccounts}

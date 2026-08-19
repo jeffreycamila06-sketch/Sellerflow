@@ -90,6 +90,7 @@ export default function Dashboard({
   printed, entId, entPrice, onOneClick, onOpenEnt, onEntPrice, onEntKey,
   onEntSubmit,
   viewers = null,
+  sessionEndsAt = null, sessionEnded = false,
   historyReady = false,
   onReprint,
   session = { buyers: [], orders: [] }, sessionState = "idle",
@@ -136,6 +137,10 @@ export default function Dashboard({
   // null = hidden entirely (no data / not green — RedesignApp gates on the
   // same booleans as ttConnected); a real 0 renders as "👥 0".
   viewers?: number | null;
+  // Sub-step 5 — session-end indicator (old pill slot, top-right). sessionEndsAt =
+  // server-Taipei end label ("Aug 22, 11:59 PM") or null (no session → nothing);
+  // sessionEnded = server says the window passed while still live → "continues …".
+  sessionEndsAt?: string | null; sessionEnded?: boolean;
   // REPRINT — print a COPY of this comment's existing order (no new order, no
   // writes; RedesignApp resolves the original order + calls printSlip).
   onReprint?: (id: string, msgId?: string) => void;
@@ -261,8 +266,22 @@ export default function Dashboard({
               {annUnread && <span style={{ position: "absolute", top: 5, right: 7, width: 7, height: 7, borderRadius: "50%", background: "#f87171", boxShadow: "0 0 0 1.5px rgba(0,0,0,.28)" }} />}
             </button>
           )}
-          {/* Session-length pill REMOVED (sub-step 4): session length is chosen in
-              the required picker modal on Connect — one place to choose a session. */}
+          {/* Session-end indicator (sub-step 5) — replaces the removed pill, same
+              top-right slot. STATIC "Session ends {date}" (server-Taipei) while
+              running; "Session continues …" (animated dots) once past the end while
+              still live. Nothing when there is no session. */}
+          {sessionEndsAt && (
+            sessionEnded ? (
+              <span data-testid="session-continues" style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,.18)", padding: "6px 10px", borderRadius: 9, fontSize: 12, fontWeight: 700, color: "var(--on-header)", whiteSpace: "nowrap", flexShrink: 0 }}>
+                {t.rd_ses_continues}
+                <span className="sfl-anim-ellip" aria-hidden="true" style={{ display: "inline-flex", gap: 2, marginLeft: 1 }}><i>.</i><i>.</i><i>.</i></span>
+              </span>
+            ) : (
+              <span data-testid="session-ends" style={{ background: "rgba(255,255,255,.18)", padding: "6px 10px", borderRadius: 9, fontSize: 12, fontWeight: 700, color: "var(--on-header)", whiteSpace: "nowrap", flexShrink: 0 }}>
+                {tpl(t.rd_ses_ends, { date: sessionEndsAt })}
+              </span>
+            )
+          )}
           </div>
         </div>
 

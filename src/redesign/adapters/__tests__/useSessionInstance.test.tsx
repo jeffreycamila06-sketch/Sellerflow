@@ -129,3 +129,29 @@ describe("ensureLoaded — Connect gate (audit LOW #2: no wrongful reset while m
     await expect(result.current.ensureLoaded()).resolves.toBeUndefined();
   });
 });
+
+describe("ended flag (sub-step 5 — server-authoritative, drives the 'continues' animation)", () => {
+  it("checkStatus running=false with a session → ended=true (server says the window passed)", async () => {
+    rpcMock.mockResolvedValueOnce({ data: [{ running: false, session_id: "sid-ended" }], error: null });
+    const { result } = renderHook(() => useSessionInstance(true));
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    await act(async () => { await result.current.checkStatus(); });
+    expect(result.current.ended).toBe(true);
+  });
+
+  it("checkStatus running=true → ended=false (still within the window)", async () => {
+    rpcMock.mockResolvedValueOnce({ data: [{ running: true, session_id: "sid-live" }], error: null });
+    const { result } = renderHook(() => useSessionInstance(true));
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    await act(async () => { await result.current.checkStatus(); });
+    expect(result.current.ended).toBe(false);
+  });
+
+  it("mount read exposes session_started_at + session_window_days for the end label", async () => {
+    maybeSingleMock.mockResolvedValueOnce({ data: { current_session_id: "sid-x", session_started_at: "2026-08-19T03:00:00.000Z", session_window_days: 4 }, error: null });
+    const { result } = renderHook(() => useSessionInstance(true));
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    expect(result.current.sessionStartedAt).toBe("2026-08-19T03:00:00.000Z");
+    expect(result.current.sessionWindowDays).toBe(4);
+  });
+});
