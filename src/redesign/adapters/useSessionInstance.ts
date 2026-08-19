@@ -139,11 +139,34 @@ export function useSessionInstance(enabled: boolean): UseSessionInstance {
       if (error || !data) return null;
       const id = String(data);
       setId(id);
+      // Populate the header-indicator fields NOW so "Session ends: {date}" renders
+      // immediately, without waiting for a refresh (bug fix). Read the SERVER values
+      // back — start_session stamped session_started_at with server now() and
+      // session_window_days with the pick — NEVER the device clock (owner lock:
+      // server-Taipei only). Same own-scoped read as the mount effect; the upsert is
+      // committed before the RPC returns, so this SELECT sees the new row.
+      // Best-effort + ISOLATED: a read-back failure must never turn a successful
+      // create into a null return (that would leave the caller session-less); on
+      // failure the indicator simply waits for the next mount read, as before.
+      try {
+        const userId = await uid();
+        if (userId) {
+          const { data: row, error: readErr } = await supabase
+            .from("seller_session_config")
+            .select("session_started_at,session_window_days")
+            .eq("user_id", userId)
+            .maybeSingle();
+          if (!readErr && row) {
+            setStartedAt((row.session_started_at as string) || null);
+            setWinDays(row.session_window_days != null ? Number(row.session_window_days) : null);
+          }
+        }
+      } catch { /* read-back is best-effort; the indicator waits for the next mount read */ }
       return id;
     } catch {
       return null;
     }
-  }, [setId]);
+  }, [setId, uid]);
 
   // Refresh the ended flag on each Asia/Taipei day rollover (useTaipeiDayId advances
   // via focus/visibility + a single midnight timeout — no interval poll). The device

@@ -155,3 +155,44 @@ describe("ended flag (sub-step 5 — server-authoritative, drives the 'continues
     expect(result.current.sessionWindowDays).toBe(4);
   });
 });
+
+describe("startSession populates the indicator fields immediately (bug fix — no refresh)", () => {
+  it("after startSession, all three fields come from the SERVER read-back (not the device clock)", async () => {
+    // Mount read = no session yet; read-back (after start_session) = the server row.
+    maybeSingleMock.mockResolvedValueOnce({ data: { current_session_id: null }, error: null }); // mount
+    maybeSingleMock.mockResolvedValueOnce({ data: { session_started_at: "2026-08-19T03:00:00.000Z", session_window_days: 3 }, error: null }); // read-back
+    rpcMock.mockResolvedValueOnce({ data: "sid-new", error: null }); // start_session
+
+    const { result } = renderHook(() => useSessionInstance(true));
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    // Precondition: indicator fields are null right after mount (no session).
+    expect(result.current.sessionStartedAt).toBeNull();
+    expect(result.current.sessionWindowDays).toBeNull();
+
+    let id: string | null = null;
+    await act(async () => { id = await result.current.startSession(3); });
+
+    expect(id).toBe("sid-new");
+    // All three now populated WITHOUT a refresh → the header indicator can render.
+    expect(result.current.currentSessionId).toBe("sid-new");
+    // The exact server ISO string proves the value came from the read-back, NOT new Date().
+    expect(result.current.sessionStartedAt).toBe("2026-08-19T03:00:00.000Z");
+    expect(result.current.sessionWindowDays).toBe(3);
+  });
+
+  it("read-back failure still returns the new id (never turns a successful create into null)", async () => {
+    maybeSingleMock.mockResolvedValueOnce({ data: { current_session_id: null }, error: null }); // mount
+    maybeSingleMock.mockResolvedValueOnce({ data: null, error: { message: "read failed" } });   // read-back errors
+    rpcMock.mockResolvedValueOnce({ data: "sid-new2", error: null }); // start_session OK
+
+    const { result } = renderHook(() => useSessionInstance(true));
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    let id: string | null = null;
+    await act(async () => { id = await result.current.startSession(2); });
+
+    expect(id).toBe("sid-new2");                     // create succeeded → feed can start
+    expect(result.current.currentSessionId).toBe("sid-new2");
+    // Indicator fields simply stay null (wait for the next mount read) — no crash, no reset.
+    expect(result.current.sessionStartedAt).toBeNull();
+  });
+});
