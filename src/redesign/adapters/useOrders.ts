@@ -78,6 +78,13 @@ export interface UseOrdersDeps {
   isCapped?: () => boolean;                                // soft block before creating
   onCapBlocked?: () => void;                               // show hard popup when blocked
   onCapReached?: (err: unknown) => void;                   // DB trigger rejected (over cap)
+  // Buyer#-stability fix (2026-08): block creation while the session load is in
+  // flight or FAILED, so a new order never assigns from an empty/uncertain buyer
+  // list and resells from #1 (the parcel-sorting backbone) or poisons the
+  // hydrate-on-empty guard. See useLiveSession.isSessionUnready. Genuinely-empty
+  // (resolved, no error) is NOT blocked → a real new session still starts at #1.
+  isSessionLoadPending?: () => boolean;                    // true → do not mint a buyer number yet
+  onSessionNotReady?: () => void;                          // show the "reconnecting, try again" toast
   onWriteError?: (err: unknown) => void;                   // Batch D (#7): non-cap background write failed — surface it
   onStockError?: (err: unknown) => void;                   // M1: the stock-decrement RPC failed — surface it (was a silent empty catch → Auto Mode could oversell)
   afterWrite?: () => void;                                 // resync usage counter (free users)
@@ -105,7 +112,7 @@ export interface UseOrders {
   createOrder: (c: ProdComment, price: number, opts?: CreateOrderOpts) => LiveOrder | null;
 }
 
-export function useOrders({ getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, onWriteError, onStockError, afterWrite, onPrint, onEnsureWindow, enqueueLiveSession, isMsgIdOrdered }: UseOrdersDeps): UseOrders {
+export function useOrders({ getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, isSessionLoadPending, onSessionNotReady, onWriteError, onStockError, afterWrite, onPrint, onEnsureWindow, enqueueLiveSession, isMsgIdOrdered }: UseOrdersDeps): UseOrders {
   // FAMILY A (#7): synchronous same-tick dedup by stable TikTok msgId. Two relays
   // of the SAME comment carry DIFFERENT commentKeys (server-stamped timestamp),
   // so the printed/autoProcessed guards (keyed on commentKey) can't stop the
@@ -119,6 +126,12 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, isCapped, onCapB
     //    Auto Mode refunds its synchronous stock claim, so no stock leaks).
     const msgId = msgIdOf(c);
     if (msgId && (processedMsgIdsRef.current.has(msgId) || isMsgIdOrdered?.(msgId))) return null;
+    // 0a2) Buyer#-stability: if the session load is still in flight or FAILED, do
+    //      NOT mint a buyer number (buyers may be empty/undercounted → #1 collision
+    //      + hydrate-on-empty poisoning). Return null (seams treat it as a soft
+    //      block → Auto Mode refunds its stock claim) and surface a "reconnecting"
+    //      toast so the seller re-taps once the load resolves (usually seconds).
+    if (isSessionLoadPending?.()) { onSessionNotReady?.(); return null; }
     // 0b) Free-tier HARD STOP soft block (App.tsx:4330). The DB trigger is still
     //    authoritative; this is the friendly block before we try.
     if (isCapped?.()) { onCapBlocked?.(); return null; }
@@ -180,7 +193,7 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, isCapped, onCapB
     // 5) resync the usage counter (App.tsx:4384 — free users).
     afterWrite?.();
     return order;
-  }, [getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, onWriteError, onStockError, afterWrite, onPrint, onEnsureWindow, enqueueLiveSession, isMsgIdOrdered]);
+  }, [getBuyers, applyOrder, sessionDate, isCapped, onCapBlocked, onCapReached, isSessionLoadPending, onSessionNotReady, onWriteError, onStockError, afterWrite, onPrint, onEnsureWindow, enqueueLiveSession, isMsgIdOrdered]);
 
   return { createOrder };
 }

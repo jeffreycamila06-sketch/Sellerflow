@@ -233,6 +233,22 @@ describe("rebuildSessionFromRows", () => {
     expect(buyers.map(b => b.num)).toEqual([1, 2, 3]);
   });
 
+  it("buyer# is the PERSISTED value — never re-derived from created_at (device-time-independent stability)", () => {
+    // created_at order is DELIBERATELY INVERTED vs buyer_number: the newest row
+    // carries the LOWEST number. Each order must keep its STORED bNum and buyers
+    // must sort by the STORED number, proving nothing recomputes ordering from a
+    // clock. This is the invariant the owner's "stable across refresh/relogin/
+    // device" requirement rests on.
+    const { buyers, orders } = rebuildSessionFromRows([
+      row({ handle: "late", buyer_number: 1, created_at: "2026-06-11T23:59:00.000Z" }),
+      row({ handle: "early", buyer_number: 2, created_at: "2026-06-11T00:01:00.000Z" }),
+    ]);
+    // orders keep their stored numbers (row order preserved; no time re-sort)
+    expect(orders.map(o => o.bNum)).toEqual([1, 2]);
+    // buyers sort by the STORED number, not by created_at
+    expect(buyers.map(b => `${b.handle}:${b.num}`)).toEqual(["late:1", "early:2"]);
+  });
+
   it("blank customer_name falls back to the handle", () => {
     const { buyers, orders } = rebuildSessionFromRows([row({ customer_name: "" })]);
     expect(orders[0].name).toBe("maria_live");

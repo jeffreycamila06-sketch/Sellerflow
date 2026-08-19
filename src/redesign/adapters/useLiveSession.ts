@@ -16,7 +16,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { isSupabaseConfigured } from "../../supabase";
 import { rebuildSessionFromRows, type RebuiltSession } from "../../lib/orderLogic";
 import type { Buyer, LiveOrder } from "../../lib/orderTypes";
-import { chooseSessionLoad, loadLiveSessionWindow, loadLiveSessionDay, useTaipeiDayId, shouldResetOnDayChange } from "./useSessionWindow";
+import { chooseSessionLoad, computeWindowState, loadLiveSessionWindow, loadLiveSessionDay, useTaipeiDayId, shouldResetOnDayChange } from "./useSessionWindow";
 import type { ReprintRow } from "./reprint";
 
 // "idle" = not wired / unconfigured / error · "loading" = query in flight ·
@@ -24,6 +24,22 @@ import type { ReprintRow } from "./reprint";
 export type SessionState = "idle" | "loading" | "live" | "empty";
 
 const EMPTY: RebuiltSession = { buyers: [], orders: [] };
+
+// PURE — "must NOT assign a buyer number right now" gate (buyer#-stability fix,
+// 2026-08). Blocks order creation while the session load is IN FLIGHT or FAILED,
+// so a new order can never be minted from an empty/uncertain buyer list and then
+// resell from #1 (the "resell from #1 on a failed load" trap) or poison the
+// hydrate-on-empty guard. Allows the two RESOLVED-and-trustworthy states:
+//   • "live"                      → real buyers loaded
+//   • "empty" with no loadError   → genuinely no orders yet → #1 is CORRECT
+//   • "idle" with no loadError    → not wired (sample/offline) → local-only, no DB
+// Blocks:
+//   • state === "loading"         → rows still arriving (ordering now = #1 poison)
+//   • loadError === true          → null-return (empty+err) OR thrown (idle+err)
+// Unit-tested (matrix).
+export function isSessionUnready(state: SessionState, loadError: boolean): boolean {
+  return loadError || state === "loading";
+}
 
 export interface SessionSummary { buyers: number; orders: number; total: number; }
 
@@ -125,7 +141,24 @@ export function useLiveSession(enabled: boolean, win?: LiveSessionWindowOpts): U
     // past the 1,000-row cap → buyer# stays correct for heavy sellers). Same
     // columns/filter/order as the old db.ts single-day path.
     const choice = chooseSessionLoad(dayId, winStart, winDays);
-    const loader = choice.mode === "range" ? loadLiveSessionWindow(choice.start, choice.end) : loadLiveSessionDay(dayId);
+    // Buyer#-stability fix (2026-08): for a multi-day RANGE load, upper-bound the
+    // read at the WINDOW END (window_start + N−1), not the device's "today".
+    // chooseSessionLoad returns end=today; a device whose Asia/Taipei clock lags
+    // real time just after midnight would then miss rows the server stamped with
+    // the NEWER session_date (the write bucket is server-authoritative via the
+    // set_session_date_taipei trigger; the read range was device-clock-derived) →
+    // an undercounted rebuild → the next order renumbers the parcel-sorting
+    // backbone. windowEnd is fixed for the window, so this is BYTE-IDENTICAL when
+    // the clock is correct (no rows exist beyond today) and strictly safer under
+    // skew. chooseSessionLoad's shared contract (also used by ordersSearch) is
+    // left untouched — the widening lives here, in the session loader only.
+    let loader;
+    if (choice.mode === "range") {
+      const end = computeWindowState(dayId, winStart, winDays).windowEnd || choice.end;
+      loader = loadLiveSessionWindow(choice.start, end);
+    } else {
+      loader = loadLiveSessionDay(dayId);
+    }
     loader
       .then((rows) => {
         if (!active) return;

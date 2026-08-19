@@ -34,7 +34,7 @@ import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
 import { useCustomers, useMinerStats, ZERO_MINERS_STATS, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, deriveMrr, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
 import { useBusinessPulse } from "./adapters/useBusinessPulse";
 import { useAnnouncements } from "./adapters/useAnnouncements";
-import { useLiveSession } from "./adapters/useLiveSession";
+import { useLiveSession, isSessionUnready } from "./adapters/useLiveSession";
 import { buildBasketCounts } from "./adapters/basketCounts";
 import { useSessionWindow, type WindowDays } from "./adapters/useSessionWindow";
 import { useLiveFeed, commentKey } from "./adapters/useLiveFeed";
@@ -281,6 +281,7 @@ export default function RedesignApp() {
   // localized "cloud save failed" toast — the local order is kept (see useOrders).
   const [orderWriteErrs, setOrderWriteErrs] = useState(0);
   const [stockErrs, setStockErrs] = useState(0); // M1 — stock-decrement RPC failure (Auto Mode oversell risk)
+  const [sessionNotReadyErrs, setSessionNotReadyErrs] = useState(0); // buyer#-stability — order attempted while session load pending/failed
   // FAMILY A (#1 durability): the retry outbox for the live_session_orders write.
   // Drains on mount / return-to-visible / a connection rise; idempotent via the
   // ux_lso_user_msgid index, so a lost-ACK retry can never duplicate. An exhausted
@@ -300,6 +301,12 @@ export default function RedesignApp() {
     isCapped: () => freeCap.freeCapped,
     onCapBlocked: () => freeCap.setCapPopup("hard"),
     onCapReached: freeCap.noteCapError,
+    // Buyer#-stability: block minting a buyer number while the session load is in
+    // flight or FAILED (see useLiveSession.isSessionUnready) — prevents resell-from-#1.
+    // tApp/setToast are declared BELOW this call, so (like onWriteError/onStockError)
+    // we bump a counter here and a toast effect further down converts it.
+    isSessionLoadPending: () => isSessionUnready(liveSession.state, liveSession.loadError),
+    onSessionNotReady: () => setSessionNotReadyErrs((c) => c + 1),
     onWriteError: () => setOrderWriteErrs((c) => c + 1), // Batch D #7 — toast below
     onStockError: () => setStockErrs((c) => c + 1),      // M1 — stock RPC failure toast below
     afterWrite: freeCap.afterOrder,
@@ -475,6 +482,12 @@ export default function RedesignApp() {
     prevLoadError.current = liveSession.loadError;
     if (liveSession.loadError && !was) setToast({ msg: tApp.rd_sess_load_failed, kind: "err" });
   }, [liveSession.loadError, tApp]);
+  const prevSessNotReady = useRef(0); // buyer#-stability — order blocked while session load pending/failed
+  useEffect(() => {
+    if (sessionNotReadyErrs <= prevSessNotReady.current) return;
+    prevSessNotReady.current = sessionNotReadyErrs;
+    setToast({ msg: tApp.rd_sess_not_ready, kind: "err" });
+  }, [sessionNotReadyErrs, tApp]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Currency switcher (dc.html v3). `cur` is the derived symbol threaded through
