@@ -38,7 +38,7 @@ import { useLiveSession } from "./adapters/useLiveSession";
 import { useSessionInstance } from "./adapters/useSessionInstance";
 import SessionPickerModal from "./components/SessionPickerModal";
 import { buildBasketCounts } from "./adapters/basketCounts";
-import { useSessionWindow, type WindowDays } from "./adapters/useSessionWindow";
+import { useSessionWindow } from "./adapters/useSessionWindow";
 import { useLiveFeed, commentKey } from "./adapters/useLiveFeed";
 import { useOrders } from "./adapters/useOrders";
 import { useOutbox } from "./adapters/outbox";
@@ -156,9 +156,9 @@ export default function RedesignApp() {
     } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "Save failed" }; }
   };
   // Phase 5c — cross-device live-session load for the Dashboard (hydrate-on-empty).
-  // Multi-day live session — window config (read-on-load) feeds the session load
-  // range. N=1 → single-day (byte-identical 5c). Pill (setWindowDays) + order-open
-  // wiring come in later steps.
+  // Multi-day live session — window config (read-on-load) still feeds the LEGACY
+  // (null-session_id) load path. The session-length pill was removed (sub-step 4);
+  // session length is now chosen only in the required picker modal on Connect.
   const sessionWindow = useSessionWindow(authed);
   // Explicit session model — declared BEFORE useLiveSession so its currentSessionId
   // + loaded gate the feed load. Sub-step 3: when a session instance exists, the
@@ -502,8 +502,6 @@ export default function RedesignApp() {
   };
 
   // Live-session-length pill (dc.html v3 Dashboard header). Visual only.
-  // Session-length pill — real N from seller_session_config (sessionWindow). Open/close is local UI.
-  const [sessionOpen, setSessionOpen] = useState(false);
 
   // Dashboard account pickers (open/close state; ttIdx/fbIdx declared above
   // useLiveFeed for comment scoping).
@@ -662,6 +660,10 @@ export default function RedesignApp() {
     // running → straight to the feed with the existing session (no reset). NOT
     // running → REQUIRED picker; the feed starts only AFTER a pick creates a
     // session (a dismiss aborts the connect — never a session-less feed).
+    // Sub-step 4 (audit LOW #2): WAIT for the mount read first, so a tap while it
+    // is still pending can't fall back to a null id → a wrongful new session.
+    // ensureLoaded always resolves (the mount read always completes) → no deadlock.
+    await sessionInstance.ensureLoaded();
     const status = await sessionInstance.checkStatus();
     if (status.running) { void performConnect(platform, acct); return; }
     setPickerConnect({ platform, acct });
@@ -978,8 +980,8 @@ export default function RedesignApp() {
             <Dashboard
               comments={comments} cur={cur} basketCounts={basketCounts}
               ttOpen={ttOpen} fbOpen={fbOpen} ttIdx={ttIdx} fbIdx={fbIdx}
-              onToggleTT={() => { setTtOpen((o) => !o); setFbOpen(false); setSessionOpen(false); }}
-              onToggleFB={() => { setFbOpen((o) => !o); setTtOpen(false); setSessionOpen(false); }}
+              onToggleTT={() => { setTtOpen((o) => !o); setFbOpen(false); }}
+              onToggleFB={() => { setFbOpen((o) => !o); setTtOpen(false); }}
               onPickTT={(i) => switchAccount("TikTok", i)}
               /* TikTok "Manage / add accounts" row → manage screen, back target =
                  Live dashboard (Change 3). FB has no onPickFB — honest gate. */
@@ -997,9 +999,6 @@ export default function RedesignApp() {
               onConnectTT={() => void doConnect("TikTok")}
               onRefreshTT={() => void refreshDashboard()} refreshing={refreshing}
               ttAccounts={ttAccounts} fbAccounts={fbAccounts}
-              sessionDays={sessionWindow.windowDays} sessionOpen={sessionOpen}
-              onToggleSession={() => { setSessionOpen((o) => !o); setTtOpen(false); setFbOpen(false); }}
-              onPickSession={(n) => { void sessionWindow.setWindowDays(n as WindowDays); liveSession.reset(); setSessionOpen(false); }}
               printed={printed} entId={entId} entPrice={entPrice}
               historyReady={liveSession.orderedLoaded}
               onReprint={onReprint}

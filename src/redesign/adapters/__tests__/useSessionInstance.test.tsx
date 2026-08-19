@@ -92,3 +92,40 @@ describe("useSessionInstance", () => {
     expect(id).toBeNull();
   });
 });
+
+describe("ensureLoaded — Connect gate (audit LOW #2: no wrongful reset while mount read pending)", () => {
+  it("WAITS for the pending mount read, so a failing session_status RESUMES the known session (not a new one)", async () => {
+    // Mount read is SLOW (still pending) and session_status FAILS — the exact
+    // double-condition that used to fall back to a null id → picker → new session.
+    let resolveRead!: (v: unknown) => void;
+    maybeSingleMock.mockReturnValueOnce(new Promise((r) => { resolveRead = r; }));
+    rpcMock.mockResolvedValue({ data: null, error: { message: "network" } });
+
+    const { result } = renderHook(() => useSessionInstance(true));
+    expect(result.current.loaded).toBe(false);              // mount read still pending
+
+    // Connect's sequence: await ensureLoaded() THEN checkStatus().
+    let status: { running: boolean; sessionId: string | null } | undefined;
+    const connect = (async () => {
+      await result.current.ensureLoaded();
+      status = await result.current.checkStatus();
+    })();
+
+    // The mount read now resolves with a KNOWN session id.
+    await act(async () => {
+      resolveRead({ data: { current_session_id: "sid-known" }, error: null });
+      await connect;
+    });
+
+    // ensureLoaded guaranteed idRef was populated before checkStatus fell back →
+    // RESUME the known session, NOT running=false (which would open the picker = reset).
+    expect(status).toEqual({ running: true, sessionId: "sid-known" });
+    expect(result.current.currentSessionId).toBe("sid-known");
+  });
+
+  it("resolves immediately once already loaded (no deadlock — the read always completes)", async () => {
+    const { result } = renderHook(() => useSessionInstance(true));
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    await expect(result.current.ensureLoaded()).resolves.toBeUndefined();
+  });
+});

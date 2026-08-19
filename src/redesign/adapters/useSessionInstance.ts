@@ -30,6 +30,11 @@ export function statusFallback(knownSessionId: string | null): SessionStatus {
 export interface UseSessionInstance {
   currentSessionId: string | null;         // for stamping new orders (sql/20)
   loaded: boolean;                          // mount read resolved
+  // Resolves once the mount read (current_session_id) has completed. Connect awaits
+  // this BEFORE deciding running-vs-not, so a tap during a still-pending mount read
+  // can't fall back to a null id → wrongful new session (audit LOW #2). Always
+  // resolves (the mount read always sets loaded, even unauthed/errored) → no deadlock.
+  ensureLoaded: () => Promise<void>;
   checkStatus: () => Promise<SessionStatus>; // server-authoritative running/ended check (call on Connect)
   startSession: (days: number) => Promise<string | null>; // create a NEW session; returns its id (null on failure)
 }
@@ -49,11 +54,16 @@ export function useSessionInstance(enabled: boolean): UseSessionInstance {
     return data.session?.user?.id ?? null;
   }, []);
 
+  // The mount-read promise — Connect awaits this so it never decides on a
+  // still-pending idRef (audit LOW #2). Captured in a ref (not state) so
+  // ensureLoaded can await the SAME in-flight read without re-triggering it.
+  const mountDoneRef = useRef<Promise<void> | null>(null);
+
   // Mount read: current_session_id only (one tiny row). No status/ended compute
   // here — that needs server "today", which we fetch on Connect via checkStatus.
   useEffect(() => {
     let active = true;
-    (async () => {
+    const p = (async () => {
       if (!enabled || !isSupabaseConfigured || !supabase) { if (active) setLoaded(true); return; }
       const id = await uid();
       if (!id) { if (active) setLoaded(true); return; }
@@ -66,8 +76,18 @@ export function useSessionInstance(enabled: boolean): UseSessionInstance {
       if (!error) setId((data?.current_session_id as string) || null);
       setLoaded(true);
     })();
+    mountDoneRef.current = p;
     return () => { active = false; };
   }, [enabled, uid, setId]);
+
+  // Await the mount read (idRef populated) before Connect decides. Resolves
+  // immediately once done; if the effect hasn't assigned the promise yet (should
+  // not happen — effects run before a user tap), resolves immediately too. The
+  // mount read ALWAYS sets loaded (unauthed/errored included) → never deadlocks.
+  const ensureLoaded = useCallback(async (): Promise<void> => {
+    const p = mountDoneRef.current;
+    if (p) { try { await p; } catch { /* mount read never rejects; ignore defensively */ } }
+  }, []);
 
   // Server-authoritative ended-check (call on Connect). Returns running + id.
   // On any RPC failure → statusFallback (resume if we know an id; never the device
@@ -102,5 +122,5 @@ export function useSessionInstance(enabled: boolean): UseSessionInstance {
     }
   }, [setId]);
 
-  return { currentSessionId, loaded, checkStatus, startSession };
+  return { currentSessionId, loaded, ensureLoaded, checkStatus, startSession };
 }

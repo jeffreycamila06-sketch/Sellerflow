@@ -26,7 +26,6 @@ const base = {
   ttConnected: false, fbConnected: false, ttConnecting: false, fbConnecting: false,
   onConnectTT: noop, onRefreshTT: noop,
   ttAccounts: ["maria_shops"], fbAccounts: [] as string[],
-  sessionDays: 1, sessionOpen: false, onToggleSession: noop, onPickSession: noop,
   printed: {}, entId: null, entPrice: "", onOneClick: noop, onOpenEnt: noop, onEntPrice: noop, onEntKey: noop,
 };
 const renderDash = (over: Record<string, unknown> = {}) =>
