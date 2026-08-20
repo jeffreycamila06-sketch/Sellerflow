@@ -945,6 +945,7 @@ export default function RedesignApp() {
                   {authModal === "login" ? (
                     <Login
                       onLogin={(email, password) => auth.signIn(email, password)}
+                      onGoogle={() => auth.signInWithGoogle()}
                       configured={auth.configured}
                       onSignup={() => setAuthModal("signup")}
                       lang={lang}
@@ -966,6 +967,7 @@ export default function RedesignApp() {
           {screen === "login" && auth.status !== "loading" && (
             <Login
               onLogin={(email, password) => auth.signIn(email, password)}
+              onGoogle={() => auth.signInWithGoogle()}
               configured={auth.configured}
               onSignup={() => setScreen("signup")}
               lang={lang}

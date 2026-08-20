@@ -32,6 +32,10 @@ export interface UseAuthSession {
   profile: AccountUser | null;
   configured: boolean;
   signIn: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  // Google OAuth sign-in. Starts the provider redirect; the sign-in COMPLETES on
+  // return via detectSessionInUrl + onAuthStateChange (same profile-load path as
+  // email/password). Returns {ok,error} — ok means the redirect started.
+  signInWithGoogle: () => Promise<{ ok: boolean; error?: string }>;
   signOut: () => Promise<void>;
   reloadProfile: () => Promise<void>; // 5i — re-fetch own profile after a save
   // Self-serve registration — mirrors App.tsx PublicAuth `reg` (738-758): signUp →
@@ -126,6 +130,26 @@ export function useAuthSession(): UseAuthSession {
     return { ok: true };
   }, []);
 
+  // Google OAuth — ADDED alongside signIn (email/password path untouched). Supabase
+  // links a Google identity to an existing same-email user (verified email), so
+  // existing sellers keep their data. redirectTo = the RUNNING origin so it works on
+  // both sellerflowlive.com and www.sellerflowlive.com (both in Supabase's redirect
+  // allow-list) — never hardcode a domain. On ok the browser redirects to Google;
+  // the session lands on return via detectSessionInUrl + onAuthStateChange (which
+  // loads the profile — that path is unchanged).
+  const signInWithGoogle = useCallback(async () => {
+    if (!isSupabaseConfigured || !supabase) {
+      return { ok: false, error: "Sign-in is unavailable (Supabase not configured)." };
+    }
+    const redirectTo = typeof window !== "undefined" ? window.location.origin : undefined;
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: redirectTo ? { redirectTo } : undefined,
+    });
+    if (error) return { ok: false, error: error.message };
+    return { ok: true };
+  }, []);
+
   const signOut = useCallback(async () => {
     if (!supabase) { setProfile(null); setStatus("anon"); return; }
     await supabase.auth.signOut();
@@ -187,7 +211,7 @@ export function useAuthSession(): UseAuthSession {
     return { ok: true };
   }, [profile]);
 
-  return { status, profile, configured: isSupabaseConfigured, signIn, signOut, reloadProfile, register, deleteAccount };
+  return { status, profile, configured: isSupabaseConfigured, signIn, signInWithGoogle, signOut, reloadProfile, register, deleteAccount };
 }
 
 // ── Pure registration helpers (no Supabase / React — unit-tested) ─────────────

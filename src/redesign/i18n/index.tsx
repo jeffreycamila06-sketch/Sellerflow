@@ -1024,6 +1024,8 @@ const RAW: Record<string, Row> = {
   rd_login_unavailable: { en: "Sign-in is unavailable in this preview (Supabase not configured).", fil: "Hindi available ang sign-in sa preview na ito (hindi naka-configure ang Supabase).", zh: "此预览中无法登录（Supabase 未配置）。", "zh-TW": "此預覽中無法登入（Supabase 未設定）。", vi: "Đăng nhập không khả dụng trong bản xem trước này (Supabase chưa cấu hình).", th: "เข้าสู่ระบบไม่ได้ในพรีวิวนี้ (ยังไม่ตั้งค่า Supabase)", id: "Masuk tidak tersedia di pratinjau ini (Supabase belum dikonfigurasi)." },
   rd_login_logging_in: { en: "Logging in…", fil: "Naglo-log in…", zh: "正在登录…", "zh-TW": "正在登入…", vi: "Đang đăng nhập…", th: "กำลังเข้าสู่ระบบ…", id: "Masuk…" },
   rd_login_login_btn: { en: "Log in", fil: "Mag-log in", zh: "登录", "zh-TW": "登入", vi: "Đăng nhập", th: "เข้าสู่ระบบ", id: "Masuk" },
+  rd_login_google: { en: "Continue with Google", fil: "Magpatuloy gamit ang Google", zh: "使用 Google 继续", "zh-TW": "使用 Google 繼續", vi: "Tiếp tục với Google", th: "ดำเนินการต่อด้วย Google", id: "Lanjutkan dengan Google" },
+  rd_login_or: { en: "or", fil: "o", zh: "或", "zh-TW": "或", vi: "hoặc", th: "หรือ", id: "atau" },
   rd_login_new_here: { en: "New here?", fil: "Bago dito?", zh: "第一次来？", "zh-TW": "第一次來？", vi: "Mới ở đây?", th: "เพิ่งมาใหม่?", id: "Baru di sini?" },
   rd_login_create_account: { en: "Create account", fil: "Gumawa ng account", zh: "创建账户", "zh-TW": "建立帳號", vi: "Tạo tài khoản", th: "สร้างบัญชี", id: "Buat akun" },
   rd_login_need_help: { en: "Need help?", fil: "Kailangan ng tulong?", zh: "需要帮助？", "zh-TW": "需要協助？", vi: "Cần trợ giúp?", th: "ต้องการความช่วยเหลือ?", id: "Butuh bantuan?" },

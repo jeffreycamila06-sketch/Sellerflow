@@ -13,11 +13,15 @@ const label: CSSProperties = { fontSize: 12, fontWeight: 600, color: "var(--text
 const input: CSSProperties = { width: "100%", padding: "13px 14px", border: "1px solid var(--border-strong)", borderRadius: 12, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 14, outline: "none" };
 
 export default function Login({
-  onLogin, onSignup, configured, lang, langOpen, onToggleLang, onPickLang,
+  onLogin, onGoogle, onSignup, configured, lang, langOpen, onToggleLang, onPickLang,
 }: {
   // Phase 5a: real auth. Returns {ok,error}; on ok the parent navigates once the
   // session resolves. Async so the button can show a busy state.
   onLogin: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>;
+  // Google OAuth. Returns {ok,error}; on ok the browser redirects to Google (the
+  // sign-in completes on return). Optional so any caller not wiring it just omits
+  // the button (backward-compatible prop).
+  onGoogle?: () => Promise<{ ok: boolean; error?: string }>;
   onSignup: () => void;
   configured: boolean;
   lang: string;
@@ -31,6 +35,7 @@ export default function Login({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [gbusy, setGbusy] = useState(false); // Google redirect in flight
   const [err, setErr] = useState("");
 
   const submit = async () => {
@@ -42,6 +47,15 @@ export default function Login({
     if (!res.ok) { setErr(res.error || t.rd_login_err_failed); setBusy(false); }
     // on success the parent flips the screen; leave busy=true to avoid a flash.
   };
+  const onGoogleClick = async () => {
+    if (!onGoogle || gbusy || busy) return;
+    setErr("");
+    setGbusy(true);
+    const res = await onGoogle();
+    // On ok the browser redirects to Google — leave gbusy=true to avoid a flash.
+    if (!res.ok) { setErr(res.error || t.rd_login_err_failed); setGbusy(false); }
+  };
+
   // Real <form> submit — the single submit path (button type="submit" OR Enter in a
   // field both fire this natively). Wrapping the credential inputs in a <form> that
   // submits is what lets mobile password managers (iOS Keychain / Google Password
@@ -68,6 +82,31 @@ export default function Login({
         </div>
 
         <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 17, color: "var(--text)", marginBottom: 14 }}>{t.rd_login_welcome}</div>
+
+        {onGoogle && (
+          <>
+            {/* Continue with Google — prominent (above the form), neutral surface (accent
+                stays on the primary Log in button). Official 4-color Google G, unaltered. */}
+            <button type="button" onClick={() => void onGoogleClick()} disabled={!configured || gbusy || busy}
+              style={{ width: "100%", padding: "13px 14px", borderRadius: 13, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 14.5, fontWeight: 700, cursor: (!configured || gbusy || busy) ? "default" : "pointer", opacity: (!configured || gbusy || busy) ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 11 }}>
+              {/* Official Google "G" — 4 brand colors, viewBox 48×48 (square aspect kept). */}
+              <svg width="19" height="19" viewBox="0 0 48 48" aria-hidden="true" style={{ flexShrink: 0 }}>
+                <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+                <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+                <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+              </svg>
+              <span>{t.rd_login_google}</span>
+            </button>
+
+            {/* "or" divider */}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "16px 0" }}>
+              <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-dim)" }}>{t.rd_login_or}</span>
+              <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+            </div>
+          </>
+        )}
 
         {/* Real <form> so password managers offer to save. display:contents keeps the
             exact flex-column layout (the form generates no box of its own). */}

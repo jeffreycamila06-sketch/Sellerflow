@@ -6,11 +6,15 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { TProvider } from "../../i18n";
 import Login from "../Login";
 
-function renderLogin(onLogin = vi.fn(async () => ({ ok: true }))) {
-  render(
+function renderLogin(
+  onLogin = vi.fn(async () => ({ ok: true })),
+  onGoogle: (() => Promise<{ ok: boolean; error?: string }>) | undefined = undefined,
+) {
+  const { container } = render(
     <TProvider lang="en">
       <Login
         onLogin={onLogin}
+        onGoogle={onGoogle}
         onSignup={vi.fn()}
         configured={true}
         lang="en"
@@ -23,7 +27,7 @@ function renderLogin(onLogin = vi.fn(async () => ({ ok: true }))) {
   const email = document.querySelector('input[name="username"]') as HTMLInputElement;
   const password = document.querySelector('input[name="password"]') as HTMLInputElement;
   const form = email.closest("form") as HTMLFormElement;
-  return { onLogin, email, password, form };
+  return { onLogin, email, password, form, container };
 }
 
 describe("Login — password-manager form shape", () => {
@@ -78,5 +82,45 @@ describe("Login — exactly one submit path", () => {
     const { onLogin, form } = renderLogin();
     fireEvent.submit(form);
     expect(onLogin).not.toHaveBeenCalled();
+  });
+});
+
+describe("Login — Continue with Google", () => {
+  it("no onGoogle → no Google button (backward-compatible)", () => {
+    renderLogin(); // onGoogle omitted
+    expect(screen.queryByText(/continue with google/i)).toBeNull();
+  });
+
+  it("with onGoogle → renders the button, the official 4-color G, and an 'or' divider", () => {
+    const onGoogle = vi.fn(async () => ({ ok: true }));
+    const { container } = renderLogin(vi.fn(async () => ({ ok: true })), onGoogle);
+    const gbtn = screen.getByRole("button", { name: /continue with google/i });
+    expect(gbtn).toBeTruthy();
+    // Google button is NEUTRAL (theme tokens, not the accent) and light/dark aware.
+    expect(gbtn.style.background).toContain("var(--surface)");
+    expect(gbtn.style.border).toContain("var(--border-strong)");
+    expect(gbtn.style.color).toContain("var(--text)");
+    // Official Google G = all four brand colors present, unaltered, square viewBox.
+    const svg = gbtn.querySelector("svg")!;
+    expect(svg.getAttribute("viewBox")).toBe("0 0 48 48"); // aspect ratio preserved
+    const fills = Array.from(svg.querySelectorAll("path")).map((p) => p.getAttribute("fill"));
+    expect(fills).toEqual(expect.arrayContaining(["#EA4335", "#4285F4", "#FBBC05", "#34A853"]));
+    // 'or' divider text present.
+    expect(screen.getByText("or")).toBeTruthy();
+    expect(container).toBeTruthy();
+  });
+
+  it("clicking Google calls onGoogle exactly once (does NOT call onLogin)", async () => {
+    const onGoogle = vi.fn(async () => ({ ok: true }));
+    const { onLogin } = renderLogin(vi.fn(async () => ({ ok: true })), onGoogle);
+    fireEvent.click(screen.getByRole("button", { name: /continue with google/i }));
+    await waitFor(() => expect(onGoogle).toHaveBeenCalledTimes(1));
+    expect(onLogin).not.toHaveBeenCalled();
+  });
+
+  it("the Google button is type=button (never submits the login form)", () => {
+    renderLogin(vi.fn(async () => ({ ok: true })), vi.fn(async () => ({ ok: true })));
+    const gbtn = screen.getByRole("button", { name: /continue with google/i });
+    expect(gbtn.getAttribute("type")).toBe("button");
   });
 });
