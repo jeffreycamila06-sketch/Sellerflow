@@ -42,7 +42,11 @@ export default function Login({
     if (!res.ok) { setErr(res.error || t.rd_login_err_failed); setBusy(false); }
     // on success the parent flips the screen; leave busy=true to avoid a flash.
   };
-  const onKey = (e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") { e.preventDefault(); void submit(); } };
+  // Real <form> submit — the single submit path (button type="submit" OR Enter in a
+  // field both fire this natively). Wrapping the credential inputs in a <form> that
+  // submits is what lets mobile password managers (iOS Keychain / Google Password
+  // Manager) recognize a login and offer to SAVE it. preventDefault keeps it an SPA.
+  const onFormSubmit = (e: React.FormEvent) => { e.preventDefault(); void submit(); };
   return (
     <div style={{ minHeight: "100%", display: "flex", flexDirection: "column", position: "relative" }}>
       {/* hero band */}
@@ -65,18 +69,22 @@ export default function Login({
 
         <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 17, color: "var(--text)", marginBottom: 14 }}>{t.rd_login_welcome}</div>
 
-        <label style={label}>{t.rd_login_phone_email}</label>
-        <input value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={onKey} autoComplete="username" inputMode="email" placeholder={t.rd_login_email_ph} style={{ ...input, fontWeight: 600, marginBottom: 14 }} />
+        {/* Real <form> so password managers offer to save. display:contents keeps the
+            exact flex-column layout (the form generates no box of its own). */}
+        <form onSubmit={onFormSubmit} style={{ display: "contents" }}>
+          <label style={label}>{t.rd_login_phone_email}</label>
+          <input value={email} onChange={(e) => setEmail(e.target.value)} name="username" autoComplete="username" inputMode="email" placeholder={t.rd_login_email_ph} style={{ ...input, fontWeight: 600, marginBottom: 14 }} />
 
-        <label style={label}>{t.rd_login_password}</label>
-        <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={onKey} autoComplete="current-password" placeholder={t.rd_login_password_ph} style={input} wrapStyle={{ marginBottom: 8 }} />
+          <label style={label}>{t.rd_login_password}</label>
+          <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} name="password" autoComplete="current-password" placeholder={t.rd_login_password_ph} style={input} wrapStyle={{ marginBottom: 8 }} />
 
-        <div style={{ textAlign: "right", marginBottom: 16 }}><span onClick={() => setForgotOpen(true)} style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-fg)", cursor: "pointer" }}>{t.rd_login_forgot}</span></div>
+          <div style={{ textAlign: "right", marginBottom: 16 }}><span onClick={() => setForgotOpen(true)} style={{ fontSize: 12, fontWeight: 700, color: "var(--accent-fg)", cursor: "pointer" }}>{t.rd_login_forgot}</span></div>
 
-        {err && <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--danger)", background: "var(--danger-soft, rgba(225,29,72,.1))", border: "1px solid var(--danger)", borderRadius: 10, padding: "9px 12px", marginBottom: 12 }}>{err}</div>}
-        {!configured && <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>{t.rd_login_unavailable}</div>}
+          {err && <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--danger)", background: "var(--danger-soft, rgba(225,29,72,.1))", border: "1px solid var(--danger)", borderRadius: 10, padding: "9px 12px", marginBottom: 12 }}>{err}</div>}
+          {!configured && <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>{t.rd_login_unavailable}</div>}
 
-        <button onClick={() => void submit()} disabled={busy} className={busy ? undefined : "sfl-anim-glow"} style={{ width: "100%", padding: "14px 0", border: "none", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14.5, fontWeight: 700, cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1, boxShadow: "0 6px 18px var(--accent-soft)" }}>{busy ? t.rd_login_logging_in : t.rd_login_login_btn}</button>
+          <button type="submit" disabled={busy} className={busy ? undefined : "sfl-anim-glow"} style={{ width: "100%", padding: "14px 0", border: "none", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14.5, fontWeight: 700, cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1, boxShadow: "0 6px 18px var(--accent-soft)" }}>{busy ? t.rd_login_logging_in : t.rd_login_login_btn}</button>
+        </form>
 
         <div style={{ textAlign: "center", marginTop: 16, fontSize: 12.5, color: "var(--text-dim)" }}>{t.rd_login_new_here} <span onClick={onSignup} style={{ fontWeight: 700, color: "var(--accent-fg)", cursor: "pointer" }}>{t.rd_login_create_account}</span></div>
 

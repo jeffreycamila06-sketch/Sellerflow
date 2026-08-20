@@ -5,13 +5,16 @@ import { useState, type CSSProperties } from "react";
 import { useT } from "../i18n";
 
 export default function PasswordInput({
-  value, onChange, onKeyDown, placeholder, autoComplete, style, wrapStyle,
+  value, onChange, onKeyDown, placeholder, autoComplete, name, style, wrapStyle,
 }: {
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   placeholder?: string;
   autoComplete?: string;
+  // Forwarded to the inner <input> so password managers can pair it with the
+  // username field (they key off name + autoComplete). Optional/additive.
+  name?: string;
   style?: CSSProperties;       // applied to the <input> (no layout margins — use wrapStyle)
   wrapStyle?: CSSProperties;   // layout margins go here so the eye stays vertically centered
 }) {
@@ -26,6 +29,7 @@ export default function PasswordInput({
         onKeyDown={onKeyDown}
         placeholder={placeholder}
         autoComplete={autoComplete}
+        name={name}
         style={{ ...style, paddingRight: 44 }}
       />
       <button
