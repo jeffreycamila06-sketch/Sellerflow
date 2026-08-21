@@ -36,9 +36,19 @@ export const accountSlots = (value: string, limit: number): string[] => {
 
 // Preserve already-saved (locked) accounts: at each slot index the ORIGINAL value
 // wins over the edited one — a seller can't overwrite a server-known account.
-// Verbatim App.tsx:263.
-export const keepLockedAccounts = (original: string, next: string, limit: number): string =>
-  accountText(accountSlots(next, limit).map((value, index) => accountSlots(original, limit)[index] || value));
+// Verbatim App.tsx:263 EXCEPT the optional `unlocked` indices: a slot whose 4-hour
+// cooldown has expired (server-verified) accepts the new value instead of the locked
+// original. unlocked = [] (default) → byte-identical to the original behavior.
+export const keepLockedAccounts = (original: string, next: string, limit: number, unlocked: number[] = []): string =>
+  accountText(accountSlots(next, limit).map((value, index) =>
+    unlocked.includes(index) ? value : (accountSlots(original, limit)[index] || value)));
+
+// Blank the given slot indices in a saved list — used to build the "still-locked"
+// original for cap accounting so a cooldown-unlocked REPLACEMENT doesn't resurrect the
+// old handle or double-count against the plan cap. unlocked = [] → returns the input.
+const blankUnlockedSlots = (value: string, limit: number, unlocked: number[]): string =>
+  unlocked.length === 0 ? value : accountText(accountSlots(value, limit).map((v, i) => (unlocked.includes(i) ? "" : v)));
+
 
 // Enforce the COMBINED tiktok+facebook cap: keep all already-saved accounts first,
 // then fill from the edited lists until the plan limit is hit. Verbatim App.tsx:264-273.
@@ -60,11 +70,22 @@ export const fitProfileAccounts = <P extends { tiktok: string; facebook: string 
 // Pure → unit-tested; the RedesignApp save handler just upserts the result.
 export function composeChannelSave<P extends { tiktok: string; facebook: string }>(
   original: P, lists: { tiktok: string; facebook: string }, limit: number, isAdmin: boolean,
+  // Slot indices the 4-hour cooldown has UNLOCKED (server-verified), per platform.
+  // Default {} → byte-identical to the pre-cooldown behavior (all saved slots locked).
+  // A still-locked slot (index NOT listed) can never be overwritten here.
+  unlocked: { tiktok?: number[]; facebook?: number[] } = {},
 ): { tiktok: string; facebook: string } {
   if (isAdmin) return { tiktok: lists.tiktok, facebook: lists.facebook };
-  const tiktok = keepLockedAccounts(original.tiktok, lists.tiktok, limit);
-  const facebook = keepLockedAccounts(original.facebook, lists.facebook, limit);
-  const fitted = fitProfileAccounts(original, { tiktok, facebook }, limit);
+  const ttU = unlocked.tiktok ?? [];
+  const fbU = unlocked.facebook ?? [];
+  const tiktok = keepLockedAccounts(original.tiktok, lists.tiktok, limit, ttU);
+  const facebook = keepLockedAccounts(original.facebook, lists.facebook, limit, fbU);
+  // For the COMBINED-cap step, the "locked-first" originals must DROP the unlocked
+  // slots' old values (they are being replaced) so a replacement neither resurrects the
+  // old handle nor counts twice against the cap. Still-locked slots stay in the original
+  // → preserved-first → protected.
+  const capOriginal = { ...original, tiktok: blankUnlockedSlots(original.tiktok, limit, ttU), facebook: blankUnlockedSlots(original.facebook, limit, fbU) };
+  const fitted = fitProfileAccounts(capOriginal, { tiktok, facebook }, limit);
   return { tiktok: fitted.tiktok, facebook: fitted.facebook };
 }
 
