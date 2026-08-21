@@ -89,6 +89,40 @@ describe("composeChannelSave — Channels save compose (App.tsx handleSaveProfil
   });
 });
 
+describe("composeChannelSave — cooldown-unlocked slots (4h self-service)", () => {
+  it("REGRESSION: no unlocked arg → byte-identical to the pre-cooldown behavior (still locked)", () => {
+    // Same inputs as the 'locked-wins' case above; passing {} must not change a thing.
+    const out = composeChannelSave({ tiktok: "a", facebook: "" }, { tiktok: "x\nb", facebook: "" }, 3, false, {});
+    expect(accountList(out.tiktok)).toEqual(["a", "b"]); // 'a' STILL locked, 'x' ignored
+  });
+
+  it("an UNLOCKED slot accepts the new value (replacement)", () => {
+    // slot0 'a' saved but cooldown-unlocked → 'x' replaces 'a'. Count unchanged.
+    const out = composeChannelSave({ tiktok: "a", facebook: "" }, { tiktok: "x", facebook: "" }, 3, false, { tiktok: [0] });
+    expect(accountList(out.tiktok)).toEqual(["x"]); // replaced, old 'a' gone (not resurrected)
+  });
+
+  it("a STILL-LOCKED slot is protected even when ANOTHER slot is unlocked", () => {
+    // slot0 'a' locked, slot1 'b' unlocked→'z'. 'a' must survive; 'b'→'z'.
+    const out = composeChannelSave({ tiktok: "a\nb", facebook: "" }, { tiktok: "x\nz", facebook: "" }, 3, false, { tiktok: [1] });
+    expect(accountList(out.tiktok)).toEqual(["a", "z"]); // slot0 'a' kept (edit 'x' ignored), slot1 replaced
+  });
+
+  it("cap still holds: an unlocked replacement never lets the combined count exceed the plan", () => {
+    // master=... here pro=2: tiktok slot0 'a' unlocked→'x', facebook 'b' locked. Result 2 total, not 3.
+    const out = composeChannelSave({ tiktok: "a", facebook: "b" }, { tiktok: "x", facebook: "b" }, 2, false, { tiktok: [0] });
+    expect(accountList(out.tiktok)).toEqual(["x"]);
+    expect(accountList(out.facebook)).toEqual(["b"]); // fb locked account preserved, cap = 2 respected
+  });
+
+  it("unlocking one platform's slot does NOT unlock the other platform's saved slot", () => {
+    // tiktok slot0 unlocked; facebook slot0 'f' still locked → fb edit 'q' ignored.
+    const out = composeChannelSave({ tiktok: "a", facebook: "f" }, { tiktok: "x", facebook: "q" }, 3, false, { tiktok: [0] });
+    expect(accountList(out.tiktok)).toEqual(["x"]);
+    expect(accountList(out.facebook)).toEqual(["f"]); // other platform stays protected
+  });
+});
+
 describe("connectToast — honest success/error toast for the chip connect", () => {
   it("ok → success toast with the given message", () => {
     expect(connectToast({ ok: true }, "Connected!", "Connection failed.")).toEqual({ msg: "Connected!", kind: "ok" });

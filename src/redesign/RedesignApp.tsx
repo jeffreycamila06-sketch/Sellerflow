@@ -145,10 +145,12 @@ export default function RedesignApp() {
   // server-known slots) + fitProfileAccounts (combined plan cap), admin bypass — all
   // folded into the pure composeChannelSave. Spreads existing profile; never writes
   // plan/role (trigger-protected). reloadProfile after → locks refresh.
-  const saveChannels = async (lists: { tiktok: string; facebook: string }) => {
+  const saveChannels = async (lists: { tiktok: string; facebook: string }, opts?: { unlocked?: { tiktok?: number[]; facebook?: number[] } }) => {
     if (!auth.profile) return { ok: false, error: "Not signed in" };
     const cur = auth.profile;
-    const next = composeChannelSave(cur.profile, lists, maxAcc(cur.plan), isAdminRole(cur.role));
+    // `unlocked` (default {}) = slot indices the 4h cooldown has server-verified as
+    // editable; composeChannelSave still protects every still-locked slot + the cap.
+    const next = composeChannelSave(cur.profile, lists, maxAcc(cur.plan), isAdminRole(cur.role), opts?.unlocked ?? {});
     const updated = { ...cur, profile: { ...cur.profile, tiktok: next.tiktok, facebook: next.facebook } };
     try {
       await upsertUser(updated);
