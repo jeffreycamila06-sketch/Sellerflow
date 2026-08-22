@@ -3727,3 +3727,93 @@ by `onPrinterFocused` right after the scroll fires once — survives the conditi
 - **Supabase admin RPCs:** do NOT revoke EXECUTE from `authenticated` — see the Jul 23
   SUPABASE HARDENING CORRECTION (admins ARE `authenticated`; protection is the internal
   `is_admin()` guards). Re-confirmed live.
+
+## SESSION 2026-08-19/21 — SESSION-ID BUYER# MODEL + LOGIN SAVE-PASSWORD + USERNAME COOLDOWN (all LIVE on main)
+Three features shipped Aug 19–21, all merged + Vercel-prod-verified. `main` tip =
+**`45605ed`**. Each: branch → diff → independent adversarial audit → merge → prod verify.
+**server.js UNTOUCHED across all three** (no Render deploy); DB changes applied live via
+MCP with SQL mirrors in the repo. 1500 vitest green at the final merge; lint 56/56 parity.
+
+### 1. SESSION-ID BUYER# STABILITY ✅ (merge `904d20d` + post-fix `5df7628`)
+**BUG:** buyer# (the parcel-sorting backbone) was scoped per `session_date` (per Taipei
+DAY), but real sessions span multiple days → the window moved mid-run → orders were
+renumbered / hidden mid-session (live complaints). **FIX = explicit session model:**
+- **Connect → REQUIRED session-picker modal** (1/2/3/4-day). 1-day starts immediately;
+  2/3/4-day shows an immutability confirmation (can't change length until it ends). A
+  running session skips the picker.
+- **buyer# scoped per `session_id`** (not per day): continuous across the session's days,
+  **stable across refresh / relogin / device**, resets to **#1 only at a NEW session**.
+- **Server-Taipei ended-check** via `session_status()` RPC (`now() at time zone
+  'Asia/Taipei'`) — NEVER the device clock (the clock only *triggers* a re-check on Taipei-
+  day rollover; the server decides). The feed loads by `session_id`
+  (`loadLiveSessionBySessionId`); `start_session(p_days)` stamps server `now()` +
+  `gen_random_uuid()`.
+- **Legacy byte-unchanged:** ~**29,060 NULL-`session_id` orders** keep the OLD per-
+  `session_date` load path (gated on `current_session_id`); a seller only enters the new
+  model on their first new-model Connect.
+- **DB (live):** sql/20 (additive `session_id` on `live_session_orders` +
+  `current_session_id`/`session_started_at`/`session_window_days` on `seller_session_config`,
+  all nullable, no backfill) · sql/21 (`session_status()` + `start_session()`, INVOKER,
+  own-row `auth.uid()`, validate 1..4) · sql/22 (`idx_lso_user_session`).
+- **POST-FIX `5df7628`:** after `start_session` the client does a small own-scoped
+  **read-back** of `session_started_at`/`session_window_days` so the header **"Session ends:
+  {date}"** indicator renders immediately (was blank until a refresh). Read-back is the
+  SERVER value (server-Taipei), isolated in its own try/catch so a read failure never turns
+  a successful create into a session-less state.
+- ⚠️ **Deploy caveat (by design):** the first new-model Connect for a legacy seller who is
+  mid-day live resets their numbering to #1 → deploy in a zero-live window; sellers
+  close+reopen. Multi-device transitional caveat: an OLD bundle reading `window_days=4`
+  clamps to 1 until full close-open (same hazard class as the 2/3-day rollouts).
+
+### 2. LOGIN SAVE-PASSWORD `<form>` FIX ✅ (merge `d93b4fd`)
+**BUG:** the login email + password inputs had the right `autoComplete` attrs but were NOT
+wrapped in a `<form>` that submits → iOS Keychain / Google Password Manager frequently
+never offered to **save** credentials. **FIX:** wrap email + `PasswordInput` + button in a
+real `<form onSubmit>` (preventDefault → submit). `style={{display:"contents"}}` keeps the
+flex-column layout **byte-identical**; button → `type="submit"` and the old onClick/onKeyDown
+removed so **exactly one submit path** fires (button click AND Enter). Added `name="username"`
++ forwarded `name="password"` through `PasswordInput` (managers pair on name + autoComplete).
+- 🔑 **RULE:** the "no `<form>` in artifacts" guidance is **chat-artifact-only** — the
+  PRODUCTION app is exactly where a real HTML `<form>` is the correct, standard solution.
+  Owner device-tested: the "Save password?" prompt now appears.
+
+### 3. SELF-SERVICE TIKTOK/FB USERNAME 4-HOUR COOLDOWN ✅ (merge `45605ed`)
+Saved username slots were **permanently locked** (Telegram-only change). Now a saved slot
+**auto-unlocks 4h after its last change** (server-Taipei time, never the device clock),
+giving the seller a **~5-minute one-save window on open** (decision B); after a save it
+**re-locks and the 4h timer restarts**. While locked it shows **"Unlock in Xh Ym"**; admin
+bypasses; the cooldown is keyed **PER-SLOT** (`user_id, platform, slot_index`), NOT
+per-handle → changing tiktok:0 never unlocks tiktok:1 or facebook:0.
+- 🔑 **KEY FACT (load-bearing): the account lock is NOT DB-trigger-enforced.**
+  `seller_profiles_on_update` gates plan/role/expiry ONLY, **not** `tiktok`/`facebook`
+  (sellers legitimately edit their own channels). The lock is **CLIENT-SIDE**
+  (`composeChannelSave` → `keepLockedAccounts` + the disabled input); **`saveChannels` is the
+  sole writer** of `seller_profiles.tiktok/.facebook`. The new `touch_tiktok_slot` RPC is a
+  server-side gate the legit flow honors (a NET increase in enforcement), but the account
+  list itself remains self-writable under RLS — same as before this feature (no regression).
+- **DOUBLE-GATED:** the client disables/rejects a cooling slot AND the server RPC RAISES
+  `cooldown_active` (`<4h` and not `is_admin()`) → a forged client that skips the client
+  check still can't record a change on a cooling slot. On save, each changed unlocked slot
+  calls `touch_tiktok_slot` FIRST; a raise → abort with an error, **nothing persisted** (no
+  partial save). `composeChannelSave` gained an optional `unlocked` slot-index set (default
+  `{}` = **byte-identical to before**); a still-locked slot (not in the set) can never be
+  overwritten and the **combined plan cap** still holds (unlocked replacement is
+  cap-neutral via a blanked cap-original).
+- **SERVER-TIME:** client `serverNow = Date.now() + offset` where `offset = server_now(RPC) −
+  Date.now()` captured once (immune to a static device-clock skew); a dynamic post-fetch
+  clock-forward can fool the client DISPLAY, but the server touch gate still blocks the write
+  → no early unlock in effect.
+- **DB (live):** table **`tiktok_account_changes`** (`user_id, platform, slot_index,
+  last_changed_at`; PK = all-but-timestamp; **RLS on, own-scoped select/insert/update, NO
+  DELETE policy** so a seller can't delete a row to reset the timer) + RPCs
+  **`tiktok_slot_cooldowns()`** (returns own `last_changed_at` + `server_now`; empty result =
+  successful load, nothing to lock) and **`touch_tiktok_slot(p_platform, p_slot_index)`**
+  (server 4h gate + admin bypass). Both INVOKER. sql/23 (table) + sql/24 (RPCs) = mirrors.
+- **FAIL-CLOSED:** if `tiktok_slot_cooldowns()` errors / no-supabase, saved slots stay
+  LOCKED (so the pre-feature "saved = locked" behavior + its test are unchanged). Audited
+  **LOW risk** (lock integrity, server-time, plan cap all teeth-verified).
+- ⚠️ **NOTED behavior change:** admins can now edit their **own** saved slots in
+  ManageChannels (the input was disabled for everyone before) — consistent with admin's
+  existing verbatim-save authority; grants a non-admin nothing.
+- i18n: `rd_ch_unlock_in` / `rd_ch_edit_window` / `rd_ch_cooldown_err` ×7. Web + sql mirrors
+  only; server.js untouched.
