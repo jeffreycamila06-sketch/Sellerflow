@@ -66,23 +66,27 @@
   --glow-a: rgba(var(--_accent-rgb), .5);
 }
 
-/* ── DARK theme ("automation" indigo look) — dc.html L999–1008 + common ──────
- * accent *text* uses the LIGHT shade; soft = base @ 24%, softer = base @ 14%;
- * app-bg is a radial gradient whose first stop swaps with the accent's dark. */
+/* ── DARK theme (neutral slate — Linear/Vercel direction, 2026) ──────────────
+ * Neutral near-black base + off-white text; the brand accent stays the single
+ * saturated color. Elevation via lighter SOLID surfaces, not shadow. The old
+ * purple-saturated radial app-bg + cyan/grid decoration are gone. accent tokens
+ * are UNCHANGED (accent *text* = LIGHT shade, soft = base @ 24/14%) — on the flat
+ * neutral base each accent reads cleaner. */
 [data-redesign][data-theme="dark"] {
-  --app-bg: radial-gradient(125% 95% at 50% -12%, var(--_accent-dark) 0%, #15123f 46%, #0a0824 100%);
-  --surface: rgba(255,255,255,.055);
-  --surface-2: rgba(255,255,255,.03);
-  --surface-3: rgba(255,255,255,.09);
-  --border: rgba(255,255,255,.10);
-  --border-strong: rgba(255,255,255,.18);
-  --text: #ffffff;
-  --text-dim: #c2c9ee;
-  --text-muted: rgba(224,231,255,.5);
+  /* neutral / structural */
+  --app-bg: #0e1017;
+  --surface: #181b23;
+  --surface-2: #14161d;
+  --surface-3: #20242e;
+  --border: rgba(255,255,255,.09);
+  --border-strong: rgba(255,255,255,.16);
+  --text: #e6e8ee;
+  --text-dim: #9aa3b2;
+  --text-muted: #6b7280;
   --on-header: #ffffff;
-  --nav-bg: rgba(16,12,46,.66);
-  --shadow: 0 10px 30px rgba(0,0,0,.45);
-  --chip-bg: rgba(255,255,255,.07);
+  --nav-bg: rgba(18,21,28,.92);
+  --shadow: 0 8px 24px rgba(0,0,0,.35);
+  --chip-bg: rgba(255,255,255,.06);
   --ok: #34d399;
   --warn: #fbbf24;
   --danger: #fb7185;
@@ -93,12 +97,14 @@
   --handle: var(--_accent-light);
   --accent-soft: rgba(var(--_accent-rgb), .24);
   --accent-softer: rgba(var(--_accent-rgb), .14);
-  --header-bg: rgba(16,12,46,.62);
-  --glow-a: rgba(var(--_accent-rgb), .55);
-  /* decorative dark-bg layers (README "Themes"): cyan glow + animated grid.
-     dc.html L87 cyan glow rgba(34,211,238,.34); grid 1px rgba(255,255,255,.045). */
-  --glow-cyan: rgba(34,211,238,.34);
-  --grid-line: rgba(255,255,255,.045);
+  --header-bg: rgba(18,21,28,.85);
+  /* decorative glows/grid NEUTRALIZED (no loud haze on the neutral base). The
+     tokens are KEPT (not deleted) because .sfl-glow-a / .sfl-glow-cyan and the
+     .sfl-grid overlay in redesign.css still reference them via var(); set to a
+     minimal accent glow / transparent so nothing breaks and nothing shouts. */
+  --glow-a: rgba(var(--_accent-rgb), .10);
+  --glow-cyan: transparent;
+  --grid-line: transparent;
 }
 
 /* ── Typography families (Google Fonts loaded via index.html; NOT applied to

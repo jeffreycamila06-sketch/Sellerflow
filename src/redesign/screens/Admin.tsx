@@ -140,7 +140,12 @@ const editTa: CSSProperties = { width: "100%", padding: "10px 12px", border: "1p
 // Real Taiwan prices: Master NT$1,700 · Pro NT$1,200 · Basic NT$500.
 // Batch E (#14): matchPlan now imported from lib/planPricing — thresholds ARE
 // the PLAN_PRICE tier values, one source with deriveMrr (was a re-typed copy here).
-const planFg = (plan: string) => ({ Master: "#7c3aed", Pro: "#0284c7", Basic: "#059669", Free: "#9795ad" } as Record<string, string>)[plan] || "var(--text-dim)";
+// Free uses a theme token (was the hardcoded LIGHT --text-muted #9795ad, muddy on the
+// dark surface). --text-dim adapts: light #5a5872 / dark #9aa3b2 (~6.5:1 on --surface).
+// Master/Pro/Basic keep their tier hues; ⚠️ Master #7c3aed is low-contrast (~2.5:1) on
+// the new dark --surface — flagged for a possible future tier-color pass, not changed
+// here (tier semantics left intact per the dark-mode redesign scope).
+const planFg = (plan: string) => ({ Master: "#7c3aed", Pro: "#0284c7", Basic: "#059669", Free: "var(--text-dim)" } as Record<string, string>)[plan] || "var(--text-dim)";
 
 const NOTIFS = [
   { kind: "New sign-up", title: "Carla Mendoza signed up", sub: "Carla Finds · 12m ago", tint: "var(--accent-soft)", ink: "var(--accent-fg)" },
