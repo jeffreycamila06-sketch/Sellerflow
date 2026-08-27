@@ -7,7 +7,7 @@ import { planLabel } from "../adapters/useAuthSession";
 import { useT, tpl } from "../i18n";
 import type { AccountUser } from "../../accountDb";
 import type { FreeStatus } from "../adapters/useFreeCap";
-import { planDaysLeft, daysDisplay } from "../../lib/planWindow";
+import { planDaysLeft, daysDisplay, isTimeLimitedPlan } from "../../lib/planWindow";
 import { TELEGRAM_HANDLE, TELEGRAM_URL } from "../../lib/telegram";
 
 const tgPlane = <svg width="19" height="19" viewBox="0 0 24 24" fill="#fff"><path d="M21.5 4.3 3.2 11.4c-1 .4-1 1.8.1 2.1l4.6 1.4 1.8 5.6c.2.7 1.1.9 1.6.3l2.5-2.6 4.7 3.4c.6.4 1.4.1 1.6-.6l3-15c.2-1-.7-1.8-1.6-1.3Z" /></svg>;
@@ -36,6 +36,14 @@ export default function Subscription({ account = null, isFreeUser = false, freeS
   const status = account ? account.planStatus : "active";
   const expiry = account ? account.planExpiry : "2026-07-28T00:00:00.000Z";
   const statusLabel = status === "active" ? t.rd_sub_active : status === "expired" ? t.rd_sub_expired : t.rd_sub_pending;
+  // The "Renews on / Days left" block is PLAN-gated, NOT expiry-gated. The free
+  // tier never renews (lifetime cap, no expiry), so it must be hidden for free —
+  // even for a free seller carrying a STALE non-null plan_expiry left over from a
+  // previously-paid subscription (the actual bug: keying off plan_expiry showed a
+  // bogus future "Renews on"). isTimeLimitedPlan(plan) = plan !== "free" (case-
+  // insensitive, over the raw db plan value). Demo/signed-out (account null) = the
+  // Pro demo → paid → block shown, unchanged.
+  const paidPlan = isTimeLimitedPlan(account ? account.plan : "pro");
   return (
     <div>
       <div style={headerBar}><div className="sfl-anim-beat" style={headerTitle}>{t.rd_sub_title}</div></div>
@@ -48,10 +56,12 @@ export default function Subscription({ account = null, isFreeUser = false, freeS
               <span style={{ fontSize: 11, fontWeight: 800, background: "rgba(255,255,255,.22)", padding: "4px 9px", borderRadius: 7 }}>{statusLabel}</span>
             </div>
             <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 30, marginTop: 8, letterSpacing: "-.02em" }}>{plan}</div>
+            {paidPlan && (
             <div style={{ display: "flex", gap: 18, marginTop: 18 }}>
               <div><div style={{ fontSize: 11, opacity: 0.85 }}>{t.rd_sub_renews}</div><div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>{fmtDate(expiry)}</div></div>
               <div><div style={{ fontSize: 11, opacity: 0.85 }}>{t.rd_sub_days_left}</div><div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>{daysLeftDisplay(expiry) === "—" ? "—" : `${daysLeftDisplay(expiry)} ${t.rd_sub_days_unit}`}</div></div>
             </div>
+            )}
           </div>
         </div>
 
