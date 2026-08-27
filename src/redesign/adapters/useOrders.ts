@@ -162,6 +162,19 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCap
     }).catch((err) => {
       if (isCapError(err)) onCapReached?.(err);
       else { console.warn("Background database save failed", err); onWriteError?.(err); }
+    }).finally(() => {
+      // (5) NEAR-CAP TIMING FIX: resync the free-tier usage counter (App.tsx:4384 —
+      //     free users) AFTER this billing write has SETTLED, not synchronously mid-tick.
+      //     saveOrderToDatabase fires the DB check_and_increment_free_order trigger;
+      //     running afterWrite (→ afterOrder → free_tier_status_for_user refetch) here in
+      //     .finally means refresh() reads the COMMITTED post-increment count, so the
+      //     near-cap modal appears at encode-time instead of only on the next reload.
+      //     .finally runs EXACTLY ONCE (success or failure) → no new double-fire (the
+      //     old code also refreshed twice in the cap case: onCapReached + the sync
+      //     afterWrite — the modal guards make that safe). afterWrite is a no-op for
+      //     non-free users. Off the synchronous return path — the order is already in
+      //     the feed, printed, and buyer-numbered before this runs.
+      afterWrite?.();
     });
     // 4b) SESSION write (the operational backbone). msgId-bearing → the durable
     //     retry outbox (idempotent via ux_lso_user_msgid). No msgId (Facebook) or
@@ -185,8 +198,9 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCap
         console.warn("Stock decrement failed", err); onStockError?.(err);
       });
     }
-    // 5) resync the usage counter (App.tsx:4384 — free users).
-    afterWrite?.();
+    // (5) — the free-user usage-counter resync now runs post-commit in the billing
+    //      write's .finally() above (NEAR-CAP TIMING FIX), not synchronously here, so
+    //      the refetch reads the incremented count. Nothing to do on the sync path.
     return order;
   }, [getBuyers, applyOrder, sessionDate, sessionId, isCapped, onCapBlocked, onCapReached, onWriteError, onStockError, afterWrite, onPrint, onEnsureWindow, enqueueLiveSession, isMsgIdOrdered]);
 
