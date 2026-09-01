@@ -382,7 +382,13 @@ export function buildTsplStickerReference(
       if (cleanItem) {
         // Buyer's short price code -> same base as the grand Total amount:
         // font "4", 2x width, 1x height. truncate(12) guards the column width.
-        writeTextSmart(180, y, "4", safe(truncate(cleanItem, 12)), 2, pm, 2, pm);
+        // PRICE-NEXT-TO-TIME (owner req): x = time_x(16) + time width + TWO
+        // spaces, all in the TIME's font "2" (12-dot cell) at the time's scale
+        // tm, so the gap reads ~2 spaces at 1x/2x/3x and tracks the actual time
+        // length (never overlaps the time). ONLY x changes — font/width/height
+        // untouched. No time on this row -> keep the legacy x=180.
+        const priceX = time ? 16 + (truncate(time, 10).length + 2) * 12 * tm : 180;
+        writeTextSmart(priceX, y, "4", safe(truncate(cleanItem, 12)), 2, pm, 2, pm);
       }
       const d = Math.max((tm - 1) * F2, (pm - 1) * F4);
       y += 38 + d;
