@@ -769,7 +769,14 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                     // Buyer's short price code (e.g. 150/250/600) -> SAME base as
                     // the grand Total amount: font "4", 2x width, 1x height.
                     // truncate(12) guards the column width at font 4 2x.
-                    writeTextSmart(&out, 180, y, "4", tsplSafe(truncate16(cleanItem, 12)), 2, pm, 2, pm, c.rightEdge)
+                    // PRICE-NEXT-TO-TIME (owner req): x = time_x(16) + time width
+                    // + TWO spaces, all in the TIME's font "2" (12-dot cell) at the
+                    // time's scale tm, so the gap reads ~2 spaces at 1x/2x/3x and
+                    // tracks the actual time length (never overlaps the time). ONLY
+                    // x changes. utf16.count matches Java length()/JS .length. No
+                    // time on this row -> keep the legacy x=180.
+                    let priceX = time.isEmpty ? 180 : 16 + (truncate16(time, 10).utf16.count + 2) * 12 * tm
+                    writeTextSmart(&out, priceX, y, "4", tsplSafe(truncate16(cleanItem, 12)), 2, pm, 2, pm, c.rightEdge)
                 }
                 let d = max((tm - 1) * F2, (pm - 1) * F4)
                 y += 38 + d

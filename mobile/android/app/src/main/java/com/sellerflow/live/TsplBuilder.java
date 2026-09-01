@@ -344,12 +344,18 @@ class TsplBuilder {
                     writeAscii(out, "TEXT 16," + y + ",\"2\",0," + tm + "," + tm + ",\"" + safe(truncate(time, 10)) + "\"");
                 }
                 if (!cleanItem.isEmpty()) {
-                    // Item column: x=180..rightEdge. The "item" is the buyer's
-                    // short price code (e.g. 150/250/600), rendered at the SAME
-                    // base as the grand Total amount — font "4", 2x width, 1x
-                    // height. truncate(12) is a width guard so a longer-than-
-                    // expected code clips instead of overrunning rightEdge.
-                    writeTextSmart(out, 180, y, "4", safe(truncate(cleanItem, 12)), 2, pm, 2, pm, c.rightEdge);
+                    // Item column: the "item" is the buyer's short price code
+                    // (e.g. 150/250/600), rendered at the SAME base as the grand
+                    // Total amount — font "4", 2x width, 1x height. truncate(12)
+                    // is a width guard so a longer-than-expected code clips
+                    // instead of overrunning rightEdge.
+                    // PRICE-NEXT-TO-TIME (owner req): x = time_x(16) + time width
+                    // + TWO spaces, all in the TIME's font "2" (12-dot cell) at
+                    // the time's scale tm, so the gap reads ~2 spaces at 1x/2x/3x
+                    // and tracks the actual time length (never overlaps the time).
+                    // ONLY x changes. No time on this row -> keep the legacy x=180.
+                    int priceX = time.isEmpty() ? 180 : 16 + (truncate(time, 10).length() + 2) * 12 * tm;
+                    writeTextSmart(out, priceX, y, "4", safe(truncate(cleanItem, 12)), 2, pm, 2, pm, c.rightEdge);
                 }
                 int d = Math.max((tm - 1) * F2, (pm - 1) * F4);
                 y += 38 + d;
