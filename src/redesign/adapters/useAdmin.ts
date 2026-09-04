@@ -20,11 +20,15 @@ export type Plan = "free" | "trial" | "basic" | "plus" | "pro" | "master";
 export interface AdminResult { ok: boolean; error?: string }
 export interface PlanPatch { plan: Plan; planStatus: "active"; planExpiry: string; trialStartedAt?: string }
 
-// PURE — copied VERBATIM from App.tsx handleAdminApprove (4254-4259) + the
-// addDays/addMonths helpers (230-231). Takes `now` for testability. Parity-tested.
+// PURE — activation/renewal expiry window. Takes `now` for testability. Parity-tested.
+// ⚠️ INTENTIONAL DIVERGENCE from the App.tsx rollback twin (addMonths *30 @ 230-231):
+// owner decision 2026-09-04 — ONE MONTH = 31 DAYS (was 30), regardless of calendar
+// month, applied to NEW activations/renewals only (no retroactive change to existing
+// plan_expiry). N months = N × 31. The App.tsx rollback still uses *30 (rollback-only,
+// not served in production).
 export function approvePlanPatch(plan: Plan, months: number, now: Date): PlanPatch {
   const addDays = (n: number) => { const d = new Date(now); d.setDate(d.getDate() + n); return d.toISOString(); };
-  const addMonths = (n: number) => addDays(Math.max(1, n) * 30);
+  const addMonths = (n: number) => addDays(Math.max(1, n) * 31);
   const planExpiry = plan === "trial" ? addDays(7) : addMonths(months);
   const trialStartedAt = plan === "trial" ? now.toISOString() : undefined;
   return { plan, planStatus: "active", planExpiry, ...(trialStartedAt ? { trialStartedAt } : {}) };

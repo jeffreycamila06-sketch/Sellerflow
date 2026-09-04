@@ -3,10 +3,12 @@
 import { describe, it, expect } from "vitest";
 import { approvePlanPatch, planChangePatch, addDaysToExpiry, addDaysIso, makeAdminPatch, type Plan } from "../useAdmin";
 
-// VERBATIM reference from App.tsx:230-231 (addDays/addMonths) + 4256-4257.
+// Reference mirror of approvePlanPatch (useAdmin.ts). ⚠️ 31-day month (owner
+// 2026-09-04): 1 month = 31 days, N months = N × 31 — diverges from the App.tsx
+// rollback twin (still *30, rollback-only, not served in production).
 const refPatch = (plan: Plan, months: number, now: Date) => {
   const addDays = (n: number) => { const d = new Date(now); d.setDate(d.getDate() + n); return d.toISOString(); };
-  const addMonths = (n: number) => addDays(Math.max(1, n) * 30);
+  const addMonths = (n: number) => addDays(Math.max(1, n) * 31);
   const planExpiry = plan === "trial" ? addDays(7) : addMonths(months);
   const trialStartedAt = plan === "trial" ? now.toISOString() : undefined;
   return { plan, planStatus: "active", planExpiry, ...(trialStartedAt ? { trialStartedAt } : {}) };
@@ -21,10 +23,10 @@ describe("approvePlanPatch — parity with App.tsx handleAdminApprove", () => {
       expect(JSON.stringify(approvePlanPatch(plan, months, NOW))).toBe(JSON.stringify(refPatch(plan, months, NOW)));
     }
   });
-  it("non-trial expiry = now + months*30 days; status active; no trialStartedAt", () => {
+  it("non-trial expiry = now + months*31 days; status active; no trialStartedAt", () => {
     const p = approvePlanPatch("pro", 2, NOW);
     expect(p.planStatus).toBe("active");
-    expect(p.planExpiry).toBe(new Date("2026-08-25T05:30:00.000Z").toISOString()); // +60 days
+    expect(p.planExpiry).toBe(new Date(NOW.getTime() + 62 * 86400000).toISOString()); // +62 days (2 × 31)
     expect("trialStartedAt" in p).toBe(false);
   });
   it("trial = +7 days + trialStartedAt = now; months ignored", () => {
@@ -34,7 +36,7 @@ describe("approvePlanPatch — parity with App.tsx handleAdminApprove", () => {
   });
   it("months clamps to >=1 (Math.max(1,n))", () => {
     expect(approvePlanPatch("basic", 0, NOW).planExpiry).toBe(refPatch("basic", 0, NOW).planExpiry);
-    expect(approvePlanPatch("basic", 0, NOW).planExpiry).toBe(new Date("2026-07-26T05:30:00.000Z").toISOString()); // +30 days
+    expect(approvePlanPatch("basic", 0, NOW).planExpiry).toBe(new Date(NOW.getTime() + 31 * 86400000).toISOString()); // +31 days (1 month)
   });
 });
 
@@ -54,14 +56,14 @@ describe("planChangePatch — tier switch preserves expiry, activation opens a w
     expect(p.planExpiry).toBeUndefined();
   });
 
-  it("ACTIVATION from free opens a fresh 30-day window", () => {
+  it("ACTIVATION from free opens a fresh 31-day window", () => {
     const p = planChangePatch("basic", 1, { plan: "Free", status: "active", expiry: "" }, NOW);
-    expect(p.planExpiry).toBe(approvePlanPatch("basic", 1, NOW).planExpiry); // now + 30
+    expect(p.planExpiry).toBe(approvePlanPatch("basic", 1, NOW).planExpiry); // now + 31
   });
 
   it("ACTIVATION from an expired plan opens a fresh window", () => {
     const p = planChangePatch("pro", 2, { plan: "Pro", status: "expired", expiry: at(-3) }, NOW);
-    expect(p.planExpiry).toBe(approvePlanPatch("pro", 2, NOW).planExpiry); // now + 60
+    expect(p.planExpiry).toBe(approvePlanPatch("pro", 2, NOW).planExpiry); // now + 62
   });
 
   it("ACTIVATION when active but 0 days left (expiry today/past) opens a fresh window", () => {
