@@ -11,7 +11,7 @@ import {
   callMobilePrinterBridge, btCall, btCallOutcome, hasNativePrinter, hasBtBridge, buildTestStickerPayload,
   type MobilePrinterResult, type BluetoothScanResult, type BluetoothPrinterDevice,
 } from "../adapters/printerBridge";
-import { isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, type Settings } from "../adapters/printing";
+import { isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, getLastStickerRouteNotice, type Settings } from "../adapters/printing";
 import { useT } from "../i18n";
 
 const PS_SIZES = ["100x60mm (Standard)", "80x60mm", "80x50mm", "70x50mm", "60x40mm"];
@@ -185,6 +185,17 @@ export default function PrinterSettings({
                 <span style={{ position: "absolute", top: 3, left: classicText ? 25 : 3, width: 24, height: 24, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,.25)", transition: "left .15s" }} />
               </button>
             </div>
+            {/* DEV route readout (Phase-1, plain English by design): which route
+                the LAST sticker print actually took + the fallback reason. Reads
+                on each render — navigating here after a print shows it. */}
+            {(() => {
+              const n = getLastStickerRouteNotice();
+              if (!n) return null;
+              const txt = n.via === "bitmap"
+                ? (n.ok ? `Last print: BITMAP ${(n.payloadBytes / 1024).toFixed(1)}KB ${(n.totalMs / 1000).toFixed(1)}s` : `Last print: BITMAP failed — ${n.detail}`)
+                : `Last print: TEXT (fallback: ${n.reason === "classic-mode-on" ? "Classic text mode is ON" : n.reason === "bitmap-method-missing" ? "bitmap method missing in this app build" : n.detail || "unknown"})`;
+              return <div style={{ fontSize: 11.5, marginTop: 8, color: n.via === "bitmap" && n.ok ? "var(--ok, #16a34a)" : "var(--danger, #dc2626)", fontFamily: "var(--font-mono)" }}>{txt}</div>;
+            })()}
           </div>
         )}
 

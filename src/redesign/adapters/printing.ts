@@ -218,12 +218,43 @@ function recordStickerTiming(t: StickerTiming) {
 }
 const nowMs = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
+// ── Route-visibility notice (Phase-1 dev requirement) ────────────────────────
+// Every BT sticker print reports WHICH route actually ran (bitmap vs text) and,
+// on a text fallback, WHY — so a non-technical owner can see a silent fallback
+// in-app (no Logcat). RedesignApp registers one handler (toast); Printer
+// Settings reads the last notice. Same registration pattern as
+// setNativePrintFailureHandler above.
+export type StickerFallbackReason = "" | "classic-mode-on" | "bitmap-method-missing";
+export interface StickerRouteNotice { via: "bitmap" | "text"; ok: boolean; reason: StickerFallbackReason; detail: string; payloadBytes: number; totalMs: number }
+let stickerRouteNoticeHandler: ((n: StickerRouteNotice) => void) | null = null;
+let lastStickerRouteNotice: StickerRouteNotice | null = null;
+export function setStickerRouteNoticeHandler(fn: ((n: StickerRouteNotice) => void) | null): void {
+  stickerRouteNoticeHandler = fn;
+}
+export const getLastStickerRouteNotice = (): StickerRouteNotice | null => lastStickerRouteNotice;
+function reportStickerRoute(n: StickerRouteNotice): void {
+  lastStickerRouteNotice = n;
+  try { stickerRouteNoticeHandler?.(n); } catch { /* notice must never break a print */ }
+}
+
 // The native passthrough is Android-only until Phase 2 — read it via a local cast
 // so the protected App.tsx global Window declaration stays untouched.
+//
+// ⚠️ TWO probes, deliberately: (1) the MainActivity-injected shim
+// (window.SellerFlowPrinter.printStickerBitmap) and (2) Capacitor's OWN
+// auto-generated plugin proxy (window.Capacitor.Plugins.SellerFlowPrinter),
+// which exposes every @PluginMethod with NO shim involved. The hand-maintained
+// shim has now been the missed spot twice (printRawTspl, then a stale-native
+// build); probing the Capacitor proxy makes the gate survive a stale shim as
+// long as the compiled plugin has the method.
 type BitmapBridgeFn = (args: { data: string }) => Promise<{ ok?: boolean; message?: string } | null>;
 function bitmapBridgeFn(bridge: NonNullable<Window["SellerFlowPrinter"]>): BitmapBridgeFn | undefined {
   const fn = (bridge as unknown as { printStickerBitmap?: unknown }).printStickerBitmap;
-  return typeof fn === "function" ? (fn as BitmapBridgeFn) : undefined;
+  if (typeof fn === "function") return fn as BitmapBridgeFn;
+  const cap = (window as unknown as { Capacitor?: { Plugins?: { SellerFlowPrinter?: { printStickerBitmap?: unknown } } } }).Capacitor;
+  const capFn = cap?.Plugins?.SellerFlowPrinter?.printStickerBitmap;
+  if (typeof capFn === "function") return (args) => (capFn as BitmapBridgeFn)(args);
+  return undefined;
 }
 
 async function printStickerViaBitmap(fn: BitmapBridgeFn, buyer: Buyer, cur: string, storeName: string, cfg: Settings): Promise<boolean> {
@@ -236,12 +267,17 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, buyer: Buyer, cur: stri
     const result = await fn({ data });
     const t2 = nowMs();
     recordStickerTiming({ via: "bitmap", buildMs: t1 - t0, bridgeMs: t2 - t1, totalMs: t2 - t0, payloadBytes: raster.bytes.length, bands: raster.bands });
-    if (result?.ok) return true;
+    if (result?.ok) {
+      reportStickerRoute({ via: "bitmap", ok: true, reason: "", detail: "", payloadBytes: raster.bytes.length, totalMs: t2 - t0 });
+      return true;
+    }
     const { code, message } = readFailure(result);
+    reportStickerRoute({ via: "bitmap", ok: false, reason: "", detail: message || code || "print failed", payloadBytes: raster.bytes.length, totalMs: t2 - t0 });
     if (!reportNativePrintFailure("bluetooth", code, message)) console.warn("[BT bitmap sticker] print failed:", message || "check pairing/selection.");
     return false;
   } catch (err) {
     const { code, message } = readFailure(err);
+    reportStickerRoute({ via: "bitmap", ok: false, reason: "", detail: message || code || String(err), payloadBytes: raster.bytes.length, totalMs: nowMs() - t0 });
     if (!reportNativePrintFailure("bluetooth", code, message)) console.warn("printStickerBitmap bridge call failed:", err);
     return false;
   }
@@ -252,20 +288,25 @@ async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: st
   if (!bridge?.printStickerNative) return false;
   // BITMAP default: fires only when the new native passthrough exists AND the
   // seller hasn't flipped "Classic text mode". Everything else (old binaries,
-  // classic mode) takes the UNCHANGED TEXT path below.
+  // classic mode) takes the UNCHANGED TEXT path below — with the reason recorded
+  // so the fallback is VISIBLE in-app, never silent (the Phase-1 field lesson).
   const bmpFn = bitmapBridgeFn(bridge);
-  if (bmpFn && !isClassicTextSticker()) return printStickerViaBitmap(bmpFn, buyer, cur, storeName, cfg);
+  const classic = isClassicTextSticker();
+  if (bmpFn && !classic) return printStickerViaBitmap(bmpFn, buyer, cur, storeName, cfg);
+  const fallbackReason: StickerFallbackReason = classic ? "classic-mode-on" : "bitmap-method-missing";
   try {
     const t0 = nowMs();
     const result = await bridge.printStickerNative(buildNativeStickerPayload(buyer, cur, storeName, cfg));
     const t1 = nowMs();
     recordStickerTiming({ via: "text", buildMs: 0, bridgeMs: t1 - t0, totalMs: t1 - t0, payloadBytes: 0, bands: 0 });
+    reportStickerRoute({ via: "text", ok: !!result?.ok, reason: fallbackReason, detail: result?.ok ? "" : readFailure(result).message, payloadBytes: 0, totalMs: t1 - t0 });
     if (result?.ok) return true;
     const { code, message } = readFailure(result);
     if (!reportNativePrintFailure("bluetooth", code, message)) console.warn("[BT sticker] print failed:", message || "check pairing/selection.");
     return false;
   } catch (err) {
     const { code, message } = readFailure(err);
+    reportStickerRoute({ via: "text", ok: false, reason: fallbackReason, detail: message || code || String(err), payloadBytes: 0, totalMs: 0 });
     if (!reportNativePrintFailure("bluetooth", code, message)) console.warn("printStickerNative bridge call failed:", err);
     return false;
   }

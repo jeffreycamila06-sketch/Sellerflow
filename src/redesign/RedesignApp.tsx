@@ -57,7 +57,7 @@ import { computeSales } from "./adapters/sales";
 import { useSalesReport } from "./adapters/salesReport";
 import { ordersByHour } from "./adapters/peakHours";
 import { sessionKeyFor } from "./adapters/shipping";
-import { printSlip, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, isPrinterNotSetup, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
+import { printSlip, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, setStickerRouteNoticeHandler, isPrinterNotSetup, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
 import { btCallOutcome, hasBtBridge, buildTestStickerPayload, buildTestBuyer } from "./adapters/printerBridge";
@@ -412,6 +412,30 @@ export default function RedesignApp() {
       return true;
     });
     return () => setNativePrintFailureHandler(null);
+  }, []);
+
+  // ── DEV route visibility (Phase-1 bitmap branch): every BT sticker print
+  // toasts WHICH route ran and, on a TEXT fallback, WHY — the owner can't use
+  // Logcat, so a silent fallback must be visible in-app. Plain English on
+  // purpose (dev instrument, PrintProbe convention — not i18n'd); remove or
+  // gate before production merge if unwanted. Fires from printing.ts's async
+  // tail, so it reports the route that ACTUALLY ran.
+  useEffect(() => {
+    setStickerRouteNoticeHandler((n) => {
+      if (n.via === "bitmap") {
+        const kb = (n.payloadBytes / 1024).toFixed(1);
+        const s = (n.totalMs / 1000).toFixed(1);
+        setToast(n.ok
+          ? { msg: `Print: BITMAP ${kb}KB ${s}s`, kind: "ok" }
+          : { msg: `Print: BITMAP failed — ${n.detail}`, kind: "err" });
+        return;
+      }
+      const why = n.reason === "classic-mode-on" ? "Classic text mode is ON"
+        : n.reason === "bitmap-method-missing" ? "bitmap method missing in this app build"
+        : n.detail || "unknown";
+      setToast({ msg: `Print: TEXT (fallback: ${why})`, kind: "err" });
+    });
+    return () => setStickerRouteNoticeHandler(null);
   }, []);
 
   // ── Cold-open modal coordinator: plan-EXPIRY nudge (priority) then native
