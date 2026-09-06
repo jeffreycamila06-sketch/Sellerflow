@@ -13,6 +13,9 @@
 // that MIRRORS the native TSPL sticker layout, so 1-Click output matches the APK.
 import { shouldUseBluetoothSticker, shouldUseLanSticker } from "../../lib/printerRouting";
 import type { Buyer } from "../../lib/orderTypes";
+import { rasterizeToBitmapTspl, bytesToBase64 } from "./stickerRaster";
+import { LATIN_ATLAS } from "./glyphAtlas.latin";
+import { CJK_ATLAS } from "./glyphAtlas.cjk";
 
 // ── Types — copied verbatim from App.tsx:38, 53, 56 ──────────────────────────
 export interface Settings {
@@ -185,11 +188,78 @@ function sendSlipToNativePrinter(payload: NativePrinterPayload): boolean {
   return false;
 }
 
+// ── BITMAP sticker mode (new-board D520BT ROM-font-doubling fix) ─────────────
+// Default path when the native `printStickerBitmap` passthrough exists: the whole
+// sticker is rasterized in TS (stickerRaster.ts — same layout as the TEXT builder,
+// glyphs from the committed atlases) and sent as a finished BITMAP TSPL stream.
+// The "Classic text mode" toggle (Printer Settings, per-device localStorage)
+// reverts to the byte-frozen TEXT path. METHOD-PRESENCE GATED: binaries without
+// the new native method silently keep the TEXT path (safe no-op rollout).
+export const LS_CLASSIC_TEXT = "sfl_rd_classic_text";
+export function isClassicTextSticker(): boolean {
+  try { return typeof localStorage !== "undefined" && localStorage.getItem(LS_CLASSIC_TEXT) === "1"; } catch { return false; }
+}
+export function setClassicTextSticker(on: boolean): void {
+  try { if (on) localStorage.setItem(LS_CLASSIC_TEXT, "1"); else localStorage.removeItem(LS_CLASSIC_TEXT); } catch { /* ignore */ }
+}
+
+// DEV timing instrumentation (Phase-1 speed verification): every sticker print
+// logs `[STICKER-TIMING]` to the console (visible in Android Studio Logcat →
+// Capacitor/Console) and keeps the last sample on `window.__sflPrintTiming` +
+// getLastStickerTiming() for in-app/inspector reads. Negligible overhead — kept
+// unconditionally during Phase 1.
+export interface StickerTiming { via: "bitmap" | "text"; buildMs: number; bridgeMs: number; totalMs: number; payloadBytes: number; bands: number }
+let lastStickerTiming: StickerTiming | null = null;
+export const getLastStickerTiming = (): StickerTiming | null => lastStickerTiming;
+function recordStickerTiming(t: StickerTiming) {
+  lastStickerTiming = t;
+  try { (window as unknown as { __sflPrintTiming?: StickerTiming }).__sflPrintTiming = t; } catch { /* ignore */ }
+  console.log(`[STICKER-TIMING] via=${t.via} build=${t.buildMs.toFixed(1)}ms bridge=${t.bridgeMs.toFixed(1)}ms total=${t.totalMs.toFixed(1)}ms bytes=${t.payloadBytes} bands=${t.bands}`);
+}
+const nowMs = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+
+// The native passthrough is Android-only until Phase 2 — read it via a local cast
+// so the protected App.tsx global Window declaration stays untouched.
+type BitmapBridgeFn = (args: { data: string }) => Promise<{ ok?: boolean; message?: string } | null>;
+function bitmapBridgeFn(bridge: NonNullable<Window["SellerFlowPrinter"]>): BitmapBridgeFn | undefined {
+  const fn = (bridge as unknown as { printStickerBitmap?: unknown }).printStickerBitmap;
+  return typeof fn === "function" ? (fn as BitmapBridgeFn) : undefined;
+}
+
+async function printStickerViaBitmap(fn: BitmapBridgeFn, buyer: Buyer, cur: string, storeName: string, cfg: Settings): Promise<boolean> {
+  const t0 = nowMs();
+  const payload = buildNativeStickerPayload(buyer, cur, storeName, cfg);
+  const raster = rasterizeToBitmapTspl(payload, payload.labelWidthMm, payload.labelHeightMm, { latin: LATIN_ATLAS, cjk: CJK_ATLAS });
+  const data = bytesToBase64(raster.bytes);
+  const t1 = nowMs();
+  try {
+    const result = await fn({ data });
+    const t2 = nowMs();
+    recordStickerTiming({ via: "bitmap", buildMs: t1 - t0, bridgeMs: t2 - t1, totalMs: t2 - t0, payloadBytes: raster.bytes.length, bands: raster.bands });
+    if (result?.ok) return true;
+    const { code, message } = readFailure(result);
+    if (!reportNativePrintFailure("bluetooth", code, message)) console.warn("[BT bitmap sticker] print failed:", message || "check pairing/selection.");
+    return false;
+  } catch (err) {
+    const { code, message } = readFailure(err);
+    if (!reportNativePrintFailure("bluetooth", code, message)) console.warn("printStickerBitmap bridge call failed:", err);
+    return false;
+  }
+}
+
 async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: string, cfg: Settings): Promise<boolean> {
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
   if (!bridge?.printStickerNative) return false;
+  // BITMAP default: fires only when the new native passthrough exists AND the
+  // seller hasn't flipped "Classic text mode". Everything else (old binaries,
+  // classic mode) takes the UNCHANGED TEXT path below.
+  const bmpFn = bitmapBridgeFn(bridge);
+  if (bmpFn && !isClassicTextSticker()) return printStickerViaBitmap(bmpFn, buyer, cur, storeName, cfg);
   try {
+    const t0 = nowMs();
     const result = await bridge.printStickerNative(buildNativeStickerPayload(buyer, cur, storeName, cfg));
+    const t1 = nowMs();
+    recordStickerTiming({ via: "text", buildMs: 0, bridgeMs: t1 - t0, totalMs: t1 - t0, payloadBytes: 0, bands: 0 });
     if (result?.ok) return true;
     const { code, message } = readFailure(result);
     if (!reportNativePrintFailure("bluetooth", code, message)) console.warn("[BT sticker] print failed:", message || "check pairing/selection.");

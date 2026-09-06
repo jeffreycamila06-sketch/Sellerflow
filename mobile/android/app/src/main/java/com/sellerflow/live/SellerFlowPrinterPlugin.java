@@ -427,6 +427,75 @@ public class SellerFlowPrinterPlugin extends Plugin {
         });
     }
 
+    /**
+     * BITMAP sticker passthrough (new-motherboard D520BT fix). The web layer
+     * rasterizes the WHOLE sticker (stickerRaster.ts) and hands over a finished
+     * TSPL byte stream (SIZE/.../BITMAP bands/PRINT) as base64 — this method does
+     * ZERO layout and routes the bytes VERBATIM over the SAME transport as
+     * testStickerPrint (BLE or Classic SPP per PREF_BT_TRANSPORT). The TEXT path
+     * (printStickerNative / TsplBuilder) is untouched; reject codes mirror it so
+     * the web "no printer" modal keeps working (BT_NOT_SET / BT_PERMISSION /
+     * BT_PRINT_FAILED).
+     */
+    @PluginMethod
+    public void printStickerBitmap(PluginCall call) {
+        String address = prefs().getString(PREF_BT_ADDR, "");
+        Log.i(TAG, "printStickerBitmap start address=" + address);
+        if (address == null || address.isEmpty()) {
+            call.reject("No Bluetooth printer saved. Tap Scan in Settings and pick a printer first.", "BT_NOT_SET");
+            return;
+        }
+        if (!hasBluetoothConnectPermission()) {
+            requestBluetoothPermissions();
+            call.reject("Bluetooth permission needed. Allow it then print again.", "BT_PERMISSION");
+            return;
+        }
+        String b64 = call.getString("data", "");
+        final byte[] tspl;
+        try {
+            tspl = android.util.Base64.decode(b64 == null ? "" : b64, android.util.Base64.DEFAULT);
+        } catch (IllegalArgumentException e) {
+            call.reject("printStickerBitmap: invalid base64 data", "BT_PRINT_FAILED");
+            return;
+        }
+        if (tspl == null || tspl.length == 0) {
+            call.reject("printStickerBitmap: empty data", "BT_PRINT_FAILED");
+            return;
+        }
+        final String transport = prefs().getString(PREF_BT_TRANSPORT, "spp");
+        executor.execute(() -> {
+            try {
+                if ("ble".equals(transport)) {
+                    ble().printJob(tspl, address, err -> {
+                        if (err == null) {
+                            JSObject ret = new JSObject();
+                            ret.put("ok", true);
+                            ret.put("bytes", tspl.length);
+                            ret.put("message", "Bitmap sticker sent (" + tspl.length + " bytes)");
+                            Log.i(TAG, "printStickerBitmap (ble) success bytes=" + tspl.length);
+                            call.resolve(ret);
+                        } else {
+                            Log.e(TAG, "printStickerBitmap (ble) failed: " + err.code + " " + err.message);
+                            call.reject("Bitmap sticker failed: " + err.message, err.code);
+                        }
+                    });
+                } else {
+                    // UNCHANGED Classic SPP path (same as testStickerPrint).
+                    sendViaBluetoothSpp(address, tspl);
+                    JSObject ret = new JSObject();
+                    ret.put("ok", true);
+                    ret.put("bytes", tspl.length);
+                    ret.put("message", "Bitmap sticker sent (" + tspl.length + " bytes)");
+                    Log.i(TAG, "printStickerBitmap success bytes=" + tspl.length);
+                    call.resolve(ret);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "printStickerBitmap failed", e);
+                call.reject("Bitmap sticker failed: " + e.getMessage(), "BT_PRINT_FAILED", e);
+            }
+        });
+    }
+
 
     // ── Bluetooth helpers ───────────────────────────────────────────────────
 

@@ -19,7 +19,10 @@ export interface BluetoothScanResult { ok?: boolean; message?: string; printers?
 export interface StickerPrintResult { ok?: boolean; message?: string }
 
 export type LanBridgeAction = "scanPrinters" | "printerStatus" | "testPrint" | "connectPrinter" | "setPrinter" | "getPrinter" | "testConnection";
-export type BtBridgeAction = "scanBluetoothLabelPrinters" | "getBluetoothLabelPrinter" | "setBluetoothLabelPrinter" | "clearBluetoothLabelPrinter" | "testStickerPrint" | "printStickerNative";
+// `printStickerBitmap` = raw pre-built TSPL passthrough for the BITMAP sticker
+// mode (new-board fix) — routes through the SAME native BLE/SPP transport as
+// testStickerPrint; the TEXT path (printStickerNative) is unaffected.
+export type BtBridgeAction = "scanBluetoothLabelPrinters" | "getBluetoothLabelPrinter" | "setBluetoothLabelPrinter" | "clearBluetoothLabelPrinter" | "testStickerPrint" | "printStickerNative" | "printStickerBitmap";
 
 export const hasNativePrinter = (): boolean => typeof window !== "undefined" && !!window.SellerFlowPrinter;
 export const hasBtBridge = (): boolean => typeof window !== "undefined" && !!window.SellerFlowPrinter?.scanBluetoothLabelPrinters;

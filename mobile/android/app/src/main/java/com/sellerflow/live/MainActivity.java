@@ -115,6 +115,10 @@ public class MainActivity extends BridgeActivity {
             + "window.SellerFlowPrinter.clearBluetoothLabelPrinter=function(){return cap.clearBluetoothLabelPrinter();};"
             + "window.SellerFlowPrinter.printStickerNative=function(payload){return cap.printStickerNative(payload||{});};"
             + "window.SellerFlowPrinter.testStickerPrint=function(args){return cap.testStickerPrint(args||{});};"
+            // BITMAP sticker passthrough (new-board fix). The web layer's
+            // method-presence gate keys off THIS shim line — without it the app
+            // silently stays on the TEXT path (the print-probe lesson).
+            + "window.SellerFlowPrinter.printStickerBitmap=function(p){return cap.printStickerBitmap(p||{});};"
             + "}else{"
             + "window.SellerFlowPrinter.status=function(){return window.SellerFlowPrinterAndroid.status();};"
             + "window.SellerFlowPrinter.scanPrinters=function(){return window.SellerFlowPrinterAndroid.scanPrinters();};"
