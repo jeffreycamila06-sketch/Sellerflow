@@ -427,6 +427,68 @@ public class SellerFlowPrinterPlugin extends Plugin {
         });
     }
 
+    /**
+     * DEV-ONLY raw-TSPL passthrough (print-probe harness). Decodes base64 -> bytes and
+     * sends them VERBATIM over the SAME transport as testStickerPrint (BLE or Classic
+     * SPP per PREF_BT_TRANSPORT). Does NOT touch printStickerNative / TsplBuilder /
+     * the order print path. Not surfaced in production UI.
+     */
+    @PluginMethod
+    public void printRawTspl(PluginCall call) {
+        String address = prefs().getString(PREF_BT_ADDR, "");
+        if (address == null || address.isEmpty()) {
+            call.reject("No Bluetooth printer saved. Tap Scan in Settings and pick a printer first.", "BT_NOT_SET");
+            return;
+        }
+        if (!hasBluetoothConnectPermission()) {
+            requestBluetoothPermissions();
+            call.reject("Bluetooth permission needed. Allow it then tap again.", "BT_PERMISSION");
+            return;
+        }
+        String b64 = call.getString("data", "");
+        final byte[] tspl;
+        try {
+            tspl = android.util.Base64.decode(b64 == null ? "" : b64, android.util.Base64.DEFAULT);
+        } catch (IllegalArgumentException e) {
+            call.reject("printRawTspl: invalid base64 data", "BT_PRINT_FAILED");
+            return;
+        }
+        if (tspl == null || tspl.length == 0) {
+            call.reject("printRawTspl: empty data", "BT_PRINT_FAILED");
+            return;
+        }
+        final String transport = prefs().getString(PREF_BT_TRANSPORT, "spp");
+        executor.execute(() -> {
+            try {
+                if ("ble".equals(transport)) {
+                    ble().printJob(tspl, address, err -> {
+                        if (err == null) {
+                            JSObject ret = new JSObject();
+                            ret.put("ok", true);
+                            ret.put("bytes", tspl.length);
+                            ret.put("message", "Probe sent (" + tspl.length + " bytes)");
+                            call.resolve(ret);
+                        } else {
+                            Log.e(TAG, "printRawTspl (ble) failed: " + err.code + " " + err.message);
+                            call.reject("Probe print failed: " + err.message, err.code);
+                        }
+                    });
+                } else {
+                    // UNCHANGED Classic SPP path (same as testStickerPrint).
+                    sendViaBluetoothSpp(address, tspl);
+                    JSObject ret = new JSObject();
+                    ret.put("ok", true);
+                    ret.put("bytes", tspl.length);
+                    ret.put("message", "Probe sent (" + tspl.length + " bytes)");
+                    call.resolve(ret);
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "printRawTspl failed", e);
+                call.reject("Probe print failed: " + e.getMessage(), "BT_PRINT_FAILED", e);
+            }
+        });
+    }
+
 
     // ── Bluetooth helpers ───────────────────────────────────────────────────
 

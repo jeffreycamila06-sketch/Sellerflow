@@ -6,7 +6,7 @@
 // ⚠️ NATIVE-ONLY / PREVIEW-UNVERIFIABLE: on web/preview there is no bridge, so every
 // action returns the friendly "open the app" status (safe no-op). Only verifiable in
 // a real APK.
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   callMobilePrinterBridge, btCall, btCallOutcome, hasNativePrinter, hasBtBridge, buildTestStickerPayload,
   type MobilePrinterResult, type BluetoothScanResult, type BluetoothPrinterDevice,
@@ -23,15 +23,21 @@ const tab = (active: boolean): CSSProperties => ({ flex: 1, padding: "13px 0", b
 
 export default function PrinterSettings({
   onBack, psType, psOut, onSetPsOut, psSize, psSizeOpen, onTogglePsSize, onPickPsSize,
-  cur = "NT$", storeName = "SellerFlowLive", settings,
+  cur = "NT$", storeName = "SellerFlowLive", settings, onOpenProbe,
 }: {
   onBack: () => void;
   psType: "wifi" | "bt";
   psOut: "receipt" | "sticker"; onSetPsOut: (o: "receipt" | "sticker") => void;
   psSize: string; psSizeOpen: boolean; onTogglePsSize: () => void; onPickPsSize: (s: string) => void;
   cur?: string; storeName?: string; settings?: Settings;
+  onOpenProbe?: () => void; // DEV-only: long-press the header title to open the print-probe harness
 }) {
   const t = useT();
+  // DEV gate: long-press (~800ms) the header title → print-probe harness. Normal
+  // taps do nothing; pointer move/leave/cancel aborts (won't fire on a scroll).
+  const probeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearProbeTimer = () => { if (probeTimer.current) { clearTimeout(probeTimer.current); probeTimer.current = null; } };
+  const startProbeTimer = () => { if (!onOpenProbe) return; clearProbeTimer(); probeTimer.current = setTimeout(() => { clearProbeTimer(); onOpenProbe(); }, 800); };
   const wifi = psType === "wifi";
   const nativeReady = hasNativePrinter();
   const btReady = hasBtBridge();
@@ -86,7 +92,14 @@ export default function PrinterSettings({
     <div>
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 5, background: "rgba(255,255,255,.18)", border: "none", padding: "7px 12px 7px 9px", borderRadius: 9, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_back}</button>
-        <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, letterSpacing: "-.01em" }}>{t.rd_ps_title}</div>
+        <div
+          onPointerDown={startProbeTimer}
+          onPointerUp={clearProbeTimer}
+          onPointerLeave={clearProbeTimer}
+          onPointerCancel={clearProbeTimer}
+          onPointerMove={clearProbeTimer}
+          style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, letterSpacing: "-.01em", userSelect: "none", WebkitUserSelect: "none", cursor: "default" }}
+        >{t.rd_ps_title}</div>
       </div>
 
       <div style={{ padding: "16px 14px 24px" }}>

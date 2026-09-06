@@ -33,6 +33,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "clearBluetoothLabelPrinter", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "testStickerPrint", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "printStickerNative", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "printRawTspl", returnType: CAPPluginReturnPromise),
     ]
 
     /// Default AIMO-class sticker stock: 100x60mm @ 203 DPI (800x480 dots).
@@ -164,6 +165,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
       window.SellerFlowPrinter.clearBluetoothLabelPrinter = function(){ return cap.clearBluetoothLabelPrinter(); };
       window.SellerFlowPrinter.testStickerPrint = function(p){ return cap.testStickerPrint(p || {}); };
       window.SellerFlowPrinter.printStickerNative = function(payload){ return cap.printStickerNative(payload || {}); };
+      window.SellerFlowPrinter.printRawTspl = function(p){ return cap.printRawTspl(p || {}); };
       window.SellerFlowPrinter.status = function(){ return cap.getPrinter(); };
       window.SellerFlowPrinter.printerStatus = function(){ return cap.getPrinter(); };
       window.SellerFlowPrinter.scanPrinters = function(){ return cap.getPrinter(); };
@@ -1075,6 +1077,28 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                 call.reject("Test sticker failed: \(error.message)", error.code)
             } else {
                 call.resolve(["ok": true, "bytes": data.count, "message": "Test sticker sent (\(data.count) bytes)"])
+            }
+        }
+    }
+
+    /// DEV-ONLY raw-TSPL passthrough (print-probe harness). Decodes base64 → bytes
+    /// and sends them VERBATIM over the SAME BLE transport as testStickerPrint.
+    /// Does NOT touch printStickerNative / buildTsplSticker / the order path.
+    @objc func printRawTspl(_ call: CAPPluginCall) {
+        let savedId = savedBleId()
+        if savedId.isEmpty {
+            call.reject("No Bluetooth printer saved. Tap Scan in Settings and pick a printer first.", "BT_NOT_SET")
+            return
+        }
+        guard let b64 = call.getString("data"), let data = Data(base64Encoded: b64), !data.isEmpty else {
+            call.reject("printRawTspl: missing or invalid base64 data", "BT_PRINT_FAILED")
+            return
+        }
+        bleTransport.printJob(data: data, preferredId: savedId) { error in
+            if let error = error {
+                call.reject("Probe print failed: \(error.message)", error.code)
+            } else {
+                call.resolve(["ok": true, "bytes": data.count, "message": "Probe sent (\(data.count) bytes)"])
             }
         }
     }
