@@ -1,4 +1,4 @@
-// DEV-ONLY diagnostic screen (NOT in production nav) — reached ONLY via a long-press
+// DEV-ONLY diagnostic screen (NOT in production nav) — reached ONLY via 5 rapid taps
 // on the Printer Settings header title, or ?printprobe=1 in a browser. Sends raw TSPL
 // probe payloads through the SAME native BLE/SPP transport as testStickerPrint
 // (window.SellerFlowPrinter.printRawTspl), never through the production sticker path.
@@ -15,7 +15,7 @@ export default function PrintProbe({ onBack, psSize }: { onBack: () => void; psS
     const m = /(\d+)x(\d+)/i.exec(psSize || "");
     return m ? `${m[1]}x${m[2]}` : "100x60";
   });
-  const [msg, setMsg] = useState("Long-press reached the probe screen. Load a label, pick the size that matches the media, then tap a probe.");
+  const [msg, setMsg] = useState("Probe screen opened. Load a label, pick the size that matches the media, then tap a probe.");
   const [busy, setBusy] = useState(false);
   const probes = buildProbes(size);
 

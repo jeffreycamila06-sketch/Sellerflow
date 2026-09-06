@@ -30,14 +30,21 @@ export default function PrinterSettings({
   psOut: "receipt" | "sticker"; onSetPsOut: (o: "receipt" | "sticker") => void;
   psSize: string; psSizeOpen: boolean; onTogglePsSize: () => void; onPickPsSize: (s: string) => void;
   cur?: string; storeName?: string; settings?: Settings;
-  onOpenProbe?: () => void; // DEV-only: long-press the header title to open the print-probe harness
+  onOpenProbe?: () => void; // DEV-only: 5 rapid taps on the header title open the print-probe harness
 }) {
   const t = useT();
-  // DEV gate: long-press (~800ms) the header title → print-probe harness. Normal
-  // taps do nothing; pointer move/leave/cancel aborts (won't fire on a scroll).
-  const probeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clearProbeTimer = () => { if (probeTimer.current) { clearTimeout(probeTimer.current); probeTimer.current = null; } };
-  const startProbeTimer = () => { if (!onOpenProbe) return; clearProbeTimer(); probeTimer.current = setTimeout(() => { clearProbeTimer(); onOpenProbe(); }, 800); };
+  // DEV gate: 5 rapid taps (within 2.5s) on the header title → print-probe harness.
+  // Taps (not long-press) so Android WebView text-selection never cancels it.
+  // Invisible: no counter UI. Resets if the taps are too slow.
+  const probeTaps = useRef<{ n: number; first: number }>({ n: 0, first: 0 });
+  const onTitleTap = () => {
+    if (!onOpenProbe) return;
+    const now = Date.now();
+    const s = probeTaps.current;
+    if (now - s.first > 2500) { s.n = 1; s.first = now; return; }
+    s.n += 1;
+    if (s.n >= 5) { s.n = 0; s.first = 0; onOpenProbe(); }
+  };
   const wifi = psType === "wifi";
   const nativeReady = hasNativePrinter();
   const btReady = hasBtBridge();
@@ -93,12 +100,8 @@ export default function PrinterSettings({
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
         <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 5, background: "rgba(255,255,255,.18)", border: "none", padding: "7px 12px 7px 9px", borderRadius: 9, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_back}</button>
         <div
-          onPointerDown={startProbeTimer}
-          onPointerUp={clearProbeTimer}
-          onPointerLeave={clearProbeTimer}
-          onPointerCancel={clearProbeTimer}
-          onPointerMove={clearProbeTimer}
-          style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, letterSpacing: "-.01em", userSelect: "none", WebkitUserSelect: "none", cursor: "default" }}
+          onClick={onTitleTap}
+          style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 18, letterSpacing: "-.01em", userSelect: "none", WebkitUserSelect: "none", WebkitTouchCallout: "none", cursor: "default" }}
         >{t.rd_ps_title}</div>
       </div>
 

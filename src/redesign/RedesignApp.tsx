@@ -86,7 +86,7 @@ type Screen =
   | "menu" | "settings" | "customers" | "subscription" | "support"
   | "admin" | "print" | "sales" | "shipping" | "customerdata" | "legal" | "delete"
   | "printersettings" | "printpattern" | "ttchannels" | "fbchannels"
-  | "printprobe"; // DEV-only print-probe harness (long-press Printer Settings title / ?printprobe=1)
+  | "printprobe"; // DEV-only print-probe harness (5 rapid taps on Printer Settings title / ?printprobe=1)
 
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
 const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "printprobe"];
@@ -428,7 +428,7 @@ export default function RedesignApp() {
   const [update, setUpdate] = useState<{ platform: NativePlatform; messageKey: string; force: boolean; latest: number } | null>(null);
   const coldDone = useRef(false);
   // DEV: ?printprobe=1 jumps straight to the print-probe harness (browser
-  // inspection). On-device the gate is a long-press on the Printer Settings title.
+  // inspection). On-device the gate is 5 rapid taps on the Printer Settings title.
   const probeGateDone = useRef(false);
   useEffect(() => {
     if (auth.status === "loading" || probeGateDone.current) return;
@@ -1100,7 +1100,7 @@ export default function RedesignApp() {
               onOpenProbe={() => setScreen("printprobe")}
             />
           )}
-          {/* DEV-only print-probe harness — reached via long-press on the Printer
+          {/* DEV-only print-probe harness — reached via 5 rapid taps on the Printer
               Settings header title, or ?printprobe=1 in a browser. Not in nav. */}
           {screen === "printprobe" && (
             <PrintProbe onBack={() => setScreen("printersettings")} psSize={psSize} />
