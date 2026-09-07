@@ -15,7 +15,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { lzo1xDecompress } from "lzo1x";
 import {
-  rasterizeToSdkBitmapTspl, buildSdkBitmapStream, packPrinterRaster, renderStickerBitmap,
+  rasterizeToSdkBitmapTspl, buildSdkBitmapStream, packPrinterRaster, renderStickerBitmap, rotateRaster180,
   type RasterPayload, type RasterAtlases,
 } from "../stickerRaster";
 import { LATIN_ATLAS } from "../glyphAtlas.latin";
@@ -68,9 +68,11 @@ describe("SDK image stream — framing", () => {
     expect(parsed.tail).toBe("\r\nPRINT 1,1\n\r");
   });
 
-  it("chunks decompress to EXACTLY the packed printer raster (the definitive pin)", () => {
+  it("chunks decompress to EXACTLY the ROTATED packed printer raster (the definitive pin)", () => {
+    // Production rotates the full label 180° app-side (DIRECTION 0,0 feeds out
+    // inverted vs the old TEXT stickers — 2026-09-07 field fix).
     const full = renderStickerBitmap(flagship(), FLAGSHIP.w, FLAGSHIP.h, ATLASES);
-    const packed = packPrinterRaster(full);
+    const packed = packPrinterRaster(rotateRaster180(full));
     // per-chunk: every chunk decompresses to 4096 bytes except the last
     let recon = new Uint8Array(0);
     parsed.chunks.forEach((c, idx) => {
@@ -94,6 +96,31 @@ describe("SDK image stream — framing", () => {
     // the full-width header rule (BAR rows) must be solid INK => 0x00 in packed
     const ruleRow = 48 * full.rowBytes;
     for (let b = 0; b < full.rowBytes; b++) expect(packed[ruleRow + b]).toBe(0x00);
+  });
+
+  it("rotation: involution (180° twice = identity) and true pixel mapping", () => {
+    const full = renderStickerBitmap(flagship(), FLAGSHIP.w, FLAGSHIP.h, ATLASES);
+    const twice = rotateRaster180(rotateRaster180(full));
+    expect(Buffer.from(twice.buf).equals(Buffer.from(full.buf))).toBe(true);
+    // pixel (x,y) ends up at (w-1-x, h-1-y)
+    const rot = rotateRaster180(full);
+    const at = (r: { buf: Uint8Array; rowBytes: number }, x: number, y: number) => (r.buf[y * r.rowBytes + (x >> 3)] & (0x80 >> (x & 7))) !== 0;
+    for (const [x, y] of [[16, 10], [300, 48], [795, 200]] as [number, number][]) {
+      expect(at(rot, full.w - 1 - x, full.h - 1 - y)).toBe(at(full, x, y));
+    }
+  });
+
+  it("orientation: the header rule (source y=48..50) lands at the BOTTOM of the sent raster", () => {
+    // The stream's raster is rotated: the full-width BAR that the layout puts
+    // near the TOP must appear in the LAST rows of what we transmit — that is
+    // what flips the physical output back to the old TEXT feed orientation.
+    const full = renderStickerBitmap(flagship(), FLAGSHIP.w, FLAGSHIP.h, ATLASES);
+    const sent = packPrinterRaster(rotateRaster180(full));
+    const row = (y: number) => sent.subarray(y * full.rowBytes, (y + 1) * full.rowBytes);
+    // rotated rule rows: h-1-50 .. h-1-48 = 429..431 (solid ink = 0x00 packed)
+    for (const y of [429, 430, 431]) for (const b of row(y)) expect(b).toBe(0x00);
+    // and the original top rows are NOT solid ink anymore
+    expect(Array.from(row(48)).every((b) => b === 0x00)).toBe(false);
   });
 
   it("compression pays: the whole 100x60 job is a small fraction of the raster", () => {

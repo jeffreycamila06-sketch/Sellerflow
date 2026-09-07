@@ -526,12 +526,38 @@ export function packPrinterRaster(full: FullRaster): Uint8Array {
   return out;
 }
 
+// 180° rotation, app-side (2026-09-07 field fix): the SDK job's DIRECTION 0,0
+// feeds out rotated 180° vs the TEXT path's DIRECTION 1. The owner wants the
+// old feed orientation, and changing DIRECTION in the SDK stream is a protocol
+// risk (the SDK never sends 1 with mode 4) — so we rotate the FULL label
+// raster before packing and keep the stream framing byte-identical. With
+// wDots % 8 == 0 on every size, pixel index i maps to N-1-i: reverse the byte
+// order, then reverse the bits inside each byte. Involution (twice = identity).
+const BIT_REVERSE: Uint8Array = (() => {
+  const t = new Uint8Array(256);
+  for (let b = 0; b < 256; b++) {
+    let r = 0;
+    for (let i = 0; i < 8; i++) if (b & (1 << i)) r |= 0x80 >> i;
+    t[b] = r;
+  }
+  return t;
+})();
+export function rotateRaster180(full: FullRaster): FullRaster {
+  const n = full.buf.length;
+  const out = new Uint8Array(n);
+  for (let i = 0; i < n; i++) out[i] = BIT_REVERSE[full.buf[n - 1 - i]];
+  return { buf: out, w: full.w, h: full.h, rowBytes: full.rowBytes };
+}
+
 // Header/terminator framing — byte-exact to the decompiled SDK builder.
-export function buildSdkBitmapStream(printerRaster: Uint8Array, rowBytes: number, hDots: number, wMm: number, hMm: number, copies = 1): { bytes: Uint8Array; chunks: number; compressedBytes: number } {
+// `direction` exists ONLY for probe 13 (does the mode-4 engine honor
+// DIRECTION 1?) — production always sends the SDK's verbatim "0,0" and fixes
+// orientation via rotateRaster180 instead.
+export function buildSdkBitmapStream(printerRaster: Uint8Array, rowBytes: number, hDots: number, wMm: number, hMm: number, copies = 1, direction = "0,0"): { bytes: Uint8Array; chunks: number; compressedBytes: number } {
   const out: number[] = [];
   const ascii = (s: string) => { for (let i = 0; i < s.length; i++) out.push(s.charCodeAt(i) & 0xff); };
   ascii(`SIZE ${wMm} mm,${hMm} mm\r\n`);
-  ascii("DIRECTION 0,0\r\n");
+  ascii(`DIRECTION ${direction}\r\n`);
   ascii("CLS\r\n");
   ascii(`BITMAP 4,0,${rowBytes},${hDots},4,`);
   let chunks = 0, compressedBytes = 0;
@@ -554,7 +580,10 @@ export function buildSdkBitmapStream(printerRaster: Uint8Array, rowBytes: number
 // path and is clean + fast on both boards).
 export function rasterizeToSdkBitmapTspl(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases): BitmapTsplResult {
   const full = renderStickerBitmap(payload, wMm, hMm, atlases);
-  const printerRaster = packPrinterRaster(full);
+  // 180° app-side (field fix): DIRECTION 0,0 feeds out inverted vs the old
+  // TEXT stickers — rotate the whole label so the output matches the TEXT
+  // path's orientation exactly. Full-label rotation (no cropping on this path).
+  const printerRaster = packPrinterRaster(rotateRaster180(full));
   const r = buildSdkBitmapStream(printerRaster, full.rowBytes, full.h, wMm, hMm);
   return { bytes: r.bytes, bands: r.chunks, inkBytes: r.compressedBytes };
 }

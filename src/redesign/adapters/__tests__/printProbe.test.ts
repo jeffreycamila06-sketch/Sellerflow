@@ -26,10 +26,10 @@ describe("parseSizeMm", () => {
 describe("buildProbes", () => {
   const probes = buildProbes("60x40");
 
-  it("returns exactly the 12 expected probes in order", () => {
+  it("returns exactly the 13 expected probes in order", () => {
     expect(probes.map((p) => p.id)).toEqual([
       "min", "sweepM1", "sweepM2", "bitmap", "density4", "nodensity", "speed2", "selftest",
-      "bmpTextA", "bmpTextB", "bmpTextC", "sdkImage",
+      "bmpTextA", "bmpTextB", "bmpTextC", "sdkImage", "sdkDir1",
     ]);
     for (const p of probes) {
       expect(p.label).toBeTruthy();
@@ -69,6 +69,15 @@ describe("buildProbes", () => {
     const bytes = byId(probes, "sdkImage").bytes;
     const tailStart = bytes.length - "\r\nPRINT 1,1\n\r".length;
     expect(Array.from(bytes.subarray(tailStart - 4, tailStart))).toEqual([0, 0, 0, 0]);
+  });
+
+  it("probe 13: DIRECTION 1 evidence variant — unrotated raster, DIRECTION line differs", () => {
+    const d1 = dec(byId(probes, "sdkDir1").bytes);
+    expect(d1).toContain("DIRECTION 1\r\n");
+    expect(d1.includes("DIRECTION 0,0")).toBe(false);
+    // probe 12 is the app-rotated production orientation; 13 is unrotated with
+    // DIRECTION 1 — the two streams must differ in their image payloads too
+    expect(byId(probes, "sdkImage").bytes).not.toEqual(byId(probes, "sdkDir1").bytes);
   });
 
   it("bakes the requested label size into the preamble", () => {

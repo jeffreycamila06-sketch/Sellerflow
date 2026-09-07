@@ -8,7 +8,7 @@
 // "printprobe" gate in RedesignApp.tsx (and the additive `printRawTspl` bridge
 // member + the two native `printRawTspl` methods). Nothing else references it.
 
-import { rasterizeTextStrip, encodeBandBytes, buildSdkBitmapStream } from "./stickerRaster";
+import { rasterizeTextStrip, encodeBandBytes, buildSdkBitmapStream, rotateRaster180 } from "./stickerRaster";
 import { LATIN_ATLAS } from "./glyphAtlas.latin";
 
 const CRLF = "\r\n";
@@ -137,13 +137,22 @@ function bitmapTextProbe(w: number, h: number, variant: "a" | "b" | "c"): Uint8A
 // the production SDK-mode sticker path is right. NOTE: deliberately NO TEXT
 // label line — the SDK job format carries no TEXT commands; tap order + the
 // glyph raster itself identify the print.
-function sdkImageProbe(w: number, h: number): Uint8Array {
+// Probe 12 = production orientation (app-side 180° rotation, DIRECTION 0,0 —
+// what real stickers ship). Probe 13 = the SAME glyphs UNrotated with
+// DIRECTION 1 — pure evidence of whether the mode-4 engine honors DIRECTION;
+// the software rotation ships regardless of its outcome.
+function sdkImageProbe(w: number, h: number, variant: "rotated" | "direction1"): Uint8Array {
   const wDots = w * 8, hDots = h * 8, rowBytes = wDots >> 3;
   const strip = rasterizeTextStrip("ABC 123", LATIN_ATLAS, "4", 2);
   const band = encodeBandBytes(strip, wDots, 16); // printer polarity (1=white)
-  const raster = new Uint8Array(rowBytes * hDots).fill(0xff); // all white
+  let raster = new Uint8Array(rowBytes * hDots).fill(0xff); // all white
   raster.set(band, 70 * rowBytes); // strip rows at y=70
-  return buildSdkBitmapStream(raster, rowBytes, hDots, w, h).bytes;
+  if (variant === "rotated") {
+    // rotation is polarity-agnostic (pure bit reversal) — same call production makes
+    raster = rotateRaster180({ buf: raster, w: wDots, h: hDots, rowBytes }).buf;
+    return buildSdkBitmapStream(raster, rowBytes, hDots, w, h).bytes;
+  }
+  return buildSdkBitmapStream(raster, rowBytes, hDots, w, h, 1, "1").bytes;
 }
 
 export function buildProbes(psSize: string): Probe[] {
@@ -160,7 +169,8 @@ export function buildProbes(psSize: string): Probe[] {
     { id: "bmpTextA", label: "9. BMP text (a) x=0 full row", note: "Glyphs as raster, full-width band at x=0. Clean ⇒ production default is right.", bytes: bitmapTextProbe(w, h, "a") },
     { id: "bmpTextB", label: "10. BMP text (b) x=16 aligned", note: "Same glyph raster, cropped band at byte-aligned x=16.", bytes: bitmapTextProbe(w, h, "b") },
     { id: "bmpTextC", label: "11. BMP text (c) x=13 NOT aligned", note: "Same raster at x=13 — stresses sub-byte x shifting (doubling suspect).", bytes: bitmapTextProbe(w, h, "c") },
-    { id: "sdkImage", label: "12. SDK image mode (manufacturer)", note: "LZO-compressed mode-4 block, the Labelife path. Clean+fast ⇒ production format is right.", bytes: sdkImageProbe(w, h) },
+    { id: "sdkImage", label: "12. SDK image mode (production)", note: "LZO mode-4 block, app-rotated 180° — must print CLEAN and RIGHT-WAY-UP like the old TEXT stickers.", bytes: sdkImageProbe(w, h, "rotated") },
+    { id: "sdkDir1", label: "13. SDK image, DIRECTION 1 (evidence)", note: "Same glyphs UNrotated, DIRECTION 1 — shows whether the firmware honors it. Software rotation ships regardless.", bytes: sdkImageProbe(w, h, "direction1") },
   ];
 }
 
