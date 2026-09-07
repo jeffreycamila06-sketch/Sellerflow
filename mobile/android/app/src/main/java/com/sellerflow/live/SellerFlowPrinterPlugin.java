@@ -481,8 +481,21 @@ public class SellerFlowPrinterPlugin extends Plugin {
                         }
                     });
                 } else {
-                    // UNCHANGED Classic SPP path (same as testStickerPrint).
-                    sendViaBluetoothSpp(address, tspl);
+                    // Classic SPP path (same socket send as testStickerPrint).
+                    // AUDIT F2 safety net: a failure HERE rejects with the
+                    // distinct BITMAP_SPP_FAILED code so the web router retries
+                    // the SAME print through the unchanged TEXT path — an
+                    // SPP-incompatible unit degrades to today's behavior
+                    // instead of a dead print. (SPP has no DONE feedback, so
+                    // this net only catches socket/connection-level failures —
+                    // the bitmap-over-SPP combination still needs one device test.)
+                    try {
+                        sendViaBluetoothSpp(address, tspl);
+                    } catch (Exception e) {
+                        Log.e(TAG, "printStickerBitmap (spp) failed", e);
+                        call.reject("Bitmap over SPP failed: " + e.getMessage(), "BITMAP_SPP_FAILED", e);
+                        return;
+                    }
                     JSObject ret = new JSObject();
                     ret.put("ok", true);
                     ret.put("bytes", tspl.length);

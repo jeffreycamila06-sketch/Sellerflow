@@ -192,6 +192,40 @@ describe("printSlip bitmap routing", () => {
     expect(r).toEqual({ ok: false, code: "", message: "" });
   });
 
+  // ---- AUDIT F2 safety net: BITMAP_SPP_FAILED → retry the SAME print via TEXT.
+
+  it("SPP NET: native BITMAP_SPP_FAILED reject → TEXT retry fires, result reflects TEXT", async () => {
+    const notices: StickerRouteNotice[] = [];
+    setStickerRouteNoticeHandler((n) => notices.push(n));
+    const bitmap = vi.fn().mockRejectedValue({ code: "BITMAP_SPP_FAILED", message: "Bitmap over SPP failed: socket" });
+    const native = vi.fn().mockResolvedValue({ ok: true });
+    (window as W).SellerFlowPrinter = { printStickerNative: native, printStickerBitmap: bitmap };
+    const r = await printStickerBtRouted(buyer, "NT$", "Store", cfg);
+    expect(bitmap).toHaveBeenCalledTimes(1);
+    expect(native).toHaveBeenCalledTimes(1); // the same print, degraded to today's TEXT path
+    expect(r).toEqual({ ok: true, code: "", message: "" });
+    expect(notices.map((n) => n.via)).toEqual(["bitmap", "text"]);
+    expect(notices[1]).toMatchObject({ via: "text", ok: true, reason: "bitmap-spp-failed" });
+  });
+
+  it("SPP NET: resolved {ok:false, code:BITMAP_SPP_FAILED} takes the same TEXT retry; other codes do NOT", async () => {
+    const native = vi.fn().mockResolvedValue({ ok: true });
+    const sppFail = vi.fn().mockResolvedValue({ ok: false, code: "BITMAP_SPP_FAILED", message: "spp" });
+    (window as W).SellerFlowPrinter = { printStickerNative: native, printStickerBitmap: sppFail };
+    expect((await printStickerBtRouted(buyer, "NT$", "Store", cfg)).ok).toBe(true);
+    expect(native).toHaveBeenCalledTimes(1);
+    // a REAL bitmap failure (e.g. BT_PRINT_FAILED) must NOT silently retry TEXT —
+    // it returns honestly so the seller sees the failure surface.
+    const realFail = vi.fn().mockResolvedValue({ ok: false, code: "BT_PRINT_FAILED", message: "timeout" });
+    (window as W).SellerFlowPrinter = { printStickerNative: native, printStickerBitmap: realFail };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const r2 = await printStickerBtRouted(buyer, "NT$", "Store", cfg);
+    warn.mockRestore();
+    expect(r2.ok).toBe(false);
+    expect(r2.code).toBe("BT_PRINT_FAILED");
+    expect(native).toHaveBeenCalledTimes(1); // unchanged — no extra TEXT attempt
+  });
+
   // ---- Classic-toggle VISIBILITY gate (owner rule: admin + test account only).
 
   it("SAFETY: stray sfl_rd_classic_text=1 on a NON-allowed user's device → BITMAP anyway", async () => {
@@ -214,7 +248,7 @@ describe("printSlip bitmap routing", () => {
     expect(canUseClassicText("Admin", "seller@x.com")).toBe(true); // display-cased role
     expect(canUseClassicText("seller", "googletest@sellerflowlive.com")).toBe(true); // the real test account
     expect(canUseClassicText("seller", "GoogleTest@SellerFlowLive.com")).toBe(true); // case-insensitive
-    expect(canUseClassicText("seller", "googletest@gmail.com")).toBe(true); // owner-specified spelling
+    expect(canUseClassicText("seller", "googletest@gmail.com")).toBe(false); // AUDIT F4: unowned/registrable — removed
     expect(canUseClassicText("seller", "maria@example.com")).toBe(false);
     expect(canUseClassicText("Seller", "kylerkao@example.com")).toBe(false);
     expect(canUseClassicText(undefined, undefined)).toBe(false); // pre-auth / logged out

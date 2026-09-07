@@ -215,7 +215,10 @@ export function setClassicTextSticker(on: boolean): void {
 // seller's device (e.g. set while an admin was logged in there) is therefore
 // IGNORED — the print routes bitmap regardless. Default DISALLOWED (pre-auth /
 // logged out / rollback contexts route bitmap, the correct path).
-const CLASSIC_TEXT_TEST_ACCOUNTS = new Set(["googletest@sellerflowlive.com", "googletest@gmail.com"]);
+// AUDIT F4: ONLY the owner-controlled documented test account. Never add an
+// unowned/registrable address here — registration is open, so a listed email
+// is a grantable backdoor to the toggle.
+const CLASSIC_TEXT_TEST_ACCOUNTS = new Set(["googletest@sellerflowlive.com"]);
 export function canUseClassicText(role: string | undefined | null, email: string | undefined | null): boolean {
   if (isAdminRole(role)) return true;
   return CLASSIC_TEXT_TEST_ACCOUNTS.has(String(email || "").trim().toLowerCase());
@@ -245,7 +248,11 @@ const nowMs = () => (typeof performance !== "undefined" ? performance.now() : Da
 // reasons through them, and support can read getLastStickerRouteNotice() /
 // window.__sflPrintTiming from an inspector. Genuine print FAILURES surface to
 // sellers via setNativePrintFailureHandler above (unchanged) — never via this.
-export type StickerFallbackReason = "" | "classic-mode-on" | "bitmap-method-missing" | "cjk-atlas-unavailable";
+export type StickerFallbackReason = "" | "classic-mode-on" | "bitmap-method-missing" | "cjk-atlas-unavailable" | "bitmap-spp-failed";
+// AUDIT F2 safety net: the native reject code for an SPP-transport bitmap send
+// that failed at the socket level — the router retries that print through the
+// unchanged TEXT path, so an SPP-incompatible unit degrades to today's behavior.
+export const BITMAP_SPP_FAILED = "BITMAP_SPP_FAILED";
 // `phase` (bitmap only): the native transport's own breakdown — "conn 0.6s send
 // 3.4s done 0.5s chunk 20x365" — so a slow print says WHERE the time went
 // (GATT connect vs BLE transfer vs printer processing) and the negotiated chunk
@@ -320,12 +327,14 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
     }
     const { code, message } = readFailure(result);
     reportStickerRoute({ via: "bitmap", ok: false, reason: "", detail: message || code || "print failed", payloadBytes: raster.bytes.length, totalMs: t2 - t0, phase });
-    if (!reportNativePrintFailure("bluetooth", code, message)) console.warn("[BT bitmap sticker] print failed:", message || "check pairing/selection.");
+    // BITMAP_SPP_FAILED is not surfaced here — the caller retries via TEXT,
+    // which reports its own outcome (no double modal/warn for one print).
+    if (code !== BITMAP_SPP_FAILED && !reportNativePrintFailure("bluetooth", code, message)) console.warn("[BT bitmap sticker] print failed:", message || "check pairing/selection.");
     return { ok: false, code, message };
   } catch (err) {
     const { code, message } = readFailure(err);
     reportStickerRoute({ via: "bitmap", ok: false, reason: "", detail: message || code || String(err), payloadBytes: raster.bytes.length, totalMs: nowMs() - t0 });
-    if (!reportNativePrintFailure("bluetooth", code, message)) console.warn("printStickerBitmap bridge call failed:", err);
+    if (code !== BITMAP_SPP_FAILED && !reportNativePrintFailure("bluetooth", code, message)) console.warn("printStickerBitmap bridge call failed:", err);
     return { ok: false, code, message };
   }
 }
@@ -343,23 +352,28 @@ async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: st
   // bitmap even with a stray localStorage flag on the device.
   const classic = classicTextAllowed && isClassicTextSticker();
   let cjkUnavailable = false;
+  let sppFailed = false;
   if (bmpFn && !classic) {
     const payload = buildNativeStickerPayload(buyer, cur, storeName, cfg);
-    // The CJK atlas is a code-split chunk (prefetched at app start). ASCII/
-    // Latin prints never wait on it; a CJK print awaits the SAME promise the
-    // prefetch started. If the chunk can't load (offline cold open), THIS
-    // print falls through to the Classic TEXT render (readable CJK via the
-    // printer font — never tofu) with a visible reason; the next print
-    // retries the chunk load.
-    if (!payloadNeedsCjk(payload)) return printStickerViaBitmap(bmpFn, payload, {});
-    try {
-      const cjk = await loadCjkAtlas();
-      return printStickerViaBitmap(bmpFn, payload, cjk);
-    } catch {
-      cjkUnavailable = true;
+    // The CJK atlas is a code-split chunk (prefetched at app start on bridge
+    // devices). ASCII/Latin prints never wait on it; a CJK print awaits the
+    // SAME promise the prefetch started. If the chunk can't load (offline cold
+    // open), THIS print falls through to the Classic TEXT render (readable CJK
+    // via the printer font — never tofu); the next print retries the chunk load.
+    let cjk: GlyphAtlas | null = {};
+    if (payloadNeedsCjk(payload)) {
+      try { cjk = await loadCjkAtlas(); } catch { cjk = null; cjkUnavailable = true; }
+    }
+    if (cjk) {
+      const r = await printStickerViaBitmap(bmpFn, payload, cjk);
+      // AUDIT F2: native says the SPP-transport bitmap send failed at the
+      // socket level → retry THIS print through the unchanged TEXT path below.
+      // Every other outcome (success, or a real print failure) returns as-is.
+      if (r.ok || r.code !== BITMAP_SPP_FAILED) return r;
+      sppFailed = true;
     }
   }
-  const fallbackReason: StickerFallbackReason = classic ? "classic-mode-on" : cjkUnavailable ? "cjk-atlas-unavailable" : "bitmap-method-missing";
+  const fallbackReason: StickerFallbackReason = classic ? "classic-mode-on" : cjkUnavailable ? "cjk-atlas-unavailable" : sppFailed ? "bitmap-spp-failed" : "bitmap-method-missing";
   try {
     const t0 = nowMs();
     const result = await bridge.printStickerNative(buildNativeStickerPayload(buyer, cur, storeName, cfg));

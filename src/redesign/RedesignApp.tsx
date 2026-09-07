@@ -424,7 +424,11 @@ export default function RedesignApp() {
   // mount so it's resident long before the first CJK print. A CJK print that
   // races this awaits the SAME promise; a failed prefetch (offline cold open)
   // is silent — the print path retries and falls back to TEXT for that print.
-  useEffect(() => { prefetchCjkAtlas(); }, []);
+  // AUDIT F3: gated on the BT sticker bridge — only an Android APK with the
+  // bitmap-capable plugin can ever rasterize CJK, so web/desktop/iOS sessions
+  // never download the ~836KB-gzip chunk they cannot use. A CJK print on a
+  // bridge device without the prefetch still awaits loadCjkAtlas() correctly.
+  useEffect(() => { if (hasBtBridge()) prefetchCjkAtlas(); }, []);
 
   // ── Cold-open modal coordinator: plan-EXPIRY nudge (priority) then native
   // UPDATE nudge. Runs ONCE after auth resolves — at that point nothing is live

@@ -480,7 +480,12 @@ final class BleStickerTransport {
         if (!jobActive || g != gatt) return;
         if (ch == null || !CHAR_FF03_NOTIFY.equals(ch.getUuid())) return;
         if (value != null && value.length > 0) notifyBuffer.append(new String(value, StandardCharsets.UTF_8));
-        if (BleStickerLogic.containsPrintDone(notifyBuffer.toString())) finishJob(null);
+        // AUDIT F1: accept DONE only after every chunk is queued. A legitimate
+        // DONE can only follow the final PRINT bytes; with the warm link, a
+        // stale/duplicate DONE from the PREVIOUS job could otherwise arrive
+        // during the next job's write phase and finish it prematurely (fake
+        // success + truncated payload). Strictly tightening.
+        if (allChunksSent && BleStickerLogic.containsPrintDone(notifyBuffer.toString())) finishJob(null);
     }
 
     // ── chunk pump (backpressure: onCharacteristicWrite on API33+, else 8ms pacing) ──
