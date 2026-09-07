@@ -110,6 +110,9 @@ const SYNTH: { name: string; handle: string; text: string; platform: "TikTok" | 
   { name: "劉俊宏", handle: "liu.junhong", text: "+1 黑色外套", platform: "Facebook", isBuy: true },
   { name: "黃雅婷 Amy", handle: "amy.huang.tw", text: "多少錢? tumbler", platform: "TikTok", isBuy: false },
   { name: "Kevin 王", handle: "kevinwang_tw", text: "+1 sneakers 藍色", platform: "TikTok", isBuy: true },
+  // Vietnamese + Indonesian sellers' markets (extended-Latin sticker path).
+  { name: "Nguyễn Thị Hằng", handle: "hang.nguyen", text: "chốt đơn son đỏ", platform: "TikTok", isBuy: true },
+  { name: "Siti Rahayu", handle: "siti.rahayu", text: "+1 gamis biru kak", platform: "TikTok", isBuy: true },
 ];
 
 export interface ActiveAccounts { TikTok: string; Facebook: string }

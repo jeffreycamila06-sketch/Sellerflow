@@ -19,6 +19,7 @@ import {
   type RasterPayload, type RasterAtlases,
 } from "../stickerRaster";
 import { LATIN_ATLAS } from "../glyphAtlas.latin";
+import { extraBitmapFixtures } from "./bitmapFixtures";
 import type { RefPayload } from "../../../lib/__tests__/tsplReference";
 
 const PARITY_DIR = join(process.cwd(), "mobile/ios/tspl-parity/") ;
@@ -118,6 +119,11 @@ describe("SDK stream goldens (sha256-pinned)", () => {
     for (const fx of manifest.fixtures) {
       const r = rasterizeToSdkBitmapTspl(readPayload(fx.name) as RasterPayload, fx.labelWidthMm, fx.labelHeightMm, ATLASES);
       built[`${fx.name}_${fx.labelWidthMm}x${fx.labelHeightMm}`] = `${sha(r.bytes)}:${r.bytes.length}`;
+    }
+    // Bitmap-only multi-language extras (Vietnamese/Indonesian/mixed CJK+Latin).
+    for (const fx of extraBitmapFixtures()) {
+      const r = rasterizeToSdkBitmapTspl(fx.payload, fx.w, fx.h, ATLASES);
+      built[fx.key] = `${sha(r.bytes)}:${r.bytes.length}`;
     }
     if (process.env.UPDATE_BITMAP_GOLDENS === "1" || !existsSync(SDK_GOLDENS_PATH)) {
       writeFileSync(SDK_GOLDENS_PATH, JSON.stringify(built, null, 2) + "\n");

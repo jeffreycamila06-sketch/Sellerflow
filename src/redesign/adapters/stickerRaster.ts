@@ -94,6 +94,52 @@ function stripUnrenderable(s: string): string {
   return out;
 }
 
+// ── Script modes ─────────────────────────────────────────────────────────────
+// "legacy"   — the TEXT path's narrowing, verbatim (transliterate Latin
+//              diacritics to ASCII, strip everything not ASCII/CJK). Used by
+//              emitTextTspl so the layout parity vs the frozen reference stays
+//              byte-exact; also what Classic text mode actually prints.
+// "extended" — the BITMAP path's narrowing: keep any char the atlases cover.
+//              The Latin atlas now spans ASCII + Latin-1 + Ext-A/B + Ext
+//              Additional (full Vietnamese incl. tone marks; Indonesian/
+//              Filipino/European), so "Nguyễn Thị Hằng" prints WITH diacritics
+//              instead of the legacy "Nguyen Thi Hang". Geometry is unchanged
+//              (same cell advance per char), only the glyphs differ. Scripts
+//              with no atlas (Thai/Arabic/Korean/…) keep the legacy fallback
+//              (handle / Buyer #N) — never tofu.
+export type ScriptMode = "legacy" | "extended";
+const isAtlasLatin = (cp: number): boolean =>
+  (cp >= 0xa1 && cp <= 0xff) || (cp >= 0x100 && cp <= 0x24f) || (cp >= 0x1e00 && cp <= 0x1eff);
+function stripUnrenderableExt(s: string): string {
+  let out = "";
+  for (const ch of s) { const cp = ch.codePointAt(0) ?? 0; if (cp <= 127 || isCjkIdeograph(cp) || isAtlasLatin(cp)) out += ch; }
+  return out;
+}
+// Extended classification: atlas-covered Latin counts as the ASCII tier (same
+// font/cell/reflow as ASCII — only the painted glyph differs).
+function classifyScriptExt(s: string): number {
+  let hasCjk = false;
+  for (const ch of s) {
+    const cp = ch.codePointAt(0) ?? 0;
+    if (cp <= 127 || isAtlasLatin(cp)) continue;
+    if (isCjkIdeograph(cp)) { hasCjk = true; continue; }
+    return SCRIPT_UNSUPPORTED;
+  }
+  return hasCjk ? SCRIPT_CJK : SCRIPT_ASCII;
+}
+const hasCjkChar = (s: string): boolean => { for (const ch of s) if (isCjkIdeograph(ch.codePointAt(0) ?? 0)) return true; return false; };
+// Per-character fallback for a glyph missing from an atlas: ATOMIC map first
+// (đ→d …), else the NFD base letter (ễ→e). Returns null when the char has no
+// simpler form (the paint loop then keeps the advance — never misaligns).
+export function translitCp(cp: number): number | null {
+  const ch = String.fromCodePoint(cp);
+  const mapped = ATOMIC_LATIN[ch];
+  if (mapped) return mapped.codePointAt(0) ?? null;
+  const base = ch.normalize("NFD")[0];
+  const b = base ? base.codePointAt(0) ?? null : null;
+  return b != null && b !== cp ? b : null;
+}
+
 // ── Per-size layout config — dup of tsplReference STICKER_LAYOUTS (parity-tested) ──
 export interface SizeConfig {
   wDots: number; rightEdge: number; storeGap: number; buyerNumYMul: number; buyerNumGap: number;
@@ -131,15 +177,25 @@ export type DrawOp =
 export interface DrawResult { ops: DrawOp[]; wDots: number; hDots: number; wMm: number; hMm: number }
 
 // Re-derivation of tsplReference.buildTsplStickerReference, emitting draw ops
-// instead of bytes. MUST stay behaviorally identical — pinned by the parity test.
-export function stickerDrawOps(payload: RasterPayload, labelWidthMm: number, labelHeightMm: number): DrawResult {
+// instead of bytes. In "legacy" mode it MUST stay behaviorally identical —
+// pinned by the parity test (emitTextTspl always uses legacy). "extended" is
+// the bitmap-production mode (see ScriptMode above): same geometry, wider
+// character retention.
+export function stickerDrawOps(payload: RasterPayload, labelWidthMm: number, labelHeightMm: number, mode: ScriptMode = "extended"): DrawResult {
   const ops: DrawOp[] = [];
   const c = stickerConfig(labelWidthMm, labelHeightMm);
+  const legacy = mode === "legacy";
+  const narrow = legacy ? (s: string) => stripUnrenderable(transliterateLatin(s)) : stripUnrenderableExt;
+  const classify = legacy ? classifyScript : classifyScriptExt;
 
   const textSmart = (x: number, y: number, asciiFont: "2" | "3" | "4", rawContent: string, xm: number, ym: number, cjkXm: number, cjkYm: number) => {
-    const content = stripUnrenderable(transliterateLatin(rawContent));
+    const content = narrow(rawContent);
     if (!content) return;
-    if (!hasNonAscii(content)) { ops.push({ k: "txt", x, y, font: asciiFont, s: content, xm, ym }); return; }
+    // cjk-op selection: legacy keys off "any non-ASCII" (post-transliteration
+    // that can only mean CJK); extended keys off ACTUAL CJK presence so a pure
+    // Vietnamese/accented-Latin string stays on the Latin font ("txt" op).
+    const wantsCjkOp = legacy ? hasNonAscii(content) : hasCjkChar(content);
+    if (!wantsCjkOp) { ops.push({ k: "txt", x, y, font: asciiFont, s: content, xm, ym }); return; }
     const maxChars = Math.max(1, Math.floor((c.rightEdge - x) / (24 * cjkXm)));
     ops.push({ k: "cjk", x, y, s: truncate(content, maxChars), xm: cjkXm, ym: cjkYm });
   };
@@ -186,11 +242,14 @@ export function stickerDrawOps(payload: RasterPayload, labelWidthMm: number, lab
 
   let nameSource = cleanBuyerName;
   if (buyerName && !cleanBuyerName) nameSource = cleanBuyerHandle ? cleanBuyerHandle : `Buyer #${buyerNum}`;
-  let nameOut = transliterateLatin(nameSource);
-  let nameTier = classifyScript(nameOut);
+  // Legacy transliterates the name up front; extended keeps the raw (post-emoji)
+  // characters so the atlas can paint the real diacritics. The UNSUPPORTED-tier
+  // fallback (handle / omit — never '?') is identical in both modes.
+  let nameOut = legacy ? transliterateLatin(nameSource) : nameSource;
+  let nameTier = classify(nameOut);
   if (nameTier === SCRIPT_UNSUPPORTED) {
-    const handleOut = transliterateLatin(cleanBuyerHandle);
-    if (handleOut && classifyScript(handleOut) === SCRIPT_ASCII) { nameOut = handleOut; nameTier = SCRIPT_ASCII; }
+    const handleOut = legacy ? transliterateLatin(cleanBuyerHandle) : cleanBuyerHandle;
+    if (handleOut && classify(handleOut) === SCRIPT_ASCII) { nameOut = handleOut; nameTier = SCRIPT_ASCII; }
     else nameOut = "";
   }
 
@@ -255,9 +314,11 @@ export function stickerDrawOps(payload: RasterPayload, labelWidthMm: number, lab
 }
 
 // ── TEST-ONLY backend: ops → the exact TEXT/BAR TSPL stream (parity proof) ────
+// ALWAYS legacy mode: this exists solely to prove the layout equals the frozen
+// TEXT reference byte-for-byte, which is defined in terms of the old narrowing.
 export type GbkEncoder = (s: string) => number[];
 export function emitTextTspl(payload: RasterPayload, wMm: number, hMm: number, gbk: GbkEncoder): Uint8Array {
-  const { ops } = stickerDrawOps(payload, wMm, hMm);
+  const { ops } = stickerDrawOps(payload, wMm, hMm, "legacy");
   const out: number[] = [];
   const line = (s: string) => { out.push(...asciiBytes(s), ...CRLF); };
   line(`SIZE ${wMm} mm, ${hMm} mm`);
@@ -319,7 +380,11 @@ function paint(bmp: Bitmap, ops: DrawOp[], atlases: RasterAtlases) {
       let penX = op.x;
       for (const ch of op.s) {
         const cp = ch.codePointAt(0) ?? 0;
-        const g = f.glyphs[cp];
+        // Per-char never-tofu fallback: a codepoint the atlas lacks paints as
+        // its transliterated base form (ễ→e, đ→d) — the base ASCII set is
+        // always present, so a letter can never come out blank.
+        let g = f.glyphs[cp];
+        if (!g) { const alt = translitCp(cp); if (alt != null) g = f.glyphs[alt]; }
         if (g) bmp.blit(b64ToBytes(g), f.w, f.h, penX, op.y, op.xm, op.ym);
         penX += f.w * op.xm; // fixed advance (mono cell), even for a missing glyph
       }
@@ -330,7 +395,10 @@ function paint(bmp: Bitmap, ops: DrawOp[], atlases: RasterAtlases) {
     let penX = op.x;
     for (const ch of op.s) {
       const cp = ch.codePointAt(0) ?? 0;
-      const g = cjkFont.glyphs[cp];
+      // Same never-tofu fallback for accented Latin inside a mixed CJK string
+      // (the CJK atlas carries halfwidth ASCII but no diacritics).
+      let g = cjkFont.glyphs[cp];
+      if (!g) { const alt = translitCp(cp); if (alt != null) g = cjkFont.glyphs[alt]; }
       if (g) bmp.blit(b64ToBytes(g), cjkFont.w, cjkFont.h, penX, op.y, op.xm, op.ym);
       penX += cjkFont.w * op.xm;
     }
@@ -355,8 +423,8 @@ export interface BandOptions { horizontalCrop?: boolean }
 // Full uncropped 1-bit raster (bit 1 = ink) — exported so the band-crop lossless
 // invariant test can recompose the emitted BITMAP blocks against it.
 export interface FullRaster { buf: Uint8Array; w: number; h: number; rowBytes: number }
-export function renderStickerBitmap(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases): FullRaster {
-  const { ops, wDots, hDots } = stickerDrawOps(payload, wMm, hMm);
+export function renderStickerBitmap(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, mode: ScriptMode = "extended"): FullRaster {
+  const { ops, wDots, hDots } = stickerDrawOps(payload, wMm, hMm, mode);
   const bmp = new Bitmap(wDots, hDots);
   paint(bmp, ops, atlases);
   return { buf: bmp.buf, w: bmp.w, h: bmp.h, rowBytes: bmp.rowBytes };

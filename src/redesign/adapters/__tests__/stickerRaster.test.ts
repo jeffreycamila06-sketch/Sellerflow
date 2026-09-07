@@ -15,10 +15,11 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 import {
   stickerDrawOps, emitTextTspl, rasterizeToBitmapTspl, renderStickerBitmap,
-  bytesToBase64, INK_IS_ZERO, STICKER_LAYOUTS,
+  bytesToBase64, INK_IS_ZERO, STICKER_LAYOUTS, translitCp,
   type RasterPayload, type GlyphAtlas, type RasterAtlases,
 } from "../stickerRaster";
 import { LATIN_ATLAS } from "../glyphAtlas.latin";
+import { extraBitmapFixtures } from "./bitmapFixtures";
 import { buildTsplStickerReference, type RefPayload } from "../../../lib/__tests__/tsplReference";
 import { buildGbkEncoder } from "../../../lib/__tests__/gbk";
 
@@ -247,6 +248,11 @@ describe("bitmap TSPL goldens (sha256-pinned)", () => {
       const r = rasterizeToBitmapTspl(readPayload(fx.name) as RasterPayload, fx.labelWidthMm, fx.labelHeightMm, ATLASES);
       out[`${fx.name}_${fx.labelWidthMm}x${fx.labelHeightMm}`] = `${sha(r.bytes)}:${r.bytes.length}`;
     }
+    // Bitmap-only multi-language extras (Vietnamese/Indonesian/mixed CJK+Latin).
+    for (const fx of extraBitmapFixtures()) {
+      const r = rasterizeToBitmapTspl(fx.payload, fx.w, fx.h, ATLASES);
+      out[fx.key] = `${sha(r.bytes)}:${r.bytes.length}`;
+    }
     return out;
   };
   it("matches the committed goldens byte-for-byte", () => {
@@ -256,6 +262,71 @@ describe("bitmap TSPL goldens (sha256-pinned)", () => {
     }
     const goldens = JSON.parse(readFileSync(GOLDENS_PATH, "utf8")) as Record<string, string>;
     expect(built).toEqual(goldens);
+  });
+});
+
+// ── Multi-language (extended script mode) ───────────────────────────────────
+describe("extended script mode (Vietnamese / Indonesian / mixed)", () => {
+  const vn: RasterPayload = { storeName: "Shop", sessionDate: "09/07/2026", currency: "NT$", buyer: { num: 21, name: "Nguyễn Thị Hằng", handle: "hang.nguyen", totalSpent: 450, orders: [{ time: "20:15", item: "450" }] } };
+
+  it("extended (production default) KEEPS Vietnamese diacritics on the Latin font; legacy transliterates", () => {
+    const ext = stickerDrawOps(vn, 100, 60); // default = extended
+    const leg = stickerDrawOps(vn, 100, 60, "legacy");
+    // (the "Buyer" label is also font-4 x=16 — match the NAME op by content)
+    const extName = ext.ops.find((o) => o.k === "txt" && o.font === "4" && o.s.startsWith("Nguy"));
+    const legName = leg.ops.find((o) => o.k === "txt" && o.font === "4" && o.s.startsWith("Nguy"));
+    if (extName?.k !== "txt" || legName?.k !== "txt") throw new Error("name op missing");
+    expect(extName.s).toBe("Nguyễn Thị Hằng"); // real diacritics — the bitmap-path upgrade
+    expect(legName.s).toBe("Nguyen Thi Hang"); // the TEXT path's old narrowing (documented delta)
+    // SAME geometry: only the glyphs differ, never the layout.
+    expect(extName.x).toBe(legName.x);
+    expect(extName.y).toBe(legName.y);
+    expect(ext.ops.length).toBe(leg.ops.length);
+  });
+
+  it("the diacritic glyphs actually paint (atlas hit, non-blank, differs from transliterated)", () => {
+    const ext = renderStickerBitmap(vn, 100, 60, ATLASES);
+    const leg = renderStickerBitmap(vn, 100, 60, ATLASES, "legacy");
+    const ink = (r: { buf: Uint8Array }) => r.buf.reduce((n, b) => n + (b ? 1 : 0), 0);
+    expect(ink(ext)).toBeGreaterThan(0);
+    expect(ink(leg)).toBeGreaterThan(0);
+    expect(toHex(ext.buf)).not.toBe(toHex(leg.buf)); // ễ/ị/ằ marks add ink
+  });
+
+  it("mixed CJK+Latin stays on the CJK op with the Latin part retained", () => {
+    const mixed: RasterPayload = { ...vn, buyer: { ...vn.buyer, name: "陳小美 Amy" } };
+    const { ops } = stickerDrawOps(mixed, 100, 60);
+    const nameOp = ops.find((o) => o.k === "cjk");
+    if (nameOp?.k !== "cjk") throw new Error("cjk op missing");
+    expect(nameOp.s).toBe("陳小美 Amy");
+  });
+
+  it("unsupported scripts (no atlas) keep the legacy fallback in extended mode — never tofu", () => {
+    const th: RasterPayload = { ...vn, buyer: { ...vn.buyer, name: "สมชาย", handle: "somchai" } };
+    const { ops } = stickerDrawOps(th, 100, 60);
+    const nameOp = ops.find((o) => o.k === "txt" && o.font === "4" && o.s === "somchai");
+    if (nameOp?.k !== "txt") throw new Error("fallback op missing");
+    expect(nameOp.s).toBe("somchai"); // Thai → ASCII handle, same as the TEXT path
+  });
+
+  it("translitCp: per-char never-tofu fallback (ễ→e, đ→d, ASCII→null)", () => {
+    expect(translitCp(0x1ec5)).toBe(0x65); // ễ → e
+    expect(translitCp(0x111)).toBe(0x64);  // đ → d (ATOMIC map)
+    expect(translitCp(0x1eb1)).toBe(0x61); // ằ → a
+    expect(translitCp(0x61)).toBe(null);   // a → no simpler form
+  });
+
+  it("paint falls back per-character when a glyph is missing from the atlas (no blank slot)", () => {
+    // Mini atlas: font "4" carries ONLY ASCII — every diacritic must fall back
+    // to its base letter, so the painted raster equals the transliterated name.
+    const asciiOnly = { ...LATIN_ATLAS["4"], glyphs: Object.fromEntries(Object.entries(LATIN_ATLAS["4"].glyphs).filter(([cp]) => Number(cp) <= 0x7e)) };
+    const miniAtlases: RasterAtlases = { latin: { ...LATIN_ATLAS, "4": asciiOnly }, cjk: {} };
+    // Extended keeps "Nguyễn Thị Hằng"; with no diacritic glyphs every char
+    // falls back to its base letter — pixel-identical to the legacy-transliterated
+    // "Nguyen Thi Hang" render (same char count → same advances → same glyphs).
+    const viaFallback = renderStickerBitmap(vn, 100, 60, miniAtlases);
+    const legacyBase = renderStickerBitmap(vn, 100, 60, miniAtlases, "legacy");
+    expect(toHex(viaFallback.buf)).toBe(toHex(legacyBase.buf));
   });
 });
 
