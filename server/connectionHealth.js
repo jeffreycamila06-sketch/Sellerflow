@@ -137,6 +137,26 @@ export function shouldRelayViewers(prevCount, lastRelayAt, nextCount, nowMs) {
   return nextCount !== prevCount || nowMs - last >= VIEWER_REFRESH_MS;
 }
 
+// ── B3 fix — live-relay session OWNERSHIP read at relay time ─────────────────
+// The chat-relay payload used to bake in the sessionId captured when the
+// connection was CREATED (the startTikTokConnection closure param). The B2
+// reuse branch updates only the map entry (`existing.sessionId = sessionId ||
+// existing.sessionId`), never the closure — so after a reinstall/device
+// switch (new sf_browser_session) NO device matched the stamped id, the
+// client's `c.sessionId !== mine → drop` filter ate every live comment, and
+// only the initial:true ring re-emits (rewritten to the requester) got
+// through ("everything under Earlier comments", confirmed in production).
+// Fix: stamp the CURRENT owner from the live entry at relay time — the flow
+// follows the most recent device to tap Connect, and recovery is one tap.
+// `entry.sessionId` can never be emptied by reuse (the `||` keeps the old
+// value), so an empty/absent entry value falls back to the closure id —
+// which at worst reproduces the pre-fix behavior, never anything new. The
+// chat handler's owning-guard (isOwningConnection) already proved the entry
+// exists in the same synchronous tick, so the fallback is defensive only.
+export function relaySessionId(entry, closureSessionId) {
+  return (entry && entry.sessionId) || closureSessionId || "";
+}
+
 // ── Rate-limit cooldown (#4) — honor Euler's own reset window ────────────────
 // When EulerStream returns HTTP 429, the tiktok-live-connector throws a
 // SignatureRateLimitError that already parses the response headers into:

@@ -5,7 +5,7 @@ import http from "http";
 import { Server } from "socket.io";
 import { createClient } from "@supabase/supabase-js";
 import { translateBroadcast } from "./server/broadcastTranslate.js";
-import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs, checkConnectRate, CONNECT_RATE_WINDOW_MS, isOwningConnection } from "./server/connectionHealth.js";
+import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs, checkConnectRate, CONNECT_RATE_WINDOW_MS, isOwningConnection, relaySessionId } from "./server/connectionHealth.js";
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
 import { sanitizeCommentPayload } from "./server/sanitize.js";
 import { accountCapVerdict } from "./server/accountCap.js";
@@ -1079,7 +1079,13 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
       avatar: data.profilePictureUrl || "", //
       platform: "TikTok",
       sellerId,
-      sessionId,
+      // B3 fix — OWNERSHIP READ AT RELAY TIME, not from the creation closure:
+      // the B2 reuse branch keeps entry.sessionId current with the latest
+      // Connect tap, so the live flow follows the most recent device to tap
+      // Connect (one tap recovers a reinstall/device switch). The owning-guard
+      // above proved the entry exists this tick; the closure value is only the
+      // defensive fallback (see server/connectionHealth.js relaySessionId).
+      sessionId: relaySessionId(tiktokConnections.get(key), sessionId),
       sourceUsername: cleanUsername,
       roomId: state?.roomId || "",
       isBuy: false,
