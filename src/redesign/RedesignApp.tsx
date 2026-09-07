@@ -57,7 +57,7 @@ import { computeSales } from "./adapters/sales";
 import { useSalesReport } from "./adapters/salesReport";
 import { ordersByHour } from "./adapters/peakHours";
 import { sessionKeyFor } from "./adapters/shipping";
-import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, isPrinterNotSetup, canUseClassicText, setClassicTextAllowed, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
+import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, isPrinterNotSetup, canUseClassicText, setClassicTextAllowed, hasBitmapStickerMethod, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
 import { prefetchCjkAtlas } from "./adapters/cjkAtlasLoader";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
@@ -424,11 +424,12 @@ export default function RedesignApp() {
   // mount so it's resident long before the first CJK print. A CJK print that
   // races this awaits the SAME promise; a failed prefetch (offline cold open)
   // is silent — the print path retries and falls back to TEXT for that print.
-  // AUDIT F3: gated on the BT sticker bridge — only an Android APK with the
-  // bitmap-capable plugin can ever rasterize CJK, so web/desktop/iOS sessions
-  // never download the ~836KB-gzip chunk they cannot use. A CJK print on a
-  // bridge device without the prefetch still awaits loadCjkAtlas() correctly.
-  useEffect(() => { if (hasBtBridge()) prefetchCjkAtlas(); }, []);
+  // AUDIT F3 (refined post-merge): gated on the BITMAP method itself — only a
+  // binary that can actually rasterize (printStickerBitmap present) downloads
+  // the ~836KB-gzip chunk. Web/desktop, iOS, and every pre-bitmap APK skip it;
+  // it activates automatically on the first open of a bitmap-capable binary.
+  // A CJK print without the prefetch still awaits loadCjkAtlas() correctly.
+  useEffect(() => { if (hasBitmapStickerMethod()) prefetchCjkAtlas(); }, []);
 
   // ── Cold-open modal coordinator: plan-EXPIRY nudge (priority) then native
   // UPDATE nudge. Runs ONCE after auth resolves — at that point nothing is live

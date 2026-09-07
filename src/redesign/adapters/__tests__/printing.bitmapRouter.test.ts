@@ -5,7 +5,7 @@
 //   2. classic toggle ON → the unchanged TEXT path (printStickerNative) fires.
 //   3. OLD BINARY (no printStickerBitmap) → TEXT path fires (safe no-op rollout).
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { printSlip, printStickerBtRouted, isClassicTextSticker, setClassicTextSticker, setClassicTextAllowed, canUseClassicText, setStickerRouteNoticeHandler, getLastStickerRouteNotice, LS_CLASSIC_TEXT, DEF_SETTINGS, getLastStickerTiming, type Settings, type StickerRouteNotice } from "../printing";
+import { printSlip, printStickerBtRouted, isClassicTextSticker, setClassicTextSticker, setClassicTextAllowed, canUseClassicText, hasBitmapStickerMethod, setStickerRouteNoticeHandler, getLastStickerRouteNotice, LS_CLASSIC_TEXT, DEF_SETTINGS, getLastStickerTiming, type Settings, type StickerRouteNotice } from "../printing";
 import { buildTestBuyer } from "../printerBridge";
 
 const cfg: Settings = { ...DEF_SETTINGS, printerType: "bluetooth" };
@@ -253,6 +253,17 @@ describe("printSlip bitmap routing", () => {
     expect(canUseClassicText("Seller", "kylerkao@example.com")).toBe(false);
     expect(canUseClassicText(undefined, undefined)).toBe(false); // pre-auth / logged out
     expect(canUseClassicText(null, null)).toBe(false);
+  });
+
+  it("hasBitmapStickerMethod: true only when the bitmap method exists (prefetch gate)", () => {
+    expect(hasBitmapStickerMethod()).toBe(false); // no bridge (web/desktop)
+    (window as W).SellerFlowPrinter = { printStickerNative: vi.fn() }; // pre-bitmap binary (current APKs/iOS)
+    expect(hasBitmapStickerMethod()).toBe(false);
+    (window as W).SellerFlowPrinter = { printStickerNative: vi.fn(), printStickerBitmap: vi.fn() };
+    expect(hasBitmapStickerMethod()).toBe(true); // bitmap-capable binary
+    (window as W).SellerFlowPrinter = { printStickerNative: vi.fn() }; // stale shim + Capacitor proxy
+    (window as W).Capacitor = { Plugins: { SellerFlowPrinter: { printStickerBitmap: vi.fn() } } };
+    expect(hasBitmapStickerMethod()).toBe(true);
   });
 
   it("toggle helpers round-trip via localStorage", () => {

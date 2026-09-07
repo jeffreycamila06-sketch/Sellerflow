@@ -290,6 +290,16 @@ function formatBitmapPhase(r: BitmapBridgeResult): string {
   const chunk = typeof r.chunk === "number" && r.chunk > 0 ? ` chunk ${r.chunk}x${r.chunks ?? "?"}` : "";
   return `conn ${sec(r.connectMs)} send ${sec(r.writeMs)} done ${sec(r.doneMs)}${chunk}`;
 }
+/**
+ * True only when THIS binary can actually print the bitmap stream (the native
+ * printStickerBitmap method exists via the shim or the Capacitor proxy).
+ * Gates the CJK-atlas prefetch: binaries that can only TEXT-print (all
+ * pre-bitmap releases, iOS until Phase 2) never download the ~836KB chunk.
+ */
+export function hasBitmapStickerMethod(): boolean {
+  const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
+  return !!bridge && !!bitmapBridgeFn(bridge);
+}
 function bitmapBridgeFn(bridge: NonNullable<Window["SellerFlowPrinter"]>): BitmapBridgeFn | undefined {
   const fn = (bridge as unknown as { printStickerBitmap?: unknown }).printStickerBitmap;
   if (typeof fn === "function") return fn as BitmapBridgeFn;
