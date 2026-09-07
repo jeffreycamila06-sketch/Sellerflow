@@ -8,10 +8,10 @@
 // a real APK.
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import {
-  callMobilePrinterBridge, btCall, btCallOutcome, hasNativePrinter, hasBtBridge, buildTestStickerPayload,
+  callMobilePrinterBridge, btCall, hasNativePrinter, hasBtBridge, buildTestBuyer,
   type MobilePrinterResult, type BluetoothScanResult, type BluetoothPrinterDevice,
 } from "../adapters/printerBridge";
-import { isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, getLastStickerRouteNotice, type Settings } from "../adapters/printing";
+import { printStickerBtRouted, isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, getLastStickerRouteNotice, type Settings } from "../adapters/printing";
 import { useT } from "../i18n";
 
 const PS_SIZES = ["100x60mm (Standard)", "80x60mm", "80x50mm", "70x50mm", "60x40mm"];
@@ -90,7 +90,9 @@ export default function PrinterSettings({
     if (!btReady) { setBtMsg(t.rd_ps_open_app_test); return; }
     if (!settings) return;
     setBtMsg(t.rd_ps_sending_test);
-    const r = await btCallOutcome("printStickerNative", buildTestStickerPayload(cur, storeName, settings));
+    // Routed like a real order: bitmap SDK stream by default, TEXT only when
+    // Classic mode is ON / the bitmap method is missing (printStickerBtRouted).
+    const r = await printStickerBtRouted(buildTestBuyer(), cur, storeName, settings);
     if (r.ok) { setBtMsg(t.rd_ps_test_sent); return; }
     setBtMsg(isPrinterNotSetup(r.code, r.message) ? t.rd_prn_title : t.rd_ps_test_failed);
   }

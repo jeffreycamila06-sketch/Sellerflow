@@ -271,7 +271,12 @@ function bitmapBridgeFn(bridge: NonNullable<Window["SellerFlowPrinter"]>): Bitma
   return undefined;
 }
 
-async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerPayload, cjk: GlyphAtlas): Promise<boolean> {
+// Outcome of a routed BT sticker print — code/message preserved so callers
+// (the Test Print buttons) can keep their precise user messaging (BT_NOT_SET
+// -> the no-printer wording) while inheriting the bitmap-default routing.
+export interface BtRouteResult { ok: boolean; code: string; message: string }
+
+async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerPayload, cjk: GlyphAtlas): Promise<BtRouteResult> {
   const t0 = nowMs();
   // SDK-format image stream (manufacturer protocol — vendor/QY_Android_SDK.zip):
   // one LZO-compressed full-label BITMAP mode-4 block, the firmware's native
@@ -290,23 +295,23 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
     if (phase) console.log(`[STICKER-TIMING] native ${phase}`);
     if (result?.ok) {
       reportStickerRoute({ via: "bitmap", ok: true, reason: "", detail: "", payloadBytes: raster.bytes.length, totalMs: t2 - t0, phase });
-      return true;
+      return { ok: true, code: "", message: "" };
     }
     const { code, message } = readFailure(result);
     reportStickerRoute({ via: "bitmap", ok: false, reason: "", detail: message || code || "print failed", payloadBytes: raster.bytes.length, totalMs: t2 - t0, phase });
     if (!reportNativePrintFailure("bluetooth", code, message)) console.warn("[BT bitmap sticker] print failed:", message || "check pairing/selection.");
-    return false;
+    return { ok: false, code, message };
   } catch (err) {
     const { code, message } = readFailure(err);
     reportStickerRoute({ via: "bitmap", ok: false, reason: "", detail: message || code || String(err), payloadBytes: raster.bytes.length, totalMs: nowMs() - t0 });
     if (!reportNativePrintFailure("bluetooth", code, message)) console.warn("printStickerBitmap bridge call failed:", err);
-    return false;
+    return { ok: false, code, message };
   }
 }
 
-async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: string, cfg: Settings): Promise<boolean> {
+async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: string, cfg: Settings): Promise<BtRouteResult> {
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
-  if (!bridge?.printStickerNative) return false;
+  if (!bridge?.printStickerNative) return { ok: false, code: "", message: "" };
   // BITMAP default: fires only when the new native passthrough exists AND the
   // seller hasn't flipped "Classic text mode". Everything else (old binaries,
   // classic mode) takes the UNCHANGED TEXT path below — with the reason recorded
@@ -337,17 +342,24 @@ async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: st
     const t1 = nowMs();
     recordStickerTiming({ via: "text", buildMs: 0, bridgeMs: t1 - t0, totalMs: t1 - t0, payloadBytes: 0, bands: 0 });
     reportStickerRoute({ via: "text", ok: !!result?.ok, reason: fallbackReason, detail: result?.ok ? "" : readFailure(result).message, payloadBytes: 0, totalMs: t1 - t0 });
-    if (result?.ok) return true;
+    if (result?.ok) return { ok: true, code: "", message: "" };
     const { code, message } = readFailure(result);
     if (!reportNativePrintFailure("bluetooth", code, message)) console.warn("[BT sticker] print failed:", message || "check pairing/selection.");
-    return false;
+    return { ok: false, code, message };
   } catch (err) {
     const { code, message } = readFailure(err);
     reportStickerRoute({ via: "text", ok: false, reason: fallbackReason, detail: message || code || String(err), payloadBytes: 0, totalMs: 0 });
     if (!reportNativePrintFailure("bluetooth", code, message)) console.warn("printStickerNative bridge call failed:", err);
-    return false;
+    return { ok: false, code, message };
   }
 }
+
+// EVERY BT sticker entry point routes through this (owner requirement): real
+// orders via printSlip below, and the Test Print buttons (Printer Settings +
+// Print Pattern) directly — bitmap SDK stream by default, TEXT only on Classic
+// mode / missing method / CJK-atlas-unavailable, route notices always firing.
+// Awaitable with the native {code, message} preserved for button messaging.
+export const printStickerBtRouted = printStickerViaBluetooth;
 
 async function printStickerViaLan(buyer: Buyer, cur: string, storeName: string, cfg: Settings): Promise<boolean> {
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;

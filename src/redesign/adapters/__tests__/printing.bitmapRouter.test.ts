@@ -5,7 +5,7 @@
 //   2. classic toggle ON → the unchanged TEXT path (printStickerNative) fires.
 //   3. OLD BINARY (no printStickerBitmap) → TEXT path fires (safe no-op rollout).
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { printSlip, isClassicTextSticker, setClassicTextSticker, setStickerRouteNoticeHandler, getLastStickerRouteNotice, LS_CLASSIC_TEXT, DEF_SETTINGS, getLastStickerTiming, type Settings, type StickerRouteNotice } from "../printing";
+import { printSlip, printStickerBtRouted, isClassicTextSticker, setClassicTextSticker, setStickerRouteNoticeHandler, getLastStickerRouteNotice, LS_CLASSIC_TEXT, DEF_SETTINGS, getLastStickerTiming, type Settings, type StickerRouteNotice } from "../printing";
 import { buildTestBuyer } from "../printerBridge";
 
 const cfg: Settings = { ...DEF_SETTINGS, printerType: "bluetooth" };
@@ -142,6 +142,50 @@ describe("printSlip bitmap routing", () => {
     await flush();
     expect(bitmap).toHaveBeenCalledTimes(1);
     expect(getLastStickerRouteNotice()?.via).toBe("bitmap"); // recorded despite the throw
+  });
+
+  // ---- printStickerBtRouted: the awaitable entry the Test Print buttons use.
+  // Same router as printSlip's fire-and-forget call — these pin the RESULT shape
+  // the buttons map to user messages (ok → sent; BT_NOT_SET → no-printer modal
+  // wording; anything else → failed).
+
+  it("ROUTED ENTRY: resolves {ok:true} via BITMAP by default (TEXT not called)", async () => {
+    const notices: StickerRouteNotice[] = [];
+    setStickerRouteNoticeHandler((n) => notices.push(n));
+    const bitmap = vi.fn().mockResolvedValue({ ok: true });
+    const native = vi.fn().mockResolvedValue({ ok: true });
+    (window as W).SellerFlowPrinter = { printStickerNative: native, printStickerBitmap: bitmap };
+    const r = await printStickerBtRouted(buyer, "NT$", "Store", cfg);
+    expect(r).toEqual({ ok: true, code: "", message: "" });
+    expect(bitmap).toHaveBeenCalledTimes(1);
+    expect(native).not.toHaveBeenCalled();
+    expect(notices[0]).toMatchObject({ via: "bitmap", ok: true }); // route notice fires for Test Print too
+  });
+
+  it("ROUTED ENTRY: BT_NOT_SET reject surfaces code+message in the result", async () => {
+    const bitmap = vi.fn().mockRejectedValue({ code: "BT_NOT_SET", message: "No Bluetooth printer saved." });
+    (window as W).SellerFlowPrinter = { printStickerNative: vi.fn(), printStickerBitmap: bitmap };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const r = await printStickerBtRouted(buyer, "NT$", "Store", cfg);
+    expect(r.ok).toBe(false);
+    expect(r.code).toBe("BT_NOT_SET"); // the buttons key isPrinterNotSetup off this
+    warn.mockRestore();
+  });
+
+  it("ROUTED ENTRY: Classic mode ON → TEXT path, result still {ok:true}", async () => {
+    const bitmap = vi.fn().mockResolvedValue({ ok: true });
+    const native = vi.fn().mockResolvedValue({ ok: true });
+    (window as W).SellerFlowPrinter = { printStickerNative: native, printStickerBitmap: bitmap };
+    setClassicTextSticker(true);
+    const r = await printStickerBtRouted(buyer, "NT$", "Store", cfg);
+    expect(r).toEqual({ ok: true, code: "", message: "" });
+    expect(native).toHaveBeenCalledTimes(1);
+    expect(bitmap).not.toHaveBeenCalled();
+  });
+
+  it("ROUTED ENTRY: no bridge at all → {ok:false} with empty code (web no-op)", async () => {
+    const r = await printStickerBtRouted(buyer, "NT$", "Store", cfg);
+    expect(r).toEqual({ ok: false, code: "", message: "" });
   });
 
   it("toggle helpers round-trip via localStorage", () => {
