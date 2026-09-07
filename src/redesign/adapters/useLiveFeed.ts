@@ -92,13 +92,24 @@ export const isPreviewEnv = (): boolean => {
   return h !== "www.sellerflowlive.com" && h !== "sellerflowlive.com";
 };
 
+// Latin and Traditional-Chinese entries INTERLEAVED (~half/half) so cycling
+// "+ Test comment" exercises BOTH the ASCII and the CJK sticker paths every few
+// taps (Taiwan market; CJK names are the bitmap-atlas / TSS24 test vector).
 const SYNTH: { name: string; handle: string; text: string; platform: "TikTok" | "Facebook"; isBuy: boolean }[] = [
   { name: "Aileen Go", handle: "jojo_tw", text: "mine red lipstick 💄", platform: "TikTok", isBuy: true },
+  { name: "陳小美", handle: "chen.xiaomei", text: "我要紅色口紅", platform: "TikTok", isBuy: true },
   { name: "Mei Lin", handle: "meidolltw", text: "how much po the tumbler?", platform: "TikTok", isBuy: false },
+  { name: "林志豪", handle: "lin_zhihao", text: "+1 藍色水壺", platform: "TikTok", isBuy: true },
   { name: "Benny Tan", handle: "bennytw", text: "mine size M white tee", platform: "Facebook", isBuy: true },
+  { name: "黃雅婷", handle: "yating.tw", text: "多少錢?", platform: "TikTok", isBuy: false },
   { name: "Cara Yu", handle: "caralivetw", text: "claim skincare set", platform: "TikTok", isBuy: true },
+  { name: "張家豪", handle: "chiahao88", text: "這個還有嗎?", platform: "TikTok", isBuy: false },
   { name: "Don Sy", handle: "donsytw", text: "get the rose gold watch ✨", platform: "Facebook", isBuy: true },
+  { name: "吳佩珊", handle: "peishan_wu", text: "mine 白色T恤 M號", platform: "TikTok", isBuy: true },
   { name: "Ella Ng", handle: "ella.ng", text: "avail pa ba yung sneakers?", platform: "TikTok", isBuy: false },
+  { name: "劉俊宏", handle: "liu.junhong", text: "+1 黑色外套", platform: "Facebook", isBuy: true },
+  { name: "黃雅婷 Amy", handle: "amy.huang.tw", text: "多少錢? tumbler", platform: "TikTok", isBuy: false },
+  { name: "Kevin 王", handle: "kevinwang_tw", text: "+1 sneakers 藍色", platform: "TikTok", isBuy: true },
 ];
 
 export interface ActiveAccounts { TikTok: string; Facebook: string }
