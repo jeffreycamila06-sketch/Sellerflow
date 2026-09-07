@@ -8,10 +8,10 @@
 // a real APK.
 import { useEffect, useState, type CSSProperties } from "react";
 import {
-  callMobilePrinterBridge, btCall, btCallOutcome, hasNativePrinter, hasBtBridge, buildTestStickerPayload,
+  callMobilePrinterBridge, btCall, hasNativePrinter, hasBtBridge, buildTestBuyer,
   type MobilePrinterResult, type BluetoothScanResult, type BluetoothPrinterDevice,
 } from "../adapters/printerBridge";
-import { isPrinterNotSetup, type Settings } from "../adapters/printing";
+import { printStickerBtRouted, isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, type Settings } from "../adapters/printing";
 import { useT } from "../i18n";
 
 const PS_SIZES = ["100x60mm (Standard)", "80x60mm", "80x50mm", "70x50mm", "60x40mm"];
@@ -23,13 +23,14 @@ const tab = (active: boolean): CSSProperties => ({ flex: 1, padding: "13px 0", b
 
 export default function PrinterSettings({
   onBack, psType, psOut, onSetPsOut, psSize, psSizeOpen, onTogglePsSize, onPickPsSize,
-  cur = "NT$", storeName = "SellerFlowLive", settings,
+  cur = "NT$", storeName = "SellerFlowLive", settings, showClassicToggle = false,
 }: {
   onBack: () => void;
   psType: "wifi" | "bt";
   psOut: "receipt" | "sticker"; onSetPsOut: (o: "receipt" | "sticker") => void;
   psSize: string; psSizeOpen: boolean; onTogglePsSize: () => void; onPickPsSize: (s: string) => void;
   cur?: string; storeName?: string; settings?: Settings;
+  showClassicToggle?: boolean; // admin/test-account only (canUseClassicText) — default HIDDEN
 }) {
   const t = useT();
   const wifi = psType === "wifi";
@@ -42,6 +43,8 @@ export default function PrinterSettings({
   const [btPrinters, setBtPrinters] = useState<BluetoothPrinterDevice[]>([]);
   const [btSaved, setBtSaved] = useState<BluetoothPrinterDevice | null>(null);
   const [btMsg, setBtMsg] = useState("");
+  // "Classic text mode" — mirrors the localStorage flag printing.ts routes on.
+  const [classicText, setClassicText] = useState(() => isClassicTextSticker());
 
   // On mount: hydrate the saved LAN printer + BT printer from the native bridge
   // (App.tsx refreshMobilePrinterStatus + getBluetoothLabelPrinter). No-op on web.
@@ -75,7 +78,9 @@ export default function PrinterSettings({
     if (!btReady) { setBtMsg(t.rd_ps_open_app_test); return; }
     if (!settings) return;
     setBtMsg(t.rd_ps_sending_test);
-    const r = await btCallOutcome("printStickerNative", buildTestStickerPayload(cur, storeName, settings));
+    // Routed like a real order: bitmap SDK stream by default, TEXT only when
+    // Classic mode is ON / the bitmap method is missing (printStickerBtRouted).
+    const r = await printStickerBtRouted(buildTestBuyer(), cur, storeName, settings);
     if (r.ok) { setBtMsg(t.rd_ps_test_sent); return; }
     setBtMsg(isPrinterNotSetup(r.code, r.message) ? t.rd_prn_title : t.rd_ps_test_failed);
   }
@@ -166,6 +171,28 @@ export default function PrinterSettings({
               </div>
             )}
             {btMsg && <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 10 }}>{btMsg}</div>}
+            {/* BITMAP-vs-TEXT escape hatch (new-board fix). Default OFF = bitmap
+                mode (when the native passthrough exists — method-presence gated in
+                printing.ts); ON = the byte-frozen classic TEXT path. Per-device
+                localStorage, same pattern as the other printer prefs.
+                ADMIN/TEST-ONLY (showClassicToggle ← canUseClassicText): hidden from
+                regular sellers so nobody flips it onto the doubling TEXT path; the
+                router also ignores the flag for users who can't see this card. */}
+            {showClassicToggle && (
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginTop: 12, display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_ps_classic_text}</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 3, lineHeight: 1.45 }}>{t.rd_ps_classic_text_desc}</div>
+              </div>
+              <button
+                aria-pressed={classicText}
+                onClick={() => { const next = !classicText; setClassicTextSticker(next); setClassicText(next); }}
+                style={{ width: 52, height: 30, borderRadius: 15, border: "none", cursor: "pointer", flexShrink: 0, position: "relative", background: classicText ? "var(--accent)" : "var(--surface-2)", boxShadow: classicText ? "0 3px 10px var(--accent-soft)" : "inset 0 0 0 1px var(--border-strong)", transition: "background .15s" }}
+              >
+                <span style={{ position: "absolute", top: 3, left: classicText ? 25 : 3, width: 24, height: 24, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,.25)", transition: "left .15s" }} />
+              </button>
+            </div>
+            )}
           </div>
         )}
 

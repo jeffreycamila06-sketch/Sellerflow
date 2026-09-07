@@ -12,7 +12,11 @@
 // Web / preview (no native bridge) → browser print (hidden iframe + window.print)
 // that MIRRORS the native TSPL sticker layout, so 1-Click output matches the APK.
 import { shouldUseBluetoothSticker, shouldUseLanSticker } from "../../lib/printerRouting";
+import { isAdminRole } from "../../lib/roles";
 import type { Buyer } from "../../lib/orderTypes";
+import { rasterizeToSdkBitmapTspl, bytesToBase64, payloadNeedsCjk, type GlyphAtlas } from "./stickerRaster";
+import { loadCjkAtlas } from "./cjkAtlasLoader";
+import { LATIN_ATLAS } from "./glyphAtlas.latin";
 
 // ── Types — copied verbatim from App.tsx:38, 53, 56 ──────────────────────────
 export interface Settings {
@@ -185,21 +189,215 @@ function sendSlipToNativePrinter(payload: NativePrinterPayload): boolean {
   return false;
 }
 
-async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: string, cfg: Settings): Promise<boolean> {
-  const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
-  if (!bridge?.printStickerNative) return false;
+// ── BITMAP sticker mode (new-board D520BT ROM-font-doubling fix) ─────────────
+// Default path when the native `printStickerBitmap` passthrough exists: the whole
+// sticker is rasterized in TS (stickerRaster.ts — same layout as the TEXT builder,
+// glyphs from the committed atlases) and sent as a finished BITMAP TSPL stream.
+// The "Classic text mode" toggle (Printer Settings, per-device localStorage)
+// reverts to the byte-frozen TEXT path. METHOD-PRESENCE GATED: binaries without
+// the new native method silently keep the TEXT path (safe no-op rollout).
+export const LS_CLASSIC_TEXT = "sfl_rd_classic_text";
+export function isClassicTextSticker(): boolean {
+  try { return typeof localStorage !== "undefined" && localStorage.getItem(LS_CLASSIC_TEXT) === "1"; } catch { return false; }
+}
+export function setClassicTextSticker(on: boolean): void {
+  try { if (on) localStorage.setItem(LS_CLASSIC_TEXT, "1"); else localStorage.removeItem(LS_CLASSIC_TEXT); } catch { /* ignore */ }
+}
+
+// ── Classic-toggle VISIBILITY gate (owner requirement, pre-merge) ────────────
+// The toggle is a debugging/fallback instrument: a curious seller flipping it on
+// a new-board printer gets doubled output and thinks the app broke. So it is
+// visible ONLY to admin-role accounts (the app-wide isAdminRole predicate,
+// lib/roles.ts — same source of truth as the Admin screen gate) and the test
+// account. SAFER-BEHAVIOR RULE: the ROUTER honors the localStorage flag only
+// while the toggle would be visible to the CURRENT user (setClassicTextAllowed,
+// synced from auth by RedesignApp). A stray sfl_rd_classic_text=1 left on a
+// seller's device (e.g. set while an admin was logged in there) is therefore
+// IGNORED — the print routes bitmap regardless. Default DISALLOWED (pre-auth /
+// logged out / rollback contexts route bitmap, the correct path).
+// AUDIT F4: ONLY the owner-controlled documented test account. Never add an
+// unowned/registrable address here — registration is open, so a listed email
+// is a grantable backdoor to the toggle.
+const CLASSIC_TEXT_TEST_ACCOUNTS = new Set(["googletest@sellerflowlive.com"]);
+export function canUseClassicText(role: string | undefined | null, email: string | undefined | null): boolean {
+  if (isAdminRole(role)) return true;
+  return CLASSIC_TEXT_TEST_ACCOUNTS.has(String(email || "").trim().toLowerCase());
+}
+let classicTextAllowed = false;
+export function setClassicTextAllowed(allowed: boolean): void { classicTextAllowed = allowed; }
+
+// Internal timing instrumentation (console-only, NEVER surfaced in UI): every
+// sticker print logs `[STICKER-TIMING]` to the console (Logcat → Capacitor/
+// Console) and keeps the last sample on `window.__sflPrintTiming` +
+// getLastStickerTiming() for inspector/support reads. Negligible overhead.
+export interface StickerTiming { via: "bitmap" | "text"; buildMs: number; bridgeMs: number; totalMs: number; payloadBytes: number; bands: number }
+let lastStickerTiming: StickerTiming | null = null;
+export const getLastStickerTiming = (): StickerTiming | null => lastStickerTiming;
+function recordStickerTiming(t: StickerTiming) {
+  lastStickerTiming = t;
+  try { (window as unknown as { __sflPrintTiming?: StickerTiming }).__sflPrintTiming = t; } catch { /* ignore */ }
+  console.log(`[STICKER-TIMING] via=${t.via} build=${t.buildMs.toFixed(1)}ms bridge=${t.bridgeMs.toFixed(1)}ms total=${t.totalMs.toFixed(1)}ms bytes=${t.payloadBytes} bands=${t.bands}`);
+}
+const nowMs = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+
+// ── Route-visibility notice (INTERNAL instrumentation — no UI consumer) ──────
+// Every BT sticker print records WHICH route actually ran (bitmap vs text) and,
+// on a text fallback, WHY. The seller-facing toast + "Last print" readout that
+// consumed this during the bitmap bring-up were REMOVED pre-merge (owner
+// decision); the hooks stay because the test suite pins the routing/fallback
+// reasons through them, and support can read getLastStickerRouteNotice() /
+// window.__sflPrintTiming from an inspector. Genuine print FAILURES surface to
+// sellers via setNativePrintFailureHandler above (unchanged) — never via this.
+export type StickerFallbackReason = "" | "classic-mode-on" | "bitmap-method-missing" | "cjk-atlas-unavailable" | "bitmap-spp-failed";
+// AUDIT F2 safety net: the native reject code for an SPP-transport bitmap send
+// that failed at the socket level — the router retries that print through the
+// unchanged TEXT path, so an SPP-incompatible unit degrades to today's behavior.
+export const BITMAP_SPP_FAILED = "BITMAP_SPP_FAILED";
+// `phase` (bitmap only): the native transport's own breakdown — "conn 0.6s send
+// 3.4s done 0.5s chunk 20x365" — so a slow print says WHERE the time went
+// (GATT connect vs BLE transfer vs printer processing) and the negotiated chunk
+// size (chunk 20 = MTU negotiation failed = the 7KB-in-5s failure mode).
+export interface StickerRouteNotice { via: "bitmap" | "text"; ok: boolean; reason: StickerFallbackReason; detail: string; payloadBytes: number; totalMs: number; phase?: string }
+let stickerRouteNoticeHandler: ((n: StickerRouteNotice) => void) | null = null;
+let lastStickerRouteNotice: StickerRouteNotice | null = null;
+export function setStickerRouteNoticeHandler(fn: ((n: StickerRouteNotice) => void) | null): void {
+  stickerRouteNoticeHandler = fn;
+}
+export const getLastStickerRouteNotice = (): StickerRouteNotice | null => lastStickerRouteNotice;
+function reportStickerRoute(n: StickerRouteNotice): void {
+  lastStickerRouteNotice = n;
+  try { stickerRouteNoticeHandler?.(n); } catch { /* notice must never break a print */ }
+}
+
+// The native passthrough is Android-only until Phase 2 — read it via a local cast
+// so the protected App.tsx global Window declaration stays untouched.
+//
+// ⚠️ TWO probes, deliberately: (1) the MainActivity-injected shim
+// (window.SellerFlowPrinter.printStickerBitmap) and (2) Capacitor's OWN
+// auto-generated plugin proxy (window.Capacitor.Plugins.SellerFlowPrinter),
+// which exposes every @PluginMethod with NO shim involved. The hand-maintained
+// shim has now been the missed spot twice (printRawTspl, then a stale-native
+// build); probing the Capacitor proxy makes the gate survive a stale shim as
+// long as the compiled plugin has the method.
+type BitmapBridgeResult = { ok?: boolean; message?: string; chunk?: number; chunks?: number; connectMs?: number; writeMs?: number; doneMs?: number } | null;
+type BitmapBridgeFn = (args: { data: string }) => Promise<BitmapBridgeResult>;
+
+// Format the native JobStats fields (when the binary is new enough to send
+// them) into the human phase string shown in the toast / Last-print line.
+function formatBitmapPhase(r: BitmapBridgeResult): string {
+  if (!r || typeof r.connectMs !== "number") return "";
+  const sec = (ms?: number) => `${((ms ?? 0) / 1000).toFixed(1)}s`;
+  const chunk = typeof r.chunk === "number" && r.chunk > 0 ? ` chunk ${r.chunk}x${r.chunks ?? "?"}` : "";
+  return `conn ${sec(r.connectMs)} send ${sec(r.writeMs)} done ${sec(r.doneMs)}${chunk}`;
+}
+function bitmapBridgeFn(bridge: NonNullable<Window["SellerFlowPrinter"]>): BitmapBridgeFn | undefined {
+  const fn = (bridge as unknown as { printStickerBitmap?: unknown }).printStickerBitmap;
+  if (typeof fn === "function") return fn as BitmapBridgeFn;
+  const cap = (window as unknown as { Capacitor?: { Plugins?: { SellerFlowPrinter?: { printStickerBitmap?: unknown } } } }).Capacitor;
+  const capFn = cap?.Plugins?.SellerFlowPrinter?.printStickerBitmap;
+  if (typeof capFn === "function") return (args) => (capFn as BitmapBridgeFn)(args);
+  return undefined;
+}
+
+// Outcome of a routed BT sticker print — code/message preserved so callers
+// (the Test Print buttons) can keep their precise user messaging (BT_NOT_SET
+// -> the no-printer wording) while inheriting the bitmap-default routing.
+export interface BtRouteResult { ok: boolean; code: string; message: string }
+
+async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerPayload, cjk: GlyphAtlas): Promise<BtRouteResult> {
+  const t0 = nowMs();
+  // SDK-format image stream (manufacturer protocol — vendor/QY_Android_SDK.zip):
+  // one LZO-compressed full-label BITMAP mode-4 block, the firmware's native
+  // image engine (the Labelife path — clean + fast on BOTH boards). The legacy
+  // mode-0 band emission (rasterizeToBitmapTspl) stays golden-tested but dormant.
+  // The CJK atlas arrives RESOLVED (code-split chunk; the caller awaited it
+  // only when the payload actually contains CJK).
+  const raster = rasterizeToSdkBitmapTspl(payload, payload.labelWidthMm, payload.labelHeightMm, { latin: LATIN_ATLAS, cjk });
+  const data = bytesToBase64(raster.bytes);
+  const t1 = nowMs();
   try {
-    const result = await bridge.printStickerNative(buildNativeStickerPayload(buyer, cur, storeName, cfg));
-    if (result?.ok) return true;
+    const result = await fn({ data });
+    const t2 = nowMs();
+    const phase = formatBitmapPhase(result);
+    recordStickerTiming({ via: "bitmap", buildMs: t1 - t0, bridgeMs: t2 - t1, totalMs: t2 - t0, payloadBytes: raster.bytes.length, bands: raster.bands });
+    if (phase) console.log(`[STICKER-TIMING] native ${phase}`);
+    if (result?.ok) {
+      reportStickerRoute({ via: "bitmap", ok: true, reason: "", detail: "", payloadBytes: raster.bytes.length, totalMs: t2 - t0, phase });
+      return { ok: true, code: "", message: "" };
+    }
     const { code, message } = readFailure(result);
-    if (!reportNativePrintFailure("bluetooth", code, message)) console.warn("[BT sticker] print failed:", message || "check pairing/selection.");
-    return false;
+    reportStickerRoute({ via: "bitmap", ok: false, reason: "", detail: message || code || "print failed", payloadBytes: raster.bytes.length, totalMs: t2 - t0, phase });
+    // BITMAP_SPP_FAILED is not surfaced here — the caller retries via TEXT,
+    // which reports its own outcome (no double modal/warn for one print).
+    if (code !== BITMAP_SPP_FAILED && !reportNativePrintFailure("bluetooth", code, message)) console.warn("[BT bitmap sticker] print failed:", message || "check pairing/selection.");
+    return { ok: false, code, message };
   } catch (err) {
     const { code, message } = readFailure(err);
-    if (!reportNativePrintFailure("bluetooth", code, message)) console.warn("printStickerNative bridge call failed:", err);
-    return false;
+    reportStickerRoute({ via: "bitmap", ok: false, reason: "", detail: message || code || String(err), payloadBytes: raster.bytes.length, totalMs: nowMs() - t0 });
+    if (code !== BITMAP_SPP_FAILED && !reportNativePrintFailure("bluetooth", code, message)) console.warn("printStickerBitmap bridge call failed:", err);
+    return { ok: false, code, message };
   }
 }
+
+async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: string, cfg: Settings): Promise<BtRouteResult> {
+  const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
+  if (!bridge?.printStickerNative) return { ok: false, code: "", message: "" };
+  // BITMAP default: fires only when the new native passthrough exists AND the
+  // seller hasn't flipped "Classic text mode". Everything else (old binaries,
+  // classic mode) takes the UNCHANGED TEXT path below — with the reason recorded
+  // so the fallback is VISIBLE in-app, never silent (the Phase-1 field lesson).
+  const bmpFn = bitmapBridgeFn(bridge);
+  // Visibility-gated: the flag only counts for users who can SEE the toggle
+  // (admin/test account — see canUseClassicText above). Everyone else routes
+  // bitmap even with a stray localStorage flag on the device.
+  const classic = classicTextAllowed && isClassicTextSticker();
+  let cjkUnavailable = false;
+  let sppFailed = false;
+  if (bmpFn && !classic) {
+    const payload = buildNativeStickerPayload(buyer, cur, storeName, cfg);
+    // The CJK atlas is a code-split chunk (prefetched at app start on bridge
+    // devices). ASCII/Latin prints never wait on it; a CJK print awaits the
+    // SAME promise the prefetch started. If the chunk can't load (offline cold
+    // open), THIS print falls through to the Classic TEXT render (readable CJK
+    // via the printer font — never tofu); the next print retries the chunk load.
+    let cjk: GlyphAtlas | null = {};
+    if (payloadNeedsCjk(payload)) {
+      try { cjk = await loadCjkAtlas(); } catch { cjk = null; cjkUnavailable = true; }
+    }
+    if (cjk) {
+      const r = await printStickerViaBitmap(bmpFn, payload, cjk);
+      // AUDIT F2: native says the SPP-transport bitmap send failed at the
+      // socket level → retry THIS print through the unchanged TEXT path below.
+      // Every other outcome (success, or a real print failure) returns as-is.
+      if (r.ok || r.code !== BITMAP_SPP_FAILED) return r;
+      sppFailed = true;
+    }
+  }
+  const fallbackReason: StickerFallbackReason = classic ? "classic-mode-on" : cjkUnavailable ? "cjk-atlas-unavailable" : sppFailed ? "bitmap-spp-failed" : "bitmap-method-missing";
+  try {
+    const t0 = nowMs();
+    const result = await bridge.printStickerNative(buildNativeStickerPayload(buyer, cur, storeName, cfg));
+    const t1 = nowMs();
+    recordStickerTiming({ via: "text", buildMs: 0, bridgeMs: t1 - t0, totalMs: t1 - t0, payloadBytes: 0, bands: 0 });
+    reportStickerRoute({ via: "text", ok: !!result?.ok, reason: fallbackReason, detail: result?.ok ? "" : readFailure(result).message, payloadBytes: 0, totalMs: t1 - t0 });
+    if (result?.ok) return { ok: true, code: "", message: "" };
+    const { code, message } = readFailure(result);
+    if (!reportNativePrintFailure("bluetooth", code, message)) console.warn("[BT sticker] print failed:", message || "check pairing/selection.");
+    return { ok: false, code, message };
+  } catch (err) {
+    const { code, message } = readFailure(err);
+    reportStickerRoute({ via: "text", ok: false, reason: fallbackReason, detail: message || code || String(err), payloadBytes: 0, totalMs: 0 });
+    if (!reportNativePrintFailure("bluetooth", code, message)) console.warn("printStickerNative bridge call failed:", err);
+    return { ok: false, code, message };
+  }
+}
+
+// EVERY BT sticker entry point routes through this (owner requirement): real
+// orders via printSlip below, and the Test Print buttons (Printer Settings +
+// Print Pattern) directly — bitmap SDK stream by default, TEXT only on Classic
+// mode / missing method / CJK-atlas-unavailable, route notices always firing.
+// Awaitable with the native {code, message} preserved for button messaging.
+export const printStickerBtRouted = printStickerViaBluetooth;
 
 async function printStickerViaLan(buyer: Buyer, cur: string, storeName: string, cfg: Settings): Promise<boolean> {
   const bridge = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;

@@ -57,10 +57,11 @@ import { computeSales } from "./adapters/sales";
 import { useSalesReport } from "./adapters/salesReport";
 import { ordersByHour } from "./adapters/peakHours";
 import { sessionKeyFor } from "./adapters/shipping";
-import { printSlip, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, isPrinterNotSetup, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
+import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, isPrinterNotSetup, canUseClassicText, setClassicTextAllowed, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
+import { prefetchCjkAtlas } from "./adapters/cjkAtlasLoader";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
-import { btCallOutcome, hasBtBridge, buildTestStickerPayload, buildTestBuyer } from "./adapters/printerBridge";
+import { hasBtBridge, buildTestBuyer } from "./adapters/printerBridge";
 import { registeredAccountsFor, appendAccount, maxAcc, composeChannelSave, type Platform } from "./adapters/connect";
 import { useConnectToastGate } from "./adapters/connectToastGate";
 import { useWakeLock, shouldHoldWakeLock } from "./adapters/useWakeLock";
@@ -115,6 +116,11 @@ export default function RedesignApp() {
   // own row, so we keep sample).
   const authed = auth.status === "authed";
   const isAdmin = isAdminRole(auth.profile?.role); // Batch E #16 — shared predicate
+  // "Classic text mode" is admin/test-account-only (owner rule): this gates BOTH
+  // the Printer Settings card's visibility AND (via setClassicTextAllowed) whether
+  // the print router honors a stray sfl_rd_classic_text flag on this device.
+  const classicAllowed = canUseClassicText(auth.profile?.role, auth.profile?.email);
+  useEffect(() => { setClassicTextAllowed(classicAllowed); }, [classicAllowed]);
   const customersData = useCustomers(authed);
   const adminUsers = useAdminUsers(authed && isAdmin);
   // Admin subscription buckets — real free-tier monitor (RPC) + derived active/
@@ -413,6 +419,16 @@ export default function RedesignApp() {
     });
     return () => setNativePrintFailureHandler(null);
   }, []);
+
+  // Warm the code-split CJK glyph-atlas chunk (~2.9MB source) right after
+  // mount so it's resident long before the first CJK print. A CJK print that
+  // races this awaits the SAME promise; a failed prefetch (offline cold open)
+  // is silent — the print path retries and falls back to TEXT for that print.
+  // AUDIT F3: gated on the BT sticker bridge — only an Android APK with the
+  // bitmap-capable plugin can ever rasterize CJK, so web/desktop/iOS sessions
+  // never download the ~836KB-gzip chunk they cannot use. A CJK print on a
+  // bridge device without the prefetch still awaits loadCjkAtlas() correctly.
+  useEffect(() => { if (hasBtBridge()) prefetchCjkAtlas(); }, []);
 
   // ── Cold-open modal coordinator: plan-EXPIRY nudge (priority) then native
   // UPDATE nudge. Runs ONCE after auth resolves — at that point nothing is live
@@ -745,7 +761,9 @@ export default function RedesignApp() {
       setToast(wr.ok ? { msg: tpl(tApp.rd_pr_sent, { via: wr.via }), kind: "ok" } : { msg: tApp.rd_ps_test_failed, kind: "err" });
       return;
     }
-    const r = await btCallOutcome("printStickerNative", buildTestStickerPayload(cur, storeName, settings));
+    // Routed like a real order: bitmap SDK stream by default, TEXT only when
+    // Classic mode is ON / the bitmap method is missing (printStickerBtRouted).
+    const r = await printStickerBtRouted(buildTestBuyer(), cur, storeName, settings);
     if (r.ok) { setToast({ msg: tApp.rd_ps_test_sent, kind: "ok" }); return; }
     setToast({ msg: isPrinterNotSetup(r.code, r.message) ? tApp.rd_prn_title : tApp.rd_ps_test_failed, kind: "err" });
   };
@@ -1087,6 +1105,7 @@ export default function RedesignApp() {
               psSize={psSize} psSizeOpen={psSizeOpen}
               onTogglePsSize={() => setPsSizeOpen((o) => !o)} onPickPsSize={(s) => { setPsSize(s); setPsSizeOpen(false); }}
               cur={cur} storeName={auth.profile?.profile.storeName || "SellerFlowLive"} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })}
+              showClassicToggle={classicAllowed}
             />
           )}
           {screen === "printpattern" && (

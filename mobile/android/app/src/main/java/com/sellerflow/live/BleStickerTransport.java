@@ -36,9 +36,20 @@ import java.util.UUID;
  * pipeline: ensure adapter on → connect the saved MAC (TRANSPORT_LE, no
  * bonding) → discover FF00 → FF02/FF03 → subscribe FF03 FIRST (CCCD) → chunked
  * write-without-response to FF02 (negotiated MTU clamped, backpressure gated) →
- * success ONLY when FF03 reports "PRINTING:DONE" → ALWAYS disconnect()+close()
- * (single-connection etiquette — never hold the printer). Honest phase timeouts
- * + a 30s overall cap; there is no fake success path.
+ * success ONLY when FF03 reports "PRINTING:DONE". Honest phase timeouts + a 30s
+ * overall cap; there is no fake success path.
+ *
+ * WARM LINK (2026-09-07 speed fix — the supplier-SDK/Labelife model): after a
+ * SUCCESSFUL job the GATT connection, FF03 subscription and negotiated chunk
+ * are KEPT for IDLE_RELEASE_MS. A back-to-back print to the same saved printer
+ * skips connect/discover/subscribe/MTU entirely (connectMs ≈ 0 — this was the
+ * per-sticker second the old per-job teardown burned; the decompiled SDK
+ * connects once and only ever write()s per print). The link is released on: any
+ * job FAILURE (full teardown, as before), the idle timer, a remote disconnect,
+ * an address change, scan start (so the printer advertises for the picker), and
+ * shutdown. Holding the link between prints means another phone/app cannot
+ * connect until idle release — intended during live selling (Labelife behaves
+ * the same while open).
  *
  * SINGLE-FLIGHT: scan XOR job (either busy → BT_BUSY), mirroring the iOS entry-
  * point guards. All state is mutated on one serial handler thread; GATT/scan
@@ -59,9 +70,14 @@ final class BleStickerTransport {
 
     private static final long CONNECT_TIMEOUT_MS = 8000;
     private static final long SERVICES_TIMEOUT_MS = 6000;
+    private static final long WRITE_TIMEOUT_MS = 12000; // chunk stream stalled (also catches a dead warm link fast)
     private static final long DONE_TIMEOUT_MS = 10000;
     private static final long OVERALL_CAP_MS = 30000;
     private static final long PACING_MS = 8;
+    /** How long a successful job's connection is kept warm for the next print. */
+    private static final long IDLE_RELEASE_MS = 180000;
+    /** Ask for the SDK's MTU (512 → 509-byte chunks; both boards grant it — the supplier SDK gates connect on it). */
+    private static final int REQUEST_MTU = 512;
     private static final int SDK_TIRAMISU = 33; // Build.VERSION_CODES.TIRAMISU
 
     static final class Discovered {
@@ -77,6 +93,27 @@ final class BleStickerTransport {
         final String code;
         BtError(String message, String code) { this.message = message; this.code = code; }
     }
+
+    /**
+     * DEV timing visibility (Phase-1 bitmap speed diagnosis): phase timings +
+     * negotiated chunk size of the LAST completed job. connectMs = job start →
+     * first write (GATT connect + discover + subscribe + MTU); writeMs = first
+     * write → all chunks queued; doneMs = all sent → FF03 PRINTING:DONE. Read by
+     * the plugin right after a job resolves (same serial callback), attached to
+     * the resolve so the web toast can show WHERE the time went.
+     */
+    static final class JobStats {
+        volatile int chunkSize;
+        volatile int chunks;
+        volatile long connectMs;
+        volatile long writeMs;
+        volatile long doneMs;
+    }
+    private volatile JobStats lastStats;
+    JobStats lastJobStats() { return lastStats; }
+    // per-job phase timestamps (handler-thread writes only)
+    private long tJobStart, tWriteStart, tAllSent;
+    private int statChunkSize, statChunks;
 
     interface ScanCallbackFn { void onResult(List<Discovered> printers, BtError error); }
     interface JobCallbackFn { void onResult(BtError error); } // null error == success
@@ -108,6 +145,11 @@ final class BleStickerTransport {
     private Runnable overallTimer;
     private Runnable phaseTimer;
     private Runnable pacingTimer;
+    // warm-link state (survives BETWEEN jobs; all handler-thread only)
+    private boolean linkReady;      // gatt+chars+FF03 subscription live from a prior successful job
+    private String heldAddress;     // the printer the warm link belongs to
+    private int heldChunkSize;      // MTU-derived chunk negotiated when the link was built
+    private Runnable idleTimer;
 
     BleStickerTransport(Context context) {
         this.context = context.getApplicationContext();
@@ -135,6 +177,9 @@ final class BleStickerTransport {
             if (!ensureAdapter()) { cb.onResult(null, new BtError("Bluetooth not supported on this device", "BT_UNAVAILABLE")); return; }
             if (!adapter.isEnabled()) { cb.onResult(null, new BtError("Bluetooth is off. Turn it on then try again.", "BT_OFF")); return; }
             if (jobActive || scanning) { cb.onResult(null, new BtError("Bluetooth is busy with another printer task.", "BT_BUSY")); return; }
+            // A held (idle) connection stops the printer advertising — release it
+            // so the picker can actually find the device.
+            releaseLink();
             BluetoothLeScanner scanner = adapter.getBluetoothLeScanner();
             if (scanner == null) { cb.onResult(null, new BtError("Bluetooth LE scan unavailable.", "BT_UNAVAILABLE")); return; }
             scanning = true;
@@ -178,17 +223,31 @@ final class BleStickerTransport {
             if (address == null || address.trim().isEmpty()) { cb.onResult(new BtError("No Bluetooth printer saved.", "BT_NOT_SET")); return; }
             jobActive = true;
             jobCb = cb;
+            tJobStart = System.currentTimeMillis();
+            tWriteStart = 0;
+            tAllSent = 0;
+            statChunkSize = 0;
+            statChunks = 0;
             payload = data != null ? data : new byte[0];
             preferredAddress = address.trim();
             notifyBuffer.setLength(0);
             pendingChunks = new ArrayList<>();
             nextChunk = 0;
             allChunksSent = false;
-            writeChar = null;
-            notifyChar = null;
-            gatt = null;
             overallTimer = () -> finishJob(new BtError("Print timed out.", "BT_PRINT_FAILED"));
             handler.postDelayed(overallTimer, OVERALL_CAP_MS);
+            // WARM PATH: a prior successful job left the connection + FF03
+            // subscription live for this same printer → go straight to the chunk
+            // pump (connectMs ≈ 0). A dead-but-undetected link fails at
+            // WRITE_TIMEOUT_MS / on the DISCONNECTED callback, tears down fully,
+            // and the NEXT print reconnects cold — honest, never a fake success.
+            if (linkReady && gatt != null && writeChar != null && notifyChar != null
+                && preferredAddress.equalsIgnoreCase(heldAddress)) {
+                cancelIdle();
+                beginWrites(heldChunkSize > 0 ? heldChunkSize : BleStickerLogic.MIN_CHUNK);
+                return;
+            }
+            releaseLink(); // different printer, or no warm link — start cold (also nulls gatt/chars)
             BluetoothDevice device;
             try {
                 // Saved MAC → direct connect. Android MACs are stable (unlike the
@@ -208,6 +267,7 @@ final class BleStickerTransport {
         handler.post(() -> {
             if (jobActive) finishJob(new BtError("Shutting down.", "BT_PRINT_FAILED"));
             if (scanning) finishScan(new BtError("Shutting down.", "BT_SCAN_FAILED"));
+            releaseLink(); // drop any warm connection so the printer is freed
         });
         thread.quitSafely();
     }
@@ -282,7 +342,14 @@ final class BleStickerTransport {
         @Override
         public void onConnectionStateChange(BluetoothGatt g, int status, int newState) {
             handler.post(() -> {
-                if (!jobActive || g != gatt) return;
+                if (g != gatt) return;
+                if (!jobActive) {
+                    // Warm link dropped between jobs (printer off, out of range,
+                    // another device took it) — clean up quietly; the next print
+                    // simply reconnects cold.
+                    if (newState == BluetoothProfile.STATE_DISCONNECTED) releaseLink();
+                    return;
+                }
                 if (newState == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS) {
                     armPhase(SERVICES_TIMEOUT_MS, "Printer services did not respond.");
                     try {
@@ -331,9 +398,13 @@ final class BleStickerTransport {
                     return;
                 }
                 cancelPhase();
-                // Negotiate a larger MTU for fewer chunks; onMtuChanged drives the pump.
+                // Negotiate the MTU; onMtuChanged drives the pump. Ask for 512 —
+                // the supplier SDK's own request (chunk 509 = MTU−3); it gates
+                // connect on the grant succeeding, so both board generations are
+                // proven to accept it. clampChunkSize caps at MAX_CHUNK (509) and
+                // a smaller grant just means smaller chunks — never a failure.
                 boolean requested = false;
-                try { requested = g.requestMtu(BleStickerLogic.MAX_CHUNK + 3); } catch (Exception ignored) {}
+                try { requested = g.requestMtu(REQUEST_MTU); } catch (Exception ignored) {}
                 if (!requested) beginWrites(BleStickerLogic.MIN_CHUNK);
             });
         }
@@ -409,16 +480,28 @@ final class BleStickerTransport {
         if (!jobActive || g != gatt) return;
         if (ch == null || !CHAR_FF03_NOTIFY.equals(ch.getUuid())) return;
         if (value != null && value.length > 0) notifyBuffer.append(new String(value, StandardCharsets.UTF_8));
-        if (BleStickerLogic.containsPrintDone(notifyBuffer.toString())) finishJob(null);
+        // AUDIT F1: accept DONE only after every chunk is queued. A legitimate
+        // DONE can only follow the final PRINT bytes; with the warm link, a
+        // stale/duplicate DONE from the PREVIOUS job could otherwise arrive
+        // during the next job's write phase and finish it prematurely (fake
+        // success + truncated payload). Strictly tightening.
+        if (allChunksSent && BleStickerLogic.containsPrintDone(notifyBuffer.toString())) finishJob(null);
     }
 
     // ── chunk pump (backpressure: onCharacteristicWrite on API33+, else 8ms pacing) ──
 
     private void beginWrites(int chunkSize) {
         if (!jobActive) return;
+        heldChunkSize = chunkSize; // remembered for warm-path reuse
         pendingChunks = BleStickerLogic.chunks(payload, chunkSize);
         nextChunk = 0;
         allChunksSent = false;
+        tWriteStart = System.currentTimeMillis();
+        statChunkSize = chunkSize;
+        statChunks = pendingChunks.size();
+        // A stalled stream (incl. a dead warm link the stack hasn't reported yet)
+        // fails here instead of waiting out the 30s overall cap.
+        armPhase(WRITE_TIMEOUT_MS, "Printer stopped accepting data.");
         pump();
     }
 
@@ -468,7 +551,9 @@ final class BleStickerTransport {
     private void onAllSent() {
         if (allChunksSent) return;
         allChunksSent = true;
+        tAllSent = System.currentTimeMillis();
         // All TSPL bytes are out — success requires the printer's own FF03 DONE.
+        // (armPhase replaces the WRITE_TIMEOUT phase.)
         armPhase(DONE_TIMEOUT_MS, "Printer did not confirm within 10s — check the printer.");
     }
 
@@ -488,9 +573,49 @@ final class BleStickerTransport {
     private void finishJob(BtError error) {
         if (!jobActive) return;
         jobActive = false;
+        // Record phase stats for the plugin's resolve (success or failure — the
+        // partial phases are still diagnostic on a timeout).
+        long now = System.currentTimeMillis();
+        JobStats stats = new JobStats();
+        stats.chunkSize = statChunkSize;
+        stats.chunks = statChunks;
+        stats.connectMs = tWriteStart > 0 ? tWriteStart - tJobStart : now - tJobStart;
+        stats.writeMs = (tWriteStart > 0 && tAllSent > 0) ? tAllSent - tWriteStart : 0;
+        stats.doneMs = tAllSent > 0 ? now - tAllSent : 0;
+        lastStats = stats;
         if (overallTimer != null) { handler.removeCallbacks(overallTimer); overallTimer = null; }
         cancelPhase();
         if (pacingTimer != null) { handler.removeCallbacks(pacingTimer); pacingTimer = null; }
+        if (error != null || gatt == null || writeChar == null || notifyChar == null) {
+            // Failure (or nothing usable to keep) → full teardown, as before the
+            // warm-link change. The next print reconnects cold.
+            releaseLink();
+        } else {
+            // SUCCESS → keep the connection + FF03 subscription warm so the next
+            // back-to-back print skips the whole connect phase (the SDK/Labelife
+            // model). Released after IDLE_RELEASE_MS without a print.
+            linkReady = true;
+            heldAddress = preferredAddress;
+            armIdle();
+        }
+        pendingChunks = new ArrayList<>();
+        payload = new byte[0];
+        notifyBuffer.setLength(0);
+        JobCallbackFn cb = jobCb;
+        jobCb = null;
+        if (error != null) Log.w(TAG, "job failed: " + error.code + " " + error.message);
+        if (cb != null) cb.onResult(error);
+    }
+
+    // ── warm-link lifecycle (handler-thread only) ──
+
+    /** Tear down any connection — held or mid-job remnants. Idempotent. */
+    @SuppressLint("MissingPermission")
+    private void releaseLink() {
+        linkReady = false;
+        heldAddress = null;
+        heldChunkSize = 0;
+        cancelIdle();
         BluetoothGatt g = gatt;
         gatt = null;
         if (g != null) {
@@ -500,12 +625,15 @@ final class BleStickerTransport {
         }
         writeChar = null;
         notifyChar = null;
-        pendingChunks = new ArrayList<>();
-        payload = new byte[0];
-        notifyBuffer.setLength(0);
-        JobCallbackFn cb = jobCb;
-        jobCb = null;
-        if (error != null) Log.w(TAG, "job failed: " + error.code + " " + error.message);
-        if (cb != null) cb.onResult(error);
+    }
+
+    private void armIdle() {
+        cancelIdle();
+        idleTimer = () -> { if (!jobActive) releaseLink(); };
+        handler.postDelayed(idleTimer, IDLE_RELEASE_MS);
+    }
+
+    private void cancelIdle() {
+        if (idleTimer != null) { handler.removeCallbacks(idleTimer); idleTimer = null; }
     }
 }

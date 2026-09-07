@@ -37,11 +37,14 @@ public class BleStickerLogicTest {
     }
 
     @Test
-    public void clampChunkSize_mirrorsIos() {
-        assertEquals(180, BleStickerLogic.clampChunkSize(0));      // unknown → MAX (iOS parity)
-        assertEquals(180, BleStickerLogic.clampChunkSize(-5));     // non-positive → MAX
-        assertEquals(180, BleStickerLogic.clampChunkSize(500));    // ceiling
-        assertEquals(180, BleStickerLogic.clampChunkSize(180));
+    public void clampChunkSize_sdkParityCeiling509() {
+        // MAX_CHUNK = 509 = the supplier SDK's own chunk (MTU 512 − 3), proven
+        // accepted by both board generations (the SDK gates connect on it).
+        assertEquals(509, BleStickerLogic.clampChunkSize(0));      // unknown → MAX
+        assertEquals(509, BleStickerLogic.clampChunkSize(-5));     // non-positive → MAX
+        assertEquals(509, BleStickerLogic.clampChunkSize(600));    // ceiling
+        assertEquals(509, BleStickerLogic.clampChunkSize(509));    // MTU-512 grant → full 509
+        assertEquals(244, BleStickerLogic.clampChunkSize(244));    // MTU-247 grant passthrough
         assertEquals(20, BleStickerLogic.clampChunkSize(20));      // floor value
         assertEquals(20, BleStickerLogic.clampChunkSize(5));       // below floor → MIN
         assertEquals(100, BleStickerLogic.clampChunkSize(100));    // in-range passthrough

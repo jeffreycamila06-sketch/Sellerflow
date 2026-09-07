@@ -115,6 +115,14 @@ public class MainActivity extends BridgeActivity {
             + "window.SellerFlowPrinter.clearBluetoothLabelPrinter=function(){return cap.clearBluetoothLabelPrinter();};"
             + "window.SellerFlowPrinter.printStickerNative=function(payload){return cap.printStickerNative(payload||{});};"
             + "window.SellerFlowPrinter.testStickerPrint=function(args){return cap.testStickerPrint(args||{});};"
+            // BITMAP sticker passthrough (new-board fix). The web layer's
+            // method-presence gate keys off THIS shim line — without it the app
+            // silently stays on the TEXT path (the print-probe lesson).
+            + "window.SellerFlowPrinter.printStickerBitmap=function(p){return cap.printStickerBitmap(p||{});};"
+            // DEV-only raw-TSPL passthrough (print-probe harness). Forwards to the
+            // @PluginMethod that routes bytes through the SAME BLE/SPP transport as
+            // testStickerPrint. Production sticker path (printStickerNative) unaffected.
+            + "window.SellerFlowPrinter.printRawTspl=function(p){return cap.printRawTspl(p||{});};"
             + "}else{"
             + "window.SellerFlowPrinter.status=function(){return window.SellerFlowPrinterAndroid.status();};"
             + "window.SellerFlowPrinter.scanPrinters=function(){return window.SellerFlowPrinterAndroid.scanPrinters();};"

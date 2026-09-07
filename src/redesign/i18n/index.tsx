@@ -816,6 +816,8 @@ const RAW: Record<string, Row> = {
   rd_ps_paired: { en: "Paired", fil: "Naka-pair", zh: "已配对", "zh-TW": "已配對", vi: "Đã ghép nối", th: "จับคู่แล้ว", id: "Terpasang" },
   rd_ps_nearby: { en: "Nearby", fil: "Malapit", zh: "附近", "zh-TW": "附近", vi: "Gần đây", th: "ใกล้เคียง", id: "Terdekat" },
   rd_ps_done: { en: "Done", fil: "Tapos", zh: "完成", "zh-TW": "完成", vi: "Xong", th: "เสร็จ", id: "Selesai" },
+  rd_ps_classic_text: { en: "Classic text mode", fil: "Classic text mode", zh: "经典文字模式", "zh-TW": "經典文字模式", vi: "Chế độ chữ cổ điển", th: "โหมดข้อความแบบดั้งเดิม", id: "Mode teks klasik" },
+  rd_ps_classic_text_desc: { en: "Use the printer's built-in fonts instead of the new image mode. Turn ON only if stickers print blank or wrong in image mode.", fil: "Gamitin ang built-in fonts ng printer sa halip na ang bagong image mode. I-ON lang kung blangko o mali ang print sa image mode.", zh: "使用打印机内置字体，而不是新的图像模式。仅当图像模式打印空白或异常时开启。", "zh-TW": "使用印表機內建字體，而不是新的圖片模式。僅在圖片模式列印空白或異常時開啟。", vi: "Dùng phông chữ tích hợp của máy in thay vì chế độ hình ảnh mới. Chỉ BẬT nếu sticker in ra trống hoặc sai ở chế độ hình ảnh.", th: "ใช้ฟอนต์ในตัวเครื่องพิมพ์แทนโหมดรูปภาพใหม่ เปิดเฉพาะเมื่อสติกเกอร์พิมพ์ว่างหรือผิดพลาดในโหมดรูปภาพ", id: "Gunakan font bawaan printer alih-alih mode gambar baru. Nyalakan hanya jika stiker tercetak kosong atau salah di mode gambar." },
 
   // ════ Connect modal ════
   rd_cm_title: { en: "Connect live account", fil: "Ikonekta ang live account", zh: "连接直播账户", "zh-TW": "連接直播帳號", vi: "Kết nối tài khoản live", th: "เชื่อมต่อบัญชีไลฟ์", id: "Hubungkan akun live" },
