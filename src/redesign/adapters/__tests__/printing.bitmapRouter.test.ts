@@ -5,7 +5,7 @@
 //   2. classic toggle ON → the unchanged TEXT path (printStickerNative) fires.
 //   3. OLD BINARY (no printStickerBitmap) → TEXT path fires (safe no-op rollout).
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { printSlip, printStickerBtRouted, isClassicTextSticker, setClassicTextSticker, setStickerRouteNoticeHandler, getLastStickerRouteNotice, LS_CLASSIC_TEXT, DEF_SETTINGS, getLastStickerTiming, type Settings, type StickerRouteNotice } from "../printing";
+import { printSlip, printStickerBtRouted, isClassicTextSticker, setClassicTextSticker, setClassicTextAllowed, canUseClassicText, setStickerRouteNoticeHandler, getLastStickerRouteNotice, LS_CLASSIC_TEXT, DEF_SETTINGS, getLastStickerTiming, type Settings, type StickerRouteNotice } from "../printing";
 import { buildTestBuyer } from "../printerBridge";
 
 const cfg: Settings = { ...DEF_SETTINGS, printerType: "bluetooth" };
@@ -21,6 +21,7 @@ describe("printSlip bitmap routing", () => {
     delete (window as W).Capacitor;
     localStorage.removeItem(LS_CLASSIC_TEXT);
     setStickerRouteNoticeHandler(null);
+    setClassicTextAllowed(false); // module default (regular seller / pre-auth)
   });
 
   it("default = BITMAP when the native passthrough exists (TEXT not called)", async () => {
@@ -48,10 +49,11 @@ describe("printSlip bitmap routing", () => {
     expect(getLastStickerTiming()?.payloadBytes).toBe(bytes.length);
   });
 
-  it("Classic text mode ON → the unchanged TEXT path fires", async () => {
+  it("Classic text mode ON (allowed user) → the unchanged TEXT path fires", async () => {
     const bitmap = vi.fn().mockResolvedValue({ ok: true });
     const native = vi.fn().mockResolvedValue({ ok: true });
     (window as W).SellerFlowPrinter = { printStickerNative: native, printStickerBitmap: bitmap };
+    setClassicTextAllowed(true); // admin/test account signed in
     setClassicTextSticker(true);
     const r = printSlip(buyer, "NT$", "Store", cfg);
     expect(r).toEqual({ ok: true, via: "bluetooth" });
@@ -126,6 +128,7 @@ describe("printSlip bitmap routing", () => {
     setStickerRouteNoticeHandler((n) => notices.push(n));
     const native = vi.fn().mockResolvedValue({ ok: true });
     (window as W).SellerFlowPrinter = { printStickerNative: native, printStickerBitmap: vi.fn() };
+    setClassicTextAllowed(true);
     setClassicTextSticker(true);
     printSlip(buyer, "NT$", "Store", cfg);
     await flush();
@@ -172,10 +175,11 @@ describe("printSlip bitmap routing", () => {
     warn.mockRestore();
   });
 
-  it("ROUTED ENTRY: Classic mode ON → TEXT path, result still {ok:true}", async () => {
+  it("ROUTED ENTRY: Classic mode ON (allowed) → TEXT path, result still {ok:true}", async () => {
     const bitmap = vi.fn().mockResolvedValue({ ok: true });
     const native = vi.fn().mockResolvedValue({ ok: true });
     (window as W).SellerFlowPrinter = { printStickerNative: native, printStickerBitmap: bitmap };
+    setClassicTextAllowed(true);
     setClassicTextSticker(true);
     const r = await printStickerBtRouted(buyer, "NT$", "Store", cfg);
     expect(r).toEqual({ ok: true, code: "", message: "" });
@@ -186,6 +190,35 @@ describe("printSlip bitmap routing", () => {
   it("ROUTED ENTRY: no bridge at all → {ok:false} with empty code (web no-op)", async () => {
     const r = await printStickerBtRouted(buyer, "NT$", "Store", cfg);
     expect(r).toEqual({ ok: false, code: "", message: "" });
+  });
+
+  // ---- Classic-toggle VISIBILITY gate (owner rule: admin + test account only).
+
+  it("SAFETY: stray sfl_rd_classic_text=1 on a NON-allowed user's device → BITMAP anyway", async () => {
+    // e.g. an admin flipped the toggle while logged in on a seller's phone, then
+    // logged out — the router must ignore the flag for users who can't see the
+    // toggle, or the seller is stuck on the doubling TEXT path with no visible way out.
+    const bitmap = vi.fn().mockResolvedValue({ ok: true });
+    const native = vi.fn().mockResolvedValue({ ok: true });
+    (window as W).SellerFlowPrinter = { printStickerNative: native, printStickerBitmap: bitmap };
+    setClassicTextSticker(true); // flag present on the device…
+    // …but setClassicTextAllowed(false) (the afterEach default = regular seller)
+    const r = await printStickerBtRouted(buyer, "NT$", "Store", cfg);
+    expect(r.ok).toBe(true);
+    expect(bitmap).toHaveBeenCalledTimes(1);
+    expect(native).not.toHaveBeenCalled();
+  });
+
+  it("canUseClassicText: admin role (both casings) + test accounts YES, regular seller NO", () => {
+    expect(canUseClassicText("admin", "seller@x.com")).toBe(true); // db-cased role
+    expect(canUseClassicText("Admin", "seller@x.com")).toBe(true); // display-cased role
+    expect(canUseClassicText("seller", "googletest@sellerflowlive.com")).toBe(true); // the real test account
+    expect(canUseClassicText("seller", "GoogleTest@SellerFlowLive.com")).toBe(true); // case-insensitive
+    expect(canUseClassicText("seller", "googletest@gmail.com")).toBe(true); // owner-specified spelling
+    expect(canUseClassicText("seller", "maria@example.com")).toBe(false);
+    expect(canUseClassicText("Seller", "kylerkao@example.com")).toBe(false);
+    expect(canUseClassicText(undefined, undefined)).toBe(false); // pre-auth / logged out
+    expect(canUseClassicText(null, null)).toBe(false);
   });
 
   it("toggle helpers round-trip via localStorage", () => {

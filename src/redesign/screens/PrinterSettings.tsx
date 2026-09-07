@@ -23,13 +23,14 @@ const tab = (active: boolean): CSSProperties => ({ flex: 1, padding: "13px 0", b
 
 export default function PrinterSettings({
   onBack, psType, psOut, onSetPsOut, psSize, psSizeOpen, onTogglePsSize, onPickPsSize,
-  cur = "NT$", storeName = "SellerFlowLive", settings,
+  cur = "NT$", storeName = "SellerFlowLive", settings, showClassicToggle = false,
 }: {
   onBack: () => void;
   psType: "wifi" | "bt";
   psOut: "receipt" | "sticker"; onSetPsOut: (o: "receipt" | "sticker") => void;
   psSize: string; psSizeOpen: boolean; onTogglePsSize: () => void; onPickPsSize: (s: string) => void;
   cur?: string; storeName?: string; settings?: Settings;
+  showClassicToggle?: boolean; // admin/test-account only (canUseClassicText) — default HIDDEN
 }) {
   const t = useT();
   const wifi = psType === "wifi";
@@ -173,7 +174,11 @@ export default function PrinterSettings({
             {/* BITMAP-vs-TEXT escape hatch (new-board fix). Default OFF = bitmap
                 mode (when the native passthrough exists — method-presence gated in
                 printing.ts); ON = the byte-frozen classic TEXT path. Per-device
-                localStorage, same pattern as the other printer prefs. */}
+                localStorage, same pattern as the other printer prefs.
+                ADMIN/TEST-ONLY (showClassicToggle ← canUseClassicText): hidden from
+                regular sellers so nobody flips it onto the doubling TEXT path; the
+                router also ignores the flag for users who can't see this card. */}
+            {showClassicToggle && (
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginTop: 12, display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_ps_classic_text}</div>
@@ -187,6 +192,7 @@ export default function PrinterSettings({
                 <span style={{ position: "absolute", top: 3, left: classicText ? 25 : 3, width: 24, height: 24, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,.25)", transition: "left .15s" }} />
               </button>
             </div>
+            )}
           </div>
         )}
 

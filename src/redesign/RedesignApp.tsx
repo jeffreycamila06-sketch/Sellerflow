@@ -57,7 +57,7 @@ import { computeSales } from "./adapters/sales";
 import { useSalesReport } from "./adapters/salesReport";
 import { ordersByHour } from "./adapters/peakHours";
 import { sessionKeyFor } from "./adapters/shipping";
-import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, isPrinterNotSetup, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
+import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, isPrinterNotSetup, canUseClassicText, setClassicTextAllowed, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
 import { prefetchCjkAtlas } from "./adapters/cjkAtlasLoader";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
@@ -116,6 +116,11 @@ export default function RedesignApp() {
   // own row, so we keep sample).
   const authed = auth.status === "authed";
   const isAdmin = isAdminRole(auth.profile?.role); // Batch E #16 — shared predicate
+  // "Classic text mode" is admin/test-account-only (owner rule): this gates BOTH
+  // the Printer Settings card's visibility AND (via setClassicTextAllowed) whether
+  // the print router honors a stray sfl_rd_classic_text flag on this device.
+  const classicAllowed = canUseClassicText(auth.profile?.role, auth.profile?.email);
+  useEffect(() => { setClassicTextAllowed(classicAllowed); }, [classicAllowed]);
   const customersData = useCustomers(authed);
   const adminUsers = useAdminUsers(authed && isAdmin);
   // Admin subscription buckets — real free-tier monitor (RPC) + derived active/
@@ -1096,6 +1101,7 @@ export default function RedesignApp() {
               psSize={psSize} psSizeOpen={psSizeOpen}
               onTogglePsSize={() => setPsSizeOpen((o) => !o)} onPickPsSize={(s) => { setPsSize(s); setPsSizeOpen(false); }}
               cur={cur} storeName={auth.profile?.profile.storeName || "SellerFlowLive"} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })}
+              showClassicToggle={classicAllowed}
             />
           )}
           {screen === "printpattern" && (

@@ -12,6 +12,7 @@
 // Web / preview (no native bridge) → browser print (hidden iframe + window.print)
 // that MIRRORS the native TSPL sticker layout, so 1-Click output matches the APK.
 import { shouldUseBluetoothSticker, shouldUseLanSticker } from "../../lib/printerRouting";
+import { isAdminRole } from "../../lib/roles";
 import type { Buyer } from "../../lib/orderTypes";
 import { rasterizeToSdkBitmapTspl, bytesToBase64, payloadNeedsCjk, type GlyphAtlas } from "./stickerRaster";
 import { loadCjkAtlas } from "./cjkAtlasLoader";
@@ -203,6 +204,25 @@ export function setClassicTextSticker(on: boolean): void {
   try { if (on) localStorage.setItem(LS_CLASSIC_TEXT, "1"); else localStorage.removeItem(LS_CLASSIC_TEXT); } catch { /* ignore */ }
 }
 
+// ── Classic-toggle VISIBILITY gate (owner requirement, pre-merge) ────────────
+// The toggle is a debugging/fallback instrument: a curious seller flipping it on
+// a new-board printer gets doubled output and thinks the app broke. So it is
+// visible ONLY to admin-role accounts (the app-wide isAdminRole predicate,
+// lib/roles.ts — same source of truth as the Admin screen gate) and the test
+// account. SAFER-BEHAVIOR RULE: the ROUTER honors the localStorage flag only
+// while the toggle would be visible to the CURRENT user (setClassicTextAllowed,
+// synced from auth by RedesignApp). A stray sfl_rd_classic_text=1 left on a
+// seller's device (e.g. set while an admin was logged in there) is therefore
+// IGNORED — the print routes bitmap regardless. Default DISALLOWED (pre-auth /
+// logged out / rollback contexts route bitmap, the correct path).
+const CLASSIC_TEXT_TEST_ACCOUNTS = new Set(["googletest@sellerflowlive.com", "googletest@gmail.com"]);
+export function canUseClassicText(role: string | undefined | null, email: string | undefined | null): boolean {
+  if (isAdminRole(role)) return true;
+  return CLASSIC_TEXT_TEST_ACCOUNTS.has(String(email || "").trim().toLowerCase());
+}
+let classicTextAllowed = false;
+export function setClassicTextAllowed(allowed: boolean): void { classicTextAllowed = allowed; }
+
 // Internal timing instrumentation (console-only, NEVER surfaced in UI): every
 // sticker print logs `[STICKER-TIMING]` to the console (Logcat → Capacitor/
 // Console) and keeps the last sample on `window.__sflPrintTiming` +
@@ -318,7 +338,10 @@ async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: st
   // classic mode) takes the UNCHANGED TEXT path below — with the reason recorded
   // so the fallback is VISIBLE in-app, never silent (the Phase-1 field lesson).
   const bmpFn = bitmapBridgeFn(bridge);
-  const classic = isClassicTextSticker();
+  // Visibility-gated: the flag only counts for users who can SEE the toggle
+  // (admin/test account — see canUseClassicText above). Everyone else routes
+  // bitmap even with a stray localStorage flag on the device.
+  const classic = classicTextAllowed && isClassicTextSticker();
   let cjkUnavailable = false;
   if (bmpFn && !classic) {
     const payload = buildNativeStickerPayload(buyer, cur, storeName, cfg);
