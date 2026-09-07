@@ -33,6 +33,7 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "clearBluetoothLabelPrinter", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "testStickerPrint", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "printStickerNative", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "printStickerBitmap", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "printRawTspl", returnType: CAPPluginReturnPromise),
     ]
 
@@ -165,6 +166,12 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
       window.SellerFlowPrinter.clearBluetoothLabelPrinter = function(){ return cap.clearBluetoothLabelPrinter(); };
       window.SellerFlowPrinter.testStickerPrint = function(p){ return cap.testStickerPrint(p || {}); };
       window.SellerFlowPrinter.printStickerNative = function(payload){ return cap.printStickerNative(payload || {}); };
+      // BITMAP sticker passthrough (Phase 2 — Android parity): the web sends the
+      // COMPLETE pre-built SDK image stream; native only transports it. The web
+      // router gates on THIS method's presence, so this shim line is what turns
+      // the bitmap path on for iOS (the shim was twice the missed spot on
+      // Android — the web also probes Capacitor.Plugins as a backup).
+      window.SellerFlowPrinter.printStickerBitmap = function(p){ return cap.printStickerBitmap(p || {}); };
       window.SellerFlowPrinter.printRawTspl = function(p){ return cap.printRawTspl(p || {}); };
       window.SellerFlowPrinter.status = function(){ return cap.getPrinter(); };
       window.SellerFlowPrinter.printerStatus = function(){ return cap.getPrinter(); };
@@ -782,6 +789,13 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                 }
                 let d = max((tm - 1) * F2, (pm - 1) * F4)
                 y += 38 + d
+                // PARITY (9b0bf67 port, golden-gate catch): Java/TS accumulate the
+                // per-row growth into `extra` too — it feeds the NEXT row's loop
+                // guard (y < orderLoopGuard + extra) and the bottom-anchored
+                // totalY. Missing this line skipped row 2 and shorted the Total
+                // offset whenever order/price scales are above level 1
+                // (scaled_mixed golden). d == 0 at level 1 → no-op elsewhere.
+                extra += d
                 i += 1
             }
         }
@@ -1103,6 +1117,37 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
+    /// BITMAP sticker passthrough (Phase 2 — mirror of Android's
+    /// printStickerBitmap): the web sends the COMPLETE pre-built SDK image
+    /// stream (LZO mode-4 BITMAP TSPL, base64); native only transports it over
+    /// the SAME BLE pipeline as printStickerNative. Same params/result/error
+    /// contract as Android. iOS has NO SPP transport, so BITMAP_SPP_FAILED is
+    /// never emitted here — a BLE failure rejects with its honest code and the
+    /// web surfaces it as a normal print failure (no TEXT retry: it would ride
+    /// the same failed link; no fake success).
+    @objc func printStickerBitmap(_ call: CAPPluginCall) {
+        let savedId = savedBleId()
+        if savedId.isEmpty {
+            call.reject("No Bluetooth printer saved. Tap Scan in Settings and pick a printer first.", "BT_NOT_SET")
+            return
+        }
+        guard let b64 = call.getString("data") else {
+            call.reject("printStickerBitmap: invalid base64 data", "BT_PRINT_FAILED")
+            return
+        }
+        guard let data = Data(base64Encoded: b64), !data.isEmpty else {
+            call.reject("printStickerBitmap: empty data", "BT_PRINT_FAILED")
+            return
+        }
+        bleTransport.printJob(data: data, preferredId: savedId) { error in
+            if let error = error {
+                call.reject("Bitmap sticker failed: \(error.message)", error.code)
+            } else {
+                call.resolve(["ok": true, "bytes": data.count, "message": "Bitmap sticker sent (\(data.count) bytes)"])
+            }
+        }
+    }
+
     /// iOS BLE counterpart of Android's printStickerNative: SAME payload, SAME
     /// TSPL builder (buildTsplSticker — golden parity), SAME return shape.
     @objc func printStickerNative(_ call: CAPPluginCall) {
@@ -1317,9 +1362,15 @@ enum BleStickerLogic {
     static let advertisedService = "AF30"
     /// Device-name prefix; the suffix varies per unit ("D520BT-Z", …).
     static let namePrefix = "D520BT"
-    /// Proven-safe ceiling for write-without-response payloads on this printer
-    /// class, and the BLE minimum (ATT default MTU 23 − 3 header).
-    static let maxChunk = 180
+    /// Chunk ceiling = the supplier SDK's own value (Android AAR BleBluetooth:
+    /// 509 = MTU 512 − 3; it GATES connect on the 512 grant, hardware proof
+    /// both board generations accept 509-byte packets — the Android v1.6
+    /// release ships the same ceiling). On iOS there is no requestMtu API: the
+    /// OS negotiates, and maximumWriteValueLength(for:.withoutResponse)
+    /// reports the real usable payload — exactly what the supplier's own iOS
+    /// lib (libLMAPI QBLEManager) keys off. Clamped below, so a smaller
+    /// negotiation just means smaller chunks. BLE minimum = ATT 23 − 3.
+    static let maxChunk = 509
     static let minChunk = 20
 
     /// Usable chunk size: the iOS-negotiated maximumWriteValueLength clamped to
@@ -1376,10 +1427,20 @@ struct BleError {
 // Job pipeline: ensure poweredOn → resolve peripheral (saved identifier →
 // system-connected FF00 → scan w/ BleStickerLogic filter) → connect →
 // discover FF00 → FF02/FF03 → subscribe FF03 FIRST → chunked
-// write-without-response to FF02 (negotiated MTU clamped, canSend
-// backpressure + 8ms pacing) → success only on "PRINTING:DONE" notify →
-// ALWAYS disconnect (single-connection etiquette — never hold the printer).
+// write-without-response to FF02 (maximumWriteValueLength clamped, canSend
+// backpressure + 8ms pacing) → success only on "PRINTING:DONE" notify.
 // Timeouts fail honestly; there is no fake success path.
+//
+// WARM LINK (Phase 2 — Android v1.6 parity, the supplier-SDK/Labelife model):
+// after a SUCCESSFUL job the connection + FF03 subscription are KEPT for
+// idleReleaseSeconds; a back-to-back print to the same printer skips
+// resolve/connect/discover/subscribe entirely. Released on: any job FAILURE
+// (full teardown, as before), the idle timer, a remote disconnect between
+// jobs, a printer change, scan start (so the picker can find the advertising
+// printer), and Bluetooth going away. Holding the link between prints means
+// another phone/Labelife cannot connect until idle release — intended during
+// live selling (the supplier's own QBLEManager holds its connection the same
+// way while the app is open).
 // ═════════════════════════════════════════════════════════════════════════════
 
 final class BleStickerTransport: NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
@@ -1419,6 +1480,15 @@ final class BleStickerTransport: NSObject, CBCentralManagerDelegate, CBPeriphera
     private var notifyBuffer = ""
     private var payload = Data()
 
+    // warm-link state (survives BETWEEN jobs; queue-confined like all state)
+    private var linkReady = false          // connection + FF03 subscription live from a prior success
+    private var heldRequestId: String?     // the preferredId that produced the warm link (may differ from the peripheral id after a scan fallback)
+    private var idleTimer: DispatchWorkItem?
+    /// How long a successful job's connection is kept warm for the next print.
+    private let idleReleaseSeconds: TimeInterval = 180
+    /// Chunk stream stalled (also catches a dead warm link fast, instead of the 30s cap).
+    private let writeTimeoutSeconds: TimeInterval = 12
+
     private let uuidService = CBUUID(string: "FF00")
     private let uuidWrite = CBUUID(string: "FF02")
     private let uuidNotify = CBUUID(string: "FF03")
@@ -1434,6 +1504,9 @@ final class BleStickerTransport: NSObject, CBCentralManagerDelegate, CBPeriphera
                     DispatchQueue.main.async { completion(nil, BleError(message: "Bluetooth is busy with another printer task.", code: "BT_BUSY")) }
                     return
                 }
+                // A held (idle) connection stops the printer advertising —
+                // release it so the picker can actually find the device.
+                self.releaseLink()
                 self.scanFound = [:]
                 self.scanDone = { found in DispatchQueue.main.async { completion(found, nil) } }
                 self.central?.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
@@ -1462,13 +1535,25 @@ final class BleStickerTransport: NSObject, CBCentralManagerDelegate, CBPeriphera
                 self.pendingChunks = []
                 self.nextChunk = 0
                 self.allChunksSent = false
-                self.writeChar = nil
-                self.notifyChar = nil
 
                 // hard cap: a stuck job can never hang the seller's print flow
                 self.overallTimer = self.schedule(seconds: 30) { [weak self] in
                     self?.finishJob(BleError(message: "Print timed out.", code: "BT_PRINT_FAILED"))
                 }
+
+                // WARM PATH: a prior successful job left the connection + FF03
+                // subscription live for this printer → straight to the chunk
+                // pump (zero connect phase). A dead-but-undetected link fails at
+                // writeTimeoutSeconds / on the disconnect callback, tears down
+                // fully, and the NEXT print reconnects cold — never fake success.
+                if self.linkReady, let p = self.peripheral, p.state == .connected,
+                   self.writeChar != nil, self.notifyChar != nil,
+                   self.warmMatches(self.preferredId, held: p) {
+                    self.idleTimer?.cancel(); self.idleTimer = nil
+                    self.beginWrites(on: p)
+                    return
+                }
+                self.releaseLink() // different printer, or no warm link — start cold (also nils peripheral/chars)
 
                 // fast paths: known identifier, or already system-connected (FF00)
                 var target: CBPeripheral?
@@ -1547,6 +1632,7 @@ final class BleStickerTransport: NSObject, CBCentralManagerDelegate, CBPeriphera
             flushStateWaiters(err)
             if jobActive { finishJob(err) }
             if scanDone != nil { finishScan() }
+            releaseLink() // a warm link cannot survive Bluetooth going away
         }
     }
 
@@ -1626,7 +1712,13 @@ final class BleStickerTransport: NSObject, CBCentralManagerDelegate, CBPeriphera
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
-        guard jobActive, peripheral === self.peripheral else { return }
+        guard peripheral === self.peripheral else { return }
+        if !jobActive {
+            // Warm link dropped between jobs (printer off, out of range, another
+            // device took it) — clean up quietly; the next print reconnects cold.
+            releaseLink()
+            return
+        }
         finishJob(BleError(message: "Printer disconnected during printing.", code: "BT_PRINT_FAILED"))
     }
 
@@ -1666,10 +1758,31 @@ final class BleStickerTransport: NSObject, CBCentralManagerDelegate, CBPeriphera
             return
         }
         phaseTimer?.cancel()
+        beginWrites(on: peripheral)
+    }
+
+    /// Chunk + start the pump — shared by the cold path (post-subscribe) and
+    /// the warm path (printJob reuse). Arms the write-phase timeout so a
+    /// stalled stream (incl. a dead warm link iOS hasn't reported yet) fails
+    /// honestly instead of waiting out the 30s overall cap.
+    private func beginWrites(on peripheral: CBPeripheral) {
         let chunkSize = BleStickerLogic.clampChunkSize(peripheral.maximumWriteValueLength(for: .withoutResponse))
         pendingChunks = BleStickerLogic.chunks(payload, chunkSize: chunkSize)
         nextChunk = 0
+        phaseTimer?.cancel()
+        phaseTimer = schedule(seconds: writeTimeoutSeconds) { [weak self] in
+            self?.finishJob(BleError(message: "Printer stopped accepting data.", code: "BT_PRINT_FAILED"))
+        }
         pump()
+    }
+
+    /// Warm-link reuse condition: the requested printer is the one we hold —
+    /// the same saved id that built the link, the connected peripheral's own
+    /// identifier, or no saved id at all (single-printer reality).
+    private func warmMatches(_ requested: String?, held: CBPeripheral) -> Bool {
+        guard let r = requested else { return true }
+        if let h = heldRequestId, r.caseInsensitiveCompare(h) == .orderedSame { return true }
+        return r.caseInsensitiveCompare(held.identifier.uuidString) == .orderedSame
     }
 
     // MARK: chunk pump (backpressure via canSend + peripheralIsReady; 8ms pacing)
@@ -1691,6 +1804,10 @@ final class BleStickerTransport: NSObject, CBCentralManagerDelegate, CBPeriphera
         if nextChunk >= pendingChunks.count && !allChunksSent {
             allChunksSent = true
             // All TSPL bytes are out — success requires the printer's own DONE.
+            // Cancel the write-phase timeout before arming the DONE timeout
+            // (overwriting the reference would leak a live 12s timer that
+            // could kill a healthy waiting job).
+            phaseTimer?.cancel()
             phaseTimer = schedule(seconds: 10) { [weak self] in
                 self?.finishJob(BleError(message: "Printer did not confirm within 10s — check the printer.", code: "BT_PRINT_FAILED"))
             }
@@ -1706,7 +1823,12 @@ final class BleStickerTransport: NSObject, CBCentralManagerDelegate, CBPeriphera
         guard let value = characteristic.value, !value.isEmpty else { return }
         notifyBuffer += String(data: value, encoding: .utf8)
             ?? String(decoding: value, as: UTF8.self)
-        if BleStickerLogic.containsPrintDone(notifyBuffer) {
+        // AUDIT F1 (Android parity): accept DONE only after every chunk is
+        // queued. A legitimate DONE can only follow the final PRINT bytes; with
+        // the warm link, a stale/duplicate DONE from the PREVIOUS job could
+        // otherwise finish the next job mid-write (fake success + truncated
+        // payload). Strictly tightening.
+        if allChunksSent && BleStickerLogic.containsPrintDone(notifyBuffer) {
             finishJob(nil)
         }
     }
@@ -1726,13 +1848,18 @@ final class BleStickerTransport: NSObject, CBCentralManagerDelegate, CBPeriphera
         phaseTimer?.cancel(); phaseTimer = nil
         pacingTimer?.cancel(); pacingTimer = nil
         if scanDone == nil { central?.stopScan() }
-        if let p = peripheral {
-            if let notify = notifyChar, p.state == .connected { p.setNotifyValue(false, for: notify) }
-            central?.cancelPeripheralConnection(p)
+        if error == nil, let p = peripheral, p.state == .connected, writeChar != nil, notifyChar != nil {
+            // SUCCESS → keep the connection + FF03 subscription warm so the next
+            // back-to-back print skips the whole connect phase (the supplier-
+            // SDK/Labelife model). Released after idleReleaseSeconds idle.
+            linkReady = true
+            heldRequestId = preferredId
+            armIdle()
+        } else {
+            // Failure (or nothing usable to keep) → full teardown, as before
+            // the warm-link change. The next print reconnects cold.
+            releaseLink()
         }
-        peripheral = nil
-        writeChar = nil
-        notifyChar = nil
         fallbackTarget = nil
         pendingChunks = []
         payload = Data()
@@ -1740,5 +1867,29 @@ final class BleStickerTransport: NSObject, CBCentralManagerDelegate, CBPeriphera
         let done = jobDone
         jobDone = nil
         done?(error)
+    }
+
+    // MARK: warm-link lifecycle (queue-confined)
+
+    /// Tear down any connection — held or mid-job remnants. Idempotent.
+    private func releaseLink() {
+        linkReady = false
+        heldRequestId = nil
+        idleTimer?.cancel(); idleTimer = nil
+        if let p = peripheral {
+            if let notify = notifyChar, p.state == .connected { p.setNotifyValue(false, for: notify) }
+            central?.cancelPeripheralConnection(p)
+        }
+        peripheral = nil
+        writeChar = nil
+        notifyChar = nil
+    }
+
+    private func armIdle() {
+        idleTimer?.cancel()
+        idleTimer = schedule(seconds: idleReleaseSeconds) { [weak self] in
+            guard let self = self, !self.jobActive else { return }
+            self.releaseLink()
+        }
     }
 }

@@ -59,7 +59,7 @@ final class MobileTsplBuilderTests: XCTestCase {
             let built = plugin.buildTsplSticker(
                 buyer: buyer,
                 settings: settings,
-                storeName: raw["storeName"] as? String ?? "SellerFlowLive",
+                storeName: raw["storeName"] as? String ?? "",  // mirrors the FIXED production TSPL callers (Java optString default "") — synced to the canonical tspl-parity copy (06a9f05)
                 currency: raw["currency"] as? String ?? "",
                 sessionDate: raw["sessionDate"] as? String ?? "",
                 labelWidthMm: fx.labelWidthMm,

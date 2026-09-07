@@ -21,20 +21,24 @@ final class BleStickerLogicTests: XCTestCase {
 
     // MARK: clampChunkSize
 
+    // maxChunk = 509 (Phase 2, Android v1.6 parity): the supplier SDK's own
+    // chunk (MTU 512 − 3), hardware-proven on both board generations — the SDK
+    // gates its Android connect on the 512 grant.
     func testClampUsesNegotiatedValueWithinBounds() {
         XCTAssertEqual(BleStickerLogic.clampChunkSize(150), 150)
         XCTAssertEqual(BleStickerLogic.clampChunkSize(20), 20)
-        XCTAssertEqual(BleStickerLogic.clampChunkSize(180), 180)
+        XCTAssertEqual(BleStickerLogic.clampChunkSize(180), 180)  // an older negotiation passes through unchanged
+        XCTAssertEqual(BleStickerLogic.clampChunkSize(509), 509)  // MTU-512 negotiation → full SDK-parity chunk
     }
 
     func testClampCeilingAndFloor() {
-        XCTAssertEqual(BleStickerLogic.clampChunkSize(512), 180)  // iOS often reports large — clamp to proven-safe
+        XCTAssertEqual(BleStickerLogic.clampChunkSize(600), 509)  // above the printer's proven packet size → ceiling
         XCTAssertEqual(BleStickerLogic.clampChunkSize(5), 20)     // below BLE minimum → floor
     }
 
     func testClampUnknownReportsDefault() {
-        XCTAssertEqual(BleStickerLogic.clampChunkSize(0), 180)
-        XCTAssertEqual(BleStickerLogic.clampChunkSize(-1), 180)
+        XCTAssertEqual(BleStickerLogic.clampChunkSize(0), 509)
+        XCTAssertEqual(BleStickerLogic.clampChunkSize(-1), 509)
     }
 
     // MARK: chunks
