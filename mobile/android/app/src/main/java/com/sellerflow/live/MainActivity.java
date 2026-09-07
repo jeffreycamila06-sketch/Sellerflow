@@ -119,6 +119,10 @@ public class MainActivity extends BridgeActivity {
             // method-presence gate keys off THIS shim line — without it the app
             // silently stays on the TEXT path (the print-probe lesson).
             + "window.SellerFlowPrinter.printStickerBitmap=function(p){return cap.printStickerBitmap(p||{});};"
+            // DEV-only raw-TSPL passthrough (print-probe harness). Forwards to the
+            // @PluginMethod that routes bytes through the SAME BLE/SPP transport as
+            // testStickerPrint. Production sticker path (printStickerNative) unaffected.
+            + "window.SellerFlowPrinter.printRawTspl=function(p){return cap.printRawTspl(p||{});};"
             + "}else{"
             + "window.SellerFlowPrinter.status=function(){return window.SellerFlowPrinterAndroid.status();};"
             + "window.SellerFlowPrinter.scanPrinters=function(){return window.SellerFlowPrinterAndroid.scanPrinters();};"

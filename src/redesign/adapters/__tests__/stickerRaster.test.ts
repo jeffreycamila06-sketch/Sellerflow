@@ -109,10 +109,36 @@ describe("rasterizeToBitmapTspl — structure, polarity, cropping", () => {
     for (const b of bands) {
       expect(b.mode).toBe(0);
       const cfg = STICKER_LAYOUTS["100x60"];
-      expect(b.x).toBeGreaterThanOrEqual(0);
-      expect(b.x + b.rowBytes * 8).toBeLessThanOrEqual(cfg.wDots + 7);
+      // H1 FIX (2026-09-07): DEFAULT bands are FULL-WIDTH at x=0 — the new-board
+      // firmware doubles glyphs when BITMAP blocks land at arbitrary x (sub-byte
+      // shift bug). x=0 + rowBytes = wDots/8 exactly → nothing to mis-shift.
+      expect(b.x).toBe(0);
+      expect(b.rowBytes).toBe(cfg.wDots / 8);
       expect(b.y + b.h).toBeLessThanOrEqual(60 * 8);
     }
+  });
+
+  it("horizontalCrop flag: old tight-crop bands (arbitrary x) still LOSSLESS + smaller", () => {
+    const payload = flagshipPayload();
+    const full = renderStickerBitmap(payload, FLAGSHIP.w, FLAGSHIP.h, ATLASES);
+    const def = rasterizeToBitmapTspl(payload, FLAGSHIP.w, FLAGSHIP.h, ATLASES);
+    const crop = rasterizeToBitmapTspl(payload, FLAGSHIP.w, FLAGSHIP.h, ATLASES, { horizontalCrop: true });
+    expect(crop.bytes.length).toBeLessThan(def.bytes.length); // the crop is the size win…
+    const { bands } = parseBitmapStream(crop.bytes);
+    expect(bands.some((b) => b.x > 0)).toBe(true); // …and produces the arbitrary-x blocks
+    // Lossless recomposition of the FLAGGED path too (same invariant as default).
+    const recon = new Uint8Array(full.rowBytes * full.h);
+    for (const b of bands) {
+      for (let ry = 0; ry < b.h; ry++) for (let bit = 0; bit < b.rowBytes * 8; bit++) {
+        const v = (b.data[ry * b.rowBytes + (bit >> 3)] & (0x80 >> (bit & 7))) !== 0;
+        const ink = INK_IS_ZERO ? !v : v;
+        if (!ink) continue;
+        const gx = b.x + bit, gy = b.y + ry;
+        if (gx >= full.w || gy >= full.h) throw new Error(`crop band ink outside label at ${gx},${gy}`);
+        recon[gy * full.rowBytes + (gx >> 3)] |= 0x80 >> (gx & 7);
+      }
+    }
+    expect(toHex(recon)).toBe(toHex(full.buf));
   });
 
   it("polarity: the full-width header rule band is solid 0x00 (ink=0)", () => {
@@ -152,8 +178,11 @@ describe("rasterizeToBitmapTspl — structure, polarity, cropping", () => {
     const r = rasterizeToBitmapTspl(flagshipPayload(), FLAGSHIP.w, FLAGSHIP.h, ATLASES);
     const naive = 100 * 480; // full-raster bytes at 800x480
     expect(r.inkBytes).toBeGreaterThan(0);
-    expect(r.inkBytes).toBeLessThan(naive * 0.45); // regression guard on the speed win
-    expect(r.bytes.length).toBeLessThan(naive * 0.5);
+    // Full-width x=0 bands (H1 fix) transmit blank COLUMNS, so the win is now
+    // vertical-only: measured 22.2KB vs 46.9KB naive at 100x60 (~47%). Guard at
+    // 55% so a band-emission regression (e.g. losing the blank-row skip) trips.
+    expect(r.inkBytes).toBeLessThan(naive * 0.55);
+    expect(r.bytes.length).toBeLessThan(naive * 0.55);
   });
 
   it("blank rows between elements are never transmitted", () => {

@@ -225,7 +225,11 @@ const nowMs = () => (typeof performance !== "undefined" ? performance.now() : Da
 // Settings reads the last notice. Same registration pattern as
 // setNativePrintFailureHandler above.
 export type StickerFallbackReason = "" | "classic-mode-on" | "bitmap-method-missing";
-export interface StickerRouteNotice { via: "bitmap" | "text"; ok: boolean; reason: StickerFallbackReason; detail: string; payloadBytes: number; totalMs: number }
+// `phase` (bitmap only): the native transport's own breakdown — "conn 0.6s send
+// 3.4s done 0.5s chunk 20x365" — so a slow print says WHERE the time went
+// (GATT connect vs BLE transfer vs printer processing) and the negotiated chunk
+// size (chunk 20 = MTU negotiation failed = the 7KB-in-5s failure mode).
+export interface StickerRouteNotice { via: "bitmap" | "text"; ok: boolean; reason: StickerFallbackReason; detail: string; payloadBytes: number; totalMs: number; phase?: string }
 let stickerRouteNoticeHandler: ((n: StickerRouteNotice) => void) | null = null;
 let lastStickerRouteNotice: StickerRouteNotice | null = null;
 export function setStickerRouteNoticeHandler(fn: ((n: StickerRouteNotice) => void) | null): void {
@@ -247,7 +251,17 @@ function reportStickerRoute(n: StickerRouteNotice): void {
 // shim has now been the missed spot twice (printRawTspl, then a stale-native
 // build); probing the Capacitor proxy makes the gate survive a stale shim as
 // long as the compiled plugin has the method.
-type BitmapBridgeFn = (args: { data: string }) => Promise<{ ok?: boolean; message?: string } | null>;
+type BitmapBridgeResult = { ok?: boolean; message?: string; chunk?: number; chunks?: number; connectMs?: number; writeMs?: number; doneMs?: number } | null;
+type BitmapBridgeFn = (args: { data: string }) => Promise<BitmapBridgeResult>;
+
+// Format the native JobStats fields (when the binary is new enough to send
+// them) into the human phase string shown in the toast / Last-print line.
+function formatBitmapPhase(r: BitmapBridgeResult): string {
+  if (!r || typeof r.connectMs !== "number") return "";
+  const sec = (ms?: number) => `${((ms ?? 0) / 1000).toFixed(1)}s`;
+  const chunk = typeof r.chunk === "number" && r.chunk > 0 ? ` chunk ${r.chunk}x${r.chunks ?? "?"}` : "";
+  return `conn ${sec(r.connectMs)} send ${sec(r.writeMs)} done ${sec(r.doneMs)}${chunk}`;
+}
 function bitmapBridgeFn(bridge: NonNullable<Window["SellerFlowPrinter"]>): BitmapBridgeFn | undefined {
   const fn = (bridge as unknown as { printStickerBitmap?: unknown }).printStickerBitmap;
   if (typeof fn === "function") return fn as BitmapBridgeFn;
@@ -266,13 +280,15 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, buyer: Buyer, cur: stri
   try {
     const result = await fn({ data });
     const t2 = nowMs();
+    const phase = formatBitmapPhase(result);
     recordStickerTiming({ via: "bitmap", buildMs: t1 - t0, bridgeMs: t2 - t1, totalMs: t2 - t0, payloadBytes: raster.bytes.length, bands: raster.bands });
+    if (phase) console.log(`[STICKER-TIMING] native ${phase}`);
     if (result?.ok) {
-      reportStickerRoute({ via: "bitmap", ok: true, reason: "", detail: "", payloadBytes: raster.bytes.length, totalMs: t2 - t0 });
+      reportStickerRoute({ via: "bitmap", ok: true, reason: "", detail: "", payloadBytes: raster.bytes.length, totalMs: t2 - t0, phase });
       return true;
     }
     const { code, message } = readFailure(result);
-    reportStickerRoute({ via: "bitmap", ok: false, reason: "", detail: message || code || "print failed", payloadBytes: raster.bytes.length, totalMs: t2 - t0 });
+    reportStickerRoute({ via: "bitmap", ok: false, reason: "", detail: message || code || "print failed", payloadBytes: raster.bytes.length, totalMs: t2 - t0, phase });
     if (!reportNativePrintFailure("bluetooth", code, message)) console.warn("[BT bitmap sticker] print failed:", message || "check pairing/selection.");
     return false;
   } catch (err) {

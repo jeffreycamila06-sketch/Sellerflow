@@ -336,6 +336,19 @@ function paint(bmp: Bitmap, ops: DrawOp[], atlases: RasterAtlases) {
 
 export interface BitmapTsplResult { bytes: Uint8Array; bands: number; inkBytes: number }
 
+// ── Band emission mode (H1 field finding, 2026-09-07) ────────────────────────
+// The new-board firmware DOUBLES/ghosts glyphs when BITMAP blocks land at
+// arbitrary x offsets (the horizontal ink-extent crop produced x=13-style
+// origins; the firmware appears to mis-shift x%8 sub-byte composition — the
+// same visual signature as its ROM-font doubling). DEFAULT is therefore
+// FULL-WIDTH bands: every BITMAP block at x=0 spanning the whole label width
+// (wDots is a multiple of 8 on all five sizes → rowBytes exact, no sub-byte
+// shifting for the firmware to get wrong), cropped VERTICALLY only. Payload
+// roughly doubles vs horizontal crop but stays far under the naive full
+// raster. `horizontalCrop: true` re-enables the old tighter crop — kept for
+// the probe triad; flip the default only if the probe proves arbitrary-x safe.
+export interface BandOptions { horizontalCrop?: boolean }
+
 // Full uncropped 1-bit raster (bit 1 = ink) — exported so the band-crop lossless
 // invariant test can recompose the emitted BITMAP blocks against it.
 export interface FullRaster { buf: Uint8Array; w: number; h: number; rowBytes: number }
@@ -346,8 +359,9 @@ export function renderStickerBitmap(payload: RasterPayload, wMm: number, hMm: nu
   return { buf: bmp.buf, w: bmp.w, h: bmp.h, rowBytes: bmp.rowBytes };
 }
 
-// PRODUCTION path: payload → 1-bit raster → ink-band crop → BITMAP blocks → TSPL.
-export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases): BitmapTsplResult {
+// PRODUCTION path: payload → 1-bit raster → vertical ink-band crop → full-width
+// x=0 BITMAP blocks → TSPL. See BandOptions for why full-width is the default.
+export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, opts: BandOptions = {}): BitmapTsplResult {
   const { ops, wDots, hDots } = stickerDrawOps(payload, wMm, hMm);
   const bmp = new Bitmap(wDots, hDots);
   paint(bmp, ops, atlases);
@@ -361,38 +375,91 @@ export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: 
   line("DENSITY 8");
   line("CLS");
 
-  // Ink-band cropping: maximal runs of inked rows → one BITMAP each, cropped to
-  // the horizontal ink extent. Blank rows/columns are never transmitted.
-  let bands = 0, inkBytes = 0;
+  // Vertical ink-band crop: maximal runs of inked rows → one BITMAP each. Runs
+  // separated by ≤GAP_MERGE_ROWS blank rows merge into one block (fewer BITMAP
+  // commands for the firmware to parse; the few white rows cost ~rowBytes each).
+  const GAP_MERGE_ROWS = 4;
+  interface Band { y0: number; y1: number }
+  const runs: Band[] = [];
   let y = 0;
   while (y < hDots) {
     if (!bmp.rowHasInk(y)) { y++; continue; }
     let y1 = y + 1;
     while (y1 < hDots && bmp.rowHasInk(y1)) y1++;
-    const ext = bmp.inkExtent(y, y1);
-    if (ext) {
-      const [x0, x1] = ext;
-      const bandW = x1 - x0, bandH = y1 - y;
-      const rowBytes = (bandW + 7) >> 3;
-      const data = new Uint8Array(rowBytes * bandH);
-      // Default every bit to WHITE, then stamp ink dots per polarity.
-      if (!INK_IS_ZERO) { /* ink=1: buffer already 0 (white); set ink bits below */ }
-      else data.fill(0xff); // ink=0: start all-white(1), clear ink bits to 0
-      for (let ry = 0; ry < bandH; ry++) for (let rx = 0; rx < bandW; rx++) {
-        const ink = (bmp.buf[(y + ry) * bmp.rowBytes + ((x0 + rx) >> 3)] & (0x80 >> ((x0 + rx) & 7))) !== 0;
-        if (!ink) continue;
-        const idx = ry * rowBytes + (rx >> 3), mask = 0x80 >> (rx & 7);
-        if (INK_IS_ZERO) data[idx] &= ~mask; else data[idx] |= mask;
-      }
-      out.push(...asciiBytes(`BITMAP ${x0},${y},${rowBytes},${bandH},0,`));
-      for (let i = 0; i < data.length; i++) out.push(data[i]);
-      out.push(...CRLF);
-      bands++; inkBytes += data.length;
-    }
+    const prev = runs[runs.length - 1];
+    if (prev && y - prev.y1 <= GAP_MERGE_ROWS) prev.y1 = y1;
+    else runs.push({ y0: y, y1 });
     y = y1;
+  }
+
+  let bands = 0, inkBytes = 0;
+  for (const run of runs) {
+    // Full-width default: x0=0, band spans the whole label (wDots % 8 === 0 on
+    // every size → rowBytes exact). horizontalCrop keeps the old tight crop.
+    let x0 = 0, x1 = wDots;
+    if (opts.horizontalCrop) {
+      const ext = bmp.inkExtent(run.y0, run.y1);
+      if (!ext) continue;
+      [x0, x1] = ext;
+    }
+    const bandW = x1 - x0, bandH = run.y1 - run.y0;
+    const rowBytes = (bandW + 7) >> 3;
+    const data = new Uint8Array(rowBytes * bandH);
+    // Default every bit to WHITE, then stamp ink dots per polarity.
+    if (!INK_IS_ZERO) { /* ink=1: buffer already 0 (white); set ink bits below */ }
+    else data.fill(0xff); // ink=0: start all-white(1), clear ink bits to 0
+    for (let ry = 0; ry < bandH; ry++) for (let rx = 0; rx < bandW; rx++) {
+      const ink = (bmp.buf[(run.y0 + ry) * bmp.rowBytes + ((x0 + rx) >> 3)] & (0x80 >> ((x0 + rx) & 7))) !== 0;
+      if (!ink) continue;
+      const idx = ry * rowBytes + (rx >> 3), mask = 0x80 >> (rx & 7);
+      if (INK_IS_ZERO) data[idx] &= ~mask; else data[idx] |= mask;
+    }
+    out.push(...asciiBytes(`BITMAP ${x0},${run.y0},${rowBytes},${bandH},0,`));
+    for (let i = 0; i < data.length; i++) out.push(data[i]);
+    out.push(...CRLF);
+    bands++; inkBytes += data.length;
   }
   line("PRINT 1");
   return { bytes: Uint8Array.from(out), bands, inkBytes };
+}
+
+// ── DEV probe helpers (print-probe bitmap triad) ─────────────────────────────
+// Rasterize one Latin text line into a standalone 1-bit strip (bit 1 = ink) so
+// the probe screen can test BITMAP x-alignment with REAL glyph patterns — the
+// original solid-box probe could not reveal doubling (a doubled solid box still
+// looks solid; the Phase-1 field lesson).
+export interface TextStrip { buf: Uint8Array; w: number; h: number; rowBytes: number }
+export function rasterizeTextStrip(text: string, atlas: GlyphAtlas, fontKey: string, mul: number): TextStrip {
+  const f = atlas[fontKey];
+  if (!f) return { buf: new Uint8Array(0), w: 0, h: 0, rowBytes: 0 };
+  const w = Math.max(8, text.length * f.w * mul);
+  const h = f.h * mul;
+  const bmp = new Bitmap(w, h);
+  let penX = 0;
+  for (const ch of text) {
+    const g = f.glyphs[ch.codePointAt(0) ?? 0];
+    if (g) bmp.blit(b64ToBytes(g), f.w, f.h, penX, 0, mul, mul);
+    penX += f.w * mul;
+  }
+  return { buf: bmp.buf, w: bmp.w, h: bmp.h, rowBytes: bmp.rowBytes };
+}
+
+// Pack a strip into BITMAP band data of width bandWDots with the strip's ink
+// placed at xOffset — PRODUCTION polarity (INK_IS_ZERO). Used by the probe
+// triad so its bytes encode exactly like the real sticker path.
+export function encodeBandBytes(strip: TextStrip, bandWDots: number, xOffset: number): Uint8Array {
+  const rowBytes = (bandWDots + 7) >> 3;
+  const data = new Uint8Array(rowBytes * strip.h);
+  if (INK_IS_ZERO) data.fill(0xff);
+  for (let y = 0; y < strip.h; y++) for (let x = 0; x < strip.w; x++) {
+    const ink = (strip.buf[y * strip.rowBytes + (x >> 3)] & (0x80 >> (x & 7))) !== 0;
+    if (!ink) continue;
+    const bx = x + xOffset;
+    if (bx < 0 || bx >= bandWDots) continue;
+    const idx = y * rowBytes + (bx >> 3), mask = 0x80 >> (bx & 7);
+    if (INK_IS_ZERO) data[idx] &= ~mask; else data[idx] |= mask;
+  }
+  return data;
 }
 
 // Base64 for the native bridge (chunked, binary-safe — mirrors printProbe.toBase64).

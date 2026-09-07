@@ -78,6 +78,27 @@ final class BleStickerTransport {
         BtError(String message, String code) { this.message = message; this.code = code; }
     }
 
+    /**
+     * DEV timing visibility (Phase-1 bitmap speed diagnosis): phase timings +
+     * negotiated chunk size of the LAST completed job. connectMs = job start →
+     * first write (GATT connect + discover + subscribe + MTU); writeMs = first
+     * write → all chunks queued; doneMs = all sent → FF03 PRINTING:DONE. Read by
+     * the plugin right after a job resolves (same serial callback), attached to
+     * the resolve so the web toast can show WHERE the time went.
+     */
+    static final class JobStats {
+        volatile int chunkSize;
+        volatile int chunks;
+        volatile long connectMs;
+        volatile long writeMs;
+        volatile long doneMs;
+    }
+    private volatile JobStats lastStats;
+    JobStats lastJobStats() { return lastStats; }
+    // per-job phase timestamps (handler-thread writes only)
+    private long tJobStart, tWriteStart, tAllSent;
+    private int statChunkSize, statChunks;
+
     interface ScanCallbackFn { void onResult(List<Discovered> printers, BtError error); }
     interface JobCallbackFn { void onResult(BtError error); } // null error == success
 
@@ -178,6 +199,11 @@ final class BleStickerTransport {
             if (address == null || address.trim().isEmpty()) { cb.onResult(new BtError("No Bluetooth printer saved.", "BT_NOT_SET")); return; }
             jobActive = true;
             jobCb = cb;
+            tJobStart = System.currentTimeMillis();
+            tWriteStart = 0;
+            tAllSent = 0;
+            statChunkSize = 0;
+            statChunks = 0;
             payload = data != null ? data : new byte[0];
             preferredAddress = address.trim();
             notifyBuffer.setLength(0);
@@ -332,8 +358,12 @@ final class BleStickerTransport {
                 }
                 cancelPhase();
                 // Negotiate a larger MTU for fewer chunks; onMtuChanged drives the pump.
+                // Ask for the BLE 4.2 max (247) — some stacks refuse odd values or
+                // round down; clampChunkSize still caps the usable chunk at MAX_CHUNK,
+                // so a bigger grant costs nothing and a 23-grant (chunk=20) is the
+                // 7KB-in-5s failure mode the JobStats now make visible.
                 boolean requested = false;
-                try { requested = g.requestMtu(BleStickerLogic.MAX_CHUNK + 3); } catch (Exception ignored) {}
+                try { requested = g.requestMtu(247); } catch (Exception ignored) {}
                 if (!requested) beginWrites(BleStickerLogic.MIN_CHUNK);
             });
         }
@@ -419,6 +449,9 @@ final class BleStickerTransport {
         pendingChunks = BleStickerLogic.chunks(payload, chunkSize);
         nextChunk = 0;
         allChunksSent = false;
+        tWriteStart = System.currentTimeMillis();
+        statChunkSize = chunkSize;
+        statChunks = pendingChunks.size();
         pump();
     }
 
@@ -468,6 +501,7 @@ final class BleStickerTransport {
     private void onAllSent() {
         if (allChunksSent) return;
         allChunksSent = true;
+        tAllSent = System.currentTimeMillis();
         // All TSPL bytes are out — success requires the printer's own FF03 DONE.
         armPhase(DONE_TIMEOUT_MS, "Printer did not confirm within 10s — check the printer.");
     }
@@ -488,6 +522,16 @@ final class BleStickerTransport {
     private void finishJob(BtError error) {
         if (!jobActive) return;
         jobActive = false;
+        // Record phase stats for the plugin's resolve (success or failure — the
+        // partial phases are still diagnostic on a timeout).
+        long now = System.currentTimeMillis();
+        JobStats stats = new JobStats();
+        stats.chunkSize = statChunkSize;
+        stats.chunks = statChunks;
+        stats.connectMs = tWriteStart > 0 ? tWriteStart - tJobStart : now - tJobStart;
+        stats.writeMs = (tWriteStart > 0 && tAllSent > 0) ? tAllSent - tWriteStart : 0;
+        stats.doneMs = tAllSent > 0 ? now - tAllSent : 0;
+        lastStats = stats;
         if (overallTimer != null) { handler.removeCallbacks(overallTimer); overallTimer = null; }
         cancelPhase();
         if (pacingTimer != null) { handler.removeCallbacks(pacingTimer); pacingTimer = null; }
