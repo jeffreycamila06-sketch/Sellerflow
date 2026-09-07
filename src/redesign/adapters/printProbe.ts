@@ -8,7 +8,7 @@
 // "printprobe" gate in RedesignApp.tsx (and the additive `printRawTspl` bridge
 // member + the two native `printRawTspl` methods). Nothing else references it.
 
-import { rasterizeTextStrip, encodeBandBytes } from "./stickerRaster";
+import { rasterizeTextStrip, encodeBandBytes, buildSdkBitmapStream } from "./stickerRaster";
 import { LATIN_ATLAS } from "./glyphAtlas.latin";
 
 const CRLF = "\r\n";
@@ -130,6 +130,22 @@ function bitmapTextProbe(w: number, h: number, variant: "a" | "b" | "c"): Uint8A
   ]);
 }
 
+// ── Probe 12: the SDK-format image stream (manufacturer protocol) ────────────
+// Prints "ABC 123" through the firmware's NATIVE image engine — one LZO-
+// compressed full-label BITMAP mode-4 block, framing decompiled from the QY
+// SDK's AM-243Z-BT class (the D520BT-Z's OEM identity). Clean + fast here ⇒
+// the production SDK-mode sticker path is right. NOTE: deliberately NO TEXT
+// label line — the SDK job format carries no TEXT commands; tap order + the
+// glyph raster itself identify the print.
+function sdkImageProbe(w: number, h: number): Uint8Array {
+  const wDots = w * 8, hDots = h * 8, rowBytes = wDots >> 3;
+  const strip = rasterizeTextStrip("ABC 123", LATIN_ATLAS, "4", 2);
+  const band = encodeBandBytes(strip, wDots, 16); // printer polarity (1=white)
+  const raster = new Uint8Array(rowBytes * hDots).fill(0xff); // all white
+  raster.set(band, 70 * rowBytes); // strip rows at y=70
+  return buildSdkBitmapStream(raster, rowBytes, hDots, w, h).bytes;
+}
+
 export function buildProbes(psSize: string): Probe[] {
   const { w, h } = parseSizeMm(psSize);
   return [
@@ -144,6 +160,7 @@ export function buildProbes(psSize: string): Probe[] {
     { id: "bmpTextA", label: "9. BMP text (a) x=0 full row", note: "Glyphs as raster, full-width band at x=0. Clean ⇒ production default is right.", bytes: bitmapTextProbe(w, h, "a") },
     { id: "bmpTextB", label: "10. BMP text (b) x=16 aligned", note: "Same glyph raster, cropped band at byte-aligned x=16.", bytes: bitmapTextProbe(w, h, "b") },
     { id: "bmpTextC", label: "11. BMP text (c) x=13 NOT aligned", note: "Same raster at x=13 — stresses sub-byte x shifting (doubling suspect).", bytes: bitmapTextProbe(w, h, "c") },
+    { id: "sdkImage", label: "12. SDK image mode (manufacturer)", note: "LZO-compressed mode-4 block, the Labelife path. Clean+fast ⇒ production format is right.", bytes: sdkImageProbe(w, h) },
   ];
 }
 

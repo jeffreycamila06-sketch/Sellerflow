@@ -13,7 +13,7 @@
 // that MIRRORS the native TSPL sticker layout, so 1-Click output matches the APK.
 import { shouldUseBluetoothSticker, shouldUseLanSticker } from "../../lib/printerRouting";
 import type { Buyer } from "../../lib/orderTypes";
-import { rasterizeToBitmapTspl, bytesToBase64 } from "./stickerRaster";
+import { rasterizeToSdkBitmapTspl, bytesToBase64 } from "./stickerRaster";
 import { LATIN_ATLAS } from "./glyphAtlas.latin";
 import { CJK_ATLAS } from "./glyphAtlas.cjk";
 
@@ -274,7 +274,11 @@ function bitmapBridgeFn(bridge: NonNullable<Window["SellerFlowPrinter"]>): Bitma
 async function printStickerViaBitmap(fn: BitmapBridgeFn, buyer: Buyer, cur: string, storeName: string, cfg: Settings): Promise<boolean> {
   const t0 = nowMs();
   const payload = buildNativeStickerPayload(buyer, cur, storeName, cfg);
-  const raster = rasterizeToBitmapTspl(payload, payload.labelWidthMm, payload.labelHeightMm, { latin: LATIN_ATLAS, cjk: CJK_ATLAS });
+  // SDK-format image stream (manufacturer protocol — vendor/QY_Android_SDK.zip):
+  // one LZO-compressed full-label BITMAP mode-4 block, the firmware's native
+  // image engine (the Labelife path — clean + fast on BOTH boards). The legacy
+  // mode-0 band emission (rasterizeToBitmapTspl) stays available for probes.
+  const raster = rasterizeToSdkBitmapTspl(payload, payload.labelWidthMm, payload.labelHeightMm, { latin: LATIN_ATLAS, cjk: CJK_ATLAS });
   const data = bytesToBase64(raster.bytes);
   const t1 = nowMs();
   try {

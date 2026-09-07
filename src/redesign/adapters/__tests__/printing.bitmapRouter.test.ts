@@ -32,12 +32,15 @@ describe("printSlip bitmap routing", () => {
     await flush();
     expect(bitmap).toHaveBeenCalledTimes(1);
     expect(native).not.toHaveBeenCalled();
-    // the passthrough receives a base64 TSPL stream that decodes to SIZE…PRINT 1
+    // the passthrough receives the SDK-format stream (manufacturer protocol):
+    // "SIZE 100 mm,60 mm" (no space after comma), DIRECTION 0,0, one LZO-
+    // compressed BITMAP mode-4 block, tail "\r\nPRINT 1,1\n\r".
     const arg = bitmap.mock.calls[0][0] as { data: string };
     const bytes = Buffer.from(arg.data, "base64");
-    expect(bytes.slice(0, 15).toString("ascii")).toBe("SIZE 100 mm, 60");
-    expect(bytes.slice(-9).toString("ascii")).toBe("PRINT 1\r\n");
-    expect(bytes.includes(Buffer.from("BITMAP "))).toBe(true);
+    expect(bytes.slice(0, 17).toString("ascii")).toBe("SIZE 100 mm,60 mm");
+    expect(bytes.includes(Buffer.from("DIRECTION 0,0"))).toBe(true);
+    expect(bytes.includes(Buffer.from("BITMAP 4,0,100,480,4,"))).toBe(true);
+    expect(bytes.slice(-11).toString("ascii")).toBe("\r\nPRINT 1,1\n\r".slice(-11));
     // and NO TEXT commands — the whole point (new-board ROM fonts bypassed)
     expect(bytes.includes(Buffer.from("TEXT "))).toBe(false);
     // timing instrumentation recorded the bitmap send

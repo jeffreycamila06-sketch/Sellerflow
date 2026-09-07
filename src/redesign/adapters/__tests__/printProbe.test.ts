@@ -26,10 +26,10 @@ describe("parseSizeMm", () => {
 describe("buildProbes", () => {
   const probes = buildProbes("60x40");
 
-  it("returns exactly the 11 expected probes in order", () => {
+  it("returns exactly the 12 expected probes in order", () => {
     expect(probes.map((p) => p.id)).toEqual([
       "min", "sweepM1", "sweepM2", "bitmap", "density4", "nodensity", "speed2", "selftest",
-      "bmpTextA", "bmpTextB", "bmpTextC",
+      "bmpTextA", "bmpTextB", "bmpTextC", "sdkImage",
     ]);
     for (const p of probes) {
       expect(p.label).toBeTruthy();
@@ -57,6 +57,18 @@ describe("buildProbes", () => {
     expect(band.includes("\xff")).toBe(true); // and some pure white
     // each triad probe ends with PRINT 1 and starts with the standard preamble
     for (const s of [a, b, c]) { expect(s.startsWith("SIZE ")).toBe(true); expect(s.trimEnd().endsWith("PRINT 1")).toBe(true); }
+  });
+
+  it("probe 12: SDK-format image stream (manufacturer framing, no TEXT commands)", () => {
+    const s = dec(byId(probes, "sdkImage").bytes);
+    // 60mm-wide label default in this suite → 480 dots → 60 rowBytes; full label height 320.
+    expect(s.startsWith("SIZE 60 mm,40 mm\r\nDIRECTION 0,0\r\nCLS\r\nBITMAP 4,0,60,320,4,")).toBe(true);
+    expect(s.endsWith("\r\nPRINT 1,1\n\r")).toBe(true);
+    expect(s.includes("TEXT ")).toBe(false); // SDK jobs carry no TEXT commands
+    // terminator (00 00 00 00) sits right before the PRINT tail
+    const bytes = byId(probes, "sdkImage").bytes;
+    const tailStart = bytes.length - "\r\nPRINT 1,1\n\r".length;
+    expect(Array.from(bytes.subarray(tailStart - 4, tailStart))).toEqual([0, 0, 0, 0]);
   });
 
   it("bakes the requested label size into the preamble", () => {

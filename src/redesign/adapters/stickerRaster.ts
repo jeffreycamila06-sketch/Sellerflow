@@ -27,6 +27,9 @@
 export interface GlyphFont { w: number; h: number; glyphs: { [cp: number]: string } } // base64 rows, MSB-first, ceil(w/8) B/row x h
 export interface GlyphAtlas { [fontKey: string]: GlyphFont }
 
+// LZO1X-1 for the SDK-format image stream (MIT, pure TS, zero deps).
+import { lzo1xCompress } from "lzo1x";
+
 // TSPL BITMAP polarity. TSPL standard + the owner's probe photo (black bar at the
 // 0x00 top half) => an INK dot is bit 0, white is bit 1. Single flip point.
 export const INK_IS_ZERO = true;
@@ -421,6 +424,71 @@ export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: 
   }
   line("PRINT 1");
   return { bytes: Uint8Array.from(out), bands, inkBytes };
+}
+
+// ── SDK-format image stream (the REAL D520 image protocol) ───────────────────
+// Extracted from the manufacturer's QY/FunPrint SDK (vendor/QY_Android_SDK.zip,
+// mprinter-release.aar): the AM-243Z-BT — the D520BT-Z's OEM identity, per the
+// SDK's DefaultPrinters.json (203dpi, 864-dot head) — prints an image as ONE
+// full-label block through the firmware's NATIVE image engine, not the legacy
+// TSPL raster compositor (which is what doubles glyphs + runs slow on fw
+// V1.1.7). Decompiled source of truth:
+//   jf/jf/jf/ei/vno/jf/vno/ei.java  (class pao() == "AM-243Z-BT"):
+//     SIZE {wDots/8} mm,{hDots/8} mm\r\n   ← NO space after the comma
+//     DIRECTION 0,0\r\n                    ← not DIRECTION 1
+//     CLS\r\n
+//     BITMAP 4,0,{rowBytes},{hDots},4,     ← x=4, y=0, MODE 4, binary follows
+//     <chunked-LZO stream>                 ← XBitmapUtil.jf(byte[]):
+//         per 4096-byte raster slice: [compressedLen LE32][LZO1X-1 data]
+//     00 00 00 00                          ← io/ei.java `case` = end terminator
+//     \r\nPRINT 1,{copies}\n\r             ← trailing \n\r exactly (SDK quirk)
+//   Raster (io/jf.java ei()): full-width rows, rowBytes = wDots/8, MSB-first,
+//   bit 1 = WHITE / bit 0 = INK (same ink-is-zero polarity as classic TSPL).
+//   No GAP / DENSITY / REFERENCE lines in the job — those are separate printer
+//   settings commands in the SDK, not part of a print.
+// LZO1X-1 comes from the `lzo1x` npm package (MIT, pure TS, zero deps); tests
+// pin the stream by DECOMPRESSING it back to the exact packed raster.
+
+const SDK_LZO_CHUNK = 4096;
+
+// Our Bitmap buffer is bit1=ink; the printer raster is bit1=white → invert.
+export function packPrinterRaster(full: FullRaster): Uint8Array {
+  const out = new Uint8Array(full.rowBytes * full.h);
+  for (let i = 0; i < out.length; i++) out[i] = ~full.buf[i] & 0xff;
+  return out;
+}
+
+// Header/terminator framing — byte-exact to the decompiled SDK builder.
+export function buildSdkBitmapStream(printerRaster: Uint8Array, rowBytes: number, hDots: number, wMm: number, hMm: number, copies = 1): { bytes: Uint8Array; chunks: number; compressedBytes: number } {
+  const out: number[] = [];
+  const ascii = (s: string) => { for (let i = 0; i < s.length; i++) out.push(s.charCodeAt(i) & 0xff); };
+  ascii(`SIZE ${wMm} mm,${hMm} mm\r\n`);
+  ascii("DIRECTION 0,0\r\n");
+  ascii("CLS\r\n");
+  ascii(`BITMAP 4,0,${rowBytes},${hDots},4,`);
+  let chunks = 0, compressedBytes = 0;
+  for (let off = 0; off < printerRaster.length; off += SDK_LZO_CHUNK) {
+    const slice = printerRaster.subarray(off, Math.min(off + SDK_LZO_CHUNK, printerRaster.length));
+    const comp = lzo1xCompress(slice);
+    const len = comp.length;
+    out.push(len & 0xff, (len >> 8) & 0xff, (len >> 16) & 0xff, (len >> 24) & 0xff);
+    for (let i = 0; i < comp.length; i++) out.push(comp[i]);
+    chunks++; compressedBytes += len;
+  }
+  out.push(0, 0, 0, 0); // end-of-image terminator (SDK io/ei.java `case`)
+  ascii(`\r\nPRINT 1,${copies}\n\r`);
+  return { bytes: Uint8Array.from(out), chunks, compressedBytes };
+}
+
+// PRODUCTION (SDK-mode) path: payload → 1-bit raster → ONE compressed full-label
+// image block. Replaces the mode-0 band emission as the default (that legacy
+// compositor is the doubling + 4s-done culprit on fw V1.1.7; Labelife uses THIS
+// path and is clean + fast on both boards).
+export function rasterizeToSdkBitmapTspl(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases): BitmapTsplResult {
+  const full = renderStickerBitmap(payload, wMm, hMm, atlases);
+  const printerRaster = packPrinterRaster(full);
+  const r = buildSdkBitmapStream(printerRaster, full.rowBytes, full.h, wMm, hMm);
+  return { bytes: r.bytes, bands: r.chunks, inkBytes: r.compressedBytes };
 }
 
 // ── DEV probe helpers (print-probe bitmap triad) ─────────────────────────────
