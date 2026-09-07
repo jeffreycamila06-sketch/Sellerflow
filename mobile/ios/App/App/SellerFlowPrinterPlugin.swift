@@ -789,6 +789,13 @@ public class SellerFlowPrinterPlugin: CAPPlugin, CAPBridgedPlugin {
                 }
                 let d = max((tm - 1) * F2, (pm - 1) * F4)
                 y += 38 + d
+                // PARITY (9b0bf67 port, golden-gate catch): Java/TS accumulate the
+                // per-row growth into `extra` too — it feeds the NEXT row's loop
+                // guard (y < orderLoopGuard + extra) and the bottom-anchored
+                // totalY. Missing this line skipped row 2 and shorted the Total
+                // offset whenever order/price scales are above level 1
+                // (scaled_mixed golden). d == 0 at level 1 → no-op elsewhere.
+                extra += d
                 i += 1
             }
         }
