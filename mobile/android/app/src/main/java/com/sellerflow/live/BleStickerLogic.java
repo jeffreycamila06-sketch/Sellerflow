@@ -5,20 +5,30 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Pure, hardware-free BLE helpers for the D520BT sticker printer — the exact
- * mirror of the iOS Swift {@code BleStickerLogic} enum
+ * Pure, hardware-free BLE helpers for the D520BT sticker printer — the mirror
+ * of the iOS Swift {@code BleStickerLogic} enum
  * (mobile/ios/App/App/SellerFlowPrinterPlugin.swift). No Android/Bluetooth
  * imports, so it is unit-testable on the plain JVM via {@code ./gradlew test}
- * (see BleStickerLogicTest). Keep these three functions byte-for-byte behavior-
- * identical to the iOS versions.
+ * (see BleStickerLogicTest). isTargetPrinter/chunks/containsPrintDone stay
+ * byte-for-byte behavior-identical to the iOS versions; MAX_CHUNK is
+ * DELIBERATELY ahead of iOS (509 vs 180) after the supplier-SDK evidence below —
+ * bring iOS up to match in the Phase-2 parity pass.
  */
 final class BleStickerLogic {
     /** Advertised service on the D520BT (FF00 is NOT advertised — verified). */
     static final String ADVERTISED_SERVICE = "AF30";
     /** Device-name prefix; the suffix varies per unit ("D520BT-Z", …). */
     static final String NAME_PREFIX = "D520BT";
-    /** Proven-safe ceiling for write-without-response payloads on this printer. */
-    static final int MAX_CHUNK = 180;
+    /**
+     * Chunk ceiling = the supplier SDK's own value (decompiled mprinter AAR,
+     * BleBluetooth: {@code sjo = SDK_INT>=24 ? 509 : 182}, requestMtu(512)).
+     * The SDK refuses to finish connecting unless the printer grants MTU 512
+     * (it retries 5×) — hardware proof that BOTH board generations accept
+     * 509-byte packets. The old 180 cap made every sticker ~2.8× more chunks
+     * than Labelife sends. Still clamped by the actual negotiated MTU below,
+     * so a stack that grants less just uses less.
+     */
+    static final int MAX_CHUNK = 509;
     /** BLE floor (ATT default MTU 23 − 3 ATT header). */
     static final int MIN_CHUNK = 20;
 
@@ -26,10 +36,10 @@ final class BleStickerLogic {
 
     /**
      * Usable chunk size: a reported max-write length clamped to [MIN_CHUNK,
-     * MAX_CHUNK]; non-positive (unknown) → MAX_CHUNK default. Mirrors iOS
-     * clampChunkSize exactly. NOTE: the Android transport never passes 0 (it
-     * substitutes MIN_CHUNK for an unknown MTU); the 0→MAX branch exists only
-     * for iOS parity + the unit test.
+     * MAX_CHUNK]; non-positive (unknown) → MAX_CHUNK default. Same shape as the
+     * iOS clampChunkSize (ceiling differs — see MAX_CHUNK). NOTE: the Android
+     * transport never passes 0 (it substitutes MIN_CHUNK for an unknown MTU);
+     * the 0→MAX branch exists only for shape parity + the unit test.
      */
     static int clampChunkSize(int reported) {
         if (reported <= 0) return MAX_CHUNK;
