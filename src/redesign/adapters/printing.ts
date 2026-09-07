@@ -13,9 +13,9 @@
 // that MIRRORS the native TSPL sticker layout, so 1-Click output matches the APK.
 import { shouldUseBluetoothSticker, shouldUseLanSticker } from "../../lib/printerRouting";
 import type { Buyer } from "../../lib/orderTypes";
-import { rasterizeToSdkBitmapTspl, bytesToBase64 } from "./stickerRaster";
+import { rasterizeToSdkBitmapTspl, bytesToBase64, payloadNeedsCjk, type GlyphAtlas } from "./stickerRaster";
+import { loadCjkAtlas } from "./cjkAtlasLoader";
 import { LATIN_ATLAS } from "./glyphAtlas.latin";
-import { CJK_ATLAS } from "./glyphAtlas.cjk";
 
 // ── Types — copied verbatim from App.tsx:38, 53, 56 ──────────────────────────
 export interface Settings {
@@ -224,7 +224,7 @@ const nowMs = () => (typeof performance !== "undefined" ? performance.now() : Da
 // in-app (no Logcat). RedesignApp registers one handler (toast); Printer
 // Settings reads the last notice. Same registration pattern as
 // setNativePrintFailureHandler above.
-export type StickerFallbackReason = "" | "classic-mode-on" | "bitmap-method-missing";
+export type StickerFallbackReason = "" | "classic-mode-on" | "bitmap-method-missing" | "cjk-atlas-unavailable";
 // `phase` (bitmap only): the native transport's own breakdown — "conn 0.6s send
 // 3.4s done 0.5s chunk 20x365" — so a slow print says WHERE the time went
 // (GATT connect vs BLE transfer vs printer processing) and the negotiated chunk
@@ -271,14 +271,15 @@ function bitmapBridgeFn(bridge: NonNullable<Window["SellerFlowPrinter"]>): Bitma
   return undefined;
 }
 
-async function printStickerViaBitmap(fn: BitmapBridgeFn, buyer: Buyer, cur: string, storeName: string, cfg: Settings): Promise<boolean> {
+async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerPayload, cjk: GlyphAtlas): Promise<boolean> {
   const t0 = nowMs();
-  const payload = buildNativeStickerPayload(buyer, cur, storeName, cfg);
   // SDK-format image stream (manufacturer protocol — vendor/QY_Android_SDK.zip):
   // one LZO-compressed full-label BITMAP mode-4 block, the firmware's native
   // image engine (the Labelife path — clean + fast on BOTH boards). The legacy
   // mode-0 band emission (rasterizeToBitmapTspl) stays available for probes.
-  const raster = rasterizeToSdkBitmapTspl(payload, payload.labelWidthMm, payload.labelHeightMm, { latin: LATIN_ATLAS, cjk: CJK_ATLAS });
+  // The CJK atlas arrives RESOLVED (code-split chunk; the caller awaited it
+  // only when the payload actually contains CJK).
+  const raster = rasterizeToSdkBitmapTspl(payload, payload.labelWidthMm, payload.labelHeightMm, { latin: LATIN_ATLAS, cjk });
   const data = bytesToBase64(raster.bytes);
   const t1 = nowMs();
   try {
@@ -312,8 +313,24 @@ async function printStickerViaBluetooth(buyer: Buyer, cur: string, storeName: st
   // so the fallback is VISIBLE in-app, never silent (the Phase-1 field lesson).
   const bmpFn = bitmapBridgeFn(bridge);
   const classic = isClassicTextSticker();
-  if (bmpFn && !classic) return printStickerViaBitmap(bmpFn, buyer, cur, storeName, cfg);
-  const fallbackReason: StickerFallbackReason = classic ? "classic-mode-on" : "bitmap-method-missing";
+  let cjkUnavailable = false;
+  if (bmpFn && !classic) {
+    const payload = buildNativeStickerPayload(buyer, cur, storeName, cfg);
+    // The CJK atlas is a code-split chunk (prefetched at app start). ASCII/
+    // Latin prints never wait on it; a CJK print awaits the SAME promise the
+    // prefetch started. If the chunk can't load (offline cold open), THIS
+    // print falls through to the Classic TEXT render (readable CJK via the
+    // printer font — never tofu) with a visible reason; the next print
+    // retries the chunk load.
+    if (!payloadNeedsCjk(payload)) return printStickerViaBitmap(bmpFn, payload, {});
+    try {
+      const cjk = await loadCjkAtlas();
+      return printStickerViaBitmap(bmpFn, payload, cjk);
+    } catch {
+      cjkUnavailable = true;
+    }
+  }
+  const fallbackReason: StickerFallbackReason = classic ? "classic-mode-on" : cjkUnavailable ? "cjk-atlas-unavailable" : "bitmap-method-missing";
   try {
     const t0 = nowMs();
     const result = await bridge.printStickerNative(buildNativeStickerPayload(buyer, cur, storeName, cfg));

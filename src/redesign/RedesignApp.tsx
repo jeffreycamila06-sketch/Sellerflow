@@ -59,6 +59,7 @@ import { useSalesReport } from "./adapters/salesReport";
 import { ordersByHour } from "./adapters/peakHours";
 import { sessionKeyFor } from "./adapters/shipping";
 import { printSlip, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, setStickerRouteNoticeHandler, isPrinterNotSetup, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
+import { prefetchCjkAtlas } from "./adapters/cjkAtlasLoader";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
 import { btCallOutcome, hasBtBridge, buildTestStickerPayload, buildTestBuyer } from "./adapters/printerBridge";
@@ -435,11 +436,18 @@ export default function RedesignApp() {
       }
       const why = n.reason === "classic-mode-on" ? "Classic text mode is ON"
         : n.reason === "bitmap-method-missing" ? "bitmap method missing in this app build"
+        : n.reason === "cjk-atlas-unavailable" ? "CJK font still downloading — will retry"
         : n.detail || "unknown";
       setToast({ msg: `Print: TEXT (fallback: ${why})`, kind: "err" });
     });
     return () => setStickerRouteNoticeHandler(null);
   }, []);
+
+  // Warm the code-split CJK glyph-atlas chunk (~2.9MB source) right after
+  // mount so it's resident long before the first CJK print. A CJK print that
+  // races this awaits the SAME promise; a failed prefetch (offline cold open)
+  // is silent — the print path retries and falls back to TEXT for that print.
+  useEffect(() => { prefetchCjkAtlas(); }, []);
 
   // ── Cold-open modal coordinator: plan-EXPIRY nudge (priority) then native
   // UPDATE nudge. Runs ONCE after auth resolves — at that point nothing is live

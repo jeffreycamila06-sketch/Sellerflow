@@ -209,7 +209,7 @@ export default function PrinterSettings({
               if (!n) return null;
               const txt = n.via === "bitmap"
                 ? (n.ok ? `Last print: BITMAP ${(n.payloadBytes / 1024).toFixed(1)}KB ${(n.totalMs / 1000).toFixed(1)}s${n.phase ? ` (${n.phase})` : ""}` : `Last print: BITMAP failed — ${n.detail}`)
-                : `Last print: TEXT (fallback: ${n.reason === "classic-mode-on" ? "Classic text mode is ON" : n.reason === "bitmap-method-missing" ? "bitmap method missing in this app build" : n.detail || "unknown"})`;
+                : `Last print: TEXT (fallback: ${n.reason === "classic-mode-on" ? "Classic text mode is ON" : n.reason === "bitmap-method-missing" ? "bitmap method missing in this app build" : n.reason === "cjk-atlas-unavailable" ? "CJK font still downloading — will retry" : n.detail || "unknown"})`;
               return <div style={{ fontSize: 11.5, marginTop: 8, color: n.via === "bitmap" && n.ok ? "var(--ok, #16a34a)" : "var(--danger, #dc2626)", fontFamily: "var(--font-mono)" }}>{txt}</div>;
             })()}
           </div>

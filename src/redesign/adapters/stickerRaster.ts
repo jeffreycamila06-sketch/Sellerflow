@@ -128,6 +128,15 @@ function classifyScriptExt(s: string): number {
   return hasCjk ? SCRIPT_CJK : SCRIPT_ASCII;
 }
 const hasCjkChar = (s: string): boolean => { for (const ch of s) if (isCjkIdeograph(ch.codePointAt(0) ?? 0)) return true; return false; };
+
+// Does this sticker payload contain ANY CJK ideograph (name/handle/store/items)?
+// Gates the dynamic CJK-atlas load: ASCII/Latin prints never wait on the chunk.
+export function payloadNeedsCjk(payload: RasterPayload): boolean {
+  const b = payload.buyer ?? {};
+  if (hasCjkChar(payload.storeName ?? "") || hasCjkChar(b.name ?? "") || hasCjkChar(b.handle ?? "")) return true;
+  for (const o of b.orders ?? []) if (hasCjkChar(o.item ?? "") || hasCjkChar(o.time ?? "")) return true;
+  return false;
+}
 // Per-character fallback for a glyph missing from an atlas: ATOMIC map first
 // (đ→d …), else the NFD base letter (ễ→e). Returns null when the char has no
 // simpler form (the paint loop then keeps the advance — never misaligns).
