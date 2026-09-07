@@ -597,46 +597,7 @@ export function rasterizeToSdkBitmapTspl(payload: RasterPayload, wMm: number, hM
   return { bytes: r.bytes, bands: r.chunks, inkBytes: r.compressedBytes };
 }
 
-// ── DEV probe helpers (print-probe bitmap triad) ─────────────────────────────
-// Rasterize one Latin text line into a standalone 1-bit strip (bit 1 = ink) so
-// the probe screen can test BITMAP x-alignment with REAL glyph patterns — the
-// original solid-box probe could not reveal doubling (a doubled solid box still
-// looks solid; the Phase-1 field lesson).
-export interface TextStrip { buf: Uint8Array; w: number; h: number; rowBytes: number }
-export function rasterizeTextStrip(text: string, atlas: GlyphAtlas, fontKey: string, mul: number): TextStrip {
-  const f = atlas[fontKey];
-  if (!f) return { buf: new Uint8Array(0), w: 0, h: 0, rowBytes: 0 };
-  const w = Math.max(8, text.length * f.w * mul);
-  const h = f.h * mul;
-  const bmp = new Bitmap(w, h);
-  let penX = 0;
-  for (const ch of text) {
-    const g = f.glyphs[ch.codePointAt(0) ?? 0];
-    if (g) bmp.blit(b64ToBytes(g), f.w, f.h, penX, 0, mul, mul);
-    penX += f.w * mul;
-  }
-  return { buf: bmp.buf, w: bmp.w, h: bmp.h, rowBytes: bmp.rowBytes };
-}
-
-// Pack a strip into BITMAP band data of width bandWDots with the strip's ink
-// placed at xOffset — PRODUCTION polarity (INK_IS_ZERO). Used by the probe
-// triad so its bytes encode exactly like the real sticker path.
-export function encodeBandBytes(strip: TextStrip, bandWDots: number, xOffset: number): Uint8Array {
-  const rowBytes = (bandWDots + 7) >> 3;
-  const data = new Uint8Array(rowBytes * strip.h);
-  if (INK_IS_ZERO) data.fill(0xff);
-  for (let y = 0; y < strip.h; y++) for (let x = 0; x < strip.w; x++) {
-    const ink = (strip.buf[y * strip.rowBytes + (x >> 3)] & (0x80 >> (x & 7))) !== 0;
-    if (!ink) continue;
-    const bx = x + xOffset;
-    if (bx < 0 || bx >= bandWDots) continue;
-    const idx = y * rowBytes + (bx >> 3), mask = 0x80 >> (bx & 7);
-    if (INK_IS_ZERO) data[idx] &= ~mask; else data[idx] |= mask;
-  }
-  return data;
-}
-
-// Base64 for the native bridge (chunked, binary-safe — mirrors printProbe.toBase64).
+// Base64 for the native bridge (chunked, binary-safe).
 export function bytesToBase64(bytes: Uint8Array): string {
   if (typeof btoa !== "function") return typeof Buffer !== "undefined" ? Buffer.from(bytes).toString("base64") : "";
   let bin = ""; const CH = 0x8000;

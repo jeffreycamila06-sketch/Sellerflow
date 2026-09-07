@@ -28,7 +28,6 @@ import Legal from "./screens/Legal";
 import DeleteAccount from "./screens/DeleteAccount";
 import Signup from "./screens/Signup";
 import PrinterSettings from "./screens/PrinterSettings";
-import PrintProbe from "./screens/PrintProbe"; // DEV-only print-probe harness
 import PrintPattern, { DEFAULT_PP, stepScaleLevel, type PrintPatternState, type PpBoolKey, type PpSizeKey } from "./screens/PrintPattern";
 import ManageChannels from "./screens/ManageChannels";
 import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
@@ -58,7 +57,7 @@ import { computeSales } from "./adapters/sales";
 import { useSalesReport } from "./adapters/salesReport";
 import { ordersByHour } from "./adapters/peakHours";
 import { sessionKeyFor } from "./adapters/shipping";
-import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, setStickerRouteNoticeHandler, isPrinterNotSetup, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
+import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, isPrinterNotSetup, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
 import { prefetchCjkAtlas } from "./adapters/cjkAtlasLoader";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
@@ -86,11 +85,10 @@ type Screen =
   | "landing" | "login" | "signup" | "dashboard" | "miners" | "orders" | "products"
   | "menu" | "settings" | "customers" | "subscription" | "support"
   | "admin" | "print" | "sales" | "shipping" | "customerdata" | "legal" | "delete"
-  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels"
-  | "printprobe"; // DEV-only print-probe harness (5 rapid taps on Printer Settings title / ?printprobe=1)
+  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels";
 
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
-const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "printprobe"];
+const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels"];
 
 
 const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set", automode: "sfl_rd_automode", pp: "sfl_rd_pp", printer: "sfl_rd_printer", keepAwake: "sfl_rd_keepawake", motion: "sfl_rd_motion" } as const;
@@ -417,32 +415,6 @@ export default function RedesignApp() {
     return () => setNativePrintFailureHandler(null);
   }, []);
 
-  // ── DEV route visibility (Phase-1 bitmap branch): every BT sticker print
-  // toasts WHICH route ran and, on a TEXT fallback, WHY — the owner can't use
-  // Logcat, so a silent fallback must be visible in-app. Plain English on
-  // purpose (dev instrument, PrintProbe convention — not i18n'd); remove or
-  // gate before production merge if unwanted. Fires from printing.ts's async
-  // tail, so it reports the route that ACTUALLY ran.
-  useEffect(() => {
-    setStickerRouteNoticeHandler((n) => {
-      if (n.via === "bitmap") {
-        const kb = (n.payloadBytes / 1024).toFixed(1);
-        const s = (n.totalMs / 1000).toFixed(1);
-        const phase = n.phase ? ` (${n.phase})` : "";
-        setToast(n.ok
-          ? { msg: `Print: BITMAP ${kb}KB ${s}s${phase}`, kind: "ok" }
-          : { msg: `Print: BITMAP failed — ${n.detail}`, kind: "err" });
-        return;
-      }
-      const why = n.reason === "classic-mode-on" ? "Classic text mode is ON"
-        : n.reason === "bitmap-method-missing" ? "bitmap method missing in this app build"
-        : n.reason === "cjk-atlas-unavailable" ? "CJK font still downloading — will retry"
-        : n.detail || "unknown";
-      setToast({ msg: `Print: TEXT (fallback: ${why})`, kind: "err" });
-    });
-    return () => setStickerRouteNoticeHandler(null);
-  }, []);
-
   // Warm the code-split CJK glyph-atlas chunk (~2.9MB source) right after
   // mount so it's resident long before the first CJK print. A CJK print that
   // races this awaits the SAME promise; a failed prefetch (offline cold open)
@@ -460,14 +432,6 @@ export default function RedesignApp() {
   const [expiry, setExpiry] = useState<{ tier: ExpiryTier; daysLeft: number } | null>(null);
   const [update, setUpdate] = useState<{ platform: NativePlatform; messageKey: string; force: boolean; latest: number } | null>(null);
   const coldDone = useRef(false);
-  // DEV: ?printprobe=1 jumps straight to the print-probe harness (browser
-  // inspection). On-device the gate is 5 rapid taps on the Printer Settings title.
-  const probeGateDone = useRef(false);
-  useEffect(() => {
-    if (auth.status === "loading" || probeGateDone.current) return;
-    probeGateDone.current = true;
-    try { if (new URLSearchParams(window.location.search).has("printprobe")) setScreen("printprobe"); } catch { /* ignore */ }
-  }, [auth.status]);
   useEffect(() => {
     if (auth.status === "loading" || coldDone.current) return;
     coldDone.current = true;
@@ -1132,13 +1096,7 @@ export default function RedesignApp() {
               psSize={psSize} psSizeOpen={psSizeOpen}
               onTogglePsSize={() => setPsSizeOpen((o) => !o)} onPickPsSize={(s) => { setPsSize(s); setPsSizeOpen(false); }}
               cur={cur} storeName={auth.profile?.profile.storeName || "SellerFlowLive"} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })}
-              onOpenProbe={() => setScreen("printprobe")}
             />
-          )}
-          {/* DEV-only print-probe harness — reached via 5 rapid taps on the Printer
-              Settings header title, or ?printprobe=1 in a browser. Not in nav. */}
-          {screen === "printprobe" && (
-            <PrintProbe onBack={() => setScreen("printersettings")} psSize={psSize} />
           )}
           {screen === "printpattern" && (
             <PrintPattern onBack={() => setScreen("settings")} pp={pp} onToggle={togglePp} onStep={stepPp} onTestPrint={() => void onTestPrint()} />

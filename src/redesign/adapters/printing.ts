@@ -203,11 +203,10 @@ export function setClassicTextSticker(on: boolean): void {
   try { if (on) localStorage.setItem(LS_CLASSIC_TEXT, "1"); else localStorage.removeItem(LS_CLASSIC_TEXT); } catch { /* ignore */ }
 }
 
-// DEV timing instrumentation (Phase-1 speed verification): every sticker print
-// logs `[STICKER-TIMING]` to the console (visible in Android Studio Logcat →
-// Capacitor/Console) and keeps the last sample on `window.__sflPrintTiming` +
-// getLastStickerTiming() for in-app/inspector reads. Negligible overhead — kept
-// unconditionally during Phase 1.
+// Internal timing instrumentation (console-only, NEVER surfaced in UI): every
+// sticker print logs `[STICKER-TIMING]` to the console (Logcat → Capacitor/
+// Console) and keeps the last sample on `window.__sflPrintTiming` +
+// getLastStickerTiming() for inspector/support reads. Negligible overhead.
 export interface StickerTiming { via: "bitmap" | "text"; buildMs: number; bridgeMs: number; totalMs: number; payloadBytes: number; bands: number }
 let lastStickerTiming: StickerTiming | null = null;
 export const getLastStickerTiming = (): StickerTiming | null => lastStickerTiming;
@@ -218,12 +217,14 @@ function recordStickerTiming(t: StickerTiming) {
 }
 const nowMs = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
-// ── Route-visibility notice (Phase-1 dev requirement) ────────────────────────
-// Every BT sticker print reports WHICH route actually ran (bitmap vs text) and,
-// on a text fallback, WHY — so a non-technical owner can see a silent fallback
-// in-app (no Logcat). RedesignApp registers one handler (toast); Printer
-// Settings reads the last notice. Same registration pattern as
-// setNativePrintFailureHandler above.
+// ── Route-visibility notice (INTERNAL instrumentation — no UI consumer) ──────
+// Every BT sticker print records WHICH route actually ran (bitmap vs text) and,
+// on a text fallback, WHY. The seller-facing toast + "Last print" readout that
+// consumed this during the bitmap bring-up were REMOVED pre-merge (owner
+// decision); the hooks stay because the test suite pins the routing/fallback
+// reasons through them, and support can read getLastStickerRouteNotice() /
+// window.__sflPrintTiming from an inspector. Genuine print FAILURES surface to
+// sellers via setNativePrintFailureHandler above (unchanged) — never via this.
 export type StickerFallbackReason = "" | "classic-mode-on" | "bitmap-method-missing" | "cjk-atlas-unavailable";
 // `phase` (bitmap only): the native transport's own breakdown — "conn 0.6s send
 // 3.4s done 0.5s chunk 20x365" — so a slow print says WHERE the time went
@@ -281,7 +282,7 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
   // SDK-format image stream (manufacturer protocol — vendor/QY_Android_SDK.zip):
   // one LZO-compressed full-label BITMAP mode-4 block, the firmware's native
   // image engine (the Labelife path — clean + fast on BOTH boards). The legacy
-  // mode-0 band emission (rasterizeToBitmapTspl) stays available for probes.
+  // mode-0 band emission (rasterizeToBitmapTspl) stays golden-tested but dormant.
   // The CJK atlas arrives RESOLVED (code-split chunk; the caller awaited it
   // only when the payload actually contains CJK).
   const raster = rasterizeToSdkBitmapTspl(payload, payload.labelWidthMm, payload.labelHeightMm, { latin: LATIN_ATLAS, cjk });
