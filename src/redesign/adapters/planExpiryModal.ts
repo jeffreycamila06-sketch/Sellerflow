@@ -4,6 +4,7 @@
 // session-scoped and keyed by tier + expiry date so each tier prompts once per
 // session and a NEW tier (as days pass) re-prompts even after an earlier dismiss.
 import { isTimeLimitedPlan } from "../../lib/planWindow";
+import { isPreviewEnv } from "./previewEnv";
 
 export type ExpiryTier = "7d" | "3d" | "1d" | "expired";
 
@@ -65,17 +66,15 @@ export function coldModalPriority(hasExpiry: boolean, hasUpdate: boolean): "expi
 }
 
 // Dev/preview-only tier override so Jeff can see every tier + both platform
-// variants in a plain browser: ?preview_expiry=7|3|1|0 (0 = expired), gated to
-// non-production hosts (never force-shows for real production web users).
+// variants in a plain browser: ?preview_expiry=7|3|1|0 (0 = expired). Gated by
+// the SHARED previewEnv rule — production browsers AND production-connected
+// native shells can never force-show it (was a duplicated hostname-only check).
 export function previewExpiryTier(): ExpiryTier | null {
   if (typeof window === "undefined") return null;
   try {
     const v = new URLSearchParams(window.location.search).get("preview_expiry");
     if (v == null) return null;
-    const dev = (import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV;
-    const h = window.location.hostname;
-    if (!dev && h === "www.sellerflowlive.com") return null;
-    if (!dev && h === "sellerflowlive.com") return null;
+    if (!isPreviewEnv()) return null;
     return v === "7" ? "7d" : v === "3" ? "3d" : v === "1" ? "1d" : v === "0" ? "expired" : null;
   } catch {
     return null;

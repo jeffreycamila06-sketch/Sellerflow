@@ -23,6 +23,7 @@ import { supabase } from "../../supabase";
 import type { Comment as ProdComment } from "../../lib/orderTypes";
 import type { Comment as RDComment } from "../data";
 import { cleanLiveAccount, connectPlatform, type Platform, type ConnectResult } from "./connect";
+import { isPreviewEnv } from "./previewEnv";
 // Batch E (#13): server URL + seller/browser identity now come from the ONE
 // shared module (was a local copy identical to connect.ts's — parity-tested;
 // do NOT change names/URLs/storage key).
@@ -84,13 +85,10 @@ export const toRedesignComment = (c: ProdComment): RDComment => ({
   avatar: c.avatar || "",
 });
 
-// Synthetic injector is shown everywhere EXCEPT the real production domain.
-export const isPreviewEnv = (): boolean => {
-  if (import.meta.env.DEV) return true;
-  if (typeof window === "undefined") return false;
-  const h = window.location.hostname;
-  return h !== "www.sellerflowlive.com" && h !== "sellerflowlive.com";
-};
+// Synthetic injector gate — now the SHARED previewEnv rule (re-exported for the
+// existing import sites/tests). Native shells are production unless they are
+// the local-bundle dev APK; browsers keep the hostname rule (Vercel previews).
+export { isPreviewEnv };
 
 // Latin and Traditional-Chinese entries INTERLEAVED (~half/half) so cycling
 // "+ Test comment" exercises BOTH the ASCII and the CJK sticker paths every few

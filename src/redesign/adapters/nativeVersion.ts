@@ -17,6 +17,8 @@
 // window.SellerFlowPrinter.getBuildNumber() bridge (added to the next binary) is
 // preferred when present, making later comparisons exact integers.
 
+import { isPreviewEnv } from "./previewEnv";
+
 export type NativePlatform = "ios" | "android";
 
 export interface PlatformVersion {
@@ -105,16 +107,14 @@ export function bridgeBuildNumber(): number | null {
 }
 
 // Dev/preview-only force toggle so Jeff can see the modal in a plain browser
-// (?preview_update=1) WITHOUT an old binary. Gated to non-production hosts so it
-// can never force-show for real production web users.
+// (?preview_update=1) WITHOUT an old binary. Gated by the SHARED previewEnv
+// rule — production browsers AND production-connected native shells can never
+// force-show it (was a duplicated hostname-only check).
 export function isUpdatePreview(): boolean {
   if (typeof window === "undefined") return false;
   try {
     if (!new URLSearchParams(window.location.search).has("preview_update")) return false;
-    const dev = (import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV;
-    if (dev) return true;
-    const h = window.location.hostname;
-    return h !== "www.sellerflowlive.com" && h !== "sellerflowlive.com";
+    return isPreviewEnv();
   } catch {
     return false;
   }
