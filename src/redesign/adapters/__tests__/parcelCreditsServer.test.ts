@@ -7,11 +7,14 @@
 // on success, fail-closed on debit error, and isTechnicalFailure classification.
 //
 // The DB RPCs themselves (check_and_debit_credit's atomic guarded UPDATE
-// returning insufficient_credits when balance < amount; grant_parcel_credit's
-// is_admin() gate) are plpgsql and can't run in vitest — they were verified LIVE
-// via Supabase MCP (a rolled-back smoke: debit 1 of 3 → ok bal 2; debit 5 →
-// insufficient bal 2; refund 1 → ok bal 1; grant by a non-admin → RAISED 42501
-// forbidden).
+// returning insufficient_credits when balance < amount; refund_parcel_credit's
+// GATE that a refund matches only the caller's own UNREFUNDED scan_debit;
+// grant_parcel_credit's is_admin() gate) are plpgsql and can't run in vitest —
+// they were verified LIVE via Supabase MCP (rolled-back smokes: debit 1 of 3 →
+// ok bal 2; debit 5 → insufficient bal 2; refund a FAKE debit id → no_refundable_
+// debit, nothing minted; refund a real debit with forged p_amount=999 → credits
+// only 1; second refund of the same debit → no_refundable_debit; grant by a
+// non-admin → RAISED 42501 forbidden).
 import { describe, it, expect, vi } from "vitest";
 import { runScanWithCredit, isTechnicalFailure, CREDIT_DEBIT_AMOUNT } from "../../../../server/parcelCredits.js";
 
@@ -77,62 +80,63 @@ describe("runScanWithCredit — debit → scan → refund", () => {
     expect(scan).not.toHaveBeenCalled();
   });
 
-  it("successful scan → 200 fields, NO refund", async () => {
+  it("successful scan → 200 fields + post-debit balance, NO refund", async () => {
     const refund = vi.fn(async () => ({ ok: true, balance: 3 }));
     const out = await runScanWithCredit({
-      debit: async () => ({ ok: true, balance: 4 }),
+      debit: async () => ({ ok: true, balance: 4, debit_id: "d1" }),
       scan: async () => ok,
       refund,
     });
     expect(out.status).toBe(200);
-    expect(out.body).toEqual({ success: true, fields: { name: "A" }, confidence: {} });
+    expect(out.body).toEqual({ success: true, fields: { name: "A" }, confidence: {}, balance: 4 });
     expect(out.refunded).toBeNull();
     expect(refund).not.toHaveBeenCalled();  // a good scan must never refund
   });
 
-  it("TECHNICAL failure (network_error / anthropic_http_500 / anthropic_bad_json) → refund IS called", async () => {
+  it("TECHNICAL failure → refund called WITH the debit_id, body carries the refunded balance", async () => {
     for (const code of ["network_error", "anthropic_http_500", "anthropic_bad_json"]) {
       const refund = vi.fn(async () => ({ ok: true, balance: 4 }));
       const out = await runScanWithCredit({
-        debit: async () => ({ ok: true, balance: 3 }),
+        debit: async () => ({ ok: true, balance: 3, debit_id: "debit-xyz" }),
         scan: async () => ({ ok: false, error: code }),
         refund,
       });
       expect(refund).toHaveBeenCalledTimes(1);
+      expect(refund).toHaveBeenCalledWith("debit-xyz"); // the GATE matches this exact debit
       expect(out.status).toBe(502);
-      expect(out.body).toEqual({ success: false, error: code });
+      expect(out.body).toEqual({ success: false, error: code, balance: 4 }); // refunded balance
       expect(out.refunded).toBe("ok");
     }
   });
 
-  it("BAD-PHOTO failure (no_json_in_response / model_refused / truncated / bad_json_in_response) → NO refund, debit STANDS", async () => {
+  it("BAD-PHOTO failure → NO refund, debit STANDS, body carries the post-debit balance", async () => {
     for (const code of ["no_json_in_response", "model_refused", "truncated", "bad_json_in_response"]) {
       const refund = vi.fn(async () => ({ ok: true, balance: 4 }));
       const logs: string[] = [];
       const out = await runScanWithCredit({
-        debit: async () => ({ ok: true, balance: 3 }),
+        debit: async () => ({ ok: true, balance: 3, debit_id: "d1" }),
         scan: async () => ({ ok: false, error: code }),
         refund,
         log: (m) => logs.push(m),
       });
       expect(refund).not.toHaveBeenCalled();          // seller consumed a real scan
       expect(out.status).toBe(502);
-      expect(out.body).toEqual({ success: false, error: code });
+      expect(out.body).toEqual({ success: false, error: code, balance: 3 }); // debit stands
       expect(out.refunded).toBeNull();
       expect(logs.some((l) => l.includes("no-refund (bad photo)") && l.includes(`code=${code}`))).toBe(true);
     }
   });
 
-  it("a FAILED refund on a technical failure → refunded:'failed', error body unchanged, money-owed logged", async () => {
+  it("a FAILED refund on a technical failure → refunded:'failed', money-owed logged, balance stays post-debit", async () => {
     const logs: string[] = [];
     const out = await runScanWithCredit({
-      debit: async () => ({ ok: true, balance: 3 }),
+      debit: async () => ({ ok: true, balance: 3, debit_id: "d1" }),
       scan: async () => ({ ok: false, error: "network_error" }),
       refund: async () => { throw new Error("refund rpc down"); },
       log: (m) => logs.push(m),
     });
     expect(out.status).toBe(502);
-    expect(out.body).toEqual({ success: false, error: "network_error" });
+    expect(out.body).toEqual({ success: false, error: "network_error", balance: 3 }); // refund failed → debit still stands
     expect(out.refunded).toBe("failed");
     expect(logs.some((l) => l.includes("refund failed") && l.includes("money owed"))).toBe(true);
   });

@@ -34,14 +34,18 @@ export function isTechnicalFailure(errorCode) {
 }
 
 // Deps (all injected — no direct supabase/anthropic import here):
-//   uid      → the caller's id, for the log lines (display only)
-//   debit()  → resolves check_and_debit_credit's json { ok, balance, error }, or throws
-//   scan()   → resolves scanParcelImage's result { ok, fields?, confidence?, error?, ... }
-//   refund() → resolves refund_parcel_credit's json { ok, balance }, best-effort (may throw)
-//   log(msg) → optional logger (defaults to no-op)
+//   uid            → the caller's id, for the log lines (display only)
+//   debit()        → resolves check_and_debit_credit's json { ok, balance, debit_id, error }, or throws
+//   scan()         → resolves scanParcelImage's result { ok, fields?, confidence?, error?, ... }
+//   refund(debitId)→ resolves refund_parcel_credit's json { ok, balance }, best-effort (may throw).
+//                    Passed the debit's debit_id so the GATED RPC can match it to
+//                    the real, unrefunded scan_debit (no id → no refund).
+//   log(msg)       → optional logger (defaults to no-op)
 //
 // Returns { status, body, scanned, refunded } where:
 //   status/body = the exact HTTP status + JSON body the route should send
+//                 (success + insufficient + bad-photo carry the wallet `balance`
+//                 so the client can update its display without a re-fetch)
 //   scanned     = whether the Anthropic scan was actually invoked
 //   refunded    = 'ok' | 'failed' | null  (null = no refund attempted: success,
 //                 a pre-scan stop, or a bad-photo failure where the debit stands)
@@ -65,14 +69,15 @@ export async function runScanWithCredit({ uid = "", debit, scan, refund, log = (
       refunded: null,
     };
   }
-  log(`[CREDIT] debit user=${uid} balance=${d.balance}`);
+  const postDebitBalance = d.balance;
+  log(`[CREDIT] debit user=${uid} balance=${postDebitBalance}`);
 
   // ── (b) SCAN ────────────────────────────────────────────────────────────────
   const result = await scan();
   if (result && result.ok) {
     return {
       status: 200,
-      body: { success: true, fields: result.fields, confidence: result.confidence },
+      body: { success: true, fields: result.fields, confidence: result.confidence, balance: postDebitBalance },
       scanned: true,
       refunded: null,
     };
@@ -82,10 +87,12 @@ export async function runScanWithCredit({ uid = "", debit, scan, refund, log = (
 
   // ── (c) REFUND only on a TECHNICAL failure; bad-photo debit STANDS ──────────
   let refunded = null;
+  let balance = postDebitBalance; // bad-photo / failed-refund → debit stands
   if (isTechnicalFailure(code)) {
     refunded = "failed";
     try {
-      const rf = await refund();
+      const rf = await refund(d.debit_id);          // GATED RPC matches this debit
+      if (rf && typeof rf.balance === "number") balance = rf.balance;
       log(`[CREDIT] refund user=${uid} balance=${(rf && rf.balance) ?? "-"} reason=${code}`);
       refunded = "ok";
     } catch (e) {
@@ -98,5 +105,7 @@ export async function runScanWithCredit({ uid = "", debit, scan, refund, log = (
   }
 
   const status = code === "empty_image" || code === "bad_media_type" ? 400 : 502;
-  return { status, body: { success: false, error: code }, scanned: true, refunded };
+  const body = { success: false, error: code };
+  if (typeof balance === "number") body.balance = balance;
+  return { status, body, scanned: true, refunded };
 }

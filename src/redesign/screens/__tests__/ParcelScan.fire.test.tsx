@@ -29,12 +29,13 @@ vi.mock("../../adapters/parcelScan", () => ({
   saveStoreCheck,
   formErrors: () => ({ name: false, phone: false, store: false, empty: false }),
   amountWarns: () => false,
-  // Render-time + click-time helpers the screen now imports (Change 1/3).
+  // Render-time + click-time helpers the screen now imports (Change 1/3 + credits).
   splitScansForExport: () => ({ ready: [], attention: [] }),
   scanToXlsRow: vi.fn(),
   markScansExported: vi.fn(),
   deleteParcelScan: vi.fn(),
   deleteExportedParcels: vi.fn(),
+  getCreditBalance: vi.fn(async () => ({ ok: true, balance: 99 })),
 }));
 
 import ParcelScan from "../ParcelScan";

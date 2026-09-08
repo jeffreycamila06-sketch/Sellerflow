@@ -9,6 +9,7 @@ import { headerBar, card, mono } from "../ui";
 import { planDaysLeft, daysDisplay, deriveSubBuckets, deriveUserBase, freeUsersSummary, sortUsersBySignup, auditActionColor, filterAuditLogs, sellerMatchesQuery, type ReadState, type SubBuckets, type FreeUserRow } from "../adapters/useReadData";
 import type { AdminActions, Plan } from "../adapters/useAdmin";
 import { maxAcc } from "../adapters/connect";
+import { getCreditBalanceForUser } from "../adapters/parcelScan";
 import type { AccountAuditLog, AccountUser } from "../../accountDb";
 import { csvDL, dayStamp } from "../adapters/csv";
 import SoonBadge from "../components/SoonBadge";
@@ -335,6 +336,12 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
   const [pwIdx, setPwIdx] = useState<number | null>(null);
   const [pwVal, setPwVal] = useState("");
   const [busy, setBusy] = useState(false);
+  // Add Scan Credits inline editor (mirrors addIdx/addVal). credBal holds the
+  // seller's balance fetched on-open (admin-scoped read) so the owner sees it
+  // before granting; refreshed from the grant's returned balance.
+  const [credIdx, setCredIdx] = useState<number | null>(null);
+  const [credVal, setCredVal] = useState("");
+  const [credBal, setCredBal] = useState<Record<string, number | null>>({});
   // Client-side seller search — email + connected @handles + contact note + PHONE.
   // Filters the already-loaded users array (rawByEmail carries the real handles AND
   // the phone from listUsers select("*")); no new query, admin-only panel.
@@ -466,6 +473,26 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
     setAddIdx(null); setAddVal("");
   };
 
+  // Add Scan Credits: open the inline editor + fetch the seller's balance
+  // (admin-scoped read via their auth id) so the owner sees it before granting.
+  const openCred = (u: User, i: number) => {
+    setCredIdx(i); setCredVal("");
+    const auid = rawByEmail[u.email]?.authUserId;
+    if (auid) void getCreditBalanceForUser(auid).then((r) => { if (r.ok) setCredBal((m) => ({ ...m, [u.email]: r.balance })); });
+  };
+  // Grant N credits via actions.addCredits (grant_parcel_credit RPC + audit),
+  // then reflect the returned balance. Confirmed by the run() busy/notify wrapper.
+  const doAddCredits = (u: User, add: number) => {
+    if (add > 0 && actions) {
+      void run(tpl(t.rd_adm_cred_act, { n: add }), u.email, async () => {
+        const r = await actions.addCredits(u.email, add);
+        if (r.ok && typeof r.balance === "number") setCredBal((m) => ({ ...m, [u.email]: r.balance! }));
+        return r;
+      });
+    }
+    setCredIdx(null); setCredVal("");
+  };
+
   // Edit accounts modal (Option B — centered overlay above the sheet). Prefilled
   // from the RAW profile (the display User only carries the account count). Save
   // writes ONLY tiktok/facebook via actions.editAccounts (upsertUser, no plan/role).
@@ -559,6 +586,18 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
                         <button onClick={() => actions ? doPlan(u, "plus", "Plus") : setPlan(u.email, "Plus")} style={planBtn}>Plus</button>
                         <button onClick={() => actions ? doPlan(u, "pro", "Pro") : setPlan(u.email, "Pro")} style={planBtn}>Pro</button>
                         <button onClick={() => actions ? doPlan(u, "master", "Master") : setPlan(u.email, "Master")} style={planBtn}>Master</button>
+                      </div>
+                      {/* Add Scan Credits (Part 2) — manual top-up after a Wise/Telegram payment. */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, fontSize: 11, color: "var(--text-dim)" }}>
+                        <span><span style={{ color: "var(--text-muted)" }}>{t.rd_ps2_credits}</span> <span style={{ fontFamily: mono, fontWeight: 700, color: "var(--text)" }} data-testid="adm-cred-bal">{credBal[u.email] == null ? "—" : credBal[u.email]}</span></span>
+                        {credIdx === i ? (
+                          <span style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: "auto" }}>
+                            <input value={credVal} onChange={(e) => setCredVal(e.target.value.replace(/[^0-9]/g, ""))} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); doAddCredits(u, parseInt(credVal || "0", 10) || 0); } }} inputMode="numeric" autoFocus placeholder={t.rd_adm_cred_ph} style={{ width: 60, padding: "4px 7px", border: "1.3px solid var(--accent)", borderRadius: 7, background: "var(--surface)", color: "var(--text)", fontFamily: mono, fontSize: 11, fontWeight: 700, outline: "none" }} />
+                            <button onPointerDown={(e) => { e.preventDefault(); doAddCredits(u, parseInt(credVal || "0", 10) || 0); }} title={t.rd_adm_add_credits} aria-label={t.rd_adm_add_credits} style={{ minWidth: 34, height: 30, display: "flex", alignItems: "center", justifyContent: "center", border: "none", borderRadius: 7, background: "var(--accent)", color: "var(--accent-text)", fontSize: 13, fontWeight: 900, cursor: "pointer", fontFamily: "var(--font-ui)", flexShrink: 0 }} data-testid="adm-cred-go">✓</button>
+                          </span>
+                        ) : (
+                          <button onClick={() => openCred(u, i)} disabled={!actions} style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 3, fontSize: 10.5, fontWeight: 800, color: "var(--accent-text)", background: "var(--accent)", border: "none", padding: "4px 10px", borderRadius: 7, cursor: actions ? "pointer" : "default", fontFamily: "var(--font-ui)" }} data-testid="adm-cred-open">{t.rd_adm_add_credits}</button>
+                        )}
                       </div>
                       {pwIdx === i && (
                         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8 }}>

@@ -27,6 +27,7 @@ vi.mock("../../adapters/parcelScan", () => ({
   markScansExported: vi.fn(),
   deleteParcelScan,
   deleteExportedParcels,
+  getCreditBalance: vi.fn(async () => ({ ok: true, balance: 99 })),
 }));
 vi.mock("../../adapters/shippingSettings", () => ({ loadShippingSettings: async () => null }));
 

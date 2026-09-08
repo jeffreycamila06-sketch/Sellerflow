@@ -26,16 +26,21 @@ create table if not exists public.parcel_credit_wallet (
 );
 
 -- ── Ledger: append-only audit trail; every grant/topup/debit/refund is a row ──
+-- ref_id (Part 2): a 'refund' row points at the 'scan_debit' row it reverses —
+-- the refund gate matches on it + a "no existing refund" check to make minting
+-- and double-refunds impossible.
 create table if not exists public.parcel_credit_ledger (
   id            uuid primary key default gen_random_uuid(),
   user_id       uuid not null,
   delta         integer not null,
   reason        text not null check (reason in ('grant','topup','scan_debit','refund')),
   scan_id       uuid null references public.parcel_scans(id) on delete set null,
+  ref_id        uuid null references public.parcel_credit_ledger(id) on delete set null,
   balance_after integer,
   created_at    timestamptz not null default now()
 );
 create index if not exists idx_pcl_user_created on public.parcel_credit_ledger (user_id, created_at desc);
+create index if not exists idx_pcl_ref on public.parcel_credit_ledger (ref_id) where ref_id is not null;
 
 alter table public.parcel_credit_wallet enable row level security;
 alter table public.parcel_credit_ledger enable row level security;
@@ -66,10 +71,11 @@ create or replace function public.check_and_debit_credit(p_amount integer defaul
   returns json language plpgsql security definer set search_path to 'public'
 as $function$
 declare
-  caller uuid := auth.uid();
-  n      integer;
-  bal    integer;
-  cur    integer;
+  caller   uuid := auth.uid();
+  n        integer;
+  bal      integer;
+  cur      integer;
+  debit_id uuid;
 begin
   if caller is null then return json_build_object('ok', false, 'error', 'not_signed_in'); end if;
   if p_amount is null or p_amount <= 0 then return json_build_object('ok', false, 'error', 'bad_amount'); end if;
@@ -92,9 +98,10 @@ begin
   end if;
 
   insert into public.parcel_credit_ledger (user_id, delta, reason, balance_after)
-    values (caller, -p_amount, 'scan_debit', bal);
+    values (caller, -p_amount, 'scan_debit', bal)
+    returning id into debit_id;
 
-  return json_build_object('ok', true, 'balance', bal);
+  return json_build_object('ok', true, 'balance', bal, 'debit_id', debit_id);
 end;
 $function$;
 
@@ -128,31 +135,54 @@ begin
 end;
 $function$;
 
--- ── RPC: refund one failed scan (server calls this after a 502-class failure) ─
--- ⚠️ PART-2 HARDENING NOTE: refund credits the CALLER (auth.uid()). Today the
--- whole feature is admin-only (route requireAdmin + canUseParcelScan admin-only),
--- so the only caller is the trusted owner. BEFORE Part 2 opens Parcel Scan to
--- sellers, this must be gated (e.g. refund only up to the caller's outstanding
--- unrefunded scan_debits, or a server-authority path) — otherwise a seller could
--- call it directly to self-credit. Left caller-scoped per the Part-1 spec.
-create or replace function public.refund_parcel_credit(p_amount integer default 1, p_scan_id uuid default null)
+-- ── RPC: refund one failed scan — GATED (Part 2, closes the self-credit latch) ─
+-- The server calls this after a TECHNICAL scan failure, passing the debit_id
+-- returned by check_and_debit_credit. A refund is valid ONLY against the CALLER'S
+-- OWN scan_debit ledger row (by id) that has NOT been refunded yet, and it credits
+-- back EXACTLY that debit's magnitude — a forged p_amount can't inflate it, and no
+-- real debit means no refund. This makes minting and double-refunds impossible, so
+-- refund is safe to leave EXECUTE-granted to `authenticated` even once scanning
+-- opens to sellers. (Old signature (integer, uuid) is dropped.)
+drop function if exists public.refund_parcel_credit(integer, uuid);
+
+create or replace function public.refund_parcel_credit(p_debit_id uuid, p_amount integer default 1)
   returns json language plpgsql security definer set search_path to 'public'
 as $function$
 declare
-  caller uuid := auth.uid();
-  bal    integer;
+  caller     uuid := auth.uid();
+  v_delta    integer;   -- the matched debit's delta (negative)
+  refund_amt integer;
+  bal        integer;
 begin
   if caller is null then return json_build_object('ok', false, 'error', 'not_signed_in'); end if;
-  if p_amount is null or p_amount <= 0 then return json_build_object('ok', false, 'error', 'bad_amount'); end if;
+  if p_debit_id is null then return json_build_object('ok', false, 'error', 'no_refundable_debit'); end if;
 
   perform pg_advisory_xact_lock(hashtext('parcel_credit_' || caller::text));
 
-  insert into public.parcel_credit_wallet (user_id, balance) values (caller, p_amount)
-    on conflict (user_id) do update set balance = public.parcel_credit_wallet.balance + p_amount, updated_at = now()
+  -- The caller's OWN scan_debit, by id, with NO refund row yet. Anything else
+  -- (not theirs, not a scan_debit, already refunded, nonexistent) → no match.
+  select l.delta into v_delta
+  from public.parcel_credit_ledger l
+  where l.id = p_debit_id
+    and l.user_id = caller
+    and l.reason = 'scan_debit'
+    and not exists (
+      select 1 from public.parcel_credit_ledger r
+      where r.ref_id = p_debit_id and r.reason = 'refund'
+    );
+
+  if v_delta is null then
+    return json_build_object('ok', false, 'error', 'no_refundable_debit');
+  end if;
+
+  refund_amt := -v_delta;  -- give back EXACTLY what the debit removed (delta < 0)
+
+  insert into public.parcel_credit_wallet (user_id, balance) values (caller, refund_amt)
+    on conflict (user_id) do update set balance = public.parcel_credit_wallet.balance + refund_amt, updated_at = now()
   returning balance into bal;
 
-  insert into public.parcel_credit_ledger (user_id, delta, reason, scan_id, balance_after)
-    values (caller, p_amount, 'refund', p_scan_id, bal);
+  insert into public.parcel_credit_ledger (user_id, delta, reason, ref_id, balance_after)
+    values (caller, refund_amt, 'refund', p_debit_id, bal);
 
   return json_build_object('ok', true, 'balance', bal);
 end;
@@ -162,7 +192,7 @@ $function$;
 -- authenticated role; grant_parcel_credit is is_admin()-gated inside). Never anon.
 revoke all on function public.check_and_debit_credit(integer) from public, anon;
 revoke all on function public.grant_parcel_credit(text, integer, text) from public, anon;
-revoke all on function public.refund_parcel_credit(integer, uuid) from public, anon;
+revoke all on function public.refund_parcel_credit(uuid, integer) from public, anon;
 grant execute on function public.check_and_debit_credit(integer) to authenticated;
 grant execute on function public.grant_parcel_credit(text, integer, text) to authenticated;
-grant execute on function public.refund_parcel_credit(integer, uuid) to authenticated;
+grant execute on function public.refund_parcel_credit(uuid, integer) to authenticated;
