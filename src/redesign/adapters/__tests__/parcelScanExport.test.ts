@@ -97,6 +97,25 @@ describe("splitScansForExport — READY vs NEEDS-ATTENTION gate", () => {
   });
 });
 
+// CHANGE 1: the screen's "Export {n} parcel(s)" button count is
+// splitScansForExport(rows, fee).ready.length — so a wrong-store-code (not_found)
+// parcel is NEVER counted and NEVER in the built .xlsm; unknown/null stay counted.
+describe("export count (= ready.length) hard-excludes wrong store codes", () => {
+  const mixed: ParcelScanRow[] = [
+    row({ id: "ok1" }),                                   // clean → counted
+    row({ id: "wrong", storeCheckStatus: "not_found" }),  // wrong code → excluded
+    row({ id: "unk", storeCheckStatus: "unknown" }),      // can't verify → counted
+    row({ id: "nul", storeCheckStatus: null }),           // unchecked → counted
+  ];
+  it("not_found is excluded from BOTH the count and the built rows; unknown/null are included", () => {
+    const { ready } = splitScansForExport(mixed, 38);
+    expect(ready).toHaveLength(3);                         // the button count
+    const ids = ready.map((r) => r.id);
+    expect(ids).toEqual(["ok1", "unk", "nul"]);           // built rows — no "wrong"
+    expect(ids).not.toContain("wrong");
+  });
+});
+
 describe("build-from-parcel_scans smoke — the EXISTING builder eats the mapped rows", () => {
   it("produces a valid .xlsm from parcel_scans rows through buildXlsmFromTemplate", async () => {
     const template = readFileSync(resolve(__dirname, "../../../../public/templates/myship-import-template.xlsm"));

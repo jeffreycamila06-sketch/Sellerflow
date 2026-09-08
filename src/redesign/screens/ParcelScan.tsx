@@ -11,6 +11,7 @@ import { useT, tpl } from "../i18n";
 import {
   fileToScanBase64, scanParcel, saveParcelScan, loadParcelScans, formErrors, amountWarns,
   checkEmapStore, saveStoreCheck, scanToXlsRow, splitScansForExport, markScansExported,
+  deleteParcelScan, deleteExportedParcels,
   type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState, type StoreCheckStatus, type ExportReason,
 } from "../adapters/parcelScan";
 import { fetchShipTemplate, buildXlsmFromTemplate, deliverXlsm, exportFilename } from "../adapters/shippingExport";
@@ -87,6 +88,13 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
   // Saved list — ONE read on screen open; saves append locally (no refetch).
   const [rows, setRows] = useState<ParcelScanRow[]>([]);
   const [listLoaded, setListLoaded] = useState(false);
+  // Saved-list tab (Change 2): "all" (default) | "wrong" (not_found only).
+  const [tab, setTab] = useState<"all" | "wrong">("all");
+  // Delete (Change 3): a pending confirmation + await/error state. Never fires
+  // a delete without the confirm; a failed delete surfaces inline, no silent no-op.
+  const [confirm, setConfirm] = useState<{ kind: "row"; id: string } | { kind: "exported" } | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteErr, setDeleteErr] = useState("");
   // Alive across the whole screen — guards fire-and-forget store-check verdicts
   // (runStoreCheck) that can land after unmount, not just the initial load.
   const aliveRef = useRef(true);
@@ -175,7 +183,11 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
 
   // ── 賣貨便 訂單匯入 Excel export — gate, build via the EXISTING builder, deliver.
   // No quota RPC (admin-only). Marks exported READY rows done so re-exports skip.
-  const pendingCount = rows.filter((r) => r.status !== "exported").length;
+  // CHANGE 1: the button count is the READY count (passes validators AND
+  // store_check_status != 'not_found'), NOT all non-exported rows — a wrong-code
+  // parcel is never counted and never lands in the .xlsm. unknown/null store
+  // checks stay READY (soft-warned). Same split the build below uses.
+  const readyCount = splitScansForExport(rows, fee).ready.length;
   const runExport = async () => {
     if (exportBusy) return;
     setExportBusy(true); setExportErr(""); setExportSummary(null);
@@ -202,12 +214,35 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
     }
   };
 
+  // ── Deletes (Change 3) — awaited, confirmed, prune only on success ──────────
+  const exportedCount = rows.filter((r) => r.status === "exported").length;
+  const doDelete = async () => {
+    if (!confirm || deleting) return;
+    setDeleting(true); setDeleteErr("");
+    if (confirm.kind === "row") {
+      const id = confirm.id;
+      const r = await deleteParcelScan(id);
+      setDeleting(false);
+      if (!r.ok) { setDeleteErr(r.error || "delete_failed"); return; }
+      if (aliveRef.current) { setRows((prev) => prev.filter((x) => x.id !== id)); setConfirm(null); }
+    } else {
+      const r = await deleteExportedParcels();
+      setDeleting(false);
+      if (!r.ok) { setDeleteErr(r.error || "delete_failed"); return; }
+      if (aliveRef.current) { setRows((prev) => prev.filter((x) => x.status !== "exported")); setConfirm(null); }
+    }
+  };
+  const askDelete = (c: { kind: "row"; id: string } | { kind: "exported" }) => { setDeleteErr(""); setConfirm(c); };
+
   const errs = formErrors(form);
   const saveBlocked = saving || errs.empty || errs.name || errs.phone || errs.store;
   const low = (f: keyof ScanFields): boolean => confid?.[f] === "low";
   const F = (patch: Partial<FormState>) => setForm((s) => ({ ...s, ...patch }));
   const busy = phase === "scanning" || phase === "confirm" || phase === "error";
   const flaggedCount = rows.filter((r) => r.storeCheckStatus === "not_found").length;
+  // Change 2: the saved list re-renders by active tab (in-memory filter of the
+  // already-loaded rows — zero-poll, no refetch/timers).
+  const shown = tab === "wrong" ? rows.filter((r) => r.storeCheckStatus === "not_found") : rows;
   const progress = files.length > 1 ? { i: String(idx + 1), n: String(files.length) } : { i: "1", n: "1" };
 
   const timeOf = (iso: string): string => {
@@ -307,10 +342,10 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
           <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 9, lineHeight: 1.5 }}>{t.rd_ps2_x_hint}</div>
           <button
             onClick={() => void runExport()}
-            disabled={exportBusy || pendingCount === 0}
-            style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: "none", background: exportBusy || pendingCount === 0 ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: exportBusy || pendingCount === 0 ? "default" : "pointer" }}
+            disabled={exportBusy || readyCount === 0}
+            style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: "none", background: exportBusy || readyCount === 0 ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: exportBusy || readyCount === 0 ? "default" : "pointer" }}
             data-testid="ps-export-btn"
-          >📄 {exportBusy ? t.rd_ps2_x_exporting : tpl(t.rd_ps2_x_button, { n: String(pendingCount) })}</button>
+          >📄 {exportBusy ? t.rd_ps2_x_exporting : tpl(t.rd_ps2_x_button, { n: String(readyCount) })}</button>
           {exportErr && <div style={{ ...errTxt, marginTop: 8 }} data-testid="ps-export-err">{t.rd_ps2_x_failed} <span style={{ fontFamily: mono }}>{exportErr}</span></div>}
           {exportSummary && (
             <div style={{ marginTop: 10 }} data-testid="ps-export-summary">
@@ -333,9 +368,32 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
 
         {/* Saved list — read-on-open snapshot + local appends. Full queue = A2. */}
         <div style={card}>
-          <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 8 }}>{t.rd_ps2_saved} {rows.length > 0 && <span style={{ color: "var(--text-dim)", fontWeight: 700 }}>· {rows.length}</span>}</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 800 }}>{t.rd_ps2_saved} {rows.length > 0 && <span style={{ color: "var(--text-dim)", fontWeight: 700 }}>· {rows.length}</span>}</div>
+            {exportedCount > 0 && (
+              <button onClick={() => askDelete({ kind: "exported" })} style={{ padding: "4px 10px", borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text-dim)", fontSize: 10.5, fontWeight: 700, cursor: "pointer", flexShrink: 0 }} data-testid="ps-clear-exported">🗑 {t.rd_ps2_clear_exported}</button>
+            )}
+          </div>
+
+          {/* Two-tab segmented toggle (Change 2). */}
+          <div style={{ display: "flex", gap: 6, marginBottom: 10 }} data-testid="ps-tabs">
+            {([["all", `${t.rd_ps2_tab_all} · ${rows.length}`], ["wrong", `${t.rd_ps2_tab_wrong} · ${flaggedCount}`]] as const).map(([key, label]) => {
+              const on = tab === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setTab(key)}
+                  style={{ flex: 1, padding: "7px 8px", borderRadius: 9, border: on ? "1px solid var(--accent)" : "1px solid var(--border-strong)", background: on ? "var(--accent)" : "var(--surface-2)", color: on ? "#fff" : "var(--text-dim)", fontSize: 11.5, fontWeight: 800, cursor: "pointer" }}
+                  data-testid={`ps-tab-${key}`}
+                  aria-pressed={on}
+                >{label}</button>
+              );
+            })}
+          </div>
+
           {listLoaded && rows.length === 0 && <div style={{ fontSize: 12, color: "var(--text-dim)" }} data-testid="ps-empty">{t.rd_ps2_empty}</div>}
-          {rows.map((r) => {
+          {listLoaded && tab === "wrong" && rows.length > 0 && flaggedCount === 0 && <div style={{ fontSize: 12, color: "var(--text-dim)" }} data-testid="ps-wrong-empty">{t.rd_ps2_wrong_empty}</div>}
+          {shown.map((r) => {
             const badge = storeBadge(r.storeCheckStatus);
             const canRecheck = !r.id.startsWith("local-") && /^\d{6}$/.test(r.storeId) && (r.storeCheckStatus === "not_found" || r.storeCheckStatus === "unknown");
             return (
@@ -353,15 +411,34 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
                     </div>
                   )}
                 </div>
-                <div style={{ textAlign: "right", flexShrink: 0 }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 800, fontFamily: mono }}>{r.amount !== null ? `${cur}${r.amount.toLocaleString()}` : "—"}</div>
-                  <div style={{ fontSize: 10.5, color: "var(--text-dim)" }}>{timeOf(r.createdAt)}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 800, fontFamily: mono }}>{r.amount !== null ? `${cur}${r.amount.toLocaleString()}` : "—"}</div>
+                    <div style={{ fontSize: 10.5, color: "var(--text-dim)" }}>{timeOf(r.createdAt)}</div>
+                  </div>
+                  <button onClick={() => askDelete({ kind: "row", id: r.id })} aria-label={t.rd_ps2_delete_aria} style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-dim)", fontSize: 13, cursor: "pointer", lineHeight: 1 }} data-testid="ps-row-delete">🗑</button>
                 </div>
               </div>
             );
           })}
         </div>
       </div>
+
+      {/* Delete confirmation (Change 3) — matches PrinterModal/ExpiryModal tokens. */}
+      {confirm && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 1300, background: "rgba(9,7,24,.45)", display: "flex", alignItems: "flex-end", justifyContent: "center", padding: 16 }} data-testid="ps-confirm-overlay" onClick={() => { if (!deleting) setConfirm(null); }}>
+          <div style={{ width: "100%", maxWidth: 440, background: "var(--surface)", borderRadius: 22, padding: "22px 20px 20px", boxShadow: "0 -8px 40px rgba(0,0,0,.35)" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.5, color: "var(--text)" }} data-testid="ps-confirm-msg">
+              {confirm.kind === "exported" ? tpl(t.rd_ps2_clear_exported_q, { n: String(exportedCount) }) : t.rd_ps2_delete_row_q}
+            </div>
+            {deleteErr && <div style={{ ...errTxt, marginTop: 10 }} data-testid="ps-delete-err">{t.rd_ps2_delete_err} <span style={{ fontFamily: mono }}>{deleteErr}</span></div>}
+            <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+              <button onClick={() => setConfirm(null)} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13.5, cursor: deleting ? "default" : "pointer" }} data-testid="ps-confirm-cancel">{t.rd_ps2_cancel}</button>
+              <button onClick={() => void doDelete()} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--danger)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: deleting ? "default" : "pointer", opacity: deleting ? 0.7 : 1 }} data-testid="ps-confirm-delete">{t.rd_ps2_delete}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

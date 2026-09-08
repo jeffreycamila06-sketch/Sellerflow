@@ -1131,6 +1131,20 @@ const RAW: Record<string, Row> = {
   rd_ps2_x_bad_phone: { en: "invalid phone", fil: "invalid na telepono", zh: "电话无效", "zh-TW": "電話無效", vi: "số điện thoại không hợp lệ", th: "เบอร์ไม่ถูกต้อง", id: "telepon tidak valid" },
   rd_ps2_x_bad_store: { en: "store code not 6 digits", fil: "store code hindi 6 digits", zh: "门市代码非 6 位", "zh-TW": "門市代碼非 6 位", vi: "mã cửa hàng không đủ 6 số", th: "รหัสร้านไม่ครบ 6 หลัก", id: "kode toko bukan 6 digit" },
   rd_ps2_x_bad_amount: { en: "amount missing or out of range", fil: "walang halaga o wala sa saklaw", zh: "金额缺失或超出范围", "zh-TW": "金額缺漏或超出範圍", vi: "thiếu số tiền hoặc ngoài phạm vi", th: "ไม่มีจำนวนเงินหรือเกินช่วง", id: "jumlah kosong atau di luar rentang" },
+
+  // Saved-parcels tabs (Change 2). th/id = AI draft; zh-TW native-checked.
+  rd_ps2_tab_all: { en: "All", fil: "Lahat", zh: "全部", "zh-TW": "全部", vi: "Tất cả", th: "ทั้งหมด", id: "Semua" },
+  rd_ps2_tab_wrong: { en: "Wrong code", fil: "Maling code", zh: "错误代码", "zh-TW": "錯誤代碼", vi: "Sai mã", th: "รหัสผิด", id: "Kode salah" },
+  rd_ps2_wrong_empty: { en: "No wrong store codes — all good!", fil: "Walang maling store code — okay lahat!", zh: "没有错误的门市代码——一切正常！", "zh-TW": "沒有錯誤的門市代碼——一切正常！", vi: "Không có mã cửa hàng sai — tất cả ổn!", th: "ไม่มีรหัสร้านที่ผิด — เรียบร้อยดี!", id: "Tak ada kode toko salah — semua aman!" },
+
+  // Delete (Change 3), both confirmed. th/id = AI draft; zh-TW native-checked.
+  rd_ps2_delete: { en: "Delete", fil: "Burahin", zh: "删除", "zh-TW": "刪除", vi: "Xóa", th: "ลบ", id: "Hapus" },
+  rd_ps2_cancel: { en: "Cancel", fil: "Kanselahin", zh: "取消", "zh-TW": "取消", vi: "Hủy", th: "ยกเลิก", id: "Batal" },
+  rd_ps2_delete_aria: { en: "Delete parcel", fil: "Burahin ang parcel", zh: "删除包裹", "zh-TW": "刪除包裹", vi: "Xóa kiện", th: "ลบพัสดุ", id: "Hapus paket" },
+  rd_ps2_delete_row_q: { en: "Delete this parcel? This can't be undone.", fil: "Burahin ang parcel na ito? Hindi na ito maibabalik.", zh: "删除这个包裹吗？此操作无法撤销。", "zh-TW": "刪除這個包裹嗎？此操作無法復原。", vi: "Xóa kiện này? Không thể hoàn tác.", th: "ลบพัสดุนี้หรือไม่? ไม่สามารถย้อนกลับได้", id: "Hapus paket ini? Tindakan ini tidak bisa dibatalkan." },
+  rd_ps2_clear_exported: { en: "Clear exported", fil: "Burahin ang na-export", zh: "清除已导出", "zh-TW": "清除已匯出", vi: "Xóa đã xuất", th: "ล้างที่ส่งออกแล้ว", id: "Hapus yang diekspor" },
+  rd_ps2_clear_exported_q: { en: "Delete all {n} exported parcel(s)? This can't be undone.", fil: "Burahin ang lahat ng {n} na-export na parcel? Hindi na ito maibabalik.", zh: "删除全部 {n} 个已导出的包裹吗？此操作无法撤销。", "zh-TW": "刪除全部 {n} 個已匯出的包裹嗎？此操作無法復原。", vi: "Xóa tất cả {n} kiện đã xuất? Không thể hoàn tác.", th: "ลบพัสดุที่ส่งออกแล้วทั้งหมด {n} รายการหรือไม่? ไม่สามารถย้อนกลับได้", id: "Hapus semua {n} paket yang diekspor? Tindakan ini tidak bisa dibatalkan." },
+  rd_ps2_delete_err: { en: "Couldn't delete. Please try again.", fil: "Hindi nabura. Pakisubukan ulit.", zh: "删除失败，请重试。", "zh-TW": "刪除失敗，請重試。", vi: "Không xóa được. Vui lòng thử lại.", th: "ลบไม่สำเร็จ กรุณาลองใหม่", id: "Gagal menghapus. Silakan coba lagi." },
 };
 
 // Transpose RAW (key→langs) into REDESIGN_STRINGS (lang→keys).

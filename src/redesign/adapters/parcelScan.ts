@@ -329,3 +329,29 @@ export async function saveStoreCheck(rowId: string, status: StoreCheckStatus): P
     .eq("user_id", me);
   return error ? { ok: false, error: error.message } : { ok: true };
 }
+
+// ── Deletes (own-scoped via RLS; awaited, not fire-and-forget) ────────────────
+// Hard delete — the row is gone (parcel_scans_delete RLS = user_id = auth.uid(),
+// verified present). The caller AWAITS these and surfaces any error inline; a
+// failed delete must never be a silent no-op (the row stays, the caller shows
+// the error and does NOT prune it from the list).
+
+// Delete one saved parcel by id.
+export async function deleteParcelScan(id: string): Promise<{ ok: boolean; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
+  if (!id) return { ok: false, error: "no id" };
+  const me = await uid();
+  if (!me) return { ok: false, error: "not signed in" };
+  const { error } = await supabase.from("parcel_scans").delete().eq("id", id).eq("user_id", me);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+// Delete every already-exported parcel (status 'exported') for the owner. The
+// status filter + the RLS user_id scope mean only the caller's exported rows go.
+export async function deleteExportedParcels(): Promise<{ ok: boolean; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
+  const me = await uid();
+  if (!me) return { ok: false, error: "not signed in" };
+  const { error } = await supabase.from("parcel_scans").delete().eq("status", "exported").eq("user_id", me);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
