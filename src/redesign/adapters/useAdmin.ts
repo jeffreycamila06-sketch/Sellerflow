@@ -112,6 +112,69 @@ export function fitEditAccounts(plan: string, ttText: string, fbText: string): {
   return { tiktok: accountText(tt), facebook: accountText(fb) };
 }
 
+// ── Parcel Scan monitoring (read-only business analytics) ─────────────────────
+// MONEY CONSTANTS live HERE (client), NOT the DB, so they're a one-line tweak and
+// the adjustable SCAN_COST_NT can re-flow every figure live:
+//   CREDIT_PRICE_NT — what a seller pays per credit (revenue basis).
+//   SCAN_COST_NT    — API cost per scan (DEFAULT; the UI exposes it as an
+//                     adjustable what-if lever: Sonnet≈0.20, Haiku≈0.05).
+//   Revenue = credits_granted × CREDIT_PRICE_NT
+//   Cost    = scans × SCAN_COST_NT
+//   Profit  = Revenue − Cost
+export const CREDIT_PRICE_NT = 0.50;
+export const SCAN_COST_NT = 0.20;
+export const revenueNT = (creditsGranted: number): number => Math.max(0, Number(creditsGranted) || 0) * CREDIT_PRICE_NT;
+export const costNT = (scans: number, scanCost: number): number => Math.max(0, Number(scans) || 0) * Math.max(0, Number(scanCost) || 0);
+export const profitNT = (creditsGranted: number, scans: number, scanCost: number): number => revenueNT(creditsGranted) - costNT(scans, scanCost);
+
+export interface ParcelScanStatRow { email: string | null; balance: number; scansThisMonth: number; lastScanAt: string | null }
+export interface ParcelMonthRow { month: string; scans: number; creditsGranted: number }
+export interface ParcelScanOverview {
+  totalCredits: number;
+  scansThisMonth: number;
+  activeUsers: number;
+  technicalRefundsThisMonth: number;
+  creditsGrantedThisMonth: number;
+  monthly: ParcelMonthRow[];
+  rows: ParcelScanStatRow[];
+}
+
+// Calls the is_admin()-gated admin_parcel_scan_overview() RPC (a non-admin gets a
+// 'forbidden' raise → error here). Read-only; one call per panel open (zero poll).
+// Returns RAW counts; the view computes revenue/cost/profit from the constants
+// above so the adjustable SCAN_COST_NT re-flows the whole table.
+export async function getParcelScanOverview(): Promise<{ ok: boolean; data?: ParcelScanOverview; error?: string }> {
+  if (!supabase) return { ok: false, error: "unavailable" };
+  const { data, error } = await supabase.rpc("admin_parcel_scan_overview");
+  if (error) return { ok: false, error: error.message };
+  const j = data as {
+    summary?: { total_credits?: number; scans_this_month?: number; active_users?: number; technical_refunds_this_month?: number; credits_granted_this_month?: number };
+    monthly?: Array<{ month?: string; scans?: number; credits_granted?: number }>;
+    rows?: Array<{ email?: string | null; balance?: number; scans_this_month?: number; last_scan_at?: string | null }>;
+  } | null;
+  if (!j) return { ok: false, error: "empty" };
+  const s = j.summary || {};
+  const monthly = Array.isArray(j.monthly) ? j.monthly.map((r) => ({
+    month: String(r.month ?? ""),
+    scans: Number(r.scans) || 0,
+    creditsGranted: Number(r.credits_granted) || 0,
+  })) : [];
+  const rows = Array.isArray(j.rows) ? j.rows.map((r) => ({
+    email: r.email ?? null,
+    balance: Number(r.balance) || 0,
+    scansThisMonth: Number(r.scans_this_month) || 0,
+    lastScanAt: r.last_scan_at ?? null,
+  })) : [];
+  return { ok: true, data: {
+    totalCredits: Number(s.total_credits) || 0,
+    scansThisMonth: Number(s.scans_this_month) || 0,
+    activeUsers: Number(s.active_users) || 0,
+    technicalRefundsThisMonth: Number(s.technical_refunds_this_month) || 0,
+    creditsGrantedThisMonth: Number(s.credits_granted_this_month) || 0,
+    monthly, rows,
+  } };
+}
+
 export function useAdmin(adminEmail: string | undefined): AdminActions {
   const audit = useCallback((action: string, target: string, details: string) => {
     void saveAuditLog({ actorEmail: adminEmail || "admin", action, targetEmail: target, details });

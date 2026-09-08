@@ -19,8 +19,6 @@ const renderBroadcast = (remove: (id: string) => Promise<{ ok: boolean; error?: 
       <AdminPanel
         panel="broadcast"
         onClose={() => {}}
-        assignAmount=""
-        onAssignAmount={() => {}}
         cur="NT$"
         ann={{
           list,

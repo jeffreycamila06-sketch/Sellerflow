@@ -3,11 +3,11 @@
 // subscription buckets (active·expiring·free·expired) / notifications, plus a
 // full users-management panel (per-user plan + days, visual only). Sample data
 // only — no real seller management (Phase 5).
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useState, useEffect, type CSSProperties, type ReactNode } from "react";
 import { USERS, SUBS, PLAN_PRICE, initials, fmt, type Sub, type User } from "../data";
 import { headerBar, card, mono } from "../ui";
 import { planDaysLeft, daysDisplay, deriveSubBuckets, deriveUserBase, freeUsersSummary, sortUsersBySignup, auditActionColor, filterAuditLogs, sellerMatchesQuery, type ReadState, type SubBuckets, type FreeUserRow } from "../adapters/useReadData";
-import type { AdminActions, Plan } from "../adapters/useAdmin";
+import { getParcelScanOverview, revenueNT, costNT, profitNT, SCAN_COST_NT, type AdminActions, type Plan, type ParcelScanOverview } from "../adapters/useAdmin";
 import { maxAcc } from "../adapters/connect";
 import { getCreditBalanceForUser } from "../adapters/parcelScan";
 import type { AccountAuditLog, AccountUser } from "../../accountDb";
@@ -22,7 +22,6 @@ import { maxHourlyOrders, hourLabel, type PulseData, type PulseState } from "../
 import { pickLatestActive, type Announcement } from "../adapters/useAnnouncements";
 import { translateBroadcast } from "../adapters/broadcastTranslate";
 import { LANGS } from "../data";
-import { matchPlan } from "../../lib/planPricing";
 import { isAdminRole } from "../../lib/roles";
 import { confirmEmailMatches } from "../adapters/adminDelete";
 
@@ -32,7 +31,7 @@ const deadBtn: CSSProperties = { opacity: 0.45, cursor: "not-allowed" };
 const SampleNote = () => { const t = useT(); return <div style={{ marginBottom: 12 }}><SoonBadge label={t.rd_adm_sample_note} /></div>; };
 
 export type AdminPanelKind =
-  | "sellers" | "reports" | "system" | "broadcast"
+  | "sellers" | "reports" | "broadcast" | "parcelmon"
   | "subActive" | "subExpiring" | "subFree" | "subExpired" | "notifs" | "revenue" | "audit" | "userbase" | "pulse";
 
 const ctrlTile: CSSProperties = { display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "14px 6px", border: "1px solid var(--border)", borderRadius: 14, background: "var(--surface)", boxShadow: "var(--shadow)", cursor: "pointer" };
@@ -47,7 +46,7 @@ const cic = {
   sellers: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3.2" stroke="currentColor" strokeWidth="1.7" /><path d="M3.5 19a5.5 5.5 0 0 1 11 0" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6M17 14.3a5.5 5.5 0 0 1 3.5 4.7" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>,
   broadcast: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 10v4a1 1 0 0 0 1 1h3l5 4V5L8 9H5a1 1 0 0 0-1 1Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M17 8a5 5 0 0 1 0 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>,
   reports: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 19V11M10 19V5M15 19v-6M20 19V9" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" /></svg>,
-  system: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 6h14M5 12h14M5 18h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /><circle cx="9" cy="6" r="2" fill="var(--surface)" stroke="currentColor" strokeWidth="1.8" /><circle cx="15" cy="12" r="2" fill="var(--surface)" stroke="currentColor" strokeWidth="1.8" /><circle cx="9" cy="18" r="2" fill="var(--surface)" stroke="currentColor" strokeWidth="1.8" /></svg>,
+  parcelmon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 7.5 12 4l8 3.5v9L12 20l-8-3.5v-9Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="m4 7.5 8 3.5 8-3.5M12 11v9" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /></svg>,
   audit: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v14H6z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M9 13h6M9 16.5h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>,
   userbase: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3a9 9 0 1 0 9 9h-9V3Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" strokeWidth="1.7" opacity=".5" /></svg>,
   pulse: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 12h4l2.5-6 4 13 2.5-7H21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>,
@@ -106,14 +105,15 @@ export default function Admin({ onOpenPanel, cur, counts, live = false, userBase
           {/* Live Pulse — WEB-ONLY (hidden in the APK / phone shell, incl. iOS which
               carries Capacitor → isAppShell()). Activity counts only, no revenue. */}
           {!isAppShell() && <Ctrl icon={cic.pulse} label={t.rd_pulse_ctrl} onClick={() => onOpenPanel("pulse")} />}
-          <Ctrl icon={cic.userbase} label={t.rd_adm_ctrl_userbase} onClick={() => onOpenPanel("userbase")} />
           <Ctrl icon={cic.sellers} label={t.rd_adm_ctrl_sellers} onClick={() => onOpenPanel("sellers")} />
           {/* C2 (audit) — the Plans/Payments panels were removed: they only ever
               rendered fabricated sample data (no payments backend by design —
-              subscriptions are Wise+Telegram outside the app). */}
+              subscriptions are Wise+Telegram outside the app). The User Base +
+              System tiles were removed too (User Base is still reachable from the
+              top stat card; System was a fabricated assign-amount tool). */}
           <Ctrl icon={cic.broadcast} label={t.rd_adm_ctrl_broadcast} onClick={() => onOpenPanel("broadcast")} />
           <Ctrl icon={cic.reports} label={t.rd_adm_ctrl_reports} onClick={() => onOpenPanel("reports")} />
-          <Ctrl icon={cic.system} label={t.rd_adm_ctrl_system} onClick={() => onOpenPanel("system")} />
+          <Ctrl icon={cic.parcelmon} label={t.rd_adm_ctrl_parcel} onClick={() => onOpenPanel("parcelmon")} />
           <Ctrl icon={cic.audit} label={t.rd_adm_ctrl_audit} onClick={() => onOpenPanel("audit")} />
         </div>
       </div>
@@ -124,7 +124,7 @@ export default function Admin({ onOpenPanel, cur, counts, live = false, userBase
 // ── Admin control bottom-sheet (overlay; rendered at the phone root) ─────────
 const panelTitle = (t: RedesignT, k: AdminPanelKind): string => ({
   sellers: t.rd_adm_pt_sellers, reports: t.rd_adm_pt_reports,
-  system: t.rd_adm_pt_system, broadcast: t.rd_adm_ctrl_broadcast, subActive: t.rd_adm_pt_subActive,
+  parcelmon: t.rd_adm_pt_parcel, broadcast: t.rd_adm_ctrl_broadcast, subActive: t.rd_adm_pt_subActive,
   subExpiring: t.rd_adm_pt_subExpiring, subFree: t.rd_adm_pt_subFree, subExpired: t.rd_adm_pt_subExpired,
   revenue: t.rd_adm_pt_revenue, notifs: t.rd_adm_notifications, audit: t.rd_adm_pt_audit, userbase: t.rd_adm_user_base,
   pulse: t.rd_pulse_title,
@@ -223,6 +223,139 @@ function SubList({ list, statusLabel, statusColor, note, showPlan = true }: { li
   );
 }
 
+// Parcel Scan monitoring — read-only business analytics. Raw counts from the
+// is_admin()-gated admin_parcel_scan_overview RPC (read-on-open, zero poll); all
+// money math (revenue/cost/profit) is CLIENT-SIDE from CREDIT_PRICE_NT and the
+// adjustable SCAN_COST_NT so the what-if lever re-flows every figure live.
+function ParcelMonPanel() {
+  const t = useT();
+  const [data, setData] = useState<ParcelScanOverview | null>(null);
+  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const [scanCostInput, setScanCostInput] = useState(SCAN_COST_NT.toFixed(2)); // adjustable what-if
+  useEffect(() => {
+    // state already inits to "loading"; only the async result flips it (no
+    // synchronous setState in the effect body — cascading-render lint).
+    let alive = true;
+    void getParcelScanOverview().then((r) => {
+      if (!alive) return;
+      if (r.ok && r.data) { setData(r.data); setState("ready"); } else setState("error");
+    });
+    return () => { alive = false; };
+  }, []);
+
+  const scanCost = Number(scanCostInput) || 0;
+  const nt = (n: number) => `NT$${(Number(n) || 0).toFixed(2)}`;
+  const s = data;
+  const statCard: CSSProperties = { flex: 1, minWidth: 0, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 13, padding: "11px 12px" };
+  const statNum: CSSProperties = { fontFamily: mono, fontWeight: 800, fontSize: 20, color: "var(--text)", marginTop: 2 };
+  const statLbl: CSSProperties = { fontSize: 10.5, color: "var(--text-muted)", fontWeight: 600 };
+  const cell: CSSProperties = { fontFamily: mono, fontSize: 11.5, textAlign: "right", padding: "6px 6px", whiteSpace: "nowrap" };
+  const hcell: CSSProperties = { fontSize: 10, color: "var(--text-muted)", fontWeight: 700, textAlign: "right", padding: "0 6px 6px", whiteSpace: "nowrap" };
+  const lastScan = (iso: string | null): string => {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return Number.isFinite(d.getTime()) ? d.toLocaleString(undefined, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+  };
+
+  if (state === "loading") return <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "8px 2px" }} data-testid="pm-loading">{t.rd_adm_pm_loading}</div>;
+  if (state === "error" || !s) return <div style={{ fontSize: 12.5, color: "var(--danger)", padding: "8px 2px" }} data-testid="pm-error">{t.rd_adm_pm_error}</div>;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }} data-testid="pm-panel">
+      {/* Adjustable API-cost lever (client-only what-if; re-flows cost/profit live). */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 11, padding: "9px 12px" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_adm_pm_scan_cost}</div>
+          <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 1 }}>{t.rd_adm_pm_scan_cost_hint}</div>
+        </div>
+        <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>NT$</span>
+        <input value={scanCostInput} onChange={(e) => setScanCostInput(e.target.value.replace(/[^0-9.]/g, ""))} inputMode="decimal" style={{ width: 64, padding: "6px 8px", border: "1.3px solid var(--accent)", borderRadius: 8, background: "var(--surface)", color: "var(--text)", fontFamily: mono, fontSize: 12.5, fontWeight: 700, outline: "none", textAlign: "right" }} data-testid="pm-scan-cost" />
+      </div>
+
+      {/* A) THIS-MONTH SUMMARY */}
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 800, color: "var(--text)", marginBottom: 8 }}>{t.rd_adm_pm_this_month}</div>
+        <div style={{ display: "flex", gap: 9, marginBottom: 9 }}>
+          <div style={statCard}><div style={statLbl}>{t.rd_adm_pm_credits_out}</div><div style={statNum} data-testid="pm-total-credits">{s.totalCredits}</div></div>
+          <div style={statCard}><div style={statLbl}>{t.rd_adm_pm_scans}</div><div style={statNum} data-testid="pm-scans-month">{s.scansThisMonth}</div></div>
+          <div style={statCard}><div style={statLbl}>{t.rd_adm_pm_active}</div><div style={statNum}>{s.activeUsers}</div></div>
+        </div>
+        <div style={{ display: "flex", gap: 9, marginBottom: 9 }}>
+          <div style={statCard}><div style={statLbl}>{t.rd_adm_pm_tech_refunds}</div><div style={{ ...statNum, fontSize: 17 }} data-testid="pm-tech-refunds">{s.technicalRefundsThisMonth}</div></div>
+          {/* Bad-photo (charged, not refunded) is NOT derivable from the ledger — honest "—". */}
+          <div style={statCard}><div style={statLbl}>{t.rd_adm_pm_badphoto}</div><div style={{ ...statNum, fontSize: 17, color: "var(--text-muted)" }} data-testid="pm-badphoto">—</div></div>
+        </div>
+        <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.5, marginBottom: 10 }} data-testid="pm-badphoto-note">{t.rd_adm_pm_badphoto_note}</div>
+        {/* Revenue / Cost / Profit (this month) */}
+        <div style={{ display: "flex", gap: 9 }}>
+          <div style={statCard}><div style={statLbl}>{t.rd_adm_pm_revenue}</div><div style={{ ...statNum, fontSize: 16, color: "var(--ok)" }} data-testid="pm-revenue">{nt(revenueNT(s.creditsGrantedThisMonth))}</div></div>
+          <div style={statCard}><div style={statLbl}>{t.rd_adm_pm_cost}</div><div style={{ ...statNum, fontSize: 16, color: "var(--warn)" }} data-testid="pm-cost">{nt(costNT(s.scansThisMonth, scanCost))}</div></div>
+          <div style={statCard}><div style={statLbl}>{t.rd_adm_pm_profit}</div><div style={{ ...statNum, fontSize: 16, color: "var(--accent-fg)" }} data-testid="pm-profit">{nt(profitNT(s.creditsGrantedThisMonth, s.scansThisMonth, scanCost))}</div></div>
+        </div>
+      </div>
+
+      {/* B) MONTHLY HISTORY */}
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 800, color: "var(--text)", marginBottom: 8 }}>{t.rd_adm_pm_history}</div>
+        {s.monthly.length === 0 ? (
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t.rd_adm_pm_no_activity}</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 340 }} data-testid="pm-history">
+              <thead><tr>
+                <th style={{ ...hcell, textAlign: "left" }}>{t.rd_adm_pm_col_month}</th>
+                <th style={hcell}>{t.rd_adm_pm_col_scans}</th>
+                <th style={hcell}>{t.rd_adm_pm_col_credits}</th>
+                <th style={hcell}>{t.rd_adm_pm_col_revenue}</th>
+                <th style={hcell}>{t.rd_adm_pm_col_cost}</th>
+                <th style={hcell}>{t.rd_adm_pm_col_profit}</th>
+              </tr></thead>
+              <tbody>
+                {s.monthly.map((m) => {
+                  const profit = profitNT(m.creditsGranted, m.scans, scanCost);
+                  return (
+                    <tr key={m.month} style={{ borderTop: "1px solid var(--border)" }} data-testid="pm-history-row">
+                      <td style={{ ...cell, textAlign: "left", fontWeight: 700 }}>{m.month}</td>
+                      <td style={cell}>{m.scans}</td>
+                      <td style={cell}>{m.creditsGranted}</td>
+                      <td style={{ ...cell, color: "var(--ok)" }}>{nt(revenueNT(m.creditsGranted))}</td>
+                      <td style={{ ...cell, color: "var(--warn)" }}>{nt(costNT(m.scans, scanCost))}</td>
+                      <td style={{ ...cell, fontWeight: 700, color: profit >= 0 ? "var(--accent-fg)" : "var(--danger)" }}>{nt(profit)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* C) PER-SELLER LIST */}
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 800, color: "var(--text)", marginBottom: 8 }}>{t.rd_adm_pm_per_seller}</div>
+        {s.rows.length === 0 ? (
+          <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{t.rd_adm_pm_no_activity}</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+            {s.rows.map((r, i) => (
+              <div key={r.email || i} style={{ display: "flex", alignItems: "center", gap: 11, padding: "11px 12px", border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface-2)" }} data-testid="pm-seller-row">
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.email || "—"}</div>
+                  <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 1 }}>{tpl(t.rd_adm_pm_last_scan, { d: lastScan(r.lastScanAt) })}</div>
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ fontFamily: mono, fontSize: 12.5, fontWeight: 800, color: "var(--text)" }}>{tpl(t.rd_adm_pm_bal, { n: r.balance })}</div>
+                  <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 1 }}>{tpl(t.rd_adm_pm_scans_n, { n: r.scansThisMonth })}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Business Pulse — WEB-ONLY admin activity view. Counts + timestamps only (NO
 // prices/revenue → coexists with the iOS payment-hiding gate). Data from the
 // admin_business_pulse RPC; read-on-open + manual Refresh (zero polling).
@@ -313,7 +446,7 @@ function PulsePanel({ pulse, state, onRefresh }: { pulse: PulseData | null; stat
   );
 }
 
-export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, users = USERS, usersState = "sample", rawByEmail = {}, actions, onChanged, freeUsers = [], freeUsersState = "sample", auditLogs = [], auditState = "sample", onOpenPanel, pulse = null, pulseState = "idle", onRefreshPulse, ann, onToast }: { panel: AdminPanelKind; onClose: () => void; assignAmount: string; onAssignAmount: (v: string) => void; cur: string; users?: User[]; usersState?: ReadState; rawByEmail?: Record<string, AccountUser>; actions?: AdminActions; onChanged?: () => void; freeUsers?: FreeUserRow[]; freeUsersState?: ReadState; auditLogs?: AccountAuditLog[]; auditState?: ReadState; onOpenPanel?: (k: AdminPanelKind) => void; pulse?: PulseData | null; pulseState?: PulseState; onRefreshPulse?: () => void; ann?: { list: Announcement[]; loading?: boolean; publish: (m: string, i18n?: Record<string, string> | null) => Promise<{ ok: boolean; error?: string }>; unpublish: (id: string) => Promise<{ ok: boolean; error?: string }>; remove: (id: string) => Promise<{ ok: boolean; error?: string }> }; onToast?: (msg: string, kind: "ok" | "err") => void }) {
+export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "sample", rawByEmail = {}, actions, onChanged, freeUsers = [], freeUsersState = "sample", auditLogs = [], auditState = "sample", onOpenPanel, pulse = null, pulseState = "idle", onRefreshPulse, ann, onToast }: { panel: AdminPanelKind; onClose: () => void; cur: string; users?: User[]; usersState?: ReadState; rawByEmail?: Record<string, AccountUser>; actions?: AdminActions; onChanged?: () => void; freeUsers?: FreeUserRow[]; freeUsersState?: ReadState; auditLogs?: AccountAuditLog[]; auditState?: ReadState; onOpenPanel?: (k: AdminPanelKind) => void; pulse?: PulseData | null; pulseState?: PulseState; onRefreshPulse?: () => void; ann?: { list: Announcement[]; loading?: boolean; publish: (m: string, i18n?: Record<string, string> | null) => Promise<{ ok: boolean; error?: string }>; unpublish: (id: string) => Promise<{ ok: boolean; error?: string }>; remove: (id: string) => Promise<{ ok: boolean; error?: string }> }; onToast?: (msg: string, kind: "ok" | "err") => void }) {
   const t = useT();
   // Real subscription buckets (derived) when the users list is live; else sample.
   const realSubs = usersState === "live" || usersState === "empty";
@@ -642,26 +775,7 @@ export function AdminPanel({ panel, onClose, assignAmount, onAssignAmount, cur, 
             </div>
           )}
 
-          {panel === "system" && (
-            <div>
-              <SampleNote />
-              <div style={{ fontSize: 12.5, color: "var(--text-dim)", lineHeight: 1.5, marginBottom: 15 }}>{t.rd_adm_sys_desc_pre}<strong>{t.rd_adm_pt_sellers}</strong>{t.rd_adm_sys_desc_post}</div>
-              <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 6 }}>{t.rd_adm_amount_paid}</label>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", padding: "0 13px", marginBottom: 14 }}>
-                <span style={{ fontFamily: mono, fontSize: 15, fontWeight: 700, color: "var(--text-muted)" }}>{cur}</span>
-                <input value={assignAmount} onChange={(e) => onAssignAmount(e.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" style={{ flex: 1, border: "none", background: "transparent", color: "var(--text)", fontFamily: mono, fontSize: 15, fontWeight: 700, padding: "12px 0", outline: "none" }} />
-              </div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--accent-soft)", border: "1px solid var(--accent)", borderRadius: 13, padding: "13px 15px", marginBottom: 16 }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-dim)" }}>{t.rd_adm_matched_plan}</span>
-                <span style={{ fontFamily: "var(--font-display)", fontSize: 16, fontWeight: 700, color: "var(--accent-fg)" }}>{matchPlan(assignAmount)}</span>
-              </div>
-              <label style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 6 }}>{t.rd_adm_assign_seller}</label>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", padding: "12px 13px", marginBottom: 16 }}>
-                <span style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text-muted)" }}>{t.rd_adm_select_seller}</span><span style={{ color: "var(--text-muted)" }}>▾</span>
-              </div>
-              <button disabled title={t.rd_adm_coming_soon} style={{ ...sheetBtn, ...deadBtn }}>{tpl(t.rd_adm_grant, { plan: matchPlan(assignAmount) })}</button>
-            </div>
-          )}
+          {panel === "parcelmon" && <ParcelMonPanel />}
 
           {panel === "broadcast" && (
             <div>
