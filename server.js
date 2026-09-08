@@ -776,9 +776,15 @@ app.post("/admin/parcel-scan", requireAuth, requireAdmin, express.json({ limit: 
     ...(PARCEL_SCAN_MODEL ? { model: PARCEL_SCAN_MODEL } : {}),
   });
   if (!result.ok) {
-    // Raw model reply → server console ONLY (never the client), for diagnosing
-    // recurring parse failures — the broadcast-translate convention.
-    console.log(`[PARCEL_SCAN] FAIL error=${result.error}${result.raw ? ` raw=${JSON.stringify(result.raw)}` : ""}`);
+    // Server console ONLY (never the client). Two findable lines per failure:
+    // FAIL carries error + stop_reason + Anthropic HTTP status; RAW carries the
+    // bounded reply snippet, JSON-stringified so newlines can't split the line.
+    // (result.raw !== undefined — not truthy — so an EMPTY reply still logs
+    // RAW "" instead of silently vanishing, the bug that hid the first outage.)
+    console.log(`[PARCEL_SCAN] FAIL error=${result.error} stop_reason=${result.stopReason || "-"} http=${result.httpStatus ?? "-"}`);
+    if (result.raw !== undefined) {
+      console.log(`[PARCEL_SCAN] RAW ${JSON.stringify(String(result.raw).slice(0, 500))}`);
+    }
     const status = result.error === "empty_image" || result.error === "bad_media_type" ? 400 : 502;
     return res.status(status).json({ success: false, error: result.error });
   }
