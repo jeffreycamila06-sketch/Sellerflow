@@ -174,9 +174,23 @@ export async function loadParcelScans(): Promise<{ ok: boolean; rows: ParcelScan
   return { ok: true, rows: (data ?? []).map((r) => rowToScan(r as Record<string, unknown>)) };
 }
 
+const newParcelId = (): string =>
+  typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
 // One INSERT per confirmed parcel — status 'confirmed', the model's raw
 // fields+confidence kept in raw_extraction for later accuracy tuning. Returns
 // the new row id so the caller can attach the async E-Map store-code verdict.
+//
+// ⚠️ FIRE-FIX (2026-09-08): the id is generated CLIENT-SIDE and inserted, and
+// we use a BARE .insert() — NOT the previous `.insert(...).select("id").single()`
+// chain. That chain (the ONLY .select()-after-insert in the whole codebase — every
+// other adapter uses a bare insert) returned ok:false on the real supabase-js
+// path even though the row committed, so the caller's `if (r.id)` guard never
+// passed and the store-code check NEVER FIRED (zero POSTs to /admin/parcel-emap-
+// check in prod). With a client-supplied id the guard always passes on a real
+// save, and the id matches the row (so saveStoreCheck's .eq("id") updates it).
+// The parcel_scans.id column defaults to gen_random_uuid() but accepts a
+// supplied uuid; RLS insert check (user_id = auth.uid()) is unaffected.
 export async function saveParcelScan(
   fields: ScanFields,
   rawExtraction: { fields: ScanFields; confidence?: Record<keyof ScanFields, ScanConfidence> } | null,
@@ -184,7 +198,9 @@ export async function saveParcelScan(
   if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
   const me = await uid();
   if (!me) return { ok: false, error: "not signed in" };
-  const { data, error } = await supabase.from("parcel_scans").insert({
+  const id = newParcelId();
+  const { error } = await supabase.from("parcel_scans").insert({
+    id,
     user_id: me,
     customer_name: fields.name,
     phone: fields.phone,
@@ -193,9 +209,9 @@ export async function saveParcelScan(
     notes: fields.notes,
     status: "confirmed",
     raw_extraction: rawExtraction,
-  }).select("id").single();
+  });
   if (error) return { ok: false, error: error.message };
-  return { ok: true, id: data ? String(data.id) : undefined };
+  return { ok: true, id };
 }
 
 // ── E-Map store-code check (best-effort; never blocks) ────────────────────────
