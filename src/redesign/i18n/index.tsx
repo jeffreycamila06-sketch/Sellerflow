@@ -1112,6 +1112,12 @@ const RAW: Record<string, Row> = {
   rd_ps2_saved: { en: "Saved parcels", fil: "Mga na-save na parcel", zh: "已保存的包裹", "zh-TW": "已儲存的包裹", vi: "Kiện đã lưu", th: "พัสดุที่บันทึกแล้ว", id: "Paket tersimpan" },
   rd_ps2_empty: { en: "No saved parcels yet. Scan your first slip above.", fil: "Wala pang na-save na parcel. I-scan ang unang slip sa itaas.", zh: "还没有已保存的包裹。请先在上方扫描第一张包裹单。", "zh-TW": "還沒有已儲存的包裹。請先在上方掃描第一張包裹單。", vi: "Chưa có kiện nào. Hãy quét phiếu đầu tiên ở trên.", th: "ยังไม่มีพัสดุที่บันทึก สแกนใบแรกด้านบน", id: "Belum ada paket tersimpan. Pindai slip pertama di atas." },
   rd_ps2_saved_toast: { en: "Parcel saved", fil: "Na-save ang parcel", zh: "包裹已保存", "zh-TW": "包裹已儲存", vi: "Đã lưu kiện", th: "บันทึกพัสดุแล้ว", id: "Paket disimpan" },
+  // Parcel Scan A2 — 7-11 E-Map store-code check badges (⚠️ zh-TW/th/id AI drafts)
+  rd_ps2_store_bad: { en: "Wrong store code", fil: "Maling store code", zh: "门市代码错误", "zh-TW": "門市代碼錯誤", vi: "Sai mã cửa hàng", th: "รหัสร้านผิด", id: "Kode toko salah" },
+  rd_ps2_store_unknown: { en: "Can't verify store", fil: "Hindi ma-verify ang store", zh: "无法验证门市", "zh-TW": "無法驗證門市", vi: "Không xác minh được cửa hàng", th: "ตรวจสอบร้านไม่ได้", id: "Tak bisa verifikasi toko" },
+  rd_ps2_store_checking: { en: "Checking store…", fil: "Chine-check ang store…", zh: "正在验证门市…", "zh-TW": "正在驗證門市…", vi: "Đang kiểm tra cửa hàng…", th: "กำลังตรวจสอบร้าน…", id: "Memeriksa toko…" },
+  rd_ps2_recheck: { en: "Re-check", fil: "I-check ulit", zh: "重新验证", "zh-TW": "重新驗證", vi: "Kiểm tra lại", th: "ตรวจใหม่", id: "Periksa lagi" },
+  rd_ps2_attention: { en: "{n} parcel(s) need attention (wrong store code)", fil: "{n} parcel ang kailangang tingnan (maling store code)", zh: "{n} 个包裹需要注意（门市代码错误）", "zh-TW": "{n} 個包裹需要注意（門市代碼錯誤）", vi: "{n} kiện cần chú ý (sai mã cửa hàng)", th: "{n} พัสดุต้องตรวจสอบ (รหัสร้านผิด)", id: "{n} paket perlu diperiksa (kode toko salah)" },
 };
 
 // Transpose RAW (key→langs) into REDESIGN_STRINGS (lang→keys).
