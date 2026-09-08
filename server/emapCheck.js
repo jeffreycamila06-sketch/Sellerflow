@@ -23,6 +23,42 @@ export const EMAP_LOOKUP_COMMAND = process.env.EMAP_LOOKUP_COMMAND || "SearchSto
 export const EMAP_LOOKUP_PARAM = process.env.EMAP_LOOKUP_PARAM || "StoreName";
 export const EMAP_TIMEOUT_MS = Number(process.env.EMAP_TIMEOUT_MS) || 5000;
 
+// ── Query-shape variant (EMAP_LOOKUP_VARIANT, default "id") ───────────────────
+// The 6-digit store CODE goes in the wrong field with StoreName= (that field is
+// for the store NAME / wildcard), which is why SearchStore returned 連線成功 but
+// ZERO <GeoPosition>. A real working lookup used the full SearchStore param set
+// with the code in the ID field. Variants (env-selectable, no redeploy):
+//   "id"        — commandid=SearchStore, ID=<code>, all other known fields
+//                 blank/False (the working full param set). DEFAULT.
+//   "storename" — commandid=<command>, <param>=<code> (the old single-field
+//                 shape; <param> = EMAP_LOOKUP_PARAM so ANY field is env-tunable).
+//   "both"      — try "id"; if it returns 0 <GeoPosition>, retry once "storename".
+export const EMAP_LOOKUP_VARIANT = String(process.env.EMAP_LOOKUP_VARIANT || "id").toLowerCase();
+
+// The named fields present in the known-working SearchStore call, all sent
+// blank/False except the ID (the code). Extra/unknown fields are ignored by
+// E-Map; the discriminator is ID. Owner can still switch to "storename" +
+// EMAP_LOOKUP_PARAM to drop the code into any other single field from env.
+export function emapBody(variant, id, command, param) {
+  const enc = encodeURIComponent;
+  if (variant === "storename") {
+    return `commandid=${enc(command)}&${enc(param)}=${enc(id)}`;
+  }
+  // "id" (default): full param set, code in ID, everything else blank/False.
+  return [
+    `commandid=${enc(command)}`,
+    `ID=${enc(id)}`,
+    "StoreName=", "address=", "roadname=", "city=", "town=", "SpecialStore_Kind=",
+    "is7WiFi=False", "isATM=False",
+  ].join("&");
+}
+
+// Count store nodes in a decoded E-Map body (the "both" retry gate + logging).
+export function countPois(text) {
+  const m = String(text || "").match(/<GeoPosition[\s>]/gi);
+  return m ? m.length : 0;
+}
+
 // AUDIT S1 cry-wolf gate: until the owner has confirmed on Render that a known-
 // valid code (e.g. 982063) returns a real store match (the request/parse shape
 // could not be verified in the build sandbox — egress-blocked), a wrong query
@@ -87,29 +123,13 @@ export function parseEmapVerdict(storeId, xml) {
   return looksXml ? { status: "not_found" } : { status: "unknown" };
 }
 
-// Full lookup. fetchImpl injectable for tests; defaults to global fetch (Node
-// 20+ on Render). Returns { storeId, status, storeName?, address?, raw? } where
-// raw (bounded) is present on not_found/unknown for SERVER-console logging only
-// — never forwarded to the client. Never throws.
-export async function checkEmapStore(storeId, opts = {}) {
-  const id = String(storeId || "").trim();
-  const {
-    fetchImpl = fetch,
-    timeoutMs = EMAP_TIMEOUT_MS,
-    endpoint = EMAP_ENDPOINT,
-    command = EMAP_LOOKUP_COMMAND,
-    param = EMAP_LOOKUP_PARAM,
-    confirmed = EMAP_CHECK_CONFIRMED,
-  } = opts;
-
-  if (!/^\d{6}$/.test(id)) return { storeId: id, status: "unknown" }; // malformed → never a verdict
-
-  // AUDIT B1: the abort timer must span BOTH the fetch AND the body read.
-  // fetch() resolves on HEADERS, but the body is read below via arrayBuffer();
-  // clearing the timer between them would leave a slow/stalled body with no
-  // ceiling. One try/finally around the whole exchange keeps abort live until
-  // the body is fully read (an abort mid-body rejects arrayBuffer() → caught →
-  // read_error → unknown), and clears the timer on every exit path.
+// One fetch+decode attempt, timer spanning BOTH the fetch AND the body read.
+// AUDIT B1: fetch() resolves on HEADERS; the body is read via arrayBuffer()
+// below, so the abort timer must stay live until the body is fully read
+// (an abort mid-body rejects arrayBuffer() → read_error → unknown). One
+// try/finally clears the timer on every exit path. Returns { ok, text } or
+// { ok:false, raw }. Never throws.
+async function fetchEmapText(body, { fetchImpl, timeoutMs, endpoint }) {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
   try {
@@ -118,41 +138,69 @@ export async function checkEmapStore(storeId, opts = {}) {
       resp = await fetchImpl(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: `commandid=${encodeURIComponent(command)}&${encodeURIComponent(param)}=${encodeURIComponent(id)}`,
+        body,
         signal: ctl.signal,
       });
     } catch (e) {
-      // Timeout (abort) or network error → unknown, best-effort. Never block.
-      return { storeId: id, status: "unknown", raw: `fetch_error:${(e && e.message) || String(e)}` };
+      return { ok: false, raw: `fetch_error:${(e && e.message) || String(e)}` };
     }
-
-    if (!resp || !resp.ok) {
-      return { storeId: id, status: "unknown", raw: `http_${resp ? resp.status : "no_response"}` };
-    }
-
-    let text;
+    if (!resp || !resp.ok) return { ok: false, raw: `http_${resp ? resp.status : "no_response"}` };
     try {
       const buf = await resp.arrayBuffer(); // still under the abort timer (B1)
-      text = decodeEmapBytes(buf);
+      return { ok: true, text: decodeEmapBytes(buf) };
     } catch (e) {
-      // Includes an abort DURING a slow/stalled body → resolves to unknown, never hangs.
-      return { storeId: id, status: "unknown", raw: `read_error:${(e && e.message) || String(e)}` };
+      return { ok: false, raw: `read_error:${(e && e.message) || String(e)}` };
     }
-
-    const verdict = parseEmapVerdict(id, text);
-    // AUDIT S1: downgrade not_found → unknown until the shape is confirmed.
-    const status = verdict.status === "not_found" && !confirmed ? "unknown" : verdict.status;
-    const out = { storeId: id, status };
-    if (verdict.storeName) out.storeName = verdict.storeName;
-    if (verdict.address) out.address = verdict.address;
-    if (verdict.status === "not_found" && !confirmed) out.note = "unconfirmed_downgrade";
-    // Raw (bounded) for SERVER-console logging only — never forwarded to the
-    // client. Attach on any non-valid verdict (as before) AND on a valid verdict
-    // while UNCONFIRMED, so the owner gets a positive "[EMAP_CHECK] valid store=
-    // 982063" + RAW confirmation to prove the shape before flipping the gate.
-    if (verdict.status !== "valid" || !confirmed) out.raw = clip(text, RAW_SNIPPET);
-    return out;
   } finally {
     clearTimeout(timer);
   }
+}
+
+// Full lookup. fetchImpl injectable for tests; defaults to global fetch (Node
+// 20+ on Render). Returns { storeId, status, variant, pois, storeName?,
+// address?, raw?, note? }; raw/variant/pois are for SERVER-console logging only
+// (the route logs them), never forwarded to the client. Never throws.
+export async function checkEmapStore(storeId, opts = {}) {
+  const id = String(storeId || "").trim();
+  const {
+    fetchImpl = fetch,
+    timeoutMs = EMAP_TIMEOUT_MS,
+    endpoint = EMAP_ENDPOINT,
+    command = EMAP_LOOKUP_COMMAND,
+    param = EMAP_LOOKUP_PARAM,
+    variant = EMAP_LOOKUP_VARIANT,
+    confirmed = EMAP_CHECK_CONFIRMED,
+  } = opts;
+
+  if (!/^\d{6}$/.test(id)) return { storeId: id, status: "unknown", variant, pois: 0 }; // malformed → never a verdict
+
+  // "both" → id then storename (retry only when id yields 0 GeoPosition);
+  // "storename" → just storename; anything else → just id (the safe primary).
+  const order = variant === "both" ? ["id", "storename"] : [variant === "storename" ? "storename" : "id"];
+
+  let last = null;
+  for (const v of order) {
+    const r = await fetchEmapText(emapBody(v, id, command, param), { fetchImpl, timeoutMs, endpoint });
+    if (!r.ok) {
+      // Hard failure (timeout/network/http/read) → unknown, best-effort. Never block.
+      return { storeId: id, status: "unknown", variant: v, pois: 0, raw: r.raw };
+    }
+    const pois = countPois(r.text);
+    last = { v, text: r.text, pois, verdict: parseEmapVerdict(id, r.text) };
+    if (pois > 0) break; // got store data — stop (no need to try the next variant)
+  }
+
+  const { v, text, pois, verdict } = last;
+  // AUDIT S1: downgrade not_found → unknown until the shape is confirmed.
+  const status = verdict.status === "not_found" && !confirmed ? "unknown" : verdict.status;
+  const out = { storeId: id, status, variant: v, pois };
+  if (verdict.storeName) out.storeName = verdict.storeName;
+  if (verdict.address) out.address = verdict.address;
+  if (verdict.status === "not_found" && !confirmed) out.note = "unconfirmed_downgrade";
+  // Raw (bounded) for SERVER-console logging only — never forwarded to the
+  // client. Attach on any non-valid verdict AND on a valid verdict while
+  // UNCONFIRMED, so the owner gets a positive "[EMAP_CHECK] ... result=valid
+  // pois=1" + RAW confirmation to prove the shape before flipping the gate.
+  if (verdict.status !== "valid" || !confirmed) out.raw = clip(text, RAW_SNIPPET);
+  return out;
 }
