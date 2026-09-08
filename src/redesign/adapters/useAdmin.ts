@@ -97,6 +97,9 @@ export interface AdminActions {
   // Set the admin contact note (seller_profiles.admin_contact_note) — mirrors
   // App.tsx saveContactNote (3170-3180). "<platform>:<name>" or "" to clear.
   setContactNote: (email: string, note: string) => Promise<AdminResult>;
+  // Grant Scan Credits (manual Wise/Telegram top-up). Calls the is_admin()-gated
+  // grant_parcel_credit RPC + writes an audit row. Returns the new balance.
+  addCredits: (email: string, amount: number) => Promise<AdminResult & { balance?: number }>;
 }
 
 // PURE — parse + plan-cap split, copied VERBATIM from App.tsx saveEditSeller
@@ -208,5 +211,24 @@ export function useAdmin(adminEmail: string | undefined): AdminActions {
     } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "error" }; }
   }, [audit]);
 
-  return { changePlan, setRole, expire, setPassword, removeUser, addDays, editAccounts, setContactNote };
+  // Grant Scan Credits — the manual top-up after a Wise/Telegram payment. The
+  // grant_parcel_credit RPC is is_admin()-gated server-side (raises 'forbidden'
+  // before any write for a non-admin), so this is the same "the DB gates it"
+  // posture as adminUpdatePlan. Audit mirrors the plan-change pattern.
+  const addCredits = useCallback(async (email: string, amount: number): Promise<AdminResult & { balance?: number }> => {
+    if (!supabase) return { ok: false, error: "Credit service unavailable" };
+    if (!Number.isFinite(amount) || amount <= 0) return { ok: false, error: "Amount must be greater than 0" };
+    try {
+      const { data, error } = await supabase.rpc("grant_parcel_credit", {
+        p_email: email.trim().toLowerCase(), p_amount: amount, p_reason: "topup",
+      });
+      if (error) return { ok: false, error: error.message };
+      const d = data as { ok?: boolean; error?: string; balance?: number } | null;
+      if (!d || !d.ok) return { ok: false, error: d?.error || "grant_failed" };
+      audit("granted scan credits", email, `+${amount} credits`);
+      return { ok: true, balance: typeof d.balance === "number" ? d.balance : undefined };
+    } catch (e) { return { ok: false, error: e instanceof Error ? e.message : "error" }; }
+  }, [audit]);
+
+  return { changePlan, setRole, expire, setPassword, removeUser, addDays, editAccounts, setContactNote, addCredits };
 }

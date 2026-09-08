@@ -825,8 +825,10 @@ app.post("/admin/parcel-scan", requireAuth, requireAdmin, express.json({ limit: 
       }
       return result;
     },
-    refund: async () => {
-      const { data, error } = await userSb.rpc("refund_parcel_credit", { p_amount: 1 });
+    refund: async (debitId) => {
+      // GATED RPC — matches the just-created scan_debit by id (no id / no match →
+      // no_refundable_debit, no mint). debitId comes from the debit's response.
+      const { data, error } = await userSb.rpc("refund_parcel_credit", { p_debit_id: debitId, p_amount: 1 });
       if (error) throw error;
       return data;
     },

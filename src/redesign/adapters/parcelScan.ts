@@ -38,6 +38,8 @@ export interface ScanResult {
   confidence?: Record<keyof ScanFields, ScanConfidence>;
   error?: string;
   unreachable?: boolean; // server not deployed yet / offline
+  balance?: number;      // wallet balance the server returns (success / insufficient / charged failure)
+  insufficient?: boolean; // HTTP 402 — out of Scan Credits (no scan happened)
 }
 // E-Map store-code verdict (server /admin/parcel-emap-check). "checking" is a
 // LOCAL transient only (never persisted) shown while a lookup is in flight.
@@ -129,10 +131,12 @@ export async function scanParcel(base64: string, mediaType: string): Promise<Sca
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}` },
       body: JSON.stringify({ imageBase64: base64, mediaType }),
     });
-    const j = await r.json().catch(() => ({} as { success?: boolean; fields?: ScanFields; confidence?: Record<keyof ScanFields, ScanConfidence>; error?: string }));
+    const j = await r.json().catch(() => ({} as { success?: boolean; fields?: ScanFields; confidence?: Record<keyof ScanFields, ScanConfidence>; error?: string; balance?: number }));
+    const bal = typeof j.balance === "number" ? j.balance : undefined;
     if (r.status === 403) return { ok: false, error: "forbidden" };
-    if (!r.ok || !j.success || !j.fields) return { ok: false, error: j.error || `http_${r.status}` };
-    return { ok: true, fields: j.fields, confidence: j.confidence };
+    if (r.status === 402) return { ok: false, error: j.error || "insufficient_credits", insufficient: true, balance: bal ?? 0 };
+    if (!r.ok || !j.success || !j.fields) return { ok: false, error: j.error || `http_${r.status}`, balance: bal };
+    return { ok: true, fields: j.fields, confidence: j.confidence, balance: bal };
   } catch {
     return { ok: false, error: "unreachable", unreachable: true };
   }
@@ -344,6 +348,20 @@ export async function getCreditBalance(): Promise<{ ok: boolean; balance: number
     .eq("user_id", me)
     .maybeSingle();
   if (error) return { ok: false, balance: 0, error: error.message };
+  return { ok: true, balance: data ? Number((data as { balance: number }).balance) || 0 : 0 };
+}
+
+// Admin-only read of ANOTHER user's balance by their auth user id (RLS SELECT is
+// own-OR-is_admin, so this only returns for an admin caller). Used by the Admin
+// grant UI to show a seller's balance before topping up. No wallet row → 0.
+export async function getCreditBalanceForUser(userId: string | null | undefined): Promise<{ ok: boolean; balance: number }> {
+  if (!isSupabaseConfigured || !supabase || !userId) return { ok: false, balance: 0 };
+  const { data, error } = await supabase
+    .from("parcel_credit_wallet")
+    .select("balance")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) return { ok: false, balance: 0 };
   return { ok: true, balance: data ? Number((data as { balance: number }).balance) || 0 : 0 };
 }
 

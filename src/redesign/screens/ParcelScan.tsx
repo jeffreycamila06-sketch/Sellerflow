@@ -11,12 +11,13 @@ import { useT, tpl } from "../i18n";
 import {
   fileToScanBase64, scanParcel, saveParcelScan, loadParcelScans, formErrors, amountWarns,
   checkEmapStore, saveStoreCheck, scanToXlsRow, splitScansForExport, markScansExported,
-  deleteParcelScan, deleteExportedParcels,
+  deleteParcelScan, deleteExportedParcels, getCreditBalance,
   type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState, type StoreCheckStatus, type ExportReason,
 } from "../adapters/parcelScan";
 import { fetchShipTemplate, buildXlsmFromTemplate, deliverXlsm, exportFilename } from "../adapters/shippingExport";
 import { loadShippingSettings } from "../adapters/shippingSettings";
 import { SHIP_DEFAULT_FEE } from "../adapters/shipping";
+import { TELEGRAM_URL } from "../../lib/telegram";
 
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
 const lbl: CSSProperties = { fontSize: 11, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 4 };
@@ -79,6 +80,10 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
 
+  // Scan Credits (1 credit = 1 scan). Read on open; the scan response returns the
+  // fresh balance after each debit/refund so we update without a re-fetch.
+  const [credits, setCredits] = useState<number | null>(null);
+
   // 賣貨便 export: default fee (one settings read on open) + busy + last summary.
   const [fee, setFee] = useState(SHIP_DEFAULT_FEE);
   const [exportBusy, setExportBusy] = useState(false);
@@ -106,12 +111,28 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
   useEffect(() => {
     loadShippingSettings().then((s) => { if (aliveRef.current && s) setFee(s.defaultFee); });
   }, []);
+  // One wallet read on open → the Scan Credits balance.
+  useEffect(() => {
+    getCreditBalance().then((c) => { if (aliveRef.current && c.ok) setCredits(c.balance); });
+  }, []);
 
   const scanOne = async (list: File[], i: number) => {
+    // Out of credits — don't spend a request that will 402; the blocked banner
+    // (credits === 0) tells the owner to top up. Reset the batch.
+    if (credits === 0) { setFiles([]); setIdx(0); setPhase("idle"); return; }
     setPhase("scanning"); setScanErr(""); setSaveErr("");
     try {
       const { base64, mediaType } = await fileToScanBase64(list[i]);
       const r = await scanParcel(base64, mediaType);
+      // The server returns the fresh wallet balance on success, on a charged
+      // (bad-photo) failure, and on 402 — reflect it whenever present.
+      if (typeof r.balance === "number") setCredits(r.balance);
+      if (r.insufficient) {
+        // Out of Scan Credits — no scan happened. Stop the batch; the blocked
+        // banner surfaces the top-up path (no Retry card, which would 402 again).
+        setFiles([]); setIdx(0); setPhase("idle");
+        return;
+      }
       if (!r.ok || !r.fields) { setScanErr(r.error || "scan_failed"); setPhase("error"); return; }
       setForm(fieldsToForm(r.fields));
       setConfid(r.confidence ?? null);
@@ -239,6 +260,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
   const low = (f: keyof ScanFields): boolean => confid?.[f] === "low";
   const F = (patch: Partial<FormState>) => setForm((s) => ({ ...s, ...patch }));
   const busy = phase === "scanning" || phase === "confirm" || phase === "error";
+  const outOfCredits = credits === 0; // known-zero (not just unloaded) → blocked
   const flaggedCount = rows.filter((r) => r.storeCheckStatus === "not_found").length;
   // Change 2: the saved list re-renders by active tab (in-memory filter of the
   // already-loaded rows — zero-poll, no refetch/timers).
@@ -259,12 +281,29 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
       <div style={{ padding: "16px 14px 22px", display: "grid", gap: 12 }}>
         {toast && <div style={{ ...card, padding: 10, textAlign: "center", fontSize: 12.5, fontWeight: 700, color: "var(--ok, #16a34a)" }} data-testid="ps-toast">{toast}</div>}
 
+        {/* Scan Credits balance — 1 credit = 1 scan. */}
+        {credits !== null && (
+          <div style={{ ...card, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }} data-testid="ps-credits">
+            <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-dim)" }}>{t.rd_ps2_credits}</span>
+            <span style={{ fontSize: 16, fontWeight: 900, color: outOfCredits ? "var(--danger)" : "var(--text)", fontFamily: mono }} data-testid="ps-credits-n">{credits}</span>
+          </div>
+        )}
+
+        {/* Out of credits → blocked, with the Telegram top-up path (real anchor per the iOS rule). */}
+        {outOfCredits && (
+          <div style={{ ...card, borderColor: "var(--danger)", background: "var(--danger-soft, rgba(220,38,38,.08))" }} data-testid="ps-credits-out">
+            <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--danger)" }}>{t.rd_ps2_credits_out}</div>
+            <a href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener" style={{ display: "inline-block", marginTop: 10, padding: "9px 14px", borderRadius: 10, background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13, textDecoration: "none" }} data-testid="ps-credits-topup">{t.rd_ps2_credits_topup}</a>
+          </div>
+        )}
+
         {/* Picker — hidden until the current batch finishes */}
         {!busy && (
           <div style={card}>
             <button
               onClick={() => fileRef.current?.click()}
-              style={{ width: "100%", padding: "13px 14px", borderRadius: 12, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer" }}
+              disabled={outOfCredits}
+              style={{ width: "100%", padding: "13px 14px", borderRadius: 12, border: "none", background: outOfCredits ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: outOfCredits ? "default" : "pointer" }}
               data-testid="ps-pick"
             >📷 {t.rd_ps2_pick}</button>
             <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 8, lineHeight: 1.5 }}>{t.rd_ps2_pick_hint}</div>

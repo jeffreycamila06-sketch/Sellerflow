@@ -904,6 +904,11 @@ const RAW: Record<string, Row> = {
   rd_adm_days_ph: { en: "days", fil: "araw", zh: "天", "zh-TW": "天", vi: "ngày", th: "วัน", id: "hari" },
   rd_adm_enter: { en: "Enter ↵", fil: "Enter ↵", zh: "回车 ↵", "zh-TW": "Enter ↵", vi: "Enter ↵", th: "Enter ↵", id: "Enter ↵" },
   rd_adm_add_days: { en: "+ Add days", fil: "+ Magdagdag ng araw", zh: "+ 增加天数", "zh-TW": "+ 增加天數", vi: "+ Thêm ngày", th: "+ เพิ่มวัน", id: "+ Tambah hari" },
+
+  // Admin: grant Scan Credits (Part 2). th/id = AI draft; zh-TW native-checked.
+  rd_adm_add_credits: { en: "+ Add credits", fil: "+ Magdagdag ng credits", zh: "+ 增加点数", "zh-TW": "+ 增加點數", vi: "+ Thêm điểm", th: "+ เพิ่มเครดิต", id: "+ Tambah kredit" },
+  rd_adm_cred_ph: { en: "credits", fil: "credits", zh: "点数", "zh-TW": "點數", vi: "điểm", th: "เครดิต", id: "kredit" },
+  rd_adm_cred_act: { en: "add {n} scan credits", fil: "magdagdag ng {n} scan credits", zh: "增加 {n} 个扫描点数", "zh-TW": "增加 {n} 個掃描點數", vi: "thêm {n} điểm quét", th: "เพิ่มเครดิตสแกน {n}", id: "tambah {n} kredit pindai" },
   rd_adm_pw_ph: { en: "New password (≥6 chars)", fil: "Bagong password (≥6 char)", zh: "新密码（≥6 个字符）", "zh-TW": "新密碼（≥6 個字元）", vi: "Mật khẩu mới (≥6 ký tự)", th: "รหัสผ่านใหม่ (≥6 ตัว)", id: "Kata sandi baru (≥6 karakter)" },
   rd_adm_set: { en: "Set", fil: "I-set", zh: "设置", "zh-TW": "設定", vi: "Đặt", th: "ตั้ง", id: "Atur" },
   rd_adm_reset_pw: { en: "Reset PW", fil: "Reset PW", zh: "重置密码", "zh-TW": "重設密碼", vi: "Đặt lại MK", th: "รีเซ็ตรหัส", id: "Reset PW" },
@@ -1145,6 +1150,11 @@ const RAW: Record<string, Row> = {
   rd_ps2_clear_exported: { en: "Clear exported", fil: "Burahin ang na-export", zh: "清除已导出", "zh-TW": "清除已匯出", vi: "Xóa đã xuất", th: "ล้างที่ส่งออกแล้ว", id: "Hapus yang diekspor" },
   rd_ps2_clear_exported_q: { en: "Delete all {n} exported parcel(s)? This can't be undone.", fil: "Burahin ang lahat ng {n} na-export na parcel? Hindi na ito maibabalik.", zh: "删除全部 {n} 个已导出的包裹吗？此操作无法撤销。", "zh-TW": "刪除全部 {n} 個已匯出的包裹嗎？此操作無法復原。", vi: "Xóa tất cả {n} kiện đã xuất? Không thể hoàn tác.", th: "ลบพัสดุที่ส่งออกแล้วทั้งหมด {n} รายการหรือไม่? ไม่สามารถย้อนกลับได้", id: "Hapus semua {n} paket yang diekspor? Tindakan ini tidak bisa dibatalkan." },
   rd_ps2_delete_err: { en: "Couldn't delete. Please try again.", fil: "Hindi nabura. Pakisubukan ulit.", zh: "删除失败，请重试。", "zh-TW": "刪除失敗，請重試。", vi: "Không xóa được. Vui lòng thử lại.", th: "ลบไม่สำเร็จ กรุณาลองใหม่", id: "Gagal menghapus. Silakan coba lagi." },
+
+  // Scan Credits (Part 2). 1 credit = 1 scan. th/id = AI draft; zh-TW native-checked.
+  rd_ps2_credits: { en: "Scan Credits", fil: "Scan Credits", zh: "扫描点数", "zh-TW": "掃描點數", vi: "Điểm quét", th: "เครดิตสแกน", id: "Kredit Pindai" },
+  rd_ps2_credits_out: { en: "You're out of Scan Credits. Message us on Telegram to top up.", fil: "Ubos na ang Scan Credits mo. I-message kami sa Telegram para mag-top up.", zh: "扫描点数已用完。请在 Telegram 联系我们充值。", "zh-TW": "掃描點數已用完。請在 Telegram 聯絡我們儲值。", vi: "Bạn đã hết Điểm quét. Nhắn cho chúng tôi trên Telegram để nạp thêm.", th: "เครดิตสแกนของคุณหมดแล้ว ทักหาเราทาง Telegram เพื่อเติมเครดิต", id: "Kredit Pindai Anda habis. Hubungi kami di Telegram untuk mengisi." },
+  rd_ps2_credits_topup: { en: "Top up on Telegram", fil: "Mag-top up sa Telegram", zh: "在 Telegram 充值", "zh-TW": "在 Telegram 儲值", vi: "Nạp qua Telegram", th: "เติมเครดิตทาง Telegram", id: "Isi lewat Telegram" },
 };
 
 // Transpose RAW (key→langs) into REDESIGN_STRINGS (lang→keys).
