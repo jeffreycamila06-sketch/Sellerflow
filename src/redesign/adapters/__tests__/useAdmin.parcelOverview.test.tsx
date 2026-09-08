@@ -39,9 +39,9 @@ describe("money helpers (NT$; adjustable scan cost re-flows cost/profit)", () =>
 describe("getParcelScanOverview", () => {
   it("maps the RPC json (summary + monthly + rows) to the typed overview", async () => {
     rpcMock.mockResolvedValue({ data: {
-      summary: { total_credits: 12, scans_this_month: 50, active_users: 3, technical_refunds_this_month: 2, credits_granted_this_month: 100 },
-      monthly: [{ month: "2026-09", scans: 50, credits_granted: 100 }, { month: "2026-08", scans: 20, credits_granted: 40 }],
-      rows: [{ email: "a@x.com", balance: 5, scans_this_month: 30, last_scan_at: "2026-09-08T00:00:00Z" }],
+      summary: { total_credits: 12, scans_this_month: 50, active_users: 3, technical_refunds_this_month: 2, credits_granted_this_month: 100, successes_this_month: 40, bad_photo_this_month: 8, technical_this_month: 2, untracked_this_month: 0 },
+      monthly: [{ month: "2026-09", scans: 50, bad_photo: 8, credits_granted: 100 }, { month: "2026-08", scans: 20, bad_photo: 3, credits_granted: 40 }],
+      rows: [{ email: "a@x.com", balance: 5, scans_this_month: 30, bad_photo_this_month: 6, last_scan_at: "2026-09-08T00:00:00Z" }],
     }, error: null });
     const r = await getParcelScanOverview();
     expect(r.ok).toBe(true);
@@ -50,11 +50,15 @@ describe("getParcelScanOverview", () => {
     expect(r.data?.activeUsers).toBe(3);
     expect(r.data?.technicalRefundsThisMonth).toBe(2);
     expect(r.data?.creditsGrantedThisMonth).toBe(100);
+    expect(r.data?.successesThisMonth).toBe(40);
+    expect(r.data?.badPhotoThisMonth).toBe(8);
+    expect(r.data?.technicalThisMonth).toBe(2);
+    expect(r.data?.untrackedThisMonth).toBe(0);
     expect(r.data?.monthly).toEqual([
-      { month: "2026-09", scans: 50, creditsGranted: 100 },
-      { month: "2026-08", scans: 20, creditsGranted: 40 },
+      { month: "2026-09", scans: 50, badPhoto: 8, creditsGranted: 100 },
+      { month: "2026-08", scans: 20, badPhoto: 3, creditsGranted: 40 },
     ]);
-    expect(r.data?.rows[0]).toEqual({ email: "a@x.com", balance: 5, scansThisMonth: 30, lastScanAt: "2026-09-08T00:00:00Z" });
+    expect(r.data?.rows[0]).toEqual({ email: "a@x.com", balance: 5, scansThisMonth: 30, badPhotoThisMonth: 6, lastScanAt: "2026-09-08T00:00:00Z" });
     expect(rpcMock).toHaveBeenCalledWith("admin_parcel_scan_overview");
   });
 

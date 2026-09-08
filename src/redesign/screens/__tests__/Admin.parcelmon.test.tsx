@@ -12,13 +12,17 @@ const overview: ParcelScanOverview = {
   activeUsers: 3,
   technicalRefundsThisMonth: 2,
   creditsGrantedThisMonth: 100,
+  successesThisMonth: 40,
+  badPhotoThisMonth: 8,
+  technicalThisMonth: 2,
+  untrackedThisMonth: 0,
   monthly: [
-    { month: "2026-09", scans: 50, creditsGranted: 100 },
-    { month: "2026-08", scans: 20, creditsGranted: 40 },
+    { month: "2026-09", scans: 50, badPhoto: 8, creditsGranted: 100 },
+    { month: "2026-08", scans: 20, badPhoto: 3, creditsGranted: 40 },
   ],
   rows: [
-    { email: "a@x.com", balance: 5, scansThisMonth: 30, lastScanAt: "2026-09-08T00:00:00Z" },
-    { email: "b@x.com", balance: 0, scansThisMonth: 0, lastScanAt: null },
+    { email: "a@x.com", balance: 5, scansThisMonth: 30, badPhotoThisMonth: 6, lastScanAt: "2026-09-08T00:00:00Z" },
+    { email: "b@x.com", balance: 0, scansThisMonth: 0, badPhotoThisMonth: 0, lastScanAt: null },
   ],
 };
 
@@ -56,6 +60,7 @@ describe("Change 2 — Parcel Scan monitoring view", () => {
     // A) summary
     expect(getByTestId("pm-total-credits").textContent).toBe("12");
     expect(getByTestId("pm-scans-month").textContent).toBe("50");
+    expect(getByTestId("pm-successes").textContent).toBe("40");
     expect(getByTestId("pm-tech-refunds").textContent).toBe("2");
     // revenue = 100 × 0.50 = 50; cost = 50 × 0.20 = 10; profit = 40
     expect(getByTestId("pm-revenue").textContent).toBe("NT$50.00");
@@ -67,11 +72,12 @@ describe("Change 2 — Parcel Scan monitoring view", () => {
     expect(getAllByTestId("pm-seller-row").length).toBe(2);
   });
 
-  it("bad-photo is honestly shown as '—' (untracked), never a fabricated count", async () => {
+  it("bad-photo is now a REAL count (not '—'), with the abuse/waste signal line", async () => {
     const { findByTestId, getByTestId } = view();
     await findByTestId("pm-panel");
-    expect(getByTestId("pm-badphoto").textContent).toBe("—");
-    expect(getByTestId("pm-badphoto-note").textContent?.toLowerCase()).toContain("aren't tracked");
+    expect(getByTestId("pm-badphoto").textContent).toBe("8");           // real outcome count
+    expect(getByTestId("pm-badphoto-note").textContent).toContain("8"); // "Bad-photo scans this month: 8 …"
+    expect(getByTestId("pm-badphoto-note").textContent?.toLowerCase()).toContain("charged");
   });
 
   it("the adjustable API-cost lever recomputes cost & profit live", async () => {
@@ -81,6 +87,21 @@ describe("Change 2 — Parcel Scan monitoring view", () => {
     await waitFor(() => expect(getByTestId("pm-cost").textContent).toBe("NT$2.50"));  // 50 × 0.05
     expect(getByTestId("pm-profit").textContent).toBe("NT$47.50");                    // 50 − 2.50
     expect(getByTestId("pm-revenue").textContent).toBe("NT$50.00");                   // revenue unchanged
+  });
+
+  it("pre-feature (null-outcome) scans surface as an 'untracked' note, not fabricated", async () => {
+    getParcelScanOverview.mockResolvedValue({ ok: true, data: { ...overview, untrackedThisMonth: 12 } });
+    const { findByTestId, getByTestId } = view();
+    await findByTestId("pm-panel");
+    expect(getByTestId("pm-untracked-note").textContent).toContain("12");
+  });
+
+  it("per-seller bad-photo count is shown for a waster", async () => {
+    const { findByTestId, getAllByTestId } = view();
+    await findByTestId("pm-panel");
+    // seller a@x.com has 6 bad-photo this month → shown on their row
+    const rows = getAllByTestId("pm-seller-row");
+    expect(rows[0].textContent).toContain("6");
   });
 
   it("an RPC failure shows an honest error, no crash", async () => {

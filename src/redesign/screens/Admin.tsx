@@ -281,11 +281,14 @@ function ParcelMonPanel() {
           <div style={statCard}><div style={statLbl}>{t.rd_adm_pm_active}</div><div style={statNum}>{s.activeUsers}</div></div>
         </div>
         <div style={{ display: "flex", gap: 9, marginBottom: 9 }}>
+          <div style={statCard}><div style={statLbl}>{t.rd_adm_pm_successes}</div><div style={{ ...statNum, fontSize: 17, color: "var(--ok)" }} data-testid="pm-successes">{s.successesThisMonth}</div></div>
           <div style={statCard}><div style={statLbl}>{t.rd_adm_pm_tech_refunds}</div><div style={{ ...statNum, fontSize: 17 }} data-testid="pm-tech-refunds">{s.technicalRefundsThisMonth}</div></div>
-          {/* Bad-photo (charged, not refunded) is NOT derivable from the ledger — honest "—". */}
-          <div style={statCard}><div style={statLbl}>{t.rd_adm_pm_badphoto}</div><div style={{ ...statNum, fontSize: 17, color: "var(--text-muted)" }} data-testid="pm-badphoto">—</div></div>
+          {/* Bad-photo (charged, seller's own unreadable slip) — now a real count (sql/30 outcome). */}
+          <div style={statCard}><div style={statLbl}>{t.rd_adm_pm_badphoto}</div><div style={{ ...statNum, fontSize: 17, color: s.badPhotoThisMonth > 0 ? "var(--warn)" : "var(--text)" }} data-testid="pm-badphoto">{s.badPhotoThisMonth}</div></div>
         </div>
-        <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.5, marginBottom: 10 }} data-testid="pm-badphoto-note">{t.rd_adm_pm_badphoto_note}</div>
+        {/* The abuse/waste signal — charged scans the model couldn't read. */}
+        <div style={{ fontSize: 10.5, color: "var(--text-dim)", lineHeight: 1.5, marginBottom: 4 }} data-testid="pm-badphoto-note">{tpl(t.rd_adm_pm_badphoto_signal, { n: s.badPhotoThisMonth })}</div>
+        {s.untrackedThisMonth > 0 && <div style={{ fontSize: 10, color: "var(--text-muted)", lineHeight: 1.5, marginBottom: 10 }} data-testid="pm-untracked-note">{tpl(t.rd_adm_pm_untracked_note, { n: s.untrackedThisMonth })}</div>}
         {/* Revenue / Cost / Profit (this month) */}
         <div style={{ display: "flex", gap: 9 }}>
           <div style={statCard}><div style={statLbl}>{t.rd_adm_pm_revenue}</div><div style={{ ...statNum, fontSize: 16, color: "var(--ok)" }} data-testid="pm-revenue">{nt(revenueNT(s.creditsGrantedThisMonth))}</div></div>
@@ -305,6 +308,7 @@ function ParcelMonPanel() {
               <thead><tr>
                 <th style={{ ...hcell, textAlign: "left" }}>{t.rd_adm_pm_col_month}</th>
                 <th style={hcell}>{t.rd_adm_pm_col_scans}</th>
+                <th style={hcell}>{t.rd_adm_pm_col_badphoto}</th>
                 <th style={hcell}>{t.rd_adm_pm_col_credits}</th>
                 <th style={hcell}>{t.rd_adm_pm_col_revenue}</th>
                 <th style={hcell}>{t.rd_adm_pm_col_cost}</th>
@@ -317,6 +321,7 @@ function ParcelMonPanel() {
                     <tr key={m.month} style={{ borderTop: "1px solid var(--border)" }} data-testid="pm-history-row">
                       <td style={{ ...cell, textAlign: "left", fontWeight: 700 }}>{m.month}</td>
                       <td style={cell}>{m.scans}</td>
+                      <td style={{ ...cell, color: m.badPhoto > 0 ? "var(--warn)" : "var(--text-muted)" }}>{m.badPhoto}</td>
                       <td style={cell}>{m.creditsGranted}</td>
                       <td style={{ ...cell, color: "var(--ok)" }}>{nt(revenueNT(m.creditsGranted))}</td>
                       <td style={{ ...cell, color: "var(--warn)" }}>{nt(costNT(m.scans, scanCost))}</td>
@@ -345,7 +350,7 @@ function ParcelMonPanel() {
                 </div>
                 <div style={{ textAlign: "right", flexShrink: 0 }}>
                   <div style={{ fontFamily: mono, fontSize: 12.5, fontWeight: 800, color: "var(--text)" }}>{tpl(t.rd_adm_pm_bal, { n: r.balance })}</div>
-                  <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 1 }}>{tpl(t.rd_adm_pm_scans_n, { n: r.scansThisMonth })}</div>
+                  <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 1 }}>{tpl(t.rd_adm_pm_scans_n, { n: r.scansThisMonth })}{r.badPhotoThisMonth > 0 ? <span style={{ color: "var(--warn)" }}> · {tpl(t.rd_adm_pm_badphoto_n, { n: r.badPhotoThisMonth })}</span> : null}</div>
                 </div>
               </div>
             ))}

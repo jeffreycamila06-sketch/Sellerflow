@@ -13,11 +13,10 @@
 -- ZERO writes. Returns RAW COUNTS only — all money math (revenue/cost/profit from
 -- CREDIT_PRICE_NT and the adjustable SCAN_COST_NT) is done CLIENT-SIDE.
 --
--- ⚠️ BAD-PHOTO failures are NOT derivable here. The ledger records scan_debit +
--- refund rows but NOT why a debit had no refund, so a charged-but-failed
--- (bad-photo) scan is indistinguishable from a successful one. Only TECHNICAL
--- refunds (reason='refund') are counted; the client shows "—" for bad-photo with
--- an honest note (a future enhancement would log per-scan outcome).
+-- OUTCOME breakdown (sql/30): scan_debit rows now carry `outcome` (success /
+-- bad_photo / technical), so bad-photo (charged, not refunded) is counted for
+-- real. Pre-feature scan_debits have NULL outcome → `untracked_this_month`
+-- (never fabricated as success or bad_photo).
 -- ============================================================================
 create or replace function public.admin_parcel_scan_overview()
   returns json language plpgsql security definer set search_path to 'public'
@@ -28,8 +27,10 @@ begin
   if not public.is_admin() then raise exception 'forbidden' using errcode = '42501'; end if;
 
   with m as (select date_trunc('month', now()) as month_start),
-  scans as (   -- per-user scan_debit count for the current calendar month
-    select l.user_id, count(*)::int as scans_this_month
+  scans as (   -- per-user current-month scan_debit counts + bad-photo breakdown
+    select l.user_id,
+           count(*)::int as scans_this_month,
+           count(*) filter (where l.outcome = 'bad_photo')::int as bad_photo_this_month
     from public.parcel_credit_ledger l, m
     where l.reason = 'scan_debit' and l.created_at >= m.month_start
     group by l.user_id
@@ -45,6 +46,7 @@ begin
   monthly as (  -- per-calendar-month raw counts (all money math is client-side)
     select date_trunc('month', created_at) as mon,
            count(*) filter (where reason = 'scan_debit')::int as scans,
+           count(*) filter (where reason = 'scan_debit' and outcome = 'bad_photo')::int as bad_photo,
            coalesce(sum(delta) filter (where reason in ('grant','topup')), 0)::int as credits_granted
     from public.parcel_credit_ledger
     group by 1
@@ -65,12 +67,30 @@ begin
       'credits_granted_this_month', (
         select coalesce(sum(delta), 0)::int from public.parcel_credit_ledger l, m
         where l.reason in ('grant','topup') and l.created_at >= m.month_start
+      ),
+      -- outcome breakdown of THIS MONTH's scan_debits (null = pre-feature untracked)
+      'successes_this_month', (
+        select count(*)::int from public.parcel_credit_ledger l, m
+        where l.reason = 'scan_debit' and l.created_at >= m.month_start and l.outcome = 'success'
+      ),
+      'bad_photo_this_month', (
+        select count(*)::int from public.parcel_credit_ledger l, m
+        where l.reason = 'scan_debit' and l.created_at >= m.month_start and l.outcome = 'bad_photo'
+      ),
+      'technical_this_month', (
+        select count(*)::int from public.parcel_credit_ledger l, m
+        where l.reason = 'scan_debit' and l.created_at >= m.month_start and l.outcome = 'technical'
+      ),
+      'untracked_this_month', (
+        select count(*)::int from public.parcel_credit_ledger l, m
+        where l.reason = 'scan_debit' and l.created_at >= m.month_start and l.outcome is null
       )
     ),
     'monthly', coalesce((
       select json_agg(json_build_object(
                'month', to_char(mon, 'YYYY-MM'),
                'scans', scans,
+               'bad_photo', bad_photo,
                'credits_granted', credits_granted
              ) order by mon desc)
       from monthly
@@ -82,6 +102,7 @@ begin
           'email',            sp.email,
           'balance',          coalesce(w.balance, 0),
           'scans_this_month', coalesce(s.scans_this_month, 0),
+          'bad_photo_this_month', coalesce(s.bad_photo_this_month, 0),
           'last_scan_at',     la.last_scan_at
         ) as row,
         coalesce(s.scans_this_month, 0) as row_scans,

@@ -127,14 +127,20 @@ export const revenueNT = (creditsGranted: number): number => Math.max(0, Number(
 export const costNT = (scans: number, scanCost: number): number => Math.max(0, Number(scans) || 0) * Math.max(0, Number(scanCost) || 0);
 export const profitNT = (creditsGranted: number, scans: number, scanCost: number): number => revenueNT(creditsGranted) - costNT(scans, scanCost);
 
-export interface ParcelScanStatRow { email: string | null; balance: number; scansThisMonth: number; lastScanAt: string | null }
-export interface ParcelMonthRow { month: string; scans: number; creditsGranted: number }
+export interface ParcelScanStatRow { email: string | null; balance: number; scansThisMonth: number; badPhotoThisMonth: number; lastScanAt: string | null }
+export interface ParcelMonthRow { month: string; scans: number; badPhoto: number; creditsGranted: number }
 export interface ParcelScanOverview {
   totalCredits: number;
   scansThisMonth: number;
   activeUsers: number;
   technicalRefundsThisMonth: number;
   creditsGrantedThisMonth: number;
+  // Per-scan outcome breakdown of this month's scan_debits (sql/30). null-outcome
+  // pre-feature rows are counted as `untrackedThisMonth`, never as success/bad-photo.
+  successesThisMonth: number;
+  badPhotoThisMonth: number;
+  technicalThisMonth: number;
+  untrackedThisMonth: number;
   monthly: ParcelMonthRow[];
   rows: ParcelScanStatRow[];
 }
@@ -148,21 +154,23 @@ export async function getParcelScanOverview(): Promise<{ ok: boolean; data?: Par
   const { data, error } = await supabase.rpc("admin_parcel_scan_overview");
   if (error) return { ok: false, error: error.message };
   const j = data as {
-    summary?: { total_credits?: number; scans_this_month?: number; active_users?: number; technical_refunds_this_month?: number; credits_granted_this_month?: number };
-    monthly?: Array<{ month?: string; scans?: number; credits_granted?: number }>;
-    rows?: Array<{ email?: string | null; balance?: number; scans_this_month?: number; last_scan_at?: string | null }>;
+    summary?: { total_credits?: number; scans_this_month?: number; active_users?: number; technical_refunds_this_month?: number; credits_granted_this_month?: number; successes_this_month?: number; bad_photo_this_month?: number; technical_this_month?: number; untracked_this_month?: number };
+    monthly?: Array<{ month?: string; scans?: number; bad_photo?: number; credits_granted?: number }>;
+    rows?: Array<{ email?: string | null; balance?: number; scans_this_month?: number; bad_photo_this_month?: number; last_scan_at?: string | null }>;
   } | null;
   if (!j) return { ok: false, error: "empty" };
   const s = j.summary || {};
   const monthly = Array.isArray(j.monthly) ? j.monthly.map((r) => ({
     month: String(r.month ?? ""),
     scans: Number(r.scans) || 0,
+    badPhoto: Number(r.bad_photo) || 0,
     creditsGranted: Number(r.credits_granted) || 0,
   })) : [];
   const rows = Array.isArray(j.rows) ? j.rows.map((r) => ({
     email: r.email ?? null,
     balance: Number(r.balance) || 0,
     scansThisMonth: Number(r.scans_this_month) || 0,
+    badPhotoThisMonth: Number(r.bad_photo_this_month) || 0,
     lastScanAt: r.last_scan_at ?? null,
   })) : [];
   return { ok: true, data: {
@@ -171,6 +179,10 @@ export async function getParcelScanOverview(): Promise<{ ok: boolean; data?: Par
     activeUsers: Number(s.active_users) || 0,
     technicalRefundsThisMonth: Number(s.technical_refunds_this_month) || 0,
     creditsGrantedThisMonth: Number(s.credits_granted_this_month) || 0,
+    successesThisMonth: Number(s.successes_this_month) || 0,
+    badPhotoThisMonth: Number(s.bad_photo_this_month) || 0,
+    technicalThisMonth: Number(s.technical_this_month) || 0,
+    untrackedThisMonth: Number(s.untracked_this_month) || 0,
     monthly, rows,
   } };
 }

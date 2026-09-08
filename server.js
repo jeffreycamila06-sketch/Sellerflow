@@ -832,6 +832,13 @@ app.post("/admin/parcel-scan", requireAuth, requireAdmin, express.json({ limit: 
       if (error) throw error;
       return data;
     },
+    setOutcome: async (debitId, outcome) => {
+      // Best-effort per-scan outcome stamp on the caller's own scan_debit
+      // (own-scoped RPC). A failure here never breaks the scan/debit/refund.
+      const { data, error } = await userSb.rpc("set_scan_outcome", { p_debit_id: debitId, p_outcome: outcome });
+      if (error) throw error;
+      return data;
+    },
     log: (m) => console.log(m),
   });
   return res.status(out.status).json(out.body);
