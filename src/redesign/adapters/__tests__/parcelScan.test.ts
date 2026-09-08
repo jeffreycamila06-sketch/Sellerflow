@@ -18,20 +18,20 @@ import { canUseParcelScan, scaledDims, rowToScan, scanParcel, SCAN_MAX_EDGE, for
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => { (globalThis.fetch as unknown) = undefined; });
 
-describe("canUseParcelScan (admin OR the sellerflowlive test account ONLY)", () => {
+describe("canUseParcelScan (ADMIN ROLE ONLY — audit S2: no email allowlist)", () => {
   it("admin role → allowed (both db and display casing)", () => {
-    expect(canUseParcelScan("admin", "anyone@example.com")).toBe(true);
-    expect(canUseParcelScan("Admin", null)).toBe(true);
+    expect(canUseParcelScan("admin")).toBe(true);
+    expect(canUseParcelScan("Admin")).toBe(true);
   });
-  it("test account → allowed, case/whitespace-insensitive", () => {
-    expect(canUseParcelScan("seller", "googletest@sellerflowlive.com")).toBe(true);
-    expect(canUseParcelScan("seller", "  GoogleTest@SellerFlowLive.com ")).toBe(true);
+  it("googletest is NOT allowed — the server requires admin, so the test/Apple-demo account must never see a button that always 403s", () => {
+    // Deliberate divergence from canUseClassicText: the role is the only gate.
+    expect(canUseParcelScan("seller")).toBe(false);
   });
-  it("everyone else → hidden — including the gmail variant (the F4 lesson)", () => {
-    expect(canUseParcelScan("seller", "seller@example.com")).toBe(false);
-    expect(canUseParcelScan("seller", "googletest@gmail.com")).toBe(false);
-    expect(canUseParcelScan(undefined, undefined)).toBe(false);
-    expect(canUseParcelScan(null, "")).toBe(false);
+  it("everyone else → hidden", () => {
+    expect(canUseParcelScan("seller")).toBe(false);
+    expect(canUseParcelScan(undefined)).toBe(false);
+    expect(canUseParcelScan(null)).toBe(false);
+    expect(canUseParcelScan("")).toBe(false);
   });
 });
 

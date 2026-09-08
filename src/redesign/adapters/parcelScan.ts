@@ -14,12 +14,12 @@ import { isSupabaseConfigured, supabase } from "../../supabase";
 import { isAdminRole } from "../../lib/roles";
 
 // ── Feature gate (canUseClassicText pattern: printing.ts) ─────────────────────
-// Admin-role accounts OR the sellerflowlive-domain test account ONLY. The
-// server route independently enforces admin — a forged client still gets 403.
-const PARCEL_SCAN_TEST_ACCOUNTS = new Set(["googletest@sellerflowlive.com"]);
-export function canUseParcelScan(role: string | undefined | null, email: string | undefined | null): boolean {
-  if (isAdminRole(role)) return true;
-  return PARCEL_SCAN_TEST_ACCOUNTS.has(String(email || "").trim().toLowerCase());
+// ADMIN ROLE ONLY — deliberately NO googletest allowlist (diverges from
+// canUseClassicText): the server route requires admin anyway, so googletest
+// would only see a button that always 403s — and it's the Apple review demo
+// account. The server route independently enforces admin regardless.
+export function canUseParcelScan(role: string | undefined | null): boolean {
+  return isAdminRole(role);
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────

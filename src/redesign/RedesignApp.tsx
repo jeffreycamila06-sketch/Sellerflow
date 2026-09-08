@@ -123,9 +123,9 @@ export default function RedesignApp() {
   // the print router honors a stray sfl_rd_classic_text flag on this device.
   const classicAllowed = canUseClassicText(auth.profile?.role, auth.profile?.email);
   useEffect(() => { setClassicTextAllowed(classicAllowed); }, [classicAllowed]);
-  // Parcel Scan (A1) — same gate shape; the server route independently
-  // re-enforces admin, so this only controls visibility/navigation.
-  const parcelScanAllowed = canUseParcelScan(auth.profile?.role, auth.profile?.email);
+  // Parcel Scan (A1) — admin-only (no googletest, see canUseParcelScan); the
+  // server route independently re-enforces admin, this is visibility/navigation.
+  const parcelScanAllowed = canUseParcelScan(auth.profile?.role);
   const customersData = useCustomers(authed);
   const adminUsers = useAdminUsers(authed && isAdmin);
   // Admin subscription buckets — real free-tier monitor (RPC) + derived active/

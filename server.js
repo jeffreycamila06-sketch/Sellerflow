@@ -762,7 +762,10 @@ app.post("/admin/broadcast-translate", requireAuth, requireAdmin, async (req, re
 // with the existing ANTHROPIC_API_KEY. The image is never stored anywhere.
 // Route-scoped 8mb JSON parser — the global parser deliberately skips this path
 // (see the app.use above) so every other route keeps the 100kb default.
-app.post("/admin/parcel-scan", express.json({ limit: "8mb" }), requireAuth, requireAdmin, async (req, res) => {
+// ⚠️ AUDIT B1 ORDER: auth runs BEFORE the 8mb parser (requireAuth/requireAdmin
+// are header-only) — an unauthenticated/non-admin caller is rejected without
+// the server ever buffering or parsing a large body.
+app.post("/admin/parcel-scan", requireAuth, requireAdmin, express.json({ limit: "8mb" }), async (req, res) => {
   const imageBase64 = String((req.body && req.body.imageBase64) || "");
   const mediaType = String((req.body && req.body.mediaType) || "");
   if (!imageBase64.trim()) {
