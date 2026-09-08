@@ -330,6 +330,23 @@ export async function saveStoreCheck(rowId: string, status: StoreCheckStatus): P
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
+// ── Credit balance (read-only; Part 2 wires the UI) ──────────────────────────
+// Own-scoped SELECT on parcel_credit_wallet (RLS: user_id = auth.uid() OR admin).
+// No wallet row yet → balance 0. Never writes (debits/grants/refunds are the
+// SECURITY DEFINER RPCs — the server debits; the admin grant is Part 2 UI).
+export async function getCreditBalance(): Promise<{ ok: boolean; balance: number; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) return { ok: false, balance: 0, error: "not configured" };
+  const me = await uid();
+  if (!me) return { ok: false, balance: 0, error: "not signed in" };
+  const { data, error } = await supabase
+    .from("parcel_credit_wallet")
+    .select("balance")
+    .eq("user_id", me)
+    .maybeSingle();
+  if (error) return { ok: false, balance: 0, error: error.message };
+  return { ok: true, balance: data ? Number((data as { balance: number }).balance) || 0 : 0 };
+}
+
 // ── Deletes (own-scoped via RLS; awaited, not fire-and-forget) ────────────────
 // Hard delete — the row is gone (parcel_scans_delete RLS = user_id = auth.uid(),
 // verified present). The caller AWAITS these and surfaces any error inline; a

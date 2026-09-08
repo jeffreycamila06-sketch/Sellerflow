@@ -5,7 +5,8 @@ import http from "http";
 import { Server } from "socket.io";
 import { createClient } from "@supabase/supabase-js";
 import { translateBroadcast } from "./server/broadcastTranslate.js";
-import { scanParcelImage } from "./server/parcelScan.js";
+import { scanParcelImage, SCAN_MEDIA_TYPES } from "./server/parcelScan.js";
+import { runScanWithCredit } from "./server/parcelCredits.js";
 import { checkEmapStore } from "./server/emapCheck.js";
 import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs, checkConnectRate, CONNECT_RATE_WINDOW_MS, isOwningConnection, relaySessionId } from "./server/connectionHealth.js";
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
@@ -769,27 +770,69 @@ app.post("/admin/broadcast-translate", requireAuth, requireAdmin, async (req, re
 app.post("/admin/parcel-scan", requireAuth, requireAdmin, express.json({ limit: "8mb" }), async (req, res) => {
   const imageBase64 = String((req.body && req.body.imageBase64) || "");
   const mediaType = String((req.body && req.body.mediaType) || "");
+  // Cheap client-input rejects run BEFORE the credit debit — a malformed request
+  // must never cost the seller a credit (they never reach the charge below).
   if (!imageBase64.trim()) {
     return res.status(400).json({ success: false, error: "empty_image" });
   }
-  const result = await scanParcelImage(imageBase64, mediaType, {
-    apiKey: ANTHROPIC_API_KEY,
-    ...(PARCEL_SCAN_MODEL ? { model: PARCEL_SCAN_MODEL } : {}),
-  });
-  if (!result.ok) {
-    // Server console ONLY (never the client). Two findable lines per failure:
-    // FAIL carries error + stop_reason + Anthropic HTTP status; RAW carries the
-    // bounded reply snippet, JSON-stringified so newlines can't split the line.
-    // (result.raw !== undefined — not truthy — so an EMPTY reply still logs
-    // RAW "" instead of silently vanishing, the bug that hid the first outage.)
-    console.log(`[PARCEL_SCAN] FAIL error=${result.error} stop_reason=${result.stopReason || "-"} http=${result.httpStatus ?? "-"}`);
-    if (result.raw !== undefined) {
-      console.log(`[PARCEL_SCAN] RAW ${JSON.stringify(String(result.raw).slice(0, 500))}`);
-    }
-    const status = result.error === "empty_image" || result.error === "bad_media_type" ? 400 : 502;
-    return res.status(status).json({ success: false, error: result.error });
+  if (!SCAN_MEDIA_TYPES.includes(mediaType)) {
+    return res.status(400).json({ success: false, error: "bad_media_type" });
   }
-  return res.json({ success: true, fields: result.fields, confidence: result.confidence });
+
+  // ── CREDIT DEBIT → SCAN → REFUND-ON-FAILURE ────────────────────────────────
+  // Bypass-proof: ANTHROPIC_API_KEY is server-only, so every scan traverses this
+  // route. JWT-scoped anon client (the requireAdmin/checkPlanActive pattern) so
+  // the RPCs' auth.uid() = this caller; the atomic guarded UPDATE inside
+  // check_and_debit_credit is what actually enforces the balance. The three
+  // thunks are handed to runScanWithCredit (server/parcelCredits.js) — the
+  // orchestration lives there so vitest can drive it (server.js has no harness).
+  const creditUid = req.authUserId || "";
+  const userSb = (SUPABASE_URL && SUPABASE_KEY && req.authToken)
+    ? createClient(SUPABASE_URL, SUPABASE_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false },
+        global: { headers: { Authorization: `Bearer ${req.authToken}` } },
+      })
+    : null;
+  if (!userSb) {
+    // Fail CLOSED — a paid feature must not hand out a free scan when the credit
+    // ledger is unreachable.
+    console.log(`[CREDIT] debit unavailable user=${creditUid} (no supabase client) -> failing closed`);
+    return res.status(503).json({ success: false, error: "credit_unavailable" });
+  }
+
+  const out = await runScanWithCredit({
+    uid: creditUid,
+    debit: async () => {
+      const { data, error } = await userSb.rpc("check_and_debit_credit", { p_amount: 1 });
+      if (error) throw error;
+      return data;
+    },
+    scan: async () => {
+      const result = await scanParcelImage(imageBase64, mediaType, {
+        apiKey: ANTHROPIC_API_KEY,
+        ...(PARCEL_SCAN_MODEL ? { model: PARCEL_SCAN_MODEL } : {}),
+      });
+      if (!result.ok) {
+        // Server console ONLY (never the client). Two findable lines per failure:
+        // FAIL carries error + stop_reason + Anthropic HTTP status; RAW carries
+        // the bounded reply snippet, JSON-stringified so newlines can't split the
+        // line. (result.raw !== undefined — not truthy — so an EMPTY reply still
+        // logs RAW "" instead of silently vanishing, the bug that hid the first outage.)
+        console.log(`[PARCEL_SCAN] FAIL error=${result.error} stop_reason=${result.stopReason || "-"} http=${result.httpStatus ?? "-"}`);
+        if (result.raw !== undefined) {
+          console.log(`[PARCEL_SCAN] RAW ${JSON.stringify(String(result.raw).slice(0, 500))}`);
+        }
+      }
+      return result;
+    },
+    refund: async () => {
+      const { data, error } = await userSb.rpc("refund_parcel_credit", { p_amount: 1 });
+      if (error) throw error;
+      return data;
+    },
+    log: (m) => console.log(m),
+  });
+  return res.status(out.status).json(out.body);
 });
 
 // Parcel Scan A2 — 7-11 E-Map store-code check (admin-only). Same auth shape as
