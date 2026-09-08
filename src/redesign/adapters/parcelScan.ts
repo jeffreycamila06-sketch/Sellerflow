@@ -12,6 +12,7 @@
 import { SERVER } from "./serverIdentity";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { isAdminRole } from "../../lib/roles";
+import { SHIP_TEMP_AMBIENT, validateRecipientName, validPhone, validStore, validateAmounts, SHIP_MIN_TOTAL, SHIP_MAX_TOTAL } from "./shipping";
 
 // ── Feature gate (canUseClassicText pattern: printing.ts) ─────────────────────
 // ADMIN ROLE ONLY — deliberately NO googletest allowlist (diverges from
@@ -99,7 +100,7 @@ export async function fileToScanBase64(file: File): Promise<{ base64: string; me
 // Non-empty fields are checked with the EXISTING 賣貨便 validators; EMPTY fields
 // are allowed — unreadable handwriting saves as null and gets fixed at encode
 // time (A2). Amount range is a WARNING only (per spec), never a block.
-import { validateRecipientName, validPhone, validStore, SHIP_MIN_TOTAL, SHIP_MAX_TOTAL } from "./shipping";
+// (validators + SHIP_MIN/MAX_TOTAL imported at the top of the file.)
 
 export interface ScanFormState { name: string; phone: string; store: string; amount: string; notes: string }
 
@@ -236,6 +237,81 @@ export async function checkEmapStore(storeId: string): Promise<EmapCheckResult> 
   } catch {
     return { status: "unknown" };
   }
+}
+
+// ── 賣貨便 訂單匯入 Excel export (reuses the EXISTING, 賣貨便-accepted builder) ──
+// The row-mapper mirrors shippingExport.entryToXlsRow's A–J shape so the SAME
+// buildXlsmFromTemplate + patchXlsmTemplate produce a file 賣貨便 accepts. No
+// quota RPC (admin-only, owner is sole user). Pure — unit-tested.
+
+// H 買家下訂日期 — the scan's created_at as the seller's Taipei day, template's
+// slashed no-leading-zero format (2026/9/8), matching orderDateFromSessionKey.
+export function scanOrderDate(createdAtIso: string): string {
+  const d = new Date(createdAtIso);
+  if (!Number.isFinite(d.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
+  const g = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+  // Strip leading zeros on month/day to match orderDateFromSessionKey (2026/9/8).
+  return `${g("year")}/${Number(g("month"))}/${Number(g("day"))}`;
+}
+
+export interface ScanXlsOpts { storeName: string; fee: number; tempLayer?: string }
+
+// parcel_scans row → 賣貨便 A–J string[] (all strings; required cols are Text @).
+// Gap columns (owner-decided): D 溫層 = 常溫 (clothing is ambient), E 商品 =
+// the seller's shop name (same for every row; no new DB field), G 運費 =
+// seller_shipping_settings.default_fee, I/J = blank.
+export function scanToXlsRow(row: ParcelScanRow, opts: ScanXlsOpts): string[] {
+  return [
+    row.customerName.trim(),                          // A ＊取件人姓名
+    row.phone.trim(),                                 // B ＊取件人手機 (leading 0 kept)
+    row.storeId.trim(),                               // C ＊取件門市
+    opts.tempLayer ?? SHIP_TEMP_AMBIENT,              // D ＊溫層 = 常溫
+    String(opts.storeName || "").trim(),              // E ＊商品 = shop name (e.g. Budgetukay)
+    row.amount == null ? "" : String(row.amount),     // F ＊訂單金額
+    String(opts.fee),                                 // G ＊運費金額 = default_fee
+    scanOrderDate(row.createdAt),                     // H 買家下訂日期 (optional)
+    "",                                               // I 商品備註 (blank)
+    "",                                               // J 其他資訊 (blank — parcel_scans has no handle)
+  ];
+}
+
+// ── Export gate — split rows into READY (go into the Excel) vs NEEDS-ATTENTION
+// (excluded, listed with a reason). Uses the SAME 賣貨便 validators as the
+// shipping export, PLUS store_check_status. Rows already 'exported' are skipped
+// (neither bucket). store_check_status 'unknown'/null → READY (soft-warned in
+// the UI, never excluded: E-Map may be down / the confirmed-gate off). Pure.
+export type ExportReason = "wrong_store" | "bad_name" | "bad_phone" | "bad_store" | "bad_amount";
+export interface ScanExportSplit {
+  ready: ParcelScanRow[];
+  attention: { row: ParcelScanRow; reason: ExportReason }[];
+}
+export function splitScansForExport(rows: ParcelScanRow[], fee: number): ScanExportSplit {
+  const ready: ParcelScanRow[] = [];
+  const attention: { row: ParcelScanRow; reason: ExportReason }[] = [];
+  for (const row of rows) {
+    if (row.status === "exported") continue; // already done — don't re-include
+    let reason: ExportReason | null = null;
+    if (row.storeCheckStatus === "not_found") reason = "wrong_store";           // E-Map: wrong code
+    else if (validateRecipientName(row.customerName) !== "") reason = "bad_name";
+    else if (!validPhone(row.phone)) reason = "bad_phone";
+    else if (!validStore(row.storeId)) reason = "bad_store";
+    else if (validateAmounts(row.amount == null ? NaN : row.amount, fee) !== "") reason = "bad_amount"; // null amount → excluded
+    if (reason) attention.push({ row, reason });
+    else ready.push(row);
+  }
+  return { ready, attention };
+}
+
+// Mark exported rows done so re-exports skip them (status 'exported', sql/27).
+// Own-scoped via RLS; best-effort. Empty id list is a no-op success.
+export async function markScansExported(ids: string[]): Promise<{ ok: boolean; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
+  if (!ids.length) return { ok: true };
+  const me = await uid();
+  if (!me) return { ok: false, error: "not signed in" };
+  const { error } = await supabase.from("parcel_scans").update({ status: "exported" }).in("id", ids).eq("user_id", me);
+  return error ? { ok: false, error: error.message } : { ok: true };
 }
 
 // Persist the verdict onto the row (own-scoped via RLS). 'checking' is local-

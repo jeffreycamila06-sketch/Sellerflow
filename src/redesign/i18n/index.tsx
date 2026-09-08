@@ -1118,6 +1118,19 @@ const RAW: Record<string, Row> = {
   rd_ps2_store_checking: { en: "Checking store…", fil: "Chine-check ang store…", zh: "正在验证门市…", "zh-TW": "正在驗證門市…", vi: "Đang kiểm tra cửa hàng…", th: "กำลังตรวจสอบร้าน…", id: "Memeriksa toko…" },
   rd_ps2_recheck: { en: "Re-check", fil: "I-check ulit", zh: "重新验证", "zh-TW": "重新驗證", vi: "Kiểm tra lại", th: "ตรวจใหม่", id: "Periksa lagi" },
   rd_ps2_attention: { en: "{n} parcel(s) need attention (wrong store code)", fil: "{n} parcel ang kailangang tingnan (maling store code)", zh: "{n} 个包裹需要注意（门市代码错误）", "zh-TW": "{n} 個包裹需要注意（門市代碼錯誤）", vi: "{n} kiện cần chú ý (sai mã cửa hàng)", th: "{n} พัสดุต้องตรวจสอบ (รหัสร้านผิด)", id: "{n} paket perlu diperiksa (kode toko salah)" },
+  // Parcel Scan → 賣貨便 訂單匯入 Excel export (⚠️ zh-TW/th/id AI drafts)
+  rd_ps2_x_title: { en: "Export to 賣貨便 (Excel)", fil: "I-export sa 賣貨便 (Excel)", zh: "导出到卖货便（Excel）", "zh-TW": "匯出到賣貨便（Excel）", vi: "Xuất ra 賣貨便 (Excel)", th: "ส่งออกไป 賣貨便 (Excel)", id: "Ekspor ke 賣貨便 (Excel)" },
+  rd_ps2_x_hint: { en: "Builds one 訂單匯入 file to upload once on the 賣貨便 website — no more typing each parcel.", fil: "Gagawa ng isang 訂單匯入 file na i-uupload nang isang beses sa 賣貨便 website — hindi na kailangang i-type isa-isa.", zh: "生成一个订单汇入文件，在卖货便网站上传一次即可，无需逐一输入。", "zh-TW": "產生一個訂單匯入檔案，在賣貨便網站上傳一次即可，不用再逐筆輸入。", vi: "Tạo một tệp 訂單匯入 để tải lên một lần trên web 賣貨便 — khỏi nhập từng kiện.", th: "สร้างไฟล์ 訂單匯入 หนึ่งไฟล์เพื่ออัปโหลดครั้งเดียวบนเว็บ 賣貨便 — ไม่ต้องพิมพ์ทีละพัสดุ", id: "Membuat satu berkas 訂單匯入 untuk diunggah sekali di situs 賣貨便 — tak perlu ketik tiap paket." },
+  rd_ps2_x_button: { en: "Export {n} parcel(s)", fil: "I-export ang {n} parcel", zh: "导出 {n} 个包裹", "zh-TW": "匯出 {n} 個包裹", vi: "Xuất {n} kiện", th: "ส่งออก {n} พัสดุ", id: "Ekspor {n} paket" },
+  rd_ps2_x_exporting: { en: "Exporting…", fil: "Ine-export…", zh: "正在导出…", "zh-TW": "正在匯出…", vi: "Đang xuất…", th: "กำลังส่งออก…", id: "Mengekspor…" },
+  rd_ps2_x_result: { en: "{x} exported · {y} need attention", fil: "{x} na-export · {y} ang kailangang ayusin", zh: "已导出 {x} · {y} 需要注意", "zh-TW": "已匯出 {x} · {y} 需要注意", vi: "Đã xuất {x} · {y} cần chú ý", th: "ส่งออกแล้ว {x} · {y} ต้องตรวจสอบ", id: "{x} diekspor · {y} perlu diperiksa" },
+  rd_ps2_x_failed: { en: "Export failed.", fil: "Nabigo ang pag-export.", zh: "导出失败。", "zh-TW": "匯出失敗。", vi: "Xuất thất bại.", th: "ส่งออกไม่สำเร็จ", id: "Ekspor gagal." },
+  rd_ps2_x_tag: { en: "exported", fil: "exported", zh: "已导出", "zh-TW": "已匯出", vi: "đã xuất", th: "ส่งออกแล้ว", id: "diekspor" },
+  rd_ps2_x_wrong_store: { en: "wrong store code", fil: "maling store code", zh: "门市代码错误", "zh-TW": "門市代碼錯誤", vi: "sai mã cửa hàng", th: "รหัสร้านผิด", id: "kode toko salah" },
+  rd_ps2_x_bad_name: { en: "name won't fit the waybill", fil: "hindi kasya ang pangalan sa waybill", zh: "姓名不符合托运单", "zh-TW": "姓名不符合託運單", vi: "tên không hợp vận đơn", th: "ชื่อไม่พอดีใบส่ง", id: "nama tak muat di resi" },
+  rd_ps2_x_bad_phone: { en: "invalid phone", fil: "invalid na telepono", zh: "电话无效", "zh-TW": "電話無效", vi: "số điện thoại không hợp lệ", th: "เบอร์ไม่ถูกต้อง", id: "telepon tidak valid" },
+  rd_ps2_x_bad_store: { en: "store code not 6 digits", fil: "store code hindi 6 digits", zh: "门市代码非 6 位", "zh-TW": "門市代碼非 6 位", vi: "mã cửa hàng không đủ 6 số", th: "รหัสร้านไม่ครบ 6 หลัก", id: "kode toko bukan 6 digit" },
+  rd_ps2_x_bad_amount: { en: "amount missing or out of range", fil: "walang halaga o wala sa saklaw", zh: "金额缺失或超出范围", "zh-TW": "金額缺漏或超出範圍", vi: "thiếu số tiền hoặc ngoài phạm vi", th: "ไม่มีจำนวนเงินหรือเกินช่วง", id: "jumlah kosong atau di luar rentang" },
 };
 
 // Transpose RAW (key→langs) into REDESIGN_STRINGS (lang→keys).
