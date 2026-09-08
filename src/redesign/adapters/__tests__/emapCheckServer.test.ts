@@ -85,27 +85,62 @@ describe("checkEmapStore (injected fetch)", () => {
 
   it("malformed store id → unknown, never calls E-Map", async () => {
     const f = vi.fn();
-    expect(await checkEmapStore("12ab", { fetchImpl: f })).toEqual({ storeId: "12ab", status: "unknown" });
-    expect(await checkEmapStore("", { fetchImpl: f })).toEqual({ storeId: "", status: "unknown" });
+    expect(await checkEmapStore("12ab", { fetchImpl: f })).toMatchObject({ storeId: "12ab", status: "unknown" });
+    expect(await checkEmapStore("", { fetchImpl: f })).toMatchObject({ storeId: "", status: "unknown" });
     expect(f).not.toHaveBeenCalled();
   });
 
-  it("valid store (CONFIRMED) → verdict + sends the documented command/param shape; no raw", async () => {
+  it("DEFAULT 'id' variant → sends ID=<code> with the full blank param set (NOT StoreName=<code>)", async () => {
     const f = vi.fn(async () => okResp(storeXml("982063", "德民門市")));
-    const r = await checkEmapStore("982063", { fetchImpl: f, confirmed: true });
+    const r = await checkEmapStore("982063", { fetchImpl: f, confirmed: true }); // no variant → EMAP_LOOKUP_VARIANT default "id"
     expect(r.status).toBe("valid");
     expect(r.storeName).toBe("德民門市");
+    expect(r.variant).toBe("id");
+    expect(r.pois).toBe(1);
     expect(r.raw).toBeUndefined(); // confirmed + valid = quiet, nothing to log
     const [url, init] = f.mock.calls[0] as [string, RequestInit];
     expect(url).toContain("EMapSDK.aspx");
-    expect(init.body).toBe(`commandid=${EMAP_LOOKUP_COMMAND}&${EMAP_LOOKUP_PARAM}=982063`);
+    const body = String(init.body);
+    expect(body).toBe(`commandid=${EMAP_LOOKUP_COMMAND}&ID=982063&StoreName=&address=&roadname=&city=&town=&SpecialStore_Kind=&is7WiFi=False&isATM=False`);
+    expect(body).toContain("ID=982063");       // the code is in ID …
+    expect(body).toContain("StoreName=&");      // … and StoreName is BLANK (the bug that returned 0 stores)
     expect((init.headers as Record<string, string>)["Content-Type"]).toBe("application/x-www-form-urlencoded");
   });
 
-  it("not-found XML (CONFIRMED) → not_found + bounded raw for logging", async () => {
+  it("'storename' variant → the old single-field shape (StoreName=<code>), the documented fallback", async () => {
+    const f = vi.fn(async () => okResp(storeXml("982063")));
+    const r = await checkEmapStore("982063", { fetchImpl: f, confirmed: true, variant: "storename" });
+    expect(r.status).toBe("valid");
+    expect(r.variant).toBe("storename");
+    expect(String((f.mock.calls[0][1] as RequestInit).body)).toBe(`commandid=${EMAP_LOOKUP_COMMAND}&${EMAP_LOOKUP_PARAM}=982063`);
+  });
+
+  it("'both' → id first; on 0 GeoPosition retries storename once; reports the variant that answered", async () => {
+    const f = vi.fn()
+      .mockResolvedValueOnce(okResp(emptyXml))                         // id → 0 stores
+      .mockResolvedValueOnce(okResp(storeXml("982063", "德民門市"))); // storename → the store
+    const r = await checkEmapStore("982063", { fetchImpl: f, confirmed: true, variant: "both" });
+    expect(f).toHaveBeenCalledTimes(2);
+    expect(String((f.mock.calls[0][1] as RequestInit).body)).toContain("ID=982063");        // 1st attempt = id
+    expect(String((f.mock.calls[1][1] as RequestInit).body)).toContain("StoreName=982063"); // 2nd attempt = storename
+    expect(r.status).toBe("valid");
+    expect(r.variant).toBe("storename"); // the one that returned data
+    expect(r.pois).toBe(1);
+  });
+
+  it("'both' → stops at id (no retry) when id already returns store data", async () => {
+    const f = vi.fn(async () => okResp(storeXml("982063")));
+    const r = await checkEmapStore("982063", { fetchImpl: f, confirmed: true, variant: "both" });
+    expect(f).toHaveBeenCalledTimes(1);
+    expect(r.variant).toBe("id");
+    expect(r.status).toBe("valid");
+  });
+
+  it("not-found XML (CONFIRMED) → not_found + bounded raw + pois=0", async () => {
     const f = vi.fn(async () => okResp(emptyXml));
     const r = await checkEmapStore("930342", { fetchImpl: f, confirmed: true });
     expect(r.status).toBe("not_found");
+    expect(r.pois).toBe(0);
     expect(typeof r.raw).toBe("string");
     expect((r.raw || "").length).toBeLessThanOrEqual(500);
   });
@@ -131,10 +166,10 @@ describe("checkEmapStore (injected fetch)", () => {
     expect(r.raw).toMatch(/^read_error:/);
   });
 
-  it("command/param are env-overridable via opts (the safety valve)", async () => {
+  it("command/param are env-overridable via opts (safety valve; storename variant puts the code in ANY field)", async () => {
     const f = vi.fn(async () => okResp(storeXml("982063")));
-    await checkEmapStore("982063", { fetchImpl: f, command: "SearchStoreId", param: "StoreID" });
-    expect((f.mock.calls[0][1] as RequestInit).body).toBe("commandid=SearchStoreId&StoreID=982063");
+    await checkEmapStore("982063", { fetchImpl: f, variant: "storename", command: "SearchStoreId", param: "StoreID" });
+    expect(String((f.mock.calls[0][1] as RequestInit).body)).toBe("commandid=SearchStoreId&StoreID=982063");
   });
 
   // AUDIT B1 — the abort timer must cover the BODY read, not just headers.
@@ -192,10 +227,13 @@ describe("server.js route wiring (structural — the server.js convention)", () 
     const slice = src.slice(src.indexOf('"/admin/parcel-emap-check"'));
     expect(slice.slice(0, 400)).toMatch(/\^\\d\{6\}\$/);
   });
-  it("logs bounded raw on non-valid verdicts, server-console only (never in the json response)", () => {
+  it("logs ONE diagnostic line per check with variant + result + pois, plus the bounded RAW; server-console only (never in the json response)", () => {
+    expect(src).toMatch(/\[EMAP_CHECK\] variant=\$\{result\.variant\} store=\$\{storeId\} result=\$\{result\.status\} pois=\$\{result\.pois/);
     expect(src).toMatch(/\[EMAP_CHECK\] RAW \$\{JSON\.stringify\(String\(result\.raw\)\.slice\(0, 500\)\)\}/);
     const slice = src.slice(src.indexOf('"/admin/parcel-emap-check"'));
     const end = slice.indexOf("\n});");
+    // neither raw nor variant/pois are forwarded to the client json response
     expect(slice.slice(0, end)).not.toMatch(/json\(\{[^}]*raw/);
+    expect(slice.slice(0, end)).not.toMatch(/json\(\{[^}]*pois/);
   });
 });

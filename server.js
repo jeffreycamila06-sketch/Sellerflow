@@ -803,16 +803,17 @@ app.post("/admin/parcel-emap-check", requireAuth, requireAdmin, async (req, res)
     return res.status(400).json({ success: false, error: "bad_store_id" });
   }
   const result = await checkEmapStore(storeId);
-  // Log the bounded raw XML (server console ONLY, never the client) whenever the
-  // core attached one — that is every non-valid verdict AND, while the S1 gate is
-  // unconfirmed, valid verdicts too, so the owner sees a positive
-  // "[EMAP_CHECK] valid store=982063" + RAW to confirm the shape before flipping
-  // EMAP_CHECK_CONFIRMED=true. (note flags an S1 not_found→unknown downgrade.)
-  if (result.status !== "valid" || result.raw !== undefined) {
-    console.log(`[EMAP_CHECK] ${result.status} store=${storeId}${result.note ? ` (${result.note})` : ""}`);
-    if (result.raw !== undefined) {
-      console.log(`[EMAP_CHECK] RAW ${JSON.stringify(String(result.raw).slice(0, 500))}`);
-    }
+  // ONE diagnostic line on EVERY check (server console ONLY, never the client):
+  // which query variant ran, the verdict, and how many store nodes came back —
+  // so scanning a known-valid code (982063) shows, per variant, whether real
+  // store data returned (pois>=1). note flags an S1 not_found→unknown downgrade.
+  console.log(`[EMAP_CHECK] variant=${result.variant} store=${storeId} result=${result.status} pois=${result.pois ?? 0}${result.note ? ` (${result.note})` : ""}`);
+  // RAW: the bounded response body (server console ONLY) — attached on every
+  // non-valid verdict AND on a valid verdict while the S1 gate is unconfirmed,
+  // so the owner can confirm the real XML shape before flipping
+  // EMAP_CHECK_CONFIRMED=true.
+  if (result.raw !== undefined) {
+    console.log(`[EMAP_CHECK] RAW ${JSON.stringify(String(result.raw).slice(0, 500))}`);
   }
   return res.json({ success: true, storeId: result.storeId, status: result.status, storeName: result.storeName, address: result.address });
 });
