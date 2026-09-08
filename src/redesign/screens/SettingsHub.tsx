@@ -32,6 +32,7 @@ const ic = {
   chart: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M5 19V11M10 19V5M15 19v-6M20 19V9" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" /></svg>,
   truck: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 6h10v9H3z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M13 9h4l3 3v3h-7z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><circle cx="7" cy="17.5" r="1.6" stroke="currentColor" strokeWidth="1.5" /><circle cx="17" cy="17.5" r="1.6" stroke="currentColor" strokeWidth="1.5" /></svg>,
   database: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><ellipse cx="12" cy="6" rx="7" ry="3" stroke="currentColor" strokeWidth="1.6" /><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6" stroke="currentColor" strokeWidth="1.6" /><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3" stroke="currentColor" strokeWidth="1.6" /></svg>,
+  camera: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 8a2 2 0 0 1 2-2h1.5l1.2-1.8a1 1 0 0 1 .83-.45h4.94a1 1 0 0 1 .83.45L16.5 6H18a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8Z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><circle cx="12" cy="12.5" r="3.4" stroke="currentColor" strokeWidth="1.6" /></svg>,
   doclock: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v14H6z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M13 3v5h5" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><rect x="9" y="12.5" width="6" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.4" /><path d="M10.3 12.5v-1a1.7 1.7 0 0 1 3.4 0v1" stroke="currentColor" strokeWidth="1.4" /></svg>,
   help: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7" /><path d="M9.4 9.3a2.6 2.6 0 0 1 5 .9c0 1.7-2.4 2-2.4 3.6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="17" r="1.1" fill="currentColor" /></svg>,
   trash: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M5 7h14M10 7V5h4v2M6 7l1 13h10l1-13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>,
@@ -40,12 +41,13 @@ const ic = {
 
 export default function SettingsHub({
   onGeneral, onCustomers, onAdmin, onSales, onShipping, onCustomerData, onLegal, onDelete, onLogout,
-  isAdmin = false,
+  isAdmin = false, onParcelScan,
 }: {
   onGeneral: () => void; onCustomers: () => void;
   onAdmin: () => void; onSales: () => void; onShipping: () => void;
   onCustomerData: () => void; onLegal: () => void; onDelete: () => void; onLogout: () => void;
   isAdmin?: boolean; // Phase 5h — owner-only tiles (matches production isAdminUser gating)
+  onParcelScan?: () => void; // Parcel Scan A1 — passed ONLY when canUseParcelScan allows (admin/test acct)
 }) {
   const t = useT();
   // Local "Need help?" modal (display only — reaches Jeff on Telegram via a real
@@ -67,6 +69,8 @@ export default function SettingsHub({
           {isAdmin && <Tile icon={ic.shield} label={t.rd_sh_admin} onClick={onAdmin} />}
           <Tile icon={ic.chart} label={t.rd_sh_sales} onClick={onSales} />
           <Tile icon={ic.truck} label={t.rd_sh_shipping} onClick={onShipping} />
+          {/* Parcel Scan (A1) — admin/test-account dogfood; the prop itself is the gate */}
+          {onParcelScan && <Tile icon={ic.camera} label={t.rd_ps2_title} onClick={onParcelScan} />}
           {isAdmin && <Tile icon={ic.database} label={t.rd_sh_customer_data} onClick={onCustomerData} />}
           <Tile icon={ic.doclock} label={t.lg_pt_title} onClick={onLegal} />
           {/* Need help? — support entry point, directly ABOVE Delete Account.
