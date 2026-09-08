@@ -11,6 +11,8 @@ import {
   SCAN_FIELDS,
   DEFAULT_SCAN_MODEL,
   SCAN_MAX_TOKENS,
+  SCAN_RAW_SNIPPET,
+  SCAN_OUTPUT_SCHEMA,
   buildScanSystemPrompt,
   normalizeScanPhone,
   parseScanResult,
@@ -94,7 +96,8 @@ describe("parseScanResult", () => {
     expect(r.ok).toBe(false);
     expect(r.error).toBe("no_json_in_response");
     expect(r.raw).toContain("a very long line");
-    expect(parseScanResult("x".repeat(5000)).raw?.length).toBeLessThanOrEqual(800);
+    expect(parseScanResult("x".repeat(5000)).raw?.length).toBeLessThanOrEqual(SCAN_RAW_SNIPPET);
+    expect(SCAN_RAW_SNIPPET).toBe(500);
   });
   it("malformed JSON → bad_json_in_response, never a throw", () => {
     const r = parseScanResult('{"name": "unterminated');
@@ -152,7 +155,7 @@ describe("scanParcelImage (injected fetch)", () => {
     expect(JSON.parse(f.mock.calls[0][1].body).model).toBe("claude-opus-5");
   });
 
-  it("stop_reason max_tokens with cut-off JSON → 'truncated' + raw", async () => {
+  it("stop_reason max_tokens with cut-off JSON → 'truncated' + raw + failure metadata", async () => {
     const f = vi.fn(async () => ({
       ok: true,
       json: async () => ({ stop_reason: "max_tokens", content: [{ type: "text", text: '{"name":"cut off' }] }),
@@ -160,14 +163,73 @@ describe("scanParcelImage (injected fetch)", () => {
     const r = await scanParcelImage("aGk=", "image/jpeg", { apiKey: "k", fetchImpl: f });
     expect(r.ok).toBe(false);
     expect(r.error).toBe("truncated");
+    expect(r.stopReason).toBe("max_tokens");
+    expect(r.httpStatus).toBe(200);
   });
 
-  it("non-2xx from Anthropic → anthropic_http_<status>; network throw → network_error", async () => {
-    const bad = vi.fn(async () => ({ ok: false, status: 429, json: async () => ({}) }));
-    expect(await scanParcelImage("aGk=", "image/jpeg", { apiKey: "k", fetchImpl: bad })).toEqual({ ok: false, error: "anthropic_http_429" });
+  // ⚠️ THE PRODUCTION ROOT-CAUSE PIN: Sonnet 5 runs adaptive thinking by
+  // default, so content[0] is a THINKING block (empty text) and the JSON lives
+  // in the text block AFTER it. The old content[0].text read turned every
+  // response into no_json_in_response with an EMPTY raw (which the logger then
+  // suppressed — the invisible outage). Extraction must join ALL text blocks.
+  it("thinking-block-first response (Sonnet 5 default) → JSON extracted from the later text block", async () => {
+    const f = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        stop_reason: "end_turn",
+        content: [
+          { type: "thinking", thinking: "" }, // display:"omitted" default — no .text at all
+          { type: "text", text: JSON.stringify(goodObj()) },
+        ],
+      }),
+    }));
+    const r = await scanParcelImage("aGk=", "image/jpeg", { apiKey: "k", fetchImpl: f });
+    expect(r.ok).toBe(true);
+    expect(r.fields?.name).toBe("陳小美");
+  });
+
+  it("refusal-shaped PROSE in the text block → honest no_json error with the prose captured as raw, never a crash", async () => {
+    const prose = "I can't help transcribe personal information from this image.";
+    const f = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ stop_reason: "end_turn", content: [{ type: "thinking", thinking: "" }, { type: "text", text: prose }] }),
+    }));
+    const r = await scanParcelImage("aGk=", "image/jpeg", { apiKey: "k", fetchImpl: f });
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe("no_json_in_response");
+    expect(r.raw).toContain("transcribe personal information"); // findable in the RAW log line
+    expect(r.stopReason).toBe("end_turn");
+  });
+
+  it("stop_reason 'refusal' (HTTP 200 safety decline) → distinct model_refused with the category as raw", async () => {
+    const f = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ stop_reason: "refusal", stop_details: { type: "refusal", category: "privacy" }, content: [] }),
+    }));
+    const r = await scanParcelImage("aGk=", "image/jpeg", { apiKey: "k", fetchImpl: f });
+    expect(r).toEqual({ ok: false, error: "model_refused", stopReason: "refusal", httpStatus: 200, raw: "privacy" });
+  });
+
+  it("non-2xx from Anthropic → distinct anthropic_http_<status>; the ERROR body is surfaced as raw, never treated as a model reply", async () => {
+    const bad = vi.fn(async () => ({ ok: false, status: 429, json: async () => ({ error: { type: "rate_limit_error", message: "Too many requests" } }) }));
+    const r = await scanParcelImage("aGk=", "image/jpeg", { apiKey: "k", fetchImpl: bad });
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe("anthropic_http_429");
+    expect(r.httpStatus).toBe(429);
+    expect(r.raw).toBe("Too many requests");
     const boom = vi.fn(async () => { throw new Error("boom"); });
-    const r = await scanParcelImage("aGk=", "image/jpeg", { apiKey: "k", fetchImpl: boom });
-    expect(r.error).toMatch(/^network_error:/);
+    expect((await scanParcelImage("aGk=", "image/jpeg", { apiKey: "k", fetchImpl: boom })).error).toMatch(/^network_error:/);
+  });
+
+  it("request forces JSON via output_config.format structured outputs — and NEVER via assistant prefill (400 on Sonnet 4.6+/5)", async () => {
+    const f = vi.fn(async () => okResp(goodObj()));
+    await scanParcelImage("aGk=", "image/jpeg", { apiKey: "k", fetchImpl: f });
+    const body = JSON.parse(f.mock.calls[0][1].body);
+    expect(body.output_config).toEqual({ format: { type: "json_schema", schema: SCAN_OUTPUT_SCHEMA } });
+    expect(SCAN_OUTPUT_SCHEMA.required).toEqual([...SCAN_FIELDS, "confidence"]);
+    // Prefill ban: the last message must be the user turn — no assistant turn anywhere.
+    expect(body.messages[body.messages.length - 1].role).toBe("user");
+    expect(body.messages.some((m: { role: string }) => m.role === "assistant")).toBe(false);
   });
 });
 
@@ -189,8 +251,15 @@ describe("server.js route wiring (structural — the server.js convention)", () 
     // no global limit raise anywhere
     expect(src).not.toMatch(/app\.use\(express\.json\(\{/);
   });
+  it("failure logging: FAIL line carries stop_reason + http; RAW is its own single JSON-stringified ≤500-char line, logged even when EMPTY", () => {
+    expect(src).toMatch(/\[PARCEL_SCAN\] FAIL error=\$\{result\.error\} stop_reason=\$\{result\.stopReason \|\| "-"\} http=\$\{result\.httpStatus \?\? "-"\}/);
+    // RAW: JSON.stringify (newlines can't split the line) + 500-char cap, and
+    // gated on !== undefined — NOT truthiness (the empty-raw suppression bug
+    // that hid the first production outage must never come back).
+    expect(src).toMatch(/result\.raw !== undefined/);
+    expect(src).toMatch(/\[PARCEL_SCAN\] RAW \$\{JSON\.stringify\(String\(result\.raw\)\.slice\(0, 500\)\)\}/);
+  });
   it("failure raw goes to the server console only, never the client response", () => {
-    expect(src).toMatch(/\[PARCEL_SCAN\] FAIL/);
     const routeSlice = src.slice(src.indexOf('"/admin/parcel-scan"'));
     const routeEnd = routeSlice.indexOf("});");
     expect(routeSlice.slice(0, routeEnd)).not.toMatch(/json\(\{[^}]*raw/);
