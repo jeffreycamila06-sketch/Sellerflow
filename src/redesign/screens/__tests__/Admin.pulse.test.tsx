@@ -31,8 +31,8 @@ describe("Admin — Business Pulse web-only gate", () => {
     (window as unknown as { Capacitor?: unknown }).Capacitor = { getPlatform: () => "android" };
     renderAdmin();
     expect(screen.queryByText("Live Pulse")).toBeNull();
-    // the rest of the admin home still renders (User Base tile is platform-agnostic)
-    expect(screen.getByText("User Base")).toBeTruthy();
+    // the rest of the admin home still renders (Sellers tile is platform-agnostic)
+    expect(screen.getByText("Sellers")).toBeTruthy();
   });
   it("iOS shell (Capacitor ios): also hides the Live Pulse tile", () => {
     (window as unknown as { Capacitor?: unknown }).Capacitor = { getPlatform: () => "ios" };

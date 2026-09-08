@@ -18,7 +18,7 @@ const renderComposer = (publish = vi.fn(async () => ({ ok: true }))) => {
   render(
     <TProvider lang="en">
       <AdminPanel
-        panel="broadcast" onClose={() => {}} assignAmount="" onAssignAmount={() => {}} cur="NT$"
+        panel="broadcast" onClose={() => {}} cur="NT$"
         ann={{ list, publish, unpublish: async () => ({ ok: true }), remove: async () => ({ ok: true }) }}
       />
     </TProvider>,

@@ -49,7 +49,23 @@ export function isTechnicalFailure(errorCode) {
 //   scanned     = whether the Anthropic scan was actually invoked
 //   refunded    = 'ok' | 'failed' | null  (null = no refund attempted: success,
 //                 a pre-scan stop, or a bad-photo failure where the debit stands)
-export async function runScanWithCredit({ uid = "", debit, scan, refund, log = () => {} }) {
+//
+// setOutcome(debitId, outcome) → injected; best-effort stamp of the per-scan
+// outcome ('success' | 'technical' | 'bad_photo') on the just-created scan_debit
+// (sql/30 set_scan_outcome RPC). A failed stamp NEVER breaks the scan/debit/refund
+// — it's logged and swallowed. Defaults to a no-op so tests that don't care can
+// omit it. The atomic debit itself is untouched (this is a follow-up UPDATE keyed
+// by debit_id).
+export async function runScanWithCredit({ uid = "", debit, scan, refund, setOutcome = async () => {}, log = () => {} }) {
+  const stamp = async (debitId, outcome) => {
+    if (!debitId) return;
+    try {
+      const r = await setOutcome(debitId, outcome);
+      if (r && r.ok === false) log(`[CREDIT] outcome stamp not applied user=${uid} outcome=${outcome} err=${r.error}`);
+    } catch (e) {
+      log(`[CREDIT] outcome stamp failed user=${uid} outcome=${outcome} err=${(e && e.message) || String(e)}`);
+    }
+  };
   // ── (a) DEBIT (before the paid call) ────────────────────────────────────────
   let d;
   try {
@@ -75,6 +91,7 @@ export async function runScanWithCredit({ uid = "", debit, scan, refund, log = (
   // ── (b) SCAN ────────────────────────────────────────────────────────────────
   const result = await scan();
   if (result && result.ok) {
+    await stamp(d.debit_id, "success"); // best-effort outcome record
     return {
       status: 200,
       body: { success: true, fields: result.fields, confidence: result.confidence, balance: postDebitBalance },
@@ -89,6 +106,7 @@ export async function runScanWithCredit({ uid = "", debit, scan, refund, log = (
   let refunded = null;
   let balance = postDebitBalance; // bad-photo / failed-refund → debit stands
   if (isTechnicalFailure(code)) {
+    await stamp(d.debit_id, "technical"); // outcome record (this debit also gets refunded)
     refunded = "failed";
     try {
       const rf = await refund(d.debit_id);          // GATED RPC matches this debit
@@ -101,6 +119,7 @@ export async function runScanWithCredit({ uid = "", debit, scan, refund, log = (
   } else {
     // Bad photo (model couldn't read the seller's slip / refused / truncated) —
     // a real scan was consumed, the debit is kept.
+    await stamp(d.debit_id, "bad_photo"); // outcome record — the abuse/waste signal
     log(`[CREDIT] no-refund (bad photo) user=${uid} code=${code}`);
   }
 

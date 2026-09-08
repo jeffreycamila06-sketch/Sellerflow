@@ -389,7 +389,6 @@ export default function RedesignApp() {
   // banner + 🔔 bell state. Admin publish/unpublish flow through the same hook.
   const ann = useAnnouncements(authed);
   const [annOpen, setAnnOpen] = useState(false);
-  const [assignAmount, setAssignAmount] = useState("499");
   const [lang, setLang] = useState<string>(() => readLS(LS.lang, "en"));
   const [langOpen, setLangOpen] = useState(false);
   // RedesignApp is the TProvider parent → resolve strings directly here.
@@ -1160,7 +1159,7 @@ export default function RedesignApp() {
 
         {/* Admin control bottom-sheet (absolute within the phone, like the v2 prototype) */}
         {adminPanel && isAdmin && (
-          <AdminPanel panel={adminPanel} onClose={() => setAdminPanel(null)} assignAmount={assignAmount} onAssignAmount={setAssignAmount} cur={cur} users={adminUsers.users} usersState={adminUsers.state} rawByEmail={adminUsers.rawByEmail} actions={admin} onChanged={() => { adminUsers.reload(); freeUsersData.reload(); auditData.reload(); }} freeUsers={freeUsersData.freeUsers} freeUsersState={freeUsersData.state} auditLogs={auditData.logs} auditState={auditData.state} onOpenPanel={setAdminPanel} pulse={pulse.data} pulseState={pulse.state} onRefreshPulse={pulse.refresh} ann={{ list: ann.list, loading: ann.loading, publish: ann.publish, unpublish: ann.unpublish, remove: ann.remove }} onToast={(msg, kind) => setToast({ msg, kind })} />
+          <AdminPanel panel={adminPanel} onClose={() => setAdminPanel(null)} cur={cur} users={adminUsers.users} usersState={adminUsers.state} rawByEmail={adminUsers.rawByEmail} actions={admin} onChanged={() => { adminUsers.reload(); freeUsersData.reload(); auditData.reload(); }} freeUsers={freeUsersData.freeUsers} freeUsersState={freeUsersData.state} auditLogs={auditData.logs} auditState={auditData.state} onOpenPanel={setAdminPanel} pulse={pulse.data} pulseState={pulse.state} onRefreshPulse={pulse.refresh} ann={{ list: ann.list, loading: ann.loading, publish: ann.publish, unpublish: ann.unpublish, remove: ann.remove }} onToast={(msg, kind) => setToast({ msg, kind })} />
         )}
 
         {/* 🔔 Announcements list bottom-sheet (same pattern as AdminPanel) */}

@@ -145,3 +145,56 @@ describe("runScanWithCredit — debit → scan → refund", () => {
     expect(CREDIT_DEBIT_AMOUNT).toBe(1);
   });
 });
+
+describe("runScanWithCredit — per-scan outcome stamp (sql/30)", () => {
+  it("success → stamps 'success' on the debit_id", async () => {
+    const setOutcome = vi.fn(async () => ({ ok: true }));
+    await runScanWithCredit({
+      debit: async () => ({ ok: true, balance: 4, debit_id: "d1" }),
+      scan: async () => ok, refund: async () => ({ ok: true, balance: 5 }), setOutcome,
+    });
+    expect(setOutcome).toHaveBeenCalledWith("d1", "success");
+  });
+
+  it("technical failure → stamps 'technical' (and still refunds)", async () => {
+    const setOutcome = vi.fn(async () => ({ ok: true }));
+    const refund = vi.fn(async () => ({ ok: true, balance: 4 }));
+    await runScanWithCredit({
+      debit: async () => ({ ok: true, balance: 3, debit_id: "d2" }),
+      scan: async () => ({ ok: false, error: "network_error" }), refund, setOutcome,
+    });
+    expect(setOutcome).toHaveBeenCalledWith("d2", "technical");
+    expect(refund).toHaveBeenCalledWith("d2");
+  });
+
+  it("bad-photo failure → stamps 'bad_photo' (no refund)", async () => {
+    const setOutcome = vi.fn(async () => ({ ok: true }));
+    const refund = vi.fn(async () => ({ ok: true, balance: 4 }));
+    await runScanWithCredit({
+      debit: async () => ({ ok: true, balance: 3, debit_id: "d3" }),
+      scan: async () => ({ ok: false, error: "no_json_in_response" }), refund, setOutcome,
+    });
+    expect(setOutcome).toHaveBeenCalledWith("d3", "bad_photo");
+    expect(refund).not.toHaveBeenCalled();
+  });
+
+  it("a THROWING setOutcome never breaks the scan response (best-effort)", async () => {
+    const out = await runScanWithCredit({
+      debit: async () => ({ ok: true, balance: 4, debit_id: "d4" }),
+      scan: async () => ok,
+      refund: async () => ({ ok: true, balance: 5 }),
+      setOutcome: async () => { throw new Error("stamp rpc down"); },
+    });
+    expect(out.status).toBe(200);
+    expect(out.body).toEqual({ success: true, fields: { name: "A" }, confidence: {}, balance: 4 });
+  });
+
+  it("insufficient debit → NO stamp (no scan happened)", async () => {
+    const setOutcome = vi.fn(async () => ({ ok: true }));
+    await runScanWithCredit({
+      debit: async () => ({ ok: false, error: "insufficient_credits", balance: 0 }),
+      scan: async () => ok, refund: async () => ({ ok: true }), setOutcome,
+    });
+    expect(setOutcome).not.toHaveBeenCalled();
+  });
+});
