@@ -10,9 +10,12 @@ import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT, tpl } from "../i18n";
 import {
   fileToScanBase64, scanParcel, saveParcelScan, loadParcelScans, formErrors, amountWarns,
-  checkEmapStore, saveStoreCheck,
-  type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState, type StoreCheckStatus,
+  checkEmapStore, saveStoreCheck, scanToXlsRow, splitScansForExport, markScansExported,
+  type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState, type StoreCheckStatus, type ExportReason,
 } from "../adapters/parcelScan";
+import { fetchShipTemplate, buildXlsmFromTemplate, deliverXlsm, exportFilename } from "../adapters/shippingExport";
+import { loadShippingSettings } from "../adapters/shippingSettings";
+import { SHIP_DEFAULT_FEE } from "../adapters/shipping";
 
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
 const lbl: CSSProperties = { fontSize: 11, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 4 };
@@ -50,7 +53,16 @@ const formToFields = (f: FormState): ScanFields => ({
   notes: f.notes.trim() || null,
 });
 
-export default function ParcelScan({ cur = "NT$" }: { cur?: string }) {
+// Export attention reason → i18n key.
+type ReasonKey = "rd_ps2_x_wrong_store" | "rd_ps2_x_bad_name" | "rd_ps2_x_bad_phone" | "rd_ps2_x_bad_store" | "rd_ps2_x_bad_amount";
+const reasonKey = (r: ExportReason): ReasonKey =>
+  r === "wrong_store" ? "rd_ps2_x_wrong_store"
+    : r === "bad_name" ? "rd_ps2_x_bad_name"
+      : r === "bad_phone" ? "rd_ps2_x_bad_phone"
+        : r === "bad_store" ? "rd_ps2_x_bad_store"
+          : "rd_ps2_x_bad_amount";
+
+export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: string; storeName?: string }) {
   const t = useT();
   const fileRef = useRef<HTMLInputElement | null>(null);
 
@@ -66,6 +78,12 @@ export default function ParcelScan({ cur = "NT$" }: { cur?: string }) {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
 
+  // 賣貨便 export: default fee (one settings read on open) + busy + last summary.
+  const [fee, setFee] = useState(SHIP_DEFAULT_FEE);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [exportErr, setExportErr] = useState("");
+  const [exportSummary, setExportSummary] = useState<{ exported: number; attention: { name: string; reason: ExportReason }[] } | null>(null);
+
   // Saved list — ONE read on screen open; saves append locally (no refetch).
   const [rows, setRows] = useState<ParcelScanRow[]>([]);
   const [listLoaded, setListLoaded] = useState(false);
@@ -75,6 +93,10 @@ export default function ParcelScan({ cur = "NT$" }: { cur?: string }) {
   useEffect(() => () => { aliveRef.current = false; }, []);
   useEffect(() => {
     loadParcelScans().then((r) => { if (aliveRef.current) { if (r.ok) setRows(r.rows); setListLoaded(true); } });
+  }, []);
+  // One settings read on open → the 運費 default for the export (factory NT$38).
+  useEffect(() => {
+    loadShippingSettings().then((s) => { if (aliveRef.current && s) setFee(s.defaultFee); });
   }, []);
 
   const scanOne = async (list: File[], i: number) => {
@@ -149,6 +171,35 @@ export default function ParcelScan({ cur = "NT$" }: { cur?: string }) {
     // matched to the row; skip the check on the local-id fallback.
     if (r.id) runStoreCheck(r.id, storeId);
     advance();
+  };
+
+  // ── 賣貨便 訂單匯入 Excel export — gate, build via the EXISTING builder, deliver.
+  // No quota RPC (admin-only). Marks exported READY rows done so re-exports skip.
+  const pendingCount = rows.filter((r) => r.status !== "exported").length;
+  const runExport = async () => {
+    if (exportBusy) return;
+    setExportBusy(true); setExportErr(""); setExportSummary(null);
+    try {
+      const { ready, attention } = splitScansForExport(rows, fee);
+      const attnList = attention.map((a) => ({ name: a.row.customerName || a.row.storeId || "—", reason: a.reason }));
+      if (ready.length === 0) {
+        setExportSummary({ exported: 0, attention: attnList });
+        return;
+      }
+      const bytes = await buildXlsmFromTemplate(await fetchShipTemplate(), ready.map((r) => scanToXlsRow(r, { storeName, fee })));
+      const d = await deliverXlsm(bytes, exportFilename(Date.now()));
+      if (!d.ok) { setExportErr(d.error || "export_failed"); return; }
+      const ids = ready.map((r) => r.id);
+      void markScansExported(ids); // best-effort; re-exports skip these
+      if (aliveRef.current) {
+        setRows((prev) => prev.map((r) => (ids.includes(r.id) ? { ...r, status: "exported" } : r)));
+        setExportSummary({ exported: ready.length, attention: attnList });
+      }
+    } catch (e) {
+      setExportErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExportBusy(false);
+    }
   };
 
   const errs = formErrors(form);
@@ -250,6 +301,36 @@ export default function ParcelScan({ cur = "NT$" }: { cur?: string }) {
           </div>
         )}
 
+        {/* 賣貨便 訂單匯入 Excel export — one file for the whole batch. */}
+        <div style={card} data-testid="ps-export-card">
+          <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 6 }}>{t.rd_ps2_x_title}</div>
+          <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 9, lineHeight: 1.5 }}>{t.rd_ps2_x_hint}</div>
+          <button
+            onClick={() => void runExport()}
+            disabled={exportBusy || pendingCount === 0}
+            style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: "none", background: exportBusy || pendingCount === 0 ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: exportBusy || pendingCount === 0 ? "default" : "pointer" }}
+            data-testid="ps-export-btn"
+          >📄 {exportBusy ? t.rd_ps2_x_exporting : tpl(t.rd_ps2_x_button, { n: String(pendingCount) })}</button>
+          {exportErr && <div style={{ ...errTxt, marginTop: 8 }} data-testid="ps-export-err">{t.rd_ps2_x_failed} <span style={{ fontFamily: mono }}>{exportErr}</span></div>}
+          {exportSummary && (
+            <div style={{ marginTop: 10 }} data-testid="ps-export-summary">
+              <div style={{ fontSize: 12, fontWeight: 800, color: exportSummary.exported > 0 ? "var(--ok, #16a34a)" : "var(--text-dim)" }}>
+                {tpl(t.rd_ps2_x_result, { x: String(exportSummary.exported), y: String(exportSummary.attention.length) })}
+              </div>
+              {exportSummary.attention.length > 0 && (
+                <div style={{ marginTop: 6, display: "grid", gap: 4 }}>
+                  {exportSummary.attention.map((a, i) => (
+                    <div key={i} style={{ fontSize: 11, color: "var(--danger)", display: "flex", justifyContent: "space-between", gap: 8 }} data-testid="ps-export-attn-row">
+                      <span style={{ fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span>
+                      <span style={{ flexShrink: 0 }}>{t[reasonKey(a.reason)]}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Saved list — read-on-open snapshot + local appends. Full queue = A2. */}
         <div style={card}>
           <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 8 }}>{t.rd_ps2_saved} {rows.length > 0 && <span style={{ color: "var(--text-dim)", fontWeight: 700 }}>· {rows.length}</span>}</div>
@@ -260,7 +341,10 @@ export default function ParcelScan({ cur = "NT$" }: { cur?: string }) {
             return (
               <div key={r.id} style={{ padding: "9px 2px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }} data-testid="ps-row">
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.customerName || "—"}</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {r.customerName || "—"}
+                    {r.status === "exported" && <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 800, color: "var(--ok, #16a34a)", border: "1px solid var(--ok, #16a34a)", borderRadius: 6, padding: "0 5px", verticalAlign: "middle" }} data-testid="ps-exported-tag">{t.rd_ps2_x_tag}</span>}
+                  </div>
                   <div style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: mono }}>{[r.phone, r.storeId].filter(Boolean).join(" · ") || "—"}</div>
                   {badge && (
                     <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: badge.color }} data-testid="ps-store-badge" data-status={r.storeCheckStatus || ""}>
