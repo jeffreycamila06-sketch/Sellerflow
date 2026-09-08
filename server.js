@@ -5,6 +5,7 @@ import http from "http";
 import { Server } from "socket.io";
 import { createClient } from "@supabase/supabase-js";
 import { translateBroadcast } from "./server/broadcastTranslate.js";
+import { scanParcelImage } from "./server/parcelScan.js";
 import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs, checkConnectRate, CONNECT_RATE_WINDOW_MS, isOwningConnection, relaySessionId } from "./server/connectionHealth.js";
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
 import { sanitizeCommentPayload } from "./server/sanitize.js";
@@ -20,6 +21,9 @@ const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || "";
 // absent the /admin/broadcast-translate endpoint returns an honest
 // "translation_not_configured" error (never a silent/partial success).
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
+// Parcel Scan (admin-only dogfood) vision model — overridable on Render without
+// a deploy; empty → the core's DEFAULT_SCAN_MODEL.
+const PARCEL_SCAN_MODEL = process.env.PARCEL_SCAN_MODEL || "";
 const sb = (SUPABASE_URL && SUPABASE_KEY)
   ? createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false, autoRefreshToken: false } })
   : null;
@@ -77,7 +81,13 @@ const io = new Server(server, {
 
 app.use(cors(corsOptions));
 app.options(/.*/, cors(corsOptions));
-app.use(express.json());
+// Global JSON body parsing keeps the express DEFAULT limit (100kb). The ONE
+// exception is /admin/parcel-scan, whose body carries a base64 photo (~1–5MB):
+// that route parses its own body with a raised limit (route middleware at the
+// route definition). The global parser must SKIP that path — otherwise it
+// rejects the large body with 413 before the route's parser ever runs.
+const defaultJsonParser = express.json();
+app.use((req, res, next) => (req.path === "/admin/parcel-scan" ? next() : defaultJsonParser(req, res, next)));
 
 function bearerToken(req) {
   const h = String(req.get("authorization") || "");
@@ -742,6 +752,34 @@ app.post("/admin/broadcast-translate", requireAuth, requireAdmin, async (req, re
     return res.status(502).json({ success: false, error: result.error });
   }
   return res.json({ success: true, i18n: result.i18n });
+});
+
+// Parcel Scan (Phase A1, ADMIN-ONLY dogfood). One handwritten-slip photo per
+// call (the client loops parcels sequentially); Claude vision extracts the
+// recipient fields; the confirmed row is written CLIENT-side to parcel_scans
+// (own-scoped RLS). Same shape as /admin/broadcast-translate: requireAuth →
+// requireAdmin (server-side is_admin gate) → shared core → raw Anthropic fetch
+// with the existing ANTHROPIC_API_KEY. The image is never stored anywhere.
+// Route-scoped 8mb JSON parser — the global parser deliberately skips this path
+// (see the app.use above) so every other route keeps the 100kb default.
+app.post("/admin/parcel-scan", express.json({ limit: "8mb" }), requireAuth, requireAdmin, async (req, res) => {
+  const imageBase64 = String((req.body && req.body.imageBase64) || "");
+  const mediaType = String((req.body && req.body.mediaType) || "");
+  if (!imageBase64.trim()) {
+    return res.status(400).json({ success: false, error: "empty_image" });
+  }
+  const result = await scanParcelImage(imageBase64, mediaType, {
+    apiKey: ANTHROPIC_API_KEY,
+    ...(PARCEL_SCAN_MODEL ? { model: PARCEL_SCAN_MODEL } : {}),
+  });
+  if (!result.ok) {
+    // Raw model reply → server console ONLY (never the client), for diagnosing
+    // recurring parse failures — the broadcast-translate convention.
+    console.log(`[PARCEL_SCAN] FAIL error=${result.error}${result.raw ? ` raw=${JSON.stringify(result.raw)}` : ""}`);
+    const status = result.error === "empty_image" || result.error === "bad_media_type" ? 400 : 502;
+    return res.status(status).json({ success: false, error: result.error });
+  }
+  return res.json({ success: true, fields: result.fields, confidence: result.confidence });
 });
 
 function emitTikTokStatus({ sellerId, username, sessionId, connected, reconnecting = false, reason = "", nextRetryMs = 0 }) {
