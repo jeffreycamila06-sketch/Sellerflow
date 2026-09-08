@@ -23,6 +23,16 @@ export const EMAP_LOOKUP_COMMAND = process.env.EMAP_LOOKUP_COMMAND || "SearchSto
 export const EMAP_LOOKUP_PARAM = process.env.EMAP_LOOKUP_PARAM || "StoreName";
 export const EMAP_TIMEOUT_MS = Number(process.env.EMAP_TIMEOUT_MS) || 5000;
 
+// AUDIT S1 cry-wolf gate: until the owner has confirmed on Render that a known-
+// valid code (e.g. 982063) returns a real store match (the request/parse shape
+// could not be verified in the build sandbox — egress-blocked), a wrong query
+// shape could flag EVERY valid store as not_found. So while this is unset/false,
+// a not_found verdict is DOWNGRADED to 'unknown' (grey "can't verify"), never a
+// red ❌ — and the raw XML is logged so the owner can confirm the shape, then
+// flip EMAP_CHECK_CONFIRMED=true (env change, no redeploy) to enable real
+// wrong-code detection. Safe-by-default first session.
+export const EMAP_CHECK_CONFIRMED = /^(1|true|yes|on)$/i.test(String(process.env.EMAP_CHECK_CONFIRMED || "").trim());
+
 const RAW_SNIPPET = 500;
 const FIELD_CAP = 120; // storeName / address display cap
 
@@ -89,45 +99,60 @@ export async function checkEmapStore(storeId, opts = {}) {
     endpoint = EMAP_ENDPOINT,
     command = EMAP_LOOKUP_COMMAND,
     param = EMAP_LOOKUP_PARAM,
+    confirmed = EMAP_CHECK_CONFIRMED,
   } = opts;
 
   if (!/^\d{6}$/.test(id)) return { storeId: id, status: "unknown" }; // malformed → never a verdict
 
+  // AUDIT B1: the abort timer must span BOTH the fetch AND the body read.
+  // fetch() resolves on HEADERS, but the body is read below via arrayBuffer();
+  // clearing the timer between them would leave a slow/stalled body with no
+  // ceiling. One try/finally around the whole exchange keeps abort live until
+  // the body is fully read (an abort mid-body rejects arrayBuffer() → caught →
+  // read_error → unknown), and clears the timer on every exit path.
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), timeoutMs);
-  let resp;
   try {
-    resp = await fetchImpl(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: `commandid=${encodeURIComponent(command)}&${encodeURIComponent(param)}=${encodeURIComponent(id)}`,
-      signal: ctl.signal,
-    });
-  } catch (e) {
-    // Timeout (abort) or network error → unknown, best-effort. Never block.
-    return { storeId: id, status: "unknown", raw: `fetch_error:${(e && e.message) || String(e)}` };
+    let resp;
+    try {
+      resp = await fetchImpl(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `commandid=${encodeURIComponent(command)}&${encodeURIComponent(param)}=${encodeURIComponent(id)}`,
+        signal: ctl.signal,
+      });
+    } catch (e) {
+      // Timeout (abort) or network error → unknown, best-effort. Never block.
+      return { storeId: id, status: "unknown", raw: `fetch_error:${(e && e.message) || String(e)}` };
+    }
+
+    if (!resp || !resp.ok) {
+      return { storeId: id, status: "unknown", raw: `http_${resp ? resp.status : "no_response"}` };
+    }
+
+    let text;
+    try {
+      const buf = await resp.arrayBuffer(); // still under the abort timer (B1)
+      text = decodeEmapBytes(buf);
+    } catch (e) {
+      // Includes an abort DURING a slow/stalled body → resolves to unknown, never hangs.
+      return { storeId: id, status: "unknown", raw: `read_error:${(e && e.message) || String(e)}` };
+    }
+
+    const verdict = parseEmapVerdict(id, text);
+    // AUDIT S1: downgrade not_found → unknown until the shape is confirmed.
+    const status = verdict.status === "not_found" && !confirmed ? "unknown" : verdict.status;
+    const out = { storeId: id, status };
+    if (verdict.storeName) out.storeName = verdict.storeName;
+    if (verdict.address) out.address = verdict.address;
+    if (verdict.status === "not_found" && !confirmed) out.note = "unconfirmed_downgrade";
+    // Raw (bounded) for SERVER-console logging only — never forwarded to the
+    // client. Attach on any non-valid verdict (as before) AND on a valid verdict
+    // while UNCONFIRMED, so the owner gets a positive "[EMAP_CHECK] valid store=
+    // 982063" + RAW confirmation to prove the shape before flipping the gate.
+    if (verdict.status !== "valid" || !confirmed) out.raw = clip(text, RAW_SNIPPET);
+    return out;
   } finally {
     clearTimeout(timer);
   }
-
-  if (!resp || !resp.ok) {
-    return { storeId: id, status: "unknown", raw: `http_${resp ? resp.status : "no_response"}` };
-  }
-
-  let text;
-  try {
-    const buf = await resp.arrayBuffer();
-    text = decodeEmapBytes(buf);
-  } catch (e) {
-    return { storeId: id, status: "unknown", raw: `read_error:${(e && e.message) || String(e)}` };
-  }
-
-  const verdict = parseEmapVerdict(id, text);
-  const out = { storeId: id, status: verdict.status };
-  if (verdict.storeName) out.storeName = verdict.storeName;
-  if (verdict.address) out.address = verdict.address;
-  // Attach a bounded raw snippet for logging on the non-valid paths, so the
-  // owner can confirm the real XML shape from the Render logs on first use.
-  if (verdict.status !== "valid") out.raw = clip(text, RAW_SNIPPET);
-  return out;
 }

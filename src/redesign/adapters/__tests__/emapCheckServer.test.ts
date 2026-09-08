@@ -90,21 +90,21 @@ describe("checkEmapStore (injected fetch)", () => {
     expect(f).not.toHaveBeenCalled();
   });
 
-  it("valid store → verdict + sends the documented command/param shape", async () => {
+  it("valid store (CONFIRMED) → verdict + sends the documented command/param shape; no raw", async () => {
     const f = vi.fn(async () => okResp(storeXml("982063", "德民門市")));
-    const r = await checkEmapStore("982063", { fetchImpl: f });
+    const r = await checkEmapStore("982063", { fetchImpl: f, confirmed: true });
     expect(r.status).toBe("valid");
     expect(r.storeName).toBe("德民門市");
-    expect(r.raw).toBeUndefined(); // no raw on the valid path
+    expect(r.raw).toBeUndefined(); // confirmed + valid = quiet, nothing to log
     const [url, init] = f.mock.calls[0] as [string, RequestInit];
     expect(url).toContain("EMapSDK.aspx");
     expect(init.body).toBe(`commandid=${EMAP_LOOKUP_COMMAND}&${EMAP_LOOKUP_PARAM}=982063`);
     expect((init.headers as Record<string, string>)["Content-Type"]).toBe("application/x-www-form-urlencoded");
   });
 
-  it("not-found XML → not_found + bounded raw for logging", async () => {
+  it("not-found XML (CONFIRMED) → not_found + bounded raw for logging", async () => {
     const f = vi.fn(async () => okResp(emptyXml));
-    const r = await checkEmapStore("930342", { fetchImpl: f });
+    const r = await checkEmapStore("930342", { fetchImpl: f, confirmed: true });
     expect(r.status).toBe("not_found");
     expect(typeof r.raw).toBe("string");
     expect((r.raw || "").length).toBeLessThanOrEqual(500);
@@ -135,6 +135,50 @@ describe("checkEmapStore (injected fetch)", () => {
     const f = vi.fn(async () => okResp(storeXml("982063")));
     await checkEmapStore("982063", { fetchImpl: f, command: "SearchStoreId", param: "StoreID" });
     expect((f.mock.calls[0][1] as RequestInit).body).toBe("commandid=SearchStoreId&StoreID=982063");
+  });
+
+  // AUDIT B1 — the abort timer must cover the BODY read, not just headers.
+  it("stalled body past the timeout → aborts → unknown, never hangs", async () => {
+    // fetch resolves fast (headers), but arrayBuffer() never settles on its own —
+    // only the core's abort signal can end it. If the timer were cleared after
+    // fetch (the old bug), this test would hang instead of resolving.
+    const f = vi.fn(async (_url: string, init: RequestInit) => ({
+      ok: true,
+      status: 200,
+      arrayBuffer: () => new Promise((_resolve, reject) => {
+        const sig = init.signal as AbortSignal;
+        if (sig.aborted) return reject(new Error("The operation was aborted"));
+        sig.addEventListener("abort", () => reject(new Error("The operation was aborted")));
+        // otherwise never resolves → would hang without a live abort timer
+      }),
+    }));
+    const r = await checkEmapStore("982063", { fetchImpl: f as unknown as typeof fetch, timeoutMs: 25 });
+    expect(r.status).toBe("unknown");
+    expect(r.raw).toMatch(/^read_error:/);
+  });
+
+  // AUDIT S1 — cry-wolf gate: not_found is a red badge only once confirmed.
+  it("UNCONFIRMED: not_found → downgraded to unknown (+ note), raw kept for logging", async () => {
+    const f = vi.fn(async () => okResp(emptyXml));
+    const r = await checkEmapStore("930342", { fetchImpl: f, confirmed: false });
+    expect(r.status).toBe("unknown");
+    expect(r.note).toBe("unconfirmed_downgrade");
+    expect(typeof r.raw).toBe("string");
+  });
+
+  it("UNCONFIRMED: valid store still reads valid, and attaches raw so the owner can confirm the shape", async () => {
+    const f = vi.fn(async () => okResp(storeXml("982063", "德民門市")));
+    const r = await checkEmapStore("982063", { fetchImpl: f, confirmed: false });
+    expect(r.status).toBe("valid"); // valid is never downgraded — only not_found is gated
+    expect(typeof r.raw).toBe("string"); // positive [EMAP_CHECK] valid + RAW confirmation
+    expect(r.note).toBeUndefined();
+  });
+
+  it("CONFIRMED: not_found passes through as the real red verdict", async () => {
+    const f = vi.fn(async () => okResp(emptyXml));
+    const r = await checkEmapStore("930342", { fetchImpl: f, confirmed: true });
+    expect(r.status).toBe("not_found");
+    expect(r.note).toBeUndefined();
   });
 });
 

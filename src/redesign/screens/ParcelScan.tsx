@@ -69,10 +69,12 @@ export default function ParcelScan({ cur = "NT$" }: { cur?: string }) {
   // Saved list — ONE read on screen open; saves append locally (no refetch).
   const [rows, setRows] = useState<ParcelScanRow[]>([]);
   const [listLoaded, setListLoaded] = useState(false);
+  // Alive across the whole screen — guards fire-and-forget store-check verdicts
+  // (runStoreCheck) that can land after unmount, not just the initial load.
+  const aliveRef = useRef(true);
+  useEffect(() => () => { aliveRef.current = false; }, []);
   useEffect(() => {
-    let alive = true;
-    loadParcelScans().then((r) => { if (alive) { if (r.ok) setRows(r.rows); setListLoaded(true); } });
-    return () => { alive = false; };
+    loadParcelScans().then((r) => { if (aliveRef.current) { if (r.ok) setRows(r.rows); setListLoaded(true); } });
   }, []);
 
   const scanOne = async (list: File[], i: number) => {
@@ -115,7 +117,9 @@ export default function ParcelScan({ cur = "NT$" }: { cur?: string }) {
       const res = await checkEmapStore(storeId);
       const status: StoreCheckStatus = res.status;
       void saveStoreCheck(rowId, status); // best-effort persist
-      setRows((prev) => prev.map((x) => (x.id === rowId ? { ...x, storeCheckStatus: status } : x)));
+      // Unmount guard (mirrors the load effect's `alive`): a late verdict must
+      // not setRows on an unmounted screen.
+      if (aliveRef.current) setRows((prev) => prev.map((x) => (x.id === rowId ? { ...x, storeCheckStatus: status } : x)));
     })();
   };
 

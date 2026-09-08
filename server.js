@@ -803,10 +803,13 @@ app.post("/admin/parcel-emap-check", requireAuth, requireAdmin, async (req, res)
     return res.status(400).json({ success: false, error: "bad_store_id" });
   }
   const result = await checkEmapStore(storeId);
-  // not_found / unknown → log the bounded raw XML (server console ONLY, never
-  // the client) so the first real lookups on Render confirm the E-Map shape.
-  if (result.status !== "valid") {
-    console.log(`[EMAP_CHECK] ${result.status} store=${storeId}`);
+  // Log the bounded raw XML (server console ONLY, never the client) whenever the
+  // core attached one — that is every non-valid verdict AND, while the S1 gate is
+  // unconfirmed, valid verdicts too, so the owner sees a positive
+  // "[EMAP_CHECK] valid store=982063" + RAW to confirm the shape before flipping
+  // EMAP_CHECK_CONFIRMED=true. (note flags an S1 not_found→unknown downgrade.)
+  if (result.status !== "valid" || result.raw !== undefined) {
+    console.log(`[EMAP_CHECK] ${result.status} store=${storeId}${result.note ? ` (${result.note})` : ""}`);
     if (result.raw !== undefined) {
       console.log(`[EMAP_CHECK] RAW ${JSON.stringify(String(result.raw).slice(0, 500))}`);
     }
