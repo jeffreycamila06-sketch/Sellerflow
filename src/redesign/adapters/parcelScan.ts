@@ -38,6 +38,9 @@ export interface ScanResult {
   error?: string;
   unreachable?: boolean; // server not deployed yet / offline
 }
+// E-Map store-code verdict (server /admin/parcel-emap-check). "checking" is a
+// LOCAL transient only (never persisted) shown while a lookup is in flight.
+export type StoreCheckStatus = "valid" | "not_found" | "unknown" | "checking";
 export interface ParcelScanRow {
   id: string;
   customerName: string;
@@ -46,6 +49,7 @@ export interface ParcelScanRow {
   amount: number | null;
   notes: string;
   status: string;
+  storeCheckStatus: string | null; // valid | not_found | unknown | checking | null
   createdAt: string;
 }
 
@@ -149,6 +153,7 @@ export function rowToScan(row: Record<string, unknown>): ParcelScanRow {
     amount: row.amount === null || row.amount === undefined || row.amount === "" ? null : Number(row.amount),
     notes: String(row.notes ?? ""),
     status: String(row.status ?? "pending"),
+    storeCheckStatus: row.store_check_status ? String(row.store_check_status) : null,
     createdAt: String(row.created_at ?? ""),
   };
 }
@@ -161,7 +166,7 @@ export async function loadParcelScans(): Promise<{ ok: boolean; rows: ParcelScan
   if (!me) return { ok: false, rows: [], error: "not signed in" };
   const { data, error } = await supabase
     .from("parcel_scans")
-    .select("id, customer_name, phone, store_id, amount, notes, status, created_at")
+    .select("id, customer_name, phone, store_id, amount, notes, status, store_check_status, created_at")
     .eq("user_id", me)
     .order("created_at", { ascending: false })
     .limit(SCANS_PAGE);
@@ -170,15 +175,16 @@ export async function loadParcelScans(): Promise<{ ok: boolean; rows: ParcelScan
 }
 
 // One INSERT per confirmed parcel — status 'confirmed', the model's raw
-// fields+confidence kept in raw_extraction for later accuracy tuning.
+// fields+confidence kept in raw_extraction for later accuracy tuning. Returns
+// the new row id so the caller can attach the async E-Map store-code verdict.
 export async function saveParcelScan(
   fields: ScanFields,
   rawExtraction: { fields: ScanFields; confidence?: Record<keyof ScanFields, ScanConfidence> } | null,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; id?: string; error?: string }> {
   if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
   const me = await uid();
   if (!me) return { ok: false, error: "not signed in" };
-  const { error } = await supabase.from("parcel_scans").insert({
+  const { data, error } = await supabase.from("parcel_scans").insert({
     user_id: me,
     customer_name: fields.name,
     phone: fields.phone,
@@ -187,6 +193,47 @@ export async function saveParcelScan(
     notes: fields.notes,
     status: "confirmed",
     raw_extraction: rawExtraction,
-  });
+  }).select("id").single();
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, id: data ? String(data.id) : undefined };
+}
+
+// ── E-Map store-code check (best-effort; never blocks) ────────────────────────
+export interface EmapCheckResult { status: StoreCheckStatus; storeName?: string; address?: string }
+
+// Calls the admin-guarded server route (server re-checks is_admin). Any failure
+// — 403, network, non-ok — resolves to "unknown" (grey "can't verify" badge),
+// never throws, never blocks encoding.
+export async function checkEmapStore(storeId: string): Promise<EmapCheckResult> {
+  if (!/^\d{6}$/.test(String(storeId || "").trim())) return { status: "unknown" };
+  try {
+    const session = supabase ? (await supabase.auth.getSession()).data.session : null;
+    const r = await fetch(`${SERVER}/admin/parcel-emap-check`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token || ""}` },
+      body: JSON.stringify({ storeId }),
+    });
+    const j = await r.json().catch(() => ({} as { success?: boolean; status?: string; storeName?: string; address?: string }));
+    if (!r.ok || !j.success) return { status: "unknown" };
+    const status: StoreCheckStatus = j.status === "valid" || j.status === "not_found" ? j.status : "unknown";
+    return { status, storeName: j.storeName, address: j.address };
+  } catch {
+    return { status: "unknown" };
+  }
+}
+
+// Persist the verdict onto the row (own-scoped via RLS). 'checking' is local-
+// only and never written. Best-effort — a failed write just leaves the row
+// unchecked; the badge falls back to "can't verify".
+export async function saveStoreCheck(rowId: string, status: StoreCheckStatus): Promise<{ ok: boolean; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
+  if (status === "checking") return { ok: false, error: "transient" };
+  const me = await uid();
+  if (!me) return { ok: false, error: "not signed in" };
+  const { error } = await supabase
+    .from("parcel_scans")
+    .update({ store_check_status: status, store_check_at: new Date().toISOString() })
+    .eq("id", rowId)
+    .eq("user_id", me);
   return error ? { ok: false, error: error.message } : { ok: true };
 }

@@ -6,6 +6,7 @@ import { Server } from "socket.io";
 import { createClient } from "@supabase/supabase-js";
 import { translateBroadcast } from "./server/broadcastTranslate.js";
 import { scanParcelImage } from "./server/parcelScan.js";
+import { checkEmapStore } from "./server/emapCheck.js";
 import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs, checkConnectRate, CONNECT_RATE_WINDOW_MS, isOwningConnection, relaySessionId } from "./server/connectionHealth.js";
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
 import { sanitizeCommentPayload } from "./server/sanitize.js";
@@ -789,6 +790,31 @@ app.post("/admin/parcel-scan", requireAuth, requireAdmin, express.json({ limit: 
     return res.status(status).json({ success: false, error: result.error });
   }
   return res.json({ success: true, fields: result.fields, confidence: result.confidence });
+});
+
+// Parcel Scan A2 — 7-11 E-Map store-code check (admin-only). Same auth shape as
+// /admin/parcel-scan. Body is tiny ({ storeId }), so the GLOBAL 100kb json
+// parser applies (this path is NOT the parcel-scan skip). Best-effort: the live
+// server carries the sacred comment relays, so a slow/blocked E-Map must never
+// hang — the core has its own ~5s timeout and returns "unknown" on any failure.
+app.post("/admin/parcel-emap-check", requireAuth, requireAdmin, async (req, res) => {
+  const storeId = String((req.body && req.body.storeId) || "").trim();
+  if (!/^\d{6}$/.test(storeId)) {
+    return res.status(400).json({ success: false, error: "bad_store_id" });
+  }
+  const result = await checkEmapStore(storeId);
+  // Log the bounded raw XML (server console ONLY, never the client) whenever the
+  // core attached one — that is every non-valid verdict AND, while the S1 gate is
+  // unconfirmed, valid verdicts too, so the owner sees a positive
+  // "[EMAP_CHECK] valid store=982063" + RAW to confirm the shape before flipping
+  // EMAP_CHECK_CONFIRMED=true. (note flags an S1 not_found→unknown downgrade.)
+  if (result.status !== "valid" || result.raw !== undefined) {
+    console.log(`[EMAP_CHECK] ${result.status} store=${storeId}${result.note ? ` (${result.note})` : ""}`);
+    if (result.raw !== undefined) {
+      console.log(`[EMAP_CHECK] RAW ${JSON.stringify(String(result.raw).slice(0, 500))}`);
+    }
+  }
+  return res.json({ success: true, storeId: result.storeId, status: result.status, storeName: result.storeName, address: result.address });
 });
 
 function emitTikTokStatus({ sellerId, username, sessionId, connected, reconnecting = false, reason = "", nextRetryMs = 0 }) {

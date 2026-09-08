@@ -10,7 +10,8 @@ import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT, tpl } from "../i18n";
 import {
   fileToScanBase64, scanParcel, saveParcelScan, loadParcelScans, formErrors, amountWarns,
-  type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState,
+  checkEmapStore, saveStoreCheck,
+  type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState, type StoreCheckStatus,
 } from "../adapters/parcelScan";
 
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
@@ -23,6 +24,16 @@ type Phase = "idle" | "scanning" | "confirm" | "error";
 
 type FormState = ScanFormState;
 const emptyForm: FormState = { name: "", phone: "", store: "", amount: "", notes: "" };
+
+// E-Map verdict → row badge. valid/null are quiet (no badge). not_found is the
+// actionable one (red); unknown + checking are grey/informational.
+type BadgeKey = "rd_ps2_store_bad" | "rd_ps2_store_unknown" | "rd_ps2_store_checking";
+function storeBadge(status: string | null): { icon: string; color: string; key: BadgeKey } | null {
+  if (status === "not_found") return { icon: "❌", color: "var(--danger)", key: "rd_ps2_store_bad" };
+  if (status === "unknown") return { icon: "⚠️", color: "var(--text-dim)", key: "rd_ps2_store_unknown" };
+  if (status === "checking") return { icon: "⏳", color: "var(--text-dim)", key: "rd_ps2_store_checking" };
+  return null; // valid | null → quiet
+}
 
 const fieldsToForm = (f: ScanFields): FormState => ({
   name: f.name ?? "",
@@ -58,10 +69,12 @@ export default function ParcelScan({ cur = "NT$" }: { cur?: string }) {
   // Saved list — ONE read on screen open; saves append locally (no refetch).
   const [rows, setRows] = useState<ParcelScanRow[]>([]);
   const [listLoaded, setListLoaded] = useState(false);
+  // Alive across the whole screen — guards fire-and-forget store-check verdicts
+  // (runStoreCheck) that can land after unmount, not just the initial load.
+  const aliveRef = useRef(true);
+  useEffect(() => () => { aliveRef.current = false; }, []);
   useEffect(() => {
-    let alive = true;
-    loadParcelScans().then((r) => { if (alive) { if (r.ok) setRows(r.rows); setListLoaded(true); } });
-    return () => { alive = false; };
+    loadParcelScans().then((r) => { if (aliveRef.current) { if (r.ok) setRows(r.rows); setListLoaded(true); } });
   }, []);
 
   const scanOne = async (list: File[], i: number) => {
@@ -94,6 +107,22 @@ export default function ParcelScan({ cur = "NT$" }: { cur?: string }) {
     else { setFiles([]); setIdx(0); setPhase("idle"); }
   };
 
+  // Fire-and-forget E-Map store-code check for one saved row. Sets the local
+  // row to "checking", asks the server, persists + reflects the verdict. Never
+  // blocks the scan flow; any failure lands as "unknown" (grey badge).
+  const runStoreCheck = (rowId: string, storeId: string) => {
+    if (!/^\d{6}$/.test(storeId)) return;
+    setRows((prev) => prev.map((x) => (x.id === rowId ? { ...x, storeCheckStatus: "checking" } : x)));
+    void (async () => {
+      const res = await checkEmapStore(storeId);
+      const status: StoreCheckStatus = res.status;
+      void saveStoreCheck(rowId, status); // best-effort persist
+      // Unmount guard (mirrors the load effect's `alive`): a late verdict must
+      // not setRows on an unmounted screen.
+      if (aliveRef.current) setRows((prev) => prev.map((x) => (x.id === rowId ? { ...x, storeCheckStatus: status } : x)));
+    })();
+  };
+
   const onSave = async () => {
     if (saving) return;
     setSaving(true); setSaveErr("");
@@ -101,18 +130,24 @@ export default function ParcelScan({ cur = "NT$" }: { cur?: string }) {
     const r = await saveParcelScan(fields, rawExtraction);
     setSaving(false);
     if (!r.ok) { setSaveErr(r.error || "save_failed"); return; }
+    const rowId = r.id || `local-${Date.now()}`;
+    const storeId = fields.store_id ?? "";
     setRows((prev) => [{
-      id: `local-${Date.now()}`,
+      id: rowId,
       customerName: fields.name ?? "",
       phone: fields.phone ?? "",
-      storeId: fields.store_id ?? "",
+      storeId,
       amount: fields.amount,
       notes: fields.notes ?? "",
       status: "confirmed",
+      storeCheckStatus: /^\d{6}$/.test(storeId) ? "checking" : null,
       createdAt: new Date().toISOString(),
     }, ...prev]);
     setToast(t.rd_ps2_saved_toast);
     setTimeout(() => setToast(""), 2500);
+    // Only when we got a real DB id back can the async verdict be persisted +
+    // matched to the row; skip the check on the local-id fallback.
+    if (r.id) runStoreCheck(r.id, storeId);
     advance();
   };
 
@@ -121,6 +156,7 @@ export default function ParcelScan({ cur = "NT$" }: { cur?: string }) {
   const low = (f: keyof ScanFields): boolean => confid?.[f] === "low";
   const F = (patch: Partial<FormState>) => setForm((s) => ({ ...s, ...patch }));
   const busy = phase === "scanning" || phase === "confirm" || phase === "error";
+  const flaggedCount = rows.filter((r) => r.storeCheckStatus === "not_found").length;
   const progress = files.length > 1 ? { i: String(idx + 1), n: String(files.length) } : { i: "1", n: "1" };
 
   const timeOf = (iso: string): string => {
@@ -207,22 +243,39 @@ export default function ParcelScan({ cur = "NT$" }: { cur?: string }) {
           </div>
         )}
 
+        {/* Summary — subtle, shows before the owner sits at the laptop. */}
+        {flaggedCount > 0 && (
+          <div style={{ ...card, padding: 10, borderColor: "var(--danger)", background: "var(--danger-soft, rgba(220,38,38,.08))", fontSize: 12, fontWeight: 700, color: "var(--danger)" }} data-testid="ps-attention">
+            {tpl(t.rd_ps2_attention, { n: String(flaggedCount) })}
+          </div>
+        )}
+
         {/* Saved list — read-on-open snapshot + local appends. Full queue = A2. */}
         <div style={card}>
           <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 8 }}>{t.rd_ps2_saved} {rows.length > 0 && <span style={{ color: "var(--text-dim)", fontWeight: 700 }}>· {rows.length}</span>}</div>
           {listLoaded && rows.length === 0 && <div style={{ fontSize: 12, color: "var(--text-dim)" }} data-testid="ps-empty">{t.rd_ps2_empty}</div>}
-          {rows.map((r) => (
-            <div key={r.id} style={{ padding: "9px 2px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }} data-testid="ps-row">
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.customerName || "—"}</div>
-                <div style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: mono }}>{[r.phone, r.storeId].filter(Boolean).join(" · ") || "—"}</div>
+          {rows.map((r) => {
+            const badge = storeBadge(r.storeCheckStatus);
+            const canRecheck = !r.id.startsWith("local-") && /^\d{6}$/.test(r.storeId) && (r.storeCheckStatus === "not_found" || r.storeCheckStatus === "unknown");
+            return (
+              <div key={r.id} style={{ padding: "9px 2px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }} data-testid="ps-row">
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.customerName || "—"}</div>
+                  <div style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: mono }}>{[r.phone, r.storeId].filter(Boolean).join(" · ") || "—"}</div>
+                  {badge && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: badge.color }} data-testid="ps-store-badge" data-status={r.storeCheckStatus || ""}>
+                      {badge.icon} {t[badge.key]}
+                      {canRecheck && <button onClick={() => runStoreCheck(r.id, r.storeId)} style={{ marginLeft: 8, padding: "1px 7px", borderRadius: 7, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontSize: 10, fontWeight: 700, cursor: "pointer" }} data-testid="ps-recheck">{t.rd_ps2_recheck}</button>}
+                    </div>
+                  )}
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 800, fontFamily: mono }}>{r.amount !== null ? `${cur}${r.amount.toLocaleString()}` : "—"}</div>
+                  <div style={{ fontSize: 10.5, color: "var(--text-dim)" }}>{timeOf(r.createdAt)}</div>
+                </div>
               </div>
-              <div style={{ textAlign: "right", flexShrink: 0 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 800, fontFamily: mono }}>{r.amount !== null ? `${cur}${r.amount.toLocaleString()}` : "—"}</div>
-                <div style={{ fontSize: 10.5, color: "var(--text-dim)" }}>{timeOf(r.createdAt)}</div>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
