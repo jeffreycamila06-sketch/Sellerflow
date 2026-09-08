@@ -36,3 +36,4 @@ mobile/android/keystore.properties
 # Supabase backups (kung sakaling ma-run sa loob ng repo path) — never commit dumps
 Sellerflow-backups/
 backup_*.sql
+server/scratch/
