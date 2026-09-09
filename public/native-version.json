@@ -1,4 +1,4 @@
 {
-  "ios": { "latest": 9, "message_key": "rd_upd_msg_ble", "force": false },
-  "android": { "latest": 0, "message_key": "rd_upd_msg_ble", "force": false, "_comment": "Stays 0 = dormant (isStale returns false for latest<=0, so no Android build is ever nudged). vc6 (1.5) is the newest Android binary, so nobody is behind. Pre-vc6 APKs have no getBuildNumber bridge and readBinaryBuild returns Infinity for Android (never stale); vc6 users already report 6 and are current. Bump this only once a vc7+ ships AND most users are on vc6+ (bridge-bearing), so the comparison is meaningful instead of inert." }
+  "ios": { "latest": 10, "message_key": "rd_upd_msg_ble", "force": false },
+  "android": { "latest": 7, "message_key": "rd_upd_msg_ble", "force": false, "_comment": "Update nudge ACTIVE on both platforms. iOS 1.6 (build 10) live on the App Store (released Sep 9 2026); Android 1.6 (vc7) live on Play Store Production since Sep 7 2026 (Active, vc6 now Inactive) — older builds are prompted to update (bitmap sticker printing). Note: Android users on vc5 or older have no getBuildNumber bridge (readBinaryBuild returns Infinity), so they are never prompted — expected, not a bug." }
 }
