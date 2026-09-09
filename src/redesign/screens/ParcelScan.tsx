@@ -129,7 +129,11 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
   const [snapshot, setSnapshot] = useState<{ url: string; file: File } | null>(null);
   const [scanCount, setScanCount] = useState(0);
   // Manual encode — opens the SAME confirm form blank, no camera + no AI scan.
+  // Continuous mode: Save keeps the form open (blank) for the next parcel;
+  // manualCount tracks how many were manually saved this screen session
+  // (separate from scanCount — a manual entry is NOT a scan).
   const [manual, setManual] = useState(false);
+  const [manualCount, setManualCount] = useState(0);
   // Camera runs only while the tab/app is foregrounded (privacy + battery); a
   // visibilitychange effect drives this, and it re-acquires on return. retryTick
   // re-runs the acquire effect when the OS ends a track (e.g. a phone call).
@@ -373,14 +377,16 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
 
   // Manual encode — SAME confirm form, blank, opened WITHOUT a camera capture or
   // AI scan. Zero credit (commitNewParcel = direct INSERT). Not counted as a
-  // "scan". On success → close the manual form (back to camera/idle).
+  // "scan". Continuous (camera-loop style): on success STAY in manual mode with
+  // a fresh blank form for the next parcel; the seller exits via Done/Cancel.
   const onManualSave = async () => {
     if (saving) return;
     setSaving(true); setSaveErr("");
     const ok = await commitNewParcel(formToFields(form));
     setSaving(false);
     if (!ok) return;
-    setManual(false); setForm(emptyForm); setConfid(null); setRawExtraction(null); setSaveErr("");
+    setManualCount((c) => c + 1);
+    setForm(emptyForm); setConfid(null); setRawExtraction(null); setSaveErr(""); // blank for the next; stay in manual
   };
 
   // ── 賣貨便 訂單匯入 Excel export — gate, build via the EXISTING builder, deliver.
@@ -651,6 +657,9 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
         {(phase === "confirm" || editing || manual) && (
           <div style={card} data-testid="ps-confirm" data-editing={editing ? "1" : undefined} data-manual={manual ? "1" : undefined}>
             <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 10 }}>{editing ? t.rd_ps2_edit_title : manual ? t.rd_ps2_manual_title : tpl(t.rd_ps2_confirm, progress)}</div>
+            {manual && manualCount > 0 && (
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ok, #16a34a)", marginBottom: 10 }} data-testid="ps-manual-count">{tpl(t.rd_ps2_manual_count, { n: String(manualCount) })}</div>
+            )}
             <div style={{ display: "grid", gap: 10 }}>
               <div>
                 <label style={lbl}>{t.rd_ps2_name}{low("name") && <span style={{ color: "var(--warn, #b45309)" }}> · {t.rd_ps2_low_conf}</span>}</label>
@@ -674,17 +683,18 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
                 <input value={form.amount} onChange={(e) => F({ amount: e.target.value.replace(/[^\d.]/g, "") })} inputMode="numeric" style={{ ...input, fontFamily: mono, ...(low("amount") ? { border: lowConfBorder } : {}) }} data-testid="ps-amount" />
                 {amountWarns(form.amount) && <div style={warnTxt} data-testid="ps-amount-warn">{t.rd_ps2_amount_warn}</div>}
               </div>
-              <div>
-                <label style={lbl}>{t.rd_ps2_notes}{low("notes") && <span style={{ color: "var(--warn, #b45309)" }}> · {t.rd_ps2_low_conf}</span>}</label>
-                <input value={form.notes} onChange={(e) => F({ notes: e.target.value })} style={input} data-testid="ps-notes" />
-              </div>
+              {/* Notes field hidden (Jeff — shorter form). The DB column + any
+                  existing notes are preserved: form.notes is still round-tripped
+                  through formToFields, so editing an old parcel rewrites its
+                  original notes unchanged; new entries just leave it blank. Not
+                  used by the 賣貨便 export (cols I/J are blank), E-Map, or admin. */}
               {saveErr && <div style={errTxt} data-testid="ps-save-err">{t.rd_ps2_err_save} <span style={{ fontFamily: mono }}>{saveErr}</span></div>}
               <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
                 <button onClick={() => void (editing ? onEditSave() : manual ? onManualSave() : onSave())} disabled={saveBlocked} style={{ flex: 2, padding: "11px 12px", borderRadius: 10, border: "none", background: saveBlocked ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: saveBlocked ? "default" : "pointer" }} data-testid="ps-save">{t.rd_ps2_save}</button>
                 {editing
                   ? <button onClick={cancelEdit} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontWeight: 700, cursor: "pointer" }} data-testid="ps-edit-cancel">{t.rd_ps2_cancel}</button>
                   : manual
-                    ? <button onClick={cancelManual} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontWeight: 700, cursor: "pointer" }} data-testid="ps-manual-cancel">{t.rd_ps2_cancel}</button>
+                    ? <button onClick={cancelManual} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontWeight: 700, cursor: "pointer" }} data-testid="ps-manual-cancel">{manualCount > 0 ? t.rd_ps2_done : t.rd_ps2_cancel}</button>
                     : <button onClick={advance} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontWeight: 700, cursor: "pointer" }} data-testid="ps-skip">{t.rd_ps2_skip}</button>}
               </div>
             </div>

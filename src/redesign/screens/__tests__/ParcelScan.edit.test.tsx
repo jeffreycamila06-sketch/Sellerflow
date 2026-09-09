@@ -114,6 +114,19 @@ describe("Feature 3 — per-row edit (free, own-scoped, no credit)", () => {
     expect(getByTestId("ps-confirm").getAttribute("data-editing")).toBe("1"); // still open
   });
 
+  it("editing an old parcel preserves its notes even though the notes field is hidden", async () => {
+    loadRows.current = [mk({ id: "r1", customerName: "Old", notes: "fragile — handle care" })];
+    const { findByTestId, getByTestId, queryByTestId } = view();
+    fireEvent.click(await findByTestId("ps-row-edit"));
+    expect(queryByTestId("ps-notes")).toBeNull();                 // field is hidden
+    fireEvent.change(getByTestId("ps-name"), { target: { value: "Fixed" } });
+    fireEvent.click(getByTestId("ps-save"));
+    await waitFor(() => expect(updateParcelScan).toHaveBeenCalledTimes(1));
+    const [, fields] = updateParcelScan.mock.calls[0] as [string, { name: string; notes: string | null }];
+    expect(fields.name).toBe("Fixed");
+    expect(fields.notes).toBe("fragile — handle care");           // original notes round-tripped, not wiped
+  });
+
   it("exported rows are not editable (no edit affordance)", async () => {
     loadRows.current = [mk({ id: "r1", status: "exported" })];
     const { findByTestId, queryByTestId } = view();
