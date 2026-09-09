@@ -381,6 +381,30 @@ export async function deleteParcelScan(id: string): Promise<{ ok: boolean; error
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
+// Edit an existing parcel — own-scoped UPDATE of the editable fields. FREE:
+// this never calls /admin/parcel-scan and never debits a credit (editing a
+// mis-scanned parcel must not cost a scan). Own-scoped like the delete
+// (.eq id + .eq user_id) + the parcel_scans own-scoped RLS update policy.
+// Status/created_at are left untouched (no un-export, no re-date).
+export async function updateParcelScan(id: string, fields: ScanFields): Promise<{ ok: boolean; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
+  if (!id) return { ok: false, error: "no id" };
+  const me = await uid();
+  if (!me) return { ok: false, error: "not signed in" };
+  const { error } = await supabase
+    .from("parcel_scans")
+    .update({
+      customer_name: fields.name,
+      phone: fields.phone,
+      store_id: fields.store_id,
+      amount: fields.amount,
+      notes: fields.notes,
+    })
+    .eq("id", id)
+    .eq("user_id", me);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
 // Delete every already-exported parcel (status 'exported') for the owner. The
 // status filter + the RLS user_id scope mean only the caller's exported rows go.
 export async function deleteExportedParcels(): Promise<{ ok: boolean; error?: string }> {
