@@ -1130,6 +1130,8 @@ const RAW: Record<string, Row> = {
   rd_ps2_cam_retry: { en: "Try camera again", fil: "Subukan ulit ang camera", zh: "重试相机", "zh-TW": "重試相機", vi: "Thử lại máy ảnh", th: "ลองใช้กล้องอีกครั้ง", id: "Coba kamera lagi" },
   rd_ps2_manual: { en: "Manual encode (no camera)", fil: "Manwal na encode (walang camera)", zh: "手动录入（无需相机）", "zh-TW": "手動輸入（免相機）", vi: "Nhập thủ công (không cần máy ảnh)", th: "กรอกเอง (ไม่ใช้กล้อง)", id: "Input manual (tanpa kamera)" },
   rd_ps2_manual_title: { en: "Manual entry", fil: "Manwal na entry", zh: "手动录入", "zh-TW": "手動輸入", vi: "Nhập thủ công", th: "กรอกเอง", id: "Input manual" },
+  rd_ps2_manual_count: { en: "Manual: {n} saved this session", fil: "Manwal: {n} na-save ngayong session", zh: "手动：本次已保存 {n}", "zh-TW": "手動：本次已儲存 {n}", vi: "Thủ công: đã lưu {n} phiên này", th: "กรอกเอง: บันทึกแล้ว {n} ในรอบนี้", id: "Manual: {n} tersimpan sesi ini" },
+  rd_ps2_done: { en: "Done", fil: "Tapos", zh: "完成", "zh-TW": "完成", vi: "Xong", th: "เสร็จ", id: "Selesai" },
   rd_ps2_session: { en: "Scanned this session", fil: "Na-scan ngayong session", zh: "本次已扫描", "zh-TW": "本次已掃描", vi: "Đã quét phiên này", th: "สแกนแล้วในรอบนี้", id: "Dipindai sesi ini" },
   rd_ps2_scanning: { en: "Scanning parcel {i}/{n}…", fil: "Sina-scan ang parcel {i}/{n}…", zh: "正在扫描包裹 {i}/{n}…", "zh-TW": "正在掃描包裹 {i}/{n}…", vi: "Đang quét kiện {i}/{n}…", th: "กำลังสแกนพัสดุ {i}/{n}…", id: "Memindai paket {i}/{n}…" },
   rd_ps2_confirm: { en: "Confirm parcel {i}/{n}", fil: "Kumpirmahin ang parcel {i}/{n}", zh: "确认包裹 {i}/{n}", "zh-TW": "確認包裹 {i}/{n}", vi: "Xác nhận kiện {i}/{n}", th: "ยืนยันพัสดุ {i}/{n}", id: "Konfirmasi paket {i}/{n}" },

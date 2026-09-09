@@ -76,8 +76,39 @@ describe("Parcel Scan — manual encode (zero credit)", () => {
     expect(fields.store_id).toBe("266402");
     expect(fields.amount).toBe(550);
     expect(raw).toBeNull();
-    // Lands in the saved list, and the form closes.
+    // Lands in the saved list.
     await waitFor(() => expect(getAllByTestId("ps-row")).toHaveLength(1));
+  });
+
+  it("continuous mode: Save keeps the manual form open + blank, increments the manual counter, no scan", async () => {
+    const { findByTestId, getByTestId } = view();
+    fireEvent.click(await findByTestId("ps-manual"));
+    fireEvent.change(getByTestId("ps-name"), { target: { value: "First Buyer" } });
+    fireEvent.change(getByTestId("ps-store"), { target: { value: "266402" } });
+    fireEvent.change(getByTestId("ps-amount"), { target: { value: "300" } });
+    fireEvent.click(getByTestId("ps-save"));
+    await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(1));
+    // Stays in manual mode with a fresh blank form (camera-loop style).
+    await waitFor(() => expect(getByTestId("ps-manual-count").textContent).toContain("1"));
+    const form = getByTestId("ps-confirm");
+    expect(form.getAttribute("data-manual")).toBe("1");            // still manual
+    expect((getByTestId("ps-name") as HTMLInputElement).value).toBe("");   // blanked
+    expect((getByTestId("ps-store") as HTMLInputElement).value).toBe("");
+    expect((getByTestId("ps-amount") as HTMLInputElement).value).toBe("");
+    // Second parcel → counter 2, still zero credit.
+    fireEvent.change(getByTestId("ps-name"), { target: { value: "Second Buyer" } });
+    fireEvent.change(getByTestId("ps-store"), { target: { value: "266402" } });
+    fireEvent.click(getByTestId("ps-save"));
+    await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(getByTestId("ps-manual-count").textContent).toContain("2"));
+    expect(scanParcel).not.toHaveBeenCalled();
+  });
+
+  it("the notes field is removed from the form (shorter form)", async () => {
+    const { findByTestId, getByTestId, queryByTestId } = view();
+    fireEvent.click(await findByTestId("ps-manual"));
+    getByTestId("ps-name");                     // form is open
+    expect(queryByTestId("ps-notes")).toBeNull(); // notes input gone
   });
 
   it("runs the E-Map store-code check on the typed store (like the scan/edit flow)", async () => {
