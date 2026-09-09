@@ -11,7 +11,7 @@ import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT, tpl } from "../i18n";
 import {
   fileToScanBase64, scanParcel, saveParcelScan, loadParcelScans, formErrors, amountWarns,
-  checkEmapStore, saveStoreCheck, scanToXlsRow, splitScansForExport, markScansExported,
+  checkEmapStore, saveStoreCheck, scanToXlsRow, splitScansForExport, markScansExported, unmarkScansExported,
   deleteParcelScan, deleteExportedParcels, updateParcelScan, getCreditBalance,
   type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState, type StoreCheckStatus, type ExportReason,
 } from "../adapters/parcelScan";
@@ -100,7 +100,14 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
   const [tab, setTab] = useState<"all" | "wrong">("all");
   // Delete (Change 3): a pending confirmation + await/error state. Never fires
   // a delete without the confirm; a failed delete surfaces inline, no silent no-op.
-  const [confirm, setConfirm] = useState<{ kind: "row"; id: string } | { kind: "exported" } | { kind: "export" } | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: "row"; id: string } | { kind: "exported" } | { kind: "export" } | { kind: "undo" } | null>(null);
+  // FIX 5 — the most recent export run (batch id + the row ids it exported), so
+  // an accidental export can be undone (rows → 'confirmed', back in the ready
+  // list). Session-only: cleared on undo or another export; not restored across
+  // reload (an "oops" affordance, not history). Pre-column exported rows have a
+  // NULL batch id and are not covered — by design.
+  const [lastExportBatch, setLastExportBatch] = useState<{ id: string; ids: string[] } | null>(null);
+  const [undoErr, setUndoErr] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [deleteErr, setDeleteErr] = useState("");
   // Feature 3: per-row EDIT — reuses the confirm form, pre-filled, updates the
@@ -397,10 +404,13 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
       const d = await deliverXlsm(bytes, exportFilename(Date.now()));
       if (!d.ok) { setExportErr(d.error || "export_failed"); return; }
       const ids = ready.map((r) => r.id);
-      void markScansExported(ids); // best-effort; re-exports skip these
+      const marked = await markScansExported(ids); // stamps status + a batch id
       if (aliveRef.current) {
         setRows((prev) => prev.map((r) => (ids.includes(r.id) ? { ...r, status: "exported" } : r)));
         setExportSummary({ exported: ready.length, attention: attnList });
+        // Enable "Undo last export" only when the batch was actually stamped.
+        setLastExportBatch(marked.ok && marked.batchId ? { id: marked.batchId, ids } : null);
+        setUndoErr("");
       }
     } catch (e) {
       setExportErr(e instanceof Error ? e.message : String(e));
@@ -429,9 +439,25 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
   };
   const askDelete = (c: { kind: "row"; id: string } | { kind: "exported" }) => { setDeleteErr(""); setConfirm(c); };
   // FIX 4 — confirm before exporting (an accidental export marks rows 'exported'
-  // and drops them from the next file, with no undo). Reuses the SAME portal
-  // confirm dialog as delete/clear-exported.
+  // and drops them from the next file). Reuses the SAME portal confirm dialog as
+  // delete/clear-exported.
   const askExport = () => { setDeleteErr(""); setConfirm({ kind: "export" }); };
+
+  // FIX 5 — undo the last export run: revert its rows to 'confirmed' (DB +
+  // local), returning them to the ready list. Confirmed via the same dialog.
+  const askUndo = () => { setUndoErr(""); setDeleteErr(""); setConfirm({ kind: "undo" }); };
+  const doUndo = async () => {
+    if (!lastExportBatch) { setConfirm(null); return; }
+    const batch = lastExportBatch;
+    setConfirm(null);
+    const r = await unmarkScansExported(batch.id);
+    if (!r.ok) { setUndoErr(r.error || "undo_failed"); return; }
+    if (aliveRef.current) {
+      setRows((prev) => prev.map((x) => (batch.ids.includes(x.id) ? { ...x, status: "confirmed" } : x)));
+      setLastExportBatch(null);
+      setExportSummary(null); // the "exported N" summary is now stale
+    }
+  };
 
   // ── Manual encode — open the shared confirm form BLANK, no camera/scan ──────
   const openManual = () => {
@@ -683,6 +709,12 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
             data-testid="ps-export-btn"
           >📄 {exportBusy ? t.rd_ps2_x_exporting : tpl(t.rd_ps2_x_button, { n: String(readyCount) })}</button>
           {exportErr && <div style={{ ...errTxt, marginTop: 8 }} data-testid="ps-export-err">{t.rd_ps2_x_failed} <span style={{ fontFamily: mono }}>{exportErr}</span></div>}
+          {/* Undo last export (FIX 5) — reverts the run just exported so an
+              accidental export is recoverable. */}
+          {lastExportBatch && (
+            <button onClick={askUndo} style={{ width: "100%", marginTop: 8, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontWeight: 700, fontSize: 13, cursor: "pointer" }} data-testid="ps-undo-btn">↩ {tpl(t.rd_ps2_undo_btn, { n: String(lastExportBatch.ids.length) })}</button>
+          )}
+          {undoErr && <div style={{ ...errTxt, marginTop: 8 }} data-testid="ps-undo-err">{t.rd_ps2_undo_failed} <span style={{ fontFamily: mono }}>{undoErr}</span></div>}
           {exportSummary && (
             <div style={{ marginTop: 10 }} data-testid="ps-export-summary">
               <div style={{ fontSize: 12, fontWeight: 800, color: exportSummary.exported > 0 ? "var(--ok, #16a34a)" : "var(--text-dim)" }}>
@@ -778,16 +810,20 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
             <div style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.5, color: "var(--text)" }} data-testid="ps-confirm-msg">
               {confirm.kind === "export"
                 ? tpl(t.rd_ps2_x_confirm_q, { n: String(readyCount) })
-                : confirm.kind === "exported"
-                  ? tpl(t.rd_ps2_clear_exported_q, { n: String(exportedCount) })
-                  : t.rd_ps2_delete_row_q}
+                : confirm.kind === "undo"
+                  ? tpl(t.rd_ps2_undo_q, { n: String(lastExportBatch?.ids.length ?? 0) })
+                  : confirm.kind === "exported"
+                    ? tpl(t.rd_ps2_clear_exported_q, { n: String(exportedCount) })
+                    : t.rd_ps2_delete_row_q}
             </div>
             {deleteErr && <div style={{ ...errTxt, marginTop: 10 }} data-testid="ps-delete-err">{t.rd_ps2_delete_err} <span style={{ fontFamily: mono }}>{deleteErr}</span></div>}
             <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
               <button onClick={() => setConfirm(null)} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13.5, cursor: deleting ? "default" : "pointer" }} data-testid="ps-confirm-cancel">{t.rd_ps2_cancel}</button>
               {confirm.kind === "export"
                 ? <button onClick={() => { setConfirm(null); void runExport(); }} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }} data-testid="ps-confirm-export">📄 {t.rd_ps2_x_confirm_go}</button>
-                : <button onClick={() => void doDelete()} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--danger)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: deleting ? "default" : "pointer", opacity: deleting ? 0.7 : 1 }} data-testid="ps-confirm-delete">{t.rd_ps2_delete}</button>}
+                : confirm.kind === "undo"
+                  ? <button onClick={() => void doUndo()} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }} data-testid="ps-confirm-undo">↩ {t.rd_ps2_undo_go}</button>
+                  : <button onClick={() => void doDelete()} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--danger)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: deleting ? "default" : "pointer", opacity: deleting ? 0.7 : 1 }} data-testid="ps-confirm-delete">{t.rd_ps2_delete}</button>}
             </div>
           </div>
         </div>,

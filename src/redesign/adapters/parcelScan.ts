@@ -309,12 +309,28 @@ export function splitScansForExport(rows: ParcelScanRow[], fee: number): ScanExp
 
 // Mark exported rows done so re-exports skip them (status 'exported', sql/27).
 // Own-scoped via RLS; best-effort. Empty id list is a no-op success.
-export async function markScansExported(ids: string[]): Promise<{ ok: boolean; error?: string }> {
+export async function markScansExported(ids: string[]): Promise<{ ok: boolean; batchId?: string; error?: string }> {
   if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
   if (!ids.length) return { ok: true };
   const me = await uid();
   if (!me) return { ok: false, error: "not signed in" };
-  const { error } = await supabase.from("parcel_scans").update({ status: "exported" }).in("id", ids).eq("user_id", me);
+  // One fresh batch id per export run → the whole run can be reverted together
+  // ("Undo last export"). Stamped alongside status='exported' (own-scoped).
+  const batchId = newParcelId();
+  const { error } = await supabase.from("parcel_scans").update({ status: "exported", export_batch_id: batchId }).in("id", ids).eq("user_id", me);
+  return error ? { ok: false, error: error.message } : { ok: true, batchId };
+}
+
+// Undo one export run: revert every row of the batch back to 'confirmed' and
+// clear the batch id, so they re-enter the ready list and can be exported
+// again. Own-scoped (RLS + explicit user_id). Existing pre-column exported rows
+// have export_batch_id = NULL → not covered by any batch undo (by design).
+export async function unmarkScansExported(batchId: string): Promise<{ ok: boolean; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
+  if (!batchId) return { ok: false, error: "no batch" };
+  const me = await uid();
+  if (!me) return { ok: false, error: "not signed in" };
+  const { error } = await supabase.from("parcel_scans").update({ status: "confirmed", export_batch_id: null }).eq("export_batch_id", batchId).eq("user_id", me);
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 
