@@ -80,4 +80,5 @@ describe("Scan Credits UI", () => {
     fireEvent.change(getByTestId("ps-file"), { target: { files: [file] } });
     await waitFor(() => expect(getByTestId("ps-credits-n").textContent).toBe("4")); // decremented
   });
+
 });

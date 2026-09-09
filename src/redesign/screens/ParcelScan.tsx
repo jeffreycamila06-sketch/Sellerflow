@@ -121,6 +121,17 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
   const [cameraErr, setCameraErr] = useState("");
   const [snapshot, setSnapshot] = useState<{ url: string; file: File } | null>(null);
   const [scanCount, setScanCount] = useState(0);
+  // Camera runs only while the tab/app is foregrounded (privacy + battery); a
+  // visibilitychange effect drives this, and it re-acquires on return. retryTick
+  // re-runs the acquire effect when the OS ends a track (e.g. a phone call).
+  const [pageVisible, setPageVisible] = useState(() => typeof document === "undefined" || document.visibilityState !== "hidden");
+  const [retryTick, setRetryTick] = useState(0);
+  // FIX 1 — synchronous single-flight guard on the scan pipeline (mirrors
+  // RedesignApp's entSubmittedRef): set at the top of beginScan BEFORE any
+  // state/async, cleared when scanOne leaves the "scanning" phase (finally, so
+  // confirm/error/insufficient/cancel all release it). Blocks a same-tick
+  // double-tap of "Use" (or a rapid re-pick) from firing two charged scans.
+  const scanInFlightRef = useRef(false);
 
   // Alive across the whole screen — guards fire-and-forget store-check verdicts
   // (runStoreCheck) that can land after unmount, not just the initial load.
@@ -138,21 +149,46 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
     getCreditBalance().then((c) => { if (aliveRef.current && c.ok) setCredits(c.balance); });
   }, []);
 
+  // FIX 2/3 — release the camera when the tab/app is backgrounded, re-acquire on
+  // return, and clear a prior denial so a grant-in-Settings-then-return recovers
+  // WITHOUT relaunching the app. Own listener (independent of useWakeLock's own
+  // visibilitychange listener — multiple listeners coexist fine).
+  useEffect(() => {
+    const onVis = () => {
+      const visible = document.visibilityState !== "hidden";
+      setPageVisible(visible);
+      if (visible) setCameraErr(""); // returning to the app → retry the camera (denial may now be granted)
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
+
   // In-app camera stream lifecycle. Runs ONLY while the camera UI is on screen:
   // idle (not scanning/confirming/erroring), not editing, not previewing a
-  // still, camera intent on + supported + no prior error, and credits remain
-  // (credits === null = still loading → allowed; 0 = blocked). Any flip to
-  // false stops the tracks (camera light off) and detaches the video.
-  const camActive = cameraOn && cameraSupported() && !cameraErr && !editing && !snapshot && phase === "idle" && credits !== 0;
+  // still, camera intent on + supported + no prior error, credits remain
+  // (credits === null = still loading → allowed; 0 = blocked), AND the page is
+  // foregrounded. Any flip to false stops the tracks (camera light off) and
+  // detaches the video. retryTick re-runs it after an OS-ended track.
+  const camActive = cameraOn && cameraSupported() && !cameraErr && !editing && !snapshot && phase === "idle" && credits !== 0 && pageVisible;
   useEffect(() => {
     if (!camActive) return;
     let cancelled = false;
     const videoEl = videoRef.current; // committed before this effect runs; stable node for cleanup
+    let track: MediaStreamTrack | null = null;
+    // OS ended the track (phone call, another app grabbed the camera) → drop the
+    // dead stream and, if still foregrounded, bump retryTick to re-acquire so the
+    // video never sits frozen/black.
+    const onEnded = () => {
+      stopStream(streamRef.current); streamRef.current = null;
+      if (!cancelled && typeof document !== "undefined" && document.visibilityState !== "hidden") setRetryTick((n) => n + 1);
+    };
     void (async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia(captureConstraints());
         if (cancelled) { stopStream(stream); return; }
         streamRef.current = stream;
+        track = stream.getVideoTracks?.()[0] ?? null;
+        if (track) track.addEventListener("ended", onEnded);
         if (videoEl) {
           videoEl.srcObject = stream;
           const p = videoEl.play();
@@ -166,11 +202,12 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
     })();
     return () => {
       cancelled = true;
+      if (track) track.removeEventListener("ended", onEnded);
       stopStream(streamRef.current);
       streamRef.current = null;
       if (videoEl) videoEl.srcObject = null;
     };
-  }, [camActive]);
+  }, [camActive, retryTick]);
 
   // Keep the screen awake while actively scanning (camera open OR previewing a
   // still) — capture is client-side, a sleeping phone loses the session.
@@ -182,29 +219,35 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
   useEffect(() => () => { if (snapshot) URL.revokeObjectURL(snapshot.url); }, [snapshot]);
 
   const scanOne = async (list: File[], i: number) => {
-    // Out of credits — don't spend a request that will 402; the blocked banner
-    // (credits === 0) tells the owner to top up. Reset the batch.
-    if (credits === 0) { setFiles([]); setIdx(0); setPhase("idle"); return; }
-    setPhase("scanning"); setScanErr(""); setSaveErr("");
     try {
-      const { base64, mediaType } = await fileToScanBase64(list[i]);
-      const r = await scanParcel(base64, mediaType);
-      // The server returns the fresh wallet balance on success, on a charged
-      // (bad-photo) failure, and on 402 — reflect it whenever present.
-      if (typeof r.balance === "number") setCredits(r.balance);
-      if (r.insufficient) {
-        // Out of Scan Credits — no scan happened. Stop the batch; the blocked
-        // banner surfaces the top-up path (no Retry card, which would 402 again).
-        setFiles([]); setIdx(0); setPhase("idle");
-        return;
+      // Out of credits — don't spend a request that will 402; the blocked banner
+      // (credits === 0) tells the owner to top up. Reset the batch.
+      if (credits === 0) { setFiles([]); setIdx(0); setPhase("idle"); return; }
+      setPhase("scanning"); setScanErr(""); setSaveErr("");
+      try {
+        const { base64, mediaType } = await fileToScanBase64(list[i]);
+        const r = await scanParcel(base64, mediaType);
+        // The server returns the fresh wallet balance on success, on a charged
+        // (bad-photo) failure, and on 402 — reflect it whenever present.
+        if (typeof r.balance === "number") setCredits(r.balance);
+        if (r.insufficient) {
+          // Out of Scan Credits — no scan happened. Stop the batch; the blocked
+          // banner surfaces the top-up path (no Retry card, which would 402 again).
+          setFiles([]); setIdx(0); setPhase("idle");
+          return;
+        }
+        if (!r.ok || !r.fields) { setScanErr(r.error || "scan_failed"); setPhase("error"); return; }
+        setForm(fieldsToForm(r.fields));
+        setConfid(r.confidence ?? null);
+        setRawExtraction({ fields: r.fields, confidence: r.confidence });
+        setPhase("confirm");
+      } catch {
+        setScanErr("image_decode_failed"); setPhase("error");
       }
-      if (!r.ok || !r.fields) { setScanErr(r.error || "scan_failed"); setPhase("error"); return; }
-      setForm(fieldsToForm(r.fields));
-      setConfid(r.confidence ?? null);
-      setRawExtraction({ fields: r.fields, confidence: r.confidence });
-      setPhase("confirm");
-    } catch {
-      setScanErr("image_decode_failed"); setPhase("error");
+    } finally {
+      // Leaving the "scanning" phase (confirm / error / insufficient / credits=0
+      // / throw) → release the single-flight guard so the next parcel can scan.
+      scanInFlightRef.current = false;
     }
   };
 
@@ -212,6 +255,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
   // camera). One File → fileToScanBase64 downscale → scan. ZERO adapter change.
   const beginScan = (list: File[]) => {
     if (!list.length) return;
+    if (scanInFlightRef.current) return; // synchronous double-entry guard (double-tap Use / rapid re-pick)
+    scanInFlightRef.current = true;
     setFiles(list); setIdx(0);
     void scanOne(list, 0);
   };
@@ -495,6 +540,12 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
             >📷 {t.rd_ps2_pick}</button>
             <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 8, lineHeight: 1.5 }}>{t.rd_ps2_pick_hint}</div>
             {cameraErr && <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 6 }} data-testid="ps-cam-fallback-note">{t.rd_ps2_cam_unavailable}</div>}
+            {/* After a denial (cameraErr) → explicit retry that clears the error and
+                re-opens the camera, so the user never has to relaunch the app (the
+                visibilitychange handler also auto-clears on return-to-foreground). */}
+            {cameraErr && cameraSupported() && (
+              <button onClick={() => { setCameraErr(""); setCameraOn(true); }} style={{ marginTop: 8, background: "none", border: "none", color: "var(--text-dim)", fontSize: 11.5, fontWeight: 700, textDecoration: "underline", cursor: "pointer", padding: 0 }} data-testid="ps-cam-retry">{t.rd_ps2_cam_retry}</button>
+            )}
             {!cameraErr && !cameraOn && cameraSupported() && (
               <button onClick={() => setCameraOn(true)} style={{ marginTop: 8, background: "none", border: "none", color: "var(--text-dim)", fontSize: 11.5, fontWeight: 700, textDecoration: "underline", cursor: "pointer", padding: 0 }} data-testid="ps-use-camera">{t.rd_ps2_use_camera}</button>
             )}
