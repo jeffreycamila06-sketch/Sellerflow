@@ -509,12 +509,17 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
         </div>
       </div>
 
-      {/* Delete confirmation (Change 3) — PORTALED to document.body so position:fixed
-          is viewport-relative, escaping the .sfl-scroll / .sfl-anim-screen stacking +
-          containing-block trap that cut the sheet off below the fold on iPhone (same
-          fix as RaffleWheel). CENTERED (never below the viewport), max-height + inner
-          scroll, and safe-area padding so the actions clear the home indicator and the
-          bottom nav (zIndex 1300 > nav zIndex 3). Matches PrinterModal/ExpiryModal tokens. */}
+      {/* Delete confirmation (Change 3) — PORTALED to the [data-redesign] root so
+          position:fixed is viewport-relative, escaping the .sfl-scroll / .sfl-anim-screen
+          stacking + containing-block trap that cut the sheet off below the fold on iPhone.
+          MUST portal INTO [data-redesign] (not document.body): the design tokens
+          (--surface/--danger/--text/--border-strong/--text-dim) + theme/accent are defined
+          ON that root, so a document.body portal leaves every var() unresolved → a
+          transparent, unstyled card (the RaffleWheel token-trap). .sfl-stage has no
+          transform/filter, so it is NOT a fixed-containing block → fixed stays viewport-
+          relative. CENTERED, max-height + inner scroll, safe-area padding so the actions
+          clear the home indicator and the bottom nav (zIndex 1300 > nav zIndex 3). Card
+          surface + Cancel(neutral)/Delete(danger) mirror PrinterModal/ExpiryModal. */}
       {confirm && createPortal(
         <div style={{ position: "fixed", inset: 0, zIndex: 1300, background: "rgba(9,7,24,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom))", boxSizing: "border-box" }} data-testid="ps-confirm-overlay" onClick={() => { if (!deleting) setConfirm(null); }}>
           <div style={{ width: "100%", maxWidth: 440, maxHeight: "100%", overflowY: "auto", background: "var(--surface)", borderRadius: 18, padding: "22px 20px 20px", boxShadow: "0 20px 60px rgba(0,0,0,.4)" }} onClick={(e) => e.stopPropagation()}>
@@ -528,7 +533,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
             </div>
           </div>
         </div>,
-        document.body,
+        (typeof document !== "undefined" && document.querySelector("[data-redesign]")) || document.body,
       )}
     </div>
   );
