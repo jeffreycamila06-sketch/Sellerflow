@@ -6,12 +6,13 @@
 // encoding + the status queue come in Phase A2 — this screen is scan → confirm
 // → save plus a simple read-on-open list of saved rows (ZERO poll).
 import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT, tpl } from "../i18n";
 import {
   fileToScanBase64, scanParcel, saveParcelScan, loadParcelScans, formErrors, amountWarns,
   checkEmapStore, saveStoreCheck, scanToXlsRow, splitScansForExport, markScansExported,
-  deleteParcelScan, deleteExportedParcels, getCreditBalance,
+  deleteParcelScan, deleteExportedParcels, updateParcelScan, getCreditBalance,
   type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState, type StoreCheckStatus, type ExportReason,
 } from "../adapters/parcelScan";
 import { fetchShipTemplate, buildXlsmFromTemplate, deliverXlsm, exportFilename } from "../adapters/shippingExport";
@@ -100,6 +101,9 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
   const [confirm, setConfirm] = useState<{ kind: "row"; id: string } | { kind: "exported" } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteErr, setDeleteErr] = useState("");
+  // Feature 3: per-row EDIT — reuses the confirm form, pre-filled, updates the
+  // existing row (no new scan, no credit charged). Only not-yet-exported rows.
+  const [editing, setEditing] = useState<{ id: string } | null>(null);
   // Alive across the whole screen — guards fire-and-forget store-check verdicts
   // (runStoreCheck) that can land after unmount, not just the initial load.
   const aliveRef = useRef(true);
@@ -255,6 +259,45 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
   };
   const askDelete = (c: { kind: "row"; id: string } | { kind: "exported" }) => { setDeleteErr(""); setConfirm(c); };
 
+  // ── Edit (Feature 3) — reuse the confirm form, pre-filled; update-in-place ──
+  // Only reachable when idle (not mid-scan-batch) and only for non-exported rows.
+  const openEdit = (r: ParcelScanRow) => {
+    if (busy || r.status === "exported") return;
+    setSaveErr("");
+    setForm({ name: r.customerName, phone: r.phone, store: r.storeId, amount: r.amount == null ? "" : String(r.amount), notes: r.notes });
+    setConfid(null); // no low-confidence highlights on a manual edit
+    setEditing({ id: r.id });
+  };
+  const cancelEdit = () => { setEditing(null); setForm(emptyForm); setSaveErr(""); };
+  const onEditSave = async () => {
+    if (!editing || saving) return;
+    setSaving(true); setSaveErr("");
+    const id = editing.id;
+    const fields = formToFields(form);
+    const r = await updateParcelScan(id, fields);        // own-scoped UPDATE, NO credit
+    setSaving(false);
+    if (!r.ok) { setSaveErr(r.error || "save_failed"); return; } // surfaced inline, no optimistic write
+    const newStore = fields.store_id ?? "";
+    const prev = rows.find((x) => x.id === id);
+    const storeChanged = (prev?.storeId ?? "") !== newStore;
+    if (aliveRef.current) {
+      setRows((list) => list.map((x) => (x.id === id ? {
+        ...x,
+        customerName: fields.name ?? "",
+        phone: fields.phone ?? "",
+        storeId: newStore,
+        amount: fields.amount,
+        notes: fields.notes ?? "",
+        // Store code changed → clear the stale ❌/verdict now; re-check below if valid.
+        storeCheckStatus: storeChanged ? null : x.storeCheckStatus,
+      } : x)));
+    }
+    setEditing(null); setForm(emptyForm);
+    setToast(t.rd_ps2_saved_toast); setTimeout(() => setToast(""), 2500);
+    // Re-run the E-Map check ONLY when the store code changed (reuse runStoreCheck).
+    if (storeChanged && /^\d{6}$/.test(newStore) && !id.startsWith("local-")) runStoreCheck(id, newStore);
+  };
+
   const errs = formErrors(form);
   const saveBlocked = saving || errs.empty || errs.name || errs.phone || errs.store;
   const low = (f: keyof ScanFields): boolean => confid?.[f] === "low";
@@ -278,7 +321,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
         <div className="sfl-anim-beat" style={headerTitle}>{t.rd_ps2_title}</div>
         <div style={{ fontSize: 12, opacity: 0.85, marginTop: 1 }}>{t.rd_ps2_sub}</div>
       </div>
-      <div style={{ padding: "16px 14px 22px", display: "grid", gap: 12 }}>
+      <div style={{ padding: "16px 14px calc(28px + env(safe-area-inset-bottom))", display: "grid", gap: 12 }}>
         {toast && <div style={{ ...card, padding: 10, textAlign: "center", fontSize: 12.5, fontWeight: 700, color: "var(--ok, #16a34a)" }} data-testid="ps-toast">{toast}</div>}
 
         {/* Scan Credits balance — 1 credit = 1 scan. */}
@@ -297,8 +340,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
           </div>
         )}
 
-        {/* Picker — hidden until the current batch finishes */}
-        {!busy && (
+        {/* Picker — hidden while scanning a batch OR editing a saved parcel */}
+        {!busy && !editing && (
           <div style={card}>
             <button
               onClick={() => fileRef.current?.click()}
@@ -329,9 +372,9 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
           </div>
         )}
 
-        {phase === "confirm" && (
-          <div style={card} data-testid="ps-confirm">
-            <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 10 }}>{tpl(t.rd_ps2_confirm, progress)}</div>
+        {(phase === "confirm" || editing) && (
+          <div style={card} data-testid="ps-confirm" data-editing={editing ? "1" : undefined}>
+            <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 10 }}>{editing ? t.rd_ps2_edit_title : tpl(t.rd_ps2_confirm, progress)}</div>
             <div style={{ display: "grid", gap: 10 }}>
               <div>
                 <label style={lbl}>{t.rd_ps2_name}{low("name") && <span style={{ color: "var(--warn, #b45309)" }}> · {t.rd_ps2_low_conf}</span>}</label>
@@ -361,8 +404,10 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
               </div>
               {saveErr && <div style={errTxt} data-testid="ps-save-err">{t.rd_ps2_err_save} <span style={{ fontFamily: mono }}>{saveErr}</span></div>}
               <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
-                <button onClick={() => void onSave()} disabled={saveBlocked} style={{ flex: 2, padding: "11px 12px", borderRadius: 10, border: "none", background: saveBlocked ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: saveBlocked ? "default" : "pointer" }} data-testid="ps-save">{t.rd_ps2_save}</button>
-                <button onClick={advance} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontWeight: 700, cursor: "pointer" }} data-testid="ps-skip">{t.rd_ps2_skip}</button>
+                <button onClick={() => void (editing ? onEditSave() : onSave())} disabled={saveBlocked} style={{ flex: 2, padding: "11px 12px", borderRadius: 10, border: "none", background: saveBlocked ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: saveBlocked ? "default" : "pointer" }} data-testid="ps-save">{t.rd_ps2_save}</button>
+                {editing
+                  ? <button onClick={cancelEdit} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontWeight: 700, cursor: "pointer" }} data-testid="ps-edit-cancel">{t.rd_ps2_cancel}</button>
+                  : <button onClick={advance} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontWeight: 700, cursor: "pointer" }} data-testid="ps-skip">{t.rd_ps2_skip}</button>}
               </div>
             </div>
           </div>
@@ -455,6 +500,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
                     <div style={{ fontSize: 12.5, fontWeight: 800, fontFamily: mono }}>{r.amount !== null ? `${cur}${r.amount.toLocaleString()}` : "—"}</div>
                     <div style={{ fontSize: 10.5, color: "var(--text-dim)" }}>{timeOf(r.createdAt)}</div>
                   </div>
+                  {r.status !== "exported" && <button onClick={() => openEdit(r)} aria-label={t.rd_ps2_edit_aria} style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-dim)", fontSize: 13, cursor: "pointer", lineHeight: 1 }} data-testid="ps-row-edit">✏️</button>}
                   <button onClick={() => askDelete({ kind: "row", id: r.id })} aria-label={t.rd_ps2_delete_aria} style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-dim)", fontSize: 13, cursor: "pointer", lineHeight: 1 }} data-testid="ps-row-delete">🗑</button>
                 </div>
               </div>
@@ -463,10 +509,15 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
         </div>
       </div>
 
-      {/* Delete confirmation (Change 3) — matches PrinterModal/ExpiryModal tokens. */}
-      {confirm && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 1300, background: "rgba(9,7,24,.45)", display: "flex", alignItems: "flex-end", justifyContent: "center", padding: 16 }} data-testid="ps-confirm-overlay" onClick={() => { if (!deleting) setConfirm(null); }}>
-          <div style={{ width: "100%", maxWidth: 440, background: "var(--surface)", borderRadius: 22, padding: "22px 20px 20px", boxShadow: "0 -8px 40px rgba(0,0,0,.35)" }} onClick={(e) => e.stopPropagation()}>
+      {/* Delete confirmation (Change 3) — PORTALED to document.body so position:fixed
+          is viewport-relative, escaping the .sfl-scroll / .sfl-anim-screen stacking +
+          containing-block trap that cut the sheet off below the fold on iPhone (same
+          fix as RaffleWheel). CENTERED (never below the viewport), max-height + inner
+          scroll, and safe-area padding so the actions clear the home indicator and the
+          bottom nav (zIndex 1300 > nav zIndex 3). Matches PrinterModal/ExpiryModal tokens. */}
+      {confirm && createPortal(
+        <div style={{ position: "fixed", inset: 0, zIndex: 1300, background: "rgba(9,7,24,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom))", boxSizing: "border-box" }} data-testid="ps-confirm-overlay" onClick={() => { if (!deleting) setConfirm(null); }}>
+          <div style={{ width: "100%", maxWidth: 440, maxHeight: "100%", overflowY: "auto", background: "var(--surface)", borderRadius: 18, padding: "22px 20px 20px", boxShadow: "0 20px 60px rgba(0,0,0,.4)" }} onClick={(e) => e.stopPropagation()}>
             <div style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.5, color: "var(--text)" }} data-testid="ps-confirm-msg">
               {confirm.kind === "exported" ? tpl(t.rd_ps2_clear_exported_q, { n: String(exportedCount) }) : t.rd_ps2_delete_row_q}
             </div>
@@ -476,7 +527,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
               <button onClick={() => void doDelete()} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--danger)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: deleting ? "default" : "pointer", opacity: deleting ? 0.7 : 1 }} data-testid="ps-confirm-delete">{t.rd_ps2_delete}</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

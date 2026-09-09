@@ -1178,6 +1178,10 @@ const RAW: Record<string, Row> = {
   rd_ps2_credits: { en: "Scan Credits", fil: "Scan Credits", zh: "扫描点数", "zh-TW": "掃描點數", vi: "Điểm quét", th: "เครดิตสแกน", id: "Kredit Pindai" },
   rd_ps2_credits_out: { en: "You're out of Scan Credits. Message us on Telegram to top up.", fil: "Ubos na ang Scan Credits mo. I-message kami sa Telegram para mag-top up.", zh: "扫描点数已用完。请在 Telegram 联系我们充值。", "zh-TW": "掃描點數已用完。請在 Telegram 聯絡我們儲值。", vi: "Bạn đã hết Điểm quét. Nhắn cho chúng tôi trên Telegram để nạp thêm.", th: "เครดิตสแกนของคุณหมดแล้ว ทักหาเราทาง Telegram เพื่อเติมเครดิต", id: "Kredit Pindai Anda habis. Hubungi kami di Telegram untuk mengisi." },
   rd_ps2_credits_topup: { en: "Top up on Telegram", fil: "Mag-top up sa Telegram", zh: "在 Telegram 充值", "zh-TW": "在 Telegram 儲值", vi: "Nạp qua Telegram", th: "เติมเครดิตทาง Telegram", id: "Isi lewat Telegram" },
+
+  // Per-row edit (Feature 3). th/id = AI draft; zh-TW native-checked.
+  rd_ps2_edit_title: { en: "Edit parcel", fil: "I-edit ang parcel", zh: "编辑包裹", "zh-TW": "編輯包裹", vi: "Sửa kiện hàng", th: "แก้ไขพัสดุ", id: "Edit paket" },
+  rd_ps2_edit_aria: { en: "Edit parcel", fil: "I-edit ang parcel", zh: "编辑包裹", "zh-TW": "編輯包裹", vi: "Sửa kiện hàng", th: "แก้ไขพัสดุ", id: "Edit paket" },
 };
 
 // Transpose RAW (key→langs) into REDESIGN_STRINGS (lang→keys).
