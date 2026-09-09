@@ -100,7 +100,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
   const [tab, setTab] = useState<"all" | "wrong">("all");
   // Delete (Change 3): a pending confirmation + await/error state. Never fires
   // a delete without the confirm; a failed delete surfaces inline, no silent no-op.
-  const [confirm, setConfirm] = useState<{ kind: "row"; id: string } | { kind: "exported" } | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: "row"; id: string } | { kind: "exported" } | { kind: "export" } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteErr, setDeleteErr] = useState("");
   // Feature 3: per-row EDIT — reuses the confirm form, pre-filled, updates the
@@ -121,6 +121,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
   const [cameraErr, setCameraErr] = useState("");
   const [snapshot, setSnapshot] = useState<{ url: string; file: File } | null>(null);
   const [scanCount, setScanCount] = useState(0);
+  // Manual encode — opens the SAME confirm form blank, no camera + no AI scan.
+  const [manual, setManual] = useState(false);
   // Camera runs only while the tab/app is foregrounded (privacy + battery); a
   // visibilitychange effect drives this, and it re-acquires on return. retryTick
   // re-runs the acquire effect when the OS ends a track (e.g. a phone call).
@@ -169,7 +171,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
   // (credits === null = still loading → allowed; 0 = blocked), AND the page is
   // foregrounded. Any flip to false stops the tracks (camera light off) and
   // detaches the video. retryTick re-runs it after an OS-ended track.
-  const camActive = cameraOn && cameraSupported() && !cameraErr && !editing && !snapshot && phase === "idle" && credits !== 0 && pageVisible;
+  const camActive = cameraOn && cameraSupported() && !cameraErr && !editing && !manual && !snapshot && phase === "idle" && credits !== 0 && pageVisible;
   useEffect(() => {
     if (!camActive) return;
     let cancelled = false;
@@ -322,13 +324,15 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
     })();
   };
 
-  const onSave = async () => {
-    if (saving) return;
-    setSaving(true); setSaveErr("");
-    const fields = formToFields(form);
+  // Insert a NEW parcel row — shared by the scanned Save AND manual encode.
+  // ⚠️ ZERO CREDIT: this only calls saveParcelScan (a direct parcel_scans
+  // INSERT). It NEVER hits /admin/parcel-scan and NEVER touches
+  // check_and_debit_credit — only scanParcel (the vision call) debits. Appends
+  // the row locally + fires the same E-Map store-code check as a scan. Returns
+  // ok. `rawExtraction` is null for manual entries (nullable column).
+  const commitNewParcel = async (fields: ScanFields): Promise<boolean> => {
     const r = await saveParcelScan(fields, rawExtraction);
-    setSaving(false);
-    if (!r.ok) { setSaveErr(r.error || "save_failed"); return; }
+    if (!r.ok) { setSaveErr(r.error || "save_failed"); return false; }
     const rowId = r.id || `local-${Date.now()}`;
     const storeId = fields.store_id ?? "";
     setRows((prev) => [{
@@ -347,8 +351,29 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
     // Only when we got a real DB id back can the async verdict be persisted +
     // matched to the row; skip the check on the local-id fallback.
     if (r.id) runStoreCheck(r.id, storeId);
+    return true;
+  };
+
+  const onSave = async () => {
+    if (saving) return;
+    setSaving(true); setSaveErr("");
+    const ok = await commitNewParcel(formToFields(form));
+    setSaving(false);
+    if (!ok) return;
     setScanCount((c) => c + 1); // this-session saved counter (camera + picker)
     advance(); // batch of 1 (camera) → idle → the camera effect reopens the stream
+  };
+
+  // Manual encode — SAME confirm form, blank, opened WITHOUT a camera capture or
+  // AI scan. Zero credit (commitNewParcel = direct INSERT). Not counted as a
+  // "scan". On success → close the manual form (back to camera/idle).
+  const onManualSave = async () => {
+    if (saving) return;
+    setSaving(true); setSaveErr("");
+    const ok = await commitNewParcel(formToFields(form));
+    setSaving(false);
+    if (!ok) return;
+    setManual(false); setForm(emptyForm); setConfid(null); setRawExtraction(null); setSaveErr("");
   };
 
   // ── 賣貨便 訂單匯入 Excel export — gate, build via the EXISTING builder, deliver.
@@ -403,6 +428,18 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
     }
   };
   const askDelete = (c: { kind: "row"; id: string } | { kind: "exported" }) => { setDeleteErr(""); setConfirm(c); };
+  // FIX 4 — confirm before exporting (an accidental export marks rows 'exported'
+  // and drops them from the next file, with no undo). Reuses the SAME portal
+  // confirm dialog as delete/clear-exported.
+  const askExport = () => { setDeleteErr(""); setConfirm({ kind: "export" }); };
+
+  // ── Manual encode — open the shared confirm form BLANK, no camera/scan ──────
+  const openManual = () => {
+    if (busy || editing) return;
+    setSaveErr(""); setForm(emptyForm); setConfid(null); setRawExtraction(null);
+    setManual(true);
+  };
+  const cancelManual = () => { setManual(false); setForm(emptyForm); setSaveErr(""); };
 
   // ── Edit (Feature 3) — reuse the confirm form, pre-filled; update-in-place ──
   // Only reachable when idle (not mid-scan-batch) and only for non-exported rows.
@@ -473,11 +510,23 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
       <div style={{ padding: "16px 14px calc(28px + env(safe-area-inset-bottom))", display: "grid", gap: 12 }}>
         {toast && <div style={{ ...card, padding: 10, textAlign: "center", fontSize: 12.5, fontWeight: 700, color: "var(--ok, #16a34a)" }} data-testid="ps-toast">{toast}</div>}
 
-        {/* Scan Credits balance — 1 credit = 1 scan. */}
-        {credits !== null && (
-          <div style={{ ...card, padding: "10px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }} data-testid="ps-credits">
-            <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text-dim)" }}>{t.rd_ps2_credits}</span>
-            <span style={{ fontSize: 16, fontWeight: 900, color: outOfCredits ? "var(--danger)" : "var(--text)", fontFamily: mono }} data-testid="ps-credits-n">{credits}</span>
+        {/* Compact stats row — Scan Credits + this-session counter as small pills
+            (same visual language as the All/Wrong segmented tabs below), instead
+            of two big cards eating the top of the screen. */}
+        {(credits !== null || scanCount > 0) && (
+          <div style={{ display: "flex", gap: 6 }} data-testid="ps-stats">
+            {credits !== null && (
+              <div style={{ flex: 1, padding: "7px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface-2)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, minWidth: 0 }} data-testid="ps-credits">
+                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.rd_ps2_credits}</span>
+                <span style={{ fontSize: 13, fontWeight: 900, color: outOfCredits ? "var(--danger)" : "var(--text)", fontFamily: mono, flexShrink: 0 }} data-testid="ps-credits-n">{credits}</span>
+              </div>
+            )}
+            {scanCount > 0 && (
+              <div style={{ flex: 1, padding: "7px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface-2)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, minWidth: 0 }} data-testid="ps-scancount">
+                <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.rd_ps2_session}</span>
+                <span style={{ fontSize: 13, fontWeight: 900, color: "var(--text)", fontFamily: mono, flexShrink: 0 }} data-testid="ps-scancount-n">{scanCount}</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -489,20 +538,14 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
           </div>
         )}
 
-        {/* This-session scan counter — quiet chip, only once you've saved one. */}
-        {scanCount > 0 && (
-          <div style={{ ...card, padding: "8px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }} data-testid="ps-scancount">
-            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-dim)" }}>{t.rd_ps2_session}</span>
-            <span style={{ fontSize: 15, fontWeight: 900, color: "var(--text)", fontFamily: mono }} data-testid="ps-scancount-n">{scanCount}</span>
-          </div>
-        )}
-
         {/* IN-APP CAMERA — live preview + shutter, shown while idle (not editing,
             not previewing a still). Capture → Use/Retake below. Falls back to the
             file picker when the camera is unsupported/denied. */}
-        {!busy && !editing && !snapshot && useCameraUI && (
+        {!busy && !editing && !manual && !snapshot && useCameraUI && (
           <div style={card} data-testid="ps-camera">
-            <div style={{ position: "relative", width: "100%", aspectRatio: "3 / 4", background: "#000", borderRadius: 12, overflow: "hidden" }}>
+            {/* Height-capped (FIX 2) so the preview + shutter fit one iPhone screen
+                without scrolling; objectFit:cover keeps the slip usable to align. */}
+            <div style={{ position: "relative", width: "100%", height: "min(46vh, 380px)", background: "#000", borderRadius: 12, overflow: "hidden" }}>
               <video ref={videoRef} muted playsInline autoPlay data-testid="ps-video" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
             </div>
             <button
@@ -516,9 +559,9 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
         )}
 
         {/* CAPTURE PREVIEW — Use (→ scan) or Retake (→ free, back to camera). */}
-        {!busy && !editing && snapshot && (
+        {!busy && !editing && !manual && snapshot && (
           <div style={card} data-testid="ps-preview">
-            <div style={{ width: "100%", aspectRatio: "3 / 4", background: "#000", borderRadius: 12, overflow: "hidden" }}>
+            <div style={{ width: "100%", height: "min(46vh, 380px)", background: "#000", borderRadius: 12, overflow: "hidden" }}>
               <img src={snapshot.url} alt="" data-testid="ps-preview-img" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
             </div>
             <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
@@ -530,7 +573,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
 
         {/* FILE-PICKER FALLBACK — safety net: camera unsupported/denied, out of
             credits, or the seller chose the photo library. Original flow, kept. */}
-        {!busy && !editing && !snapshot && !useCameraUI && (
+        {!busy && !editing && !manual && !snapshot && !useCameraUI && (
           <div style={card}>
             <button
               onClick={() => fileRef.current?.click()}
@@ -553,6 +596,14 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
           </div>
         )}
 
+        {/* MANUAL ENCODE — add a parcel with NO camera + NO AI scan (ZERO credit).
+            Opens the shared confirm form blank; saves straight into parcel_scans.
+            Shown in idle (under the camera or the picker), not while a form/preview
+            is open. */}
+        {!busy && !editing && !manual && !snapshot && (
+          <button onClick={openManual} style={{ justifySelf: "center", background: "none", border: "none", color: "var(--text-dim)", fontSize: 12, fontWeight: 700, textDecoration: "underline", cursor: "pointer", padding: "2px 4px" }} data-testid="ps-manual">✏️ {t.rd_ps2_manual}</button>
+        )}
+
         {phase === "scanning" && (
           <div style={{ ...card, textAlign: "center", padding: 24 }} data-testid="ps-scanning">
             <div style={{ fontSize: 26, marginBottom: 6 }}>🔍</div>
@@ -571,9 +622,9 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
           </div>
         )}
 
-        {(phase === "confirm" || editing) && (
-          <div style={card} data-testid="ps-confirm" data-editing={editing ? "1" : undefined}>
-            <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 10 }}>{editing ? t.rd_ps2_edit_title : tpl(t.rd_ps2_confirm, progress)}</div>
+        {(phase === "confirm" || editing || manual) && (
+          <div style={card} data-testid="ps-confirm" data-editing={editing ? "1" : undefined} data-manual={manual ? "1" : undefined}>
+            <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 10 }}>{editing ? t.rd_ps2_edit_title : manual ? t.rd_ps2_manual_title : tpl(t.rd_ps2_confirm, progress)}</div>
             <div style={{ display: "grid", gap: 10 }}>
               <div>
                 <label style={lbl}>{t.rd_ps2_name}{low("name") && <span style={{ color: "var(--warn, #b45309)" }}> · {t.rd_ps2_low_conf}</span>}</label>
@@ -603,10 +654,12 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
               </div>
               {saveErr && <div style={errTxt} data-testid="ps-save-err">{t.rd_ps2_err_save} <span style={{ fontFamily: mono }}>{saveErr}</span></div>}
               <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
-                <button onClick={() => void (editing ? onEditSave() : onSave())} disabled={saveBlocked} style={{ flex: 2, padding: "11px 12px", borderRadius: 10, border: "none", background: saveBlocked ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: saveBlocked ? "default" : "pointer" }} data-testid="ps-save">{t.rd_ps2_save}</button>
+                <button onClick={() => void (editing ? onEditSave() : manual ? onManualSave() : onSave())} disabled={saveBlocked} style={{ flex: 2, padding: "11px 12px", borderRadius: 10, border: "none", background: saveBlocked ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: saveBlocked ? "default" : "pointer" }} data-testid="ps-save">{t.rd_ps2_save}</button>
                 {editing
                   ? <button onClick={cancelEdit} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontWeight: 700, cursor: "pointer" }} data-testid="ps-edit-cancel">{t.rd_ps2_cancel}</button>
-                  : <button onClick={advance} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontWeight: 700, cursor: "pointer" }} data-testid="ps-skip">{t.rd_ps2_skip}</button>}
+                  : manual
+                    ? <button onClick={cancelManual} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontWeight: 700, cursor: "pointer" }} data-testid="ps-manual-cancel">{t.rd_ps2_cancel}</button>
+                    : <button onClick={advance} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontWeight: 700, cursor: "pointer" }} data-testid="ps-skip">{t.rd_ps2_skip}</button>}
               </div>
             </div>
           </div>
@@ -624,7 +677,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
           <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 6 }}>{t.rd_ps2_x_title}</div>
           <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 9, lineHeight: 1.5 }}>{t.rd_ps2_x_hint}</div>
           <button
-            onClick={() => void runExport()}
+            onClick={askExport}
             disabled={exportBusy || readyCount === 0}
             style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: "none", background: exportBusy || readyCount === 0 ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: exportBusy || readyCount === 0 ? "default" : "pointer" }}
             data-testid="ps-export-btn"
@@ -723,12 +776,18 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
         <div style={{ position: "fixed", inset: 0, zIndex: 1300, background: "rgba(9,7,24,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom))", boxSizing: "border-box" }} data-testid="ps-confirm-overlay" onClick={() => { if (!deleting) setConfirm(null); }}>
           <div style={{ width: "100%", maxWidth: 440, maxHeight: "100%", overflowY: "auto", background: "var(--surface)", borderRadius: 18, padding: "22px 20px 20px", boxShadow: "0 20px 60px rgba(0,0,0,.4)" }} onClick={(e) => e.stopPropagation()}>
             <div style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.5, color: "var(--text)" }} data-testid="ps-confirm-msg">
-              {confirm.kind === "exported" ? tpl(t.rd_ps2_clear_exported_q, { n: String(exportedCount) }) : t.rd_ps2_delete_row_q}
+              {confirm.kind === "export"
+                ? tpl(t.rd_ps2_x_confirm_q, { n: String(readyCount) })
+                : confirm.kind === "exported"
+                  ? tpl(t.rd_ps2_clear_exported_q, { n: String(exportedCount) })
+                  : t.rd_ps2_delete_row_q}
             </div>
             {deleteErr && <div style={{ ...errTxt, marginTop: 10 }} data-testid="ps-delete-err">{t.rd_ps2_delete_err} <span style={{ fontFamily: mono }}>{deleteErr}</span></div>}
             <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
               <button onClick={() => setConfirm(null)} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13.5, cursor: deleting ? "default" : "pointer" }} data-testid="ps-confirm-cancel">{t.rd_ps2_cancel}</button>
-              <button onClick={() => void doDelete()} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--danger)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: deleting ? "default" : "pointer", opacity: deleting ? 0.7 : 1 }} data-testid="ps-confirm-delete">{t.rd_ps2_delete}</button>
+              {confirm.kind === "export"
+                ? <button onClick={() => { setConfirm(null); void runExport(); }} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }} data-testid="ps-confirm-export">📄 {t.rd_ps2_x_confirm_go}</button>
+                : <button onClick={() => void doDelete()} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--danger)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: deleting ? "default" : "pointer", opacity: deleting ? 0.7 : 1 }} data-testid="ps-confirm-delete">{t.rd_ps2_delete}</button>}
             </div>
           </div>
         </div>,
