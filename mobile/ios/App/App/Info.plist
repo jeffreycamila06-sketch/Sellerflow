@@ -26,6 +26,8 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>SellerFlow uses the camera to scan your parcel slips (para ma-scan ang parcel slips).</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>SellerFlow connects to your Bluetooth label printer to print order stickers.</string>
 	<key>NSLocalNetworkUsageDescription</key>

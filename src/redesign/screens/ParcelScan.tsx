@@ -19,6 +19,8 @@ import { fetchShipTemplate, buildXlsmFromTemplate, deliverXlsm, exportFilename }
 import { loadShippingSettings } from "../adapters/shippingSettings";
 import { SHIP_DEFAULT_FEE } from "../adapters/shipping";
 import { TELEGRAM_URL } from "../../lib/telegram";
+import { cameraSupported, captureConstraints, triggerHaptic, stopStream, getUserMediaErrorName } from "../adapters/camera";
+import { useWakeLock } from "../adapters/useWakeLock";
 
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
 const lbl: CSSProperties = { fontSize: 11, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 4 };
@@ -104,6 +106,33 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
   // Feature 3: per-row EDIT — reuses the confirm form, pre-filled, updates the
   // existing row (no new scan, no credit charged). Only not-yet-exported rows.
   const [editing, setEditing] = useState<{ id: string } | null>(null);
+
+  // In-app camera (web getUserMedia). Default ON where supported; a live video
+  // element (videoRef) streams the rear camera while idle, a shutter captures a
+  // still to `snapshot` for Use/Retake, and Use feeds the SAME onPick pipeline
+  // (a File → fileToScanBase64 downscale → scan). No new native plugin.
+  //  - cameraOn: seller intent (kept on; the "use photo library" link turns it off)
+  //  - cameraErr: a getUserMedia failure/denial → fall back to the file picker
+  //  - snapshot: a captured still awaiting Use/Retake (camera released while shown)
+  //  - scanCount: parcels saved this screen session (a simple counter)
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [cameraOn, setCameraOn] = useState(true);
+  const [cameraErr, setCameraErr] = useState("");
+  const [snapshot, setSnapshot] = useState<{ url: string; file: File } | null>(null);
+  const [scanCount, setScanCount] = useState(0);
+  // Camera runs only while the tab/app is foregrounded (privacy + battery); a
+  // visibilitychange effect drives this, and it re-acquires on return. retryTick
+  // re-runs the acquire effect when the OS ends a track (e.g. a phone call).
+  const [pageVisible, setPageVisible] = useState(() => typeof document === "undefined" || document.visibilityState !== "hidden");
+  const [retryTick, setRetryTick] = useState(0);
+  // FIX 1 — synchronous single-flight guard on the scan pipeline (mirrors
+  // RedesignApp's entSubmittedRef): set at the top of beginScan BEFORE any
+  // state/async, cleared when scanOne leaves the "scanning" phase (finally, so
+  // confirm/error/insufficient/cancel all release it). Blocks a same-tick
+  // double-tap of "Use" (or a rapid re-pick) from firing two charged scans.
+  const scanInFlightRef = useRef(false);
+
   // Alive across the whole screen — guards fire-and-forget store-check verdicts
   // (runStoreCheck) that can land after unmount, not just the initial load.
   const aliveRef = useRef(true);
@@ -120,39 +149,154 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
     getCreditBalance().then((c) => { if (aliveRef.current && c.ok) setCredits(c.balance); });
   }, []);
 
-  const scanOne = async (list: File[], i: number) => {
-    // Out of credits — don't spend a request that will 402; the blocked banner
-    // (credits === 0) tells the owner to top up. Reset the batch.
-    if (credits === 0) { setFiles([]); setIdx(0); setPhase("idle"); return; }
-    setPhase("scanning"); setScanErr(""); setSaveErr("");
-    try {
-      const { base64, mediaType } = await fileToScanBase64(list[i]);
-      const r = await scanParcel(base64, mediaType);
-      // The server returns the fresh wallet balance on success, on a charged
-      // (bad-photo) failure, and on 402 — reflect it whenever present.
-      if (typeof r.balance === "number") setCredits(r.balance);
-      if (r.insufficient) {
-        // Out of Scan Credits — no scan happened. Stop the batch; the blocked
-        // banner surfaces the top-up path (no Retry card, which would 402 again).
-        setFiles([]); setIdx(0); setPhase("idle");
-        return;
+  // FIX 2/3 — release the camera when the tab/app is backgrounded, re-acquire on
+  // return, and clear a prior denial so a grant-in-Settings-then-return recovers
+  // WITHOUT relaunching the app. Own listener (independent of useWakeLock's own
+  // visibilitychange listener — multiple listeners coexist fine).
+  useEffect(() => {
+    const onVis = () => {
+      const visible = document.visibilityState !== "hidden";
+      setPageVisible(visible);
+      if (visible) setCameraErr(""); // returning to the app → retry the camera (denial may now be granted)
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, []);
+
+  // In-app camera stream lifecycle. Runs ONLY while the camera UI is on screen:
+  // idle (not scanning/confirming/erroring), not editing, not previewing a
+  // still, camera intent on + supported + no prior error, credits remain
+  // (credits === null = still loading → allowed; 0 = blocked), AND the page is
+  // foregrounded. Any flip to false stops the tracks (camera light off) and
+  // detaches the video. retryTick re-runs it after an OS-ended track.
+  const camActive = cameraOn && cameraSupported() && !cameraErr && !editing && !snapshot && phase === "idle" && credits !== 0 && pageVisible;
+  useEffect(() => {
+    if (!camActive) return;
+    let cancelled = false;
+    const videoEl = videoRef.current; // committed before this effect runs; stable node for cleanup
+    let track: MediaStreamTrack | null = null;
+    // OS ended the track (phone call, another app grabbed the camera) → drop the
+    // dead stream and, if still foregrounded, bump retryTick to re-acquire so the
+    // video never sits frozen/black.
+    const onEnded = () => {
+      stopStream(streamRef.current); streamRef.current = null;
+      if (!cancelled && typeof document !== "undefined" && document.visibilityState !== "hidden") setRetryTick((n) => n + 1);
+    };
+    void (async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(captureConstraints());
+        if (cancelled) { stopStream(stream); return; }
+        streamRef.current = stream;
+        track = stream.getVideoTracks?.()[0] ?? null;
+        if (track) track.addEventListener("ended", onEnded);
+        if (videoEl) {
+          videoEl.srcObject = stream;
+          const p = videoEl.play();
+          if (p && typeof p.then === "function") p.catch(() => {}); // autoplay-block / jsdom safe
+        }
+      } catch (e) {
+        // Denied / no camera / old engine → record the code and fall back to the
+        // file picker (the block below renders it when cameraErr is set).
+        if (!cancelled) setCameraErr(getUserMediaErrorName(e));
       }
-      if (!r.ok || !r.fields) { setScanErr(r.error || "scan_failed"); setPhase("error"); return; }
-      setForm(fieldsToForm(r.fields));
-      setConfid(r.confidence ?? null);
-      setRawExtraction({ fields: r.fields, confidence: r.confidence });
-      setPhase("confirm");
-    } catch {
-      setScanErr("image_decode_failed"); setPhase("error");
+    })();
+    return () => {
+      cancelled = true;
+      if (track) track.removeEventListener("ended", onEnded);
+      stopStream(streamRef.current);
+      streamRef.current = null;
+      if (videoEl) videoEl.srcObject = null;
+    };
+  }, [camActive, retryTick]);
+
+  // Keep the screen awake while actively scanning (camera open OR previewing a
+  // still) — capture is client-side, a sleeping phone loses the session.
+  // Graceful no-op where Wake Lock is unsupported (reuses the live-screen hook).
+  useWakeLock(camActive || !!snapshot);
+
+  // Free the preview object URL when it changes / on unmount (Use & Retake also
+  // revoke eagerly; a second revoke is a harmless no-op).
+  useEffect(() => () => { if (snapshot) URL.revokeObjectURL(snapshot.url); }, [snapshot]);
+
+  const scanOne = async (list: File[], i: number) => {
+    try {
+      // Out of credits — don't spend a request that will 402; the blocked banner
+      // (credits === 0) tells the owner to top up. Reset the batch.
+      if (credits === 0) { setFiles([]); setIdx(0); setPhase("idle"); return; }
+      setPhase("scanning"); setScanErr(""); setSaveErr("");
+      try {
+        const { base64, mediaType } = await fileToScanBase64(list[i]);
+        const r = await scanParcel(base64, mediaType);
+        // The server returns the fresh wallet balance on success, on a charged
+        // (bad-photo) failure, and on 402 — reflect it whenever present.
+        if (typeof r.balance === "number") setCredits(r.balance);
+        if (r.insufficient) {
+          // Out of Scan Credits — no scan happened. Stop the batch; the blocked
+          // banner surfaces the top-up path (no Retry card, which would 402 again).
+          setFiles([]); setIdx(0); setPhase("idle");
+          return;
+        }
+        if (!r.ok || !r.fields) { setScanErr(r.error || "scan_failed"); setPhase("error"); return; }
+        setForm(fieldsToForm(r.fields));
+        setConfid(r.confidence ?? null);
+        setRawExtraction({ fields: r.fields, confidence: r.confidence });
+        setPhase("confirm");
+      } catch {
+        setScanErr("image_decode_failed"); setPhase("error");
+      }
+    } finally {
+      // Leaving the "scanning" phase (confirm / error / insufficient / credits=0
+      // / throw) → release the single-flight guard so the next parcel can scan.
+      scanInFlightRef.current = false;
     }
+  };
+
+  // Shared entry into the scan pipeline (used by the file picker AND the in-app
+  // camera). One File → fileToScanBase64 downscale → scan. ZERO adapter change.
+  const beginScan = (list: File[]) => {
+    if (!list.length) return;
+    if (scanInFlightRef.current) return; // synchronous double-entry guard (double-tap Use / rapid re-pick)
+    scanInFlightRef.current = true;
+    setFiles(list); setIdx(0);
+    void scanOne(list, 0);
   };
 
   const onPick = (picked: FileList | null) => {
     const list = Array.from(picked ?? []);
     if (fileRef.current) fileRef.current.value = ""; // re-picking the same files works
-    if (!list.length) return;
-    setFiles(list); setIdx(0);
-    void scanOne(list, 0);
+    beginScan(list);
+  };
+
+  // ── In-app camera ─────────────────────────────────────────────────────────
+  // Shutter: full-resolution frame → JPEG File → preview (Use/Retake). Capture
+  // large for legible handwriting; the scan adapter downscales to SCAN_MAX_EDGE.
+  const shutter = () => {
+    const v = videoRef.current;
+    if (!v || !v.videoWidth || !v.videoHeight) return;
+    const canvas = document.createElement("canvas");
+    canvas.width = v.videoWidth; canvas.height = v.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+    triggerHaptic(30); // optional shutter buzz (guarded no-op where unsupported)
+    canvas.toBlob((blob) => {
+      if (!blob || !aliveRef.current) return;
+      const file = new File([blob], `parcel-${Date.now()}.jpg`, { type: "image/jpeg" });
+      setSnapshot({ url: URL.createObjectURL(blob), file });
+    }, "image/jpeg", 0.92);
+  };
+  // Use → run the SAME pipeline as the picker (charges one credit on scan).
+  const usePhoto = () => {
+    if (!snapshot) return;
+    const file = snapshot.file;
+    URL.revokeObjectURL(snapshot.url);
+    setSnapshot(null);
+    beginScan([file]);
+  };
+  // Retake → discard the still (FREE, no scan/credit); the effect restarts the stream.
+  const retake = () => {
+    if (snapshot) URL.revokeObjectURL(snapshot.url);
+    setSnapshot(null);
   };
 
   const advance = () => {
@@ -203,7 +347,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
     // Only when we got a real DB id back can the async verdict be persisted +
     // matched to the row; skip the check on the local-id fallback.
     if (r.id) runStoreCheck(r.id, storeId);
-    advance();
+    setScanCount((c) => c + 1); // this-session saved counter (camera + picker)
+    advance(); // batch of 1 (camera) → idle → the camera effect reopens the stream
   };
 
   // ── 賣貨便 訂單匯入 Excel export — gate, build via the EXISTING builder, deliver.
@@ -304,6 +449,10 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
   const F = (patch: Partial<FormState>) => setForm((s) => ({ ...s, ...patch }));
   const busy = phase === "scanning" || phase === "confirm" || phase === "error";
   const outOfCredits = credits === 0; // known-zero (not just unloaded) → blocked
+  // Show the in-app camera when supported + intended + not errored + has credits;
+  // otherwise the original file-picker fallback renders (and it also shows the
+  // disabled button when out of credits).
+  const useCameraUI = cameraOn && cameraSupported() && !cameraErr && !outOfCredits;
   const flaggedCount = rows.filter((r) => r.storeCheckStatus === "not_found").length;
   // Change 2: the saved list re-renders by active tab (in-memory filter of the
   // already-loaded rows — zero-poll, no refetch/timers).
@@ -340,8 +489,48 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
           </div>
         )}
 
-        {/* Picker — hidden while scanning a batch OR editing a saved parcel */}
-        {!busy && !editing && (
+        {/* This-session scan counter — quiet chip, only once you've saved one. */}
+        {scanCount > 0 && (
+          <div style={{ ...card, padding: "8px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }} data-testid="ps-scancount">
+            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-dim)" }}>{t.rd_ps2_session}</span>
+            <span style={{ fontSize: 15, fontWeight: 900, color: "var(--text)", fontFamily: mono }} data-testid="ps-scancount-n">{scanCount}</span>
+          </div>
+        )}
+
+        {/* IN-APP CAMERA — live preview + shutter, shown while idle (not editing,
+            not previewing a still). Capture → Use/Retake below. Falls back to the
+            file picker when the camera is unsupported/denied. */}
+        {!busy && !editing && !snapshot && useCameraUI && (
+          <div style={card} data-testid="ps-camera">
+            <div style={{ position: "relative", width: "100%", aspectRatio: "3 / 4", background: "#000", borderRadius: 12, overflow: "hidden" }}>
+              <video ref={videoRef} muted playsInline autoPlay data-testid="ps-video" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+            </div>
+            <button
+              onClick={shutter}
+              style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 15, cursor: "pointer", marginTop: 10 }}
+              data-testid="ps-shutter"
+            >📸 {t.rd_ps2_shutter}</button>
+            <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 8, lineHeight: 1.5 }}>{t.rd_ps2_cam_hint}</div>
+            <button onClick={() => setCameraOn(false)} style={{ marginTop: 8, background: "none", border: "none", color: "var(--text-dim)", fontSize: 11.5, fontWeight: 700, textDecoration: "underline", cursor: "pointer", padding: 0 }} data-testid="ps-use-library">{t.rd_ps2_use_library}</button>
+          </div>
+        )}
+
+        {/* CAPTURE PREVIEW — Use (→ scan) or Retake (→ free, back to camera). */}
+        {!busy && !editing && snapshot && (
+          <div style={card} data-testid="ps-preview">
+            <div style={{ width: "100%", aspectRatio: "3 / 4", background: "#000", borderRadius: 12, overflow: "hidden" }}>
+              <img src={snapshot.url} alt="" data-testid="ps-preview-img" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button onClick={usePhoto} style={{ flex: 2, padding: "13px 12px", borderRadius: 12, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer" }} data-testid="ps-use">✓ {t.rd_ps2_use}</button>
+              <button onClick={retake} style={{ flex: 1, padding: "13px 12px", borderRadius: 12, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontWeight: 700, fontSize: 14, cursor: "pointer" }} data-testid="ps-retake">↺ {t.rd_ps2_retake}</button>
+            </div>
+          </div>
+        )}
+
+        {/* FILE-PICKER FALLBACK — safety net: camera unsupported/denied, out of
+            credits, or the seller chose the photo library. Original flow, kept. */}
+        {!busy && !editing && !snapshot && !useCameraUI && (
           <div style={card}>
             <button
               onClick={() => fileRef.current?.click()}
@@ -350,6 +539,16 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
               data-testid="ps-pick"
             >📷 {t.rd_ps2_pick}</button>
             <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 8, lineHeight: 1.5 }}>{t.rd_ps2_pick_hint}</div>
+            {cameraErr && <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 6 }} data-testid="ps-cam-fallback-note">{t.rd_ps2_cam_unavailable}</div>}
+            {/* After a denial (cameraErr) → explicit retry that clears the error and
+                re-opens the camera, so the user never has to relaunch the app (the
+                visibilitychange handler also auto-clears on return-to-foreground). */}
+            {cameraErr && cameraSupported() && (
+              <button onClick={() => { setCameraErr(""); setCameraOn(true); }} style={{ marginTop: 8, background: "none", border: "none", color: "var(--text-dim)", fontSize: 11.5, fontWeight: 700, textDecoration: "underline", cursor: "pointer", padding: 0 }} data-testid="ps-cam-retry">{t.rd_ps2_cam_retry}</button>
+            )}
+            {!cameraErr && !cameraOn && cameraSupported() && (
+              <button onClick={() => setCameraOn(true)} style={{ marginTop: 8, background: "none", border: "none", color: "var(--text-dim)", fontSize: 11.5, fontWeight: 700, textDecoration: "underline", cursor: "pointer", padding: 0 }} data-testid="ps-use-camera">{t.rd_ps2_use_camera}</button>
+            )}
             <input ref={fileRef} type="file" accept="image/*" multiple hidden data-testid="ps-file" onChange={(e) => onPick(e.target.files)} />
           </div>
         )}
