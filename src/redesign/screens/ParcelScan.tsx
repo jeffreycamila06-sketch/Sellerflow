@@ -100,7 +100,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
   const [tab, setTab] = useState<"all" | "wrong">("all");
   // Delete (Change 3): a pending confirmation + await/error state. Never fires
   // a delete without the confirm; a failed delete surfaces inline, no silent no-op.
-  const [confirm, setConfirm] = useState<{ kind: "row"; id: string } | { kind: "exported" } | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: "row"; id: string } | { kind: "exported" } | { kind: "export" } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteErr, setDeleteErr] = useState("");
   // Feature 3: per-row EDIT — reuses the confirm form, pre-filled, updates the
@@ -428,6 +428,10 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
     }
   };
   const askDelete = (c: { kind: "row"; id: string } | { kind: "exported" }) => { setDeleteErr(""); setConfirm(c); };
+  // FIX 4 — confirm before exporting (an accidental export marks rows 'exported'
+  // and drops them from the next file, with no undo). Reuses the SAME portal
+  // confirm dialog as delete/clear-exported.
+  const askExport = () => { setDeleteErr(""); setConfirm({ kind: "export" }); };
 
   // ── Manual encode — open the shared confirm form BLANK, no camera/scan ──────
   const openManual = () => {
@@ -673,7 +677,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
           <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 6 }}>{t.rd_ps2_x_title}</div>
           <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 9, lineHeight: 1.5 }}>{t.rd_ps2_x_hint}</div>
           <button
-            onClick={() => void runExport()}
+            onClick={askExport}
             disabled={exportBusy || readyCount === 0}
             style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: "none", background: exportBusy || readyCount === 0 ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: exportBusy || readyCount === 0 ? "default" : "pointer" }}
             data-testid="ps-export-btn"
@@ -772,12 +776,18 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
         <div style={{ position: "fixed", inset: 0, zIndex: 1300, background: "rgba(9,7,24,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom))", boxSizing: "border-box" }} data-testid="ps-confirm-overlay" onClick={() => { if (!deleting) setConfirm(null); }}>
           <div style={{ width: "100%", maxWidth: 440, maxHeight: "100%", overflowY: "auto", background: "var(--surface)", borderRadius: 18, padding: "22px 20px 20px", boxShadow: "0 20px 60px rgba(0,0,0,.4)" }} onClick={(e) => e.stopPropagation()}>
             <div style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.5, color: "var(--text)" }} data-testid="ps-confirm-msg">
-              {confirm.kind === "exported" ? tpl(t.rd_ps2_clear_exported_q, { n: String(exportedCount) }) : t.rd_ps2_delete_row_q}
+              {confirm.kind === "export"
+                ? tpl(t.rd_ps2_x_confirm_q, { n: String(readyCount) })
+                : confirm.kind === "exported"
+                  ? tpl(t.rd_ps2_clear_exported_q, { n: String(exportedCount) })
+                  : t.rd_ps2_delete_row_q}
             </div>
             {deleteErr && <div style={{ ...errTxt, marginTop: 10 }} data-testid="ps-delete-err">{t.rd_ps2_delete_err} <span style={{ fontFamily: mono }}>{deleteErr}</span></div>}
             <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
               <button onClick={() => setConfirm(null)} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13.5, cursor: deleting ? "default" : "pointer" }} data-testid="ps-confirm-cancel">{t.rd_ps2_cancel}</button>
-              <button onClick={() => void doDelete()} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--danger)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: deleting ? "default" : "pointer", opacity: deleting ? 0.7 : 1 }} data-testid="ps-confirm-delete">{t.rd_ps2_delete}</button>
+              {confirm.kind === "export"
+                ? <button onClick={() => { setConfirm(null); void runExport(); }} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }} data-testid="ps-confirm-export">📄 {t.rd_ps2_x_confirm_go}</button>
+                : <button onClick={() => void doDelete()} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--danger)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: deleting ? "default" : "pointer", opacity: deleting ? 0.7 : 1 }} data-testid="ps-confirm-delete">{t.rd_ps2_delete}</button>}
             </div>
           </div>
         </div>,
