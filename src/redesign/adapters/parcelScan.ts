@@ -25,11 +25,20 @@ export function canUseParcelScan(role: string | undefined | null): boolean {
   return isAdminRole(role);
 }
 
-// MANUAL-ENCODE gate (2026-09-10) — a PAYING, ACTIVE seller may open Parcel Scan
-// for MANUAL entry only (no camera, no AI scan, no credits). Reuses the shared
-// planWindow predicate (isActivePaid: time-limited plan + status active + days
-// left > 0) — NOT a new rule. Free/expired → false (no screen, no nav tile). The
-// camera/AI/credits surface stays admin-only via canUseParcelScan.
+// ⚠️ PHASED-ROLLOUT ALLOWLIST (Jeff's decision, 2026-09-10) — the ONE place the
+// allowed tiers live. Manual encode opens to PLUS / PRO / MASTER only; BASIC is
+// deliberately EXCLUDED for now so Jeff can onboard the ~20 higher-tier sellers
+// one-by-one without an inquiry flood. CHANGE THIS LIST (e.g. add "basic") when
+// ready to widen — do not scatter the tier logic elsewhere. Case-insensitive.
+export const PARCEL_MANUAL_TIERS = ["plus", "pro", "master"] as const;
+
+// MANUAL-ENCODE gate (2026-09-10; tier-gated 2026-09-10) — a PLUS/PRO/MASTER,
+// ACTIVE seller may open Parcel Scan for MANUAL entry only (no camera, no AI
+// scan, no credits). Composes the shared planWindow predicate (isActivePaid:
+// time-limited plan + status active + days left > 0) AND the tier allowlist above
+// — NOT a new expiry rule. BASIC/free/expired → false (no screen, no nav tile).
+// The camera/AI/credits surface stays admin-only via canUseParcelScan; the global
+// kill switch (parcel_manual_enabled) gates ON TOP of this in RedesignApp.
 export function canUseParcelManual(
   plan: string | undefined | null,
   planStatus: string | undefined | null,
@@ -39,7 +48,11 @@ export function canUseParcelManual(
   // A plan must actually be present: isTimeLimitedPlan treats ANY non-"free"
   // string (including "") as time-limited, so guard the missing/blank case here
   // before delegating the real active+paid+not-expired decision to isActivePaid.
-  if (!String(plan ?? "").trim()) return false;
+  const tier = String(plan ?? "").trim().toLowerCase();
+  if (!tier) return false;
+  // Tier allowlist FIRST (basic is active+paid but not yet allowed), then the
+  // shared active+not-expired decision (expired plus/pro/master → false).
+  if (!PARCEL_MANUAL_TIERS.includes(tier as (typeof PARCEL_MANUAL_TIERS)[number])) return false;
   return isActivePaid({ plan: plan ?? "", planStatus: planStatus ?? "", daysLeft: planDaysLeft(planExpiry, nowMs) });
 }
 
