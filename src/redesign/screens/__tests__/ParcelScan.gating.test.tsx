@@ -22,7 +22,7 @@ vi.mock("../../adapters/parcelScan", () => ({
   updateParcelScan: vi.fn(async () => ({ ok: true })),
   getCreditBalance,
 }));
-vi.mock("../../adapters/shippingSettings", () => ({ loadShippingSettings: async () => null }));
+vi.mock("../../adapters/shippingSettings", () => ({ loadGlobalShippingFee: async () => 38 }));
 
 import ParcelScan from "../ParcelScan";
 

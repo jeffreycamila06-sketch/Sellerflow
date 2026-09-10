@@ -37,7 +37,7 @@ vi.mock("../../adapters/shippingExport", () => ({
   deliverXlsm,
   exportFilename: () => "sellerflow_711.xlsm",
 }));
-vi.mock("../../adapters/shippingSettings", () => ({ loadShippingSettings: async () => null }));
+vi.mock("../../adapters/shippingSettings", () => ({ loadGlobalShippingFee: async () => 38 }));
 
 import ParcelScan from "../ParcelScan";
 

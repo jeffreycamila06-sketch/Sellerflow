@@ -16,7 +16,7 @@ import {
   type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState, type StoreCheckStatus, type ExportReason,
 } from "../adapters/parcelScan";
 import { fetchShipTemplate, buildXlsmFromTemplate, deliverXlsm, exportFilename } from "../adapters/shippingExport";
-import { loadShippingSettings } from "../adapters/shippingSettings";
+import { loadGlobalShippingFee } from "../adapters/shippingSettings";
 import { SHIP_DEFAULT_FEE } from "../adapters/shipping";
 import { TELEGRAM_URL } from "../../lib/telegram";
 import { cameraSupported, captureConstraints, triggerHaptic, stopStream, getUserMediaErrorName } from "../adapters/camera";
@@ -156,9 +156,10 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   useEffect(() => {
     loadParcelScans().then((r) => { if (aliveRef.current) { if (r.ok) setRows(r.rows); setListLoaded(true); } });
   }, []);
-  // One settings read on open → the 運費 default for the export (factory NT$38).
+  // One read on open → the GLOBAL 運費 fee for the export col G (admin-owned,
+  // app_settings). Fail-safe to SHIP_DEFAULT_FEE (38) on any read failure, never 0.
   useEffect(() => {
-    loadShippingSettings().then((s) => { if (aliveRef.current && s) setFee(s.defaultFee); });
+    loadGlobalShippingFee().then((f) => { if (aliveRef.current) setFee(f); });
   }, []);
   // One wallet read on open → the Scan Credits balance.
   useEffect(() => {

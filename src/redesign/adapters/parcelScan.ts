@@ -283,7 +283,7 @@ export interface ScanXlsOpts { storeName: string; fee: number; tempLayer?: strin
 // parcel_scans row → 賣貨便 A–J string[] (all strings; required cols are Text @).
 // Gap columns (owner-decided): D 溫層 = 常溫 (clothing is ambient), E 商品 =
 // the seller's shop name (same for every row; no new DB field), G 運費 =
-// seller_shipping_settings.default_fee, I/J = blank.
+// the GLOBAL admin shipping fee (app_settings 'shipping_default_fee'), I/J = blank.
 export function scanToXlsRow(row: ParcelScanRow, opts: ScanXlsOpts): string[] {
   return [
     row.customerName.trim(),                          // A ＊取件人姓名
@@ -292,7 +292,7 @@ export function scanToXlsRow(row: ParcelScanRow, opts: ScanXlsOpts): string[] {
     opts.tempLayer ?? SHIP_TEMP_AMBIENT,              // D ＊溫層 = 常溫
     String(opts.storeName || "").trim(),              // E ＊商品 = shop name (e.g. Budgetukay)
     row.amount == null ? "" : String(row.amount),     // F ＊訂單金額
-    String(opts.fee),                                 // G ＊運費金額 = default_fee
+    String(opts.fee),                                 // G ＊運費金額 = global admin shipping fee
     scanOrderDate(row.createdAt),                     // H 買家下訂日期 (optional)
     "",                                               // I 商品備註 (blank)
     "",                                               // J 其他資訊 (blank — parcel_scans has no handle)

@@ -20,8 +20,8 @@ import {
   fetchShipTemplate, buildXlsmFromTemplate, deliverXlsm, hasNativeFileShare, markBatchShipped,
 } from "../adapters/shippingExport";
 import {
-  defaultFeeFor, legacyLocalSettings, mirrorLegacyFee, loadShippingSettings, saveShippingSettings,
-  clampThreshold, type ShippingSettings,
+  defaultFeeFor, loadShippingSettings, saveShippingSettings, loadGlobalShippingFee,
+  SHIP_SETTINGS_FACTORY, clampThreshold, type ShippingSettings,
 } from "../adapters/shippingSettings";
 import { isAppShell } from "../adapters/appShell";
 import { useT, tpl, type RedesignT } from "../i18n";
@@ -50,20 +50,19 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
   const [showErr, setShowErr] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
-  // P3b shipping defaults — DB-BACKED (cross-device, seller_shipping_settings).
-  // Starts from the legacy per-device preset (sfl_rd_ship_fee) / factory NT$38;
-  // the DB row overrides once loaded. defaultFee feeds NEW entries + the Free
-  // toggle pair (0 ↔ defaultFee); freeThreshold = free-shipping auto-rule
-  // (null = off). Per-entry edit stays; validator range 0–100 unchanged.
-  const [settings, setSettings] = useState<ShippingSettings>(() => legacyLocalSettings());
+  // Shipping settings. defaultFee is now the GLOBAL admin-owned fee (app_settings
+  // 'shipping_default_fee'), loaded on open — the seller CANNOT change it. Only
+  // freeThreshold is per-seller (the free-shipping auto-rule, null = off).
+  // defaultFee feeds NEW entries + the Free toggle pair (0 ↔ global fee).
+  const [settings, setSettings] = useState<ShippingSettings>(SHIP_SETTINGS_FACTORY);
   const [thrDraft, setThrDraft] = useState<string>("");
+  // Only the per-seller freeThreshold is written here now (default_fee dropped
+  // from the write — see settingsToRow). One upsert per change.
   const applySettings = (patch: Partial<ShippingSettings>) => {
     const next = { ...settings, ...patch };
     setSettings(next);
-    mirrorLegacyFee(next.defaultFee);              // offline fallback stays fresh
-    void saveShippingSettings(next);               // one upsert per change
+    void saveShippingSettings(next);
   };
-  const pickDefaultFee = (v: number) => applySettings({ defaultFee: v });
   // P3b mark-as-shipped — per-batch RPC; status stays 'exported' (quota-safe).
   const [markBusy, setMarkBusy] = useState<string | null>(null);
   // P2 export — quota meter (ONE count read on mount), selection, RPC-then-file.
@@ -91,10 +90,13 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
       setSel(new Set(rows.filter((e) => e.status === "encoded").map((e) => e.id))); // default: all encoded
     });
     void loadExportedCount().then((n) => { if (active) setExportedCount(n); });
-    void loadShippingSettings().then((s) => {
-      if (!active || !s) return; // no row yet → keep legacy/factory
-      setSettings(s);
-      setThrDraft(s.freeThreshold != null ? String(s.freeThreshold) : "");
+    // Global fee (admin-owned) + the per-seller free_threshold, merged. The fee
+    // ALWAYS comes from the global source (fail-safe 38); the threshold from the
+    // seller's own row (or null when no row yet).
+    void Promise.all([loadGlobalShippingFee(), loadShippingSettings()]).then(([globalFee, s]) => {
+      if (!active) return;
+      setSettings({ defaultFee: globalFee, freeThreshold: s?.freeThreshold ?? null });
+      setThrDraft(s?.freeThreshold != null ? String(s.freeThreshold) : "");
     });
     return () => { active = false; };
   }, [sessionKey]);
@@ -302,19 +304,15 @@ export default function Shipping({ cur, buyers = [], sessionKey, windowDays = 1,
       </div>
 
       <div style={{ padding: "14px 14px 22px" }}>
-        {/* P3b shipping defaults — DB-backed (cross-device): default fee presets +
-            the free-shipping auto-rule threshold. Applies to NEW entries;
-            per-entry edit stays. */}
+        {/* Shipping defaults card: the shipping fee is now a GLOBAL admin setting
+            (READ-ONLY line here — sellers can't change the carrier fee); the
+            free-shipping auto-rule threshold stays per-seller. */}
         <div style={{ ...card, padding: "10px 13px", marginBottom: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", flexShrink: 0 }}>{t.rd_shp_default_fee}</span>
-            <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
-              {[38, 60, 100, 0].map((v) => (
-                <button key={v} onClick={() => pickDefaultFee(v)} style={{ minWidth: 44, padding: "6px 0", borderRadius: 8, fontFamily: mono, fontSize: 12, fontWeight: 700, cursor: "pointer", border: settings.defaultFee === v ? "1.4px solid var(--accent)" : "1px solid var(--border-strong)", background: settings.defaultFee === v ? "var(--accent-soft)" : "var(--surface-2)", color: settings.defaultFee === v ? "var(--accent-fg)" : "var(--text-dim)" }}>
-                  {v === 0 ? t.rd_shp_free : `$${v}`}
-                </button>
-              ))}
-            </div>
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)", marginLeft: "auto", textAlign: "right" }} data-testid="shp-global-fee">
+              {tpl(t.rd_shp_fee_global, { amt: `${cur}${settings.defaultFee}` })}
+            </span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 9, flexWrap: "wrap" }}>
             <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", flexShrink: 0 }}>{t.rd_shp_free_rule}</span>

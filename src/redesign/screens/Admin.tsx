@@ -9,6 +9,7 @@ import { headerBar, card, mono } from "../ui";
 import { planDaysLeft, daysDisplay, deriveSubBuckets, deriveUserBase, freeUsersSummary, sortUsersBySignup, auditActionColor, filterAuditLogs, sellerMatchesQuery, type ReadState, type SubBuckets, type FreeUserRow } from "../adapters/useReadData";
 import { getParcelScanOverview, revenueNT, costNT, profitNT, SCAN_COST_NT, type AdminActions, type Plan, type ParcelScanOverview } from "../adapters/useAdmin";
 import { maxAcc } from "../adapters/connect";
+import { loadGlobalShippingFeeMeta, saveGlobalShippingFee, validGlobalFee } from "../adapters/shippingSettings";
 import { getCreditBalanceForUser } from "../adapters/parcelScan";
 import type { AccountAuditLog, AccountUser } from "../../accountDb";
 import { csvDL, dayStamp } from "../adapters/csv";
@@ -31,7 +32,7 @@ const deadBtn: CSSProperties = { opacity: 0.45, cursor: "not-allowed" };
 const SampleNote = () => { const t = useT(); return <div style={{ marginBottom: 12 }}><SoonBadge label={t.rd_adm_sample_note} /></div>; };
 
 export type AdminPanelKind =
-  | "sellers" | "reports" | "broadcast" | "parcelmon"
+  | "sellers" | "reports" | "broadcast" | "parcelmon" | "shipfee"
   | "subActive" | "subExpiring" | "subFree" | "subExpired" | "notifs" | "revenue" | "audit" | "userbase" | "pulse";
 
 const ctrlTile: CSSProperties = { display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "14px 6px", border: "1px solid var(--border)", borderRadius: 14, background: "var(--surface)", boxShadow: "var(--shadow)", cursor: "pointer" };
@@ -50,6 +51,7 @@ const cic = {
   audit: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v14H6z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M9 13h6M9 16.5h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>,
   userbase: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3a9 9 0 1 0 9 9h-9V3Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" strokeWidth="1.7" opacity=".5" /></svg>,
   pulse: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 12h4l2.5-6 4 13 2.5-7H21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>,
+  shipfee: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 7h11v8H3zM14 10h4l3 3v2h-7z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><circle cx="7" cy="17" r="1.8" stroke="currentColor" strokeWidth="1.6" /><circle cx="17.5" cy="17" r="1.8" stroke="currentColor" strokeWidth="1.6" /></svg>,
 };
 
 function Ctrl({ icon, label, onClick }: { icon: ReactNode; label: string; onClick: () => void }) {
@@ -114,6 +116,7 @@ export default function Admin({ onOpenPanel, cur, counts, live = false, userBase
           <Ctrl icon={cic.broadcast} label={t.rd_adm_ctrl_broadcast} onClick={() => onOpenPanel("broadcast")} />
           <Ctrl icon={cic.reports} label={t.rd_adm_ctrl_reports} onClick={() => onOpenPanel("reports")} />
           <Ctrl icon={cic.parcelmon} label={t.rd_adm_ctrl_parcel} onClick={() => onOpenPanel("parcelmon")} />
+          <Ctrl icon={cic.shipfee} label={t.rd_adm_ctrl_shipfee} onClick={() => onOpenPanel("shipfee")} />
           <Ctrl icon={cic.audit} label={t.rd_adm_ctrl_audit} onClick={() => onOpenPanel("audit")} />
         </div>
       </div>
@@ -124,7 +127,7 @@ export default function Admin({ onOpenPanel, cur, counts, live = false, userBase
 // ── Admin control bottom-sheet (overlay; rendered at the phone root) ─────────
 const panelTitle = (t: RedesignT, k: AdminPanelKind): string => ({
   sellers: t.rd_adm_pt_sellers, reports: t.rd_adm_pt_reports,
-  parcelmon: t.rd_adm_pt_parcel, broadcast: t.rd_adm_ctrl_broadcast, subActive: t.rd_adm_pt_subActive,
+  parcelmon: t.rd_adm_pt_parcel, shipfee: t.rd_adm_pt_shipfee, broadcast: t.rd_adm_ctrl_broadcast, subActive: t.rd_adm_pt_subActive,
   subExpiring: t.rd_adm_pt_subExpiring, subFree: t.rd_adm_pt_subFree, subExpired: t.rd_adm_pt_subExpired,
   revenue: t.rd_adm_pt_revenue, notifs: t.rd_adm_notifications, audit: t.rd_adm_pt_audit, userbase: t.rd_adm_user_base,
   pulse: t.rd_pulse_title,
@@ -357,6 +360,68 @@ function ParcelMonPanel() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Global shipping-fee admin control (app_settings 'shipping_default_fee'). The
+// 7-11/賣貨便 carrier fee is the SAME for every seller — one admin change here
+// affects everyone (old rows + new). Self-contained (mirrors ParcelMonPanel):
+// loads the current value on open, saves via the is_admin()-gated adapter.
+function ShipFeePanel() {
+  const t = useT();
+  const [fee, setFee] = useState<number | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void loadGlobalShippingFeeMeta().then((m) => {
+      if (!alive) return;
+      setFee(m.fee); setUpdatedAt(m.updatedAt); setDraft(String(m.fee)); setState("ready");
+    }).catch(() => { if (alive) setState("error"); });
+    return () => { alive = false; };
+  }, []);
+
+  const when = (iso: string | null): string => {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return Number.isFinite(d.getTime()) ? d.toLocaleString(undefined, { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+  };
+
+  const onSave = async () => {
+    if (busy) return;
+    const n = Number(draft);
+    if (!validGlobalFee(n)) { setNote({ kind: "err", text: t.rd_adm_sf_invalid }); return; }
+    setBusy(true); setNote(null);
+    const r = await saveGlobalShippingFee(n);
+    setBusy(false);
+    if (!r.ok) { setNote({ kind: "err", text: r.error === "invalid_fee" ? t.rd_adm_sf_invalid : t.rd_adm_sf_failed }); return; }
+    setFee(Math.round(n)); setUpdatedAt(new Date().toISOString());
+    setNote({ kind: "ok", text: t.rd_adm_sf_saved });
+  };
+
+  if (state === "loading") return <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "8px 2px" }} data-testid="sf-loading">{t.rd_adm_pm_loading}</div>;
+  if (state === "error") return <div style={{ fontSize: 12.5, color: "var(--danger)", padding: "8px 2px" }} data-testid="sf-error">{t.rd_adm_pm_error}</div>;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }} data-testid="sf-panel">
+      <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>{t.rd_adm_sf_hint}</div>
+      <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 13, padding: "12px 13px" }}>
+        <div style={{ fontSize: 10.5, color: "var(--text-muted)", fontWeight: 700 }}>{t.rd_adm_sf_current}</div>
+        <div style={{ fontFamily: mono, fontWeight: 800, fontSize: 22, color: "var(--text)", marginTop: 2 }} data-testid="sf-current">NT${fee}</div>
+        <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3 }}>{tpl(t.rd_adm_sf_updated, { when: when(updatedAt) })}</div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 700, color: "var(--text-muted)" }}>NT$</span>
+        <input value={draft} onChange={(e) => setDraft(e.target.value.replace(/[^\d]/g, ""))} inputMode="numeric" placeholder="38"
+          style={{ width: 90, padding: "9px 11px", border: "1.3px solid var(--accent)", borderRadius: 9, background: "var(--surface)", color: "var(--text)", fontFamily: mono, fontSize: 14, fontWeight: 700, outline: "none", textAlign: "right" }} data-testid="sf-input" />
+        <button onClick={() => void onSave()} disabled={busy} style={{ marginLeft: "auto", padding: "10px 18px", borderRadius: 10, border: "none", background: busy ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: busy ? "default" : "pointer" }} data-testid="sf-save">{t.rd_adm_sf_save}</button>
+      </div>
+      {note && <div style={{ fontSize: 12, fontWeight: 700, color: note.kind === "ok" ? "var(--ok, #16a34a)" : "var(--danger)" }} data-testid="sf-note">{note.text}</div>}
     </div>
   );
 }
@@ -781,6 +846,7 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
           )}
 
           {panel === "parcelmon" && <ParcelMonPanel />}
+          {panel === "shipfee" && <ShipFeePanel />}
 
           {panel === "broadcast" && (
             <div>
