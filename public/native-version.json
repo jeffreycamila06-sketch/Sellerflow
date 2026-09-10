@@ -1,4 +1,4 @@
 {
-  "ios": { "latest": 10, "message_key": "rd_upd_msg_ble", "force": false },
-  "android": { "latest": 7, "message_key": "rd_upd_msg_ble", "force": false, "_comment": "Update nudge ACTIVE on both platforms. iOS 1.6 (build 10) live on the App Store (released Sep 9 2026); Android 1.6 (vc7) live on Play Store Production since Sep 7 2026 (Active, vc6 now Inactive) — older builds are prompted to update (bitmap sticker printing). Note: Android users on vc5 or older have no getBuildNumber bridge (readBinaryBuild returns Infinity), so they are never prompted — expected, not a bug." }
+  "ios": { "latest": 11, "message_key": "rd_upd_msg_ble", "force": false },
+  "android": { "latest": 8, "message_key": "rd_upd_msg_ble", "force": false, "_comment": "Update nudge ACTIVE on both platforms. 1.7 live on both stores (iOS build 11, Android vc8) — in-app camera + manual encode. Older builds are prompted to update. Note: Android users on vc5 or older have no getBuildNumber bridge (readBinaryBuild returns Infinity), so they are never prompted — expected, not a bug." }
 }
