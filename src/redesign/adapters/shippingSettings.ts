@@ -12,6 +12,7 @@
 //                   The ≥NT$55 row-total validator still applies afterwards.
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { SHIP_DEFAULT_FEE, SHIP_MAX_FEE } from "./shipping";
+import { getAppSetting, setAppSetting } from "./appSettings";
 
 export interface ShippingSettings {
   defaultFee: number;
@@ -39,9 +40,47 @@ export function clampThreshold(v: unknown): number | null {
 export function rowToShippingSettings(row: Record<string, unknown>): ShippingSettings {
   return { defaultFee: clampFee(row.default_fee), freeThreshold: clampThreshold(row.free_threshold) };
 }
-// `now` injectable for deterministic tests.
+// `now` injectable for deterministic tests. NOTE (2026-09-10): the shipping fee
+// is now a GLOBAL admin setting (app_settings 'shipping_default_fee'), so the
+// seller row NO LONGER stores default_fee — only free_threshold (a real
+// per-seller promo). The DB column keeps its default (38) on insert and is left
+// untouched on update; nothing reads seller default_fee anymore.
 export function settingsToRow(s: ShippingSettings, userId: string, nowIso: string): Record<string, unknown> {
-  return { user_id: userId, default_fee: clampFee(s.defaultFee), free_threshold: clampThreshold(s.freeThreshold), updated_at: nowIso };
+  return { user_id: userId, free_threshold: clampThreshold(s.freeThreshold), updated_at: nowIso };
+}
+
+// ── GLOBAL shipping fee (app_settings 'shipping_default_fee') ──────────────────
+// The 7-11/賣貨便 carrier fee — SAME for every seller, admin-owned. Sellers read
+// it; only an admin writes it (RLS is_admin()).
+export const SHIPPING_FEE_KEY = "shipping_default_fee";
+
+// FAIL-SAFE read: missing row / error / non-numeric / <=0 → SHIP_DEFAULT_FEE
+// (38), NEVER 0. Runs the stored value through the existing clampFee, then
+// floors to the compiled default — a global fee of 0 is never legitimate (it
+// would be a 賣貨便 rejection / undercharge), unlike the per-seller Free toggle.
+export async function loadGlobalShippingFee(): Promise<number> {
+  const row = await getAppSetting(SHIPPING_FEE_KEY);
+  const n = clampFee(row?.value ?? null); // null/""/invalid → 38 via clampFee
+  return n > 0 ? n : SHIP_DEFAULT_FEE;     // guard the never-legitimate 0
+}
+
+// Admin panel read: the current fee + when it last changed (for display).
+export async function loadGlobalShippingFeeMeta(): Promise<{ fee: number; updatedAt: string | null }> {
+  const row = await getAppSetting(SHIPPING_FEE_KEY);
+  const n = clampFee(row?.value ?? null);
+  return { fee: n > 0 ? n : SHIP_DEFAULT_FEE, updatedAt: row?.updatedAt ?? null };
+}
+
+// Admin-only write. Validates a positive number in range BEFORE writing — blank
+// / 0 / negative / out-of-range are rejected client-side (and RLS is_admin()
+// gates the DB write regardless). Stores the integer string.
+export function validGlobalFee(v: unknown): boolean {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 && n <= SHIP_MAX_FEE;
+}
+export async function saveGlobalShippingFee(fee: number): Promise<{ ok: boolean; error?: string }> {
+  if (!validGlobalFee(fee)) return { ok: false, error: "invalid_fee" };
+  return setAppSetting(SHIPPING_FEE_KEY, String(Math.round(fee)));
 }
 
 // The fee a NEW entry starts with: the auto-rule wins when the group's order
