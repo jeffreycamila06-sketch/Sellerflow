@@ -12,6 +12,7 @@
 import { SERVER } from "./serverIdentity";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { isAdminRole } from "../../lib/roles";
+import { isActivePaid, planDaysLeft } from "../../lib/planWindow";
 import { SHIP_TEMP_AMBIENT, validateRecipientName, validPhone, validStore, validateAmounts, SHIP_MIN_TOTAL, SHIP_MAX_TOTAL } from "./shipping";
 
 // ── Feature gate (canUseClassicText pattern: printing.ts) ─────────────────────
@@ -21,6 +22,24 @@ import { SHIP_TEMP_AMBIENT, validateRecipientName, validPhone, validStore, valid
 // account. The server route independently enforces admin regardless.
 export function canUseParcelScan(role: string | undefined | null): boolean {
   return isAdminRole(role);
+}
+
+// MANUAL-ENCODE gate (2026-09-10) — a PAYING, ACTIVE seller may open Parcel Scan
+// for MANUAL entry only (no camera, no AI scan, no credits). Reuses the shared
+// planWindow predicate (isActivePaid: time-limited plan + status active + days
+// left > 0) — NOT a new rule. Free/expired → false (no screen, no nav tile). The
+// camera/AI/credits surface stays admin-only via canUseParcelScan.
+export function canUseParcelManual(
+  plan: string | undefined | null,
+  planStatus: string | undefined | null,
+  planExpiry: string | undefined | null,
+  nowMs: number = Date.now(),
+): boolean {
+  // A plan must actually be present: isTimeLimitedPlan treats ANY non-"free"
+  // string (including "") as time-limited, so guard the missing/blank case here
+  // before delegating the real active+paid+not-expired decision to isActivePaid.
+  if (!String(plan ?? "").trim()) return false;
+  return isActivePaid({ plan: plan ?? "", planStatus: planStatus ?? "", daysLeft: planDaysLeft(planExpiry, nowMs) });
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────

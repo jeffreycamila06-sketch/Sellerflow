@@ -67,7 +67,10 @@ const reasonKey = (r: ExportReason): ReasonKey =>
         : r === "bad_store" ? "rd_ps2_x_bad_store"
           : "rd_ps2_x_bad_amount";
 
-export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: string; storeName?: string }) {
+// manualOnly = a paying (non-admin) seller: hide the camera / AI-scan / credits
+// surface entirely (not just disable) and show manual encode + an "AI … coming
+// soon" line. Admins (manualOnly=false) get the full scan surface, no soon line.
+export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = false }: { cur?: string; storeName?: string; manualOnly?: boolean }) {
   const t = useT();
   const fileRef = useRef<HTMLInputElement | null>(null);
 
@@ -159,8 +162,9 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
   }, []);
   // One wallet read on open → the Scan Credits balance.
   useEffect(() => {
+    if (manualOnly) return; // seller manual surface has no credits — don't fetch
     getCreditBalance().then((c) => { if (aliveRef.current && c.ok) setCredits(c.balance); });
-  }, []);
+  }, [manualOnly]);
 
   // FIX 2/3 — release the camera when the tab/app is backgrounded, re-acquire on
   // return, and clear a prior denial so a grant-in-Settings-then-return recovers
@@ -182,7 +186,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
   // (credits === null = still loading → allowed; 0 = blocked), AND the page is
   // foregrounded. Any flip to false stops the tracks (camera light off) and
   // detaches the video. retryTick re-runs it after an OS-ended track.
-  const camActive = cameraOn && cameraSupported() && !cameraErr && !editing && !manual && !snapshot && phase === "idle" && credits !== 0 && pageVisible;
+  const camActive = !manualOnly && cameraOn && cameraSupported() && !cameraErr && !editing && !manual && !snapshot && phase === "idle" && credits !== 0 && pageVisible;
   useEffect(() => {
     if (!camActive) return;
     let cancelled = false;
@@ -521,7 +525,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
   // Show the in-app camera when supported + intended + not errored + has credits;
   // otherwise the original file-picker fallback renders (and it also shows the
   // disabled button when out of credits).
-  const useCameraUI = cameraOn && cameraSupported() && !cameraErr && !outOfCredits;
+  const useCameraUI = !manualOnly && cameraOn && cameraSupported() && !cameraErr && !outOfCredits;
   const flaggedCount = rows.filter((r) => r.storeCheckStatus === "not_found").length;
   // Change 2: the saved list re-renders by active tab (in-memory filter of the
   // already-loaded rows — zero-poll, no refetch/timers).
@@ -545,7 +549,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
         {/* Compact stats row — Scan Credits + this-session counter as small pills
             (same visual language as the All/Wrong segmented tabs below), instead
             of two big cards eating the top of the screen. */}
-        {(credits !== null || scanCount > 0) && (
+        {!manualOnly && (credits !== null || scanCount > 0) && (
           <div style={{ display: "flex", gap: 6 }} data-testid="ps-stats">
             {credits !== null && (
               <div style={{ flex: 1, padding: "7px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface-2)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, minWidth: 0 }} data-testid="ps-credits">
@@ -563,7 +567,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
         )}
 
         {/* Out of credits → blocked, with the Telegram top-up path (real anchor per the iOS rule). */}
-        {outOfCredits && (
+        {!manualOnly && outOfCredits && (
           <div style={{ ...card, borderColor: "var(--danger)", background: "var(--danger-soft, rgba(220,38,38,.08))" }} data-testid="ps-credits-out">
             <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--danger)" }}>{t.rd_ps2_credits_out}</div>
             <a href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener" style={{ display: "inline-block", marginTop: 10, padding: "9px 14px", borderRadius: 10, background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13, textDecoration: "none" }} data-testid="ps-credits-topup">{t.rd_ps2_credits_topup}</a>
@@ -605,7 +609,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
 
         {/* FILE-PICKER FALLBACK — safety net: camera unsupported/denied, out of
             credits, or the seller chose the photo library. Original flow, kept. */}
-        {!busy && !editing && !manual && !snapshot && !useCameraUI && (
+        {!manualOnly && !busy && !editing && !manual && !snapshot && !useCameraUI && (
           <div style={card}>
             <button
               onClick={() => fileRef.current?.click()}
@@ -634,6 +638,12 @@ export default function ParcelScan({ cur = "NT$", storeName = "" }: { cur?: stri
             is open. */}
         {!busy && !editing && !manual && !snapshot && (
           <button onClick={openManual} style={{ justifySelf: "center", background: "none", border: "none", color: "var(--text-dim)", fontSize: 12, fontWeight: 700, textDecoration: "underline", cursor: "pointer", padding: "2px 4px" }} data-testid="ps-manual">✏️ {t.rd_ps2_manual}</button>
+        )}
+        {/* Seller (manual-only) surface: a small muted note where the camera would
+            be — the AI scan is admin-only for now. Admins see the real camera and
+            NOT this line. */}
+        {manualOnly && !busy && !editing && !manual && !snapshot && (
+          <div style={{ fontSize: 11, color: "var(--text-dim)", textAlign: "center" }} data-testid="ps-ai-soon">{t.rd_ps2_ai_soon}</div>
         )}
 
         {phase === "scanning" && (
