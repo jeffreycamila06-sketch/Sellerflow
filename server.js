@@ -13,6 +13,7 @@ import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RIN
 import { sanitizeCommentPayload } from "./server/sanitize.js";
 import { accountCapVerdict } from "./server/accountCap.js";
 import { fbConnectedNow } from "./server/fbLiveness.js";
+import { formatMemoryLine, memorySnapshot, crashLogLine, shutdownLogLine, MEMORY_LOG_INTERVAL_MS } from "./server/observability.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -669,6 +670,8 @@ app.get("/health/tiktok", (_req, res) => {
       reconnectingNow,
       rateLimitedAccounts,
     },
+    // Quick memory read so Jeff can eyeball RAM without opening Render.
+    memory: memorySnapshot(process.memoryUsage()),
     recentFailureRate,
     lastFailReason,
     warnings,
@@ -1622,8 +1625,47 @@ server.listen(PORT, () => {
   console.log(`SellerFlow TikTok LIVE server running on port ${PORT}`);
 });
 
+// ── Memory observability (5-min heartbeat + threshold warning) ────────────────
+// One greppable line every 5 min: rss, heapUsed, active relays, % of 512 MB.
+// Past ~75% it becomes [MEM-WARN] so Jeff sees pressure BEFORE an OOM. .unref()
+// so this timer never keeps the process alive during shutdown.
+const memoryLogTimer = setInterval(() => {
+  const line = formatMemoryLine(process.memoryUsage(), tiktokConnections.size);
+  if (line.startsWith("[MEM-WARN]")) console.warn(line);
+  else console.log(line);
+}, MEMORY_LOG_INTERVAL_MS);
+if (typeof memoryLogTimer.unref === "function") memoryLogTimer.unref();
+
+// ── Crash handlers — LOG WHY, then exit; let Render restart ───────────────────
+// A single instance carries every live relay, so a silent death is the worst
+// case. We capture the reason + how many relays just dropped, then exit(1). We do
+// NOT try to keep a possibly-corrupted process alive (Node best practice). A
+// re-entrancy guard stops a crash-inside-a-crash from looping.
+let crashing = false;
+function handleFatal(kind, err) {
+  if (crashing) return;
+  crashing = true;
+  try { console.error(crashLogLine(kind, err, tiktokConnections.size)); } catch { /* logging must never mask the exit */ }
+  // Give stdout a tick to flush the line on platforms with async pipes, then die.
+  setTimeout(() => process.exit(1), 100).unref?.();
+}
+process.on("uncaughtException", (err) => handleFatal("uncaughtException", err));
+process.on("unhandledRejection", (reason) => handleFatal("unhandledRejection", reason));
+
+// ── Graceful shutdown (Render sends SIGTERM before a restart) ─────────────────
+// Log how many relays will drop (sellers re-Connect after restart — manual-connect
+// world), stop timers, close socket.io + the HTTP server, then exit(0). A bounded
+// fallback forces exit so we never exceed Render's shutdown window.
+let shuttingDown = false;
 process.on("SIGTERM", () => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(shutdownLogLine(tiktokConnections.size));
   if (keepAliveTimer) clearInterval(keepAliveTimer);
-  server.close(() => process.exit(0));
+  clearInterval(memoryLogTimer);
+  const forceExit = setTimeout(() => process.exit(0), 5000);
+  if (typeof forceExit.unref === "function") forceExit.unref();
+  try { io.close(); } catch { /* best effort */ }
+  server.close(() => { clearTimeout(forceExit); process.exit(0); });
 });
 
