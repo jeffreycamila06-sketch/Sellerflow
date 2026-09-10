@@ -24,7 +24,7 @@ import Print from "./screens/Print";
 import SalesReport from "./screens/SalesReport";
 import Shipping from "./screens/Shipping";
 import ParcelScan from "./screens/ParcelScan";
-import { canUseParcelScan } from "./adapters/parcelScan";
+import { canUseParcelScan, canUseParcelManual } from "./adapters/parcelScan";
 import CustomerData from "./screens/CustomerData";
 import Legal from "./screens/Legal";
 import DeleteAccount from "./screens/DeleteAccount";
@@ -123,9 +123,15 @@ export default function RedesignApp() {
   // the print router honors a stray sfl_rd_classic_text flag on this device.
   const classicAllowed = canUseClassicText(auth.profile?.role, auth.profile?.email);
   useEffect(() => { setClassicTextAllowed(classicAllowed); }, [classicAllowed]);
-  // Parcel Scan (A1) — admin-only (no googletest, see canUseParcelScan); the
-  // server route independently re-enforces admin, this is visibility/navigation.
+  // Parcel Scan (A1) — camera/AI/credits are ADMIN-ONLY (canUseParcelScan; the
+  // server route independently re-enforces admin). MANUAL encode is open to a
+  // PAYING+ACTIVE seller (canUseParcelManual). Free/expired → neither → no tile,
+  // no screen. `parcelManualOnly` = allowed but NOT admin → the screen hides the
+  // camera/AI/credits surface and shows manual encode + "AI … coming soon".
   const parcelScanAllowed = canUseParcelScan(auth.profile?.role);
+  const parcelManualAllowed = canUseParcelManual(auth.profile?.plan, auth.profile?.planStatus, auth.profile?.planExpiry);
+  const parcelAllowed = parcelScanAllowed || parcelManualAllowed;
+  const parcelManualOnly = parcelAllowed && !parcelScanAllowed;
   const customersData = useCustomers(authed);
   const adminUsers = useAdminUsers(authed && isAdmin);
   // Admin subscription buckets — real free-tier monitor (RPC) + derived active/
@@ -1058,7 +1064,7 @@ export default function RedesignApp() {
               onDelete={() => setScreen("delete")}
               onLogout={() => { resetAnalytics(); void auth.signOut(); setScreen("login"); }}
               isAdmin={isAdmin}
-              onParcelScan={parcelScanAllowed ? () => setScreen("parcelscan") : undefined}
+              onParcelScan={parcelAllowed ? () => setScreen("parcelscan") : undefined}
             />
           )}
           {screen === "settings" && (
@@ -1100,7 +1106,7 @@ export default function RedesignApp() {
           {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} buyers={liveSession.session.buyers} storeName={auth.profile?.profile.storeName || "SellerFlowLive"} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
           {screen === "sales" && <SalesReport cur={cur} sales={sales} onExport={exportSales} hist={salesHist} byHour={salesByHour} enabled={authed} />}
           {screen === "shipping" && <Shipping cur={cur} buyers={liveSession.session.buyers} sessionKey={sessionKeyFor(liveSession.dayId, sessionWindow.windowStart, sessionWindow.windowDays)} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}
-          {screen === "parcelscan" && parcelScanAllowed && <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} />}
+          {screen === "parcelscan" && parcelAllowed && <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} />}
           {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} cur={cur} customers={customersData.state === "live" ? customersData.customers : []} onExport={customersData.state === "live" ? exportCustomers : undefined} />}
           {screen === "legal" && <Legal />}
           {screen === "delete" && <DeleteAccount onBack={() => setScreen("settings")} email={auth.profile?.email} onConfirm={auth.deleteAccount} />}

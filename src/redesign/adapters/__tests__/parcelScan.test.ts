@@ -13,7 +13,7 @@ vi.mock("../../../supabase", () => ({
 }));
 vi.mock("../serverIdentity", () => ({ SERVER: "https://srv.test" }));
 
-import { canUseParcelScan, scaledDims, rowToScan, scanParcel, SCAN_MAX_EDGE, formErrors, amountWarns, checkEmapStore } from "../parcelScan";
+import { canUseParcelScan, canUseParcelManual, scaledDims, rowToScan, scanParcel, SCAN_MAX_EDGE, formErrors, amountWarns, checkEmapStore } from "../parcelScan";
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => { (globalThis.fetch as unknown) = undefined; });
@@ -32,6 +32,31 @@ describe("canUseParcelScan (ADMIN ROLE ONLY — audit S2: no email allowlist)", 
     expect(canUseParcelScan(undefined)).toBe(false);
     expect(canUseParcelScan(null)).toBe(false);
     expect(canUseParcelScan("")).toBe(false);
+  });
+});
+
+describe("canUseParcelManual (PAYING + ACTIVE seller — manual encode gate)", () => {
+  const future = "2027-01-01T00:00:00Z"; // well beyond now
+  const past = "2020-01-01T00:00:00Z";
+  it("paid + active + not expired → allowed (all paid tiers)", () => {
+    expect(canUseParcelManual("basic", "active", future)).toBe(true);
+    expect(canUseParcelManual("pro", "active", future)).toBe(true);
+    expect(canUseParcelManual("master", "active", future)).toBe(true);
+    expect(canUseParcelManual("Basic", "active", future)).toBe(true); // case-insensitive plan
+  });
+  it("FREE → never allowed (no screen, no tile), regardless of status/expiry", () => {
+    expect(canUseParcelManual("free", "active", future)).toBe(false);
+    expect(canUseParcelManual("Free", "active", null)).toBe(false);
+    expect(canUseParcelManual("free", "active", undefined)).toBe(false);
+  });
+  it("paid but expired → not allowed", () => {
+    expect(canUseParcelManual("pro", "expired", future)).toBe(false); // status expired
+    expect(canUseParcelManual("pro", "active", past)).toBe(false);    // past expiry date
+  });
+  it("missing/blank plan → not allowed", () => {
+    expect(canUseParcelManual(undefined, "active", future)).toBe(false);
+    expect(canUseParcelManual(null, "active", future)).toBe(false);
+    expect(canUseParcelManual("", "active", future)).toBe(false);
   });
 });
 

@@ -844,12 +844,16 @@ app.post("/admin/parcel-scan", requireAuth, requireAdmin, express.json({ limit: 
   return res.status(out.status).json(out.body);
 });
 
-// Parcel Scan A2 — 7-11 E-Map store-code check (admin-only). Same auth shape as
-// /admin/parcel-scan. Body is tiny ({ storeId }), so the GLOBAL 100kb json
-// parser applies (this path is NOT the parcel-scan skip). Best-effort: the live
-// server carries the sacred comment relays, so a slow/blocked E-Map must never
-// hang — the core has its own ~5s timeout and returns "unknown" on any failure.
-app.post("/admin/parcel-emap-check", requireAuth, requireAdmin, async (req, res) => {
+// Parcel Scan A2 — 7-11 E-Map store-code check. requireAuth ONLY (relaxed from
+// requireAdmin 2026-09-10): manual encode is open to paying sellers, and their
+// store-code check must work. This is a pure external 7-11 lookup — no auth.uid()
+// use, no per-user table, no credit — so any signed-in caller is safe (the AI
+// scan at /admin/parcel-scan stays requireAdmin). Path name kept for the client.
+// requirePlanActive is deliberately NOT added (it passes free too, so it buys
+// nothing here; free never reaches this screen client-side). Body is tiny
+// ({ storeId }), so the GLOBAL 100kb json parser applies (not the parcel-scan
+// skip). Best-effort: the core has its own ~5s timeout, returns "unknown" on fail.
+app.post("/admin/parcel-emap-check", requireAuth, async (req, res) => {
   const storeId = String((req.body && req.body.storeId) || "").trim();
   if (!/^\d{6}$/.test(storeId)) {
     return res.status(400).json({ success: false, error: "bad_store_id" });

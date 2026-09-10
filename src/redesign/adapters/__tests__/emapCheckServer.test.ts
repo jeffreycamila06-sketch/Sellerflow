@@ -220,8 +220,12 @@ describe("checkEmapStore (injected fetch)", () => {
 describe("server.js route wiring (structural — the server.js convention)", () => {
   const src = readFileSync(resolve(__dirname, "../../../../server.js"), "utf8");
 
-  it("route exists as requireAuth → requireAdmin (auth before the handler; no per-route body parser needed for the tiny body)", () => {
-    expect(src).toMatch(/app\.post\(\s*"\/admin\/parcel-emap-check",\s*requireAuth,\s*requireAdmin,\s*async/);
+  it("route exists as requireAuth ONLY (relaxed from requireAdmin 2026-09-10 — manual encode is open to paying sellers; the AI scan at /admin/parcel-scan stays requireAdmin)", () => {
+    // Auth before the handler; no per-route body parser needed for the tiny body.
+    expect(src).toMatch(/app\.post\(\s*"\/admin\/parcel-emap-check",\s*requireAuth,\s*async/);
+    // Guard against a silent re-tighten OR a stray requirePlanActive (free passes it → pointless).
+    expect(src).not.toMatch(/app\.post\(\s*"\/admin\/parcel-emap-check",\s*requireAuth,\s*requireAdmin/);
+    expect(src).not.toMatch(/app\.post\(\s*"\/admin\/parcel-emap-check",\s*requireAuth,\s*requirePlanActive/);
   });
   it("validates a 6-digit store id server-side", () => {
     const slice = src.slice(src.indexOf('"/admin/parcel-emap-check"'));
