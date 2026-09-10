@@ -24,7 +24,7 @@ import Print from "./screens/Print";
 import SalesReport from "./screens/SalesReport";
 import Shipping from "./screens/Shipping";
 import ParcelScan from "./screens/ParcelScan";
-import { canUseParcelScan, canUseParcelManual } from "./adapters/parcelScan";
+import { canUseParcelScan } from "./adapters/parcelScan";
 import CustomerData from "./screens/CustomerData";
 import Legal from "./screens/Legal";
 import DeleteAccount from "./screens/DeleteAccount";
@@ -123,15 +123,15 @@ export default function RedesignApp() {
   // the print router honors a stray sfl_rd_classic_text flag on this device.
   const classicAllowed = canUseClassicText(auth.profile?.role, auth.profile?.email);
   useEffect(() => { setClassicTextAllowed(classicAllowed); }, [classicAllowed]);
-  // Parcel Scan (A1) — camera/AI/credits are ADMIN-ONLY (canUseParcelScan; the
-  // server route independently re-enforces admin). MANUAL encode is open to a
-  // PAYING+ACTIVE seller (canUseParcelManual). Free/expired → neither → no tile,
-  // no screen. `parcelManualOnly` = allowed but NOT admin → the screen hides the
-  // camera/AI/credits surface and shows manual encode + "AI … coming soon".
+  // Parcel Scan — ADMIN-ONLY (2026-09-10 revert, Jeff): seller MANUAL-encode
+  // access is temporarily OFF while it's being clarified. The `canUseParcelManual`
+  // gate is intentionally dropped from the OR below (the function stays defined in
+  // parcelScan.ts — the kill-switch branch re-enables it, toggle-gated). Only an
+  // admin (canUseParcelScan; the server route independently re-enforces admin)
+  // gets the tile/screen. Non-admins → no tile, no screen (nothing rendered).
   const parcelScanAllowed = canUseParcelScan(auth.profile?.role);
-  const parcelManualAllowed = canUseParcelManual(auth.profile?.plan, auth.profile?.planStatus, auth.profile?.planExpiry);
-  const parcelAllowed = parcelScanAllowed || parcelManualAllowed;
-  const parcelManualOnly = parcelAllowed && !parcelScanAllowed;
+  const parcelAllowed = parcelScanAllowed;
+  const parcelManualOnly = parcelAllowed && !parcelScanAllowed; // always false now (admin-only)
   const customersData = useCustomers(authed);
   const adminUsers = useAdminUsers(authed && isAdmin);
   // Admin subscription buckets — real free-tier monitor (RPC) + derived active/
