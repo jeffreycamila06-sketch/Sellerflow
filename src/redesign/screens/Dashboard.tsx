@@ -209,10 +209,17 @@ export default function Dashboard({
   // Green (--ok, theme-aware) outline button — mirrors the Enterprise button
   // geometry; ONE clean button replaces the old "Ordered ✓" / "🖨 Printed"
   // chips (Jeff: FLive style, no chip beside it).
+  // ⚠️ POINTERDOWN, not onClick (2026 double-print fix): after an Enterprise ✓
+  // submit, this button renders in the ✓'s exact place. The ✓ uses onPointerDown,
+  // so a single tap's TRAILING `click` (pointerdown→pointerup→click) would land on
+  // this freshly-mounted button and fire a second print. Binding to pointerdown is
+  // STRUCTURAL: that gesture's pointerdown was captured by the ✓ before this button
+  // existed, so it can never reach here; a DELIBERATE reprint tap starts its own
+  // pointerdown on this button and still works. Same pattern as the ✓ (:onPointerDown).
   const reprintBtn = (c: Comment) => {
     const busy = reprintingId === c.id;
     return (
-      <button onClick={() => fireReprint(c)} disabled={busy} title={t.rd_dash_reprint_title} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 800, letterSpacing: ".02em", color: "var(--ok)", background: "transparent", border: "1.3px solid var(--ok)", padding: "5px 12px", borderRadius: 7, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1, fontFamily: "var(--font-ui)" }}>
+      <button onPointerDown={(e) => { e.preventDefault(); fireReprint(c); }} disabled={busy} title={t.rd_dash_reprint_title} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, fontWeight: 800, letterSpacing: ".02em", color: "var(--ok)", background: "transparent", border: "1.3px solid var(--ok)", padding: "5px 12px", borderRadius: 7, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1, fontFamily: "var(--font-ui)" }}>
         {printerIcon}{busy ? t.rd_dash_reprinting : t.rd_dash_reprint}
       </button>
     );

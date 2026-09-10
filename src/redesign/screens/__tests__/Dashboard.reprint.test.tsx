@@ -4,6 +4,11 @@
 // onReprint(id, msgId) ONCE — never the order handlers — and a ~2s per-row
 // cooldown swallows double-taps. E1 stays intact: an unresolved history row
 // still shows nothing tappable.
+// ⚠️ POINTERDOWN, not click (2026 double-print fix): after an Enterprise ✓
+// submit the row swaps ✓ → this button, and the ✓ gesture's TRAILING click would
+// otherwise land here and fire a 2nd print. Reprint is bound to pointerdown (like
+// the ✓), so the tests fire pointerDown, and a plain click must NOT trigger it —
+// pinned by the regression test at the bottom.
 import { describe, it, expect, vi, beforeAll, afterEach } from "vitest";
 import { render, fireEvent, act } from "@testing-library/react";
 import { TProvider } from "../../i18n";
@@ -43,7 +48,7 @@ describe("Reprint button — placement (both ordered states, one clean button)",
     const { container } = renderDash({ comments: [hist("buyer1", "c-h", { ordered: true })], onReprint, onOneClick, onOpenEnt });
     const btn = reprintButton(container)!;
     expect(btn).toBeDefined();
-    fireEvent.click(btn);
+    fireEvent.pointerDown(btn);
     expect(onReprint).toHaveBeenCalledTimes(1);
     expect(onReprint).toHaveBeenCalledWith("c-h", "m-c-h");           // id + msgId → RedesignApp resolves the original order
     expect(onOneClick).not.toHaveBeenCalled();                        // ZERO order-path calls
@@ -57,7 +62,7 @@ describe("Reprint button — placement (both ordered states, one clean button)",
     expect(row.textContent).not.toContain("Printed");                 // old chip gone (FLive style: button only)
     expect(row.textContent).not.toContain("NT$150");
     const btn = reprintButton(container)!;
-    fireEvent.click(btn);
+    fireEvent.pointerDown(btn);
     expect(onReprint).toHaveBeenCalledWith("c-live", undefined);      // live rows may have no msgId — RedesignApp's in-session map covers them
   });
 
@@ -73,14 +78,30 @@ describe("double-tap guard", () => {
     const onReprint = vi.fn();
     const { container } = renderDash({ comments: [hist("buyer1", "c-h", { ordered: true })], onReprint });
     const btn = reprintButton(container)!;
-    fireEvent.click(btn);
+    fireEvent.pointerDown(btn);
     expect(btn.textContent).toContain("Printing");                    // busy state
-    fireEvent.click(btn);                                             // frantic double-tap
-    fireEvent.click(btn);
+    fireEvent.pointerDown(btn);                                       // frantic double-tap
+    fireEvent.pointerDown(btn);
     expect(onReprint).toHaveBeenCalledTimes(1);                       // swallowed
     act(() => { vi.advanceTimersByTime(2100); });
     expect(reprintButton(container)!.textContent).toContain("Reprint"); // recovered
-    fireEvent.click(reprintButton(container)!);
+    fireEvent.pointerDown(reprintButton(container)!);
     expect(onReprint).toHaveBeenCalledTimes(2);                       // deliberate second copy still possible
+  });
+});
+
+// 2026 double-print regression guard — the Enterprise ✓ gesture's TRAILING click
+// must NOT fire a reprint. Reprint is pointerdown-bound, so a bare click (the
+// stray trailing part of the ✓ tap, which landed on this button after the row
+// swapped ✓ → Reprint) does nothing; only a real pointerdown reprints.
+describe("double-print fix — reprint ignores a bare click (the ✓ gesture's trailing click)", () => {
+  it("click alone does NOT fire onReprint; a pointerdown does", () => {
+    const onReprint = vi.fn();
+    const { container } = renderDash({ comments: [hist("buyer1", "c-h", { ordered: true })], onReprint });
+    const btn = reprintButton(container)!;
+    fireEvent.click(btn);                     // the trailing click of the ✓'s pointerdown gesture
+    expect(onReprint).not.toHaveBeenCalled(); // ← the bug: this used to fire print #2
+    fireEvent.pointerDown(btn);               // a deliberate reprint tap
+    expect(onReprint).toHaveBeenCalledTimes(1);
   });
 });
