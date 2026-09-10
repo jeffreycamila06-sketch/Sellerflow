@@ -23,14 +23,14 @@ alter table public.app_settings enable row level security;
 
 -- Any signed-in user may READ (sellers need the fee to build their export).
 create policy app_settings_select on public.app_settings
-  for select using (true);
+  for select to authenticated using (true);
 
 -- Admin-only writes — public.is_admin() (the existing SECURITY DEFINER helper,
 -- same gate as announcements / admin RPCs). A seller has NO write path.
 create policy app_settings_insert on public.app_settings
-  for insert with check (public.is_admin());
+  for insert to authenticated with check (public.is_admin());
 create policy app_settings_update on public.app_settings
-  for update using (public.is_admin());
+  for update to authenticated using (public.is_admin()) with check (public.is_admin());
 -- DELETE: no policy → denied for authenticated/anon (RLS default-deny).
 
 -- Seed the shipping fee (matches the current 賣貨便 standard).
