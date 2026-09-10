@@ -10,7 +10,7 @@ import { createPortal } from "react-dom";
 import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT, tpl } from "../i18n";
 import {
-  fileToScanBase64, scanParcel, saveParcelScan, loadParcelScans, formErrors, amountWarns,
+  fileToScanBase64, scanParcel, saveParcelScan, loadParcelScans, formErrors, amountWarns, MIN_PARCEL_AMOUNT,
   checkEmapStore, saveStoreCheck, scanToXlsRow, splitScansForExport, markScansExported, unmarkScansExported,
   deleteParcelScan, deleteExportedParcels, updateParcelScan, getCreditBalance,
   type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState, type StoreCheckStatus, type ExportReason,
@@ -517,7 +517,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   };
 
   const errs = formErrors(form);
-  const saveBlocked = saving || errs.empty || errs.name || errs.phone || errs.store;
+  const saveBlocked = saving || errs.empty || errs.name || errs.phone || errs.store || errs.amount;
   const low = (f: keyof ScanFields): boolean => confid?.[f] === "low";
   const F = (patch: Partial<FormState>) => setForm((s) => ({ ...s, ...patch }));
   const busy = phase === "scanning" || phase === "confirm" || phase === "error";
@@ -691,7 +691,9 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
               <div>
                 <label style={lbl}>{t.rd_ps2_amount} ({cur}){low("amount") && <span style={{ color: "var(--warn, #b45309)" }}> · {t.rd_ps2_low_conf}</span>}</label>
                 <input value={form.amount} onChange={(e) => F({ amount: e.target.value.replace(/[^\d.]/g, "") })} inputMode="numeric" style={{ ...input, fontFamily: mono, ...(low("amount") ? { border: lowConfBorder } : {}) }} data-testid="ps-amount" />
-                {amountWarns(form.amount) && <div style={warnTxt} data-testid="ps-amount-warn">{t.rd_ps2_amount_warn}</div>}
+                {errs.amount
+                  ? <div style={errTxt} data-testid="ps-amount-err">{tpl(t.rd_ps2_err_amount, { amt: `${cur}${MIN_PARCEL_AMOUNT}` })}</div>
+                  : amountWarns(form.amount) && <div style={warnTxt} data-testid="ps-amount-warn">{t.rd_ps2_amount_warn}</div>}
               </div>
               {/* Notes field hidden (Jeff — shorter form). The DB column + any
                   existing notes are preserved: form.notes is still round-tripped

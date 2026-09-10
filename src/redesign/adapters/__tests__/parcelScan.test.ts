@@ -13,7 +13,7 @@ vi.mock("../../../supabase", () => ({
 }));
 vi.mock("../serverIdentity", () => ({ SERVER: "https://srv.test" }));
 
-import { canUseParcelScan, canUseParcelManual, scaledDims, rowToScan, scanParcel, SCAN_MAX_EDGE, formErrors, amountWarns, checkEmapStore } from "../parcelScan";
+import { canUseParcelScan, canUseParcelManual, scaledDims, rowToScan, scanParcel, SCAN_MAX_EDGE, formErrors, amountWarns, validAmount, MIN_PARCEL_AMOUNT, checkEmapStore } from "../parcelScan";
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => { (globalThis.fetch as unknown) = undefined; });
@@ -93,7 +93,7 @@ describe("confirm-form validation (existing 賣貨便 validators; empty allowed)
   });
   it("valid filled form → no errors", () => {
     const e = formErrors({ name: "陳小美", phone: "0912345678", store: "123456", amount: "550", notes: "" });
-    expect(e).toEqual({ name: false, phone: false, store: false, empty: false });
+    expect(e).toEqual({ name: false, phone: false, store: false, amount: false, empty: false });
   });
   it("non-empty invalid phone/store/name flag; EMPTY fields never flag", () => {
     expect(formErrors({ ...base, phone: "12345" }).phone).toBe(true);
@@ -109,6 +109,19 @@ describe("confirm-form validation (existing 賣貨便 validators; empty allowed)
     expect(amountWarns("25000")).toBe(true);
     expect(amountWarns("550")).toBe(false);
     expect(amountWarns("")).toBe(false); // empty = unknown, no warning
+  });
+  it("amount is REQUIRED with a MIN_PARCEL_AMOUNT floor — blank/0/below-min all flag (block Save)", () => {
+    expect(MIN_PARCEL_AMOUNT).toBe(22);
+    expect(formErrors({ ...base, name: "A", amount: "" }).amount).toBe(true);   // blank → block
+    expect(formErrors({ ...base, name: "A", amount: "0" }).amount).toBe(true);  // zero → block
+    expect(formErrors({ ...base, name: "A", amount: "21" }).amount).toBe(true); // below min → block
+    expect(formErrors({ ...base, name: "A", amount: "abc" }).amount).toBe(true);// non-numeric → block
+    expect(formErrors({ ...base, name: "A", amount: "22" }).amount).toBe(false);// exactly min → OK
+    expect(formErrors({ ...base, name: "A", amount: "550" }).amount).toBe(false);// above min → OK
+    // pure validAmount mirror
+    expect(validAmount("22")).toBe(true);
+    expect(validAmount("21.99")).toBe(false);
+    expect(validAmount("")).toBe(false);
   });
 });
 

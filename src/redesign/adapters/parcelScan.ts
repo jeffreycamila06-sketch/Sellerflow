@@ -118,21 +118,40 @@ export async function fileToScanBase64(file: File): Promise<{ base64: string; me
 }
 
 // ── Confirm-form validation (pure — the screen imports these) ─────────────────
-// Non-empty fields are checked with the EXISTING 賣貨便 validators; EMPTY fields
-// are allowed — unreadable handwriting saves as null and gets fixed at encode
-// time (A2). Amount range is a WARNING only (per spec), never a block.
+// Non-empty fields are checked with the EXISTING 賣貨便 validators; EMPTY name/
+// phone/store are allowed (unreadable handwriting saves as null, fixed at encode
+// time). Amount is now REQUIRED with a minimum (see MIN_PARCEL_AMOUNT) — a
+// blank/zero/too-low amount BLOCKS Save.
 // (validators + SHIP_MIN/MAX_TOTAL imported at the top of the file.)
+
+// Minimum saveable parcel amount (Jeff's call 2026-09-10; may change — the ONE
+// place the number lives). Distinct from the 賣貨便 export range
+// (SHIP_MIN_TOTAL..SHIP_MAX_TOTAL, still a separate warn + export re-validation).
+export const MIN_PARCEL_AMOUNT = 22;
 
 export interface ScanFormState { name: string; phone: string; store: string; amount: string; notes: string }
 
-export function formErrors(f: ScanFormState): { name: boolean; phone: boolean; store: boolean; empty: boolean } {
+// Amount is valid when it's a finite number >= MIN_PARCEL_AMOUNT. Blank / 0 /
+// below-minimum / non-numeric → invalid (mirrors validStore/validPhone shape).
+export const validAmount = (amount: string): boolean => {
+  const t = amount.trim();
+  if (t === "") return false;
+  const n = Number(t);
+  return Number.isFinite(n) && n >= MIN_PARCEL_AMOUNT;
+};
+
+export function formErrors(f: ScanFormState): { name: boolean; phone: boolean; store: boolean; amount: boolean; empty: boolean } {
   const name = f.name.trim();
   const nameBad = name !== "" && validateRecipientName(name) !== "";
   const phoneBad = f.phone.trim() !== "" && !validPhone(f.phone);
   const storeBad = f.store.trim() !== "" && !validStore(f.store);
+  const amountBad = !validAmount(f.amount); // required now: blank/0/<min all block Save
   const empty = name === "" && f.phone.trim() === "" && f.store.trim() === "" && f.amount.trim() === "" && f.notes.trim() === "";
-  return { name: nameBad, phone: phoneBad, store: storeBad, empty };
+  return { name: nameBad, phone: phoneBad, store: storeBad, amount: amountBad, empty };
 }
+// Soft warning kept SEPARATE from the hard min-block: the 賣貨便 order+fee range
+// (55..20000). A 22–54 amount clears the Save gate but still warns (and the
+// export re-validation independently excludes it). Unchanged.
 export const amountWarns = (amount: string): boolean => {
   const t = amount.trim();
   if (t === "") return false;
