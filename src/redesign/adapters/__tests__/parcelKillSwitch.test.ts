@@ -61,18 +61,25 @@ describe("saveParcelManualEnabled — writes literal true/false, surfaces RLS re
   });
 });
 
-describe("parcelScanVisible — the RedesignApp gate (pure)", () => {
-  const seller = { role: "seller", plan: "basic", planStatus: "active", planExpiry: future };
+describe("parcelScanVisible — the RedesignApp gate (pure, tier-gated)", () => {
+  const seller = { role: "seller", plan: "pro", planStatus: "active", planExpiry: future }; // allowed tier
+  const basic = { role: "seller", plan: "basic", planStatus: "active", planExpiry: future }; // NOT yet allowed
   const admin = { role: "admin", plan: "basic", planStatus: "active", planExpiry: future };
   const free = { role: "seller", plan: "free", planStatus: "active", planExpiry: future };
 
-  it("switch OFF → paying active seller sees NOTHING", () => {
+  it("switch OFF → allowed-tier active seller sees NOTHING", () => {
     expect(parcelScanVisible({ ...seller, manualEnabled: false })).toEqual({ visible: false, manualOnly: false });
   });
-  it("switch ON → paying active seller sees it, manual-only", () => {
-    expect(parcelScanVisible({ ...seller, manualEnabled: true })).toEqual({ visible: true, manualOnly: true });
+  it("switch ON → PLUS/PRO/MASTER active seller sees it, manual-only", () => {
+    for (const plan of ["plus", "pro", "master"]) {
+      expect(parcelScanVisible({ role: "seller", plan, planStatus: "active", planExpiry: future, manualEnabled: true }))
+        .toEqual({ visible: true, manualOnly: true });
+    }
   });
-  it("admin → full access REGARDLESS of the switch (never manual-only)", () => {
+  it("switch ON → BASIC active seller sees NOTHING (phased rollout excludes basic)", () => {
+    expect(parcelScanVisible({ ...basic, manualEnabled: true })).toEqual({ visible: false, manualOnly: false });
+  });
+  it("admin → full access REGARDLESS of the switch or tier (never manual-only)", () => {
     expect(parcelScanVisible({ ...admin, manualEnabled: false })).toEqual({ visible: true, manualOnly: false });
     expect(parcelScanVisible({ ...admin, manualEnabled: true })).toEqual({ visible: true, manualOnly: false });
   });
@@ -80,7 +87,7 @@ describe("parcelScanVisible — the RedesignApp gate (pure)", () => {
     expect(parcelScanVisible({ ...free, manualEnabled: false })).toEqual({ visible: false, manualOnly: false });
     expect(parcelScanVisible({ ...free, manualEnabled: true })).toEqual({ visible: false, manualOnly: false });
   });
-  it("expired paid seller → NOTHING even with the switch ON", () => {
+  it("expired allowed-tier seller → NOTHING even with the switch ON", () => {
     expect(parcelScanVisible({ role: "seller", plan: "pro", planStatus: "active", planExpiry: "2020-01-01T00:00:00Z", manualEnabled: true }))
       .toEqual({ visible: false, manualOnly: false });
   });
