@@ -11,6 +11,7 @@
 // is NEVER stored — it exists only inside the one scan request.
 import { SERVER } from "./serverIdentity";
 import { isSupabaseConfigured, supabase } from "../../supabase";
+import { getAppSetting, setAppSetting } from "./appSettings";
 import { isAdminRole } from "../../lib/roles";
 import { isActivePaid, planDaysLeft } from "../../lib/planWindow";
 import { SHIP_TEMP_AMBIENT, validateRecipientName, validPhone, validStore, validateAmounts, SHIP_MIN_TOTAL, SHIP_MAX_TOTAL } from "./shipping";
@@ -40,6 +41,48 @@ export function canUseParcelManual(
   // before delegating the real active+paid+not-expired decision to isActivePaid.
   if (!String(plan ?? "").trim()) return false;
   return isActivePaid({ plan: plan ?? "", planStatus: planStatus ?? "", daysLeft: planDaysLeft(planExpiry, nowMs) });
+}
+
+// ── KILL SWITCH (2026-09-10) — global admin toggle for seller manual encode ────
+// app_settings 'parcel_manual_enabled'. Lets Jeff open/close seller manual-encode
+// access WITHOUT a deploy. Reuses the appSettings adapter (shipping_default_fee
+// pattern). ⚠️ FAIL-CLOSED — the OPPOSITE of the shipping fee: only the exact
+// string "true" opens it; a missing row / error / RLS deny / any other value →
+// false (closed). A read failure must HIDE the feature, never expose it.
+export const PARCEL_MANUAL_ENABLED_KEY = "parcel_manual_enabled";
+
+export async function loadParcelManualEnabled(): Promise<boolean> {
+  const row = await getAppSetting(PARCEL_MANUAL_ENABLED_KEY);
+  return row?.value === "true"; // null/undefined/"false"/"1"/anything-else → false
+}
+// Admin panel read: state + when it last changed.
+export async function loadParcelManualEnabledMeta(): Promise<{ enabled: boolean; updatedAt: string | null }> {
+  const row = await getAppSetting(PARCEL_MANUAL_ENABLED_KEY);
+  return { enabled: row?.value === "true", updatedAt: row?.updatedAt ?? null };
+}
+// Admin-only write (RLS is_admin() gates the DB — a non-admin upsert is rejected
+// and surfaces here as { ok:false }). Stores the literal "true"/"false".
+export async function saveParcelManualEnabled(enabled: boolean): Promise<{ ok: boolean; error?: string }> {
+  return setAppSetting(PARCEL_MANUAL_ENABLED_KEY, enabled ? "true" : "false");
+}
+
+// Pure visibility combiner (the RedesignApp gate, unit-tested). Admin sees the
+// full surface regardless of the switch; a paying+active seller sees it ONLY
+// when the switch is ON (manualEnabled). Everyone else → nothing.
+//   visible    = show nav tile + screen
+//   manualOnly = allowed but NOT admin → hide camera/AI/credits, manual + "soon"
+export function parcelScanVisible(opts: {
+  role: string | undefined | null;
+  plan: string | undefined | null;
+  planStatus: string | undefined | null;
+  planExpiry: string | undefined | null;
+  manualEnabled: boolean;
+  nowMs?: number;
+}): { visible: boolean; manualOnly: boolean } {
+  const admin = canUseParcelScan(opts.role);
+  const manual = opts.manualEnabled && canUseParcelManual(opts.plan, opts.planStatus, opts.planExpiry, opts.nowMs);
+  const visible = admin || manual;
+  return { visible, manualOnly: visible && !admin };
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────

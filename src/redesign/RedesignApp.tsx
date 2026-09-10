@@ -24,7 +24,7 @@ import Print from "./screens/Print";
 import SalesReport from "./screens/SalesReport";
 import Shipping from "./screens/Shipping";
 import ParcelScan from "./screens/ParcelScan";
-import { canUseParcelScan } from "./adapters/parcelScan";
+import { parcelScanVisible, loadParcelManualEnabled } from "./adapters/parcelScan";
 import CustomerData from "./screens/CustomerData";
 import Legal from "./screens/Legal";
 import DeleteAccount from "./screens/DeleteAccount";
@@ -123,15 +123,28 @@ export default function RedesignApp() {
   // the print router honors a stray sfl_rd_classic_text flag on this device.
   const classicAllowed = canUseClassicText(auth.profile?.role, auth.profile?.email);
   useEffect(() => { setClassicTextAllowed(classicAllowed); }, [classicAllowed]);
-  // Parcel Scan — ADMIN-ONLY (2026-09-10 revert, Jeff): seller MANUAL-encode
-  // access is temporarily OFF while it's being clarified. The `canUseParcelManual`
-  // gate is intentionally dropped from the OR below (the function stays defined in
-  // parcelScan.ts — the kill-switch branch re-enables it, toggle-gated). Only an
-  // admin (canUseParcelScan; the server route independently re-enforces admin)
-  // gets the tile/screen. Non-admins → no tile, no screen (nothing rendered).
-  const parcelScanAllowed = canUseParcelScan(auth.profile?.role);
-  const parcelAllowed = parcelScanAllowed;
-  const parcelManualOnly = parcelAllowed && !parcelScanAllowed; // always false now (admin-only)
+  // Parcel Scan — camera/AI/credits are ADMIN-ONLY (server route re-enforces
+  // admin). MANUAL encode is open to a PAYING+ACTIVE seller ONLY when the global
+  // kill switch (app_settings 'parcel_manual_enabled') is ON — Jeff toggles it in
+  // Admin, no deploy. ⚠️ FAIL-CLOSED: the flag defaults false and stays false on
+  // any read failure, so a seller sees nothing until it's both loaded AND on.
+  // Admin access is independent of the flag. `parcelManualOnly` → hide camera/AI/
+  // credits, show manual encode + "AI … coming soon".
+  // Fail-closed: defaults false and only flips true once the global flag loads AND
+  // reads "true". On logout the flag isn't reset here (no sync setState in the
+  // effect) — the profile-based gate below already closes access when there's no
+  // paying profile, and the flag is global so it's identical across users.
+  const [parcelManualEnabled, setParcelManualEnabled] = useState(false);
+  useEffect(() => {
+    if (!authed) return;
+    let alive = true;
+    void loadParcelManualEnabled().then((v) => { if (alive) setParcelManualEnabled(v); });
+    return () => { alive = false; };
+  }, [authed]);
+  const { visible: parcelAllowed, manualOnly: parcelManualOnly } = parcelScanVisible({
+    role: auth.profile?.role, plan: auth.profile?.plan, planStatus: auth.profile?.planStatus,
+    planExpiry: auth.profile?.planExpiry, manualEnabled: parcelManualEnabled,
+  });
   const customersData = useCustomers(authed);
   const adminUsers = useAdminUsers(authed && isAdmin);
   // Admin subscription buckets — real free-tier monitor (RPC) + derived active/

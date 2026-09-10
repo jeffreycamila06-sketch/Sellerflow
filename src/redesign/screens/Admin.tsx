@@ -10,6 +10,7 @@ import { planDaysLeft, daysDisplay, deriveSubBuckets, deriveUserBase, freeUsersS
 import { getParcelScanOverview, revenueNT, costNT, profitNT, SCAN_COST_NT, type AdminActions, type Plan, type ParcelScanOverview } from "../adapters/useAdmin";
 import { maxAcc } from "../adapters/connect";
 import { loadGlobalShippingFeeMeta, saveGlobalShippingFee, validGlobalFee } from "../adapters/shippingSettings";
+import { loadParcelManualEnabledMeta, saveParcelManualEnabled } from "../adapters/parcelScan";
 import { getCreditBalanceForUser } from "../adapters/parcelScan";
 import type { AccountAuditLog, AccountUser } from "../../accountDb";
 import { csvDL, dayStamp } from "../adapters/csv";
@@ -32,7 +33,7 @@ const deadBtn: CSSProperties = { opacity: 0.45, cursor: "not-allowed" };
 const SampleNote = () => { const t = useT(); return <div style={{ marginBottom: 12 }}><SoonBadge label={t.rd_adm_sample_note} /></div>; };
 
 export type AdminPanelKind =
-  | "sellers" | "reports" | "broadcast" | "parcelmon" | "shipfee"
+  | "sellers" | "reports" | "broadcast" | "parcelmon" | "shipfee" | "parcelsw"
   | "subActive" | "subExpiring" | "subFree" | "subExpired" | "notifs" | "revenue" | "audit" | "userbase" | "pulse";
 
 const ctrlTile: CSSProperties = { display: "flex", flexDirection: "column", alignItems: "center", gap: 8, padding: "14px 6px", border: "1px solid var(--border)", borderRadius: 14, background: "var(--surface)", boxShadow: "var(--shadow)", cursor: "pointer" };
@@ -52,6 +53,7 @@ const cic = {
   userbase: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M12 3a9 9 0 1 0 9 9h-9V3Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" strokeWidth="1.7" opacity=".5" /></svg>,
   pulse: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 12h4l2.5-6 4 13 2.5-7H21" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>,
   shipfee: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M3 7h11v8H3zM14 10h4l3 3v2h-7z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><circle cx="7" cy="17" r="1.8" stroke="currentColor" strokeWidth="1.6" /><circle cx="17.5" cy="17" r="1.8" stroke="currentColor" strokeWidth="1.6" /></svg>,
+  parcelsw: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="12" rx="6" stroke="currentColor" strokeWidth="1.6" /><circle cx="15" cy="12" r="3" fill="currentColor" /></svg>,
 };
 
 function Ctrl({ icon, label, onClick }: { icon: ReactNode; label: string; onClick: () => void }) {
@@ -117,6 +119,7 @@ export default function Admin({ onOpenPanel, cur, counts, live = false, userBase
           <Ctrl icon={cic.reports} label={t.rd_adm_ctrl_reports} onClick={() => onOpenPanel("reports")} />
           <Ctrl icon={cic.parcelmon} label={t.rd_adm_ctrl_parcel} onClick={() => onOpenPanel("parcelmon")} />
           <Ctrl icon={cic.shipfee} label={t.rd_adm_ctrl_shipfee} onClick={() => onOpenPanel("shipfee")} />
+          <Ctrl icon={cic.parcelsw} label={t.rd_adm_ctrl_parcelsw} onClick={() => onOpenPanel("parcelsw")} />
           <Ctrl icon={cic.audit} label={t.rd_adm_ctrl_audit} onClick={() => onOpenPanel("audit")} />
         </div>
       </div>
@@ -127,7 +130,7 @@ export default function Admin({ onOpenPanel, cur, counts, live = false, userBase
 // ── Admin control bottom-sheet (overlay; rendered at the phone root) ─────────
 const panelTitle = (t: RedesignT, k: AdminPanelKind): string => ({
   sellers: t.rd_adm_pt_sellers, reports: t.rd_adm_pt_reports,
-  parcelmon: t.rd_adm_pt_parcel, shipfee: t.rd_adm_pt_shipfee, broadcast: t.rd_adm_ctrl_broadcast, subActive: t.rd_adm_pt_subActive,
+  parcelmon: t.rd_adm_pt_parcel, shipfee: t.rd_adm_pt_shipfee, parcelsw: t.rd_adm_pt_parcelsw, broadcast: t.rd_adm_ctrl_broadcast, subActive: t.rd_adm_pt_subActive,
   subExpiring: t.rd_adm_pt_subExpiring, subFree: t.rd_adm_pt_subFree, subExpired: t.rd_adm_pt_subExpired,
   revenue: t.rd_adm_pt_revenue, notifs: t.rd_adm_notifications, audit: t.rd_adm_pt_audit, userbase: t.rd_adm_user_base,
   pulse: t.rd_pulse_title,
@@ -422,6 +425,71 @@ function ShipFeePanel() {
         <button onClick={() => void onSave()} disabled={busy} style={{ marginLeft: "auto", padding: "10px 18px", borderRadius: 10, border: "none", background: busy ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: busy ? "default" : "pointer" }} data-testid="sf-save">{t.rd_adm_sf_save}</button>
       </div>
       {note && <div style={{ fontSize: 12, fontWeight: 700, color: note.kind === "ok" ? "var(--ok, #16a34a)" : "var(--danger)" }} data-testid="sf-note">{note.text}</div>}
+    </div>
+  );
+}
+
+// Parcel Scan seller-access kill switch (app_settings 'parcel_manual_enabled').
+// ON = paying+active sellers get manual encode; OFF = admin-only. Admin access is
+// independent of this switch. Fail-closed everywhere; the write is admin-gated by
+// RLS is_admin(). Self-contained (loads its own state on open, like ShipFeePanel).
+function ParcelSwitchPanel() {
+  const t = useT();
+  const [enabled, setEnabled] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void loadParcelManualEnabledMeta().then((m) => {
+      if (!alive) return;
+      setEnabled(m.enabled); setUpdatedAt(m.updatedAt); setState("ready");
+    }).catch(() => { if (alive) setState("error"); });
+    return () => { alive = false; };
+  }, []);
+
+  const when = (iso: string | null): string => {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return Number.isFinite(d.getTime()) ? d.toLocaleString(undefined, { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+  };
+
+  const setTo = async (next: boolean) => {
+    if (busy || next === enabled) return;
+    setBusy(true); setNote(null);
+    const r = await saveParcelManualEnabled(next);
+    setBusy(false);
+    if (!r.ok) { setNote({ kind: "err", text: t.rd_adm_sf_failed }); return; }
+    setEnabled(next); setUpdatedAt(new Date().toISOString());
+    setNote({ kind: "ok", text: t.rd_adm_sf_saved });
+  };
+
+  if (state === "loading") return <div style={{ fontSize: 12.5, color: "var(--text-muted)", padding: "8px 2px" }} data-testid="psw-loading">{t.rd_adm_pm_loading}</div>;
+  if (state === "error") return <div style={{ fontSize: 12.5, color: "var(--danger)", padding: "8px 2px" }} data-testid="psw-error">{t.rd_adm_pm_error}</div>;
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }} data-testid="psw-panel">
+      <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>{t.rd_adm_psw_hint}</div>
+      <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 13, padding: "12px 13px" }}>
+        <div style={{ fontSize: 10.5, color: "var(--text-muted)", fontWeight: 700 }}>{t.rd_adm_psw_current}</div>
+        <div style={{ fontWeight: 800, fontSize: 16, color: enabled ? "var(--ok, #16a34a)" : "var(--text)", marginTop: 3 }} data-testid="psw-state">
+          {enabled ? t.rd_adm_psw_on : t.rd_adm_psw_off}
+        </div>
+        <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3 }}>{tpl(t.rd_adm_sf_updated, { when: when(updatedAt) })}</div>
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button onClick={() => void setTo(false)} disabled={busy || !enabled} data-testid="psw-off"
+          style={{ flex: 1, padding: "10px 0", borderRadius: 10, fontWeight: 800, fontSize: 13, cursor: busy || !enabled ? "default" : "pointer", border: !enabled ? "1.4px solid var(--accent)" : "1px solid var(--border-strong)", background: !enabled ? "var(--accent-soft)" : "var(--surface-2)", color: !enabled ? "var(--accent-fg)" : "var(--text-dim)" }}>
+          {t.rd_adm_psw_set_off}
+        </button>
+        <button onClick={() => void setTo(true)} disabled={busy || enabled} data-testid="psw-on"
+          style={{ flex: 1, padding: "10px 0", borderRadius: 10, fontWeight: 800, fontSize: 13, cursor: busy || enabled ? "default" : "pointer", border: enabled ? "1.4px solid var(--ok)" : "1px solid var(--border-strong)", background: enabled ? "rgba(16,185,129,.12)" : "var(--surface-2)", color: enabled ? "var(--ok)" : "var(--text-dim)" }}>
+          {t.rd_adm_psw_set_on}
+        </button>
+      </div>
+      {note && <div style={{ fontSize: 12, fontWeight: 700, color: note.kind === "ok" ? "var(--ok, #16a34a)" : "var(--danger)" }} data-testid="psw-note">{note.text}</div>}
     </div>
   );
 }
@@ -847,6 +915,7 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
 
           {panel === "parcelmon" && <ParcelMonPanel />}
           {panel === "shipfee" && <ShipFeePanel />}
+          {panel === "parcelsw" && <ParcelSwitchPanel />}
 
           {panel === "broadcast" && (
             <div>

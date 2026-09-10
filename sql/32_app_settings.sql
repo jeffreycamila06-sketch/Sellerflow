@@ -11,6 +11,14 @@
 -- Fail-safe: the client read floors a missing/invalid/<=0 value to the compiled
 -- SHIP_DEFAULT_FEE (38); a 0 fee would be a 賣貨便 rejection, never desired.
 -- (seller_shipping_settings.free_threshold stays per-seller — a real promo.)
+--
+-- key='parcel_manual_enabled' — kill switch for Parcel Scan MANUAL encode by
+-- paying sellers. Admin toggles it (RLS is_admin() write) to open/close seller
+-- access with NO deploy; admin access is independent of it. ⚠️ FAIL-CLOSED (the
+-- OPPOSITE of the fee): the client read treats missing/invalid/error as OFF —
+-- only the literal "true" opens the feature. Default 'false'. The row is created
+-- on the first admin toggle if absent (fail-closed until then), so seeding is
+-- optional; the mirror seeds 'false' for documentation.
 
 create table if not exists public.app_settings (
   key         text primary key,
@@ -35,4 +43,8 @@ create policy app_settings_update on public.app_settings
 
 -- Seed the shipping fee (matches the current 賣貨便 standard).
 insert into public.app_settings (key, value) values ('shipping_default_fee', '38')
+  on conflict (key) do nothing;
+
+-- Seed the Parcel Scan manual-encode kill switch OFF (fail-closed default).
+insert into public.app_settings (key, value) values ('parcel_manual_enabled', 'false')
   on conflict (key) do nothing;
