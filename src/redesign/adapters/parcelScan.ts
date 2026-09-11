@@ -190,6 +190,13 @@ export async function fileToScanBase64(file: File): Promise<{ base64: string; me
 // re-validation).
 export const MIN_PARCEL_AMOUNT = 20;
 
+// Max PENDING (not-yet-exported) parcels per batch (Jeff's call 2026-09-11; may
+// change — the ONE place the number lives). At the cap, NEW entries are blocked
+// (camera/shutter/manual/picker/Save-of-a-new-row disabled) until an export
+// clears the queue; EDIT and DELETE of existing rows stay open so wrong store
+// codes / prices can still be fixed. Pending = rows whose status !== "exported".
+export const MAX_PENDING_PARCELS = 30;
+
 export interface ScanFormState { name: string; phone: string; store: string; amount: string; notes: string }
 
 // Amount is valid when it's a finite number >= MIN_PARCEL_AMOUNT. Blank / 0 /

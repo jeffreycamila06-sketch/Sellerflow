@@ -16,6 +16,7 @@ const { loadRows, updateParcelScan, scanParcel, checkEmapStore, saveStoreCheck, 
 }));
 
 vi.mock("../../adapters/parcelScan", () => ({
+  MAX_PENDING_PARCELS: 30, // batch-cap constant the screen reads on every render (inert here — no test loads >=30 pending)
   fileToScanBase64: vi.fn(),
   scanParcel,
   saveParcelScan: vi.fn(),
