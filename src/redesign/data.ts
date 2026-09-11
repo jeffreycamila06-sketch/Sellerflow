@@ -29,8 +29,8 @@ export const LANGS = [
 
 // Currency switcher (dc.html v3 L1555). The derived symbol `cur` threads through
 // every money display. Sample/visual only — Phase 5 wires the real Taiwan NT$.
-export const CURRENCIES: Record<string, string> = { USD: "$", PHP: "₱", IDR: "Rp", VND: "₫", CNY: "¥", TWD: "NT$", THB: "฿" };
-export const CURRENCY_ORDER: string[] = ["USD", "PHP", "IDR", "VND", "CNY", "TWD", "THB"];
+export const CURRENCIES: Record<string, string> = { USD: "$", PHP: "₱", IDR: "Rp", VND: "₫", CNY: "¥", TWD: "NT$", THB: "฿", AUD: "A$" };
+export const CURRENCY_ORDER: string[] = ["USD", "PHP", "IDR", "VND", "CNY", "TWD", "THB", "AUD"];
 export const curSymbol = (code: string): string => CURRENCIES[code] || "$";
 
 // platform is optional (additive, basket-count identity): comment→buyer matching
