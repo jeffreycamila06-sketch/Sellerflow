@@ -11,6 +11,7 @@ const { getCreditBalance } = vi.hoisted(() => ({
 }));
 
 vi.mock("../../adapters/parcelScan", () => ({
+  MAX_PENDING_PARCELS: 30, // batch-cap constant the screen reads on every render (inert here — no test loads >=30 pending)
   fileToScanBase64: vi.fn(), scanParcel: vi.fn(), saveParcelScan: vi.fn(),
   loadParcelScans: vi.fn(async () => ({ ok: true, rows: [] })),
   checkEmapStore: vi.fn(), saveStoreCheck: vi.fn(),
@@ -61,10 +62,13 @@ describe("ParcelScan — paying seller (manualOnly)", () => {
     expect(queryByTestId("ps-preview")).toBeNull();
     expect(queryByTestId("ps-file")).toBeNull();   // MUST NOT reach the scan/credit path
     expect(queryByTestId("ps-pick")).toBeNull();
-    expect(queryByTestId("ps-stats")).toBeNull();
+    // The credit/scan pills stay hidden for a seller, but the BATCH pill is
+    // shown to everyone (the seller must see the 30-pending cap) — so the
+    // stats row exists, carrying only the batch pill.
     expect(queryByTestId("ps-credits")).toBeNull();
     expect(queryByTestId("ps-scancount")).toBeNull();
     expect(queryByTestId("ps-credits-out")).toBeNull();
+    expect(queryByTestId("ps-batch")).toBeTruthy();
   });
 
   it("even with a working camera present, a seller never sees it (manualOnly wins)", async () => {

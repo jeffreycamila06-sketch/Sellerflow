@@ -10,7 +10,7 @@ import { createPortal } from "react-dom";
 import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT, tpl } from "../i18n";
 import {
-  fileToScanBase64, scanParcel, saveParcelScan, loadParcelScans, formErrors, amountWarns, MIN_PARCEL_AMOUNT,
+  fileToScanBase64, scanParcel, saveParcelScan, loadParcelScans, formErrors, amountWarns, MIN_PARCEL_AMOUNT, MAX_PENDING_PARCELS,
   checkEmapStore, saveStoreCheck, scanToXlsRow, splitScansForExport, markScansExported, unmarkScansExported,
   deleteParcelScan, deleteExportedParcels, updateParcelScan, getCreditBalance,
   type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState, type StoreCheckStatus, type ExportReason,
@@ -187,7 +187,13 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // (credits === null = still loading → allowed; 0 = blocked), AND the page is
   // foregrounded. Any flip to false stops the tracks (camera light off) and
   // detaches the video. retryTick re-runs it after an OS-ended track.
-  const camActive = !manualOnly && cameraOn && cameraSupported() && !cameraErr && !editing && !manual && !snapshot && phase === "idle" && credits !== 0 && pageVisible;
+  // Batch limit — pending = every row not yet exported (confirmed + wrong-code
+  // alike). At the cap, NEW entries are blocked (camera/shutter/manual/picker/
+  // new-row Save); EDIT + DELETE stay open. An export clears the queue → gates
+  // reopen. exported rows never count.
+  const pendingCount = rows.filter((r) => r.status !== "exported").length;
+  const batchFull = pendingCount >= MAX_PENDING_PARCELS;
+  const camActive = !manualOnly && cameraOn && cameraSupported() && !cameraErr && !editing && !manual && !snapshot && phase === "idle" && credits !== 0 && pageVisible && !batchFull;
   useEffect(() => {
     if (!camActive) return;
     let cancelled = false;
@@ -273,6 +279,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // camera). One File → fileToScanBase64 downscale → scan. ZERO adapter change.
   const beginScan = (list: File[]) => {
     if (!list.length) return;
+    if (batchFull) return; // batch cap — export first (belt-and-suspenders; the entry buttons are already disabled)
     if (scanInFlightRef.current) return; // synchronous double-entry guard (double-tap Use / rapid re-pick)
     scanInFlightRef.current = true;
     setFiles(list); setIdx(0);
@@ -472,7 +479,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
 
   // ── Manual encode — open the shared confirm form BLANK, no camera/scan ──────
   const openManual = () => {
-    if (busy || editing) return;
+    if (busy || editing || batchFull) return; // batch cap blocks a NEW manual entry (button also disabled)
     setSaveErr(""); setForm(emptyForm); setConfid(null); setRawExtraction(null);
     setManual(true);
   };
@@ -518,7 +525,9 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   };
 
   const errs = formErrors(form);
-  const saveBlocked = saving || errs.empty || errs.name || errs.phone || errs.store || errs.amount;
+  // A NEW-row Save (scan/manual) is blocked at the batch cap; an EDIT of an
+  // existing row is NEVER blocked by the cap (fix wrong codes/prices when full).
+  const saveBlocked = saving || errs.empty || errs.name || errs.phone || errs.store || errs.amount || (batchFull && !editing);
   const low = (f: keyof ScanFields): boolean => confid?.[f] === "low";
   const F = (patch: Partial<FormState>) => setForm((s) => ({ ...s, ...patch }));
   const busy = phase === "scanning" || phase === "confirm" || phase === "error";
@@ -547,23 +556,39 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
       <div style={{ padding: "16px 14px calc(28px + env(safe-area-inset-bottom))", display: "grid", gap: 12 }}>
         {toast && <div style={{ ...card, padding: 10, textAlign: "center", fontSize: 12.5, fontWeight: 700, color: "var(--ok, #16a34a)" }} data-testid="ps-toast">{toast}</div>}
 
-        {/* Compact stats row — Scan Credits + this-session counter as small pills
-            (same visual language as the All/Wrong segmented tabs below), instead
-            of two big cards eating the top of the screen. */}
-        {!manualOnly && (credits !== null || scanCount > 0) && (
+        {/* Compact stats row — Scan Credits + this-session counter + the batch
+            counter (N / MAX) as small pills (same visual language as the All/Wrong
+            segmented tabs below). The batch pill shows for BOTH admin and the
+            manual-only seller (they need to see the cap); credits/session stay
+            admin-only. */}
+        {(listLoaded || credits !== null || scanCount > 0) && (
           <div style={{ display: "flex", gap: 6 }} data-testid="ps-stats">
-            {credits !== null && (
+            {!manualOnly && credits !== null && (
               <div style={{ flex: 1, padding: "7px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface-2)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, minWidth: 0 }} data-testid="ps-credits">
                 <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.rd_ps2_credits}</span>
                 <span style={{ fontSize: 13, fontWeight: 900, color: outOfCredits ? "var(--danger)" : "var(--text)", fontFamily: mono, flexShrink: 0 }} data-testid="ps-credits-n">{credits}</span>
               </div>
             )}
-            {scanCount > 0 && (
+            {!manualOnly && scanCount > 0 && (
               <div style={{ flex: 1, padding: "7px 10px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface-2)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, minWidth: 0 }} data-testid="ps-scancount">
                 <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.rd_ps2_session}</span>
                 <span style={{ fontSize: 13, fontWeight: 900, color: "var(--text)", fontFamily: mono, flexShrink: 0 }} data-testid="ps-scancount-n">{scanCount}</span>
               </div>
             )}
+            {/* Batch counter — pending / MAX; turns danger at the cap. */}
+            <div style={{ flex: 1, padding: "7px 10px", borderRadius: 9, border: `1px solid ${batchFull ? "var(--danger)" : "var(--border-strong)"}`, background: "var(--surface-2)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, minWidth: 0 }} data-testid="ps-batch">
+              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.rd_ps2_batch}</span>
+              <span style={{ fontSize: 13, fontWeight: 900, color: batchFull ? "var(--danger)" : "var(--text)", fontFamily: mono, flexShrink: 0 }} data-testid="ps-batch-n">{pendingCount} / {MAX_PENDING_PARCELS}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Batch full → clear "export first" banner (does NOT hide the camera;
+            the entry buttons below are disabled so it's obvious why). Edit +
+            delete of existing rows stay open. */}
+        {batchFull && (
+          <div style={{ ...card, borderColor: "var(--danger)", background: "var(--danger-soft, rgba(220,38,38,.08))" }} data-testid="ps-batch-full">
+            <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--danger)" }}>{tpl(t.rd_ps2_batch_full, { max: String(MAX_PENDING_PARCELS) })}</div>
           </div>
         )}
 
@@ -587,7 +612,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
             </div>
             <button
               onClick={shutter}
-              style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 15, cursor: "pointer", marginTop: 10 }}
+              disabled={batchFull}
+              style={{ width: "100%", padding: "14px", borderRadius: 12, border: "none", background: batchFull ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 15, cursor: batchFull ? "default" : "pointer", marginTop: 10 }}
               data-testid="ps-shutter"
             >📸 {t.rd_ps2_shutter}</button>
             <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 8, lineHeight: 1.5 }}>{t.rd_ps2_cam_hint}</div>
@@ -614,8 +640,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
           <div style={card}>
             <button
               onClick={() => fileRef.current?.click()}
-              disabled={outOfCredits}
-              style={{ width: "100%", padding: "13px 14px", borderRadius: 12, border: "none", background: outOfCredits ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: outOfCredits ? "default" : "pointer" }}
+              disabled={outOfCredits || batchFull}
+              style={{ width: "100%", padding: "13px 14px", borderRadius: 12, border: "none", background: (outOfCredits || batchFull) ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 14, cursor: (outOfCredits || batchFull) ? "default" : "pointer" }}
               data-testid="ps-pick"
             >📷 {t.rd_ps2_pick}</button>
             <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 8, lineHeight: 1.5 }}>{t.rd_ps2_pick_hint}</div>
@@ -638,7 +664,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
             Shown in idle (under the camera or the picker), not while a form/preview
             is open. */}
         {!busy && !editing && !manual && !snapshot && (
-          <button onClick={openManual} style={{ justifySelf: "center", background: "none", border: "none", color: "var(--text-dim)", fontSize: 12, fontWeight: 700, textDecoration: "underline", cursor: "pointer", padding: "2px 4px" }} data-testid="ps-manual">✏️ {t.rd_ps2_manual}</button>
+          <button onClick={openManual} disabled={batchFull} style={{ justifySelf: "center", background: "none", border: "none", color: batchFull ? "var(--text-muted)" : "var(--text-dim)", fontSize: 12, fontWeight: 700, textDecoration: "underline", cursor: batchFull ? "default" : "pointer", opacity: batchFull ? 0.55 : 1, padding: "2px 4px" }} data-testid="ps-manual">✏️ {t.rd_ps2_manual}</button>
         )}
         {/* Seller (manual-only) surface: a small muted note where the camera would
             be — the AI scan is admin-only for now. Admins see the real camera and
