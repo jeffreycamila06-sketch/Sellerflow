@@ -180,10 +180,15 @@ export async function fileToScanBase64(file: File): Promise<{ base64: string; me
 // blank/zero/too-low amount BLOCKS Save.
 // (validators + SHIP_MIN/MAX_TOTAL imported at the top of the file.)
 
-// Minimum saveable parcel amount (Jeff's call 2026-09-10; may change — the ONE
-// place the number lives). Distinct from the 賣貨便 export range
-// (SHIP_MIN_TOTAL..SHIP_MAX_TOTAL, still a separate warn + export re-validation).
-export const MIN_PARCEL_AMOUNT = 22;
+// Minimum saveable parcel amount = the REAL 賣貨便 minimum product amount, NT$20
+// (the lowest value a 賣場 will accept). The old 22 was Jeff's arbitrary pick
+// from before we knew the carrier rule; now we follow 7-11. The ONE place the
+// number lives (the i18n error interpolates it). With the NT$38 shipping fee the
+// minimum total is NT$58, and the export gate (validateAmounts) needs
+// amount + fee ≥ 55, so 20 + 38 = 58 ≥ 55 → still passes export. Distinct from
+// the 賣貨便 export range (SHIP_MIN_TOTAL..SHIP_MAX_TOTAL, separate warn + export
+// re-validation).
+export const MIN_PARCEL_AMOUNT = 20;
 
 export interface ScanFormState { name: string; phone: string; store: string; amount: string; notes: string }
 

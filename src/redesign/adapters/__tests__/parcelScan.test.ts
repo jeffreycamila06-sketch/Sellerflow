@@ -122,16 +122,17 @@ describe("confirm-form validation (existing 賣貨便 validators; empty allowed)
     expect(amountWarns("")).toBe(false); // empty = unknown, no warning
   });
   it("amount is REQUIRED with a MIN_PARCEL_AMOUNT floor — blank/0/below-min all flag (block Save)", () => {
-    expect(MIN_PARCEL_AMOUNT).toBe(22);
+    expect(MIN_PARCEL_AMOUNT).toBe(20); // the REAL 賣貨便 minimum product amount
     expect(formErrors({ ...base, name: "A", amount: "" }).amount).toBe(true);   // blank → block
     expect(formErrors({ ...base, name: "A", amount: "0" }).amount).toBe(true);  // zero → block
-    expect(formErrors({ ...base, name: "A", amount: "21" }).amount).toBe(true); // below min → block
+    expect(formErrors({ ...base, name: "A", amount: "19" }).amount).toBe(true); // below min → block
     expect(formErrors({ ...base, name: "A", amount: "abc" }).amount).toBe(true);// non-numeric → block
-    expect(formErrors({ ...base, name: "A", amount: "22" }).amount).toBe(false);// exactly min → OK
+    expect(formErrors({ ...base, name: "A", amount: "20" }).amount).toBe(false);// exactly min → OK
+    expect(formErrors({ ...base, name: "A", amount: "21" }).amount).toBe(false);// above min (was blocked at 22) → OK
     expect(formErrors({ ...base, name: "A", amount: "550" }).amount).toBe(false);// above min → OK
     // pure validAmount mirror
-    expect(validAmount("22")).toBe(true);
-    expect(validAmount("21.99")).toBe(false);
+    expect(validAmount("20")).toBe(true);
+    expect(validAmount("19.99")).toBe(false);
     expect(validAmount("")).toBe(false);
   });
 });
