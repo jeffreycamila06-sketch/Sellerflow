@@ -1,4 +1,4 @@
-// Amount is now REQUIRED with a MIN_PARCEL_AMOUNT (22) floor — blank / 0 /
+// Amount is now REQUIRED with a MIN_PARCEL_AMOUNT (20) floor — blank / 0 /
 // below-min BLOCK Save via the shared formErrors/saveBlocked mechanism, with a
 // clear "amount" error (not a generic block). Applies to manual encode AND the
 // edit flow (an old parcel below the minimum is blocked until raised — no
@@ -49,18 +49,18 @@ describe("Parcel Scan — amount required with min (manual encode)", () => {
     fireEvent.change(r.getByTestId("ps-name"), { target: { value: "Juan" } });
     fireEvent.change(r.getByTestId("ps-store"), { target: { value: "266402" } });
     expect(save(r).disabled).toBe(true);
-    expect(r.getByTestId("ps-amount-err").textContent).toContain("22"); // the minimum, clearly the amount
+    expect(r.getByTestId("ps-amount-err").textContent).toContain("20"); // the minimum, clearly the amount
   });
 
-  it("below minimum (21) → still blocked; exactly 22 → enabled, error gone", async () => {
+  it("below minimum (19) → still blocked; exactly 20 → enabled, error gone", async () => {
     const r = view();
     fireEvent.click(await r.findByTestId("ps-manual"));
     fireEvent.change(r.getByTestId("ps-name"), { target: { value: "Juan" } });
     fireEvent.change(r.getByTestId("ps-store"), { target: { value: "266402" } });
-    fireEvent.change(r.getByTestId("ps-amount"), { target: { value: "21" } });
+    fireEvent.change(r.getByTestId("ps-amount"), { target: { value: "19" } });
     expect(save(r).disabled).toBe(true);
     expect(r.queryByTestId("ps-amount-err")).toBeTruthy();
-    fireEvent.change(r.getByTestId("ps-amount"), { target: { value: "22" } });
+    fireEvent.change(r.getByTestId("ps-amount"), { target: { value: "20" } });
     expect(save(r).disabled).toBe(false);
     expect(r.queryByTestId("ps-amount-err")).toBeNull();
   });
@@ -74,7 +74,7 @@ describe("Parcel Scan — editing an old low-amount parcel is blocked until rais
     // Editing another field does NOT clear the block — the amount is the problem.
     fireEvent.change(r.getByTestId("ps-name"), { target: { value: "Fixed Name" } });
     expect(save(r).disabled).toBe(true);
-    expect(r.getByTestId("ps-amount-err").textContent).toContain("22");
+    expect(r.getByTestId("ps-amount-err").textContent).toContain("20");
     expect(updateParcelScan).not.toHaveBeenCalled();
     // Raise the amount over the minimum → unblocked, save goes through.
     fireEvent.change(r.getByTestId("ps-amount"), { target: { value: "30" } });
