@@ -83,3 +83,63 @@ describe("↻ Reprint on result rows", () => {
     expect(onReprintOrder).toHaveBeenCalledTimes(1);                 // 2s global cooldown
   });
 });
+
+// ── Buyer receipt box (2026-09-11, Option A) ─────────────────────────────────
+// A pure-digit search that EXACTLY matches a session buyer# shows ONE grouped
+// receipt card and NOTHING else (no list). Display-only (no onGoPrint). Non-
+// numeric = normal list. Numeric no-match = no box, normal no-match note.
+import type { Buyer, LiveOrder } from "../../../lib/orderTypes";
+const lo = (item: string, total: number): LiveOrder => ({
+  orderNum: 1e12 + total, item, qty: 1, price: total, total, time: "1:00:00 PM",
+  handle: "@maria", name: "Maria", bNum: 1, platform: "TikTok", status: "New", date: "2026-07-13",
+});
+const receiptBuyers: Buyer[] = [
+  { handle: "@maria", name: "Maria", platform: "TikTok", num: 1, totalOrders: 3, totalSpent: 1820,
+    orders: [lo("Red dress M", 550), lo("Blue top L", 380), lo("Sneakers 38", 890)] },
+  { handle: "@ken", name: "Ken", platform: "TikTok", num: 10, totalOrders: 1, totalSpent: 200,
+    orders: [{ ...lo("Cap", 200), name: "Ken", bNum: 10 }] },
+];
+
+describe("buyer receipt box", () => {
+  it('"1" shows the receipt box only (not #10), never the list', () => {
+    const onGoPrint = vi.fn();
+    const { container } = renderOrders({ buyers: receiptBuyers, onGoPrint });
+    fireEvent.change(input(container), { target: { value: "1" } });
+    const box = container.querySelector('[data-testid="buyer-receipt"]')!;
+    expect(box).toBeTruthy();
+    expect(box.textContent).toContain("Maria");
+    expect(box.textContent).toContain("Red dress M");
+    expect(box.textContent).toContain("NT$1,820");         // buyer.totalSpent
+    expect(box.textContent).toContain("3 items");
+    expect(container.textContent).not.toContain("Ken");     // #10 not pulled in (exact match)
+    // display-only: tapping the box never navigates to Print
+    fireEvent.click(box);
+    expect(onGoPrint).not.toHaveBeenCalled();
+  });
+
+  it('"Maria" (non-numeric) shows the normal list, no receipt box', () => {
+    const { container } = renderOrders({ buyers: receiptBuyers });
+    fireEvent.change(input(container), { target: { value: "Mei" } });
+    expect(container.querySelector('[data-testid="buyer-receipt"]')).toBeNull();
+    expect(container.textContent).toContain("Mei Lin");     // normal filtered row
+  });
+
+  it("numeric query with no matching buyer → no box, falls back to no-match", () => {
+    const { container } = renderOrders({ buyers: receiptBuyers });
+    fireEvent.change(input(container), { target: { value: "999" } });
+    expect(container.querySelector('[data-testid="buyer-receipt"]')).toBeNull();
+  });
+
+  it("137-order buyer renders every line, scrollable, total intact (AUD symbol)", () => {
+    const many: LiveOrder[] = Array.from({ length: 137 }, (_, i) => lo(`Item ${i + 1}`, 100));
+    const big: Buyer[] = [{ handle: "@big", name: "Big", platform: "TikTok", num: 5, totalOrders: 137, totalSpent: 13700, orders: many }];
+    const { container } = renderOrders({ buyers: big, cur: "A$" });
+    fireEvent.change(input(container), { target: { value: "5" } });
+    const box = container.querySelector('[data-testid="buyer-receipt"]') as HTMLElement;
+    expect(box.textContent).toContain("Item 137");
+    expect(box.textContent).toContain("A$13,700");          // AUD symbol, not hardcoded NT$
+    expect(box.textContent).toContain("137 items");
+    const scroll = Array.from(box.querySelectorAll("div")).find((d) => d.style.overflowY === "auto");
+    expect(scroll).toBeTruthy();                             // scroll region present
+  });
+});
