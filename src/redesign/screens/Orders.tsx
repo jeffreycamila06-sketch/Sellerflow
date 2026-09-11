@@ -13,9 +13,10 @@
 // the workflow is type → find → reprint → stick.
 import { useState, type CSSProperties } from "react";
 import { ORDERS, avColor, initials, fmt, statusColor, type Order } from "../data";
-import { filterOrders, type ReadState } from "../adapters/useReadData";
+import { filterOrders, buyerReceipt, type ReadState } from "../adapters/useReadData";
+import type { Buyer } from "../../lib/orderTypes";
 import type { HistoryState } from "../adapters/ordersSearch";
-import { useT } from "../i18n";
+import { useT, tpl } from "../i18n";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px" };
 const title: CSSProperties = { fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 19, letterSpacing: "-.01em" };
@@ -24,6 +25,7 @@ const noteStyle: CSSProperties = { fontSize: 13, color: "var(--text-muted)", tex
 
 export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sample", onExport, onGoShipping,
   historyOrders = [], historyState = "idle", onEnsureHistory, onReprintOrder, todayId = "",
+  buyers = [],
 }: {
   onGoPrint: () => void; cur: string; orders?: Order[]; state?: ReadState; onExport?: () => void; onGoShipping?: () => void;
   // 7-day search reach (display-only lane — see ordersSearch.ts)
@@ -31,19 +33,26 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   // Reprint from a result row (zero-write — resolveReprintRow + performReprint)
   onReprintOrder?: (o: Order) => void;
   todayId?: string; // rows dated ≠ today get the date chip (history + multi-day)
+  // Buyer receipt (2026-09-11) — the CURRENT session's grouped buyers, for the
+  // numeric-search receipt box. Current session only (buyer# repeats per session).
+  buyers?: Buyer[];
 }) {
   const t = useT();
   const [query, setQuery] = useState("");
   const [reprintingKey, setReprintingKey] = useState("");
   const live = state === "live";
   const searching = query.trim().length > 0;
+  // A pure-digit query that EXACTLY matches a buyer# → show the receipt box ONLY
+  // (Option A). EXACT `num ===`, so "1" is buyer #1, never #10/#11 (contains).
+  const trimmed = query.trim();
+  const receipt = /^\d+$/.test(trimmed) ? buyerReceipt(buyers, Number(trimmed)) : null;
   const shown = filterOrders(orders, query);
   // History rows surface ONLY while searching — the plain list stays the
   // window view (display-only hard line: old orders never mix into "today").
   const shownHist = searching ? filterOrders(historyOrders, query) : [];
   const matchCount = shown.length + shownHist.length;
   const badge = state === "loading" ? `${t.rd_ord_today} · …`
-    : searching ? `${matchCount}` : `${t.rd_ord_today} · ${orders.length}`;
+    : searching ? `${receipt ? receipt.count : matchCount}` : `${t.rd_ord_today} · ${orders.length}`;
 
   const onQuery = (v: string) => {
     setQuery(v);
@@ -124,16 +133,51 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
         </div>
       </div>
       <div style={{ padding: "14px 14px 22px", display: "flex", flexDirection: "column", gap: 11 }}>
-        {state === "loading" && <div style={noteStyle}>{t.rd_ord_loading}</div>}
-        {state === "empty" && !searching && <div style={noteStyle}>{t.rd_ord_empty}</div>}
-        {shown.map((o, idx) => row(o, idx, false))}
-        {shownHist.map((o, idx) => row(o, idx, true))}
-        {/* Search states below the results: still-fetching chip · the 7-day
-            no-match boundary note · honest history-fetch failure. */}
-        {searching && historyState === "loading" && <div style={noteStyle}>{t.rd_ord_searching_7d}</div>}
-        {searching && matchCount === 0 && historyState === "live" && <div style={noteStyle}>{t.rd_ord_no_match_7d}</div>}
-        {searching && matchCount === 0 && (historyState === "idle" || historyState === "error") && <div style={noteStyle}>{t.rd_ord_no_match}</div>}
-        {searching && historyState === "error" && <div style={{ ...noteStyle, padding: "6px 0", color: "var(--danger)" }}>{t.rd_ord_hist_error}</div>}
+        {/* Buyer receipt box (Option A) — a numeric-exact match REPLACES the list:
+            one grouped card, all of buyer #N's orders this session + the total,
+            so the seller can read the buyer their total. Display-only (no
+            onClick=onGoPrint). Scrolls when long (137-order buyer); header + total
+            stay pinned outside the scroll region. */}
+        {receipt ? (
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 15, padding: "13px 14px", boxShadow: "var(--shadow)" }} data-testid="buyer-receipt">
+            <div style={{ display: "flex", alignItems: "center", gap: 11, paddingBottom: 11, borderBottom: "1px solid var(--border)" }}>
+              <div style={{ width: 40, height: 40, borderRadius: 12, background: avColor(receipt.name), display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12.5, fontWeight: 800, color: "#fff", flexShrink: 0, fontFamily: mono }}>#{receipt.num}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14.5, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{receipt.name}</div>
+                <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{receipt.handle}</div>
+              </div>
+            </div>
+            <div style={{ maxHeight: 340, overflowY: "auto", padding: "4px 0" }}>
+              {receipt.lines.map((ln, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "baseline", gap: 10, padding: "6px 0" }}>
+                  <span style={{ fontFamily: mono, fontSize: 11.5, color: "var(--text-muted)", flexShrink: 0, width: 22, textAlign: "right" }}>{i + 1}.</span>
+                  <span style={{ flex: 1, minWidth: 0, fontSize: 13, color: "var(--text-dim)", overflowWrap: "anywhere" }}>{ln.item}</span>
+                  <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 700, color: "var(--text)", flexShrink: 0 }}>{cur}{fmt(ln.total)}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10, marginTop: 4, paddingTop: 11, borderTop: "1px solid var(--border)" }}>
+              <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-muted)" }}>{tpl(t.rd_ord_receipt_items, { n: receipt.count })}</span>
+              <span style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)" }}>{t.rd_ord_receipt_total}</span>
+                <span style={{ fontFamily: mono, fontSize: 20, fontWeight: 500, color: "var(--text)" }}>{cur}{fmt(receipt.total)}</span>
+              </span>
+            </div>
+          </div>
+        ) : (
+          <>
+            {state === "loading" && <div style={noteStyle}>{t.rd_ord_loading}</div>}
+            {state === "empty" && !searching && <div style={noteStyle}>{t.rd_ord_empty}</div>}
+            {shown.map((o, idx) => row(o, idx, false))}
+            {shownHist.map((o, idx) => row(o, idx, true))}
+            {/* Search states below the results: still-fetching chip · the 7-day
+                no-match boundary note · honest history-fetch failure. */}
+            {searching && historyState === "loading" && <div style={noteStyle}>{t.rd_ord_searching_7d}</div>}
+            {searching && matchCount === 0 && historyState === "live" && <div style={noteStyle}>{t.rd_ord_no_match_7d}</div>}
+            {searching && matchCount === 0 && (historyState === "idle" || historyState === "error") && <div style={noteStyle}>{t.rd_ord_no_match}</div>}
+            {searching && historyState === "error" && <div style={{ ...noteStyle, padding: "6px 0", color: "var(--danger)" }}>{t.rd_ord_hist_error}</div>}
+          </>
+        )}
       </div>
     </div>
   );

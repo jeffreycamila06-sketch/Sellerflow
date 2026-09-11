@@ -14,6 +14,7 @@ import { useCallback, useEffect, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { listUsers, listAuditLogs, type AccountUser, type AccountAuditLog } from "../../accountDb";
 import type { RebuiltSession } from "../../lib/orderLogic";
+import type { Buyer } from "../../lib/orderTypes";
 import { planDaysLeft, daysDisplay, isActivePaid, isExpiredPaid, isExpiringNotExpired, EXPIRING_WINDOW_DAYS } from "../../lib/planWindow";
 import { isAdminRole } from "../../lib/roles";
 import { accountList } from "./connect";
@@ -87,6 +88,27 @@ export function filterOrders(orders: Order[], query: string): Order[] {
   if (!q) return orders;
   return orders.filter((o) =>
     `${o.id} ${o.buyer} ${o.handle} ${o.items} ${o.time} ${o.total} ${o.platform}`.toLowerCase().includes(q));
+}
+
+// Buyer receipt (2026-09-11) — a numeric Orders search ("1") shows ONE grouped
+// card: all of buyer #N's orders this session + the total, so the seller can
+// tell the buyer what they owe. PURE, zero I/O. Source = the already-grouped
+// session.buyers (each Buyer carries orders[] + precomputed totalSpent), NOT the
+// flat orders list. Total = buyer.totalSpent (never re-summed → no drift); each
+// line uses order.total. null when no buyer has EXACTLY that number (the screen
+// then falls back to normal "no match" — EXACT match, so "1" is never #10/#11).
+export interface BuyerReceipt { num: number; name: string; handle: string; lines: { item: string; total: number }[]; count: number; total: number; }
+export function buyerReceipt(buyers: Buyer[], num: number): BuyerReceipt | null {
+  const b = buyers.find((x) => x.num === num);
+  if (!b) return null;
+  return {
+    num: b.num,
+    name: b.name || b.handle,
+    handle: b.handle,
+    lines: b.orders.map((o) => ({ item: o.item, total: o.total })),
+    count: b.orders.length,
+    total: b.totalSpent,
+  };
 }
 
 // customers rows (Supabase) → redesign Customer[].
