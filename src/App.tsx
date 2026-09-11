@@ -4125,7 +4125,9 @@ export default function App(){
       LS.set("sf_session_user",next);
     };
     if(forceLogin){
-      void supabase.auth.signOut();
+      // scope:"local" — clearing THIS device's stale session to force a fresh
+      // login must NOT revoke the user's other devices (global default would).
+      void supabase.auth.signOut({scope:"local"});
     }else{
       void supabase.auth.getSession().then(({data})=>{void applySession(data.session);});
     }
@@ -4215,7 +4217,7 @@ export default function App(){
   },[user,nowTick]);
   /* eslint-enable react-hooks/set-state-in-effect */
   function handleLogin(u:User){const safe=safeUser(u);if(safe){const next=asAdminPlan(safe);setUser(next);LS.set("sf_session",next.email);LS.set("sf_session_user",next);setPage("dashboard");}}
-  function handleLogout(){posthog.reset();void supabase?.auth.signOut();LS.del("sf_session");LS.del("sf_session_user");if(typeof window!=="undefined")window.sessionStorage.removeItem("sf_account_gate_ok");setUser(null);setComments([]);setBuyers([]);setAllOrders([]);setPrinted(new Set());setTotOrd(0);setTotRev(0);setSelBuyer(null);}
+  function handleLogout(){posthog.reset();void supabase?.auth.signOut({scope:"local"});LS.del("sf_session");LS.del("sf_session_user");if(typeof window!=="undefined")window.sessionStorage.removeItem("sf_account_gate_ok");setUser(null);setComments([]);setBuyers([]);setAllOrders([]);setPrinted(new Set());setTotOrd(0);setTotRev(0);setSelBuyer(null);}
   async function handleDeleteAccount(){
     if(!user)return;
     const email=user.email;

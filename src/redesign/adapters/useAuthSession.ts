@@ -128,7 +128,14 @@ export function useAuthSession(): UseAuthSession {
 
   const signOut = useCallback(async () => {
     if (!supabase) { setProfile(null); setStatus("anon"); return; }
-    await supabase.auth.signOut();
+    // ⚠️ scope:"local" — a plain logout ends ONLY THIS device's session. The
+    // supabase-js v2 DEFAULT is scope:"global", which revokes the user's refresh
+    // tokens on EVERY device → logging out on the laptop was silently logging out
+    // the phone mid-live (confirmed via auth.sessions: the other device's row was
+    // DELETED). Jeff's workflow needs 3+ devices at once (laptop export + phone
+    // live + phone encoding), so logout must be per-device. deleteAccount stays
+    // GLOBAL on purpose (account wiped → kill everywhere).
+    await supabase.auth.signOut({ scope: "local" });
     // onAuthStateChange will fire SIGNED_OUT, but set immediately for snappy UI.
     setProfile(null);
     setStatus("anon");
