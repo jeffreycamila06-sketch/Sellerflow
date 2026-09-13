@@ -128,6 +128,16 @@ export interface ParcelScanRow {
   notes: string;
   status: string;
   storeCheckStatus: string | null; // valid | not_found | unknown | checking | null
+  // Extension-written checks (sql/33) — DISPLAY-ONLY here; the Chrome extension
+  // (separate build, Jeff's logged-in 賣貨便 session) is the sole writer.
+  // ⚠️ FAIL-SAFE: null | 'unknown' is NOT 'ok' — an unchecked parcel must look
+  // unchecked, never clean. Only explicit 'open'/'ok' clears.
+  // Optional so existing row builders (and any pre-column reader) stay valid;
+  // undefined behaves EXACTLY like null everywhere (no badge, not excluded, not
+  // clear) — the fail-safe. rowToScan always sets them explicitly (null when absent).
+  storeFullStatus?: string | null;     // 'open' | 'full' | 'unknown' | null
+  phoneCheckStatus?: string | null;    // 'ok' | 'restricted' | 'unknown' | null
+  phoneRestrictedUntil?: string | null; // 'YYYY-MM-DD' date | null (restricted only)
   createdAt: string;
 }
 
@@ -288,6 +298,9 @@ export function rowToScan(row: Record<string, unknown>): ParcelScanRow {
     notes: String(row.notes ?? ""),
     status: String(row.status ?? "pending"),
     storeCheckStatus: row.store_check_status ? String(row.store_check_status) : null,
+    storeFullStatus: row.store_full_status ? String(row.store_full_status) : null,
+    phoneCheckStatus: row.phone_check_status ? String(row.phone_check_status) : null,
+    phoneRestrictedUntil: row.phone_restricted_until ? String(row.phone_restricted_until) : null,
     createdAt: String(row.created_at ?? ""),
   };
 }
@@ -300,7 +313,7 @@ export async function loadParcelScans(): Promise<{ ok: boolean; rows: ParcelScan
   if (!me) return { ok: false, rows: [], error: "not signed in" };
   const { data, error } = await supabase
     .from("parcel_scans")
-    .select("id, customer_name, phone, store_id, amount, notes, status, store_check_status, created_at")
+    .select("id, customer_name, phone, store_id, amount, notes, status, store_check_status, store_full_status, phone_check_status, phone_restricted_until, created_at")
     .eq("user_id", me)
     .order("created_at", { ascending: false })
     .limit(SCANS_PAGE);
@@ -414,7 +427,7 @@ export function scanToXlsRow(row: ParcelScanRow, opts: ScanXlsOpts): string[] {
 // shipping export, PLUS store_check_status. Rows already 'exported' are skipped
 // (neither bucket). store_check_status 'unknown'/null → READY (soft-warned in
 // the UI, never excluded: E-Map may be down / the confirmed-gate off). Pure.
-export type ExportReason = "wrong_store" | "bad_name" | "bad_phone" | "bad_store" | "bad_amount";
+export type ExportReason = "wrong_store" | "store_full" | "restricted_number" | "bad_name" | "bad_phone" | "bad_store" | "bad_amount";
 export interface ScanExportSplit {
   ready: ParcelScanRow[];
   attention: { row: ParcelScanRow; reason: ExportReason }[];
@@ -426,6 +439,11 @@ export function splitScansForExport(rows: ParcelScanRow[], fee: number): ScanExp
     if (row.status === "exported") continue; // already done — don't re-include
     let reason: ExportReason | null = null;
     if (row.storeCheckStatus === "not_found") reason = "wrong_store";           // E-Map: wrong code
+    // Extension checks (sql/33) — EXPLICIT problem verdicts only exclude. null/
+    // 'unknown' (unchecked / can't verify) do NOT exclude (unchecked ≠ problem),
+    // matching store_check_status's own unknown/null → READY behaviour.
+    else if (row.storeFullStatus === "full") reason = "store_full";             // 交貨便: store full
+    else if (row.phoneCheckStatus === "restricted") reason = "restricted_number"; // buyer phone restricted
     else if (validateRecipientName(row.customerName) !== "") reason = "bad_name";
     else if (!validPhone(row.phone)) reason = "bad_phone";
     else if (!validStore(row.storeId)) reason = "bad_store";
@@ -474,6 +492,26 @@ export async function saveStoreCheck(rowId: string, status: StoreCheckStatus): P
   const { error } = await supabase
     .from("parcel_scans")
     .update({ store_check_status: status, store_check_at: new Date().toISOString() })
+    .eq("id", rowId)
+    .eq("user_id", me);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+// Per-row RECHECK — clears the extension-written verdicts (store_full_* and
+// phone_check_*) back to NULL so the Chrome extension re-checks the row on its
+// next pass. The app NEVER calls 賣貨便 itself — this is a pure reset. Own-scoped
+// (RLS + explicit user_id). No credit, no bulk, no auto. Mirrors saveStoreCheck.
+export async function resetExtensionChecks(rowId: string): Promise<{ ok: boolean; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
+  const me = await uid();
+  if (!me) return { ok: false, error: "not signed in" };
+  const { error } = await supabase
+    .from("parcel_scans")
+    .update({
+      store_full_status: null, store_full_at: null,
+      phone_check_status: null, phone_check_at: null,
+      phone_check_message: null, phone_restricted_until: null,
+    })
     .eq("id", rowId)
     .eq("user_id", me);
   return error ? { ok: false, error: error.message } : { ok: true };
@@ -531,20 +569,34 @@ export async function deleteParcelScan(id: string): Promise<{ ok: boolean; error
 // mis-scanned parcel must not cost a scan). Own-scoped like the delete
 // (.eq id + .eq user_id) + the parcel_scans own-scoped RLS update policy.
 // Status/created_at are left untouched (no un-export, no re-date).
-export async function updateParcelScan(id: string, fields: ScanFields): Promise<{ ok: boolean; error?: string }> {
+// `resetChecks` nulls the extension-written verdicts IN THE SAME atomic update
+// when their source field changed: editing the store code invalidates a stale
+// store_full verdict; editing the phone invalidates a stale phone-restricted
+// verdict → the extension re-checks. Omitted (existing callers) → byte-identical.
+export async function updateParcelScan(
+  id: string,
+  fields: ScanFields,
+  resetChecks?: { storeFull?: boolean; phoneCheck?: boolean },
+): Promise<{ ok: boolean; error?: string }> {
   if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
   if (!id) return { ok: false, error: "no id" };
   const me = await uid();
   if (!me) return { ok: false, error: "not signed in" };
+  const patch: Record<string, unknown> = {
+    customer_name: fields.name,
+    phone: fields.phone,
+    store_id: fields.store_id,
+    amount: fields.amount,
+    notes: fields.notes,
+  };
+  if (resetChecks?.storeFull) { patch.store_full_status = null; patch.store_full_at = null; }
+  if (resetChecks?.phoneCheck) {
+    patch.phone_check_status = null; patch.phone_check_at = null;
+    patch.phone_check_message = null; patch.phone_restricted_until = null;
+  }
   const { error } = await supabase
     .from("parcel_scans")
-    .update({
-      customer_name: fields.name,
-      phone: fields.phone,
-      store_id: fields.store_id,
-      amount: fields.amount,
-      notes: fields.notes,
-    })
+    .update(patch)
     .eq("id", id)
     .eq("user_id", me);
   return error ? { ok: false, error: error.message } : { ok: true };

@@ -91,7 +91,7 @@ describe("scaledDims (~1500px long edge, aspect kept)", () => {
 describe("rowToScan", () => {
   it("maps a DB row; null amount stays null", () => {
     const r = rowToScan({ id: "a", customer_name: "陳小美", phone: "0912345678", store_id: "123456", amount: "550", notes: null, status: "confirmed", store_check_status: "not_found", created_at: "2026-09-08T01:00:00Z" });
-    expect(r).toEqual({ id: "a", customerName: "陳小美", phone: "0912345678", storeId: "123456", amount: 550, notes: "", status: "confirmed", storeCheckStatus: "not_found", createdAt: "2026-09-08T01:00:00Z" });
+    expect(r).toEqual({ id: "a", customerName: "陳小美", phone: "0912345678", storeId: "123456", amount: 550, notes: "", status: "confirmed", storeCheckStatus: "not_found", storeFullStatus: null, phoneCheckStatus: null, phoneRestrictedUntil: null, createdAt: "2026-09-08T01:00:00Z" });
     expect(rowToScan({ id: "b", amount: null }).amount).toBe(null);
     expect(rowToScan({ id: "c" }).storeCheckStatus).toBe(null); // absent → null (older rows)
   });
