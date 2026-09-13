@@ -45,9 +45,10 @@ The two 7-11 checks live on **different origins**, so each runs in its own tab
 (same-origin = session cookies + the page's own tokens attach automatically):
 
 - **SellerFlowLive** — for the Supabase token + reading/writing parcel_scans.
-- **myship.7-11.com.tw** — the RESTRICTED-PHONE check (CheckoutValidation). Best
-  to be on a **cart / checkout page** (that's where the antiforgery token lives —
-  /Home may not have it; the extension also tries a read-only GET of the cart page).
+- **myship.7-11.com.tw** — the RESTRICTED-PHONE check (CheckoutValidation). Be on
+  the **確認訂單 cart page** (`/cart/easy/GM…`, CPF3102) — that's where the AJAX
+  token (`var tokenID`) lives; /Home does not have it. The extension also tries a
+  read-only GET of `/cart/easy/<Cgdm_Id>` if the current page lacks it.
 - **emap.pcsc.com.tw** — the FULL-STORE check (byIDData + eshopGuid live here, NOT
   on myship). Reach it from 賣貨便's store map so the session/eshopGuid are present.
 
@@ -55,6 +56,7 @@ The two 7-11 checks live on **different origins**, so each runs in its own tab
 
 1. Open a **SellerFlowLive** tab and log in (keep it open).
 2. Open a **myship.7-11.com.tw** tab and log in (keep it open).
+   - Best on the **確認訂單 cart page** (`/cart/easy/GM…`) so the AJAX token is present.
 3. Open an **emap.pcsc.com.tw** tab (from the 賣貨便 store map) — keep it open.
 4. Click the extension icon → **Parcel checker** section, fill in:
    - **Supabase URL** — prefilled (`https://sqeuyuktdpidmlfpqgoc.supabase.co`).
@@ -83,9 +85,11 @@ The two 7-11 checks live on **different origins**, so each runs in its own tab
   myship, so it had no emap cookies and no eshopGuid → always 'unknown'.)
 - **`myship-711.js`** (on `myship.7-11.com.tw`) — **Restricted phone:**
   `POST /CPF3101/CheckoutValidation/` (validation only) → `Status:true`→ok,
-  `false`→restricted (+ the 預計…年月日 date). The CSRF **`verificationtoken` is a
-  PAGE token, NOT the cookie** — found from the current page (input/meta/script) or
-  a read-only GET of a cart/checkout page. Needs Cgdm_Id + ordMobile from config.
+  `false`→restricted (+ the 預計…年月日 date). Header `VerificationToken` = the
+  inline-script JS var **`var tokenID = '…'`** on the 確認訂單 cart page (NOT the
+  cookie, NOT a hidden input/meta) — read from the current page, else a read-only
+  GET of `/cart/easy/<Cgdm_Id>`. Cgdm_Id from config (bonus: the page's
+  `#Cgdm_Id` hidden input) + ordMobile from config.
 
 ## FAIL-SAFE
 
@@ -103,14 +107,14 @@ store/phone 'unknown' is shown there (e.g. "eshopGuid not found on emap page",
 needed. Common fixes:
 - "no emap tab" / "eshopGuid not found" → open (and stay on) an emap.pcsc.com.tw
   page reached from the 賣貨便 store map.
-- "verificationtoken not found" → open a 賣貨便 cart/checkout page in the myship tab.
+- "tokenID not found" → open the 確認訂單 cart page (`/cart/easy/GM…`) in the myship tab.
 - "Cgdm_Id / seller phone not set" → fill them in the popup config.
 
 The page-derived values differ per 7-11 build. If the reason says a value wasn't
 found even on the right page, confirm the exact name once in that tab's DevTools:
 - `eshopGuid` (emap) — `typeof eshopGuid` / search the emap page source.
-- `verificationtoken` (myship) — `input[name="__RequestVerificationToken"]`, a
-  `<meta>` csrf tag, or a JS var on the cart page.
+- `VerificationToken` (myship) — the inline-script `var tokenID = '…'` on the
+  確認訂單 cart page (`/cart/easy/GM…`). NOT the cookie / hidden input / meta.
 - `Cgdm_Id` / `ordMobile` — popup config (per-seller).
 
 ## After the fix — re-check the old rows
