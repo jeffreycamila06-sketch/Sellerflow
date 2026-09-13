@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SellerFlow Live Comment",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Grab real TikTok LIVE viewer comments AND check parcel scans (7-11 full-store + restricted phone) for SellerFlowLive.",
   "permissions": ["storage", "activeTab", "scripting", "alarms"],
   "host_permissions": [
@@ -10,6 +10,7 @@
     "https://www.sellerflowlive.com/*",
     "https://sellerflowlive.com/*",
     "https://myship.7-11.com.tw/*",
+    "https://emap.pcsc.com.tw/*",
     "https://sqeuyuktdpidmlfpqgoc.supabase.co/*",
     "http://localhost:5173/*",
     "http://localhost:3001/*",
@@ -33,6 +34,11 @@
     {
       "matches": ["https://myship.7-11.com.tw/*"],
       "js": ["myship-711.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://emap.pcsc.com.tw/*"],
+      "js": ["emap-711.js"],
       "run_at": "document_idle"
     }
   ],

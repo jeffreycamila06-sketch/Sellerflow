@@ -197,26 +197,57 @@ async function pcPoll() {
   const rows = res.rows.filter((row) => row && row.id && !pcInFlight.has(row.id));
   if (!rows.length) { await pcStatus({ lastCheckAt: new Date().toISOString(), lastCount: 0 }); return; }
 
+  // TWO different origins: the FULL-STORE lookup runs in the emap.pcsc.com.tw tab
+  // (byIDData + eshopGuid live there), the RESTRICTED-PHONE check in the myship tab.
   const myshipTabId = await pcFindTab(["https://myship.7-11.com.tw/*"]);
-  if (!myshipTabId) { await pcStatus({ myship: "no_tab" }); return; }      // no 賣貨便 tab → can't check
+  const emapTabId = await pcFindTab(["https://emap.pcsc.com.tw/*"]);
 
-  let checked = 0; let sessionOk = false;
+  let checked = 0;
+  let lastStoreReason = ""; let lastPhoneReason = "";
   for (const row of rows) {
     if (pcInFlight.has(row.id)) continue;
     pcInFlight.add(row.id);
     try {
-      const resp = await pcSendTab(myshipTabId, { type: "PC_CHECK", row, config: { cgdmId: cfg.cgdmId, ordMobile: cfg.ordMobile } });
-      // No receiver / no verdict → FAIL-SAFE 'unknown' (never skip silently as 'ok').
-      const v = (resp && resp.verdict) || { store_full_status: "unknown", phone_check_status: "unknown", phone_check_message: null, phone_restricted_until: null, _sessionOk: false };
-      if (v._sessionOk) sessionOk = true;
-      await pcWriteVerdict(cfg, token, row.id, v);
+      // Store check → emap tab. No emap tab / no receiver → FAIL-SAFE 'unknown' + reason.
+      let store = { store_full_status: "unknown", store_reason: "no emap.pcsc.com.tw tab open" };
+      if (emapTabId) {
+        const sResp = await pcSendTab(emapTabId, { type: "PC_CHECK_STORE", row });
+        store = sResp && typeof sResp.store_full_status === "string"
+          ? { store_full_status: sResp.store_full_status, store_reason: sResp.store_reason || "" }
+          : { store_full_status: "unknown", store_reason: "emap tab not responding (reload emap page)" };
+      }
+      // Phone check → myship tab.
+      let phone = { phone_check_status: "unknown", phone_check_message: null, phone_restricted_until: null, phone_reason: "no myship.7-11.com.tw tab open" };
+      if (myshipTabId) {
+        const pResp = await pcSendTab(myshipTabId, { type: "PC_CHECK_PHONE", row, config: { cgdmId: cfg.cgdmId, ordMobile: cfg.ordMobile } });
+        phone = pResp && typeof pResp.phone_check_status === "string"
+          ? { phone_check_status: pResp.phone_check_status, phone_check_message: pResp.phone_check_message ?? null, phone_restricted_until: pResp.phone_restricted_until ?? null, phone_reason: pResp.phone_reason || "" }
+          : { phone_check_status: "unknown", phone_check_message: null, phone_restricted_until: null, phone_reason: "myship tab not responding (reload 賣貨便 page)" };
+      }
+      if (store.store_reason) lastStoreReason = store.store_reason;
+      if (phone.phone_reason) lastPhoneReason = phone.phone_reason;
+      await pcWriteVerdict(cfg, token, row.id, {
+        store_full_status: store.store_full_status,
+        phone_check_status: phone.phone_check_status,
+        phone_check_message: phone.phone_check_message,
+        phone_restricted_until: phone.phone_restricted_until,
+      });
       checked += 1;
     } catch { /* leave the row unchecked (null) — next poll retries */ } finally {
       pcInFlight.delete(row.id);
     }
     await pcSleep(PC_ROW_GAP_MS); // 2s between parcels, no bulk
   }
-  await pcStatus({ myship: checked > 0 && !sessionOk ? "expired" : "ok", lastCheckAt: new Date().toISOString(), lastCount: checked });
+  // Per-origin status + the exact last reason for each check (popup shows these,
+  // so Jeff never has to open DevTools).
+  await pcStatus({
+    emap: emapTabId ? (lastStoreReason ? "issue" : "ok") : "no_tab",
+    myship: myshipTabId ? (lastPhoneReason ? "issue" : "ok") : "no_tab",
+    lastStoreReason, lastPhoneReason,
+    lastStoreAt: lastStoreReason ? new Date().toISOString() : null,
+    lastPhoneAt: lastPhoneReason ? new Date().toISOString() : null,
+    lastCheckAt: new Date().toISOString(), lastCount: checked,
+  });
 }
 
 chrome.alarms.create(PC_ALARM, { periodInMinutes: PC_PERIOD_MIN });
