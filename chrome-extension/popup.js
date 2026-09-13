@@ -3,8 +3,10 @@ const PC_CONFIG_KEY = "pc_config";
 const PC_STATUS_KEY = "pc_status";
 const PC_DEFAULT_URL = "https://sqeuyuktdpidmlfpqgoc.supabase.co";
 const pcEls = {
-  sfl: document.getElementById("pcSfl"), myship: document.getElementById("pcMyship"),
+  sfl: document.getElementById("pcSfl"), myship: document.getElementById("pcMyship"), emap: document.getElementById("pcEmap"),
   last: document.getElementById("pcLast"), errK: document.getElementById("pcErrK"), err: document.getElementById("pcErr"),
+  storeErrRow: document.getElementById("pcStoreErrRow"), storeErr: document.getElementById("pcStoreErr"),
+  phoneErrRow: document.getElementById("pcPhoneErrRow"), phoneErr: document.getElementById("pcPhoneErr"),
   url: document.getElementById("pcUrl"), key: document.getElementById("pcKey"),
   cgdm: document.getElementById("pcCgdm"), ord: document.getElementById("pcOrd"),
   save: document.getElementById("pcSave"), pause: document.getElementById("pcPause"), checkNow: document.getElementById("pcCheckNow"),
@@ -18,21 +20,30 @@ function pcSetObj(value) {
 }
 const PC_STATUS_LABEL = {
   connected: ["ok", "Connected"], paused: ["off", "Paused"], no_config: ["bad", "Set URL + key"],
-  no_tab: ["bad", "Tab not open"], no_token: ["bad", "Log in"], ok: ["ok", "Session OK"], expired: ["warn", "Session expired"],
+  no_tab: ["bad", "Tab not open"], no_token: ["bad", "Log in"], ok: ["ok", "OK"], expired: ["warn", "Session expired"], issue: ["warn", "See note below"],
 };
 function pcBadge(el, status) {
   const [cls, label] = PC_STATUS_LABEL[status] || ["off", status || "—"];
   el.innerHTML = `<span class="dot ${cls}"></span>${label}`;
 }
+function pcReasonRow(rowEl, valEl, reason, at) {
+  const show = Boolean(reason);
+  rowEl.style.display = show ? "" : "none";
+  valEl.textContent = show ? `${reason}${at ? ` (${new Date(at).toLocaleTimeString()})` : ""}` : "";
+}
 async function pcRenderStatus() {
   const st = (await pcOne(PC_STATUS_KEY, {})) || {};
   pcBadge(pcEls.sfl, st.sfl);
   pcBadge(pcEls.myship, st.myship);
+  pcBadge(pcEls.emap, st.emap);
   pcEls.last.textContent = st.lastCheckAt ? `${new Date(st.lastCheckAt).toLocaleTimeString()} · ${st.lastCount ?? 0} parcels` : "—";
   const showErr = Boolean(st.lastError);
   pcEls.errK.style.display = showErr ? "" : "none";
   pcEls.err.style.display = showErr ? "" : "none";
   pcEls.err.textContent = st.lastError || "";
+  // Exact per-check reason for the last 'unknown' — so Jeff never opens DevTools.
+  pcReasonRow(pcEls.storeErrRow, pcEls.storeErr, st.lastStoreReason, st.lastStoreAt);
+  pcReasonRow(pcEls.phoneErrRow, pcEls.phoneErr, st.lastPhoneReason, st.lastPhoneAt);
 }
 async function pcRenderConfig() {
   const c = (await pcOne(PC_CONFIG_KEY, {})) || {};

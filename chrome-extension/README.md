@@ -39,11 +39,24 @@ A second, independent feature in the same extension. It checks each new
 the two things the server can't do — and writes the verdict back to SellerFlowLive
 so the app shows the ⚠️ Full / 🚫 Restricted badges. **It never submits an order.**
 
+## Required open tabs (THREE — keep all logged in)
+
+The two 7-11 checks live on **different origins**, so each runs in its own tab
+(same-origin = session cookies + the page's own tokens attach automatically):
+
+- **SellerFlowLive** — for the Supabase token + reading/writing parcel_scans.
+- **myship.7-11.com.tw** — the RESTRICTED-PHONE check (CheckoutValidation). Best
+  to be on a **cart / checkout page** (that's where the antiforgery token lives —
+  /Home may not have it; the extension also tries a read-only GET of the cart page).
+- **emap.pcsc.com.tw** — the FULL-STORE check (byIDData + eshopGuid live here, NOT
+  on myship). Reach it from 賣貨便's store map so the session/eshopGuid are present.
+
 ## One-time setup (popup)
 
 1. Open a **SellerFlowLive** tab and log in (keep it open).
 2. Open a **myship.7-11.com.tw** tab and log in (keep it open).
-3. Click the extension icon → **Parcel checker** section, fill in:
+3. Open an **emap.pcsc.com.tw** tab (from the 賣貨便 store map) — keep it open.
+4. Click the extension icon → **Parcel checker** section, fill in:
    - **Supabase URL** — prefilled (`https://sqeuyuktdpidmlfpqgoc.supabase.co`).
    - **Supabase anon key** — the *public* key the web app already uses. Get it
      from the SellerFlowLive tab: DevTools → Network → any `…supabase.co/rest/…`
@@ -57,18 +70,22 @@ so the app shows the ⚠️ Full / 🚫 Restricted badges. **It never submits an
 
 - **`background.js`** (appended section) — a `chrome.alarms` poll (45s): reads your
   access token from the SFL tab (via the bridge), `GET`s up to 5 unchecked rows
-  from `parcel_scans` (own-scoped RLS), sends each to the 賣貨便 tab (2s apart,
-  single-flight), and `PATCH`es the verdict back. Never persists its own session.
-- **`sellerflow-bridge.js`** — now also answers `SFL_GET_TOKEN` by reading
+  from `parcel_scans` (own-scoped RLS), then per row sends the **store check to the
+  emap tab** and the **phone check to the myship tab** (2s apart, single-flight) and
+  `PATCH`es the combined verdict back. Never persists its own session. Records the
+  exact reason for each 'unknown' so the popup can show it.
+- **`sellerflow-bridge.js`** — answers `SFL_GET_TOKEN` by reading
   `localStorage["sf_supabase_auth"]` (the token the web app already keeps fresh).
-- **`myship-711.js`** (new, on `myship.7-11.com.tw`) — runs the two checks
-  same-origin (cookies attach automatically):
-  - **Full store:** `POST /ecmap/byIDData.aspx` → field 3 `enable`→open / `disable`→full.
-    Needs `eshopGuid` (server-injected on default.aspx) — read by regex of the page
-    HTML first, then a MAIN-world script fallback.
-  - **Restricted phone:** `POST /CPF3101/CheckoutValidation/` (validation only) →
-    `Status:true`→ok, `false`→restricted (+ the 預計…年月日 date). Needs the CSRF
-    `verificationtoken` (hidden input / meta / page var) + Cgdm_Id + ordMobile.
+- **`emap-711.js`** (on `emap.pcsc.com.tw`) — **Full store:**
+  `POST /ecmap/byIDData.aspx` → field 3 `enable`→open / `disable`→full. `eshopGuid`
+  read by regex of the emap page HTML first, then a MAIN-world script fallback.
+  (This is why an emap tab is required — the old build ran this cross-origin from
+  myship, so it had no emap cookies and no eshopGuid → always 'unknown'.)
+- **`myship-711.js`** (on `myship.7-11.com.tw`) — **Restricted phone:**
+  `POST /CPF3101/CheckoutValidation/` (validation only) → `Status:true`→ok,
+  `false`→restricted (+ the 預計…年月日 date). The CSRF **`verificationtoken` is a
+  PAGE token, NOT the cookie** — found from the current page (input/meta/script) or
+  a read-only GET of a cart/checkout page. Needs Cgdm_Id + ordMobile from config.
 
 ## FAIL-SAFE
 
@@ -77,11 +94,27 @@ network error, 10s timeout, or a page value it can't find — it writes **`unkno
 never `ok`/`open`. An unconfirmed parcel is never made to look clean. `unknown` is
 a real "tried, couldn't"; only `NULL` means "not yet tried".
 
-## ⚠️ If a check always returns `unknown`
+## ⚠️ If a check still returns `unknown`
 
-The three page-derived values differ per 賣貨便 build. Verify in the myship tab's
-DevTools console what these actually are, then the extraction may need tuning:
-- `eshopGuid` — `typeof eshopGuid` / search the page source for `eshopGuid`.
-- `verificationtoken` — look for `input[name="__RequestVerificationToken"]`, a
-  `<meta>` csrf tag, or a JS var.
-- `Cgdm_Id` / `ordMobile` — set from the popup config (per-seller).
+**Read the popup's "Last error" lines first** — the exact reason for the last
+store/phone 'unknown' is shown there (e.g. "eshopGuid not found on emap page",
+"no emap.pcsc.com.tw tab open", "verificationtoken not found (open a cart page)",
+"byIDData unexpected response", "CheckoutValidation returned HTML"). No DevTools
+needed. Common fixes:
+- "no emap tab" / "eshopGuid not found" → open (and stay on) an emap.pcsc.com.tw
+  page reached from the 賣貨便 store map.
+- "verificationtoken not found" → open a 賣貨便 cart/checkout page in the myship tab.
+- "Cgdm_Id / seller phone not set" → fill them in the popup config.
+
+The page-derived values differ per 7-11 build. If the reason says a value wasn't
+found even on the right page, confirm the exact name once in that tab's DevTools:
+- `eshopGuid` (emap) — `typeof eshopGuid` / search the emap page source.
+- `verificationtoken` (myship) — `input[name="__RequestVerificationToken"]`, a
+  `<meta>` csrf tag, or a JS var on the cart page.
+- `Cgdm_Id` / `ordMobile` — popup config (per-seller).
+
+## After the fix — re-check the old rows
+
+Rows checked by the buggy build are stuck at 'unknown'. Run
+`sql/34_reset_parcel_checks.sql` ONCE (Supabase SQL editor) to reset Jeff's
+'unknown' rows back to NULL so the fixed extension re-checks them.

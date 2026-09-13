@@ -33,6 +33,10 @@
       .pc-cfg { display: grid; gap: 6px; margin-top: 8px; }
       .pc-cfg label { font-size: 10.5px; color: #6b6788; font-weight: 700; }
       .pc-cfg input { width: 100%; box-sizing: border-box; border: 1px solid #d9d4f5; border-radius: 7px; padding: 6px 8px; font-size: 12px; }
+      .pc-lasterr { margin-top: 6px; }
+      .le-row { display: flex; gap: 8px; padding: 4px 0; border-top: 1px dashed #ece9ff; font-size: 10.5px; }
+      .le-k { color: #a06a00; font-weight: 800; flex-shrink: 0; }
+      .le-v { color: #8a5a00; word-break: break-word; }
       .pc-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
       .hint { font-size: 10px; color: #8b87a8; margin-top: 6px; line-height: 1.5; }
     </style>
@@ -43,9 +47,14 @@
     <h4>Parcel checker (賣貨便)</h4>
     <div class="pc-card">
       <div class="pc-row"><span class="k">SellerFlowLive</span><span class="v" id="pcSfl"><span class="dot off"></span>—</span></div>
-      <div class="pc-row"><span class="k">賣貨便</span><span class="v" id="pcMyship"><span class="dot off"></span>—</span></div>
+      <div class="pc-row"><span class="k">賣貨便 (myship)</span><span class="v" id="pcMyship"><span class="dot off"></span>—</span></div>
+      <div class="pc-row"><span class="k">E-Map (emap)</span><span class="v" id="pcEmap"><span class="dot off"></span>—</span></div>
       <div class="pc-row"><span class="k">Last check</span><span class="v" id="pcLast">—</span></div>
       <div class="pc-row"><span class="k" id="pcErrK" style="display:none">Note</span><span class="v" id="pcErr" style="color:#e5484d;display:none"></span></div>
+      <div class="pc-lasterr">
+        <div class="le-row" id="pcStoreErrRow" style="display:none"><span class="le-k">Store check</span><span class="le-v" id="pcStoreErr"></span></div>
+        <div class="le-row" id="pcPhoneErrRow" style="display:none"><span class="le-k">Phone check</span><span class="le-v" id="pcPhoneErr"></span></div>
+      </div>
 
       <div class="pc-cfg">
         <div><label>Supabase URL</label><input id="pcUrl" placeholder="https://….supabase.co" /></div>
