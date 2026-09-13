@@ -10,7 +10,7 @@ import { createPortal } from "react-dom";
 import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT, tpl } from "../i18n";
 import {
-  fileToScanBase64, scanParcel, saveParcelScan, loadParcelScans, formErrors, amountWarns, MIN_PARCEL_AMOUNT, MAX_PENDING_PARCELS,
+  fileToScanBase64, scanParcel, saveParcelScan, loadParcelScans, formErrors, amountWarns, amountTooHigh, MIN_PARCEL_AMOUNT, MAX_PARCEL_TOTAL, MAX_PENDING_PARCELS,
   checkEmapStore, saveStoreCheck, scanToXlsRow, splitScansForExport, markScansExported, unmarkScansExported,
   deleteParcelScan, deleteExportedParcels, updateParcelScan, getCreditBalance,
   type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState, type StoreCheckStatus, type ExportReason,
@@ -524,7 +524,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     if (storeChanged && /^\d{6}$/.test(newStore) && !id.startsWith("local-")) runStoreCheck(id, newStore);
   };
 
-  const errs = formErrors(form);
+  const errs = formErrors(form, fee); // fee-aware: max amount = MAX_PARCEL_TOTAL − fee (no export hole)
   // A NEW-row Save (scan/manual) is blocked at the batch cap; an EDIT of an
   // existing row is NEVER blocked by the cap (fix wrong codes/prices when full).
   const saveBlocked = saving || errs.empty || errs.name || errs.phone || errs.store || errs.amount || (batchFull && !editing);
@@ -719,7 +719,9 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                 <label style={lbl}>{t.rd_ps2_amount} ({cur}){low("amount") && <span style={{ color: "var(--warn, #b45309)" }}> · {t.rd_ps2_low_conf}</span>}</label>
                 <input value={form.amount} onChange={(e) => F({ amount: e.target.value.replace(/[^\d.]/g, "") })} inputMode="numeric" style={{ ...input, fontFamily: mono, ...(low("amount") ? { border: lowConfBorder } : {}) }} data-testid="ps-amount" />
                 {errs.amount
-                  ? <div style={errTxt} data-testid="ps-amount-err">{tpl(t.rd_ps2_err_amount, { amt: `${cur}${MIN_PARCEL_AMOUNT}` })}</div>
+                  ? (amountTooHigh(form.amount, fee)
+                    ? <div style={errTxt} data-testid="ps-amount-err">{tpl(t.rd_ps2_err_amount_max, { max: `${cur}${MAX_PARCEL_TOTAL - fee}` })}</div>
+                    : <div style={errTxt} data-testid="ps-amount-err">{tpl(t.rd_ps2_err_amount, { amt: `${cur}${MIN_PARCEL_AMOUNT}` })}</div>)
                   : amountWarns(form.amount) && <div style={warnTxt} data-testid="ps-amount-warn">{t.rd_ps2_amount_warn}</div>}
               </div>
               {/* Notes field hidden (Jeff — shorter form). The DB column + any

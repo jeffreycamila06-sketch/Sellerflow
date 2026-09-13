@@ -13,7 +13,7 @@ vi.mock("../../../supabase", () => ({
 }));
 vi.mock("../serverIdentity", () => ({ SERVER: "https://srv.test" }));
 
-import { canUseParcelScan, canUseParcelManual, PARCEL_MANUAL_TIERS, scaledDims, rowToScan, scanParcel, SCAN_MAX_EDGE, formErrors, amountWarns, validAmount, MIN_PARCEL_AMOUNT, checkEmapStore } from "../parcelScan";
+import { canUseParcelScan, canUseParcelManual, PARCEL_MANUAL_TIERS, scaledDims, rowToScan, scanParcel, SCAN_MAX_EDGE, formErrors, amountWarns, validAmount, amountTooHigh, MIN_PARCEL_AMOUNT, MAX_PARCEL_TOTAL, checkEmapStore } from "../parcelScan";
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => { (globalThis.fetch as unknown) = undefined; });
@@ -134,6 +134,35 @@ describe("confirm-form validation (existing 賣貨便 validators; empty allowed)
     expect(validAmount("20")).toBe(true);
     expect(validAmount("19.99")).toBe(false);
     expect(validAmount("")).toBe(false);
+  });
+  it("amount has a MAXIMUM = the 賠償上限 total ceiling minus fee (no export hole)", () => {
+    expect(MAX_PARCEL_TOTAL).toBe(20000); // 賣貨便 compensation ceiling (aliases SHIP_MAX_TOTAL)
+    const fee = 38; // the standard global fee
+    const maxAmt = MAX_PARCEL_TOTAL - fee; // 19962 — the highest amount a seller can type
+    // in range → passes
+    expect(validAmount(String(maxAmt - 1), fee)).toBe(true);   // 19961 → OK
+    expect(formErrors({ ...base, name: "A", amount: "550" }, fee).amount).toBe(false);
+    // exactly at the ceiling → passes (amount + fee === 20000)
+    expect(validAmount(String(maxAmt), fee)).toBe(true);       // 19962 + 38 = 20000 → OK
+    expect(formErrors({ ...base, name: "A", amount: String(maxAmt) }, fee).amount).toBe(false);
+    // over the ceiling → BLOCKED
+    expect(validAmount(String(maxAmt + 1), fee)).toBe(false);  // 19963 + 38 = 20001 → block
+    expect(formErrors({ ...base, name: "A", amount: String(maxAmt + 1) }, fee).amount).toBe(true);
+    expect(formErrors({ ...base, name: "A", amount: "20000" }, fee).amount).toBe(true); // 20000 + 38 > ceiling → block
+    // the min still works with the max in place
+    expect(validAmount("20", fee)).toBe(true);
+    expect(validAmount("19", fee)).toBe(false);
+    // amountTooHigh flags ONLY the over-ceiling case (for the distinct message)
+    expect(amountTooHigh(String(maxAmt), fee)).toBe(false);    // exactly at ceiling → not "too high"
+    expect(amountTooHigh(String(maxAmt + 1), fee)).toBe(true); // over → too high
+    expect(amountTooHigh("19", fee)).toBe(false);              // below min is NOT "too high"
+    expect(amountTooHigh("", fee)).toBe(false);                // blank is NOT "too high"
+    // a bigger fee lowers the max amount (ceiling is on the TOTAL)
+    expect(validAmount("19970", 100)).toBe(false);             // 19970 + 100 = 20070 > 20000 → block
+    expect(validAmount("19900", 100)).toBe(true);              // 19900 + 100 = 20000 → OK
+    // default fee (SHIP_DEFAULT_FEE) when omitted — standalone callers still gate
+    expect(validAmount("19970")).toBe(false);                  // 19970 + 38 = 20008 → block
+    expect(validAmount("19962")).toBe(true);                   // 19962 + 38 = 20000 → OK
   });
 });
 

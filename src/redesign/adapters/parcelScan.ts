@@ -14,7 +14,7 @@ import { isSupabaseConfigured, supabase } from "../../supabase";
 import { getAppSetting, setAppSetting } from "./appSettings";
 import { isAdminRole } from "../../lib/roles";
 import { isActivePaid, planDaysLeft } from "../../lib/planWindow";
-import { SHIP_TEMP_AMBIENT, validateRecipientName, validPhone, validStore, validateAmounts, SHIP_MIN_TOTAL, SHIP_MAX_TOTAL } from "./shipping";
+import { SHIP_TEMP_AMBIENT, validateRecipientName, validPhone, validStore, validateAmounts, SHIP_MIN_TOTAL, SHIP_MAX_TOTAL, SHIP_DEFAULT_FEE } from "./shipping";
 
 // ── Feature gate (canUseClassicText pattern: printing.ts) ─────────────────────
 // ADMIN ROLE ONLY — deliberately NO googletest allowlist (diverges from
@@ -190,6 +190,15 @@ export async function fileToScanBase64(file: File): Promise<{ base64: string; me
 // re-validation).
 export const MIN_PARCEL_AMOUNT = 20;
 
+// Maximum saveable value = the 賣貨便 賠償上限 (compensation ceiling), NT$20,000.
+// If a parcel is lost, that's the MOST 7-11 will pay out — declaring more is a
+// pure loss for the seller. The carrier caps the TOTAL (訂單金額 + 運費), so the
+// export gate (validateAmounts) checks amount + fee ≤ SHIP_MAX_TOTAL. To leave
+// NO hole vs export, the Save gate uses the SAME total ceiling → the max amount
+// a seller can type is MAX_PARCEL_TOTAL − fee (e.g. 20000 − 38 = 19962). ONE
+// source of truth: this aliases SHIP_MAX_TOTAL (no new magic number).
+export const MAX_PARCEL_TOTAL = SHIP_MAX_TOTAL;
+
 // Max PENDING (not-yet-exported) parcels per batch (Jeff's call 2026-09-11; may
 // change — the ONE place the number lives). At the cap, NEW entries are blocked
 // (camera/shutter/manual/picker/Save-of-a-new-row disabled) until an export
@@ -199,21 +208,35 @@ export const MAX_PENDING_PARCELS = 30;
 
 export interface ScanFormState { name: string; phone: string; store: string; amount: string; notes: string }
 
-// Amount is valid when it's a finite number >= MIN_PARCEL_AMOUNT. Blank / 0 /
-// below-minimum / non-numeric → invalid (mirrors validStore/validPhone shape).
-export const validAmount = (amount: string): boolean => {
+// Amount is valid when it's a finite number in [MIN_PARCEL_AMOUNT, max], where
+// max = MAX_PARCEL_TOTAL − fee (the total ceiling minus shipping, so it lines up
+// exactly with the export gate — no hole). Blank / 0 / below-min / over-max /
+// non-numeric → invalid (mirrors validStore/validPhone shape). fee defaults to
+// SHIP_DEFAULT_FEE for standalone callers; the screen passes the live global fee.
+export const validAmount = (amount: string, fee: number = SHIP_DEFAULT_FEE): boolean => {
   const t = amount.trim();
   if (t === "") return false;
   const n = Number(t);
-  return Number.isFinite(n) && n >= MIN_PARCEL_AMOUNT;
+  return Number.isFinite(n) && n >= MIN_PARCEL_AMOUNT && n + fee <= MAX_PARCEL_TOTAL;
 };
 
-export function formErrors(f: ScanFormState): { name: boolean; phone: boolean; store: boolean; amount: boolean; empty: boolean } {
+// True only when the amount is a finite number ABOVE the ceiling (amount + fee >
+// MAX_PARCEL_TOTAL) — lets the UI show the distinct "over the compensation
+// ceiling" message vs the "below minimum" one. A blank/low/non-numeric amount
+// is NOT "too high".
+export const amountTooHigh = (amount: string, fee: number = SHIP_DEFAULT_FEE): boolean => {
+  const t = amount.trim();
+  if (t === "") return false;
+  const n = Number(t);
+  return Number.isFinite(n) && n + fee > MAX_PARCEL_TOTAL;
+};
+
+export function formErrors(f: ScanFormState, fee: number = SHIP_DEFAULT_FEE): { name: boolean; phone: boolean; store: boolean; amount: boolean; empty: boolean } {
   const name = f.name.trim();
   const nameBad = name !== "" && validateRecipientName(name) !== "";
   const phoneBad = f.phone.trim() !== "" && !validPhone(f.phone);
   const storeBad = f.store.trim() !== "" && !validStore(f.store);
-  const amountBad = !validAmount(f.amount); // required now: blank/0/<min all block Save
+  const amountBad = !validAmount(f.amount, fee); // required now: blank/0/<min/>max all block Save
   const empty = name === "" && f.phone.trim() === "" && f.store.trim() === "" && f.amount.trim() === "" && f.notes.trim() === "";
   return { name: nameBad, phone: phoneBad, store: storeBad, amount: amountBad, empty };
 }
