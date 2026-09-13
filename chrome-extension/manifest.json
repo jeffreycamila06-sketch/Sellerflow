@@ -1,14 +1,16 @@
 {
   "manifest_version": 3,
   "name": "SellerFlow Live Comment",
-  "version": "1.0.0",
-  "description": "Grab only real TikTok LIVE viewer comments and send them to SellerFlowLive.",
-  "permissions": ["storage", "activeTab", "scripting"],
+  "version": "1.1.0",
+  "description": "Grab real TikTok LIVE viewer comments AND check parcel scans (7-11 full-store + restricted phone) for SellerFlowLive.",
+  "permissions": ["storage", "activeTab", "scripting", "alarms"],
   "host_permissions": [
     "https://www.tiktok.com/*",
     "https://*.tiktok.com/*",
     "https://www.sellerflowlive.com/*",
     "https://sellerflowlive.com/*",
+    "https://myship.7-11.com.tw/*",
+    "https://sqeuyuktdpidmlfpqgoc.supabase.co/*",
     "http://localhost:5173/*",
     "http://localhost:3001/*",
     "http://127.0.0.1:3001/*"
@@ -26,6 +28,11 @@
     {
       "matches": ["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*", "http://localhost:5173/*"],
       "js": ["sellerflow-bridge.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://myship.7-11.com.tw/*"],
+      "js": ["myship-711.js"],
       "run_at": "document_idle"
     }
   ],
