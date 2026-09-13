@@ -1183,6 +1183,13 @@ const RAW: Record<string, Row> = {
   rd_ps2_store_unknown: { en: "Can't verify store", fil: "Hindi ma-verify ang store", zh: "无法验证门市", "zh-TW": "無法驗證門市", vi: "Không xác minh được cửa hàng", th: "ตรวจสอบร้านไม่ได้", id: "Tak bisa verifikasi toko" },
   rd_ps2_store_checking: { en: "Checking store…", fil: "Chine-check ang store…", zh: "正在验证门市…", "zh-TW": "正在驗證門市…", vi: "Đang kiểm tra cửa hàng…", th: "กำลังตรวจสอบร้าน…", id: "Memeriksa toko…" },
   rd_ps2_recheck: { en: "Re-check", fil: "I-check ulit", zh: "重新验证", "zh-TW": "重新驗證", vi: "Kiểm tra lại", th: "ตรวจใหม่", id: "Periksa lagi" },
+  rd_ps2_full: { en: "Full", fil: "Puno", zh: "已满", "zh-TW": "已滿", vi: "Đầy", th: "เต็ม", id: "Penuh" },
+  rd_ps2_restricted: { en: "Restricted", fil: "Restricted", zh: "受限", "zh-TW": "受限", vi: "Bị hạn chế", th: "ถูกจำกัด", id: "Dibatasi" },
+  rd_ps2_restricted_until: { en: "until {date}", fil: "hanggang {date}", zh: "至 {date}", "zh-TW": "至 {date}", vi: "đến {date}", th: "ถึง {date}", id: "sampai {date}" },
+  rd_ps2_ext_ok: { en: "OK", fil: "OK", zh: "正常", "zh-TW": "正常", vi: "OK", th: "ปกติ", id: "OK" },
+  rd_ps2_ext_recheck_aria: { en: "Recheck parcel", fil: "I-check ulit ang parcel", zh: "重新检查包裹", "zh-TW": "重新檢查包裹", vi: "Kiểm tra lại kiện hàng", th: "ตรวจสอบพัสดุอีกครั้ง", id: "Periksa ulang paket" },
+  rd_ps2_recheck_q: { en: "Recheck this parcel? It will be checked against 7-11 again.", fil: "I-check ulit ang parcel na ito? Muli itong ita-check sa 7-11.", zh: "重新检查此包裹？将再次向 7-11 查询。", "zh-TW": "重新檢查此包裹？將再次向 7-11 查詢。", vi: "Kiểm tra lại kiện này? Sẽ được kiểm tra lại với 7-11.", th: "ตรวจสอบพัสดุนี้อีกครั้ง? จะถูกตรวจกับ 7-11 อีกครั้ง", id: "Periksa ulang paket ini? Akan diperiksa lagi ke 7-11." },
+  rd_ps2_recheck_go: { en: "Recheck", fil: "I-check ulit", zh: "重新检查", "zh-TW": "重新檢查", vi: "Kiểm tra lại", th: "ตรวจใหม่", id: "Periksa ulang" },
   rd_ps2_attention: { en: "{n} parcel(s) need attention (wrong store code)", fil: "{n} parcel ang kailangang tingnan (maling store code)", zh: "{n} 个包裹需要注意（门市代码错误）", "zh-TW": "{n} 個包裹需要注意（門市代碼錯誤）", vi: "{n} kiện cần chú ý (sai mã cửa hàng)", th: "{n} พัสดุต้องตรวจสอบ (รหัสร้านผิด)", id: "{n} paket perlu diperiksa (kode toko salah)" },
   // Parcel Scan → 賣貨便 訂單匯入 Excel export (⚠️ zh-TW/th/id AI drafts)
   rd_ps2_x_title: { en: "Export to 賣貨便 (Excel)", fil: "I-export sa 賣貨便 (Excel)", zh: "导出到卖货便（Excel）", "zh-TW": "匯出到賣貨便（Excel）", vi: "Xuất ra 賣貨便 (Excel)", th: "ส่งออกไป 賣貨便 (Excel)", id: "Ekspor ke 賣貨便 (Excel)" },
@@ -1199,6 +1206,8 @@ const RAW: Record<string, Row> = {
   rd_ps2_x_failed: { en: "Export failed.", fil: "Nabigo ang pag-export.", zh: "导出失败。", "zh-TW": "匯出失敗。", vi: "Xuất thất bại.", th: "ส่งออกไม่สำเร็จ", id: "Ekspor gagal." },
   rd_ps2_x_tag: { en: "exported", fil: "exported", zh: "已导出", "zh-TW": "已匯出", vi: "đã xuất", th: "ส่งออกแล้ว", id: "diekspor" },
   rd_ps2_x_wrong_store: { en: "wrong store code", fil: "maling store code", zh: "门市代码错误", "zh-TW": "門市代碼錯誤", vi: "sai mã cửa hàng", th: "รหัสร้านผิด", id: "kode toko salah" },
+  rd_ps2_x_store_full: { en: "store full", fil: "puno ang store", zh: "门市已满", "zh-TW": "門市已滿", vi: "cửa hàng đầy", th: "ร้านเต็ม", id: "toko penuh" },
+  rd_ps2_x_restricted: { en: "phone restricted", fil: "restricted ang phone", zh: "手机受限", "zh-TW": "手機受限", vi: "SĐT bị hạn chế", th: "เบอร์ถูกจำกัด", id: "telepon dibatasi" },
   rd_ps2_x_bad_name: { en: "name won't fit the waybill", fil: "hindi kasya ang pangalan sa waybill", zh: "姓名不符合托运单", "zh-TW": "姓名不符合託運單", vi: "tên không hợp vận đơn", th: "ชื่อไม่พอดีใบส่ง", id: "nama tak muat di resi" },
   rd_ps2_x_bad_phone: { en: "invalid phone", fil: "invalid na telepono", zh: "电话无效", "zh-TW": "電話無效", vi: "số điện thoại không hợp lệ", th: "เบอร์ไม่ถูกต้อง", id: "telepon tidak valid" },
   rd_ps2_x_bad_store: { en: "store code not 6 digits", fil: "store code hindi 6 digits", zh: "门市代码非 6 位", "zh-TW": "門市代碼非 6 位", vi: "mã cửa hàng không đủ 6 số", th: "รหัสร้านไม่ครบ 6 หลัก", id: "kode toko bukan 6 digit" },
@@ -1207,6 +1216,8 @@ const RAW: Record<string, Row> = {
   // Saved-parcels tabs (Change 2). th/id = AI draft; zh-TW native-checked.
   rd_ps2_tab_all: { en: "All", fil: "Lahat", zh: "全部", "zh-TW": "全部", vi: "Tất cả", th: "ทั้งหมด", id: "Semua" },
   rd_ps2_tab_wrong: { en: "Wrong code", fil: "Maling code", zh: "错误代码", "zh-TW": "錯誤代碼", vi: "Sai mã", th: "รหัสผิด", id: "Kode salah" },
+  rd_ps2_tab_full: { en: "Full", fil: "Puno", zh: "已满", "zh-TW": "已滿", vi: "Đầy", th: "เต็ม", id: "Penuh" },
+  rd_ps2_tab_restricted: { en: "Restricted", fil: "Restricted", zh: "受限", "zh-TW": "受限", vi: "Bị hạn chế", th: "ถูกจำกัด", id: "Dibatasi" },
   rd_ps2_wrong_empty: { en: "No wrong store codes — all good!", fil: "Walang maling store code — okay lahat!", zh: "没有错误的门市代码——一切正常！", "zh-TW": "沒有錯誤的門市代碼——一切正常！", vi: "Không có mã cửa hàng sai — tất cả ổn!", th: "ไม่มีรหัสร้านที่ผิด — เรียบร้อยดี!", id: "Tak ada kode toko salah — semua aman!" },
 
   // Delete (Change 3), both confirmed. th/id = AI draft; zh-TW native-checked.

@@ -72,6 +72,22 @@ describe("splitScansForExport — READY vs NEEDS-ATTENTION gate", () => {
     expect(splitScansForExport([row({ storeCheckStatus: "unknown" })], 38).ready).toHaveLength(1);
     expect(splitScansForExport([row({ storeCheckStatus: null })], 38).ready).toHaveLength(1);
   });
+  it("store_full_status 'full' → EXCLUDED as store_full; 'open'/'unknown'/null → INCLUDED", () => {
+    const s = splitScansForExport([row({ storeFullStatus: "full" })], 38);
+    expect(s.ready).toHaveLength(0);
+    expect(s.attention[0].reason).toBe("store_full");
+    expect(splitScansForExport([row({ storeFullStatus: "open" })], 38).ready).toHaveLength(1);
+    expect(splitScansForExport([row({ storeFullStatus: "unknown" })], 38).ready).toHaveLength(1); // unchecked ≠ problem
+    expect(splitScansForExport([row({ storeFullStatus: null })], 38).ready).toHaveLength(1);
+  });
+  it("phone_check_status 'restricted' → EXCLUDED as restricted_number; 'ok'/'unknown'/null → INCLUDED", () => {
+    const s = splitScansForExport([row({ phoneCheckStatus: "restricted" })], 38);
+    expect(s.ready).toHaveLength(0);
+    expect(s.attention[0].reason).toBe("restricted_number");
+    expect(splitScansForExport([row({ phoneCheckStatus: "ok" })], 38).ready).toHaveLength(1);
+    expect(splitScansForExport([row({ phoneCheckStatus: "unknown" })], 38).ready).toHaveLength(1); // unchecked ≠ problem
+    expect(splitScansForExport([row({ phoneCheckStatus: null })], 38).ready).toHaveLength(1);
+  });
   it("null amount → EXCLUDED as bad_amount", () => {
     const s = splitScansForExport([row({ amount: null })], 38);
     expect(s.ready).toHaveLength(0);

@@ -12,7 +12,7 @@ import { useT, tpl } from "../i18n";
 import {
   fileToScanBase64, scanParcel, saveParcelScan, loadParcelScans, formErrors, amountWarns, amountTooHigh, MIN_PARCEL_AMOUNT, MAX_PARCEL_TOTAL, MAX_PENDING_PARCELS,
   checkEmapStore, saveStoreCheck, scanToXlsRow, splitScansForExport, markScansExported, unmarkScansExported,
-  deleteParcelScan, deleteExportedParcels, updateParcelScan, getCreditBalance,
+  deleteParcelScan, deleteExportedParcels, updateParcelScan, resetExtensionChecks, getCreditBalance,
   type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState, type StoreCheckStatus, type ExportReason,
 } from "../adapters/parcelScan";
 import { fetchShipTemplate, buildXlsmFromTemplate, deliverXlsm, exportFilename } from "../adapters/shippingExport";
@@ -43,6 +43,29 @@ function storeBadge(status: string | null): { icon: string; color: string; key: 
   return null; // valid | null → quiet
 }
 
+// Extension-written verdicts (sql/33) → row badges. ⚠️ FAIL-SAFE: ONLY explicit
+// 'full' / 'restricted' show a badge; null / 'unknown' are quiet (an unchecked /
+// can't-verify parcel must look unchecked, never clean). 'open'/'ok' → a subtle
+// ✅ only when BOTH checks explicitly cleared.
+type ExtBadge = { icon: string; color: string; key: "rd_ps2_full" | "rd_ps2_restricted"; until: string | null };
+function extBadges(r: { storeFullStatus: string | null; phoneCheckStatus: string | null; phoneRestrictedUntil: string | null }): ExtBadge[] {
+  const out: ExtBadge[] = [];
+  if (r.storeFullStatus === "full") out.push({ icon: "⚠️", color: "var(--warn, #b45309)", key: "rd_ps2_full", until: null });
+  if (r.phoneCheckStatus === "restricted") out.push({ icon: "🚫", color: "var(--danger)", key: "rd_ps2_restricted", until: r.phoneRestrictedUntil });
+  return out;
+}
+const extAllClear = (r: { storeFullStatus: string | null; phoneCheckStatus: string | null }): boolean =>
+  r.storeFullStatus === "open" && r.phoneCheckStatus === "ok"; // both EXPLICIT — never null/unknown
+const extNeedsRecheck = (r: { storeFullStatus: string | null; phoneCheckStatus: string | null }): boolean =>
+  r.storeFullStatus === "full" || r.phoneCheckStatus === "restricted";
+// 'YYYY-MM-DD' → locale short date (e.g. "Dec 4"); safe on bad input.
+function untilDate(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 const fieldsToForm = (f: ScanFields): FormState => ({
   name: f.name ?? "",
   phone: f.phone ?? "",
@@ -59,13 +82,15 @@ const formToFields = (f: FormState): ScanFields => ({
 });
 
 // Export attention reason → i18n key.
-type ReasonKey = "rd_ps2_x_wrong_store" | "rd_ps2_x_bad_name" | "rd_ps2_x_bad_phone" | "rd_ps2_x_bad_store" | "rd_ps2_x_bad_amount";
+type ReasonKey = "rd_ps2_x_wrong_store" | "rd_ps2_x_store_full" | "rd_ps2_x_restricted" | "rd_ps2_x_bad_name" | "rd_ps2_x_bad_phone" | "rd_ps2_x_bad_store" | "rd_ps2_x_bad_amount";
 const reasonKey = (r: ExportReason): ReasonKey =>
   r === "wrong_store" ? "rd_ps2_x_wrong_store"
-    : r === "bad_name" ? "rd_ps2_x_bad_name"
-      : r === "bad_phone" ? "rd_ps2_x_bad_phone"
-        : r === "bad_store" ? "rd_ps2_x_bad_store"
-          : "rd_ps2_x_bad_amount";
+    : r === "store_full" ? "rd_ps2_x_store_full"
+      : r === "restricted_number" ? "rd_ps2_x_restricted"
+        : r === "bad_name" ? "rd_ps2_x_bad_name"
+          : r === "bad_phone" ? "rd_ps2_x_bad_phone"
+            : r === "bad_store" ? "rd_ps2_x_bad_store"
+              : "rd_ps2_x_bad_amount";
 
 // manualOnly = a paying (non-admin) seller: hide the camera / AI-scan / credits
 // surface entirely (not just disable) and show manual encode + an "AI … coming
@@ -99,11 +124,13 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // Saved list — ONE read on screen open; saves append locally (no refetch).
   const [rows, setRows] = useState<ParcelScanRow[]>([]);
   const [listLoaded, setListLoaded] = useState(false);
-  // Saved-list tab (Change 2): "all" (default) | "wrong" (not_found only).
-  const [tab, setTab] = useState<"all" | "wrong">("all");
+  // Saved-list tab (Change 2): "all" (default) | "wrong" (not_found only) |
+  // "full" | "restricted" (extension verdicts — the last two only surface when
+  // there ARE such rows; see tabDefs).
+  const [tab, setTab] = useState<"all" | "wrong" | "full" | "restricted">("all");
   // Delete (Change 3): a pending confirmation + await/error state. Never fires
   // a delete without the confirm; a failed delete surfaces inline, no silent no-op.
-  const [confirm, setConfirm] = useState<{ kind: "row"; id: string } | { kind: "exported" } | { kind: "export" } | { kind: "undo" } | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: "row"; id: string } | { kind: "recheck"; id: string } | { kind: "exported" } | { kind: "export" } | { kind: "undo" } | null>(null);
   // FIX 5 — the most recent export run (batch id + the row ids it exported), so
   // an accidental export can be undone (rows → 'confirmed', back in the ready
   // list). Session-only: cleared on undo or another export; not restored across
@@ -456,6 +483,24 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     }
   };
   const askDelete = (c: { kind: "row"; id: string } | { kind: "exported" }) => { setDeleteErr(""); setConfirm(c); };
+  // Per-row RECHECK (extension verdicts) — confirmed via the SAME portal. On
+  // confirm, null store_full_* / phone_check_* in the DB; the extension re-checks
+  // on its next pass. The app NEVER calls 賣貨便. No credit, no bulk, no auto.
+  const askRecheck = (id: string) => { setDeleteErr(""); setConfirm({ kind: "recheck", id }); };
+  const doRecheck = async () => {
+    if (!confirm || confirm.kind !== "recheck" || deleting) return;
+    const id = confirm.id;
+    setDeleting(true); setDeleteErr("");
+    const r = await resetExtensionChecks(id);
+    setDeleting(false);
+    if (!r.ok) { setDeleteErr(r.error || "recheck_failed"); return; }
+    if (aliveRef.current) {
+      setRows((prev) => prev.map((x) => (x.id === id
+        ? { ...x, storeFullStatus: null, phoneCheckStatus: null, phoneRestrictedUntil: null }
+        : x)));
+      setConfirm(null);
+    }
+  };
   // FIX 4 — confirm before exporting (an accidental export marks rows 'exported'
   // and drops them from the next file). Reuses the SAME portal confirm dialog as
   // delete/clear-exported.
@@ -500,12 +545,17 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     setSaving(true); setSaveErr("");
     const id = editing.id;
     const fields = formToFields(form);
-    const r = await updateParcelScan(id, fields);        // own-scoped UPDATE, NO credit
-    setSaving(false);
-    if (!r.ok) { setSaveErr(r.error || "save_failed"); return; } // surfaced inline, no optimistic write
     const newStore = fields.store_id ?? "";
+    const newPhone = fields.phone ?? "";
     const prev = rows.find((x) => x.id === id);
     const storeChanged = (prev?.storeId ?? "") !== newStore;
+    const phoneChanged = (prev?.phone ?? "") !== newPhone;
+    // Changed store/phone → null the extension verdict for that field IN THE SAME
+    // update, so the extension re-checks (a stale 'full'/'restricted' from the old
+    // store/phone must not linger). The app never calls 賣貨便 itself.
+    const r = await updateParcelScan(id, fields, { storeFull: storeChanged, phoneCheck: phoneChanged }); // own-scoped UPDATE, NO credit
+    setSaving(false);
+    if (!r.ok) { setSaveErr(r.error || "save_failed"); return; } // surfaced inline, no optimistic write
     if (aliveRef.current) {
       setRows((list) => list.map((x) => (x.id === id ? {
         ...x,
@@ -516,6 +566,10 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
         notes: fields.notes ?? "",
         // Store code changed → clear the stale ❌/verdict now; re-check below if valid.
         storeCheckStatus: storeChanged ? null : x.storeCheckStatus,
+        // Extension verdicts reset locally to match the DB nulling above.
+        storeFullStatus: storeChanged ? null : x.storeFullStatus,
+        phoneCheckStatus: phoneChanged ? null : x.phoneCheckStatus,
+        phoneRestrictedUntil: phoneChanged ? null : x.phoneRestrictedUntil,
       } : x)));
     }
     setEditing(null); setForm(emptyForm);
@@ -537,9 +591,25 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // disabled button when out of credits).
   const useCameraUI = !manualOnly && cameraOn && cameraSupported() && !cameraErr && !outOfCredits;
   const flaggedCount = rows.filter((r) => r.storeCheckStatus === "not_found").length;
+  const fullCount = rows.filter((r) => r.storeFullStatus === "full").length;
+  const restrictedCount = rows.filter((r) => r.phoneCheckStatus === "restricted").length;
+  // Tab set: All + Wrong code always; Full / Restricted ONLY when they have rows
+  // (a seller with no extension never sees an always-zero tab). Existing pill UI.
+  const tabDefs: [typeof tab, string][] = [
+    ["all", `${t.rd_ps2_tab_all} · ${rows.length}`],
+    ["wrong", `${t.rd_ps2_tab_wrong} · ${flaggedCount}`],
+  ];
+  if (fullCount > 0) tabDefs.push(["full", `${t.rd_ps2_tab_full} · ${fullCount}`]);
+  if (restrictedCount > 0) tabDefs.push(["restricted", `${t.rd_ps2_tab_restricted} · ${restrictedCount}`]);
+  // If the active tab vanished (e.g. its last row was rechecked away), fall back
+  // to All so the list never shows an orphaned/empty selection.
+  const activeTab = tabDefs.some(([k]) => k === tab) ? tab : "all";
   // Change 2: the saved list re-renders by active tab (in-memory filter of the
   // already-loaded rows — zero-poll, no refetch/timers).
-  const shown = tab === "wrong" ? rows.filter((r) => r.storeCheckStatus === "not_found") : rows;
+  const shown = activeTab === "wrong" ? rows.filter((r) => r.storeCheckStatus === "not_found")
+    : activeTab === "full" ? rows.filter((r) => r.storeFullStatus === "full")
+      : activeTab === "restricted" ? rows.filter((r) => r.phoneCheckStatus === "restricted")
+        : rows;
   const progress = files.length > 1 ? { i: String(idx + 1), n: String(files.length) } : { i: "1", n: "1" };
 
   const timeOf = (iso: string): string => {
@@ -795,14 +865,14 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
           </div>
 
           {/* Two-tab segmented toggle (Change 2). */}
-          <div style={{ display: "flex", gap: 6, marginBottom: 10 }} data-testid="ps-tabs">
-            {([["all", `${t.rd_ps2_tab_all} · ${rows.length}`], ["wrong", `${t.rd_ps2_tab_wrong} · ${flaggedCount}`]] as const).map(([key, label]) => {
-              const on = tab === key;
+          <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }} data-testid="ps-tabs">
+            {tabDefs.map(([key, label]) => {
+              const on = activeTab === key;
               return (
                 <button
                   key={key}
                   onClick={() => setTab(key)}
-                  style={{ flex: 1, padding: "7px 8px", borderRadius: 9, border: on ? "1px solid var(--accent)" : "1px solid var(--border-strong)", background: on ? "var(--accent)" : "var(--surface-2)", color: on ? "#fff" : "var(--text-dim)", fontSize: 11.5, fontWeight: 800, cursor: "pointer" }}
+                  style={{ flex: 1, minWidth: 78, padding: "7px 8px", borderRadius: 9, border: on ? "1px solid var(--accent)" : "1px solid var(--border-strong)", background: on ? "var(--accent)" : "var(--surface-2)", color: on ? "#fff" : "var(--text-dim)", fontSize: 11.5, fontWeight: 800, cursor: "pointer" }}
                   data-testid={`ps-tab-${key}`}
                   aria-pressed={on}
                 >{label}</button>
@@ -811,10 +881,13 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
           </div>
 
           {listLoaded && rows.length === 0 && <div style={{ fontSize: 12, color: "var(--text-dim)" }} data-testid="ps-empty">{t.rd_ps2_empty}</div>}
-          {listLoaded && tab === "wrong" && rows.length > 0 && flaggedCount === 0 && <div style={{ fontSize: 12, color: "var(--text-dim)" }} data-testid="ps-wrong-empty">{t.rd_ps2_wrong_empty}</div>}
+          {listLoaded && activeTab === "wrong" && rows.length > 0 && flaggedCount === 0 && <div style={{ fontSize: 12, color: "var(--text-dim)" }} data-testid="ps-wrong-empty">{t.rd_ps2_wrong_empty}</div>}
           {shown.map((r) => {
             const badge = storeBadge(r.storeCheckStatus);
             const canRecheck = !r.id.startsWith("local-") && /^\d{6}$/.test(r.storeId) && (r.storeCheckStatus === "not_found" || r.storeCheckStatus === "unknown");
+            const exts = extBadges(r);
+            const allClear = extAllClear(r);
+            const needsExtRecheck = extNeedsRecheck(r) && !r.id.startsWith("local-");
             return (
               <div key={r.id} style={{ padding: "9px 2px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }} data-testid="ps-row">
                 <div style={{ minWidth: 0 }}>
@@ -829,12 +902,23 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                       {canRecheck && <button onClick={() => runStoreCheck(r.id, r.storeId)} style={{ marginLeft: 8, padding: "1px 7px", borderRadius: 7, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontSize: 10, fontWeight: 700, cursor: "pointer" }} data-testid="ps-recheck">{t.rd_ps2_recheck}</button>}
                     </div>
                   )}
+                  {/* Extension verdicts (sql/33) — ⚠️ full / 🚫 restricted (+ until date).
+                      FAIL-SAFE: only explicit 'full'/'restricted' render here. */}
+                  {exts.map((b) => (
+                    <div key={b.key} style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: b.color }} data-testid={`ps-ext-badge-${b.key === "rd_ps2_full" ? "full" : "restricted"}`}>
+                      {b.icon} {t[b.key]}{b.until ? ` · ${tpl(t.rd_ps2_restricted_until, { date: untilDate(b.until) })}` : ""}
+                    </div>
+                  ))}
+                  {allClear && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--ok, #16a34a)" }} data-testid="ps-ext-clear" title={t.rd_ps2_ext_ok}>✅ {t.rd_ps2_ext_ok}</div>
+                  )}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
                   <div style={{ textAlign: "right" }}>
                     <div style={{ fontSize: 12.5, fontWeight: 800, fontFamily: mono }}>{r.amount !== null ? `${cur}${r.amount.toLocaleString()}` : "—"}</div>
                     <div style={{ fontSize: 10.5, color: "var(--text-dim)" }}>{timeOf(r.createdAt)}</div>
                   </div>
+                  {needsExtRecheck && <button onClick={() => askRecheck(r.id)} aria-label={t.rd_ps2_ext_recheck_aria} style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-dim)", fontSize: 13, cursor: "pointer", lineHeight: 1 }} data-testid="ps-ext-recheck">⟳</button>}
                   {r.status !== "exported" && <button onClick={() => openEdit(r)} aria-label={t.rd_ps2_edit_aria} style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-dim)", fontSize: 13, cursor: "pointer", lineHeight: 1 }} data-testid="ps-row-edit">✏️</button>}
                   <button onClick={() => askDelete({ kind: "row", id: r.id })} aria-label={t.rd_ps2_delete_aria} style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "var(--text-dim)", fontSize: 13, cursor: "pointer", lineHeight: 1 }} data-testid="ps-row-delete">🗑</button>
                 </div>
@@ -865,7 +949,9 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                   ? tpl(t.rd_ps2_undo_q, { n: String(lastExportBatch?.ids.length ?? 0) })
                   : confirm.kind === "exported"
                     ? tpl(t.rd_ps2_clear_exported_q, { n: String(exportedCount) })
-                    : t.rd_ps2_delete_row_q}
+                    : confirm.kind === "recheck"
+                      ? t.rd_ps2_recheck_q
+                      : t.rd_ps2_delete_row_q}
             </div>
             {deleteErr && <div style={{ ...errTxt, marginTop: 10 }} data-testid="ps-delete-err">{t.rd_ps2_delete_err} <span style={{ fontFamily: mono }}>{deleteErr}</span></div>}
             <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
@@ -874,7 +960,9 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                 ? <button onClick={() => { setConfirm(null); void runExport(); }} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }} data-testid="ps-confirm-export">📄 {t.rd_ps2_x_confirm_go}</button>
                 : confirm.kind === "undo"
                   ? <button onClick={() => void doUndo()} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }} data-testid="ps-confirm-undo">↩ {t.rd_ps2_undo_go}</button>
-                  : <button onClick={() => void doDelete()} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--danger)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: deleting ? "default" : "pointer", opacity: deleting ? 0.7 : 1 }} data-testid="ps-confirm-delete">{t.rd_ps2_delete}</button>}
+                  : confirm.kind === "recheck"
+                    ? <button onClick={() => void doRecheck()} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: deleting ? "default" : "pointer", opacity: deleting ? 0.7 : 1 }} data-testid="ps-confirm-recheck">⟳ {t.rd_ps2_recheck_go}</button>
+                    : <button onClick={() => void doDelete()} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--danger)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: deleting ? "default" : "pointer", opacity: deleting ? 0.7 : 1 }} data-testid="ps-confirm-delete">{t.rd_ps2_delete}</button>}
             </div>
           </div>
         </div>,
