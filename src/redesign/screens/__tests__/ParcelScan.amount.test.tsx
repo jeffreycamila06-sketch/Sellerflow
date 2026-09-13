@@ -66,6 +66,44 @@ describe("Parcel Scan — amount required with min (manual encode)", () => {
   });
 });
 
+// With the global fee = 38 (mocked), the ceiling is 20,000 total → the highest
+// AMOUNT a seller can type is 20000 − 38 = 19962. Over that BLOCKS Save with a
+// distinct "over the compensation ceiling" message (not the min message).
+describe("Parcel Scan — amount has a MAXIMUM (賠償上限, total ceiling − fee)", () => {
+  it("exactly at the ceiling (19962 + 38 = 20000) → Save enabled, no error", async () => {
+    const r = view();
+    fireEvent.click(await r.findByTestId("ps-manual"));
+    fireEvent.change(r.getByTestId("ps-name"), { target: { value: "Juan" } });
+    fireEvent.change(r.getByTestId("ps-store"), { target: { value: "266402" } });
+    fireEvent.change(r.getByTestId("ps-amount"), { target: { value: "19962" } });
+    expect(save(r).disabled).toBe(false);
+    expect(r.queryByTestId("ps-amount-err")).toBeNull();
+  });
+
+  it("over the ceiling (19963) → Save disabled + the MAX message (shows 19962 + the 20,000 reason)", async () => {
+    const r = view();
+    fireEvent.click(await r.findByTestId("ps-manual"));
+    fireEvent.change(r.getByTestId("ps-name"), { target: { value: "Juan" } });
+    fireEvent.change(r.getByTestId("ps-store"), { target: { value: "266402" } });
+    fireEvent.change(r.getByTestId("ps-amount"), { target: { value: "19963" } });
+    expect(save(r).disabled).toBe(true);
+    const err = r.getByTestId("ps-amount-err").textContent || "";
+    expect(err).toContain("19962");   // the max amount for this fee
+    expect(err).toContain("20,000");  // the compensation-ceiling reason
+    expect(err).not.toContain("minimum"); // NOT the min message
+  });
+
+  it("the minimum (20) still works with the maximum in place", async () => {
+    const r = view();
+    fireEvent.click(await r.findByTestId("ps-manual"));
+    fireEvent.change(r.getByTestId("ps-name"), { target: { value: "Juan" } });
+    fireEvent.change(r.getByTestId("ps-store"), { target: { value: "266402" } });
+    fireEvent.change(r.getByTestId("ps-amount"), { target: { value: "20" } });
+    expect(save(r).disabled).toBe(false);
+    expect(r.queryByTestId("ps-amount-err")).toBeNull();
+  });
+});
+
 describe("Parcel Scan — editing an old low-amount parcel is blocked until raised", () => {
   it("amount 10 row → edit opens with Save disabled + amount error; raise to 30 → enabled and saves", async () => {
     loadRows.current = [mk({ id: "r1", amount: 10, customerName: "Old" })];
