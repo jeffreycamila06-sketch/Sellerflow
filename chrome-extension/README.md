@@ -70,12 +70,15 @@ The two 7-11 checks live on **different origins**, so each runs in its own tab
 
 ## How it works (files)
 
-- **`background.js`** (appended section) — a `chrome.alarms` poll (45s): reads your
+- **`background.js`** (appended section) — a self-scheduling **~8s** poll loop (a
+  keepalive alarm restarts it if the service worker was suspended): reads your
   access token from the SFL tab (via the bridge), `GET`s up to 5 unchecked rows
   from `parcel_scans` (own-scoped RLS), then per row sends the **store check to the
   emap tab** and the **phone check to the myship tab** (2s apart, single-flight) and
   `PATCH`es the combined verdict back. Never persists its own session. Records the
-  exact reason for each 'unknown' so the popup can show it.
+  exact reason for each 'unknown' so the popup can show it. The ~8s cadence is
+  still human-scale — a seller saves 1-2 parcels at a time, not in bulk; single-
+  flight (by id) + a 2s per-parcel gap keep it from overlapping or stampeding.
 - **`sellerflow-bridge.js`** — answers `SFL_GET_TOKEN` by reading
   `localStorage["sf_supabase_auth"]` (the token the web app already keeps fresh).
 - **`emap-711.js`** (on `emap.pcsc.com.tw`) — **Full store:**

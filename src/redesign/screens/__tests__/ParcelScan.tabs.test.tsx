@@ -14,6 +14,7 @@ const { loadRows, deleteParcelScan, deleteExportedParcels, loadParcelScans } = v
 }));
 
 vi.mock("../../adapters/parcelScan", () => ({
+  rowAwaitsVerdict: () => false, mergeExtensionVerdicts: (p: unknown) => p, // live-poll helpers (inert here)
   MAX_PENDING_PARCELS: 30, // batch-cap constant the screen reads on every render (inert here — no test loads >=30 pending)
   fileToScanBase64: vi.fn(),
   scanParcel: vi.fn(),
