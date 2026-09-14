@@ -202,7 +202,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // free-tier is a new surface). It runs ONLY while a loaded, not-yet-exported
   // row is still awaiting a verdict (store_full_status OR phone_check_status is
   // null/undefined) AND the screen is visible — so it self-terminates once every
-  // badge has landed and pauses when backgrounded (zero idle egress). ~5s cadence.
+  // badge has landed and pauses when backgrounded (zero idle egress). ~3s cadence.
   // Merges ONLY the three extension-verdict fields by id → never clobbers an
   // in-progress edit, the wrong-code (store_check_status) flow, or row order.
   const awaitingVerdicts = rows.some(rowAwaitsVerdict);
@@ -214,7 +214,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
         if (!live || !aliveRef.current || !res.ok) return;
         setRows((prev) => mergeExtensionVerdicts(prev, res.rows));
       });
-    }, 5000);
+    }, 3000);
     return () => { live = false; clearInterval(id); };
   }, [awaitingVerdicts, pageVisible]);
 

@@ -95,7 +95,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 // ════════════════════════════════════════════════════════════════════════════
 const PC_ALARM = "parcel-checker-keepalive";
 const PC_KEEPALIVE_MIN = 0.5;        // chrome.alarms floor (~30s) — only revives the loop if the SW was suspended
-const PC_POLL_MS = 8000;             // ~8s cadence via a self-scheduling loop (alarms can't go this fast)
+const PC_POLL_MS = 5000;             // ~5s cadence via a self-scheduling loop (alarms can't go this fast)
 const PC_ROW_GAP_MS = 2000;          // 2s between parcels (no bulk)
 const PC_LIMIT = 5;
 const PC_CONFIG_KEY = "pc_config";   // { supabaseUrl, supabaseAnonKey, cgdmId, ordMobile, paused }
@@ -251,8 +251,8 @@ async function pcPoll() {
   });
 }
 
-// ~8s cadence via a self-scheduling setTimeout loop (chrome.alarms is clamped to
-// ~30s, too slow for "save → ~8-15s → badge"). pcInFlight (by id) + the 2s
+// ~5s cadence via a self-scheduling setTimeout loop (chrome.alarms is clamped to
+// ~30s, too slow for "save → ~5-9s → badge"). pcInFlight (by id) + the 2s
 // per-parcel gap already prevent overlap; a single-flight `pcTimer` guard prevents
 // two loops. Each pcPoll does network work, which keeps the SW alive between ticks;
 // if the SW is ever suspended (timer lost), the keepalive alarm below restarts it.
@@ -260,7 +260,7 @@ let pcTimer = null;
 async function pcTick() {
   pcTimer = null;                 // this run consumed the scheduled slot
   try { await pcPoll(); } catch { /* keep looping */ }
-  pcScheduleLoop(PC_POLL_MS);     // re-arm ~8s after this run finishes
+  pcScheduleLoop(PC_POLL_MS);     // re-arm ~5s after this run finishes
 }
 function pcScheduleLoop(delayMs) {
   if (pcTimer !== null) return;   // a tick is already scheduled — no double loop
@@ -268,7 +268,7 @@ function pcScheduleLoop(delayMs) {
 }
 
 // Keepalive alarm (~30s): its ONLY job is to restart the loop if the SW was
-// suspended (module globals reset → pcTimer null). While the SW is alive the 8s
+// suspended (module globals reset → pcTimer null). While the SW is alive the 5s
 // loop drives the cadence; this never runs a second concurrent poll.
 chrome.alarms.create(PC_ALARM, { periodInMinutes: PC_KEEPALIVE_MIN });
 chrome.alarms.onAlarm.addListener((a) => { if (a.name === PC_ALARM) pcScheduleLoop(0); });
