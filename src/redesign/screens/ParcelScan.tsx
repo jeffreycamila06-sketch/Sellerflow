@@ -18,6 +18,7 @@ import {
 } from "../adapters/parcelScan";
 import { fetchShipTemplate, buildXlsmFromTemplate, deliverXlsm, exportFilename } from "../adapters/shippingExport";
 import { loadGlobalShippingFee } from "../adapters/shippingSettings";
+import { isAppShell, isNarrowViewport } from "../adapters/appShell";
 import { SHIP_DEFAULT_FEE } from "../adapters/shipping";
 import { TELEGRAM_URL } from "../../lib/telegram";
 import { cameraSupported, captureConstraints, triggerHaptic, stopStream, getUserMediaErrorName } from "../adapters/camera";
@@ -144,6 +145,17 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // ship-fee), NOT a DB column: no cross-device need + no migration. Default OFF.
   const [notesOn, setNotesOn] = useState(() => { try { return localStorage.getItem("sfl_rd_ps_notes") === "1"; } catch { return false; } });
   const toggleNotes = () => setNotesOn((v) => { const n = !v; try { localStorage.setItem("sfl_rd_ps_notes", n ? "1" : "0"); } catch { /* ignore */ } return n; });
+  // Export is LAPTOP-ONLY (a mis-tap on a phone marks rows exported → they vanish
+  // from the laptop file — no exceptions, no toggle). Hide the whole export card on
+  // the app shell (APK/iOS/?apk) AND on a narrow mobile-browser viewport; re-check
+  // on resize so a desktop user narrowing the window updates.
+  const [narrow, setNarrow] = useState(() => isNarrowViewport());
+  useEffect(() => {
+    const onResize = () => setNarrow(isNarrowViewport());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  const exportHidden = isAppShell() || narrow;
   const [deleting, setDeleting] = useState(false);
   const [deleteErr, setDeleteErr] = useState("");
   // Feature 3: per-row EDIT — reuses the confirm form, pre-filled, updates the
@@ -860,7 +872,14 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
           </div>
         )}
 
-        {/* 賣貨便 訂單匯入 Excel export — one file for the whole batch. */}
+        {/* 賣貨便 訂單匯入 Excel export — LAPTOP-ONLY. On the app shell / a narrow
+            mobile viewport the whole card is hidden (no toggle, no way in) and a
+            one-liner points the seller to their computer. */}
+        {exportHidden ? (
+          <div style={card} data-testid="ps-export-mobile">
+            <div style={{ fontSize: 12, color: "var(--text-dim)", fontWeight: 700 }}>{t.rd_ps2_x_desktop_only}</div>
+          </div>
+        ) : (
         <div style={card} data-testid="ps-export-card">
           <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 6 }}>{t.rd_ps2_x_title}</div>
           <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 9, lineHeight: 1.5 }}>{t.rd_ps2_x_hint}</div>
@@ -895,6 +914,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
             </div>
           )}
         </div>
+        )}
 
         {/* Saved list — read-on-open snapshot + local appends. Full queue = A2. */}
         <div style={card}>

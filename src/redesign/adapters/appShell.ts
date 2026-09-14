@@ -18,3 +18,17 @@ export function isAppShell(): boolean {
 export function anonScreen(): "login" | "landing" {
   return isAppShell() ? "login" : "landing";
 }
+
+// Narrow (phone/tablet) viewport — used to hide the Parcel Scan 賣貨便 export on
+// mobile (export is laptop-only; a mis-tap on a phone marks rows exported and
+// they vanish from the laptop file). 768px = the standard mobile/tablet cutoff;
+// laptops are wider. matchMedia first (jsdom-mockable), innerWidth fallback.
+export function isNarrowViewport(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if (typeof window.matchMedia === "function") return window.matchMedia("(max-width: 768px)").matches;
+    return typeof window.innerWidth === "number" && window.innerWidth <= 768;
+  } catch {
+    return false;
+  }
+}
