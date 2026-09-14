@@ -13,6 +13,7 @@ import {
   fileToScanBase64, scanParcel, saveParcelScan, loadParcelScans, formErrors, amountWarns, amountTooHigh, MIN_PARCEL_AMOUNT, MAX_PARCEL_TOTAL, MAX_PENDING_PARCELS,
   checkEmapStore, saveStoreCheck, scanToXlsRow, splitScansForExport, markScansExported, unmarkScansExported,
   deleteParcelScan, deleteExportedParcels, updateParcelScan, resetExtensionChecks, getCreditBalance,
+  rowAwaitsVerdict, mergeExtensionVerdicts,
   type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState, type StoreCheckStatus, type ExportReason,
 } from "../adapters/parcelScan";
 import { fetchShipTemplate, buildXlsmFromTemplate, deliverXlsm, exportFilename } from "../adapters/shippingExport";
@@ -193,6 +194,29 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     if (manualOnly) return; // seller manual surface has no credits — don't fetch
     getCreditBalance().then((c) => { if (aliveRef.current && c.ok) setCredits(c.balance); });
   }, [manualOnly]);
+
+  // LIVE extension verdicts — the Chrome extension writes store_full_status /
+  // phone_check_status to parcel_scans asynchronously; reflect them WITHOUT a
+  // manual refresh. Chose a SCREEN-SCOPED SMART POLL over Supabase realtime
+  // (egress + the app is deliberately zero-realtime everywhere; a websocket on
+  // free-tier is a new surface). It runs ONLY while a loaded, not-yet-exported
+  // row is still awaiting a verdict (store_full_status OR phone_check_status is
+  // null/undefined) AND the screen is visible — so it self-terminates once every
+  // badge has landed and pauses when backgrounded (zero idle egress). ~5s cadence.
+  // Merges ONLY the three extension-verdict fields by id → never clobbers an
+  // in-progress edit, the wrong-code (store_check_status) flow, or row order.
+  const awaitingVerdicts = rows.some(rowAwaitsVerdict);
+  useEffect(() => {
+    if (!awaitingVerdicts || !pageVisible) return;
+    let live = true;
+    const id = setInterval(() => {
+      loadParcelScans().then((res) => {
+        if (!live || !aliveRef.current || !res.ok) return;
+        setRows((prev) => mergeExtensionVerdicts(prev, res.rows));
+      });
+    }, 5000);
+    return () => { live = false; clearInterval(id); };
+  }, [awaitingVerdicts, pageVisible]);
 
   // FIX 2/3 — release the camera when the tab/app is backgrounded, re-acquire on
   // return, and clear a prior denial so a grant-in-Settings-then-return recovers

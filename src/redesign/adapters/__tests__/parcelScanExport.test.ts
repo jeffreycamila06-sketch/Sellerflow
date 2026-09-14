@@ -3,7 +3,7 @@
 // store_check_status), and a smoke build proving the parcel_scans rows flow
 // through the EXISTING, 賣貨便-accepted xlsm builder unchanged.
 import { describe, it, expect } from "vitest";
-import { scanToXlsRow, splitScansForExport, scanOrderDate, type ParcelScanRow } from "../parcelScan";
+import { scanToXlsRow, splitScansForExport, scanOrderDate, rowAwaitsVerdict, mergeExtensionVerdicts, type ParcelScanRow } from "../parcelScan";
 import { buildXlsmFromTemplate, entryToXlsRow } from "../shippingExport";
 import type { ShippingEntry } from "../shipping"; // sanity: same column arity
 import { readFileSync } from "node:fs";
@@ -143,5 +143,52 @@ describe("build-from-parcel_scans smoke — the EXISTING builder eats the mapped
     expect(bytes.byteLength).toBeGreaterThan(1000); // real patched workbook, not empty
     expect(bytes[0]).toBe(0x50); // 'P' — a ZIP (xlsm) container
     expect(bytes[1]).toBe(0x4b); // 'K'
+  });
+});
+
+describe("rowAwaitsVerdict — the live-poll gate", () => {
+  it("null/undefined either verdict on a non-exported row → awaiting", () => {
+    expect(rowAwaitsVerdict(row({ storeFullStatus: null, phoneCheckStatus: null }))).toBe(true);
+    expect(rowAwaitsVerdict(row({ storeFullStatus: "open", phoneCheckStatus: null }))).toBe(true);
+    expect(rowAwaitsVerdict(row({ storeFullStatus: null, phoneCheckStatus: "ok" }))).toBe(true);
+    expect(rowAwaitsVerdict(row({ /* both undefined */ }))).toBe(true);
+  });
+  it("both verdicts present (incl. 'unknown') → NOT awaiting", () => {
+    expect(rowAwaitsVerdict(row({ storeFullStatus: "open", phoneCheckStatus: "ok" }))).toBe(false);
+    expect(rowAwaitsVerdict(row({ storeFullStatus: "unknown", phoneCheckStatus: "unknown" }))).toBe(false);
+    expect(rowAwaitsVerdict(row({ storeFullStatus: "full", phoneCheckStatus: "restricted" }))).toBe(false);
+  });
+  it("exported rows never await (even with null verdicts)", () => {
+    expect(rowAwaitsVerdict(row({ status: "exported", storeFullStatus: null, phoneCheckStatus: null }))).toBe(false);
+  });
+});
+
+describe("mergeExtensionVerdicts — zero-clobber verdict merge by id", () => {
+  it("updates ONLY the three verdict fields when they changed", () => {
+    const prev = [row({ id: "a", customerName: "Keep Me", storeFullStatus: null, phoneCheckStatus: null })];
+    const fresh = [row({ id: "a", customerName: "IGNORED", storeFullStatus: "full", phoneCheckStatus: "restricted", phoneRestrictedUntil: "2026-12-04" })];
+    const out = mergeExtensionVerdicts(prev, fresh);
+    expect(out[0].storeFullStatus).toBe("full");
+    expect(out[0].phoneCheckStatus).toBe("restricted");
+    expect(out[0].phoneRestrictedUntil).toBe("2026-12-04");
+    expect(out[0].customerName).toBe("Keep Me"); // other fields NOT overwritten from fresh
+  });
+  it("does NOT touch store_check_status (the wrong-code flow) or amount/order", () => {
+    const prev = [row({ id: "a", storeCheckStatus: "not_found", amount: 999, storeFullStatus: null, phoneCheckStatus: null })];
+    const fresh = [row({ id: "a", storeCheckStatus: "valid", amount: 1, storeFullStatus: "open", phoneCheckStatus: "ok" })];
+    const out = mergeExtensionVerdicts(prev, fresh);
+    expect(out[0].storeCheckStatus).toBe("not_found"); // wrong-code verdict preserved
+    expect(out[0].amount).toBe(999);
+    expect(out[0].storeFullStatus).toBe("open");
+  });
+  it("returns the SAME reference for an unchanged row (React skips re-render)", () => {
+    const r = row({ id: "a", storeFullStatus: "open", phoneCheckStatus: "ok" });
+    const out = mergeExtensionVerdicts([r], [row({ id: "a", storeFullStatus: "open", phoneCheckStatus: "ok" })]);
+    expect(out[0]).toBe(r);
+  });
+  it("a row with no fresh match is returned unchanged (by reference)", () => {
+    const r = row({ id: "a", storeFullStatus: null });
+    const out = mergeExtensionVerdicts([r], [row({ id: "other", storeFullStatus: "full" })]);
+    expect(out[0]).toBe(r);
   });
 });

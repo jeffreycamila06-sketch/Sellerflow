@@ -39,6 +39,9 @@ vi.mock("../../adapters/parcelScan", () => ({
   scanToXlsRow: vi.fn(), markScansExported: vi.fn(), unmarkScansExported: vi.fn(),
   deleteParcelScan: vi.fn(), deleteExportedParcels: vi.fn(),
   updateParcelScan, resetExtensionChecks,
+  // live-badge poll helpers (screen calls rowAwaitsVerdict every render)
+  rowAwaitsVerdict: (r: ParcelScanRow) => r.status !== "exported" && (r.storeFullStatus == null || r.phoneCheckStatus == null),
+  mergeExtensionVerdicts: (prev: ParcelScanRow[]) => prev,
   getCreditBalance: vi.fn(async () => ({ ok: true, balance: 99 })),
 }));
 vi.mock("../../adapters/shippingSettings", () => ({ loadGlobalShippingFee: async () => 38 }));

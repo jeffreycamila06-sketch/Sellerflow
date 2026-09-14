@@ -454,6 +454,28 @@ export function splitScansForExport(rows: ParcelScanRow[], fee: number): ScanExp
   return { ready, attention };
 }
 
+// ── Live extension-verdict merge (the screen's zero-clobber badge poll) ───────
+// A row is still AWAITING an extension verdict while it is not exported and
+// either verdict is null/undefined. The screen polls only while some loaded row
+// awaits (and the screen is visible), then stops.
+export const rowAwaitsVerdict = (r: ParcelScanRow): boolean =>
+  r.status !== "exported" && (r.storeFullStatus == null || r.phoneCheckStatus == null);
+
+// Merge ONLY the three extension-written verdict fields from freshly-loaded rows
+// into the current rows (by id). Everything else — name/phone/store/amount,
+// store_check_status (the wrong-code flow), row order — is left untouched. A row
+// with no fresh match, or no verdict change, is returned by REFERENCE (so React
+// skips re-rendering it). Pure — unit-tested.
+export function mergeExtensionVerdicts(prev: ParcelScanRow[], fresh: ParcelScanRow[]): ParcelScanRow[] {
+  const byId = new Map(fresh.map((r) => [r.id, r]));
+  return prev.map((r) => {
+    const f = byId.get(r.id);
+    if (!f) return r;
+    if (f.storeFullStatus === r.storeFullStatus && f.phoneCheckStatus === r.phoneCheckStatus && f.phoneRestrictedUntil === r.phoneRestrictedUntil) return r;
+    return { ...r, storeFullStatus: f.storeFullStatus, phoneCheckStatus: f.phoneCheckStatus, phoneRestrictedUntil: f.phoneRestrictedUntil };
+  });
+}
+
 // Mark exported rows done so re-exports skip them (status 'exported', sql/27).
 // Own-scoped via RLS; best-effort. Empty id list is a no-op success.
 export async function markScansExported(ids: string[]): Promise<{ ok: boolean; batchId?: string; error?: string }> {
