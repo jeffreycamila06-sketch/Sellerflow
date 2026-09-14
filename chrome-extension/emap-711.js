@@ -65,17 +65,20 @@
       });
       if (!r.ok) return { store_full_status: "unknown", store_reason: `byIDData returned HTTP ${r.status}` };
       const text = await r.text();
-      // Expected: "OK;966038+景碩一廠+addr+close+0++門市" → field index 3 is the store
-      // status. Known values (live-observed): "enable" = open/accepting, "disable"
-      // = full, "close" = closed/not accepting. ⚠️ FAIL-SAFE: ONLY "enable" is
-      // 'open'. "disable" AND "close" both mean can't-drop-here → 'full' (⚠️ badge +
-      // excluded from export). ANY other/unknown value → 'unknown' (never assume open).
+      // Expected: "OK;198002+德民+addr+disable+0++門市" → field index 3 is the store
+      // status. Known values (live-observed): "enable" = open/accepting → 'open';
+      // "disable" = FULL → 'full' (⚠️ badge + excluded from export). "close" and any
+      // OTHER value → 'unknown' — NOT 'full': a "close"/grey store (e.g. 966038
+      // 景碩一廠, which still has an address + likely still accepts) must NOT be
+      // auto-blocked from export; 'unknown' shows no badge and Jeff decides per
+      // parcel. FAIL-SAFE here = don't ASSUME (neither open NOR full), not
+      // block-everything-uncertain. ONLY "enable" is open; ONLY "disable" is full.
       const rec = String(text).split(";")[1];
       const field = rec ? rec.split("+")[3] : "";
       if (field === "enable") return { store_full_status: "open", store_reason: "" };
-      if (field === "disable" || field === "close") return { store_full_status: "full", store_reason: "" };
+      if (field === "disable") return { store_full_status: "full", store_reason: "" };
       const head = String(text).replace(/\s+/g, " ").slice(0, 60);
-      return { store_full_status: "unknown", store_reason: `byIDData unexpected status "${field}": "${head}"` };
+      return { store_full_status: "unknown", store_reason: `byIDData status "${field}" (not open/full): "${head}"` };
     } catch (e) {
       const aborted = e && e.name === "AbortError";
       return { store_full_status: "unknown", store_reason: aborted ? "byIDData timeout (10s)" : "byIDData network error" };

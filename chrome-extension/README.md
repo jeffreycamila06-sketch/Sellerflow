@@ -79,10 +79,18 @@ The two 7-11 checks live on **different origins**, so each runs in its own tab
   exact reason for each 'unknown' so the popup can show it. The ~5s cadence is
   still human-scale — a seller saves 1-2 parcels at a time, not in bulk; single-
   flight (by id) + a 2s per-parcel gap keep it from overlapping or stampeding.
+  **Auto-retry of 'unknown':** because 'unknown' is often transient (a store that
+  briefly went "close" and reopens, a session hiccup), a row that came back
+  'unknown' is re-checked on the next cycles — capped at 3 re-checks per row
+  (in-memory count; resets harmlessly if the extension restarts). FINAL verdicts
+  (open/full/ok/restricted) are never re-checked. After the cap, the row stays
+  'unknown' and Jeff manual-rechecks (⟳). NULL rows are the normal first pass, not
+  a retry. (At the ~5s cadence that's roughly a 15s auto-retry window; raise
+  PC_MAX_RETRY if a store's recovery routinely takes longer.)
 - **`sellerflow-bridge.js`** — answers `SFL_GET_TOKEN` by reading
   `localStorage["sf_supabase_auth"]` (the token the web app already keeps fresh).
 - **`emap-711.js`** (on `emap.pcsc.com.tw`) — **Full store:**
-  `POST /ecmap/byIDData.aspx` → field 3 `enable`→open / `disable`+`close`→full. `eshopGuid`
+  `POST /ecmap/byIDData.aspx` → field 3 `enable`→open / `disable`→full / `close`+other→unknown. `eshopGuid`
   read by regex of the emap page HTML first, then a MAIN-world script fallback.
   (This is why an emap tab is required — the old build ran this cross-origin from
   myship, so it had no emap cookies and no eshopGuid → always 'unknown'.)

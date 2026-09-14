@@ -102,6 +102,16 @@ const PC_CONFIG_KEY = "pc_config";   // { supabaseUrl, supabaseAnonKey, cgdmId, 
 const PC_STATUS_KEY = "pc_status";   // { sfl, myship, lastCheckAt, lastCount, lastError }
 const PC_DEFAULT_URL = "https://sqeuyuktdpidmlfpqgoc.supabase.co";
 const pcInFlight = new Set();        // single-flight, keyed by row id
+// AUTO-RETRY of 'unknown' verdicts. 'unknown' is often TRANSIENT (a store that
+// briefly went "close" and reopens, a session hiccup), so a row that came back
+// 'unknown' (with NO null verdict left) is re-checked on the next cycles — capped
+// at PC_MAX_RETRY re-checks per row to avoid an infinite loop on a genuinely stuck
+// store. In-memory ONLY (no DB column): if the extension restarts the count resets
+// to 0, which just allows a few more retries — harmless. FINAL verdicts
+// (open/full/ok/restricted) are never counted here; a row resolved to all-final is
+// dropped from the map. NULL verdicts are the normal first-pass (not a "retry").
+const PC_MAX_RETRY = 3;
+const pcRetry = new Map();           // rowId -> # of re-checks done while unknown-only
 
 function pcGet(key, fallback) {
   return new Promise((resolve) => chrome.storage.local.get([key], (r) => resolve(r[key] ?? fallback)));
@@ -150,10 +160,13 @@ async function pcGetToken(sflTabId) {
 }
 
 async function pcFetchUnchecked(cfg, token) {
+  // Candidates = a verdict still NULL (never tried) OR a verdict 'unknown'
+  // (transient — auto-retried up to the cap in pcPoll). The two verdict columns
+  // are selected so pcPoll can classify null-vs-unknown (retry accounting).
   const url = `${cfg.supabaseUrl}/rest/v1/parcel_scans`
-    + `?select=id,phone,store_id,customer_name`
+    + `?select=id,phone,store_id,customer_name,store_full_status,phone_check_status`
     + `&status=neq.exported`
-    + `&or=(store_full_status.is.null,phone_check_status.is.null)`
+    + `&or=(store_full_status.is.null,phone_check_status.is.null,store_full_status.eq.unknown,phone_check_status.eq.unknown)`
     + `&order=created_at.desc&limit=${PC_LIMIT}`;
   const r = await fetch(url, { headers: { apikey: cfg.supabaseAnonKey, Authorization: `Bearer ${token}` } });
   if (!r.ok) return { ok: false, status: r.status, rows: [] };
@@ -195,7 +208,17 @@ async function pcPoll() {
   if (!res.ok) { await pcStatus({ sfl: res.status === 401 ? "no_token" : "connected", lastError: `parcel_scans read failed (${res.status})` }); return; }
   await pcStatus({ sfl: "connected", lastError: "" });
 
-  const rows = res.rows.filter((row) => row && row.id && !pcInFlight.has(row.id));
+  // Eligible = not in-flight AND (a verdict still NULL → first pass) OR
+  // (unknown-only AND under the retry cap → transient auto-retry). A row whose
+  // 'unknown' has already been re-checked PC_MAX_RETRY times is left alone (Jeff
+  // manual-rechecks). Fully-final rows never reach here (query excludes them).
+  const rows = res.rows.filter((row) => {
+    if (!row || !row.id || pcInFlight.has(row.id)) return false;
+    const hasNull = row.store_full_status == null || row.phone_check_status == null;
+    if (hasNull) return true;
+    const hasUnknown = row.store_full_status === "unknown" || row.phone_check_status === "unknown";
+    return hasUnknown && (pcRetry.get(row.id) || 0) < PC_MAX_RETRY;
+  });
   if (!rows.length) { await pcStatus({ lastCheckAt: new Date().toISOString(), lastCount: 0 }); return; }
 
   // TWO different origins: the FULL-STORE lookup runs in the emap.pcsc.com.tw tab
@@ -208,6 +231,11 @@ async function pcPoll() {
   for (const row of rows) {
     if (pcInFlight.has(row.id)) continue;
     pcInFlight.add(row.id);
+    // A candidate with BOTH verdicts already non-null is an unknown-only row =
+    // a re-check → count it toward the cap. (A NULL-verdict row is the first
+    // pass, not a retry.)
+    const isRetry = row.store_full_status != null && row.phone_check_status != null;
+    if (isRetry) pcRetry.set(row.id, (pcRetry.get(row.id) || 0) + 1);
     try {
       // Store check → emap tab. No emap tab / no receiver → FAIL-SAFE 'unknown' + reason.
       let store = { store_full_status: "unknown", store_reason: "no emap.pcsc.com.tw tab open" };
@@ -233,6 +261,9 @@ async function pcPoll() {
         phone_check_message: phone.phone_check_message,
         phone_restricted_until: phone.phone_restricted_until,
       });
+      // Fully resolved (no 'unknown' left) → drop the retry counter (done). Still
+      // 'unknown' → keep the count so the next cycles march toward the cap.
+      if (store.store_full_status !== "unknown" && phone.phone_check_status !== "unknown") pcRetry.delete(row.id);
       checked += 1;
     } catch { /* leave the row unchecked (null) — next poll retries */ } finally {
       pcInFlight.delete(row.id);
