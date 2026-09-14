@@ -43,6 +43,13 @@ describe("scanToXlsRow — A–J mapping + the 4 gap-column defaults", () => {
   it("tempLayer override is honored (frozen), else 常溫", () => {
     expect(scanToXlsRow(row(), { storeName: "S", fee: 38, tempLayer: "冷凍" })[3]).toBe("冷凍");
   });
+  it("notes → col J (其他資訊, index 9), NOT col I; blank/whitespace → blank J", () => {
+    const r = scanToXlsRow(row({ notes: "FB: juan.dc" }), { storeName: "S", fee: 38 });
+    expect(r[9]).toBe("FB: juan.dc"); // J = notes
+    expect(r[8]).toBe("");            // I stays blank
+    expect(scanToXlsRow(row({ notes: "" }), { storeName: "S", fee: 38 })[9]).toBe("");   // no notes → blank J
+    expect(scanToXlsRow(row({ notes: "   " }), { storeName: "S", fee: 38 })[9]).toBe(""); // whitespace → blank J
+  });
 });
 
 describe("scanOrderDate — created_at → Taipei YYYY/M/D, no leading zeros", () => {
