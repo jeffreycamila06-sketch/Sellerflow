@@ -418,7 +418,7 @@ export function scanToXlsRow(row: ParcelScanRow, opts: ScanXlsOpts): string[] {
     String(opts.fee),                                 // G ＊運費金額 = global admin shipping fee
     scanOrderDate(row.createdAt),                     // H 買家下訂日期 (optional)
     "",                                               // I 商品備註 (blank)
-    "",                                               // J 其他資訊 (blank — parcel_scans has no handle)
+    (row.notes || "").trim(),                         // J 其他資訊 = manual notes (blank if none — never "undefined"/"null")
   ];
 }
 

@@ -139,6 +139,11 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // NULL batch id and are not covered — by design.
   const [lastExportBatch, setLastExportBatch] = useState<{ id: string; ids: string[] } | null>(null);
   const [undoErr, setUndoErr] = useState("");
+  // Notes field toggle — PER-VIEWER UI preference (which fields show in the encode
+  // form), so it lives in localStorage (sfl_rd_* convention, like keep-awake /
+  // ship-fee), NOT a DB column: no cross-device need + no migration. Default OFF.
+  const [notesOn, setNotesOn] = useState(() => { try { return localStorage.getItem("sfl_rd_ps_notes") === "1"; } catch { return false; } });
+  const toggleNotes = () => setNotesOn((v) => { const n = !v; try { localStorage.setItem("sfl_rd_ps_notes", n ? "1" : "0"); } catch { /* ignore */ } return n; });
   const [deleting, setDeleting] = useState(false);
   const [deleteErr, setDeleteErr] = useState("");
   // Feature 3: per-row EDIT — reuses the confirm form, pre-filled, updates the
@@ -818,11 +823,23 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                     : <div style={errTxt} data-testid="ps-amount-err">{tpl(t.rd_ps2_err_amount, { amt: `${cur}${MIN_PARCEL_AMOUNT}` })}</div>)
                   : amountWarns(form.amount) && <div style={warnTxt} data-testid="ps-amount-warn">{t.rd_ps2_amount_warn}</div>}
               </div>
-              {/* Notes field hidden (Jeff — shorter form). The DB column + any
-                  existing notes are preserved: form.notes is still round-tripped
-                  through formToFields, so editing an old parcel rewrites its
-                  original notes unchanged; new entries just leave it blank. Not
-                  used by the 賣貨便 export (cols I/J are blank), E-Map, or admin. */}
+              {/* Notes toggle (per-viewer, persisted). OFF → no field, notes blank
+                  (col J blank — unchanged for OFF sellers). ON → an optional 50-char
+                  field → parcel_scans.notes → 賣貨便 col J (其他資訊). Continuous mode
+                  clears it on Save (emptyForm). Same pill switch as keep-awake. */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t.rd_ps2_notes}</span>
+                <button onClick={toggleNotes} role="switch" aria-checked={notesOn} aria-label={t.rd_ps2_notes} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }} data-testid="ps-notes-toggle">
+                  <span style={{ width: 44, height: 26, borderRadius: 13, background: notesOn ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s" }}>
+                    <span style={{ position: "absolute", top: 3, left: notesOn ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
+                  </span>
+                </button>
+              </div>
+              {notesOn && (
+                <div>
+                  <input value={form.notes} onChange={(e) => F({ notes: e.target.value.slice(0, 50) })} maxLength={50} style={input} data-testid="ps-notes" />
+                </div>
+              )}
               {saveErr && <div style={errTxt} data-testid="ps-save-err">{t.rd_ps2_err_save} <span style={{ fontFamily: mono }}>{saveErr}</span></div>}
               <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
                 <button onClick={() => void (editing ? onEditSave() : manual ? onManualSave() : onSave())} disabled={saveBlocked} style={{ flex: 2, padding: "11px 12px", borderRadius: 10, border: "none", background: saveBlocked ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: saveBlocked ? "default" : "pointer" }} data-testid="ps-save">{t.rd_ps2_save}</button>
