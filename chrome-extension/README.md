@@ -82,7 +82,7 @@ The two 7-11 checks live on **different origins**, so each runs in its own tab
 - **`sellerflow-bridge.js`** — answers `SFL_GET_TOKEN` by reading
   `localStorage["sf_supabase_auth"]` (the token the web app already keeps fresh).
 - **`emap-711.js`** (on `emap.pcsc.com.tw`) — **Full store:**
-  `POST /ecmap/byIDData.aspx` → field 3 `enable`→open / `disable`→full. `eshopGuid`
+  `POST /ecmap/byIDData.aspx` → field 3 `enable`→open / `disable`+`close`→full. `eshopGuid`
   read by regex of the emap page HTML first, then a MAIN-world script fallback.
   (This is why an emap tab is required — the old build ran this cross-origin from
   myship, so it had no emap cookies and no eshopGuid → always 'unknown'.)
