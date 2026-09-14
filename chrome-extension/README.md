@@ -65,18 +65,18 @@ The two 7-11 checks live on **different origins**, so each runs in its own tab
      request → Request Headers → copy the `apikey` value. (It's public/anon — safe.)
    - **賣場 GM id (Cgdm_Id)** — your 賣貨便 shop GM id (e.g. `GM2609096130694`).
    - **Seller phone (ordMobile)** — your own phone used as the sender.
-4. **Save config.** The checker polls every 45s while both tabs are open.
+4. **Save config.** The checker polls every ~5s while the tabs are open.
    **Pause/Resume** and **Check now** are in the popup.
 
 ## How it works (files)
 
-- **`background.js`** (appended section) — a self-scheduling **~8s** poll loop (a
+- **`background.js`** (appended section) — a self-scheduling **~5s** poll loop (a
   keepalive alarm restarts it if the service worker was suspended): reads your
   access token from the SFL tab (via the bridge), `GET`s up to 5 unchecked rows
   from `parcel_scans` (own-scoped RLS), then per row sends the **store check to the
   emap tab** and the **phone check to the myship tab** (2s apart, single-flight) and
   `PATCH`es the combined verdict back. Never persists its own session. Records the
-  exact reason for each 'unknown' so the popup can show it. The ~8s cadence is
+  exact reason for each 'unknown' so the popup can show it. The ~5s cadence is
   still human-scale — a seller saves 1-2 parcels at a time, not in bulk; single-
   flight (by id) + a 2s per-parcel gap keep it from overlapping or stampeding.
 - **`sellerflow-bridge.js`** — answers `SFL_GET_TOKEN` by reading
