@@ -67,12 +67,23 @@ beforeEach(() => {
   countPending.mockClear(); countPending.mockResolvedValue({ ok: true, count: 0 });
 });
 
+// The button lives INSIDE the expanded manual-entry form header (right-aligned),
+// not in the collapsed idle view — so open manual first, then the header button.
 async function openOverlay(r: ReturnType<typeof view>) {
-  fireEvent.click(await r.findByTestId("ps-open-customers"));
+  fireEvent.click(await r.findByTestId("ps-manual"));        // expand the manual form
+  fireEvent.click(await r.findByTestId("ps-open-customers")); // header-row button
   await waitFor(() => expect(r.getByTestId("ps-customers-overlay")).toBeTruthy());
 }
 
 describe("Parcel Scan — Customer Details overlay", () => {
+  it("the button is only in the expanded manual form, not the collapsed view", async () => {
+    const r = view();
+    await r.findByTestId("ps-manual");                       // collapsed: manual link present
+    expect(r.queryByTestId("ps-open-customers")).toBeNull(); // …but the Customers button is NOT
+    fireEvent.click(r.getByTestId("ps-manual"));             // expand the form
+    expect(await r.findByTestId("ps-open-customers")).toBeTruthy(); // now it appears (header row)
+  });
+
   it("button opens the overlay; X closes it (no import)", async () => {
     const r = view();
     await openOverlay(r);
