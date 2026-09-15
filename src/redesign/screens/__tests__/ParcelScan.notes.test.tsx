@@ -1,7 +1,8 @@
-// Notes field toggle (manual entry). OFF (default) → no field, notes stay blank
-// → 賣貨便 col J blank (unchanged for OFF sellers). ON → an optional 50-char field
-// → parcel_scans.notes → col J. Per-viewer, persisted in localStorage. Uses the
-// REAL validators/formToFields (importActual); only DB calls are mocked.
+// Notes / handle field toggle (manual entry). DEFAULT ON (Phase 5) → the 50-char
+// field shows on open → parcel_scans.notes → 賣貨便 col J (其他資訊). A blank field
+// still saves null (blank J). An explicit "0" in localStorage keeps it OFF (a
+// deliberate opt-out). Per-viewer, persisted in localStorage. Uses the REAL
+// validators/formToFields (importActual); only DB calls are mocked.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, waitFor } from "@testing-library/react";
 import type { ParcelScanRow } from "../../adapters/parcelScan";
@@ -44,10 +45,10 @@ beforeEach(() => {
 });
 
 describe("Parcel Scan — notes toggle (col J)", () => {
-  it("default OFF → no notes field; Save writes notes = null (blank J)", async () => {
-    const r = view();
+  it("default ON → notes field shown on open; blank → Save writes notes = null (blank J)", async () => {
+    const r = view();                                        // localStorage cleared → new default ON
     fireEvent.click(await r.findByTestId("ps-manual"));
-    expect(r.queryByTestId("ps-notes")).toBeNull();          // no field when OFF
+    expect(r.getByTestId("ps-notes")).toBeTruthy();          // field shown by default now
     fillValid(r);
     fireEvent.click(r.getByTestId("ps-save"));
     await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(1));
@@ -55,18 +56,25 @@ describe("Parcel Scan — notes toggle (col J)", () => {
     expect(fields.notes).toBeNull();                          // blank → null → blank col J
   });
 
-  it("toggle ON → field appears, persisted to localStorage; notes → saved", async () => {
+  it("default ON → typed notes saved to col J; toggling OFF hides the field + persists '0'", async () => {
     const r = view();
     fireEvent.click(await r.findByTestId("ps-manual"));
-    fireEvent.click(r.getByTestId("ps-notes-toggle"));
-    expect(r.getByTestId("ps-notes")).toBeTruthy();
-    expect(localStorage.getItem("sfl_rd_ps_notes")).toBe("1");
-    fillValid(r);
     fireEvent.change(r.getByTestId("ps-notes"), { target: { value: "FB: juan.dc" } });
+    fillValid(r);
     fireEvent.click(r.getByTestId("ps-save"));
     await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(1));
-    const [fields] = saveParcelScan.mock.calls[0] as [{ notes: string | null }];
-    expect(fields.notes).toBe("FB: juan.dc");                // → parcel_scans.notes → col J
+    expect((saveParcelScan.mock.calls[0][0] as { notes: string | null }).notes).toBe("FB: juan.dc");
+    // deliberate opt-out: toggle OFF hides the field and persists "0"
+    fireEvent.click(r.getByTestId("ps-notes-toggle"));
+    expect(r.queryByTestId("ps-notes")).toBeNull();
+    expect(localStorage.getItem("sfl_rd_ps_notes")).toBe("0");
+  });
+
+  it('explicit "0" in localStorage → OFF on open (respects a prior opt-out)', async () => {
+    localStorage.setItem("sfl_rd_ps_notes", "0");
+    const r = view();
+    fireEvent.click(await r.findByTestId("ps-manual"));
+    expect(r.queryByTestId("ps-notes")).toBeNull();          // stays off despite the new default
   });
 
   it("ON but blank notes → saved notes null (blank J)", async () => {

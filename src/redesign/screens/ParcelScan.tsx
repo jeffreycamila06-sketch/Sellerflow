@@ -143,7 +143,10 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // Notes field toggle — PER-VIEWER UI preference (which fields show in the encode
   // form), so it lives in localStorage (sfl_rd_* convention, like keep-awake /
   // ship-fee), NOT a DB column: no cross-device need + no migration. Default OFF.
-  const [notesOn, setNotesOn] = useState(() => { try { return localStorage.getItem("sfl_rd_ps_notes") === "1"; } catch { return false; } });
+  // Notes / handle field DEFAULTS ON (Phase 5) — a missing pref (or anything but
+  // the explicit "0") is ON; only a user who deliberately turned it off ("0")
+  // stays off. Fail-safe on a storage throw → ON (the new default).
+  const [notesOn, setNotesOn] = useState(() => { try { return localStorage.getItem("sfl_rd_ps_notes") !== "0"; } catch { return true; } });
   const toggleNotes = () => setNotesOn((v) => { const n = !v; try { localStorage.setItem("sfl_rd_ps_notes", n ? "1" : "0"); } catch { /* ignore */ } return n; });
   // Export is LAPTOP-ONLY (a mis-tap on a phone marks rows exported → they vanish
   // from the laptop file — no exceptions, no toggle). Hide the whole export card on
