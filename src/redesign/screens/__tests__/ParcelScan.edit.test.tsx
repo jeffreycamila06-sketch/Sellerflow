@@ -116,11 +116,11 @@ describe("Feature 3 — per-row edit (free, own-scoped, no credit)", () => {
     expect(getByTestId("ps-confirm").getAttribute("data-editing")).toBe("1"); // still open
   });
 
-  it("editing an old parcel preserves its notes even though the notes field is hidden", async () => {
+  it("editing an old parcel prefills + round-trips its notes (field ON by default)", async () => {
     loadRows.current = [mk({ id: "r1", customerName: "Old", notes: "fragile — handle care" })];
-    const { findByTestId, getByTestId, queryByTestId } = view();
+    const { findByTestId, getByTestId } = view();
     fireEvent.click(await findByTestId("ps-row-edit"));
-    expect(queryByTestId("ps-notes")).toBeNull();                 // field is hidden
+    expect((getByTestId("ps-notes") as HTMLInputElement).value).toBe("fragile — handle care"); // prefilled, not hidden
     fireEvent.change(getByTestId("ps-name"), { target: { value: "Fixed" } });
     fireEvent.click(getByTestId("ps-save"));
     await waitFor(() => expect(updateParcelScan).toHaveBeenCalledTimes(1));

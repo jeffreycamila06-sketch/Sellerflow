@@ -1160,7 +1160,7 @@ const RAW: Record<string, Row> = {
   rd_ps2_phone: { en: "Phone", fil: "Telepono", zh: "电话", "zh-TW": "電話", vi: "Điện thoại", th: "โทรศัพท์", id: "Telepon" },
   rd_ps2_store: { en: "7-11 store #", fil: "7-11 store #", zh: "7-11 门市编号", "zh-TW": "7-11 門市編號", vi: "Mã cửa hàng 7-11", th: "รหัสร้าน 7-11", id: "Nomor toko 7-11" },
   rd_ps2_amount: { en: "Amount", fil: "Halaga", zh: "金额", "zh-TW": "金額", vi: "Số tiền", th: "จำนวนเงิน", id: "Jumlah" },
-  rd_ps2_notes: { en: "Notes", fil: "Mga tala", zh: "备注", "zh-TW": "備註", vi: "Ghi chú", th: "หมายเหตุ", id: "Catatan" },
+  rd_ps2_notes: { en: "Notes / handle", fil: "Mga tala / handle", zh: "备注 / 帐号", "zh-TW": "備註 / 帳號", vi: "Ghi chú / handle", th: "หมายเหตุ / แฮนเดิล", id: "Catatan / handle" },
   rd_ps2_low_conf: { en: "Hard to read — please double-check", fil: "Mahirap basahin — paki-double-check", zh: "难以辨认，请再核对", "zh-TW": "難以辨認，請再核對", vi: "Khó đọc — vui lòng kiểm tra lại", th: "อ่านยาก โปรดตรวจสอบอีกครั้ง", id: "Sulit dibaca — mohon periksa lagi" },
   rd_ps2_save: { en: "Save", fil: "I-save", zh: "保存", "zh-TW": "儲存", vi: "Lưu", th: "บันทึก", id: "Simpan" },
   rd_ps2_skip: { en: "Skip", fil: "Laktawan", zh: "跳过", "zh-TW": "跳過", vi: "Bỏ qua", th: "ข้าม", id: "Lewati" },
