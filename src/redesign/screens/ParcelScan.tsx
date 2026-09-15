@@ -23,6 +23,7 @@ import { SHIP_DEFAULT_FEE } from "../adapters/shipping";
 import { TELEGRAM_URL } from "../../lib/telegram";
 import { cameraSupported, captureConstraints, triggerHaptic, stopStream, getUserMediaErrorName } from "../adapters/camera";
 import { useWakeLock } from "../adapters/useWakeLock";
+import CustomerDetails from "./CustomerDetails";
 
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
 const lbl: CSSProperties = { fontSize: 11, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 4 };
@@ -112,6 +113,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const [saveErr, setSaveErr] = useState("");
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
+  // Customer Details overlay — the embedded phonebook (reuses <CustomerDetails/>).
+  const [custOpen, setCustOpen] = useState(false);
 
   // Scan Credits (1 credit = 1 scan). Read on open; the scan response returns the
   // fresh balance after each debit/refund so we update without a re-fetch.
@@ -204,6 +207,12 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   useEffect(() => {
     loadParcelScans().then((r) => { if (aliveRef.current) { if (r.ok) setRows(r.rows); setListLoaded(true); } });
   }, []);
+  // Re-read the Saved list from the DB (same read as on open). Used after a
+  // Customer Details overlay Import so the new pending parcel appears immediately
+  // and the Batch pill (pendingCount) climbs. Guarded against a late unmount.
+  const reloadSaved = () => {
+    loadParcelScans().then((r) => { if (aliveRef.current && r.ok) setRows(r.rows); });
+  };
   // One read on open → the GLOBAL 運費 fee for the export col G (admin-owned,
   // app_settings). Fail-safe to SHIP_DEFAULT_FEE (38) on any read failure, never 0.
   useEffect(() => {
@@ -773,6 +782,19 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
           </div>
         )}
 
+        {/* ADD FROM CUSTOMER DETAILS — opens the phonebook as an overlay. Import
+            there goes through the SAME validators + batch cap (enforced inside the
+            overlay), then closes + refreshes this Saved list. Shown in idle, above
+            manual entry. Not disabled at the cap (browsing/editing the phonebook is
+            still useful; the Import itself blocks at the cap). Theme-token styled. */}
+        {!busy && !editing && !manual && !snapshot && (
+          <button
+            onClick={() => setCustOpen(true)}
+            style={{ justifySelf: "stretch", width: "100%", padding: "11px 14px", borderRadius: 12, border: "1px solid var(--accent)", background: "var(--surface)", color: "var(--accent)", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}
+            data-testid="ps-open-customers"
+          >📇 {t.rd_ps2_from_customers}</button>
+        )}
+
         {/* MANUAL ENCODE — add a parcel with NO camera + NO AI scan (ZERO credit).
             Opens the shared confirm form blank; saves straight into parcel_scans.
             Shown in idle (under the camera or the picker), not while a form/preview
@@ -1028,6 +1050,24 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                     ? <button onClick={() => void doRecheck()} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: deleting ? "default" : "pointer", opacity: deleting ? 0.7 : 1 }} data-testid="ps-confirm-recheck">⟳ {t.rd_ps2_recheck_go}</button>
                     : <button onClick={() => void doDelete()} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--danger)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: deleting ? "default" : "pointer", opacity: deleting ? 0.7 : 1 }} data-testid="ps-confirm-delete">{t.rd_ps2_delete}</button>}
             </div>
+          </div>
+        </div>,
+        (typeof document !== "undefined" && document.querySelector("[data-redesign]")) || document.body,
+      )}
+
+      {/* CUSTOMER DETAILS OVERLAY — the SAME <CustomerDetails/> component rendered
+          on top of Parcel Scan. onImported closes the overlay + refreshes the
+          Saved list / Batch count. Theme-token surface (light + dark). */}
+      {custOpen && createPortal(
+        <div style={{ position: "fixed", inset: 0, zIndex: 1300, background: "rgba(9,7,24,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(12px + env(safe-area-inset-top)) 10px calc(12px + env(safe-area-inset-bottom))", boxSizing: "border-box" }} data-testid="ps-customers-overlay" onClick={() => setCustOpen(false)}>
+          <div style={{ position: "relative", width: "100%", maxWidth: 480, maxHeight: "100%", overflowY: "auto", background: "var(--surface)", borderRadius: 18, boxShadow: "0 20px 60px rgba(0,0,0,.4)" }} onClick={(e) => e.stopPropagation()}>
+            <button
+              onClick={() => setCustOpen(false)}
+              aria-label={t.rd_cd_close}
+              style={{ position: "absolute", top: 10, right: 10, zIndex: 6, width: 32, height: 32, borderRadius: 8, border: "none", background: "rgba(0,0,0,.28)", color: "#fff", fontSize: 17, fontWeight: 800, cursor: "pointer", lineHeight: 1 }}
+              data-testid="ps-customers-close"
+            >✕</button>
+            <CustomerDetails cur={cur} onImported={() => { setCustOpen(false); reloadSaved(); }} />
           </div>
         </div>,
         (typeof document !== "undefined" && document.querySelector("[data-redesign]")) || document.body,
