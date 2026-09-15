@@ -782,19 +782,6 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
           </div>
         )}
 
-        {/* ADD FROM CUSTOMER DETAILS — opens the phonebook as an overlay. Import
-            there goes through the SAME validators + batch cap (enforced inside the
-            overlay), then closes + refreshes this Saved list. Shown in idle, above
-            manual entry. Not disabled at the cap (browsing/editing the phonebook is
-            still useful; the Import itself blocks at the cap). Theme-token styled. */}
-        {!busy && !editing && !manual && !snapshot && (
-          <button
-            onClick={() => setCustOpen(true)}
-            style={{ justifySelf: "stretch", width: "100%", padding: "11px 14px", borderRadius: 12, border: "1px solid var(--accent)", background: "var(--surface)", color: "var(--accent)", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}
-            data-testid="ps-open-customers"
-          >📇 {t.rd_ps2_from_customers}</button>
-        )}
-
         {/* MANUAL ENCODE — add a parcel with NO camera + NO AI scan (ZERO credit).
             Opens the shared confirm form blank; saves straight into parcel_scans.
             Shown in idle (under the camera or the picker), not while a form/preview
@@ -829,7 +816,18 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
 
         {(phase === "confirm" || editing || manual) && (
           <div style={card} data-testid="ps-confirm" data-editing={editing ? "1" : undefined} data-manual={manual ? "1" : undefined}>
-            <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 10 }}>{editing ? t.rd_ps2_edit_title : manual ? t.rd_ps2_manual_title : tpl(t.rd_ps2_confirm, progress)}</div>
+            {/* Header row: title, plus (manual-entry only) a compact "from Customer
+                Details" button aligned right — opens the phonebook overlay. */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 10 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 800 }}>{editing ? t.rd_ps2_edit_title : manual ? t.rd_ps2_manual_title : tpl(t.rd_ps2_confirm, progress)}</div>
+              {manual && (
+                <button
+                  onClick={() => setCustOpen(true)}
+                  style={{ flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 4, padding: "6px 10px", borderRadius: 9, border: "1px solid var(--accent)", background: "var(--surface)", color: "var(--accent)", fontWeight: 800, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}
+                  data-testid="ps-open-customers"
+                >📇 {t.rd_ps2_from_customers}</button>
+              )}
+            </div>
             {manual && manualCount > 0 && (
               <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ok, #16a34a)", marginBottom: 10 }} data-testid="ps-manual-count">{tpl(t.rd_ps2_manual_count, { n: String(manualCount) })}</div>
             )}
