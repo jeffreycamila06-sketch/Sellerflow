@@ -13,7 +13,7 @@ const { getCreditBalance } = vi.hoisted(() => ({
 
 vi.mock("../../adapters/parcelScan", () => ({
   rowAwaitsVerdict: () => false, mergeExtensionVerdicts: (p: unknown) => p, // live-poll helpers (inert here)
-  MAX_PENDING_PARCELS: 30, // batch-cap constant the screen reads on every render (inert here — no test loads >=30 pending)
+  MAX_PENDING_PARCELS: 40, // batch-cap constant the screen reads on every render (inert here — no test loads >=40 pending)
   fileToScanBase64: vi.fn(async () => ({ base64: "aGk=", mediaType: "image/jpeg" })),
   scanParcel: vi.fn(),
   saveParcelScan: vi.fn(),

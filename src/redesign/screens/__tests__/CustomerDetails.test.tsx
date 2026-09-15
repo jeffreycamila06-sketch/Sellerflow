@@ -116,7 +116,7 @@ describe("import — no bypass of validation or the batch cap", () => {
   });
 
   it("batch full (count = MAX) → batch-full error, valid price, NO save", async () => {
-    countPending.mockResolvedValue({ ok: true, count: 30 });
+    countPending.mockResolvedValue({ ok: true, count: 40 });
     const r = await openRow();
     fireEvent.change(r.getByTestId("cd-price"), { target: { value: "100" } });
     fireEvent.click(r.getByTestId("cd-import"));

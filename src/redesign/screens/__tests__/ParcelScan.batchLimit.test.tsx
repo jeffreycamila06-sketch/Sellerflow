@@ -1,4 +1,4 @@
-// Batch limit — at most MAX_PENDING_PARCELS (30) PENDING (not-yet-exported)
+// Batch limit — at most MAX_PENDING_PARCELS (40) PENDING (not-yet-exported)
 // parcels per batch (Jeff's call). At the cap, NEW entries are blocked
 // (shutter / file-picker / manual encode / new-row Save) with a clear
 // "export first" message; EDIT + DELETE of existing rows stay OPEN (so wrong
@@ -81,45 +81,45 @@ afterEach(() => {
 
 const norm = (s: string | null) => (s || "").replace(/\s/g, "");
 
-describe("Parcel Scan — batch limit (30 pending)", () => {
-  it("29 pending → below the cap: picker + manual enabled, pill 29/30, no banner", async () => {
-    loadRows.current = many(29);
+describe("Parcel Scan — batch limit (40 pending)", () => {
+  it("39 pending → below the cap: picker + manual enabled, pill 39/40, no banner", async () => {
+    loadRows.current = many(39);
     const { findByTestId, getByTestId, queryByTestId } = view();
     await findByTestId("ps-batch");
-    expect(norm(getByTestId("ps-batch-n").textContent)).toBe("29/30");
+    expect(norm(getByTestId("ps-batch-n").textContent)).toBe("39/40");
     expect(queryByTestId("ps-batch-full")).toBeNull();
     expect((getByTestId("ps-pick") as HTMLButtonElement).disabled).toBe(false);
     expect((getByTestId("ps-manual") as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("30 pending → at the cap: picker + manual DISABLED, banner shown, pill 30/30", async () => {
-    loadRows.current = many(30);
+  it("40 pending → at the cap: picker + manual DISABLED, banner shown, pill 40/40", async () => {
+    loadRows.current = many(40);
     const { findByTestId, getByTestId } = view();
     await findByTestId("ps-batch");
-    expect(norm(getByTestId("ps-batch-n").textContent)).toBe("30/30");
+    expect(norm(getByTestId("ps-batch-n").textContent)).toBe("40/40");
     expect(getByTestId("ps-batch-full")).toBeTruthy();
     expect((getByTestId("ps-pick") as HTMLButtonElement).disabled).toBe(true);
     expect((getByTestId("ps-manual") as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("30 pending → the camera shutter is DISABLED (camera not hidden)", async () => {
+  it("40 pending → the camera shutter is DISABLED (camera not hidden)", async () => {
     enableCamera();
-    loadRows.current = many(30);
+    loadRows.current = many(40);
     const { findByTestId } = view();
     const shutter = await findByTestId("ps-shutter") as HTMLButtonElement;
     expect(shutter.disabled).toBe(true);
   });
 
-  it("30 pending → opening manual is blocked (no confirm form appears)", async () => {
-    loadRows.current = many(30);
+  it("40 pending → opening manual is blocked (no confirm form appears)", async () => {
+    loadRows.current = many(40);
     const { findByTestId, getByTestId, queryByTestId } = view();
     await findByTestId("ps-batch");
     fireEvent.click(getByTestId("ps-manual")); // disabled button — no-op
     expect(queryByTestId("ps-confirm")).toBeNull();
   });
 
-  it("30 pending → EDIT of an existing row STILL WORKS (form opens, save goes through)", async () => {
-    loadRows.current = many(30);
+  it("40 pending → EDIT of an existing row STILL WORKS (form opens, save goes through)", async () => {
+    loadRows.current = many(40);
     const { findAllByTestId, getByTestId } = view();
     const editBtns = await findAllByTestId("ps-row-edit");
     fireEvent.click(editBtns[0]);
@@ -132,8 +132,8 @@ describe("Parcel Scan — batch limit (30 pending)", () => {
     expect(fields.name).toBe("Fixed Name");
   });
 
-  it("30 pending → DELETE of an existing row STILL WORKS", async () => {
-    loadRows.current = many(30);
+  it("40 pending → DELETE of an existing row STILL WORKS", async () => {
+    loadRows.current = many(40);
     const { findAllByTestId, getByTestId } = view();
     const delBtns = await findAllByTestId("ps-row-delete");
     fireEvent.click(delBtns[0]);
@@ -145,13 +145,13 @@ describe("Parcel Scan — batch limit (30 pending)", () => {
     loadRows.current = [...many(30, "exported"), ...many(10).map((r, i) => ({ ...r, id: `c${i}` }))];
     const { findByTestId, getByTestId } = view();
     await findByTestId("ps-batch");
-    expect(norm(getByTestId("ps-batch-n").textContent)).toBe("10/30");
+    expect(norm(getByTestId("ps-batch-n").textContent)).toBe("10/40");
     expect((getByTestId("ps-pick") as HTMLButtonElement).disabled).toBe(false);
     expect((getByTestId("ps-manual") as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("after an export the pending count drops to 0 → gates REOPEN (banner gone, picker/manual enabled)", async () => {
-    loadRows.current = many(30);
+    loadRows.current = many(40);
     const { findByTestId, getByTestId, queryByTestId } = view();
     await findByTestId("ps-batch-full"); // full at start
     expect((getByTestId("ps-pick") as HTMLButtonElement).disabled).toBe(true);
@@ -160,16 +160,16 @@ describe("Parcel Scan — batch limit (30 pending)", () => {
     fireEvent.click(getByTestId("ps-confirm-export"));
     await waitFor(() => expect(markScansExported).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(queryByTestId("ps-batch-full")).toBeNull()); // banner cleared
-    expect(norm(getByTestId("ps-batch-n").textContent)).toBe("0/30");
+    expect(norm(getByTestId("ps-batch-n").textContent)).toBe("0/40");
     expect((getByTestId("ps-pick") as HTMLButtonElement).disabled).toBe(false);
     expect((getByTestId("ps-manual") as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("the batch pill shows for a manual-only (paying) seller too", async () => {
-    loadRows.current = many(30);
+    loadRows.current = many(40);
     const { findByTestId, getByTestId } = view({ manualOnly: true });
     await findByTestId("ps-batch");
-    expect(norm(getByTestId("ps-batch-n").textContent)).toBe("30/30");
+    expect(norm(getByTestId("ps-batch-n").textContent)).toBe("40/40");
     expect((getByTestId("ps-manual") as HTMLButtonElement).disabled).toBe(true);
     expect(getByTestId("ps-batch-full")).toBeTruthy();
   });
