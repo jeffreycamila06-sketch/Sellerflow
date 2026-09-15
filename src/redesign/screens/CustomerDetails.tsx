@@ -26,7 +26,11 @@ const SEARCH_DEBOUNCE_MS = 250;
 
 type EditForm = { name: string; phone: string; store: string; notes: string };
 
-export default function CustomerDetails({ cur = "NT$" }: { cur?: string }) {
+// `onImported` is optional: the standalone Settings screen omits it (an import
+// shows a toast + resets, staying on the screen). When Parcel Scan embeds this
+// as an overlay it passes onImported so a successful import can close the overlay
+// and refresh the parent's Saved list + Batch count. Absent → byte-identical.
+export default function CustomerDetails({ cur = "NT$", onImported }: { cur?: string; onImported?: () => void }) {
   const t = useT();
 
   const [query, setQuery] = useState("");
@@ -132,6 +136,9 @@ export default function CustomerDetails({ cur = "NT$" }: { cur?: string }) {
       setTimeout(() => setToast(""), 2500);
       setPrice("");
       setOpenId(null);
+      // Embedded (Parcel Scan overlay): hand control back so the parent can close
+      // the overlay + refresh its Saved list / Batch count. Standalone: no-op.
+      onImported?.();
     } finally {
       setImporting(false);
     }
