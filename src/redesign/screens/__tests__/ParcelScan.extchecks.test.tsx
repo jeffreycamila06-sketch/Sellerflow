@@ -23,7 +23,7 @@ vi.mock("../../adapters/parcelScan", () => ({
   formErrors: () => ({ name: false, phone: false, store: false, amount: false, empty: false }),
   amountWarns: () => false,
   amountTooHigh: () => false,
-  MIN_PARCEL_AMOUNT: 20, MAX_PARCEL_TOTAL: 20000, MAX_PENDING_PARCELS: 30,
+  MIN_PARCEL_AMOUNT: 20, MAX_PARCEL_TOTAL: 20000, MAX_PENDING_PARCELS: 40,
   // REAL exclusion semantics so a screen row's export bucket matches production.
   splitScansForExport: (rows: ParcelScanRow[]) => {
     const ready: ParcelScanRow[] = []; const attention: { row: ParcelScanRow; reason: string }[] = [];

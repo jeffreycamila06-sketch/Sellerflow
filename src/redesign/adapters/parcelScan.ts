@@ -209,12 +209,13 @@ export const MIN_PARCEL_AMOUNT = 20;
 // source of truth: this aliases SHIP_MAX_TOTAL (no new magic number).
 export const MAX_PARCEL_TOTAL = SHIP_MAX_TOTAL;
 
-// Max PENDING (not-yet-exported) parcels per batch (Jeff's call 2026-09-11; may
-// change — the ONE place the number lives). At the cap, NEW entries are blocked
-// (camera/shutter/manual/picker/Save-of-a-new-row disabled) until an export
+// Max PENDING (not-yet-exported) parcels per batch (Jeff's call 2026-09-11; raised
+// 30 → 40; may change — the ONE place the number lives, shared by the Parcel Scan
+// save gate AND the Customer Details Import cap). At the cap, NEW entries are
+// blocked (camera/shutter/manual/picker/Save-of-a-new-row disabled) until an export
 // clears the queue; EDIT and DELETE of existing rows stay open so wrong store
 // codes / prices can still be fixed. Pending = rows whose status !== "exported".
-export const MAX_PENDING_PARCELS = 30;
+export const MAX_PENDING_PARCELS = 40;
 
 export interface ScanFormState { name: string; phone: string; store: string; amount: string; notes: string }
 
