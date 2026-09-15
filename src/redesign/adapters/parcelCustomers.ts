@@ -153,3 +153,21 @@ export async function countPendingParcels(): Promise<{ ok: boolean; count: numbe
   if (error) return { ok: false, count: 0, error: error.message };
   return { ok: true, count: count ?? 0 };
 }
+
+// COUNT of the owner's total phonebook customers — the "N customers" line under
+// the search box. Head-only exact count (no rows fetched), own-scoped by RLS +
+// explicit user_id. This is the FULL total and must NOT shrink on search (the
+// search select is .limit(30), so rows.length would be wrong). On error →
+// { ok:false } so the screen can simply hide the line rather than show a wrong
+// number.
+export async function countParcelCustomers(): Promise<{ ok: boolean; count: number; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) return { ok: false, count: 0, error: "not configured" };
+  const me = await uid();
+  if (!me) return { ok: false, count: 0, error: "not signed in" };
+  const { count, error } = await supabase
+    .from("parcel_customers")
+    .select("*", { count: "exact", head: true })
+    .eq("user_id", me);
+  if (error) return { ok: false, count: 0, error: error.message };
+  return { ok: true, count: count ?? 0 };
+}

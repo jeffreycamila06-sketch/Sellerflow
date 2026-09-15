@@ -8,13 +8,14 @@ import { render, fireEvent, waitFor } from "@testing-library/react";
 import { TProvider } from "../../i18n";
 import type { ParcelCustomer } from "../../adapters/parcelCustomers";
 
-const { recent, search, saveParcelScan, updateParcelCustomer, deleteParcelCustomer, countPending } = vi.hoisted(() => ({
+const { recent, search, saveParcelScan, updateParcelCustomer, deleteParcelCustomer, countPending, countTotal } = vi.hoisted(() => ({
   recent: { current: { ok: true, rows: [] as ParcelCustomer[] } as { ok: boolean; rows: ParcelCustomer[]; error?: string } },
   search: { current: { ok: true, rows: [] as ParcelCustomer[] } as { ok: boolean; rows: ParcelCustomer[]; error?: string } },
   saveParcelScan: vi.fn(async () => ({ ok: true, id: "new-1" }) as { ok: boolean; id?: string; error?: string }),
   updateParcelCustomer: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
   deleteParcelCustomer: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
   countPending: vi.fn(async () => ({ ok: true, count: 0 }) as { ok: boolean; count: number; error?: string }),
+  countTotal: vi.fn(async () => ({ ok: true, count: 0 }) as { ok: boolean; count: number; error?: string }),
 }));
 
 vi.mock("../../adapters/parcelCustomers", () => ({
@@ -23,6 +24,7 @@ vi.mock("../../adapters/parcelCustomers", () => ({
   updateParcelCustomer: (...a: unknown[]) => updateParcelCustomer(...(a as [])),
   deleteParcelCustomer: (...a: unknown[]) => deleteParcelCustomer(...(a as [])),
   countPendingParcels: () => countPending(),
+  countParcelCustomers: () => countTotal(),
 }));
 vi.mock("../../adapters/parcelScan", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../adapters/parcelScan")>();
@@ -45,6 +47,7 @@ beforeEach(() => {
   updateParcelCustomer.mockClear(); updateParcelCustomer.mockResolvedValue({ ok: true });
   deleteParcelCustomer.mockClear(); deleteParcelCustomer.mockResolvedValue({ ok: true });
   countPending.mockClear(); countPending.mockResolvedValue({ ok: true, count: 0 });
+  countTotal.mockClear(); countTotal.mockResolvedValue({ ok: true, count: 0 });
 });
 
 describe("recent list + empty", () => {
@@ -160,5 +163,69 @@ describe("edit + delete", () => {
     fireEvent.click(r.getByTestId("cd-del-go"));
     await waitFor(() => expect(deleteParcelCustomer).toHaveBeenCalledWith("c1"));
     await waitFor(() => expect(r.queryByTestId("cd-row")).toBeNull());
+  });
+});
+
+describe("row numbers + full total count", () => {
+  it("numbers the visible rows 1..N (recent list)", async () => {
+    recent.current = { ok: true, rows: [mk({ id: "c1", name: "A" }), mk({ id: "c2", name: "B" }), mk({ id: "c3", name: "C" })] };
+    const r = view();
+    await waitFor(() => expect(r.getAllByTestId("cd-row")).toHaveLength(3));
+    expect(r.getAllByTestId("cd-row-num").map((e) => e.textContent)).toEqual(["1", "2", "3"]);
+  });
+
+  it("numbers restart at 1..N over the SEARCH results, not the recent list", async () => {
+    recent.current = { ok: true, rows: [mk(), mk({ id: "c2" }), mk({ id: "c3" })] };
+    search.current = { ok: true, rows: [mk({ id: "s1", name: "Ana" })] };
+    const r = view();
+    await waitFor(() => expect(r.getAllByTestId("cd-row")).toHaveLength(3));
+    fireEvent.change(r.getByTestId("cd-search"), { target: { value: "ana" } });
+    await waitFor(() => expect(r.getAllByTestId("cd-row-num").map((e) => e.textContent)).toEqual(["1"]));
+  });
+
+  it("shows the FULL own total (17 customers), independent of how many rows are loaded", async () => {
+    recent.current = { ok: true, rows: [mk()] };            // only 1 row loaded
+    countTotal.mockResolvedValue({ ok: true, count: 17 });
+    const r = view();
+    await waitFor(() => expect(r.getByTestId("cd-total").textContent).toBe("17 customers"));
+  });
+
+  it("total does NOT drop to the result count on search (stays the full total)", async () => {
+    recent.current = { ok: true, rows: [mk(), mk({ id: "c2" })] };
+    search.current = { ok: true, rows: [mk({ id: "s1" })] }; // 1 search hit
+    countTotal.mockResolvedValue({ ok: true, count: 17 });
+    const r = view();
+    await waitFor(() => expect(r.getByTestId("cd-total").textContent).toBe("17 customers"));
+    fireEvent.change(r.getByTestId("cd-search"), { target: { value: "x" } });
+    await waitFor(() => expect(r.getByTestId("cd-heading").textContent).toContain("1 found"));
+    expect(r.getByTestId("cd-total").textContent).toBe("17 customers"); // unchanged by search
+  });
+
+  it("singular label at exactly 1 (1 customer)", async () => {
+    countTotal.mockResolvedValue({ ok: true, count: 1 });
+    const r = view();
+    await waitFor(() => expect(r.getByTestId("cd-total").textContent).toBe("1 customer"));
+  });
+
+  it("refreshes the total after a delete (re-queried, drops)", async () => {
+    recent.current = { ok: true, rows: [mk()] };
+    countTotal.mockResolvedValueOnce({ ok: true, count: 5 }).mockResolvedValue({ ok: true, count: 4 });
+    const r = view();
+    await waitFor(() => expect(r.getByTestId("cd-total").textContent).toBe("5 customers"));
+    fireEvent.click(r.getByTestId("cd-row-main"));
+    await waitFor(() => expect(r.getByTestId("cd-delete")).toBeTruthy());
+    fireEvent.click(r.getByTestId("cd-delete"));
+    await waitFor(() => expect(r.getByTestId("cd-del-go")).toBeTruthy());
+    fireEvent.click(r.getByTestId("cd-del-go"));
+    await waitFor(() => expect(deleteParcelCustomer).toHaveBeenCalled());
+    await waitFor(() => expect(r.getByTestId("cd-total").textContent).toBe("4 customers"));
+    expect(countTotal.mock.calls.length).toBeGreaterThanOrEqual(2); // mount + after delete
+  });
+
+  it("hides the total line when the count query fails (no wrong number)", async () => {
+    countTotal.mockResolvedValue({ ok: false, count: 0, error: "down" });
+    const r = view();
+    await waitFor(() => expect(r.getByTestId("cd-heading")).toBeTruthy());
+    expect(r.queryByTestId("cd-total")).toBeNull();
   });
 });

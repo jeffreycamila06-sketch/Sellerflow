@@ -13,7 +13,7 @@ import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT, tpl } from "../i18n";
 import {
   searchParcelCustomers, loadRecentParcelCustomers, updateParcelCustomer,
-  deleteParcelCustomer, countPendingParcels, type ParcelCustomer,
+  deleteParcelCustomer, countPendingParcels, countParcelCustomers, type ParcelCustomer,
 } from "../adapters/parcelCustomers";
 import { saveParcelScan, validAmount, amountTooHigh, MIN_PARCEL_AMOUNT, MAX_PARCEL_TOTAL, MAX_PENDING_PARCELS } from "../adapters/parcelScan";
 import { loadGlobalShippingFee } from "../adapters/shippingSettings";
@@ -35,6 +35,9 @@ export default function CustomerDetails({ cur = "NT$" }: { cur?: string }) {
   const [loading, setLoading] = useState(true);   // initial recent load / active search
   const [listErr, setListErr] = useState("");
   const [fee, setFee] = useState<number>(SHIP_DEFAULT_FEE);
+  // FULL phonebook total (never the searched subset) — its own head-only count
+  // query. null = unknown/failed (line hidden).
+  const [total, setTotal] = useState<number | null>(null);
 
   // Inline import: one row expanded at a time.
   const [openId, setOpenId] = useState<string | null>(null);
@@ -52,11 +55,21 @@ export default function CustomerDetails({ cur = "NT$" }: { cur?: string }) {
   const [delErr, setDelErr] = useState("");
   const [deleting, setDeleting] = useState(false);
 
-  // ── Load the global fee once (the recent list is loaded by the query effect
-  // below, which fires on mount with an empty query). ────────────────────────
+  // Refresh the full total (own head-count). Called on mount + after a delete
+  // (total drops). Edit here updates a row in place (same id) so the total never
+  // changes; Import saves a parcel, not a phonebook row (the trigger may later
+  // add one, but not synchronously) — so neither refreshes the total.
+  async function reloadCount() {
+    const c = await countParcelCustomers();
+    setTotal(c.ok ? c.count : null);
+  }
+
+  // ── Load the global fee + the full total once (the recent list is loaded by
+  // the query effect below, which fires on mount with an empty query). ───────
   useEffect(() => {
     let live = true;
     void loadGlobalShippingFee().then((f) => { if (live) setFee(f); });
+    void countParcelCustomers().then((c) => { if (live) setTotal(c.ok ? c.count : null); });
     return () => { live = false; };
   }, []);
 
@@ -158,6 +171,7 @@ export default function CustomerDetails({ cur = "NT$" }: { cur?: string }) {
       setConfirmDel(null);
       setRows((prev) => prev.filter((x) => x.id !== id));
       if (openId === id) setOpenId(null);
+      void reloadCount(); // total drops by one
     } finally {
       setDeleting(false);
     }
@@ -194,6 +208,13 @@ export default function CustomerDetails({ cur = "NT$" }: { cur?: string }) {
           )}
         </div>
 
+        {/* FULL phonebook total — always the own total, never the searched subset. */}
+        {total !== null && (
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", marginTop: -4 }} data-testid="cd-total">
+            {tpl(total === 1 ? t.rd_cd_count_one : t.rd_cd_count_many, { n: String(total) })}
+          </div>
+        )}
+
         {/* List heading + count */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-dim)" }} data-testid="cd-heading">
@@ -209,7 +230,7 @@ export default function CustomerDetails({ cur = "NT$" }: { cur?: string }) {
           </div>
         )}
 
-        {!loading && !listErr && rows.map((c) => {
+        {!loading && !listErr && rows.map((c, i) => {
           const open = openId === c.id;
           return (
             <div key={c.id} style={card} data-testid="cd-row" data-open={open ? "1" : undefined}>
@@ -218,6 +239,9 @@ export default function CustomerDetails({ cur = "NT$" }: { cur?: string }) {
                 style={{ display: "flex", width: "100%", alignItems: "center", gap: 10, background: "transparent", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}
                 data-testid="cd-row-main"
               >
+                {/* Row number over the VISIBLE list (1..N of what's on screen —
+                    search results or recent), not a DB id. */}
+                <span style={{ fontSize: 12, fontWeight: 800, color: "var(--text-dim)", fontFamily: mono, flexShrink: 0, minWidth: 20, textAlign: "right" }} data-testid="cd-row-num">{i + 1}</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13.5, fontWeight: 800, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} data-testid="cd-row-name">{c.name || c.notes || c.phone}</div>
                   <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 2, display: "flex", gap: 8, flexWrap: "wrap" }}>

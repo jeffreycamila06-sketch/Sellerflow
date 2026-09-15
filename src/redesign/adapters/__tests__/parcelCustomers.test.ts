@@ -43,7 +43,7 @@ vi.mock("../../../supabase", () => {
 
 import {
   searchParcelCustomers, loadRecentParcelCustomers, updateParcelCustomer,
-  deleteParcelCustomer, countPendingParcels, sanitizeSearchTerm, phoneDigits,
+  deleteParcelCustomer, countPendingParcels, countParcelCustomers, sanitizeSearchTerm, phoneDigits,
   CUSTOMER_SEARCH_LIMIT, CUSTOMER_RECENT_LIMIT,
 } from "../parcelCustomers";
 
@@ -169,5 +169,27 @@ describe("countPendingParcels", () => {
     result.current = { data: [], count: null, error: { message: "down" } };
     const r = await countPendingParcels();
     expect(r).toEqual({ ok: false, count: 0, error: "down" });
+  });
+});
+
+describe("countParcelCustomers — full own total", () => {
+  it("head:true exact count on parcel_customers, own-scoped (no other filter)", async () => {
+    result.current = { data: [], count: 17, error: null };
+    const r = await countParcelCustomers();
+    expect(r).toEqual({ ok: true, count: 17 });
+    const op = ops[0];
+    expect(op.table).toBe("parcel_customers");
+    expect(op.selectOpts).toEqual({ count: "exact", head: true });
+    expect(op.filters).toContainEqual(["user_id", "u1"]);
+    expect(op.filters).toHaveLength(1); // ONLY user_id — the full total, never a searched subset
+    expect(op.or).toBeUndefined();      // never an ilike-filtered count
+  });
+  it("zero customers → ok, count 0", async () => {
+    result.current = { data: [], count: 0, error: null };
+    expect(await countParcelCustomers()).toEqual({ ok: true, count: 0 });
+  });
+  it("db error → ok:false (screen hides the line, no wrong number)", async () => {
+    result.current = { data: [], count: null, error: { message: "down" } };
+    expect(await countParcelCustomers()).toEqual({ ok: false, count: 0, error: "down" });
   });
 });

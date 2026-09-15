@@ -1269,6 +1269,11 @@ const RAW: Record<string, Row> = {
   rd_cd_edit_aria: { en: "Edit customer", fil: "I-edit ang customer", zh: "编辑客户", "zh-TW": "編輯客戶", vi: "Sửa khách", th: "แก้ไขลูกค้า", id: "Edit pelanggan" },
   rd_cd_delete_aria: { en: "Remove customer", fil: "Alisin ang customer", zh: "移除客户", "zh-TW": "移除客戶", vi: "Xoá khách", th: "ลบลูกค้า", id: "Hapus pelanggan" },
   rd_cd_close: { en: "Close", fil: "Isara", zh: "关闭", "zh-TW": "關閉", vi: "Đóng", th: "ปิด", id: "Tutup" },
+  // Total phonebook count under the search box (always the full own total, never
+  // the searched subset). _one = exactly 1; _many = 0 or 2+. Langs without a
+  // singular/plural split use the same string for both.
+  rd_cd_count_one: { en: "{n} customer", fil: "{n} customer", zh: "{n} 位客户", "zh-TW": "{n} 位客戶", vi: "{n} khách", th: "ลูกค้า {n} ราย", id: "{n} pelanggan" },
+  rd_cd_count_many: { en: "{n} customers", fil: "{n} customers", zh: "{n} 位客户", "zh-TW": "{n} 位客戶", vi: "{n} khách", th: "ลูกค้า {n} ราย", id: "{n} pelanggan" },
 };
 
 // Transpose RAW (key→langs) into REDESIGN_STRINGS (lang→keys).
