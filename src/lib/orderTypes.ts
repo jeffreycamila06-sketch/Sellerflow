@@ -7,4 +7,6 @@
 //     intentionally NOT unified with the device-local liveDayId.
 export interface LiveOrder { orderNum:number; item:string; qty:number; price:number; total:number; time:string; handle:string; name:string; bNum:number; platform:string; status:string; date:string; }
 export interface Buyer { handle:string; name:string; platform:string; num:number; orders:LiveOrder[]; totalSpent:number; totalOrders:number; }
-export interface Comment { handle:string; name:string; comment:string; platform:"TikTok"|"Facebook"; isBuy:boolean; buyerNum:number|null; buyerData:Buyer|null; time:string; avatar?:string; timestamp?:string; sellerId?:string; sessionId?:string; sourceUsername?:string; }
+// platform: TikTok/Facebook + Shopee (P3 — additive 3rd live source). LiveOrder/Buyer
+// platform stay `string`, so widening this union is downstream-safe (no exhaustive switch).
+export interface Comment { handle:string; name:string; comment:string; platform:"TikTok"|"Facebook"|"Shopee"; isBuy:boolean; buyerNum:number|null; buyerData:Buyer|null; time:string; avatar?:string; timestamp?:string; sellerId?:string; sessionId?:string; sourceUsername?:string; }

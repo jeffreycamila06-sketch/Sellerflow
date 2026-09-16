@@ -87,6 +87,11 @@ export default function Dashboard({
   onManageTT,
   ttConnected, fbConnected, ttConnecting, fbConnecting, onConnectTT, onRefreshTT, refreshing = false,
   ttAccounts = [], fbAccounts = [],
+  // P3 — Shopee source chip (all optional; chip renders only when shopeeEnabled AND
+  // ≥1 authorized shop → zero Shopee UI otherwise = byte-unchanged TT/FB header).
+  shopeeEnabled = false, shopeeShops = [], shopeeOpen = false, onToggleShopee,
+  shopeeIdx = 0, onPickShopee, shopeeConnected = false, shopeeConnecting = false,
+  onConnectShopee, onManageShopee,
   printed, entId, entPrice, onOneClick, onOpenEnt, onEntPrice, onEntKey,
   onEntSubmit,
   viewers = null,
@@ -122,6 +127,14 @@ export default function Dashboard({
   onConnectTT: () => void;
   onRefreshTT?: () => void; refreshing?: boolean;
   ttAccounts?: string[]; fbAccounts?: string[];
+  // P3 — Shopee source chip. onConnectShopee opens the Shopee connect modal (shop
+  // + session-ID). onManageShopee → the ShopeeChannels screen (authorize/remove).
+  shopeeEnabled?: boolean;
+  shopeeShops?: { shopId: number; shopName: string }[];
+  shopeeOpen?: boolean; onToggleShopee?: () => void;
+  shopeeIdx?: number; onPickShopee?: (i: number) => void;
+  shopeeConnected?: boolean; shopeeConnecting?: boolean;
+  onConnectShopee?: () => void; onManageShopee?: () => void;
   printed: Record<string, string>; entId: string | null; entPrice: string;
   // Orderable earlier-comments (sql/18) — the E1 gate: history rows may show
   // order buttons ONLY after the session-window load resolved (before that, an
@@ -148,6 +161,9 @@ export default function Dashboard({
   const t = useT();
   const tt = conn(ttConnected, ttConnecting);
   const fb = conn(fbConnected, fbConnecting);
+  const sh = conn(shopeeConnected, shopeeConnecting); // P3
+  const shShow = shopeeEnabled && shopeeShops.length > 0; // chip renders only when flag on + ≥1 shop
+  const shName = shopeeShops.length ? (shopeeShops[shopeeIdx] || shopeeShops[0]) : null;
   const connLabel = (connected: boolean, connecting: boolean) => (connecting ? t.rd_dash_connecting : connected ? t.rd_dash_disconnect : t.rd_dash_connect);
   const ttTitle = ttConnected ? t.rd_dash_conn_title : t.rd_dash_not_conn_title;
   const fbTitle = fbConnected ? t.rd_dash_conn_title : t.rd_dash_not_conn_title;
@@ -165,16 +181,18 @@ export default function Dashboard({
   // most one is open. Listener attaches only while one is open.
   const ttWrapRef = useRef<HTMLDivElement>(null);
   const fbWrapRef = useRef<HTMLDivElement>(null);
+  const shopeeWrapRef = useRef<HTMLDivElement>(null); // P3
   useEffect(() => {
-    if (!ttOpen && !fbOpen) return;
+    if (!ttOpen && !fbOpen && !shopeeOpen) return;
     const close = () => {
       if (ttOpen) onToggleTT();
       else if (fbOpen) onToggleFB();
+      else if (shopeeOpen) onToggleShopee?.();
     };
     const onDown = (e: Event) => {
       const target = e.target as Node | null;
       if (!target) return;
-      if (ttWrapRef.current?.contains(target) || fbWrapRef.current?.contains(target)) return;
+      if (ttWrapRef.current?.contains(target) || fbWrapRef.current?.contains(target) || shopeeWrapRef.current?.contains(target)) return;
       close();
     };
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close(); };
@@ -184,7 +202,7 @@ export default function Dashboard({
       document.removeEventListener("pointerdown", onDown);
       document.removeEventListener("keydown", onKey);
     };
-  }, [ttOpen, fbOpen, onToggleTT, onToggleFB]);
+  }, [ttOpen, fbOpen, shopeeOpen, onToggleTT, onToggleFB, onToggleShopee]);
   // Phase 5d — feed scroll (tangled-zone #3). Newest is prepended at the top, so
   // we scroll the feed container to top when a new comment arrives. useLayoutEffect
   // (not setTimeout) so it runs after DOM mutation, before paint.
@@ -340,6 +358,38 @@ export default function Dashboard({
               </div>
             )}
           </div>
+          {/* P3 — Shopee source chip (flag ON + ≥1 authorized shop). Mirrors the
+              TikTok chip: select a shop (checkmark, no connect) + Connect opens the
+              Shopee connect modal (session-ID paste); Disconnect when live. */}
+          {shShow && (
+            <div ref={shopeeWrapRef} style={{ position: "relative", flex: 1 }}>
+              <button onClick={onToggleShopee} title={shopeeConnected ? t.rd_dash_conn_title : t.rd_dash_not_conn_title} style={{ ...pickerBtn, background: sh.chipBg, boxShadow: sh.chipShadow }}>
+                <span className="sfl-anim-heart" style={{ width: 16, height: 16, borderRadius: 5, background: "#ee4d2d", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800, color: "#fff", flexShrink: 0 }}>S</span>
+                <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shName ? (shName.shopName || t.rd_shp_shop_name_fallback) : t.rd_shp_connect_shopee}</span>
+                <span className={sh.dotCls} style={{ width: 7, height: 7, borderRadius: "50%", background: sh.dotBg, flexShrink: 0, boxShadow: sh.dotGlow }} />
+                <span style={{ fontSize: 9, opacity: 0.85 }}>▾</span>
+              </button>
+              {shopeeOpen && (
+                <div style={dropdown("right")}>
+                  <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--text-muted)", padding: "6px 8px 7px" }}>{t.rd_shp_section}</div>
+                  {shopeeShops.map((s, i) => (
+                    <button key={s.shopId} onClick={() => onPickShopee?.(i)} style={ddRow(i === shopeeIdx)}>
+                      <span style={{ width: 30, height: 30, borderRadius: 8, background: "#ee4d2d", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: "#fff", flexShrink: 0 }}>S</span>
+                      <span style={{ flex: 1, minWidth: 0 }}><span style={ddName}>{s.shopName || t.rd_shp_shop_name_fallback}</span><span style={ddMeta}>Shopee · {t.rd_shp_tap_go_live}</span></span>
+                      <span style={ddCheck}>{i === shopeeIdx ? "✓" : ""}</span>
+                    </button>
+                  ))}
+                  <button onClick={onManageShopee} style={{ ...ddRow(false), marginTop: 4, borderTop: "1px solid var(--border)", borderRadius: 0 }}>
+                    <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent-soft)", color: "var(--accent-fg)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 700, flexShrink: 0 }}>+</span>
+                    <span style={{ flex: 1, minWidth: 0 }}><span style={{ ...ddName, color: "var(--accent-fg)" }}>{t.rd_shp_channels_title}</span></span>
+                  </button>
+                  <div style={connFooterWrap}>
+                    <button onClick={onConnectShopee} disabled={shopeeConnecting} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: sh.border, borderRadius: 9, background: sh.bg, color: sh.fg, fontSize: 11.5, fontWeight: 700, cursor: shopeeConnecting ? "default" : "pointer", opacity: shopeeConnecting ? 0.7 : 1, fontFamily: "var(--font-ui)" }}>{shopeeConnecting ? t.rd_shp_connecting : shopeeConnected ? t.rd_shp_disconnect : t.rd_shp_connect}</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
