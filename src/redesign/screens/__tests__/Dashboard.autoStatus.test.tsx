@@ -40,3 +40,22 @@ describe("Dashboard — Rule 3 indicators", () => {
     expect(screen.getByText("B2 · 3 left")).toBeTruthy();
   });
 });
+
+describe("Dashboard — Rule 1/2/3 per-row feed badge (display-only)", () => {
+  const c = (id: string, over: Record<string, unknown> = {}) => ({ id, name: "Ann", handle: "@ann", text: "A1", mine: false, time: "1m", platform: "TikTok", ...over });
+  it("autoBadges[id] renders the matching label next to the row (duplicate/soldout/short)", () => {
+    renderDash({
+      comments: [c("k1"), c("k2"), c("k3")],
+      autoBadges: { k1: "duplicate", k2: "soldout", k3: "short" },
+    });
+    expect(screen.getByText("Duplicate")).toBeTruthy();
+    // "Sold out" also appears as a banner label elsewhere, but with no autoSoldOut prop
+    // here the only source is the k2 row badge.
+    expect(screen.getByText("Sold out")).toBeTruthy();
+    expect(screen.getByText("Not enough stock")).toBeTruthy();
+  });
+  it("no badge for a row absent from the map", () => {
+    renderDash({ comments: [c("k1")], autoBadges: {} });
+    expect(screen.queryByText("Duplicate")).toBeNull();
+  });
+});

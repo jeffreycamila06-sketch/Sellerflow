@@ -94,6 +94,7 @@ export default function Dashboard({
   onConnectShopee, onManageShopee,
   // Rule 3 — Auto Mode live inventory indicators (empty when Auto Mode is off).
   autoLowStock = [], autoSoldOut = [], onDismissSoldOut,
+  autoBadges = {},
   printed, entId, entPrice, onOneClick, onOpenEnt, onEntPrice, onEntKey,
   onEntSubmit,
   viewers = null,
@@ -142,6 +143,9 @@ export default function Dashboard({
   autoLowStock?: { code: string; productName: string; stock: number }[];
   autoSoldOut?: { code: string; productName: string; stock: number }[];
   onDismissSoldOut?: (code: string) => void;
+  // Rules 1/2/3 per-row badge (keyed by commentKey = c.id): duplicate / soldout /
+  // short. Display-only — set by the RedesignApp auto seam, never touches dedup.
+  autoBadges?: Record<string, "duplicate" | "soldout" | "short">;
   printed: Record<string, string>; entId: string | null; entPrice: string;
   // Orderable earlier-comments (sql/18) — the E1 gate: history rows may show
   // order buttons ONLY after the session-window load resolved (before that, an
@@ -561,6 +565,13 @@ export default function Dashboard({
                     <span style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.3 }}>{c.text}</span>
                     {c.mine && (
                       <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".05em", color: "var(--accent-text)", background: "var(--accent)", padding: "2px 6px", borderRadius: 5, flexShrink: 0 }}>MINE</span>
+                    )}
+                    {/* Rules 1/2/3 auto badge (display-only, keyed by commentKey = c.id):
+                        a duplicate / sold-out / short comment that created NO order. */}
+                    {autoBadges[c.id] && (
+                      <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".05em", color: "#fff", background: autoBadges[c.id] === "duplicate" ? "var(--text-muted)" : "var(--danger)", padding: "2px 6px", borderRadius: 5, flexShrink: 0 }}>
+                        {autoBadges[c.id] === "duplicate" ? t.rd_auto_badge_duplicate : autoBadges[c.id] === "soldout" ? t.rd_auto_badge_soldout : t.rd_auto_badge_short}
+                      </span>
                     )}
                   </div>
                   {/* Order flow (dc.html v3 L210–227): printed badge · Enterprise

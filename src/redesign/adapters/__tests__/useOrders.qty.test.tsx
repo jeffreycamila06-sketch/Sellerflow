@@ -64,6 +64,13 @@ describe("createOrder — Rule 2 qty", () => {
     expect(onStockError).toHaveBeenCalled();
   });
 
+  it("P5 sticker text — itemOverride sets the order item ('A1 ×2') on the order + the persisted row", () => {
+    const { result } = renderHook(() => useOrders(deps));
+    const order = result.current.createOrder(comment(), 150, { productLocalId: 7, qty: 2, autoCode: "A1", itemOverride: "A1 ×2" });
+    expect(order?.item).toBe("A1 ×2");                       // sticker/order item = the code, not the price
+    expect(saveLiveSessionOrder).toHaveBeenCalledWith(expect.objectContaining({ product: "A1 ×2", qty: 2, auto_code: "A1" }));
+  });
+
   it("manual order (no productLocalId) → NO stock RPC at all, qty defaults 1", () => {
     const { result } = renderHook(() => useOrders(deps));
     const order = result.current.createOrder(comment({ comment: "manual" }), 99);

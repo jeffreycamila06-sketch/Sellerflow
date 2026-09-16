@@ -242,6 +242,10 @@ export default function RedesignApp() {
   const [autoCodeStock, setAutoCodeStock] = useState<AutoCodeStock[]>([]);
   const [autoLowStock, setAutoLowStock] = useState<number>(() => loadLowStockThreshold());
   const [autoDismissedSoldOut, setAutoDismissedSoldOut] = useState<Set<string>>(new Set());
+  // RULE 1/2/3 feed badges — display-only, keyed by commentKey (c.id): a comment that
+  // was a duplicate / sold-out / short gets a chip next to MINE. NEVER touches
+  // commentKey/dedup/toRedesignComment — a parallel map like `printed`.
+  const [autoBadges, setAutoBadges] = useState<Record<string, "duplicate" | "soldout" | "short">>({});
 
   // Dashboard account-picker selection (declared before useLiveFeed so the feed can
   // scope comments to the chosen account). registeredAccountsFor is pure.
@@ -337,7 +341,7 @@ export default function RedesignApp() {
   }, []);
   // Rule 1 resets on a NEW session (a fresh session_id = a fresh live) — clear the
   // synchronous dedup ref; loadedAutoDupSet clears with the reloaded (empty) session.
-  useEffect(() => { autoDupRef.current = new Set(); }, [sessionInstance.currentSessionId]);
+  useEffect(() => { autoDupRef.current = new Set(); setAutoBadges({}); }, [sessionInstance.currentSessionId]); // eslint-disable-line react-hooks/set-state-in-effect -- fresh session resets Rule-1 dedup + its feed badges
   // Phase 5f — free-tier cap status + popups (M2 visibility-guarded poll).
   const freeCap = useFreeCap(authed, auth.profile?.plan);
   // Phase 5g — print config snapshot (filled after print-pattern/printer state is
@@ -955,10 +959,19 @@ export default function RedesignApp() {
   const [entId, setEntId] = useState<string | null>(null);
   const [entPrice, setEntPrice] = useState("");
   // 1-Click: production passes price 0 (captures buyer + comment; total 0).
+  // MANUAL sold-out check (Jeff): a manual tap on a comment whose text is a sold-out
+  // auto code warns before proceeding. Manual NEVER decrements stock or applies Rule 1
+  // — the seller can always override (sell a held-back piece). Returns the code or null.
+  const soldOutCodeForComment = (text: string): string | null => {
+    const plan = planAutoOrder(text || "", autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0);
+    return plan.kind === "soldout" ? plan.code.code : null;
+  };
   const onOneClick = (id: string) => {
     if (printed[id]) return; // already ordered — no duplicate
     const prod = liveFeed.getComment(id); // resolves live AND history rows (sql/18 unlock)
     if (!prod) return;
+    const soCode = soldOutCodeForComment(prod.comment);
+    if (soCode && typeof window !== "undefined" && !window.confirm(tpl(tApp.rd_auto_manual_soldout_confirm, { code: soCode }))) return;
     const order = orders.createOrder(prod, 0);
     if (order) {
       setPrinted((p) => ({ ...p, [id]: "order" })); // null = free-cap blocked
@@ -992,6 +1005,8 @@ export default function RedesignApp() {
     if (entSubmittedRef.current.has(id) || printed[id]) return; // double-tap / already-ordered guard
     entSubmittedRef.current.add(id);
     const prod = liveFeed.getComment(id); // resolves live AND history rows (sql/18 unlock)
+    const soCode = prod ? soldOutCodeForComment(prod.comment) : null;
+    if (soCode && typeof window !== "undefined" && !window.confirm(tpl(tApp.rd_auto_manual_soldout_confirm, { code: soCode }))) { entSubmittedRef.current.delete(id); return; }
     const order = prod ? orders.createOrder(prod, price) : null;
     if (order) {
       setPrinted((p) => ({ ...p, [id]: cur + price }));
@@ -1028,18 +1043,21 @@ export default function RedesignApp() {
     // rows carry autoCode via rebuild; in-session orders carry it too). No order, no
     // print, NO stock claim on a duplicate (P5 renders the "duplicate" badge).
     const dupKey = autoDupKeyOf(c.handle, plan.code.code);
-    if (autoDupRef.current.has(dupKey) || loadedAutoDupSet.has(dupKey)) return; // P5 adds the "duplicate" badge
-    // Rule 3 — a sold-out code: no order, no print. The persistent banner is DERIVED
-    // from the stock mirror (stock 0 → banner), so no toast here. P5 adds the badge.
-    if (plan.kind === "soldout") return;
+    if (autoDupRef.current.has(dupKey) || loadedAutoDupSet.has(dupKey)) { setAutoBadges((b) => ({ ...b, [key]: "duplicate" })); return; }
+    // Rule 3 — a sold-out code: no order, no print (the banner is DERIVED from the
+    // stock mirror). The feed row gets a "sold out" badge.
+    if (plan.kind === "soldout") { setAutoBadges((b) => ({ ...b, [key]: "soldout" })); return; }
     // Rule 2 — "short" (matched, stock > 0 but < requested qty): REJECT the whole
-    // order, no partial. P5 renders the "not enough stock" badge.
-    if (plan.kind === "short") return;
+    // order, no partial → a "not enough stock" badge.
+    if (plan.kind === "short") { setAutoBadges((b) => ({ ...b, [key]: "short" })); return; }
     // plan.kind === "order": claim SYNCHRONOUSLY before any await (anti double-decrement)
     autoProcessedRef.current.add(key);
     autoDupRef.current.add(dupKey);                              // Rule 1 sync claim (before createOrder)
     autoStockRef.current.set(plan.code.productLocalId, plan.nextStock);
-    const order = orders.createOrder(c, plan.code.price, { productLocalId: plan.code.productLocalId, qty: plan.qty, autoCode: plan.code.code });
+    // STICKER TEXT (Jeff follow-up): AUTO orders always show the CODE — qty 1 → "A1",
+    // qty>1 → "A1 ×2" (for packing). itemOverride sets order.item; manual is unchanged.
+    const itemOverride = plan.qty > 1 ? `${plan.code.code} ×${plan.qty}` : plan.code.code;
+    const order = orders.createOrder(c, plan.code.price, { productLocalId: plan.code.productLocalId, qty: plan.qty, autoCode: plan.code.code, itemOverride });
     if (order) {
       setPrinted((p) => ({ ...p, [key]: cur + plan.code.price }));
       const snap = snapshotFromCreate(c, order); // reprint snapshot (auto orders reprint too)
@@ -1226,6 +1244,7 @@ export default function RedesignApp() {
               autoLowStock={autoDetect ? autoStatus.lowStock : []}
               autoSoldOut={autoDetect ? autoSoldOutVisible : []}
               onDismissSoldOut={(code) => setAutoDismissedSoldOut((s) => { const n = new Set(s); n.add(code); return n; })}
+              autoBadges={autoBadges}
             />
           )}
           {screen === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} orders={ordersList} state={ordersState} onExport={exportOrders} onGoShipping={() => setScreen("shipping")}

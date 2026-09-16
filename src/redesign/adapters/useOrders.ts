@@ -115,7 +115,10 @@ export interface UseOrdersDeps {
 // (Rule 1 — stamped on the order + row for the (session,handle,code) dedup index).
 // Manual 1-Click/Enterprise pass NEITHER → qty defaults 1, autoCode stays undefined,
 // and the three writes + builder output are byte-identical to 5e.
-export interface CreateOrderOpts { productLocalId?: number; qty?: number; autoCode?: string }
+// itemOverride: AUTO orders print the seller's CODE as the item text ("A1" / "A1 ×2")
+// for packing (Jeff) — replaces the pure builder's price-string item. Manual orders
+// pass no override → the builder's item (price string / comment) is byte-unchanged.
+export interface CreateOrderOpts { productLocalId?: number; qty?: number; autoCode?: string; itemOverride?: string }
 
 export interface UseOrders {
   // returns null when the free-tier soft block prevented creation.
@@ -148,6 +151,10 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCap
     //    order so it persists on the row + feeds the (session,handle,code) dedup.
     const { order, nextBuyers, singleOrderBuyer } = buildOrderFromComment(c, getBuyers(), price, new Date(), opts?.qty ?? 1);
     if (opts?.autoCode) order.autoCode = opts.autoCode;
+    // Auto Mode: the sticker/order item text is the CODE ("A1" / "A1 ×2"), not the
+    // price string. singleOrderBuyer projects the SAME order object → the printed
+    // slip + the persisted row + reprint all carry it. Manual passes no override.
+    if (opts?.itemOverride) order.item = opts.itemOverride;
     // 1b) mark this msgId processed SYNCHRONOUSLY, before any write, so a same-tick
     //     second relay is blocked at step 0 above.
     if (msgId) processedMsgIdsRef.current.add(msgId);

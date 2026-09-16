@@ -88,16 +88,17 @@ describe("RedesignApp Auto Mode handler (onComment wiring)", () => {
     expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
     const [, price, opts] = H.createOrder.fn!.mock.calls[0];
     expect(price).toBe(52);
-    expect(opts).toEqual({ productLocalId: 14, qty: 1, autoCode: "D" }); // Rules 1/2 wiring
+    // Rules 1/2 + P5 sticker text: qty 1 → item text is the CODE ("D").
+    expect(opts).toEqual({ productLocalId: 14, qty: 1, autoCode: "D", itemOverride: "D" });
   });
 
-  it("RULE 2 — 'D 2' with stock 2 → ONE order qty 2 (stock claimed by 2)", async () => {
+  it("RULE 2 — 'D 2' with stock 2 → ONE order qty 2 + sticker item 'D ×2'", async () => {
     const drive = await mountWithAutoMode(true);
     await drive(comment({ comment: "D 2" }));
     expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
     const [, price, opts] = H.createOrder.fn!.mock.calls[0];
     expect(price).toBe(52);
-    expect(opts).toEqual({ productLocalId: 14, qty: 2, autoCode: "D" });
+    expect(opts).toEqual({ productLocalId: 14, qty: 2, autoCode: "D", itemOverride: "D ×2" });
   });
 
   it("RULE 2 — 'D 3' with only 2 in stock → SHORT: no order (reject whole, no partial)", async () => {
