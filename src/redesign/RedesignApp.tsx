@@ -33,6 +33,9 @@ import Signup from "./screens/Signup";
 import PrinterSettings from "./screens/PrinterSettings";
 import PrintPattern, { DEFAULT_PP, stepScaleLevel, type PrintPatternState, type PpBoolKey, type PpSizeKey } from "./screens/PrintPattern";
 import ManageChannels from "./screens/ManageChannels";
+import ShopeeChannels from "./screens/ShopeeChannels";
+import { loadShopeeEnabled, listShopeeShops, shopeeConnect, shopeeDisconnect, parseShopeeReturn, isShopeeEligible, type ShopeeShop } from "./adapters/shopee";
+import type { ConnectTab } from "./screens/ConnectModal";
 import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
 import { useCustomers, useMinerStats, ZERO_MINERS_STATS, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, deriveMrr, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
 import { useBusinessPulse } from "./adapters/useBusinessPulse";
@@ -88,10 +91,10 @@ type Screen =
   | "landing" | "login" | "signup" | "dashboard" | "miners" | "orders" | "products"
   | "menu" | "settings" | "customers" | "subscription" | "support"
   | "admin" | "print" | "sales" | "shipping" | "customerdata" | "legal" | "delete"
-  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails";
+  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "shopeechannels";
 
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
-const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails"];
+const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "shopeechannels"];
 
 
 const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set", automode: "sfl_rd_automode", pp: "sfl_rd_pp", printer: "sfl_rd_printer", keepAwake: "sfl_rd_keepawake", motion: "sfl_rd_motion" } as const;
@@ -226,9 +229,39 @@ export default function RedesignApp() {
   const [fbIdx, setFbIdx] = useState(0);
   const ttAccounts = auth.profile ? registeredAccountsFor(auth.profile, "TikTok") : [];
   const fbAccounts = auth.profile ? registeredAccountsFor(auth.profile, "Facebook") : [];
+  // P3 — Shopee source (gated on app_settings shopee_enabled; loaded below). Own
+  // authorized-shop list + picker index; SEPARATE cap from tiktok/facebook (Option A).
+  const [shopeeEnabled, setShopeeEnabled] = useState(false);
+  const [shopeeShops, setShopeeShops] = useState<ShopeeShop[]>([]);
+  const [shopeeIdx, setShopeeIdx] = useState(0);
+  const selectedShop = shopeeShops[shopeeIdx] || shopeeShops[0] || null;
+  // Shopee global kill switch (app_settings shopee_enabled, fail-closed — same
+  // pattern as parcel: defaults false, flips true only once loaded AND "true").
+  useEffect(() => {
+    if (!authed) return;
+    let alive = true;
+    void loadShopeeEnabled().then((v) => { if (alive) setShopeeEnabled(v); });
+    return () => { alive = false; };
+  }, [authed]);
+  // Load the seller's authorized shops (only when enabled). One read per open;
+  // re-fetched after authorize-return / remove via reloadShopeeShops.
+  const reloadShopeeShops = useCallback(async () => {
+    const list = await listShopeeShops();
+    setShopeeShops(list);
+    setShopeeIdx((i) => (i < list.length ? i : 0)); // clamp the picker
+  }, []);
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!authed || !shopeeEnabled) { setShopeeShops([]); return; }
+    let alive = true;
+    void listShopeeShops().then((list) => { if (alive) { setShopeeShops(list); setShopeeIdx((i) => (i < list.length ? i : 0)); } });
+    return () => { alive = false; };
+  }, [authed, shopeeEnabled]);
+  /* eslint-enable react-hooks/set-state-in-effect */
   // Account-leak fix — the account the user has picked per platform. Passed to
   // useLiveFeed so ONLY this account's comments show, even with up to 5 accounts live.
-  const liveSelected = { TikTok: ttAccounts[ttIdx] || "", Facebook: fbAccounts[fbIdx] || "" };
+  // P3 — Shopee scoping key = the selected shop id (server select_account "Shopee").
+  const liveSelected = { TikTok: ttAccounts[ttIdx] || "", Facebook: fbAccounts[fbIdx] || "", Shopee: selectedShop ? String(selectedShop.shopId) : "" };
 
   // Phase 5d — real live comment feed (socket + dedup). Replaces the sample
   // SEED_COMMENTS/INCOMING stream. Read-only (order writes are 5e). The 3rd arg is the
@@ -427,6 +460,22 @@ export default function RedesignApp() {
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => { if (!toast) return; const id = setTimeout(() => setToast(null), toast.kind === "err" ? 3200 : 1800); return () => clearTimeout(id); }, [toast]);
+  // P3 — OAuth return (?shopee=connected|error&code=…): toast + strip the query +
+  // reload the shop list so a freshly-authorized shop appears. After toast/tApp so
+  // the strings localize; re-runs are no-ops (the param is stripped). Note: tApp is
+  // declared below but referenced only inside the callback (runs post-render).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const ret = parseShopeeReturn(window.location.search);
+    if (!ret) return;
+    if (ret.status === "connected") { setToast({ msg: tApp.rd_shp_authorized_toast, kind: "ok" }); void reloadShopeeShops(); }
+    else setToast({ msg: tApp.rd_shp_auth_error_toast, kind: "err" });
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("shopee"); url.searchParams.delete("code");
+      window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+    } catch { /* ignore */ }
+  }, [reloadShopeeShops, tApp]);
 
   // "No printer connected" modal — an order printed but the native bridge said no
   // printer is set up yet (BT_NOT_SET / PRINTER_NOT_SET). The order is ALREADY
@@ -555,6 +604,7 @@ export default function RedesignApp() {
   // useLiveFeed for comment scoping).
   const [ttOpen, setTtOpen] = useState(false);
   const [fbOpen, setFbOpen] = useState(false);
+  const [shopeeOpen, setShopeeOpen] = useState(false); // P3 — Shopee source dropdown
   // Where "Back" returns from the ManageChannels screen — depends on origin
   // (Change 3): Settings → "settings" (unchanged), Live dashboard → "dashboard".
   const [chanBack, setChanBack] = useState<Screen>("settings");
@@ -584,7 +634,7 @@ export default function RedesignApp() {
   // server. ⚠️ Preview-unverifiable (Render + socket) — only active post-merge/APK.
   const ttConnected = liveFeed.ttConnected;
   const fbConnected = liveFeed.fbConnected;
-  const [connectOpen, setConnectOpen] = useState<Platform | null>(null);
+  const [connectOpen, setConnectOpen] = useState<ConnectTab | null>(null); // P3 — can open on the Shopee tab
   // CONNECT-TRUTH Item A — "Connected!" fires on the ttConnected RISE (server
   // truth), gated to a recent Connect tap: background rises (health-cycle
   // recovery, join snapshot after a socket blip) never pop a surprise toast
@@ -621,12 +671,45 @@ export default function RedesignApp() {
   const [fbConnecting, setFbConnecting] = useState(false);
   const [ttOff, setTtOff] = useState(false);
   const [fbOff, setFbOff] = useState(false);
+  // P3 — Shopee connect flow (parallels tt/fb: local connecting flag + local
+  // Disconnect gesture cleared by server truth). shopeeConnected = liveFeed truth.
+  const [shopeeConnecting, setShopeeConnecting] = useState(false);
+  const [shopeeOff, setShopeeOff] = useState(false);
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => { setTtOff(false); }, [ttConnected]); // server status wins over a local disconnect
   useEffect(() => { setFbOff(false); }, [fbConnected]);
+  useEffect(() => { setShopeeOff(false); }, [liveFeed.shopeeConnected]); // server truth wins
   /* eslint-enable react-hooks/set-state-in-effect */
   const ttEff = ttConnected && !ttOff;
   const fbEff = fbConnected && !fbOff;
+  const shopeeEff = liveFeed.shopeeConnected && !shopeeOff;
+  // Item 7 — Authorize + Connect need an ACTIVE PAID plan (server also enforces
+  // requirePlanActive on /shopee/connect). Admin bypasses. Not eligible → the same
+  // neutral upsell used elsewhere (iOS: contact-support popup; else the upsell).
+  const shopeeEligible = isShopeeEligible(auth.profile);
+  // Chip Connect: live → local Disconnect (+ server unbind); else eligibility gate,
+  // then open the connect modal on the Shopee tab (shop + session-ID paste).
+  const onConnectShopee = () => {
+    setShopeeOpen(false);
+    if (shopeeEff) { setShopeeOff(true); if (selectedShop) void shopeeDisconnect(selectedShop.shopId); return; }
+    if (!shopeeEligible) { if (ios) setIosExpired(true); else setUpsellOpen(true); return; }
+    setConnectOpen("Shopee");
+  };
+  // Modal's Connect (onShopeeConnect): join the seller room (Shopee-only sellers
+  // never tapped TikTok Connect → arm the room join), POST, toast on success. The
+  // modal shows inline errors from the returned result (no double toast here).
+  const doShopeeConnect = async (shopId: number, sessionId: string) => {
+    if (!shopeeEligible) { if (ios) setIosExpired(true); else setUpsellOpen(true); return { ok: false, error: "plan_expired" }; }
+    setShopeeConnecting(true);
+    track("connect_attempt", { platform: "Shopee" });
+    try {
+      liveFeed.ensureJoined();
+      const r = await shopeeConnect(shopId, sessionId);
+      if (r.ok) { track("connect_success", { platform: "Shopee" }); setToast({ msg: tApp.rd_shp_connected_toast, kind: "ok" }); }
+      else track("connect_failed", { platform: "Shopee", reason: r.reason || r.error || "unknown" });
+      return r;
+    } finally { setShopeeConnecting(false); }
+  };
   // KEEP-AWAKE habang naka-live (FLive/Chotdon parity) — web Screen Wake Lock,
   // held while GREEN or AMBER (kasama ang connecting/recovering — ang 60s grace
   // ay karaniwang bumabalik sa green; ang natutulog na phone mid-heal ay
@@ -1030,9 +1113,17 @@ export default function RedesignApp() {
             <Dashboard
               comments={comments} cur={cur} basketCounts={basketCounts}
               ttOpen={ttOpen} fbOpen={fbOpen} ttIdx={ttIdx} fbIdx={fbIdx}
-              onToggleTT={() => { setTtOpen((o) => !o); setFbOpen(false); }}
-              onToggleFB={() => { setFbOpen((o) => !o); setTtOpen(false); }}
+              onToggleTT={() => { setTtOpen((o) => !o); setFbOpen(false); setShopeeOpen(false); }}
+              onToggleFB={() => { setFbOpen((o) => !o); setTtOpen(false); setShopeeOpen(false); }}
               onPickTT={(i) => switchAccount("TikTok", i)}
+              /* P3 — Shopee source chip (renders only when shopeeEnabled + ≥1 shop). */
+              shopeeEnabled={shopeeEnabled}
+              shopeeShops={shopeeShops.map((s) => ({ shopId: s.shopId, shopName: s.shopName }))}
+              shopeeOpen={shopeeOpen} onToggleShopee={() => { setShopeeOpen((o) => !o); setTtOpen(false); setFbOpen(false); }}
+              shopeeIdx={shopeeIdx} onPickShopee={(i) => setShopeeIdx(i)}
+              shopeeConnected={shopeeEff} shopeeConnecting={shopeeConnecting}
+              onConnectShopee={onConnectShopee}
+              onManageShopee={() => { setShopeeOpen(false); setChanBack("dashboard"); setScreen("shopeechannels"); }}
               /* TikTok "Manage / add accounts" row → manage screen, back target =
                  Live dashboard (Change 3). FB has no onPickFB — honest gate. */
               onManageTT={() => { setTtOpen(false); setChanBack("dashboard"); setScreen("ttchannels"); }}
@@ -1116,7 +1207,13 @@ export default function RedesignApp() {
             />
           )}
           {(screen === "ttchannels" || screen === "fbchannels") && (
-            <ManageChannels platform={screen === "ttchannels" ? "tiktok" : "facebook"} account={auth.profile} onBack={() => setScreen(chanBack)} onSaveChannels={saveChannels} />
+            <ManageChannels platform={screen === "ttchannels" ? "tiktok" : "facebook"} account={auth.profile} onBack={() => setScreen(chanBack)} onSaveChannels={saveChannels}
+              shopeeEnabled={shopeeEnabled} onShopee={() => { setChanBack("settings"); setScreen("shopeechannels"); }} />
+          )}
+          {/* P3 — Shopee shops (flag-gated; reachable from ManageChannels + the Live
+              Shopee chip's Manage row). Origin-aware Back via chanBack. */}
+          {screen === "shopeechannels" && (
+            <ShopeeChannels account={auth.profile} shops={shopeeShops} onReload={reloadShopeeShops} onBack={() => setScreen(chanBack)} onToast={(msg, kind) => setToast({ msg, kind })} onUpsell={() => { if (ios) setIosExpired(true); else setUpsellOpen(true); }} />
           )}
           {/* onExport gated on live (#7): the sample fallback list must never be
               downloadable as a real-looking CSV. */}
@@ -1195,7 +1292,9 @@ export default function RedesignApp() {
 
         {/* #6 — real connect modal (registered-account picker / add account) */}
         {connectOpen && auth.profile && (
-          <ConnectModal profile={auth.profile} initialTab={connectOpen} onClose={() => setConnectOpen(null)} onConnect={handleConnect} />
+          <ConnectModal profile={auth.profile} initialTab={connectOpen} onClose={() => setConnectOpen(null)} onConnect={handleConnect}
+            shopeeEnabled={shopeeEnabled} shopeeShops={shopeeShops.map((s) => ({ shopId: s.shopId, shopName: s.shopName }))}
+            shopeeSelectedId={selectedShop?.shopId} onShopeeConnect={doShopeeConnect} />
         )}
         {/* Explicit session model (sub-step 2) — required session-length picker shown
             on Connect when no session is running. Pick → create session → connect;

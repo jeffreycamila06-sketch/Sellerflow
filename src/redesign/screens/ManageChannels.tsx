@@ -21,12 +21,16 @@ const input: CSSProperties = { flex: 1, minWidth: 0, border: "none", background:
 const inputWrap = (invalid: boolean): CSSProperties => ({ flex: 1, display: "flex", alignItems: "center", gap: 4, border: `1px solid ${invalid ? "var(--warn)" : "var(--border-strong)"}`, borderRadius: 12, background: "var(--surface-2)", padding: "0 13px" });
 const badge = (locked: boolean): CSSProperties => ({ display: "flex", alignItems: "center", padding: "0 16px", borderRadius: 12, background: locked ? "var(--surface-3)" : "var(--accent-soft)", color: locked ? "var(--text-muted)" : "var(--accent-fg)", fontSize: 12, fontWeight: 800, letterSpacing: ".04em", flexShrink: 0 });
 
-export default function ManageChannels({ platform, account = null, onBack, onSaveChannels }: {
+export default function ManageChannels({ platform, account = null, onBack, onSaveChannels, shopeeEnabled = false, onShopee }: {
   platform: "tiktok" | "facebook";
   account?: AccountUser | null;
   onBack: () => void;
   // opts.unlocked = slot indices the 4h cooldown has server-verified as editable.
   onSaveChannels?: (lists: { tiktok: string; facebook: string }, opts?: { unlocked?: { tiktok?: number[]; facebook?: number[] } }) => Promise<{ ok: boolean; error?: string }>;
+  // P3 — Shopee section (button → ShopeeChannels), rendered ONLY when the global
+  // shopee_enabled flag is on. Absent/false → zero Shopee UI here (byte-unchanged).
+  shopeeEnabled?: boolean;
+  onShopee?: () => void;
 }) {
   const t = useT();
   const isTT = platform === "tiktok";
@@ -194,6 +198,16 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
           <button onClick={save} disabled={state === "saving" || !onSaveChannels} style={{ width: "100%", padding: "14px 0", border: "none", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 700, cursor: state === "saving" || !onSaveChannels ? "default" : "pointer", opacity: state === "saving" || !onSaveChannels ? 0.6 : 1, boxShadow: "0 5px 14px var(--accent-soft)", marginBottom: 12 }}>{state === "saving" ? t.rd_set_saving : t.rd_ch_save}</button>
         )}
         <button onClick={() => setAddOpen(true)} style={{ width: "100%", padding: "15px 0", border: "none", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 800, letterSpacing: ".02em", cursor: "pointer", boxShadow: "0 6px 18px var(--accent-soft)" }}>{addLabel}</button>
+
+        {/* P3 — Shopee shops section (flag-gated). A separate live source with its
+            own authorize/remove screen; NOT part of the tiktok/facebook cap. */}
+        {shopeeEnabled && onShopee && (
+          <button onClick={onShopee} style={{ width: "100%", marginTop: 12, padding: "14px 15px", border: "1px solid var(--border)", borderRadius: 13, background: "var(--surface)", display: "flex", alignItems: "center", gap: 11, cursor: "pointer", fontFamily: "var(--font-ui)", boxShadow: "var(--shadow)" }}>
+            <span style={{ width: 30, height: 30, borderRadius: 8, background: "#ee4d2d", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: "#fff", flexShrink: 0 }}>S</span>
+            <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}><span style={{ display: "block", fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_shp_section}</span><span style={{ display: "block", fontSize: 11, color: "var(--text-muted)" }}>{t.rd_shp_section_sub}</span></span>
+            <span style={{ fontSize: 15, color: "var(--text-muted)" }}>›</span>
+          </button>
+        )}
       </div>
 
       {/* Centered Telegram popup (redesign-themed, NOT the source yellow) */}

@@ -113,7 +113,11 @@ const SYNTH: { name: string; handle: string; text: string; platform: "TikTok" | 
   { name: "Siti Rahayu", handle: "siti.rahayu", text: "+1 gamis biru kak", platform: "TikTok", isBuy: true },
 ];
 
-export interface ActiveAccounts { TikTok: string; Facebook: string }
+// P3 — Shopee is an ADDITIVE 3rd status key (OPTIONAL so every existing
+// { TikTok, Facebook } call site + test stays byte-unchanged; defaults to "" in
+// use). TikTok/Facebook handling is byte-unchanged; the Shopee key rides the SAME
+// platform_status / select_account wire, populated by a dedicated early-return branch.
+export interface ActiveAccounts { TikTok: string; Facebook: string; Shopee?: string }
 
 export interface UseLiveFeed {
   comments: RDComment[];
@@ -142,6 +146,13 @@ export interface UseLiveFeed {
   // this never feeds the status machine or the comment pipeline.
   ttViewers: number | null;
   connect: (platform: Platform, data: Record<string, string>) => Promise<ConnectResult>;
+  // P3 (additive) — Shopee live status. shopeeConnected mirrors tt/fbConnected
+  // (server platform_status platform:"Shopee"); ensureJoined lets the Shopee
+  // connect path (RedesignApp → shopee.ts POST) put this socket in the seller
+  // room so the server's Shopee comment relay reaches it (a Shopee-only seller
+  // never taps the TikTok Connect that normally arms the room join).
+  shopeeConnected: boolean;
+  ensureJoined: () => void;
 }
 
 export function useLiveFeed(enabled: boolean, email: string | undefined, onComment?: (c: ProdComment) => void, selected?: ActiveAccounts): UseLiveFeed {
@@ -185,9 +196,13 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   // #6 — active live account per platform + per-platform connected flags. Driven by
   // the server `platform_status` event (App.tsx 4072-4080). These still drive the
   // connected-status indicators; they no longer drive the comment filter.
-  const [activeAccounts, setActiveAccounts] = useState<ActiveAccounts>({ TikTok: "", Facebook: "" });
+  const [activeAccounts, setActiveAccounts] = useState<ActiveAccounts>({ TikTok: "", Facebook: "", Shopee: "" });
   const [ttConnected, setTtConnected] = useState(false);
   const [fbConnected, setFbConnected] = useState(false);
+  // P3 — Shopee connected flag (server platform_status platform:"Shopee"). Separate
+  // from the tt/fb grace machine (Shopee has no reconnect concept): connected:true =
+  // poller running, false = stopped. No amber/recovering state.
+  const [shopeeConnected, setShopeeConnected] = useState(false);
   // F3 — TRUE while a fall-to-gray grace window is armed (server health-cycle
   // reconnect or socket-down grace): the stream's health is IN DOUBT. Display
   // layer maps this to the existing amber "Connecting…" visuals instead of
@@ -210,8 +225,9 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   // `select_account` so the wrong account's comments never reach this socket.
   const ttSel = selected?.TikTok || "";
   const fbSel = selected?.Facebook || "";
-  const selectedRef = useRef<ActiveAccounts>({ TikTok: ttSel, Facebook: fbSel });
-  selectedRef.current = { TikTok: ttSel, Facebook: fbSel };
+  const shSel = selected?.Shopee || ""; // P3 — selected Shopee shop id (scoping key)
+  const selectedRef = useRef<ActiveAccounts>({ TikTok: ttSel, Facebook: fbSel, Shopee: shSel });
+  selectedRef.current = { TikTok: ttSel, Facebook: fbSel, Shopee: shSel };
   const socketRef = useRef<Socket | null>(null);
   // MANUAL-CONNECT-ONLY (Jeff decision, 2026-07-12): the Fix B client
   // auto-reconnect (re-POST /connect after a socket reconnect — the app-open /
@@ -314,6 +330,7 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     const emitSelection = () => {
       s.emit("select_account", { platform: "TikTok", username: selectedRef.current.TikTok });
       s.emit("select_account", { platform: "Facebook", username: selectedRef.current.Facebook });
+      s.emit("select_account", { platform: "Shopee", username: selectedRef.current.Shopee }); // P3 — per-shop scoping
     };
     // Exposed to connect() (the tap handler) — join at connect INITIATION so
     // the socket is in the room BEFORE the server relays the initial batch.
@@ -371,7 +388,7 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       // is deferred with the real socket (F2 — preview can't connect).
       const c: ProdComment = {
         ...d,
-        platform: d.platform === "Facebook" ? "Facebook" : "TikTok",
+        platform: d.platform === "Facebook" ? "Facebook" : d.platform === "Shopee" ? "Shopee" : "TikTok", // P3 — retain Shopee (was TikTok/FB only)
         handle: String(d.handle || d.name || "").trim(),
         name: String(d.name || d.handle || "").trim(),
         comment: String(d.comment || "").trim(),
@@ -386,7 +403,9 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       // all (no dropdown choice yet). The server gate (emitCommentScoped) is the
       // first line of defense; this is the client-side guarantee.
       if (c.sourceUsername) {
-        const sel = cleanLiveAccount(selectedRef.current[c.platform === "Facebook" ? "Facebook" : "TikTok"]);
+        // P3 — scope against the platform's OWN selection (Shopee → the selected shop id).
+        const selKey = c.platform === "Facebook" ? "Facebook" : c.platform === "Shopee" ? "Shopee" : "TikTok";
+        const sel = cleanLiveAccount(selectedRef.current[selKey]);
         if (sel && cleanLiveAccount(c.sourceUsername) !== sel) return;
       }
       // ⚠️ Approach A — DISPLAY-ONLY early branch (BEFORE the Auto-Mode seam and
@@ -429,6 +448,20 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     s.on("platform_status", (p: { platform?: string; connected?: boolean; reconnecting?: boolean; sellerId?: string; username?: string; sessionId?: string }) => {
       if (p.sellerId && p.sellerId !== sellerId) return;
       if (p.sessionId && p.sessionId !== sessionId) return;
+      // P3 — Shopee branch FIRST, returning before any TikTok/FB code (so tt/fb
+      // handling is byte-unchanged). Shopee has no reconnect grace: connected:true
+      // = poller running (green), anything else = stopped (gray). Drives the
+      // Shopee pill + activeAccounts.Shopee (= the live shop id).
+      if (p.platform === "Shopee") {
+        if (p.connected && !p.reconnecting) {
+          setShopeeConnected(true);
+          setActiveAccounts((a) => ({ ...a, Shopee: p.username || "" }));
+        } else {
+          setShopeeConnected(false);
+          setActiveAccounts((a) => ({ ...a, Shopee: "" }));
+        }
+        return;
+      }
       const plat: Platform | "" = p.platform === "TikTok" ? "TikTok" : p.platform === "Facebook" ? "Facebook" : "";
       if (!plat) return;
       if (p.connected && !p.reconnecting) {
@@ -508,7 +541,7 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       if (e.sellerId && e.sellerId !== sellerId) return;
       if (e.sessionId && e.sessionId !== sessionId) return;
       cancelGray("TikTok"); cancelGray("Facebook"); // terminal — no pending grace needed
-      setActiveAccounts({ TikTok: "", Facebook: "" }); setTtConnected(false); setFbConnected(false); setFeed([]);
+      setActiveAccounts({ TikTok: "", Facebook: "", Shopee: "" }); setTtConnected(false); setFbConnected(false); setShopeeConnected(false); setFeed([]);
       setInitialFeed([]); // session over — the history block goes with it
       setTtViewers(null); // …and the viewer count with it
     });
@@ -529,7 +562,8 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     if (!s) return;
     s.emit("select_account", { platform: "TikTok", username: ttSel });
     s.emit("select_account", { platform: "Facebook", username: fbSel });
-  }, [ttSel, fbSel, connected]);
+    s.emit("select_account", { platform: "Shopee", username: shSel }); // P3 — re-scope on shop switch
+  }, [ttSel, fbSel, shSel, connected]);
 
   // #6 — real connect: POST to the live server, then optimistically set the active
   // account (the authoritative value still arrives via platform_status). Clears the
@@ -600,6 +634,18 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     }
   }, [email, pushInitial]);
 
+  // P3 — arm the seller-room join for a Shopee connect (which POSTs to the server
+  // from RedesignApp/shopee.ts, NOT through connect() above). A Shopee-only seller
+  // never taps the TikTok Connect that normally sets hasUserConnectedRef, so the
+  // server's Shopee comment relay (io.in(sellerRoom).fetchSockets) would miss this
+  // socket. Idempotent: flips the intent flag + joins now if connected (the
+  // s.on("connect") handler re-joins on any later reconnect since the flag is set).
+  // Comment handling / dedup untouched — this only joins the room + re-emits selection.
+  const ensureJoined = useCallback(() => {
+    hasUserConnectedRef.current = true;
+    joinRoomRef.current?.();
+  }, []);
+
   // Preview-only injector. With no arg it cycles the canned SYNTH comments; with a
   // `text` it injects that EXACT comment from a fresh unique commenter (each call =
   // a distinct buyer → distinct commentKey → its own auto-order) — this is how Step 7
@@ -643,5 +689,5 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   // Approach A — history block mapped with restored:true so the Dashboard's
   // muted zero-action display branch handles it (duplicate-order layer 3).
   const initialComments = useMemo(() => initialFeed.map((c) => ({ ...toRedesignComment(c), restored: true })), [initialFeed]);
-  return { comments, initialComments, connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, ttRecovering, fbRecovering, ttViewers, connect };
+  return { comments, initialComments, connected, canInject: isPreviewEnv(), injectSynthetic, getComment, activeAccounts, ttConnected, fbConnected, ttRecovering, fbRecovering, ttViewers, connect, shopeeConnected, ensureJoined };
 }
