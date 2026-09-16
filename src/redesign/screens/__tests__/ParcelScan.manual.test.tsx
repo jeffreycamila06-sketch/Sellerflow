@@ -7,7 +7,7 @@
 // fallback picker.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, waitFor } from "@testing-library/react";
-import { TProvider } from "../../i18n";
+import { TProvider, buildT } from "../../i18n";
 
 const { scanParcel, saveParcelScan, checkEmapStore } = vi.hoisted(() => ({
   scanParcel: vi.fn(),
@@ -82,27 +82,34 @@ describe("Parcel Scan — manual encode (zero credit)", () => {
     await waitFor(() => expect(getAllByTestId("ps-row")).toHaveLength(1));
   });
 
-  it("continuous mode: Save keeps the manual form open + blank, increments the manual counter, no scan", async () => {
-    const { findByTestId, getByTestId } = view();
+  it("continuous mode: Save keeps the manual form open + blank, no per-session counter line, no scan", async () => {
+    const t = buildT("en");
+    const { findByTestId, getByTestId, queryByTestId } = view();
     fireEvent.click(await findByTestId("ps-manual"));
+    // Before any save: Cancel button reads "Cancel", and there is NO session-counter line.
+    expect(getByTestId("ps-manual-cancel").textContent).toContain(t.rd_ps2_cancel);
+    expect(queryByTestId("ps-manual-count")).toBeNull();
     fireEvent.change(getByTestId("ps-name"), { target: { value: "First Buyer" } });
     fireEvent.change(getByTestId("ps-store"), { target: { value: "266402" } });
     fireEvent.change(getByTestId("ps-amount"), { target: { value: "300" } });
     fireEvent.click(getByTestId("ps-save"));
     await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(1));
-    // Stays in manual mode with a fresh blank form (camera-loop style).
-    await waitFor(() => expect(getByTestId("ps-manual-count").textContent).toContain("1"));
+    // Stays in manual mode with a fresh blank form (camera-loop style); the
+    // removed "Manual: N saved this session" line never appears…
     const form = getByTestId("ps-confirm");
     expect(form.getAttribute("data-manual")).toBe("1");            // still manual
+    expect(queryByTestId("ps-manual-count")).toBeNull();           // counter line GONE
     expect((getByTestId("ps-name") as HTMLInputElement).value).toBe("");   // blanked
     expect((getByTestId("ps-store") as HTMLInputElement).value).toBe("");
     expect((getByTestId("ps-amount") as HTMLInputElement).value).toBe("");
-    // Second parcel → counter 2, still zero credit.
+    // …but the counter still flips the Cancel button to "Done" after the first save.
+    await waitFor(() => expect(getByTestId("ps-manual-cancel").textContent).toContain(t.rd_ps2_done));
+    // Second parcel → still zero credit, still no counter line.
     fireEvent.change(getByTestId("ps-name"), { target: { value: "Second Buyer" } });
     fireEvent.change(getByTestId("ps-store"), { target: { value: "266402" } });
     fireEvent.click(getByTestId("ps-save"));
     await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(getByTestId("ps-manual-count").textContent).toContain("2"));
+    expect(queryByTestId("ps-manual-count")).toBeNull();
     expect(scanParcel).not.toHaveBeenCalled();
   });
 
