@@ -19,7 +19,13 @@ const lbl: CSSProperties = { fontSize: 11.5, fontWeight: 600, color: "var(--text
 const EMPTY: ProductForm = { name: "", sku: "", price: "", stock: "", platform: "TikTok", liveCode: "" };
 const stockColor = (s: number) => (s === 0 ? "var(--danger)" : s <= 5 ? "var(--warn)" : "var(--ok)");
 
-export default function Products({ cur }: { cur: string }) {
+export default function Products({ cur, onProductsChanged }: {
+  cur: string;
+  // Auto Mode source (Sep 17): fire after an add/edit/delete so RedesignApp
+  // re-derives the live code list + re-seeds stock for the changed product. NOT
+  // called on the mount reconcile (RedesignApp loads the catalog itself on auth).
+  onProductsChanged?: (products: Product[], changedId?: number) => void;
+}) {
   const t = useT();
   const [prods, setProds] = useState<Product[]>(() => loadProducts());
   const [q, setQ] = useState("");
@@ -59,8 +65,10 @@ export default function Products({ cur }: { cur: string }) {
   const del = (id: number) => {
     if (!window.confirm(t.rd_prd_confirm_del)) return;
     const before = prods;
-    save(deleteProduct(prods, id));
-    void deleteProductDb(id).then((ok) => { if (ok === false) { save(before); showNote(t.rd_prd_delete_failed); } });
+    const after = deleteProduct(prods, id);
+    save(after);
+    onProductsChanged?.(after, id); // drop the code from the live matcher
+    void deleteProductDb(id).then((ok) => { if (ok === false) { save(before); onProductsChanged?.(before); showNote(t.rd_prd_delete_failed); } });
   };
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,13 +83,14 @@ export default function Products({ cur }: { cur: string }) {
     const next = upsertProduct(prods, form, eid, Date.now());
     save(next);
     const changed = eid !== null ? next.find((p) => p.id === eid) : next[next.length - 1];
+    onProductsChanged?.(next, changed?.id); // apply the new/edited code to the live matcher immediately
     // Add/edit: local save is KEPT on a generic cloud failure (localStorage is this
     // screen's primary store; the pill says the CLOUD copy didn't sync). A live_code
     // COLLISION (23505 from another device) is different — the code isn't ours, so
     // REVERT the local save and show the dup error, mirroring the delete-revert.
     if (changed) void saveProductDbResult(changed).then((r) => {
       if (r.ok) return;
-      if (r.duplicateCode) { save(before); setFormErr(t.rd_prd_code_dup); setShow(true); }
+      if (r.duplicateCode) { save(before); onProductsChanged?.(before); setFormErr(t.rd_prd_code_dup); setShow(true); }
       else showNote(t.rd_prd_sync_failed);
     });
     setShow(false);
