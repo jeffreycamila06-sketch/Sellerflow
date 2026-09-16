@@ -51,6 +51,7 @@ import { useOrders } from "./adapters/useOrders";
 import { useOutbox } from "./adapters/outbox";
 import { saveLiveSessionOrder } from "../db";
 import { planAutoOrder, type AutoCode } from "./adapters/autoMode";
+import { deriveAutoStatus, buildAutoCodeStock, loadLowStockThreshold, saveLowStockThreshold, type AutoCodeStock } from "./adapters/autoStatus";
 import { buildWinnerTicketBuyer, type RaffleEntry } from "./adapters/raffle";
 import { loadCodes } from "./adapters/autoCodesDb";
 import { resolveInitialProducts } from "./adapters/productsDb";
@@ -226,7 +227,6 @@ export default function RedesignApp() {
   const autoCommentRef = useRef<(c: ProdComment) => void>(() => {});
   const autoCodesRef = useRef<AutoCode[]>([]);
   const autoStockRef = useRef<Map<number, number>>(new Map());   // productLocalId → live remaining
-  const autoSoldRef = useRef<Set<number>>(new Set());            // sold-out toast fired once per product
   const autoProcessedRef = useRef<Set<string>>(new Set());       // commentKey → already handled (sync dedup)
   // Rule 1 — one auto order per (session, buyer handle, code). SYNCHRONOUS same-tick
   // guard keyed "lower(handle)|lower(code)" (two DIFFERENT comments with the same
@@ -234,6 +234,14 @@ export default function RedesignApp() {
   // them; this catches them). Seeded from the loaded window (rows carry auto_code)
   // read inline in the seam; the DB partial-unique index is the cross-device backstop.
   const autoDupRef = useRef<Set<string>>(new Set());
+  // RULE 3 — reactive mirror of the code→stock refs (refs don't re-render): drives
+  // the low-stock chips + the persistent sold-out banner on the Live screen. Updated
+  // at load, on the onSaved restock lift, and after each auto order. Threshold is
+  // seller-configurable (localStorage). dismissedSoldOut = codes the seller closed
+  // (auto-cleared when the code is restocked, so a re-sellout shows again).
+  const [autoCodeStock, setAutoCodeStock] = useState<AutoCodeStock[]>([]);
+  const [autoLowStock, setAutoLowStock] = useState<number>(() => loadLowStockThreshold());
+  const [autoDismissedSoldOut, setAutoDismissedSoldOut] = useState<Set<string>>(new Set());
 
   // Dashboard account-picker selection (declared before useLiveFeed so the feed can
   // scope comments to the chosen account). registeredAccountsFor is pure.
@@ -300,7 +308,8 @@ export default function RedesignApp() {
   // stock from the catalog. No poll. Codes/stock edited in Settings apply on next
   // load (same reseed-on-reload model as multi-day; decided with Jeff).
   useEffect(() => {
-    if (!authed) { autoCodesRef.current = []; autoStockRef.current = new Map(); autoSoldRef.current = new Set(); autoProcessedRef.current = new Set(); autoDupRef.current = new Set(); return; }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- logout reset (same pattern as the other auth-reset effects here)
+    if (!authed) { autoCodesRef.current = []; autoStockRef.current = new Map(); autoProcessedRef.current = new Set(); autoDupRef.current = new Set(); setAutoCodeStock([]); return; }
     let active = true;
     void (async () => {
       const [resolved, codes] = await Promise.all([resolveInitialProducts(loadProducts()), loadCodes()]);
@@ -309,8 +318,8 @@ export default function RedesignApp() {
       const m = new Map<number, number>();
       for (const p of resolved.products) m.set(p.id, p.stock);
       autoStockRef.current = m;
-      autoSoldRef.current = new Set();
       autoProcessedRef.current = new Set();
+      setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (lid) => m.get(lid) ?? 0)); // Rule 3 reactive mirror
     })();
     return () => { active = false; };
   }, [authed]);
@@ -321,7 +330,10 @@ export default function RedesignApp() {
   // again. Stable (refs only) → no re-render churn. Still no polling.
   const liftAutoCodes = useCallback((codes: AutoCode[], stock: Map<number, number>) => {
     autoCodesRef.current = codes;
-    for (const [lid, n] of stock) { autoStockRef.current.set(lid, n); autoSoldRef.current.delete(lid); }
+    for (const [lid, n] of stock) autoStockRef.current.set(lid, n);
+    // Rule 3 — a restock/save refreshes the reactive mirror → low-stock/sold-out
+    // indicators re-derive (a restocked code drops out of sold-out automatically).
+    setAutoCodeStock(buildAutoCodeStock(codes, (lid) => autoStockRef.current.get(lid) ?? 0));
   }, []);
   // Rule 1 resets on a NEW session (a fresh session_id = a fresh live) — clear the
   // synchronous dedup ref; loadedAutoDupSet clears with the reloaded (empty) session.
@@ -423,6 +435,24 @@ export default function RedesignApp() {
     for (const o of liveSession.session.orders) if (o.autoCode) s.add(autoDupKeyOf(o.handle, o.autoCode));
     return s;
   }, [liveSession.session]);
+  // RULE 3 — low-stock + sold-out, derived from the reactive stock mirror. Shown on
+  // the Live screen ONLY while Auto Mode is ON (the chips/banner are about live auto
+  // inventory). Sold-out is dismissible; dismissal auto-clears on restock (below).
+  const autoStatus = useMemo(() => deriveAutoStatus(autoCodeStock, autoLowStock), [autoCodeStock, autoLowStock]);
+  const autoSoldOutVisible = useMemo(() => autoStatus.soldOut.filter((c) => !autoDismissedSoldOut.has(c.code)), [autoStatus, autoDismissedSoldOut]);
+  // A restocked code (no longer in sold-out) is removed from the dismissed set so a
+  // later re-sellout shows the banner again.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    const sold = new Set(autoStatus.soldOut.map((c) => c.code));
+    setAutoDismissedSoldOut((prev) => {
+      let changed = false; const next = new Set(prev);
+      for (const code of prev) if (!sold.has(code)) { next.delete(code); changed = true; }
+      return changed ? next : prev;
+    });
+  }, [autoStatus]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+  const setAutoLowStockThreshold = useCallback((n: number) => { setAutoLowStock(n); saveLowStockThreshold(n); }, []);
   const ordersState: ReadState = liveSession.state === "idle" ? "sample" : liveSession.state;
 
   // Miners — aggregate RPC (sql/14 miners_stats: own totals + top-5 in one tiny
@@ -983,11 +1013,9 @@ export default function RedesignApp() {
   // Auto Mode (Step 4) — socket match → ref-locked inventory claim → auto-order via
   // 5e. Reassigned each render so it closes over the latest state; useLiveFeed calls
   // it through autoCommentRef (no re-subscribe). Event-driven off the feed — NO poll.
-  const autoSoldOutToast = (code: AutoCode) => {
-    if (autoSoldRef.current.has(code.productLocalId)) return; // once per product
-    autoSoldRef.current.add(code.productLocalId);
-    setToast({ msg: tpl(tApp.rd_auto_soldout_toast, { code: code.code }), kind: "err" });
-  };
+  // Rule 3 — recompute the reactive stock mirror from the refs (after a claim / a
+  // restock). Cheap (a few dozen codes); drives the low-stock chips + sold-out banner.
+  const refreshAutoStock = () => setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0));
   autoCommentRef.current = (c: ProdComment) => {
     if (!autoDetect) return;                                    // Auto Mode OFF → ignore
     const key = commentKey(c);
@@ -1001,7 +1029,9 @@ export default function RedesignApp() {
     // print, NO stock claim on a duplicate (P5 renders the "duplicate" badge).
     const dupKey = autoDupKeyOf(c.handle, plan.code.code);
     if (autoDupRef.current.has(dupKey) || loadedAutoDupSet.has(dupKey)) return; // P5 adds the "duplicate" badge
-    if (plan.kind === "soldout") { autoSoldOutToast(plan.code); return; }
+    // Rule 3 — a sold-out code: no order, no print. The persistent banner is DERIVED
+    // from the stock mirror (stock 0 → banner), so no toast here. P5 adds the badge.
+    if (plan.kind === "soldout") return;
     // Rule 2 — "short" (matched, stock > 0 but < requested qty): REJECT the whole
     // order, no partial. P5 renders the "not enough stock" badge.
     if (plan.kind === "short") return;
@@ -1015,7 +1045,7 @@ export default function RedesignApp() {
       const snap = snapshotFromCreate(c, order); // reprint snapshot (auto orders reprint too)
       reprintByIdRef.current.set(key, snap);
       liveSession.addOrderedMsgId((c as ProdComment & { msgId?: string }).msgId, snap); // ordered-check stays complete
-      if (plan.soldOut) autoSoldOutToast(plan.code);
+      refreshAutoStock(); // Rule 3 — the decrement may cross the low-stock threshold or hit 0
     } else {
       // free-cap soft block / msgId-dedup prevented creation → refund the claim so it
       // can retry (Rule 1 dup claim too — this buyer never got an order).
@@ -1192,6 +1222,10 @@ export default function RedesignApp() {
               announcement={ann.latest} annDismissedId={ann.dismissedId} onDismissAnn={ann.dismiss}
               annUnread={ann.unread} onOpenAnn={() => { setAnnOpen(true); if (ann.list[0]) ann.markSeen(ann.list[0].id); }}
               onPrintWinner={onPrintWinner}
+              /* RULE 3 — low-stock chips + persistent sold-out banner (Auto Mode ON only). */
+              autoLowStock={autoDetect ? autoStatus.lowStock : []}
+              autoSoldOut={autoDetect ? autoSoldOutVisible : []}
+              onDismissSoldOut={(code) => setAutoDismissedSoldOut((s) => { const n = new Set(s); n.add(code); return n; })}
             />
           )}
           {screen === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} orders={ordersList} state={ordersState} onExport={exportOrders} onGoShipping={() => setScreen("shipping")}
@@ -1222,6 +1256,7 @@ export default function RedesignApp() {
               auto={autoControls} cur={cur} account={auth.profile} onSaveProfile={saveProfile}
               onManageChannel={(p) => { setChanBack("settings"); setScreen(p === "tiktok" ? "ttchannels" : "fbchannels"); }}
               onAutoCodesSaved={liftAutoCodes}
+              lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold}
               lang={lang} onSetLang={setLang} currency={currency} onSetCurrency={setCurrencyExplicit}
               profileOpen={profileOpen} onToggleProfile={() => setProfileOpen((o) => !o)}
               printerIdx={printerIdx} printerOpen={printerOpen} printerFocus={printerFocus}

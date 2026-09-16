@@ -692,6 +692,13 @@ const RAW: Record<string, Row> = {
   rd_auto_no_products: { en: "Add products first to map codes.", fil: "Magdagdag muna ng mga produkto para i-map ang mga code.", zh: "请先添加产品以映射代码。", "zh-TW": "請先新增產品以對應代碼。", vi: "Hãy thêm sản phẩm trước để gán mã.", th: "เพิ่มสินค้าก่อนเพื่อจับคู่โค้ด", id: "Tambah produk dulu untuk memetakan kode." },
   rd_auto_remove: { en: "Remove", fil: "Alisin", zh: "移除", "zh-TW": "移除", vi: "Xóa", th: "ลบ", id: "Hapus" },
   rd_auto_soldout_toast: { en: "Code {code} — Sold out", fil: "Code {code} — Ubos na", zh: "代码 {code} — 已售罄", "zh-TW": "代碼 {code} — 已售完", vi: "Mã {code} — Hết hàng", th: "โค้ด {code} — ขายหมด", id: "Kode {code} — Habis" },
+  // Rule 3 — low-stock chips + persistent sold-out banner (Live screen) + threshold setting.
+  rd_auto_soldout_banner: { en: "Sold out", fil: "Ubos na", zh: "已售罄", "zh-TW": "已售完", vi: "Hết hàng", th: "ขายหมด", id: "Habis" },
+  rd_auto_soldout_dismiss: { en: "Dismiss", fil: "I-dismiss", zh: "忽略", "zh-TW": "忽略", vi: "Bỏ qua", th: "ปิด", id: "Tutup" },
+  rd_auto_lowstock_left: { en: "{code} · {n} left", fil: "{code} · {n} na lang", zh: "{code} · 剩 {n}", "zh-TW": "{code} · 剩 {n}", vi: "{code} · còn {n}", th: "{code} · เหลือ {n}", id: "{code} · sisa {n}" },
+  rd_auto_lowstock_title: { en: "Low stock", fil: "Kaunti na ang stock", zh: "库存不足", "zh-TW": "庫存不足", vi: "Sắp hết hàng", th: "สต็อกใกล้หมด", id: "Stok menipis" },
+  rd_auto_lowstock_label: { en: "Low-stock warning at", fil: "Babala kapag kulang na sa", zh: "低库存提醒阈值", "zh-TW": "低庫存提醒門檻", vi: "Cảnh báo sắp hết khi còn", th: "เตือนสต็อกใกล้หมดที่", id: "Peringatan stok menipis di" },
+  rd_auto_lowstock_help: { en: "Warn me on the Live screen when an auto code drops to this many or fewer. 0 turns it off.", fil: "Bigyan ako ng babala sa Live screen kapag umabot na sa ganito karami (o kulang) ang auto code. 0 = patay.", zh: "当某个自动代码库存降到此数量或更少时，在直播页提醒我。0 表示关闭。", "zh-TW": "當某個自動代碼庫存降到此數量或更少時，在直播頁提醒我。0 表示關閉。", vi: "Cảnh báo trên màn hình Live khi một mã tự động còn số lượng này trở xuống. 0 để tắt.", th: "เตือนบนหน้าไลฟ์เมื่อโค้ดอัตโนมัติเหลือเท่านี้หรือน้อยกว่า ใส่ 0 เพื่อปิด", id: "Ingatkan di layar Live saat kode otomatis turun ke jumlah ini atau kurang. 0 untuk mematikan." },
   rd_set_auto_detect: { en: "Auto-detect", fil: "Auto-detect", zh: "自动识别", "zh-TW": "自動辨識", vi: "Tự động phát hiện", th: "ตรวจจับอัตโนมัติ", id: "Deteksi otomatis" },
   rd_set_manual_mode: { en: "Manual mode", fil: "Manual mode", zh: "手动模式", "zh-TW": "手動模式", vi: "Chế độ thủ công", th: "โหมดแมนนวล", id: "Mode manual" },
   rd_set_currently_active: { en: "currently active", fil: "kasalukuyang aktibo", zh: "当前启用", "zh-TW": "目前啟用", vi: "đang hoạt động", th: "กำลังใช้งาน", id: "sedang aktif" },

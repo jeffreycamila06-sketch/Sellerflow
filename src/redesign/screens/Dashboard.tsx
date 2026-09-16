@@ -92,6 +92,8 @@ export default function Dashboard({
   shopeeEnabled = false, shopeeShops = [], shopeeOpen = false, onToggleShopee,
   shopeeIdx = 0, onPickShopee, shopeeConnected = false, shopeeConnecting = false,
   onConnectShopee, onManageShopee,
+  // Rule 3 — Auto Mode live inventory indicators (empty when Auto Mode is off).
+  autoLowStock = [], autoSoldOut = [], onDismissSoldOut,
   printed, entId, entPrice, onOneClick, onOpenEnt, onEntPrice, onEntKey,
   onEntSubmit,
   viewers = null,
@@ -135,6 +137,11 @@ export default function Dashboard({
   shopeeIdx?: number; onPickShopee?: (i: number) => void;
   shopeeConnected?: boolean; shopeeConnecting?: boolean;
   onConnectShopee?: () => void; onManageShopee?: () => void;
+  // Rule 3 — low-stock chips + persistent (dismissible) sold-out banner. Auto codes
+  // whose live stock is ≤ threshold / at 0; RedesignApp gates these on Auto Mode ON.
+  autoLowStock?: { code: string; productName: string; stock: number }[];
+  autoSoldOut?: { code: string; productName: string; stock: number }[];
+  onDismissSoldOut?: (code: string) => void;
   printed: Record<string, string>; entId: string | null; entPrice: string;
   // Orderable earlier-comments (sql/18) — the E1 gate: history rows may show
   // order buttons ONLY after the session-window load resolved (before that, an
@@ -394,6 +401,28 @@ export default function Dashboard({
       </div>
 
       <div style={{ padding: "14px 14px 18px", flex: 1, display: "flex", flexDirection: "column" }}>
+        {/* RULE 3 — PERSISTENT sold-out banner (danger, dismissible per code) +
+            low-stock chips (amber). Derived from live auto stock; stays until the
+            seller dismisses or restocks. Theme-token styled (danger / warn). */}
+        {autoSoldOut.length > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 9, flexWrap: "wrap", background: "var(--danger-soft, rgba(239,68,68,.12))", border: "1px solid var(--danger)", borderRadius: 12, padding: "9px 12px", marginBottom: 11 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".03em", color: "var(--danger)", textTransform: "uppercase" }}>{t.rd_auto_soldout_banner}</span>
+            {autoSoldOut.map((c) => (
+              <span key={c.code} style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--surface)", border: "1px solid var(--danger)", borderRadius: 999, padding: "3px 5px 3px 10px", fontSize: 11.5, fontWeight: 800, color: "var(--danger)" }}>
+                {c.code}
+                <button onClick={() => onDismissSoldOut?.(c.code)} aria-label={t.rd_auto_soldout_dismiss} title={t.rd_auto_soldout_dismiss} style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, borderRadius: "50%", border: "none", background: "var(--danger)", color: "#fff", fontSize: 12, lineHeight: 1, cursor: "pointer" }}>×</button>
+              </span>
+            ))}
+          </div>
+        )}
+        {autoLowStock.length > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 11 }}>
+            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".03em", color: "var(--warn)", textTransform: "uppercase" }}>{t.rd_auto_lowstock_title}</span>
+            {autoLowStock.map((c) => (
+              <span key={c.code} style={{ display: "inline-flex", alignItems: "center", fontSize: 11, fontWeight: 800, color: "var(--warn)", background: "rgba(217,119,6,.12)", border: "1px solid var(--warn)", borderRadius: 999, padding: "3px 10px" }}>{tpl(t.rd_auto_lowstock_left, { code: c.code, n: c.stock })}</span>
+            ))}
+          </div>
+        )}
         {/* Admin announcement banner — newest ACTIVE, hidden once dismissed on
             this device (localStorage id match). In-flow above the TODAY bar. */}
         {announcement && announcement.id !== annDismissedId && onDismissAnn && (

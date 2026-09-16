@@ -142,14 +142,15 @@ describe("RedesignApp Auto Mode handler (onComment wiring)", () => {
     expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
   });
 
-  it("stock runs out → sold-out path: order stops + 'Code D — Sold out' toast", async () => {
+  it("RULE 3 — stock runs out → 2nd buyer gets NO order + a PERSISTENT sold-out banner (not a transient toast)", async () => {
     H.stock.v = 1; // one unit
     const drive = await mountWithAutoMode(true);
-    await drive(comment({ handle: "b1", timestamp: "2026-06-27T13:41:01.000Z", comment: "D" })); // takes the last unit
-    await drive(comment({ handle: "b2", timestamp: "2026-06-27T13:41:02.000Z", comment: "D" })); // sold out
+    await drive(comment({ handle: "b1", timestamp: "2026-06-27T13:41:01.000Z", comment: "D" })); // takes the last unit → stock 0
+    await drive(comment({ handle: "b2", timestamp: "2026-06-27T13:41:02.000Z", comment: "D" })); // sold out → no order
     expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
-    // err-kind toast renders with a "⚠ " prefix, so match the message as a substring.
-    expect(screen.getByText(/Code D — Sold out/)).toBeTruthy();
+    // The banner is DERIVED from the live stock mirror (0 → sold out) and PERSISTS.
+    expect(screen.getByText("Sold out")).toBeTruthy();
+    expect(screen.getAllByText("D").length).toBeGreaterThan(0); // the sold-out code chip
   });
 
   it("Auto Mode OFF → no auto-order even on an exact match", async () => {
