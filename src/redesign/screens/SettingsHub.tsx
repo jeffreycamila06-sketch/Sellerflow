@@ -16,11 +16,12 @@ const chip = (variant: "accent" | "danger" | "neutral"): CSSProperties => ({
 });
 const tileLabel: CSSProperties = { fontSize: 13.5, fontWeight: 600, color: "var(--text)", lineHeight: 1.15 };
 
-function Tile({ icon, label, onClick, variant = "accent" }: { icon: ReactNode; label: string; onClick: () => void; variant?: "accent" | "danger" | "neutral" }) {
+function Tile({ icon, label, onClick, variant = "accent", locked = false, testid }: { icon: ReactNode; label: string; onClick: () => void; variant?: "accent" | "danger" | "neutral"; locked?: boolean; testid?: string }) {
   return (
-    <button onClick={onClick} style={tile}>
-      <span style={chip(variant)}>{icon}</span>
-      <span style={tileLabel}>{label}</span>
+    <button onClick={onClick} style={locked ? { ...tile, opacity: 0.72 } : tile} data-testid={testid} data-locked={locked ? "1" : undefined}>
+      <span style={locked ? chip("neutral") : chip(variant)}>{icon}</span>
+      <span style={{ ...tileLabel, ...(locked ? { color: "var(--text-dim)" } : {}) }}>{label}</span>
+      {locked && <span aria-hidden style={{ marginLeft: "auto", fontSize: 14, color: "var(--text-dim)", flexShrink: 0 }}>🔒</span>}
     </button>
   );
 }
@@ -42,7 +43,7 @@ const ic = {
 
 export default function SettingsHub({
   onGeneral, onCustomers, onAdmin, onSales, onShipping, onCustomerData, onLegal, onDelete, onLogout,
-  isAdmin = false, onParcelScan, onCustomerDetails,
+  isAdmin = false, onParcelScan, onCustomerDetails, parcelLocked = false, onParcelUpsell,
 }: {
   onGeneral: () => void; onCustomers: () => void;
   onAdmin: () => void; onSales: () => void; onShipping: () => void;
@@ -50,6 +51,8 @@ export default function SettingsHub({
   isAdmin?: boolean; // Phase 5h — owner-only tiles (matches production isAdminUser gating)
   onParcelScan?: () => void; // Parcel Scan A1 — passed ONLY when canUseParcelScan allows (admin/test acct)
   onCustomerDetails?: () => void; // Customer Details phonebook — SAME gate as Parcel Scan (parcelScanVisible)
+  parcelLocked?: boolean; // basic/free: show Parcel Scan + Customer Details as LOCKED upsell tiles
+  onParcelUpsell?: () => void; // locked-tile click → neutral contact-support popup (never opens the screen)
 }) {
   const t = useT();
   // Local "Need help?" modal (display only — reaches Jeff on Telegram via a real
@@ -71,10 +74,16 @@ export default function SettingsHub({
           {isAdmin && <Tile icon={ic.shield} label={t.rd_sh_admin} onClick={onAdmin} />}
           <Tile icon={ic.chart} label={t.rd_sh_sales} onClick={onSales} />
           <Tile icon={ic.truck} label={t.rd_sh_shipping} onClick={onShipping} />
-          {/* Parcel Scan (A1) — admin/test-account dogfood; the prop itself is the gate */}
-          {onParcelScan && <Tile icon={ic.camera} label={t.rd_ps2_title} onClick={onParcelScan} />}
-          {/* Customer Details phonebook — sits next to Parcel Scan, same gate (prop = gate) */}
-          {onCustomerDetails && <Tile icon={ic.contact} label={t.rd_cd_title} onClick={onCustomerDetails} />}
+          {/* Parcel Scan (A1) — allowed → open the screen; else basic/free → a LOCKED
+              upsell tile (🔒) that opens the neutral contact-support popup, never the
+              screen. The onParcelScan prop is the ALLOW gate; parcelLocked is tile-only. */}
+          {onParcelScan
+            ? <Tile icon={ic.camera} label={t.rd_ps2_title} onClick={onParcelScan} testid="tile-parcelscan" />
+            : parcelLocked && onParcelUpsell && <Tile icon={ic.camera} label={t.rd_ps2_title} onClick={onParcelUpsell} locked testid="tile-parcelscan-locked" />}
+          {/* Customer Details phonebook — same allow gate + same locked upsell. */}
+          {onCustomerDetails
+            ? <Tile icon={ic.contact} label={t.rd_cd_title} onClick={onCustomerDetails} testid="tile-customerdetails" />
+            : parcelLocked && onParcelUpsell && <Tile icon={ic.contact} label={t.rd_cd_title} onClick={onParcelUpsell} locked testid="tile-customerdetails-locked" />}
           {isAdmin && <Tile icon={ic.database} label={t.rd_sh_customer_data} onClick={onCustomerData} />}
           <Tile icon={ic.doclock} label={t.lg_pt_title} onClick={onLegal} />
           {/* Need help? — support entry point, directly ABOVE Delete Account.

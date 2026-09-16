@@ -142,10 +142,14 @@ export default function RedesignApp() {
     void loadParcelManualEnabled().then((v) => { if (alive) setParcelManualEnabled(v); });
     return () => { alive = false; };
   }, [authed]);
-  const { visible: parcelAllowed, manualOnly: parcelManualOnly } = parcelScanVisible({
+  const { visible: parcelAllowed, manualOnly: parcelManualOnly, locked: parcelLocked } = parcelScanVisible({
     role: auth.profile?.role, plan: auth.profile?.plan, planStatus: auth.profile?.planStatus,
     planExpiry: auth.profile?.planExpiry, manualEnabled: parcelManualEnabled,
   });
+  // Locked-tile upsell popup (basic/free): a NEUTRAL contact-support popup — no
+  // price/plan wording (Apple 2.1b-safe), same on iOS and Android/web. It never
+  // grants access; the screen render below stays gated on parcelAllowed ONLY.
+  const [upsellOpen, setUpsellOpen] = useState(false);
   const customersData = useCustomers(authed);
   const adminUsers = useAdminUsers(authed && isAdmin);
   // Admin subscription buckets — real free-tier monitor (RPC) + derived active/
@@ -1080,6 +1084,8 @@ export default function RedesignApp() {
               isAdmin={isAdmin}
               onParcelScan={parcelAllowed ? () => setScreen("parcelscan") : undefined}
               onCustomerDetails={parcelAllowed ? () => setScreen("customerdetails") : undefined}
+              parcelLocked={parcelLocked}
+              onParcelUpsell={() => setUpsellOpen(true)}
             />
           )}
           {screen === "settings" && (
@@ -1224,6 +1230,16 @@ export default function RedesignApp() {
             title={tApp.rd_ios_expired_title}
             message={tApp.rd_ios_expired_msg}
             onClose={() => setIosExpired(false)}
+          />
+        )}
+        {/* Locked-tile upsell (Parcel Scan / Customer Details for basic/free).
+            NEUTRAL on BOTH iOS and Android/web — no price/plan/"upgrade" wording
+            (Apple 2.1b-safe) → contact support on Telegram. Never grants access. */}
+        {upsellOpen && (
+          <ContactSupportPopup
+            title={tApp.rd_lock_title}
+            message={tApp.rd_lock_body}
+            onClose={() => setUpsellOpen(false)}
           />
         )}
 
