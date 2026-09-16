@@ -19,6 +19,7 @@ const refOrderRow = (c: ProdComment, o: { item: string; total: number }) => ({
 const refLiveRow = (c: ProdComment, o: { bNum: number; item: string; price: number }, day: string) => ({
   buyer_number: o.bNum, handle: c.handle, customer_name: c.name || c.handle,
   platform: c.platform, product: o.item, price: o.price, session_date: day,
+  qty: 1, // Rule 2 additive: manual/enterprise orders are qty 1 (auto_code stays undefined → ignored by toEqual)
 });
 const refCustomerRow = (c: ProdComment, o: { total: number }) => ({
   name: c.name || c.handle, handle: c.handle, platform: c.platform, total_orders: 1, total_spent: o.total,

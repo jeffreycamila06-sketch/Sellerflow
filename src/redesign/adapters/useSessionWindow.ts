@@ -125,7 +125,7 @@ async function loadSessionPage(userId: string, start: string, end: string, page:
     // comment_msg_id (sql/18, orderable earlier-comments): additive column read
     // for the ordered-check Set; rows are still typed LiveSessionRow — the extra
     // field is consumed adapter-side only (buildOrderedMsgIds), lib untouched.
-    .select("buyer_number,handle,customer_name,platform,product,price,created_at,session_date,comment_msg_id")
+    .select("buyer_number,handle,customer_name,platform,product,price,created_at,session_date,comment_msg_id,qty,auto_code")
     .eq("user_id", userId)
     .gte("session_date", start)
     .lte("session_date", end)
@@ -178,7 +178,7 @@ async function loadSessionPageById(userId: string, sessionId: string, page: numb
   const from = page * SESSION_PAGE_SIZE;
   const { data, error } = await supabase!
     .from("live_session_orders")
-    .select("buyer_number,handle,customer_name,platform,product,price,created_at,session_date,comment_msg_id")
+    .select("buyer_number,handle,customer_name,platform,product,price,created_at,session_date,comment_msg_id,qty,auto_code")
     .eq("user_id", userId)
     .eq("session_id", sessionId)
     .order("created_at", { ascending: true })

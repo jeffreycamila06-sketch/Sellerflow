@@ -34,6 +34,7 @@ export default function GeneralSettings({
   printerIdx, printerOpen, printerFocus = 0, onPrinterFocused, onTogglePrinter, onPickPrinter, onPrintPattern,
   onSubscription, onSupport, onDelete,
   account = null, onSaveProfile, onManageChannel, onAutoCodesSaved,
+  lowStockThreshold = 3, onSetLowStockThreshold,
   keepAwake = true, onToggleKeepAwake,
   motionOn = true, onToggleMotion,
 }: {
@@ -52,6 +53,8 @@ export default function GeneralSettings({
   // 5b — after a successful Save, hand the persisted code map + stock up so the live
   // matcher applies it immediately (no reload).
   onAutoCodesSaved?: (codes: AutoCode[], stock: Map<number, number>) => void;
+  // Rule 3 — seller-configurable low-stock warning threshold (default 3; 0 = off).
+  lowStockThreshold?: number; onSetLowStockThreshold?: (n: number) => void;
   // Keep-awake habang naka-live (web Screen Wake Lock) — display toggle only;
   // the lock lifecycle lives in RedesignApp (useWakeLock on green/amber).
   keepAwake?: boolean; onToggleKeepAwake?: () => void;
@@ -286,6 +289,14 @@ export default function GeneralSettings({
                       <button onClick={() => { void ac.save(); }} disabled={ac.saving} style={{ background: "var(--accent)", color: "var(--accent-text)", border: "none", padding: "8px 16px", borderRadius: 9, fontSize: 12.5, fontWeight: 700, fontFamily: "var(--font-ui)", cursor: ac.saving ? "default" : "pointer", opacity: ac.saving ? 0.7 : 1 }}>{ac.saving ? t.rd_auto_saving : t.rd_auto_save}</button>
                     </div>
                     {ac.stockError && <div style={{ fontSize: 12, fontWeight: 600, color: "var(--danger)", marginTop: 8 }}>{t.rd_auto_stock_failed}</div>}
+                    {/* Rule 3 — seller-configurable low-stock warning threshold (default 3; 0 = off). */}
+                    <div style={{ borderTop: "1px solid var(--border)", marginTop: 12, paddingTop: 12 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <label style={{ ...label, marginBottom: 0, flex: 1 }}>{t.rd_auto_lowstock_label}</label>
+                        <input type="number" min="0" max="99" value={lowStockThreshold} onChange={(e) => onSetLowStockThreshold?.(Math.max(0, Math.min(99, parseInt(e.target.value, 10) || 0)))} style={{ ...input, width: 72, flex: "none", fontFamily: "var(--font-mono)", textAlign: "center" }} />
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.45, marginTop: 6 }}>{t.rd_auto_lowstock_help}</div>
+                    </div>
                   </>
                 )}
               </div>

@@ -20,6 +20,7 @@ const H = vi.hoisted(() => ({
   onComment: { fn: null as ((c: ProdComment) => void) | null },
   stock: { v: 2 },
   createOrder: { fn: null as ReturnType<typeof vi.fn> | null },
+  sessionState: { v: "empty" as "idle" | "loading" | "live" | "empty" }, // F-DEDUP-RACE gate
 }));
 
 vi.mock("../adapters/useAuthSession", async (orig) => ({
@@ -57,6 +58,26 @@ vi.mock("../adapters/productsDb", async (orig) => ({
   resolveInitialProducts: vi.fn(async () => ({ products: [{ id: 14, name: "Brief", sku: "BR", price: 52, stock: H.stock.v, platform: "TikTok", status: "Active" }], source: "local" })),
 }));
 
+// useLiveSession stubbed so the F-DEDUP-RACE gate (skip auto while state==="loading")
+// is controllable. Default "empty" = hydrated → auto proceeds (real env would be "live"
+// /"empty" after the load resolves; the no-Supabase real hook returns "idle" — either
+// way NOT "loading", so the gate is open for every existing test).
+vi.mock("../adapters/useLiveSession", async (orig) => ({
+  ...(await orig() as object),
+  useLiveSession: () => ({
+    session: { buyers: [], orders: [] },
+    state: H.sessionState.v,
+    loadError: false,
+    dayId: "2026-06-27",
+    getBuyers: () => [],
+    applyOrder: () => {},
+    reset: () => {},
+    orderedMsgIds: new Map(),
+    orderedLoaded: true,
+    addOrderedMsgId: () => {},
+  }),
+}));
+
 import RedesignApp from "../RedesignApp";
 
 const comment = (over: Partial<ProdComment> = {}): ProdComment => ({
@@ -79,16 +100,72 @@ describe("RedesignApp Auto Mode handler (onComment wiring)", () => {
   beforeEach(() => {
     localStorage.clear();
     H.stock.v = 2;
+    H.sessionState.v = "empty"; // hydrated by default
     H.createOrder.fn = vi.fn(() => ({ orderNum: 1750000000000, item: "52", qty: 1, price: 52, total: 52, time: "", handle: "buyer1", name: "Buyer One", bNum: 1, platform: "TikTok", status: "New", date: "2026-06-27" }));
   });
 
-  it("exact matching code → creates an auto-order with the code price + product link", async () => {
+  it("exact matching code → creates an auto-order with the code price + product link + qty 1 + autoCode", async () => {
     const drive = await mountWithAutoMode(true);
     await drive(comment({ comment: "D" }));
     expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
     const [, price, opts] = H.createOrder.fn!.mock.calls[0];
     expect(price).toBe(52);
-    expect(opts).toEqual({ productLocalId: 14 });
+    // Rules 1/2 + P5 sticker text: qty 1 → item text is the CODE ("D").
+    expect(opts).toEqual({ productLocalId: 14, qty: 1, autoCode: "D", itemOverride: "D" });
+  });
+
+  it("RULE 2 — 'D 2' with stock 2 → ONE order qty 2 + sticker item 'D x2' (ASCII x, F-PRINT fix)", async () => {
+    const drive = await mountWithAutoMode(true);
+    await drive(comment({ comment: "D 2" }));
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+    const [, price, opts] = H.createOrder.fn!.mock.calls[0];
+    expect(price).toBe(52);
+    expect(opts).toEqual({ productLocalId: 14, qty: 2, autoCode: "D", itemOverride: "D x2" });
+    // F-PRINT — the override MUST be pure ASCII (a non-ASCII "×" routes the sticker
+    // price-code field into the CJK font / prints "?" on the AIMO). Every char code < 128.
+    expect([...opts.itemOverride as string].every((ch) => ch.charCodeAt(0) < 128)).toBe(true);
+    expect(opts.itemOverride).not.toContain("×");
+  });
+
+  it("F-DEDUP-RACE — a comment arriving while the session window is LOADING creates NO auto order", async () => {
+    H.sessionState.v = "loading"; // load in flight → dedup set not ready → skip auto
+    const drive = await mountWithAutoMode(true);
+    await drive(comment({ comment: "D" }));
+    expect(H.createOrder.fn).not.toHaveBeenCalled();
+  });
+
+  it("F-DEDUP-RACE — once the window is hydrated (not loading), auto processes normally", async () => {
+    H.sessionState.v = "empty"; // resolved
+    const drive = await mountWithAutoMode(true);
+    await drive(comment({ comment: "D" }));
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("RULE 2 — 'D 3' with only 2 in stock → SHORT: no order (reject whole, no partial)", async () => {
+    const drive = await mountWithAutoMode(true);
+    await drive(comment({ comment: "D 3" }));
+    expect(H.createOrder.fn).not.toHaveBeenCalled();
+  });
+
+  it("RULE 1 — same buyer, same code, DIFFERENT comments → only ONE order (the commentKey/msgId guards can't; the dup ref does)", async () => {
+    const drive = await mountWithAutoMode(true);
+    await drive(comment({ handle: "buyer1", comment: "D", timestamp: "2026-06-27T13:41:00.000Z" }));
+    await drive(comment({ handle: "buyer1", comment: "D", timestamp: "2026-06-27T13:45:59.000Z" })); // different key, same (handle,code)
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1); // second = duplicate → no order
+  });
+
+  it("RULE 1 — 'D' then 'D 2' same buyer → first wins, second is a duplicate (no order)", async () => {
+    const drive = await mountWithAutoMode(true);
+    await drive(comment({ handle: "buyer1", comment: "D", timestamp: "2026-06-27T13:41:00.000Z" }));
+    await drive(comment({ handle: "buyer1", comment: "D 2", timestamp: "2026-06-27T13:42:00.000Z" }));
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("RULE 1 is PER-BUYER — a DIFFERENT buyer typing the same code still orders", async () => {
+    const drive = await mountWithAutoMode(true);
+    await drive(comment({ handle: "buyer1", comment: "D", timestamp: "2026-06-27T13:41:00.000Z" }));
+    await drive(comment({ handle: "buyer2", comment: "D", timestamp: "2026-06-27T13:41:01.000Z" }));
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(2);
   });
 
   it("non-matching comment ('D po') → no order", async () => {
@@ -106,14 +183,15 @@ describe("RedesignApp Auto Mode handler (onComment wiring)", () => {
     expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
   });
 
-  it("stock runs out → sold-out path: order stops + 'Code D — Sold out' toast", async () => {
+  it("RULE 3 — stock runs out → 2nd buyer gets NO order + a PERSISTENT sold-out banner (not a transient toast)", async () => {
     H.stock.v = 1; // one unit
     const drive = await mountWithAutoMode(true);
-    await drive(comment({ handle: "b1", timestamp: "2026-06-27T13:41:01.000Z", comment: "D" })); // takes the last unit
-    await drive(comment({ handle: "b2", timestamp: "2026-06-27T13:41:02.000Z", comment: "D" })); // sold out
+    await drive(comment({ handle: "b1", timestamp: "2026-06-27T13:41:01.000Z", comment: "D" })); // takes the last unit → stock 0
+    await drive(comment({ handle: "b2", timestamp: "2026-06-27T13:41:02.000Z", comment: "D" })); // sold out → no order
     expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
-    // err-kind toast renders with a "⚠ " prefix, so match the message as a substring.
-    expect(screen.getByText(/Code D — Sold out/)).toBeTruthy();
+    // The banner is DERIVED from the live stock mirror (0 → sold out) and PERSISTS.
+    expect(screen.getByText("Sold out")).toBeTruthy();
+    expect(screen.getAllByText("D").length).toBeGreaterThan(0); // the sold-out code chip
   });
 
   it("Auto Mode OFF → no auto-order even on an exact match", async () => {

@@ -147,6 +147,12 @@ export interface LiveSessionOrderInput {
   // displayed via the per-session_date path until the step-3 cutover). Stamping it
   // does NOT change numbering or loading in this step.
   session_id?: string;
+  // Auto Mode Rules 1/2 (sql/38). OPTIONAL + additive: qty defaults to 1 in the DB
+  // when absent; auto_code is the code the order came from (NULL for manual/legacy).
+  // The partial unique index ux_lso_session_handle_code enforces one auto order per
+  // (user, session, handle, code) — the Rule 1 cross-device backstop.
+  qty?: number;
+  auto_code?: string;
 }
 
 // Fire-and-forget write on the 1-click order create. One INSERT per order; no
@@ -177,6 +183,10 @@ export async function saveLiveSessionOrder(order: LiveSessionOrderInput) {
         price: order.price,
         comment_msg_id: order.comment_msg_id || null,
         session_id: order.session_id || null,
+        // Rule 2 qty (default 1 in the DB when absent) + Rule 1 auto_code (NULL for
+        // manual/legacy). Only Auto Mode passes these; every other caller omits them.
+        ...(order.qty != null ? { qty: order.qty } : {}),
+        auto_code: order.auto_code || null,
       },
     ])
     .select();

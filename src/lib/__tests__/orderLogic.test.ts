@@ -156,6 +156,35 @@ describe("invariants", () => {
   });
 });
 
+describe("Rule 2 quantity — CROWN-JEWEL PARITY (qty omitted/1 = byte-identical)", () => {
+  const scenarios: Array<[string, Partial<Comment>, Buyer[], number]> = [
+    ["fresh buyer, price>0", {}, [], 350],
+    ["fresh buyer, price 0 (comment item)", { comment: "red bag" }, [], 0],
+    ["repeat buyer", { comment: "again" }, buildOrderFromComment(comment(), [], 250, NOW).nextBuyers, 150],
+    ["fb platform", { platform: "Facebook" }, [], 100],
+  ];
+  it.each(scenarios)("%s: qty-omitted === qty=1 (deep equal, the parity guarantee)", (_label, over, buyers, price) => {
+    const omitted = buildOrderFromComment(comment(over), buyers, price, NOW);
+    const explicitOne = buildOrderFromComment(comment(over), buyers, price, NOW, 1);
+    expect(omitted).toEqual(explicitOne);                 // whole result deep-equal
+    expect(omitted.order.qty).toBe(1);
+    expect(omitted.order.total).toBe(price);              // total = price*1 = price (unchanged)
+  });
+
+  it("qty=N → qty carried, total = price*N, price stays per-unit", () => {
+    const r = buildOrderFromComment(comment(), [], 150, NOW, 2);
+    expect(r.order.qty).toBe(2);
+    expect(r.order.price).toBe(150);   // per-unit unchanged
+    expect(r.order.total).toBe(300);   // 150 * 2
+    expect(r.nextBuyer.totalSpent).toBe(300);
+    expect(r.singleOrderBuyer.totalSpent).toBe(300);
+  });
+
+  it("item text is UNCHANGED by qty (the '<code> ×N' override is the caller's job)", () => {
+    expect(buildOrderFromComment(comment(), [], 150, NOW, 3).order.item).toBe("150"); // price code, not "×3"
+  });
+});
+
 // ── Cross-device session rebuild (inverse of the create path) ──────────────
 const row = (over: Partial<LiveSessionRow> = {}): LiveSessionRow => ({
   buyer_number: 1,
