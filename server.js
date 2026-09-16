@@ -1643,7 +1643,10 @@ if (RENDER_URL && typeof fetch === "function") {
 // redirect). When OFF: no routes are registered, no timers start, ZERO behavior
 // change. All logic lives in server/shopeeLive.js; this block is the thin wiring.
 let shopeeRuntime = null;
-{
+// F5 — a Shopee init failure must NEVER take down the server (and the live TikTok
+// relays). The whole gated block is wrapped so any throw is logged and leaves
+// shopeeRuntime null; TikTok routes/relays are unaffected.
+try {
   const shopeeCfg = shopeeConfig();
   if (shopeeCfg.enabled && serviceSb && RENDER_URL) {
     const store = {
@@ -1686,10 +1689,15 @@ let shopeeRuntime = null;
       },
       log: (line) => console.log(line),
     });
-    shopeeRuntime.registerRoutes(app, requireAuth);
+    // F3 — pass the SAME connect middlewares TikTok uses so /shopee/connect
+    // enforces the paywall (requirePlanActive) + rate limit (requireConnectRate).
+    shopeeRuntime.registerRoutes(app, requireAuth, { requireConnectRate, requirePlanActive });
     shopeeRuntime.startRefreshTimer();
     console.log("[SHOPEE] enabled — OAuth + poller routes registered");
   }
+} catch (e) {
+  shopeeRuntime = null;
+  console.error("[SHOPEE] init failed — Shopee disabled, TikTok unaffected:", e && e.message);
 }
 
 const PORT = process.env.PORT || 3001;

@@ -52,7 +52,15 @@ export function shopeeToPayload(raw, ctx = {}) {
   const avatar = firstStr(r.avatar, r.avatar_url, r.profile_image, r.user_avatar);
   const commentId = firstStr(r.comment_id, r.id, r.msg_id);
 
-  const atMs = parseShopeeTimeMs(r.create_time ?? r.ctime ?? r.timestamp ?? r.comment_time) ?? nowMs;
+  // F1 (re-emit dedup stability): prefer the comment's real create time. When it is
+  // ABSENT, derive a STABLE ms from the comment_id (Shopee ids are commonly epoch-
+  // based) BEFORE falling back to nowMs — a stable timestamp keeps the client's
+  // commentKey identical across a reconnect re-emit, so the same comment collapses
+  // instead of looking new. nowMs is the last resort (id also non-temporal); in that
+  // case re-emit safety still holds via the initial:true flag + msgId (initialKey).
+  const atMs = parseShopeeTimeMs(r.create_time ?? r.ctime ?? r.timestamp ?? r.comment_time)
+    ?? parseShopeeTimeMs(commentId)
+    ?? nowMs;
   const at = new Date(atMs);
 
   return {

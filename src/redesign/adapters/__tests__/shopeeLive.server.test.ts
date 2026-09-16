@@ -9,7 +9,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   signState, verifyState, pickNewComments, nextPollDelay, createShopeeRuntime,
-  POLL_ACTIVE_MS, POLL_QUIET_MS, MAX_AUTH_FAILURES,
+  POLL_ACTIVE_MS, POLL_QUIET_MS, MAX_AUTH_FAILURES, IDLE_STOP_MS, MAX_SESSION_MS,
 } from "../../../../server/shopeeLive.js";
 import { decryptToken } from "../../../../server/shopeeTokens.js";
 
@@ -24,9 +24,10 @@ function makeStore(seed: Record<string, unknown>[] = [], plan = "pro") {
   return {
     rows,
     calls: { upsert: [] as unknown[], updateTokens: [] as unknown[], setActive: [] as unknown[] },
+    getShopCalls: 0, // F4 — assert the poller reads the store ONCE, not per tick
     async getPlan() { return plan; },
     async countShops(userId: string) { return [...rows.values()].filter((r) => r.user_id === userId).length; },
-    async getShop(userId: string, shopId: string | number) { return rows.get(`${userId}:${Number(shopId)}`) || null; },
+    async getShop(userId: string, shopId: string | number) { this.getShopCalls++; return rows.get(`${userId}:${Number(shopId)}`) || null; },
     async upsertShop(row: Record<string, unknown>) { this.calls.upsert.push(row); rows.set(`${row.user_id}:${row.shop_id}`, { ...row }); },
     async listActiveShops() { return [...rows.values()].filter((r) => r.active); },
     async updateTokens(userId: string, shopId: number, t: unknown) { this.calls.updateTokens.push({ userId, shopId, t }); },
@@ -77,7 +78,7 @@ function runtime(overrides: Record<string, unknown> = {}) {
   const rt = createShopeeRuntime({
     config: CONFIG, store, emitComment, statusEmit, liveKey,
     renderUrl: "https://srv.test", appUrl: "https://app.test",
-    fetchImpl, now: () => 1_000_000, log: () => {},
+    fetchImpl, now: (overrides.now as never) || (() => 1_000_000), log: () => {},
     setLoop: (overrides.setLoop as never) || ((fn: () => void) => { void fn; return 1; }),
     clearLoop: (overrides.clearLoop as never) || (() => {}),
     setTimer: (overrides.setTimer as never) || (() => 2),
@@ -172,14 +173,30 @@ describe("token refresh loop", () => {
   });
 });
 
-describe("poller — pollOnce", () => {
-  const enc = async () => (await import("../../../../server/shopeeTokens.js")).encryptToken("AT", CONFIG.tokenKey);
+const enc = async () => (await import("../../../../server/shopeeTokens.js")).encryptToken("AT", CONFIG.tokenKey);
 
+// Build a poller entry with the P2-fix field shape (firstPollDone / startedAtMs /
+// lastActivityMs / accessToken cache). `now` in runtime() is fixed at 1_000_000, so
+// the F2 caps never fire unless a test back-dates startedAtMs / lastActivityMs.
+function mkEntry(over: Record<string, unknown> = {}) {
+  const nowMs = 1_000_000;
+  return {
+    key: "u1:Shopee:7", sellerId: "seller1", userId: "u1", shopId: 7,
+    shopUsername: "7", sessionId: "555",
+    emitted: new Set<string>(), authFails: 0, timer: null, stopped: false,
+    firstPollDone: true,                       // steady-state live by default (F1 tests flip this)
+    startedAtMs: nowMs, lastActivityMs: nowMs,  // F2 caps quiet by default
+    accessToken: null, tokenExpiresAtMs: 0, reauth: false, // F4 — starts uncached
+    ...over,
+  };
+}
+
+describe("poller — pollOnce", () => {
   it("new comments → emitComment with EXACT Shopee shape, once (dedup on re-poll)", async () => {
     const store = makeStore([{ user_id: "u1", shop_id: 7, active: true, access_token: await enc() }]);
     const f = vi.fn().mockResolvedValue(mkRes(200, { response: { list: [{ comment_id: "c1", username: "maria", nickname: "Maria", comment: "mine red", avatar: "http://a", create_time: 1700000000 }] } }));
     const { rt, emitComment } = runtime({ store, fetchImpl: f });
-    const entry = { key: "u1:Shopee:7", sellerId: "seller1", userId: "u1", shopId: 7, shopUsername: "7", sessionId: "555", emitted: new Set<string>(), authFails: 0, timer: null, stopped: false };
+    const entry = mkEntry();
     const r1 = await rt.pollOnce(entry);
     expect(r1).toMatchObject({ hadNew: true, stop: false });
     expect(emitComment).toHaveBeenCalledTimes(1);
@@ -187,6 +204,7 @@ describe("poller — pollOnce", () => {
     expect(sellerId).toBe("seller1");
     expect(shopUsername).toBe("7");
     expect(payload).toMatchObject({ platform: "Shopee", handle: "maria", name: "Maria", comment: "mine red", avatar: "http://a", msgId: "c1", roomId: "555", sellerId: "seller1", sessionId: "555", isBuy: false, buyerNum: null, buyerData: null });
+    expect(payload.initial).toBeUndefined(); // steady-state live comment carries NO initial flag
     // re-poll same list → no new emit (emitted set dedup)
     const r2 = await rt.pollOnce(entry);
     expect(r2.hadNew).toBe(false);
@@ -197,15 +215,14 @@ describe("poller — pollOnce", () => {
     const store = makeStore([{ user_id: "u1", shop_id: 7, active: true, access_token: await enc() }]);
     const f = vi.fn().mockResolvedValue(mkRes(200, { response: { session_status: "end", list: [] } }));
     const { rt } = runtime({ store, fetchImpl: f });
-    const entry = { key: "u1:Shopee:7", sellerId: "s", userId: "u1", shopId: 7, shopUsername: "7", sessionId: "555", emitted: new Set<string>(), authFails: 0, timer: null, stopped: false };
-    expect(await rt.pollOnce(entry)).toMatchObject({ stop: true, reason: "session_end" });
+    expect(await rt.pollOnce(mkEntry({ sellerId: "s" }))).toMatchObject({ stop: true, reason: "session_end" });
   });
 
   it("auth failures reach MAX → stop + setActive(false)", async () => {
     const store = makeStore([{ user_id: "u1", shop_id: 7, active: true, access_token: await enc() }]);
     const f = vi.fn().mockResolvedValue(mkRes(401, { error: "invalid_access_token" }));
     const { rt } = runtime({ store, fetchImpl: f });
-    const entry = { key: "u1:Shopee:7", sellerId: "s", userId: "u1", shopId: 7, shopUsername: "7", sessionId: "555", emitted: new Set<string>(), authFails: 0, timer: null, stopped: false };
+    const entry = mkEntry({ sellerId: "s" });
     let last;
     for (let i = 0; i < MAX_AUTH_FAILURES; i++) last = await rt.pollOnce(entry);
     expect(last).toMatchObject({ stop: true, reason: "auth" });
@@ -216,8 +233,119 @@ describe("poller — pollOnce", () => {
     const store = makeStore([{ user_id: "u1", shop_id: 7, active: true, access_token: await enc() }]);
     const f = vi.fn().mockResolvedValue(mkRes(429, {}));
     const { rt } = runtime({ store, fetchImpl: f });
-    const entry = { key: "u1:Shopee:7", sellerId: "s", userId: "u1", shopId: 7, shopUsername: "7", sessionId: "555", emitted: new Set<string>(), authFails: 0, timer: null, stopped: false };
-    expect(await rt.pollOnce(entry)).toMatchObject({ stop: false, backoff: true });
+    expect(await rt.pollOnce(mkEntry({ sellerId: "s" }))).toMatchObject({ stop: false, backoff: true });
+  });
+});
+
+// ── F1 — re-emit safety (the MONEY PATH fix) ─────────────────────────────────
+describe("poller F1 — first-poll comments are DISPLAY-ONLY (initial:true), never live orders", () => {
+  it("first poll after (re)Connect emits existing comments with initial:true; new comments after are live", async () => {
+    const store = makeStore([{ user_id: "u1", shop_id: 7, active: true, access_token: await enc() }]);
+    const c1 = { comment_id: "c1", username: "maria", comment: "mine red", create_time: 1700000000 };
+    const c2 = { comment_id: "c2", username: "juan", comment: "mine blue", create_time: 1700000005 };
+    const f = vi.fn()
+      .mockResolvedValueOnce(mkRes(200, { response: { list: [c1] } }))        // reconnect: c1 already existed
+      .mockResolvedValueOnce(mkRes(200, { response: { list: [c1, c2] } }));   // then c2 arrives NEW
+    const { rt, emitComment } = runtime({ store, fetchImpl: f });
+    const entry = mkEntry({ firstPollDone: false }); // simulate a fresh poller (Connect/reconnect)
+
+    await rt.pollOnce(entry);                          // FIRST poll
+    expect(emitComment).toHaveBeenCalledTimes(1);
+    expect(emitComment.mock.calls[0][2].initial).toBe(true); // c1 → display-only lane, cannot order
+
+    await rt.pollOnce(entry);                          // SECOND poll: c1 deduped, c2 is genuinely new
+    expect(emitComment).toHaveBeenCalledTimes(2);
+    const c2payload = emitComment.mock.calls[1][2];
+    expect(c2payload.msgId).toBe("c2");
+    expect(c2payload.initial).toBeUndefined();         // live → orderable
+  });
+
+  it("empty first poll (fresh live, no history) consumes the flag → the first REAL comment is live", async () => {
+    const store = makeStore([{ user_id: "u1", shop_id: 7, active: true, access_token: await enc() }]);
+    const c1 = { comment_id: "c1", username: "maria", comment: "mine", create_time: 1700000000 };
+    const f = vi.fn()
+      .mockResolvedValueOnce(mkRes(200, { response: { list: [] } }))   // no history at connect
+      .mockResolvedValueOnce(mkRes(200, { response: { list: [c1] } })); // first real comment
+    const { rt, emitComment } = runtime({ store, fetchImpl: f });
+    const entry = mkEntry({ firstPollDone: false });
+
+    await rt.pollOnce(entry);                          // empty first poll → flag consumed
+    expect(emitComment).not.toHaveBeenCalled();
+    await rt.pollOnce(entry);                          // first real comment → live
+    expect(emitComment).toHaveBeenCalledTimes(1);
+    expect(emitComment.mock.calls[0][2].initial).toBeUndefined();
+  });
+
+  it("timestamp basis is the comment's own id (not now) → stable across a reconnect re-emit", async () => {
+    // A comment with NO create_time. shopeeToPayload derives the ms from comment_id,
+    // so the client's commentKey stays identical across a reconnect (different clocks)
+    // → the same comment collapses instead of minting a fresh key.
+    const token = await enc();
+    const bare = { comment_id: "1700000000", username: "maria", comment: "mine" }; // no create_time
+    const mk = (now: number) => {
+      const f = vi.fn().mockResolvedValue(mkRes(200, { response: { list: [bare] } }));
+      return runtime({ store: makeStore([{ user_id: "u1", shop_id: 7, active: true, access_token: token }]), fetchImpl: f, now: () => now });
+    };
+    const a = mk(1_000_000);
+    await a.rt.pollOnce(mkEntry({ firstPollDone: false, startedAtMs: 1_000_000, lastActivityMs: 1_000_000 }));
+    const b = mk(9_999_999);                           // different clock (a "reconnect")
+    await b.rt.pollOnce(mkEntry({ firstPollDone: false, startedAtMs: 9_999_999, lastActivityMs: 9_999_999 }));
+    const tsA = a.emitComment.mock.calls[0][2].timestamp;
+    const tsB = b.emitComment.mock.calls[0][2].timestamp;
+    expect(tsA).toBe(tsB);                             // stable → same commentKey on re-emit
+  });
+});
+
+// ── F2 — orphan / idle caps ──────────────────────────────────────────────────
+describe("poller F2 — idle + max-session caps stop the poller", () => {
+  it("no NEW comments for IDLE_STOP_MS → stop(idle)", async () => {
+    const { rt } = runtime({ fetchImpl: vi.fn() });
+    const entry = mkEntry({ lastActivityMs: 1_000_000 - IDLE_STOP_MS }); // idle exactly at the cap
+    expect(await rt.pollOnce(entry)).toMatchObject({ stop: true, reason: "idle" });
+  });
+  it("session older than MAX_SESSION_MS → stop(max_session), independent of the end signal", async () => {
+    const { rt } = runtime({ fetchImpl: vi.fn() });
+    const entry = mkEntry({ startedAtMs: 1_000_000 - MAX_SESSION_MS });
+    expect(await rt.pollOnce(entry)).toMatchObject({ stop: true, reason: "max_session" });
+  });
+  it("a stop from the loop clears the timer + removes the registry entry + emits disconnected", () => {
+    const clearLoop = vi.fn();
+    const { rt, statusEmit } = runtime({ setLoop: vi.fn(() => 1), clearLoop });
+    rt.startPoller({ sellerId: "s", userId: "u1", shopId: 7, shopUsername: "7", sessionId: "555" });
+    rt.stopPoller("s:Shopee:7", "idle");
+    expect(clearLoop).toHaveBeenCalled();
+    expect(rt._pollers.size).toBe(0);
+    expect(statusEmit).toHaveBeenCalledWith("s", expect.objectContaining({ connected: false, shopId: 7 }));
+  });
+});
+
+// ── F4 — token cached on the entry; NO getShop per tick ──────────────────────
+describe("poller F4 — the access token is read from the store ONCE, then cached", () => {
+  it("N polls → getShop called exactly once (egress discipline)", async () => {
+    const store = makeStore([{ user_id: "u1", shop_id: 7, active: true, access_token: await enc(), token_expires_at: new Date(1_000_000 + 4 * 60 * 60 * 1000).toISOString() }]);
+    const f = vi.fn().mockResolvedValue(mkRes(200, { response: { list: [] } }));
+    const { rt } = runtime({ store, fetchImpl: f });
+    const entry = mkEntry();
+    await rt.pollOnce(entry);
+    await rt.pollOnce(entry);
+    await rt.pollOnce(entry);
+    expect(store.getShopCalls).toBe(1);                // cached after the first read
+    expect(entry.accessToken).toBe("AT");
+  });
+  it("auth failure sets reauth → the NEXT poll re-reads the store (self-heal)", async () => {
+    const store = makeStore([{ user_id: "u1", shop_id: 7, active: true, access_token: await enc(), token_expires_at: new Date(1_000_000 + 4 * 60 * 60 * 1000).toISOString() }]);
+    const f = vi.fn()
+      .mockResolvedValueOnce(mkRes(200, { response: { list: [] } }))          // poll 1: cache token (read #1)
+      .mockResolvedValueOnce(mkRes(401, { error: "invalid_access_token" }))   // poll 2: auth fail → reauth=true
+      .mockResolvedValueOnce(mkRes(200, { response: { list: [] } }));         // poll 3: re-read token (read #2)
+    const { rt } = runtime({ store, fetchImpl: f });
+    const entry = mkEntry();
+    await rt.pollOnce(entry);
+    expect(store.getShopCalls).toBe(1);
+    await rt.pollOnce(entry);
+    expect(entry.reauth).toBe(true);
+    await rt.pollOnce(entry);
+    expect(store.getShopCalls).toBe(2);                // reauth forced a fresh read
   });
 });
 
@@ -268,5 +396,51 @@ describe("routes register only when wired (the enabled-gate contract)", () => {
     const app = { get: (p: string) => routes.push(p), post: (p: string) => routes.push(p) };
     void app; // when disabled, server.js never builds the runtime nor calls registerRoutes
     expect(routes).toHaveLength(0);
+  });
+});
+
+// ── F3 — /shopee/connect enforces the paywall + rate limit (MIRRORS /connect/tiktok) ──
+describe("routes F3 — /shopee/connect runs requireConnectRate + requirePlanActive", () => {
+  // Capture the full middleware chain registered per route.
+  function fakeApp() {
+    const handlers: Record<string, unknown[]> = {};
+    const rec = (m: string) => (p: string, ...h: unknown[]) => { handlers[`${m} ${p}`] = h; };
+    return { app: { get: rec("GET"), post: rec("POST") }, handlers };
+  }
+  const pass = (_req: unknown, _res: unknown, next: () => void) => next();
+
+  it("wires requirePlanActive into the POST /shopee/connect chain", () => {
+    const { rt } = runtime();
+    const { app, handlers } = fakeApp();
+    const requirePlanActive = vi.fn(pass);
+    const requireConnectRate = vi.fn(pass);
+    rt.registerRoutes(app as never, pass as never, { requireConnectRate, requirePlanActive });
+    const chain = handlers["POST /shopee/connect"];
+    expect(chain).toContain(requirePlanActive);   // paywall middleware present
+    expect(chain).toContain(requireConnectRate);  // rate-limit middleware present
+  });
+
+  it("expired plan (requirePlanActive → 403) short-circuits: NO poller started", async () => {
+    const store = makeStore([{ user_id: "u1", shop_id: 7, active: true }]);
+    const { rt } = runtime({ store });
+    const { app, handlers } = fakeApp();
+    // requirePlanActive rejects like server.js:260 does for an expired plan.
+    const requirePlanActive = vi.fn((_req: unknown, res: { status: (c: number) => { json: (b: unknown) => void } }) => { res.status(403).json({ error: "plan_inactive" }); });
+    rt.registerRoutes(app as never, pass as never, { requireConnectRate: pass, requirePlanActive });
+
+    const chain = handlers["POST /shopee/connect"] as ((req: unknown, res: unknown, next: () => void) => unknown)[];
+    const req = { authUserId: "u1", sellerId: "s", body: { shop_id: "7", session_id: "555" } };
+    let statusCode = 0; let jsonBody: unknown = null;
+    const res = { status(c: number) { statusCode = c; return this; }, json(b: unknown) { jsonBody = b; return this; } };
+    // Run the chain in order; stop when a middleware does NOT call next (it responded).
+    for (const h of chain) {
+      let nexted = false;
+      await h(req, res, () => { nexted = true; });
+      if (!nexted) break;
+    }
+    expect(statusCode).toBe(403);
+    expect(jsonBody).toMatchObject({ error: "plan_inactive" });
+    expect(requirePlanActive).toHaveBeenCalled();
+    expect(rt._pollers.size).toBe(0); // final handler (startPoller) never ran
   });
 });

@@ -34,6 +34,9 @@ export const POLL_QUIET_MS = 5000;    // cadence when a poll returned nothing ne
 export const MAX_AUTH_FAILURES = 3;   // consecutive auth failures → mark inactive + stop
 export const STATE_TTL_MS = 10 * 60 * 1000; // OAuth state nonce validity
 export const REFRESH_SCAN_MS = 5 * 60 * 1000; // token-refresh timer cadence
+export const IDLE_STOP_MS = 10 * 60 * 1000; // F2: stop after this long with no NEW comments (orphan cap)
+export const MAX_SESSION_MS = 12 * 60 * 60 * 1000; // F2: hard ceiling regardless of the (unverified) end signal
+export const TOKEN_REREAD_MARGIN_MS = 10 * 60 * 1000; // F4: re-read the cached token this long before it expires
 export const EMITTED_CAP = 500;       // per-poller bounded set of emitted comment ids
 
 // ── OAuth state nonce (bind the shop to the RIGHT seller) ────────────────────
@@ -129,6 +132,11 @@ export async function fetchShopInfo({ config, fetchImpl, accessToken, shopId }) 
 }
 // latest comments for a live session. UNVERIFIED path/shape. Returns
 // { status, list, sessionEnded }. sessionEnded is a best-effort heuristic.
+// F7 (ACCEPTED, LOW): the poller always reads offset:0 with page_size 50, so a
+// burst of >50 comments within one poll interval drops the OLDEST beyond 50 (they
+// are never emitted). This is a completeness gap, NOT a duplicate — the emitted
+// set still dedups everything shown. Advancing offset/paging within a tick is a
+// later enhancement; comment volume this high in a 2 s window is rare.
 export async function fetchLatestComments({ config, fetchImpl, accessToken, shopId, sessionId, offset = 0, pageSize = 50 }) {
   const { status, body } = await shopeeGet({ config, fetchImpl, path: "/api/v2/livestream/get_latest_comment_list", accessToken, shopId, extra: { session_id: sessionId, offset, page_size: pageSize } });
   const resp = body.response || body;
@@ -186,6 +194,11 @@ export function createShopeeRuntime(deps) {
       if (!existing) {
         const plan = await store.getPlan(userId);
         const count = await store.countShops(userId);
+        // F6 (ACCEPTED, LOW): read-then-upsert is a TOCTOU — two concurrent OAuth
+        // completions for two NEW shops by the same seller could both pass the cap
+        // and land count+1. Impact is a soft business cap only (one extra shop),
+        // requires two simultaneous authorizations, and there is no DB uniqueness
+        // to lean on across shops. Not worth a lock here; noted deliberately.
         if (plan && count >= maxAccountsForPlan(plan)) {
           return { redirect: `${appUrl}/?shopee=error&code=cap` };
         }
@@ -236,22 +249,38 @@ export function createShopeeRuntime(deps) {
   // ---- Poller ----
   // One poll pass. Returns { hadNew, stop } — stop true means the loop must end.
   async function pollOnce(entry) {
-    let accessToken;
-    try {
-      const shop = await store.getShop(entry.userId, entry.shopId);
-      if (!shop || !shop.active) return { hadNew: false, stop: true };
-      accessToken = decryptToken(shop.access_token, config.tokenKey);
-      if (!accessToken) return { hadNew: false, stop: true };
-    } catch { return { hadNew: false, stop: false }; } // transient store error → keep looping
+    const nowMs = now();
+    // F2 — orphan/idle caps (independent of the UNVERIFIED end signal). Idle = no
+    // NEW comments for IDLE_STOP_MS; max session = a hard ceiling. Both stop → the
+    // loop calls stopPoller (which emits platform_status connected:false = "ended").
+    if (nowMs - entry.startedAtMs >= MAX_SESSION_MS) return { hadNew: false, stop: true, reason: "max_session" };
+    if (nowMs - entry.lastActivityMs >= IDLE_STOP_MS) return { hadNew: false, stop: true, reason: "idle" };
+
+    // F4 — cache the decrypted access token on the entry; re-read from the store
+    // ONLY when it is unset, near expiry (the refresh timer rotates it before then),
+    // or after an auth failure (entry.reauth) — NOT every tick (egress discipline).
+    if (!entry.accessToken || entry.reauth || nowMs >= entry.tokenExpiresAtMs - TOKEN_REREAD_MARGIN_MS) {
+      let shop;
+      try { shop = await store.getShop(entry.userId, entry.shopId); }
+      catch { return { hadNew: false, stop: false }; } // transient store error → keep looping
+      if (!shop || !shop.active) return { hadNew: false, stop: true, reason: "inactive" };
+      const tok = decryptToken(shop.access_token, config.tokenKey);
+      if (!tok) return { hadNew: false, stop: true, reason: "no_token" };
+      entry.accessToken = tok;
+      const expMs = new Date(shop.token_expires_at || 0).getTime();
+      entry.tokenExpiresAtMs = Number.isFinite(expMs) && expMs > 0 ? expMs : nowMs + 4 * 60 * 60 * 1000;
+      entry.reauth = false;
+    }
 
     let res;
     try {
-      res = await fetchLatestComments({ config, fetchImpl, accessToken, shopId: entry.shopId, sessionId: entry.sessionId });
+      res = await fetchLatestComments({ config, fetchImpl, accessToken: entry.accessToken, shopId: entry.shopId, sessionId: entry.sessionId });
     } catch { return { hadNew: false, stop: false }; } // transient network → keep looping
 
     if (res.sessionEnded) return { hadNew: false, stop: true, reason: "session_end" };
     if (res.authFail) {
       entry.authFails = (entry.authFails || 0) + 1;
+      entry.reauth = true; // F4 — force a fresh token read + one retry on the next poll
       if (entry.authFails >= MAX_AUTH_FAILURES) {
         try { await store.setActive(entry.userId, entry.shopId, false); } catch { /* best effort */ }
         return { hadNew: false, stop: true, reason: "auth" };
@@ -261,14 +290,25 @@ export function createShopeeRuntime(deps) {
     if (res.status === 429 || res.status >= 500) return { hadNew: false, stop: false, backoff: true };
     entry.authFails = 0;
 
+    // F1 — RE-EMIT SAFETY. The FIRST successful poll after (re)Connect carries the
+    // comments that ALREADY existed at connect time; emit them with initial:true so
+    // the client routes them to its DISPLAY-ONLY lane (useLiveFeed:399 — before the
+    // Auto-Mode seam + pushComment) and can NEVER create a duplicate order on a
+    // reconnect. Every comment seen AFTER the first poll is genuinely new → live
+    // (no flag). An empty first poll (fresh live, no history) consumes the flag →
+    // the first real comment then arrives live and IS orderable.
+    const asInitial = !entry.firstPollDone;
     const fresh = pickNewComments(res.list, entry.emitted);
     for (const raw of fresh) {
-      const payload = shopeeToPayload(raw, { sellerId: entry.sellerId, sessionId: entry.sessionId, shopUsername: entry.shopUsername, nowMs: now() });
+      const payload = shopeeToPayload(raw, { sellerId: entry.sellerId, sessionId: entry.sessionId, shopUsername: entry.shopUsername, nowMs });
+      if (asInitial) payload.initial = true; // display-only lane; dedup by msgId (initialKey)
       // → the real emitCommentScoped (sanitizes + per-account scoping). platform "Shopee".
       emitComment(entry.sellerId, entry.shopUsername, payload);
     }
     rememberEmitted(entry.emitted, fresh.map(commentIdOf));
-    return { hadNew: fresh.length > 0, stop: false };
+    entry.firstPollDone = true;                 // after the first successful poll, all further comments are live
+    if (fresh.length > 0) entry.lastActivityMs = nowMs; // F2 — reset the idle clock on real activity
+    return { hadNew: fresh.length > 0, stop: false, initialBatch: asInitial };
   }
 
   function scheduleNext(entry, delayMs) {
@@ -287,7 +327,14 @@ export function createShopeeRuntime(deps) {
   function startPoller({ sellerId, userId, shopId, shopUsername, sessionId }) {
     const key = liveKey(sellerId, "Shopee", String(shopId));
     stopPoller(key, "restart"); // single poller per shop
-    const entry = { key, sellerId, userId, shopId: Number(shopId), shopUsername, sessionId: String(sessionId), emitted: new Set(), authFails: 0, timer: null, stopped: false };
+    const nowMs = now();
+    const entry = {
+      key, sellerId, userId, shopId: Number(shopId), shopUsername, sessionId: String(sessionId),
+      emitted: new Set(), authFails: 0, timer: null, stopped: false,
+      firstPollDone: false,                 // F1 — first poll emits existing comments as initial:true
+      startedAtMs: nowMs, lastActivityMs: nowMs, // F2 — idle + max-session caps
+      accessToken: null, tokenExpiresAtMs: 0, reauth: false, // F4 — cached token (no getShop per tick)
+    };
     pollers.set(key, entry);
     statusEmit(sellerId, { connected: true, shopId: Number(shopId), sessionId: String(sessionId) });
     scheduleNext(entry, 0);
@@ -311,7 +358,13 @@ export function createShopeeRuntime(deps) {
   }
 
   // ---- Routes ----
-  function registerRoutes(app, requireAuth) {
+  // `extra` carries the SAME middlewares TikTok uses on /connect/tiktok so /shopee/
+  // connect enforces the paywall + rate limit identically (F3). They default to
+  // pass-throughs so a caller/test can wire just requireAuth.
+  const passThrough = (_req, _res, next) => next();
+  function registerRoutes(app, requireAuth, extra = {}) {
+    const requireConnectRate = extra.requireConnectRate || passThrough;
+    const requirePlanActive = extra.requirePlanActive || passThrough;
     app.get("/shopee/oauth/start", requireAuth, (req, res) => {
       try { return res.json({ url: buildAuthUrl(req.authUserId) }); }
       catch { return res.status(500).json({ ok: false, error: "shopee_start_failed" }); }
@@ -322,7 +375,10 @@ export function createShopeeRuntime(deps) {
       return res.redirect(out.redirect);
     });
 
-    app.post("/shopee/connect", requireAuth, async (req, res) => {
+    // F3 — requireAuth → requireConnectRate → requirePlanActive, MIRRORING
+    // /connect/tiktok: an expired/inactive plan is 403'd here (no poller starts),
+    // and the connect rate limit applies, exactly like TikTok.
+    app.post("/shopee/connect", requireAuth, requireConnectRate, requirePlanActive, async (req, res) => {
       const userId = req.authUserId;
       const sellerId = req.sellerId;
       const shopId = String(req.body.shop_id || "");
