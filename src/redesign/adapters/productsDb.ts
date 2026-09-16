@@ -36,6 +36,7 @@ export function rowToProduct(row: Record<string, unknown>): Product {
     stock,
     platform: String(row.platform ?? ""),
     status: statusForStock(stock),
+    liveCode: row.live_code == null ? "" : String(row.live_code), // Auto Mode code (sql/39)
   };
 }
 
@@ -51,6 +52,7 @@ export function productToRow(p: Product, userId: string, now: number = Date.now(
     price: p.price,
     stock: p.stock,
     platform: p.platform,
+    live_code: p.liveCode && p.liveCode.trim() ? p.liveCode.trim() : null, // "" → NULL (partial-unique index ignores it)
     updated_at: new Date(now).toISOString(),
   };
 }
@@ -92,7 +94,7 @@ export async function loadProductsDb(): Promise<Product[] | null> {
   if (!id) return null;
   const { data, error } = await supabase
     .from("products")
-    .select("local_id,name,sku,price,stock,platform")
+    .select("local_id,name,sku,price,stock,platform,live_code")
     .eq("user_id", id)
     .order("created_at", { ascending: true });
   if (error) { console.error("Load products error:", error.message); return null; }
@@ -105,12 +107,22 @@ export async function loadProductsDb(): Promise<Product[] | null> {
 // the product was cross-device when it existed on this phone only). Sample/
 // unauthed mode returns true — nothing to sync is not a failure.
 export async function saveProductDb(p: Product): Promise<boolean> {
-  if (!isSupabaseConfigured || !supabase) return true;
+  return (await saveProductDbResult(p)).ok;
+}
+
+// Richer result so the Products screen can distinguish a live_code collision
+// (another product/device already uses this code → the ux_products_user_live_code
+// partial-unique index rejects with 23505) from a generic sync failure.
+export async function saveProductDbResult(p: Product): Promise<{ ok: boolean; duplicateCode?: boolean }> {
+  if (!isSupabaseConfigured || !supabase) return { ok: true };
   const id = await uid();
-  if (!id) return true;
+  if (!id) return { ok: true };
   const { error } = await supabase.from("products").upsert(productToRow(p, id), { onConflict: "user_id,local_id" });
-  if (error) console.error("Save product error:", error.message);
-  return !error;
+  if (!error) return { ok: true };
+  console.error("Save product error:", error.message);
+  const text = `${error.message || ""} ${(error as { details?: string }).details || ""}`;
+  const duplicateCode = error.code === "23505" && text.includes("ux_products_user_live_code");
+  return { ok: false, duplicateCode: duplicateCode || undefined };
 }
 
 // Write-through for a delete. Same Batch D (#11) contract as saveProductDb —

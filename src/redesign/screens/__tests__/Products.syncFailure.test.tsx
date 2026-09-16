@@ -12,10 +12,10 @@ import { PRODUCT_DEFAULTS } from "../../adapters/products";
 
 vi.mock("../../adapters/productsDb", () => ({
   resolveInitialProducts: vi.fn(async (local: unknown) => ({ products: local, source: "local" })),
-  saveProductDb: vi.fn(async () => true),
+  saveProductDbResult: vi.fn(async () => ({ ok: true })),
   deleteProductDb: vi.fn(async () => true),
 }));
-import { resolveInitialProducts, saveProductDb, deleteProductDb } from "../../adapters/productsDb";
+import { resolveInitialProducts, saveProductDbResult, deleteProductDb } from "../../adapters/productsDb";
 
 const renderProducts = () => render(<TProvider lang="en"><Products cur="NT$" /></TProvider>);
 
@@ -23,7 +23,7 @@ describe("Products screen — cloud-sync failure surfacing (Batch D #11)", () =>
   beforeEach(() => { localStorage.clear(); vi.clearAllMocks(); });
 
   it("failed cloud SAVE → product stays locally + the sync-failure pill shows", async () => {
-    (saveProductDb as Mock).mockResolvedValueOnce(false);
+    (saveProductDbResult as Mock).mockResolvedValueOnce({ ok: false }); // generic cloud failure (not a dup)
     renderProducts();
     await vi.waitFor(() => expect(resolveInitialProducts as Mock).toHaveBeenCalled());
     fireEvent.click(screen.getByText("+ Add"));

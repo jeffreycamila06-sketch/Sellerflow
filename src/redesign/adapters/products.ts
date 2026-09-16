@@ -3,8 +3,12 @@
 // add/edit/delete/search/CSV. Shares the key with production, so a seller's local
 // products are identical in both apps. ⚠️ Supabase cross-device sync is NOT in main
 // → that part stays "Soon"; this is the real current backend (localStorage).
-export interface Product { id: number; name: string; sku: string; price: number; stock: number; platform: string; status: string }
-export interface ProductForm { name: string; sku: string; price: string; stock: string; platform: string }
+// liveCode (Auto Mode): the seller's live/auto code for this product (optional;
+// undefined/"" = manual-only). One code per seller (DB partial-unique index
+// ux_products_user_live_code); the auto seam derives its code list from products
+// that have one. Additive to the shared "sf_prods" store → App.tsx ignores it.
+export interface Product { id: number; name: string; sku: string; price: number; stock: number; platform: string; status: string; liveCode?: string }
+export interface ProductForm { name: string; sku: string; price: string; stock: string; platform: string; liveCode: string }
 
 const KEY = "sf_prods";
 
@@ -42,18 +46,20 @@ export function upsertProduct(list: Product[], form: ProductForm, eid: number | 
   const price = parseFloat(form.price) || 0;
   const stock = parseInt(form.stock, 10) || 0;
   const status = statusForStock(stock);
+  const liveCode = form.liveCode.trim(); // trim leading/trailing; "" → cleared (manual-only)
   if (eid !== null) {
-    return list.map((p) => (p.id === eid ? { ...p, name: form.name, sku: form.sku, price, stock, platform: form.platform, status } : p));
+    return list.map((p) => (p.id === eid ? { ...p, name: form.name, sku: form.sku, price, stock, platform: form.platform, status, liveCode } : p));
   }
-  return [...list, { id: now, name: form.name, sku: form.sku, price, stock, platform: form.platform, status }];
+  return [...list, { id: now, name: form.name, sku: form.sku, price, stock, platform: form.platform, status, liveCode }];
 }
 
 export function deleteProduct(list: Product[], id: number): Product[] {
   return list.filter((p) => p.id !== id);
 }
 
-// App.tsx:1314 — case-insensitive name/sku match.
+// App.tsx:1314 — case-insensitive name/sku match (+ live_code, so a seller can
+// find a product by the code they announce).
 export function filterProducts(list: Product[], q: string): Product[] {
   const s = q.toLowerCase();
-  return list.filter((p) => p.name.toLowerCase().includes(s) || p.sku.toLowerCase().includes(s));
+  return list.filter((p) => p.name.toLowerCase().includes(s) || p.sku.toLowerCase().includes(s) || (p.liveCode || "").toLowerCase().includes(s));
 }

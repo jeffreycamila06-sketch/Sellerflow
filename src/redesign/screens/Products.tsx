@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { avColor, initials, fmt } from "../data";
 import { csvDL } from "../adapters/csv";
 import { loadProducts, saveProducts, upsertProduct, deleteProduct, filterProducts, statusForStock, type Product, type ProductForm } from "../adapters/products";
-import { resolveInitialProducts, saveProductDb, deleteProductDb } from "../adapters/productsDb";
+import { resolveInitialProducts, saveProductDbResult, deleteProductDb } from "../adapters/productsDb";
 import { useT } from "../i18n";
 
 const headerBar: CSSProperties = { position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px" };
@@ -16,7 +16,7 @@ const title: CSSProperties = { fontFamily: "var(--font-display)", fontWeight: 70
 const mono = "var(--font-mono)";
 const input: CSSProperties = { width: "100%", padding: "11px 13px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 600, outline: "none" };
 const lbl: CSSProperties = { fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 5 };
-const EMPTY: ProductForm = { name: "", sku: "", price: "", stock: "", platform: "TikTok" };
+const EMPTY: ProductForm = { name: "", sku: "", price: "", stock: "", platform: "TikTok", liveCode: "" };
 const stockColor = (s: number) => (s === 0 ? "var(--danger)" : s <= 5 ? "var(--warn)" : "var(--ok)");
 
 export default function Products({ cur }: { cur: string }) {
@@ -26,6 +26,7 @@ export default function Products({ cur }: { cur: string }) {
   const [show, setShow] = useState(false);
   const [eid, setEid] = useState<number | null>(null);
   const [form, setForm] = useState<ProductForm>(EMPTY);
+  const [formErr, setFormErr] = useState(""); // live-code validation error (inline, blocks save)
   // Batch D (#11): cloud-sync failure notice — the write-throughs used to be
   // fire-and-forget, so a failed upsert/delete was invisible (the seller thought
   // the product was cross-device / gone everywhere). Auto-dismissing pill in the
@@ -50,8 +51,8 @@ export default function Products({ cur }: { cur: string }) {
     });
     return () => { active = false; };
   }, []);
-  const openAdd = () => { setForm(EMPTY); setEid(null); setShow(true); };
-  const openEdit = (p: Product) => { setForm({ name: p.name, sku: p.sku, price: String(p.price), stock: String(p.stock), platform: p.platform }); setEid(p.id); setShow(true); };
+  const openAdd = () => { setForm(EMPTY); setEid(null); setFormErr(""); setShow(true); };
+  const openEdit = (p: Product) => { setForm({ name: p.name, sku: p.sku, price: String(p.price), stock: String(p.stock), platform: p.platform, liveCode: p.liveCode || "" }); setEid(p.id); setFormErr(""); setShow(true); };
   // Delete: if the CLOUD delete fails, the local delete is REVERTED (the DB row
   // survived and the DB-wins reconcile would resurrect it on next load anyway —
   // showing it gone now would be a lie) + the failure pill explains.
@@ -63,15 +64,29 @@ export default function Products({ cur }: { cur: string }) {
   };
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    // Live code: one code per seller (case-insensitive). Client-side check catches
+    // the same-device dup; the DB partial-unique index is the cross-device backstop.
+    const code = form.liveCode.trim().toLowerCase();
+    if (code && prods.some((p) => p.id !== eid && (p.liveCode || "").trim().toLowerCase() === code)) {
+      setFormErr(t.rd_prd_code_dup); return; // block; keep the modal open
+    }
+    setFormErr("");
+    const before = prods;
     const next = upsertProduct(prods, form, eid, Date.now());
     save(next);
     const changed = eid !== null ? next.find((p) => p.id === eid) : next[next.length - 1];
-    // Add/edit: the local save is KEPT on cloud failure (localStorage is this
-    // screen's primary store; the pill says the CLOUD copy didn't sync).
-    if (changed) void saveProductDb(changed).then((ok) => { if (ok === false) showNote(t.rd_prd_sync_failed); });
+    // Add/edit: local save is KEPT on a generic cloud failure (localStorage is this
+    // screen's primary store; the pill says the CLOUD copy didn't sync). A live_code
+    // COLLISION (23505 from another device) is different — the code isn't ours, so
+    // REVERT the local save and show the dup error, mirroring the delete-revert.
+    if (changed) void saveProductDbResult(changed).then((r) => {
+      if (r.ok) return;
+      if (r.duplicateCode) { save(before); setFormErr(t.rd_prd_code_dup); setShow(true); }
+      else showNote(t.rd_prd_sync_failed);
+    });
     setShow(false);
   };
-  const exportCsv = () => csvDL("products.csv", ["Name", "SKU", "Price", "Stock", "Platform", "Status"], prods.map((p) => [p.name, p.sku, p.price, p.stock, p.platform, p.status]));
+  const exportCsv = () => csvDL("products.csv", ["Name", "SKU", "Live code", "Price", "Stock", "Platform", "Status"], prods.map((p) => [p.name, p.sku, p.liveCode || "", p.price, p.stock, p.platform, p.status]));
   const filtered = useMemo(() => filterProducts(prods, q), [prods, q]);
   const count = (s: string) => prods.filter((p) => p.status === s).length;
   // Translate the derived stock status for display (adapter returns canonical English).
@@ -112,7 +127,12 @@ export default function Products({ cur }: { cur: string }) {
             </div>
             <div style={{ padding: "10px 11px 11px" }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", lineHeight: 1.25 }}>{p.name}</div>
-              <div style={{ fontFamily: mono, fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>{p.sku}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+                <span style={{ fontFamily: mono, fontSize: 11, color: "var(--text-muted)" }}>{p.sku}</span>
+                {p.liveCode && p.liveCode.trim() && (
+                  <span title={t.rd_prd_live_code} style={{ fontFamily: mono, fontSize: 10, fontWeight: 800, letterSpacing: ".03em", color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "1px 6px", borderRadius: 5 }}>{p.liveCode.trim()}</span>
+                )}
+              </div>
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 7 }}>
                 <span style={{ fontFamily: mono, fontSize: 16, fontWeight: 700, color: "var(--text)" }}>{cur}{fmt(p.price)}</span>
                 <span style={{ fontSize: 11, fontWeight: 700, color: stockColor(p.stock) }}>{p.stock === 0 ? t.rd_prd_out : `${p.stock} ${t.rd_prd_left}`}</span>
@@ -139,6 +159,14 @@ export default function Products({ cur }: { cur: string }) {
             <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, color: "var(--text)" }}>{eid !== null ? t.rd_prd_edit : t.rd_prd_add_title}</div>
             <div><label style={lbl}>{t.rd_prd_name}</label><input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required style={input} /></div>
             <div><label style={lbl}>{t.rd_prd_sku}</label><input value={form.sku} onChange={(e) => setForm((f) => ({ ...f, sku: e.target.value }))} style={input} /></div>
+            <div>
+              <label style={lbl}>{t.rd_prd_live_code}</label>
+              <input value={form.liveCode} onChange={(e) => { setForm((f) => ({ ...f, liveCode: e.target.value })); setFormErr(""); }} placeholder={t.rd_prd_live_code_ph} style={input} />
+              {/* WARN (not block) on inner spaces — exact match still works, but qty
+                  parsing "CODE N" is cleaner without them. */}
+              {form.liveCode.trim().includes(" ") && <div style={{ fontSize: 10.5, color: "var(--warn)", marginTop: 4, lineHeight: 1.4 }}>{t.rd_prd_live_code_space}</div>}
+              {formErr && <div style={{ fontSize: 10.5, color: "var(--danger)", marginTop: 4, lineHeight: 1.4 }}>{formErr}</div>}
+            </div>
             <div style={{ display: "flex", gap: 9 }}>
               <div style={{ flex: 1 }}><label style={lbl}>{t.rd_prd_price} ({cur})</label><input type="number" min="0" value={form.price} onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))} required style={input} /></div>
               <div style={{ flex: 1 }}><label style={lbl}>{t.rd_prd_stock}</label><input type="number" min="0" value={form.stock} onChange={(e) => setForm((f) => ({ ...f, stock: e.target.value }))} required style={input} /></div>

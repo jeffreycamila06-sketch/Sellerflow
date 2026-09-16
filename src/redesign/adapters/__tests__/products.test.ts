@@ -3,7 +3,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { statusForStock, upsertProduct, deleteProduct, filterProducts, loadProducts, saveProducts, PRODUCT_DEFAULTS, type Product, type ProductForm } from "../products";
 
-const form = (over: Partial<ProductForm> = {}): ProductForm => ({ name: "Item", sku: "SKU1", price: "120", stock: "10", platform: "TikTok", ...over });
+const form = (over: Partial<ProductForm> = {}): ProductForm => ({ name: "Item", sku: "SKU1", price: "120", stock: "10", platform: "TikTok", liveCode: "", ...over });
 const list: Product[] = [
   { id: 1, name: "Red dress", sku: "RD-1", price: 350, stock: 24, platform: "TikTok", status: "Active" },
   { id: 2, name: "Blue top", sku: "BT-2", price: 250, stock: 3, platform: "FB Live", status: "Low stock" },
@@ -21,7 +21,13 @@ describe("upsertProduct", () => {
   it("adds with id=now and derived status (App.tsx:1311)", () => {
     const next = upsertProduct(list, form({ stock: "2" }), null, 1750000000000);
     expect(next).toHaveLength(3);
-    expect(next[2]).toEqual({ id: 1750000000000, name: "Item", sku: "SKU1", price: 120, stock: 2, platform: "TikTok", status: "Low stock" });
+    expect(next[2]).toEqual({ id: 1750000000000, name: "Item", sku: "SKU1", price: 120, stock: 2, platform: "TikTok", status: "Low stock", liveCode: "" });
+  });
+  it("carries liveCode, trimmed (Auto Mode source; blank = manual-only)", () => {
+    expect(upsertProduct([], form({ liveCode: "  A1  " }), null, 1)[0].liveCode).toBe("A1");
+    expect(upsertProduct([], form({ liveCode: "" }), null, 1)[0].liveCode).toBe("");
+    const edited = upsertProduct(list, form({ liveCode: "B2" }), 1, 999);
+    expect(edited[0].liveCode).toBe("B2");
   });
   it("edits the matching id, recomputing status (App.tsx:1310)", () => {
     const next = upsertProduct(list, form({ name: "Red dress v2", stock: "0" }), 1, 999);
@@ -43,6 +49,10 @@ describe("deleteProduct / filterProducts", () => {
     expect(filterProducts(list, "red").map((p) => p.id)).toEqual([1]);
     expect(filterProducts(list, "bt-2").map((p) => p.id)).toEqual([2]);
     expect(filterProducts(list, "")).toHaveLength(2);
+  });
+  it("filters by live code too, case-insensitive", () => {
+    const withCode: Product[] = [{ ...list[0], liveCode: "A1" }, list[1]];
+    expect(filterProducts(withCode, "a1").map((p) => p.id)).toEqual([1]);
   });
 });
 

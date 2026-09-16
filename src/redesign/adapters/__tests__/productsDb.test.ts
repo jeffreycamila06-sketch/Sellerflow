@@ -18,11 +18,15 @@ const real: Product[] = [
 describe("rowToProduct — DB row → Product, status re-derived from stock", () => {
   it("maps columns and derives status (never stored)", () => {
     expect(rowToProduct({ local_id: 42, name: "Tee", sku: "T-1", price: 199, stock: 0, platform: "TikTok" }))
-      .toEqual({ id: 42, name: "Tee", sku: "T-1", price: 199, stock: 0, platform: "TikTok", status: "Out of stock" });
+      .toEqual({ id: 42, name: "Tee", sku: "T-1", price: 199, stock: 0, platform: "TikTok", status: "Out of stock", liveCode: "" });
   });
   it("coerces string numerics (PostgREST numeric/bigint) and tolerates nulls", () => {
     const p = rowToProduct({ local_id: "1750000000001", name: null, sku: null, price: "12.5", stock: "8", platform: null });
-    expect(p).toEqual({ id: 1750000000001, name: "", sku: "", price: 12.5, stock: 8, platform: "", status: "Active" });
+    expect(p).toEqual({ id: 1750000000001, name: "", sku: "", price: 12.5, stock: 8, platform: "", status: "Active", liveCode: "" });
+  });
+  it("maps live_code (NULL → \"\"; a real code passes through)", () => {
+    expect(rowToProduct({ local_id: 1, stock: 5, live_code: "A1" }).liveCode).toBe("A1");
+    expect(rowToProduct({ local_id: 1, stock: 5, live_code: null }).liveCode).toBe("");
   });
 });
 
@@ -31,10 +35,15 @@ describe("productToRow — Product → upsert payload", () => {
     const row = productToRow(real[0], "user-123", 1750000000000);
     expect(row).toEqual({
       user_id: "user-123", local_id: 1750000000001, name: "Red dress", sku: "RD-1",
-      price: 350, stock: 24, platform: "TikTok", updated_at: new Date(1750000000000).toISOString(),
+      price: 350, stock: 24, platform: "TikTok", live_code: null, updated_at: new Date(1750000000000).toISOString(),
     });
     expect(row).not.toHaveProperty("status");
     expect(row).not.toHaveProperty("last_ordered_at");
+  });
+  it("live_code: a set code is sent; blank/whitespace → NULL (partial-unique index ignores it)", () => {
+    expect(productToRow({ ...real[0], liveCode: "A1" }, "u", 1).live_code).toBe("A1");
+    expect(productToRow({ ...real[0], liveCode: "  " }, "u", 1).live_code).toBeNull();
+    expect(productToRow({ ...real[0], liveCode: "  B2 " }, "u", 1).live_code).toBe("B2");
   });
 });
 
