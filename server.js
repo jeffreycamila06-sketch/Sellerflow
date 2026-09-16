@@ -14,6 +14,8 @@ import { sanitizeCommentPayload } from "./server/sanitize.js";
 import { accountCapVerdict } from "./server/accountCap.js";
 import { fbConnectedNow } from "./server/fbLiveness.js";
 import { formatMemoryLine, memorySnapshot, crashLogLine, shutdownLogLine, MEMORY_LOG_INTERVAL_MS } from "./server/observability.js";
+import { shopeeConfig } from "./server/shopeeConfig.js";
+import { createShopeeRuntime } from "./server/shopeeLive.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -29,6 +31,16 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
 const PARCEL_SCAN_MODEL = process.env.PARCEL_SCAN_MODEL || "";
 const sb = (SUPABASE_URL && SUPABASE_KEY)
   ? createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false, autoRefreshToken: false } })
+  : null;
+
+// SHOPEE LIVE (P2) — a SERVICE-ROLE Supabase client used ONLY by the Shopee token
+// path (OAuth callback + background refresh/poller have no user JWT, so they must
+// bypass RLS to read/write shopee_shops tokens). Created only when the new
+// SUPABASE_SERVICE_ROLE_KEY env is set; never exposed to the client. Everything
+// Shopee is additionally gated on shopeeConfig().enabled (fail-closed) below.
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const serviceSb = (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY)
+  ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } })
   : null;
 
 function normalizeOrigin(origin) {
@@ -613,7 +625,12 @@ io.on("connection", (socket) => {
   // → that socket receives ALL comments, exactly like before (production main).
   socket.on("select_account", ({ platform, username } = {}) => {
     if (!socket.data.selected) socket.data.selected = {};
-    const p = String(platform) === "Facebook" ? "Facebook" : "TikTok";
+    // Additive 3rd platform: "Shopee" is now an accepted scoping key (P2). Any
+    // other value still coerces to "TikTok" (backward-compatible). This is the
+    // ONLY sacred-zone edit — emitCommentScoped is already platform-generic and
+    // sanitizes every payload, so Shopee needs no change there.
+    const ps = String(platform);
+    const p = ps === "Facebook" ? "Facebook" : ps === "Shopee" ? "Shopee" : "TikTok";
     socket.data.selected[p] = cleanAccountKey(username || "");
   });
 });
@@ -1620,6 +1637,61 @@ if (RENDER_URL && typeof fetch === "function") {
   }, 840000); // every 14 minutes
 }
 
+// ── SHOPEE LIVE (P2) — wire ONLY when fully configured + enabled ─────────────
+// Fail-closed: needs shopeeConfig().enabled (SHOPEE_ENABLED="true" + partner id/
+// key + token key) AND the service-role client AND RENDER_EXTERNAL_URL (OAuth
+// redirect). When OFF: no routes are registered, no timers start, ZERO behavior
+// change. All logic lives in server/shopeeLive.js; this block is the thin wiring.
+let shopeeRuntime = null;
+{
+  const shopeeCfg = shopeeConfig();
+  if (shopeeCfg.enabled && serviceSb && RENDER_URL) {
+    const store = {
+      async getPlan(userId) {
+        const { data } = await serviceSb.from("seller_profiles").select("plan").eq("auth_user_id", userId).maybeSingle();
+        return data?.plan || "";
+      },
+      async countShops(userId) {
+        const { count } = await serviceSb.from("shopee_shops").select("id", { count: "exact", head: true }).eq("user_id", userId);
+        return count || 0;
+      },
+      async getShop(userId, shopId) {
+        const { data } = await serviceSb.from("shopee_shops").select("*").eq("user_id", userId).eq("shop_id", Number(shopId)).maybeSingle();
+        return data || null;
+      },
+      async upsertShop(row) {
+        await serviceSb.from("shopee_shops").upsert({ ...row, updated_at: new Date().toISOString() }, { onConflict: "user_id,shop_id" });
+      },
+      async listActiveShops() {
+        const { data } = await serviceSb.from("shopee_shops").select("*").eq("active", true);
+        return data || [];
+      },
+      async updateTokens(userId, shopId, { access, refresh, expiresAtIso }) {
+        await serviceSb.from("shopee_shops").update({ access_token: access, refresh_token: refresh, token_expires_at: expiresAtIso, active: true, updated_at: new Date().toISOString() }).eq("user_id", userId).eq("shop_id", Number(shopId));
+      },
+      async setActive(userId, shopId, active) {
+        await serviceSb.from("shopee_shops").update({ active, updated_at: new Date().toISOString() }).eq("user_id", userId).eq("shop_id", Number(shopId));
+      },
+    };
+    shopeeRuntime = createShopeeRuntime({
+      config: shopeeCfg,
+      store,
+      liveKey,
+      renderUrl: RENDER_URL,
+      // → the SAME emitCommentScoped choke-point (sanitizes + per-account scoping).
+      emitComment: (sellerId, shopUsername, payload) => { void emitCommentScoped(sellerId, "Shopee", shopUsername, payload); },
+      // platform_status for the Shopee pill (username = shop id, the scoping key).
+      statusEmit: (sellerId, { connected, shopId, sessionId }) => {
+        io.to(sellerRoom(sellerId)).emit("platform_status", { platform: "Shopee", connected, sellerId, username: String(shopId), sessionId: String(sessionId || "") });
+      },
+      log: (line) => console.log(line),
+    });
+    shopeeRuntime.registerRoutes(app, requireAuth);
+    shopeeRuntime.startRefreshTimer();
+    console.log("[SHOPEE] enabled — OAuth + poller routes registered");
+  }
+}
+
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`SellerFlow TikTok LIVE server running on port ${PORT}`);
@@ -1663,6 +1735,7 @@ process.on("SIGTERM", () => {
   console.log(shutdownLogLine(tiktokConnections.size));
   if (keepAliveTimer) clearInterval(keepAliveTimer);
   clearInterval(memoryLogTimer);
+  if (shopeeRuntime) { try { shopeeRuntime.stopAll(); } catch { /* best effort */ } }
   const forceExit = setTimeout(() => process.exit(0), 5000);
   if (typeof forceExit.unref === "function") forceExit.unref();
   try { io.close(); } catch { /* best effort */ }
