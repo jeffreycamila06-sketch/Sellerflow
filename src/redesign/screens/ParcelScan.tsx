@@ -183,9 +183,10 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const [snapshot, setSnapshot] = useState<{ url: string; file: File } | null>(null);
   const [scanCount, setScanCount] = useState(0);
   // Manual encode — opens the SAME confirm form blank, no camera + no AI scan.
-  // Continuous mode: Save keeps the form open (blank) for the next parcel;
-  // manualCount tracks how many were manually saved this screen session
-  // (separate from scanCount — a manual entry is NOT a scan).
+  // Continuous mode: Save keeps the form open (blank) for the next parcel.
+  // manualCount counts this-session manual saves — kept ONLY to flip the form's
+  // Cancel button to "Done" after the first save (the confusing "Manual: N saved
+  // this session" line was removed; the Batch pill N/40 is the real count).
   const [manual, setManual] = useState(false);
   const [manualCount, setManualCount] = useState(0);
   // Camera runs only while the tab/app is foregrounded (privacy + battery); a
@@ -828,9 +829,6 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                 >📇 {t.rd_ps2_from_customers}</button>
               )}
             </div>
-            {manual && manualCount > 0 && (
-              <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ok, #16a34a)", marginBottom: 10 }} data-testid="ps-manual-count">{tpl(t.rd_ps2_manual_count, { n: String(manualCount) })}</div>
-            )}
             <div style={{ display: "grid", gap: 10 }}>
               <div>
                 <label style={lbl}>{t.rd_ps2_name}{low("name") && <span style={{ color: "var(--warn, #b45309)" }}> · {t.rd_ps2_low_conf}</span>}</label>
