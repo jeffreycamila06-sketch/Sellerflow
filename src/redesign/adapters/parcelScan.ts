@@ -82,8 +82,14 @@ export async function saveParcelManualEnabled(enabled: boolean): Promise<{ ok: b
 // Pure visibility combiner (the RedesignApp gate, unit-tested). Admin sees the
 // full surface regardless of the switch; a paying+active seller sees it ONLY
 // when the switch is ON (manualEnabled). Everyone else → nothing.
-//   visible    = show nav tile + screen
+//   visible    = feature ALLOWED → show nav tile + render the screen
 //   manualOnly = allowed but NOT admin → hide camera/AI/credits, manual + "soon"
+//   locked     = NOT allowed, NOT admin, and a BASIC or FREE plan (active OR
+//                expired) → show the tile as a LOCKED upsell (a neutral
+//                contact-support popup), but NEVER render the screen. This is
+//                purely a tile-visibility signal; `visible` stays the sole
+//                screen-render gate, so a locked user can never mount the feature
+//                (the parcel_scans/parcel_customers write path is unreachable).
 export function parcelScanVisible(opts: {
   role: string | undefined | null;
   plan: string | undefined | null;
@@ -91,11 +97,17 @@ export function parcelScanVisible(opts: {
   planExpiry: string | undefined | null;
   manualEnabled: boolean;
   nowMs?: number;
-}): { visible: boolean; manualOnly: boolean } {
+}): { visible: boolean; manualOnly: boolean; locked: boolean } {
   const admin = canUseParcelScan(opts.role);
   const manual = opts.manualEnabled && canUseParcelManual(opts.plan, opts.planStatus, opts.planExpiry, opts.nowMs);
   const visible = admin || manual;
-  return { visible, manualOnly: visible && !admin };
+  // Locked = basic or free (a missing/blank plan is treated as free), when the
+  // feature isn't already allowed to them. Expiry does NOT matter here (basic
+  // active AND expired both see the upsell tile). Case-insensitive.
+  const tier = String(opts.plan ?? "").trim().toLowerCase();
+  const isBasicOrFree = tier === "basic" || tier === "free" || tier === "";
+  const locked = !visible && !admin && isBasicOrFree;
+  return { visible, manualOnly: visible && !admin, locked };
 }
 
 // ── Types ─────────────────────────────────────────────────────────────────────

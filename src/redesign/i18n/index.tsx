@@ -163,6 +163,11 @@ const RAW: Record<string, Row> = {
   rd_ios_cap_near_msg: { en: "Only {left} of your {cap} free orders left.", fil: "{left} na lang sa iyong {cap} libreng order ang natitira.", zh: "你的 {cap} 个免费订单只剩 {left} 个。", "zh-TW": "你的 {cap} 筆免費訂單只剩 {left} 筆。", vi: "Chỉ còn {left} trong {cap} đơn miễn phí.", th: "เหลือเพียง {left} จาก {cap} ออเดอร์ฟรี", id: "Hanya tersisa {left} dari {cap} pesanan gratis." },
   rd_ios_expired_title: { en: "Plan inactive", fil: "Hindi aktibo ang plan", zh: "套餐未激活", "zh-TW": "方案未啟用", vi: "Gói không hoạt động", th: "แผนไม่ทำงาน", id: "Paket tidak aktif" },
   rd_ios_expired_msg: { en: "Your plan is inactive. Please contact support.", fil: "Hindi aktibo ang iyong plan. Makipag-ugnayan sa support.", zh: "你的套餐未激活。请联系客服。", "zh-TW": "你的方案未啟用。請聯絡客服。", vi: "Gói của bạn không hoạt động. Vui lòng liên hệ hỗ trợ.", th: "แผนของคุณไม่ทำงาน กรุณาติดต่อฝ่ายสนับสนุน", id: "Paket Anda tidak aktif. Silakan hubungi dukungan." },
+  // Locked-tile upsell (Parcel Scan / Customer Details). ⚠️ NEUTRAL, Apple-2.1b-safe:
+  // NO price, NO "upgrade"/"subscribe"/tier name in the body — just "not on your
+  // current plan, contact support". Same on iOS and Android/web.
+  rd_lock_title: { en: "Feature locked", fil: "Naka-lock ang feature", zh: "功能已锁定", "zh-TW": "功能已鎖定", vi: "Tính năng bị khóa", th: "ฟีเจอร์ถูกล็อก", id: "Fitur terkunci" },
+  rd_lock_body: { en: "This feature isn't on your current plan. Contact support to learn more.", fil: "Wala ang feature na ito sa iyong kasalukuyang plan. Makipag-ugnayan sa support para sa karagdagang detalye.", zh: "此功能不在你当前的套餐内。请联系客服了解更多。", "zh-TW": "此功能不在你目前的方案內。請聯絡客服了解更多。", vi: "Tính năng này không có trong gói hiện tại của bạn. Liên hệ hỗ trợ để biết thêm.", th: "ฟีเจอร์นี้ไม่ได้อยู่ในแผนปัจจุบันของคุณ ติดต่อฝ่ายสนับสนุนเพื่อดูข้อมูลเพิ่มเติม", id: "Fitur ini tidak ada di paket Anda saat ini. Hubungi dukungan untuk info lebih lanjut." },
   rd_ios_cm_limit: { en: "⚠ Your plan's account limit is reached.", fil: "⚠ Naabot na ang limitasyon ng account ng iyong plan.", zh: "⚠ 已达到你套餐的账户上限。", "zh-TW": "⚠ 已達到你方案的帳號上限。", vi: "⚠ Đã đạt giới hạn tài khoản của gói.", th: "⚠ ถึงขีดจำกัดบัญชีของแผนคุณแล้ว", id: "⚠ Batas akun paket Anda tercapai." },
 
   // ════ Business Pulse (WEB-ONLY admin activity view — counts only, no revenue) ════

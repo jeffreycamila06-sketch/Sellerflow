@@ -30,3 +30,43 @@ describe("SettingsHub — Customer Details tile", () => {
     expect(onCustomerDetails).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("SettingsHub — LOCKED upsell tiles (basic/free)", () => {
+  it("parcelLocked → both tiles show as locked (🔒) and click the upsell, not the screen", () => {
+    const onParcelUpsell = vi.fn();
+    // No onParcelScan / onCustomerDetails (feature not allowed) + parcelLocked true.
+    const r = view({ parcelLocked: true, onParcelUpsell });
+    const ps = r.getByTestId("tile-parcelscan-locked");
+    const cd = r.getByTestId("tile-customerdetails-locked");
+    expect(ps.getAttribute("data-locked")).toBe("1");
+    expect(cd.getAttribute("data-locked")).toBe("1");
+    // no allowed (unlocked) tiles rendered
+    expect(r.queryByTestId("tile-parcelscan")).toBeNull();
+    expect(r.queryByTestId("tile-customerdetails")).toBeNull();
+    fireEvent.click(ps);
+    fireEvent.click(cd);
+    expect(onParcelUpsell).toHaveBeenCalledTimes(2);
+  });
+
+  it("allowed (onParcelScan passed) wins over locked → normal tiles, no lock, no upsell", () => {
+    const onParcelScan = vi.fn();
+    const onCustomerDetails = vi.fn();
+    const onParcelUpsell = vi.fn();
+    const r = view({ onParcelScan, onCustomerDetails, parcelLocked: true, onParcelUpsell });
+    expect(r.getByTestId("tile-parcelscan")).toBeTruthy();
+    expect(r.getByTestId("tile-customerdetails")).toBeTruthy();
+    expect(r.queryByTestId("tile-parcelscan-locked")).toBeNull();
+    expect(r.queryByTestId("tile-customerdetails-locked")).toBeNull();
+    fireEvent.click(r.getByTestId("tile-parcelscan"));
+    expect(onParcelScan).toHaveBeenCalledTimes(1);
+    expect(onParcelUpsell).not.toHaveBeenCalled();
+  });
+
+  it("not locked and not allowed → neither tile appears (existing hide behavior)", () => {
+    const r = view({ parcelLocked: false });
+    expect(r.queryByTestId("tile-parcelscan")).toBeNull();
+    expect(r.queryByTestId("tile-parcelscan-locked")).toBeNull();
+    expect(r.queryByTestId("tile-customerdetails")).toBeNull();
+    expect(r.queryByTestId("tile-customerdetails-locked")).toBeNull();
+  });
+});
