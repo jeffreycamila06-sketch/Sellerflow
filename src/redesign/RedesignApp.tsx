@@ -1341,7 +1341,7 @@ export default function RedesignApp() {
           {screen === "settings" && (
             <GeneralSettings
               theme={theme} accent={accent} onSetTheme={setTheme} onSetAccent={setAccent}
-              auto={autoControls} cur={cur} account={auth.profile} onSaveProfile={saveProfile}
+              auto={autoControls} account={auth.profile} onSaveProfile={saveProfile}
               onManageChannel={(p) => { setChanBack("settings"); setScreen(p === "tiktok" ? "ttchannels" : "fbchannels"); }}
               lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold}
               lang={lang} onSetLang={setLang} currency={currency} onSetCurrency={setCurrencyExplicit}

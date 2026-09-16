@@ -10,7 +10,7 @@ import { profileToDisplay, planLabel, renewLabel } from "../adapters/useAuthSess
 import { validatePhone, DEFAULT_COUNTRY } from "../adapters/phone";
 import CountryPhoneField from "../components/CountryPhoneField";
 import type { AccountUser } from "../../accountDb";
-import { useT, tpl } from "../i18n";
+import { useT } from "../i18n";
 import { accountList } from "../adapters/connect";
 
 // Motion toggle is INTENTIONALLY HIDDEN for now (Jeff — pending a phone
@@ -21,8 +21,6 @@ import { isIOS } from "../adapters/platform";
 import { isAppShell } from "../adapters/appShell";
 import { canSeeKioskLauncher, downloadKioskLauncher } from "../adapters/kioskLauncher";
 import { usePrinterStatus, type PrinterConnState } from "../adapters/usePrinterStatus";
-import { useAutoCodes } from "../adapters/useAutoCodes";
-import type { AutoCode } from "../adapters/autoMode";
 
 const label: CSSProperties = { fontSize: 11.5, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 5 };
 const input: CSSProperties = { width: "100%", padding: "11px 13px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 600, outline: "none" };
@@ -31,17 +29,17 @@ const rowSub: CSSProperties = { fontSize: 11.5, color: "var(--text-muted)" };
 
 export default function GeneralSettings({
   theme, accent, onSetTheme, onSetAccent,
-  auto, cur, lang, onSetLang, currency, onSetCurrency,
+  auto, lang, onSetLang, currency, onSetCurrency,
   profileOpen, onToggleProfile,
   printerIdx, printerOpen, printerFocus = 0, onPrinterFocused, onTogglePrinter, onPickPrinter, onPrintPattern,
   onSubscription, onSupport, onDelete,
-  account = null, onSaveProfile, onManageChannel, onAutoCodesSaved,
+  account = null, onSaveProfile, onManageChannel,
   lowStockThreshold = 3, onSetLowStockThreshold,
   keepAwake = true, onToggleKeepAwake,
   motionOn = true, onToggleMotion,
 }: {
   theme: ThemeMode; accent: AccentKey; onSetTheme: (t: ThemeMode) => void; onSetAccent: (a: AccentKey) => void;
-  auto: AutoControls; cur: string;
+  auto: AutoControls; cur?: string; // cur retained (optional) for callers; no longer used here (auto price editor moved to Products)
   lang: string; onSetLang: (c: string) => void; currency: string; onSetCurrency: (c: string) => void;
   profileOpen: boolean; onToggleProfile: () => void;
   printerIdx: number; printerOpen: boolean; printerFocus?: number; onPrinterFocused?: () => void; onTogglePrinter: () => void; onPickPrinter: (i: number, alreadySetUp: boolean) => void; onPrintPattern: () => void;
@@ -52,9 +50,6 @@ export default function GeneralSettings({
   onSaveProfile?: (fields: { fullName: string; storeName: string; phone: string }) => Promise<{ ok: boolean; error?: string }>;
   // Channels card is DISPLAY-only here; tapping a row opens the Manage screen (C).
   onManageChannel?: (platform: "tiktok" | "facebook") => void;
-  // 5b — after a successful Save, hand the persisted code map + stock up so the live
-  // matcher applies it immediately (no reload).
-  onAutoCodesSaved?: (codes: AutoCode[], stock: Map<number, number>) => void;
   // Rule 3 — seller-configurable low-stock warning threshold (default 3; 0 = off).
   lowStockThreshold?: number; onSetLowStockThreshold?: (n: number) => void;
   // Keep-awake habang naka-live (web Screen Wake Lock) — display toggle only;
@@ -65,7 +60,6 @@ export default function GeneralSettings({
   motionOn?: boolean; onToggleMotion?: () => void;
 }) {
   const t = useT();
-  const ac = useAutoCodes(true, onAutoCodesSaved); // Auto Mode: real code→product→inventory map (read-on-load)
   const [apLangOpen, setApLangOpen] = useState(false);
   const [apCurOpen, setApCurOpen] = useState(false);
   const curLang = LANGS.find((l) => l.code === lang) || LANGS[0];
@@ -269,61 +263,17 @@ export default function GeneralSettings({
             </div>
             {auto.setupOpen && (
               <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>{t.rd_auto_codes_title}</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{tpl(t.rd_auto_count, { n: ac.codes.length })}</span>
+                {/* Live codes moved onto the Products screen (one code = one product,
+                    Sep 17). This accordion now only holds the low-stock threshold. */}
+                <div style={{ fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.5 }}>{t.rd_auto_codes_moved}</div>
+                {/* Rule 3 — seller-configurable low-stock warning threshold (default 3; 0 = off). */}
+                <div style={{ borderTop: "1px solid var(--border)", marginTop: 12, paddingTop: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <label style={{ ...label, marginBottom: 0, flex: 1 }}>{t.rd_auto_lowstock_label}</label>
+                    <input type="number" min="0" max="99" value={lowStockThreshold} onChange={(e) => onSetLowStockThreshold?.(Math.max(0, Math.min(99, parseInt(e.target.value, 10) || 0)))} style={{ ...input, width: 72, flex: "none", fontFamily: "var(--font-mono)", textAlign: "center" }} />
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.45, marginTop: 6 }}>{t.rd_auto_lowstock_help}</div>
                 </div>
-                <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.45, marginBottom: 11 }}>{t.rd_auto_help}</div>
-
-                {ac.products.length === 0 ? (
-                  <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 0" }}>{t.rd_auto_no_products}</div>
-                ) : (
-                  <>
-                    {ac.codes.map((row, i) => {
-                      const stock = ac.stockFor(row.productLocalId);
-                      const soldOut = stock <= 0;
-                      return (
-                        <div key={i} style={{ border: "1px solid var(--border)", borderRadius: 11, padding: 10, marginBottom: 8, background: "var(--surface-2)" }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <input value={row.code} onChange={(e) => ac.setCode(i, e.target.value)} placeholder={t.rd_auto_code_ph} style={{ width: 76, textAlign: "center", textTransform: "uppercase", padding: "8px 6px", border: "1px solid var(--border-strong)", borderRadius: 9, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 800, outline: "none" }} />
-                            <span style={{ flex: 1 }} />
-                            <span style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: ".02em", padding: "4px 9px", borderRadius: 999, color: soldOut ? "var(--danger)" : "var(--ok)", background: soldOut ? "var(--danger-soft, rgba(239,68,68,.12))" : "var(--accent-softer)" }}>{soldOut ? t.rd_auto_soldout : t.rd_auto_active}</span>
-                            <button onClick={() => ac.removeCode(i)} title={t.rd_auto_remove} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 18, lineHeight: 1, padding: "0 2px" }}>×</button>
-                          </div>
-                          <div style={{ marginTop: 8 }}>
-                            <label style={label}>{t.rd_auto_product}</label>
-                            <select value={row.productLocalId} onChange={(e) => ac.setProduct(i, Number(e.target.value))} style={input}>
-                              {ac.products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                            </select>
-                          </div>
-                          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                            <div style={{ flex: 1, minWidth: 0 }}><label style={label}>{t.rd_auto_price} ({cur})</label><input type="number" min="0" value={row.price} onChange={(e) => ac.setPrice(i, Number(e.target.value) || 0)} style={{ ...input, fontFamily: "var(--font-mono)" }} /></div>
-                            <div style={{ flex: 1, minWidth: 0 }}><label style={label}>{t.rd_auto_stock}</label><input type="number" min="0" value={stock} onChange={(e) => ac.setStock(row.productLocalId, parseInt(e.target.value, 10) || 0)} style={{ ...input, fontFamily: "var(--font-mono)" }} /></div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
-                      {ac.codes.length < 26 && (
-                        <button onClick={ac.addCode} style={{ background: "transparent", border: "1.3px dashed var(--border-strong)", color: "var(--accent-fg)", padding: "8px 12px", borderRadius: 9, fontSize: 12, fontWeight: 700, fontFamily: "var(--font-ui)", cursor: "pointer" }}>{t.rd_auto_add}</button>
-                      )}
-                      <span style={{ flex: 1 }} />
-                      {ac.saveError
-                        ? <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--danger)" }}>{t.rd_auto_save_failed}</span>
-                        : ac.saved && <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--ok)" }}>{t.rd_auto_saved}</span>}
-                      <button onClick={() => { void ac.save(); }} disabled={ac.saving} style={{ background: "var(--accent)", color: "var(--accent-text)", border: "none", padding: "8px 16px", borderRadius: 9, fontSize: 12.5, fontWeight: 700, fontFamily: "var(--font-ui)", cursor: ac.saving ? "default" : "pointer", opacity: ac.saving ? 0.7 : 1 }}>{ac.saving ? t.rd_auto_saving : t.rd_auto_save}</button>
-                    </div>
-                    {ac.stockError && <div style={{ fontSize: 12, fontWeight: 600, color: "var(--danger)", marginTop: 8 }}>{t.rd_auto_stock_failed}</div>}
-                    {/* Rule 3 — seller-configurable low-stock warning threshold (default 3; 0 = off). */}
-                    <div style={{ borderTop: "1px solid var(--border)", marginTop: 12, paddingTop: 12 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <label style={{ ...label, marginBottom: 0, flex: 1 }}>{t.rd_auto_lowstock_label}</label>
-                        <input type="number" min="0" max="99" value={lowStockThreshold} onChange={(e) => onSetLowStockThreshold?.(Math.max(0, Math.min(99, parseInt(e.target.value, 10) || 0)))} style={{ ...input, width: 72, flex: "none", fontFamily: "var(--font-mono)", textAlign: "center" }} />
-                      </div>
-                      <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.45, marginTop: 6 }}>{t.rd_auto_lowstock_help}</div>
-                    </div>
-                  </>
-                )}
               </div>
             )}
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
