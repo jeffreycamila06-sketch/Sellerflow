@@ -19,6 +19,7 @@ import { accountList } from "../adapters/connect";
 const SHOW_MOTION_TOGGLE = false;
 import { isIOS } from "../adapters/platform";
 import { isAppShell } from "../adapters/appShell";
+import { canSeeKioskLauncher, downloadKioskLauncher } from "../adapters/kioskLauncher";
 import { usePrinterStatus, type PrinterConnState } from "../adapters/usePrinterStatus";
 import { useAutoCodes } from "../adapters/useAutoCodes";
 import type { AutoCode } from "../adapters/autoMode";
@@ -223,6 +224,15 @@ export default function GeneralSettings({
               <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text)", marginBottom: 6 }}>{t.rd_wp_setup_title}</div>
               <div style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.5, whiteSpace: "pre-line" }}>{t.rd_wp_setup_body}</div>
               <div style={{ fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.5, marginTop: 8, fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>{t.rd_wp_setup_tip}</div>
+              {/* Kiosk launcher (.bat) download — gated (admins + allowlist) for
+                  now; canSeeKioskLauncher's list is the single place to open it
+                  to everyone later. Non-allowed users see the card without this. */}
+              {canSeeKioskLauncher(account) && (
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+                  <div style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.55, whiteSpace: "pre-line", marginBottom: 10 }}>{t.rd_wp_dl_steps}</div>
+                  <button onClick={downloadKioskLauncher} style={{ fontSize: 12, fontWeight: 800, color: "var(--accent-text)", background: "var(--accent)", border: "none", padding: "9px 16px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_wp_dl_btn}</button>
+                </div>
+              )}
             </div>
           </div>
         )}
