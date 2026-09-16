@@ -64,6 +64,10 @@ export function liveSessionPayload(c: ProdComment, order: LiveOrder, sessionDate
     // Auto Mode Rules 1/2 (sql/38). qty > 1 only for Auto Mode; auto_code carries the
     // code for the Rule 1 (session,handle,code) unique index. Manual/enterprise leave
     // autoCode undefined → auto_code NULL → not part of the dedup index.
+    // ⚠️ ACCEPTED (audit F-CAP-UNITS): a qty=N auto order is ONE saveOrderToDatabase =
+    // ONE billing row = ONE count toward the free-tier cap (billing `orders` has no qty
+    // column; total_amount = price*qty is correct). The cap is PER-ORDER, not per-unit
+    // (Jeff's call, pending) — do NOT change this to per-unit without a decision.
     qty: order.qty,
     auto_code: order.autoCode || undefined,
   } satisfies LiveSessionOrderInput;
@@ -217,6 +221,16 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCap
       // the old 1-arg RPC stays the path for any caller that doesn't pass qty. A -1
       // return = the DB rejected a cross-device short (client plan already blocked the
       // common in-device short) → surface it like any stock error (M1).
+      // ⚠️ ACCEPTED RESIDUAL (audit F-STOCK-ORDER / F-RPC-NEG): this decrement + the
+      // billing/session inserts above are INDEPENDENT fire-and-forget calls, none
+      // awaited or conditional on each other (production fire-and-forget parity). So a
+      // cross-device duplicate that reaches here leaves stock decremented + a billing
+      // row written even though the session row is later rejected (23505 on
+      // ux_lso_session_handle_code), and a -1 does NOT refund/cancel the order. This is
+      // the SAME cross-device class as the documented multi-device buyer# caveat — the
+      // client dedup ref + hydration gate are the primary guards; the DB index protects
+      // session/buyer# integrity; a true refund would need an increment RPC (out of
+      // scope). onStockError surfaces it so the seller can reconcile manually.
       const localId = opts.productLocalId;
       const dec = opts.qty != null ? decrementProductStockBy(localId, opts.qty) : decrementStockAndTouch(localId);
       void dec.then((newStock) => { if (newStock === -1) onStockError?.(new Error("stock_short")); })

@@ -241,6 +241,9 @@ export default function RedesignApp() {
   // (auto-cleared when the code is restocked, so a re-sellout shows again).
   const [autoCodeStock, setAutoCodeStock] = useState<AutoCodeStock[]>([]);
   const [autoLowStock, setAutoLowStock] = useState<number>(() => loadLowStockThreshold());
+  // ⚠️ ACCEPTED (audit F-DISMISS-RELOAD): dismissal is in-memory only, so a full
+  // reload re-surfaces a dismissed sold-out banner. This is the SAFE direction (a
+  // reload re-showing a real 0-stock warning), so it is noted rather than persisted.
   const [autoDismissedSoldOut, setAutoDismissedSoldOut] = useState<Set<string>>(new Set());
   // RULE 1/2/3 feed badges — display-only, keyed by commentKey (c.id): a comment that
   // was a duplicate / sold-out / short gets a chip next to MINE. NEVER touches
@@ -1033,6 +1036,18 @@ export default function RedesignApp() {
   const refreshAutoStock = () => setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0));
   autoCommentRef.current = (c: ProdComment) => {
     if (!autoDetect) return;                                    // Auto Mode OFF → ignore
+    // F-DEDUP-RACE (post-audit) — do NOT auto-process while the live-session window is
+    // being LOADED (state "loading" = a fetch is in flight → session.orders is still
+    // empty → loadedAutoDupSet is empty). A repeat code arriving in that window could
+    // escape Rule 1 → a duplicate billing order + double stock decrement (only the DB
+    // session index would catch it). Skipping (no order, no badge) closes the race; the
+    // seller can still MANUAL-tap (the comment still renders). Once the load resolves
+    // ("live"/"empty") the dedup set is ready and auto resumes; a session switch clears
+    // + reloads → "loading" again, so the same guard covers the reset race. NOTE: we
+    // gate on the IN-FLIGHT state (not orderedLoaded) so the no-Supabase / no-load case
+    // isn't blocked forever; a failed/absent load falls back to the sync autoDupRef +
+    // the DB unique index (the cross-device backstop).
+    if (liveSession.state === "loading") { console.info("[auto] skipped — session window loading", c.handle, c.comment); return; }
     const key = commentKey(c);
     if (autoProcessedRef.current.has(key) || printed[key]) return; // this comment already handled
     const plan = planAutoOrder(c.comment || "", autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0);
@@ -1055,8 +1070,11 @@ export default function RedesignApp() {
     autoDupRef.current.add(dupKey);                              // Rule 1 sync claim (before createOrder)
     autoStockRef.current.set(plan.code.productLocalId, plan.nextStock);
     // STICKER TEXT (Jeff follow-up): AUTO orders always show the CODE — qty 1 → "A1",
-    // qty>1 → "A1 ×2" (for packing). itemOverride sets order.item; manual is unchanged.
-    const itemOverride = plan.qty > 1 ? `${plan.code.code} ×${plan.qty}` : plan.code.code;
+    // qty>1 → "A1 x2" (for packing). ⚠️ ASCII "x" (0x78), NOT "×" (U+00D7): the sticker's
+    // price-code field runs through writeTextSmart, whose hasNonAscii check routes ANY
+    // char >127 into the CJK font (TSS24.BF2 / gbk) — "×" would print in the wrong font
+    // (or "?") on the AIMO. Keeping the whole item ASCII keeps the enlarged font "4".
+    const itemOverride = plan.qty > 1 ? `${plan.code.code} x${plan.qty}` : plan.code.code;
     const order = orders.createOrder(c, plan.code.price, { productLocalId: plan.code.productLocalId, qty: plan.qty, autoCode: plan.code.code, itemOverride });
     if (order) {
       setPrinted((p) => ({ ...p, [key]: cur + plan.code.price }));

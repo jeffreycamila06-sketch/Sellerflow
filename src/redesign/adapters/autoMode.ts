@@ -43,7 +43,11 @@ export function matchCode(text: string, codes: AutoCode[]): AutoCode | null {
 // NOT already an exact code (exact wins → qty 1), so a code that literally contains
 // a trailing " <n>" (a seller may set any string) still matches exactly first.
 export const MAX_AUTO_QTY = 99;
-const QTY_RE = /^(.+)\s+(\d{1,2})$/; // {1,2} digits ⇒ 0..99; "A1 100" (3 digits) never matches → nomatch
+// {1,2} digits ⇒ 0..99; "A1 100" (3 digits) never matches → nomatch.
+// ⚠️ ACCEPTED (audit F-FULLWIDTH): \d is ASCII-only, so a full-width qty ("A1 ２")
+// does NOT match → the comment is treated as a plain comment (no order). Acceptable
+// for the TW/PH market (buyers type ASCII digits); noted rather than "fixed".
+const QTY_RE = /^(.+)\s+(\d{1,2})$/;
 
 export type AutoParse =
   | { code: AutoCode; qty: number }
