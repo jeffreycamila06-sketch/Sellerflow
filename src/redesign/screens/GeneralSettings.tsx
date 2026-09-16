@@ -18,6 +18,7 @@ import { accountList } from "../adapters/connect";
 // only hides the Appearance pill. Flip to `true` to re-show the row in one step.
 const SHOW_MOTION_TOGGLE = false;
 import { isIOS } from "../adapters/platform";
+import { isAppShell } from "../adapters/appShell";
 import { usePrinterStatus, type PrinterConnState } from "../adapters/usePrinterStatus";
 import { useAutoCodes } from "../adapters/useAutoCodes";
 import type { AutoCode } from "../adapters/autoMode";
@@ -211,6 +212,20 @@ export default function GeneralSettings({
           )}
         </div>
 
+        {/* LAPTOP AUTO-PRINT setup — WEB ONLY. Silent per-order printing on a
+            laptop needs Chrome/Edge launched with --kiosk-printing (a browser
+            launch flag, not an app setting) + the label printer set as default.
+            Hidden on the APK/iOS shells (they print via the native bridge). */}
+        {!isAppShell() && (
+          <div>
+            <div className="sfl-anim-textglow" style={sectionLabel}>{t.rd_wp_setup_label}</div>
+            <div style={card}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text)", marginBottom: 6 }}>{t.rd_wp_setup_title}</div>
+              <div style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.5, whiteSpace: "pre-line" }}>{t.rd_wp_setup_body}</div>
+              <div style={{ fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.5, marginTop: 8, fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>{t.rd_wp_setup_tip}</div>
+            </div>
+          </div>
+        )}
         {/* LIVE SESSION — auto-detect (per v2, lives here) */}
         <div>
           <div className="sfl-anim-textglow" style={sectionLabel}>{t.rd_set_live_session}</div>

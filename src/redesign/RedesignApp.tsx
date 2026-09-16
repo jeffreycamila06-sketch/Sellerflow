@@ -64,7 +64,7 @@ import { computeSales } from "./adapters/sales";
 import { useSalesReport } from "./adapters/salesReport";
 import { ordersByHour } from "./adapters/peakHours";
 import { sessionKeyFor } from "./adapters/shipping";
-import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, isPrinterNotSetup, canUseClassicText, setClassicTextAllowed, hasBitmapStickerMethod, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
+import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, setWebPrintOutcomeHandler, setWebPrintKioskHintHandler, isPrinterNotSetup, canUseClassicText, setClassicTextAllowed, hasBitmapStickerMethod, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
 import { prefetchCjkAtlas } from "./adapters/cjkAtlasLoader";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
@@ -371,11 +371,16 @@ export default function RedesignApp() {
   // after a refresh — DB-backed, cross-device). Same printCfgRef snapshot + the
   // proven onPrintWinner pattern (print-without-create through printSlip).
   const reprintByIdRef = useRef<Map<string, ReprintRow>>(new Map());
+  // WEB print queue (laptop): map a print job (keyed by the order's orderNum) back
+  // to the comment row id so a NOT-PRINTED outcome can badge that row. Populated
+  // at the three create-success sites (same place reprintByIdRef is set).
+  const jobToCommentRef = useRef<Map<string, string>>(new Map());
   const onReprint = (id: string, msgId?: string) => {
     const pc = printCfgRef.current;
     if (!pc) return;
     const snap = reprintByIdRef.current.get(id) || (msgId ? orderedMsgIds.get(msgId) : null);
     if (!snap) return;
+    setNotPrinted((p) => { if (!p[id]) return p; const n = { ...p }; delete n[id]; return n; }); // clear the badge — re-enqueues below
     const r = performReprint(snap, pc.cur, pc.storeName, pc.settings);
     track("reprint", { via: r.via }); // reprint usage (PostHog), mirrors track("print")
   };
@@ -545,6 +550,14 @@ export default function RedesignApp() {
   // already on the printer setup screens. No-stack: a burst of failed auto-prints
   // keeps the single open instance (functional set-state) — 3 orders, 1 modal.
   const [printerModal, setPrinterModal] = useState<{ via: PrintVia } | null>(null);
+  // WEB print (laptop, no native bridge): the serialized queue reports each job's
+  // outcome async. A NOT-PRINTED job (contentWindow null / write|print throw / no
+  // onafterprint within the fallback) badges the order row with a one-tap reprint.
+  // kioskHint = the first web print didn't confirm in time → the print dialog is
+  // likely open (kiosk mode not active) → a one-time, dismissible setup notice.
+  const [notPrinted, setNotPrinted] = useState<Record<string, boolean>>({});
+  const [kioskHint, setKioskHint] = useState(false);
+  const notPrintedToastRef = useRef(false); // rising-edge: one toast per burst, not per order
   const screenRef = useRef(screen);
   useEffect(() => { screenRef.current = screen; }, [screen]); // ref write in an effect (react-hooks/refs)
   useEffect(() => {
@@ -557,6 +570,35 @@ export default function RedesignApp() {
     });
     return () => setNativePrintFailureHandler(null);
   }, []);
+
+  // WEB print queue outcomes (laptop). A failed job → badge its order row (mapped
+  // via orderNum → comment id). Kiosk hint → a one-time, dismissible setup notice
+  // (web-only; persisted so it never nags twice). Registered ONCE.
+  const KIOSK_HINT_DISMISS_KEY = "sfl_rd_kiosk_hint_dismissed";
+  useEffect(() => {
+    setWebPrintOutcomeHandler((jobId, ok) => {
+      if (ok) return;
+      const cid = jobToCommentRef.current.get(jobId);
+      if (!cid) return; // unmapped job (synthetic buyer / winner / test) — no row to badge
+      setNotPrinted((p) => (p[cid] ? p : { ...p, [cid]: true }));
+    });
+    setWebPrintKioskHintHandler(() => {
+      if (isAppShell()) return; // native shells don't use the web print path
+      try { if (localStorage.getItem(KIOSK_HINT_DISMISS_KEY)) return; } catch { /* ignore */ }
+      setKioskHint(true);
+    });
+    return () => { setWebPrintOutcomeHandler(null); setWebPrintKioskHintHandler(null); };
+  }, []);
+  // One toast per burst of not-printed jobs (rising edge 0 → >0), NOT one per order.
+  const notPrintedCount = Object.keys(notPrinted).length;
+  useEffect(() => {
+    if (notPrintedCount > 0 && !notPrintedToastRef.current) {
+      notPrintedToastRef.current = true;
+      setToast({ msg: tApp.rd_wp_not_printed_toast, kind: "err" });
+    } else if (notPrintedCount === 0) {
+      notPrintedToastRef.current = false; // reset the edge once everything cleared/reprinted
+    }
+  }, [notPrintedCount, tApp]);
 
   // Warm the code-split CJK glyph-atlas chunk (~2.9MB source) right after
   // mount so it's resident long before the first CJK print. A CJK print that
@@ -980,6 +1022,7 @@ export default function RedesignApp() {
       setPrinted((p) => ({ ...p, [id]: "order" })); // null = free-cap blocked
       const snap = snapshotFromCreate(prod, order); // reprint — the original order, row-shaped
       reprintByIdRef.current.set(id, snap);
+      jobToCommentRef.current.set(String(order.orderNum), id); // web print outcome → this row
       liveSession.addOrderedMsgId((prod as ProdComment & { msgId?: string }).msgId, snap); // ordered-check stays complete
     }
   };
@@ -1015,6 +1058,7 @@ export default function RedesignApp() {
       setPrinted((p) => ({ ...p, [id]: cur + price }));
       const snap = snapshotFromCreate(prod as ProdComment, order); // reprint snapshot
       reprintByIdRef.current.set(id, snap);
+      jobToCommentRef.current.set(String(order.orderNum), id); // web print outcome → this row
       liveSession.addOrderedMsgId((prod as ProdComment & { msgId?: string }).msgId, snap);
     } else {
       entSubmittedRef.current.delete(id); // free-cap soft block / unresolved id → allow retry
@@ -1080,6 +1124,7 @@ export default function RedesignApp() {
       setPrinted((p) => ({ ...p, [key]: cur + plan.code.price }));
       const snap = snapshotFromCreate(c, order); // reprint snapshot (auto orders reprint too)
       reprintByIdRef.current.set(key, snap);
+      jobToCommentRef.current.set(String(order.orderNum), key); // web print outcome → this row
       liveSession.addOrderedMsgId((c as ProdComment & { msgId?: string }).msgId, snap); // ordered-check stays complete
       refreshAutoStock(); // Rule 3 — the decrement may cross the low-stock threshold or hit 0
     } else {
@@ -1250,6 +1295,7 @@ export default function RedesignApp() {
               ttAccounts={ttAccounts} fbAccounts={fbAccounts}
               printed={printed} entId={entId} entPrice={entPrice}
               historyReady={liveSession.orderedLoaded}
+              notPrinted={notPrinted}
               onReprint={onReprint}
               onOneClick={onOneClick} onOpenEnt={onOpenEnt}
               onEntPrice={(v) => setEntPrice(v.replace(/[^0-9]/g, ""))} onEntKey={onEntKey} onEntSubmit={submitEnt}
@@ -1488,6 +1534,23 @@ export default function RedesignApp() {
         {toast && (
           <div style={{ position: "absolute", left: 0, right: 0, bottom: 80, display: "flex", justifyContent: "center", padding: "0 24px", zIndex: 1200, pointerEvents: "none" }}>
             <div style={{ maxWidth: "100%", background: toast.kind === "err" ? "var(--danger)" : "var(--text)", color: toast.kind === "err" ? "#fff" : "var(--surface)", fontSize: 13, fontWeight: 700, padding: "10px 18px", borderRadius: 999, boxShadow: "0 8px 24px rgba(0,0,0,.3)", textAlign: "center", lineHeight: 1.35 }}>{toast.kind === "err" ? `⚠ ${toast.msg}` : toast.msg}</div>
+          </div>
+        )}
+        {/* Kiosk-setup hint (web-only, one-time) — the first laptop print didn't
+            confirm in time, so the print dialog is likely open (kiosk mode not
+            active). Dismiss persists so it never nags twice. */}
+        {kioskHint && !isAppShell() && (
+          <div style={{ position: "absolute", left: 0, right: 0, top: 0, display: "flex", justifyContent: "center", padding: "10px 16px", zIndex: 1300 }}>
+            <div style={{ maxWidth: 560, width: "100%", background: "var(--surface)", border: "1.5px solid var(--accent)", borderRadius: 12, padding: "12px 14px", boxShadow: "0 10px 30px rgba(0,0,0,.28)" }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text)", marginBottom: 4 }}>{tApp.rd_wp_kiosk_title}</div>
+              <div style={{ fontSize: 12, fontWeight: 500, color: "var(--text-dim)", lineHeight: 1.45 }}>{tApp.rd_wp_kiosk_body}</div>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>
+                <button
+                  onClick={() => { try { localStorage.setItem(KIOSK_HINT_DISMISS_KEY, "1"); } catch { /* ignore */ } setKioskHint(false); }}
+                  style={{ fontSize: 12, fontWeight: 800, color: "var(--accent-text)", background: "var(--accent)", border: "none", padding: "7px 16px", borderRadius: 8, cursor: "pointer", fontFamily: "var(--font-ui)" }}
+                >{tApp.rd_wp_kiosk_dismiss}</button>
+              </div>
+            </div>
           </div>
         )}
       </div>
