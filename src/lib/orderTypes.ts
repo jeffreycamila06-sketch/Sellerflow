@@ -5,7 +5,10 @@
 //     sticker pipeline re-derives Taiwan local time from it when >1e12.
 //   - LiveOrder.date is the UTC calendar day (toISOString().slice(0,10)) —
 //     intentionally NOT unified with the device-local liveDayId.
-export interface LiveOrder { orderNum:number; item:string; qty:number; price:number; total:number; time:string; handle:string; name:string; bNum:number; platform:string; status:string; date:string; }
+// autoCode (Auto Mode Rule 1, OPTIONAL + additive): the code token this auto order
+// was created from (e.g. "A1"), used to dedup one order per (session, handle, code).
+// Manual/enterprise orders leave it undefined → never counted for dedup.
+export interface LiveOrder { orderNum:number; item:string; qty:number; price:number; total:number; time:string; handle:string; name:string; bNum:number; platform:string; status:string; date:string; autoCode?:string; }
 export interface Buyer { handle:string; name:string; platform:string; num:number; orders:LiveOrder[]; totalSpent:number; totalOrders:number; }
 // platform: TikTok/Facebook + Shopee (P3 — additive 3rd live source). LiveOrder/Buyer
 // platform stay `string`, so widening this union is downstream-safe (no exhaustive switch).

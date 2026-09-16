@@ -96,6 +96,12 @@ type Screen =
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
 const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "shopeechannels"];
 
+// Auto Mode Rule 1 dedup key: one auto order per (session, buyer handle, code),
+// case-insensitive + trimmed — mirrors the DB partial-unique index expression
+// (lower(handle), lower(auto_code)) so the client guard and the backstop agree.
+const autoDupKeyOf = (handle: string, code: string): string =>
+  `${String(handle || "").trim().toLowerCase()}|${String(code || "").trim().toLowerCase()}`;
+
 
 const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set", automode: "sfl_rd_automode", pp: "sfl_rd_pp", printer: "sfl_rd_printer", keepAwake: "sfl_rd_keepawake", motion: "sfl_rd_motion" } as const;
 const readLS = (k: string, fallback: string): string => {
@@ -222,6 +228,12 @@ export default function RedesignApp() {
   const autoStockRef = useRef<Map<number, number>>(new Map());   // productLocalId → live remaining
   const autoSoldRef = useRef<Set<number>>(new Set());            // sold-out toast fired once per product
   const autoProcessedRef = useRef<Set<string>>(new Set());       // commentKey → already handled (sync dedup)
+  // Rule 1 — one auto order per (session, buyer handle, code). SYNCHRONOUS same-tick
+  // guard keyed "lower(handle)|lower(code)" (two DIFFERENT comments with the same
+  // code from the same buyer are two messages → the commentKey/msgId guards miss
+  // them; this catches them). Seeded from the loaded window (rows carry auto_code)
+  // read inline in the seam; the DB partial-unique index is the cross-device backstop.
+  const autoDupRef = useRef<Set<string>>(new Set());
 
   // Dashboard account-picker selection (declared before useLiveFeed so the feed can
   // scope comments to the chosen account). registeredAccountsFor is pure.
@@ -288,7 +300,7 @@ export default function RedesignApp() {
   // stock from the catalog. No poll. Codes/stock edited in Settings apply on next
   // load (same reseed-on-reload model as multi-day; decided with Jeff).
   useEffect(() => {
-    if (!authed) { autoCodesRef.current = []; autoStockRef.current = new Map(); autoSoldRef.current = new Set(); autoProcessedRef.current = new Set(); return; }
+    if (!authed) { autoCodesRef.current = []; autoStockRef.current = new Map(); autoSoldRef.current = new Set(); autoProcessedRef.current = new Set(); autoDupRef.current = new Set(); return; }
     let active = true;
     void (async () => {
       const [resolved, codes] = await Promise.all([resolveInitialProducts(loadProducts()), loadCodes()]);
@@ -311,6 +323,9 @@ export default function RedesignApp() {
     autoCodesRef.current = codes;
     for (const [lid, n] of stock) { autoStockRef.current.set(lid, n); autoSoldRef.current.delete(lid); }
   }, []);
+  // Rule 1 resets on a NEW session (a fresh session_id = a fresh live) — clear the
+  // synchronous dedup ref; loadedAutoDupSet clears with the reloaded (empty) session.
+  useEffect(() => { autoDupRef.current = new Set(); }, [sessionInstance.currentSessionId]);
   // Phase 5f — free-tier cap status + popups (M2 visibility-guarded poll).
   const freeCap = useFreeCap(authed, auth.profile?.plan);
   // Phase 5g — print config snapshot (filled after print-pattern/printer state is
@@ -399,6 +414,15 @@ export default function RedesignApp() {
   // SAME window-scoped session state (Buyer.totalOrders). ONE map per session
   // change; each feed row is an O(1) lookup. New window/reset → empty → all 0.
   const basketCounts = useMemo(() => buildBasketCounts(liveSession.session.buyers), [liveSession.session]);
+  // Rule 1 — committed/loaded auto-order dedup keys, derived from the SAME session
+  // state (rows carry autoCode via rebuild; in-session auto orders carry it too, so
+  // this covers reload + 2-device via the loaded window). The seam ALSO checks the
+  // synchronous autoDupRef for same-tick repeats not yet in this memo.
+  const loadedAutoDupSet = useMemo(() => {
+    const s = new Set<string>();
+    for (const o of liveSession.session.orders) if (o.autoCode) s.add(autoDupKeyOf(o.handle, o.autoCode));
+    return s;
+  }, [liveSession.session]);
   const ordersState: ReadState = liveSession.state === "idle" ? "sample" : liveSession.state;
 
   // Miners — aggregate RPC (sql/14 miners_stats: own totals + top-5 in one tiny
@@ -970,15 +994,22 @@ export default function RedesignApp() {
     if (autoProcessedRef.current.has(key) || printed[key]) return; // this comment already handled
     const plan = planAutoOrder(c.comment || "", autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0);
     if (plan.kind === "none") return;
+    // RULE 1 — dedup FIRST (a repeat by a buyer who already ordered this code shows
+    // "duplicate" even if the code is now sold out). Key = lower(handle)|lower(code).
+    // Two sources: the SYNC same-tick ref + the loaded/committed orders (session.orders
+    // rows carry autoCode via rebuild; in-session orders carry it too). No order, no
+    // print, NO stock claim on a duplicate (P5 renders the "duplicate" badge).
+    const dupKey = autoDupKeyOf(c.handle, plan.code.code);
+    if (autoDupRef.current.has(dupKey) || loadedAutoDupSet.has(dupKey)) return; // P5 adds the "duplicate" badge
     if (plan.kind === "soldout") { autoSoldOutToast(plan.code); return; }
-    // Rule 2 — "short" (matched code, stock > 0 but < requested qty): REJECT the
-    // whole order, no partial (P5 adds the "not enough stock" feed badge). P3 wires
-    // the qty into createOrder + the qty stock RPC; here P2 keeps the qty-1 seam.
+    // Rule 2 — "short" (matched, stock > 0 but < requested qty): REJECT the whole
+    // order, no partial. P5 renders the "not enough stock" badge.
     if (plan.kind === "short") return;
     // plan.kind === "order": claim SYNCHRONOUSLY before any await (anti double-decrement)
     autoProcessedRef.current.add(key);
+    autoDupRef.current.add(dupKey);                              // Rule 1 sync claim (before createOrder)
     autoStockRef.current.set(plan.code.productLocalId, plan.nextStock);
-    const order = orders.createOrder(c, plan.code.price, { productLocalId: plan.code.productLocalId });
+    const order = orders.createOrder(c, plan.code.price, { productLocalId: plan.code.productLocalId, qty: plan.qty, autoCode: plan.code.code });
     if (order) {
       setPrinted((p) => ({ ...p, [key]: cur + plan.code.price }));
       const snap = snapshotFromCreate(c, order); // reprint snapshot (auto orders reprint too)
@@ -986,9 +1017,11 @@ export default function RedesignApp() {
       liveSession.addOrderedMsgId((c as ProdComment & { msgId?: string }).msgId, snap); // ordered-check stays complete
       if (plan.soldOut) autoSoldOutToast(plan.code);
     } else {
-      // free-cap soft block prevented creation → refund the claim so it can retry.
-      autoStockRef.current.set(plan.code.productLocalId, plan.nextStock + 1);
+      // free-cap soft block / msgId-dedup prevented creation → refund the claim so it
+      // can retry (Rule 1 dup claim too — this buyer never got an order).
+      autoStockRef.current.set(plan.code.productLocalId, plan.nextStock + plan.qty);
       autoProcessedRef.current.delete(key);
+      autoDupRef.current.delete(dupKey);
     }
   };
 

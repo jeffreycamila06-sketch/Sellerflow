@@ -82,13 +82,49 @@ describe("RedesignApp Auto Mode handler (onComment wiring)", () => {
     H.createOrder.fn = vi.fn(() => ({ orderNum: 1750000000000, item: "52", qty: 1, price: 52, total: 52, time: "", handle: "buyer1", name: "Buyer One", bNum: 1, platform: "TikTok", status: "New", date: "2026-06-27" }));
   });
 
-  it("exact matching code → creates an auto-order with the code price + product link", async () => {
+  it("exact matching code → creates an auto-order with the code price + product link + qty 1 + autoCode", async () => {
     const drive = await mountWithAutoMode(true);
     await drive(comment({ comment: "D" }));
     expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
     const [, price, opts] = H.createOrder.fn!.mock.calls[0];
     expect(price).toBe(52);
-    expect(opts).toEqual({ productLocalId: 14 });
+    expect(opts).toEqual({ productLocalId: 14, qty: 1, autoCode: "D" }); // Rules 1/2 wiring
+  });
+
+  it("RULE 2 — 'D 2' with stock 2 → ONE order qty 2 (stock claimed by 2)", async () => {
+    const drive = await mountWithAutoMode(true);
+    await drive(comment({ comment: "D 2" }));
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+    const [, price, opts] = H.createOrder.fn!.mock.calls[0];
+    expect(price).toBe(52);
+    expect(opts).toEqual({ productLocalId: 14, qty: 2, autoCode: "D" });
+  });
+
+  it("RULE 2 — 'D 3' with only 2 in stock → SHORT: no order (reject whole, no partial)", async () => {
+    const drive = await mountWithAutoMode(true);
+    await drive(comment({ comment: "D 3" }));
+    expect(H.createOrder.fn).not.toHaveBeenCalled();
+  });
+
+  it("RULE 1 — same buyer, same code, DIFFERENT comments → only ONE order (the commentKey/msgId guards can't; the dup ref does)", async () => {
+    const drive = await mountWithAutoMode(true);
+    await drive(comment({ handle: "buyer1", comment: "D", timestamp: "2026-06-27T13:41:00.000Z" }));
+    await drive(comment({ handle: "buyer1", comment: "D", timestamp: "2026-06-27T13:45:59.000Z" })); // different key, same (handle,code)
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1); // second = duplicate → no order
+  });
+
+  it("RULE 1 — 'D' then 'D 2' same buyer → first wins, second is a duplicate (no order)", async () => {
+    const drive = await mountWithAutoMode(true);
+    await drive(comment({ handle: "buyer1", comment: "D", timestamp: "2026-06-27T13:41:00.000Z" }));
+    await drive(comment({ handle: "buyer1", comment: "D 2", timestamp: "2026-06-27T13:42:00.000Z" }));
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("RULE 1 is PER-BUYER — a DIFFERENT buyer typing the same code still orders", async () => {
+    const drive = await mountWithAutoMode(true);
+    await drive(comment({ handle: "buyer1", comment: "D", timestamp: "2026-06-27T13:41:00.000Z" }));
+    await drive(comment({ handle: "buyer2", comment: "D", timestamp: "2026-06-27T13:41:01.000Z" }));
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(2);
   });
 
   it("non-matching comment ('D po') → no order", async () => {

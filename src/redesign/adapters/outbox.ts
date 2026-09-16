@@ -36,14 +36,18 @@ export type ExhaustKind = "terminal" | "exhausted" | "overflow";
 // ── Pure classification (unit-tested; the highest-risk logic — wrong here = an
 //    infinite loop OR silent loss) ─────────────────────────────────────────────
 
-// DUPLICATE = the retry hit our EXACT idempotency index. Match the CONSTRAINT
+// DUPLICATE = the retry hit one of our idempotency indexes. Match the CONSTRAINT
 // NAME, not a bare 23505 — so a genuine OTHER unique violation is NOT swallowed
 // (it falls through to terminal and surfaces). Ruling #2.
+//   • ux_lso_user_msgid          — the same message written twice (retry idempotency)
+//   • ux_lso_session_handle_code — Auto Mode Rule 1: a second auto order for the same
+//     (session, handle, code) slipped past the client dedup (cross-device race). The
+//     row must NOT be written; treat as a benign duplicate (drop, no error, no loop).
 export function isDuplicateMsgId(err: unknown): boolean {
   const e = err as { code?: string; message?: string; details?: string } | undefined;
   if (!e) return false;
   const text = `${e.message || ""} ${e.details || ""}`;
-  return e.code === "23505" && text.includes("ux_lso_user_msgid");
+  return e.code === "23505" && (text.includes("ux_lso_user_msgid") || text.includes("ux_lso_session_handle_code"));
 }
 
 // RETRYABLE = an explicit ALLOW-LIST (network / timeout / HTTP 5xx). Everything

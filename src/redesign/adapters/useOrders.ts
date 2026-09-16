@@ -20,7 +20,7 @@ import { buildOrderFromComment } from "../../lib/orderLogic";
 import type { Comment as ProdComment, Buyer, LiveOrder } from "../../lib/orderTypes";
 import { saveOrderToDatabase, saveLiveSessionOrder, saveCustomerToDatabase, type LiveSessionOrderInput } from "../../db";
 import { isCapError } from "./useFreeCap";
-import { decrementStockAndTouch } from "./productsDb";
+import { decrementStockAndTouch, decrementProductStockBy } from "./productsDb";
 
 const msgIdOf = (c: ProdComment): string => String((c as ProdComment & { msgId?: string }).msgId || "").trim();
 // A returned db-write result is a FAILURE only when it is an object with
@@ -61,7 +61,12 @@ export function liveSessionPayload(c: ProdComment, order: LiveOrder, sessionDate
     // active (legacy / rollback / pre-pick). Numbering + loading are UNCHANGED in
     // this step — this only records which session the order belongs to.
     session_id: sessionId || undefined,
-  };
+    // Auto Mode Rules 1/2 (sql/38). qty > 1 only for Auto Mode; auto_code carries the
+    // code for the Rule 1 (session,handle,code) unique index. Manual/enterprise leave
+    // autoCode undefined → auto_code NULL → not part of the dedup index.
+    qty: order.qty,
+    auto_code: order.autoCode || undefined,
+  } satisfies LiveSessionOrderInput;
 }
 
 export function customerDbPayload(c: ProdComment, order: LiveOrder) {
@@ -106,7 +111,11 @@ export interface UseOrdersDeps {
 // the SAME fan-out can also decrement that product's stock + stamp last_ordered_at
 // (the Part-2 link) via the atomic RPC. Manual 1-Click/Enterprise pass no opts → the
 // three writes are byte-identical (no RPC), preserving 5e parity.
-export interface CreateOrderOpts { productLocalId?: number }
+// Auto Mode: qty (Rule 2 — default 1; total = price*qty in the builder) + autoCode
+// (Rule 1 — stamped on the order + row for the (session,handle,code) dedup index).
+// Manual 1-Click/Enterprise pass NEITHER → qty defaults 1, autoCode stays undefined,
+// and the three writes + builder output are byte-identical to 5e.
+export interface CreateOrderOpts { productLocalId?: number; qty?: number; autoCode?: string }
 
 export interface UseOrders {
   // returns null when the free-tier soft block prevented creation.
@@ -135,7 +144,10 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCap
     //     from the loaded window buyers); fire-and-forget, like the DB writes.
     onEnsureWindow?.();
     // 1) SAME pure builder production uses (buyer numbering + orderNum epoch ms).
-    const { order, nextBuyers, singleOrderBuyer } = buildOrderFromComment(c, getBuyers(), price, new Date());
+    //    Rule 2: qty (default 1 → byte-identical); Rule 1: stamp autoCode on the
+    //    order so it persists on the row + feeds the (session,handle,code) dedup.
+    const { order, nextBuyers, singleOrderBuyer } = buildOrderFromComment(c, getBuyers(), price, new Date(), opts?.qty ?? 1);
+    if (opts?.autoCode) order.autoCode = opts.autoCode;
     // 1b) mark this msgId processed SYNCHRONOUSLY, before any write, so a same-tick
     //     second relay is blocked at step 0 above.
     if (msgId) processedMsgIdsRef.current.add(msgId);
@@ -194,9 +206,14 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCap
     //     → Auto Mode could oversell with no signal). Manual orders pass no opts →
     //     never runs (5e byte-identical).
     if (opts?.productLocalId) {
-      void decrementStockAndTouch(opts.productLocalId).catch((err) => {
-        console.warn("Stock decrement failed", err); onStockError?.(err);
-      });
+      // Rule 2: decrement by qty when Auto Mode passes it (atomic, whole-or-nothing);
+      // the old 1-arg RPC stays the path for any caller that doesn't pass qty. A -1
+      // return = the DB rejected a cross-device short (client plan already blocked the
+      // common in-device short) → surface it like any stock error (M1).
+      const localId = opts.productLocalId;
+      const dec = opts.qty != null ? decrementProductStockBy(localId, opts.qty) : decrementStockAndTouch(localId);
+      void dec.then((newStock) => { if (newStock === -1) onStockError?.(new Error("stock_short")); })
+        .catch((err) => { console.warn("Stock decrement failed", err); onStockError?.(err); });
     }
     // (5) — the free-user usage-counter resync now runs post-commit in the billing
     //      write's .finally() above (NEAR-CAP TIMING FIX), not synchronously here, so
