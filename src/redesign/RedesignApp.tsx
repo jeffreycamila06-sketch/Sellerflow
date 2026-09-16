@@ -971,6 +971,10 @@ export default function RedesignApp() {
     const plan = planAutoOrder(c.comment || "", autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0);
     if (plan.kind === "none") return;
     if (plan.kind === "soldout") { autoSoldOutToast(plan.code); return; }
+    // Rule 2 — "short" (matched code, stock > 0 but < requested qty): REJECT the
+    // whole order, no partial (P5 adds the "not enough stock" feed badge). P3 wires
+    // the qty into createOrder + the qty stock RPC; here P2 keeps the qty-1 seam.
+    if (plan.kind === "short") return;
     // plan.kind === "order": claim SYNCHRONOUSLY before any await (anti double-decrement)
     autoProcessedRef.current.add(key);
     autoStockRef.current.set(plan.code.productLocalId, plan.nextStock);
