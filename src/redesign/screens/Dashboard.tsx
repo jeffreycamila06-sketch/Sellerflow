@@ -100,6 +100,7 @@ export default function Dashboard({
   viewers = null,
   sessionEndsAt = null, sessionEnded = false,
   historyReady = false,
+  notPrinted = {},
   onReprint,
   session = { buyers: [], orders: [] }, sessionState = "idle",
   canInject = false, onInjectSynthetic,
@@ -168,6 +169,9 @@ export default function Dashboard({
   // REPRINT — print a COPY of this comment's existing order (no new order, no
   // writes; RedesignApp resolves the original order + calls printSlip).
   onReprint?: (id: string, msgId?: string) => void;
+  // WEB print (laptop): rows whose sticker didn't print (queue reported failure /
+  // no onafterprint). Keyed by comment id → a red "Not printed" badge + Reprint.
+  notPrinted?: Record<string, boolean>;
 }) {
   const t = useT();
   const tt = conn(ttConnected, ttConnecting);
@@ -579,7 +583,7 @@ export default function Dashboard({
                       the full action row when actionable, the "Ordered ✓" chip when
                       an order already exists, or just the basket badge while the
                       ordered-check is not yet possible (E1 gate). */}
-                  {(rowActionable || orderedPrior || basketN > 0) && (
+                  {(rowActionable || orderedPrior || basketN > 0 || notPrinted[c.id]) && (
                   <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 6, marginTop: 8, minHeight: rowActionable ? 27 : 0 }}>
                     {/* 🛒 badge — beside the Enterprise button (Jeff's requested spot);
                         shown in every row state (printed / price-entry / actions).
@@ -596,7 +600,13 @@ export default function Dashboard({
                         loaded order) and the "🖨 Printed" chip (rows ordered
                         this session). Tap = printSlip copy of the ORIGINAL
                         order — no new order, no writes. */}
-                    {(orderedPrior || isPrinted) && reprintBtn(c)}
+                    {/* WEB print (laptop): this row's sticker didn't print — red
+                        badge + the same one-tap Reprint (re-enqueues; clears the
+                        badge in RedesignApp.onReprint). */}
+                    {notPrinted[c.id] && (
+                      <span style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: ".05em", color: "#fff", background: "var(--danger)", padding: "2px 6px", borderRadius: 5, flexShrink: 0 }}>{t.rd_wp_not_printed}</span>
+                    )}
+                    {(orderedPrior || isPrinted || notPrinted[c.id]) && reprintBtn(c)}
                     {entOpen && (
                       <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)" }}>{t.rd_dash_type_price}</span>

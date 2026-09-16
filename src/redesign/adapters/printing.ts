@@ -435,6 +435,157 @@ const esc = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (ch) => 
 export type PrintVia = "bluetooth" | "lan" | "native-slip" | "browser" | "none";
 export interface PrintResult { ok: boolean; via: PrintVia; }
 
+// ── WEB PRINT QUEUE (laptop / no native bridge) ──────────────────────────────
+// The web fallback prints via a hidden iframe + window.print(). window.print()
+// BLOCKS the main thread until the print job is spooled (or, without a kiosk
+// flag, until the modal dialog is dismissed). Under Auto Mode a burst of orders
+// used to fire N concurrent iframes + N blocking win.print() calls → stacked
+// dialogs = frozen browser; missed prints were silent; per-order iframes leaked.
+//
+// This module serializes ALL web prints through ONE reusable hidden iframe:
+//   • printSlip's web path ENQUEUES {id, html} and returns immediately;
+//   • a runner prints ONE job at a time — never a second win.print() while one
+//     is pending (webBusy guard) — advancing only on `onafterprint` OR a 4s
+//     fallback if that event never fires;
+//   • the queue is HELD while the tab is hidden (no background-tab timer
+//     throttling reordering prints, no win.focus() theft) and drained on
+//     visibilitychange;
+//   • the single iframe is REUSED (rewritten per job) and never removed per
+//     order — nothing to leak, no 8s cleanup race;
+//   • each job's outcome (printed / not-printed) is reported to an optional
+//     subscriber so the caller can badge a "not printed" order + offer reprint;
+//   • the FIRST job of a session arms a kiosk-hint timer: if `onafterprint`
+//     doesn't confirm within KIOSK_HINT_MS, the print dialog is likely open
+//     (kiosk mode not active) → a one-time guidance notice fires.
+// Native BT/LAN/TSPL paths are untouched; this affects ONLY the browser path.
+interface WebPrintJob { id: string; html: string; }
+const WEB_PRINT_DELAY_MS = 120;          // let doc layout settle before print() (unchanged)
+const WEB_AFTERPRINT_FALLBACK_MS = 4000; // advance the queue if onafterprint never fires
+const WEB_KIOSK_HINT_MS = 6000;          // first job unconfirmed by now ⇒ dialog likely open
+let webQueue: WebPrintJob[] = [];
+let webBusy = false;
+let webFrame: HTMLIFrameElement | null = null;
+let webSeq = 0;             // monotonic id assigned when a job STARTS
+let webFallbackId = 0;      // fallback synthetic job-id counter (jobs with no orderNum)
+let firstJobSeq = 0;        // seq of the session's first web job (0 = none yet)
+let firstJobConfirmed = false;
+let kioskHintFired = false;
+let webFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+let webKioskTimer: ReturnType<typeof setTimeout> | null = null;
+let webVisBound = false;
+
+// Job outcome (printed=true / not-printed=false), keyed by the job id the caller
+// supplied via the printed buyer's orderNum. Optional — web-only.
+let webOutcomeHandler: ((id: string, ok: boolean) => void) | null = null;
+export function setWebPrintOutcomeHandler(fn: ((id: string, ok: boolean) => void) | null): void { webOutcomeHandler = fn; }
+// Fired ONCE per session when the first job's onafterprint doesn't arrive in
+// time (kiosk likely inactive). The caller shows a dismissible setup notice.
+let webKioskHintHandler: (() => void) | null = null;
+export function setWebPrintKioskHintHandler(fn: (() => void) | null): void { webKioskHintHandler = fn; }
+
+function ensureWebFrame(): HTMLIFrameElement | null {
+  if (typeof document === "undefined") return null;
+  if (webFrame && webFrame.isConnected) return webFrame;
+  const f = document.createElement("iframe");
+  f.title = "Print";
+  f.setAttribute("aria-hidden", "true");
+  f.style.position = "fixed";
+  f.style.right = "0";
+  f.style.bottom = "0";
+  f.style.width = "0";
+  f.style.height = "0";
+  f.style.border = "0";
+  f.style.opacity = "0";
+  document.body.appendChild(f);
+  webFrame = f;
+  return f;
+}
+
+function ensureWebVisibilityListener(): void {
+  if (webVisBound || typeof document === "undefined") return;
+  webVisBound = true;
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) pumpWebQueue(); });
+}
+
+function pumpWebQueue(): void {
+  if (webBusy || !webQueue.length) return;
+  if (typeof document !== "undefined" && document.hidden) return; // HELD until visible again
+  const job = webQueue.shift()!;
+  webBusy = true;
+  startWebJob(job);
+}
+
+function startWebJob(job: WebPrintJob): void {
+  const seq = ++webSeq;
+  if (!firstJobSeq) firstJobSeq = seq;
+  let settled = false;
+  const settle = (ok: boolean) => {
+    if (settled) return;
+    settled = true;
+    if (webFallbackTimer) { clearTimeout(webFallbackTimer); webFallbackTimer = null; }
+    try { webOutcomeHandler?.(job.id, ok); } catch { /* subscriber must never break the queue */ }
+    webBusy = false;
+    pumpWebQueue(); // drain the next job in order
+  };
+  const confirmFirstJob = () => {
+    if (seq !== firstJobSeq || firstJobConfirmed) return;
+    firstJobConfirmed = true;
+    if (webKioskTimer) { clearTimeout(webKioskTimer); webKioskTimer = null; }
+  };
+  const frame = ensureWebFrame();
+  const win = frame?.contentWindow;
+  if (!win) { settle(false); return; } // no iframe → NOT printed (reported)
+  const doc = win.document;
+  try { doc.open(); doc.write(job.html); doc.close(); }
+  catch { settle(false); return; }
+  // onafterprint = the ONLY positive confirmation (real print completed / dialog
+  // dismissed). A stale afterprint from a previous job that reused this frame is
+  // harmless: it settles the CURRENT job as ok (a print did complete) and only
+  // confirms the kiosk check when this IS the first job.
+  win.onafterprint = () => { confirmFirstJob(); settle(true); };
+  // Kiosk detection: arm only for the session's first job. If onafterprint hasn't
+  // confirmed by KIOSK_HINT_MS, the dialog is likely open (kiosk not active).
+  if (seq === firstJobSeq && !kioskHintFired) {
+    if (webKioskTimer) clearTimeout(webKioskTimer);
+    webKioskTimer = setTimeout(() => {
+      webKioskTimer = null;
+      if (!firstJobConfirmed && !kioskHintFired) { kioskHintFired = true; try { webKioskHintHandler?.(); } catch { /* noop */ } }
+    }, WEB_KIOSK_HINT_MS);
+  }
+  // Fallback: advance + mark NOT printed if onafterprint never arrives (many
+  // drivers/kiosk setups don't fire it). Conservative — the badge only offers an
+  // optional zero-write reprint; a real-but-silent kiosk print is a false miss.
+  webFallbackTimer = setTimeout(() => settle(false), WEB_AFTERPRINT_FALLBACK_MS);
+  setTimeout(() => {
+    try {
+      if (typeof document === "undefined" || !document.hidden) win.focus(); // never steal focus from a hidden tab
+      win.print();
+    } catch { settle(false); }
+  }, WEB_PRINT_DELAY_MS);
+}
+
+function enqueueWebPrint(job: WebPrintJob): void {
+  ensureWebVisibilityListener();
+  webQueue.push(job);
+  pumpWebQueue();
+}
+
+// Test-only: reset all module queue state (state persists across a module's
+// lifetime by design, so tests reset between cases).
+export function __resetWebPrintQueue(): void {
+  webQueue = [];
+  webBusy = false;
+  if (webFallbackTimer) { clearTimeout(webFallbackTimer); webFallbackTimer = null; }
+  if (webKioskTimer) { clearTimeout(webKioskTimer); webKioskTimer = null; }
+  if (webFrame && webFrame.isConnected) webFrame.remove();
+  webFrame = null;
+  webSeq = 0;
+  webFallbackId = 0;
+  firstJobSeq = 0;
+  firstJobConfirmed = false;
+  kioskHintFired = false;
+}
+
 export function printSlip(buyer: Buyer, cur: string, storeName: string, printSettings: Settings | string): PrintResult {
   const cfg: Settings = typeof printSettings === "string" ? { ...DEF_SETTINGS, stickerSize: printSettings } : printSettings;
   const nativePrinter = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
@@ -457,6 +608,10 @@ export function printSlip(buyer: Buyer, cur: string, storeName: string, printSet
   // so the TSPL-only transliteration/CJK-font tiers don't apply here — raw
   // name/handle text is already correct. Native TSPL/goldens untouched. ──────
   if (typeof document === "undefined") return { ok: false, via: "none" };
+  // The job id lets the caller correlate the async print outcome back to the
+  // order (buyer.orders[0].orderNum = the order's unique epoch-ms id). Missing
+  // (e.g. a synthetic buyer) → a fallback id that simply won't map to a row.
+  const jobId = String(buyer.orders?.[0]?.orderNum ?? `web-${++webFallbackId}`);
   const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n) : s); // native truncate()
   const lvl = (v: number | undefined) => Math.max(1, Math.min(8, Number(v || 1)));
   const { w: labelW, h: labelH } = resolveStickerLabel(cfg.stickerSize);
@@ -475,22 +630,11 @@ export function printSlip(buyer: Buyer, cur: string, storeName: string, printSet
   // Max 2 order rows (native maxOrders=2): small time + enlarged price code
   // (font-4 2x-width feel via scaleX), truncated like the native columns.
   const rows = buyer.orders.slice(0, 2).map((o) => `<div class="orow"><span class="otime">${esc(trunc(String(o.time ?? ""), 10))}</span><span class="oitem">${esc(trunc(String(o.item ?? ""), 12))}</span></div>`).join("");
-  const frame = document.createElement("iframe");
-  frame.title = `Sticker #${buyer.num}`;
-  frame.style.position = "fixed";
-  frame.style.right = "0";
-  frame.style.bottom = "0";
-  frame.style.width = "0";
-  frame.style.height = "0";
-  frame.style.border = "0";
-  frame.style.opacity = "0";
-  document.body.appendChild(frame);
-  const win = frame.contentWindow;
-  if (!win) { frame.remove(); console.warn("Printer was not ready. Try again."); return { ok: false, via: "browser" }; }
-  win.onafterprint = () => setTimeout(() => frame.remove(), 50);
-  const doc = win.document;
-  doc.open();
-  doc.write(`<!DOCTYPE html><html><head><title>Sticker #${esc(buyer.num)}</title><style>@page{size:${labelW}mm ${labelH}mm;margin:${T.pad}mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;width:${labelW - 2 * T.pad}mm;color:#000}.head{display:flex;align-items:flex-end;justify-content:space-between;gap:2mm}.brand{font-size:${T.brand}mm;font-weight:800}.date{font-size:${T.date}mm;font-weight:600}.bar{height:.8mm;background:#000;margin:.8mm 0 ${T.gap}mm}.store{font-size:${T.store * lvl(cfg.printStoreScale)}mm;font-weight:800;margin-bottom:${T.gap}mm}.bnum{font-size:${T.bnum * lvl(cfg.printBuyerNumberScale)}mm;font-weight:900;line-height:1.02;margin-bottom:${T.gap}mm}.name{font-size:${T.name * lvl(cfg.printBuyerNameScale)}mm;font-weight:800;line-height:1.05;margin-bottom:${T.gap}mm;overflow-wrap:anywhere}.user{font-size:${T.user * lvl(cfg.printUsernameScale)}mm;font-weight:700;margin-bottom:${T.gap}mm}.sep{height:.5mm;background:#000;width:65%;margin:${T.gap}mm 0}.orow{display:flex;align-items:baseline;gap:3mm;margin-bottom:${T.gap * 0.7}mm}.otime{font-size:${T.time * lvl(cfg.printOrderScale)}mm;font-weight:600;flex-shrink:0}.oitem{font-size:${T.item * lvl(cfg.printCommentScale)}mm;font-weight:900;display:inline-block;transform:scaleX(1.35);transform-origin:0 50%;white-space:nowrap}@media print{body{margin:0}}</style></head><body>
+  // Build the slip HTML (layout UNCHANGED) and hand it to the serialized queue.
+  // The queue owns the single reusable iframe + win.print() timing (no per-order
+  // iframe, no 8s cleanup race — cfg.printAutoClose is intentionally no longer
+  // read on the web path; the reused frame never leaks). Returns immediately.
+  const html = `<!DOCTYPE html><html><head><title>Sticker #${esc(buyer.num)}</title><style>@page{size:${labelW}mm ${labelH}mm;margin:${T.pad}mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;width:${labelW - 2 * T.pad}mm;color:#000}.head{display:flex;align-items:flex-end;justify-content:space-between;gap:2mm}.brand{font-size:${T.brand}mm;font-weight:800}.date{font-size:${T.date}mm;font-weight:600}.bar{height:.8mm;background:#000;margin:.8mm 0 ${T.gap}mm}.store{font-size:${T.store * lvl(cfg.printStoreScale)}mm;font-weight:800;margin-bottom:${T.gap}mm}.bnum{font-size:${T.bnum * lvl(cfg.printBuyerNumberScale)}mm;font-weight:900;line-height:1.02;margin-bottom:${T.gap}mm}.name{font-size:${T.name * lvl(cfg.printBuyerNameScale)}mm;font-weight:800;line-height:1.05;margin-bottom:${T.gap}mm;overflow-wrap:anywhere}.user{font-size:${T.user * lvl(cfg.printUsernameScale)}mm;font-weight:700;margin-bottom:${T.gap}mm}.sep{height:.5mm;background:#000;width:65%;margin:${T.gap}mm 0}.orow{display:flex;align-items:baseline;gap:3mm;margin-bottom:${T.gap * 0.7}mm}.otime{font-size:${T.time * lvl(cfg.printOrderScale)}mm;font-weight:600;flex-shrink:0}.oitem{font-size:${T.item * lvl(cfg.printCommentScale)}mm;font-weight:900;display:inline-block;transform:scaleX(1.35);transform-origin:0 50%;white-space:nowrap}@media print{body{margin:0}}</style></head><body>
   <div class="head"><span class="brand">SellerFlowLive</span><span class="date">${esc(sess)}</span></div>
   <div class="bar"></div>
   ${cfg.printStoreName && storeName ? `<div class="store">${esc(trunc(storeName, 36))}</div>` : ""}
@@ -498,13 +642,8 @@ export function printSlip(buyer: Buyer, cur: string, storeName: string, printSet
   ${buyer.name ? `<div class="name">${esc(trunc(buyer.name, 30))}</div>` : ""}
   ${cfg.printBuyerUsername && buyer.handle ? `<div class="user">@${esc(trunc(buyer.handle.replace(/^@+/, ""), 30))}</div>` : ""}
   ${cfg.printOrderItems && rows ? `<div class="sep"></div>${rows}` : ""}
-  </body></html>`);
-  doc.close();
-  setTimeout(() => {
-    win.focus();
-    win.print();
-    if (cfg.printAutoClose) window.setTimeout(() => frame.remove(), 8000);
-  }, 120);
+  </body></html>`;
+  enqueueWebPrint({ id: jobId, html });
   return { ok: true, via: "browser" };
 }
 

@@ -2,7 +2,7 @@
 // redesign adapter produces output byte-for-byte identical to a VERBATIM copy of
 // App.tsx's builders (the native TSPL/ESC-POS payload shape is DO-NOT-TOUCH).
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { buildNativeStickerPayload, buildSlipPayload, buildSettingsFromRedesign, printSlip, DEF_SETTINGS, type Settings } from "../printing";
+import { buildNativeStickerPayload, buildSlipPayload, buildSettingsFromRedesign, printSlip, __resetWebPrintQueue, DEF_SETTINGS, type Settings } from "../printing";
 import type { Buyer } from "../../../lib/orderTypes";
 
 // ── VERBATIM reference from src/App.tsx:519-585, 658-659. If App.tsx changes,
@@ -79,6 +79,7 @@ describe("printSlip — web browser print MIRRORS the native TSPL sticker layout
   let captured: HTMLIFrameElement | null;
   beforeEach(() => {
     captured = null;
+    __resetWebPrintQueue(); // serialized queue holds module state across calls; isolate cases
     vi.useFakeTimers();
     const orig = document.createElement.bind(document);
     vi.spyOn(document, "createElement").mockImplementation((tag: string) => {
@@ -87,7 +88,7 @@ describe("printSlip — web browser print MIRRORS the native TSPL sticker layout
       return el;
     });
   });
-  afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); document.querySelectorAll("iframe").forEach((f) => f.remove()); });
+  afterEach(() => { __resetWebPrintQueue(); vi.restoreAllMocks(); vi.useRealTimers(); document.querySelectorAll("iframe").forEach((f) => f.remove()); });
   const webHtml = () => captured?.contentDocument?.documentElement.outerHTML || "";
 
   it("appends a hidden iframe, writes the sticker-mirror HTML, calls win.print(), returns via:'browser'", () => {
@@ -131,6 +132,7 @@ describe("printSlip — web browser print MIRRORS the native TSPL sticker layout
   it("uses the label size for @page and the compact 40mm tier for 60x40", () => {
     printSlip(buyer(), "NT$", "Shop", cfg({ stickerSize: "60x40" }));
     expect(webHtml()).toContain("size:60mm 40mm");
+    __resetWebPrintQueue(); // serialized: drain job 1 before the next writes the frame
     printSlip(buyer(), "NT$", "Shop", cfg({ stickerSize: "80x50" }));
     expect(webHtml()).toContain("size:80mm 50mm");
   });
@@ -157,6 +159,7 @@ describe("printSlip — web browser print MIRRORS the native TSPL sticker layout
     expect(html).toContain(".bnum{font-size:18mm");   // 9 * 2
     expect(html).toContain(".name{font-size:10.8mm"); // 5.4 * 2
     // level 1 (default) stays at base
+    __resetWebPrintQueue(); // serialized: drain job 1 before the next writes the frame
     printSlip(buyer(), "NT$", "Shop", cfg());
     html = webHtml();
     expect(html).toContain(".bnum{font-size:9mm");
