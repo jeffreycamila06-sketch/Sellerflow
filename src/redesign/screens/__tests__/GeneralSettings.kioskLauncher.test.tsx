@@ -1,10 +1,11 @@
-// Kiosk-launcher download button in the "Laptop auto-print setup" card:
-// visible for admin + the allowlisted email, hidden for other users, and the
-// whole card is web-only (absent in the app shell).
+// "Copy kiosk command" button in the "Laptop auto-print setup" card: visible for
+// admin + the allowlisted email, hidden for other users, the whole card web-only
+// (absent in the app shell), and the copy writes the exact Windows command.
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import GeneralSettings from "../GeneralSettings";
 import { TProvider } from "../../i18n";
+import { KIOSK_COMMAND_WINDOWS } from "../../adapters/kioskLauncher";
 import type { AccountUser } from "../../../accountDb";
 import type { AutoControls } from "../../data";
 
@@ -31,10 +32,10 @@ const renderGS = (account: AccountUser | null) => render(
     />
   </TProvider>,
 );
-const BTN = "Download kiosk launcher (.bat)";
+const BTN = "Copy kiosk command";
 const CARD = "Silent auto-print on a laptop";
 
-describe("GeneralSettings — kiosk launcher download", () => {
+describe("GeneralSettings — copy kiosk command", () => {
   beforeEach(() => { shell.v = false; localStorage.clear(); });
 
   it("web + admin → button visible", () => {
@@ -51,7 +52,7 @@ describe("GeneralSettings — kiosk launcher download", () => {
   it("web + ordinary seller → card shows but NO button", () => {
     renderGS(acct());
     expect(screen.getByText(CARD)).toBeTruthy(); // card renders as-is
-    expect(screen.queryByText(BTN)).toBeNull();  // no download button
+    expect(screen.queryByText(BTN)).toBeNull();  // no copy button
   });
 
   it("app shell → the whole laptop-print card (and button) is absent", () => {
@@ -59,5 +60,21 @@ describe("GeneralSettings — kiosk launcher download", () => {
     renderGS(acct({ role: "admin" }));
     expect(screen.queryByText(CARD)).toBeNull();
     expect(screen.queryByText(BTN)).toBeNull();
+  });
+
+  it("clicking Copy writes the exact Windows command to the clipboard + shows 'Copied ✓'", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    renderGS(acct({ role: "admin" }));
+    fireEvent.click(screen.getByText(BTN));
+    expect(writeText).toHaveBeenCalledWith(KIOSK_COMMAND_WINDOWS);
+    expect(await screen.findByText("Copied ✓")).toBeTruthy();
+  });
+
+  it("the read-only command input is present as the manual-copy fallback", () => {
+    renderGS(acct({ role: "admin" }));
+    const input = screen.getByLabelText("Kiosk command") as HTMLInputElement;
+    expect(input.value).toBe(KIOSK_COMMAND_WINDOWS);
+    expect(input.readOnly).toBe(true);
   });
 });

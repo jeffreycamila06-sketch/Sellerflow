@@ -1,6 +1,8 @@
-// Kiosk launcher (.bat) — exact Windows content (CRLF) + the gating predicate.
+// Kiosk command — the exact Windows + Mac command strings (single source) + the
+// gating predicate. A pasted command replaced the .bat download (Windows 11 Smart
+// App Control blocks downloaded .bat files; a pasted command has no file).
 import { describe, it, expect } from "vitest";
-import { KIOSK_LAUNCHER_BAT, KIOSK_LAUNCHER_FILENAME, KIOSK_LAUNCHER_EMAILS, canSeeKioskLauncher } from "../kioskLauncher";
+import { KIOSK_COMMAND_WINDOWS, KIOSK_COMMAND_MAC, KIOSK_LAUNCHER_EMAILS, canSeeKioskLauncher } from "../kioskLauncher";
 import type { AccountUser } from "../../../accountDb";
 
 const acct = (over: Partial<AccountUser> = {}): AccountUser => ({
@@ -9,27 +11,19 @@ const acct = (over: Partial<AccountUser> = {}): AccountUser => ({
   plan: "pro", planStatus: "active", planExpiry: "", connectedAccounts: [], role: "seller", ...over,
 });
 
-describe("kiosk launcher .bat content", () => {
-  it("filename is SellerFlowLive-Print.bat", () => {
-    expect(KIOSK_LAUNCHER_FILENAME).toBe("SellerFlowLive-Print.bat");
+describe("kiosk command strings (single source of truth)", () => {
+  it("Windows command is exact (chrome + kiosk-printing + dedicated profile + prod URL)", () => {
+    expect(KIOSK_COMMAND_WINDOWS).toBe('chrome --kiosk-printing --user-data-dir="%USERPROFILE%\\SFL-Chrome" https://sellerflowlive.com');
   });
-
-  it("is the EXACT batch text with CRLF line endings", () => {
-    const expected =
-      "@echo off\r\n" +
-      'set CHROME="C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"\r\n' +
-      'if not exist %CHROME% set CHROME="C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"\r\n' +
-      'if not exist %CHROME% set CHROME="%LOCALAPPDATA%\\Google\\Chrome\\Application\\chrome.exe"\r\n' +
-      'start "" %CHROME% --kiosk-printing --user-data-dir="%USERPROFILE%\\SFL-Chrome" https://sellerflowlive.com\r\n';
-    expect(KIOSK_LAUNCHER_BAT).toBe(expected);
+  it("Mac command is exact (open -na Google Chrome + args + dedicated profile + prod URL)", () => {
+    expect(KIOSK_COMMAND_MAC).toBe('open -na "Google Chrome" --args --kiosk-printing --user-data-dir="$HOME/SFL-Chrome" https://sellerflowlive.com');
   });
-
-  it("every newline is CRLF — no lone LF", () => {
-    expect(KIOSK_LAUNCHER_BAT).not.toMatch(/[^\r]\n/); // an \n never preceded by \r
-    expect(KIOSK_LAUNCHER_BAT.split("\r\n").length).toBe(6); // 5 lines + trailing empty
-    expect(KIOSK_LAUNCHER_BAT).toContain("--kiosk-printing");
-    expect(KIOSK_LAUNCHER_BAT).toContain("Program Files (x86)");
-    expect(KIOSK_LAUNCHER_BAT).toContain("%LOCALAPPDATA%");
+  it("both carry the kiosk-printing flag + the SFL-Chrome dedicated profile + the prod URL", () => {
+    for (const cmd of [KIOSK_COMMAND_WINDOWS, KIOSK_COMMAND_MAC]) {
+      expect(cmd).toContain("--kiosk-printing");
+      expect(cmd).toContain("SFL-Chrome");
+      expect(cmd).toContain("https://sellerflowlive.com");
+    }
   });
 });
 
