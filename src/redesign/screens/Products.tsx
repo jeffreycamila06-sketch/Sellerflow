@@ -22,9 +22,11 @@ const stockColor = (s: number) => (s === 0 ? "var(--danger)" : s <= 5 ? "var(--w
 export default function Products({ cur, onProductsChanged }: {
   cur: string;
   // Auto Mode source (Sep 17): fire after an add/edit/delete so RedesignApp
-  // re-derives the live code list + re-seeds stock for the changed product. NOT
-  // called on the mount reconcile (RedesignApp loads the catalog itself on auth).
-  onProductsChanged?: (products: Product[], changedId?: number) => void;
+  // re-derives the live code list. action tells it whether to touch the live
+  // stock mirror (audit F1): "stock"/new → re-seed; "meta" (name/price/code) →
+  // preserve the decremented count; "delete" → drop the entry. NOT called on the
+  // mount reconcile (RedesignApp loads the catalog itself on auth).
+  onProductsChanged?: (products: Product[], changedId?: number, action?: "stock" | "meta" | "delete") => void;
 }) {
   const t = useT();
   const [prods, setProds] = useState<Product[]>(() => loadProducts());
@@ -67,8 +69,10 @@ export default function Products({ cur, onProductsChanged }: {
     const before = prods;
     const after = deleteProduct(prods, id);
     save(after);
-    onProductsChanged?.(after, id); // drop the code from the live matcher
-    void deleteProductDb(id).then((ok) => { if (ok === false) { save(before); onProductsChanged?.(before); showNote(t.rd_prd_delete_failed); } });
+    onProductsChanged?.(after, id, "delete"); // drop the code + its stock entry
+    // Delete failed → restore the product AND re-seed its stock (its entry was
+    // dropped above), so the code isn't stuck reading 0 (sold-out).
+    void deleteProductDb(id).then((ok) => { if (ok === false) { save(before); onProductsChanged?.(before, id, "stock"); showNote(t.rd_prd_delete_failed); } });
   };
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,10 +84,15 @@ export default function Products({ cur, onProductsChanged }: {
     }
     setFormErr("");
     const before = prods;
+    const prev = eid !== null ? before.find((p) => p.id === eid) : null; // for the stock-change check
     const next = upsertProduct(prods, form, eid, Date.now());
     save(next);
     const changed = eid !== null ? next.find((p) => p.id === eid) : next[next.length - 1];
-    onProductsChanged?.(next, changed?.id); // apply the new/edited code to the live matcher immediately
+    // F1: re-seed the live stock ONLY when the stock value changed (a new product
+    // always seeds; an edit seeds only if stock differs). A name/price/code edit =
+    // "meta" → the code list re-derives but the decremented live count is preserved.
+    const stockChanged = eid === null || (!!prev && !!changed && prev.stock !== changed.stock);
+    onProductsChanged?.(next, changed?.id, stockChanged ? "stock" : "meta"); // apply the new/edited code immediately
     // Add/edit: local save is KEPT on a generic cloud failure (localStorage is this
     // screen's primary store; the pill says the CLOUD copy didn't sync). A live_code
     // COLLISION (23505 from another device) is different — the code isn't ours, so
@@ -174,6 +183,8 @@ export default function Products({ cur, onProductsChanged }: {
               {/* WARN (not block) on inner spaces — exact match still works, but qty
                   parsing "CODE N" is cleaner without them. */}
               {form.liveCode.trim().includes(" ") && <div style={{ fontSize: 10.5, color: "var(--warn)", marginTop: 4, lineHeight: 1.4 }}>{t.rd_prd_live_code_space}</div>}
+              {/* F3: a live code on a price-0 product → auto orders would total 0. */}
+              {form.liveCode.trim() && (parseFloat(form.price) || 0) === 0 && <div style={{ fontSize: 10.5, color: "var(--warn)", marginTop: 4, lineHeight: 1.4 }}>{t.rd_prd_live_code_price0}</div>}
               {formErr && <div style={{ fontSize: 10.5, color: "var(--danger)", marginTop: 4, lineHeight: 1.4 }}>{formErr}</div>}
             </div>
             <div style={{ display: "flex", gap: 9 }}>

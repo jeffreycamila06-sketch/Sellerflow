@@ -4,7 +4,7 @@
 // products-sourced AutoCode[] — price comes from the product, Rules 1/2/3 logic
 // is untouched (those matchers are source-agnostic by construction).
 import { describe, it, expect } from "vitest";
-import { codesFromProducts } from "../autoCodesFromProducts";
+import { codesFromProducts, applyStockChange } from "../autoCodesFromProducts";
 import { matchCode, parseAutoComment, planAutoOrder } from "../autoMode";
 import type { Product } from "../products";
 
@@ -54,5 +54,38 @@ describe("parity — the products source feeds the pure matchers unchanged", () 
     const parsed = parseAutoComment("A1 2", codes);
     expect("code" in parsed && parsed.code.code).toBe("A1");
     expect("qty" in parsed && parsed.qty).toBe(2);
+  });
+});
+
+// AUDIT F1 — a mid-live product edit must NOT reset a product's live decremented
+// stock unless the STOCK value actually changed. Scenario: 10 → 6 auto orders →
+// live remaining 4.
+describe("applyStockChange — stock re-seed is gated on the change kind (F1)", () => {
+  it("'meta' edit (name/price/code) → live decremented count PRESERVED", () => {
+    const stock = new Map([[1, 4]]);                 // 6 sold from 10
+    const products = [prod({ id: 1, stock: 10, name: "Renamed", liveCode: "A1" })]; // catalog still 10
+    applyStockChange(stock, products, 1, "meta");
+    expect(stock.get(1)).toBe(4);                    // NOT reset to 10
+  });
+  it("'stock' edit (restock) → re-seed to the new catalog value", () => {
+    const stock = new Map([[1, 4]]);
+    const products = [prod({ id: 1, stock: 20, liveCode: "A1" })]; // restocked to 20
+    applyStockChange(stock, products, 1, "stock");
+    expect(stock.get(1)).toBe(20);
+  });
+  it("'delete' → drop the product's stock entry", () => {
+    const stock = new Map([[1, 4], [2, 9]]);
+    applyStockChange(stock, [prod({ id: 2 })], 1, "delete");
+    expect(stock.has(1)).toBe(false);
+    expect(stock.get(2)).toBe(9);                    // other products untouched
+  });
+  it("never wipes OTHER products' counts; no-op on missing id/action", () => {
+    const stock = new Map([[1, 4], [2, 9]]);
+    applyStockChange(stock, [prod({ id: 1, stock: 20 })], 1, "stock");
+    expect(stock.get(2)).toBe(9);                    // product 2 preserved
+    applyStockChange(stock, [prod({ id: 1, stock: 99 })], undefined, "stock"); // no id
+    expect(stock.get(1)).toBe(20);                   // unchanged
+    applyStockChange(stock, [prod({ id: 1, stock: 99 })], 1, undefined);       // no action
+    expect(stock.get(1)).toBe(20);                   // unchanged (meta-like)
   });
 });

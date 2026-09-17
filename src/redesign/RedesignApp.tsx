@@ -55,7 +55,7 @@ import { deriveAutoStatus, buildAutoCodeStock, loadLowStockThreshold, saveLowSto
 import { buildWinnerTicketBuyer, type RaffleEntry } from "./adapters/raffle";
 import { resolveInitialProducts } from "./adapters/productsDb";
 import { loadProducts, type Product } from "./adapters/products";
-import { codesFromProducts } from "./adapters/autoCodesFromProducts";
+import { codesFromProducts, applyStockChange, type ProductChange } from "./adapters/autoCodesFromProducts";
 import { useFreeCap } from "./adapters/useFreeCap";
 import { useAdmin } from "./adapters/useAdmin";
 import { upsertUser } from "../accountDb";
@@ -333,16 +333,14 @@ export default function RedesignApp() {
   }, [authed]);
 
   // Apply a Products-screen add/edit/delete immediately (no reload): re-derive the
-  // code list from the updated catalog, and re-seed live stock for the CHANGED
-  // product only (a mid-live restock applies; other products' decremented live
-  // counts are preserved). Replaces the old onAutoCodesSaved lift. Refs only → no
-  // re-render churn; still no polling.
-  const refreshAutoFromProducts = useCallback((products: Product[], changedId?: number) => {
+  // code list from the updated catalog. Stock re-seed is GATED on the change kind
+  // (audit F1): "stock"/new → re-seed the changed product's live count to catalog;
+  // "meta" (name/price/code) → PRESERVE the live decremented count (a mid-live
+  // rename must not reset remaining stock); "delete" → drop the entry. Replaces the
+  // old onAutoCodesSaved lift. Refs only → no re-render churn; still no polling.
+  const refreshAutoFromProducts = useCallback((products: Product[], changedId?: number, action?: ProductChange) => {
     autoCodesRef.current = codesFromProducts(products);
-    if (changedId != null) {
-      const p = products.find((x) => x.id === changedId);
-      if (p) autoStockRef.current.set(p.id, p.stock); // re-seed only the changed product
-    }
+    applyStockChange(autoStockRef.current, products, changedId, action);
     // Rule 3 — refresh the reactive mirror so low-stock/sold-out indicators
     // re-derive (an edited/added code appears; a restocked code drops out of sold-out).
     setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0));
