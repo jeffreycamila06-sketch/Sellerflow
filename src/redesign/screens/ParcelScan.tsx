@@ -632,7 +632,12 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     if (storeChanged && /^\d{6}$/.test(newStore) && !id.startsWith("local-")) runStoreCheck(id, newStore);
   };
 
-  const errs = formErrors(form, fee); // fee-aware: max amount = MAX_PARCEL_TOTAL − fee (no export hole)
+  // requireStore for the MANUAL encode + parcel EDIT forms: a valid 6-digit 7-11
+  // store code is mandatory (blank/short/invalid → Save blocked), mirroring the
+  // amount gate. The SCAN/OCR confirm path keeps the old format-only behavior
+  // (unreadable store stays blank + flagged, fixed later via edit).
+  const requireStore = manual || editing !== null;
+  const errs = formErrors(form, fee, requireStore); // fee-aware: max amount = MAX_PARCEL_TOTAL − fee (no export hole)
   // A NEW-row Save (scan/manual) is blocked at the batch cap; an EDIT of an
   // existing row is NEVER blocked by the cap (fix wrong codes/prices when full).
   const saveBlocked = saving || errs.empty || errs.name || errs.phone || errs.store || errs.amount || (batchFull && !editing);
@@ -844,7 +849,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <label style={lbl}>{t.rd_ps2_store}{low("store_id") && <span style={{ color: "var(--warn, #b45309)" }}> · {t.rd_ps2_low_conf}</span>}</label>
                   <input value={form.store} onChange={(e) => F({ store: e.target.value.replace(/[^\d]/g, "").slice(0, 6) })} inputMode="numeric" placeholder="123456" style={{ ...input, fontFamily: mono, ...(low("store_id") ? { border: lowConfBorder } : {}) }} data-testid="ps-store" />
-                  {errs.store && <div style={errTxt}>{t.rd_ps2_err_store}</div>}
+                  {errs.store && <div style={errTxt} data-testid="ps-store-err">{requireStore ? t.rd_ps2_err_store_required : t.rd_ps2_err_store}</div>}
                 </div>
               </div>
               <div>

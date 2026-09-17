@@ -17,7 +17,7 @@ import {
 } from "../adapters/parcelCustomers";
 import { saveParcelScan, validAmount, amountTooHigh, MIN_PARCEL_AMOUNT, MAX_PARCEL_TOTAL, MAX_PENDING_PARCELS } from "../adapters/parcelScan";
 import { loadGlobalShippingFee } from "../adapters/shippingSettings";
-import { SHIP_DEFAULT_FEE } from "../adapters/shipping";
+import { SHIP_DEFAULT_FEE, validStore } from "../adapters/shipping";
 
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
 const lbl: CSSProperties = { fontSize: 11, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 4 };
@@ -122,6 +122,11 @@ export default function CustomerDetails({ cur = "NT$", onImported }: { cur?: str
         : tpl(t.rd_ps2_err_amount, { amt: `${cur}${MIN_PARCEL_AMOUNT}` }));
       return;
     }
+    // A valid 6-digit 7-11 store code is REQUIRED (same gate as the manual encode).
+    // A phonebook contact with no/short store can't import blind — block + tell the
+    // seller to fill the store (edit the contact), or the parcel would be rejected
+    // at the 賣貨便 upload.
+    if (!validStore(c.storeId || "")) { setImportErr(t.rd_ps2_err_store_required); return; }
     setImporting(true);
     try {
       const cnt = await countPendingParcels();
