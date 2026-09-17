@@ -254,11 +254,16 @@ export const amountTooHigh = (amount: string, fee: number = SHIP_DEFAULT_FEE): b
   return Number.isFinite(n) && n + fee > MAX_PARCEL_TOTAL;
 };
 
-export function formErrors(f: ScanFormState, fee: number = SHIP_DEFAULT_FEE): { name: boolean; phone: boolean; store: boolean; amount: boolean; empty: boolean } {
+// requireStore: when true, a blank/short/non-6-digit store BLOCKS Save (same shape
+// as the amount gate — a parcel with no valid 7-11 store code is rejected at the
+// 賣貨便 upload). Passed for the MANUAL encode + the parcel EDIT form. Default false
+// keeps the SCAN/OCR confirm path byte-identical: an unreadable store stays blank +
+// flagged (low-conf + excluded from the export ready-count), fixable later via edit.
+export function formErrors(f: ScanFormState, fee: number = SHIP_DEFAULT_FEE, requireStore = false): { name: boolean; phone: boolean; store: boolean; amount: boolean; empty: boolean } {
   const name = f.name.trim();
   const nameBad = name !== "" && validateRecipientName(name) !== "";
   const phoneBad = f.phone.trim() !== "" && !validPhone(f.phone);
-  const storeBad = f.store.trim() !== "" && !validStore(f.store);
+  const storeBad = requireStore ? !validStore(f.store) : (f.store.trim() !== "" && !validStore(f.store));
   const amountBad = !validAmount(f.amount, fee); // required now: blank/0/<min/>max all block Save
   const empty = name === "" && f.phone.trim() === "" && f.store.trim() === "" && f.amount.trim() === "" && f.notes.trim() === "";
   return { name: nameBad, phone: phoneBad, store: storeBad, amount: amountBad, empty };
