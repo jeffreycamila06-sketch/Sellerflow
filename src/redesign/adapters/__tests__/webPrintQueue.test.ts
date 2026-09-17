@@ -43,11 +43,11 @@ describe("web print queue — serialized single-iframe runner", () => {
   it("never a second win.print() while one is pending (isPrinting guard)", () => {
     printSlip(buyer(1, 1), "NT$", "Shop", cfg);
     printSlip(buyer(2, 2), "NT$", "Shop", cfg);
-    const printSpy = spyPrint(false); // job 1 never confirms
-    vi.advanceTimersByTime(120);
-    expect(printSpy).toHaveBeenCalledTimes(1); // job 2 held until job 1 settles
-    vi.advanceTimersByTime(4000); // job 1 fallback → job 2 starts
-    vi.advanceTimersByTime(120);
+    const printSpy = spyPrint(false); // job 1 never confirms (silent kiosk)
+    vi.advanceTimersByTime(60);
+    expect(printSpy).toHaveBeenCalledTimes(1); // job 2 held until job 1 advances
+    vi.advanceTimersByTime(1300); // job 1 advance-only timer → job 2 starts
+    vi.advanceTimersByTime(60);
     expect(printSpy).toHaveBeenCalledTimes(2);
   });
 
@@ -59,15 +59,28 @@ describe("web print queue — serialized single-iframe runner", () => {
     expect(printSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("onafterprint never fires → 4s fallback advances the queue and reports NOT printed", () => {
+  it("onafterprint never fires (silent kiosk) → advances the queue WITHOUT reporting not-printed", () => {
     const outcome = vi.fn();
     setWebPrintOutcomeHandler(outcome);
     printSlip(buyer(1, 777), "NT$", "Shop", cfg);
-    spyPrint(false); // no afterprint
-    vi.advanceTimersByTime(120);
+    spyPrint(false); // no afterprint — but the print DID happen
+    vi.advanceTimersByTime(60);
     expect(outcome).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(4000); // fallback
-    expect(outcome).toHaveBeenCalledWith("777", false);
+    // advance-only timer fires → the queue can move on, but NO false not-printed badge
+    vi.advanceTimersByTime(1300);
+    expect(outcome).not.toHaveBeenCalled();
+    // a NEXT job still drains (queue advanced)
+    printSlip(buyer(2, 778), "NT$", "Shop", cfg);
+    expect(theFrame()).not.toBeNull();
+  });
+
+  it("a REAL failure (win.print throws) → reports NOT printed immediately", () => {
+    const outcome = vi.fn();
+    setWebPrintOutcomeHandler(outcome);
+    printSlip(buyer(1, 900), "NT$", "Shop", cfg);
+    vi.spyOn(theFrame()!.contentWindow!, "print").mockImplementation(() => { throw new Error("boom"); });
+    vi.advanceTimersByTime(60); // print() runs (~40ms) → throws → settle(false)
+    expect(outcome).toHaveBeenCalledWith("900", false);
   });
 
   it("reports ok=true (printed) when onafterprint confirms", () => {

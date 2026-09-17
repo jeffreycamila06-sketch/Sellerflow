@@ -13,6 +13,7 @@ import {
 } from "../adapters/printerBridge";
 import { printStickerBtRouted, isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, type Settings } from "../adapters/printing";
 import { useT } from "../i18n";
+import { isAppShell } from "../adapters/appShell";
 
 const PS_SIZES = ["100x60mm (Standard)", "80x60mm", "80x50mm", "70x50mm", "60x40mm"];
 const label: CSSProperties = { fontSize: 12, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 5 };
@@ -132,6 +133,12 @@ export default function PrinterSettings({
           <div>
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginTop: 16 }}>
               <label style={label}>{t.rd_ps_sticker_size}</label>
+              {/* WEB (laptop): the browser print follows the Windows driver's paper
+                  size and SellerFlow auto-fits one label — no in-app size to pick.
+                  PHONE (native thermal): keep the size selector + the tiers. */}
+              {!isAppShell() ? (
+                <div style={{ fontSize: 12.5, color: "var(--text-muted)", lineHeight: 1.5, padding: "10px 12px", background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 11 }}>{t.rd_ps_web_driver_size}</div>
+              ) : (<>
               <button onClick={onTogglePsSize} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "13px 14px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
                 <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{psSize}</span>
                 <span style={{ color: "var(--text-muted)", transition: "transform .2s", transform: psSizeOpen ? "rotate(180deg)" : "rotate(0deg)", display: "inline-block" }}>▾</span>
@@ -149,6 +156,7 @@ export default function PrinterSettings({
                   })}
                 </div>
               )}
+              </>)}
               {btSaved && (
                 <div style={{ display: "flex", alignItems: "center", gap: 9, marginTop: 11, paddingTop: 11, borderTop: "1px solid var(--border)" }}>
                   <div style={{ flex: 1, minWidth: 0 }}><div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{btSaved.name}</div><div style={{ fontFamily: "var(--font-mono)", fontSize: 11, color: "var(--text-muted)" }}>{btSaved.address}</div></div>
