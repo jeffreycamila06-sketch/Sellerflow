@@ -13,6 +13,7 @@ import Landing from "./screens/Landing";
 import AuthModal from "./components/AuthModal";
 import AuthBrandPanel from "./components/AuthBrandPanel";
 import { anonScreen, isAppShell } from "./adapters/appShell";
+import { loadNotPrinted, addNotPrinted, removeNotPrinted, notPrintedKeyOf } from "./adapters/notPrintedStore";
 import { identifySeller, track, resetAnalytics } from "./analytics";
 import SettingsHub from "./screens/SettingsHub";
 import GeneralSettings from "./screens/GeneralSettings";
@@ -226,6 +227,7 @@ export default function RedesignApp() {
   // concurrent same-code comments claim stock SYNCHRONOUSLY (no double-decrement).
   const autoCommentRef = useRef<(c: ProdComment) => void>(() => {});
   const autoCodesRef = useRef<AutoCode[]>([]);
+  const codesReadyRef = useRef(false);                           // I3: false until the products auth-load resolves (no auto match before codes exist)
   const autoStockRef = useRef<Map<number, number>>(new Map());   // productLocalId → live remaining
   const autoProcessedRef = useRef<Set<string>>(new Set());       // commentKey → already handled (sync dedup)
   // Rule 1 — one auto order per (session, buyer handle, code). SYNCHRONOUS same-tick
@@ -317,7 +319,8 @@ export default function RedesignApp() {
   // screen apply immediately via refreshAutoFromProducts (below).
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- logout reset (same pattern as the other auth-reset effects here)
-    if (!authed) { autoCodesRef.current = []; autoStockRef.current = new Map(); autoProcessedRef.current = new Set(); autoDupRef.current = new Set(); setAutoCodeStock([]); return; }
+    if (!authed) { codesReadyRef.current = false; autoCodesRef.current = []; autoStockRef.current = new Map(); autoProcessedRef.current = new Set(); autoDupRef.current = new Set(); setAutoCodeStock([]); return; }
+    codesReadyRef.current = false; // I3: a fresh load is in flight — no auto match until it resolves
     let active = true;
     void (async () => {
       const resolved = await resolveInitialProducts(loadProducts());
@@ -327,6 +330,7 @@ export default function RedesignApp() {
       for (const p of resolved.products) m.set(p.id, p.stock);
       autoStockRef.current = m;
       autoProcessedRef.current = new Set();
+      codesReadyRef.current = true; // I3: codes now derived (success OR local-fallback) → auto may match
       setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (lid) => m.get(lid) ?? 0)); // Rule 3 reactive mirror
     })();
     return () => { active = false; };
@@ -375,15 +379,18 @@ export default function RedesignApp() {
   // proven onPrintWinner pattern (print-without-create through printSlip).
   const reprintByIdRef = useRef<Map<string, ReprintRow>>(new Map());
   // WEB print queue (laptop): map a print job (keyed by the order's orderNum) back
-  // to the comment row id so a NOT-PRINTED outcome can badge that row. Populated
-  // at the three create-success sites (same place reprintByIdRef is set).
-  const jobToCommentRef = useRef<Map<string, string>>(new Map());
+  // to the comment row id + its stable msgId so a NOT-PRINTED outcome can badge that
+  // row AND persist across reload (msgId survives; orderNum does not). Populated at
+  // the three create-success sites (same place reprintByIdRef is set).
+  const jobToCommentRef = useRef<Map<string, { cid: string; msgId?: string }>>(new Map());
   const onReprint = (id: string, msgId?: string) => {
     const pc = printCfgRef.current;
     if (!pc) return;
     const snap = reprintByIdRef.current.get(id) || (msgId ? orderedMsgIds.get(msgId) : null);
     if (!snap) return;
-    setNotPrinted((p) => { if (!p[id]) return p; const n = { ...p }; delete n[id]; return n; }); // clear the badge — re-enqueues below
+    // NOTE: the badge clears on the reprint's OUTCOME (ok), not the tap — the queue
+    // outcome handler removes the persisted marker + the session badge when the
+    // re-enqueued job actually prints. A failed reprint keeps the badge (correct).
     const r = performReprint(snap, pc.cur, pc.storeName, pc.settings);
     track("reprint", { via: r.via }); // reprint usage (PostHog), mirrors track("print")
   };
@@ -558,9 +565,18 @@ export default function RedesignApp() {
   // onafterprint within the fallback) badges the order row with a one-tap reprint.
   // kioskHint = the first web print didn't confirm in time → the print dialog is
   // likely open (kiosk mode not active) → a one-time, dismissible setup notice.
-  const [notPrinted, setNotPrinted] = useState<Record<string, boolean>>({});
+  const [notPrinted, setNotPrinted] = useState<Record<string, boolean>>({}); // session badges keyed by comment id (immediate display)
+  const [notPrintedKeys, setNotPrintedKeys] = useState<Set<string>>(new Set()); // I2: persisted markers (msgId | o:orderNum) — survive reload
   const [kioskHint, setKioskHint] = useState(false);
   const notPrintedToastRef = useRef(false); // rising-edge: one toast per burst, not per order
+  const sellerIdRef = useRef<string | null>(null); // read inside the (once-registered) outcome handler
+  useEffect(() => { sellerIdRef.current = auth.profile?.authUserId || null; }, [auth.profile?.authUserId]);
+  // I2: load the persisted not-printed markers on sign-in (web-only; native shells
+  // print via the bridge, never the web queue). Reset on logout / seller switch.
+  useEffect(() => {
+    if (!authed || isAppShell()) { setNotPrintedKeys(new Set()); return; }
+    setNotPrintedKeys(new Set(loadNotPrinted(auth.profile?.authUserId || null)));
+  }, [authed, auth.profile?.authUserId]);
   const screenRef = useRef(screen);
   useEffect(() => { screenRef.current = screen; }, [screen]); // ref write in an effect (react-hooks/refs)
   useEffect(() => {
@@ -580,10 +596,20 @@ export default function RedesignApp() {
   const KIOSK_HINT_DISMISS_KEY = "sfl_rd_kiosk_hint_dismissed";
   useEffect(() => {
     setWebPrintOutcomeHandler((jobId, ok) => {
-      if (ok) return;
-      const cid = jobToCommentRef.current.get(jobId);
-      if (!cid) return; // unmapped job (synthetic buyer / winner / test) — no row to badge
-      setNotPrinted((p) => (p[cid] ? p : { ...p, [cid]: true }));
+      const entry = jobToCommentRef.current.get(jobId); // { cid, msgId } | undefined
+      if (!entry) return; // unmapped job (synthetic buyer / winner / test) — no row to badge
+      const key = notPrintedKeyOf(jobId, entry.msgId); // msgId (stable) | o:<orderNum>
+      const sellerId = sellerIdRef.current;
+      if (ok) {
+        // a successful (re)print clears the persisted marker + the session badge
+        const next = removeNotPrinted(sellerId, key);
+        setNotPrintedKeys(new Set(next));
+        setNotPrinted((p) => { if (!p[entry.cid]) return p; const n = { ...p }; delete n[entry.cid]; return n; });
+      } else {
+        const next = addNotPrinted(sellerId, key); // persist (survives reload)
+        setNotPrintedKeys(new Set(next));
+        setNotPrinted((p) => (p[entry.cid] ? p : { ...p, [entry.cid]: true })); // immediate session badge
+      }
     });
     setWebPrintKioskHintHandler(() => {
       if (isAppShell()) return; // native shells don't use the web print path
@@ -602,6 +628,18 @@ export default function RedesignApp() {
       notPrintedToastRef.current = false; // reset the edge once everything cleared/reprinted
     }
   }, [notPrintedCount, tApp]);
+  // I2: the badge map the Dashboard renders = this session's direct flags (by
+  // comment id) UNION the persisted markers re-mapped onto current rows via their
+  // stable msgId (this is what makes a failed print's badge survive a reload — the
+  // restored comment carries the same msgId, though its comment id is new).
+  const notPrintedView = useMemo(() => {
+    if (!notPrintedKeys.size) return notPrinted;
+    const m: Record<string, boolean> = { ...notPrinted };
+    for (const c of comments) {
+      if (c.msgId && notPrintedKeys.has(c.msgId)) m[c.id] = true;
+    }
+    return m;
+  }, [notPrinted, notPrintedKeys, comments]);
 
   // Warm the code-split CJK glyph-atlas chunk (~2.9MB source) right after
   // mount so it's resident long before the first CJK print. A CJK print that
@@ -1025,7 +1063,7 @@ export default function RedesignApp() {
       setPrinted((p) => ({ ...p, [id]: "order" })); // null = free-cap blocked
       const snap = snapshotFromCreate(prod, order); // reprint — the original order, row-shaped
       reprintByIdRef.current.set(id, snap);
-      jobToCommentRef.current.set(String(order.orderNum), id); // web print outcome → this row
+      jobToCommentRef.current.set(String(order.orderNum), { cid: id, msgId: (prod as ProdComment & { msgId?: string }).msgId }); // web print outcome → this row (+ stable msgId for persistence)
       liveSession.addOrderedMsgId((prod as ProdComment & { msgId?: string }).msgId, snap); // ordered-check stays complete
     }
   };
@@ -1061,7 +1099,7 @@ export default function RedesignApp() {
       setPrinted((p) => ({ ...p, [id]: cur + price }));
       const snap = snapshotFromCreate(prod as ProdComment, order); // reprint snapshot
       reprintByIdRef.current.set(id, snap);
-      jobToCommentRef.current.set(String(order.orderNum), id); // web print outcome → this row
+      jobToCommentRef.current.set(String(order.orderNum), { cid: id, msgId: (prod as ProdComment & { msgId?: string }).msgId }); // web print outcome → this row (+ stable msgId for persistence)
       liveSession.addOrderedMsgId((prod as ProdComment & { msgId?: string }).msgId, snap);
     } else {
       entSubmittedRef.current.delete(id); // free-cap soft block / unresolved id → allow retry
@@ -1095,6 +1133,12 @@ export default function RedesignApp() {
     // isn't blocked forever; a failed/absent load falls back to the sync autoDupRef +
     // the DB unique index (the cross-device backstop).
     if (liveSession.state === "loading") { console.info("[auto] skipped — session window loading", c.handle, c.comment); return; }
+    // I3 (codes-ready gate) — do NOT auto-process before the products auth-load has
+    // resolved: autoCodesRef is still empty, so a real code comment would match
+    // NOTHING (silent no-order, no badge). Skip + log (same style as the loading
+    // gate); once codes are derived (success OR local-fallback) auto resumes. The
+    // buyer can still MANUAL-tap in this narrow start-of-session window.
+    if (!codesReadyRef.current) { console.info("[auto] skipped — codes not loaded yet", c.handle, c.comment); return; }
     const key = commentKey(c);
     if (autoProcessedRef.current.has(key) || printed[key]) return; // this comment already handled
     const plan = planAutoOrder(c.comment || "", autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0);
@@ -1127,7 +1171,7 @@ export default function RedesignApp() {
       setPrinted((p) => ({ ...p, [key]: cur + plan.code.price }));
       const snap = snapshotFromCreate(c, order); // reprint snapshot (auto orders reprint too)
       reprintByIdRef.current.set(key, snap);
-      jobToCommentRef.current.set(String(order.orderNum), key); // web print outcome → this row
+      jobToCommentRef.current.set(String(order.orderNum), { cid: key, msgId: (c as ProdComment & { msgId?: string }).msgId }); // web print outcome → this row (+ stable msgId for persistence)
       liveSession.addOrderedMsgId((c as ProdComment & { msgId?: string }).msgId, snap); // ordered-check stays complete
       refreshAutoStock(); // Rule 3 — the decrement may cross the low-stock threshold or hit 0
     } else {
@@ -1298,7 +1342,7 @@ export default function RedesignApp() {
               ttAccounts={ttAccounts} fbAccounts={fbAccounts}
               printed={printed} entId={entId} entPrice={entPrice}
               historyReady={liveSession.orderedLoaded}
-              notPrinted={notPrinted}
+              notPrinted={notPrintedView}
               onReprint={onReprint}
               onOneClick={onOneClick} onOpenEnt={onOpenEnt}
               onEntPrice={(v) => setEntPrice(v.replace(/[^0-9]/g, ""))} onEntKey={onEntKey} onEntSubmit={submitEnt}

@@ -9,9 +9,10 @@
 //   • useOrders     → createOrder spy (we assert the wiring, not the DB fan-out)
 //   • autoCodesDb.loadCodes / productsDb.resolveInitialProducts → seed codes + stock
 // Asserts CURRENT correct behavior (device-verified 2026-06-27).
-import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll, type Mock } from "vitest";
 import { render, act, screen } from "@testing-library/react";
 import type { Comment as ProdComment } from "../../lib/orderTypes";
+import { resolveInitialProducts } from "../adapters/productsDb";
 
 // jsdom has no Element.scrollTo (Dashboard's live-feed auto-scroll uses it).
 beforeAll(() => { (HTMLElement.prototype as unknown as { scrollTo: () => void }).scrollTo = () => {}; });
@@ -196,5 +197,20 @@ describe("RedesignApp Auto Mode handler (onComment wiring)", () => {
     const drive = await mountWithAutoMode(false);
     await drive(comment({ comment: "D" }));
     expect(H.createOrder.fn).not.toHaveBeenCalled();
+  });
+
+  it("I3 — a code comment BEFORE the products load resolves is skipped; resolves → normal", async () => {
+    // Defer the products load so codesReady stays false when the first comment fires.
+    let release!: (v: unknown) => void;
+    const deferred = new Promise((r) => { release = r; });
+    (resolveInitialProducts as unknown as Mock).mockReturnValueOnce(deferred);
+    localStorage.setItem("sfl_rd_automode", "1");
+    render(<RedesignApp />);
+    await act(async () => { await Promise.resolve(); }); // effects run; load still pending on `deferred`
+    await act(() => { H.onComment.fn?.(comment({ comment: "D" })); });
+    expect(H.createOrder.fn).not.toHaveBeenCalled();     // gated: codes not loaded yet
+    await act(async () => { release({ products: [{ id: 14, name: "Brief", sku: "BR", price: 52, stock: 2, platform: "TikTok", status: "Active", liveCode: "D" }], source: "local" }); await Promise.resolve(); });
+    await act(() => { H.onComment.fn?.(comment({ comment: "D" })); });
+    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);   // ready → normal auto order
   });
 });

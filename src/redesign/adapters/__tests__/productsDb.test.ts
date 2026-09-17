@@ -45,6 +45,14 @@ describe("productToRow — Product → upsert payload", () => {
     expect(productToRow({ ...real[0], liveCode: "  " }, "u", 1).live_code).toBeNull();
     expect(productToRow({ ...real[0], liveCode: "  B2 " }, "u", 1).live_code).toBe("B2");
   });
+  it("I1 skipStock: a 'meta' edit OMITS the stock column so the upsert can't clobber the DB stock", () => {
+    const row = productToRow(real[0], "u", 1, { skipStock: true });
+    expect(row).not.toHaveProperty("stock");         // ON CONFLICT DO UPDATE won't touch stock
+    expect(row.name).toBe("Red dress");              // other columns still written
+    expect(row.live_code).toBeNull();
+    // default (no opts) still includes stock (new product / real restock)
+    expect(productToRow(real[0], "u", 1)).toHaveProperty("stock", 24);
+  });
 });
 
 describe("isSeedList — detect the untouched 5-item demo seed", () => {
