@@ -597,15 +597,101 @@ export function __resetWebPrintQueue(): void {
   kioskHintFired = false;
 }
 
+// ── NATIVE STICKER PRINT QUEUE (phone BT/LAN) ─────────────────────────────────
+// AIMO burst fix (native twin of the web queue above). printSlip's BT/LAN branches
+// used to fire `void printStickerViaBluetooth/Lan(...)` PER ORDER → N concurrent
+// bridge calls → the native single-flight BLE transport rejects the overlaps with
+// BT_BUSY → stickers dropped silently (only a console.warn). Serialize them here:
+// ONE native print at a time, awaiting printStickerViaBluetooth/Lan to COMPLETION
+// (resolve OR reject) before the next. The bridge promise resolves only on true
+// native completion — BLE FF03 PRINTING:DONE / Classic-SPP drain+close — so serial
+// awaiting is real end-to-end backpressure and the BT_BUSY overlap can never occur.
+// BT and LAN share ONE queue (both contend for the single printer). The ESC/POS
+// SLIP path (sendSlipToNativePrinter, a different printer) is a SEPARATE lane and is
+// intentionally NOT queued here. Payload bytes + the Capacitor plugin are UNTOUCHED
+// — only WHEN JS calls the existing bridge changes.
+type NativeStickerVia = "bluetooth" | "lan";
+interface NativeStickerJob { via: NativeStickerVia; buyer: Buyer; cur: string; storeName: string; cfg: Settings; jobId: string; }
+// ABOVE the native BLE overall cap (~30s) so a genuinely wedged bridge (a promise
+// that never settles) can't freeze the queue — on timeout we mark not-printed and
+// advance. The native side self-bounds well under this in every normal case, so the
+// watchdog is a pure safety backstop, never the primary completion signal.
+const NATIVE_PRINT_WATCHDOG_MS = 35000;
+let nativeQueue: NativeStickerJob[] = [];
+let nativeBusy = false;
+let nativeFallbackId = 0; // synthetic job-id for a buyer with no orderNum (won't map to a row)
+
+// Job outcome (printed=true / not-printed=false), keyed by the SAME id the web queue
+// uses (the order's orderNum) → RedesignApp badges the not-printed row + offers
+// reprint via the identical channel. Registered by RedesignApp alongside the web one.
+let nativeOutcomeHandler: ((id: string, ok: boolean) => void) | null = null;
+export function setNativePrintOutcomeHandler(fn: ((id: string, ok: boolean) => void) | null): void { nativeOutcomeHandler = fn; }
+
+// The job id correlates the async print outcome back to the order row — identical
+// derivation to the web path (buyer.orders[0].orderNum). A synthetic buyer with no
+// order gets a fallback id that simply won't map to a row (no badge, harmless).
+function nativeStickerJobId(buyer: Buyer): string {
+  return String(buyer.orders?.[0]?.orderNum ?? `native-${++nativeFallbackId}`);
+}
+
+function enqueueNativeSticker(job: NativeStickerJob): void {
+  nativeQueue.push(job);
+  void pumpNativeQueue();
+}
+
+async function pumpNativeQueue(): Promise<void> {
+  if (nativeBusy || !nativeQueue.length) return;
+  nativeBusy = true;
+  const job = nativeQueue.shift()!;
+  const ok = await runNativeStickerJob(job);
+  try { nativeOutcomeHandler?.(job.jobId, ok); } catch { /* subscriber must never break the queue */ }
+  nativeBusy = false;
+  void pumpNativeQueue(); // drain the next job in order
+}
+
+// Run ONE native print to completion, returning printed(true)/not-printed(false).
+// printStickerViaBluetooth/Lan already catch internally; the outer try + watchdog
+// guarantee this always settles so the queue never wedges.
+async function runNativeStickerJob(job: NativeStickerJob): Promise<boolean> {
+  try {
+    const run: Promise<BtRouteResult | boolean> = job.via === "bluetooth"
+      ? printStickerViaBluetooth(job.buyer, job.cur, job.storeName, job.cfg)
+      : printStickerViaLan(job.buyer, job.cur, job.storeName, job.cfg);
+    // WATCHDOG: race the print against a timer ABOVE the native cap. The winner is
+    // almost always the print (BT resolves {ok}; LAN resolves boolean); a genuine
+    // hang loses to the timer → not-printed → advance. The timer is cleared the
+    // moment the print settles, so a normal print leaves nothing pending. `ok` is
+    // computed inside the .then (where the result is typed) so the race yields a
+    // plain boolean-or-timeout.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const printed = run.then((r): { done: true; ok: boolean } => ({ done: true, ok: typeof r === "boolean" ? r : !!r?.ok }));
+    const watchdog = new Promise<{ done: false }>((res) => { timer = setTimeout(() => res({ done: false }), NATIVE_PRINT_WATCHDOG_MS); });
+    try {
+      const outcome = await Promise.race([printed, watchdog]);
+      return outcome.done ? outcome.ok : false;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  } catch { return false; } // never let a stray throw wedge the queue
+}
+
+// Test-only: reset the native queue state between cases.
+export function __resetNativePrintQueue(): void { nativeQueue = []; nativeBusy = false; nativeFallbackId = 0; }
+
 export function printSlip(buyer: Buyer, cur: string, storeName: string, printSettings: Settings | string): PrintResult {
   const cfg: Settings = typeof printSettings === "string" ? { ...DEF_SETTINGS, stickerSize: printSettings } : printSettings;
   const nativePrinter = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
   if (shouldUseBluetoothSticker(cfg.printerType, !!nativePrinter?.printStickerNative)) {
-    void printStickerViaBluetooth(buyer, cur, storeName, cfg); // failure surfaced inside (no-printer modal or console.warn)
+    // SERIALIZED (AIMO burst fix): enqueue instead of firing concurrently. The queue
+    // awaits each print to native completion before the next → no BT_BUSY overlap
+    // drops. Return contract unchanged (enqueue succeeded). Failure/not-printed is
+    // surfaced by the queue (no-printer modal + the not-printed reprint channel).
+    enqueueNativeSticker({ via: "bluetooth", buyer, cur, storeName, cfg, jobId: nativeStickerJobId(buyer) });
     return { ok: true, via: "bluetooth" };
   }
   if (shouldUseLanSticker(cfg.printerType, cfg.lanFormat, !!nativePrinter?.printStickerLan)) {
-    void printStickerViaLan(buyer, cur, storeName, cfg); // failure surfaced inside (no-printer modal or console.warn)
+    // SERIALIZED with the BT lane (same single printer) — see enqueueNativeSticker.
+    enqueueNativeSticker({ via: "lan", buyer, cur, storeName, cfg, jobId: nativeStickerJobId(buyer) });
     return { ok: true, via: "lan" };
   }
   const nativePayload = buildSlipPayload(buyer, cur, storeName, cfg);
