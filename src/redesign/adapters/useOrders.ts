@@ -32,6 +32,26 @@ const writeError = (res: unknown): unknown =>
     ? (res as { error?: unknown }).error
     : undefined;
 
+// A THROWN rejection reaching the billing/session/stock chains is normally a real
+// network/DB error (a Supabase/PostgREST error object, or a fetch/network TypeError) —
+// those SHOULD surface to the seller. But on a kiosk, window.print() runs a BLOCKING
+// nested event loop that drains these same promise continuations, and its reentrant
+// hidden-iframe teardown can throw a FOREIGN "Failed to execute 'print' on 'Window':
+// The provided callback is no longer runnable" INTO this chain even though every write
+// returned 200/201. That is NOT a save failure — surfacing it fires a false
+// "cloud save failed" banner on every kiosk order. So positively identify a genuine
+// write/network error here; anything else (a print-side TypeError) is LOGGED ONLY, no
+// banner. Real write FAILURES are already surfaced by the .then via writeError(res) —
+// db.ts returns {success:false}, it does not throw — so this predicate only gates the
+// .catch safety net, never the primary failure channel.
+const looksLikeWriteError = (err: unknown): boolean => {
+  if (!err) return false;
+  const e = err as { name?: unknown; code?: unknown; message?: unknown };
+  if (typeof e.code === "string" && e.code.length > 0) return true; // PostgREST/Supabase error code (e.g. "23505", "PGRST…")
+  if (/AuthError|PostgrestError|FunctionsError|StorageError|FetchError|AbortError|NetworkError/i.test(String(e.name ?? ""))) return true;
+  return /\bfetch\b|network|timeout|abort|connection|offline|supabase|econn|dns|refused|reset|unreachable/i.test(String(e.message ?? err));
+};
+
 // ── Pure write-payload builders — mirror App.tsx:4348-4372 EXACTLY (parity-tested) ──
 
 export function orderDbPayload(c: ProdComment, order: LiveOrder) {
@@ -164,9 +184,16 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCap
     if (msgId) processedMsgIdsRef.current.add(msgId);
     // 2) optimistic local update so the summary strip + Orders tab reflect it now.
     applyOrder(nextBuyers, order);
-    // 3) print the slip BEFORE the writes (App.tsx:4341-4345) — singleOrderBuyer is
-    //    the buyer carrying just this order, exactly what production prints.
-    onPrint?.(singleOrderBuyer);
+    // 3) print the slip — singleOrderBuyer is the buyer carrying just this order,
+    //    exactly what production prints. DEFERRED off the synchronous write tick
+    //    (setTimeout 0): on a kiosk, window.print() is a BLOCKING call whose nested
+    //    event loop would otherwise run on TOP of the billing Promise.all continuations
+    //    dispatched just below, letting a print-side teardown TypeError bleed into the
+    //    save chain. Deferring runs it in a fresh macrotask AFTER all three writes are
+    //    dispatched. Print is already async (printSlip just enqueues the web job / fires
+    //    the native bridge), so this is not user-visible; ordering vs the writes does not
+    //    affect correctness (the buyer + order are already built and applied).
+    setTimeout(() => onPrint?.(singleOrderBuyer), 0);
     // 4) BILLING + CRM writes: SAME payload shapes, fire-and-forget-once (NOT retried
     //    — the `orders` free-cap trigger and the `customers` +1 tally are not
     //    idempotent, so a retry would double-count; the billing ledger is sacred).
@@ -183,8 +210,12 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCap
       const custErr = writeError(custRes);
       if (custErr) onWriteError?.(custErr);
     }).catch((err) => {
-      if (isCapError(err)) onCapReached?.(err);
-      else { console.warn("Background database save failed", err); onWriteError?.(err); }
+      if (isCapError(err)) { onCapReached?.(err); return; }
+      // Kiosk false-alarm fix: a print-side TypeError ("callback is no longer runnable")
+      // can bleed into this chain even though the writes returned 200/201. Only a genuine
+      // DB/network rejection raises the "cloud save failed" banner; log everything else.
+      console.warn("Background database save failed", err);
+      if (looksLikeWriteError(err)) onWriteError?.(err);
     }).finally(() => {
       // (5) NEAR-CAP TIMING FIX: resync the free-tier usage counter (App.tsx:4384 —
       //     free users) AFTER this billing write has SETTLED, not synchronously mid-tick.
@@ -210,7 +241,12 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCap
       void Promise.resolve(saveLiveSessionOrder(livePayload)).then((res) => {
         const err = writeError(res);
         if (err && !isCapError(err)) onWriteError?.(err);
-      }).catch((err) => { if (!isCapError(err)) onWriteError?.(err); });
+      }).catch((err) => {
+        // Same kiosk false-alarm guard as the billing chain above.
+        if (isCapError(err)) return;
+        console.warn("Live session save failed", err);
+        if (looksLikeWriteError(err)) onWriteError?.(err);
+      });
     }
     // 4c) Auto Mode linkage (gated): atomically decrement stock + stamp
     //     last_ordered_at. M1: a failure is SURFACED now (was a silent empty catch
@@ -234,7 +270,11 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCap
       const localId = opts.productLocalId;
       const dec = opts.qty != null ? decrementProductStockBy(localId, opts.qty) : decrementStockAndTouch(localId);
       void dec.then((newStock) => { if (newStock === -1) onStockError?.(new Error("stock_short")); })
-        .catch((err) => { console.warn("Stock decrement failed", err); onStockError?.(err); });
+        .catch((err) => {
+          // Same kiosk false-alarm guard: only a genuine RPC/network error is a stock error.
+          console.warn("Stock decrement failed", err);
+          if (looksLikeWriteError(err)) onStockError?.(err);
+        });
     }
     // (5) — the free-user usage-counter resync now runs post-commit in the billing
     //      write's .finally() above (NEAR-CAP TIMING FIX), not synchronously here, so
