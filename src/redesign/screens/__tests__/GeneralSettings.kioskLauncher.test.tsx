@@ -1,6 +1,8 @@
-// "Copy kiosk command" button in the "Laptop auto-print setup" card: visible for
-// admin + the allowlisted email, hidden for other users, the whole card web-only
-// (absent in the app shell), and the copy writes the exact Windows command.
+// "Laptop auto-print" card in GeneralSettings. The WHOLE card (label, steps,
+// command + Copy button, Mac note) is gated on canSeeKioskLauncher — admins +
+// KIOSK_LAUNCHER_EMAILS ONLY. Not eligible → NO card at all, on BOTH web and phone
+// (the old web-only !isAppShell gate is gone: visibility is account-only now).
+// Copy still writes the exact Windows command.
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import GeneralSettings from "../GeneralSettings";
@@ -9,7 +11,9 @@ import { KIOSK_COMMAND_WINDOWS } from "../../adapters/kioskLauncher";
 import type { AccountUser } from "../../../accountDb";
 import type { AutoControls } from "../../data";
 
-// Control isAppShell per test (default web = false).
+// The card no longer reads isAppShell (visibility is account-only). This mock lets
+// us prove the phone shell makes NO difference to the gate — eligible users see it
+// on phone too, and a regression that re-added a web-only gate would fail below.
 const shell = { v: false };
 vi.mock("../../adapters/appShell", async (orig) => ({ ...(await (orig() as Promise<object>)), isAppShell: () => shell.v }));
 
@@ -33,31 +37,51 @@ const renderGS = (account: AccountUser | null) => render(
   </TProvider>,
 );
 const BTN = "Copy kiosk command";
-const CARD = "Silent auto-print on a laptop";
+const CARD = "Silent auto-print on a laptop"; // rd_wp_setup_title — unique card marker
 
-describe("GeneralSettings — copy kiosk command", () => {
+describe("GeneralSettings — laptop auto-print card (admin + allowlist only)", () => {
   beforeEach(() => { shell.v = false; localStorage.clear(); });
 
-  it("web + admin → button visible", () => {
+  it("web + admin → whole card + Copy button visible", () => {
     renderGS(acct({ role: "admin" }));
     expect(screen.getByText(CARD)).toBeTruthy();
     expect(screen.getByText(BTN)).toBeTruthy();
   });
 
-  it("web + allowlisted email (googletest@gmail.com) → button visible", () => {
+  it("web + allowlisted email (googletest@gmail.com) → whole card + button visible", () => {
     renderGS(acct({ email: "googletest@gmail.com" }));
+    expect(screen.getByText(CARD)).toBeTruthy();
     expect(screen.getByText(BTN)).toBeTruthy();
   });
 
-  it("web + ordinary seller → card shows but NO button", () => {
+  it("web + ordinary seller → NO card at all (no label, no steps, no button)", () => {
     renderGS(acct());
-    expect(screen.getByText(CARD)).toBeTruthy(); // card renders as-is
-    expect(screen.queryByText(BTN)).toBeNull();  // no copy button
+    expect(screen.queryByText(CARD)).toBeNull();
+    expect(screen.queryByText(BTN)).toBeNull();
   });
 
-  it("app shell → the whole laptop-print card (and button) is absent", () => {
+  it("phone (app shell) + ordinary seller → still NO card", () => {
+    shell.v = true;
+    renderGS(acct());
+    expect(screen.queryByText(CARD)).toBeNull();
+    expect(screen.queryByText(BTN)).toBeNull();
+  });
+
+  it("phone (app shell) + admin → card VISIBLE (no longer web-only)", () => {
     shell.v = true;
     renderGS(acct({ role: "admin" }));
+    expect(screen.getByText(CARD)).toBeTruthy();
+    expect(screen.getByText(BTN)).toBeTruthy();
+  });
+
+  it("phone (app shell) + allowlisted email → card VISIBLE", () => {
+    shell.v = true;
+    renderGS(acct({ email: "googletest@gmail.com" }));
+    expect(screen.getByText(CARD)).toBeTruthy();
+  });
+
+  it("logged-out (null account) → NO card", () => {
+    renderGS(null);
     expect(screen.queryByText(CARD)).toBeNull();
     expect(screen.queryByText(BTN)).toBeNull();
   });

@@ -18,7 +18,6 @@ import { accountList } from "../adapters/connect";
 // only hides the Appearance pill. Flip to `true` to re-show the row in one step.
 const SHOW_MOTION_TOGGLE = false;
 import { isIOS } from "../adapters/platform";
-import { isAppShell } from "../adapters/appShell";
 import { canSeeKioskLauncher, KIOSK_COMMAND_WINDOWS, KIOSK_COMMAND_MAC } from "../adapters/kioskLauncher";
 import { copyText } from "../components/inviteShare";
 import { usePrinterStatus, type PrinterConnState } from "../adapters/usePrinterStatus";
@@ -210,36 +209,35 @@ export default function GeneralSettings({
           )}
         </div>
 
-        {/* LAPTOP AUTO-PRINT setup — WEB ONLY. Silent per-order printing on a
-            laptop needs Chrome/Edge launched with --kiosk-printing (a browser
-            launch flag, not an app setting) + the label printer set as default.
-            Hidden on the APK/iOS shells (they print via the native bridge). */}
-        {!isAppShell() && (
+        {/* LAPTOP AUTO-PRINT setup — admin + kiosk allowlist ONLY. Silent per-order
+            printing on a laptop needs Chrome/Edge launched with --kiosk-printing (a
+            browser launch flag, not an app setting) + the label printer set as
+            default. The WHOLE card (label, steps, command + Copy button, Mac note)
+            is gated on canSeeKioskLauncher — admins + KIOSK_LAUNCHER_EMAILS (the one
+            place to widen it, e.g. add a PH seller later). Not eligible → no card at
+            all, on BOTH web and phone. */}
+        {canSeeKioskLauncher(account) && (
           <div>
             <div className="sfl-anim-textglow" style={sectionLabel}>{t.rd_wp_setup_label}</div>
             <div style={card}>
               <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text)", marginBottom: 6 }}>{t.rd_wp_setup_title}</div>
               <div style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.5, whiteSpace: "pre-line" }}>{t.rd_wp_setup_body}</div>
               <div style={{ fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.5, marginTop: 8, fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>{t.rd_wp_setup_tip}</div>
-              {/* Kiosk COMMAND (copy-to-clipboard) — gated (admins + allowlist) for
-                  now; canSeeKioskLauncher's list is the single place to open it to
-                  everyone later. A pasted command beats a downloaded .bat: Windows 11
-                  Smart App Control blocks .bat files, but a pasted command has no
-                  file → no block. The read-only input is the manual-copy fallback
-                  (and transparency) if the clipboard API is unavailable. */}
-              {canSeeKioskLauncher(account) && (
-                <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
-                  <div style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.55, whiteSpace: "pre-line", marginBottom: 10 }}>{t.rd_wp_cmd_steps}</div>
-                  <input
-                    readOnly value={KIOSK_COMMAND_WINDOWS}
-                    onFocus={(e) => e.currentTarget.select()}
-                    aria-label={t.rd_wp_cmd_label}
-                    style={{ width: "100%", boxSizing: "border-box", fontFamily: "var(--font-mono)", fontSize: 11, padding: "8px 10px", border: "1px solid var(--border-strong)", borderRadius: 8, background: "var(--surface-2)", color: "var(--text)", marginBottom: 8 }}
-                  />
-                  <button onClick={copyKioskCommand} style={{ fontSize: 12, fontWeight: 800, color: "var(--accent-text)", background: "var(--accent)", border: "none", padding: "9px 16px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{kioskCopied ? t.rd_wp_cmd_copied : t.rd_wp_cmd_btn}</button>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.5, marginTop: 10, whiteSpace: "pre-line", wordBreak: "break-word" }}>{tpl(t.rd_wp_cmd_mac, { cmd: KIOSK_COMMAND_MAC })}</div>
-                </div>
-              )}
+              {/* Kiosk COMMAND (copy-to-clipboard). A pasted command beats a downloaded
+                  .bat: Windows 11 Smart App Control blocks .bat files, but a pasted
+                  command has no file → no block. The read-only input is the manual-copy
+                  fallback (and transparency) if the clipboard API is unavailable. */}
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+                <div style={{ fontSize: 12, color: "var(--text-dim)", lineHeight: 1.55, whiteSpace: "pre-line", marginBottom: 10 }}>{t.rd_wp_cmd_steps}</div>
+                <input
+                  readOnly value={KIOSK_COMMAND_WINDOWS}
+                  onFocus={(e) => e.currentTarget.select()}
+                  aria-label={t.rd_wp_cmd_label}
+                  style={{ width: "100%", boxSizing: "border-box", fontFamily: "var(--font-mono)", fontSize: 11, padding: "8px 10px", border: "1px solid var(--border-strong)", borderRadius: 8, background: "var(--surface-2)", color: "var(--text)", marginBottom: 8 }}
+                />
+                <button onClick={copyKioskCommand} style={{ fontSize: 12, fontWeight: 800, color: "var(--accent-text)", background: "var(--accent)", border: "none", padding: "9px 16px", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{kioskCopied ? t.rd_wp_cmd_copied : t.rd_wp_cmd_btn}</button>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.5, marginTop: 10, whiteSpace: "pre-line", wordBreak: "break-word" }}>{tpl(t.rd_wp_cmd_mac, { cmd: KIOSK_COMMAND_MAC })}</div>
+              </div>
             </div>
           </div>
         )}
