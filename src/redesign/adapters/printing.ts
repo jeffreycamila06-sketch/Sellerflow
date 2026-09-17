@@ -459,8 +459,8 @@ export interface PrintResult { ok: boolean; via: PrintVia; }
 //     (kiosk mode not active) → a one-time guidance notice fires.
 // Native BT/LAN/TSPL paths are untouched; this affects ONLY the browser path.
 interface WebPrintJob { id: string; html: string; }
-const WEB_PRINT_DELAY_MS = 120;          // let doc layout settle before print() (unchanged)
-const WEB_AFTERPRINT_FALLBACK_MS = 4000; // advance the queue if onafterprint never fires
+const WEB_PRINT_DELAY_MS = 40;           // brief settle before print() (was 120 — trimmed)
+const WEB_ADVANCE_MS = 1300;             // advance the queue after this if onafterprint never fires (silent kiosk) — WITHOUT marking not-printed
 const WEB_KIOSK_HINT_MS = 6000;          // first job unconfirmed by now ⇒ dialog likely open
 let webQueue: WebPrintJob[] = [];
 let webBusy = false;
@@ -470,7 +470,7 @@ let webFallbackId = 0;      // fallback synthetic job-id counter (jobs with no o
 let firstJobSeq = 0;        // seq of the session's first web job (0 = none yet)
 let firstJobConfirmed = false;
 let kioskHintFired = false;
-let webFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+let webAdvanceTimer: ReturnType<typeof setTimeout> | null = null;
 let webKioskTimer: ReturnType<typeof setTimeout> | null = null;
 let webVisBound = false;
 
@@ -518,14 +518,25 @@ function pumpWebQueue(): void {
 function startWebJob(job: WebPrintJob): void {
   const seq = ++webSeq;
   if (!firstJobSeq) firstJobSeq = seq;
-  let settled = false;
+  let settled = false;   // an OUTCOME (ok / not-printed) was reported
+  let advanced = false;  // the queue moved on to the next job
+  // Free the queue for the next job WITHOUT reporting an outcome. Used by the
+  // short timer for a silent kiosk (onafterprint never fires but the print DID
+  // happen) — so bursts flow AND no false "Not printed" badge appears.
+  const advance = () => {
+    if (advanced) return;
+    advanced = true;
+    if (webAdvanceTimer) { clearTimeout(webAdvanceTimer); webAdvanceTimer = null; }
+    webBusy = false;
+    pumpWebQueue(); // drain the next job in order
+  };
+  // Report the outcome (onafterprint = printed ok; a real failure = not printed)
+  // AND advance. A silent kiosk reports NOTHING (advance-only above) → no badge.
   const settle = (ok: boolean) => {
     if (settled) return;
     settled = true;
-    if (webFallbackTimer) { clearTimeout(webFallbackTimer); webFallbackTimer = null; }
     try { webOutcomeHandler?.(job.id, ok); } catch { /* subscriber must never break the queue */ }
-    webBusy = false;
-    pumpWebQueue(); // drain the next job in order
+    advance();
   };
   const confirmFirstJob = () => {
     if (seq !== firstJobSeq || firstJobConfirmed) return;
@@ -534,14 +545,13 @@ function startWebJob(job: WebPrintJob): void {
   };
   const frame = ensureWebFrame();
   const win = frame?.contentWindow;
-  if (!win) { settle(false); return; } // no iframe → NOT printed (reported)
+  if (!win) { settle(false); return; } // no iframe → REAL failure → NOT printed (reported)
   const doc = win.document;
   try { doc.open(); doc.write(job.html); doc.close(); }
-  catch { settle(false); return; }
-  // onafterprint = the ONLY positive confirmation (real print completed / dialog
-  // dismissed). A stale afterprint from a previous job that reused this frame is
-  // harmless: it settles the CURRENT job as ok (a print did complete) and only
-  // confirms the kiosk check when this IS the first job.
+  catch { settle(false); return; }     // write threw → REAL failure → NOT printed
+  // onafterprint = positive confirmation (real print completed / dialog dismissed).
+  // A stale afterprint from a previous job that reused this frame is harmless: it
+  // settles the CURRENT job as ok and only confirms the kiosk check on job 1.
   win.onafterprint = () => { confirmFirstJob(); settle(true); };
   // Kiosk detection: arm only for the session's first job. If onafterprint hasn't
   // confirmed by KIOSK_HINT_MS, the dialog is likely open (kiosk not active).
@@ -552,15 +562,16 @@ function startWebJob(job: WebPrintJob): void {
       if (!firstJobConfirmed && !kioskHintFired) { kioskHintFired = true; try { webKioskHintHandler?.(); } catch { /* noop */ } }
     }, WEB_KIOSK_HINT_MS);
   }
-  // Fallback: advance + mark NOT printed if onafterprint never arrives (many
-  // drivers/kiosk setups don't fire it). Conservative — the badge only offers an
-  // optional zero-write reprint; a real-but-silent kiosk print is a false miss.
-  webFallbackTimer = setTimeout(() => settle(false), WEB_AFTERPRINT_FALLBACK_MS);
+  // ADVANCE-ONLY fallback (decoupled from the outcome): if onafterprint never
+  // fires (many silent-kiosk drivers don't), move to the next job after a short
+  // wait so bursts drain — but do NOT mark this job "not printed" (it printed).
+  // A REAL failure above reports not-printed immediately; this path never does.
+  webAdvanceTimer = setTimeout(advance, WEB_ADVANCE_MS);
   setTimeout(() => {
     try {
       if (typeof document === "undefined" || !document.hidden) win.focus(); // never steal focus from a hidden tab
       win.print();
-    } catch { settle(false); }
+    } catch { settle(false); }         // print threw → REAL failure → NOT printed
   }, WEB_PRINT_DELAY_MS);
 }
 
@@ -575,7 +586,7 @@ function enqueueWebPrint(job: WebPrintJob): void {
 export function __resetWebPrintQueue(): void {
   webQueue = [];
   webBusy = false;
-  if (webFallbackTimer) { clearTimeout(webFallbackTimer); webFallbackTimer = null; }
+  if (webAdvanceTimer) { clearTimeout(webAdvanceTimer); webAdvanceTimer = null; }
   if (webKioskTimer) { clearTimeout(webKioskTimer); webKioskTimer = null; }
   if (webFrame && webFrame.isConnected) webFrame.remove();
   webFrame = null;
@@ -613,36 +624,49 @@ export function printSlip(buyer: Buyer, cur: string, storeName: string, printSet
   // (e.g. a synthetic buyer) → a fallback id that simply won't map to a row.
   const jobId = String(buyer.orders?.[0]?.orderNum ?? `web-${++webFallbackId}`);
   const trunc = (s: string, n: number) => (s.length > n ? s.slice(0, n) : s); // native truncate()
-  const lvl = (v: number | undefined) => Math.max(1, Math.min(8, Number(v || 1)));
-  const { w: labelW, h: labelH } = resolveStickerLabel(cfg.stickerSize);
-  // Height tiers mirror the native SizeConfig tiers (60 / 50 / 40mm). Fonts and
-  // gaps are in mm so the layout scales with the physical label; the 40mm tier
-  // is compact with a half-height buyer# (native 2x1) — same hierarchy. The
-  // 60mm tier's larger gaps approximate the native 100x60 fill-height spread.
-  const T = labelH >= 60
-    ? { bnum: 9,   name: 5.4, user: 3.8, store: 4.2, brand: 3.6, date: 2.8, time: 2.6, item: 5.4, gap: 2.2, pad: 2.5 }
-    : labelH >= 50
-      ? { bnum: 8,   name: 4.8, user: 3.4, store: 3.8, brand: 3.4, date: 2.7, time: 2.4, item: 4.8, gap: 1.6, pad: 2.2 }
-      : { bnum: 5.2, name: 4,   user: 3,   store: 3.2, brand: 3,   date: 2.4, time: 2.2, item: 4,   gap: 1.1, pad: 1.8 };
   // Taipei date, same source/format family as buildNativeStickerPayload + the
   // native truncate(12) — NOT the old en-PH long date.
   const sess = trunc(new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date()), 12);
-  // Max 2 order rows (native maxOrders=2): small time + enlarged price code
-  // (font-4 2x-width feel via scaleX), truncated like the native columns.
-  const rows = buyer.orders.slice(0, 2).map((o) => `<div class="orow"><span class="otime">${esc(trunc(String(o.time ?? ""), 10))}</span><span class="oitem">${esc(trunc(String(o.item ?? ""), 12))}</span></div>`).join("");
-  // Build the slip HTML (layout UNCHANGED) and hand it to the serialized queue.
-  // The queue owns the single reusable iframe + win.print() timing (no per-order
-  // iframe, no 8s cleanup race — cfg.printAutoClose is intentionally no longer
-  // read on the web path; the reused frame never leaks). Returns immediately.
-  const html = `<!DOCTYPE html><html><head><title>Sticker #${esc(buyer.num)}</title><style>@page{size:${labelW}mm ${labelH}mm;margin:${T.pad}mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,Helvetica,sans-serif;width:${labelW - 2 * T.pad}mm;color:#000}.head{display:flex;align-items:flex-end;justify-content:space-between;gap:2mm}.brand{font-size:${T.brand}mm;font-weight:800}.date{font-size:${T.date}mm;font-weight:600}.bar{height:.8mm;background:#000;margin:.8mm 0 ${T.gap}mm}.store{font-size:${T.store * lvl(cfg.printStoreScale)}mm;font-weight:800;margin-bottom:${T.gap}mm}.bnum{font-size:${T.bnum * lvl(cfg.printBuyerNumberScale)}mm;font-weight:900;line-height:1.02;margin-bottom:${T.gap}mm}.name{font-size:${T.name * lvl(cfg.printBuyerNameScale)}mm;font-weight:800;line-height:1.05;margin-bottom:${T.gap}mm;overflow-wrap:anywhere}.user{font-size:${T.user * lvl(cfg.printUsernameScale)}mm;font-weight:700;margin-bottom:${T.gap}mm}.sep{height:.5mm;background:#000;width:65%;margin:${T.gap}mm 0}.orow{display:flex;align-items:baseline;gap:3mm;margin-bottom:${T.gap * 0.7}mm}.otime{font-size:${T.time * lvl(cfg.printOrderScale)}mm;font-weight:600;flex-shrink:0}.oitem{font-size:${T.item * lvl(cfg.printCommentScale)}mm;font-weight:900;display:inline-block;transform:scaleX(1.35);transform-origin:0 50%;white-space:nowrap}@media print{body{margin:0}}</style></head><body>
-  <div class="head"><span class="brand">SellerFlowLive</span><span class="date">${esc(sess)}</span></div>
-  <div class="bar"></div>
-  ${cfg.printStoreName && storeName ? `<div class="store">${esc(trunc(storeName, 36))}</div>` : ""}
-  ${cfg.printBuyerNumber ? `<div class="bnum">Buyer ${esc(buyer.num)}</div>` : ""}
-  ${buyer.name ? `<div class="name">${esc(trunc(buyer.name, 30))}</div>` : ""}
-  ${cfg.printBuyerUsername && buyer.handle ? `<div class="user">@${esc(trunc(buyer.handle.replace(/^@+/, ""), 30))}</div>` : ""}
-  ${cfg.printOrderItems && rows ? `<div class="sep"></div>${rows}` : ""}
-  </body></html>`;
+  // The order this sticker prints (onPrint passes a single-order buyer; reprint
+  // rebuilds one). item = the CODE ("A2" / "A2 x2") for auto orders, else the
+  // price string for manual — rendered LARGE at the bottom, mirroring native.
+  const codeItem = buyer.orders?.[0]?.item;
+  const codeTime = buyer.orders?.[0]?.time;
+  // DRIVER-DRIVEN + AUTO-FIT (web only; native tiers UNTOUCHED): NO forced @page
+  // size — the Windows printer driver's paper size decides. The body is exactly
+  // ONE page tall with overflow:hidden, so content can NEVER spill to a 2nd label
+  // at any size ≥60×40. Fonts scale with the page height (vh, clamped so they stay
+  // readable at 60×40 and grow on taller labels). Field order mirrors the native
+  // TSPL sticker: header + date, Buyer #, name, @handle, then time + the CODE big
+  // at the bottom (margin-top:auto). Per-field scale multipliers are NOT applied on
+  // web (they don't fit the auto-fit model; native keeps them). Names/handles are
+  // single-line + ellipsis so they can't push a second page (overflow:hidden is the
+  // hard guarantee regardless).
+  const html = `<!DOCTYPE html><html><head><title>Sticker #${esc(buyer.num)}</title><style>` +
+    `@page{size:auto;margin:0}` +
+    `*{box-sizing:border-box;margin:0;padding:0}` +
+    `html,body{height:100%}` +
+    `body{width:100%;height:100vh;overflow:hidden;display:flex;flex-direction:column;padding:clamp(1mm,2.5vh,2mm) clamp(1mm,2.5vw,2.5mm);font-family:Arial,Helvetica,sans-serif;color:#000}` +
+    `.head{display:flex;align-items:flex-end;justify-content:space-between;gap:2mm;flex-shrink:0}` +
+    `.brand{font-size:clamp(2.6mm,7vh,4mm);font-weight:800;white-space:nowrap}` +
+    `.date{font-size:clamp(2mm,5.5vh,3mm);font-weight:600;white-space:nowrap}` +
+    `.bar{height:.6mm;background:#000;margin:.6mm 0 clamp(1mm,2.5vh,2.4mm);flex-shrink:0}` +
+    `.store{font-size:clamp(2.6mm,7vh,4.2mm);font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}` +
+    `.bnum{font-size:clamp(5mm,15vh,10mm);font-weight:900;line-height:1.02;white-space:nowrap;flex-shrink:0}` +
+    `.name{font-size:clamp(3mm,9vh,5.6mm);font-weight:800;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0;margin-top:1mm}` +
+    `.user{font-size:clamp(2.4mm,6.5vh,3.8mm);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex-shrink:0}` +
+    `.foot{margin-top:auto;display:flex;flex-direction:column;min-height:0}` +
+    `.ftime{font-size:clamp(2mm,5vh,2.8mm);font-weight:600}` +
+    `.code{font-size:clamp(5.5mm,17vh,12mm);font-weight:900;line-height:1.02;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}` +
+    `</style></head><body>` +
+    `<div class="head"><span class="brand">SellerFlowLive</span><span class="date">${esc(sess)}</span></div>` +
+    `<div class="bar"></div>` +
+    (cfg.printStoreName && storeName ? `<div class="store">${esc(trunc(storeName, 36))}</div>` : "") +
+    (cfg.printBuyerNumber ? `<div class="bnum">Buyer ${esc(buyer.num)}</div>` : "") +
+    (buyer.name ? `<div class="name">${esc(trunc(buyer.name, 30))}</div>` : "") +
+    (cfg.printBuyerUsername && buyer.handle ? `<div class="user">@${esc(trunc(buyer.handle.replace(/^@+/, ""), 30))}</div>` : "") +
+    (cfg.printOrderItems && codeItem ? `<div class="foot">${codeTime ? `<div class="ftime">${esc(trunc(String(codeTime), 10))}</div>` : ""}<div class="code">${esc(trunc(String(codeItem), 14))}</div></div>` : "") +
+    `</body></html>`;
   enqueueWebPrint({ id: jobId, html });
   return { ok: true, via: "browser" };
 }

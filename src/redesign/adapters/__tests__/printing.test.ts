@@ -104,9 +104,13 @@ describe("printSlip — web browser print MIRRORS the native TSPL sticker layout
     expect(html).not.toContain("Buyer #");
     expect(html).toContain("Ann Cruz");
     expect(html).toContain("@annc");
-    // window.print fires after the 120ms timeout
+    // Driver-driven + auto-fit: no forced size, one-page overflow-hidden body.
+    expect(html).toContain("@page{size:auto");
+    expect(html).toContain("overflow:hidden");
+    expect(html).toContain('class="code"'); // the CODE line renders (order.item)
+    // window.print fires after the (trimmed) pre-print timeout
     const printSpy = vi.spyOn(captured!.contentWindow as Window, "print").mockImplementation(() => {});
-    vi.advanceTimersByTime(150);
+    vi.advanceTimersByTime(60);
     expect(printSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -118,23 +122,30 @@ describe("printSlip — web browser print MIRRORS the native TSPL sticker layout
     expect(html).not.toContain("999");     // no amount anywhere
   });
 
-  it("caps order rows at 2 (native maxOrders) with the enlarged price-code element, item truncated to 12", () => {
+  it("renders the order CODE (item) large + anchored at the bottom, truncated to 14", () => {
     const b = buyer();
-    b.orders = [1, 2, 3].map((i) => ({ ...b.orders[0], orderNum: i, time: `10:0${i}`, item: `CODE-${i}-VERYLONGTAIL` }));
+    b.orders = [{ ...b.orders[0], item: "A2 x2" }];
     printSlip(b, "NT$", "Shop", cfg());
     const html = webHtml();
-    expect(html.match(/class="orow"/g)).toHaveLength(2);          // max 2 rows
-    expect(html).toContain('class="oitem"');                       // enlarged price code
-    expect(html).toContain("CODE-1-VERYL");                        // truncate(12)
-    expect(html).not.toContain("CODE-3");                          // 3rd order dropped
+    expect(html).toContain('class="code"');
+    expect(html).toContain("A2 x2");           // the auto CODE renders (was missing before)
+    expect(html).toContain("margin-top:auto"); // .foot anchors the code at the bottom
+    __resetWebPrintQueue();
+    const b2 = buyer(); b2.orders = [{ ...b2.orders[0], item: "ABCDEFGHIJKLMNOPQRST" }];
+    printSlip(b2, "NT$", "Shop", cfg());
+    expect(webHtml()).toContain("ABCDEFGHIJKLMN");     // truncate(14)
+    expect(webHtml()).not.toContain("ABCDEFGHIJKLMNO"); // 15th char dropped
   });
 
-  it("uses the label size for @page and the compact 40mm tier for 60x40", () => {
+  it("@page is driver-driven (size:auto), NOT a forced label size", () => {
     printSlip(buyer(), "NT$", "Shop", cfg({ stickerSize: "60x40" }));
-    expect(webHtml()).toContain("size:60mm 40mm");
-    __resetWebPrintQueue(); // serialized: drain job 1 before the next writes the frame
+    const html = webHtml();
+    expect(html).toContain("@page{size:auto");
+    expect(html).not.toContain("size:60mm");
+    __resetWebPrintQueue();
     printSlip(buyer(), "NT$", "Shop", cfg({ stickerSize: "80x50" }));
-    expect(webHtml()).toContain("size:80mm 50mm");
+    expect(webHtml()).toContain("@page{size:auto"); // ignores the tier on web
+    expect(webHtml()).not.toContain("size:80mm");
   });
 
   it("prints the Taipei date (MM/DD/YYYY family), not the old en-PH long date", () => {
@@ -152,18 +163,13 @@ describe("printSlip — web browser print MIRRORS the native TSPL sticker layout
     expect(html).not.toContain("@annc");
   });
 
-  it("scales each field by its pattern-settings multiplier (per-element, like the native cmul)", () => {
-    // 100x60 base tier: bnum 9mm, name 5.4mm. Level 2 doubles them.
+  it("auto-fits ONE label: one-page overflow-hidden body + vh-clamped fonts (per-field mm multipliers NOT applied on web)", () => {
     printSlip(buyer(), "NT$", "Shop", cfg({ printBuyerNumberScale: 2, printBuyerNameScale: 2 }));
-    let html = webHtml();
-    expect(html).toContain(".bnum{font-size:18mm");   // 9 * 2
-    expect(html).toContain(".name{font-size:10.8mm"); // 5.4 * 2
-    // level 1 (default) stays at base
-    __resetWebPrintQueue(); // serialized: drain job 1 before the next writes the frame
-    printSlip(buyer(), "NT$", "Shop", cfg());
-    html = webHtml();
-    expect(html).toContain(".bnum{font-size:9mm");
-    expect(html).toContain(".name{font-size:5.4mm");
+    const html = webHtml();
+    expect(html).toContain("height:100vh");            // body is exactly one page tall
+    expect(html).toContain("overflow:hidden");         // hard guarantee: never a 2nd label
+    expect(html).toMatch(/\.bnum\{font-size:clamp\(/); // vh clamp, not a fixed mm × multiplier
+    expect(html).not.toContain("font-size:18mm");      // the ×2 multiplier is ignored on web
   });
 
   it("string-settings overload also browser-prints", () => {
