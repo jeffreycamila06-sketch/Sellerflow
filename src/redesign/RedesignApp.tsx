@@ -65,7 +65,7 @@ import { computeSales } from "./adapters/sales";
 import { useSalesReport } from "./adapters/salesReport";
 import { ordersByHour } from "./adapters/peakHours";
 import { sessionKeyFor } from "./adapters/shipping";
-import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, setWebPrintOutcomeHandler, setWebPrintKioskHintHandler, isPrinterNotSetup, canUseClassicText, setClassicTextAllowed, hasBitmapStickerMethod, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
+import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, setWebPrintOutcomeHandler, setNativePrintOutcomeHandler, setWebPrintKioskHintHandler, isPrinterNotSetup, canUseClassicText, setClassicTextAllowed, hasBitmapStickerMethod, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
 import { prefetchCjkAtlas } from "./adapters/cjkAtlasLoader";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
@@ -595,7 +595,10 @@ export default function RedesignApp() {
   // (web-only; persisted so it never nags twice). Registered ONCE.
   const KIOSK_HINT_DISMISS_KEY = "sfl_rd_kiosk_hint_dismissed";
   useEffect(() => {
-    setWebPrintOutcomeHandler((jobId, ok) => {
+    // Same outcome logic for BOTH the web print queue AND the native BT/LAN print
+    // queue (AIMO burst fix) — a dropped native sticker now badges its row + offers
+    // reprint through the identical channel instead of a silent console.warn.
+    const onPrintOutcome = (jobId: string, ok: boolean) => {
       const entry = jobToCommentRef.current.get(jobId); // { cid, msgId } | undefined
       if (!entry) return; // unmapped job (synthetic buyer / winner / test) — no row to badge
       const key = notPrintedKeyOf(jobId, entry.msgId); // msgId (stable) | o:<orderNum>
@@ -610,13 +613,15 @@ export default function RedesignApp() {
         setNotPrintedKeys(new Set(next));
         setNotPrinted((p) => (p[entry.cid] ? p : { ...p, [entry.cid]: true })); // immediate session badge
       }
-    });
+    };
+    setWebPrintOutcomeHandler(onPrintOutcome);
+    setNativePrintOutcomeHandler(onPrintOutcome);
     setWebPrintKioskHintHandler(() => {
       if (isAppShell()) return; // native shells don't use the web print path
       try { if (localStorage.getItem(KIOSK_HINT_DISMISS_KEY)) return; } catch { /* ignore */ }
       setKioskHint(true);
     });
-    return () => { setWebPrintOutcomeHandler(null); setWebPrintKioskHintHandler(null); };
+    return () => { setWebPrintOutcomeHandler(null); setNativePrintOutcomeHandler(null); setWebPrintKioskHintHandler(null); };
   }, []);
   // One toast per burst of not-printed jobs (rising edge 0 → >0), NOT one per order.
   const notPrintedCount = Object.keys(notPrinted).length;
