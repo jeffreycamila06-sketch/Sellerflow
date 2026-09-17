@@ -53,9 +53,9 @@ import { saveLiveSessionOrder } from "../db";
 import { planAutoOrder, type AutoCode } from "./adapters/autoMode";
 import { deriveAutoStatus, buildAutoCodeStock, loadLowStockThreshold, saveLowStockThreshold, type AutoCodeStock } from "./adapters/autoStatus";
 import { buildWinnerTicketBuyer, type RaffleEntry } from "./adapters/raffle";
-import { loadCodes } from "./adapters/autoCodesDb";
 import { resolveInitialProducts } from "./adapters/productsDb";
-import { loadProducts } from "./adapters/products";
+import { loadProducts, type Product } from "./adapters/products";
+import { codesFromProducts, applyStockChange, type ProductChange } from "./adapters/autoCodesFromProducts";
 import { useFreeCap } from "./adapters/useFreeCap";
 import { useAdmin } from "./adapters/useAdmin";
 import { upsertUser } from "../accountDb";
@@ -311,17 +311,18 @@ export default function RedesignApp() {
     return [...liveFeed.comments, ...flagged];
   }, [liveFeed.comments, liveFeed.initialComments, orderedMsgIds]);
 
-  // Auto Mode — READ-ON-LOAD only (on auth change): load the code map + seed live
-  // stock from the catalog. No poll. Codes/stock edited in Settings apply on next
-  // load (same reseed-on-reload model as multi-day; decided with Jeff).
+  // Auto Mode — READ-ON-LOAD only (on auth change): DERIVE the code list from the
+  // products catalog (products with a non-empty live_code) + seed live stock from
+  // the same load. No poll, one products read. Codes/stock edited on the Products
+  // screen apply immediately via refreshAutoFromProducts (below).
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- logout reset (same pattern as the other auth-reset effects here)
     if (!authed) { autoCodesRef.current = []; autoStockRef.current = new Map(); autoProcessedRef.current = new Set(); autoDupRef.current = new Set(); setAutoCodeStock([]); return; }
     let active = true;
     void (async () => {
-      const [resolved, codes] = await Promise.all([resolveInitialProducts(loadProducts()), loadCodes()]);
+      const resolved = await resolveInitialProducts(loadProducts());
       if (!active) return;
-      autoCodesRef.current = codes ?? [];
+      autoCodesRef.current = codesFromProducts(resolved.products); // SOURCE = products with live_code
       const m = new Map<number, number>();
       for (const p of resolved.products) m.set(p.id, p.stock);
       autoStockRef.current = m;
@@ -331,16 +332,18 @@ export default function RedesignApp() {
     return () => { active = false; };
   }, [authed]);
 
-  // 5b — apply a just-saved code map immediately (no reload): push the persisted
-  // codes + each product's stock into the live matcher refs the onComment handler
-  // reads. Restocked products clear their sold-out latch so they can sell + toast
-  // again. Stable (refs only) → no re-render churn. Still no polling.
-  const liftAutoCodes = useCallback((codes: AutoCode[], stock: Map<number, number>) => {
-    autoCodesRef.current = codes;
-    for (const [lid, n] of stock) autoStockRef.current.set(lid, n);
-    // Rule 3 — a restock/save refreshes the reactive mirror → low-stock/sold-out
-    // indicators re-derive (a restocked code drops out of sold-out automatically).
-    setAutoCodeStock(buildAutoCodeStock(codes, (lid) => autoStockRef.current.get(lid) ?? 0));
+  // Apply a Products-screen add/edit/delete immediately (no reload): re-derive the
+  // code list from the updated catalog. Stock re-seed is GATED on the change kind
+  // (audit F1): "stock"/new → re-seed the changed product's live count to catalog;
+  // "meta" (name/price/code) → PRESERVE the live decremented count (a mid-live
+  // rename must not reset remaining stock); "delete" → drop the entry. Replaces the
+  // old onAutoCodesSaved lift. Refs only → no re-render churn; still no polling.
+  const refreshAutoFromProducts = useCallback((products: Product[], changedId?: number, action?: ProductChange) => {
+    autoCodesRef.current = codesFromProducts(products);
+    applyStockChange(autoStockRef.current, products, changedId, action);
+    // Rule 3 — refresh the reactive mirror so low-stock/sold-out indicators
+    // re-derive (an edited/added code appears; a restocked code drops out of sold-out).
+    setAutoCodeStock(buildAutoCodeStock(autoCodesRef.current, (lid) => autoStockRef.current.get(lid) ?? 0));
   }, []);
   // Rule 1 resets on a NEW session (a fresh session_id = a fresh live) — clear the
   // synchronous dedup ref; loadedAutoDupSet clears with the reloaded (empty) session.
@@ -1313,7 +1316,7 @@ export default function RedesignApp() {
           )}
           {screen === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} orders={ordersList} state={ordersState} onExport={exportOrders} onGoShipping={() => setScreen("shipping")}
             historyOrders={ordersHistory.orders} historyState={ordersHistory.state} onEnsureHistory={ordersHistory.ensureLoaded} onReprintOrder={onReprintOrder} todayId={liveSession.dayId} buyers={liveSession.session.buyers} />}
-          {screen === "products" && <Products cur={cur} />}
+          {screen === "products" && <Products cur={cur} onProductsChanged={refreshAutoFromProducts} />}
           {screen === "miners" && <Miners cur={cur} miners={minerList} stats={minerStats} onExport={exportMiners} />}
           {screen === "menu" && (
             <SettingsHub
@@ -1336,9 +1339,8 @@ export default function RedesignApp() {
           {screen === "settings" && (
             <GeneralSettings
               theme={theme} accent={accent} onSetTheme={setTheme} onSetAccent={setAccent}
-              auto={autoControls} cur={cur} account={auth.profile} onSaveProfile={saveProfile}
+              auto={autoControls} account={auth.profile} onSaveProfile={saveProfile}
               onManageChannel={(p) => { setChanBack("settings"); setScreen(p === "tiktok" ? "ttchannels" : "fbchannels"); }}
-              onAutoCodesSaved={liftAutoCodes}
               lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold}
               lang={lang} onSetLang={setLang} currency={currency} onSetCurrency={setCurrencyExplicit}
               profileOpen={profileOpen} onToggleProfile={() => setProfileOpen((o) => !o)}

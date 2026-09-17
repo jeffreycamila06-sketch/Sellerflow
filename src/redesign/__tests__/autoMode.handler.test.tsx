@@ -48,14 +48,12 @@ vi.mock("../adapters/useOrders", async (orig) => ({
   useOrders: () => ({ createOrder: (...args: unknown[]) => H.createOrder.fn!(...args) }),
 }));
 
-vi.mock("../adapters/autoCodesDb", async (orig) => ({
-  ...(await orig() as object),
-  loadCodes: vi.fn(async () => [{ code: "D", productLocalId: 14, price: 52, productName: "Brief" }]),
-}));
-
+// The auto code list is now DERIVED from products (Sep 17): the product carries
+// live_code "D" → AutoCode { code:"D", productLocalId:14, price:52 } (price from
+// the product). loadCodes is no longer the source (RedesignApp doesn't read it).
 vi.mock("../adapters/productsDb", async (orig) => ({
   ...(await orig() as object),
-  resolveInitialProducts: vi.fn(async () => ({ products: [{ id: 14, name: "Brief", sku: "BR", price: 52, stock: H.stock.v, platform: "TikTok", status: "Active" }], source: "local" })),
+  resolveInitialProducts: vi.fn(async () => ({ products: [{ id: 14, name: "Brief", sku: "BR", price: 52, stock: H.stock.v, platform: "TikTok", status: "Active", liveCode: "D" }], source: "local" })),
 }));
 
 // useLiveSession stubbed so the F-DEDUP-RACE gate (skip auto while state==="loading")

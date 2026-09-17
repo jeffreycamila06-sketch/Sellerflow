@@ -1,13 +1,12 @@
-// Step 3 — Auto Mode card: the old visual-only "Trigger word sets" chips are gone;
-// the expanded card now shows real CODE→PRODUCT→INVENTORY rows sourced from the
-// catalog (productsDb falls back to the local seed in the unconfigured test env).
-import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+// Auto Mode card (Sep 17): the code-list EDITOR moved to the Products screen
+// (one code = one product). The expanded card now holds ONLY a pointer + the
+// low-stock threshold — no code rows, no product picker, no "Save codes".
+import { describe, it, expect, beforeEach } from "vitest";
+import { render, screen } from "@testing-library/react";
 import GeneralSettings from "../GeneralSettings";
 import { TProvider } from "../../i18n";
 import type { AccountUser } from "../../../accountDb";
 import type { AutoControls } from "../../data";
-import { PRODUCT_DEFAULTS } from "../../adapters/products";
 
 const auto: AutoControls = { detect: true, setupOpen: true, toggle: () => {}, toggleSetup: () => {} }; // F-batch: trimmed shape
 const account: AccountUser = {
@@ -29,7 +28,7 @@ const renderGS = () => render(
   </TProvider>,
 );
 
-describe("Auto Mode card (Step 3)", () => {
+describe("Auto Mode card (Sep 17 — codes moved to Products)", () => {
   beforeEach(() => localStorage.clear());
 
   it("removed the old trigger-word UI", () => {
@@ -38,20 +37,16 @@ describe("Auto Mode card (Step 3)", () => {
     expect(screen.queryByText(/word = price/)).toBeNull();
   });
 
-  it("shows the real code→product setup once the catalog loads", async () => {
+  it("no longer shows the in-Settings code editor (moved to Products)", () => {
     renderGS();
-    expect(screen.getByText("Code → product")).toBeTruthy();
-    // catalog resolves async (local seed in the test env) → Add code becomes available
-    await waitFor(() => expect(screen.getByText("+ Add code")).toBeTruthy());
+    expect(screen.queryByText("Code → product")).toBeNull();
+    expect(screen.queryByText("+ Add code")).toBeNull();
+    expect(screen.queryByText("Save codes")).toBeNull();
   });
 
-  it("adding a code renders a row with the product picker + Active status", async () => {
+  it("shows the Products pointer + keeps the low-stock threshold", () => {
     renderGS();
-    const add = await screen.findByText("+ Add code");
-    fireEvent.click(add);
-    // product picker lists the catalog (first seed product) and the row is Active (stock>0)
-    await waitFor(() => expect(screen.getByText(PRODUCT_DEFAULTS[0].name)).toBeTruthy());
-    expect(screen.getByText("Active")).toBeTruthy();
-    expect(screen.getByText("Save codes")).toBeTruthy();
+    expect(screen.getByText(/Live codes now live on each Product/)).toBeTruthy();
+    expect(screen.getByText("Low-stock warning at")).toBeTruthy();
   });
 });

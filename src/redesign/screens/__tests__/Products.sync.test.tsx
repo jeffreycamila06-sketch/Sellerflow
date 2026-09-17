@@ -10,10 +10,10 @@ import { PRODUCT_DEFAULTS } from "../../adapters/products";
 
 vi.mock("../../adapters/productsDb", () => ({
   resolveInitialProducts: vi.fn(async (local: unknown) => ({ products: local, source: "local" })),
-  saveProductDb: vi.fn(async () => {}),
+  saveProductDbResult: vi.fn(async () => ({ ok: true })),
   deleteProductDb: vi.fn(async () => {}),
 }));
-import { resolveInitialProducts, saveProductDb, deleteProductDb } from "../../adapters/productsDb";
+import { resolveInitialProducts, saveProductDbResult, deleteProductDb } from "../../adapters/productsDb";
 
 const renderProducts = () => render(<TProvider lang="en"><Products cur="NT$" /></TProvider>);
 
@@ -32,7 +32,7 @@ describe("Products screen — cross-device sync wiring", () => {
     expect(screen.queryByText(/Soon · cross-device/)).toBeNull();
   });
 
-  it("add writes through to the DB (saveProductDb with the new product)", async () => {
+  it("add writes through to the DB (saveProductDbResult with the new product)", async () => {
     renderProducts();
     await vi.waitFor(() => expect(resolveInitialProducts as Mock).toHaveBeenCalled());
     fireEvent.click(screen.getByText("+ Add"));
@@ -40,8 +40,8 @@ describe("Products screen — cross-device sync wiring", () => {
     const nameInput = form.querySelector("input") as HTMLInputElement;
     fireEvent.change(nameInput, { target: { value: "New Item" } });
     fireEvent.submit(form);
-    expect(saveProductDb as Mock).toHaveBeenCalledTimes(1);
-    expect((saveProductDb as Mock).mock.calls[0][0]).toMatchObject({ name: "New Item" });
+    expect(saveProductDbResult as Mock).toHaveBeenCalledTimes(1);
+    expect((saveProductDbResult as Mock).mock.calls[0][0]).toMatchObject({ name: "New Item" });
   });
 
   it("delete writes through to the DB (deleteProductDb with the product id)", async () => {
