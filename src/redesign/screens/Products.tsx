@@ -97,7 +97,9 @@ export default function Products({ cur, onProductsChanged }: {
     // screen's primary store; the pill says the CLOUD copy didn't sync). A live_code
     // COLLISION (23505 from another device) is different — the code isn't ours, so
     // REVERT the local save and show the dup error, mirroring the delete-revert.
-    if (changed) void saveProductDbResult(changed).then((r) => {
+    // I1: a meta edit (stock unchanged) OMITS the stock column so it can't clobber
+    // an auto-order-decremented DB stock with this screen's stale in-memory value.
+    if (changed) void saveProductDbResult(changed, { skipStock: !stockChanged }).then((r) => {
       if (r.ok) return;
       if (r.duplicateCode) { save(before); onProductsChanged?.(before); setFormErr(t.rd_prd_code_dup); setShow(true); }
       else showNote(t.rd_prd_sync_failed);

@@ -43,18 +43,25 @@ export function rowToProduct(row: Record<string, unknown>): Product {
 // Product → upsert payload. Omits `status` (derived) and `last_ordered_at`
 // (RESERVED — leaving it out of the payload means an upsert UPDATE never overwrites
 // it). `now` injectable for deterministic tests.
-export function productToRow(p: Product, userId: string, now: number = Date.now()): Record<string, unknown> {
-  return {
+export function productToRow(p: Product, userId: string, now: number = Date.now(), opts?: { skipStock?: boolean }): Record<string, unknown> {
+  const row: Record<string, unknown> = {
     user_id: userId,
     local_id: p.id,
     name: p.name,
     sku: p.sku,
     price: p.price,
-    stock: p.stock,
     platform: p.platform,
     live_code: p.liveCode && p.liveCode.trim() ? p.liveCode.trim() : null, // "" → NULL (partial-unique index ignores it)
     updated_at: new Date(now).toISOString(),
   };
+  // I1 (stock truth): a "meta" edit (name/price/code) OMITS the stock column so
+  // the upsert's ON CONFLICT DO UPDATE never rewrites it — auto-order RPC
+  // decrements survive. The Products screen's in-memory stock can be stale (auto
+  // orders don't write sf_prods); writing it back would clobber the DB truth and
+  // re-inflate on the next reload. Stock is written only when it actually changed
+  // (or on a new product).
+  if (!opts?.skipStock) row.stock = p.stock;
+  return row;
 }
 
 // One-time migration decision (PURE): migrate local → DB only when nothing has been
@@ -113,11 +120,11 @@ export async function saveProductDb(p: Product): Promise<boolean> {
 // Richer result so the Products screen can distinguish a live_code collision
 // (another product/device already uses this code → the ux_products_user_live_code
 // partial-unique index rejects with 23505) from a generic sync failure.
-export async function saveProductDbResult(p: Product): Promise<{ ok: boolean; duplicateCode?: boolean }> {
+export async function saveProductDbResult(p: Product, opts?: { skipStock?: boolean }): Promise<{ ok: boolean; duplicateCode?: boolean }> {
   if (!isSupabaseConfigured || !supabase) return { ok: true };
   const id = await uid();
   if (!id) return { ok: true };
-  const { error } = await supabase.from("products").upsert(productToRow(p, id), { onConflict: "user_id,local_id" });
+  const { error } = await supabase.from("products").upsert(productToRow(p, id, Date.now(), opts), { onConflict: "user_id,local_id" });
   if (!error) return { ok: true };
   console.error("Save product error:", error.message);
   const text = `${error.message || ""} ${(error as { details?: string }).details || ""}`;
