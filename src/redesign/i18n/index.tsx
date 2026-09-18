@@ -1358,6 +1358,24 @@ const RAW: Record<string, Row> = {
   rd_pt_returning_soon: { en: "returning soon", fil: "malapit nang ibalik", zh: "即将退回", "zh-TW": "即將退回", vi: "sắp bị trả lại", th: "กำลังจะตีกลับ", id: "segera dikembalikan" },
   rd_pt_urgent: { en: "urgent", fil: "urgent", zh: "紧急", "zh-TW": "緊急", vi: "khẩn", th: "ด่วน", id: "mendesak" },
 
+  // ── Orders upgrade Batch 1 (2026-09): platform pills · date range · summary · export cols ──
+  rd_ord_pf_all: { en: "All", fil: "Lahat", zh: "全部", "zh-TW": "全部", vi: "Tất cả", th: "ทั้งหมด", id: "Semua" },
+  rd_ord_range_session: { en: "This session", fil: "Session na ito", zh: "本场直播", "zh-TW": "本場直播", vi: "Phiên này", th: "เซสชันนี้", id: "Sesi ini" },
+  rd_ord_range_7d: { en: "Last 7 days", fil: "Huling 7 araw", zh: "近 7 天", "zh-TW": "近 7 天", vi: "7 ngày qua", th: "7 วันที่ผ่านมา", id: "7 hari terakhir" },
+  rd_ord_range_custom: { en: "Custom", fil: "Custom", zh: "自定义", "zh-TW": "自訂", vi: "Tùy chỉnh", th: "กำหนดเอง", id: "Kustom" },
+  rd_ord_range_from: { en: "From", fil: "Mula", zh: "从", "zh-TW": "從", vi: "Từ", th: "จาก", id: "Dari" },
+  rd_ord_range_to: { en: "To", fil: "Hanggang", zh: "至", "zh-TW": "至", vi: "Đến", th: "ถึง", id: "Sampai" },
+  rd_ord_sum_orders: { en: "Orders", fil: "Orders", zh: "订单", "zh-TW": "訂單", vi: "Đơn", th: "ออเดอร์", id: "Order" },
+  rd_ord_sum_total: { en: "Total", fil: "Kabuuan", zh: "总额", "zh-TW": "總額", vi: "Tổng", th: "รวม", id: "Total" },
+  rd_ord_sum_buyers: { en: "Buyers", fil: "Mamimili", zh: "买家", "zh-TW": "買家", vi: "Người mua", th: "ผู้ซื้อ", id: "Pembeli" },
+  rd_ord_sum_aov: { en: "Avg order", fil: "Avg na order", zh: "平均订单", "zh-TW": "平均訂單", vi: "TB đơn", th: "เฉลี่ย/ออเดอร์", id: "Rata-rata" },
+  rd_ord_col_order: { en: "Order", fil: "Order", zh: "订单", "zh-TW": "訂單", vi: "Đơn", th: "ออเดอร์", id: "Order" },
+  rd_ord_col_buyer: { en: "Buyer", fil: "Mamimili", zh: "买家", "zh-TW": "買家", vi: "Người mua", th: "ผู้ซื้อ", id: "Pembeli" },
+  rd_ord_col_user: { en: "Username", fil: "Username", zh: "用户名", "zh-TW": "使用者名稱", vi: "Tên người dùng", th: "ชื่อผู้ใช้", id: "Nama pengguna" },
+  rd_ord_col_item: { en: "Item", fil: "Item", zh: "商品", "zh-TW": "商品", vi: "Món", th: "สินค้า", id: "Barang" },
+  rd_ord_col_amount: { en: "Amount", fil: "Halaga", zh: "金额", "zh-TW": "金額", vi: "Số tiền", th: "จำนวนเงิน", id: "Jumlah" },
+  rd_ord_col_time: { en: "Time", fil: "Oras", zh: "时间", "zh-TW": "時間", vi: "Giờ", th: "เวลา", id: "Waktu" },
+
   // ── Products upgrade (2026-09-18): export dropdown · filter pills · quick stock edit ──
   rd_prd_export_excel: { en: "Excel (.xlsx)", fil: "Excel (.xlsx)", zh: "Excel (.xlsx)", "zh-TW": "Excel (.xlsx)", vi: "Excel (.xlsx)", th: "Excel (.xlsx)", id: "Excel (.xlsx)" },
   rd_prd_export_pdf: { en: "PDF", fil: "PDF", zh: "PDF", "zh-TW": "PDF", vi: "PDF", th: "PDF", id: "PDF" },
