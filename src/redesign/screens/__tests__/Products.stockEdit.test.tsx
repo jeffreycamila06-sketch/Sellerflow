@@ -85,4 +85,47 @@ describe("quick stock edit — debounced atomic write", () => {
     expect((getByTestId("stock-dec-1") as HTMLButtonElement).disabled).toBe(true);
     expect((getByTestId("stock-inc-1") as HTMLButtonElement).disabled).toBe(false);
   });
+
+  it("M1: unmounting with an un-flushed delta STILL writes it (no silently-lost edit)", async () => {
+    vi.useFakeTimers();
+    adjust.mockResolvedValue(13);
+    const { getByTestId, unmount } = await mount([P({ stock: 10 })]);
+    for (let i = 0; i < 3; i++) fireEvent.click(getByTestId("stock-inc-1"));
+    expect(adjust).not.toHaveBeenCalled();          // debounce hasn't fired yet
+    unmount();                                       // navigate-away before the 600ms flush
+    expect(adjust).toHaveBeenCalledTimes(1);         // flushed on unmount
+    expect(adjust).toHaveBeenCalledWith(1, 3);       // the pending +3 persisted
+  });
+
+  it("M1: an id already mid-write is NOT double-flushed on unmount (its resolve handles the rest)", async () => {
+    vi.useFakeTimers();
+    let resolveRpc!: (v: number | null) => void;
+    adjust.mockImplementation(() => new Promise<number | null>((r) => { resolveRpc = r; }));
+    const { getByTestId, unmount } = await mount([P({ stock: 10 })]);
+    fireEvent.click(getByTestId("stock-inc-1"));      // +1
+    await act(async () => { await vi.advanceTimersByTimeAsync(650); }); // flush → RPC in flight
+    expect(adjust).toHaveBeenCalledTimes(1);
+    unmount();                                        // in-flight id → cleanup must NOT re-fire
+    expect(adjust).toHaveBeenCalledTimes(1);          // still one call (no double-apply)
+    resolveRpc(11);                                   // let it settle (no post-unmount crash)
+  });
+
+  it("C1: a tap DURING an in-flight write does NOT dip the display", async () => {
+    vi.useFakeTimers();
+    const resolvers: Array<(v: number | null) => void> = [];
+    adjust.mockImplementation(() => new Promise<number | null>((r) => { resolvers.push(r); }));
+    const { getByTestId } = await mount([P({ stock: 10 })]);
+    for (let i = 0; i < 5; i++) fireEvent.click(getByTestId("stock-inc-1")); // +5 → display 15
+    expect(getByTestId("stock-val-1").textContent).toBe("15");
+    await act(async () => { await vi.advanceTimersByTimeAsync(650); });       // flush → RPC(+5) in flight
+    expect(adjust).toHaveBeenCalledWith(1, 5);
+
+    fireEvent.click(getByTestId("stock-inc-1"));                              // tap during the in-flight write
+    expect(getByTestId("stock-val-1").textContent).toBe("16");               // C1: 15 + 1, NOT a dip to 11
+
+    await act(async () => { resolvers[0](15); await Promise.resolve(); });    // first write settles (10+5=15)
+    expect(getByTestId("stock-val-1").textContent).toBe("16");               // stays 16 (authoritative 15 + pending 1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(0); if (resolvers[1]) resolvers[1](16); await Promise.resolve(); });
+    expect(getByTestId("stock-val-1").textContent).toBe("16");               // re-flush(+1) settles to 16
+  });
 });

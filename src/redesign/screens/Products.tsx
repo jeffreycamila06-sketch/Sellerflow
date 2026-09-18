@@ -71,7 +71,15 @@ export default function Products({ cur, onProductsChanged, seller }: {
   const pendingRef = useRef<Map<number, number>>(new Map());
   const inflightRef = useRef<Set<number>>(new Set());
   const stockTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
-  useEffect(() => () => { stockTimers.current.forEach((t) => clearTimeout(t)); }, []);
+  useEffect(() => () => {
+    stockTimers.current.forEach((t) => clearTimeout(t));
+    // M1: persist any un-flushed delta on navigate-away (fire-and-forget) so a quick
+    // edit isn't silently lost. Skip ids already mid-write — their remaining pending
+    // is flushed by that write's resolve; flushing here too would double-apply.
+    pendingRef.current.forEach((delta, id) => {
+      if (delta !== 0 && !inflightRef.current.has(id)) void adjustProductStock(id, delta);
+    });
+  }, []);
 
   const setStock = (id: number, stock: number): Product[] => {
     const next = prodsRef.current.map((x) => (x.id === id ? { ...x, stock, status: statusForStock(stock) } : x));
@@ -82,13 +90,19 @@ export default function Products({ cur, onProductsChanged, seller }: {
     const delta = pendingRef.current.get(id) ?? 0;
     if (delta === 0) { pendingRef.current.delete(id); authRef.current.delete(id); return; }
     pendingRef.current.set(id, 0);                      // consume; new taps re-accumulate from 0
+    // C1: optimistically advance the baseline by the in-flight delta so a tap that
+    // arrives DURING the write recomputes the display from an in-flight-inclusive
+    // baseline (no transient dip). Undone on failure below.
+    authRef.current.set(id, (authRef.current.get(id) ?? 0) + delta);
     inflightRef.current.add(id);
     void adjustProductStock(id, delta).then((newStock) => {
       inflightRef.current.delete(id);
       const rem = pendingRef.current.get(id) ?? 0;      // taps that arrived during the write
-      const base = authRef.current.get(id) ?? 0;
-      if (newStock == null || newStock < 0) {           // FAILED / not-owner → drop delta, revert to authoritative(+rem)
-        setStock(id, Math.max(0, base + rem));
+      const base = authRef.current.get(id) ?? 0;        // = pre-write baseline + this in-flight delta (C1)
+      if (newStock == null || newStock < 0) {           // FAILED / not-owner → undo the C1 advance, revert to authoritative(+rem)
+        const reverted = base - delta;                  // back to the true pre-write baseline
+        authRef.current.set(id, reverted);
+        setStock(id, Math.max(0, reverted + rem));
         showNote(t.rd_prd_stock_failed);
       } else {                                          // SUCCESS → authoritative value (reflects concurrent auto decrements)
         authRef.current.set(id, newStock);
