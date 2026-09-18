@@ -26,7 +26,9 @@ import SalesReport from "./screens/SalesReport";
 import Shipping from "./screens/Shipping";
 import ParcelScan from "./screens/ParcelScan";
 import CustomerDetails from "./screens/CustomerDetails";
+import ParcelTracking from "./screens/ParcelTracking";
 import { parcelScanVisible, loadParcelManualEnabled } from "./adapters/parcelScan";
+import { parcelTrackingVisible } from "./adapters/parcelTracking";
 import CustomerData from "./screens/CustomerData";
 import Legal from "./screens/Legal";
 import DeleteAccount from "./screens/DeleteAccount";
@@ -93,10 +95,10 @@ type Screen =
   | "landing" | "login" | "signup" | "dashboard" | "miners" | "orders" | "products"
   | "menu" | "settings" | "customers" | "subscription" | "support"
   | "admin" | "print" | "sales" | "shipping" | "customerdata" | "legal" | "delete"
-  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "shopeechannels";
+  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "parceltracking" | "shopeechannels";
 
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
-const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "shopeechannels"];
+const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "shopeechannels"];
 
 // Auto Mode Rule 1 dedup key: one auto order per (session, buyer handle, code),
 // case-insensitive + trimmed — mirrors the DB partial-unique index expression
@@ -156,6 +158,11 @@ export default function RedesignApp() {
   const { visible: parcelAllowed, manualOnly: parcelManualOnly, locked: parcelLocked } = parcelScanVisible({
     role: auth.profile?.role, plan: auth.profile?.plan, planStatus: auth.profile?.planStatus,
     planExpiry: auth.profile?.planExpiry, manualEnabled: parcelManualEnabled,
+  });
+  // Pickup Status (Part 5) — Phase 1 = OWNER + googletest (kiosk-allowlist gate).
+  // UI-only; the poll endpoint is server-secret gated. Gates the tile AND render.
+  const parcelTrackingAllowed = parcelTrackingVisible({
+    role: auth.profile?.role, email: auth.profile?.email, plan: auth.profile?.plan,
   });
   // Locked-tile upsell popup (basic/free): a NEUTRAL contact-support popup — no
   // price/plan wording (Apple 2.1b-safe), same on iOS and Android/web. It never
@@ -1381,6 +1388,7 @@ export default function RedesignApp() {
               isAdmin={isAdmin}
               onParcelScan={parcelAllowed ? () => setScreen("parcelscan") : undefined}
               onCustomerDetails={parcelAllowed ? () => setScreen("customerdetails") : undefined}
+              onParcelTracking={parcelTrackingAllowed ? () => setScreen("parceltracking") : undefined}
               parcelLocked={parcelLocked}
               onParcelUpsell={() => setUpsellOpen(true)}
             />
@@ -1432,6 +1440,7 @@ export default function RedesignApp() {
           {screen === "shipping" && <Shipping cur={cur} buyers={liveSession.session.buyers} sessionKey={sessionKeyFor(liveSession.dayId, sessionWindow.windowStart, sessionWindow.windowDays)} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}
           {screen === "parcelscan" && parcelAllowed && <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} />}
           {screen === "customerdetails" && parcelAllowed && <CustomerDetails cur={cur} />}
+          {screen === "parceltracking" && parcelTrackingAllowed && <ParcelTracking />}
           {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} cur={cur} customers={customersData.state === "live" ? customersData.customers : []} onExport={customersData.state === "live" ? exportCustomers : undefined} />}
           {screen === "legal" && <Legal />}
           {screen === "delete" && <DeleteAccount onBack={() => setScreen("settings")} email={auth.profile?.email} onConfirm={auth.deleteAccount} />}
