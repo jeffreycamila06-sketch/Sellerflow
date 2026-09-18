@@ -1,0 +1,189 @@
+// 7-11 賣貨便 PICKUP STATUS ("Chase Buyer") — client half (Part 5).
+//
+// READ-ONLY. One own-scoped SELECT from parcel_tracking on screen open (the
+// extension scraper + the Render poller are the only WRITERS). ZERO app-side
+// polling — the owner taps Refresh to re-read. The poller fills status /
+// pickup_deadline / ship_type from SHOPMORE; this screen only reads + groups.
+//
+// PHASE 1 = OWNER + googletest ONLY (parcelTrackingVisible, kiosk-allowlist
+// pattern). The poll endpoint is independently gated by a server secret — this
+// is a UI gate, not the security boundary.
+import { isSupabaseConfigured, supabase } from "../../supabase";
+import { isAdminRole } from "../../lib/roles";
+
+// ── Feature gate (canSeeKioskLauncher pattern) ────────────────────────────────
+// While Pickup Status is Phase 1, these emails see it (admins always do). ONE
+// place — widen or empty this list to open it more broadly.
+export const PARCEL_TRACKING_EMAILS = ["googletest@gmail.com"];
+
+export function parcelTrackingVisible(account: {
+  role?: string | null;
+  email?: string | null;
+  plan?: string | null;
+} | null | undefined): boolean {
+  if (!account) return false;
+  if (isAdminRole(account.role)) return true;
+  const email = String(account.email || "").trim().toLowerCase();
+  if (PARCEL_TRACKING_EMAILS.includes(email)) return true;
+  // ── PHASE 2 SEAM (do NOT enable yet) — open to paid tiers with a one-liner:
+  //   return isActivePaid({ plan: account.plan ?? "", planStatus, daysLeft }) &&
+  //          PARCEL_TRACKING_TIERS.includes(String(account.plan).toLowerCase());
+  return false;
+}
+
+// ── Row shape ─────────────────────────────────────────────────────────────────
+export interface ParcelTrackingRow {
+  id: string;
+  trackingNo: string;        // 交貨便服務代碼 (F/E-code)
+  cmOrderNo: string | null;  // metadata only
+  buyerUsername: string | null;
+  recipientName: string | null;
+  storeId: string | null;    // scraped store (name in Phase 1)
+  recStore: string | null;   // SHOPMORE 取件門市 (once at store)
+  status: string;
+  statusMessage: string | null;
+  pickupDeadline: string | null; // YYYY-MM-DD (raw SHOPMORE recDate)
+  arrivedAt: string | null;
+  shipType: string | null;
+  specialType: string | null;
+  terminal: boolean;
+}
+
+export function rowToTracking(row: Record<string, unknown>): ParcelTrackingRow {
+  const s = (v: unknown): string | null => (v === null || v === undefined || v === "" ? null : String(v));
+  return {
+    id: String(row.id),
+    trackingNo: String(row.tracking_no ?? ""),
+    cmOrderNo: s(row.cm_order_no),
+    buyerUsername: s(row.buyer_username),
+    recipientName: s(row.recipient_name),
+    storeId: s(row.store_id),
+    recStore: s(row.rec_store),
+    status: String(row.status ?? "created"),
+    statusMessage: s(row.status_message),
+    pickupDeadline: s(row.pickup_deadline),
+    arrivedAt: s(row.arrived_at),
+    shipType: s(row.ship_type),
+    specialType: s(row.special_type),
+    terminal: row.terminal === true,
+  };
+}
+
+// ── Pure helpers (unit-tested) ────────────────────────────────────────────────
+
+// Chaseable = a C2C store-pickup unit with no special flow (home delivery /
+// return service). MIRRORS server/parcelTracking.js isChaseable byte-for-byte.
+export function isChaseable(shipType: string | null | undefined, specialType: string | null | undefined): boolean {
+  return String(shipType).trim().toUpperCase() === "C2C" && String(specialType || "").trim() === "";
+}
+
+// returning_soon is NOT a stored column — derive it from the raw statusMessage.
+// SHOPMORE's warning "將退回物流…" means the parcel is about to be sent back
+// (still at store, but the clock is red). The ACTUAL-return markers (退貨門市
+// etc.) are a different, terminal state (status='returned') handled by the poller.
+export function isReturningSoon(statusMessage: string | null | undefined): boolean {
+  return String(statusMessage || "").includes("將退回");
+}
+
+// Whole days from `today` (Taipei YYYY-MM-DD) to a YYYY-MM-DD deadline. Negative
+// = overdue. null when there is no deadline / an unparseable value. UTC-midnight
+// parse on both sides so it never drifts by a timezone.
+export function daysUntilDate(deadline: string | null | undefined, today: string): number | null {
+  if (!deadline) return null;
+  const d = Date.parse(`${deadline}T00:00:00Z`);
+  const t = Date.parse(`${today}T00:00:00Z`);
+  if (Number.isNaN(d) || Number.isNaN(t)) return null;
+  return Math.round((d - t) / 86400000);
+}
+
+// A waiting-pickup parcel is URGENT when it's about to be returned OR the pickup
+// deadline is ≤2 days away (including overdue). Only meaningful at_store.
+export function isUrgent(row: ParcelTrackingRow, today: string): boolean {
+  if (isReturningSoon(row.statusMessage)) return true;
+  const dl = daysUntilDate(row.pickupDeadline, today);
+  return dl !== null && dl <= 2;
+}
+
+export type ChaseTarget =
+  | { kind: "open"; handle: string; url: string }  // handle-shaped → open TikTok profile (NOT DM)
+  | { kind: "copy"; handle: string }               // present but not handle-shaped → copy it
+  | { kind: "none" };                              // no username
+
+// TikTok handles are letters/digits/dot/underscore. A stored buyer_username that
+// is a real name (spaces / CJK) is NOT handle-shaped → offer Copy instead. A
+// leading @ is stripped. Opens the PROFILE (manual chase) — never a DM URL.
+export function chaseTarget(buyerUsername: string | null | undefined): ChaseTarget {
+  const raw = String(buyerUsername ?? "").trim().replace(/^@+/, "");
+  if (!raw) return { kind: "none" };
+  if (/^[A-Za-z0-9._]{1,24}$/.test(raw)) return { kind: "open", handle: raw, url: `https://www.tiktok.com/@${raw}` };
+  return { kind: "copy", handle: raw };
+}
+
+export interface ParcelGroups {
+  waitingPickup: ParcelTrackingRow[]; // chaseable + at_store (urgent-first)
+  inTransit: ParcelTrackingRow[];     // chaseable + in_transit
+  pickedUp: ParcelTrackingRow[];      // chaseable + picked_up
+  returned: ParcelTrackingRow[];      // chaseable + returned
+  other: ParcelTrackingRow[];         // non-chaseable, or created/not_found/unknown
+}
+
+// Sort by soonest deadline first; rows with no deadline sink to the bottom.
+function byDeadline(today: string) {
+  return (a: ParcelTrackingRow, b: ParcelTrackingRow): number => {
+    const da = daysUntilDate(a.pickupDeadline, today);
+    const db = daysUntilDate(b.pickupDeadline, today);
+    if (da === null && db === null) return 0;
+    if (da === null) return 1;
+    if (db === null) return -1;
+    return da - db;
+  };
+}
+
+// Group by status into the 4 actionable buckets (chaseable only) + one muted
+// "other" bucket for non-chaseable / transient rows. waitingPickup is urgent-
+// first then soonest deadline; the rest are soonest-deadline. Never mutates input.
+export function groupParcels(rows: ParcelTrackingRow[], today: string): ParcelGroups {
+  const g: ParcelGroups = { waitingPickup: [], inTransit: [], pickedUp: [], returned: [], other: [] };
+  for (const r of rows) {
+    if (!isChaseable(r.shipType, r.specialType)) { g.other.push(r); continue; }
+    if (r.status === "at_store") g.waitingPickup.push(r);
+    else if (r.status === "in_transit") g.inTransit.push(r);
+    else if (r.status === "picked_up") g.pickedUp.push(r);
+    else if (r.status === "returned") g.returned.push(r);
+    else g.other.push(r); // created / not_found / unknown
+  }
+  const cmp = byDeadline(today);
+  g.waitingPickup.sort((a, b) => {
+    const ua = isUrgent(a, today), ub = isUrgent(b, today);
+    if (ua !== ub) return ua ? -1 : 1; // urgent first
+    return cmp(a, b);
+  });
+  g.inTransit.sort(cmp);
+  g.pickedUp.sort(cmp);
+  g.returned.sort(cmp);
+  g.other.sort(cmp);
+  return g;
+}
+
+// ── Load (own-scoped SELECT; getSession = LOCAL; ZERO poll) — parcelScan pattern ─
+async function uid(): Promise<string | null> {
+  if (!supabase) return null;
+  const { data } = await supabase.auth.getSession();
+  return data.session?.user?.id ?? null;
+}
+
+export const PARCEL_TRACKING_PAGE = 500; // Phase 1 is owner + googletest → tiny.
+
+export async function loadParcelTracking(): Promise<{ ok: boolean; rows: ParcelTrackingRow[]; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) return { ok: false, rows: [], error: "not configured" };
+  const me = await uid();
+  if (!me) return { ok: false, rows: [], error: "not signed in" };
+  const { data, error } = await supabase
+    .from("parcel_tracking")
+    .select("id, tracking_no, cm_order_no, buyer_username, recipient_name, store_id, rec_store, status, status_message, pickup_deadline, arrived_at, ship_type, special_type, terminal")
+    .eq("user_id", me)
+    .order("pickup_deadline", { ascending: true, nullsFirst: false })
+    .limit(PARCEL_TRACKING_PAGE);
+  if (error) return { ok: false, rows: [], error: error.message };
+  return { ok: true, rows: (data ?? []).map((r) => rowToTracking(r as Record<string, unknown>)) };
+}

@@ -1332,6 +1332,31 @@ const RAW: Record<string, Row> = {
   rd_shp_tap_go_live: { en: "Tap Connect to go live", fil: "I-tap ang Connect para mag-live", zh: "点按连接开始直播", "zh-TW": "點按連線開始直播", vi: "Nhấn Kết nối để lên sóng", th: "แตะเชื่อมต่อเพื่อไลฟ์", id: "Ketuk Sambungkan untuk live" },
   rd_shp_shop_name_fallback: { en: "Shopee shop", fil: "Shopee shop", zh: "Shopee 店铺", "zh-TW": "Shopee 賣場", vi: "Cửa hàng Shopee", th: "ร้าน Shopee", id: "Toko Shopee" },
   rd_shp_authorize_help: { en: "You'll be sent to Shopee to authorize. Come back here after — your shop appears above.", fil: "Ipapadala ka sa Shopee para mag-authorize. Bumalik dito pagkatapos — lalabas ang shop mo sa itaas.", zh: "你将前往 Shopee 进行授权。完成后返回这里——你的店铺会显示在上方。", "zh-TW": "你將前往 Shopee 進行授權。完成後返回這裡——你的賣場會顯示在上方。", vi: "Bạn sẽ được đưa tới Shopee để uỷ quyền. Quay lại đây sau — cửa hàng của bạn hiện ở trên.", th: "คุณจะถูกพาไปที่ Shopee เพื่ออนุญาต กลับมาที่นี่หลังจากนั้น — ร้านของคุณจะปรากฏด้านบน", id: "Anda akan diarahkan ke Shopee untuk otorisasi. Kembali ke sini setelahnya — toko Anda muncul di atas." },
+
+  // ── Pickup Status (7-11 賣貨便 parcel tracking / chase buyer) — Part 5 ──────────
+  rd_pt_title: { en: "Pickup Status", fil: "Status ng Pickup", zh: "取件状态", "zh-TW": "取件狀態", vi: "Trạng thái lấy hàng", th: "สถานะรับพัสดุ", id: "Status Pengambilan" },
+  rd_pt_sub: { en: "Chase buyers before parcels are returned", fil: "Habulin ang mga buyer bago maibalik ang parcel", zh: "在包裹被退回前催促买家", "zh-TW": "在包裹被退回前催促買家", vi: "Nhắc người mua trước khi bưu kiện bị trả lại", th: "ตามลูกค้าก่อนพัสดุจะถูกตีกลับ", id: "Ingatkan pembeli sebelum paket dikembalikan" },
+  rd_pt_refresh: { en: "Refresh", fil: "I-refresh", zh: "刷新", "zh-TW": "重新整理", vi: "Làm mới", th: "รีเฟรช", id: "Segarkan" },
+  rd_pt_loading: { en: "Loading…", fil: "Naglo-load…", zh: "加载中…", "zh-TW": "載入中…", vi: "Đang tải…", th: "กำลังโหลด…", id: "Memuat…" },
+  rd_pt_error: { en: "Couldn't load. Tap Refresh to try again.", fil: "Hindi ma-load. I-tap ang Refresh para subukan ulit.", zh: "加载失败。点击刷新重试。", "zh-TW": "載入失敗。點擊重新整理再試一次。", vi: "Không tải được. Nhấn Làm mới để thử lại.", th: "โหลดไม่สำเร็จ แตะรีเฟรชเพื่อลองอีกครั้ง", id: "Gagal memuat. Ketuk Segarkan untuk mencoba lagi." },
+  rd_pt_empty: { en: "No tracked parcels yet.", fil: "Wala pang tinatrack na parcel.", zh: "暂无追踪的包裹。", "zh-TW": "尚無追蹤的包裹。", vi: "Chưa có bưu kiện nào được theo dõi.", th: "ยังไม่มีพัสดุที่ติดตาม", id: "Belum ada paket yang dilacak." },
+  rd_pt_grp_waiting: { en: "Waiting pickup", fil: "Naghihintay ng pickup", zh: "待取件", "zh-TW": "待取件", vi: "Chờ lấy hàng", th: "รอรับพัสดุ", id: "Menunggu diambil" },
+  rd_pt_grp_transit: { en: "In transit", fil: "Nasa transit", zh: "运送中", "zh-TW": "運送中", vi: "Đang vận chuyển", th: "กำลังจัดส่ง", id: "Dalam perjalanan" },
+  rd_pt_grp_picked: { en: "Picked up", fil: "Nakuha na", zh: "已取件", "zh-TW": "已取件", vi: "Đã lấy hàng", th: "รับแล้ว", id: "Sudah diambil" },
+  rd_pt_grp_returned: { en: "Returned", fil: "Naibalik na", zh: "已退回", "zh-TW": "已退回", vi: "Đã trả lại", th: "ตีกลับแล้ว", id: "Dikembalikan" },
+  rd_pt_grp_other: { en: "Other", fil: "Iba pa", zh: "其他", "zh-TW": "其他", vi: "Khác", th: "อื่น ๆ", id: "Lainnya" },
+  rd_pt_other_note: { en: "Home delivery / return service / not yet updated", fil: "Home delivery / return service / hindi pa updated", zh: "宅配 / 退货服务 / 尚未更新", "zh-TW": "宅配 / 退貨服務 / 尚未更新", vi: "Giao tận nhà / dịch vụ trả hàng / chưa cập nhật", th: "ส่งถึงบ้าน / บริการตีกลับ / ยังไม่อัปเดต", id: "Kirim ke rumah / layanan retur / belum diperbarui" },
+  rd_pt_no_username: { en: "no username", fil: "walang username", zh: "无用户名", "zh-TW": "無使用者名稱", vi: "không có tên người dùng", th: "ไม่มีชื่อผู้ใช้", id: "tanpa nama pengguna" },
+  rd_pt_open_profile: { en: "Open profile", fil: "Buksan ang profile", zh: "打开主页", "zh-TW": "開啟個人檔案", vi: "Mở hồ sơ", th: "เปิดโปรไฟล์", id: "Buka profil" },
+  rd_pt_copy_username: { en: "Copy username", fil: "Kopyahin ang username", zh: "复制用户名", "zh-TW": "複製使用者名稱", vi: "Sao chép tên người dùng", th: "คัดลอกชื่อผู้ใช้", id: "Salin nama pengguna" },
+  rd_pt_copied: { en: "Copied", fil: "Nakopya na", zh: "已复制", "zh-TW": "已複製", vi: "Đã sao chép", th: "คัดลอกแล้ว", id: "Disalin" },
+  rd_pt_no_deadline: { en: "no deadline", fil: "walang deadline", zh: "无期限", "zh-TW": "無期限", vi: "không có hạn", th: "ไม่มีกำหนด", id: "tanpa tenggat" },
+  rd_pt_overdue: { en: "overdue", fil: "lampas na", zh: "已逾期", "zh-TW": "已逾期", vi: "quá hạn", th: "เกินกำหนด", id: "lewat tenggat" },
+  rd_pt_due_today: { en: "due today", fil: "ngayon na ang deadline", zh: "今天到期", "zh-TW": "今天到期", vi: "hết hạn hôm nay", th: "ครบกำหนดวันนี้", id: "jatuh tempo hari ini" },
+  rd_pt_day_left: { en: "1 day left", fil: "1 araw na lang", zh: "还剩 1 天", "zh-TW": "還剩 1 天", vi: "còn 1 ngày", th: "เหลือ 1 วัน", id: "sisa 1 hari" },
+  rd_pt_days_left: { en: "{n} days left", fil: "{n} araw na lang", zh: "还剩 {n} 天", "zh-TW": "還剩 {n} 天", vi: "còn {n} ngày", th: "เหลือ {n} วัน", id: "sisa {n} hari" },
+  rd_pt_returning_soon: { en: "returning soon", fil: "malapit nang ibalik", zh: "即将退回", "zh-TW": "即將退回", vi: "sắp bị trả lại", th: "กำลังจะตีกลับ", id: "segera dikembalikan" },
+  rd_pt_urgent: { en: "urgent", fil: "urgent", zh: "紧急", "zh-TW": "緊急", vi: "khẩn", th: "ด่วน", id: "mendesak" },
 };
 
 // Transpose RAW (key→langs) into REDESIGN_STRINGS (lang→keys).

@@ -37,13 +37,14 @@ const ic = {
   contact: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3.5" y="5" width="17" height="14" rx="2.5" stroke="currentColor" strokeWidth="1.6" /><circle cx="9" cy="11" r="2.3" stroke="currentColor" strokeWidth="1.5" /><path d="M5.6 16.2a3.6 3.6 0 0 1 6.8 0M14.5 9.5h3.5M14.5 12.5h3.5M14.5 15h2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>,
   doclock: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M6 3h8l4 4v14H6z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><path d="M13 3v5h5" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><rect x="9" y="12.5" width="6" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.4" /><path d="M10.3 12.5v-1a1.7 1.7 0 0 1 3.4 0v1" stroke="currentColor" strokeWidth="1.4" /></svg>,
   help: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.7" /><path d="M9.4 9.3a2.6 2.6 0 0 1 5 .9c0 1.7-2.4 2-2.4 3.6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><circle cx="12" cy="17" r="1.1" fill="currentColor" /></svg>,
+  pin: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 21s6-5.2 6-10a6 6 0 1 0-12 0c0 4.8 6 10 6 10Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><circle cx="12" cy="11" r="2.2" stroke="currentColor" strokeWidth="1.7" /></svg>,
   trash: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M5 7h14M10 7V5h4v2M6 7l1 13h10l1-13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>,
   exit: <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /><path d="M9 8 5 12l4 4M5 12h11" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>,
 };
 
 export default function SettingsHub({
   onGeneral, onCustomers, onAdmin, onSales, onShipping, onCustomerData, onLegal, onDelete, onLogout,
-  isAdmin = false, onParcelScan, onCustomerDetails, parcelLocked = false, onParcelUpsell,
+  isAdmin = false, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, onParcelUpsell,
 }: {
   onGeneral: () => void; onCustomers: () => void;
   onAdmin: () => void; onSales: () => void; onShipping: () => void;
@@ -51,6 +52,7 @@ export default function SettingsHub({
   isAdmin?: boolean; // Phase 5h — owner-only tiles (matches production isAdminUser gating)
   onParcelScan?: () => void; // Parcel Scan A1 — passed ONLY when canUseParcelScan allows (admin/test acct)
   onCustomerDetails?: () => void; // Customer Details phonebook — SAME gate as Parcel Scan (parcelScanVisible)
+  onParcelTracking?: () => void; // Pickup Status (Part 5) — passed ONLY when parcelTrackingVisible (admin/googletest)
   parcelLocked?: boolean; // basic/free: show Parcel Scan + Customer Details as LOCKED upsell tiles
   onParcelUpsell?: () => void; // locked-tile click → neutral contact-support popup (never opens the screen)
 }) {
@@ -84,6 +86,8 @@ export default function SettingsHub({
           {onCustomerDetails
             ? <Tile icon={ic.contact} label={t.rd_cd_title} onClick={onCustomerDetails} testid="tile-customerdetails" />
             : parcelLocked && onParcelUpsell && <Tile icon={ic.contact} label={t.rd_cd_title} onClick={onParcelUpsell} locked testid="tile-customerdetails-locked" />}
+          {/* Pickup Status (Part 5) — the prop IS the gate (parcelTrackingVisible: admin/googletest). No locked variant. */}
+          {onParcelTracking && <Tile icon={ic.pin} label={t.rd_pt_title} onClick={onParcelTracking} testid="tile-parceltracking" />}
           {isAdmin && <Tile icon={ic.database} label={t.rd_sh_customer_data} onClick={onCustomerData} />}
           <Tile icon={ic.doclock} label={t.lg_pt_title} onClick={onLegal} />
           {/* Need help? — support entry point, directly ABOVE Delete Account.

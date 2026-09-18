@@ -245,9 +245,13 @@ describe("server.js route wiring (structural — the server.js convention)", () 
     // Regression pin: the parser must never move back in front of auth.
     expect(src).not.toMatch(/app\.post\(\s*"\/admin\/parcel-scan",\s*express\.json/);
   });
-  it("the GLOBAL json parser keeps the default limit and only SKIPS the parcel-scan path", () => {
+  it("the GLOBAL json parser keeps the default limit and SKIPS the parcel-scan + tracking-poll paths", () => {
     expect(src).toContain("const defaultJsonParser = express.json();");
-    expect(src).toMatch(/req\.path === "\/admin\/parcel-scan" \? next\(\) : defaultJsonParser\(req, res, next\)/);
+    // both admin paths that bypass the global parser (parcel-scan = 8mb photo body;
+    // parcel-tracking-poll = secret-token check before any body handling)
+    expect(src).toMatch(/req\.path === "\/admin\/parcel-scan"/);
+    expect(src).toMatch(/req\.path === "\/admin\/parcel-tracking-poll"/);
+    expect(src).toMatch(/\? next\(\) : defaultJsonParser\(req, res, next\)/);
     // no global limit raise anywhere
     expect(src).not.toMatch(/app\.use\(express\.json\(\{/);
   });
@@ -263,5 +267,36 @@ describe("server.js route wiring (structural — the server.js convention)", () 
     const routeSlice = src.slice(src.indexOf('"/admin/parcel-scan"'));
     const routeEnd = routeSlice.indexOf("});");
     expect(routeSlice.slice(0, routeEnd)).not.toMatch(/json\(\{[^}]*raw/);
+  });
+});
+
+describe("server.js /admin/parcel-tracking-poll (structural — secret-gated cron route)", () => {
+  const src = readFileSync("server.js", "utf8"); // vitest cwd = repo root (no __dirname → stays at typecheck baseline)
+  const route = (() => {
+    const i = src.indexOf('app.post("/admin/parcel-tracking-poll"');
+    return src.slice(i, i + src.slice(i).indexOf("\n});") + 4);
+  })();
+
+  it("is a SECRET-token gate (PARCEL_POLL_TOKEN), NOT requireAuth/requireAdmin (cron can't present a JWT)", () => {
+    // the route is registered WITHOUT requireAuth/requireAdmin middleware
+    expect(src).toMatch(/app\.post\(\s*"\/admin\/parcel-tracking-poll",\s*async \(req, res\)/);
+    expect(route).not.toContain("requireAuth");
+    expect(route).not.toContain("requireAdmin");
+    // token compared against the env secret; 403 on mismatch, 503 when unconfigured
+    expect(route).toMatch(/token !== PARCEL_POLL_TOKEN/);
+    expect(route).toMatch(/status\(403\)/);
+    expect(route).toMatch(/!PARCEL_POLL_TOKEN/);
+  });
+
+  it("checks the token BEFORE touching the DB / OCR (no work for a bad caller)", () => {
+    expect(route.indexOf("token !== PARCEL_POLL_TOKEN")).toBeLessThan(route.indexOf("createOcr("));
+    expect(route.indexOf("token !== PARCEL_POLL_TOKEN")).toBeLessThan(route.indexOf("runPoll("));
+  });
+
+  it("runs as service role with an EXPLICIT poll user id, single-flight, and ALWAYS terminates the OCR worker", () => {
+    expect(route).toMatch(/runPoll\(\{ serviceSb, userId: PARCEL_POLL_USER_ID \|\| null, ocr \}\)/);
+    expect(route).toContain("parcelPollRunning"); // single-flight guard
+    expect(route).toMatch(/status\(409\)/);        // rejects an overlapping run
+    expect(route).toMatch(/finally \{[\s\S]*ocr\.terminate\(\)/); // worker never kept warm
   });
 });
