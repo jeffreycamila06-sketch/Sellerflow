@@ -8,6 +8,7 @@ import { translateBroadcast } from "./server/broadcastTranslate.js";
 import { scanParcelImage, SCAN_MEDIA_TYPES } from "./server/parcelScan.js";
 import { runScanWithCredit } from "./server/parcelCredits.js";
 import { checkEmapStore } from "./server/emapCheck.js";
+import { createOcr, runPoll } from "./server/parcelTrackingRunner.js";
 import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs, checkConnectRate, CONNECT_RATE_WINDOW_MS, isOwningConnection, relaySessionId } from "./server/connectionHealth.js";
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
 import { sanitizeCommentPayload } from "./server/sanitize.js";
@@ -29,6 +30,12 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
 // Parcel Scan (admin-only dogfood) vision model — overridable on Render without
 // a deploy; empty → the core's DEFAULT_SCAN_MODEL.
 const PARCEL_SCAN_MODEL = process.env.PARCEL_SCAN_MODEL || "";
+// Parcel pickup-tracking poller (SHOPMORE). Triggered by cron-job.org, which cannot
+// present a Supabase JWT → gated by a SHARED SECRET (NOT requireAdmin). PARCEL_POLL_USER_ID
+// scopes the service-role poll to ONE user (Phase 1 = owner); empty → all users (Phase 2).
+const PARCEL_POLL_TOKEN = process.env.PARCEL_POLL_TOKEN || "";
+const PARCEL_POLL_USER_ID = process.env.PARCEL_POLL_USER_ID || "";
+let parcelPollRunning = false; // single-flight: never overlap two poll runs (RAM + anti-block)
 const sb = (SUPABASE_URL && SUPABASE_KEY)
   ? createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false, autoRefreshToken: false } })
   : null;
@@ -102,7 +109,10 @@ app.options(/.*/, cors(corsOptions));
 // route definition). The global parser must SKIP that path — otherwise it
 // rejects the large body with 413 before the route's parser ever runs.
 const defaultJsonParser = express.json();
-app.use((req, res, next) => (req.path === "/admin/parcel-scan" ? next() : defaultJsonParser(req, res, next)));
+// /admin/parcel-tracking-poll is cron-triggered with no meaningful body and gates
+// on a shared-secret token BEFORE doing anything — skip the global parser so the
+// token check runs before any body handling (the B1 auth-before-parser discipline).
+app.use((req, res, next) => (req.path === "/admin/parcel-scan" || req.path === "/admin/parcel-tracking-poll" ? next() : defaultJsonParser(req, res, next)));
 
 function bearerToken(req) {
   const h = String(req.get("authorization") || "");
@@ -892,6 +902,34 @@ app.post("/admin/parcel-emap-check", requireAuth, async (req, res) => {
     console.log(`[EMAP_CHECK] RAW ${JSON.stringify(String(result.raw).slice(0, 500))}`);
   }
   return res.json({ success: true, storeId: result.storeId, status: result.status, storeName: result.storeName, address: result.address });
+});
+
+// ── SHOPMORE pickup-tracking poll (cron-triggered) ──────────────────────────────
+// SECRET-gated (cron-job.org can't present a JWT): PARCEL_POLL_TOKEN via ?token= or
+// the X-Poll-Token header, checked BEFORE any body handling. Runs the impure runner
+// as SERVICE ROLE (explicit user_id scope via PARCEL_POLL_USER_ID). Single-flight so
+// two cron pings can never overlap (RAM + anti-block). Creates ONE tesseract worker
+// and TERMINATES it in finally (never kept warm). NOT wired to cron until the
+// on-Render memory probe (scripts/tesseract-mem-probe.js) confirms the RSS headroom.
+app.post("/admin/parcel-tracking-poll", async (req, res) => {
+  if (!PARCEL_POLL_TOKEN) return res.status(503).json({ ok: false, error: "poll_not_configured" });
+  const token = req.query.token || req.headers["x-poll-token"];
+  if (token !== PARCEL_POLL_TOKEN) return res.status(403).json({ ok: false, error: "forbidden" });
+  if (!serviceSb) return res.status(503).json({ ok: false, error: "no_service_role" });
+  if (parcelPollRunning) return res.status(409).json({ ok: false, error: "already_running" });
+  parcelPollRunning = true;
+  let ocr = null;
+  try {
+    ocr = await createOcr();
+    const summary = await runPoll({ serviceSb, userId: PARCEL_POLL_USER_ID || null, ocr });
+    return res.json(summary);
+  } catch (e) {
+    console.error("[PARCEL-POLL] run failed:", e && e.message);
+    return res.status(500).json({ ok: false, error: "run_failed" });
+  } finally {
+    if (ocr) { try { await ocr.terminate(); } catch { /* worker already gone */ } }
+    parcelPollRunning = false;
+  }
 });
 
 function emitTikTokStatus({ sellerId, username, sessionId, connected, reconnecting = false, reason = "", nextRetryMs = 0 }) {
