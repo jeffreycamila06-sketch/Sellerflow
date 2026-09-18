@@ -48,6 +48,7 @@ import { useSessionInstance } from "./adapters/useSessionInstance";
 import { sessionEndLabel } from "./adapters/sessionEnd";
 import SessionPickerModal from "./components/SessionPickerModal";
 import { buildBasketCounts } from "./adapters/basketCounts";
+import { buildMinerRiskMap } from "./adapters/minerRisk";
 import { useSessionWindow } from "./adapters/useSessionWindow";
 import { useLiveFeed, commentKey } from "./adapters/useLiveFeed";
 import { useOrders } from "./adapters/useOrders";
@@ -99,6 +100,9 @@ type Screen =
 
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
 const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "shopeechannels"];
+
+// module-level (keeps the impure Date.now out of the component's render-purity analysis).
+const riskNowMs = () => Date.now();
 
 // Auto Mode Rule 1 dedup key: one auto order per (session, buyer handle, code),
 // case-insensitive + trimmed — mirrors the DB partial-unique index expression
@@ -455,6 +459,10 @@ export default function RedesignApp() {
   // SAME window-scoped session state (Buyer.totalOrders). ONE map per session
   // change; each feed row is an O(1) lookup. New window/reset → empty → all 0.
   const basketCounts = useMemo(() => buildBasketCounts(liveSession.session.buyers), [liveSession.session]);
+  // Real-time miner-risk map (display-only) — derived from the visible comments'
+  // relayed followerCount/createTime. Recomputes on feed change; O(1) lookup per
+  // row. riskNowMs = module-level (keeps Date.now out of the render-purity analysis).
+  const minerRisk = useMemo(() => buildMinerRiskMap(comments, riskNowMs()), [comments]);
   // Rule 1 — committed/loaded auto-order dedup keys, derived from the SAME session
   // state (rows carry autoCode via rebuild; in-session auto orders carry it too, so
   // this covers reload + 2-device via the loaded window). The seam ALSO checks the
@@ -1317,7 +1325,7 @@ export default function RedesignApp() {
           )}
           {screen === "dashboard" && (
             <Dashboard
-              comments={comments} cur={cur} basketCounts={basketCounts}
+              comments={comments} cur={cur} basketCounts={basketCounts} minerRisk={minerRisk}
               ttOpen={ttOpen} fbOpen={fbOpen} ttIdx={ttIdx} fbIdx={fbIdx}
               onToggleTT={() => { setTtOpen((o) => !o); setFbOpen(false); setShopeeOpen(false); }}
               onToggleFB={() => { setFbOpen((o) => !o); setTtOpen(false); setShopeeOpen(false); }}

@@ -1283,6 +1283,15 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
       // row so a later restored copy of the same message can render "Ordered ✓".
       // Legacy top-level shape (see server/initialComments.js msgIdOf).
       msgId: String(data.msgId || ""),
+      // Miner-risk signals — READ-OFF-DATA ONLY (no profile fetch, no extra network
+      // call). Both are CONDITIONAL: the connector's getUserAttributes adds followInfo
+      // / userDetails only when TikTok includes them on THIS event, so an absent field
+      // relays as `undefined` (backward-compatible — the client treats missing as
+      // "unknown", never risky). followerCount = data.followInfo.followerCount;
+      // accountCreatedAt = data.userDetails.createTime (ACCOUNT creation epoch —
+      // DISTINCT from the message createTime handled elsewhere).
+      followerCount: data.followInfo?.followerCount,
+      accountCreatedAt: data.userDetails?.createTime,
       time: new Date().toLocaleTimeString("en-US", { timeZone: "Asia/Taipei" }),
       timestamp: new Date().toISOString(),
     };
