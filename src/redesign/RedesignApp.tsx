@@ -1372,7 +1372,7 @@ export default function RedesignApp() {
           )}
           {screen === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} orders={ordersList} state={ordersState} onExport={exportOrders} onGoShipping={() => setScreen("shipping")}
             historyOrders={ordersHistory.orders} historyState={ordersHistory.state} onEnsureHistory={ordersHistory.ensureLoaded} onReprintOrder={onReprintOrder} todayId={liveSession.dayId} buyers={liveSession.session.buyers} />}
-          {screen === "products" && <Products cur={cur} onProductsChanged={refreshAutoFromProducts} />}
+          {screen === "products" && <Products cur={cur} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
           {screen === "miners" && <Miners cur={cur} miners={minerList} stats={minerStats} onExport={exportMiners} />}
           {screen === "menu" && (
             <SettingsHub

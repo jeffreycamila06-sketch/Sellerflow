@@ -59,7 +59,28 @@ export function deleteProduct(list: Product[], id: number): Product[] {
 
 // App.tsx:1314 — case-insensitive name/sku match (+ live_code, so a seller can
 // find a product by the code they announce).
+// Search widened (2026: "lawakan ang search") — name / SKU / live code AND price.
+// Instant/client-side; ADDITIVE (the name/sku/liveCode matches are byte-unchanged).
 export function filterProducts(list: Product[], q: string): Product[] {
   const s = q.toLowerCase();
-  return list.filter((p) => p.name.toLowerCase().includes(s) || p.sku.toLowerCase().includes(s) || (p.liveCode || "").toLowerCase().includes(s));
+  return list.filter((p) =>
+    p.name.toLowerCase().includes(s) ||
+    p.sku.toLowerCase().includes(s) ||
+    (p.liveCode || "").toLowerCase().includes(s) ||
+    String(p.price).includes(s));
+}
+
+// Stock filter pills (All · In stock · Low · Out). Drives off the SAME statuses the
+// Total/In-stock/Low/Out stat cards use (statusForStock) — "in" = Active (> 5),
+// "low" = Low stock (1..5), "out" = Out of stock (0) — so the pill counts and the
+// stat cards can never disagree. PURE.
+export type StockFilter = "all" | "in" | "low" | "out";
+const STOCK_FILTER_STATUS: Record<Exclude<StockFilter, "all">, string> = {
+  in: "Active",
+  low: "Low stock",
+  out: "Out of stock",
+};
+export function filterByStock(list: Product[], f: StockFilter): Product[] {
+  if (f === "all") return list;
+  return list.filter((p) => statusForStock(p.stock) === STOCK_FILTER_STATUS[f]);
 }
