@@ -86,8 +86,14 @@ export function liveOrdersToRedesign(rebuilt: RebuiltSession): Order[] {
 export function filterOrders(orders: Order[], query: string): Order[] {
   const q = query.trim().toLowerCase();
   if (!q) return orders;
-  return orders.filter((o) =>
-    `${o.id} ${o.buyer} ${o.handle} ${o.items} ${o.time} ${o.total} ${o.platform}`.toLowerCase().includes(q));
+  // Widened 2026-09 (additive): also match the DATE — both the stored ISO form
+  // (2026-07-13) and the slash form (2026/07/13, so "07/13" hits what the row's
+  // date chip shows). #bNum / name / @handle / item / time / total / platform
+  // are byte-unchanged.
+  return orders.filter((o) => {
+    const date = o.date ?? "";
+    return `${o.id} ${o.buyer} ${o.handle} ${o.items} ${o.time} ${o.total} ${o.platform} ${date} ${date.replace(/-/g, "/")}`.toLowerCase().includes(q);
+  });
 }
 
 // Buyer receipt (2026-09-11) — a numeric Orders search ("1") shows ONE grouped

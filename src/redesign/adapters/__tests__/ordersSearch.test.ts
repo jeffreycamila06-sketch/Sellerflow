@@ -54,6 +54,12 @@ describe("filterOrders — one input, every field", () => {
     expect(filterOrders(list, "   ")).toHaveLength(2);
     expect(filterOrders(list, "zzz-none")).toHaveLength(0);
   });
+  it("widened: also matches the DATE (ISO and slash form) — additive", () => {
+    const dated = [o({ id: "#5", date: "2026-07-13" }), o({ id: "#6", date: "2026-08-02", orderNum: 9 })];
+    expect(filterOrders(dated, "2026-07-13").map((x) => x.id)).toEqual(["#5"]);
+    expect(filterOrders(dated, "08/02").map((x) => x.id)).toEqual(["#6"]); // slash form of the date chip
+    expect(filterOrders(dated, "2026").map((x) => x.id).sort()).toEqual(["#5", "#6"]); // both share the year
+  });
 });
 
 describe("historyRangeFor — zero overlap with the loaded window, purge-aligned", () => {
