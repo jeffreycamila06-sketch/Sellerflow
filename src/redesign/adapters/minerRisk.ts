@@ -33,10 +33,17 @@ export function parseCreateMs(v: string | number | undefined | null): number | n
 //   🟡 watch : EXACTLY ONE of {age < 7d, followerCount === 0}
 //   ⚪ unknown: followerCount or createTime missing/undefined
 export function riskFor(
-  signals: { followerCount?: number; accountCreatedAt?: string | number },
+  signals: { followerCount?: number | string; accountCreatedAt?: string | number },
   nowMs: number,
 ): RiskLevel | null {
-  const fc = typeof signals.followerCount === "number" && Number.isFinite(signals.followerCount) ? signals.followerCount : null;
+  // followerCount arrives from the TikTok connector as a numeric STRING ("0",
+  // "59"…) — the protobuf int64 decoder emits `.toString()` (tiktok-schema
+  // User_FollowInfo). Coerce: finite + non-empty + non-null → the number, else
+  // null (→ unknown, never risky). accountCreatedAt is likewise a numeric string
+  // and is handled by parseCreateMs (Number(v)).
+  const rawFc = signals.followerCount;
+  const nFc = rawFc == null || rawFc === "" ? NaN : Number(rawFc);
+  const fc = Number.isFinite(nFc) ? nFc : null;
   const createMs = parseCreateMs(signals.accountCreatedAt);
   if (fc === null || createMs === null) return "unknown"; // missing data — NEVER risky
   const isNew = (nowMs - createMs) / MS_PER_DAY < RISK_AGE_DAYS;

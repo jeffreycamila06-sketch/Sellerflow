@@ -43,7 +43,7 @@ export interface Comment { id: string; name: string; handle: string; text: strin
   // Miner-risk signals (additive, DISPLAY-ONLY; relayed off the TikTok comment
   // event — no profile fetch). Both CONDITIONAL: undefined when TikTok omitted
   // followInfo/userDetails on that event → the badge shows "unknown", never risky.
-  followerCount?: number; accountCreatedAt?: string | number; }
+  followerCount?: number | string; accountCreatedAt?: string | number; }
 
 // (F-batch sweep: the INCOMING/SEED_COMMENTS sample streams are gone — the live
 // feed has been the real socket since 5d; nothing consumed them.)
