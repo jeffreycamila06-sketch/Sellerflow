@@ -1380,6 +1380,10 @@ const RAW: Record<string, Row> = {
   rd_dash_risk_risky: { en: "New account (<7d) with no followers", fil: "Bagong account (<7d) na walang followers", zh: "新账号（<7天）且无粉丝", "zh-TW": "新帳號（<7天）且無粉絲", vi: "Tài khoản mới (<7 ngày) không có người theo dõi", th: "บัญชีใหม่ (<7 วัน) ไม่มีผู้ติดตาม", id: "Akun baru (<7 hari) tanpa pengikut" },
   rd_dash_risk_watch: { en: "New account or no followers — take care", fil: "Bagong account o walang followers — mag-ingat", zh: "新账号或无粉丝——请留意", "zh-TW": "新帳號或無粉絲——請留意", vi: "Tài khoản mới hoặc không có người theo dõi — cẩn thận", th: "บัญชีใหม่หรือไม่มีผู้ติดตาม — โปรดระวัง", id: "Akun baru atau tanpa pengikut — hati-hati" },
   rd_dash_risk_unknown: { en: "Can't verify this account (no data on this comment)", fil: "Hindi ma-verify ang account (walang data sa comment na ito)", zh: "无法验证该账号（此评论无数据）", "zh-TW": "無法驗證此帳號（此留言無資料）", vi: "Không xác minh được tài khoản (bình luận này không có dữ liệu)", th: "ตรวจสอบบัญชีนี้ไม่ได้ (คอมเมนต์นี้ไม่มีข้อมูล)", id: "Tidak bisa memverifikasi akun ini (komentar ini tanpa data)" },
+  // Short chip tags (icon + this label; full reason = the tooltip above).
+  rd_dash_risk_tag_risky: { en: "NEW", fil: "BAGO", zh: "新号", "zh-TW": "新帳", vi: "MỚI", th: "ใหม่", id: "BARU" },
+  rd_dash_risk_tag_watch: { en: "CHECK", fil: "SURI", zh: "留意", "zh-TW": "留意", vi: "LƯU Ý", th: "ระวัง", id: "CEK" },
+  rd_dash_risk_tag_unknown: { en: "?", fil: "?", zh: "?", "zh-TW": "?", vi: "?", th: "?", id: "?" },
 
   // ── Products upgrade (2026-09-18): export dropdown · filter pills · quick stock edit ──
   rd_prd_export_excel: { en: "Excel (.xlsx)", fil: "Excel (.xlsx)", zh: "Excel (.xlsx)", "zh-TW": "Excel (.xlsx)", vi: "Excel (.xlsx)", th: "Excel (.xlsx)", id: "Excel (.xlsx)" },
