@@ -22,12 +22,15 @@ import type { LiveSessionRow } from "../../lib/orderLogic";
 // 1 (not 3) → that device runs single-day until a full close-open. Rollout note:
 // full close-open ALL phones before picking 4d (same hazard class as when 2/3
 // first shipped).
-export type WindowDays = 1 | 2 | 3 | 4;
+export type WindowDays = 1 | 2 | 3 | 4 | 5;
 
 // ── PURE window math (YYYY-MM-DD Taipei calendar-day strings) — unit-tested ──
 
 export function clampWindowDays(n: number): WindowDays {
-  return n === 2 ? 2 : n === 3 ? 3 : n === 4 ? 4 : 1; // anything else → 1 (safe default)
+  // 5 is the HARD ceiling (added 2026-09-18): the live_session_orders purge runs
+  // at 8 days, so a 5-day session keeps a 3-day buffer. 6+ must NEVER pass (6 → a
+  // 2-day buffer, 7 → 1-day) → anything else falls back to 1 (safe default).
+  return n === 2 ? 2 : n === 3 ? 3 : n === 4 ? 4 : n === 5 ? 5 : 1;
 }
 
 // Whole calendar days from `from` to `to` (parsed as UTC midnight to avoid any

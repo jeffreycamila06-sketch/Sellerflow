@@ -53,7 +53,7 @@ as $$
 declare
   v_id uuid := gen_random_uuid();
 begin
-  if p_days is null or p_days < 1 or p_days > 4 then
+  if p_days is null or p_days < 1 or p_days > 5 then  -- 5-day ceiling (2026-09-18; 8-day purge keeps a 3-day buffer)
     raise exception 'invalid session length: %', p_days;
   end if;
   insert into public.seller_session_config

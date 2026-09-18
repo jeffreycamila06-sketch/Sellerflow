@@ -2871,6 +2871,31 @@ feature-detect — walang crash, natutulog gaya ng dati).
   sa session history kung sakaling may shell na pumalya — hindi kinailangan.)
 - Branch cleanup: idagdag ang `claude/wake-lock` sa GitHub UI cleanup list.
 
+## 5-DAY SESSION WINDOW ✅ (branch `claude/session-5day`, 2026-09-18) — supersedes the 4-day ceiling below
+Extended the session-length picker to **5 days** (1/2/3/4/**5**). The 4-day options
+are byte-unchanged; only `5` was appended. **NEW CEILING = 5; 6+ stays FORBIDDEN.**
+- **Buffer math (Jeff's rule):** `buffer = purge_days − session_length`. To keep a
+  **3-day buffer** at N=5, the `live_session_orders` pg_cron purge was extended
+  **7 → 8 days** (jobid 1 `purge-old-live-session-orders`, rescheduled in place via
+  MCP; mirror `sql/40_live_session_retention_8day.sql`). 8−5 = 3. **Zero data
+  rewrite** — the purge just runs one Taipei-day later; every existing row +
+  `public.orders` billing ledger untouched. A 6-day session would drop to a 2-day
+  buffer (7 → 1-day) → **6/7 remain hard-blocked**.
+- **The change set (append-only):** `SESSION_OPTS` `[1,2,3,4]`→`[1,2,3,4,5]`
+  (subtitle auto-renders via the existing `rd_dash_nday_live` template — NO new i18n
+  key); `WindowDays` type `1|2|3|4|5`; `clampWindowDays` adds `n===5?5` (6+ → 1, the
+  hard ceiling); `start_session(p_days)` RPC cap `>4`→`>5` (sql/21, applied to prod +
+  mirror). The test flipped `clampWindowDays(5)` 1→5 and ADDED `clampWindowDays(6/7)===1`.
+- **The legacy `window_days` CHECK(1..4) is UNTOUCHED and never violated:** the picker
+  writes the NEW `session_window_days` column via `start_session`; the legacy column's
+  only writer (`ensureWindowOpen`) sources its N from that CHECK-bound legacy column
+  itself, so it can never receive a 5. The 5 lives ONLY in `session_window_days`.
+- **N-generic everywhere else:** buyer-number window, `sessionEnd` label, load logic
+  all take N as-is → a 5 behaves exactly like a 4, one day longer. Existing 1–4 saved
+  sessions read back identically. Same multi-device transitional caveat as the 4-day
+  rollout (an OLD bundle reading `session_window_days=5` clamps to 1 until full
+  close-open) — operational, not code.
+
 ## 4-DAY SESSION WINDOW ✅ (branch `claude/4day-session`; DB constraint APPLIED muna ni chat-Claude)
 Pinalawak ang multi-day session sa **4 days** (seller requests; egress verified
 ni chat-Claude vs totoong 30-day data: worst ~3,164 rows ≈ 630KB per open,

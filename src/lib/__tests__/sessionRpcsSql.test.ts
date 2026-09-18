@@ -27,10 +27,10 @@ describe("sql/21 session RPCs", () => {
     expect(code).toContain("session_window_days - 1");
   });
 
-  it("start_session validates length 1..4 and stamps server now() + a fresh uuid", () => {
+  it("start_session validates length 1..5 and stamps server now() + a fresh uuid", () => {
     expect(code).toContain("gen_random_uuid()");
     expect(code).toMatch(/session_started_at\s*[=,]?\s*now\(\)|values[\s\S]*now\(\)/);
-    expect(code).toContain("p_days < 1 or p_days > 4");
+    expect(code).toContain("p_days < 1 or p_days > 5"); // 5-day ceiling (2026-09-18)
     expect(code).toContain("raise exception");
   });
 
