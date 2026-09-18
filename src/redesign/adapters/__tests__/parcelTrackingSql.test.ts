@@ -7,7 +7,12 @@
 //      surface) with a pinned search_path,
 //   4. the buyer-username link matches on recipient_name + store_id +
 //      order_amount AND filters by an EXPLICIT se.user_id = new.user_id (the
-//      Miners lesson — never rely on RLS inside a trigger the poller also fires),
+//      Miners lesson — never rely on RLS inside a trigger the poller also fires).
+//      ⚠️ SUPERSEDED by sql/39: the LIVE trigger drops store_id (the myship
+//      order-list has only the store NAME) and adds a 14-day recency window +
+//      the strict single-match ambiguity rule. The sql/37 assertions below still
+//      validate the sql/37 FILE (its historical mirror); the "sql/39" describe
+//      block pins the current live invariants.
 //   5. cm_order_no is metadata only — it is NEVER a join predicate to
 //      shipping_entries,
 //   6. status enum carries the 7 states; terminal defaults false.
@@ -47,7 +52,7 @@ describe("sql/37 parcel_tracking", () => {
     expect(lower).toContain("set search_path to 'public'");
   });
 
-  it("link matches recipient_name + store_id + order_amount, filtered by explicit se.user_id = new.user_id", () => {
+  it("[original, superseded by sql/39] link matches recipient_name + store_id + order_amount, filtered by explicit se.user_id = new.user_id", () => {
     expect(linkBlock).toContain("se.user_id = new.user_id");         // explicit own-scope (Miners lesson)
     expect(linkBlock).toContain("se.store_id = new.store_id");
     expect(linkBlock).toContain("se.order_amount = new.order_amount");
@@ -74,6 +79,56 @@ describe("sql/37 parcel_tracking", () => {
   it("BEFORE insert-or-update trigger wired to the link function", () => {
     expect(lower).toContain("before insert or update on public.parcel_tracking");
     expect(lower).toContain("execute function public.link_parcel_tracking()");
+  });
+});
+
+describe("sql/39 parcel_tracking link (relaxed + STRICT ambiguity)", () => {
+  const sql39 = readFileSync(resolve(__dirname, "../../../../sql", "39_parcel_tracking_link.sql"), "utf8");
+  const l39 = sql39.toLowerCase();
+  // The relaxed lookup: the first shipping_entries scan (name + amount + window).
+  const block39 = (l39.match(/from public\.shipping_entries[\s\S]*?14 days'/) || [""])[0];
+
+  it("adds the optional recipient_phone tie-breaker column (additive, if-not-exists)", () => {
+    expect(l39).toContain("add column if not exists recipient_phone");
+  });
+
+  it("stays SECURITY INVOKER (never DEFINER) with a pinned search_path", () => {
+    expect(l39).toContain("security invoker");
+    expect(l39).not.toContain("security definer");
+    expect(l39).toContain("set search_path to 'public'");
+  });
+
+  it("match key = recipient_name + order_amount + 14-day recency, own-scoped — NO store_id", () => {
+    expect(block39).toContain("se.user_id = new.user_id");              // explicit own-scope (Miners lesson)
+    expect(block39).toContain("se.order_amount = new.order_amount");
+    expect(block39).toMatch(/lower\(trim\(coalesce\(se\.recipient_name/);
+    expect(block39).toContain("se.created_at >= now() - interval '14 days'");
+    // store_id is dropped from the match key (order-list has only the store NAME)
+    expect(block39).not.toContain("se.store_id");
+  });
+
+  it("STRICT ambiguity: links only on exactly one match; 0 or 2+ leave both NULL", () => {
+    expect(l39).toContain("if v_count = 1 then");                       // exactly one → link
+    // 2+ only reachable via the phone tie-break branch; there is no unconditional
+    // 'order by ... limit 1' fallback that would silently pick a row on a tie.
+    expect(l39).not.toMatch(/order by[\s\S]*limit 1/);
+  });
+
+  it("phone tie-break links ONLY when exactly one same-name+amount row also matches the phone", () => {
+    expect(l39).toContain("v_count >= 2");
+    expect(l39).toContain("if v_phone_cnt = 1 then");
+    // digits-only comparison on BOTH sides (masked phone won't false-match → NULL)
+    expect(l39).toMatch(/regexp_replace\(se\.phone, '\\d', '', 'g'\)/);
+    expect(l39).toMatch(/regexp_replace\(new\.recipient_phone, '\\d', '', 'g'\)/);
+  });
+
+  it("cm_order_no is NEVER a match predicate", () => {
+    expect(block39).not.toContain("cm_order_no");
+  });
+
+  it("rewires the BEFORE insert-or-update trigger to the same link function", () => {
+    expect(l39).toContain("before insert or update on public.parcel_tracking");
+    expect(l39).toContain("execute function public.link_parcel_tracking()");
   });
 });
 
