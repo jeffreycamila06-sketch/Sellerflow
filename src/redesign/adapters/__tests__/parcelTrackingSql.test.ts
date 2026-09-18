@@ -76,3 +76,11 @@ describe("sql/37 parcel_tracking", () => {
     expect(lower).toContain("execute function public.link_parcel_tracking()");
   });
 });
+
+describe("sql/38 parcel_tracking types", () => {
+  const sql38 = readFileSync(resolve(__dirname, "../../../../sql", "38_parcel_tracking_types.sql"), "utf8").toLowerCase();
+  it("adds ship_type + special_type (additive, if-not-exists)", () => {
+    expect(sql38).toContain("add column if not exists ship_type");
+    expect(sql38).toContain("add column if not exists special_type");
+  });
+});

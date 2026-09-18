@@ -37,3 +37,6 @@ mobile/android/keystore.properties
 Sellerflow-backups/
 backup_*.sql
 server/scratch/
+
+# Local vendor reference samples (SHOPMORE fixtures etc.) — never commit
+vendor/
