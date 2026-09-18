@@ -56,14 +56,34 @@ function CommentAvatar({ name, avatar }: { name: string; avatar?: string }) {
   );
 }
 
-// Miner-risk badge — small icon + tooltip explaining WHY, next to the miner's handle.
-const RISK_ICON: Record<RiskLevel, string> = { risky: "🔴", watch: "🟡", unknown: "⚪" };
+// Miner-risk badge — a labeled chip beside the @handle (icon + SHORT tag; full
+// reason in the tooltip). Colors are driven ENTIRELY by theme tokens
+// (--risk-*-bg/fg in design-tokens.css) so contrast stays strong in light AND
+// dark. risky = loud filled red (the one to catch mid-live), watch = filled
+// amber, unknown = muted neutral. Display-only — no row-layout / text change.
+type RDT = ReturnType<typeof useT>;
 const RISK_TIP: Record<RiskLevel, (t: RDT) => string> = {
   risky: (t) => t.rd_dash_risk_risky,
   watch: (t) => t.rd_dash_risk_watch,
   unknown: (t) => t.rd_dash_risk_unknown,
 };
-type RDT = ReturnType<typeof useT>;
+const RISK_TAG: Record<RiskLevel, (t: RDT) => string> = {
+  risky: (t) => t.rd_dash_risk_tag_risky,
+  watch: (t) => t.rd_dash_risk_tag_watch,
+  unknown: (t) => t.rd_dash_risk_tag_unknown,
+};
+// base chip = the MINE-badge shape (fontWeight 800, 2px 6px, radius 5) so it
+// sits consistently on the handle row; per-level fill/ink from tokens.
+const RISK_CHIP_BASE: CSSProperties = {
+  display: "inline-flex", alignItems: "center", gap: 3, fontSize: 9.5,
+  fontWeight: 800, letterSpacing: ".04em", padding: "2px 6px", borderRadius: 5,
+  lineHeight: 1, flexShrink: 0, whiteSpace: "nowrap", cursor: "default",
+};
+const RISK_CHIP: Record<RiskLevel, CSSProperties> = {
+  risky: { ...RISK_CHIP_BASE, background: "var(--risk-risky-bg)", color: "var(--risk-risky-fg)" },
+  watch: { ...RISK_CHIP_BASE, background: "var(--risk-watch-bg)", color: "var(--risk-watch-fg)" },
+  unknown: { ...RISK_CHIP_BASE, fontWeight: 700, background: "var(--risk-unknown-bg)", color: "var(--risk-unknown-fg)", border: "1px solid var(--risk-unknown-bd)" },
+};
 
 // Audit #2b — feed WINDOWING: only the newest N comment rows are mounted in the
 // DOM (comments arrive newest-first). The full feed (up to 5,000) stays in
@@ -574,15 +594,19 @@ export default function Dashboard({
                   {t.rd_dash_restored_note}
                 </div>
               )}
-              <div className="sfl-comm-row" style={{ display: "flex", gap: 10, padding: "9px 8px", borderRadius: 11, ...(isRestored && !rowActionable && !orderedPrior ? { opacity: 0.62 } : null) }}>
+              <div className="sfl-comm-row" style={{ display: "flex", gap: 10, padding: "9px 8px", borderRadius: 11, ...(isRestored && !rowActionable && !orderedPrior ? { opacity: 0.62 } : null),
+                  // risky rows get a glanceable faint tint + inset left accent
+                  // (boxShadow inset = ZERO layout shift; row layout untouched).
+                  ...(risk === "risky" ? { background: "var(--danger-soft)", boxShadow: "inset 3px 0 0 var(--risk-risky-bg)" } : null) }}>
                 <CommentAvatar name={c.name} avatar={c.avatar} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
                     <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{c.name}</span>
                     <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)" }}>{c.handle}</span>
                     {risk && (
-                      <span data-testid="miner-risk" data-level={risk} title={RISK_TIP[risk](t)} aria-label={RISK_TIP[risk](t)}
-                        style={{ fontSize: 10, lineHeight: 1, flexShrink: 0, cursor: "default", opacity: risk === "unknown" ? 0.7 : 1 }}>{RISK_ICON[risk]}</span>
+                      <span data-testid="miner-risk" data-level={risk} title={RISK_TIP[risk](t)} aria-label={RISK_TIP[risk](t)} style={RISK_CHIP[risk]}>
+                        {risk === "risky" ? "⚠ " : ""}{RISK_TAG[risk](t)}
+                      </span>
                     )}
                     <span style={{ fontSize: 10.5, color: "var(--text-muted)", marginLeft: "auto", flexShrink: 0 }}>{c.time}</span>
                   </div>

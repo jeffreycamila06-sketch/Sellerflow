@@ -54,6 +54,14 @@
   /* U10 — danger tint (danger @ 10%): screens referenced var(--danger-soft, …)
      with divergent inline fallbacks; defining it makes the tint theme-consistent. */
   --danger-soft: rgba(225,29,72,.1);
+  /* Miner-risk chips (theme-adaptive FILL tokens; a filled chip needs a
+     saturated background that keeps its ink legible — the --danger/--warn TEXT
+     tokens are tuned for text-on-surface, not fills, so risk chips get their
+     own fill pair per theme). risky = loud crimson, watch = amber, unknown =
+     muted neutral. */
+  --risk-risky-bg: #e11d48; --risk-risky-fg: #ffffff;
+  --risk-watch-bg: #d97706; --risk-watch-fg: #ffffff;
+  --risk-unknown-bg: rgba(28,26,53,.06); --risk-unknown-fg: #6f6d84; --risk-unknown-bd: rgba(28,26,53,.15);
   /* accent-derived — light theme: accent *text* uses the DARK shade;
      soft = base @ 12%, softer = base @ 7%; header band = solid accent. */
   --accent: var(--_accent);
@@ -91,6 +99,12 @@
   --warn: #fbbf24;
   --danger: #fb7185;
   --danger-soft: rgba(251,113,133,.16);
+  /* Miner-risk chips — dark theme. The FILL stays SATURATED (crimson/deep amber,
+     NOT the lightened --danger/--warn text tokens) so white ink reads AND the
+     chip pops against the near-black base; unknown = subtle light-on-dark tint. */
+  --risk-risky-bg: #e11d48; --risk-risky-fg: #ffffff;
+  --risk-watch-bg: #b45309; --risk-watch-fg: #ffffff;
+  --risk-unknown-bg: rgba(255,255,255,.08); --risk-unknown-fg: #aab2c0; --risk-unknown-bd: rgba(255,255,255,.16);
   --accent: var(--_accent);
   --accent-text: #ffffff;
   --accent-fg: var(--_accent-light);
