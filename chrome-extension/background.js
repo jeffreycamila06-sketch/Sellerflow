@@ -98,6 +98,54 @@ async function pcWriteVerdict(cfg, token, id, verdict) {
   return r.ok;
 }
 
+// ── Order-list scraper writeback (parcel_tracking upsert) ──────────────────────
+// The myship-order-711 content script scrapes the order list and sends the rows
+// here; we upsert them into parcel_tracking with Jeff's token (own-scoped RLS —
+// the DB trigger link_parcel_tracking() then fills buyer_username). REST upsert on
+// (user_id, tracking_no); merge-duplicates only touches the columns we send, so the
+// poller's status/ship_type/special_type are NEVER clobbered on a re-scrape.
+function pcUserIdFromToken(token) {
+  try {
+    const seg = String(token || "").split(".")[1];
+    if (!seg) return null;
+    const json = JSON.parse(atob(seg.replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof json.sub === "string" && json.sub ? json.sub : null;
+  } catch { return null; }
+}
+function pcChunk(arr, n) { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; }
+
+async function pcUpsertTracking(cfg, token, rows) {
+  const uid = pcUserIdFromToken(token);
+  if (!uid) return { ok: false, reason: "no_uid_in_token" };
+  // ⚠️ ONLY the scraper's own columns below — the poller owns the live-status fields;
+  // merge-duplicates would otherwise reset a poller-set value on a re-scrape.
+  const clean = (Array.isArray(rows) ? rows : [])
+    .filter((r) => r && r.tracking_no)
+    .map((r) => ({
+      user_id: uid,
+      tracking_no: String(r.tracking_no),
+      cm_order_no: r.cm_order_no ? String(r.cm_order_no) : null,
+      recipient_name: r.recipient_name ? String(r.recipient_name) : null,
+      store_id: r.store_id ? String(r.store_id) : null,
+      order_amount: (r.order_amount != null && r.order_amount !== "") ? Number(r.order_amount) : null,
+    }));
+  if (!clean.length) return { ok: true, upserted: 0 };
+  let upserted = 0;
+  for (const chunk of pcChunk(clean, 500)) {
+    const r = await fetch(`${cfg.supabaseUrl}/rest/v1/parcel_tracking?on_conflict=user_id,tracking_no`, {
+      method: "POST",
+      headers: {
+        apikey: cfg.supabaseAnonKey, Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      body: JSON.stringify(chunk),
+    });
+    if (!r.ok) return { ok: false, reason: `upsert_http_${r.status}`, upserted };
+    upserted += chunk.length;
+  }
+  return { ok: true, upserted };
+}
+
 async function pcPoll() {
   const cfg = await pcConfig();
   if (cfg.paused) { await pcStatus({ sfl: "paused", myship: "paused" }); return; }
@@ -197,4 +245,22 @@ pcScheduleLoop(0);
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "PC_POLL_NOW") { pcPoll().catch(() => {}).finally(() => sendResponse({ ok: true })); return true; }
   return false;
+});
+
+// Order-list scraper → upsert scraped rows into parcel_tracking. Same auth as the
+// checker: read Jeff's token from the SFL tab (single-refresher bridge), never
+// persist our own. No SFL tab / no token / no config → post nothing (honest reason).
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== "PC_ORDER_ROWS") return false;
+  (async () => {
+    const cfg = await pcConfig();
+    if (!cfg.supabaseUrl || !cfg.supabaseAnonKey) { sendResponse({ ok: false, reason: "no_config" }); return; }
+    const sflTabId = await pcFindTab(["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*", "http://localhost:5173/*"]);
+    if (!sflTabId) { sendResponse({ ok: false, reason: "no_sfl_tab" }); return; }
+    const token = await pcGetToken(sflTabId);
+    if (!token) { sendResponse({ ok: false, reason: "no_token" }); return; }
+    const res = await pcUpsertTracking(cfg, token, message.rows);
+    sendResponse(res);
+  })().catch((e) => sendResponse({ ok: false, reason: "threw", detail: e && e.message }));
+  return true;
 });
