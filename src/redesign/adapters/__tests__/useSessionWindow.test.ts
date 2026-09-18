@@ -3,13 +3,15 @@ import { describe, it, expect } from "vitest";
 import { clampWindowDays, daysBetween, addDays, computeWindowState, chooseSessionLoad, shouldOpenWindow, shouldResetOnDayChange } from "../useSessionWindow";
 
 describe("clampWindowDays", () => {
-  it("keeps 1/2/3/4 (4-day added 2026-07-13), defaults everything else to 1", () => {
+  it("keeps 1/2/3/4/5 (5-day added 2026-09-18), defaults everything else to 1", () => {
     expect(clampWindowDays(1)).toBe(1);
     expect(clampWindowDays(2)).toBe(2);
     expect(clampWindowDays(3)).toBe(3);
     expect(clampWindowDays(4)).toBe(4);
+    expect(clampWindowDays(5)).toBe(5); // 5 is the new safe ceiling (8-day purge → 3-day buffer)
     expect(clampWindowDays(0)).toBe(1);
-    expect(clampWindowDays(5)).toBe(1); // ceiling stays HARD — 5+ must never pass (the 7-day purge is the physical limit)
+    expect(clampWindowDays(6)).toBe(1); // ceiling stays HARD — 6+ must never pass (6 → 2-day buffer, 7 → 1-day)
+    expect(clampWindowDays(7)).toBe(1);
     expect(clampWindowDays(NaN)).toBe(1);
   });
 });

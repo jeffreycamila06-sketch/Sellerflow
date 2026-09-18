@@ -7,7 +7,7 @@
 import { type CSSProperties, useState } from "react";
 import { useT, tpl } from "../i18n";
 
-const SESSION_OPTS = [1, 2, 3, 4]; // match Dashboard's pill (4-day added 2026-07-13)
+const SESSION_OPTS = [1, 2, 3, 4, 5]; // match Dashboard's pill (4-day added 2026-07-13; 5-day 2026-09-18 — ceiling, 6+ blocked by the 8-day purge margin)
 
 export default function SessionPickerModal({
   onPick, onCancel,
