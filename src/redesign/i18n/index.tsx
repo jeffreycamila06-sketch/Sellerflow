@@ -1357,6 +1357,17 @@ const RAW: Record<string, Row> = {
   rd_pt_days_left: { en: "{n} days left", fil: "{n} araw na lang", zh: "还剩 {n} 天", "zh-TW": "還剩 {n} 天", vi: "còn {n} ngày", th: "เหลือ {n} วัน", id: "sisa {n} hari" },
   rd_pt_returning_soon: { en: "returning soon", fil: "malapit nang ibalik", zh: "即将退回", "zh-TW": "即將退回", vi: "sắp bị trả lại", th: "กำลังจะตีกลับ", id: "segera dikembalikan" },
   rd_pt_urgent: { en: "urgent", fil: "urgent", zh: "紧急", "zh-TW": "緊急", vi: "khẩn", th: "ด่วน", id: "mendesak" },
+
+  // ── Products upgrade (2026-09-18): export dropdown · filter pills · quick stock edit ──
+  rd_prd_export_excel: { en: "Excel (.xlsx)", fil: "Excel (.xlsx)", zh: "Excel (.xlsx)", "zh-TW": "Excel (.xlsx)", vi: "Excel (.xlsx)", th: "Excel (.xlsx)", id: "Excel (.xlsx)" },
+  rd_prd_export_pdf: { en: "PDF", fil: "PDF", zh: "PDF", "zh-TW": "PDF", vi: "PDF", th: "PDF", id: "PDF" },
+  rd_prd_export_failed: { en: "Couldn't export. Try again.", fil: "Hindi ma-export. Subukan ulit.", zh: "导出失败，请重试。", "zh-TW": "匯出失敗，請重試。", vi: "Không xuất được. Thử lại.", th: "ส่งออกไม่สำเร็จ ลองอีกครั้ง", id: "Gagal mengekspor. Coba lagi." },
+  rd_prd_status_col: { en: "Status", fil: "Status", zh: "状态", "zh-TW": "狀態", vi: "Trạng thái", th: "สถานะ", id: "Status" },
+  rd_prd_f_all: { en: "All", fil: "Lahat", zh: "全部", "zh-TW": "全部", vi: "Tất cả", th: "ทั้งหมด", id: "Semua" },
+  rd_prd_stock_failed: { en: "Stock didn't save — reverted.", fil: "Hindi na-save ang stock — ibinalik.", zh: "库存未保存——已还原。", "zh-TW": "庫存未儲存——已還原。", vi: "Chưa lưu được tồn kho — đã hoàn tác.", th: "บันทึกสต๊อกไม่สำเร็จ — คืนค่าแล้ว", id: "Stok gagal disimpan — dikembalikan." },
+  rd_prd_quick_stock: { en: "Adjust stock", fil: "I-adjust ang stock", zh: "调整库存", "zh-TW": "調整庫存", vi: "Điều chỉnh tồn kho", th: "ปรับสต๊อก", id: "Sesuaikan stok" },
+  rd_prd_stock_minus: { en: "Decrease stock", fil: "Bawasan ang stock", zh: "减少库存", "zh-TW": "減少庫存", vi: "Giảm tồn kho", th: "ลดสต๊อก", id: "Kurangi stok" },
+  rd_prd_stock_plus: { en: "Increase stock", fil: "Dagdagan ang stock", zh: "增加库存", "zh-TW": "增加庫存", vi: "Tăng tồn kho", th: "เพิ่มสต๊อก", id: "Tambah stok" },
 };
 
 // Transpose RAW (key→langs) into REDESIGN_STRINGS (lang→keys).

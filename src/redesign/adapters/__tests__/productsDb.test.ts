@@ -6,7 +6,7 @@ import {
   rowToProduct, productToRow, isSeedList, shouldMigrate,
   alreadyMigrated, markMigrated,
   loadProductsDb, saveProductDb, deleteProductDb, migrateLocalProducts, resolveInitialProducts,
-  decrementStockAndTouch,
+  decrementStockAndTouch, adjustProductStock,
 } from "../productsDb";
 import { PRODUCT_DEFAULTS, type Product } from "../products";
 
@@ -107,5 +107,9 @@ describe("DB ops are safe no-ops when Supabase is unconfigured", () => {
   });
   it("decrementStockAndTouch returns null (RPC not callable)", async () => {
     expect(await decrementStockAndTouch(real[0].id)).toBeNull();
+  });
+  it("adjustProductStock returns null (RPC not callable) — caller keeps its display", async () => {
+    expect(await adjustProductStock(real[0].id, 5)).toBeNull();
+    expect(await adjustProductStock(real[0].id, -3)).toBeNull();
   });
 });

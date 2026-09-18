@@ -173,6 +173,22 @@ export async function decrementStockAndTouch(localId: number): Promise<number | 
   return data == null ? null : Number(data);
 }
 
+// Quick manual stock edit (Products card − / +) — atomic delta via the sql/41
+// adjust_product_stock RPC. Own-scoped (auth.uid() INSIDE the RPC), race-safe: a
+// concurrent Auto-mode decrement and this manual adjust are serialized by the
+// row lock, each applied exactly once (NEVER read-into-JS-then-write). Clamps at 0
+// server-side. Returns the NEW authoritative stock (reflecting any concurrent auto
+// decrements), -1 when the row isn't the caller's / doesn't exist, or null when the
+// call couldn't run (unconfigured / no session / error) so the caller can revert.
+export async function adjustProductStock(localId: number, delta: number): Promise<number | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+  const id = await uid();
+  if (!id) return null;
+  const { data, error } = await supabase.rpc("adjust_product_stock", { p_local_id: localId, p_delta: delta });
+  if (error) { console.error("Adjust stock error:", error.message); return null; }
+  return data == null ? null : Number(data);
+}
+
 // Auto Mode Rule 2 — atomic decrement by N (sql/38 decrement_product_stock_by).
 // Own-scoped; returns the NEW stock, or -1 when stock < qty OR qty outside 1..99
 // (the whole order is rejected, NO partial). null = RPC error / unconfigured.
