@@ -77,6 +77,10 @@ export function initialCommentPayload(data, { sellerId, sessionId, sourceUsernam
     buyerData: null,
     initial: true,                                     // ⚠️ the display-only contract
     msgId: msgIdOf(data),                              // stable id for client-side dedup
+    // Miner-risk signals (same read-off-data as the live relay; both CONDITIONAL →
+    // undefined when TikTok omitted followInfo/userDetails on the buffered event).
+    followerCount: data.followInfo?.followerCount,
+    accountCreatedAt: data.userDetails?.createTime,
     time: at.toLocaleTimeString("en-US", { timeZone: "Asia/Taipei" }),
     timestamp: at.toISOString(),
   };

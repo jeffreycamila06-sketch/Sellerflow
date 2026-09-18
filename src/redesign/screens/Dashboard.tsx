@@ -6,6 +6,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { avColor, initials, type Comment } from "../data";
 import { basketCountFor } from "../adapters/basketCounts";
+import { minerRiskFor, type RiskLevel } from "../adapters/minerRisk";
 import { sessionSummary, type SessionState } from "../adapters/useLiveSession";
 import { useRaffleConfig } from "../adapters/useRaffleConfig";
 import { computeRaffleEntries, type RaffleEntry } from "../adapters/raffle";
@@ -54,6 +55,15 @@ function CommentAvatar({ name, avatar }: { name: string; avatar?: string }) {
     </div>
   );
 }
+
+// Miner-risk badge — small icon + tooltip explaining WHY, next to the miner's handle.
+const RISK_ICON: Record<RiskLevel, string> = { risky: "🔴", watch: "🟡", unknown: "⚪" };
+const RISK_TIP: Record<RiskLevel, (t: RDT) => string> = {
+  risky: (t) => t.rd_dash_risk_risky,
+  watch: (t) => t.rd_dash_risk_watch,
+  unknown: (t) => t.rd_dash_risk_unknown,
+};
+type RDT = ReturnType<typeof useT>;
 
 // Audit #2b — feed WINDOWING: only the newest N comment rows are mounted in the
 // DOM (comments arrive newest-first). The full feed (up to 5,000) stays in
@@ -107,11 +117,15 @@ export default function Dashboard({
   announcement = null, annDismissedId = "", onDismissAnn, annUnread = false, onOpenAnn,
   onPrintWinner,
   basketCounts,
+  minerRisk,
 }: {
   comments: Comment[]; cur: string;
   // 🛒 per-buyer order count for the current session window (key: "handle platform").
   // Display-only lookup map built upstream (RedesignApp memo) — O(1) per row.
   basketCounts?: Map<string, number>;
+  // Real-time miner-risk badge level per miner (key: "handle platform"). Display-
+  // only; built upstream from the comment event's followerCount/createTime. O(1)/row.
+  minerRisk?: Map<string, RiskLevel>;
   session?: RebuiltSession; sessionState?: SessionState;
   canInject?: boolean; onInjectSynthetic?: () => void;
   announcement?: Announcement | null; annDismissedId?: string; onDismissAnn?: (id: string) => void;
@@ -550,6 +564,9 @@ export default function Dashboard({
             // 🛒 basket count — this buyer's CREATED ORDERS in the current session
             // window (O(1) map lookup). 0 → no badge (keeps a busy feed clean).
             const basketN = basketCounts ? basketCountFor(basketCounts, c.handle, c.platform) : 0;
+            // Miner-risk badge — O(1) lookup; null = no badge (verified-safe miner,
+            // keeps the feed clean). Additive (a new element beside the handle).
+            const risk = minerRiskFor(minerRisk, c.handle, c.platform);
             return (
               <Fragment key={c.id}>
               {firstRestored && (
@@ -563,6 +580,10 @@ export default function Dashboard({
                   <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
                     <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{c.name}</span>
                     <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)" }}>{c.handle}</span>
+                    {risk && (
+                      <span data-testid="miner-risk" data-level={risk} title={RISK_TIP[risk](t)} aria-label={RISK_TIP[risk](t)}
+                        style={{ fontSize: 10, lineHeight: 1, flexShrink: 0, cursor: "default", opacity: risk === "unknown" ? 0.7 : 1 }}>{RISK_ICON[risk]}</span>
+                    )}
                     <span style={{ fontSize: 10.5, color: "var(--text-muted)", marginLeft: "auto", flexShrink: 0 }}>{c.time}</span>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 2 }}>

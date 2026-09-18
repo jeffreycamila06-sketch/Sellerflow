@@ -83,6 +83,10 @@ export const toRedesignComment = (c: ProdComment): RDComment => ({
   // thumbnail, signed/expiring). DISPLAY-ONLY: loaded device→CDN by <img>, never
   // stored anywhere (DB/localStorage) — expiring URLs, zero egress.
   avatar: c.avatar || "",
+  // additive — miner-risk signals off the comment event (server relay). Both
+  // optional/conditional; carried through for the client-side risk badge.
+  followerCount: (c as ProdComment & { followerCount?: number }).followerCount,
+  accountCreatedAt: (c as ProdComment & { accountCreatedAt?: string | number }).accountCreatedAt,
 });
 
 // Synthetic injector gate — now the SHARED previewEnv rule (re-exported for the
