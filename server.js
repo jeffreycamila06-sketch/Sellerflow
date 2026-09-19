@@ -1260,6 +1260,18 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
     const name = data.nickname || data.uniqueId || "Unknown";
     const handle = data.uniqueId || "unknown";
 
+    // TEMP [RISK-DBG] — remove after diagnosis. READ-TO-CONSOLE ONLY (no relay /
+    // payload / logic change). Logs the RAW connector values BEFORE our relay for
+    // the first 20 comment events, to settle: is TikTok omitting followInfo, or is
+    // there still a data bug? Read in Render Logs filtered to: [RISK-DBG].
+    if ((globalThis.__riskDbgN ??= 0) < 20) {
+      globalThis.__riskDbgN++;
+      const _fi = data.followInfo;
+      console.log("[RISK-DBG]",
+        "followInfo?", !!_fi,
+        "| followerCount =", _fi?.followerCount, `(${typeof _fi?.followerCount})`,
+        "| createTime =", data.userDetails?.createTime, `(${typeof data.userDetails?.createTime})`);
+    }
     const payload = {
       handle,
       name,
