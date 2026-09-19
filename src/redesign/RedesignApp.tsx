@@ -40,7 +40,7 @@ import ShopeeChannels from "./screens/ShopeeChannels";
 import { loadShopeeEnabled, listShopeeShops, shopeeConnect, shopeeDisconnect, parseShopeeReturn, isShopeeEligible, type ShopeeShop } from "./adapters/shopee";
 import type { ConnectTab } from "./screens/ConnectModal";
 import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
-import { useCustomers, useMinerStats, ZERO_MINERS_STATS, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, deriveMrr, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
+import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, deriveMrr, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
 import { useBusinessPulse } from "./adapters/useBusinessPulse";
 import { useAnnouncements } from "./adapters/useAnnouncements";
 import { useLiveSession } from "./adapters/useLiveSession";
@@ -49,6 +49,7 @@ import { sessionEndLabel } from "./adapters/sessionEnd";
 import SessionPickerModal from "./components/SessionPickerModal";
 import { buildBasketCounts } from "./adapters/basketCounts";
 import { buildMinerRiskMap } from "./adapters/minerRisk";
+import { useMinersReport } from "./adapters/minersReport";
 import { useSessionWindow } from "./adapters/useSessionWindow";
 import { useLiveFeed, commentKey } from "./adapters/useLiveFeed";
 import { useOrders } from "./adapters/useOrders";
@@ -489,18 +490,12 @@ export default function RedesignApp() {
   const setAutoLowStockThreshold = useCallback((n: number) => { setAutoLowStock(n); saveLowStockThreshold(n); }, []);
   const ordersState: ReadState = liveSession.state === "idle" ? "sample" : liveSession.state;
 
-  // Miners — aggregate RPC (sql/14 miners_stats: own totals + top-5 in one tiny
-  // response). Replaces the old client-side derivation over the full customers
-  // download, which was PostgREST-capped at 1,000 rows AND admin-RLS-scoped to
-  // ALL sellers (the 2026-07-05 "1,000 buyers" bug). Still ALWAYS real-mode —
-  // never the sample MINERS demo: any non-live/empty state (unauthed / RPC
-  // error) is forced to clean 0s + the guidance empty-state.
-  const minersData = useMinerStats(authed);
-  const minersReal = minersData.state === "live" || minersData.state === "empty";
-  const minerList = minersReal ? minersData.top : [];
-  const minerStats = minersReal ? minersData.stats : ZERO_MINERS_STATS;
+  // Miners v2 — ledger-backed RPC (sql/42 miners_report: date-range + top-N +
+  // repeat, computed from public.orders so a DELETED order drops out; NOT the
+  // drift-prone customers aggregate the old miners_stats read). The screen owns
+  // the range/N pickers + Export; this hook is the fetch/cache (zero poll).
+  const minersRep = useMinersReport(authed);
   const exportCustomers = () => csvDL(`customers-${dayStamp()}.csv`, ["Name", "Username", "Platform", "Orders", "Total"], customersData.customers.map((c) => [c.name, c.handle, c.platform, c.orders, `${cur}${c.spent}`]));
-  const exportMiners = () => csvDL(`miners-${dayStamp()}.csv`, ["#", "Name", "Username", "Platform", "Orders", "Total"], minerList.map((m, i) => [i + 1, m.name, m.handle, m.platform, m.orders, `${cur}${m.spent}`]));
 
   // Sales report — session-derived aggregation (App.tsx Sales). CSV row shape
   // matches App.tsx:1988 exactly: [#SF{orderNum}, name, item, qty, cur+total, platform, time].
@@ -985,7 +980,7 @@ export default function RedesignApp() {
     try {
       liveSession.reset();        // reload today's live session from DB
       customersData.reload();     // reload the paged customers list
-      minersData.reload();        // re-run the miners_stats aggregate RPC
+      minersRep.reload();         // re-run the miners_report aggregate RPC
       await auth.reloadProfile(); // reload profile + registered accounts
     } finally { setRefreshing(false); }
   };
@@ -1378,7 +1373,7 @@ export default function RedesignApp() {
             historyOrders={ordersHistory.orders} historyState={ordersHistory.state} onEnsureHistory={ordersHistory.ensureLoaded} onReprintOrder={onReprintOrder} todayId={liveSession.dayId} buyers={liveSession.session.buyers}
             seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
           {screen === "products" && <Products cur={cur} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
-          {screen === "miners" && <Miners cur={cur} miners={minerList} stats={minerStats} onExport={exportMiners} />}
+          {screen === "miners" && <Miners cur={cur} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
           {screen === "menu" && (
             <SettingsHub
               onGeneral={() => setScreen("settings")}
