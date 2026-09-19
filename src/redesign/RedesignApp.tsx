@@ -101,9 +101,6 @@ type Screen =
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
 const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "shopeechannels"];
 
-// module-level (keeps the impure Date.now out of the component's render-purity analysis).
-const riskNowMs = () => Date.now();
-
 // Auto Mode Rule 1 dedup key: one auto order per (session, buyer handle, code),
 // case-insensitive + trimmed — mirrors the DB partial-unique index expression
 // (lower(handle), lower(auto_code)) so the client guard and the backstop agree.
@@ -460,9 +457,9 @@ export default function RedesignApp() {
   // change; each feed row is an O(1) lookup. New window/reset → empty → all 0.
   const basketCounts = useMemo(() => buildBasketCounts(liveSession.session.buyers), [liveSession.session]);
   // Real-time miner-risk map (display-only) — derived from the visible comments'
-  // relayed followerCount/createTime. Recomputes on feed change; O(1) lookup per
-  // row. riskNowMs = module-level (keeps Date.now out of the render-purity analysis).
-  const minerRisk = useMemo(() => buildMinerRiskMap(comments, riskNowMs()), [comments]);
+  // relayed followerCount (follower-only; account age is absent). Recomputes on
+  // feed change; O(1) lookup per row. Pure — no clock, no Date.now.
+  const minerRisk = useMemo(() => buildMinerRiskMap(comments), [comments]);
   // Rule 1 — committed/loaded auto-order dedup keys, derived from the SAME session
   // state (rows carry autoCode via rebuild; in-session auto orders carry it too, so
   // this covers reload + 2-device via the loaded window). The seam ALSO checks the
