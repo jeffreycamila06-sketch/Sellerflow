@@ -5,16 +5,10 @@ import {
   buildMinerRiskMap,
   minerRiskFor,
   minerRiskKey,
-  RISK_AGE_DAYS,
+  RISK_WATCH_MAX,
   type RiskLevel,
 } from "../minerRisk";
 import type { Comment } from "../data";
-
-const DAY = 86400000;
-// Fixed "now" so age math is deterministic.
-const NOW = 1_700_000_000_000; // ms
-const daysAgoMs = (d: number) => NOW - d * DAY;
-const daysAgoSec = (d: number) => Math.round(daysAgoMs(d) / 1000);
 
 // Minimal Comment factory — only the risk-relevant fields matter here.
 const mk = (over: Partial<Comment>): Comment =>
@@ -27,7 +21,9 @@ const mk = (over: Partial<Comment>): Comment =>
     ...over,
   }) as Comment;
 
-describe("parseCreateMs — unit handling", () => {
+// parseCreateMs is RESERVED (createTime is "0" in production today) but kept in the
+// pipeline for a future age re-add — its unit behavior is still pinned.
+describe("parseCreateMs — unit handling (reserved)", () => {
   it("treats 10-digit epoch as SECONDS → ms", () => {
     expect(parseCreateMs(1_700_000_000)).toBe(1_700_000_000_000);
   });
@@ -43,69 +39,59 @@ describe("parseCreateMs — unit handling", () => {
     expect(parseCreateMs(null)).toBeNull();
     expect(parseCreateMs("")).toBeNull();
     expect(parseCreateMs("abc")).toBeNull();
-    expect(parseCreateMs(0)).toBeNull();
+    expect(parseCreateMs(0)).toBeNull();      // the production value → null (age unknown)
+    expect(parseCreateMs("0")).toBeNull();    // string "0" (connector's absent default)
     expect(parseCreateMs(-5)).toBeNull();
     expect(parseCreateMs(NaN)).toBeNull();
-    expect(parseCreateMs(1e16)).toBeNull(); // micro/nano — refuse to guess
+    expect(parseCreateMs(1e16)).toBeNull();   // micro/nano — refuse to guess
   });
 });
 
-describe("riskFor — badge logic", () => {
-  it("🔴 risky: new (<7d) AND zero followers", () => {
-    expect(riskFor({ followerCount: 0, accountCreatedAt: daysAgoSec(2) }, NOW)).toBe("risky");
+// FOLLOWER-ONLY logic (createTime always "0"/absent → age can't gate):
+//   0 → risky · 1..RISK_WATCH_MAX → watch · >RISK_WATCH_MAX → no badge ·
+//   missing/non-numeric → unknown (NEVER risky).
+describe("riskFor — follower-only thresholds", () => {
+  it("🔴 risky: exactly 0 followers", () => {
+    expect(riskFor({ followerCount: 0 })).toBe("risky");
   });
-  it("🟡 watch: new only (has followers)", () => {
-    expect(riskFor({ followerCount: 42, accountCreatedAt: daysAgoSec(2) }, NOW)).toBe("watch");
+  it("🟡 watch: 1 follower (low boundary)", () => {
+    expect(riskFor({ followerCount: 1 })).toBe("watch");
   });
-  it("🟡 watch: zero followers only (established account)", () => {
-    expect(riskFor({ followerCount: 0, accountCreatedAt: daysAgoSec(400) }, NOW)).toBe("watch");
+  it(`🟡 watch: ${RISK_WATCH_MAX} followers (high boundary, inclusive)`, () => {
+    expect(riskFor({ followerCount: RISK_WATCH_MAX })).toBe("watch");
   });
-  it("no badge (null): established AND has followers", () => {
-    expect(riskFor({ followerCount: 500, accountCreatedAt: daysAgoSec(400) }, NOW)).toBeNull();
+  it(`no badge: ${RISK_WATCH_MAX + 1} followers (just over → established)`, () => {
+    expect(riskFor({ followerCount: RISK_WATCH_MAX + 1 })).toBeNull();
   });
-  it("boundary: exactly 7d old is NOT new (established side)", () => {
-    // age === RISK_AGE_DAYS → not < threshold → not new. With followers → no badge.
-    expect(riskFor({ followerCount: 10, accountCreatedAt: daysAgoSec(RISK_AGE_DAYS) }, NOW)).toBeNull();
-    // just under 7d → new → watch
-    const justUnder = Math.round(daysAgoMs(RISK_AGE_DAYS) / 1000) + 60; // 1 min newer
-    expect(riskFor({ followerCount: 10, accountCreatedAt: justUnder }, NOW)).toBe("watch");
+  it("no badge: large follower counts (real live values)", () => {
+    for (const n of [23, 58, 266, 845, 1555]) expect(riskFor({ followerCount: n })).toBeNull();
   });
-  it("⚪ unknown when followerCount missing — and NEVER risky", () => {
-    expect(riskFor({ accountCreatedAt: daysAgoSec(1) }, NOW)).toBe("unknown");
-    // even brand-new account with no follower data is unknown, not risky
-    expect(riskFor({ accountCreatedAt: daysAgoSec(0.01) }, NOW)).not.toBe("risky");
+  it("⚪ unknown: followerCount missing/undefined — NEVER risky (missing ≠ 0)", () => {
+    expect(riskFor({})).toBe("unknown");
+    expect(riskFor({ followerCount: undefined })).toBe("unknown");
+    expect(riskFor({})).not.toBe("risky");
   });
-  it("⚪ unknown when createTime missing — and NEVER risky", () => {
-    expect(riskFor({ followerCount: 0 }, NOW)).toBe("unknown");
-    expect(riskFor({ followerCount: 0 }, NOW)).not.toBe("risky");
-  });
-  it("⚪ unknown when both missing", () => {
-    expect(riskFor({}, NOW)).toBe("unknown");
-  });
-  it("⚪ unknown when createTime unparseable (0/garbage) — never risky", () => {
-    expect(riskFor({ followerCount: 0, accountCreatedAt: 0 }, NOW)).toBe("unknown");
-    expect(riskFor({ followerCount: 0, accountCreatedAt: "junk" }, NOW)).toBe("unknown");
-  });
-  it("treats non-finite / NaN followerCount as missing → unknown", () => {
-    expect(riskFor({ followerCount: NaN, accountCreatedAt: daysAgoSec(1) }, NOW)).toBe("unknown");
+  it("⚪ unknown: empty-string / non-numeric followerCount → unknown (never risky)", () => {
+    expect(riskFor({ followerCount: "" })).toBe("unknown");
+    expect(riskFor({ followerCount: "abc" })).toBe("unknown");
+    expect(riskFor({ followerCount: NaN })).toBe("unknown");
+    expect(riskFor({ followerCount: "" })).not.toBe("risky");
   });
 
-  // followerCount arrives from the connector as a numeric STRING (protobuf int64
-  // → .toString()). The coercion must accept it exactly like a number.
-  it("accepts a numeric STRING followerCount (the real wire shape)", () => {
-    expect(riskFor({ followerCount: "0", accountCreatedAt: daysAgoSec(2) }, NOW)).toBe("risky");
-    expect(riskFor({ followerCount: "59", accountCreatedAt: daysAgoSec(2) }, NOW)).toBe("watch");
-    expect(riskFor({ followerCount: "0", accountCreatedAt: daysAgoSec(400) }, NOW)).toBe("watch");
-    expect(riskFor({ followerCount: "500", accountCreatedAt: daysAgoSec(400) }, NOW)).toBeNull();
+  // The real wire shape: followerCount is a numeric STRING; createTime is "0".
+  it("accepts numeric-STRING followerCount (the real wire shape)", () => {
+    expect(riskFor({ followerCount: "0" })).toBe("risky");
+    expect(riskFor({ followerCount: "1" })).toBe("watch");
+    expect(riskFor({ followerCount: "20" })).toBe("watch");
+    expect(riskFor({ followerCount: "21" })).toBeNull();
+    expect(riskFor({ followerCount: "845" })).toBeNull();
   });
-  it("empty-string / non-numeric followerCount → unknown (never risky)", () => {
-    expect(riskFor({ followerCount: "", accountCreatedAt: daysAgoSec(1) }, NOW)).toBe("unknown");
-    expect(riskFor({ followerCount: "abc", accountCreatedAt: daysAgoSec(1) }, NOW)).toBe("unknown");
-    expect(riskFor({ followerCount: "", accountCreatedAt: daysAgoSec(1) }, NOW)).not.toBe("risky");
-  });
-  it("string createTime + string followerCount together resolve correctly", () => {
-    // both as the real wire strings: new account ("<7d") + "0" followers → risky
-    expect(riskFor({ followerCount: "0", accountCreatedAt: String(daysAgoSec(3)) }, NOW)).toBe("risky");
+  it("createTime = 0 does NOT block a verdict (the whole point of this change)", () => {
+    // Production shape: real follower string + createTime "0". Age is ignored;
+    // 0 followers still fires 🔴 (previously forced ⚪ by the null createTime).
+    expect(riskFor({ followerCount: "0", accountCreatedAt: "0" })).toBe("risky");
+    expect(riskFor({ followerCount: "5", accountCreatedAt: 0 })).toBe("watch");
+    expect(riskFor({ followerCount: "845", accountCreatedAt: "0" })).toBeNull();
   });
 });
 
@@ -119,45 +105,44 @@ describe("minerRiskKey", () => {
 
 describe("buildMinerRiskMap — per-miner aggregation", () => {
   it("resolves a miner from the FIRST data-carrying comment; safe miner omitted", () => {
-    const safe = { followerCount: 900, accountCreatedAt: daysAgoSec(500) };
     const comments = [
-      mk({ id: "1", handle: "@a" }),                         // no data
-      mk({ id: "2", handle: "@a", ...safe }),                // resolves safe
-      mk({ id: "3", handle: "@a" }),                         // no data
+      mk({ id: "1", handle: "@a" }),                       // no data
+      mk({ id: "2", handle: "@a", followerCount: "900" }), // resolves safe (>20)
+      mk({ id: "3", handle: "@a" }),                       // no data
     ];
-    const map = buildMinerRiskMap(comments, NOW);
+    const map = buildMinerRiskMap(comments);
     expect(map.has("a TikTok")).toBe(false); // safe → no badge
   });
 
   it("locks risky/watch once resolved (later blank comments don't override)", () => {
     const comments = [
-      mk({ id: "1", handle: "@b", followerCount: 0, accountCreatedAt: daysAgoSec(1) }), // risky
-      mk({ id: "2", handle: "@b" }),                                                    // blank
+      mk({ id: "1", handle: "@b", followerCount: "0" }), // risky
+      mk({ id: "2", handle: "@b" }),                     // blank
     ];
-    const map = buildMinerRiskMap(comments, NOW);
+    const map = buildMinerRiskMap(comments);
     expect(map.get("b TikTok")).toBe("risky");
   });
 
   it("miner whose comments NEVER carried data → unknown (never risky)", () => {
     const comments = [mk({ id: "1", handle: "@c" }), mk({ id: "2", handle: "@c" })];
-    const map = buildMinerRiskMap(comments, NOW);
+    const map = buildMinerRiskMap(comments);
     expect(map.get("c TikTok")).toBe("unknown");
   });
 
   it("keeps different miners / platforms distinct", () => {
     const comments = [
-      mk({ id: "1", handle: "@x", platform: "TikTok", followerCount: 0, accountCreatedAt: daysAgoSec(1) }),
-      mk({ id: "2", handle: "@x", platform: "Facebook" }), // different platform → separate miner
-      mk({ id: "3", handle: "@y", followerCount: 5, accountCreatedAt: daysAgoSec(1) }), // watch
+      mk({ id: "1", handle: "@x", platform: "TikTok", followerCount: "0" }),
+      mk({ id: "2", handle: "@x", platform: "Facebook" }),   // different platform → separate miner
+      mk({ id: "3", handle: "@y", followerCount: "5" }),     // watch
     ];
-    const map = buildMinerRiskMap(comments, NOW);
+    const map = buildMinerRiskMap(comments);
     expect(map.get("x TikTok")).toBe("risky");
     expect(map.get("x Facebook")).toBe("unknown");
     expect(map.get("y TikTok")).toBe("watch");
   });
 
   it("empty feed → empty map", () => {
-    expect(buildMinerRiskMap([], NOW).size).toBe(0);
+    expect(buildMinerRiskMap([]).size).toBe(0);
   });
 });
 
