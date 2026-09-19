@@ -89,6 +89,24 @@ describe("riskFor — badge logic", () => {
   it("treats non-finite / NaN followerCount as missing → unknown", () => {
     expect(riskFor({ followerCount: NaN, accountCreatedAt: daysAgoSec(1) }, NOW)).toBe("unknown");
   });
+
+  // followerCount arrives from the connector as a numeric STRING (protobuf int64
+  // → .toString()). The coercion must accept it exactly like a number.
+  it("accepts a numeric STRING followerCount (the real wire shape)", () => {
+    expect(riskFor({ followerCount: "0", accountCreatedAt: daysAgoSec(2) }, NOW)).toBe("risky");
+    expect(riskFor({ followerCount: "59", accountCreatedAt: daysAgoSec(2) }, NOW)).toBe("watch");
+    expect(riskFor({ followerCount: "0", accountCreatedAt: daysAgoSec(400) }, NOW)).toBe("watch");
+    expect(riskFor({ followerCount: "500", accountCreatedAt: daysAgoSec(400) }, NOW)).toBeNull();
+  });
+  it("empty-string / non-numeric followerCount → unknown (never risky)", () => {
+    expect(riskFor({ followerCount: "", accountCreatedAt: daysAgoSec(1) }, NOW)).toBe("unknown");
+    expect(riskFor({ followerCount: "abc", accountCreatedAt: daysAgoSec(1) }, NOW)).toBe("unknown");
+    expect(riskFor({ followerCount: "", accountCreatedAt: daysAgoSec(1) }, NOW)).not.toBe("risky");
+  });
+  it("string createTime + string followerCount together resolve correctly", () => {
+    // both as the real wire strings: new account ("<7d") + "0" followers → risky
+    expect(riskFor({ followerCount: "0", accountCreatedAt: String(daysAgoSec(3)) }, NOW)).toBe("risky");
+  });
 });
 
 describe("minerRiskKey", () => {
