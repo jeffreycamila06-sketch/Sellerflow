@@ -18,7 +18,8 @@ import { taipeiDayId } from "../../lib/dateHelpers";
 import { copyText } from "../components/inviteShare";
 import {
   loadParcelTracking, groupParcels, chaseTarget, daysUntilDate, isUrgent, isReturningSoon,
-  type ParcelTrackingRow, type ParcelGroups,
+  DEADLINE_BUCKETS, deadlineBucketCounts, filterByDeadline,
+  type ParcelTrackingRow, type ParcelGroups, type DeadlineBucket,
 } from "../adapters/parcelTracking";
 
 const btn: CSSProperties = { padding: "7px 12px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12, fontWeight: 700, cursor: "pointer", textDecoration: "none", display: "inline-block", whiteSpace: "nowrap" };
@@ -101,6 +102,52 @@ function Group({ emoji, title, rows, today, t, onCopy, urgentAware = false }: {
   );
 }
 
+// Deadline filter chips → i18n label keys (count badge appended in render).
+const BUCKET_LABEL: Record<DeadlineBucket, "rd_pk_all" | "rd_pk_d5" | "rd_pk_d3" | "rd_pk_d1" | "rd_pk_overdue"> = {
+  all: "rd_pk_all", d5: "rd_pk_d5", d3: "rd_pk_d3", d1: "rd_pk_d1", overdue: "rd_pk_overdue",
+};
+function chipStyle(active: boolean): CSSProperties {
+  return {
+    padding: "5px 11px", borderRadius: 999, cursor: "pointer", whiteSpace: "nowrap",
+    border: active ? "1px solid var(--accent)" : "1px solid var(--border-strong)",
+    background: active ? "var(--accent)" : "var(--surface-2)",
+    color: active ? "#fff" : "var(--text-dim)",
+    fontFamily: "var(--font-ui)", fontSize: 11.5, fontWeight: 700,
+  };
+}
+
+// 🔴 Waiting-pickup section: the status group PLUS the chase-point deadline filter
+// chips (All · 5 days · 3 days · 1 day · Overdue, each with a count). The chips
+// filter ONLY this section; the header count stays the section total. Terminal
+// groups (picked up / returned) have no chips. Self-contained bucket state.
+function WaitingSection({ waiting, today, t, onCopy }: { waiting: ParcelTrackingRow[]; today: string; t: T; onCopy: (handle: string) => void }) {
+  const [bucket, setBucket] = useState<DeadlineBucket>("all");
+  if (!waiting.length) return null;
+  const counts = deadlineBucketCounts(waiting, today);
+  const rows = filterByDeadline(waiting, bucket, today);
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text)", margin: "0 2px 8px" }}>
+        🔴 {t.rd_pt_grp_waiting} <span style={{ color: "var(--text-muted)", fontWeight: 700 }}>· {waiting.length}</span>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }} data-testid="pt-deadline-chips">
+        {DEADLINE_BUCKETS.map((b) => (
+          <button key={b} type="button" onClick={() => setBucket(b)} aria-pressed={bucket === b} style={chipStyle(bucket === b)} data-testid={`pt-chip-${b}`}>
+            {t[BUCKET_LABEL[b]]} · {counts[b]}
+          </button>
+        ))}
+      </div>
+      {rows.length
+        ? <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {rows.map((r) => <Row key={r.id} row={r} today={today} t={t} onCopy={onCopy} urgentFlag={isUrgent(r, today)} />)}
+          </div>
+        : <div style={{ ...card, fontSize: 12.5, color: "var(--text-dim)", textAlign: "center", padding: 14 }} data-testid="pt-deadline-empty">
+            {tpl(t.rd_pk_none, { label: t[BUCKET_LABEL[bucket]] })}
+          </div>}
+    </div>
+  );
+}
+
 export default function ParcelTracking() {
   const t = useT();
   const today = taipeiDayId();
@@ -156,7 +203,7 @@ export default function ParcelTracking() {
           empty
             ? <div style={{ ...card, fontSize: 13, color: "var(--text-dim)", textAlign: "center" }} data-testid="pt-empty">{t.rd_pt_empty}</div>
             : <>
-                <Group emoji="🔴" title={t.rd_pt_grp_waiting} rows={groups.waitingPickup} today={today} t={t} onCopy={onCopy} urgentAware />
+                <WaitingSection waiting={groups.waitingPickup} today={today} t={t} onCopy={onCopy} />
                 <Group emoji="🚚" title={t.rd_pt_grp_transit} rows={groups.inTransit} today={today} t={t} onCopy={onCopy} />
                 <Group emoji="✅" title={t.rd_pt_grp_picked} rows={groups.pickedUp} today={today} t={t} onCopy={onCopy} />
                 <Group emoji="⚠️" title={t.rd_pt_grp_returned} rows={groups.returned} today={today} t={t} onCopy={onCopy} />
