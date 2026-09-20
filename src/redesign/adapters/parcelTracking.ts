@@ -110,13 +110,24 @@ export type ChaseTarget =
   | { kind: "none" };                              // no username
 
 // TikTok handles are letters/digits/dot/underscore. A stored buyer_username that
-// is a real name (spaces / CJK) is NOT handle-shaped → offer Copy instead. A
-// leading @ is stripped. Opens the PROFILE (manual chase) — never a DM URL.
+// is a real name (spaces / CJK) is NOT handle-shaped → offer Copy instead. Opens
+// the PROFILE (manual chase) — never a DM URL. The https://www.tiktok.com/@handle
+// URL IS the TikTok universal link (opens the app to the profile on iOS if installed,
+// else the web). We SANITIZE FOR THE URL ONLY — the stored buyer_username is never
+// altered: strip leading @, trim whitespace incl full-width U+3000 / NBSP, drop
+// zero-width chars (which trim leaves), and tolerate a trailing platform tag the
+// seller may append (e.g. "Ashley102031(IG)" → opens @Ashley102031).
 export function chaseTarget(buyerUsername: string | null | undefined): ChaseTarget {
-  const raw = String(buyerUsername ?? "").trim().replace(/^@+/, "");
-  if (!raw) return { kind: "none" };
-  if (/^[A-Za-z0-9._]{1,24}$/.test(raw)) return { kind: "open", handle: raw, url: `https://www.tiktok.com/@${raw}` };
-  return { kind: "copy", handle: raw };
+  const cleaned = String(buyerUsername ?? "")
+    .replace(/[​-‍﻿]/g, "")   // zero-width chars (trim doesn't remove these)
+    .trim()                                   // trims spaces incl full-width U+3000 / NBSP
+    .replace(/^@+/, "");                      // leading @(s)
+  if (!cleaned) return { kind: "none" };
+  if (/^[A-Za-z0-9._]{1,24}$/.test(cleaned)) return { kind: "open", handle: cleaned, url: `https://www.tiktok.com/@${cleaned}` };
+  // tolerate a handle-shaped token trailed ONLY by a platform tag, e.g. "Ashley102031(IG)"
+  const m = cleaned.match(/^([A-Za-z0-9._]{1,24})\s*[（(]?\s*(?:ig|fb|line|tiktok|tt)?\s*[）)]?$/i);
+  if (m) return { kind: "open", handle: m[1], url: `https://www.tiktok.com/@${m[1]}` };
+  return { kind: "copy", handle: cleaned };   // real names (spaces / CJK) → Copy
 }
 
 export interface ParcelGroups {

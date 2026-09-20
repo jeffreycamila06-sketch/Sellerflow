@@ -119,6 +119,30 @@ describe("chaseTarget — Open profile vs Copy vs none", () => {
     expect(chaseTarget(null)).toEqual({ kind: "none" });
     expect(chaseTarget("   ")).toEqual({ kind: "none" });
   });
+  it("real imported handles → open the correct profile URL", () => {
+    expect(chaseTarget("Bless_love45")).toEqual({ kind: "open", handle: "Bless_love45", url: "https://www.tiktok.com/@Bless_love45" });
+    expect(chaseTarget("Zona.nyaman1933")).toEqual({ kind: "open", handle: "Zona.nyaman1933", url: "https://www.tiktok.com/@Zona.nyaman1933" });
+  });
+  it("sanitizes FOR THE URL ONLY — leading @, full-width / NBSP / zero-width, trailing (IG) tag", () => {
+    // leading @ + surrounding ASCII space
+    expect(chaseTarget("  @Ashley102031 ")).toEqual({ kind: "open", handle: "Ashley102031", url: "https://www.tiktok.com/@Ashley102031" });
+    // full-width space (U+3000) + NBSP (U+00A0) are trimmed
+    expect(chaseTarget("　Ryry7067 ")).toEqual({ kind: "open", handle: "Ryry7067", url: "https://www.tiktok.com/@Ryry7067" });
+    // zero-width chars (U+200B) that trim() does NOT remove
+    expect(chaseTarget("Ryry7067​")).toEqual({ kind: "open", handle: "Ryry7067", url: "https://www.tiktok.com/@Ryry7067" });
+    // trailing platform tag, half- and full-width parens
+    expect(chaseTarget("Ashley102031(IG)")).toEqual({ kind: "open", handle: "Ashley102031", url: "https://www.tiktok.com/@Ashley102031" });
+    expect(chaseTarget("Bless_love45（LINE）")).toEqual({ kind: "open", handle: "Bless_love45", url: "https://www.tiktok.com/@Bless_love45" });
+    expect(chaseTarget("buyer.99 fb")).toEqual({ kind: "open", handle: "buyer.99", url: "https://www.tiktok.com/@buyer.99" });
+  });
+  it("does NOT mutate / rewrite the stored value — sanitization is local to the returned URL", () => {
+    const stored = "  @Ashley102031（IG）​";
+    const before = stored;
+    chaseTarget(stored);
+    expect(stored).toBe(before);                       // input string is never changed
+    // a genuine multi-word name is still Copy (not force-opened on a partial token)
+    expect(chaseTarget("Juan Dela Cruz").kind).toBe("copy");
+  });
 });
 
 describe("groupParcels — status buckets, chaseable-gated, deadline-sorted", () => {
