@@ -138,5 +138,48 @@
     }
   }
 
+  // 6. SERVER-GENERATED export (THIS site): click → XHR "generate" → iframe navigates to a
+  //    same-origin temp URL /i/temp/export/<name>.xlsx (per-export timestamp+token — can't be
+  //    hardcoded). We scan XHR/fetch request URLs + response bodies for that path and hand the
+  //    candidate STRING to the isolated reader, which extracts the URL + fetches it same-origin
+  //    (cookies) + parses. (The isolated side also watches the <iframe src> as a second path.)
+  const SCAN = "__SFL_EXPORT_SCAN__";
+  function scan(text) {
+    try {
+      if (typeof text === "string" && text && (text.indexOf("/i/temp/export") !== -1 || /\.xlsx/i.test(text))) {
+        window.postMessage({ [SCAN]: true, text }, location.origin);
+      }
+    } catch (_) {}
+  }
+  if (typeof window.fetch === "function") {
+    const origFetch = window.fetch.bind(window);
+    window.fetch = function (input, init) {
+      const p = origFetch(input, init);
+      try {
+        scan(typeof input === "string" ? input : (input && input.url) || "");
+        p.then((res) => { try { scan(res.url); res.clone().text().then(scan).catch(() => {}); } catch (_) {} }).catch(() => {});
+      } catch (_) {}
+      return p;
+    };
+    installed.push("fetch-scan");
+  }
+  if (typeof XMLHttpRequest === "function") {
+    const OrigOpen = XMLHttpRequest.prototype.open;
+    const OrigSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function (method, url) { try { this.__sflUrl = url; } catch (_) {} return OrigOpen.apply(this, arguments); };
+    XMLHttpRequest.prototype.send = function () {
+      try {
+        this.addEventListener("load", () => {
+          try {
+            scan(this.__sflUrl || this.responseURL || "");
+            if (this.responseType === "" || this.responseType === "text") scan(this.responseText || "");
+          } catch (_) {}
+        });
+      } catch (_) {}
+      return OrigSend.apply(this, arguments);
+    };
+    installed.push("xhr-scan");
+  }
+
   console.log(`${LOG} hooks installed (MAIN world): ${installed.join(", ")}. Click 匯出報表 to capture.`);
 })();
