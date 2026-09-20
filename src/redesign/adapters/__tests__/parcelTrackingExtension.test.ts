@@ -45,6 +45,13 @@ describe("scraper — parcel code + row shape", () => {
     expect(scraper).not.toContain("ship_type");
     expect(scraper).not.toContain("special_type");
   });
+  it("Layer B REMOVED — the on-screen scraper no longer captures a handle (export reader is the sole source)", () => {
+    // the masked /seller/order list is not a handle source; buyer_username is written ONLY by
+    // the 匯出報表 export reader (myship-export-711.js). Pin the removal so it can't creep back.
+    expect(scraper).not.toMatch(/buyer_username\s*:/);   // no handle FIELD pushed onto the row
+    expect(scraper).not.toContain("map.handle");         // no handle column mapped
+    expect(scraper).not.toMatch(/其[他它]資訊/);           // no handle HEADER matcher
+  });
   it("is fail-safe: guards the page + skips rows with no parcel code", () => {
     expect(scraper).toMatch(/\/\\\/seller\\\/order\/i\.test\(location\.pathname\)/);
     expect(scraper).toContain("if (!tracking_no) continue");
