@@ -19,6 +19,36 @@ import {
 // A realistic desktop UA — never a bot-looking agent (anti-block).
 const DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
 
+// Per-request network timeout (AbortController) for the captcha GET + query POST —
+// a hung SHOPMORE response must abort, not stall the single-flight poll.
+const FETCH_TIMEOUT_MS = 15000;
+
+// Wrap a fetch in an AbortController timeout. clearTimeout in finally so a fast
+// response never leaves a dangling timer. On abort, undici throws (AbortError) →
+// pollBatch's per-batch try/catch counts it as a batch failure + backs off.
+async function fetchWithTimeout(fetchImpl, url, opts, timeoutMs = FETCH_TIMEOUT_MS) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetchImpl(url, { ...opts, signal: ctrl.signal });
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+// Read Set-Cookie off a fetch Response defensively (undici exposes getSetCookie();
+// a test fake may only have get()) and reduce each cookie to its `name=value` pair
+// (drop Path/HttpOnly/Expires/... attributes) so it can be echoed as a Cookie
+// header. Returns { cookie: "a=1; b=2", received: bool } — the session carry-over.
+function readSessionCookie(res) {
+  const h = res && res.headers;
+  let raw = [];
+  if (h && typeof h.getSetCookie === "function") { try { raw = h.getSetCookie() || []; } catch { raw = []; } }
+  if (!raw.length && h && typeof h.get === "function") { const sc = h.get("set-cookie"); if (sc) raw = [sc]; }
+  const pairs = raw.map((c) => String(c).split(";")[0].trim()).filter(Boolean);
+  return { cookie: pairs.join("; "), received: pairs.length > 0 };
+}
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── OCR worker (tesseract.js) — created once, terminated after the run ─────────
@@ -46,21 +76,30 @@ export async function createOcr() {
 
 // ── Real network deps for pollBatch ────────────────────────────────────────────
 export async function fetchCaptcha(fetchImpl = fetch) {
-  const res = await fetchImpl(CAPTCHA_URL, { headers: { "User-Agent": DESKTOP_UA, Accept: "application/json" } });
+  const res = await fetchWithTimeout(fetchImpl, CAPTCHA_URL, {
+    headers: { "User-Agent": DESKTOP_UA, Accept: "application/json" },
+  });
+  // Capture the SHOPMORE session cookie so the /PackageDetail POST can present it —
+  // the CaptchaId is validated against the session that issued the captcha, so the
+  // query POST without this cookie yields an empty/challenge body (the htmlLen=0 bug).
+  const { cookie, received } = readSessionCookie(res);
   const j = await res.json();
-  return { captchaId: j.captchaId, image: j.image };
+  return { captchaId: j.captchaId, image: j.image, cookie, setCookieReceived: received };
 }
 
-export async function submitQuery(fetchImpl, { paymentNos, captchaId, captcha }) {
+export async function submitQuery(fetchImpl, { paymentNos, captchaId, captcha, cookie = "" }) {
   const body = buildQueryBody({ paymentNos, captchaId, captcha });
-  const res = await fetchImpl(QUERY_URL, {
+  const headers = { "User-Agent": DESKTOP_UA, "Content-Type": "application/x-www-form-urlencoded" };
+  if (cookie) headers.Cookie = cookie; // echo the captcha session (fixes the empty-body bug)
+  const res = await fetchWithTimeout(fetchImpl, QUERY_URL, {
     method: "POST",
     redirect: "follow",
-    headers: { "User-Agent": DESKTOP_UA, "Content-Type": "application/x-www-form-urlencoded" },
+    headers,
     body: body.toString(),
   });
   const html = await res.text();
-  return { finalUrl: res.url || QUERY_URL, html };
+  const contentType = (res.headers && typeof res.headers.get === "function" ? res.headers.get("content-type") : "") || "";
+  return { finalUrl: res.url || QUERY_URL, html, status: res.status, contentType };
 }
 
 // ── Daily-cap circuit breaker (per Taipei day, in the running process) ─────────

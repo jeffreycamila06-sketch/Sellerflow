@@ -184,9 +184,10 @@ export function buildQueryBody({ paymentNos = [], captchaId = "", captcha = "" }
 // Retries on an expired captcha up to MAX_CAPTCHA_RETRIES; returns { ok, updates, attempts }.
 export async function pollBatch(codes, deps, { maxRetries = MAX_CAPTCHA_RETRIES, now = () => new Date() } = {}) {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    const { captchaId, image } = await deps.getCaptcha();
+    const { captchaId, image, cookie = "", setCookieReceived = false } = await deps.getCaptcha();
     const captcha = cleanCaptcha(await deps.solveCaptcha(image));
-    const { finalUrl, html } = await deps.submitQuery({ paymentNos: codes, captchaId, captcha });
+    // Carry the captcha session cookie into the query POST (empty-body fix).
+    const { finalUrl, html, status, contentType } = await deps.submitQuery({ paymentNos: codes, captchaId, captcha, cookie });
     if (isExpiredCaptcha(finalUrl)) continue;                 // bad captcha → refetch + retry
     // TEMP [PARCEL-DBG] — remove after diagnosis. READ-TO-CONSOLE ONLY (no logic
     // change; wrapped so it can never throw). Distinguishes H2 (paymentNo echo
@@ -208,6 +209,10 @@ export async function pollBatch(codes, deps, { maxRetries = MAX_CAPTCHA_RETRIES,
       const shapedPaymentNos = parseSearchResults(h).map((o) => o.paymentNo);
       console.log("[PARCEL-DBG]",
         "queried=", JSON.stringify(codes),
+        "httpStatus=", status,
+        "contentType=", JSON.stringify(contentType || ""),
+        "finalUrl=", JSON.stringify(finalUrl || ""),
+        "captchaSetCookie=", setCookieReceived,
         "htmlLen=", h.length,
         "regexMatched=", !!m,
         "rawRows=", rawRows,
