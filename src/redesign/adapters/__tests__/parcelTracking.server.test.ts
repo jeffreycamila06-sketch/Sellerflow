@@ -128,11 +128,22 @@ describe("batch / captcha helpers / query body", () => {
     expect(cleanCaptcha(" a1b2 c3d4x ")).toBe("1234");
     expect(cleanCaptcha("12")).toBe("12");
   });
-  it("buildQueryBody repeats PaymentNo[] + CaptchaId + Captcha", () => {
-    const body = buildQueryBody({ paymentNos: ["F1", "F2"], captchaId: "GID", captcha: "1234" });
+  it("buildQueryBody matches the real browser POST: lowercase captchaId/captcha + PaymentNo[] + token", () => {
+    const body = buildQueryBody({ paymentNos: ["F1", "F2"], captchaId: "GID", captcha: "1234", token: "TK" });
     expect(body.getAll("PaymentNo[]")).toEqual(["F1", "F2"]);
-    expect(body.get("CaptchaId")).toBe("GID");
-    expect(body.get("Captcha")).toBe("1234");
+    // LOWERCASE field names — matches the live form (capital CaptchaId/Captcha 400'd).
+    expect(body.get("captchaId")).toBe("GID");
+    expect(body.get("captcha")).toBe("1234");
+    expect(body.get("CaptchaId")).toBeNull(); // old capital-C name is gone
+    expect(body.get("Captcha")).toBeNull();
+    expect(body.get("__RequestVerificationToken")).toBe("TK");
+    // Field ORDER mirrors the browser: token, captchaId, PaymentNo[]…, captcha.
+    expect([...body.keys()]).toEqual(["__RequestVerificationToken", "captchaId", "PaymentNo[]", "PaymentNo[]", "captcha"]);
+  });
+
+  it("buildQueryBody omits the token field entirely when no token is given", () => {
+    const body = buildQueryBody({ paymentNos: ["F1"], captchaId: "GID", captcha: "1234" });
+    expect(body.has("__RequestVerificationToken")).toBe(false);
   });
 });
 

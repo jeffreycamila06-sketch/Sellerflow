@@ -14,6 +14,7 @@
 import {
   pollBatch, parseSearchResults, buildQueryBody, isExpiredCaptcha,
   batch, MAX_BATCH, MAX_CAPTCHA_RETRIES, CAPTCHA_URL, QUERY_URL,
+  SEARCH_URL, SHOPMORE_BASE, extractRequestToken,
 } from "./parcelTracking.js";
 
 // A realistic desktop UA — never a bot-looking agent (anti-block).
@@ -37,16 +38,32 @@ async function fetchWithTimeout(fetchImpl, url, opts, timeoutMs = FETCH_TIMEOUT_
 }
 
 // Read Set-Cookie off a fetch Response defensively (undici exposes getSetCookie();
-// a test fake may only have get()) and reduce each cookie to its `name=value` pair
-// (drop Path/HttpOnly/Expires/... attributes) so it can be echoed as a Cookie
-// header. Returns { cookie: "a=1; b=2", received: bool } — the session carry-over.
-function readSessionCookie(res) {
+// a test fake may only have get()), returning the raw cookie strings.
+function rawSetCookies(res) {
   const h = res && res.headers;
-  let raw = [];
-  if (h && typeof h.getSetCookie === "function") { try { raw = h.getSetCookie() || []; } catch { raw = []; } }
-  if (!raw.length && h && typeof h.get === "function") { const sc = h.get("set-cookie"); if (sc) raw = [sc]; }
-  const pairs = raw.map((c) => String(c).split(";")[0].trim()).filter(Boolean);
-  return { cookie: pairs.join("; "), received: pairs.length > 0 };
+  if (h && typeof h.getSetCookie === "function") { try { return h.getSetCookie() || []; } catch { /* fall through */ } }
+  if (h && typeof h.get === "function") { const sc = h.get("set-cookie"); return sc ? [sc] : []; }
+  return [];
+}
+
+// A tiny per-batch cookie jar: accumulates Set-Cookie `name=value` pairs across the
+// search-page GET, the captcha GET, and the query POST, and emits them as a Cookie
+// header. This carries the ASP.NET antiforgery/session cookie through the whole flow
+// (server-side analogue of the browser + chrome-extension/myship-711.js
+// `credentials: "include"`). One jar per batch so cookies never leak between batches.
+function makeCookieJar() {
+  const jar = new Map();
+  return {
+    absorb(res) {
+      for (const c of rawSetCookies(res)) {
+        const pair = String(c).split(";")[0].trim(); // drop Path/HttpOnly/Expires/…
+        const eq = pair.indexOf("=");
+        if (eq > 0) jar.set(pair.slice(0, eq), pair.slice(eq + 1));
+      }
+    },
+    header() { return Array.from(jar, ([k, v]) => `${k}=${v}`).join("; "); },
+    get received() { return jar.size > 0; },
+  };
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -75,22 +92,39 @@ export async function createOcr() {
 }
 
 // ── Real network deps for pollBatch ────────────────────────────────────────────
-export async function fetchCaptcha(fetchImpl = fetch) {
-  const res = await fetchWithTimeout(fetchImpl, CAPTCHA_URL, {
-    headers: { "User-Agent": DESKTOP_UA, Accept: "application/json" },
+// GET the SEARCH (index) page: capture the antiforgery cookie into the jar and
+// scrape the __RequestVerificationToken hidden field. Both are required by the
+// /PackageDetail POST (Razor Pages antiforgery). Returns the token + whether a
+// cookie was set (for the [PARCEL-DBG] probe).
+export async function fetchPageToken(fetchImpl = fetch, jar) {
+  const res = await fetchWithTimeout(fetchImpl, SEARCH_URL, {
+    headers: { "User-Agent": DESKTOP_UA, Accept: "text/html,application/xhtml+xml" },
   });
-  // Capture the SHOPMORE session cookie so the /PackageDetail POST can present it —
-  // the CaptchaId is validated against the session that issued the captcha, so the
-  // query POST without this cookie yields an empty/challenge body (the htmlLen=0 bug).
-  const { cookie, received } = readSessionCookie(res);
-  const j = await res.json();
-  return { captchaId: j.captchaId, image: j.image, cookie, setCookieReceived: received };
+  if (jar) jar.absorb(res);
+  const html = await res.text();
+  return { token: extractRequestToken(html), setCookieReceived: jar ? jar.received : false, status: res.status };
 }
 
-export async function submitQuery(fetchImpl, { paymentNos, captchaId, captcha, cookie = "" }) {
-  const body = buildQueryBody({ paymentNos, captchaId, captcha });
-  const headers = { "User-Agent": DESKTOP_UA, "Content-Type": "application/x-www-form-urlencoded" };
-  if (cookie) headers.Cookie = cookie; // echo the captcha session (fixes the empty-body bug)
+export async function fetchCaptcha(fetchImpl = fetch, jar) {
+  const headers = { "User-Agent": DESKTOP_UA, Accept: "application/json" };
+  const cookie = jar && jar.header();
+  if (cookie) headers.Cookie = cookie; // same session as the search page + POST
+  const res = await fetchWithTimeout(fetchImpl, CAPTCHA_URL, { headers });
+  if (jar) jar.absorb(res);
+  const j = await res.json();
+  return { captchaId: j.captchaId, image: j.image };
+}
+
+export async function submitQuery(fetchImpl, { paymentNos, captchaId, captcha, token = "" }, jar) {
+  const body = buildQueryBody({ paymentNos, captchaId, captcha, token });
+  const headers = {
+    "User-Agent": DESKTOP_UA,
+    "Content-Type": "application/x-www-form-urlencoded",
+    Origin: SHOPMORE_BASE,
+    Referer: SEARCH_URL,
+  };
+  const cookie = jar && jar.header();
+  if (cookie) headers.Cookie = cookie; // antiforgery/session cookie (fixes the empty-body 400)
   const res = await fetchWithTimeout(fetchImpl, QUERY_URL, {
     method: "POST",
     redirect: "follow",
@@ -153,10 +187,12 @@ export async function runPoll(opts) {
     // Gentle pacing: gap + jitter (+ any backoff) BETWEEN batches, never before the first.
     if (batchesRun > 0) await sleep(minGapMs + Math.floor(Math.random() * jitterMs) + backoff);
 
+    const jar = makeCookieJar(); // fresh session per batch (search GET → captcha GET → POST)
     const deps = {
-      getCaptcha: () => fetchCaptcha(fetchImpl),
+      getPageToken: () => fetchPageToken(fetchImpl, jar),
+      getCaptcha: () => fetchCaptcha(fetchImpl, jar),
       solveCaptcha: (image) => ocr.solve(image),
-      submitQuery: (args) => submitQuery(fetchImpl, args),
+      submitQuery: (args) => submitQuery(fetchImpl, args, jar),
       onUnknownStatus: (m) => { unknowns += 1; logger.warn("[PARCEL-POLL] UNKNOWN status:", JSON.stringify(m)); },
     };
 

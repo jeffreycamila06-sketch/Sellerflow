@@ -15,6 +15,11 @@
 export const SHOPMORE_BASE = "https://tracking.shopmore.com.tw";
 export const CAPTCHA_URL = `${SHOPMORE_BASE}/api/Captcha`;
 export const QUERY_URL = `${SHOPMORE_BASE}/PackageDetail`;
+// The SEARCH (index) page hosts the query form, so its GET is what sets the ASP.NET
+// antiforgery cookie AND embeds <input name="__RequestVerificationToken">. The
+// /PackageDetail RESULT page has NO form/token (confirmed from a live page capture),
+// so the token + cookie must be sourced from GET / — NOT GET /PackageDetail.
+export const SEARCH_URL = `${SHOPMORE_BASE}/`;
 export const MAX_BATCH = 6;              // SHOPMORE PaymentNo[] cap per query
 export const MAX_CAPTCHA_RETRIES = 3;    // refetch+re-OCR on an expired/wrong captcha
 
@@ -167,13 +172,39 @@ export function cleanCaptcha(raw) {
   return String(raw || "").replace(/\D/g, "").slice(0, 4);
 }
 
-// Build the form-encoded /PackageDetail body: PaymentNo[] repeated + CaptchaId + Captcha.
-export function buildQueryBody({ paymentNos = [], captchaId = "", captcha = "" }) {
+// Build the form-encoded /PackageDetail body to MATCH THE REAL BROWSER POST exactly:
+//   __RequestVerificationToken, captchaId, PaymentNo[] (repeated), captcha
+// ⚠️ Field names are LOWERCASE `captchaId` / `captcha` — NOT `CaptchaId` / `Captcha`.
+// The prior capital-C names came from a lost sample and did not match the live form;
+// the real request (verified from the browser) uses lowercase. Order mirrors the DOM
+// form so our request is byte-shaped like the browser's. The antiforgery hidden field
+// must ride on the POST (paired with the .AspNetCore.Antiforgery cookie from the same
+// GET /) or Razor returns 400 / empty body. Token stays conditional so a token-less
+// caller (unit tests) never emits an empty `__RequestVerificationToken=`.
+export function buildQueryBody({ paymentNos = [], captchaId = "", captcha = "", token = "" }) {
   const p = new URLSearchParams();
+  if (token) p.append("__RequestVerificationToken", String(token));
+  p.append("captchaId", String(captchaId));
   for (const code of paymentNos) p.append("PaymentNo[]", String(code));
-  p.append("CaptchaId", String(captchaId));
-  p.append("Captcha", String(captcha));
+  p.append("captcha", String(captcha));
   return p;
+}
+
+// Scrape the ASP.NET antiforgery token out of the search page's hidden input.
+// Razor emits <input name="__RequestVerificationToken" type="hidden" value="…">;
+// attribute order varies, so match the token input then pull its value (with a
+// value-before-name fallback). Returns "" when absent. Pure → unit-testable.
+// ⚠️ Field name assumed standard (__RequestVerificationToken) — verify against a
+// real captured POST / the live index page HTML if SHOPMORE renamed it.
+export function extractRequestToken(html) {
+  const h = String(html || "");
+  const tag = h.match(/<input\b[^>]*\bname=["']__RequestVerificationToken["'][^>]*>/i);
+  if (tag) {
+    const v = tag[0].match(/\bvalue=["']([^"']*)["']/i);
+    if (v) return v[1];
+  }
+  const alt = h.match(/<input\b[^>]*\bvalue=["']([^"']*)["'][^>]*\bname=["']__RequestVerificationToken["']/i);
+  return alt ? alt[1] : "";
 }
 
 // Orchestrate ONE ≤6-code batch with injected deps (no network/OCR here → testable):
@@ -183,11 +214,15 @@ export function buildQueryBody({ paymentNos = [], captchaId = "", captcha = "" }
 //   deps.onUnknownStatus?(statusMessage) — called per row whose newest step is unmapped
 // Retries on an expired captcha up to MAX_CAPTCHA_RETRIES; returns { ok, updates, attempts }.
 export async function pollBatch(codes, deps, { maxRetries = MAX_CAPTCHA_RETRIES, now = () => new Date() } = {}) {
+  // Antiforgery token + cookie: fetch the search page ONCE (valid across captcha
+  // retries; cookies flow through the runner's per-batch jar). Optional dep so
+  // injected-fake tests without a page step still work (token → "").
+  const page = deps.getPageToken ? await deps.getPageToken() : { token: "", setCookieReceived: false };
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    const { captchaId, image, cookie = "", setCookieReceived = false } = await deps.getCaptcha();
+    const { captchaId, image } = await deps.getCaptcha();
     const captcha = cleanCaptcha(await deps.solveCaptcha(image));
-    // Carry the captcha session cookie into the query POST (empty-body fix).
-    const { finalUrl, html, status, contentType } = await deps.submitQuery({ paymentNos: codes, captchaId, captcha, cookie });
+    // Carry the antiforgery token into the query POST (cookies ride the runner's jar).
+    const { finalUrl, html, status, contentType } = await deps.submitQuery({ paymentNos: codes, captchaId, captcha, token: page.token });
     if (isExpiredCaptcha(finalUrl)) continue;                 // bad captcha → refetch + retry
     // TEMP [PARCEL-DBG] — remove after diagnosis. READ-TO-CONSOLE ONLY (no logic
     // change; wrapped so it can never throw). Distinguishes H2 (paymentNo echo
@@ -212,7 +247,8 @@ export async function pollBatch(codes, deps, { maxRetries = MAX_CAPTCHA_RETRIES,
         "httpStatus=", status,
         "contentType=", JSON.stringify(contentType || ""),
         "finalUrl=", JSON.stringify(finalUrl || ""),
-        "captchaSetCookie=", setCookieReceived,
+        "tokenFound=", !!page.token,
+        "pageSetCookie=", !!page.setCookieReceived,
         "htmlLen=", h.length,
         "regexMatched=", !!m,
         "rawRows=", rawRows,

@@ -6,7 +6,7 @@
 // + the on-Render memory probe (tesseract can't run in CI).
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { runPoll, __resetDailyCounter } from "../../../../server/parcelTrackingRunner.js";
-import { QUERY_URL } from "../../../../server/parcelTracking.js";
+import { QUERY_URL, SEARCH_URL } from "../../../../server/parcelTracking.js";
 
 const HTML_IN_TRANSIT = `var searchResults = [{"paymentNo":"F70334584020","recStore":"朝陽","recDate":"","orderAmount":60,"status":1,"statusMessage":"包裹進行配送中","shipStatusDetails":[{"notificationName":"包裹進行配送中"}],"shipType":"C2C","specialType":null}];`;
 const HTML_AT_STORE = `var searchResults = [{"paymentNo":"F11122233344","recStore":"中壢華強","recDate":"2026/09/20","orderAmount":200,"status":1,"statusMessage":"包裹配達取件門市","shipStatusDetails":[{"notificationName":"包裹配達取件門市"}],"shipType":"C2C","specialType":null}];`;
@@ -35,12 +35,16 @@ function fakeSb(rows: unknown[], opts: { selectError?: unknown; updateError?: un
   };
 }
 
-// fetch fake: captcha JSON on /api/Captcha, the given HTML on POST (optionally
-// expiring the first POST to exercise the captcha-retry path).
+// fetch fake: the search page (GET /) returns an antiforgery-token page; captcha
+// JSON on /api/Captcha; the given HTML on the /PackageDetail POST (optionally
+// expiring the first POST to exercise the captcha-retry path). Only POSTs are
+// counted, so the search-page GET never consumes the expired-captcha response.
+const TOKEN_PAGE = '<input name="__RequestVerificationToken" type="hidden" value="TESTTOKEN">';
 const fetchFactory = (html: string, { expireFirst = false } = {}) => {
   let posts = 0;
   return vi.fn(async (url: string) => {
     if (String(url).includes("/api/Captcha")) return { json: async () => ({ captchaId: "GID", image: "b64png" }) };
+    if (!String(url).includes("/PackageDetail")) return { url: SEARCH_URL, text: async () => TOKEN_PAGE }; // GET / (token + cookie)
     posts += 1;
     const expired = expireFirst && posts === 1;
     return { url: expired ? `${QUERY_URL}?handler=expired` : QUERY_URL, text: async () => (expired ? "" : html) };
