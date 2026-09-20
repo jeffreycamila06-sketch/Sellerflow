@@ -1375,6 +1375,13 @@ const RAW: Record<string, Row> = {
   rd_pt_day_left: { en: "1 day left", fil: "1 araw na lang", zh: "还剩 1 天", "zh-TW": "還剩 1 天", vi: "còn 1 ngày", th: "เหลือ 1 วัน", id: "sisa 1 hari" },
   rd_pt_days_left: { en: "{n} days left", fil: "{n} araw na lang", zh: "还剩 {n} 天", "zh-TW": "還剩 {n} 天", vi: "còn {n} ngày", th: "เหลือ {n} วัน", id: "sisa {n} hari" },
   rd_pt_returning_soon: { en: "returning soon", fil: "malapit nang ibalik", zh: "即将退回", "zh-TW": "即將退回", vi: "sắp bị trả lại", th: "กำลังจะตีกลับ", id: "segera dikembalikan" },
+  // Chase-point deadline filter chips (Waiting pickup section only).
+  rd_pk_all: { en: "All", fil: "Lahat", zh: "全部", "zh-TW": "全部", vi: "Tất cả", th: "ทั้งหมด", id: "Semua" },
+  rd_pk_d5: { en: "5 days", fil: "5 araw", zh: "5 天", "zh-TW": "5 天", vi: "5 ngày", th: "5 วัน", id: "5 hari" },
+  rd_pk_d3: { en: "3 days", fil: "3 araw", zh: "3 天", "zh-TW": "3 天", vi: "3 ngày", th: "3 วัน", id: "3 hari" },
+  rd_pk_d1: { en: "1 day", fil: "1 araw", zh: "1 天", "zh-TW": "1 天", vi: "1 ngày", th: "1 วัน", id: "1 hari" },
+  rd_pk_overdue: { en: "Overdue", fil: "Lampas na", zh: "已逾期", "zh-TW": "已逾期", vi: "Quá hạn", th: "เกินกำหนด", id: "Lewat tenggat" },
+  rd_pk_none: { en: "No parcels · {label}", fil: "Walang parcel · {label}", zh: "没有包裹 · {label}", "zh-TW": "沒有包裹 · {label}", vi: "Không có kiện · {label}", th: "ไม่มีพัสดุ · {label}", id: "Tidak ada paket · {label}" },
   rd_pt_urgent: { en: "urgent", fil: "urgent", zh: "紧急", "zh-TW": "緊急", vi: "khẩn", th: "ด่วน", id: "mendesak" },
 
   // ── Orders upgrade Batch 1 (2026-09): platform pills · date range · summary · export cols ──

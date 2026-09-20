@@ -165,6 +165,49 @@ export function groupParcels(rows: ParcelTrackingRow[], today: string): ParcelGr
   return g;
 }
 
+// ── Chase-point deadline filter (Waiting-pickup chips) ────────────────────────
+// PURE bucketing over the waiting-pickup list for the seller's chase workflow.
+// Days-left = daysUntilDate (Taipei whole-day diff; negative = overdue, null =
+// no/unparseable deadline). Buckets: "all" (every waiting parcel) · exact 5/3/1
+// days left · "overdue" (<0). A null-deadline row only ever matches "all".
+// Frontend-only — no DB/server/poll/grouping/gate change.
+export type DeadlineBucket = "all" | "d5" | "d3" | "d1" | "overdue";
+export const DEADLINE_BUCKETS: DeadlineBucket[] = ["all", "d5", "d3", "d1", "overdue"];
+
+export function matchesDeadlineBucket(daysLeft: number | null, bucket: DeadlineBucket): boolean {
+  if (bucket === "all") return true;
+  if (daysLeft == null) return false; // no deadline → "all" only
+  if (bucket === "overdue") return daysLeft < 0;
+  if (bucket === "d5") return daysLeft === 5;
+  if (bucket === "d3") return daysLeft === 3;
+  if (bucket === "d1") return daysLeft === 1;
+  return false;
+}
+
+// Filter the waiting-pickup list to one bucket, sorted MOST-URGENT FIRST (soonest
+// deadline: overdue → 1 → up; null-deadline sinks). Reuses byDeadline. Never mutates.
+export function filterByDeadline(waiting: ParcelTrackingRow[], bucket: DeadlineBucket, today: string): ParcelTrackingRow[] {
+  return waiting
+    .filter((r) => matchesDeadlineBucket(daysUntilDate(r.pickupDeadline, today), bucket))
+    .sort(byDeadline(today));
+}
+
+// Count per bucket for the chip badges. "all" = total; a null-deadline row counts
+// only toward "all". Never mutates.
+export function deadlineBucketCounts(waiting: ParcelTrackingRow[], today: string): Record<DeadlineBucket, number> {
+  const counts: Record<DeadlineBucket, number> = { all: 0, d5: 0, d3: 0, d1: 0, overdue: 0 };
+  for (const r of waiting) {
+    counts.all += 1;
+    const dl = daysUntilDate(r.pickupDeadline, today);
+    if (dl == null) continue;
+    if (dl < 0) counts.overdue += 1;
+    else if (dl === 5) counts.d5 += 1;
+    else if (dl === 3) counts.d3 += 1;
+    else if (dl === 1) counts.d1 += 1;
+  }
+  return counts;
+}
+
 // ── Load (own-scoped SELECT; getSession = LOCAL; ZERO poll) — parcelScan pattern ─
 async function uid(): Promise<string | null> {
   if (!supabase) return null;
