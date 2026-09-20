@@ -5,7 +5,7 @@
 import { describe, it, expect } from "vitest";
 import {
   parcelTrackingVisible, PARCEL_TRACKING_EMAILS,
-  isChaseable, isReturningSoon, daysUntilDate, isUrgent, chaseTarget, groupParcels,
+  isChaseable, isReturningSoon, daysUntilDate, isUrgent, chaseTarget, chaseCopyValue, groupParcels,
   rowToTracking, type ParcelTrackingRow,
 } from "../parcelTracking";
 
@@ -142,6 +142,16 @@ describe("chaseTarget — Open profile vs Copy vs none", () => {
     expect(stored).toBe(before);                       // input string is never changed
     // a genuine multi-word name is still Copy (not force-opened on a partial token)
     expect(chaseTarget("Juan Dela Cruz").kind).toBe("copy");
+  });
+});
+
+describe("chaseCopyValue — iOS copies @handle on the open-profile tap; desktop copies nothing", () => {
+  it("iOS (ios=true) → the @handle string to paste into TikTok search", () => {
+    expect(chaseCopyValue("Bless_love45", true)).toBe("@Bless_love45");
+    expect(chaseCopyValue("Zona.nyaman1933", true)).toBe("@Zona.nyaman1933");
+  });
+  it("desktop (ios=false) → null (straight to the web profile, no copy)", () => {
+    expect(chaseCopyValue("Bless_love45", false)).toBeNull();
   });
 });
 

@@ -17,10 +17,11 @@ import { useT, tpl } from "../i18n";
 import { taipeiDayId } from "../../lib/dateHelpers";
 import { copyText } from "../components/inviteShare";
 import {
-  loadParcelTracking, groupParcels, chaseTarget, daysUntilDate, isUrgent, isReturningSoon,
+  loadParcelTracking, groupParcels, chaseTarget, chaseCopyValue, daysUntilDate, isUrgent, isReturningSoon,
   DEADLINE_BUCKETS, deadlineBucketCounts, filterByDeadline,
   type ParcelTrackingRow, type ParcelGroups, type DeadlineBucket,
 } from "../adapters/parcelTracking";
+import { isIOS } from "../adapters/platform";
 
 const btn: CSSProperties = { padding: "7px 12px", borderRadius: 9, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12, fontWeight: 700, cursor: "pointer", textDecoration: "none", display: "inline-block", whiteSpace: "nowrap" };
 const chaseBtn: CSSProperties = { ...btn, border: "1px solid var(--accent)", color: "var(--accent)", background: "transparent" };
@@ -46,8 +47,14 @@ function DeadlineChip({ row, today, t }: { row: ParcelTrackingRow; today: string
 function ChaseAction({ row, t, onCopy }: { row: ParcelTrackingRow; t: T; onCopy: (handle: string) => void }) {
   const target = chaseTarget(row.buyerUsername);
   if (target.kind === "open") {
+    // Direct link opens the TikTok app on iOS (universal link). On iOS ALSO copy
+    // "@handle" on the same tap so it's ready to paste into the app's Search → profile
+    // → Message (the app lands on home, but the seller is logged in). Desktop: no copy,
+    // straight to the profile. Navigation is NOT prevented — the link still opens.
+    const cp = chaseCopyValue(target.handle, isIOS());
     return (
-      <a href={target.url} target="_blank" rel="noreferrer" style={chaseBtn} data-testid="pt-open-profile">
+      <a href={target.url} target="_blank" rel="noreferrer" style={chaseBtn} data-testid="pt-open-profile"
+        onClick={() => { if (cp) void onCopy(cp); }}>
         {t.rd_pt_open_profile}
       </a>
     );
