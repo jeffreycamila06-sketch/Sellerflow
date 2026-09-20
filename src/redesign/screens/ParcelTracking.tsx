@@ -47,7 +47,7 @@ function ChaseAction({ row, t, onCopy }: { row: ParcelTrackingRow; t: T; onCopy:
   const target = chaseTarget(row.buyerUsername);
   if (target.kind === "open") {
     return (
-      <a href={target.url} target="_blank" rel="noreferrer noopener" style={chaseBtn} data-testid="pt-open-profile">
+      <a href={target.url} target="_blank" rel="noreferrer" style={chaseBtn} data-testid="pt-open-profile">
         {t.rd_pt_open_profile}
       </a>
     );
