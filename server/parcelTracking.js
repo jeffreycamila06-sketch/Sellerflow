@@ -217,46 +217,13 @@ export async function pollBatch(codes, deps, { maxRetries = MAX_CAPTCHA_RETRIES,
   // Antiforgery token + cookie: fetch the search page ONCE (valid across captcha
   // retries; cookies flow through the runner's per-batch jar). Optional dep so
   // injected-fake tests without a page step still work (token → "").
-  const page = deps.getPageToken ? await deps.getPageToken() : { token: "", setCookieReceived: false };
+  const page = deps.getPageToken ? await deps.getPageToken() : { token: "" };
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     const { captchaId, image } = await deps.getCaptcha();
     const captcha = cleanCaptcha(await deps.solveCaptcha(image));
     // Carry the antiforgery token into the query POST (cookies ride the runner's jar).
-    const { finalUrl, html, status, contentType } = await deps.submitQuery({ paymentNos: codes, captchaId, captcha, token: page.token });
+    const { finalUrl, html } = await deps.submitQuery({ paymentNos: codes, captchaId, captcha, token: page.token });
     if (isExpiredCaptcha(finalUrl)) continue;                 // bad captcha → refetch + retry
-    // TEMP [PARCEL-DBG] — remove after diagnosis. READ-TO-CONSOLE ONLY (no logic
-    // change; wrapped so it can never throw). Distinguishes H2 (paymentNo echo
-    // mismatch) vs H3 (regex/JSON-parse truncation) for a captcha-valid response.
-    try {
-      const h = String(html || "");
-      const m = h.match(/var\s+searchResults\s*=\s*(\[[\s\S]*?\]);/);
-      let rawRows = -1, rawPaymentNos = [], firstRowKeys = [], parseErr = "";
-      if (m) {
-        try {
-          const a = JSON.parse(m[1]);
-          if (Array.isArray(a)) {
-            rawRows = a.length;
-            rawPaymentNos = a.map((o) => (o && o.paymentNo != null ? String(o.paymentNo) : null));
-            firstRowKeys = a.length && a[0] && typeof a[0] === "object" ? Object.keys(a[0]) : [];
-          } else { rawRows = -2; } // matched but not an array
-        } catch (e) { parseErr = String((e && e.message) || e); } // H3: truncated/invalid JSON
-      }
-      const shapedPaymentNos = parseSearchResults(h).map((o) => o.paymentNo);
-      console.log("[PARCEL-DBG]",
-        "queried=", JSON.stringify(codes),
-        "httpStatus=", status,
-        "contentType=", JSON.stringify(contentType || ""),
-        "finalUrl=", JSON.stringify(finalUrl || ""),
-        "tokenFound=", !!page.token,
-        "pageSetCookie=", !!page.setCookieReceived,
-        "htmlLen=", h.length,
-        "regexMatched=", !!m,
-        "rawRows=", rawRows,
-        "rawPaymentNos=", JSON.stringify(rawPaymentNos),
-        "shapedPaymentNos=", JSON.stringify(shapedPaymentNos),
-        "firstRowKeys=", JSON.stringify(firstRowKeys),
-        parseErr ? `JSON_PARSE_ERR=${parseErr} grp200=${JSON.stringify(m && m[1] ? m[1].slice(0, 200) : "")}` : "");
-    } catch (e) { console.log("[PARCEL-DBG] probe error:", (e && e.message) || e); }
     const updates = parseSearchResults(html).map((sr) => resultToUpdate(sr, { now: now() }));
     for (const u of updates) {
       if (!u.known && deps.onUnknownStatus) deps.onUnknownStatus(u.status_message);

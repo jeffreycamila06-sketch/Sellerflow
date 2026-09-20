@@ -911,25 +911,54 @@ app.post("/admin/parcel-emap-check", requireAuth, async (req, res) => {
 // two cron pings can never overlap (RAM + anti-block). Creates ONE tesseract worker
 // and TERMINATES it in finally (never kept warm). NOT wired to cron until the
 // on-Render memory probe (scripts/tesseract-mem-probe.js) confirms the RSS headroom.
-app.post("/admin/parcel-tracking-poll", async (req, res) => {
-  if (!PARCEL_POLL_TOKEN) return res.status(503).json({ ok: false, error: "poll_not_configured" });
-  const token = req.query.token || req.headers["x-poll-token"];
-  if (token !== PARCEL_POLL_TOKEN) return res.status(403).json({ ok: false, error: "forbidden" });
-  if (!serviceSb) return res.status(503).json({ ok: false, error: "no_service_role" });
-  if (parcelPollRunning) return res.status(409).json({ ok: false, error: "already_running" });
-  parcelPollRunning = true;
+// Off-peak jitter: cron-job.org fires at a FIXED minute, so the server spreads the
+// actual SHOPMORE query time across a window (0–20 min) → not the same minute daily.
+const PARCEL_POLL_MAX_JITTER_MS = 20 * 60 * 1000;
+
+// The actual poll (background after jitter, or synchronous via ?now). Owns the
+// tesseract worker (created once, terminated in finally — never kept warm). Returns
+// the summary (or { ok:false, error:"run_failed" }) so the ?now path can send it
+// inline; the background path ignores the return. ALWAYS releases the single-flight
+// guard in finally so a crashed run can't wedge the endpoint.
+async function runParcelPollOnce() {
   let ocr = null;
   try {
     ocr = await createOcr();
     const summary = await runPoll({ serviceSb, userId: PARCEL_POLL_USER_ID || null, ocr });
-    return res.json(summary);
+    console.log("[PARCEL-POLL] done:", JSON.stringify(summary));
+    return summary;
   } catch (e) {
     console.error("[PARCEL-POLL] run failed:", e && e.message);
-    return res.status(500).json({ ok: false, error: "run_failed" });
+    return { ok: false, error: "run_failed" };
   } finally {
     if (ocr) { try { await ocr.terminate(); } catch { /* worker already gone */ } }
     parcelPollRunning = false;
   }
+}
+
+app.post("/admin/parcel-tracking-poll", async (req, res) => {
+  if (!PARCEL_POLL_TOKEN) return res.status(503).json({ ok: false, error: "poll_not_configured" });
+  const token = req.query.token || req.headers["x-poll-token"];
+  if (token !== PARCEL_POLL_TOKEN) return res.status(403).json({ ok: false, error: "forbidden" }); // auth gate unchanged
+  if (!serviceSb) return res.status(503).json({ ok: false, error: "no_service_role" });
+  // Single-flight over the WHOLE scheduled+running window: claim it NOW (synchronously,
+  // before responding) so a second trigger during the jitter delay OR the run itself
+  // gets 409 — never a double-run. Released in runParcelPollOnce's finally (and reset
+  // by an in-memory restart, which also drops any pending timer — safe: next cron runs).
+  if (parcelPollRunning) return res.status(409).json({ ok: false, error: "already_running" });
+  parcelPollRunning = true;
+  // ?now=1 — MANUAL TESTING ONLY: skip the jitter + run SYNCHRONOUSLY so the caller
+  // gets the summary inline (the pre-async behaviour). cron-job.org never sends ?now,
+  // so it still gets the fast 202 + background jitter below. Guard released in finally.
+  if (req.query.now) {
+    const result = await runParcelPollOnce();
+    return res.status(result && result.ok ? 200 : 500).json(result);
+  }
+  const delayMs = Math.floor(Math.random() * (PARCEL_POLL_MAX_JITTER_MS + 1)); // 0–20 min
+  setTimeout(() => { void runParcelPollOnce(); }, delayMs);
+  // 202 Accepted: scheduled, not done. cron-job.org gets a fast response (no ~30s
+  // timeout on the slow OCR poll); the real run happens after delayMs in the background.
+  return res.status(202).json({ ok: true, scheduled: true, delayMs });
 });
 
 function emitTikTokStatus({ sellerId, username, sessionId, connected, reconnecting = false, reason = "", nextRetryMs = 0 }) {

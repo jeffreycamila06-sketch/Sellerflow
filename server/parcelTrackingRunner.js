@@ -94,15 +94,14 @@ export async function createOcr() {
 // ── Real network deps for pollBatch ────────────────────────────────────────────
 // GET the SEARCH (index) page: capture the antiforgery cookie into the jar and
 // scrape the __RequestVerificationToken hidden field. Both are required by the
-// /PackageDetail POST (Razor Pages antiforgery). Returns the token + whether a
-// cookie was set (for the [PARCEL-DBG] probe).
+// /PackageDetail POST (Razor Pages antiforgery). Returns { token }.
 export async function fetchPageToken(fetchImpl = fetch, jar) {
   const res = await fetchWithTimeout(fetchImpl, SEARCH_URL, {
     headers: { "User-Agent": DESKTOP_UA, Accept: "text/html,application/xhtml+xml" },
   });
   if (jar) jar.absorb(res);
   const html = await res.text();
-  return { token: extractRequestToken(html), setCookieReceived: jar ? jar.received : false, status: res.status };
+  return { token: extractRequestToken(html) };
 }
 
 export async function fetchCaptcha(fetchImpl = fetch, jar) {
@@ -132,8 +131,7 @@ export async function submitQuery(fetchImpl, { paymentNos, captchaId, captcha, t
     body: body.toString(),
   });
   const html = await res.text();
-  const contentType = (res.headers && typeof res.headers.get === "function" ? res.headers.get("content-type") : "") || "";
-  return { finalUrl: res.url || QUERY_URL, html, status: res.status, contentType };
+  return { finalUrl: res.url || QUERY_URL, html };
 }
 
 // ── Daily-cap circuit breaker (per Taipei day, in the running process) ─────────
