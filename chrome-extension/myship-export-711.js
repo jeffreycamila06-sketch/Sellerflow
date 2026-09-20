@@ -130,14 +130,19 @@
   function install() {
     window.addEventListener("message", (e) => {
       if (e.source !== window || !e.data || e.data[TAG] !== true || !e.data.bytes) return;
-      handleExport(e.data.bytes).catch((err) => console.warn("[SFL-EXPORT] parse failed (safe):", err && err.message));
+      handleExport(e.data.bytes, e.data.via).catch((err) => console.warn("[SFL-EXPORT] parse failed (safe):", err && err.message));
     });
     console.log("[SFL-EXPORT] reader armed — click 匯出報表 to capture handles.");
   }
-  async function handleExport(buf) {
+  async function handleExport(buf, via) {
+    console.log(`[SFL-EXPORT] parsing export (via ${via || "?"}) — ${buf.byteLength} bytes.`);
     const files = await unzipXlsx(new Uint8Array(buf));
-    const { rows } = extractImportHandles(files);
-    if (!rows.length) { console.log("[SFL-EXPORT] no 訂單匯入 handle rows in this export — nothing to send."); return; }
+    const { rows, cols } = extractImportHandles(files);
+    if (!rows.length) {
+      console.log("[SFL-EXPORT] no 訂單匯入 handle rows in this export — nothing to send.",
+        "sheets:", Object.keys(files).filter((k) => /worksheets\/sheet/.test(k)).length, "cols:", JSON.stringify(cols || {}));
+      return;
+    }
     chrome.runtime.sendMessage({ type: "PC_EXPORT_HANDLES", rows }, (resp) => {
       if (chrome.runtime.lastError) { console.warn("[SFL-EXPORT] background unreachable:", chrome.runtime.lastError.message); return; }
       console.log(`[SFL-EXPORT] sent ${rows.length} row(s); upsert result:`, JSON.stringify(resp || {}));

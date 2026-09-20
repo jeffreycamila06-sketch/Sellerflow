@@ -139,6 +139,14 @@ describe("MAIN-world hook — non-disruptive Blob capture", () => {
   it("returns the ORIGINAL url unchanged (the seller's download is never broken)", () => {
     expect(hook).toMatch(/const url = orig\(obj\);[\s\S]*return url;/);
   });
+  it("installs the fallback capture paths (Blob/File ctor, anchor.click, showSaveFilePicker, msSaveBlob, data: decode)", () => {
+    expect(hook).toContain("Blob");                        // Blob/File constructor wrap
+    expect(hook).toContain("HTMLAnchorElement.prototype.click");
+    expect(hook).toContain("showSaveFilePicker");
+    expect(hook).toMatch(/msSaveOrOpenBlob|msSaveBlob/);
+    expect(hook).toContain("forwardDataUrl");              // data: URL decode path
+    expect(hook).toContain("via");                         // each path is logged/labelled
+  });
 });
 
 describe("manifest — export scripts registered (MAIN hook + isolated reader) on /seller/order*", () => {
