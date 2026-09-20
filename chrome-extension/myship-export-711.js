@@ -126,12 +126,52 @@
     return { rows: out, cols: { fcodeCol, handleCol } };
   }
 
+  // Pull the same-origin temp export URL out of a candidate string (MR2 response body, an
+  // element's src/href, etc.). Resolves relative → absolute against the page origin.
+  function matchExportUrl(s) {
+    if (typeof s !== "string") return null;
+    const m = s.match(/(?:https?:\/\/[^\s"'<>\\]+)?\/i\/temp\/export\/[^\s"'<>\\]+\.xlsx/i);
+    if (!m) return null;
+    try { return new URL(m[0], typeof location !== "undefined" ? location.origin : "https://myship.7-11.com.tw").href; }
+    catch (_) { return null; }
+  }
+
   // ── content-script wiring (browser only) ──
   function install() {
+    const SCAN = "__SFL_EXPORT_SCAN__";
+    const seen = new Set();
+    async function captureExportUrl(url, reason) {
+      if (!url || seen.has(url)) return;
+      seen.add(url);
+      try {
+        console.log(`[SFL-EXPORT] fetching temp export (${reason}): ${url}`);
+        const res = await fetch(url, { credentials: "include" });   // same-origin → cookies flow
+        if (!res.ok) { console.warn(`[SFL-EXPORT] temp export fetch ${res.status} — ${url}`); return; }
+        await handleExport(await res.arrayBuffer(), "url:" + reason);
+      } catch (e) { console.warn("[SFL-EXPORT] temp export fetch failed:", e && e.message); }
+    }
     window.addEventListener("message", (e) => {
-      if (e.source !== window || !e.data || e.data[TAG] !== true || !e.data.bytes) return;
-      handleExport(e.data.bytes, e.data.via).catch((err) => console.warn("[SFL-EXPORT] parse failed (safe):", err && err.message));
+      if (e.source !== window || !e.data) return;
+      if (e.data[TAG] === true && e.data.bytes) {                    // bytes path (Blob-based downloads)
+        handleExport(e.data.bytes, e.data.via).catch((err) => console.warn("[SFL-EXPORT] parse failed (safe):", err && err.message));
+      } else if (e.data[SCAN] === true) {                           // URL-scan path (server-generated temp file)
+        const u = matchExportUrl(e.data.text);
+        if (u) captureExportUrl(u, "scan");
+      }
     });
+    // Second capture path: watch the DOM for the <iframe src>/<a href> that navigates to the temp file.
+    try {
+      const scanEl = (el) => { const u = matchExportUrl((el && (el.src || el.href)) || ""); if (u) captureExportUrl(u, "dom"); };
+      document.querySelectorAll("iframe[src],a[href]").forEach(scanEl);
+      new MutationObserver((muts) => {
+        for (const m of muts) {
+          if (m.type === "attributes") scanEl(m.target);
+          m.addedNodes && m.addedNodes.forEach((n) => {
+            if (n.nodeType === 1) { scanEl(n); n.querySelectorAll && n.querySelectorAll("iframe[src],a[href]").forEach(scanEl); }
+          });
+        }
+      }).observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["src", "href"] });
+    } catch (_) { /* observer optional */ }
     console.log("[SFL-EXPORT] reader armed — click 匯出報表 to capture handles.");
   }
   async function handleExport(buf, via) {
@@ -149,7 +189,7 @@
     });
   }
 
-  const api = { unzipXlsx, extractImportHandles, sharedStrings, importSheetPath };
+  const api = { unzipXlsx, extractImportHandles, sharedStrings, importSheetPath, matchExportUrl };
   if (typeof module !== "undefined" && module.exports) module.exports = api;   // node CJS
   try { root.__sflExportReader = api; } catch (_) { /* frozen global — ignore */ }  // vitest/global fallback + debug
   // Install ONLY in the extension's isolated world (chrome.runtime present). Never in node/tests.

@@ -14,6 +14,7 @@ import { createRequire } from "node:module";
 type Reader = {
   unzipXlsx: (b: Uint8Array) => Promise<Record<string, Uint8Array>>;
   extractImportHandles: (files: Record<string, Uint8Array>) => { rows: Array<{ tracking_no: string; buyer_username: string | null }>; cols: { fcodeCol?: string; handleCol?: string } };
+  matchExportUrl: (s: string) => string | null;
 };
 const require = createRequire(import.meta.url);
 // Dual-mode file: CJS require gives module.exports; under vitest's ESM transform it also assigns
@@ -128,6 +129,26 @@ describe("reader — 訂單匯入 tab, header-text column targeting", () => {
   });
 });
 
+describe("matchExportUrl — pull the same-origin temp export URL out of a candidate string", () => {
+  it("extracts /i/temp/export/*.xlsx from a JSON/text response body (relative → absolute, page origin)", () => {
+    const body = '{"ok":true,"file":"/i/temp/export/%e8%b3%a3_8v06RHZZUNbM_20260920110841.xlsx"}';
+    const out = reader.matchExportUrl(body);
+    // resolved against the page origin (jsdom localhost here; myship.7-11.com.tw in Chrome)
+    expect(out).toMatch(/^https?:\/\/.+\/i\/temp\/export\/%e8%b3%a3_8v06RHZZUNbM_20260920110841\.xlsx$/);
+  });
+  it("extracts a full absolute URL from an iframe src attribute string", () => {
+    const html = '<iframe src="https://myship.7-11.com.tw/i/temp/export/abc_20260920.xlsx"></iframe>';
+    expect(reader.matchExportUrl(html)).toBe("https://myship.7-11.com.tw/i/temp/export/abc_20260920.xlsx");
+  });
+  it("returns null for unrelated strings (other .xlsx paths, no /i/temp/export)", () => {
+    expect(reader.matchExportUrl("/seller/order?tab=pending")).toBeNull();
+    expect(reader.matchExportUrl("/some/other/report.xlsx")).toBeNull();
+    expect(reader.matchExportUrl("")).toBeNull();
+    // @ts-expect-error guard non-strings
+    expect(reader.matchExportUrl(null)).toBeNull();
+  });
+});
+
 describe("MAIN-world hook — non-disruptive Blob capture", () => {
   const hook = readFileSync("chrome-extension/myship-export-hook.js", "utf8");
   it("patches URL.createObjectURL, gates on the PK zip signature, forwards via postMessage", () => {
@@ -146,6 +167,12 @@ describe("MAIN-world hook — non-disruptive Blob capture", () => {
     expect(hook).toMatch(/msSaveOrOpenBlob|msSaveBlob/);
     expect(hook).toContain("forwardDataUrl");              // data: URL decode path
     expect(hook).toContain("via");                         // each path is logged/labelled
+  });
+  it("scans XHR/fetch for the server-generated temp export URL (/i/temp/export)", () => {
+    expect(hook).toContain("/i/temp/export");
+    expect(hook).toContain("__SFL_EXPORT_SCAN__");
+    expect(hook).toMatch(/window\.fetch = function/);
+    expect(hook).toMatch(/XMLHttpRequest\.prototype\.(open|send)/);
   });
 });
 
