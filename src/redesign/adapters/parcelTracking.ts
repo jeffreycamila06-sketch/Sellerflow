@@ -130,6 +130,16 @@ export function chaseTarget(buyerUsername: string | null | undefined): ChaseTarg
   return { kind: "copy", handle: cleaned };   // real names (spaces / CJK) → Copy
 }
 
+// On iOS the "Open profile" tap opens the direct tiktok.com/@handle link, which the
+// TikTok app captures (universal link) and lands on the app HOME (not the profile) —
+// but the seller is LOGGED IN there. So we ALSO copy "@handle" to the clipboard on the
+// same tap, ready to paste into the app's Search → profile → Message. Returns the string
+// to copy on iOS, or null on desktop (desktop goes straight to the profile, no copy
+// needed). Never touches the stored buyer_username.
+export function chaseCopyValue(handle: string, ios: boolean): string | null {
+  return ios ? `@${handle}` : null;
+}
+
 export interface ParcelGroups {
   waitingPickup: ParcelTrackingRow[]; // chaseable + at_store (urgent-first)
   inTransit: ParcelTrackingRow[];     // chaseable + in_transit
