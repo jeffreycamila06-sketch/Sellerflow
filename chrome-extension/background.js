@@ -278,3 +278,49 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   })().catch((e) => sendResponse({ ok: false, reason: "threw", detail: e && e.message }));
   return true;
 });
+
+// ── Export-reader writeback (buyer handle only) ───────────────────────────────
+// The 匯出報表 .xlsx pairs the F-code (配送單編號) with the buyer handle (其它資訊 / FB·LINE·IG)
+// on the 訂單匯入 tab. Unlike the on-screen scraper, the export is authoritative for the HANDLE
+// LINK and NOTHING else, so we write ONLY buyer_username (+ keys): merge-duplicates on
+// (user_id, tracking_no) then never clobbers the poller's live-status columns OR the scraper's
+// cm_order_no/store_id/order_amount. Handle-less rows are dropped (the F-code alone is already
+// covered by the poller/scraper). Handle stored VERBATIM (never clean "IG"/"line"/"fb").
+async function pcUpsertHandles(cfg, token, rows) {
+  const uid = pcUserIdFromToken(token);
+  if (!uid) return { ok: false, reason: "no_uid_in_token" };
+  const withHandle = (Array.isArray(rows) ? rows : [])
+    .filter((r) => r && r.tracking_no && r.buyer_username != null && String(r.buyer_username).trim() !== "")
+    .map((r) => ({ user_id: uid, tracking_no: String(r.tracking_no), buyer_username: String(r.buyer_username) }));
+  if (!withHandle.length) return { ok: true, upserted: 0 };
+  let upserted = 0;
+  for (const chunk of pcChunk(withHandle, 500)) {
+    const r = await fetch(`${cfg.supabaseUrl}/rest/v1/parcel_tracking?on_conflict=user_id,tracking_no`, {
+      method: "POST",
+      headers: {
+        apikey: cfg.supabaseAnonKey, Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      body: JSON.stringify(chunk),
+    });
+    if (!r.ok) return { ok: false, reason: `upsert_http_${r.status}`, upserted };
+    upserted += chunk.length;
+  }
+  return { ok: true, upserted };
+}
+
+// Export reader (myship-export-711.js) → upsert the buyer handles. SAME auth as the scraper:
+// read Jeff's token from the SFL tab (single-refresher bridge), never persist our own.
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== "PC_EXPORT_HANDLES") return false;
+  (async () => {
+    const cfg = await pcConfig();
+    if (!cfg.supabaseUrl || !cfg.supabaseAnonKey) { sendResponse({ ok: false, reason: "no_config" }); return; }
+    const sflTabId = await pcFindTab(["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*", "http://localhost:5173/*"]);
+    if (!sflTabId) { sendResponse({ ok: false, reason: "no_sfl_tab" }); return; }
+    const token = await pcGetToken(sflTabId);
+    if (!token) { sendResponse({ ok: false, reason: "no_token" }); return; }
+    sendResponse(await pcUpsertHandles(cfg, token, message.rows));
+  })().catch((e) => sendResponse({ ok: false, reason: "threw", detail: e && e.message }));
+  return true;
+});
