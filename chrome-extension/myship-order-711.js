@@ -61,6 +61,12 @@
       else if (map.name == null && /收件人|取件人|買家|姓名/.test(h)) map.name = i;
       else if (map.store == null && /門市/.test(h)) map.store = i;
       else if (map.amount == null && /金額|總計|應收|貨款/.test(h)) map.amount = i;
+      // Buyer handle column (賣貨便 puts it under 其他資訊 / 備註). ⚠️ VERIFY the on-screen
+      // /seller/order list actually shows this column UNMASKED — the owner reports the list
+      // masks the recipient NAME; the handle is confirmed present in the 匯出報表 EXPORT.
+      // If the on-screen list lacks/masks it, this stays null and the export-read path
+      // (separate) must supply buyer_username instead.
+      else if (map.handle == null && /其他資訊|備註/.test(h)) map.handle = i;
     });
     return map.code != null ? map : null; // the parcel code column is required
   }
@@ -88,6 +94,10 @@
         recipient_name: cell(map.name) || null,
         store_id: st.store,
         order_amount: parseAmount(cell(map.amount)),
+        // Buyer handle VERBATIM — NEVER strip "(IG)"/"line"/"fb"; the seller searches
+        // TikTok/IG on the exact string. Null when the handle column is absent → the
+        // background upsert then omits buyer_username (never clobbers a stored value).
+        buyer_username: map.handle != null ? (cell(map.handle) || null) : null,
       });
     }
     return out;
