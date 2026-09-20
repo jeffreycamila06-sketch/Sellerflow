@@ -61,6 +61,10 @@
       else if (map.name == null && /收件人|取件人|買家|姓名/.test(h)) map.name = i;
       else if (map.store == null && /門市/.test(h)) map.store = i;
       else if (map.amount == null && /金額|總計|應收|貨款/.test(h)) map.amount = i;
+      // ⚠️ NO buyer-handle capture here (removed). The on-screen /seller/order list MASKS the
+      // recipient name and does not reliably expose the handle; the SINGLE handle source is now
+      // the 匯出報表 EXPORT reader (myship-export-711.js → PC_EXPORT_HANDLES → buyer_username).
+      // This scraper stays the source for tracking_no + cm_order_no + store_id + order_amount only.
     });
     return map.code != null ? map : null; // the parcel code column is required
   }
@@ -88,6 +92,8 @@
         recipient_name: cell(map.name) || null,
         store_id: st.store,
         order_amount: parseAmount(cell(map.amount)),
+        // buyer_username is NOT scraped here — the export reader is the sole handle source.
+        // These rows always take pcUpsertTracking's no-handle path (never touch buyer_username).
       });
     }
     return out;

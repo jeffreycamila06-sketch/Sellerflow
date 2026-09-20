@@ -100,8 +100,10 @@ async function pcWriteVerdict(cfg, token, id, verdict) {
 
 // ── Order-list scraper writeback (parcel_tracking upsert) ──────────────────────
 // The myship-order-711 content script scrapes the order list and sends the rows
-// here; we upsert them into parcel_tracking with Jeff's token (own-scoped RLS —
-// the DB trigger link_parcel_tracking() then fills buyer_username). REST upsert on
+// here; we upsert them into parcel_tracking with Jeff's token (own-scoped RLS). When a
+// row carries the buyer's handle (其他資訊/備註 / the export handle column) we write it
+// DIRECTLY to buyer_username — no dependence on the shipping_entries fuzzy-match trigger,
+// which stays as a fallback (COALESCE-preserves a provided value). REST upsert on
 // (user_id, tracking_no); merge-duplicates only touches the columns we send, so the
 // poller's status/ship_type/special_type are NEVER clobbered on a re-scrape.
 function pcUserIdFromToken(token) {
@@ -117,31 +119,43 @@ function pcChunk(arr, n) { const out = []; for (let i = 0; i < arr.length; i += 
 async function pcUpsertTracking(cfg, token, rows) {
   const uid = pcUserIdFromToken(token);
   if (!uid) return { ok: false, reason: "no_uid_in_token" };
-  // ⚠️ ONLY the scraper's own columns below — the poller owns the live-status fields;
-  // merge-duplicates would otherwise reset a poller-set value on a re-scrape.
-  const clean = (Array.isArray(rows) ? rows : [])
-    .filter((r) => r && r.tracking_no)
-    .map((r) => ({
-      user_id: uid,
-      tracking_no: String(r.tracking_no),
-      cm_order_no: r.cm_order_no ? String(r.cm_order_no) : null,
-      recipient_name: r.recipient_name ? String(r.recipient_name) : null,
-      store_id: r.store_id ? String(r.store_id) : null,
-      order_amount: (r.order_amount != null && r.order_amount !== "") ? Number(r.order_amount) : null,
-    }));
-  if (!clean.length) return { ok: true, upserted: 0 };
+  // The scraper's own columns only. The poller owns the live-status fields; merge-duplicates
+  // touches ONLY columns present in the JSON, so the poller-set live-status values are never
+  // clobbered on a re-scrape.
+  const base = (r) => ({
+    user_id: uid,
+    tracking_no: String(r.tracking_no),
+    cm_order_no: r.cm_order_no ? String(r.cm_order_no) : null,
+    recipient_name: r.recipient_name ? String(r.recipient_name) : null,
+    store_id: r.store_id ? String(r.store_id) : null,
+    order_amount: (r.order_amount != null && r.order_amount !== "") ? Number(r.order_amount) : null,
+  });
+  const valid = (Array.isArray(rows) ? rows : []).filter((r) => r && r.tracking_no);
+  const hasHandle = (r) => r.buyer_username != null && String(r.buyer_username).trim() !== "";
+  // buyer_username is written VERBATIM (never clean "IG"/"line"/"fb"), set directly from
+  // the export's handle column so the Pickup Status screen can show @handle without the
+  // (unused) shipping_entries fuzzy match. ⚠️ CRUCIAL: ONLY rows that HAVE a handle carry
+  // the column — sending buyer_username:null would merge-duplicate OVER a previously-set
+  // handle. So partition into two upserts: with-handle rows get the extra column, handle-
+  // less rows keep the old 5-column shape. (PostgREST also requires a uniform key set per
+  // request, so these MUST be separate calls.) recipient_name stays null.
+  const withHandle = valid.filter(hasHandle).map((r) => ({ ...base(r), buyer_username: String(r.buyer_username) }));
+  const noHandle = valid.filter((r) => !hasHandle(r)).map(base);
+  if (!withHandle.length && !noHandle.length) return { ok: true, upserted: 0 };
   let upserted = 0;
-  for (const chunk of pcChunk(clean, 500)) {
-    const r = await fetch(`${cfg.supabaseUrl}/rest/v1/parcel_tracking?on_conflict=user_id,tracking_no`, {
-      method: "POST",
-      headers: {
-        apikey: cfg.supabaseAnonKey, Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal",
-      },
-      body: JSON.stringify(chunk),
-    });
-    if (!r.ok) return { ok: false, reason: `upsert_http_${r.status}`, upserted };
-    upserted += chunk.length;
+  for (const group of [withHandle, noHandle]) {
+    for (const chunk of pcChunk(group, 500)) {
+      const r = await fetch(`${cfg.supabaseUrl}/rest/v1/parcel_tracking?on_conflict=user_id,tracking_no`, {
+        method: "POST",
+        headers: {
+          apikey: cfg.supabaseAnonKey, Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal",
+        },
+        body: JSON.stringify(chunk),
+      });
+      if (!r.ok) return { ok: false, reason: `upsert_http_${r.status}`, upserted };
+      upserted += chunk.length;
+    }
   }
   return { ok: true, upserted };
 }
@@ -261,6 +275,52 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (!token) { sendResponse({ ok: false, reason: "no_token" }); return; }
     const res = await pcUpsertTracking(cfg, token, message.rows);
     sendResponse(res);
+  })().catch((e) => sendResponse({ ok: false, reason: "threw", detail: e && e.message }));
+  return true;
+});
+
+// ── Export-reader writeback (buyer handle only) ───────────────────────────────
+// The 匯出報表 .xlsx pairs the F-code (配送單編號) with the buyer handle (其它資訊 / FB·LINE·IG)
+// on the 訂單匯入 tab. Unlike the on-screen scraper, the export is authoritative for the HANDLE
+// LINK and NOTHING else, so we write ONLY buyer_username (+ keys): merge-duplicates on
+// (user_id, tracking_no) then never clobbers the poller's live-status columns OR the scraper's
+// cm_order_no/store_id/order_amount. Handle-less rows are dropped (the F-code alone is already
+// covered by the poller/scraper). Handle stored VERBATIM (never clean "IG"/"line"/"fb").
+async function pcUpsertHandles(cfg, token, rows) {
+  const uid = pcUserIdFromToken(token);
+  if (!uid) return { ok: false, reason: "no_uid_in_token" };
+  const withHandle = (Array.isArray(rows) ? rows : [])
+    .filter((r) => r && r.tracking_no && r.buyer_username != null && String(r.buyer_username).trim() !== "")
+    .map((r) => ({ user_id: uid, tracking_no: String(r.tracking_no), buyer_username: String(r.buyer_username) }));
+  if (!withHandle.length) return { ok: true, upserted: 0 };
+  let upserted = 0;
+  for (const chunk of pcChunk(withHandle, 500)) {
+    const r = await fetch(`${cfg.supabaseUrl}/rest/v1/parcel_tracking?on_conflict=user_id,tracking_no`, {
+      method: "POST",
+      headers: {
+        apikey: cfg.supabaseAnonKey, Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=minimal",
+      },
+      body: JSON.stringify(chunk),
+    });
+    if (!r.ok) return { ok: false, reason: `upsert_http_${r.status}`, upserted };
+    upserted += chunk.length;
+  }
+  return { ok: true, upserted };
+}
+
+// Export reader (myship-export-711.js) → upsert the buyer handles. SAME auth as the scraper:
+// read Jeff's token from the SFL tab (single-refresher bridge), never persist our own.
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type !== "PC_EXPORT_HANDLES") return false;
+  (async () => {
+    const cfg = await pcConfig();
+    if (!cfg.supabaseUrl || !cfg.supabaseAnonKey) { sendResponse({ ok: false, reason: "no_config" }); return; }
+    const sflTabId = await pcFindTab(["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*", "http://localhost:5173/*"]);
+    if (!sflTabId) { sendResponse({ ok: false, reason: "no_sfl_tab" }); return; }
+    const token = await pcGetToken(sflTabId);
+    if (!token) { sendResponse({ ok: false, reason: "no_token" }); return; }
+    sendResponse(await pcUpsertHandles(cfg, token, message.rows));
   })().catch((e) => sendResponse({ ok: false, reason: "threw", detail: e && e.message }));
   return true;
 });
