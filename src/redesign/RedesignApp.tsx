@@ -779,7 +779,7 @@ export default function RedesignApp() {
     if (auth.status !== "authed") return;
     let explicit = false;
     try { explicit = !!localStorage.getItem(LS.currencySet); } catch { explicit = false; }
-    if (!explicit) setCurrency(marketFor(auth.profile?.country).currency);
+    { const mc = marketFor(auth.profile?.country).currency; if (!explicit && mc) setCurrency(mc); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth.status, auth.profile?.country]);
   const setCurrencyExplicit = (c: string) => {
@@ -1273,7 +1273,7 @@ export default function RedesignApp() {
         currencyPinnedRef.current = true;
         let explicit = false;
         try { explicit = !!localStorage.getItem(LS.currencySet); } catch { explicit = false; }
-        if (!explicit) setCurrency(marketFor(auth.profile?.country).currency);
+        { const mc = marketFor(auth.profile?.country).currency; if (!explicit && mc) setCurrency(mc); }
       }
     } else if (auth.status === "anon") {
       setScreen(anonScreen());

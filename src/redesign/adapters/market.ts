@@ -5,28 +5,41 @@
 // TW + PH exist today; add a MARKETS entry to introduce another. PURE — unit-tested.
 import { isAdminRole } from "../../lib/roles";
 
-export type ShippingModule = "tw-711" | "ph";
+// 'none' = no shipping module for this market yet → the shipping slot renders nothing
+// (cleanly). 'tw-711' = the current TW 7-11/賣貨便 module; 'ph' = a future PH module.
+export type ShippingModule = "tw-711" | "ph" | "none";
 export interface Market {
-  country: string;          // "TW" | "PH"
-  currency: string;         // "TWD" | "PHP" (curSymbol maps → NT$ / ₱)
-  shippingModule: ShippingModule; // reserved slot; a future PH module drops in without touching TW
+  country: string;          // ISO-2 ("TW" | "PH" | "VN" | "TH" | "ID" | "MY" | …)
+  currency: string;         // ISO currency (curSymbol maps → NT$/₱/₫/฿/Rp/RM). "" = no
+                            //   market default → keep the app default / the seller's pick.
+  shippingModule: ShippingModule;
   features: { parcelScan: boolean; pickupStatus: boolean; stickerQr: boolean };
 }
 
+const ALL_OFF = { parcelScan: false, pickupStatus: false, stickerQr: false } as const;
 const TW: Market = { country: "TW", currency: "TWD", shippingModule: "tw-711", features: { parcelScan: true, pickupStatus: true, stickerQr: true } };
-const PH: Market = { country: "PH", currency: "PHP", shippingModule: "ph", features: { parcelScan: false, pickupStatus: false, stickerQr: false } };
-export const MARKETS: Record<string, Market> = { TW, PH };
+// Non-TW markets: TW-only features hidden. PH has a (future) shipping slot; the rest have
+// none yet. Currencies must exist in data.ts CURRENCIES (curSymbol) — TWD/PHP/VND/THB/IDR/MYR.
+const PH: Market = { country: "PH", currency: "PHP", shippingModule: "ph", features: ALL_OFF };
+const VN: Market = { country: "VN", currency: "VND", shippingModule: "none", features: ALL_OFF };
+const TH: Market = { country: "TH", currency: "THB", shippingModule: "none", features: ALL_OFF };
+const ID: Market = { country: "ID", currency: "IDR", shippingModule: "none", features: ALL_OFF };
+const MY: Market = { country: "MY", currency: "MYR", shippingModule: "none", features: ALL_OFF };
+export const MARKETS: Record<string, Market> = { TW, PH, VN, TH, ID, MY };
 export const DEFAULT_MARKET = TW;
 
-// The market for a stored country. NULL/""/"TW" → TW; every other value → PH (the single
-// non-TW market for now — "PH or any known non-TW"). Add MARKETS keys to split further.
+// The market for a stored country. NULL/""/"TW" → TW (unchanged). A KNOWN non-TW country →
+// its own market (correct currency). Any OTHER/unknown non-TW → TW-only features hidden,
+// currency "" (no market default → the app default / the seller's explicit pick wins),
+// shippingModule 'none'.
 export function marketFor(country: string | null | undefined): Market {
   const c = String(country || "").trim().toUpperCase();
   if (!c || c === "TW") return TW;
-  return MARKETS[c] ?? PH;
+  return MARKETS[c] ?? { country: c, currency: "", shippingModule: "none", features: ALL_OFF };
 }
 
-export type ViewAs = "all" | "TW" | "PH";
+export type ViewAs = "all" | "TW" | "PH" | "VN" | "TH" | "ID" | "MY";
+export const VIEW_AS_OPTIONS: ViewAs[] = ["all", "TW", "PH", "VN", "TH", "ID", "MY"];
 
 // The EFFECTIVE market the UI renders as, for THIS user:
 //  • non-admin  → their profile country's market (TW-only features hidden off-market).

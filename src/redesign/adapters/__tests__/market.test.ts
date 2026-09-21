@@ -5,6 +5,7 @@ import { describe, it, expect } from "vitest";
 import { marketFor, effectiveMarket, marketHides, MARKETS } from "../market";
 import { parcelScanVisible, canUseStickerQr } from "../parcelScan";
 import { parcelTrackingVisible } from "../parcelTracking";
+import { curSymbol } from "../../data";
 
 const future = "2027-01-01T00:00:00Z";
 
@@ -18,14 +19,35 @@ describe("marketFor", () => {
       expect(m.shippingModule).toBe("tw-711");
     }
   });
-  it("PH / any known non-TW → the PH market, TW-only features OFF, PHP, ph slot", () => {
-    for (const c of ["PH", "ph", "MY", "SG"]) {
+  it("each KNOWN non-TW country → its OWN currency + TW-only features OFF", () => {
+    const expected: Record<string, { currency: string; symbol: string; ship: string }> = {
+      PH: { currency: "PHP", symbol: "₱", ship: "ph" },
+      VN: { currency: "VND", symbol: "₫", ship: "none" },
+      TH: { currency: "THB", symbol: "฿", ship: "none" },
+      ID: { currency: "IDR", symbol: "Rp", ship: "none" },
+      MY: { currency: "MYR", symbol: "RM", ship: "none" },
+    };
+    for (const [c, e] of Object.entries(expected)) {
       const m = marketFor(c);
-      expect(m.currency).toBe("PHP");
+      expect(m.currency).toBe(e.currency);
+      expect(curSymbol(m.currency)).toBe(e.symbol);
       expect(m.features).toEqual({ parcelScan: false, pickupStatus: false, stickerQr: false });
-      expect(m.shippingModule).toBe("ph");
+      expect(m.shippingModule).toBe(e.ship);
     }
-    expect(Object.keys(MARKETS).sort()).toEqual(["PH", "TW"]);
+    expect(Object.keys(MARKETS).sort()).toEqual(["ID", "MY", "PH", "TH", "TW", "VN"]);
+  });
+  it("VN gets ₫ (VND), NOT ₱ (the old any-non-TW→PH bug)", () => {
+    expect(curSymbol(marketFor("VN").currency)).toBe("₫");
+    expect(marketFor("VN").currency).not.toBe("PHP");
+  });
+  it("unknown non-TW (e.g. SG, US) → features OFF, currency '' (keep default/pick), ship none", () => {
+    for (const c of ["SG", "US", "ZZ"]) {
+      const m = marketFor(c);
+      expect(m.currency).toBe("");
+      expect(m.features).toEqual({ parcelScan: false, pickupStatus: false, stickerQr: false });
+      expect(m.shippingModule).toBe("none");
+      expect(m.country).toBe(c);
+    }
   });
 });
 

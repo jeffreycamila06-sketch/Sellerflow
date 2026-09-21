@@ -9,6 +9,7 @@ import { headerBar, card, mono } from "../ui";
 import { planDaysLeft, daysDisplay, deriveSubBuckets, deriveUserBase, freeUsersSummary, sortUsersBySignup, auditActionColor, filterAuditLogs, sellerMatchesQuery, type ReadState, type SubBuckets, type FreeUserRow } from "../adapters/useReadData";
 import { getParcelScanOverview, revenueNT, costNT, profitNT, SCAN_COST_NT, type AdminActions, type Plan, type ParcelScanOverview } from "../adapters/useAdmin";
 import { maxAcc } from "../adapters/connect";
+import { VIEW_AS_OPTIONS, type ViewAs } from "../adapters/market";
 import { loadGlobalShippingFeeMeta, saveGlobalShippingFee, validGlobalFee } from "../adapters/shippingSettings";
 import { loadParcelManualEnabledMeta, saveParcelManualEnabled } from "../adapters/parcelScan";
 import { getCreditBalanceForUser } from "../adapters/parcelScan";
@@ -60,7 +61,7 @@ function Ctrl({ icon, label, onClick }: { icon: ReactNode; label: string; onClic
   return <div onClick={onClick} style={ctrlTile}><span style={ctrlChip}>{icon}</span><span style={ctrlLbl}>{label}</span></div>;
 }
 
-export default function Admin({ onOpenPanel, cur, counts, live = false, userBase, mrr = null, owner = null, viewAs = "all", onSetViewAs }: { onOpenPanel: (k: AdminPanelKind) => void; cur: string; counts?: { active: number; expiring: number; expired: number; free: number }; live?: boolean; userBase?: { paying: number; free: number; total: number }; mrr?: number | null; owner?: { name: string; email: string } | null; viewAs?: "all" | "TW" | "PH"; onSetViewAs?: (v: "all" | "TW" | "PH") => void }) {
+export default function Admin({ onOpenPanel, cur, counts, live = false, userBase, mrr = null, owner = null, viewAs = "all", onSetViewAs }: { onOpenPanel: (k: AdminPanelKind) => void; cur: string; counts?: { active: number; expiring: number; expired: number; free: number }; live?: boolean; userBase?: { paying: number; free: number; total: number }; mrr?: number | null; owner?: { name: string; email: string } | null; viewAs?: ViewAs; onSetViewAs?: (v: ViewAs) => void }) {
   const t = useT();
   const subCount = (k: "active" | "expiring" | "expired" | "free", sample: string) => (live && counts ? String(counts[k]) : sample);
   // Batch B #2 — the owner card shows the REAL signed-in admin (was the
@@ -110,8 +111,8 @@ export default function Admin({ onOpenPanel, cur, counts, live = false, userBase
         {onSetViewAs && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "2px 2px 12px" }} data-testid="admin-view-as">
             <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)" }}>{t.rd_adm_view_as}</span>
-            <div style={{ display: "flex", gap: 4, background: "var(--surface-2)", borderRadius: 10, padding: 3 }}>
-              {(["all", "TW", "PH"] as const).map((v) => (
+            <div style={{ display: "flex", gap: 4, background: "var(--surface-2)", borderRadius: 10, padding: 3, flexWrap: "wrap" }}>
+              {VIEW_AS_OPTIONS.map((v) => (
                 <button key={v} data-testid={`admin-view-as-${v}`} onClick={() => onSetViewAs(v)} style={{ padding: "5px 11px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "var(--font-ui)", background: viewAs === v ? "var(--accent)" : "transparent", color: viewAs === v ? "var(--accent-text)" : "var(--text-dim)" }}>{v === "all" ? t.rd_adm_view_all : v}</button>
               ))}
             </div>
@@ -1191,6 +1192,10 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
                 <option value="">{t.rd_adm_country_default}</option>
                 <option value="TW">TW · 台灣</option>
                 <option value="PH">PH · Philippines</option>
+                <option value="VN">VN · Việt Nam</option>
+                <option value="TH">TH · ไทย</option>
+                <option value="ID">ID · Indonesia</option>
+                <option value="MY">MY · Malaysia</option>
               </select>
               <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8, lineHeight: 1.5 }}>{tpl(t.rd_adm_edit_helper, { n: editLimit })}</div>
             </div>
