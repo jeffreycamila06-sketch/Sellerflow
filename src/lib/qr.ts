@@ -1,8 +1,8 @@
-// QR module matrix for the printed sticker — encodes the buyer @username so it rides
-// the physical label (the handle is purged from the free-tier DB, so it can't live only
-// in Supabase). qrcode-generator is used for the MATRIX ONLY (no canvas/SVG); the caller
-// stamps modules into the 1-bit sticker raster. ECC Q (25%) — resilient on small thermal
-// codes. Payload is the @username string ONLY.
+// QR module matrix for the printed sticker — encodes the buyer's TikTok profile URL so it
+// rides the physical label (the handle is purged from the free-tier DB). qrcode-generator
+// is used for the MATRIX ONLY (no canvas/SVG); the caller stamps modules into the 1-bit
+// sticker raster. Generic over ECC + payload; the sticker path passes the URL with ECC M
+// (keeps a typical ≤37-byte URL at QR v3). See src/lib/tiktokHandle.ts for the payload.
 import qrcode from "qrcode-generator";
 
 export type QrEcc = "L" | "M" | "Q" | "H";
