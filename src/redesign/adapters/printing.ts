@@ -81,7 +81,6 @@ export function buildNativeStickerPayload(buyer: Buyer, cur: string, storeName: 
       printOrderScale: cfg.printOrderScale,
       printCommentScale: cfg.printCommentScale,
       printTotalScale: cfg.printTotalScale,
-      printStickerQr: isStickerQrOn(), // per-device "Print QR on sticker" toggle (default OFF)
     },
   };
 }
@@ -339,7 +338,10 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
   // mode-0 band emission (rasterizeToBitmapTspl) stays golden-tested but dormant.
   // The CJK atlas arrives RESOLVED (code-split chunk; the caller awaited it
   // only when the payload actually contains CJK).
-  const raster = rasterizeToSdkBitmapTspl(payload, payload.labelWidthMm, payload.labelHeightMm, { latin: LATIN_ATLAS, cjk });
+  // QR is a bitmap-only concern (the native TSPL text builders can't render it), so
+  // the "Print QR on sticker" toggle enters HERE, not in the byte-parity native payload.
+  const qrPayload = { ...payload, settings: { ...payload.settings, printStickerQr: isStickerQrOn() } };
+  const raster = rasterizeToSdkBitmapTspl(qrPayload, payload.labelWidthMm, payload.labelHeightMm, { latin: LATIN_ATLAS, cjk });
   const data = bytesToBase64(raster.bytes);
   const t1 = nowMs();
   try {
