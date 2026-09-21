@@ -5,7 +5,7 @@
 // daily-cap circuit breaker. The captcha OCR + real HTTP are covered by node --check
 // + the on-Render memory probe (tesseract can't run in CI).
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { runPoll, __resetDailyCounter } from "../../../../server/parcelTrackingRunner.js";
+import { runPoll, capLiveRowsPerSeller, PER_SELLER_LIVE_CAP, __resetDailyCounter } from "../../../../server/parcelTrackingRunner.js";
 import { QUERY_URL, SEARCH_URL } from "../../../../server/parcelTracking.js";
 
 const HTML_IN_TRANSIT = `var searchResults = [{"paymentNo":"F70334584020","recStore":"朝陽","recDate":"","orderAmount":60,"status":1,"statusMessage":"包裹進行配送中","shipStatusDetails":[{"notificationName":"包裹進行配送中"}],"shipType":"C2C","specialType":null}];`;
@@ -197,5 +197,41 @@ describe("runPoll — 7-day retention (picked_up / returned auto-delete)", () =>
     const s = await runPoll({ serviceSb: sb, userId: "U", fetchImpl: fetchFactory(HTML_EMPTY), ocr: ocr(), now: () => FIXED_NOW, logger: { log() {}, warn() {}, error: err }, limits: smallLimits });
     expect(s.ok).toBe(true);
     expect(err.mock.calls.some((c) => String(c[0]).includes("retention delete failed"))).toBe(true);
+  });
+});
+
+describe("capLiveRowsPerSeller — per-seller live-row cap (at_store prioritized)", () => {
+  it("under the cap → identity (every row kept)", () => {
+    const rows = [{ id: "a", user_id: "U", status: "in_transit" }, { id: "b", user_id: "U", status: "at_store" }];
+    expect(capLiveRowsPerSeller(rows, 300)).toHaveLength(2);
+  });
+  it("over the cap → at_store kept first, the rest trimmed", () => {
+    const rows = [
+      { id: "t1", user_id: "U", status: "in_transit" }, { id: "s1", user_id: "U", status: "at_store" },
+      { id: "t2", user_id: "U", status: "in_transit" }, { id: "s2", user_id: "U", status: "at_store" },
+    ];
+    expect(capLiveRowsPerSeller(rows, 2).map((r) => r.id)).toEqual(["s1", "s2"]); // both at_store survive
+  });
+  it("caps EACH seller independently", () => {
+    const rows = [
+      { id: "u1", user_id: "U", status: "in_transit" }, { id: "u2", user_id: "U", status: "in_transit" }, { id: "u3", user_id: "U", status: "at_store" },
+      { id: "v1", user_id: "V", status: "in_transit" },
+    ];
+    const kept = capLiveRowsPerSeller(rows, 2);
+    expect(kept.filter((r) => r.user_id === "U")).toHaveLength(2);
+    expect(kept.filter((r) => r.user_id === "V")).toHaveLength(1);   // V under cap → all kept
+    expect(kept.some((r) => r.id === "u3")).toBe(true);              // U's at_store prioritized in
+  });
+  it("INERT while owner-scoped: a sub-cap owner set is unchanged; default cap = 300", () => {
+    const rows = Array.from({ length: 159 }, (_, i) => ({ id: `r${i}`, user_id: "OWNER", status: "in_transit" }));
+    expect(capLiveRowsPerSeller(rows)).toHaveLength(159);
+    expect(PER_SELLER_LIVE_CAP).toBe(300);
+  });
+  it("runPoll wires the cap: over-cap seller → rows trimmed + s.capped reported", async () => {
+    const rows = Array.from({ length: 4 }, (_, i) => ({ id: `r${i}`, user_id: "U", tracking_no: `F${i}0000000`, arrived_at: null, status: "in_transit" }));
+    const sb = fakeSb(rows);
+    const s = await runPoll({ serviceSb: sb, userId: "U", fetchImpl: fetchFactory(HTML_EMPTY), ocr: ocr(), now: () => FIXED_NOW, logger: { log() {}, warn() {}, error() {} }, limits: { ...smallLimits, perSellerCap: 2 } });
+    expect(s.rows).toBe(2);
+    expect(s.capped).toBe(2);
   });
 });
