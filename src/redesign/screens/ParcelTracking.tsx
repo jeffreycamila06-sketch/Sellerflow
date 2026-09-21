@@ -11,11 +11,12 @@
 // updated rows. Chase is MANUAL: a handle-shaped buyer_username → Open profile
 // (tiktok.com/@handle, NOT a DM); otherwise Copy username; no username → the
 // parcel still shows (code + store + status + deadline), labelled "no username".
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT, tpl } from "../i18n";
 import { taipeiDayId } from "../../lib/dateHelpers";
 import { copyText } from "../components/inviteShare";
+import { syncFromExport } from "../adapters/parcelExportRead";
 import {
   loadParcelTracking, groupParcels, chaseTarget, chaseCopyValue, daysUntilDate, isUrgent, isReturningSoon,
   DEADLINE_BUCKETS, deadlineBucketCounts, filterByDeadline,
@@ -161,6 +162,9 @@ export default function ParcelTracking() {
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [groups, setGroups] = useState<ParcelGroups | null>(null);
   const [toast, setToast] = useState("");
+  const [syncing, setSyncing] = useState(false);
+  const [showHow, setShowHow] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   async function load() {
     setState("loading");
@@ -189,6 +193,26 @@ export default function ParcelTracking() {
     if (ok) { setToast(t.rd_pt_copied); setTimeout(() => setToast(""), 1500); }
   };
 
+  const showToast = (msg: string, ms = 4000) => { setToast(msg); setTimeout(() => setToast(""), ms); };
+
+  // "Sync from 賣貨便" — read the uploaded 匯出報表 .xlsx and upsert the buyer handles
+  // under the seller's own JWT. Client-side parse; poller columns are never written.
+  const onSyncPick = async (files: FileList | null) => {
+    const file = files && files[0];
+    if (fileRef.current) fileRef.current.value = ""; // re-picking the same file works
+    if (!file) return;
+    setSyncing(true);
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const res = await syncFromExport(bytes);
+      if (!res.ok) { showToast(t.rd_pt_sync_err); return; }
+      if (res.empty) { showToast(t.rd_pt_sync_empty); return; }
+      showToast(tpl(t.rd_pt_sync_done, { n: res.synced, m: res.totalRows, k: res.without }));
+      await load(); // re-read so the new @handles show immediately
+    } catch { showToast(t.rd_pt_sync_err); }
+    finally { setSyncing(false); }
+  };
+
   const empty = groups && !groups.waitingPickup.length && !groups.inTransit.length && !groups.pickedUp.length && !groups.returned.length && !groups.other.length;
 
   return (
@@ -198,12 +222,34 @@ export default function ParcelTracking() {
           <div style={headerTitle}>{t.rd_pt_title}</div>
           <div style={{ fontSize: 11.5, color: "var(--on-header)", opacity: 0.85, marginTop: 2 }}>{t.rd_pt_sub}</div>
         </div>
-        <button onClick={() => void load()} style={{ ...btn, background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.35)", color: "var(--on-header)" }} data-testid="pt-refresh">
-          {t.rd_pt_refresh}
-        </button>
+        <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+          <button onClick={() => fileRef.current?.click()} disabled={syncing} style={{ ...btn, background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.35)", color: "var(--on-header)", opacity: syncing ? 0.6 : 1 }} data-testid="pt-sync">
+            {syncing ? t.rd_pt_sync_ing : t.rd_pt_sync}
+          </button>
+          <button onClick={() => void load()} style={{ ...btn, background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.35)", color: "var(--on-header)" }} data-testid="pt-refresh">
+            {t.rd_pt_refresh}
+          </button>
+        </div>
       </div>
+      <input ref={fileRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden data-testid="pt-sync-file" onChange={(e) => void onSyncPick(e.target.files)} />
 
       <div style={{ padding: 16, maxWidth: 620, margin: "0 auto" }}>
+        {/* Sync-from-賣貨便 hint + collapsible how-to (laptop-first). */}
+        <div style={{ ...card, padding: 12, marginBottom: 14 }} data-testid="pt-sync-card">
+          <div style={{ fontSize: 12.5, color: "var(--text-dim)" }}>{t.rd_pt_sync_hint}</div>
+          <button onClick={() => setShowHow((v) => !v)} style={{ marginTop: 6, background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--accent)", fontSize: 12, fontWeight: 700 }} data-testid="pt-sync-how-toggle">
+            {showHow ? t.rd_pt_sync_how_hide : t.rd_pt_sync_how}
+          </button>
+          {showHow && (
+            <ol style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12, color: "var(--text-dim)", lineHeight: 1.6 }} data-testid="pt-sync-how">
+              <li>{t.rd_pt_sync_s1}</li>
+              <li>{t.rd_pt_sync_s2}</li>
+              <li>{t.rd_pt_sync_s3}</li>
+              <li>{t.rd_pt_sync_s4}</li>
+            </ol>
+          )}
+        </div>
+
         {state === "loading" && <div style={{ fontSize: 13, color: "var(--text-dim)", textAlign: "center", padding: 30 }}>{t.rd_pt_loading}</div>}
         {state === "error" && <div style={{ ...card, fontSize: 13, color: "var(--danger)", textAlign: "center" }} data-testid="pt-error">{t.rd_pt_error}</div>}
         {state === "ready" && groups && (
