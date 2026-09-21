@@ -94,6 +94,32 @@ describe("PrinterSettings subtitle (task D)", () => {
   });
 });
 
+// ── "Print QR on sticker" toggle: disabled + hint on 60×40, enabled on supported sizes ──
+describe("PrinterSettings sticker-QR toggle vs sticker size", () => {
+  const renderBT = (psSize: string) =>
+    render(
+      <TProvider lang="en">
+        <PrinterSettings onBack={noop} psType="bt" psOut="sticker" onSetPsOut={noop}
+          psSize={psSize} psSizeOpen={false} onTogglePsSize={noop} onPickPsSize={noop} />
+      </TProvider>,
+    );
+
+  it("60×40 → toggle disabled + 'available on 70×50, 80×50, 80×60 only' hint", () => {
+    renderBT("60x40mm");
+    expect((screen.getByTestId("ps-sticker-qr-toggle") as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByTestId("ps-sticker-qr-hint").textContent).toBe(t.rd_ps_sticker_qr_unavail);
+  });
+
+  it("supported sizes → toggle enabled + normal description", () => {
+    for (const z of ["70x50mm", "80x50mm", "80x60mm", "100x60mm (Standard)"]) {
+      const r = renderBT(z);
+      expect((screen.getByTestId("ps-sticker-qr-toggle") as HTMLButtonElement).disabled).toBe(false);
+      expect(screen.getByTestId("ps-sticker-qr-hint").textContent).toBe(t.rd_ps_sticker_qr_desc);
+      r.unmount();
+    }
+  });
+});
+
 // ── (addendum) the focus scroll is a genuine ONE-SHOT ───────────────────────
 // GeneralSettings is CONDITIONALLY mounted (screen === "settings"). Before the
 // one-shot fix, printerFocus stayed > 0 after the modal used it, so the scroll

@@ -452,16 +452,17 @@ export function renderStickerBitmap(payload: RasterPayload, wMm: number, hMm: nu
 // https://tiktok.com/@<handle> (the shortest URL cameras + TikTok both accept). ECC M
 // (not Q) keeps a typical ≤37-byte URL at QR v3 (29 modules). Stamped bottom-right; a
 // CLEARED footprint guarantees the 4-module quiet zone. 4 dots/module (≈14.5 mm symbol at
-// 203 dpi) on 80×60 and larger; 3 dots/module on 60×40 ONLY (4 crowds the small label).
-// TEXT-path prints (old binaries / Classic mode) never call this → they carry no QR.
-// Gated on the same @username print toggle + a non-blank handle.
-export const QR_MODULE_DOTS = 4;        // dots/module on 80×60 and larger
-export const QR_MODULE_DOTS_SMALL = 3;  // dots/module on 60×40 only
+// 203 dpi). AVAILABLE ONLY on labels ≥50 mm tall (70×50 / 80×50 / 80×60 / 100×60) — 60×40
+// is EXCLUDED entirely (field-tested: an ~11 mm QR scanned too slowly on iPhone 12–15 and
+// Android). TEXT-path prints (old binaries / Classic mode) never call this → they carry no
+// QR. Gated on the same @username print toggle + a non-blank handle.
+export const QR_MODULE_DOTS = 4;
 export const QR_QUIET_MODULES = 4;
 export const QR_EDGE_MARGIN_DOTS = 8;
-// 60×40 is the only ≤40 mm-tall label → give it the smaller module; every larger size 4.
-export function qrModuleDots(hMm: number): number { return hMm <= 40 ? QR_MODULE_DOTS_SMALL : QR_MODULE_DOTS; }
+// 60×40 (the only ≤40 mm-tall label) prints no QR at all — every larger size gets one.
+export function stickerQrSupported(hMm: number): boolean { return hMm > 40; }
 function stampHandleQr(bmp: Bitmap, payload: RasterPayload, hMm: number): void {
+  if (!stickerQrSupported(hMm)) return; // 60×40 → never a QR (too small to scan fast)
   if (!payload.settings || payload.settings.printStickerQr !== true) return; // per-device toggle, DEFAULT OFF
   if (payload.settings.printBuyerUsername === false) return; // also follows the @username toggle
   const handle = payload.buyer?.handle ? String(payload.buyer.handle).trim() : "";
@@ -471,7 +472,7 @@ function stampHandleQr(bmp: Bitmap, payload: RasterPayload, hMm: number): void {
   const m = qrMatrix(url, "M"); // ECC M keeps the ≤37-byte URL at QR v3 (29 modules)
   if (!m) return;
   const n = m.length;
-  const scale = qrModuleDots(hMm);
+  const scale = QR_MODULE_DOTS;
   const foot = (n + QR_QUIET_MODULES * 2) * scale;
   let x0 = bmp.w - foot - QR_EDGE_MARGIN_DOTS; if (x0 < 0) x0 = 0;
   let y0 = bmp.h - foot - QR_EDGE_MARGIN_DOTS; if (y0 < 0) y0 = 0;

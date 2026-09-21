@@ -35,6 +35,7 @@ export default function PrinterSettings({
 }) {
   const t = useT();
   const wifi = psType === "wifi";
+  const qrUnsupportedSize = /^60x40/.test(psSize); // sticker QR is excluded on 60×40 (too small to scan fast)
   const nativeReady = hasNativePrinter();
   const btReady = hasBtBridge();
   const [status, setStatus] = useState<MobilePrinterResult>({ ok: false, message: nativeReady ? t.rd_ps_tap_find : t.rd_ps_open_app_connect });
@@ -211,15 +212,17 @@ export default function PrinterSettings({
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginTop: 12, display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_ps_sticker_qr}</div>
-                <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 3, lineHeight: 1.45 }}>{t.rd_ps_sticker_qr_desc}</div>
+                {/* 60×40 is too small to hold a fast-scanning QR → toggle disabled + hint. */}
+                <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 3, lineHeight: 1.45 }} data-testid="ps-sticker-qr-hint">{qrUnsupportedSize ? t.rd_ps_sticker_qr_unavail : t.rd_ps_sticker_qr_desc}</div>
               </div>
               <button
-                aria-pressed={stickerQr}
+                aria-pressed={qrUnsupportedSize ? false : stickerQr}
+                disabled={qrUnsupportedSize}
                 data-testid="ps-sticker-qr-toggle"
-                onClick={() => { const next = !stickerQr; setStickerQrOn(next); setStickerQr(next); }}
-                style={{ width: 52, height: 30, borderRadius: 15, border: "none", cursor: "pointer", flexShrink: 0, position: "relative", background: stickerQr ? "var(--accent)" : "var(--surface-2)", boxShadow: stickerQr ? "0 3px 10px var(--accent-soft)" : "inset 0 0 0 1px var(--border-strong)", transition: "background .15s" }}
+                onClick={() => { if (qrUnsupportedSize) return; const next = !stickerQr; setStickerQrOn(next); setStickerQr(next); }}
+                style={{ width: 52, height: 30, borderRadius: 15, border: "none", cursor: qrUnsupportedSize ? "not-allowed" : "pointer", flexShrink: 0, position: "relative", opacity: qrUnsupportedSize ? 0.4 : 1, background: (!qrUnsupportedSize && stickerQr) ? "var(--accent)" : "var(--surface-2)", boxShadow: (!qrUnsupportedSize && stickerQr) ? "0 3px 10px var(--accent-soft)" : "inset 0 0 0 1px var(--border-strong)", transition: "background .15s" }}
               >
-                <span style={{ position: "absolute", top: 3, left: stickerQr ? 25 : 3, width: 24, height: 24, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,.25)", transition: "left .15s" }} />
+                <span style={{ position: "absolute", top: 3, left: (!qrUnsupportedSize && stickerQr) ? 25 : 3, width: 24, height: 24, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,.25)", transition: "left .15s" }} />
               </button>
             </div>
           </div>
