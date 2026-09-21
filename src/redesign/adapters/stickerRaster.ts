@@ -175,6 +175,7 @@ export interface RasterSettings {
   printStoreName?: boolean; printBuyerNumber?: boolean; printBuyerUsername?: boolean; printOrderItems?: boolean; printTotal?: boolean;
   printStoreScale?: number; printBuyerNumberScale?: number; printBuyerNameScale?: number; printUsernameScale?: number;
   printOrderScale?: number; printCommentScale?: number; printTotalScale?: number;
+  printStickerQr?: boolean; // per-device "Print QR on sticker" toggle (default OFF)
 }
 export interface RasterPayload { storeName?: string; sessionDate?: string; currency?: string; buyer?: RasterBuyer; settings?: RasterSettings | null }
 
@@ -454,7 +455,8 @@ export const QR_MODULE_DOTS = 4;
 export const QR_QUIET_MODULES = 4;
 export const QR_EDGE_MARGIN_DOTS = 8;
 function stampHandleQr(bmp: Bitmap, payload: RasterPayload): void {
-  if (payload.settings && payload.settings.printBuyerUsername === false) return; // follows the @username toggle
+  if (!payload.settings || payload.settings.printStickerQr !== true) return; // per-device toggle, DEFAULT OFF
+  if (payload.settings.printBuyerUsername === false) return; // also follows the @username toggle
   const handle = payload.buyer?.handle ? String(payload.buyer.handle).trim() : "";
   if (!handle) return; // blank → no QR
   const m = qrMatrix(handle, "Q");
