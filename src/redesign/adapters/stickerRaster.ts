@@ -45,6 +45,33 @@ function asciiBytes(s: string): number[] {
 }
 function truncate(s: string, maxLen: number): string { return s.length > maxLen ? s.slice(0, maxLen) : s; }
 function safe(s: string): string { return s.replace(/"/g, "'"); }
+
+// Word-wrap `text` into lines of at most `maxChars` characters (whole words; a word
+// longer than maxChars is hard-split). Collapses runs of whitespace to one space (fixes
+// double-space input). If the text needs more than `maxLines`, the last kept line is
+// ellipsised. PURE → unit-tested. Used ONLY on the QR-keep-out order-comment path.
+export function wrapWords(text: string, maxChars: number, maxLines: number): string[] {
+  const s = String(text || "").replace(/\s+/g, " ").trim();
+  if (!s) return [];
+  const cap = Math.max(1, Math.floor(maxChars));
+  const all: string[] = [];
+  let cur = "";
+  for (let w of s.split(" ")) {
+    while (w.length > cap) { if (cur) { all.push(cur); cur = ""; } all.push(w.slice(0, cap)); w = w.slice(cap); }
+    if (!w) continue;
+    if (!cur) cur = w;
+    else if (cur.length + 1 + w.length <= cap) cur += " " + w;
+    else { all.push(cur); cur = w; }
+  }
+  if (cur) all.push(cur);
+  const lim = Math.max(1, Math.floor(maxLines));
+  if (all.length <= lim) return all;
+  const kept = all.slice(0, lim);
+  let last = kept[lim - 1];
+  if (last.length + 1 > cap) last = last.slice(0, Math.max(0, cap - 1)); // room for the ellipsis
+  kept[lim - 1] = last + "…";
+  return kept;
+}
 function hasNonAscii(s: string): boolean { for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) > 127) return true; return false; }
 function isStrippable(cp: number): boolean {
   return cp >= 0x1f000 || (cp >= 0x2600 && cp <= 0x27bf) || (cp >= 0xfe00 && cp <= 0xfe0f) || cp === 0x200d || cp === 0x20e3;
@@ -193,7 +220,7 @@ export interface DrawResult { ops: DrawOp[]; wDots: number; hDots: number; wMm: 
 // pinned by the parity test (emitTextTspl always uses legacy). "extended" is
 // the bitmap-production mode (see ScriptMode above): same geometry, wider
 // character retention.
-export function stickerDrawOps(payload: RasterPayload, labelWidthMm: number, labelHeightMm: number, mode: ScriptMode = "extended"): DrawResult {
+export function stickerDrawOps(payload: RasterPayload, labelWidthMm: number, labelHeightMm: number, mode: ScriptMode = "extended", qr: QrPlacement | null = null): DrawResult {
   const ops: DrawOp[] = [];
   const c = stickerConfig(labelWidthMm, labelHeightMm);
   const legacy = mode === "legacy";
@@ -306,11 +333,40 @@ export function stickerDrawOps(payload: RasterPayload, labelWidthMm: number, lab
       const tm = cmul(lvlOrder);
       const pm = cmul(lvlComment);
       if (time) ops.push({ k: "txt", x: 16, y, font: "2", s: safe(truncate(time, 10)), xm: tm, ym: tm });
+      let wrapExtra = 0;
       if (cleanItem) {
-        const priceX = time ? 16 + (truncate(time, 10).length + 2) * 12 * tm : 180;
-        textSmart(priceX, y, "4", safe(truncate(cleanItem, 12)), 2, pm, 2, pm);
+        // Gap between the time and the comment: 1 cell when a QR reserves the right side
+        // (space is tight — tightened by one), 2 cells otherwise (unchanged full-width).
+        const gapCells = qr ? 1 : 2;
+        const priceX = time ? 16 + (truncate(time, 10).length + gapCells) * 12 * tm : 180;
+        if (qr) {
+          // QR keep-out: wrap the comment so it stays LEFT of the QR block, flowing DOWN
+          // into the empty bottom space. narrow() matches textSmart's cleaning; CJK stays
+          // single-line truncated-to-fit (its cell math differs — char-wrap deferred).
+          const content = narrow(cleanItem);
+          if (content) {
+            const rightLimit = qr.x0 - QR_TEXT_KEEPOUT_GAP;
+            const perChar = 24 * 2; // font "4"/CJK at xm=2 → 48 dots/char
+            const maxChars = Math.max(1, Math.floor((rightLimit - priceX) / perChar));
+            const cjk = legacy ? hasNonAscii(content) : hasCjkChar(content);
+            if (cjk) {
+              ops.push({ k: "cjk", x: priceX, y, s: truncate(content, maxChars), xm: 2, ym: pm });
+            } else {
+              const lineH = F4 * pm + 6; // == the base row delta for this comment scale
+              // Fit as many lines as the space below allows without the last glyph (F4*pm
+              // tall) clipping the label's bottom edge; always ≥1 (the row itself).
+              const roomForLines = Math.floor((labelHeightMm * 8 - QR_TEXT_KEEPOUT_GAP - F4 * pm - y) / lineH) + 1;
+              const maxLines = Math.max(1, Math.min(MAX_COMMENT_LINES, roomForLines));
+              const lines = wrapWords(content, maxChars, maxLines);
+              for (let li = 0; li < lines.length; li++) ops.push({ k: "txt", x: priceX, y: y + li * lineH, font: "4", s: safe(lines[li]), xm: 2, ym: pm });
+              wrapExtra = Math.max(0, lines.length - 1) * lineH; // rows below the first
+            }
+          }
+        } else {
+          textSmart(priceX, y, "4", safe(truncate(cleanItem, 12)), 2, pm, 2, pm);
+        }
       }
-      const d = Math.max((tm - 1) * F2, (pm - 1) * F4); y += 38 + d; extra += d;
+      const d = Math.max((tm - 1) * F2, (pm - 1) * F4); y += 38 + d + wrapExtra; extra += d + wrapExtra;
     }
   }
   if (printTotal && totalSpent > 0 && c.showTotal) {
@@ -438,10 +494,14 @@ export interface BandOptions { horizontalCrop?: boolean }
 // invariant test can recompose the emitted BITMAP blocks against it.
 export interface FullRaster { buf: Uint8Array; w: number; h: number; rowBytes: number }
 export function renderStickerBitmap(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, mode: ScriptMode = "extended"): FullRaster {
-  const { ops, wDots, hDots } = stickerDrawOps(payload, wMm, hMm, mode);
+  // Compute the QR placement ONCE (legacy/parity mode never has a QR) → the layout wraps
+  // the comment before it AND the stamp renders it, from the SAME footprint.
+  const cfg = stickerConfig(wMm, hMm);
+  const qr = mode === "legacy" ? null : stickerQrPlacement(payload, cfg.wDots, hMm * 8, hMm);
+  const { ops, wDots, hDots } = stickerDrawOps(payload, wMm, hMm, mode, qr);
   const bmp = new Bitmap(wDots, hDots);
   paint(bmp, ops, atlases);
-  stampHandleQr(bmp, payload, hMm); // BITMAP-ONLY (emitTextTspl/native builders never see it)
+  stampHandleQr(bmp, qr); // BITMAP-ONLY (emitTextTspl/native builders never see it)
   return { buf: bmp.buf, w: bmp.w, h: bmp.h, rowBytes: bmp.rowBytes };
 }
 
@@ -459,35 +519,49 @@ export function renderStickerBitmap(payload: RasterPayload, wMm: number, hMm: nu
 export const QR_MODULE_DOTS = 4;
 export const QR_QUIET_MODULES = 4;
 export const QR_EDGE_MARGIN_DOTS = 8;
+export const QR_TEXT_KEEPOUT_GAP = 8; // horizontal buffer between wrapped comment text and the QR block
+export const MAX_COMMENT_LINES = 4;   // hard cap on the wrapped order-comment (then ellipsise)
 // 60×40 (the only ≤40 mm-tall label) prints no QR at all — every larger size gets one.
 export function stickerQrSupported(hMm: number): boolean { return hMm > 40; }
-function stampHandleQr(bmp: Bitmap, payload: RasterPayload, hMm: number): void {
-  if (!stickerQrSupported(hMm)) return; // 60×40 → never a QR (too small to scan fast)
-  if (!payload.settings || payload.settings.printStickerQr !== true) return; // per-device toggle, DEFAULT OFF
-  if (payload.settings.printBuyerUsername === false) return; // also follows the @username toggle
+
+// The QR block placement for this label, or null when no QR will print. SINGLE SOURCE
+// for both the layout keep-out (stickerDrawOps wraps the comment before x0) and the
+// stamping (stampHandleQr). Same gates as before: size ≥50mm, toggle on, @username
+// on, non-blank handle.
+export interface QrPlacement { matrix: boolean[][]; x0: number; y0: number; foot: number; scale: number }
+export function stickerQrPlacement(payload: RasterPayload, wDots: number, hDots: number, hMm: number): QrPlacement | null {
+  if (!stickerQrSupported(hMm)) return null;                                  // 60×40 → never a QR
+  if (!payload.settings || payload.settings.printStickerQr !== true) return null; // toggle DEFAULT OFF
+  if (payload.settings.printBuyerUsername === false) return null;             // follows the @username toggle
   const handle = payload.buyer?.handle ? String(payload.buyer.handle).trim() : "";
-  if (!handle) return; // blank → no QR
+  if (!handle) return null;                                                   // blank → no QR
   const url = tiktokProfileUrl(handle);
-  if (!url) return;
+  if (!url) return null;
   const m = qrMatrix(url, "M"); // ECC M keeps the ≤37-byte URL at QR v3 (29 modules)
-  if (!m) return;
-  const n = m.length;
-  const scale = QR_MODULE_DOTS;
-  const foot = (n + QR_QUIET_MODULES * 2) * scale;
-  let x0 = bmp.w - foot - QR_EDGE_MARGIN_DOTS; if (x0 < 0) x0 = 0;
-  let y0 = bmp.h - foot - QR_EDGE_MARGIN_DOTS; if (y0 < 0) y0 = 0;
+  if (!m) return null;
+  const foot = (m.length + QR_QUIET_MODULES * 2) * QR_MODULE_DOTS;
+  let x0 = wDots - foot - QR_EDGE_MARGIN_DOTS; if (x0 < 0) x0 = 0;
+  let y0 = hDots - foot - QR_EDGE_MARGIN_DOTS; if (y0 < 0) y0 = 0;
+  return { matrix: m, x0, y0, foot, scale: QR_MODULE_DOTS };
+}
+function stampHandleQr(bmp: Bitmap, qr: QrPlacement | null): void {
+  if (!qr) return;
+  const { matrix: m, x0, y0, foot, scale } = qr;
   bmp.clearRect(x0, y0, Math.min(foot, bmp.w - x0), Math.min(foot, bmp.h - y0)); // quiet zone + clean modules
   const ox = x0 + QR_QUIET_MODULES * scale, oy = y0 + QR_QUIET_MODULES * scale;
+  const n = m.length;
   for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (m[r][c]) bmp.fillRect(ox + c * scale, oy + r * scale, scale, scale);
 }
 
 // PRODUCTION path: payload → 1-bit raster → vertical ink-band crop → full-width
 // x=0 BITMAP blocks → TSPL. See BandOptions for why full-width is the default.
 export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: number, atlases: RasterAtlases, opts: BandOptions = {}): BitmapTsplResult {
-  const { ops, wDots, hDots } = stickerDrawOps(payload, wMm, hMm);
+  const cfg = stickerConfig(wMm, hMm);
+  const qr = stickerQrPlacement(payload, cfg.wDots, hMm * 8, hMm); // this path is always extended/production
+  const { ops, wDots, hDots } = stickerDrawOps(payload, wMm, hMm, "extended", qr);
   const bmp = new Bitmap(wDots, hDots);
   paint(bmp, ops, atlases);
-  stampHandleQr(bmp, payload, hMm); // keep the band path == renderStickerBitmap (LOSSLESS invariant)
+  stampHandleQr(bmp, qr); // keep the band path == renderStickerBitmap (LOSSLESS invariant)
 
   const out: number[] = [];
   const line = (s: string) => { out.push(...asciiBytes(s), ...CRLF); };

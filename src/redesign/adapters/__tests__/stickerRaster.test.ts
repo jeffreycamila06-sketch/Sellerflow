@@ -16,6 +16,7 @@ import { createHash } from "node:crypto";
 import {
   stickerDrawOps, emitTextTspl, rasterizeToBitmapTspl, renderStickerBitmap,
   bytesToBase64, INK_IS_ZERO, STICKER_LAYOUTS, translitCp, stickerQrSupported,
+  stickerQrPlacement, wrapWords,
   type RasterPayload, type GlyphAtlas, type RasterAtlases,
 } from "../stickerRaster";
 import { LATIN_ATLAS } from "../glyphAtlas.latin";
@@ -380,5 +381,83 @@ describe("renderStickerBitmap — buyer @username QR (bottom-right)", () => {
   it("stickerQrSupported: 60×40 excluded, every larger height allowed", () => {
     expect(stickerQrSupported(40)).toBe(false); // 60×40
     for (const h of [50, 60]) expect(stickerQrSupported(h)).toBe(true);
+  });
+});
+
+describe("wrapWords (order-comment wrapping)", () => {
+  it("short text → one line, unchanged", () => {
+    expect(wrapWords("150", 8, 4)).toEqual(["150"]);
+    expect(wrapWords("Black", 8, 4)).toEqual(["Black"]);
+  });
+  it("wraps on word boundaries into multiple lines", () => {
+    expect(wrapWords("Black white 350", 8, 4)).toEqual(["Black", "white", "350"]);
+    expect(wrapWords("Red small size", 10, 4)).toEqual(["Red small", "size"]);
+  });
+  it("collapses double/leading/trailing whitespace to a single space", () => {
+    expect(wrapWords("Black  white", 20, 4)).toEqual(["Black white"]); // 2 spaces → 1
+    expect(wrapWords("  Black white  ", 20, 4)).toEqual(["Black white"]);
+  });
+  it("hard-splits a word longer than the line width", () => {
+    expect(wrapWords("supercalifragilistic", 6, 4)).toEqual(["superc", "alifra", "gilist", "ic"]);
+  });
+  it("ellipsises when it needs more than maxLines", () => {
+    const out = wrapWords("one two three four five", 4, 2);
+    expect(out).toHaveLength(2);
+    expect(out[out.length - 1].endsWith("…")).toBe(true);
+  });
+  it("blank / whitespace → no lines", () => {
+    expect(wrapWords("", 8, 4)).toEqual([]);
+    expect(wrapWords("   ", 8, 4)).toEqual([]);
+  });
+});
+
+describe("stickerDrawOps — QR keep-out: comment wraps, never crosses the QR", () => {
+  const qrPayload = (item: string, time = "12:26"): RasterPayload => ({
+    storeName: "budgetukay", sessionDate: "09/21/2026", currency: "NT$",
+    buyer: { num: 5, name: "budgetukay2", handle: "budgetukay2", orders: [{ time, item }] },
+    settings: { printStickerQr: true, printBuyerUsername: true },
+  });
+  // The comment ops sit at priceX (font "4") — 1-cell gap after the 5-char time = 88 dots.
+  const PRICE_X = 16 + (5 + 1) * 12; // 88
+  const commentOps = (ops: ReturnType<typeof stickerDrawOps>["ops"]) =>
+    ops.filter((o) => (o.k === "txt" && o.font === "4" && o.x === PRICE_X) || (o.k === "cjk" && o.x === PRICE_X));
+
+  it("long comment 'Black white 350' wraps to ≥2 lines, all left of the QR", () => {
+    const p = qrPayload("Black white 350");
+    const qr = stickerQrPlacement(p, 640, 480, 60)!;
+    expect(qr).not.toBeNull();
+    const { ops } = stickerDrawOps(p, 80, 60, "extended", qr);
+    const lines = commentOps(ops) as Extract<typeof ops[number], { k: "txt" }>[];
+    expect(lines.length).toBeGreaterThanOrEqual(2);                        // wrapped
+    for (const l of lines) expect(l.x + l.s.length * 48).toBeLessThanOrEqual(qr.x0); // never under/through the QR
+    expect(lines.map((l) => l.s).join(" ")).toBe("Black white 350");       // words preserved, single-spaced
+    for (const l of lines) expect(l.s).not.toMatch(/ {2,}/);               // no double space
+    // lines flow DOWN (strictly increasing y)
+    for (let i = 1; i < lines.length; i++) expect(lines[i].y).toBeGreaterThan(lines[i - 1].y);
+  });
+  it("short comment '150' stays one line (no needless wrap)", () => {
+    const p = qrPayload("150");
+    const qr = stickerQrPlacement(p, 640, 480, 60)!;
+    const { ops } = stickerDrawOps(p, 80, 60, "extended", qr);
+    const lines = commentOps(ops);
+    expect(lines).toHaveLength(1);
+    expect(lines[0].s).toBe("150");
+  });
+  it("gap after the time is tightened by one cell when the QR is present", () => {
+    const p = qrPayload("150");
+    const withQr = stickerDrawOps(p, 80, 60, "extended", stickerQrPlacement(p, 640, 480, 60));
+    const withoutQr = stickerDrawOps(p, 80, 60, "extended", null);
+    const cx = (r: typeof withQr) => (r.ops.find((o) => o.k === "txt" && o.font === "4" && o.s === "150") as { x: number }).x;
+    expect(cx(withQr)).toBe(88);       // 16 + (5+1)*12  — 1-cell gap
+    expect(cx(withoutQr)).toBe(100);   // 16 + (5+2)*12  — 2-cell gap (unchanged full width)
+  });
+  it("no comment op ever overlaps the QR footprint horizontally (80×60 / 80×50 / 70×50)", () => {
+    for (const [w, h] of [[80, 60], [80, 50], [70, 50]] as const) {
+      const p = qrPayload("Black white extra long comment 350");
+      const qr = stickerQrPlacement(p, STICKER_LAYOUTS[`${w}x${h}`].wDots, h * 8, h)!;
+      const { ops } = stickerDrawOps(p, w, h, "extended", qr);
+      for (const l of commentOps(ops) as Extract<typeof ops[number], { k: "txt" }>[])
+        expect(l.x + l.s.length * 48).toBeLessThanOrEqual(qr.x0);
+    }
   });
 });
