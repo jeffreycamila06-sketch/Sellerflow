@@ -3842,3 +3842,268 @@ per-handle → changing tiktok:0 never unlocks tiktok:1 or facebook:0.
   existing verbatim-save authority; grants a non-admin nothing.
 - i18n: `rd_ch_unlock_in` / `rd_ch_edit_window` / `rd_ch_cooldown_err` ×7. Web + sql mirrors
   only; server.js untouched.
+
+## SESSION 2026-09-20 — PARCEL TRACKING (SHOPMORE) ANTIFORGERY FIX + AUTOMATED CRON ✅ LIVE
+The 7-11 pickup-tracking poller (SHOPMORE, `tracking.shopmore.com.tw`) is **LIVE and
+working** (production `updated:N > 0`) and **automated** via cron-job.org. It had
+**never worked before** — every poll returned `updated:0` — because the original build
+(`7f5fd48`) was reverse-engineered from a **lost local sample** (`vendor/shopmore-sample.txt`,
+uncommitted, gone) that **omitted the ASP.NET antiforgery handshake**. The real fix was
+reverse-engineered from a **real browser cURL / page capture**.
+
+### 🔴 THE ROOT CAUSE + FIX (load-bearing — do NOT regress)
+SHOPMORE is an **ASP.NET Core Razor Pages** app (the `?handler=` pattern proves it). Its
+`/PackageDetail` POST **requires antiforgery**: a hidden `__RequestVerificationToken` field
+in the body **paired with** a `.AspNetCore.Antiforgery.<hash>` cookie, both minted by the
+same GET. Missing either → **HTTP 400 with an empty body** (the old `htmlLen=0` symptom).
+- **THE FLOW (per batch):** **GET the index page `/` FIRST** → scrape
+  `__RequestVerificationToken` from its hidden `<input>` + capture the
+  `.AspNetCore.Antiforgery` cookie into a **per-batch cookie jar** → GET `/api/Captcha`
+  (carrying the jar) → **POST `/PackageDetail` with BOTH** the token (body) and the cookie
+  (header), carrying the jar through. The result HTML embeds `var searchResults=[…]` which
+  we parse (it is **server-rendered**, NOT a JSON API).
+- ⚠️ **The token + cookie come from `GET /` (the index/search page)** — the page that hosts
+  the query form. They are **NOT** on `/PackageDetail` (that is the *result* page — it has
+  **no form and no token**, confirmed from a live capture) and **NOT** from the captcha API.
+- ⚠️ **Field names are LOWERCASE: `captchaId`, `captcha`.** The original `CaptchaId`/`Captcha`
+  (capital C, from the lost sample) did not bind to the handler → contributed to the failure.
+  Body shape mirrors the browser exactly: `__RequestVerificationToken`, `captchaId`,
+  `PaymentNo[]` (repeated), `captcha`.
+- The token↔cookie are a **matched pair from the same GET** (Razor cross-validates them);
+  `fetchPageToken` fetches once per batch (valid across captcha retries), jar persists.
+
+### FILES
+- **`server/parcelTracking.js`** — PURE core (parse/classify/`buildQueryBody`/
+  `extractRequestToken`/`pollBatch` with injected deps). Unit-tested.
+- **`server/parcelTrackingRunner.js`** — IMPURE runner: `fetchPageToken` (GET /),
+  `fetchCaptcha`, `submitQuery`, the cookie jar (`makeCookieJar`), tesseract OCR, service-role
+  DB writes. 15s `fetchWithTimeout` (AbortController) on every request.
+- **`server.js`** `/admin/parcel-tracking-poll` — the endpoint (below).
+
+### AUTOMATION — cron-job.org (external, matches the Render-restart cron pattern)
+- **NOT an in-code scheduler** — no cron lib; cron-job.org hits the endpoint (same as the
+  Render restart cron). Job: **POST** `https://sellerflow-live-server.onrender.com/admin/parcel-tracking-poll`,
+  header **`X-Poll-Token: <PARCEL_POLL_TOKEN>`** (secret lives in Render env only, never in
+  the repo), timezone Asia/Taipei, **2×/day off-peak: ~03:00 and ~15:00 Taipei**.
+- **The endpoint returns `202` immediately, then runs the poll in the BACKGROUND after a
+  random 0–20 min jitter.** Why: (a) the sync poll is slow (OCR + inter-batch gaps) and would
+  hit cron-job.org's ~30s timeout; (b) jitter spreads the SHOPMORE hit so it's not the exact
+  same minute daily. Single-flight guard (`parcelPollRunning`) is claimed synchronously before
+  the 202 → a 2nd trigger during the delay OR the run gets `409` (never a double-run); released
+  in `runParcelPollOnce`'s finally.
+- **`?now=1` = MANUAL TESTING ONLY:** skips the jitter and runs **synchronously**, returning the
+  summary inline (the pre-async behaviour). cron-job.org never sends `?now`.
+- **Auth = shared secret `PARCEL_POLL_TOKEN`** (X-Poll-Token header or `?token=`), NOT a JWT
+  (cron-job.org can't present one). `PARCEL_POLL_USER_ID` scopes the service-role poll to one
+  user (owner = Phase 1); empty = all users (Phase 2).
+
+### ⚠️ OPERATIONAL
+- **server.js = MANUAL Render deploy.** The antiforgery fix + the async-202/cron endpoint go
+  live only on "Deploy latest commit". Both are merged to `main` (antiforgery: merge `69dcbf1`;
+  probe-removal + async-202 + `?now`: merge `1738fb6`).
+- The TEMP `[PARCEL-DBG]` console probe used during diagnosis has been **removed** (merge
+  `1738fb6`). If diagnosing again, it logged `httpStatus/tokenFound/pageSetCookie/htmlLen`.
+- If SHOPMORE breaks again: re-capture a **real browser cURL** (the field/cookie names are the
+  source of truth; the original lost sample is why this took several rounds). server.js has no
+  vitest harness (`node --check` + structural review); the core/runner are unit-tested.
+
+## SESSION 2026-09-20 (part 2) — 匯出報表 EXPORT-READ: buyer handles into parcel_tracking (Chrome extension v1.5.0, owner-only) ✅ MERGED
+The buyer's IG/LINE/FB handle is now captured from the 賣貨便 order-info export and written to
+`parcel_tracking.buyer_username`, so the Pickup Status screen shows `@handle`. **Chrome extension
+only** (owner's Windows laptop, `C:\SFL-EXT`) — NOT deployed by Vercel/Render. `main` tip after
+this work = **`e109918`** (version bump); feature merges `722c040` (reader + Layer-B removal) →
+`d24cff9` (hook fallbacks) → `bf29504` (temp-URL capture) → `e109918` (manifest 1.4.0→**1.5.0**).
+23 vitest green (`parcelExportRead` + `parcelTrackingExtension`), typecheck clean. **Zero server,
+zero app-source** — extension files + `parcelExportRead.test.ts` only.
+
+### ⚠️ THE EXPORT IS A SERVER-GENERATED DOWNLOAD (not an in-page Blob) — load-bearing
+Clicking **匯出報表** on `myship.7-11.com.tw/seller/order` fires an **XHR ("generate")** → the
+server builds the .xlsx → the page **navigates an `<iframe>`** to a **same-origin** temp URL
+`https://myship.7-11.com.tw/i/temp/export/<name>.xlsx` (CloudFront is a transparent CDN on the
+SAME host — `Via: cloudfront.net`, NOT a cross-origin redirect; response 200, `Content-Type:
+…spreadsheetml.sheet`). The filename carries a **per-export timestamp+random token** → the URL is
+NOT hardcodable. Because it's a browser-native download (no JS `Blob`), the earlier MAIN-world
+`createObjectURL`/`Blob`/anchor/`showSaveFilePicker` hooks CAN NEVER fire for this site (they're
+kept as harmless fallbacks for other download shapes).
+
+### How it's captured (two paths → same handler)
+- **MAIN-world XHR/fetch scan** (`myship-export-hook.js`): wraps `window.fetch` + `XMLHttpRequest`
+  open/send; scans request URLs + response bodies for the `/i/temp/export/….xlsx` path;
+  `postMessage`s the candidate string to the isolated world (tag `__SFL_EXPORT_SCAN__`).
+- **Isolated MutationObserver** (`myship-export-711.js`): watches `<iframe src>`/`<a href>` for the
+  same path (the actual download mechanism, `Sec-Fetch-Dest: iframe`).
+- Both → pure **`matchExportUrl(s)`** (regex `/\/i\/temp\/export\/[^\s"'<>\\]+\.xlsx/i`, resolved
+  relative→absolute against `location.origin`) → **`captureExportUrl`** de-dups (a `Set`) then
+  **`fetch(url, {credentials:"include"})` from the CONTENT SCRIPT** — same-origin, so cookies
+  (incl. `SameSite`) flow automatically. ⚠️ A **background** fetch would DROP SameSite cookies
+  (cross-site from `chrome-extension://`), so the fetch MUST be in the content script; no manifest
+  host change, no CloudFront permission needed (same host).
+
+### The reader (unchanged from the first merge) — 訂單匯入 tab, header-text columns
+- `.xlsx` = zip → **`DecompressionStream("deflate-raw")`** (same primitive as `shippingXlsmPatch.ts`;
+  STORED entries verbatim). Resolve the **`訂單匯入`** sheet **BY NAME** (workbook.xml + rels, NOT
+  sheet index — the two tabs have different column orders). **Header row = row 3** (rows 1–2 are a
+  title/date/filter banner); data = rows ≥ 4. Ignore the bogus `<dimension>` (phantom ~1,000 cols).
+- Columns located **BY HEADER TEXT**: **`配送單編號`** (F-code → `tracking_no`) and **`其它資訊`**
+  (handle → `buyer_username`) — note **其它 (它), not 其他 (他)**, matched `/其[他它]資訊/` or
+  `FB/LINE/IG`. **EXPLICITLY ignore `商品名稱`** (the middle product column, which holds the shop
+  name e.g. "budgetukay" — do NOT use it). Concatenate all `<t>` runs per `<si>`.
+- ⚠️ **The handle column exists ONLY on the `訂單匯入` (import-created) tab.** The `非訂單匯入`
+  (self-fill / `便利自填單`) tab masks the recipient name (`J* `) and has **no handle column** —
+  those parcels yield an F-code but no handle. So this feature only populates handles for parcels
+  the seller shipped via SFL's import (the `其它資訊` = what SFL's shipping export wrote, round-tripped
+  back with the F-code minted after upload). Handle stored **VERBATIM** (never strip "(IG)"/line/fb);
+  blank handle → null.
+
+### Upsert = handle-only, never clobbers (background.js `pcUpsertHandles`)
+`PC_EXPORT_HANDLES` → `pcUpsertHandles` writes **ONLY `{user_id, tracking_no, buyer_username}`**
+for handle-bearing rows; `on_conflict=user_id,tracking_no` + `resolution=merge-duplicates` touches
+only the columns sent, so the poller's `status/pickup_deadline/rec_store/order_amount` and the
+scraper's `cm_order_no/store_id/order_amount` are **never** overwritten. Handle-less rows are
+DROPPED (F-code alone is already covered by the poller). Same JWT auth as the scraper (owner token
+from the SFL tab via `sellerflow-bridge.js` → RLS `user_id = auth.uid()`).
+
+### Layer B removed — export is the SINGLE handle source
+The on-screen scraper's handle capture (`myship-order-711.js` — old `map.handle` / pushed
+`buyer_username`) was **removed**: the `/seller/order` list masks the name and doesn't reliably show
+the handle. The scraper now writes only `tracking_no + cm_order_no + store_id + order_amount` (always
+`pcUpsertTracking`'s no-handle path). A test pins the removal.
+
+### ⚠️ REQUIREMENTS / operational
+- **Chrome 111+** (the hook script uses `content_scripts` `"world": "MAIN"`). Below 111 the hook is
+  ignored (no `[SFL-EXPORT] hooks installed` line) and capture silently no-ops.
+- **Owner-account-only** (Phase 1). Runs on the owner's `C:\SFL-EXT` unpacked extension; writes with
+  the owner JWT. Not given to other sellers.
+- **Deploy = USB a fresh `~/Desktop/chrome-extension.zip` → unzip to `C:\SFL-EXT` → `chrome://extensions`
+  Reload.** `C:\SFL-EXT` is NOT a git checkout (USB workflow). Rebuild the zip with
+  `cd ~/Sellerflow && rm -f ~/Desktop/chrome-extension.zip && zip -r ~/Desktop/chrome-extension.zip chrome-extension`.
+  The **manifest version (now 1.5.0)** is the visual "did the new build load?" check on the extensions page.
+- **Console diagnostics** (filter `SFL-EXPORT`, Preserve log ON): on load `hooks installed (MAIN world):
+  …, fetch-scan, xhr-scan` + `reader armed`; on click → `fetching temp export (scan|dom): <url>` →
+  `parsing export (via url:…) — N bytes` → `fetched N row(s); upsert: {ok:true,upserted:N}`.
+- ⏳ **PENDING owner device test** (Windows): confirm the `fetching temp export` line fires on click and
+  `parcel_tracking.buyer_username` populates. If the temp URL isn't in MR2's response/iframe src → paste
+  MR2's body and widen `matchExportUrl`. If `temp export fetch 404` → the temp file is single-use; capture
+  from MR2's response earlier (pre-navigation).
+
+## SESSION 2026-09-21 — PARCEL TRACKING: handle capture end-to-end + sticker QR + Phase-2 poller LIVE
+A full day on the F-code↔@username link and the SHOPMORE pickup poller. FOUR streams, all
+merged to `main`. **The buyer handle is purged from the free-tier DB, so it must be
+(re)captured** — from the 匯出報表 export AND stamped on the printed sticker as a QR. **The
+poller Phase-2 (non-public) is deployed and running.** The Pickup Status **gate
+(`parcelTrackingVisible`) and the poll scope (`PARCEL_POLL_USER_ID`) are STILL owner +
+googletest ONLY — NOT public yet.**
+
+### 1. Parcel Scan — buyer @username REQUIRED + "no social handle" escape hatch (frontend-only)
+- **Required field** (`420e65b` → merge `3555951`): the buyer @username (stored in
+  `parcel_scans.notes`) is now REQUIRED on EVERY save path — manual encode, camera-scan
+  confirm, and Customer Details import — via ONE shared validator (`validHandle` = trimmed
+  non-empty, VERBATIM, no format check). Save is blocked + inline error until filled; the
+  old Notes toggle was removed and the field relabeled. i18n ×7. Existing rows unaffected;
+  col J (`notes`) semantics unchanged.
+- **Escape hatch** (`e8d3b7f`): a per-parcel **"Buyer has no social handle"** checkbox
+  (default UNCHECKED, resets per save). Checked → the handle input is cleared + dimmed and
+  Save is allowed with an EMPTY handle → stored as `""` (NEVER a placeholder → col J stays
+  empty). Typing any text auto-unticks it. Optional "no handle" chip on the row.
+
+### 2. Pickup Status — "Sync from 賣貨便" upload button (seller-side, no extension) (`e485493` → merge `98409d1`)
+The no-Chrome-extension path to feed handles for ALL sellers using ONLY the app. A **"Sync
+from 賣貨便"** button + hidden `.xlsx` picker + collapsible how-to card on the Pickup Status
+screen. Flow: pick the 匯出報表 export → `syncFromExport(bytes)` → toast (`synced n / total m
+/ without k`) → re-read.
+- **NEW `src/redesign/adapters/parcelExportRead.ts`** (client-side parse, **NO SheetJS** —
+  reuses `shippingXlsmPatch` zip primitives `parseZip`/`readEntryText`/`resolveSheetPath`):
+  `extractImportHandles` (pure) reads the **`訂單匯入` tab BY NAME**, header = **row 3**,
+  data = **rows ≥ 4**, columns located BY HEADER TEXT — `配送單編號` → `tracking_no`,
+  `其[他它]資訊`/`FB·LINE·IG` → `buyer_username` (VERBATIM, blank → null), **`商品名稱`
+  (shop-name product col) EXPLICITLY ignored**. **Reads ALL `<row>` elements (no row cap /
+  no page limit).**
+- **Upsert = HANDLE-ONLY, never clobbers.** `syncFromExport` writes ONLY
+  `{ user_id, tracking_no, buyer_username }`, `on_conflict=user_id,tracking_no` (merge) in
+  500-row chunks → the poller's live columns (`status`/`pickup_deadline`/`rec_store`/…) are
+  NEVER overwritten. Rows with a blank `其它資訊` become `null` → **filtered out** (`without`
+  count); the F-code alone is the poller's job. Same as the Chrome-extension reader
+  (`myship-export-711.js`) so both paths agree byte-for-byte.
+- **`sql/42_parcel_tracking_column_lockdown.sql`** (APPLIED via MCP): TABLE-level revoke +
+  column-level GRANT of INSERT/UPDATE to `authenticated` on **8 seller-writable columns
+  ONLY** (`user_id, tracking_no, buyer_username, cm_order_no, recipient_name, store_id,
+  order_amount, shipping_entry_id`) — the seller can never write `status`/`pickup_deadline`/
+  `rec_store`/`terminal` etc. Verified authenticated=8, service_role=all, anon=none.
+- ⚠️ **VERIFIED 2026-09-21 (googletest):** the sync inserts correctly — 279 distinct rows,
+  0 dups, handles VERBATIM, poller columns untouched, no cross-user leak. Read caps at
+  `PARCEL_TRACKING_PAGE = 500` (≥ current volume) and `groupParcels` drops nothing → a
+  fresh screen shows every synced row. A "stuck count" after a sync is a **stale (not
+  re-read) screen** or an export whose 訂單匯入 tab parsed to 0 handle rows (→ `empty` toast,
+  reload skipped) — NOT a DB/insert failure (RLS + sql/42 permit the 3-key upsert).
+
+### 3. Sticker QR — dual-role, bitmap path only (70×50 / 80×50 / 80×60), per-device toggle DEFAULT OFF
+The handle rides the printed label as a QR so it survives the free-tier purge. **ONE QR
+serves two roles:** SFL Parcel Scan reads the @username back off it, AND a plain phone
+camera opens the buyer's TikTok profile (details staff message the receipt).
+- **SCAN side** (`2fd0a51` → merge `d864a40`): Parcel Scan "Scan QR" button + hidden image
+  picker → `qrDecode.ts` (BarcodeDetector where available, **jsQR** dynamic-import fallback
+  for iOS WKWebView; downscale to ~1000px) → `handleFromQrPayload` (`src/lib/tiktokHandle.ts`)
+  accepts BOTH a bare `@username` (old stickers) AND any `tiktok.com/@handle` URL
+  (`tiktok.com`/`www.`/`m.`, with/without https) → fills the @username field; **rejects
+  random / non-TikTok QRs** (field left untouched).
+- **PRINT side — payload = `https://tiktok.com/@<handle>`** (no www; strip one leading @),
+  **ECC M** (keeps a typical ≤37-byte URL at **QR v3 = 29 modules**), stamped bottom-right on
+  the SDK-bitmap path only (native TSPL text builders never see it). History of the QR work:
+  stamp (`3254fcb`) → **per-device toggle DEFAULT OFF** `sfl_rd_sticker_qr` in Printer
+  Settings → Bluetooth tab (`8b1bf68` → merge `d7a8f91`) → byte-parity fix, keep
+  `printStickerQr` OUT of the native payload (`d25462d` → merge `4fd11b5`) → payload switched
+  bare-handle → TikTok URL (`34bd7c1` → merge `1f63785`) → **60×40 EXCLUDED entirely**
+  (field-tested: an ~11 mm QR scanned too slowly on iPhone 12–15 + Android; 4 dots/module on
+  70×50/80×50/80×60/100×60 only; toggle disabled + hint on 60×40) (`3896fa5` → merge
+  `55224b0`) → **QR keep-out + comment wrap** (`fcfef97` → merge `5946724`).
+- **Layout wrap / keep-out** (`stickerRaster.ts`): `stickerQrPlacement()` is the SINGLE
+  source of the QR footprint, used by BOTH the layout AND the stamp. The order comment wraps
+  on word boundaries WITHIN `[priceX … qr.x0 − gap]`, flows DOWN into the empty bottom space
+  (Total is already forced off on stickers), ellipsises only if it still won't fit; the
+  time→comment gap is tightened one cell and whitespace collapsed to a single space — ALL
+  gated on QR-present. **QR OFF and 60×40 are byte-identical to before** (sha256 goldens
+  unchanged; legacy/parity mode never computes a placement). Pure `wrapWords` helper +
+  keep-out tests. ⏳ Owner runs a real print-and-scan on 70×50/80×50/80×60.
+
+### 4. Phase-2 poller changes — LIVE (deployed) but STILL owner+googletest-scoped (`dc7c5e1`)
+Merged on branch `claude/parcel-phase2-nonpublic` (C1 `be7ab63` + retention `7fa3631` +
+per-seller cap `a5372c9`). **`server.js` = MANUAL Render deploy — the owner deployed it in a
+quiet AM window; the summary line now carries `capped` + `purged`, confirming it is live.**
+- **C1 classifier `status_message` fix** (`server/parcelTracking.js`): `mapStatus` returns
+  the ladder `step` that DROVE the classification (returned → the RETURNED_KW entry;
+  returning_soon → the 將退回 entry; else the newest step); `resultToUpdate` stores it as
+  `status_message`. **A returned parcel can never display the misleading `已完成包裹取件`**
+  (the seller collecting the return). Pinned with the `E79829464311` sample.
+- **7-day retention** (`sql/41_parcel_pickup_returned_at.sql` — additive nullable
+  `picked_up_at`/`returned_at`, APPLIED via MCP): the poller stamps the terminal transition
+  once (terminal rows are never re-polled), then an owner-scoped `DELETE` removes
+  picked_up/returned rows 7+ days after they became terminal. The OR filter references ONLY
+  the two terminal states → a non-terminal row can NEVER match; `purged` in the summary.
+- **Per-seller live-row cap** (`capLiveRowsPerSeller`, default **≤300** non-terminal rows/
+  seller, **at_store prioritized**): bounds SHOPMORE load once the poll is unscoped. **INERT
+  while owner-scoped** (owner is far under 300) — it activates only when `PARCEL_POLL_USER_ID`
+  is later removed (the future public/Phase-2 scope). `capped` in the summary.
+- 🔒 **STILL NOT PUBLIC:** `parcelTrackingVisible` (Pickup Status gate) = owner +
+  googletest; `PARCEL_POLL_USER_ID` (poll scope) = owner-only. Both UNCHANGED. Terminal
+  rows are excluded by the poll select (`.eq("terminal", false)`) so finished parcels are
+  never re-queried.
+- **Cron:** cron-job.org triggers `POST /admin/parcel-tracking-poll` (X-Poll-Token) **every
+  4 hours** (async 202 + 0–20 min jitter; `?now=1` = synchronous manual run). Auth = the
+  `PARCEL_POLL_TOKEN` secret (Render env only, never in the repo). server.js has no vitest
+  harness → `node --check` + the pure `parcelTracking.js`/`parcelTrackingRunner.js` unit
+  suites are the coverage.
+- ⚠️ **VERIFIED 2026-09-21 (googletest):** poll summary `rows:159→…, updated:N,
+  notFound:0, captchaFails:0, capped:0, purged:0`; all polled rows currently `in_transit`
+  with real `status_message` (`訂單已成立，尚未至門市寄件`) + `rec_store` populated; no
+  `returned`/`at_store`/`picked_up` yet, so the C1 return-path can only be observed on live
+  data once a real parcel is returned.
+
+## graphify
+
+This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
+
+Rules:
+- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
+- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
