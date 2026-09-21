@@ -29,6 +29,7 @@
     "libphonenumber-js": "^1.13.8",
     "lzo1x": "^1.0.1",
     "posthog-js": "^1.378.1",
+    "qrcode-generator": "^1.5.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "socket.io": "^4.8.3",
