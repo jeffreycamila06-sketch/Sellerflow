@@ -100,7 +100,7 @@ const reasonKey = (r: ExportReason): ReasonKey =>
 // manualOnly = a paying (non-admin) seller: hide the camera / AI-scan / credits
 // surface entirely (not just disable) and show manual encode + an "AI … coming
 // soon" line. Admins (manualOnly=false) get the full scan surface, no soon line.
-export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = false }: { cur?: string; storeName?: string; manualOnly?: boolean }) {
+export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = false, isAdmin = false }: { cur?: string; storeName?: string; manualOnly?: boolean; isAdmin?: boolean }) {
   const t = useT();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const qrRef = useRef<HTMLInputElement | null>(null);   // "Scan QR" photo input (decodes the buyer @username off the SFL sticker)
@@ -152,17 +152,21 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // NULL batch id and are not covered — by design.
   const [lastExportBatch, setLastExportBatch] = useState<{ id: string; ids: string[] } | null>(null);
   const [undoErr, setUndoErr] = useState("");
-  // Export is LAPTOP-ONLY (a mis-tap on a phone marks rows exported → they vanish
-  // from the laptop file — no exceptions, no toggle). Hide the whole export card on
-  // the app shell (APK/iOS/?apk) AND on a narrow mobile-browser viewport; re-check
-  // on resize so a desktop user narrowing the window updates.
+  // Export on the phone: sellers with no laptop/printer MUST export on the phone,
+  // upload to 賣貨便 in the phone browser, then print at 7-11 ibon via OPEN POINT.
+  // The mobile download uses the Web Share API (deliverXlsm preferShare) — no native
+  // plugin, works in WKWebView/Android WebView. Re-enabled on the app shell / narrow
+  // viewport for ADMIN first (real-download testing); non-admin stays hidden for now
+  // (a mis-tap marks rows exported → they vanish from the laptop file). Re-check on
+  // resize so a desktop user narrowing the window updates.
   const [narrow, setNarrow] = useState(() => isNarrowViewport());
   useEffect(() => {
     const onResize = () => setNarrow(isNarrowViewport());
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
-  const exportHidden = isAppShell() || narrow;
+  const onMobile = isAppShell() || narrow;
+  const exportHidden = onMobile && !isAdmin;
   const [deleting, setDeleting] = useState(false);
   const [deleteErr, setDeleteErr] = useState("");
   // Feature 3: per-row EDIT — reuses the confirm form, pre-filled, updates the
@@ -501,8 +505,9 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
         return;
       }
       const bytes = await buildXlsmFromTemplate(await fetchShipTemplate(), ready.map((r) => scanToXlsRow(r, { storeName, fee })));
-      const d = await deliverXlsm(bytes, exportFilename(Date.now()));
-      if (!d.ok) { setExportErr(d.error || "export_failed"); return; }
+      const d = await deliverXlsm(bytes, exportFilename(Date.now()), { preferShare: onMobile });
+      // Cancelled share sheet → do NOT mark rows exported (they'd vanish from the file).
+      if (!d.ok) { if (!d.cancelled) setExportErr(d.error || "export_failed"); return; }
       const ids = ready.map((r) => r.id);
       const marked = await markScansExported(ids); // stamps status + a batch id
       if (aliveRef.current) {

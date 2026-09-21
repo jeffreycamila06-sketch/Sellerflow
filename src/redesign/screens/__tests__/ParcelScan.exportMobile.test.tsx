@@ -24,7 +24,7 @@ vi.mock("../../adapters/shippingSettings", () => ({ loadGlobalShippingFee: async
 
 import ParcelScan from "../ParcelScan";
 
-const view = () => render(<TProvider><ParcelScan cur="NT$" /></TProvider>);
+const view = (isAdmin = false) => render(<TProvider><ParcelScan cur="NT$" isAdmin={isAdmin} /></TProvider>);
 const win = window as unknown as { Capacitor?: unknown; matchMedia?: unknown };
 let hadMM = false; let prevMM: unknown;
 const setNarrow = (matches: boolean) => {
@@ -63,5 +63,28 @@ describe("Parcel Scan — export is laptop-only", () => {
     await findByTestId("ps-export-mobile");
     expect(queryByTestId("ps-export-card")).toBeNull();
     expect(queryByTestId("ps-export-btn")).toBeNull();
+  });
+
+  // Re-enabled on the phone for ADMIN first (owner testing the real download).
+  it("app shell + ADMIN → Export card SHOWN on the phone", async () => {
+    win.Capacitor = {};
+    const { findByTestId, queryByTestId } = view(true);
+    await findByTestId("ps-export-card");
+    expect(queryByTestId("ps-export-mobile")).toBeNull();
+    expect(queryByTestId("ps-export-btn")).toBeTruthy();
+  });
+
+  it("narrow viewport + ADMIN → Export card SHOWN on the phone", async () => {
+    setNarrow(true);
+    const { findByTestId, queryByTestId } = view(true);
+    await findByTestId("ps-export-card");
+    expect(queryByTestId("ps-export-mobile")).toBeNull();
+  });
+
+  it("desktop + ADMIN → Export card SHOWN (web unchanged)", async () => {
+    setNarrow(false);
+    const { findByTestId, queryByTestId } = view(true);
+    await findByTestId("ps-export-card");
+    expect(queryByTestId("ps-export-mobile")).toBeNull();
   });
 });
