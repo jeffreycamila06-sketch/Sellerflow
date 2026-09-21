@@ -182,6 +182,7 @@ describe("rasterizeToBitmapTspl — structure, polarity, cropping", () => {
     // Full-width x=0 bands (H1 fix) transmit blank COLUMNS, so the win is now
     // vertical-only: measured 22.2KB vs 46.9KB naive at 100x60 (~47%). Guard at
     // 55% so a band-emission regression (e.g. losing the blank-row skip) trips.
+    // (No QR here — the flagship payload leaves the "Print QR on sticker" toggle OFF.)
     expect(r.inkBytes).toBeLessThan(naive * 0.55);
     expect(r.bytes.length).toBeLessThan(naive * 0.55);
   });
@@ -336,5 +337,38 @@ describe("bytesToBase64 (bridge encoding)", () => {
     const b64 = bytesToBase64(r.bytes);
     const decoded = Buffer.from(b64, "base64");
     expect(toHex(new Uint8Array(decoded))).toBe(toHex(r.bytes));
+  });
+});
+
+// ── @username QR (bitmap-only) ───────────────────────────────────────────────
+describe("renderStickerBitmap — buyer @username QR (bottom-right)", () => {
+  const inkInBox = (rr: { buf: Uint8Array; w: number; h: number; rowBytes: number }, x0: number, y0: number, x1: number, y1: number): number => {
+    let n = 0;
+    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) if (rr.buf[y * rr.rowBytes + (x >> 3)] & (0x80 >> (x & 7))) n++;
+    return n;
+  };
+  // bottom-right corner box (where the QR lands); base content doesn't reach here.
+  const corner = (rr: { buf: Uint8Array; w: number; h: number; rowBytes: number }) => inkInBox(rr, rr.w - 100, rr.h - 100, rr.w, rr.h);
+  // ascii_full has handle "maria_s"; enable the per-device QR toggle in settings.
+  const qrOn = () => { const p = readPayload("ascii_full") as RasterPayload; return { ...p, settings: { ...p.settings, printStickerQr: true } }; };
+
+  it("toggle OFF (default) → NO QR — nothing changes for other sellers", () => {
+    const rr = renderStickerBitmap(readPayload("ascii_full") as RasterPayload, 100, 60, ATLASES); // no printStickerQr
+    expect(corner(rr)).toBe(0);
+  });
+  it("toggle ON + a handle → a dense QR block appears bottom-right", () => {
+    const rr = renderStickerBitmap(qrOn(), 100, 60, ATLASES);
+    expect(corner(rr)).toBeGreaterThan(200); // QR modules (finder patterns alone are dense)
+  });
+  it("toggle ON but blank handle → NO QR (corner stays clear)", () => {
+    const p = qrOn(); p.buyer = { ...p.buyer, handle: "" };
+    expect(corner(renderStickerBitmap(p, 100, 60, ATLASES))).toBe(0);
+  });
+  it("toggle ON but printBuyerUsername:false → NO QR (follows the @username toggle)", () => {
+    const p = qrOn(); p.settings = { ...p.settings, printBuyerUsername: false };
+    expect(corner(renderStickerBitmap(p, 100, 60, ATLASES))).toBe(0);
+  });
+  it("toggle ON → appears on the small 60x40 label too (fits within bounds)", () => {
+    expect(corner(renderStickerBitmap(qrOn(), 60, 40, ATLASES))).toBeGreaterThan(150);
   });
 });

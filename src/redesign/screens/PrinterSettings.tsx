@@ -11,7 +11,7 @@ import {
   callMobilePrinterBridge, btCall, hasNativePrinter, hasBtBridge, buildTestBuyer,
   type MobilePrinterResult, type BluetoothScanResult, type BluetoothPrinterDevice,
 } from "../adapters/printerBridge";
-import { printStickerBtRouted, isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, type Settings } from "../adapters/printing";
+import { printStickerBtRouted, isPrinterNotSetup, isClassicTextSticker, setClassicTextSticker, isStickerQrOn, setStickerQrOn, type Settings } from "../adapters/printing";
 import { useT } from "../i18n";
 import { isAppShell } from "../adapters/appShell";
 
@@ -46,6 +46,10 @@ export default function PrinterSettings({
   const [btMsg, setBtMsg] = useState("");
   // "Classic text mode" — mirrors the localStorage flag printing.ts routes on.
   const [classicText, setClassicText] = useState(() => isClassicTextSticker());
+  // "Print QR on sticker" — per-device, DEFAULT OFF (localStorage; printing.ts threads it
+  // into the sticker raster). Stamps a QR of the buyer @username so Parcel Scan can read
+  // the handle back off the printed label.
+  const [stickerQr, setStickerQr] = useState(() => isStickerQrOn());
 
   // On mount: hydrate the saved LAN printer + BT printer from the native bridge
   // (App.tsx refreshMobilePrinterStatus + getBluetoothLabelPrinter). No-op on web.
@@ -201,6 +205,23 @@ export default function PrinterSettings({
               </button>
             </div>
             )}
+            {/* "Print QR on sticker" — per-device, DEFAULT OFF, visible to ALL sellers.
+                Adds a QR of the buyer @username to the sticker (bitmap path only) so Parcel
+                Scan can read the handle back off the label. Nothing changes until turned on. */}
+            <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginTop: 12, display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_ps_sticker_qr}</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 3, lineHeight: 1.45 }}>{t.rd_ps_sticker_qr_desc}</div>
+              </div>
+              <button
+                aria-pressed={stickerQr}
+                data-testid="ps-sticker-qr-toggle"
+                onClick={() => { const next = !stickerQr; setStickerQrOn(next); setStickerQr(next); }}
+                style={{ width: 52, height: 30, borderRadius: 15, border: "none", cursor: "pointer", flexShrink: 0, position: "relative", background: stickerQr ? "var(--accent)" : "var(--surface-2)", boxShadow: stickerQr ? "0 3px 10px var(--accent-soft)" : "inset 0 0 0 1px var(--border-strong)", transition: "background .15s" }}
+              >
+                <span style={{ position: "absolute", top: 3, left: stickerQr ? 25 : 3, width: 24, height: 24, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,.25)", transition: "left .15s" }} />
+              </button>
+            </div>
           </div>
         )}
 

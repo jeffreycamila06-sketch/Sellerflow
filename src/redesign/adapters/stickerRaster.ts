@@ -29,6 +29,7 @@ export interface GlyphAtlas { [fontKey: string]: GlyphFont }
 
 // LZO1X-1 for the SDK-format image stream (MIT, pure TS, zero deps).
 import { lzo1xCompress } from "lzo1x";
+import { qrMatrix } from "../../lib/qr";
 
 // TSPL BITMAP polarity. TSPL standard + the owner's probe photo (black bar at the
 // 0x00 top half) => an INK dot is bit 0, white is bit 1. Single flip point.
@@ -174,6 +175,7 @@ export interface RasterSettings {
   printStoreName?: boolean; printBuyerNumber?: boolean; printBuyerUsername?: boolean; printOrderItems?: boolean; printTotal?: boolean;
   printStoreScale?: number; printBuyerNumberScale?: number; printBuyerNameScale?: number; printUsernameScale?: number;
   printOrderScale?: number; printCommentScale?: number; printTotalScale?: number;
+  printStickerQr?: boolean; // per-device "Print QR on sticker" toggle (default OFF)
 }
 export interface RasterPayload { storeName?: string; sessionDate?: string; currency?: string; buyer?: RasterBuyer; settings?: RasterSettings | null }
 
@@ -350,8 +352,10 @@ class Bitmap {
   readonly w: number; readonly h: number; readonly rowBytes: number; readonly buf: Uint8Array;
   constructor(w: number, h: number) { this.w = w; this.h = h; this.rowBytes = (w + 7) >> 3; this.buf = new Uint8Array(this.rowBytes * h); }
   private set(x: number, y: number) { if (x < 0 || y < 0 || x >= this.w || y >= this.h) return; this.buf[y * this.rowBytes + (x >> 3)] |= 0x80 >> (x & 7); }
+  private clr(x: number, y: number) { if (x < 0 || y < 0 || x >= this.w || y >= this.h) return; this.buf[y * this.rowBytes + (x >> 3)] &= ~(0x80 >> (x & 7)); }
   private get1(x: number, y: number): boolean { return (this.buf[y * this.rowBytes + (x >> 3)] & (0x80 >> (x & 7))) !== 0; }
   fillRect(x: number, y: number, w: number, h: number) { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) this.set(x + i, y + j); }
+  clearRect(x: number, y: number, w: number, h: number) { for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) this.clr(x + i, y + j); }
   // Blit a glyph cell (packed 1-bit, bit1=ink) scaled by integer (xm,ym), nearest-neighbour.
   blit(cell: Uint8Array, cw: number, ch: number, dstX: number, dstY: number, xm: number, ym: number) {
     const crb = (cw + 7) >> 3;
@@ -436,7 +440,35 @@ export function renderStickerBitmap(payload: RasterPayload, wMm: number, hMm: nu
   const { ops, wDots, hDots } = stickerDrawOps(payload, wMm, hMm, mode);
   const bmp = new Bitmap(wDots, hDots);
   paint(bmp, ops, atlases);
+  stampHandleQr(bmp, payload); // BITMAP-ONLY (emitTextTspl/native builders never see it)
   return { buf: bmp.buf, w: bmp.w, h: bmp.h, rowBytes: bmp.rowBytes };
+}
+
+// ── Buyer @username QR (bitmap path only) ────────────────────────────────────
+// The handle is purged from the free-tier DB, so it must live on the printed label:
+// a QR of the @username ONLY, so Parcel Scan can read it back off the sticker. Stamped
+// bottom-right; a CLEARED footprint guarantees the 4-module quiet zone regardless of
+// underlying content. ≥4 dots/module + ECC Q → reliable thermal scanning (203 dpi).
+// TEXT-path prints (old binaries / Classic mode) never call this → they simply carry no
+// QR (graceful). Gated on the same @username print toggle + a non-blank handle.
+export const QR_MODULE_DOTS = 4;
+export const QR_QUIET_MODULES = 4;
+export const QR_EDGE_MARGIN_DOTS = 8;
+function stampHandleQr(bmp: Bitmap, payload: RasterPayload): void {
+  if (!payload.settings || payload.settings.printStickerQr !== true) return; // per-device toggle, DEFAULT OFF
+  if (payload.settings.printBuyerUsername === false) return; // also follows the @username toggle
+  const handle = payload.buyer?.handle ? String(payload.buyer.handle).trim() : "";
+  if (!handle) return; // blank → no QR
+  const m = qrMatrix(handle, "Q");
+  if (!m) return;
+  const n = m.length;
+  const scale = QR_MODULE_DOTS;
+  const foot = (n + QR_QUIET_MODULES * 2) * scale;
+  let x0 = bmp.w - foot - QR_EDGE_MARGIN_DOTS; if (x0 < 0) x0 = 0;
+  let y0 = bmp.h - foot - QR_EDGE_MARGIN_DOTS; if (y0 < 0) y0 = 0;
+  bmp.clearRect(x0, y0, Math.min(foot, bmp.w - x0), Math.min(foot, bmp.h - y0)); // quiet zone + clean modules
+  const ox = x0 + QR_QUIET_MODULES * scale, oy = y0 + QR_QUIET_MODULES * scale;
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (m[r][c]) bmp.fillRect(ox + c * scale, oy + r * scale, scale, scale);
 }
 
 // PRODUCTION path: payload → 1-bit raster → vertical ink-band crop → full-width
@@ -445,6 +477,7 @@ export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: 
   const { ops, wDots, hDots } = stickerDrawOps(payload, wMm, hMm);
   const bmp = new Bitmap(wDots, hDots);
   paint(bmp, ops, atlases);
+  stampHandleQr(bmp, payload); // keep the band path == renderStickerBitmap (LOSSLESS invariant)
 
   const out: number[] = [];
   const line = (s: string) => { out.push(...asciiBytes(s), ...CRLF); };

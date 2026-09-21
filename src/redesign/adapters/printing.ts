@@ -81,8 +81,25 @@ export function buildNativeStickerPayload(buyer: Buyer, cur: string, storeName: 
       printOrderScale: cfg.printOrderScale,
       printCommentScale: cfg.printCommentScale,
       printTotalScale: cfg.printTotalScale,
+      printStickerQr: isStickerQrOn(), // per-device "Print QR on sticker" toggle (default OFF)
     },
   };
+}
+
+// ── "Print QR on sticker" toggle — per-device, DEFAULT OFF ────────────────────
+// Stamps a QR of the buyer @username on the bitmap sticker (bottom-right) so Parcel
+// Scan can read the handle back off the physical label (the handle is purged from the
+// free-tier DB). localStorage only (per-device UI pref, sfl_rd_* convention — no DB, no
+// migration). Read at payload-build time → threaded into the raster settings, which stamp
+// the QR ONLY when this is true. A missing/other value = OFF (safe rollout: nothing
+// changes for any seller until they flip it on). BITMAP path only — TEXT-path prints
+// (old binaries / Classic mode) carry no QR regardless.
+export const LS_STICKER_QR = "sfl_rd_sticker_qr";
+export function isStickerQrOn(): boolean {
+  try { return typeof localStorage !== "undefined" && localStorage.getItem(LS_STICKER_QR) === "1"; } catch { return false; }
+}
+export function setStickerQrOn(on: boolean): void {
+  try { if (on) localStorage.setItem(LS_STICKER_QR, "1"); else localStorage.removeItem(LS_STICKER_QR); } catch { /* ignore */ }
 }
 
 // ── buildSlipPayload — the NativePrinterPayload from App.tsx:658-659 ──────────
