@@ -47,6 +47,7 @@ export default function CustomerDetails({ cur = "NT$", onImported }: { cur?: str
   const [openId, setOpenId] = useState<string | null>(null);
   const [price, setPrice] = useState("");
   const [handle, setHandle] = useState(""); // buyer @username — REQUIRED for import (prefilled from the contact's saved handle)
+  const [noHandle, setNoHandle] = useState(false); // per-parcel escape hatch — never persisted; resets per row/import
   const [importErr, setImportErr] = useState("");
   const [importing, setImporting] = useState(false);
   const [toast, setToast] = useState("");
@@ -112,6 +113,7 @@ export default function CustomerDetails({ cur = "NT$", onImported }: { cur?: str
     setImportErr("");
     setPrice("");
     setHandle(c.notes || ""); // prefill from the saved handle; blank contact → seller must type one
+    setNoHandle(false);        // escape hatch always starts unchecked on a fresh row
     setOpenId((cur0) => (cur0 === c.id ? null : c.id));
   }
 
@@ -130,15 +132,16 @@ export default function CustomerDetails({ cur = "NT$", onImported }: { cur?: str
     // at the 賣貨便 upload.
     if (!validStore(c.storeId || "")) { setImportErr(t.rd_ps2_err_store_required); return; }
     // Buyer @username REQUIRED (same shared rule as a fresh encode) — a contact with no
-    // handle is prompted here, not silently imported without one.
-    if (!validHandle(handle)) { setImportErr(t.rd_ps2_err_handle); return; }
+    // handle is prompted here, not silently imported without one — UNLESS the seller ticks
+    // "no social handle", which imports with a BLANK handle (col J stays empty).
+    if (!noHandle && !validHandle(handle)) { setImportErr(t.rd_ps2_err_handle); return; }
     setImporting(true);
     try {
       const cnt = await countPendingParcels();
       if (!cnt.ok) { setImportErr(t.rd_cd_import_err); return; }
       if (cnt.count >= MAX_PENDING_PARCELS) { setImportErr(tpl(t.rd_ps2_batch_full, { max: String(MAX_PENDING_PARCELS) })); return; }
       const r = await saveParcelScan(
-        { name: c.name || null, phone: c.phone || null, store_id: c.storeId || null, amount: Number(price), notes: handle.trim() },
+        { name: c.name || null, phone: c.phone || null, store_id: c.storeId || null, amount: Number(price), notes: noHandle ? "" : handle.trim() },
         null,
       );
       if (!r.ok) { setImportErr(t.rd_cd_import_err); return; }
@@ -146,6 +149,7 @@ export default function CustomerDetails({ cur = "NT$", onImported }: { cur?: str
       setTimeout(() => setToast(""), 2500);
       setPrice("");
       setHandle("");
+      setNoHandle(false);
       setOpenId(null);
       // Embedded (Parcel Scan overlay): hand control back so the parent can close
       // the overlay + refresh its Saved list / Batch count. Standalone: no-op.
@@ -290,18 +294,23 @@ export default function CustomerDetails({ cur = "NT$", onImported }: { cur?: str
                     </div>
                     {importErr && <div style={errTxt} data-testid="cd-import-err">{importErr}</div>}
                   </div>
-                  {/* Buyer @username — REQUIRED (prefilled from the contact; blank → type one). */}
+                  {/* Buyer @username — REQUIRED (prefilled from the contact; blank → type one,
+                      or tick "no social handle" to import with a blank handle). */}
                   <div>
                     <label style={lbl}>{t.rd_ps2_handle}</label>
                     <input
                       value={handle}
-                      onChange={(e) => { setHandle(e.target.value.slice(0, 50)); setImportErr(""); }}
+                      onChange={(e) => { const v = e.target.value.slice(0, 50); setHandle(v); setImportErr(""); if (v.trim() !== "" && noHandle) setNoHandle(false); }}
                       maxLength={50}
                       placeholder="@username"
-                      style={input}
+                      style={{ ...input, ...(noHandle ? { opacity: 0.5 } : {}) }} // dim cue; typing re-enables + unticks
                       data-testid="cd-handle"
                       aria-label={t.rd_ps2_handle}
                     />
+                    <label style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 7, cursor: "pointer", fontSize: 12, color: "var(--text-dim)" }}>
+                      <input type="checkbox" checked={noHandle} onChange={(e) => { const on = e.target.checked; setNoHandle(on); if (on) { setHandle(""); setImportErr(""); } }} data-testid="cd-no-handle" />
+                      {t.rd_ps2_no_handle}
+                    </label>
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <button onClick={() => openEdit(c)} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13, cursor: "pointer" }} data-testid="cd-edit" aria-label={t.rd_cd_edit_aria}>✏️ {t.rd_cd_edit}</button>

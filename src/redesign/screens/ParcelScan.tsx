@@ -108,6 +108,11 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const [phase, setPhase] = useState<Phase>("idle");
   const [scanErr, setScanErr] = useState("");
   const [form, setForm] = useState<FormState>(emptyForm);
+  // "Buyer has no social handle" — the deliberate per-parcel escape hatch. NEVER persisted
+  // (no localStorage) so skipping is a per-parcel choice, not a habit: it resets on every
+  // form clear (clearForm) — i.e. after each save, on cancel, and when a scan populates.
+  const [noHandle, setNoHandle] = useState(false);
+  const clearForm = () => { setForm(emptyForm); setNoHandle(false); };
   const [confid, setConfid] = useState<Record<keyof ScanFields, ScanConfidence> | null>(null);
   const [rawExtraction, setRawExtraction] = useState<{ fields: ScanFields; confidence?: Record<keyof ScanFields, ScanConfidence> } | null>(null);
   const [saveErr, setSaveErr] = useState("");
@@ -334,7 +339,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
           return;
         }
         if (!r.ok || !r.fields) { setScanErr(r.error || "scan_failed"); setPhase("error"); return; }
-        setForm(fieldsToForm(r.fields));
+        setForm(fieldsToForm(r.fields)); setNoHandle(false); // a fresh scan starts with the handle required
         setConfid(r.confidence ?? null);
         setRawExtraction({ fields: r.fields, confidence: r.confidence });
         setPhase("confirm");
@@ -399,7 +404,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
 
   const advance = () => {
     const next = idx + 1;
-    setForm(emptyForm); setConfid(null); setRawExtraction(null); setSaveErr("");
+    clearForm(); setConfid(null); setRawExtraction(null); setSaveErr("");
     if (next < files.length) { setIdx(next); void scanOne(files, next); }
     else { setFiles([]); setIdx(0); setPhase("idle"); }
   };
@@ -471,7 +476,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     setSaving(false);
     if (!ok) return;
     setManualCount((c) => c + 1);
-    setForm(emptyForm); setConfid(null); setRawExtraction(null); setSaveErr(""); // blank for the next; stay in manual
+    clearForm(); setConfid(null); setRawExtraction(null); setSaveErr(""); // blank for the next; stay in manual
   };
 
   // ── 賣貨便 訂單匯入 Excel export — gate, build via the EXISTING builder, deliver.
@@ -571,21 +576,21 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // ── Manual encode — open the shared confirm form BLANK, no camera/scan ──────
   const openManual = () => {
     if (busy || editing || batchFull) return; // batch cap blocks a NEW manual entry (button also disabled)
-    setSaveErr(""); setForm(emptyForm); setConfid(null); setRawExtraction(null);
+    setSaveErr(""); clearForm(); setConfid(null); setRawExtraction(null);
     setManual(true);
   };
-  const cancelManual = () => { setManual(false); setForm(emptyForm); setSaveErr(""); };
+  const cancelManual = () => { setManual(false); clearForm(); setSaveErr(""); };
 
   // ── Edit (Feature 3) — reuse the confirm form, pre-filled; update-in-place ──
   // Only reachable when idle (not mid-scan-batch) and only for non-exported rows.
   const openEdit = (r: ParcelScanRow) => {
     if (busy || r.status === "exported") return;
     setSaveErr("");
-    setForm({ name: r.customerName, phone: r.phone, store: r.storeId, amount: r.amount == null ? "" : String(r.amount), notes: r.notes });
+    setForm({ name: r.customerName, phone: r.phone, store: r.storeId, amount: r.amount == null ? "" : String(r.amount), notes: r.notes }); setNoHandle(false);
     setConfid(null); // no low-confidence highlights on a manual edit
     setEditing({ id: r.id });
   };
-  const cancelEdit = () => { setEditing(null); setForm(emptyForm); setSaveErr(""); };
+  const cancelEdit = () => { setEditing(null); clearForm(); setSaveErr(""); };
   const onEditSave = async () => {
     if (!editing || saving) return;
     setSaving(true); setSaveErr("");
@@ -618,7 +623,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
         phoneRestrictedUntil: phoneChanged ? null : x.phoneRestrictedUntil,
       } : x)));
     }
-    setEditing(null); setForm(emptyForm);
+    setEditing(null); clearForm();
     setToast(t.rd_ps2_saved_toast); setTimeout(() => setToast(""), 2500);
     // Re-run the E-Map check ONLY when the store code changed (reuse runStoreCheck).
     if (storeChanged && /^\d{6}$/.test(newStore) && !id.startsWith("local-")) runStoreCheck(id, newStore);
@@ -632,7 +637,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // Buyer @username is REQUIRED on NEW rows (manual encode + scan confirm); an EDIT of a
   // pre-existing row is not newly gated (only new saves are — old handle-less rows stay
   // editable). requireHandle = editing === null.
-  const errs = formErrors(form, fee, requireStore, editing === null); // fee-aware: max amount = MAX_PARCEL_TOTAL − fee (no export hole)
+  const errs = formErrors(form, fee, requireStore, editing === null, noHandle); // fee-aware: max amount = MAX_PARCEL_TOTAL − fee (no export hole)
   // A NEW-row Save (scan/manual) is blocked at the batch cap; an EDIT of an
   // existing row is NEVER blocked by the cap (fix wrong codes/prices when full).
   const saveBlocked = saving || errs.empty || errs.name || errs.phone || errs.store || errs.amount || errs.handle || (batchFull && !editing);
@@ -862,9 +867,24 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                   Continuous mode clears it on Save (emptyForm) → re-entered per parcel. */}
               <div>
                 <label style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", display: "block", marginBottom: 4 }} htmlFor="ps-handle">{t.rd_ps2_handle}</label>
-                <input id="ps-handle" value={form.notes} onChange={(e) => F({ notes: e.target.value.slice(0, 50) })} maxLength={50} placeholder="@username" style={input} data-testid="ps-notes" aria-invalid={errs.handle && !errs.empty} />
+                <input
+                  id="ps-handle"
+                  value={form.notes}
+                  onChange={(e) => { const v = e.target.value.slice(0, 50); F({ notes: v }); if (v.trim() !== "" && noHandle) setNoHandle(false); }} // typing text un-ticks "no handle" (rule 4)
+                  maxLength={50}
+                  placeholder="@username"
+                  style={{ ...input, ...(noHandle ? { opacity: 0.5 } : {}) }} // dim cue while "no handle" is ticked; typing re-enables it (auto-unticks)
+                  data-testid="ps-notes"
+                  aria-invalid={errs.handle && !errs.empty}
+                />
                 <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 3 }}>{t.rd_ps2_handle_hint}</div>
                 {errs.handle && !errs.empty && <div style={errTxt} data-testid="ps-handle-err">{t.rd_ps2_err_handle}</div>}
+                {/* Escape hatch — checking it clears + disables the input and lets Save through
+                    with a BLANK handle (col J stays empty). Never persisted; resets per parcel. */}
+                <label style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 7, cursor: "pointer", fontSize: 12, color: "var(--text-dim)" }}>
+                  <input type="checkbox" checked={noHandle} onChange={(e) => { const on = e.target.checked; setNoHandle(on); if (on) F({ notes: "" }); }} data-testid="ps-no-handle" />
+                  {t.rd_ps2_no_handle}
+                </label>
               </div>
               {saveErr && <div style={errTxt} data-testid="ps-save-err">{t.rd_ps2_err_save} <span style={{ fontFamily: mono }}>{saveErr}</span></div>}
               <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
@@ -969,6 +989,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                   <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {r.customerName || "—"}
                     {r.status === "exported" && <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 800, color: "var(--ok, #16a34a)", border: "1px solid var(--ok, #16a34a)", borderRadius: 6, padding: "0 5px", verticalAlign: "middle" }} data-testid="ps-exported-tag">{t.rd_ps2_x_tag}</span>}
+                    {!(r.notes && r.notes.trim()) && <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 800, color: "var(--text-muted)", border: "1px solid var(--border-strong)", borderRadius: 6, padding: "0 5px", verticalAlign: "middle" }} data-testid="ps-no-handle-chip">{t.rd_ps2_no_handle_chip}</span>}
                   </div>
                   <div style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: mono }}>{[r.phone, r.storeId].filter(Boolean).join(" · ") || "—"}</div>
                   {badge && (

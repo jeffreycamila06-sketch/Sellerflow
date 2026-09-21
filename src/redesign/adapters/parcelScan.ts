@@ -269,13 +269,16 @@ export const validHandle = (s: string): boolean => s.trim() !== "";
 // BLOCKS Save (the shared handle gate; Customer Details Import enforces validHandle on
 // its own path). False for EDIT so pre-existing handle-less rows stay editable (only new
 // saves are gated).
-export function formErrors(f: ScanFormState, fee: number = SHIP_DEFAULT_FEE, requireStore = false, requireHandle = false): { name: boolean; phone: boolean; store: boolean; amount: boolean; handle: boolean; empty: boolean } {
+// noHandle: the deliberate per-parcel escape hatch ("Buyer has no social handle"). When
+// true, the handle requirement is waived and the parcel saves with a BLANK handle (col J
+// stays empty — never a placeholder). Resets per parcel (the screen never persists it).
+export function formErrors(f: ScanFormState, fee: number = SHIP_DEFAULT_FEE, requireStore = false, requireHandle = false, noHandle = false): { name: boolean; phone: boolean; store: boolean; amount: boolean; handle: boolean; empty: boolean } {
   const name = f.name.trim();
   const nameBad = name !== "" && validateRecipientName(name) !== "";
   const phoneBad = f.phone.trim() !== "" && !validPhone(f.phone);
   const storeBad = requireStore ? !validStore(f.store) : (f.store.trim() !== "" && !validStore(f.store));
   const amountBad = !validAmount(f.amount, fee); // required now: blank/0/<min/>max all block Save
-  const handleBad = requireHandle && !validHandle(f.notes); // buyer @username required on new saves
+  const handleBad = requireHandle && !noHandle && !validHandle(f.notes); // buyer @username required unless "no handle" ticked
   const empty = name === "" && f.phone.trim() === "" && f.store.trim() === "" && f.amount.trim() === "" && f.notes.trim() === "";
   return { name: nameBad, phone: phoneBad, store: storeBad, amount: amountBad, handle: handleBad, empty };
 }

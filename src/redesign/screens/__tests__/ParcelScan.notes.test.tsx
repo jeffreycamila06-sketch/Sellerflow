@@ -91,3 +91,44 @@ describe("Parcel Scan — buyer @username (col J) is required, no toggle", () =>
     await waitFor(() => expect((r.getByTestId("ps-notes") as HTMLInputElement).value).toBe(""));
   });
 });
+
+describe("Parcel Scan — 'Buyer has no social handle' escape hatch", () => {
+  it("checked + blank handle → Save allowed, notes saved EMPTY (never a placeholder)", async () => {
+    const r = view();
+    fireEvent.click(await r.findByTestId("ps-manual"));
+    fillValid(r);
+    expect((r.getByTestId("ps-save") as HTMLButtonElement).disabled).toBe(true); // required by default
+    fireEvent.click(r.getByTestId("ps-no-handle"));                              // tick the escape hatch
+    expect((r.getByTestId("ps-notes") as HTMLInputElement).value).toBe("");       // input cleared
+    expect((r.getByTestId("ps-save") as HTMLButtonElement).disabled).toBe(false); // now allowed
+    fireEvent.click(r.getByTestId("ps-save"));
+    await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(1));
+    expect((saveParcelScan.mock.calls[0][0] as { notes: string | null }).notes).toBeNull(); // blank col J, no fake username
+  });
+
+  it("checked THEN typing text → box auto-unchecks and the text is saved verbatim (rule 4)", async () => {
+    const r = view();
+    fireEvent.click(await r.findByTestId("ps-manual"));
+    fillValid(r);
+    fireEvent.click(r.getByTestId("ps-no-handle"));
+    expect((r.getByTestId("ps-no-handle") as HTMLInputElement).checked).toBe(true);
+    // input is disabled while checked, so unticking-by-text is driven from the input value change
+    fireEvent.change(r.getByTestId("ps-notes"), { target: { value: "Ashley102031(IG)" } });
+    expect((r.getByTestId("ps-no-handle") as HTMLInputElement).checked).toBe(false); // text wins
+    fireEvent.click(r.getByTestId("ps-save"));
+    await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(1));
+    expect((saveParcelScan.mock.calls[0][0] as { notes: string | null }).notes).toBe("Ashley102031(IG)");
+  });
+
+  it("the escape hatch RESETS after a save (never remembered per session)", async () => {
+    const r = view();
+    fireEvent.click(await r.findByTestId("ps-manual"));
+    fillValid(r);
+    fireEvent.click(r.getByTestId("ps-no-handle"));
+    fireEvent.click(r.getByTestId("ps-save"));
+    await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(1));
+    // next parcel: box unchecked again → handle required again
+    await waitFor(() => expect((r.getByTestId("ps-no-handle") as HTMLInputElement).checked).toBe(false));
+    expect((r.getByTestId("ps-notes") as HTMLInputElement).disabled).toBe(false);
+  });
+});
