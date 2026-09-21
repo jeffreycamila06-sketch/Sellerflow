@@ -37,6 +37,7 @@ vi.mock("../../adapters/shippingExport", () => ({
   fetchShipTemplate: vi.fn(async () => new Uint8Array()),
   buildXlsmFromTemplate: vi.fn(async () => new Uint8Array()),
   deliverXlsm,
+  deliverXlsmMobile: vi.fn(async () => ({ ok: true, via: "webshare" })), // desktop test never calls it
   exportFilename: () => "sellerflow_711.xlsm",
 }));
 vi.mock("../../adapters/shippingSettings", () => ({ loadGlobalShippingFee: async () => 38 }));
