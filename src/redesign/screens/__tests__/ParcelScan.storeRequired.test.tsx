@@ -127,6 +127,7 @@ describe("ParcelScan — 7-11 store code required (manual encode)", () => {
     fireEvent.change(getByTestId("ps-name"), { target: { value: "Juan" } });
     fireEvent.change(getByTestId("ps-amount"), { target: { value: "550" } });
     fireEvent.change(getByTestId("ps-store"), { target: { value: "266402" } });
+    fireEvent.change(getByTestId("ps-notes"), { target: { value: "@buyer" } }); // handle now required
     expect(disabled(getByTestId("ps-save"))).toBe(false);
     fireEvent.click(getByTestId("ps-save"));
     await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(1));

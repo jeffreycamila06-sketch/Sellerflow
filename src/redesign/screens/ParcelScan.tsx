@@ -143,14 +143,6 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // NULL batch id and are not covered — by design.
   const [lastExportBatch, setLastExportBatch] = useState<{ id: string; ids: string[] } | null>(null);
   const [undoErr, setUndoErr] = useState("");
-  // Notes field toggle — PER-VIEWER UI preference (which fields show in the encode
-  // form), so it lives in localStorage (sfl_rd_* convention, like keep-awake /
-  // ship-fee), NOT a DB column: no cross-device need + no migration. Default OFF.
-  // Notes / handle field DEFAULTS ON (Phase 5) — a missing pref (or anything but
-  // the explicit "0") is ON; only a user who deliberately turned it off ("0")
-  // stays off. Fail-safe on a storage throw → ON (the new default).
-  const [notesOn, setNotesOn] = useState(() => { try { return localStorage.getItem("sfl_rd_ps_notes") !== "0"; } catch { return true; } });
-  const toggleNotes = () => setNotesOn((v) => { const n = !v; try { localStorage.setItem("sfl_rd_ps_notes", n ? "1" : "0"); } catch { /* ignore */ } return n; });
   // Export is LAPTOP-ONLY (a mis-tap on a phone marks rows exported → they vanish
   // from the laptop file — no exceptions, no toggle). Hide the whole export card on
   // the app shell (APK/iOS/?apk) AND on a narrow mobile-browser viewport; re-check
@@ -637,10 +629,13 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // amount gate. The SCAN/OCR confirm path keeps the old format-only behavior
   // (unreadable store stays blank + flagged, fixed later via edit).
   const requireStore = manual || editing !== null;
-  const errs = formErrors(form, fee, requireStore); // fee-aware: max amount = MAX_PARCEL_TOTAL − fee (no export hole)
+  // Buyer @username is REQUIRED on NEW rows (manual encode + scan confirm); an EDIT of a
+  // pre-existing row is not newly gated (only new saves are — old handle-less rows stay
+  // editable). requireHandle = editing === null.
+  const errs = formErrors(form, fee, requireStore, editing === null); // fee-aware: max amount = MAX_PARCEL_TOTAL − fee (no export hole)
   // A NEW-row Save (scan/manual) is blocked at the batch cap; an EDIT of an
   // existing row is NEVER blocked by the cap (fix wrong codes/prices when full).
-  const saveBlocked = saving || errs.empty || errs.name || errs.phone || errs.store || errs.amount || (batchFull && !editing);
+  const saveBlocked = saving || errs.empty || errs.name || errs.phone || errs.store || errs.amount || errs.handle || (batchFull && !editing);
   const low = (f: keyof ScanFields): boolean => confid?.[f] === "low";
   const F = (patch: Partial<FormState>) => setForm((s) => ({ ...s, ...patch }));
   const busy = phase === "scanning" || phase === "confirm" || phase === "error";
@@ -861,23 +856,16 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                     : <div style={errTxt} data-testid="ps-amount-err">{tpl(t.rd_ps2_err_amount, { amt: `${cur}${MIN_PARCEL_AMOUNT}` })}</div>)
                   : amountWarns(form.amount) && <div style={warnTxt} data-testid="ps-amount-warn">{t.rd_ps2_amount_warn}</div>}
               </div>
-              {/* Notes toggle (per-viewer, persisted). OFF → no field, notes blank
-                  (col J blank — unchanged for OFF sellers). ON → an optional 50-char
-                  field → parcel_scans.notes → 賣貨便 col J (其他資訊). Continuous mode
-                  clears it on Save (emptyForm). Same pill switch as keep-awake. */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t.rd_ps2_notes}</span>
-                <button onClick={toggleNotes} role="switch" aria-checked={notesOn} aria-label={t.rd_ps2_notes} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }} data-testid="ps-notes-toggle">
-                  <span style={{ width: 44, height: 26, borderRadius: 13, background: notesOn ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s" }}>
-                    <span style={{ position: "absolute", top: 3, left: notesOn ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
-                  </span>
-                </button>
+              {/* Buyer @username — REQUIRED (no toggle). Stored in parcel_scans.notes →
+                  賣貨便 col J (其他資訊), so the F-code↔handle round-trip via 匯出報表
+                  keeps working. Verbatim (IG/LINE/FB vary); blank blocks Save on new rows.
+                  Continuous mode clears it on Save (emptyForm) → re-entered per parcel. */}
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", display: "block", marginBottom: 4 }} htmlFor="ps-handle">{t.rd_ps2_handle}</label>
+                <input id="ps-handle" value={form.notes} onChange={(e) => F({ notes: e.target.value.slice(0, 50) })} maxLength={50} placeholder="@username" style={input} data-testid="ps-notes" aria-invalid={errs.handle && !errs.empty} />
+                <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 3 }}>{t.rd_ps2_handle_hint}</div>
+                {errs.handle && !errs.empty && <div style={errTxt} data-testid="ps-handle-err">{t.rd_ps2_err_handle}</div>}
               </div>
-              {notesOn && (
-                <div>
-                  <input value={form.notes} onChange={(e) => F({ notes: e.target.value.slice(0, 50) })} maxLength={50} style={input} data-testid="ps-notes" />
-                </div>
-              )}
               {saveErr && <div style={errTxt} data-testid="ps-save-err">{t.rd_ps2_err_save} <span style={{ fontFamily: mono }}>{saveErr}</span></div>}
               <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
                 <button onClick={() => void (editing ? onEditSave() : manual ? onManualSave() : onSave())} disabled={saveBlocked} style={{ flex: 2, padding: "11px 12px", borderRadius: 10, border: "none", background: saveBlocked ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: saveBlocked ? "default" : "pointer" }} data-testid="ps-save">{t.rd_ps2_save}</button>

@@ -57,6 +57,7 @@ describe("Parcel Scan — amount required with min (manual encode)", () => {
     fireEvent.click(await r.findByTestId("ps-manual"));
     fireEvent.change(r.getByTestId("ps-name"), { target: { value: "Juan" } });
     fireEvent.change(r.getByTestId("ps-store"), { target: { value: "266402" } });
+    fireEvent.change(r.getByTestId("ps-notes"), { target: { value: "@buyer" } }); // handle now required
     fireEvent.change(r.getByTestId("ps-amount"), { target: { value: "19" } });
     expect(save(r).disabled).toBe(true);
     expect(r.queryByTestId("ps-amount-err")).toBeTruthy();
@@ -75,6 +76,7 @@ describe("Parcel Scan — amount has a MAXIMUM (賠償上限, total ceiling − 
     fireEvent.click(await r.findByTestId("ps-manual"));
     fireEvent.change(r.getByTestId("ps-name"), { target: { value: "Juan" } });
     fireEvent.change(r.getByTestId("ps-store"), { target: { value: "266402" } });
+    fireEvent.change(r.getByTestId("ps-notes"), { target: { value: "@buyer" } }); // handle now required
     fireEvent.change(r.getByTestId("ps-amount"), { target: { value: "19962" } });
     expect(save(r).disabled).toBe(false);
     expect(r.queryByTestId("ps-amount-err")).toBeNull();
@@ -98,9 +100,33 @@ describe("Parcel Scan — amount has a MAXIMUM (賠償上限, total ceiling − 
     fireEvent.click(await r.findByTestId("ps-manual"));
     fireEvent.change(r.getByTestId("ps-name"), { target: { value: "Juan" } });
     fireEvent.change(r.getByTestId("ps-store"), { target: { value: "266402" } });
+    fireEvent.change(r.getByTestId("ps-notes"), { target: { value: "@buyer" } }); // handle now required
     fireEvent.change(r.getByTestId("ps-amount"), { target: { value: "20" } });
     expect(save(r).disabled).toBe(false);
     expect(r.queryByTestId("ps-amount-err")).toBeNull();
+  });
+});
+
+describe("Parcel Scan — buyer @username (handle) is REQUIRED on a new manual encode", () => {
+  it("name+store+amount filled but handle blank → Save disabled; typing a handle → enabled", async () => {
+    const r = view();
+    fireEvent.click(await r.findByTestId("ps-manual"));
+    fireEvent.change(r.getByTestId("ps-name"), { target: { value: "Juan" } });
+    fireEvent.change(r.getByTestId("ps-store"), { target: { value: "266402" } });
+    fireEvent.change(r.getByTestId("ps-amount"), { target: { value: "300" } });
+    expect(save(r).disabled).toBe(true);                       // no handle yet
+    expect(r.getByTestId("ps-handle-err")).toBeTruthy();
+    fireEvent.change(r.getByTestId("ps-notes"), { target: { value: "  " } }); // whitespace-only → still blocked
+    expect(save(r).disabled).toBe(true);
+    fireEvent.change(r.getByTestId("ps-notes"), { target: { value: "Ashley102031(IG)" } }); // verbatim, no format check
+    expect(save(r).disabled).toBe(false);
+    expect(r.queryByTestId("ps-handle-err")).toBeNull();
+  });
+  it("the field is ALWAYS visible (no toggle can hide the required handle)", async () => {
+    const r = view();
+    fireEvent.click(await r.findByTestId("ps-manual"));
+    expect(r.getByTestId("ps-notes")).toBeTruthy();
+    expect(r.queryByTestId("ps-notes-toggle")).toBeNull();     // toggle removed
   });
 });
 

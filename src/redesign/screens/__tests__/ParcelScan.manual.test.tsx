@@ -113,14 +113,12 @@ describe("Parcel Scan — manual encode (zero credit)", () => {
     expect(scanParcel).not.toHaveBeenCalled();
   });
 
-  it("notes/handle field defaults ON and can be toggled off (opt-out)", async () => {
+  it("buyer @username field is ALWAYS visible and required (no toggle to hide it)", async () => {
     const { findByTestId, getByTestId, queryByTestId } = view();
     fireEvent.click(await findByTestId("ps-manual"));
     getByTestId("ps-name");                       // form is open
-    expect(getByTestId("ps-notes")).toBeTruthy(); // shown by default now (Phase 5)
-    fireEvent.click(getByTestId("ps-notes-toggle")); // deliberate opt-out
-    expect(queryByTestId("ps-notes")).toBeNull();
-    try { localStorage.removeItem("sfl_rd_ps_notes"); } catch { /* keep other tests on the default */ }
+    expect(getByTestId("ps-notes")).toBeTruthy(); // handle field always shown
+    expect(queryByTestId("ps-notes-toggle")).toBeNull(); // toggle removed — can't hide a required field
   });
 
   it("runs the E-Map store-code check on the typed store (like the scan/edit flow)", async () => {

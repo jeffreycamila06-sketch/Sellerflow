@@ -15,7 +15,7 @@ import {
   searchParcelCustomers, loadRecentParcelCustomers, updateParcelCustomer,
   deleteParcelCustomer, countPendingParcels, countParcelCustomers, type ParcelCustomer,
 } from "../adapters/parcelCustomers";
-import { saveParcelScan, validAmount, amountTooHigh, MIN_PARCEL_AMOUNT, MAX_PARCEL_TOTAL, MAX_PENDING_PARCELS } from "../adapters/parcelScan";
+import { saveParcelScan, validAmount, amountTooHigh, validHandle, MIN_PARCEL_AMOUNT, MAX_PARCEL_TOTAL, MAX_PENDING_PARCELS } from "../adapters/parcelScan";
 import { loadGlobalShippingFee } from "../adapters/shippingSettings";
 import { SHIP_DEFAULT_FEE, validStore } from "../adapters/shipping";
 
@@ -46,6 +46,7 @@ export default function CustomerDetails({ cur = "NT$", onImported }: { cur?: str
   // Inline import: one row expanded at a time.
   const [openId, setOpenId] = useState<string | null>(null);
   const [price, setPrice] = useState("");
+  const [handle, setHandle] = useState(""); // buyer @username — REQUIRED for import (prefilled from the contact's saved handle)
   const [importErr, setImportErr] = useState("");
   const [importing, setImporting] = useState(false);
   const [toast, setToast] = useState("");
@@ -107,10 +108,11 @@ export default function CustomerDetails({ cur = "NT$", onImported }: { cur?: str
     if (r.ok) { setRows(r.rows); setListErr(""); } else setListErr(t.rd_cd_load_err);
   }
 
-  function toggleRow(id: string) {
+  function toggleRow(c: ParcelCustomer) {
     setImportErr("");
     setPrice("");
-    setOpenId((cur0) => (cur0 === id ? null : id));
+    setHandle(c.notes || ""); // prefill from the saved handle; blank contact → seller must type one
+    setOpenId((cur0) => (cur0 === c.id ? null : c.id));
   }
 
   async function doImport(c: ParcelCustomer) {
@@ -127,19 +129,23 @@ export default function CustomerDetails({ cur = "NT$", onImported }: { cur?: str
     // seller to fill the store (edit the contact), or the parcel would be rejected
     // at the 賣貨便 upload.
     if (!validStore(c.storeId || "")) { setImportErr(t.rd_ps2_err_store_required); return; }
+    // Buyer @username REQUIRED (same shared rule as a fresh encode) — a contact with no
+    // handle is prompted here, not silently imported without one.
+    if (!validHandle(handle)) { setImportErr(t.rd_ps2_err_handle); return; }
     setImporting(true);
     try {
       const cnt = await countPendingParcels();
       if (!cnt.ok) { setImportErr(t.rd_cd_import_err); return; }
       if (cnt.count >= MAX_PENDING_PARCELS) { setImportErr(tpl(t.rd_ps2_batch_full, { max: String(MAX_PENDING_PARCELS) })); return; }
       const r = await saveParcelScan(
-        { name: c.name || null, phone: c.phone || null, store_id: c.storeId || null, amount: Number(price), notes: c.notes || null },
+        { name: c.name || null, phone: c.phone || null, store_id: c.storeId || null, amount: Number(price), notes: handle.trim() },
         null,
       );
       if (!r.ok) { setImportErr(t.rd_cd_import_err); return; }
       setToast(t.rd_cd_imported_toast);
       setTimeout(() => setToast(""), 2500);
       setPrice("");
+      setHandle("");
       setOpenId(null);
       // Embedded (Parcel Scan overlay): hand control back so the parent can close
       // the overlay + refresh its Saved list / Batch count. Standalone: no-op.
@@ -247,7 +253,7 @@ export default function CustomerDetails({ cur = "NT$", onImported }: { cur?: str
           return (
             <div key={c.id} style={card} data-testid="cd-row" data-open={open ? "1" : undefined}>
               <button
-                onClick={() => toggleRow(c.id)}
+                onClick={() => toggleRow(c)}
                 style={{ display: "flex", width: "100%", alignItems: "center", gap: 10, background: "transparent", border: "none", padding: 0, cursor: "pointer", textAlign: "left" }}
                 data-testid="cd-row-main"
               >
@@ -283,6 +289,19 @@ export default function CustomerDetails({ cur = "NT$", onImported }: { cur?: str
                       />
                     </div>
                     {importErr && <div style={errTxt} data-testid="cd-import-err">{importErr}</div>}
+                  </div>
+                  {/* Buyer @username — REQUIRED (prefilled from the contact; blank → type one). */}
+                  <div>
+                    <label style={lbl}>{t.rd_ps2_handle}</label>
+                    <input
+                      value={handle}
+                      onChange={(e) => { setHandle(e.target.value.slice(0, 50)); setImportErr(""); }}
+                      maxLength={50}
+                      placeholder="@username"
+                      style={input}
+                      data-testid="cd-handle"
+                      aria-label={t.rd_ps2_handle}
+                    />
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <button onClick={() => openEdit(c)} style={{ padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13, cursor: "pointer" }} data-testid="cd-edit" aria-label={t.rd_cd_edit_aria}>✏️ {t.rd_cd_edit}</button>

@@ -110,6 +110,22 @@ describe("import — no bypass of validation or the batch cap", () => {
     expect(saveParcelScan).not.toHaveBeenCalled();
   });
 
+  it("contact with NO saved handle → import BLOCKED until one is typed; typed handle flows to col J", async () => {
+    recent.current = { ok: true, rows: [mk({ notes: "" })] }; // phonebook entry with no handle
+    const r = view();
+    await waitFor(() => expect(r.getByTestId("cd-row-main")).toBeTruthy());
+    fireEvent.click(r.getByTestId("cd-row-main"));
+    await waitFor(() => expect(r.getByTestId("cd-import-panel")).toBeTruthy());
+    fireEvent.change(r.getByTestId("cd-price"), { target: { value: "100" } });
+    fireEvent.click(r.getByTestId("cd-import"));
+    await waitFor(() => expect(r.getByTestId("cd-import-err")).toBeTruthy()); // handle-required error
+    expect(saveParcelScan).not.toHaveBeenCalled();
+    fireEvent.change(r.getByTestId("cd-handle"), { target: { value: "@newhandle" } });
+    fireEvent.click(r.getByTestId("cd-import"));
+    await waitFor(() => expect(saveParcelScan).toHaveBeenCalled());
+    expect((saveParcelScan.mock.calls[0][0] as { notes: string }).notes).toBe("@newhandle"); // verbatim → col J
+  });
+
   it("over-ceiling price → distinct max error, NO save", async () => {
     const r = await openRow();
     fireEvent.change(r.getByTestId("cd-price"), { target: { value: "99999" } });

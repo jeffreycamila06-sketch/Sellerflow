@@ -254,19 +254,30 @@ export const amountTooHigh = (amount: string, fee: number = SHIP_DEFAULT_FEE): b
   return Number.isFinite(n) && n + fee > MAX_PARCEL_TOTAL;
 };
 
+// The buyer handle (stored in the `notes` field → 賣貨便 col J 其他資訊) is REQUIRED on
+// every NEW-parcel save path: a parcel with no @username can't be chased for pickup. The
+// rule is deliberately format-free — trimmed non-empty only — because IG/LINE/FB/TikTok
+// handles vary; the value is stored VERBATIM (a leading "@" is stripped only at display).
+export const validHandle = (s: string): boolean => s.trim() !== "";
+
 // requireStore: when true, a blank/short/non-6-digit store BLOCKS Save (same shape
 // as the amount gate — a parcel with no valid 7-11 store code is rejected at the
 // 賣貨便 upload). Passed for the MANUAL encode + the parcel EDIT form. Default false
 // keeps the SCAN/OCR confirm path byte-identical: an unreadable store stays blank +
 // flagged (low-conf + excluded from the export ready-count), fixable later via edit.
-export function formErrors(f: ScanFormState, fee: number = SHIP_DEFAULT_FEE, requireStore = false): { name: boolean; phone: boolean; store: boolean; amount: boolean; empty: boolean } {
+// requireHandle: true for NEW rows (manual encode + scan confirm) → a blank handle
+// BLOCKS Save (the shared handle gate; Customer Details Import enforces validHandle on
+// its own path). False for EDIT so pre-existing handle-less rows stay editable (only new
+// saves are gated).
+export function formErrors(f: ScanFormState, fee: number = SHIP_DEFAULT_FEE, requireStore = false, requireHandle = false): { name: boolean; phone: boolean; store: boolean; amount: boolean; handle: boolean; empty: boolean } {
   const name = f.name.trim();
   const nameBad = name !== "" && validateRecipientName(name) !== "";
   const phoneBad = f.phone.trim() !== "" && !validPhone(f.phone);
   const storeBad = requireStore ? !validStore(f.store) : (f.store.trim() !== "" && !validStore(f.store));
   const amountBad = !validAmount(f.amount, fee); // required now: blank/0/<min/>max all block Save
+  const handleBad = requireHandle && !validHandle(f.notes); // buyer @username required on new saves
   const empty = name === "" && f.phone.trim() === "" && f.store.trim() === "" && f.amount.trim() === "" && f.notes.trim() === "";
-  return { name: nameBad, phone: phoneBad, store: storeBad, amount: amountBad, empty };
+  return { name: nameBad, phone: phoneBad, store: storeBad, amount: amountBad, handle: handleBad, empty };
 }
 // Soft warning kept SEPARATE from the hard min-block: the 賣貨便 order+fee range
 // (55..20000). A 22–54 amount clears the Save gate but still warns (and the
