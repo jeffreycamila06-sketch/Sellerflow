@@ -23,6 +23,7 @@ import { SHIP_DEFAULT_FEE } from "../adapters/shipping";
 import { TELEGRAM_URL } from "../../lib/telegram";
 import { cameraSupported, captureConstraints, triggerHaptic, stopStream, getUserMediaErrorName } from "../adapters/camera";
 import { useWakeLock } from "../adapters/useWakeLock";
+import { decodeQrFromFile } from "../adapters/qrDecode";
 import CustomerDetails from "./CustomerDetails";
 
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
@@ -101,6 +102,8 @@ const reasonKey = (r: ExportReason): ReasonKey =>
 export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = false }: { cur?: string; storeName?: string; manualOnly?: boolean }) {
   const t = useT();
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const qrRef = useRef<HTMLInputElement | null>(null);   // "Scan QR" photo input (decodes the buyer @username off the SFL sticker)
+  const [qrBusy, setQrBusy] = useState(false);
 
   // Batch cursor — files are scanned strictly one at a time.
   const [files, setFiles] = useState<File[]>([]);
@@ -643,6 +646,28 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const saveBlocked = saving || errs.empty || errs.name || errs.phone || errs.store || errs.amount || errs.handle || (batchFull && !editing);
   const low = (f: keyof ScanFields): boolean => confid?.[f] === "low";
   const F = (patch: Partial<FormState>) => setForm((s) => ({ ...s, ...patch }));
+
+  // "Scan QR" — decode the buyer @username off the printed SFL sticker (camera photo or
+  // an uploaded label image) and auto-fill the required handle field VERBATIM. No QR
+  // found → field untouched (the seller types it / ticks "no social handle"). Client-side
+  // only (qrDecode: BarcodeDetector → jsQR); works on the laptop too (file upload).
+  const onScanQr = async (files: FileList | null) => {
+    const file = files && files[0];
+    if (qrRef.current) qrRef.current.value = "";
+    if (!file) return;
+    setQrBusy(true);
+    try {
+      const decoded = await decodeQrFromFile(file);
+      if (decoded && decoded.trim()) {
+        F({ notes: decoded.slice(0, 50) }); // verbatim (capped to the field max)
+        setNoHandle(false);                 // text present → "no handle" can't be true (rule 4)
+        setToast(t.rd_ps2_qr_filled); setTimeout(() => setToast(""), 2500);
+      } else {
+        setToast(t.rd_ps2_qr_none); setTimeout(() => setToast(""), 2500); // field left as-is
+      }
+    } catch { setToast(t.rd_ps2_qr_none); setTimeout(() => setToast(""), 2500); }
+    finally { setQrBusy(false); }
+  };
   const busy = phase === "scanning" || phase === "confirm" || phase === "error";
   const outOfCredits = credits === 0; // known-zero (not just unloaded) → blocked
   // Show the in-app camera when supported + intended + not errored + has credits;
@@ -866,7 +891,13 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                   keeps working. Verbatim (IG/LINE/FB vary); blank blocks Save on new rows.
                   Continuous mode clears it on Save (emptyForm) → re-entered per parcel. */}
               <div>
-                <label style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", display: "block", marginBottom: 4 }} htmlFor="ps-handle">{t.rd_ps2_handle}</label>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 4 }}>
+                  <label style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }} htmlFor="ps-handle">{t.rd_ps2_handle}</label>
+                  <button type="button" onClick={() => qrRef.current?.click()} disabled={qrBusy} style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontFamily: "var(--font-ui)", fontSize: 11.5, fontWeight: 700, cursor: qrBusy ? "default" : "pointer", whiteSpace: "nowrap", opacity: qrBusy ? 0.6 : 1 }} data-testid="ps-scan-qr">
+                    {qrBusy ? t.rd_ps2_qr_reading : `▣ ${t.rd_ps2_scan_qr}`}
+                  </button>
+                </div>
+                <input ref={qrRef} type="file" accept="image/*" hidden data-testid="ps-qr-file" onChange={(e) => void onScanQr(e.target.files)} />
                 <input
                   id="ps-handle"
                   value={form.notes}
