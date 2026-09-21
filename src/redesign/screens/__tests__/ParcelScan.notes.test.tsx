@@ -1,8 +1,7 @@
-// Notes / handle field toggle (manual entry). DEFAULT ON (Phase 5) → the 50-char
-// field shows on open → parcel_scans.notes → 賣貨便 col J (其他資訊). A blank field
-// still saves null (blank J). An explicit "0" in localStorage keeps it OFF (a
-// deliberate opt-out). Per-viewer, persisted in localStorage. Uses the REAL
-// validators/formToFields (importActual); only DB calls are mocked.
+// Buyer @username (handle) field — REQUIRED (manual entry). The field is ALWAYS shown
+// (no toggle), stored in parcel_scans.notes → 賣貨便 col J (其它資訊). A blank handle
+// BLOCKS Save; a typed handle saves VERBATIM to col J. 50-char cap; continuous mode
+// clears it per parcel. Uses the REAL validators/formToFields (importActual); DB mocked.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, waitFor } from "@testing-library/react";
 import type { ParcelScanRow } from "../../adapters/parcelScan";
@@ -44,68 +43,92 @@ beforeEach(() => {
   try { localStorage.clear(); } catch { /* ignore */ }
 });
 
-describe("Parcel Scan — notes toggle (col J)", () => {
-  it("default ON → notes field shown on open; blank → Save writes notes = null (blank J)", async () => {
-    const r = view();                                        // localStorage cleared → new default ON
-    fireEvent.click(await r.findByTestId("ps-manual"));
-    expect(r.getByTestId("ps-notes")).toBeTruthy();          // field shown by default now
-    fillValid(r);
-    fireEvent.click(r.getByTestId("ps-save"));
-    await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(1));
-    const [fields] = saveParcelScan.mock.calls[0] as [{ notes: string | null }];
-    expect(fields.notes).toBeNull();                          // blank → null → blank col J
-  });
-
-  it("default ON → typed notes saved to col J; toggling OFF hides the field + persists '0'", async () => {
+describe("Parcel Scan — buyer @username (col J) is required, no toggle", () => {
+  it("field ALWAYS shown on open; no toggle exists", async () => {
     const r = view();
     fireEvent.click(await r.findByTestId("ps-manual"));
-    fireEvent.change(r.getByTestId("ps-notes"), { target: { value: "FB: juan.dc" } });
-    fillValid(r);
-    fireEvent.click(r.getByTestId("ps-save"));
-    await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(1));
-    expect((saveParcelScan.mock.calls[0][0] as { notes: string | null }).notes).toBe("FB: juan.dc");
-    // deliberate opt-out: toggle OFF hides the field and persists "0"
-    fireEvent.click(r.getByTestId("ps-notes-toggle"));
-    expect(r.queryByTestId("ps-notes")).toBeNull();
-    expect(localStorage.getItem("sfl_rd_ps_notes")).toBe("0");
+    expect(r.getByTestId("ps-notes")).toBeTruthy();          // always visible
+    expect(r.queryByTestId("ps-notes-toggle")).toBeNull();   // toggle removed
   });
 
-  it('explicit "0" in localStorage → OFF on open (respects a prior opt-out)', async () => {
-    localStorage.setItem("sfl_rd_ps_notes", "0");
+  it("blank handle → Save BLOCKED (no write); typing one → saves VERBATIM to col J (notes)", async () => {
     const r = view();
     fireEvent.click(await r.findByTestId("ps-manual"));
-    expect(r.queryByTestId("ps-notes")).toBeNull();          // stays off despite the new default
-  });
-
-  it("ON but blank notes → saved notes null (blank J)", async () => {
-    localStorage.setItem("sfl_rd_ps_notes", "1");
-    const r = view();
-    fireEvent.click(await r.findByTestId("ps-manual"));
-    expect(r.getByTestId("ps-notes")).toBeTruthy();          // persisted ON → shown on open
-    fillValid(r);
+    fillValid(r);                                            // name/store/amount, but no handle
+    expect((r.getByTestId("ps-save") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(r.getByTestId("ps-save"));
+    expect(saveParcelScan).not.toHaveBeenCalled();           // blocked, nothing written
+    fireEvent.change(r.getByTestId("ps-notes"), { target: { value: "Ashley102031(IG)" } });
+    expect((r.getByTestId("ps-save") as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(r.getByTestId("ps-save"));
     await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(1));
-    const [fields] = saveParcelScan.mock.calls[0] as [{ notes: string | null }];
-    expect(fields.notes).toBeNull();
+    expect((saveParcelScan.mock.calls[0][0] as { notes: string | null }).notes).toBe("Ashley102031(IG)"); // verbatim
   });
 
-  it("notes input caps at 50 chars", async () => {
-    localStorage.setItem("sfl_rd_ps_notes", "1");
+  it("whitespace-only handle is rejected (trimmed non-empty)", async () => {
+    const r = view();
+    fireEvent.click(await r.findByTestId("ps-manual"));
+    fillValid(r);
+    fireEvent.change(r.getByTestId("ps-notes"), { target: { value: "   " } });
+    expect((r.getByTestId("ps-save") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("handle input caps at 50 chars", async () => {
     const r = view();
     fireEvent.click(await r.findByTestId("ps-manual"));
     fireEvent.change(r.getByTestId("ps-notes"), { target: { value: "x".repeat(80) } });
     expect((r.getByTestId("ps-notes") as HTMLInputElement).value.length).toBe(50);
   });
 
-  it("continuous Save clears the notes field for the next parcel", async () => {
-    localStorage.setItem("sfl_rd_ps_notes", "1");
+  it("continuous Save clears the handle field for the next parcel", async () => {
     const r = view();
     fireEvent.click(await r.findByTestId("ps-manual"));
     fillValid(r);
-    fireEvent.change(r.getByTestId("ps-notes"), { target: { value: "LINE: xyz" } });
+    fireEvent.change(r.getByTestId("ps-notes"), { target: { value: "@buyer1" } });
     fireEvent.click(r.getByTestId("ps-save"));
     await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(1));
-    // stays in manual, form blank for the next → notes cleared
+    // stays in manual, form blank for the next → handle cleared (re-entered per parcel)
     await waitFor(() => expect((r.getByTestId("ps-notes") as HTMLInputElement).value).toBe(""));
+  });
+});
+
+describe("Parcel Scan — 'Buyer has no social handle' escape hatch", () => {
+  it("checked + blank handle → Save allowed, notes saved EMPTY (never a placeholder)", async () => {
+    const r = view();
+    fireEvent.click(await r.findByTestId("ps-manual"));
+    fillValid(r);
+    expect((r.getByTestId("ps-save") as HTMLButtonElement).disabled).toBe(true); // required by default
+    fireEvent.click(r.getByTestId("ps-no-handle"));                              // tick the escape hatch
+    expect((r.getByTestId("ps-notes") as HTMLInputElement).value).toBe("");       // input cleared
+    expect((r.getByTestId("ps-save") as HTMLButtonElement).disabled).toBe(false); // now allowed
+    fireEvent.click(r.getByTestId("ps-save"));
+    await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(1));
+    expect((saveParcelScan.mock.calls[0][0] as { notes: string | null }).notes).toBeNull(); // blank col J, no fake username
+  });
+
+  it("checked THEN typing text → box auto-unchecks and the text is saved verbatim (rule 4)", async () => {
+    const r = view();
+    fireEvent.click(await r.findByTestId("ps-manual"));
+    fillValid(r);
+    fireEvent.click(r.getByTestId("ps-no-handle"));
+    expect((r.getByTestId("ps-no-handle") as HTMLInputElement).checked).toBe(true);
+    // input is disabled while checked, so unticking-by-text is driven from the input value change
+    fireEvent.change(r.getByTestId("ps-notes"), { target: { value: "Ashley102031(IG)" } });
+    expect((r.getByTestId("ps-no-handle") as HTMLInputElement).checked).toBe(false); // text wins
+    fireEvent.click(r.getByTestId("ps-save"));
+    await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(1));
+    expect((saveParcelScan.mock.calls[0][0] as { notes: string | null }).notes).toBe("Ashley102031(IG)");
+  });
+
+  it("the escape hatch RESETS after a save (never remembered per session)", async () => {
+    const r = view();
+    fireEvent.click(await r.findByTestId("ps-manual"));
+    fillValid(r);
+    fireEvent.click(r.getByTestId("ps-no-handle"));
+    fireEvent.click(r.getByTestId("ps-save"));
+    await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(1));
+    // next parcel: box unchecked again → handle required again
+    await waitFor(() => expect((r.getByTestId("ps-no-handle") as HTMLInputElement).checked).toBe(false));
+    expect((r.getByTestId("ps-notes") as HTMLInputElement).disabled).toBe(false);
   });
 });

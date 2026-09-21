@@ -108,6 +108,11 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const [phase, setPhase] = useState<Phase>("idle");
   const [scanErr, setScanErr] = useState("");
   const [form, setForm] = useState<FormState>(emptyForm);
+  // "Buyer has no social handle" — the deliberate per-parcel escape hatch. NEVER persisted
+  // (no localStorage) so skipping is a per-parcel choice, not a habit: it resets on every
+  // form clear (clearForm) — i.e. after each save, on cancel, and when a scan populates.
+  const [noHandle, setNoHandle] = useState(false);
+  const clearForm = () => { setForm(emptyForm); setNoHandle(false); };
   const [confid, setConfid] = useState<Record<keyof ScanFields, ScanConfidence> | null>(null);
   const [rawExtraction, setRawExtraction] = useState<{ fields: ScanFields; confidence?: Record<keyof ScanFields, ScanConfidence> } | null>(null);
   const [saveErr, setSaveErr] = useState("");
@@ -143,14 +148,6 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // NULL batch id and are not covered — by design.
   const [lastExportBatch, setLastExportBatch] = useState<{ id: string; ids: string[] } | null>(null);
   const [undoErr, setUndoErr] = useState("");
-  // Notes field toggle — PER-VIEWER UI preference (which fields show in the encode
-  // form), so it lives in localStorage (sfl_rd_* convention, like keep-awake /
-  // ship-fee), NOT a DB column: no cross-device need + no migration. Default OFF.
-  // Notes / handle field DEFAULTS ON (Phase 5) — a missing pref (or anything but
-  // the explicit "0") is ON; only a user who deliberately turned it off ("0")
-  // stays off. Fail-safe on a storage throw → ON (the new default).
-  const [notesOn, setNotesOn] = useState(() => { try { return localStorage.getItem("sfl_rd_ps_notes") !== "0"; } catch { return true; } });
-  const toggleNotes = () => setNotesOn((v) => { const n = !v; try { localStorage.setItem("sfl_rd_ps_notes", n ? "1" : "0"); } catch { /* ignore */ } return n; });
   // Export is LAPTOP-ONLY (a mis-tap on a phone marks rows exported → they vanish
   // from the laptop file — no exceptions, no toggle). Hide the whole export card on
   // the app shell (APK/iOS/?apk) AND on a narrow mobile-browser viewport; re-check
@@ -342,7 +339,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
           return;
         }
         if (!r.ok || !r.fields) { setScanErr(r.error || "scan_failed"); setPhase("error"); return; }
-        setForm(fieldsToForm(r.fields));
+        setForm(fieldsToForm(r.fields)); setNoHandle(false); // a fresh scan starts with the handle required
         setConfid(r.confidence ?? null);
         setRawExtraction({ fields: r.fields, confidence: r.confidence });
         setPhase("confirm");
@@ -407,7 +404,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
 
   const advance = () => {
     const next = idx + 1;
-    setForm(emptyForm); setConfid(null); setRawExtraction(null); setSaveErr("");
+    clearForm(); setConfid(null); setRawExtraction(null); setSaveErr("");
     if (next < files.length) { setIdx(next); void scanOne(files, next); }
     else { setFiles([]); setIdx(0); setPhase("idle"); }
   };
@@ -479,7 +476,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     setSaving(false);
     if (!ok) return;
     setManualCount((c) => c + 1);
-    setForm(emptyForm); setConfid(null); setRawExtraction(null); setSaveErr(""); // blank for the next; stay in manual
+    clearForm(); setConfid(null); setRawExtraction(null); setSaveErr(""); // blank for the next; stay in manual
   };
 
   // ── 賣貨便 訂單匯入 Excel export — gate, build via the EXISTING builder, deliver.
@@ -579,21 +576,21 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // ── Manual encode — open the shared confirm form BLANK, no camera/scan ──────
   const openManual = () => {
     if (busy || editing || batchFull) return; // batch cap blocks a NEW manual entry (button also disabled)
-    setSaveErr(""); setForm(emptyForm); setConfid(null); setRawExtraction(null);
+    setSaveErr(""); clearForm(); setConfid(null); setRawExtraction(null);
     setManual(true);
   };
-  const cancelManual = () => { setManual(false); setForm(emptyForm); setSaveErr(""); };
+  const cancelManual = () => { setManual(false); clearForm(); setSaveErr(""); };
 
   // ── Edit (Feature 3) — reuse the confirm form, pre-filled; update-in-place ──
   // Only reachable when idle (not mid-scan-batch) and only for non-exported rows.
   const openEdit = (r: ParcelScanRow) => {
     if (busy || r.status === "exported") return;
     setSaveErr("");
-    setForm({ name: r.customerName, phone: r.phone, store: r.storeId, amount: r.amount == null ? "" : String(r.amount), notes: r.notes });
+    setForm({ name: r.customerName, phone: r.phone, store: r.storeId, amount: r.amount == null ? "" : String(r.amount), notes: r.notes }); setNoHandle(false);
     setConfid(null); // no low-confidence highlights on a manual edit
     setEditing({ id: r.id });
   };
-  const cancelEdit = () => { setEditing(null); setForm(emptyForm); setSaveErr(""); };
+  const cancelEdit = () => { setEditing(null); clearForm(); setSaveErr(""); };
   const onEditSave = async () => {
     if (!editing || saving) return;
     setSaving(true); setSaveErr("");
@@ -626,7 +623,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
         phoneRestrictedUntil: phoneChanged ? null : x.phoneRestrictedUntil,
       } : x)));
     }
-    setEditing(null); setForm(emptyForm);
+    setEditing(null); clearForm();
     setToast(t.rd_ps2_saved_toast); setTimeout(() => setToast(""), 2500);
     // Re-run the E-Map check ONLY when the store code changed (reuse runStoreCheck).
     if (storeChanged && /^\d{6}$/.test(newStore) && !id.startsWith("local-")) runStoreCheck(id, newStore);
@@ -637,10 +634,13 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // amount gate. The SCAN/OCR confirm path keeps the old format-only behavior
   // (unreadable store stays blank + flagged, fixed later via edit).
   const requireStore = manual || editing !== null;
-  const errs = formErrors(form, fee, requireStore); // fee-aware: max amount = MAX_PARCEL_TOTAL − fee (no export hole)
+  // Buyer @username is REQUIRED on NEW rows (manual encode + scan confirm); an EDIT of a
+  // pre-existing row is not newly gated (only new saves are — old handle-less rows stay
+  // editable). requireHandle = editing === null.
+  const errs = formErrors(form, fee, requireStore, editing === null, noHandle); // fee-aware: max amount = MAX_PARCEL_TOTAL − fee (no export hole)
   // A NEW-row Save (scan/manual) is blocked at the batch cap; an EDIT of an
   // existing row is NEVER blocked by the cap (fix wrong codes/prices when full).
-  const saveBlocked = saving || errs.empty || errs.name || errs.phone || errs.store || errs.amount || (batchFull && !editing);
+  const saveBlocked = saving || errs.empty || errs.name || errs.phone || errs.store || errs.amount || errs.handle || (batchFull && !editing);
   const low = (f: keyof ScanFields): boolean => confid?.[f] === "low";
   const F = (patch: Partial<FormState>) => setForm((s) => ({ ...s, ...patch }));
   const busy = phase === "scanning" || phase === "confirm" || phase === "error";
@@ -861,23 +861,31 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                     : <div style={errTxt} data-testid="ps-amount-err">{tpl(t.rd_ps2_err_amount, { amt: `${cur}${MIN_PARCEL_AMOUNT}` })}</div>)
                   : amountWarns(form.amount) && <div style={warnTxt} data-testid="ps-amount-warn">{t.rd_ps2_amount_warn}</div>}
               </div>
-              {/* Notes toggle (per-viewer, persisted). OFF → no field, notes blank
-                  (col J blank — unchanged for OFF sellers). ON → an optional 50-char
-                  field → parcel_scans.notes → 賣貨便 col J (其他資訊). Continuous mode
-                  clears it on Save (emptyForm). Same pill switch as keep-awake. */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t.rd_ps2_notes}</span>
-                <button onClick={toggleNotes} role="switch" aria-checked={notesOn} aria-label={t.rd_ps2_notes} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }} data-testid="ps-notes-toggle">
-                  <span style={{ width: 44, height: 26, borderRadius: 13, background: notesOn ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s" }}>
-                    <span style={{ position: "absolute", top: 3, left: notesOn ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
-                  </span>
-                </button>
+              {/* Buyer @username — REQUIRED (no toggle). Stored in parcel_scans.notes →
+                  賣貨便 col J (其他資訊), so the F-code↔handle round-trip via 匯出報表
+                  keeps working. Verbatim (IG/LINE/FB vary); blank blocks Save on new rows.
+                  Continuous mode clears it on Save (emptyForm) → re-entered per parcel. */}
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", display: "block", marginBottom: 4 }} htmlFor="ps-handle">{t.rd_ps2_handle}</label>
+                <input
+                  id="ps-handle"
+                  value={form.notes}
+                  onChange={(e) => { const v = e.target.value.slice(0, 50); F({ notes: v }); if (v.trim() !== "" && noHandle) setNoHandle(false); }} // typing text un-ticks "no handle" (rule 4)
+                  maxLength={50}
+                  placeholder="@username"
+                  style={{ ...input, ...(noHandle ? { opacity: 0.5 } : {}) }} // dim cue while "no handle" is ticked; typing re-enables it (auto-unticks)
+                  data-testid="ps-notes"
+                  aria-invalid={errs.handle && !errs.empty}
+                />
+                <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 3 }}>{t.rd_ps2_handle_hint}</div>
+                {errs.handle && !errs.empty && <div style={errTxt} data-testid="ps-handle-err">{t.rd_ps2_err_handle}</div>}
+                {/* Escape hatch — checking it clears + disables the input and lets Save through
+                    with a BLANK handle (col J stays empty). Never persisted; resets per parcel. */}
+                <label style={{ display: "flex", alignItems: "center", gap: 7, marginTop: 7, cursor: "pointer", fontSize: 12, color: "var(--text-dim)" }}>
+                  <input type="checkbox" checked={noHandle} onChange={(e) => { const on = e.target.checked; setNoHandle(on); if (on) F({ notes: "" }); }} data-testid="ps-no-handle" />
+                  {t.rd_ps2_no_handle}
+                </label>
               </div>
-              {notesOn && (
-                <div>
-                  <input value={form.notes} onChange={(e) => F({ notes: e.target.value.slice(0, 50) })} maxLength={50} style={input} data-testid="ps-notes" />
-                </div>
-              )}
               {saveErr && <div style={errTxt} data-testid="ps-save-err">{t.rd_ps2_err_save} <span style={{ fontFamily: mono }}>{saveErr}</span></div>}
               <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
                 <button onClick={() => void (editing ? onEditSave() : manual ? onManualSave() : onSave())} disabled={saveBlocked} style={{ flex: 2, padding: "11px 12px", borderRadius: 10, border: "none", background: saveBlocked ? "var(--border-strong)" : "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: saveBlocked ? "default" : "pointer" }} data-testid="ps-save">{t.rd_ps2_save}</button>
@@ -981,6 +989,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                   <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {r.customerName || "—"}
                     {r.status === "exported" && <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 800, color: "var(--ok, #16a34a)", border: "1px solid var(--ok, #16a34a)", borderRadius: 6, padding: "0 5px", verticalAlign: "middle" }} data-testid="ps-exported-tag">{t.rd_ps2_x_tag}</span>}
+                    {!(r.notes && r.notes.trim()) && <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 800, color: "var(--text-muted)", border: "1px solid var(--border-strong)", borderRadius: 6, padding: "0 5px", verticalAlign: "middle" }} data-testid="ps-no-handle-chip">{t.rd_ps2_no_handle_chip}</span>}
                   </div>
                   <div style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: mono }}>{[r.phone, r.storeId].filter(Boolean).join(" · ") || "—"}</div>
                   {badge && (

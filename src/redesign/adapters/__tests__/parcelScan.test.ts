@@ -13,7 +13,7 @@ vi.mock("../../../supabase", () => ({
 }));
 vi.mock("../serverIdentity", () => ({ SERVER: "https://srv.test" }));
 
-import { canUseParcelScan, canUseParcelManual, PARCEL_MANUAL_TIERS, scaledDims, rowToScan, scanParcel, SCAN_MAX_EDGE, formErrors, amountWarns, validAmount, amountTooHigh, MIN_PARCEL_AMOUNT, MAX_PARCEL_TOTAL, checkEmapStore } from "../parcelScan";
+import { canUseParcelScan, canUseParcelManual, PARCEL_MANUAL_TIERS, scaledDims, rowToScan, scanParcel, SCAN_MAX_EDGE, formErrors, validHandle, amountWarns, validAmount, amountTooHigh, MIN_PARCEL_AMOUNT, MAX_PARCEL_TOTAL, checkEmapStore } from "../parcelScan";
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => { (globalThis.fetch as unknown) = undefined; });
@@ -102,9 +102,9 @@ describe("confirm-form validation (existing 賣貨便 validators; empty allowed)
   it("all-empty form → empty flag (nothing to save)", () => {
     expect(formErrors(base).empty).toBe(true);
   });
-  it("valid filled form → no errors", () => {
+  it("valid filled form → no errors (handle not required by default)", () => {
     const e = formErrors({ name: "陳小美", phone: "0912345678", store: "123456", amount: "550", notes: "" });
-    expect(e).toEqual({ name: false, phone: false, store: false, amount: false, empty: false });
+    expect(e).toEqual({ name: false, phone: false, store: false, amount: false, handle: false, empty: false });
   });
   it("non-empty invalid phone/store/name flag; EMPTY fields never flag", () => {
     expect(formErrors({ ...base, phone: "12345" }).phone).toBe(true);
@@ -114,6 +114,21 @@ describe("confirm-form validation (existing 賣貨便 validators; empty allowed)
     expect(partial.phone).toBe(false);
     expect(partial.store).toBe(false);
     expect(partial.empty).toBe(false);
+  });
+  it("validHandle — trimmed non-empty; verbatim (no format check)", () => {
+    expect(validHandle("")).toBe(false);
+    expect(validHandle("   ")).toBe(false);
+    expect(validHandle("Ashley102031")).toBe(true);
+    expect(validHandle("@x")).toBe(true);
+    expect(validHandle("Ashley102031(IG)")).toBe(true); // verbatim, tags allowed
+    expect(validHandle("陳小美")).toBe(true);            // any non-empty string
+  });
+  it("requireHandle gates a blank handle on NEW rows, but never on edit (default false)", () => {
+    const filled = { name: "陳小美", phone: "0912345678", store: "123456", amount: "550", notes: "" };
+    expect(formErrors(filled).handle).toBe(false);                       // default (edit) → not gated
+    expect(formErrors(filled, undefined, false, true).handle).toBe(true); // requireHandle + blank → blocked
+    expect(formErrors({ ...filled, notes: "  " }, undefined, false, true).handle).toBe(true); // whitespace → blocked
+    expect(formErrors({ ...filled, notes: "Ashley102031(IG)" }, undefined, false, true).handle).toBe(false); // filled → ok
   });
   it("amount 55–20000 is a WARNING, never a block", () => {
     expect(amountWarns("30")).toBe(true);
