@@ -1,11 +1,11 @@
 // P2 export — pure: plan quotas (display mirror of the RPC), 賣貨便 A–J row
 // mapping (all strings; username in col J never col A), session-start date,
 // Taipei filename. RPC/browser delivery are thin wrappers over mocked bounds.
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 
 vi.mock("../../../supabase", () => ({ isSupabaseConfigured: false, supabase: null }));
 
-import { quotaForPlan, entryToXlsRow, orderDateFromSessionKey, exportFilename, deliverXlsm } from "../shippingExport";
+import { quotaForPlan, entryToXlsRow, orderDateFromSessionKey, exportFilename, deliverXlsmMobile } from "../shippingExport";
 import { draftEntryFor, buyerGroupsFrom } from "../shipping";
 import type { Buyer } from "../../../lib/orderTypes";
 
@@ -140,45 +140,53 @@ describe("buildXlsmFromTemplate — 賣貨便 template round-trip (real file)", 
   });
 });
 
-// deliverXlsm — mobile no-plugin path (Web Share API) + cancellation. The APK/iOS
-// thin shell has no Filesystem/Share plugins and a blob a.click() is a silent no-op
-// in WKWebView, so preferShare routes through navigator.share({files}).
-describe("deliverXlsm — Web Share (preferShare) + cancellation", () => {
+// deliverXlsmMobile — the iPhone/Android app-shell path. navigator.share MUST fire
+// SYNCHRONOUSLY in the caller's gesture (no await before it) or iOS aborts the sheet.
+// A failed/unsupported share NEVER falls back to the blob no-op → never a false success.
+describe("deliverXlsmMobile — synchronous Web Share + honest failure", () => {
   const nav = navigator as unknown as { share?: unknown; canShare?: unknown };
   const orig = { share: nav.share, canShare: nav.canShare };
   const restore = () => { nav.share = orig.share; nav.canShare = orig.canShare; };
+  const win = window as unknown as { Capacitor?: unknown };
   const bytes = new Uint8Array([1, 2, 3]);
+  afterEach(() => { try { delete win.Capacitor; } catch { /* ignore */ } restore(); });
 
-  it("preferShare + share available → via 'webshare', shares one .xlsm file", async () => {
-    const share = vi.fn(async () => {});
+  it("calls navigator.share() SYNCHRONOUSLY (before the returned promise settles)", () => {
+    const share = vi.fn(() => new Promise<void>(() => { /* never settles */ }));
     nav.share = share; nav.canShare = () => true;
-    const r = await deliverXlsm(bytes, "sellerflow_711_x.xlsm", { preferShare: true });
-    expect(r).toEqual({ ok: true, via: "webshare" });
+    void deliverXlsmMobile(bytes, "x.xlsm"); // NOT awaited
+    expect(share).toHaveBeenCalledTimes(1); // fired in the gesture, synchronously
     const arg = share.mock.calls[0][0] as { files: File[]; title: string };
-    expect(arg.files).toHaveLength(1);
-    expect(arg.files[0].name).toBe("sellerflow_711_x.xlsm");
-    restore();
+    expect(arg.files[0].name).toBe("x.xlsm");
   });
 
-  it("preferShare + user cancels (AbortError) → ok:false, cancelled:true (rows NOT marked)", async () => {
+  it("share resolves → ok:true, via webshare", async () => {
+    nav.share = vi.fn(async () => {}); nav.canShare = () => true;
+    expect(await deliverXlsmMobile(bytes, "x.xlsm")).toEqual({ ok: true, via: "webshare" });
+  });
+
+  it("user cancels (AbortError) → cancelled:true, NOT unsupported (rows stay pending, no message)", async () => {
     nav.share = vi.fn(async () => { throw new DOMException("cancel", "AbortError"); });
     nav.canShare = () => true;
-    const r = await deliverXlsm(bytes, "x.xlsm", { preferShare: true });
-    expect(r.ok).toBe(false);
-    expect(r.cancelled).toBe(true);
-    restore();
+    const r = await deliverXlsmMobile(bytes, "x.xlsm");
+    expect(r.ok).toBe(false); expect(r.cancelled).toBe(true); expect(r.unsupported).toBeUndefined();
   });
 
-  it("no preferShare (desktop) → never calls share, uses the blob download (via 'browser')", async () => {
-    const share = vi.fn(async () => {});
-    nav.share = share; nav.canShare = () => true;
-    const u = URL as unknown as { createObjectURL?: unknown; revokeObjectURL?: unknown };
-    const prev = { c: u.createObjectURL, r: u.revokeObjectURL };
-    u.createObjectURL = () => "blob:x"; u.revokeObjectURL = () => {};
-    const r = await deliverXlsm(bytes, "x.xlsm");
-    expect(share).not.toHaveBeenCalled();
-    expect(r).toEqual({ ok: true, via: "browser" });
-    u.createObjectURL = prev.c; u.revokeObjectURL = prev.r;
-    restore();
+  it("no navigator.share → unsupported:true (never marks exported)", async () => {
+    nav.share = undefined;
+    const r = await deliverXlsmMobile(bytes, "x.xlsm");
+    expect(r.ok).toBe(false); expect(r.unsupported).toBe(true);
+  });
+
+  it("canShare({files}) === false → unsupported:true", async () => {
+    nav.share = vi.fn(async () => {}); nav.canShare = () => false;
+    expect((await deliverXlsmMobile(bytes, "x.xlsm")).unsupported).toBe(true);
+  });
+
+  it("non-abort share error → unsupported:true (not cancelled)", async () => {
+    nav.share = vi.fn(async () => { throw new DOMException("no", "NotAllowedError"); });
+    nav.canShare = () => true;
+    const r = await deliverXlsmMobile(bytes, "x.xlsm");
+    expect(r.unsupported).toBe(true); expect(r.cancelled).toBeUndefined();
   });
 });

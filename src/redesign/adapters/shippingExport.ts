@@ -117,29 +117,13 @@ function toBase64(bytes: Uint8Array): string {
   return btoa(bin);
 }
 const XLSM_TYPE = "application/vnd.ms-excel.sheet.macroEnabled.12";
-// Web Share API path — the NO-PLUGIN in-webview download. The APK/iOS thin shell has
-// no Filesystem/Share plugins, and a blob `a.download` click is a SILENT no-op in
-// WKWebView (iOS). navigator.share({files}) hands the .xlsm to the OS share sheet →
-// the seller taps "Save to Files" / "Downloads", then uploads it to 賣貨便 in the
-// phone browser. Only tried when preferShare (mobile) — desktop keeps the blob path
-// (lands straight in Downloads, byte-unchanged). Cancel (AbortError) → cancelled:true
-// so the caller does NOT mark rows exported.
 type ShareNav = Navigator & { canShare?: (d: unknown) => boolean; share?: (d: unknown) => Promise<void> };
-async function shareFile(bytes: Uint8Array, filename: string): Promise<{ shared: boolean; cancelled?: boolean }> {
-  if (typeof navigator === "undefined" || typeof File === "undefined") return { shared: false };
-  const nav = navigator as ShareNav;
-  if (!nav.share) return { shared: false };
-  const file = new File([bytes.buffer as ArrayBuffer], filename, { type: XLSM_TYPE });
-  if (nav.canShare && !nav.canShare({ files: [file] })) return { shared: false };
-  try {
-    await nav.share({ files: [file], title: filename });
-    return { shared: true };
-  } catch (e) {
-    if (e instanceof DOMException && e.name === "AbortError") return { shared: false, cancelled: true };
-    return { shared: false }; // non-abort → fall through to blob
-  }
-}
-export async function deliverXlsm(bytes: Uint8Array, filename: string, opts?: { preferShare?: boolean }): Promise<{ ok: boolean; via: "native" | "browser" | "webshare"; error?: string; cancelled?: boolean }> {
+
+// DESKTOP / web delivery: native (a future APK w/ Filesystem+Share plugins) or the blob
+// anchor download (lands straight in Downloads on a real browser). NOT used on the mobile
+// app shell — a blob `a.download` click is a SILENT no-op in WKWebView (iOS), so the phone
+// goes through deliverXlsmMobile instead.
+export async function deliverXlsm(bytes: Uint8Array, filename: string): Promise<{ ok: boolean; via: "native" | "browser"; error?: string }> {
   if (hasNativeFileShare()) {
     try {
       const cap = (window as unknown as { Capacitor: CapPluginHost }).Capacitor;
@@ -149,12 +133,6 @@ export async function deliverXlsm(bytes: Uint8Array, filename: string, opts?: { 
     } catch (e) {
       return { ok: false, via: "native", error: e instanceof Error ? e.message : String(e) };
     }
-  }
-  if (opts?.preferShare) {
-    const r = await shareFile(bytes, filename);
-    if (r.shared) return { ok: true, via: "webshare" };
-    if (r.cancelled) return { ok: false, via: "webshare", cancelled: true };
-    // no share support / non-abort error → fall through to the blob download
   }
   if (typeof document === "undefined") return { ok: false, via: "browser", error: "no document" };
   const blob = new Blob([bytes.buffer as ArrayBuffer], { type: XLSM_TYPE });
@@ -167,6 +145,40 @@ export async function deliverXlsm(bytes: Uint8Array, filename: string, opts?: { 
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 4000);
   return { ok: true, via: "browser" };
+}
+
+// MOBILE app-shell delivery (iPhone WKWebView / Android WebView). ⚠️ MUST be called
+// SYNCHRONOUSLY from the tap gesture with ALREADY-BUILT bytes: this function does NOT
+// await before navigator.share(), so the caller must NOT await anything (network / zip
+// build) between the tap and this call — otherwise iOS drops the transient user
+// activation and aborts the sheet (the original silent-fail bug). Returns the share
+// promise for the caller to await for the mark-exported step.
+//   ok:true          → shared/saved → mark exported
+//   cancelled:true   → user dismissed the sheet (AbortError) → do NOT mark, stay silent
+//   unsupported:true → no Web Share / not shareable / non-abort error → do NOT mark,
+//                      show the "export in Safari" message (we NEVER fall back to the
+//                      blob a.click() here, so a failed phone export is never mistaken
+//                      for success and rows are never wrongly consumed).
+export type MobileDeliverResult = { ok: boolean; via: "native" | "webshare"; cancelled?: boolean; unsupported?: boolean; error?: string };
+export function deliverXlsmMobile(bytes: Uint8Array, filename: string): Promise<MobileDeliverResult> {
+  // Native path (only if a future APK bundles Filesystem+Share) — no web activation needed.
+  if (hasNativeFileShare()) {
+    const cap = (window as unknown as { Capacitor: CapPluginHost }).Capacitor;
+    return cap.Plugins!.Filesystem!.writeFile({ path: filename, data: toBase64(bytes), directory: "CACHE" })
+      .then((w) => cap.Plugins!.Share!.share({ title: filename, url: w.uri }))
+      .then(() => ({ ok: true, via: "native" as const }))
+      .catch((e) => ({ ok: false, via: "native" as const, unsupported: true, error: e instanceof Error ? e.message : String(e) }));
+  }
+  // Web Share — invoked SYNCHRONOUSLY (nothing is awaited above on this branch).
+  const nav = (typeof navigator !== "undefined" ? navigator : undefined) as ShareNav | undefined;
+  if (!nav || typeof File === "undefined" || !nav.share) return Promise.resolve({ ok: false, via: "webshare", unsupported: true });
+  const file = new File([bytes.buffer as ArrayBuffer], filename, { type: XLSM_TYPE });
+  if (nav.canShare && !nav.canShare({ files: [file] })) return Promise.resolve({ ok: false, via: "webshare", unsupported: true });
+  return nav.share({ files: [file], title: filename })
+    .then(() => ({ ok: true, via: "webshare" as const }))
+    .catch((e) => (e instanceof DOMException && e.name === "AbortError")
+      ? { ok: false, via: "webshare" as const, cancelled: true }
+      : { ok: false, via: "webshare" as const, unsupported: true, error: e instanceof Error ? e.message : String(e) });
 }
 
 // ── .xlsm build — RAW ZIP PATCH of the bundled 賣貨便 template (P4 fallback:
