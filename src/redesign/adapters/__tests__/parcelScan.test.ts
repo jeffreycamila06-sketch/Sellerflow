@@ -13,7 +13,7 @@ vi.mock("../../../supabase", () => ({
 }));
 vi.mock("../serverIdentity", () => ({ SERVER: "https://srv.test" }));
 
-import { canUseParcelScan, canUseParcelManual, PARCEL_MANUAL_TIERS, scaledDims, rowToScan, scanParcel, SCAN_MAX_EDGE, formErrors, validHandle, amountWarns, validAmount, amountTooHigh, MIN_PARCEL_AMOUNT, MAX_PARCEL_TOTAL, checkEmapStore } from "../parcelScan";
+import { canUseParcelScan, canUseParcelManual, canUseStickerQr, PARCEL_MANUAL_TIERS, scaledDims, rowToScan, scanParcel, SCAN_MAX_EDGE, formErrors, validHandle, amountWarns, validAmount, amountTooHigh, MIN_PARCEL_AMOUNT, MAX_PARCEL_TOTAL, checkEmapStore } from "../parcelScan";
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(() => { (globalThis.fetch as unknown) = undefined; });
@@ -68,6 +68,35 @@ describe("canUseParcelManual (PLUS/PRO/MASTER + ACTIVE — phased manual-encode 
     expect([...PARCEL_MANUAL_TIERS].sort()).toEqual(["master", "plus", "pro"]);
     expect(PARCEL_MANUAL_TIERS).not.toContain("basic");
     expect(PARCEL_MANUAL_TIERS).not.toContain("free");
+  });
+});
+
+describe("canUseStickerQr (Print QR on sticker — same Plus/Pro/Master tier + admin)", () => {
+  const future = "2027-01-01T00:00:00Z", past = "2020-01-01T00:00:00Z";
+  it("Plus/Pro/Master + active + not expired → allowed", () => {
+    for (const tier of ["plus", "pro", "master", "Plus", " MASTER "])
+      expect(canUseStickerQr("seller", tier, "active", future)).toBe(true);
+  });
+  it("admin is always allowed regardless of tier/expiry (owner can test)", () => {
+    expect(canUseStickerQr("admin", "free", "active", null)).toBe(true);
+    expect(canUseStickerQr("admin", "basic", "expired", past)).toBe(true);
+    expect(canUseStickerQr("Admin", undefined, undefined, undefined)).toBe(true);
+  });
+  it("Basic → NOT allowed (mirrors manual-encode exclusion)", () => {
+    expect(canUseStickerQr("seller", "basic", "active", future)).toBe(false);
+  });
+  it("free / missing plan → NOT allowed", () => {
+    expect(canUseStickerQr("seller", "free", "active", future)).toBe(false);
+    expect(canUseStickerQr("seller", undefined, "active", future)).toBe(false);
+    expect(canUseStickerQr(null, "", "active", future)).toBe(false);
+  });
+  it("allowed tier but expired/inactive → NOT allowed (isActivePaid)", () => {
+    expect(canUseStickerQr("seller", "pro", "expired", future)).toBe(false);
+    expect(canUseStickerQr("seller", "plus", "active", past)).toBe(false);
+  });
+  it("delegates to the SAME predicate as manual encode (non-admin)", () => {
+    for (const tier of ["plus", "pro", "master", "basic", "free"])
+      expect(canUseStickerQr("seller", tier, "active", future)).toBe(canUseParcelManual(tier, "active", future));
   });
 });
 

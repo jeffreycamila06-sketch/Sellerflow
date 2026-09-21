@@ -27,7 +27,7 @@ import Shipping from "./screens/Shipping";
 import ParcelScan from "./screens/ParcelScan";
 import CustomerDetails from "./screens/CustomerDetails";
 import ParcelTracking from "./screens/ParcelTracking";
-import { parcelScanVisible, loadParcelManualEnabled } from "./adapters/parcelScan";
+import { parcelScanVisible, loadParcelManualEnabled, canUseStickerQr } from "./adapters/parcelScan";
 import { parcelTrackingVisible } from "./adapters/parcelTracking";
 import CustomerData from "./screens/CustomerData";
 import Legal from "./screens/Legal";
@@ -69,7 +69,7 @@ import { computeSales } from "./adapters/sales";
 import { useSalesReport } from "./adapters/salesReport";
 import { ordersByHour } from "./adapters/peakHours";
 import { sessionKeyFor } from "./adapters/shipping";
-import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, setWebPrintOutcomeHandler, setNativePrintOutcomeHandler, setWebPrintKioskHintHandler, isPrinterNotSetup, canUseClassicText, setClassicTextAllowed, hasBitmapStickerMethod, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
+import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, setWebPrintOutcomeHandler, setNativePrintOutcomeHandler, setWebPrintKioskHintHandler, isPrinterNotSetup, canUseClassicText, setClassicTextAllowed, setStickerQrEntitled, hasBitmapStickerMethod, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
 import { prefetchCjkAtlas } from "./adapters/cjkAtlasLoader";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
@@ -139,6 +139,11 @@ export default function RedesignApp() {
   // the print router honors a stray sfl_rd_classic_text flag on this device.
   const classicAllowed = canUseClassicText(auth.profile?.role, auth.profile?.email);
   useEffect(() => { setClassicTextAllowed(classicAllowed); }, [classicAllowed]);
+  // "Print QR on sticker" is Plus/Pro/Master(+admin)-only: this gates BOTH the Printer
+  // Settings toggle visibility AND (via setStickerQrEntitled) the PRINT-TIME stamp — so a
+  // stored toggle on a non-entitled account never prints a QR. Default is fail-closed.
+  const stickerQrAllowed = canUseStickerQr(auth.profile?.role, auth.profile?.plan, auth.profile?.planStatus, auth.profile?.planExpiry);
+  useEffect(() => { setStickerQrEntitled(stickerQrAllowed); }, [stickerQrAllowed]);
   // Parcel Scan — camera/AI/credits are ADMIN-ONLY (server route re-enforces
   // admin). MANUAL encode is open to a PAYING+ACTIVE seller ONLY when the global
   // kill switch (app_settings 'parcel_manual_enabled') is ON — Jeff toggles it in
@@ -1453,6 +1458,7 @@ export default function RedesignApp() {
               onTogglePsSize={() => setPsSizeOpen((o) => !o)} onPickPsSize={(s) => { setPsSize(s); setPsSizeOpen(false); }}
               cur={cur} storeName={auth.profile?.profile.storeName || "SellerFlowLive"} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })}
               showClassicToggle={classicAllowed}
+              stickerQrAllowed={stickerQrAllowed}
             />
           )}
           {screen === "printpattern" && (
