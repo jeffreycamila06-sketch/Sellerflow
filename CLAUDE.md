@@ -3884,7 +3884,7 @@ same GET. Missing either → **HTTP 400 with an empty body** (the old `htmlLen=0
 - **NOT an in-code scheduler** — no cron lib; cron-job.org hits the endpoint (same as the
   Render restart cron). Job: **POST** `https://sellerflow-live-server.onrender.com/admin/parcel-tracking-poll`,
   header **`X-Poll-Token: <PARCEL_POLL_TOKEN>`** (secret lives in Render env only, never in
-  the repo), timezone Asia/Taipei, **2×/day off-peak: ~03:00 and ~15:00 Taipei**.
+  the repo), timezone Asia/Taipei, **every 4 hours (`0 */4 * * *` = 00/04/08/12/16/20 Taipei)**.
 - **The endpoint returns `202` immediately, then runs the poll in the BACKGROUND after a
   random 0–20 min jitter.** Why: (a) the sync poll is slow (OCR + inter-batch gaps) and would
   hit cron-job.org's ~30s timeout; (b) jitter spreads the SHOPMORE hit so it's not the exact
