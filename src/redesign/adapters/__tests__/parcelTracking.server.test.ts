@@ -63,6 +63,15 @@ describe("mapStatus — locked from the 3 real samples", () => {
     expect(m.status).toBe("returned");
     expect(m.terminal).toBe(true);
     expect(m.returning_soon).toBe(true); // the ladder also carries the 將退回物流 warning
+    // C1: the driving step is the RETURN ladder entry, never the misleading pickup line.
+    expect(m.step).toBe("包裹配達指定退貨門市");
+    expect(m.step).not.toBe("已完成包裹取件");
+  });
+  it("(c2) returning_soon step is the 將退回 warning; a clean pickup keeps its own step", () => {
+    const warn = one(HTML_AT_STORE_WARN);
+    expect(mapStatus(warn.statusMessage, warn.shipStatusDetails).step).toBe("包裹今日23:59後將退回物流中心");
+    const pu = one(HTML_PICKED_UP);
+    expect(mapStatus(pu.statusMessage, pu.shipStatusDetails).step).toBe("已完成包裹取件"); // real pickup unchanged
   });
   it("(d) at_store + 將退回物流 warning → at_store + returning_soon (NOT returned)", () => {
     const r = one(HTML_AT_STORE_WARN);
@@ -109,6 +118,12 @@ describe("resultToUpdate", () => {
   it("status 0 or 2 → not_found", () => {
     expect(resultToUpdate({ paymentNo: "FX", status: 0 }, {}).status).toBe("not_found");
     expect(resultToUpdate({ paymentNo: "FX", status: 2 }, {}).status).toBe("not_found");
+  });
+  it("C1: returned E79829464311 stores the RETURN step as status_message, never 已完成包裹取件", () => {
+    const u = resultToUpdate(one(HTML_RETURNED), {});
+    expect(u.status).toBe("returned");
+    expect(u.status_message).toBe("包裹配達指定退貨門市");
+    expect(u.status_message).not.toBe("已完成包裹取件"); // the row can never show a buyer-pickup line
   });
 });
 

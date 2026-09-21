@@ -55,39 +55,48 @@ function currentStep(statusMessage, shipStatusDetails) {
 // mapStatus — scans the WHOLE ladder (not just [0]) so a returned parcel that shows
 // "已完成包裹取件" at the top (the seller collected the RETURN) is caught as returned,
 // never as a buyer pickup (sample 3 — the bug-catch). Returns:
-//   { status, terminal, known, returning_soon }
+//   { status, terminal, known, returning_soon, step }
 //   status ∈ in_transit | at_store | picked_up | returned | unknown
 //   known  = false when the newest step matched no rule → the caller LOGS it so we
 //            learn any not-yet-seen string from prod.
+//   step   = the ladder entry that DROVE the classification (returned → the RETURNED_KW
+//            entry; returning_soon → the 將退回 entry; else the newest step). The caller
+//            stores it as status_message so a returned parcel never displays the
+//            misleading "已完成包裹取件" (the seller collecting the return).
 export function mapStatus(statusMessage, shipStatusDetails) {
   const ladder = Array.isArray(shipStatusDetails) ? shipStatusDetails : [];
   const names = ladder.map((d) => String(d?.notificationName || ""));
   const anyLadder = names.join("\n");
   const returning_soon = RETURNING_SOON_KW.some((k) => anyLadder.includes(k));
+  const newest = currentStep(statusMessage, shipStatusDetails);
+  // The newest ladder entry carrying any of `kws` — the specific step to show for a
+  // classification driven by a deeper ladder event (not the top-level statusMessage).
+  const stepWith = (kws) => names.find((nm) => kws.some((k) => nm.includes(k))) || "";
 
   // 1) ACTUAL RETURN OVERRIDES everything, including a 已完成包裹取件 at index 0
-  //    (sample 3 — the seller collected the return, not a buyer pickup).
+  //    (sample 3 — the seller collected the return, not a buyer pickup). status_message
+  //    = the RETURN step, so the row never shows "已完成包裹取件".
   if (RETURNED_KW.some((k) => anyLadder.includes(k))) {
-    return { status: "returned", terminal: true, known: true, returning_soon };
+    return { status: "returned", terminal: true, known: true, returning_soon, step: stepWith(RETURNED_KW) || newest };
   }
 
   // 2) LAST-CHANCE warning present but no actual return yet → the parcel is still
   //    sitting AT the store awaiting pickup (the "將退回物流中心" event only fires
   //    while it's at store). Classify at_store even if that warning is the newest
-  //    ladder entry (sample 4). Buyer can still collect until tonight.
+  //    ladder entry (sample 4). Buyer can still collect until tonight. status_message
+  //    = the 將退回 step (the actionable last-chance warning).
   if (returning_soon) {
-    return { status: "at_store", terminal: false, known: true, returning_soon: true };
+    return { status: "at_store", terminal: false, known: true, returning_soon: true, step: stepWith(RETURNING_SOON_KW) || newest };
   }
 
-  // 3) Otherwise classify by the newest step.
-  const step = currentStep(statusMessage, shipStatusDetails);
-  if (step) {
-    if (isPickedUpMsg(step)) return { status: "picked_up", terminal: true, known: true, returning_soon };
-    if (AT_STORE_KW.some((k) => step.includes(k))) return { status: "at_store", terminal: false, known: true, returning_soon };
-    if (IN_TRANSIT_KW.some((k) => step.includes(k))) return { status: "in_transit", terminal: false, known: true, returning_soon };
+  // 3) Otherwise classify by the newest step (which is also the step to display).
+  if (newest) {
+    if (isPickedUpMsg(newest)) return { status: "picked_up", terminal: true, known: true, returning_soon, step: newest };
+    if (AT_STORE_KW.some((k) => newest.includes(k))) return { status: "at_store", terminal: false, known: true, returning_soon, step: newest };
+    if (IN_TRANSIT_KW.some((k) => newest.includes(k))) return { status: "in_transit", terminal: false, known: true, returning_soon, step: newest };
   }
   // 4) Unmapped — surface for logging so we capture the real string.
-  return { status: "unknown", terminal: false, known: false, returning_soon };
+  return { status: "unknown", terminal: false, known: false, returning_soon, step: newest };
 }
 
 // A parcel is chaseable (store-pickup we can chase before the deadline) ONLY when it
@@ -136,13 +145,15 @@ export function resultToUpdate(sr, { now = new Date(), prevArrivedAt = null } = 
       order_amount: sr?.orderAmount ?? null, last_polled_at: nowIso,
     };
   }
-  const { status, terminal, known, returning_soon } = mapStatus(sr?.statusMessage, sr?.shipStatusDetails);
+  const { status, terminal, known, returning_soon, step } = mapStatus(sr?.statusMessage, sr?.shipStatusDetails);
   const chaseable = isChaseable(sr?.shipType, sr?.specialType);
   const recDate = sr?.recDate ? String(sr.recDate).trim() : "";
   return {
     tracking_no: paymentNo,
     status, terminal, known, returning_soon,
-    status_message: sr?.statusMessage ?? null,
+    // The classification-driving ladder step (C1): a returned parcel stores its RETURN
+    // step, never the misleading top-level "已完成包裹取件".
+    status_message: step || (sr?.statusMessage ?? null),
     ship_type: sr?.shipType || null,
     special_type: sr?.specialType ?? null,
     chaseable,
