@@ -5,7 +5,7 @@ import { describe, it, expect, vi } from "vitest";
 
 vi.mock("../../../supabase", () => ({ isSupabaseConfigured: false, supabase: null }));
 
-import { quotaForPlan, entryToXlsRow, orderDateFromSessionKey, exportFilename } from "../shippingExport";
+import { quotaForPlan, entryToXlsRow, orderDateFromSessionKey, exportFilename, deliverXlsm } from "../shippingExport";
 import { draftEntryFor, buyerGroupsFrom } from "../shipping";
 import type { Buyer } from "../../../lib/orderTypes";
 
@@ -137,5 +137,48 @@ describe("buildXlsmFromTemplate — 賣貨便 template round-trip (real file)", 
     XLSX.utils.book_append_sheet(wrong, XLSX.utils.aoa_to_sheet([["x"]]), "Sheet1"); // no 訂單匯入
     const bytes = XLSX.write(wrong, { bookType: "xlsx", type: "array" }) as ArrayBuffer;
     await expect(buildXlsmFromTemplate(bytes, rows)).rejects.toThrow(/訂單匯入/);
+  });
+});
+
+// deliverXlsm — mobile no-plugin path (Web Share API) + cancellation. The APK/iOS
+// thin shell has no Filesystem/Share plugins and a blob a.click() is a silent no-op
+// in WKWebView, so preferShare routes through navigator.share({files}).
+describe("deliverXlsm — Web Share (preferShare) + cancellation", () => {
+  const nav = navigator as unknown as { share?: unknown; canShare?: unknown };
+  const orig = { share: nav.share, canShare: nav.canShare };
+  const restore = () => { nav.share = orig.share; nav.canShare = orig.canShare; };
+  const bytes = new Uint8Array([1, 2, 3]);
+
+  it("preferShare + share available → via 'webshare', shares one .xlsm file", async () => {
+    const share = vi.fn(async () => {});
+    nav.share = share; nav.canShare = () => true;
+    const r = await deliverXlsm(bytes, "sellerflow_711_x.xlsm", { preferShare: true });
+    expect(r).toEqual({ ok: true, via: "webshare" });
+    const arg = share.mock.calls[0][0] as { files: File[]; title: string };
+    expect(arg.files).toHaveLength(1);
+    expect(arg.files[0].name).toBe("sellerflow_711_x.xlsm");
+    restore();
+  });
+
+  it("preferShare + user cancels (AbortError) → ok:false, cancelled:true (rows NOT marked)", async () => {
+    nav.share = vi.fn(async () => { throw new DOMException("cancel", "AbortError"); });
+    nav.canShare = () => true;
+    const r = await deliverXlsm(bytes, "x.xlsm", { preferShare: true });
+    expect(r.ok).toBe(false);
+    expect(r.cancelled).toBe(true);
+    restore();
+  });
+
+  it("no preferShare (desktop) → never calls share, uses the blob download (via 'browser')", async () => {
+    const share = vi.fn(async () => {});
+    nav.share = share; nav.canShare = () => true;
+    const u = URL as unknown as { createObjectURL?: unknown; revokeObjectURL?: unknown };
+    const prev = { c: u.createObjectURL, r: u.revokeObjectURL };
+    u.createObjectURL = () => "blob:x"; u.revokeObjectURL = () => {};
+    const r = await deliverXlsm(bytes, "x.xlsm");
+    expect(share).not.toHaveBeenCalled();
+    expect(r).toEqual({ ok: true, via: "browser" });
+    u.createObjectURL = prev.c; u.revokeObjectURL = prev.r;
+    restore();
   });
 });

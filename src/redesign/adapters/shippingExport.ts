@@ -116,7 +116,30 @@ function toBase64(bytes: Uint8Array): string {
   for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(bin);
 }
-export async function deliverXlsm(bytes: Uint8Array, filename: string): Promise<{ ok: boolean; via: "native" | "browser"; error?: string }> {
+const XLSM_TYPE = "application/vnd.ms-excel.sheet.macroEnabled.12";
+// Web Share API path — the NO-PLUGIN in-webview download. The APK/iOS thin shell has
+// no Filesystem/Share plugins, and a blob `a.download` click is a SILENT no-op in
+// WKWebView (iOS). navigator.share({files}) hands the .xlsm to the OS share sheet →
+// the seller taps "Save to Files" / "Downloads", then uploads it to 賣貨便 in the
+// phone browser. Only tried when preferShare (mobile) — desktop keeps the blob path
+// (lands straight in Downloads, byte-unchanged). Cancel (AbortError) → cancelled:true
+// so the caller does NOT mark rows exported.
+type ShareNav = Navigator & { canShare?: (d: unknown) => boolean; share?: (d: unknown) => Promise<void> };
+async function shareFile(bytes: Uint8Array, filename: string): Promise<{ shared: boolean; cancelled?: boolean }> {
+  if (typeof navigator === "undefined" || typeof File === "undefined") return { shared: false };
+  const nav = navigator as ShareNav;
+  if (!nav.share) return { shared: false };
+  const file = new File([bytes.buffer as ArrayBuffer], filename, { type: XLSM_TYPE });
+  if (nav.canShare && !nav.canShare({ files: [file] })) return { shared: false };
+  try {
+    await nav.share({ files: [file], title: filename });
+    return { shared: true };
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") return { shared: false, cancelled: true };
+    return { shared: false }; // non-abort → fall through to blob
+  }
+}
+export async function deliverXlsm(bytes: Uint8Array, filename: string, opts?: { preferShare?: boolean }): Promise<{ ok: boolean; via: "native" | "browser" | "webshare"; error?: string; cancelled?: boolean }> {
   if (hasNativeFileShare()) {
     try {
       const cap = (window as unknown as { Capacitor: CapPluginHost }).Capacitor;
@@ -127,8 +150,14 @@ export async function deliverXlsm(bytes: Uint8Array, filename: string): Promise<
       return { ok: false, via: "native", error: e instanceof Error ? e.message : String(e) };
     }
   }
+  if (opts?.preferShare) {
+    const r = await shareFile(bytes, filename);
+    if (r.shared) return { ok: true, via: "webshare" };
+    if (r.cancelled) return { ok: false, via: "webshare", cancelled: true };
+    // no share support / non-abort error → fall through to the blob download
+  }
   if (typeof document === "undefined") return { ok: false, via: "browser", error: "no document" };
-  const blob = new Blob([bytes.buffer as ArrayBuffer], { type: "application/vnd.ms-excel.sheet.macroEnabled.12" });
+  const blob = new Blob([bytes.buffer as ArrayBuffer], { type: XLSM_TYPE });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
