@@ -53,14 +53,20 @@ as $$
   where c.user_id = (select auth.uid());
 $$;
 
--- ── STEP 4 — widen start_session's length cap 5 → 7 (for the owner's 7-day trial) ──
+-- ── STEP 4 — widen start_session's length cap 5 → 7 AND make it SYMMETRIC with
+-- end_session (reset session_ended_at = NULL on a new start) ────────────────────
 -- ⚠️ SHARED RPC (supersedes sql/21's `> 5`). ADDITIVE / not narrowing: 1..5 stay valid
 -- exactly as before; this only ALSO accepts 6..7. No non-owner UI sends 6/7 (the picker
 -- is SESSION_OPTS [1..5] and clampWindowDays caps at 5), so every other seller's
 -- behaviour is byte-identical. The auto-end formula is unchanged (session_status:
 -- today <= start + (window_days-1)) → for 7 days a Monday start runs Mon..Sun, ending
--- the following Monday 00:00 Asia/Taipei. The whole body below equals sql/21 except the
--- `> 5` → `> 7`.
+-- the following Monday 00:00 Asia/Taipei.
+-- 🔴 BUG FIX (2026-09-21): a new start MUST clear session_ended_at, or a fresh session
+-- born after an End inherits the stale ended stamp and the E2 clause
+-- (`and session_ended_at is null`) reports it as NOT running. Set it NULL in BOTH the
+-- INSERT (new-row path) and the ON CONFLICT DO UPDATE (existing-row path). This is
+-- symmetric with end_session (which sets it) and is a NO-OP for anyone who never used
+-- End (session_ended_at was already NULL).
 create or replace function public.start_session(p_days smallint)
   returns uuid
   language plpgsql
@@ -73,13 +79,14 @@ begin
     raise exception 'invalid session length: %', p_days;
   end if;
   insert into public.seller_session_config
-      (user_id, current_session_id, session_started_at, session_window_days)
+      (user_id, current_session_id, session_started_at, session_window_days, session_ended_at)
   values
-      ((select auth.uid()), v_id, now(), p_days)
+      ((select auth.uid()), v_id, now(), p_days, null)
   on conflict (user_id) do update
     set current_session_id  = excluded.current_session_id,
         session_started_at  = excluded.session_started_at,
         session_window_days = excluded.session_window_days,
+        session_ended_at    = null,                     -- BUG FIX: a fresh Start is never "ended"
         updated_at          = now();
   return v_id;
 end;

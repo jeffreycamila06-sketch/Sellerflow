@@ -41,6 +41,13 @@ describe("sql/43 — session end migration contract", () => {
     expect(norm).toMatch(/p_days < 1 or p_days > 7/);   // new ceiling
     expect(norm).not.toMatch(/p_days > 5/);              // old ceiling gone from this file
   });
+
+  it("STEP 4 BUG FIX: a new Start clears session_ended_at (symmetric with end_session)", () => {
+    // INSERT path lists session_ended_at (set to null) …
+    expect(norm).toMatch(/insert into public\.seller_session_config[^;]*session_ended_at[^;]*values[^;]*null/);
+    // … and the ON CONFLICT DO UPDATE resets it too, so an End→Start reads as running.
+    expect(norm).toMatch(/on conflict[^;]*do update[\s\S]*set[\s\S]*session_ended_at\s*=\s*null/);
+  });
 });
 
 describe("sql/44 — live_session_orders retention 8 → 10 days (GLOBAL cron)", () => {
