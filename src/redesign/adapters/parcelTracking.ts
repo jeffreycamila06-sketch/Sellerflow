@@ -20,8 +20,10 @@ export function parcelTrackingVisible(account: {
   role?: string | null;
   email?: string | null;
   plan?: string | null;
+  marketHidden?: boolean; // off-market (non-TW, non-admin/preview) → hidden (admin bypass baked in)
 } | null | undefined): boolean {
   if (!account) return false;
+  if (account.marketHidden) return false; // market gate wins (NULL/TW → false → today's logic)
   if (isAdminRole(account.role)) return true;
   const email = String(account.email || "").trim().toLowerCase();
   if (PARCEL_TRACKING_EMAILS.includes(email)) return true;

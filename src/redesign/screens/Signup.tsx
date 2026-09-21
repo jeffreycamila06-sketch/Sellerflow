@@ -2,9 +2,10 @@
 // REAL self-serve registration — wired to the same path as production's PublicAuth
 // `reg` (App.tsx:738-758) via auth.register: signUp → createMyProfile → the auth
 // listener logs the user in (dashboard appears). No Telegram redirect, no Soon badge.
-import { useState, type CSSProperties } from "react";
+import { useState, useEffect, useRef, type CSSProperties } from "react";
 import { registrationErrorCode, REG_ERROR_KEYS, type RegisterFields, type RegisterResult } from "../adapters/useAuthSession";
 import { validatePhone, DEFAULT_COUNTRY } from "../adapters/phone";
+import { useGeoCountry } from "../adapters/useGeoCountry";
 import { useT } from "../i18n";
 import { useLang } from "../i18n/langContext";
 import PasswordInput from "../components/PasswordInput";
@@ -34,6 +35,17 @@ export default function Signup({ onBack, onLegal, onRegister }: {
   const [ok, setOk] = useState("");
   const set = (k: keyof typeof form, v: string) => { setForm((f) => ({ ...f, [k]: v })); setErr(""); };
   const pickCountry = (iso: string) => { setPhoneCountry(iso); setErr(""); try { localStorage.setItem(PHONE_COUNTRY_KEY, iso); } catch { /* ignore */ } };
+  // PRE-FILL the country picker from the IP country (once, when it resolves) — ONLY when
+  // the seller hasn't already saved/picked one (LS empty). The picker stays editable and
+  // is confirmed on submit; IP is never silently submitted (VPN/travel can be wrong).
+  const geo = useGeoCountry();
+  const prefilledRef = useRef(false);
+  useEffect(() => {
+    if (prefilledRef.current || !geo) return;
+    prefilledRef.current = true;
+    let hasSaved = false; try { hasSaved = !!localStorage.getItem(PHONE_COUNTRY_KEY); } catch { hasSaved = false; }
+    if (!hasSaved) setPhoneCountry(geo);
+  }, [geo]);
   // SINGLE-SOURCE phone rule: the button-disable AND the submit both go through
   // the SAME validatePhone(number, country) (no drift). International via
   // libphonenumber against the picked country (default TW).

@@ -1,0 +1,67 @@
+// Market resolver (PH/TW split) + the admin bypass / "view as" preview + the 3 gates'
+// market-hide flag. Pins: NULL/TW = TW (unchanged); non-TW = PH (features off, ₱);
+// admin sees the union UNLESS previewing a market; each gate hides only when told.
+import { describe, it, expect } from "vitest";
+import { marketFor, effectiveMarket, marketHides, MARKETS } from "../market";
+import { parcelScanVisible, canUseStickerQr } from "../parcelScan";
+import { parcelTrackingVisible } from "../parcelTracking";
+
+const future = "2027-01-01T00:00:00Z";
+
+describe("marketFor", () => {
+  it("NULL / blank / TW → the TW market (unchanged), all features on, TWD", () => {
+    for (const c of [null, undefined, "", "TW", "tw", " Tw "]) {
+      const m = marketFor(c);
+      expect(m.country).toBe("TW");
+      expect(m.currency).toBe("TWD");
+      expect(m.features).toEqual({ parcelScan: true, pickupStatus: true, stickerQr: true });
+      expect(m.shippingModule).toBe("tw-711");
+    }
+  });
+  it("PH / any known non-TW → the PH market, TW-only features OFF, PHP, ph slot", () => {
+    for (const c of ["PH", "ph", "MY", "SG"]) {
+      const m = marketFor(c);
+      expect(m.currency).toBe("PHP");
+      expect(m.features).toEqual({ parcelScan: false, pickupStatus: false, stickerQr: false });
+      expect(m.shippingModule).toBe("ph");
+    }
+    expect(Object.keys(MARKETS).sort()).toEqual(["PH", "TW"]);
+  });
+});
+
+describe("effectiveMarket — admin bypass + view-as", () => {
+  it("non-admin → their profile market, no union (PH hides)", () => {
+    expect(effectiveMarket({ role: "seller", country: "PH" })).toEqual({ market: marketFor("PH"), adminUnion: false });
+    expect(effectiveMarket({ role: "seller", country: null }).market.country).toBe("TW");
+  });
+  it("admin + All → UNION (adminUnion true) regardless of country → nothing hides", () => {
+    const eff = effectiveMarket({ role: "admin", country: "PH", viewAs: "all" });
+    expect(eff.adminUnion).toBe(true);
+    expect(marketHides("parcelScan", eff)).toBe(false); // admin sees TW features even as a PH-country admin
+  });
+  it("admin + view-as PH → previews AS a PH seller (union OFF, PH hides)", () => {
+    const eff = effectiveMarket({ role: "admin", country: "TW", viewAs: "PH" });
+    expect(eff.adminUnion).toBe(false);
+    expect(marketHides("stickerQr", eff)).toBe(true);
+  });
+  it("admin + view-as TW → TW features visible", () => {
+    expect(marketHides("pickupStatus", effectiveMarket({ role: "admin", country: "PH", viewAs: "TW" }))).toBe(false);
+  });
+});
+
+describe("gates honor marketHidden (admin bypass baked into the flag)", () => {
+  it("parcelScanVisible: marketHidden → CLEAN hide (no locked tile); false → today's logic", () => {
+    expect(parcelScanVisible({ role: "seller", plan: "pro", planStatus: "active", planExpiry: future, manualEnabled: true, marketHidden: true }))
+      .toEqual({ visible: false, manualOnly: false, locked: false });
+    // NULL/TW (marketHidden false) → today: a basic seller still gets the locked upsell tile.
+    expect(parcelScanVisible({ role: "seller", plan: "basic", planStatus: "active", planExpiry: future, manualEnabled: true, marketHidden: false }).locked).toBe(true);
+  });
+  it("parcelTrackingVisible: marketHidden hides even an admin (view-as preview)", () => {
+    expect(parcelTrackingVisible({ role: "admin", email: "x@y.com", plan: "master", marketHidden: true })).toBe(false);
+    expect(parcelTrackingVisible({ role: "admin", email: "x@y.com", plan: "master", marketHidden: false })).toBe(true);
+  });
+  it("canUseStickerQr: marketHidden → false regardless of tier/admin; false → today's tier logic", () => {
+    expect(canUseStickerQr("admin", "free", "active", future, undefined, true)).toBe(false);
+    expect(canUseStickerQr("seller", "pro", "active", future, undefined, false)).toBe(true);
+  });
+});

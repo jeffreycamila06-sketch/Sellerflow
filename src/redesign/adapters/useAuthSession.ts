@@ -165,6 +165,8 @@ export function useAuthSession(): UseAuthSession {
         // Store the NORMALIZED phone (clean 09xxxxxxxx) — register only reaches
         // here after validateRegistration passed, so it is a valid TW mobile.
         fullName: f.fullName.trim(), storeName: f.storeName.trim(), phone: validatePhone(f.phone, f.phoneCountry || DEFAULT_COUNTRY).national,
+        // Market attribute: the CONFIRMED signup picker country (no longer discarded).
+        country: (f.phoneCountry || DEFAULT_COUNTRY).toUpperCase(),
         tiktok: "", facebook: "", adminContactNote: "",
       });
     } catch (e) {

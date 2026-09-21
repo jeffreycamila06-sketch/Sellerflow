@@ -67,7 +67,9 @@ export function canUseStickerQr(
   planStatus: string | undefined | null,
   planExpiry: string | undefined | null,
   nowMs: number = Date.now(),
+  marketHidden = false, // off-market (non-TW, non-admin/preview) → hidden regardless of tier
 ): boolean {
+  if (marketHidden) return false; // market gate wins (admin bypass is already baked into the flag)
   return isAdminRole(role) || canUseParcelManual(plan, planStatus, planExpiry, nowMs);
 }
 
@@ -112,7 +114,11 @@ export function parcelScanVisible(opts: {
   planExpiry: string | undefined | null;
   manualEnabled: boolean;
   nowMs?: number;
+  marketHidden?: boolean; // off-market (non-TW, non-admin/preview) → CLEAN hide (no locked tile)
 }): { visible: boolean; manualOnly: boolean; locked: boolean } {
+  // Market gate FIRST: off-market → clean hide, NOT a locked upsell tile (admin bypass is
+  // already baked into marketHidden). NULL/TW → marketHidden false → today's logic below.
+  if (opts.marketHidden) return { visible: false, manualOnly: false, locked: false };
   const admin = canUseParcelScan(opts.role);
   const manual = opts.manualEnabled && canUseParcelManual(opts.plan, opts.planStatus, opts.planExpiry, opts.nowMs);
   const visible = admin || manual;
