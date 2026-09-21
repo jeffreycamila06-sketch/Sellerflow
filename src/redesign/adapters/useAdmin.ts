@@ -93,7 +93,7 @@ export interface AdminActions {
   addDays: (email: string, planExpiry: string, planStatus: string, days: number) => Promise<AdminResult & { planExpiry?: string }>;
   // Edit a seller's locked TikTok/Facebook usernames — mirrors App.tsx saveEditSeller.
   // Writes ONLY profile fields via upsertUser (NO includePlan) → plan/role untouched.
-  editAccounts: (rawUser: AccountUser, ttText: string, fbText: string) => Promise<AdminResult>;
+  editAccounts: (rawUser: AccountUser, ttText: string, fbText: string, country?: string | null) => Promise<AdminResult>;
   // Set the admin contact note (seller_profiles.admin_contact_note) — mirrors
   // App.tsx saveContactNote (3170-3180). "<platform>:<name>" or "" to clear.
   setContactNote: (email: string, note: string) => Promise<AdminResult>;
@@ -264,10 +264,13 @@ export function useAdmin(adminEmail: string | undefined): AdminActions {
   // so the UPDATE payload carries only profile fields (full_name/store_name/phone/
   // tiktok/facebook/connected_accounts/updated_at). plan/role/status/expiry are NEVER
   // sent; and the admin session bypasses the seller_profiles_on_update revert anyway.
-  const editAccounts = useCallback(async (rawUser: AccountUser, ttText: string, fbText: string): Promise<AdminResult> => {
+  const editAccounts = useCallback(async (rawUser: AccountUser, ttText: string, fbText: string, country?: string | null): Promise<AdminResult> => {
     try {
       const { tiktok, facebook } = fitEditAccounts(rawUser.plan, ttText, fbText);
-      const updated: AccountUser = { ...rawUser, profile: { ...rawUser.profile, tiktok, facebook } };
+      // Admin country override (market attribute). undefined → keep the loaded value
+      // (round-trip, never wiped); a string sets it, "" clears it to NULL (= TW).
+      const nextCountry = country === undefined ? rawUser.profile.country : (country || null);
+      const updated: AccountUser = { ...rawUser, profile: { ...rawUser.profile, tiktok, facebook, country: nextCountry } };
       await upsertUser(updated); // NO includePlan → plan/role omitted from the UPDATE
       audit("edited seller accounts", rawUser.email, `TikTok ${accountList(tiktok).length}, Facebook ${accountList(facebook).length}`);
       return { ok: true };

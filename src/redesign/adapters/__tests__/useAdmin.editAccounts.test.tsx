@@ -64,6 +64,21 @@ describe("editAccounts — writes only profile fields, NEVER plan/role", () => {
     expect(passedUser.role).toBe("seller");
   });
 
+  it("admin sets the market country; omitting it round-trips the loaded value (no wipe)", async () => {
+    const { result } = renderHook(() => useAdmin("admin@x.com"));
+    // explicit country → written
+    await act(async () => { await result.current.editAccounts(mkUser(), "x", "", "PH"); });
+    expect((upsertUserMock.mock.calls[0][0] as AccountUser).profile.country).toBe("PH");
+    // "" → cleared to NULL (= TW default)
+    upsertUserMock.mockClear();
+    await act(async () => { await result.current.editAccounts(mkUser(), "x", "", ""); });
+    expect((upsertUserMock.mock.calls[0][0] as AccountUser).profile.country).toBeNull();
+    // undefined (not touched) → keeps the loaded country (round-trip, never wiped)
+    upsertUserMock.mockClear();
+    await act(async () => { await result.current.editAccounts(mkUser({ profile: { ...mkUser().profile, country: "PH" } }), "x", ""); });
+    expect((upsertUserMock.mock.calls[0][0] as AccountUser).profile.country).toBe("PH");
+  });
+
   it("returns ok and writes an audit entry", async () => {
     const { result } = renderHook(() => useAdmin("admin@x.com"));
     let r: { ok: boolean } | undefined;

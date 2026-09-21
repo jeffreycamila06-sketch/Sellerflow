@@ -28,6 +28,8 @@ import ParcelScan from "./screens/ParcelScan";
 import CustomerDetails from "./screens/CustomerDetails";
 import ParcelTracking from "./screens/ParcelTracking";
 import { parcelScanVisible, loadParcelManualEnabled, canUseStickerQr } from "./adapters/parcelScan";
+import { effectiveMarket, marketHides, marketFor, type ViewAs } from "./adapters/market";
+import { useGeoCountry } from "./adapters/useGeoCountry";
 import { parcelTrackingVisible } from "./adapters/parcelTracking";
 import CustomerData from "./screens/CustomerData";
 import Legal from "./screens/Legal";
@@ -142,10 +144,19 @@ export default function RedesignApp() {
   // the print router honors a stray sfl_rd_classic_text flag on this device.
   const classicAllowed = canUseClassicText(auth.profile?.role, auth.profile?.email);
   useEffect(() => { setClassicTextAllowed(classicAllowed); }, [classicAllowed]);
+  // MARKET (PH/TW split). Effective market for THIS user: non-admin → their profile
+  // country's market (NULL = TW = unchanged); admin → the UNION (sees everything) UNLESS
+  // previewing a market via the Admin "View as" switch (per-session, never writes the
+  // profile). marketHides() bakes the admin bypass in, so each hide-flag is the final say.
+  const [adminViewAs, setAdminViewAs] = useState<ViewAs>("all");
+  const market = effectiveMarket({ role: auth.profile?.role, country: auth.profile?.country, viewAs: adminViewAs });
+  const hideParcelScan = marketHides("parcelScan", market);
+  const hidePickup = marketHides("pickupStatus", market);
+  const hideStickerQr = marketHides("stickerQr", market);
   // "Print QR on sticker" is Plus/Pro/Master(+admin)-only: this gates BOTH the Printer
   // Settings toggle visibility AND (via setStickerQrEntitled) the PRINT-TIME stamp — so a
   // stored toggle on a non-entitled account never prints a QR. Default is fail-closed.
-  const stickerQrAllowed = canUseStickerQr(auth.profile?.role, auth.profile?.plan, auth.profile?.planStatus, auth.profile?.planExpiry);
+  const stickerQrAllowed = canUseStickerQr(auth.profile?.role, auth.profile?.plan, auth.profile?.planStatus, auth.profile?.planExpiry, undefined, hideStickerQr);
   useEffect(() => { setStickerQrEntitled(stickerQrAllowed); }, [stickerQrAllowed]);
   // Parcel Scan — camera/AI/credits are ADMIN-ONLY (server route re-enforces
   // admin). MANUAL encode is open to a PAYING+ACTIVE seller ONLY when the global
@@ -167,12 +178,12 @@ export default function RedesignApp() {
   }, [authed]);
   const { visible: parcelAllowed, manualOnly: parcelManualOnly, locked: parcelLocked } = parcelScanVisible({
     role: auth.profile?.role, plan: auth.profile?.plan, planStatus: auth.profile?.planStatus,
-    planExpiry: auth.profile?.planExpiry, manualEnabled: parcelManualEnabled,
+    planExpiry: auth.profile?.planExpiry, manualEnabled: parcelManualEnabled, marketHidden: hideParcelScan,
   });
   // Pickup Status (Part 5) — Phase 1 = OWNER + googletest (kiosk-allowlist gate).
   // UI-only; the poll endpoint is server-secret gated. Gates the tile AND render.
   const parcelTrackingAllowed = parcelTrackingVisible({
-    role: auth.profile?.role, email: auth.profile?.email, plan: auth.profile?.plan,
+    role: auth.profile?.role, email: auth.profile?.email, plan: auth.profile?.plan, marketHidden: hidePickup,
   });
   // Locked-tile upsell popup (basic/free): a NEUTRAL contact-support popup — no
   // price/plan wording (Apple 2.1b-safe), same on iOS and Android/web. It never
@@ -760,6 +771,17 @@ export default function RedesignApp() {
   // picked a currency in the redesign.
   const [currency, setCurrency] = useState<string>(() => (CURRENCIES[readLS(LS.currency, DEFAULT_CURRENCY)] ? readLS(LS.currency, DEFAULT_CURRENCY) : DEFAULT_CURRENCY));
   const cur = curSymbol(currency);
+  // Market-default currency: once the profile country resolves (or an admin corrects it),
+  // set the default from the seller's market (TW→NT$, PH→₱) — UNLESS the seller has
+  // explicitly picked a currency (sfl_rd_currency_set), which always wins. Reactive so a
+  // late-loading country still applies (the one-shot pin above can run before profile load).
+  useEffect(() => {
+    if (auth.status !== "authed") return;
+    let explicit = false;
+    try { explicit = !!localStorage.getItem(LS.currencySet); } catch { explicit = false; }
+    if (!explicit) setCurrency(marketFor(auth.profile?.country).currency);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.status, auth.profile?.country]);
   const setCurrencyExplicit = (c: string) => {
     setCurrency(c);
     try { localStorage.setItem(LS.currencySet, "1"); } catch { /* ignore */ }
@@ -1251,7 +1273,7 @@ export default function RedesignApp() {
         currencyPinnedRef.current = true;
         let explicit = false;
         try { explicit = !!localStorage.getItem(LS.currencySet); } catch { explicit = false; }
-        if (!explicit) setCurrency(DEFAULT_CURRENCY);
+        if (!explicit) setCurrency(marketFor(auth.profile?.country).currency);
       }
     } else if (auth.status === "anon") {
       setScreen(anonScreen());
@@ -1475,7 +1497,7 @@ export default function RedesignApp() {
           {screen === "customers" && <Customers cur={cur} customers={customersData.customers} state={customersData.state} onExport={customersData.state === "live" ? exportCustomers : undefined} hasMore={customersData.hasMore} loadingMore={customersData.loadingMore} onLoadMore={customersData.loadMore} />}
           {screen === "subscription" && !ios && <Subscription cur={cur} account={auth.profile} isFreeUser={freeCap.isFreeUser} freeStatus={freeCap.freeStatus} />}
           {screen === "support" && <Support onLegal={() => setScreen("legal")} />}
-          {screen === "admin" && isAdmin && <Admin onOpenPanel={setAdminPanel} cur={cur} counts={adminCounts} live={adminLive} userBase={adminLive ? { paying: userBase.paying, free: userBase.free, total: userBase.total } : undefined} mrr={adminLive ? deriveMrr(adminUsers.users) : null} owner={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : null} />}
+          {screen === "admin" && isAdmin && <Admin onOpenPanel={setAdminPanel} cur={cur} counts={adminCounts} live={adminLive} userBase={adminLive ? { paying: userBase.paying, free: userBase.free, total: userBase.total } : undefined} mrr={adminLive ? deriveMrr(adminUsers.users) : null} owner={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : null} viewAs={adminViewAs} onSetViewAs={setAdminViewAs} />}
           {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} buyers={liveSession.session.buyers} storeName={auth.profile?.profile.storeName || "SellerFlowLive"} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
           {screen === "sales" && <SalesReport cur={cur} sales={sales} onExport={exportSales} hist={salesHist} byHour={salesByHour} enabled={authed} />}
           {screen === "shipping" && <Shipping cur={cur} buyers={liveSession.session.buyers} sessionKey={sessionKeyFor(liveSession.dayId, sessionWindow.windowStart, sessionWindow.windowDays)} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}

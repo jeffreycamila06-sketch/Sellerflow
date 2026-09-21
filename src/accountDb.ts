@@ -12,6 +12,7 @@ export interface AccountProfile {
   tiktok: string;
   facebook: string;
   adminContactNote: string;
+  country?: string | null; // seller_profiles.country (ISO-2) — market attribute; NULL = TW
 }
 
 export interface AccountUser {
@@ -72,6 +73,7 @@ export function rowToUser(row: SupabaseRow): AccountUser {
       tiktok: textValue(row.tiktok),
       facebook: textValue(row.facebook),
       adminContactNote: textValue(row.admin_contact_note),
+      country: row.country == null ? null : textValue(row.country) || null, // ISO-2 or null (NULL = TW)
     },
     plan: ["free", "trial", "basic", "plus", "pro", "master"].includes(textValue(row.plan)) ? textValue(row.plan) as Plan : "free",
     planStatus: ["active", "expired", "pending"].includes(textValue(row.plan_status)) ? textValue(row.plan_status) as PlanStatus : "active",
@@ -88,13 +90,14 @@ export function rowToUser(row: SupabaseRow): AccountUser {
 // Columns a seller is allowed to change on their own profile. Server-side
 // triggers additionally protect role/plan/plan_status, but we never send those
 // from normal profile saves.
-function userToRow(user: AccountUser) {
+export function userToRow(user: AccountUser) {
   return {
     full_name: user.profile.fullName,
     store_name: user.profile.storeName,
     phone: user.profile.phone,
     tiktok: user.profile.tiktok,
     facebook: user.profile.facebook,
+    country: user.profile.country ?? null, // round-trip: rowToUser→userToRow keeps it (never wiped on self-save); admin edit sets it
     connected_accounts: user.connectedAccounts,
     updated_at: new Date().toISOString(),
   };
@@ -160,6 +163,7 @@ export async function createMyProfile(
       phone: profile.phone,
       tiktok: profile.tiktok,
       facebook: profile.facebook,
+      country: profile.country ?? null, // market attribute from the confirmed signup picker
     })
     .select()
     .single();

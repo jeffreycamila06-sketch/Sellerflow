@@ -61,7 +61,8 @@ describe("register() — phone enforced before any account create", () => {
     const { result } = renderHook(() => useAuthSession());
     await act(async () => { await result.current.register(fields({ phone: "0915 408 1462", phoneCountry: "PH" })); });
     expect(signUp).toHaveBeenCalledTimes(1);
-    expect(createMyProfile).toHaveBeenCalledWith("u2", "new@shop.com", expect.objectContaining({ phone: "09154081462" }));
+    // Country is now STORED (no longer discarded) — the confirmed PH picker.
+    expect(createMyProfile).toHaveBeenCalledWith("u2", "new@shop.com", expect.objectContaining({ phone: "09154081462", country: "PH" }));
   });
 
   it("valid phone → signUp IS called and the NATIONAL phone is stored", async () => {
@@ -70,6 +71,6 @@ describe("register() — phone enforced before any account create", () => {
     await act(async () => { await result.current.register(fields({ phone: "0912 345 678" })); });
     expect(signUp).toHaveBeenCalledTimes(1);     // reached the network
     expect(createMyProfile).toHaveBeenCalledTimes(1);
-    expect(createMyProfile).toHaveBeenCalledWith("u1", "new@shop.com", expect.objectContaining({ phone: "0912345678" })); // clean national
+    expect(createMyProfile).toHaveBeenCalledWith("u1", "new@shop.com", expect.objectContaining({ phone: "0912345678", country: "TW" })); // clean national + default TW country
   });
 });
