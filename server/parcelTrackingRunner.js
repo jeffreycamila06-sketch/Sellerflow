@@ -24,6 +24,40 @@ const DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 // a hung SHOPMORE response must abort, not stall the single-flight poll.
 const FETCH_TIMEOUT_MS = 15000;
 
+// Pickup Status retention: a parcel that became terminal (picked_up OR returned) stays
+// visible for this long, then the poller DELETEs it. Counted from picked_up_at /
+// returned_at (poll-detection time). Non-terminal rows are never matched (see runPoll).
+const PICKUP_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+// Per-seller ceiling on how many NON-TERMINAL rows one poll run will chase, at_store
+// prioritized (those are near the pickup deadline — the actionable ones). This bounds
+// SHOPMORE load once the poll is unscoped (Phase 2: userId = null → all sellers). It is
+// INERT while the poll is owner-scoped: the owner is far under the cap, so nothing is
+// dropped until a single seller exceeds it under the all-users scope.
+export const PER_SELLER_LIVE_CAP = 300;
+
+// Keep at most `cap` non-terminal rows per user_id, at_store first, then the rest in the
+// row order the DB returned (stable). PURE → unit-tested. Under the cap = identity.
+export function capLiveRowsPerSeller(rows, cap = PER_SELLER_LIVE_CAP) {
+  const bySeller = new Map();
+  for (const r of (rows || [])) {
+    const k = String(r.user_id);
+    if (!bySeller.has(k)) bySeller.set(k, []);
+    bySeller.get(k).push(r);
+  }
+  const out = [];
+  for (const list of bySeller.values()) {
+    if (list.length <= cap) { out.push(...list); continue; }
+    const kept = list
+      .map((r, i) => ({ r, i, rank: r.status === "at_store" ? 0 : 1 })) // at_store first
+      .sort((a, b) => (a.rank - b.rank) || (a.i - b.i))                  // stable within a rank
+      .slice(0, cap)
+      .map((x) => x.r);
+    out.push(...kept);
+  }
+  return out;
+}
+
 // Wrap a fetch in an AbortController timeout. clearTimeout in finally so a fast
 // response never leaves a dangling timer. On abort, undici throws (AbortError) →
 // pollBatch's per-batch try/catch counts it as a batch failure + backs off.
@@ -165,15 +199,20 @@ export async function runPoll(opts) {
   const {
     minGapMs = 4000, jitterMs = 3000, maxBatchesPerRun = 300,
     dailyCap = 1500, baseBackoffMs = 4000, maxBackoffMs = 60000,
+    perSellerCap = PER_SELLER_LIVE_CAP,
   } = limits;
 
   // 1) SELECT live (non-terminal) rows — EXPLICIT user_id scope when configured.
-  let q = serviceSb.from("parcel_tracking").select("id,user_id,tracking_no,arrived_at").eq("terminal", false);
+  let q = serviceSb.from("parcel_tracking").select("id,user_id,tracking_no,arrived_at,status").eq("terminal", false);
   if (userId) q = q.eq("user_id", userId);
   const { data: rows, error } = await q;
   if (error) { logger.error("[PARCEL-POLL] select failed:", error.message); return { ok: false, error: "select_failed" }; }
 
-  const live = (rows || []).filter((r) => r && r.tracking_no);
+  // Per-seller cap (at_store prioritized). Inert while owner-scoped; bites in Phase 2.
+  const liveAll = (rows || []).filter((r) => r && r.tracking_no);
+  const live = capLiveRowsPerSeller(liveAll, perSellerCap);
+  const capped = liveAll.length - live.length;
+  if (capped > 0) logger.warn(`[PARCEL-POLL] per-seller cap: skipped ${capped} row(s) over ${perSellerCap}/seller`);
   const byCode = new Map(live.map((r) => [String(r.tracking_no), r]));
   const groups = batch(live.map((r) => String(r.tracking_no)), MAX_BATCH);
 
@@ -223,6 +262,10 @@ export async function runPoll(opts) {
       };
       // arrived_at is SET ONCE — only when the row has none yet and we now see at_store.
       if (u.arrived_at && !row.arrived_at) patch.arrived_at = u.arrived_at;
+      // Stamp the terminal transition (once — terminal rows are never re-polled) so the
+      // 7-day retention pass below can age them out. u.last_polled_at = this poll's time.
+      if (u.status === "picked_up") patch.picked_up_at = u.last_polled_at;
+      else if (u.status === "returned") patch.returned_at = u.last_polled_at;
       const { error: upErr } = await serviceSb.from("parcel_tracking").update(patch).eq("id", row.id).eq("user_id", row.user_id);
       if (upErr) { logger.error("[PARCEL-POLL] update failed", row.id, upErr.message); continue; }
       updated += 1;
@@ -230,7 +273,22 @@ export async function runPoll(opts) {
     }
   }
 
-  const summary = { ok: true, rows: live.length, batchesRun, updated, unknowns, notFound, captchaFails };
+  // 2) 7-DAY RETENTION — DELETE parcels 7+ days after they became terminal (picked_up
+  //    OR returned), owner-scoped when configured. The OR filter references ONLY the two
+  //    terminal states, so a non-terminal row (in_transit / at_store / created / not_found
+  //    / unknown) can NEVER match; a NULL picked_up_at/returned_at never matches `.lt`.
+  //    Runs every poll (2×/day) regardless of how the poll loop above went.
+  let purged = 0;
+  const cutoff = new Date(now().getTime() - PICKUP_RETENTION_MS).toISOString();
+  let delQ = serviceSb.from("parcel_tracking").delete()
+    .or(`and(status.eq.picked_up,picked_up_at.lt.${cutoff}),and(status.eq.returned,returned_at.lt.${cutoff})`)
+    .select("id");
+  if (userId) delQ = delQ.eq("user_id", userId); // Phase 1 = owner only; null = all users (Phase 2)
+  const { data: purgedRows, error: delErr } = await delQ;
+  if (delErr) logger.error("[PARCEL-POLL] retention delete failed:", delErr.message);
+  else purged = (purgedRows || []).length;
+
+  const summary = { ok: true, rows: live.length, capped, batchesRun, updated, unknowns, notFound, captchaFails, purged };
   logger.log("[PARCEL-POLL] done", JSON.stringify(summary));
   return summary;
 }

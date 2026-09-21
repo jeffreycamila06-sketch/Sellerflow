@@ -5,7 +5,7 @@
 // daily-cap circuit breaker. The captcha OCR + real HTTP are covered by node --check
 // + the on-Render memory probe (tesseract can't run in CI).
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { runPoll, __resetDailyCounter } from "../../../../server/parcelTrackingRunner.js";
+import { runPoll, capLiveRowsPerSeller, PER_SELLER_LIVE_CAP, __resetDailyCounter } from "../../../../server/parcelTrackingRunner.js";
 import { QUERY_URL, SEARCH_URL } from "../../../../server/parcelTracking.js";
 
 const HTML_IN_TRANSIT = `var searchResults = [{"paymentNo":"F70334584020","recStore":"朝陽","recDate":"","orderAmount":60,"status":1,"statusMessage":"包裹進行配送中","shipStatusDetails":[{"notificationName":"包裹進行配送中"}],"shipType":"C2C","specialType":null}];`;
@@ -13,10 +13,17 @@ const HTML_AT_STORE = `var searchResults = [{"paymentNo":"F11122233344","recStor
 const HTML_UNKNOWN = `var searchResults = [{"paymentNo":"FZ","status":1,"statusMessage":"門市特殊處理中XYZ","shipStatusDetails":[{"notificationName":"門市特殊處理中XYZ"}],"shipType":"C2C","specialType":null}];`;
 const HTML_NOT_FOUND = `var searchResults = [{"paymentNo":"FNF","status":0,"statusMessage":"查無資料","shipStatusDetails":[]}];`;
 const HTML_EMPTY = `var searchResults = [];`;
+const HTML_PICKED_UP = `var searchResults = [{"paymentNo":"FPICK","recStore":"中壢","recDate":"2026/09/15","orderAmount":100,"status":1,"statusMessage":"已完成包裹取件","shipStatusDetails":[{"notificationName":"已完成包裹取件"}],"shipType":"C2C","specialType":null}];`;
+const HTML_RETURNED = `var searchResults = [{"paymentNo":"FRET","recStore":"中壢","recDate":"2026/09/15","orderAmount":100,"status":1,"statusMessage":"退貨處理","shipStatusDetails":[{"notificationName":"包裹已送達退貨門市"}],"shipType":"C2C","specialType":null}];`;
 
-// Chainable service-role client fake — records select .eq() scope + every update.
-function fakeSb(rows: unknown[], opts: { selectError?: unknown; updateError?: unknown } = {}) {
-  const captured = { selectEqs: [] as [string, unknown][], updates: [] as { patch: Record<string, unknown>; target: Record<string, unknown> }[] };
+// Chainable service-role client fake — records select .eq() scope, every update, and
+// every delete (the retention pass: its .or() filter, .eq() scope, and .select()).
+function fakeSb(rows: unknown[], opts: { selectError?: unknown; updateError?: unknown; deleteError?: unknown; deleteReturns?: unknown[] } = {}) {
+  const captured = {
+    selectEqs: [] as [string, unknown][],
+    updates: [] as { patch: Record<string, unknown>; target: Record<string, unknown> }[],
+    deletes: [] as { or: string | null; eqs: Record<string, unknown>; selected: boolean }[],
+  };
   const selectChain: Record<string, unknown> = {
     eq(col: string, val: unknown) { captured.selectEqs.push([col, val]); return selectChain; },
     then(onF: (v: unknown) => unknown, onR?: (e: unknown) => unknown) { return Promise.resolve({ data: rows, error: opts.selectError ?? null }).then(onF, onR); },
@@ -29,9 +36,19 @@ function fakeSb(rows: unknown[], opts: { selectError?: unknown; updateError?: un
     };
     return ch;
   };
+  const makeDelete = () => {
+    const rec = { or: null as string | null, eqs: {} as Record<string, unknown>, selected: false };
+    const ch: Record<string, unknown> = {
+      or(expr: string) { rec.or = expr; return ch; },
+      eq(col: string, val: unknown) { rec.eqs[col] = val; return ch; },
+      select() { rec.selected = true; return ch; },
+      then(onF: (v: unknown) => unknown, onR?: (e: unknown) => unknown) { captured.deletes.push(rec); return Promise.resolve({ data: opts.deleteReturns ?? [], error: opts.deleteError ?? null }).then(onF, onR); },
+    };
+    return ch;
+  };
   return {
     _captured: captured,
-    from() { return { select() { return selectChain; }, update(patch: Record<string, unknown>) { return makeUpdate(patch); } }; },
+    from() { return { select() { return selectChain; }, update(patch: Record<string, unknown>) { return makeUpdate(patch); }, delete() { return makeDelete(); } }; },
   };
 }
 
@@ -127,5 +144,94 @@ describe("runPoll — service-role orchestration", () => {
     const s = await runPoll({ serviceSb: sb, userId: "U", fetchImpl: fetchFactory(HTML_EMPTY), ocr: ocr(), now: () => FIXED_NOW, logger: { log() {}, warn() {}, error() {} }, limits: smallLimits });
     expect(s).toMatchObject({ ok: false, error: "select_failed" });
     expect(sb._captured.updates).toHaveLength(0);
+  });
+});
+
+describe("runPoll — 7-day retention (picked_up / returned auto-delete)", () => {
+  const CUTOFF = new Date(FIXED_NOW.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString(); // 2026-09-11T02:00:00.000Z
+
+  it("picked_up result → stamps picked_up_at = poll time (terminal)", async () => {
+    const sb = fakeSb([{ id: "r1", user_id: "U", tracking_no: "FPICK", arrived_at: null }]);
+    await runPoll({ serviceSb: sb, userId: "U", fetchImpl: fetchFactory(HTML_PICKED_UP), ocr: ocr(), now: () => FIXED_NOW, logger: { log() {}, warn() {}, error() {} }, limits: smallLimits });
+    expect(sb._captured.updates[0].patch).toMatchObject({ status: "picked_up", terminal: true, picked_up_at: FIXED_NOW.toISOString() });
+    expect(sb._captured.updates[0].patch).not.toHaveProperty("returned_at");
+  });
+
+  it("returned result → stamps returned_at = poll time (terminal)", async () => {
+    const sb = fakeSb([{ id: "r1", user_id: "U", tracking_no: "FRET", arrived_at: null }]);
+    await runPoll({ serviceSb: sb, userId: "U", fetchImpl: fetchFactory(HTML_RETURNED), ocr: ocr(), now: () => FIXED_NOW, logger: { log() {}, warn() {}, error() {} }, limits: smallLimits });
+    expect(sb._captured.updates[0].patch).toMatchObject({ status: "returned", terminal: true, returned_at: FIXED_NOW.toISOString() });
+    expect(sb._captured.updates[0].patch).not.toHaveProperty("picked_up_at");
+  });
+
+  it("issues an owner-scoped DELETE matching ONLY picked_up/returned older than 7 days", async () => {
+    const sb = fakeSb([{ id: "r1", user_id: "U", tracking_no: "F70334584020", arrived_at: null }], { deleteReturns: [{ id: "old1" }, { id: "old2" }] });
+    const s = await runPoll({ serviceSb: sb, userId: "U", fetchImpl: fetchFactory(HTML_IN_TRANSIT), ocr: ocr(), now: () => FIXED_NOW, logger: { log() {}, warn() {}, error() {} }, limits: smallLimits });
+    expect(sb._captured.deletes).toHaveLength(1);
+    const del = sb._captured.deletes[0];
+    // OR filter references ONLY the two terminal states + their own timestamp columns
+    expect(del.or).toBe(`and(status.eq.picked_up,picked_up_at.lt.${CUTOFF}),and(status.eq.returned,returned_at.lt.${CUTOFF})`);
+    expect(del.or).not.toMatch(/in_transit|at_store|created|not_found|unknown/); // NEVER un-claimed rows
+    expect(del.eqs).toEqual({ user_id: "U" });   // owner-scoped
+    expect(del.selected).toBe(true);             // .select() → counted
+    expect(s.purged).toBe(2);
+  });
+
+  it("Phase 2 (userId null) → DELETE has NO user_id scope (all users)", async () => {
+    const sb = fakeSb([]);
+    await runPoll({ serviceSb: sb, userId: null, fetchImpl: fetchFactory(HTML_EMPTY), ocr: ocr(), now: () => FIXED_NOW, logger: { log() {}, warn() {}, error() {} }, limits: smallLimits });
+    expect(sb._captured.deletes).toHaveLength(1);
+    expect(sb._captured.deletes[0].eqs).toEqual({});   // no user_id filter
+  });
+
+  it("runs the retention DELETE even when there are zero live rows to poll", async () => {
+    const sb = fakeSb([]); // nothing to poll
+    const s = await runPoll({ serviceSb: sb, userId: "U", fetchImpl: fetchFactory(HTML_EMPTY), ocr: ocr(), now: () => FIXED_NOW, logger: { log() {}, warn() {}, error() {} }, limits: smallLimits });
+    expect(sb._captured.deletes).toHaveLength(1);
+    expect(s.purged).toBe(0);
+  });
+
+  it("a delete error is logged but never fails the poll", async () => {
+    const err = vi.fn();
+    const sb = fakeSb([], { deleteError: { message: "delete blew up" } });
+    const s = await runPoll({ serviceSb: sb, userId: "U", fetchImpl: fetchFactory(HTML_EMPTY), ocr: ocr(), now: () => FIXED_NOW, logger: { log() {}, warn() {}, error: err }, limits: smallLimits });
+    expect(s.ok).toBe(true);
+    expect(err.mock.calls.some((c) => String(c[0]).includes("retention delete failed"))).toBe(true);
+  });
+});
+
+describe("capLiveRowsPerSeller — per-seller live-row cap (at_store prioritized)", () => {
+  it("under the cap → identity (every row kept)", () => {
+    const rows = [{ id: "a", user_id: "U", status: "in_transit" }, { id: "b", user_id: "U", status: "at_store" }];
+    expect(capLiveRowsPerSeller(rows, 300)).toHaveLength(2);
+  });
+  it("over the cap → at_store kept first, the rest trimmed", () => {
+    const rows = [
+      { id: "t1", user_id: "U", status: "in_transit" }, { id: "s1", user_id: "U", status: "at_store" },
+      { id: "t2", user_id: "U", status: "in_transit" }, { id: "s2", user_id: "U", status: "at_store" },
+    ];
+    expect(capLiveRowsPerSeller(rows, 2).map((r) => r.id)).toEqual(["s1", "s2"]); // both at_store survive
+  });
+  it("caps EACH seller independently", () => {
+    const rows = [
+      { id: "u1", user_id: "U", status: "in_transit" }, { id: "u2", user_id: "U", status: "in_transit" }, { id: "u3", user_id: "U", status: "at_store" },
+      { id: "v1", user_id: "V", status: "in_transit" },
+    ];
+    const kept = capLiveRowsPerSeller(rows, 2);
+    expect(kept.filter((r) => r.user_id === "U")).toHaveLength(2);
+    expect(kept.filter((r) => r.user_id === "V")).toHaveLength(1);   // V under cap → all kept
+    expect(kept.some((r) => r.id === "u3")).toBe(true);              // U's at_store prioritized in
+  });
+  it("INERT while owner-scoped: a sub-cap owner set is unchanged; default cap = 300", () => {
+    const rows = Array.from({ length: 159 }, (_, i) => ({ id: `r${i}`, user_id: "OWNER", status: "in_transit" }));
+    expect(capLiveRowsPerSeller(rows)).toHaveLength(159);
+    expect(PER_SELLER_LIVE_CAP).toBe(300);
+  });
+  it("runPoll wires the cap: over-cap seller → rows trimmed + s.capped reported", async () => {
+    const rows = Array.from({ length: 4 }, (_, i) => ({ id: `r${i}`, user_id: "U", tracking_no: `F${i}0000000`, arrived_at: null, status: "in_transit" }));
+    const sb = fakeSb(rows);
+    const s = await runPoll({ serviceSb: sb, userId: "U", fetchImpl: fetchFactory(HTML_EMPTY), ocr: ocr(), now: () => FIXED_NOW, logger: { log() {}, warn() {}, error() {} }, limits: { ...smallLimits, perSellerCap: 2 } });
+    expect(s.rows).toBe(2);
+    expect(s.capped).toBe(2);
   });
 });
