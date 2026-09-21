@@ -128,7 +128,7 @@ export default function Dashboard({
   printed, entId, entPrice, onOneClick, onOpenEnt, onEntPrice, onEntKey,
   onEntSubmit,
   viewers = null,
-  sessionEndsAt = null, sessionEnded = false,
+  sessionEndsAt = null, sessionEnded = false, sessionV2Owner = false, onEndSession,
   historyReady = false,
   notPrinted = {},
   onReprint,
@@ -200,6 +200,9 @@ export default function Dashboard({
   // server-Taipei end label ("Aug 22, 11:59 PM") or null (no session → nothing);
   // sessionEnded = server says the window passed while still live → "continues …".
   sessionEndsAt?: string | null; sessionEnded?: boolean;
+  // Session V2 (owner-only): render the "End Session" control next to the indicator.
+  // Default false / undefined → nothing extra renders (every other seller unchanged).
+  sessionV2Owner?: boolean; onEndSession?: () => void;
   // REPRINT — print a COPY of this comment's existing order (no new order, no
   // writes; RedesignApp resolves the original order + calls printSlip).
   onReprint?: (id: string, msgId?: string) => void;
@@ -337,8 +340,16 @@ export default function Dashboard({
               top-right slot. STATIC "Session ends {date}" (server-Taipei) while
               running; "Session continues …" (animated dots) once past the end while
               still live. Nothing when there is no session. */}
+          {/* Session indicator (top-right). Session V2 (owner only): REPLACE the
+              "Session ends {date}" pill with a single RED, gently pulsing "End Session"
+              button (same pill size/radius). Every other seller keeps the unchanged
+              "Session ends {date}" / "continues …" indicator. */}
           {sessionEndsAt && (
-            sessionEnded ? (
+            sessionV2Owner && onEndSession ? (
+              <button data-testid="session-end-btn" onClick={onEndSession} className="sfl-anim-endpulse" style={{ background: "#D64545", border: "none", padding: "6px 10px", borderRadius: 9, fontSize: 12, fontWeight: 800, color: "#fff", whiteSpace: "nowrap", flexShrink: 0, cursor: "pointer" }}>
+                {t.rd_os_end}
+              </button>
+            ) : sessionEnded ? (
               <span data-testid="session-continues" style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,.18)", padding: "6px 10px", borderRadius: 9, fontSize: 12, fontWeight: 700, color: "var(--on-header)", whiteSpace: "nowrap", flexShrink: 0 }}>
                 {t.rd_ses_continues}
                 <span className="sfl-anim-ellip" aria-hidden="true" style={{ display: "inline-flex", gap: 2, marginLeft: 1 }}><i>.</i><i>.</i><i>.</i></span>

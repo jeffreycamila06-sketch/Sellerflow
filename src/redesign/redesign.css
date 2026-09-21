@@ -83,6 +83,13 @@
 [data-redesign] .sfl-anim-live { position: relative; }
 [data-redesign] .sfl-anim-live::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: 0 0 0 2px #e11d48; pointer-events: none; animation: sflRingPulse 1.8s ease-out infinite; }
 
+/* Session V2 (owner) "End Session" — gentle red glow that breathes. GPU-safe: a STATIC
+   red glow box-shadow on a ::after, only OPACITY animates (no per-frame box-shadow
+   repaint). Single header button, never a per-row loop. Gated below with the others. */
+@keyframes sflEndGlow { 0%, 100% { opacity: .3; } 50% { opacity: .85; } }
+[data-redesign] .sfl-anim-endpulse { position: relative; }
+[data-redesign] .sfl-anim-endpulse::after { content: ""; position: absolute; inset: -1px; border-radius: inherit; box-shadow: 0 0 9px 1px rgba(214,69,69,.9); pointer-events: none; animation: sflEndGlow 2s ease-in-out infinite; }
+
 /* "Session continues …" loading dots — opacity-only, staggered (sub-step 5).
    Gated below with every other loop (kill switch + prefers-reduced-motion). */
 @keyframes sflEllip { 0%, 80%, 100% { opacity: .2; } 40% { opacity: 1; } }
@@ -145,6 +152,7 @@
 [data-redesign][data-motion="off"] .sfl-anim-dot,
 [data-redesign][data-motion="off"] .sfl-anim-glow,
 [data-redesign][data-motion="off"] .sfl-anim-live::after,
+[data-redesign][data-motion="off"] .sfl-anim-endpulse::after,
 [data-redesign][data-motion="off"] .sfl-anim-sheen::after,
 [data-redesign][data-motion="off"] .sfl-anim-heart,
 [data-redesign][data-motion="off"] .sfl-anim-textglow,
@@ -166,6 +174,7 @@
   [data-redesign] .sfl-anim-dot,
   [data-redesign] .sfl-anim-glow,
   [data-redesign] .sfl-anim-live::after,
+  [data-redesign] .sfl-anim-endpulse::after,
   [data-redesign] .sfl-anim-sheen::after,
   [data-redesign] .sfl-anim-heart,
   [data-redesign] .sfl-anim-textglow,

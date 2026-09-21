@@ -49,6 +49,10 @@ export interface UseSessionInstance {
   ensureLoaded: () => Promise<void>;
   checkStatus: () => Promise<SessionStatus>; // server-authoritative running/ended check (call on Connect)
   startSession: (days: number) => Promise<string | null>; // create a NEW session; returns its id (null on failure)
+  // End the running session (E2, owner-gated caller): end_session() nulls
+  // current_session_id + stamps session_ended_at. After this the next Start begins
+  // buyer# at #1. Returns true on success. ADDITIVE — non-owner code never calls it.
+  endSession: () => Promise<boolean>;
 }
 
 export function useSessionInstance(enabled: boolean): UseSessionInstance {
@@ -168,6 +172,25 @@ export function useSessionInstance(enabled: boolean): UseSessionInstance {
     }
   }, [setId, uid]);
 
+  // End the running session (owner-gated caller). end_session() nulls
+  // current_session_id + stamps session_ended_at server-side; we then clear the local
+  // mirror so the next Connect asks for a fresh Start (→ #1). Best-effort: an RPC error
+  // returns false (caller keeps the session; no partial local clear).
+  const endSession = useCallback(async (): Promise<boolean> => {
+    if (!isSupabaseConfigured || !supabase) return false;
+    try {
+      const { error } = await supabase.rpc("end_session");
+      if (error) return false;
+      setId(null);
+      setStartedAt(null);
+      setWinDays(null);
+      setEnded(false);
+      return true;
+    } catch {
+      return false;
+    }
+  }, [setId]);
+
   // Refresh the ended flag on each Asia/Taipei day rollover (useTaipeiDayId advances
   // via focus/visibility + a single midnight timeout — no interval poll). The device
   // clock only TRIGGERS the re-ask; session_status (server) DECIDES ended, so two
@@ -176,5 +199,5 @@ export function useSessionInstance(enabled: boolean): UseSessionInstance {
   const dayId = useTaipeiDayId();
   useEffect(() => { if (idRef.current) void checkStatus(); }, [dayId, checkStatus]);
 
-  return { currentSessionId, sessionStartedAt, sessionWindowDays, ended, loaded, ensureLoaded, checkStatus, startSession };
+  return { currentSessionId, sessionStartedAt, sessionWindowDays, ended, loaded, ensureLoaded, checkStatus, startSession, endSession };
 }

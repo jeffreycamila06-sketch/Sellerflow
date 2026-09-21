@@ -93,6 +93,32 @@ describe("useSessionInstance", () => {
   });
 });
 
+describe("endSession (E2 — owner-gated caller)", () => {
+  it("calls end_session() and clears currentSessionId (next Start → #1)", async () => {
+    maybeSingleMock.mockResolvedValueOnce({ data: { current_session_id: "sid-live" }, error: null });
+    rpcMock.mockResolvedValueOnce({ error: null }); // end_session ok
+    const { result } = renderHook(() => useSessionInstance(true));
+    await waitFor(() => expect(result.current.currentSessionId).toBe("sid-live"));
+    let ok: boolean | undefined;
+    await act(async () => { ok = await result.current.endSession(); });
+    expect(ok).toBe(true);
+    expect(rpcMock).toHaveBeenCalledWith("end_session");
+    expect(result.current.currentSessionId).toBeNull(); // local mirror cleared
+    expect(result.current.ended).toBe(false);
+  });
+
+  it("RPC error → false, session id preserved (no partial clear)", async () => {
+    maybeSingleMock.mockResolvedValueOnce({ data: { current_session_id: "sid-live" }, error: null });
+    rpcMock.mockResolvedValueOnce({ error: { message: "network" } });
+    const { result } = renderHook(() => useSessionInstance(true));
+    await waitFor(() => expect(result.current.currentSessionId).toBe("sid-live"));
+    let ok: boolean | undefined;
+    await act(async () => { ok = await result.current.endSession(); });
+    expect(ok).toBe(false);
+    expect(result.current.currentSessionId).toBe("sid-live"); // unchanged
+  });
+});
+
 describe("ensureLoaded — Connect gate (audit LOW #2: no wrongful reset while mount read pending)", () => {
   it("WAITS for the pending mount read, so a failing session_status RESUMES the known session (not a new one)", async () => {
     // Mount read is SLOW (still pending) and session_status FAILS — the exact

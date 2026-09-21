@@ -47,6 +47,9 @@ import { useLiveSession } from "./adapters/useLiveSession";
 import { useSessionInstance } from "./adapters/useSessionInstance";
 import { sessionEndLabel } from "./adapters/sessionEnd";
 import SessionPickerModal from "./components/SessionPickerModal";
+import OwnerSessionModal from "./components/OwnerSessionModal";
+import EndSessionConfirm from "./components/EndSessionConfirm";
+import { sessionV2Enabled, SESSION_V2_DAYS } from "./adapters/sessionV2";
 import { buildBasketCounts } from "./adapters/basketCounts";
 import { buildMinerRiskMap } from "./adapters/minerRisk";
 import { useMinersReport } from "./adapters/minersReport";
@@ -233,6 +236,10 @@ export default function RedesignApp() {
   // Pending connect awaiting a session pick (the required picker modal). Non-null =
   // modal open + the platform/account to connect once a length is chosen.
   const [pickerConnect, setPickerConnect] = useState<{ platform: Platform; acct: string } | null>(null);
+  // Session V2 (owner-only): the "Start Session (5-day)" modal replaces the 1–5 picker.
+  const sessionV2 = sessionV2Enabled(auth.profile?.email);
+  const [ownerStart, setOwnerStart] = useState<{ platform: Platform; acct: string } | null>(null);
+  const [endConfirm, setEndConfirm] = useState(false); // owner "End session?" confirm dialog
   // Orders search 7-day history (LAZY — fetches on the first search only,
   // once per open; display-only lane, structurally isolated from liveSession).
   const ordersHistory = useOrdersHistory(authed, liveSession.dayId, sessionWindow.windowStart, sessionWindow.windowDays);
@@ -957,7 +964,32 @@ export default function RedesignApp() {
     await sessionInstance.ensureLoaded();
     const status = await sessionInstance.checkStatus();
     if (status.running) { void performConnect(platform, acct); return; }
+    // Owner (Session V2): the fixed 5-day "Start Session" modal, NOT the 1–5 picker.
+    // Every other seller: the unchanged picker path (byte-for-byte).
+    if (sessionV2) { setOwnerStart({ platform, acct }); return; }
     setPickerConnect({ platform, acct });
+  };
+  // Owner "Start Session" → fixed 5-day session_id, then connect. Mirrors
+  // onPickSessionLength(5): new id → reset (empty load → #1) → connect. A null id
+  // (RPC failed) surfaces a toast and does NOT start a feed.
+  const onOwnerStart = async () => {
+    const pending = ownerStart;
+    setOwnerStart(null);
+    if (!pending) return;
+    const sid = await sessionInstance.startSession(SESSION_V2_DAYS);
+    if (!sid) { setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }); return; }
+    liveSession.reset();
+    void performConnect(pending.platform, pending.acct);
+  };
+  // Owner "End Session" → confirm dialog FIRST; only Confirm runs end_session()
+  // (nulls current_session_id + stamps session_ended_at) → board clears to day-view
+  // (Option A) → toast. Owner-gated caller only; no other seller reaches this.
+  const doEndSession = async () => {
+    setEndConfirm(false);
+    const ok = await sessionInstance.endSession();
+    if (!ok) { setToast({ msg: tApp.rd_os_end_failed, kind: "err" }); return; }
+    liveSession.reset();
+    setToast({ msg: tApp.rd_os_ended, kind: "ok" });
   };
   // Picker "pick a length" → create the session (server-authoritative start), THEN
   // connect. A null id (RPC failed) surfaces a toast and does NOT start a feed.
@@ -1353,6 +1385,10 @@ export default function RedesignApp() {
                  session_status. null label → no indicator (defensive: no session). */
               sessionEndsAt={sessionInstance.currentSessionId && sessionInstance.sessionStartedAt && sessionInstance.sessionWindowDays ? sessionEndLabel(sessionInstance.sessionStartedAt, sessionInstance.sessionWindowDays, lang) : null}
               sessionEnded={sessionInstance.ended}
+              /* Session V2 (owner only) — "End Session" control next to the indicator.
+                 Non-owner: sessionV2Owner=false → Dashboard renders nothing extra. */
+              sessionV2Owner={sessionV2}
+              onEndSession={sessionV2 ? () => setEndConfirm(true) : undefined}
               onConnectTT={() => void doConnect("TikTok")}
               onRefreshTT={() => void refreshDashboard()} refreshing={refreshing}
               ttAccounts={ttAccounts} fbAccounts={fbAccounts}
@@ -1522,6 +1558,14 @@ export default function RedesignApp() {
             cancel → abort (no feed, no session). */}
         {pickerConnect && (
           <SessionPickerModal onPick={(n) => void onPickSessionLength(n)} onCancel={() => setPickerConnect(null)} />
+        )}
+        {/* Session V2 (owner only) — fixed 7-day "Start Session" in place of the picker. */}
+        {ownerStart && (
+          <OwnerSessionModal onStart={() => void onOwnerStart()} onCancel={() => setOwnerStart(null)} />
+        )}
+        {/* Session V2 (owner only) — "End session?" confirm; Confirm → end_session(). */}
+        {endConfirm && (
+          <EndSessionConfirm onConfirm={() => void doEndSession()} onCancel={() => setEndConfirm(false)} />
         )}
 
         {/* Phase 5f — free-tier cap popup (near / hard). iOS: neutral Contact-Support
