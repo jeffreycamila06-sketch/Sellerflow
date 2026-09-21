@@ -1,9 +1,11 @@
-// 賣貨便 export is LAPTOP-ONLY. On the app shell (Capacitor/?apk) OR a narrow
-// mobile-browser viewport the whole Export card is hidden — no toggle, no way in —
-// replaced by a "Export from your computer" one-liner. Desktop is unchanged.
-// (A phone mis-tap marks rows exported → they vanish from the laptop file.)
+// 賣貨便 export on the PHONE is gated behind a per-device switch (DEFAULT OFF). On the
+// app shell (Capacitor/?apk) OR a narrow mobile-browser viewport the Export card is
+// hidden until the seller turns the switch ON — and turning it ON requires confirming
+// a dialog first ("Export from this phone?"). Cancel leaves it OFF. Desktop is
+// unchanged (card always shown, no switch). (A phone export marks rows exported →
+// they drop from the laptop export, hence off-by-default.)
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render } from "@testing-library/react";
+import { render, fireEvent } from "@testing-library/react";
 import { TProvider } from "../../i18n";
 import type { ParcelScanRow } from "../../adapters/parcelScan";
 
@@ -24,7 +26,7 @@ vi.mock("../../adapters/shippingSettings", () => ({ loadGlobalShippingFee: async
 
 import ParcelScan from "../ParcelScan";
 
-const view = (isAdmin = false) => render(<TProvider><ParcelScan cur="NT$" isAdmin={isAdmin} /></TProvider>);
+const view = () => render(<TProvider><ParcelScan cur="NT$" /></TProvider>);
 const win = window as unknown as { Capacitor?: unknown; matchMedia?: unknown };
 let hadMM = false; let prevMM: unknown;
 const setNarrow = (matches: boolean) => {
@@ -39,52 +41,51 @@ afterEach(() => {
   hadMM = false;
 });
 
-describe("Parcel Scan — export is laptop-only", () => {
-  it("desktop (no shell, wide viewport) → Export card shown, no mobile note", async () => {
+describe("Parcel Scan — phone export switch (default OFF)", () => {
+  it("desktop (no shell, wide viewport) → Export card shown, NO switch (web unchanged)", async () => {
     setNarrow(false);
     const { findByTestId, queryByTestId } = view();
     await findByTestId("ps-export-card");
-    expect(queryByTestId("ps-export-mobile")).toBeNull();
+    expect(queryByTestId("ps-export-switch")).toBeNull();
     expect(queryByTestId("ps-export-btn")).toBeTruthy();
   });
 
-  it("app shell (window.Capacitor) → Export card HIDDEN, 'from your computer' note shown", async () => {
+  it("app shell + default OFF → switch shown, Export card HIDDEN", async () => {
     win.Capacitor = {};
     const { findByTestId, queryByTestId } = view();
-    const note = await findByTestId("ps-export-mobile");
-    expect(note.textContent).toContain("computer");        // en fallback text
+    const toggle = await findByTestId("ps-export-switch-toggle");
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect(queryByTestId("ps-export-card")).toBeNull();
     expect(queryByTestId("ps-export-btn")).toBeNull();
   });
 
-  it("narrow mobile-browser viewport → Export card HIDDEN, note shown (no Capacitor)", async () => {
+  it("narrow mobile viewport + default OFF → switch shown, Export card HIDDEN", async () => {
     setNarrow(true);
     const { findByTestId, queryByTestId } = view();
-    await findByTestId("ps-export-mobile");
+    await findByTestId("ps-export-switch-toggle");
     expect(queryByTestId("ps-export-card")).toBeNull();
-    expect(queryByTestId("ps-export-btn")).toBeNull();
   });
 
-  // Re-enabled on the phone for ADMIN first (owner testing the real download).
-  it("app shell + ADMIN → Export card SHOWN on the phone", async () => {
+  it("turning ON needs the dialog + Yes → Export card appears", async () => {
     win.Capacitor = {};
-    const { findByTestId, queryByTestId } = view(true);
+    const { findByTestId, getByTestId, queryByTestId } = view();
+    fireEvent.click(await findByTestId("ps-export-switch-toggle"));
+    // dialog first — NOT on yet
+    await findByTestId("ps-enablephone-body");
+    expect(queryByTestId("ps-export-card")).toBeNull();
+    // Yes → switch ON, Export card shows
+    fireEvent.click(getByTestId("ps-confirm-enablephone"));
     await findByTestId("ps-export-card");
-    expect(queryByTestId("ps-export-mobile")).toBeNull();
-    expect(queryByTestId("ps-export-btn")).toBeTruthy();
+    expect((getByTestId("ps-export-switch-toggle")).getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("narrow viewport + ADMIN → Export card SHOWN on the phone", async () => {
-    setNarrow(true);
-    const { findByTestId, queryByTestId } = view(true);
-    await findByTestId("ps-export-card");
-    expect(queryByTestId("ps-export-mobile")).toBeNull();
-  });
-
-  it("desktop + ADMIN → Export card SHOWN (web unchanged)", async () => {
-    setNarrow(false);
-    const { findByTestId, queryByTestId } = view(true);
-    await findByTestId("ps-export-card");
-    expect(queryByTestId("ps-export-mobile")).toBeNull();
+  it("Cancel in the dialog keeps it OFF (no Export card)", async () => {
+    win.Capacitor = {};
+    const { findByTestId, getByTestId, queryByTestId } = view();
+    fireEvent.click(await findByTestId("ps-export-switch-toggle"));
+    await findByTestId("ps-enablephone-body");
+    fireEvent.click(getByTestId("ps-confirm-cancel"));
+    expect(queryByTestId("ps-export-card")).toBeNull();
+    expect(getByTestId("ps-export-switch-toggle").getAttribute("aria-pressed")).toBe("false");
   });
 });
