@@ -15,7 +15,8 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 import {
   stickerDrawOps, emitTextTspl, rasterizeToBitmapTspl, renderStickerBitmap,
-  bytesToBase64, INK_IS_ZERO, STICKER_LAYOUTS, translitCp,
+  bytesToBase64, INK_IS_ZERO, STICKER_LAYOUTS, translitCp, qrModuleDots,
+  QR_MODULE_DOTS, QR_MODULE_DOTS_SMALL,
   type RasterPayload, type GlyphAtlas, type RasterAtlases,
 } from "../stickerRaster";
 import { LATIN_ATLAS } from "../glyphAtlas.latin";
@@ -370,5 +371,11 @@ describe("renderStickerBitmap — buyer @username QR (bottom-right)", () => {
   });
   it("toggle ON → appears on the small 60x40 label too (fits within bounds)", () => {
     expect(corner(renderStickerBitmap(qrOn(), 60, 40, ATLASES))).toBeGreaterThan(150);
+  });
+  it("module scale: 3 dots/module on 60×40 only, 4 on every larger size", () => {
+    expect(qrModuleDots(40)).toBe(QR_MODULE_DOTS_SMALL); // 60×40
+    expect(QR_MODULE_DOTS_SMALL).toBe(3);
+    for (const h of [50, 60]) expect(qrModuleDots(h)).toBe(QR_MODULE_DOTS); // 70×50/80×50/*×60
+    expect(QR_MODULE_DOTS).toBe(4);
   });
 });

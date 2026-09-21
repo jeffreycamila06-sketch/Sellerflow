@@ -30,6 +30,7 @@ export interface GlyphAtlas { [fontKey: string]: GlyphFont }
 // LZO1X-1 for the SDK-format image stream (MIT, pure TS, zero deps).
 import { lzo1xCompress } from "lzo1x";
 import { qrMatrix } from "../../lib/qr";
+import { tiktokProfileUrl } from "../../lib/tiktokHandle";
 
 // TSPL BITMAP polarity. TSPL standard + the owner's probe photo (black bar at the
 // 0x00 top half) => an INK dot is bit 0, white is bit 1. Single flip point.
@@ -440,29 +441,37 @@ export function renderStickerBitmap(payload: RasterPayload, wMm: number, hMm: nu
   const { ops, wDots, hDots } = stickerDrawOps(payload, wMm, hMm, mode);
   const bmp = new Bitmap(wDots, hDots);
   paint(bmp, ops, atlases);
-  stampHandleQr(bmp, payload); // BITMAP-ONLY (emitTextTspl/native builders never see it)
+  stampHandleQr(bmp, payload, hMm); // BITMAP-ONLY (emitTextTspl/native builders never see it)
   return { buf: bmp.buf, w: bmp.w, h: bmp.h, rowBytes: bmp.rowBytes };
 }
 
-// ── Buyer @username QR (bitmap path only) ────────────────────────────────────
-// The handle is purged from the free-tier DB, so it must live on the printed label:
-// a QR of the @username ONLY, so Parcel Scan can read it back off the sticker. Stamped
-// bottom-right; a CLEARED footprint guarantees the 4-module quiet zone regardless of
-// underlying content. ≥4 dots/module + ECC Q → reliable thermal scanning (203 dpi).
-// TEXT-path prints (old binaries / Classic mode) never call this → they simply carry no
-// QR (graceful). Gated on the same @username print toggle + a non-blank handle.
-export const QR_MODULE_DOTS = 4;
+// ── Buyer TikTok-profile QR (bitmap path only) ───────────────────────────────
+// The handle is purged from the free-tier DB, so it rides the printed label. ONE QR
+// serves two roles: SFL Parcel Scan reads the @username back off it, AND a plain phone
+// camera opens the buyer's TikTok profile (details staff message the receipt). Payload =
+// https://tiktok.com/@<handle> (the shortest URL cameras + TikTok both accept). ECC M
+// (not Q) keeps a typical ≤37-byte URL at QR v3 (29 modules). Stamped bottom-right; a
+// CLEARED footprint guarantees the 4-module quiet zone. 4 dots/module (≈14.5 mm symbol at
+// 203 dpi) on 80×60 and larger; 3 dots/module on 60×40 ONLY (4 crowds the small label).
+// TEXT-path prints (old binaries / Classic mode) never call this → they carry no QR.
+// Gated on the same @username print toggle + a non-blank handle.
+export const QR_MODULE_DOTS = 4;        // dots/module on 80×60 and larger
+export const QR_MODULE_DOTS_SMALL = 3;  // dots/module on 60×40 only
 export const QR_QUIET_MODULES = 4;
 export const QR_EDGE_MARGIN_DOTS = 8;
-function stampHandleQr(bmp: Bitmap, payload: RasterPayload): void {
+// 60×40 is the only ≤40 mm-tall label → give it the smaller module; every larger size 4.
+export function qrModuleDots(hMm: number): number { return hMm <= 40 ? QR_MODULE_DOTS_SMALL : QR_MODULE_DOTS; }
+function stampHandleQr(bmp: Bitmap, payload: RasterPayload, hMm: number): void {
   if (!payload.settings || payload.settings.printStickerQr !== true) return; // per-device toggle, DEFAULT OFF
   if (payload.settings.printBuyerUsername === false) return; // also follows the @username toggle
   const handle = payload.buyer?.handle ? String(payload.buyer.handle).trim() : "";
   if (!handle) return; // blank → no QR
-  const m = qrMatrix(handle, "Q");
+  const url = tiktokProfileUrl(handle);
+  if (!url) return;
+  const m = qrMatrix(url, "M"); // ECC M keeps the ≤37-byte URL at QR v3 (29 modules)
   if (!m) return;
   const n = m.length;
-  const scale = QR_MODULE_DOTS;
+  const scale = qrModuleDots(hMm);
   const foot = (n + QR_QUIET_MODULES * 2) * scale;
   let x0 = bmp.w - foot - QR_EDGE_MARGIN_DOTS; if (x0 < 0) x0 = 0;
   let y0 = bmp.h - foot - QR_EDGE_MARGIN_DOTS; if (y0 < 0) y0 = 0;
@@ -477,7 +486,7 @@ export function rasterizeToBitmapTspl(payload: RasterPayload, wMm: number, hMm: 
   const { ops, wDots, hDots } = stickerDrawOps(payload, wMm, hMm);
   const bmp = new Bitmap(wDots, hDots);
   paint(bmp, ops, atlases);
-  stampHandleQr(bmp, payload); // keep the band path == renderStickerBitmap (LOSSLESS invariant)
+  stampHandleQr(bmp, payload, hMm); // keep the band path == renderStickerBitmap (LOSSLESS invariant)
 
   const out: number[] = [];
   const line = (s: string) => { out.push(...asciiBytes(s), ...CRLF); };

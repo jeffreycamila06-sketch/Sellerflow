@@ -24,6 +24,7 @@ import { TELEGRAM_URL } from "../../lib/telegram";
 import { cameraSupported, captureConstraints, triggerHaptic, stopStream, getUserMediaErrorName } from "../adapters/camera";
 import { useWakeLock } from "../adapters/useWakeLock";
 import { decodeQrFromFile } from "../adapters/qrDecode";
+import { handleFromQrPayload } from "../../lib/tiktokHandle";
 import CustomerDetails from "./CustomerDetails";
 
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
@@ -658,9 +659,10 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     setQrBusy(true);
     try {
       const decoded = await decodeQrFromFile(file);
-      if (decoded && decoded.trim()) {
-        F({ notes: decoded.slice(0, 50) }); // verbatim (capped to the field max)
-        setNoHandle(false);                 // text present → "no handle" can't be true (rule 4)
+      const handle = decoded ? handleFromQrPayload(decoded) : null; // bare @username OR a tiktok.com/@handle URL
+      if (handle) {
+        F({ notes: handle.slice(0, 50) }); // handle only (never a raw URL / random QR)
+        setNoHandle(false);                // text present → "no handle" can't be true (rule 4)
         setToast(t.rd_ps2_qr_filled); setTimeout(() => setToast(""), 2500);
       } else {
         setToast(t.rd_ps2_qr_none); setTimeout(() => setToast(""), 2500); // field left as-is

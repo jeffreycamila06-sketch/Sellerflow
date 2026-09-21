@@ -45,15 +45,33 @@ describe("Parcel Scan — Scan QR → auto-fill @username", () => {
     expect(r.getByTestId("ps-scan-qr")).toBeTruthy();
   });
 
-  it("a decoded QR fills the handle field VERBATIM (and un-ticks 'no handle')", async () => {
-    decodeQrFromFile.mockResolvedValue("Ashley102031(IG)");
+  it("a bare-handle QR (old sticker) fills the handle field (and un-ticks 'no handle')", async () => {
+    decodeQrFromFile.mockResolvedValue("Ashley102031");
     const r = view();
     fireEvent.click(await r.findByTestId("ps-manual"));
     fireEvent.click(r.getByTestId("ps-no-handle"));                    // start with the escape hatch on
     expect((r.getByTestId("ps-no-handle") as HTMLInputElement).checked).toBe(true);
     pickQr(r);
-    await waitFor(() => expect((r.getByTestId("ps-notes") as HTMLInputElement).value).toBe("Ashley102031(IG)"));
+    await waitFor(() => expect((r.getByTestId("ps-notes") as HTMLInputElement).value).toBe("Ashley102031"));
     expect((r.getByTestId("ps-no-handle") as HTMLInputElement).checked).toBe(false); // text present → box off
+  });
+
+  it("a TikTok profile URL QR (new sticker) fills just the @username", async () => {
+    decodeQrFromFile.mockResolvedValue("https://tiktok.com/@Zona.nyaman1933");
+    const r = view();
+    fireEvent.click(await r.findByTestId("ps-manual"));
+    pickQr(r);
+    await waitFor(() => expect((r.getByTestId("ps-notes") as HTMLInputElement).value).toBe("Zona.nyaman1933"));
+  });
+
+  it("a non-TikTok / random QR is REJECTED → the handle field is left untouched", async () => {
+    decodeQrFromFile.mockResolvedValue("https://youtube.com/@someone");
+    const r = view();
+    fireEvent.click(await r.findByTestId("ps-manual"));
+    fireEvent.change(r.getByTestId("ps-notes"), { target: { value: "typed_by_hand" } });
+    pickQr(r);
+    await waitFor(() => expect(decodeQrFromFile).toHaveBeenCalledTimes(1));
+    expect((r.getByTestId("ps-notes") as HTMLInputElement).value).toBe("typed_by_hand"); // unchanged
   });
 
   it("no QR found → the handle field is left UNTOUCHED (type / 'no handle' rules unchanged)", async () => {
