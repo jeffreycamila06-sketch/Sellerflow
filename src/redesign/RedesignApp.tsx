@@ -1501,7 +1501,7 @@ export default function RedesignApp() {
           {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} buyers={liveSession.session.buyers} storeName={auth.profile?.profile.storeName || "SellerFlowLive"} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
           {screen === "sales" && <SalesReport cur={cur} sales={sales} onExport={exportSales} hist={salesHist} byHour={salesByHour} enabled={authed} />}
           {screen === "shipping" && <Shipping cur={cur} buyers={liveSession.session.buyers} sessionKey={sessionKeyFor(liveSession.dayId, sessionWindow.windowStart, sessionWindow.windowDays)} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}
-          {screen === "parcelscan" && parcelAllowed && <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} isAdmin={isAdmin} />}
+          {screen === "parcelscan" && parcelAllowed && <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} />}
           {screen === "customerdetails" && parcelAllowed && <CustomerDetails cur={cur} />}
           {screen === "parceltracking" && parcelTrackingAllowed && <ParcelTracking />}
           {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} cur={cur} customers={customersData.state === "live" ? customersData.customers : []} onExport={customersData.state === "live" ? exportCustomers : undefined} />}

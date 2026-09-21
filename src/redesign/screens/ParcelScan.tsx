@@ -33,6 +33,15 @@ const errTxt: CSSProperties = { fontSize: 10.5, fontWeight: 600, color: "var(--d
 const warnTxt: CSSProperties = { fontSize: 10.5, fontWeight: 600, color: "var(--warn, #b45309)", marginTop: 3 };
 const lowConfBorder = "1.5px solid var(--warn, #f59e0b)";
 
+// Per-device "Export on this phone" switch. DEFAULT OFF (same localStorage-per-device
+// pattern as the Print QR toggle). Laptop-export sellers never turn it on → the phone
+// never shows Export; phone-only sellers enable it once (behind a confirm dialog). The
+// export MARKER is server-side (parcel_scans.status='exported'), so a phone export
+// removes those rows from the laptop export too — hence the deliberate off-by-default.
+const LS_PHONE_EXPORT = "sfl_rd_parcel_export_phone";
+const readPhoneExport = (): boolean => { try { return localStorage.getItem(LS_PHONE_EXPORT) === "1"; } catch { return false; } };
+const writePhoneExport = (on: boolean): void => { try { if (on) localStorage.setItem(LS_PHONE_EXPORT, "1"); else localStorage.removeItem(LS_PHONE_EXPORT); } catch { /* ignore */ } };
+
 type Phase = "idle" | "scanning" | "confirm" | "error";
 
 type FormState = ScanFormState;
@@ -100,7 +109,7 @@ const reasonKey = (r: ExportReason): ReasonKey =>
 // manualOnly = a paying (non-admin) seller: hide the camera / AI-scan / credits
 // surface entirely (not just disable) and show manual encode + an "AI … coming
 // soon" line. Admins (manualOnly=false) get the full scan surface, no soon line.
-export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = false, isAdmin = false }: { cur?: string; storeName?: string; manualOnly?: boolean; isAdmin?: boolean }) {
+export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = false }: { cur?: string; storeName?: string; manualOnly?: boolean }) {
   const t = useT();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const qrRef = useRef<HTMLInputElement | null>(null);   // "Scan QR" photo input (decodes the buyer @username off the SFL sticker)
@@ -144,7 +153,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const [tab, setTab] = useState<"all" | "wrong" | "full" | "restricted">("all");
   // Delete (Change 3): a pending confirmation + await/error state. Never fires
   // a delete without the confirm; a failed delete surfaces inline, no silent no-op.
-  const [confirm, setConfirm] = useState<{ kind: "row"; id: string } | { kind: "recheck"; id: string } | { kind: "exported" } | { kind: "export" } | { kind: "undo" } | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: "row"; id: string } | { kind: "recheck"; id: string } | { kind: "exported" } | { kind: "export" } | { kind: "undo" } | { kind: "enablephone" } | null>(null);
   // FIX 5 — the most recent export run (batch id + the row ids it exported), so
   // an accidental export can be undone (rows → 'confirmed', back in the ready
   // list). Session-only: cleared on undo or another export; not restored across
@@ -155,9 +164,10 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // Export on the phone: sellers with no laptop/printer MUST export on the phone,
   // upload to 賣貨便 in the phone browser, then print at 7-11 ibon via OPEN POINT.
   // The mobile download uses the Web Share API (deliverXlsm preferShare) — no native
-  // plugin, works in WKWebView/Android WebView. Re-enabled on the app shell / narrow
-  // viewport for ADMIN first (real-download testing); non-admin stays hidden for now
-  // (a mis-tap marks rows exported → they vanish from the laptop file). Re-check on
+  // plugin, works in WKWebView/Android WebView. On the app shell / narrow viewport the
+  // Export card is gated behind a per-device switch (DEFAULT OFF) — laptop-export
+  // sellers keep it OFF so the phone never shows Export (a mis-tap marks rows exported →
+  // they vanish from the laptop file); phone-only sellers turn it on once. Re-check on
   // resize so a desktop user narrowing the window updates.
   const [narrow, setNarrow] = useState(() => isNarrowViewport());
   useEffect(() => {
@@ -166,7 +176,11 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     return () => window.removeEventListener("resize", onResize);
   }, []);
   const onMobile = isAppShell() || narrow;
-  const exportHidden = onMobile && !isAdmin;
+  const [phoneExport, setPhoneExport] = useState(() => readPhoneExport());
+  const enablePhoneExport = () => { writePhoneExport(true); setPhoneExport(true); setConfirm(null); };
+  const disablePhoneExport = () => { writePhoneExport(false); setPhoneExport(false); };
+  // Desktop (web/laptop) → always shown, byte-unchanged. Mobile → only when the switch is ON.
+  const exportHidden = onMobile && !phoneExport;
   const [deleting, setDeleting] = useState(false);
   const [deleteErr, setDeleteErr] = useState("");
   // Feature 3: per-row EDIT — reuses the confirm form, pre-filled, updates the
@@ -944,14 +958,28 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
           </div>
         )}
 
-        {/* 賣貨便 訂單匯入 Excel export — LAPTOP-ONLY. On the app shell / a narrow
-            mobile viewport the whole card is hidden (no toggle, no way in) and a
-            one-liner points the seller to their computer. */}
-        {exportHidden ? (
-          <div style={card} data-testid="ps-export-mobile">
-            <div style={{ fontSize: 12, color: "var(--text-dim)", fontWeight: 700 }}>{t.rd_ps2_x_desktop_only}</div>
+        {/* 賣貨便 訂單匯入 Excel export. On the phone (app shell / narrow viewport) the
+            Export card is gated behind a per-device switch (DEFAULT OFF): laptop-export
+            sellers keep it OFF (a phone export marks rows exported → they drop from the
+            laptop export); phone-only sellers turn it on once, behind a confirm dialog.
+            Desktop always shows the card (web/laptop unchanged). */}
+        {onMobile && (
+          <div style={{ ...card, display: "flex", alignItems: "center", gap: 12 }} data-testid="ps-export-switch">
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text)" }}>{t.rd_ps2_phx_switch}</div>
+              <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 3, lineHeight: 1.45 }}>{t.rd_ps2_phx_switch_sub}</div>
+            </div>
+            <button
+              aria-pressed={phoneExport}
+              data-testid="ps-export-switch-toggle"
+              onClick={() => { if (phoneExport) disablePhoneExport(); else setConfirm({ kind: "enablephone" }); }}
+              style={{ width: 52, height: 30, borderRadius: 15, border: "none", cursor: "pointer", flexShrink: 0, position: "relative", background: phoneExport ? "var(--accent)" : "var(--surface-2)", boxShadow: phoneExport ? "0 3px 10px var(--accent-soft)" : "inset 0 0 0 1px var(--border-strong)", transition: "background .15s" }}
+            >
+              <span style={{ position: "absolute", top: 3, left: phoneExport ? 25 : 3, width: 24, height: 24, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,.25)", transition: "left .15s" }} />
+            </button>
           </div>
-        ) : (
+        )}
+        {exportHidden ? null : (
         <div style={card} data-testid="ps-export-card">
           <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 6 }}>{t.rd_ps2_x_title}</div>
           <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 9, lineHeight: 1.5 }}>{t.rd_ps2_x_hint}</div>
@@ -1077,7 +1105,12 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
         <div style={{ position: "fixed", inset: 0, zIndex: 1300, background: "rgba(9,7,24,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom))", boxSizing: "border-box" }} data-testid="ps-confirm-overlay" onClick={() => { if (!deleting) setConfirm(null); }}>
           <div style={{ width: "100%", maxWidth: 440, maxHeight: "100%", overflowY: "auto", background: "var(--surface)", borderRadius: 18, padding: "22px 20px 20px", boxShadow: "0 20px 60px rgba(0,0,0,.4)" }} onClick={(e) => e.stopPropagation()}>
             <div style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.5, color: "var(--text)" }} data-testid="ps-confirm-msg">
-              {confirm.kind === "export"
+              {confirm.kind === "enablephone"
+                ? <>
+                    <div>{t.rd_ps2_phx_title}</div>
+                    <div style={{ fontWeight: 600, fontSize: 12.5, color: "var(--text-dim)", marginTop: 8, lineHeight: 1.55 }} data-testid="ps-enablephone-body">{t.rd_ps2_phx_body}</div>
+                  </>
+                : confirm.kind === "export"
                 ? tpl(t.rd_ps2_x_confirm_q, { n: String(readyCount) })
                 : confirm.kind === "undo"
                   ? tpl(t.rd_ps2_undo_q, { n: String(lastExportBatch?.ids.length ?? 0) })
@@ -1090,7 +1123,9 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
             {deleteErr && <div style={{ ...errTxt, marginTop: 10 }} data-testid="ps-delete-err">{t.rd_ps2_delete_err} <span style={{ fontFamily: mono }}>{deleteErr}</span></div>}
             <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
               <button onClick={() => setConfirm(null)} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13.5, cursor: deleting ? "default" : "pointer" }} data-testid="ps-confirm-cancel">{t.rd_ps2_cancel}</button>
-              {confirm.kind === "export"
+              {confirm.kind === "enablephone"
+                ? <button onClick={enablePhoneExport} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }} data-testid="ps-confirm-enablephone">{t.rd_ps2_phx_go}</button>
+                : confirm.kind === "export"
                 ? <button onClick={() => { setConfirm(null); void runExport(); }} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }} data-testid="ps-confirm-export">📄 {t.rd_ps2_x_confirm_go}</button>
                 : confirm.kind === "undo"
                   ? <button onClick={() => void doUndo()} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }} data-testid="ps-confirm-undo">↩ {t.rd_ps2_undo_go}</button>
