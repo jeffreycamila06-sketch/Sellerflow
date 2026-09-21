@@ -9,9 +9,11 @@
 // enables end_session().
 export const SESSION_V2_EMAILS = ["camilajeffrey1@gmail.com"];
 
-// Fixed session length for the owner "Start Session" button (no picker). 5 = the shipped
-// ceiling (start_session validates 1..5; 8-day purge margin keeps a 3-day buffer).
-export const SESSION_V2_DAYS = 5;
+// Fixed session length for the owner "Start Session" button (no picker). 7 days — the
+// owner trial (2026-09-21); start_session's cap is widened 5→7 (sql/43) and the
+// live_session_orders retention purge raised 8→10 (sql/44) to keep a 3-day buffer
+// (buffer = purge_days − session_length; 10 − 7 = 3).
+export const SESSION_V2_DAYS = 7;
 
 export function sessionV2Enabled(email: string | undefined | null): boolean {
   const e = String(email || "").trim().toLowerCase();

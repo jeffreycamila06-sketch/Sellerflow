@@ -13,8 +13,8 @@ describe("sessionV2Enabled", () => {
     for (const e of ["googletest@gmail.com", "someone@else.com", "", null, undefined])
       expect(sessionV2Enabled(e)).toBe(false);
   });
-  it("the allowlist is exactly the owner + 5-day fixed length", () => {
+  it("the allowlist is exactly the owner + 7-day fixed length", () => {
     expect(SESSION_V2_EMAILS).toEqual(["camilajeffrey1@gmail.com"]);
-    expect(SESSION_V2_DAYS).toBe(5);
+    expect(SESSION_V2_DAYS).toBe(7);
   });
 });

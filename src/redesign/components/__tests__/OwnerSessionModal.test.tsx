@@ -12,9 +12,9 @@ const renderModal = () => {
 };
 
 describe("OwnerSessionModal", () => {
-  it("shows a single 'Start 5-day session' button (no 1–5 day list)", () => {
+  it("shows a single 'Start 7-day session' button (no 1–5 day list)", () => {
     renderModal();
-    expect(screen.getByTestId("owner-session-start").textContent).toBe("Start 5-day session");
+    expect(screen.getByTestId("owner-session-start").textContent).toBe("Start 7-day session");
     expect(screen.queryByTestId("session-pick-1")).toBeNull(); // NOT the picker
     expect(screen.queryByTestId("session-pick-5")).toBeNull();
   });

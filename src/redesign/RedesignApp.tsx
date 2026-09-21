@@ -48,6 +48,7 @@ import { useSessionInstance } from "./adapters/useSessionInstance";
 import { sessionEndLabel } from "./adapters/sessionEnd";
 import SessionPickerModal from "./components/SessionPickerModal";
 import OwnerSessionModal from "./components/OwnerSessionModal";
+import EndSessionConfirm from "./components/EndSessionConfirm";
 import { sessionV2Enabled, SESSION_V2_DAYS } from "./adapters/sessionV2";
 import { buildBasketCounts } from "./adapters/basketCounts";
 import { buildMinerRiskMap } from "./adapters/minerRisk";
@@ -238,6 +239,7 @@ export default function RedesignApp() {
   // Session V2 (owner-only): the "Start Session (5-day)" modal replaces the 1–5 picker.
   const sessionV2 = sessionV2Enabled(auth.profile?.email);
   const [ownerStart, setOwnerStart] = useState<{ platform: Platform; acct: string } | null>(null);
+  const [endConfirm, setEndConfirm] = useState(false); // owner "End session?" confirm dialog
   // Orders search 7-day history (LAZY — fetches on the first search only,
   // once per open; display-only lane, structurally isolated from liveSession).
   const ordersHistory = useOrdersHistory(authed, liveSession.dayId, sessionWindow.windowStart, sessionWindow.windowDays);
@@ -979,10 +981,11 @@ export default function RedesignApp() {
     liveSession.reset();
     void performConnect(pending.platform, pending.acct);
   };
-  // Owner "End Session" → end_session() (nulls current_session_id + stamps
-  // session_ended_at). Clears the board so the next Start begins at #1. Owner-gated
-  // caller only; no other seller reaches this.
-  const onEndSession = async () => {
+  // Owner "End Session" → confirm dialog FIRST; only Confirm runs end_session()
+  // (nulls current_session_id + stamps session_ended_at) → board clears to day-view
+  // (Option A) → toast. Owner-gated caller only; no other seller reaches this.
+  const doEndSession = async () => {
+    setEndConfirm(false);
     const ok = await sessionInstance.endSession();
     if (!ok) { setToast({ msg: tApp.rd_os_end_failed, kind: "err" }); return; }
     liveSession.reset();
@@ -1385,7 +1388,7 @@ export default function RedesignApp() {
               /* Session V2 (owner only) — "End Session" control next to the indicator.
                  Non-owner: sessionV2Owner=false → Dashboard renders nothing extra. */
               sessionV2Owner={sessionV2}
-              onEndSession={sessionV2 ? () => void onEndSession() : undefined}
+              onEndSession={sessionV2 ? () => setEndConfirm(true) : undefined}
               onConnectTT={() => void doConnect("TikTok")}
               onRefreshTT={() => void refreshDashboard()} refreshing={refreshing}
               ttAccounts={ttAccounts} fbAccounts={fbAccounts}
@@ -1556,9 +1559,13 @@ export default function RedesignApp() {
         {pickerConnect && (
           <SessionPickerModal onPick={(n) => void onPickSessionLength(n)} onCancel={() => setPickerConnect(null)} />
         )}
-        {/* Session V2 (owner only) — fixed 5-day "Start Session" in place of the picker. */}
+        {/* Session V2 (owner only) — fixed 7-day "Start Session" in place of the picker. */}
         {ownerStart && (
           <OwnerSessionModal onStart={() => void onOwnerStart()} onCancel={() => setOwnerStart(null)} />
+        )}
+        {/* Session V2 (owner only) — "End session?" confirm; Confirm → end_session(). */}
+        {endConfirm && (
+          <EndSessionConfirm onConfirm={() => void doEndSession()} onCancel={() => setEndConfirm(false)} />
         )}
 
         {/* Phase 5f — free-tier cap popup (near / hard). iOS: neutral Contact-Support

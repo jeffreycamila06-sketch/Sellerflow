@@ -8,6 +8,7 @@ import { join } from "node:path";
 
 const sql = readFileSync(join(__dirname, "../../../../sql/43_session_end.sql"), "utf-8");
 const norm = sql.replace(/\s+/g, " ").toLowerCase();
+const retention = readFileSync(join(__dirname, "../../../../sql/44_live_session_retention_10day.sql"), "utf-8").replace(/\s+/g, " ").toLowerCase();
 
 describe("sql/43 — session end migration contract", () => {
   it("STEP 1: adds session_ended_at as an additive nullable column (no default, no backfill)", () => {
@@ -33,5 +34,20 @@ describe("sql/43 — session end migration contract", () => {
     expect(norm).toMatch(/c\.session_window_days is not null/);
     expect(norm).toMatch(/\(now\(\) at time zone 'asia\/taipei'\)::date\s*<=\s*\(c\.session_started_at at time zone 'asia\/taipei'\)::date\s*\+\s*\(c\.session_window_days - 1\)/);
     expect(norm).toMatch(/where c\.user_id = \(select auth\.uid\(\)\)/);
+  });
+
+  it("STEP 4: start_session cap widened 5 → 7 (additive; 1..5 still valid)", () => {
+    expect(norm).toMatch(/create or replace function public\.start_session\(p_days smallint\)/);
+    expect(norm).toMatch(/p_days < 1 or p_days > 7/);   // new ceiling
+    expect(norm).not.toMatch(/p_days > 5/);              // old ceiling gone from this file
+  });
+});
+
+describe("sql/44 — live_session_orders retention 8 → 10 days (GLOBAL cron)", () => {
+  it("reschedules the SAME fleet-wide purge job to a 10-day cutoff", () => {
+    expect(retention).toMatch(/cron\.schedule\(\s*'purge-old-live-session-orders'/);
+    expect(retention).toMatch(/session_date < \(now\(\) at time zone 'asia\/taipei'\)::date - 10/);
+    expect(retention).not.toMatch(/::date - 8\b/);       // no longer 8
+    expect(retention).toMatch(/global/);                 // the file flags it as fleet-wide
   });
 });

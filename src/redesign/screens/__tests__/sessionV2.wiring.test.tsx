@@ -14,20 +14,25 @@ describe("RedesignApp — Session V2 owner gating (source contract)", () => {
     // owner short-circuits BEFORE setPickerConnect, and returns.
     expect(app).toMatch(/if \(sessionV2\) \{ setOwnerStart\(\{ platform, acct \}\); return; \}\s*\n\s*setPickerConnect\(\{ platform, acct \}\);/);
   });
-  it("owner Start calls start_session(5) via SESSION_V2_DAYS then reset + connect", () => {
+  it("owner Start calls start_session(SESSION_V2_DAYS=7) then reset + connect", () => {
     expect(app).toMatch(/sessionInstance\.startSession\(SESSION_V2_DAYS\)/);
-    const h = app.slice(app.indexOf("const onOwnerStart"), app.indexOf("const onEndSession"));
+    const h = app.slice(app.indexOf("const onOwnerStart"), app.indexOf("const doEndSession"));
     expect(h).toMatch(/liveSession\.reset\(\)/);
     expect(h).toMatch(/performConnect\(pending\.platform, pending\.acct\)/);
   });
-  it("owner End calls endSession() then clears the board", () => {
-    const h = app.slice(app.indexOf("const onEndSession"), app.indexOf("const onEndSession") + 400);
+  it("End button opens the CONFIRM dialog; only doEndSession() actually ends + clears board", () => {
+    // the Dashboard End handler opens the confirm, it does NOT end directly.
+    expect(app).toMatch(/onEndSession=\{sessionV2 \? \(\) => setEndConfirm\(true\) : undefined\}/);
+    const h = app.slice(app.indexOf("const doEndSession"), app.indexOf("const doEndSession") + 400);
+    expect(h).toMatch(/setEndConfirm\(false\)/);
     expect(h).toMatch(/await sessionInstance\.endSession\(\)/);
     expect(h).toMatch(/liveSession\.reset\(\)/);
   });
-  it("Dashboard receives the owner flag + End handler only for the owner", () => {
+  it("EndSessionConfirm renders on endConfirm; Confirm → doEndSession", () => {
+    expect(app).toMatch(/\{endConfirm && \(\s*\n\s*<EndSessionConfirm onConfirm=\{\(\) => void doEndSession\(\)\} onCancel=\{\(\) => setEndConfirm\(false\)\}/);
+  });
+  it("Dashboard receives the owner flag only for the owner", () => {
     expect(app).toMatch(/sessionV2Owner=\{sessionV2\}/);
-    expect(app).toMatch(/onEndSession=\{sessionV2 \? \(\) => void onEndSession\(\) : undefined\}/);
   });
   it("OwnerSessionModal renders on ownerStart, alongside (not replacing) the picker", () => {
     expect(app).toMatch(/\{pickerConnect && \(\s*\n\s*<SessionPickerModal/); // picker path untouched
@@ -35,10 +40,16 @@ describe("RedesignApp — Session V2 owner gating (source contract)", () => {
   });
 });
 
-describe("Dashboard — End Session button visibility (source contract)", () => {
-  it("renders only when sessionV2Owner AND a session is running AND a handler exists", () => {
-    expect(dash).toMatch(/\{sessionV2Owner && sessionEndsAt && onEndSession && \(/);
+describe("Dashboard — owner End button REPLACES the session-ends pill (source contract)", () => {
+  it("owner: red pulsing End button; non-owner: unchanged session-ends/continues pill", () => {
+    // one indicator branch: owner → red End button, else → the existing pill.
+    expect(dash).toMatch(/sessionV2Owner && onEndSession \? \(/);
     expect(dash).toMatch(/data-testid="session-end-btn"/);
+    expect(dash).toMatch(/className="sfl-anim-endpulse"/);      // gentle glow
+    expect(dash).toMatch(/background: "#D64545"/);              // red
+    // the non-owner branches still exist unchanged.
+    expect(dash).toMatch(/data-testid="session-continues"/);
+    expect(dash).toMatch(/data-testid="session-ends"/);
   });
   it("both new props default off → non-owner Dashboard is unchanged", () => {
     expect(dash).toMatch(/sessionV2Owner = false, onEndSession,/);

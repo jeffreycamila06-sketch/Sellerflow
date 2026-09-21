@@ -340,8 +340,16 @@ export default function Dashboard({
               top-right slot. STATIC "Session ends {date}" (server-Taipei) while
               running; "Session continues …" (animated dots) once past the end while
               still live. Nothing when there is no session. */}
+          {/* Session indicator (top-right). Session V2 (owner only): REPLACE the
+              "Session ends {date}" pill with a single RED, gently pulsing "End Session"
+              button (same pill size/radius). Every other seller keeps the unchanged
+              "Session ends {date}" / "continues …" indicator. */}
           {sessionEndsAt && (
-            sessionEnded ? (
+            sessionV2Owner && onEndSession ? (
+              <button data-testid="session-end-btn" onClick={onEndSession} className="sfl-anim-endpulse" style={{ background: "#D64545", border: "none", padding: "6px 10px", borderRadius: 9, fontSize: 12, fontWeight: 800, color: "#fff", whiteSpace: "nowrap", flexShrink: 0, cursor: "pointer" }}>
+                {t.rd_os_end}
+              </button>
+            ) : sessionEnded ? (
               <span data-testid="session-continues" style={{ display: "inline-flex", alignItems: "center", gap: 4, background: "rgba(255,255,255,.18)", padding: "6px 10px", borderRadius: 9, fontSize: 12, fontWeight: 700, color: "var(--on-header)", whiteSpace: "nowrap", flexShrink: 0 }}>
                 {t.rd_ses_continues}
                 <span className="sfl-anim-ellip" aria-hidden="true" style={{ display: "inline-flex", gap: 2, marginLeft: 1 }}><i>.</i><i>.</i><i>.</i></span>
@@ -351,13 +359,6 @@ export default function Dashboard({
                 {tpl(t.rd_ses_ends, { date: sessionEndsAt })}
               </span>
             )
-          )}
-          {/* Session V2 (owner only) — "End Session" next to the indicator, only while a
-              session is running (sessionEndsAt truthy). Non-owner: sessionV2Owner=false. */}
-          {sessionV2Owner && sessionEndsAt && onEndSession && (
-            <button data-testid="session-end-btn" onClick={onEndSession} style={{ background: "rgba(255,255,255,.18)", border: "none", padding: "6px 10px", borderRadius: 9, fontSize: 12, fontWeight: 800, color: "var(--on-header)", whiteSpace: "nowrap", flexShrink: 0, cursor: "pointer" }}>
-              {t.rd_os_end}
-            </button>
           )}
           </div>
         </div>
