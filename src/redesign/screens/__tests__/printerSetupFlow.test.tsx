@@ -96,11 +96,11 @@ describe("PrinterSettings subtitle (task D)", () => {
 
 // ── "Print QR on sticker" toggle: disabled + hint on 60×40, enabled on supported sizes ──
 describe("PrinterSettings sticker-QR toggle vs sticker size", () => {
-  const renderBT = (psSize: string) =>
+  const renderBT = (psSize: string, stickerQrAllowed = true) =>
     render(
       <TProvider lang="en">
         <PrinterSettings onBack={noop} psType="bt" psOut="sticker" onSetPsOut={noop}
-          psSize={psSize} psSizeOpen={false} onTogglePsSize={noop} onPickPsSize={noop} />
+          psSize={psSize} psSizeOpen={false} onTogglePsSize={noop} onPickPsSize={noop} stickerQrAllowed={stickerQrAllowed} />
       </TProvider>,
     );
 
@@ -117,6 +117,22 @@ describe("PrinterSettings sticker-QR toggle vs sticker size", () => {
       expect(screen.getByTestId("ps-sticker-qr-hint").textContent).toBe(t.rd_ps_sticker_qr_desc);
       r.unmount();
     }
+  });
+
+  it("stickerQrAllowed=false (Basic/free) → the toggle is HIDDEN entirely", () => {
+    renderBT("80x60mm", false);
+    expect(screen.queryByTestId("ps-sticker-qr-toggle")).toBeNull();
+    expect(screen.queryByTestId("ps-sticker-qr-hint")).toBeNull();
+  });
+
+  it("default (prop omitted) is HIDDEN — fail-closed", () => {
+    render(
+      <TProvider lang="en">
+        <PrinterSettings onBack={noop} psType="bt" psOut="sticker" onSetPsOut={noop}
+          psSize="80x60mm" psSizeOpen={false} onTogglePsSize={noop} onPickPsSize={noop} />
+      </TProvider>,
+    );
+    expect(screen.queryByTestId("ps-sticker-qr-toggle")).toBeNull();
   });
 });
 

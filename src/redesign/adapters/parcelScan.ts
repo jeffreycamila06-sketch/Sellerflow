@@ -56,6 +56,21 @@ export function canUseParcelManual(
   return isActivePaid({ plan: plan ?? "", planStatus: planStatus ?? "", daysLeft: planDaysLeft(planExpiry, nowMs) });
 }
 
+// STICKER-QR entitlement (2026-09-21) — the "Print QR on sticker" toggle + its print-time
+// stamp are restricted to the SAME PLUS/PRO/MASTER-active tier as manual encode, PLUS
+// admin (so the owner can always test). Reuses canUseParcelManual (PARCEL_MANUAL_TIERS +
+// isActivePaid) — NOT tied to the parcel_manual_enabled kill switch (that gates manual
+// encode only; QR is a printing feature). Fail-closed: a missing/blank plan → false.
+export function canUseStickerQr(
+  role: string | undefined | null,
+  plan: string | undefined | null,
+  planStatus: string | undefined | null,
+  planExpiry: string | undefined | null,
+  nowMs: number = Date.now(),
+): boolean {
+  return isAdminRole(role) || canUseParcelManual(plan, planStatus, planExpiry, nowMs);
+}
+
 // ── KILL SWITCH (2026-09-10) — global admin toggle for seller manual encode ────
 // app_settings 'parcel_manual_enabled'. Lets Jeff open/close seller manual-encode
 // access WITHOUT a deploy. Reuses the appSettings adapter (shipping_default_fee

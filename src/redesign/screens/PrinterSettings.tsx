@@ -24,7 +24,7 @@ const tab = (active: boolean): CSSProperties => ({ flex: 1, padding: "13px 0", b
 
 export default function PrinterSettings({
   onBack, psType, psOut, onSetPsOut, psSize, psSizeOpen, onTogglePsSize, onPickPsSize,
-  cur = "NT$", storeName = "SellerFlowLive", settings, showClassicToggle = false,
+  cur = "NT$", storeName = "SellerFlowLive", settings, showClassicToggle = false, stickerQrAllowed = false,
 }: {
   onBack: () => void;
   psType: "wifi" | "bt";
@@ -32,6 +32,7 @@ export default function PrinterSettings({
   psSize: string; psSizeOpen: boolean; onTogglePsSize: () => void; onPickPsSize: (s: string) => void;
   cur?: string; storeName?: string; settings?: Settings;
   showClassicToggle?: boolean; // admin/test-account only (canUseClassicText) — default HIDDEN
+  stickerQrAllowed?: boolean; // Plus/Pro/Master(+admin) only (canUseStickerQr) — default HIDDEN
 }) {
   const t = useT();
   const wifi = psType === "wifi";
@@ -206,9 +207,12 @@ export default function PrinterSettings({
               </button>
             </div>
             )}
-            {/* "Print QR on sticker" — per-device, DEFAULT OFF, visible to ALL sellers.
-                Adds a QR of the buyer @username to the sticker (bitmap path only) so Parcel
-                Scan can read the handle back off the label. Nothing changes until turned on. */}
+            {/* "Print QR on sticker" — Plus/Pro/Master(+admin) ONLY (stickerQrAllowed);
+                per-device, DEFAULT OFF. Adds a QR of the buyer @username to the sticker
+                (bitmap path only) so Parcel Scan can read the handle back off the label.
+                Basic/free never see it; the print-time gate (setStickerQrEntitled) is the
+                authority regardless of a stored toggle. Nothing changes until turned on. */}
+            {stickerQrAllowed && (
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginTop: 12, display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_ps_sticker_qr}</div>
@@ -225,6 +229,7 @@ export default function PrinterSettings({
                 <span style={{ position: "absolute", top: 3, left: (!qrUnsupportedSize && stickerQr) ? 25 : 3, width: 24, height: 24, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,.25)", transition: "left .15s" }} />
               </button>
             </div>
+            )}
           </div>
         )}
 

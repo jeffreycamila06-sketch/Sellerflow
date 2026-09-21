@@ -101,6 +101,18 @@ export function setStickerQrOn(on: boolean): void {
   try { if (on) localStorage.setItem(LS_STICKER_QR, "1"); else localStorage.removeItem(LS_STICKER_QR); } catch { /* ignore */ }
 }
 
+// TIER ENTITLEMENT (2026-09-21) — the QR is a PLUS/PRO/MASTER(+admin) feature. This module
+// flag is the PRINT-TIME gate: RedesignApp sets it from canUseStickerQr when the profile
+// resolves; the sticker path ANDs it with isStickerQrOn(). DEFAULT false (FAIL-CLOSED) so a
+// stored toggle on a non-entitled account (or before the profile loads) NEVER prints a QR.
+// No plan logic lives here — just the on/off flag (tier decision stays in parcelScan.ts).
+let stickerQrEntitled = false;
+export function setStickerQrEntitled(on: boolean): void { stickerQrEntitled = on === true; }
+export function isStickerQrEntitled(): boolean { return stickerQrEntitled; }
+// The print-time truth: a QR stamps ONLY when the per-device toggle is on AND the account
+// is entitled (Plus/Pro/Master+admin). This is the single gate the sticker path reads.
+export function stickerQrEffective(): boolean { return isStickerQrOn() && stickerQrEntitled; }
+
 // ── buildSlipPayload — the NativePrinterPayload from App.tsx:658-659 ──────────
 export function buildSlipPayload(buyer: Buyer, cur: string, storeName: string, cfg: Settings): NativePrinterPayload {
   const sess = new Date().toLocaleDateString("en-PH", { timeZone: "Asia/Taipei", month: "long", day: "numeric", year: "numeric" });
@@ -340,7 +352,7 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
   // only when the payload actually contains CJK).
   // QR is a bitmap-only concern (the native TSPL text builders can't render it), so
   // the "Print QR on sticker" toggle enters HERE, not in the byte-parity native payload.
-  const qrPayload = { ...payload, settings: { ...payload.settings, printStickerQr: isStickerQrOn() } };
+  const qrPayload = { ...payload, settings: { ...payload.settings, printStickerQr: stickerQrEffective() } };
   const raster = rasterizeToSdkBitmapTspl(qrPayload, payload.labelWidthMm, payload.labelHeightMm, { latin: LATIN_ATLAS, cjk });
   const data = bytesToBase64(raster.bytes);
   const t1 = nowMs();
