@@ -908,6 +908,9 @@ export default function RedesignApp() {
   const [activeSource, setActiveSource] = useState<SourcePlatform>("TikTok");
   // The per-platform connect modal (Option E). Non-null = open for that platform.
   const [liveConnectPlatform, setLiveConnectPlatform] = useState<SourcePlatform | null>(null);
+  // "connect" (Live source → go live) | "manage" (Settings → Channels → edit accounts,
+  // never connects). Set on each open; the modal branches on it.
+  const [liveConnectMode, setLiveConnectMode] = useState<"connect" | "manage">("connect");
   // Platform-switch confirm — carries the full target so Confirm can connect after reset.
   const [switchConfirm, setSwitchConfirm] = useState<LiveConnectTarget | null>(null);
   // Shopee row shows only for the TW market (marketHides bakes in the admin bypass) AND
@@ -949,11 +952,14 @@ export default function RedesignApp() {
   // startSession has exactly 3 sites (picker, owner, confirmSwitch below).
   // Sheet pick → just open the per-platform modal (no session logic here). FB/IG handled
   // inside the sheet (Telegram / disabled).
-  const openLiveConnect = (platform: SourcePlatform) => {
+  const openLiveConnect = (platform: SourcePlatform, mode: "connect" | "manage" = "connect") => {
     setSourceSheetOpen(false);
-    if (!isConnectableSource(platform)) return;
-    setActiveSource(platform);
+    if (platform === "Instagram") return;                    // IG = coming soon (never opens)
+    if (mode === "connect" && !isConnectableSource(platform)) return;
+    if (mode === "connect") setActiveSource(platform);        // manage mode never touches the live source selection
+    setLiveConnectMode(mode);
     setLiveConnectPlatform(platform);
+    void auth.reloadProfile();                                // stale-profile fix: show ALL registered accounts on open
   };
   // Run a target's socket connect once its session is guaranteed (running or just-started).
   const runTargetConnect = (target: LiveConnectTarget) => {
@@ -1576,6 +1582,11 @@ export default function RedesignApp() {
               theme={theme} accent={accent} onSetTheme={setTheme} onSetAccent={setAccent}
               auto={autoControls} account={auth.profile} onSaveProfile={saveProfile}
               onManageChannel={(p) => { setChanBack("settings"); setScreen(p === "tiktok" ? "ttchannels" : "fbchannels"); }}
+              /* Owner-gated (LIVE_SOURCE_EMAILS) compact Channels list → LiveConnectModal
+                 in manage mode. Non-owners fall back to the classic channelRow screens. */
+              channelsV2={liveSourceMode}
+              onOpenChannel={(p) => openLiveConnect(p === "tiktok" ? "TikTok" : p === "facebook" ? "Facebook" : "Shopee", "manage")}
+              channelsInfo={{ ttLive: ttEff && !liveFeed.ttRecovering ? (ttAccounts[ttIdx] || ttAccounts[0] || null) : null, showShopee: showShopeeRow, shopeeName: selectedShop ? (selectedShop.shopName || tApp.rd_shp_shop_name_fallback) : "", shopeeConnected: shopeeEff }}
               lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold}
               lang={lang} onSetLang={setLang} currency={currency} onSetCurrency={setCurrencyExplicit}
               profileOpen={profileOpen} onToggleProfile={() => setProfileOpen((o) => !o)}
@@ -1723,6 +1734,9 @@ export default function RedesignApp() {
           <LiveConnectModal
             platform={liveConnectPlatform}
             onClose={() => setLiveConnectPlatform(null)}
+            mode={liveConnectMode}
+            account={auth.profile}
+            onSaveChannels={saveChannels}
             ttAccounts={ttAccounts}
             ttLiveName={ttEff && !liveFeed.ttRecovering ? (ttAccounts[ttIdx] || ttAccounts[0] || null) : null}
             onUseTikTok={(u) => { const i = ttAccounts.indexOf(u); if (i >= 0) setTtIdx(i); commitLiveConnect({ platform: "TikTok", username: u }); }}

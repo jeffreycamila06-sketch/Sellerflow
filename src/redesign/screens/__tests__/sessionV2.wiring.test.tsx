@@ -12,13 +12,13 @@ const dash = readFileSync(join(__dirname, "../Dashboard.tsx"), "utf-8");
 describe("RedesignApp — Session V2 owner gating (source contract)", () => {
   it("connect flow: owner → OwnerSessionModal (setOwnerStart), NON-owner → the unchanged picker", () => {
     // owner short-circuits BEFORE setPickerConnect, and returns.
-    expect(app).toMatch(/if \(sessionV2\) \{ setOwnerStart\(\{ platform, acct \}\); return; \}\s*\n\s*setPickerConnect\(\{ platform, acct \}\);/);
+    expect(app).toMatch(/if \(sessionV2\) \{ setOwnerStart\(\{ kind: "tt", platform, acct \}\); return; \}\s*\n\s*setPickerConnect\(\{ kind: "tt", platform, acct \}\);/);
   });
   it("owner Start calls start_session(SESSION_V2_DAYS=7) then reset + connect", () => {
     expect(app).toMatch(/sessionInstance\.startSession\(SESSION_V2_DAYS\)/);
     const h = app.slice(app.indexOf("const onOwnerStart"), app.indexOf("const doEndSession"));
     expect(h).toMatch(/liveSession\.reset\(\)/);
-    expect(h).toMatch(/performConnect\(pending\.platform, pending\.acct\)/);
+    expect(h).toMatch(/connectPending\(pending\)/);
   });
   it("End button opens the CONFIRM dialog; only doEndSession() actually ends + clears board", () => {
     // the Dashboard End handler opens the confirm, it does NOT end directly.
