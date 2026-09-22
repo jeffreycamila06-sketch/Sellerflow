@@ -4098,6 +4098,111 @@ quiet AM window; the summary line now carries `capped` + `purged`, confirming it
   `returned`/`at_store`/`picked_up` yet, so the C1 return-path can only be observed on live
   data once a real parcel is returned.
 
+## SESSION 2026-09-22 — PHONE EXPORT · PH/TW MULTI-COUNTRY · CONNECT-FLOW REDESIGN · SESSION SAFETY · 🔴 CONCURRENCY CAP
+Five streams shipped today. Frontend items are LIVE via Vercel (web + APK/iOS thin-shell
+on next open); the concurrency cap is server.js = **MANUAL Render deploy** (DEPLOYED — see
+§5). Each: branch → diff → audit (sacred-zone) → merge. `main` tip after today =
+**`1865040`**.
+
+### 1. PHONE EXPORT — 賣貨便 .xlsm from the phone (sellers with no laptop/printer)
+Re-enabled Parcel Scan **Export** on the phone so a seller with only a phone can encode →
+export → upload, no laptop.
+- **Web Share API path** (merge **`9263f1f`**): `deliverXlsmMobile` shares the built .xlsm
+  via `navigator.share({files})` → the OS share sheet → **Save to Files** (then upload from
+  Files). Desktop path (`deliverXlsm` blob download) unchanged.
+- **iPhone WKWebView fix — Option B** (merge **`ef6f278`**): `navigator.share` needs
+  **transient user activation**, which was lost after `await fetchShipTemplate()` → silent
+  AbortError (rows preserved, nothing happened). Fix: **pre-build the bytes when the export
+  dialog OPENS**, then call `navigator.share` **synchronously** from the tap (non-async);
+  honest **"open in Safari"** fallback when share is unavailable. Verified the rows are NOT
+  consumed on a failed/cancelled share.
+- **Per-device "Export on this phone" switch** (merge **`bd79245`**): DEFAULT **OFF**
+  (`localStorage sfl_rd_parcel_export_phone`), an enable-confirm dialog on first turn-on +
+  a per-export confirm. Keeps the phone-export path opt-in per device (the normal flow is
+  still encode-on-phone → export-on-laptop).
+- ✅ **Full phone-only flow verified:** encode → Export (share → Files) →
+  **myship.7-11.com.tw `訂單匯入`** → OPEN POINT app → ibon. ⚠️ **The .xlsm uploads to the
+  賣貨便 WEBSITE, NOT the OPEN POINT app** (the app is only for the label/pickup step).
+
+### 2. PH/TW MULTI-COUNTRY SEPARATION (per-country features + currency + gated TW-only tools)
+Foundation for serving PH (and others) alongside Taiwan without leaking TW-only features.
+- **`api/geo.ts`** — free **`x-vercel-ip-country`** header read (a Vercel serverless
+  function; **no `vercel.json` needed** on the Vite setup). Used to pre-fill the signup
+  country picker.
+- **DB:** `seller_profiles.country` column (**nullable; NULL = TW = byte-unchanged** for all
+  existing sellers — zero backfill).
+- **Signup** pre-fills the country picker from geo (seller **confirms** — never
+  auto-committed).
+- **`market.ts` resolver** — per-country config: **TW → NT$ / all features**; **PH → ₱**;
+  VN → ₫; TH → ฿; ID → Rp; MY → RM; **others → features off + manual currency**.
+- **3 gates hide TW-only tools for non-TW non-admin:** `parcelScanVisible` /
+  `parcelTrackingVisible` / `canUseStickerQr`. **Admin bypass** + a **"View as market"**
+  switch + an **admin country selector** for testing each market.
+- Merges **`1617b6f`** + **`f590eeb`**. Reserved a **shipping slot for a future PH module**
+  (no PH shipping backend yet).
+
+### 3. CONNECT-FLOW REDESIGN (owner-gated — `LIVE_SOURCE_EMAILS`) — STILL OWNER-ONLY
+Replaced the cramped 3-chip live header with a single clear entry point.
+- **Single "Choose live source" button** → **`LiveSourceSheet`** (TikTok / FB / Shopee / IG,
+  **one active at a time**) → **one consistent `LiveConnectModal` per platform**:
+  no-account = `@username` + Connect + **"Add another"**; has-accounts = list with a **●Live**
+  marker + **"Use"**; **FB = activation gate** (Meta Business Verification pending); **Shopee
+  = authorize**. The sheet **closes on connect**.
+- Merges **`8e35c74`** + **`5e40df8`**. **Shopee owner-preview** via `SHOPEE_PREVIEW_EMAILS`
+  (**`ed96525`**).
+- 🔒 **STILL OWNER-GATED** (`LIVE_SOURCE_EMAILS` = owner only) — **NOT widened to all
+  sellers yet** (widen decision pending).
+
+### 4. SESSION SAFETY for the new connect flow
+The redesigned modal's **Connect / Use routes through `doConnect`'s session-aware path** —
+never a bare `liveFeed.connect`. Behavior: **account switch (same platform) = continue the
+same buyer #**; **platform switch = confirm dialog + new session / reset to #1**;
+**Shopee-first is now session-aware** too.
+- 🔒 **INVARIANT (source-contract-test pinned): EXACTLY 3 `startSession` call sites** — the
+  session picker, the owner path, and `confirmSwitch`. Any 4th site → test red.
+
+### 5. 🔴 PER-SELLER LIVE CONCURRENCY CAP (server-side; the paid-tier bypass fix) — DEPLOYED
+Caps concurrent TikTok **lives** at **`maxAccountsForPlan` per sellerId** (Basic 1 / Plus 2 /
+Pro 3 / Master 5) via **KICK-OLDEST**. Closes the **multi-device + API-scripting tier
+bypass** — the count is **per-sellerId regardless of username**, so a seller can't run more
+concurrent lives than their plan by using different devices/accounts or scripting `/connect`.
+- **Guarantees (all audited + test-pinned):** **admin = no cap**; **unknown/empty plan = no
+  cap** (fail-open — never false-blocks a paying seller on a DB hiccup); **TikTok-only**
+  (Facebook flag + Shopee excluded); **fresh-only count** (event ≤60s → a crashed device
+  self-clears from the count); **Parcel Scan / encode NEVER counted** (a taga-encode is never
+  blocked); **TOCTOU-safe** via a synchronous per-seller reservation set before any await +
+  a per-key connect lock.
+- **Pure core** `server/concurrencyCap.js` (`concurrencyCap`/`freshLiveKeysForSeller`/
+  `capDecision`/`isFreshEntry`) + tests (`concurrencyCap.server.test.ts` behavioral +
+  `concurrencyCap.contract.test.ts` wiring pins); server.js wiring in `connectTikTok`
+  (`isNewKey` gate, reserve-before-await, kick reuses `disconnectTikTokConnection` +
+  `reason:"live_session_ended"`, release in `finally`).
+- **DEPLOYED to Render** (cap merge **`beb76ef`**) + **block-path log** (merge **`1865040`**,
+  log-only) — the block branch now also logs, so both signals are greppable.
+- **📊 MONITOR — grep Render for `[CONCURRENCY]`** (catches both):
+  * `[CONCURRENCY] kick seller=<id> plan=<plan> victim=<key> for new=<username>` — over-cap,
+    oldest live torn down.
+  * `[CONCURRENCY] block seller=<id> plan=<plan> tried=<username> (already at cap)` — the rare
+    **same-instant parallel-race** reject (429 `concurrentLimit`); previously invisible in
+    logs (client toast only), now logged.
+- ✅ **VERIFIED LIVE in production logs (Sep 22):** sellers reconnecting fine through the
+  post-deploy wave; `[PLAN_CHECK] ALLOW` for Pro/Master; **zero legitimate kicks**. DB
+  cross-check at deploy time: ~11–12 sellers actively producing orders (108 orders/15 min) —
+  the reconnect wave did not wrongly kick/block any paying seller (in-memory maps start at 0
+  on the Render restart → every seller's count begins clean; single-account reconnects and
+  within-cap multi-account reconnects are always allowed).
+
+### ⏳ STILL PENDING (carry-over)
+- **Session V2 born-ended fix (`267ac50`)** — LIVE but **owner-gated** (`SESSION_V2_EMAILS`).
+- **Multi-account modal stale-profile refresh** — the "LiveConnectModal shows only 1
+  account" cause is a **stale in-memory profile** (device loaded before the accounts were
+  added; `reloadProfile` only fires on channel save / auth event, not modal open). Proposed
+  fix = reload profile on sheet/modal open (+ optional admin bypass in `maxAcc`) — **pending
+  the close-reopen confirmation test**.
+- **WIDEN decisions pending** for: the connect flow (`LIVE_SOURCE_EMAILS` → all sellers),
+  Session V2 (`SESSION_V2_EMAILS`), the multi-country market rollout, and parcel tracking
+  (`parcelTrackingVisible` still owner + googletest).
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
