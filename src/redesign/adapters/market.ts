@@ -13,11 +13,13 @@ export interface Market {
   currency: string;         // ISO currency (curSymbol maps → NT$/₱/₫/฿/Rp/RM). "" = no
                             //   market default → keep the app default / the seller's pick.
   shippingModule: ShippingModule;
-  features: { parcelScan: boolean; pickupStatus: boolean; stickerQr: boolean };
+  // shopee = the Shopee TW livestream-comment source (Option E Live Source sheet). TW
+  // only; other markets never see the Shopee row even when shopee_enabled is on.
+  features: { parcelScan: boolean; pickupStatus: boolean; stickerQr: boolean; shopee: boolean };
 }
 
-const ALL_OFF = { parcelScan: false, pickupStatus: false, stickerQr: false } as const;
-const TW: Market = { country: "TW", currency: "TWD", shippingModule: "tw-711", features: { parcelScan: true, pickupStatus: true, stickerQr: true } };
+const ALL_OFF = { parcelScan: false, pickupStatus: false, stickerQr: false, shopee: false } as const;
+const TW: Market = { country: "TW", currency: "TWD", shippingModule: "tw-711", features: { parcelScan: true, pickupStatus: true, stickerQr: true, shopee: true } };
 // Non-TW markets: TW-only features hidden. PH has a (future) shipping slot; the rest have
 // none yet. Currencies must exist in data.ts CURRENCIES (curSymbol) — TWD/PHP/VND/THB/IDR/MYR.
 const PH: Market = { country: "PH", currency: "PHP", shippingModule: "ph", features: ALL_OFF };

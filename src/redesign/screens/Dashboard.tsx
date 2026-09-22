@@ -122,6 +122,11 @@ export default function Dashboard({
   shopeeEnabled = false, shopeeShops = [], shopeeOpen = false, onToggleShopee,
   shopeeIdx = 0, onPickShopee, shopeeConnected = false, shopeeConnecting = false,
   onConnectShopee, onManageShopee,
+  // Option E — Live Source single button (owner-gated). When liveSourceMode is on the
+  // 3 chips are REPLACED by one compact button that opens the LiveSourceSheet; off =
+  // the classic 3-chip header, byte-for-byte unchanged.
+  liveSourceMode = false, liveSourcePlatform = "TikTok", liveSourceName = "",
+  liveSourceConnected = false, liveSourceConnecting = false, onOpenSourceSheet,
   // Rule 3 — Auto Mode live inventory indicators (empty when Auto Mode is off).
   autoLowStock = [], autoSoldOut = [], onDismissSoldOut,
   autoBadges = {},
@@ -173,6 +178,13 @@ export default function Dashboard({
   shopeeIdx?: number; onPickShopee?: (i: number) => void;
   shopeeConnected?: boolean; shopeeConnecting?: boolean;
   onConnectShopee?: () => void; onManageShopee?: () => void;
+  // Option E — Live Source single button (owner-gated). liveSourcePlatform/Name drive
+  // the compact button's icon + label; connected/connecting drive its status dot.
+  liveSourceMode?: boolean;
+  liveSourcePlatform?: "TikTok" | "Facebook" | "Shopee" | "Instagram";
+  liveSourceName?: string;
+  liveSourceConnected?: boolean; liveSourceConnecting?: boolean;
+  onOpenSourceSheet?: () => void;
   // Rule 3 — low-stock chips + persistent (dismissible) sold-out banner. Auto codes
   // whose live stock is ≤ threshold / at 0; RedesignApp gates these on Auto Mode ON.
   autoLowStock?: { code: string; productName: string; stock: number }[];
@@ -363,7 +375,25 @@ export default function Dashboard({
           </div>
         </div>
 
-        {/* Account pickers (TikTok / Facebook) with connect/connecting/connected states */}
+        {/* Option E (owner-gated): ONE compact "Live source" button → LiveSourceSheet.
+            Off = the classic 3-chip row below (byte-for-byte unchanged). */}
+        {liveSourceMode ? (() => {
+          const ls = conn(liveSourceConnected, liveSourceConnecting);
+          const ic = liveSourcePlatform === "Facebook" ? { bg: "#1877f2", ch: "f" }
+            : liveSourcePlatform === "Shopee" ? { bg: "#ee4d2d", ch: "S" }
+            : liveSourcePlatform === "Instagram" ? { bg: "#c13584", ch: "IG" }
+            : { bg: "#000", ch: "t" };
+          return (
+            <div style={{ marginTop: 11, position: "relative", zIndex: 6 }}>
+              <button onClick={onOpenSourceSheet} data-testid="livesource-button" style={{ ...pickerBtn, background: ls.chipBg, boxShadow: ls.chipShadow }}>
+                <span className="sfl-anim-heart" style={{ width: 16, height: 16, borderRadius: 5, background: ic.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: ic.ch.length > 1 ? 7 : 9, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{ic.ch}</span>
+                <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{liveSourceName || t.rd_ls_choose}</span>
+                <span className={ls.dotCls} style={{ width: 7, height: 7, borderRadius: "50%", background: ls.dotBg, flexShrink: 0, boxShadow: ls.dotGlow }} />
+                <span style={{ fontSize: 10.5, opacity: 0.85, fontWeight: 700 }}>{t.rd_ls_change}</span>
+              </button>
+            </div>
+          );
+        })() : (
         <div style={{ display: "flex", gap: 8, marginTop: 11, position: "relative", zIndex: 6 }}>
           <div ref={ttWrapRef} style={{ position: "relative", flex: 1 }}>
             <button onClick={onToggleTT} title={ttTitle} style={{ ...pickerBtn, background: tt.chipBg, boxShadow: tt.chipShadow }}>
@@ -451,6 +481,7 @@ export default function Dashboard({
             </div>
           )}
         </div>
+        )}
       </div>
 
       <div style={{ padding: "14px 14px 18px", flex: 1, display: "flex", flexDirection: "column" }}>
