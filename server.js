@@ -13,6 +13,7 @@ import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, re
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
 import { sanitizeCommentPayload } from "./server/sanitize.js";
 import { accountCapVerdict } from "./server/accountCap.js";
+import { concurrencyCap, freshLiveKeysForSeller, capDecision } from "./server/concurrencyCap.js";
 import { fbConnectedNow } from "./server/fbLiveness.js";
 import { formatMemoryLine, memorySnapshot, crashLogLine, shutdownLogLine, MEMORY_LOG_INTERVAL_MS } from "./server/observability.js";
 import { shopeeConfig } from "./server/shopeeConfig.js";
@@ -360,6 +361,11 @@ const tiktokRateLimitCooldowns = new Map();
 const connectAttempts = new Map();
 const tiktokConnectLocks = new Set();
 const manualTikTokDisconnects = new Set();
+// Per-seller concurrency cap (kick-oldest) — keys reserved SYNCHRONOUSLY the moment a
+// NEW-account live connect is admitted, held across the async connect, released in the
+// finally. Counted alongside tiktokConnections so two parallel new-key connects for the
+// same seller can't both slip past the cap (TOCTOU guard). Map<key, {sellerId, startedAt}>.
+const liveConnectReservations = new Map();
 
 // Passive health tracking for /health/tiktok. Ring buffer of the last 20 TikTok
 // connection attempts populated from connectTikTok success and catch branches.
@@ -713,6 +719,10 @@ app.post("/connect/tiktok", requireAuth, requireConnectRate, requirePlanActive, 
   return connectTikTok(req.body.username, res, {
     sellerId: req.sellerId,
     sessionId: req.body.sessionId,
+    // Concurrency cap (server-authoritative plan from requirePlanActive → checkPlanActive;
+    // undefined on a fail-open DB error → concurrencyCap returns null → no cap).
+    plan: req.sellerPlan,
+    role: req.sellerRole,
   });
 });
 
@@ -1480,6 +1490,12 @@ async function connectTikTok(username, res, meta = {}) {
     }
 
     const existing = tiktokConnections.get(key);
+    // Concurrency cap applies ONLY to a genuinely NEW account (no prior entry for this
+    // key). A reuse OR a force-fresh of the SAME key is the same account resuming — it
+    // never raises the distinct-account count, so it's exempt (checked below, gated on
+    // isNewKey). The !existing path is synchronous from here to the cap block (no await),
+    // which keeps the count→reserve critical section race-free.
+    const isNewKey = !existing;
     // STATUS-TRUTH (B2): reuse the existing connection ONLY when it is demonstrably
     // alive (event within CONNECT_REUSE_FRESH_MS). An event-silent connection on an
     // EXPLICIT Connect tap = force a fresh TikTok connection through the normal path
@@ -1588,8 +1604,54 @@ async function connectTikTok(username, res, meta = {}) {
         error: "TikTok connection is already starting. Please wait before trying again.",
       });
     }
-
+    // Acquire the per-KEY lock BEFORE the cap block (has→add is synchronous, no await
+    // between) so a parallel connect to the SAME new account can't slip past into the
+    // kick-await window below. Released in the finally. (The concurrency reservation
+    // below guards the CROSS-account race; this key lock guards the same-account race.)
     tiktokConnectLocks.add(key);
+
+    // ── PER-SELLER CONCURRENCY CAP (kick-oldest) — NEW accounts only. Synchronous
+    // critical section: snapshot → decide → RESERVE (before any await) so parallel
+    // new-key connects for the same seller can't both pass. Admin / unknown-plan →
+    // concurrencyCap returns null → allow (never false-block a paying seller on a DB
+    // hiccup). Only FRESH (≤60s) connections count → a crashed device self-clears.
+    if (isNewKey) {
+      const now = Date.now();
+      const entries = [];
+      for (const [k, e] of tiktokConnections) entries.push({ key: k, sellerId: e.sellerId, startedAt: e.startedAt, lastEventAt: e.lastEventAt });
+      const realFresh = freshLiveKeysForSeller(entries, sellerId, now, key);
+      let reservedCount = 0;
+      for (const [rk, r] of liveConnectReservations) if (rk !== key && String(r.sellerId || "") === sellerId) reservedCount += 1;
+      const decision = capDecision({ realFresh, reservedCount, max: concurrencyCap(meta.plan, meta.role) });
+      if (decision.action === "block") {
+        // Pure parallel race (sibling reservation holds the only slot) — reject this one.
+        return res.status(429).json({
+          success: false,
+          concurrentLimit: true,
+          error: "You're already connecting a live on another device. Please try again.",
+        });
+      }
+      if (decision.action === "kick") {
+        // At cap: tear down the seller's oldest fresh live(s) to make room, then connect
+        // the new one → net concurrency stays at the plan's max. Reuse the existing clean
+        // teardown; emit a terminal gray for each kicked account so its pill (on the other
+        // device) stops showing green. RESERVE FIRST so the awaited teardown can't open a
+        // TOCTOU window. Sacred comment-delivery path untouched.
+        liveConnectReservations.set(key, { sellerId, startedAt: now });
+        for (const victimKey of decision.keys) {
+          const victim = tiktokConnections.get(victimKey);
+          const vUser = victim ? victim.username : "";
+          const vSession = victim ? victim.sessionId : "";
+          console.log(`[CONCURRENCY] kick seller=${sellerId} plan=${meta.plan} victim=${victimKey} for new=${cleanUsername}`);
+          await disconnectTikTokConnection(victimKey, { manual: true });
+          if (vUser) emitTikTokStatus({ sellerId, username: vUser, sessionId: vSession, connected: false, reconnecting: false, reason: "live_session_ended" });
+        }
+      } else {
+        // Under cap → still reserve the slot for the duration of this async connect.
+        liveConnectReservations.set(key, { sellerId, startedAt: now });
+      }
+    }
+
     await disconnectTikTokConnection(key, { manual: true });
     await startTikTokConnection(key, cleanUsername, sellerId, sessionId, { emitStart: true });
 
@@ -1645,6 +1707,7 @@ async function connectTikTok(username, res, meta = {}) {
     });
   } finally {
     if (key) tiktokConnectLocks.delete(key);
+    if (key) liveConnectReservations.delete(key); // release the concurrency reservation (success or failure)
   }
 }
 
