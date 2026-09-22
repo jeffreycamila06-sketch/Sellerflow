@@ -4,7 +4,7 @@
 // handed UP (RedesignApp routes it through the session-aware path) — the modal itself
 // never connects.
 import { describe, it, expect, vi } from "vitest";
-import { render, fireEvent } from "@testing-library/react";
+import { render, fireEvent, waitFor } from "@testing-library/react";
 import { TProvider } from "../../i18n";
 import LiveConnectModal from "../LiveConnectModal";
 import type { AccountUser } from "../../../accountDb";
@@ -89,11 +89,22 @@ describe("LiveConnectModal — manage mode", () => {
     expect(baseElement.textContent).toContain("Manage");        // header prefix, not "Connect" (modal is portaled)
   });
 
-  it("TikTok → the live account shows ● Live; saved slots are locked when cooldowns unknown", () => {
-    const { getByTestId, getAllByTestId } = render(
+  it("Bug 1 / locked-agad — saved slots are LOCKED (non-editable, 🔒) when cooldowns are unknown (fail-closed); no Change; ● Live still shows", () => {
+    const { getByTestId, getAllByTestId, queryByTestId } = render(
       <TProvider><LiveConnectModal platform="TikTok" {...base} mode="manage" ttLiveName="a" account={acct("a\nb")} onSaveChannels={vi.fn()} /></TProvider>);
-    expect(getByTestId("cm-live")).toBeTruthy();                // "a" is live
-    expect(getAllByTestId("cm-locked").length).toBeGreaterThan(0); // fail-closed lock (no supabase)
+    expect(getByTestId("cm-live")).toBeTruthy();                 // "a" is live
+    expect(getAllByTestId("cm-locked").length).toBeGreaterThan(0); // fail-closed 🔒 lock badge
+    expect(queryByTestId("cm-edit")).toBeNull();                 // NOT freely editable when locked
+    expect(queryByTestId("cm-change")).toBeNull();               // fail-closed → NO self-service Change (can't verify cooldown)
+  });
+
+  it("Bug 2 — at the plan cap the Add row stays VISIBLE as a disabled upgrade hook (not hidden)", () => {
+    const { getByTestId, queryByTestId } = render(
+      <TProvider><LiveConnectModal platform="TikTok" {...base} mode="manage" account={acct("a\nb", "", "plus")} onSaveChannels={vi.fn()} /></TProvider>);
+    // plus cap 2, 2 saved → at cap: the cap hint shows, the add flow does NOT.
+    expect(getByTestId("cm-cap")).toBeTruthy();
+    expect(queryByTestId("cm-add")).toBeNull();
+    expect(queryByTestId("cm-add-input")).toBeNull();
   });
 
   it("TikTok with room under the cap → an Add-another input to register a new account", () => {
@@ -103,6 +114,19 @@ describe("LiveConnectModal — manage mode", () => {
     expect(getByTestId("cm-add")).toBeTruthy();
     fireEvent.click(getByTestId("cm-add"));
     expect(getByTestId("cm-add-input")).toBeTruthy();
+  });
+
+  it("Bug 3 — a SUCCESSFUL save closes the modal (calls onSaved)", async () => {
+    const onSaveChannels = vi.fn().mockResolvedValue({ ok: true });
+    const onSaved = vi.fn();
+    // Render ChannelManageBody through the modal; onSaved is wired to onClose in prod.
+    const { getByTestId } = render(
+      <TProvider><LiveConnectModal platform="TikTok" {...base} mode="manage" account={acct("a", "", "master")} onSaveChannels={onSaveChannels} onClose={onSaved} /></TProvider>);
+    fireEvent.click(getByTestId("cm-add"));
+    fireEvent.change(getByTestId("cm-add-input"), { target: { value: "newacct" } });
+    fireEvent.click(getByTestId("cm-save"));
+    await waitFor(() => expect(onSaveChannels).toHaveBeenCalled());
+    await waitFor(() => expect(onSaved).toHaveBeenCalled()); // success → modal closes
   });
 
   it("Shopee → shop list + Authorize another (no session/connect UI)", () => {

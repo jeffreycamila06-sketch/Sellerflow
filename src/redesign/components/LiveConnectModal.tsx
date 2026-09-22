@@ -112,7 +112,7 @@ export default function LiveConnectModal({
   // → the shared account editor; Shopee → shop list + Authorize (no session/connect);
   // Instagram → coming soon.
   const manage = platform === "TikTok" || platform === "Facebook" ? (
-    <ChannelManageBody platform={platform === "TikTok" ? "tiktok" : "facebook"} account={account} onSaveChannels={onSaveChannels} ttLiveName={ttLiveName} />
+    <ChannelManageBody platform={platform === "TikTok" ? "tiktok" : "facebook"} account={account} onSaveChannels={onSaveChannels} ttLiveName={ttLiveName} onSaved={onClose} />
   ) : platform === "Shopee" ? (
     shopeeShops.length === 0 ? (
       <button onClick={onAuthorizeShopee} style={primary} data-testid="cm-shopee-authorize">{t.rd_shp_authorize}</button>

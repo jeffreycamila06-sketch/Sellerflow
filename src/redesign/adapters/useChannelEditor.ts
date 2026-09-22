@@ -1,20 +1,30 @@
 // Shared Channels editor logic — the SINGLE source of the plan-capped, 4h-cooldown
-// account save. Extracted VERBATIM from ManageChannels (its lines 39–132) so the
-// full-screen editor AND the new compact manage-mode modal drive one implementation
-// (no forked security path). Behavior is byte-identical; only the RENDER differs
-// per consumer. Guarded by the existing ManageChannels + cooldown test suites.
+// account save. Consumed by the full-screen ManageChannels AND the compact manage-mode
+// LiveConnectModal (no forked security path). Behavior is identical in both; only the
+// RENDER differs. Guarded by the ManageChannels + cooldown test suites.
 //
-// ⚠️ Account writes still go through onSaveChannels → composeChannelSave
-// (keepLockedAccounts + fitProfileAccounts + admin bypass) and touchSlot for each
-// server-verified cooldown unlock — this hook never writes accounts directly.
+// LOCKED-AGAD model (2026-09-23): saved handles are LOCKED on open. Editing a saved
+// handle is a DELIBERATE two-step: tap "Change" (unlock this slot, client-side) → edit →
+// Save. "Change" is offered ONLY for a slot that is not cooling (≥4h since its last
+// change / never changed) once the cooldown is loaded; admins are always editable.
+//
+// ⚠️ ANTI-ABUSE: "Change" is a UI reveal ONLY. The real 4h gate is server-side —
+// save() calls touchSlot(field,i) for every changed saved slot and the server RAISES
+// 'cooldown_active' (<4h, non-admin) → save aborts, NOTHING persisted. A tampered client
+// that force-unlocks a cooling slot still cannot rotate: the server is the gate. Account
+// writes go through onSaveChannels → composeChannelSave (keepLockedAccounts +
+// fitProfileAccounts + admin bypass); this hook never writes accounts directly.
 import { useEffect, useState } from "react";
 import { accountSlots, accountList, accountText, maxAcc } from "./connect";
-import { fetchSlotCooldowns, touchSlot, slotLockState, slotKey, WINDOW_MS, type SlotCooldowns } from "./tiktokCooldown";
+import { fetchSlotCooldowns, touchSlot, slotLockState, slotKey, type SlotCooldowns } from "./tiktokCooldown";
 import { isAdminRole } from "../../lib/roles";
 import type { AccountUser } from "../../accountDb";
 import { useT } from "../i18n";
 
-export type SavedSlotView = { editable: boolean; note: "cooling" | "window" | "telegram"; unlockMs: number };
+// note: "cooling" = locked with an "Unlock in Xh Ym" countdown (<4h); "locked" = locked,
+// show a "Change" button when canChange (≥4h / never changed, cooldown loaded), else a
+// bare 🔒 (admin-bypassed OR fail-closed); "unlocked" = editable input now.
+export type SavedSlotView = { editable: boolean; note: "cooling" | "locked" | "unlocked"; unlockMs: number; canChange: boolean };
 export type ChannelSaveFn = (lists: { tiktok: string; facebook: string }, opts?: { unlocked?: { tiktok?: number[]; facebook?: number[] } }) => Promise<{ ok: boolean; error?: string }>;
 
 export function useChannelEditor(account: AccountUser | null | undefined, platform: "tiktok" | "facebook", onSaveChannels?: ChannelSaveFn) {
@@ -29,24 +39,26 @@ export function useChannelEditor(account: AccountUser | null | undefined, platfo
   const [slots, setSlots] = useState<string[]>(orig);
   const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [err, setErr] = useState("");
-  // cooldown null = NOT loaded → FAIL CLOSED (saved slots stay locked). openedAt = server
-  // ms the 5-min self-service window opened.
+  // cooldown null = NOT loaded → FAIL CLOSED (saved slots stay locked, no Change).
   const [cooldown, setCooldown] = useState<SlotCooldowns | null>(null);
-  const [openedAt, setOpenedAt] = useState<number | null>(null);
-  const [, setTick] = useState(0); // 1s re-render for the live countdowns (no re-poll)
+  // Slots the seller deliberately tapped "Change" on this session (client-side reveal).
+  const [unlockedSlots, setUnlockedSlots] = useState<Set<number>>(new Set());
+  const [, setTick] = useState(0); // 1s re-render for the live "Unlock in Xh Ym" countdown
 
-  useEffect(() => { setSlots(accountSlots(account?.profile[field] || "", limit)); setState("idle"); setErr(""); }, [account, limit, field]);
+  useEffect(() => {
+    setSlots(accountSlots(account?.profile[field] || "", limit));
+    setUnlockedSlots(new Set()); setState("idle"); setErr("");
+  }, [account, limit, field]);
 
   // Read server-authoritative cooldowns once on mount / account change (admins skip).
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     let active = true;
-    setCooldown(null); setOpenedAt(null);
+    setCooldown(null);
     if (isAdmin) return;
     void fetchSlotCooldowns().then((cd) => {
       if (!active || !cd) return;               // error/no-supabase → stay fail-closed
       setCooldown(cd);
-      setOpenedAt(Date.now() + cd.offsetMs);     // window opens now (server-anchored)
     });
     return () => { active = false; };
   }, [account, isAdmin]);
@@ -58,49 +70,64 @@ export function useChannelEditor(account: AccountUser | null | undefined, platfo
     return () => clearInterval(id);
   }, [isAdmin, cooldown]);
 
-  // Server-anchored "now" for the LIVE countdowns; the LOCK decision uses this, never
-  // the raw device clock alone.
+  // Server-anchored "now" (offset captured at fetch); the LOCK decision never uses the
+  // raw device clock alone. eslint-disable-next-line react-hooks/purity
   // eslint-disable-next-line react-hooks/purity
   const serverNow = () => Date.now() + (cooldown?.offsetMs ?? 0);
-  const windowLeftMs = () => (openedAt == null ? 0 : WINDOW_MS - (serverNow() - openedAt));
 
+  // Per SAVED slot i (orig[i] truthy): admin → editable; no cooldown loaded → fail-closed
+  // LOCKED (no Change); cooling (<4h) → LOCKED + "Unlock in Xh"; else changeable → LOCKED
+  // with a "Change" button until the seller taps it (then editable). Server-time only.
   const savedSlotView = (i: number): SavedSlotView => {
-    if (isAdmin) return { editable: true, note: "window", unlockMs: 0 };
-    if (!cooldown) return { editable: false, note: "telegram", unlockMs: 0 };
+    if (isAdmin) return { editable: true, note: "unlocked", unlockMs: 0, canChange: false };
+    if (!cooldown) return { editable: false, note: "locked", unlockMs: 0, canChange: false }; // fail-closed
     const last = cooldown.byKey.get(slotKey(field, i)) ?? null;
     const st = slotLockState(last, serverNow());
-    if (st.status === "cooling") return { editable: false, note: "cooling", unlockMs: (st.unlockAtMs ?? 0) - serverNow() };
-    return windowLeftMs() > 0 ? { editable: true, note: "window", unlockMs: 0 } : { editable: false, note: "telegram", unlockMs: 0 };
+    if (st.status === "cooling") return { editable: false, note: "cooling", unlockMs: (st.unlockAtMs ?? 0) - serverNow(), canChange: false };
+    if (unlockedSlots.has(i)) return { editable: true, note: "unlocked", unlockMs: 0, canChange: false };
+    return { editable: false, note: "locked", unlockMs: 0, canChange: true }; // 🔒 + Change
   };
-  const savedSlotEditable = (i: number): boolean => savedSlotView(i).editable;
+
+  // Deliberate unlock of ONE slot (the "Change" tap). No-op unless the slot is changeable
+  // (never a cooling / admin / fail-closed slot). The server still gates the save.
+  const unlock = (i: number) => { if (savedSlotView(i).canChange) setUnlockedSlots((s) => new Set(s).add(i)); };
 
   // Combined cap across BOTH platforms (this platform's drafts + the other's saved).
   const otherCount = accountList(account?.profile[other] || "").length;
   const atCap = otherCount + accountList(slots.join("\n")).length >= limit;
   const setSlot = (i: number, v: string) => { setSlots((s) => s.map((x, idx) => (idx === i ? v : x))); setState("idle"); };
-  // Save shows when there is any empty slot OR any cooldown-unlocked saved slot.
-  const hasEditable = slots.some((_, i) => (orig[i] ? savedSlotEditable(i) : true));
+
+  // There is a pending, saveable change: an add to an empty slot, or a changed value in an
+  // editable (admin / unlocked) saved slot. Drives the Save button.
+  const dirty = slots.some((v, i) => {
+    const now = (v || "").trim(); const was = (orig[i] || "").trim();
+    if (now === was) return false;
+    if (isAdmin || !orig[i]) return true;      // admin, or an add to an empty slot
+    return savedSlotView(i).editable;           // a changed unlocked saved slot
+  });
 
   const save = async () => {
     if (!onSaveChannels || state === "saving") return;
     setState("saving"); setErr("");
-    const changedUnlocked: number[] = [];
+    // SAVED slots the seller changed under a deliberate unlock (adds are NOT touched —
+    // a fresh add is not a rotation; only overwriting an existing saved handle is).
+    const changed: number[] = [];
     if (!isAdmin) {
-      for (let i = 0; i < slots.length; i++) if (orig[i] && savedSlotEditable(i) && slots[i].trim() !== orig[i].trim()) changedUnlocked.push(i);
+      for (let i = 0; i < slots.length; i++) if (orig[i] && savedSlotView(i).editable && slots[i].trim() !== orig[i].trim()) changed.push(i);
     }
     // The server is the REAL gate: record each change first. A race (<4h) →
     // 'cooldown_active' → abort WITHOUT persisting (no silent partial save).
-    for (const i of changedUnlocked) {
+    for (const i of changed) {
       const r = await touchSlot(field, i);
       if (!r.ok) { setState("error"); setErr(r.cooldown ? t.rd_ch_cooldown_err : (r.error || t.rd_set_err_save_failed)); return; }
     }
     const lists = isTT
       ? { tiktok: accountText(slots), facebook: account?.profile.facebook || "" }
       : { tiktok: account?.profile.tiktok || "", facebook: accountText(slots) };
-    const unlocked = isTT ? { tiktok: changedUnlocked } : { facebook: changedUnlocked };
+    const unlocked = isTT ? { tiktok: changed } : { facebook: changed };
     const r = await onSaveChannels(lists, { unlocked });
     if (r.ok) setState("saved"); else { setState("error"); setErr(r.error || t.rd_set_err_save_failed); }
   };
 
-  return { isTT, isAdmin, limit, planBadge, orig, slots, setSlot, savedSlotView, savedSlotEditable, atCap, hasEditable, save, state, err, windowLeftMs };
+  return { isTT, isAdmin, limit, planBadge, orig, slots, setSlot, savedSlotView, unlock, atCap, dirty, save, state, err };
 }
