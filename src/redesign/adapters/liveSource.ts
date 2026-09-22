@@ -6,7 +6,7 @@
 // 85 sellers — everyone else keeps the current 3-chip header, byte-for-byte. Widen =
 // add emails / remove the gate. INSTANT REVERT = empty the array. Mirrors the
 // SESSION_V2 / shopeePreview allowlist pattern.
-export const LIVE_SOURCE_EMAILS = ["camilajeffrey1@gmail.com"];
+export const LIVE_SOURCE_EMAILS = ["camilajeffrey1@gmail.com", "googletest@gmail.com"];
 
 export function liveSourcePreviewEnabled(email: string | undefined | null): boolean {
   const e = String(email || "").trim().toLowerCase();
