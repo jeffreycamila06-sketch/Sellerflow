@@ -22,6 +22,40 @@ const acct = (tiktok: string, role = "seller", plan = "pro"): AccountUser => ({
 
 beforeEach(() => { fetchMock.mockReset(); touchMock.mockReset(); touchMock.mockResolvedValue({ ok: true }); });
 
+describe("ChannelManageBody — Option B exact plan slots", () => {
+  it.each([["basic", 1], ["plus", 2], ["pro", 3], ["master", 5]] as const)(
+    "%s plan → EXACTLY %i slots (no teaser/+1)", (plan, n) => {
+      fetchMock.mockResolvedValue({ offsetMs: 0, byKey: new Map() });
+      const { getAllByTestId } = render(<TProvider lang="en"><ChannelManageBody platform="tiktok" account={acct("saved_tt", "seller", plan)} onSaveChannels={vi.fn()} onSaved={vi.fn()} /></TProvider>);
+      expect(getAllByTestId("cm-row")).toHaveLength(n);
+    });
+
+  it("no plan/upgrade badge (PLUS/PRO/MASTER) anywhere", () => {
+    fetchMock.mockResolvedValue({ offsetMs: 0, byKey: new Map() });
+    const { container } = render(<TProvider lang="en"><ChannelManageBody platform="tiktok" account={acct("saved_tt", "seller", "pro")} onSaveChannels={vi.fn()} onSaved={vi.fn()} /></TProvider>);
+    expect(container.textContent).not.toMatch(/PLUS|PRO|MASTER/);
+  });
+
+  it("'Add — Multi Account' is a Telegram anchor for ALL plans (even under cap)", () => {
+    fetchMock.mockResolvedValue({ offsetMs: 0, byKey: new Map() });
+    const { getByTestId } = render(<TProvider lang="en"><ChannelManageBody platform="tiktok" account={acct("saved_tt", "seller", "master")} onSaveChannels={vi.fn()} onSaved={vi.fn()} /></TProvider>);
+    const multi = getByTestId("cm-multi") as HTMLAnchorElement;
+    expect(multi.tagName).toBe("A");
+    expect(multi.getAttribute("href")).toContain("t.me");
+  });
+
+  it("empty slot within cap adds directly → Save sends the new handle", async () => {
+    fetchMock.mockResolvedValue({ offsetMs: 0, byKey: new Map() });
+    const onSaveChannels = vi.fn().mockResolvedValue({ ok: true });
+    const { getAllByTestId, getByTestId } = render(<TProvider lang="en"><ChannelManageBody platform="tiktok" account={acct("saved_tt", "seller", "master")} onSaveChannels={onSaveChannels} onSaved={vi.fn()} /></TProvider>);
+    fireEvent.change(getAllByTestId("cm-empty")[0], { target: { value: "brandnew" } });
+    fireEvent.click(getByTestId("cm-save"));
+    await waitFor(() => expect(onSaveChannels).toHaveBeenCalled());
+    expect(onSaveChannels.mock.calls[0][0].tiktok).toContain("brandnew");
+    expect(touchMock).not.toHaveBeenCalled(); // a fresh add is NOT rotation-gated (typo-fixable)
+  });
+});
+
 describe("ChannelManageBody — locked-agad", () => {
   it("saved handle is LOCKED on open (🔒 + Change, input not shown); tap Change → editable input", async () => {
     fetchMock.mockResolvedValue({ offsetMs: 0, byKey: new Map() }); // changeable (no cooldown row)

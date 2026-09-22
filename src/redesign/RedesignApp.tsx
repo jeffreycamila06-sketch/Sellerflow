@@ -1748,7 +1748,7 @@ export default function RedesignApp() {
             ttAccounts={ttAccounts}
             ttLiveName={ttEff && !liveFeed.ttRecovering ? (ttAccounts[ttIdx] || ttAccounts[0] || null) : null}
             onUseTikTok={(u) => { const i = ttAccounts.indexOf(u); if (i >= 0) setTtIdx(i); commitLiveConnect({ platform: "TikTok", username: u }); }}
-            onConnectTikTokNew={(u) => commitLiveConnect({ platform: "TikTok", username: u, register: true })}
+            onManage={() => { if (liveConnectPlatform) openLiveConnect(liveConnectPlatform, "manage"); }}
             shopeeShops={shopeeShops.map((s) => ({ shopId: s.shopId, shopName: s.shopName }))}
             shopeeLiveId={shopeeEff && selectedShop ? selectedShop.shopId : null}
             shopeeEligible={shopeeEligible}
