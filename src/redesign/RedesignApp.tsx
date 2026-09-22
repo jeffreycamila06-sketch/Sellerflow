@@ -41,6 +41,8 @@ import ManageChannels from "./screens/ManageChannels";
 import ShopeeChannels from "./screens/ShopeeChannels";
 import { loadShopeeEnabled, listShopeeShops, shopeeConnect, shopeeDisconnect, parseShopeeReturn, isShopeeEligible, type ShopeeShop } from "./adapters/shopee";
 import { shopeePreviewEnabled, withShopeePreview } from "./adapters/shopeePreview";
+import LiveSourceSheet from "./components/LiveSourceSheet";
+import { liveSourcePreviewEnabled, livePlatformOf, isPlatformSwitch, isConnectableSource, type SourcePlatform } from "./adapters/liveSource";
 import type { ConnectTab } from "./screens/ConnectModal";
 import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
 import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, deriveMrr, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
@@ -882,6 +884,16 @@ export default function RedesignApp() {
   const ttEff = ttConnected && !ttOff;
   const fbEff = fbConnected && !fbOff;
   const shopeeEff = liveFeed.shopeeConnected && !shopeeOff;
+  // ── Option E — Live Source (owner-gated). ONE active source at a time. The new
+  // single "Live source" button + sheet REPLACE the 3 chips for the owner only;
+  // everyone else keeps the classic 3-chip header (liveSourceMode false → unchanged).
+  const liveSourceMode = liveSourcePreviewEnabled(auth.profile?.email);
+  const [sourceSheetOpen, setSourceSheetOpen] = useState(false);
+  const [activeSource, setActiveSource] = useState<SourcePlatform>("TikTok");
+  const [switchConfirm, setSwitchConfirm] = useState<{ to: "TikTok" | "Shopee" } | null>(null);
+  // Shopee row shows only for the TW market (marketHides bakes in the admin bypass) AND
+  // the shopee_enabled/owner-preview gate — never to a PH/other-market seller.
+  const showShopeeRow = shopeeEnabled && !marketHides("shopee", market);
   // Item 7 — Authorize + Connect need an ACTIVE PAID plan (server also enforces
   // requirePlanActive on /shopee/connect). Admin bypasses. Not eligible → the same
   // neutral upsell used elsewhere (iOS: contact-support popup; else the upsell).
@@ -911,6 +923,38 @@ export default function RedesignApp() {
       else track("connect_failed", { platform: "Shopee", reason: r.reason || r.error || "unknown" });
       return r;
     } finally { setShopeeConnecting(false); }
+  };
+  // ── Option E — Live Source orchestration (owner-gated; presentation only — the
+  // connect logic in doConnect / doShopeeConnect / useLiveFeed is UNTOUCHED).
+  // beginConnect opens the EXISTING ConnectModal on the picked tab (account/shop pick
+  // + connect run through the unchanged handlers).
+  const beginConnect = (platform: "TikTok" | "Shopee") => {
+    if (platform === "Shopee") { onConnectShopee(); return; } // reuses the eligibility gate + opens the Shopee tab
+    void doConnect("TikTok"); // reuses checkStatus → running?continue:picker (no reset on reconnect/account switch)
+  };
+  // switchSource: the SINGLE reset trigger. A PLATFORM switch WHILE live → confirm →
+  // new session (#1). Same platform (account switch) or nothing live (fresh open /
+  // crash reconnect) → just connect, buyer# continues (in-memory default-continue).
+  const switchSource = (platform: SourcePlatform) => {
+    setSourceSheetOpen(false);
+    if (!isConnectableSource(platform)) return; // FB/Instagram handled inside the sheet
+    setActiveSource(platform);
+    const live = livePlatformOf({ ttEff, shopeeEff });
+    if (isPlatformSwitch(live, platform)) { setSwitchConfirm({ to: platform }); return; }
+    beginConnect(platform);
+  };
+  // Confirmed platform switch → new session (startSession reuses the running window
+  // length; born-ended fix makes it safe — no endSession first) → reset board (#1) →
+  // connect the new platform. A null id (RPC failed) aborts without a session-less feed.
+  const confirmSwitch = async () => {
+    const to = switchConfirm?.to;
+    setSwitchConfirm(null);
+    if (!to) return;
+    const days = sessionInstance.sessionWindowDays ?? SESSION_V2_DAYS;
+    const sid = await sessionInstance.startSession(days);
+    if (!sid) { setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }); return; }
+    liveSession.reset();
+    beginConnect(to);
   };
   // KEEP-AWAKE habang naka-live (FLive/Chotdon parity) — web Screen Wake Lock,
   // held while GREEN or AMBER (kasama ang connecting/recovering — ang 60s grace
@@ -1426,6 +1470,13 @@ export default function RedesignApp() {
               onEndSession={sessionV2 ? () => setEndConfirm(true) : undefined}
               onConnectTT={() => void doConnect("TikTok")}
               onRefreshTT={() => void refreshDashboard()} refreshing={refreshing}
+              /* Option E — Live Source single button (owner-gated). Off = classic chips. */
+              liveSourceMode={liveSourceMode}
+              liveSourcePlatform={activeSource}
+              liveSourceName={activeSource === "Shopee" ? (selectedShop ? (selectedShop.shopName || tApp.rd_shp_shop_name_fallback) : "") : (ttAccounts[ttIdx] || ttAccounts[0] || "")}
+              liveSourceConnected={activeSource === "Shopee" ? shopeeEff : (ttEff && !liveFeed.ttRecovering)}
+              liveSourceConnecting={activeSource === "Shopee" ? shopeeConnecting : (ttConnecting || liveFeed.ttRecovering)}
+              onOpenSourceSheet={() => setSourceSheetOpen(true)}
               ttAccounts={ttAccounts} fbAccounts={fbAccounts}
               printed={printed} entId={entId} entPrice={entPrice}
               historyReady={liveSession.orderedLoaded}
@@ -1601,6 +1652,31 @@ export default function RedesignApp() {
         {/* Session V2 (owner only) — "End session?" confirm; Confirm → end_session(). */}
         {endConfirm && (
           <EndSessionConfirm onConfirm={() => void doEndSession()} onCancel={() => setEndConfirm(false)} />
+        )}
+        {/* Option E — Live Source sheet (owner-gated) + the platform-switch confirm. */}
+        {liveSourceMode && (
+          <LiveSourceSheet
+            open={sourceSheetOpen}
+            onClose={() => setSourceSheetOpen(false)}
+            active={activeSource}
+            tiktok={{ name: ttAccounts[ttIdx] || ttAccounts[0] || "", connected: ttEff && !liveFeed.ttRecovering, connecting: ttConnecting || liveFeed.ttRecovering }}
+            shopee={{ name: selectedShop ? (selectedShop.shopName || tApp.rd_shp_shop_name_fallback) : "", connected: shopeeEff, connecting: shopeeConnecting }}
+            showShopee={showShopeeRow}
+            onPickTikTok={() => switchSource("TikTok")}
+            onPickShopee={() => switchSource("Shopee")}
+          />
+        )}
+        {switchConfirm && (
+          <div onClick={() => setSwitchConfirm(null)} style={{ position: "fixed", inset: 0, zIndex: 1350, background: "rgba(9,7,24,.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} data-testid="livesource-switch-overlay">
+            <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 380, background: "var(--surface)", borderRadius: 18, padding: "22px 20px 18px", boxShadow: "0 20px 60px rgba(0,0,0,.4)" }}>
+              <div style={{ fontSize: 15, fontWeight: 800, color: "var(--text)", marginBottom: 8 }}>{tApp.rd_ls_switch_title}</div>
+              <div style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.55, marginBottom: 18 }}>{tpl(tApp.rd_ls_switch_body, { to: switchConfirm.to })}</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => setSwitchConfirm(null)} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13.5, cursor: "pointer", fontFamily: "var(--font-ui)" }} data-testid="livesource-switch-cancel">{tApp.rd_ls_switch_cancel}</button>
+                <button onClick={() => void confirmSwitch()} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--accent)", color: "var(--accent-text)", fontWeight: 800, fontSize: 13.5, cursor: "pointer", fontFamily: "var(--font-ui)" }} data-testid="livesource-switch-confirm">{tApp.rd_ls_switch_go}</button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Phase 5f — free-tier cap popup (near / hard). iOS: neutral Contact-Support

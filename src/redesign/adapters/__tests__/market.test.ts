@@ -15,7 +15,7 @@ describe("marketFor", () => {
       const m = marketFor(c);
       expect(m.country).toBe("TW");
       expect(m.currency).toBe("TWD");
-      expect(m.features).toEqual({ parcelScan: true, pickupStatus: true, stickerQr: true });
+      expect(m.features).toEqual({ parcelScan: true, pickupStatus: true, stickerQr: true, shopee: true });
       expect(m.shippingModule).toBe("tw-711");
     }
   });
@@ -31,7 +31,7 @@ describe("marketFor", () => {
       const m = marketFor(c);
       expect(m.currency).toBe(e.currency);
       expect(curSymbol(m.currency)).toBe(e.symbol);
-      expect(m.features).toEqual({ parcelScan: false, pickupStatus: false, stickerQr: false });
+      expect(m.features).toEqual({ parcelScan: false, pickupStatus: false, stickerQr: false, shopee: false });
       expect(m.shippingModule).toBe(e.ship);
     }
     expect(Object.keys(MARKETS).sort()).toEqual(["ID", "MY", "PH", "TH", "TW", "VN"]);
@@ -44,7 +44,7 @@ describe("marketFor", () => {
     for (const c of ["SG", "US", "ZZ"]) {
       const m = marketFor(c);
       expect(m.currency).toBe("");
-      expect(m.features).toEqual({ parcelScan: false, pickupStatus: false, stickerQr: false });
+      expect(m.features).toEqual({ parcelScan: false, pickupStatus: false, stickerQr: false, shopee: false });
       expect(m.shippingModule).toBe("none");
       expect(m.country).toBe(c);
     }
