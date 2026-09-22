@@ -16,9 +16,12 @@ import { useT, tpl } from "../i18n";
 
 const card: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "14px 15px", marginBottom: 12, boxShadow: "var(--shadow)" };
 
-export default function ShopeeChannels({ account = null, shops, onReload, onBack, onToast, onUpsell }: {
+export default function ShopeeChannels({ account = null, shops, preview = false, onReload, onBack, onToast, onUpsell }: {
   account?: AccountUser | null;
   shops: ShopeeShop[];
+  // OWNER PREVIEW (adapters/shopeePreview): the single shop shown is a display-only
+  // placeholder (no Partner credentials) → Remove is a no-op with an honest note.
+  preview?: boolean;
   onReload: () => void | Promise<void>;
   onBack: () => void;
   onToast?: (msg: string, kind: "ok" | "err") => void;
@@ -48,6 +51,7 @@ export default function ShopeeChannels({ account = null, shops, onReload, onBack
 
   const remove = async (id: string) => {
     if (busyId) return;
+    if (preview) { onToast?.(t.rd_shp_preview_note, "err"); return; } // placeholder — nothing to delete
     if (typeof window !== "undefined" && !window.confirm(t.rd_shp_remove_confirm)) return;
     setBusyId(id);
     const r = await removeShopeeShop(id);

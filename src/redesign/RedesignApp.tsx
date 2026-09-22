@@ -40,6 +40,7 @@ import PrintPattern, { DEFAULT_PP, stepScaleLevel, type PrintPatternState, type 
 import ManageChannels from "./screens/ManageChannels";
 import ShopeeChannels from "./screens/ShopeeChannels";
 import { loadShopeeEnabled, listShopeeShops, shopeeConnect, shopeeDisconnect, parseShopeeReturn, isShopeeEligible, type ShopeeShop } from "./adapters/shopee";
+import { shopeePreviewEnabled, withShopeePreview } from "./adapters/shopeePreview";
 import type { ConnectTab } from "./screens/ConnectModal";
 import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
 import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, deriveMrr, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
@@ -292,7 +293,14 @@ export default function RedesignApp() {
   const fbAccounts = auth.profile ? registeredAccountsFor(auth.profile, "Facebook") : [];
   // P3 — Shopee source (gated on app_settings shopee_enabled; loaded below). Own
   // authorized-shop list + picker index; SEPARATE cap from tiktok/facebook (Option A).
-  const [shopeeEnabled, setShopeeEnabled] = useState(false);
+  // shopeeFlag = the GLOBAL app_settings flag (fail-closed). shopeePreview = an OWNER-ONLY
+  // email-allowlist override (adapters/shopeePreview) that opens the Shopee UI for ONE
+  // account to look at the screens WITHOUT flipping the global flag / exposing any other
+  // seller / touching the server. Effective shopeeEnabled = flag OR preview; everyone
+  // else's preview is false → byte-for-byte unchanged.
+  const [shopeeFlag, setShopeeFlag] = useState(false);
+  const shopeePreview = shopeePreviewEnabled(auth.profile?.email);
+  const shopeeEnabled = shopeeFlag || shopeePreview;
   const [shopeeShops, setShopeeShops] = useState<ShopeeShop[]>([]);
   const [shopeeIdx, setShopeeIdx] = useState(0);
   const selectedShop = shopeeShops[shopeeIdx] || shopeeShops[0] || null;
@@ -301,23 +309,25 @@ export default function RedesignApp() {
   useEffect(() => {
     if (!authed) return;
     let alive = true;
-    void loadShopeeEnabled().then((v) => { if (alive) setShopeeEnabled(v); });
+    void loadShopeeEnabled().then((v) => { if (alive) setShopeeFlag(v); });
     return () => { alive = false; };
   }, [authed]);
   // Load the seller's authorized shops (only when enabled). One read per open;
-  // re-fetched after authorize-return / remove via reloadShopeeShops.
+  // re-fetched after authorize-return / remove via reloadShopeeShops. In owner preview
+  // (no real shops without credentials) a display-only placeholder is injected so the
+  // screens render populated (withShopeePreview — no-op for everyone else).
   const reloadShopeeShops = useCallback(async () => {
-    const list = await listShopeeShops();
+    const list = withShopeePreview(await listShopeeShops(), shopeePreview);
     setShopeeShops(list);
     setShopeeIdx((i) => (i < list.length ? i : 0)); // clamp the picker
-  }, []);
+  }, [shopeePreview]);
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!authed || !shopeeEnabled) { setShopeeShops([]); return; }
     let alive = true;
-    void listShopeeShops().then((list) => { if (alive) { setShopeeShops(list); setShopeeIdx((i) => (i < list.length ? i : 0)); } });
+    void listShopeeShops().then((raw) => { if (alive) { const list = withShopeePreview(raw, shopeePreview); setShopeeShops(list); setShopeeIdx((i) => (i < list.length ? i : 0)); } });
     return () => { alive = false; };
-  }, [authed, shopeeEnabled]);
+  }, [authed, shopeeEnabled, shopeePreview]);
   /* eslint-enable react-hooks/set-state-in-effect */
   // Account-leak fix — the account the user has picked per platform. Passed to
   // useLiveFeed so ONLY this account's comments show, even with up to 5 accounts live.
@@ -888,6 +898,9 @@ export default function RedesignApp() {
   // never tapped TikTok Connect → arm the room join), POST, toast on success. The
   // modal shows inline errors from the returned result (no double toast here).
   const doShopeeConnect = async (shopId: number, sessionId: string) => {
+    // Owner preview: no Partner credentials → no real connect. Show an honest note
+    // instead of a misleading toast (this is UI-visibility only).
+    if (shopeePreview) { setToast({ msg: tApp.rd_shp_preview_note, kind: "err" }); return { ok: false, error: "preview" }; }
     if (!shopeeEligible) { if (ios) setIosExpired(true); else setUpsellOpen(true); return { ok: false, error: "plan_expired" }; }
     setShopeeConnecting(true);
     track("connect_attempt", { platform: "Shopee" });
@@ -1490,7 +1503,7 @@ export default function RedesignApp() {
           {/* P3 — Shopee shops (flag-gated; reachable from ManageChannels + the Live
               Shopee chip's Manage row). Origin-aware Back via chanBack. */}
           {screen === "shopeechannels" && (
-            <ShopeeChannels account={auth.profile} shops={shopeeShops} onReload={reloadShopeeShops} onBack={() => setScreen(chanBack)} onToast={(msg, kind) => setToast({ msg, kind })} onUpsell={() => { if (ios) setIosExpired(true); else setUpsellOpen(true); }} />
+            <ShopeeChannels account={auth.profile} shops={shopeeShops} preview={shopeePreview} onReload={reloadShopeeShops} onBack={() => setScreen(chanBack)} onToast={(msg, kind) => setToast({ msg, kind })} onUpsell={() => { if (ios) setIosExpired(true); else setUpsellOpen(true); }} />
           )}
           {/* onExport gated on live (#7): the sample fallback list must never be
               downloadable as a real-looking CSV. */}
