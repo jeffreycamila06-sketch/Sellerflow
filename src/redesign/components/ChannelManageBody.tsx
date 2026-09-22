@@ -11,6 +11,7 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { useT, tpl } from "../i18n";
 import { unlockInHM } from "../adapters/tiktokCooldown";
 import { useChannelEditor, type ChannelSaveFn } from "../adapters/useChannelEditor";
+import { TELEGRAM_URL } from "../../lib/telegram";
 import type { AccountUser } from "../../accountDb";
 
 const rowCss: CSSProperties = { display: "flex", alignItems: "center", gap: 11, padding: "11px 12px", border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface)", marginBottom: 8 };
@@ -68,12 +69,14 @@ export default function ChannelManageBody({ platform, account, onSaveChannels, t
         );
       })}
 
-      {/* Add / at-cap. At the plan cap, keep the row VISIBLE as a disabled upgrade hook. */}
+      {/* Add / at-cap. At the plan cap, keep the row VISIBLE + CLICKABLE as the beyond-cap
+          request path (Telegram) — mirrors the old screen's "Add — Multi Account" button.
+          Muted styling + cap hint, NO slot reveal. A real <a> = the iOS-safe external open. */}
       {atCap ? (
-        <div style={{ ...rowCss, opacity: 0.6, cursor: "default", flexDirection: "column", alignItems: "flex-start", gap: 2 }} data-testid="cm-cap">
+        <a href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener" style={{ ...rowCss, textDecoration: "none", opacity: 0.85, flexDirection: "column", alignItems: "flex-start", gap: 2 }} data-testid="cm-cap">
           <span style={{ fontSize: 13.5, fontWeight: 800, color: "var(--text-muted)" }}>＋ {t.rd_lc_add_another}</span>
           <span style={{ fontSize: 10.5, color: "var(--text-muted)" }}>{tpl(t.rd_cl_cap_hint, { max: limit })}</span>
-        </div>
+        </a>
       ) : firstEmpty >= 0 ? (
         addOpen ? (
           <input value={slots[firstEmpty]} onChange={(e) => setSlot(firstEmpty, e.target.value.replace(/^@+/, ""))} placeholder={isTT ? t.rd_ch_ph_tt : t.rd_ch_ph_fb} autoCapitalize="none" style={{ ...inp, marginTop: savedCount ? 4 : 0, marginBottom: 10 }} data-testid="cm-add-input" />

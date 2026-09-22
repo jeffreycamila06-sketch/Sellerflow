@@ -98,11 +98,13 @@ describe("LiveConnectModal — manage mode", () => {
     expect(queryByTestId("cm-change")).toBeNull();               // fail-closed → NO self-service Change (can't verify cooldown)
   });
 
-  it("Bug 2 — at the plan cap the Add row stays VISIBLE as a disabled upgrade hook (not hidden)", () => {
+  it("Bug 2 — at the plan cap the Add row stays VISIBLE + CLICKABLE (Telegram request path), no slot reveal", () => {
     const { getByTestId, queryByTestId } = render(
       <TProvider><LiveConnectModal platform="TikTok" {...base} mode="manage" account={acct("a\nb", "", "plus")} onSaveChannels={vi.fn()} /></TProvider>);
-    // plus cap 2, 2 saved → at cap: the cap hint shows, the add flow does NOT.
-    expect(getByTestId("cm-cap")).toBeTruthy();
+    // plus cap 2, 2 saved → at cap: the cap row is a clickable Telegram anchor; NO reveal.
+    const cap = getByTestId("cm-cap") as HTMLAnchorElement;
+    expect(cap.tagName).toBe("A");
+    expect(cap.getAttribute("href")).toContain("t.me");
     expect(queryByTestId("cm-add")).toBeNull();
     expect(queryByTestId("cm-add-input")).toBeNull();
   });
