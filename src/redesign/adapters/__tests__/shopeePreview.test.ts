@@ -6,15 +6,11 @@ import { shopeePreviewEnabled, withShopeePreview, SHOPEE_PREVIEW_SHOP, SHOPEE_PR
 import type { ShopeeShop } from "../shopee";
 
 describe("shopeePreviewEnabled — owner allowlist only", () => {
-  it("the owner email → true (case/space-insensitive)", () => {
-    expect(shopeePreviewEnabled("camilajeffrey1@gmail.com")).toBe(true);
-    expect(shopeePreviewEnabled("  CamilaJeffrey1@Gmail.com ")).toBe(true);
-  });
-  it("any other seller / admin / blank → false (unchanged for everyone else)", () => {
-    for (const e of ["googletest@sellerflowlive.com", "someone@else.com", "", null, undefined]) {
+  it("SOFT-REVERTED: the allowlist is empty → Shopee preview OFF for everyone", () => {
+    expect(SHOPEE_PREVIEW_EMAILS).toEqual([]);
+    for (const e of ["camilajeffrey1@gmail.com", "  CamilaJeffrey1@Gmail.com ", "someone@else.com", "", null, undefined]) {
       expect(shopeePreviewEnabled(e)).toBe(false);
     }
-    expect(SHOPEE_PREVIEW_EMAILS).toEqual(["camilajeffrey1@gmail.com"]); // exactly one account
   });
 });
 

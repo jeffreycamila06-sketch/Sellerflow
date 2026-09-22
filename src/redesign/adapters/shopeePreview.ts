@@ -10,7 +10,8 @@
 // byte-for-byte unchanged (zero Shopee UI while the flag is off).
 import type { ShopeeShop } from "./shopee";
 
-export const SHOPEE_PREVIEW_EMAILS = ["camilajeffrey1@gmail.com"];
+// SOFT-REVERTED 2026-09-23: emptied with LIVE_SOURCE_EMAILS → no Shopee owner-preview row.
+export const SHOPEE_PREVIEW_EMAILS: string[] = [];
 
 export function shopeePreviewEnabled(email: string | undefined | null): boolean {
   const e = String(email || "").trim().toLowerCase();

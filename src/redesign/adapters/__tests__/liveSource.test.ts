@@ -5,11 +5,10 @@ import { liveSourcePreviewEnabled, livePlatformOf, isPlatformSwitch, isConnectab
 
 describe("liveSourcePreviewEnabled — owner allowlist", () => {
   it("owner → true (case/space-insensitive); everyone else → false", () => {
-    expect(liveSourcePreviewEnabled("camilajeffrey1@gmail.com")).toBe(true);
-    expect(liveSourcePreviewEnabled("  CAMILAJEFFREY1@gmail.com ")).toBe(true);
-    expect(liveSourcePreviewEnabled("googletest@gmail.com")).toBe(true); // non-admin test account (pre-widen)
-    for (const e of ["random@seller.com", "x@y.com", "", null, undefined]) expect(liveSourcePreviewEnabled(e)).toBe(false);
-    expect(LIVE_SOURCE_EMAILS).toEqual(["camilajeffrey1@gmail.com", "googletest@gmail.com"]);
+    // SOFT-REVERTED: the allowlist is empty → the new flow is OFF for EVERYONE
+    // (owner + googletest included) → old 3-chip header + old dropdown.
+    expect(LIVE_SOURCE_EMAILS).toEqual([]);
+    for (const e of ["camilajeffrey1@gmail.com", "  CAMILAJEFFREY1@gmail.com ", "googletest@gmail.com", "random@seller.com", "", null, undefined]) expect(liveSourcePreviewEnabled(e)).toBe(false);
   });
 });
 
