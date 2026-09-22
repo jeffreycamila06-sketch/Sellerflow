@@ -7,8 +7,9 @@ describe("liveSourcePreviewEnabled — owner allowlist", () => {
   it("owner → true (case/space-insensitive); everyone else → false", () => {
     expect(liveSourcePreviewEnabled("camilajeffrey1@gmail.com")).toBe(true);
     expect(liveSourcePreviewEnabled("  CAMILAJEFFREY1@gmail.com ")).toBe(true);
-    for (const e of ["googletest@sellerflowlive.com", "x@y.com", "", null, undefined]) expect(liveSourcePreviewEnabled(e)).toBe(false);
-    expect(LIVE_SOURCE_EMAILS).toEqual(["camilajeffrey1@gmail.com"]);
+    expect(liveSourcePreviewEnabled("googletest@gmail.com")).toBe(true); // non-admin test account (pre-widen)
+    for (const e of ["random@seller.com", "x@y.com", "", null, undefined]) expect(liveSourcePreviewEnabled(e)).toBe(false);
+    expect(LIVE_SOURCE_EMAILS).toEqual(["camilajeffrey1@gmail.com", "googletest@gmail.com"]);
   });
 });
 
