@@ -1625,6 +1625,7 @@ async function connectTikTok(username, res, meta = {}) {
       const decision = capDecision({ realFresh, reservedCount, max: concurrencyCap(meta.plan, meta.role) });
       if (decision.action === "block") {
         // Pure parallel race (sibling reservation holds the only slot) — reject this one.
+        console.log(`[CONCURRENCY] block seller=${sellerId} plan=${meta.plan} tried=${cleanUsername} (already at cap)`);
         return res.status(429).json({
           success: false,
           concurrentLimit: true,
