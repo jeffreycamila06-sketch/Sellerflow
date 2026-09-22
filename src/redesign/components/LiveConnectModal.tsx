@@ -25,7 +25,7 @@ export interface ShopOpt { shopId: number; shopName: string }
 
 export default function LiveConnectModal({
   platform, onClose, mode = "connect", account = null, onSaveChannels,
-  ttAccounts, ttLiveName, onUseTikTok, onManage,
+  ttAccounts, ttLiveName, ttSelected, ttConnecting = false, onUseTikTok, onSelectTikTok, onDisconnect, onManage, onRefresh, refreshing = false,
   shopeeShops, shopeeLiveId, shopeeEligible, onAuthorizeShopee, onConnectShopee, onUpsell,
 }: {
   platform: SourcePlatform;
@@ -35,11 +35,17 @@ export default function LiveConnectModal({
   mode?: "connect" | "manage";
   account?: AccountUser | null;            // manage mode: the profile whose accounts we edit
   onSaveChannels?: ChannelSaveFn;          // manage mode: the shared composeChannelSave path
-  // TikTok
+  // TikTok — full parity with the old header dropdown's actions:
   ttAccounts: string[];
   ttLiveName: string | null;               // the account currently live (green), else null
+  ttSelected?: string;                     // the SELECTED active account (ttAccounts[ttIdx]) → ✓ indicator
+  ttConnecting?: boolean;                  // in-flight connect (button label)
   onUseTikTok: (username: string) => void;  // existing account → session-aware connect (continue)
+  onSelectTikTok?: (username: string) => void; // SELECT-ONLY (scoping + ✓) — never connects (old onPickTT)
+  onDisconnect?: () => void;               // Disconnect the live account (client-local setTtOff — old behavior)
   onManage: () => void;                     // → Settings → Channels manage mode (add/edit accounts); NEVER connects / goes live
+  onRefresh?: () => void;                  // Refresh accounts + dashboard (old onRefreshTT → refreshDashboard)
+  refreshing?: boolean;
   // Shopee
   shopeeShops: ShopOpt[];
   shopeeLiveId: number | null;
@@ -57,17 +63,36 @@ export default function LiveConnectModal({
     : platform === "Instagram" ? { bg: "#e1306c", ch: "i", name: t.rd_ls_instagram }
     : { bg: "#000", ch: "t", name: t.rd_ls_tiktok };
 
+  // Full parity with the old header dropdown: Refresh (top) · per-account row that
+  // SELECTS on tap (✓, scoping — never connects) with a per-account Connect/Use or
+  // Disconnect button · ● Live marker · Manage/add link. All session-safe (select =
+  // setTtIdx, disconnect = client-local setTtOff, Use = session-aware connect).
   const tiktok = (
     <>
+      {onRefresh && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+          <button onClick={onRefresh} disabled={refreshing} style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", border: "1px solid var(--border-strong)", borderRadius: 9, background: "transparent", color: "var(--text-dim)", fontSize: 12, fontWeight: 700, fontFamily: "var(--font-ui)", cursor: refreshing ? "default" : "pointer", opacity: refreshing ? 0.6 : 1 }} data-testid="lc-tt-refresh">↻ {refreshing ? t.rd_dash_refreshing : t.rd_dash_refresh}</button>
+        </div>
+      )}
       {ttAccounts.map((a) => {
         const live = a === ttLiveName;
+        const selected = a === ttSelected;
         return (
-          <div key={a} style={rowCss} data-testid="lc-tt-row">
-            <span style={iconChip("#000")}>t</span>
-            <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a}</span>
+          <div key={a} style={{ ...rowCss, ...(selected ? { borderColor: "var(--accent)", background: "var(--accent-soft)" } : {}) }} data-testid="lc-tt-row">
+            {/* SELECT-ONLY tap target (icon + handle + ✓) — sets the active account, no connect. */}
+            <button onClick={() => onSelectTikTok?.(a)} style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 11, border: "none", background: "transparent", padding: 0, cursor: onSelectTikTok ? "pointer" : "default", textAlign: "left", fontFamily: "var(--font-ui)" }} data-testid="lc-tt-select">
+              <span style={iconChip("#000")}>t</span>
+              <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a}</span>
+              {selected && <span style={{ fontSize: 13, fontWeight: 900, color: "var(--accent-fg)", flexShrink: 0 }} data-testid="lc-tt-selected">✓</span>}
+            </button>
             {live
-              ? <span style={{ fontSize: 11.5, fontWeight: 800, color: "var(--ok, #16a34a)", flexShrink: 0 }} data-testid="lc-tt-live">● {t.rd_lc_live}</span>
-              : <button onClick={() => onUseTikTok(a)} style={{ padding: "7px 15px", border: "1px solid var(--accent)", borderRadius: 9, background: "transparent", color: "var(--accent-fg)", fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: "var(--font-ui)", flexShrink: 0 }} data-testid="lc-tt-use">{t.rd_lc_use}</button>}
+              ? (
+                <span style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 800, color: "var(--ok, #16a34a)" }} data-testid="lc-tt-live">● {t.rd_lc_live}</span>
+                  <button onClick={onDisconnect} style={{ padding: "7px 13px", border: "1px solid var(--danger)", borderRadius: 9, background: "transparent", color: "var(--danger)", fontSize: 12.5, fontWeight: 800, cursor: "pointer", fontFamily: "var(--font-ui)" }} data-testid="lc-tt-disconnect">{t.rd_dash_disconnect}</button>
+                </span>
+              )
+              : <button onClick={() => onUseTikTok(a)} disabled={ttConnecting} style={{ padding: "7px 15px", border: "1px solid var(--accent)", borderRadius: 9, background: "transparent", color: "var(--accent-fg)", fontSize: 12.5, fontWeight: 800, cursor: ttConnecting ? "default" : "pointer", fontFamily: "var(--font-ui)", flexShrink: 0, opacity: ttConnecting ? 0.6 : 1 }} data-testid="lc-tt-use">{ttConnecting ? t.rd_dash_connecting : t.rd_lc_use}</button>}
           </div>
         );
       })}

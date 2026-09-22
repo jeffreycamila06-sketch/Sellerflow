@@ -15,7 +15,7 @@ const acct = (tiktok: string, facebook = "", plan = "pro", role = "seller") =>
 const base = {
   onClose: vi.fn(),
   ttAccounts: [] as string[], ttLiveName: null as string | null,
-  onUseTikTok: vi.fn(), onManage: vi.fn(),
+  onUseTikTok: vi.fn(), onManage: vi.fn(), onSelectTikTok: vi.fn(), onDisconnect: vi.fn(), onRefresh: vi.fn(),
   shopeeShops: [] as { shopId: number; shopName: string }[], shopeeLiveId: null as number | null,
   shopeeEligible: true, onAuthorizeShopee: vi.fn(), onConnectShopee: vi.fn(), onUpsell: vi.fn(),
 };
@@ -47,6 +47,34 @@ describe("LiveConnectModal — TikTok (connect mode)", () => {
     fireEvent.click(getByTestId("lc-tt-manage"));
     expect(onManage).toHaveBeenCalledTimes(1);
     expect(onUseTikTok).not.toHaveBeenCalled();               // pure navigation — never a connect/go-live
+  });
+
+  it("REGRESSION — the LIVE account shows Disconnect → onDisconnect (client-local), no connect", () => {
+    const onDisconnect = vi.fn(); const onUseTikTok = vi.fn();
+    const { getByTestId, queryAllByTestId } = view({ ttAccounts: ["shop_a", "shop_b"], ttLiveName: "shop_a", onDisconnect, onUseTikTok });
+    expect(getByTestId("lc-tt-disconnect")).toBeTruthy();     // was MISSING before
+    fireEvent.click(getByTestId("lc-tt-disconnect"));
+    expect(onDisconnect).toHaveBeenCalledTimes(1);
+    // the live account has no Use; only the other one does
+    expect(queryAllByTestId("lc-tt-use")).toHaveLength(1);
+    expect(onUseTikTok).not.toHaveBeenCalled();
+  });
+
+  it("REGRESSION — tapping a row SELECTS (onSelectTikTok) without connecting; ✓ marks the selected", () => {
+    const onSelectTikTok = vi.fn(); const onUseTikTok = vi.fn();
+    const { getAllByTestId, getByTestId } = view({ ttAccounts: ["shop_a", "shop_b"], ttSelected: "shop_a", onSelectTikTok, onUseTikTok });
+    const selects = getAllByTestId("lc-tt-select");
+    fireEvent.click(selects[1]);                              // tap shop_b's row
+    expect(onSelectTikTok).toHaveBeenCalledWith("shop_b");
+    expect(onUseTikTok).not.toHaveBeenCalled();               // select-only, no connect
+    expect(getByTestId("lc-tt-selected")).toBeTruthy();       // ✓ on the selected (shop_a)
+  });
+
+  it("REGRESSION — Refresh button → onRefresh", () => {
+    const onRefresh = vi.fn();
+    const { getByTestId } = view({ ttAccounts: ["shop_a"], onRefresh });
+    fireEvent.click(getByTestId("lc-tt-refresh"));
+    expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 });
 
