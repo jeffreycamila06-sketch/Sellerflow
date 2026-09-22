@@ -12,6 +12,7 @@ import CountryPhoneField from "../components/CountryPhoneField";
 import type { AccountUser } from "../../accountDb";
 import { useT, tpl } from "../i18n";
 import { accountList } from "../adapters/connect";
+import ChannelsList, { type ManageChan } from "../components/ChannelsList";
 
 // Motion toggle is INTENTIONALLY HIDDEN for now (Jeff — pending a phone
 // heat/jank report). The whole motion machinery stays live (defaults ON); this
@@ -34,6 +35,7 @@ export default function GeneralSettings({
   printerIdx, printerOpen, printerFocus = 0, onPrinterFocused, onTogglePrinter, onPickPrinter, onPrintPattern,
   onSubscription, onSupport, onDelete,
   account = null, onSaveProfile, onManageChannel,
+  channelsV2 = false, onOpenChannel, channelsInfo,
   lowStockThreshold = 3, onSetLowStockThreshold,
   keepAwake = true, onToggleKeepAwake,
   motionOn = true, onToggleMotion,
@@ -50,6 +52,11 @@ export default function GeneralSettings({
   onSaveProfile?: (fields: { fullName: string; storeName: string; phone: string }) => Promise<{ ok: boolean; error?: string }>;
   // Channels card is DISPLAY-only here; tapping a row opens the Manage screen (C).
   onManageChannel?: (platform: "tiktok" | "facebook") => void;
+  // Owner-gated (LIVE_SOURCE_EMAILS) compact Channels list → opens LiveConnectModal in
+  // "manage" mode. channelsV2 false → the classic two channelRow cards (byte-unchanged).
+  channelsV2?: boolean;
+  onOpenChannel?: (platform: ManageChan) => void;
+  channelsInfo?: { ttLive: string | null; showShopee: boolean; shopeeName?: string; shopeeConnected?: boolean };
   // Rule 3 — seller-configurable low-stock warning threshold (default 3; 0 = off).
   lowStockThreshold?: number; onSetLowStockThreshold?: (n: number) => void;
   // Keep-awake habang naka-live (web Screen Wake Lock) — display toggle only;
@@ -393,8 +400,9 @@ export default function GeneralSettings({
         <div>
           <div className="sfl-anim-textglow" style={sectionLabel}>{t.rd_set_channels}</div>
           <div style={{ ...card, padding: 0, overflow: "hidden" }}>
-            {channelRow("tiktok")}
-            {channelRow("facebook")}
+            {channelsV2 && onOpenChannel
+              ? <ChannelsList account={account} ttLive={channelsInfo?.ttLive ?? null} showShopee={!!channelsInfo?.showShopee} shopeeName={channelsInfo?.shopeeName} shopeeConnected={channelsInfo?.shopeeConnected} onOpen={onOpenChannel} />
+              : <>{channelRow("tiktok")}{channelRow("facebook")}</>}
           </div>
         </div>
 

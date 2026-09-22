@@ -4,14 +4,13 @@
 // up to the plan cap = the seller types their own @username, Save → persisted + locked.
 // "Add … — Multi Account" → centered Telegram popup (admin-managed, beyond-cap).
 //
-// ⚠️ Account writes go through the SAME safe path as Step 3 (onSaveChannels →
-// composeChannelSave → keepLockedAccounts + fitProfileAccounts → upsertUser). This
-// screen only edits THIS platform's slots and passes the other platform's saved value
-// through unchanged, so the combined-cap + locked guards still apply.
-import { useEffect, useState, type CSSProperties } from "react";
-import { accountSlots, accountList, accountText, maxAcc } from "../adapters/connect";
-import { fetchSlotCooldowns, touchSlot, slotLockState, slotKey, unlockInHM, windowClock, WINDOW_MS, type SlotCooldowns } from "../adapters/tiktokCooldown";
-import { isAdminRole } from "../../lib/roles";
+// ⚠️ All editor state + the SAME safe save path (onSaveChannels → composeChannelSave →
+// keepLockedAccounts + fitProfileAccounts, + touchSlot per cooldown-unlock) now live in
+// the shared useChannelEditor hook — this screen is one of TWO consumers (the compact
+// manage-mode LiveConnectModal is the other). Render only; logic is single-source.
+import { useState, type CSSProperties } from "react";
+import { unlockInHM, windowClock } from "../adapters/tiktokCooldown";
+import { useChannelEditor } from "../adapters/useChannelEditor";
 import type { AccountUser } from "../../accountDb";
 import { useT, tpl } from "../i18n";
 import { TELEGRAM_URL } from "../../lib/telegram";
@@ -33,103 +32,9 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
   onShopee?: () => void;
 }) {
   const t = useT();
-  const isTT = platform === "tiktok";
-  const field = platform; // "tiktok" | "facebook"
-  const other: "tiktok" | "facebook" = isTT ? "facebook" : "tiktok";
-  const isAdmin = isAdminRole(account?.role);
-  const limit = maxAcc(account?.plan || "free");
-  const planBadge = (account?.plan || "free").toUpperCase();
-  const orig = accountSlots(account?.profile[field] || "", limit);
-  const [slots, setSlots] = useState<string[]>(orig);
+  // Editor state + save/cooldown logic = the shared hook (single source; see its header).
+  const { isTT, isAdmin, planBadge, orig, slots, setSlot, savedSlotView, atCap, hasEditable, save, state, err, windowLeftMs } = useChannelEditor(account, platform, onSaveChannels);
   const [addOpen, setAddOpen] = useState(false);
-  const [state, setState] = useState<"idle" | "saving" | "saved" | "error">("idle");
-  const [err, setErr] = useState("");
-  // Self-service cooldown state. `cooldown` null = NOT loaded → FAIL CLOSED (saved slots
-  // stay locked, as before this feature). openedAt = server ms the 5-min window opened.
-  const [cooldown, setCooldown] = useState<SlotCooldowns | null>(null);
-  const [openedAt, setOpenedAt] = useState<number | null>(null);
-  const [, setTick] = useState(0); // 1s re-render for the live countdowns (no re-poll)
-  useEffect(() => { setSlots(accountSlots(account?.profile[field] || "", limit)); setState("idle"); setErr(""); }, [account, limit, field]);
-
-  // Read the server-authoritative cooldowns once on mount / account change (admins skip:
-  // no cooldown, always editable — the server also bypasses via is_admin()). The reset +
-  // async set-state are the intended sync-external-state pattern (same as RedesignApp's
-  // effects); disabled to match the codebase convention.
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    let active = true;
-    setCooldown(null); setOpenedAt(null);
-    if (isAdmin) return;
-    void fetchSlotCooldowns().then((cd) => {
-      if (!active || !cd) return;               // error/no-supabase → stay fail-closed
-      setCooldown(cd);
-      setOpenedAt(Date.now() + cd.offsetMs);     // window opens now (server-anchored)
-    });
-    return () => { active = false; };
-  }, [account, isAdmin]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
-  // Tick the countdowns while cooldown data is present (cooling "Unlock in" + the 5-min
-  // window). Zero device-clock authority — the LOCK decision uses serverNow (below).
-  useEffect(() => {
-    if (isAdmin || !cooldown) return;
-    const id = setInterval(() => setTick((n) => n + 1), 1000);
-    return () => clearInterval(id);
-  }, [isAdmin, cooldown]);
-
-  // Server-anchored "now" for the LIVE countdowns (re-read each 1s tick). Date.now here
-  // is intentional — the whole point is a ticking clock offset to server time; the LOCK
-  // decision uses this, never the raw device clock alone.
-  // eslint-disable-next-line react-hooks/purity
-  const serverNow = () => Date.now() + (cooldown?.offsetMs ?? 0);
-  const windowLeftMs = () => (openedAt == null ? 0 : WINDOW_MS - (serverNow() - openedAt));
-
-  // Per SAVED slot i (orig[i] truthy): editability + which note to show. Server-time
-  // only. admin → editable; no cooldown loaded → LOCKED (fail-closed); cooling (<4h) →
-  // locked with "Unlock in"; unlocked (no row / ≥4h) → editable while the 5-min window
-  // is open, else locked (reopen to edit).
-  const savedSlotView = (i: number): { editable: boolean; note: "cooling" | "window" | "telegram"; unlockMs: number } => {
-    if (isAdmin) return { editable: true, note: "window", unlockMs: 0 };
-    if (!cooldown) return { editable: false, note: "telegram", unlockMs: 0 };
-    const last = cooldown.byKey.get(slotKey(field, i)) ?? null;
-    const st = slotLockState(last, serverNow());
-    if (st.status === "cooling") return { editable: false, note: "cooling", unlockMs: (st.unlockAtMs ?? 0) - serverNow() };
-    return windowLeftMs() > 0 ? { editable: true, note: "window", unlockMs: 0 } : { editable: false, note: "telegram", unlockMs: 0 };
-  };
-  const savedSlotEditable = (i: number): boolean => savedSlotView(i).editable;
-
-  // Combined cap across BOTH platforms (this platform's live drafts + the other's saved).
-  const otherCount = accountList(account?.profile[other] || "").length;
-  const atCap = otherCount + accountList(slots.join("\n")).length >= limit;
-  const setSlot = (i: number, v: string) => { setSlots((s) => s.map((x, idx) => (idx === i ? v : x))); setState("idle"); };
-  // Save shows when there is any empty slot OR any cooldown-unlocked saved slot.
-  const hasEditable = slots.some((_, i) => (orig[i] ? savedSlotEditable(i) : true));
-
-  const save = async () => {
-    if (!onSaveChannels || state === "saving") return;
-    setState("saving"); setErr("");
-    // SAVED slots the seller actually changed under an ACTIVE cooldown unlock (admins
-    // excluded — their edits go through the composeChannelSave admin bypass, no touch).
-    const changedUnlocked: number[] = [];
-    if (!isAdmin) {
-      for (let i = 0; i < slots.length; i++) {
-        if (orig[i] && savedSlotEditable(i) && slots[i].trim() !== orig[i].trim()) changedUnlocked.push(i);
-      }
-    }
-    // The server is the REAL gate: record each change first. A race (<4h) →
-    // 'cooldown_active' → abort WITHOUT persisting (no silent partial save).
-    for (const i of changedUnlocked) {
-      const r = await touchSlot(field, i);
-      if (!r.ok) { setState("error"); setErr(r.cooldown ? t.rd_ch_cooldown_err : (r.error || t.rd_set_err_save_failed)); return; }
-    }
-    // Edit THIS platform; pass the other platform's saved value through unchanged.
-    const lists = isTT
-      ? { tiktok: accountText(slots), facebook: account?.profile.facebook || "" }
-      : { tiktok: account?.profile.tiktok || "", facebook: accountText(slots) };
-    const unlocked = isTT ? { tiktok: changedUnlocked } : { facebook: changedUnlocked };
-    const r = await onSaveChannels(lists, { unlocked });
-    if (r.ok) setState("saved"); else { setState("error"); setErr(r.error || t.rd_set_err_save_failed); }
-  };
 
   const title = isTT ? t.rd_ch_manage_tt_title : t.rd_ch_manage_fb_title;
   const rowLabel = isTT ? t.rd_ch_id_tiktok : t.rd_ch_fb_page_label;
@@ -155,7 +60,7 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
           const limitReached = !val && !savedSlot && atCap;
           const invalid = isTT && !!val && !USERNAME_RE.test(val);
           return (
-            <div key={`${field}-${i}`} style={{ marginBottom: 16 }}>
+            <div key={`${platform}-${i}`} style={{ marginBottom: 16 }}>
               <label style={{ fontSize: 13, fontWeight: 800, color: "var(--text)", display: "block", marginBottom: 8 }}>{rowLabel} {i + 1}</label>
               <div style={{ display: "flex", gap: 9, alignItems: "stretch" }}>
                 <div style={inputWrap(invalid)}>

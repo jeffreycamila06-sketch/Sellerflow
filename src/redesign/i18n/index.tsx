@@ -1386,6 +1386,9 @@ const RAW: Record<string, Row> = {
   rd_lc_use: { en: "Use", fil: "Gamitin", zh: "使用", "zh-TW": "使用", vi: "Dùng", th: "ใช้", id: "Pakai" },
   rd_lc_live: { en: "Live", fil: "Live", zh: "直播中", "zh-TW": "直播中", vi: "Đang live", th: "กำลังไลฟ์", id: "Live" },
   rd_lc_add_another: { en: "Add another account", fil: "Magdagdag ng account", zh: "添加另一个账号", "zh-TW": "新增另一個帳號", vi: "Thêm tài khoản khác", th: "เพิ่มบัญชีอื่น", id: "Tambah akun lain" },
+  // Manage-mode modal header prefix + compact Channels-list empty state (Settings → Channels).
+  rd_lc_manage: { en: "Manage", fil: "Pamahalaan", zh: "管理", "zh-TW": "管理", vi: "Quản lý", th: "จัดการ", id: "Kelola" },
+  rd_cl_tt_none: { en: "Add your first account", fil: "Magdagdag ng unang account", zh: "添加第一个账号", "zh-TW": "新增第一個帳號", vi: "Thêm tài khoản đầu tiên", th: "เพิ่มบัญชีแรก", id: "Tambah akun pertama" },
   rd_lc_tt_ph: { en: "TikTok @username", fil: "TikTok @username", zh: "TikTok @用户名", "zh-TW": "TikTok @使用者名稱", vi: "TikTok @tênngườidùng", th: "TikTok @ชื่อผู้ใช้", id: "TikTok @namapengguna" },
   rd_shp_shop_id: { en: "Shop ID", fil: "Shop ID", zh: "店铺 ID", "zh-TW": "賣場 ID", vi: "Shop ID", th: "รหัสร้าน", id: "ID toko" },
   rd_shp_remove: { en: "Remove", fil: "Alisin", zh: "移除", "zh-TW": "移除", vi: "Xoá", th: "ลบ", id: "Hapus" },

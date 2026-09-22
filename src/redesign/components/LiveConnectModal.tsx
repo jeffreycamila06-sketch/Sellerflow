@@ -12,6 +12,9 @@ import { createPortal } from "react-dom";
 import { useT } from "../i18n";
 import { TELEGRAM_URL } from "../../lib/telegram";
 import type { SourcePlatform } from "../adapters/liveSource";
+import ChannelManageBody from "./ChannelManageBody";
+import type { ChannelSaveFn } from "../adapters/useChannelEditor";
+import type { AccountUser } from "../../accountDb";
 
 const input: CSSProperties = { width: "100%", padding: "12px 13px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 600, outline: "none", boxSizing: "border-box" };
 const primary: CSSProperties = { width: "100%", padding: "13px 0", border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 800, cursor: "pointer" };
@@ -21,12 +24,17 @@ const iconChip = (bg: string): CSSProperties => ({ width: 30, height: 30, border
 export interface ShopOpt { shopId: number; shopName: string }
 
 export default function LiveConnectModal({
-  platform, onClose,
+  platform, onClose, mode = "connect", account = null, onSaveChannels,
   ttAccounts, ttLiveName, onUseTikTok, onConnectTikTokNew,
   shopeeShops, shopeeLiveId, shopeeEligible, onAuthorizeShopee, onConnectShopee, onUpsell,
 }: {
   platform: SourcePlatform;
   onClose: () => void;
+  // "connect" (Live source flow — go live) | "manage" (Settings → Channels — edit/register
+  // accounts, NEVER goes live). Default "connect" → existing callers byte-unchanged.
+  mode?: "connect" | "manage";
+  account?: AccountUser | null;            // manage mode: the profile whose accounts we edit
+  onSaveChannels?: ChannelSaveFn;          // manage mode: the shared composeChannelSave path
   // TikTok
   ttAccounts: string[];
   ttLiveName: string | null;               // the account currently live (green), else null
@@ -48,6 +56,7 @@ export default function LiveConnectModal({
 
   const meta = platform === "Facebook" ? { bg: "#1877f2", ch: "f", name: t.rd_ls_facebook }
     : platform === "Shopee" ? { bg: "#ee4d2d", ch: "S", name: t.rd_ls_shopee }
+    : platform === "Instagram" ? { bg: "#e1306c", ch: "i", name: t.rd_ls_instagram }
     : { bg: "#000", ch: "t", name: t.rd_ls_tiktok };
 
   const tiktok = (
@@ -99,16 +108,40 @@ export default function LiveConnectModal({
     </div>
   );
 
+  // MANAGE mode (Settings → Channels): edit/register accounts, NEVER connect. TikTok/FB
+  // → the shared account editor; Shopee → shop list + Authorize (no session/connect);
+  // Instagram → coming soon.
+  const manage = platform === "TikTok" || platform === "Facebook" ? (
+    <ChannelManageBody platform={platform === "TikTok" ? "tiktok" : "facebook"} account={account} onSaveChannels={onSaveChannels} ttLiveName={ttLiveName} />
+  ) : platform === "Shopee" ? (
+    shopeeShops.length === 0 ? (
+      <button onClick={onAuthorizeShopee} style={primary} data-testid="cm-shopee-authorize">{t.rd_shp_authorize}</button>
+    ) : (
+      <div>
+        {shopeeShops.map((s) => (
+          <div key={s.shopId} style={rowCss} data-testid="cm-shopee-row">
+            <span style={iconChip("#ee4d2d")}>S</span>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.shopName || `${t.rd_shp_shop_name_fallback} ${s.shopId}`}</span>
+            {s.shopId === shopeeLiveId && <span style={{ fontSize: 11.5, fontWeight: 800, color: "var(--ok, #16a34a)", flexShrink: 0 }} data-testid="cm-shopee-live">● {t.rd_lc_live}</span>}
+          </div>
+        ))}
+        <button onClick={onAuthorizeShopee} style={{ ...rowCss, width: "100%", cursor: "pointer", fontFamily: "var(--font-ui)", color: "var(--accent-fg)", fontWeight: 800, fontSize: 13.5, justifyContent: "flex-start" }} data-testid="cm-shopee-authorize">＋ {t.rd_shp_authorize}</button>
+      </div>
+    )
+  ) : (
+    <div style={{ ...rowCss, color: "var(--text-muted)", fontSize: 13, fontWeight: 700, justifyContent: "center" }} data-testid="cm-soon">{t.rd_ls_soon}</div>
+  );
+
   const node = (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 1320, background: "rgba(9,7,24,.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom))", boxSizing: "border-box" }} data-testid="lc-overlay">
       <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 420, maxHeight: "100%", overflowY: "auto", background: "var(--surface-2)", borderRadius: 18, boxShadow: "0 20px 60px rgba(0,0,0,.4)" }} data-testid="lc-modal">
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "15px 16px 13px", borderBottom: "1px solid var(--border)" }}>
           <span style={iconChip(meta.bg)}>{meta.ch}</span>
-          <span style={{ flex: 1, fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, color: "var(--text)" }}>{t.rd_lc_connect} {meta.name}</span>
+          <span style={{ flex: 1, fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, color: "var(--text)" }}>{mode === "manage" ? t.rd_lc_manage : t.rd_lc_connect} {meta.name}</span>
           <button onClick={onClose} style={{ width: 28, height: 28, borderRadius: 8, border: "none", background: "var(--surface)", color: "var(--text-dim)", fontSize: 15, cursor: "pointer" }} data-testid="lc-close">×</button>
         </div>
         <div style={{ padding: 16 }}>
-          {platform === "TikTok" ? tiktok : platform === "Facebook" ? facebook : shopee}
+          {mode === "manage" ? manage : platform === "TikTok" ? tiktok : platform === "Facebook" ? facebook : shopee}
         </div>
       </div>
     </div>

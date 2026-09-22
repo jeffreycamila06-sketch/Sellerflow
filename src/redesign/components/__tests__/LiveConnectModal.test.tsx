@@ -7,6 +7,10 @@ import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent } from "@testing-library/react";
 import { TProvider } from "../../i18n";
 import LiveConnectModal from "../LiveConnectModal";
+import type { AccountUser } from "../../../accountDb";
+
+const acct = (tiktok: string, facebook = "", plan = "pro", role = "seller") =>
+  ({ email: "x@y.com", plan, role, connectedAccounts: [], profile: { tiktok, facebook, fullName: "", storeName: "", phone: "", country: "" } } as unknown as AccountUser);
 
 const base = {
   onClose: vi.fn(),
@@ -68,5 +72,52 @@ describe("LiveConnectModal — Facebook & Shopee", () => {
     fireEvent.change(getByTestId("lc-shopee-session"), { target: { value: "sess-1" } });
     fireEvent.click(getByTestId("lc-shopee-connect"));
     expect(onConnectShopee).toHaveBeenCalledWith(77, "sess-1");
+  });
+});
+
+// MANAGE mode (Settings → Channels): edit/register accounts, NEVER connect. No supabase
+// in the test env → fetchSlotCooldowns returns null → saved slots FAIL CLOSED (locked),
+// which is exactly the pre-cooldown behavior we assert against.
+describe("LiveConnectModal — manage mode", () => {
+  it("TikTok → renders ALL registered accounts (stale-fix reflects the profile), no Connect UI, header = Manage", () => {
+    const { getAllByTestId, queryByTestId, getByTestId, baseElement } = render(
+      <TProvider><LiveConnectModal platform="TikTok" {...base} mode="manage" account={acct("a\nb\nc")} onSaveChannels={vi.fn()} /></TProvider>);
+    expect(getByTestId("cm-body")).toBeTruthy();
+    expect(getAllByTestId("cm-row")).toHaveLength(3);          // all 3 accounts shown
+    expect(queryByTestId("lc-tt-connect")).toBeNull();          // connect flow NOT rendered
+    expect(queryByTestId("lc-tt-input")).toBeNull();
+    expect(baseElement.textContent).toContain("Manage");        // header prefix, not "Connect" (modal is portaled)
+  });
+
+  it("TikTok → the live account shows ● Live; saved slots are locked when cooldowns unknown", () => {
+    const { getByTestId, getAllByTestId } = render(
+      <TProvider><LiveConnectModal platform="TikTok" {...base} mode="manage" ttLiveName="a" account={acct("a\nb")} onSaveChannels={vi.fn()} /></TProvider>);
+    expect(getByTestId("cm-live")).toBeTruthy();                // "a" is live
+    expect(getAllByTestId("cm-locked").length).toBeGreaterThan(0); // fail-closed lock (no supabase)
+  });
+
+  it("TikTok with room under the cap → an Add-another input to register a new account", () => {
+    const { getByTestId } = render(
+      <TProvider><LiveConnectModal platform="TikTok" {...base} mode="manage" account={acct("a", "", "master")} onSaveChannels={vi.fn()} /></TProvider>);
+    // master cap 5, 1 saved → the add flow is available.
+    expect(getByTestId("cm-add")).toBeTruthy();
+    fireEvent.click(getByTestId("cm-add"));
+    expect(getByTestId("cm-add-input")).toBeTruthy();
+  });
+
+  it("Shopee → shop list + Authorize another (no session/connect UI)", () => {
+    const onAuthorizeShopee = vi.fn();
+    const { getByTestId, queryByTestId } = render(
+      <TProvider><LiveConnectModal platform="Shopee" {...base} mode="manage" shopeeShops={[{ shopId: 5, shopName: "MyShop" }]} shopeeLiveId={5} onAuthorizeShopee={onAuthorizeShopee} /></TProvider>);
+    expect(getByTestId("cm-shopee-row")).toBeTruthy();
+    expect(getByTestId("cm-shopee-live")).toBeTruthy();
+    expect(queryByTestId("lc-shopee-session")).toBeNull();      // no connect in manage mode
+    fireEvent.click(getByTestId("cm-shopee-authorize"));
+    expect(onAuthorizeShopee).toHaveBeenCalled();
+  });
+
+  it("Instagram → coming soon", () => {
+    const { getByTestId } = render(<TProvider><LiveConnectModal platform="Instagram" {...base} mode="manage" /></TProvider>);
+    expect(getByTestId("cm-soon")).toBeTruthy();
   });
 });
