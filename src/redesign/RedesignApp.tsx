@@ -1747,7 +1747,13 @@ export default function RedesignApp() {
             onSaveChannels={saveChannels}
             ttAccounts={ttAccounts}
             ttLiveName={ttEff && !liveFeed.ttRecovering ? (ttAccounts[ttIdx] || ttAccounts[0] || null) : null}
+            ttSelected={ttAccounts[ttIdx] || ttAccounts[0] || ""}
+            ttConnecting={ttConnecting || liveFeed.ttRecovering}
             onUseTikTok={(u) => { const i = ttAccounts.indexOf(u); if (i >= 0) setTtIdx(i); commitLiveConnect({ platform: "TikTok", username: u }); }}
+            onSelectTikTok={(u) => { const i = ttAccounts.indexOf(u); if (i >= 0) setTtIdx(i); }}
+            onDisconnect={() => setTtOff(true)}
+            onRefresh={() => void refreshDashboard()}
+            refreshing={refreshing}
             onManage={() => { if (liveConnectPlatform) openLiveConnect(liveConnectPlatform, "manage"); }}
             shopeeShops={shopeeShops.map((s) => ({ shopId: s.shopId, shopName: s.shopName }))}
             shopeeLiveId={shopeeEff && selectedShop ? selectedShop.shopId : null}
