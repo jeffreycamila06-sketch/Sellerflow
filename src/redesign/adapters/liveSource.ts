@@ -6,7 +6,11 @@
 // 85 sellers — everyone else keeps the current 3-chip header, byte-for-byte. Widen =
 // add emails / remove the gate. INSTANT REVERT = empty the array. Mirrors the
 // SESSION_V2 / shopeePreview allowlist pattern.
-export const LIVE_SOURCE_EMAILS = ["camilajeffrey1@gmail.com", "googletest@gmail.com"];
+// SOFT-REVERTED 2026-09-23: emptied to turn the connect-flow redesign OFF for everyone
+// (owner + googletest included) → the old 3-chip header + old dropdown render; the
+// LiveSourceSheet / LiveConnectModal / ChannelsList / compact button never mount (inert
+// dead code). Re-add an email here to re-enable the new flow for that account.
+export const LIVE_SOURCE_EMAILS: string[] = [];
 
 export function liveSourcePreviewEnabled(email: string | undefined | null): boolean {
   const e = String(email || "").trim().toLowerCase();
