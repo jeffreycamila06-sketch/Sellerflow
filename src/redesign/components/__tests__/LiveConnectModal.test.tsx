@@ -98,14 +98,15 @@ describe("LiveConnectModal — manage mode", () => {
     expect(queryByTestId("cm-change")).toBeNull();               // fail-closed → NO self-service Change (can't verify cooldown)
   });
 
-  it("Option B — at the plan cap: exactly N slots (all filled, no empty inputs) + the Multi-Account Telegram anchor stays", () => {
+  it("Option B — at the plan cap: exactly N slots (all filled, no empty inputs) + the Multi-Account button opens the Telegram popup", () => {
     const { getAllByTestId, queryAllByTestId, getByTestId } = render(
       <TProvider><LiveConnectModal platform="TikTok" {...base} mode="manage" account={acct("a\nb", "", "plus")} onSaveChannels={vi.fn()} /></TProvider>);
     expect(getAllByTestId("cm-row")).toHaveLength(2);        // Plus = exactly 2 slots (no teaser)
     expect(queryAllByTestId("cm-empty")).toHaveLength(0);    // both filled → no empty input
-    const multi = getByTestId("cm-multi") as HTMLAnchorElement;
-    expect(multi.tagName).toBe("A");
-    expect(multi.getAttribute("href")).toContain("t.me");    // "Add — Multi Account" Telegram (all plans)
+    fireEvent.click(getByTestId("cm-multi"));                // "Add — Multi Account" (all plans)
+    const ok = getByTestId("cm-multi-ok") as HTMLAnchorElement;
+    expect(ok.tagName).toBe("A");
+    expect(ok.getAttribute("href")).toContain("t.me");       // popup OK → Telegram
   });
 
   it("Option B — under cap: empty slots are directly-typeable (no reveal button)", () => {

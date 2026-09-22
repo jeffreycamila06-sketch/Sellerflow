@@ -11,11 +11,11 @@
 //
 // ⚠️ ANTI-ABUSE: "Change" is a UI reveal ONLY; save() still calls touchSlot and the
 // server RAISES cooldown_active (<4h, non-admin) → save aborts. Not bypassable.
-import { useEffect, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { useT, tpl } from "../i18n";
 import { unlockInHM } from "../adapters/tiktokCooldown";
 import { useChannelEditor, type ChannelSaveFn } from "../adapters/useChannelEditor";
-import { TELEGRAM_URL } from "../../lib/telegram";
+import MultiAccountPopup from "./MultiAccountPopup";
 import type { AccountUser } from "../../accountDb";
 
 const rowCss: CSSProperties = { display: "flex", alignItems: "center", gap: 11, padding: "11px 12px", border: "1px solid var(--border)", borderRadius: 12, background: "var(--surface)", marginBottom: 8 };
@@ -25,7 +25,7 @@ const changeBtn: CSSProperties = { padding: "6px 13px", border: "1px solid var(-
 const lockBadge: CSSProperties = { display: "flex", alignItems: "center", gap: 3, fontSize: 11, fontWeight: 800, color: "var(--text-muted)", flexShrink: 0 };
 const note: CSSProperties = { fontSize: 10.5, color: "var(--text-muted)", marginTop: 2 };
 const handleText: CSSProperties = { fontSize: 14, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
-const multiBtn: CSSProperties = { display: "block", textAlign: "center", textDecoration: "none", marginTop: 6, padding: "12px 0", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 800 };
+const multiBtn: CSSProperties = { display: "block", width: "100%", textAlign: "center", border: "none", marginTop: 6, padding: "12px 0", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 800, cursor: "pointer" };
 
 export default function ChannelManageBody({ platform, account, onSaveChannels, ttLiveName, onSaved }: {
   platform: "tiktok" | "facebook";
@@ -37,6 +37,7 @@ export default function ChannelManageBody({ platform, account, onSaveChannels, t
   const t = useT();
   const { isTT, orig, slots, setSlot, savedSlotView, unlock, atCap, dirty, save, state, err } = useChannelEditor(account, platform, onSaveChannels);
   const addLabel = isTT ? t.rd_ch_add_tt_multi : t.rd_ch_add_fb_multi;
+  const [multiOpen, setMultiOpen] = useState(false); // "Add — Multi Account" Telegram popup
 
   // A SUCCESSFUL save closes the modal. A failure (cooldown_active / error) keeps it open
   // with the inline error below.
@@ -81,8 +82,10 @@ export default function ChannelManageBody({ platform, account, onSaveChannels, t
         <button onClick={save} disabled={state === "saving"} style={{ ...primary, marginTop: 4, opacity: state === "saving" ? 0.6 : 1 }} data-testid="cm-save">{state === "saving" ? t.rd_set_saving : t.rd_ch_save}</button>
       )}
 
-      {/* Add — Multi Account: Telegram (all plans), iOS-safe anchor (beyond-cap / help). */}
-      <a href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener" style={multiBtn} data-testid="cm-multi">{addLabel}</a>
+      {/* Add — Multi Account (all plans, beyond-cap / help): opens the EXACT shared
+          Telegram popup the old ManageChannels screen uses. */}
+      <button onClick={() => setMultiOpen(true)} style={multiBtn} data-testid="cm-multi">{addLabel}</button>
+      <MultiAccountPopup open={multiOpen} onClose={() => setMultiOpen(false)} title={addLabel} body={isTT ? t.rd_ch_pop_body_tt : t.rd_ch_pop_body_fb} />
     </div>
   );
 }

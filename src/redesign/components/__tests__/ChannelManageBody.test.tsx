@@ -36,12 +36,18 @@ describe("ChannelManageBody — Option B exact plan slots", () => {
     expect(container.textContent).not.toMatch(/PLUS|PRO|MASTER/);
   });
 
-  it("'Add — Multi Account' is a Telegram anchor for ALL plans (even under cap)", () => {
+  it("'Add — Multi Account' button opens the shared Telegram popup (title + @handle + OK→t.me)", () => {
     fetchMock.mockResolvedValue({ offsetMs: 0, byKey: new Map() });
-    const { getByTestId } = render(<TProvider lang="en"><ChannelManageBody platform="tiktok" account={acct("saved_tt", "seller", "master")} onSaveChannels={vi.fn()} onSaved={vi.fn()} /></TProvider>);
-    const multi = getByTestId("cm-multi") as HTMLAnchorElement;
-    expect(multi.tagName).toBe("A");
-    expect(multi.getAttribute("href")).toContain("t.me");
+    const { getByTestId, queryByTestId } = render(<TProvider lang="en"><ChannelManageBody platform="tiktok" account={acct("saved_tt", "seller", "master")} onSaveChannels={vi.fn()} onSaved={vi.fn()} /></TProvider>);
+    expect(queryByTestId("cm-multi-popup")).toBeNull();   // closed initially
+    fireEvent.click(getByTestId("cm-multi"));              // the bottom button (all plans)
+    const popup = getByTestId("cm-multi-popup");           // exact shared popup opens
+    expect(popup.textContent).toContain("Add TikTok — Multi Account");           // title
+    expect(popup.textContent).toContain("message our admin on Telegram");        // body
+    expect(popup.textContent).toContain("@SellerFlowLive");                       // Telegram box
+    const ok = getByTestId("cm-multi-ok") as HTMLAnchorElement;
+    expect(ok.tagName).toBe("A");
+    expect(ok.getAttribute("href")).toContain("t.me");    // OK → Telegram (iOS-safe anchor)
   });
 
   it("empty slot within cap adds directly → Save sends the new handle", async () => {
