@@ -61,4 +61,15 @@ describe("Session-safety contract — routing", () => {
     expect(b).toContain("sessionWindowDays ?? SESSION_V2_DAYS");
     expect(b).toContain("liveSession.reset()");
   });
+  it("H4 — confirmSwitch is guarded so a same-tick double-tap fires ONE start_session", () => {
+    const b = body("confirmSwitch");
+    // the guard returns early on a re-entrant call, and the latch is set BEFORE the
+    // awaited startSession — so two synchronous taps can never both reach it.
+    expect(b).toContain("if (switchingRef.current) return;");
+    const latchIdx = b.indexOf("switchingRef.current = true;");
+    const startIdx = b.indexOf("sessionInstance.startSession(");
+    expect(latchIdx).toBeGreaterThan(-1);
+    expect(latchIdx).toBeLessThan(startIdx);          // latch precedes the mint
+    expect(b).toContain("switchingRef.current = false;"); // released in finally
+  });
 });

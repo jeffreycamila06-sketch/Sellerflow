@@ -913,6 +913,10 @@ export default function RedesignApp() {
   const [liveConnectMode, setLiveConnectMode] = useState<"connect" | "manage">("connect");
   // Platform-switch confirm — carries the full target so Confirm can connect after reset.
   const [switchConfirm, setSwitchConfirm] = useState<LiveConnectTarget | null>(null);
+  // H4 — single start_session per confirm. A same-tick double-tap of "Switch" (before
+  // setSwitchConfirm(null) unmounts the modal) must NOT fire two start_session → two
+  // buyer# resets. Synchronous ref latch = the only reliable guard for a same-tick race.
+  const switchingRef = useRef(false);
   // Shopee row shows only for the TW market (marketHides bakes in the admin bypass) AND
   // the shopee_enabled/owner-preview gate — never to a PH/other-market seller.
   const showShopeeRow = shopeeEnabled && !marketHides("shopee", market);
@@ -992,14 +996,18 @@ export default function RedesignApp() {
   // length; born-ended fix makes it safe — no endSession first) → reset board (#1) →
   // connect the new platform. A null id (RPC failed) aborts without a session-less feed.
   const confirmSwitch = async () => {
+    if (switchingRef.current) return;              // H4 — same-tick double-tap → exactly ONE start_session/reset
     const target = switchConfirm;
     setSwitchConfirm(null);
     if (!target) return;
-    const days = sessionInstance.sessionWindowDays ?? SESSION_V2_DAYS;
-    const sid = await sessionInstance.startSession(days);
-    if (!sid) { setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }); return; }
-    liveSession.reset();
-    runTargetConnect(target);
+    switchingRef.current = true;
+    try {
+      const days = sessionInstance.sessionWindowDays ?? SESSION_V2_DAYS;
+      const sid = await sessionInstance.startSession(days);
+      if (!sid) { setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }); return; }
+      liveSession.reset();
+      runTargetConnect(target);
+    } finally { switchingRef.current = false; }
   };
   // KEEP-AWAKE habang naka-live (FLive/Chotdon parity) — web Screen Wake Lock,
   // held while GREEN or AMBER (kasama ang connecting/recovering — ang 60s grace
