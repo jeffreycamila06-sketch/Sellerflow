@@ -1381,6 +1381,12 @@ const RAW: Record<string, Row> = {
   rd_ls_switch_body: { en: "Switch to {to}? This ends your current capture and starts a new session — buyers restart at #1.", fil: "Lumipat sa {to}? Tatapusin nito ang kasalukuyang capture at magsisimula ng bagong session — magsisimula ulit sa #1 ang mga buyer.", zh: "切换到 {to}？这将结束当前捕获并开始新会话——买家将从 #1 重新开始。", "zh-TW": "切換到 {to}？這會結束目前的擷取並開始新的場次——買家會從 #1 重新開始。", vi: "Chuyển sang {to}? Việc này kết thúc phiên bắt hiện tại và bắt đầu phiên mới — người mua đánh số lại từ #1.", th: "เปลี่ยนไป {to}? การนี้จะจบการรับคอมเมนต์ปัจจุบันและเริ่มเซสชันใหม่ — ผู้ซื้อเริ่มนับใหม่ที่ #1", id: "Ganti ke {to}? Ini mengakhiri penangkapan saat ini dan memulai sesi baru — pembeli mulai lagi dari #1." },
   rd_ls_switch_cancel: { en: "Cancel", fil: "Kanselahin", zh: "取消", "zh-TW": "取消", vi: "Hủy", th: "ยกเลิก", id: "Batal" },
   rd_ls_switch_go: { en: "Switch", fil: "Lumipat", zh: "切换", "zh-TW": "切換", vi: "Chuyển", th: "เปลี่ยน", id: "Ganti" },
+  // Option E — the per-platform Live Connect modal.
+  rd_lc_connect: { en: "Connect", fil: "Kumonekta", zh: "连接", "zh-TW": "連接", vi: "Kết nối", th: "เชื่อมต่อ", id: "Hubungkan" },
+  rd_lc_use: { en: "Use", fil: "Gamitin", zh: "使用", "zh-TW": "使用", vi: "Dùng", th: "ใช้", id: "Pakai" },
+  rd_lc_live: { en: "Live", fil: "Live", zh: "直播中", "zh-TW": "直播中", vi: "Đang live", th: "กำลังไลฟ์", id: "Live" },
+  rd_lc_add_another: { en: "Add another account", fil: "Magdagdag ng account", zh: "添加另一个账号", "zh-TW": "新增另一個帳號", vi: "Thêm tài khoản khác", th: "เพิ่มบัญชีอื่น", id: "Tambah akun lain" },
+  rd_lc_tt_ph: { en: "TikTok @username", fil: "TikTok @username", zh: "TikTok @用户名", "zh-TW": "TikTok @使用者名稱", vi: "TikTok @tênngườidùng", th: "TikTok @ชื่อผู้ใช้", id: "TikTok @namapengguna" },
   rd_shp_shop_id: { en: "Shop ID", fil: "Shop ID", zh: "店铺 ID", "zh-TW": "賣場 ID", vi: "Shop ID", th: "รหัสร้าน", id: "ID toko" },
   rd_shp_remove: { en: "Remove", fil: "Alisin", zh: "移除", "zh-TW": "移除", vi: "Xoá", th: "ลบ", id: "Hapus" },
   rd_shp_remove_confirm: { en: "Remove this Shopee shop? You'll need to authorize it again to reconnect.", fil: "Alisin ang Shopee shop na ito? Kailangan mo itong i-authorize ulit para makakonekta muli.", zh: "移除此 Shopee 店铺？重新连接需再次授权。", "zh-TW": "移除此 Shopee 賣場？重新連線需再次授權。", vi: "Xoá cửa hàng Shopee này? Bạn sẽ cần uỷ quyền lại để kết nối.", th: "ลบร้าน Shopee นี้? คุณต้องอนุญาตใหม่เพื่อเชื่อมต่ออีกครั้ง", id: "Hapus toko Shopee ini? Anda perlu mengotorisasi ulang untuk menyambung kembali." },

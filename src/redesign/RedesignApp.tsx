@@ -42,6 +42,7 @@ import ShopeeChannels from "./screens/ShopeeChannels";
 import { loadShopeeEnabled, listShopeeShops, shopeeConnect, shopeeDisconnect, parseShopeeReturn, isShopeeEligible, type ShopeeShop } from "./adapters/shopee";
 import { shopeePreviewEnabled, withShopeePreview } from "./adapters/shopeePreview";
 import LiveSourceSheet from "./components/LiveSourceSheet";
+import LiveConnectModal from "./components/LiveConnectModal";
 import { liveSourcePreviewEnabled, livePlatformOf, isPlatformSwitch, isConnectableSource, type SourcePlatform } from "./adapters/liveSource";
 import type { ConnectTab } from "./screens/ConnectModal";
 import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
@@ -109,6 +110,18 @@ type Screen =
 
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
 const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "shopeechannels"];
+
+// A pending session-first connect (awaiting the picker / owner-Start length choice).
+// tt = a TikTok/FB account connect (register = append a NEW @username to the profile
+// after connect); shopee = a shop connect with its Live session id. Both funnel into
+// onPickSessionLength / onOwnerStart → startSession → the matching connect.
+type PendingConnect =
+  | { kind: "tt"; platform: Platform; acct: string; register?: boolean }
+  | { kind: "shopee"; shopId: number; sessionId: string };
+// The Live Source connect target the new modal commits (before the session gate).
+type LiveConnectTarget =
+  | { platform: "TikTok"; username: string; register?: boolean }
+  | { platform: "Shopee"; shopId: number; sessionId: string };
 
 // Auto Mode Rule 1 dedup key: one auto order per (session, buyer handle, code),
 // case-insensitive + trimmed — mirrors the DB partial-unique index expression
@@ -248,11 +261,14 @@ export default function RedesignApp() {
   const sessionInstance = useSessionInstance(authed);
   const liveSession = useLiveSession(authed, { ready: sessionWindow.loaded && sessionInstance.loaded, windowDays: sessionWindow.windowDays, windowStart: sessionWindow.windowStart, sessionId: sessionInstance.currentSessionId });
   // Pending connect awaiting a session pick (the required picker modal). Non-null =
-  // modal open + the platform/account to connect once a length is chosen.
-  const [pickerConnect, setPickerConnect] = useState<{ platform: Platform; acct: string } | null>(null);
+  // modal open + the connect to run once a length is chosen. Union so the Live Source
+  // flow (Option E) can also start a session-first SHOPEE connect through the SAME
+  // picker/owner path — no new startSession site. register = a NEW @username to append
+  // to the profile after a successful connect (mirrors handleConnect).
+  const [pickerConnect, setPickerConnect] = useState<PendingConnect | null>(null);
   // Session V2 (owner-only): the "Start Session (5-day)" modal replaces the 1–5 picker.
   const sessionV2 = sessionV2Enabled(auth.profile?.email);
-  const [ownerStart, setOwnerStart] = useState<{ platform: Platform; acct: string } | null>(null);
+  const [ownerStart, setOwnerStart] = useState<PendingConnect | null>(null);
   const [endConfirm, setEndConfirm] = useState(false); // owner "End session?" confirm dialog
   // Orders search 7-day history (LAZY — fetches on the first search only,
   // once per open; display-only lane, structurally isolated from liveSession).
@@ -890,7 +906,10 @@ export default function RedesignApp() {
   const liveSourceMode = liveSourcePreviewEnabled(auth.profile?.email);
   const [sourceSheetOpen, setSourceSheetOpen] = useState(false);
   const [activeSource, setActiveSource] = useState<SourcePlatform>("TikTok");
-  const [switchConfirm, setSwitchConfirm] = useState<{ to: "TikTok" | "Shopee" } | null>(null);
+  // The per-platform connect modal (Option E). Non-null = open for that platform.
+  const [liveConnectPlatform, setLiveConnectPlatform] = useState<SourcePlatform | null>(null);
+  // Platform-switch confirm — carries the full target so Confirm can connect after reset.
+  const [switchConfirm, setSwitchConfirm] = useState<LiveConnectTarget | null>(null);
   // Shopee row shows only for the TW market (marketHides bakes in the admin bypass) AND
   // the shopee_enabled/owner-preview gate — never to a PH/other-market seller.
   const showShopeeRow = shopeeEnabled && !marketHides("shopee", market);
@@ -924,37 +943,57 @@ export default function RedesignApp() {
       return r;
     } finally { setShopeeConnecting(false); }
   };
-  // ── Option E — Live Source orchestration (owner-gated; presentation only — the
-  // connect logic in doConnect / doShopeeConnect / useLiveFeed is UNTOUCHED).
-  // beginConnect opens the EXISTING ConnectModal on the picked tab (account/shop pick
-  // + connect run through the unchanged handlers).
-  const beginConnect = (platform: "TikTok" | "Shopee") => {
-    if (platform === "Shopee") { onConnectShopee(); return; } // reuses the eligibility gate + opens the Shopee tab
-    void doConnect("TikTok"); // reuses checkStatus → running?continue:picker (no reset on reconnect/account switch)
-  };
-  // switchSource: the SINGLE reset trigger. A PLATFORM switch WHILE live → confirm →
-  // new session (#1). Same platform (account switch) or nothing live (fresh open /
-  // crash reconnect) → just connect, buyer# continues (in-memory default-continue).
-  const switchSource = (platform: SourcePlatform) => {
+  // ── Option E — Live Source orchestration (owner-gated). Presentation + session GATE
+  // only; the socket connect (performConnect / doShopeeConnect / useLiveFeed) is reused,
+  // UNTOUCHED. All session-start funnels into the existing picker/owner handlers →
+  // startSession has exactly 3 sites (picker, owner, confirmSwitch below).
+  // Sheet pick → just open the per-platform modal (no session logic here). FB/IG handled
+  // inside the sheet (Telegram / disabled).
+  const openLiveConnect = (platform: SourcePlatform) => {
     setSourceSheetOpen(false);
-    if (!isConnectableSource(platform)) return; // FB/Instagram handled inside the sheet
+    if (!isConnectableSource(platform)) return;
     setActiveSource(platform);
+    setLiveConnectPlatform(platform);
+  };
+  // Run a target's socket connect once its session is guaranteed (running or just-started).
+  const runTargetConnect = (target: LiveConnectTarget) => {
+    if (target.platform === "Shopee") void doShopeeConnect(target.shopId, target.sessionId);
+    else void performConnect("TikTok", target.username, { register: target.register });
+  };
+  // Session-aware connect for the new modal: running → connect (CONTINUE, same session_id
+  // — reconnect / account switch); NOT running → the SAME owner-Start / picker path that
+  // owns startSession (first connect / Shopee-first → #1). No new startSession site.
+  const runSessionAware = async (target: LiveConnectTarget) => {
+    await sessionInstance.ensureLoaded();
+    const status = await sessionInstance.checkStatus();
+    if (status.running) { runTargetConnect(target); return; }
+    const pending: PendingConnect = target.platform === "Shopee"
+      ? { kind: "shopee", shopId: target.shopId, sessionId: target.sessionId }
+      : { kind: "tt", platform: "TikTok", acct: target.username, register: target.register };
+    if (sessionV2) setOwnerStart(pending); else setPickerConnect(pending);
+  };
+  // The SINGLE commit from the modal (Connect / Use / Shopee connect). A PLATFORM switch
+  // WHILE live → confirm → startSession (#1). Same platform (account switch) / fresh /
+  // reconnect → runSessionAware (continue or first-session). Switch detected in ONE place.
+  const commitLiveConnect = (target: LiveConnectTarget) => {
+    setLiveConnectPlatform(null);
+    setActiveSource(target.platform);
     const live = livePlatformOf({ ttEff, shopeeEff });
-    if (isPlatformSwitch(live, platform)) { setSwitchConfirm({ to: platform }); return; }
-    beginConnect(platform);
+    if (isPlatformSwitch(live, target.platform)) { setSwitchConfirm(target); return; }
+    void runSessionAware(target);
   };
   // Confirmed platform switch → new session (startSession reuses the running window
   // length; born-ended fix makes it safe — no endSession first) → reset board (#1) →
   // connect the new platform. A null id (RPC failed) aborts without a session-less feed.
   const confirmSwitch = async () => {
-    const to = switchConfirm?.to;
+    const target = switchConfirm;
     setSwitchConfirm(null);
-    if (!to) return;
+    if (!target) return;
     const days = sessionInstance.sessionWindowDays ?? SESSION_V2_DAYS;
     const sid = await sessionInstance.startSession(days);
     if (!sid) { setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }); return; }
     liveSession.reset();
-    beginConnect(to);
+    runTargetConnect(target);
   };
   // KEEP-AWAKE habang naka-live (FLive/Chotdon parity) — web Screen Wake Lock,
   // held while GREEN or AMBER (kasama ang connecting/recovering — ang 60s grace
@@ -988,7 +1027,7 @@ export default function RedesignApp() {
   // The actual socket connect (unchanged) — extracted so BOTH the "session already
   // running" path and the "after the seller picks a session length" path can call
   // it. Nothing in this body changed vs the old inline doConnect.
-  const performConnect = async (platform: Platform, acct: string) => {
+  const performConnect = async (platform: Platform, acct: string, opts?: { register?: boolean }) => {
     const setConnecting = platform === "TikTok" ? setTtConnecting : setFbConnecting;
     const setOpen = platform === "TikTok" ? setTtOpen : setFbOpen;
     setOpen(false);                                  // Connect uses the selected account → close the dropdown
@@ -997,6 +1036,12 @@ export default function RedesignApp() {
     toastGateFor(platform).arm();                    // Item A — the tap arms the success toast
     try {
       const r = await liveFeed.connect(platform, { username: acct });
+      // Option E — register a NEW @username to the profile after a successful connect
+      // (mirrors handleConnect; existing accounts pass register=false → byte-unchanged).
+      if (opts?.register && r.ok && auth.profile) {
+        const np = appendAccount(auth.profile, platform, r.account ?? acct);
+        if (np) { try { await upsertUser(np); await auth.reloadProfile(); } catch { /* non-fatal */ } }
+      }
       // connect_success / connect_failed — captured for EVERY outcome (App.tsx:4289-4311),
       // before the early returns below. reason: not-live → "not_live"; else the real error.
       if (r.ok) track("connect_success", { platform });
@@ -1045,8 +1090,14 @@ export default function RedesignApp() {
     if (status.running) { void performConnect(platform, acct); return; }
     // Owner (Session V2): the fixed 5-day "Start Session" modal, NOT the 1–5 picker.
     // Every other seller: the unchanged picker path (byte-for-byte).
-    if (sessionV2) { setOwnerStart({ platform, acct }); return; }
-    setPickerConnect({ platform, acct });
+    if (sessionV2) { setOwnerStart({ kind: "tt", platform, acct }); return; }
+    setPickerConnect({ kind: "tt", platform, acct });
+  };
+  // Run a pending connect after its session was created (picker/owner/switch). Branches
+  // the union so a Shopee-first connect gets a real session, same as TikTok.
+  const connectPending = (p: PendingConnect) => {
+    if (p.kind === "shopee") void doShopeeConnect(p.shopId, p.sessionId);
+    else void performConnect(p.platform, p.acct, { register: p.register });
   };
   // Owner "Start Session" → fixed 5-day session_id, then connect. Mirrors
   // onPickSessionLength(5): new id → reset (empty load → #1) → connect. A null id
@@ -1058,7 +1109,7 @@ export default function RedesignApp() {
     const sid = await sessionInstance.startSession(SESSION_V2_DAYS);
     if (!sid) { setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }); return; }
     liveSession.reset();
-    void performConnect(pending.platform, pending.acct);
+    connectPending(pending);
   };
   // Owner "End Session" → confirm dialog FIRST; only Confirm runs end_session()
   // (nulls current_session_id + stamps session_ended_at) → board clears to day-view
@@ -1083,7 +1134,7 @@ export default function RedesignApp() {
     // change; reset() clears the prior session's rows so the hydrate-on-empty
     // guard lets the fresh (empty) session load.
     liveSession.reset();
-    void performConnect(pending.platform, pending.acct);
+    connectPending(pending);
   };
   // Refresh = one-shot full dashboard reload (pull-to-refresh style; NO polling).
   // Reuses the existing load functions: profile/accounts + live session (reset =
@@ -1662,15 +1713,33 @@ export default function RedesignApp() {
             tiktok={{ name: ttAccounts[ttIdx] || ttAccounts[0] || "", connected: ttEff && !liveFeed.ttRecovering, connecting: ttConnecting || liveFeed.ttRecovering }}
             shopee={{ name: selectedShop ? (selectedShop.shopName || tApp.rd_shp_shop_name_fallback) : "", connected: shopeeEff, connecting: shopeeConnecting }}
             showShopee={showShopeeRow}
-            onPickTikTok={() => switchSource("TikTok")}
-            onPickShopee={() => switchSource("Shopee")}
+            onPickTikTok={() => openLiveConnect("TikTok")}
+            onPickShopee={() => openLiveConnect("Shopee")}
+          />
+        )}
+        {/* Option E — the per-platform connect modal (opened from the sheet). Every action
+            routes UP through commitLiveConnect → the session-aware path (never a bare connect). */}
+        {liveSourceMode && liveConnectPlatform && (
+          <LiveConnectModal
+            platform={liveConnectPlatform}
+            onClose={() => setLiveConnectPlatform(null)}
+            ttAccounts={ttAccounts}
+            ttLiveName={ttEff && !liveFeed.ttRecovering ? (ttAccounts[ttIdx] || ttAccounts[0] || null) : null}
+            onUseTikTok={(u) => { const i = ttAccounts.indexOf(u); if (i >= 0) setTtIdx(i); commitLiveConnect({ platform: "TikTok", username: u }); }}
+            onConnectTikTokNew={(u) => commitLiveConnect({ platform: "TikTok", username: u, register: true })}
+            shopeeShops={shopeeShops.map((s) => ({ shopId: s.shopId, shopName: s.shopName }))}
+            shopeeLiveId={shopeeEff && selectedShop ? selectedShop.shopId : null}
+            shopeeEligible={shopeeEligible}
+            onAuthorizeShopee={() => { setLiveConnectPlatform(null); setChanBack("dashboard"); setScreen("shopeechannels"); }}
+            onConnectShopee={(shopId, sessionId) => commitLiveConnect({ platform: "Shopee", shopId, sessionId })}
+            onUpsell={() => { setLiveConnectPlatform(null); if (ios) setIosExpired(true); else setUpsellOpen(true); }}
           />
         )}
         {switchConfirm && (
           <div onClick={() => setSwitchConfirm(null)} style={{ position: "fixed", inset: 0, zIndex: 1350, background: "rgba(9,7,24,.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} data-testid="livesource-switch-overlay">
             <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 380, background: "var(--surface)", borderRadius: 18, padding: "22px 20px 18px", boxShadow: "0 20px 60px rgba(0,0,0,.4)" }}>
               <div style={{ fontSize: 15, fontWeight: 800, color: "var(--text)", marginBottom: 8 }}>{tApp.rd_ls_switch_title}</div>
-              <div style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.55, marginBottom: 18 }}>{tpl(tApp.rd_ls_switch_body, { to: switchConfirm.to })}</div>
+              <div style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.55, marginBottom: 18 }}>{tpl(tApp.rd_ls_switch_body, { to: switchConfirm.platform })}</div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={() => setSwitchConfirm(null)} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13.5, cursor: "pointer", fontFamily: "var(--font-ui)" }} data-testid="livesource-switch-cancel">{tApp.rd_ls_switch_cancel}</button>
                 <button onClick={() => void confirmSwitch()} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--accent)", color: "var(--accent-text)", fontWeight: 800, fontSize: 13.5, cursor: "pointer", fontFamily: "var(--font-ui)" }} data-testid="livesource-switch-confirm">{tApp.rd_ls_switch_go}</button>
