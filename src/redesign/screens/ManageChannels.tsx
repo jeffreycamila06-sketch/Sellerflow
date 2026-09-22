@@ -9,7 +9,7 @@
 // the shared useChannelEditor hook — this screen is one of TWO consumers (the compact
 // manage-mode LiveConnectModal is the other). Render only; logic is single-source.
 import { useState, type CSSProperties } from "react";
-import { unlockInHM, windowClock } from "../adapters/tiktokCooldown";
+import { unlockInHM } from "../adapters/tiktokCooldown";
 import { useChannelEditor } from "../adapters/useChannelEditor";
 import type { AccountUser } from "../../accountDb";
 import { useT, tpl } from "../i18n";
@@ -33,7 +33,8 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
 }) {
   const t = useT();
   // Editor state + save/cooldown logic = the shared hook (single source; see its header).
-  const { isTT, isAdmin, planBadge, orig, slots, setSlot, savedSlotView, atCap, hasEditable, save, state, err, windowLeftMs } = useChannelEditor(account, platform, onSaveChannels);
+  const { isTT, planBadge, orig, slots, setSlot, savedSlotView, unlock, atCap, dirty, save, state, err } = useChannelEditor(account, platform, onSaveChannels);
+  const changeBtn: CSSProperties = { display: "flex", alignItems: "center", padding: "0 16px", borderRadius: 12, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent-fg)", fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: "var(--font-ui)", flexShrink: 0 };
   const [addOpen, setAddOpen] = useState(false);
 
   const title = isTT ? t.rd_ch_manage_tt_title : t.rd_ch_manage_fb_title;
@@ -73,22 +74,19 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
                     style={{ ...input, opacity: locked || limitReached ? 0.6 : 1 }}
                   />
                 </div>
-                <span style={badge(locked)}>{locked ? t.rd_ch_locked_badge : planBadge}</span>
+                {/* LOCKED-AGAD: a changeable saved slot shows a "Change" button (deliberate
+                    unlock); a cooling / fail-closed slot shows the LOCKED badge; an editable
+                    (unlocked / admin) or empty slot shows the plan badge. */}
+                {savedSlot && view!.canChange
+                  ? <button onClick={() => unlock(i)} style={changeBtn} data-testid="mc-change">{t.rd_ch_change}</button>
+                  : <span style={badge(locked)}>{locked ? t.rd_ch_locked_badge : planBadge}</span>}
               </div>
-              {/* Cooling (<4h): live "Unlock in Xh Ym" + keep the tap→Telegram affordance
-                  (an admin can change anytime). */}
+              {/* Cooling (<4h): live "Unlock in Xh Ym". */}
               {savedSlot && view!.note === "cooling" && (
-                <>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 5 }}>{tpl(t.rd_ch_unlock_in, unlockInHM(view!.unlockMs))}</div>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 3, cursor: "pointer" }} onClick={() => setAddOpen(true)}>{t.rd_ch_locked_note}</div>
-                </>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 5 }}>{tpl(t.rd_ch_unlock_in, unlockInHM(view!.unlockMs))}</div>
               )}
-              {/* Unlocked (no row / ≥4h) with the 5-min window open: editable now. */}
-              {savedSlot && view!.editable && !isAdmin && (
-                <div style={{ fontSize: 11, color: "var(--accent-fg)", fontWeight: 700, marginTop: 5 }}>{tpl(t.rd_ch_edit_window, { clock: windowClock(windowLeftMs()) })}</div>
-              )}
-              {/* Fail-closed / window elapsed: keep the tap→Telegram affordance. */}
-              {savedSlot && !view!.editable && view!.note === "telegram" && (
+              {/* Fail-closed (cooldown unknown): keep the tap→Telegram affordance. */}
+              {savedSlot && locked && !view!.canChange && view!.note !== "cooling" && (
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 5, cursor: "pointer" }} onClick={() => setAddOpen(true)}>{t.rd_ch_locked_note}</div>
               )}
             </div>
@@ -99,7 +97,7 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
 
         {state === "error" && <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--danger)", margin: "0 2px 10px" }}>{err}</div>}
         {state === "saved" && <div style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ok)", margin: "0 2px 10px" }}>{t.rd_set_saved}</div>}
-        {hasEditable && (
+        {dirty && (
           <button onClick={save} disabled={state === "saving" || !onSaveChannels} style={{ width: "100%", padding: "14px 0", border: "none", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 700, cursor: state === "saving" || !onSaveChannels ? "default" : "pointer", opacity: state === "saving" || !onSaveChannels ? 0.6 : 1, boxShadow: "0 5px 14px var(--accent-soft)", marginBottom: 12 }}>{state === "saving" ? t.rd_set_saving : t.rd_ch_save}</button>
         )}
         <button onClick={() => setAddOpen(true)} style={{ width: "100%", padding: "15px 0", border: "none", borderRadius: 13, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 14, fontWeight: 800, letterSpacing: ".02em", cursor: "pointer", boxShadow: "0 6px 18px var(--accent-soft)" }}>{addLabel}</button>

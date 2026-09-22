@@ -1182,6 +1182,8 @@ const RAW: Record<string, Row> = {
   rd_ch_edit_window: { en: "You can change this now — {clock} left", fil: "Pwede mo nang palitan ito — {clock} na lang", zh: "现在可以更改 — 剩余 {clock}", "zh-TW": "現在可以變更 — 剩餘 {clock}", vi: "Bạn có thể đổi ngay — còn {clock}", th: "เปลี่ยนได้ตอนนี้ — เหลือ {clock}", id: "Bisa diubah sekarang — sisa {clock}" },
   rd_ch_cooldown_err: { en: "This username was changed recently. Please try again later.", fil: "Kamakailan lang binago ang username na ito. Pakisubukan ulit mamaya.", zh: "该用户名最近已更改，请稍后再试。", "zh-TW": "此使用者名稱最近已變更，請稍後再試。", vi: "Tên người dùng này vừa được thay đổi. Vui lòng thử lại sau.", th: "เพิ่งเปลี่ยนชื่อผู้ใช้นี้ไป กรุณาลองใหม่ภายหลัง", id: "Nama pengguna ini baru saja diubah. Coba lagi nanti." },
   rd_ch_locked_badge: { en: "LOCKED", fil: "NAKA-LOCK", zh: "已锁定", "zh-TW": "已鎖定", vi: "ĐÃ KHOÁ", th: "ล็อก", id: "TERKUNCI" },
+  // Locked-agad: the deliberate "Change" (unlock this slot to edit) action.
+  rd_ch_change: { en: "Change", fil: "Palitan", zh: "更改", "zh-TW": "變更", vi: "Đổi", th: "เปลี่ยน", id: "Ubah" },
   rd_ch_limit_reached: { en: "Plan account limit reached", fil: "Naabot na ang limit ng account sa plan", zh: "已达到套餐账号上限", "zh-TW": "已達方案帳號上限", vi: "Đã đạt giới hạn tài khoản của gói", th: "ถึงขีดจำกัดบัญชีของแพ็กเกจแล้ว", id: "Batas akun paket tercapai" },
   rd_ch_save: { en: "Save profile", fil: "I-save ang profile", zh: "保存个人信息", "zh-TW": "儲存個人資料", vi: "Lưu hồ sơ", th: "บันทึกโปรไฟล์", id: "Simpan profil" },
   rd_ch_add_tt_multi: { en: "Add TikTok — Multi Account", fil: "Magdagdag ng TikTok — Multi Account", zh: "添加 TikTok — 多账号", "zh-TW": "新增 TikTok — 多帳號", vi: "Thêm TikTok — Đa tài khoản", th: "เพิ่ม TikTok — หลายบัญชี", id: "Tambah TikTok — Multi Akun" },
@@ -1389,6 +1391,7 @@ const RAW: Record<string, Row> = {
   // Manage-mode modal header prefix + compact Channels-list empty state (Settings → Channels).
   rd_lc_manage: { en: "Manage", fil: "Pamahalaan", zh: "管理", "zh-TW": "管理", vi: "Quản lý", th: "จัดการ", id: "Kelola" },
   rd_cl_tt_none: { en: "Add your first account", fil: "Magdagdag ng unang account", zh: "添加第一个账号", "zh-TW": "新增第一個帳號", vi: "Thêm tài khoản đầu tiên", th: "เพิ่มบัญชีแรก", id: "Tambah akun pertama" },
+  rd_cl_cap_hint: { en: "Account limit reached ({max}) — contact support to add more", fil: "Naabot na ang limitasyon ({max}) — makipag-ugnayan sa support para makadagdag", zh: "已达账号上限（{max}）——联系客服以增加", "zh-TW": "已達帳號上限（{max}）——聯絡客服以新增", vi: "Đã đạt giới hạn tài khoản ({max}) — liên hệ hỗ trợ để thêm", th: "ถึงขีดจำกัดบัญชีแล้ว ({max}) — ติดต่อฝ่ายสนับสนุนเพื่อเพิ่ม", id: "Batas akun tercapai ({max}) — hubungi dukungan untuk menambah" },
   rd_lc_tt_ph: { en: "TikTok @username", fil: "TikTok @username", zh: "TikTok @用户名", "zh-TW": "TikTok @使用者名稱", vi: "TikTok @tênngườidùng", th: "TikTok @ชื่อผู้ใช้", id: "TikTok @namapengguna" },
   rd_shp_shop_id: { en: "Shop ID", fil: "Shop ID", zh: "店铺 ID", "zh-TW": "賣場 ID", vi: "Shop ID", th: "รหัสร้าน", id: "ID toko" },
   rd_shp_remove: { en: "Remove", fil: "Alisin", zh: "移除", "zh-TW": "移除", vi: "Xoá", th: "ลบ", id: "Hapus" },

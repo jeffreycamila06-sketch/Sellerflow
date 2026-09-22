@@ -36,39 +36,43 @@ describe("ManageChannels — username cooldown", () => {
     expect((screen.getByDisplayValue("saved_tt") as HTMLInputElement).disabled).toBe(true);
   });
 
-  it("saved slot with NO change-row → UNLOCKED (editable), Save touches the slot + sends unlocked=[0]", async () => {
-    fetchMock.mockResolvedValue({ offsetMs: 0, byKey: new Map() }); // no row → ≥4h semantics → unlocked
+  it("LOCKED-AGAD: saved slot with NO change-row → LOCKED with a 'Change' button; tap Change → editable; Save touches + unlocked=[0]", async () => {
+    fetchMock.mockResolvedValue({ offsetMs: 0, byKey: new Map() }); // no row → ≥4h semantics → changeable
     const { onSave } = renderC(acct());
-    const input = await waitFor(() => {
-      const el = screen.getByDisplayValue("saved_tt") as HTMLInputElement;
-      expect(el.disabled).toBe(false); // editable
-      return el;
-    });
+    // Locked on open: the input is disabled and a "Change" button is offered.
+    const changeBtn = await waitFor(() => screen.getByTestId("mc-change"));
+    expect((screen.getByDisplayValue("saved_tt") as HTMLInputElement).disabled).toBe(true);
+    fireEvent.click(changeBtn);                              // deliberate unlock of THIS slot
+    const input = screen.getByDisplayValue("saved_tt") as HTMLInputElement;
+    expect(input.disabled).toBe(false);                     // now editable
     fireEvent.change(input, { target: { value: "newname" } });
     fireEvent.click(screen.getByText("Save profile"));
     await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
-    expect(touchMock).toHaveBeenCalledWith("tiktok", 0); // server change recorded
+    expect(touchMock).toHaveBeenCalledWith("tiktok", 0);    // server change recorded (starts the 4h lock)
     const [lists, opts] = onSave.mock.calls[0];
     expect(lists.tiktok).toContain("newname");
-    expect(lists.facebook).toBe("fbpage");                 // other platform passed through
-    expect(opts).toEqual({ unlocked: { tiktok: [0] } });   // only the unlocked slot
+    expect(lists.facebook).toBe("fbpage");                  // other platform passed through
+    expect(opts).toEqual({ unlocked: { tiktok: [0] } });    // only the unlocked slot
   });
 
-  it("saved slot ≥4h → UNLOCKED (old timestamp)", async () => {
+  it("saved slot ≥4h → LOCKED with 'Change' (editable only after tapping Change)", async () => {
     fetchMock.mockResolvedValue({ offsetMs: 0, byKey: new Map([["tiktok:0", Date.now() - 5 * H]]) }); // 5h ago
     renderC(acct());
-    await waitFor(() => expect((screen.getByDisplayValue("saved_tt") as HTMLInputElement).disabled).toBe(false));
+    await waitFor(() => expect(screen.getByTestId("mc-change")).toBeTruthy());
+    expect((screen.getByDisplayValue("saved_tt") as HTMLInputElement).disabled).toBe(true); // locked until Change
+    fireEvent.click(screen.getByTestId("mc-change"));
+    expect((screen.getByDisplayValue("saved_tt") as HTMLInputElement).disabled).toBe(false);
   });
 
-  it("touch → 'cooldown_active' (server refused a race) → error shown, NOTHING persisted", async () => {
+  it("ANTI-ABUSE: Change + edit + Save → server 'cooldown_active' → error, NOTHING persisted (the server, not the client, is the gate)", async () => {
     fetchMock.mockResolvedValue({ offsetMs: 0, byKey: new Map() });
-    touchMock.mockResolvedValue({ ok: false, cooldown: true });
+    touchMock.mockResolvedValue({ ok: false, cooldown: true }); // server refuses even though the client unlocked
     const { onSave } = renderC(acct());
-    const input = await waitFor(() => { const el = screen.getByDisplayValue("saved_tt") as HTMLInputElement; expect(el.disabled).toBe(false); return el; });
-    fireEvent.change(input, { target: { value: "newname" } });
+    fireEvent.click(await waitFor(() => screen.getByTestId("mc-change")));
+    fireEvent.change(screen.getByDisplayValue("saved_tt"), { target: { value: "newname" } });
     fireEvent.click(screen.getByText("Save profile"));
     await waitFor(() => expect(screen.getByText(/changed recently/i)).toBeTruthy());
-    expect(onSave).not.toHaveBeenCalled(); // no silent partial save
+    expect(onSave).not.toHaveBeenCalled(); // no silent partial save — "Change" cannot bypass the 4h gate
   });
 
   it("FAIL-CLOSED: cooldown RPC error (null) → saved slot stays LOCKED (as before the feature)", async () => {
