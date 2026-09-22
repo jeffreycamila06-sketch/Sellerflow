@@ -15,23 +15,22 @@ const acct = (tiktok: string, facebook = "", plan = "pro", role = "seller") =>
 const base = {
   onClose: vi.fn(),
   ttAccounts: [] as string[], ttLiveName: null as string | null,
-  onUseTikTok: vi.fn(), onConnectTikTokNew: vi.fn(),
+  onUseTikTok: vi.fn(), onManage: vi.fn(),
   shopeeShops: [] as { shopId: number; shopName: string }[], shopeeLiveId: null as number | null,
   shopeeEligible: true, onAuthorizeShopee: vi.fn(), onConnectShopee: vi.fn(), onUpsell: vi.fn(),
 };
 const view = (over: Partial<Parameters<typeof LiveConnectModal>[0]>) =>
   render(<TProvider><LiveConnectModal platform="TikTok" {...base} {...over} /></TProvider>);
 
-describe("LiveConnectModal — TikTok", () => {
-  it("no account → the @username Connect flow; Connect fires onConnectTikTokNew(username)", () => {
-    const onConnectTikTokNew = vi.fn();
-    const { getByTestId } = view({ ttAccounts: [], onConnectTikTokNew });
-    fireEvent.change(getByTestId("lc-tt-input"), { target: { value: "@newshop" } }); // @ stripped
-    fireEvent.click(getByTestId("lc-tt-connect"));
-    expect(onConnectTikTokNew).toHaveBeenCalledWith("newshop");
+describe("LiveConnectModal — TikTok (connect mode)", () => {
+  it("no inline add field — the add path is a 'Manage / add accounts' link (one place to add/edit)", () => {
+    const { getByTestId, queryByTestId } = view({ ttAccounts: [] });
+    expect(queryByTestId("lc-tt-input")).toBeNull();   // NO inline @username field
+    expect(queryByTestId("lc-tt-add")).toBeNull();     // NO inline "add another" reveal
+    expect(getByTestId("lc-tt-manage")).toBeTruthy();  // the Manage / add accounts link
   });
 
-  it("accounts → list; the live one shows ● Live (no Use), others show Use → onUseTikTok", () => {
+  it("accounts → list; the live one shows ● Live (no Use), others show Use → onUseTikTok (session-safe)", () => {
     const onUseTikTok = vi.fn();
     const { getAllByTestId, getByTestId, queryAllByTestId } = view({ ttAccounts: ["shop_a", "shop_b"], ttLiveName: "shop_a", onUseTikTok });
     expect(getAllByTestId("lc-tt-row")).toHaveLength(2);
@@ -39,14 +38,15 @@ describe("LiveConnectModal — TikTok", () => {
     const uses = queryAllByTestId("lc-tt-use");
     expect(uses).toHaveLength(1);                             // only shop_b has Use
     fireEvent.click(uses[0]);
-    expect(onUseTikTok).toHaveBeenCalledWith("shop_b");
+    expect(onUseTikTok).toHaveBeenCalledWith("shop_b");       // Use routes through the session-aware path (RedesignApp)
   });
 
-  it("＋ Add another reveals the input (existing accounts present)", () => {
-    const { getByTestId, queryByTestId } = view({ ttAccounts: ["shop_a"] });
-    expect(queryByTestId("lc-tt-input")).toBeNull();
-    fireEvent.click(getByTestId("lc-tt-add"));
-    expect(getByTestId("lc-tt-input")).toBeTruthy();
+  it("tapping 'Manage / add accounts' calls onManage (navigate to manage) and does NOT connect", () => {
+    const onManage = vi.fn(); const onUseTikTok = vi.fn();
+    const { getByTestId } = view({ ttAccounts: ["shop_a"], onManage, onUseTikTok });
+    fireEvent.click(getByTestId("lc-tt-manage"));
+    expect(onManage).toHaveBeenCalledTimes(1);
+    expect(onUseTikTok).not.toHaveBeenCalled();               // pure navigation — never a connect/go-live
   });
 });
 
@@ -98,37 +98,34 @@ describe("LiveConnectModal — manage mode", () => {
     expect(queryByTestId("cm-change")).toBeNull();               // fail-closed → NO self-service Change (can't verify cooldown)
   });
 
-  it("Bug 2 — at the plan cap the Add row stays VISIBLE + CLICKABLE (Telegram request path), no slot reveal", () => {
-    const { getByTestId, queryByTestId } = render(
+  it("Option B — at the plan cap: exactly N slots (all filled, no empty inputs) + the Multi-Account Telegram anchor stays", () => {
+    const { getAllByTestId, queryAllByTestId, getByTestId } = render(
       <TProvider><LiveConnectModal platform="TikTok" {...base} mode="manage" account={acct("a\nb", "", "plus")} onSaveChannels={vi.fn()} /></TProvider>);
-    // plus cap 2, 2 saved → at cap: the cap row is a clickable Telegram anchor; NO reveal.
-    const cap = getByTestId("cm-cap") as HTMLAnchorElement;
-    expect(cap.tagName).toBe("A");
-    expect(cap.getAttribute("href")).toContain("t.me");
-    expect(queryByTestId("cm-add")).toBeNull();
-    expect(queryByTestId("cm-add-input")).toBeNull();
+    expect(getAllByTestId("cm-row")).toHaveLength(2);        // Plus = exactly 2 slots (no teaser)
+    expect(queryAllByTestId("cm-empty")).toHaveLength(0);    // both filled → no empty input
+    const multi = getByTestId("cm-multi") as HTMLAnchorElement;
+    expect(multi.tagName).toBe("A");
+    expect(multi.getAttribute("href")).toContain("t.me");    // "Add — Multi Account" Telegram (all plans)
   });
 
-  it("TikTok with room under the cap → an Add-another input to register a new account", () => {
-    const { getByTestId } = render(
+  it("Option B — under cap: empty slots are directly-typeable (no reveal button)", () => {
+    const { getAllByTestId, queryByTestId } = render(
       <TProvider><LiveConnectModal platform="TikTok" {...base} mode="manage" account={acct("a", "", "master")} onSaveChannels={vi.fn()} /></TProvider>);
-    // master cap 5, 1 saved → the add flow is available.
-    expect(getByTestId("cm-add")).toBeTruthy();
-    fireEvent.click(getByTestId("cm-add"));
-    expect(getByTestId("cm-add-input")).toBeTruthy();
+    expect(getAllByTestId("cm-row")).toHaveLength(5);        // Master = 5 slots
+    expect(getAllByTestId("cm-empty")).toHaveLength(4);      // 1 saved + 4 directly-typeable empties
+    expect(queryByTestId("cm-add")).toBeNull();              // no progressive-reveal button
   });
 
-  it("Bug 3 — a SUCCESSFUL save closes the modal (calls onSaved)", async () => {
+  it("Option B — type in an empty slot → Save → adds it + closes (onSaved)", async () => {
     const onSaveChannels = vi.fn().mockResolvedValue({ ok: true });
     const onSaved = vi.fn();
-    // Render ChannelManageBody through the modal; onSaved is wired to onClose in prod.
-    const { getByTestId } = render(
+    const { getAllByTestId, getByTestId } = render(
       <TProvider><LiveConnectModal platform="TikTok" {...base} mode="manage" account={acct("a", "", "master")} onSaveChannels={onSaveChannels} onClose={onSaved} /></TProvider>);
-    fireEvent.click(getByTestId("cm-add"));
-    fireEvent.change(getByTestId("cm-add-input"), { target: { value: "newacct" } });
+    fireEvent.change(getAllByTestId("cm-empty")[0], { target: { value: "newacct" } });
     fireEvent.click(getByTestId("cm-save"));
     await waitFor(() => expect(onSaveChannels).toHaveBeenCalled());
-    await waitFor(() => expect(onSaved).toHaveBeenCalled()); // success → modal closes
+    expect(onSaveChannels.mock.calls[0][0].tiktok).toContain("newacct"); // the added handle
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());             // success → modal closes
   });
 
   it("Shopee → shop list + Authorize another (no session/connect UI)", () => {

@@ -25,7 +25,7 @@ export interface ShopOpt { shopId: number; shopName: string }
 
 export default function LiveConnectModal({
   platform, onClose, mode = "connect", account = null, onSaveChannels,
-  ttAccounts, ttLiveName, onUseTikTok, onConnectTikTokNew,
+  ttAccounts, ttLiveName, onUseTikTok, onManage,
   shopeeShops, shopeeLiveId, shopeeEligible, onAuthorizeShopee, onConnectShopee, onUpsell,
 }: {
   platform: SourcePlatform;
@@ -39,7 +39,7 @@ export default function LiveConnectModal({
   ttAccounts: string[];
   ttLiveName: string | null;               // the account currently live (green), else null
   onUseTikTok: (username: string) => void;  // existing account → session-aware connect (continue)
-  onConnectTikTokNew: (username: string) => void; // new @username → register + session-aware connect
+  onManage: () => void;                     // → Settings → Channels manage mode (add/edit accounts); NEVER connects / goes live
   // Shopee
   shopeeShops: ShopOpt[];
   shopeeLiveId: number | null;
@@ -49,8 +49,6 @@ export default function LiveConnectModal({
   onUpsell: () => void;
 }) {
   const t = useT();
-  const [addOpen, setAddOpen] = useState(ttAccounts.length === 0); // no account → the add field is the whole flow
-  const [newUser, setNewUser] = useState("");
   const [shopId, setShopId] = useState<number>(shopeeShops[0]?.shopId ?? 0);
   const [session, setSession] = useState("");
 
@@ -73,14 +71,13 @@ export default function LiveConnectModal({
           </div>
         );
       })}
-      {addOpen ? (
-        <div style={{ marginTop: ttAccounts.length ? 4 : 0 }}>
-          <input value={newUser} onChange={(e) => setNewUser(e.target.value.replace(/^@+/, ""))} placeholder={t.rd_lc_tt_ph} autoCapitalize="none" style={{ ...input, marginBottom: 10 }} data-testid="lc-tt-input" />
-          <button disabled={!newUser.trim()} onClick={() => onConnectTikTokNew(newUser.trim())} style={{ ...primary, opacity: newUser.trim() ? 1 : 0.55, cursor: newUser.trim() ? "pointer" : "default" }} data-testid="lc-tt-connect">{t.rd_lc_connect}</button>
-        </div>
-      ) : (
-        <button onClick={() => setAddOpen(true)} style={{ ...rowCss, width: "100%", cursor: "pointer", fontFamily: "var(--font-ui)", color: "var(--accent-fg)", fontWeight: 800, fontSize: 13.5 }} data-testid="lc-tt-add">＋ {t.rd_lc_add_another}</button>
-      )}
+      {/* One place to add/edit accounts: navigate to Settings → Channels manage mode
+          (locked-agad add/edit/cooldown). Pure navigation — never connects / goes live.
+          Mirrors the old dropdown's "Manage / add accounts" row. */}
+      <button onClick={onManage} style={{ ...rowCss, width: "100%", cursor: "pointer", fontFamily: "var(--font-ui)", color: "var(--accent-fg)", fontWeight: 800, fontSize: 13.5, justifyContent: "space-between" }} data-testid="lc-tt-manage">
+        <span>⚙ {t.rd_dash_manage_accounts}</span>
+        <span style={{ fontSize: 15 }}>›</span>
+      </button>
     </>
   );
 

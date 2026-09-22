@@ -33,7 +33,7 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
 }) {
   const t = useT();
   // Editor state + save/cooldown logic = the shared hook (single source; see its header).
-  const { isTT, planBadge, orig, slots, setSlot, savedSlotView, unlock, atCap, dirty, save, state, err } = useChannelEditor(account, platform, onSaveChannels);
+  const { isTT, orig, slots, setSlot, savedSlotView, unlock, atCap, dirty, save, state, err } = useChannelEditor(account, platform, onSaveChannels);
   const changeBtn: CSSProperties = { display: "flex", alignItems: "center", padding: "0 16px", borderRadius: 12, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent-fg)", fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: "var(--font-ui)", flexShrink: 0 };
   const [addOpen, setAddOpen] = useState(false);
 
@@ -74,12 +74,12 @@ export default function ManageChannels({ platform, account = null, onBack, onSav
                     style={{ ...input, opacity: locked || limitReached ? 0.6 : 1 }}
                   />
                 </div>
-                {/* LOCKED-AGAD: a changeable saved slot shows a "Change" button (deliberate
-                    unlock); a cooling / fail-closed slot shows the LOCKED badge; an editable
-                    (unlocked / admin) or empty slot shows the plan badge. */}
+                {/* LOCKED-AGAD (Option B — NO plan/upgrade badge): a changeable saved slot
+                    shows a "Change" button; a cooling / fail-closed slot shows the LOCKED
+                    badge; an editable (unlocked / admin) or empty slot shows nothing. */}
                 {savedSlot && view!.canChange
                   ? <button onClick={() => unlock(i)} style={changeBtn} data-testid="mc-change">{t.rd_ch_change}</button>
-                  : <span style={badge(locked)}>{locked ? t.rd_ch_locked_badge : planBadge}</span>}
+                  : locked ? <span style={badge(true)}>{t.rd_ch_locked_badge}</span> : null}
               </div>
               {/* Cooling (<4h): live "Unlock in Xh Ym". */}
               {savedSlot && view!.note === "cooling" && (
