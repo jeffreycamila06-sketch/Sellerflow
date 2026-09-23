@@ -4,7 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Privacy Policy — SellerFlowLive</title>
+<meta name="robots" content="index, follow">
 <style>
+  :root { color-scheme: light dark; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; color: #1a1a1a; max-width: 760px; margin: 0 auto; padding: 40px 24px 80px; background: #ffffff; }
   h1 { font-size: 28px; margin-bottom: 4px; }
   h2 { font-size: 20px; margin-top: 36px; border-bottom: 1px solid #e5e5e5; padding-bottom: 6px; }
@@ -13,55 +15,78 @@
   li { margin-bottom: 8px; }
   a { color: #1a73e8; }
   .note { background: #f5f7fa; border-left: 4px solid #1a73e8; padding: 12px 16px; margin: 16px 0; border-radius: 4px; }
+  @media (prefers-color-scheme: dark) {
+    body { color: #e6e6e6; background: #14141b; }
+    h2 { border-bottom-color: #2c2c38; }
+    .updated { color: #9a9aa8; }
+    a { color: #6ea8fe; }
+    .note { background: #1c1c26; border-left-color: #6ea8fe; }
+  }
 </style>
 </head>
 <body>
 <h1>Privacy Policy</h1>
-<p class="updated">SellerFlowLive &middot; Last updated: 25 May 2026</p>
-<p>This Privacy Policy explains how SellerFlowLive ("the App", "we", "us", or "our") collects, uses, and protects information when you use the SellerFlowLive mobile application and the related website at sellerflowlive.com. By using the App, you agree to the practices described below.</p>
-<h2>1. Who the App Is For</h2>
-<p>SellerFlowLive is a tool for live-selling sellers on platforms such as TikTok and Facebook. It helps sellers view live comments, manage orders, and print order receipts to a local WiFi thermal printer. The App is intended for business use by sellers, not for the general public.</p>
-<h2>2. Information We Collect</h2>
-<p>We collect only the information needed to operate the App:</p>
+<p class="updated">SellerFlowLive &middot; Last updated: September 23, 2026</p>
+
+<p>This Privacy Policy explains how <strong>SELLERFLOWLIVE PRINTER TRADING</strong> ("SellerFlowLive", "we", "us", or "our") collects, uses, and protects information in connection with the SellerFlowLive application and the website at <a href="https://sellerflowlive.com">sellerflowlive.com</a>. By using SellerFlowLive, you agree to the practices described below.</p>
+
+<h2>1. What SellerFlowLive Is</h2>
+<p>SellerFlowLive is a live-selling order-management tool for sellers. It helps a seller read the live comments from their own live stream on platforms such as TikTok, Facebook, and Shopee, turn those comments into orders, manage customers and products, and produce shipping labels. It is a business tool operated by sellers, not a consumer social product.</p>
+
+<h2>2. Information We Collect From Sellers</h2>
+<p>When a seller creates an account and uses the app, we collect only what is needed to run the service:</p>
 <ul>
-  <li><strong>Account information.</strong> When you create an account or log in, we collect your email address and a securely managed password. Authentication is handled by Supabase, a third-party authentication and database service. Passwords are stored in a hashed, encrypted form and are never visible to us in plain text.</li>
-  <li><strong>Order and customer details.</strong> When you use the App to manage sales, we store the order information you enter or import, such as customer names, product details, quantities, prices, and order status. This data belongs to you, the seller, and is used to run your live-selling operations.</li>
-  <li><strong>Connected platform data.</strong> If you connect a TikTok or Facebook live session, the App receives live comments and related public interaction data from that session so it can display them to you in real time. We process this data to show your live feed; we do not use it for advertising.</li>
-  <li><strong>Technical information.</strong> Like most apps, basic technical data (such as connection logs and error information) may be processed to keep the service running and secure.</li>
+  <li><strong>Account details</strong> — email address, store name, phone number, and a securely managed password (authentication is handled by Supabase; passwords are stored hashed and are never visible to us).</li>
+  <li><strong>Saved platform usernames</strong> — the TikTok / Facebook handles a seller saves so the app knows which live session to read.</li>
+  <li><strong>Products and orders</strong> — the product list, prices, and the orders a seller creates during a live session.</li>
+  <li><strong>Buyer and parcel details a seller enters for shipping</strong> — recipient name, phone number, and 7-ELEVEN pickup store, used only to generate the seller's shipping labels.</li>
 </ul>
-<div class="note">We do <strong>not</strong> collect your contacts, photos, precise location, or any data unrelated to running your live-selling business.</div>
-<h2>3. How We Use Your Information</h2>
+
+<h2>3. Live-Stream Data Processed Through Platform APIs</h2>
+<p>When a seller connects a live session, SellerFlowLive receives that session's public comment data through the platform's official APIs — including the <strong>Facebook Live Video API</strong>. This data may include a commenter's display name, username/handle, profile picture (avatar), comment text, and timestamps.</p>
+<div class="note">This live-comment data is used <strong>solely</strong> to let the seller see comments and create orders from them. It is <strong>never sold</strong> and is <strong>never used for advertising</strong> or any purpose unrelated to the seller's own live-selling operation.</div>
+
+<h2>4. How We Use Information</h2>
 <ul>
-  <li>To let you log in securely and access your own account.</li>
-  <li>To display live comments from your connected TikTok or Facebook session.</li>
-  <li>To store and manage your orders and customer records.</li>
-  <li>To send order receipts to your own local WiFi thermal printer.</li>
-  <li>To maintain the security and reliability of the App.</li>
+  <li>To let sellers log in securely and access only their own account data.</li>
+  <li>To display live comments from a seller's connected session and let them create orders from those comments.</li>
+  <li>To store and manage the seller's orders, customers, and products.</li>
+  <li>To generate shipping labels from the details the seller enters.</li>
+  <li>To keep the service secure and reliable.</li>
 </ul>
-<h2>4. WiFi Printing</h2>
-<p>The App can send order receipts directly to a thermal printer on your own local network (for example, over WiFi to a printer you operate). This printing happens between your device and your printer. Receipt data sent to your printer is not transmitted to us for this purpose.</p>
-<h2>5. Data Sharing</h2>
-<p>We do not sell your personal information. We share data only with the service providers that make the App work:</p>
-<ul>
-  <li><strong>Supabase</strong> &mdash; for secure login (authentication) and database storage.</li>
-  <li><strong>Hosting providers (such as Vercel and Render)</strong> &mdash; for running the website and backend services.</li>
-  <li><strong>TikTok and Facebook</strong> &mdash; only when you choose to connect a live session, and only as needed to receive your live comments.</li>
-</ul>
-<p>We may also disclose information if required by law or to protect the safety and rights of users.</p>
-<h2>6. Data Security</h2>
-<p>We use industry-standard measures to protect your data, including encrypted connections, secure authentication tokens, and access controls (row-level security) so that each seller can only access their own data. No method of transmission or storage is completely secure, but we take reasonable steps to safeguard your information.</p>
+
+<h2>5. Payments</h2>
+<p>SellerFlowLive does <strong>not</strong> process payments. Any payment between a seller and their buyers, or any subscription for the app, happens outside the app; we do not collect or store card or bank details.</p>
+
+<h2>6. Storage and Security</h2>
+<p>Data is stored in Supabase (a hosted PostgreSQL database). Access is controlled per seller account using row-level security, so each seller can access only their own data. Connections are encrypted and access is protected by secure authentication tokens. No method of transmission or storage is completely secure, but we take reasonable measures to safeguard information.</p>
+
 <h2>7. Data Retention</h2>
-<p>We keep your account and order data for as long as your account is active or as needed to provide the service. You may request deletion of your account and associated data at any time by contacting us (see below).</p>
-<h2>8. Your Rights</h2>
-<p>You may request to access, correct, or delete your personal information. To do so, contact us using the details below. We will respond within a reasonable time.</p>
-<h2>9. Children's Privacy</h2>
-<p>The App is intended for business use by sellers and is not directed at children under 13. We do not knowingly collect personal information from children.</p>
-<h2>10. Changes to This Policy</h2>
-<p>We may update this Privacy Policy from time to time. When we do, we will revise the "Last updated" date at the top of this page. Continued use of the App after changes means you accept the updated policy.</p>
-<h2>11. Contact Us</h2>
-<p>If you have any questions about this Privacy Policy or your data, please contact us at:</p>
-<p><strong>Phone:</strong> 0958704782<br>
-<strong>App:</strong> SellerFlowLive<br>
+<p>We keep only what we need for as long as we need it:</p>
+<ul>
+  <li><strong>Live comment and order-feed data is purged automatically on a rolling basis</strong> — order records used for the live session are removed after roughly 10 days.</li>
+  <li><strong>Account data</strong> (email, store profile, saved usernames, products) is kept while the account is active and is removed when the account is deleted.</li>
+</ul>
+
+<h2>8. Data Sharing</h2>
+<p>We do not sell personal information. We share data only with the providers that make the service work — Supabase (authentication and database) and our hosting providers (such as Vercel and Render) — and with TikTok, Facebook, or Shopee only as needed to read a live session the seller has connected. We may disclose information if required by law.</p>
+
+<h2>9. Meta Platform Data</h2>
+<p>Any data obtained through Meta (Facebook) APIs is used in accordance with the <a href="https://developers.facebook.com/terms/" target="_blank" rel="noreferrer noopener">Meta Platform Terms</a> and Developer Policies, only for the live-comment ordering purpose described above. A Facebook user can revoke SellerFlowLive's access at any time in <strong>Facebook Settings → Apps and Websites</strong>.</p>
+
+<h2>10. Deleting Your Data</h2>
+<p>You can delete your account and data at any time. See our <a href="/data-deletion">Data Deletion Instructions</a> for how sellers and Facebook users can request deletion.</p>
+
+<h2>11. Children's Privacy</h2>
+<p>SellerFlowLive is a business tool intended for sellers and is not directed at children under 13. We do not knowingly collect personal information from children.</p>
+
+<h2>12. Changes to This Policy</h2>
+<p>We may update this Privacy Policy from time to time. When we do, we will revise the "Last updated" date at the top of this page.</p>
+
+<h2>13. Contact Us</h2>
+<p>For any question about this Policy or your data, contact us at:</p>
+<p><strong>Operator:</strong> SELLERFLOWLIVE PRINTER TRADING<br>
+<strong>Email:</strong> <a href="mailto:jeffreycamila06@gmail.com">jeffreycamila06@gmail.com</a><br>
 <strong>Website:</strong> <a href="https://sellerflowlive.com">sellerflowlive.com</a></p>
 </body>
 </html>
