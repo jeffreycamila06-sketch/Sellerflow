@@ -90,7 +90,22 @@ export function liveSessionPayload(c: ProdComment, order: LiveOrder, sessionDate
     // (Jeff's call, pending) — do NOT change this to per-unit without a decision.
     qty: order.qty,
     auto_code: order.autoCode || undefined,
+    // sql/48 — the page a future Messenger Private Reply receipt is sent FROM (its token)
+    // + the live video. Facebook only; omitted (→ NULL) for every other platform and
+    // when the comment carries no page id (never a half-filled object).
+    platform_meta: fbPlatformMeta(c),
   } satisfies LiveSessionOrderInput;
+}
+
+// Facebook comments carry pageId + liveVideoId (server/fbComment.js, relayed untouched by
+// emitCommentScoped + useLiveFeed). Returns { page_id, live_video_id? } or undefined.
+function fbPlatformMeta(c: ProdComment): Record<string, string> | undefined {
+  if (c.platform !== "Facebook") return undefined;
+  const x = c as ProdComment & { pageId?: unknown; liveVideoId?: unknown };
+  const pageId = String(x.pageId ?? "").trim();
+  if (!pageId) return undefined;
+  const liveVideoId = String(x.liveVideoId ?? "").trim();
+  return liveVideoId ? { page_id: pageId, live_video_id: liveVideoId } : { page_id: pageId };
 }
 
 export function customerDbPayload(c: ProdComment, order: LiveOrder) {
@@ -230,10 +245,11 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCap
       //     the feed, printed, and buyer-numbered before this runs.
       afterWrite?.();
     });
-    // 4b) SESSION write (the operational backbone). msgId-bearing → the durable
-    //     retry outbox (idempotent via ux_lso_user_msgid). No msgId (Facebook) or
-    //     no outbox wired (tests) → direct fire-and-forget, byte-unchanged, with the
-    //     same failure surfacing.
+    // 4b) SESSION write (the operational backbone). msgId-bearing (TikTok, and
+    //     Facebook — whose Graph comment id arrives as msgId) → the durable retry
+    //     outbox (idempotent via ux_lso_user_msgid). No msgId or no outbox wired
+    //     (tests) → direct fire-and-forget, byte-unchanged, with the same failure
+    //     surfacing. Both paths write the SAME livePayload (incl. platform_meta).
     const livePayload = liveSessionPayload(c, order, sessionDate, sessionId);
     if (msgId && enqueueLiveSession) {
       enqueueLiveSession(livePayload, msgId);

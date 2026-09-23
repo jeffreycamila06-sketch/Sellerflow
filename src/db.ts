@@ -142,6 +142,10 @@ export interface LiveSessionOrderInput {
   // feature, sql/18). OPTIONAL + additive: callers that don't pass it (the
   // rollback app) write NULL, which simply never matches an ordered-check.
   comment_msg_id?: string;
+  // Platform ids a future receipt needs (sql/48). OPTIONAL + additive: Facebook
+  // orders pass { page_id, live_video_id } (the page whose token sends a Messenger
+  // Private Reply to comment_msg_id); everyone else omits it → NULL.
+  platform_meta?: Record<string, string>;
   // Explicit session instance this order belongs to (sql/20). OPTIONAL + additive:
   // the rollback app and any pre-session-model write pass NULL (legacy row, still
   // displayed via the per-session_date path until the step-3 cutover). Stamping it
@@ -183,6 +187,7 @@ export async function saveLiveSessionOrder(order: LiveSessionOrderInput) {
         price: order.price,
         comment_msg_id: order.comment_msg_id || null,
         session_id: order.session_id || null,
+        platform_meta: order.platform_meta || null, // sql/48 — FB { page_id, live_video_id }, else NULL
         // Rule 2 qty (default 1 in the DB when absent) + Rule 1 auto_code (NULL for
         // manual/legacy). Only Auto Mode passes these; every other caller omits them.
         ...(order.qty != null ? { qty: order.qty } : {}),
