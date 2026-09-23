@@ -111,14 +111,39 @@ describe("startShopeeAuth", () => {
 });
 
 describe("shopeeConnect", () => {
-  it("posts { shop_id, session_id } and returns ok", async () => {
+  it("posts { shop_id, session_id (Shopee), sessionId (browser) } and returns ok", async () => {
     const f = vi.fn().mockResolvedValue(mkRes(200, { ok: true, session_id: "S9" }));
     vi.stubGlobal("fetch", f);
     const r = await shopeeConnect(555, "S9");
-    expect(r).toEqual({ ok: true, sessionId: "S9" });
+    expect(r).toEqual({ ok: true, sessionId: "S9" }); // result sessionId = the Shopee live session (unchanged)
     const [url, opts] = f.mock.calls[0];
     expect(String(url)).toMatch(/\/shopee\/connect$/);
-    expect(JSON.parse((opts as { body: string }).body)).toEqual({ shop_id: "555", session_id: "S9" });
+    const body = JSON.parse((opts as { body: string }).body);
+    expect(body.shop_id).toBe("555");
+    expect(body.session_id).toBe("S9");               // the Shopee live session the seller pasted
+    expect(typeof body.sessionId).toBe("string");
+    expect(body.sessionId).not.toBe("");
+    expect(body.sessionId).not.toBe("S9");            // never conflated with the Shopee session
+  });
+
+  // SESSION-ID CONTRACT (client half, mirrors fb.test.ts): the body carries THIS browser's
+  // session id — the exact value useLiveFeed filters on and connect.ts/fb.ts send — so the
+  // server can stamp it on every Shopee comment/status.
+  it("sends THIS browser's session id (== browserSessionId(), the value useLiveFeed filters on)", async () => {
+    const ls = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => ls.get(k) ?? null,
+      setItem: (k: string, v: string) => { ls.set(k, v); },
+    });
+    const { browserSessionId } = await import("../serverIdentity");
+    const mine = browserSessionId();                       // persisted → stable for this browser
+    const f = vi.fn().mockResolvedValue(mkRes(200, { ok: true, session_id: "S9" }));
+    vi.stubGlobal("fetch", f);
+    await shopeeConnect(555, "S9");
+    const body = JSON.parse((f.mock.calls[0][1] as { body: string }).body);
+    expect(body.sessionId).toBe(mine);
+    expect(body.sessionId).toMatch(/^sf-/);                // browser-session shape, never a Shopee session id
+    vi.unstubAllGlobals();
   });
   it("{ ok:false, reason:'not_live' } passes through", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(mkRes(200, { ok: false, reason: "not_live" })));

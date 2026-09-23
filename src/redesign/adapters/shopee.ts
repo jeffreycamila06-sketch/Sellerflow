@@ -9,7 +9,7 @@
 // session_id. When a detect endpoint is confirmed, resolve it server-side and this
 // arg goes away — kept isolated so removing it is a one-line change here + the modal.
 import { supabase, isSupabaseConfigured } from "../../supabase";
-import { SERVER } from "./serverIdentity";
+import { SERVER, browserSessionId } from "./serverIdentity";
 import { getAppSetting } from "./appSettings";
 import { isActivePaid, planDaysLeft } from "../../lib/planWindow";
 import { isAdminRole } from "../../lib/roles";
@@ -100,22 +100,30 @@ export async function startShopeeAuth(): Promise<{ ok: boolean; url?: string; er
 
 export interface ShopeeConnectResult { ok: boolean; reason?: string; error?: string; unreachable?: boolean; sessionId?: string }
 
-// POST /shopee/connect { shop_id, session_id }. Server: requireAuth →
+// POST /shopee/connect { shop_id, session_id, sessionId }. Server: requireAuth →
 // requireConnectRate → requirePlanActive (403 on expired plan) → starts the poller.
 // { ok:false, reason:"not_live" } when no session was supplied / shop offline.
-export async function shopeeConnect(shopId: number | string, sessionId: string): Promise<ShopeeConnectResult> {
+// TWO ids — do not conflate:
+//   session_id = the SHOPEE live session the seller pasted (what the server polls);
+//   sessionId  = THIS browser's session (browserSessionId(), the same value connect.ts
+//     sends for TikTok and fb.ts for Facebook). The server stamps it on every relayed
+//     Shopee comment + platform_status, and useLiveFeed drops any event whose sessionId ≠
+//     its own — so only the device that tapped Connect receives the live flow (the
+//     duplicate-auto-order safeguard on multi-device sellers).
+export async function shopeeConnect(shopId: number | string, shopSessionId: string): Promise<ShopeeConnectResult> {
   try {
     const r = await fetch(`${SERVER}/shopee/connect`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${await bearer()}` },
-      body: JSON.stringify({ shop_id: String(shopId), session_id: String(sessionId || "") }),
+      body: JSON.stringify({ shop_id: String(shopId), session_id: String(shopSessionId || ""), sessionId: browserSessionId() }),
     });
     const j = await r.json().catch(() => ({} as { ok?: boolean; reason?: string; error?: string; session_id?: string }));
     if (r.status === 401) return { ok: false, error: j.error || "Unauthorized" };
     if (r.status === 403) return { ok: false, error: j.error || "plan_expired" };
     if (r.status >= 500) return { ok: false, error: j.error || "Server error" };
     if (j.ok === false) return { ok: false, reason: j.reason, error: j.error };
-    return { ok: true, sessionId: j.session_id ? String(j.session_id) : String(sessionId) };
+    // Result `sessionId` = the Shopee live session (unchanged contract for callers).
+    return { ok: true, sessionId: j.session_id ? String(j.session_id) : String(shopSessionId) };
   } catch {
     return { ok: false, unreachable: true, error: "Can't reach the live server." };
   }
