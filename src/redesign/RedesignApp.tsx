@@ -1021,7 +1021,11 @@ export default function RedesignApp() {
   const onConnectFacebook = () => {
     setFbOpen(false);
     if (fbEff) { setFbOff(true); if (selectedPage) void fbDisconnect(selectedPage.pageId); return; }
-    if (fbPreview) { setToast({ msg: tApp.rd_fb_preview_note, kind: "err" }); return; } // no credentials → honest note
+    // NOTE: fbPreview is NOT short-circuited here — allowlisted FB_PREVIEW_EMAILS users
+    // route to the REAL connect flow (authorize-if-no-page → doFbConnect) even while the
+    // GLOBAL fb_enabled flag is off (the flag is the FLEET switch only). Non-allowlisted
+    // sellers never reach this handler (the FB Connect button renders only when
+    // fbConnectEnabled = fbEnabled).
     if (!fbEligible) { if (ios) setIosExpired(true); else setUpsellOpen(true); return; }
     if (!selectedPage) { setFbOpen(false); setChanBack("dashboard"); setScreen("fbpages"); return; }
     commitLiveConnect({ platform: "Facebook", pageId: selectedPage.pageId, scopeKey: fbScopeKey });
@@ -1030,7 +1034,9 @@ export default function RedesignApp() {
   // socket is in the room before the poller relays, POST /fb/connect, toast the outcome.
   // Reached only via runTargetConnect / connectPending AFTER a session is guaranteed.
   const doFbConnect = async (pageId: string) => {
-    if (fbPreview) { setToast({ msg: tApp.rd_fb_preview_note, kind: "err" }); return { ok: false, error: "preview" }; }
+    // fbPreview is NOT short-circuited — allowlisted preview users hit the REAL POST
+    // /fb/connect (the fb_enabled flag stays the fleet switch only). Non-allowlisted
+    // sellers can never reach this (no reachable Facebook connect target for them).
     if (!fbEligible) { if (ios) setIosExpired(true); else setUpsellOpen(true); return { ok: false, error: "plan_expired" }; }
     setFbConnecting(true);
     track("connect_attempt", { platform: "Facebook" });

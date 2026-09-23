@@ -84,6 +84,30 @@ describe("session-safety — no 4th startSession site (FB reuses the funnel)", (
   });
 });
 
+describe("FB preview allowlist routes to the REAL connect (no preview-note short-circuit)", () => {
+  // onConnectFacebook body: from its declaration to the next `const doFbConnect`.
+  const onConnect = app.slice(app.indexOf("const onConnectFacebook"), app.indexOf("const doFbConnect"));
+  // doFbConnect body: from its declaration to the Option-E orchestration comment that follows.
+  const doFb = app.slice(app.indexOf("const doFbConnect"), app.indexOf("Option E — Live Source orchestration"));
+
+  it("onConnectFacebook does NOT block fbPreview with the preview note — it proceeds to commitLiveConnect", () => {
+    expect(onConnect).not.toContain("rd_fb_preview_note");
+    expect(onConnect).not.toMatch(/if \(fbPreview\)/);
+    expect(onConnect).toContain('commitLiveConnect({ platform: "Facebook"');
+  });
+  it("doFbConnect does NOT short-circuit on fbPreview — it runs the real /fb/connect POST", () => {
+    expect(doFb).not.toContain("rd_fb_preview_note");
+    expect(doFb).not.toMatch(/if \(fbPreview\)/);
+    expect(doFb).toContain("fbConnect(pageId)");
+  });
+  it("non-allowlisted stays inert: the FB Connect button only renders when fbConnectEnabled=fbEnabled", () => {
+    // (Dashboard gate pinned above.) fbEnabled = flag OR preview → false for the fleet →
+    // onConnectFacebook/doFbConnect are unreachable for non-allowlisted sellers.
+    expect(app).toMatch(/const fbEnabled = fbFlag \|\| fbPreview;/);
+    expect(dash).toMatch(/fbConnectEnabled = false/);
+  });
+});
+
 describe("CARRY-FORWARD #1 — FB initial:true rides the platform-generic display-only lane", () => {
   it("the initial branch fires on `initial === true` with NO platform gate before it", () => {
     // The display-only branch keys on the flag alone, so Facebook (a 3rd platform) routes
