@@ -46,7 +46,7 @@ function runtime(overrides: Record<string, unknown> = {}) {
   const rt = createFbRuntime({
     config: CONFIG, store, emitComment, statusEmit, liveKey,
     renderUrl: "https://srv.test", appUrl: "https://app.test",
-    fetchImpl, now: (overrides.now as never) || (() => 1_000_000), log: () => {},
+    fetchImpl, now: (overrides.now as never) || (() => 1_000_000), log: (overrides.log as never) || (() => {}),
     setLoop: (overrides.setLoop as never) || ((fn: () => void) => { void fn; return 1; }),
     clearLoop: (overrides.clearLoop as never) || (() => {}),
     setTimer: (overrides.setTimer as never) || (() => 2),
@@ -337,6 +337,113 @@ describe("poller — pollOnce", () => {
     const f = vi.fn().mockResolvedValue(mkRes(503, {}));
     const { rt } = runtime({ store, fetchImpl: f });
     expect(await rt.pollOnce(mkEntry())).toMatchObject({ stop: false, backoff: true });
+  });
+});
+
+// ── FEATURE GATE: Graph "(#200) Missing Permissions" (HTTP 403) on the comments edge = the
+// Live Video API feature isn't approved yet. It is NOT an auth failure: the page must stay
+// active and the session must not be torn down by the auth 3-strike rule.
+describe("poller — #200 feature gate is NOT an auth failure", () => {
+  const gate = () => mkRes(403, { error: { code: 200, message: "(#200) Missing Permissions", type: "OAuthException" } });
+
+  it("#200 (HTTP 403) → backoff, NO stop, authFails untouched, page NOT deactivated — even after many polls", async () => {
+    const store = makeStore([{ user_id: "u1", page_id: "P1", active: true, access_token: enc() }]);
+    const f = vi.fn().mockResolvedValue(gate());
+    const { rt } = runtime({ store, fetchImpl: f });
+    const entry = mkEntry();
+    for (let i = 0; i < MAX_AUTH_FAILURES * 3; i++) {
+      expect(await rt.pollOnce(entry)).toMatchObject({ stop: false, backoff: true });
+    }
+    expect(entry.authFails).toBe(0);
+    expect(entry.fetchErrors).toBe(0);
+    expect(entry.reauth).toBe(false);
+    expect(store.calls.setActive).toHaveLength(0); // page stays ACTIVE
+  });
+
+  it("logs the feature gate clearly, ONCE per poller (no log spam), never as auth", async () => {
+    const store = makeStore([{ user_id: "u1", page_id: "P1", active: true, access_token: enc() }]);
+    const log = vi.fn();
+    const { rt } = runtime({ store, fetchImpl: vi.fn().mockResolvedValue(gate()), log });
+    const entry = mkEntry();
+    await rt.pollOnce(entry); await rt.pollOnce(entry); await rt.pollOnce(entry);
+    const lines = log.mock.calls.map((c) => String(c[0]));
+    const gated = lines.filter((l) => l.includes("comments blocked: Live Video API not approved (code 200)"));
+    expect(gated).toHaveLength(1);
+    expect(lines.some((l) => l.includes("auth-fail"))).toBe(false);
+    expect(lines.join("\n")).not.toMatch(/access_token|PAGETOK/); // token-free
+  });
+
+  it("an all-gated session ends at the idle cap with reason=feature_gate (not idle / auth)", async () => {
+    const { rt } = runtime({ fetchImpl: vi.fn() });
+    const entry = mkEntry({ featureGated: true, lastActivityMs: 1_000_000 - IDLE_STOP_MS });
+    expect(await rt.pollOnce(entry)).toMatchObject({ stop: true, reason: "feature_gate" });
+  });
+
+  it("feature approved mid-session → comments flow on the SAME poller (no reconnect), first real poll is initial", async () => {
+    const store = makeStore([{ user_id: "u1", page_id: "P1", active: true, access_token: enc() }]);
+    const log = vi.fn();
+    const f = vi.fn()
+      .mockResolvedValueOnce(gate())
+      .mockResolvedValueOnce(mkRes(200, { data: [cmt("c1", "mine")] }));
+    const { rt, emitComment } = runtime({ store, fetchImpl: f, log });
+    const entry = mkEntry({ firstPollDone: false });
+    await rt.pollOnce(entry);                       // gated
+    const r = await rt.pollOnce(entry);             // approved → data
+    expect(r).toMatchObject({ hadNew: true, stop: false });
+    expect(entry.featureGated).toBe(false);
+    expect(emitComment.mock.calls[0][2].initial).toBe(true); // F1 intact: first REAL poll = display-only
+    expect(log.mock.calls.some((c) => String(c[0]).includes("comments unblocked"))).toBe(true);
+  });
+
+  it("REAL auth failures unchanged: 190 still → 3 strikes → stop auth + page deactivated (and now logged)", async () => {
+    const store = makeStore([{ user_id: "u1", page_id: "P1", active: true, access_token: enc() }]);
+    const log = vi.fn();
+    const f = vi.fn().mockResolvedValue(mkRes(400, { error: { code: 190, error_subcode: 463, message: "Session has expired" } }));
+    const { rt } = runtime({ store, fetchImpl: f, log });
+    const entry = mkEntry();
+    let last;
+    for (let i = 0; i < MAX_AUTH_FAILURES; i++) last = await rt.pollOnce(entry);
+    expect(last).toMatchObject({ stop: true, reason: "auth" });
+    expect(store.calls.setActive).toContainEqual({ userId: "u1", pageId: "P1", active: false });
+    expect(log.mock.calls.filter((c) => String(c[0]).includes("comments auth-fail"))).toHaveLength(MAX_AUTH_FAILURES);
+  });
+
+  it("a non-#200 403 is still an auth failure (only code 200 is carved out)", async () => {
+    const store = makeStore([{ user_id: "u1", page_id: "P1", active: true, access_token: enc() }]);
+    const f = vi.fn().mockResolvedValue(mkRes(403, { error: { code: 10, message: "Permission denied" } }));
+    const { rt } = runtime({ store, fetchImpl: f });
+    const entry = mkEntry();
+    await rt.pollOnce(entry);
+    expect(entry.authFails).toBe(1);
+  });
+});
+
+// ── The silent comments=0: a 200 WITHOUT a data array used to be reported as zero comments.
+describe("poller — no silent zero-comments on a bad response", () => {
+  it("HTTP 200 with no `data` array (e.g. non-JSON body → {}) → logged hard error, NOT 'comments=0'", async () => {
+    const store = makeStore([{ user_id: "u1", page_id: "P1", active: true, access_token: enc() }]);
+    const log = vi.fn();
+    const f = vi.fn().mockResolvedValue({ status: 200, json: async () => { throw new Error("not json"); } });
+    const { rt, emitComment } = runtime({ store, fetchImpl: f, log });
+    const entry = mkEntry({ firstPollDone: false });
+    const r = await rt.pollOnce(entry);
+    expect(r).toMatchObject({ stop: false, backoff: true });
+    expect(entry.fetchErrors).toBe(1);
+    expect(entry.firstPollDone).toBe(false);          // the flag is NOT consumed by a bad response
+    expect(emitComment).not.toHaveBeenCalled();
+    const lines = log.mock.calls.map((c) => String(c[0]));
+    expect(lines.some((l) => l.includes("first poll"))).toBe(false);
+    expect(lines.some((l) => l.includes("comments error") && l.includes("shape=no-data-array keys=(empty)"))).toBe(true);
+  });
+
+  it("a genuine empty feed (200 + data:[]) is still a clean zero, logged WITH the http status", async () => {
+    const store = makeStore([{ user_id: "u1", page_id: "P1", active: true, access_token: enc() }]);
+    const log = vi.fn();
+    const { rt } = runtime({ store, fetchImpl: vi.fn().mockResolvedValue(mkRes(200, { data: [] })), log });
+    const entry = mkEntry({ firstPollDone: false });
+    expect(await rt.pollOnce(entry)).toMatchObject({ stop: false });
+    expect(entry.firstPollDone).toBe(true);
+    expect(log.mock.calls.some((c) => String(c[0]).includes("first poll") && String(c[0]).includes("http=200 comments=0"))).toBe(true);
   });
 });
 
