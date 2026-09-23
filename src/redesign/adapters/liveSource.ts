@@ -37,6 +37,17 @@ export function isPlatformSwitch(livePlatform: SourcePlatform | null, next: Sour
   return livePlatform !== null && livePlatform !== next;
 }
 
+// H1 (session-RPC v2) — SERVER-ANCHORED switch. `serverPlatform` = the running session's
+// OWN platform from session_status() (sql/46), NOT in-memory ttEff/shopeeEff flags. A real
+// cross-platform switch (buyer# → #1) iff the running session has a platform that differs
+// from the one being connected. NULL serverPlatform (legacy/unknown session, or a degraded
+// status read) → NOT a switch → continue (today's behavior; a missed reset never corrupts
+// numbering, a wrongful reset does). This supersedes isPlatformSwitch(livePlatformOf(...))
+// as the connect-flow anchor — it can't be fooled by a stale/recovering client flag.
+export function isServerPlatformSwitch(serverPlatform: string | null | undefined, next: SourcePlatform): boolean {
+  return !!serverPlatform && serverPlatform !== next;
+}
+
 // Only TikTok and Shopee are connectable today (Facebook = activation gate, Instagram =
 // coming soon). switchSource is called only for these; this guards the orchestration.
 export function isConnectableSource(p: SourcePlatform): p is "TikTok" | "Shopee" {

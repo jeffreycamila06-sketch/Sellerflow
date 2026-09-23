@@ -15,7 +15,8 @@ describe("RedesignApp — Session V2 owner gating (source contract)", () => {
     expect(app).toMatch(/if \(sessionV2\) \{ setOwnerStart\(\{ kind: "tt", platform, acct \}\); return; \}\s*\n\s*setPickerConnect\(\{ kind: "tt", platform, acct \}\);/);
   });
   it("owner Start calls start_session(SESSION_V2_DAYS=7) then reset + connect", () => {
-    expect(app).toMatch(/sessionInstance\.startSession\(SESSION_V2_DAYS\)/);
+    // H1/H2: owner Start now stamps the platform + force=false (reuse-if-running).
+    expect(app).toMatch(/sessionInstance\.startSession\(SESSION_V2_DAYS, platformOfPending\(pending\), false\)/);
     const h = app.slice(app.indexOf("const onOwnerStart"), app.indexOf("const doEndSession"));
     expect(h).toMatch(/liveSession\.reset\(\)/);
     expect(h).toMatch(/connectPending\(pending\)/);

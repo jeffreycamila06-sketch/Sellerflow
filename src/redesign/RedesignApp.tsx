@@ -43,7 +43,7 @@ import { loadShopeeEnabled, listShopeeShops, shopeeConnect, shopeeDisconnect, pa
 import { shopeePreviewEnabled, withShopeePreview } from "./adapters/shopeePreview";
 import LiveSourceSheet from "./components/LiveSourceSheet";
 import LiveConnectModal from "./components/LiveConnectModal";
-import { liveSourcePreviewEnabled, livePlatformOf, isPlatformSwitch, isConnectableSource, type SourcePlatform } from "./adapters/liveSource";
+import { liveSourcePreviewEnabled, isServerPlatformSwitch, isConnectableSource, type SourcePlatform } from "./adapters/liveSource";
 import type { ConnectTab } from "./screens/ConnectModal";
 import { useAuthSession, DEFAULT_CURRENCY } from "./adapters/useAuthSession";
 import { useCustomers, useAdminUsers, useFreeUsers, useAuditLogs, deriveSubBuckets, deriveUserBase, deriveMrr, liveOrdersToRedesign, type ReadState } from "./adapters/useReadData";
@@ -122,6 +122,9 @@ type PendingConnect =
 type LiveConnectTarget =
   | { platform: "TikTok"; username: string; register?: boolean }
   | { platform: "Shopee"; shopId: number; sessionId: string };
+// The platform a pending/target connect is FOR — passed to start_session so the new
+// session records its platform (H1). Kind "tt" carries platform (TikTok today).
+const platformOfPending = (p: PendingConnect): SourcePlatform => (p.kind === "shopee" ? "Shopee" : p.platform);
 
 // Auto Mode Rule 1 dedup key: one auto order per (session, buyer handle, code),
 // case-insensitive + trimmed — mirrors the DB partial-unique index expression
@@ -976,20 +979,25 @@ export default function RedesignApp() {
   const runSessionAware = async (target: LiveConnectTarget) => {
     await sessionInstance.ensureLoaded();
     const status = await sessionInstance.checkStatus();
-    if (status.running) { runTargetConnect(target); return; }
+    // H1 — SERVER-ANCHORED switch: the running session's OWN platform (from
+    // session_status) differs from the target → real cross-platform switch → confirm →
+    // force-fresh #1 (confirmSwitch). Same platform / NULL-legacy → continue. This
+    // replaces the old in-memory livePlatformOf(ttEff/shopeeEff) anchor (stale-flag hole).
+    if (status.running) {
+      if (isServerPlatformSwitch(status.platform, target.platform)) { setSwitchConfirm(target); return; }
+      runTargetConnect(target); return; // same platform (or NULL-legacy) → continue same session
+    }
     const pending: PendingConnect = target.platform === "Shopee"
       ? { kind: "shopee", shopId: target.shopId, sessionId: target.sessionId }
       : { kind: "tt", platform: "TikTok", acct: target.username, register: target.register };
     if (sessionV2) setOwnerStart(pending); else setPickerConnect(pending);
   };
-  // The SINGLE commit from the modal (Connect / Use / Shopee connect). A PLATFORM switch
-  // WHILE live → confirm → startSession (#1). Same platform (account switch) / fresh /
-  // reconnect → runSessionAware (continue or first-session). Switch detected in ONE place.
+  // The SINGLE commit from the modal (Connect / Use / Shopee connect). Switch detection is
+  // now SERVER-ANCHORED inside runSessionAware (checkStatus → isServerPlatformSwitch), not
+  // the in-memory client flags — so a stale/recovering ttEff can never mis-route a switch.
   const commitLiveConnect = (target: LiveConnectTarget) => {
     setLiveConnectPlatform(null);
     setActiveSource(target.platform);
-    const live = livePlatformOf({ ttEff, shopeeEff });
-    if (isPlatformSwitch(live, target.platform)) { setSwitchConfirm(target); return; }
     void runSessionAware(target);
   };
   // Confirmed platform switch → new session (startSession reuses the running window
@@ -1003,7 +1011,8 @@ export default function RedesignApp() {
     switchingRef.current = true;
     try {
       const days = sessionInstance.sessionWindowDays ?? SESSION_V2_DAYS;
-      const sid = await sessionInstance.startSession(days);
+      // Cross-platform switch → FORCE a fresh session stamped with the new platform (H1/H2).
+      const sid = await sessionInstance.startSession(days, target.platform, true);
       if (!sid) { setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }); return; }
       liveSession.reset();
       runTargetConnect(target);
@@ -1101,7 +1110,17 @@ export default function RedesignApp() {
     // ensureLoaded always resolves (the mount read always completes) → no deadlock.
     await sessionInstance.ensureLoaded();
     const status = await sessionInstance.checkStatus();
-    if (status.running) { void performConnect(platform, acct); return; }
+    if (status.running) {
+      // H1 — SERVER-ANCHORED switch on the active old-dropdown path too: if the running
+      // session belongs to a DIFFERENT platform, route through the confirm → force-fresh #1
+      // (never mix platforms in one numbering). TikTok-only here (the only reachable dropdown
+      // connect); NULL-legacy / same-platform → continue. No new startSession site — it
+      // funnels to confirmSwitch (site #3).
+      if (platform === "TikTok" && isServerPlatformSwitch(status.platform, "TikTok")) {
+        setTtOpen(false); setSwitchConfirm({ platform: "TikTok", username: acct }); return;
+      }
+      void performConnect(platform, acct); return;
+    }
     // Owner (Session V2): the fixed 5-day "Start Session" modal, NOT the 1–5 picker.
     // Every other seller: the unchanged picker path (byte-for-byte).
     if (sessionV2) { setOwnerStart({ kind: "tt", platform, acct }); return; }
@@ -1120,7 +1139,9 @@ export default function RedesignApp() {
     const pending = ownerStart;
     setOwnerStart(null);
     if (!pending) return;
-    const sid = await sessionInstance.startSession(SESSION_V2_DAYS);
+    // First-connect (owner Start): stamp the connecting platform; force=false (default) →
+    // reuse-if-running converges a two-device race onto one session.
+    const sid = await sessionInstance.startSession(SESSION_V2_DAYS, platformOfPending(pending), false);
     if (!sid) { setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }); return; }
     liveSession.reset();
     connectPending(pending);
@@ -1141,7 +1162,8 @@ export default function RedesignApp() {
     const pending = pickerConnect;
     setPickerConnect(null);
     if (!pending) return;
-    const sid = await sessionInstance.startSession(days);
+    // First-connect (legacy picker): stamp the connecting platform; force=false (default).
+    const sid = await sessionInstance.startSession(days, platformOfPending(pending), false);
     if (!sid) { setToast({ msg: tApp.rd_sp_start_failed, kind: "err" }); return; }
     // New session_id → clear + reload the live session so it loads by the NEW id
     // (empty → buyer# restarts at #1). The load effect re-runs on the sessionId

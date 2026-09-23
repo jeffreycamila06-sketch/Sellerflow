@@ -1,7 +1,7 @@
 // Option E — the reset-detection logic (decisions 4 & 5). Reset (#1) ONLY on a real
 // PLATFORM switch while live; account switch / reconnect / fresh open → continue.
 import { describe, it, expect } from "vitest";
-import { liveSourcePreviewEnabled, livePlatformOf, isPlatformSwitch, isConnectableSource, LIVE_SOURCE_EMAILS } from "../liveSource";
+import { liveSourcePreviewEnabled, livePlatformOf, isPlatformSwitch, isServerPlatformSwitch, isConnectableSource, LIVE_SOURCE_EMAILS } from "../liveSource";
 
 describe("liveSourcePreviewEnabled — owner allowlist", () => {
   it("owner → true (case/space-insensitive); everyone else → false", () => {
@@ -32,6 +32,23 @@ describe("isPlatformSwitch — the reset gate", () => {
   it("nothing live (fresh open / crash reconnect) → false = DEFAULT CONTINUE (never wrongly reset)", () => {
     expect(isPlatformSwitch(null, "TikTok")).toBe(false);
     expect(isPlatformSwitch(null, "Shopee")).toBe(false);
+  });
+});
+
+describe("isServerPlatformSwitch — H1 server-anchored reset gate (session_status platform)", () => {
+  it("running session's platform differs from target → switch (buyer# → #1)", () => {
+    expect(isServerPlatformSwitch("TikTok", "Shopee")).toBe(true);
+    expect(isServerPlatformSwitch("Shopee", "TikTok")).toBe(true);
+    expect(isServerPlatformSwitch("Facebook", "TikTok")).toBe(true);
+  });
+  it("same platform → NOT a switch (continue)", () => {
+    expect(isServerPlatformSwitch("TikTok", "TikTok")).toBe(false);
+    expect(isServerPlatformSwitch("Shopee", "Shopee")).toBe(false);
+  });
+  it("NULL/undefined/'' server platform (legacy/unknown / degraded read) → NOT a switch (continue; zero disruption)", () => {
+    expect(isServerPlatformSwitch(null, "TikTok")).toBe(false);
+    expect(isServerPlatformSwitch(undefined, "TikTok")).toBe(false);
+    expect(isServerPlatformSwitch("", "Shopee")).toBe(false);
   });
 });
 

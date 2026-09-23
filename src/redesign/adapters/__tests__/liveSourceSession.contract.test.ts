@@ -73,3 +73,29 @@ describe("Session-safety contract — routing", () => {
     expect(b).toContain("switchingRef.current = false;"); // released in finally
   });
 });
+
+// H1/H2 — session-RPC v2. Switch detection is SERVER-anchored (session_status platform),
+// the 3 sites stamp the connecting platform, and only confirmSwitch forces a mint.
+describe("Session-safety contract — H1/H2 platform anchor", () => {
+  it("switch detection is SERVER-anchored (isServerPlatformSwitch on status.platform), NOT the client eff flags", () => {
+    // runSessionAware (new flow) decides via the server platform + routes a switch to the confirm.
+    const rsa = body("runSessionAware");
+    expect(rsa).toContain("isServerPlatformSwitch(status.platform");
+    expect(rsa).toContain("setSwitchConfirm(");
+    // doConnect (active old-dropdown path) applies the same server anchor for TikTok.
+    expect(src).toContain('isServerPlatformSwitch(status.platform, "TikTok")');
+    // commitLiveConnect no longer uses the in-memory client-flag anchor.
+    const clc = body("commitLiveConnect");
+    expect(clc).not.toContain("livePlatformOf");
+    expect(clc).not.toContain("isPlatformSwitch");
+  });
+  it("the 3 startSession sites stamp the connecting platform; only confirmSwitch forces a mint", () => {
+    expect(body("onPickSessionLength")).toContain("platformOfPending(pending)");
+    expect(body("onOwnerStart")).toContain("platformOfPending(pending)");
+    // confirmSwitch mints with the target platform + force=true.
+    expect(body("confirmSwitch")).toContain("startSession(days, target.platform, true)");
+    // first-connect sites pass force=false (reuse-if-running); never true.
+    expect(body("onPickSessionLength")).toContain(", false)");
+    expect(body("onOwnerStart")).toContain(", false)");
+  });
+});
