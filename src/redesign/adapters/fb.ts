@@ -10,14 +10,22 @@ import { SERVER } from "./serverIdentity";
 import { getAppSetting } from "./appSettings";
 import { isActivePaid, planDaysLeft } from "../../lib/planWindow";
 import { isAdminRole } from "../../lib/roles";
+import { fbPreviewEnabled } from "./fbPreview";
 
 // Authorize + Connect require an ACTIVE PAID plan (admin bypasses; the server also
 // enforces requirePlanActive on /fb/connect). Module-level so Date.now() lives OUTSIDE
 // any component render (react-hooks impure rule — mirror isShopeeEligible). This is the
 // PLAN gate only; the allowlist + flag VISIBILITY gate is fbEnabled in RedesignApp.
-export function isFbEligible(a: { plan?: string; planStatus?: string; planExpiry?: string; role?: string } | null | undefined): boolean {
+export function isFbEligible(a: { email?: string; plan?: string; planStatus?: string; planExpiry?: string; role?: string } | null | undefined): boolean {
   if (!a) return false;
   if (isAdminRole(a.role)) return true;
+  // ⚠️ PERMANENT — FB_PREVIEW_EMAILS accounts skip the paid-plan check (Facebook screens
+  // ONLY; this helper gates nothing else). test@gmail.com is the Meta App Review test
+  // account and is on the FREE plan; without this bypass the reviewer hits the upgrade
+  // prompt instead of the Facebook OAuth flow, and Meta re-tests approved apps
+  // periodically. Lives in code so it can never lapse with a plan expiry. Do NOT remove
+  // in future cleanups. Non-allowlisted sellers are unaffected (and never see FB screens).
+  if (fbPreviewEnabled(a.email)) return true;
   return isActivePaid({ plan: a.plan || "", planStatus: a.planStatus || "", daysLeft: planDaysLeft(a.planExpiry, Date.now()) });
 }
 

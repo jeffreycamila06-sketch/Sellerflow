@@ -6,8 +6,8 @@ import type { FbPage } from "../fb";
 
 describe("fbPreviewEnabled — email allowlist", () => {
   it("allowlisted owner + googletest → true (case/space-insensitive)", () => {
-    expect(FB_PREVIEW_EMAILS).toEqual(["camilajeffrey1@gmail.com", "googletest@gmail.com"]);
-    for (const e of ["camilajeffrey1@gmail.com", "  CAMILAJEFFREY1@gmail.com ", "googletest@gmail.com"]) {
+    expect(FB_PREVIEW_EMAILS).toEqual(["camilajeffrey1@gmail.com", "googletest@gmail.com", "test@gmail.com"]);
+    for (const e of ["camilajeffrey1@gmail.com", "  CAMILAJEFFREY1@gmail.com ", "googletest@gmail.com", "test@gmail.com"]) {
       expect(fbPreviewEnabled(e)).toBe(true);
     }
   });

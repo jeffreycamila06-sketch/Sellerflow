@@ -161,4 +161,14 @@ describe("isFbEligible — active-paid gate", () => {
   it("free → false", () => { expect(isFbEligible({ plan: "free", planStatus: "active", planExpiry: future, role: "seller" })).toBe(false); });
   it("admin → true regardless of plan", () => { expect(isFbEligible({ plan: "free", planStatus: "expired", planExpiry: past, role: "admin" })).toBe(true); });
   it("null → false", () => { expect(isFbEligible(null)).toBe(false); });
+  it("allowlisted Meta App Review account on the FREE plan → true (permanent bypass)", () => {
+    expect(isFbEligible({ email: "test@gmail.com", plan: "free", planStatus: "active", role: "seller" })).toBe(true);
+    expect(isFbEligible({ email: "  TEST@gmail.com ", plan: "free", planStatus: "active", role: "seller" })).toBe(true);
+  });
+  it("allowlisted account with an EXPIRED paid plan → still true (bypass can't lapse)", () => {
+    expect(isFbEligible({ email: "googletest@gmail.com", plan: "plus", planStatus: "active", planExpiry: past, role: "seller" })).toBe(true);
+  });
+  it("NON-allowlisted free seller → still false (fleet unchanged)", () => {
+    expect(isFbEligible({ email: "random@seller.com", plan: "free", planStatus: "active", planExpiry: future, role: "seller" })).toBe(false);
+  });
 });

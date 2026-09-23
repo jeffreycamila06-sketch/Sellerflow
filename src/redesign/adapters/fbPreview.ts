@@ -11,7 +11,10 @@
 import type { FbPage } from "./fb";
 
 // F-P3 owner + non-admin test account (mirrors the task's FB_PREVIEW_EMAILS spec).
-export const FB_PREVIEW_EMAILS: string[] = ["camilajeffrey1@gmail.com", "googletest@gmail.com"];
+// ⚠️ PERMANENT — DO NOT REMOVE "test@gmail.com" in any future cleanup: it is the account
+// Meta App Review uses to test the Facebook Connection / OAuth flow, and Meta re-tests
+// approved apps periodically. Removing it would break a future review.
+export const FB_PREVIEW_EMAILS: string[] = ["camilajeffrey1@gmail.com", "googletest@gmail.com", "test@gmail.com"];
 
 export function fbPreviewEnabled(email: string | undefined | null): boolean {
   const e = String(email || "").trim().toLowerCase();
