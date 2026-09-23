@@ -8,6 +8,7 @@
 // SACRED ZONE untouched: emit goes through the injected emitCommentScoped (which
 // sanitizes); this never touches dedup/commentKey/orders.
 import { describe, it, expect, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   signState, verifyState, pickNewComments, nextPollDelay, createFbRuntime,
   POLL_ACTIVE_MS, POLL_QUIET_MS, MAX_AUTH_FAILURES, MAX_FETCH_ERRORS, IDLE_STOP_MS, MAX_SESSION_MS,
@@ -218,7 +219,7 @@ function mkEntry(over: Record<string, unknown> = {}) {
   const nowMs = 1_000_000;
   return {
     key: "seller1:Facebook:P1", sellerId: "seller1", userId: "u1", pageId: "P1",
-    scopeKey: "mypage", liveVideoId: "LV1",
+    scopeKey: "mypage", liveVideoId: "LV1", sessionId: "sf-browser-A", // browser session ≠ live-video id
     emitted: new Set<string>(), authFails: 0, fetchErrors: 0, timer: null, stopped: false,
     firstPollDone: true,
     startedAtMs: nowMs, lastActivityMs: nowMs,
@@ -240,7 +241,8 @@ describe("poller — pollOnce", () => {
     const [sellerId, scopeKey, payload] = emitComment.mock.calls[0];
     expect(sellerId).toBe("seller1");
     expect(scopeKey).toBe("mypage");
-    expect(payload).toMatchObject({ platform: "Facebook", handle: "Maria", comment: "mine red", msgId: "c1", roomId: "LV1", sellerId: "seller1", sessionId: "LV1", pageId: "P1", liveVideoId: "LV1", isBuy: false, buyerNum: null, buyerData: null });
+    // sessionId = the connecting BROWSER session (this line used to pin "LV1" — the bug).
+    expect(payload).toMatchObject({ platform: "Facebook", handle: "Maria", comment: "mine red", msgId: "c1", roomId: "LV1", sellerId: "seller1", sessionId: "sf-browser-A", pageId: "P1", liveVideoId: "LV1", isBuy: false, buyerNum: null, buyerData: null });
     expect(payload.initial).toBeUndefined(); // steady-state live comment carries NO initial flag
     const r2 = await rt.pollOnce(entry);
     expect(r2.hadNew).toBe(false);
@@ -652,5 +654,88 @@ describe("routes register + /fb/pages token safety + F3 chain", () => {
     await handler({ authUserId: "u1", sellerId: "s", body: { page_id: "P1" } }, res, () => {});
     expect(jsonBody).toMatchObject({ ok: true, live_video_id: "LV42" });
     expect(rt._pollers.size).toBe(1);
+  });
+});
+
+// ── SESSION-ID CONTRACT (the "comments never reach the dashboard" bug). useLiveFeed drops
+// any comment / platform_status whose sessionId ≠ THIS browser's session id. TikTok stamps
+// the browser session from the /connect/tiktok body; FB must do the same — it used to stamp
+// the live-video id, so every FB event was dropped client-side (no comments, pill never
+// green → seller re-tapped Connect → poller reason=restart loops). End to end: the
+// /fb/connect body sessionId → poller entry → EVERY emitted comment + status event.
+describe("session-ID contract — FB events carry the CONNECTING browser session, never the live-video id", () => {
+  // The exact client drop rule (useLiveFeed.ts, comment + platform_status handlers).
+  const clientAccepts = (evt: { sessionId?: string }, mySession: string) => !(evt.sessionId && evt.sessionId !== mySession);
+  const pass = (_req: unknown, _res: unknown, next: () => void) => next();
+  function fakeApp() {
+    const handlers: Record<string, unknown[]> = {};
+    const rec = (m: string) => (p: string, ...h: unknown[]) => { handlers[`${m} ${p}`] = h; };
+    return { app: { get: rec("GET"), post: rec("POST") }, handlers };
+  }
+  const feedSrc = readFileSync("src/redesign/adapters/useLiveFeed.ts", "utf8");
+
+  async function connectAndPoll(body: Record<string, unknown>) {
+    const store = makeStore([{ user_id: "u1", page_id: "P1", page_username: "mypage", active: true, access_token: enc() }]);
+    const f = vi.fn().mockImplementation((url: string) =>
+      /\/live_videos\?/.test(url)
+        ? Promise.resolve(mkRes(200, { data: [{ id: "LV42", status: "LIVE" }] }))
+        : Promise.resolve(mkRes(200, { data: [cmt("c1", "mine red")] })));
+    const { rt, emitComment, statusEmit } = runtime({ store, fetchImpl: f, setLoop: vi.fn(() => 1) });
+    const { app, handlers } = fakeApp();
+    rt.registerRoutes(app as never, pass as never);
+    const chain = handlers["POST /fb/connect"] as ((req: unknown, res: unknown, next: () => void) => unknown)[];
+    const res = { status() { return this; }, json() { return this; } };
+    await chain[chain.length - 1]({ authUserId: "u1", sellerId: "s", body }, res, () => {});
+    const entry = [...rt._pollers.values()][0];
+    await rt.pollOnce(entry);   // first poll (initial:true)
+    return { rt, entry, emitComment, statusEmit };
+  }
+
+  it("/fb/connect body.sessionId → poller entry → comment payload.sessionId (NOT the live-video id)", async () => {
+    const { entry, emitComment } = await connectAndPoll({ page_id: "P1", sessionId: "sf-browser-A" });
+    expect(entry.sessionId).toBe("sf-browser-A");
+    const payload = emitComment.mock.calls[0][2];
+    expect(payload.sessionId).toBe("sf-browser-A");
+    expect(payload.sessionId).not.toBe("LV42");      // the bug
+    expect(payload.liveVideoId).toBe("LV42");        // the live-video id lives in its own field
+    expect(payload.roomId).toBe("LV42");
+  });
+
+  it("platform_status (connected + disconnected) carries the browser session → the FB pill can go green", async () => {
+    const { rt, entry, statusEmit } = await connectAndPoll({ page_id: "P1", sessionId: "sf-browser-A" });
+    expect(statusEmit).toHaveBeenCalledWith("s", expect.objectContaining({ connected: true, sessionId: "sf-browser-A" }));
+    rt.stopPoller(entry.key, "disconnect");
+    expect(statusEmit).toHaveBeenLastCalledWith("s", expect.objectContaining({ connected: false, sessionId: "sf-browser-A" }));
+  });
+
+  it("END TO END with the client drop rule: the connecting device ACCEPTS, a second device of the same seller DROPS (duplicate-auto-order safeguard)", async () => {
+    const { emitComment, statusEmit } = await connectAndPoll({ page_id: "P1", sessionId: "sf-browser-A" });
+    const comment = emitComment.mock.calls[0][2];
+    const status = statusEmit.mock.calls[0][1];
+    expect(clientAccepts(comment, "sf-browser-A")).toBe(true);   // the device that tapped Connect
+    expect(clientAccepts(status, "sf-browser-A")).toBe(true);
+    expect(clientAccepts(comment, "sf-browser-B")).toBe(false);  // another phone on the same account
+    expect(clientAccepts(status, "sf-browser-B")).toBe(false);
+  });
+
+  it("the drop rule asserted above IS the one in useLiveFeed (comment + platform_status)", () => {
+    expect(feedSrc).toContain("if (c.sessionId && c.sessionId !== sessionId) return;");
+    expect(feedSrc).toContain("if (p.sessionId && p.sessionId !== sessionId) return;");
+    expect(feedSrc).toContain("const sessionId = browserSessionId();");
+  });
+
+  it("old client (no sessionId in body) → \"\" → accepted by every device (degrades open, never drops)", async () => {
+    const { entry, emitComment } = await connectAndPoll({ page_id: "P1" });
+    expect(entry.sessionId).toBe("");
+    expect(clientAccepts(emitComment.mock.calls[0][2], "sf-anything")).toBe(true);
+  });
+
+  it("server.js wiring forwards sessionId (not liveVideoId) into the FB platform_status", () => {
+    const srv = readFileSync("server.js", "utf8");
+    const i = srv.indexOf('platform: "Facebook", connected, sellerId, username: String(scopeKey');
+    expect(i).toBeGreaterThan(-1);
+    const line = srv.slice(i, srv.indexOf("\n", i));
+    expect(line).toContain('sessionId: String(sessionId || "")');
+    expect(line).not.toContain("liveVideoId");
   });
 });

@@ -1897,8 +1897,11 @@ try {
       emitComment: (sellerId, scopeKey, payload) => { void emitCommentScoped(sellerId, "Facebook", scopeKey, payload); },
       // platform_status for the Facebook pill (username = the scoping key = page
       // username || page id, matching the emitComment sourceUsername).
-      statusEmit: (sellerId, { connected, liveVideoId, scopeKey }) => {
-        io.to(sellerRoom(sellerId)).emit("platform_status", { platform: "Facebook", connected, sellerId, username: String(scopeKey || ""), sessionId: String(liveVideoId || "") });
+      // sessionId = the CONNECTING browser's session (from the /fb/connect body), NOT the
+      // live-video id — useLiveFeed drops any status whose sessionId ≠ its own, which is why
+      // the FB pill never went green when this carried liveVideoId.
+      statusEmit: (sellerId, { connected, scopeKey, sessionId }) => {
+        io.to(sellerRoom(sellerId)).emit("platform_status", { platform: "Facebook", connected, sellerId, username: String(scopeKey || ""), sessionId: String(sessionId || "") });
       },
       log: (line) => console.log(line),
     });

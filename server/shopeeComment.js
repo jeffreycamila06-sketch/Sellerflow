@@ -34,6 +34,15 @@ const firstStr = (...vals) => {
   return "";
 };
 
+// 🔴 KNOWN BUG — MUST FIX BEFORE SHOPEE GOES LIVE (same bug fixed for Facebook, see
+// server/fbLive.js startPoller + adapters/fb.ts fbConnect): the `sessionId` stamped on this
+// payload (and on Shopee's platform_status in server.js) is the SHOPEE LIVE-SESSION id, but
+// the client (useLiveFeed: `if (c.sessionId && c.sessionId !== sessionId) return;`) expects
+// the CONNECTING BROWSER's session id — so EVERY Shopee comment + status is silently
+// dropped client-side (no comments, pill never green). Fix = send browserSessionId() in the
+// /shopee/connect body, carry it on the poller entry, and stamp THAT here + on status; keep
+// the Shopee session id in its own field. Do NOT stamp "" instead: that drops the
+// per-device scoping (duplicate auto-orders on multi-device sellers).
 // raw = one comment object from get_latest_comment_list.
 // ctx = { sellerId, sessionId, shopUsername, nowMs? }.
 // Output = the SAME shape as the TikTok live-chat relay (server.js:1208) with

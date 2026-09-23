@@ -426,7 +426,10 @@ export function createFbRuntime(deps) {
     if (asInitial) log(`[FB] first poll page=${entry.pageId} lv=${entry.liveVideoId} http=${res.status} comments=${fresh.length} initial=true`);
     for (const raw of fresh) {
       const payload = fbToPayload(raw, {
-        sellerId: entry.sellerId, sessionId: entry.liveVideoId,
+        // sessionId = the CONNECTING browser's session (NOT the live-video id — that is
+        // liveVideoId/roomId). useLiveFeed drops any comment whose sessionId ≠ its own,
+        // so this is what scopes the live flow to the device that tapped Connect.
+        sellerId: entry.sellerId, sessionId: entry.sessionId,
         pageId: entry.pageId, liveVideoId: entry.liveVideoId, pageUsername: entry.scopeKey, nowMs,
       });
       if (asInitial) payload.initial = true; // display-only lane; dedup by msgId (initialKey)
@@ -452,13 +455,16 @@ export function createFbRuntime(deps) {
     }, delayMs);
   }
 
-  function startPoller({ sellerId, userId, pageId, pageUsername, liveVideoId }) {
+  // sessionId = the browser session of the device that tapped Connect (POST body), stamped
+  // on every comment + platform_status — mirrors TikTok's relay (server.js /connect/tiktok).
+  // "" (old client / missing) → the client's `c.sessionId && …` filter passes it through.
+  function startPoller({ sellerId, userId, pageId, pageUsername, liveVideoId, sessionId = "" }) {
     const scopeKey = String(pageUsername || pageId); // the select_account scoping key
     const key = liveKey(sellerId, "Facebook", pageId);
     stopPoller(key, "restart"); // single poller per page
     const nowMs = now();
     const entry = {
-      key, sellerId, userId, pageId: String(pageId), scopeKey, liveVideoId: String(liveVideoId),
+      key, sellerId, userId, pageId: String(pageId), scopeKey, liveVideoId: String(liveVideoId), sessionId: String(sessionId || ""),
       emitted: new Set(), authFails: 0, fetchErrors: 0, featureGated: false, timer: null, stopped: false,
       firstPollDone: false,                 // F1
       startedAtMs: nowMs, lastActivityMs: nowMs, // F2
@@ -466,7 +472,7 @@ export function createFbRuntime(deps) {
     };
     pollers.set(key, entry);
     log(`[FB] poller start page=${String(pageId)} lv=${String(liveVideoId)} status=LIVE`);
-    statusEmit(sellerId, { connected: true, pageId: String(pageId), liveVideoId: String(liveVideoId), scopeKey });
+    statusEmit(sellerId, { connected: true, pageId: String(pageId), liveVideoId: String(liveVideoId), scopeKey, sessionId: entry.sessionId });
     scheduleNext(entry, 0);
     return entry;
   }
@@ -477,7 +483,7 @@ export function createFbRuntime(deps) {
     entry.stopped = true;
     if (entry.timer != null) { clearLoop(entry.timer); entry.timer = null; }
     pollers.delete(key);
-    try { statusEmit(entry.sellerId, { connected: false, pageId: entry.pageId, liveVideoId: entry.liveVideoId, scopeKey: entry.scopeKey }); } catch { /* best effort */ }
+    try { statusEmit(entry.sellerId, { connected: false, pageId: entry.pageId, liveVideoId: entry.liveVideoId, scopeKey: entry.scopeKey, sessionId: entry.sessionId }); } catch { /* best effort */ }
     log(`[FB] poller stop page=${entry.pageId} reason=${reason}`);
     return true;
   }
@@ -528,7 +534,7 @@ export function createFbRuntime(deps) {
       try { live = await fetchLiveVideos({ config, fetchImpl, pageId, pageToken: token }); }
       catch { live = { liveVideoId: "" }; }
       if (!live.liveVideoId) return res.json({ ok: false, reason: "not_live" });
-      startPoller({ sellerId, userId, pageId, pageUsername: page.page_username || pageId, liveVideoId: live.liveVideoId });
+      startPoller({ sellerId, userId, pageId, pageUsername: page.page_username || pageId, liveVideoId: live.liveVideoId, sessionId: String(req.body.sessionId || "") });
       return res.json({ ok: true, live_video_id: live.liveVideoId });
     });
 
