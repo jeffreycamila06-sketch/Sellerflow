@@ -52,6 +52,11 @@ export const TOKEN_REREAD_MARGIN_MS = 10 * 60 * 1000; // F4: re-read the cached 
 export const EMITTED_CAP = 500;       // per-poller bounded set of emitted comment ids
 export const LONG_LIVED_USER_TTL_SEC = 60 * 24 * 60 * 60; // ~60d default when expires_in absent
 export const FB_AUTH_ERROR_CODE = 190; // Graph OAuthException (invalid/expired/revoked token)
+// Graph "(#200) Missing Permissions" on the live-comments edge = a FEATURE GATE (the app's
+// Live Video API feature is not approved yet), NOT a bad token — the same token still
+// reads /me/accounts + /{page}/live_videos. Arrives as HTTP 403, so it MUST be classified
+// before the generic 401/403 → auth rule, else it deactivates a perfectly valid page.
+export const FB_FEATURE_GATE_CODE = 200;
 
 // ── OAuth state nonce (bind the page authorization to the RIGHT seller) ──────
 // Identical construction to shopeeLive.signState — state = base64url(userId).exp.HMAC.
@@ -124,9 +129,11 @@ const graphUrl = (path, params) => {
 function classifyGraphError(status, body) {
   const err = (body && body.error) || {};
   const code = Number(err.code);
-  const authFail = status === 401 || status === 403 || code === FB_AUTH_ERROR_CODE;
+  // Feature gate FIRST (code 200 arrives as HTTP 403): never an auth failure.
+  const featureGate = code === FB_FEATURE_GATE_CODE;
+  const authFail = !featureGate && (status === 401 || status === 403 || code === FB_AUTH_ERROR_CODE);
   const rateLimited = status === 429 || code === 4 || code === 17 || code === 32 || code === 613;
-  return { authFail, rateLimited, code, subcode: Number(err.error_subcode) || null, message: String(err.message || "") };
+  return { authFail, featureGate, rateLimited, code, subcode: Number(err.error_subcode) || null, message: String(err.message || "") };
 }
 
 // code → short-lived user token. UNVERIFIED path.
@@ -195,10 +202,19 @@ export async function fetchComments({ config, fetchImpl, liveVideoId, pageToken 
   const { status, body } = await graphGet({ fetchImpl, url: graphUrl(`/${liveVideoId}/comments`, {
     fields: "id,message,from,created_time", filter: "stream", live_filter: "no_filter", order: "reverse_chronological", access_token: pageToken,
   }) });
-  const list = Array.isArray(body.data) ? body.data : [];
+  const hasData = Array.isArray(body.data);
+  const list = hasData ? body.data : [];
   const cls = classifyGraphError(status, body);
-  const hardError = status !== 200 || cls.code > 0; // any non-2xx OR a Graph error body
-  return { status, list, authFail: cls.authFail, rateLimited: cls.rateLimited, hardError, errorCode: cls.code || null, errorSubcode: cls.subcode, error: cls.message };
+  // A 200 WITHOUT a `data` array (non-JSON body → graphGet's {} fallback, or an unexpected
+  // shape) is NOT "zero comments" — it used to be silently reported as comments=0. Treat it
+  // as a hard error so it is logged (bodyKeys) and retried, never mistaken for an empty feed.
+  const shapeAnomaly = status === 200 && !(cls.code > 0) && !hasData;
+  const hardError = status !== 200 || cls.code > 0 || shapeAnomaly; // non-2xx, Graph error body, or bad shape
+  return {
+    status, list, authFail: cls.authFail, featureGate: cls.featureGate, rateLimited: cls.rateLimited, hardError, shapeAnomaly,
+    errorCode: cls.code || null, errorSubcode: cls.subcode, error: cls.message,
+    bodyKeys: Object.keys(body || {}).join(",") || "(empty)", // key NAMES only — never values (token-free)
+  };
 }
 // Lightweight re-validation of a page token (the refresh-timer path, see the deviation
 // note above). Returns { ok, authFail }. A valid token → ok. A 190 → authFail (revoked).
@@ -324,7 +340,8 @@ export function createFbRuntime(deps) {
     const nowMs = now();
     // F2 — orphan/idle caps.
     if (nowMs - entry.startedAtMs >= MAX_SESSION_MS) return { hadNew: false, stop: true, reason: "max_session" };
-    if (nowMs - entry.lastActivityMs >= IDLE_STOP_MS) return { hadNew: false, stop: true, reason: "idle" };
+    // A session that was only ever feature-gated ends with the honest reason, not "idle".
+    if (nowMs - entry.lastActivityMs >= IDLE_STOP_MS) return { hadNew: false, stop: true, reason: entry.featureGated ? "feature_gate" : "idle" };
 
     // F4 — cache the decrypted page token; re-read only when unset, near expiry, or
     // after an auth failure (entry.reauth) — NOT every tick (egress discipline).
@@ -346,12 +363,26 @@ export function createFbRuntime(deps) {
       res = await fetchComments({ config, fetchImpl, liveVideoId: entry.liveVideoId, pageToken: entry.accessToken });
     } catch { return { hadNew: false, stop: false }; } // transient network → keep looping
 
-    // Order: auth-fail (190, unmistakable) → transient backoff (429/5xx) → other HARD
-    // error. NOTHING here concludes "ended" from a comments error — that is confirmed
-    // ONLY against live_videos status below.
+    // Order: feature-gate (#200) → auth-fail (190 / non-#200 401-403) → transient backoff
+    // (429/5xx) → other HARD error. NOTHING here concludes "ended" from a comments error —
+    // that is confirmed ONLY against live_videos status below.
+    //
+    // FEATURE GATE (#200 Missing Permissions = Live Video API feature not approved yet):
+    // NOT an auth failure. Page stays ACTIVE (no setActive(false)), authFails/fetchErrors
+    // untouched, session kept alive at the quiet cadence so comments start flowing on their
+    // own the moment the feature is approved. Logged ONCE per poller (no 5s log spam); an
+    // all-gated session ends at the idle cap with reason=feature_gate.
+    if (res.featureGate) {
+      if (!entry.featureGated) {
+        entry.featureGated = true;
+        log(`[FB] comments blocked: Live Video API not approved (code 200) page=${entry.pageId} lv=${entry.liveVideoId} http=${res.status} subcode=${res.errorSubcode ?? "-"} msg=${res.error || "-"} — page kept active, session kept alive`);
+      }
+      return { hadNew: false, stop: false, backoff: true };
+    }
     if (res.authFail) {
       entry.authFails = (entry.authFails || 0) + 1;
       entry.reauth = true; // F4 — force a fresh token read + one retry on the next poll
+      log(`[FB] comments auth-fail page=${entry.pageId} lv=${entry.liveVideoId} http=${res.status} code=${res.errorCode ?? "-"} subcode=${res.errorSubcode ?? "-"} msg=${res.error || "-"} (${entry.authFails}/${MAX_AUTH_FAILURES})`);
       if (entry.authFails >= MAX_AUTH_FAILURES) {
         try { await store.setActive(entry.userId, entry.pageId, false); } catch { /* best effort */ }
         return { hadNew: false, stop: true, reason: "auth" };
@@ -367,7 +398,7 @@ export function createFbRuntime(deps) {
     // as an ended live).
     if (res.hardError) {
       entry.fetchErrors = (entry.fetchErrors || 0) + 1;
-      log(`[FB] comments error page=${entry.pageId} lv=${entry.liveVideoId} http=${res.status} code=${res.errorCode ?? "-"} subcode=${res.errorSubcode ?? "-"} msg=${res.error || "-"} (${entry.fetchErrors}/${MAX_FETCH_ERRORS})`);
+      log(`[FB] comments error page=${entry.pageId} lv=${entry.liveVideoId} http=${res.status} code=${res.errorCode ?? "-"} subcode=${res.errorSubcode ?? "-"} msg=${res.error || "-"}${res.shapeAnomaly ? ` shape=no-data-array keys=${res.bodyKeys}` : ""} (${entry.fetchErrors}/${MAX_FETCH_ERRORS})`);
       if (entry.fetchErrors >= MAX_FETCH_ERRORS) {
         const liveStatus = await fetchLiveStatus({ config, fetchImpl, liveVideoId: entry.liveVideoId, pageToken: entry.accessToken });
         if (liveStatus && liveStatus !== "LIVE") return { hadNew: false, stop: true, reason: "session_end" };
@@ -377,6 +408,10 @@ export function createFbRuntime(deps) {
     }
     entry.authFails = 0;
     entry.fetchErrors = 0; // a clean fetch resets the hard-error streak
+    if (entry.featureGated) {
+      entry.featureGated = false;
+      log(`[FB] comments unblocked: Live Video API now returning data page=${entry.pageId} lv=${entry.liveVideoId}`);
+    }
 
     // F1 — RE-EMIT SAFETY. The FIRST successful poll after (re)Connect carries the
     // comments that ALREADY existed; emit them with initial:true so the client routes
@@ -388,7 +423,7 @@ export function createFbRuntime(deps) {
     // reverse_chronological returns NEWEST first; reverse the unseen slice so they emit
     // OLDEST→newest (chronological append order for the feed).
     const fresh = pickNewComments(res.list, entry.emitted).reverse();
-    if (asInitial) log(`[FB] first poll page=${entry.pageId} lv=${entry.liveVideoId} comments=${fresh.length} initial=true`);
+    if (asInitial) log(`[FB] first poll page=${entry.pageId} lv=${entry.liveVideoId} http=${res.status} comments=${fresh.length} initial=true`);
     for (const raw of fresh) {
       const payload = fbToPayload(raw, {
         sellerId: entry.sellerId, sessionId: entry.liveVideoId,
@@ -424,7 +459,7 @@ export function createFbRuntime(deps) {
     const nowMs = now();
     const entry = {
       key, sellerId, userId, pageId: String(pageId), scopeKey, liveVideoId: String(liveVideoId),
-      emitted: new Set(), authFails: 0, fetchErrors: 0, timer: null, stopped: false,
+      emitted: new Set(), authFails: 0, fetchErrors: 0, featureGated: false, timer: null, stopped: false,
       firstPollDone: false,                 // F1
       startedAtMs: nowMs, lastActivityMs: nowMs, // F2
       accessToken: null, tokenExpiresAtMs: 0, reauth: false, // F4
