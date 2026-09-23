@@ -34,24 +34,24 @@ const firstStr = (...vals) => {
   return "";
 };
 
-// 🔴 KNOWN BUG — MUST FIX BEFORE SHOPEE GOES LIVE (same bug fixed for Facebook, see
-// server/fbLive.js startPoller + adapters/fb.ts fbConnect): the `sessionId` stamped on this
-// payload (and on Shopee's platform_status in server.js) is the SHOPEE LIVE-SESSION id, but
-// the client (useLiveFeed: `if (c.sessionId && c.sessionId !== sessionId) return;`) expects
-// the CONNECTING BROWSER's session id — so EVERY Shopee comment + status is silently
-// dropped client-side (no comments, pill never green). Fix = send browserSessionId() in the
-// /shopee/connect body, carry it on the poller entry, and stamp THAT here + on status; keep
-// the Shopee session id in its own field. Do NOT stamp "" instead: that drops the
-// per-device scoping (duplicate auto-orders on multi-device sellers).
+// ⚠️ SESSION-ID CONTRACT (same fix as Facebook — server/fbLive.js startPoller +
+// adapters/fb.ts fbConnect): `sessionId` on this payload is the CONNECTING BROWSER's
+// session id (sent in the /shopee/connect body), NOT the Shopee live-session id. The client
+// (useLiveFeed: `if (c.sessionId && c.sessionId !== sessionId) return;`) drops any event
+// whose sessionId ≠ its own — so stamping the Shopee session id would silently drop EVERY
+// Shopee comment + status. Stamping the browser session also scopes the live flow to the
+// device that tapped Connect (the duplicate-auto-order safeguard on multi-device sellers).
+// The Shopee live-session id keeps its OWN fields: shopeeSessionId + roomId.
 // raw = one comment object from get_latest_comment_list.
-// ctx = { sellerId, sessionId, shopUsername, nowMs? }.
+// ctx = { sellerId, sessionId (BROWSER session), shopSessionId (Shopee live session),
+//         shopUsername, nowMs? }.
 // Output = the SAME shape as the TikTok live-chat relay (server.js:1208) with
 // platform:"Shopee". time/timestamp come from the comment's own create time when
 // parseable, else now. sourceUsername = the shop identity used for select_account
-// scoping (P2/P3); roomId = String(sessionId).
+// scoping (P2/P3); roomId = shopeeSessionId = String(shopSessionId).
 export function shopeeToPayload(raw, ctx = {}) {
   const r = raw && typeof raw === "object" ? raw : {};
-  const { sellerId, sessionId, shopUsername, nowMs = Date.now() } = ctx;
+  const { sellerId, sessionId, shopSessionId, shopUsername, nowMs = Date.now() } = ctx;
 
   const username = firstStr(r.username, r.user_name, r.buyer_username);
   const nickname = firstStr(r.nickname, r.nick_name, r.user_nickname);
@@ -79,9 +79,10 @@ export function shopeeToPayload(raw, ctx = {}) {
     avatar,
     platform: "Shopee",
     sellerId,
-    sessionId,
+    sessionId,                                      // BROWSER session (client drop rule)
     sourceUsername: shopUsername,
-    roomId: String(sessionId ?? ""),
+    roomId: String(shopSessionId ?? ""),            // Shopee live session (NOT sessionId)
+    shopeeSessionId: String(shopSessionId ?? ""),   // additive — passes emitCommentScoped untouched
     isBuy: false,
     buyerNum: null,
     buyerData: null,

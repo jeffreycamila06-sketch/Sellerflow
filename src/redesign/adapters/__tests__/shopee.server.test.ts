@@ -76,15 +76,18 @@ describe("shopeeSign — HMAC-SHA256 (base-string order is the UNVERIFIED pin)",
 });
 
 describe("shopeeToPayload — OUTPUT shape pinned; INPUT names defensive", () => {
-  const ctx = { sellerId: "s1", sessionId: 555, shopUsername: "myshop", nowMs: Date.parse("2026-09-16T00:00:00Z") };
+  // sessionId = the connecting BROWSER session; shopSessionId = the Shopee live session.
+  // (This used to pass the Shopee session AS sessionId and assert sessionId: 555 — the bug.)
+  const ctx = { sellerId: "s1", sessionId: "sf-browser-A", shopSessionId: 555, shopUsername: "myshop", nowMs: Date.parse("2026-09-16T00:00:00Z") };
 
   it("full raw → exact internal comment shape (platform Shopee)", () => {
     const p = shopeeToPayload({ username: "maria", nickname: "Maria", comment: "mine red", avatar: "http://a", comment_id: 42, create_time: 1700000000 }, ctx);
     expect(p).toMatchObject({
       handle: "maria", name: "Maria", comment: "mine red", avatar: "http://a",
-      platform: "Shopee", sellerId: "s1", sessionId: 555, sourceUsername: "myshop",
-      roomId: "555", isBuy: false, buyerNum: null, buyerData: null, msgId: "42",
+      platform: "Shopee", sellerId: "s1", sessionId: "sf-browser-A", sourceUsername: "myshop",
+      roomId: "555", shopeeSessionId: "555", isBuy: false, buyerNum: null, buyerData: null, msgId: "42",
     });
+    expect(p.sessionId).not.toBe("555"); // the Shopee live session never rides in sessionId
     expect(typeof p.time).toBe("string");
     expect(p.timestamp).toBe(new Date(1700000000 * 1000).toISOString()); // from create_time (seconds)
   });

@@ -7,6 +7,7 @@
 // enabled-gate contract). SACRED ZONE untouched: emit goes through the injected
 // emitCommentScoped (which sanitizes); this never touches dedup/commentKey/orders.
 import { describe, it, expect, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   signState, verifyState, pickNewComments, nextPollDelay, createShopeeRuntime,
   POLL_ACTIVE_MS, POLL_QUIET_MS, MAX_AUTH_FAILURES, IDLE_STOP_MS, MAX_SESSION_MS,
@@ -182,7 +183,7 @@ function mkEntry(over: Record<string, unknown> = {}) {
   const nowMs = 1_000_000;
   return {
     key: "u1:Shopee:7", sellerId: "seller1", userId: "u1", shopId: 7,
-    shopUsername: "7", sessionId: "555",
+    shopUsername: "7", shopSessionId: "555", sessionId: "sf-browser-A", // Shopee session ≠ browser session
     emitted: new Set<string>(), authFails: 0, timer: null, stopped: false,
     firstPollDone: true,                       // steady-state live by default (F1 tests flip this)
     startedAtMs: nowMs, lastActivityMs: nowMs,  // F2 caps quiet by default
@@ -203,7 +204,9 @@ describe("poller — pollOnce", () => {
     const [sellerId, shopUsername, payload] = emitComment.mock.calls[0];
     expect(sellerId).toBe("seller1");
     expect(shopUsername).toBe("7");
-    expect(payload).toMatchObject({ platform: "Shopee", handle: "maria", name: "Maria", comment: "mine red", avatar: "http://a", msgId: "c1", roomId: "555", sellerId: "seller1", sessionId: "555", isBuy: false, buyerNum: null, buyerData: null });
+    // sessionId = the connecting BROWSER session (this line used to pin "555" — the bug);
+    // the Shopee live session rides in roomId + shopeeSessionId.
+    expect(payload).toMatchObject({ platform: "Shopee", handle: "maria", name: "Maria", comment: "mine red", avatar: "http://a", msgId: "c1", roomId: "555", shopeeSessionId: "555", sellerId: "seller1", sessionId: "sf-browser-A", isBuy: false, buyerNum: null, buyerData: null });
     expect(payload.initial).toBeUndefined(); // steady-state live comment carries NO initial flag
     // re-poll same list → no new emit (emitted set dedup)
     const r2 = await rt.pollOnce(entry);
@@ -311,7 +314,7 @@ describe("poller F2 — idle + max-session caps stop the poller", () => {
   it("a stop from the loop clears the timer + removes the registry entry + emits disconnected", () => {
     const clearLoop = vi.fn();
     const { rt, statusEmit } = runtime({ setLoop: vi.fn(() => 1), clearLoop });
-    rt.startPoller({ sellerId: "s", userId: "u1", shopId: 7, shopUsername: "7", sessionId: "555" });
+    rt.startPoller({ sellerId: "s", userId: "u1", shopId: 7, shopUsername: "7", shopSessionId: "555", sessionId: "sf-browser-A" });
     rt.stopPoller("s:Shopee:7", "idle");
     expect(clearLoop).toHaveBeenCalled();
     expect(rt._pollers.size).toBe(0);
@@ -355,7 +358,7 @@ describe("poller lifecycle — timers cleared on every stop path", () => {
     let scheduled = 0;
     const setLoop = vi.fn(() => { scheduled++; return scheduled; });
     const { rt, statusEmit } = runtime({ setLoop, clearLoop });
-    rt.startPoller({ sellerId: "s", userId: "u1", shopId: 7, shopUsername: "7", sessionId: "555" });
+    rt.startPoller({ sellerId: "s", userId: "u1", shopId: 7, shopUsername: "7", shopSessionId: "555", sessionId: "sf-browser-A" });
     expect(setLoop).toHaveBeenCalled();
     expect(statusEmit).toHaveBeenCalledWith("s", expect.objectContaining({ connected: true, shopId: 7 }));
     const stopped = rt.stopPoller("s:Shopee:7", "disconnect");
@@ -369,7 +372,7 @@ describe("poller lifecycle — timers cleared on every stop path", () => {
     const clearTimer = vi.fn();
     const { rt } = runtime({ clearLoop, clearTimer });
     rt.startRefreshTimer();
-    rt.startPoller({ sellerId: "s", userId: "u1", shopId: 7, shopUsername: "7", sessionId: "555" });
+    rt.startPoller({ sellerId: "s", userId: "u1", shopId: 7, shopUsername: "7", shopSessionId: "555", sessionId: "sf-browser-A" });
     rt.stopAll();
     expect(clearLoop).toHaveBeenCalled();
     expect(clearTimer).toHaveBeenCalled();
@@ -442,5 +445,91 @@ describe("routes F3 — /shopee/connect runs requireConnectRate + requirePlanAct
     expect(jsonBody).toMatchObject({ error: "plan_inactive" });
     expect(requirePlanActive).toHaveBeenCalled();
     expect(rt._pollers.size).toBe(0); // final handler (startPoller) never ran
+  });
+});
+
+// ── SESSION-ID CONTRACT (mirrors the Facebook fix, fbLive.server.test.ts). useLiveFeed drops
+// any comment / platform_status whose sessionId ≠ THIS browser's session id. Shopee used to
+// stamp the SHOPEE live-session id there → every Shopee event would be dropped once live.
+// End to end: /shopee/connect body.sessionId → poller entry → EVERY emitted comment + status
+// event; the Shopee live session keeps its own fields AND is still what Shopee is polled with.
+describe("session-ID contract — Shopee events carry the CONNECTING browser session, never the Shopee live-session id", () => {
+  // The exact client drop rule (useLiveFeed.ts, comment + platform_status handlers).
+  const clientAccepts = (evt: { sessionId?: string }, mySession: string) => !(evt.sessionId && evt.sessionId !== mySession);
+  const pass = (_req: unknown, _res: unknown, next: () => void) => next();
+  function fakeApp() {
+    const handlers: Record<string, unknown[]> = {};
+    const rec = (m: string) => (p: string, ...h: unknown[]) => { handlers[`${m} ${p}`] = h; };
+    return { app: { get: rec("GET"), post: rec("POST") }, handlers };
+  }
+
+  async function connectAndPoll(body: Record<string, unknown>) {
+    const store = makeStore([{ user_id: "u1", shop_id: 7, active: true, access_token: await enc(), token_expires_at: new Date(1_000_000 + 4 * 60 * 60 * 1000).toISOString() }]);
+    const f = vi.fn().mockResolvedValue(mkRes(200, { response: { list: [{ comment_id: "c1", username: "maria", nickname: "Maria", comment: "mine red", create_time: 1700000000 }] } }));
+    const { rt, emitComment, statusEmit } = runtime({ store, fetchImpl: f, setLoop: vi.fn(() => 1) });
+    const { app, handlers } = fakeApp();
+    rt.registerRoutes(app as never, pass as never);
+    const chain = handlers["POST /shopee/connect"] as ((req: unknown, res: unknown, next: () => void) => unknown)[];
+    const res = { status() { return this; }, json() { return this; } };
+    await chain[chain.length - 1]({ authUserId: "u1", sellerId: "s", body }, res, () => {});
+    const entry = [...rt._pollers.values()][0];
+    await rt.pollOnce(entry);   // first poll (initial:true)
+    return { rt, entry, emitComment, statusEmit, fetchImpl: f };
+  }
+
+  it("/shopee/connect body.sessionId → poller entry → comment payload.sessionId (NOT the Shopee session)", async () => {
+    const { entry, emitComment } = await connectAndPoll({ shop_id: "7", session_id: "555", sessionId: "sf-browser-A" });
+    expect(entry.sessionId).toBe("sf-browser-A");
+    expect(entry.shopSessionId).toBe("555");
+    const payload = emitComment.mock.calls[0][2];
+    expect(payload.sessionId).toBe("sf-browser-A");
+    expect(payload.sessionId).not.toBe("555");        // the bug
+    expect(payload.shopeeSessionId).toBe("555");      // the Shopee live session lives in its own field
+    expect(payload.roomId).toBe("555");
+  });
+
+  it("Shopee is still POLLED with its own live session (session_id=555), not the browser session", async () => {
+    const { fetchImpl } = await connectAndPoll({ shop_id: "7", session_id: "555", sessionId: "sf-browser-A" });
+    const qs = new URLSearchParams(String(fetchImpl.mock.calls[0][0]).split("?")[1]);
+    expect(qs.get("session_id")).toBe("555");
+  });
+
+  it("platform_status (connected + disconnected) carries the browser session → the Shopee pill can go green", async () => {
+    const { rt, entry, statusEmit } = await connectAndPoll({ shop_id: "7", session_id: "555", sessionId: "sf-browser-A" });
+    expect(statusEmit).toHaveBeenCalledWith("s", expect.objectContaining({ connected: true, sessionId: "sf-browser-A", shopSessionId: "555" }));
+    rt.stopPoller(entry.key, "disconnect");
+    expect(statusEmit).toHaveBeenLastCalledWith("s", expect.objectContaining({ connected: false, sessionId: "sf-browser-A" }));
+  });
+
+  it("END TO END with the client drop rule: the connecting device ACCEPTS, a second device of the same seller DROPS (duplicate-order safeguard)", async () => {
+    const { emitComment, statusEmit } = await connectAndPoll({ shop_id: "7", session_id: "555", sessionId: "sf-browser-A" });
+    const comment = emitComment.mock.calls[0][2];
+    const status = statusEmit.mock.calls[0][1];
+    expect(clientAccepts(comment, "sf-browser-A")).toBe(true);   // the device that tapped Connect
+    expect(clientAccepts(status, "sf-browser-A")).toBe(true);
+    expect(clientAccepts(comment, "sf-browser-B")).toBe(false);  // another phone on the same account
+    expect(clientAccepts(status, "sf-browser-B")).toBe(false);
+  });
+
+  it("the drop rule asserted above IS the one in useLiveFeed (comment + platform_status, before the Shopee branch)", () => {
+    const feedSrc = readFileSync("src/redesign/adapters/useLiveFeed.ts", "utf8");
+    expect(feedSrc).toContain("if (c.sessionId && c.sessionId !== sessionId) return;");
+    expect(feedSrc).toContain("if (p.sessionId && p.sessionId !== sessionId) return;");
+    expect(feedSrc.indexOf("if (p.sessionId && p.sessionId !== sessionId) return;"))
+      .toBeLessThan(feedSrc.indexOf('if (p.platform === "Shopee")')); // applies to Shopee status too
+  });
+
+  it("old client (no sessionId in body) → \"\" → accepted by every device (degrades open, never drops)", async () => {
+    const { entry, emitComment } = await connectAndPoll({ shop_id: "7", session_id: "555" });
+    expect(entry.sessionId).toBe("");
+    expect(clientAccepts(emitComment.mock.calls[0][2], "sf-anything")).toBe(true);
+  });
+
+  it("server.js Shopee statusEmit stamps the passed sessionId (the browser session) onto platform_status", () => {
+    const srv = readFileSync("server.js", "utf8");
+    const i = srv.indexOf('platform: "Shopee", connected, sellerId, username: String(shopId)');
+    expect(i).toBeGreaterThan(-1);
+    const line = srv.slice(i, srv.indexOf("\n", i));
+    expect(line).toContain('sessionId: String(sessionId || "")');
   });
 });

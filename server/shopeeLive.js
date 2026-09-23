@@ -137,8 +137,10 @@ export async function fetchShopInfo({ config, fetchImpl, accessToken, shopId }) 
 // are never emitted). This is a completeness gap, NOT a duplicate — the emitted
 // set still dedups everything shown. Advancing offset/paging within a tick is a
 // later enhancement; comment volume this high in a 2 s window is rare.
-export async function fetchLatestComments({ config, fetchImpl, accessToken, shopId, sessionId, offset = 0, pageSize = 50 }) {
-  const { status, body } = await shopeeGet({ config, fetchImpl, path: "/api/v2/livestream/get_latest_comment_list", accessToken, shopId, extra: { session_id: sessionId, offset, page_size: pageSize } });
+// shopSessionId = the SHOPEE live-session id (Shopee's own `session_id` API param) — never
+// the browser session.
+export async function fetchLatestComments({ config, fetchImpl, accessToken, shopId, shopSessionId, offset = 0, pageSize = 50 }) {
+  const { status, body } = await shopeeGet({ config, fetchImpl, path: "/api/v2/livestream/get_latest_comment_list", accessToken, shopId, extra: { session_id: shopSessionId, offset, page_size: pageSize } });
   const resp = body.response || body;
   const list = Array.isArray(resp.list) ? resp.list : Array.isArray(resp.comment_list) ? resp.comment_list : [];
   // Heuristic end-of-session signal (unverified): an explicit ended flag, or a
@@ -156,7 +158,9 @@ export async function fetchLatestComments({ config, fetchImpl, accessToken, shop
 //     upsertShop(row), listActiveShops(), updateTokens(userId,shopId,{access,refresh,expiresAtIso}),
 //     setActive(userId,shopId,active)
 //   emitComment(sellerId, shopUsername, payload) → the real emitCommentScoped(..., "Shopee", ...)
-//   statusEmit(sellerId, { connected, shopId, sessionId, shopName })
+//   statusEmit(sellerId, { connected, shopId, sessionId, shopSessionId })
+//     sessionId = the CONNECTING BROWSER session (server.js stamps it on platform_status;
+//     the client drops a status whose sessionId ≠ its own); shopSessionId = Shopee live session.
 //   liveKey(sellerId, "Shopee", shopId) → registry key (mirror of the TikTok key)
 export function createShopeeRuntime(deps) {
   const {
@@ -274,7 +278,7 @@ export function createShopeeRuntime(deps) {
 
     let res;
     try {
-      res = await fetchLatestComments({ config, fetchImpl, accessToken: entry.accessToken, shopId: entry.shopId, sessionId: entry.sessionId });
+      res = await fetchLatestComments({ config, fetchImpl, accessToken: entry.accessToken, shopId: entry.shopId, shopSessionId: entry.shopSessionId });
     } catch { return { hadNew: false, stop: false }; } // transient network → keep looping
 
     if (res.sessionEnded) return { hadNew: false, stop: true, reason: "session_end" };
@@ -300,7 +304,9 @@ export function createShopeeRuntime(deps) {
     const asInitial = !entry.firstPollDone;
     const fresh = pickNewComments(res.list, entry.emitted);
     for (const raw of fresh) {
-      const payload = shopeeToPayload(raw, { sellerId: entry.sellerId, sessionId: entry.sessionId, shopUsername: entry.shopUsername, nowMs });
+      // sessionId = the connecting BROWSER session (client drop rule / per-device scoping);
+      // shopSessionId = the Shopee live session (→ payload.shopeeSessionId + roomId).
+      const payload = shopeeToPayload(raw, { sellerId: entry.sellerId, sessionId: entry.sessionId, shopSessionId: entry.shopSessionId, shopUsername: entry.shopUsername, nowMs });
       if (asInitial) payload.initial = true; // display-only lane; dedup by msgId (initialKey)
       // → the real emitCommentScoped (sanitizes + per-account scoping). platform "Shopee".
       emitComment(entry.sellerId, entry.shopUsername, payload);
@@ -324,19 +330,24 @@ export function createShopeeRuntime(deps) {
     }, delayMs);
   }
 
-  function startPoller({ sellerId, userId, shopId, shopUsername, sessionId }) {
+  // shopSessionId = the SHOPEE live session (polled via Shopee's session_id param).
+  // sessionId = the browser session of the device that tapped Connect (POST body), stamped
+  // on every comment + platform_status — mirrors TikTok's relay + the FB poller.
+  // "" (old client / missing) → the client's `c.sessionId && …` filter passes it through.
+  function startPoller({ sellerId, userId, shopId, shopUsername, shopSessionId, sessionId = "" }) {
     const key = liveKey(sellerId, "Shopee", String(shopId));
     stopPoller(key, "restart"); // single poller per shop
     const nowMs = now();
     const entry = {
-      key, sellerId, userId, shopId: Number(shopId), shopUsername, sessionId: String(sessionId),
+      key, sellerId, userId, shopId: Number(shopId), shopUsername,
+      shopSessionId: String(shopSessionId ?? ""), sessionId: String(sessionId || ""),
       emitted: new Set(), authFails: 0, timer: null, stopped: false,
       firstPollDone: false,                 // F1 — first poll emits existing comments as initial:true
       startedAtMs: nowMs, lastActivityMs: nowMs, // F2 — idle + max-session caps
       accessToken: null, tokenExpiresAtMs: 0, reauth: false, // F4 — cached token (no getShop per tick)
     };
     pollers.set(key, entry);
-    statusEmit(sellerId, { connected: true, shopId: Number(shopId), sessionId: String(sessionId) });
+    statusEmit(sellerId, { connected: true, shopId: Number(shopId), sessionId: entry.sessionId, shopSessionId: entry.shopSessionId });
     scheduleNext(entry, 0);
     return entry;
   }
@@ -347,7 +358,7 @@ export function createShopeeRuntime(deps) {
     entry.stopped = true;
     if (entry.timer != null) { clearLoop(entry.timer); entry.timer = null; }
     pollers.delete(key);
-    try { statusEmit(entry.sellerId, { connected: false, shopId: entry.shopId, sessionId: entry.sessionId }); } catch { /* best effort */ }
+    try { statusEmit(entry.sellerId, { connected: false, shopId: entry.shopId, sessionId: entry.sessionId, shopSessionId: entry.shopSessionId }); } catch { /* best effort */ }
     log(`[SHOPEE] poller stop shop=${entry.shopId} reason=${reason}`);
     return true;
   }
@@ -385,14 +396,18 @@ export function createShopeeRuntime(deps) {
       // ⚠️ SESSION DETECTION: no confirmed "current live session for shop" endpoint,
       // so the client supplies session_id (from the seller's Shopee live). If a
       // detect endpoint is confirmed later, resolve it here and ignore the body.
-      const sessionId = String(req.body.session_id || "");
+      // TWO ids in the body — do not conflate:
+      //   session_id = the SHOPEE live session (what we poll)        → shopSessionId
+      //   sessionId  = the connecting BROWSER session (like TikTok/FB) → stamped on every
+      //                comment + status so only the tapping device receives the live flow.
+      const shopSessionId = String(req.body.session_id || "");
       if (!shopId) return res.status(400).json({ ok: false, error: "shop_id required" });
       let shop;
       try { shop = await store.getShop(userId, shopId); } catch { shop = null; }
       if (!shop || !shop.active) return res.status(404).json({ ok: false, error: "shop_not_found" });
-      if (!sessionId) return res.json({ ok: false, reason: "not_live" });
-      startPoller({ sellerId, userId, shopId, shopUsername: String(shopId), sessionId });
-      return res.json({ ok: true, session_id: sessionId });
+      if (!shopSessionId) return res.json({ ok: false, reason: "not_live" });
+      startPoller({ sellerId, userId, shopId, shopUsername: String(shopId), shopSessionId, sessionId: String(req.body.sessionId || "") });
+      return res.json({ ok: true, session_id: shopSessionId });
     });
 
     app.post("/shopee/disconnect", requireAuth, (req, res) => {
