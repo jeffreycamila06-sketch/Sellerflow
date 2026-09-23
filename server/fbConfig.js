@@ -11,7 +11,7 @@
 // ⚠️ SINGLE SOURCE for the Graph API version — never build an unversioned Graph URL.
 // GRAPH_VERSION is the ONE pin; server/fbComment.js imports it for the picture URL,
 // and P2's OAuth/live-comment fetchers must use it too. Bump in exactly one place.
-export const GRAPH_VERSION = "v23.0";
+export const GRAPH_VERSION = "v25.0";
 
 // Resolve the Facebook server config from an env-like object (default process.env so
 // callers pass nothing; tests pass a fixture). Returns { enabled:false } unless the
