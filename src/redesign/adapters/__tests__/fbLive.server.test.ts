@@ -10,7 +10,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   signState, verifyState, pickNewComments, nextPollDelay, createFbRuntime,
-  POLL_ACTIVE_MS, POLL_QUIET_MS, MAX_AUTH_FAILURES, IDLE_STOP_MS, MAX_SESSION_MS,
+  POLL_ACTIVE_MS, POLL_QUIET_MS, MAX_AUTH_FAILURES, MAX_FETCH_ERRORS, IDLE_STOP_MS, MAX_SESSION_MS,
 } from "../../../../server/fbLive.js";
 import { encryptToken, decryptToken } from "../../../../server/fbTokens.js";
 import { GRAPH_VERSION } from "../../../../server/fbConfig.js";
@@ -219,7 +219,7 @@ function mkEntry(over: Record<string, unknown> = {}) {
   return {
     key: "seller1:Facebook:P1", sellerId: "seller1", userId: "u1", pageId: "P1",
     scopeKey: "mypage", liveVideoId: "LV1",
-    emitted: new Set<string>(), authFails: 0, timer: null, stopped: false,
+    emitted: new Set<string>(), authFails: 0, fetchErrors: 0, timer: null, stopped: false,
     firstPollDone: true,
     startedAtMs: nowMs, lastActivityMs: nowMs,
     accessToken: null, tokenExpiresAtMs: 0, reauth: false,
@@ -247,11 +247,71 @@ describe("poller — pollOnce", () => {
     expect(emitComment).toHaveBeenCalledTimes(1);
   });
 
-  it("session ended (code 100) → stop", async () => {
+  it("comments fetch uses the CORRECT Graph params (filter=stream, live_filter=no_filter, order=reverse_chronological)", async () => {
     const store = makeStore([{ user_id: "u1", page_id: "P1", active: true, access_token: enc() }]);
-    const f = vi.fn().mockResolvedValue(mkRes(400, { error: { code: 100, message: "does not exist" } }));
+    const f = vi.fn().mockResolvedValue(mkRes(200, { data: [] }));
     const { rt } = runtime({ store, fetchImpl: f });
-    expect(await rt.pollOnce(mkEntry())).toMatchObject({ stop: true, reason: "session_end" });
+    await rt.pollOnce(mkEntry());
+    const url = String(f.mock.calls[0][0]);
+    const qs = new URLSearchParams(url.split("?")[1]);
+    expect(qs.get("filter")).toBe("stream");            // "stream" is a `filter` value…
+    expect(qs.get("live_filter")).toBe("no_filter");    // …NOT a live_filter value (the bug)
+    expect(qs.get("order")).toBe("reverse_chronological");
+    expect(url).not.toMatch(/live_filter=stream/);      // the exact invalid param is gone
+  });
+
+  // ⚠️ THE BUG FIX: a code-100 (invalid-param / generic) comments error must NEVER be
+  // read as session_end. It retries with backoff; only after MAX_FETCH_ERRORS consecutive
+  // AND an authoritative live_videos status check does it stop — session_end if the video
+  // is no longer LIVE, else fetch_error (distinct).
+  it("code 100 comments error → RETRY (backoff, no stop), NOT session_end", async () => {
+    const store = makeStore([{ user_id: "u1", page_id: "P1", active: true, access_token: enc() }]);
+    const f = vi.fn().mockResolvedValue(mkRes(400, { error: { code: 100, message: "Invalid parameter" } }));
+    const { rt } = runtime({ store, fetchImpl: f });
+    const r = await rt.pollOnce(mkEntry());
+    expect(r).toMatchObject({ stop: false, backoff: true }); // retry, NOT stop
+    expect(r).not.toMatchObject({ reason: "session_end" });
+  });
+
+  it("MAX_FETCH_ERRORS consecutive code-100 + live still LIVE → stop reason=fetch_error (NOT session_end)", async () => {
+    const store = makeStore([{ user_id: "u1", page_id: "P1", active: true, access_token: enc() }]);
+    // comments error every poll; the live-status confirm (GET /{lv}?fields=status) says LIVE.
+    const err = mkRes(400, { error: { code: 100, message: "Invalid parameter" } });
+    const f = vi.fn().mockImplementation((url: string) =>
+      /\/comments\?/.test(url) ? Promise.resolve(err) : Promise.resolve(mkRes(200, { status: "LIVE" })));
+    const { rt } = runtime({ store, fetchImpl: f });
+    const entry = mkEntry();
+    let last;
+    for (let i = 0; i < MAX_FETCH_ERRORS; i++) last = await rt.pollOnce(entry);
+    expect(last).toMatchObject({ stop: true, reason: "fetch_error" });
+  });
+
+  it("MAX_FETCH_ERRORS consecutive + live NOT LIVE (VOD) → stop reason=session_end (authoritative)", async () => {
+    const store = makeStore([{ user_id: "u1", page_id: "P1", active: true, access_token: enc() }]);
+    const err = mkRes(400, { error: { code: 100, message: "Invalid parameter" } });
+    const f = vi.fn().mockImplementation((url: string) =>
+      /\/comments\?/.test(url) ? Promise.resolve(err) : Promise.resolve(mkRes(200, { status: "VOD" })));
+    const { rt } = runtime({ store, fetchImpl: f });
+    const entry = mkEntry();
+    let last;
+    for (let i = 0; i < MAX_FETCH_ERRORS; i++) last = await rt.pollOnce(entry);
+    expect(last).toMatchObject({ stop: true, reason: "session_end" });
+  });
+
+  it("a clean fetch RESETS the hard-error streak (transient blip doesn't accumulate)", async () => {
+    const store = makeStore([{ user_id: "u1", page_id: "P1", active: true, access_token: enc() }]);
+    const err = mkRes(400, { error: { code: 100, message: "Invalid parameter" } });
+    const ok = mkRes(200, { data: [] });
+    const f = vi.fn()
+      .mockResolvedValueOnce(err)   // 1 hard error
+      .mockResolvedValueOnce(ok)    // clean → streak resets
+      .mockResolvedValueOnce(err);  // 1 hard error again (not 2)
+    const { rt } = runtime({ store, fetchImpl: f });
+    const entry = mkEntry();
+    await rt.pollOnce(entry);
+    await rt.pollOnce(entry);
+    const r = await rt.pollOnce(entry);
+    expect(r).toMatchObject({ stop: false, backoff: true }); // streak was reset → still retrying, not stopped
   });
 
   it("auth failures (190) reach MAX → stop + setActive(false)", async () => {
