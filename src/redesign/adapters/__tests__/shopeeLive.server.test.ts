@@ -206,7 +206,7 @@ describe("poller — pollOnce", () => {
     expect(shopUsername).toBe("7");
     // sessionId = the connecting BROWSER session (this line used to pin "555" — the bug);
     // the Shopee live session rides in roomId + shopeeSessionId.
-    expect(payload).toMatchObject({ platform: "Shopee", handle: "maria", name: "Maria", comment: "mine red", avatar: "http://a", msgId: "c1", roomId: "555", shopeeSessionId: "555", sellerId: "seller1", sessionId: "sf-browser-A", isBuy: false, buyerNum: null, buyerData: null });
+    expect(payload).toMatchObject({ platform: "Shopee", handle: "maria", name: "Maria", comment: "mine red", avatar: "http://a", msgId: "c1", roomId: "555", shopeeSessionId: "555", shopId: "7", sellerId: "seller1", sessionId: "sf-browser-A", isBuy: false, buyerNum: null, buyerData: null });
     expect(payload.initial).toBeUndefined(); // steady-state live comment carries NO initial flag
     // re-poll same list → no new emit (emitted set dedup)
     const r2 = await rt.pollOnce(entry);
@@ -486,6 +486,7 @@ describe("session-ID contract — Shopee events carry the CONNECTING browser ses
     expect(payload.sessionId).not.toBe("555");        // the bug
     expect(payload.shopeeSessionId).toBe("555");      // the Shopee live session lives in its own field
     expect(payload.roomId).toBe("555");
+    expect(payload.shopId).toBe("7");                 // explicit shop id from the connect route's shop_id
   });
 
   it("Shopee is still POLLED with its own live session (session_id=555), not the browser session", async () => {

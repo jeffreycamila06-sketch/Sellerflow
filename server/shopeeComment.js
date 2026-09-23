@@ -44,14 +44,17 @@ const firstStr = (...vals) => {
 // The Shopee live-session id keeps its OWN fields: shopeeSessionId + roomId.
 // raw = one comment object from get_latest_comment_list.
 // ctx = { sellerId, sessionId (BROWSER session), shopSessionId (Shopee live session),
-//         shopUsername, nowMs? }.
+//         shopId (the authorized shop's id), shopUsername, nowMs? }.
+// shopId is an EXPLICIT field (mirrors FB's pageId) — the client persists it into
+// live_session_orders.platform_meta. Do NOT read the shop id from sourceUsername: that is
+// the per-socket ROUTING key and may stop being the shop id (FB routes by page username).
 // Output = the SAME shape as the TikTok live-chat relay (server.js:1208) with
 // platform:"Shopee". time/timestamp come from the comment's own create time when
 // parseable, else now. sourceUsername = the shop identity used for select_account
 // scoping (P2/P3); roomId = shopeeSessionId = String(shopSessionId).
 export function shopeeToPayload(raw, ctx = {}) {
   const r = raw && typeof raw === "object" ? raw : {};
-  const { sellerId, sessionId, shopSessionId, shopUsername, nowMs = Date.now() } = ctx;
+  const { sellerId, sessionId, shopSessionId, shopId, shopUsername, nowMs = Date.now() } = ctx;
 
   const username = firstStr(r.username, r.user_name, r.buyer_username);
   const nickname = firstStr(r.nickname, r.nick_name, r.user_nickname);
@@ -83,6 +86,7 @@ export function shopeeToPayload(raw, ctx = {}) {
     sourceUsername: shopUsername,
     roomId: String(shopSessionId ?? ""),            // Shopee live session (NOT sessionId)
     shopeeSessionId: String(shopSessionId ?? ""),   // additive — passes emitCommentScoped untouched
+    shopId: shopId == null ? null : String(shopId), // additive — authorized shop id (→ platform_meta.shop_id)
     isBuy: false,
     buyerNum: null,
     buyerData: null,

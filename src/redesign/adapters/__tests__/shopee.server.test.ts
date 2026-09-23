@@ -78,7 +78,7 @@ describe("shopeeSign — HMAC-SHA256 (base-string order is the UNVERIFIED pin)",
 describe("shopeeToPayload — OUTPUT shape pinned; INPUT names defensive", () => {
   // sessionId = the connecting BROWSER session; shopSessionId = the Shopee live session.
   // (This used to pass the Shopee session AS sessionId and assert sessionId: 555 — the bug.)
-  const ctx = { sellerId: "s1", sessionId: "sf-browser-A", shopSessionId: 555, shopUsername: "myshop", nowMs: Date.parse("2026-09-16T00:00:00Z") };
+  const ctx = { sellerId: "s1", sessionId: "sf-browser-A", shopSessionId: 555, shopId: 7, shopUsername: "myshop", nowMs: Date.parse("2026-09-16T00:00:00Z") };
 
   it("full raw → exact internal comment shape (platform Shopee)", () => {
     const p = shopeeToPayload({ username: "maria", nickname: "Maria", comment: "mine red", avatar: "http://a", comment_id: 42, create_time: 1700000000 }, ctx);
@@ -88,8 +88,15 @@ describe("shopeeToPayload — OUTPUT shape pinned; INPUT names defensive", () =>
       roomId: "555", shopeeSessionId: "555", isBuy: false, buyerNum: null, buyerData: null, msgId: "42",
     });
     expect(p.sessionId).not.toBe("555"); // the Shopee live session never rides in sessionId
+    // Explicit shop id (mirrors FB pageId) — NOT the sourceUsername routing key ("myshop").
+    expect(p.shopId).toBe("7");
+    expect(p.shopId).not.toBe(p.sourceUsername);
     expect(typeof p.time).toBe("string");
     expect(p.timestamp).toBe(new Date(1700000000 * 1000).toISOString()); // from create_time (seconds)
+  });
+  it("shopId absent from ctx → null (never a fabricated id)", () => {
+    const { shopId: _omit, ...noShop } = ctx; void _omit;
+    expect(shopeeToPayload({ username: "u", comment: "x", comment_id: 1 }, noShop).shopId).toBeNull();
   });
   it("defensive fallbacks: nickname-only, content/message, id as comment_id, missing avatar", () => {
     const p = shopeeToPayload({ nickname: "OnlyNick", content: "hello", id: "c9" }, ctx);

@@ -306,7 +306,8 @@ export function createShopeeRuntime(deps) {
     for (const raw of fresh) {
       // sessionId = the connecting BROWSER session (client drop rule / per-device scoping);
       // shopSessionId = the Shopee live session (→ payload.shopeeSessionId + roomId).
-      const payload = shopeeToPayload(raw, { sellerId: entry.sellerId, sessionId: entry.sessionId, shopSessionId: entry.shopSessionId, shopUsername: entry.shopUsername, nowMs });
+      // shopId = the authorized shop (explicit field → the client's platform_meta.shop_id).
+      const payload = shopeeToPayload(raw, { sellerId: entry.sellerId, sessionId: entry.sessionId, shopSessionId: entry.shopSessionId, shopId: entry.shopId, shopUsername: entry.shopUsername, nowMs });
       if (asInitial) payload.initial = true; // display-only lane; dedup by msgId (initialKey)
       // → the real emitCommentScoped (sanitizes + per-account scoping). platform "Shopee".
       emitComment(entry.sellerId, entry.shopUsername, payload);
