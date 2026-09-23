@@ -11,7 +11,7 @@
 import type { FbPage } from "./fb";
 
 // F-P3 owner + non-admin test account (mirrors the task's FB_PREVIEW_EMAILS spec).
-export const FB_PREVIEW_EMAILS: string[] = ["camilajeffrey1@gmail.com", "googletest@sellerflowlive.com"];
+export const FB_PREVIEW_EMAILS: string[] = ["camilajeffrey1@gmail.com", "googletest@gmail.com"];
 
 export function fbPreviewEnabled(email: string | undefined | null): boolean {
   const e = String(email || "").trim().toLowerCase();
