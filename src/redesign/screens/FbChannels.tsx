@@ -16,12 +16,9 @@ import { useT, tpl } from "../i18n";
 
 const card: CSSProperties = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, padding: "14px 15px", marginBottom: 12, boxShadow: "var(--shadow)" };
 
-export default function FbChannels({ account = null, pages, preview = false, onReload, onBack, onToast, onUpsell }: {
+export default function FbChannels({ account = null, pages, onReload, onBack, onToast, onUpsell }: {
   account?: AccountUser | null;
-  pages: FbPage[];
-  // OWNER PREVIEW (adapters/fbPreview): the single page shown is a display-only
-  // placeholder (no Meta App credentials) → Remove is a no-op with an honest note.
-  preview?: boolean;
+  pages: FbPage[]; // REAL authorized pages only (no placeholder) — Remove always acts on a real row
   onReload: () => void | Promise<void>;
   onBack: () => void;
   onToast?: (msg: string, kind: "ok" | "err") => void;
@@ -50,7 +47,6 @@ export default function FbChannels({ account = null, pages, preview = false, onR
 
   const remove = async (id: string) => {
     if (busyId) return;
-    if (preview) { onToast?.(t.rd_fb_preview_note, "err"); return; } // placeholder — nothing to delete
     if (typeof window !== "undefined" && !window.confirm(t.rd_fb_remove_confirm)) return;
     setBusyId(id);
     const r = await removeFbPage(id);

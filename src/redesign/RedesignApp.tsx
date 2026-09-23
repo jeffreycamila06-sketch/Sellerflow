@@ -43,7 +43,7 @@ import { loadShopeeEnabled, listShopeeShops, shopeeConnect, shopeeDisconnect, pa
 import { shopeePreviewEnabled, withShopeePreview } from "./adapters/shopeePreview";
 import FbChannels from "./screens/FbChannels";
 import { loadFbEnabled, listFbPages, fbConnect, fbDisconnect, parseFbReturn, isFbEligible, type FbPage } from "./adapters/fb";
-import { fbPreviewEnabled, withFbPreview } from "./adapters/fbPreview";
+import { fbPreviewEnabled } from "./adapters/fbPreview";
 import LiveSourceSheet from "./components/LiveSourceSheet";
 import LiveConnectModal from "./components/LiveConnectModal";
 import { liveSourcePreviewEnabled, isServerPlatformSwitch, isConnectableSource, type SourcePlatform } from "./adapters/liveSource";
@@ -376,20 +376,22 @@ export default function RedesignApp() {
     void loadFbEnabled().then((v) => { if (alive) setFbFlag(v); });
     return () => { alive = false; };
   }, [authed]);
+  // REAL pages only — no placeholder stub. Allowlisted (FB_PREVIEW_EMAILS) accounts get the
+  // FULL flow (authorize / remove / connect), identical to a flag-enabled seller; a stub
+  // page would occupy the plan's page slot and block Authorize (the free plan has 1).
   const reloadFbPages = useCallback(async () => {
-    const list = withFbPreview(await listFbPages(), fbPreview);
-    setFbPages(list);
+    setFbPages(await listFbPages());
     // No index clamp here (selectedPage = fbPages[fbPageIdx] || fbPages[0] || null already
     // handles an out-of-range idx after a remove) — keeping the functional-updater out of
     // this useCallback avoids a React-compiler memoization advisory; the mount effect clamps.
-  }, [fbPreview]);
+  }, []);
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!authed || !fbEnabled) { setFbPages([]); return; }
     let alive = true;
-    void listFbPages().then((raw) => { if (alive) { const list = withFbPreview(raw, fbPreview); setFbPages(list); setFbPageIdx((i) => (i < list.length ? i : 0)); } });
+    void listFbPages().then((list) => { if (alive) { setFbPages(list); setFbPageIdx((i) => (i < list.length ? i : 0)); } });
     return () => { alive = false; };
-  }, [authed, fbEnabled, fbPreview]);
+  }, [authed, fbEnabled]);
   /* eslint-enable react-hooks/set-state-in-effect */
   // Account-leak fix — the account the user has picked per platform. Passed to
   // useLiveFeed so ONLY this account's comments show, even with up to 5 accounts live.
@@ -1765,7 +1767,7 @@ export default function RedesignApp() {
           {/* F-P3 — Facebook pages (fbEnabled-gated; reachable from ManageChannels + the
               Live FB chip's Manage row / no-page authorize). Origin-aware Back via chanBack. */}
           {screen === "fbpages" && (
-            <FbChannels account={auth.profile} pages={fbPages} preview={fbPreview} onReload={reloadFbPages} onBack={() => setScreen(chanBack)} onToast={(msg, kind) => setToast({ msg, kind })} onUpsell={() => { if (ios) setIosExpired(true); else setUpsellOpen(true); }} />
+            <FbChannels account={auth.profile} pages={fbPages} onReload={reloadFbPages} onBack={() => setScreen(chanBack)} onToast={(msg, kind) => setToast({ msg, kind })} onUpsell={() => { if (ios) setIosExpired(true); else setUpsellOpen(true); }} />
           )}
           {/* onExport gated on live (#7): the sample fallback list must never be
               downloadable as a real-looking CSV. */}

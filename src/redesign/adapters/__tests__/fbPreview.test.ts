@@ -1,11 +1,14 @@
-// FACEBOOK PREVIEW (owner-only visibility gate). Pins the allowlist + the placeholder
-// injection. Mirror of shopeePreview.test.ts.
+// FACEBOOK ALLOWLIST (owner + test accounts, full access). Pins the allowlist and that the
+// old placeholder/stub page mechanism is GONE (it occupied the plan's page slot and
+// blocked Authorize for allowlisted accounts with no real page — e.g. the Meta App Review
+// account).
 import { describe, it, expect } from "vitest";
-import { FB_PREVIEW_EMAILS, fbPreviewEnabled, withFbPreview, FB_PREVIEW_PAGE } from "../fbPreview";
-import type { FbPage } from "../fb";
+import { readFileSync } from "node:fs";
+import * as fbPreview from "../fbPreview";
+import { FB_PREVIEW_EMAILS, fbPreviewEnabled } from "../fbPreview";
 
 describe("fbPreviewEnabled — email allowlist", () => {
-  it("allowlisted owner + googletest → true (case/space-insensitive)", () => {
+  it("allowlisted owner + googletest + Meta App Review account → true (case/space-insensitive)", () => {
     expect(FB_PREVIEW_EMAILS).toEqual(["camilajeffrey1@gmail.com", "googletest@gmail.com", "test@gmail.com"]);
     for (const e of ["camilajeffrey1@gmail.com", "  CAMILAJEFFREY1@gmail.com ", "googletest@gmail.com", "test@gmail.com"]) {
       expect(fbPreviewEnabled(e)).toBe(true);
@@ -16,19 +19,18 @@ describe("fbPreviewEnabled — email allowlist", () => {
   });
 });
 
-describe("withFbPreview — placeholder injection", () => {
-  it("preview + empty real list → the display-only placeholder page", () => {
-    expect(withFbPreview([], true)).toEqual([FB_PREVIEW_PAGE]);
+describe("no placeholder stub page (allowlisted accounts get the FULL real flow)", () => {
+  it("fbPreview exports no stub page / injector", () => {
+    expect("FB_PREVIEW_PAGE" in fbPreview).toBe(false);
+    expect("withFbPreview" in fbPreview).toBe(false);
   });
-  it("a real page ALWAYS wins (never injects when the list is non-empty)", () => {
-    const real: FbPage[] = [{ id: "r1", pageId: "P1", name: "Real", username: "real", active: true }];
-    expect(withFbPreview(real, true)).toBe(real);
-  });
-  it("NON-preview → list returned untouched (no placeholder ever)", () => {
-    expect(withFbPreview([], false)).toEqual([]);
-  });
-  it("the placeholder is a zero-UUID / sentinel pageId (matches no DB row → safe no-op)", () => {
-    expect(FB_PREVIEW_PAGE.id).toBe("00000000-0000-0000-0000-000000000000");
-    expect(FB_PREVIEW_PAGE.pageId).toBe("0");
+  it("RedesignApp loads REAL pages only (no stub injection) and FbChannels has no preview-block on Remove", () => {
+    const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
+    const ch = readFileSync("src/redesign/screens/FbChannels.tsx", "utf8");
+    expect(app).not.toContain("withFbPreview");
+    expect(app).toContain("setFbPages(await listFbPages())");
+    expect(app).not.toMatch(/<FbChannels[^>]*preview=/);
+    expect(ch).not.toContain("rd_fb_preview_note");
+    expect(ch).not.toMatch(/if \(preview\)/);
   });
 });
