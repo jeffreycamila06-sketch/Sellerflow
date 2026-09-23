@@ -18,6 +18,8 @@ import { fbConnectedNow } from "./server/fbLiveness.js";
 import { formatMemoryLine, memorySnapshot, crashLogLine, shutdownLogLine, MEMORY_LOG_INTERVAL_MS } from "./server/observability.js";
 import { shopeeConfig } from "./server/shopeeConfig.js";
 import { createShopeeRuntime } from "./server/shopeeLive.js";
+import { fbConfig } from "./server/fbConfig.js";
+import { createFbRuntime } from "./server/fbLive.js";
 
 const app = express();
 const server = http.createServer(app);
@@ -1840,6 +1842,77 @@ try {
   console.error("[SHOPEE] init failed — Shopee disabled, TikTok unaffected:", e && e.message);
 }
 
+// ── FACEBOOK LIVE (F-P2) — wire ONLY when fully configured + enabled ─────────
+// Fail-closed: needs fbConfig().enabled (FB_ENABLED="true" + app id/secret + token
+// key) AND the service-role client AND RENDER_EXTERNAL_URL (OAuth redirect). When
+// OFF: no routes are registered, no timers start, ZERO behavior change. All logic
+// lives in server/fbLive.js; this block is the thin wiring. NOTE: this is entirely
+// SEPARATE from the /connect/facebook stopgap + server/fbLiveness.js (the 6h-green
+// pill) — different routes (/fb/*), untouched here.
+let fbRuntime = null;
+// F5 — an FB init failure must NEVER take down the server (or the live TikTok/Shopee
+// relays). The whole gated block is wrapped so any throw is logged and leaves
+// fbRuntime null; TikTok/Shopee routes/relays are unaffected.
+try {
+  const fbCfg = fbConfig();
+  if (fbCfg.enabled && serviceSb && RENDER_URL) {
+    const store = {
+      async getPlan(userId) {
+        const { data } = await serviceSb.from("seller_profiles").select("plan").eq("auth_user_id", userId).maybeSingle();
+        return data?.plan || "";
+      },
+      async countPages(userId) {
+        const { count } = await serviceSb.from("fb_pages").select("id", { count: "exact", head: true }).eq("user_id", userId);
+        return count || 0;
+      },
+      async getPage(userId, pageId) {
+        const { data } = await serviceSb.from("fb_pages").select("*").eq("user_id", userId).eq("page_id", String(pageId)).maybeSingle();
+        return data || null;
+      },
+      async listPages(userId) {
+        // NEVER select access_token — the /fb/pages response must not carry tokens.
+        const { data } = await serviceSb.from("fb_pages").select("page_id, page_name, page_username, active").eq("user_id", userId);
+        return data || [];
+      },
+      async upsertPage(row) {
+        await serviceSb.from("fb_pages").upsert({ ...row, updated_at: new Date().toISOString() }, { onConflict: "user_id,page_id" });
+      },
+      async listActivePages() {
+        const { data } = await serviceSb.from("fb_pages").select("*").eq("active", true);
+        return data || [];
+      },
+      async setActive(userId, pageId, active) {
+        await serviceSb.from("fb_pages").update({ active, updated_at: new Date().toISOString() }).eq("user_id", userId).eq("page_id", String(pageId));
+      },
+      async updateExpiry(userId, pageId, iso) {
+        await serviceSb.from("fb_pages").update({ token_expires_at: iso, updated_at: new Date().toISOString() }).eq("user_id", userId).eq("page_id", String(pageId));
+      },
+    };
+    fbRuntime = createFbRuntime({
+      config: fbCfg,
+      store,
+      liveKey,
+      renderUrl: RENDER_URL,
+      // → the SAME emitCommentScoped choke-point (sanitizes + per-account scoping).
+      emitComment: (sellerId, scopeKey, payload) => { void emitCommentScoped(sellerId, "Facebook", scopeKey, payload); },
+      // platform_status for the Facebook pill (username = the scoping key = page
+      // username || page id, matching the emitComment sourceUsername).
+      statusEmit: (sellerId, { connected, liveVideoId, scopeKey }) => {
+        io.to(sellerRoom(sellerId)).emit("platform_status", { platform: "Facebook", connected, sellerId, username: String(scopeKey || ""), sessionId: String(liveVideoId || "") });
+      },
+      log: (line) => console.log(line),
+    });
+    // F3 — pass the SAME connect middlewares TikTok uses so /fb/connect enforces the
+    // paywall (requirePlanActive) + rate limit (requireConnectRate).
+    fbRuntime.registerRoutes(app, requireAuth, { requireConnectRate, requirePlanActive });
+    fbRuntime.startRefreshTimer();
+    console.log("[FB] enabled — OAuth + poller routes registered");
+  }
+} catch (e) {
+  fbRuntime = null;
+  console.error("[FB] init failed — Facebook disabled, TikTok/Shopee unaffected:", e && e.message);
+}
+
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`SellerFlow TikTok LIVE server running on port ${PORT}`);
@@ -1884,6 +1957,7 @@ process.on("SIGTERM", () => {
   if (keepAliveTimer) clearInterval(keepAliveTimer);
   clearInterval(memoryLogTimer);
   if (shopeeRuntime) { try { shopeeRuntime.stopAll(); } catch { /* best effort */ } }
+  if (fbRuntime) { try { fbRuntime.stopAll(); } catch { /* best effort */ } }
   const forceExit = setTimeout(() => process.exit(0), 5000);
   if (typeof forceExit.unref === "function") forceExit.unref();
   try { io.close(); } catch { /* best effort */ }
