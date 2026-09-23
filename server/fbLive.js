@@ -43,6 +43,7 @@ export const OAUTH_SCOPE = "pages_show_list,pages_read_engagement";
 export const POLL_ACTIVE_MS = 2000;   // cadence while comments are flowing
 export const POLL_QUIET_MS = 5000;    // cadence when a poll returned nothing new
 export const MAX_AUTH_FAILURES = 3;   // consecutive auth failures → mark inactive + stop
+export const MAX_FETCH_ERRORS = 3;    // consecutive hard comments-fetch errors → confirm-via-live-status then stop (fetch_error, NOT a session_end guess)
 export const STATE_TTL_MS = 10 * 60 * 1000; // OAuth state nonce validity
 export const REFRESH_SCAN_MS = 60 * 60 * 1000; // token re-validation timer cadence (page tokens live ~60d)
 export const IDLE_STOP_MS = 10 * 60 * 1000; // F2: stop after this long with no NEW comments (orphan cap)
@@ -115,14 +116,17 @@ const graphUrl = (path, params) => {
   for (const [k, v] of Object.entries(params || {})) if (v != null && v !== "") q.set(k, String(v));
   return `${GRAPH_HOST}/${GRAPH_VERSION}${path}?${q.toString()}`;
 };
-// FB Graph error → { authFail, rateLimited } classification (code 190 = OAuth; 4/17/32/
-// 613 or HTTP 429 = throttle).
+// FB Graph error → { authFail, rateLimited, code, subcode, message } classification
+// (code 190 = OAuth; 4/17/32/613 or HTTP 429 = throttle). NOTE: code 100 ("invalid
+// parameter") is DELIBERATELY NOT treated as an end-of-live signal — an invalid request
+// param returns 100, and misreading that as "session ended" is exactly the bug this fix
+// closes. True "ended" is confirmed against live_videos status, never guessed from 100.
 function classifyGraphError(status, body) {
   const err = (body && body.error) || {};
   const code = Number(err.code);
   const authFail = status === 401 || status === 403 || code === FB_AUTH_ERROR_CODE;
   const rateLimited = status === 429 || code === 4 || code === 17 || code === 32 || code === 613;
-  return { authFail, rateLimited, code, message: String(err.message || "") };
+  return { authFail, rateLimited, code, subcode: Number(err.error_subcode) || null, message: String(err.message || "") };
 }
 
 // code → short-lived user token. UNVERIFIED path.
@@ -152,29 +156,49 @@ export async function fetchPages({ config, fetchImpl, userToken }) {
     return list.map((p) => ({ id: String(p.id || ""), name: String(p.name || ""), username: p.username ? String(p.username) : "", access_token: String(p.access_token || "") })).filter((p) => p.id && p.access_token);
   } catch { return []; }
 }
-// Is this page currently live? Returns { liveVideoId } (the first status=LIVE video) or
-// { liveVideoId: "" }. UNVERIFIED path/shape; never throws.
+// Is this page currently live? Returns { liveVideoId } (the first status=LIVE video, most
+// recent first) or { liveVideoId: "" }. status is uppercase-compared so only an ACTIVE
+// broadcast matches — an ended one (VOD / LIVE_STOPPED / PROCESSING) is excluded, so we
+// never attach to a stale broadcast. broadcast_start_time desc prefers the newest LIVE.
+// UNVERIFIED shape; never throws.
 export async function fetchLiveVideos({ config, fetchImpl, pageId, pageToken }) {
   void config;
   try {
-    const { body } = await graphGet({ fetchImpl, url: graphUrl(`/${pageId}/live_videos`, { fields: "status,id", access_token: pageToken }) });
-    const list = Array.isArray(body.data) ? body.data : [];
-    const live = list.find((v) => String(v.status || "").toUpperCase() === "LIVE");
-    return { liveVideoId: live ? String(live.id || "") : "" };
+    const { body } = await graphGet({ fetchImpl, url: graphUrl(`/${pageId}/live_videos`, { fields: "status,id,broadcast_start_time", access_token: pageToken }) });
+    const list = (Array.isArray(body.data) ? body.data : []).filter((v) => String(v.status || "").toUpperCase() === "LIVE");
+    list.sort((a, b) => Date.parse(b.broadcast_start_time || 0) - Date.parse(a.broadcast_start_time || 0)); // newest LIVE first
+    return { liveVideoId: list[0] ? String(list[0].id || "") : "" };
   } catch { return { liveVideoId: "" }; }
 }
-// comments for a live video. Returns { status, list, sessionEnded, authFail, rateLimited,
-// error }. sessionEnded is best-effort: an ended/deleted live video's comments edge
-// returns code 100 ("does not exist") / a 400 naming the object.
+// Authoritative "is this SPECIFIC live video still LIVE?" — GET /{lv}?fields=status.
+// Returns the uppercased status string ("LIVE" | "LIVE_STOPPED" | "VOD" | …) or "" when
+// unreadable (transient → the caller does NOT conclude ended on ""). This is the ONLY
+// source we trust to declare session_end — never a comments-fetch error code.
+export async function fetchLiveStatus({ config, fetchImpl, liveVideoId, pageToken }) {
+  void config;
+  try {
+    const { status, body } = await graphGet({ fetchImpl, url: graphUrl(`/${liveVideoId}`, { fields: "status", access_token: pageToken }) });
+    if (status !== 200) return "";
+    return String(body.status || "").toUpperCase();
+  } catch { return ""; }
+}
+// comments for a live video. Correct params per Meta v25.0 Live Video Comments reference:
+//   filter=stream          (ALL comments incl. the live stream, not just toplevel)
+//   live_filter=no_filter  (do NOT drop "low quality" comments — we want every buyer)
+//   order=reverse_chronological  (documented best practice for real-time polling)
+// ⚠️ The previous `live_filter=stream` was INVALID ("stream" is a `filter` value, not a
+// `live_filter` value) → Graph returned code 100, which the old classifier misread as
+// session_end (poller died seconds after connect). Returns the raw error detail; the
+// caller (pollOnce) decides retry-vs-ended — this NEVER self-declares ended.
 export async function fetchComments({ config, fetchImpl, liveVideoId, pageToken }) {
   void config;
   const { status, body } = await graphGet({ fetchImpl, url: graphUrl(`/${liveVideoId}/comments`, {
-    fields: "id,message,from,created_time", order: "reverse_chronological", live_filter: "stream", access_token: pageToken,
+    fields: "id,message,from,created_time", filter: "stream", live_filter: "no_filter", order: "reverse_chronological", access_token: pageToken,
   }) });
   const list = Array.isArray(body.data) ? body.data : [];
   const cls = classifyGraphError(status, body);
-  const sessionEnded = !cls.authFail && !cls.rateLimited && (cls.code === 100 || (status === 400 && !!cls.message));
-  return { status, list, sessionEnded, authFail: cls.authFail, rateLimited: cls.rateLimited, error: cls.message };
+  const hardError = status !== 200 || cls.code > 0; // any non-2xx OR a Graph error body
+  return { status, list, authFail: cls.authFail, rateLimited: cls.rateLimited, hardError, errorCode: cls.code || null, errorSubcode: cls.subcode, error: cls.message };
 }
 // Lightweight re-validation of a page token (the refresh-timer path, see the deviation
 // note above). Returns { ok, authFail }. A valid token → ok. A 190 → authFail (revoked).
@@ -322,8 +346,9 @@ export function createFbRuntime(deps) {
       res = await fetchComments({ config, fetchImpl, liveVideoId: entry.liveVideoId, pageToken: entry.accessToken });
     } catch { return { hadNew: false, stop: false }; } // transient network → keep looping
 
-    // Order: auth-fail (190, unmistakable) → transient backoff (429/5xx) → ended
-    // (code 100 / 400). A 5xx must NOT be misread as ended.
+    // Order: auth-fail (190, unmistakable) → transient backoff (429/5xx) → other HARD
+    // error. NOTHING here concludes "ended" from a comments error — that is confirmed
+    // ONLY against live_videos status below.
     if (res.authFail) {
       entry.authFails = (entry.authFails || 0) + 1;
       entry.reauth = true; // F4 — force a fresh token read + one retry on the next poll
@@ -334,8 +359,24 @@ export function createFbRuntime(deps) {
       return { hadNew: false, stop: false };
     }
     if (res.rateLimited || res.status >= 500) return { hadNew: false, stop: false, backoff: true };
-    if (res.sessionEnded) return { hadNew: false, stop: true, reason: "session_end" };
+    // HARD ERROR (e.g. code 100 invalid-param, a transient 400): NEVER conclude ended
+    // from the comments error alone (that was the bug). Log the full Graph error
+    // (token-free), retry with backoff; after MAX_FETCH_ERRORS consecutive, CONFIRM
+    // against live_videos status — not LIVE → session_end (authoritative); still
+    // LIVE / unreadable → fetch_error (distinct, so a real invalid-param can't masquerade
+    // as an ended live).
+    if (res.hardError) {
+      entry.fetchErrors = (entry.fetchErrors || 0) + 1;
+      log(`[FB] comments error page=${entry.pageId} lv=${entry.liveVideoId} http=${res.status} code=${res.errorCode ?? "-"} subcode=${res.errorSubcode ?? "-"} msg=${res.error || "-"} (${entry.fetchErrors}/${MAX_FETCH_ERRORS})`);
+      if (entry.fetchErrors >= MAX_FETCH_ERRORS) {
+        const liveStatus = await fetchLiveStatus({ config, fetchImpl, liveVideoId: entry.liveVideoId, pageToken: entry.accessToken });
+        if (liveStatus && liveStatus !== "LIVE") return { hadNew: false, stop: true, reason: "session_end" };
+        return { hadNew: false, stop: true, reason: "fetch_error" };
+      }
+      return { hadNew: false, stop: false, backoff: true };
+    }
     entry.authFails = 0;
+    entry.fetchErrors = 0; // a clean fetch resets the hard-error streak
 
     // F1 — RE-EMIT SAFETY. The FIRST successful poll after (re)Connect carries the
     // comments that ALREADY existed; emit them with initial:true so the client routes
@@ -347,6 +388,7 @@ export function createFbRuntime(deps) {
     // reverse_chronological returns NEWEST first; reverse the unseen slice so they emit
     // OLDEST→newest (chronological append order for the feed).
     const fresh = pickNewComments(res.list, entry.emitted).reverse();
+    if (asInitial) log(`[FB] first poll page=${entry.pageId} lv=${entry.liveVideoId} comments=${fresh.length} initial=true`);
     for (const raw of fresh) {
       const payload = fbToPayload(raw, {
         sellerId: entry.sellerId, sessionId: entry.liveVideoId,
@@ -382,12 +424,13 @@ export function createFbRuntime(deps) {
     const nowMs = now();
     const entry = {
       key, sellerId, userId, pageId: String(pageId), scopeKey, liveVideoId: String(liveVideoId),
-      emitted: new Set(), authFails: 0, timer: null, stopped: false,
+      emitted: new Set(), authFails: 0, fetchErrors: 0, timer: null, stopped: false,
       firstPollDone: false,                 // F1
       startedAtMs: nowMs, lastActivityMs: nowMs, // F2
       accessToken: null, tokenExpiresAtMs: 0, reauth: false, // F4
     };
     pollers.set(key, entry);
+    log(`[FB] poller start page=${String(pageId)} lv=${String(liveVideoId)} status=LIVE`);
     statusEmit(sellerId, { connected: true, pageId: String(pageId), liveVideoId: String(liveVideoId), scopeKey });
     scheduleNext(entry, 0);
     return entry;
