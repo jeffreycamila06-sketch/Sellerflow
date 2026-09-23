@@ -27,11 +27,11 @@ beforeEach(() => {
 });
 
 describe("statusFallback (no device clock)", () => {
-  it("resumes a known session id (running=true) — never resets", () => {
-    expect(statusFallback("sid-1")).toEqual({ running: true, sessionId: "sid-1" });
+  it("resumes a known session id (running=true) — never resets; platform null (unknown on fallback)", () => {
+    expect(statusFallback("sid-1")).toEqual({ running: true, sessionId: "sid-1", platform: null });
   });
   it("no known id → not running (must pick a new session)", () => {
-    expect(statusFallback(null)).toEqual({ running: false, sessionId: null });
+    expect(statusFallback(null)).toEqual({ running: false, sessionId: null, platform: null });
   });
 });
 
@@ -43,23 +43,32 @@ describe("useSessionInstance", () => {
     expect(result.current.currentSessionId).toBe("sid-existing");
   });
 
-  it("checkStatus running=true → returns id + syncs currentSessionId", async () => {
-    rpcMock.mockResolvedValueOnce({ data: [{ running: true, session_id: "sid-live" }], error: null });
+  it("checkStatus running=true → returns id + syncs currentSessionId; surfaces session_platform (H1)", async () => {
+    rpcMock.mockResolvedValueOnce({ data: [{ running: true, session_id: "sid-live", session_platform: "TikTok" }], error: null });
     const { result } = renderHook(() => useSessionInstance(true));
     await waitFor(() => expect(result.current.loaded).toBe(true));
     let status;
     await act(async () => { status = await result.current.checkStatus(); });
-    expect(status).toEqual({ running: true, sessionId: "sid-live" });
+    expect(status).toEqual({ running: true, sessionId: "sid-live", platform: "TikTok" });
     expect(result.current.currentSessionId).toBe("sid-live");
   });
 
-  it("checkStatus running=false → not running, no id", async () => {
-    rpcMock.mockResolvedValueOnce({ data: [{ running: false, session_id: "sid-ended" }], error: null });
+  it("checkStatus running=true, NULL session_platform (legacy row) → platform null (→ continue)", async () => {
+    rpcMock.mockResolvedValueOnce({ data: [{ running: true, session_id: "sid-legacy", session_platform: null }], error: null });
     const { result } = renderHook(() => useSessionInstance(true));
     await waitFor(() => expect(result.current.loaded).toBe(true));
     let status;
     await act(async () => { status = await result.current.checkStatus(); });
-    expect(status).toEqual({ running: false, sessionId: null });
+    expect(status).toEqual({ running: true, sessionId: "sid-legacy", platform: null });
+  });
+
+  it("checkStatus running=false → not running, no id, no platform", async () => {
+    rpcMock.mockResolvedValueOnce({ data: [{ running: false, session_id: "sid-ended", session_platform: "TikTok" }], error: null });
+    const { result } = renderHook(() => useSessionInstance(true));
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    let status;
+    await act(async () => { status = await result.current.checkStatus(); });
+    expect(status).toEqual({ running: false, sessionId: null, platform: null });
   });
 
   it("checkStatus RPC error → statusFallback (resume known id; NOT the device clock)", async () => {
@@ -69,7 +78,7 @@ describe("useSessionInstance", () => {
     await waitFor(() => expect(result.current.currentSessionId).toBe("sid-known"));
     let status;
     await act(async () => { status = await result.current.checkStatus(); });
-    expect(status).toEqual({ running: true, sessionId: "sid-known" }); // resumed, no reset
+    expect(status).toEqual({ running: true, sessionId: "sid-known", platform: null }); // resumed, no reset
   });
 
   it("startSession returns the new id and sets currentSessionId", async () => {
@@ -80,7 +89,16 @@ describe("useSessionInstance", () => {
     await act(async () => { id = await result.current.startSession(4); });
     expect(id).toBe("sid-new");
     expect(result.current.currentSessionId).toBe("sid-new");
-    expect(rpcMock).toHaveBeenCalledWith("start_session", { p_days: 4 });
+    // default call (first-connect): platform null-safe, force=false (reuse-if-running)
+    expect(rpcMock).toHaveBeenCalledWith("start_session", { p_days: 4, p_platform: null, p_force: false });
+  });
+
+  it("startSession(days, platform, force) forwards p_platform + p_force (H1/H2 switch path)", async () => {
+    rpcMock.mockResolvedValueOnce({ data: "sid-sw", error: null });
+    const { result } = renderHook(() => useSessionInstance(true));
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    await act(async () => { await result.current.startSession(3, "TikTok", true); });
+    expect(rpcMock).toHaveBeenCalledWith("start_session", { p_days: 3, p_platform: "TikTok", p_force: true });
   });
 
   it("startSession RPC failure → null (caller must NOT start a session-less feed)", async () => {
@@ -145,7 +163,7 @@ describe("ensureLoaded — Connect gate (audit LOW #2: no wrongful reset while m
 
     // ensureLoaded guaranteed idRef was populated before checkStatus fell back →
     // RESUME the known session, NOT running=false (which would open the picker = reset).
-    expect(status).toEqual({ running: true, sessionId: "sid-known" });
+    expect(status).toEqual({ running: true, sessionId: "sid-known", platform: null });
     expect(result.current.currentSessionId).toBe("sid-known");
   });
 

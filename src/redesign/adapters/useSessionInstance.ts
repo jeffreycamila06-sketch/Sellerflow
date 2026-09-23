@@ -15,7 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { useTaipeiDayId } from "./useSessionWindow";
 
-export interface SessionStatus { running: boolean; sessionId: string | null }
+export interface SessionStatus { running: boolean; sessionId: string | null; platform: string | null }
 
 // PURE — the failure fallback. On an RPC error we must NOT fall back to the
 // device clock (owner lock). The safe, no-reset degradation: if we already know a
@@ -24,8 +24,11 @@ export interface SessionStatus { running: boolean; sessionId: string | null }
 // continues until the seller explicitly re-Connects"; resuming never resets buyer#.
 // Only when there is genuinely nothing to resume do we report not-running (→ the
 // picker), because there is no session to continue. Unit-tested.
+// platform: null on fallback (the session's platform is unknown when the RPC failed) →
+// the client's switch rule treats NULL as "continue" (never a forced reset on a degraded
+// read — the safe direction).
 export function statusFallback(knownSessionId: string | null): SessionStatus {
-  return knownSessionId ? { running: true, sessionId: knownSessionId } : { running: false, sessionId: null };
+  return knownSessionId ? { running: true, sessionId: knownSessionId, platform: null } : { running: false, sessionId: null, platform: null };
 }
 
 export interface UseSessionInstance {
@@ -48,7 +51,10 @@ export interface UseSessionInstance {
   // resolves (the mount read always sets loaded, even unauthed/errored) → no deadlock.
   ensureLoaded: () => Promise<void>;
   checkStatus: () => Promise<SessionStatus>; // server-authoritative running/ended check (call on Connect)
-  startSession: (days: number) => Promise<string | null>; // create a NEW session; returns its id (null on failure)
+  // H1/H2: platform = the connecting platform (stamped on a mint; NULL-safe). force =
+  // true only on a cross-platform SWITCH (always mint); false (default) = reuse-if-running
+  // (a running session's id is returned unchanged — converges a first-connect race).
+  startSession: (days: number, platform?: string | null, force?: boolean) => Promise<string | null>;
   // End the running session (E2, owner-gated caller): end_session() nulls
   // current_session_id + stamps session_ended_at. After this the next Start begins
   // buyer# at #1. Returns true on success. ADDITIVE — non-owner code never calls it.
@@ -123,12 +129,15 @@ export function useSessionInstance(enabled: boolean): UseSessionInstance {
       const row = Array.isArray(data) ? data[0] : data;
       const running = !!row?.running;
       const sessionId = (row?.session_id as string) || null;
+      // H1: the running session's OWN platform (sql/46). Drives server-anchored
+      // switch-detection in RedesignApp. NULL = legacy/unknown → treated as continue.
+      const platform = (row?.session_platform as string) || null;
       if (running && sessionId) setId(sessionId);
       // Server-authoritative ended flag: session exists AND server says not running
       // → its Taipei window has passed (drives the "continues" animation). session_id
       // is returned regardless of running (it's current_session_id).
       setEnded(!!sessionId && !running);
-      return { running, sessionId: running ? sessionId : null };
+      return { running, sessionId: running ? sessionId : null, platform: running ? platform : null };
     } catch {
       return statusFallback(idRef.current);
     }
@@ -136,10 +145,10 @@ export function useSessionInstance(enabled: boolean): UseSessionInstance {
 
   // Create a NEW session instance (server stamps start + id). Returns the new id,
   // or null on failure (caller must NOT start a feed session-less on null).
-  const startSession = useCallback(async (days: number): Promise<string | null> => {
+  const startSession = useCallback(async (days: number, platform: string | null = null, force = false): Promise<string | null> => {
     if (!isSupabaseConfigured || !supabase) return null;
     try {
-      const { data, error } = await supabase.rpc("start_session", { p_days: days });
+      const { data, error } = await supabase.rpc("start_session", { p_days: days, p_platform: platform, p_force: force });
       if (error || !data) return null;
       const id = String(data);
       setId(id);
