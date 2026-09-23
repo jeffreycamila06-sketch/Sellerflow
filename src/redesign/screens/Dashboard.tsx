@@ -117,6 +117,10 @@ export default function Dashboard({
   onManageTT,
   ttConnected, fbConnected, ttConnecting, fbConnecting, onConnectTT, onRefreshTT, refreshing = false,
   ttAccounts = [], fbAccounts = [],
+  // F-P3 — Facebook REAL connect (owner-gated). When fbConnectEnabled is false (default)
+  // the FB dropdown is the byte-identical HONEST GATE below; when true it renders the
+  // real page picker + Connect (mirror of the TikTok dropdown).
+  fbConnectEnabled = false, fbPages = [], fbPageIdx = 0, onPickFB, onConnectFB, onManageFB,
   // P3 — Shopee source chip (all optional; chip renders only when shopeeEnabled AND
   // ≥1 authorized shop → zero Shopee UI otherwise = byte-unchanged TT/FB header).
   shopeeEnabled = false, shopeeShops = [], shopeeOpen = false, onToggleShopee,
@@ -163,13 +167,20 @@ export default function Dashboard({
   // back target of the Live dashboard (Change 1, 2026-07-23). Optional so the
   // screen still renders in isolation/tests.
   onManageTT?: () => void;
-  // FB dropdown is an HONEST GATE now (Change 2): no onConnectFB / onRefreshFB /
-  // onPickFB — Facebook multi-account is non-functional, so its connect/refresh/
-  // pick handlers are intentionally NOT wired into this dropdown.
+  // FB dropdown is an HONEST GATE by default (Change 2); F-P3 turns it into a real page
+  // picker + Connect ONLY when fbConnectEnabled (owner-gated). off → the gate is
+  // byte-identical (onConnectFB/onPickFB/onManageFB unused).
   ttConnected: boolean; fbConnected: boolean; ttConnecting: boolean; fbConnecting: boolean;
   onConnectTT: () => void;
   onRefreshTT?: () => void; refreshing?: boolean;
   ttAccounts?: string[]; fbAccounts?: string[];
+  // F-P3 — Facebook real connect (all optional; only used when fbConnectEnabled).
+  fbConnectEnabled?: boolean;
+  fbPages?: { pageId: string; name: string; username: string }[];
+  fbPageIdx?: number;
+  onPickFB?: (i: number) => void;
+  onConnectFB?: () => void;
+  onManageFB?: () => void;
   // P3 — Shopee source chip. onConnectShopee opens the Shopee connect modal (shop
   // + session-ID). onManageShopee → the ShopeeChannels screen (authorize/remove).
   shopeeEnabled?: boolean;
@@ -431,20 +442,44 @@ export default function Dashboard({
           <div ref={fbWrapRef} style={{ position: "relative", flex: 1 }}>
             <button onClick={onToggleFB} title={fbTitle} style={{ ...pickerBtn, background: fb.chipBg, boxShadow: fb.chipShadow }}>
               <span className="sfl-anim-heart" style={{ width: 16, height: 16, borderRadius: 5, background: "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: "#fff", flexShrink: 0, fontFamily: "var(--font-display)" }}>f</span>
-              <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fbAccounts.length ? (fbAccounts[fbIdx] || fbAccounts[0]) : t.rd_dash_connect_facebook}</span>
+              <span style={{ flex: 1, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fbConnectEnabled ? (fbPages.length ? (fbPages[fbPageIdx]?.name || fbPages[0]?.name || t.rd_dash_connect_facebook) : t.rd_dash_connect_facebook) : (fbAccounts.length ? (fbAccounts[fbIdx] || fbAccounts[0]) : t.rd_dash_connect_facebook)}</span>
               <span className={fb.dotCls} style={{ width: 7, height: 7, borderRadius: "50%", background: fb.dotBg, flexShrink: 0, boxShadow: fb.dotGlow }} />
               <span style={{ fontSize: 9, opacity: 0.85 }}>▾</span>
             </button>
             {fbOpen && (
               <div style={dropdown("right")}>
                 <div style={{ fontSize: 10, fontWeight: 800, letterSpacing: ".1em", color: "var(--text-muted)", padding: "6px 8px 7px" }}>{t.rd_dash_fb_page_group}</div>
-                {/* HONEST GATE (Change 2, 2026-07-23): Facebook multi-account is
-                    non-functional (blocked on Meta Business Verification). NO
-                    green-able Connect here — an "activation required" notice + a
-                    real Telegram anchor. iOS-safe: a real <a> (never window.open),
-                    and onClick closes the dropdown as the tab opens. */}
-                <div style={{ padding: "2px 10px 11px", fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.5 }}>{t.rd_dash_fb_activation}</div>
-                <a href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener" onClick={onToggleFB} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 0", margin: "0 4px 3px", background: "#0088cc", color: "#fff", borderRadius: 9, fontFamily: "var(--font-ui)", fontSize: 12, fontWeight: 700, textDecoration: "none" }}>{t.rd_dash_fb_contact}<span style={{ fontSize: 14 }}>→</span></a>
+                {fbConnectEnabled ? (
+                  /* F-P3 — REAL Facebook connect (owner-gated): page picker + Connect,
+                     mirror of the TikTok dropdown. Reached only when fbConnectEnabled. */
+                  <>
+                    {fbPages.length === 0 && <div style={{ padding: "2px 10px 8px", fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_fb_no_page_yet}</div>}
+                    {fbPages.map((p, i) => (
+                      <button key={p.pageId} onClick={() => onPickFB?.(i)} style={ddRow(i === fbPageIdx)}>
+                        <span style={{ width: 30, height: 30, borderRadius: 8, background: "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#fff", flexShrink: 0 }}>{initials(p.name || p.username || "f")}</span>
+                        <span style={{ flex: 1, minWidth: 0 }}><span style={ddName}>{p.name || (p.username ? `@${p.username}` : p.pageId)}</span><span style={ddMeta}>Facebook · {t.rd_dash_tap_go_live}</span></span>
+                        <span style={ddCheck}>{i === fbPageIdx ? "✓" : ""}</span>
+                      </button>
+                    ))}
+                    <button onClick={onManageFB} style={{ ...ddRow(false), marginTop: 4, borderTop: "1px solid var(--border)", borderRadius: 0 }}>
+                      <span style={{ width: 30, height: 30, borderRadius: 8, background: "var(--accent-soft)", color: "var(--accent-fg)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 17, fontWeight: 700, flexShrink: 0 }}>+</span>
+                      <span style={{ flex: 1, minWidth: 0 }}><span style={{ ...ddName, color: "var(--accent-fg)" }}>{t.rd_fb_manage}</span></span>
+                    </button>
+                    <div style={connFooterWrap}>
+                      <button onClick={onConnectFB} disabled={fbConnecting} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "8px 0", border: fb.border, borderRadius: 9, background: fb.bg, color: fb.fg, fontSize: 11.5, fontWeight: 700, cursor: fbConnecting ? "default" : "pointer", opacity: fbConnecting ? 0.7 : 1, fontFamily: "var(--font-ui)" }}>{connLabel(fbConnected, fbConnecting)}</button>
+                    </div>
+                  </>
+                ) : (
+                  /* HONEST GATE (Change 2, 2026-07-23): Facebook multi-account is
+                     non-functional (blocked on Meta Business Verification). NO
+                     green-able Connect here — an "activation required" notice + a
+                     real Telegram anchor. iOS-safe: a real <a> (never window.open),
+                     and onClick closes the dropdown as the tab opens. */
+                  <>
+                    <div style={{ padding: "2px 10px 11px", fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.5 }}>{t.rd_dash_fb_activation}</div>
+                    <a href={TELEGRAM_URL} target="_blank" rel="noreferrer noopener" onClick={onToggleFB} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 0", margin: "0 4px 3px", background: "#0088cc", color: "#fff", borderRadius: 9, fontFamily: "var(--font-ui)", fontSize: 12, fontWeight: 700, textDecoration: "none" }}>{t.rd_dash_fb_contact}<span style={{ fontSize: 14 }}>→</span></a>
+                  </>
+                )}
               </div>
             )}
           </div>
