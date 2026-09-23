@@ -41,6 +41,9 @@ import ManageChannels from "./screens/ManageChannels";
 import ShopeeChannels from "./screens/ShopeeChannels";
 import { loadShopeeEnabled, listShopeeShops, shopeeConnect, shopeeDisconnect, parseShopeeReturn, isShopeeEligible, type ShopeeShop } from "./adapters/shopee";
 import { shopeePreviewEnabled, withShopeePreview } from "./adapters/shopeePreview";
+import FbChannels from "./screens/FbChannels";
+import { loadFbEnabled, listFbPages, fbConnect, fbDisconnect, parseFbReturn, isFbEligible, type FbPage } from "./adapters/fb";
+import { fbPreviewEnabled, withFbPreview } from "./adapters/fbPreview";
 import LiveSourceSheet from "./components/LiveSourceSheet";
 import LiveConnectModal from "./components/LiveConnectModal";
 import { liveSourcePreviewEnabled, isServerPlatformSwitch, isConnectableSource, type SourcePlatform } from "./adapters/liveSource";
@@ -106,10 +109,10 @@ type Screen =
   | "landing" | "login" | "signup" | "dashboard" | "miners" | "orders" | "products"
   | "menu" | "settings" | "customers" | "subscription" | "support"
   | "admin" | "print" | "sales" | "shipping" | "customerdata" | "legal" | "delete"
-  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "parceltracking" | "shopeechannels";
+  | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "parceltracking" | "shopeechannels" | "fbpages";
 
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
-const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "shopeechannels"];
+const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "shopeechannels", "fbpages"];
 
 // A pending session-first connect (awaiting the picker / owner-Start length choice).
 // tt = a TikTok/FB account connect (register = append a NEW @username to the profile
@@ -117,14 +120,16 @@ const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription
 // onPickSessionLength / onOwnerStart → startSession → the matching connect.
 type PendingConnect =
   | { kind: "tt"; platform: Platform; acct: string; register?: boolean }
-  | { kind: "shopee"; shopId: number; sessionId: string };
+  | { kind: "shopee"; shopId: number; sessionId: string }
+  | { kind: "fb"; pageId: string; scopeKey: string }; // F-P3 — Facebook page connect
 // The Live Source connect target the new modal commits (before the session gate).
 type LiveConnectTarget =
   | { platform: "TikTok"; username: string; register?: boolean }
-  | { platform: "Shopee"; shopId: number; sessionId: string };
+  | { platform: "Shopee"; shopId: number; sessionId: string }
+  | { platform: "Facebook"; pageId: string; scopeKey: string }; // F-P3
 // The platform a pending/target connect is FOR — passed to start_session so the new
 // session records its platform (H1). Kind "tt" carries platform (TikTok today).
-const platformOfPending = (p: PendingConnect): SourcePlatform => (p.kind === "shopee" ? "Shopee" : p.platform);
+const platformOfPending = (p: PendingConnect): SourcePlatform => (p.kind === "shopee" ? "Shopee" : p.kind === "fb" ? "Facebook" : p.platform);
 
 // Auto Mode Rule 1 dedup key: one auto order per (session, buyer handle, code),
 // case-insensitive + trimmed — mirrors the DB partial-unique index expression
@@ -350,10 +355,48 @@ export default function RedesignApp() {
     return () => { alive = false; };
   }, [authed, shopeeEnabled, shopeePreview]);
   /* eslint-enable react-hooks/set-state-in-effect */
+  // F-P3 — Facebook source (fb_pages OAuth), SAME shape as Shopee: GLOBAL app_settings
+  // fb_enabled flag (fail-closed) OR the owner-only FB_PREVIEW_EMAILS override. Effective
+  // fbEnabled = flag OR preview; everyone else → false → the existing "activation
+  // required" gate + Telegram anchor is byte-identical. SEPARATE cap from the
+  // tiktok/facebook USERNAME lists (fb_pages row count, Option A).
+  const [fbFlag, setFbFlag] = useState(false);
+  const fbPreview = fbPreviewEnabled(auth.profile?.email);
+  const fbEnabled = fbFlag || fbPreview;
+  const [fbPages, setFbPages] = useState<FbPage[]>([]);
+  const [fbPageIdx, setFbPageIdx] = useState(0);
+  const selectedPage = fbPages[fbPageIdx] || fbPages[0] || null;
+  // The server scopes FB comments/status by page username||pageId (emitCommentScoped
+  // sourceUsername + platform_status username). The client's Facebook selection MUST be
+  // this same key for the useLiveFeed scoping filter to match.
+  const fbScopeKey = selectedPage ? (selectedPage.username || selectedPage.pageId) : "";
+  useEffect(() => {
+    if (!authed) return;
+    let alive = true;
+    void loadFbEnabled().then((v) => { if (alive) setFbFlag(v); });
+    return () => { alive = false; };
+  }, [authed]);
+  const reloadFbPages = useCallback(async () => {
+    const list = withFbPreview(await listFbPages(), fbPreview);
+    setFbPages(list);
+    // No index clamp here (selectedPage = fbPages[fbPageIdx] || fbPages[0] || null already
+    // handles an out-of-range idx after a remove) — keeping the functional-updater out of
+    // this useCallback avoids a React-compiler memoization advisory; the mount effect clamps.
+  }, [fbPreview]);
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!authed || !fbEnabled) { setFbPages([]); return; }
+    let alive = true;
+    void listFbPages().then((raw) => { if (alive) { const list = withFbPreview(raw, fbPreview); setFbPages(list); setFbPageIdx((i) => (i < list.length ? i : 0)); } });
+    return () => { alive = false; };
+  }, [authed, fbEnabled, fbPreview]);
+  /* eslint-enable react-hooks/set-state-in-effect */
   // Account-leak fix — the account the user has picked per platform. Passed to
   // useLiveFeed so ONLY this account's comments show, even with up to 5 accounts live.
   // P3 — Shopee scoping key = the selected shop id (server select_account "Shopee").
-  const liveSelected = { TikTok: ttAccounts[ttIdx] || "", Facebook: fbAccounts[fbIdx] || "", Shopee: selectedShop ? String(selectedShop.shopId) : "" };
+  // F-P3 — Facebook: when fbEnabled, scope to the selected PAGE key (username||pageId);
+  // otherwise the unchanged seller_profiles.facebook behaviour (non-allowlisted sellers).
+  const liveSelected = { TikTok: ttAccounts[ttIdx] || "", Facebook: fbEnabled ? fbScopeKey : (fbAccounts[fbIdx] || ""), Shopee: selectedShop ? String(selectedShop.shopId) : "" };
 
   // Phase 5d — real live comment feed (socket + dedup). Replaces the sample
   // SEED_COMMENTS/INCOMING stream. Read-only (order writes are 5e). The 3rd arg is the
@@ -612,6 +655,21 @@ export default function RedesignApp() {
       window.history.replaceState({}, "", url.pathname + url.search + url.hash);
     } catch { /* ignore */ }
   }, [reloadShopeeShops, tApp]);
+
+  // F-P3 — Facebook OAuth return (?fb=connected|error&code=…): mirror the Shopee handler.
+  // Toast + strip the query + reload the page list so a freshly-authorized page appears.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const ret = parseFbReturn(window.location.search);
+    if (!ret) return;
+    if (ret.status === "connected") { setToast({ msg: tApp.rd_fb_authorized_toast, kind: "ok" }); void reloadFbPages(); }
+    else setToast({ msg: tApp.rd_fb_auth_error_toast, kind: "err" });
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("fb"); url.searchParams.delete("code");
+      window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+    } catch { /* ignore */ }
+  }, [reloadFbPages, tApp]);
 
   // "No printer connected" modal — an order printed but the native bridge said no
   // printer is set up yet (BT_NOT_SET / PRINTER_NOT_SET). The order is ALREADY
@@ -953,6 +1011,43 @@ export default function RedesignApp() {
       return r;
     } finally { setShopeeConnecting(false); }
   };
+  // F-P3 — Facebook connect eligibility (active-paid; admin bypass; server also enforces
+  // requirePlanActive on /fb/connect). Mirror shopeeEligible.
+  const fbEligible = isFbEligible(auth.profile);
+  // FB chip handler (mirror onConnectShopee). Disconnect = local UI + best-effort server
+  // stop. Connect routes through commitLiveConnect → runSessionAware so the SERVER-ANCHORED
+  // platform switch fires (carry-forward #2: FB while a TikTok session runs → switch-confirm
+  // → fresh #1, and vice-versa via doConnect's guard). No page → the authorize screen.
+  const onConnectFacebook = () => {
+    setFbOpen(false);
+    if (fbEff) { setFbOff(true); if (selectedPage) void fbDisconnect(selectedPage.pageId); return; }
+    if (fbPreview) { setToast({ msg: tApp.rd_fb_preview_note, kind: "err" }); return; } // no credentials → honest note
+    if (!fbEligible) { if (ios) setIosExpired(true); else setUpsellOpen(true); return; }
+    if (!selectedPage) { setFbOpen(false); setChanBack("dashboard"); setScreen("fbpages"); return; }
+    commitLiveConnect({ platform: "Facebook", pageId: selectedPage.pageId, scopeKey: fbScopeKey });
+  };
+  // The socket-side FB connect (mirror doShopeeConnect): ensureJoined so a FB-only seller's
+  // socket is in the room before the poller relays, POST /fb/connect, toast the outcome.
+  // Reached only via runTargetConnect / connectPending AFTER a session is guaranteed.
+  const doFbConnect = async (pageId: string) => {
+    if (fbPreview) { setToast({ msg: tApp.rd_fb_preview_note, kind: "err" }); return { ok: false, error: "preview" }; }
+    if (!fbEligible) { if (ios) setIosExpired(true); else setUpsellOpen(true); return { ok: false, error: "plan_expired" }; }
+    setFbConnecting(true);
+    track("connect_attempt", { platform: "Facebook" });
+    try {
+      liveFeed.ensureJoined();
+      const r = await fbConnect(pageId);
+      if (r.ok) { track("connect_success", { platform: "Facebook" }); setToast({ msg: tApp.rd_fb_connected_toast, kind: "ok" }); }
+      else {
+        track("connect_failed", { platform: "Facebook", reason: r.reason || r.error || "unknown" });
+        if (ios && (r.error || "").includes("plan_expired")) setIosExpired(true);
+        else if (r.reason === "not_live") setToast({ msg: tApp.rd_fb_not_live, kind: "err" });
+        else if (r.unreachable) setToast({ msg: tApp.rd_cm_cant_reach, kind: "err" });
+        else setToast({ msg: r.error || tApp.rd_cm_conn_failed, kind: "err" });
+      }
+      return r;
+    } finally { setFbConnecting(false); }
+  };
   // ── Option E — Live Source orchestration (owner-gated). Presentation + session GATE
   // only; the socket connect (performConnect / doShopeeConnect / useLiveFeed) is reused,
   // UNTOUCHED. All session-start funnels into the existing picker/owner handlers →
@@ -971,6 +1066,7 @@ export default function RedesignApp() {
   // Run a target's socket connect once its session is guaranteed (running or just-started).
   const runTargetConnect = (target: LiveConnectTarget) => {
     if (target.platform === "Shopee") void doShopeeConnect(target.shopId, target.sessionId);
+    else if (target.platform === "Facebook") void doFbConnect(target.pageId); // F-P3
     else void performConnect("TikTok", target.username, { register: target.register });
   };
   // Session-aware connect for the new modal: running → connect (CONTINUE, same session_id
@@ -989,6 +1085,8 @@ export default function RedesignApp() {
     }
     const pending: PendingConnect = target.platform === "Shopee"
       ? { kind: "shopee", shopId: target.shopId, sessionId: target.sessionId }
+      : target.platform === "Facebook"
+      ? { kind: "fb", pageId: target.pageId, scopeKey: target.scopeKey } // F-P3
       : { kind: "tt", platform: "TikTok", acct: target.username, register: target.register };
     if (sessionV2) setOwnerStart(pending); else setPickerConnect(pending);
   };
@@ -1130,6 +1228,7 @@ export default function RedesignApp() {
   // the union so a Shopee-first connect gets a real session, same as TikTok.
   const connectPending = (p: PendingConnect) => {
     if (p.kind === "shopee") void doShopeeConnect(p.shopId, p.sessionId);
+    else if (p.kind === "fb") void doFbConnect(p.pageId); // F-P3
     else void performConnect(p.platform, p.acct, { register: p.register });
   };
   // Owner "Start Session" → fixed 5-day session_id, then connect. Mirrors
@@ -1525,6 +1624,14 @@ export default function RedesignApp() {
               onToggleTT={() => { setTtOpen((o) => !o); setFbOpen(false); setShopeeOpen(false); }}
               onToggleFB={() => { setFbOpen((o) => !o); setTtOpen(false); setShopeeOpen(false); }}
               onPickTT={(i) => switchAccount("TikTok", i)}
+              /* F-P3 — Facebook REAL connect (owner-gated via fbEnabled = flag OR
+                 FB_PREVIEW_EMAILS). Off → the FB dropdown stays the byte-identical
+                 activation-required gate for every non-allowlisted seller. */
+              fbConnectEnabled={fbEnabled}
+              fbPages={fbPages.map((p) => ({ pageId: p.pageId, name: p.name, username: p.username }))}
+              fbPageIdx={fbPageIdx} onPickFB={(i) => setFbPageIdx(i)}
+              onConnectFB={onConnectFacebook}
+              onManageFB={() => { setFbOpen(false); setChanBack("dashboard"); setScreen("fbpages"); }}
               /* P3 — Shopee source chip (renders only when shopeeEnabled + ≥1 shop). */
               shopeeEnabled={shopeeEnabled}
               shopeeShops={shopeeShops.map((s) => ({ shopId: s.shopId, shopName: s.shopName }))}
@@ -1641,12 +1748,18 @@ export default function RedesignApp() {
           )}
           {(screen === "ttchannels" || screen === "fbchannels") && (
             <ManageChannels platform={screen === "ttchannels" ? "tiktok" : "facebook"} account={auth.profile} onBack={() => setScreen(chanBack)} onSaveChannels={saveChannels}
-              shopeeEnabled={shopeeEnabled} onShopee={() => { setChanBack("settings"); setScreen("shopeechannels"); }} />
+              shopeeEnabled={shopeeEnabled} onShopee={() => { setChanBack("settings"); setScreen("shopeechannels"); }}
+              fbPagesEnabled={fbEnabled} onFbPages={() => { setChanBack("settings"); setScreen("fbpages"); }} />
           )}
           {/* P3 — Shopee shops (flag-gated; reachable from ManageChannels + the Live
               Shopee chip's Manage row). Origin-aware Back via chanBack. */}
           {screen === "shopeechannels" && (
             <ShopeeChannels account={auth.profile} shops={shopeeShops} preview={shopeePreview} onReload={reloadShopeeShops} onBack={() => setScreen(chanBack)} onToast={(msg, kind) => setToast({ msg, kind })} onUpsell={() => { if (ios) setIosExpired(true); else setUpsellOpen(true); }} />
+          )}
+          {/* F-P3 — Facebook pages (fbEnabled-gated; reachable from ManageChannels + the
+              Live FB chip's Manage row / no-page authorize). Origin-aware Back via chanBack. */}
+          {screen === "fbpages" && (
+            <FbChannels account={auth.profile} pages={fbPages} preview={fbPreview} onReload={reloadFbPages} onBack={() => setScreen(chanBack)} onToast={(msg, kind) => setToast({ msg, kind })} onUpsell={() => { if (ios) setIosExpired(true); else setUpsellOpen(true); }} />
           )}
           {/* onExport gated on live (#7): the sample fallback list must never be
               downloadable as a real-looking CSV. */}
