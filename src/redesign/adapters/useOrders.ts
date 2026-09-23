@@ -93,7 +93,7 @@ export function liveSessionPayload(c: ProdComment, order: LiveOrder, sessionDate
     // sql/48 — the page a future Messenger Private Reply receipt is sent FROM (its token)
     // + the live video. Facebook only; omitted (→ NULL) for every other platform and
     // when the comment carries no page id (never a half-filled object).
-    platform_meta: fbPlatformMeta(c),
+    platform_meta: fbPlatformMeta(c) ?? shopeePlatformMeta(c),
   } satisfies LiveSessionOrderInput;
 }
 
@@ -106,6 +106,27 @@ function fbPlatformMeta(c: ProdComment): Record<string, string> | undefined {
   if (!pageId) return undefined;
   const liveVideoId = String(x.liveVideoId ?? "").trim();
   return liveVideoId ? { page_id: pageId, live_video_id: liveVideoId } : { page_id: pageId };
+}
+
+// Shopee comments carry shopId + shopeeSessionId (server/shopeeComment.js, relayed untouched
+// by emitCommentScoped + useLiveFeed). Returns { shop_id, shopee_session_id? } or undefined.
+// shop_id is reliable — it is OUR authorized-shop id (shopee_shops.shop_id), not a field
+// parsed from Shopee's comment payload.
+// ⚠️ NOT RECEIPT-READY — check before building anything on these fields:
+//   • shopee_session_id is only the session id the SELLER PASTED at connect (there is no
+//     confirmed "current live session for shop" endpoint yet), so it is unverified whether
+//     it is the right identifier for anything downstream;
+//   • Shopee receipts are NOT designed: no confirmed Shopee equivalent of Messenger Private
+//     Reply has been found, so it is unknown whether a receipt can target a comment, a
+//     buyer, or a session at all. Re-check against Shopee Open Platform before relying on
+//     this shape.
+function shopeePlatformMeta(c: ProdComment): Record<string, string> | undefined {
+  if (c.platform !== "Shopee") return undefined;
+  const x = c as ProdComment & { shopId?: unknown; shopeeSessionId?: unknown };
+  const shopId = String(x.shopId ?? "").trim();
+  if (!shopId) return undefined;
+  const shopeeSessionId = String(x.shopeeSessionId ?? "").trim();
+  return shopeeSessionId ? { shop_id: shopId, shopee_session_id: shopeeSessionId } : { shop_id: shopId };
 }
 
 export function customerDbPayload(c: ProdComment, order: LiveOrder) {
