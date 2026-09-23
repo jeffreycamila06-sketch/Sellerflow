@@ -6,7 +6,7 @@
 // NEVER selects the token column (defense-in-depth on top of RLS + the server omitting
 // it from /fb/pages).
 import { supabase, isSupabaseConfigured } from "../../supabase";
-import { SERVER } from "./serverIdentity";
+import { SERVER, browserSessionId } from "./serverIdentity";
 import { getAppSetting } from "./appSettings";
 import { isActivePaid, planDaysLeft } from "../../lib/planWindow";
 import { isAdminRole } from "../../lib/roles";
@@ -107,15 +107,20 @@ export async function startFbAuth(): Promise<{ ok: boolean; url?: string; error?
 
 export interface FbConnectResult { ok: boolean; reason?: string; error?: string; unreachable?: boolean; liveVideoId?: string }
 
-// POST /fb/connect { page_id }. Server: requireAuth → requireConnectRate →
+// POST /fb/connect { page_id, sessionId }. Server: requireAuth → requireConnectRate →
 // requirePlanActive (403 on expired plan) → live-detect → starts the poller.
 // { ok:false, reason:"not_live" } when the page has no LIVE video.
+// ⚠️ sessionId = THIS browser's session id (the same value connect.ts sends for TikTok).
+// The server stamps it on every relayed FB comment + platform_status, and useLiveFeed
+// drops any event whose sessionId ≠ its own — so only the device that tapped Connect
+// receives the live flow (the duplicate-auto-order safeguard on multi-device sellers).
+// Without it the server stamped the live-video id → the client dropped EVERY FB event.
 export async function fbConnect(pageId: string): Promise<FbConnectResult> {
   try {
     const r = await fetch(`${SERVER}/fb/connect`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${await bearer()}` },
-      body: JSON.stringify({ page_id: String(pageId) }),
+      body: JSON.stringify({ page_id: String(pageId), sessionId: browserSessionId() }),
     });
     const j = await r.json().catch(() => ({} as { ok?: boolean; reason?: string; error?: string; live_video_id?: string }));
     if (r.status === 401) return { ok: false, error: j.error || "Unauthorized" };

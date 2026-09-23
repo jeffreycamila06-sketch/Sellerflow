@@ -111,14 +111,37 @@ describe("startFbAuth", () => {
 });
 
 describe("fbConnect", () => {
-  it("posts { page_id } and returns ok + live_video_id", async () => {
+  it("posts { page_id, sessionId } and returns ok + live_video_id", async () => {
     const f = vi.fn().mockResolvedValue(mkRes(200, { ok: true, live_video_id: "LV42" }));
     vi.stubGlobal("fetch", f);
     const r = await fbConnect("P1");
     expect(r).toEqual({ ok: true, liveVideoId: "LV42" });
     const [url, opts] = f.mock.calls[0];
     expect(String(url)).toMatch(/\/fb\/connect$/);
-    expect(JSON.parse((opts as { body: string }).body)).toEqual({ page_id: "P1" });
+    const body = JSON.parse((opts as { body: string }).body);
+    expect(body.page_id).toBe("P1");
+    expect(typeof body.sessionId).toBe("string");
+    expect(body.sessionId).not.toBe("");
+  });
+
+  // SESSION-ID CONTRACT (client half): the body carries THIS browser's session id — the
+  // exact value useLiveFeed filters on and connect.ts sends for TikTok — so the server can
+  // stamp it on every FB comment/status. Without it every FB event was dropped client-side.
+  it("sends THIS browser's session id (== browserSessionId(), the value useLiveFeed filters on)", async () => {
+    const ls = new Map<string, string>();
+    vi.stubGlobal("localStorage", {
+      getItem: (k: string) => ls.get(k) ?? null,
+      setItem: (k: string, v: string) => { ls.set(k, v); },
+    });
+    const { browserSessionId } = await import("../serverIdentity");
+    const mine = browserSessionId();                       // persisted → stable for this browser
+    const f = vi.fn().mockResolvedValue(mkRes(200, { ok: true, live_video_id: "LV42" }));
+    vi.stubGlobal("fetch", f);
+    await fbConnect("P1");
+    const body = JSON.parse((f.mock.calls[0][1] as { body: string }).body);
+    expect(body.sessionId).toBe(mine);
+    expect(body.sessionId).toMatch(/^sf-/);                // browser-session shape, never a live-video id
+    vi.unstubAllGlobals();
   });
   it("{ ok:false, reason:'not_live' } passes through", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(mkRes(200, { ok: false, reason: "not_live" })));
