@@ -15,7 +15,7 @@ const { loadRows, updateParcelScan, deleteParcelScan, markScansExported } = vi.h
   loadRows: { current: [] as ParcelScanRow[] },
   updateParcelScan: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
   deleteParcelScan: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
-  markScansExported: vi.fn(async () => ({ ok: true, batchId: "batch-1" }) as { ok: boolean; batchId?: string }),
+  markScansExported: vi.fn(async (ids: string[]) => ({ ok: true, batchId: "batch-1", claimed: ids }) as { ok: boolean; batchId?: string; claimed: string[] }),
 }));
 
 vi.mock("../../adapters/parcelScan", async (importOriginal) => {
@@ -28,6 +28,8 @@ vi.mock("../../adapters/parcelScan", async (importOriginal) => {
     loadParcelScans: vi.fn(async () => ({ ok: true, rows: loadRows.current })),
     checkEmapStore: vi.fn(async () => ({ status: "valid" as const })), saveStoreCheck: vi.fn(async () => ({ ok: true })),
     scanToXlsRow: vi.fn(() => ({})), markScansExported, unmarkScansExported: vi.fn(),
+    confirmExportDelivered: vi.fn(async () => ({ ok: true, n: 1 })), loadUndeliveredExports: vi.fn(async () => ({ ok: true, batches: [] })),
+    loadLastExportBatch: vi.fn(async () => ({ ok: true, batch: null })),
     deleteParcelScan, deleteExportedParcels: vi.fn(),
     updateParcelScan,
     getCreditBalance: vi.fn(async () => ({ ok: true, balance: 99 })),
@@ -70,7 +72,7 @@ beforeEach(() => {
   updateParcelScan.mockClear(); deleteParcelScan.mockClear(); markScansExported.mockClear();
   updateParcelScan.mockResolvedValue({ ok: true });
   deleteParcelScan.mockResolvedValue({ ok: true });
-  markScansExported.mockResolvedValue({ ok: true, batchId: "batch-1" });
+  markScansExported.mockImplementation(async (ids: string[]) => ({ ok: true, batchId: "batch-1", claimed: ids }));
   loadRows.current = [];
 });
 afterEach(() => {
