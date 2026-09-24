@@ -1482,6 +1482,20 @@ const RAW: Record<string, Row> = {
   rd_pk_overdue: { en: "Overdue", fil: "Lampas na", zh: "已逾期", "zh-TW": "已逾期", vi: "Quá hạn", th: "เกินกำหนด", id: "Lewat tenggat" },
   rd_pk_none: { en: "No parcels · {label}", fil: "Walang parcel · {label}", zh: "没有包裹 · {label}", "zh-TW": "沒有包裹 · {label}", vi: "Không có kiện · {label}", th: "ไม่มีพัสดุ · {label}", id: "Tidak ada paket · {label}" },
   rd_pt_urgent: { en: "urgent", fil: "urgent", zh: "紧急", "zh-TW": "緊急", vi: "khẩn", th: "ด่วน", id: "mendesak" },
+  // Pickup Status redesign — status tabs (web) / count cards (mobile), table columns, Left cell, action.
+  rd_pt_tab_all: { en: "All", fil: "Lahat", zh: "全部", "zh-TW": "全部", vi: "Tất cả", th: "ทั้งหมด", id: "Semua" },
+  rd_pt_tab_waiting: { en: "Waiting", fil: "Naghihintay", zh: "待取货", "zh-TW": "待取件", vi: "Chờ lấy", th: "รอรับ", id: "Menunggu" },
+  rd_pt_tab_transit: { en: "In transit", fil: "Nasa biyahe", zh: "运送中", "zh-TW": "運送中", vi: "Đang giao", th: "กำลังส่ง", id: "Dalam perjalanan" },
+  rd_pt_tab_picked: { en: "Picked up", fil: "Nakuha na", zh: "已取货", "zh-TW": "已取件", vi: "Đã lấy", th: "รับแล้ว", id: "Sudah diambil" },
+  rd_pt_tab_returned: { en: "Returned", fil: "Ibinalik", zh: "已退回", "zh-TW": "已退回", vi: "Đã hoàn", th: "ตีกลับแล้ว", id: "Dikembalikan" },
+  rd_pt_tab_empty: { en: "No parcels here.", fil: "Walang parcel dito.", zh: "这里没有包裹。", "zh-TW": "這裡沒有包裹。", vi: "Không có bưu kiện nào.", th: "ไม่มีพัสดุ", id: "Tidak ada paket." },
+  rd_pt_col_buyer: { en: "Buyer", fil: "Buyer", zh: "买家", "zh-TW": "買家", vi: "Người mua", th: "ผู้ซื้อ", id: "Pembeli" },
+  rd_pt_col_store: { en: "Store", fil: "Tindahan", zh: "门市", "zh-TW": "門市", vi: "Cửa hàng", th: "สาขา", id: "Toko" },
+  rd_pt_col_parcel: { en: "Parcel", fil: "Parcel", zh: "包裹", "zh-TW": "包裹", vi: "Bưu kiện", th: "พัสดุ", id: "Paket" },
+  rd_pt_col_left: { en: "Left", fil: "Natitira", zh: "剩余", "zh-TW": "剩餘", vi: "Còn lại", th: "เหลือ", id: "Sisa" },
+  rd_pt_left_done: { en: "Done", fil: "Tapos", zh: "已完成", "zh-TW": "已完成", vi: "Xong", th: "เสร็จแล้ว", id: "Selesai" },
+  rd_pt_left_returned: { en: "Returned", fil: "Ibinalik", zh: "已退回", "zh-TW": "已退回", vi: "Đã hoàn", th: "ตีกลับ", id: "Dikembalikan" },
+  rd_pt_chase: { en: "Chase", fil: "Habulin", zh: "催取件", "zh-TW": "催取件", vi: "Nhắc lấy", th: "ตามลูกค้า", id: "Ingatkan" },
 
   // ── Orders upgrade Batch 1 (2026-09): platform pills · date range · summary · export cols ──
   rd_ord_pf_all: { en: "All", fil: "Lahat", zh: "全部", "zh-TW": "全部", vi: "Tất cả", th: "ทั้งหมด", id: "Semua" },

@@ -188,6 +188,86 @@ export function groupParcels(rows: ParcelTrackingRow[], today: string): ParcelGr
   return g;
 }
 
+// ── Status tabs (Pickup Status redesign — tabs on web, count cards on mobile) ──
+// PURE, presentation-only. Same rows, same grouping semantics as groupParcels (chaseable
+// C2C store-pickup parcels only in the 4 status tabs); "all" = EVERY row, including the
+// non-chaseable / not-yet-updated ones groupParcels calls "other", so nothing disappears.
+export type PickupTab = "all" | "waiting" | "transit" | "picked" | "returned";
+export const PICKUP_TABS: PickupTab[] = ["all", "waiting", "transit", "picked", "returned"];
+export const PICKUP_STATUS_TABS: Exclude<PickupTab, "all">[] = ["waiting", "transit", "picked", "returned"];
+
+// Which status tab a row belongs to (null = the "other" bucket → "all" only). MIRRORS
+// groupParcels' bucketing exactly (parity-tested).
+export function rowTab(row: ParcelTrackingRow): Exclude<PickupTab, "all"> | null {
+  if (!isChaseable(row.shipType, row.specialType)) return null;
+  if (row.status === "at_store") return "waiting";
+  if (row.status === "in_transit") return "transit";
+  if (row.status === "picked_up") return "picked";
+  if (row.status === "returned") return "returned";
+  return null;
+}
+
+// "Left" column content. Only a waiting (at_store) parcel has a meaningful countdown:
+// days = daysUntilDate (negative = overdue, null = no deadline), urgent = isUrgent
+// (≤2 days incl. overdue, OR returning-soon) → rendered red. In transit / other → "—";
+// picked up → "Done"; returned → "Returned".
+export type LeftCell =
+  | { kind: "days"; days: number | null; urgent: boolean }
+  | { kind: "none" }
+  | { kind: "done" }
+  | { kind: "returned" };
+export function leftCell(row: ParcelTrackingRow, today: string): LeftCell {
+  const tab = rowTab(row);
+  if (tab === "waiting") return { kind: "days", days: daysUntilDate(row.pickupDeadline, today), urgent: isUrgent(row, today) };
+  if (tab === "picked") return { kind: "done" };
+  if (tab === "returned") return { kind: "returned" };
+  return { kind: "none" };
+}
+
+// Sort by days-left ascending (most urgent first). Only waiting parcels have a real
+// countdown, so in the mixed "all" tab rows are ranked by status first (waiting →
+// transit → picked → returned → other) — a picked-up parcel's stale past deadline must
+// never float it above a live waiting one. Within a rank: days-left ascending, no
+// deadline last, returning-soon first on a tie. Never mutates.
+const TAB_RANK: Record<string, number> = { waiting: 0, transit: 1, picked: 2, returned: 3 };
+export function sortByDaysLeft(rows: ParcelTrackingRow[], today: string): ParcelTrackingRow[] {
+  const rank = (r: ParcelTrackingRow) => TAB_RANK[rowTab(r) ?? ""] ?? 4;
+  const days = (r: ParcelTrackingRow) => daysUntilDate(r.pickupDeadline, today);
+  return [...rows].sort((a, b) => {
+    const ra = rank(a), rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    const da = days(a), db = days(b);
+    if (da !== db) {
+      if (da === null) return 1;
+      if (db === null) return -1;
+      return da - db;
+    }
+    const sa = isReturningSoon(a.statusMessage), sb = isReturningSoon(b.statusMessage);
+    return sa === sb ? 0 : sa ? -1 : 1;
+  });
+}
+
+// Rows for one tab (sorted), from the SAME groupParcels output the screen already loads.
+export function tabRows(groups: ParcelGroups, tab: PickupTab, today: string): ParcelTrackingRow[] {
+  const list =
+    tab === "waiting" ? groups.waitingPickup
+    : tab === "transit" ? groups.inTransit
+    : tab === "picked" ? groups.pickedUp
+    : tab === "returned" ? groups.returned
+    : [...groups.waitingPickup, ...groups.inTransit, ...groups.pickedUp, ...groups.returned, ...groups.other];
+  return sortByDaysLeft(list, today);
+}
+
+export function tabCounts(groups: ParcelGroups): Record<PickupTab, number> {
+  return {
+    all: groups.waitingPickup.length + groups.inTransit.length + groups.pickedUp.length + groups.returned.length + groups.other.length,
+    waiting: groups.waitingPickup.length,
+    transit: groups.inTransit.length,
+    picked: groups.pickedUp.length,
+    returned: groups.returned.length,
+  };
+}
+
 // ── Chase-point deadline filter (Waiting-pickup chips) ────────────────────────
 // PURE bucketing over the waiting-pickup list for the seller's chase workflow.
 // Days-left = daysUntilDate (Taipei whole-day diff; negative = overdue, null =
