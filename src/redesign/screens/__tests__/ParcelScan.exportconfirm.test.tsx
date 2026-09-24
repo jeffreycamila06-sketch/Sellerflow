@@ -9,7 +9,7 @@ import { TProvider } from "../../i18n";
 
 const { deliverXlsm, markScansExported, unmarkScansExported, loadParcelScans } = vi.hoisted(() => ({
   deliverXlsm: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
-  markScansExported: vi.fn(async () => ({ ok: true, batchId: "batch-1" }) as { ok: boolean; batchId?: string }),
+  markScansExported: vi.fn(async (ids: string[]) => ({ ok: true, batchId: "batch-1", claimed: ids }) as { ok: boolean; batchId?: string; claimed: string[] }),
   unmarkScansExported: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
   loadParcelScans: vi.fn(async () => ({ ok: true, rows: [
     { id: "r1", customerName: "Juan", phone: "0912345678", storeId: "266402", amount: 550, notes: "", status: "confirmed", storeCheckStatus: "valid", createdAt: "2026-09-08T00:00:00Z" },
@@ -49,7 +49,7 @@ const view = () => render(<TProvider><ParcelScan cur="NT$" /></TProvider>);
 beforeEach(() => {
   deliverXlsm.mockClear(); markScansExported.mockClear(); unmarkScansExported.mockClear();
   deliverXlsm.mockResolvedValue({ ok: true });
-  markScansExported.mockResolvedValue({ ok: true, batchId: "batch-1" });
+  markScansExported.mockImplementation(async (ids: string[]) => ({ ok: true, batchId: "batch-1", claimed: ids }));
   unmarkScansExported.mockResolvedValue({ ok: true });
 });
 
@@ -62,7 +62,7 @@ describe("Parcel Scan — export confirmation (FIX 4)", () => {
     expect(deliverXlsm).not.toHaveBeenCalled();                        // no export until confirmed
   });
 
-  it("confirming runs the export (deliverXlsm + markScansExported) and closes", async () => {
+  it("confirming claims the rows (markScansExported) then delivers (deliverXlsm) and closes", async () => {
     const { findByTestId, getByTestId, queryByTestId } = view();
     fireEvent.click(await findByTestId("ps-export-btn"));
     fireEvent.click(getByTestId("ps-confirm-export"));
@@ -94,12 +94,22 @@ describe("Parcel Scan — export confirmation (FIX 4)", () => {
     await waitFor(() => expect(queryByTestId("ps-undo-btn")).toBeNull()); // undo consumed
   });
 
-  it("no Undo button when the batch wasn't stamped (markScansExported returned no batchId)", async () => {
-    markScansExported.mockResolvedValue({ ok: false });
+  it("a failed claim (markScansExported not ok) delivers NO file and shows no Undo (2a claim-first)", async () => {
+    markScansExported.mockResolvedValue({ ok: false, claimed: [] });
     const { findByTestId, getByTestId, queryByTestId } = view();
     fireEvent.click(await findByTestId("ps-export-btn"));
     fireEvent.click(getByTestId("ps-confirm-export"));
-    await waitFor(() => expect(deliverXlsm).toHaveBeenCalled());
+    await findByTestId("ps-export-err");
+    expect(deliverXlsm).not.toHaveBeenCalled();                 // never a file for unclaimed rows
     expect(queryByTestId("ps-undo-btn")).toBeNull();
+  });
+
+  it("a failed download RELEASES the claim (rows back to ready)", async () => {
+    deliverXlsm.mockResolvedValue({ ok: false, error: "boom" });
+    const { findByTestId, getByTestId } = view();
+    fireEvent.click(await findByTestId("ps-export-btn"));
+    fireEvent.click(getByTestId("ps-confirm-export"));
+    await findByTestId("ps-export-err");
+    await waitFor(() => expect(unmarkScansExported).toHaveBeenCalledWith("batch-1"));
   });
 });

@@ -529,24 +529,33 @@ export function mergeExtensionVerdicts(prev: ParcelScanRow[], fresh: ParcelScanR
   });
 }
 
-// Mark exported rows done so re-exports skip them (status 'exported', sql/27).
-// Own-scoped via RLS; best-effort. Empty id list is a no-op success.
-export async function markScansExported(ids: string[]): Promise<{ ok: boolean; batchId?: string; error?: string }> {
-  if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
-  if (!ids.length) return { ok: true };
+// CLAIM rows for an export run (status 'exported', sql/27) — BEFORE the file is
+// built. Conditional: only rows still NOT exported at this instant are taken
+// (Postgres re-checks the WHERE on each locked row), and `claimed` = the ids THIS
+// call won. Two devices racing on the same parcels → each row is won by exactly
+// one, so no parcel ever lands in two files. Own-scoped via RLS + user_id.
+// Empty id list is a no-op success (claimed []).
+export async function markScansExported(ids: string[]): Promise<{ ok: boolean; batchId?: string; claimed: string[]; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) return { ok: false, claimed: [], error: "not configured" };
+  if (!ids.length) return { ok: true, claimed: [] };
   const me = await uid();
-  if (!me) return { ok: false, error: "not signed in" };
+  if (!me) return { ok: false, claimed: [], error: "not signed in" };
   // One fresh batch id per export run → the whole run can be reverted together
   // ("Undo last export"). Stamped alongside status='exported' (own-scoped).
   const batchId = newParcelId();
-  const { error } = await supabase.from("parcel_scans").update({ status: "exported", export_batch_id: batchId }).in("id", ids).eq("user_id", me);
-  return error ? { ok: false, error: error.message } : { ok: true, batchId };
+  const { data, error } = await supabase.from("parcel_scans")
+    .update({ status: "exported", export_batch_id: batchId })
+    .in("id", ids).eq("user_id", me).neq("status", "exported")
+    .select("id");
+  if (error) return { ok: false, claimed: [], error: error.message };
+  return { ok: true, batchId, claimed: (data ?? []).map((r) => String((r as { id: unknown }).id)) };
 }
 
 // Undo one export run: revert every row of the batch back to 'confirmed' and
 // clear the batch id, so they re-enter the ready list and can be exported
 // again. Own-scoped (RLS + explicit user_id). Existing pre-column exported rows
 // have export_batch_id = NULL → not covered by any batch undo (by design).
+// Also RELEASES a claim whose file was never delivered (cancel/failed share).
 export async function unmarkScansExported(batchId: string): Promise<{ ok: boolean; error?: string }> {
   if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
   if (!batchId) return { ok: false, error: "no batch" };

@@ -15,7 +15,7 @@ const { loadRows, updateParcelScan, deleteParcelScan, markScansExported } = vi.h
   loadRows: { current: [] as ParcelScanRow[] },
   updateParcelScan: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
   deleteParcelScan: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
-  markScansExported: vi.fn(async () => ({ ok: true, batchId: "batch-1" }) as { ok: boolean; batchId?: string }),
+  markScansExported: vi.fn(async (ids: string[]) => ({ ok: true, batchId: "batch-1", claimed: ids }) as { ok: boolean; batchId?: string; claimed: string[] }),
 }));
 
 vi.mock("../../adapters/parcelScan", async (importOriginal) => {
@@ -70,7 +70,7 @@ beforeEach(() => {
   updateParcelScan.mockClear(); deleteParcelScan.mockClear(); markScansExported.mockClear();
   updateParcelScan.mockResolvedValue({ ok: true });
   deleteParcelScan.mockResolvedValue({ ok: true });
-  markScansExported.mockResolvedValue({ ok: true, batchId: "batch-1" });
+  markScansExported.mockImplementation(async (ids: string[]) => ({ ok: true, batchId: "batch-1", claimed: ids }));
   loadRows.current = [];
 });
 afterEach(() => {

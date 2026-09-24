@@ -1283,6 +1283,7 @@ const RAW: Record<string, Row> = {
   rd_ps2_undo_go: { en: "Undo export", fil: "I-undo", zh: "撤销导出", "zh-TW": "復原匯出", vi: "Hoàn tác", th: "เลิกทำ", id: "Batalkan" },
   rd_ps2_undo_failed: { en: "Undo failed:", fil: "Nabigo ang undo:", zh: "撤销失败：", "zh-TW": "復原失敗：", vi: "Hoàn tác thất bại:", th: "เลิกทำไม่สำเร็จ:", id: "Gagal membatalkan:" },
   rd_ps2_x_result: { en: "{x} exported · {y} need attention", fil: "{x} na-export · {y} ang kailangang ayusin", zh: "已导出 {x} · {y} 需要注意", "zh-TW": "已匯出 {x} · {y} 需要注意", vi: "Đã xuất {x} · {y} cần chú ý", th: "ส่งออกแล้ว {x} · {y} ต้องตรวจสอบ", id: "{x} diekspor · {y} perlu diperiksa" },
+  rd_ps2_x_elsewhere: { en: "{n} already exported on another device — not included", fil: "{n} ang na-export na sa ibang device — hindi isinama", zh: "{n} 个已在其他设备导出 — 未包含", "zh-TW": "{n} 筆已在其他裝置匯出 — 未包含", vi: "{n} đã được xuất trên thiết bị khác — không bao gồm", th: "{n} รายการส่งออกแล้วจากอุปกรณ์อื่น — ไม่รวมไว้", id: "{n} sudah diekspor di perangkat lain — tidak disertakan" },
   rd_ps2_x_failed: { en: "Export failed.", fil: "Nabigo ang pag-export.", zh: "导出失败。", "zh-TW": "匯出失敗。", vi: "Xuất thất bại.", th: "ส่งออกไม่สำเร็จ", id: "Ekspor gagal." },
   rd_ps2_x_tag: { en: "exported", fil: "exported", zh: "已导出", "zh-TW": "已匯出", vi: "đã xuất", th: "ส่งออกแล้ว", id: "diekspor" },
   rd_ps2_x_wrong_store: { en: "wrong store code", fil: "maling store code", zh: "门市代码错误", "zh-TW": "門市代碼錯誤", vi: "sai mã cửa hàng", th: "รหัสร้านผิด", id: "kode toko salah" },

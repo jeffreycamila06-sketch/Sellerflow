@@ -1,26 +1,31 @@
 // FIX 5 — export-batch adapters. markScansExported stamps a fresh uuid batch id
-// alongside status='exported' and returns it; unmarkScansExported reverts a
+// alongside status='exported' and returns it — as a CONDITIONAL CLAIM (2a): only
+// rows not already exported (neq), returning the ids it won; unmarkScansExported reverts a
 // whole batch (status→'confirmed', export_batch_id→NULL), own-scoped. Chainable
 // supabase mock mirrors .update().in().eq() / .update().eq().eq() then-ables.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const { updateResult, getSession, updateOps } = vi.hoisted(() => ({
-  updateResult: { current: { error: null as null | { message: string } } },
+  updateResult: { current: { error: null as null | { message: string }, data: null as null | { id: string }[] } },
   getSession: vi.fn(async () => ({ data: { session: { user: { id: "u1" } } } })),
-  updateOps: [] as { payload: Record<string, unknown>; filters: [string, unknown][]; ins: [string, unknown[]][] }[],
+  updateOps: [] as { payload: Record<string, unknown>; filters: [string, unknown][]; ins: [string, unknown[]][]; neqs: [string, unknown][]; select: string | null }[],
 }));
 
 vi.mock("../../../supabase", () => {
   const makeChain = (payload: Record<string, unknown>) => {
-    const op = { payload, filters: [] as [string, unknown][], ins: [] as [string, unknown[]][] };
+    const op = { payload, filters: [] as [string, unknown][], ins: [] as [string, unknown[]][], neqs: [] as [string, unknown][], select: null as string | null };
     updateOps.push(op);
     const builder: {
       eq: (c: string, v: unknown) => typeof builder;
       in: (c: string, v: unknown[]) => typeof builder;
+      neq: (c: string, v: unknown) => typeof builder;
+      select: (cols: string) => typeof builder;
       then: (res: (r: unknown) => unknown, rej?: (e: unknown) => unknown) => Promise<unknown>;
     } = {
       eq: (c, v) => { op.filters.push([c, v]); return builder; },
       in: (c, v) => { op.ins.push([c, v]); return builder; },
+      neq: (c, v) => { op.neqs.push([c, v]); return builder; },
+      select: (cols) => { op.select = cols; return builder; },
       then: (res, rej) => Promise.resolve(updateResult.current).then(res, rej),
     };
     return builder;
@@ -37,7 +42,7 @@ vi.mock("../serverIdentity", () => ({ SERVER: "https://srv.test" }));
 
 import { markScansExported, unmarkScansExported } from "../parcelScan";
 
-beforeEach(() => { updateResult.current = { error: null }; updateOps.length = 0; getSession.mockClear(); });
+beforeEach(() => { updateResult.current = { error: null, data: null }; updateOps.length = 0; getSession.mockClear(); });
 
 describe("markScansExported — stamps status + a fresh batch id", () => {
   it("sets status='exported' AND a uuid export_batch_id, scoped by id-in + user_id; returns that id", async () => {
@@ -50,6 +55,14 @@ describe("markScansExported — stamps status + a fresh batch id", () => {
     expect(updateOps[0].payload.export_batch_id).toBe(r.batchId); // same id stamped as returned
     expect(updateOps[0].ins).toContainEqual(["id", ["a", "b"]]);
     expect(updateOps[0].filters).toContainEqual(["user_id", "u1"]); // RLS own-scope
+  });
+
+  it("2a CLAIM: only rows NOT already exported (neq), returns exactly the ids this call won", async () => {
+    updateResult.current = { error: null, data: [{ id: "b" }] }; // "a" was already exported by another device
+    const r = await markScansExported(["a", "b"]);
+    expect(updateOps[0].neqs).toContainEqual(["status", "exported"]);
+    expect(updateOps[0].select).toBe("id");
+    expect(r.claimed).toEqual(["b"]);
   });
 
   it("distinct batch id per run", async () => {
@@ -65,7 +78,7 @@ describe("markScansExported — stamps status + a fresh batch id", () => {
   });
 
   it("DB error → { ok:false }", async () => {
-    updateResult.current = { error: { message: "boom" } };
+    updateResult.current = { error: { message: "boom" }, data: null };
     const r = await markScansExported(["a"]);
     expect(r.ok).toBe(false);
     expect(r.error).toBe("boom");
@@ -89,7 +102,7 @@ describe("unmarkScansExported — reverts a whole batch, own-scoped", () => {
   });
 
   it("DB error → { ok:false }", async () => {
-    updateResult.current = { error: { message: "nope" } };
+    updateResult.current = { error: { message: "nope" }, data: null };
     const r = await unmarkScansExported("batch-1");
     expect(r.ok).toBe(false);
     expect(r.error).toBe("nope");
