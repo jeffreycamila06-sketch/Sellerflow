@@ -53,7 +53,7 @@ vi.mock("../../../supabase", () => {
 });
 vi.mock("../serverIdentity", () => ({ SERVER: "https://srv.test" }));
 
-import { markScansExported, unmarkScansExported, loadLastExportBatch } from "../parcelScan";
+import { markScansExported, unmarkScansExported, undoExportBatch, loadLastExportBatch } from "../parcelScan";
 
 beforeEach(() => { updateResult.current = { error: null, data: null }; updateOps.length = 0; selectOps.length = 0; selectResults.length = 0; getSession.mockClear(); });
 
@@ -98,7 +98,22 @@ describe("markScansExported — stamps status + a fresh batch id", () => {
   });
 });
 
-describe("unmarkScansExported — reverts a whole batch, own-scoped", () => {
+describe("undoExportBatch (2b latest-only) — back to ready, KEEPS the batch id (tombstone)", () => {
+  it("sets ONLY status='confirmed' on the batch's exported rows, own-scoped; batch id untouched", async () => {
+    const r = await undoExportBatch("batch-7");
+    expect(r).toEqual({ ok: true });
+    expect(updateOps[0].payload).toEqual({ status: "confirmed" });   // no export_batch_id → sql/50 keeps exported_at
+    expect(updateOps[0].filters).toContainEqual(["export_batch_id", "batch-7"]);
+    expect(updateOps[0].filters).toContainEqual(["status", "exported"]);
+    expect(updateOps[0].filters).toContainEqual(["user_id", "u1"]);
+  });
+  it("empty batch id → error, no update issued", async () => {
+    expect((await undoExportBatch("")).ok).toBe(false);
+    expect(updateOps).toHaveLength(0);
+  });
+});
+
+describe("unmarkScansExported (RELEASE) — reverts a whole batch AND clears the batch id, own-scoped", () => {
   it("sets status='confirmed' + export_batch_id=NULL, filtered by batch id AND user_id", async () => {
     const r = await unmarkScansExported("batch-9");
     expect(r).toEqual({ ok: true });
@@ -123,19 +138,26 @@ describe("unmarkScansExported — reverts a whole batch, own-scoped", () => {
 });
 
 describe("loadLastExportBatch (2b) — newest batch from ANY device, by the DB-stamped exported_at", () => {
-  it("picks the newest stamped exported row (own-scoped), then returns every row id of that batch", async () => {
-    selectResults.push({ data: [{ export_batch_id: "b-new" }], error: null }, { data: [{ id: "r1" }, { id: "r2" }], error: null });
+  it("picks the newest stamped row (any status, own-scoped); if still exported, returns that batch's exported ids", async () => {
+    selectResults.push({ data: [{ export_batch_id: "b-new", status: "exported" }], error: null }, { data: [{ id: "r1" }, { id: "r2" }], error: null });
     const r = await loadLastExportBatch();
     expect(r).toEqual({ ok: true, batch: { id: "b-new", ids: ["r1", "r2"] } });
     const q = selectOps[0].calls;
     expect(q).toContainEqual(["eq", "user_id", "u1"]);
-    expect(q).toContainEqual(["eq", "status", "exported"]);
+    expect(q.some((c) => c[0] === "eq" && c[1] === "status")).toBe(false); // newest EVENT, incl. undone tombstones
     expect(q).toContainEqual(["not", "exported_at", "is", null]);        // pre-sql/49 / released batches never offered
     expect(q).toContainEqual(["not", "export_batch_id", "is", null]);
     expect(q).toContainEqual(["order", "exported_at", { ascending: false }]);
     expect(q).toContainEqual(["limit", 1]);
     expect(selectOps[1].calls).toContainEqual(["eq", "export_batch_id", "b-new"]);
     expect(selectOps[1].calls).toContainEqual(["eq", "user_id", "u1"]);
+    expect(selectOps[1].calls).toContainEqual(["eq", "status", "exported"]);
+  });
+
+  it("LATEST-ONLY: newest event is an UNDONE batch (tombstone, not exported) → batch:null, never the older one", async () => {
+    selectResults.push({ data: [{ export_batch_id: "b-undone", status: "confirmed" }], error: null });
+    expect(await loadLastExportBatch()).toEqual({ ok: true, batch: null });
+    expect(selectOps).toHaveLength(1);                                   // no fallback query to an older batch
   });
 
   it("no stamped batch → { ok:true, batch:null }, no second query", async () => {

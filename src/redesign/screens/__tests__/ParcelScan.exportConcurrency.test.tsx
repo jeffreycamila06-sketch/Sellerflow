@@ -7,6 +7,9 @@
 // them = genuinely concurrent exports (both loads resolve before either claim).
 // 2b — "Undo last export" is loaded on screen open from ANY device: the newest batch
 // by exported_at (sql/49 — stamped by the DB clock, modelled here by DB.clock).
+// LATEST-ONLY (sql/50): an undone batch keeps its batch id + stamp as a tombstone, so
+// it stays the newest export event and nothing older is ever offered; a RELEASED
+// claim (cancelled export) clears both and is not an export event.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, waitFor, within, screen } from "@testing-library/react";
 import type { ParcelScanRow } from "../../adapters/parcelScan";
@@ -20,7 +23,7 @@ const DB = vi.hoisted(() => ({
   narrow: false,
 }));
 
-const { deliverXlsm, deliverXlsmMobile, markScansExported, unmarkScansExported, loadLastExportBatch } = vi.hoisted(() => ({
+const { deliverXlsm, deliverXlsmMobile, markScansExported, unmarkScansExported, undoExportBatch, loadLastExportBatch } = vi.hoisted(() => ({
   deliverXlsm: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
   deliverXlsmMobile: vi.fn(async () => ({ ok: true, via: "webshare" }) as { ok: boolean; via: string; cancelled?: boolean }),
   // Atomic conditional claim (Postgres re-checks WHERE status <> 'exported' per locked row).
@@ -33,16 +36,23 @@ const { deliverXlsm, deliverXlsmMobile, markScansExported, unmarkScansExported, 
     }
     return { ok: true, batchId, claimed };
   }),
+  // RELEASE (claim never delivered): batch id cleared → sql/50 trigger clears exported_at.
   unmarkScansExported: vi.fn(async (batchId: string) => {
     for (const r of DB.rows) if (r.batch === batchId) { r.status = "confirmed"; r.batch = null; r.exportedAt = null; }
     return { ok: true };
   }),
-  // Newest batch by exported_at, from any device; unstamped (pre-sql/49) rows never offered.
+  // UNDO: back to ready, batch id KEPT → sql/50 keeps exported_at (the tombstone).
+  undoExportBatch: vi.fn(async (batchId: string) => {
+    for (const r of DB.rows) if (r.batch === batchId && r.status === "exported") r.status = "confirmed";
+    return { ok: true };
+  }),
+  // Newest export EVENT by exported_at (any status); offered only if still exported.
   loadLastExportBatch: vi.fn(async () => {
-    const stamped = DB.rows.filter((r) => r.status === "exported" && r.batch && r.exportedAt != null);
+    const stamped = DB.rows.filter((r) => r.batch && r.exportedAt != null);
     if (!stamped.length) return { ok: true, batch: null };
     const newest = stamped.reduce((a, b) => ((b.exportedAt as number) > (a.exportedAt as number) ? b : a));
-    return { ok: true, batch: { id: newest.batch as string, ids: DB.rows.filter((r) => r.batch === newest.batch).map((r) => r.id) } };
+    if (newest.status !== "exported") return { ok: true, batch: null }; // latest was undone → nothing
+    return { ok: true, batch: { id: newest.batch as string, ids: DB.rows.filter((r) => r.batch === newest.batch && r.status === "exported").map((r) => r.id) } };
   }),
 }));
 
@@ -56,7 +66,7 @@ vi.mock("../../adapters/parcelScan", () => ({
   amountWarns: () => false,
   splitScansForExport: (rows: ParcelScanRow[]) => ({ ready: rows.filter((r) => r.status !== "exported"), attention: [] }),
   scanToXlsRow: (r: ParcelScanRow) => [r.id],
-  markScansExported, unmarkScansExported, loadLastExportBatch,
+  markScansExported, unmarkScansExported, undoExportBatch, loadLastExportBatch,
   deleteParcelScan: vi.fn(), deleteExportedParcels: vi.fn(),
   updateParcelScan: vi.fn(async () => ({ ok: true })),
   getCreditBalance: vi.fn(async () => ({ ok: true, balance: 5 })),
@@ -99,7 +109,7 @@ const allExported = () => DB.built.flat();
 
 beforeEach(() => {
   DB.rows = [row("r1"), row("r2"), row("r3")]; DB.n = 0; DB.clock = 0; DB.built = []; DB.narrow = false;
-  deliverXlsm.mockClear(); deliverXlsmMobile.mockClear(); markScansExported.mockClear(); unmarkScansExported.mockClear();
+  deliverXlsm.mockClear(); deliverXlsmMobile.mockClear(); markScansExported.mockClear(); unmarkScansExported.mockClear(); undoExportBatch.mockClear(); loadLastExportBatch.mockClear();
   deliverXlsmMobile.mockResolvedValue({ ok: true, via: "webshare" });
   try { localStorage.clear(); } catch { /* ignore */ }
 });
@@ -170,7 +180,7 @@ describe("2b — Undo last export works from ANY device", () => {
     fireEvent.click(await phone.findByTestId("ps-undo-btn"));   // the laptop's batch is offered here
     expect(screen.getByTestId("ps-confirm-msg").textContent).toContain("3");
     fireEvent.click(screen.getByTestId("ps-confirm-undo"));
-    await waitFor(() => expect(unmarkScansExported).toHaveBeenCalledWith("batch-1"));
+    await waitFor(() => expect(undoExportBatch).toHaveBeenCalledWith("batch-1"));
     expect(DB.rows.every((r) => r.status === "confirmed")).toBe(true); // all 3 back to ready in the DB
     await waitFor(() => expect(phone.queryByTestId("ps-undo-btn")).toBeNull());
   });
@@ -188,7 +198,39 @@ describe("2b — Undo last export works from ANY device", () => {
     const c = await mount("phone", 0);
     fireEvent.click(await c.findByTestId("ps-undo-btn"));
     fireEvent.click(screen.getByTestId("ps-confirm-undo"));
-    await waitFor(() => expect(unmarkScansExported).toHaveBeenLastCalledWith("batch-2"));
+    await waitFor(() => expect(undoExportBatch).toHaveBeenLastCalledWith("batch-2"));
+  });
+
+  it("LATEST-ONLY: after the latest batch is undone, the batch before it is NOT offered (no cascade)", async () => {
+    DB.rows = [row("r1"), row("r2"), row("r3"), row("r4")];
+    DB.rows[3].status = "exported"; DB.rows[3].batch = "batch-older"; DB.rows[3].exportedAt = ++DB.clock; // an earlier export (r4)
+    const laptop = await mount("laptop");                        // r1..r3 ready
+    laptopExport(laptop);                                         // batch-1 = r1..r3 (the latest)
+    await waitFor(() => expect(deliverXlsm).toHaveBeenCalledTimes(1));
+    const phone = await mount("phone", 0);
+    fireEvent.click(await phone.findByTestId("ps-undo-btn"));
+    fireEvent.click(screen.getByTestId("ps-confirm-undo"));
+    await waitFor(() => expect(undoExportBatch).toHaveBeenCalledWith("batch-1"));
+    await waitFor(() => expect(phone.queryByTestId("ps-undo-btn")).toBeNull());
+    // Every screen opened afterwards (any device) offers NOTHING — batch-older stays exported.
+    const again = await mount("phone", 3);
+    await waitFor(() => expect(loadLastExportBatch).toHaveBeenCalledTimes(3));
+    expect(again.queryByTestId("ps-undo-btn")).toBeNull();
+    expect(undoExportBatch).toHaveBeenCalledTimes(1);
+    expect(DB.rows[3].status).toBe("exported");
+  });
+
+  it("a fresh export AFTER an undo becomes the latest and is offered again", async () => {
+    const laptop = await mount("laptop");
+    laptopExport(laptop);                                          // batch-1
+    await waitFor(() => expect(deliverXlsm).toHaveBeenCalledTimes(1));
+    await undoExportBatch("batch-1");                              // undone (tombstone)
+    const b = await mount("laptop", 3);
+    laptopExport(b);                                               // batch-2 re-exports r1..r3
+    await waitFor(() => expect(deliverXlsm).toHaveBeenCalledTimes(2));
+    const phone = await mount("phone", 0);
+    fireEvent.click(await phone.findByTestId("ps-undo-btn"));
+    expect(screen.getByTestId("ps-confirm-msg").textContent).toContain("3");
   });
 
   it("a cancelled (released) export is NOT offered for undo on another device", async () => {

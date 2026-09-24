@@ -11,7 +11,7 @@ import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT, tpl } from "../i18n";
 import {
   fileToScanBase64, scanParcel, saveParcelScan, loadParcelScans, formErrors, amountWarns, amountTooHigh, MIN_PARCEL_AMOUNT, MAX_PARCEL_TOTAL, MAX_PENDING_PARCELS,
-  checkEmapStore, saveStoreCheck, scanToXlsRow, splitScansForExport, markScansExported, unmarkScansExported, loadLastExportBatch,
+  checkEmapStore, saveStoreCheck, scanToXlsRow, splitScansForExport, markScansExported, unmarkScansExported, undoExportBatch, loadLastExportBatch,
   deleteParcelScan, deleteExportedParcels, updateParcelScan, resetExtensionChecks, getCreditBalance,
   rowAwaitsVerdict, mergeExtensionVerdicts,
   type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState, type StoreCheckStatus, type ExportReason,
@@ -711,7 +711,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     if (!lastExportBatch) { setConfirm(null); return; }
     const batch = lastExportBatch;
     setConfirm(null);
-    const r = await unmarkScansExported(batch.id);
+    const r = await undoExportBatch(batch.id); // leaves the latest-only tombstone (no cascade)
     if (!r.ok) { setUndoErr(r.error || "undo_failed"); return; }
     if (aliveRef.current) {
       setRows((prev) => prev.map((x) => (batch.ids.includes(x.id) ? { ...x, status: "confirmed" } : x)));

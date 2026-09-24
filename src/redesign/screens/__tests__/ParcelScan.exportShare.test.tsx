@@ -21,6 +21,7 @@ const { deliverXlsmMobile, buildXlsmFromTemplate, markScansExported, unmarkScans
 
 vi.mock("../../adapters/parcelScan", () => ({
   loadLastExportBatch: vi.fn(async () => ({ ok: true, batch: null })), // 2b: no prior batch (inert)
+  undoExportBatch: vi.fn(async () => ({ ok: true })), // 2b undo (inert unless asserted)
   rowAwaitsVerdict: () => false, mergeExtensionVerdicts: (p: unknown) => p,
   MAX_PENDING_PARCELS: 40,
   fileToScanBase64: vi.fn(), scanParcel: vi.fn(), saveParcelScan: vi.fn(),

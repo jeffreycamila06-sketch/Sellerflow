@@ -553,28 +553,43 @@ export async function markScansExported(ids: string[]): Promise<{ ok: boolean; b
 
 // 2b — the MOST RECENT export batch from ANY of the seller's devices (sql/49:
 // exported_at is stamped by the DB clock, so phone/laptop batches order correctly).
-// Pre-sql/49 batches have exported_at NULL → never offered. A released claim
-// (cancelled/failed export) clears exported_at → never offered either. Own-scoped.
+// LATEST-ONLY (sql/50): an UNDONE batch leaves a tombstone (rows back to 'confirmed'
+// but keeping their export_batch_id + exported_at), so it stays the newest export
+// event → nothing is offered and undo never cascades to the batch before it. A
+// RELEASED claim (cancelled/failed export) clears both → it is not an export event,
+// the real latest batch stays offered. Pre-sql/49 batches have no exported_at →
+// never offered. Own-scoped.
 export async function loadLastExportBatch(): Promise<{ ok: boolean; batch: { id: string; ids: string[] } | null; error?: string }> {
   if (!isSupabaseConfigured || !supabase) return { ok: false, batch: null, error: "not configured" };
   const me = await uid();
   if (!me) return { ok: false, batch: null, error: "not signed in" };
-  const last = await supabase.from("parcel_scans").select("export_batch_id")
-    .eq("user_id", me).eq("status", "exported").not("exported_at", "is", null).not("export_batch_id", "is", null)
+  const last = await supabase.from("parcel_scans").select("export_batch_id, status")
+    .eq("user_id", me).not("exported_at", "is", null).not("export_batch_id", "is", null)
     .order("exported_at", { ascending: false }).limit(1);
   if (last.error) return { ok: false, batch: null, error: last.error.message };
-  const batchId = last.data?.[0]?.export_batch_id ? String(last.data[0].export_batch_id) : "";
-  if (!batchId) return { ok: true, batch: null };
-  const rows = await supabase.from("parcel_scans").select("id").eq("user_id", me).eq("export_batch_id", batchId);
+  const newest = last.data?.[0] as { export_batch_id?: unknown; status?: unknown } | undefined;
+  if (!newest || newest.status !== "exported") return { ok: true, batch: null }; // none, or the latest was undone
+  const batchId = String(newest.export_batch_id);
+  const rows = await supabase.from("parcel_scans").select("id").eq("user_id", me).eq("export_batch_id", batchId).eq("status", "exported");
   if (rows.error) return { ok: false, batch: null, error: rows.error.message };
   return { ok: true, batch: { id: batchId, ids: (rows.data ?? []).map((r) => String((r as { id: unknown }).id)) } };
 }
 
-// Undo one export run: revert every row of the batch back to 'confirmed' and
-// clear the batch id, so they re-enter the ready list and can be exported
-// again. Own-scoped (RLS + explicit user_id). Existing pre-column exported rows
-// have export_batch_id = NULL → not covered by any batch undo (by design).
-// Also RELEASES a claim whose file was never delivered (cancel/failed share).
+// UNDO (the "Undo last export" button): revert the batch's rows to 'confirmed' so
+// they re-enter the ready list, but KEEP export_batch_id (+ exported_at, sql/50) as
+// the latest-only tombstone. Own-scoped (RLS + explicit user_id).
+export async function undoExportBatch(batchId: string): Promise<{ ok: boolean; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
+  if (!batchId) return { ok: false, error: "no batch" };
+  const me = await uid();
+  if (!me) return { ok: false, error: "not signed in" };
+  const { error } = await supabase.from("parcel_scans").update({ status: "confirmed" }).eq("export_batch_id", batchId).eq("status", "exported").eq("user_id", me);
+  return error ? { ok: false, error: error.message } : { ok: true };
+}
+
+// RELEASE a claim whose file was never delivered (cancelled/failed share, dialog
+// closed): revert the rows to 'confirmed' AND clear the batch id (→ exported_at
+// cleared too), so it leaves no trace — it was never an export. Own-scoped.
 export async function unmarkScansExported(batchId: string): Promise<{ ok: boolean; error?: string }> {
   if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
   if (!batchId) return { ok: false, error: "no batch" };
