@@ -118,6 +118,16 @@ describe("WEB — boxed status tabs + aligned table", () => {
     expect(r.queryByTestId("pt-table")).toBeNull();
   });
 
+  it("tabs render in parcel-flow order with the OpenPoint wording; Waiting stays the default-open tab", async () => {
+    const r = view();
+    await waitFor(() => expect(r.getByTestId("pt-tabs")).toBeTruthy());
+    const ids = Array.from(r.getByTestId("pt-tabs").querySelectorAll("[data-testid^='pt-tab-']")).map((b) => b.getAttribute("data-testid"));
+    expect(ids).toEqual(["pt-tab-all", "pt-tab-transit", "pt-tab-waiting", "pt-tab-picked", "pt-tab-returned"]);
+    expect(r.getByTestId("pt-tab-waiting").textContent).toContain("Buyer waiting for pickup");
+    expect(r.getByTestId("pt-tab-waiting").getAttribute("aria-selected")).toBe("true"); // not first, still default
+    expect(r.getByTestId("pt-tab-transit").getAttribute("aria-selected")).toBe("false");
+  });
+
   it("header keeps Sync from 賣貨便 + Refresh", async () => {
     const r = view();
     await waitFor(() => expect(r.getByTestId("pt-tabs")).toBeTruthy());
@@ -140,6 +150,16 @@ describe("MOBILE — status count cards + compact rows (no parcel code)", () => 
     expect(r.queryByTestId("pt-code")).toBeNull();        // no parcel code on mobile
     expect(r.queryByTestId("pt-table")).toBeNull();
     expect(r.queryByTestId("pt-tabs")).toBeNull();
+  });
+
+  it("cards follow the parcel-flow order; the Waiting card uses the SHORT label, still selected by default", async () => {
+    const r = view();
+    await waitFor(() => expect(r.getByTestId("pt-cards")).toBeTruthy());
+    const ids = Array.from(r.getByTestId("pt-cards").querySelectorAll("[data-testid^='pt-card-']")).map((b) => b.getAttribute("data-testid"));
+    expect(ids).toEqual(["pt-card-transit", "pt-card-waiting", "pt-card-picked", "pt-card-returned"]);
+    expect(r.getByTestId("pt-card-waiting").textContent).toContain("Waiting pickup");
+    expect(r.getByTestId("pt-card-waiting").textContent).not.toContain("Buyer waiting for pickup");
+    expect(r.getByTestId("pt-card-waiting").getAttribute("aria-pressed")).toBe("true");
   });
 
   it("tapping a card selects that status's list", async () => {

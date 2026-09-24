@@ -1484,7 +1484,9 @@ const RAW: Record<string, Row> = {
   rd_pt_urgent: { en: "urgent", fil: "urgent", zh: "紧急", "zh-TW": "緊急", vi: "khẩn", th: "ด่วน", id: "mendesak" },
   // Pickup Status redesign — status tabs (web) / count cards (mobile), table columns, Left cell, action.
   rd_pt_tab_all: { en: "All", fil: "Lahat", zh: "全部", "zh-TW": "全部", vi: "Tất cả", th: "ทั้งหมด", id: "Semua" },
-  rd_pt_tab_waiting: { en: "Waiting", fil: "Naghihintay", zh: "待取货", "zh-TW": "待取件", vi: "Chờ lấy", th: "รอรับ", id: "Menunggu" },
+  rd_pt_tab_waiting: { en: "Buyer waiting for pickup", fil: "Hinihintay kunin ng buyer", zh: "买家待取货", "zh-TW": "買家待取件", vi: "Chờ người mua lấy hàng", th: "รอผู้ซื้อมารับ", id: "Menunggu diambil pembeli" },
+  // Short form of rd_pt_tab_waiting for the tight mobile summary card (same status).
+  rd_pt_card_waiting: { en: "Waiting pickup", fil: "Hinihintay kunin", zh: "待取货", "zh-TW": "待取件", vi: "Chờ lấy hàng", th: "รอรับ", id: "Menunggu diambil" },
   rd_pt_tab_transit: { en: "In transit", fil: "Nasa biyahe", zh: "运送中", "zh-TW": "運送中", vi: "Đang giao", th: "กำลังส่ง", id: "Dalam perjalanan" },
   rd_pt_tab_picked: { en: "Picked up", fil: "Nakuha na", zh: "已取货", "zh-TW": "已取件", vi: "Đã lấy", th: "รับแล้ว", id: "Sudah diambil" },
   rd_pt_tab_returned: { en: "Returned", fil: "Ibinalik", zh: "已退回", "zh-TW": "已退回", vi: "Đã hoàn", th: "ตีกลับแล้ว", id: "Dikembalikan" },

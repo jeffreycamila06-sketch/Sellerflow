@@ -182,7 +182,8 @@ function Cards({ tab, counts, onPick, t }: { tab: PickupTab; counts: Record<Pick
           <button key={x} type="button" aria-pressed={active} onClick={() => onPick(x)} data-testid={`pt-card-${x}`}
             style={{ ...card, margin: 0, padding: "12px 14px", textAlign: "left", cursor: "pointer", border: `2px solid ${active ? "var(--accent)" : "var(--border)"}`, fontFamily: "var(--font-ui)" }}>
             <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1.1, color: numColor(x) }}>{counts[x]}</div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-dim)", marginTop: 4, ...ellipsis }}>{t[TAB_LABEL[x]]}</div>
+            {/* card space is tight → the short "Waiting pickup" label for the same status */}
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-dim)", marginTop: 4, ...ellipsis }}>{x === "waiting" ? t.rd_pt_card_waiting : t[TAB_LABEL[x]]}</div>
           </button>
         );
       })}

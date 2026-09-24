@@ -102,8 +102,8 @@ describe("tabRows / tabCounts", () => {
     expect(w[0].buyerUsername).toBeNull();        // 1 day left → first
     expect(w[1].pickupDeadline).toBe("2026-09-29");
   });
-  it("tab order + status tabs", () => {
-    expect(PICKUP_TABS).toEqual(["all", "waiting", "transit", "picked", "returned"]);
-    expect(PICKUP_STATUS_TABS).toEqual(["waiting", "transit", "picked", "returned"]);
+  it("tab + card order follows the real parcel flow (transit → waiting → picked → returned)", () => {
+    expect(PICKUP_TABS).toEqual(["all", "transit", "waiting", "picked", "returned"]);
+    expect(PICKUP_STATUS_TABS).toEqual(["transit", "waiting", "picked", "returned"]);
   });
 });

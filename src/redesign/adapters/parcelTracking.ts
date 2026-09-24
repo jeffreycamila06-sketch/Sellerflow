@@ -193,8 +193,11 @@ export function groupParcels(rows: ParcelTrackingRow[], today: string): ParcelGr
 // C2C store-pickup parcels only in the 4 status tabs); "all" = EVERY row, including the
 // non-chaseable / not-yet-updated ones groupParcels calls "other", so nothing disappears.
 export type PickupTab = "all" | "waiting" | "transit" | "picked" | "returned";
-export const PICKUP_TABS: PickupTab[] = ["all", "waiting", "transit", "picked", "returned"];
-export const PICKUP_STATUS_TABS: Exclude<PickupTab, "all">[] = ["waiting", "transit", "picked", "returned"];
+// Display order follows the real parcel flow: in transit → buyer waiting for pickup →
+// picked up → returned. (The screen still OPENS on "waiting" — the chase zone — and the
+// "all" list still ranks waiting rows first by urgency; this is only the tab/card order.)
+export const PICKUP_TABS: PickupTab[] = ["all", "transit", "waiting", "picked", "returned"];
+export const PICKUP_STATUS_TABS: Exclude<PickupTab, "all">[] = ["transit", "waiting", "picked", "returned"];
 
 // Which status tab a row belongs to (null = the "other" bucket → "all" only). MIRRORS
 // groupParcels' bucketing exactly (parity-tested).
