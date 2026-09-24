@@ -556,35 +556,78 @@ export async function markScansExported(ids: string[]): Promise<{ ok: boolean; b
 // LATEST-ONLY (sql/50): an UNDONE batch leaves a tombstone (rows back to 'confirmed'
 // but keeping their export_batch_id + exported_at), so it stays the newest export
 // event → nothing is offered and undo never cascades to the batch before it. A
-// RELEASED claim (cancelled/failed export) clears both → it is not an export event,
-// the real latest batch stays offered. Pre-sql/49 batches have no exported_at →
-// never offered. Own-scoped.
+// RELEASED claim (cancelled/failed export) clears both → it is not an export event.
+// DELIVERED-ONLY (sql/51): a newest batch that is still CLAIMED (not confirmed sent —
+// in flight on some device, or an orphan) is not offered here; the orphan card
+// (loadUndeliveredExports) covers it. Pre-sql/49 batches → never offered. Own-scoped.
+// This only decides what to SHOW — undo_export_batch re-decides it in the DB at tap time.
 export async function loadLastExportBatch(): Promise<{ ok: boolean; batch: { id: string; ids: string[] } | null; error?: string }> {
   if (!isSupabaseConfigured || !supabase) return { ok: false, batch: null, error: "not configured" };
   const me = await uid();
   if (!me) return { ok: false, batch: null, error: "not signed in" };
-  const last = await supabase.from("parcel_scans").select("export_batch_id, status")
+  const last = await supabase.from("parcel_scans").select("export_batch_id, status, export_delivered")
     .eq("user_id", me).not("exported_at", "is", null).not("export_batch_id", "is", null)
     .order("exported_at", { ascending: false }).limit(1);
   if (last.error) return { ok: false, batch: null, error: last.error.message };
-  const newest = last.data?.[0] as { export_batch_id?: unknown; status?: unknown } | undefined;
-  if (!newest || newest.status !== "exported") return { ok: true, batch: null }; // none, or the latest was undone
+  const newest = last.data?.[0] as { export_batch_id?: unknown; status?: unknown; export_delivered?: unknown } | undefined;
+  // none / the latest was undone / the latest is not confirmed sent → nothing to undo
+  if (!newest || newest.status !== "exported" || newest.export_delivered === false) return { ok: true, batch: null };
   const batchId = String(newest.export_batch_id);
   const rows = await supabase.from("parcel_scans").select("id").eq("user_id", me).eq("export_batch_id", batchId).eq("status", "exported");
   if (rows.error) return { ok: false, batch: null, error: rows.error.message };
   return { ok: true, batch: { id: batchId, ids: (rows.data ?? []).map((r) => String((r as { id: unknown }).id)) } };
 }
 
-// UNDO (the "Undo last export" button): revert the batch's rows to 'confirmed' so
-// they re-enter the ready list, but KEEP export_batch_id (+ exported_at, sql/50) as
-// the latest-only tombstone. Own-scoped (RLS + explicit user_id).
-export async function undoExportBatch(batchId: string): Promise<{ ok: boolean; error?: string }> {
+// sql/51 — claimed-but-NOT-confirmed-sent batches (in flight on another device, or an
+// ORPHAN: app killed / reload / a release that never reached the DB). Shown in their own
+// card so they never pass for a delivered export. Own-scoped; oldest first.
+export interface UndeliveredExport { batchId: string; ids: string[]; claimedAt: string }
+export async function loadUndeliveredExports(): Promise<{ ok: boolean; batches: UndeliveredExport[]; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) return { ok: false, batches: [], error: "not configured" };
+  const me = await uid();
+  if (!me) return { ok: false, batches: [], error: "not signed in" };
+  const { data, error } = await supabase.from("parcel_scans").select("id, export_batch_id, exported_at")
+    .eq("user_id", me).eq("status", "exported").eq("export_delivered", false).not("export_batch_id", "is", null)
+    .order("exported_at", { ascending: true });
+  if (error) return { ok: false, batches: [], error: error.message };
+  const by = new Map<string, UndeliveredExport>();
+  for (const r of (data ?? []) as { id: unknown; export_batch_id: unknown; exported_at: unknown }[]) {
+    const b = String(r.export_batch_id);
+    const e = by.get(b) ?? { batchId: b, ids: [], claimedAt: String(r.exported_at ?? "") };
+    e.ids.push(String(r.id));
+    by.set(b, e);
+  }
+  return { ok: true, batches: [...by.values()] };
+}
+
+// sql/51 — the file genuinely went out (download ok / share ok, or the seller says
+// "It went out"): CLAIMED → DELIVERED. `n` = rows flipped; n === 0 after a share means
+// another device put the batch back meanwhile → the file must NOT be uploaded.
+export async function confirmExportDelivered(batchId: string): Promise<{ ok: boolean; n: number; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) return { ok: false, n: 0, error: "not configured" };
+  if (!batchId) return { ok: false, n: 0, error: "no batch" };
+  const me = await uid();
+  if (!me) return { ok: false, n: 0, error: "not signed in" };
+  const { data, error } = await supabase.from("parcel_scans").update({ export_delivered: true })
+    .eq("export_batch_id", batchId).eq("status", "exported").eq("user_id", me).select("id");
+  return error ? { ok: false, n: 0, error: error.message } : { ok: true, n: (data ?? []).length };
+}
+
+// UNDO / PUT BACK — decided in the DB at tap time (sql/51 undo_export_batch), never from
+// a possibly-stale screen: 'undone' (delivered latest → ready, sql/50 tombstone) ·
+// 'released' (orphan → ready, no trace) · 'not_latest' · 'in_progress' (claimed within
+// the window — another device may still be sharing) · 'delivered' (orphanOnly: it was
+// confirmed sent meanwhile — Put back never undoes a file that went out) · 'nothing'.
+export type UndoResult = "undone" | "released" | "not_latest" | "in_progress" | "delivered" | "nothing";
+export async function undoExportBatch(batchId: string, orphanOnly = false): Promise<{ ok: boolean; result?: UndoResult; error?: string }> {
   if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
   if (!batchId) return { ok: false, error: "no batch" };
-  const me = await uid();
-  if (!me) return { ok: false, error: "not signed in" };
-  const { error } = await supabase.from("parcel_scans").update({ status: "confirmed" }).eq("export_batch_id", batchId).eq("status", "exported").eq("user_id", me);
-  return error ? { ok: false, error: error.message } : { ok: true };
+  const { data, error } = await supabase.rpc("undo_export_batch", { p_batch: batchId, p_orphan_only: orphanOnly });
+  if (error) return { ok: false, error: error.message };
+  const r = String(data ?? "");
+  return r === "undone" || r === "released" || r === "not_latest" || r === "in_progress" || r === "delivered" || r === "nothing"
+    ? { ok: true, result: r }
+    : { ok: false, error: `unexpected: ${r}` };
 }
 
 // RELEASE a claim whose file was never delivered (cancelled/failed share, dialog
@@ -726,6 +769,8 @@ export async function deleteExportedParcels(): Promise<{ ok: boolean; error?: st
   if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
   const me = await uid();
   if (!me) return { ok: false, error: "not signed in" };
-  const { error } = await supabase.from("parcel_scans").delete().eq("status", "exported").eq("user_id", me);
+  // DELIVERED only (sql/51): a claimed-but-not-confirmed-sent row is never deleted here —
+  // it may be an orphan whose file never went out (the seller must be able to recover it).
+  const { error } = await supabase.from("parcel_scans").delete().eq("status", "exported").eq("export_delivered", true).eq("user_id", me);
   return error ? { ok: false, error: error.message } : { ok: true };
 }

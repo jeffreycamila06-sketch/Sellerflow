@@ -8,7 +8,7 @@ import type { ParcelScanRow } from "../../adapters/parcelScan";
 import { TProvider } from "../../i18n";
 
 const { deliverXlsm, markScansExported, unmarkScansExported, undoExportBatch, loadParcelScans } = vi.hoisted(() => ({
-  undoExportBatch: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
+  undoExportBatch: vi.fn(async () => ({ ok: true, result: "undone" }) as { ok: boolean; result?: string; error?: string }),
   deliverXlsm: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
   markScansExported: vi.fn(async (ids: string[]) => ({ ok: true, batchId: "batch-1", claimed: ids }) as { ok: boolean; batchId?: string; claimed: string[] }),
   unmarkScansExported: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
@@ -19,6 +19,8 @@ const { deliverXlsm, markScansExported, unmarkScansExported, undoExportBatch, lo
 
 vi.mock("../../adapters/parcelScan", () => ({
   loadLastExportBatch: vi.fn(async () => ({ ok: true, batch: null })), // 2b: no prior batch (inert)
+  loadUndeliveredExports: vi.fn(async () => ({ ok: true, batches: [] })), // sql/51: no orphans (inert)
+  confirmExportDelivered: vi.fn(async () => ({ ok: true, n: 1 })), // sql/51: delivery recorded (inert)
   undoExportBatch,
   rowAwaitsVerdict: () => false, mergeExtensionVerdicts: (p: unknown) => p, // live-poll helpers (inert here)
   MAX_PENDING_PARCELS: 40, // batch-cap constant the screen reads on every render (inert here — no test loads >=40 pending)

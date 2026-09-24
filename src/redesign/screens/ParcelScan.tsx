@@ -5,16 +5,16 @@
 // per parcel, and confirmed rows insert into parcel_scans. Per-parcel 7-11
 // encoding + the status queue come in Phase A2 — this screen is scan → confirm
 // → save plus a simple read-on-open list of saved rows (ZERO poll).
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT, tpl } from "../i18n";
 import {
   fileToScanBase64, scanParcel, saveParcelScan, loadParcelScans, formErrors, amountWarns, amountTooHigh, MIN_PARCEL_AMOUNT, MAX_PARCEL_TOTAL, MAX_PENDING_PARCELS,
-  checkEmapStore, saveStoreCheck, scanToXlsRow, splitScansForExport, markScansExported, unmarkScansExported, undoExportBatch, loadLastExportBatch,
+  checkEmapStore, saveStoreCheck, scanToXlsRow, splitScansForExport, markScansExported, unmarkScansExported, undoExportBatch, loadLastExportBatch, loadUndeliveredExports, confirmExportDelivered,
   deleteParcelScan, deleteExportedParcels, updateParcelScan, resetExtensionChecks, getCreditBalance,
   rowAwaitsVerdict, mergeExtensionVerdicts,
-  type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState, type StoreCheckStatus, type ExportReason,
+  type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState, type StoreCheckStatus, type ExportReason, type UndeliveredExport,
 } from "../adapters/parcelScan";
 import { fetchShipTemplate, buildXlsmFromTemplate, deliverXlsm, deliverXlsmMobile, exportFilename } from "../adapters/shippingExport";
 import { loadGlobalShippingFee } from "../adapters/shippingSettings";
@@ -106,6 +106,13 @@ const reasonKey = (r: ExportReason): ReasonKey =>
             : r === "bad_store" ? "rd_ps2_x_bad_store"
               : "rd_ps2_x_bad_amount";
 
+// Orphan card: when the batch was claimed, device-local HH:MM (display only — the DB
+// decides in-progress vs orphan with its own clock).
+const fmtClaimTime = (iso: string): string => {
+  const d = new Date(iso);
+  return Number.isFinite(d.getTime()) ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
+};
+
 // One claimed export run: the fresh list it was split from, the rows THIS device
 // won (the only rows the file may contain), and how many rows the screen showed as
 // ready that another device exported first.
@@ -187,6 +194,17 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // undo. Batches exported before sql/49 have no exported_at and are not covered.
   const [lastExportBatch, setLastExportBatch] = useState<{ id: string; ids: string[] } | null>(null);
   const [undoErr, setUndoErr] = useState("");
+  // sql/51: the DB refused the Undo (a newer export exists / still being exported elsewhere).
+  const [undoMsg, setUndoMsg] = useState<"not_latest" | "in_progress" | null>(null);
+  // sql/51: claimed-but-NOT-confirmed-sent batches (in flight elsewhere, or ORPHANS left by
+  // a killed app / reload / a release that never reached the DB). Their own card, always
+  // shown (even with the phone-export switch off) so they never pass for a delivered export.
+  const [orphans, setOrphans] = useState<UndeliveredExport[]>([]);
+  const [orphanBusy, setOrphanBusy] = useState("");
+  const [orphanMsg, setOrphanMsg] = useState<{ batchId: string; key: "in_progress" | "delivered" | "error"; err?: string } | null>(null);
+  // After a download/share: "put_back" = another device put this batch back while we were
+  // exporting → the file must NOT be uploaded; "unconfirmed" = couldn't record it as sent.
+  const [deliverIssue, setDeliverIssue] = useState<"put_back" | "unconfirmed" | null>(null);
   // Export on the phone: sellers with no laptop/printer MUST export on the phone,
   // upload to 賣貨便 in the phone browser, then print at 7-11 ibon via OPEN POINT.
   // The mobile download uses the Web Share API (deliverXlsm preferShare) — no native
@@ -262,6 +280,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     // 2b: offer Undo for the newest batch even if another device exported it. Never
     // overrides a batch this screen already exported in the meantime.
     loadLastExportBatch().then((r) => { if (aliveRef.current && r.ok && r.batch) { const b = r.batch; setLastExportBatch((prev) => prev ?? b); } });
+    loadUndeliveredExports().then((r) => { if (aliveRef.current && r.ok) setOrphans(r.batches); });
   }, []);
   // Re-read the Saved list from the DB (same read as on open). Used after a
   // Customer Details overlay Import so the new pending parcel appears immediately
@@ -575,14 +594,27 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
       elsewhere: new Set([...shownReady, ...readyIds].filter((id) => !wonIds.has(id) && statusById.get(id) === "exported")).size,
     };
   };
-  // Success tail — rows are already claimed in the DB; reflect it locally (incl. rows
-  // another device exported), summary, enable Undo. Only after a GENUINE deliver.
-  const applyExportSuccess = (c: ExportClaim) => {
+  // Success tail — only after a GENUINE deliver. Rows are already claimed in the DB;
+  // reflect it locally (incl. rows another device exported) + summary, then record the
+  // batch as DELIVERED (sql/51). Undo is offered only once that lands. If it flips 0 rows,
+  // another device put the batch back meanwhile → warn: do NOT upload this file. If it
+  // can't be recorded (offline), the batch stays CLAIMED → shown in the orphan card.
+  const applyExportSuccess = async (c: ExportClaim) => {
     if (!aliveRef.current) return;
     setRows((prev) => prev.map((r) => (c.statusById.get(r.id) === "exported" && r.status !== "exported" ? { ...r, status: "exported" } : r)));
     setExportSummary({ exported: c.won.length, attention: c.attn, elsewhere: c.elsewhere });
-    setLastExportBatch(c.batchId ? { id: c.batchId, ids: c.won.map((r) => r.id) } : null);
-    setUndoErr("");
+    setLastExportBatch(null); setUndoErr(""); setUndoMsg(null); setDeliverIssue(null);
+    if (!c.batchId) return;
+    const d = await confirmExportDelivered(c.batchId);
+    if (!aliveRef.current) return;
+    if (!d.ok) {
+      setDeliverIssue("unconfirmed");
+      const b = c.batchId;
+      setOrphans((prev) => (prev.some((o) => o.batchId === b) ? prev : [...prev, { batchId: b, ids: c.won.map((r) => r.id), claimedAt: new Date().toISOString() }]));
+      return;
+    }
+    if (d.n === 0) { setDeliverIssue("put_back"); reloadSaved(); return; }
+    setLastExportBatch({ id: c.batchId, ids: c.won.map((r) => r.id) });
   };
 
   // DESKTOP export (blob download). Claim → build → deliver — activation doesn't matter here.
@@ -592,11 +624,11 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     let c: ExportClaim | null = null;
     try {
       c = await claimFreshExport();
-      if (c.won.length === 0) { applyExportSuccess(c); return; } // nothing (left) to export
+      if (c.won.length === 0) { await applyExportSuccess(c); return; } // nothing (left) to export
       const bytes = await buildExportBytes(c.won);
       const d = await deliverXlsm(bytes, exportFilename(Date.now()));
       if (!d.ok) { releaseClaim(c.batchId); setExportErr(d.error || "export_failed"); return; }
-      applyExportSuccess(c);
+      await applyExportSuccess(c);
     } catch (e) {
       if (c) releaseClaim(c.batchId);
       setExportErr(e instanceof Error ? e.message : String(e));
@@ -614,7 +646,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     try {
       c = await claimFreshExport();
       if (gen !== exportGenRef.current || !aliveRef.current) { releaseClaim(c.batchId); return; }
-      if (c.won.length === 0) { setConfirm(null); setExportPrep("idle"); applyExportSuccess(c); return; } // another device took them
+      if (c.won.length === 0) { setConfirm(null); setExportPrep("idle"); void applyExportSuccess(c); return; } // another device took them
       const bytes = await buildExportBytes(c.won);
       if (gen !== exportGenRef.current || !aliveRef.current) { releaseClaim(c.batchId); return; }
       exportPrepRef.current = { ...c, bytes };
@@ -646,7 +678,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     setExportErr(""); setMobileExportFail(false);
     const share = deliverXlsmMobile(p.bytes, exportFilename(Date.now())); // share() fires NOW, in the gesture
     exportPrepRef.current = null; // consumed — closing the dialog must not release it
-    setConfirm(null); setExportBusy(true); setExportSummary(null);
+    setConfirm(null); setExportBusy(true); setExportSummary(null); setDeliverIssue(null);
     void share.then((d) => {
       if (d.ok) return applyExportSuccess(p);
       releaseClaim(p.batchId);
@@ -657,7 +689,9 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   };
 
   // ── Deletes (Change 3) — awaited, confirmed, prune only on success ──────────
-  const exportedCount = rows.filter((r) => r.status === "exported").length;
+  // "Clear exported" deletes DELIVERED rows only (sql/51) — never an orphan/claimed one.
+  const orphanIds = new Set(orphans.flatMap((o) => o.ids));
+  const exportedCount = rows.filter((r) => r.status === "exported" && !orphanIds.has(r.id)).length;
   const doDelete = async () => {
     if (!confirm || deleting) return;
     setDeleting(true); setDeleteErr("");
@@ -671,7 +705,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
       const r = await deleteExportedParcels();
       setDeleting(false);
       if (!r.ok) { setDeleteErr(r.error || "delete_failed"); return; }
-      if (aliveRef.current) { setRows((prev) => prev.filter((x) => x.status !== "exported")); setConfirm(null); }
+      if (aliveRef.current) { setRows((prev) => prev.filter((x) => x.status !== "exported" || orphanIds.has(x.id))); setConfirm(null); }
     }
   };
   const askDelete = (c: { kind: "row"; id: string } | { kind: "exported" }) => { setDeleteErr(""); setConfirm(c); };
@@ -706,19 +740,59 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
 
   // FIX 5 — undo the last export run: revert its rows to 'confirmed' (DB +
   // local), returning them to the ready list. Confirmed via the same dialog.
-  const askUndo = () => { setUndoErr(""); setDeleteErr(""); setConfirm({ kind: "undo" }); };
+  // The DB decides at tap time (sql/51 undo_export_batch) — never this screen's possibly
+  // stale idea of "latest": a newer export elsewhere → 'not_latest', rows untouched.
+  const askUndo = () => { setUndoErr(""); setUndoMsg(null); setDeleteErr(""); setConfirm({ kind: "undo" }); };
   const doUndo = async () => {
     if (!lastExportBatch) { setConfirm(null); return; }
     const batch = lastExportBatch;
     setConfirm(null);
     const r = await undoExportBatch(batch.id); // leaves the latest-only tombstone (no cascade)
     if (!r.ok) { setUndoErr(r.error || "undo_failed"); return; }
-    if (aliveRef.current) {
+    if (!aliveRef.current) return;
+    setLastExportBatch(null);
+    if (r.result === "undone" || r.result === "released") {
       setRows((prev) => prev.map((x) => (batch.ids.includes(x.id) ? { ...x, status: "confirmed" } : x)));
-      setLastExportBatch(null);
       setExportSummary(null); // the "exported N" summary is now stale
+    } else if (r.result === "not_latest" || r.result === "in_progress") {
+      setUndoMsg(r.result);
+      loadLastExportBatch().then((l) => { if (aliveRef.current && l.ok) setLastExportBatch(l.batch); }); // offer the REAL latest, if any
+    } else {
+      reloadSaved(); // 'nothing' / 'delivered' — already changed elsewhere; show the truth
     }
   };
+
+  // Orphan card actions. Put back = release ONLY a still-undelivered batch (orphanOnly:
+  // if it was confirmed sent meanwhile the DB refuses with 'delivered'); the DB also
+  // refuses while it's younger than the window ('in_progress' — maybe still sharing).
+  const putBackOrphan = async (o: UndeliveredExport) => {
+    if (orphanBusy) return;
+    setOrphanBusy(o.batchId); setOrphanMsg(null);
+    const r = await undoExportBatch(o.batchId, true);
+    if (!aliveRef.current) return;
+    setOrphanBusy("");
+    if (!r.ok) { setOrphanMsg({ batchId: o.batchId, key: "error", err: r.error }); return; }
+    if (r.result === "in_progress") { setOrphanMsg({ batchId: o.batchId, key: "in_progress" }); return; }
+    setOrphans((prev) => prev.filter((x) => x.batchId !== o.batchId));
+    if (r.result === "delivered") setOrphanMsg({ batchId: o.batchId, key: "delivered" });
+    reloadSaved();
+  };
+  // "It went out" — the seller checked 賣貨便: record the batch as delivered.
+  const markOrphanSent = async (o: UndeliveredExport) => {
+    if (orphanBusy) return;
+    setOrphanBusy(o.batchId); setOrphanMsg(null);
+    const d = await confirmExportDelivered(o.batchId);
+    if (!aliveRef.current) return;
+    setOrphanBusy("");
+    if (!d.ok) { setOrphanMsg({ batchId: o.batchId, key: "error", err: d.error }); return; }
+    setOrphans((prev) => prev.filter((x) => x.batchId !== o.batchId));
+    if (deliverIssue === "unconfirmed") setDeliverIssue(null);
+    loadLastExportBatch().then((l) => { if (aliveRef.current && l.ok) setLastExportBatch(l.batch); });
+  };
+  // Row buttons resolve their batch via data-batch (keeps the handlers out of the render map).
+  const orphanOf = (e: MouseEvent<HTMLButtonElement>) => orphans.find((x) => x.batchId === e.currentTarget.dataset.batch);
+  const onPutBackClick = (e: MouseEvent<HTMLButtonElement>) => { const o = orphanOf(e); if (o) void putBackOrphan(o); };
+  const onSentClick = (e: MouseEvent<HTMLButtonElement>) => { const o = orphanOf(e); if (o) void markOrphanSent(o); };
 
   // ── Manual encode — open the shared confirm form BLANK, no camera/scan ──────
   const openManual = () => {
@@ -1103,6 +1177,22 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
             </button>
           </div>
         )}
+        {orphans.length > 0 && (
+        <div style={{ ...card, border: "1px solid var(--warn, #d97706)", background: "var(--warn-soft, rgba(217,119,6,.08))" }} data-testid="ps-orphan-card">
+          <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 8, lineHeight: 1.5 }}>{t.rd_ps2_orphan_hint}</div>
+          {orphans.map((o) => (
+            <div key={o.batchId} style={{ marginTop: 8 }} data-testid="ps-orphan-row">
+              <div style={{ fontSize: 12.5, fontWeight: 800, lineHeight: 1.45 }}>⚠ {tpl(t.rd_ps2_orphan_title, { n: String(o.ids.length), time: fmtClaimTime(o.claimedAt) })}</div>
+              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <button data-batch={o.batchId} onClick={onPutBackClick} disabled={!!orphanBusy} style={{ flex: 1, padding: "9px 10px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 12.5, cursor: orphanBusy ? "default" : "pointer" }} data-testid="ps-orphan-putback">↩ {t.rd_ps2_orphan_putback}</button>
+                <button data-batch={o.batchId} onClick={onSentClick} disabled={!!orphanBusy} style={{ flex: 1, padding: "9px 10px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontWeight: 700, fontSize: 12.5, cursor: orphanBusy ? "default" : "pointer" }} data-testid="ps-orphan-sent">✓ {t.rd_ps2_orphan_sent}</button>
+              </div>
+              {orphanMsg?.batchId === o.batchId && <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", marginTop: 6, lineHeight: 1.5 }} data-testid="ps-orphan-msg">{orphanMsg.key === "in_progress" ? t.rd_ps2_in_progress : <>{t.rd_ps2_undo_failed} <span style={{ fontFamily: mono }}>{orphanMsg.err}</span></>}</div>}
+            </div>
+          ))}
+        </div>
+        )}
+        {orphanMsg?.key === "delivered" && <div style={{ ...card, fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)" }} data-testid="ps-orphan-delivered">{t.rd_ps2_orphan_delivered}</div>}
         {exportHidden ? null : (
         <div style={card} data-testid="ps-export-card">
           <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 6 }}>{t.rd_ps2_x_title}</div>
@@ -1123,6 +1213,9 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
             <button onClick={askUndo} style={{ width: "100%", marginTop: 8, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontWeight: 700, fontSize: 13, cursor: "pointer" }} data-testid="ps-undo-btn">↩ {tpl(t.rd_ps2_undo_btn, { n: String(lastExportBatch.ids.length) })}</button>
           )}
           {undoErr && <div style={{ ...errTxt, marginTop: 8 }} data-testid="ps-undo-err">{t.rd_ps2_undo_failed} <span style={{ fontFamily: mono }}>{undoErr}</span></div>}
+          {undoMsg && <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-dim)", marginTop: 8, lineHeight: 1.5 }} data-testid="ps-undo-refused">{undoMsg === "not_latest" ? t.rd_ps2_undo_not_latest : t.rd_ps2_in_progress}</div>}
+          {deliverIssue === "put_back" && <div style={{ fontSize: 12, fontWeight: 800, color: "#fff", background: "var(--danger)", borderRadius: 10, padding: "10px 12px", marginTop: 8, lineHeight: 1.5 }} data-testid="ps-put-back-warn">⛔ {t.rd_ps2_put_back_warn}</div>}
+          {deliverIssue === "unconfirmed" && <div style={{ fontSize: 11.5, fontWeight: 700, color: "var(--warn, #b45309)", marginTop: 8, lineHeight: 1.5 }} data-testid="ps-unconfirmed">{t.rd_ps2_unconfirmed}</div>}
           {exportSummary && (
             <div style={{ marginTop: 10 }} data-testid="ps-export-summary">
               <div style={{ fontSize: 12, fontWeight: 800, color: exportSummary.exported > 0 ? "var(--ok, #16a34a)" : "var(--text-dim)" }}>

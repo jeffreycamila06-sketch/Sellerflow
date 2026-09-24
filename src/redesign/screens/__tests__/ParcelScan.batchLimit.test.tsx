@@ -28,6 +28,8 @@ vi.mock("../../adapters/parcelScan", async (importOriginal) => {
     loadParcelScans: vi.fn(async () => ({ ok: true, rows: loadRows.current })),
     checkEmapStore: vi.fn(async () => ({ status: "valid" as const })), saveStoreCheck: vi.fn(async () => ({ ok: true })),
     scanToXlsRow: vi.fn(() => ({})), markScansExported, unmarkScansExported: vi.fn(),
+    confirmExportDelivered: vi.fn(async () => ({ ok: true, n: 1 })), loadUndeliveredExports: vi.fn(async () => ({ ok: true, batches: [] })),
+    loadLastExportBatch: vi.fn(async () => ({ ok: true, batch: null })),
     deleteParcelScan, deleteExportedParcels: vi.fn(),
     updateParcelScan,
     getCreditBalance: vi.fn(async () => ({ ok: true, balance: 99 })),

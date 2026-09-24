@@ -73,8 +73,10 @@ describe("deleteExportedParcels() — only status='exported', own-scoped", () =>
     expect(deleteOps).toHaveLength(1);
     expect(deleteOps[0].filters).toContainEqual(["status", "exported"]);
     expect(deleteOps[0].filters).toContainEqual(["user_id", "u1"]);
-    // never an unfiltered wipe: exactly the two scoping filters
-    expect(deleteOps[0].filters).toHaveLength(2);
+    // sql/51: DELIVERED rows only — an orphan (claimed, file never confirmed sent) is never deleted
+    expect(deleteOps[0].filters).toContainEqual(["export_delivered", true]);
+    // never an unfiltered wipe: exactly the three scoping filters
+    expect(deleteOps[0].filters).toHaveLength(3);
   });
 
   it("a DB error is surfaced (ok:false), never a silent no-op", async () => {

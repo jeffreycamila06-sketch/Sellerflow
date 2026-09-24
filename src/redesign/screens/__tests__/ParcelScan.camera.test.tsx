@@ -13,7 +13,9 @@ const { getCreditBalance } = vi.hoisted(() => ({
 
 vi.mock("../../adapters/parcelScan", () => ({
   loadLastExportBatch: vi.fn(async () => ({ ok: true, batch: null })), // 2b: no prior batch (inert)
-  undoExportBatch: vi.fn(async () => ({ ok: true })), // 2b undo (inert unless asserted)
+  loadUndeliveredExports: vi.fn(async () => ({ ok: true, batches: [] })), // sql/51: no orphans (inert)
+  confirmExportDelivered: vi.fn(async () => ({ ok: true, n: 1 })), // sql/51: delivery recorded (inert)
+  undoExportBatch: vi.fn(async () => ({ ok: true, result: "undone" })), // 2b undo (inert unless asserted)
   rowAwaitsVerdict: () => false, mergeExtensionVerdicts: (p: unknown) => p, // live-poll helpers (inert here)
   MAX_PENDING_PARCELS: 40, // batch-cap constant the screen reads on every render (inert here — no test loads >=40 pending)
   fileToScanBase64: vi.fn(async () => ({ base64: "aGk=", mediaType: "image/jpeg" })),
