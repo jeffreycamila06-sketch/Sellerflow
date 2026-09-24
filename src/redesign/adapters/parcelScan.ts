@@ -551,6 +551,25 @@ export async function markScansExported(ids: string[]): Promise<{ ok: boolean; b
   return { ok: true, batchId, claimed: (data ?? []).map((r) => String((r as { id: unknown }).id)) };
 }
 
+// 2b — the MOST RECENT export batch from ANY of the seller's devices (sql/49:
+// exported_at is stamped by the DB clock, so phone/laptop batches order correctly).
+// Pre-sql/49 batches have exported_at NULL → never offered. A released claim
+// (cancelled/failed export) clears exported_at → never offered either. Own-scoped.
+export async function loadLastExportBatch(): Promise<{ ok: boolean; batch: { id: string; ids: string[] } | null; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) return { ok: false, batch: null, error: "not configured" };
+  const me = await uid();
+  if (!me) return { ok: false, batch: null, error: "not signed in" };
+  const last = await supabase.from("parcel_scans").select("export_batch_id")
+    .eq("user_id", me).eq("status", "exported").not("exported_at", "is", null).not("export_batch_id", "is", null)
+    .order("exported_at", { ascending: false }).limit(1);
+  if (last.error) return { ok: false, batch: null, error: last.error.message };
+  const batchId = last.data?.[0]?.export_batch_id ? String(last.data[0].export_batch_id) : "";
+  if (!batchId) return { ok: true, batch: null };
+  const rows = await supabase.from("parcel_scans").select("id").eq("user_id", me).eq("export_batch_id", batchId);
+  if (rows.error) return { ok: false, batch: null, error: rows.error.message };
+  return { ok: true, batch: { id: batchId, ids: (rows.data ?? []).map((r) => String((r as { id: unknown }).id)) } };
+}
+
 // Undo one export run: revert every row of the batch back to 'confirmed' and
 // clear the batch id, so they re-enter the ready list and can be exported
 // again. Own-scoped (RLS + explicit user_id). Existing pre-column exported rows

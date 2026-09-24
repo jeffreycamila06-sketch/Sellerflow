@@ -11,7 +11,7 @@ import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT, tpl } from "../i18n";
 import {
   fileToScanBase64, scanParcel, saveParcelScan, loadParcelScans, formErrors, amountWarns, amountTooHigh, MIN_PARCEL_AMOUNT, MAX_PARCEL_TOTAL, MAX_PENDING_PARCELS,
-  checkEmapStore, saveStoreCheck, scanToXlsRow, splitScansForExport, markScansExported, unmarkScansExported,
+  checkEmapStore, saveStoreCheck, scanToXlsRow, splitScansForExport, markScansExported, unmarkScansExported, loadLastExportBatch,
   deleteParcelScan, deleteExportedParcels, updateParcelScan, resetExtensionChecks, getCreditBalance,
   rowAwaitsVerdict, mergeExtensionVerdicts,
   type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState, type StoreCheckStatus, type ExportReason,
@@ -180,11 +180,11 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // Delete (Change 3): a pending confirmation + await/error state. Never fires
   // a delete without the confirm; a failed delete surfaces inline, no silent no-op.
   const [confirm, setConfirm] = useState<{ kind: "row"; id: string } | { kind: "recheck"; id: string } | { kind: "exported" } | { kind: "export" } | { kind: "undo" } | { kind: "enablephone" } | null>(null);
-  // FIX 5 — the most recent export run (batch id + the row ids it exported), so
-  // an accidental export can be undone (rows → 'confirmed', back in the ready
-  // list). Session-only: cleared on undo or another export; not restored across
-  // reload (an "oops" affordance, not history). Pre-column exported rows have a
-  // NULL batch id and are not covered — by design.
+  // FIX 5 / 2b — the most recent export run (batch id + the row ids it exported), so
+  // an accidental export can be undone (rows → 'confirmed', back in the ready list).
+  // Loaded on screen open from ANY device (loadLastExportBatch, newest by the DB-
+  // stamped exported_at, sql/49), replaced by this device's next export, cleared on
+  // undo. Batches exported before sql/49 have no exported_at and are not covered.
   const [lastExportBatch, setLastExportBatch] = useState<{ id: string; ids: string[] } | null>(null);
   const [undoErr, setUndoErr] = useState("");
   // Export on the phone: sellers with no laptop/printer MUST export on the phone,
@@ -259,6 +259,9 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   }, []);
   useEffect(() => {
     loadParcelScans().then((r) => { if (aliveRef.current) { if (r.ok) setRows(r.rows); setListLoaded(true); } });
+    // 2b: offer Undo for the newest batch even if another device exported it. Never
+    // overrides a batch this screen already exported in the meantime.
+    loadLastExportBatch().then((r) => { if (aliveRef.current && r.ok && r.batch) { const b = r.batch; setLastExportBatch((prev) => prev ?? b); } });
   }, []);
   // Re-read the Saved list from the DB (same read as on open). Used after a
   // Customer Details overlay Import so the new pending parcel appears immediately

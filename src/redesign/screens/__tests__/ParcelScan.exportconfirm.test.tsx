@@ -17,6 +17,7 @@ const { deliverXlsm, markScansExported, unmarkScansExported, loadParcelScans } =
 }));
 
 vi.mock("../../adapters/parcelScan", () => ({
+  loadLastExportBatch: vi.fn(async () => ({ ok: true, batch: null })), // 2b: no prior batch (inert)
   rowAwaitsVerdict: () => false, mergeExtensionVerdicts: (p: unknown) => p, // live-poll helpers (inert here)
   MAX_PENDING_PARCELS: 40, // batch-cap constant the screen reads on every render (inert here — no test loads >=40 pending)
   fileToScanBase64: vi.fn(), scanParcel: vi.fn(), saveParcelScan: vi.fn(),

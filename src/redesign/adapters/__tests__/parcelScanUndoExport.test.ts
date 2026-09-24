@@ -5,7 +5,9 @@
 // supabase mock mirrors .update().in().eq() / .update().eq().eq() then-ables.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const { updateResult, getSession, updateOps } = vi.hoisted(() => ({
+const { updateResult, getSession, updateOps, selectOps, selectResults } = vi.hoisted(() => ({
+  selectOps: [] as { cols: string; calls: [string, ...unknown[]][] }[],
+  selectResults: [] as { data: unknown[] | null; error: null | { message: string } }[],
   updateResult: { current: { error: null as null | { message: string }, data: null as null | { id: string }[] } },
   getSession: vi.fn(async () => ({ data: { session: { user: { id: "u1" } } } })),
   updateOps: [] as { payload: Record<string, unknown>; filters: [string, unknown][]; ins: [string, unknown[]][]; neqs: [string, unknown][]; select: string | null }[],
@@ -34,15 +36,26 @@ vi.mock("../../../supabase", () => {
     isSupabaseConfigured: true,
     supabase: {
       auth: { getSession: () => getSession() },
-      from: () => ({ update: (payload: Record<string, unknown>) => makeChain(payload) }),
+      from: () => ({
+        update: (payload: Record<string, unknown>) => makeChain(payload),
+        select: (cols: string) => {
+          const op = { cols, calls: [] as [string, ...unknown[]][] };
+          selectOps.push(op);
+          const res = selectResults.shift() ?? { data: [], error: null };
+          const q: Record<string, unknown> = {};
+          for (const m of ["eq", "not", "order", "limit"]) q[m] = (...a: unknown[]) => { op.calls.push([m, ...a]); return q; };
+          q.then = (ok: (r: unknown) => unknown, bad?: (e: unknown) => unknown) => Promise.resolve(res).then(ok, bad);
+          return q;
+        },
+      }),
     },
   };
 });
 vi.mock("../serverIdentity", () => ({ SERVER: "https://srv.test" }));
 
-import { markScansExported, unmarkScansExported } from "../parcelScan";
+import { markScansExported, unmarkScansExported, loadLastExportBatch } from "../parcelScan";
 
-beforeEach(() => { updateResult.current = { error: null, data: null }; updateOps.length = 0; getSession.mockClear(); });
+beforeEach(() => { updateResult.current = { error: null, data: null }; updateOps.length = 0; selectOps.length = 0; selectResults.length = 0; getSession.mockClear(); });
 
 describe("markScansExported — stamps status + a fresh batch id", () => {
   it("sets status='exported' AND a uuid export_batch_id, scoped by id-in + user_id; returns that id", async () => {
@@ -106,5 +119,35 @@ describe("unmarkScansExported — reverts a whole batch, own-scoped", () => {
     const r = await unmarkScansExported("batch-1");
     expect(r.ok).toBe(false);
     expect(r.error).toBe("nope");
+  });
+});
+
+describe("loadLastExportBatch (2b) — newest batch from ANY device, by the DB-stamped exported_at", () => {
+  it("picks the newest stamped exported row (own-scoped), then returns every row id of that batch", async () => {
+    selectResults.push({ data: [{ export_batch_id: "b-new" }], error: null }, { data: [{ id: "r1" }, { id: "r2" }], error: null });
+    const r = await loadLastExportBatch();
+    expect(r).toEqual({ ok: true, batch: { id: "b-new", ids: ["r1", "r2"] } });
+    const q = selectOps[0].calls;
+    expect(q).toContainEqual(["eq", "user_id", "u1"]);
+    expect(q).toContainEqual(["eq", "status", "exported"]);
+    expect(q).toContainEqual(["not", "exported_at", "is", null]);        // pre-sql/49 / released batches never offered
+    expect(q).toContainEqual(["not", "export_batch_id", "is", null]);
+    expect(q).toContainEqual(["order", "exported_at", { ascending: false }]);
+    expect(q).toContainEqual(["limit", 1]);
+    expect(selectOps[1].calls).toContainEqual(["eq", "export_batch_id", "b-new"]);
+    expect(selectOps[1].calls).toContainEqual(["eq", "user_id", "u1"]);
+  });
+
+  it("no stamped batch → { ok:true, batch:null }, no second query", async () => {
+    selectResults.push({ data: [], error: null });
+    expect(await loadLastExportBatch()).toEqual({ ok: true, batch: null });
+    expect(selectOps).toHaveLength(1);
+  });
+
+  it("DB error → ok:false, batch:null", async () => {
+    selectResults.push({ data: null, error: { message: "x" } });
+    const r = await loadLastExportBatch();
+    expect(r.ok).toBe(false);
+    expect(r.batch).toBeNull();
   });
 });

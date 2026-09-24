@@ -17,6 +17,7 @@ const { loadRows, resetExtensionChecks, updateParcelScan } = vi.hoisted(() => ({
 }));
 
 vi.mock("../../adapters/parcelScan", () => ({
+  loadLastExportBatch: vi.fn(async () => ({ ok: true, batch: null })), // 2b: no prior batch (inert)
   fileToScanBase64: vi.fn(), scanParcel: vi.fn(), saveParcelScan: vi.fn(),
   loadParcelScans: vi.fn(async () => ({ ok: true, rows: loadRows.current })),
   checkEmapStore: vi.fn(async () => ({ status: "valid" as const })), saveStoreCheck: vi.fn(async () => ({ ok: true })),
