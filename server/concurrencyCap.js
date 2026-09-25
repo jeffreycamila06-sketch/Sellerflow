@@ -27,12 +27,15 @@ export function isFreshEntry(lastEventAt, nowMs) {
 // The concurrency cap for this seller. null = NO cap:
 //   • admin  → unlimited (owner tests multiple accounts) — mirrors accountCapVerdict.
 //   • unknown/empty plan → fail-open (checkPlanActive fail-opened on a DB error and
-//     attached no plan; capping to maxAccountsForPlan(undefined)=1 would FALSE-BLOCK a
-//     Pro/Master seller during a hiccup — so we do NOT cap when the plan is unknown).
+//     attached no plan → H2: capped at 1 (Basic-level), not unlimited — see below.
 export function concurrencyCap(plan, role) {
   if (String(role == null ? "" : role).trim().toLowerCase() === "admin") return null;
   const p = String(plan == null ? "" : plan).trim().toLowerCase();
-  if (!p) return null;
+  // H2 (security audit 2026-09-26) — an unknown/empty plan is capped at the MOST
+  // RESTRICTIVE tier (maxAccountsForPlan("") = 1), never unlimited. Since the plan
+  // check now hard-denies missing profiles, an empty plan here can only mean the
+  // genuine-DB-error fail-open upstream: a paying seller in an outage still gets
+  // ONE live (Basic-level) instead of a lockout — and nothing ever gets unlimited.
   return maxAccountsForPlan(p);
 }
 

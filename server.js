@@ -235,8 +235,16 @@ async function checkPlanActive(email, authUserId, token) {
       return { allowed: true };
     }
     if (!data) {
-      console.log(`[PLAN_CHECK] ERROR ${ctx} err=no_profile_row -> FAIL-OPEN (allowing)`);
-      return { allowed: true };
+      // H2 (security audit 2026-09-26) — a CLEAN "no row" is a HARD DENY, not an
+      // infra failure: an auth.users account created via bare supabase.auth.signUp
+      // (never finishing signup in the app) used to fail open here with NO plan →
+      // no free-tier cap, no account cap, no concurrency cap = unlimited free
+      // lives burning the shared Euler quota. Genuine DB/RLS errors above and
+      // below still FAIL OPEN so an outage never locks out paying sellers; the
+      // legit signup flow creates the profile row (awaited) before the socket or
+      // any Connect tap exists, so a real seller never lands here.
+      console.log(`[PLAN_CHECK] BLOCK ${ctx} reason=no_profile`);
+      return { allowed: false, reason: "no_profile" };
     }
 
     const plan = String(data.plan || "");
@@ -277,6 +285,15 @@ async function checkPlanActive(email, authUserId, token) {
 async function requirePlanActive(req, res, next) {
   const result = await checkPlanActive(req.userEmail, req.authUserId, req.authToken);
   if (!result.allowed) {
+    // H2 — distinguish "account setup incomplete" from a real expiry so the
+    // seller-facing toast says the right thing.
+    if (result.reason === "no_profile") {
+      return res.status(403).json({
+        success: false,
+        error: "no_profile",
+        message: "Your account setup is incomplete — open the SellerFlow app and finish signup, then try again.",
+      });
+    }
     return res.status(403).json({
       success: false,
       error: "plan_expired",
@@ -615,7 +632,8 @@ io.use(async (socket, next) => {
   // even from a connection that was alive before they expired.
   const planResult = await checkPlanActive(user.email, user.id, token);
   if (!planResult.allowed) {
-    return next(new Error("plan_expired"));
+    // H2 — no_profile is denied here too (no socket, no room, no relayed comments).
+    return next(new Error(planResult.reason === "no_profile" ? "no_profile" : "plan_expired"));
   }
   next();
 });
