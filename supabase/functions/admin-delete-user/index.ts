@@ -171,7 +171,10 @@ async function hardWipe(admin: any, uid: string, email: string): Promise<Record<
   if (ann.error) throw new Error(`announcements clear failed: ${ann.error.message}`);
   wiped.announcements_cleared = ann.data?.length ?? 0;
   // 3. support_messages — email-keyed, no FK, no cascade → part of the wipe. Idempotent.
-  const sm = await admin.from("support_messages").delete().ilike("email", email).select("id");
+  // M6 (security audit 2026-09-26): EXACT match, not ilike — in ilike, _ and % are
+  // wildcards, so john_doe@x.com's wipe also deleted johnXdoe@x.com's messages.
+  // Emails are lowercased at both call sites and stored lowercase (DB-verified).
+  const sm = await admin.from("support_messages").delete().eq("email", email).select("id");
   if (sm.error) throw new Error(`support_messages delete failed: ${sm.error.message}`);
   wiped.support_messages = sm.data?.length ?? 0;
   // 4. the auth account — CASCADE wipes every CASCADE_TABLES row above. Idempotent + retried.
@@ -290,8 +293,12 @@ Deno.serve(async (req: Request) => {
     if (!email) return json({ success: false, error: "email_required" }, 400);
 
     // Resolve target from seller_profiles (auth_user_id + role + plan for the guards).
+    // M6 (security audit 2026-09-26): EXACT match, not ilike — a typo'd email with a
+    // _ wildcard could resolve to a DIFFERENT seller and wipe them (the typed-email
+    // confirmation compares against what was TYPED, not what matched). A miss now
+    // cleanly returns not_found. Input is lowercased above; storage is lowercase.
     const { data: prof, error: profErr } = await admin
-      .from("seller_profiles").select("auth_user_id, role, plan").ilike("email", email).maybeSingle();
+      .from("seller_profiles").select("auth_user_id, role, plan").eq("email", email).maybeSingle();
     if (profErr) throw new Error(`profile lookup failed: ${profErr.message}`);
     const target: DeleteTarget = {
       authUserId: prof?.auth_user_id ?? null, email, role: prof?.role ?? null, plan: prof?.plan ?? null,
@@ -312,6 +319,15 @@ Deno.serve(async (req: Request) => {
     } catch { /* audit is best-effort; the wipe already happened */ }
     return json({ success: true, mode: "user", deleted: wiped });
   } catch (e) {
-    return json({ success: false, error: e instanceof Error ? e.message : "delete_failed" }, 500);
+    // M6 (security audit 2026-09-26): the SELF path is reachable by ANY authenticated
+    // seller — an unexpected 500 must not hand them raw server internals (the auth-
+    // server retry throw carries a status + up to 800 chars of response body; the
+    // client's SAFE_DELETE_CODES gate only filters the UI, not the network response).
+    // Full details go to the function logs ONLY. ADMIN modes keep the full message on
+    // purpose — the 2026-07-24 rule: admin-only paths surface the real error.
+    const detail = e instanceof Error ? e.message : String(e);
+    console.error(`[admin-delete-user] mode=${mode} failed:`, detail);
+    if (mode === "self") return json({ success: false, error: "delete_failed" }, 500);
+    return json({ success: false, error: detail }, 500);
   }
 });
