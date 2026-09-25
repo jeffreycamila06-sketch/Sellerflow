@@ -286,8 +286,9 @@ export async function adminUpdatePlan(
 }
 
 // Admin-only: set the freeform contact note (e.g. "FB: Lhey Ukay") on a seller
-// row. Mirrors adminUpdatePlan's pattern — the DB trigger keeps regular sellers
-// from writing this column even if they construct the same UPDATE. Saving an
+// row. Mirrors adminUpdatePlan's pattern — since sql/52 (M2, 2026-09-26) the DB
+// trigger genuinely reverts admin_contact_note (and trial_started_at) for
+// non-admins, so a seller constructing the same UPDATE writes nothing. Saving an
 // empty string is allowed (clears the note).
 export async function adminUpdateContactNote(email: string, note: string): Promise<void> {
   if (!isSupabaseConfigured || !supabase) return;

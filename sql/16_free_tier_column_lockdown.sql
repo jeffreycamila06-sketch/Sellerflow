@@ -41,7 +41,9 @@
 -- plan / role / plan_status / plan_expiry / trial_started_at ARE granted because
 -- ADMINS update them through the same `authenticated` role (there is no separate
 -- admin DB role); the seller_profiles_on_update trigger reverts them for
--- non-admins, so granting the column is safe.
+-- non-admins, so granting the column is safe. ⚠️ trial_started_at and
+-- admin_contact_note were NOT in the trigger's revert list until sql/52
+-- (M2, 2026-09-26) — they are now.
 --
 -- WHY ENFORCEMENT STILL WORKS (verified): every function that WRITES the free-tier
 -- columns is SECURITY DEFINER owned by postgres — check_and_increment_free_order,
