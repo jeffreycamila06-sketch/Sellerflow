@@ -11,9 +11,10 @@ describe("normalizeLang — redesign picker code → production Lang", () => {
     expect(normalizeLang("ZH-TW")).toBe("zh-TW");
     expect(normalizeLang(" zh-tw ")).toBe("zh-TW");
   });
-  it("passes the other 6 languages through", () => {
-    for (const c of ["en", "fil", "zh", "vi", "th", "id"]) expect(normalizeLang(c)).toBe(c);
+  it("passes the other 7 languages through (incl. the redesign-only bg)", () => {
+    for (const c of ["en", "fil", "zh", "vi", "th", "id", "bg"]) expect(normalizeLang(c)).toBe(c);
     expect(normalizeLang("EN")).toBe("en");
+    expect(normalizeLang("BG")).toBe("bg");
   });
   it("falls back to en for unknown/empty", () => {
     expect(normalizeLang("")).toBe("en");
