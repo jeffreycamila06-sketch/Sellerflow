@@ -1221,7 +1221,32 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
   // chatMessage.user.uniqueId, chatMessage.content), action (pin/unpin enum —
   // UNVERIFIED, the probe's main quarry), pinTime, pinId, operator.
   let pinProbeConnected = false;
+  // [PIN-PROBE-DIAG] (2026-09-26, TEMPORARY, log-only) — the Phase-1 probe saw
+  // ZERO [PIN-PROBE] lines in a real pinned-comment live test. This counter
+  // distinguishes (a) decodedData never fires vs (b) it fires but
+  // WebcastRoomPinMessage never arrives, and shows the ACTUAL type strings on
+  // the wire (the pin may travel under a different name; the legacy wrapper
+  // emits decodedData even for UNDECODED types, so those show up too). At most
+  // one bounded line per 60s per connection, piggybacked on message arrival —
+  // no timer to leak. Remove after review (Phase-0 probe / PARCEL-DBG precedent).
+  const pinDiag = { counts: new Map(), lastLogAt: Date.now(), startedAt: Date.now() };
   tiktokConnection.on("decodedData", (msgType, obj) => {
+    try {
+      const t = String(msgType || "unknown");
+      if (pinDiag.counts.has(t) || pinDiag.counts.size < 50) {
+        pinDiag.counts.set(t, (pinDiag.counts.get(t) || 0) + 1);
+      } else {
+        pinDiag.counts.set("__other__", (pinDiag.counts.get("__other__") || 0) + 1);
+      }
+      const now = Date.now();
+      if (now - pinDiag.lastLogAt >= 60000) {
+        pinDiag.lastLogAt = now;
+        const entries = [...pinDiag.counts.entries()].sort((x, y) => y[1] - x[1]);
+        const shown = entries.slice(0, 12).map(([k, v]) => `${k}:${v}`).join(",");
+        const extra = entries.length > 12 ? `,+${entries.length - 12} more types` : "";
+        console.log(`[PIN-PROBE-DIAG] ${cleanUsername} sinceConnectMs=${now - pinDiag.startedAt} types={${shown}${extra}}`.slice(0, 800));
+      }
+    } catch { /* the diag must never affect the connection */ }
     if (msgType !== "WebcastRoomPinMessage") return;
     try {
       const owning = isOwningConnection(tiktokConnections, key, tiktokConnection);
