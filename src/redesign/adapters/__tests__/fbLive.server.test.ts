@@ -732,7 +732,7 @@ describe("session-ID contract — FB events carry the CONNECTING browser session
 
   it("server.js wiring forwards sessionId (not liveVideoId) into the FB platform_status", () => {
     const srv = readFileSync("server.js", "utf8");
-    const i = srv.indexOf('platform: "Facebook", connected, sellerId, username: String(scopeKey');
+    const i = srv.indexOf('platform: "Facebook", connected, sellerId: emailIdOf(sellerId), username: String(scopeKey');
     expect(i).toBeGreaterThan(-1);
     const line = srv.slice(i, srv.indexOf("\n", i));
     expect(line).toContain('sessionId: String(sessionId || "")');
