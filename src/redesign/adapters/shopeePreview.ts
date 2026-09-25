@@ -8,12 +8,13 @@
 // role — so other admins are unaffected; this is literally one account). Everyone else:
 // shopeePreviewEnabled → false → the effective shopeeEnabled is the global flag alone →
 // byte-for-byte unchanged (zero Shopee UI while the flag is off).
-import type { ShopeeShop } from "./shopee";
+import { SHOPEE_PAUSED, type ShopeeShop } from "./shopee";
 
 // SOFT-REVERTED 2026-09-23: emptied with LIVE_SOURCE_EMAILS → no Shopee owner-preview row.
 export const SHOPEE_PREVIEW_EMAILS: string[] = [];
 
 export function shopeePreviewEnabled(email: string | undefined | null): boolean {
+  if (SHOPEE_PAUSED) return false; // paused → not even the owner preview shows Shopee
   const e = String(email || "").trim().toLowerCase();
   return e !== "" && SHOPEE_PREVIEW_EMAILS.includes(e);
 }

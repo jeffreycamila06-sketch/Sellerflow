@@ -24,11 +24,21 @@ export function isShopeeEligible(a: { plan?: string; planStatus?: string; planEx
   return isActivePaid({ plan: a.plan || "", planStatus: a.planStatus || "", daysLeft: planDaysLeft(a.planExpiry, Date.now()) });
 }
 
+// ⏸ SHOPEE PAUSED (owner decision 2026-09-25 — paused, NOT cancelled: the Shopee Open
+// Platform requires a penetration-test report we don't have yet). MASTER OFF SWITCH:
+// while true, NO Shopee UI appears for ANYONE — every plan, admins, and the owner-preview
+// allowlist — even if app_settings shopee_enabled is flipped on. Nothing is deleted: all
+// screens/adapters/server code/DB stay in place, inert. TO RESUME: set this to false
+// (then the existing shopee_enabled flag + owner-preview gates apply again as before).
+export const SHOPEE_PAUSED = true;
+
 // ── Global kill switch (fail-closed, mirrors parcel_manual_enabled) ──────────
 // Only the literal string "true" opens Shopee; missing row / error / RLS deny /
 // any other value → false. A read failure must HIDE Shopee, never expose it.
+// While SHOPEE_PAUSED the flag is not even read (always false).
 export const SHOPEE_ENABLED_KEY = "shopee_enabled";
 export async function loadShopeeEnabled(): Promise<boolean> {
+  if (SHOPEE_PAUSED) return false;
   const row = await getAppSetting(SHOPEE_ENABLED_KEY);
   return row?.value === "true";
 }

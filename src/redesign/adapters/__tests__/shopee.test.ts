@@ -32,7 +32,7 @@ vi.mock("../../../supabase", () => ({
 }));
 
 import {
-  loadShopeeEnabled, listShopeeShops, removeShopeeShop, startShopeeAuth,
+  loadShopeeEnabled, SHOPEE_PAUSED, listShopeeShops, removeShopeeShop, startShopeeAuth,
   shopeeConnect, shopeeDisconnect, parseShopeeReturn, isShopeeEligible,
 } from "../shopee";
 
@@ -47,9 +47,15 @@ beforeEach(() => {
 });
 
 describe("loadShopeeEnabled — fail-closed", () => {
-  it('only the literal "true" opens it', async () => {
+  // ⏸ SHOPEE PAUSED (2026-09-25): while SHOPEE_PAUSED the flag is never read and is
+  // always false — even "true" in app_settings shows nothing. When resuming (setting
+  // SHOPEE_PAUSED = false), restore this to: "true" → true.
+  it('PAUSED: even the literal "true" stays closed, and app_settings is not read', async () => {
+    expect(SHOPEE_PAUSED).toBe(true);
     state.single = { data: { value: "true", updated_at: null }, error: null };
-    expect(await loadShopeeEnabled()).toBe(true);
+    state.lastTable = null;
+    expect(await loadShopeeEnabled()).toBe(false);
+    expect(state.lastTable).toBeNull(); // no DB read while paused
   });
   it.each(["false", "1", "TRUE", "", null])('value %s → false', async (v) => {
     state.single = { data: { value: v, updated_at: null }, error: null };
