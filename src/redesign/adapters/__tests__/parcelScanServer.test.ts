@@ -283,13 +283,14 @@ describe("server.js /admin/parcel-tracking-poll (structural — secret-gated cro
     expect(route).not.toContain("requireAuth");
     expect(route).not.toContain("requireAdmin");
     // token compared against the env secret; 403 on mismatch, 503 when unconfigured
-    expect(route).toMatch(/token !== PARCEL_POLL_TOKEN/);
+    // (M5 2026-09-26: header-only + constant-time via server/pollAuth.js)
+    expect(route).toMatch(/!timingSafeTokenEqual\(token, PARCEL_POLL_TOKEN\)/);
     expect(route).toMatch(/status\(403\)/);
     expect(route).toMatch(/!PARCEL_POLL_TOKEN/);
   });
 
   it("checks the token BEFORE touching the DB / OCR (no work for a bad caller)", () => {
-    expect(route.indexOf("token !== PARCEL_POLL_TOKEN")).toBeLessThan(route.indexOf("createOcr("));
+    expect(route.indexOf("timingSafeTokenEqual(token, PARCEL_POLL_TOKEN")).toBeLessThan(route.indexOf("createOcr("));
     expect(route.indexOf("token !== PARCEL_POLL_TOKEN")).toBeLessThan(route.indexOf("runPoll("));
   });
 

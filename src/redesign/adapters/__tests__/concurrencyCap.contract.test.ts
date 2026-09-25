@@ -11,7 +11,7 @@ const server = readFileSync(resolve(__dirname, "../../../../server.js"), "utf8")
 function connectTikTokBody(): string {
   const start = server.indexOf("async function connectTikTok(");
   const after = server.slice(start);
-  const next = after.indexOf("\napp.get(\"/test-comment\"");
+  const next = after.indexOf("// M5 (security audit 2026-09-26) — the GET /test-comment route was DELETED");
   return next < 0 ? after : after.slice(0, next);
 }
 
