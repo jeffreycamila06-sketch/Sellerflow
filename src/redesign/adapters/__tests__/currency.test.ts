@@ -40,3 +40,21 @@ describe("currency options", () => {
     expect(curSymbol("XYZ")).toBe("$");
   });
 });
+
+// Audit finding 4/5 (EUR branch) — SOURCE PINS: admin BUSINESS figures (MRR
+// card + the revenue panel, incl. the REAL revAdded plan-price delta) are
+// NT$ literals, never the admin's display currency. A €/₱ admin must see NT$.
+import { readFileSync } from "node:fs";
+describe("admin business figures are NT$-pinned (never the display currency)", () => {
+  const admin = readFileSync("src/redesign/screens/Admin.tsx", "utf8");
+  it("MRR card + revenue panel use NT$ literals", () => {
+    expect(admin).toContain("`NT$${fmt(mrr)}`");
+    expect(admin).toContain("+NT${revAdded.toLocaleString(");
+    // no business figure interpolates the display currency anymore:
+    expect(admin).not.toContain("{cur}4.2M");
+    expect(admin).not.toContain("{cur}340");
+    expect(admin).not.toContain("{cur}1.05M");
+    expect(admin).not.toContain("{cur}3.15M");
+    expect(admin).not.toContain("+{cur}{revAdded");
+  });
+});

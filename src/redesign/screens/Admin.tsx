@@ -914,10 +914,10 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
             <div>
               <SampleNote />
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-                <div style={miniStat}><div style={miniLbl}>{t.rd_adm_mrr}</div><div style={miniNum}>{cur}4.2M</div></div>
+                <div style={miniStat}><div style={miniLbl}>{t.rd_adm_mrr}</div><div style={miniNum}>NT$4.2M</div></div>
                 <div style={miniStat}><div style={miniLbl}>{t.rd_adm_growth}</div><div style={{ ...miniNum, color: "var(--ok)" }}>+12%</div></div>
                 <div style={miniStat}><div style={miniLbl}>{t.rd_adm_churn}</div><div style={{ ...miniNum, color: "var(--warn)" }}>2.1%</div></div>
-                <div style={miniStat}><div style={miniLbl}>{t.rd_adm_arpu}</div><div style={miniNum}>{cur}340</div></div>
+                <div style={miniStat}><div style={miniLbl}>{t.rd_adm_arpu}</div><div style={miniNum}>NT$340</div></div>
               </div>
               <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", marginBottom: 9 }}>{t.rd_adm_reports_h}</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1038,16 +1038,16 @@ export function AdminPanel({ panel, onClose, cur, users = USERS, usersState = "s
               <SampleNote />
               <div style={{ background: "var(--accent)", borderRadius: 14, padding: 15, color: "#fff", boxShadow: "0 8px 22px var(--accent-soft)" }}>
                 <div style={{ fontSize: 11.5, opacity: 0.9, fontWeight: 600 }}>{t.rd_adm_rev_thismonth}</div>
-                <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 28, marginTop: 4, letterSpacing: "-.02em" }}>{cur}4.2M</div>
+                <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 28, marginTop: 4, letterSpacing: "-.02em" }}>NT$4.2M</div>
                 <div style={{ fontSize: 11.5, opacity: 0.92, marginTop: 2 }}>{t.rd_adm_rev_vslast}</div>
               </div>
               <div style={{ display: "flex", gap: 9, marginTop: 12 }}>
-                <div style={{ flex: 1, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 12, padding: "11px 12px" }}><div style={{ fontSize: 10.5, color: "var(--text-muted)", fontWeight: 600 }}>{t.rd_adm_platform_fees}</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 15, color: "var(--text)", marginTop: 2 }}>{cur}1.05M</div></div>
-                <div style={{ flex: 1, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 12, padding: "11px 12px" }}><div style={{ fontSize: 10.5, color: "var(--text-muted)", fontWeight: 600 }}>{t.rd_adm_net_profit}</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 15, color: "var(--ok)", marginTop: 2 }}>{cur}3.15M</div></div>
+                <div style={{ flex: 1, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 12, padding: "11px 12px" }}><div style={{ fontSize: 10.5, color: "var(--text-muted)", fontWeight: 600 }}>{t.rd_adm_platform_fees}</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 15, color: "var(--text)", marginTop: 2 }}>NT$1.05M</div></div>
+                <div style={{ flex: 1, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 12, padding: "11px 12px" }}><div style={{ fontSize: 10.5, color: "var(--text-muted)", fontWeight: 600 }}>{t.rd_adm_net_profit}</div><div style={{ fontFamily: mono, fontWeight: 700, fontSize: 15, color: "var(--ok)", marginTop: 2 }}>NT$3.15M</div></div>
               </div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 11, background: "var(--accent-soft)", border: "1px solid var(--accent)", borderRadius: 12, padding: "11px 13px" }}>
                 <div><div style={{ fontSize: 11, color: "var(--text-dim)", fontWeight: 600 }}>{t.rd_adm_detected}</div><div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 1 }}>{t.rd_adm_rev_live}</div></div>
-                <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 17, color: "var(--accent-fg)" }}>+{cur}{revAdded.toLocaleString("en-US")}</div>
+                <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 17, color: "var(--accent-fg)" }}>+NT${revAdded.toLocaleString("en-US")}</div>
               </div>
               <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", margin: "14px 2px 9px" }}>{t.rd_adm_rev_by_plan}</div>
               <div style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 13, overflow: "hidden" }}>
