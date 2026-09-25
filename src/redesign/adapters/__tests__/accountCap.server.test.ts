@@ -1,7 +1,7 @@
 // #6 SERVER-SIDE ACCOUNT-CAP (Option B — registered-account verification).
 // server.js has no vitest harness; the pure core lives in server/accountCap.js.
 // Pins: per-plan cap parity with the client; the requested account must be a
-// REGISTERED account within the cap; FAIL-OPEN on unknown plan / admin / broken
+// REGISTERED account within the cap; FAIL-OPEN on admin / broken (H2: unknown plan → cap 1, not allow-all)
 // registered list (Addition 1); casing/@/whitespace normalization (Addition 2).
 import { describe, it, expect } from "vitest";
 import {
@@ -79,8 +79,15 @@ describe("accountCapVerdict — registered-account verification", () => {
     expect(accountCapVerdict({ ...f, username: "otherpage" }).allowed).toBe(false);
   });
 
-  it("FAIL-OPEN: unknown plan / admin / broken registered list / empty requested", () => {
-    expect(accountCapVerdict({ ...base, plan: undefined, username: "anything" }).allowed).toBe(true); // infra fail-open
+  it("H2: unknown plan is treated as Basic (cap 1), not an automatic allow", () => {
+    // Registered list present + unknown plan → only slot 1 of the list is usable.
+    expect(accountCapVerdict({ ...base, plan: undefined, username: "myshop" }).allowed).toBe(true);   // the one registered account
+    expect(accountCapVerdict({ ...base, plan: undefined, username: "anything" }).allowed).toBe(false); // unregistered → blocked
+    // No registered list at all → Addition-1 fail-open still applies (separate finding).
+    expect(accountCapVerdict({ ...base, plan: undefined, tiktok: "", username: "anything" }).allowed).toBe(true);
+  });
+
+  it("FAIL-OPEN: admin / broken registered list / empty requested", () => {
     expect(accountCapVerdict({ ...base, role: "admin", username: "anything" }).allowed).toBe(true);   // admin exempt
     expect(accountCapVerdict({ ...base, role: "Admin", username: "anything" }).allowed).toBe(true);   // case-insensitive
     expect(accountCapVerdict({ ...base, tiktok: null as unknown as string, username: "x" }).allowed).toBe(true); // Addition 1

@@ -14,8 +14,8 @@ describe("concurrencyCap — the per-plan ceiling (null = no cap)", () => {
     expect(concurrencyCap("basic", "admin")).toBeNull();
     expect(concurrencyCap("master", "Admin")).toBeNull();
   });
-  it("unknown / empty plan → null (fail-open — never false-block a paid seller on a DB hiccup)", () => {
-    for (const p of ["", null, undefined, "   "]) expect(concurrencyCap(p as unknown as string, "seller")).toBeNull();
+  it("H2: unknown / empty plan → cap 1 (most restrictive), NEVER unlimited — a DB-hiccup fail-open upstream still gets one live", () => {
+    for (const p of ["", null, undefined, "   "]) expect(concurrencyCap(p as unknown as string, "seller")).toBe(1);
   });
   it("known plans → their cap (case-insensitive)", () => {
     expect(concurrencyCap("basic", "seller")).toBe(1);
@@ -61,7 +61,7 @@ describe("capDecision — allow / kick-oldest / block", () => {
     expect(capDecision({ realFresh: [k("A", 1), k("B", 2)], max: 3 })).toEqual({ action: "allow", keys: [] });
     expect(capDecision({ realFresh: [k("A", 3), k("B", 1), k("C", 2)], max: 3 })).toEqual({ action: "kick", keys: ["B"] }); // oldest=B(1)
   });
-  it("max=null (admin / unknown plan) → always allow, never kicks", () => {
+  it("max=null (admin) → always allow, never kicks", () => {
     expect(capDecision({ realFresh: [k("A", 1), k("B", 2), k("C", 3)], max: null })).toEqual({ action: "allow", keys: [] });
   });
   it("TOCTOU: only a sibling RESERVATION occupies the slot (no real conn to kick) → BLOCK", () => {

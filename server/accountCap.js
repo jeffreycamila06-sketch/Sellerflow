@@ -16,7 +16,8 @@
 // (a client-local Disconnect + switch works instantly, unlike counting live
 // connections). FAIL-OPEN on unknown plan (infra fail-open upstream), admin, or a
 // broken/empty registered list (old/just-created row - Jeff Addition 1) so a
-// legit seller is never blocked and the check never crashes.
+// legit seller is never blocked and the check never crashes. (H2 2026-09-26: the
+// unknown-plan fail-open became cap-1 — see accountCapVerdict.)
 
 // VERBATIM parity with the client cap (connect.ts:22 maxAcc). Unknown plan -> 1.
 export function maxAccountsForPlan(plan) {
@@ -38,12 +39,15 @@ export function parseRegisteredList(raw) {
   return Array.from(new Set(raw.split(/[,\n]/).map(normalizeAccount).filter(Boolean)));
 }
 
-// PURE verdict. FAIL-OPEN (allowed:true) on: unknown plan, admin, empty requested,
-// unparseable/empty registered list (Addition 1). Otherwise the requested account
-// must be in the registered list for that platform, capped to maxAccountsForPlan
-// (mirrors the client accountSlots cap). Blocked -> { allowed:false, reason, max, plan }.
+// PURE verdict. FAIL-OPEN (allowed:true) on: admin, empty requested, unparseable/
+// empty registered list (Addition 1). H2 (security audit 2026-09-26): an unknown/
+// empty plan is NO LONGER an automatic allow — it flows through with
+// maxAccountsForPlan("") = 1 (Basic-level), since the plan check now hard-denies
+// missing profiles and an empty plan here can only be the genuine-DB-error
+// fail-open upstream. Otherwise the requested account must be in the registered
+// list for that platform, capped to maxAccountsForPlan (mirrors the client
+// accountSlots cap). Blocked -> { allowed:false, reason, max, plan }.
 export function accountCapVerdict({ plan, role, tiktok, facebook, platform, username }) {
-  if (!plan) return { allowed: true };                                   // infra fail-open (no plan resolved)
   if (String(role == null ? "" : role).trim().toLowerCase() === "admin") return { allowed: true };
   const req = normalizeAccount(username);
   if (!req) return { allowed: true };                                    // empty requested -> let downstream 400
