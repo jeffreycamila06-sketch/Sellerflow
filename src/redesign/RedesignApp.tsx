@@ -1318,10 +1318,16 @@ export default function RedesignApp() {
   const stepPp = (k: PpSizeKey, dir: 1 | -1) => setPp((p) => ({ ...p, [k]: stepScaleLevel(p[k], dir) }));
   useEffect(() => { try { localStorage.setItem(LS.pp, JSON.stringify(pp)); } catch { /* ignore */ } }, [pp]);
 
+  // The shop name every print path puts in the CENTER of the slip (bitmap + classic
+  // TSPL sticker, ESC/POS slip, web print) AND the Live print pattern preview — ONE
+  // value so the preview can't drift from paper. Settings → Basic Information "Shop
+  // name"; blank → "SellerFlowLive" so nothing prints empty.
+  const printShopName = auth.profile?.profile.storeName?.trim() || "SellerFlowLive";
+
   // Phase 5g — snapshot the current print config for onPrint (declared above).
   printCfgRef.current = {
     cur,
-    storeName: auth.profile?.profile.storeName || "SellerFlowLive",
+    storeName: printShopName,
     settings: buildSettingsFromRedesign({ pp, psType, psOut, psSize }),
   };
 
@@ -1329,7 +1335,7 @@ export default function RedesignApp() {
   // testBt: builds the test payload from the live print config + fires the native
   // bridge, with a toast for the result. No-op-safe off-device (no BT bridge).
   const onTestPrint = async () => {
-    const storeName = auth.profile?.profile.storeName || "SellerFlowLive";
+    const storeName = printShopName;
     const settings = buildSettingsFromRedesign({ pp, psType, psOut, psSize });
     // No BT bridge (web/desktop) → browser-print the SAME test pattern through
     // printSlip, so desktop sellers can preview their pattern settings too.
@@ -1775,7 +1781,7 @@ export default function RedesignApp() {
           {screen === "subscription" && !ios && <Subscription cur={cur} account={auth.profile} isFreeUser={freeCap.isFreeUser} freeStatus={freeCap.freeStatus} />}
           {screen === "support" && <Support onLegal={() => setScreen("legal")} />}
           {screen === "admin" && isAdmin && <Admin onOpenPanel={setAdminPanel} cur={cur} counts={adminCounts} live={adminLive} userBase={adminLive ? { paying: userBase.paying, free: userBase.free, total: userBase.total } : undefined} mrr={adminLive ? deriveMrr(adminUsers.users) : null} owner={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : null} viewAs={adminViewAs} onSetViewAs={setAdminViewAs} />}
-          {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} buyers={liveSession.session.buyers} storeName={auth.profile?.profile.storeName || "SellerFlowLive"} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
+          {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} buyers={liveSession.session.buyers} storeName={printShopName} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
           {screen === "sales" && <SalesReport cur={cur} sales={sales} onExport={exportSales} hist={salesHist} byHour={salesByHour} enabled={authed} />}
           {screen === "shipping" && <Shipping cur={cur} buyers={liveSession.session.buyers} sessionKey={sessionKeyFor(liveSession.dayId, sessionWindow.windowStart, sessionWindow.windowDays)} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}
           {screen === "parcelscan" && parcelAllowed && <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} />}
@@ -1791,13 +1797,13 @@ export default function RedesignApp() {
               psOut={psOut} onSetPsOut={setPsOut}
               psSize={psSize} psSizeOpen={psSizeOpen}
               onTogglePsSize={() => setPsSizeOpen((o) => !o)} onPickPsSize={(s) => { setPsSize(s); setPsSizeOpen(false); }}
-              cur={cur} storeName={auth.profile?.profile.storeName || "SellerFlowLive"} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })}
+              cur={cur} storeName={printShopName} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })}
               showClassicToggle={classicAllowed}
               stickerQrAllowed={stickerQrAllowed}
             />
           )}
           {screen === "printpattern" && (
-            <PrintPattern onBack={() => setScreen("settings")} pp={pp} onToggle={togglePp} onStep={stepPp} onTestPrint={() => void onTestPrint()} />
+            <PrintPattern onBack={() => setScreen("settings")} pp={pp} shopName={printShopName} onToggle={togglePp} onStep={stepPp} onTestPrint={() => void onTestPrint()} />
           )}
         </div>
 

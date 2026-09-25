@@ -108,7 +108,7 @@ describe("(c) legacy fractional stored values display as their print-equivalent 
     expect(labelFor("Buyer #", { ...DEFAULT_PP, buyerNumSize: 1.5 })).toBe("2×");
     expect(labelFor("TikTok name", { ...DEFAULT_PP, tiktokNameSize: 2.4 })).toBe("2×");
     expect(labelFor("TikTok username", { ...DEFAULT_PP, tiktokUserSize: 0.8 })).toBe("1×");
-    expect(labelFor("Comment (center)", { ...DEFAULT_PP, commentSize: 3 })).toBe("3×");
+    expect(labelFor("Comment / Price", { ...DEFAULT_PP, commentSize: 3 })).toBe("3×");
   });
   it("never displays a fractional multiplier for any legacy value", () => {
     const pp = { ...DEFAULT_PP, shopNameSize: 1.7, buyerNumSize: 2.2, tiktokNameSize: 0.6, tiktokUserSize: 2.9, commentSize: 1.1 };

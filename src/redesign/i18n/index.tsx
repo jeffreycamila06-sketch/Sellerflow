@@ -803,7 +803,7 @@ const RAW: Record<string, Row> = {
   rd_pp_buyer_num: { en: "Buyer #", fil: "Buyer #", zh: "买家编号", "zh-TW": "買家編號", vi: "Số người mua", th: "หมายเลขผู้ซื้อ", id: "No. pembeli" },
   rd_pp_tiktok_name: { en: "TikTok name", fil: "TikTok name", zh: "TikTok 名称", "zh-TW": "TikTok 名稱", vi: "Tên TikTok", th: "ชื่อ TikTok", id: "Nama TikTok" },
   rd_pp_tiktok_user: { en: "TikTok username", fil: "TikTok username", zh: "TikTok 用户名", "zh-TW": "TikTok 使用者名稱", vi: "Tên người dùng TikTok", th: "ชื่อผู้ใช้ TikTok", id: "Username TikTok" },
-  rd_pp_comment_center: { en: "Comment (center)", fil: "Komento (gitna)", zh: "评论（居中）", "zh-TW": "留言（置中）", vi: "Bình luận (giữa)", th: "คอมเมนต์ (กึ่งกลาง)", id: "Komentar (tengah)" },
+  rd_pp_comment_center: { en: "Comment / Price", fil: "Komento / Presyo", zh: "评论 / 价格", "zh-TW": "留言 / 價格", vi: "Bình luận / Giá", th: "คอมเมนต์ / ราคา", id: "Komentar / Harga" },
   rd_pp_logo: { en: "SellerFlowLive logo", fil: "SellerFlowLive logo", zh: "SellerFlowLive 标志", "zh-TW": "SellerFlowLive 標誌", vi: "Logo SellerFlowLive", th: "โลโก้ SellerFlowLive", id: "Logo SellerFlowLive" },
   rd_pp_fixed_size: { en: "Fixed default size", fil: "Nakatakdang default na sukat", zh: "固定默认尺寸", "zh-TW": "固定預設尺寸", vi: "Kích thước mặc định cố định", th: "ขนาดเริ่มต้นคงที่", id: "Ukuran default tetap" },
   rd_pp_save_settings: { en: "Save settings", fil: "I-save ang settings", zh: "保存设置", "zh-TW": "儲存設定", vi: "Lưu cài đặt", th: "บันทึกการตั้งค่า", id: "Simpan pengaturan" },

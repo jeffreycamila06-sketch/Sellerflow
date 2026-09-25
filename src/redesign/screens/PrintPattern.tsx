@@ -90,10 +90,13 @@ export const previewDateFontPx = (v: number, honest: boolean = HONEST_SIZE_STEPS
 const stepBtn: CSSProperties = { width: 28, height: 28, borderRadius: "50%", border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--accent-fg)", fontSize: 16, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 };
 
 export default function PrintPattern({
-  onBack, pp, onToggle, onStep, onTestPrint,
+  onBack, pp, onToggle, onStep, onTestPrint, shopName = "Maria's Live Shop",
 }: {
   onBack: () => void;
   pp: PrintPatternState;
+  // The seller's real Shop name — the SAME value every print path puts in the slip's
+  // center (RedesignApp printShopName). Default = the old sample, for standalone renders.
+  shopName?: string;
   onToggle: (k: PpBoolKey) => void;
   onStep: (k: PpSizeKey, dir: 1 | -1) => void;
   // Printer Test — real BT test-sticker (wired in RedesignApp). Optional so the
@@ -119,7 +122,7 @@ export default function PrintPattern({
               {pp.dateTime && <span style={{ fontSize: previewDateFontPx(pp.dateTimeSize), color: "#9795ad", whiteSpace: "nowrap" }}>Session: 05/22/2026 12:21PM</span>}
             </div>
             {/* Preview sizes route through previewFontPx ONLY (kill-switch-gated; honest = base × printScaleLevel = print). */}
-            {pp.shopName && <div style={{ fontSize: previewFontPx(16, pp.shopNameSize), fontWeight: 700, color: "#1c1a35", marginTop: 6 }}>Maria's Live Shop</div>}
+            {pp.shopName && <div style={{ fontSize: previewFontPx(16, pp.shopNameSize), fontWeight: 700, color: "#1c1a35", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} data-testid="pp-preview-shop">{shopName}</div>}
             {/* Buyer line matches the new paper layout: "Buyer" + bare number, small gap, no "#". */}
             {pp.buyerNum && <div style={{ fontSize: previewFontPx(14, pp.buyerNumSize), fontWeight: 700, color: "#1c1a35", marginTop: 3 }}>Buyer 12</div>}
             {pp.tiktokName && <div style={{ fontSize: previewFontPx(14, pp.tiktokNameSize), fontWeight: 700, color: "#1c1a35", marginTop: 3 }}>Maria Santos</div>}
