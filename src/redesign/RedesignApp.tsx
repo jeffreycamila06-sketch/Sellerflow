@@ -39,7 +39,7 @@ import PrinterSettings from "./screens/PrinterSettings";
 import PrintPattern, { DEFAULT_PP, stepScaleLevel, type PrintPatternState, type PpBoolKey, type PpSizeKey } from "./screens/PrintPattern";
 import ManageChannels from "./screens/ManageChannels";
 import ShopeeChannels from "./screens/ShopeeChannels";
-import { loadShopeeEnabled, listShopeeShops, shopeeConnect, shopeeDisconnect, parseShopeeReturn, isShopeeEligible, type ShopeeShop } from "./adapters/shopee";
+import { loadShopeeEnabled, listShopeeShops, shopeeConnect, shopeeDisconnect, parseShopeeReturn, isShopeeEligible, SHOPEE_PAUSED, type ShopeeShop } from "./adapters/shopee";
 import { shopeePreviewEnabled, withShopeePreview } from "./adapters/shopeePreview";
 import FbChannels from "./screens/FbChannels";
 import { loadFbEnabled, listFbPages, fbConnect, fbDisconnect, parseFbReturn, isFbEligible, type FbPage } from "./adapters/fb";
@@ -647,6 +647,7 @@ export default function RedesignApp() {
   // declared below but referenced only inside the callback (runs post-render).
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (SHOPEE_PAUSED) return; // paused — a stray ?shopee= return shows nothing, reloads nothing
     const ret = parseShopeeReturn(window.location.search);
     if (!ret) return;
     if (ret.status === "connected") { setToast({ msg: tApp.rd_shp_authorized_toast, kind: "ok" }); void reloadShopeeShops(); }
@@ -1760,7 +1761,7 @@ export default function RedesignApp() {
           )}
           {/* P3 — Shopee shops (flag-gated; reachable from ManageChannels + the Live
               Shopee chip's Manage row). Origin-aware Back via chanBack. */}
-          {screen === "shopeechannels" && (
+          {screen === "shopeechannels" && shopeeEnabled && (
             <ShopeeChannels account={auth.profile} shops={shopeeShops} preview={shopeePreview} onReload={reloadShopeeShops} onBack={() => setScreen(chanBack)} onToast={(msg, kind) => setToast({ msg, kind })} onUpsell={() => { if (ios) setIosExpired(true); else setUpsellOpen(true); }} />
           )}
           {/* F-P3 — Facebook pages (fbEnabled-gated; reachable from ManageChannels + the
