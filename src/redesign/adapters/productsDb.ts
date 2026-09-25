@@ -189,20 +189,6 @@ export async function adjustProductStock(localId: number, delta: number): Promis
   return data == null ? null : Number(data);
 }
 
-// Auto Mode Rule 2 — atomic decrement by N (sql/38 decrement_product_stock_by).
-// Own-scoped; returns the NEW stock, or -1 when stock < qty OR qty outside 1..99
-// (the whole order is rejected, NO partial). null = RPC error / unconfigured.
-// The caller (useOrders) treats -1 as a stock error (cross-device short) and the
-// client-side plan already rejected the common in-device short before this runs.
-export async function decrementProductStockBy(localId: number, qty: number): Promise<number | null> {
-  if (!isSupabaseConfigured || !supabase) return null;
-  const id = await uid();
-  if (!id) return null;
-  const { data, error } = await supabase.rpc("decrement_product_stock_by", { p_local_id: localId, p_qty: qty });
-  if (error) { console.error("Decrement stock by qty error:", error.message); return null; }
-  return data == null ? null : Number(data);
-}
-
 // Orchestrates the initial load: DB wins when it has rows; an empty DB triggers the
 // one-time local→DB migration (when the local list is real, non-seed data); any
 // failure / no-session keeps the local cache untouched. The caller mirrors the

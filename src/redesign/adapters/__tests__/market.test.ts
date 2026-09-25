@@ -82,8 +82,8 @@ describe("gates honor marketHidden (admin bypass baked into the flag)", () => {
     expect(parcelTrackingVisible({ role: "admin", email: "x@y.com", plan: "master", marketHidden: true })).toBe(false);
     expect(parcelTrackingVisible({ role: "admin", email: "x@y.com", plan: "master", marketHidden: false })).toBe(true);
   });
-  it("canUseStickerQr: marketHidden → false regardless of tier/admin; false → today's tier logic", () => {
-    expect(canUseStickerQr("admin", "free", "active", future, undefined, true)).toBe(false);
-    expect(canUseStickerQr("seller", "pro", "active", future, undefined, false)).toBe(true);
+  it("canUseStickerQr: marketHidden → false; in-market → true on every plan", () => {
+    expect(canUseStickerQr(true)).toBe(false);
+    expect(canUseStickerQr(false)).toBe(true);
   });
 });

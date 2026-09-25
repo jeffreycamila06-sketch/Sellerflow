@@ -119,7 +119,7 @@ describe("PrinterSettings sticker-QR toggle vs sticker size", () => {
     }
   });
 
-  it("stickerQrAllowed=false (Basic/free) → the toggle is HIDDEN entirely", () => {
+  it("stickerQrAllowed=false (off-market) → the toggle is HIDDEN entirely", () => {
     renderBT("80x60mm", false);
     expect(screen.queryByTestId("ps-sticker-qr-toggle")).toBeNull();
     expect(screen.queryByTestId("ps-sticker-qr-hint")).toBeNull();

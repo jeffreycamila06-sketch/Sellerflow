@@ -520,7 +520,6 @@ const RAW: Record<string, Row> = {
   rd_prd_sku: { en: "SKU", fil: "SKU", zh: "SKU", "zh-TW": "SKU", vi: "SKU", th: "SKU", id: "SKU" },
   rd_prd_live_code: { en: "Live code", fil: "Live code", zh: "直播代码", "zh-TW": "直播代碼", vi: "Mã live", th: "โค้ดไลฟ์", id: "Kode live" },
   rd_prd_live_code_ph: { en: "e.g. A1 (optional)", fil: "hal. A1 (opsyonal)", zh: "例如 A1（可选）", "zh-TW": "例如 A1（選填）", vi: "vd A1 (tùy chọn)", th: "เช่น A1 (ไม่บังคับ)", id: "mis. A1 (opsional)" },
-  rd_prd_live_code_space: { en: "Codes without spaces work best with quantity (e.g. A1 2).", fil: "Mas maganda ang codes na walang space para sa quantity (hal. A1 2).", zh: "不含空格的代码配合数量最佳（例如 A1 2）。", "zh-TW": "不含空格的代碼搭配數量最佳（例如 A1 2）。", vi: "Mã không có dấu cách hoạt động tốt nhất với số lượng (vd A1 2).", th: "โค้ดที่ไม่มีเว้นวรรคใช้กับจำนวนได้ดีที่สุด (เช่น A1 2)", id: "Kode tanpa spasi paling cocok dengan kuantitas (mis. A1 2)." },
   rd_prd_live_code_price0: { en: "This product's price is 0 — auto orders for this code will total 0.", fil: "Presyo ng produktong ito ay 0 — ang auto orders para sa code na ito ay magiging 0 ang total.", zh: "该产品价格为 0——此代码的自动订单总额将为 0。", "zh-TW": "此產品價格為 0——此代碼的自動訂單總額將為 0。", vi: "Giá sản phẩm này là 0 — đơn tự động cho mã này sẽ có tổng bằng 0.", th: "สินค้านี้ราคา 0 — ออเดอร์อัตโนมัติของโค้ดนี้จะรวมเป็น 0", id: "Harga produk ini 0 — pesanan otomatis untuk kode ini akan bertotal 0." },
   rd_prd_code_dup: { en: "That code is already used by another product.", fil: "Ginagamit na ng ibang product ang code na iyon.", zh: "该代码已被另一个产品使用。", "zh-TW": "該代碼已被另一個產品使用。", vi: "Mã đó đã được một sản phẩm khác dùng.", th: "โค้ดนั้นถูกใช้กับสินค้าอื่นแล้ว", id: "Kode itu sudah dipakai produk lain." },
   rd_prd_price: { en: "Price", fil: "Presyo", zh: "价格", "zh-TW": "價格", vi: "Giá", th: "ราคา", id: "Harga" },
@@ -721,7 +720,6 @@ const RAW: Record<string, Row> = {
   // Feed row badges (Rules 1/2/3) + the manual sold-out override confirm.
   rd_auto_badge_duplicate: { en: "Duplicate", fil: "Duplicate", zh: "重复", "zh-TW": "重複", vi: "Trùng", th: "ซ้ำ", id: "Duplikat" },
   rd_auto_badge_soldout: { en: "Sold out", fil: "Ubos na", zh: "已售罄", "zh-TW": "已售完", vi: "Hết hàng", th: "ขายหมด", id: "Habis" },
-  rd_auto_badge_short: { en: "Not enough stock", fil: "Kulang ang stock", zh: "库存不足", "zh-TW": "庫存不足", vi: "Không đủ hàng", th: "สต็อกไม่พอ", id: "Stok tidak cukup" },
   rd_auto_manual_soldout_confirm: { en: "{code} is sold out. Continue anyway?", fil: "Ubos na ang {code}. Ituloy pa rin?", zh: "{code} 已售罄。仍要继续吗？", "zh-TW": "{code} 已售完。仍要繼續嗎？", vi: "{code} đã hết hàng. Vẫn tiếp tục?", th: "{code} ขายหมดแล้ว ดำเนินการต่อหรือไม่?", id: "{code} sudah habis. Tetap lanjutkan?" },
   rd_set_auto_detect: { en: "Auto-detect", fil: "Auto-detect", zh: "自动识别", "zh-TW": "自動辨識", vi: "Tự động phát hiện", th: "ตรวจจับอัตโนมัติ", id: "Deteksi otomatis" },
   rd_set_manual_mode: { en: "Manual mode", fil: "Manual mode", zh: "手动模式", "zh-TW": "手動模式", vi: "Chế độ thủ công", th: "โหมดแมนนวล", id: "Mode manual" },

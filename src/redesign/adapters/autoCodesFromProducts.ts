@@ -2,7 +2,7 @@
 // catalog: one product with a non-empty live_code = one AutoCode. Price = the
 // product's price, stock = the product's stock (seeded elsewhere by productLocalId).
 // This REPLACES the old seller_auto_codes read as the source of autoCodesRef; the
-// pure matchers (matchCode / parseAutoComment / claimStock / planAutoOrder) and the
+// pure matchers (matchCode / claimStock / planAutoOrder) and the
 // order/dedup/print paths are unchanged — only where the AutoCode[] comes from.
 import type { Product } from "./products";
 import type { AutoCode } from "./autoMode";
