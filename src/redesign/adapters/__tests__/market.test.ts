@@ -26,6 +26,7 @@ describe("marketFor", () => {
       TH: { currency: "THB", symbol: "฿", ship: "none" },
       ID: { currency: "IDR", symbol: "Rp", ship: "none" },
       MY: { currency: "MYR", symbol: "RM", ship: "none" },
+      BG: { currency: "EUR", symbol: "€", ship: "none" },
     };
     for (const [c, e] of Object.entries(expected)) {
       const m = marketFor(c);
@@ -34,7 +35,7 @@ describe("marketFor", () => {
       expect(m.features).toEqual({ parcelScan: false, pickupStatus: false, stickerQr: false, shopee: false });
       expect(m.shippingModule).toBe(e.ship);
     }
-    expect(Object.keys(MARKETS).sort()).toEqual(["ID", "MY", "PH", "TH", "TW", "VN"]);
+    expect(Object.keys(MARKETS).sort()).toEqual(["BG", "ID", "MY", "PH", "TH", "TW", "VN"]);
   });
   it("VN gets ₫ (VND), NOT ₱ (the old any-non-TW→PH bug)", () => {
     expect(curSymbol(marketFor("VN").currency)).toBe("₫");
@@ -68,6 +69,12 @@ describe("effectiveMarket — admin bypass + view-as", () => {
   });
   it("admin + view-as TW → TW features visible", () => {
     expect(marketHides("pickupStatus", effectiveMarket({ role: "admin", country: "PH", viewAs: "TW" }))).toBe(false);
+  });
+  it("admin + view-as BG → previews AS a Bulgarian seller (EUR, TW features hidden)", () => {
+    const eff = effectiveMarket({ role: "admin", country: "TW", viewAs: "BG" });
+    expect(eff.adminUnion).toBe(false);
+    expect(eff.market.currency).toBe("EUR");
+    expect(marketHides("parcelScan", eff)).toBe(true);
   });
 });
 

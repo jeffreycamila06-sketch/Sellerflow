@@ -21,13 +21,15 @@ export interface Market {
 const ALL_OFF = { parcelScan: false, pickupStatus: false, stickerQr: false, shopee: false } as const;
 const TW: Market = { country: "TW", currency: "TWD", shippingModule: "tw-711", features: { parcelScan: true, pickupStatus: true, stickerQr: true, shopee: true } };
 // Non-TW markets: TW-only features hidden. PH has a (future) shipping slot; the rest have
-// none yet. Currencies must exist in data.ts CURRENCIES (curSymbol) — TWD/PHP/VND/THB/IDR/MYR.
+// none yet. Currencies must exist in data.ts CURRENCIES (curSymbol) — TWD/PHP/VND/THB/IDR/MYR/EUR.
 const PH: Market = { country: "PH", currency: "PHP", shippingModule: "ph", features: ALL_OFF };
 const VN: Market = { country: "VN", currency: "VND", shippingModule: "none", features: ALL_OFF };
 const TH: Market = { country: "TH", currency: "THB", shippingModule: "none", features: ALL_OFF };
 const ID: Market = { country: "ID", currency: "IDR", shippingModule: "none", features: ALL_OFF };
 const MY: Market = { country: "MY", currency: "MYR", shippingModule: "none", features: ALL_OFF };
-export const MARKETS: Record<string, Market> = { TW, PH, VN, TH, ID, MY };
+// BG (Bulgaria) — Eurozone since Jan 2026 → EUR. TW-only features off, no shipping module.
+const BG: Market = { country: "BG", currency: "EUR", shippingModule: "none", features: ALL_OFF };
+export const MARKETS: Record<string, Market> = { TW, PH, VN, TH, ID, MY, BG };
 export const DEFAULT_MARKET = TW;
 
 // The market for a stored country. NULL/""/"TW" → TW (unchanged). A KNOWN non-TW country →
@@ -40,8 +42,8 @@ export function marketFor(country: string | null | undefined): Market {
   return MARKETS[c] ?? { country: c, currency: "", shippingModule: "none", features: ALL_OFF };
 }
 
-export type ViewAs = "all" | "TW" | "PH" | "VN" | "TH" | "ID" | "MY";
-export const VIEW_AS_OPTIONS: ViewAs[] = ["all", "TW", "PH", "VN", "TH", "ID", "MY"];
+export type ViewAs = "all" | "TW" | "PH" | "VN" | "TH" | "ID" | "MY" | "BG";
+export const VIEW_AS_OPTIONS: ViewAs[] = ["all", "TW", "PH", "VN", "TH", "ID", "MY", "BG"];
 
 // The EFFECTIVE market the UI renders as, for THIS user:
 //  • non-admin  → their profile country's market (TW-only features hidden off-market).
