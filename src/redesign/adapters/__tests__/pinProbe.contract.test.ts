@@ -43,6 +43,23 @@ describe("[PIN-PROBE] Phase 1 — log-only pin observation", () => {
     expect(probe).toContain("const owning = isOwningConnection(tiktokConnections, key, tiktokConnection);");
   });
 
+  it("[PIN-PROBE-DIAG] counts EVERY type BEFORE the pin filter, bounded + throttled + log-only", () => {
+    const diagStart = server.indexOf("// [PIN-PROBE-DIAG]");
+    expect(diagStart).toBeGreaterThan(-1);
+    const filterAt = server.indexOf('if (msgType !== "WebcastRoomPinMessage") return;');
+    // the counter runs ABOVE the filter return — it must see all types, incl. pins
+    expect(server.indexOf("pinDiag.counts.set", diagStart)).toBeLessThan(filterAt);
+    const diag = server.slice(diagStart, filterAt);
+    expect(diag).toContain("[PIN-PROBE-DIAG]");
+    expect(diag).toContain(">= 60000");                 // at most one line per 60s
+    expect(diag).toContain(".slice(0, 800)");           // bounded line
+    expect(diag).toContain("pinDiag.counts.size < 50"); // bounded map (overflow → __other__)
+    expect(diag).toContain("} catch { /* the diag must never affect the connection */ }");
+    expect(diag).not.toContain("io.to(");
+    expect(diag).not.toContain("emitCommentScoped");
+    expect(diag).not.toContain("setInterval");          // piggybacked, no timer to leak
+  });
+
   it("the library really maps WebcastRoomPinMessage (probe target exists upstream)", () => {
     const events = readFileSync("node_modules/tiktok-live-connector/dist/types/events.js", "utf8");
     expect(events).toContain("'WebcastRoomPinMessage': WebcastEvent.ROOM_PIN");
