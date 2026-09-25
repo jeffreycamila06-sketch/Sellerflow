@@ -143,7 +143,11 @@ async function requireAuth(req, res, next) {
       error: "Unauthorized",
     });
   }
-  req.sellerId = cleanSellerId(user.email);
+  // H1 — the seller identity KEY is the auth UUID, never the email. The old
+  // cleanSellerId(email) key invited plus-addressing collisions (a+b@gmail.com →
+  // ab@gmail.com = ANOTHER seller's rooms/keys). Email is emit/log-only now.
+  req.sellerId = String(user.id || "");
+  rememberSellerEmail(user.id, user.email);
   // Stashed for the plan-enforcement middleware that may follow this one.
   req.userEmail = user.email || "";
   req.authUserId = user.id || "";
@@ -299,7 +303,7 @@ function accountCapReject(req, platform, username) {
     platform, username,
   });
   if (v.allowed) return null;
-  console.log(`[ACCOUNT-CAP] block seller=${req.sellerId} plan=${v.plan} platform=${platform} (max ${v.max}, account not registered)`);
+  console.log(`[ACCOUNT-CAP] block seller=${req.sellerId} email=${req.userEmail} plan=${v.plan} platform=${platform} (max ${v.max}, account not registered)`);
   return {
     success: false,
     error: "account_limit",
@@ -317,7 +321,7 @@ function requireConnectRate(req, res, next) {
   const { allowed, kept } = checkConnectRate(connectAttempts.get(uid), Date.now());
   connectAttempts.set(uid, kept);
   if (!allowed) {
-    console.log(`[CONNECT-RATE] throttle seller=${req.sellerId} (${kept.length} attempts in ${CONNECT_RATE_WINDOW_MS / 1000}s)`);
+    console.log(`[CONNECT-RATE] throttle seller=${req.sellerId} email=${req.userEmail} (${kept.length} attempts in ${CONNECT_RATE_WINDOW_MS / 1000}s)`);
     return res.status(429).json({
       success: false,
       error: "too_many_requests",
@@ -393,7 +397,26 @@ function cleanSellerId(value) {
     .replace(/[^a-z0-9@._-]/g, "");
 }
 
+// H1 — KEY vs EMIT split. Rooms, liveKey and every connection map key on the auth
+// UUID (set in requireAuth + the socket handshake). But every CLIENT build
+// (web/APK/iOS + the rollback app.html) filters incoming payloads against its own
+// email.trim().toLowerCase() (sellerIdOf), so payload `sellerId` FIELDS must keep
+// carrying the lowercased email. This map is the UUID → email-id bridge for the
+// emit sites. Bounded (one entry per seller that authenticates in this process
+// lifetime). Unknown → "" — every client check is `if (p.sellerId && mismatch)`,
+// so an empty field passes instead of wrongly dropping.
+const sellerEmailIds = new Map();
+function rememberSellerEmail(userId, email) {
+  const id = String(userId || "");
+  if (id) sellerEmailIds.set(id, String(email || "").trim().toLowerCase());
+}
+function emailIdOf(sellerId) {
+  return sellerEmailIds.get(String(sellerId || "")) || "";
+}
+
 function sellerRoom(sellerId) {
+  // cleanSellerId is the identity function on a UUID (kept for the dormant
+  // /test-comment route, which may still pass arbitrary query text).
   return `seller:${cleanSellerId(sellerId)}`;
 }
 
@@ -583,7 +606,8 @@ io.use(async (socket, next) => {
   const token = socket.handshake.auth?.token || "";
   const user = await verifyToken(token);
   if (!user) return next(new Error("unauthorized"));
-  socket.data.sellerId = cleanSellerId(user.email);
+  socket.data.sellerId = String(user.id || ""); // H1 — UUID key, never the email
+  rememberSellerEmail(user.id, user.email);
 
   // Same plan gate as the HTTP /connect routes — fail-open on lookup error,
   // free-tier exempt, kill-switch via PLAN_ENFORCEMENT_ENABLED. An expired
@@ -611,7 +635,7 @@ io.on("connection", (socket) => {
         platform: "TikTok",
         connected: !stale,
         stale,
-        sellerId: cleanId,
+        sellerId: emailIdOf(cleanId),
         username: active.username,
         sessionId: active.sessionId,
       });
@@ -627,7 +651,7 @@ io.on("connection", (socket) => {
         platform: "Facebook",
         connected: live,
         stale: !live,
-        sellerId: cleanId,
+        sellerId: emailIdOf(cleanId),
         username: active.username,
         sessionId: active.sessionId,
       });
@@ -758,14 +782,14 @@ app.post("/connect/facebook", requireAuth, requireConnectRate, requirePlanActive
   io.to(sellerRoom(sellerId)).emit("platform_status", {
     platform: "Facebook",
     connected: true,
-    sellerId,
+    sellerId: emailIdOf(sellerId),
     username,
     sessionId,
   });
   io.to(sellerRoom(sellerId)).emit("live_session_started", {
     platform: "Facebook",
     username,
-    sellerId,
+    sellerId: emailIdOf(sellerId),
     sessionId,
     timestamp: new Date().toISOString(),
   });
@@ -978,7 +1002,7 @@ function emitTikTokStatus({ sellerId, username, sessionId, connected, reconnecti
     platform: "TikTok",
     connected,
     reconnecting,
-    sellerId,
+    sellerId: emailIdOf(sellerId), // H1 — payload field = email id (client filter); the room key is the UUID
     username,
     sessionId,
     reason,
@@ -1050,7 +1074,7 @@ function scheduleTikTokReconnect(key, username, sellerId, sessionId, reason = "d
           tiktokReconnectAttempts.delete(key);
           emitTikTokStatus({ sellerId, username, sessionId, connected: false, reconnecting: false, reason: "not_live" });
           io.to(sellerRoom(sellerId)).emit("live_session_ended", {
-            platform: "TikTok", username, sellerId, sessionId, timestamp: new Date().toISOString(),
+            platform: "TikTok", username, sellerId: emailIdOf(sellerId), sessionId, timestamp: new Date().toISOString(),
           });
           return;
         }
@@ -1089,7 +1113,7 @@ function handleTikTokDisconnected(key, connection, reason = "disconnected", { re
     io.to(sellerRoom(active.sellerId)).emit("live_session_ended", {
       platform: "TikTok",
       username: active.username,
-      sellerId: active.sellerId,
+      sellerId: emailIdOf(active.sellerId),
       sessionId: active.sessionId,
       timestamp: new Date().toISOString(),
     });
@@ -1208,7 +1232,7 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
     io.to(sellerRoom(sellerId)).emit("live_session_started", {
       platform: "TikTok",
       username: cleanUsername,
-      sellerId,
+      sellerId: emailIdOf(sellerId),
       sessionId,
       roomId: state?.roomId || "",
       timestamp: new Date().toISOString(),
@@ -1227,7 +1251,7 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
     // in the map).
     try {
       const initialPayloads = buildInitialCommentPayloads(initialChats, {
-        sellerId,
+        sellerId: emailIdOf(sellerId), // payload field only — the room emit below keys on the UUID
         sessionId,
         sourceUsername: cleanUsername,
         roomId: state?.roomId || "",
@@ -1307,7 +1331,7 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
       comment,
       avatar: data.profilePictureUrl || "", //
       platform: "TikTok",
-      sellerId,
+      sellerId: emailIdOf(sellerId), // payload field = email id (client filter); room key = UUID
       // B3 fix — OWNERSHIP READ AT RELAY TIME, not from the creation closure:
       // the B2 reuse branch keeps entry.sessionId current with the latest
       // Connect tap, so the live flow follows the most recent device to tap
@@ -1827,7 +1851,7 @@ try {
       emitComment: (sellerId, shopUsername, payload) => { void emitCommentScoped(sellerId, "Shopee", shopUsername, payload); },
       // platform_status for the Shopee pill (username = shop id, the scoping key).
       statusEmit: (sellerId, { connected, shopId, sessionId }) => {
-        io.to(sellerRoom(sellerId)).emit("platform_status", { platform: "Shopee", connected, sellerId, username: String(shopId), sessionId: String(sessionId || "") });
+        io.to(sellerRoom(sellerId)).emit("platform_status", { platform: "Shopee", connected, sellerId: emailIdOf(sellerId), username: String(shopId), sessionId: String(sessionId || "") });
       },
       log: (line) => console.log(line),
     });
@@ -1901,7 +1925,7 @@ try {
       // live-video id — useLiveFeed drops any status whose sessionId ≠ its own, which is why
       // the FB pill never went green when this carried liveVideoId.
       statusEmit: (sellerId, { connected, scopeKey, sessionId }) => {
-        io.to(sellerRoom(sellerId)).emit("platform_status", { platform: "Facebook", connected, sellerId, username: String(scopeKey || ""), sessionId: String(sessionId || "") });
+        io.to(sellerRoom(sellerId)).emit("platform_status", { platform: "Facebook", connected, sellerId: emailIdOf(sellerId), username: String(scopeKey || ""), sessionId: String(sessionId || "") });
       },
       log: (line) => console.log(line),
     });

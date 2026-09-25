@@ -528,7 +528,7 @@ describe("session-ID contract — Shopee events carry the CONNECTING browser ses
 
   it("server.js Shopee statusEmit stamps the passed sessionId (the browser session) onto platform_status", () => {
     const srv = readFileSync("server.js", "utf8");
-    const i = srv.indexOf('platform: "Shopee", connected, sellerId, username: String(shopId)');
+    const i = srv.indexOf('platform: "Shopee", connected, sellerId: emailIdOf(sellerId), username: String(shopId)');
     expect(i).toBeGreaterThan(-1);
     const line = srv.slice(i, srv.indexOf("\n", i));
     expect(line).toContain('sessionId: String(sessionId || "")');
