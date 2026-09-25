@@ -316,9 +316,6 @@ export default function Products({ cur, onProductsChanged, seller }: {
             <div>
               <label style={lbl}>{t.rd_prd_live_code}</label>
               <input value={form.liveCode} onChange={(e) => { setForm((f) => ({ ...f, liveCode: e.target.value })); setFormErr(""); }} placeholder={t.rd_prd_live_code_ph} style={input} />
-              {/* WARN (not block) on inner spaces — exact match still works, but qty
-                  parsing "CODE N" is cleaner without them. */}
-              {form.liveCode.trim().includes(" ") && <div style={{ fontSize: 10.5, color: "var(--warn)", marginTop: 4, lineHeight: 1.4 }}>{t.rd_prd_live_code_space}</div>}
               {/* F3: a live code on a price-0 product → auto orders would total 0. */}
               {form.liveCode.trim() && (parseFloat(form.price) || 0) === 0 && <div style={{ fontSize: 10.5, color: "var(--warn)", marginTop: 4, lineHeight: 1.4 }}>{t.rd_prd_live_code_price0}</div>}
               {formErr && <div style={{ fontSize: 10.5, color: "var(--danger)", marginTop: 4, lineHeight: 1.4 }}>{formErr}</div>}

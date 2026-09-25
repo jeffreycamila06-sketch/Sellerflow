@@ -32,7 +32,7 @@ export default function PrinterSettings({
   psSize: string; psSizeOpen: boolean; onTogglePsSize: () => void; onPickPsSize: (s: string) => void;
   cur?: string; storeName?: string; settings?: Settings;
   showClassicToggle?: boolean; // admin/test-account only (canUseClassicText) — default HIDDEN
-  stickerQrAllowed?: boolean; // Plus/Pro/Master(+admin) only (canUseStickerQr) — default HIDDEN
+  stickerQrAllowed?: boolean; // all plans; hidden only off-market (canUseStickerQr) — default HIDDEN
 }) {
   const t = useT();
   const wifi = psType === "wifi";

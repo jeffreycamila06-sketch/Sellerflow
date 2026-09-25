@@ -177,10 +177,10 @@ export default function RedesignApp() {
   const hideParcelScan = marketHides("parcelScan", market);
   const hidePickup = marketHides("pickupStatus", market);
   const hideStickerQr = marketHides("stickerQr", market);
-  // "Print QR on sticker" is Plus/Pro/Master(+admin)-only: this gates BOTH the Printer
-  // Settings toggle visibility AND (via setStickerQrEntitled) the PRINT-TIME stamp — so a
-  // stored toggle on a non-entitled account never prints a QR. Default is fail-closed.
-  const stickerQrAllowed = canUseStickerQr(auth.profile?.role, auth.profile?.plan, auth.profile?.planStatus, auth.profile?.planExpiry, undefined, hideStickerQr);
+  // "Print QR on sticker" is on ALL plans; only the market gate applies. This gates BOTH
+  // the Printer Settings toggle visibility AND (via setStickerQrEntitled) the PRINT-TIME
+  // stamp — so a stored toggle off-market never prints a QR. Default is fail-closed.
+  const stickerQrAllowed = canUseStickerQr(hideStickerQr);
   useEffect(() => { setStickerQrEntitled(stickerQrAllowed); }, [stickerQrAllowed]);
   // Parcel Scan — camera/AI/credits are ADMIN-ONLY (server route re-enforces
   // admin). MANUAL encode is open to a PAYING+ACTIVE seller ONLY when the global
@@ -309,7 +309,7 @@ export default function RedesignApp() {
   // RULE 1/2/3 feed badges — display-only, keyed by commentKey (c.id): a comment that
   // was a duplicate / sold-out / short gets a chip next to MINE. NEVER touches
   // commentKey/dedup/toRedesignComment — a parallel map like `printed`.
-  const [autoBadges, setAutoBadges] = useState<Record<string, "duplicate" | "soldout" | "short">>({});
+  const [autoBadges, setAutoBadges] = useState<Record<string, "duplicate" | "soldout">>({});
 
   // Dashboard account-picker selection (declared before useLiveFeed so the feed can
   // scope comments to the chosen account). registeredAccountsFor is pure.
@@ -1480,20 +1480,13 @@ export default function RedesignApp() {
     // Rule 3 — a sold-out code: no order, no print (the banner is DERIVED from the
     // stock mirror). The feed row gets a "sold out" badge.
     if (plan.kind === "soldout") { setAutoBadges((b) => ({ ...b, [key]: "soldout" })); return; }
-    // Rule 2 — "short" (matched, stock > 0 but < requested qty): REJECT the whole
-    // order, no partial → a "not enough stock" badge.
-    if (plan.kind === "short") { setAutoBadges((b) => ({ ...b, [key]: "short" })); return; }
     // plan.kind === "order": claim SYNCHRONOUSLY before any await (anti double-decrement)
     autoProcessedRef.current.add(key);
     autoDupRef.current.add(dupKey);                              // Rule 1 sync claim (before createOrder)
     autoStockRef.current.set(plan.code.productLocalId, plan.nextStock);
-    // STICKER TEXT (Jeff follow-up): AUTO orders always show the CODE — qty 1 → "A1",
-    // qty>1 → "A1 x2" (for packing). ⚠️ ASCII "x" (0x78), NOT "×" (U+00D7): the sticker's
-    // price-code field runs through writeTextSmart, whose hasNonAscii check routes ANY
-    // char >127 into the CJK font (TSS24.BF2 / gbk) — "×" would print in the wrong font
-    // (or "?") on the AIMO. Keeping the whole item ASCII keeps the enlarged font "4".
-    const itemOverride = plan.qty > 1 ? `${plan.code.code} x${plan.qty}` : plan.code.code;
-    const order = orders.createOrder(c, plan.code.price, { productLocalId: plan.code.productLocalId, qty: plan.qty, autoCode: plan.code.code, itemOverride });
+    // STICKER TEXT (Jeff follow-up): AUTO orders show the CODE ("A1") for packing.
+    // Always 1 piece — there is no quantity syntax (autoMode.ts).
+    const order = orders.createOrder(c, plan.code.price, { productLocalId: plan.code.productLocalId, autoCode: plan.code.code, itemOverride: plan.code.code });
     if (order) {
       setPrinted((p) => ({ ...p, [key]: cur + plan.code.price }));
       const snap = snapshotFromCreate(c, order); // reprint snapshot (auto orders reprint too)
@@ -1504,7 +1497,7 @@ export default function RedesignApp() {
     } else {
       // free-cap soft block / msgId-dedup prevented creation → refund the claim so it
       // can retry (Rule 1 dup claim too — this buyer never got an order).
-      autoStockRef.current.set(plan.code.productLocalId, plan.nextStock + plan.qty);
+      autoStockRef.current.set(plan.code.productLocalId, plan.nextStock + 1);
       autoProcessedRef.current.delete(key);
       autoDupRef.current.delete(dupKey);
     }

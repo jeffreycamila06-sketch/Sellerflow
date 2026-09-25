@@ -71,32 +71,20 @@ describe("canUseParcelManual (PLUS/PRO/MASTER + ACTIVE — phased manual-encode 
   });
 });
 
-describe("canUseStickerQr (Print QR on sticker — same Plus/Pro/Master tier + admin)", () => {
-  const future = "2027-01-01T00:00:00Z", past = "2020-01-01T00:00:00Z";
-  it("Plus/Pro/Master + active + not expired → allowed", () => {
-    for (const tier of ["plus", "pro", "master", "Plus", " MASTER "])
-      expect(canUseStickerQr("seller", tier, "active", future)).toBe(true);
+describe("canUseStickerQr (Print QR on sticker — ALL plans; market gate only)", () => {
+  it("in-market → allowed, whatever the plan (Free/Basic/Plus/Pro/Master, expired or not)", () => {
+    expect(canUseStickerQr()).toBe(true);
+    expect(canUseStickerQr(false)).toBe(true);
   });
-  it("admin is always allowed regardless of tier/expiry (owner can test)", () => {
-    expect(canUseStickerQr("admin", "free", "active", null)).toBe(true);
-    expect(canUseStickerQr("admin", "basic", "expired", past)).toBe(true);
-    expect(canUseStickerQr("Admin", undefined, undefined, undefined)).toBe(true);
+  it("off-market → hidden", () => {
+    expect(canUseStickerQr(true)).toBe(false);
   });
-  it("Basic → NOT allowed (mirrors manual-encode exclusion)", () => {
-    expect(canUseStickerQr("seller", "basic", "active", future)).toBe(false);
-  });
-  it("free / missing plan → NOT allowed", () => {
-    expect(canUseStickerQr("seller", "free", "active", future)).toBe(false);
-    expect(canUseStickerQr("seller", undefined, "active", future)).toBe(false);
-    expect(canUseStickerQr(null, "", "active", future)).toBe(false);
-  });
-  it("allowed tier but expired/inactive → NOT allowed (isActivePaid)", () => {
-    expect(canUseStickerQr("seller", "pro", "expired", future)).toBe(false);
-    expect(canUseStickerQr("seller", "plus", "active", past)).toBe(false);
-  });
-  it("delegates to the SAME predicate as manual encode (non-admin)", () => {
-    for (const tier of ["plus", "pro", "master", "basic", "free"])
-      expect(canUseStickerQr("seller", tier, "active", future)).toBe(canUseParcelManual(tier, "active", future));
+  it("Parcel Scan manual encode stays tier-gated (Plus/Pro/Master) — only the QR opened up", () => {
+    const future = "2027-01-01T00:00:00Z";
+    expect(PARCEL_MANUAL_TIERS).toEqual(["plus", "pro", "master"]);
+    expect(canUseParcelManual("free", "active", future)).toBe(false);
+    expect(canUseParcelManual("basic", "active", future)).toBe(false);
+    expect(canUseParcelManual("plus", "active", future)).toBe(true);
   });
 });
 

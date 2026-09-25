@@ -20,7 +20,7 @@ import { buildOrderFromComment } from "../../lib/orderLogic";
 import type { Comment as ProdComment, Buyer, LiveOrder } from "../../lib/orderTypes";
 import { saveOrderToDatabase, saveLiveSessionOrder, saveCustomerToDatabase, type LiveSessionOrderInput } from "../../db";
 import { isCapError } from "./useFreeCap";
-import { decrementStockAndTouch, decrementProductStockBy } from "./productsDb";
+import { decrementStockAndTouch } from "./productsDb";
 
 const msgIdOf = (c: ProdComment): string => String((c as ProdComment & { msgId?: string }).msgId || "").trim();
 // A returned db-write result is a FAILURE only when it is an object with
@@ -81,13 +81,9 @@ export function liveSessionPayload(c: ProdComment, order: LiveOrder, sessionDate
     // active (legacy / rollback / pre-pick). Numbering + loading are UNCHANGED in
     // this step — this only records which session the order belongs to.
     session_id: sessionId || undefined,
-    // Auto Mode Rules 1/2 (sql/38). qty > 1 only for Auto Mode; auto_code carries the
-    // code for the Rule 1 (session,handle,code) unique index. Manual/enterprise leave
-    // autoCode undefined → auto_code NULL → not part of the dedup index.
-    // ⚠️ ACCEPTED (audit F-CAP-UNITS): a qty=N auto order is ONE saveOrderToDatabase =
-    // ONE billing row = ONE count toward the free-tier cap (billing `orders` has no qty
-    // column; total_amount = price*qty is correct). The cap is PER-ORDER, not per-unit
-    // (Jeff's call, pending) — do NOT change this to per-unit without a decision.
+    // Auto Mode Rule 1 (sql/38). qty is always 1 now (no quantity syntax); auto_code
+    // carries the code for the Rule 1 (session,handle,code) unique index. Manual/
+    // enterprise leave autoCode undefined → auto_code NULL → not part of the dedup index.
     qty: order.qty,
     auto_code: order.autoCode || undefined,
     // sql/48 — the page a future Messenger Private Reply receipt is sent FROM (its token)
@@ -171,14 +167,14 @@ export interface UseOrdersDeps {
 // the SAME fan-out can also decrement that product's stock + stamp last_ordered_at
 // (the Part-2 link) via the atomic RPC. Manual 1-Click/Enterprise pass no opts → the
 // three writes are byte-identical (no RPC), preserving 5e parity.
-// Auto Mode: qty (Rule 2 — default 1; total = price*qty in the builder) + autoCode
-// (Rule 1 — stamped on the order + row for the (session,handle,code) dedup index).
-// Manual 1-Click/Enterprise pass NEITHER → qty defaults 1, autoCode stays undefined,
-// and the three writes + builder output are byte-identical to 5e.
-// itemOverride: AUTO orders print the seller's CODE as the item text ("A1" / "A1 ×2")
-// for packing (Jeff) — replaces the pure builder's price-string item. Manual orders
-// pass no override → the builder's item (price string / comment) is byte-unchanged.
-export interface CreateOrderOpts { productLocalId?: number; qty?: number; autoCode?: string; itemOverride?: string }
+// Auto Mode: autoCode (Rule 1 — stamped on the order + row for the (session,handle,code)
+// dedup index). Every order is ONE piece (no quantity syntax). Manual 1-Click/Enterprise
+// pass no autoCode → it stays undefined, and the three writes + builder output are
+// byte-identical to 5e.
+// itemOverride: AUTO orders print the seller's CODE as the item text ("A1") for packing
+// (Jeff) — replaces the pure builder's price-string item. Manual orders pass no
+// override → the builder's item (price string / comment) is byte-unchanged.
+export interface CreateOrderOpts { productLocalId?: number; autoCode?: string; itemOverride?: string }
 
 export interface UseOrders {
   // returns null when the free-tier soft block prevented creation.
@@ -209,7 +205,7 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCap
     // 1) SAME pure builder production uses (buyer numbering + orderNum epoch ms).
     //    Rule 2: qty (default 1 → byte-identical); Rule 1: stamp autoCode on the
     //    order so it persists on the row + feeds the (session,handle,code) dedup.
-    const { order, nextBuyers, singleOrderBuyer } = buildOrderFromComment(c, getBuyers(), price, new Date(), opts?.qty ?? 1);
+    const { order, nextBuyers, singleOrderBuyer } = buildOrderFromComment(c, getBuyers(), price, new Date());
     if (opts?.autoCode) order.autoCode = opts.autoCode;
     // Auto Mode: the sticker/order item text is the CODE ("A1" / "A1 ×2"), not the
     // price string. singleOrderBuyer projects the SAME order object → the printed
@@ -290,10 +286,8 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCap
     //     → Auto Mode could oversell with no signal). Manual orders pass no opts →
     //     never runs (5e byte-identical).
     if (opts?.productLocalId) {
-      // Rule 2: decrement by qty when Auto Mode passes it (atomic, whole-or-nothing);
-      // the old 1-arg RPC stays the path for any caller that doesn't pass qty. A -1
-      // return = the DB rejected a cross-device short (client plan already blocked the
-      // common in-device short) → surface it like any stock error (M1).
+      // Decrement ONE piece (atomic). A -1 return = the DB found no stock left
+      // (cross-device sell-out) → surface it like any stock error (M1).
       // ⚠️ ACCEPTED RESIDUAL (audit F-STOCK-ORDER / F-RPC-NEG): this decrement + the
       // billing/session inserts above are INDEPENDENT fire-and-forget calls, none
       // awaited or conditional on each other (production fire-and-forget parity). So a
@@ -305,7 +299,7 @@ export function useOrders({ getBuyers, applyOrder, sessionDate, sessionId, isCap
       // session/buyer# integrity; a true refund would need an increment RPC (out of
       // scope). onStockError surfaces it so the seller can reconcile manually.
       const localId = opts.productLocalId;
-      const dec = opts.qty != null ? decrementProductStockBy(localId, opts.qty) : decrementStockAndTouch(localId);
+      const dec = decrementStockAndTouch(localId);
       void dec.then((newStock) => { if (newStock === -1) onStockError?.(new Error("stock_short")); })
         .catch((err) => {
           // Same kiosk false-alarm guard: only a genuine RPC/network error is a stock error.

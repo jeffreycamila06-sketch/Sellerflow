@@ -56,21 +56,12 @@ export function canUseParcelManual(
   return isActivePaid({ plan: plan ?? "", planStatus: planStatus ?? "", daysLeft: planDaysLeft(planExpiry, nowMs) });
 }
 
-// STICKER-QR entitlement (2026-09-21) — the "Print QR on sticker" toggle + its print-time
-// stamp are restricted to the SAME PLUS/PRO/MASTER-active tier as manual encode, PLUS
-// admin (so the owner can always test). Reuses canUseParcelManual (PARCEL_MANUAL_TIERS +
-// isActivePaid) — NOT tied to the parcel_manual_enabled kill switch (that gates manual
-// encode only; QR is a printing feature). Fail-closed: a missing/blank plan → false.
-export function canUseStickerQr(
-  role: string | undefined | null,
-  plan: string | undefined | null,
-  planStatus: string | undefined | null,
-  planExpiry: string | undefined | null,
-  nowMs: number = Date.now(),
-  marketHidden = false, // off-market (non-TW, non-admin/preview) → hidden regardless of tier
-): boolean {
-  if (marketHidden) return false; // market gate wins (admin bypass is already baked into the flag)
-  return isAdminRole(role) || canUseParcelManual(plan, planStatus, planExpiry, nowMs);
+// STICKER-QR entitlement — "Print QR on sticker" is available on ALL plans (Free, Basic,
+// Plus, Pro, Master; changed 2026-09-25 — was Plus/Pro/Master + admin). The ONLY gate is
+// the market: off-market (non-TW, non-admin/preview) → hidden. Deliberately NOT tied to
+// Parcel Scan's tier gate (canUseParcelManual) or its parcel_manual_enabled kill switch.
+export function canUseStickerQr(marketHidden = false): boolean {
+  return !marketHidden; // admin/preview bypass is already baked into the market flag
 }
 
 // ── KILL SWITCH (2026-09-10) — global admin toggle for seller manual encode ────

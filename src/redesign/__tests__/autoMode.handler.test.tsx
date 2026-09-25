@@ -103,27 +103,20 @@ describe("RedesignApp Auto Mode handler (onComment wiring)", () => {
     H.createOrder.fn = vi.fn(() => ({ orderNum: 1750000000000, item: "52", qty: 1, price: 52, total: 52, time: "", handle: "buyer1", name: "Buyer One", bNum: 1, platform: "TikTok", status: "New", date: "2026-06-27" }));
   });
 
-  it("exact matching code → creates an auto-order with the code price + product link + qty 1 + autoCode", async () => {
+  it("exact matching code → creates a 1-piece auto-order with the code price + product link + autoCode", async () => {
     const drive = await mountWithAutoMode(true);
     await drive(comment({ comment: "D" }));
     expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
     const [, price, opts] = H.createOrder.fn!.mock.calls[0];
     expect(price).toBe(52);
-    // Rules 1/2 + P5 sticker text: qty 1 → item text is the CODE ("D").
-    expect(opts).toEqual({ productLocalId: 14, qty: 1, autoCode: "D", itemOverride: "D" });
+    // Rule 1 + P5 sticker text: item text is the CODE ("D"); no qty (always 1 piece).
+    expect(opts).toEqual({ productLocalId: 14, autoCode: "D", itemOverride: "D" });
   });
 
-  it("RULE 2 — 'D 2' with stock 2 → ONE order qty 2 + sticker item 'D x2' (ASCII x, F-PRINT fix)", async () => {
+  it("NO QUANTITY — 'D 2' (code + number) is a plain comment: no auto order", async () => {
     const drive = await mountWithAutoMode(true);
     await drive(comment({ comment: "D 2" }));
-    expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
-    const [, price, opts] = H.createOrder.fn!.mock.calls[0];
-    expect(price).toBe(52);
-    expect(opts).toEqual({ productLocalId: 14, qty: 2, autoCode: "D", itemOverride: "D x2" });
-    // F-PRINT — the override MUST be pure ASCII (a non-ASCII "×" routes the sticker
-    // price-code field into the CJK font / prints "?" on the AIMO). Every char code < 128.
-    expect([...opts.itemOverride as string].every((ch) => ch.charCodeAt(0) < 128)).toBe(true);
-    expect(opts.itemOverride).not.toContain("×");
+    expect(H.createOrder.fn).not.toHaveBeenCalled();
   });
 
   it("F-DEDUP-RACE — a comment arriving while the session window is LOADING creates NO auto order", async () => {
@@ -140,12 +133,6 @@ describe("RedesignApp Auto Mode handler (onComment wiring)", () => {
     expect(H.createOrder.fn).toHaveBeenCalledTimes(1);
   });
 
-  it("RULE 2 — 'D 3' with only 2 in stock → SHORT: no order (reject whole, no partial)", async () => {
-    const drive = await mountWithAutoMode(true);
-    await drive(comment({ comment: "D 3" }));
-    expect(H.createOrder.fn).not.toHaveBeenCalled();
-  });
-
   it("RULE 1 — same buyer, same code, DIFFERENT comments → only ONE order (the commentKey/msgId guards can't; the dup ref does)", async () => {
     const drive = await mountWithAutoMode(true);
     await drive(comment({ handle: "buyer1", comment: "D", timestamp: "2026-06-27T13:41:00.000Z" }));
@@ -153,7 +140,7 @@ describe("RedesignApp Auto Mode handler (onComment wiring)", () => {
     expect(H.createOrder.fn).toHaveBeenCalledTimes(1); // second = duplicate → no order
   });
 
-  it("RULE 1 — 'D' then 'D 2' same buyer → first wins, second is a duplicate (no order)", async () => {
+  it("'D' then 'D 2' same buyer → one order; 'D 2' is just a plain comment", async () => {
     const drive = await mountWithAutoMode(true);
     await drive(comment({ handle: "buyer1", comment: "D", timestamp: "2026-06-27T13:41:00.000Z" }));
     await drive(comment({ handle: "buyer1", comment: "D 2", timestamp: "2026-06-27T13:42:00.000Z" }));

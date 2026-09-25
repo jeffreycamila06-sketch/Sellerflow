@@ -5,7 +5,7 @@
 // is untouched (those matchers are source-agnostic by construction).
 import { describe, it, expect } from "vitest";
 import { codesFromProducts, applyStockChange } from "../autoCodesFromProducts";
-import { matchCode, parseAutoComment, planAutoOrder } from "../autoMode";
+import { matchCode, planAutoOrder } from "../autoMode";
 import type { Product } from "../products";
 
 const prod = (over: Partial<Product> = {}): Product => ({ id: 1, name: "Tee", sku: "T-1", price: 100, stock: 10, platform: "TikTok", status: "Active", ...over });
@@ -47,13 +47,11 @@ describe("parity — the products source feeds the pure matchers unchanged", () 
   it("price on the created auto order = the PRODUCT price (350)", () => {
     const plan = planAutoOrder("A1", codes, (lid) => (lid === 1 ? 4 : 0));
     expect(plan.kind).toBe("order");
-    if (plan.kind === "order") { expect(plan.code.price).toBe(350); expect(plan.code.productLocalId).toBe(1); expect(plan.qty).toBe(1); }
+    if (plan.kind === "order") { expect(plan.code.price).toBe(350); expect(plan.code.productLocalId).toBe(1); }
   });
 
-  it("Rule 2 qty ('A1 2') parses off the products-sourced code", () => {
-    const parsed = parseAutoComment("A1 2", codes);
-    expect("code" in parsed && parsed.code.code).toBe("A1");
-    expect("qty" in parsed && parsed.qty).toBe(2);
+  it("'A1 2' is a plain comment — no quantity syntax, no order", () => {
+    expect(planAutoOrder("A1 2", codes, () => 99)).toEqual({ kind: "none" });
   });
 });
 

@@ -101,11 +101,11 @@ export function setStickerQrOn(on: boolean): void {
   try { if (on) localStorage.setItem(LS_STICKER_QR, "1"); else localStorage.removeItem(LS_STICKER_QR); } catch { /* ignore */ }
 }
 
-// TIER ENTITLEMENT (2026-09-21) — the QR is a PLUS/PRO/MASTER(+admin) feature. This module
-// flag is the PRINT-TIME gate: RedesignApp sets it from canUseStickerQr when the profile
-// resolves; the sticker path ANDs it with isStickerQrOn(). DEFAULT false (FAIL-CLOSED) so a
-// stored toggle on a non-entitled account (or before the profile loads) NEVER prints a QR.
-// No plan logic lives here — just the on/off flag (tier decision stays in parcelScan.ts).
+// ENTITLEMENT — the QR is on ALL plans; only the market gate applies (canUseStickerQr in
+// parcelScan.ts). This module flag is the PRINT-TIME gate: RedesignApp sets it when the
+// profile resolves; the sticker path ANDs it with isStickerQrOn(). DEFAULT false
+// (FAIL-CLOSED) so a stored toggle off-market (or before the profile loads) NEVER prints a
+// QR. No plan/market logic lives here — just the on/off flag.
 let stickerQrEntitled = false;
 export function setStickerQrEntitled(on: boolean): void { stickerQrEntitled = on === true; }
 export function isStickerQrEntitled(): boolean { return stickerQrEntitled; }
