@@ -95,7 +95,17 @@ describe("PrinterSettings subtitle (task D)", () => {
 });
 
 // ── "Print QR on sticker" toggle: disabled + hint on 60×40, enabled on supported sizes ──
-describe("PrinterSettings sticker-QR toggle vs sticker size", () => {
+// These are the PHONE-APP cases, so a native printer bridge is present (the same
+// window.SellerFlowPrinter check — hasNativePrinter — that hides the "runs in the app" note).
+const withPhoneBridge = () => {
+  beforeEach(() => {
+    (window as unknown as { SellerFlowPrinter?: unknown }).SellerFlowPrinter =
+      new Proxy({}, { get: () => async () => ({ ok: false }) }); // every bridge method → harmless no-op
+  });
+  afterEach(() => { delete (window as unknown as { SellerFlowPrinter?: unknown }).SellerFlowPrinter; });
+};
+describe("PrinterSettings sticker-QR toggle vs sticker size (phone app)", () => {
+  withPhoneBridge();
   const renderBT = (psSize: string, stickerQrAllowed = true) =>
     render(
       <TProvider lang="en">
@@ -133,6 +143,40 @@ describe("PrinterSettings sticker-QR toggle vs sticker size", () => {
       </TProvider>,
     );
     expect(screen.queryByTestId("ps-sticker-qr-toggle")).toBeNull();
+  });
+});
+
+// ── WEB (browser, no native bridge): the QR toggle is shown DISABLED + "app only" ──
+describe("PrinterSettings sticker-QR toggle on WEB (no phone bridge)", () => {
+  const renderWeb = (psSize: string) =>
+    render(
+      <TProvider lang="en">
+        <PrinterSettings onBack={noop} psType="bt" psOut="sticker" onSetPsOut={noop}
+          psSize={psSize} psSizeOpen={false} onTogglePsSize={noop} onPickPsSize={noop} stickerQrAllowed />
+      </TProvider>,
+    );
+
+  it("every size → disabled, not pressed, with the 'phone app only' note (same check as the app-only banner)", () => {
+    for (const z of ["80x60mm", "70x50mm", "100x60mm (Standard)", "60x40mm"]) {
+      const r = renderWeb(z);
+      const btn = screen.getByTestId("ps-sticker-qr-toggle") as HTMLButtonElement;
+      expect(btn.disabled).toBe(true);
+      expect(btn.getAttribute("aria-pressed")).toBe("false");
+      expect(screen.getByTestId("ps-sticker-qr-hint").textContent).toBe(t.rd_ps_sticker_qr_app_only);
+      expect(screen.getByText(t.rd_ps_native_note)).toBeTruthy(); // the existing app-only banner shows too
+      r.unmount();
+    }
+  });
+
+  it("tapping it on web changes nothing (no stored QR flag)", () => {
+    const store = new Map<string, string>();
+    vi.stubGlobal("localStorage", { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, v); }, removeItem: (k: string) => { store.delete(k); }, clear: () => store.clear() });
+    try {
+      renderWeb("80x60mm");
+      fireEvent.click(screen.getByTestId("ps-sticker-qr-toggle"));
+      expect(store.size).toBe(0);
+      expect(screen.getByTestId("ps-sticker-qr-toggle").getAttribute("aria-pressed")).toBe("false");
+    } finally { vi.unstubAllGlobals(); }
   });
 });
 
