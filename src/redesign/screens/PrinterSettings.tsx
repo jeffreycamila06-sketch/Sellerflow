@@ -36,8 +36,11 @@ export default function PrinterSettings({
 }) {
   const t = useT();
   const wifi = psType === "wifi";
-  const qrUnsupportedSize = /^60x40/.test(psSize); // sticker QR is excluded on 60×40 (too small to scan fast)
   const nativeReady = hasNativePrinter();
+  // PHONE APP only: sticker QR is excluded on 60×40 (too small to scan fast). On WEB
+  // (no native bridge) the browser-print QR follows the seller's own paper/driver
+  // settings, so there is no size gate and no 60×40 note there.
+  const qrUnsupportedSize = nativeReady && /^60x40/.test(psSize);
   const btReady = hasBtBridge();
   const [status, setStatus] = useState<MobilePrinterResult>({ ok: false, message: nativeReady ? t.rd_ps_tap_find : t.rd_ps_open_app_connect });
   const [host, setHost] = useState("");
@@ -207,11 +210,12 @@ export default function PrinterSettings({
               </button>
             </div>
             )}
-            {/* "Print QR on sticker" — Plus/Pro/Master(+admin) ONLY (stickerQrAllowed);
+            {/* "Print QR on sticker" — all plans, hidden off-market (stickerQrAllowed);
                 per-device, DEFAULT OFF. Adds a QR of the buyer @username to the sticker
-                (bitmap path only) so Parcel Scan can read the handle back off the label.
-                Basic/free never see it; the print-time gate (setStickerQrEntitled) is the
-                authority regardless of a stored toggle. Nothing changes until turned on. */}
+                so Parcel Scan can read the handle back off the label — phone app via the
+                bitmap sticker path, web via the browser-print sticker (printSlip SVG).
+                The print-time gate (setStickerQrEntitled) is the authority regardless of
+                a stored toggle. Nothing changes until turned on. */}
             {stickerQrAllowed && (
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginTop: 12, display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ flex: 1, minWidth: 0 }}>

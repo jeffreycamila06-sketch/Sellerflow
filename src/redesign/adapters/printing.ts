@@ -14,7 +14,9 @@
 import { shouldUseBluetoothSticker, shouldUseLanSticker } from "../../lib/printerRouting";
 import { isAdminRole } from "../../lib/roles";
 import type { Buyer } from "../../lib/orderTypes";
-import { rasterizeToSdkBitmapTspl, bytesToBase64, payloadNeedsCjk, type GlyphAtlas } from "./stickerRaster";
+import { rasterizeToSdkBitmapTspl, bytesToBase64, payloadNeedsCjk, QR_QUIET_MODULES, type GlyphAtlas } from "./stickerRaster";
+import { qrMatrix } from "../../lib/qr";
+import { tiktokProfileUrl } from "../../lib/tiktokHandle";
 import { loadCjkAtlas } from "./cjkAtlasLoader";
 import { LATIN_ATLAS } from "./glyphAtlas.latin";
 
@@ -709,6 +711,27 @@ async function runNativeStickerJob(job: NativeStickerJob): Promise<boolean> {
 // Test-only: reset the native queue state between cases.
 export function __resetNativePrintQueue(): void { nativeQueue = []; nativeBusy = false; nativeFallbackId = 0; }
 
+// WEB STICKER QR — the browser-print twin of the phone's stickerQrPlacement: the SAME
+// link (tiktokProfileUrl), the SAME ECC "M", drawn as an inline SVG (crisp vector
+// squares) with the same 4-module quiet zone. Each module is 0.5 mm = the phone's
+// 4 dots at 203 dpi, so a typical handle (QR v3, 29 modules) is an 18.5 mm block.
+// NO label-size check on web: the seller's own browser/printer-driver settings decide
+// the paper size (the phone path keeps its own 60×40 exclusion). null = no QR.
+export const WEB_QR_MODULE_MM = 0.5;
+export function webStickerQrSvg(handle: string | undefined | null): { svg: string; sizeMm: number } | null {
+  const h = String(handle ?? "").trim();
+  if (!h) return null;
+  const url = tiktokProfileUrl(h);
+  if (!url) return null;
+  const m = qrMatrix(url, "M");
+  if (!m) return null;
+  const q = QR_QUIET_MODULES, n = m.length, total = n + 2 * q;
+  let d = "";
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (m[r][c]) d += `M${c + q} ${r + q}h1v1h-1z`;
+  const svg = `<svg class="qr" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${total} ${total}" shape-rendering="crispEdges"><rect width="${total}" height="${total}" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+  return { svg, sizeMm: total * WEB_QR_MODULE_MM };
+}
+
 export function printSlip(buyer: Buyer, cur: string, storeName: string, printSettings: Settings | string): PrintResult {
   const cfg: Settings = typeof printSettings === "string" ? { ...DEF_SETTINGS, stickerSize: printSettings } : printSettings;
   const nativePrinter = typeof window !== "undefined" ? window.SellerFlowPrinter : undefined;
@@ -749,6 +772,15 @@ export function printSlip(buyer: Buyer, cur: string, storeName: string, printSet
   // price string for manual — rendered LARGE at the bottom, mirroring native.
   const codeItem = buyer.orders?.[0]?.item;
   const codeTime = buyer.orders?.[0]?.time;
+  // QR (same content rules as the phone): toggle on (+ entitled), @username line on,
+  // handle not blank. Bottom-right; the lines that can reach that corner (name,
+  // @handle, time + big code) get right padding so text never runs under it.
+  const qr = stickerQrEffective() && cfg.printBuyerUsername !== false ? webStickerQrSvg(buyer.handle) : null;
+  const qrCss = qr
+    ? `body{position:relative}` +
+      `.qr{position:absolute;right:clamp(1mm,2.5vw,2.5mm);bottom:clamp(1mm,2.5vh,2mm);width:${qr.sizeMm}mm;height:${qr.sizeMm}mm}` +
+      `.name,.user,.foot{padding-right:${qr.sizeMm + 1.5}mm}`
+    : "";
   // DRIVER-DRIVEN + AUTO-FIT (web only; native tiers UNTOUCHED): NO forced @page
   // size — the Windows printer driver's paper size decides. The body is exactly
   // ONE page tall with overflow:hidden, so content can NEVER spill to a 2nd label
@@ -775,6 +807,7 @@ export function printSlip(buyer: Buyer, cur: string, storeName: string, printSet
     `.foot{margin-top:auto;display:flex;flex-direction:column;min-height:0}` +
     `.ftime{font-size:clamp(2mm,5vh,2.8mm);font-weight:600}` +
     `.code{font-size:clamp(5.5mm,17vh,12mm);font-weight:900;line-height:1.02;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}` +
+    qrCss +
     `</style></head><body>` +
     `<div class="head"><span class="brand">SellerFlowLive</span><span class="date">${esc(sess)}</span></div>` +
     `<div class="bar"></div>` +
@@ -783,6 +816,7 @@ export function printSlip(buyer: Buyer, cur: string, storeName: string, printSet
     (buyer.name ? `<div class="name">${esc(trunc(buyer.name, 30))}</div>` : "") +
     (cfg.printBuyerUsername && buyer.handle ? `<div class="user">@${esc(trunc(buyer.handle.replace(/^@+/, ""), 30))}</div>` : "") +
     (cfg.printOrderItems && codeItem ? `<div class="foot">${codeTime ? `<div class="ftime">${esc(trunc(String(codeTime), 10))}</div>` : ""}<div class="code">${esc(trunc(String(codeItem), 14))}</div></div>` : "") +
+    (qr ? qr.svg : "") +
     `</body></html>`;
   enqueueWebPrint({ id: jobId, html });
   return { ok: true, via: "browser" };

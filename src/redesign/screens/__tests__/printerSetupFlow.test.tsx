@@ -95,7 +95,17 @@ describe("PrinterSettings subtitle (task D)", () => {
 });
 
 // ── "Print QR on sticker" toggle: disabled + hint on 60×40, enabled on supported sizes ──
-describe("PrinterSettings sticker-QR toggle vs sticker size", () => {
+// These are the PHONE-APP cases (native printer bridge present — hasNativePrinter), where
+// the phone path still excludes 60×40. On WEB there is no size gate (see the next block).
+const withPhoneBridge = () => {
+  beforeEach(() => {
+    (window as unknown as { SellerFlowPrinter?: unknown }).SellerFlowPrinter =
+      new Proxy({}, { get: () => async () => ({ ok: false }) }); // every bridge method → harmless no-op
+  });
+  afterEach(() => { delete (window as unknown as { SellerFlowPrinter?: unknown }).SellerFlowPrinter; });
+};
+describe("PrinterSettings sticker-QR toggle vs sticker size (phone app)", () => {
+  withPhoneBridge();
   const renderBT = (psSize: string, stickerQrAllowed = true) =>
     render(
       <TProvider lang="en">
@@ -133,6 +143,25 @@ describe("PrinterSettings sticker-QR toggle vs sticker size", () => {
       </TProvider>,
     );
     expect(screen.queryByTestId("ps-sticker-qr-toggle")).toBeNull();
+  });
+});
+
+// ── WEB (browser, no phone bridge): the QR prints via the browser sticker — the toggle
+// is ENABLED at every size with the normal description (the seller's own paper/driver
+// settings decide the size; no 60×40 note on web).
+describe("PrinterSettings sticker-QR toggle on WEB (no phone bridge)", () => {
+  it("every size incl. 60×40 → enabled, normal description, no 60×40 note", () => {
+    for (const z of ["60x40mm", "70x50mm", "80x60mm", "100x60mm (Standard)"]) {
+      const r = render(
+        <TProvider lang="en">
+          <PrinterSettings onBack={noop} psType="bt" psOut="sticker" onSetPsOut={noop}
+            psSize={z} psSizeOpen={false} onTogglePsSize={noop} onPickPsSize={noop} stickerQrAllowed />
+        </TProvider>,
+      );
+      expect((screen.getByTestId("ps-sticker-qr-toggle") as HTMLButtonElement).disabled).toBe(false);
+      expect(screen.getByTestId("ps-sticker-qr-hint").textContent).toBe(t.rd_ps_sticker_qr_desc);
+      r.unmount();
+    }
   });
 });
 
