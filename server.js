@@ -11,6 +11,7 @@ import { checkEmapStore } from "./server/emapCheck.js";
 import { createOcr, runPoll } from "./server/parcelTrackingRunner.js";
 import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs, checkConnectRate, CONNECT_RATE_WINDOW_MS, isOwningConnection, relaySessionId } from "./server/connectionHealth.js";
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
+import { timingSafeTokenEqual, makeFailureThrottle } from "./server/pollAuth.js";
 import { sanitizeCommentPayload } from "./server/sanitize.js";
 import { accountCapVerdict } from "./server/accountCap.js";
 import { concurrencyCap, freshLiveKeysForSeller, capDecision } from "./server/concurrencyCap.js";
@@ -23,7 +24,6 @@ import { createFbRuntime } from "./server/fbLive.js";
 
 const app = express();
 const server = http.createServer(app);
-const TEST_COMMENT_TOKEN = process.env.TEST_COMMENT_TOKEN || "";
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || "";
 // Broadcast auto-translation (admin-only). Set on Render → Environment. When
@@ -432,8 +432,8 @@ function emailIdOf(sellerId) {
 }
 
 function sellerRoom(sellerId) {
-  // cleanSellerId is the identity function on a UUID (kept for the dormant
-  // /test-comment route, which may still pass arbitrary query text).
+  // cleanSellerId is the identity function on a UUID (kept as belt-and-braces
+  // normalization; every caller now passes the auth UUID).
   return `seller:${cleanSellerId(sellerId)}`;
 }
 
@@ -959,8 +959,10 @@ app.post("/admin/parcel-emap-check", requireAuth, async (req, res) => {
 });
 
 // ── SHOPMORE pickup-tracking poll (cron-triggered) ──────────────────────────────
-// SECRET-gated (cron-job.org can't present a JWT): PARCEL_POLL_TOKEN via ?token= or
-// the X-Poll-Token header, checked BEFORE any body handling. Runs the impure runner
+// SECRET-gated (cron-job.org can't present a JWT): PARCEL_POLL_TOKEN via the
+// X-Poll-Token HEADER ONLY (M5 2026-09-26 — ?token= removed: query strings land in
+// Render/cron/proxy logs), compared timing-safe with a failed-attempt lockout
+// (server/pollAuth.js), checked BEFORE any body handling. Runs the impure runner
 // as SERVICE ROLE (explicit user_id scope via PARCEL_POLL_USER_ID). Single-flight so
 // two cron pings can never overlap (RAM + anti-block). Creates ONE tesseract worker
 // and TERMINATES it in finally (never kept warm). NOT wired to cron until the
@@ -990,10 +992,22 @@ async function runParcelPollOnce() {
   }
 }
 
+const parcelPollAuthThrottle = makeFailureThrottle({ max: 5, windowMs: 15 * 60 * 1000 });
+
 app.post("/admin/parcel-tracking-poll", async (req, res) => {
   if (!PARCEL_POLL_TOKEN) return res.status(503).json({ ok: false, error: "poll_not_configured" });
-  const token = req.query.token || req.headers["x-poll-token"];
-  if (token !== PARCEL_POLL_TOKEN) return res.status(403).json({ ok: false, error: "forbidden" }); // auth gate unchanged
+  // M5 — header only (never the query string), lockout after repeated bad tokens,
+  // constant-time compare. The cron-job.org job sends X-Poll-Token (documented).
+  if (parcelPollAuthThrottle.blocked()) {
+    console.log("[PARCEL-POLL] auth throttle — locked out after repeated bad tokens");
+    return res.status(429).json({ ok: false, error: "too_many_attempts" });
+  }
+  const token = req.headers["x-poll-token"];
+  if (!timingSafeTokenEqual(token, PARCEL_POLL_TOKEN)) {
+    parcelPollAuthThrottle.fail();
+    return res.status(403).json({ ok: false, error: "forbidden" });
+  }
+  parcelPollAuthThrottle.ok();
   if (!serviceSb) return res.status(503).json({ ok: false, error: "no_service_role" });
   // Single-flight over the WHOLE scheduled+running window: claim it NOW (synchronously,
   // before responding) so a second trigger during the jitter delay OR the run itself
@@ -1756,55 +1770,12 @@ async function connectTikTok(username, res, meta = {}) {
   }
 }
 
-app.get("/test-comment", (req, res) => {
-  if (!TEST_COMMENT_TOKEN) {
-    return res.status(404).json({
-      success: false,
-      error: "Test comments are disabled",
-    });
-  }
-
-  if (TEST_COMMENT_TOKEN && req.query.token !== TEST_COMMENT_TOKEN) {
-    return res.status(401).json({
-      success: false,
-      error: "Invalid test comment token",
-    });
-  }
-
-  const sellerId = cleanSellerId(req.query.sellerId);
-  if (!sellerId) {
-    return res.status(400).json({
-      success: false,
-      error: "sellerId is required for test comments",
-    });
-  }
-
-  const platform = String(req.query.platform || "TikTok").toLowerCase() === "facebook" ? "Facebook" : "TikTok";
-  const sourceUsername = cleanAccountKey(req.query.sourceUsername || req.query.username || "test");
-
-  console.log(`Maria Reyes: test ${platform} live comment for ${sellerId}`);
-
-  io.to(sellerRoom(sellerId)).emit("comment", {
-    handle: "maria_reyes",
-    name: "Maria Reyes",
-    comment: "test live comment",
-    platform,
-    sellerId,
-    sessionId: String(req.query.sessionId || ""),
-    sourceUsername,
-    isBuy: false,
-    buyerNum: null,
-    buyerData: null,
-    time: new Date().toLocaleTimeString("en-US", { timeZone: "Asia/Taipei" }),
-    timestamp: new Date().toISOString(),
-  });
-
-  res.json({
-    success: true,
-    message: `Fake ${platform} comment received`,
-    comment: "test live comment",
-  });
-});
+// M5 (security audit 2026-09-26) — the GET /test-comment route was DELETED outright.
+// It injected a fake comment into an arbitrary seller's room, gated only by a
+// query-string shared secret compared with !==, and bypassed emitCommentScoped's
+// sanitizer. It had ZERO production callers (the client's synthetic injector is
+// window.__sflInject, a client-side mechanism). Nothing to configure anymore —
+// the old "verify TEST_COMMENT_TOKEN is unset on Render" audit item (S3) is moot.
 
 // Keep Render awake — i-lagay bago ang server.listen
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL || "";
