@@ -1204,12 +1204,39 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
   const initialChats = [];
   const initialCollector = (data) => { initialChats.push(data); };
   tiktokConnection.on("chat", initialCollector);
+  // [PIN-PROBE] Phase 1 (2026-09-26) — LOG-ONLY, ZERO behavior. Question: does
+  // TikTok deliver WebcastRoomPinMessage (host pins a comment) on our wire, and
+  // what shape/action values does it carry? The legacy WebcastPushConnection
+  // switch NEVER emits a "roomPin" event — but it emits decodedData for EVERY
+  // message type (simplifyObject already ran on all of them regardless), so this
+  // listener only filters; zero added per-message cost. Attached BEFORE connect()
+  // so pins inside the pre-connect initial buffer are captured too
+  // (phase=initial) — Phase 2 must know whether a still-pinned comment is
+  // RE-DELIVERED on every health-cycle reconnect (the print-every-10-min
+  // hazard). SHADOW-FIRST per the 2026-07-14 wire-shape rule; Phase 2 (relay +
+  // client toggle, Option A: pin = 1-Click order + print) ships only after this
+  // probe's production data is reviewed. Expected fields (schema): top-level
+  // msgId/createTime = the PIN event's own (F1 flatten), nested chatMessage
+  // (NOT simplified: chatMessage.common.msgId = the ORIGINAL comment's msgId,
+  // chatMessage.user.uniqueId, chatMessage.content), action (pin/unpin enum —
+  // UNVERIFIED, the probe's main quarry), pinTime, pinId, operator.
+  let pinProbeConnected = false;
+  tiktokConnection.on("decodedData", (msgType, obj) => {
+    if (msgType !== "WebcastRoomPinMessage") return;
+    try {
+      const owning = isOwningConnection(tiktokConnections, key, tiktokConnection);
+      let raw = "";
+      try { raw = JSON.stringify(obj).slice(0, 800); } catch { raw = "unstringifiable"; }
+      console.log(`[PIN-PROBE] ${cleanUsername} phase=${pinProbeConnected ? "live" : "initial"} owning=${owning} ${raw}`);
+    } catch { /* the probe must never affect the connection */ }
+  });
   let state;
   try {
     state = await tiktokConnection.connect();
   } finally {
     tiktokConnection.off("chat", initialCollector);
   }
+  pinProbeConnected = true; // everything after connect() resolves = live-phase pins
   // Phase 1 — is-LIVE gate (FAIL-OPEN). Fixes "Connected but offline": only BLOCK
   // when roomInfo POSITIVELY reports not-live (roomInfo present + numeric status
   // !== 1; LIVE = status:1 confirmed by the Phase 0 probe). Any ambiguity
