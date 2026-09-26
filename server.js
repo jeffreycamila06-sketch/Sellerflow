@@ -13,6 +13,7 @@ import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, re
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
 import { timingSafeTokenEqual, makeFailureThrottle } from "./server/pollAuth.js";
 import { sanitizeCommentPayload } from "./server/sanitize.js";
+import { pinChatOf, buildPinPayload, pinAlreadySeen } from "./server/pinRelay.js";
 import { accountCapVerdict } from "./server/accountCap.js";
 import { concurrencyCap, freshLiveKeysForSeller, capDecision } from "./server/concurrencyCap.js";
 import { fbConnectedNow } from "./server/fbLiveness.js";
@@ -1251,9 +1252,40 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
     try {
       const owning = isOwningConnection(tiktokConnections, key, tiktokConnection);
       let raw = "";
-      try { raw = JSON.stringify(obj).slice(0, 800); } catch { raw = "unstringifiable"; }
+      try { raw = JSON.stringify(obj).slice(0, 2000); } catch { raw = "unstringifiable"; } // 2000: the 800 cap cut off action/isShowMsg
       console.log(`[PIN-PROBE] ${cleanUsername} phase=${pinProbeConnected ? "live" : "initial"} owning=${owning} ${raw}`);
     } catch { /* the probe must never affect the connection */ }
+    // ── PIN-TO-PRINT Phase 2 relay (Option A: pin = 1-Click on the client) ──
+    // Ordering is load-bearing: live-phase gate FIRST (pre-connect-buffer pins
+    // are history — relaying them is the reconnect/print-every-10-min hazard),
+    // then the OWNING guard (G1 discipline, now ENFORCED — an orphaned old
+    // connection must never relay a pin), then validity, then per-connection
+    // msgId dedup (pin/expire/re-pin = one relay; pin-vs-expire semantics are
+    // deliberately not distinguished — see server/pinRelay.js). DELIBERATELY a
+    // separate `platform_pin` event, NEVER emitCommentScoped: re-emitting as a
+    // normal comment would re-enter the client feed + the Auto-Mode seam with a
+    // fresh server-stamped commentKey — the exact F4 double-order trap. Account
+    // scoping happens client-side on payload.username (the platform_viewers
+    // pattern). Best-effort by contract: a relay failure never touches the
+    // connection.
+    try {
+      if (!pinProbeConnected) return;
+      if (!isOwningConnection(tiktokConnections, key, tiktokConnection)) return;
+      const chat = pinChatOf(obj);
+      if (!chat) { console.log(`[PIN-RELAY] drop (no valid chatMessage) ${cleanUsername}`); return; }
+      const entry = tiktokConnections.get(key);
+      if (!entry || pinAlreadySeen(entry, chat.msgId)) return;
+      const payload = sanitizeCommentPayload(buildPinPayload(chat, {
+        sellerId: emailIdOf(sellerId), // payload field = email id (client filter); room key = UUID
+        sessionId: relaySessionId(entry, sessionId),
+        sourceUsername: cleanUsername,
+        roomId: state?.roomId || "",
+      }));
+      io.to(sellerRoom(sellerId)).emit("platform_pin", { ...payload, username: cleanUsername });
+      console.log(`[PIN-RELAY] ${cleanUsername} msgId=${chat.msgId} @${chat.handle}`);
+    } catch (e) {
+      console.warn(`[PIN-RELAY] failed for ${cleanUsername} (connection unaffected):`, e?.message || e);
+    }
   });
   let state;
   try {

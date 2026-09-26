@@ -21,6 +21,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { supabase } from "../../supabase";
 import type { Comment as ProdComment } from "../../lib/orderTypes";
+import type { PinPayload } from "./pinToPrint";
 import type { Comment as RDComment } from "../data";
 import { cleanLiveAccount, connectPlatform, type Platform, type ConnectResult } from "./connect";
 import { isPreviewEnv } from "./previewEnv";
@@ -159,7 +160,7 @@ export interface UseLiveFeed {
   ensureJoined: () => void;
 }
 
-export function useLiveFeed(enabled: boolean, email: string | undefined, onComment?: (c: ProdComment) => void, selected?: ActiveAccounts): UseLiveFeed {
+export function useLiveFeed(enabled: boolean, email: string | undefined, onComment?: (c: ProdComment) => void, selected?: ActiveAccounts, onPinned?: (p: PinPayload) => void): UseLiveFeed {
   const [feed, setFeed] = useState<ProdComment[]>([]);
   // Approach A — the display-only initial history block, SEPARATE from `feed`
   // (never in feedRef, never through the Auto-Mode seam).
@@ -182,6 +183,15 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
   // (display hides it there; a recovery resumes with ≤30s-stale data refreshed
   // by the server heartbeat). DISPLAY DATA ONLY — never feeds the status machine.
   const [ttViewers, setTtViewers] = useState<number | null>(null);
+  // PIN-TO-PRINT — pins ride a CALLBACK seam (the onComment/Auto-Mode pattern:
+  // the handler lives behind a ref so its changing identity never re-subscribes
+  // the socket; the ref mirror is an EFFECT — no ref writes during render).
+  // Client msgId seen-set keeps repeated relays (server restart mid-live) from
+  // re-firing. A separate lane — never the feed, the Auto seam, or the status
+  // machine.
+  const onPinnedRef = useRef(onPinned);
+  useEffect(() => { onPinnedRef.current = onPinned; });
+  const pinSeenRef = useRef<Set<string>>(new Set());
   // The history block never carries across users (login/user switch): reset it
   // when the subscription identity changes — the React-sanctioned
   // adjust-during-render pattern ("Adjusting some state when a prop changes").
@@ -190,7 +200,11 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     setInitialFor(email);
     setInitialFeed([]);
     setTtViewers(null); // viewer chip never carries across users either
+    // (pin seen-set reset for the user switch lives in the effect below)
   }
+  // Ref reset for the user switch lives in an EFFECT (the hooks-lint rule bans
+  // ref writes during render; the state resets above stay adjust-during-render).
+  useEffect(() => { pinSeenRef.current = new Set(); }, [email]);
   const [connected, setConnected] = useState(false);
   // Auto Mode seam — held in a ref so a changing handler identity NEVER re-subscribes
   // the socket (the effect deps deliberately exclude onComment). Fired per ACCEPTED
@@ -540,6 +554,27 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
       const n = Number(p.count);
       if (!Number.isFinite(n) || n < 0) return;
       setTtViewers(n);
+    });
+    // PIN-TO-PRINT — same scoping ladder as platform_viewers: seller filter,
+    // case-insensitive platform pin (the dormant-seam casing lesson), tracked-
+    // account match on payload.username. msgId seen-set → one event per pin.
+    s.on("platform_pin", (p: PinPayload = {}) => {
+      if (p.sellerId && p.sellerId !== sellerId) return;
+      // Audit F1 — SINGLE CONSUMER: the same sessionId scoping the chat lane
+      // uses (line ~418). The relay stamps relaySessionId (= the latest Connect
+      // tap's session), so exactly ONE device consumes each pin — two
+      // toggled-on devices can never double-order/double-print. The consuming
+      // device = the one showing the live feed = the one that tapped Connect.
+      if (p.sessionId && p.sessionId !== sessionId) return;
+      if (String(p.platform || "").toLowerCase() !== "tiktok") return;
+      const tracked = cleanLiveAccount(trackedAcctRef.current.TikTok || "");
+      if (!tracked) return;
+      const acct = cleanLiveAccount(p.username || "");
+      if (acct && acct !== tracked) return;
+      const msgId = String(p.msgId || "");
+      if (!msgId || pinSeenRef.current.has(msgId)) return;
+      pinSeenRef.current.add(msgId);
+      try { onPinnedRef.current?.(p); } catch (err) { console.warn("onPinned handler failed", err); }
     });
     s.on("live_session_ended", (e: { sellerId?: string; sessionId?: string } = {}) => {
       if (e.sellerId && e.sellerId !== sellerId) return;

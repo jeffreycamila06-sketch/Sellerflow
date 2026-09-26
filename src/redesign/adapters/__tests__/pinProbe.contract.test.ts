@@ -9,9 +9,12 @@ import { readFileSync } from "node:fs";
 const server = readFileSync("server.js", "utf8");
 const probeStart = server.indexOf("// [PIN-PROBE] Phase 1");
 const connectAt = server.indexOf("state = await tiktokConnection.connect()");
-// The probe block: comment header → the post-connect phase flip.
 const flipAt = server.indexOf("pinProbeConnected = true;", probeStart);
-const probe = server.slice(probeStart, server.indexOf("\n", flipAt));
+// Phase 2: the same listener now carries the [PIN-RELAY] block AFTER the probe
+// log — the probe (log-only) region ends where the relay begins. The relay has
+// its own contract test (pinRelay.contract.test.ts).
+const relayAt = server.indexOf("PIN-TO-PRINT Phase 2 relay", probeStart);
+const probe = server.slice(probeStart, relayAt > 0 ? relayAt : server.indexOf("\n", flipAt));
 
 describe("[PIN-PROBE] Phase 1 — log-only pin observation", () => {
   it("exists and hooks the legacy wrapper's decodedData firehose, filtered to pin messages", () => {
@@ -38,7 +41,7 @@ describe("[PIN-PROBE] Phase 1 — log-only pin observation", () => {
 
   it("can never break the connection: guarded log, bounded raw dump, owning-tagged", () => {
     expect(probe).toContain("} catch { /* the probe must never affect the connection */ }");
-    expect(probe).toContain(".slice(0, 800)");
+    expect(probe).toContain(".slice(0, 2000)"); // widened in Phase 2: 800 cut off action/isShowMsg
     // owning is TAGGED (data), not used to drop — orphan re-delivery is itself probe data
     expect(probe).toContain("const owning = isOwningConnection(tiktokConnections, key, tiktokConnection);");
   });
