@@ -4,6 +4,7 @@
 // full users-management panel (per-user plan + days, visual only). Sample data
 // only — no real seller management (Phase 5).
 import { useState, useEffect, type CSSProperties, type ReactNode } from "react";
+import { supabase } from "../../supabase";
 import { USERS, SUBS, PLAN_PRICE, initials, fmt, type Sub, type User } from "../data";
 import { headerBar, card, mono } from "../ui";
 import { planDaysLeft, daysDisplay, deriveSubBuckets, deriveUserBase, freeUsersSummary, sortUsersBySignup, auditActionColor, filterAuditLogs, sellerMatchesQuery, type ReadState, type SubBuckets, type FreeUserRow } from "../adapters/useReadData";
@@ -247,6 +248,43 @@ function SubList({ list, statusLabel, statusColor, note, showPlan = true }: { li
 // is_admin()-gated admin_parcel_scan_overview RPC (read-on-open, zero poll); all
 // money math (revenue/cost/profit) is CLIENT-SIDE from CREDIT_PRICE_NT and the
 // adjustable SCAN_COST_NT so the what-if lever re-flows every figure live.
+// MULTI-SELLER CHECK QUEUE (2026-09-27) — admin visibility for the shared
+// extension lane: queue depth + oldest-pending age (the SATURATION TRIPWIRE —
+// oldest climbing while depth grows = the 2s lane is falling behind, deploy
+// the Render-port relief valve), rows awaiting seller setup, cache size.
+// One RPC on panel open, zero poll (Business Pulse pattern).
+function CheckQueueBlock() {
+  const [st, setSt] = useState<Record<string, unknown> | null | "err">(null);
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      try {
+        if (!supabase) { if (live) setSt("err"); return; }
+        const { data, error } = await supabase.rpc("admin_parcel_check_stats");
+        if (!live) return;
+        setSt(error || !data ? "err" : (data as Record<string, unknown>));
+      } catch { if (live) setSt("err"); }
+    })();
+    return () => { live = false; };
+  }, []);
+  if (st === null || st === "err") return null; // quiet block — the panel's main content stands alone
+  const n = (k: string) => String(st[k] ?? 0);
+  const top = Array.isArray(st.top_sellers) ? (st.top_sellers as { email?: string; pending?: number }[]) : [];
+  return (
+    <div data-testid="pm-checkqueue" style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 13, padding: "11px 12px" }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)" }}>Store/phone check queue {String(st.enabled) === "true" ? "· ON" : "· OFF"}</div>
+      <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4, fontFamily: mono }}>
+        queue {n("queue_depth")} · oldest {n("oldest_pending_min")}m · awaiting setup {n("awaiting_setup")} · cache {n("cache_size")}
+      </div>
+      {top.length > 0 && (
+        <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3 }}>
+          {top.map((r) => `${r.email ?? "?"} (${r.pending ?? 0})`).join(" · ")}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ParcelMonPanel() {
   const t = useT();
   const [data, setData] = useState<ParcelScanOverview | null>(null);
@@ -282,6 +320,7 @@ function ParcelMonPanel() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }} data-testid="pm-panel">
+      <CheckQueueBlock />
       {/* Adjustable API-cost lever (client-only what-if; re-flows cost/profit live). */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 11, padding: "9px 12px" }}>
         <div style={{ flex: 1, minWidth: 0 }}>

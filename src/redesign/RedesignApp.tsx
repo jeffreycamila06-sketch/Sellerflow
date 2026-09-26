@@ -30,6 +30,7 @@ import ParcelTracking from "./screens/ParcelTracking";
 import { parcelScanVisible, loadParcelManualEnabled, canUseStickerQr } from "./adapters/parcelScan";
 import { effectiveMarket, marketHides, marketHidesShipping, marketFor, type ViewAs } from "./adapters/market";
 import { buildPinComment, isActionablePin, shouldSkipPin, pinPrintAllowed, type PinPayload } from "./adapters/pinToPrint";
+import { parcelCheckAllowed } from "./adapters/parcelCheck";
 import { useGeoCountry } from "./adapters/useGeoCountry";
 import { parcelTrackingVisible } from "./adapters/parcelTracking";
 import CustomerData from "./screens/CustomerData";
@@ -179,6 +180,9 @@ export default function RedesignApp() {
   const hidePickup = marketHides("pickupStatus", market);
   const hideStickerQr = marketHides("stickerQr", market);
   const hideShipping = marketHidesShipping(market); // gates the SettingsHub tile, the Orders 🚚 button AND the screen render
+  // MULTI-SELLER 賣貨便 CHECK (2026-09-27): the Settings config card — dogfood
+  // allowlist + admins, TW market only (rides the parcelScan market gate).
+  const parcelCheckOn = parcelCheckAllowed(auth.profile?.email, auth.profile?.role) && !hideParcelScan;
   // "Print QR on sticker" is on ALL plans; only the market gate applies. This gates BOTH
   // the Printer Settings toggle visibility AND (via setStickerQrEntitled) the PRINT-TIME
   // stamp — so a stored toggle off-market never prints a QR. Default is fail-closed.
@@ -1803,6 +1807,7 @@ export default function RedesignApp() {
               onDelete={() => setScreen("delete")}
               keepAwake={keepAwake} onToggleKeepAwake={toggleKeepAwake}
               pinPrint={pinPrint} onTogglePinPrint={pinAllowed ? togglePinPrint : undefined}
+              parcelCheckOn={parcelCheckOn}
               motionOn={motionOn} onToggleMotion={toggleMotion}
             />
           )}

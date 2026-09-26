@@ -14,6 +14,7 @@ import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RIN
 import { timingSafeTokenEqual, makeFailureThrottle } from "./server/pollAuth.js";
 import { sanitizeCommentPayload } from "./server/sanitize.js";
 import { pinChatOf, buildPinPayload, pinAlreadySeen, pinLagMs } from "./server/pinRelay.js";
+import { validGmShape, parseGmPage } from "./server/myshipValidate.js";
 import { accountCapVerdict } from "./server/accountCap.js";
 import { concurrencyCap, freshLiveKeysForSeller, capDecision } from "./server/concurrencyCap.js";
 import { fbConnectedNow } from "./server/fbLiveness.js";
@@ -826,6 +827,45 @@ app.post("/connect/facebook", requireAuth, requireConnectRate, requirePlanActive
 // returns success:false so the composer can offer "send English only" — it never
 // ships a partial translation. Requires ANTHROPIC_API_KEY in the Render env; when
 // absent it returns { success:false, error:"translation_not_configured" }.
+// ── GM VALIDATION (multi-seller parcel check, 2026-09-27) ────────────────────
+// Validates a seller's 賣貨便 GM id by fetching their PUBLIC cart page (the
+// anonymous buyer-facing page — probe-verified: no login, shop name = <title>,
+// Cgdm_Id hidden input echoes the GM). CORS blocks the browser doing this
+// itself, and the sellers entering GMs don't run the extension → Render is the
+// only place it can run for everyone. VERIFY-OPTIONAL contract: any failure
+// here → the client saves unverified (honest badge) — this endpoint must never
+// gate the save. Rate-limited per user (the page is 7-11's checkout infra).
+const gmValidateHits = new Map(); // userId → { count, windowStart }
+function gmValidateAllowed(userId) {
+  const now = Date.now();
+  const h = gmValidateHits.get(userId);
+  if (!h || now - h.windowStart > 60_000) { gmValidateHits.set(userId, { count: 1, windowStart: now }); return true; }
+  h.count += 1;
+  return h.count <= 5; // 5/min/user — validation is a save-time act, not a loop
+}
+app.post("/myship/validate-gm", requireAuth, async (req, res) => {
+  const gmId = String((req.body && req.body.gmId) || "").trim();
+  if (!validGmShape(gmId)) return res.status(400).json({ valid: false, error: "bad_gm_shape" });
+  if (!gmValidateAllowed(req.sellerId)) return res.status(429).json({ valid: false, error: "rate_limited" });
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 8000);
+    const r = await fetch(`https://myship.7-11.com.tw/cart/easy/${encodeURIComponent(gmId)}`, {
+      signal: ctrl.signal,
+      headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" },
+    }).finally(() => clearTimeout(t));
+    if (!r.ok) return res.json({ valid: false, error: `http_${r.status}` });
+    const parsed = parseGmPage(await r.text(), gmId);
+    console.log(`[GM-VALIDATE] ${req.userEmail || req.sellerId} ${gmId} valid=${parsed.valid} shop=${parsed.shopName || "-"}`);
+    return res.json(parsed);
+  } catch (e) {
+    // Datacenter-IP block / timeout — expected-possible (unverified from Render
+    // before this shipped). The client treats any failure as "unreachable".
+    console.warn(`[GM-VALIDATE] fetch failed for ${gmId}:`, e?.message || e);
+    return res.status(502).json({ valid: false, error: "fetch_failed" });
+  }
+});
+
 app.post("/admin/broadcast-translate", requireAuth, requireAdmin, async (req, res) => {
   const text = String((req.body && req.body.text) || "").trim();
   if (!text) {
