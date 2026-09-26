@@ -85,3 +85,27 @@ describe("background — token path + parcel_tracking upsert", () => {
     expect(fn).not.toContain("special_type");
   });
 });
+
+describe("E-Map domain move (2026-09-27) — both domains matched everywhere", () => {
+  const bg = readFileSync("chrome-extension/background.js", "utf8");
+  const emapScript = manifest.content_scripts.find((c: { js: string[] }) => c.js.includes("emap-711.js"));
+
+  it("manifest: host_permissions + emap-711 matches carry BOTH pcsc and unipcsc", () => {
+    expect(manifest.version).toBe("1.6.0");
+    for (const host of ["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"]) {
+      expect(manifest.host_permissions, host).toContain(host);
+      expect(emapScript.matches, host).toContain(host);
+    }
+  });
+
+  it("background pcFindTab queries BOTH domains (the 'Tab not open' fix)", () => {
+    expect(bg).toContain('pcFindTab(["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"])');
+  });
+
+  it("emap-711 stays origin-relative (no hardcoded emap host in any fetch)", () => {
+    const emap = readFileSync("chrome-extension/emap-711.js", "utf8");
+    expect(emap).toContain('fetchWithTimeout(`/ecmap/byIDData.aspx');
+    // the ONLY host mentions are the doc comment — no fetch targets a hardcoded emap origin
+    expect(emap).not.toMatch(/fetch[^\n]*https:\/\/emap/);
+  });
+});

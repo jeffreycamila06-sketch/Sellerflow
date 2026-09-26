@@ -1,4 +1,7 @@
-// SellerFlow parcel-checker — 7-11 E-Map (emap.pcsc.com.tw) content script.
+// SellerFlow parcel-checker — 7-11 E-Map content script. Runs on BOTH
+// emap.pcsc.com.tw (legacy) AND emap.unipcsc.com.tw (2026-09 PCSC domain move;
+// same /ecmap/ pages). All fetches below are RELATIVE → same-origin on
+// whichever domain the tab is on; no per-domain code.
 // The FULL-STORE lookup (byIDData.aspx) lives on emap.pcsc.com.tw — a DIFFERENT
 // origin from myship.7-11.com.tw — and its eshopGuid is injected on emap's own
 // default.aspx. So the store check MUST run here (same-origin → session cookies

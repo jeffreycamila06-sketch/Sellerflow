@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SellerFlow Parcel Checker",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Check SellerFlowLive parcel scans against 7-11 賣貨便 (full-store + restricted phone) using your logged-in session.",
   "permissions": ["storage", "alarms"],
   "host_permissions": [
@@ -9,6 +9,7 @@
     "https://sellerflowlive.com/*",
     "https://myship.7-11.com.tw/*",
     "https://emap.pcsc.com.tw/*",
+    "https://emap.unipcsc.com.tw/*",
     "https://sqeuyuktdpidmlfpqgoc.supabase.co/*",
     "http://localhost:5173/*"
   ],
@@ -43,7 +44,7 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://emap.pcsc.com.tw/*"],
+      "matches": ["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"],
       "js": ["emap-711.js"],
       "run_at": "document_idle"
     }
