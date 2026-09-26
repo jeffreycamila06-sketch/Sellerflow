@@ -1411,14 +1411,20 @@ export default function RedesignApp() {
   // itself dedups an already-ordered msgId (returns null; a pinned comment Auto
   // Mode already ordered is a silent no-op) and applies the free-cap soft block.
   // Sold-out Auto-Mode code → SKIP (1-Click asks window.confirm; unattended
-  // must not oversell — the seller can still tap the row and answer). seq-keyed
-  // so each relay is processed exactly once; toggle read INSIDE the effect so a
-  // stale closure can never order with the toggle off.
+  // must not oversell — the seller can still tap the row and answer). The
+  // handler rides the onComment-style ref seam (mirror = an effect, so the
+  // closure is fresh each render); once-per-relay = the listener's msgId
+  // seen-set + the sessionId single-consumer scoping in useLiveFeed.
   // DOGFOOD GATE — allowlist + admin only until the public flip (pinToPrint.ts).
   const pinAllowed = pinPrintAllowed(auth.profile?.email, auth.profile?.role);
   const handlePinned = (p: PinPayload) => {
     if (!pinAllowed) return;                                // dogfood gate — non-allowlisted: pins ignored entirely
     if (!pinPrint) return;                                  // toggle OFF → observe nothing (fresh closure via the effect mirror)
+    // Audit F2 — E1 gate: until the window load resolves, isMsgIdOrdered can't
+    // see prior orders, so a pin of an already-ordered older comment on a
+    // freshly reloaded device would duplicate. Same rule as the history
+    // buttons: no ordered data → no unattended action.
+    if (!liveSession.orderedLoaded) return;
     if (!isActionablePin(p)) return;
     const c = buildPinComment(p);
     if (shouldSkipPin(soldOutCodeForComment(c.comment))) return;

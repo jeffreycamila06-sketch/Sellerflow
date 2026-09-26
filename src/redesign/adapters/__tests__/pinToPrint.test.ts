@@ -71,11 +71,14 @@ describe("wiring pins (source contracts)", () => {
   it("useLiveFeed platform_pin listener: seller filter, case-insensitive platform, tracked-account match, msgId seen-set, user-switch reset", () => {
     const i = feed.indexOf('s.on("platform_pin"');
     expect(i).toBeGreaterThan(-1);
-    const block = feed.slice(i, i + 900);
+    const block = feed.slice(i, i + 1600);
     expect(block).toContain("if (p.sellerId && p.sellerId !== sellerId) return;");
     expect(block).toContain('String(p.platform || "").toLowerCase() !== "tiktok"');
     expect(block).toContain("trackedAcctRef.current.TikTok");
     expect(block).toContain("pinSeenRef.current.has(msgId)");
+    // Audit F1 — SINGLE CONSUMER: sessionId scoping mirrors the chat lane, so
+    // two toggled-on devices can never both consume one pin (double billing).
+    expect(block).toContain("if (p.sessionId && p.sessionId !== sessionId) return;");
     expect(block).toContain("onPinnedRef.current?.(p)");
     expect(feed).toContain("useEffect(() => { pinSeenRef.current = new Set(); }, [email]);"); // user-switch reset (effect, not render)
   });
@@ -109,7 +112,8 @@ describe("DOGFOOD GATE — pinPrintAllowed (allowlist + admin; NOT plan-gated)",
     const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
     expect(app).toContain("const pinAllowed = pinPrintAllowed(auth.profile?.email, auth.profile?.role);");
     const i = app.indexOf("const handlePinned");
-    const block = app.slice(i, i + 400);
+    const block = app.slice(i, i + 900);
+    expect(block).toContain("if (!liveSession.orderedLoaded) return;"); // audit F2 — the E1 gate for unattended orders
     expect(block.indexOf("if (!pinAllowed) return;")).toBeGreaterThan(-1);
     expect(block.indexOf("if (!pinAllowed) return;")).toBeLessThan(block.indexOf("if (!pinPrint) return;")); // gate before toggle
     expect(app).toContain("onTogglePinPrint={pinAllowed ? togglePinPrint : undefined}");

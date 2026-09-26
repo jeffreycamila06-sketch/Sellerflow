@@ -560,6 +560,12 @@ export function useLiveFeed(enabled: boolean, email: string | undefined, onComme
     // account match on payload.username. msgId seen-set → one event per pin.
     s.on("platform_pin", (p: PinPayload = {}) => {
       if (p.sellerId && p.sellerId !== sellerId) return;
+      // Audit F1 — SINGLE CONSUMER: the same sessionId scoping the chat lane
+      // uses (line ~418). The relay stamps relaySessionId (= the latest Connect
+      // tap's session), so exactly ONE device consumes each pin — two
+      // toggled-on devices can never double-order/double-print. The consuming
+      // device = the one showing the live feed = the one that tapped Connect.
+      if (p.sessionId && p.sessionId !== sessionId) return;
       if (String(p.platform || "").toLowerCase() !== "tiktok") return;
       const tracked = cleanLiveAccount(trackedAcctRef.current.TikTok || "");
       if (!tracked) return;
