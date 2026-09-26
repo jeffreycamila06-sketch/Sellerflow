@@ -29,6 +29,7 @@ import CustomerDetails from "./screens/CustomerDetails";
 import ParcelTracking from "./screens/ParcelTracking";
 import { parcelScanVisible, loadParcelManualEnabled, canUseStickerQr } from "./adapters/parcelScan";
 import { effectiveMarket, marketHides, marketHidesShipping, marketFor, type ViewAs } from "./adapters/market";
+import { buildPinComment, isActionablePin, shouldSkipPin, type PinPayload } from "./adapters/pinToPrint";
 import { useGeoCountry } from "./adapters/useGeoCountry";
 import { parcelTrackingVisible } from "./adapters/parcelTracking";
 import CustomerData from "./screens/CustomerData";
@@ -138,7 +139,7 @@ const autoDupKeyOf = (handle: string, code: string): string =>
   `${String(handle || "").trim().toLowerCase()}|${String(code || "").trim().toLowerCase()}`;
 
 
-const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set", automode: "sfl_rd_automode", pp: "sfl_rd_pp", printer: "sfl_rd_printer", keepAwake: "sfl_rd_keepawake", motion: "sfl_rd_motion" } as const;
+const LS = { theme: "sfl_rd_theme", accent: "sfl_rd_accent", lang: "sfl_rd_lang", currency: "sfl_rd_currency", currencySet: "sfl_rd_currency_set", automode: "sfl_rd_automode", pp: "sfl_rd_pp", printer: "sfl_rd_printer", keepAwake: "sfl_rd_keepawake", motion: "sfl_rd_motion", pinPrint: "sfl_rd_pin_print" } as const;
 const readLS = (k: string, fallback: string): string => {
   try { return localStorage.getItem(k) || fallback; } catch { return fallback; }
 };
@@ -286,6 +287,7 @@ export default function RedesignApp() {
   // (not state) so the socket handler reads the latest without re-subscribing and so
   // concurrent same-code comments claim stock SYNCHRONOUSLY (no double-decrement).
   const autoCommentRef = useRef<(c: ProdComment) => void>(() => {});
+  const pinHandlerRef = useRef<(p: PinPayload) => void>(() => {}); // PIN-TO-PRINT seam (mirror kept fresh by an effect below)
   const autoCodesRef = useRef<AutoCode[]>([]);
   const codesReadyRef = useRef(false);                           // I3: false until the products auth-load resolves (no auto match before codes exist)
   const autoStockRef = useRef<Map<number, number>>(new Map());   // productLocalId → live remaining
@@ -405,7 +407,7 @@ export default function RedesignApp() {
   // SEED_COMMENTS/INCOMING stream. Read-only (order writes are 5e). The 3rd arg is the
   // Auto Mode seam — a stable wrapper calling the latest handler via ref (no re-subscribe).
   // 4th arg = the user's account selection (comment scoping).
-  const liveFeed = useLiveFeed(authed, auth.profile?.email, (c) => autoCommentRef.current(c), liveSelected);
+  const liveFeed = useLiveFeed(authed, auth.profile?.email, (c) => autoCommentRef.current(c), liveSelected, (p) => pinHandlerRef.current(p));
   // Approach A (FLive parity) — TikTok's pre-connect room buffer renders as a
   // history block BELOW the live feed. ORDERABLE since sql/18: each history row
   // is stamped `ordered` when an order for that exact message (msgId) already
@@ -1133,6 +1135,14 @@ export default function RedesignApp() {
   // (default ON, sfl_rd_keepawake). iOS <16.4 = graceful no-op (feature-detect
   // sa hook). Client-side ang order capture — sleeping phone = nawawalang mines.
   const [keepAwake, setKeepAwake] = useState<boolean>(() => readLS(LS.keepAwake, "1") !== "0");
+  // PIN-TO-PRINT — per-device, DEFAULT OFF (only the printer-holding device
+  // should react to pins; on web an auto-pin pops the browser print dialog).
+  const [pinPrint, setPinPrint] = useState<boolean>(() => readLS(LS.pinPrint, "0") === "1");
+  const togglePinPrint = () => setPinPrint((v) => {
+    const next = !v;
+    try { localStorage.setItem(LS.pinPrint, next ? "1" : "0"); } catch { /* ignore */ }
+    return next;
+  });
   const toggleKeepAwake = () => {
     setKeepAwake((v) => {
       const next = !v;
@@ -1396,6 +1406,37 @@ export default function RedesignApp() {
       liveSession.addOrderedMsgId((prod as ProdComment & { msgId?: string }).msgId, snap); // ordered-check stays complete
     }
   };
+  // PIN-TO-PRINT (Phase 2, Option A): a relayed pin = 1-Click on that comment.
+  // Runs through the SAME orders.createOrder path as a manual tap — createOrder
+  // itself dedups an already-ordered msgId (returns null; a pinned comment Auto
+  // Mode already ordered is a silent no-op) and applies the free-cap soft block.
+  // Sold-out Auto-Mode code → SKIP (1-Click asks window.confirm; unattended
+  // must not oversell — the seller can still tap the row and answer). seq-keyed
+  // so each relay is processed exactly once; toggle read INSIDE the effect so a
+  // stale closure can never order with the toggle off.
+  const handlePinned = (p: PinPayload) => {
+    if (!pinPrint) return;                                  // toggle OFF → observe nothing (fresh closure via the effect mirror)
+    if (!isActionablePin(p)) return;
+    const c = buildPinComment(p);
+    if (shouldSkipPin(soldOutCodeForComment(c.comment))) return;
+    const order = orders.createOrder(c, 0);
+    if (!order) return;                                     // dup / capped / blocked — createOrder already dedups the msgId
+    const pid = `pin:${c.msgId}`;
+    const snap = snapshotFromCreate(c, order);
+    reprintByIdRef.current.set(pid, snap);
+    jobToCommentRef.current.set(String(order.orderNum), { cid: pid, msgId: c.msgId });
+    liveSession.addOrderedMsgId(c.msgId, snap);
+    // Cosmetic: if the pinned comment is in the visible feed, flip its row to
+    // the ordered/Reprint state like a manual tap would (event-handler context,
+    // not an effect — no cascading-render lint class).
+    const row = liveFeed.comments.find((fc) => fc.msgId === c.msgId);
+    if (row) {
+      setPrinted((pr) => ({ ...pr, [row.id]: "order" }));
+      reprintByIdRef.current.set(row.id, snap);
+    }
+  };
+  useEffect(() => { pinHandlerRef.current = handlePinned; }); // effect mirror — freshest closure, no render-time ref write
+
   const onOpenEnt = (id: string) => { setEntId(id); setEntPrice(""); };
   // Enterprise: create the order at the typed price. ONE code path for BOTH
   // triggers — Enter (desktop/Android/iPad) AND the in-app ✓ button (the
@@ -1752,6 +1793,7 @@ export default function RedesignApp() {
               onSupport={() => setScreen("support")}
               onDelete={() => setScreen("delete")}
               keepAwake={keepAwake} onToggleKeepAwake={toggleKeepAwake}
+              pinPrint={pinPrint} onTogglePinPrint={togglePinPrint}
               motionOn={motionOn} onToggleMotion={toggleMotion}
             />
           )}

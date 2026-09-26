@@ -37,7 +37,7 @@ export default function GeneralSettings({
   account = null, onSaveProfile, onManageChannel,
   channelsV2 = false, onOpenChannel, channelsInfo,
   lowStockThreshold = 3, onSetLowStockThreshold,
-  keepAwake = true, onToggleKeepAwake,
+  keepAwake = true, onToggleKeepAwake, pinPrint = false, onTogglePinPrint,
   motionOn = true, onToggleMotion,
 }: {
   theme: ThemeMode; accent: AccentKey; onSetTheme: (t: ThemeMode) => void; onSetAccent: (a: AccentKey) => void;
@@ -62,6 +62,7 @@ export default function GeneralSettings({
   // Keep-awake habang naka-live (web Screen Wake Lock) — display toggle only;
   // the lock lifecycle lives in RedesignApp (useWakeLock on green/amber).
   keepAwake?: boolean; onToggleKeepAwake?: () => void;
+  pinPrint?: boolean; onTogglePinPrint?: () => void; // PIN-TO-PRINT — per-device, default OFF
   // Motion kill switch — pause looping animations (display toggle; RedesignApp
   // sets [data-motion] on the root). One-shot entrances stay.
   motionOn?: boolean; onToggleMotion?: () => void;
@@ -276,6 +277,20 @@ export default function GeneralSettings({
               <button onClick={onToggleKeepAwake} title={t.rd_set_keepawake} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }}>
                 <span style={{ width: 44, height: 26, borderRadius: 13, background: keepAwake ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s" }}>
                   <span style={{ position: "absolute", top: 3, left: keepAwake ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
+                </span>
+              </button>
+            </div>
+            {/* PIN-TO-PRINT toggle — same pill pattern as keep-awake. Per-device,
+                default OFF: only the printer-holding device should auto-order on
+                a pin, and on web it would pop the browser print dialog. */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingTop: 12, marginTop: 12, borderTop: "1px solid var(--border)" }}>
+              <span style={{ flex: 1 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_pinprint}</span>
+                <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{t.rd_set_pinprint_desc}</span>
+              </span>
+              <button onClick={onTogglePinPrint} title={t.rd_set_pinprint} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }}>
+                <span style={{ width: 44, height: 26, borderRadius: 13, background: pinPrint ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s" }}>
+                  <span style={{ position: "absolute", top: 3, left: pinPrint ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
                 </span>
               </button>
             </div>
