@@ -69,3 +69,14 @@ export function pinAlreadySeen(entry, msgId) {
   if (entry.pinSeenMsgIds.size < PIN_SEEN_CAP) entry.pinSeenMsgIds.add(msgId);
   return false;
 }
+
+// Latency self-report — TikTok's pin-broadcast leg (pin action → our wire).
+// pinTime is TikTok's clock on the TOP-level pin event; captures show an epoch
+// string, but seconds-vs-ms is unverified → handle both (< 1e12 = seconds).
+// null = pinTime missing/garbage (log "?", never NaN math).
+export function pinLagMs(obj, nowMs = Date.now()) {
+  const raw = Number(obj?.pinTime);
+  if (!Number.isFinite(raw) || raw <= 0) return null;
+  const pinMs = raw < 1e12 ? raw * 1000 : raw;
+  return Math.max(0, Math.round(nowMs - pinMs));
+}
