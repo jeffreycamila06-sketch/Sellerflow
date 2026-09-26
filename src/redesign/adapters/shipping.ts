@@ -21,6 +21,10 @@ export const SHIP_MIN_TOTAL = 55;         // 55 ≤ 訂單+運費 ≤ 20,000 per
 export const SHIP_MAX_TOTAL = 20000;
 export const SHIP_MAX_DESC = 200;         // 商品 ≤ 200 chars
 export const SHIP_NAME_BUDGET = 10;       // 取件人姓名 ≤ 10 (Chinese counts 2)
+// 2026-09-27 (PCSC domain move to emap.unipcsc.com.tw): DELIBERATELY still the
+// old domain — verified live: direct entry on unipcsc bounces to error.aspx
+// ("系統忙碌中"; it only accepts the 賣貨便 flow), while this root still serves
+// the store-lookup map. Revisit only if this URL stops loading.
 export const STORE_LOOKUP_URL = "https://emap.pcsc.com.tw/";
 
 export type TempLayer = typeof SHIP_TEMP_AMBIENT | typeof SHIP_TEMP_FROZEN;

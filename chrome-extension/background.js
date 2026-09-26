@@ -180,7 +180,11 @@ async function pcPoll() {
   // TWO different origins: the FULL-STORE lookup runs in the emap.pcsc.com.tw tab
   // (byIDData + eshopGuid live there), the RESTRICTED-PHONE check in the myship tab.
   const myshipTabId = await pcFindTab(["https://myship.7-11.com.tw/*"]);
-  const emapTabId = await pcFindTab(["https://emap.pcsc.com.tw/*"]);
+  // 2026-09-27: PCSC moved the 賣貨便 store-search E-Map to emap.unipcsc.com.tw
+  // (same /ecmap/default.aspx page + byIDData.aspx endpoint, verified live —
+  // the content script's RELATIVE fetch follows whichever origin it runs on).
+  // The old domain still serves, so BOTH are matched.
+  const emapTabId = await pcFindTab(["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"]);
 
   let checked = 0;
   let lastStoreReason = ""; let lastPhoneReason = "";
