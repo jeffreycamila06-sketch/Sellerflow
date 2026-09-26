@@ -10,6 +10,11 @@
 //
 // ⚠️ FAIL-SAFE: any doubt → 'unknown' + a human reason, NEVER 'open'/'full' guessed.
 (function sellerFlowEmapStoreCheck() {
+  // Self-heal (v1.7.0): double-injection guard — the background re-injects this
+  // file via chrome.scripting when a ping fails on an alive tab; a second copy
+  // must not register a second onMessage listener (double sendResponse).
+  if (window.__sflPcEmapInjected) return;
+  window.__sflPcEmapInjected = true;
   const TIMEOUT_MS = 10000;
 
   function fetchWithTimeout(url, opts) {
@@ -82,6 +87,7 @@
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.type === "PC_PING") { sendResponse({ ok: true, script: "emap" }); return true; }
     if (message?.type !== "PC_CHECK_STORE" || !message.row) return false;
     (async () => {
       const guid = await getEshopGuid();

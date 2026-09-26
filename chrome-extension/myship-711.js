@@ -7,6 +7,11 @@
 // ⚠️ FAIL-SAFE: any doubt (missing token, HTML/redirect, bad shape, timeout) →
 // 'unknown' + a human reason, NEVER a guessed 'ok'.
 (function sellerFlowMyshipPhoneCheck() {
+  // Self-heal (v1.7.0): double-injection guard — the background re-injects this
+  // file via chrome.scripting when a ping fails on an alive tab; a second copy
+  // must not register a second onMessage listener (double sendResponse).
+  if (window.__sflPcMyshipInjected) return;
+  window.__sflPcMyshipInjected = true;
   const TIMEOUT_MS = 10000;
 
   function fetchWithTimeout(url, opts) {
@@ -93,6 +98,7 @@
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.type === "PC_PING") { sendResponse({ ok: true, script: "myship" }); return true; }
     if (message?.type !== "PC_CHECK_PHONE" || !message.row) return false;
     (async () => {
       const res = await checkRestricted(message.row, message.config || {});

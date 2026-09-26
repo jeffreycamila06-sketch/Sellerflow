@@ -91,7 +91,7 @@ describe("E-Map domain move (2026-09-27) — both domains matched everywhere", (
   const emapScript = manifest.content_scripts.find((c: { js: string[] }) => c.js.includes("emap-711.js"));
 
   it("manifest: host_permissions + emap-711 matches carry BOTH pcsc and unipcsc", () => {
-    expect(manifest.version).toBe("1.6.0");
+    // version pinned by the self-heal suite below (bumped 1.6.0 → 1.7.0)
     for (const host of ["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"]) {
       expect(manifest.host_permissions, host).toContain(host);
       expect(emapScript.matches, host).toContain(host);
@@ -99,7 +99,9 @@ describe("E-Map domain move (2026-09-27) — both domains matched everywhere", (
   });
 
   it("background pcFindTab queries BOTH domains (the 'Tab not open' fix)", () => {
-    expect(bg).toContain('pcFindTab(["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"])');
+    // v1.7.0: the emap tab is found through pcHealTab (health + auto-recover),
+    // same both-domain patterns:
+    expect(bg).toContain('pcHealTab(["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"]');
   });
 
   it("emap-711 stays origin-relative (no hardcoded emap host in any fetch)", () => {
@@ -107,5 +109,56 @@ describe("E-Map domain move (2026-09-27) — both domains matched everywhere", (
     expect(emap).toContain('fetchWithTimeout(`/ecmap/byIDData.aspx');
     // the ONLY host mentions are the doc comment — no fetch targets a hardcoded emap origin
     expect(emap).not.toMatch(/fetch[^\n]*https:\/\/emap/);
+  });
+});
+
+describe("self-heal v1.7.0 — statuses recover without manual tab refreshes", () => {
+  const bg = readFileSync("chrome-extension/background.js", "utf8");
+
+  it("manifest 1.7.0 + the scripting permission (re-injection needs it)", () => {
+    expect(manifest.version).toBe("1.7.0");
+    expect(manifest.permissions).toContain("scripting");
+  });
+
+  it("all 3 content scripts answer PC_PING and carry a double-injection guard", () => {
+    for (const [f, guard] of [
+      ["chrome-extension/sellerflow-bridge.js", "__sflPcBridgeInjected"],
+      ["chrome-extension/myship-711.js", "__sflPcMyshipInjected"],
+      ["chrome-extension/emap-711.js", "__sflPcEmapInjected"],
+    ] as const) {
+      const src = readFileSync(f, "utf8");
+      expect(src, f).toContain('message?.type === "PC_PING"');
+      expect(src, f).toContain(`if (window.${guard}) return;`);
+    }
+  });
+
+  it("health runs EVERY poll: myship/emap statuses written BEFORE the no-rows early return", () => {
+    const healthAt = bg.indexOf("await pcStatus({ myship: myshipHealth.state, emap: emapHealth.state });");
+    const rowsAt = bg.indexOf("const rows = res.rows.filter");
+    expect(healthAt).toBeGreaterThan(-1);
+    expect(healthAt).toBeLessThan(rowsAt); // the old hours-stale-badges bug stays dead
+  });
+
+  it("the SFL tab is NEVER auto-reloaded (live-session safety), myship/emap are", () => {
+    expect(bg).toContain('"sellerflow-bridge.js", false');                       // allowReload=false
+    expect(bg).toContain('pcHealTab(["https://myship.7-11.com.tw/*"], "myship-711.js", true)');
+    expect(bg).toContain('"emap-711.js", true)');
+    // the reload call exists ONLY inside pcHealTab behind the allowReload gate:
+    const heal = bg.slice(bg.indexOf("async function pcHealTab"), bg.indexOf("function pcTokenExpired"));
+    expect(heal).toContain('if (!allowReload) return { state: "asleep"');
+    expect((bg.match(/chrome\.tabs\.reload\(/g) || []).length).toBe(1);
+    expect(heal).toContain("chrome.tabs.reload(");
+  });
+
+  it("stale-token detection is local (JWT exp) and the extension still NEVER refreshes the session itself", () => {
+    expect(bg).toContain("function pcTokenExpired(");
+    expect(bg).not.toMatch(/refresh_token|token\/refresh|auth\/v1\/token/); // two-refreshers bug must not return
+  });
+
+  it("popup: every non-green state names the ONE action (no bare red)", () => {
+    const popup = readFileSync("chrome-extension/popup.js", "utf8");
+    for (const label of ["Click the SellerFlowLive tab once", "Tab asleep — click it once", "Waking up…", "Reload that tab"]) {
+      expect(popup).toContain(label);
+    }
   });
 });
