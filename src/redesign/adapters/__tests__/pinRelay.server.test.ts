@@ -3,7 +3,7 @@
 // (no vitest harness there; b4Phase2 style).
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { pinChatOf, buildPinPayload, pinAlreadySeen, PIN_SEEN_CAP } from "../../../../server/pinRelay.js";
+import { pinChatOf, buildPinPayload, pinAlreadySeen, pinLagMs, PIN_SEEN_CAP } from "../../../../server/pinRelay.js";
 
 const rawPin = {
   // legacy-simplified WebcastRoomPinMessage: TOP-level common flattened (the
@@ -62,6 +62,24 @@ describe("pinAlreadySeen — per-connection dedup (pin/expire/re-pin = one relay
     expect(pinAlreadySeen(entry, "m2")).toBe(false);
     for (let i = 0; i < PIN_SEEN_CAP + 10; i++) pinAlreadySeen(entry, `bulk-${i}`);
     expect((entry.pinSeenMsgIds as Set<string>).size).toBeLessThanOrEqual(PIN_SEEN_CAP);
+  });
+});
+
+describe("pinLagMs — TikTok pin-broadcast latency self-report", () => {
+  const now = 1_790_000_010_000; // ms
+  it("seconds epoch (the captured shape) and ms epoch both work", () => {
+    expect(pinLagMs({ pinTime: "1790000000" }, now)).toBe(10_000);      // seconds → ×1000
+    expect(pinLagMs({ pinTime: "1790000000000" }, now)).toBe(10_000);   // already ms
+  });
+  it("missing/garbage/zero pinTime → null (the log prints '?'), clock skew clamps to 0", () => {
+    expect(pinLagMs({}, now)).toBeNull();
+    expect(pinLagMs({ pinTime: "abc" }, now)).toBeNull();
+    expect(pinLagMs({ pinTime: "0" }, now)).toBeNull();
+    expect(pinLagMs({ pinTime: "1790000020" }, now)).toBe(0);           // future stamp → 0, never negative
+  });
+  it("is wired into the [PIN-RELAY] log line", () => {
+    const server = readFileSync("server.js", "utf8");
+    expect(server).toContain('lagMs=${pinLagMs(obj) ?? "?"}');
   });
 });
 

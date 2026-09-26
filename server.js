@@ -13,7 +13,7 @@ import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, re
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
 import { timingSafeTokenEqual, makeFailureThrottle } from "./server/pollAuth.js";
 import { sanitizeCommentPayload } from "./server/sanitize.js";
-import { pinChatOf, buildPinPayload, pinAlreadySeen } from "./server/pinRelay.js";
+import { pinChatOf, buildPinPayload, pinAlreadySeen, pinLagMs } from "./server/pinRelay.js";
 import { accountCapVerdict } from "./server/accountCap.js";
 import { concurrencyCap, freshLiveKeysForSeller, capDecision } from "./server/concurrencyCap.js";
 import { fbConnectedNow } from "./server/fbLiveness.js";
@@ -1282,7 +1282,7 @@ async function startTikTokConnection(key, username, sellerId, sessionId, { emitS
         roomId: state?.roomId || "",
       }));
       io.to(sellerRoom(sellerId)).emit("platform_pin", { ...payload, username: cleanUsername });
-      console.log(`[PIN-RELAY] ${cleanUsername} msgId=${chat.msgId} @${chat.handle}`);
+      console.log(`[PIN-RELAY] ${cleanUsername} msgId=${chat.msgId} @${chat.handle} lagMs=${pinLagMs(obj) ?? "?"}`); // lagMs = TikTok pin-broadcast leg
     } catch (e) {
       console.warn(`[PIN-RELAY] failed for ${cleanUsername} (connection unaffected):`, e?.message || e);
     }
