@@ -15,9 +15,10 @@ export const PIN_PRINT_LS_KEY = "sfl_rd_pin_print"; // per-device, default OFF
 // (email-based + admin bypass; deliberately NOT a plan check — the public
 // release is for ALL plans). Gates BOTH the GeneralSettings toggle AND the
 // client pin handling; non-allowlisted accounts see zero behavior change.
-// ⚠️ RELEASE TO PUBLIC = flip PIN_PRINT_PUBLIC to true (one line) — the
-// allowlist below then stops mattering. INSTANT REVERT = flip it back.
-export const PIN_PRINT_PUBLIC = false;
+// ⚠️ RELEASED TO PUBLIC 2026-09-27 (owner decision after dogfood): true = ALL
+// plans, allowlist below inert. INSTANT REVERT = flip back to false (the
+// dogfood allowlist is kept intact for exactly that).
+export const PIN_PRINT_PUBLIC = true;
 export const PIN_PRINT_PREVIEW_EMAILS: string[] = [
   "budgetukay5@gmail.com",          // owner's main (any budgetukay* matches via the prefix rule below)
   "ronaldgantiga77@gmail.com",
