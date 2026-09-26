@@ -11,6 +11,31 @@ import type { Comment as ProdComment } from "../../lib/orderTypes";
 
 export const PIN_PRINT_LS_KEY = "sfl_rd_pin_print"; // per-device, default OFF
 
+// DOGFOOD GATE (2026-09-27) — the SESSION_V2 / liveSource allowlist pattern
+// (email-based + admin bypass; deliberately NOT a plan check — the public
+// release is for ALL plans). Gates BOTH the GeneralSettings toggle AND the
+// client pin handling; non-allowlisted accounts see zero behavior change.
+// ⚠️ RELEASE TO PUBLIC = flip PIN_PRINT_PUBLIC to true (one line) — the
+// allowlist below then stops mattering. INSTANT REVERT = flip it back.
+export const PIN_PRINT_PUBLIC = false;
+export const PIN_PRINT_PREVIEW_EMAILS: string[] = [
+  "budgetukay5@gmail.com",          // owner's main (any budgetukay* matches via the prefix rule below)
+  "ronaldgantiga77@gmail.com",
+  "tincabanas13@gmail.com",
+  "cristycabanas34@gmail.com",
+  "googletest@gmail.com",           // as specified 2026-09-27
+  "googletest@sellerflowlive.com",  // the long-standing demo/test account
+];
+
+export function pinPrintAllowed(email: string | undefined | null, role?: string | null): boolean {
+  if (PIN_PRINT_PUBLIC) return true;                     // ← the release flip
+  if (String(role || "").trim().toLowerCase() === "admin") return true;
+  const e = String(email || "").trim().toLowerCase();
+  if (!e) return false;
+  if (e.startsWith("budgetukay")) return true;           // all budgetukay* accounts
+  return PIN_PRINT_PREVIEW_EMAILS.includes(e);
+}
+
 export interface PinPayload {
   pinned?: boolean;
   platform?: string;

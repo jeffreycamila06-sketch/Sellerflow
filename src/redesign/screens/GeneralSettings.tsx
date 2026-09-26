@@ -282,8 +282,10 @@ export default function GeneralSettings({
             </div>
             {/* PIN-TO-PRINT toggle — same pill pattern as keep-awake. Per-device,
                 default OFF: only the printer-holding device should auto-order on
-                a pin, and on web it would pop the browser print dialog. */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingTop: 12, marginTop: 12, borderTop: "1px solid var(--border)" }}>
+                a pin, and on web it would pop the browser print dialog. DOGFOOD
+                GATE: the handler is passed only for allowlisted accounts
+                (pinPrintAllowed) — absent handler = no row, zero change. */}
+            {onTogglePinPrint && <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingTop: 12, marginTop: 12, borderTop: "1px solid var(--border)" }}>
               <span style={{ flex: 1 }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_pinprint}</span>
                 <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{t.rd_set_pinprint_desc}</span>
@@ -293,7 +295,7 @@ export default function GeneralSettings({
                   <span style={{ position: "absolute", top: 3, left: pinPrint ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
                 </span>
               </button>
-            </div>
+            </div>}
             {auto.setupOpen && (
               <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
                 {/* Live codes moved onto the Products screen (one code = one product,

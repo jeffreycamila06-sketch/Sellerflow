@@ -29,7 +29,7 @@ import CustomerDetails from "./screens/CustomerDetails";
 import ParcelTracking from "./screens/ParcelTracking";
 import { parcelScanVisible, loadParcelManualEnabled, canUseStickerQr } from "./adapters/parcelScan";
 import { effectiveMarket, marketHides, marketHidesShipping, marketFor, type ViewAs } from "./adapters/market";
-import { buildPinComment, isActionablePin, shouldSkipPin, type PinPayload } from "./adapters/pinToPrint";
+import { buildPinComment, isActionablePin, shouldSkipPin, pinPrintAllowed, type PinPayload } from "./adapters/pinToPrint";
 import { useGeoCountry } from "./adapters/useGeoCountry";
 import { parcelTrackingVisible } from "./adapters/parcelTracking";
 import CustomerData from "./screens/CustomerData";
@@ -1414,7 +1414,10 @@ export default function RedesignApp() {
   // must not oversell — the seller can still tap the row and answer). seq-keyed
   // so each relay is processed exactly once; toggle read INSIDE the effect so a
   // stale closure can never order with the toggle off.
+  // DOGFOOD GATE — allowlist + admin only until the public flip (pinToPrint.ts).
+  const pinAllowed = pinPrintAllowed(auth.profile?.email, auth.profile?.role);
   const handlePinned = (p: PinPayload) => {
+    if (!pinAllowed) return;                                // dogfood gate — non-allowlisted: pins ignored entirely
     if (!pinPrint) return;                                  // toggle OFF → observe nothing (fresh closure via the effect mirror)
     if (!isActionablePin(p)) return;
     const c = buildPinComment(p);
@@ -1793,7 +1796,7 @@ export default function RedesignApp() {
               onSupport={() => setScreen("support")}
               onDelete={() => setScreen("delete")}
               keepAwake={keepAwake} onToggleKeepAwake={toggleKeepAwake}
-              pinPrint={pinPrint} onTogglePinPrint={togglePinPrint}
+              pinPrint={pinPrint} onTogglePinPrint={pinAllowed ? togglePinPrint : undefined}
               motionOn={motionOn} onToggleMotion={toggleMotion}
             />
           )}

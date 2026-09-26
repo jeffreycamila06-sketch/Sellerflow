@@ -5,7 +5,7 @@
 // contracts (toggle default OFF, toggle-inside-effect, seq-once, account scoping).
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { isActionablePin, buildPinComment, shouldSkipPin, PIN_PRINT_LS_KEY } from "../pinToPrint";
+import { isActionablePin, buildPinComment, shouldSkipPin, pinPrintAllowed, PIN_PRINT_LS_KEY, PIN_PRINT_PUBLIC } from "../pinToPrint";
 
 const good = { pinned: true, platform: "TikTok", username: "myshop", handle: "ann", name: "Ann", comment: "mine!", msgId: "m1", time: "9:41 PM", timestamp: "2026-09-27T01:00:00Z", sellerId: "a@b.com", sessionId: "s", sourceUsername: "myshop", avatar: "u" };
 
@@ -84,5 +84,36 @@ describe("wiring pins (source contracts)", () => {
     const gs = readFileSync("src/redesign/screens/GeneralSettings.tsx", "utf8");
     expect(gs).toContain("t.rd_set_pinprint");
     expect(gs).toContain("onTogglePinPrint");
+  });
+});
+
+describe("DOGFOOD GATE — pinPrintAllowed (allowlist + admin; NOT plan-gated)", () => {
+  it("the release flip is currently OFF (dogfood phase)", () => {
+    expect(PIN_PRINT_PUBLIC).toBe(false);
+  });
+  it("allowlisted emails + every budgetukay* + admins pass; everyone else fails", () => {
+    for (const e of ["budgetukay5@gmail.com", "BUDGETUKAY2@gmail.com", "budgetukay_anything@x.com",
+                     "ronaldgantiga77@gmail.com", "tincabanas13@gmail.com", "cristycabanas34@gmail.com",
+                     "googletest@gmail.com", "googletest@sellerflowlive.com"]) {
+      expect(pinPrintAllowed(e, "seller"), e).toBe(true);
+    }
+    expect(pinPrintAllowed("random@seller.com", "admin")).toBe(true);   // admin bypass
+    expect(pinPrintAllowed("random@seller.com", "Admin")).toBe(true);   // display-cased role
+    expect(pinPrintAllowed("random@seller.com", "seller")).toBe(false);
+    expect(pinPrintAllowed("", "seller")).toBe(false);
+    expect(pinPrintAllowed(null, null)).toBe(false);
+    // NOT a prefix trap: an email merely CONTAINING budgetukay doesn't pass
+    expect(pinPrintAllowed("not-budgetukay@x.com", "seller")).toBe(false);
+  });
+  it("gate wiring: the handler gates FIRST, and the toggle row only renders for the allowlisted", () => {
+    const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
+    expect(app).toContain("const pinAllowed = pinPrintAllowed(auth.profile?.email, auth.profile?.role);");
+    const i = app.indexOf("const handlePinned");
+    const block = app.slice(i, i + 400);
+    expect(block.indexOf("if (!pinAllowed) return;")).toBeGreaterThan(-1);
+    expect(block.indexOf("if (!pinAllowed) return;")).toBeLessThan(block.indexOf("if (!pinPrint) return;")); // gate before toggle
+    expect(app).toContain("onTogglePinPrint={pinAllowed ? togglePinPrint : undefined}");
+    const gs = readFileSync("src/redesign/screens/GeneralSettings.tsx", "utf8");
+    expect(gs).toContain("{onTogglePinPrint && <div");
   });
 });
