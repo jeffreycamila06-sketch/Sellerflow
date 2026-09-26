@@ -47,6 +47,63 @@ function pcFindTab(patterns) {
     chrome.tabs.query({ url: patterns }, (tabs) => resolve(tabs && tabs.length ? tabs[0].id : null));
   });
 }
+// Self-heal (v1.7.0) — the popup's decay was three mechanisms, none of them
+// the classic MV3 one: (1) Chrome Memory Saver DISCARDS backgrounded tabs →
+// content script gone → "not responding" until a manual refresh; (2) a frozen
+// SFL tab stops supabase-js token refresh → stale token → "Log in" while
+// logged in; (3) the myship/emap statuses were only written on polls that HAD
+// parcels → hours-stale badges. pcHealTab runs EVERY poll: ping → ok;
+// discarded → auto tabs.reload (myship/emap ONLY — NEVER the SFL tab: an
+// auto-reload there could kill a live session; clicking the tab un-discards
+// it, which is what the popup now says); alive-but-dead script → re-inject
+// via chrome.scripting (double-injection guarded in each content script).
+function pcFindTabInfo(patterns) {
+  return new Promise((resolve) => {
+    chrome.tabs.query({ url: patterns }, (tabs) => resolve(tabs && tabs.length ? tabs[0] : null));
+  });
+}
+async function pcPing(tabId) {
+  const r = await pcSendTab(tabId, { type: "PC_PING" });
+  return Boolean(r && r.ok);
+}
+function pcInject(tabId, file) {
+  return new Promise((resolve) => {
+    try {
+      chrome.scripting.executeScript({ target: { tabId }, files: [file] }, () => {
+        resolve(!chrome.runtime.lastError);
+      });
+    } catch { resolve(false); }
+  });
+}
+// → { state, tabId }: 'ok' | 'no_tab' | 'asleep' (discarded SFL — click it) |
+//   'healing' (reload/inject fired; next poll confirms) | 'dead_script'.
+async function pcHealTab(patterns, file, allowReload) {
+  const tab = await pcFindTabInfo(patterns);
+  if (!tab) return { state: "no_tab", tabId: null };
+  if (await pcPing(tab.id)) return { state: "ok", tabId: tab.id };
+  if (tab.discarded || tab.frozen) {
+    if (!allowReload) return { state: "asleep", tabId: null };     // SFL: never auto-reload
+    try { chrome.tabs.reload(tab.id); } catch { /* next poll retries */ }
+    return { state: "healing", tabId: null };
+  }
+  if (await pcInject(tab.id, file)) {
+    if (await pcPing(tab.id)) return { state: "ok", tabId: tab.id };
+    return { state: "healing", tabId: null };
+  }
+  return { state: "dead_script", tabId: null };
+}
+// Stale-token detection without any network: the JWT's exp claim. The SFL web
+// app is the ONLY refresher (never the extension — the two-refreshers sign-out
+// bug must not return); a frozen tab stops refreshing, so an expired exp means
+// "click the SellerFlowLive tab once" — the popup says exactly that.
+function pcTokenExpired(token) {
+  try {
+    const seg = String(token || "").split(".")[1];
+    const json = JSON.parse(atob(seg.replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof json.exp === "number" && json.exp * 1000 < Date.now() - 30_000; // 30s skew grace
+  } catch { return false; }
+}
+
 // Promise wrapper over sendMessage that resolves null instead of throwing when
 // there is no receiver (tab not ready / content script not injected).
 function pcSendTab(tabId, msg) {
@@ -165,26 +222,37 @@ async function pcPoll() {
   if (cfg.paused) { await pcStatus({ sfl: "paused", myship: "paused" }); return; }
   if (!cfg.supabaseUrl || !cfg.supabaseAnonKey) { await pcStatus({ sfl: "no_config", lastError: "Set Supabase URL + anon key in the popup" }); return; }
 
-  const sflTabId = await pcFindTab(["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*", "http://localhost:5173/*"]);
-  if (!sflTabId) { await pcStatus({ sfl: "no_tab" }); return; }             // no SFL tab → stop
+  // Self-heal: health-check ALL THREE tabs EVERY poll (the old code only wrote
+  // the myship/emap statuses on polls that had parcels → hours-stale badges).
+  // myship/emap may auto-reload when discarded; the SFL tab NEVER does.
+  const sflHealth = await pcHealTab(
+    ["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*", "http://localhost:5173/*"],
+    "sellerflow-bridge.js", false);
+  const myshipHealth = await pcHealTab(["https://myship.7-11.com.tw/*"], "myship-711.js", true);
+  // 2026-09-27: PCSC moved the 賣貨便 store-search E-Map to emap.unipcsc.com.tw
+  // (same /ecmap/default.aspx page + byIDData.aspx endpoint, verified live —
+  // the content script's RELATIVE fetch follows whichever origin it runs on).
+  // The old domain still serves, so BOTH are matched.
+  const emapHealth = await pcHealTab(["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"], "emap-711.js", true);
+  const myshipTabId = myshipHealth.tabId;
+  const emapTabId = emapHealth.tabId;
+  await pcStatus({ myship: myshipHealth.state, emap: emapHealth.state });
+
+  if (sflHealth.state !== "ok") { await pcStatus({ sfl: sflHealth.state }); return; } // no bridge → nothing to poll
+  const sflTabId = sflHealth.tabId;
   const token = await pcGetToken(sflTabId);
   if (!token) { await pcStatus({ sfl: "no_token" }); return; }             // logged out → stop
+  if (pcTokenExpired(token)) { await pcStatus({ sfl: "expired" }); return; } // frozen SFL tab stopped refreshing → click it
 
   const res = await pcFetchUnchecked(cfg, token).catch(() => ({ ok: false, status: 0, rows: [] }));
-  if (!res.ok) { await pcStatus({ sfl: res.status === 401 ? "no_token" : "connected", lastError: `parcel_scans read failed (${res.status})` }); return; }
+  if (!res.ok) { await pcStatus({ sfl: res.status === 401 ? "expired" : "connected", lastError: `parcel_scans read failed (${res.status})` }); return; }
   await pcStatus({ sfl: "connected", lastError: "" });
 
   const rows = res.rows.filter((row) => row && row.id && !pcInFlight.has(row.id));
   if (!rows.length) { await pcStatus({ lastCheckAt: new Date().toISOString(), lastCount: 0 }); return; }
 
-  // TWO different origins: the FULL-STORE lookup runs in the emap.pcsc.com.tw tab
+  // TWO different origins: the FULL-STORE lookup runs in the emap tab
   // (byIDData + eshopGuid live there), the RESTRICTED-PHONE check in the myship tab.
-  const myshipTabId = await pcFindTab(["https://myship.7-11.com.tw/*"]);
-  // 2026-09-27: PCSC moved the 賣貨便 store-search E-Map to emap.unipcsc.com.tw
-  // (same /ecmap/default.aspx page + byIDData.aspx endpoint, verified live —
-  // the content script's RELATIVE fetch follows whichever origin it runs on).
-  // The old domain still serves, so BOTH are matched.
-  const emapTabId = await pcFindTab(["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"]);
 
   let checked = 0;
   let lastStoreReason = ""; let lastPhoneReason = "";
@@ -225,8 +293,8 @@ async function pcPoll() {
   // Per-origin status + the exact last reason for each check (popup shows these,
   // so Jeff never has to open DevTools).
   await pcStatus({
-    emap: emapTabId ? (lastStoreReason ? "issue" : "ok") : "no_tab",
-    myship: myshipTabId ? (lastPhoneReason ? "issue" : "ok") : "no_tab",
+    emap: emapTabId ? (lastStoreReason ? "issue" : "ok") : emapHealth.state,
+    myship: myshipTabId ? (lastPhoneReason ? "issue" : "ok") : myshipHealth.state,
     lastStoreReason, lastPhoneReason,
     lastStoreAt: lastStoreReason ? new Date().toISOString() : null,
     lastPhoneAt: lastPhoneReason ? new Date().toISOString() : null,

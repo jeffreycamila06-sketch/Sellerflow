@@ -20,7 +20,12 @@ function pcSetObj(value) {
 }
 const PC_STATUS_LABEL = {
   connected: ["ok", "Connected"], paused: ["off", "Paused"], no_config: ["bad", "Set URL + key"],
-  no_tab: ["bad", "Tab not open"], no_token: ["bad", "Log in"], ok: ["ok", "OK"], expired: ["warn", "Session expired"], issue: ["warn", "See note below"],
+  no_tab: ["bad", "Tab not open"], no_token: ["bad", "Log in"], ok: ["ok", "OK"], issue: ["warn", "See note below"],
+  // Self-heal (v1.7.0) — each non-green state names the ONE action needed:
+  expired: ["warn", "Click the SellerFlowLive tab once"],   // frozen tab stopped the token refresh
+  asleep: ["warn", "Tab asleep — click it once"],           // discarded SFL tab (never auto-reloaded)
+  healing: ["warn", "Waking up…"],                           // auto reload/inject fired; next check confirms
+  dead_script: ["bad", "Reload that tab"],                   // re-inject failed — the one truly manual case
 };
 function pcBadge(el, status) {
   const [cls, label] = PC_STATUS_LABEL[status] || ["off", status || "—"];

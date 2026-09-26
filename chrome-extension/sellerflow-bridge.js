@@ -6,6 +6,11 @@
 // sign Jeff out; that bug is fixed and must not return). No token / logged out →
 // return null so the background stops polling and the popup says "log in".
 (function sellerFlowTokenBridge() {
+  // Self-heal (v1.7.0): double-injection guard — the background re-injects this
+  // file via chrome.scripting when a ping fails on an alive tab; a second copy
+  // must not register a second onMessage listener (double sendResponse).
+  if (window.__sflPcBridgeInjected) return;
+  window.__sflPcBridgeInjected = true;
   function currentAccessToken() {
     try {
       const raw = localStorage.getItem("sf_supabase_auth"); // supabase.ts storageKey
@@ -21,6 +26,7 @@
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.type === "PC_PING") { sendResponse({ ok: true, script: "bridge" }); return true; }
     if (message?.type === "SFL_GET_TOKEN") {
       sendResponse({ token: currentAccessToken() });
       return true;
