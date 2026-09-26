@@ -2,7 +2,7 @@
 // market-hide flag. Pins: NULL/TW = TW (unchanged); non-TW = PH (features off, ₱);
 // admin sees the union UNLESS previewing a market; each gate hides only when told.
 import { describe, it, expect } from "vitest";
-import { marketFor, effectiveMarket, marketHides, MARKETS } from "../market";
+import { marketFor, effectiveMarket, marketHides, marketHidesShipping, MARKETS } from "../market";
 import { parcelScanVisible, canUseStickerQr } from "../parcelScan";
 import { parcelTrackingVisible } from "../parcelTracking";
 import { curSymbol } from "../../data";
@@ -92,5 +92,31 @@ describe("gates honor marketHidden (admin bypass baked into the flag)", () => {
   it("canUseStickerQr: marketHidden → false; in-market → true on every plan", () => {
     expect(canUseStickerQr(true)).toBe(false);
     expect(canUseStickerQr(false)).toBe(true);
+  });
+});
+
+describe("marketHidesShipping — the Shipping screen is the TW 7-11 module", () => {
+  it("TW (and NULL country) → visible; every non-tw-711 market → hidden", () => {
+    expect(marketHidesShipping(effectiveMarket({ role: "seller", country: "TW" }))).toBe(false);
+    expect(marketHidesShipping(effectiveMarket({ role: "seller", country: null }))).toBe(false);
+    for (const c of ["BG", "VN", "TH", "ID", "MY", "US", "ZZ"]) {
+      expect(marketHidesShipping(effectiveMarket({ role: "seller", country: c })), c).toBe(true);
+    }
+    // PH's future module is 'ph', not 'tw-711' → the TW screen hides there too.
+    expect(marketHidesShipping(effectiveMarket({ role: "seller", country: "PH" }))).toBe(true);
+  });
+  it("admin union sees it; admin view-as BG hides it (true preview)", () => {
+    expect(marketHidesShipping(effectiveMarket({ role: "admin", country: "TW", viewAs: "all" }))).toBe(false);
+    expect(marketHidesShipping(effectiveMarket({ role: "admin", country: "TW", viewAs: "BG" }))).toBe(true);
+  });
+  it("SOURCE PINS — all 3 entry points route through the gate (tile, Orders button, screen render)", () => {
+    const { readFileSync } = require("node:fs") as typeof import("node:fs");
+    const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
+    expect(app).toContain("const hideShipping = marketHidesShipping(market);");
+    expect(app).toContain('onGoShipping={hideShipping ? undefined : () => setScreen("shipping")}');
+    expect(app).toContain('onShipping={hideShipping ? undefined : () => setScreen("shipping")}');
+    expect(app).toContain('screen === "shipping" && !hideShipping && <Shipping');
+    const hub = readFileSync("src/redesign/screens/SettingsHub.tsx", "utf8");
+    expect(hub).toContain("{onShipping && <Tile icon={ic.truck}");
   });
 });
