@@ -184,7 +184,7 @@ async function pcPoll() {
   // (same /ecmap/default.aspx page + byIDData.aspx endpoint, verified live —
   // the content script's RELATIVE fetch follows whichever origin it runs on).
   // The old domain still serves, so BOTH are matched.
-  const emapTabId = await pcFindTab(["https://emap.pcsc.com.tw/*");
+  const emapTabId = await pcFindTab(["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"]);
 
   let checked = 0;
   let lastStoreReason = ""; let lastPhoneReason = "";
