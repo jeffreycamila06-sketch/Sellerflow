@@ -22,6 +22,11 @@ describe("parseGmId — shop link OR bare id", () => {
     expect(parseGmId("hello")).toBeNull();
     expect(parseGmId("GM123")).toBeNull(); // too short
     expect(parseGmId("https://evil.example.com/GM2609096099718")).toBeNull(); // wrong host
+    // audit MEDIUM-1: host text inside another site's PATH must not pass —
+    // the hostname itself must be myship, and the GM comes from the path only
+    expect(parseGmId("https://evil.example/myship.7-11.com.tw/cart/easy/GM2609096099718")).toBeNull();
+    expect(parseGmId("https://myship.7-11.com.tw.evil.example/cart/easy/GM2609096099718")).toBeNull();
+    expect(parseGmId("https://myship.7-11.com.tw/other/GM2609096099718")).toBeNull(); // wrong path
   });
 });
 
@@ -124,10 +129,18 @@ describe("extension wiring pins (background.js multi-seller path)", () => {
   it("consumes the two admin RPCs and honors need_phone/need_store (nulls for skipped halves)", () => {
     expect(multi).toContain("/rest/v1/rpc/admin_parcel_checks_pending");
     expect(multi).toContain("/rest/v1/rpc/admin_parcel_check_verdict");
-    expect(multi).toContain("if (row.need_store)");
-    expect(multi).toContain("if (row.need_phone)");
+    expect(multi).toContain("if (row.need_store && emapTabId)");
+    expect(multi).toContain("if (row.need_phone && myshipTabId)");
     expect(multi).toContain("let storeStatus = null;");
     expect(multi).toContain("let phoneStatus = null");
+  });
+
+  it("MISSING TAB never stamps 'unknown' (audit MEDIUM-2): halves stay null and a no-learning row skips the verdict write", () => {
+    // one closed-tab night must not burn the cross-seller queue — 'unknown'
+    // may only come from a content-script RESPONSE, never our own tab absence
+    expect(multi).not.toContain('storeStatus = "unknown"');
+    expect(multi).not.toContain('phoneStatus = "unknown"');
+    expect(multi).toContain("if (storeStatus !== null || phoneStatus !== null)");
   });
 
   it("keeps the shared safety machinery: single-flight + 2s row gap", () => {
@@ -143,5 +156,8 @@ describe("app wiring pins", () => {
     expect(app).toContain("parcelCheckAllowed(auth.profile?.email, auth.profile?.role) && !hideParcelScan");
     const gs = readFileSync("src/redesign/screens/GeneralSettings.tsx", "utf8");
     expect(gs).toContain("{parcelCheckOn && <MyshipCheckCard t={t} />}");
+    // audit MEDIUM-3: the pre-validation save must CLEAR shop_name/verified_at
+    // so a changed GM never keeps the old shop's verified badge
+    expect(gs).toContain("saveMyshipConfig(gmId, ph.trim(), null)");
   });
 });

@@ -55,7 +55,9 @@ function MyshipCheckCard({ t }: { t: T }) {
     if (!gmId) { setState("error"); setErr(t.rd_mc_err_gm); return; }
     if (!validOrdMobile(ph)) { setState("error"); setErr(t.rd_mc_err_phone); return; }
     setState("saving"); setErr(""); setShopName(null);
-    const saved = await saveMyshipConfig(gmId, ph.trim());
+    // First save CLEARS shop_name/verified_at (audit MEDIUM-3: a changed GM
+    // must never keep the OLD shop's verified badge); validate re-stamps below.
+    const saved = await saveMyshipConfig(gmId, ph.trim(), null);
     if (!saved.ok) { setState("error"); setErr(t.rd_mc_err_save); return; }
     setGm(gmId);
     const v = await validateGm(gmId);

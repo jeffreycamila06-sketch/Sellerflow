@@ -345,41 +345,42 @@ async function pcPollMulti() {
     if (!row || !row.id || pcInFlight.has(row.id)) continue;
     pcInFlight.add(row.id);
     try {
-      // store half (GM-free — byIDData needs no per-seller params)
+      // store half (GM-free — byIDData needs no per-seller params).
+      // NO tab / no script response → leave the half NULL (row stays queued,
+      // next poll retries) — NEVER stamp 'unknown' for our own missing tab, or
+      // one closed-tab night burns the whole cross-seller queue permanently.
+      // A content-script "unknown" (real timeout/session answer) IS written.
       let storeStatus = null;
-      if (row.need_store) {
-        storeStatus = "unknown";
-        if (emapTabId) {
-          const sResp = await pcSendTab(emapTabId, { type: "PC_CHECK_STORE", row });
-          if (sResp && typeof sResp.store_full_status === "string") storeStatus = sResp.store_full_status;
-        }
+      if (row.need_store && emapTabId) {
+        const sResp = await pcSendTab(emapTabId, { type: "PC_CHECK_STORE", row });
+        if (sResp && typeof sResp.store_full_status === "string") storeStatus = sResp.store_full_status;
       }
       // phone half — the ROW OWNER's GM + phone, never the global config
       let phoneStatus = null, phoneMessage = null, phoneUntil = null;
-      if (row.need_phone) {
-        phoneStatus = "unknown";
-        if (myshipTabId) {
-          const pResp = await pcSendTab(myshipTabId, {
-            type: "PC_CHECK_PHONE", row,
-            config: { cgdmId: row.gm_id, ordMobile: row.ord_mobile },
-          });
-          if (pResp && typeof pResp.phone_check_status === "string") {
-            phoneStatus = pResp.phone_check_status;
-            phoneMessage = pResp.phone_check_message ?? null;
-            phoneUntil = pResp.phone_restricted_until ?? null;
-          }
+      if (row.need_phone && myshipTabId) {
+        const pResp = await pcSendTab(myshipTabId, {
+          type: "PC_CHECK_PHONE", row,
+          config: { cgdmId: row.gm_id, ordMobile: row.ord_mobile },
+        });
+        if (pResp && typeof pResp.phone_check_status === "string") {
+          phoneStatus = pResp.phone_check_status;
+          phoneMessage = pResp.phone_check_message ?? null;
+          phoneUntil = pResp.phone_restricted_until ?? null;
         }
       }
-      await fetch(`${cfg.supabaseUrl}/rest/v1/rpc/admin_parcel_check_verdict`, {
-        method: "POST", headers: rpcHeaders,
-        body: JSON.stringify({
-          p_id: row.id,
-          p_store_full_status: storeStatus,
-          p_phone_check_status: phoneStatus,
-          p_phone_check_message: phoneMessage,
-          p_phone_restricted_until: phoneUntil,
-        }),
-      });
+      // nothing learned (both halves null) → no verdict write, row retries later
+      if (storeStatus !== null || phoneStatus !== null) {
+        await fetch(`${cfg.supabaseUrl}/rest/v1/rpc/admin_parcel_check_verdict`, {
+          method: "POST", headers: rpcHeaders,
+          body: JSON.stringify({
+            p_id: row.id,
+            p_store_full_status: storeStatus,
+            p_phone_check_status: phoneStatus,
+            p_phone_check_message: phoneMessage,
+            p_phone_restricted_until: phoneUntil,
+          }),
+        });
+      }
     } catch { /* leave the row pending — the next poll retries */ } finally {
       pcInFlight.delete(row.id);
     }

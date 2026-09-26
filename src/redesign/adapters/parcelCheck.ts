@@ -32,14 +32,21 @@ export function parcelCheckAllowed(email: string | undefined | null, role?: stri
 export function parseGmId(input: string | null | undefined): string | null {
   const s = String(input || "").trim();
   if (!s) return null;
-  const m = s.match(/GM(\d{8,20})/i);
-  if (!m) return null;
-  // A pasted URL must actually be a myship cart link (defense against pasting
-  // some other site's GM-looking id); bare ids pass as-is.
+  // URL form: the GM must come from the REAL myship host's path — a substring
+  // test is spoofable by putting the host text in another site's path (audit
+  // MEDIUM-1), so parse with URL and compare the hostname exactly.
   if (/^https?:\/\//i.test(s) || s.includes("/")) {
-    if (!/myship\.7-11\.com\.tw\/cart\/easy\/GM/i.test(s)) return null;
+    try {
+      const u = new URL(/^https?:\/\//i.test(s) ? s : `https://${s}`);
+      if (u.hostname.toLowerCase() !== "myship.7-11.com.tw") return null;
+      const m = u.pathname.match(/^\/cart\/easy\/GM(\d{8,20})\/?$/i);
+      return m ? `GM${m[1]}` : null;
+    } catch {
+      return null;
+    }
   }
-  return `GM${m[1]}`;
+  const m = s.match(/^GM(\d{8,20})$/i);
+  return m ? `GM${m[1]}` : null;
 }
 
 // The 7-11 shipping phone rule (matches the waybill validator): 09 + 8 digits.
