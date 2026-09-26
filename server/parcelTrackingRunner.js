@@ -27,7 +27,12 @@ const FETCH_TIMEOUT_MS = 15000;
 // Pickup Status retention: a parcel that became terminal (picked_up OR returned) stays
 // visible for this long, then the poller DELETEs it. Counted from picked_up_at /
 // returned_at (poll-detection time). Non-terminal rows are never matched (see runPoll).
-const PICKUP_RETENTION_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const PICKUP_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;    // picked_up: 7 days (unchanged)
+// 2026-09-27 (owner decision): RETURNED rows keep 365 days — returns history is
+// the basis for flagging repeat no-show buyers, so a 7-day window destroyed the
+// evidence. picked_up stays at 7 days; nothing else purges (non-terminal rows
+// can never match the delete filter, same as before).
+const RETURNED_RETENTION_MS = 365 * 24 * 60 * 60 * 1000; // returned: 365 days
 
 // Per-seller ceiling on how many NON-TERMINAL rows one poll run will chase, at_store
 // prioritized (those are near the pickup deadline — the actionable ones). This bounds
@@ -273,15 +278,17 @@ export async function runPoll(opts) {
     }
   }
 
-  // 2) 7-DAY RETENTION — DELETE parcels 7+ days after they became terminal (picked_up
-  //    OR returned), owner-scoped when configured. The OR filter references ONLY the two
+  // 2) RETENTION — DELETE terminal parcels past their per-status window (picked_up 7d,
+  //    returned 365d — see the constants)
+  //    ; owner-scoped when configured. The OR filter references ONLY the two
   //    terminal states, so a non-terminal row (in_transit / at_store / created / not_found
   //    / unknown) can NEVER match; a NULL picked_up_at/returned_at never matches `.lt`.
   //    Runs every poll (2×/day) regardless of how the poll loop above went.
   let purged = 0;
-  const cutoff = new Date(now().getTime() - PICKUP_RETENTION_MS).toISOString();
+  const cutoffPicked = new Date(now().getTime() - PICKUP_RETENTION_MS).toISOString();
+  const cutoffReturned = new Date(now().getTime() - RETURNED_RETENTION_MS).toISOString();
   let delQ = serviceSb.from("parcel_tracking").delete()
-    .or(`and(status.eq.picked_up,picked_up_at.lt.${cutoff}),and(status.eq.returned,returned_at.lt.${cutoff})`)
+    .or(`and(status.eq.picked_up,picked_up_at.lt.${cutoffPicked}),and(status.eq.returned,returned_at.lt.${cutoffReturned})`)
     .select("id");
   if (userId) delQ = delQ.eq("user_id", userId); // Phase 1 = owner only; null = all users (Phase 2)
   const { data: purgedRows, error: delErr } = await delQ;

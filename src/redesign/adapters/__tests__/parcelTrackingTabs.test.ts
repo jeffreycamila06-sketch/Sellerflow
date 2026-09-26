@@ -1,6 +1,7 @@
 // Pickup Status redesign — PURE tab helpers (rowTab / leftCell / sortByDaysLeft / tabRows /
 // tabCounts). Presentation only: same rows + same grouping as groupParcels.
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import {
   groupParcels, rowTab, leftCell, sortByDaysLeft, tabRows, tabCounts, PICKUP_TABS, PICKUP_STATUS_TABS,
   type ParcelTrackingRow,
@@ -105,5 +106,33 @@ describe("tabRows / tabCounts", () => {
   it("tab + card order follows the real parcel flow (transit → waiting → picked → returned)", () => {
     expect(PICKUP_TABS).toEqual(["all", "transit", "waiting", "picked", "returned"]);
     expect(PICKUP_STATUS_TABS).toEqual(["transit", "waiting", "picked", "returned"]);
+  });
+});
+
+describe("2026-09-27 Returned-tab starvation fix — exact totals + three disjoint queries", () => {
+  const adapter = readFileSync("src/redesign/adapters/parcelTracking.ts", "utf8");
+
+  it("tabCounts: exact totals override all/picked/returned; waiting/transit stay derived", () => {
+    const groups = {
+      waitingPickup: [{}, {}] as never[], inTransit: [{}] as never[],
+      pickedUp: [{}, {}, {}] as never[], returned: [] as never[], other: [{}] as never[],
+    };
+    // no totals (load error path) → derived, byte-identical to before
+    expect(tabCounts(groups as never)).toEqual({ all: 7, waiting: 2, transit: 1, picked: 3, returned: 0 });
+    // exact DB totals → the page cap can no longer lie on all/picked/returned
+    expect(tabCounts(groups as never, { all: 903, picked: 513, returned: 2 }))
+      .toEqual({ all: 903, waiting: 2, transit: 1, picked: 513, returned: 2 });
+  });
+
+  it("load = three DISJOINT bounded queries (non-terminal / returned / picked_up), each count:exact", () => {
+    expect(adapter).toContain('.select(PT_SELECT, { count: "exact" })');
+    expect(adapter).toContain('.eq("terminal", false)');
+    expect(adapter).toContain('.eq("status", "returned")');
+    expect(adapter).toContain('.eq("status", "picked_up")');
+    // recency ordering: returned/picked can never be starved by old deadlines again
+    expect(adapter).toContain('.order("returned_at", { ascending: false');
+    expect(adapter).toContain('.order("picked_up_at", { ascending: false');
+    // never-partial (the S1 rule): any query error fails the WHOLE load
+    expect(adapter).toContain("const err = live.error || returned.error || picked.error;");
   });
 });
