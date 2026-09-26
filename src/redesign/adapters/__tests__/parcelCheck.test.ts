@@ -156,8 +156,20 @@ describe("app wiring pins", () => {
     expect(app).toContain("parcelCheckAllowed(auth.profile?.email, auth.profile?.role) && !hideParcelScan");
     const gs = readFileSync("src/redesign/screens/GeneralSettings.tsx", "utf8");
     expect(gs).toContain("{parcelCheckOn && <MyshipCheckCard t={t} />}");
-    // audit MEDIUM-3: the pre-validation save must CLEAR shop_name/verified_at
-    // so a changed GM never keeps the old shop's verified badge
-    expect(gs).toContain("saveMyshipConfig(gmId, ph.trim(), null)");
+  });
+
+  it("ONE save-flow source: Settings card + Parcel Scan gate both render the shared MyshipConfigForm; the flow lives only in MyshipSetup.tsx", () => {
+    const shared = readFileSync("src/redesign/components/MyshipSetup.tsx", "utf8");
+    // audit MEDIUM-3 pin (moved here with the form): the pre-validation save
+    // must CLEAR shop_name/verified_at so a changed GM never keeps the old badge
+    expect(shared).toContain("saveMyshipConfig(gmId, ph.trim(), null)");
+    const gs = readFileSync("src/redesign/screens/GeneralSettings.tsx", "utf8");
+    expect(gs).toContain("<MyshipConfigForm t={t} />");
+    expect(gs).not.toContain("validateGm("); // no second copy of the flow
+    // HARD GATE wiring: ParcelScan mounts inside the gate, enabled by the same
+    // allowlist+market flag as the Settings card
+    const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
+    expect(app).toContain("<MyshipScanGate t={tApp} enabled={parcelCheckOn}");
+    expect(app.indexOf("<MyshipScanGate")).toBeLessThan(app.indexOf("<ParcelScan cur={cur}"));
   });
 });
