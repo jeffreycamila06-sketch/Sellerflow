@@ -25,6 +25,7 @@ export const LANGS = [
   { code: "zh", label: "中文 (简体)", flag: "🇨🇳" },
   { code: "zh-tw", label: "中文 (繁體)", flag: "🇹🇼" },
   { code: "th", label: "ไทย", flag: "🇹🇭" },
+  { code: "bg", label: "Български", flag: "🇧🇬" },
 ];
 
 // Currency switcher (dc.html v3 L1555). The derived symbol `cur` threads through
