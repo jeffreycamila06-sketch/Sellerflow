@@ -65,3 +65,11 @@ export function effectiveMarket(opts: { role?: string | null; country?: string |
 export function marketHides(feature: keyof Market["features"], eff: { market: Market; adminUnion: boolean }): boolean {
   return !eff.adminUnion && !eff.market.features[feature];
 }
+
+// Shipping gate (2026-09-27): the Shipping screen IS the TW 7-11/賣貨便 module, so it
+// only renders for a market whose shippingModule is 'tw-711' (admin union bypasses,
+// same as the feature gates). A future 'ph' module gets its own screen behind the
+// same switch. Previously ungated — shippingModule was declared but never read.
+export function marketHidesShipping(eff: { market: Market; adminUnion: boolean }): boolean {
+  return !eff.adminUnion && eff.market.shippingModule !== "tw-711";
+}

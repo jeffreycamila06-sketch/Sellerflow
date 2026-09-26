@@ -47,7 +47,8 @@ export default function SettingsHub({
   isAdmin = false, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, onParcelUpsell,
 }: {
   onGeneral: () => void; onCustomers: () => void;
-  onAdmin: () => void; onSales: () => void; onShipping: () => void;
+  onAdmin: () => void; onSales: () => void;
+  onShipping?: () => void; // TW 7-11 module — passed ONLY when the market has shippingModule "tw-711" (marketHidesShipping)
   onCustomerData: () => void; onLegal: () => void; onDelete: () => void; onLogout: () => void;
   isAdmin?: boolean; // Phase 5h — owner-only tiles (matches production isAdminUser gating)
   onParcelScan?: () => void; // Parcel Scan A1 — passed ONLY when canUseParcelScan allows (admin/test acct)
@@ -75,7 +76,7 @@ export default function SettingsHub({
           {/* Owner-only (production: isAdminUser) */}
           {isAdmin && <Tile icon={ic.shield} label={t.rd_sh_admin} onClick={onAdmin} />}
           <Tile icon={ic.chart} label={t.rd_sh_sales} onClick={onSales} />
-          <Tile icon={ic.truck} label={t.rd_sh_shipping} onClick={onShipping} />
+          {onShipping && <Tile icon={ic.truck} label={t.rd_sh_shipping} onClick={onShipping} />}
           {/* Parcel Scan (A1) — allowed → open the screen; else basic/free → a LOCKED
               upsell tile (🔒) that opens the neutral contact-support popup, never the
               screen. The onParcelScan prop is the ALLOW gate; parcelLocked is tile-only. */}
