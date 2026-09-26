@@ -91,8 +91,10 @@ describe("wiring pins (source contracts)", () => {
 });
 
 describe("DOGFOOD GATE — pinPrintAllowed (allowlist + admin; NOT plan-gated)", () => {
-  it("the release flip is currently OFF (dogfood phase)", () => {
-    expect(PIN_PRINT_PUBLIC).toBe(false);
+  it("RELEASED: the public flip is ON (2026-09-27) — every account passes, no plan check", () => {
+    expect(PIN_PRINT_PUBLIC).toBe(true);
+    expect(pinPrintAllowed("any-seller@anywhere.com", "seller")).toBe(true);
+    expect(pinPrintAllowed(null, null)).toBe(true); // flip short-circuits before the email check
   });
   it("allowlisted emails + every budgetukay* + admins pass; everyone else fails", () => {
     for (const e of ["budgetukay5@gmail.com", "BUDGETUKAY2@gmail.com", "budgetukay_anything@x.com",
@@ -102,11 +104,10 @@ describe("DOGFOOD GATE — pinPrintAllowed (allowlist + admin; NOT plan-gated)",
     }
     expect(pinPrintAllowed("random@seller.com", "admin")).toBe(true);   // admin bypass
     expect(pinPrintAllowed("random@seller.com", "Admin")).toBe(true);   // display-cased role
-    expect(pinPrintAllowed("random@seller.com", "seller")).toBe(false);
-    expect(pinPrintAllowed("", "seller")).toBe(false);
-    expect(pinPrintAllowed(null, null)).toBe(false);
-    // NOT a prefix trap: an email merely CONTAINING budgetukay doesn't pass
-    expect(pinPrintAllowed("not-budgetukay@x.com", "seller")).toBe(false);
+    // Post-release: EVERYONE passes via the public flip (the allowlist is
+    // inert but kept for instant revert — these pin it still behaves if
+    // PIN_PRINT_PUBLIC is ever flipped back: see the revert matrix note).
+    expect(pinPrintAllowed("random@seller.com", "seller")).toBe(true);
   });
   it("gate wiring: the handler gates FIRST, and the toggle row only renders for the allowlisted", () => {
     const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
