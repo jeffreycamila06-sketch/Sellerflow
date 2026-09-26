@@ -149,6 +149,8 @@ describe("runPoll — service-role orchestration", () => {
 
 describe("runPoll — 7-day retention (picked_up / returned auto-delete)", () => {
   const CUTOFF = new Date(FIXED_NOW.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString(); // 2026-09-11T02:00:00.000Z
+// 2026-09-27 retention split: returned rows keep 365 days (repeat no-show evidence).
+const CUTOFF_RETURNED = new Date(FIXED_NOW.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString();
 
   it("picked_up result → stamps picked_up_at = poll time (terminal)", async () => {
     const sb = fakeSb([{ id: "r1", user_id: "U", tracking_no: "FPICK", arrived_at: null }]);
@@ -164,13 +166,13 @@ describe("runPoll — 7-day retention (picked_up / returned auto-delete)", () =>
     expect(sb._captured.updates[0].patch).not.toHaveProperty("picked_up_at");
   });
 
-  it("issues an owner-scoped DELETE matching ONLY picked_up/returned older than 7 days", async () => {
+  it("issues an owner-scoped DELETE: picked_up older than 7d, returned older than 365d — each status its OWN cutoff", async () => {
     const sb = fakeSb([{ id: "r1", user_id: "U", tracking_no: "F70334584020", arrived_at: null }], { deleteReturns: [{ id: "old1" }, { id: "old2" }] });
     const s = await runPoll({ serviceSb: sb, userId: "U", fetchImpl: fetchFactory(HTML_IN_TRANSIT), ocr: ocr(), now: () => FIXED_NOW, logger: { log() {}, warn() {}, error() {} }, limits: smallLimits });
     expect(sb._captured.deletes).toHaveLength(1);
     const del = sb._captured.deletes[0];
     // OR filter references ONLY the two terminal states + their own timestamp columns
-    expect(del.or).toBe(`and(status.eq.picked_up,picked_up_at.lt.${CUTOFF}),and(status.eq.returned,returned_at.lt.${CUTOFF})`);
+    expect(del.or).toBe(`and(status.eq.picked_up,picked_up_at.lt.${CUTOFF}),and(status.eq.returned,returned_at.lt.${CUTOFF_RETURNED})`);
     expect(del.or).not.toMatch(/in_transit|at_store|created|not_found|unknown/); // NEVER un-claimed rows
     expect(del.eqs).toEqual({ user_id: "U" });   // owner-scoped
     expect(del.selected).toBe(true);             // .select() → counted

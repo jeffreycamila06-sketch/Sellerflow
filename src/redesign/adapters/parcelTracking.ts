@@ -261,13 +261,17 @@ export function tabRows(groups: ParcelGroups, tab: PickupTab, today: string): Pa
   return sortByDaysLeft(list, today);
 }
 
-export function tabCounts(groups: ParcelGroups): Record<PickupTab, number> {
+// totals (exact DB counts) override the derived numbers for the tabs the page
+// cap can distort: all/picked/returned. waiting/transit stay derived — their
+// source set (non-terminal) is loaded complete.
+export function tabCounts(groups: ParcelGroups, totals?: ParcelTotals): Record<PickupTab, number> {
+  const derivedAll = groups.waitingPickup.length + groups.inTransit.length + groups.pickedUp.length + groups.returned.length + groups.other.length;
   return {
-    all: groups.waitingPickup.length + groups.inTransit.length + groups.pickedUp.length + groups.returned.length + groups.other.length,
+    all: totals?.all ?? derivedAll,
     waiting: groups.waitingPickup.length,
     transit: groups.inTransit.length,
-    picked: groups.pickedUp.length,
-    returned: groups.returned.length,
+    picked: totals?.picked ?? groups.pickedUp.length,
+    returned: totals?.returned ?? groups.returned.length,
   };
 }
 
@@ -321,18 +325,48 @@ async function uid(): Promise<string | null> {
   return data.session?.user?.id ?? null;
 }
 
-export const PARCEL_TRACKING_PAGE = 500; // Phase 1 is owner + googletest → tiny.
+export const PARCEL_TRACKING_PAGE = 500;
+export const PT_SELECT = "id, tracking_no, cm_order_no, buyer_username, recipient_name, store_id, rec_store, status, status_message, pickup_deadline, arrived_at, ship_type, special_type, terminal";
 
-export async function loadParcelTracking(): Promise<{ ok: boolean; rows: ParcelTrackingRow[]; error?: string }> {
+// Exact per-tab totals that survive the page cap (see the starvation note below).
+export interface ParcelTotals { all: number; picked: number; returned: number }
+
+// 2026-09-27 STARVATION FIX — the old single query (deadline ASC nulls-last,
+// LIMIT 500) let hundreds of old picked_up rows (past deadlines sort FIRST)
+// crowd out everything behind them: the Returned tab showed 0 with real returns
+// at positions ~874/885, and even the WAITING chase zone was partially starved.
+// Now THREE DISJOINT bounded queries (statuses partition the table, so no
+// dedupe): (1) non-terminal — the live chase zone, complete; (2) returned —
+// the owner-prescribed dedicated query, complete (365-day retention keeps this
+// small); (3) picked_up — NEWEST first (the only tab where recency matters),
+// display capped at 500 but with an EXACT count so the tab number is true.
+// totals: all/picked/returned are exact DB counts (count:"exact" rides the
+// same requests — no extra round trips); waiting/transit stay derived from the
+// complete non-terminal set.
+export async function loadParcelTracking(): Promise<{ ok: boolean; rows: ParcelTrackingRow[]; totals?: ParcelTotals; error?: string }> {
   if (!isSupabaseConfigured || !supabase) return { ok: false, rows: [], error: "not configured" };
   const me = await uid();
   if (!me) return { ok: false, rows: [], error: "not signed in" };
-  const { data, error } = await supabase
-    .from("parcel_tracking")
-    .select("id, tracking_no, cm_order_no, buyer_username, recipient_name, store_id, rec_store, status, status_message, pickup_deadline, arrived_at, ship_type, special_type, terminal")
-    .eq("user_id", me)
-    .order("pickup_deadline", { ascending: true, nullsFirst: false })
-    .limit(PARCEL_TRACKING_PAGE);
-  if (error) return { ok: false, rows: [], error: error.message };
-  return { ok: true, rows: (data ?? []).map((r) => rowToTracking(r as Record<string, unknown>)) };
+  const base = () => supabase!.from("parcel_tracking").select(PT_SELECT, { count: "exact" }).eq("user_id", me);
+  const [live, returned, picked] = await Promise.all([
+    base().eq("terminal", false)
+      .order("pickup_deadline", { ascending: true, nullsFirst: false })
+      .limit(PARCEL_TRACKING_PAGE),
+    base().eq("status", "returned")
+      .order("returned_at", { ascending: false, nullsFirst: false })
+      .limit(PARCEL_TRACKING_PAGE),
+    base().eq("status", "picked_up")
+      .order("picked_up_at", { ascending: false, nullsFirst: false })
+      .limit(PARCEL_TRACKING_PAGE),
+  ]);
+  const err = live.error || returned.error || picked.error;
+  if (err) return { ok: false, rows: [], error: err.message }; // never partial (the S1 rule)
+  const rows = [...(live.data ?? []), ...(returned.data ?? []), ...(picked.data ?? [])]
+    .map((r) => rowToTracking(r as Record<string, unknown>));
+  const totals: ParcelTotals = {
+    all: (live.count ?? 0) + (returned.count ?? 0) + (picked.count ?? 0),
+    picked: picked.count ?? 0,
+    returned: returned.count ?? 0,
+  };
+  return { ok: true, rows, totals };
 }

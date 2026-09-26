@@ -22,7 +22,7 @@ import { taipeiDayId } from "../../lib/dateHelpers";
 import { copyText } from "../components/inviteShare";
 import { syncFromExport } from "../adapters/parcelExportRead";
 import {
-  loadParcelTracking, groupParcels, chaseTarget, chaseCopyValue, rowTab, leftCell, tabRows, tabCounts,
+  loadParcelTracking, type ParcelTotals, groupParcels, chaseTarget, chaseCopyValue, rowTab, leftCell, tabRows, tabCounts,
   PICKUP_TABS, PICKUP_STATUS_TABS,
   type ParcelTrackingRow, type ParcelGroups, type PickupTab,
 } from "../adapters/parcelTracking";
@@ -216,6 +216,7 @@ export default function ParcelTracking() {
   const [tab, setTab] = useState<PickupTab>("waiting"); // the chase list first
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [groups, setGroups] = useState<ParcelGroups | null>(null);
+  const [totals, setTotals] = useState<ParcelTotals | undefined>(undefined); // exact DB counts (survive the page cap)
   const [toast, setToast] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [showHow, setShowHow] = useState(false);
@@ -226,6 +227,7 @@ export default function ParcelTracking() {
     const res = await loadParcelTracking();
     if (!res.ok) { setState("error"); return; }
     setGroups(groupParcels(res.rows, today));
+    setTotals(res.totals);
     setState("ready");
   }
   // Read-on-open ONLY (zero poll) — a refresh is a manual tap. setState lives in
@@ -237,6 +239,7 @@ export default function ParcelTracking() {
       if (!live) return;
       if (!res.ok) { setState("error"); return; }
       setGroups(groupParcels(res.rows, today));
+      setTotals(res.totals);
       setState("ready");
     });
     return () => { live = false; };
@@ -311,7 +314,7 @@ export default function ParcelTracking() {
           empty
             ? <div style={{ ...card, fontSize: 13, color: "var(--text-dim)", textAlign: "center" }} data-testid="pt-empty">{t.rd_pt_empty}</div>
             : (() => {
-                const counts = tabCounts(groups);
+                const counts = tabCounts(groups, totals);
                 const rows = tabRows(groups, tab, today);
                 const emptyTab = <div style={{ ...card, fontSize: 12.5, color: "var(--text-dim)", textAlign: "center", padding: 16, ...(narrow ? {} : { borderTopLeftRadius: 0, borderTopRightRadius: 0 }) }} data-testid="pt-tab-empty">{t.rd_pt_tab_empty}</div>;
                 return narrow
