@@ -10,6 +10,7 @@ const pcEls = {
   url: document.getElementById("pcUrl"), key: document.getElementById("pcKey"),
   cgdm: document.getElementById("pcCgdm"), ord: document.getElementById("pcOrd"),
   save: document.getElementById("pcSave"), pause: document.getElementById("pcPause"), checkNow: document.getElementById("pcCheckNow"),
+  multi: document.getElementById("pcMulti"), multiRow: document.getElementById("pcMultiRow"), multiQueue: document.getElementById("pcMultiQueue"),
 };
 
 function pcOne(key, fallback) {
@@ -48,6 +49,10 @@ async function pcRenderStatus() {
   pcEls.err.textContent = st.lastError || "";
   // Exact per-check reason for the last 'unknown' — so Jeff never opens DevTools.
   pcReasonRow(pcEls.storeErrRow, pcEls.storeErr, st.lastStoreReason, st.lastStoreAt);
+  // multi-seller queue depth (visible once the mode has reported at least once)
+  const showMulti = st.multi != null;
+  pcEls.multiRow.style.display = showMulti ? "" : "none";
+  if (showMulti) pcEls.multiQueue.textContent = st.multi === "ok" ? String(st.multiQueueDepth ?? 0) : String(st.multi);
   pcReasonRow(pcEls.phoneErrRow, pcEls.phoneErr, st.lastPhoneReason, st.lastPhoneAt);
 }
 async function pcRenderConfig() {
@@ -57,6 +62,7 @@ async function pcRenderConfig() {
   pcEls.cgdm.value = c.cgdmId || "";
   pcEls.ord.value = c.ordMobile || "";
   pcEls.pause.textContent = c.paused ? "Resume" : "Pause";
+  pcEls.multi.checked = c.multiSeller === true; // multi-seller mode — DEFAULT OFF (dogfood)
   pcEls.pause.classList.toggle("primary", Boolean(c.paused));
 }
 pcEls.save.addEventListener("click", async () => {
@@ -67,6 +73,7 @@ pcEls.save.addEventListener("click", async () => {
     supabaseAnonKey: pcEls.key.value.trim(),
     cgdmId: pcEls.cgdm.value.trim(),
     ordMobile: pcEls.ord.value.trim(),
+    multiSeller: pcEls.multi.checked === true,
   } });
   pcEls.save.textContent = "Saved ✓";
   setTimeout(() => { pcEls.save.textContent = "Save config"; }, 1500);
@@ -78,6 +85,10 @@ pcEls.pause.addEventListener("click", async () => {
   await pcRenderConfig();
   if (!paused) chrome.runtime.sendMessage({ type: "PC_POLL_NOW" });
   await pcRenderStatus();
+});
+pcEls.multi.addEventListener("change", async () => {
+  const c = (await pcOne(PC_CONFIG_KEY, {})) || {};
+  await pcSetObj({ [PC_CONFIG_KEY]: { ...c, multiSeller: pcEls.multi.checked === true } });
 });
 pcEls.checkNow.addEventListener("click", () => {
   pcEls.checkNow.textContent = "Checking…";

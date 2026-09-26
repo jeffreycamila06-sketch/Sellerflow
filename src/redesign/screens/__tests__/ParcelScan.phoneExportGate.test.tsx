@@ -67,9 +67,14 @@ describe("WHO reaches phone Export = exactly who can open Parcel Scan (parcelSca
   });
   it("RedesignApp renders ParcelScan ONLY when parcelAllowed, and passes NO admin flag (no admin-only export gate)", () => {
     const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
-    const line = app.split("\n").find((l) => l.includes("<ParcelScan ")) || "";
-    expect(line).toContain('screen === "parcelscan" && parcelAllowed');
-    expect(line).not.toMatch(/isAdmin/);
+    // the mount is a block now (MyshipScanGate wraps ParcelScan) — same
+    // invariants on the whole block: parcelAllowed-gated, no admin flag
+    const start = app.indexOf('screen === "parcelscan"');
+    expect(start).toBeGreaterThan(-1);
+    const block = app.slice(start, app.indexOf("</MyshipScanGate>", start) + 1 || start + 400);
+    expect(block).toContain('screen === "parcelscan" && parcelAllowed');
+    expect(block).toContain("<ParcelScan ");
+    expect(block).not.toMatch(/isAdmin/);
     const scan = readFileSync("src/redesign/screens/ParcelScan.tsx", "utf8");
     expect(scan).toContain("const exportHidden = onMobile && !phoneExport;"); // switch only — no isAdmin term
   });

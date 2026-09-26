@@ -34,6 +34,9 @@ async function pcConfig() {
     cgdmId: c.cgdmId || "",
     ordMobile: c.ordMobile || "",
     paused: c.paused === true,
+    // MULTI-SELLER MODE (2026-09-27, dogfood): DEFAULT OFF — the existing
+    // owner-only single-config path is byte-unchanged until this is ticked.
+    multiSeller: c.multiSeller === true,
   };
 }
 async function pcStatus(patch) {
@@ -302,6 +305,89 @@ async function pcPoll() {
   });
 }
 
+// ── MULTI-SELLER QUEUE (2026-09-27) — extension-as-shared-worker. Consumes
+// the FAIR cross-seller queue via two admin-gated SECURITY DEFINER RPCs
+// (sql/53). ⚠️ ATTRIBUTION HARD RULE (safety property, contract-test-pinned):
+// every phone check uses the ROW OWNER's own GM + phone (row.gm_id /
+// row.ord_mobile from the RPC — which inner-joins each seller's config), NEVER
+// the popup's global cgdmId/ordMobile. Sellers without config are excluded by
+// the RPC itself. need_phone/need_store: a cache-satisfied half is skipped and
+// its verdict field sent as NULL so the RPC never clobbers it. Runs ALONGSIDE
+// the legacy owner path during dogfood: the owner has no config row, so his
+// rows never enter this queue — zero overlap by construction (cutover =
+// owner adds config + the legacy path is retired in a follow-up).
+async function pcPollMulti() {
+  const cfg = await pcConfig();
+  if (!cfg.multiSeller || cfg.paused) return;
+  if (!cfg.supabaseUrl || !cfg.supabaseAnonKey) return;
+  const sflTabId = await pcFindTab(["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*", "http://localhost:5173/*"]);
+  if (!sflTabId) return;
+  const token = await pcGetToken(sflTabId);
+  if (!token) return;
+  const rpcHeaders = {
+    apikey: cfg.supabaseAnonKey, Authorization: `Bearer ${token}`, "Content-Type": "application/json",
+  };
+  let rows = [];
+  try {
+    const r = await fetch(`${cfg.supabaseUrl}/rest/v1/rpc/admin_parcel_checks_pending`, {
+      method: "POST", headers: rpcHeaders, body: JSON.stringify({ p_limit: PC_LIMIT }),
+    });
+    if (!r.ok) { await pcStatus({ multi: `rpc_${r.status}` }); return; }
+    rows = await r.json();
+    if (!Array.isArray(rows)) rows = [];
+  } catch { await pcStatus({ multi: "rpc_error" }); return; }
+  await pcStatus({ multi: "ok", multiQueueDepth: rows.length ? Number(rows[0].queue_depth) || 0 : 0, multiLastAt: new Date().toISOString() });
+  if (!rows.length) return;
+
+  const myshipTabId = await pcFindTab(["https://myship.7-11.com.tw/*"]);
+  const emapTabId = await pcFindTab(["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"]);
+  for (const row of rows) {
+    if (!row || !row.id || pcInFlight.has(row.id)) continue;
+    pcInFlight.add(row.id);
+    try {
+      // store half (GM-free — byIDData needs no per-seller params).
+      // NO tab / no script response → leave the half NULL (row stays queued,
+      // next poll retries) — NEVER stamp 'unknown' for our own missing tab, or
+      // one closed-tab night burns the whole cross-seller queue permanently.
+      // A content-script "unknown" (real timeout/session answer) IS written.
+      let storeStatus = null;
+      if (row.need_store && emapTabId) {
+        const sResp = await pcSendTab(emapTabId, { type: "PC_CHECK_STORE", row });
+        if (sResp && typeof sResp.store_full_status === "string") storeStatus = sResp.store_full_status;
+      }
+      // phone half — the ROW OWNER's GM + phone, never the global config
+      let phoneStatus = null, phoneMessage = null, phoneUntil = null;
+      if (row.need_phone && myshipTabId) {
+        const pResp = await pcSendTab(myshipTabId, {
+          type: "PC_CHECK_PHONE", row,
+          config: { cgdmId: row.gm_id, ordMobile: row.ord_mobile },
+        });
+        if (pResp && typeof pResp.phone_check_status === "string") {
+          phoneStatus = pResp.phone_check_status;
+          phoneMessage = pResp.phone_check_message ?? null;
+          phoneUntil = pResp.phone_restricted_until ?? null;
+        }
+      }
+      // nothing learned (both halves null) → no verdict write, row retries later
+      if (storeStatus !== null || phoneStatus !== null) {
+        await fetch(`${cfg.supabaseUrl}/rest/v1/rpc/admin_parcel_check_verdict`, {
+          method: "POST", headers: rpcHeaders,
+          body: JSON.stringify({
+            p_id: row.id,
+            p_store_full_status: storeStatus,
+            p_phone_check_status: phoneStatus,
+            p_phone_check_message: phoneMessage,
+            p_phone_restricted_until: phoneUntil,
+          }),
+        });
+      }
+    } catch { /* leave the row pending — the next poll retries */ } finally {
+      pcInFlight.delete(row.id);
+    }
+    await pcSleep(PC_ROW_GAP_MS);
+  }
+}
+
 // ~5s cadence via a self-scheduling setTimeout loop (chrome.alarms is clamped to
 // ~30s, too slow for "save → ~5-9s → badge"). pcInFlight (by id) + the 2s
 // per-parcel gap already prevent overlap; a single-flight `pcTimer` guard prevents
@@ -311,6 +397,7 @@ let pcTimer = null;
 async function pcTick() {
   pcTimer = null;                 // this run consumed the scheduled slot
   try { await pcPoll(); } catch { /* keep looping */ }
+  try { await pcPollMulti(); } catch { /* keep looping */ }
   pcScheduleLoop(PC_POLL_MS);     // re-arm ~5s after this run finishes
 }
 function pcScheduleLoop(delayMs) {

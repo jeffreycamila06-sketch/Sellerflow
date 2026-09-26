@@ -60,6 +60,10 @@
         <button id="pcPause" class="warn">Pause</button>
       </div>
       <button id="pcCheckNow" style="width:100%;margin-top:8px">Check now</button>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:12px;cursor:pointer">
+        <input type="checkbox" id="pcMulti" style="margin:0"> Multi-seller mode (dogfood)
+      </label>
+      <div id="pcMultiRow" style="display:none;font-size:11px;opacity:.8;margin-top:4px">Queue: <span id="pcMultiQueue">—</span></div>
       <div class="hint">Keep a SellerFlowLive tab (logged in) AND a myship.7-11.com.tw tab open. The checker never submits an order — it only reads store status and validates phones.</div>
     </div>
     <script src="popup.js"></script>
