@@ -4,14 +4,14 @@ export type WorkerLevel = "ok" | "warn" | "bad" | "off";
 export type WorkerStateBlob = {
   v?: string; at?: number; bootAt?: number;
   sfl?: string | null; myship?: string | null; emap?: string | null; emapDomain?: string | null;
-  lastStoreVerdictAt?: number | null; lastPhoneVerdictAt?: number | null; queue?: number | null;
+  lastStoreVerdictAt?: number | null; lastStoreMissAt?: number | null; lastPhoneVerdictAt?: number | null; queue?: number | null;
 };
 
 // The worker pushes at least every 60s; twice that with no push = the laptop /
 // worker is down (the worst silent failure — call it out in red).
 export const WORKER_SILENT_MS = 3 * 60 * 1000;
 const BAD = new Set(["expired", "dead", "dead_script", "no_tab", "no_token", "no_config"]);
-const WARN = new Set(["stale", "guid_missing", "recovering", "asleep", "healing", "issue", "paused"]);
+const WARN = new Set(["stale", "guid_missing", "recovering", "degraded", "reminting", "asleep", "healing", "issue", "paused"]);
 
 function levelOf(s: string | null | undefined): WorkerLevel {
   if (!s || s === "starting") return "off";
@@ -35,7 +35,10 @@ export function describeWorkerState(raw: unknown, now: number): { level: WorkerL
   if (silentFor > WORKER_SILENT_MS) {
     return { level: "bad", text: `worker v${w.v ?? "?"} SILENT — last heartbeat ${ago(w.at, now)} (laptop asleep / extension stopped?)` };
   }
-  const parts = [`sfl ${w.sfl ?? "—"}`, `myship ${w.myship ?? "—"} (phone ${ago(w.lastPhoneVerdictAt, now)})`, `emap ${w.emap ?? "—"} (store ${ago(w.lastStoreVerdictAt, now)}${w.emapDomain ? ` · ${w.emapDomain}` : ""})`];
-  const level = [levelOf(w.sfl), levelOf(w.myship), levelOf(w.emap)].reduce(worst, "ok" as WorkerLevel);
+  // 1.14.4: a recent verdict never hides a definitive latest miss — same rule as the worker
+  const latestStoreFailed = typeof w.lastStoreMissAt === "number" && w.lastStoreMissAt > (typeof w.lastStoreVerdictAt === "number" ? w.lastStoreVerdictAt : 0);
+  const emapShown = w.emap === "ok" && latestStoreFailed ? "degraded" : w.emap;
+  const parts = [`sfl ${w.sfl ?? "—"}`, `myship ${w.myship ?? "—"} (phone ${ago(w.lastPhoneVerdictAt, now)})`, `emap ${emapShown ?? "—"} (store ${ago(w.lastStoreVerdictAt, now)}${latestStoreFailed ? `, last check FAILED ${ago(w.lastStoreMissAt, now)}` : ""}${w.emapDomain ? ` · ${w.emapDomain}` : ""})`];
+  const level = [levelOf(w.sfl), levelOf(w.myship), levelOf(emapShown)].reduce(worst, "ok" as WorkerLevel);
   return { level, text: `worker v${w.v ?? "?"} · ${parts.join(" · ")} · heartbeat ${ago(w.at, now)}` };
 }

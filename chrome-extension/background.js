@@ -379,7 +379,7 @@ let pcLastKeepaliveAt = 0;
 const pcEv = {
   bootAt: Date.now(), tick: 0, lastAnyNeedStore: false, health: null, rpc: null,
   lastStoreReason: "", lastPhoneReason: "",
-  emap: { tabId: null, url: null, guid: false, error: false, present: false, lastVerdictAt: 0, misses: 0, firstMissAt: 0, lastMissReason: "", reloadAt: 0, reloads: 0, state: null,
+  emap: { tabId: null, url: null, guid: false, error: false, present: false, lastVerdictAt: 0, lastMissAt: 0, misses: 0, firstMissAt: 0, lastMissReason: "", reloadAt: 0, reloads: 0, state: null,
     // 1.14.3 unattended re-mint (one attempt per 'dead' episode): tried / until (20 s
     // window while we wait for the new E-Map tab) / oldTabId (closed on adoption) /
     // result ("" | "no_cart_detail" | "click_refused: …" | "timeout")
@@ -434,7 +434,7 @@ function pcEmapVerdict(now) {
 function pcEmapMiss(now, reason, transient) {
   const e = pcEv.emap;
   if (transient) return;                                          // timeout / network blip: logged by the caller, never counted
-  e.misses += 1; if (!e.firstMissAt) e.firstMissAt = now; e.lastMissReason = String(reason || "");
+  e.misses += 1; if (!e.firstMissAt) e.firstMissAt = now; e.lastMissAt = now; e.lastMissReason = String(reason || "");
 }
 // PURE: is a recovery attempt due? (unit-tested by source extraction)
 function pcRecoveryDue(now, e) {
@@ -449,11 +449,16 @@ function pcRecoveryDue(now, e) {
 function pcDeriveEmap(now, e) {
   if (!e.present) return "no_tab";
   if (e.error) return "expired";
-  if (e.lastVerdictAt && now - e.lastVerdictAt <= PC_RECENT_MS) return "ok";
+  // 1.14.4: the 6-min window covers IDLE (no attempts), never a real failure — green
+  // only if the last verdict is recent AND the latest attempt did not fail definitively.
+  const recent = Boolean(e.lastVerdictAt) && now - e.lastVerdictAt <= PC_RECENT_MS;
+  const latestFailed = (e.lastMissAt || 0) > (e.lastVerdictAt || 0);
+  if (recent && !latestFailed) return "ok";
   if (e.remint && e.remint.until && now < e.remint.until) return "reminting"; // 選擇取貨門市 clicked, waiting for the new tab
   if (e.reloads >= PC_MAX_RELOADS && e.misses > 0) return "dead"; // recoveries didn't help → real expiry
   if (e.reloadAt && now - e.reloadAt < PC_RELOAD_COOLDOWN_MS) return "recovering";
   if (pcRecoveryDue(now, e)) return "guid_missing";               // recovery due this tick
+  if (recent && latestFailed) return "degraded";                  // inside the window, but the latest check failed → amber now
   return "stale";                                                 // no recent verdict, not (yet) enough evidence to act
 }
 function pcDeriveMyship(now, health, m) {
@@ -507,7 +512,7 @@ async function pcRefreshTabStatus() {
   await pcStatus({
     emap: emapState, myship: myshipState, emapSession: emapState, emapDomain, emapTabId: e.tabId, emapDeadReason: (e.remint && e.remint.result) || "",
     lastStoreReason: pcEv.lastStoreReason, lastPhoneReason: pcEv.lastPhoneReason,
-    lastStoreVerdictAt: e.lastVerdictAt || null, lastPhoneVerdictAt: pcEv.myship.lastVerdictAt || null, bootAt: pcEv.bootAt,
+    lastStoreVerdictAt: e.lastVerdictAt || null, lastStoreMissAt: e.lastMissAt || null, lastPhoneVerdictAt: pcEv.myship.lastVerdictAt || null, bootAt: pcEv.bootAt,
   });
 }
 const PC_CART_DETAIL_PATTERN = "https://myship.7-11.com.tw/cart/detail*";
@@ -541,7 +546,7 @@ async function pcPushWorkerState(cfg, rpcHeaders) {
   const state = {
     v: (chrome.runtime.getManifest ? chrome.runtime.getManifest().version : "?"), bootAt: pcEv.bootAt, at: Date.now(),
     sfl: st.sfl ?? null, myship: st.myship ?? null, emap: st.emap ?? null, emapDomain: st.emapDomain ?? null,
-    lastStoreVerdictAt: st.lastStoreVerdictAt ?? null, lastPhoneVerdictAt: st.lastPhoneVerdictAt ?? null, queue: st.multiQueueDepth ?? null,
+    lastStoreVerdictAt: st.lastStoreVerdictAt ?? null, lastStoreMissAt: st.lastStoreMissAt ?? null, lastPhoneVerdictAt: st.lastPhoneVerdictAt ?? null, queue: st.multiQueueDepth ?? null,
   };
   const sig = `${state.sfl}|${state.myship}|${state.emap}|${state.emapDomain}`;
   if (sig === pcEv.lastPush.sig && Date.now() - pcEv.lastPush.at < PC_WORKER_STATE_PUSH_MS) return;

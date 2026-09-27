@@ -70,7 +70,7 @@ describe("B · evidence-based emap state + auto-recovery (evidence recency test)
     }) as never;
     t += 5 * MIN + 1000;
     await sb.pcTick();
-    expect(status().emap).toBe("ok");                    // the last verdict is 5 min old → still inside the 6-min green window
+    expect(status().emap).toBe("degraded");              // 1.14.4: verdict 5 min old BUT the latest attempt failed → amber now, not green
     t += MIN;
     await sb.pcTick();
     expect(status().emap).toBe("stale");                 // 1.14.2: 3 misses but only a 1-min span — evidence, not a trigger; no recovery yet
@@ -140,6 +140,24 @@ describe("B · evidence-based emap state + auto-recovery (evidence recency test)
     expect(status().emap).toBe("recovering");
   });
 
+  it("1.14.4 DISPLAY: verdict 1 min ago + latest attempt guid-missing → amber 'degraded' immediately (no green inside the window after a real failure); a timeout does NOT degrade; the next verdict restores green", async () => {
+    let t = 1_000_000_000_000;
+    const { sb, calls, status, booted } = bootWorker({ now: () => t, rows: [] });
+    await booted;
+    await sb.pcTick();
+    expect(status().emap).toBe("ok");
+    noGuid(sb as never);
+    t += MIN; await sb.pcTick();                         // one definitive miss (probe: no guid) 1 min after the verdict
+    expect(status().emap).toBe("degraded");
+    expect(reopens(calls)).toEqual([]);                  // display-only: the ladder is untouched (1 miss, guarded)
+    withGuid(sb as never);
+    t += 5 * MIN; await sb.pcTick();                     // keepalive due → verdict → green again
+    expect(status().emap).toBe("ok");
+    noGuid(sb as never, "/ecmap/byIDData.aspx timeout (10s)", true);
+    t += 5 * MIN + 1000; await sb.pcTick();              // transient only → stays green (verdict 5 min old, no definitive miss)
+    expect(status().emap).toBe("ok");
+  });
+
   it("LADDER GUARD: a real verdict in the last 5 min blocks recovery even with many misses", async () => {
     let t = 1_000_000_000_000;
     const { sb, calls, status, booted } = bootWorker({ now: () => t, rows: [] });
@@ -149,7 +167,7 @@ describe("B · evidence-based emap state + auto-recovery (evidence recency test)
     noGuid(sb as never);
     for (let i = 0; i < 12; i++) { t += 20 * 1000; await sb.pcTick(); } // 12 misses over 4 min — but the verdict is < 5 min old
     expect(reopens(calls)).toEqual([]);
-    expect(status().emap).toBe("ok");                    // and the badge is still green (verdict < 6 min)
+    expect(status().emap).toBe("degraded");              // 1.14.4: the badge is amber (latest attempts failed), even though the ladder is still guarded
     t += 3 * MIN; await sb.pcTick();                     // 7 min since the verdict → guard lapsed, green window over → recovery allowed
     expect(reopens(calls)).toEqual([3]);
   });
@@ -176,6 +194,9 @@ describe("B · evidence-based emap state + auto-recovery (evidence recency test)
     expect(d(now, { ...base, error: true })).toBe("expired");
     expect(d(now, base)).toBe("ok");
     expect(d(now, { ...base, lastVerdictAt: now - 7 * MIN })).toBe("stale");
+    // 1.14.4: the window covers IDLE only — a definitive miss AFTER the verdict = amber 'degraded' at once
+    expect(d(now, { ...base, lastMissAt: now - 10_000, misses: 1, firstMissAt: now - 10_000 })).toBe("degraded");
+    expect(d(now, { ...base, lastMissAt: now - 2 * MIN, misses: 1, firstMissAt: now - 2 * MIN })).toBe("ok");   // miss BEFORE the verdict → green
     expect(d(now, { ...base, lastVerdictAt: now - 7 * MIN, misses: 2, firstMissAt: now - 3 * MIN })).toBe("stale");        // < 3 misses
     expect(d(now, { ...base, lastVerdictAt: now - 7 * MIN, misses: 3, firstMissAt: now - MIN })).toBe("stale");            // < 2 min span
     expect(d(now, { ...base, lastVerdictAt: now - 4 * MIN, misses: 5, firstMissAt: now - 3 * MIN })).toBe("ok");           // verdict 4 min ago: still green AND recovery-guarded, whatever the misses
@@ -272,6 +293,12 @@ describe("F · Admin card view of the mirrored worker state", () => {
     const ok = describeWorkerState({ v: "1.14.0", at: now - 30_000, sfl: "connected", myship: "ok", emap: "ok", emapDomain: "emap.unipcsc.com.tw", lastStoreVerdictAt: now - 60_000, lastPhoneVerdictAt: now - 90_000 }, now);
     expect(ok?.level).toBe("ok");
     expect(ok?.text).toContain("emap ok (store 1m ago · emap.unipcsc.com.tw)");
+    // 1.14.4: the card applies the same rule — verdict 1 min ago but a later definitive miss → amber 'degraded'
+    const deg = describeWorkerState({ v: "1.14.4", at: now - 30_000, sfl: "connected", myship: "ok", emap: "ok", lastStoreVerdictAt: now - 60_000, lastStoreMissAt: now - 20_000, lastPhoneVerdictAt: now - 90_000 }, now);
+    expect(deg?.level).toBe("warn");
+    expect(deg?.text).toContain("emap degraded (store 1m ago, last check FAILED 0m ago)");
+    const older = describeWorkerState({ at: now - 30_000, sfl: "connected", myship: "ok", emap: "ok", lastStoreVerdictAt: now - 60_000, lastStoreMissAt: now - 5 * MIN }, now);
+    expect(older?.level).toBe("ok"); // the miss predates the verdict → green
     expect(describeWorkerState({ at: now - 30_000, sfl: "connected", myship: "ok", emap: "stale" }, now)?.level).toBe("warn");
     expect(describeWorkerState({ at: now - 30_000, sfl: "connected", myship: "ok", emap: "dead" }, now)?.level).toBe("bad");
     expect(describeWorkerState({ at: now - 30_000, sfl: "connected", myship: "no_tab", emap: "ok" }, now)?.level).toBe("bad");

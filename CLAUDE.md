@@ -4327,3 +4327,8 @@ Full audit (D1–D10) → ONE clean version. Worker (`chrome-extension/backgroun
   tab (one re-mint per parking). Suite: `parcelCheckerRemint.test.ts` (7 sabotages red).
   ⚠️ NOT live-verified from the session: reaching `/cart/detail` needs the owner's cart
   form filled (product row + terms) — Jeff's data, not mine — and the extension reload.
+- **1.14.4 (2026-09-27) — display: the 6-min green window covers IDLE only.** New
+  `degraded` state (amber "Last check failed — recovering…"): green requires a recent
+  verdict AND no definitive miss after it (`lastMissAt > lastVerdictAt` → degraded at
+  once; transient timeouts never flip it). Ladder untouched (display-only). The Admin
+  card applies the same rule from the mirrored `lastStoreMissAt`.

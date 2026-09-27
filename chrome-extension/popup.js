@@ -35,6 +35,7 @@ const PC_STATUS_LABEL = {
   stale: ["warn", "No check resolved in 6 min — click that tab once"],
   guid_missing: ["warn", "Session lost — re-opening…"],
   recovering: ["warn", "Re-opened — verifying…"],
+  degraded: ["warn", "Last check failed — recovering…"],     // 1.14.4: a recent verdict never hides a fresh failure
   reminting: ["warn", "Re-opening via 賣貨便 選擇取貨門市…"],  // 1.14.3 unattended re-mint in flight
   dead: ["bad", "Re-open via 賣貨便 → 選擇門市"],            // 2 recoveries didn't help = real expiry
 };
@@ -69,6 +70,7 @@ async function pcRenderStatus() {
       : s === "reminting" ? ["#b45309", "⏳ E-Map session expired — re-opening via 賣貨便 → 選擇取貨門市 (auto, ≤20 s)"]
       : s === "no_tab" ? ["#b45309", "⚠️ E-Map tab not found — open E-Map via 賣貨便 → 選擇門市"]
       : s === "guid_missing" || s === "recovering" ? ["#b45309", `⚠️ E-Map session lost — re-opening the tab (GET, no resubmission dialog) to re-mint it${dom}${tab}`]
+      : s === "degraded" ? ["#b45309", `⚠️ E-Map: latest store check failed (${st.lastStoreReason || "guid missing"}) — recovering…${lastV}${dom}${tab}`]
       : s === "stale" ? ["#b45309", `⚠️ E-Map tab open but no store check resolved in 6 min${lastV}${dom}${tab}`]
       : s === "ok" ? ["#16a34a", `● E-Map session OK${lastV}${dom}${tab}`]
       : s === "starting" ? ["#8a8a8a", "○ Worker starting — first check in a few seconds"]
