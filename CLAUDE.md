@@ -4252,3 +4252,26 @@ Rules:
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+
+## SESSION 2026-09-27 — PARCEL-CHECKER EXTENSION 1.14.0 (branch `claude/parcel-checker-1-14`, NOT merged — Jeff runs the 6-step laptop checklist first)
+Full audit (D1–D10) → ONE clean version. Worker (`chrome-extension/background.js`):
+- **One E-Map tab per tick** — `pcPickEmapTab()` queries both emap origins, drops
+  `error.aspx`, probes each with the new cheap `PC_EMAP_PROBE` (emap-711.js, guid only,
+  no byIDData), prefers the guid-bearing tab it used last; logs `[PC-EMAP] using tab …`
+  on change. Never a blind `tabs[0]`.
+- **Evidence-based status, ONE writer** (`pcRefreshTabStatus` in the tick): green ONLY
+  when that tab produced a verdict in the last 6 min (`lastVerdictAt`); `stale` /
+  `guid_missing` / `recovering` / `dead` / `expired` (error.aspx) / `no_tab` each name the
+  fix in the popup. **Boot RESETS all status keys to `starting`** (nothing stale from a
+  previous life can be displayed). The lanes only record evidence (`pcEv`).
+- **Keepalive from the tick** (`pcEmapKeepalive`, byIDData on 198002 every 5 min while
+  no pending row needs the store half) — independent of the SFL token / pending RPC.
+  **Auto-recovery:** session stops resolving → ONE `chrome.tabs.reload` per 60s, max 2,
+  then `dead` (re-open via 賣貨便 → 選擇門市); a verdict resets the ladder.
+- `[PC-TICK]` heartbeat ~every 60s; every new block try/catch-wrapped; "Check now" runs
+  BOTH lanes (`pcRunOnce`). Admin card mirror: `admin_set_parcel_worker_state(jsonb)` →
+  `app_settings.parcel_check_worker_state` (sql/54, APPLIED to prod; display-only, read
+  back by `admin_parcel_check_stats().worker`; `adapters/parcelWorkerState.ts`).
+- Tests: `parcelCheckerHarness.ts` (shared vm harness), `parcelCheckerBoot.test.ts`
+  (+boot reset), `parcelChecker114.test.ts` (multi-emap pick · recency · reload ladder ·
+  keepalive cadence over a 30-min idle gap · stale myship · Admin card). 8 sabotages red.

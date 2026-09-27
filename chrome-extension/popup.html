@@ -53,8 +53,10 @@
       <div class="pc-cfg">
         <div><label>Supabase URL</label><input id="pcUrl" placeholder="https://….supabase.co" /></div>
         <div><label>Supabase anon key (public — from the web app)</label><input id="pcKey" placeholder="eyJ…" /></div>
-        <div><label>賣場 GM id (Cgdm_Id)</label><input id="pcCgdm" placeholder="GM2609096130694" /></div>
-        <div><label>Seller phone (ordMobile)</label><input id="pcOrd" placeholder="09……" /></div>
+        <div id="pcPerSellerCfg">
+          <div><label>賣場 GM id (Cgdm_Id)</label><input id="pcCgdm" placeholder="GM2609096130694" /></div>
+          <div><label>Seller phone (ordMobile)</label><input id="pcOrd" placeholder="09……" /></div>
+        </div>
       </div>
       <div class="pc-btns">
         <button id="pcSave" class="primary">Save config</button>
@@ -65,7 +67,7 @@
         <input type="checkbox" id="pcMulti" style="margin:0"> Multi-seller mode (dogfood)
       </label>
       <div id="pcMultiRow" style="display:none;font-size:11px;opacity:.8;margin-top:4px">Queue: <span id="pcMultiQueue">—</span></div>
-      <div class="hint">Keep a SellerFlowLive tab (logged in) AND a myship.7-11.com.tw tab open. The checker never submits an order — it only reads store status and validates phones.</div>
+      <div class="hint">Keep THREE tabs open: SellerFlowLive (logged in), myship.7-11.com.tw (logged in), and an E-Map tab opened via 賣貨便 → 選擇門市 (a bare E-Map URL has no session). The checker keeps them awake and re-handshakes by itself; a badge stays green only while that tab's checks actually resolve. It never submits an order — it only reads store status and validates phones.</div>
     </div>
     <script src="popup.js"></script>
   </body>

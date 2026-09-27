@@ -14,6 +14,7 @@ import { VIEW_AS_OPTIONS, type ViewAs } from "../adapters/market";
 import { loadGlobalShippingFeeMeta, saveGlobalShippingFee, validGlobalFee } from "../adapters/shippingSettings";
 import { loadParcelManualEnabledMeta, saveParcelManualEnabled } from "../adapters/parcelScan";
 import { getCreditBalanceForUser } from "../adapters/parcelScan";
+import { describeWorkerState } from "../adapters/parcelWorkerState";
 import type { AccountAuditLog, AccountUser } from "../../accountDb";
 import { csvDL, dayStamp } from "../adapters/csv";
 import SoonBadge from "../components/SoonBadge";
@@ -253,6 +254,19 @@ function SubList({ list, statusLabel, statusColor, note, showPlan = true }: { li
 // oldest climbing while depth grows = the 2s lane is falling behind, deploy
 // the Render-port relief valve), rows awaiting seller setup, cache size.
 // One RPC on panel open, zero poll (Business Pulse pattern).
+// 1.14.0 — the extension worker's per-tab health, mirrored into app_settings
+// every ~60s (sql/54). Display-only: red/amber names the tab + the fix, green
+// only when that tab's checks resolved recently, grey when the worker is silent.
+function WorkerStateLine({ worker, now }: { worker: unknown; now: number }) {
+  const d = describeWorkerState(worker, now);
+  if (!d) return null;
+  return (
+    <div data-testid="pm-worker" style={{ fontSize: 11, marginTop: 4, fontFamily: mono, color: d.level === "bad" ? "var(--danger, #dc2626)" : d.level === "warn" ? "#b45309" : d.level === "ok" ? "#16a34a" : "var(--text-muted)" }}>
+      {d.text}
+    </div>
+  );
+}
+
 function CheckQueueBlock() {
   const [st, setSt] = useState<Record<string, unknown> | null | "err">(null);
   useEffect(() => {
@@ -262,7 +276,8 @@ function CheckQueueBlock() {
         if (!supabase) { if (live) setSt("err"); return; }
         const { data, error } = await supabase.rpc("admin_parcel_check_stats");
         if (!live) return;
-        setSt(error || !data ? "err" : (data as Record<string, unknown>));
+        // fetchedAt = the clock the worker-state line is judged against (render stays pure)
+        setSt(error || !data ? "err" : { ...(data as Record<string, unknown>), fetchedAt: Date.now() });
       } catch { if (live) setSt("err"); }
     })();
     return () => { live = false; };
@@ -282,6 +297,7 @@ function CheckQueueBlock() {
       <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4, fontFamily: mono }}>
         queue {n("queue_depth")} · oldest {n("oldest_pending_min")}m · awaiting setup {n("awaiting_setup")} · cache {n("cache_size")} · sender {String(st.sender_phone ?? "—")}
       </div>
+      <WorkerStateLine worker={st.worker} now={Number(st.fetchedAt) || 0} />
       {top.length > 0 && (
         <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3 }}>
           {top.map((r) => `${r.email ?? "?"} (${r.pending ?? 0})`).join(" · ")}

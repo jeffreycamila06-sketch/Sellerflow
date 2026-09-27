@@ -116,7 +116,7 @@ describe("self-heal v1.7.0 — statuses recover without manual tab refreshes", (
   const bg = readFileSync("chrome-extension/background.js", "utf8");
 
   it("manifest 1.7.0 + the scripting permission (re-injection needs it)", () => {
-    expect(manifest.version).toBe("1.13.0"); // 1.13.0 = SFL status refreshed in multi mode + defensive wraps + boot beacon
+    expect(manifest.version).toBe("1.14.0"); // 1.14.0 = evidence-based per-tab status, emap tab pick, tick-driven keepalive + auto-recovery, boot reset, heartbeat
     expect(manifest.permissions).toContain("scripting");
   });
 
@@ -132,8 +132,8 @@ describe("self-heal v1.7.0 — statuses recover without manual tab refreshes", (
     }
   });
 
-  it("health runs EVERY poll: myship/emap statuses written BEFORE the no-rows early return", () => {
-    const healthAt = bg.indexOf("await pcStatus({ myship: myshipHealth.state, emap: emapHealth.state });");
+  it("health runs EVERY poll: myship/emap health recorded BEFORE the no-rows early return (1.14.0: as evidence for the single status writer)", () => {
+    const healthAt = bg.indexOf("pcEv.health = { myship: myshipHealth, emap: emapHealth };");
     const rowsAt = bg.indexOf("const rows = res.rows.filter");
     expect(healthAt).toBeGreaterThan(-1);
     expect(healthAt).toBeLessThan(rowsAt); // the old hours-stale-badges bug stays dead
@@ -143,11 +143,17 @@ describe("self-heal v1.7.0 — statuses recover without manual tab refreshes", (
     expect(bg).toContain('"sellerflow-bridge.js", false');                       // allowReload=false
     expect(bg).toContain('pcHealTab(["https://myship.7-11.com.tw/*"], "myship-711.js", true)');
     expect(bg).toContain('"emap-711.js", true)');
-    // the reload call exists ONLY inside pcHealTab behind the allowReload gate:
+    // exactly TWO reload sites, neither can reach the SFL tab: pcHealTab (behind the
+    // allowReload gate) and the 1.14.0 emap session recovery (targets the picked
+    // emap tab only — pcPickEmapTab queries the two emap origins exclusively).
     const heal = bg.slice(bg.indexOf("async function pcHealTab"), bg.indexOf("function pcTokenExpired"));
     expect(heal).toContain('if (!allowReload) return { state: "asleep"');
-    expect((bg.match(/chrome\.tabs\.reload\(/g) || []).length).toBe(1);
+    expect((bg.match(/chrome\.tabs\.reload\(/g) || []).length).toBe(2);
     expect(heal).toContain("chrome.tabs.reload(");
+    const recover = bg.slice(bg.indexOf("async function pcRefreshTabStatus"), bg.indexOf("async function pcPushWorkerState"));
+    expect(recover).toContain("chrome.tabs.reload(e.tabId)");
+    expect(bg).toContain('const PC_EMAP_PATTERNS = ["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"];');
+    expect(bg).toContain("chrome.tabs.query({ url: PC_EMAP_PATTERNS }");
   });
 
   it("stale-token detection is local (JWT exp) and the extension still NEVER refreshes the session itself", () => {
