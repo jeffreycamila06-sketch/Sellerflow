@@ -178,7 +178,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const [tab, setTab] = useState<"all" | "wrong" | "full" | "restricted">("all");
   // Delete (Change 3): a pending confirmation + await/error state. Never fires
   // a delete without the confirm; a failed delete surfaces inline, no silent no-op.
-  const [confirm, setConfirm] = useState<{ kind: "row"; id: string } | { kind: "recheck"; id: string } | { kind: "exported" } | { kind: "export" } | { kind: "undo" } | { kind: "enablephone" } | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: "row"; id: string } | { kind: "recheck"; id: string } | { kind: "exported" } | { kind: "export" } | { kind: "pending"; n: number } | { kind: "undo" } | { kind: "enablephone" } | null>(null);
   // FIX 5 / 2b — the most recent export run (batch id + the row ids it exported), so
   // an accidental export can be undone (rows → 'confirmed', back in the ready list).
   // Loaded on screen open from ANY device (loadLastExportBatch, newest by the DB-
@@ -743,10 +743,18 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // delete/clear-exported.
   // Mobile opens the dialog AND kicks off the prebuild (so the Export tap can share ready
   // bytes synchronously). Desktop just opens the dialog (runExport builds on confirm).
-  const askExport = () => {
+  const openExportDialog = () => {
     setDeleteErr(""); setExportErr(""); setMobileExportFail(false);
     if (onMobile) { setExportPrep("idle"); void prebuildExport(); }
     setConfirm({ kind: "export" });
+  };
+  // Export-time guard: parcels still "⏳ Checking…" (phone OR store half unresolved)
+  // stop being checked once exported. Ask first — "Wait" (default) or "Export anyway".
+  // NEVER a hard block (the checker may be down); only while the checks feature is on.
+  const askExport = () => {
+    const pending = checkOn ? splitScansForExport(rows).ready.filter(rowAwaitsVerdict).length : 0;
+    if (pending > 0) { setDeleteErr(""); setConfirm({ kind: "pending", n: pending }); return; }
+    openExportDialog();
   };
 
   // FIX 5 — undo the last export run: revert its rows to 'confirmed' (DB +
@@ -1372,6 +1380,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                     <div>{t.rd_ps2_phx_title}</div>
                     <div style={{ fontWeight: 600, fontSize: 12.5, color: "var(--text-dim)", marginTop: 8, lineHeight: 1.55 }} data-testid="ps-enablephone-body">{t.rd_ps2_phx_body}</div>
                   </>
+                : confirm.kind === "pending"
+                ? <span data-testid="ps-pending-msg">{tpl(t.rd_ps2_pending_q, { n: String(confirm.n) })}</span>
                 : confirm.kind === "export"
                 ? tpl(t.rd_ps2_x_confirm_q, { n: String(readyCount) })
                 : confirm.kind === "undo"
@@ -1385,9 +1395,11 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
             {deleteErr && <div style={{ ...errTxt, marginTop: 10 }} data-testid="ps-delete-err">{t.rd_ps2_delete_err} <span style={{ fontFamily: mono }}>{deleteErr}</span></div>}
             {confirm.kind === "export" && exportPrep === "error" && <div style={{ ...errTxt, marginTop: 10 }} data-testid="ps-prebuild-err">{t.rd_ps2_x_failed} <span style={{ fontFamily: mono }}>{exportErr}</span></div>}
             <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-              <button onClick={closeConfirm} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13.5, cursor: deleting ? "default" : "pointer" }} data-testid="ps-confirm-cancel">{t.rd_ps2_cancel}</button>
+              <button onClick={closeConfirm} disabled={deleting} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13.5, cursor: deleting ? "default" : "pointer" }} data-testid="ps-confirm-cancel">{confirm.kind === "pending" ? t.rd_ps2_pending_wait : t.rd_ps2_cancel}</button>
               {confirm.kind === "enablephone"
                 ? <button onClick={enablePhoneExport} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }} data-testid="ps-confirm-enablephone">{t.rd_ps2_phx_go}</button>
+                : confirm.kind === "pending"
+                ? <button onClick={openExportDialog} style={{ flex: 1, padding: "11px 12px", borderRadius: 10, border: "1px solid var(--accent)", background: "transparent", color: "var(--accent)", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }} data-testid="ps-confirm-export-anyway">{t.rd_ps2_pending_anyway}</button>
                 : confirm.kind === "export"
                 ? (onMobile
                     // MOBILE: share the PRE-BUILT bytes synchronously in this tap (no await before share).
