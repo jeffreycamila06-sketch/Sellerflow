@@ -247,6 +247,14 @@ async function pcPoll() {
   if (!token) { await pcStatus({ sfl: "no_token" }); return; }             // logged out → stop
   if (pcTokenExpired(token)) { await pcStatus({ sfl: "expired" }); return; } // frozen SFL tab stopped refreshing → click it
 
+  // MULTI-SELLER MODE: the legacy single-config lane must NOT also process rows
+  // (2026-09-27 two-lane race — it raced pcPollMulti on the owner's own rows,
+  // wrote verdicts from the popup config, and bypassed cache-apply). Keep the
+  // health/self-heal/token prelude above (both lanes rely on healthy tabs), but
+  // stop here: pcPollMulti owns ALL row work in multi mode, so the popup
+  // GM/phone is never used and can be blank.
+  if (cfg.multiSeller) { await pcStatus({ lastCheckAt: new Date().toISOString(), lastCount: 0 }); return; }
+
   const res = await pcFetchUnchecked(cfg, token).catch(() => ({ ok: false, status: 0, rows: [] }));
   if (!res.ok) { await pcStatus({ sfl: res.status === 401 ? "expired" : "connected", lastError: `parcel_scans read failed (${res.status})` }); return; }
   await pcStatus({ sfl: "connected", lastError: "" });
@@ -350,19 +358,30 @@ async function pcPollMulti() {
       // next poll retries) — NEVER stamp 'unknown' for our own missing tab, or
       // one closed-tab night burns the whole cross-seller queue permanently.
       // A content-script "unknown" (real timeout/session answer) IS written.
+      // Write ONLY a DEFINITIVE verdict. A transient 'unknown' (timeout / redirect
+      // / non-JSON / no tab) is "not learned" → leave the half NULL so the pending
+      // RPC re-selects the row next poll (eventual consistency). Stamping 'unknown'
+      // is non-null → the row would never re-check → a transient hiccup could ship a
+      // genuinely-restricted buyer (audit M1). A permanently-unverifiable row just
+      // keeps retrying — harmless (it still exports; bad data is fixed via edit).
       let storeStatus = null;
       if (row.need_store && emapTabId) {
         const sResp = await pcSendTab(emapTabId, { type: "PC_CHECK_STORE", row });
-        if (sResp && typeof sResp.store_full_status === "string") storeStatus = sResp.store_full_status;
+        if (sResp && (sResp.store_full_status === "open" || sResp.store_full_status === "full")) storeStatus = sResp.store_full_status;
       }
-      // phone half — the ROW OWNER's GM + phone, never the global config
-      let phoneStatus = null, phoneMessage = null, phoneUntil = null;
+      // phone half — the ROW OWNER's GM + phone, never the global config.
+      // anon:true → the check runs credential-less so the body ordMobile is the
+      // authoritative sender (the owner's myship login is irrelevant); this is
+      // the core multi-seller fix (2026-09-27).
+      let phoneStatus = null, phoneMessage = null, phoneUntil = null, pTokenMs = null, pPostMs = null;
       if (row.need_phone && myshipTabId) {
         const pResp = await pcSendTab(myshipTabId, {
-          type: "PC_CHECK_PHONE", row,
+          type: "PC_CHECK_PHONE", row, anon: true,
           config: { cgdmId: row.gm_id, ordMobile: row.ord_mobile },
         });
-        if (pResp && typeof pResp.phone_check_status === "string") {
+        if (pResp) { pTokenMs = pResp.tokenMs ?? null; pPostMs = pResp.postMs ?? null; }
+        // DEFINITIVE only (audit M1): 'unknown' → leave null → retry next poll.
+        if (pResp && (pResp.phone_check_status === "ok" || pResp.phone_check_status === "restricted")) {
           phoneStatus = pResp.phone_check_status;
           phoneMessage = pResp.phone_check_message ?? null;
           phoneUntil = pResp.phone_restricted_until ?? null;
@@ -380,6 +399,10 @@ async function pcPollMulti() {
             p_phone_restricted_until: phoneUntil,
           }),
         });
+        // Latency instrumentation (dogfood): encode→verdict + the anon phone
+        // check's per-GM token GET and POST costs. row.created_at = the encode.
+        const latMs = row.created_at ? (Date.now() - new Date(row.created_at).getTime()) : null;
+        console.log(`[PC-LAT] latencyMs=${latMs} tokenMs=${pTokenMs} postMs=${pPostMs} queue=${rows.length} phone=${phoneStatus} store=${storeStatus}`);
       }
     } catch { /* leave the row pending — the next poll retries */ } finally {
       pcInFlight.delete(row.id);

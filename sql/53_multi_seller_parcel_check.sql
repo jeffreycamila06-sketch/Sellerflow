@@ -57,10 +57,16 @@ create or replace function public.admin_parcel_checks_pending(p_limit int defaul
 returns table(
   id uuid, phone text, store_id text, customer_name text,
   gm_id text, ord_mobile text, need_phone boolean, need_store boolean,
-  queue_depth bigint
+  queue_depth bigint, created_at timestamptz
 )
 language plpgsql security definer set search_path = public as $$
-declare v_enabled text;
+declare
+  v_enabled text;
+  -- TUNABLE: how long an 'ok' phone verdict stays reusable from the cache.
+  -- Short (4h) so a buyer newly restricted since morning is re-checked before
+  -- ship, while same-session repeats (< window) still hit the cache. Dated
+  -- 'restricted' uses its real date; undated 'restricted' is never applied.
+  v_ok_ttl constant interval := interval '4 hours';
 begin
   if not public.is_admin() then
     raise exception 'forbidden';
@@ -73,8 +79,8 @@ begin
   -- CACHE APPLICATION (the single biggest load reducer): repeat buyers get
   -- their phone verdict straight from the cache — the row may then need only
   -- the store half, or nothing at all. Freshness: restricted → valid until the
-  -- 7-11-asserted restricted_until (Taipei date); ok → 7 days. 'unknown' is
-  -- never cached (fail-safe discipline), so it can never be applied.
+  -- 7-11-asserted restricted_until (Taipei date); ok → v_ok_ttl (4h). 'unknown'
+  -- is never cached (fail-safe discipline), so it can never be applied.
   update parcel_scans ps
      set phone_check_status     = c.status,
          phone_check_message    = c.message,
@@ -87,7 +93,7 @@ begin
      and (
            (c.status = 'restricted' and c.restricted_until is not null
              and c.restricted_until >= (now() at time zone 'Asia/Taipei')::date)
-        or (c.status = 'ok' and c.checked_at > now() - interval '7 days')
+        or (c.status = 'ok' and c.checked_at > now() - v_ok_ttl)
          );
 
   -- FAIR SELECTION: row_number per seller by AGE, ordered rank-first → each
@@ -112,7 +118,7 @@ begin
   )
   select p.id, p.phone, p.store_id, p.customer_name, p.gm_id, p.ord_mobile,
          p.need_phone, p.need_store,
-         (select count(*) from pending) as queue_depth
+         (select count(*) from pending) as queue_depth, p.created_at
     from pending p
    order by p.seller_rank asc, p.created_at asc
    limit greatest(1, least(coalesce(p_limit, 5), 25));

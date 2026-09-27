@@ -16,6 +16,7 @@ import {
   rowAwaitsVerdict, mergeExtensionVerdicts,
   type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState, type StoreCheckStatus, type ExportReason, type UndeliveredExport,
 } from "../adapters/parcelScan";
+import { newlyFlagged, attentionCount, playChime, unlockAudio, type VerdictLite } from "../adapters/parcelAlert";
 import { fetchShipTemplate, buildXlsmFromTemplate, deliverXlsm, deliverXlsmMobile, exportFilename } from "../adapters/shippingExport";
 import { loadGlobalShippingFee } from "../adapters/shippingSettings";
 import { isAppShell, isNarrowViewport } from "../adapters/appShell";
@@ -127,7 +128,7 @@ type ExportClaim = {
 // manualOnly = a paying (non-admin) seller: hide the camera / AI-scan / credits
 // surface entirely (not just disable) and show manual encode + an "AI … coming
 // soon" line. Admins (manualOnly=false) get the full scan surface, no soon line.
-export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = false }: { cur?: string; storeName?: string; manualOnly?: boolean }) {
+export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = false, checkOn = false }: { cur?: string; storeName?: string; manualOnly?: boolean; checkOn?: boolean }) {
   const t = useT();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const qrRef = useRef<HTMLInputElement | null>(null);   // "Scan QR" photo input (decodes the buyer @username off the SFL sticker)
@@ -309,18 +310,36 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // badge has landed and pauses when backgrounded (zero idle egress). ~3s cadence.
   // Merges ONLY the three extension-verdict fields by id → never clobbers an
   // in-progress edit, the wrong-code (store_check_status) flow, or row order.
-  const awaitingVerdicts = rows.some(rowAwaitsVerdict);
+  // Attention alert (item 9): a chime + a sticky "N need attention" banner on a
+  // NEW restricted/full verdict, so a late verdict is impossible to miss after
+  // the seller has moved on. verdictSnapRef = last-seen verdicts (seeded on load
+  // so pre-existing flags populate the banner count but don't chime; only
+  // transitions WHILE the screen is open chime). Only runs when the feature is
+  // active for this seller (checkOn) — else the poll/copy/alert are all inert.
+  const [attnAck, setAttnAck] = useState(false);
+  const verdictSnapRef = useRef<VerdictLite[]>([]);
+  // Seed ONCE when the list first loads (intentionally not on every rows change —
+  // re-seeding each merge would erase the prev/fresh delta and silence the chime).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { verdictSnapRef.current = rows.map((r) => ({ id: r.id, storeFullStatus: r.storeFullStatus, phoneCheckStatus: r.phoneCheckStatus })); }, [listLoaded]);
+  const awaitingVerdicts = checkOn && rows.some(rowAwaitsVerdict);
   useEffect(() => {
     if (!awaitingVerdicts || !pageVisible) return;
     let live = true;
     const id = setInterval(() => {
       loadParcelScans().then((res) => {
         if (!live || !aliveRef.current || !res.ok) return;
+        const fresh: VerdictLite[] = res.rows.map((r) => ({ id: r.id, storeFullStatus: r.storeFullStatus, phoneCheckStatus: r.phoneCheckStatus }));
+        const nf = newlyFlagged(verdictSnapRef.current, fresh);
+        verdictSnapRef.current = fresh;
+        if (nf.restricted > 0) { playChime("restricted"); setAttnAck(false); }
+        else if (nf.full > 0) { playChime("full"); setAttnAck(false); }
         setRows((prev) => mergeExtensionVerdicts(prev, res.rows));
       });
     }, 3000);
     return () => { live = false; clearInterval(id); };
   }, [awaitingVerdicts, pageVisible]);
+  const attnCount = checkOn ? attentionCount(rows) : 0;
 
   // FIX 2/3 — release the camera when the tab/app is backgrounded, re-acquire on
   // return, and clear a prior denial so a grant-in-Settings-then-return recovers
@@ -509,6 +528,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // the row locally + fires the same E-Map store-code check as a scan. Returns
   // ok. `rawExtraction` is null for manual entries (nullable column).
   const commitNewParcel = async (fields: ScanFields): Promise<boolean> => {
+    unlockAudio(); // encode/Save is the user gesture that unlocks the alert chime (mobile autoplay policy)
     const r = await saveParcelScan(fields, rawExtraction);
     if (!r.ok) { setSaveErr(r.error || "save_failed"); return false; }
     const rowId = r.id || `local-${Date.now()}`;
@@ -1262,6 +1282,14 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
             })}
           </div>
 
+          {/* item 9: sticky "N need attention" banner — persists until acknowledged;
+              a NEW verdict re-raises it (setAttnAck(false) in the poll). */}
+          {checkOn && attnCount > 0 && !attnAck && (
+            <div data-testid="ps-attention-banner" role="status" style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 11px", marginBottom: 8, borderRadius: 10, background: "var(--danger-soft, #fef2f2)", border: "1px solid var(--danger, #dc2626)" }}>
+              <span style={{ fontSize: 13, fontWeight: 800, color: "var(--danger, #dc2626)", flex: 1 }}>⚠️ {tpl(t.rd_ps2_attention, { n: attnCount })}</span>
+              <button onClick={() => setAttnAck(true)} aria-label={t.rd_ps2_attention_ack} data-testid="ps-attention-ack" style={{ padding: "3px 10px", borderRadius: 8, border: "1px solid var(--danger, #dc2626)", background: "transparent", color: "var(--danger, #dc2626)", fontSize: 12, fontWeight: 800, cursor: "pointer", fontFamily: "var(--font-ui)" }}>{t.rd_ps2_attention_ok}</button>
+            </div>
+          )}
           {listLoaded && rows.length === 0 && <div style={{ fontSize: 12, color: "var(--text-dim)" }} data-testid="ps-empty">{t.rd_ps2_empty}</div>}
           {listLoaded && activeTab === "wrong" && rows.length > 0 && flaggedCount === 0 && <div style={{ fontSize: 12, color: "var(--text-dim)" }} data-testid="ps-wrong-empty">{t.rd_ps2_wrong_empty}</div>}
           {shown.map((r) => {
@@ -1294,6 +1322,12 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                   ))}
                   {allClear && (
                     <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--ok, #16a34a)" }} data-testid="ps-ext-clear" title={t.rd_ps2_ext_ok}>✅ {t.rd_ps2_ext_ok}</div>
+                  )}
+                  {/* item 8: an awaiting row shows an explicit "Checking…" — a blank
+                      row is NOT the same as a cleared one. Only when the feature is
+                      active (checkOn) and no verdict has landed yet. */}
+                  {checkOn && r.status !== "exported" && rowAwaitsVerdict(r) && !exts.length && !allClear && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--text-muted)" }} data-testid="ps-ext-checking">⏳ {t.rd_ps2_checking}</div>
                   )}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
