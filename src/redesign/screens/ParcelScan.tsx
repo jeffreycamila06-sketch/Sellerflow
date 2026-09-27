@@ -58,17 +58,10 @@ function storeBadge(status: string | null): { icon: string; color: string; key: 
   return null; // valid | null → quiet
 }
 
-// Extension-written verdicts (sql/33) → row badges. ⚠️ FAIL-SAFE: ONLY explicit
-// 'full' / 'restricted' show a badge; null / 'unknown' are quiet (an unchecked /
-// can't-verify parcel must look unchecked, never clean). 'open'/'ok' → a subtle
-// ✅ only when BOTH checks explicitly cleared.
-type ExtBadge = { icon: string; color: string; key: "rd_ps2_full" | "rd_ps2_restricted"; until: string | null };
-function extBadges(r: { storeFullStatus: string | null; phoneCheckStatus: string | null; phoneRestrictedUntil: string | null }): ExtBadge[] {
-  const out: ExtBadge[] = [];
-  if (r.storeFullStatus === "full") out.push({ icon: "⚠️", color: "var(--warn, #b45309)", key: "rd_ps2_full", until: null });
-  if (r.phoneCheckStatus === "restricted") out.push({ icon: "🚫", color: "var(--danger)", key: "rd_ps2_restricted", until: r.phoneRestrictedUntil });
-  return out;
-}
+// Extension-written verdicts (sql/33) now show as the row's glowing BORDER (see
+// the render): ⚠️ full → orange, 🚫 restricted / wrong store code → red (red
+// wins). No per-verdict text badge, no positive "ok" label. FAIL-SAFE unchanged:
+// only explicit 'full'/'restricted' flag a row; null/'unknown' stay clean.
 const extNeedsRecheck = (r: { storeFullStatus: string | null; phoneCheckStatus: string | null }): boolean =>
   r.storeFullStatus === "full" || r.phoneCheckStatus === "restricted";
 // 'YYYY-MM-DD' → locale short date (e.g. "Dec 4"); safe on bad input.
@@ -1293,10 +1286,15 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
           {shown.map((r) => {
             const badge = storeBadge(r.storeCheckStatus);
             const canRecheck = !r.id.startsWith("local-") && /^\d{6}$/.test(r.storeId) && (r.storeCheckStatus === "not_found" || r.storeCheckStatus === "unknown");
-            const exts = extBadges(r);
             const needsExtRecheck = extNeedsRecheck(r) && !r.id.startsWith("local-");
+            // DISPLAY-ONLY row highlight (2026-09-27): a passing check needs no label;
+            // a problem shows as a glowing border. RED (more serious, wins) = restricted
+            // buyer OR wrong/invalid store code; ORANGE = store full. Clean = no border.
+            const rowRed = r.phoneCheckStatus === "restricted" || r.storeCheckStatus === "not_found";
+            const rowOrange = !rowRed && r.storeFullStatus === "full";
+            const rowFlag = rowRed ? "var(--danger, #dc2626)" : rowOrange ? "var(--warn, #b45309)" : null;
             return (
-              <div key={r.id} style={{ padding: "9px 2px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }} data-testid="ps-row">
+              <div key={r.id} data-testid="ps-row" data-flag={rowRed ? "red" : rowOrange ? "orange" : ""} style={{ padding: rowFlag ? "9px 8px" : "9px 2px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline", ...(rowFlag ? { border: `1.5px solid ${rowFlag}`, borderRadius: 10, boxShadow: `0 0 6px -1px ${rowFlag}`, margin: "4px 0" } : {}) }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {r.customerName || "—"}
@@ -1310,25 +1308,14 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                       {canRecheck && <button onClick={() => runStoreCheck(r.id, r.storeId)} style={{ marginLeft: 8, padding: "1px 7px", borderRadius: 7, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontSize: 10, fontWeight: 700, cursor: "pointer" }} data-testid="ps-recheck">{t.rd_ps2_recheck}</button>}
                     </div>
                   )}
-                  {/* Extension verdicts (sql/33) — ⚠️ full / 🚫 restricted (+ until date).
-                      FAIL-SAFE: only explicit 'full'/'restricted' render here. */}
-                  {exts.map((b) => (
-                    <div key={b.key} style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: b.color }} data-testid={`ps-ext-badge-${b.key === "rd_ps2_full" ? "full" : "restricted"}`}>
-                      {b.icon} {t[b.key]}{b.until ? ` · ${tpl(t.rd_ps2_restricted_until, { date: untilDate(b.until) })}` : ""}
+                  {/* Verdicts (full / restricted) show as the row's glowing border above
+                      — no per-verdict icon badge, and NO positive "ok" label. For a
+                      restricted buyer we DO keep the small "restricted until <date>"
+                      text (when 7-11 gave a date) so the seller knows when it clears. */}
+                  {r.phoneCheckStatus === "restricted" && r.phoneRestrictedUntil && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--danger, #dc2626)" }} data-testid="ps-ext-restricted-until">
+                      {tpl(t.rd_ps2_restricted_until, { date: untilDate(r.phoneRestrictedUntil) })}
                     </div>
-                  ))}
-                  {/* PHONE half = the safety-critical verdict. It surfaces the MOMENT
-                      it lands, independently of the store half — a flaky/absent E-Map
-                      store check must NEVER hide a resolved (esp. restricted) phone
-                      result. "Checking…" tracks ONLY the phone half. (🚫 restricted /
-                      ⚠️ full are rendered above by exts.) */}
-                  {/* phone OK ✅ / unknown / the store-not-checked note are SELF-GATING
-                      (they need a non-null phone verdict, which only exists once the
-                      feature ran) — so they need no checkOn guard, matching the badges
-                      above. Only "Checking…" (phone still null) needs checkOn, else a
-                      non-feature seller's all-null rows would show it forever. */}
-                  {r.phoneCheckStatus === "ok" && (
-                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--ok, #16a34a)" }} data-testid="ps-ext-clear" title={t.rd_ps2_phone_ok}>✅ {t.rd_ps2_phone_ok}</div>
                   )}
                   {r.phoneCheckStatus === "unknown" && (
                     <div style={{ fontSize: 10, marginTop: 3, color: "var(--text-dim)" }} data-testid="ps-ext-phone-unchecked">{t.rd_ps2_phone_unchecked}</div>

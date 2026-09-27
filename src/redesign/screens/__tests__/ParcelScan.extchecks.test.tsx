@@ -67,74 +67,89 @@ beforeEach(() => {
   loadRows.current = [];
 });
 
-describe("Parcel Scan — extension check badges (FAIL-SAFE)", () => {
-  it("NULL verdicts → NO badge, no ✅, and Full/Restricted tabs hidden", async () => {
+describe("Parcel Scan — verdict row highlight (border, FAIL-SAFE, no positive label)", () => {
+  const flag = (el: HTMLElement) => el.getAttribute("data-flag");
+
+  it("NULL verdicts → no border, no label, Full/Restricted tabs hidden", async () => {
     loadRows.current = [mk({ storeFullStatus: null, phoneCheckStatus: null })];
     const { findByTestId, queryByTestId } = view();
-    await findByTestId("ps-row");
-    expect(queryByTestId("ps-ext-badge-full")).toBeNull();
-    expect(queryByTestId("ps-ext-badge-restricted")).toBeNull();
-    expect(queryByTestId("ps-ext-clear")).toBeNull();       // never clean when unchecked
+    expect(flag(await findByTestId("ps-row"))).toBe("");     // clean — never flagged when unchecked
     expect(queryByTestId("ps-tab-full")).toBeNull();
     expect(queryByTestId("ps-tab-restricted")).toBeNull();
   });
 
-  it("'unknown' → NO badge and no tab (can't-verify ≠ problem, ≠ clean)", async () => {
+  it("'unknown' → no border (can't-verify ≠ problem, ≠ clean-label)", async () => {
     loadRows.current = [mk({ storeFullStatus: "unknown", phoneCheckStatus: "unknown" })];
-    const { findByTestId, queryByTestId } = view();
-    await findByTestId("ps-row");
-    expect(queryByTestId("ps-ext-badge-full")).toBeNull();
-    expect(queryByTestId("ps-ext-badge-restricted")).toBeNull();
-    expect(queryByTestId("ps-ext-clear")).toBeNull();
-    expect(queryByTestId("ps-tab-full")).toBeNull();
-    expect(queryByTestId("ps-tab-restricted")).toBeNull();
+    const { findByTestId } = view();
+    expect(flag(await findByTestId("ps-row"))).toBe("");
   });
 
-  it("'full' → ⚠️ Full badge + Full tab (count) + a recheck button", async () => {
+  it("store 'full' → ORANGE border + Full tab + recheck button; NO text badge", async () => {
     loadRows.current = [mk({ storeFullStatus: "full" })];
-    const { findByTestId, getByTestId } = view();
-    expect(await findByTestId("ps-ext-badge-full")).toBeTruthy();
+    const { findByTestId, getByTestId, queryByTestId } = view();
+    expect(flag(await findByTestId("ps-row"))).toBe("orange");
     expect(getByTestId("ps-tab-full").textContent).toContain("1");
-    expect(getByTestId("ps-ext-recheck")).toBeTruthy();
+    expect(getByTestId("ps-ext-recheck")).toBeTruthy();       // action affordance kept
+    expect(queryByTestId("ps-ext-badge-full")).toBeNull();    // badge removed
   });
 
-  it("'restricted' + until → 🚫 badge showing the date + Restricted tab", async () => {
+  it("phone 'restricted' → RED border + Restricted tab + small 'until <date>' text; NO icon badge", async () => {
     loadRows.current = [mk({ phoneCheckStatus: "restricted", phoneRestrictedUntil: "2026-12-04" })];
-    const { findByTestId, getByTestId } = view();
-    const badge = await findByTestId("ps-ext-badge-restricted");
-    expect(badge.textContent).toMatch(/Dec\s*4|12月|4 thg 12|4 Des|4 ธ/); // localized "Dec 4"-ish
+    const { findByTestId, getByTestId, queryByTestId } = view();
+    expect(flag(await findByTestId("ps-row"))).toBe("red");
     expect(getByTestId("ps-tab-restricted").textContent).toContain("1");
+    expect(queryByTestId("ps-ext-badge-restricted")).toBeNull();      // no icon badge
+    expect(getByTestId("ps-ext-restricted-until").textContent).toMatch(/Dec\s*4|12月|4 thg 12|4 Des|4 ธ/); // until-date kept
   });
 
-  it("'open' + 'ok' → subtle ✅, no warning badges", async () => {
+  it("restricted with NO until-date → RED border, no date line (no crash)", async () => {
+    loadRows.current = [mk({ phoneCheckStatus: "restricted", phoneRestrictedUntil: null })];
+    const { findByTestId, queryByTestId } = view();
+    expect(flag(await findByTestId("ps-row"))).toBe("red");
+    expect(queryByTestId("ps-ext-restricted-until")).toBeNull();
+  });
+
+  it("wrong store code (storeCheckStatus 'not_found') → RED border + the fix (recheck) affordance", async () => {
+    loadRows.current = [mk({ storeCheckStatus: "not_found" })];
+    const { findByTestId, getByTestId } = view();
+    expect(flag(await findByTestId("ps-row"))).toBe("red");
+    expect(getByTestId("ps-store-badge")).toBeTruthy(); // wrong-code reason + recheck kept
+  });
+
+  it("BOTH full AND restricted → RED wins (more serious block)", async () => {
+    loadRows.current = [mk({ storeFullStatus: "full", phoneCheckStatus: "restricted" })];
+    const { findByTestId } = view();
+    expect(flag(await findByTestId("ps-row"))).toBe("red");
+  });
+
+  it("'open' + 'ok' → CLEAN: no border, NO positive label", async () => {
     loadRows.current = [mk({ storeFullStatus: "open", phoneCheckStatus: "ok" })];
     const { findByTestId, queryByTestId } = view();
-    expect(await findByTestId("ps-ext-clear")).toBeTruthy();
-    expect(queryByTestId("ps-ext-badge-full")).toBeNull();
-    expect(queryByTestId("ps-ext-badge-restricted")).toBeNull();
+    expect(flag(await findByTestId("ps-row"))).toBe("");
+    expect(queryByTestId("ps-ext-clear")).toBeNull();   // no "buyer ok" label anymore
   });
 
-  // The fix: phone verdict surfaces INDEPENDENTLY of the store half.
-  it("phone 'ok' but store still NULL → shows ✅ (not stuck on Checking…); a subtle 'store not checked' instead", async () => {
+  // The independent-phone-half behavior still holds under the border model.
+  it("phone 'ok' but store still NULL → clean (no border, no label); subtle 'store not checked'; not stuck Checking", async () => {
     loadRows.current = [mk({ phoneCheckStatus: "ok", storeFullStatus: null })];
     const { findByTestId, queryByTestId } = viewOn();
-    expect(await findByTestId("ps-ext-clear")).toBeTruthy();      // phone ok surfaced
-    expect(queryByTestId("ps-ext-checking")).toBeNull();          // NOT stuck checking
-    expect(queryByTestId("ps-ext-store-unchecked")).toBeTruthy(); // store half noted subtly
+    expect(flag(await findByTestId("ps-row"))).toBe("");
+    expect(queryByTestId("ps-ext-checking")).toBeNull();
+    expect(queryByTestId("ps-ext-store-unchecked")).toBeTruthy();
   });
 
-  it("phone 'restricted' but store NULL → 🚫 still surfaces (safety-critical half never blocked by the store)", async () => {
+  it("phone 'restricted' but store NULL → RED border surfaces (safety-critical half never blocked by the store)", async () => {
     loadRows.current = [mk({ phoneCheckStatus: "restricted", storeFullStatus: null })];
     const { findByTestId, queryByTestId } = viewOn();
-    expect(await findByTestId("ps-ext-badge-restricted")).toBeTruthy();
+    expect(flag(await findByTestId("ps-row"))).toBe("red");
     expect(queryByTestId("ps-ext-checking")).toBeNull();
   });
 
-  it("'Checking…' tracks ONLY the phone half: phone NULL + store 'open' still shows Checking (checkOn)", async () => {
+  it("'Checking…' tracks ONLY the phone half: phone NULL + store 'open' → Checking, no border", async () => {
     loadRows.current = [mk({ phoneCheckStatus: null, storeFullStatus: "open" })];
-    const { findByTestId, queryByTestId } = viewOn();
+    const { findByTestId } = viewOn();
     expect(await findByTestId("ps-ext-checking")).toBeTruthy();
-    expect(queryByTestId("ps-ext-clear")).toBeNull();
+    expect(flag(await findByTestId("ps-row"))).toBe("");
   });
 });
 
