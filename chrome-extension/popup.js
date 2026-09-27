@@ -11,6 +11,7 @@ const pcEls = {
   cgdm: document.getElementById("pcCgdm"), ord: document.getElementById("pcOrd"),
   save: document.getElementById("pcSave"), pause: document.getElementById("pcPause"), checkNow: document.getElementById("pcCheckNow"),
   multi: document.getElementById("pcMulti"), multiRow: document.getElementById("pcMultiRow"), multiQueue: document.getElementById("pcMultiQueue"),
+  emapSessionRow: document.getElementById("pcEmapSessionRow"),
 };
 
 function pcOne(key, fallback) {
@@ -42,6 +43,19 @@ async function pcRenderStatus() {
   pcBadge(pcEls.sfl, st.sfl);
   pcBadge(pcEls.myship, st.myship);
   pcBadge(pcEls.emap, st.emap);
+  // TRUE emap session state (never "all green" when broken): red = a reload landed
+  // on error.aspx (real expiry); amber = no emap tab; green = a store check /
+  // keepalive actually resolved; grey = tab present, awaiting a verdict.
+  if (pcEls.emapSessionRow) {
+    const dom = st.emapDomain ? ` · ${st.emapDomain}` : "";
+    const m = st.emapSession === "expired" ? ["#e5484d", `⚠️ E-Map session expired — re-open E-Map via 賣貨便 → 選擇門市${dom}`]
+      : st.emapSession === "no_tab" ? ["#b45309", "⚠️ E-Map tab not found — open E-Map via 賣貨便 → 選擇門市"]
+      : st.emapSession === "ok" ? ["#16a34a", `● E-Map session OK — store checks resolving${dom}`]
+      : st.emapSession === "pending" ? ["#8a8a8a", `○ E-Map tab open — waiting for a store check to resolve${dom}`]
+      : null;
+    pcEls.emapSessionRow.style.display = m ? "" : "none";
+    if (m) { pcEls.emapSessionRow.style.color = m[0]; pcEls.emapSessionRow.textContent = m[1]; }
+  }
   pcEls.last.textContent = st.lastCheckAt ? `${new Date(st.lastCheckAt).toLocaleTimeString()} · ${st.lastCount ?? 0} parcels` : "—";
   const showErr = Boolean(st.lastError);
   pcEls.errK.style.display = showErr ? "" : "none";

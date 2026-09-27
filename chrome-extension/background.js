@@ -78,11 +78,22 @@ function pcInject(tabId, file) {
     } catch { resolve(false); }
   });
 }
+// NEVER LET THE WORKER'S TABS SLEEP (2026-09-27): Chrome discarding a background
+// tab is what killed the emap store check (a discarded tab has no running script;
+// a reload of an expired session lands on error.aspx). Pin every tab the worker
+// depends on (SFL / myship / emap) as not auto-discardable. Idempotent, best-effort,
+// and re-applied EVERY poll (pcHealTab runs each tick) — so it also survives an
+// extension reload. The v1.7 auto-reload stays as the fallback only.
+function pcNoDiscard(tabId) {
+  try { chrome.tabs.update(tabId, { autoDiscardable: false }, () => { void chrome.runtime.lastError; }); } catch { /* best-effort */ }
+}
+
 // → { state, tabId }: 'ok' | 'no_tab' | 'asleep' (discarded SFL — click it) |
 //   'healing' (reload/inject fired; next poll confirms) | 'dead_script'.
 async function pcHealTab(patterns, file, allowReload) {
   const tab = await pcFindTabInfo(patterns);
   if (!tab) return { state: "no_tab", tabId: null };
+  pcNoDiscard(tab.id);
   if (await pcPing(tab.id)) return { state: "ok", tabId: tab.id };
   if (tab.discarded || tab.frozen) {
     if (!allowReload) return { state: "asleep", tabId: null };     // SFL: never auto-reload
@@ -239,6 +250,20 @@ async function pcPoll() {
   const emapHealth = await pcHealTab(["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"], "emap-711.js", true);
   const myshipTabId = myshipHealth.tabId;
   const emapTabId = emapHealth.tabId;
+  // ACCURATE emap session state + which E-Map domain is active (pcsc vs the
+  // 2026-09-26 unipcsc move). RED only when a reload actually landed on
+  // error.aspx (true server-side expiry); AMBER only when no emap tab exists.
+  // A present, non-error tab clears a prior red/amber to 'pending' (grey) —
+  // green comes only from the next store check / keepalive actually resolving.
+  {
+    const emapTab = await pcFindTabInfo(["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"]);
+    let emapDomain = null;
+    try { emapDomain = emapTab && emapTab.url ? new URL(emapTab.url).hostname : null; } catch { emapDomain = null; }
+    if (!emapTab) await pcSetEmapSession("no_tab");
+    else if (/\/ecmap\/error\.aspx/i.test(String(emapTab.url || ""))) await pcSetEmapSession("expired");
+    else if (pcEmapSess === "no_tab" || pcEmapSess === "expired") await pcSetEmapSession("pending");
+    await pcStatus({ emapDomain });
+  }
   await pcStatus({ myship: myshipHealth.state, emap: emapHealth.state });
 
   if (sflHealth.state !== "ok") { await pcStatus({ sfl: sflHealth.state }); return; } // no bridge → nothing to poll
@@ -329,6 +354,49 @@ const PC_HEALTH_INTERVAL_MS = 5 * 60 * 1000; // sender health-check cadence
 const PC_HEALTH_STORE_ID = "195965";          // any valid 6-digit store — the probe checks the PHONE, not this store
 let pcLastHealthAt = 0;
 
+// ── E-MAP KEEPALIVE (2026-09-27) ──────────────────────────────────────────────
+// The store-full check needs a live ASP.NET session (eshopGuid) on the emap tab,
+// minted only via 賣貨便 → 選擇門市. ASP.NET sessions use SLIDING expiration reset
+// by any request (default 20 min), so during an idle gap with no pending store
+// rows the session dies → store checks silently stop. Fix: while the emap tab is
+// alive and NO pending row needs the store half, POST the EXISTING byIDData on a
+// known store every 5 min (the same PC_CHECK_STORE path emap-711.js already runs
+// — no new request shape; the content script's RELATIVE fetch follows whichever
+// emap origin the tab is on, pcsc or unipcsc). Purely additive: worst case a no-op.
+const PC_KEEPALIVE_MS = 5 * 60 * 1000;
+const PC_KEEPALIVE_STORE = "198002";          // known store; the verdict is logged, never written
+let pcLastKeepaliveAt = 0;
+// PURE cadence decision (unit-tested by extracting this function's source):
+// fire only when idle for the store half AND the 5-min cadence has elapsed.
+function pcKeepaliveDue(now, lastAt, anyNeedStore) {
+  return !anyNeedStore && (now - lastAt) >= PC_KEEPALIVE_MS;
+}
+async function pcEmapKeepalive(anyNeedStore) {
+  const now = Date.now();
+  if (!pcKeepaliveDue(now, pcLastKeepaliveAt, anyNeedStore)) return;
+  const emapTabId = await pcFindTab(["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"]);
+  if (!emapTabId) return; // no tab → nothing to keep alive (prelude reports no_tab)
+  pcLastKeepaliveAt = now;
+  const resp = await pcSendTab(emapTabId, { type: "PC_CHECK_STORE", row: { store_id: PC_KEEPALIVE_STORE } });
+  const verdict = resp && resp.store_full_status;
+  const alive = verdict === "open" || verdict === "full";
+  console.log(`[PC-KEEPALIVE] store=${PC_KEEPALIVE_STORE} verdict=${verdict ?? "none"} guidFound=${Boolean(resp && resp.guidFound)} sessionAlive=${alive}`);
+  await pcSetEmapSession(alive ? "ok" : "pending");
+}
+
+// ── ACCURATE E-MAP SESSION STATE (popup only — DISPLAY-ONLY, never gates the
+// pending RPC or the phone check). Values: 'ok' (a store check/keepalive just
+// resolved open/full — green), 'pending' (tab present, awaiting/failed a verdict
+// — grey, NOT red), 'expired' (a reload landed on error.aspx = true server-side
+// expiry — red), 'no_tab' (no emap tab — amber). Red/amber ONLY for the two
+// genuine failures; a discarded/re-injected tab is never called "expired". ──
+let pcEmapSess = null;
+async function pcSetEmapSession(v) {
+  if (v === pcEmapSess) return;
+  pcEmapSess = v;
+  await pcStatus({ emapSession: v });
+}
+
 // Validate a KNOWN-CLEAN probe buyer through CHECK_SENDER_PHONE. restricted →
 // the sender is poisoned → flip the DB health flag false (pending RPC pauses) +
 // distinct alert. ok → recover the flag. unknown → inconclusive, leave as-is.
@@ -385,6 +453,11 @@ async function pcPollMulti() {
     if (!Array.isArray(rows)) rows = [];
   } catch { await pcStatus({ multi: "rpc_error" }); return; }
   await pcStatus({ multi: "ok", multiQueueDepth: rows.length ? Number(rows[0].queue_depth) || 0 : 0, multiLastAt: new Date().toISOString() });
+  // KEEPALIVE: only while NO pending row needs the store half (those rows' own
+  // checks keep the session warm). Must run BEFORE the empty-rows return — an
+  // empty queue IS the idle case the keepalive exists for.
+  const anyNeedStore = rows.some((r) => r && r.need_store);
+  try { await pcEmapKeepalive(anyNeedStore); } catch { /* keepalive is best-effort */ }
   if (!rows.length) return;
 
   const myshipTabId = await pcFindTab(["https://myship.7-11.com.tw/*"]);
@@ -408,6 +481,8 @@ async function pcPollMulti() {
       if (row.need_store && emapTabId) {
         const sResp = await pcSendTab(emapTabId, { type: "PC_CHECK_STORE", row });
         if (sResp && (sResp.store_full_status === "open" || sResp.store_full_status === "full")) storeStatus = sResp.store_full_status;
+        // popup truth: green only while store checks actually resolve
+        await pcSetEmapSession(storeStatus !== null ? "ok" : "pending");
       }
       // phone half — the ROW OWNER's GM + phone, never the global config.
       // anon:true → the check runs credential-less so the body ordMobile is the
