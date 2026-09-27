@@ -107,11 +107,18 @@ import { currentNativePlatform, readBinaryBuild, shouldShowUpdate, wasDismissed,
 import { computeExpiryTier, wasExpiryDismissed, markExpiryDismissed, previewExpiryTier, type ExpiryTier } from "./adapters/planExpiryModal";
 import { planDaysLeft } from "../lib/planWindow";
 import { TProvider, buildT, tpl } from "./i18n";
+import SalesTab from "./screens/SalesTab";
+
+// MOCKUP FLAGS — the new Sales bottom-nav tab replaces Miners for review. Miners
+// code (screen branch, hook, import) stays intact; only its nav button is gated.
+// Flip SHOW_SALES_TAB=false / SHOW_MINERS_NAV=true to restore the old nav.
+const SHOW_SALES_TAB = true;
+const SHOW_MINERS_NAV = false;
 
 type Screen =
   | "landing" | "login" | "signup" | "dashboard" | "miners" | "orders" | "products"
   | "menu" | "settings" | "customers" | "subscription" | "support"
-  | "admin" | "print" | "sales" | "shipping" | "customerdata" | "legal" | "delete"
+  | "admin" | "print" | "sales" | "salestab" | "shipping" | "customerdata" | "legal" | "delete"
   | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "parceltracking" | "shopeechannels" | "fbpages";
 
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
@@ -1835,6 +1842,7 @@ export default function RedesignApp() {
           {screen === "admin" && isAdmin && <Admin onOpenPanel={setAdminPanel} cur={cur} counts={adminCounts} live={adminLive} userBase={adminLive ? { paying: userBase.paying, free: userBase.free, total: userBase.total } : undefined} mrr={adminLive ? deriveMrr(adminUsers.users) : null} owner={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : null} viewAs={adminViewAs} onSetViewAs={setAdminViewAs} />}
           {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} buyers={liveSession.session.buyers} storeName={printShopName} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
           {screen === "sales" && <SalesReport cur={cur} sales={sales} onExport={exportSales} hist={salesHist} byHour={salesByHour} enabled={authed} />}
+          {screen === "salestab" && <SalesTab cur={cur} onOpenOrders={() => setScreen("orders")} />}
           {screen === "shipping" && !hideShipping && <Shipping cur={cur} buyers={liveSession.session.buyers} sessionKey={sessionKeyFor(liveSession.dayId, sessionWindow.windowStart, sessionWindow.windowDays)} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}
           {screen === "parcelscan" && parcelAllowed && (
             <MyshipScanGate t={tApp} enabled={parcelCheckOn} onExit={() => setScreen("menu")}>
@@ -1874,10 +1882,18 @@ export default function RedesignApp() {
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" fill="currentColor" /><circle cx="12" cy="12" r="8.2" stroke="currentColor" strokeWidth="1.7" opacity=".55" /></svg>
               <span style={{ fontSize: 10, fontWeight: 700 }}>{tApp.rd_nav_live}</span>
             </button>
-            <button onClick={() => setScreen("miners")} className={navCls(screen === "miners")}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 19V11M9 19V5M14 19v-6M19 19V9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-              <span style={{ fontSize: 10, fontWeight: 700 }}>Miners</span>
-            </button>
+            {SHOW_SALES_TAB && (
+              <button onClick={() => setScreen("salestab")} className={navCls(screen === "salestab")} data-testid="nav-sales">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 19V11M9 19V5M14 19v-6M19 19V9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+                <span style={{ fontSize: 10, fontWeight: 700 }}>{tApp.rd_nav_sales}</span>
+              </button>
+            )}
+            {SHOW_MINERS_NAV && (
+              <button onClick={() => setScreen("miners")} className={navCls(screen === "miners")} data-testid="nav-miners">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 19V11M9 19V5M14 19v-6M19 19V9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+                <span style={{ fontSize: 10, fontWeight: 700 }}>Miners</span>
+              </button>
+            )}
             <button onClick={() => setScreen("orders")} className={navCls(ordersActive)}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M6 7h12l-1 12a2 2 0 0 1-2 1.8H9A2 2 0 0 1 7 19L6 7Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M9 7a3 3 0 0 1 6 0" stroke="currentColor" strokeWidth="1.7" /></svg>
               <span style={{ fontSize: 10, fontWeight: 700 }}>{tApp.rd_nav_orders}</span>
