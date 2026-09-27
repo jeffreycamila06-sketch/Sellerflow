@@ -236,7 +236,13 @@ async function pcPoll() {
   // (same /ecmap/default.aspx page + byIDData.aspx endpoint, verified live —
   // the content script's RELATIVE fetch follows whichever origin it runs on).
   // The old domain still serves, so BOTH are matched.
-  const emapHealth = await pcHealTab(["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"], "emap-711.js", true);
+  // ⚠️ allowReload=FALSE (like the SFL tab): the store-full check needs a session
+  // eshopGuid that is minted ONLY via the 賣貨便 → 選擇門市 entry. A plain reload
+  // re-GETs default.aspx → bounces to 系統忙碌中 (error.aspx) → guid STRIPPED →
+  // store checks silently die (the 2026-09-27 regression). So NEVER reload emap;
+  // re-inject the script on an alive tab (guid-preserving), and if it's
+  // discarded, leave it asleep + prompt the operator to re-open (Layer 2).
+  const emapHealth = await pcHealTab(["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"], "emap-711.js", false);
   const myshipTabId = myshipHealth.tabId;
   const emapTabId = emapHealth.tabId;
   await pcStatus({ myship: myshipHealth.state, emap: emapHealth.state });
@@ -328,6 +334,16 @@ async function pcPoll() {
 const PC_HEALTH_INTERVAL_MS = 5 * 60 * 1000; // sender health-check cadence
 const PC_HEALTH_STORE_ID = "195965";          // any valid 6-digit store — the probe checks the PHONE, not this store
 let pcLastHealthAt = 0;
+let pcEmapOk = null; // last-known emap-session health (null = unknown) — DB write only on transition
+
+// Layer 2: surface emap-session health. Always update the popup status; write
+// the shared flag (Admin card) only on a transition to keep egress low.
+async function pcSetEmapHealth(cfg, rpcHeaders, ok) {
+  await pcStatus({ emapSession: ok ? "ok" : "expired" });
+  if (ok === pcEmapOk) return;
+  pcEmapOk = ok;
+  fetch(`${cfg.supabaseUrl}/rest/v1/rpc/admin_set_parcel_emap_health`, { method: "POST", headers: rpcHeaders, body: JSON.stringify({ p_ok: ok }) }).catch(() => {});
+}
 
 // Validate a KNOWN-CLEAN probe buyer through CHECK_SENDER_PHONE. restricted →
 // the sender is poisoned → flip the DB health flag false (pending RPC pauses) +
@@ -389,6 +405,9 @@ async function pcPollMulti() {
 
   const myshipTabId = await pcFindTab(["https://myship.7-11.com.tw/*"]);
   const emapTabId = await pcFindTab(["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"]);
+  // Layer 2 — emap session health: did any store check this poll actually reach a
+  // live eshopGuid? emapNeedStore = a row needed the store half at all.
+  let emapNeedStore = false, emapGuidSeen = false;
   for (const row of rows) {
     if (!row || !row.id || pcInFlight.has(row.id)) continue;
     pcInFlight.add(row.id);
@@ -405,9 +424,13 @@ async function pcPollMulti() {
       // genuinely-restricted buyer (audit M1). A permanently-unverifiable row just
       // keeps retrying — harmless (it still exports; bad data is fixed via edit).
       let storeStatus = null;
-      if (row.need_store && emapTabId) {
-        const sResp = await pcSendTab(emapTabId, { type: "PC_CHECK_STORE", row });
-        if (sResp && (sResp.store_full_status === "open" || sResp.store_full_status === "full")) storeStatus = sResp.store_full_status;
+      if (row.need_store) {
+        emapNeedStore = true;
+        if (emapTabId) {
+          const sResp = await pcSendTab(emapTabId, { type: "PC_CHECK_STORE", row });
+          if (sResp && sResp.guidFound) emapGuidSeen = true; // a live session was reachable
+          if (sResp && (sResp.store_full_status === "open" || sResp.store_full_status === "full")) storeStatus = sResp.store_full_status;
+        }
       }
       // phone half — the ROW OWNER's GM + phone, never the global config.
       // anon:true → the check runs credential-less so the body ordMobile is the
@@ -449,6 +472,11 @@ async function pcPollMulti() {
     }
     await pcSleep(PC_ROW_GAP_MS);
   }
+  // Layer 2: once rows needed a store check, report whether a live emap session
+  // was reachable. No guid seen (stale session / discarded tab / no tab) →
+  // surface "E-Map session expired" loudly (popup + Admin card) instead of a
+  // silent per-row "store not checked".
+  if (emapNeedStore) await pcSetEmapHealth(cfg, rpcHeaders, emapGuidSeen);
 }
 
 // ~5s cadence via a self-scheduling setTimeout loop (chrome.alarms is clamped to

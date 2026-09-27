@@ -66,7 +66,12 @@ on conflict (key) do nothing;
 insert into public.app_settings(key, value) values
   ('parcel_check_sender_phone', '0979593026'),
   ('parcel_check_probe_buyer',  '0919342192'),
-  ('parcel_check_sender_healthy', 'true')
+  ('parcel_check_sender_healthy', 'true'),
+  -- emap SESSION health (Layer 2, 2026-09-27): the store-full check needs a live
+  -- eshopGuid minted only via 賣貨便 → 選擇門市. The worker flips this false when a
+  -- store check can't reach a guid (stale/discarded emap tab) so the Admin card can
+  -- say "re-open E-Map" instead of a silent null. Display-only — never gates verdicts.
+  ('parcel_check_emap_ok', 'true')
 on conflict (key) do nothing;
 
 -- Phone is no longer required per seller (the fixed sender is used for checks) —
@@ -240,6 +245,7 @@ begin
     'cache_size', (select count(*) from phone_check_cache),
     'sender_phone', (select value from app_settings where key = 'parcel_check_sender_phone'),
     'sender_healthy', coalesce((select value from app_settings where key = 'parcel_check_sender_healthy'), 'true'),
+    'emap_ok', coalesce((select value from app_settings where key = 'parcel_check_emap_ok'), 'true'),
     'top_sellers', (
       select coalesce(jsonb_agg(t), '[]'::jsonb) from (
         select sp.email, count(*) as pending
@@ -278,6 +284,20 @@ begin
   if not public.is_admin() then raise exception 'forbidden'; end if;
   insert into app_settings(key, value) values
     ('parcel_check_sender_healthy', case when p_ok then 'true' else 'false' end)
+  on conflict (key) do update set value = excluded.value;
+end $$;
+
+-- emap SESSION health (Layer 2): the worker flips this on transition (a store
+-- check reaching / not reaching a live guid). DISPLAY-ONLY — unlike the sender
+-- flag it does NOT gate the pending RPC (a missing store guid must never pause
+-- the safety-critical PHONE half; the store half just re-queues until a valid
+-- emap session returns).
+create or replace function public.admin_set_parcel_emap_health(p_ok boolean)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_admin() then raise exception 'forbidden'; end if;
+  insert into app_settings(key, value) values
+    ('parcel_check_emap_ok', case when p_ok then 'true' else 'false' end)
   on conflict (key) do update set value = excluded.value;
 end $$;
 
