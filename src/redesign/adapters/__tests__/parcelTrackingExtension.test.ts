@@ -131,7 +131,7 @@ describe("self-heal v1.7.0 — statuses recover without manual tab refreshes", (
   const bg = readFileSync("chrome-extension/background.js", "utf8");
 
   it("manifest 1.7.0 + the scripting permission (re-injection needs it)", () => {
-    expect(manifest.version).toBe("1.14.3"); // 1.14.3 = unattended E-Map re-mint via the parked 賣貨便 /cart/detail tab (click the real 選擇取貨門市, adopt the new tab)
+    expect(manifest.version).toBe("1.14.4"); // 1.14.4 = display: a recent verdict never hides a definitive latest miss (amber 'degraded' immediately)
     expect(manifest.permissions).toContain("scripting");
   });
 
