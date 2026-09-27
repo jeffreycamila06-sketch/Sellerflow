@@ -69,8 +69,6 @@ function extBadges(r: { storeFullStatus: string | null; phoneCheckStatus: string
   if (r.phoneCheckStatus === "restricted") out.push({ icon: "🚫", color: "var(--danger)", key: "rd_ps2_restricted", until: r.phoneRestrictedUntil });
   return out;
 }
-const extAllClear = (r: { storeFullStatus: string | null; phoneCheckStatus: string | null }): boolean =>
-  r.storeFullStatus === "open" && r.phoneCheckStatus === "ok"; // both EXPLICIT — never null/unknown
 const extNeedsRecheck = (r: { storeFullStatus: string | null; phoneCheckStatus: string | null }): boolean =>
   r.storeFullStatus === "full" || r.phoneCheckStatus === "restricted";
 // 'YYYY-MM-DD' → locale short date (e.g. "Dec 4"); safe on bad input.
@@ -1296,7 +1294,6 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
             const badge = storeBadge(r.storeCheckStatus);
             const canRecheck = !r.id.startsWith("local-") && /^\d{6}$/.test(r.storeId) && (r.storeCheckStatus === "not_found" || r.storeCheckStatus === "unknown");
             const exts = extBadges(r);
-            const allClear = extAllClear(r);
             const needsExtRecheck = extNeedsRecheck(r) && !r.id.startsWith("local-");
             return (
               <div key={r.id} style={{ padding: "9px 2px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", gap: 8, alignItems: "baseline" }} data-testid="ps-row">
@@ -1320,13 +1317,31 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                       {b.icon} {t[b.key]}{b.until ? ` · ${tpl(t.rd_ps2_restricted_until, { date: untilDate(b.until) })}` : ""}
                     </div>
                   ))}
-                  {allClear && (
-                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--ok, #16a34a)" }} data-testid="ps-ext-clear" title={t.rd_ps2_ext_ok}>✅ {t.rd_ps2_ext_ok}</div>
+                  {/* PHONE half = the safety-critical verdict. It surfaces the MOMENT
+                      it lands, independently of the store half — a flaky/absent E-Map
+                      store check must NEVER hide a resolved (esp. restricted) phone
+                      result. "Checking…" tracks ONLY the phone half. (🚫 restricted /
+                      ⚠️ full are rendered above by exts.) */}
+                  {/* phone OK ✅ / unknown / the store-not-checked note are SELF-GATING
+                      (they need a non-null phone verdict, which only exists once the
+                      feature ran) — so they need no checkOn guard, matching the badges
+                      above. Only "Checking…" (phone still null) needs checkOn, else a
+                      non-feature seller's all-null rows would show it forever. */}
+                  {r.phoneCheckStatus === "ok" && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--ok, #16a34a)" }} data-testid="ps-ext-clear" title={t.rd_ps2_phone_ok}>✅ {t.rd_ps2_phone_ok}</div>
                   )}
-                  {/* item 8: an awaiting row shows an explicit "Checking…" — a blank
-                      row is NOT the same as a cleared one. Only when the feature is
-                      active (checkOn) and no verdict has landed yet. */}
-                  {checkOn && r.status !== "exported" && rowAwaitsVerdict(r) && !exts.length && !allClear && (
+                  {r.phoneCheckStatus === "unknown" && (
+                    <div style={{ fontSize: 10, marginTop: 3, color: "var(--text-dim)" }} data-testid="ps-ext-phone-unchecked">{t.rd_ps2_phone_unchecked}</div>
+                  )}
+                  {/* STORE half is secondary — once the phone resolved, a subtle
+                      "store not checked" if the store half didn't (no E-Map guid/tab).
+                      store 'full' is already the ⚠️ badge above. */}
+                  {r.phoneCheckStatus != null && r.phoneCheckStatus !== "restricted" && (r.storeFullStatus == null || r.storeFullStatus === "unknown") && (
+                    <div style={{ fontSize: 10, marginTop: 2, color: "var(--text-dim)" }} data-testid="ps-ext-store-unchecked">{t.rd_ps2_store_unchecked}</div>
+                  )}
+                  {/* item 8: "Checking…" tracks ONLY the phone half now — a flaky store
+                      check no longer hides a resolved phone verdict. */}
+                  {checkOn && r.status !== "exported" && r.phoneCheckStatus == null && (
                     <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--text-muted)" }} data-testid="ps-ext-checking">⏳ {t.rd_ps2_checking}</div>
                   )}
                 </div>

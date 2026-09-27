@@ -59,6 +59,7 @@ const mk = (over: Partial<ParcelScanRow> = {}): ParcelScanRow => ({
   createdAt: "2026-09-08T00:00:00Z", ...over,
 });
 const view = () => render(<TProvider><ParcelScan cur="NT$" /></TProvider>);
+const viewOn = () => render(<TProvider><ParcelScan cur="NT$" checkOn /></TProvider>);
 
 beforeEach(() => {
   resetExtensionChecks.mockClear(); resetExtensionChecks.mockResolvedValue({ ok: true });
@@ -111,6 +112,29 @@ describe("Parcel Scan — extension check badges (FAIL-SAFE)", () => {
     expect(await findByTestId("ps-ext-clear")).toBeTruthy();
     expect(queryByTestId("ps-ext-badge-full")).toBeNull();
     expect(queryByTestId("ps-ext-badge-restricted")).toBeNull();
+  });
+
+  // The fix: phone verdict surfaces INDEPENDENTLY of the store half.
+  it("phone 'ok' but store still NULL → shows ✅ (not stuck on Checking…); a subtle 'store not checked' instead", async () => {
+    loadRows.current = [mk({ phoneCheckStatus: "ok", storeFullStatus: null })];
+    const { findByTestId, queryByTestId } = viewOn();
+    expect(await findByTestId("ps-ext-clear")).toBeTruthy();      // phone ok surfaced
+    expect(queryByTestId("ps-ext-checking")).toBeNull();          // NOT stuck checking
+    expect(queryByTestId("ps-ext-store-unchecked")).toBeTruthy(); // store half noted subtly
+  });
+
+  it("phone 'restricted' but store NULL → 🚫 still surfaces (safety-critical half never blocked by the store)", async () => {
+    loadRows.current = [mk({ phoneCheckStatus: "restricted", storeFullStatus: null })];
+    const { findByTestId, queryByTestId } = viewOn();
+    expect(await findByTestId("ps-ext-badge-restricted")).toBeTruthy();
+    expect(queryByTestId("ps-ext-checking")).toBeNull();
+  });
+
+  it("'Checking…' tracks ONLY the phone half: phone NULL + store 'open' still shows Checking (checkOn)", async () => {
+    loadRows.current = [mk({ phoneCheckStatus: null, storeFullStatus: "open" })];
+    const { findByTestId, queryByTestId } = viewOn();
+    expect(await findByTestId("ps-ext-checking")).toBeTruthy();
+    expect(queryByTestId("ps-ext-clear")).toBeNull();
   });
 });
 
