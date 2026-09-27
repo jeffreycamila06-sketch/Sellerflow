@@ -1320,16 +1320,22 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                       🚫 {t.rd_ps2_restricted}{r.phoneRestrictedUntil ? ` · ${tpl(t.rd_ps2_restricted_until, { date: untilDate(r.phoneRestrictedUntil) })}` : ""}
                     </div>
                   )}
-                  {r.phoneCheckStatus === "ok" && (
+                  {/* GREEN ✅ only when FULLY verified: phone ok AND store resolved OPEN.
+                      Phone ok but store null/unknown → an AMBER pending line — it must
+                      never read as all-clear. (Red restricted / orange full still surface
+                      immediately above, independent of the other half.) */}
+                  {r.phoneCheckStatus === "ok" && r.storeFullStatus === "open" && (
                     <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--ok, #16a34a)" }} data-testid="ps-ext-clear" title={t.rd_ps2_phone_ok}>✅ {t.rd_ps2_phone_ok}</div>
+                  )}
+                  {r.phoneCheckStatus === "ok" && (r.storeFullStatus == null || r.storeFullStatus === "unknown") && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--warn, #b45309)" }} data-testid="ps-ext-pending-store">⏳ {t.rd_ps2_pending_store}</div>
                   )}
                   {r.phoneCheckStatus === "unknown" && (
                     <div style={{ fontSize: 10, marginTop: 3, color: "var(--text-dim)" }} data-testid="ps-ext-phone-unchecked">{t.rd_ps2_phone_unchecked}</div>
                   )}
-                  {/* STORE half is secondary — once the phone resolved, a subtle
-                      "store not checked" if the store half didn't (no E-Map guid/tab).
-                      store 'full' is already the ⚠️ badge above. */}
-                  {r.phoneCheckStatus != null && r.phoneCheckStatus !== "restricted" && (r.storeFullStatus == null || r.storeFullStatus === "unknown") && (
+                  {/* store-not-checked note only for a phone that is itself unresolved
+                      ('unknown'); the phone-ok case is the amber pending line above. */}
+                  {r.phoneCheckStatus === "unknown" && (r.storeFullStatus == null || r.storeFullStatus === "unknown") && (
                     <div style={{ fontSize: 10, marginTop: 2, color: "var(--text-dim)" }} data-testid="ps-ext-store-unchecked">{t.rd_ps2_store_unchecked}</div>
                   )}
                   {/* item 8: "Checking…" tracks ONLY the phone half now — a flaky store

@@ -1275,6 +1275,7 @@ const RAW: Record<string, Row> = {
   rd_ps2_ext_ok: { en: "OK", fil: "OK", zh: "正常", "zh-TW": "正常", vi: "OK", th: "ปกติ", id: "OK", bg: "OK" },
   rd_ps2_checking: { en: "Checking…", fil: "Sinusuri…", zh: "检查中…", "zh-TW": "檢查中…", vi: "Đang kiểm tra…", th: "กำลังตรวจสอบ…", id: "Memeriksa…", bg: "Проверява се…" },
   rd_ps2_phone_ok: { en: "Buyer OK", fil: "OK ang buyer", zh: "买家正常", "zh-TW": "買家正常", vi: "Người mua OK", th: "ผู้ซื้อปกติ", id: "Pembeli OK", bg: "Купувачът е ОК" },
+  rd_ps2_pending_store: { en: "Buyer ok · store not checked yet", fil: "OK ang buyer · hindi pa na-check ang store", zh: "买家正常 · 门市尚未检查", "zh-TW": "買家正常 · 門市尚未檢查", vi: "Người mua ok · chưa kiểm tra cửa hàng", th: "ผู้ซื้อปกติ · ยังไม่ตรวจร้าน", id: "Pembeli ok · toko belum dicek", bg: "Купувачът е ок · магазинът още не е проверен" },
   rd_ps2_restricted_until: { en: "until {date}", fil: "hanggang {date}", zh: "至 {date}", "zh-TW": "至 {date}", vi: "đến {date}", th: "ถึง {date}", id: "sampai {date}", bg: "до {date}" },
   rd_ps2_phone_unchecked: { en: "phone not checked", fil: "hindi na-check ang phone", zh: "手机未检查", "zh-TW": "手機未檢查", vi: "chưa kiểm tra SĐT", th: "ยังไม่ตรวจเบอร์", id: "nomor belum dicek", bg: "телефонът не е проверен" },
   rd_ps2_store_unchecked: { en: "store not checked", fil: "hindi na-check ang store", zh: "门市未检查", "zh-TW": "門市未檢查", vi: "chưa kiểm tra cửa hàng", th: "ยังไม่ตรวจร้าน", id: "toko belum dicek", bg: "магазинът не е проверен" },

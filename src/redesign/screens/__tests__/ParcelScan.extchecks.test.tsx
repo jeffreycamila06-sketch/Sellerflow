@@ -129,13 +129,30 @@ describe("Parcel Scan — verdict row highlight (border, FAIL-SAFE, no positive 
     expect(getByTestId("ps-ext-clear")).toBeTruthy();       // ✅ label restored
   });
 
-  // The independent-phone-half behavior still holds under the border model.
-  it("phone 'ok' but store still NULL → clean (no border, no label); subtle 'store not checked'; not stuck Checking", async () => {
+  // GREEN only when FULLY verified (phone ok AND store open).
+  it("phone 'ok' but store still NULL → NO green ✅; AMBER '⏳ Buyer ok · store not checked yet'; no border; not stuck Checking", async () => {
     loadRows.current = [mk({ phoneCheckStatus: "ok", storeFullStatus: null })];
-    const { findByTestId, queryByTestId } = viewOn();
+    const { findByTestId, queryByTestId, getByTestId } = viewOn();
     expect(flag(await findByTestId("ps-row"))).toBe("");
+    expect(queryByTestId("ps-ext-clear")).toBeNull();          // never reads as all-clear
+    expect(getByTestId("ps-ext-pending-store")).toBeTruthy();  // amber pending instead
     expect(queryByTestId("ps-ext-checking")).toBeNull();
-    expect(queryByTestId("ps-ext-store-unchecked")).toBeTruthy();
+  });
+
+  it("phone 'ok' + store 'unknown' → amber pending too (unknown ≠ verified open)", async () => {
+    loadRows.current = [mk({ phoneCheckStatus: "ok", storeFullStatus: "unknown" })];
+    const { findByTestId, queryByTestId, getByTestId } = viewOn();
+    await findByTestId("ps-row");
+    expect(queryByTestId("ps-ext-clear")).toBeNull();
+    expect(getByTestId("ps-ext-pending-store")).toBeTruthy();
+  });
+
+  it("phone 'ok' + store 'full' → ⚠️ orange surfaces, NO green ✅ (not fully verified)", async () => {
+    loadRows.current = [mk({ phoneCheckStatus: "ok", storeFullStatus: "full" })];
+    const { findByTestId, queryByTestId, getByTestId } = viewOn();
+    expect(flag(await findByTestId("ps-row"))).toBe("orange");
+    expect(getByTestId("ps-ext-badge-full")).toBeTruthy();
+    expect(queryByTestId("ps-ext-clear")).toBeNull();
   });
 
   it("phone 'restricted' but store NULL → RED border surfaces (safety-critical half never blocked by the store)", async () => {
