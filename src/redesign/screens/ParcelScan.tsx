@@ -1327,21 +1327,14 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                   {r.phoneCheckStatus === "ok" && r.storeFullStatus === "open" && (
                     <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--ok, #16a34a)" }} data-testid="ps-ext-clear" title={t.rd_ps2_phone_ok}>✅ {t.rd_ps2_phone_ok}</div>
                   )}
-                  {r.phoneCheckStatus === "ok" && (r.storeFullStatus == null || r.storeFullStatus === "unknown") && (
-                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--warn, #b45309)" }} data-testid="ps-ext-pending-store">⏳ {t.rd_ps2_pending_store}</div>
-                  )}
-                  {r.phoneCheckStatus === "unknown" && (
-                    <div style={{ fontSize: 10, marginTop: 3, color: "var(--text-dim)" }} data-testid="ps-ext-phone-unchecked">{t.rd_ps2_phone_unchecked}</div>
-                  )}
-                  {/* store-not-checked note only for a phone that is itself unresolved
-                      ('unknown'); the phone-ok case is the amber pending line above. */}
-                  {r.phoneCheckStatus === "unknown" && (r.storeFullStatus == null || r.storeFullStatus === "unknown") && (
-                    <div style={{ fontSize: 10, marginTop: 2, color: "var(--text-dim)" }} data-testid="ps-ext-store-unchecked">{t.rd_ps2_store_unchecked}</div>
-                  )}
-                  {/* item 8: "Checking…" tracks ONLY the phone half now — a flaky store
-                      check no longer hides a resolved phone verdict. */}
-                  {checkOn && r.status !== "exported" && r.phoneCheckStatus == null && (
-                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--text-muted)" }} data-testid="ps-ext-checking">⏳ {t.rd_ps2_checking}</div>
+                  {/* ONE pending line: ⏳ Checking (animated dots) until BOTH halves resolve,
+                      unless the row is already red (restricted / wrong code) or orange
+                      (full) — those surface immediately above. Nothing else on the row
+                      while pending (no "Buyer OK", no "store not checked"). null and
+                      'unknown' both count as unresolved: the worker re-queues them. Gated
+                      on checkOn so a non-feature seller's all-null rows never show it. */}
+                  {checkOn && r.status !== "exported" && !rowRed && !rowOrange && !(r.phoneCheckStatus === "ok" && r.storeFullStatus === "open") && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--text-muted)" }} data-testid="ps-ext-checking">⏳ {t.rd_ps2_checking.replace(/…$/, "")}<span className="sfl-anim-ellip" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span></div>
                   )}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>

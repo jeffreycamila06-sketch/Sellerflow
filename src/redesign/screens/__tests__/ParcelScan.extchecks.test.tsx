@@ -129,22 +129,38 @@ describe("Parcel Scan — verdict row highlight (border, FAIL-SAFE, no positive 
     expect(getByTestId("ps-ext-clear")).toBeTruthy();       // ✅ label restored
   });
 
-  // GREEN only when FULLY verified (phone ok AND store open).
-  it("phone 'ok' but store still NULL → NO green ✅; AMBER '⏳ Buyer ok · store not checked yet'; no border; not stuck Checking", async () => {
+  // ONE pending line until BOTH halves resolve (unless already red/orange).
+  it("phone 'ok' but store still NULL → ONLY ⏳ Checking… (no green ✅, no 'store not checked', no border)", async () => {
     loadRows.current = [mk({ phoneCheckStatus: "ok", storeFullStatus: null })];
     const { findByTestId, queryByTestId, getByTestId } = viewOn();
     expect(flag(await findByTestId("ps-row"))).toBe("");
-    expect(queryByTestId("ps-ext-clear")).toBeNull();          // never reads as all-clear
-    expect(getByTestId("ps-ext-pending-store")).toBeTruthy();  // amber pending instead
-    expect(queryByTestId("ps-ext-checking")).toBeNull();
+    expect(queryByTestId("ps-ext-clear")).toBeNull();            // never reads as all-clear
+    expect(getByTestId("ps-ext-checking")).toBeTruthy();         // the single pending line
+    expect(queryByTestId("ps-ext-pending-store")).toBeNull();    // amber line dropped
+    expect(queryByTestId("ps-ext-store-unchecked")).toBeNull();  // note dropped
   });
 
-  it("phone 'ok' + store 'unknown' → amber pending too (unknown ≠ verified open)", async () => {
+  it("phone 'ok' + store 'unknown' → still ⏳ Checking… (unknown ≠ resolved; the worker re-queues it)", async () => {
     loadRows.current = [mk({ phoneCheckStatus: "ok", storeFullStatus: "unknown" })];
     const { findByTestId, queryByTestId, getByTestId } = viewOn();
     await findByTestId("ps-row");
     expect(queryByTestId("ps-ext-clear")).toBeNull();
-    expect(getByTestId("ps-ext-pending-store")).toBeTruthy();
+    expect(getByTestId("ps-ext-checking")).toBeTruthy();
+  });
+
+  it("Checking… is a single animated line: the i18n ellipsis is stripped and the existing .sfl-anim-ellip loader (3 dots) is appended", async () => {
+    loadRows.current = [mk({ phoneCheckStatus: null, storeFullStatus: null })];
+    const { findByTestId } = viewOn();
+    const el = await findByTestId("ps-ext-checking");
+    expect(el.textContent).not.toMatch(/…/);                              // no static ellipsis
+    expect(el.querySelectorAll(".sfl-anim-ellip > i").length).toBe(3);    // reused app loader, 3 dots
+  });
+
+  it("restricted while store still pending → red immediately, NO Checking… (red wins over pending)", async () => {
+    loadRows.current = [mk({ phoneCheckStatus: "restricted", storeFullStatus: null })];
+    const { findByTestId, queryByTestId } = viewOn();
+    expect(flag(await findByTestId("ps-row"))).toBe("red");
+    expect(queryByTestId("ps-ext-checking")).toBeNull();
   });
 
   it("phone 'ok' + store 'full' → ⚠️ orange surfaces, NO green ✅ (not fully verified)", async () => {
