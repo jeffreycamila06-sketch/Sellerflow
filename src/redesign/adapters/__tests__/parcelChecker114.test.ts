@@ -52,7 +52,7 @@ describe("A · one E-Map tab choice per tick (multi-emap-tab test)", () => {
 describe("B · evidence-based emap state + auto-recovery (evidence recency test)", () => {
   it("green only within 6 min of a resolved store verdict; after that the SAME tab reads 'stale' (no fake green)", async () => {
     let t = 1_000_000_000_000;
-    const { sb, status, booted } = bootWorker({ now: () => t, rows: [] });
+    const { sb, calls, status, booted } = bootWorker({ now: () => t, rows: [] });
     await booted;
     // first tick: no pending rows, keepalive fires immediately (lastKeepaliveAt=0) and resolves 'open' → green
     await sb.pcTick();
@@ -70,63 +70,128 @@ describe("B · evidence-based emap state + auto-recovery (evidence recency test)
     }) as never;
     t += 5 * MIN + 1000;
     await sb.pcTick();
-    expect(["recovering", "guid_missing"]).toContain(status().emap);
+    expect(status().emap).toBe("ok");                    // the last verdict is 5 min old → still inside the 6-min green window
+    t += MIN;
+    await sb.pcTick();
+    expect(status().emap).toBe("stale");                 // 1.14.2: 3 misses but only a 1-min span — evidence, not a trigger; no recovery yet
+    expect(calls.update.filter((u) => (u as { props: { url?: string } }).props.url).length).toBe(0);
+    t += MIN + 1000;
+    await sb.pcTick();
+    expect(status().emap).toBe("recovering");            // ≥3 misses spanning ≥2 min, verdict 7 min old → one GET re-open
+    expect(calls.update.filter((u) => (u as { props: { url?: string } }).props.url).length).toBe(1);
   });
 
-  it("guid lost → ONE auto-reload per cooldown (max 2), then 'dead' (red, re-open via 選擇門市); a verdict resets the ladder", async () => {
-    let t = 1_000_000_000_000;
-    const { sb, calls, status, booted } = bootWorker({ now: () => t, rows: [], emapTabs: [{ id: 7, url: "https://emap.unipcsc.com.tw/ecmap/default.aspx", guid: false }] });
-    await booted;
-    await sb.pcTick();                                   // probe: no guid → reload #1
-    expect(calls.reload).toEqual([7]);
-    expect(status().emap).toBe("recovering");
-    await sb.pcTick();                                   // within cooldown → no second reload yet
-    expect(calls.reload).toEqual([7]);
-    t += 61 * 1000;
-    await sb.pcTick();                                   // cooldown over, still no guid → reload #2
-    expect(calls.reload).toEqual([7, 7]);
-    t += 61 * 1000;
-    await sb.pcTick();                                   // 2 reloads didn't help → real expiry
-    expect(status().emap).toBe("dead");
-    expect(calls.reload).toEqual([7, 7]);                // no reload spam past the cap
-    // the tab comes back (owner re-opened via 選擇門市) → guid + verdict → green, ladder reset
-    const tabs = (sb.chrome as unknown as { tabs: { query: (q: { url: string[] }, cb: (t: unknown[]) => void) => void } }).tabs;
-    tabs.query = (q, cb) => cb(/emap/.test(q.url[0]) ? [{ id: 7, url: "https://emap.unipcsc.com.tw/ecmap/default.aspx", discarded: false, frozen: false }] : [{ id: 1, url: q.url[0].replace("*", "x"), discarded: false, frozen: false }]);
-    sb.chrome.tabs.sendMessage = ((id: number, msg: { type: string }, cb: (r: unknown) => void) => {
-      if (msg.type === "PC_EMAP_PROBE") return cb({ ok: true, guidFound: true, url: "https://emap.unipcsc.com.tw/ecmap/default.aspx" });
-      if (msg.type === "PC_CHECK_STORE") return cb({ ok: true, store_full_status: "full", store_reason: "", guidFound: true });
+  const reopens = (calls: { update: unknown[] }) => calls.update.filter((u) => (u as { props: { url?: string } }).props.url).map((u) => (u as { id: number }).id);
+  const noGuid = (sb: Record<string, unknown>, reason = "eshopGuid not found on emap page", transient = false) => {
+    (sb.chrome as { tabs: { sendMessage: unknown } }).tabs.sendMessage = ((id: number, msg: { type: string }, cb: (r: unknown) => void) => {
+      if (msg.type === "PC_EMAP_PROBE") return cb({ ok: true, guidFound: transient, url: "https://emap.unipcsc.com.tw/ecmap/default.aspx" });
+      if (msg.type === "PC_CHECK_STORE") return cb({ ok: true, store_full_status: "unknown", store_reason: reason, guidFound: transient, transient });
       if (msg.type === "SFL_GET_TOKEN") return cb({ ok: true, token: "x.y.z" });
       cb({ ok: true });
-    }) as never;
-    t += 5 * MIN + 1000;
+    });
+  };
+  const withGuid = (sb: Record<string, unknown>, verdict = "full") => {
+    (sb.chrome as { tabs: { sendMessage: unknown } }).tabs.sendMessage = ((id: number, msg: { type: string }, cb: (r: unknown) => void) => {
+      if (msg.type === "PC_EMAP_PROBE") return cb({ ok: true, guidFound: true, url: "https://emap.unipcsc.com.tw/ecmap/default.aspx" });
+      if (msg.type === "PC_CHECK_STORE") return cb({ ok: true, store_full_status: verdict, store_reason: "", guidFound: true, transient: false });
+      if (msg.type === "SFL_GET_TOKEN") return cb({ ok: true, token: "x.y.z" });
+      cb({ ok: true });
+    });
+  };
+
+  it("CONSERVATIVE LADDER (1.14.2): guid lost → NO recovery until ≥3 definitive misses spanning ≥2 min; then ONE dialog-free GET re-open per 60s cooldown, max 2, then 'dead'; a verdict resets everything", async () => {
+    let t = 1_000_000_000_000;
+    const { sb, calls, status, booted } = bootWorker({ now: () => t, rows: [], emapTabs: [{ id: 7, url: "https://emap.unipcsc.com.tw/mobilemap/default.aspx", guid: false }] });
+    await booted;
+    await sb.pcTick();                                   // miss #1 (probe: no guid) — never a trigger on its own
+    expect(reopens(calls)).toEqual([]);
+    expect(status().emap).toBe("stale");
+    t += 5 * 1000; await sb.pcTick();                    // miss #2, 5s later
+    t += 5 * 1000; await sb.pcTick();                    // miss #3, 10s span → still < 2 min → no recovery
+    expect(reopens(calls)).toEqual([]);
+    expect(status().emap).toBe("stale");
+    t += 2 * MIN; await sb.pcTick();                     // ≥3 misses AND ≥2 min span → recovery #1 (GET re-navigation, NOT tabs.reload)
+    expect(reopens(calls)).toEqual([7]);
+    expect(calls.reload).toEqual([]);
+    expect((calls.update.find((u) => (u as { props: { url?: string } }).props.url) as { props: { url: string } }).props.url).toBe("https://emap.unipcsc.com.tw/mobilemap/default.aspx");
+    expect(status().emap).toBe("recovering");
+    expect(calls.logs.some((l) => /^\[PC-EMAP\] recover reason="probe: eshopGuid not found" misses=\d+ lastVerdictAgo=nevers attempt=1\/2 tab=7 via=GET/.test(l))).toBe(true);
+    await sb.pcTick();                                   // within cooldown → nothing
+    expect(reopens(calls)).toEqual([7]);
+    t += 61 * 1000; await sb.pcTick();                   // cooldown over, still no guid → recovery #2
+    expect(reopens(calls)).toEqual([7, 7]);
+    t += 61 * 1000; await sb.pcTick();                   // 2 re-opens didn't help → real expiry, red, NO loop
+    expect(status().emap).toBe("dead");
+    t += 10 * MIN; await sb.pcTick();
+    expect(reopens(calls)).toEqual([7, 7]);              // no recovery spam past the cap
+    // the owner re-opens via 選擇門市 → guid + verdict → green, ladder fully reset
+    withGuid(sb as never);
+    t += 5 * MIN + 1000; await sb.pcTick();
+    expect(status().emap).toBe("ok");
+    // reset proven: break it again → a fresh ladder (needs 3 misses / 2 min again, then re-open #1 fires)
+    noGuid(sb as never);
+    t += 5 * MIN + 1000; await sb.pcTick();
+    t += 5 * 1000; await sb.pcTick();
+    t += 5 * 1000; await sb.pcTick();
+    expect(reopens(calls)).toEqual([7, 7]);              // 3 misses but < 2 min → not yet
+    t += 2 * MIN; await sb.pcTick();
+    expect(reopens(calls)).toEqual([7, 7, 7]);
+    expect(status().emap).toBe("recovering");
+  });
+
+  it("LADDER GUARD: a real verdict in the last 5 min blocks recovery even with many misses", async () => {
+    let t = 1_000_000_000_000;
+    const { sb, calls, status, booted } = bootWorker({ now: () => t, rows: [] });
+    await booted;
+    await sb.pcTick();                                   // keepalive verdict → green
+    expect(status().emap).toBe("ok");
+    noGuid(sb as never);
+    for (let i = 0; i < 12; i++) { t += 20 * 1000; await sb.pcTick(); } // 12 misses over 4 min — but the verdict is < 5 min old
+    expect(reopens(calls)).toEqual([]);
+    expect(status().emap).toBe("ok");                    // and the badge is still green (verdict < 6 min)
+    t += 3 * MIN; await sb.pcTick();                     // 7 min since the verdict → guard lapsed, green window over → recovery allowed
+    expect(reopens(calls)).toEqual([3]);
+  });
+
+  it("LADDER GUARD: byIDData timeouts / network errors are TRANSIENT — they never count as misses, so no recovery ever fires on them", async () => {
+    let t = 1_000_000_000_000;
+    const { sb, calls, status, booted } = bootWorker({ now: () => t, rows: [] });
+    await booted;
     await sb.pcTick();
     expect(status().emap).toBe("ok");
-    // ladder reset: break it again → the auto-reload fires again (it would NOT if reloads were still 2 = 'dead')
-    sb.chrome.tabs.sendMessage = ((id: number, msg: { type: string }, cb: (r: unknown) => void) => {
-      if (msg.type === "PC_EMAP_PROBE") return cb({ ok: true, guidFound: false, url: "https://emap.unipcsc.com.tw/ecmap/default.aspx" });
-      if (msg.type === "PC_CHECK_STORE") return cb({ ok: true, store_full_status: "unknown", store_reason: "eshopGuid not found on emap page", guidFound: false });
-      if (msg.type === "SFL_GET_TOKEN") return cb({ ok: true, token: "x.y.z" });
-      cb({ ok: true });
-    }) as never;
-    t += 5 * MIN + 1000;
-    await sb.pcTick();
-    expect(calls.reload).toEqual([7, 7, 7]);
-    expect(status().emap).toBe("recovering");
+    noGuid(sb as never, "/mobilemap/byIDData.aspx timeout (10s) · /ecmap/byIDData.aspx timeout (10s)", true);
+    for (let i = 0; i < 6; i++) { t += 5 * MIN + 1000; await sb.pcTick(); } // 30 min of keepalive timeouts
+    expect(reopens(calls)).toEqual([]);
+    expect(status().emap).toBe("stale");                 // honest amber, never a re-open, never red
   });
 
-  it("pure derive: the state table", async () => {
+  it("pure derive: the state table (1.14.2)", async () => {
     const { sb, booted } = bootWorker();
     await booted;
     const d = sb.pcDeriveEmap as unknown as (now: number, e: Record<string, unknown>) => string;
-    const now = 10 * MIN;
-    const base = { present: true, error: false, guid: true, lastVerdictAt: now - MIN, lastFailAt: 0, reloadAt: 0, reloads: 0 };
+    const now = 20 * MIN;
+    const base = { present: true, error: false, guid: true, lastVerdictAt: now - MIN, misses: 0, firstMissAt: 0, reloadAt: 0, reloads: 0 };
     expect(d(now, { ...base, present: false })).toBe("no_tab");
     expect(d(now, { ...base, error: true })).toBe("expired");
     expect(d(now, base)).toBe("ok");
     expect(d(now, { ...base, lastVerdictAt: now - 7 * MIN })).toBe("stale");
-    expect(d(now, { ...base, lastFailAt: now })).toBe("guid_missing");                       // latest attempt failed
-    expect(d(now, { ...base, guid: false, reloadAt: now - 10_000, reloads: 1 })).toBe("recovering");
-    expect(d(now, { ...base, guid: false, reloadAt: now - 10_000, reloads: 2 })).toBe("dead");
+    expect(d(now, { ...base, lastVerdictAt: now - 7 * MIN, misses: 2, firstMissAt: now - 3 * MIN })).toBe("stale");        // < 3 misses
+    expect(d(now, { ...base, lastVerdictAt: now - 7 * MIN, misses: 3, firstMissAt: now - MIN })).toBe("stale");            // < 2 min span
+    expect(d(now, { ...base, lastVerdictAt: now - 4 * MIN, misses: 5, firstMissAt: now - 3 * MIN })).toBe("ok");           // verdict 4 min ago: still green AND recovery-guarded, whatever the misses
+    expect(d(now, { ...base, lastVerdictAt: now - 5.5 * MIN, misses: 5, firstMissAt: now - 3 * MIN })).toBe("ok");         // 5.5 min: green (RECENT 6) — the 5-min guard has lapsed but 'ok' wins
+    expect(d(now, { ...base, lastVerdictAt: now - 7 * MIN, misses: 3, firstMissAt: now - 3 * MIN })).toBe("guid_missing"); // due
+    expect(d(now, { ...base, lastVerdictAt: 0, misses: 3, firstMissAt: now - 3 * MIN, reloadAt: now - 10_000, reloads: 1 })).toBe("recovering");
+    expect(d(now, { ...base, lastVerdictAt: 0, misses: 4, firstMissAt: now - 6 * MIN, reloadAt: now - 2 * MIN, reloads: 2 })).toBe("dead");
+    // pcRecoveryDue on its own: the 5-min verdict guard must hold even when every other condition is met
+    const due = sb.pcRecoveryDue as unknown as (now: number, e: Record<string, unknown>) => boolean;
+    const armed = { lastVerdictAt: 0, misses: 5, firstMissAt: now - 3 * MIN, reloadAt: 0, reloads: 0 };
+    expect(due(now, armed)).toBe(true);
+    expect(due(now, { ...armed, lastVerdictAt: now - 4 * MIN })).toBe(false);      // verdict 4 min ago → guarded
+    expect(due(now, { ...armed, lastVerdictAt: now - 5 * MIN - 1 })).toBe(true);   // just past 5 min → allowed
+    expect(due(now, { ...armed, misses: 2 })).toBe(false);
+    expect(due(now, { ...armed, firstMissAt: now - MIN })).toBe(false);
+    expect(due(now, { ...armed, reloads: 2 })).toBe(false);
+    expect(due(now, { ...armed, reloadAt: now - 30_000, reloads: 1 })).toBe(false);
   });
 });
 

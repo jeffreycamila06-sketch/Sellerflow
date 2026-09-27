@@ -165,6 +165,22 @@ describe("emap-711 1.14.1 — guid without page-context execution", () => {
     expect(String(rb.store_reason)).toContain("/mobilemap/byIDData.aspx bounced to error.aspx");
   });
 
+  it("1.14.2 transient flag: timeouts / network errors on EVERY endpoint → transient:true (the worker's ladder ignores them); a definitive failure on any endpoint → transient:false", async () => {
+    const abort = () => { const e = new Error("aborted"); e.name = "AbortError"; throw e; };
+    const t2 = loadEmap(ECMAP_HTML, "https://emap.unipcsc.com.tw/ecmap/default.aspx", { byId: () => { abort(); return { url: "", ok: true, status: 200, text: "" }; } });
+    const r = await t2.send({ type: "PC_CHECK_STORE", row: { store_id: "198002" } });
+    expect(r.store_full_status).toBe("unknown");
+    expect(r.transient).toBe(true);
+    expect(String(r.store_reason)).toContain("timeout (10s)");
+    const mixed = loadEmap(ECMAP_HTML, "https://emap.unipcsc.com.tw/ecmap/default.aspx", { byId: (ep) => ep === "/ecmap/byIDData.aspx" ? (abort(), { url: "", ok: true, status: 200, text: "" }) : { url: "https://emap.unipcsc.com.tw/mobilemap/byIDData.aspx", ok: true, status: 200, text: "訊息:I0100;驗證失敗" } });
+    const m = await mixed.send({ type: "PC_CHECK_STORE", row: { store_id: "198002" } });
+    expect(m.transient).toBe(false);
+    const okr = await loadEmap(ECMAP_HTML, "https://emap.unipcsc.com.tw/ecmap/default.aspx").send({ type: "PC_CHECK_STORE", row: { store_id: "198002" } });
+    expect(okr.transient).toBe(false);
+    const noGuid = await loadEmap(MOBILEMAP_RUNTIME_ONLY_HTML, "https://emap.unipcsc.com.tw/mobilemap/default.aspx").send({ type: "PC_CHECK_STORE", row: { store_id: "198002" } });
+    expect(noGuid.transient).toBe(false); // "guid not found" is definitive
+  });
+
   it("emap-guid-main.js: MAIN-world helper is CSP-exempt by construction — it only reads window vars and dispatches a CustomEvent (no DOM writes, no fetch)", () => {
     const src = readFileSync("chrome-extension/emap-guid-main.js", "utf8");
     expect(src).not.toMatch(/fetch\(|createElement|innerHTML|localStorage|chrome\./);

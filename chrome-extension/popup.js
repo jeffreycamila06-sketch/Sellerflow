@@ -33,9 +33,9 @@ const PC_STATUS_LABEL = {
   // in the last 6 min; every other state names the ONE fix):
   starting: ["off", "Starting…"],                            // worker just booted — nothing earned yet
   stale: ["warn", "No check resolved in 6 min — click that tab once"],
-  guid_missing: ["warn", "Session lost — auto-reloading…"],
-  recovering: ["warn", "Reloaded — verifying…"],
-  dead: ["bad", "Re-open via 賣貨便 → 選擇門市"],            // 2 reloads didn't help = real expiry
+  guid_missing: ["warn", "Session lost — re-opening…"],
+  recovering: ["warn", "Re-opened — verifying…"],
+  dead: ["bad", "Re-open via 賣貨便 → 選擇門市"],            // 2 recoveries didn't help = real expiry
 };
 function pcBadge(el, status) {
   const [cls, label] = PC_STATUS_LABEL[status] || ["off", status || "—"];
@@ -60,9 +60,9 @@ async function pcRenderStatus() {
     const lastV = st.lastStoreVerdictAt ? ` — last store check ${new Date(st.lastStoreVerdictAt).toLocaleTimeString()}` : "";
     const s = st.emapSession;
     const m = s === "expired" ? ["#e5484d", `⚠️ E-Map landed on error.aspx (session expired) — re-open via 賣貨便 → 選擇門市${dom}${tab}`]
-      : s === "dead" ? ["#e5484d", `⚠️ E-Map session not resolving after 2 auto-reloads — re-open via 賣貨便 → 選擇門市${dom}${tab}`]
+      : s === "dead" ? ["#e5484d", `⚠️ E-Map session expired — not resolving after 2 auto re-opens — re-open via 賣貨便 → 選擇門市${dom}${tab}`]
       : s === "no_tab" ? ["#b45309", "⚠️ E-Map tab not found — open E-Map via 賣貨便 → 選擇門市"]
-      : s === "guid_missing" || s === "recovering" ? ["#b45309", `⚠️ E-Map session lost — auto-reloading the tab to re-mint it${dom}${tab}`]
+      : s === "guid_missing" || s === "recovering" ? ["#b45309", `⚠️ E-Map session lost — re-opening the tab (GET, no resubmission dialog) to re-mint it${dom}${tab}`]
       : s === "stale" ? ["#b45309", `⚠️ E-Map tab open but no store check resolved in 6 min${lastV}${dom}${tab}`]
       : s === "ok" ? ["#16a34a", `● E-Map session OK${lastV}${dom}${tab}`]
       : s === "starting" ? ["#8a8a8a", "○ Worker starting — first check in a few seconds"]

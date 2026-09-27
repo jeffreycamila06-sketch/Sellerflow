@@ -142,30 +142,33 @@
         headers: { "content-type": "application/x-www-form-urlencoded; charset=UTF-8", "x-requested-with": "XMLHttpRequest" },
         body,
       });
-      if (/\/error\.aspx/i.test(String(r.url || ""))) return { verdict: null, reason: `${endpoint} bounced to error.aspx` };
-      if (!r.ok) return { verdict: null, reason: `${endpoint} returned HTTP ${r.status}` };
+      if (/\/error\.aspx/i.test(String(r.url || ""))) return { verdict: null, reason: `${endpoint} bounced to error.aspx`, transient: false };
+      if (!r.ok) return { verdict: null, reason: `${endpoint} returned HTTP ${r.status}`, transient: r.status >= 500 };
       const text = await r.text();
       const v = parseByIdData(text);
-      if (v) return { verdict: v, reason: "" };
+      if (v) return { verdict: v, reason: "", transient: false };
       const head = String(text).replace(/\s+/g, " ").slice(0, 60);
-      return { verdict: null, reason: `${endpoint} unexpected response: "${head}"` };
+      return { verdict: null, reason: `${endpoint} unexpected response: "${head}"`, transient: false };
     } catch (e) {
       const aborted = e && e.name === "AbortError";
-      return { verdict: null, reason: aborted ? `${endpoint} timeout (10s)` : `${endpoint} network error` };
+      // a timeout / network blip says nothing about the session → TRANSIENT (never a miss)
+      return { verdict: null, reason: aborted ? `${endpoint} timeout (10s)` : `${endpoint} network error`, transient: true };
     }
   }
   // Returns { store_full_status, store_reason, endpoint }. reason "" on a clean verdict.
+  // `transient: true` = every attempt was a timeout / network / 5xx blip (the
+  // session may be fine) — the worker's recovery ladder ignores those.
   async function checkFullStore(storeId, guid) {
-    if (!/^\d{6}$/.test(String(storeId || ""))) return { store_full_status: "unknown", store_reason: "store id not 6 digits", endpoint: knownEndpoint };
-    if (!guid) return { store_full_status: "unknown", store_reason: "eshopGuid not found on emap page", endpoint: knownEndpoint };
+    if (!/^\d{6}$/.test(String(storeId || ""))) return { store_full_status: "unknown", store_reason: "store id not 6 digits", endpoint: knownEndpoint, transient: false };
+    if (!guid) return { store_full_status: "unknown", store_reason: "eshopGuid not found on emap page", endpoint: knownEndpoint, transient: false };
     const order = knownEndpoint ? [knownEndpoint, ...endpointCandidates(location.pathname).filter((p) => p !== knownEndpoint)] : endpointCandidates(location.pathname);
-    const reasons = [];
+    const reasons = []; let allTransient = true;
     for (const endpoint of order) {
       const r = await postByIdData(endpoint, storeId, guid);
-      if (r.verdict) { knownEndpoint = endpoint; return { ...r.verdict, endpoint }; }
-      reasons.push(r.reason);
+      if (r.verdict) { knownEndpoint = endpoint; return { ...r.verdict, endpoint, transient: false }; }
+      reasons.push(r.reason); if (!r.transient) allTransient = false;
     }
-    return { store_full_status: "unknown", store_reason: reasons.join(" · "), endpoint: knownEndpoint };
+    return { store_full_status: "unknown", store_reason: reasons.join(" · "), endpoint: knownEndpoint, transient: allTransient };
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -187,8 +190,8 @@
       const g = await getEshopGuid();
       const res = await checkFullStore(message.row.store_id, g.guid);
       diag(g, res.endpoint);
-      sendResponse({ ok: true, store_full_status: res.store_full_status, store_reason: res.store_reason, guidFound: g.guid !== null, guidSource: g.source, endpoint: res.endpoint, section: sectionOf(location.pathname) });
-    })().catch(() => sendResponse({ ok: true, store_full_status: "unknown", store_reason: "emap check threw", guidFound: false, guidSource: null, endpoint: knownEndpoint, section: sectionOf(location.pathname) }));
+      sendResponse({ ok: true, store_full_status: res.store_full_status, store_reason: res.store_reason, transient: Boolean(res.transient), guidFound: g.guid !== null, guidSource: g.source, endpoint: res.endpoint, section: sectionOf(location.pathname) });
+    })().catch(() => sendResponse({ ok: true, store_full_status: "unknown", store_reason: "emap check threw", transient: true, guidFound: false, guidSource: null, endpoint: knownEndpoint, section: sectionOf(location.pathname) }));
     return true;
   });
 })();

@@ -298,8 +298,8 @@ async function pcPoll() {
           ? { store_full_status: sResp.store_full_status, store_reason: sResp.store_reason || "" }
           : { store_full_status: "unknown", store_reason: "emap tab not responding (reload emap page)" };
         // 1.14.0 evidence (legacy lane too): a resolved verdict = tab healthy
-        if (store.store_full_status === "open" || store.store_full_status === "full") { pcEv.emap.lastVerdictAt = Date.now(); pcEv.emap.reloads = 0; }
-        else pcEv.emap.lastFailAt = Date.now();
+        if (store.store_full_status === "open" || store.store_full_status === "full") pcEmapVerdict(Date.now());
+        else pcEmapMiss(Date.now(), store.store_reason, Boolean(sResp && sResp.transient));
       }
       // Phone check → myship tab.
       let phone = { phone_check_status: "unknown", phone_check_message: null, phone_restricted_until: null, phone_reason: "no myship.7-11.com.tw tab open" };
@@ -365,15 +365,21 @@ const PC_EMAP_PATTERNS = ["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.co
 const PC_RECENT_MS = 6 * 60 * 1000;          // "resolved recently" window = keepalive 5m + slack
 const PC_KEEPALIVE_MS = 5 * 60 * 1000;
 const PC_KEEPALIVE_STORE = "198002";          // known store; the verdict is logged, never written
-const PC_RELOAD_COOLDOWN_MS = 60 * 1000;      // one auto-reload per minute while recovering
+const PC_RELOAD_COOLDOWN_MS = 60 * 1000;      // one recovery attempt per minute
 const PC_MAX_RELOADS = 2;                     // then it's a real expiry → red, re-open via 選擇門市
+// 1.14.2 — CONSERVATIVE recovery (unattended Mac): never while a real verdict landed in
+// the last 5 min; only after ≥3 consecutive definitive misses spanning ≥2 min; a
+// byIDData timeout / network error is transient and never counts as a miss.
+const PC_RECOVER_VERDICT_GUARD_MS = 5 * 60 * 1000;
+const PC_RECOVER_MIN_MISSES = 3;
+const PC_RECOVER_MIN_SPAN_MS = 2 * 60 * 1000;
 const PC_HEARTBEAT_EVERY = 12;                // ~60s at the 5s cadence
 const PC_WORKER_STATE_PUSH_MS = 60 * 1000;    // Admin-card mirror cadence (also on change)
 let pcLastKeepaliveAt = 0;
 const pcEv = {
   bootAt: Date.now(), tick: 0, lastAnyNeedStore: false, health: null, rpc: null,
   lastStoreReason: "", lastPhoneReason: "",
-  emap: { tabId: null, url: null, guid: false, error: false, present: false, lastVerdictAt: 0, lastFailAt: 0, reloadAt: 0, reloads: 0, state: null },
+  emap: { tabId: null, url: null, guid: false, error: false, present: false, lastVerdictAt: 0, misses: 0, firstMissAt: 0, lastMissReason: "", reloadAt: 0, reloads: 0, state: null },
   myship: { lastVerdictAt: 0, state: null },
   lastPush: { at: 0, sig: "" },
 };
@@ -406,6 +412,7 @@ async function pcPickEmapTab() {
   const nextId = pick ? pick.id : null, nextGuid = Boolean(pick && pick.guid), nextErr = Boolean(pick && pick.error);
   const changed = nextId !== e.tabId || nextGuid !== e.guid || nextErr !== e.error;
   e.present = Boolean(pick); e.tabId = nextId; e.url = pick ? pick.url : null; e.guid = nextGuid; e.error = nextErr;
+  if (pick && !pick.error && !pick.guid) pcEmapMiss(Date.now(), "probe: eshopGuid not found", false); // one definitive miss per tick
   if (changed) {
     const p = pick && pick.probe;
     const diag = p ? ` section=${p.section ?? "?"} guidSource=${p.guidSource ?? "none"} guidCandidates=${p.guidCandidates ?? 0} endpoint=${p.endpoint ?? "none"}` : "";
@@ -413,16 +420,34 @@ async function pcPickEmapTab() {
   }
   return pick;
 }
+// Evidence recorders — the ONLY writers of the miss ladder.
+function pcEmapVerdict(now) {
+  const e = pcEv.emap;
+  e.lastVerdictAt = now; e.misses = 0; e.firstMissAt = 0; e.lastMissReason = ""; e.reloads = 0;
+}
+function pcEmapMiss(now, reason, transient) {
+  const e = pcEv.emap;
+  if (transient) return;                                          // timeout / network blip: logged by the caller, never counted
+  e.misses += 1; if (!e.firstMissAt) e.firstMissAt = now; e.lastMissReason = String(reason || "");
+}
+// PURE: is a recovery attempt due? (unit-tested by source extraction)
+function pcRecoveryDue(now, e) {
+  if (e.lastVerdictAt && now - e.lastVerdictAt < PC_RECOVER_VERDICT_GUARD_MS) return false;
+  if (e.misses < PC_RECOVER_MIN_MISSES) return false;
+  if (!e.firstMissAt || now - e.firstMissAt < PC_RECOVER_MIN_SPAN_MS) return false;
+  if (e.reloads >= PC_MAX_RELOADS) return false;
+  if (e.reloadAt && now - e.reloadAt < PC_RELOAD_COOLDOWN_MS) return false;
+  return true;
+}
 // PURE derives (unit-tested by source extraction).
 function pcDeriveEmap(now, e) {
   if (!e.present) return "no_tab";
   if (e.error) return "expired";
-  const attemptFailed = e.lastFailAt > e.lastVerdictAt;           // latest byIDData did NOT resolve
-  if (!e.guid || attemptFailed) {
-    if (e.reloads >= PC_MAX_RELOADS) return "dead";              // reloads didn't help → real expiry
-    return (now - e.reloadAt < PC_RELOAD_COOLDOWN_MS) ? "recovering" : "guid_missing";
-  }
-  return (now - e.lastVerdictAt <= PC_RECENT_MS) ? "ok" : "stale";
+  if (e.lastVerdictAt && now - e.lastVerdictAt <= PC_RECENT_MS) return "ok";
+  if (e.reloads >= PC_MAX_RELOADS && e.misses > 0) return "dead"; // recoveries didn't help → real expiry
+  if (e.reloadAt && now - e.reloadAt < PC_RELOAD_COOLDOWN_MS) return "recovering";
+  if (pcRecoveryDue(now, e)) return "guid_missing";               // recovery due this tick
+  return "stale";                                                 // no recent verdict, not (yet) enough evidence to act
 }
 function pcDeriveMyship(now, health, m) {
   if (!health) return "starting";
@@ -442,7 +467,7 @@ async function pcEmapKeepalive() {
   const resp = await pcSendTab(e.tabId, { type: "PC_CHECK_STORE", row: { store_id: PC_KEEPALIVE_STORE } });
   const verdict = resp && resp.store_full_status;
   const alive = verdict === "open" || verdict === "full";
-  if (alive) { e.lastVerdictAt = now; e.reloads = 0; } else { e.lastFailAt = now; }
+  if (alive) pcEmapVerdict(now); else pcEmapMiss(now, `keepalive: ${(resp && resp.store_reason) || "no response"}`, Boolean(resp && resp.transient));
   console.log(`[PC-KEEPALIVE] tab=${e.tabId} store=${PC_KEEPALIVE_STORE} verdict=${verdict ?? "none"} guidFound=${Boolean(resp && resp.guidFound)} sessionAlive=${alive} endpoint=${(resp && resp.endpoint) || "none"}${resp && resp.store_reason ? ` reason="${resp.store_reason}"` : ""}`);
 }
 // SINGLE WRITER of the per-tab status keys + the auto-recovery trigger: a present
@@ -452,9 +477,13 @@ async function pcRefreshTabStatus() {
   const now = Date.now(); const e = pcEv.emap;
   let emapState = pcDeriveEmap(now, e);
   if (emapState === "guid_missing") {
-    try { chrome.tabs.reload(e.tabId); } catch { /* next tick retries */ }
+    // 1.14.2: DIALOG-FREE recovery. tabs.reload on the POST-opened E-Map tab pops
+    // Chrome's "Confirm Form Resubmission" (a human-blocking modal); a GET
+    // re-navigation to the same URL never does. With a live session cookie the
+    // page re-mints the guid; a dead session lands on error.aspx → 'expired' (red).
+    try { chrome.tabs.update(e.tabId, { url: e.url }); } catch { /* next tick retries */ }
     e.reloadAt = now; e.reloads += 1; pcLastKeepaliveAt = 0;     // verify as soon as it lands
-    console.log(`[PC-EMAP] auto-reload tab ${e.tabId} (session not resolving, attempt ${e.reloads}/${PC_MAX_RELOADS})`);
+    console.log(`[PC-EMAP] recover reason=${JSON.stringify(e.lastMissReason || "no guid")} misses=${e.misses} lastVerdictAgo=${e.lastVerdictAt ? Math.round((now - e.lastVerdictAt) / 1000) : "never"}s attempt=${e.reloads}/${PC_MAX_RELOADS} tab=${e.tabId} via=GET ${e.url}`);
     emapState = "recovering";
   }
   const myshipState = pcDeriveMyship(now, pcEv.health && pcEv.health.myship, pcEv.myship);
@@ -568,8 +597,8 @@ async function pcPollMulti() {
         const sResp = await pcSendTab(emapTabId, { type: "PC_CHECK_STORE", row });
         if (sResp && (sResp.store_full_status === "open" || sResp.store_full_status === "full")) storeStatus = sResp.store_full_status;
         // evidence for the per-tab status (single writer in pcTick) + the exact reason
-        if (storeStatus !== null) { pcEv.emap.lastVerdictAt = Date.now(); pcEv.emap.reloads = 0; pcEv.lastStoreReason = ""; }
-        else { pcEv.emap.lastFailAt = Date.now(); pcEv.lastStoreReason = (sResp && sResp.store_reason) || "emap tab not responding"; }
+        if (storeStatus !== null) { pcEmapVerdict(Date.now()); pcEv.lastStoreReason = ""; }
+        else { pcEv.lastStoreReason = (sResp && sResp.store_reason) || "emap tab not responding"; pcEmapMiss(Date.now(), pcEv.lastStoreReason, Boolean(sResp && sResp.transient)); }
       }
       // phone half — the ROW OWNER's GM + phone, never the global config.
       // anon:true → the check runs credential-less so the body ordMobile is the
