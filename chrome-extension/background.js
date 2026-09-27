@@ -358,10 +358,16 @@ async function pcPollMulti() {
       // next poll retries) — NEVER stamp 'unknown' for our own missing tab, or
       // one closed-tab night burns the whole cross-seller queue permanently.
       // A content-script "unknown" (real timeout/session answer) IS written.
+      // Write ONLY a DEFINITIVE verdict. A transient 'unknown' (timeout / redirect
+      // / non-JSON / no tab) is "not learned" → leave the half NULL so the pending
+      // RPC re-selects the row next poll (eventual consistency). Stamping 'unknown'
+      // is non-null → the row would never re-check → a transient hiccup could ship a
+      // genuinely-restricted buyer (audit M1). A permanently-unverifiable row just
+      // keeps retrying — harmless (it still exports; bad data is fixed via edit).
       let storeStatus = null;
       if (row.need_store && emapTabId) {
         const sResp = await pcSendTab(emapTabId, { type: "PC_CHECK_STORE", row });
-        if (sResp && typeof sResp.store_full_status === "string") storeStatus = sResp.store_full_status;
+        if (sResp && (sResp.store_full_status === "open" || sResp.store_full_status === "full")) storeStatus = sResp.store_full_status;
       }
       // phone half — the ROW OWNER's GM + phone, never the global config.
       // anon:true → the check runs credential-less so the body ordMobile is the
@@ -373,11 +379,12 @@ async function pcPollMulti() {
           type: "PC_CHECK_PHONE", row, anon: true,
           config: { cgdmId: row.gm_id, ordMobile: row.ord_mobile },
         });
-        if (pResp && typeof pResp.phone_check_status === "string") {
+        if (pResp) { pTokenMs = pResp.tokenMs ?? null; pPostMs = pResp.postMs ?? null; }
+        // DEFINITIVE only (audit M1): 'unknown' → leave null → retry next poll.
+        if (pResp && (pResp.phone_check_status === "ok" || pResp.phone_check_status === "restricted")) {
           phoneStatus = pResp.phone_check_status;
           phoneMessage = pResp.phone_check_message ?? null;
           phoneUntil = pResp.phone_restricted_until ?? null;
-          pTokenMs = pResp.tokenMs ?? null; pPostMs = pResp.postMs ?? null;
         }
       }
       // nothing learned (both halves null) → no verdict write, row retries later

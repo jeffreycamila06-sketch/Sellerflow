@@ -183,6 +183,14 @@ describe("extension wiring pins (background.js multi-seller path)", () => {
     expect(multi).toContain("[PC-LAT]");
     expect(multi).toContain("row.created_at");
   });
+
+  it("DEFINITIVE-ONLY writes (audit M1): a transient 'unknown' is NOT stamped — only ok/restricted (phone) and open/full (store) are written, so a hiccup can't permanently un-check a restricted buyer", () => {
+    expect(multi).toContain('pResp.phone_check_status === "ok" || pResp.phone_check_status === "restricted"');
+    expect(multi).toContain('sResp.store_full_status === "open" || sResp.store_full_status === "full"');
+    // the old unconditional "any string" accept is gone
+    expect(multi).not.toContain('typeof pResp.phone_check_status === "string"');
+    expect(multi).not.toContain('typeof sResp.store_full_status === "string"');
+  });
 });
 
 describe("app wiring pins", () => {
