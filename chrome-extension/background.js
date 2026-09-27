@@ -395,17 +395,22 @@ async function pcPickEmapTab() {
   const tabs = await new Promise((res) => { try { chrome.tabs.query({ url: PC_EMAP_PATTERNS }, (t) => res(t || [])); } catch { res([]); } });
   const cands = [];
   for (const t of tabs) {
-    const url = String(t.url || ""); const error = /\/ecmap\/error\.aspx/i.test(url);
-    let guid = false;
-    if (!error) { const p = await pcSendTab(t.id, { type: "PC_EMAP_PROBE" }); guid = Boolean(p && p.guidFound); }
-    cands.push({ id: t.id, url, guid, error });
+    // error.aspx on either map section (/ecmap/ desktop, /MobileMap/ mobile — the one 選擇門市 opens now)
+    const url = String(t.url || ""); const error = /\/(ecmap|mobilemap)\/error\.aspx/i.test(url);
+    let guid = false, probe = null;
+    if (!error) { probe = await pcSendTab(t.id, { type: "PC_EMAP_PROBE" }); guid = Boolean(probe && probe.guidFound); }
+    cands.push({ id: t.id, url, guid, error, probe });
   }
   const pick = pcChooseEmap(cands, pcEv.emap.tabId);
   const e = pcEv.emap;
   const nextId = pick ? pick.id : null, nextGuid = Boolean(pick && pick.guid), nextErr = Boolean(pick && pick.error);
   const changed = nextId !== e.tabId || nextGuid !== e.guid || nextErr !== e.error;
   e.present = Boolean(pick); e.tabId = nextId; e.url = pick ? pick.url : null; e.guid = nextGuid; e.error = nextErr;
-  if (changed) console.log(`[PC-EMAP] using tab ${e.tabId ?? "none"} ${e.url ?? ""} guid=${e.guid} error=${e.error} (candidates=${cands.length})`);
+  if (changed) {
+    const p = pick && pick.probe;
+    const diag = p ? ` section=${p.section ?? "?"} guidSource=${p.guidSource ?? "none"} guidCandidates=${p.guidCandidates ?? 0} endpoint=${p.endpoint ?? "none"}` : "";
+    console.log(`[PC-EMAP] using tab ${e.tabId ?? "none"} ${e.url ?? ""} guid=${e.guid} error=${e.error} (candidates=${cands.length})${diag}`);
+  }
   return pick;
 }
 // PURE derives (unit-tested by source extraction).
@@ -438,7 +443,7 @@ async function pcEmapKeepalive() {
   const verdict = resp && resp.store_full_status;
   const alive = verdict === "open" || verdict === "full";
   if (alive) { e.lastVerdictAt = now; e.reloads = 0; } else { e.lastFailAt = now; }
-  console.log(`[PC-KEEPALIVE] tab=${e.tabId} store=${PC_KEEPALIVE_STORE} verdict=${verdict ?? "none"} guidFound=${Boolean(resp && resp.guidFound)} sessionAlive=${alive}`);
+  console.log(`[PC-KEEPALIVE] tab=${e.tabId} store=${PC_KEEPALIVE_STORE} verdict=${verdict ?? "none"} guidFound=${Boolean(resp && resp.guidFound)} sessionAlive=${alive} endpoint=${(resp && resp.endpoint) || "none"}${resp && resp.store_reason ? ` reason="${resp.store_reason}"` : ""}`);
 }
 // SINGLE WRITER of the per-tab status keys + the auto-recovery trigger: a present
 // tab whose session no longer resolves gets ONE reload per cooldown (a cookie-

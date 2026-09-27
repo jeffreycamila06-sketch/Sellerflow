@@ -193,7 +193,7 @@ describe("extension wiring pins (background.js multi-seller path)", () => {
     // 1.14.0: evidence-based derive (pcDeriveEmap) — error.aspx → "expired", no tab →
     // "no_tab"; the per-tab keys have ONE writer (pcRefreshTabStatus). Behaviour is
     // driven end-to-end in parcelChecker114.test.ts; these are the shape pins.
-    expect(bg).toContain('const error = /\\/ecmap\\/error\\.aspx/i.test(url);');
+    expect(bg).toContain('const error = /\\/(ecmap|mobilemap)\\/error\\.aspx/i.test(url);'); // 1.14.1: both map sections
     expect(bg).toContain('if (!e.present) return "no_tab";');
     expect(bg).toContain('if (e.error) return "expired";');
     expect(bg).toContain("emapDomain"); // which E-Map domain is active (pcsc vs unipcsc)

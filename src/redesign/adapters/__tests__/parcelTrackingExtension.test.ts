@@ -104,11 +104,26 @@ describe("E-Map domain move (2026-09-27) — both domains matched everywhere", (
     expect(bg).toContain('pcHealTab(["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"]');
   });
 
-  it("emap-711 stays origin-relative (no hardcoded emap host in any fetch)", () => {
+  it("emap-711 stays origin-relative (no hardcoded emap host in any fetch); 1.14.1 = per-section endpoint (/mobilemap/ or /ecmap/ byIDData), never a page-context script", () => {
     const emap = readFileSync("chrome-extension/emap-711.js", "utf8");
-    expect(emap).toContain('fetchWithTimeout(`/ecmap/byIDData.aspx');
+    expect(emap).toContain("return [`/${own}/byIDData.aspx`, `/${other}/byIDData.aspx`];");
+    expect(emap).toContain("fetchWithTimeout(`${endpoint}?rnd=${Math.random()}`");
     // the ONLY host mentions are the doc comment — no fetch targets a hardcoded emap origin
     expect(emap).not.toMatch(/fetch[^\n]*https:\/\/emap/);
+    // CSP-safe: no inline <script> injection anywhere in the isolated script
+    expect(emap).not.toMatch(/createElement\(\s*["']script["']\s*\)/);
+    expect(emap).not.toContain("textContent = `(function");
+  });
+
+  it("manifest 1.14.1: the MAIN-world guid helper is registered on BOTH emap domains, before the isolated script, and /mobilemap/ is covered by the wildcard matches", () => {
+    const main = manifest.content_scripts.find((c: { js: string[] }) => c.js.includes("emap-guid-main.js"));
+    expect(main).toBeTruthy();
+    expect(main.world).toBe("MAIN");
+    for (const host of ["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"]) expect(main.matches, host).toContain(host);
+    const idx = (js: string) => manifest.content_scripts.findIndex((c: { js: string[] }) => c.js.includes(js));
+    expect(idx("emap-guid-main.js")).toBeLessThan(idx("emap-711.js"));
+    // "https://emap.unipcsc.com.tw/*" matches https://emap.unipcsc.com.tw/mobilemap/default.aspx (Chrome match-pattern semantics)
+    expect(emapScript.matches.some((m: string) => new RegExp("^" + m.replace(/[.]/g, "\\.").replace(/\*/g, ".*") + "$").test("https://emap.unipcsc.com.tw/mobilemap/default.aspx"))).toBe(true);
   });
 });
 
@@ -116,7 +131,7 @@ describe("self-heal v1.7.0 — statuses recover without manual tab refreshes", (
   const bg = readFileSync("chrome-extension/background.js", "utf8");
 
   it("manifest 1.7.0 + the scripting permission (re-injection needs it)", () => {
-    expect(manifest.version).toBe("1.14.0"); // 1.14.0 = evidence-based per-tab status, emap tab pick, tick-driven keepalive + auto-recovery, boot reset, heartbeat
+    expect(manifest.version).toBe("1.14.1"); // 1.14.1 = mobilemap E-Map: CSP-safe guid read (no inline script) + MAIN-world helper + byIDData endpoint detection
     expect(manifest.permissions).toContain("scripting");
   });
 
