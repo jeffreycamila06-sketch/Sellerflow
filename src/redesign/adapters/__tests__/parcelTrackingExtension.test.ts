@@ -116,7 +116,7 @@ describe("self-heal v1.7.0 — statuses recover without manual tab refreshes", (
   const bg = readFileSync("chrome-extension/background.js", "utf8");
 
   it("manifest 1.7.0 + the scripting permission (re-injection needs it)", () => {
-    expect(manifest.version).toBe("1.12.0"); // 1.12.0 = emap keepalive + never-sleep tabs + accurate session popup
+    expect(manifest.version).toBe("1.13.0"); // 1.13.0 = SFL status refreshed in multi mode + defensive wraps + boot beacon
     expect(manifest.permissions).toContain("scripting");
   });
 
