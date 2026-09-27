@@ -15,6 +15,7 @@ export const PARCEL_CHECK_PUBLIC = false;
 export const PARCEL_CHECK_PREVIEW_EMAILS: string[] = [
   "googletest@gmail.com",
   "googletest@sellerflowlive.com",
+  "ukaydaily1@gmail.com",          // UkayDaily1 (Pro) — dogfood 2026-09-27
 ];
 export function parcelCheckAllowed(email: string | undefined | null, role?: string | null): boolean {
   if (PARCEL_CHECK_PUBLIC) return true;

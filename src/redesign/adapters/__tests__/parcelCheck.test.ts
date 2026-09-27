@@ -41,17 +41,18 @@ describe("validOrdMobile — the 7-11 shipping phone rule", () => {
 });
 
 describe("DOGFOOD GATE — exact allowlist (NO budgetukay* prefix this time, deliberate)", () => {
-  it("flip is OFF; the exact five emails + admins pass; everyone else fails", () => {
+  it("flip is OFF; the allowlisted emails + admins pass; everyone else fails", () => {
     expect(PARCEL_CHECK_PUBLIC).toBe(false);
     expect(PARCEL_CHECK_PREVIEW_EMAILS).toEqual([
       "googletest@gmail.com", "googletest@sellerflowlive.com",
+      "ukaydaily1@gmail.com", // added to dogfood 2026-09-27
     ]);
-    // Trimmed to googletest + admins only (owner 2026-09-27) while debugging —
-    // NO production shop is gated. Each pinned NOT allowed → byte-unchanged
-    // Parcel Scan (no gate, no Settings card).
+    // Still allowlist-only (not public). sanggalanglhea + budgetukay5 remain OFF;
+    // ukaydaily1 is now ON. Non-allowlisted sellers = byte-unchanged Parcel Scan.
     expect(parcelCheckAllowed("sanggalanglhea@gmail.com", "seller")).toBe(false);
     expect(parcelCheckAllowed("budgetukay5@gmail.com", "seller")).toBe(false);
-    expect(parcelCheckAllowed("ukaydaily1@gmail.com", "seller")).toBe(false);
+    expect(parcelCheckAllowed("ukaydaily1@gmail.com", "seller")).toBe(true); // now allowed
+    expect(parcelCheckAllowed("UKAYDAILY1@GMAIL.COM", "seller")).toBe(true); // case-insensitive
     for (const e of PARCEL_CHECK_PREVIEW_EMAILS) expect(parcelCheckAllowed(e, "seller"), e).toBe(true);
     expect(parcelCheckAllowed("GOOGLETEST@GMAIL.COM", "seller")).toBe(true); // case-insensitive
     expect(parcelCheckAllowed("anyone@x.com", "admin")).toBe(true);
