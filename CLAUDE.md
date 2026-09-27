@@ -4275,3 +4275,20 @@ Full audit (D1–D10) → ONE clean version. Worker (`chrome-extension/backgroun
 - Tests: `parcelCheckerHarness.ts` (shared vm harness), `parcelCheckerBoot.test.ts`
   (+boot reset), `parcelChecker114.test.ts` (multi-emap pick · recency · reload ladder ·
   keepalive cadence over a 30-min idle gap · stale myship · Admin card). 8 sabotages red.
+- **1.14.1 (2026-09-27) — mobilemap E-Map root cause.** 選擇門市 now opens
+  `emap.unipcsc.com.tw/mobilemap/default.aspx` (mobile map, strict CSP
+  `script-src 'self' 'wasm-unsafe-eval'`) — the old guid read injected an inline
+  `<script>` → 193× CSP errors → `guidFound=false` → store verdicts null. Fix: **no
+  page-context execution** — guid from TEXT (URL query, inline script SOURCE
+  `var eshopGuid="…"`, hidden inputs / data attrs) + a MAIN-world helper
+  `emap-guid-main.js` (manifest `"world":"MAIN"`, CSP-exempt) relaying
+  `window.eshopGuid` over a CustomEvent. byIDData = per-section endpoint
+  (`/mobilemap/` first on a mobilemap tab, `/ecmap/` fallback, same origin/session;
+  working one remembered). `/MobileMap/error.aspx` counts as error.aspx for the tab
+  pick. Tab console logs `[PC-EMAP] mobilemap: guid candidates=<n> source=… endpoint=…`
+  once per page; the worker's `[PC-EMAP] using tab` line carries section/guidSource/
+  endpoint. Tests: `parcelCheckerEmap.test.ts` (jsdom fixtures ecmap + mobilemap,
+  CSP-error absence = no `<script>` created, endpoint fallback + memory, MAIN relay).
+  ⚠️ Unverified from here: whether the real mobilemap page exposes `eshopGuid` at all
+  and whether `/mobilemap/byIDData.aspx` answers (anonymous probes bounce to
+  error.aspx) — the diagnostic line answers both on the owner's laptop.
