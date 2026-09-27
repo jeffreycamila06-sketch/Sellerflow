@@ -1838,7 +1838,7 @@ export default function RedesignApp() {
           {screen === "shipping" && !hideShipping && <Shipping cur={cur} buyers={liveSession.session.buyers} sessionKey={sessionKeyFor(liveSession.dayId, sessionWindow.windowStart, sessionWindow.windowDays)} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}
           {screen === "parcelscan" && parcelAllowed && (
             <MyshipScanGate t={tApp} enabled={parcelCheckOn} onExit={() => setScreen("menu")}>
-              <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} />
+              <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} checkOn={parcelCheckOn} />
             </MyshipScanGate>
           )}
           {screen === "customerdetails" && parcelAllowed && <CustomerDetails cur={cur} />}

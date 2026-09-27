@@ -99,12 +99,18 @@ describe("sql/53 contract pins", () => {
     expect(sql).toContain("parcel_check_multi_enabled");
     expect(sql).toContain("coalesce(v_enabled, 'false') <> 'true'");
   });
-  it("cache: unknown never cached; restricted honors restricted_until; ok = 7 days; cache table client-locked", () => {
+  it("cache: unknown never cached; restricted honors restricted_until; ok TTL = tunable 4h constant; cache table client-locked", () => {
     expect(sql).toContain("check (status in ('ok','restricted'))"); // 'unknown' can't even be stored
     expect(sql).toContain("if p_phone_check_status in ('ok','restricted') then");
     expect(sql).toContain("c.restricted_until >= (now() at time zone 'Asia/Taipei')::date");
-    expect(sql).toContain("c.checked_at > now() - interval '7 days'");
+    expect(sql).toContain("v_ok_ttl constant interval := interval '4 hours';"); // tunable short TTL
+    expect(sql).toContain("c.checked_at > now() - v_ok_ttl");
+    expect(sql).not.toContain("interval '7 days'"); // the old TTL is gone
     expect(sql).toContain("revoke all on public.phone_check_cache from anon, authenticated;");
+  });
+
+  it("pending RPC returns created_at (for encode→verdict latency logging)", () => {
+    expect(sql).toContain("queue_depth bigint, created_at timestamptz");
   });
   it("verdict whitelist + null-half semantics", () => {
     expect(sql).toContain("not in ('open','full','unknown')");
@@ -152,6 +158,30 @@ describe("extension wiring pins (background.js multi-seller path)", () => {
     expect(multi).toContain("pcInFlight.has(row.id)");
     expect(multi).toContain("pcInFlight.delete(row.id)");
     expect(multi).toContain("await pcSleep(PC_ROW_GAP_MS)");
+  });
+
+  it("ANONYMOUS phone check (the core fix): the multi lane sends anon:true so the body ordMobile is authoritative (login irrelevant)", () => {
+    expect(multi).toContain("type: \"PC_CHECK_PHONE\", row, anon: true,");
+    // and the content script honors it end-to-end: omit credentials for BOTH
+    // the per-GM token GET and the CheckoutValidation POST
+    const ms = readFileSync("chrome-extension/myship-711.js", "utf8");
+    expect(ms).toContain("checkRestricted(message.row, message.config || {}, message.anon === true)");
+    expect(ms).toContain("const creds = anon ? \"omit\" : \"include\";");
+    expect(ms).toContain("}, \"omit\");"); // anon token GET
+    // legacy path stays credentialed (byte-unchanged): the parametrized default
+    expect(ms).toContain("credentials: creds || \"include\"");
+  });
+
+  it("KILLS THE TWO-LANE RACE: legacy pcPoll returns before its row loop in multi mode (popup config never processes rows)", () => {
+    const legacy = bg.slice(bg.indexOf("async function pcPoll("), bg.indexOf("async function pcPollMulti"));
+    expect(legacy).toContain("if (cfg.multiSeller) {");
+    // the early return sits BEFORE the legacy row fetch
+    expect(legacy.indexOf("if (cfg.multiSeller) {")).toBeLessThan(legacy.indexOf("pcFetchUnchecked(cfg, token)"));
+  });
+
+  it("latency logging: encode→verdict + anon token/POST costs", () => {
+    expect(multi).toContain("[PC-LAT]");
+    expect(multi).toContain("row.created_at");
   });
 });
 
