@@ -1308,14 +1308,20 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                       {canRecheck && <button onClick={() => runStoreCheck(r.id, r.storeId)} style={{ marginLeft: 8, padding: "1px 7px", borderRadius: 7, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontSize: 10, fontWeight: 700, cursor: "pointer" }} data-testid="ps-recheck">{t.rd_ps2_recheck}</button>}
                     </div>
                   )}
-                  {/* Verdicts (full / restricted) show as the row's glowing border above
-                      — no per-verdict icon badge, and NO positive "ok" label. For a
-                      restricted buyer we DO keep the small "restricted until <date>"
-                      text (when 7-11 gave a date) so the seller knows when it clears. */}
-                  {r.phoneCheckStatus === "restricted" && r.phoneRestrictedUntil && (
-                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--danger, #dc2626)" }} data-testid="ps-ext-restricted-until">
-                      {tpl(t.rd_ps2_restricted_until, { date: untilDate(r.phoneRestrictedUntil) })}
+                  {/* Verdict labels shown TOGETHER with the row's glowing border above:
+                      ⚠️ Full (+ orange border), 🚫 Restricted · until <date> (+ red border),
+                      ✅ Buyer OK (no border — a passing check is clean). FAIL-SAFE: only
+                      explicit 'full'/'restricted'/'ok' render; null/'unknown' stay quiet. */}
+                  {r.storeFullStatus === "full" && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--warn, #b45309)" }} data-testid="ps-ext-badge-full">⚠️ {t.rd_ps2_full}</div>
+                  )}
+                  {r.phoneCheckStatus === "restricted" && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--danger, #dc2626)" }} data-testid="ps-ext-badge-restricted">
+                      🚫 {t.rd_ps2_restricted}{r.phoneRestrictedUntil ? ` · ${tpl(t.rd_ps2_restricted_until, { date: untilDate(r.phoneRestrictedUntil) })}` : ""}
                     </div>
+                  )}
+                  {r.phoneCheckStatus === "ok" && (
+                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--ok, #16a34a)" }} data-testid="ps-ext-clear" title={t.rd_ps2_phone_ok}>✅ {t.rd_ps2_phone_ok}</div>
                   )}
                   {r.phoneCheckStatus === "unknown" && (
                     <div style={{ fontSize: 10, marginTop: 3, color: "var(--text-dim)" }} data-testid="ps-ext-phone-unchecked">{t.rd_ps2_phone_unchecked}</div>

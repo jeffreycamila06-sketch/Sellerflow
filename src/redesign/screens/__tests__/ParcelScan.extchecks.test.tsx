@@ -84,29 +84,29 @@ describe("Parcel Scan — verdict row highlight (border, FAIL-SAFE, no positive 
     expect(flag(await findByTestId("ps-row"))).toBe("");
   });
 
-  it("store 'full' → ORANGE border + Full tab + recheck button; NO text badge", async () => {
+  it("store 'full' → ⚠️ Full badge + ORANGE border + Full tab + recheck button", async () => {
     loadRows.current = [mk({ storeFullStatus: "full" })];
-    const { findByTestId, getByTestId, queryByTestId } = view();
+    const { findByTestId, getByTestId } = view();
     expect(flag(await findByTestId("ps-row"))).toBe("orange");
+    expect(getByTestId("ps-ext-badge-full")).toBeTruthy();    // ⚠️ badge restored
     expect(getByTestId("ps-tab-full").textContent).toContain("1");
     expect(getByTestId("ps-ext-recheck")).toBeTruthy();       // action affordance kept
-    expect(queryByTestId("ps-ext-badge-full")).toBeNull();    // badge removed
   });
 
-  it("phone 'restricted' → RED border + Restricted tab + small 'until <date>' text; NO icon badge", async () => {
+  it("phone 'restricted' → 🚫 badge (+ until <date>) + RED border + Restricted tab", async () => {
     loadRows.current = [mk({ phoneCheckStatus: "restricted", phoneRestrictedUntil: "2026-12-04" })];
-    const { findByTestId, getByTestId, queryByTestId } = view();
+    const { findByTestId, getByTestId } = view();
     expect(flag(await findByTestId("ps-row"))).toBe("red");
     expect(getByTestId("ps-tab-restricted").textContent).toContain("1");
-    expect(queryByTestId("ps-ext-badge-restricted")).toBeNull();      // no icon badge
-    expect(getByTestId("ps-ext-restricted-until").textContent).toMatch(/Dec\s*4|12月|4 thg 12|4 Des|4 ธ/); // until-date kept
+    const badge = getByTestId("ps-ext-badge-restricted");     // 🚫 badge restored
+    expect(badge.textContent).toMatch(/Dec\s*4|12月|4 thg 12|4 Des|4 ธ/); // with the until-date
   });
 
-  it("restricted with NO until-date → RED border, no date line (no crash)", async () => {
+  it("restricted with NO until-date → 🚫 badge (no date) + RED border (no crash)", async () => {
     loadRows.current = [mk({ phoneCheckStatus: "restricted", phoneRestrictedUntil: null })];
-    const { findByTestId, queryByTestId } = view();
+    const { findByTestId, getByTestId } = view();
     expect(flag(await findByTestId("ps-row"))).toBe("red");
-    expect(queryByTestId("ps-ext-restricted-until")).toBeNull();
+    expect(getByTestId("ps-ext-badge-restricted")).toBeTruthy();
   });
 
   it("wrong store code (storeCheckStatus 'not_found') → RED border + the fix (recheck) affordance", async () => {
@@ -122,11 +122,11 @@ describe("Parcel Scan — verdict row highlight (border, FAIL-SAFE, no positive 
     expect(flag(await findByTestId("ps-row"))).toBe("red");
   });
 
-  it("'open' + 'ok' → CLEAN: no border, NO positive label", async () => {
+  it("'open' + 'ok' → NO border (clean) but ✅ Buyer OK label present", async () => {
     loadRows.current = [mk({ storeFullStatus: "open", phoneCheckStatus: "ok" })];
-    const { findByTestId, queryByTestId } = view();
-    expect(flag(await findByTestId("ps-row"))).toBe("");
-    expect(queryByTestId("ps-ext-clear")).toBeNull();   // no "buyer ok" label anymore
+    const { findByTestId, getByTestId } = view();
+    expect(flag(await findByTestId("ps-row"))).toBe("");    // ok stays borderless
+    expect(getByTestId("ps-ext-clear")).toBeTruthy();       // ✅ label restored
   });
 
   // The independent-phone-half behavior still holds under the border model.
