@@ -6,7 +6,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { ACCENT_ORDER, ACCENTS, LANGS, CURRENCIES, CURRENCY_ORDER, type ThemeMode, type AccentKey, type AutoControls } from "../data";
 import { headerBar, headerTitle, card, sectionLabel } from "../ui";
-import { MyshipConfigForm } from "../components/MyshipSetup";
+import { MyshipConfigCard } from "../components/MyshipSetup";
 import { profileToDisplay, planLabel, renewLabel } from "../adapters/useAuthSession";
 import { validatePhone, DEFAULT_COUNTRY } from "../adapters/phone";
 import CountryPhoneField from "../components/CountryPhoneField";
@@ -38,7 +38,7 @@ function MyshipCheckCard({ t }: { t: T }) {
   return (
     <div style={{ marginTop: 14 }}>
       <div className="sfl-anim-textglow" style={sectionLabel}>{t.rd_mc_title}</div>
-      <div style={card}><MyshipConfigForm t={t} /></div>
+      <div style={card}><MyshipConfigCard t={t} /></div>
     </div>
   );
 }
