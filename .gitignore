@@ -40,3 +40,16 @@ server/scratch/
 
 # Local vendor reference samples (SHOPMORE fixtures etc.) — never commit
 vendor/
+
+# Build artifacts + tooling accidentally committed via `git add -A` (2026-09-27) —
+# untrack + ignore. mobile/www keeps its pre-existing tracked entries (gitignore
+# only affects untracked files); new build output there stays ignored.
+/www/
+/graphify-out/
+/.claude/
+/supabase/.temp/
+*.bak
+mobile/www/
+mobile/ios/App/golden
+mobile/ios/App/manifest.json
+mobile/ios/App/payloads
