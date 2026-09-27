@@ -131,7 +131,7 @@ describe("self-heal v1.7.0 — statuses recover without manual tab refreshes", (
   const bg = readFileSync("chrome-extension/background.js", "utf8");
 
   it("manifest 1.7.0 + the scripting permission (re-injection needs it)", () => {
-    expect(manifest.version).toBe("1.14.1"); // 1.14.1 = mobilemap E-Map: CSP-safe guid read (no inline script) + MAIN-world helper + byIDData endpoint detection
+    expect(manifest.version).toBe("1.14.2"); // 1.14.2 = conservative E-Map recovery ladder (≥3 misses / ≥2 min / 5-min verdict guard / timeouts never count) + dialog-free GET re-open
     expect(manifest.permissions).toContain("scripting");
   });
 
@@ -158,15 +158,17 @@ describe("self-heal v1.7.0 — statuses recover without manual tab refreshes", (
     expect(bg).toContain('"sellerflow-bridge.js", false');                       // allowReload=false
     expect(bg).toContain('pcHealTab(["https://myship.7-11.com.tw/*"], "myship-711.js", true)');
     expect(bg).toContain('"emap-711.js", true)');
-    // exactly TWO reload sites, neither can reach the SFL tab: pcHealTab (behind the
-    // allowReload gate) and the 1.14.0 emap session recovery (targets the picked
-    // emap tab only — pcPickEmapTab queries the two emap origins exclusively).
+    // exactly ONE reload site (pcHealTab, behind the allowReload gate, discarded tabs
+    // only). The 1.14.2 emap session recovery is a GET re-navigation (tabs.update
+    // {url}) — tabs.reload on the POST-opened E-Map tab pops Chrome's "Confirm Form
+    // Resubmission" modal, which no unattended worker can dismiss.
     const heal = bg.slice(bg.indexOf("async function pcHealTab"), bg.indexOf("function pcTokenExpired"));
     expect(heal).toContain('if (!allowReload) return { state: "asleep"');
-    expect((bg.match(/chrome\.tabs\.reload\(/g) || []).length).toBe(2);
+    expect((bg.match(/chrome\.tabs\.reload\(/g) || []).length).toBe(1);
     expect(heal).toContain("chrome.tabs.reload(");
     const recover = bg.slice(bg.indexOf("async function pcRefreshTabStatus"), bg.indexOf("async function pcPushWorkerState"));
-    expect(recover).toContain("chrome.tabs.reload(e.tabId)");
+    expect(recover).not.toContain("chrome.tabs.reload(");
+    expect(recover).toContain("chrome.tabs.update(e.tabId, { url: e.url })");
     expect(bg).toContain('const PC_EMAP_PATTERNS = ["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"];');
     expect(bg).toContain("chrome.tabs.query({ url: PC_EMAP_PATTERNS }");
   });

@@ -4292,3 +4292,20 @@ Full audit (D1–D10) → ONE clean version. Worker (`chrome-extension/backgroun
   ⚠️ Unverified from here: whether the real mobilemap page exposes `eshopGuid` at all
   and whether `/mobilemap/byIDData.aspx` answers (anonymous probes bounce to
   error.aspx) — the diagnostic line answers both on the owner's laptop.
+- **1.14.2 (2026-09-27) — unattended E-Map recovery (A only; B not shipped).**
+  Ladder is CONSERVATIVE: no recovery while a verdict landed in the last 5 min (and
+  the badge stays green 6 min); needs ≥3 consecutive definitive misses spanning ≥2 min
+  (`pcRecoveryDue`, pure); byIDData timeouts / network / 5xx are `transient` (emap-711
+  flags them) and NEVER count. Recovery = **`tabs.update({url})` GET re-navigation**,
+  not `tabs.reload` — reload on the POST-opened E-Map tab pops Chrome's "Confirm Form
+  Resubmission" modal. One attempt per 60 s, max 2, then `dead` (red, re-open via
+  選擇門市). Log: `[PC-EMAP] recover reason=… misses=… lastVerdictAgo=…s attempt=n/2`.
+  **B (replay the 選擇門市 POST from an extension page) = NOT shipped.** Findings: the
+  seller-side button is `/mem/usual` → `jsEmap('2')` → `document.forms[formsName].submit()`
+  → a myship POST (`/CPF0103/MU…`) carrying `__RequestVerificationToken` + encrypted
+  name/mobile (`*Enc`) fields → myship renders the emap hop. Capturing/replaying that body
+  = storing antiforgery + encrypted PII in chrome.storage; the live capture was blocked
+  by the permission classifier (credential materialization) and not pursued. Better B′
+  if still wanted: no stored body — navigate the tab to the myship page and let the myship
+  content script CLICK the real 選擇門市 button (the page's own JS posts with its live
+  token). Needs the owner to confirm which page/button they use.
