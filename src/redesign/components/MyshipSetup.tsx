@@ -62,6 +62,36 @@ export function MyshipConfigForm({ t, onSaved }: { t: T; onSaved?: () => void })
   );
 }
 
+// SETTINGS-ONLY collapse: once a GM is saved, show a compact one-liner
+// "賣貨便: GM260909… ✓ · Change" instead of the full form; Change expands the
+// SAME MyshipConfigForm inline (saving collapses back). No GM yet → full form,
+// as today. Used ONLY by the Settings card — the Parcel Scan gate keeps the raw
+// form (its first-time modal is unchanged).
+export function MyshipConfigCard({ t }: { t: T }) {
+  const [gm, setGm] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [changing, setChanging] = useState(false);
+  const reload = () => loadMyshipConfig().then((c) => setGm(c && c.gmId ? c.gmId : null));
+  useEffect(() => {
+    let live = true;
+    void loadMyshipConfig().then((c) => { if (!live) return; setGm(c && c.gmId ? c.gmId : null); setLoaded(true); });
+    return () => { live = false; };
+  }, []);
+  if (!loaded) return null; // don't flash the full form before we know a GM is saved
+  if (gm && !changing) {
+    return (
+      <div data-testid="mc-compact" style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 12.5, color: "var(--text)", fontWeight: 600 }}>
+          賣貨便: <span style={{ fontFamily: "var(--font-mono)" }}>{gm.slice(0, 8)}…</span>{" "}
+          <span aria-label={t.rd_mc_set} title={t.rd_mc_set} style={{ color: "var(--ok)", fontWeight: 800 }}>✓</span>
+        </span>
+        <button data-testid="mc-change" onClick={() => setChanging(true)} style={{ background: "none", border: "none", color: "var(--accent)", fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: 0, fontFamily: "var(--font-ui)" }}>· {t.rd_mc_change}</button>
+      </div>
+    );
+  }
+  return <MyshipConfigForm t={t} onSaved={() => { setChanging(false); void reload(); }} />;
+}
+
 // PARCEL SCAN HARD GATE: no seller_myship_config row → a blocking setup modal;
 // no config = cannot encode. enabled=false (non-allowlisted / non-TW) →
 // pass-through, screen byte-unchanged, config never even loaded. While the

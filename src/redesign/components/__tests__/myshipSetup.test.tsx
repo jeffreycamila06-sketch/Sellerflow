@@ -3,7 +3,7 @@
 // non-covered sellers get a byte-unchanged screen (config never even loaded).
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
-import { MyshipScanGate } from "../MyshipSetup";
+import { MyshipScanGate, MyshipConfigCard } from "../MyshipSetup";
 
 const mocks = vi.hoisted(() => ({
   load: vi.fn(),
@@ -95,5 +95,30 @@ describe("MyshipScanGate", () => {
     await waitFor(() => expect(screen.getByTestId("mc-gate-back")).toBeTruthy());
     fireEvent.click(screen.getByTestId("mc-gate-back"));
     expect(onExit).toHaveBeenCalledTimes(1);
+  });
+});
+
+// SETTINGS-ONLY collapse (MyshipConfigCard): saved GM → compact line, full form
+// hidden until Change; no GM → full form as today. Parcel Scan gate untouched.
+describe("MyshipConfigCard (Settings)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("with a saved config → compact line (masked GM + ✓ set), the form is HIDDEN until Change", async () => {
+    mocks.load.mockResolvedValue({ gmId: "GM2609096099718", ordMobile: "", shopName: "ukaydaily", verifiedAt: "x" });
+    render(<MyshipConfigCard t={T} />);
+    await waitFor(() => expect(screen.getByTestId("mc-compact")).toBeTruthy());
+    expect(screen.getByTestId("mc-compact").textContent).toContain("GM260909…"); // first 8 + …
+    expect(screen.getByLabelText("rd_mc_set")).toBeTruthy();                       // the ✓ "set" label
+    expect(screen.queryByTestId("mc-gm")).toBeNull();                              // form hidden
+    fireEvent.click(screen.getByTestId("mc-change"));                              // Change → expand
+    await waitFor(() => expect(screen.getByTestId("mc-gm")).toBeTruthy());
+    expect((screen.getByTestId("mc-gm") as HTMLInputElement).value).toBe("GM2609096099718"); // prefilled
+  });
+
+  it("with NO config → the full form shows immediately (no compact line)", async () => {
+    mocks.load.mockResolvedValue(null);
+    render(<MyshipConfigCard t={T} />);
+    await waitFor(() => expect(screen.getByTestId("mc-gm")).toBeTruthy());
+    expect(screen.queryByTestId("mc-compact")).toBeNull();
   });
 });
