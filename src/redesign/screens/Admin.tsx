@@ -270,11 +270,17 @@ function CheckQueueBlock() {
   if (st === null || st === "err") return null; // quiet block — the panel's main content stands alone
   const n = (k: string) => String(st[k] ?? 0);
   const top = Array.isArray(st.top_sellers) ? (st.top_sellers as { email?: string; pending?: number }[]) : [];
+  const senderPoisoned = String(st.sender_healthy) === "false"; // health-check tripped → lane paused
   return (
     <div data-testid="pm-checkqueue" style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 13, padding: "11px 12px" }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)" }}>Store/phone check queue {String(st.enabled) === "true" ? "· ON" : "· OFF"}</div>
+      {senderPoisoned && (
+        <div data-testid="pm-sender-poisoned" style={{ fontSize: 11, fontWeight: 800, color: "var(--danger, #dc2626)", marginTop: 4 }}>
+          ⚠️ Check sender {String(st.sender_phone ?? "")} is RESTRICTED — verdicts PAUSED. Swap parcel_check_sender_phone to a clean account.
+        </div>
+      )}
       <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4, fontFamily: mono }}>
-        queue {n("queue_depth")} · oldest {n("oldest_pending_min")}m · awaiting setup {n("awaiting_setup")} · cache {n("cache_size")}
+        queue {n("queue_depth")} · oldest {n("oldest_pending_min")}m · awaiting setup {n("awaiting_setup")} · cache {n("cache_size")} · sender {String(st.sender_phone ?? "—")}
       </div>
       {top.length > 0 && (
         <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3 }}>

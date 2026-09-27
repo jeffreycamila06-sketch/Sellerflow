@@ -83,13 +83,22 @@ describe("server/myshipValidate — parseGmPage (probe-verified page shape)", ()
 describe("sql/53 contract pins", () => {
   const sql = readFileSync("sql/53_multi_seller_parcel_check.sql", "utf8");
   it("all 3 RPCs gate on is_admin() inside the body", () => {
-    expect(sql.match(/if not public\.is_admin\(\) then/g)?.length).toBe(3);
+    expect(sql.match(/if not public\.is_admin\(\) then/g)?.length).toBe(5); // pending, verdict, stats, config, set-health
   });
-  it("ATTRIBUTION: the pending select INNER JOINs each seller's OWN config, non-empty only", () => {
+  it("ATTRIBUTION: the pending select INNER JOINs each seller's OWN config; GM-only eligibility (phone no longer required)", () => {
     expect(sql).toContain("join seller_myship_config cfg");
     expect(sql).toContain("cfg.user_id = ps.user_id");
-    expect(sql).toContain("coalesce(cfg.gm_id, '')      <> ''");
-    expect(sql).toContain("coalesce(cfg.ord_mobile, '') <> ''");
+    expect(sql).toContain("coalesce(cfg.gm_id, '') <> ''");
+    expect(sql).not.toContain("coalesce(cfg.ord_mobile, '') <> ''"); // phone is optional now
+  });
+  it("SENDER: one admin CHECK_SENDER_PHONE returned for every row; lane pauses when the sender is unhealthy", () => {
+    expect(sql).toContain("v_sender as sender_phone");              // fixed sender returned per row
+    expect(sql).toContain("parcel_check_sender_phone");
+    expect(sql).toContain("parcel_check_sender_healthy");
+    expect(sql).toContain("if coalesce(v_healthy, 'true') <> 'true' then"); // health gate → pause
+    // config + health-setter RPCs exist for the health-check loop
+    expect(sql).toContain("function public.admin_parcel_check_config()");
+    expect(sql).toContain("function public.admin_set_parcel_sender_health(p_ok boolean)");
   });
   it("FAIRNESS: round-robin rank per seller by AGE, rank-first ordering", () => {
     expect(sql).toContain("row_number() over (partition by ps.user_id order by ps.created_at asc) as seller_rank");
@@ -131,10 +140,22 @@ describe("extension wiring pins (background.js multi-seller path)", () => {
     expect(legacy).toContain("cgdmId: cfg.cgdmId"); // legacy path untouched
   });
 
-  it("ATTRIBUTION HARD RULE: the multi path sends ONLY the row owner's GM + phone — the popup's global config never appears", () => {
-    expect(multi).toContain("config: { cgdmId: row.gm_id, ordMobile: row.ord_mobile }");
+  it("ATTRIBUTION HARD RULE: shop = row owner's OWN GM; sender = the fixed CHECK_SENDER_PHONE (row.sender_phone), NEVER a per-seller or popup phone", () => {
+    expect(multi).toContain("config: { cgdmId: row.gm_id, ordMobile: row.sender_phone }");
     expect(multi).not.toContain("cfg.cgdmId");
     expect(multi).not.toContain("cfg.ordMobile");
+    expect(multi).not.toContain("ordMobile: row.ord_mobile"); // the per-seller phone must NOT be the sender
+  });
+
+  it("SENDER HEALTH-CHECK: a known-clean probe buyer through the sender; restricted → pause (set health false), never mass-flag", () => {
+    expect(bg).toContain("async function pcSenderHealthCheck");
+    expect(bg).toContain("/rest/v1/rpc/admin_parcel_check_config");
+    expect(bg).toContain("/rest/v1/rpc/admin_set_parcel_sender_health");
+    // restricted probe → health false (pause); ok while unhealthy → recover
+    expect(bg).toContain('if (st === "restricted") {');
+    expect(bg).toContain("setHealth(false)");
+    expect(bg).toContain("setHealth(true)");
+    expect(bg).toContain("ordMobile: conf.sender_phone"); // probe uses the sender as ordMobile
   });
 
   it("consumes the two admin RPCs and honors need_phone/need_store (nulls for skipped halves)", () => {
