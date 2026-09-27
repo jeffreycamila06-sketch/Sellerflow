@@ -122,8 +122,47 @@
     }
   }
 
+  // ── 1.14.3 — UNATTENDED E-MAP RE-MINT ─────────────────────────────────────
+  // When the worker's E-Map session is dead it asks THIS tab (parked on
+  // /cart/detail, 填寫付款資料) to click the real 選擇取貨門市 button. The page's
+  // own jsEmap() then POSTs with its live antiforgery token → a fresh E-Map
+  // session. We store NOTHING and touch NO field. HARD GUARDS: only on
+  // /cart/detail; only a button whose inline onclick is jsEmap(…) AND whose text
+  // is 選擇取貨門市 / Select Pickup Location; NEVER an explicit type=submit /
+  // input[type=submit]; NEVER anything whose text/id/name smells like
+  // 送出結帳 / submit / checkout / 付款 / 購買. Test-pinned.
+  const PICK_TEXT_RE = /選擇取貨門市|SelectPickupLocation/i;
+  const FORBIDDEN_RE = /送出|結帳|submit|checkout|付款|購買|order|下一步|next/i;
+  function pcSafeToClick(el, text) {
+    const explicitType = String(el.getAttribute("type") || "").toLowerCase();
+    if (explicitType === "submit") return false;
+    if (el.tagName === "INPUT" && explicitType !== "button") return false;
+    if (FORBIDDEN_RE.test(`${text} ${el.id || ""} ${el.getAttribute("name") || ""}`)) return false;
+    return true;
+  }
+  function pcFindPickStoreButton(doc, pathname) {
+    if (!/^\/cart\/detail/i.test(String(pathname || ""))) return { btn: null, reason: `not on /cart/detail (on ${pathname})` };
+    const cands = doc.querySelectorAll("button, input[type=button], a");
+    for (let i = 0; i < cands.length; i++) {
+      const el = cands[i];
+      const text = String(el.innerText || el.value || el.textContent || "").replace(/\s+/g, "");
+      const onclick = String(el.getAttribute("onclick") || "").trim();
+      if (!/^jsEmap\(/.test(onclick) || !PICK_TEXT_RE.test(text)) continue;
+      if (!pcSafeToClick(el, text)) return { btn: null, reason: "選擇取貨門市 candidate rejected by the submit guard" };
+      return { btn: el, reason: "" };
+    }
+    return { btn: null, reason: "選擇取貨門市 button not found on this page" };
+  }
+  function pcClickPickStore() {
+    const r = pcFindPickStoreButton(document, location.pathname);
+    if (!r.btn) return { ok: true, clicked: false, reason: r.reason };
+    try { r.btn.click(); } catch (e) { return { ok: true, clicked: false, reason: `click threw: ${e && e.message ? e.message : e}` }; }
+    return { ok: true, clicked: true, reason: "", text: String(r.btn.innerText || r.btn.value || "").trim().slice(0, 30) };
+  }
+
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === "PC_PING") { sendResponse({ ok: true, script: "myship" }); return true; }
+    if (message?.type === "PC_CLICK_PICK_STORE") { sendResponse(pcClickPickStore()); return true; }
     if (message?.type !== "PC_CHECK_PHONE" || !message.row) return false;
     (async () => {
       const res = await checkRestricted(message.row, message.config || {}, message.anon === true);

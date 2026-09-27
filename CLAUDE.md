@@ -4309,3 +4309,21 @@ Full audit (D1–D10) → ONE clean version. Worker (`chrome-extension/backgroun
   if still wanted: no stored body — navigate the tab to the myship page and let the myship
   content script CLICK the real 選擇門市 button (the page's own JS posts with its live
   token). Needs the owner to confirm which page/button they use.
+- **1.14.3 (2026-09-27) — B′ unattended re-mint via the parked 賣貨便 tab.** Jeff parks a
+  賣貨便 tab on **`/cart/detail`** (填寫付款資料; NAME/TELEPHONE may stay blank). When the
+  ladder reaches `dead`, the worker sends `PC_CLICK_PICK_STORE` to that tab ONCE per
+  episode; `myship-711.js` clicks the real **選擇取貨門市** button (inline `jsEmap(…)`
+  onclick + that text; page JS posts with its own live token — NOTHING stored). HARD
+  GUARDS (test-pinned): only on `/cart/detail`; never an explicit `type=submit` /
+  `input[type=submit]`; never text/id/name matching 送出|結帳|submit|checkout|付款|購買|
+  order|下一步|next; never writes a field. Then ≤20 s (`reminting`, amber) for a
+  guid-bearing E-Map tab: `pcPickEmapTab` adopts it (`pcAdoptRemintedTab`: closes the
+  old dead tab, `autoDiscardable:false`, fresh ladder, keepalive fires at once) —
+  `tabs.onUpdated` triggers the pick immediately. Log `[PC-EMAP] re-mint via 選擇取貨門市
+  → tab <id> <url> guid=<bool>`. No `/cart/detail` tab → `dead` + reason `no_cart_detail`
+  (popup: "…or park 賣貨便 on /cart/detail for auto re-mint"); click refused → reason
+  `click_refused: …`; nothing within 20 s → `timeout`. Same-tab navigation (the click
+  turning the parked tab into the E-Map tab) is adopted too — that consumes the parked
+  tab (one re-mint per parking). Suite: `parcelCheckerRemint.test.ts` (7 sabotages red).
+  ⚠️ NOT live-verified from the session: reaching `/cart/detail` needs the owner's cart
+  form filled (product row + terms) — Jeff's data, not mine — and the extension reload.

@@ -379,7 +379,11 @@ let pcLastKeepaliveAt = 0;
 const pcEv = {
   bootAt: Date.now(), tick: 0, lastAnyNeedStore: false, health: null, rpc: null,
   lastStoreReason: "", lastPhoneReason: "",
-  emap: { tabId: null, url: null, guid: false, error: false, present: false, lastVerdictAt: 0, misses: 0, firstMissAt: 0, lastMissReason: "", reloadAt: 0, reloads: 0, state: null },
+  emap: { tabId: null, url: null, guid: false, error: false, present: false, lastVerdictAt: 0, misses: 0, firstMissAt: 0, lastMissReason: "", reloadAt: 0, reloads: 0, state: null,
+    // 1.14.3 unattended re-mint (one attempt per 'dead' episode): tried / until (20 s
+    // window while we wait for the new E-Map tab) / oldTabId (closed on adoption) /
+    // result ("" | "no_cart_detail" | "click_refused: …" | "timeout")
+    remint: { tried: false, until: 0, oldTabId: null, result: "" } },
   myship: { lastVerdictAt: 0, state: null },
   lastPush: { at: 0, sig: "" },
 };
@@ -409,6 +413,7 @@ async function pcPickEmapTab() {
   }
   const pick = pcChooseEmap(cands, pcEv.emap.tabId);
   const e = pcEv.emap;
+  if (pick && pick.guid && e.remint && e.remint.until) pcAdoptRemintedTab(pick); // the click yielded a fresh session
   const nextId = pick ? pick.id : null, nextGuid = Boolean(pick && pick.guid), nextErr = Boolean(pick && pick.error);
   const changed = nextId !== e.tabId || nextGuid !== e.guid || nextErr !== e.error;
   e.present = Boolean(pick); e.tabId = nextId; e.url = pick ? pick.url : null; e.guid = nextGuid; e.error = nextErr;
@@ -424,6 +429,7 @@ async function pcPickEmapTab() {
 function pcEmapVerdict(now) {
   const e = pcEv.emap;
   e.lastVerdictAt = now; e.misses = 0; e.firstMissAt = 0; e.lastMissReason = ""; e.reloads = 0;
+  e.remint = { tried: false, until: 0, oldTabId: null, result: "" };   // the episode is over
 }
 function pcEmapMiss(now, reason, transient) {
   const e = pcEv.emap;
@@ -444,6 +450,7 @@ function pcDeriveEmap(now, e) {
   if (!e.present) return "no_tab";
   if (e.error) return "expired";
   if (e.lastVerdictAt && now - e.lastVerdictAt <= PC_RECENT_MS) return "ok";
+  if (e.remint && e.remint.until && now < e.remint.until) return "reminting"; // 選擇取貨門市 clicked, waiting for the new tab
   if (e.reloads >= PC_MAX_RELOADS && e.misses > 0) return "dead"; // recoveries didn't help → real expiry
   if (e.reloadAt && now - e.reloadAt < PC_RELOAD_COOLDOWN_MS) return "recovering";
   if (pcRecoveryDue(now, e)) return "guid_missing";               // recovery due this tick
@@ -486,14 +493,46 @@ async function pcRefreshTabStatus() {
     console.log(`[PC-EMAP] recover reason=${JSON.stringify(e.lastMissReason || "no guid")} misses=${e.misses} lastVerdictAgo=${e.lastVerdictAt ? Math.round((now - e.lastVerdictAt) / 1000) : "never"}s attempt=${e.reloads}/${PC_MAX_RELOADS} tab=${e.tabId} via=GET ${e.url}`);
     emapState = "recovering";
   }
+  // 1.14.3: the GET re-opens didn't help → ONE unattended re-mint per episode via the
+  // parked 賣貨便 /cart/detail tab (the myship content script clicks the real
+  // 選擇取貨門市 button; nothing is stored). Then 20 s to see a guid-bearing E-Map
+  // tab appear (adopted in pcPickEmapTab); otherwise red with the exact reason.
+  if (emapState === "dead" && e.remint && !e.remint.tried) {
+    try { emapState = await pcTryRemint(now); } catch (err) { e.remint.tried = true; e.remint.result = `remint threw: ${err && err.message ? err.message : err}`; }
+  }
+  if (emapState === "dead" && e.remint && e.remint.until && now >= e.remint.until) { e.remint.until = 0; if (!e.remint.result) e.remint.result = "timeout"; }
   const myshipState = pcDeriveMyship(now, pcEv.health && pcEv.health.myship, pcEv.myship);
   e.state = emapState; pcEv.myship.state = myshipState;
   let emapDomain = null; try { emapDomain = e.url ? new URL(e.url).hostname : null; } catch { emapDomain = null; }
   await pcStatus({
-    emap: emapState, myship: myshipState, emapSession: emapState, emapDomain, emapTabId: e.tabId,
+    emap: emapState, myship: myshipState, emapSession: emapState, emapDomain, emapTabId: e.tabId, emapDeadReason: (e.remint && e.remint.result) || "",
     lastStoreReason: pcEv.lastStoreReason, lastPhoneReason: pcEv.lastPhoneReason,
     lastStoreVerdictAt: e.lastVerdictAt || null, lastPhoneVerdictAt: pcEv.myship.lastVerdictAt || null, bootAt: pcEv.bootAt,
   });
+}
+const PC_CART_DETAIL_PATTERN = "https://myship.7-11.com.tw/cart/detail*";
+const PC_REMINT_WINDOW_MS = 20 * 1000;
+async function pcTryRemint(now) {
+  const e = pcEv.emap;
+  e.remint.tried = true;
+  const tabs = await new Promise((res) => { try { chrome.tabs.query({ url: PC_CART_DETAIL_PATTERN }, (t) => res(t || [])); } catch { res([]); } });
+  const cart = tabs.find((t) => !/\/error/i.test(String(t.url || ""))) || null;
+  if (!cart) { e.remint.result = "no_cart_detail"; console.log("[PC-EMAP] re-mint skipped: no 賣貨便 tab parked on /cart/detail"); return "dead"; }
+  try { pcNoDiscard(cart.id); } catch { /* best-effort */ }
+  const resp = await pcSendTab(cart.id, { type: "PC_CLICK_PICK_STORE" });
+  if (!resp || !resp.clicked) { e.remint.result = `click_refused: ${(resp && resp.reason) || "myship tab not responding"}`; console.log(`[PC-EMAP] re-mint refused on tab ${cart.id}: ${e.remint.result}`); return "dead"; }
+  e.remint.until = now + PC_REMINT_WINDOW_MS; e.remint.oldTabId = e.tabId; e.remint.result = ""; pcLastKeepaliveAt = 0;
+  console.log(`[PC-EMAP] re-mint: clicked 選擇取貨門市 (${resp.text || ""}) on 賣貨便 tab ${cart.id}; waiting ≤${PC_REMINT_WINDOW_MS / 1000}s for a new E-Map tab (old tab ${e.tabId ?? "none"})`);
+  return "reminting";
+}
+// Called by pcPickEmapTab once a guid-bearing tab is picked while a re-mint is pending:
+// adopt it, close the old dead tab, pin it, and start a fresh ladder.
+function pcAdoptRemintedTab(pick) {
+  const e = pcEv.emap; const old = e.remint.oldTabId;
+  e.remint.until = 0; e.remint.result = ""; e.reloads = 0; e.misses = 0; e.firstMissAt = 0; e.reloadAt = 0; pcLastKeepaliveAt = 0;
+  if (old != null && old !== pick.id) { try { chrome.tabs.remove(old); } catch { /* already gone */ } }
+  try { pcNoDiscard(pick.id); } catch { /* best-effort */ }
+  console.log(`[PC-EMAP] re-mint via 選擇取貨門市 → tab ${pick.id} ${pick.url} guid=${pick.guid}${old != null && old !== pick.id ? ` (closed old tab ${old})` : ""}`);
 }
 // Admin-card mirror (DISPLAY-ONLY — never gates the pending RPC or any check):
 // compact worker state → app_settings via an admin RPC, on change or every 60s.
@@ -681,6 +720,17 @@ function pcScheduleLoop(delayMs) {
 // loop drives the cadence; this never runs a second concurrent poll.
 chrome.alarms.create(PC_ALARM, { periodInMinutes: PC_KEEPALIVE_MIN });
 chrome.alarms.onAlarm.addListener((a) => { if (a.name === PC_ALARM) pcScheduleLoop(0); });
+// 1.14.3: while a re-mint is pending, a finished navigation on any E-Map tab
+// triggers an immediate pick + status refresh (no need to wait for the 5 s tick).
+try {
+  chrome.tabs.onUpdated.addListener((_tabId, info, tab) => {
+    try {
+      if (!pcEv.emap.remint || !pcEv.emap.remint.until) return;
+      if (info.status !== "complete" || !/^https:\/\/emap\.(uni)?pcsc\.com\.tw\//i.test(String((tab && tab.url) || ""))) return;
+      pcPickEmapTab().then(() => pcRefreshTabStatus()).catch(() => {});
+    } catch { /* never let a listener throw */ }
+  });
+} catch { /* tabs.onUpdated unavailable — the tick still adopts within 5 s */ }
 // BOOT (1.14.0): beacon + FULL status reset, so nothing stale from a previous
 // worker life can ever be displayed — every key starts 'starting' and must be
 // re-earned by evidence in this life (the 1.9 / 1.12 stale-status class bug,
