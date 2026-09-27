@@ -107,6 +107,12 @@ begin
     return;
   end if;
   select s.value into v_sender from app_settings s where s.key = 'parcel_check_sender_phone';
+  -- A blank sender (admin cleared it mid-swap) must PAUSE too — never serve rows
+  -- with a null ordMobile (that would checkout-validate with an empty sender and
+  -- risk a false 'ok'). Treat missing sender as paused (audit MEDIUM).
+  if coalesce(v_sender, '') = '' then
+    return;
+  end if;
 
   -- CACHE APPLICATION (the single biggest load reducer): repeat buyers get
   -- their phone verdict straight from the cache — the row may then need only
@@ -214,13 +220,13 @@ begin
     'queue_depth', (
       select count(*) from parcel_scans ps
         join seller_myship_config cfg on cfg.user_id = ps.user_id
-         and coalesce(cfg.gm_id,'') <> '' and coalesce(cfg.ord_mobile,'') <> ''
+         and coalesce(cfg.gm_id,'') <> ''
        where ps.status <> 'exported'
          and (ps.store_full_status is null or ps.phone_check_status is null)),
     'oldest_pending_min', (
       select coalesce(floor(extract(epoch from (now() - min(ps.created_at))) / 60), 0) from parcel_scans ps
         join seller_myship_config cfg on cfg.user_id = ps.user_id
-         and coalesce(cfg.gm_id,'') <> '' and coalesce(cfg.ord_mobile,'') <> ''
+         and coalesce(cfg.gm_id,'') <> ''
        where ps.status <> 'exported'
          and (ps.store_full_status is null or ps.phone_check_status is null)),
     'awaiting_setup', (

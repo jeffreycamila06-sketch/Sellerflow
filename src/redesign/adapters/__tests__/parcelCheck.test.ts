@@ -96,6 +96,7 @@ describe("sql/53 contract pins", () => {
     expect(sql).toContain("parcel_check_sender_phone");
     expect(sql).toContain("parcel_check_sender_healthy");
     expect(sql).toContain("if coalesce(v_healthy, 'true') <> 'true' then"); // health gate → pause
+    expect(sql).toContain("if coalesce(v_sender, '') = '' then"); // blank sender → pause too (audit MEDIUM), never ordMobile:null
     // config + health-setter RPCs exist for the health-check loop
     expect(sql).toContain("function public.admin_parcel_check_config()");
     expect(sql).toContain("function public.admin_set_parcel_sender_health(p_ok boolean)");
