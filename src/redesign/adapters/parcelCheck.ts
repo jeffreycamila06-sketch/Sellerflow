@@ -67,13 +67,16 @@ export async function loadMyshipConfig(): Promise<MyshipConfig | null> {
   };
 }
 
-export async function saveMyshipConfig(gmId: string, ordMobile: string, shopName?: string | null): Promise<{ ok: boolean; error?: string }> {
+// GM-only now: the check uses the shared CHECK_SENDER_PHONE, never a per-seller
+// phone, so ord_mobile is always written NULL (column kept, unused; eligibility
+// is gm_id-only). shopName undefined = don't touch shop_name/verified_at.
+export async function saveMyshipConfig(gmId: string, shopName?: string | null): Promise<{ ok: boolean; error?: string }> {
   if (!isSupabaseConfigured || !supabase) return { ok: false, error: "not configured" };
   const { data: s } = await supabase.auth.getSession();
   const uid = s.session?.user?.id;
   if (!uid) return { ok: false, error: "not signed in" };
   const row: Record<string, unknown> = {
-    user_id: uid, gm_id: gmId, ord_mobile: ordMobile, updated_at: new Date().toISOString(),
+    user_id: uid, gm_id: gmId, ord_mobile: null, updated_at: new Date().toISOString(),
   };
   if (shopName !== undefined) { row.shop_name = shopName; row.verified_at = shopName ? new Date().toISOString() : null; }
   const { error } = await supabase.from("seller_myship_config").upsert(row, { onConflict: "user_id" });

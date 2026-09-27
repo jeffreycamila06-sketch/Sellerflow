@@ -228,7 +228,7 @@ describe("app wiring pins", () => {
     const shared = readFileSync("src/redesign/components/MyshipSetup.tsx", "utf8");
     // audit MEDIUM-3 pin (moved here with the form): the pre-validation save
     // must CLEAR shop_name/verified_at so a changed GM never keeps the old badge
-    expect(shared).toContain("saveMyshipConfig(gmId, ph.trim(), null)");
+    expect(shared).toContain("saveMyshipConfig(gmId, null)"); // GM-only save (no per-seller phone)
     const gs = readFileSync("src/redesign/screens/GeneralSettings.tsx", "utf8");
     expect(gs).toContain("<MyshipConfigForm t={t} />");
     expect(gs).not.toContain("validateGm("); // no second copy of the flow

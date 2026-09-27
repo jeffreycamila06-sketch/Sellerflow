@@ -61,7 +61,6 @@ describe("MyshipScanGate", () => {
     render(<MyshipScanGate t={T} enabled onExit={() => {}}><div data-testid="scan" /></MyshipScanGate>);
     await waitFor(() => expect(screen.getByTestId("mc-gm")).toBeTruthy());
     fireEvent.change(screen.getByTestId("mc-gm"), { target: { value: "GM2609096099718" } });
-    fireEvent.change(screen.getByTestId("mc-phone"), { target: { value: "0917827508" } });
     fireEvent.click(screen.getByText("rd_mc_save"));
     await waitFor(() => expect(screen.queryByTestId("mc-gate")).toBeNull());
   });
@@ -73,7 +72,6 @@ describe("MyshipScanGate", () => {
     render(<MyshipScanGate t={T} enabled onExit={() => {}}><div data-testid="scan" /></MyshipScanGate>);
     await waitFor(() => expect(screen.getByTestId("mc-gm")).toBeTruthy());
     fireEvent.change(screen.getByTestId("mc-gm"), { target: { value: "GM2609096099718" } });
-    fireEvent.change(screen.getByTestId("mc-phone"), { target: { value: "0917827508" } });
     fireEvent.click(screen.getByText("rd_mc_save"));
     await waitFor(() => expect(screen.queryByTestId("mc-gate")).toBeNull());
   });
@@ -85,7 +83,6 @@ describe("MyshipScanGate", () => {
     render(<MyshipScanGate t={T} enabled onExit={() => {}}><div data-testid="scan" /></MyshipScanGate>);
     await waitFor(() => expect(screen.getByTestId("mc-gm")).toBeTruthy());
     fireEvent.change(screen.getByTestId("mc-gm"), { target: { value: "GM2609096099718" } });
-    fireEvent.change(screen.getByTestId("mc-phone"), { target: { value: "0917827508" } });
     fireEvent.click(screen.getByText("rd_mc_save"));
     await waitFor(() => expect(screen.getByText("rd_mc_invalid")).toBeTruthy());
     expect(screen.getByTestId("mc-gate")).toBeTruthy();
