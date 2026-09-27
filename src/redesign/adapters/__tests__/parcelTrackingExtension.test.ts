@@ -139,10 +139,10 @@ describe("self-heal v1.7.0 — statuses recover without manual tab refreshes", (
     expect(healthAt).toBeLessThan(rowsAt); // the old hours-stale-badges bug stays dead
   });
 
-  it("the SFL tab is NEVER auto-reloaded (live-session safety), myship/emap are", () => {
+  it("SFL + emap are NEVER auto-reloaded (SFL = live-session safety; emap = a reload strips the eshopGuid, 2026-09-27); only myship auto-reloads", () => {
     expect(bg).toContain('"sellerflow-bridge.js", false');                       // allowReload=false
     expect(bg).toContain('pcHealTab(["https://myship.7-11.com.tw/*"], "myship-711.js", true)');
-    expect(bg).toContain('"emap-711.js", true)');
+    expect(bg).toContain('"emap-711.js", false)'); // emap no longer reloaded — guid-preserving
     // the reload call exists ONLY inside pcHealTab behind the allowReload gate:
     const heal = bg.slice(bg.indexOf("async function pcHealTab"), bg.indexOf("function pcTokenExpired"));
     expect(heal).toContain('if (!allowReload) return { state: "asleep"');

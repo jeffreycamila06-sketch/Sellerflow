@@ -271,12 +271,18 @@ function CheckQueueBlock() {
   const n = (k: string) => String(st[k] ?? 0);
   const top = Array.isArray(st.top_sellers) ? (st.top_sellers as { email?: string; pending?: number }[]) : [];
   const senderPoisoned = String(st.sender_healthy) === "false"; // health-check tripped → lane paused
+  const emapDown = String(st.emap_ok) === "false"; // store-check guid lost → store half not resolving
   return (
     <div data-testid="pm-checkqueue" style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 13, padding: "11px 12px" }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)" }}>Store/phone check queue {String(st.enabled) === "true" ? "· ON" : "· OFF"}</div>
       {senderPoisoned && (
         <div data-testid="pm-sender-poisoned" style={{ fontSize: 11, fontWeight: 800, color: "var(--danger, #dc2626)", marginTop: 4 }}>
           ⚠️ Check sender {String(st.sender_phone ?? "")} is RESTRICTED — verdicts PAUSED. Swap parcel_check_sender_phone to a clean account.
+        </div>
+      )}
+      {emapDown && (
+        <div data-testid="pm-emap-down" style={{ fontSize: 11, fontWeight: 800, color: "var(--warn, #b45309)", marginTop: 4 }}>
+          ⚠️ E-Map session expired — store checks aren't resolving. Re-open E-Map via 賣貨便 → 選擇門市 (phone checks unaffected).
         </div>
       )}
       <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4, fontFamily: mono }}>
