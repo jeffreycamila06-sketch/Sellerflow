@@ -149,6 +149,52 @@ describe("extension wiring pins (background.js multi-seller path)", () => {
     expect(multi).not.toContain("ordMobile: row.ord_mobile"); // the per-seller phone must NOT be the sender
   });
 
+  it("E-MAP KEEPALIVE cadence (BEHAVIORAL — runs the real pcKeepaliveDue source): fires on the 5-min cadence when idle, NEVER when a pending row needs the store half", () => {
+    const m = bg.match(/const PC_KEEPALIVE_MS = ([^;]+);[\s\S]*?function pcKeepaliveDue\(now, lastAt, anyNeedStore\) \{([\s\S]*?)\n\}/);
+    expect(m, "pcKeepaliveDue + PC_KEEPALIVE_MS must exist").toBeTruthy();
+    const MS = new Function(`return (${m![1]});`)() as number;
+    expect(MS).toBe(5 * 60 * 1000);
+    const due = new Function("now", "lastAt", "anyNeedStore", `const PC_KEEPALIVE_MS = ${MS};${m![2]}`) as (n: number, l: number, a: boolean) => boolean;
+    // idle (no pending store rows): fires once the cadence elapsed, not before
+    expect(due(1_700_000_000_000, 0, false)).toBe(true); // first-ever ping: real Date.now() vs lastAt=0 → due
+    expect(due(0, 0, false)).toBe(false);                // 0ms elapsed → not due (guards a same-instant double fire)
+    expect(due(MS - 1, 0, false)).toBe(false);           // 4m59s since last → not yet
+    expect(due(MS, 0, false)).toBe(true);                // exactly 5 min → due
+    expect(due(MS * 2 + 10, MS * 2, false)).toBe(false); // 10ms since last → not due
+    // pending store rows exist → their own checks keep the session warm → NEVER ping
+    expect(due(MS * 10, 0, true)).toBe(false);
+    expect(due(0, 0, true)).toBe(false);
+  });
+
+  it("E-MAP KEEPALIVE wiring: reuses the existing PC_CHECK_STORE path on store 198002, runs BEFORE the empty-rows return (idle = the point), logs [PC-KEEPALIVE]", () => {
+    expect(bg).toContain('const PC_KEEPALIVE_STORE = "198002";');
+    expect(bg).toContain('type: "PC_CHECK_STORE", row: { store_id: PC_KEEPALIVE_STORE }');
+    expect(bg).toContain("[PC-KEEPALIVE]");
+    const call = multi.indexOf("await pcEmapKeepalive(anyNeedStore)");
+    const emptyReturn = multi.indexOf("if (!rows.length) return;");
+    expect(call).toBeGreaterThan(-1);
+    expect(call).toBeLessThan(emptyReturn); // keepalive fires even with an empty queue
+    expect(multi).toContain("const anyNeedStore = rows.some((r) => r && r.need_store);");
+  });
+
+  it("NEVER SLEEP: worker tabs pinned autoDiscardable:false on every find (pcHealTab runs each tick → survives extension reload); v1.7 emap auto-reload kept as fallback", () => {
+    expect(bg).toContain("chrome.tabs.update(tabId, { autoDiscardable: false }");
+    const heal = bg.slice(bg.indexOf("async function pcHealTab"), bg.indexOf("function pcTokenExpired"));
+    expect(heal).toContain("pcNoDiscard(tab.id);");
+    expect(bg).toContain('"emap-711.js", true)'); // Layer-1 mistake NOT repeated
+  });
+
+  it("ACCURATE emap session popup — DISPLAY-ONLY: red only when a reload landed on error.aspx, amber only when no tab; never writes app_settings / never gates the RPC", () => {
+    expect(bg).toContain('/\\/ecmap\\/error\\.aspx/i.test(String(emapTab.url || ""))');
+    expect(bg).toContain('await pcSetEmapSession("expired")');
+    expect(bg).toContain('await pcSetEmapSession("no_tab")');
+    expect(bg).toContain("emapDomain"); // which E-Map domain is active (pcsc vs unipcsc)
+    expect(bg).not.toContain("admin_set_parcel_emap_health"); // no DB flag, no RPC gate
+    const popup = readFileSync("chrome-extension/popup.js", "utf8");
+    expect(popup).toContain("E-Map session expired — re-open E-Map via 賣貨便 → 選擇門市");
+    expect(popup).toContain("E-Map tab not found");
+  });
+
   it("SENDER HEALTH-CHECK: a known-clean probe buyer through the sender; restricted → pause (set health false), never mass-flag", () => {
     expect(bg).toContain("async function pcSenderHealthCheck");
     expect(bg).toContain("/rest/v1/rpc/admin_parcel_check_config");
