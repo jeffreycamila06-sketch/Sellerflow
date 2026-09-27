@@ -101,7 +101,8 @@ describe("B · evidence-based emap state + auto-recovery (evidence recency test)
 
   it("CONSERVATIVE LADDER (1.14.2): guid lost → NO recovery until ≥3 definitive misses spanning ≥2 min; then ONE dialog-free GET re-open per 60s cooldown, max 2, then 'dead'; a verdict resets everything", async () => {
     let t = 1_000_000_000_000;
-    const { sb, calls, status, booted } = bootWorker({ now: () => t, rows: [], emapTabs: [{ id: 7, url: "https://emap.unipcsc.com.tw/mobilemap/default.aspx", guid: false }] });
+    // cartDetailTab:false — no parked 賣貨便 tab, so 'dead' is final here (the 1.14.3 re-mint has its own suite)
+    const { sb, calls, status, booted } = bootWorker({ now: () => t, rows: [], cartDetailTab: false, emapTabs: [{ id: 7, url: "https://emap.unipcsc.com.tw/mobilemap/default.aspx", guid: false }] });
     await booted;
     await sb.pcTick();                                   // miss #1 (probe: no guid) — never a trigger on its own
     expect(reopens(calls)).toEqual([]);

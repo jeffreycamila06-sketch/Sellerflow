@@ -35,6 +35,7 @@ const PC_STATUS_LABEL = {
   stale: ["warn", "No check resolved in 6 min — click that tab once"],
   guid_missing: ["warn", "Session lost — re-opening…"],
   recovering: ["warn", "Re-opened — verifying…"],
+  reminting: ["warn", "Re-opening via 賣貨便 選擇取貨門市…"],  // 1.14.3 unattended re-mint in flight
   dead: ["bad", "Re-open via 賣貨便 → 選擇門市"],            // 2 recoveries didn't help = real expiry
 };
 function pcBadge(el, status) {
@@ -60,7 +61,12 @@ async function pcRenderStatus() {
     const lastV = st.lastStoreVerdictAt ? ` — last store check ${new Date(st.lastStoreVerdictAt).toLocaleTimeString()}` : "";
     const s = st.emapSession;
     const m = s === "expired" ? ["#e5484d", `⚠️ E-Map landed on error.aspx (session expired) — re-open via 賣貨便 → 選擇門市${dom}${tab}`]
-      : s === "dead" ? ["#e5484d", `⚠️ E-Map session expired — not resolving after 2 auto re-opens — re-open via 賣貨便 → 選擇門市${dom}${tab}`]
+      : s === "dead" ? ["#e5484d", st.emapDeadReason === "no_cart_detail"
+          ? `⚠️ E-Map session expired — re-open via 賣貨便 → 選擇門市 (or park 賣貨便 on /cart/detail for auto re-mint)${dom}${tab}`
+          : st.emapDeadReason === "timeout"
+            ? `⚠️ E-Map session expired — auto re-mint via 選擇取貨門市 did not yield a session in 20 s — re-open via 賣貨便 → 選擇門市${dom}${tab}`
+            : `⚠️ E-Map session expired — re-open via 賣貨便 → 選擇門市${st.emapDeadReason ? ` (${st.emapDeadReason})` : ""}${dom}${tab}`]
+      : s === "reminting" ? ["#b45309", "⏳ E-Map session expired — re-opening via 賣貨便 → 選擇取貨門市 (auto, ≤20 s)"]
       : s === "no_tab" ? ["#b45309", "⚠️ E-Map tab not found — open E-Map via 賣貨便 → 選擇門市"]
       : s === "guid_missing" || s === "recovering" ? ["#b45309", `⚠️ E-Map session lost — re-opening the tab (GET, no resubmission dialog) to re-mint it${dom}${tab}`]
       : s === "stale" ? ["#b45309", `⚠️ E-Map tab open but no store check resolved in 6 min${lastV}${dom}${tab}`]

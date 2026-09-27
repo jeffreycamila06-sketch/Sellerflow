@@ -26,19 +26,22 @@ export type BootOpts = {
   phoneVerdict?: () => string;    // PC_CHECK_PHONE reply (default "ok")
   now?: () => number;             // injectable clock for Date.now()
   initialStatus?: Record<string, unknown>; // what a PREVIOUS worker life left in pc_status
+  cartDetailTab?: boolean;        // a 賣貨便 tab parked on /cart/detail exists (default true)
+  onPickStoreClick?: (emapTabs: EmapTab[]) => { clicked: boolean; reason?: string } | void; // what the click does to the tab set
 };
 
 export function bootWorker(opts: BootOpts = {}) {
   const src = readFileSync("chrome-extension/background.js", "utf8");
-  const calls = { sendMessage: [] as { type: string; tabId: number }[], fetch: [] as string[], fetchBodies: [] as string[], update: [] as unknown[], reload: [] as number[], logs: [] as string[], scheduled: [] as number[] };
+  const calls = { sendMessage: [] as { type: string; tabId: number }[], fetch: [] as string[], fetchBodies: [] as string[], update: [] as unknown[], reload: [] as number[], removed: [] as number[], logs: [] as string[], scheduled: [] as number[] };
   const storage: Record<string, unknown> = {
     pc_config: { supabaseUrl: "https://x.supabase.co", supabaseAnonKey: "anon", multiSeller: opts.multiSeller ?? true },
     ...(opts.initialStatus ? { pc_status: opts.initialStatus } : {}),
   };
   const emapTabs: EmapTab[] = opts.emapTabs ?? (opts.emapTab === false ? [] : [{ id: 3, url: "https://emap.unipcsc.com.tw/ecmap/default.aspx", guid: true }]);
-  const tabFor = (patterns: string[]) => {
-    const p = patterns[0] || "";
+  const tabFor = (patterns: string[] | string) => {
+    const p = (Array.isArray(patterns) ? patterns[0] : patterns) || ""; // chrome.tabs.query accepts a string or an array
     if (/emap/.test(p)) return emapTabs.map((t) => ({ id: t.id, url: t.url, discarded: Boolean(t.discarded), frozen: false }));
+    if (/cart\/detail/.test(p)) return opts.cartDetailTab === false ? [] : [{ id: 2, url: "https://myship.7-11.com.tw/cart/detail", discarded: false, frozen: false }];
     return [{ id: /sellerflow/.test(p) ? 1 : 2, url: p.replace("*", "cart/easy/GM1"), discarded: false, frozen: false }];
   };
   const chrome = {
@@ -50,13 +53,17 @@ export function bootWorker(opts: BootOpts = {}) {
       set: (o: Record<string, unknown>, cb?: () => void) => { Object.assign(storage, o); cb?.(); },
     } },
     tabs: {
-      query: (q: { url: string[] }, cb: (t: unknown[]) => void) => cb(tabFor(q.url)),
+      query: (q: { url: string[] | string }, cb: (t: unknown[]) => void) => cb(tabFor(q.url)),
       sendMessage: (id: number, msg: { type: string }, cb: (r: unknown) => void) => {
         calls.sendMessage.push({ type: msg.type, tabId: id });
         const emap = emapTabs.find((t) => t.id === id);
         if (msg.type === "SFL_GET_TOKEN") return cb({ ok: true, token: fakeJwt() });
         if (msg.type === "PC_PING") return cb({ ok: true, script: "x" });
         if (msg.type === "PC_EMAP_PROBE") return cb({ ok: true, script: "emap", guidFound: Boolean(emap && emap.guid), url: emap ? emap.url : "" });
+        if (msg.type === "PC_CLICK_PICK_STORE") {
+          const r = opts.onPickStoreClick ? opts.onPickStoreClick(emapTabs) : undefined;
+          return cb(r ? { ok: true, clicked: r.clicked, reason: r.reason || "", text: "選擇取貨門市" } : { ok: true, clicked: true, reason: "", text: "選擇取貨門市" });
+        }
         if (msg.type === "PC_CHECK_STORE") {
           const v = emap && emap.guid ? (opts.storeVerdict ? opts.storeVerdict() : "open") : "unknown";
           return cb({ ok: true, store_full_status: v, store_reason: v === "unknown" ? "eshopGuid not found on emap page" : "", guidFound: Boolean(emap && emap.guid) });
@@ -69,6 +76,8 @@ export function bootWorker(opts: BootOpts = {}) {
       },
       update: (id: number, props: unknown, cb?: () => void) => { calls.update.push({ id, props }); cb?.(); },
       reload: (id: number) => { calls.reload.push(id); },
+      remove: (id: number, cb?: () => void) => { calls.removed.push(id); const i = emapTabs.findIndex((t) => t.id === id); if (i >= 0) emapTabs.splice(i, 1); cb?.(); },
+      onUpdated: { addListener: vi.fn() }, onCreated: { addListener: vi.fn() },
     },
   };
   const fetch = async (url: string, init?: { body?: string }) => {
