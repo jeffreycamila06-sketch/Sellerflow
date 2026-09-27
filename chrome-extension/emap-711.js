@@ -88,6 +88,17 @@
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message?.type === "PC_PING") { sendResponse({ ok: true, script: "emap" }); return true; }
+    // 1.14.0 — cheap guid probe (NO byIDData): lets the worker pick the emap tab
+    // that actually has a live eshopGuid when several are open (pcsc + unipcsc,
+    // or a leftover error.aspx tab). Reports this tab's URL for the log line.
+    if (message?.type === "PC_EMAP_PROBE") {
+      (async () => {
+        let guid = null;
+        try { guid = await getEshopGuid(); } catch { guid = null; }
+        sendResponse({ ok: true, script: "emap", guidFound: guid !== null, url: location.href });
+      })().catch(() => sendResponse({ ok: true, script: "emap", guidFound: false, url: location.href }));
+      return true;
+    }
     if (message?.type !== "PC_CHECK_STORE" || !message.row) return false;
     (async () => {
       const guid = await getEshopGuid();

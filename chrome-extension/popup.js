@@ -12,6 +12,7 @@ const pcEls = {
   save: document.getElementById("pcSave"), pause: document.getElementById("pcPause"), checkNow: document.getElementById("pcCheckNow"),
   multi: document.getElementById("pcMulti"), multiRow: document.getElementById("pcMultiRow"), multiQueue: document.getElementById("pcMultiQueue"),
   emapSessionRow: document.getElementById("pcEmapSessionRow"),
+  perSellerCfg: document.getElementById("pcPerSellerCfg"),
 };
 
 function pcOne(key, fallback) {
@@ -28,6 +29,13 @@ const PC_STATUS_LABEL = {
   asleep: ["warn", "Tab asleep — click it once"],           // discarded SFL tab (never auto-reloaded)
   healing: ["warn", "Waking up…"],                           // auto reload/inject fired; next check confirms
   dead_script: ["bad", "Reload that tab"],                   // re-inject failed — the one truly manual case
+  // 1.14.0 — evidence-based per-tab states (green ONLY when that tab's checks resolved
+  // in the last 6 min; every other state names the ONE fix):
+  starting: ["off", "Starting…"],                            // worker just booted — nothing earned yet
+  stale: ["warn", "No check resolved in 6 min — click that tab once"],
+  guid_missing: ["warn", "Session lost — auto-reloading…"],
+  recovering: ["warn", "Reloaded — verifying…"],
+  dead: ["bad", "Re-open via 賣貨便 → 選擇門市"],            // 2 reloads didn't help = real expiry
 };
 function pcBadge(el, status) {
   const [cls, label] = PC_STATUS_LABEL[status] || ["off", status || "—"];
@@ -48,14 +56,23 @@ async function pcRenderStatus() {
   // keepalive actually resolved; grey = tab present, awaiting a verdict.
   if (pcEls.emapSessionRow) {
     const dom = st.emapDomain ? ` · ${st.emapDomain}` : "";
-    const m = st.emapSession === "expired" ? ["#e5484d", `⚠️ E-Map session expired — re-open E-Map via 賣貨便 → 選擇門市${dom}`]
-      : st.emapSession === "no_tab" ? ["#b45309", "⚠️ E-Map tab not found — open E-Map via 賣貨便 → 選擇門市"]
-      : st.emapSession === "ok" ? ["#16a34a", `● E-Map session OK — store checks resolving${dom}`]
-      : st.emapSession === "pending" ? ["#8a8a8a", `○ E-Map tab open — waiting for a store check to resolve${dom}`]
+    const tab = st.emapTabId != null ? ` (tab ${st.emapTabId})` : "";
+    const lastV = st.lastStoreVerdictAt ? ` — last store check ${new Date(st.lastStoreVerdictAt).toLocaleTimeString()}` : "";
+    const s = st.emapSession;
+    const m = s === "expired" ? ["#e5484d", `⚠️ E-Map landed on error.aspx (session expired) — re-open via 賣貨便 → 選擇門市${dom}${tab}`]
+      : s === "dead" ? ["#e5484d", `⚠️ E-Map session not resolving after 2 auto-reloads — re-open via 賣貨便 → 選擇門市${dom}${tab}`]
+      : s === "no_tab" ? ["#b45309", "⚠️ E-Map tab not found — open E-Map via 賣貨便 → 選擇門市"]
+      : s === "guid_missing" || s === "recovering" ? ["#b45309", `⚠️ E-Map session lost — auto-reloading the tab to re-mint it${dom}${tab}`]
+      : s === "stale" ? ["#b45309", `⚠️ E-Map tab open but no store check resolved in 6 min${lastV}${dom}${tab}`]
+      : s === "ok" ? ["#16a34a", `● E-Map session OK${lastV}${dom}${tab}`]
+      : s === "starting" ? ["#8a8a8a", "○ Worker starting — first check in a few seconds"]
       : null;
     pcEls.emapSessionRow.style.display = m ? "" : "none";
     if (m) { pcEls.emapSessionRow.style.color = m[0]; pcEls.emapSessionRow.textContent = m[1]; }
   }
+  // Multi-seller mode ignores the per-seller GM / phone fields (the RPC supplies
+  // them per row) — hide them so a blank field never looks like a missing setup.
+  if (pcEls.perSellerCfg) pcEls.perSellerCfg.style.display = st.multi != null ? "none" : "";
   pcEls.last.textContent = st.lastCheckAt ? `${new Date(st.lastCheckAt).toLocaleTimeString()} · ${st.lastCount ?? 0} parcels` : "—";
   const showErr = Boolean(st.lastError);
   pcEls.errK.style.display = showErr ? "" : "none";

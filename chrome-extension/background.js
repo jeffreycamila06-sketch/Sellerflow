@@ -250,24 +250,9 @@ async function pcPoll() {
   const emapHealth = await pcHealTab(["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"], "emap-711.js", true);
   const myshipTabId = myshipHealth.tabId;
   const emapTabId = emapHealth.tabId;
-  // ACCURATE emap session state + which E-Map domain is active (pcsc vs the
-  // 2026-09-26 unipcsc move). RED only when a reload actually landed on
-  // error.aspx (true server-side expiry); AMBER only when no emap tab exists.
-  // A present, non-error tab clears a prior red/amber to 'pending' (grey) —
-  // green comes only from the next store check / keepalive actually resolving.
-  // DEFENSIVE (1.13.0): nothing in this new session-state block may ever stall
-  // the SFL handshake / row loop below — any failure logs and falls through to
-  // the exact 1.11.1 path.
-  try {
-    const emapTab = await pcFindTabInfo(["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"]);
-    let emapDomain = null;
-    try { emapDomain = emapTab && emapTab.url ? new URL(emapTab.url).hostname : null; } catch { emapDomain = null; }
-    if (!emapTab) await pcSetEmapSession("no_tab");
-    else if (/\/ecmap\/error\.aspx/i.test(String(emapTab.url || ""))) await pcSetEmapSession("expired");
-    else if (pcEmapSess === "no_tab" || pcEmapSess === "expired") await pcSetEmapSession("pending");
-    await pcStatus({ emapDomain });
-  } catch (e) { console.log(`[PC-KEEPALIVE] skipped: session-state ${e && e.message ? e.message : e}`); }
-  await pcStatus({ myship: myshipHealth.state, emap: emapHealth.state });
+  // 1.14.0: the per-tab status keys (myship / emap / emapSession) have ONE writer
+  // — pcRefreshTabStatus in pcTick, evidence-based. Here we only record health.
+  pcEv.health = { myship: myshipHealth, emap: emapHealth };
 
   if (sflHealth.state !== "ok") { await pcStatus({ sfl: sflHealth.state }); return; } // no bridge → nothing to poll
   const sflTabId = sflHealth.tabId;
@@ -312,6 +297,9 @@ async function pcPoll() {
         store = sResp && typeof sResp.store_full_status === "string"
           ? { store_full_status: sResp.store_full_status, store_reason: sResp.store_reason || "" }
           : { store_full_status: "unknown", store_reason: "emap tab not responding (reload emap page)" };
+        // 1.14.0 evidence (legacy lane too): a resolved verdict = tab healthy
+        if (store.store_full_status === "open" || store.store_full_status === "full") { pcEv.emap.lastVerdictAt = Date.now(); pcEv.emap.reloads = 0; }
+        else pcEv.emap.lastFailAt = Date.now();
       }
       // Phone check → myship tab.
       let phone = { phone_check_status: "unknown", phone_check_message: null, phone_restricted_until: null, phone_reason: "no myship.7-11.com.tw tab open" };
@@ -320,6 +308,7 @@ async function pcPoll() {
         phone = pResp && typeof pResp.phone_check_status === "string"
           ? { phone_check_status: pResp.phone_check_status, phone_check_message: pResp.phone_check_message ?? null, phone_restricted_until: pResp.phone_restricted_until ?? null, phone_reason: pResp.phone_reason || "" }
           : { phone_check_status: "unknown", phone_check_message: null, phone_restricted_until: null, phone_reason: "myship tab not responding (reload 賣貨便 page)" };
+        if (phone.phone_check_status === "ok" || phone.phone_check_status === "restricted") pcEv.myship.lastVerdictAt = Date.now();
       }
       if (store.store_reason) lastStoreReason = store.store_reason;
       if (phone.phone_reason) lastPhoneReason = phone.phone_reason;
@@ -337,9 +326,10 @@ async function pcPoll() {
   }
   // Per-origin status + the exact last reason for each check (popup shows these,
   // so Jeff never has to open DevTools).
+  // 1.14.0: emap/myship badges are NOT written here anymore (single evidence-based
+  // writer in pcTick); only the reasons + counts.
+  pcEv.lastStoreReason = lastStoreReason; pcEv.lastPhoneReason = lastPhoneReason;
   await pcStatus({
-    emap: emapTabId ? (lastStoreReason ? "issue" : "ok") : emapHealth.state,
-    myship: myshipTabId ? (lastPhoneReason ? "issue" : "ok") : myshipHealth.state,
     lastStoreReason, lastPhoneReason,
     lastStoreAt: lastStoreReason ? new Date().toISOString() : null,
     lastPhoneAt: lastPhoneReason ? new Date().toISOString() : null,
@@ -363,47 +353,127 @@ const PC_HEALTH_INTERVAL_MS = 5 * 60 * 1000; // sender health-check cadence
 const PC_HEALTH_STORE_ID = "195965";          // any valid 6-digit store — the probe checks the PHONE, not this store
 let pcLastHealthAt = 0;
 
-// ── E-MAP KEEPALIVE (2026-09-27) ──────────────────────────────────────────────
-// The store-full check needs a live ASP.NET session (eshopGuid) on the emap tab,
-// minted only via 賣貨便 → 選擇門市. ASP.NET sessions use SLIDING expiration reset
-// by any request (default 20 min), so during an idle gap with no pending store
-// rows the session dies → store checks silently stop. Fix: while the emap tab is
-// alive and NO pending row needs the store half, POST the EXISTING byIDData on a
-// known store every 5 min (the same PC_CHECK_STORE path emap-711.js already runs
-// — no new request shape; the content script's RELATIVE fetch follows whichever
-// emap origin the tab is on, pcsc or unipcsc). Purely additive: worst case a no-op.
+// ══ 1.14.0 — EVIDENCE-BASED STATUS · E-MAP TAB PICK · KEEPALIVE · RECOVERY ═══
+// Spec: hands-off (session never idle-expires, tabs never sleep, auto re-
+// handshake after a reload); status is TRUE per tab (green ONLY when that tab's
+// checks resolved recently, otherwise name the tab + the exact fix); when several
+// emap tabs exist pick the one with a live guid and log which; nothing dies
+// silently (boot beacon + heartbeat); every new block is wrapped so a failure can
+// never stop the row loop. pcRefreshTabStatus (pcTick) is the SINGLE writer of
+// the per-tab status keys — no more ping-based badges, no more stale writes.
+const PC_EMAP_PATTERNS = ["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"];
+const PC_RECENT_MS = 6 * 60 * 1000;          // "resolved recently" window = keepalive 5m + slack
 const PC_KEEPALIVE_MS = 5 * 60 * 1000;
 const PC_KEEPALIVE_STORE = "198002";          // known store; the verdict is logged, never written
+const PC_RELOAD_COOLDOWN_MS = 60 * 1000;      // one auto-reload per minute while recovering
+const PC_MAX_RELOADS = 2;                     // then it's a real expiry → red, re-open via 選擇門市
+const PC_HEARTBEAT_EVERY = 12;                // ~60s at the 5s cadence
+const PC_WORKER_STATE_PUSH_MS = 60 * 1000;    // Admin-card mirror cadence (also on change)
 let pcLastKeepaliveAt = 0;
+const pcEv = {
+  bootAt: Date.now(), tick: 0, lastAnyNeedStore: false, health: null, rpc: null,
+  lastStoreReason: "", lastPhoneReason: "",
+  emap: { tabId: null, url: null, guid: false, error: false, present: false, lastVerdictAt: 0, lastFailAt: 0, reloadAt: 0, reloads: 0, state: null },
+  myship: { lastVerdictAt: 0, state: null },
+  lastPush: { at: 0, sig: "" },
+};
 // PURE cadence decision (unit-tested by extracting this function's source):
 // fire only when idle for the store half AND the 5-min cadence has elapsed.
 function pcKeepaliveDue(now, lastAt, anyNeedStore) {
   return !anyNeedStore && (now - lastAt) >= PC_KEEPALIVE_MS;
 }
-async function pcEmapKeepalive(anyNeedStore) {
+// PURE tab choice: candidates [{id,url,guid,error}] in query order → the tab to
+// use. Prefer a live (non-error.aspx) tab WITH a guid, sticking to the one we
+// used last; then any live tab; an error.aspx-only set is returned flagged so the
+// derive can say "expired". NEVER a blind tabs[0].
+function pcChooseEmap(cands, preferId) {
+  const live = cands.filter((c) => !c.error);
+  const withGuid = live.filter((c) => c.guid);
+  return withGuid.find((c) => c.id === preferId) || withGuid[0] || live.find((c) => c.id === preferId) || live[0] || cands[0] || null;
+}
+async function pcPickEmapTab() {
+  const tabs = await new Promise((res) => { try { chrome.tabs.query({ url: PC_EMAP_PATTERNS }, (t) => res(t || [])); } catch { res([]); } });
+  const cands = [];
+  for (const t of tabs) {
+    const url = String(t.url || ""); const error = /\/ecmap\/error\.aspx/i.test(url);
+    let guid = false;
+    if (!error) { const p = await pcSendTab(t.id, { type: "PC_EMAP_PROBE" }); guid = Boolean(p && p.guidFound); }
+    cands.push({ id: t.id, url, guid, error });
+  }
+  const pick = pcChooseEmap(cands, pcEv.emap.tabId);
+  const e = pcEv.emap;
+  const nextId = pick ? pick.id : null, nextGuid = Boolean(pick && pick.guid), nextErr = Boolean(pick && pick.error);
+  const changed = nextId !== e.tabId || nextGuid !== e.guid || nextErr !== e.error;
+  e.present = Boolean(pick); e.tabId = nextId; e.url = pick ? pick.url : null; e.guid = nextGuid; e.error = nextErr;
+  if (changed) console.log(`[PC-EMAP] using tab ${e.tabId ?? "none"} ${e.url ?? ""} guid=${e.guid} error=${e.error} (candidates=${cands.length})`);
+  return pick;
+}
+// PURE derives (unit-tested by source extraction).
+function pcDeriveEmap(now, e) {
+  if (!e.present) return "no_tab";
+  if (e.error) return "expired";
+  const attemptFailed = e.lastFailAt > e.lastVerdictAt;           // latest byIDData did NOT resolve
+  if (!e.guid || attemptFailed) {
+    if (e.reloads >= PC_MAX_RELOADS) return "dead";              // reloads didn't help → real expiry
+    return (now - e.reloadAt < PC_RELOAD_COOLDOWN_MS) ? "recovering" : "guid_missing";
+  }
+  return (now - e.lastVerdictAt <= PC_RECENT_MS) ? "ok" : "stale";
+}
+function pcDeriveMyship(now, health, m) {
+  if (!health) return "starting";
+  if (health.state !== "ok") return health.state;                 // no_tab / healing / dead_script / asleep
+  return (now - m.lastVerdictAt <= PC_RECENT_MS) ? "ok" : "stale";
+}
+// KEEPALIVE (from pcTick — independent of lane, token and RPC; needs only the
+// picked tab): while no pending row needs the store half, POST the EXISTING
+// byIDData path on a known store every 5 min so the sliding ASP.NET session never
+// idles out. Its verdict is EVIDENCE for the status (never written to a parcel).
+async function pcEmapKeepalive() {
   const now = Date.now();
-  if (!pcKeepaliveDue(now, pcLastKeepaliveAt, anyNeedStore)) return;
-  const emapTabId = await pcFindTab(["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"]);
-  if (!emapTabId) return; // no tab → nothing to keep alive (prelude reports no_tab)
+  if (!pcKeepaliveDue(now, pcLastKeepaliveAt, pcEv.lastAnyNeedStore)) return;
+  const e = pcEv.emap;
+  if (!e.tabId || e.error) return;
   pcLastKeepaliveAt = now;
-  const resp = await pcSendTab(emapTabId, { type: "PC_CHECK_STORE", row: { store_id: PC_KEEPALIVE_STORE } });
+  const resp = await pcSendTab(e.tabId, { type: "PC_CHECK_STORE", row: { store_id: PC_KEEPALIVE_STORE } });
   const verdict = resp && resp.store_full_status;
   const alive = verdict === "open" || verdict === "full";
-  console.log(`[PC-KEEPALIVE] store=${PC_KEEPALIVE_STORE} verdict=${verdict ?? "none"} guidFound=${Boolean(resp && resp.guidFound)} sessionAlive=${alive}`);
-  await pcSetEmapSession(alive ? "ok" : "pending");
+  if (alive) { e.lastVerdictAt = now; e.reloads = 0; } else { e.lastFailAt = now; }
+  console.log(`[PC-KEEPALIVE] tab=${e.tabId} store=${PC_KEEPALIVE_STORE} verdict=${verdict ?? "none"} guidFound=${Boolean(resp && resp.guidFound)} sessionAlive=${alive}`);
 }
-
-// ── ACCURATE E-MAP SESSION STATE (popup only — DISPLAY-ONLY, never gates the
-// pending RPC or the phone check). Values: 'ok' (a store check/keepalive just
-// resolved open/full — green), 'pending' (tab present, awaiting/failed a verdict
-// — grey, NOT red), 'expired' (a reload landed on error.aspx = true server-side
-// expiry — red), 'no_tab' (no emap tab — amber). Red/amber ONLY for the two
-// genuine failures; a discarded/re-injected tab is never called "expired". ──
-let pcEmapSess = null;
-async function pcSetEmapSession(v) {
-  if (v === pcEmapSess) return;
-  pcEmapSess = v;
-  await pcStatus({ emapSession: v });
+// SINGLE WRITER of the per-tab status keys + the auto-recovery trigger: a present
+// tab whose session no longer resolves gets ONE reload per cooldown (a cookie-
+// valid reload re-mints the guid; a truly expired one lands on error.aspx → red).
+async function pcRefreshTabStatus() {
+  const now = Date.now(); const e = pcEv.emap;
+  let emapState = pcDeriveEmap(now, e);
+  if (emapState === "guid_missing") {
+    try { chrome.tabs.reload(e.tabId); } catch { /* next tick retries */ }
+    e.reloadAt = now; e.reloads += 1; pcLastKeepaliveAt = 0;     // verify as soon as it lands
+    console.log(`[PC-EMAP] auto-reload tab ${e.tabId} (session not resolving, attempt ${e.reloads}/${PC_MAX_RELOADS})`);
+    emapState = "recovering";
+  }
+  const myshipState = pcDeriveMyship(now, pcEv.health && pcEv.health.myship, pcEv.myship);
+  e.state = emapState; pcEv.myship.state = myshipState;
+  let emapDomain = null; try { emapDomain = e.url ? new URL(e.url).hostname : null; } catch { emapDomain = null; }
+  await pcStatus({
+    emap: emapState, myship: myshipState, emapSession: emapState, emapDomain, emapTabId: e.tabId,
+    lastStoreReason: pcEv.lastStoreReason, lastPhoneReason: pcEv.lastPhoneReason,
+    lastStoreVerdictAt: e.lastVerdictAt || null, lastPhoneVerdictAt: pcEv.myship.lastVerdictAt || null, bootAt: pcEv.bootAt,
+  });
+}
+// Admin-card mirror (DISPLAY-ONLY — never gates the pending RPC or any check):
+// compact worker state → app_settings via an admin RPC, on change or every 60s.
+async function pcPushWorkerState(cfg, rpcHeaders) {
+  const st = (await pcGet(PC_STATUS_KEY, {})) || {};
+  const state = {
+    v: (chrome.runtime.getManifest ? chrome.runtime.getManifest().version : "?"), bootAt: pcEv.bootAt, at: Date.now(),
+    sfl: st.sfl ?? null, myship: st.myship ?? null, emap: st.emap ?? null, emapDomain: st.emapDomain ?? null,
+    lastStoreVerdictAt: st.lastStoreVerdictAt ?? null, lastPhoneVerdictAt: st.lastPhoneVerdictAt ?? null, queue: st.multiQueueDepth ?? null,
+  };
+  const sig = `${state.sfl}|${state.myship}|${state.emap}|${state.emapDomain}`;
+  if (sig === pcEv.lastPush.sig && Date.now() - pcEv.lastPush.at < PC_WORKER_STATE_PUSH_MS) return;
+  pcEv.lastPush = { at: Date.now(), sig };
+  await fetch(`${cfg.supabaseUrl}/rest/v1/rpc/admin_set_parcel_worker_state`, { method: "POST", headers: rpcHeaders, body: JSON.stringify({ p_state: state }) }).catch(() => {});
 }
 
 // Validate a KNOWN-CLEAN probe buyer through CHECK_SENDER_PHONE. restricted →
@@ -427,6 +497,7 @@ async function pcSenderHealthCheck(cfg, rpcHeaders) {
     config: { cgdmId: conf.sample_gm, ordMobile: conf.sender_phone },
   });
   const st = resp && resp.phone_check_status;
+  if (st === "ok" || st === "restricted") pcEv.myship.lastVerdictAt = Date.now(); // the probe is myship evidence when idle
   const setHealth = (ok) => fetch(`${cfg.supabaseUrl}/rest/v1/rpc/admin_set_parcel_sender_health`, { method: "POST", headers: rpcHeaders, body: JSON.stringify({ p_ok: ok }) }).catch(() => {});
   if (st === "restricted") {
     await setHealth(false);
@@ -462,15 +533,16 @@ async function pcPollMulti() {
     if (!Array.isArray(rows)) rows = [];
   } catch { await pcStatus({ multi: "rpc_error" }); return; }
   await pcStatus({ multi: "ok", multiQueueDepth: rows.length ? Number(rows[0].queue_depth) || 0 : 0, multiLastAt: new Date().toISOString() });
-  // KEEPALIVE: only while NO pending row needs the store half (those rows' own
-  // checks keep the session warm). Must run BEFORE the empty-rows return — an
-  // empty queue IS the idle case the keepalive exists for.
-  const anyNeedStore = rows.some((r) => r && r.need_store);
-  try { await pcEmapKeepalive(anyNeedStore); } catch { /* keepalive is best-effort */ }
+  // 1.14.0: the keepalive runs from pcTick (independent of this lane, the token
+  // and the RPC); here we only record whether any pending row needs the store
+  // half, and stash the admin RPC context for the Admin-card mirror.
+  pcEv.lastAnyNeedStore = rows.some((r) => r && r.need_store);
+  pcEv.rpc = { cfg, rpcHeaders };
   if (!rows.length) return;
 
   const myshipTabId = await pcFindTab(["https://myship.7-11.com.tw/*"]);
-  const emapTabId = await pcFindTab(["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"]);
+  // the ONE emap tab picked this tick (guid-bearing when several exist) — never a blind tabs[0]
+  const emapTabId = (pcEv.emap.tabId && !pcEv.emap.error) ? pcEv.emap.tabId : null;
   for (const row of rows) {
     if (!row || !row.id || pcInFlight.has(row.id)) continue;
     pcInFlight.add(row.id);
@@ -490,8 +562,9 @@ async function pcPollMulti() {
       if (row.need_store && emapTabId) {
         const sResp = await pcSendTab(emapTabId, { type: "PC_CHECK_STORE", row });
         if (sResp && (sResp.store_full_status === "open" || sResp.store_full_status === "full")) storeStatus = sResp.store_full_status;
-        // popup truth: green only while store checks actually resolve
-        await pcSetEmapSession(storeStatus !== null ? "ok" : "pending");
+        // evidence for the per-tab status (single writer in pcTick) + the exact reason
+        if (storeStatus !== null) { pcEv.emap.lastVerdictAt = Date.now(); pcEv.emap.reloads = 0; pcEv.lastStoreReason = ""; }
+        else { pcEv.emap.lastFailAt = Date.now(); pcEv.lastStoreReason = (sResp && sResp.store_reason) || "emap tab not responding"; }
       }
       // phone half — the ROW OWNER's GM + phone, never the global config.
       // anon:true → the check runs credential-less so the body ordMobile is the
@@ -509,6 +582,9 @@ async function pcPollMulti() {
           phoneStatus = pResp.phone_check_status;
           phoneMessage = pResp.phone_check_message ?? null;
           phoneUntil = pResp.phone_restricted_until ?? null;
+          pcEv.myship.lastVerdictAt = Date.now(); pcEv.lastPhoneReason = "";
+        } else {
+          pcEv.lastPhoneReason = (pResp && pResp.phone_reason) || "myship tab not responding";
         }
       }
       // nothing learned (both halves null) → no verdict write, row retries later
@@ -543,9 +619,23 @@ async function pcPollMulti() {
 let pcTimer = null;
 async function pcTick() {
   pcTimer = null;                 // this run consumed the scheduled slot
-  try { await pcPoll(); } catch { /* keep looping */ }
-  try { await pcPollMulti(); } catch { /* keep looping */ }
+  await pcRunOnce();
   pcScheduleLoop(PC_POLL_MS);     // re-arm ~5s after this run finishes
+}
+// One full pass (both lanes + pick + keepalive + status + mirror + heartbeat),
+// WITHOUT re-arming — shared by the loop and the popup's "Check now".
+async function pcRunOnce() {
+  pcEv.tick += 1;
+  try { await pcPoll(); } catch { /* keep looping */ }
+  // 1.14.0 — every block below is wrapped: a failure logs and can never stop the loop.
+  try { await pcPickEmapTab(); } catch (e) { console.log(`[PC-EMAP] skipped: pick ${e && e.message ? e.message : e}`); }
+  try { await pcPollMulti(); } catch { /* keep looping */ }
+  try { await pcEmapKeepalive(); } catch (e) { console.log(`[PC-KEEPALIVE] skipped: ${e && e.message ? e.message : e}`); }
+  try { await pcRefreshTabStatus(); } catch (e) { console.log(`[PC-STATUS] skipped: ${e && e.message ? e.message : e}`); }
+  try { if (pcEv.rpc) await pcPushWorkerState(pcEv.rpc.cfg, pcEv.rpc.rpcHeaders); } catch { /* mirror is best-effort */ }
+  if (pcEv.tick % PC_HEARTBEAT_EVERY === 1) {                     // heartbeat ~every 60s — never silent, never spam
+    try { const st = (await pcGet(PC_STATUS_KEY, {})) || {}; console.log(`[PC-TICK] #${pcEv.tick} sfl=${st.sfl} myship=${st.myship} emap=${st.emap} queue=${st.multiQueueDepth ?? "-"} emapTab=${pcEv.emap.tabId ?? "none"}`); } catch { /* */ }
+  }
 }
 function pcScheduleLoop(delayMs) {
   if (pcTimer !== null) return;   // a tick is already scheduled — no double loop
@@ -557,16 +647,32 @@ function pcScheduleLoop(delayMs) {
 // loop drives the cadence; this never runs a second concurrent poll.
 chrome.alarms.create(PC_ALARM, { periodInMinutes: PC_KEEPALIVE_MIN });
 chrome.alarms.onAlarm.addListener((a) => { if (a.name === PC_ALARM) pcScheduleLoop(0); });
-// Kick the loop on SW startup too.
-// BOOT beacon (1.13.0): a dead-on-load worker is silent; this one line makes
-// "did the worker even start?" answerable from the console in one glance.
-try { console.log(`[PC-BOOT] parcel-checker worker started v${chrome.runtime.getManifest ? chrome.runtime.getManifest().version : "?"}`); } catch { console.log("[PC-BOOT] parcel-checker worker started"); }
-pcScheduleLoop(0);
+// BOOT (1.14.0): beacon + FULL status reset, so nothing stale from a previous
+// worker life can ever be displayed — every key starts 'starting' and must be
+// re-earned by evidence in this life (the 1.9 / 1.12 stale-status class bug,
+// fixed at the root). The first tick is scheduled only AFTER the reset lands.
+(async () => {
+  let v = "?";
+  try { v = chrome.runtime.getManifest ? chrome.runtime.getManifest().version : "?"; } catch { /* */ }
+  try {
+    await pcSet(PC_STATUS_KEY, {
+      bootAt: pcEv.bootAt, version: v,
+      sfl: "starting", myship: "starting", emap: "starting", emapSession: "starting", emapDomain: null, emapTabId: null,
+      multi: null, multiQueueDepth: null, multiLastAt: null,
+      lastStoreReason: "", lastPhoneReason: "", lastStoreAt: null, lastPhoneAt: null,
+      lastCheckAt: null, lastCount: 0, lastError: "", lastStoreVerdictAt: null, lastPhoneVerdictAt: null,
+    });
+    console.log(`[PC-BOOT] parcel-checker worker started v${v} — status reset`);
+  } catch (e) { console.log(`[PC-BOOT] parcel-checker worker started v${v} (status reset skipped: ${e && e.message ? e.message : e})`); }
+  pcScheduleLoop(0);
+})();
 
 // Allow the popup to trigger a poll on demand (Resume / manual refresh) — run now
 // and let the loop keep going.
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message?.type === "PC_POLL_NOW") { pcPoll().catch(() => {}).finally(() => sendResponse({ ok: true })); return true; }
+  // "Check now" = one FULL pass (both lanes — 1.13.0 only ran the legacy lane, so in
+  // multi mode the button did nothing visible).
+  if (message?.type === "PC_POLL_NOW") { pcRunOnce().catch(() => {}).finally(() => sendResponse({ ok: true })); return true; }
   return false;
 });
 

@@ -170,11 +170,16 @@ describe("extension wiring pins (background.js multi-seller path)", () => {
     expect(bg).toContain('const PC_KEEPALIVE_STORE = "198002";');
     expect(bg).toContain('type: "PC_CHECK_STORE", row: { store_id: PC_KEEPALIVE_STORE }');
     expect(bg).toContain("[PC-KEEPALIVE]");
-    const call = multi.indexOf("await pcEmapKeepalive(anyNeedStore)");
+    // 1.14.0: the keepalive runs from pcRunOnce (the tick) — independent of the
+    // lane, the SFL token and the pending RPC; the lane only records the idle flag
+    // BEFORE its empty-rows return (an empty queue IS the idle case).
+    const flag = multi.indexOf("pcEv.lastAnyNeedStore = rows.some((r) => r && r.need_store);");
     const emptyReturn = multi.indexOf("if (!rows.length) return;");
-    expect(call).toBeGreaterThan(-1);
-    expect(call).toBeLessThan(emptyReturn); // keepalive fires even with an empty queue
-    expect(multi).toContain("const anyNeedStore = rows.some((r) => r && r.need_store);");
+    expect(flag).toBeGreaterThan(-1);
+    expect(flag).toBeLessThan(emptyReturn);
+    const tick = bg.slice(bg.indexOf("async function pcRunOnce"), bg.indexOf("function pcScheduleLoop"));
+    expect(tick).toContain("try { await pcEmapKeepalive(); }");
+    expect(multi).not.toContain("pcEmapKeepalive(");
   });
 
   it("NEVER SLEEP: worker tabs pinned autoDiscardable:false on every find (pcHealTab runs each tick → survives extension reload); v1.7 emap auto-reload kept as fallback", () => {
@@ -185,13 +190,19 @@ describe("extension wiring pins (background.js multi-seller path)", () => {
   });
 
   it("ACCURATE emap session popup — DISPLAY-ONLY: red only when a reload landed on error.aspx, amber only when no tab; never writes app_settings / never gates the RPC", () => {
-    expect(bg).toContain('/\\/ecmap\\/error\\.aspx/i.test(String(emapTab.url || ""))');
-    expect(bg).toContain('await pcSetEmapSession("expired")');
-    expect(bg).toContain('await pcSetEmapSession("no_tab")');
+    // 1.14.0: evidence-based derive (pcDeriveEmap) — error.aspx → "expired", no tab →
+    // "no_tab"; the per-tab keys have ONE writer (pcRefreshTabStatus). Behaviour is
+    // driven end-to-end in parcelChecker114.test.ts; these are the shape pins.
+    expect(bg).toContain('const error = /\\/ecmap\\/error\\.aspx/i.test(url);');
+    expect(bg).toContain('if (!e.present) return "no_tab";');
+    expect(bg).toContain('if (e.error) return "expired";');
     expect(bg).toContain("emapDomain"); // which E-Map domain is active (pcsc vs unipcsc)
     expect(bg).not.toContain("admin_set_parcel_emap_health"); // no DB flag, no RPC gate
+    // the Admin mirror is display-only: written by the worker, never read by any lane
+    expect(bg).toContain("admin_set_parcel_worker_state");
+    expect(bg).not.toMatch(/parcel_check_worker_state|worker_state[^)]*\).*(?:return|skip)/);
     const popup = readFileSync("chrome-extension/popup.js", "utf8");
-    expect(popup).toContain("E-Map session expired — re-open E-Map via 賣貨便 → 選擇門市");
+    expect(popup).toContain("(session expired) — re-open via 賣貨便 → 選擇門市");
     expect(popup).toContain("E-Map tab not found");
   });
 
