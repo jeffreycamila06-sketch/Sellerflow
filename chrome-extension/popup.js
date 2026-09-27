@@ -11,7 +11,6 @@ const pcEls = {
   cgdm: document.getElementById("pcCgdm"), ord: document.getElementById("pcOrd"),
   save: document.getElementById("pcSave"), pause: document.getElementById("pcPause"), checkNow: document.getElementById("pcCheckNow"),
   multi: document.getElementById("pcMulti"), multiRow: document.getElementById("pcMultiRow"), multiQueue: document.getElementById("pcMultiQueue"),
-  emapSessionRow: document.getElementById("pcEmapSessionRow"),
 };
 
 function pcOne(key, fallback) {
@@ -43,8 +42,6 @@ async function pcRenderStatus() {
   pcBadge(pcEls.sfl, st.sfl);
   pcBadge(pcEls.myship, st.myship);
   pcBadge(pcEls.emap, st.emap);
-  // Layer 2: loud emap-session-expired notice (store guid lost / discarded tab)
-  if (pcEls.emapSessionRow) pcEls.emapSessionRow.style.display = st.emapSession === "expired" ? "" : "none";
   pcEls.last.textContent = st.lastCheckAt ? `${new Date(st.lastCheckAt).toLocaleTimeString()} · ${st.lastCount ?? 0} parcels` : "—";
   const showErr = Boolean(st.lastError);
   pcEls.errK.style.display = showErr ? "" : "none";

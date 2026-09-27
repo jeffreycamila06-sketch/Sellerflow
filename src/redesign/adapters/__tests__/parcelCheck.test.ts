@@ -83,7 +83,7 @@ describe("server/myshipValidate — parseGmPage (probe-verified page shape)", ()
 describe("sql/53 contract pins", () => {
   const sql = readFileSync("sql/53_multi_seller_parcel_check.sql", "utf8");
   it("all 3 RPCs gate on is_admin() inside the body", () => {
-    expect(sql.match(/if not public\.is_admin\(\) then/g)?.length).toBe(6); // pending, verdict, stats, config, set-sender-health, set-emap-health
+    expect(sql.match(/if not public\.is_admin\(\) then/g)?.length).toBe(5); // pending, verdict, stats, config, set-health
   });
   it("ATTRIBUTION: the pending select INNER JOINs each seller's OWN config; GM-only eligibility (phone no longer required)", () => {
     expect(sql).toContain("join seller_myship_config cfg");
@@ -148,28 +148,6 @@ describe("extension wiring pins (background.js multi-seller path)", () => {
     expect(multi).not.toContain("ordMobile: row.ord_mobile"); // the per-seller phone must NOT be the sender
   });
 
-  it("EMAP LAYER 1: the emap tab is NEVER auto-reloaded (a reload strips the session eshopGuid); myship still heals with reload", () => {
-    expect(bg).toContain('"emap-711.js", false'); // allowReload FALSE for emap
-    expect(bg).toContain('"myship-711.js", true'); // myship unchanged
-    expect(bg).toContain('"sellerflow-bridge.js", false'); // SFL unchanged
-  });
-
-  it("EMAP LAYER 2: store-check guid presence is tracked and surfaced (popup emapSession + Admin flag), and it is DISPLAY-ONLY (never gates the pending RPC)", () => {
-    const sql = readFileSync("sql/53_multi_seller_parcel_check.sql", "utf8"); // sql var lives in another describe
-    expect(bg).toContain("emapNeedStore");
-    expect(bg).toContain("sResp.guidFound");
-    expect(bg).toContain("async function pcSetEmapHealth");
-    expect(bg).toContain("emapSession: ok ? \"ok\" : \"expired\"");
-    expect(bg).toContain("/rest/v1/rpc/admin_set_parcel_emap_health");
-    expect(sql).toContain("parcel_check_emap_ok");
-    expect(sql).toContain("function public.admin_set_parcel_emap_health(p_ok boolean)");
-    expect(sql).toContain("'emap_ok',");
-    // DISPLAY-ONLY: emap health must NOT gate the pending RPC (a lost store guid
-    // can never pause the safety-critical phone half) — only sender/enabled do.
-    const pending = sql.slice(sql.indexOf("function public.admin_parcel_checks_pending"), sql.indexOf("VERDICT RPC"));
-    expect(pending).not.toContain("parcel_check_emap_ok");
-  });
-
   it("SENDER HEALTH-CHECK: a known-clean probe buyer through the sender; restricted → pause (set health false), never mass-flag", () => {
     expect(bg).toContain("async function pcSenderHealthCheck");
     expect(bg).toContain("/rest/v1/rpc/admin_parcel_check_config");
@@ -184,7 +162,7 @@ describe("extension wiring pins (background.js multi-seller path)", () => {
   it("consumes the two admin RPCs and honors need_phone/need_store (nulls for skipped halves)", () => {
     expect(multi).toContain("/rest/v1/rpc/admin_parcel_checks_pending");
     expect(multi).toContain("/rest/v1/rpc/admin_parcel_check_verdict");
-    expect(multi).toContain("if (row.need_store) {");
+    expect(multi).toContain("if (row.need_store && emapTabId)");
     expect(multi).toContain("if (row.need_phone && myshipTabId)");
     expect(multi).toContain("let storeStatus = null;");
     expect(multi).toContain("let phoneStatus = null");
