@@ -255,7 +255,10 @@ async function pcPoll() {
   // error.aspx (true server-side expiry); AMBER only when no emap tab exists.
   // A present, non-error tab clears a prior red/amber to 'pending' (grey) —
   // green comes only from the next store check / keepalive actually resolving.
-  {
+  // DEFENSIVE (1.13.0): nothing in this new session-state block may ever stall
+  // the SFL handshake / row loop below — any failure logs and falls through to
+  // the exact 1.11.1 path.
+  try {
     const emapTab = await pcFindTabInfo(["https://emap.pcsc.com.tw/*", "https://emap.unipcsc.com.tw/*"]);
     let emapDomain = null;
     try { emapDomain = emapTab && emapTab.url ? new URL(emapTab.url).hostname : null; } catch { emapDomain = null; }
@@ -263,7 +266,7 @@ async function pcPoll() {
     else if (/\/ecmap\/error\.aspx/i.test(String(emapTab.url || ""))) await pcSetEmapSession("expired");
     else if (pcEmapSess === "no_tab" || pcEmapSess === "expired") await pcSetEmapSession("pending");
     await pcStatus({ emapDomain });
-  }
+  } catch (e) { console.log(`[PC-KEEPALIVE] skipped: session-state ${e && e.message ? e.message : e}`); }
   await pcStatus({ myship: myshipHealth.state, emap: emapHealth.state });
 
   if (sflHealth.state !== "ok") { await pcStatus({ sfl: sflHealth.state }); return; } // no bridge → nothing to poll
@@ -278,7 +281,13 @@ async function pcPoll() {
   // health/self-heal/token prelude above (both lanes rely on healthy tabs), but
   // stop here: pcPollMulti owns ALL row work in multi mode, so the popup
   // GM/phone is never used and can be blank.
-  if (cfg.multiSeller) { await pcStatus({ lastCheckAt: new Date().toISOString(), lastCount: 0 }); return; }
+  // 1.13.0 FIX: refresh the SFL status HERE, before the multi-mode early return.
+  // sfl:"connected" used to be written only after pcFetchUnchecked (skipped in
+  // multi mode), so a transient 'expired'/'no_token' written right after an
+  // extension reload stuck in storage forever → popup lied ("Click the
+  // SellerFlowLive tab once") while the token was fine and RPCs succeeded. The
+  // token checks above just passed, so the tab IS connected — say so every tick.
+  if (cfg.multiSeller) { await pcStatus({ sfl: "connected", lastError: "", lastCheckAt: new Date().toISOString(), lastCount: 0 }); return; }
 
   const res = await pcFetchUnchecked(cfg, token).catch(() => ({ ok: false, status: 0, rows: [] }));
   if (!res.ok) { await pcStatus({ sfl: res.status === 401 ? "expired" : "connected", lastError: `parcel_scans read failed (${res.status})` }); return; }
@@ -549,6 +558,9 @@ function pcScheduleLoop(delayMs) {
 chrome.alarms.create(PC_ALARM, { periodInMinutes: PC_KEEPALIVE_MIN });
 chrome.alarms.onAlarm.addListener((a) => { if (a.name === PC_ALARM) pcScheduleLoop(0); });
 // Kick the loop on SW startup too.
+// BOOT beacon (1.13.0): a dead-on-load worker is silent; this one line makes
+// "did the worker even start?" answerable from the console in one glance.
+try { console.log(`[PC-BOOT] parcel-checker worker started v${chrome.runtime.getManifest ? chrome.runtime.getManifest().version : "?"}`); } catch { console.log("[PC-BOOT] parcel-checker worker started"); }
 pcScheduleLoop(0);
 
 // Allow the popup to trigger a poll on demand (Resume / manual refresh) — run now
