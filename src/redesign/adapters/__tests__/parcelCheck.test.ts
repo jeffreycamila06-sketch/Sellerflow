@@ -44,14 +44,16 @@ describe("DOGFOOD GATE — exact allowlist (NO budgetukay* prefix this time, del
   it("flip is OFF; the exact five emails + admins pass; everyone else fails", () => {
     expect(PARCEL_CHECK_PUBLIC).toBe(false);
     expect(PARCEL_CHECK_PREVIEW_EMAILS).toEqual([
-      "budgetukay5@gmail.com", "ukaydaily1@gmail.com",
       "googletest@gmail.com", "googletest@sellerflowlive.com",
     ]);
-    // Lhey removed from dogfood (owner 2026-09-27) — her Parcel Scan stays
-    // byte-unchanged (no gate, no Settings card)
+    // Trimmed to googletest + admins only (owner 2026-09-27) while debugging —
+    // NO production shop is gated. Each pinned NOT allowed → byte-unchanged
+    // Parcel Scan (no gate, no Settings card).
     expect(parcelCheckAllowed("sanggalanglhea@gmail.com", "seller")).toBe(false);
+    expect(parcelCheckAllowed("budgetukay5@gmail.com", "seller")).toBe(false);
+    expect(parcelCheckAllowed("ukaydaily1@gmail.com", "seller")).toBe(false);
     for (const e of PARCEL_CHECK_PREVIEW_EMAILS) expect(parcelCheckAllowed(e, "seller"), e).toBe(true);
-    expect(parcelCheckAllowed("BUDGETUKAY5@GMAIL.COM", "seller")).toBe(true); // case-insensitive
+    expect(parcelCheckAllowed("GOOGLETEST@GMAIL.COM", "seller")).toBe(true); // case-insensitive
     expect(parcelCheckAllowed("anyone@x.com", "admin")).toBe(true);
     expect(parcelCheckAllowed("budgetukay2@gmail.com", "seller")).toBe(false); // NO prefix rule
     expect(parcelCheckAllowed("random@x.com", "seller")).toBe(false);

@@ -13,8 +13,6 @@ import { SERVER } from "./serverIdentity";
 //    budgetukay* prefix this time (deliberate). ──
 export const PARCEL_CHECK_PUBLIC = false;
 export const PARCEL_CHECK_PREVIEW_EMAILS: string[] = [
-  "budgetukay5@gmail.com",         // BudgetUkay (owner)
-  "ukaydaily1@gmail.com",          // UkayDaily
   "googletest@gmail.com",
   "googletest@sellerflowlive.com",
 ];
