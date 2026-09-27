@@ -116,7 +116,7 @@ describe("self-heal v1.7.0 — statuses recover without manual tab refreshes", (
   const bg = readFileSync("chrome-extension/background.js", "utf8");
 
   it("manifest 1.7.0 + the scripting permission (re-injection needs it)", () => {
-    expect(manifest.version).toBe("1.9.0"); // 1.9.0 = anonymous multi-seller check lane
+    expect(manifest.version).toBe("1.10.0"); // 1.10.0 = single CHECK_SENDER_PHONE lane
     expect(manifest.permissions).toContain("scripting");
   });
 

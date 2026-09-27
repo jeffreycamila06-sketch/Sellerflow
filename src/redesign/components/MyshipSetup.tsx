@@ -28,7 +28,9 @@ export function MyshipConfigForm({ t, onSaved }: { t: T; onSaved?: () => void })
     if (state === "saving") return;
     const gmId = parseGmId(gm);
     if (!gmId) { setState("error"); setErr(t.rd_mc_err_gm); return; }
-    if (!validOrdMobile(ph)) { setState("error"); setErr(t.rd_mc_err_phone); return; }
+    // Phone is OPTIONAL now — the checks use a single admin CHECK_SENDER_PHONE,
+    // not the seller's own. Validate only if the seller chose to fill it.
+    if (ph.trim() && !validOrdMobile(ph)) { setState("error"); setErr(t.rd_mc_err_phone); return; }
     setState("saving"); setErr(""); setShopName(null);
     // First save CLEARS shop_name/verified_at (audit MEDIUM-3: a changed GM
     // must never keep the OLD shop's verified badge); validate re-stamps below.

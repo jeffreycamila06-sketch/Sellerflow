@@ -316,14 +316,51 @@ async function pcPoll() {
 // ── MULTI-SELLER QUEUE (2026-09-27) — extension-as-shared-worker. Consumes
 // the FAIR cross-seller queue via two admin-gated SECURITY DEFINER RPCs
 // (sql/53). ⚠️ ATTRIBUTION HARD RULE (safety property, contract-test-pinned):
-// every phone check uses the ROW OWNER's own GM + phone (row.gm_id /
-// row.ord_mobile from the RPC — which inner-joins each seller's config), NEVER
-// the popup's global cgdmId/ordMobile. Sellers without config are excluded by
-// the RPC itself. need_phone/need_store: a cache-satisfied half is skipped and
-// its verdict field sent as NULL so the RPC never clobbers it. Runs ALONGSIDE
-// the legacy owner path during dogfood: the owner has no config row, so his
-// rows never enter this queue — zero overlap by construction (cutover =
-// owner adds config + the legacy path is retired in a follow-up).
+// ATTRIBUTION: every check uses the ROW OWNER's own GM (row.gm_id, from the
+// RPC's config INNER JOIN) — never the popup config. The SENDER (ordMobile) is a
+// SINGLE admin-configured clean phone (row.sender_phone = CHECK_SENDER_PHONE),
+// the same for all sellers: a restricted seller's own phone would poison every
+// verdict, and a fixed clean sender sidesteps it (probe-proven — ordMobile isn't
+// cross-validated against the GM; no order is created). need_phone/need_store: a
+// cache-satisfied half is skipped and its verdict sent NULL so the RPC never
+// clobbers it. A periodic health-check guards the single sender: if it ever goes
+// restricted, the RPC pauses the whole lane (no mass-flagging real buyers).
+const PC_HEALTH_INTERVAL_MS = 5 * 60 * 1000; // sender health-check cadence
+const PC_HEALTH_STORE_ID = "195965";          // any valid 6-digit store — the probe checks the PHONE, not this store
+let pcLastHealthAt = 0;
+
+// Validate a KNOWN-CLEAN probe buyer through CHECK_SENDER_PHONE. restricted →
+// the sender is poisoned → flip the DB health flag false (pending RPC pauses) +
+// distinct alert. ok → recover the flag. unknown → inconclusive, leave as-is.
+async function pcSenderHealthCheck(cfg, rpcHeaders) {
+  if (Date.now() - pcLastHealthAt < PC_HEALTH_INTERVAL_MS) return;
+  pcLastHealthAt = Date.now();
+  let conf;
+  try {
+    const r = await fetch(`${cfg.supabaseUrl}/rest/v1/rpc/admin_parcel_check_config`, { method: "POST", headers: rpcHeaders, body: "{}" });
+    if (!r.ok) return;
+    conf = await r.json();
+  } catch { return; }
+  if (!conf || !conf.sender_phone || !conf.probe_buyer || !conf.sample_gm) return;
+  const myshipTabId = await pcFindTab(["https://myship.7-11.com.tw/*"]);
+  if (!myshipTabId) return; // can't probe without a myship tab — try next cycle
+  const resp = await pcSendTab(myshipTabId, {
+    type: "PC_CHECK_PHONE", anon: true,
+    row: { store_id: PC_HEALTH_STORE_ID, phone: conf.probe_buyer, customer_name: "SFL sender health" },
+    config: { cgdmId: conf.sample_gm, ordMobile: conf.sender_phone },
+  });
+  const st = resp && resp.phone_check_status;
+  const setHealth = (ok) => fetch(`${cfg.supabaseUrl}/rest/v1/rpc/admin_set_parcel_sender_health`, { method: "POST", headers: rpcHeaders, body: JSON.stringify({ p_ok: ok }) }).catch(() => {});
+  if (st === "restricted") {
+    await setHealth(false);
+    await pcStatus({ multi: "sender_poisoned" });
+    console.warn(`[PC-SENDER] POISONED: sender ${conf.sender_phone} returns 'restricted' for a known-clean buyer — verdicts PAUSED. Swap parcel_check_sender_phone to a clean account.`);
+  } else if (st === "ok" && conf.healthy !== "true") {
+    await setHealth(true);
+    console.log(`[PC-SENDER] recovered: sender ${conf.sender_phone} healthy again — resuming.`);
+  }
+}
+
 async function pcPollMulti() {
   const cfg = await pcConfig();
   if (!cfg.multiSeller || cfg.paused) return;
@@ -335,6 +372,9 @@ async function pcPollMulti() {
   const rpcHeaders = {
     apikey: cfg.supabaseAnonKey, Authorization: `Bearer ${token}`, "Content-Type": "application/json",
   };
+  // sender health-check FIRST (time-gated) — runs even while paused so a swapped
+  // /recovered sender flips the lane back on; the pending RPC stays empty until it does.
+  try { await pcSenderHealthCheck(cfg, rpcHeaders); } catch { /* health check best-effort */ }
   let rows = [];
   try {
     const r = await fetch(`${cfg.supabaseUrl}/rest/v1/rpc/admin_parcel_checks_pending`, {
@@ -377,7 +417,7 @@ async function pcPollMulti() {
       if (row.need_phone && myshipTabId) {
         const pResp = await pcSendTab(myshipTabId, {
           type: "PC_CHECK_PHONE", row, anon: true,
-          config: { cgdmId: row.gm_id, ordMobile: row.ord_mobile },
+          config: { cgdmId: row.gm_id, ordMobile: row.sender_phone },
         });
         if (pResp) { pTokenMs = pResp.tokenMs ?? null; pPostMs = pResp.postMs ?? null; }
         // DEFINITIVE only (audit M1): 'unknown' → leave null → retry next poll.
