@@ -218,12 +218,40 @@ export function extractRequestToken(html) {
   return alt ? alt[1] : "";
 }
 
+// A redirect that lands anywhere but /PackageDetail (and isn't the ?handler= captcha
+// bounce) is an ERROR page — e.g. SHOPMORE's /Error, a block page, or the index.
+// A missing finalUrl (test fakes) is not treated as an error.
+export function isErrorRedirect(finalUrl) {
+  const u = String(finalUrl || "");
+  if (!u) return false;
+  let path;
+  try { path = new URL(u, SHOPMORE_BASE).pathname; } catch { return true; }
+  return !/^\/packagedetail\b/i.test(path);
+}
+
+// Did the HTML carry a `var searchResults=[…]` array at all? (A block/error page won't.)
+export function hasSearchResults(html) {
+  return /var\s+searchResults\s*=\s*\[/.test(String(html || ""));
+}
+
+// Non-2xx HTTP status. A missing status (test fakes) counts as OK.
+export function isHttpFailure(status) {
+  return status != null && (Number(status) < 200 || Number(status) >= 300);
+}
+
 // Orchestrate ONE ≤6-code batch with injected deps (no network/OCR here → testable):
 //   deps.getCaptcha()   → { captchaId, image }
 //   deps.solveCaptcha(image) → "1234"
-//   deps.submitQuery({ paymentNos, captchaId, captcha }) → { finalUrl, html }
+//   deps.submitQuery({ paymentNos, captchaId, captcha }) → { finalUrl, html, status? }
 //   deps.onUnknownStatus?(statusMessage) — called per row whose newest step is unmapped
-// Retries on an expired captcha up to MAX_CAPTCHA_RETRIES; returns { ok, updates, attempts }.
+// Retries on an expired captcha up to MAX_CAPTCHA_RETRIES. Returns
+//   { ok:true, updates, attempts } on a real result, else
+//   { ok:false, updates:[], attempts, error } with error ∈
+//     http_<status> | error_redirect | no_results | empty_results | captcha_failed.
+// ANTI-BLOCK (Stage 1): a non-2xx POST, an error-page redirect, HTML with no
+// searchResults, or an EMPTY searchResults are all FAILURES — a block page must
+// never read as "no results" (SHOPMORE returns an entry per code, even unknown
+// ones, as status 0/2 → not_found). getPageToken/getCaptcha throw on non-2xx.
 export async function pollBatch(codes, deps, { maxRetries = MAX_CAPTCHA_RETRIES, now = () => new Date() } = {}) {
   // Antiforgery token + cookie: fetch the search page ONCE (valid across captcha
   // retries; cookies flow through the runner's per-batch jar). Optional dep so
@@ -233,9 +261,14 @@ export async function pollBatch(codes, deps, { maxRetries = MAX_CAPTCHA_RETRIES,
     const { captchaId, image } = await deps.getCaptcha();
     const captcha = cleanCaptcha(await deps.solveCaptcha(image));
     // Carry the antiforgery token into the query POST (cookies ride the runner's jar).
-    const { finalUrl, html } = await deps.submitQuery({ paymentNos: codes, captchaId, captcha, token: page.token });
+    const { finalUrl, html, status } = await deps.submitQuery({ paymentNos: codes, captchaId, captcha, token: page.token });
+    if (isHttpFailure(status)) return { ok: false, updates: [], attempts: attempt, error: `http_${status}` };
     if (isExpiredCaptcha(finalUrl)) continue;                 // bad captcha → refetch + retry
-    const updates = parseSearchResults(html).map((sr) => resultToUpdate(sr, { now: now() }));
+    if (isErrorRedirect(finalUrl)) return { ok: false, updates: [], attempts: attempt, error: "error_redirect" };
+    if (!hasSearchResults(html)) return { ok: false, updates: [], attempts: attempt, error: "no_results" };
+    const parsed = parseSearchResults(html);
+    if (parsed.length === 0) return { ok: false, updates: [], attempts: attempt, error: "empty_results" };
+    const updates = parsed.map((sr) => resultToUpdate(sr, { now: now() }));
     for (const u of updates) {
       if (!u.known && deps.onUnknownStatus) deps.onUnknownStatus(u.status_message);
     }

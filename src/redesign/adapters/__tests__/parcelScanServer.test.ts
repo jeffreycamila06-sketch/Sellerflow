@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
   SCAN_FIELDS,
+  describeRawReply,
   DEFAULT_SCAN_MODEL,
   SCAN_MAX_TOKENS,
   SCAN_RAW_SNIPPET,
@@ -255,13 +256,15 @@ describe("server.js route wiring (structural — the server.js convention)", () 
     // no global limit raise anywhere
     expect(src).not.toMatch(/app\.use\(express\.json\(\{/);
   });
-  it("failure logging: FAIL line carries stop_reason + http; RAW is its own single JSON-stringified ≤500-char line, logged even when EMPTY", () => {
+  it("failure logging: FAIL line carries stop_reason + http; RAW logs the reply SHAPE only (never its PII body), even when EMPTY", () => {
     expect(src).toMatch(/\[PARCEL_SCAN\] FAIL error=\$\{result\.error\} stop_reason=\$\{result\.stopReason \|\| "-"\} http=\$\{result\.httpStatus \?\? "-"\}/);
-    // RAW: JSON.stringify (newlines can't split the line) + 500-char cap, and
-    // gated on !== undefined — NOT truthiness (the empty-raw suppression bug
-    // that hid the first production outage must never come back).
+    // gated on !== undefined — NOT truthiness (the empty-raw suppression bug that
+    // hid the first production outage must never come back: "RAW len=0").
     expect(src).toMatch(/result\.raw !== undefined/);
-    expect(src).toMatch(/\[PARCEL_SCAN\] RAW \$\{JSON\.stringify\(String\(result\.raw\)\.slice\(0, 500\)\)\}/);
+    expect(src).toContain("[PARCEL_SCAN] RAW ${describeRawReply(result.raw)}");
+    // L1 (2026-09-29): the reply body is buyer PII — no snippet of it is ever logged.
+    const scanLogs = src.split("\n").filter((l) => l.includes("[PARCEL_SCAN]")).join("\n");
+    expect(scanLogs).not.toMatch(/JSON\.stringify|\.slice\(/);
   });
   it("failure raw goes to the server console only, never the client response", () => {
     const routeSlice = src.slice(src.indexOf('"/admin/parcel-scan"'));
@@ -289,15 +292,49 @@ describe("server.js /admin/parcel-tracking-poll (structural — secret-gated cro
     expect(route).toMatch(/!PARCEL_POLL_TOKEN/);
   });
 
+  // The run body lives in runParcelPollOnce (called by the route); slice it too.
+  const runner = (() => {
+    const i = src.indexOf("async function runParcelPollOnce()");
+    return src.slice(i, i + src.slice(i).indexOf("\n}\n") + 3);
+  })();
+
   it("checks the token BEFORE touching the DB / OCR (no work for a bad caller)", () => {
-    expect(route.indexOf("timingSafeTokenEqual(token, PARCEL_POLL_TOKEN")).toBeLessThan(route.indexOf("createOcr("));
-    expect(route.indexOf("token !== PARCEL_POLL_TOKEN")).toBeLessThan(route.indexOf("runPoll("));
+    const tokenAt = route.indexOf("timingSafeTokenEqual(token, PARCEL_POLL_TOKEN");
+    expect(tokenAt).toBeGreaterThan(-1);
+    expect(tokenAt).toBeLessThan(route.indexOf("readPollGate("));        // first DB touch
+    expect(tokenAt).toBeLessThan(route.indexOf("runParcelPollOnce("));   // → runPoll + OCR
+    expect(route).not.toContain("createOcr(");                           // OCR only inside the run
   });
 
-  it("runs as service role with an EXPLICIT poll user id, single-flight, and ALWAYS terminates the OCR worker", () => {
-    expect(route).toMatch(/runPoll\(\{ serviceSb, userId: PARCEL_POLL_USER_ID \|\| null, ocr \}\)/);
+  it("kill switch answers 200 before scheduling anything; the run is service-role, allowlist-scoped (override optional), single-flight, and runPoll owns the OCR lifecycle", () => {
+    expect(route).toMatch(/gate\.reason === "disabled"[\s\S]*status\(200\)\.json\(\{ ok: true, disabled: true \}\)/);
+    expect(route.indexOf("readPollGate(")).toBeLessThan(route.indexOf("parcelPollRunning = true")); // no guard claimed for a disabled poller
+    expect(runner).toMatch(/runPoll\(\{ serviceSb, userId: PARCEL_POLL_USER_ID \|\| null, makeOcr: createOcr \}\)/);
     expect(route).toContain("parcelPollRunning"); // single-flight guard
     expect(route).toMatch(/status\(409\)/);        // rejects an overlapping run
-    expect(route).toMatch(/finally \{[\s\S]*ocr\.terminate\(\)/); // worker never kept warm
+    expect(runner).toMatch(/finally \{[\s\S]*parcelPollRunning = false/); // guard always released
+  });
+});
+
+describe("describeRawReply — L1: the Parcel Scan failure log carries the reply's SHAPE, never its PII", () => {
+  it("valid JSON object → len + json=true + key names only (no values)", () => {
+    const raw = JSON.stringify({ name: "陳小美", phone: "0912345678", store_id: "198002", amount: 350, notes: "red bag" });
+    const line = describeRawReply(raw);
+    expect(line).toBe(`len=${raw.length} json=true keys=name,phone,store_id,amount,notes`);
+    for (const v of ["陳小美", "0912345678", "198002", "350", "red bag"]) expect(line).not.toContain(v);
+  });
+  it("JSON wrapped in prose / fences still reports the keys; values still never appear", () => {
+    const line = describeRawReply('Here you go:\n```json\n{"name":"王大明","phone":"0987654321"}\n```');
+    expect(line).toMatch(/json=true keys=name,phone$/);
+    expect(line).not.toContain("王大明");
+    expect(line).not.toContain("0987654321");
+  });
+  it("a refusal / prose reply → json=false, keys=-, and none of its text", () => {
+    const line = describeRawReply("I can't transcribe personal information from this image.");
+    expect(line).toMatch(/^len=\d+ json=false keys=-$/);
+  });
+  it("EMPTY / undefined reply still produces a line (len=0) — the outage signal", () => {
+    expect(describeRawReply("")).toBe("len=0 json=false keys=-");
+    expect(describeRawReply(undefined)).toBe("len=0 json=false keys=-");
   });
 });

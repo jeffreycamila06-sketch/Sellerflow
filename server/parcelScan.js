@@ -23,6 +23,23 @@ export const SCAN_MAX_TOKENS = 2048;
 // Bounded raw-reply snippet on failures (server-console logging only).
 export const SCAN_RAW_SNIPPET = 500;
 
+// SHAPE-ONLY description of a failed reply for the server log — NEVER its body.
+// The reply is buyer PII (name, phone, store, amount, notes), so the log carries
+// only its length, whether it parsed as a JSON object, and that object's top-level
+// KEY NAMES. An empty reply still logs (len=0) — the outage-debugging signal the
+// old snippet line existed for.
+export function describeRawReply(raw) {
+  const text = raw == null ? "" : String(raw);
+  let obj = null;
+  try { obj = JSON.parse(text); } catch {
+    const m = text.match(/\{[\s\S]*\}/);
+    if (m) { try { obj = JSON.parse(m[0]); } catch { obj = null; } }
+  }
+  const isObj = obj != null && typeof obj === "object" && !Array.isArray(obj);
+  const keys = isObj ? Object.keys(obj).map((k) => k.replace(/[^\w-]/g, "").slice(0, 24)).join(",") : "";
+  return `len=${text.length} json=${isObj} keys=${keys || "-"}`;
+}
+
 // Only the types the client's canvas re-encode can produce (it always sends
 // JPEG; PNG/WebP accepted for robustness). Anything else → honest reject.
 export const SCAN_MEDIA_TYPES = ["image/jpeg", "image/png", "image/webp"];
