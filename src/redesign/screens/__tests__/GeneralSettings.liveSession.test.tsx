@@ -82,7 +82,7 @@ describe("LIVE SESSION collapsible group", () => {
     expect(screen.getByTestId("ls-print-pattern")).toBeTruthy();
     // and they still toggle — the Auto/keep-awake/pin pill buttons + the pattern row
     const pills = within(body).getAllByRole("button");
-    fireEvent.click(pills[0]); // auto toggleSetup (accordion) — harmless
+    fireEvent.click(pills[0]); // first row is now Keep-screen-awake — harmless (also asserted below)
     // fire the actual toggles via their titles
     fireEvent.click(screen.getByTitle("Keep screen awake while live"));
     expect(keepAwake).toHaveBeenCalled();

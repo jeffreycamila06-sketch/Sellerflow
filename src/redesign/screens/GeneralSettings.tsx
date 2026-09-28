@@ -312,7 +312,49 @@ export default function GeneralSettings({
             </button>
             {liveOpen && (<div data-testid="ls-body">
             <div style={{ padding: 15, borderTop: "1px solid var(--border)" }}>
+            {/* 1. KEEP-AWAKE toggle (first row) — display only; RedesignApp owns the
+                wake-lock lifecycle (green/amber hold). */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+              <span style={{ flex: 1 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_keepawake}</span>
+                <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{t.rd_set_keepawake_desc}</span>
+              </span>
+              <button onClick={onToggleKeepAwake} title={t.rd_set_keepawake} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }}>
+                <span style={{ width: 44, height: 26, borderRadius: 13, background: keepAwake ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s" }}>
+                  <span style={{ position: "absolute", top: 3, left: keepAwake ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
+                </span>
+              </button>
+            </div>
+            {/* 2. LIVE print pattern — moved inside the accordion body (same row style
+                as the others); the chevron opens the same Print Pattern screen. */}
+            <button onClick={onPrintPattern} data-testid="ls-print-pattern" style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 14, paddingTop: 14, border: "none", borderTop: "1px solid var(--border)", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
+              <span style={{ flex: 1 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_live_pattern}</span>
+                <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{t.rd_set_pattern_sub}</span>
+              </span>
+              <span style={{ fontSize: 16, color: "var(--text-muted)", flexShrink: 0 }}>›</span>
+            </button>
+            {/* 3. PIN-TO-PRINT toggle + the "currently active" status line directly under
+                it. Per-device, default OFF; DOGFOOD GATE: the handler is passed only for
+                allowlisted accounts (absent handler = no row, zero change). */}
+            {onTogglePinPrint && <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingTop: 12, marginTop: 12, borderTop: "1px solid var(--border)" }}>
+              <span style={{ flex: 1 }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_pinprint}</span>
+                <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{t.rd_set_pinprint_desc}</span>
+              </span>
+              <button onClick={onTogglePinPrint} title={t.rd_set_pinprint} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }}>
+                <span style={{ width: 44, height: 26, borderRadius: 13, background: pinPrint ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s" }}>
+                  <span style={{ position: "absolute", top: 3, left: pinPrint ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
+                </span>
+              </button>
+            </div>}
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: autoLabelColor }} />
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: autoLabelColor }}>{autoLabel}</span>
+              <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_set_currently_active}</span>
+            </div>
+            {/* 4. AUTO MODE (with its expand chevron) + the setup expand (low-stock). */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
               <button onClick={auto.toggleSetup} style={{ flex: 1, display: "flex", alignItems: "flex-start", gap: 9, background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: 0, fontFamily: "var(--font-ui)" }}>
                 <span style={{ flex: 1 }}>
                   <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_auto_mode}</span>
@@ -326,35 +368,6 @@ export default function GeneralSettings({
                 </span>
               </button>
             </div>
-            {/* KEEP-AWAKE toggle — same pill pattern as Auto Mode above. Display
-                only; RedesignApp owns the wake-lock lifecycle (green/amber hold). */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
-              <span style={{ flex: 1 }}>
-                <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_keepawake}</span>
-                <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{t.rd_set_keepawake_desc}</span>
-              </span>
-              <button onClick={onToggleKeepAwake} title={t.rd_set_keepawake} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }}>
-                <span style={{ width: 44, height: 26, borderRadius: 13, background: keepAwake ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s" }}>
-                  <span style={{ position: "absolute", top: 3, left: keepAwake ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
-                </span>
-              </button>
-            </div>
-            {/* PIN-TO-PRINT toggle — same pill pattern as keep-awake. Per-device,
-                default OFF: only the printer-holding device should auto-order on
-                a pin, and on web it would pop the browser print dialog. DOGFOOD
-                GATE: the handler is passed only for allowlisted accounts
-                (pinPrintAllowed) — absent handler = no row, zero change. */}
-            {onTogglePinPrint && <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingTop: 12, marginTop: 12, borderTop: "1px solid var(--border)" }}>
-              <span style={{ flex: 1 }}>
-                <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_pinprint}</span>
-                <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{t.rd_set_pinprint_desc}</span>
-              </span>
-              <button onClick={onTogglePinPrint} title={t.rd_set_pinprint} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }}>
-                <span style={{ width: 44, height: 26, borderRadius: 13, background: pinPrint ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s" }}>
-                  <span style={{ position: "absolute", top: 3, left: pinPrint ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
-                </span>
-              </button>
-            </div>}
             {auto.setupOpen && (
               <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
                 {/* Live codes moved onto the Products screen (one code = one product,
@@ -370,18 +383,13 @@ export default function GeneralSettings({
                 </div>
               </div>
             )}
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: autoLabelColor }} />
-              <span style={{ fontSize: 11.5, fontWeight: 700, color: autoLabelColor }}>{autoLabel}</span>
-              <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_set_currently_active}</span>
-            </div>
-            </div>
-            {/* SAME PRICE FOR ALL ITEMS — ON/OFF toggle + a remembered price. Applied by
-                RedesignApp to 1-Click/Auto (Enterprise pre-fills only) when ON + price > 0. */}
+            {/* 5. SAME PRICE FOR ALL ITEMS — ON/OFF toggle + remembered price. Applied by
+                RedesignApp to 1-Click/Auto (Enterprise pre-fills only) when ON + price > 0.
+                Title uses the shared flex:1 markup so the toggle centers with it. */}
             {onSaveSamePrice && (
-              <div style={{ padding: 14, borderTop: "1px solid var(--border)" }} data-testid="samePrice-row">
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }} data-testid="samePrice-row">
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                  <span style={rowTitle}>{t.rd_smp_row_title}</span>
+                  <span style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t.rd_smp_row_title}</span>
                   <button onClick={toggleSamePrice} data-testid="samePrice-toggle" role="switch" aria-checked={samePriceEnabled} aria-label={t.rd_smp_row_title} title={samePriceEnabled ? t.rd_smp_off : t.rd_smp_row_title} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }}>
                     <span style={{ width: 44, height: 26, borderRadius: 13, background: samePriceEnabled ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s" }}>
                       <span style={{ position: "absolute", top: 3, left: samePriceEnabled ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
@@ -397,12 +405,7 @@ export default function GeneralSettings({
                 {samePriceError > 0 && <div style={{ fontSize: 11, color: "var(--danger)", marginTop: 6 }} data-testid="samePrice-error">{t.rd_smp_error}</div>}
               </div>
             )}
-            {/* LIVE print pattern — moved here from Printer & Display (now inside the Live session group) */}
-            <button onClick={onPrintPattern} data-testid="ls-print-pattern" style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", borderTop: "1px solid var(--border)", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
-              <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)", flexShrink: 0 }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="6" y="3" width="12" height="6" stroke="currentColor" strokeWidth="1.7" /><rect x="4" y="9" width="16" height="8" rx="2" stroke="currentColor" strokeWidth="1.7" /><rect x="7" y="14" width="10" height="7" stroke="currentColor" strokeWidth="1.7" /></svg></div>
-              <div style={{ flex: 1 }}><div style={rowTitle}>{t.rd_set_live_pattern}</div><div style={rowSub}>{t.rd_set_pattern_sub}</div></div>
-              <span style={{ fontSize: 16, color: "var(--text-muted)" }}>›</span>
-            </button>
+            </div>
             </div>)}
           </div>
         </div>
