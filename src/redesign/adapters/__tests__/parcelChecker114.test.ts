@@ -65,7 +65,7 @@ describe("B · evidence-based emap state + auto-recovery (evidence recency test)
     sb.chrome.tabs.sendMessage = ((id: number, msg: { type: string }, cb: (r: unknown) => void) => {
       if (msg.type === "PC_EMAP_PROBE") return cb({ ok: true, guidFound: false, url: "https://emap.unipcsc.com.tw/ecmap/default.aspx" });
       if (msg.type === "PC_CHECK_STORE") return cb({ ok: true, store_full_status: "unknown", store_reason: "eshopGuid not found on emap page", guidFound: false });
-      if (msg.type === "SFL_GET_TOKEN") return cb({ ok: true, token: (sb as unknown as { fakeJwt?: () => string }).fakeJwt?.() });
+      if (msg.type === "SFL_GET_TOKEN") return cb({ ok: true, token: "x.y.z" }); // valid (non-expiring) token — keep the SFL lane green
       cb({ ok: true });
     }) as never;
     t += 5 * MIN + 1000;

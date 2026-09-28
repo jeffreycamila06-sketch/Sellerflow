@@ -136,6 +136,50 @@ async function pcGetToken(sflTabId) {
   const resp = await pcSendTab(sflTabId, { type: "SFL_GET_TOKEN" });
   return resp && typeof resp.token === "string" && resp.token ? resp.token : null;
 }
+// JWT exp as a readable time for the [PC-SFL] log line.
+function pcTokenExpStr(token) {
+  try {
+    const j = JSON.parse(atob(String(token).split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    return typeof j.exp === "number" ? new Date(j.exp * 1000).toISOString() : "?";
+  } catch { return "?"; }
+}
+// 1.14.5 — ask the SFL tab's bridge to refresh the session IN PLACE (bridge →
+// MAIN helper → the app's own supabase client) and hand back the fresh token.
+// { token, hadSession }: hadSession===false = actually logged out; null = the
+// helper/app build is absent (worker falls back to a GET re-navigation).
+async function pcSflRefresh(sflTabId) {
+  const resp = await pcSendTab(sflTabId, { type: "SFL_REFRESH_TOKEN" });
+  const token = resp && typeof resp.token === "string" && resp.token ? resp.token : null;
+  const hadSession = resp && typeof resp.hadSession === "boolean" ? resp.hadSession : null;
+  return { token, hadSession };
+}
+// The SFL token ladder, run in the poll prelude. Returns a fresh token or null
+// (with sfl status already written on failure). NEVER refreshes our own session.
+async function pcSflToken(sflTabId) {
+  let token = await pcGetToken(sflTabId);
+  if (token && !pcTokenExpired(token)) {
+    if (pcEv.sfl.reloadedEpisode) { console.log(`[PC-SFL] token refreshed via=reload exp=${pcTokenExpStr(token)}`); pcEv.sfl.reloadedEpisode = false; }
+    return token;
+  }
+  // stale / missing → try an in-place refresh (no reload)
+  const r = await pcSflRefresh(sflTabId);
+  if (r.token && !pcTokenExpired(r.token)) {
+    console.log(`[PC-SFL] token refreshed via=bridge exp=${pcTokenExpStr(r.token)}`);
+    pcEv.sfl.reloadedEpisode = false;
+    return r.token;
+  }
+  if (r.hadSession === false) { await pcStatus({ sfl: "signed_out" }); pcEv.sfl.reloadedEpisode = false; return null; } // logged out → red, no reload
+  // helper/app absent or refresh failed → ONE GET re-navigation per episode
+  // (re-inits supabase-js → _recoverAndRefresh → fresh token in localStorage).
+  // Never under an in-flight REST call.
+  if (!pcEv.sfl.reloadedEpisode && !pcEv.sfl.fetchInFlight) {
+    pcEv.sfl.reloadedEpisode = true;
+    const info = await pcFindTabInfo(PC_SFL_PATTERNS);
+    if (info && info.url) { try { chrome.tabs.update(info.id, { url: info.url }); } catch { /* next poll retries */ } console.log(`[PC-SFL] re-navigating SFL tab ${info.id} to refresh the session (in-place refresh unavailable)`); }
+    await pcStatus({ sfl: "refreshing" }); return null;   // next poll re-handshakes → via=reload
+  }
+  await pcStatus({ sfl: token ? "expired" : "signed_out" }); return null; // already re-navigated this episode
+}
 
 async function pcFetchUnchecked(cfg, token) {
   const url = `${cfg.supabaseUrl}/rest/v1/parcel_scans`
@@ -256,9 +300,10 @@ async function pcPoll() {
 
   if (sflHealth.state !== "ok") { await pcStatus({ sfl: sflHealth.state }); return; } // no bridge → nothing to poll
   const sflTabId = sflHealth.tabId;
-  const token = await pcGetToken(sflTabId);
-  if (!token) { await pcStatus({ sfl: "no_token" }); return; }             // logged out → stop
-  if (pcTokenExpired(token)) { await pcStatus({ sfl: "expired" }); return; } // frozen SFL tab stopped refreshing → click it
+  // 1.14.5: the token ladder — read → in-place refresh (no reload) → GET re-nav
+  // fallback → signed_out. Replaces the old "expired → click the tab" dead end.
+  const token = await pcSflToken(sflTabId);
+  if (!token) return; // sfl status already written (refreshing / signed_out / expired)
 
   // MULTI-SELLER MODE: the legacy single-config lane must NOT also process rows
   // (2026-09-27 two-lane race — it raced pcPollMulti on the owner's own rows,
@@ -274,7 +319,9 @@ async function pcPoll() {
   // token checks above just passed, so the tab IS connected — say so every tick.
   if (cfg.multiSeller) { await pcStatus({ sfl: "connected", lastError: "", lastCheckAt: new Date().toISOString(), lastCount: 0 }); return; }
 
+  pcEv.sfl.fetchInFlight = true;
   const res = await pcFetchUnchecked(cfg, token).catch(() => ({ ok: false, status: 0, rows: [] }));
+  pcEv.sfl.fetchInFlight = false;
   if (!res.ok) { await pcStatus({ sfl: res.status === 401 ? "expired" : "connected", lastError: `parcel_scans read failed (${res.status})` }); return; }
   await pcStatus({ sfl: "connected", lastError: "" });
 
@@ -376,9 +423,14 @@ const PC_RECOVER_MIN_SPAN_MS = 2 * 60 * 1000;
 const PC_HEARTBEAT_EVERY = 12;                // ~60s at the 5s cadence
 const PC_WORKER_STATE_PUSH_MS = 60 * 1000;    // Admin-card mirror cadence (also on change)
 let pcLastKeepaliveAt = 0;
+const PC_SFL_PATTERNS = ["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*", "http://localhost:5173/*"];
 const pcEv = {
   bootAt: Date.now(), tick: 0, lastAnyNeedStore: false, health: null, rpc: null,
   lastStoreReason: "", lastPhoneReason: "",
+  // 1.14.5 SFL token refresh: reloadedEpisode = one GET re-nav per expiry episode
+  // (reset by the next healthy token → no loop); fetchInFlight = a REST call is
+  // running (never re-navigate the SFL tab under it).
+  sfl: { reloadedEpisode: false, fetchInFlight: false },
   emap: { tabId: null, url: null, guid: false, error: false, present: false, lastVerdictAt: 0, lastMissAt: 0, misses: 0, firstMissAt: 0, lastMissReason: "", reloadAt: 0, reloads: 0, state: null,
     // 1.14.3 unattended re-mint (one attempt per 'dead' episode): tried / until (20 s
     // window while we wait for the new E-Map tab) / oldTabId (closed on adoption) /
@@ -600,16 +652,18 @@ async function pcPollMulti() {
   };
   // sender health-check FIRST (time-gated) — runs even while paused so a swapped
   // /recovered sender flips the lane back on; the pending RPC stays empty until it does.
+  pcEv.sfl.fetchInFlight = true;   // 1.14.5: a REST call is running — no SFL re-nav under it
   try { await pcSenderHealthCheck(cfg, rpcHeaders); } catch { /* health check best-effort */ }
   let rows = [];
   try {
     const r = await fetch(`${cfg.supabaseUrl}/rest/v1/rpc/admin_parcel_checks_pending`, {
       method: "POST", headers: rpcHeaders, body: JSON.stringify({ p_limit: PC_LIMIT }),
     });
-    if (!r.ok) { await pcStatus({ multi: `rpc_${r.status}` }); return; }
+    if (!r.ok) { pcEv.sfl.fetchInFlight = false; await pcStatus({ multi: `rpc_${r.status}` }); return; }
     rows = await r.json();
     if (!Array.isArray(rows)) rows = [];
-  } catch { await pcStatus({ multi: "rpc_error" }); return; }
+  } catch { pcEv.sfl.fetchInFlight = false; await pcStatus({ multi: "rpc_error" }); return; }
+  pcEv.sfl.fetchInFlight = false;
   await pcStatus({ multi: "ok", multiQueueDepth: rows.length ? Number(rows[0].queue_depth) || 0 : 0, multiLastAt: new Date().toISOString() });
   // 1.14.0: the keepalive runs from pcTick (independent of this lane, the token
   // and the RPC); here we only record whether any pending row needs the store

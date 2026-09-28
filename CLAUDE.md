@@ -4332,3 +4332,23 @@ Full audit (D1–D10) → ONE clean version. Worker (`chrome-extension/backgroun
   verdict AND no definitive miss after it (`lastMissAt > lastVerdictAt` → degraded at
   once; transient timeouts never flip it). Ladder untouched (display-only). The Admin
   card applies the same rule from the mirrored `lastStoreMissAt`.
+- **1.14.5 (2026-09-28) — SFL token auto-refresh (the last hands-off gap).** Overnight
+  the worker sat sfl=expired for hours (emap=ok throughout); a manual SFL-tab refresh
+  fixed it. Root cause: **supabase-js v2 STOPS its auto-refresh ticker while the tab is
+  hidden** — a backgrounded worker SFL tab never renews the ~1h access token. Fix (never
+  a second refresher — that rotates the shared refresh_token and signs the user out):
+  (a) web `src/supabase.ts` exposes `window.__sflEnsureFreshSession()` — refreshes the
+  app's ONE client in place (getSession + refreshSession within 2 min of exp), returns
+  only whether a session exists (no token handed to the page); (b) extension MAIN-world
+  `sellerflow-refresh-main.js` + the bridge's `SFL_REFRESH_TOKEN` invoke it, then re-read
+  the fresh token from localStorage; (c) worker ladder `pcSflToken` in the poll prelude:
+  read → in-place bridge refresh (no reload, `[PC-SFL] via=bridge`) → ONE GET
+  re-navigation of the SFL tab per episode (`chrome.tabs.update({url})`, no form POST so
+  no dialog, `via=reload`) → `signed_out` red "SellerFlowLive: signed out — log in once"
+  only when the app's client reports no session. Never re-navigates while a REST call is
+  in flight (`pcEv.sfl.fetchInFlight`) and never loops (`reloadedEpisode`, reset by the
+  next healthy token). autoDiscardable:false already covers SFL (pcHealTab → pcNoDiscard).
+  Tests `parcelCheckerSfl.test.ts` (via=bridge no-reload, via=reload once, signed_out no
+  loop, fresh token no-op, source pins); 4 sabotages red. Manifest 1.14.5. ⚠️ The web
+  half (supabase.ts) deploys via main→Vercel; the extension half needs the Mac reload.
+  If the web build isn't live yet, the GET-re-nav fallback still recovers the token.
