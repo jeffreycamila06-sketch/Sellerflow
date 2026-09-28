@@ -1,14 +1,15 @@
-// Auto Mode card (Sep 17): the code-list EDITOR moved to the Products screen
-// (one code = one product). The expanded card now holds ONLY a pointer + the
-// low-stock threshold — no code rows, no product picker, no "Save codes".
+// Auto Mode row: the code-list EDITOR moved to the Products screen (Sep 17, one
+// code = one product) and — per the approved mockup — the row is now a plain title +
+// toggle. No ▾ expand, no "Live codes now live…" pointer, and the low-stock
+// threshold moved to the top of the Products screen.
 import { describe, it, expect, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import GeneralSettings from "../GeneralSettings";
 import { TProvider } from "../../i18n";
 import type { AccountUser } from "../../../accountDb";
 import type { AutoControls } from "../../data";
 
-const auto: AutoControls = { detect: true, setupOpen: true, toggle: () => {}, toggleSetup: () => {} }; // F-batch: trimmed shape
+const auto: AutoControls = { detect: true, toggle: () => {} };
 const account: AccountUser = {
   authUserId: "u1", email: "googletest@sellerflowlive.com",
   profile: { fullName: "Test Owner", storeName: "Test Shop", phone: "0900", tiktok: "", facebook: "", adminContactNote: "" },
@@ -44,9 +45,13 @@ describe("Auto Mode card (Sep 17 — codes moved to Products)", () => {
     expect(screen.queryByText("Save codes")).toBeNull();
   });
 
-  it("shows the Products pointer + keeps the low-stock threshold", () => {
+  it("Auto mode is a plain title + toggle: no ▾ expand, no pointer, no low-stock threshold", () => {
     renderGS();
-    expect(screen.getByText(/Live codes now live on each Product/)).toBeTruthy();
-    expect(screen.getByText("Low-stock warning at")).toBeTruthy();
+    const body = screen.getByTestId("ls-body");
+    expect(within(body).getByText("Auto mode")).toBeTruthy();
+    expect(screen.getByTestId("ls-tg-auto").getAttribute("aria-checked")).toBe("true");
+    expect(within(body).queryByText("▾")).toBeNull();
+    expect(screen.queryByText(/Live codes now live on each Product/)).toBeNull();
+    expect(screen.queryByText("Low-stock warning at")).toBeNull(); // moved to Products
   });
 });

@@ -17,7 +17,7 @@ import type { AutoControls } from "../../data";
 const shell = { v: false };
 vi.mock("../../adapters/appShell", async (orig) => ({ ...(await (orig() as Promise<object>)), isAppShell: () => shell.v }));
 
-const auto: AutoControls = { detect: false, setupOpen: false, toggle: () => {}, toggleSetup: () => {} };
+const auto: AutoControls = { detect: false, toggle: () => {} };
 const acct = (over: Partial<AccountUser> = {}): AccountUser => ({
   authUserId: "u1", email: "seller@example.com",
   profile: { fullName: "S", storeName: "Shop", phone: "0900", tiktok: "", facebook: "", adminContactNote: "" },

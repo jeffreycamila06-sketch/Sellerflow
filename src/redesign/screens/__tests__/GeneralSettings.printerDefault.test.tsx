@@ -18,7 +18,7 @@ import { TProvider } from "../../i18n";
 import type { AccountUser } from "../../../accountDb";
 import type { AutoControls } from "../../data";
 
-const auto: AutoControls = { detect: false, setupOpen: false, toggle: () => {}, toggleSetup: () => {} };
+const auto: AutoControls = { detect: false, toggle: () => {} };
 const account: AccountUser = {
   authUserId: "u1", email: "googletest@sellerflowlive.com",
   profile: { fullName: "T", storeName: "S", phone: "0912345678", tiktok: "", facebook: "", adminContactNote: "" },

@@ -18,7 +18,7 @@ const account: AccountUser = {
 const noop = () => {};
 
 function renderGS(handlers: { autoToggle?: () => void; keepAwake?: () => void; pinPrint?: () => void; printPattern?: () => void } = {}) {
-  const auto: AutoControls = { detect: false, setupOpen: false, toggle: handlers.autoToggle ?? noop, toggleSetup: noop };
+  const auto: AutoControls = { detect: false, toggle: handlers.autoToggle ?? noop };
   return render(
     <TProvider lang="en">
       <GeneralSettings
@@ -39,7 +39,7 @@ function renderGS(handlers: { autoToggle?: () => void; keepAwake?: () => void; p
 // GeneralSettings remount can't lose it — the production bug's real fix).
 function Controlled({ printPattern = noop }: { printPattern?: () => void }) {
   const [open, setOpen] = useState(false);
-  const auto: AutoControls = { detect: false, setupOpen: false, toggle: noop, toggleSetup: noop };
+  const auto: AutoControls = { detect: false, toggle: noop };
   return (
     <TProvider lang="en">
       <GeneralSettings

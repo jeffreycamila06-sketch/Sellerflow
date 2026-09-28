@@ -1389,14 +1389,12 @@ export default function RedesignApp() {
   // Auto Mode on/off. Default OFF, but PERSISTED (sfl_rd_automode) so the toggle
   // stays where the seller left it across refresh — same pattern as theme/currency.
   const [autoDetect, setAutoDetect] = useState<boolean>(() => readLS(LS.automode, "0") === "1");
-  const [autoSetupOpen, setAutoSetupOpen] = useState(false);
-  // F-batch sweep: the old word-list plumbing (autoWords/sfl_rd_autowords/
-  // addAutoWord) is gone — it had no renderer and the REAL Auto Mode matches
-  // product CODES (useAutoCodes). The toggle + setup accordion remain real.
+  // The REAL Auto Mode matches product CODES (useAutoCodes). Settings shows just
+  // the on/off toggle; codes live on each product and the low-stock threshold on
+  // the Products screen (approved mockup).
   const autoControls: AutoControls = {
-    detect: autoDetect, setupOpen: autoSetupOpen,
+    detect: autoDetect,
     toggle: () => setAutoDetect((v) => !v),
-    toggleSetup: () => setAutoSetupOpen((o) => !o),
   };
 
   // Dashboard order flow (dc.html v3 L1796–1810 / onEntKey L2058). Phase 5e: now
@@ -1792,7 +1790,7 @@ export default function RedesignApp() {
             initialQuery={ordersInitialQuery} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />}
             seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
           {screen === "orders" && ordersTab === "miners" && <Miners cur={cur} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />} />}
-          {screen === "products" && <Products cur={cur} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
+          {screen === "products" && <Products cur={cur} lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
           {screen === "salestab" && <SalesTab cur={cur} sessionStart={sessionWindow.windowStart || liveSession.dayId} today={liveSession.dayId} sales={salesTab} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} onOpenBuyer={(name) => { setOrdersInitialQuery(name); setScreen("orders"); }} />}
           {screen === "menu" && (
             <SettingsHub
@@ -1822,7 +1820,6 @@ export default function RedesignApp() {
               channelsV2={liveSourceMode}
               onOpenChannel={(p) => openLiveConnect(p === "tiktok" ? "TikTok" : p === "facebook" ? "Facebook" : "Shopee", "manage")}
               channelsInfo={{ ttLive: ttEff && !liveFeed.ttRecovering ? (ttAccounts[ttIdx] || ttAccounts[0] || null) : null, showShopee: showShopeeRow, shopeeName: selectedShop ? (selectedShop.shopName || tApp.rd_shp_shop_name_fallback) : "", shopeeConnected: shopeeEff }}
-              lowStockThreshold={autoLowStock} onSetLowStockThreshold={setAutoLowStockThreshold}
               lang={lang} onSetLang={setLang} currency={currency} onSetCurrency={setCurrencyExplicit}
               profileOpen={profileOpen} onToggleProfile={() => setProfileOpen((o) => !o)}
               printerIdx={printerIdx} printerOpen={printerOpen} printerFocus={printerFocus}

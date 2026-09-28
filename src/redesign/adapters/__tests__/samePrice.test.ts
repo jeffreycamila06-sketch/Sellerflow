@@ -136,7 +136,7 @@ describe("i18n — same-price keys filled in every language", () => {
     }
   });
   it("the removed subtitle / status-line / confirm keys are gone from every lang", () => {
-    const gone = ["rd_set_keepawake_desc", "rd_set_pinprint_desc", "rd_set_auto_desc", "rd_set_pattern_sub", "rd_set_currently_active", "rd_set_auto_detect", "rd_set_manual_mode", "rd_smp_note", "rd_smp_need_price", "rd_smp_clear_confirm"];
+    const gone = ["rd_set_keepawake_desc", "rd_set_pinprint_desc", "rd_set_auto_desc", "rd_set_pattern_sub", "rd_set_currently_active", "rd_set_auto_detect", "rd_set_manual_mode", "rd_smp_note", "rd_smp_need_price", "rd_smp_clear_confirm", "rd_auto_codes_moved"];
     for (const lang of LANG_CODES) {
       const t = buildT(lang) as Record<string, string>;
       for (const k of gone) expect(t[k], `${k}/${lang}`).toBeUndefined();
