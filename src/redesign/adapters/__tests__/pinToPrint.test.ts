@@ -61,7 +61,10 @@ describe("wiring pins (source contracts)", () => {
     const block = app.slice(i, app.indexOf("const onOpenEnt", i));
     expect(block).toContain("if (!isActionablePin(p)) return;");
     expect(block).toContain("shouldSkipPin(soldOutCodeForComment(c.comment))");
-    expect(block).toContain("orders.createOrder(c, 0)");
+    // Same-price override (seller_same_price): the pin is a 1-Click equivalent — base
+    // price 0, replaced by the active fixed price when "Same price" is ON. Still the
+    // REAL createOrder (dedup / free-cap), just with the price input overridden.
+    expect(block).toContain("orders.createOrder(c, effectiveOrderPrice(0, samePriceCfg.active))");
     expect(block).toContain("liveSession.addOrderedMsgId(c.msgId, snap)");
     // the handler rides the onComment-style seam (each relay fires it once —
     // the listener's msgId seen-set is the once-guard):

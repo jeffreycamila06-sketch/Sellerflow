@@ -25,8 +25,13 @@ const EMPTY: ProductForm = { name: "", sku: "", price: "", stock: "", platform: 
 const stockColor = (s: number) => (s === 0 ? "var(--danger)" : s <= 5 ? "var(--warn)" : "var(--ok)");
 const stepBtn = (disabled: boolean): CSSProperties => ({ width: 26, height: 26, flexShrink: 0, borderRadius: 8, border: "1px solid var(--border)", background: "var(--surface-2)", color: disabled ? "var(--text-muted)" : "var(--text)", fontSize: 15, fontWeight: 800, lineHeight: 1, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.5 : 1, fontFamily: "var(--font-ui)", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 });
 
-export default function Products({ cur, onProductsChanged, seller }: {
+export default function Products({ cur, onProductsChanged, seller, lowStockThreshold = 3, onSetLowStockThreshold }: {
   cur: string;
+  // Rule 3 — the Live-screen low-stock warning threshold (moved here from Settings →
+  // Live session). RedesignApp owns it (sfl_rd_auto_lowstock via load/saveLowStockThreshold);
+  // 0 turns the warning off. No handler → no card.
+  lowStockThreshold?: number;
+  onSetLowStockThreshold?: (n: number) => void;
   // Auto Mode source (Sep 17): fire after an add/edit/delete so RedesignApp
   // re-derives the live code list. action tells it whether to touch the live
   // stock mirror (audit F1): "stock"/new → re-seed; "meta" (name/price/code) →
@@ -244,6 +249,22 @@ export default function Products({ cur, onProductsChanged, seller }: {
           <input className="sfl-header-search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.rd_prd_search} style={{ flex: 1, border: "none", background: "transparent", color: "var(--on-header)", fontSize: 13, fontFamily: "var(--font-ui)", outline: "none" }} />
         </div>
       </div>
+
+      {/* Low-stock warning — compact settings card at the top (approved mockup). */}
+      {onSetLowStockThreshold && (
+        <div style={{ padding: "14px 14px 0" }}>
+          <div data-testid="prd-lowstock-card" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 18, overflow: "hidden", boxShadow: "var(--shadow)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "15px 14px", minHeight: 56, boxSizing: "border-box" }}>
+              <label htmlFor="prd-lowstock" style={{ flex: 1, minWidth: 0, fontSize: 15, fontWeight: 600, color: "var(--text)" }}>{t.rd_auto_lowstock_label}</label>
+              <input id="prd-lowstock" type="number" inputMode="numeric" min={0} max={99} value={lowStockThreshold}
+                onChange={(e) => onSetLowStockThreshold(Math.max(0, Math.min(99, parseInt(e.target.value, 10) || 0)))}
+                data-testid="prd-lowstock-input"
+                style={{ width: 64, boxSizing: "border-box", textAlign: "center", border: "1.5px solid var(--border)", borderRadius: 10, padding: "8px 0", fontFamily: mono, fontSize: 14, fontWeight: 600, background: "var(--surface-2)", color: "var(--text)" }} />
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.45, padding: "0 14px 12px", marginTop: -6 }}>{t.rd_auto_lowstock_help}</div>
+          </div>
+        </div>
+      )}
 
       <div style={{ padding: "14px 14px 4px", display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
         {[[t.rd_prd_total, prods.length, "var(--text)"], [t.rd_prd_instock, count("Active"), "var(--ok)"], [t.rd_prd_low, count("Low stock"), "var(--warn)"], [t.rd_prd_out, count("Out of stock"), "var(--danger)"]].map(([l, v, c]) => (

@@ -598,3 +598,24 @@ html.sfl-ios-shell [data-redesign] .sfl-basket-badge { font-size: 10px; gap: 2px
   .sfl-l2-piece, .sfl-l2-bar { transition: none; opacity: 1 !important; transform: none !important; }
   .sfl-l2-ddmenu { transition: none; }
 }
+
+/* ── LIVE SESSION settings — centered explainer modal + spring toggle (approved mockup) ──
+   Modal: centered on every size, width min(420px, 90vw), radius 20, over a ~40% backdrop.
+   Motion: fade + scale .96→1 in 200ms ease-out + backdrop fade; toggle knob 180ms small
+   spring; toast entrance 200ms. CSS transitions only. All off under prefers-reduced-motion. */
+.sfl-lsm-backdrop { position: fixed; inset: 0; z-index: 1300; display: grid; place-items: center; padding: 16px; box-sizing: border-box; background: rgba(20, 22, 40, .42); opacity: 0; transition: opacity .2s ease; }
+.sfl-lsm-backdrop.show { opacity: 1; }
+.sfl-lsm-modal { width: min(420px, 90vw); max-height: calc(100vh - 32px); overflow-y: auto; box-sizing: border-box; background: var(--surface); border-radius: 20px; padding: 22px 20px 18px; box-shadow: 0 20px 60px rgba(0, 0, 0, .28); opacity: 0; transform: scale(.96); transition: transform .2s ease-out, opacity .2s ease-out; }
+.sfl-lsm-backdrop.show .sfl-lsm-modal { opacity: 1; transform: scale(1); }
+.sfl-lsm-field { display: flex; align-items: center; gap: 8px; border: 1.5px solid var(--border); border-radius: 14px; padding: 12px 14px; margin-bottom: 6px; background: var(--surface-2); }
+.sfl-lsm-field:focus-within { border-color: var(--accent); }
+.sfl-ls-track { transition: background .18s ease; }
+.sfl-ls-knob { transition: transform .18s cubic-bezier(.34, 1.56, .64, 1); }
+.sfl-ls-rows > :last-child { border-bottom: 0 !important; }
+.sfl-toast-in { animation: sflToastIn .2s ease both; }
+@keyframes sflToastIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .sfl-lsm-backdrop, .sfl-lsm-modal, .sfl-ls-track, .sfl-ls-knob { transition: none; }
+  .sfl-toast-in { animation: none; }
+}
+

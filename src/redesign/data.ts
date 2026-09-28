@@ -90,15 +90,13 @@ export const CUSTOMERS: Customer[] = [
 // shared from RedesignApp state. (Removed from the Dashboard per Jeff's call.)
 // v3: each trigger is a {word, price} pair — a matching comment auto-prints an
 // order at that price (dc.html v3 autoWords L1548 / onAutoKey L2063).
-// F-batch sweep: AutoControls trimmed to the fields GeneralSettings actually
-// renders (toggle + setup accordion). The old word-list editor plumbing
-// (words/input/addWord/…) never had a renderer — the REAL Auto Mode matcher is
-// useAutoCodes (code→product), configured in the same accordion.
+// AutoControls = just the Auto mode on/off switch. The Settings row is a plain
+// toggle (approved mockup); Live codes are set per product and the low-stock
+// threshold lives on the Products screen, so the old setup expand is gone. The
+// REAL Auto Mode matcher is useAutoCodes (code→product).
 export interface AutoControls {
   detect: boolean;
-  setupOpen: boolean;
   toggle: () => void;
-  toggleSetup: () => void;
 }
 
 // (F-batch sweep: sample SELLERS/SHIPPING/SALES + the Seller/Shipment types

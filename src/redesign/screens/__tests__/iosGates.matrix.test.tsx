@@ -22,7 +22,7 @@ afterEach(() => setIOS(false));
 
 const wrap = (ui: React.ReactElement) => render(<TProvider lang="en">{ui}</TProvider>);
 const noop = () => {};
-const auto: AutoControls = { detect: false, setupOpen: false, toggle: noop, toggleSetup: noop };
+const auto: AutoControls = { detect: false, toggle: noop };
 const account: AccountUser = {
   authUserId: "u1", email: "s@x.com",
   profile: { fullName: "S", storeName: "S", phone: "", tiktok: "", facebook: "", adminContactNote: "" },

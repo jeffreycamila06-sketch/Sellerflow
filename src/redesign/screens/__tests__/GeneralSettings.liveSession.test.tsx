@@ -18,7 +18,7 @@ const account: AccountUser = {
 const noop = () => {};
 
 function renderGS(handlers: { autoToggle?: () => void; keepAwake?: () => void; pinPrint?: () => void; printPattern?: () => void } = {}) {
-  const auto: AutoControls = { detect: false, setupOpen: false, toggle: handlers.autoToggle ?? noop, toggleSetup: noop };
+  const auto: AutoControls = { detect: false, toggle: handlers.autoToggle ?? noop };
   return render(
     <TProvider lang="en">
       <GeneralSettings
@@ -39,7 +39,7 @@ function renderGS(handlers: { autoToggle?: () => void; keepAwake?: () => void; p
 // GeneralSettings remount can't lose it — the production bug's real fix).
 function Controlled({ printPattern = noop }: { printPattern?: () => void }) {
   const [open, setOpen] = useState(false);
-  const auto: AutoControls = { detect: false, setupOpen: false, toggle: noop, toggleSetup: noop };
+  const auto: AutoControls = { detect: false, toggle: noop };
   return (
     <TProvider lang="en">
       <GeneralSettings
@@ -82,7 +82,7 @@ describe("LIVE SESSION collapsible group", () => {
     expect(screen.getByTestId("ls-print-pattern")).toBeTruthy();
     // and they still toggle — the Auto/keep-awake/pin pill buttons + the pattern row
     const pills = within(body).getAllByRole("button");
-    fireEvent.click(pills[0]); // auto toggleSetup (accordion) — harmless
+    fireEvent.click(pills[0]); // first row is now Keep-screen-awake — harmless (also asserted below)
     // fire the actual toggles via their titles
     fireEvent.click(screen.getByTitle("Keep screen awake while live"));
     expect(keepAwake).toHaveBeenCalled();
