@@ -131,7 +131,7 @@ describe("self-heal v1.7.0 — statuses recover without manual tab refreshes", (
   const bg = readFileSync("chrome-extension/background.js", "utf8");
 
   it("manifest 1.7.0 + the scripting permission (re-injection needs it)", () => {
-    expect(manifest.version).toBe("1.14.4"); // 1.14.4 = display: a recent verdict never hides a definitive latest miss (amber 'degraded' immediately)
+    expect(manifest.version).toBe("1.14.5"); // 1.14.5 = SFL token auto-refresh (in-place via the app's client → GET re-nav fallback → signed_out)
     expect(manifest.permissions).toContain("scripting");
   });
 
@@ -180,7 +180,7 @@ describe("self-heal v1.7.0 — statuses recover without manual tab refreshes", (
 
   it("popup: every non-green state names the ONE action (no bare red)", () => {
     const popup = readFileSync("chrome-extension/popup.js", "utf8");
-    for (const label of ["Click the SellerFlowLive tab once", "Tab asleep — click it once", "Waking up…", "Reload that tab"]) {
+    for (const label of ["SellerFlowLive: signed out — log in once", "Tab asleep — click it once", "Waking up…", "Reload that tab"]) {
       expect(popup).toContain(label);
     }
   });

@@ -287,7 +287,7 @@ describe("app wiring pins", () => {
     // must CLEAR shop_name/verified_at so a changed GM never keeps the old badge
     expect(shared).toContain("saveMyshipConfig(gmId, null)"); // GM-only save (no per-seller phone)
     const gs = readFileSync("src/redesign/screens/GeneralSettings.tsx", "utf8");
-    expect(gs).toContain("<MyshipConfigForm t={t} />");
+    expect(gs).toContain("<MyshipConfigCard t={t} />"); // Settings-only collapse wrapper (renders the shared form)
     expect(gs).not.toContain("validateGm("); // no second copy of the flow
     // HARD GATE wiring: ParcelScan mounts inside the gate, enabled by the same
     // allowlist+market flag as the Settings card

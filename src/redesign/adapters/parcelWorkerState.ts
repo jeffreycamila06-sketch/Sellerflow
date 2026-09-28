@@ -10,8 +10,8 @@ export type WorkerStateBlob = {
 // The worker pushes at least every 60s; twice that with no push = the laptop /
 // worker is down (the worst silent failure — call it out in red).
 export const WORKER_SILENT_MS = 3 * 60 * 1000;
-const BAD = new Set(["expired", "dead", "dead_script", "no_tab", "no_token", "no_config"]);
-const WARN = new Set(["stale", "guid_missing", "recovering", "degraded", "reminting", "asleep", "healing", "issue", "paused"]);
+const BAD = new Set(["expired", "dead", "dead_script", "no_tab", "no_token", "no_config", "signed_out"]);
+const WARN = new Set(["stale", "guid_missing", "recovering", "degraded", "reminting", "asleep", "healing", "issue", "paused", "refreshing"]);
 
 function levelOf(s: string | null | undefined): WorkerLevel {
   if (!s || s === "starting") return "off";

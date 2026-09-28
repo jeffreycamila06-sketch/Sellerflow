@@ -24,6 +24,8 @@ export type BootOpts = {
   emapTabs?: EmapTab[];           // explicit emap tab set (overrides emapTab)
   storeVerdict?: () => string;    // PC_CHECK_STORE reply (default "open")
   phoneVerdict?: () => string;    // PC_CHECK_PHONE reply (default "ok")
+  sflToken?: () => string | null; // SFL_GET_TOKEN reply (default a fresh JWT)
+  onSflRefresh?: () => { token?: string | null; hadSession?: boolean | null }; // SFL_REFRESH_TOKEN reply
   now?: () => number;             // injectable clock for Date.now()
   initialStatus?: Record<string, unknown>; // what a PREVIOUS worker life left in pc_status
   cartDetailTab?: boolean;        // a 賣貨便 tab parked on /cart/detail exists (default true)
@@ -57,7 +59,8 @@ export function bootWorker(opts: BootOpts = {}) {
       sendMessage: (id: number, msg: { type: string }, cb: (r: unknown) => void) => {
         calls.sendMessage.push({ type: msg.type, tabId: id });
         const emap = emapTabs.find((t) => t.id === id);
-        if (msg.type === "SFL_GET_TOKEN") return cb({ ok: true, token: fakeJwt() });
+        if (msg.type === "SFL_GET_TOKEN") return cb({ ok: true, token: opts.sflToken ? opts.sflToken() : fakeJwt() });
+        if (msg.type === "SFL_REFRESH_TOKEN") { const r = opts.onSflRefresh ? opts.onSflRefresh() : { token: fakeJwt(), hadSession: true }; return cb({ ok: true, token: r.token ?? null, hadSession: r.hadSession === undefined ? null : r.hadSession }); }
         if (msg.type === "PC_PING") return cb({ ok: true, script: "x" });
         if (msg.type === "PC_EMAP_PROBE") return cb({ ok: true, script: "emap", guidFound: Boolean(emap && emap.guid), url: emap ? emap.url : "" });
         if (msg.type === "PC_CLICK_PICK_STORE") {
