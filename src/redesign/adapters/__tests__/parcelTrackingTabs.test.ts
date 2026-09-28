@@ -16,12 +16,14 @@ const mk = (over: Partial<ParcelTrackingRow> = {}): ParcelTrackingRow => ({
 });
 
 describe("rowTab — mirrors groupParcels' bucketing (parity)", () => {
-  it("maps statuses; non-chaseable / created / not_found → null (the 'other' bucket)", () => {
+  it("maps statuses; non-chaseable / not_found → null (the 'other' bucket); not-checked-yet → waiting (B2)", () => {
     expect(rowTab(mk({ status: "at_store" }))).toBe("waiting");
     expect(rowTab(mk({ status: "in_transit" }))).toBe("transit");
     expect(rowTab(mk({ status: "picked_up" }))).toBe("picked");
     expect(rowTab(mk({ status: "returned" }))).toBe("returned");
-    expect(rowTab(mk({ status: "created" }))).toBeNull();
+    expect(rowTab(mk({ status: "created" }))).toBe("waiting");                 // uploaded, never polled
+    expect(rowTab(mk({ status: "created", shipType: null }))).toBe("waiting"); // even with no ship_type yet
+    expect(rowTab(mk({ status: "not_found" }))).toBeNull();
     expect(rowTab(mk({ status: "at_store", shipType: "HOME" }))).toBeNull();
     expect(rowTab(mk({ status: "at_store", specialType: "return" }))).toBeNull();
   });
@@ -48,11 +50,12 @@ describe("leftCell — the 'Left' column", () => {
     expect(leftCell(mk({ pickupDeadline: "2026-09-30", statusMessage: "將退回物流中心" }), TODAY)).toEqual({ kind: "days", days: 6, urgent: true });
     expect(leftCell(mk({ pickupDeadline: null }), TODAY)).toEqual({ kind: "days", days: null, urgent: false });
   });
-  it("in transit → none ('—'); picked up → done; returned → returned; other → none", () => {
+  it("in transit → none ('—'); picked up → done; returned → returned; other → none; not checked yet → unchecked", () => {
     expect(leftCell(mk({ status: "in_transit" }), TODAY)).toEqual({ kind: "none" });
     expect(leftCell(mk({ status: "picked_up", pickupDeadline: "2026-09-01" }), TODAY)).toEqual({ kind: "done" });
     expect(leftCell(mk({ status: "returned" }), TODAY)).toEqual({ kind: "returned" });
-    expect(leftCell(mk({ status: "created" }), TODAY)).toEqual({ kind: "none" });
+    expect(leftCell(mk({ status: "created" }), TODAY)).toEqual({ kind: "unchecked" });
+    expect(leftCell(mk({ status: "not_found" }), TODAY)).toEqual({ kind: "none" });
   });
 });
 
@@ -72,9 +75,10 @@ describe("sortByDaysLeft — most urgent first", () => {
     const picked = mk({ status: "picked_up", pickupDeadline: "2026-08-01" });  // very "overdue" but done
     const waiting = mk({ status: "at_store", pickupDeadline: "2026-09-29" });
     const transit = mk({ status: "in_transit" });
-    const other = mk({ status: "created" });
-    expect(sortByDaysLeft([other, picked, transit, waiting], TODAY).map((r) => r.id))
-      .toEqual([waiting.id, transit.id, picked.id, other.id]);
+    const other = mk({ status: "not_found" });
+    const unchecked = mk({ status: "created", shipType: null }); // Waiting rank, no deadline → after live waiting
+    expect(sortByDaysLeft([other, unchecked, picked, transit, waiting], TODAY).map((r) => r.id))
+      .toEqual([waiting.id, unchecked.id, transit.id, picked.id, other.id]);
   });
 });
 
@@ -85,17 +89,17 @@ describe("tabRows / tabCounts", () => {
     mk({ status: "in_transit" }),
     mk({ status: "picked_up" }),
     mk({ status: "returned" }),
-    mk({ status: "created" }),                         // other
+    mk({ status: "created", shipType: null }),         // not checked yet → Waiting (B2)
     mk({ status: "at_store", shipType: "HOME" }),      // other (non-chaseable)
   ];
   const g = groupParcels(rows, TODAY);
 
-  it("counts per tab; 'all' counts every row incl. the other bucket", () => {
-    expect(tabCounts(g)).toEqual({ all: 7, waiting: 2, transit: 1, picked: 1, returned: 1 });
+  it("counts per tab; 'all' counts every row incl. the other bucket; Waiting includes not-checked-yet", () => {
+    expect(tabCounts(g)).toEqual({ all: 7, waiting: 3, transit: 1, picked: 1, returned: 1 });
   });
   it("'all' keeps every row (nothing disappears); status tabs are exact", () => {
     expect(tabRows(g, "all", TODAY)).toHaveLength(7);
-    expect(tabRows(g, "waiting", TODAY).map((r) => r.status)).toEqual(["at_store", "at_store"]);
+    expect(tabRows(g, "waiting", TODAY).map((r) => r.status)).toEqual(["at_store", "at_store", "created"]); // unchecked sinks last
     expect(tabRows(g, "transit", TODAY)).toHaveLength(1);
   });
   it("a no-username parcel is visible in its status tab, sorted by days-left", () => {

@@ -5,32 +5,43 @@
 // polling — the owner taps Refresh to re-read. The poller fills status /
 // pickup_deadline / ship_type from SHOPMORE; this screen only reads + groups.
 //
-// PHASE 1 = OWNER + googletest ONLY (parcelTrackingVisible, kiosk-allowlist
-// pattern). The poll endpoint is independently gated by a server secret — this
-// is a UI gate, not the security boundary.
+// GATE (Stage 1, 2026-09-29): admin, OR a PLUS/PRO/MASTER seller whose own row in
+// the server-side allowlist parcel_tracking_access is enabled (read via the own-row
+// RPC my_parcel_tracking_access(), sql/60). The SAME allowlist decides who the
+// server poller polls — one list, no email constants in the bundle. The poll
+// endpoint is independently gated by a server secret; this is a UI gate, not the
+// security boundary.
 import { isSupabaseConfigured, supabase } from "../../supabase";
 import { isAdminRole } from "../../lib/roles";
 
-// ── Feature gate (canSeeKioskLauncher pattern) ────────────────────────────────
-// While Pickup Status is Phase 1, these emails see it (admins always do). ONE
-// place — widen or empty this list to open it more broadly.
-export const PARCEL_TRACKING_EMAILS = ["googletest@gmail.com"];
+// ── Feature gate ──────────────────────────────────────────────────────────────
+// Tiers that CAN be allowlisted (case-insensitive). The allowlist row is the switch.
+export const PARCEL_TRACKING_TIERS = ["plus", "pro", "master"] as const;
 
 export function parcelTrackingVisible(account: {
   role?: string | null;
-  email?: string | null;
   plan?: string | null;
+  access?: boolean;       // own parcel_tracking_access.enabled (fail-closed: missing = false)
   marketHidden?: boolean; // off-market (non-TW, non-admin/preview) → hidden (admin bypass baked in)
 } | null | undefined): boolean {
   if (!account) return false;
   if (account.marketHidden) return false; // market gate wins (NULL/TW → false → today's logic)
   if (isAdminRole(account.role)) return true;
-  const email = String(account.email || "").trim().toLowerCase();
-  if (PARCEL_TRACKING_EMAILS.includes(email)) return true;
-  // ── PHASE 2 SEAM (do NOT enable yet) — open to paid tiers with a one-liner:
-  //   return isActivePaid({ plan: account.plan ?? "", planStatus, daysLeft }) &&
-  //          PARCEL_TRACKING_TIERS.includes(String(account.plan).toLowerCase());
-  return false;
+  const tier = String(account.plan ?? "").trim().toLowerCase();
+  if (!PARCEL_TRACKING_TIERS.includes(tier as (typeof PARCEL_TRACKING_TIERS)[number])) return false;
+  return account.access === true;
+}
+
+// Own allowlist flag (SECURITY DEFINER RPC, own row only). FAIL-CLOSED: any error,
+// no client, or no session → false. One call per app open (RedesignApp), zero poll.
+export async function loadParcelTrackingAccess(): Promise<boolean> {
+  if (!isSupabaseConfigured || !supabase) return false;
+  try {
+    const { data, error } = await supabase.rpc("my_parcel_tracking_access");
+    return !error && data === true;
+  } catch {
+    return false;
+  }
 }
 
 // ── Row shape ─────────────────────────────────────────────────────────────────
@@ -79,6 +90,14 @@ export function isChaseable(shipType: string | null | undefined, specialType: st
   return String(shipType).trim().toUpperCase() === "C2C" && String(specialType || "").trim() === "";
 }
 
+// NOT CHECKED YET = a row the seller uploaded ("Sync from 賣貨便") that the poller has
+// not reached: status is still the table default 'created'. It has no ship_type /
+// deadline yet, so it can't be classified — it is shown under Waiting with an honest
+// "next check within 4h" note (B2) and gets NO Chase action.
+export function isUnchecked(row: Pick<ParcelTrackingRow, "status">): boolean {
+  return row.status === "created";
+}
+
 // returning_soon is NOT a stored column — derive it from the raw statusMessage.
 // SHOPMORE's warning "將退回物流…" means the parcel is about to be sent back
 // (still at store, but the clock is red). The ACTUAL-return markers (退貨門市
@@ -111,25 +130,22 @@ export type ChaseTarget =
   | { kind: "copy"; handle: string }               // present but not handle-shaped → copy it
   | { kind: "none" };                              // no username
 
-// TikTok handles are letters/digits/dot/underscore. A stored buyer_username that
-// is a real name (spaces / CJK) is NOT handle-shaped → offer Copy instead. Opens
-// the PROFILE (manual chase) — never a DM URL. The https://www.tiktok.com/@handle
-// URL IS the TikTok universal link (opens the app to the profile on iOS if installed,
-// else the web). We SANITIZE FOR THE URL ONLY — the stored buyer_username is never
-// altered: strip leading @, trim whitespace incl full-width U+3000 / NBSP, drop
-// zero-width chars (which trim leaves), and tolerate a trailing platform tag the
-// seller may append (e.g. "Ashley102031(IG)" → opens @Ashley102031).
+// Open the TikTok profile ONLY for a PLAIN handle — letters/digits/dot/underscore,
+// nothing else (after trimming whitespace incl full-width U+3000 / NBSP, dropping
+// zero-width chars, and stripping leading @). Anything else → COPY only, never a link:
+// the handle column is the 賣貨便 "其它資訊 (FB/LINE/IG帳號)" field, so a value with a
+// platform marker ("x(IG)", "x（LINE）", "x fb"), parentheses, spaces or CJK is not a
+// TikTok handle — opening tiktok.com/@x could land on a STRANGER's profile (B6).
+// Opens the PROFILE (manual chase) — never a DM URL. The stored buyer_username is
+// never altered; the sanitising is for the URL only.
 export function chaseTarget(buyerUsername: string | null | undefined): ChaseTarget {
   const cleaned = String(buyerUsername ?? "")
-    .replace(/[​-‍﻿]/g, "")   // zero-width chars (trim doesn't remove these)
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")  // zero-width chars (trim doesn't remove these)
     .trim()                                   // trims spaces incl full-width U+3000 / NBSP
     .replace(/^@+/, "");                      // leading @(s)
   if (!cleaned) return { kind: "none" };
   if (/^[A-Za-z0-9._]{1,24}$/.test(cleaned)) return { kind: "open", handle: cleaned, url: `https://www.tiktok.com/@${cleaned}` };
-  // tolerate a handle-shaped token trailed ONLY by a platform tag, e.g. "Ashley102031(IG)"
-  const m = cleaned.match(/^([A-Za-z0-9._]{1,24})\s*[（(]?\s*(?:ig|fb|line|tiktok|tt)?\s*[）)]?$/i);
-  if (m) return { kind: "open", handle: m[1], url: `https://www.tiktok.com/@${m[1]}` };
-  return { kind: "copy", handle: cleaned };   // real names (spaces / CJK) → Copy
+  return { kind: "copy", handle: cleaned };   // platform-tagged / names / CJK / anything else → Copy
 }
 
 // On iOS the "Open profile" tap opens the direct tiktok.com/@handle link, which the
@@ -168,6 +184,9 @@ function byDeadline(today: string) {
 export function groupParcels(rows: ParcelTrackingRow[], today: string): ParcelGroups {
   const g: ParcelGroups = { waitingPickup: [], inTransit: [], pickedUp: [], returned: [], other: [] };
   for (const r of rows) {
+    // Not checked yet (uploaded, never polled — no ship_type yet): shown under Waiting
+    // (B2) so a fresh sync is visible on the phone, where there is no "All" tab.
+    if (isUnchecked(r)) { g.waitingPickup.push(r); continue; }
     if (!isChaseable(r.shipType, r.specialType)) { g.other.push(r); continue; }
     if (r.status === "at_store") g.waitingPickup.push(r);
     else if (r.status === "in_transit") g.inTransit.push(r);
@@ -202,6 +221,7 @@ export const PICKUP_STATUS_TABS: Exclude<PickupTab, "all">[] = ["transit", "wait
 // Which status tab a row belongs to (null = the "other" bucket → "all" only). MIRRORS
 // groupParcels' bucketing exactly (parity-tested).
 export function rowTab(row: ParcelTrackingRow): Exclude<PickupTab, "all"> | null {
+  if (isUnchecked(row)) return "waiting"; // not checked yet → Waiting (B2), same as groupParcels
   if (!isChaseable(row.shipType, row.specialType)) return null;
   if (row.status === "at_store") return "waiting";
   if (row.status === "in_transit") return "transit";
@@ -215,11 +235,13 @@ export function rowTab(row: ParcelTrackingRow): Exclude<PickupTab, "all"> | null
 // (≤2 days incl. overdue, OR returning-soon) → rendered red. In transit / other → "—";
 // picked up → "Done"; returned → "Returned".
 export type LeftCell =
+  | { kind: "unchecked" } // uploaded, not polled yet → "Not checked yet — next check within 4h"
   | { kind: "days"; days: number | null; urgent: boolean }
   | { kind: "none" }
   | { kind: "done" }
   | { kind: "returned" };
 export function leftCell(row: ParcelTrackingRow, today: string): LeftCell {
+  if (isUnchecked(row)) return { kind: "unchecked" };
   const tab = rowTab(row);
   if (tab === "waiting") return { kind: "days", days: daysUntilDate(row.pickupDeadline, today), urgent: isUrgent(row, today) };
   if (tab === "picked") return { kind: "done" };

@@ -22,7 +22,7 @@ import { taipeiDayId } from "../../lib/dateHelpers";
 import { copyText } from "../components/inviteShare";
 import { syncFromExport } from "../adapters/parcelExportRead";
 import {
-  loadParcelTracking, type ParcelTotals, groupParcels, chaseTarget, chaseCopyValue, rowTab, leftCell, tabRows, tabCounts,
+  loadParcelTracking, type ParcelTotals, groupParcels, chaseTarget, chaseCopyValue, rowTab, leftCell, isUnchecked, tabRows, tabCounts,
   PICKUP_TABS, PICKUP_STATUS_TABS,
   type ParcelTrackingRow, type ParcelGroups, type PickupTab,
 } from "../adapters/parcelTracking";
@@ -54,6 +54,15 @@ function useNarrowLayout(): boolean {
 // "Left" cell text + colour (gray normally; red + medium weight when urgent).
 function LeftText({ row, today, t }: { row: ParcelTrackingRow; today: string; t: T }) {
   const c = leftCell(row, today);
+  if (c.kind === "unchecked") {
+    // Wraps (no ellipsis) — the compact row gives this cell ≤34% width on a phone.
+    return (
+      <span style={{ fontSize: 11.5, color: "var(--text-muted)", display: "block", lineHeight: 1.3, whiteSpace: "normal" }}
+        data-testid="pt-left" data-unchecked="1" data-urgent="0">
+        {t.rd_pt_unchecked}
+      </span>
+    );
+  }
   let label: string;
   let urgent = false;
   if (c.kind === "done") label = t.rd_pt_left_done;
@@ -79,7 +88,7 @@ function LeftText({ row, today, t }: { row: ParcelTrackingRow; today: string; t:
 // the iOS copy-on-open; otherwise copy the username; no username → nothing). Every other
 // status → no action. The old button captions become tooltips.
 function ChaseAction({ row, t, onCopy }: { row: ParcelTrackingRow; t: T; onCopy: (handle: string) => void }) {
-  if (rowTab(row) !== "waiting") return null;
+  if (rowTab(row) !== "waiting" || isUnchecked(row)) return null; // not checked yet → no chase
   const target = chaseTarget(row.buyerUsername);
   if (target.kind === "open") {
     // Direct link opens the TikTok app on iOS (universal link). On iOS ALSO copy

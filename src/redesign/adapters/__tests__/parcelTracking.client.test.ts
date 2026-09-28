@@ -4,7 +4,7 @@
 // thin own-scoped SELECT (parcelScan pattern) — not exercised here.
 import { describe, it, expect } from "vitest";
 import {
-  parcelTrackingVisible, PARCEL_TRACKING_EMAILS,
+  parcelTrackingVisible, PARCEL_TRACKING_TIERS, isUnchecked,
   isChaseable, isReturningSoon, daysUntilDate, isUrgent, chaseTarget, chaseCopyValue, groupParcels,
   rowToTracking, type ParcelTrackingRow,
 } from "../parcelTracking";
@@ -30,25 +30,34 @@ function row(p: Partial<ParcelTrackingRow>): ParcelTrackingRow {
   };
 }
 
-describe("parcelTrackingVisible — Phase 1 admin + googletest allowlist", () => {
-  it("admin role → visible regardless of email", () => {
-    expect(parcelTrackingVisible({ role: "admin", email: "someone@else.com" })).toBe(true);
+describe("parcelTrackingVisible — admin, OR Plus/Pro/Master + own allowlist row (sql/60)", () => {
+  it("admin role → visible regardless of plan / allowlist", () => {
+    expect(parcelTrackingVisible({ role: "admin" })).toBe(true);
+    expect(parcelTrackingVisible({ role: "Admin", plan: "free", access: false })).toBe(true);
   });
-  it("googletest email → visible even as seller", () => {
-    expect(parcelTrackingVisible({ role: "seller", email: "googletest@gmail.com" })).toBe(true);
+  it("Plus / Pro / Master WITH an enabled allowlist row → visible (case-insensitive plan)", () => {
+    for (const plan of ["plus", "Pro", " MASTER "]) expect(parcelTrackingVisible({ role: "seller", plan, access: true }), plan).toBe(true);
   });
-  it("email match is case/space-insensitive", () => {
-    expect(parcelTrackingVisible({ role: "seller", email: "  GoogleTest@Gmail.com " })).toBe(true);
+  it("Plus / Pro / Master WITHOUT the allowlist row → hidden (the row is the switch)", () => {
+    for (const plan of ["plus", "pro", "master"]) {
+      expect(parcelTrackingVisible({ role: "seller", plan, access: false }), plan).toBe(false);
+      expect(parcelTrackingVisible({ role: "seller", plan }), `${plan} missing access`).toBe(false); // fail-closed
+    }
   });
-  it("any other seller → hidden", () => {
-    expect(parcelTrackingVisible({ role: "seller", email: "real@seller.com" })).toBe(false);
+  it("Basic / Free / unknown plan → hidden EVEN WITH an allowlist row", () => {
+    for (const plan of ["basic", "free", "", "enterprise", undefined, null]) expect(parcelTrackingVisible({ role: "seller", plan, access: true }), String(plan)).toBe(false);
+  });
+  it("market gate wins over everything (off-market → hidden)", () => {
+    expect(parcelTrackingVisible({ role: "seller", plan: "pro", access: true, marketHidden: true })).toBe(false);
   });
   it("null / missing → hidden", () => {
     expect(parcelTrackingVisible(null)).toBe(false);
     expect(parcelTrackingVisible({})).toBe(false);
   });
-  it("the allowlist is exactly the one test account (guards accidental widening)", () => {
-    expect(PARCEL_TRACKING_EMAILS).toEqual(["googletest@gmail.com"]);
+  it("tiers are exactly Plus/Pro/Master and no email allowlist ships in the bundle", async () => {
+    expect([...PARCEL_TRACKING_TIERS]).toEqual(["plus", "pro", "master"]);
+    const mod = await import("../parcelTracking");
+    expect("PARCEL_TRACKING_EMAILS" in mod).toBe(false);
   });
 });
 
@@ -130,10 +139,20 @@ describe("chaseTarget — Open profile vs Copy vs none", () => {
     expect(chaseTarget("　Ryry7067 ")).toEqual({ kind: "open", handle: "Ryry7067", url: "https://www.tiktok.com/@Ryry7067" });
     // zero-width chars (U+200B) that trim() does NOT remove
     expect(chaseTarget("Ryry7067​")).toEqual({ kind: "open", handle: "Ryry7067", url: "https://www.tiktok.com/@Ryry7067" });
-    // trailing platform tag, half- and full-width parens
-    expect(chaseTarget("Ashley102031(IG)")).toEqual({ kind: "open", handle: "Ashley102031", url: "https://www.tiktok.com/@Ashley102031" });
-    expect(chaseTarget("Bless_love45（LINE）")).toEqual({ kind: "open", handle: "Bless_love45", url: "https://www.tiktok.com/@Bless_love45" });
-    expect(chaseTarget("buyer.99 fb")).toEqual({ kind: "open", handle: "buyer.99", url: "https://www.tiktok.com/@buyer.99" });
+  });
+  it("B6: anything that is not a PLAIN handle → COPY only, never a TikTok link", () => {
+    // platform markers (the column is 其它資訊 (FB/LINE/IG帳號)) — could be a stranger's TikTok
+    expect(chaseTarget("Ashley102031(IG)")).toEqual({ kind: "copy", handle: "Ashley102031(IG)" });
+    expect(chaseTarget("Bless_love45（LINE）")).toEqual({ kind: "copy", handle: "Bless_love45（LINE）" });
+    expect(chaseTarget("buyer.99 fb")).toEqual({ kind: "copy", handle: "buyer.99 fb" });
+    expect(chaseTarget("ig:maria_shop")).toEqual({ kind: "copy", handle: "ig:maria_shop" });
+    // parentheses / CJK / symbols / over-long
+    expect(chaseTarget("maria(shop)").kind).toBe("copy");
+    expect(chaseTarget("小美shop").kind).toBe("copy");
+    expect(chaseTarget("maria-shop").kind).toBe("copy");
+    expect(chaseTarget("a".repeat(25)).kind).toBe("copy");
+    // never a URL for any non-plain value
+    for (const v of ["x(IG)", "x（LINE）", "x fb", "陳小美", "x@y"]) expect(chaseTarget(v)).not.toHaveProperty("url");
   });
   it("does NOT mutate / rewrite the stored value — sanitization is local to the returned URL", () => {
     const stored = "  @Ashley102031（IG）​";
@@ -163,19 +182,22 @@ describe("groupParcels — status buckets, chaseable-gated, deadline-sorted", ()
     row({ id: "picked", status: "picked_up", terminal: true }),
     row({ id: "returned", status: "returned", terminal: true }),
     row({ id: "home", status: "at_store", shipType: "C2C", specialType: "4.店到宅服務單" }), // non-chaseable
-    row({ id: "created", status: "created" }),        // transient
+    row({ id: "created", status: "created", shipType: null }), // uploaded, not checked yet
     row({ id: "notfound", status: "not_found" }),     // transient
   ];
   const g = groupParcels(rows, TODAY);
 
-  it("routes each status to its bucket; chaseable only in the 4 actionable groups", () => {
-    expect(g.waitingPickup.map((r) => r.id)).toEqual(["atUrgent", "atA"]); // urgent first
+  it("routes each status to its bucket; chaseable only in the 4 actionable groups (+ unchecked under Waiting)", () => {
+    // urgent first, then soonest deadline; the not-checked-yet row (no deadline) sinks last
+    expect(g.waitingPickup.map((r) => r.id)).toEqual(["atUrgent", "atA", "created"]);
     expect(g.inTransit.map((r) => r.id)).toEqual(["transit"]);
     expect(g.pickedUp.map((r) => r.id)).toEqual(["picked"]);
     expect(g.returned.map((r) => r.id)).toEqual(["returned"]);
   });
-  it("non-chaseable + transient statuses fall to 'other'", () => {
-    expect(g.other.map((r) => r.id).sort()).toEqual(["created", "home", "notfound"]);
+  it("non-chaseable + not_found fall to 'other'; a not-checked-yet row does NOT (B2)", () => {
+    expect(g.other.map((r) => r.id).sort()).toEqual(["home", "notfound"]);
+    expect(isUnchecked({ status: "created" })).toBe(true);
+    for (const st of ["at_store", "in_transit", "not_found", "unknown", "picked_up", "returned"]) expect(isUnchecked({ status: st }), st).toBe(false);
   });
   it("does not mutate the input array", () => {
     expect(rows[0].id).toBe("atA"); // original order untouched
