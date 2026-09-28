@@ -5,10 +5,10 @@ import http from "http";
 import { Server } from "socket.io";
 import { createClient } from "@supabase/supabase-js";
 import { translateBroadcast } from "./server/broadcastTranslate.js";
-import { scanParcelImage, SCAN_MEDIA_TYPES } from "./server/parcelScan.js";
+import { scanParcelImage, SCAN_MEDIA_TYPES, describeRawReply } from "./server/parcelScan.js";
 import { runScanWithCredit } from "./server/parcelCredits.js";
 import { checkEmapStore } from "./server/emapCheck.js";
-import { createOcr, runPoll } from "./server/parcelTrackingRunner.js";
+import { createOcr, runPoll, readPollGate, writePollHealth } from "./server/parcelTrackingRunner.js";
 import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs, checkConnectRate, CONNECT_RATE_WINDOW_MS, isOwningConnection, relaySessionId } from "./server/connectionHealth.js";
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
 import { timingSafeTokenEqual, makeFailureThrottle } from "./server/pollAuth.js";
@@ -36,8 +36,10 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
 // a deploy; empty → the core's DEFAULT_SCAN_MODEL.
 const PARCEL_SCAN_MODEL = process.env.PARCEL_SCAN_MODEL || "";
 // Parcel pickup-tracking poller (SHOPMORE). Triggered by cron-job.org, which cannot
-// present a Supabase JWT → gated by a SHARED SECRET (NOT requireAdmin). PARCEL_POLL_USER_ID
-// scopes the service-role poll to ONE user (Phase 1 = owner); empty → all users (Phase 2).
+// present a Supabase JWT → gated by a SHARED SECRET (NOT requireAdmin). WHO is polled =
+// the parcel_tracking_access allowlist (sql/60, service role only). PARCEL_POLL_USER_ID
+// is an optional EMERGENCY OVERRIDE: set → poll only that one user, ignoring the list.
+// On/off = app_settings.parcel_tracking_enabled (no restart needed — see runPoll).
 const PARCEL_POLL_TOKEN = process.env.PARCEL_POLL_TOKEN || "";
 const PARCEL_POLL_USER_ID = process.env.PARCEL_POLL_USER_ID || "";
 let parcelPollRunning = false; // single-flight: never overlap two poll runs (RAM + anti-block)
@@ -939,13 +941,13 @@ app.post("/admin/parcel-scan", requireAuth, requireAdmin, express.json({ limit: 
       });
       if (!result.ok) {
         // Server console ONLY (never the client). Two findable lines per failure:
-        // FAIL carries error + stop_reason + Anthropic HTTP status; RAW carries
-        // the bounded reply snippet, JSON-stringified so newlines can't split the
-        // line. (result.raw !== undefined — not truthy — so an EMPTY reply still
-        // logs RAW "" instead of silently vanishing, the bug that hid the first outage.)
+        // FAIL carries error + stop_reason + Anthropic HTTP status; RAW carries the
+        // reply's SHAPE ONLY (len / json / key names) — NEVER its body: the reply is
+        // buyer PII (name, phone, store). (result.raw !== undefined — not truthy — so
+        // an EMPTY reply still logs "RAW len=0", the signal that caught the first outage.)
         console.log(`[PARCEL_SCAN] FAIL error=${result.error} stop_reason=${result.stopReason || "-"} http=${result.httpStatus ?? "-"}`);
         if (result.raw !== undefined) {
-          console.log(`[PARCEL_SCAN] RAW ${JSON.stringify(String(result.raw).slice(0, 500))}`);
+          console.log(`[PARCEL_SCAN] RAW ${describeRawReply(result.raw)}`);
         }
       }
       return result;
@@ -1004,10 +1006,9 @@ app.post("/admin/parcel-emap-check", requireAuth, async (req, res) => {
 // X-Poll-Token HEADER ONLY (M5 2026-09-26 — ?token= removed: query strings land in
 // Render/cron/proxy logs), compared timing-safe with a failed-attempt lockout
 // (server/pollAuth.js), checked BEFORE any body handling. Runs the impure runner
-// as SERVICE ROLE (explicit user_id scope via PARCEL_POLL_USER_ID). Single-flight so
-// two cron pings can never overlap (RAM + anti-block). Creates ONE tesseract worker
-// and TERMINATES it in finally (never kept warm). NOT wired to cron until the
-// on-Render memory probe (scripts/tesseract-mem-probe.js) confirms the RSS headroom.
+// as SERVICE ROLE (allowlist scope, sql/60). Single-flight so two cron pings can
+// never overlap (RAM + anti-block). runPoll creates ONE tesseract worker only when
+// it has a batch to send and TERMINATES it in its finally (never kept warm).
 // Off-peak jitter: cron-job.org fires at a FIXED minute, so the server spreads the
 // actual SHOPMORE query time across a window (0–20 min) → not the same minute daily.
 const PARCEL_POLL_MAX_JITTER_MS = 20 * 60 * 1000;
@@ -1017,18 +1018,15 @@ const PARCEL_POLL_MAX_JITTER_MS = 20 * 60 * 1000;
 // the summary (or { ok:false, error:"run_failed" }) so the ?now path can send it
 // inline; the background path ignores the return. ALWAYS releases the single-flight
 // guard in finally so a crashed run can't wedge the endpoint.
+// runPoll owns the OCR worker via makeOcr: created only once a batch is actually
+// sent (never for a disabled/cooldown/empty run) and ALWAYS terminated in its finally.
 async function runParcelPollOnce() {
-  let ocr = null;
   try {
-    ocr = await createOcr();
-    const summary = await runPoll({ serviceSb, userId: PARCEL_POLL_USER_ID || null, ocr });
-    console.log("[PARCEL-POLL] done:", JSON.stringify(summary));
-    return summary;
+    return await runPoll({ serviceSb, userId: PARCEL_POLL_USER_ID || null, makeOcr: createOcr });
   } catch (e) {
-    console.error("[PARCEL-POLL] run failed:", e && e.message);
+    console.error("[PARCEL-POLL] run failed:", (e && e.code) || "threw");
     return { ok: false, error: "run_failed" };
   } finally {
-    if (ocr) { try { await ocr.terminate(); } catch { /* worker already gone */ } }
     parcelPollRunning = false;
   }
 }
@@ -1050,6 +1048,15 @@ app.post("/admin/parcel-tracking-poll", async (req, res) => {
   }
   parcelPollAuthThrottle.ok();
   if (!serviceSb) return res.status(503).json({ ok: false, error: "no_service_role" });
+  // KILL SWITCH (app_settings.parcel_tracking_enabled) — checked here too so a
+  // disabled poller answers 200 immediately (cron history shows it) without
+  // scheduling anything. runPoll re-checks at the start of the actual run.
+  const gate = await readPollGate(serviceSb, new Date());
+  if (!gate.run && gate.reason === "disabled") {
+    console.log("[PARCEL-POLL] disabled");
+    await writePollHealth(serviceSb, { ran_at: new Date().toISOString(), ok: true, reason: "disabled" });
+    return res.status(200).json({ ok: true, disabled: true });
+  }
   // Single-flight over the WHOLE scheduled+running window: claim it NOW (synchronously,
   // before responding) so a second trigger during the jitter delay OR the run itself
   // gets 409 — never a double-run. Released in runParcelPollOnce's finally (and reset

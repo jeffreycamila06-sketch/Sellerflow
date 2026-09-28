@@ -5,7 +5,7 @@
 // daily-cap circuit breaker. The captcha OCR + real HTTP are covered by node --check
 // + the on-Render memory probe (tesseract can't run in CI).
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { runPoll, capLiveRowsPerSeller, PER_SELLER_LIVE_CAP, __resetDailyCounter } from "../../../../server/parcelTrackingRunner.js";
+import { runPoll, capLiveRowsPerSeller, PER_SELLER_LIVE_CAP, __resetDailyCounter, pollGateFrom } from "../../../../server/parcelTrackingRunner.js";
 import { QUERY_URL, SEARCH_URL } from "../../../../server/parcelTracking.js";
 
 const HTML_IN_TRANSIT = `var searchResults = [{"paymentNo":"F70334584020","recStore":"朝陽","recDate":"","orderAmount":60,"status":1,"statusMessage":"包裹進行配送中","shipStatusDetails":[{"notificationName":"包裹進行配送中"}],"shipType":"C2C","specialType":null}];`;
@@ -16,17 +16,45 @@ const HTML_EMPTY = `var searchResults = [];`;
 const HTML_PICKED_UP = `var searchResults = [{"paymentNo":"FPICK","recStore":"中壢","recDate":"2026/09/15","orderAmount":100,"status":1,"statusMessage":"已完成包裹取件","shipStatusDetails":[{"notificationName":"已完成包裹取件"}],"shipType":"C2C","specialType":null}];`;
 const HTML_RETURNED = `var searchResults = [{"paymentNo":"FRET","recStore":"中壢","recDate":"2026/09/15","orderAmount":100,"status":1,"statusMessage":"退貨處理","shipStatusDetails":[{"notificationName":"包裹已送達退貨門市"}],"shipType":"C2C","specialType":null}];`;
 
-// Chainable service-role client fake — records select .eq() scope, every update, and
-// every delete (the retention pass: its .or() filter, .eq() scope, and .select()).
-function fakeSb(rows: unknown[], opts: { selectError?: unknown; updateError?: unknown; deleteError?: unknown; deleteReturns?: unknown[] } = {}) {
+// Chainable service-role client fake. Routes by table:
+//   app_settings            — the kill switch + cooldown (select().in(); upsert)
+//   parcel_tracking_access  — the allowlist (select().eq("enabled", true))
+//   parcel_tracking         — paged live select (eq/in/order/range), update, delete
+//   parcel_tracking_health  — one insert per run
+// Records every select filter, page range, update, delete, health row and upsert.
+type Opts = {
+  selectError?: unknown; updateError?: unknown; deleteError?: unknown; deleteReturns?: unknown[];
+  settings?: Record<string, string>; settingsError?: unknown;
+  access?: string[]; accessError?: unknown;
+};
+function fakeSb(rows: unknown[], opts: Opts = {}) {
+  const settings = opts.settings ?? { parcel_tracking_enabled: "true" };
+  const access = opts.access ?? ["U"];
   const captured = {
     selectEqs: [] as [string, unknown][],
+    selectIns: [] as [string, unknown[]][],
+    orders: [] as [string, Record<string, unknown>][],
+    ranges: [] as [number, number][],
     updates: [] as { patch: Record<string, unknown>; target: Record<string, unknown> }[],
-    deletes: [] as { or: string | null; eqs: Record<string, unknown>; selected: boolean }[],
+    deletes: [] as { or: string | null; eqs: Record<string, unknown>; ins: Record<string, unknown[]>; selected: boolean }[],
+    health: [] as Record<string, unknown>[],
+    upserts: [] as Record<string, unknown>[],
+    accessReads: 0,
   };
-  const selectChain: Record<string, unknown> = {
-    eq(col: string, val: unknown) { captured.selectEqs.push([col, val]); return selectChain; },
-    then(onF: (v: unknown) => unknown, onR?: (e: unknown) => unknown) { return Promise.resolve({ data: rows, error: opts.selectError ?? null }).then(onF, onR); },
+  const thenable = (resolve: () => unknown) => ({
+    then(onF: (v: unknown) => unknown, onR?: (e: unknown) => unknown) { return Promise.resolve(resolve()).then(onF, onR); },
+  });
+  const liveSelect = () => {
+    const ch: Record<string, unknown> = {
+      eq(col: string, val: unknown) { captured.selectEqs.push([col, val]); return ch; },
+      in(col: string, vals: unknown[]) { captured.selectIns.push([col, vals]); return ch; },
+      order(col: string, o: Record<string, unknown>) { captured.orders.push([col, o]); return ch; },
+      range(from: number, to: number) {
+        captured.ranges.push([from, to]);
+        return thenable(() => ({ data: opts.selectError ? null : (rows as unknown[]).slice(from, to + 1), error: opts.selectError ?? null }));
+      },
+    };
+    return ch;
   };
   const makeUpdate = (patch: Record<string, unknown>) => {
     const target: Record<string, unknown> = {};
@@ -37,10 +65,11 @@ function fakeSb(rows: unknown[], opts: { selectError?: unknown; updateError?: un
     return ch;
   };
   const makeDelete = () => {
-    const rec = { or: null as string | null, eqs: {} as Record<string, unknown>, selected: false };
+    const rec = { or: null as string | null, eqs: {} as Record<string, unknown>, ins: {} as Record<string, unknown[]>, selected: false };
     const ch: Record<string, unknown> = {
       or(expr: string) { rec.or = expr; return ch; },
       eq(col: string, val: unknown) { rec.eqs[col] = val; return ch; },
+      in(col: string, vals: unknown[]) { rec.ins[col] = vals; return ch; },
       select() { rec.selected = true; return ch; },
       then(onF: (v: unknown) => unknown, onR?: (e: unknown) => unknown) { captured.deletes.push(rec); return Promise.resolve({ data: opts.deleteReturns ?? [], error: opts.deleteError ?? null }).then(onF, onR); },
     };
@@ -48,7 +77,19 @@ function fakeSb(rows: unknown[], opts: { selectError?: unknown; updateError?: un
   };
   return {
     _captured: captured,
-    from() { return { select() { return selectChain; }, update(patch: Record<string, unknown>) { return makeUpdate(patch); }, delete() { return makeDelete(); } }; },
+    from(table: string) {
+      if (table === "app_settings") return {
+        select() { return { in: () => thenable(() => ({ data: opts.settingsError ? null : Object.entries(settings).map(([key, value]) => ({ key, value })), error: opts.settingsError ?? null })) }; },
+        upsert(row: Record<string, unknown>) { captured.upserts.push(row); settings[String(row.key)] = String(row.value); return thenable(() => ({ error: null })); },
+      };
+      if (table === "parcel_tracking_access") return {
+        select() { return { eq: () => { captured.accessReads += 1; return thenable(() => ({ data: opts.accessError ? null : access.map((user_id) => ({ user_id })), error: opts.accessError ?? null })); } }; },
+      };
+      if (table === "parcel_tracking_health") return {
+        insert(row: Record<string, unknown>) { captured.health.push(row); return thenable(() => ({ error: null })); },
+      };
+      return { select() { return liveSelect(); }, update(patch: Record<string, unknown>) { return makeUpdate(patch); }, delete() { return makeDelete(); } };
+    },
   };
 }
 
@@ -78,18 +119,20 @@ describe("runPoll — service-role orchestration", () => {
     const sb = fakeSb([{ id: "r1", user_id: "U", tracking_no: "F70334584020", arrived_at: null }]);
     const s = await runPoll({ serviceSb: sb, userId: "U", fetchImpl: fetchFactory(HTML_IN_TRANSIT), ocr: ocr(), now: () => FIXED_NOW, logger: { log() {}, warn() {}, error() {} }, limits: smallLimits });
     expect(sb._captured.selectEqs).toContainEqual(["terminal", false]);
-    expect(sb._captured.selectEqs).toContainEqual(["user_id", "U"]);
+    expect(sb._captured.selectIns).toContainEqual(["user_id", ["U"]]); // override → exactly that user
+    expect(sb._captured.accessReads).toBe(0);                          // override skips the allowlist
     expect(sb._captured.updates).toHaveLength(1);
     expect(sb._captured.updates[0].target).toEqual({ id: "r1", user_id: "U" }); // explicit user_id on the write too
     expect(sb._captured.updates[0].patch).toMatchObject({ status: "in_transit", terminal: false, ship_type: "C2C" });
     expect(s).toMatchObject({ ok: true, rows: 1, updated: 1 });
   });
 
-  it("Phase 2: userId null → NO user_id filter on the select (still terminal=false)", async () => {
-    const sb = fakeSb([]);
+  it("no override → polls exactly the ENABLED allowlist (parcel_tracking_access), still terminal=false", async () => {
+    const sb = fakeSb([], { access: ["A", "B"] });
     await runPoll({ serviceSb: sb, userId: null, fetchImpl: fetchFactory(HTML_EMPTY), ocr: ocr(), now: () => FIXED_NOW, logger: { log() {}, warn() {}, error() {} }, limits: smallLimits });
+    expect(sb._captured.accessReads).toBe(1);
     expect(sb._captured.selectEqs).toContainEqual(["terminal", false]);
-    expect(sb._captured.selectEqs.find((e) => e[0] === "user_id")).toBeUndefined();
+    expect(sb._captured.selectIns).toContainEqual(["user_id", ["A", "B"]]);
   });
 
   it("arrived_at is SET ONCE: never overwrites an existing value, but fills a null one", async () => {
@@ -179,11 +222,22 @@ const CUTOFF_RETURNED = new Date(FIXED_NOW.getTime() - 365 * 24 * 60 * 60 * 1000
     expect(s.purged).toBe(2);
   });
 
-  it("Phase 2 (userId null) → DELETE has NO user_id scope (all users)", async () => {
-    const sb = fakeSb([]);
+  it("no override → DELETE is scoped to the allowlisted sellers only (never all users)", async () => {
+    const sb = fakeSb([], { access: ["A", "B"] });
     await runPoll({ serviceSb: sb, userId: null, fetchImpl: fetchFactory(HTML_EMPTY), ocr: ocr(), now: () => FIXED_NOW, logger: { log() {}, warn() {}, error() {} }, limits: smallLimits });
     expect(sb._captured.deletes).toHaveLength(1);
-    expect(sb._captured.deletes[0].eqs).toEqual({});   // no user_id filter
+    expect(sb._captured.deletes[0].eqs).toEqual({});
+    expect(sb._captured.deletes[0].ins).toEqual({ user_id: ["A", "B"] });
+  });
+
+  it("empty allowlist → no parcel select, no SHOPMORE query, no DELETE", async () => {
+    const sb = fakeSb([{ id: "r1", user_id: "U", tracking_no: "F70334584020", arrived_at: null }], { access: [] });
+    const f = fetchFactory(HTML_IN_TRANSIT);
+    const s = await runPoll({ serviceSb: sb, userId: null, fetchImpl: f, ocr: ocr(), now: () => FIXED_NOW, logger: { log() {}, warn() {}, error() {} }, limits: smallLimits });
+    expect(sb._captured.ranges).toHaveLength(0);
+    expect(f).not.toHaveBeenCalled();
+    expect(sb._captured.deletes).toHaveLength(0);
+    expect(s).toMatchObject({ ok: true, sellers: 0, rows: 0 });
   });
 
   it("runs the retention DELETE even when there are zero live rows to poll", async () => {
@@ -235,5 +289,199 @@ describe("capLiveRowsPerSeller — per-seller live-row cap (at_store prioritized
     const s = await runPoll({ serviceSb: sb, userId: "U", fetchImpl: fetchFactory(HTML_EMPTY), ocr: ocr(), now: () => FIXED_NOW, logger: { log() {}, warn() {}, error() {} }, limits: { ...smallLimits, perSellerCap: 2 } });
     expect(s.rows).toBe(2);
     expect(s.capped).toBe(2);
+  });
+});
+
+// ── Stage 1 (sql/60): kill switch, cooldown, paging + ordering, anti-block breaker ──
+// POST responses in sequence (one per batch/attempt); GET / and the captcha GET can
+// be given a status to simulate a block at those steps.
+type Post = { status?: number; url?: string; html: string };
+const fetchSeq = (posts: Post[], { pageStatus, captchaStatus }: { pageStatus?: number; captchaStatus?: number } = {}) => {
+  let i = 0;
+  return vi.fn(async (url: string) => {
+    if (String(url).includes("/api/Captcha")) return { status: captchaStatus ?? 200, json: async () => ({ captchaId: "GID", image: "b64png" }) };
+    if (!String(url).includes("/PackageDetail")) return { status: pageStatus ?? 200, url: SEARCH_URL, text: async () => TOKEN_PAGE };
+    const p = posts[Math.min(i, posts.length - 1)]; i += 1;
+    return { status: p.status ?? 200, url: p.url ?? QUERY_URL, text: async () => p.html };
+  });
+};
+const quiet = () => ({ log: vi.fn(), warn: vi.fn(), error: vi.fn() });
+const liveRows = (n: number, user = "U", prefix = "F") =>
+  Array.from({ length: n }, (_, k) => ({ id: `${user}${k}`, user_id: user, tracking_no: `${prefix}${user}${String(k).padStart(9, "0")}`, arrived_at: null, status: "in_transit" }));
+const htmlFor = (codes: string[]) => `var searchResults = ${JSON.stringify(codes.map((c) => ({ paymentNo: c, status: 1, statusMessage: "包裹進行配送中", shipStatusDetails: [{ notificationName: "包裹進行配送中" }], shipType: "C2C", specialType: null })))};`;
+
+describe("Stage 1 — kill switch + cooldown (read at the start of every run)", () => {
+  it("parcel_tracking_enabled='false' → logs [PARCEL-POLL] disabled, touches nothing, writes a health row", async () => {
+    const sb = fakeSb(liveRows(3), { settings: { parcel_tracking_enabled: "false" } });
+    const f = fetchFactory(HTML_IN_TRANSIT);
+    const makeOcr = vi.fn();
+    const log = quiet();
+    const s = await runPoll({ serviceSb: sb, userId: null, fetchImpl: f, makeOcr, now: () => FIXED_NOW, logger: log, limits: smallLimits });
+    expect(s).toMatchObject({ ok: true, skipped: true, reason: "disabled" });
+    expect(log.log.mock.calls.some((c) => c[0] === "[PARCEL-POLL] disabled")).toBe(true);
+    expect(f).not.toHaveBeenCalled();
+    expect(makeOcr).not.toHaveBeenCalled();          // never loads tesseract for a disabled run
+    expect(sb._captured.accessReads).toBe(0);
+    expect(sb._captured.ranges).toHaveLength(0);
+    expect(sb._captured.deletes).toHaveLength(0);
+    expect(sb._captured.health).toHaveLength(1);
+    expect(sb._captured.health[0]).toMatchObject({ ok: true, reason: "disabled", queries: 0 });
+  });
+
+  it("a MISSING switch row = OFF (opt-in), and a settings read error never runs", async () => {
+    const sbMissing = fakeSb(liveRows(1), { settings: {} });
+    expect(await runPoll({ serviceSb: sbMissing, fetchImpl: fetchFactory(HTML_IN_TRANSIT), ocr: ocr(), now: () => FIXED_NOW, logger: quiet(), limits: smallLimits })).toMatchObject({ skipped: true, reason: "disabled" });
+    const sbErr = fakeSb(liveRows(1), { settingsError: { code: "PGRST" } });
+    const f = fetchFactory(HTML_IN_TRANSIT);
+    expect(await runPoll({ serviceSb: sbErr, fetchImpl: f, ocr: ocr(), now: () => FIXED_NOW, logger: quiet(), limits: smallLimits })).toMatchObject({ ok: false, skipped: true, reason: "settings_read_failed" });
+    expect(f).not.toHaveBeenCalled();
+  });
+
+  it("cooldown in the future → skipped; an expired cooldown → runs", async () => {
+    const future = new Date(FIXED_NOW.getTime() + 60_000).toISOString();
+    const sb = fakeSb(liveRows(1), { settings: { parcel_tracking_enabled: "true", parcel_tracking_cooldown_until: future } });
+    const f = fetchFactory(HTML_IN_TRANSIT);
+    expect(await runPoll({ serviceSb: sb, fetchImpl: f, ocr: ocr(), now: () => FIXED_NOW, logger: quiet(), limits: smallLimits })).toMatchObject({ skipped: true, reason: "cooldown" });
+    expect(f).not.toHaveBeenCalled();
+    expect(sb._captured.health[0]).toMatchObject({ reason: "cooldown" });
+
+    const past = new Date(FIXED_NOW.getTime() - 60_000).toISOString();
+    const sb2 = fakeSb([{ id: "r1", user_id: "U", tracking_no: "F70334584020", arrived_at: null }], { settings: { parcel_tracking_enabled: "true", parcel_tracking_cooldown_until: past } });
+    const s2 = await runPoll({ serviceSb: sb2, fetchImpl: fetchFactory(HTML_IN_TRANSIT), ocr: ocr(), now: () => FIXED_NOW, logger: quiet(), limits: smallLimits });
+    expect(s2).toMatchObject({ ok: true, updated: 1 });
+  });
+
+  it("pollGateFrom is exact: only 'true' runs", () => {
+    expect(pollGateFrom({ enabled: "true" }, FIXED_NOW).run).toBe(true);
+    expect(pollGateFrom({ enabled: " TRUE " }, FIXED_NOW).run).toBe(true);
+    for (const v of ["false", "", "1", "yes", undefined, null]) expect(pollGateFrom({ enabled: v as string }, FIXED_NOW).run).toBe(false);
+  });
+});
+
+describe("Stage 1 — paged, stalest-first selection (never the 1,000-row default)", () => {
+  it("pages with .range() until a short page, ordered last_polled_at ASC NULLS FIRST + id", async () => {
+    const rows = liveRows(7);
+    const sb = fakeSb(rows);
+    const s = await runPoll({ serviceSb: sb, fetchImpl: fetchSeq([{ html: htmlFor(rows.map((r) => r.tracking_no)) }]), ocr: ocr(), now: () => FIXED_NOW, logger: quiet(), limits: { ...smallLimits, pageSize: 3 } });
+    expect(sb._captured.ranges).toEqual([[0, 2], [3, 5], [6, 8]]); // 3 + 3 + 1 (short page stops)
+    expect(sb._captured.orders).toContainEqual(["last_polled_at", { ascending: true, nullsFirst: true }]);
+    expect(sb._captured.orders).toContainEqual(["id", { ascending: true }]);
+    expect(s.rows).toBe(7);                                          // every row, not one page
+  });
+
+  it("an exact multiple of the page size still fetches the (empty) next page, then stops", async () => {
+    const sb = fakeSb(liveRows(6));
+    await runPoll({ serviceSb: sb, fetchImpl: fetchSeq([{ html: HTML_EMPTY }]), ocr: ocr(), now: () => FIXED_NOW, logger: quiet(), limits: { ...smallLimits, pageSize: 3 } });
+    expect(sb._captured.ranges).toEqual([[0, 2], [3, 5], [6, 8]]);
+  });
+
+  it("the per-seller cap is applied AFTER ordering and keeps the cross-seller interleave (no seller blocks)", () => {
+    const ordered = [
+      { id: "a1", user_id: "A", status: "in_transit" }, { id: "b1", user_id: "B", status: "in_transit" },
+      { id: "a2", user_id: "A", status: "in_transit" }, { id: "b2", user_id: "B", status: "in_transit" },
+      { id: "a3", user_id: "A", status: "in_transit" },
+    ];
+    expect(capLiveRowsPerSeller(ordered, 2).map((r) => r.id)).toEqual(["a1", "b1", "a2", "b2"]); // stalest two each, order kept
+  });
+
+  it("a code shared by two sellers is queried ONCE and updates BOTH rows", async () => {
+    const rows = [
+      { id: "a", user_id: "A", tracking_no: "F70334584020", arrived_at: null },
+      { id: "b", user_id: "B", tracking_no: "F70334584020", arrived_at: null },
+    ];
+    const sb = fakeSb(rows, { access: ["A", "B"] });
+    const f = fetchSeq([{ html: HTML_IN_TRANSIT }]);
+    const s = await runPoll({ serviceSb: sb, fetchImpl: f, ocr: ocr(), now: () => FIXED_NOW, logger: quiet(), limits: smallLimits });
+    expect(s.batchesRun).toBe(1);
+    expect(sb._captured.updates.map((u) => u.target)).toEqual([{ id: "a", user_id: "A" }, { id: "b", user_id: "B" }]);
+    expect(s.updated).toBe(2);
+  });
+});
+
+describe("Stage 1 — anti-block: failures are failures, 3 in a row trips the breaker", () => {
+  const TRIP_UNTIL = new Date(FIXED_NOW.getTime() + 4 * 60 * 60 * 1000).toISOString();
+
+  it("HTTP 403 on the query POST, 3 batches in a row → run aborted, 4h cooldown stored, loud log, health ok=false", async () => {
+    const rows = liveRows(30); // 5 batches of 6
+    const sb = fakeSb(rows);
+    const log = quiet();
+    const s = await runPoll({ serviceSb: sb, fetchImpl: fetchSeq([{ status: 403, html: "<html>Forbidden</html>" }]), ocr: ocr(), now: () => FIXED_NOW, logger: log, limits: smallLimits });
+    expect(s).toMatchObject({ ok: false, tripped: true, reason: "circuit_open", batchesRun: 3, failures: 3, updated: 0 });
+    expect(sb._captured.upserts).toEqual([expect.objectContaining({ key: "parcel_tracking_cooldown_until", value: TRIP_UNTIL })]);
+    expect(log.error.mock.calls.some((c) => String(c[0]).includes("CIRCUIT OPEN"))).toBe(true);
+    expect(sb._captured.health[0]).toMatchObject({ ok: false, reason: "circuit_open", queries: 3, errors: 3 });
+    // failed batches only stamp the ATTEMPT (rotation) — no status field is ever written
+    for (const u of sb._captured.updates) expect(Object.keys(u.patch)).toEqual(["last_polled_at"]);
+    expect(sb._captured.updates).toHaveLength(18); // 3 batches × 6 rows
+  });
+
+  it("each block shape counts as a failure: page GET 403, captcha 429, error redirect, no searchResults, empty []", async () => {
+    const cases: [string, ReturnType<typeof fetchSeq>][] = [
+      ["page_http_403", fetchSeq([{ html: HTML_IN_TRANSIT }], { pageStatus: 403 })],
+      ["captcha_http_429", fetchSeq([{ html: HTML_IN_TRANSIT }], { captchaStatus: 429 })],
+      ["error_redirect", fetchSeq([{ url: "https://tracking.shopmore.com.tw/Error", html: "<html>oops</html>" }])],
+      ["no_results", fetchSeq([{ html: "<html>Service unavailable</html>" }])],
+      ["empty_results", fetchSeq([{ html: HTML_EMPTY }])],
+    ];
+    for (const [reason, f] of cases) {
+      __resetDailyCounter();
+      const sb = fakeSb(liveRows(1));
+      const log = quiet();
+      const s = await runPoll({ serviceSb: sb, fetchImpl: f, ocr: ocr(), now: () => FIXED_NOW, logger: log, limits: smallLimits });
+      expect(s.failures, reason).toBe(1);
+      expect(s.updated, reason).toBe(0);
+      expect(log.warn.mock.calls.some((c) => String(c[0]).includes(`batch failed: ${reason}`)), reason).toBe(true);
+    }
+  });
+
+  it("a non-2xx POST is a failure EVEN IF its body looks like real results (status wins over body)", async () => {
+    const sb = fakeSb([{ id: "r1", user_id: "U", tracking_no: "F70334584020", arrived_at: null }]);
+    const log = quiet();
+    const s = await runPoll({ serviceSb: sb, fetchImpl: fetchSeq([{ status: 503, html: HTML_IN_TRANSIT }]), ocr: ocr(), now: () => FIXED_NOW, logger: log, limits: smallLimits });
+    expect(s).toMatchObject({ failures: 1, updated: 0 });
+    expect(log.warn.mock.calls.some((c) => String(c[0]).includes("batch failed: http_503"))).toBe(true);
+  });
+
+  it("a success resets the streak: fail, fail, OK, fail, fail → NOT tripped", async () => {
+    const rows = liveRows(30);
+    const ok = { html: htmlFor(rows.slice(12, 18).map((r) => r.tracking_no)) };
+    const bad = { status: 500, html: "err" };
+    const sb = fakeSb(rows);
+    const s = await runPoll({ serviceSb: sb, fetchImpl: fetchSeq([bad, bad, ok, bad, bad]), ocr: ocr(), now: () => FIXED_NOW, logger: quiet(), limits: smallLimits });
+    expect(s).toMatchObject({ ok: true, tripped: false, batchesRun: 5, failures: 4, updated: 6 });
+    expect(sb._captured.upserts).toHaveLength(0);
+  });
+
+  it("makeOcr: the worker is created only when a batch is sent, and ALWAYS terminated", async () => {
+    const worker = ocr();
+    const makeOcr = vi.fn(async () => worker);
+    await runPoll({ serviceSb: fakeSb([{ id: "r1", user_id: "U", tracking_no: "F70334584020", arrived_at: null }]), fetchImpl: fetchFactory(HTML_IN_TRANSIT), makeOcr, now: () => FIXED_NOW, logger: quiet(), limits: smallLimits });
+    expect(makeOcr).toHaveBeenCalledTimes(1);
+    expect(worker.terminate).toHaveBeenCalledTimes(1);
+
+    const makeNone = vi.fn();
+    await runPoll({ serviceSb: fakeSb([]), fetchImpl: fetchFactory(HTML_EMPTY), makeOcr: makeNone, now: () => FIXED_NOW, logger: quiet(), limits: smallLimits });
+    expect(makeNone).not.toHaveBeenCalled(); // nothing to poll → no tesseract
+  });
+});
+
+describe("Stage 1 — logs are COUNT-ONLY (no codes, messages, HTML)", () => {
+  it("update failures log the DB error CODE, never the message (which can echo key values)", async () => {
+    const sb = fakeSb([{ id: "r1", user_id: "U", tracking_no: "F70334584020", arrived_at: null }], { updateError: { code: "23505", message: "Key (user_id, tracking_no)=(U, F70334584020) already exists" } });
+    const log = quiet();
+    await runPoll({ serviceSb: sb, fetchImpl: fetchFactory(HTML_IN_TRANSIT), ocr: ocr(), now: () => FIXED_NOW, logger: log, limits: smallLimits });
+    const all = [...log.log.mock.calls, ...log.warn.mock.calls, ...log.error.mock.calls].flat().map(String).join("\n");
+    expect(log.error.mock.calls).toContainEqual(["[PARCEL-POLL] update failed", "r1", "23505"]);
+    expect(all).not.toContain("F70334584020");
+    expect(all).not.toContain("already exists");
+  });
+
+  it("across success, failure and breaker paths, no tracking code or response HTML reaches the logs", async () => {
+    const rows = liveRows(30);
+    const log = quiet();
+    await runPoll({ serviceSb: fakeSb(rows), fetchImpl: fetchSeq([{ html: htmlFor(rows.slice(0, 6).map((r) => r.tracking_no)) }, { status: 403, html: "<html>blocked BODYMARK</html>" }]), ocr: ocr(), now: () => FIXED_NOW, logger: log, limits: smallLimits });
+    const all = [...log.log.mock.calls, ...log.warn.mock.calls, ...log.error.mock.calls].flat().map(String).join("\n");
+    for (const r of rows) expect(all).not.toContain(r.tracking_no);
+    expect(all).not.toContain("BODYMARK");
   });
 });
