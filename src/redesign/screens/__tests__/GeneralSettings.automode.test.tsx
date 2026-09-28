@@ -29,7 +29,7 @@ const renderGS = () => render(
 );
 
 describe("Auto Mode card (Sep 17 — codes moved to Products)", () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => { localStorage.clear(); localStorage.setItem("sfl_rd_livesession_open", "1"); }); // LIVE session group open so its content renders
 
   it("removed the old trigger-word UI", () => {
     renderGS();

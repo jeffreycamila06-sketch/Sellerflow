@@ -145,6 +145,15 @@ export default function GeneralSettings({
   const autoTrack = auto.detect ? "var(--accent)" : "var(--border-strong)";
   const autoKnobLg = auto.detect ? 21 : 3;
   const autoChevron = auto.setupOpen ? "rotate(180deg)" : "rotate(0deg)";
+  // LIVE SESSION group — collapsed by default, remembered per device. Purely a
+  // display wrapper; the toggles inside keep their own behavior unchanged.
+  const [liveOpen, setLiveOpen] = useState(() => { try { return localStorage.getItem("sfl_rd_livesession_open") === "1"; } catch { return false; } });
+  const toggleLiveOpen = () => setLiveOpen((v) => { const n = !v; try { localStorage.setItem("sfl_rd_livesession_open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
+  const lsSummary = [
+    `${t.rd_set_ls_auto} ${auto.detect ? t.rd_set_ls_on : t.rd_set_ls_off}`,
+    `${t.rd_set_ls_awake} ${keepAwake ? t.rd_set_ls_on : t.rd_set_ls_off}`,
+    onTogglePinPrint ? `${t.rd_set_ls_print} ${pinPrint ? t.rd_set_ls_on : t.rd_set_ls_off}` : null,
+  ].filter(Boolean).join(" · ");
   const seg = (active: boolean): CSSProperties => ({ flex: 1, padding: "9px 0", border: "none", borderRadius: 9, cursor: "pointer", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 700, ...(active ? { background: "var(--accent)", color: "#fff" } : { background: "transparent", color: "var(--text-dim)" }) });
   // Batch B #6 — the picker's fictional PRINTERS sample hardware ("192.168.1.42",
   // "Xprinter XP-365B USB") is gone. TWO honest slots matching the app's REAL
@@ -265,10 +274,17 @@ export default function GeneralSettings({
             </div>
           </div>
         )}
-        {/* LIVE SESSION — auto-detect (per v2, lives here) */}
+        {/* LIVE SESSION — collapsible group (compact row like the LIVE print pattern row) */}
         <div>
           <div className="sfl-anim-textglow" style={sectionLabel}>{t.rd_set_live_session}</div>
-          <div style={card}>
+          <div style={{ ...card, padding: 0, overflow: "hidden" }}>
+            <button onClick={toggleLiveOpen} data-testid="ls-header" style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)", flexShrink: 0 }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" fill="currentColor" /><circle cx="12" cy="12" r="8.2" stroke="currentColor" strokeWidth="1.7" opacity=".55" /></svg></div>
+              <div style={{ flex: 1, minWidth: 0 }}><div style={rowTitle}>{t.rd_set_ls_title}</div><div style={{ ...rowSub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lsSummary}</div></div>
+              <span style={{ color: "var(--text-muted)", fontSize: 13, transition: "transform .2s", transform: liveOpen ? "rotate(180deg)" : "rotate(0deg)", flexShrink: 0, display: "inline-block" }}>▾</span>
+            </button>
+            {liveOpen && (<div data-testid="ls-body">
+            <div style={{ padding: 15, borderTop: "1px solid var(--border)" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
               <button onClick={auto.toggleSetup} style={{ flex: 1, display: "flex", alignItems: "flex-start", gap: 9, background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: 0, fontFamily: "var(--font-ui)" }}>
                 <span style={{ flex: 1 }}>
@@ -332,6 +348,14 @@ export default function GeneralSettings({
               <span style={{ fontSize: 11.5, fontWeight: 700, color: autoLabelColor }}>{autoLabel}</span>
               <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_set_currently_active}</span>
             </div>
+            </div>
+            {/* LIVE print pattern — moved here from Printer & Display (now inside the Live session group) */}
+            <button onClick={onPrintPattern} data-testid="ls-print-pattern" style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", borderTop: "1px solid var(--border)", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)", flexShrink: 0 }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="6" y="3" width="12" height="6" stroke="currentColor" strokeWidth="1.7" /><rect x="4" y="9" width="16" height="8" rx="2" stroke="currentColor" strokeWidth="1.7" /><rect x="7" y="14" width="10" height="7" stroke="currentColor" strokeWidth="1.7" /></svg></div>
+              <div style={{ flex: 1 }}><div style={rowTitle}>{t.rd_set_live_pattern}</div><div style={rowSub}>{t.rd_set_pattern_sub}</div></div>
+              <span style={{ fontSize: 16, color: "var(--text-muted)" }}>›</span>
+            </button>
+            </div>)}
           </div>
         </div>
 
@@ -467,11 +491,6 @@ export default function GeneralSettings({
                 })}
               </div>
             )}
-            <button onClick={onPrintPattern} style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", borderTop: "1px solid var(--border)", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
-              <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)", flexShrink: 0 }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="6" y="3" width="12" height="6" stroke="currentColor" strokeWidth="1.7" /><rect x="4" y="9" width="16" height="8" rx="2" stroke="currentColor" strokeWidth="1.7" /><rect x="7" y="14" width="10" height="7" stroke="currentColor" strokeWidth="1.7" /></svg></div>
-              <div style={{ flex: 1 }}><div style={rowTitle}>{t.rd_set_live_pattern}</div><div style={rowSub}>{t.rd_set_pattern_sub}</div></div>
-              <span style={{ fontSize: 16, color: "var(--text-muted)" }}>›</span>
-            </button>
           </div>
         </div>
 
