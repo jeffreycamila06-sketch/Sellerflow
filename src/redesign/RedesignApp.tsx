@@ -8,6 +8,12 @@ import Dashboard from "./screens/Dashboard";
 import Orders from "./screens/Orders";
 import Products from "./screens/Products";
 import Miners from "./screens/Miners";
+import SalesTab from "./screens/SalesTab";
+
+// Sales replaces Miners in the bottom nav for everyone. Miners' screen + hook +
+// import stay behind the flag (no deletion) — flip to restore the old nav.
+const SHOW_SALES_TAB = true;
+const SHOW_MINERS_NAV = false;
 import Login from "./screens/Login";
 import Landing from "./screens/Landing";
 import AuthModal from "./components/AuthModal";
@@ -65,6 +71,7 @@ import { sessionV2Enabled, SESSION_V2_DAYS } from "./adapters/sessionV2";
 import { buildBasketCounts } from "./adapters/basketCounts";
 import { buildMinerRiskMap } from "./adapters/minerRisk";
 import { useMinersReport } from "./adapters/minersReport";
+import { useSalesTab } from "./adapters/salesTab";
 import { useSessionWindow } from "./adapters/useSessionWindow";
 import { useLiveFeed, commentKey } from "./adapters/useLiveFeed";
 import { useOrders } from "./adapters/useOrders";
@@ -111,7 +118,7 @@ import { TProvider, buildT, tpl } from "./i18n";
 type Screen =
   | "landing" | "login" | "signup" | "dashboard" | "miners" | "orders" | "products"
   | "menu" | "settings" | "customers" | "subscription" | "support"
-  | "admin" | "print" | "sales" | "shipping" | "customerdata" | "legal" | "delete"
+  | "admin" | "print" | "sales" | "salestab" | "shipping" | "customerdata" | "legal" | "delete"
   | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "parceltracking" | "shopeechannels" | "fbpages";
 
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
@@ -602,6 +609,8 @@ export default function RedesignApp() {
   // drift-prone customers aggregate the old miners_stats read). The screen owns
   // the range/N pickers + Export; this hook is the fetch/cache (zero poll).
   const minersRep = useMinersReport(authed);
+  const salesTab = useSalesTab(authed);
+  const [ordersInitialQuery, setOrdersInitialQuery] = useState(""); // Sales → tap a buyer → Orders pre-filtered
   const exportCustomers = () => csvDL(`customers-${dayStamp()}.csv`, ["Name", "Username", "Platform", "Orders", "Total"], customersData.customers.map((c) => [c.name, c.handle, c.platform, c.orders, `${cur}${c.spent}`]));
 
   // Sales report — session-derived aggregation (App.tsx Sales). CSV row shape
@@ -1760,9 +1769,11 @@ export default function RedesignApp() {
           )}
           {screen === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} orders={ordersList} state={ordersState} onGoShipping={hideShipping ? undefined : () => setScreen("shipping")}
             historyOrders={ordersHistory.orders} historyState={ordersHistory.state} onEnsureHistory={ordersHistory.ensureLoaded} onReprintOrder={onReprintOrder} todayId={liveSession.dayId} buyers={liveSession.session.buyers}
+            initialQuery={ordersInitialQuery}
             seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
           {screen === "products" && <Products cur={cur} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
           {screen === "miners" && <Miners cur={cur} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
+          {screen === "salestab" && <SalesTab cur={cur} sessionStart={sessionWindow.windowStart || liveSession.dayId} today={liveSession.dayId} sales={salesTab} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} onOpenBuyer={(name) => { setOrdersInitialQuery(name); setScreen("orders"); }} />}
           {screen === "menu" && (
             <SettingsHub
               onGeneral={() => setScreen("settings")}
@@ -1879,11 +1890,19 @@ export default function RedesignApp() {
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" fill="currentColor" /><circle cx="12" cy="12" r="8.2" stroke="currentColor" strokeWidth="1.7" opacity=".55" /></svg>
               <span style={{ fontSize: 10, fontWeight: 700 }}>{tApp.rd_nav_live}</span>
             </button>
-            <button onClick={() => setScreen("miners")} className={navCls(screen === "miners")}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 19V11M9 19V5M14 19v-6M19 19V9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-              <span style={{ fontSize: 10, fontWeight: 700 }}>Miners</span>
-            </button>
-            <button onClick={() => setScreen("orders")} className={navCls(ordersActive)}>
+            {SHOW_SALES_TAB && (
+              <button onClick={() => setScreen("salestab")} className={navCls(screen === "salestab")} data-testid="nav-sales">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 19V11M9 19V5M14 19v-6M19 19V9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+                <span style={{ fontSize: 10, fontWeight: 700 }}>{tApp.rd_nav_sales}</span>
+              </button>
+            )}
+            {SHOW_MINERS_NAV && (
+              <button onClick={() => setScreen("miners")} className={navCls(screen === "miners")} data-testid="nav-miners">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 19V11M9 19V5M14 19v-6M19 19V9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+                <span style={{ fontSize: 10, fontWeight: 700 }}>Miners</span>
+              </button>
+            )}
+            <button onClick={() => { setOrdersInitialQuery(""); setScreen("orders"); }} className={navCls(ordersActive)}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M6 7h12l-1 12a2 2 0 0 1-2 1.8H9A2 2 0 0 1 7 19L6 7Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M9 7a3 3 0 0 1 6 0" stroke="currentColor" strokeWidth="1.7" /></svg>
               <span style={{ fontSize: 10, fontWeight: 700 }}>{tApp.rd_nav_orders}</span>
             </button>

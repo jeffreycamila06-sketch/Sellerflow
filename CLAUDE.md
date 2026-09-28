@@ -4352,3 +4352,32 @@ Full audit (D1–D10) → ONE clean version. Worker (`chrome-extension/backgroun
   loop, fresh token no-op, source pins); 4 sabotages red. Manifest 1.14.5. ⚠️ The web
   half (supabase.ts) deploys via main→Vercel; the extension half needs the Mac reload.
   If the web build isn't live yet, the GET-re-nav fallback still recovers the token.
+
+## 2026-09-28 — SALES TAB (replaces Miners) + Live-session expand fix
+- **Live session row fix** (merge `04eba9d`): the accordion's open-state is LIFTED to
+  RedesignApp (`liveSessionOpen`/`toggleLiveSession`) so a GeneralSettings remount can't
+  drop it; header is `type="button"`; tapping anywhere on the row toggles. Local-state
+  fallback kept for standalone callers.
+- **Sales tab** (real data, replaces Miners in the bottom nav): `SHOW_SALES_TAB=true`/
+  `SHOW_MINERS_NAV=false` in RedesignApp; Miners screen+hook+import stay behind the flag
+  (no deletion). Screen `screens/SalesTab.tsx` + adapter `adapters/salesTab.ts`
+  (`useSalesTab`). Ranges Today · This session · 7 days · 2 months · Custom (default =
+  This session); tiles (Sales total=Σtotal_amount · Orders=count · Buyers=distinct
+  customer_name · AOV=rev/orders), daily-trend CSS bars, searchable Top buyers (rank ·
+  name · orders · Σspent, top 50). Tap a buyer → Orders pre-filtered by name (new
+  `initialQuery` prop on Orders). Export ▾ = shared brandedExport (Excel/PDF) of the
+  top-buyers table + summary. "History kept for 3 months." note.
+- **DB**: `sql/56_sales_report_ranges.sql` (APPLIED via MCP) — extends the sql/15
+  `sales_report` RPC to `sales_report(p_period, p_from, p_to, p_top)` with periods
+  'today'/'2months'/'range' (session+custom use date bounds) + a top-N param (Sales tab
+  passes 50; the existing Sales Report screen is unchanged at 5). NO new tables. Uses the
+  `orders_user_created_idx` (raw created_at bounds → index scan, no full scan); the
+  2-month aggregate on the heaviest seller (~35k rows) is ~240ms server-side. 'range'/
+  '2months' use an empty prev window (Sales tab shows no deltas) so `own` scans the
+  current window only. ⚠️ Revenue reflects `orders.total_amount` — sellers who don't
+  record prices (e.g. the heaviest test seller) show ~0 revenue on thousands of orders;
+  that's their data, not an RPC bug.
+- Tests: `salesTab.test.ts` (range→RPC-arg math, cache keys), `SalesTab.test.tsx`
+  (tiles/trend/ranking/search/buyer-tap/loading/empty/error/3-month note). ONE merge —
+  nav swap + real data together; the static mockup on `claude/sales-tab-mockup` was
+  never shipped.
