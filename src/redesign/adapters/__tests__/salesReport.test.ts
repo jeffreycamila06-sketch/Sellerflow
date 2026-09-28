@@ -76,7 +76,7 @@ describe("mapSalesReport", () => {
       { d: "2026-07-02", rev: "700", orders: 7 },
     ],
     top_products: [{ name: "Dress", rev: 600, orders: 6 }],
-    top_buyers: [{ name: "Ann", spent: 400, orders: 4 }],
+    top_buyers: [{ name: "Ann", handle: "ann_tw", spent: 400, orders: 4 }, { name: "Bea", spent: 200, orders: 2 }],
     start: "2026-06-29", end: "2026-07-05",
   };
   it("maps KPIs, deltas vs prev period, AOV, repeat %, best day", () => {
@@ -92,7 +92,9 @@ describe("mapSalesReport", () => {
     expect(d.repeatPct).toBe(50);       // 2 of 4
     expect(d.bestDay).toEqual({ d: "2026-07-02", rev: 700, orders: 7 });
     expect(d.topProducts[0]).toEqual({ name: "Dress", rev: 600, orders: 6 });
-    expect(d.topBuyers[0]).toEqual({ name: "Ann", spent: 400, orders: 4 });
+    expect(d.topBuyers[0]).toEqual({ name: "Ann", handle: "ann_tw", spent: 400, orders: 4 });  // handle mapped
+    expect(d.topBuyers[1]).toEqual({ name: "Bea", handle: "", spent: 200, orders: 2 });         // missing handle → ""
+    expect(d.trendUnit).toBe("day");                                                            // default unit
     expect(d.start).toBe("2026-06-29");
   });
   it("empty period → zeros, null deltas/repeat, no best day", () => {

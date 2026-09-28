@@ -398,6 +398,7 @@ const RAW: Record<string, Row> = {
   rd_nav_sales: { en: "Sales", fil: "Benta", zh: "销售", "zh-TW": "銷售", vi: "Doanh thu", th: "ยอดขาย", id: "Penjualan", bg: "Продажби" },
   rd_sal_2months: { en: "2 months", fil: "2 buwan", zh: "近 2 个月", "zh-TW": "近 2 個月", vi: "2 tháng", th: "2 เดือน", id: "2 bulan", bg: "2 месеца" },
   rd_sal_trend: { en: "Daily trend", fil: "Araw-araw na takbo", zh: "每日趋势", "zh-TW": "每日趨勢", vi: "Xu hướng theo ngày", th: "แนวโน้มรายวัน", id: "Tren harian", bg: "Дневна тенденция" },
+  rd_sal_trend_hourly: { en: "Hourly trend", fil: "Oras-oras na takbo", zh: "每小时趋势", "zh-TW": "每小時趨勢", vi: "Xu hướng theo giờ", th: "แนวโน้มรายชั่วโมง", id: "Tren per jam", bg: "Часова тенденция" },
   rd_sal_top_buyers: { en: "Top buyers", fil: "Nangungunang mamimili", zh: "顶级买家", "zh-TW": "頂級買家", vi: "Người mua hàng đầu", th: "ผู้ซื้อยอดนิยม", id: "Pembeli teratas", bg: "Топ купувачи" },
   rd_sal_search: { en: "Search buyer", fil: "Maghanap ng mamimili", zh: "搜索买家", "zh-TW": "搜尋買家", vi: "Tìm người mua", th: "ค้นหาผู้ซื้อ", id: "Cari pembeli", bg: "Търси купувач" },
   rd_sal_retention: { en: "History kept for 3 months.", fil: "Iniingatan ang history ng 3 buwan.", zh: "历史记录保留 3 个月。", "zh-TW": "歷史紀錄保留 3 個月。", vi: "Lịch sử được lưu trong 3 tháng.", th: "เก็บประวัติไว้ 3 เดือน", id: "Riwayat disimpan selama 3 bulan.", bg: "Историята се пази 3 месеца." },

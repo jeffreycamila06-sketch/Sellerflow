@@ -9,15 +9,15 @@ import type { SalesHistData } from "../../adapters/salesReport";
 import type { UseSalesTab } from "../../adapters/salesTab";
 
 const DATA: SalesHistData = {
-  revenue: 61240, orders: 188, buyers: 121, aov: 326,
+  revenue: 61240, orders: 188, buyers: 121, aov: 326, trendUnit: "day",
   dRevenue: null, dOrders: null, dBuyers: null, dAov: null, repeatPct: null,
   days: [{ d: "2026-09-01", rev: 6100, orders: 20 }, { d: "2026-09-02", rev: 11200, orders: 40 }, { d: "2026-09-03", rev: 5200, orders: 18 }],
   bestDay: { d: "2026-09-02", rev: 11200, orders: 40 },
   topProducts: [],
   topBuyers: [
-    { name: "Maria Santos", spent: 5820, orders: 14 },
-    { name: "JC Dela Cruz", spent: 4310, orders: 11 },
-    { name: "Anne Lim", spent: 3990, orders: 9 },
+    { name: "Maria Santos", handle: "maria_shops", spent: 5820, orders: 14 },
+    { name: "JC Dela Cruz", handle: "", spent: 4310, orders: 11 },   // no handle → name only, no jump
+    { name: "Anne Lim", handle: "annelim", spent: 3990, orders: 9 },
   ],
   start: "2026-09-01", end: "2026-09-28",
 };
@@ -61,6 +61,38 @@ describe("Sales tab (real data)", () => {
     expect(onOpenBuyer).toHaveBeenCalledWith("Maria Santos");
     fireEvent.click(getByTestId("sales-buyer-back"));
     expect(queryByTestId("sales-buyer-detail")).toBeNull();
+  });
+
+  it("buyer rows show @handle when present, name-only when the handle is empty (never fabricated)", () => {
+    const { getByTestId } = view(stubHook());
+    expect(within(getByTestId("sales-buyer-0")).getByText("@maria_shops")).toBeTruthy();  // handle resolved
+    const row1 = getByTestId("sales-buyer-1").textContent || "";
+    expect(row1).toContain("JC Dela Cruz");
+    expect(row1).not.toContain("@");                                                       // no fabricated handle
+  });
+
+  it("buyer detail header shows the @handle", () => {
+    const { getByTestId } = view(stubHook());
+    fireEvent.click(getByTestId("sales-buyer-0"));
+    expect(within(getByTestId("sales-buyer-detail")).getByText("@maria_shops")).toBeTruthy();
+  });
+
+  it("every trend bar carries an order-count label; tapping a bar reveals sales + orders", () => {
+    const { getByTestId } = view(stubHook());
+    const bars = getByTestId("sales-trend");
+    expect(within(bars).getByText("40")).toBeTruthy();          // order count on the bar
+    fireEvent.click(bars.children[1] as HTMLElement);           // tap the 2nd (best) bar
+    const cap = getByTestId("sales-trend-caption").textContent || "";
+    expect(cap).toContain("NT$11,200");
+    expect(cap).toContain("40");
+  });
+
+  it("Today trend labels use the hour (per-hour buckets), not the date", () => {
+    const hourly = { ...DATA, trendUnit: "hour" as const, days: [{ d: "13:00", rev: 800, orders: 3 }, { d: "14:00", rev: 1600, orders: 6 }], bestDay: { d: "14:00", rev: 1600, orders: 6 } };
+    const { getByTestId } = view(stubHook({ data: hourly }));
+    const bars = getByTestId("sales-trend");
+    expect(within(bars).getByText("13")).toBeTruthy();          // hour tick "13:00" → "13"
+    expect(within(bars).getByText("14")).toBeTruthy();
   });
 
   it("buyer search filters the list over the range", () => {

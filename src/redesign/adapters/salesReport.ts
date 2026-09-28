@@ -12,9 +12,11 @@ export type SalesPeriod = "7d" | "month" | "last_month";
 
 export interface SalesDay { d: string; rev: number; orders: number }
 export interface SalesTopProduct { name: string; rev: number; orders: number }
-export interface SalesTopBuyer { name: string; spent: number; orders: number }
+export interface SalesTopBuyer { name: string; handle: string; spent: number; orders: number }
+export type TrendUnit = "hour" | "day";
 export interface SalesHistData {
   revenue: number; orders: number; buyers: number; aov: number;
+  trendUnit: TrendUnit;          // 'hour' for Today (per-hour bars), 'day' otherwise
   // % deltas vs the equivalent previous period; null = no comparable base (prev = 0)
   dRevenue: number | null; dOrders: number | null; dBuyers: number | null; dAov: number | null;
   repeatPct: number | null;      // buyers with ≥2 orders / buyers, null when 0 buyers
@@ -51,6 +53,7 @@ export function mapSalesReport(raw: unknown): SalesHistData {
     Array.isArray(v) ? (v as Record<string, unknown>[]).map(f) : [];
   return {
     revenue, orders, buyers, aov,
+    trendUnit: r.trend_unit === "hour" ? "hour" : "day",
     dRevenue: pctDelta(revenue, pRevenue),
     dOrders: pctDelta(orders, pOrders),
     dBuyers: pctDelta(buyers, pBuyers),
@@ -58,7 +61,7 @@ export function mapSalesReport(raw: unknown): SalesHistData {
     repeatPct: buyers ? Math.round((num(cur.repeat_buyers) / buyers) * 100) : null,
     days, bestDay,
     topProducts: mapTop(r.top_products, (x) => ({ name: String(x.name ?? ""), rev: num(x.rev), orders: num(x.orders) })),
-    topBuyers: mapTop(r.top_buyers, (x) => ({ name: String(x.name ?? ""), spent: num(x.spent), orders: num(x.orders) })),
+    topBuyers: mapTop(r.top_buyers, (x) => ({ name: String(x.name ?? ""), handle: String(x.handle ?? ""), spent: num(x.spent), orders: num(x.orders) })),
     start: String(r.start ?? ""), end: String(r.end ?? ""),
   };
 }

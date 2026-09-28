@@ -1,22 +1,44 @@
-// SALES TAB — the approved mockup UI, wired to REAL data (useSalesTab → the sql/56
+// SALES TAB — the approved mockup UI, wired to REAL data (useSalesTab → the sql/57
 // sales_report RPC over the billing `orders` ledger). Same sections/order/labels as
 // the mockup: header + Export ▾, date pills (Today · This session · 7 days · Custom,
-// default Today), four tiles (Sales total · Orders · Buyers · AOV), daily-trend CSS
-// bars, and a searchable Top-buyers list → tap → in-screen buyer detail with
-// "Open in Orders →". Honest loading/empty/error states. NO 2-months pill.
-// ⚠️ Data gaps vs the static mockup (the orders ledger has neither): buyer rows show
-// the customer NAME (no @handle), and the buyer detail shows the aggregate + an
-// "Open in Orders →" that opens the buyer's REAL orders (no fabricated inline rows).
+// default Today), four tiles (Sales total · Orders · Buyers · AOV), a trend chart, and
+// a searchable Top-buyers list → tap → in-screen buyer detail with "Open in Orders →".
+// Honest loading/empty/error states. NO 2-months pill.
+//
+// PASS 2 (handles + trend):
+//  A) @handle on buyer rows AND the buyer-detail header — resolved server-side via the
+//     customers table (sql/57 LATERAL join); NEVER fabricated. A name with no handle
+//     shows the name only, no layout jump (the right column always keeps 2 lines).
+//     Row style matches Miners' top-buyer rows (rank · avatar · name/@handle · totals).
+//  B) Trend chart — EVERY bar carries an order-count label (redesign tokens, no
+//     hardcoded colors); bar height = sales amount; the best bar is highlighted the way
+//     the mockup did (var(--ok)); tap a bar to reveal sales NT$ + orders. Today buckets
+//     PER HOUR (d.trendUnit==="hour"), other ranges per day. Fixed-width columns in a
+//     horizontally scrollable track (latest bar visible first) so up to 24 hourly bars
+//     stay readable at 375/390px — text never shrinks below 10px.
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT } from "../i18n";
 import { exportBrandedXlsx, exportBrandedPdf } from "../adapters/brandedExport";
 import { dayStamp } from "../adapters/csv";
 import type { SalesTabRange, UseSalesTab } from "../adapters/salesTab";
-import type { SalesTopBuyer } from "../adapters/salesReport";
+import type { SalesDay, SalesTopBuyer } from "../adapters/salesReport";
 
 const avColor = (s: string) => `hsl(${[...(s || "?")].reduce((a, c) => a + c.charCodeAt(0), 0) * 47 % 360} 55% 48%)`;
 const initials = (s: string) => (s || "?").replace(/^@/, "").slice(0, 2).toUpperCase();
+const atHandle = (h: string) => (h ? (h.startsWith("@") ? h : `@${h}`) : "");
+
+const COL_W = 34;         // per-bar column width (keeps labels ≥10px, no overlap)
+const BAR_AREA = 84;      // px height of the bar zone (count label + axis label sit outside it)
+
+// Axis tick under a bar: hour "14:00"→"14" (2 chars), day "2026-09-02"→"9/2".
+const tickLabel = (d: string, hour: boolean): string => {
+  if (hour) return d.slice(0, 2);
+  const p = d.split("-");
+  return p.length === 3 ? `${Number(p[1])}/${Number(p[2])}` : d;
+};
+// Caption label when a bar is selected: hour keeps "14:00", day → "9/2".
+const capLabel = (d: string, hour: boolean): string => (hour ? d : tickLabel(d, false));
 
 export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", sales, seller, onOpenBuyer }: {
   cur?: string; sessionStart?: string; today?: string;
@@ -31,21 +53,34 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
   const [exportOpen, setExportOpen] = useState(false);
   const [q, setQ] = useState("");
   const [openBuyer, setOpenBuyer] = useState<SalesTopBuyer | null>(null);
+  const [selBar, setSelBar] = useState<SalesDay | null>(null);
+  // New range/data → forget the tapped bar (its index no longer lines up). Reset during
+  // render via the previous-value compare (the codebase's state-reset pattern; a reset
+  // effect trips react-hooks/set-state-in-effect).
+  const [barsRef, setBarsRef] = useState<unknown>(sales.data);
+  if (barsRef !== sales.data) { setBarsRef(sales.data); setSelBar(null); }
 
   const bounds = useMemo(() => ({ sessionStart, today, from: customFrom, to: customTo }), [sessionStart, today, customFrom, customTo]);
   const loadRef = useRef(sales.load);
   useEffect(() => { loadRef.current = sales.load; });
   useEffect(() => { loadRef.current(range, bounds); }, [range, bounds]);
 
+  // Keep the latest bar in view (hourly Today can be up to 24 bars → scroll).
+  const trackRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { const el = trackRef.current; if (el) el.scrollLeft = el.scrollWidth; }, [sales.data, range]);
+
   const d = sales.data;
   const fmt = (n: number) => Math.round(n).toLocaleString();
   const aov = d && d.orders ? Math.round(d.revenue / d.orders) : 0;
-  const maxDay = Math.max(1, ...(d?.days.map((x) => x.rev) ?? [1]));
+  const hourly = d?.trendUnit === "hour";
+  const maxRev = Math.max(1, ...(d?.days.map((x) => x.rev) ?? [1]));
   const shown = useMemo(() => {
-    const s = q.trim().toLowerCase();
+    const s = q.trim().toLowerCase().replace(/^@/, "");
     const list = d?.topBuyers ?? [];
-    return s ? list.filter((b) => (b.name || "").toLowerCase().includes(s)) : list;
+    return s ? list.filter((b) => (b.name || "").toLowerCase().includes(s) || (b.handle || "").toLowerCase().includes(s)) : list;
   }, [d, q]);
+  // Bar shown in the tap-caption: the tapped bar, else the best (highlighted) one.
+  const capBar = selBar ?? d?.bestDay ?? null;
 
   const RANGES: [SalesTabRange, string][] = [["today", t.rd_ord_today], ["session", t.rd_ord_range_session], ["7d", t.rd_ord_range_7d], ["custom", t.rd_ord_range_custom]];
   const pill = (active: boolean): CSSProperties => ({ padding: "7px 13px", borderRadius: 999, border: "1px solid " + (active ? "var(--accent)" : "var(--border)"), background: active ? "var(--accent)" : "var(--surface)", color: active ? "#fff" : "var(--text-dim)", fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" });
@@ -61,7 +96,7 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
         { header: t.rd_ord_sum_orders, align: "right" as const, width: 10 },
         { header: t.rd_ord_sum_total, align: "right" as const, width: 14 },
       ],
-      rows: d.topBuyers.map((b, i) => [i + 1, b.name || "—", b.orders, `${cur}${fmt(b.spent)}`]),
+      rows: d.topBuyers.map((b, i) => [i + 1, b.handle ? `${b.name || "—"} (${atHandle(b.handle)})` : (b.name || "—"), b.orders, `${cur}${fmt(b.spent)}`]),
       summary: [
         { label: t.rd_ord_sum_total, value: `${cur}${fmt(d.revenue)}` },
         { label: t.rd_ord_sum_orders, value: d.orders },
@@ -126,25 +161,52 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
               <div style={{ ...card, textAlign: "center", color: "var(--text-muted)" }} data-testid="sales-empty">{t.rd_sal_empty}</div>
             ) : (
               <>
-                {/* Daily trend bar chart (CSS bars) */}
+                {/* Trend: fixed-width bars in a scrollable track; every bar carries an
+                    order-count label; best bar highlighted; tap reveals sales + orders. */}
                 <div style={card}>
-                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".08em", color: "var(--text-muted)", marginBottom: 10 }}>{t.rd_sal_trend}</div>
-                  <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 92 }} data-testid="sales-trend">
-                    {d.days.map((x) => (
-                      <div key={x.d} title={`${x.d} · ${cur}${fmt(x.rev)}`} style={{ flex: 1, minWidth: 2, height: `${Math.max(4, Math.round((x.rev / maxDay) * 100))}%`, background: d.bestDay && x.d === d.bestDay.d ? "var(--ok)" : "var(--accent)", borderRadius: 3, opacity: d.bestDay && x.d === d.bestDay.d ? 1 : 0.75 }} />
-                    ))}
+                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10, gap: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".08em", color: "var(--text-muted)" }}>{hourly ? t.rd_sal_trend_hourly : t.rd_sal_trend}</div>
+                    {capBar && (
+                      <div data-testid="sales-trend-caption" style={{ fontSize: 11, color: "var(--text-dim)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        <span style={{ fontWeight: 700 }}>{capLabel(capBar.d, hourly)}</span>
+                        {" · "}<span style={{ fontFamily: mono, color: "var(--text)" }}>{cur}{fmt(capBar.rev)}</span>
+                        {" · "}<span style={{ fontFamily: mono }}>{capBar.orders} {t.rd_ord_sum_orders}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div ref={trackRef} style={{ display: "flex", alignItems: "flex-end", gap: 4, overflowX: "auto", paddingBottom: 2 }} data-testid="sales-trend">
+                    {d.days.map((x) => {
+                      const best = !!d.bestDay && x.d === d.bestDay.d;
+                      const active = !!selBar && x.d === selBar.d;
+                      return (
+                        <button
+                          key={x.d}
+                          onClick={() => setSelBar((s) => (s && s.d === x.d ? null : x))}
+                          title={`${capLabel(x.d, hourly)} · ${cur}${fmt(x.rev)} · ${x.orders} ${t.rd_ord_sum_orders}`}
+                          style={{ flex: `0 0 ${COL_W}px`, display: "flex", flexDirection: "column", alignItems: "center", gap: 3, background: "none", border: "none", padding: 0, cursor: "pointer" }}
+                        >
+                          <div style={{ fontFamily: mono, fontSize: 10, fontWeight: 700, color: active ? "var(--accent)" : "var(--text-muted)", lineHeight: 1 }}>{x.orders}</div>
+                          <div style={{ height: BAR_AREA, width: "100%", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+                            <div style={{ width: "78%", height: `${Math.max(4, Math.round((x.rev / maxRev) * 100))}%`, background: best ? "var(--ok)" : "var(--accent)", borderRadius: 4, opacity: active || best ? 1 : 0.72, outline: active ? "2px solid var(--accent)" : "none", outlineOffset: 1 }} />
+                          </div>
+                          <div style={{ fontSize: 9.5, color: "var(--text-muted)", lineHeight: 1, whiteSpace: "nowrap" }}>{tickLabel(x.d, hourly)}</div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
-                {/* Top buyers (absorbs Miners) — search + list; tap → buyer detail */}
+                {/* Top buyers (absorbs Miners) — search + list; tap → buyer detail.
+                    Row style mirrors Miners: rank · avatar · name/@handle · totals right. */}
                 {openBuyer ? (
                   <div style={card} data-testid="sales-buyer-detail">
                     <button onClick={() => setOpenBuyer(null)} data-testid="sales-buyer-back" style={{ background: "none", border: "none", color: "var(--accent)", fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: 0, marginBottom: 8 }}>← {t.rd_sal_back}</button>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                      <div style={{ width: 34, height: 34, borderRadius: 999, background: avColor(openBuyer.name), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12 }}>{initials(openBuyer.name)}</div>
-                      <div>
-                        <div style={{ fontWeight: 800, fontSize: 14, color: "var(--text)" }}>{openBuyer.name || "—"}</div>
-                        <div style={{ fontSize: 11.5, color: "var(--handle)" }}>{openBuyer.orders} {t.rd_ord_sum_orders} · {cur}{fmt(openBuyer.spent)}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 12 }}>
+                      <div style={{ width: 38, height: 38, borderRadius: 999, background: avColor(openBuyer.name), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 13, flexShrink: 0 }}>{initials(openBuyer.name)}</div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 800, fontSize: 15, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{openBuyer.name || "—"}</div>
+                        {openBuyer.handle && <div style={{ fontSize: 12, fontWeight: 600, color: "var(--handle)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{atHandle(openBuyer.handle)}</div>}
+                        <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 1 }}>{openBuyer.orders} {t.rd_ord_sum_orders} · {cur}{fmt(openBuyer.spent)}</div>
                       </div>
                     </div>
                     <button onClick={() => onOpenBuyer?.(openBuyer.name)} style={{ marginTop: 4, width: "100%", padding: "10px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text-dim)", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }} data-testid="sales-open-orders">{t.rd_sal_buyer_hist} →</button>
@@ -159,14 +221,17 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
                       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.rd_sal_search} data-testid="sales-search" style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", fontSize: 13, color: "var(--text)" }} />
                     </div>
                     {shown.map((b, i) => (
-                      <button key={`${b.name}-${i}`} onClick={() => setOpenBuyer(b)} data-testid={`sales-buyer-${i}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 2px", borderTop: i ? "1px solid var(--border)" : "none", width: "100%", background: "none", cursor: "pointer", textAlign: "left" }}>
-                        <div style={{ width: 20, fontFamily: mono, fontSize: 12, fontWeight: 700, color: "var(--text-muted)" }}>{i + 1}</div>
-                        <div style={{ width: 30, height: 30, borderRadius: 999, background: avColor(b.name), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 11 }}>{initials(b.name)}</div>
+                      <button key={`${b.name}-${i}`} onClick={() => setOpenBuyer(b)} data-testid={`sales-buyer-${i}`} style={{ display: "flex", alignItems: "center", gap: 11, padding: "10px 2px", borderTop: i ? "1px solid var(--border)" : "none", width: "100%", background: "none", cursor: "pointer", textAlign: "left" }}>
+                        <div style={{ width: 20, fontFamily: mono, fontSize: 12, fontWeight: 700, color: "var(--text-muted)", textAlign: "right", flexShrink: 0 }}>{i + 1}</div>
+                        <div style={{ width: 34, height: 34, borderRadius: 999, background: avColor(b.name), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12, flexShrink: 0 }}>{initials(b.name)}</div>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name || "—"}</div>
-                          <div style={{ fontSize: 11, color: "var(--handle)" }}>{b.orders} {t.rd_ord_sum_orders}</div>
+                          <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name || "—"}</div>
+                          {b.handle && <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--handle)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{atHandle(b.handle)}</div>}
                         </div>
-                        <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 13, color: "var(--text)" }}>{cur}{fmt(b.spent)}</div>
+                        <div style={{ textAlign: "right", flexShrink: 0 }}>
+                          <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 14, color: "var(--text)" }}>{cur}{fmt(b.spent)}</div>
+                          <div style={{ fontSize: 11, color: "var(--text-muted)", fontWeight: 600 }}>{b.orders} {t.rd_ord_sum_orders}</div>
+                        </div>
                       </button>
                     ))}
                     {shown.length === 0 && <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 2px" }}>—</div>}
