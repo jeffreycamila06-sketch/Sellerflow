@@ -4,9 +4,10 @@
 // so it works across phone + laptop; no auto-clear on a new session.
 //
 //   enabled  — the toggle. The override applies ONLY when enabled AND price > 0.
-//   price    — remembered even while OFF, so the next ON is one tap. Editing the
-//              price while ON saves immediately (blur/Enter). The toggle can never
-//              be ON with a blank/0 price (setEnabled guards; the UI shows a hint).
+//   price    — remembered even while OFF, so the next ON is one tap (the Settings
+//              sheet pre-fills it). It changes only via the sheet's "Turn on". The
+//              toggle can never be ON with a blank/0 price (setEnabled guards; the
+//              sheet's "Turn on" stays disabled until price > 0).
 //   active   — enabled && price > 0 ? price : null — the value RedesignApp applies
 //              to the order price INPUT (1-Click / Pin / Auto) and pre-fills into
 //              Enterprise. When null, every order keeps its own price → the pure
@@ -51,12 +52,10 @@ export interface UseSamePrice {
   price: number | null;   // remembered price (persists across OFF)
   active: number | null;  // enabled && price > 0 ? price : null (the override value)
   loading: boolean;
-  // Toggle. `draft` lets the switch commit a typed-but-not-yet-blurred price.
-  // Turning ON with no valid price is a no-op (the UI shows "Enter a price first").
+  // Toggle. ON comes from the Settings sheet's "Turn on" with the typed `draft`
+  // price (committed with it); ON with no valid price is a no-op. OFF keeps the
+  // price remembered.
   setEnabled: (on: boolean, draft?: unknown) => Promise<void>;
-  // Edit the price (blur/Enter). Saves immediately; a blank/0 value also forces OFF
-  // (the toggle can't stay ON without a price).
-  setPrice: (v: unknown) => Promise<void>;
   // Bumps when a DB write fails; the optimistic value REVERTS (the DB is the
   // cross-device source of truth). The UI watches this to show a notice.
   saveErrors: number;
@@ -110,14 +109,6 @@ export function useSamePrice(): UseSamePrice {
     }
   }, [uid]);
 
-  const setPrice = useCallback(async (v: unknown) => {
-    const p = normalizeSamePrice(v);
-    const nextEnabled = enabled && canEnableSamePrice(p); // clearing the price forces OFF
-    const prevEnabled = enabled, prevPrice = price;
-    setPriceState(p); setEnabledState(nextEnabled); // optimistic
-    await persist(nextEnabled, p, prevEnabled, prevPrice);
-  }, [enabled, price, persist]);
-
   const setEnabled = useCallback(async (on: boolean, draft?: unknown) => {
     const p = draft !== undefined ? normalizeSamePrice(draft) : price;
     if (on && !canEnableSamePrice(p)) return; // blocked — UI shows "Enter a price first"
@@ -126,5 +117,5 @@ export function useSamePrice(): UseSamePrice {
     await persist(on, p, prevEnabled, prevPrice);
   }, [enabled, price, persist]);
 
-  return { enabled, price, active: activeSamePrice(enabled, price), loading, setEnabled, setPrice, saveErrors };
+  return { enabled, price, active: activeSamePrice(enabled, price), loading, setEnabled, saveErrors };
 }

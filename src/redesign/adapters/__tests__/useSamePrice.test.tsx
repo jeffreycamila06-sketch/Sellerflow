@@ -83,23 +83,14 @@ describe("useSamePrice — toggle + remembered price", () => {
     expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ enabled: false, same_price: 199 }));
   });
 
-  it("editing the price to blank while ON forces OFF (can't stay ON with no price)", async () => {
-    maybeSingle.mockResolvedValue({ data: { enabled: true, same_price: 199 }, error: null });
+  it("turning ON again with a NEW typed price replaces the remembered one", async () => {
+    maybeSingle.mockResolvedValue({ data: { enabled: false, same_price: 199 }, error: null });
     const { result } = renderHook(() => useSamePrice());
-    await waitFor(() => expect(result.current.active).toBe(199));
-    await act(async () => { await result.current.setPrice(""); });
-    expect(result.current.price).toBeNull();
-    expect(result.current.enabled).toBe(false);
-    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ enabled: false, same_price: null }));
-  });
-
-  it("editing the price while ON keeps it ON at the new price", async () => {
-    maybeSingle.mockResolvedValue({ data: { enabled: true, same_price: 199 }, error: null });
-    const { result } = renderHook(() => useSamePrice());
-    await waitFor(() => expect(result.current.active).toBe(199));
-    await act(async () => { await result.current.setPrice("250"); });
+    await waitFor(() => expect(result.current.price).toBe(199));
+    await act(async () => { await result.current.setEnabled(true, "250"); });
     expect(result.current.enabled).toBe(true);
     expect(result.current.active).toBe(250);
+    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ enabled: true, same_price: 250 }));
   });
 
   it("failed write REVERTS enabled + price and bumps saveErrors", async () => {

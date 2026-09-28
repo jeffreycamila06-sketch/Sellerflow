@@ -206,8 +206,8 @@ export default function Dashboard({
   // Display-only — set by the RedesignApp auto seam, never touches dedup.
   autoBadges?: Record<string, "duplicate" | "soldout">;
   // "Same price for all items" — persistent chip while ON (visible without scrolling);
-  // ✕ turns the toggle OFF (confirm reminds the seller pricing returns to code/comment;
-  // the price stays remembered). `samePrice` is the ACTIVE value (null when OFF).
+  // ✕ = same as turning it OFF in Settings: instant off + toast (RedesignApp), the price
+  // stays remembered. `samePrice` is the ACTIVE value (null when OFF).
   samePrice?: number | null; onDisableSamePrice?: () => void;
   printed: Record<string, string>; entId: string | null; entPrice: string;
   // Orderable earlier-comments (sql/18) — the E1 gate: history rows may show
@@ -532,7 +532,7 @@ export default function Dashboard({
             <span data-testid="samePrice-chip" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--accent-soft)", border: "1px solid var(--accent)", borderRadius: 999, padding: "4px 6px 4px 11px", fontSize: 11.5, fontWeight: 800, color: "var(--accent-fg)" }}>
               {tpl(t.rd_smp_chip, { price: `${cur}${samePrice.toLocaleString("en-US")}` })}
               <button
-                onClick={() => { if (typeof window === "undefined" || window.confirm(t.rd_smp_clear_confirm)) onDisableSamePrice?.(); }}
+                onClick={() => onDisableSamePrice?.()}
                 aria-label={t.rd_smp_off} title={t.rd_smp_off} data-testid="samePrice-chip-clear"
                 style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, borderRadius: "50%", border: "none", background: "var(--accent)", color: "#fff", fontSize: 12, lineHeight: 1, cursor: "pointer" }}
               >×</button>

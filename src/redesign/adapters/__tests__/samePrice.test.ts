@@ -118,14 +118,28 @@ describe("Turn OFF restores normal pricing (price stays remembered)", () => {
 });
 
 describe("i18n — same-price keys filled in every language", () => {
-  const keys = ["rd_smp_row_title", "rd_smp_placeholder", "rd_smp_off", "rd_smp_need_price", "rd_smp_note", "rd_smp_chip", "rd_smp_clear_confirm", "rd_smp_error"] as const;
+  const keys = [
+    "rd_smp_row_title", "rd_smp_placeholder", "rd_smp_off", "rd_smp_chip", "rd_smp_error",
+    "rd_lss_awake_text", "rd_lss_pin_text", "rd_lss_auto_text", "rd_lss_sp_text", "rd_lss_turn_on",
+    "rd_lss_sp_hint", "rd_lss_sp_err", "rd_lss_off_awake", "rd_lss_off_pin", "rd_lss_off_auto", "rd_lss_off_sp", "rd_lss_saved",
+  ] as const;
   it("all keys render non-empty in every language", () => {
     for (const lang of LANG_CODES) {
       const t = buildT(lang) as Record<string, string>;
       for (const k of keys) expect((t[k] || "").trim().length, `${k}/${lang}`).toBeGreaterThan(0);
     }
   });
-  it("the chip template carries the {price} placeholder in every lang", () => {
-    for (const lang of LANG_CODES) expect((buildT(lang) as Record<string, string>).rd_smp_chip, lang).toContain("{price}");
+  it("the chip / off-toast / saved templates carry the {price} placeholder in every lang", () => {
+    for (const lang of LANG_CODES) {
+      const t = buildT(lang) as Record<string, string>;
+      for (const k of ["rd_smp_chip", "rd_lss_off_sp", "rd_lss_saved"]) expect(t[k], `${k}/${lang}`).toContain("{price}");
+    }
+  });
+  it("the removed subtitle / status-line / confirm keys are gone from every lang", () => {
+    const gone = ["rd_set_keepawake_desc", "rd_set_pinprint_desc", "rd_set_auto_desc", "rd_set_pattern_sub", "rd_set_currently_active", "rd_set_auto_detect", "rd_set_manual_mode", "rd_smp_note", "rd_smp_need_price", "rd_smp_clear_confirm"];
+    for (const lang of LANG_CODES) {
+      const t = buildT(lang) as Record<string, string>;
+      for (const k of gone) expect(t[k], `${k}/${lang}`).toBeUndefined();
+    }
   });
 });

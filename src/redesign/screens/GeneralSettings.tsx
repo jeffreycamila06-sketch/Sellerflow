@@ -3,13 +3,14 @@
 // (REAL theme + accent control — replaces the old floating toggle) · Channels ·
 // Printer & display · Account links. Visual/sample only; theme+accent drive the
 // redesign preview state.
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ACCENT_ORDER, ACCENTS, LANGS, CURRENCIES, CURRENCY_ORDER, type ThemeMode, type AccentKey, type AutoControls } from "../data";
 import { headerBar, headerTitle, card, sectionLabel } from "../ui";
 import { MyshipConfigCard } from "../components/MyshipSetup";
 import { profileToDisplay, planLabel, renewLabel } from "../adapters/useAuthSession";
 import { validatePhone, DEFAULT_COUNTRY } from "../adapters/phone";
 import { normalizeSamePrice, canEnableSamePrice } from "../adapters/useSamePrice";
+import LiveSettingSheet from "../components/LiveSettingSheet";
 import CountryPhoneField from "../components/CountryPhoneField";
 import type { AccountUser } from "../../accountDb";
 import { useT, tpl } from "../i18n";
@@ -29,6 +30,29 @@ const label: CSSProperties = { fontSize: 11.5, fontWeight: 600, color: "var(--te
 const input: CSSProperties = { width: "100%", padding: "11px 13px", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 600, outline: "none" };
 const rowTitle: CSSProperties = { fontSize: 13.5, fontWeight: 700, color: "var(--text)" };
 const rowSub: CSSProperties = { fontSize: 11.5, color: "var(--text-muted)" };
+
+// ── Live session rows (approved mockup): title + toggle / value / chevron only ──
+type LsKey = "awake" | "pin" | "auto" | "sp";
+const lsRow: CSSProperties = { display: "flex", alignItems: "center", gap: 12, padding: "15px 14px", borderBottom: "1px solid var(--border)", minHeight: 56, boxSizing: "border-box" };
+const lsLabel: CSSProperties = { flex: 1, minWidth: 0, fontSize: 15, fontWeight: 600, color: "var(--text)" };
+const lsVal: CSSProperties = { fontSize: 13, color: "var(--text-muted)", fontFamily: "var(--font-mono)", flexShrink: 0 };
+const svgProps = { width: 22, height: 22, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2 } as const;
+const ICON_AWAKE = <svg {...svgProps}><rect x="3" y="4" width="18" height="14" rx="2" /><path d="M8 21h8M12 18v3" /></svg>;
+const ICON_PIN = <svg {...svgProps}><path d="M12 17v5M9 3h6l-1 6 3 3H7l3-3z" /></svg>;
+const ICON_AUTO = <svg {...svgProps}><path d="M4 12h4l2-6 4 12 2-6h4" /></svg>;
+const ICON_TAG = <svg {...svgProps}><path d="M20 12l-8 8-9-9V4h7z" /><circle cx="7.5" cy="7.5" r="1.5" fill="currentColor" /></svg>;
+
+// Live-session toggle with the mockup's spring knob (redesign.css .sfl-lss-knob).
+function LsToggle({ on, title, testId, onClick }: { on: boolean; title: string; testId?: string; onClick: () => void }) {
+  return (
+    <button type="button" role="switch" aria-checked={on} aria-label={title} title={title} onClick={onClick} data-testid={testId}
+      style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }}>
+      <span className="sfl-lss-track" style={{ width: 44, height: 26, borderRadius: 13, background: on ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block" }}>
+        <span className="sfl-lss-knob" style={{ position: "absolute", top: 3, left: 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transform: on ? "translateX(18px)" : "none" }} />
+      </span>
+    </button>
+  );
+}
 
 // MULTI-SELLER CHECK (2026-09-27) — the seller's own 賣貨便 GM id + phone.
 // Mounted only for allowlisted TW sellers (parcelCheckOn prop). Save flow:
@@ -55,7 +79,8 @@ export default function GeneralSettings({
   lowStockThreshold = 3, onSetLowStockThreshold,
   keepAwake = true, onToggleKeepAwake, pinPrint = false, onTogglePinPrint, parcelCheckOn = false,
   liveSessionOpen, onToggleLiveSession,
-  cur = "NT$", samePriceEnabled = false, samePrice = null, onSetSamePriceEnabled, onSaveSamePrice, samePriceError = 0,
+  cur = "NT$", samePriceEnabled = false, samePrice = null, onSetSamePriceEnabled, samePriceError = 0,
+  onToast, printSize,
   motionOn = true, onToggleMotion,
 }: {
   theme: ThemeMode; accent: AccentKey; onSetTheme: (t: ThemeMode) => void; onSetAccent: (a: AccentKey) => void;
@@ -83,10 +108,15 @@ export default function GeneralSettings({
   liveSessionOpen?: boolean; onToggleLiveSession?: () => void; // lifted to RedesignApp so a remount can't lose it
   // "Same price for all items" — ON/OFF toggle + a remembered price (DB-backed,
   // RedesignApp owns useSamePrice). `samePrice` = the remembered price (persists
-  // across OFF). onSetSamePriceEnabled(on, draft) toggles (ON commits the typed
-  // draft; blocked when no price). onSaveSamePrice edits the price on blur/Enter.
+  // across OFF). onSetSamePriceEnabled(on, draft): ON comes only from the sheet's
+  // "Turn on" (commits the typed price; blocked when no price > 0).
   samePriceEnabled?: boolean; samePrice?: number | null;
-  onSetSamePriceEnabled?: (on: boolean, draft?: unknown) => void; onSaveSamePrice?: (v: unknown) => void; samePriceError?: number;
+  onSetSamePriceEnabled?: (on: boolean, draft?: unknown) => void; samePriceError?: number;
+  // Live-session toggles turned OFF show a bottom toast (RedesignApp's global toast).
+  onToast?: (msg: string) => void;
+  // Current sticker paper size (e.g. "60x40mm") for the LIVE print pattern row value;
+  // undefined when printing receipts (no size applies).
+  printSize?: string;
   pinPrint?: boolean; onTogglePinPrint?: () => void; // PIN-TO-PRINT — per-device, default OFF
   parcelCheckOn?: boolean; // multi-seller 賣貨便 check config card (allowlist + TW market, from RedesignApp)
   // Motion kill switch — pause looping animations (display toggle; RedesignApp
@@ -99,20 +129,52 @@ export default function GeneralSettings({
   const [apLangOpen, setApLangOpen] = useState(false);
   const [apCurOpen, setApCurOpen] = useState(false);
   const curLang = LANGS.find((l) => l.code === lang) || LANGS[0];
-  // Same-price draft (controlled). Seeded from the DB value; re-synced when it
-  // changes (e.g. a save on another device) via the previous-value compare
-  // (state reset during render — a reset effect trips react-hooks/set-state-in-effect).
-  const [smpDraft, setSmpDraft] = useState<string>(samePrice != null ? String(samePrice) : "");
-  const [smpPrev, setSmpPrev] = useState<number | null>(samePrice);
-  if (smpPrev !== samePrice) { setSmpPrev(samePrice); setSmpDraft(samePrice != null ? String(samePrice) : ""); }
-  const [smpNeedPrice, setSmpNeedPrice] = useState(false); // "Enter a price first" (tried to turn ON with no price)
-  const commitSamePrice = () => { setSmpNeedPrice(false); onSaveSamePrice?.(smpDraft); }; // blur/Enter → save immediately
-  const toggleSamePrice = () => {
-    if (samePriceEnabled) { setSmpNeedPrice(false); onSetSamePriceEnabled?.(false); return; } // OFF (price remembered)
-    if (!canEnableSamePrice(normalizeSamePrice(smpDraft))) { setSmpNeedPrice(true); return; } // can't be ON with blank/0
-    setSmpNeedPrice(false);
-    onSetSamePriceEnabled?.(true, smpDraft); // commit the typed draft + turn ON
+  // LIVE SESSION bottom-sheet explainer (approved mockup). Turning a toggle ON opens
+  // the sheet; it flips ON only on "Turn on" (Cancel / backdrop / swipe = stays OFF).
+  // Turning OFF is instant + a toast, never a sheet. `sheetKey` keeps the content
+  // through the slide-down; `sheetOpen` drives the motion.
+  const [sheetKey, setSheetKey] = useState<LsKey | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [spDraft, setSpDraft] = useState(""); // Same-price field (pre-filled with the remembered price)
+  const spInputRef = useRef<HTMLInputElement>(null);
+  const spValid = canEnableSamePrice(normalizeSamePrice(spDraft));
+  const spErr = spDraft !== "" && !spValid;
+  const openSheet = (k: LsKey) => {
+    setSheetKey(k); setSheetOpen(true);
+    if (k === "sp") {
+      setSpDraft(samePrice != null && samePrice > 0 ? String(samePrice) : "");
+      setTimeout(() => spInputRef.current?.focus(), 260); // after the slide-up
+    }
   };
+  const closeSheet = () => setSheetOpen(false);
+  const fmtPrice = (p: number | null) => `${cur}${p != null ? p.toLocaleString("en-US") : ""}`;
+  // Tap a Live-session toggle: OFF → open the explainer; ON → instant off + toast.
+  const lsToggle = (k: LsKey, isOn: boolean) => {
+    if (!isOn) { openSheet(k); return; }
+    if (k === "awake") { onToggleKeepAwake?.(); onToast?.(t.rd_lss_off_awake); }
+    else if (k === "pin") { onTogglePinPrint?.(); onToast?.(t.rd_lss_off_pin); }
+    else if (k === "auto") { auto.toggle(); onToast?.(t.rd_lss_off_auto); }
+    else { onSetSamePriceEnabled?.(false); onToast?.(tpl(t.rd_lss_off_sp, { price: fmtPrice(samePrice) })); }
+  };
+  // "Turn on" — the only path that flips a Live-session toggle ON. Guarded on
+  // sheetOpen so a second tap during the slide-down can't flip it back off.
+  const turnOn = () => {
+    if (!sheetOpen || !sheetKey) return;
+    if (sheetKey === "sp") { if (!spValid) return; onSetSamePriceEnabled?.(true, spDraft); }
+    else if (sheetKey === "awake") onToggleKeepAwake?.();
+    else if (sheetKey === "pin") onTogglePinPrint?.();
+    else auto.toggle();
+    closeSheet();
+  };
+  const SHEET: Record<LsKey, { icon: ReactNode; title: string; text: string }> = {
+    awake: { icon: ICON_AWAKE, title: t.rd_set_keepawake, text: t.rd_lss_awake_text },
+    pin: { icon: ICON_PIN, title: t.rd_set_pinprint, text: t.rd_lss_pin_text },
+    auto: { icon: ICON_AUTO, title: t.rd_set_auto_mode, text: t.rd_lss_auto_text },
+    sp: { icon: ICON_TAG, title: t.rd_smp_row_title, text: t.rd_lss_sp_text },
+  };
+  // Row values (mono): print size "60×40"; Same price "NT$199" when ON, "NT$199 saved" when OFF.
+  const printSizeLabel = (() => { const m = /(\d+)\s*[x×]\s*(\d+)/i.exec(printSize || ""); return m ? `${m[1]}×${m[2]}` : ""; })();
+  const spRowVal = samePrice != null && samePrice > 0 ? (samePriceEnabled ? fmtPrice(samePrice) : tpl(t.rd_lss_saved, { price: fmtPrice(samePrice) })) : "";
 
   // Phase 5i — controlled profile-edit form, initialized from the real profile and
   // re-synced when it changes (e.g. after a save reload). Only user-editable fields.
@@ -164,10 +226,6 @@ export default function GeneralSettings({
   const pPlanLine = pd ? pd.planLine : "Pro plan · renews Jul 28";
   const pEmail = account ? account.email : "maria@liveshop.ph";
   const pSubRow = account ? `${planLabel(account.plan)}${renewLabel(account.planExpiry) ? " · " + renewLabel(account.planExpiry).replace(/^renews /, "") : ""} ›` : "Pro · Jul 28 ›";
-  const autoLabel = auto.detect ? t.rd_set_auto_detect : t.rd_set_manual_mode;
-  const autoLabelColor = auto.detect ? "var(--accent-fg)" : "var(--text-muted)";
-  const autoTrack = auto.detect ? "var(--accent)" : "var(--border-strong)";
-  const autoKnobLg = auto.detect ? 21 : 3;
   const autoChevron = auto.setupOpen ? "rotate(180deg)" : "rotate(0deg)";
   // LIVE SESSION group — collapsed by default, remembered per device. The
   // open/closed state is LIFTED to RedesignApp when the parent provides it
@@ -310,68 +368,37 @@ export default function GeneralSettings({
               <div style={{ flex: 1, minWidth: 0 }}><div style={rowTitle}>{t.rd_set_ls_title}</div><div style={{ ...rowSub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lsSummary}</div></div>
               <span style={{ color: "var(--text-muted)", fontSize: 13, transition: "transform .2s", transform: liveOpen ? "rotate(180deg)" : "rotate(0deg)", flexShrink: 0, display: "inline-block" }}>▾</span>
             </button>
-            {liveOpen && (<div data-testid="ls-body">
-            <div style={{ padding: 15, borderTop: "1px solid var(--border)" }}>
-            {/* 1. KEEP-AWAKE toggle (first row) — display only; RedesignApp owns the
-                wake-lock lifecycle (green/amber hold). */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-              <span style={{ flex: 1 }}>
-                <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_keepawake}</span>
-                <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{t.rd_set_keepawake_desc}</span>
-              </span>
-              <button onClick={onToggleKeepAwake} title={t.rd_set_keepawake} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }}>
-                <span style={{ width: 44, height: 26, borderRadius: 13, background: keepAwake ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s" }}>
-                  <span style={{ position: "absolute", top: 3, left: keepAwake ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
-                </span>
-              </button>
+            {liveOpen && (<div data-testid="ls-body" className="sfl-ls-rows" style={{ borderTop: "1px solid var(--border)" }}>
+            {/* 1. Keep screen awake while live */}
+            <div style={lsRow}>
+              <span style={lsLabel}>{t.rd_set_keepawake}</span>
+              <LsToggle on={keepAwake} title={t.rd_set_keepawake} testId="ls-tg-awake" onClick={() => lsToggle("awake", keepAwake)} />
             </div>
-            {/* 2. LIVE print pattern — moved inside the accordion body (same row style
-                as the others); the chevron opens the same Print Pattern screen. */}
-            <button onClick={onPrintPattern} data-testid="ls-print-pattern" style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 14, paddingTop: 14, border: "none", borderTop: "1px solid var(--border)", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
-              <span style={{ flex: 1 }}>
-                <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_live_pattern}</span>
-                <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{t.rd_set_pattern_sub}</span>
-              </span>
-              <span style={{ fontSize: 16, color: "var(--text-muted)", flexShrink: 0 }}>›</span>
+            {/* 2. LIVE print pattern — chevron row; current sticker size as a mono value */}
+            {/* border reset per-side: a `border` shorthand after the lsRow spread would wipe its borderBottom */}
+            <button type="button" onClick={onPrintPattern} data-testid="ls-print-pattern" style={{ ...lsRow, width: "100%", borderTop: 0, borderLeft: 0, borderRight: 0, background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
+              <span style={lsLabel}>{t.rd_set_live_pattern}</span>
+              {printSizeLabel && <span style={lsVal} data-testid="ls-print-size">{printSizeLabel}</span>}
+              <span style={{ color: "var(--text-muted)", fontSize: 18, lineHeight: 1, flexShrink: 0 }}>›</span>
             </button>
-            {/* 3. PIN-TO-PRINT toggle + the "currently active" status line directly under
-                it. Per-device, default OFF; DOGFOOD GATE: the handler is passed only for
-                allowlisted accounts (absent handler = no row, zero change). */}
-            {onTogglePinPrint && <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingTop: 12, marginTop: 12, borderTop: "1px solid var(--border)" }}>
-              <span style={{ flex: 1 }}>
-                <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_pinprint}</span>
-                <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{t.rd_set_pinprint_desc}</span>
-              </span>
-              <button onClick={onTogglePinPrint} title={t.rd_set_pinprint} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }}>
-                <span style={{ width: 44, height: 26, borderRadius: 13, background: pinPrint ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s" }}>
-                  <span style={{ position: "absolute", top: 3, left: pinPrint ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
-                </span>
-              </button>
+            {/* 3. Auto-print pinned comments — DOGFOOD GATE: the handler is passed only
+                for allowlisted accounts (absent handler = no row, zero change). */}
+            {onTogglePinPrint && <div style={lsRow}>
+              <span style={lsLabel}>{t.rd_set_pinprint}</span>
+              <LsToggle on={pinPrint} title={t.rd_set_pinprint} testId="ls-tg-pin" onClick={() => lsToggle("pin", pinPrint)} />
             </div>}
-            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: autoLabelColor }} />
-              <span style={{ fontSize: 11.5, fontWeight: 700, color: autoLabelColor }}>{autoLabel}</span>
-              <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_set_currently_active}</span>
-            </div>
-            {/* 4. AUTO MODE (with its expand chevron) + the setup expand (low-stock). */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }}>
-              <button onClick={auto.toggleSetup} style={{ flex: 1, display: "flex", alignItems: "flex-start", gap: 9, background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: 0, fontFamily: "var(--font-ui)" }}>
-                <span style={{ flex: 1 }}>
-                  <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t.rd_set_auto_mode}</span>
-                  <span style={{ display: "block", fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{t.rd_set_auto_desc}</span>
-                </span>
-                <span style={{ color: "var(--text-muted)", fontSize: 12, marginTop: 1, transition: "transform .2s", transform: autoChevron, display: "inline-block" }}>▾</span>
+            {/* 4. Auto mode — ▾ expands the code-mapping setup (unchanged); the toggle opens the explainer */}
+            <div style={lsRow}>
+              <button type="button" onClick={auto.toggleSetup} style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10, background: "none", border: "none", cursor: "pointer", textAlign: "left", padding: 0, fontFamily: "var(--font-ui)" }}>
+                <span style={lsLabel}>{t.rd_set_auto_mode}</span>
+                <span style={{ color: "var(--text-muted)", fontSize: 13, transition: "transform .2s", transform: autoChevron, display: "inline-block", flexShrink: 0 }}>▾</span>
               </button>
-              <button onClick={auto.toggle} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }}>
-                <span style={{ width: 44, height: 26, borderRadius: 13, background: autoTrack, position: "relative", display: "block", transition: "background .15s" }}>
-                  <span style={{ position: "absolute", top: 3, left: autoKnobLg, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
-                </span>
-              </button>
+              <LsToggle on={auto.detect} title={t.rd_set_auto_mode} testId="ls-tg-auto" onClick={() => lsToggle("auto", auto.detect)} />
             </div>
             {auto.setupOpen && (
-              <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--border)" }}>
+              <div style={{ padding: "12px 14px 14px", borderBottom: "1px solid var(--border)" }}>
                 {/* Live codes moved onto the Products screen (one code = one product,
-                    Sep 17). This accordion now only holds the low-stock threshold. */}
+                    Sep 17). This expand now only holds the low-stock threshold. */}
                 <div style={{ fontSize: 11.5, color: "var(--text-muted)", lineHeight: 1.5 }}>{t.rd_auto_codes_moved}</div>
                 {/* Rule 3 — seller-configurable low-stock warning threshold (default 3; 0 = off). */}
                 <div style={{ borderTop: "1px solid var(--border)", marginTop: 12, paddingTop: 12 }}>
@@ -383,31 +410,37 @@ export default function GeneralSettings({
                 </div>
               </div>
             )}
-            {/* 5. SAME PRICE FOR ALL ITEMS — ON/OFF toggle + remembered price. Applied by
-                RedesignApp to 1-Click/Auto (Enterprise pre-fills only) when ON + price > 0.
-                Title uses the shared flex:1 markup so the toggle centers with it. */}
-            {onSaveSamePrice && (
-              <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border)" }} data-testid="samePrice-row">
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                  <span style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "var(--text)" }}>{t.rd_smp_row_title}</span>
-                  <button onClick={toggleSamePrice} data-testid="samePrice-toggle" role="switch" aria-checked={samePriceEnabled} aria-label={t.rd_smp_row_title} title={samePriceEnabled ? t.rd_smp_off : t.rd_smp_row_title} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0 }}>
-                    <span style={{ width: 44, height: 26, borderRadius: 13, background: samePriceEnabled ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s" }}>
-                      <span style={{ position: "absolute", top: 3, left: samePriceEnabled ? 21 : 3, width: 20, height: 20, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
-                    </span>
-                  </button>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: "0 10px", marginTop: 8 }}>
-                  <span style={{ fontSize: 13, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{cur}</span>
-                  <input inputMode="decimal" value={smpDraft} onChange={(e) => { setSmpDraft(e.target.value.replace(/[^0-9.]/g, "")); if (smpNeedPrice) setSmpNeedPrice(false); }} onBlur={commitSamePrice} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLInputElement).blur(); } }} placeholder={t.rd_smp_placeholder} data-testid="samePrice-input" style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", padding: "10px 6px", fontSize: 14, fontFamily: "var(--font-mono)", color: "var(--text)" }} />
-                </div>
-                {smpNeedPrice && <div style={{ fontSize: 11, color: "var(--danger)", marginTop: 6 }} data-testid="samePrice-need">{t.rd_smp_need_price}</div>}
-                <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.45, marginTop: 8 }}>{t.rd_smp_note}</div>
-                {samePriceError > 0 && <div style={{ fontSize: 11, color: "var(--danger)", marginTop: 6 }} data-testid="samePrice-error">{t.rd_smp_error}</div>}
+            {/* 5. Same price for all items — "NT$199" when ON, "NT$199 saved" when OFF with a remembered price */}
+            {onSetSamePriceEnabled && (
+              <div style={lsRow} data-testid="samePrice-row">
+                <span style={lsLabel}>{t.rd_smp_row_title}</span>
+                {spRowVal && <span style={lsVal} data-testid="samePrice-val">{spRowVal}</span>}
+                <LsToggle on={samePriceEnabled} title={t.rd_smp_row_title} testId="samePrice-toggle" onClick={() => lsToggle("sp", samePriceEnabled)} />
               </div>
             )}
-            </div>
+            {samePriceError > 0 && <div style={{ padding: "0 14px 12px", fontSize: 11, color: "var(--danger)" }} data-testid="samePrice-error">{t.rd_smp_error}</div>}
             </div>)}
           </div>
+          {/* Bottom-sheet explainer (portaled) — opens only when a Live-session toggle is turned ON */}
+          {sheetKey && (
+            <LiveSettingSheet open={sheetOpen} icon={SHEET[sheetKey].icon} title={SHEET[sheetKey].title} text={SHEET[sheetKey].text}
+              primaryLabel={t.rd_lss_turn_on} primaryDisabled={sheetKey === "sp" && !spValid} onPrimary={turnOn}
+              cancelLabel={t.rd_sp_cancel} onCancel={closeSheet}>
+              {sheetKey === "sp" && (
+                <>
+                  <div className="sfl-lss-field">
+                    <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-muted)", fontSize: 14 }}>{cur}</span>
+                    <input ref={spInputRef} inputMode="numeric" autoComplete="off" value={spDraft} placeholder={t.rd_smp_placeholder}
+                      onChange={(e) => setSpDraft(e.target.value.replace(/[^0-9.]/g, ""))}
+                      onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); turnOn(); } }}
+                      data-testid="samePrice-input"
+                      style={{ flex: 1, minWidth: 0, border: 0, background: "transparent", fontFamily: "var(--font-mono)", fontSize: 18, fontWeight: 600, color: "var(--text)", outline: "none", padding: 0 }} />
+                  </div>
+                  <div data-testid="lss-sp-hint" style={{ fontSize: 12, color: spErr ? "var(--danger)" : "var(--text-muted)", minHeight: 16, marginBottom: 10 }}>{spErr ? t.rd_lss_sp_err : t.rd_lss_sp_hint}</div>
+                </>
+              )}
+            </LiveSettingSheet>
+          )}
         </div>
 
         {/* MULTI-SELLER 賣貨便 CHECK — allowlisted TW sellers only (dogfood; PARCEL_CHECK_PUBLIC flips it public) */}

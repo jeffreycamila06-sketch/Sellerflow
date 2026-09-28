@@ -1777,9 +1777,13 @@ export default function RedesignApp() {
               autoSoldOut={autoDetect ? autoSoldOutVisible : []}
               onDismissSoldOut={(code) => setAutoDismissedSoldOut((s) => { const n = new Set(s); n.add(code); return n; })}
               autoBadges={autoBadges}
-              /* "Same price for all items" — persistent chip while ON; ✕ turns it OFF (confirm in Dashboard). */
+              /* "Same price for all items" — persistent chip while ON; ✕ = same as turning it
+                 OFF in Settings: instant off + toast, the price stays remembered. */
               samePrice={samePriceCfg.active}
-              onDisableSamePrice={() => void samePriceCfg.setEnabled(false)}
+              onDisableSamePrice={() => {
+                void samePriceCfg.setEnabled(false);
+                setToast({ msg: tpl(tApp.rd_lss_off_sp, { price: `${cur}${(samePriceCfg.price ?? 0).toLocaleString("en-US")}` }), kind: "ok" });
+              }}
             />
           )}
           {/* Orders tab hosts a segment toggle → Orders | Miners (Miners moved in here). */}
@@ -1839,8 +1843,12 @@ export default function RedesignApp() {
               keepAwake={keepAwake} onToggleKeepAwake={toggleKeepAwake}
               pinPrint={pinPrint} onTogglePinPrint={pinAllowed ? togglePinPrint : undefined}
               liveSessionOpen={liveSessionOpen} onToggleLiveSession={toggleLiveSession}
-              /* "Same price for all items" — Live-session accordion row (toggle + remembered price). */
-              cur={cur} samePriceEnabled={samePriceCfg.enabled} samePrice={samePriceCfg.price} onSetSamePriceEnabled={(on, draft) => void samePriceCfg.setEnabled(on, draft)} onSaveSamePrice={(v) => void samePriceCfg.setPrice(v)} samePriceError={samePriceCfg.saveErrors}
+              /* "Same price for all items" — Live-session row (toggle + remembered price, set via the sheet). */
+              cur={cur} samePriceEnabled={samePriceCfg.enabled} samePrice={samePriceCfg.price} onSetSamePriceEnabled={(on, draft) => void samePriceCfg.setEnabled(on, draft)} samePriceError={samePriceCfg.saveErrors}
+              /* Live-session toggles turned OFF → bottom toast; LIVE print pattern row shows
+                 the sticker size (Bluetooth or LAN-sticker printing; none for receipts). */
+              onToast={(msg) => setToast({ msg, kind: "ok" })}
+              printSize={psType === "bt" || psOut === "sticker" ? psSize : undefined}
               parcelCheckOn={parcelCheckOn}
               motionOn={motionOn} onToggleMotion={toggleMotion}
             />
@@ -2088,7 +2096,7 @@ export default function RedesignApp() {
         {/* Auto-dismissing toast (no buttons). ok = neutral dark pill; err = danger tint + ⚠ */}
         {toast && (
           <div style={{ position: "absolute", left: 0, right: 0, bottom: 80, display: "flex", justifyContent: "center", padding: "0 24px", zIndex: 1200, pointerEvents: "none" }}>
-            <div style={{ maxWidth: "100%", background: toast.kind === "err" ? "var(--danger)" : "var(--text)", color: toast.kind === "err" ? "#fff" : "var(--surface)", fontSize: 13, fontWeight: 700, padding: "10px 18px", borderRadius: 999, boxShadow: "0 8px 24px rgba(0,0,0,.3)", textAlign: "center", lineHeight: 1.35 }}>{toast.kind === "err" ? `⚠ ${toast.msg}` : toast.msg}</div>
+            <div key={toast.msg} className="sfl-toast-in" data-testid="app-toast" style={{ maxWidth: "100%", background: toast.kind === "err" ? "var(--danger)" : "var(--text)", color: toast.kind === "err" ? "#fff" : "var(--surface)", fontSize: 13, fontWeight: 700, padding: "10px 18px", borderRadius: 999, boxShadow: "0 8px 24px rgba(0,0,0,.3)", textAlign: "center", lineHeight: 1.35 }}>{toast.kind === "err" ? `⚠ ${toast.msg}` : toast.msg}</div>
           </div>
         )}
         {/* Kiosk-setup hint (web-only, one-time) — the first laptop print didn't

@@ -1,11 +1,12 @@
-// "Same price for all items" UI — the persistent Live chip (Dashboard, shown only
-// while ON) and the Settings toggle row (GeneralSettings Live-session accordion).
+// "Same price for all items" — the persistent Live chip (Dashboard, shown only while
+// ON). The chip ✕ = same as turning it OFF in Settings: instant off + a toast, the
+// price stays remembered — no confirm dialog any more. (The Settings row + sheet
+// flow lives in liveSessionSheet.test.tsx.)
 import { describe, it, expect, vi, beforeAll } from "vitest";
+import { readFileSync } from "node:fs";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { TProvider } from "../../i18n";
 import type { UseRaffleConfig } from "../../adapters/useRaffleConfig";
-import type { AutoControls } from "../../data";
-import type { AccountUser } from "../../../accountDb";
 
 const { raffleState } = vi.hoisted(() => ({
   raffleState: { enabled: false, enabledAt: null, loading: false, toggle: async () => {}, toggleErrors: 0 } as UseRaffleConfig,
@@ -13,7 +14,6 @@ const { raffleState } = vi.hoisted(() => ({
 vi.mock("../../adapters/useRaffleConfig", () => ({ useRaffleConfig: () => raffleState }));
 
 import Dashboard from "../Dashboard";
-import GeneralSettings from "../GeneralSettings";
 
 const noop = () => {};
 const dashProps = {
@@ -41,81 +41,27 @@ describe("Live chip — shown only while ON", () => {
     expect(screen.queryByTestId("samePrice-chip")).toBeNull();
   });
 
-  it("✕ turns it OFF only after the confirm is accepted", () => {
+  it("✕ turns it OFF immediately — no confirm dialog", () => {
     const onDisable = vi.fn();
+    const confirm = vi.spyOn(window, "confirm");
     render(<TProvider lang="en"><Dashboard {...dashProps} samePrice={199} onDisableSamePrice={onDisable} /></TProvider>);
-    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
     fireEvent.click(screen.getByTestId("samePrice-chip-clear"));
-    expect(onDisable).not.toHaveBeenCalled(); // declined
-    fireEvent.click(screen.getByTestId("samePrice-chip-clear"));
-    expect(onDisable).toHaveBeenCalledTimes(1); // accepted
+    expect(onDisable).toHaveBeenCalledTimes(1);
+    expect(confirm).not.toHaveBeenCalled();
     confirm.mockRestore();
   });
 });
 
-const account: AccountUser = {
-  authUserId: "u1", email: "googletest@sellerflowlive.com",
-  profile: { fullName: "Owner", storeName: "Shop", phone: "0900", tiktok: "", facebook: "", adminContactNote: "" },
-  plan: "pro", planStatus: "active", planExpiry: "", connectedAccounts: [], role: "seller",
-};
-function renderGS(over: { enabled?: boolean; samePrice?: number | null; onSet?: (on: boolean, draft?: unknown) => void; onSave?: (v: unknown) => void } = {}) {
-  const auto: AutoControls = { detect: false, setupOpen: false, toggle: noop, toggleSetup: noop };
-  return render(
-    <TProvider lang="en">
-      <GeneralSettings
-        theme="light" accent="indigo" onSetTheme={noop} onSetAccent={noop}
-        auto={auto} cur="NT$" lang="en" onSetLang={noop} currency="TWD" onSetCurrency={noop}
-        profileOpen={false} onToggleProfile={noop}
-        keepAwake onToggleKeepAwake={noop} pinPrint={false} onTogglePinPrint={noop}
-        liveSessionOpen onToggleLiveSession={noop}
-        cur="NT$" samePriceEnabled={over.enabled ?? false} samePrice={over.samePrice ?? null}
-        onSetSamePriceEnabled={over.onSet ?? noop} onSaveSamePrice={over.onSave ?? noop}
-        printerIdx={0} printerOpen={false} onTogglePrinter={noop} onPickPrinter={noop} onPrintPattern={noop}
-        onSubscription={noop} onSupport={noop} onDelete={noop}
-        account={account} onSaveProfile={vi.fn().mockResolvedValue({ ok: true })} onManageChannel={noop}
-      />
-    </TProvider>,
-  );
-}
-
-describe("Settings toggle row — Same price for all items", () => {
-  it("renders the toggle + note", () => {
-    renderGS();
-    expect(screen.getByTestId("samePrice-row")).toBeTruthy();
-    expect(screen.getByTestId("samePrice-toggle")).toBeTruthy();
-    expect(screen.getByText(/every 1-Click and Auto order prints this price/i)).toBeTruthy();
+describe("RedesignApp wiring (source contract)", () => {
+  const src = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
+  it("chip ✕ handler = setEnabled(false) (price remembered) + the 'Same price off · … remembered' toast", () => {
+    const block = src.slice(src.indexOf("onDisableSamePrice={() => {"), src.indexOf("onDisableSamePrice={() => {") + 400);
+    expect(block).toContain("samePriceCfg.setEnabled(false)");
+    expect(block).toContain("rd_lss_off_sp");
+    expect(block).toContain("setToast(");
   });
-
-  it("turning ON with a typed price commits the draft + enables", () => {
-    const onSet = vi.fn();
-    renderGS({ enabled: false, onSet });
-    fireEvent.change(screen.getByTestId("samePrice-input"), { target: { value: "199" } });
-    fireEvent.click(screen.getByTestId("samePrice-toggle"));
-    expect(onSet).toHaveBeenCalledWith(true, "199");
-    expect(screen.queryByTestId("samePrice-need")).toBeNull();
-  });
-
-  it("turning ON with NO price is blocked — shows 'Enter a price first', stays OFF", () => {
-    const onSet = vi.fn();
-    renderGS({ enabled: false, onSet });
-    fireEvent.click(screen.getByTestId("samePrice-toggle")); // empty input
-    expect(onSet).not.toHaveBeenCalled();
-    expect(screen.getByTestId("samePrice-need")).toBeTruthy();
-  });
-
-  it("editing the price saves on blur (immediate)", () => {
-    const onSave = vi.fn();
-    renderGS({ enabled: true, samePrice: 199, onSave });
-    const input = screen.getByTestId("samePrice-input");
-    fireEvent.change(input, { target: { value: "250" } });
-    fireEvent.blur(input);
-    expect(onSave).toHaveBeenCalledWith("250");
-  });
-
-  it("when ON, tapping the toggle turns it OFF", () => {
-    const onSet = vi.fn();
-    renderGS({ enabled: true, samePrice: 199, onSet });
-    fireEvent.click(screen.getByTestId("samePrice-toggle"));
-    expect(onSet).toHaveBeenCalledWith(false);
+  it("Settings gets the global toast + the sticker size for the print-pattern row", () => {
+    expect(src).toContain("onToast={(msg) => setToast({ msg, kind: \"ok\" })}");
+    expect(src).toContain("printSize={psType === \"bt\" || psOut === \"sticker\" ? psSize : undefined}");
   });
 });
