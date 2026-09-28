@@ -60,8 +60,8 @@ describe("RedesignApp wiring (source contract)", () => {
     expect(block).toContain("rd_lss_off_sp");
     expect(block).toContain("setToast(");
   });
-  it("Settings gets the global toast + the sticker size for the print-pattern row", () => {
+  it("Settings gets the global toast; the print-pattern row no longer receives a size", () => {
     expect(src).toContain("onToast={(msg) => setToast({ msg, kind: \"ok\" })}");
-    expect(src).toContain("printSize={psType === \"bt\" || psOut === \"sticker\" ? psSize : undefined}");
+    expect(src).not.toContain("printSize=");
   });
 });

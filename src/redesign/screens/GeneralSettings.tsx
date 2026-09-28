@@ -79,7 +79,7 @@ export default function GeneralSettings({
   keepAwake = true, onToggleKeepAwake, pinPrint = false, onTogglePinPrint, parcelCheckOn = false,
   liveSessionOpen, onToggleLiveSession,
   cur = "NT$", samePriceEnabled = false, samePrice = null, onSetSamePriceEnabled, samePriceError = 0,
-  onToast, printSize,
+  onToast,
   motionOn = true, onToggleMotion,
 }: {
   theme: ThemeMode; accent: AccentKey; onSetTheme: (t: ThemeMode) => void; onSetAccent: (a: AccentKey) => void;
@@ -111,9 +111,6 @@ export default function GeneralSettings({
   onSetSamePriceEnabled?: (on: boolean, draft?: unknown) => void; samePriceError?: number;
   // Live-session toggles turned OFF show a bottom toast (RedesignApp's global toast).
   onToast?: (msg: string) => void;
-  // Current sticker paper size (e.g. "60x40mm") for the LIVE print pattern row value;
-  // undefined when printing receipts (no size applies).
-  printSize?: string;
   pinPrint?: boolean; onTogglePinPrint?: () => void; // PIN-TO-PRINT — per-device, default OFF
   parcelCheckOn?: boolean; // multi-seller 賣貨便 check config card (allowlist + TW market, from RedesignApp)
   // Motion kill switch — pause looping animations (display toggle; RedesignApp
@@ -169,8 +166,7 @@ export default function GeneralSettings({
     auto: { icon: ICON_AUTO, title: t.rd_set_auto_mode, text: t.rd_lss_auto_text },
     sp: { icon: ICON_TAG, title: t.rd_smp_row_title, text: t.rd_lss_sp_text },
   };
-  // Row values (mono): print size "60×40"; Same price "NT$199" when ON, "NT$199 saved" when OFF.
-  const printSizeLabel = (() => { const m = /(\d+)\s*[x×]\s*(\d+)/i.exec(printSize || ""); return m ? `${m[1]}×${m[2]}` : ""; })();
+  // Same price row value (mono): "NT$199" when ON, "NT$199 saved" when OFF.
   const spRowVal = samePrice != null && samePrice > 0 ? (samePriceEnabled ? fmtPrice(samePrice) : tpl(t.rd_lss_saved, { price: fmtPrice(samePrice) })) : "";
 
   // Phase 5i — controlled profile-edit form, initialized from the real profile and
@@ -365,18 +361,17 @@ export default function GeneralSettings({
               <span style={{ color: "var(--text-muted)", fontSize: 13, transition: "transform .2s", transform: liveOpen ? "rotate(180deg)" : "rotate(0deg)", flexShrink: 0, display: "inline-block" }}>▾</span>
             </button>
             {liveOpen && (<div data-testid="ls-body" className="sfl-ls-rows" style={{ borderTop: "1px solid var(--border)" }}>
-            {/* 1. Keep screen awake while live */}
+            {/* 1. LIVE print pattern — title + chevron (first, so the toggle rows below are consecutive) */}
+            {/* border reset per-side: a `border` shorthand after the lsRow spread would wipe its borderBottom */}
+            <button type="button" onClick={onPrintPattern} data-testid="ls-print-pattern" style={{ ...lsRow, width: "100%", borderTop: 0, borderLeft: 0, borderRight: 0, background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
+              <span style={lsLabel}>{t.rd_set_live_pattern}</span>
+              <span style={{ color: "var(--text-muted)", fontSize: 18, lineHeight: 1, flexShrink: 0 }}>›</span>
+            </button>
+            {/* 2. Keep screen awake while live */}
             <div style={lsRow}>
               <span style={lsLabel}>{t.rd_set_keepawake}</span>
               <LsToggle on={keepAwake} title={t.rd_set_keepawake} testId="ls-tg-awake" onClick={() => lsToggle("awake", keepAwake)} />
             </div>
-            {/* 2. LIVE print pattern — chevron row; current sticker size as a mono value */}
-            {/* border reset per-side: a `border` shorthand after the lsRow spread would wipe its borderBottom */}
-            <button type="button" onClick={onPrintPattern} data-testid="ls-print-pattern" style={{ ...lsRow, width: "100%", borderTop: 0, borderLeft: 0, borderRight: 0, background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
-              <span style={lsLabel}>{t.rd_set_live_pattern}</span>
-              {printSizeLabel && <span style={lsVal} data-testid="ls-print-size">{printSizeLabel}</span>}
-              <span style={{ color: "var(--text-muted)", fontSize: 18, lineHeight: 1, flexShrink: 0 }}>›</span>
-            </button>
             {/* 3. Auto-print pinned comments — DOGFOOD GATE: the handler is passed only
                 for allowlisted accounts (absent handler = no row, zero change). */}
             {onTogglePinPrint && <div style={lsRow}>

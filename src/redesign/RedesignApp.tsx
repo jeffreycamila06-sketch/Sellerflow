@@ -1842,10 +1842,8 @@ export default function RedesignApp() {
               liveSessionOpen={liveSessionOpen} onToggleLiveSession={toggleLiveSession}
               /* "Same price for all items" — Live-session row (toggle + remembered price, set via the sheet). */
               cur={cur} samePriceEnabled={samePriceCfg.enabled} samePrice={samePriceCfg.price} onSetSamePriceEnabled={(on, draft) => void samePriceCfg.setEnabled(on, draft)} samePriceError={samePriceCfg.saveErrors}
-              /* Live-session toggles turned OFF → bottom toast; LIVE print pattern row shows
-                 the sticker size (Bluetooth or LAN-sticker printing; none for receipts). */
+              /* Live-session toggles turned OFF → bottom toast. */
               onToast={(msg) => setToast({ msg, kind: "ok" })}
-              printSize={psType === "bt" || psOut === "sticker" ? psSize : undefined}
               parcelCheckOn={parcelCheckOn}
               motionOn={motionOn} onToggleMotion={toggleMotion}
             />
