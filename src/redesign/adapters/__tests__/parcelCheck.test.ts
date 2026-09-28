@@ -47,6 +47,7 @@ describe("DOGFOOD GATE — exact allowlist (NO budgetukay* prefix this time, del
       "googletest@gmail.com", "googletest@sellerflowlive.com",
       "ukaydaily1@gmail.com", // added to dogfood 2026-09-27
       "sanggalanglhea@gmail.com", // Lhey — added 2026-09-28
+      "h0kmming@yahoo.com.tw", // added 2026-09-28 (h + zero, not letter O)
     ]);
     // Still allowlist-only (not public). budgetukay5 remains OFF; ukaydaily1 +
     // sanggalanglhea (Lhey) are ON. Non-allowlisted sellers = byte-unchanged Parcel Scan.
