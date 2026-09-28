@@ -3,6 +3,7 @@
 // pattern) which still fire their handlers. Display-only wrapper; no toggle logic
 // changed.
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { useState } from "react";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import GeneralSettings from "../GeneralSettings";
 import { TProvider } from "../../i18n";
@@ -31,6 +32,27 @@ function renderGS(handlers: { autoToggle?: () => void; keepAwake?: () => void; p
         account={account} onSaveProfile={vi.fn().mockResolvedValue({ ok: true })} onManageChannel={noop}
       />
     </TProvider>,
+  );
+}
+
+// Controlled wrapper mirroring RedesignApp: the open state is LIFTED here (so a
+// GeneralSettings remount can't lose it — the production bug's real fix).
+function Controlled({ printPattern = noop }: { printPattern?: () => void }) {
+  const [open, setOpen] = useState(false);
+  const auto: AutoControls = { detect: false, setupOpen: false, toggle: noop, toggleSetup: noop };
+  return (
+    <TProvider lang="en">
+      <GeneralSettings
+        theme="light" accent="indigo" onSetTheme={noop} onSetAccent={noop}
+        auto={auto} cur="NT$" lang="en" onSetLang={noop} currency="TWD" onSetCurrency={noop}
+        profileOpen={false} onToggleProfile={noop}
+        keepAwake onToggleKeepAwake={noop} pinPrint={false} onTogglePinPrint={noop}
+        liveSessionOpen={open} onToggleLiveSession={() => setOpen((o) => !o)}
+        printerIdx={0} printerOpen={false} onTogglePrinter={noop} onPickPrinter={noop} onPrintPattern={printPattern}
+        onSubscription={noop} onSupport={noop} onDelete={noop}
+        account={account} onSaveProfile={vi.fn().mockResolvedValue({ ok: true })} onManageChannel={noop}
+      />
+    </TProvider>
   );
 }
 
@@ -68,7 +90,27 @@ describe("LIVE SESSION collapsible group", () => {
     expect(printPattern).toHaveBeenCalled();
   });
 
-  it("remembers open/closed in localStorage across mounts", () => {
+  it("lifted state (RedesignApp pattern): clicking the ROW ELEMENT the user taps — header, chevron, or icon — toggles it open, and survives a component remount", () => {
+    const printPattern = vi.fn();
+    const { rerender } = render(<Controlled printPattern={printPattern} />);
+    const header = screen.getByTestId("ls-header");
+    expect(screen.queryByTestId("ls-body")).toBeNull();
+    // tap the chevron span (the exact element the user complained about)
+    fireEvent.click(header.querySelector("span:last-child")!);
+    expect(screen.getByTestId("ls-body")).toBeTruthy();
+    // a remount does NOT collapse it (parent holds the state)
+    rerender(<Controlled printPattern={printPattern} />);
+    expect(screen.getByTestId("ls-body")).toBeTruthy();
+    // tap the icon div → collapses; tap header text → opens again
+    fireEvent.click(screen.getByTestId("ls-header").querySelector("div")!);
+    expect(screen.queryByTestId("ls-body")).toBeNull();
+    fireEvent.click(screen.getByTestId("ls-header"));
+    expect(screen.getByTestId("ls-body")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("ls-print-pattern"));
+    expect(printPattern).toHaveBeenCalled();
+  });
+
+  it("remembers open/closed in localStorage across mounts (local fallback)", () => {
     const { unmount } = renderGS();
     fireEvent.click(screen.getByTestId("ls-header"));
     expect(localStorage.getItem("sfl_rd_livesession_open")).toBe("1");

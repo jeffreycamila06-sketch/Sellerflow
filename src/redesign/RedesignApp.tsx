@@ -901,6 +901,10 @@ export default function RedesignApp() {
   // General Settings local UI state (visual only).
   const [profileOpen, setProfileOpen] = useState(false);
   const [printerOpen, setPrinterOpen] = useState(false);
+  // LIVE SESSION accordion — lifted here so a GeneralSettings remount never loses
+  // it; localStorage is best-effort persistence, not the source of truth.
+  const [liveSessionOpen, setLiveSessionOpen] = useState(() => { try { return localStorage.getItem("sfl_rd_livesession_open") === "1"; } catch { return false; } });
+  const toggleLiveSession = () => setLiveSessionOpen((o) => { const n = !o; try { localStorage.setItem("sfl_rd_livesession_open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
   // Printer setup guide (shown before the setup screen when a not-yet-set-up
   // printer type is picked) + a nonce that asks Settings to scroll the printer
   // picker into view when the seller arrives from the no-printer modal.
@@ -1808,6 +1812,7 @@ export default function RedesignApp() {
               onDelete={() => setScreen("delete")}
               keepAwake={keepAwake} onToggleKeepAwake={toggleKeepAwake}
               pinPrint={pinPrint} onTogglePinPrint={pinAllowed ? togglePinPrint : undefined}
+              liveSessionOpen={liveSessionOpen} onToggleLiveSession={toggleLiveSession}
               parcelCheckOn={parcelCheckOn}
               motionOn={motionOn} onToggleMotion={toggleMotion}
             />

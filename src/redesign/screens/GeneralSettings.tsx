@@ -53,6 +53,7 @@ export default function GeneralSettings({
   channelsV2 = false, onOpenChannel, channelsInfo,
   lowStockThreshold = 3, onSetLowStockThreshold,
   keepAwake = true, onToggleKeepAwake, pinPrint = false, onTogglePinPrint, parcelCheckOn = false,
+  liveSessionOpen, onToggleLiveSession,
   motionOn = true, onToggleMotion,
 }: {
   theme: ThemeMode; accent: AccentKey; onSetTheme: (t: ThemeMode) => void; onSetAccent: (a: AccentKey) => void;
@@ -77,6 +78,7 @@ export default function GeneralSettings({
   // Keep-awake habang naka-live (web Screen Wake Lock) — display toggle only;
   // the lock lifecycle lives in RedesignApp (useWakeLock on green/amber).
   keepAwake?: boolean; onToggleKeepAwake?: () => void;
+  liveSessionOpen?: boolean; onToggleLiveSession?: () => void; // lifted to RedesignApp so a remount can't lose it
   pinPrint?: boolean; onTogglePinPrint?: () => void; // PIN-TO-PRINT — per-device, default OFF
   parcelCheckOn?: boolean; // multi-seller 賣貨便 check config card (allowlist + TW market, from RedesignApp)
   // Motion kill switch — pause looping animations (display toggle; RedesignApp
@@ -145,10 +147,13 @@ export default function GeneralSettings({
   const autoTrack = auto.detect ? "var(--accent)" : "var(--border-strong)";
   const autoKnobLg = auto.detect ? 21 : 3;
   const autoChevron = auto.setupOpen ? "rotate(180deg)" : "rotate(0deg)";
-  // LIVE SESSION group — collapsed by default, remembered per device. Purely a
-  // display wrapper; the toggles inside keep their own behavior unchanged.
-  const [liveOpen, setLiveOpen] = useState(() => { try { return localStorage.getItem("sfl_rd_livesession_open") === "1"; } catch { return false; } });
-  const toggleLiveOpen = () => setLiveOpen((v) => { const n = !v; try { localStorage.setItem("sfl_rd_livesession_open", n ? "1" : "0"); } catch { /* ignore */ } return n; });
+  // LIVE SESSION group — collapsed by default, remembered per device. The
+  // open/closed state is LIFTED to RedesignApp when the parent provides it
+  // (survives a GeneralSettings remount — a local flag would reset, matching the
+  // printer-focus lesson). Falls back to local state for standalone callers.
+  const [liveOpenLocal, setLiveOpenLocal] = useState(() => { try { return localStorage.getItem("sfl_rd_livesession_open") === "1"; } catch { return false; } });
+  const liveOpen = liveSessionOpen ?? liveOpenLocal;
+  const toggleLiveOpen = onToggleLiveSession ?? (() => setLiveOpenLocal((v) => { const n = !v; try { localStorage.setItem("sfl_rd_livesession_open", n ? "1" : "0"); } catch { /* ignore */ } return n; }));
   const lsSummary = [
     `${t.rd_set_ls_auto} ${auto.detect ? t.rd_set_ls_on : t.rd_set_ls_off}`,
     `${t.rd_set_ls_awake} ${keepAwake ? t.rd_set_ls_on : t.rd_set_ls_off}`,
@@ -278,7 +283,7 @@ export default function GeneralSettings({
         <div>
           <div className="sfl-anim-textglow" style={sectionLabel}>{t.rd_set_live_session}</div>
           <div style={{ ...card, padding: 0, overflow: "hidden" }}>
-            <button onClick={toggleLiveOpen} data-testid="ls-header" style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
+            <button type="button" onClick={toggleLiveOpen} data-testid="ls-header" style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
               <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)", flexShrink: 0 }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" fill="currentColor" /><circle cx="12" cy="12" r="8.2" stroke="currentColor" strokeWidth="1.7" opacity=".55" /></svg></div>
               <div style={{ flex: 1, minWidth: 0 }}><div style={rowTitle}>{t.rd_set_ls_title}</div><div style={{ ...rowSub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lsSummary}</div></div>
               <span style={{ color: "var(--text-muted)", fontSize: 13, transition: "transform .2s", transform: liveOpen ? "rotate(180deg)" : "rotate(0deg)", flexShrink: 0, display: "inline-block" }}>▾</span>
