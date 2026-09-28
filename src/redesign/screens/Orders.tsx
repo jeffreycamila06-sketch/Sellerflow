@@ -31,7 +31,7 @@ const noteStyle: CSSProperties = { fontSize: 13, color: "var(--text-muted)", tex
 
 export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sample", onGoShipping,
   historyOrders = [], historyState = "idle", onEnsureHistory, onReprintOrder, todayId = "",
-  buyers = [], seller,
+  buyers = [], seller, initialQuery = "",
 }: {
   onGoPrint: () => void; cur: string; orders?: Order[]; state?: ReadState; onGoShipping?: () => void;
   // 7-day search reach (display-only lane — see ordersSearch.ts)
@@ -43,9 +43,10 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   // numeric-search receipt box. Current session only (buyer# repeats per session).
   buyers?: Buyer[];
   seller?: { name?: string; email?: string }; // branded export header (optional)
+  initialQuery?: string; // Sales tab → tap a buyer → open Orders pre-filtered by name
 }) {
   const t = useT();
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(initialQuery); // seeded once on mount (Orders remounts per screen change)
   const [reprintingKey, setReprintingKey] = useState("");
   // Batch 1 — TOP-OF-SCREEN view controls (all additive; rows/Reprint untouched).
   const [platformFilter, setPlatformFilter] = useState<PlatformFilter>("all"); // F2
