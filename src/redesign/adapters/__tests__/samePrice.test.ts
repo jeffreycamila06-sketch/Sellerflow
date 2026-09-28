@@ -5,7 +5,7 @@
 // (qty N → fixed × N), (c) Enterprise uses the seller-TYPED price (pre-fill only),
 // (d) Clear restores normal, (e) i18n keys filled in every language.
 import { describe, it, expect } from "vitest";
-import { normalizeSamePrice, effectiveOrderPrice, entPrefill } from "../useSamePrice";
+import { normalizeSamePrice, canEnableSamePrice, activeSamePrice, effectiveOrderPrice, entPrefill } from "../useSamePrice";
 import { buildOrderFromComment } from "../../../lib/orderLogic";
 import type { Comment } from "../../../lib/orderTypes";
 import { buildT } from "../../i18n";
@@ -27,17 +27,38 @@ describe("normalizeSamePrice — blank/0/negative = not set", () => {
   });
 });
 
-describe("effectiveOrderPrice — override absent = byte-identical base", () => {
-  it("returns the base unchanged when samePrice is null (parity)", () => {
+describe("canEnableSamePrice — the toggle can't be ON without a price", () => {
+  it("true only for a price > 0", () => {
+    expect(canEnableSamePrice(199)).toBe(true);
+    expect(canEnableSamePrice(null)).toBe(false);
+    expect(canEnableSamePrice(0)).toBe(false);
+    expect(canEnableSamePrice(-5)).toBe(false);
+  });
+});
+
+describe("activeSamePrice — override only when ON AND price > 0", () => {
+  it("null unless enabled and priced", () => {
+    expect(activeSamePrice(true, 199)).toBe(199);   // ON + priced → active
+    expect(activeSamePrice(false, 199)).toBeNull(); // OFF but remembered → inactive
+    expect(activeSamePrice(true, null)).toBeNull(); // ON but no price → inactive
+    expect(activeSamePrice(true, 0)).toBeNull();
+  });
+});
+
+describe("effectiveOrderPrice — override inactive = byte-identical base", () => {
+  it("returns the base unchanged when active is null (parity)", () => {
     for (const base of [0, 88, 150, 199]) expect(effectiveOrderPrice(base, null)).toBe(base);
   });
-  it("returns the fixed price when set, for any base (1-Click base 0, Auto base = code price)", () => {
+  it("returns the active fixed price when set, for any base (1-Click base 0, Auto base = code price)", () => {
     expect(effectiveOrderPrice(0, 199)).toBe(199);   // 1-Click
     expect(effectiveOrderPrice(150, 199)).toBe(199); // Auto (code price 150 → fixed 199)
   });
-  it("a non-positive fixed value never overrides (treated as not set)", () => {
+  it("a non-positive active value never overrides", () => {
     expect(effectiveOrderPrice(150, 0)).toBe(150);
     expect(effectiveOrderPrice(150, -1)).toBe(150);
+  });
+  it("OFF (active null via activeSamePrice) → base unchanged even with a remembered price", () => {
+    expect(effectiveOrderPrice(150, activeSamePrice(false, 199))).toBe(150);
   });
 });
 
@@ -86,17 +107,18 @@ describe("Enterprise — pre-fill only; the seller-typed price wins", () => {
   });
 });
 
-describe("Clear restores normal pricing", () => {
-  it("after Clear (samePrice → null) every base returns its own price again", () => {
-    expect(effectiveOrderPrice(0, null)).toBe(0);     // 1-Click back to price-0 (item = comment)
-    expect(effectiveOrderPrice(150, null)).toBe(150); // Auto back to the code price
-    const { order } = buildOrderFromComment(c, [], effectiveOrderPrice(0, null), now);
+describe("Turn OFF restores normal pricing (price stays remembered)", () => {
+  it("when OFF, every base returns its own price again — even though 199 is remembered", () => {
+    const off = activeSamePrice(false, 199); // OFF but remembered → null active
+    expect(effectiveOrderPrice(0, off)).toBe(0);     // 1-Click back to price-0 (item = comment)
+    expect(effectiveOrderPrice(150, off)).toBe(150); // Auto back to the code price
+    const { order } = buildOrderFromComment(c, [], effectiveOrderPrice(0, off), now);
     expect(order.item).toBe("A1"); // price 0 → item = comment, not a price string
   });
 });
 
 describe("i18n — same-price keys filled in every language", () => {
-  const keys = ["rd_smp_row_title", "rd_smp_placeholder", "rd_smp_save", "rd_smp_clear", "rd_smp_note", "rd_smp_chip", "rd_smp_clear_confirm", "rd_smp_error"] as const;
+  const keys = ["rd_smp_row_title", "rd_smp_placeholder", "rd_smp_off", "rd_smp_need_price", "rd_smp_note", "rd_smp_chip", "rd_smp_clear_confirm", "rd_smp_error"] as const;
   it("all keys render non-empty in every language", () => {
     for (const lang of LANG_CODES) {
       const t = buildT(lang) as Record<string, string>;

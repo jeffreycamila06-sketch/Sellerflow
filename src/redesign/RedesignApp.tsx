@@ -1421,7 +1421,7 @@ export default function RedesignApp() {
     const soCode = soldOutCodeForComment(prod.comment);
     if (soCode && typeof window !== "undefined" && !window.confirm(tpl(tApp.rd_auto_manual_soldout_confirm, { code: soCode }))) return;
     // Same-price override: 1-Click's base price is 0 → fixed when set, else 0 (byte-identical).
-    const order = orders.createOrder(prod, effectiveOrderPrice(0, samePriceCfg.samePrice));
+    const order = orders.createOrder(prod, effectiveOrderPrice(0, samePriceCfg.active));
     if (order) {
       setPrinted((p) => ({ ...p, [id]: "order" })); // null = free-cap blocked
       const snap = snapshotFromCreate(prod, order); // reprint — the original order, row-shaped
@@ -1452,7 +1452,7 @@ export default function RedesignApp() {
     if (!isActionablePin(p)) return;
     const c = buildPinComment(p);
     if (shouldSkipPin(soldOutCodeForComment(c.comment))) return;
-    const order = orders.createOrder(c, effectiveOrderPrice(0, samePriceCfg.samePrice)); // 1-Click equivalent
+    const order = orders.createOrder(c, effectiveOrderPrice(0, samePriceCfg.active)); // 1-Click equivalent
 
     if (!order) return;                                     // dup / capped / blocked — createOrder already dedups the msgId
     const pid = `pin:${c.msgId}`;
@@ -1473,7 +1473,7 @@ export default function RedesignApp() {
 
   // Enterprise: pre-fill the price field with the fixed price when "Same price" is set,
   // but the seller can type over it (e.g. a discount) — whatever they type wins.
-  const onOpenEnt = (id: string) => { setEntId(id); setEntPrice(entPrefill(samePriceCfg.samePrice)); };
+  const onOpenEnt = (id: string) => { setEntId(id); setEntPrice(entPrefill(samePriceCfg.active)); };
   // Enterprise: create the order at the typed price. ONE code path for BOTH
   // triggers — Enter (desktop/Android/iPad) AND the in-app ✓ button (the
   // iPhone fix: the iOS number pad has NO return key, so Enter can never be
@@ -1567,7 +1567,7 @@ export default function RedesignApp() {
     // Always 1 piece — there is no quantity syntax (autoMode.ts).
     // Same-price override: auto's base is the code price → fixed when set (total = fixed × qty
     // via the builder). Sticker still shows the CODE (itemOverride), stock/dedup/Rules unchanged.
-    const autoPrice = effectiveOrderPrice(plan.code.price, samePriceCfg.samePrice);
+    const autoPrice = effectiveOrderPrice(plan.code.price, samePriceCfg.active);
     const order = orders.createOrder(c, autoPrice, { productLocalId: plan.code.productLocalId, autoCode: plan.code.code, itemOverride: plan.code.code });
     if (order) {
       setPrinted((p) => ({ ...p, [key]: cur + autoPrice }));
@@ -1777,9 +1777,9 @@ export default function RedesignApp() {
               autoSoldOut={autoDetect ? autoSoldOutVisible : []}
               onDismissSoldOut={(code) => setAutoDismissedSoldOut((s) => { const n = new Set(s); n.add(code); return n; })}
               autoBadges={autoBadges}
-              /* "Same price for all items" — persistent chip while set; ✕ clears (confirm in Dashboard). */
-              samePrice={samePriceCfg.samePrice}
-              onClearSamePrice={() => void samePriceCfg.clear()}
+              /* "Same price for all items" — persistent chip while ON; ✕ turns it OFF (confirm in Dashboard). */
+              samePrice={samePriceCfg.active}
+              onDisableSamePrice={() => void samePriceCfg.setEnabled(false)}
             />
           )}
           {/* Orders tab hosts a segment toggle → Orders | Miners (Miners moved in here). */}
@@ -1839,8 +1839,8 @@ export default function RedesignApp() {
               keepAwake={keepAwake} onToggleKeepAwake={toggleKeepAwake}
               pinPrint={pinPrint} onTogglePinPrint={pinAllowed ? togglePinPrint : undefined}
               liveSessionOpen={liveSessionOpen} onToggleLiveSession={toggleLiveSession}
-              /* "Same price for all items" — Live-session accordion row (currency-aware). */
-              cur={cur} samePrice={samePriceCfg.samePrice} onSaveSamePrice={(v) => void samePriceCfg.save(v)} onClearSamePrice={() => void samePriceCfg.clear()} samePriceError={samePriceCfg.saveErrors}
+              /* "Same price for all items" — Live-session accordion row (toggle + remembered price). */
+              cur={cur} samePriceEnabled={samePriceCfg.enabled} samePrice={samePriceCfg.price} onSetSamePriceEnabled={(on, draft) => void samePriceCfg.setEnabled(on, draft)} onSaveSamePrice={(v) => void samePriceCfg.setPrice(v)} samePriceError={samePriceCfg.saveErrors}
               parcelCheckOn={parcelCheckOn}
               motionOn={motionOn} onToggleMotion={toggleMotion}
             />

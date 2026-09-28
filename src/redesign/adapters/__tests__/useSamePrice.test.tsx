@@ -1,6 +1,6 @@
-// useSamePrice — DB-backed per-seller fixed price. Read-on-load, upsert on
-// Save/Clear, optimistic-then-revert on write failure (the DB is the cross-device
-// source of truth). Mirrors the useRaffleConfig test's supabase mock.
+// useSamePrice — DB-backed ON/OFF toggle with a remembered price. Read-on-load,
+// upsert per change, optimistic-then-revert on write failure. Mirrors the
+// useRaffleConfig test's supabase mock.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 
@@ -28,55 +28,90 @@ beforeEach(() => {
   upsert.mockResolvedValue({ error: null });
 });
 
-describe("useSamePrice", () => {
-  it("no row → samePrice null (feature off)", async () => {
+describe("useSamePrice — toggle + remembered price", () => {
+  it("no row → off, no price, inactive", async () => {
     const { result } = renderHook(() => useSamePrice());
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.samePrice).toBeNull();
+    expect(result.current.enabled).toBe(false);
+    expect(result.current.price).toBeNull();
+    expect(result.current.active).toBeNull();
   });
 
-  it("reads the stored value on load (numeric-string codec tolerated)", async () => {
-    maybeSingle.mockResolvedValue({ data: { same_price: "199" }, error: null });
+  it("reads enabled + price → active", async () => {
+    maybeSingle.mockResolvedValue({ data: { enabled: true, same_price: "199" }, error: null });
     const { result } = renderHook(() => useSamePrice());
     await waitFor(() => expect(result.current.loading).toBe(false));
-    expect(result.current.samePrice).toBe(199);
+    expect(result.current.enabled).toBe(true);
+    expect(result.current.price).toBe(199);
+    expect(result.current.active).toBe(199);
   });
 
-  it("save(199) upserts the value and sets it optimistically", async () => {
+  it("never ON without a price: stored enabled=true + no price → coerced OFF", async () => {
+    maybeSingle.mockResolvedValue({ data: { enabled: true, same_price: null }, error: null });
     const { result } = renderHook(() => useSamePrice());
     await waitFor(() => expect(result.current.loading).toBe(false));
-    await act(async () => { await result.current.save("199"); });
-    expect(result.current.samePrice).toBe(199);
-    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ user_id: "u1", same_price: 199 }));
+    expect(result.current.enabled).toBe(false);
+    expect(result.current.active).toBeNull();
   });
 
-  it("clear() upserts null (row kept) and turns the feature off", async () => {
-    maybeSingle.mockResolvedValue({ data: { same_price: 199 }, error: null });
-    const { result } = renderHook(() => useSamePrice());
-    await waitFor(() => expect(result.current.samePrice).toBe(199));
-    await act(async () => { await result.current.clear(); });
-    expect(result.current.samePrice).toBeNull();
-    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ user_id: "u1", same_price: null }));
-  });
-
-  it("blank/0/negative saves as null (Clear) — never a 0 price", async () => {
+  it("setEnabled(true, draft) turns ON, commits the typed price, and upserts both", async () => {
     const { result } = renderHook(() => useSamePrice());
     await waitFor(() => expect(result.current.loading).toBe(false));
-    for (const bad of ["", "0", "-5"]) {
-      await act(async () => { await result.current.save(bad); });
-      expect(result.current.samePrice, bad).toBeNull();
-    }
+    await act(async () => { await result.current.setEnabled(true, "199"); });
+    expect(result.current.enabled).toBe(true);
+    expect(result.current.price).toBe(199);
+    expect(result.current.active).toBe(199);
+    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ user_id: "u1", enabled: true, same_price: 199 }));
   });
 
-  it("failed save REVERTS the optimistic value + bumps saveErrors (DB is source of truth)", async () => {
-    maybeSingle.mockResolvedValue({ data: { same_price: 88 }, error: null });
+  it("setEnabled(true) with no price is BLOCKED — no upsert, stays OFF", async () => {
     const { result } = renderHook(() => useSamePrice());
-    await waitFor(() => expect(result.current.samePrice).toBe(88));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(async () => { await result.current.setEnabled(true); }); // no draft, no stored price
+    expect(result.current.enabled).toBe(false);
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it("setEnabled(false) keeps the price REMEMBERED (upserts enabled false, same price)", async () => {
+    maybeSingle.mockResolvedValue({ data: { enabled: true, same_price: 199 }, error: null });
+    const { result } = renderHook(() => useSamePrice());
+    await waitFor(() => expect(result.current.active).toBe(199));
+    await act(async () => { await result.current.setEnabled(false); });
+    expect(result.current.enabled).toBe(false);
+    expect(result.current.price).toBe(199);   // remembered
+    expect(result.current.active).toBeNull();  // inactive
+    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ enabled: false, same_price: 199 }));
+  });
+
+  it("editing the price to blank while ON forces OFF (can't stay ON with no price)", async () => {
+    maybeSingle.mockResolvedValue({ data: { enabled: true, same_price: 199 }, error: null });
+    const { result } = renderHook(() => useSamePrice());
+    await waitFor(() => expect(result.current.active).toBe(199));
+    await act(async () => { await result.current.setPrice(""); });
+    expect(result.current.price).toBeNull();
+    expect(result.current.enabled).toBe(false);
+    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({ enabled: false, same_price: null }));
+  });
+
+  it("editing the price while ON keeps it ON at the new price", async () => {
+    maybeSingle.mockResolvedValue({ data: { enabled: true, same_price: 199 }, error: null });
+    const { result } = renderHook(() => useSamePrice());
+    await waitFor(() => expect(result.current.active).toBe(199));
+    await act(async () => { await result.current.setPrice("250"); });
+    expect(result.current.enabled).toBe(true);
+    expect(result.current.active).toBe(250);
+  });
+
+  it("failed write REVERTS enabled + price and bumps saveErrors", async () => {
+    maybeSingle.mockResolvedValue({ data: { enabled: false, same_price: 88 }, error: null });
+    const { result } = renderHook(() => useSamePrice());
+    await waitFor(() => expect(result.current.price).toBe(88));
     upsert.mockResolvedValueOnce({ error: { message: "network down" } });
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
-    await act(async () => { await result.current.save("199"); });
+    await act(async () => { await result.current.setEnabled(true, "199"); });
     err.mockRestore();
-    expect(result.current.samePrice).toBe(88); // reverted to the last-saved value
+    expect(result.current.enabled).toBe(false); // reverted
+    expect(result.current.price).toBe(88);      // reverted
     expect(result.current.saveErrors).toBe(1);
   });
 });
