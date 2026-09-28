@@ -42,7 +42,7 @@ function Harness({ onToast, init = {} }: { onToast: (m: string) => void; init?: 
           if (on) { const p = normalizeSamePrice(draft ?? spPrice); if (!p) return; setSpPrice(p); }
           setSpOn(on);
         }}
-        onToast={onToast} printSize="60x40mm (Small)"
+        onToast={onToast}
         printerIdx={0} printerOpen={false} onTogglePrinter={noop} onPickPrinter={noop} onPrintPattern={noop}
         onSubscription={noop} onSupport={noop} onDelete={noop}
         account={account} onSaveProfile={vi.fn().mockResolvedValue({ ok: true })} onManageChannel={noop}
@@ -56,20 +56,21 @@ const modalGone = () => waitFor(() => expect(screen.queryByTestId("lsm-modal")).
 beforeAll(() => { Element.prototype.scrollTo = (() => {}) as typeof Element.prototype.scrollTo; });
 
 describe("Live session rows — title + toggle / value only", () => {
-  it("no subtitles, no status line, no ▾ expand; print size shows as a mono value", () => {
+  it("no subtitles, no status line, no ▾ expand; print row is title + chevron only (no size)", () => {
     render(<Harness onToast={noop} />);
     const body = screen.getByTestId("ls-body");
     for (const gone of [/currently active/i, /Manual mode/, /Auto-detect/, /Prevents the phone/, /Map codes to products/, /What prints on each slip/, /Pin a comment on your/, /Low-stock warning at/, /Live codes now live/]) {
       expect(within(body).queryByText(gone), String(gone)).toBeNull();
     }
     expect(within(body).queryByText("▾")).toBeNull();
-    expect(screen.getByTestId("ls-print-size").textContent).toBe("60×40");
+    expect(screen.queryByTestId("ls-print-size")).toBeNull();
+    expect(screen.getByTestId("ls-print-pattern").textContent).toBe("LIVE print pattern›");
   });
 
-  it("order: Keep awake → LIVE print pattern → Auto-print pinned → Auto mode → Same price", () => {
+  it("order: LIVE print pattern → Keep awake → Auto-print pinned → Auto mode → Same price (toggles consecutive)", () => {
     render(<Harness onToast={noop} />);
     const text = screen.getByTestId("ls-body").textContent || "";
-    const seq = ["Keep screen awake while live", "LIVE print pattern", "Auto-print pinned comments", "Auto mode", "Same price for all items"].map((s) => text.indexOf(s));
+    const seq = ["LIVE print pattern", "Keep screen awake while live", "Auto-print pinned comments", "Auto mode", "Same price for all items"].map((s) => text.indexOf(s));
     expect(seq.every((i) => i >= 0)).toBe(true);
     expect([...seq].sort((a, b) => a - b)).toEqual(seq);
   });
