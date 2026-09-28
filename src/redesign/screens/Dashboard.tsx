@@ -134,6 +134,7 @@ export default function Dashboard({
   // Rule 3 — Auto Mode live inventory indicators (empty when Auto Mode is off).
   autoLowStock = [], autoSoldOut = [], onDismissSoldOut,
   autoBadges = {},
+  samePrice = null, onClearSamePrice,
   printed, entId, entPrice, onOneClick, onOpenEnt, onEntPrice, onEntKey,
   onEntSubmit,
   viewers = null,
@@ -204,6 +205,9 @@ export default function Dashboard({
   // Rules 1/3 per-row badge (keyed by commentKey = c.id): duplicate / soldout.
   // Display-only — set by the RedesignApp auto seam, never touches dedup.
   autoBadges?: Record<string, "duplicate" | "soldout">;
+  // "Same price for all items" — persistent chip while set (visible without scrolling);
+  // ✕ clears (with a confirm reminding the seller pricing returns to code/comment).
+  samePrice?: number | null; onClearSamePrice?: () => void;
   printed: Record<string, string>; entId: string | null; entPrice: string;
   // Orderable earlier-comments (sql/18) — the E1 gate: history rows may show
   // order buttons ONLY after the session-window load resolved (before that, an
@@ -520,6 +524,20 @@ export default function Dashboard({
       </div>
 
       <div style={{ padding: "14px 14px 18px", flex: 1, display: "flex", flexDirection: "column" }}>
+        {/* SAME PRICE FOR ALL ITEMS — persistent chip while set (accent). ✕ clears
+            with a confirm; kept first so it's visible without scrolling. */}
+        {samePrice != null && samePrice > 0 && (
+          <div style={{ display: "flex", marginBottom: 11 }}>
+            <span data-testid="samePrice-chip" style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "var(--accent-soft)", border: "1px solid var(--accent)", borderRadius: 999, padding: "4px 6px 4px 11px", fontSize: 11.5, fontWeight: 800, color: "var(--accent-fg)" }}>
+              {tpl(t.rd_smp_chip, { price: `${cur}${samePrice.toLocaleString("en-US")}` })}
+              <button
+                onClick={() => { if (typeof window === "undefined" || window.confirm(t.rd_smp_clear_confirm)) onClearSamePrice?.(); }}
+                aria-label={t.rd_smp_clear} title={t.rd_smp_clear} data-testid="samePrice-chip-clear"
+                style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 18, height: 18, borderRadius: "50%", border: "none", background: "var(--accent)", color: "#fff", fontSize: 12, lineHeight: 1, cursor: "pointer" }}
+              >×</button>
+            </span>
+          </div>
+        )}
         {/* RULE 3 — PERSISTENT sold-out banner (danger, dismissible per code) +
             low-stock chips (amber). Derived from live auto stock; stays until the
             seller dismisses or restocks. Theme-token styled (danger / warn). */}

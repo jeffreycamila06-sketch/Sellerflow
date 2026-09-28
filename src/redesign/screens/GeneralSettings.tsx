@@ -54,6 +54,7 @@ export default function GeneralSettings({
   lowStockThreshold = 3, onSetLowStockThreshold,
   keepAwake = true, onToggleKeepAwake, pinPrint = false, onTogglePinPrint, parcelCheckOn = false,
   liveSessionOpen, onToggleLiveSession,
+  cur = "NT$", samePrice = null, onSaveSamePrice, onClearSamePrice, samePriceError = 0,
   motionOn = true, onToggleMotion,
 }: {
   theme: ThemeMode; accent: AccentKey; onSetTheme: (t: ThemeMode) => void; onSetAccent: (a: AccentKey) => void;
@@ -79,6 +80,9 @@ export default function GeneralSettings({
   // the lock lifecycle lives in RedesignApp (useWakeLock on green/amber).
   keepAwake?: boolean; onToggleKeepAwake?: () => void;
   liveSessionOpen?: boolean; onToggleLiveSession?: () => void; // lifted to RedesignApp so a remount can't lose it
+  // "Same price for all items" — per-seller fixed unit price (DB-backed, RedesignApp
+  // owns useSamePrice). Currency-aware input (uses `cur`). Blank/0/negative = Clear.
+  samePrice?: number | null; onSaveSamePrice?: (v: unknown) => void; onClearSamePrice?: () => void; samePriceError?: number;
   pinPrint?: boolean; onTogglePinPrint?: () => void; // PIN-TO-PRINT — per-device, default OFF
   parcelCheckOn?: boolean; // multi-seller 賣貨便 check config card (allowlist + TW market, from RedesignApp)
   // Motion kill switch — pause looping animations (display toggle; RedesignApp
@@ -91,6 +95,12 @@ export default function GeneralSettings({
   const [apLangOpen, setApLangOpen] = useState(false);
   const [apCurOpen, setApCurOpen] = useState(false);
   const curLang = LANGS.find((l) => l.code === lang) || LANGS[0];
+  // Same-price draft (controlled). Seeded from the DB value; re-synced when it
+  // changes (e.g. a save on another device) via the previous-value compare
+  // (state reset during render — a reset effect trips react-hooks/set-state-in-effect).
+  const [smpDraft, setSmpDraft] = useState<string>(samePrice != null ? String(samePrice) : "");
+  const [smpPrev, setSmpPrev] = useState<number | null>(samePrice);
+  if (smpPrev !== samePrice) { setSmpPrev(samePrice); setSmpDraft(samePrice != null ? String(samePrice) : ""); }
 
   // Phase 5i — controlled profile-edit form, initialized from the real profile and
   // re-synced when it changes (e.g. after a save reload). Only user-editable fields.
@@ -354,6 +364,23 @@ export default function GeneralSettings({
               <span style={{ fontSize: 11.5, color: "var(--text-muted)" }}>{t.rd_set_currently_active}</span>
             </div>
             </div>
+            {/* SAME PRICE FOR ALL ITEMS — per-seller fixed unit price (currency-aware).
+                Applied by RedesignApp to 1-Click/Auto (Enterprise pre-fills only). */}
+            {onSaveSamePrice && (
+              <div style={{ padding: 14, borderTop: "1px solid var(--border)" }} data-testid="samePrice-row">
+                <div style={rowTitle}>{t.rd_smp_row_title}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", flex: 1, minWidth: 0, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 10, padding: "0 10px" }}>
+                    <span style={{ fontSize: 13, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>{cur}</span>
+                    <input inputMode="decimal" value={smpDraft} onChange={(e) => setSmpDraft(e.target.value.replace(/[^0-9.]/g, ""))} placeholder={t.rd_smp_placeholder} data-testid="samePrice-input" style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", padding: "10px 6px", fontSize: 14, fontFamily: "var(--font-mono)", color: "var(--text)" }} />
+                  </div>
+                  <button onClick={() => onSaveSamePrice(smpDraft)} data-testid="samePrice-save" style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", flexShrink: 0 }}>{t.rd_smp_save}</button>
+                  {samePrice != null && <button onClick={() => { setSmpDraft(""); onClearSamePrice?.(); }} data-testid="samePrice-clear" style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text-dim)", fontWeight: 700, fontSize: 13, cursor: "pointer", flexShrink: 0 }}>{t.rd_smp_clear}</button>}
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", lineHeight: 1.45, marginTop: 8 }}>{t.rd_smp_note}</div>
+                {samePriceError > 0 && <div style={{ fontSize: 11, color: "var(--danger)", marginTop: 6 }} data-testid="samePrice-error">{t.rd_smp_error}</div>}
+              </div>
+            )}
             {/* LIVE print pattern — moved here from Printer & Display (now inside the Live session group) */}
             <button onClick={onPrintPattern} data-testid="ls-print-pattern" style={{ width: "100%", display: "flex", alignItems: "center", gap: 12, padding: 14, border: "none", borderTop: "1px solid var(--border)", background: "transparent", cursor: "pointer", textAlign: "left", fontFamily: "var(--font-ui)" }}>
               <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--accent-fg)", flexShrink: 0 }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="6" y="3" width="12" height="6" stroke="currentColor" strokeWidth="1.7" /><rect x="4" y="9" width="16" height="8" rx="2" stroke="currentColor" strokeWidth="1.7" /><rect x="7" y="14" width="10" height="7" stroke="currentColor" strokeWidth="1.7" /></svg></div>
