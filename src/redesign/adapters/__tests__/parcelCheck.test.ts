@@ -46,10 +46,11 @@ describe("DOGFOOD GATE — exact allowlist (NO budgetukay* prefix this time, del
     expect(PARCEL_CHECK_PREVIEW_EMAILS).toEqual([
       "googletest@gmail.com", "googletest@sellerflowlive.com",
       "ukaydaily1@gmail.com", // added to dogfood 2026-09-27
+      "sanggalanglhea@gmail.com", // Lhey — added 2026-09-28
     ]);
-    // Still allowlist-only (not public). sanggalanglhea + budgetukay5 remain OFF;
-    // ukaydaily1 is now ON. Non-allowlisted sellers = byte-unchanged Parcel Scan.
-    expect(parcelCheckAllowed("sanggalanglhea@gmail.com", "seller")).toBe(false);
+    // Still allowlist-only (not public). budgetukay5 remains OFF; ukaydaily1 +
+    // sanggalanglhea (Lhey) are ON. Non-allowlisted sellers = byte-unchanged Parcel Scan.
+    expect(parcelCheckAllowed("sanggalanglhea@gmail.com", "seller")).toBe(true); // now allowed
     expect(parcelCheckAllowed("budgetukay5@gmail.com", "seller")).toBe(false);
     expect(parcelCheckAllowed("ukaydaily1@gmail.com", "seller")).toBe(true); // now allowed
     expect(parcelCheckAllowed("UKAYDAILY1@GMAIL.COM", "seller")).toBe(true); // case-insensitive
