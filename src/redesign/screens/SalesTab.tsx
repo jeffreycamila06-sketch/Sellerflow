@@ -1,15 +1,22 @@
-// SALES TAB — real data (replaces Miners). Tiles (Sales total · Orders · Buyers ·
-// AOV), a daily-trend CSS bar chart, and a searchable Top-buyers list, all from
-// the sql/56 sales_report RPC for the selected range (Today · This session ·
-// 7 days · 2 months · Custom; default = This session). Buyer tap → their orders
-// in the Orders list. Export ▾ = the shared branded export. No new tables; one
-// RPC per range switch, cached, zero poll.
+// SALES TAB — the approved mockup UI, wired to REAL data (useSalesTab → the sql/56
+// sales_report RPC over the billing `orders` ledger). Same sections/order/labels as
+// the mockup: header + Export ▾, date pills (Today · This session · 7 days · Custom,
+// default Today), four tiles (Sales total · Orders · Buyers · AOV), daily-trend CSS
+// bars, and a searchable Top-buyers list → tap → in-screen buyer detail with
+// "Open in Orders →". Honest loading/empty/error states. NO 2-months pill.
+// ⚠️ Data gaps vs the static mockup (the orders ledger has neither): buyer rows show
+// the customer NAME (no @handle), and the buyer detail shows the aggregate + an
+// "Open in Orders →" that opens the buyer's REAL orders (no fabricated inline rows).
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT } from "../i18n";
 import { exportBrandedXlsx, exportBrandedPdf } from "../adapters/brandedExport";
 import { dayStamp } from "../adapters/csv";
 import type { SalesTabRange, UseSalesTab } from "../adapters/salesTab";
+import type { SalesTopBuyer } from "../adapters/salesReport";
+
+const avColor = (s: string) => `hsl(${[...(s || "?")].reduce((a, c) => a + c.charCodeAt(0), 0) * 47 % 360} 55% 48%)`;
+const initials = (s: string) => (s || "?").replace(/^@/, "").slice(0, 2).toUpperCase();
 
 export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", sales, seller, onOpenBuyer }: {
   cur?: string; sessionStart?: string; today?: string;
@@ -18,17 +25,14 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
   onOpenBuyer?: (name: string) => void;
 }) {
   const t = useT();
-  const [range, setRange] = useState<SalesTabRange>("session");
+  const [range, setRange] = useState<SalesTabRange>("today");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
   const [exportOpen, setExportOpen] = useState(false);
   const [q, setQ] = useState("");
+  const [openBuyer, setOpenBuyer] = useState<SalesTopBuyer | null>(null);
 
   const bounds = useMemo(() => ({ sessionStart, today, from: customFrom, to: customTo }), [sessionStart, today, customFrom, customTo]);
-  // load on mount + whenever range / custom bounds change. The loader is kept in
-  // a ref (updated in an effect, not during render) so the load effect never
-  // depends on the callback's identity — sales.load changes as its cache fills,
-  // which would otherwise re-fire and loop.
   const loadRef = useRef(sales.load);
   useEffect(() => { loadRef.current = sales.load; });
   useEffect(() => { loadRef.current(range, bounds); }, [range, bounds]);
@@ -43,15 +47,14 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
     return s ? list.filter((b) => (b.name || "").toLowerCase().includes(s)) : list;
   }, [d, q]);
 
-  const RANGES: [SalesTabRange, string][] = [["today", t.rd_ord_today], ["session", t.rd_ord_range_session], ["7d", t.rd_ord_range_7d], ["2months", t.rd_sal_2months], ["custom", t.rd_ord_range_custom]];
+  const RANGES: [SalesTabRange, string][] = [["today", t.rd_ord_today], ["session", t.rd_ord_range_session], ["7d", t.rd_ord_range_7d], ["custom", t.rd_ord_range_custom]];
   const pill = (active: boolean): CSSProperties => ({ padding: "7px 13px", borderRadius: 999, border: "1px solid " + (active ? "var(--accent)" : "var(--border)"), background: active ? "var(--accent)" : "var(--surface)", color: active ? "#fff" : "var(--text-dim)", fontWeight: 700, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" });
 
   const doExport = (kind: "xlsx" | "pdf") => {
     setExportOpen(false);
     if (!d) return;
     const input = {
-      title: `${t.rd_nav_sales} · ${d.start} → ${d.end}`,
-      seller,
+      title: `${t.rd_nav_sales} · ${d.start} → ${d.end}`, seller,
       columns: [
         { header: "#", align: "right" as const, width: 5 },
         { header: t.rd_sal_top_buyers, width: 26 },
@@ -86,6 +89,7 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
             )}
           </div>
         </div>
+        {/* Date pills: Today · This session · 7 days · Custom */}
         <div style={{ display: "flex", gap: 7, marginTop: 12, overflowX: "auto" }}>
           {RANGES.map(([r, label]) => (
             <button key={r} onClick={() => setRange(r)} data-testid={`sales-range-${r}`} style={pill(range === r)}>{label}</button>
@@ -108,7 +112,7 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
           <div style={{ ...card, textAlign: "center", color: "var(--text-muted)" }} data-testid="sales-pickrange">{t.rd_sal_pick_range}</div>
         ) : (
           <>
-            {/* Four tiles */}
+            {/* Four summary tiles: Sales total · Orders · Buyers · AOV */}
             <div data-testid="sales-summary" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
               {[[t.rd_ord_sum_total, `${cur}${fmt(d.revenue)}`], [t.rd_ord_sum_orders, `${d.orders}`], [t.rd_ord_sum_buyers, `${d.buyers}`], [t.rd_ord_sum_aov, `${cur}${fmt(aov)}`]].map(([l, v], i) => (
                 <div key={i} style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 12, padding: "10px 9px", textAlign: "center", boxShadow: "var(--shadow)" }}>
@@ -122,35 +126,52 @@ export default function SalesTab({ cur = "NT$", sessionStart = "", today = "", s
               <div style={{ ...card, textAlign: "center", color: "var(--text-muted)" }} data-testid="sales-empty">{t.rd_sal_empty}</div>
             ) : (
               <>
-                {/* Daily trend */}
+                {/* Daily trend bar chart (CSS bars) */}
                 <div style={card}>
                   <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".08em", color: "var(--text-muted)", marginBottom: 10 }}>{t.rd_sal_trend}</div>
                   <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 92 }} data-testid="sales-trend">
                     {d.days.map((x) => (
-                      <div key={x.d} title={`${x.d} · ${cur}${fmt(x.rev)} · ${x.orders}`} style={{ flex: 1, minWidth: 2, height: `${Math.max(4, Math.round((x.rev / maxDay) * 100))}%`, background: d.bestDay && x.d === d.bestDay.d ? "var(--ok)" : "var(--accent)", borderRadius: 3, opacity: d.bestDay && x.d === d.bestDay.d ? 1 : 0.75 }} />
+                      <div key={x.d} title={`${x.d} · ${cur}${fmt(x.rev)}`} style={{ flex: 1, minWidth: 2, height: `${Math.max(4, Math.round((x.rev / maxDay) * 100))}%`, background: d.bestDay && x.d === d.bestDay.d ? "var(--ok)" : "var(--accent)", borderRadius: 3, opacity: d.bestDay && x.d === d.bestDay.d ? 1 : 0.75 }} />
                     ))}
                   </div>
                 </div>
 
-                {/* Top buyers */}
-                <div style={card}>
-                  <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".08em", color: "var(--text-muted)", marginBottom: 10 }}>{t.rd_sal_top_buyers}</div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", borderRadius: 11, padding: "8px 12px", marginBottom: 10 }}>
-                    <span style={{ fontSize: 13, opacity: 0.7 }}>🔍</span>
-                    <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.rd_sal_search} data-testid="sales-search" style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", fontSize: 13, color: "var(--text)" }} />
-                  </div>
-                  {shown.map((b, i) => (
-                    <button key={`${b.name}-${i}`} onClick={() => onOpenBuyer?.(b.name)} data-testid={`sales-buyer-${i}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 2px", borderTop: i ? "1px solid var(--border)" : "none", width: "100%", background: "none", cursor: "pointer", textAlign: "left" }}>
-                      <div style={{ width: 20, fontFamily: mono, fontSize: 12, fontWeight: 700, color: "var(--text-muted)" }}>{i + 1}</div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name || "—"}</div>
-                        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>{b.orders} {t.rd_ord_sum_orders}</div>
+                {/* Top buyers (absorbs Miners) — search + list; tap → buyer detail */}
+                {openBuyer ? (
+                  <div style={card} data-testid="sales-buyer-detail">
+                    <button onClick={() => setOpenBuyer(null)} data-testid="sales-buyer-back" style={{ background: "none", border: "none", color: "var(--accent)", fontWeight: 700, fontSize: 12.5, cursor: "pointer", padding: 0, marginBottom: 8 }}>← {t.rd_sal_back}</button>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                      <div style={{ width: 34, height: 34, borderRadius: 999, background: avColor(openBuyer.name), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 12 }}>{initials(openBuyer.name)}</div>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: 14, color: "var(--text)" }}>{openBuyer.name || "—"}</div>
+                        <div style={{ fontSize: 11.5, color: "var(--handle)" }}>{openBuyer.orders} {t.rd_ord_sum_orders} · {cur}{fmt(openBuyer.spent)}</div>
                       </div>
-                      <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 13, color: "var(--text)" }}>{cur}{fmt(b.spent)}</div>
-                    </button>
-                  ))}
-                  {shown.length === 0 && <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 2px" }}>—</div>}
-                </div>
+                    </div>
+                    <button onClick={() => onOpenBuyer?.(openBuyer.name)} style={{ marginTop: 4, width: "100%", padding: "10px", borderRadius: 10, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text-dim)", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }} data-testid="sales-open-orders">{t.rd_sal_buyer_hist} →</button>
+                  </div>
+                ) : (
+                  <div style={card}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                      <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".08em", color: "var(--text-muted)" }}>{t.rd_sal_top_buyers}</div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", borderRadius: 11, padding: "8px 12px", marginBottom: 10 }}>
+                      <span style={{ fontSize: 13, opacity: 0.7 }}>🔍</span>
+                      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.rd_sal_search} data-testid="sales-search" style={{ flex: 1, minWidth: 0, background: "transparent", border: "none", outline: "none", fontSize: 13, color: "var(--text)" }} />
+                    </div>
+                    {shown.map((b, i) => (
+                      <button key={`${b.name}-${i}`} onClick={() => setOpenBuyer(b)} data-testid={`sales-buyer-${i}`} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 2px", borderTop: i ? "1px solid var(--border)" : "none", width: "100%", background: "none", cursor: "pointer", textAlign: "left" }}>
+                        <div style={{ width: 20, fontFamily: mono, fontSize: 12, fontWeight: 700, color: "var(--text-muted)" }}>{i + 1}</div>
+                        <div style={{ width: 30, height: 30, borderRadius: 999, background: avColor(b.name), color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 11 }}>{initials(b.name)}</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name || "—"}</div>
+                          <div style={{ fontSize: 11, color: "var(--handle)" }}>{b.orders} {t.rd_ord_sum_orders}</div>
+                        </div>
+                        <div style={{ fontFamily: mono, fontWeight: 700, fontSize: 13, color: "var(--text)" }}>{cur}{fmt(b.spent)}</div>
+                      </button>
+                    ))}
+                    {shown.length === 0 && <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "8px 2px" }}>—</div>}
+                  </div>
+                )}
               </>
             )}
           </>

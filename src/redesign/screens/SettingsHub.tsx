@@ -43,11 +43,11 @@ const ic = {
 };
 
 export default function SettingsHub({
-  onGeneral, onCustomers, onAdmin, onSales, onShipping, onCustomerData, onLegal, onDelete, onLogout,
+  onGeneral, onCustomers, onAdmin, onShipping, onCustomerData, onLegal, onDelete, onLogout,
   isAdmin = false, onParcelScan, onCustomerDetails, onParcelTracking, parcelLocked = false, onParcelUpsell,
 }: {
   onGeneral: () => void; onCustomers: () => void;
-  onAdmin: () => void; onSales: () => void;
+  onAdmin: () => void;
   onShipping?: () => void; // TW 7-11 module — passed ONLY when the market has shippingModule "tw-711" (marketHidesShipping)
   onCustomerData: () => void; onLegal: () => void; onDelete: () => void; onLogout: () => void;
   isAdmin?: boolean; // Phase 5h — owner-only tiles (matches production isAdminUser gating)
@@ -75,7 +75,6 @@ export default function SettingsHub({
           <Tile icon={ic.people} label={t.rd_cus_title} onClick={onCustomers} />
           {/* Owner-only (production: isAdminUser) */}
           {isAdmin && <Tile icon={ic.shield} label={t.rd_sh_admin} onClick={onAdmin} />}
-          <Tile icon={ic.chart} label={t.rd_sh_sales} onClick={onSales} />
           {onShipping && <Tile icon={ic.truck} label={t.rd_sh_shipping} onClick={onShipping} />}
           {/* Parcel Scan (A1) — allowed → open the screen; else basic/free → a LOCKED
               upsell tile (🔒) that opens the neutral contact-support popup, never the

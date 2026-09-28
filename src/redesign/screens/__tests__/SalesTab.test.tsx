@@ -43,13 +43,24 @@ describe("Sales tab (real data)", () => {
     expect(getByTestId("sales-trend").children.length).toBe(3);
   });
 
-  it("top buyers are ranked by spend (desc) and tapping one opens their orders", () => {
+  it("shows 4 pills (Today · This session · 7 days · Custom), default Today, and NO 2-months pill", () => {
+    const { getByTestId, queryByTestId } = view(stubHook());
+    for (const r of ["today", "session", "7d", "custom"]) expect(getByTestId(`sales-range-${r}`)).toBeTruthy();
+    expect(queryByTestId("sales-range-2months")).toBeNull();
+  });
+
+  it("top buyers ranked by spend (desc); tap → in-screen buyer detail → 'Open in Orders' opens their orders", () => {
     const onOpenBuyer = vi.fn();
-    const { getByTestId } = view(stubHook(), onOpenBuyer);
+    const { getByTestId, queryByTestId } = view(stubHook(), onOpenBuyer);
     expect(within(getByTestId("sales-buyer-0")).getByText("Maria Santos")).toBeTruthy();
     expect(within(getByTestId("sales-buyer-1")).getByText("JC Dela Cruz")).toBeTruthy();
-    fireEvent.click(getByTestId("sales-buyer-0"));
+    fireEvent.click(getByTestId("sales-buyer-0"));                 // opens the in-screen detail
+    expect(getByTestId("sales-buyer-detail")).toBeTruthy();
+    expect(onOpenBuyer).not.toHaveBeenCalled();                    // detail first, not a jump
+    fireEvent.click(getByTestId("sales-open-orders"));             // "Open in Orders →"
     expect(onOpenBuyer).toHaveBeenCalledWith("Maria Santos");
+    fireEvent.click(getByTestId("sales-buyer-back"));
+    expect(queryByTestId("sales-buyer-detail")).toBeNull();
   });
 
   it("buyer search filters the list over the range", () => {

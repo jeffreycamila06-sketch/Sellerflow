@@ -6,7 +6,7 @@
 // 7 days / This month / Custom) · Top-N (10/20/50/All) · Refresh · Export ▾
 // (branded Excel/PDF, same module as Products/Orders). Repeat badge = 2+
 // distinct Taipei order-days in the range (loyal-customer signal).
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { avColor, initials, fmt } from "../data";
 import {
   minersRangeBounds, MINERS_TOP_ALL, MINERS_TOP_OPTIONS,
@@ -24,12 +24,13 @@ const hdrBtn: CSSProperties = { display: "flex", alignItems: "center", gap: 5, f
 
 const RANGES: MinersRange[] = ["session", "today", "7days", "month", "custom"];
 
-export default function Miners({ cur, rep, todayId = "", sessionStartId = "", seller }: {
+export default function Miners({ cur, rep, todayId = "", sessionStartId = "", seller, topTabs }: {
   cur: string;
   rep: UseMinersReport;                 // owned by RedesignApp (useMinersReport)
   todayId?: string;                     // Taipei day id (today)
   sessionStartId?: string;              // current session window start (windowStart || today)
   seller?: { name?: string; email?: string };
+  topTabs?: ReactNode;                  // the "Orders | Miners" segment (rendered inside Orders tab)
 }) {
   const t = useT();
   const [range, setRange] = useState<MinersRange>("session");
@@ -113,7 +114,7 @@ export default function Miners({ cur, rep, todayId = "", sessionStartId = "", se
             )}
           </div>
         </div>
-
+        {topTabs}
         {/* Date-range pills */}
         <div style={{ display: "flex", gap: 6, marginTop: 10, overflowX: "auto" }}>
           {RANGES.map((r) => (

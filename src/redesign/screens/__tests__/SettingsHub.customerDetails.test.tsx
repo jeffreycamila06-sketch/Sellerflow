@@ -8,7 +8,7 @@ import SettingsHub from "../SettingsHub";
 const t = buildT("en");
 const noop = () => {};
 const base = {
-  onGeneral: noop, onCustomers: noop, onAdmin: noop, onSales: noop, onShipping: noop,
+  onGeneral: noop, onCustomers: noop, onAdmin: noop, onShipping: noop,
   onCustomerData: noop, onLegal: noop, onDelete: noop, onLogout: noop,
 };
 const view = (extra: Record<string, unknown> = {}) =>
