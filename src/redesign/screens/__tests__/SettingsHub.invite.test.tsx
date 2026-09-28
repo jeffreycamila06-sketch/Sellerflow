@@ -11,7 +11,7 @@ const renderHub = (isAdmin = false) =>
   render(
     <TProvider lang="en">
       <SettingsHub
-        onGeneral={noop} onCustomers={noop} onAdmin={noop} onSales={noop}
+        onGeneral={noop} onCustomers={noop} onAdmin={noop}
         onShipping={noop} onCustomerData={noop} onLegal={noop} onDelete={noop}
         onLogout={noop} isAdmin={isAdmin}
       />

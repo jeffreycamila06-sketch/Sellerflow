@@ -9,11 +9,6 @@ import Orders from "./screens/Orders";
 import Products from "./screens/Products";
 import Miners from "./screens/Miners";
 import SalesTab from "./screens/SalesTab";
-
-// Sales replaces Miners in the bottom nav for everyone. Miners' screen + hook +
-// import stay behind the flag (no deletion) — flip to restore the old nav.
-const SHOW_SALES_TAB = true;
-const SHOW_MINERS_NAV = false;
 import Login from "./screens/Login";
 import Landing from "./screens/Landing";
 import AuthModal from "./components/AuthModal";
@@ -28,7 +23,6 @@ import Subscription from "./screens/Subscription";
 import Support from "./screens/Support";
 import Admin, { AdminPanel, type AdminPanelKind } from "./screens/Admin";
 import Print from "./screens/Print";
-import SalesReport from "./screens/SalesReport";
 import Shipping from "./screens/Shipping";
 import ParcelScan from "./screens/ParcelScan";
 import CustomerDetails from "./screens/CustomerDetails";
@@ -87,9 +81,6 @@ import { useFreeCap } from "./adapters/useFreeCap";
 import { useAdmin } from "./adapters/useAdmin";
 import { upsertUser } from "../accountDb";
 import { csvDL, dayStamp } from "./adapters/csv";
-import { computeSales } from "./adapters/sales";
-import { useSalesReport } from "./adapters/salesReport";
-import { ordersByHour } from "./adapters/peakHours";
 import { sessionKeyFor } from "./adapters/shipping";
 import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, setWebPrintOutcomeHandler, setNativePrintOutcomeHandler, setWebPrintKioskHintHandler, isPrinterNotSetup, canUseClassicText, setClassicTextAllowed, setStickerQrEntitled, hasBitmapStickerMethod, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
 import { prefetchCjkAtlas } from "./adapters/cjkAtlasLoader";
@@ -116,13 +107,25 @@ import { planDaysLeft } from "../lib/planWindow";
 import { TProvider, buildT, tpl } from "./i18n";
 
 type Screen =
-  | "landing" | "login" | "signup" | "dashboard" | "miners" | "orders" | "products"
+  | "landing" | "login" | "signup" | "dashboard" | "orders" | "products"
   | "menu" | "settings" | "customers" | "subscription" | "support"
-  | "admin" | "print" | "sales" | "salestab" | "shipping" | "customerdata" | "legal" | "delete"
+  | "admin" | "print" | "salestab" | "shipping" | "customerdata" | "legal" | "delete"
   | "printersettings" | "printpattern" | "ttchannels" | "fbchannels" | "parcelscan" | "customerdetails" | "parceltracking" | "shopeechannels" | "fbpages";
 
 // Screens grouped under the Settings bottom-nav tab (tab is "active" for all).
-const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "sales", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "shopeechannels", "fbpages"];
+const SETTINGS_GROUP: Screen[] = ["menu", "settings", "customers", "subscription", "support", "admin", "shipping", "customerdata", "legal", "delete", "printersettings", "printpattern", "ttchannels", "fbchannels", "parcelscan", "customerdetails", "parceltracking", "shopeechannels", "fbpages"];
+
+// The "Orders | Miners" segment shown at the top of the Orders tab (Miners moved
+// in here). Rendered inside each screen's sticky header via the `topTabs` slot.
+function OrdersMinersTabs({ tab, onTab, ordersLabel }: { tab: "orders" | "miners"; onTab: (t: "orders" | "miners") => void; ordersLabel: string }) {
+  const seg = (on: boolean) => ({ flex: 1, padding: "7px 0", borderRadius: 8, border: "none", fontWeight: 800 as const, fontSize: 12.5, cursor: "pointer", fontFamily: "var(--font-ui)", background: on ? "#fff" : "transparent", color: on ? "var(--accent-fg)" : "var(--on-header)" });
+  return (
+    <div style={{ display: "flex", gap: 4, marginTop: 11, background: "rgba(255,255,255,.16)", borderRadius: 10, padding: 3 }}>
+      <button data-testid="orders-tab-orders" onClick={() => onTab("orders")} style={seg(tab === "orders")}>{ordersLabel}</button>
+      <button data-testid="orders-tab-miners" onClick={() => onTab("miners")} style={seg(tab === "miners")}>Miners</button>
+    </div>
+  );
+}
 
 // A pending session-first connect (awaiting the picker / owner-Start length choice).
 // tt = a TikTok/FB account connect (register = append a NEW @username to the profile
@@ -611,18 +614,15 @@ export default function RedesignApp() {
   const minersRep = useMinersReport(authed);
   const salesTab = useSalesTab(authed);
   const [ordersInitialQuery, setOrdersInitialQuery] = useState(""); // Sales → tap a buyer → Orders pre-filtered
+  const [ordersTab, setOrdersTab] = useState<"orders" | "miners">("orders"); // Miners now lives inside the Orders tab
   const exportCustomers = () => csvDL(`customers-${dayStamp()}.csv`, ["Name", "Username", "Platform", "Orders", "Total"], customersData.customers.map((c) => [c.name, c.handle, c.platform, c.orders, `${cur}${c.spent}`]));
 
   // Sales report — session-derived aggregation (App.tsx Sales). CSV row shape
   // matches App.tsx:1988 exactly: [#SF{orderNum}, name, item, qty, cur+total, platform, time].
-  const sales = computeSales(liveSession.session.orders, liveSession.session.buyers);
   // Sales Report v2 — historical periods from the orders ledger (sql/15 RPC,
   // Taipei-bucketed server-side). One RPC per period switch, cached; zero poll.
-  const salesHist = useSalesReport(authed);
   // Today "Orders by hour" — bucket the current session's orders by device-local
   // hour (pure; orderNum is epoch ms). Derived from data the tab already loads.
-  const salesByHour = ordersByHour(liveSession.session.orders);
-  const exportSales = () => csvDL(`sales-${dayStamp()}.csv`, ["Order", "Buyer", "Item", "Qty", "Total", "Platform", "Time"], liveSession.session.orders.map((o) => [`#SF${o.orderNum}`, o.name, o.item, o.qty, `${cur}${o.total}`, o.platform, o.time]));
 
   const [theme, setTheme] = useState<ThemeMode>(() => (readLS(LS.theme, "light") === "dark" ? "dark" : "light"));
   const [accent, setAccent] = useState<AccentKey>(() => safeAccent(readLS(LS.accent, "indigo")));
@@ -1767,19 +1767,19 @@ export default function RedesignApp() {
               autoBadges={autoBadges}
             />
           )}
-          {screen === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} orders={ordersList} state={ordersState} onGoShipping={hideShipping ? undefined : () => setScreen("shipping")}
+          {/* Orders tab hosts a segment toggle → Orders | Miners (Miners moved in here). */}
+          {screen === "orders" && ordersTab === "orders" && <Orders onGoPrint={() => setScreen("print")} cur={cur} orders={ordersList} state={ordersState} onGoShipping={hideShipping ? undefined : () => setScreen("shipping")}
             historyOrders={ordersHistory.orders} historyState={ordersHistory.state} onEnsureHistory={ordersHistory.ensureLoaded} onReprintOrder={onReprintOrder} todayId={liveSession.dayId} buyers={liveSession.session.buyers}
-            initialQuery={ordersInitialQuery}
+            initialQuery={ordersInitialQuery} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />}
             seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
+          {screen === "orders" && ordersTab === "miners" && <Miners cur={cur} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} topTabs={<OrdersMinersTabs tab={ordersTab} onTab={setOrdersTab} ordersLabel={tApp.rd_nav_orders} />} />}
           {screen === "products" && <Products cur={cur} onProductsChanged={refreshAutoFromProducts} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
-          {screen === "miners" && <Miners cur={cur} rep={minersRep} todayId={liveSession.dayId} sessionStartId={sessionWindow.windowStart || liveSession.dayId} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} />}
           {screen === "salestab" && <SalesTab cur={cur} sessionStart={sessionWindow.windowStart || liveSession.dayId} today={liveSession.dayId} sales={salesTab} seller={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : undefined} onOpenBuyer={(name) => { setOrdersInitialQuery(name); setScreen("orders"); }} />}
           {screen === "menu" && (
             <SettingsHub
               onGeneral={() => setScreen("settings")}
               onCustomers={() => setScreen("customers")}
               onAdmin={() => setScreen("admin")}
-              onSales={() => setScreen("sales")}
               onShipping={hideShipping ? undefined : () => setScreen("shipping")}
               onCustomerData={() => setScreen("customerdata")}
               onLegal={() => setScreen("legal")}
@@ -1850,7 +1850,6 @@ export default function RedesignApp() {
           {screen === "support" && <Support onLegal={() => setScreen("legal")} />}
           {screen === "admin" && isAdmin && <Admin onOpenPanel={setAdminPanel} cur={cur} counts={adminCounts} live={adminLive} userBase={adminLive ? { paying: userBase.paying, free: userBase.free, total: userBase.total } : undefined} mrr={adminLive ? deriveMrr(adminUsers.users) : null} owner={auth.profile ? { name: auth.profile.profile.fullName, email: auth.profile.email } : null} viewAs={adminViewAs} onSetViewAs={setAdminViewAs} />}
           {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} buyers={liveSession.session.buyers} storeName={printShopName} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
-          {screen === "sales" && <SalesReport cur={cur} sales={sales} onExport={exportSales} hist={salesHist} byHour={salesByHour} enabled={authed} />}
           {screen === "shipping" && !hideShipping && <Shipping cur={cur} buyers={liveSession.session.buyers} sessionKey={sessionKeyFor(liveSession.dayId, sessionWindow.windowStart, sessionWindow.windowDays)} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}
           {screen === "parcelscan" && parcelAllowed && (
             <MyshipScanGate t={tApp} enabled={parcelCheckOn} onExit={() => setScreen("menu")}>
@@ -1890,18 +1889,10 @@ export default function RedesignApp() {
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" fill="currentColor" /><circle cx="12" cy="12" r="8.2" stroke="currentColor" strokeWidth="1.7" opacity=".55" /></svg>
               <span style={{ fontSize: 10, fontWeight: 700 }}>{tApp.rd_nav_live}</span>
             </button>
-            {SHOW_SALES_TAB && (
-              <button onClick={() => setScreen("salestab")} className={navCls(screen === "salestab")} data-testid="nav-sales">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 19V11M9 19V5M14 19v-6M19 19V9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-                <span style={{ fontSize: 10, fontWeight: 700 }}>{tApp.rd_nav_sales}</span>
-              </button>
-            )}
-            {SHOW_MINERS_NAV && (
-              <button onClick={() => setScreen("miners")} className={navCls(screen === "miners")} data-testid="nav-miners">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 19V11M9 19V5M14 19v-6M19 19V9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
-                <span style={{ fontSize: 10, fontWeight: 700 }}>Miners</span>
-              </button>
-            )}
+            <button onClick={() => setScreen("salestab")} className={navCls(screen === "salestab")} data-testid="nav-sales">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 19V11M9 19V5M14 19v-6M19 19V9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>
+              <span style={{ fontSize: 10, fontWeight: 700 }}>{tApp.rd_nav_sales}</span>
+            </button>
             <button onClick={() => { setOrdersInitialQuery(""); setScreen("orders"); }} className={navCls(ordersActive)}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M6 7h12l-1 12a2 2 0 0 1-2 1.8H9A2 2 0 0 1 7 19L6 7Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" /><path d="M9 7a3 3 0 0 1 6 0" stroke="currentColor" strokeWidth="1.7" /></svg>
               <span style={{ fontSize: 10, fontWeight: 700 }}>{tApp.rd_nav_orders}</span>

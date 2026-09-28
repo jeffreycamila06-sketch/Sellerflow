@@ -11,7 +11,7 @@
 // display-only, the session state/TODAY bar/window semantics are unreachable
 // from here. Every result row gets ↻ Reprint (the audited zero-write path) so
 // the workflow is type → find → reprint → stick.
-import { useMemo, useState, type CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { ORDERS, avColor, initials, fmt, statusColor, type Order } from "../data";
 import { filterOrders, buyerReceipt, type ReadState } from "../adapters/useReadData";
 import {
@@ -31,7 +31,7 @@ const noteStyle: CSSProperties = { fontSize: 13, color: "var(--text-muted)", tex
 
 export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sample", onGoShipping,
   historyOrders = [], historyState = "idle", onEnsureHistory, onReprintOrder, todayId = "",
-  buyers = [], seller, initialQuery = "",
+  buyers = [], seller, initialQuery = "", topTabs,
 }: {
   onGoPrint: () => void; cur: string; orders?: Order[]; state?: ReadState; onGoShipping?: () => void;
   // 7-day search reach (display-only lane — see ordersSearch.ts)
@@ -44,6 +44,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
   buyers?: Buyer[];
   seller?: { name?: string; email?: string }; // branded export header (optional)
   initialQuery?: string; // Sales tab → tap a buyer → open Orders pre-filtered by name
+  topTabs?: ReactNode;   // the "Orders | Miners" segment, rendered in the header
 }) {
   const t = useT();
   const [query, setQuery] = useState(initialQuery); // seeded once on mount (Orders remounts per screen change)
@@ -204,6 +205,7 @@ export default function Orders({ onGoPrint, cur, orders = ORDERS, state = "sampl
             {defaultView && <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 700, background: "rgba(255,255,255,.16)", padding: "6px 11px", borderRadius: 9 }}>{badge}</div>}
           </div>
         </div>
+        {topTabs}
         {/* Unified search — sits where the old (dead) status-chip row was. */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 11, background: "rgba(255,255,255,.14)", borderRadius: 11, padding: "8px 12px" }}>
           <span style={{ fontSize: 13, opacity: 0.8 }}>🔍</span>
