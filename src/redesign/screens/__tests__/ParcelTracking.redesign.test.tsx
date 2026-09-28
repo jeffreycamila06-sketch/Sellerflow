@@ -25,7 +25,7 @@ vi.mock("../../../lib/dateHelpers", async (importOriginal) => ({
 }));
 
 import ParcelTracking from "../ParcelTracking";
-import { PARCEL_TRACKING_EMAILS, parcelTrackingVisible } from "../../adapters/parcelTracking";
+import { parcelTrackingVisible } from "../../adapters/parcelTracking";
 
 let n = 0;
 const mk = (over: Partial<ParcelTrackingRow> = {}): ParcelTrackingRow => ({
@@ -41,7 +41,7 @@ const ROWS = [
   mk({ status: "in_transit", buyerUsername: "moving" }),
   mk({ status: "picked_up", buyerUsername: "collected" }),
   mk({ status: "returned", buyerUsername: "bounced" }),
-  mk({ status: "created", buyerUsername: "fresh" }),                                            // other → All only
+  mk({ status: "created", shipType: null, buyerUsername: "fresh" }),                             // uploaded, not checked yet → Waiting (B2)
 ];
 
 const view = () => render(<TProvider><ParcelTracking /></TProvider>);
@@ -56,7 +56,7 @@ describe("WEB — boxed status tabs + aligned table", () => {
     const r = view();
     await waitFor(() => expect(r.getByTestId("pt-tabs")).toBeTruthy());
     expect(r.getByTestId("pt-tab-all").textContent).toContain("8");
-    expect(r.getByTestId("pt-tab-waiting").textContent).toContain("4");
+    expect(r.getByTestId("pt-tab-waiting").textContent).toContain("5"); // 4 at store + 1 not checked yet
     expect(r.getByTestId("pt-tab-transit").textContent).toContain("1");
     expect(r.getByTestId("pt-tab-picked").textContent).toContain("1");
     expect(r.getByTestId("pt-tab-returned").textContent).toContain("1");
@@ -70,19 +70,24 @@ describe("WEB — boxed status tabs + aligned table", () => {
 
   it("Waiting rows sorted by days-left (urgent first), urgent Left is red, every row has a F-code cell", async () => {
     const r = view();
-    await waitFor(() => expect(r.getAllByTestId("pt-row")).toHaveLength(4));
+    await waitFor(() => expect(r.getAllByTestId("pt-row")).toHaveLength(5));
     const rows = r.getAllByTestId("pt-row");
     expect(rows[0].textContent).toContain("@urgent_buyer");          // 1 day left → first
     expect(within(rows[0]).getByTestId("pt-left").getAttribute("data-urgent")).toBe("1");
     expect(within(rows[3]).getByTestId("pt-left").getAttribute("data-urgent")).toBe("0"); // 5 days → gray
-    expect(r.getAllByTestId("pt-code")).toHaveLength(4);
+    // not-checked-yet row sinks last, honest label, NO chase action
+    expect(rows[4].textContent).toContain("@fresh");
+    expect(within(rows[4]).getByTestId("pt-left").textContent).toBe("Not checked yet — next check within 4h");
+    expect(within(rows[4]).queryByTestId("pt-open-profile")).toBeNull();
+    expect(within(rows[4]).queryByTestId("pt-copy-username")).toBeNull();
+    expect(r.getAllByTestId("pt-code")).toHaveLength(5);
     // the no-username parcel stays visible in its tab
     expect(rows.some((x) => /no username/i.test(x.textContent || ""))).toBe(true);
   });
 
   it("Chase = the existing behaviour: handle → open the TikTok profile; non-handle → copy; no username → nothing", async () => {
     const r = view();
-    await waitFor(() => expect(r.getAllByTestId("pt-row")).toHaveLength(4));
+    await waitFor(() => expect(r.getAllByTestId("pt-row")).toHaveLength(5));
     const open = r.getAllByTestId("pt-open-profile");
     expect(open.map((a) => a.getAttribute("href"))).toEqual(expect.arrayContaining(["https://www.tiktok.com/@urgent_buyer", "https://www.tiktok.com/@maria_shop"]));
     open.forEach((a) => expect(a.textContent).toBe("Chase"));
@@ -90,7 +95,7 @@ describe("WEB — boxed status tabs + aligned table", () => {
     expect(copy.textContent).toBe("Chase");
     fireEvent.click(copy);
     await waitFor(() => expect(copyText).toHaveBeenCalledWith("陳小美"));
-    expect(r.getAllByTestId("pt-open-profile").length + r.getAllByTestId("pt-copy-username").length).toBe(3); // no-username row: no action
+    expect(r.getAllByTestId("pt-open-profile").length + r.getAllByTestId("pt-copy-username").length).toBe(3); // no-username + not-checked rows: no action
   });
 
   it("other tabs: In transit '—' + no action; Picked up 'Done'; Returned 'Returned'; All keeps the other bucket", async () => {
@@ -142,11 +147,15 @@ describe("MOBILE — status count cards + compact rows (no parcel code)", () => 
   it("4 status cards with counts; Waiting selected; compact rows WITHOUT the F-code", async () => {
     const r = view();
     await waitFor(() => expect(r.getByTestId("pt-cards")).toBeTruthy());
-    expect(r.getByTestId("pt-card-waiting").textContent).toContain("4");
+    expect(r.getByTestId("pt-card-waiting").textContent).toContain("5");
     expect(r.getByTestId("pt-card-picked").textContent).toContain("1");
     expect(r.getByTestId("pt-card-waiting").getAttribute("aria-pressed")).toBe("true");
     expect(r.getByTestId("pt-card-waiting").style.border).toContain("2px");
-    expect(r.getAllByTestId("pt-row")).toHaveLength(4);
+    expect(r.getAllByTestId("pt-row")).toHaveLength(5);
+    // B2: a freshly synced (never polled) parcel is VISIBLE on the phone, under Waiting
+    const fresh = r.getAllByTestId("pt-row").find((x) => x.textContent?.includes("@fresh"))!;
+    expect(fresh).toBeTruthy();
+    expect(within(fresh).getByTestId("pt-left").getAttribute("data-unchecked")).toBe("1");
     expect(r.queryByTestId("pt-code")).toBeNull();        // no parcel code on mobile
     expect(r.queryByTestId("pt-table")).toBeNull();
     expect(r.queryByTestId("pt-tabs")).toBeNull();
@@ -174,11 +183,12 @@ describe("MOBILE — status count cards + compact rows (no parcel code)", () => 
   });
 });
 
-describe("gating is UNCHANGED by the redesign", () => {
-  it("allowlist still googletest only; admins see it; everyone else does not", () => {
-    expect(PARCEL_TRACKING_EMAILS).toEqual(["googletest@gmail.com"]);
-    expect(parcelTrackingVisible({ email: "googletest@gmail.com", role: "seller" })).toBe(true);
-    expect(parcelTrackingVisible({ email: "owner@x.com", role: "admin" })).toBe(true);
-    expect(parcelTrackingVisible({ email: "seller@x.com", role: "seller", plan: "master" })).toBe(false);
+describe("gating (Stage 1): admin, or Plus/Pro/Master WITH an enabled allowlist row", () => {
+  it("admins see it; an allowlisted paid seller sees it; a paid seller without the row does not; basic never", () => {
+    expect(parcelTrackingVisible({ role: "admin" })).toBe(true);
+    expect(parcelTrackingVisible({ role: "seller", plan: "master", access: true })).toBe(true);
+    expect(parcelTrackingVisible({ role: "seller", plan: "master", access: false })).toBe(false);
+    expect(parcelTrackingVisible({ role: "seller", plan: "master" })).toBe(false);
+    expect(parcelTrackingVisible({ role: "seller", plan: "basic", access: true })).toBe(false);
   });
 });

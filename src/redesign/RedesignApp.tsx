@@ -33,7 +33,7 @@ import { buildPinComment, isActionablePin, shouldSkipPin, pinPrintAllowed, type 
 import { parcelCheckAllowed } from "./adapters/parcelCheck";
 import { MyshipScanGate } from "./components/MyshipSetup";
 import { useGeoCountry } from "./adapters/useGeoCountry";
-import { parcelTrackingVisible } from "./adapters/parcelTracking";
+import { parcelTrackingVisible, loadParcelTrackingAccess } from "./adapters/parcelTracking";
 import CustomerData from "./screens/CustomerData";
 import Legal from "./screens/Legal";
 import DeleteAccount from "./screens/DeleteAccount";
@@ -222,10 +222,20 @@ export default function RedesignApp() {
     role: auth.profile?.role, plan: auth.profile?.plan, planStatus: auth.profile?.planStatus,
     planExpiry: auth.profile?.planExpiry, manualEnabled: parcelManualEnabled, marketHidden: hideParcelScan,
   });
-  // Pickup Status (Part 5) — Phase 1 = OWNER + googletest (kiosk-allowlist gate).
-  // UI-only; the poll endpoint is server-secret gated. Gates the tile AND render.
+  // Pickup Status — admin, OR a Plus/Pro/Master seller whose own row in the server
+  // allowlist (parcel_tracking_access, sql/60) is enabled — the SAME list the poller
+  // polls. One own-row RPC per sign-in, zero poll; FAIL-CLOSED (false until it loads
+  // true). UI-only; the poll endpoint is server-secret gated. Gates the tile AND render.
+  const [parcelTrackingAccess, setParcelTrackingAccess] = useState(false);
+  const authUserId = auth.profile?.authUserId;
+  useEffect(() => {
+    if (!authed || !authUserId) return;
+    let alive = true;
+    void loadParcelTrackingAccess().then((v) => { if (alive) setParcelTrackingAccess(v); });
+    return () => { alive = false; };
+  }, [authed, authUserId]);
   const parcelTrackingAllowed = parcelTrackingVisible({
-    role: auth.profile?.role, email: auth.profile?.email, plan: auth.profile?.plan, marketHidden: hidePickup,
+    role: auth.profile?.role, plan: auth.profile?.plan, access: authed && parcelTrackingAccess, marketHidden: hidePickup,
   });
   // Locked-tile upsell popup (basic/free): a NEUTRAL contact-support popup — no
   // price/plan wording (Apple 2.1b-safe), same on iOS and Android/web. It never
