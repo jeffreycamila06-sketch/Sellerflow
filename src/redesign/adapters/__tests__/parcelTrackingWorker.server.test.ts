@@ -3,7 +3,7 @@
 // an injected checkRows (the batch loop itself is covered by the runPoll suite).
 import { describe, it, expect, vi } from "vitest";
 import {
-  planCaps, scopeForJob, jobOutcome, taipeiHour, createWorker, JOB_MAX_MS, REST_MS,
+  planCaps, scopeForJob, jobOutcome, taipeiHour, createWorker, shouldRefundPress, JOB_MAX_MS, REST_MS,
 } from "../../../../server/parcelTrackingWorker.js";
 
 const T0 = new Date("2026-09-29T02:00:00Z"); // 10:00 Taipei
@@ -60,7 +60,7 @@ function fakeSb(cfg: Cfg = {}) {
 }
 const quiet = () => ({ log: vi.fn(), warn: vi.fn(), error: vi.fn() });
 const job = (kind: string, extra: Record<string, unknown> = {}) =>
-  ({ id: "J1", user_id: "U1", kind, status: "running", requested_at: iso(60_000), started_at: iso(0), ...extra });
+  ({ id: "J1", user_id: "U1", kind, status: "running", created_by: kind === "manual" ? "seller" : "sync", requested_at: iso(60_000), started_at: iso(0), ...extra });
 const row = (id: string, extra: Record<string, unknown> = {}) =>
   ({ id, user_id: "U1", tracking_no: `F${id}0000000`, status: "in_transit", last_polled_at: null, created_at: iso(2 * H), ...extra });
 const checkOk = (over: Record<string, unknown> = {}) => vi.fn(async (a: { rows: unknown[] }) => ({
@@ -288,5 +288,52 @@ describe("createWorker().tick", () => {
     const check = vi.fn(async () => { throw new Error("boom"); });
     expect(await createWorker({ serviceSb: sb, now: () => T0, logger: quiet(), checkRowsImpl: check }).tick()).toMatchObject({ status: "failed", error: "threw" });
     expect(jobUpdate(sb)!.patch).toMatchObject({ status: "failed", error: "threw" });
+  });
+});
+
+describe("refund the daily press when a seller's manual check did nothing", () => {
+  const refunds = (sb: ReturnType<typeof fakeSb>) => sb.rpcs.filter((r) => r.name === "parcel_tracking_refund_press");
+  const run = async (j: Record<string, unknown>, rows: Record<string, unknown>[], check = checkOk(), cfg: Cfg = {}) => {
+    const sb = fakeSb({ job: j, rows, ...cfg });
+    await createWorker({ serviceSb: sb, now: () => T0, logger: quiet(), checkRowsImpl: check }).tick();
+    return sb;
+  };
+
+  it("manual/seller with 0 parcels in scope (all checked < 24h ago) → refunded", async () => {
+    const sb = await run(job("manual"), [row("a", { last_polled_at: iso(1 * H) })]);
+    expect(refunds(sb)).toEqual([{ name: "parcel_tracking_refund_press", args: { p_job_id: "J1" } }]);
+    expect(jobUpdate(sb)!.patch).toMatchObject({ status: "done", parcels_total: 0 });
+  });
+  it("manual/seller with no live parcels at all → refunded", async () => {
+    expect(refunds(await run(job("manual"), []))).toHaveLength(1);
+  });
+  it("manual/seller that checked 3 → press stays consumed", async () => {
+    expect(refunds(await run(job("manual"), [row("a"), row("b"), row("c")]))).toEqual([]);
+  });
+  it("new_parcels with 0 in scope → never refunded", async () => {
+    expect(refunds(await run(job("new_parcels", { requested_at: iso(0) }), [row("a", { created_at: iso(5 * H) })]))).toEqual([]);
+  });
+  it("admin (cron) manual with 0 in scope → never refunded", async () => {
+    expect(refunds(await run(job("manual", { created_by: "admin" }), []))).toEqual([]);
+  });
+  it("failed (worker error) → refunded", async () => {
+    const sb = await run(job("manual"), [row("a")], vi.fn(async () => { throw new Error("boom"); }) as never);
+    expect(jobUpdate(sb)!.patch).toMatchObject({ status: "failed" });
+    expect(refunds(sb)).toHaveLength(1);
+  });
+  it("skipped daily_cap → not refunded", async () => {
+    const sb = await run(job("manual"), [row("a")], checkOk(), { todaysJobs: [{ requests_used: 300 }] });
+    expect(jobUpdate(sb)!.patch).toMatchObject({ status: "skipped", error: "daily_cap" });
+    expect(refunds(sb)).toEqual([]);
+  });
+  it("shouldRefundPress matrix", () => {
+    const seller = { kind: "manual", created_by: "seller" };
+    expect(shouldRefundPress(seller, "done", 0)).toBe(true);
+    expect(shouldRefundPress(seller, "failed", 5)).toBe(true);
+    expect(shouldRefundPress(seller, "done", 3)).toBe(false);
+    expect(shouldRefundPress(seller, "skipped", 0)).toBe(false);
+    expect(shouldRefundPress({ kind: "manual", created_by: "admin" }, "failed", 0)).toBe(false);
+    expect(shouldRefundPress({ kind: "urgent", created_by: "seller" }, "done", 0)).toBe(false);
+    expect(shouldRefundPress({ kind: "health", created_by: "worker" }, "failed", 0)).toBe(false);
   });
 });

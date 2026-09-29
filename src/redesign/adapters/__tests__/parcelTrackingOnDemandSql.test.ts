@@ -69,3 +69,28 @@ describe("sql/63 parcel_tracking on-demand jobs", () => {
     expect(sql).toMatch(/after insert on public\.parcel_tracking\s+referencing new table as new_rows\s+for each statement/);
   });
 });
+
+describe("sql/64 refund the daily press", () => {
+  const sql64 = readFileSync("sql/64_parcel_tracking_refund_press.sql", "utf8");
+  const fn64 = (name: string) => {
+    const i = sql64.indexOf(`function public.${name}(`);
+    return sql64.slice(i, sql64.indexOf("$$;", i));
+  };
+  it("the refund function exists and is service-role only", () => {
+    expect(sql64).toContain("create or replace function public.parcel_tracking_refund_press(p_job_id uuid)");
+    expect(sql64).toContain("revoke all on function public.parcel_tracking_refund_press(uuid) from public, anon, authenticated;");
+    expect(sql64).toContain("grant execute on function public.parcel_tracking_refund_press(uuid) to service_role;");
+  });
+  it("refunds only kind='manual' AND created_by='seller' jobs, and clears both press columns", () => {
+    const f = fn64("parcel_tracking_refund_press");
+    expect(f).toContain("j.kind = 'manual' and j.created_by = 'seller'");
+    expect(f).toContain("if v_user is null then return false; end if;");
+    expect(f).toContain("set last_manual_check_at = null, last_manual_check_day = null");
+  });
+  it("claim refunds every stale job it fails, and keeps SKIP LOCKED + service-role grant", () => {
+    const f = fn64("parcel_tracking_claim_job");
+    expect(f).toMatch(/set status = 'failed', error = 'restart'[\s\S]*returning id\s+loop\s+perform public\.parcel_tracking_refund_press\(v_id\);/);
+    expect(f).toContain("for update skip locked");
+    expect(sql64).toContain("grant execute on function public.parcel_tracking_claim_job() to service_role;");
+  });
+});
