@@ -1306,6 +1306,7 @@ const RAW: Record<string, Row> = {
   rd_ps2_restricted: { en: "Restricted", fil: "Restricted", zh: "受限", "zh-TW": "受限", vi: "Bị hạn chế", th: "ถูกจำกัด", id: "Dibatasi", bg: "Ограничен" },
   rd_ps2_ext_ok: { en: "OK", fil: "OK", zh: "正常", "zh-TW": "正常", vi: "OK", th: "ปกติ", id: "OK", bg: "OK" },
   rd_ps2_checking: { en: "Checking…", fil: "Sinusuri…", zh: "检查中…", "zh-TW": "檢查中…", vi: "Đang kiểm tra…", th: "กำลังตรวจสอบ…", id: "Memeriksa…", bg: "Проверява се…" },
+  rd_ps2_still_checking: { en: "Still checking — you can export this parcel.", fil: "Sinusuri pa — puwede mo nang i-export ang parcel na ito.", zh: "仍在检查中——你可以导出此包裹。", "zh-TW": "仍在檢查中——你可以匯出此包裹。", vi: "Vẫn đang kiểm tra — bạn có thể xuất bưu kiện này.", th: "ยังตรวจสอบอยู่ — คุณส่งออกพัสดุนี้ได้", id: "Masih diperiksa — Anda bisa mengekspor paket ini.", bg: "Още се проверява — можеш да експортираш тази пратка." },
   rd_ps2_phone_ok: { en: "Buyer OK", fil: "OK ang buyer", zh: "买家正常", "zh-TW": "買家正常", vi: "Người mua OK", th: "ผู้ซื้อปกติ", id: "Pembeli OK", bg: "Купувачът е ОК" },
   rd_ps2_restricted_until: { en: "until {date}", fil: "hanggang {date}", zh: "至 {date}", "zh-TW": "至 {date}", vi: "đến {date}", th: "ถึง {date}", id: "sampai {date}", bg: "до {date}" },
   rd_ps2_attention: { en: "{n} parcel(s) need your attention", fil: "{n} parcel ang kailangan mong asikasuhin", zh: "{n} 个包裹需要您注意", "zh-TW": "{n} 個包裹需要您注意", vi: "{n} bưu kiện cần bạn chú ý", th: "มี {n} พัสดุที่ต้องให้คุณตรวจสอบ", id: "{n} paket perlu perhatian Anda", bg: "{n} пратка(и) се нуждаят от вашето внимание" },

@@ -50,13 +50,13 @@ vi.mock("../../adapters/parcelScan", () => ({
 }));
 vi.mock("../../adapters/shippingSettings", () => ({ loadGlobalShippingFee: async () => 38 }));
 
-import ParcelScan from "../ParcelScan";
+import ParcelScan, { STILL_CHECKING_MS } from "../ParcelScan";
 
 const mk = (over: Partial<ParcelScanRow> = {}): ParcelScanRow => ({
   id: "r1", customerName: "Juan", phone: "0912345678", storeId: "266402", amount: 550,
   notes: "", status: "confirmed", storeCheckStatus: "valid",
   storeFullStatus: null, phoneCheckStatus: null, phoneRestrictedUntil: null,
-  createdAt: "2026-09-08T00:00:00Z", ...over,
+  createdAt: new Date().toISOString(), ...over, // fresh: under the 3-min "still checking" mark
 });
 const view = () => render(<TProvider lang="en"><ParcelScan cur="NT$" /></TProvider>);
 const viewOn = () => render(<TProvider lang="en"><ParcelScan cur="NT$" checkOn /></TProvider>);
@@ -183,6 +183,39 @@ describe("Parcel Scan — verdict row highlight (border, FAIL-SAFE, no positive 
     const { findByTestId } = viewOn();
     expect(await findByTestId("ps-ext-checking")).toBeTruthy();
     expect(flag(await findByTestId("ps-row"))).toBe("");
+  });
+});
+
+describe("Parcel Scan — 3-minute \"Still checking\" line", () => {
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+
+  it("a row waiting more than 3 min shows the amber line, not ⏳", async () => {
+    loadRows.current = [mk({ phoneCheckStatus: "ok", storeFullStatus: null, createdAt: ago(STILL_CHECKING_MS + 60_000) })];
+    const { findByTestId, queryByTestId } = viewOn();
+    expect((await findByTestId("ps-ext-still-checking")).textContent).toBe("⚠️ Still checking — you can export this parcel.");
+    expect(queryByTestId("ps-ext-checking")).toBeNull();
+  });
+
+  it("a fresh row (under 3 min) still shows ⏳ Checking…", async () => {
+    loadRows.current = [mk({ phoneCheckStatus: null, storeFullStatus: null, createdAt: ago(60_000) })];
+    const { findByTestId, queryByTestId } = viewOn();
+    expect(await findByTestId("ps-ext-checking")).toBeTruthy();
+    expect(queryByTestId("ps-ext-still-checking")).toBeNull();
+  });
+
+  it("an exported row shows neither", async () => {
+    loadRows.current = [mk({ status: "exported", phoneCheckStatus: null, storeFullStatus: null, createdAt: ago(STILL_CHECKING_MS + 60_000) })];
+    const { findAllByTestId, queryByTestId } = viewOn();
+    expect((await findAllByTestId("ps-row")).length).toBe(1);      // the exported row IS on screen
+    expect(queryByTestId("ps-ext-checking")).toBeNull();
+    expect(queryByTestId("ps-ext-still-checking")).toBeNull();
+  });
+
+  it("a slow row that is red or orange still shows only its flag", async () => {
+    loadRows.current = [mk({ phoneCheckStatus: "restricted", storeFullStatus: null, createdAt: ago(STILL_CHECKING_MS + 60_000) })];
+    const { findByTestId, queryByTestId } = viewOn();
+    await findByTestId("ps-row");
+    expect(queryByTestId("ps-ext-still-checking")).toBeNull();
   });
 });
 
