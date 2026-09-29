@@ -22,7 +22,7 @@ export type BootOpts = {
   rows?: unknown[];
   emapTab?: boolean;              // false = no emap tab at all
   emapTabs?: EmapTab[];           // explicit emap tab set (overrides emapTab)
-  storeVerdict?: () => string;    // PC_CHECK_STORE reply (default "open")
+  storeVerdict?: (row?: { id?: string; store_id?: string }) => string; // PC_CHECK_STORE reply (default "open"); gets the checked row
   phoneVerdict?: () => string;    // PC_CHECK_PHONE reply (default "ok")
   sflToken?: () => string | null; // SFL_GET_TOKEN reply (default a fresh JWT)
   onSflRefresh?: () => { token?: string | null; hadSession?: boolean | null }; // SFL_REFRESH_TOKEN reply
@@ -30,13 +30,16 @@ export type BootOpts = {
   initialStatus?: Record<string, unknown>; // what a PREVIOUS worker life left in pc_status
   cartDetailTab?: boolean;        // a 賣貨便 tab parked on /cart/detail exists (default true)
   onPickStoreClick?: (emapTabs: EmapTab[]) => { clicked: boolean; reason?: string } | void; // what the click does to the tab set
+  maintenance?: boolean;          // 1.14.6: honour the 01:00–05:00 Taipei window (default OFF so suites are clock-independent)
+  storeTransient?: boolean;       // PC_CHECK_STORE misses are flagged transient (timeout / network)
+  requeueOk?: boolean;            // admin_parcel_check_requeue answers 200 (default true)
 };
 
 export function bootWorker(opts: BootOpts = {}) {
   const src = readFileSync("chrome-extension/background.js", "utf8");
-  const calls = { sendMessage: [] as { type: string; tabId: number }[], fetch: [] as string[], fetchBodies: [] as string[], update: [] as unknown[], reload: [] as number[], removed: [] as number[], logs: [] as string[], scheduled: [] as number[] };
+  const calls = { sendMessage: [] as { type: string; tabId: number; rowId?: string }[], fetch: [] as string[], fetchBodies: [] as string[], update: [] as unknown[], reload: [] as number[], removed: [] as number[], logs: [] as string[], scheduled: [] as number[] };
   const storage: Record<string, unknown> = {
-    pc_config: { supabaseUrl: "https://x.supabase.co", supabaseAnonKey: "anon", multiSeller: opts.multiSeller ?? true },
+    pc_config: { supabaseUrl: "https://x.supabase.co", supabaseAnonKey: "anon", multiSeller: opts.multiSeller ?? true, maintenanceWindow: opts.maintenance ?? false },
     ...(opts.initialStatus ? { pc_status: opts.initialStatus } : {}),
   };
   const emapTabs: EmapTab[] = opts.emapTabs ?? (opts.emapTab === false ? [] : [{ id: 3, url: "https://emap.unipcsc.com.tw/ecmap/default.aspx", guid: true }]);
@@ -56,8 +59,8 @@ export function bootWorker(opts: BootOpts = {}) {
     } },
     tabs: {
       query: (q: { url: string[] | string }, cb: (t: unknown[]) => void) => cb(tabFor(q.url)),
-      sendMessage: (id: number, msg: { type: string }, cb: (r: unknown) => void) => {
-        calls.sendMessage.push({ type: msg.type, tabId: id });
+      sendMessage: (id: number, msg: { type: string; row?: { id?: string; store_id?: string } }, cb: (r: unknown) => void) => {
+        calls.sendMessage.push({ type: msg.type, tabId: id, rowId: msg.row?.id });
         const emap = emapTabs.find((t) => t.id === id);
         if (msg.type === "SFL_GET_TOKEN") return cb({ ok: true, token: opts.sflToken ? opts.sflToken() : fakeJwt() });
         if (msg.type === "SFL_REFRESH_TOKEN") { const r = opts.onSflRefresh ? opts.onSflRefresh() : { token: fakeJwt(), hadSession: true }; return cb({ ok: true, token: r.token ?? null, hadSession: r.hadSession === undefined ? null : r.hadSession }); }
@@ -68,8 +71,8 @@ export function bootWorker(opts: BootOpts = {}) {
           return cb(r ? { ok: true, clicked: r.clicked, reason: r.reason || "", text: "選擇取貨門市" } : { ok: true, clicked: true, reason: "", text: "選擇取貨門市" });
         }
         if (msg.type === "PC_CHECK_STORE") {
-          const v = emap && emap.guid ? (opts.storeVerdict ? opts.storeVerdict() : "open") : "unknown";
-          return cb({ ok: true, store_full_status: v, store_reason: v === "unknown" ? "eshopGuid not found on emap page" : "", guidFound: Boolean(emap && emap.guid) });
+          const v = emap && emap.guid ? (opts.storeVerdict ? opts.storeVerdict(msg.row) : "open") : "unknown";
+          return cb({ ok: true, store_full_status: v, store_reason: v === "unknown" ? "eshopGuid not found on emap page" : "", guidFound: Boolean(emap && emap.guid), transient: Boolean(opts.storeTransient) && v === "unknown" });
         }
         if (msg.type === "PC_CHECK_PHONE") {
           const v = opts.phoneVerdict ? opts.phoneVerdict() : "ok";
@@ -86,7 +89,9 @@ export function bootWorker(opts: BootOpts = {}) {
   const fetch = async (url: string, init?: { body?: string }) => {
     calls.fetch.push(url); calls.fetchBodies.push(String(init?.body ?? ""));
     const rows = opts.rows ?? [PENDING_ROW];
+    if (/admin_parcel_check_requeue/.test(url) && opts.requeueOk === false) return { ok: false, status: 404, json: async () => ({}), text: async () => "", headers: { get: () => "application/json" } };
     const body = /admin_parcel_checks_pending/.test(url) ? rows
+      : /admin_parcel_check_requeue/.test(url) ? 2
       : /admin_parcel_check_config/.test(url) ? { enabled: "true", healthy: "true", sender_phone: "0979593026", probe_buyer: "0919342192", sample_gm: "GM1" }
       : /rest\/v1\/parcel_scans/.test(url) ? []
       : {};

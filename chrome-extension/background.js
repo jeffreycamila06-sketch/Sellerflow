@@ -37,6 +37,9 @@ async function pcConfig() {
     // MULTI-SELLER MODE (2026-09-27, dogfood): DEFAULT OFF — the existing
     // owner-only single-config path is byte-unchanged until this is ticked.
     multiSeller: c.multiSeller === true,
+    // 1.14.6: honour the nightly 7-ELEVEN maintenance window (01:00–05:00 Taipei).
+    // On unless explicitly set false (tests turn it off unless they opt in).
+    maintenanceWindow: c.maintenanceWindow !== false,
   };
 }
 async function pcStatus(patch) {
@@ -438,7 +441,75 @@ const pcEv = {
     remint: { tried: false, until: 0, oldTabId: null, result: "" } },
   myship: { lastVerdictAt: 0, state: null },
   lastPush: { at: 0, sig: "" },
+  // 1.14.6 — verdictGen: bumped by every definitive store verdict (any store id), so a
+  // row's repeated misses count toward the ladder at most once per generation.
+  // maintEnabled: pc_config.maintenanceWindow (re-read every tick). inMaint: the
+  // previous tick was inside the window (edge → 05:00 re-queue). requeueDue: a reason
+  // string while a re-queue of given-up rows is owed; requeueAt: next attempt time.
+  verdictGen: 0, maintEnabled: true, inMaint: false, requeueDue: "", requeueAt: 0, lastGiveUpAt: 0,
 };
+
+// ══ 1.14.6 — E-MAP STORE-CHECK RESILIENCE ══════════════════════════════════════
+// A store id with no clear E-Map answer used to be retried every 5 s forever and
+// each miss counted toward the recovery ladder, so ONE bad id re-opened the E-Map
+// tab every ~2 min and stalled every seller. Now, per parcel_scans id (in memory):
+// backoff 15 s → 30 s → 1 min → 2 min; the store half gives up after 5 failed
+// attempts (writes 'unknown' — the phone half NEVER, audit M1); a row adds at most
+// ONE miss to the ladder until another store id resolves; given-up rows are
+// re-queued (admin_parcel_check_requeue, sql/66) when the lane recovers and at 05:00.
+// 01:00–05:00 Asia/Taipei (7-ELEVEN maintenance): misses don't count, nothing gives
+// up, retries every 10 min.
+const PC_BACKOFF_MS = [15 * 1000, 30 * 1000, 60 * 1000, 2 * 60 * 1000]; // after failure 1 / 2 / 3 / 4+
+const PC_STORE_GIVE_UP = 5;
+const PC_MAINT_RETRY_MS = 10 * 60 * 1000;
+const PC_MAINT_START_H = 1, PC_MAINT_END_H = 5;           // Asia/Taipei hours [1, 5)
+const PC_REQUEUE_SINCE_MS = 6 * 60 * 60 * 1000;
+const PC_REQUEUE_RETRY_MS = 60 * 1000;
+const PC_FETCH_LIMIT = 25;                                 // look past rows in backoff; still ≤ PC_LIMIT checks per poll
+const pcBackoff = new Map(); // parcel_scans id → { storeFails, storeNextAt, phoneFails, phoneNextAt, countedGen, seenAt }
+// PURE: wait after the Nth consecutive failure (N ≥ 1).
+function pcBackoffDelay(fails) {
+  return PC_BACKOFF_MS[Math.min(Math.max(1, fails), PC_BACKOFF_MS.length) - 1];
+}
+// PURE: hour of day in Asia/Taipei (UTC+8, no daylight saving) — independent of
+// the laptop's own time zone.
+function pcTaipeiHour(nowMs) {
+  const day = 24 * 3600 * 1000;
+  return Math.floor((((nowMs + 8 * 3600 * 1000) % day) + day) % day / (3600 * 1000));
+}
+function pcInMaintenanceAt(nowMs) {
+  const h = pcTaipeiHour(nowMs);
+  return h >= PC_MAINT_START_H && h < PC_MAINT_END_H;
+}
+function pcInMaintenance(nowMs) {
+  return pcEv.maintEnabled !== false && pcInMaintenanceAt(nowMs);
+}
+function pcBackoffEntry(id, now) {
+  let b = pcBackoff.get(id);
+  if (!b) { b = { storeFails: 0, storeNextAt: 0, phoneFails: 0, phoneNextAt: 0, countedGen: -1, seenAt: now }; pcBackoff.set(id, b); }
+  return b;
+}
+// Put given-up rows (store 'unknown', ≤ 6 h old, not exported) back in the queue and
+// forget every row's backoff. Retried each minute until the RPC answers.
+async function pcRequeueUnknown(now) {
+  if (!pcEv.requeueDue || !pcEv.rpc || now < pcEv.requeueAt) return;
+  const { cfg, rpcHeaders } = pcEv.rpc; const reason = pcEv.requeueDue;
+  pcBackoff.clear();
+  let r = null;
+  try {
+    r = await fetch(`${cfg.supabaseUrl}/rest/v1/rpc/admin_parcel_check_requeue`, {
+      method: "POST", headers: rpcHeaders, body: JSON.stringify({ p_since: new Date(now - PC_REQUEUE_SINCE_MS).toISOString() }),
+    });
+  } catch { r = null; }
+  if (!r || !r.ok) {
+    pcEv.requeueAt = now + PC_REQUEUE_RETRY_MS;
+    console.log(`[PC-BACKOFF] requeue after ${reason} failed (${r ? `http ${r.status}` : "network"}) — backoff reset, retrying in 60s`);
+    return;
+  }
+  const n = await r.json().catch(() => null);
+  pcEv.requeueDue = ""; pcEv.requeueAt = 0;
+  console.log(`[PC-BACKOFF] requeue after ${reason}: ${n ?? "?"} row(s) back in the queue, backoff reset`);
+}
 // PURE cadence decision (unit-tested by extracting this function's source):
 // fire only when idle for the store half AND the 5-min cadence has elapsed.
 function pcKeepaliveDue(now, lastAt, anyNeedStore) {
@@ -480,16 +551,22 @@ async function pcPickEmapTab() {
 // Evidence recorders — the ONLY writers of the miss ladder.
 function pcEmapVerdict(now) {
   const e = pcEv.emap;
+  // 1.14.6: the lane is back after a real outage (a streak of counted misses, or a tab
+  // re-open) → re-queue given-up rows. One bad row counts once, so it can't cause this.
+  if (e.misses >= PC_RECOVER_MIN_MISSES || e.reloads > 0) pcEv.requeueDue = "recovery";
   e.lastVerdictAt = now; e.misses = 0; e.firstMissAt = 0; e.lastMissReason = ""; e.reloads = 0;
+  pcEv.verdictGen += 1;                                           // 1.14.6: another store id resolved → rows may count again
   e.remint = { tried: false, until: 0, oldTabId: null, result: "" };   // the episode is over
 }
 function pcEmapMiss(now, reason, transient) {
   const e = pcEv.emap;
   if (transient) return;                                          // timeout / network blip: logged by the caller, never counted
+  if (pcInMaintenance(now)) return;                               // 1.14.6: 01:00–05:00 Taipei 7-ELEVEN maintenance — never counted
   e.misses += 1; if (!e.firstMissAt) e.firstMissAt = now; e.lastMissAt = now; e.lastMissReason = String(reason || "");
 }
 // PURE: is a recovery attempt due? (unit-tested by source extraction)
 function pcRecoveryDue(now, e) {
+  if (pcInMaintenance(now)) return false;                         // 1.14.6: never re-open tabs during 7-ELEVEN maintenance
   if (e.lastVerdictAt && now - e.lastVerdictAt < PC_RECOVER_VERDICT_GUARD_MS) return false;
   if (e.misses < PC_RECOVER_MIN_MISSES) return false;
   if (!e.firstMissAt || now - e.firstMissAt < PC_RECOVER_MIN_SPAN_MS) return false;
@@ -554,17 +631,24 @@ async function pcRefreshTabStatus() {
   // parked 賣貨便 /cart/detail tab (the myship content script clicks the real
   // 選擇取貨門市 button; nothing is stored). Then 20 s to see a guid-bearing E-Map
   // tab appear (adopted in pcPickEmapTab); otherwise red with the exact reason.
-  if (emapState === "dead" && e.remint && !e.remint.tried) {
+  const inMaint = pcInMaintenance(now);
+  if (emapState === "dead" && e.remint && !e.remint.tried && !inMaint) {
     try { emapState = await pcTryRemint(now); } catch (err) { e.remint.tried = true; e.remint.result = `remint threw: ${err && err.message ? err.message : err}`; }
   }
   if (emapState === "dead" && e.remint && e.remint.until && now >= e.remint.until) { e.remint.until = 0; if (!e.remint.result) e.remint.result = "timeout"; }
   const myshipState = pcDeriveMyship(now, pcEv.health && pcEv.health.myship, pcEv.myship);
+  // 1.14.6: the maintenance window just ended (first tick at/after 05:00 Taipei) →
+  // re-queue. (The recovery trigger lives in pcEmapVerdict / pcAdoptRemintedTab.)
+  if (pcEv.inMaint && !inMaint) pcEv.requeueDue = "maintenance_end";
+  if (!pcEv.inMaint && inMaint) console.log("[PC-BACKOFF] 7-ELEVEN maintenance window (01:00–05:00 Taipei) — misses uncounted, retries every 10 min");
+  pcEv.inMaint = inMaint;
   e.state = emapState; pcEv.myship.state = myshipState;
   let emapDomain = null; try { emapDomain = e.url ? new URL(e.url).hostname : null; } catch { emapDomain = null; }
   await pcStatus({
     emap: emapState, myship: myshipState, emapSession: emapState, emapDomain, emapTabId: e.tabId, emapDeadReason: (e.remint && e.remint.result) || "",
     lastStoreReason: pcEv.lastStoreReason, lastPhoneReason: pcEv.lastPhoneReason,
     lastStoreVerdictAt: e.lastVerdictAt || null, lastStoreMissAt: e.lastMissAt || null, lastPhoneVerdictAt: pcEv.myship.lastVerdictAt || null, bootAt: pcEv.bootAt,
+    inMaintenanceWindow: inMaint, lastGiveUpAt: pcEv.lastGiveUpAt || null,
   });
 }
 const PC_CART_DETAIL_PATTERN = "https://myship.7-11.com.tw/cart/detail*";
@@ -587,6 +671,7 @@ async function pcTryRemint(now) {
 function pcAdoptRemintedTab(pick) {
   const e = pcEv.emap; const old = e.remint.oldTabId;
   e.remint.until = 0; e.remint.result = ""; e.reloads = 0; e.misses = 0; e.firstMissAt = 0; e.reloadAt = 0; pcLastKeepaliveAt = 0;
+  pcEv.requeueDue = "recovery";                                   // 1.14.6: the tab was re-opened with a live session
   if (old != null && old !== pick.id) { try { chrome.tabs.remove(old); } catch { /* already gone */ } }
   try { pcNoDiscard(pick.id); } catch { /* best-effort */ }
   console.log(`[PC-EMAP] re-mint via 選擇取貨門市 → tab ${pick.id} ${pick.url} guid=${pick.guid}${old != null && old !== pick.id ? ` (closed old tab ${old})` : ""}`);
@@ -599,8 +684,9 @@ async function pcPushWorkerState(cfg, rpcHeaders) {
     v: (chrome.runtime.getManifest ? chrome.runtime.getManifest().version : "?"), bootAt: pcEv.bootAt, at: Date.now(),
     sfl: st.sfl ?? null, myship: st.myship ?? null, emap: st.emap ?? null, emapDomain: st.emapDomain ?? null,
     lastStoreVerdictAt: st.lastStoreVerdictAt ?? null, lastStoreMissAt: st.lastStoreMissAt ?? null, lastPhoneVerdictAt: st.lastPhoneVerdictAt ?? null, queue: st.multiQueueDepth ?? null,
+    lastGiveUpAt: st.lastGiveUpAt ?? null, inMaintenanceWindow: Boolean(st.inMaintenanceWindow),
   };
-  const sig = `${state.sfl}|${state.myship}|${state.emap}|${state.emapDomain}`;
+  const sig = `${state.sfl}|${state.myship}|${state.emap}|${state.emapDomain}|${state.inMaintenanceWindow}`;
   if (sig === pcEv.lastPush.sig && Date.now() - pcEv.lastPush.at < PC_WORKER_STATE_PUSH_MS) return;
   pcEv.lastPush = { at: Date.now(), sig };
   await fetch(`${cfg.supabaseUrl}/rest/v1/rpc/admin_set_parcel_worker_state`, { method: "POST", headers: rpcHeaders, body: JSON.stringify({ p_state: state }) }).catch(() => {});
@@ -657,7 +743,7 @@ async function pcPollMulti() {
   let rows = [];
   try {
     const r = await fetch(`${cfg.supabaseUrl}/rest/v1/rpc/admin_parcel_checks_pending`, {
-      method: "POST", headers: rpcHeaders, body: JSON.stringify({ p_limit: PC_LIMIT }),
+      method: "POST", headers: rpcHeaders, body: JSON.stringify({ p_limit: PC_FETCH_LIMIT }),
     });
     if (!r.ok) { pcEv.sfl.fetchInFlight = false; await pcStatus({ multi: `rpc_${r.status}` }); return; }
     rows = await r.json();
@@ -675,8 +761,19 @@ async function pcPollMulti() {
   const myshipTabId = await pcFindTab(["https://myship.7-11.com.tw/*"]);
   // the ONE emap tab picked this tick (guid-bearing when several exist) — never a blind tabs[0]
   const emapTabId = (pcEv.emap.tabId && !pcEv.emap.error) ? pcEv.emap.tabId : null;
+  const now = Date.now(); const inMaint = pcInMaintenance(now);
+  for (const [id, b] of pcBackoff) if (now - b.seenAt > PC_REQUEUE_SINCE_MS) pcBackoff.delete(id); // forget rows gone for 6 h
+  let processed = 0;
   for (const row of rows) {
+    if (processed >= PC_LIMIT) break;
     if (!row || !row.id || pcInFlight.has(row.id)) continue;
+    // 1.14.6: a half in backoff is skipped (no request) so rows behind it get their turn
+    const bo = pcBackoff.get(row.id);
+    if (bo) bo.seenAt = now;
+    const doStore = Boolean(row.need_store) && (!bo || now >= bo.storeNextAt);
+    const doPhone = Boolean(row.need_phone) && (!bo || now >= bo.phoneNextAt);
+    if (!doStore && !doPhone) continue;
+    processed += 1;
     pcInFlight.add(row.id);
     try {
       // store half (GM-free — byIDData needs no per-seller params).
@@ -691,19 +788,43 @@ async function pcPollMulti() {
       // genuinely-restricted buyer (audit M1). A permanently-unverifiable row just
       // keeps retrying — harmless (it still exports; bad data is fixed via edit).
       let storeStatus = null;
-      if (row.need_store && emapTabId) {
+      if (doStore && emapTabId) {
         const sResp = await pcSendTab(emapTabId, { type: "PC_CHECK_STORE", row });
         if (sResp && (sResp.store_full_status === "open" || sResp.store_full_status === "full")) storeStatus = sResp.store_full_status;
         // evidence for the per-tab status (single writer in pcTick) + the exact reason
-        if (storeStatus !== null) { pcEmapVerdict(Date.now()); pcEv.lastStoreReason = ""; }
-        else { pcEv.lastStoreReason = (sResp && sResp.store_reason) || "emap tab not responding"; pcEmapMiss(Date.now(), pcEv.lastStoreReason, Boolean(sResp && sResp.transient)); }
+        if (storeStatus !== null) {
+          pcEmapVerdict(Date.now()); pcEv.lastStoreReason = "";
+          const b = pcBackoff.get(row.id);
+          if (b && b.storeFails) { b.storeFails = 0; b.storeNextAt = 0; console.log(`[PC-BACKOFF] row=${row.id} store resolved`); }
+        } else {
+          pcEv.lastStoreReason = (sResp && sResp.store_reason) || "emap tab not responding";
+          const transient = Boolean(sResp && sResp.transient);
+          const b = pcBackoffEntry(row.id, now);
+          if (inMaint) {
+            // maintenance window: not counted toward the ladder or the give-up; slow retry
+            b.storeNextAt = now + PC_MAINT_RETRY_MS;
+            console.log(`[PC-BACKOFF] row=${row.id} store attempt=${b.storeFails} maintenance, next=${PC_MAINT_RETRY_MS / 1000}s`);
+          } else {
+            // one row counts toward the recovery ladder at most once until another store id resolves
+            if (!transient && b.countedGen !== pcEv.verdictGen) { pcEmapMiss(Date.now(), pcEv.lastStoreReason, false); b.countedGen = pcEv.verdictGen; }
+            b.storeFails += 1;
+            if (b.storeFails >= PC_STORE_GIVE_UP) {
+              storeStatus = "unknown"; // give up the STORE half only — the phone half is never auto-stamped
+              pcEv.lastGiveUpAt = now; b.storeNextAt = 0;
+              console.log(`[PC-BACKOFF] row=${row.id} store attempt=${b.storeFails} gave up → unknown`);
+            } else {
+              b.storeNextAt = now + pcBackoffDelay(b.storeFails);
+              console.log(`[PC-BACKOFF] row=${row.id} store attempt=${b.storeFails} next=${pcBackoffDelay(b.storeFails) / 1000}s`);
+            }
+          }
+        }
       }
       // phone half — the ROW OWNER's GM + phone, never the global config.
       // anon:true → the check runs credential-less so the body ordMobile is the
       // authoritative sender (the owner's myship login is irrelevant); this is
       // the core multi-seller fix (2026-09-27).
       let phoneStatus = null, phoneMessage = null, phoneUntil = null, pTokenMs = null, pPostMs = null;
-      if (row.need_phone && myshipTabId) {
+      if (doPhone && myshipTabId) {
         const pResp = await pcSendTab(myshipTabId, {
           type: "PC_CHECK_PHONE", row, anon: true,
           config: { cgdmId: row.gm_id, ordMobile: row.sender_phone },
@@ -715,8 +836,16 @@ async function pcPollMulti() {
           phoneMessage = pResp.phone_check_message ?? null;
           phoneUntil = pResp.phone_restricted_until ?? null;
           pcEv.myship.lastVerdictAt = Date.now(); pcEv.lastPhoneReason = "";
+          const b = pcBackoff.get(row.id);
+          if (b && b.phoneFails) { b.phoneFails = 0; b.phoneNextAt = 0; console.log(`[PC-BACKOFF] row=${row.id} phone resolved`); }
         } else {
           pcEv.lastPhoneReason = (pResp && pResp.phone_reason) || "myship tab not responding";
+          // same backoff, but NEVER given up (audit M1: a missed restricted number must not look checked)
+          const b = pcBackoffEntry(row.id, now);
+          if (!inMaint) b.phoneFails += 1;
+          const wait = inMaint ? PC_MAINT_RETRY_MS : pcBackoffDelay(b.phoneFails);
+          b.phoneNextAt = now + wait;
+          console.log(`[PC-BACKOFF] row=${row.id} phone attempt=${b.phoneFails}${inMaint ? " maintenance" : ""} next=${wait / 1000}s`);
         }
       }
       // nothing learned (both halves null) → no verdict write, row retries later
@@ -758,12 +887,14 @@ async function pcTick() {
 // WITHOUT re-arming — shared by the loop and the popup's "Check now".
 async function pcRunOnce() {
   pcEv.tick += 1;
+  try { pcEv.maintEnabled = (await pcConfig()).maintenanceWindow; } catch { /* keep the last value */ }
   try { await pcPoll(); } catch { /* keep looping */ }
   // 1.14.0 — every block below is wrapped: a failure logs and can never stop the loop.
   try { await pcPickEmapTab(); } catch (e) { console.log(`[PC-EMAP] skipped: pick ${e && e.message ? e.message : e}`); }
   try { await pcPollMulti(); } catch { /* keep looping */ }
   try { await pcEmapKeepalive(); } catch (e) { console.log(`[PC-KEEPALIVE] skipped: ${e && e.message ? e.message : e}`); }
   try { await pcRefreshTabStatus(); } catch (e) { console.log(`[PC-STATUS] skipped: ${e && e.message ? e.message : e}`); }
+  try { await pcRequeueUnknown(Date.now()); } catch (e) { console.log(`[PC-BACKOFF] requeue skipped: ${e && e.message ? e.message : e}`); }
   try { if (pcEv.rpc) await pcPushWorkerState(pcEv.rpc.cfg, pcEv.rpc.rpcHeaders); } catch { /* mirror is best-effort */ }
   if (pcEv.tick % PC_HEARTBEAT_EVERY === 1) {                     // heartbeat ~every 60s — never silent, never spam
     try { const st = (await pcGet(PC_STATUS_KEY, {})) || {}; console.log(`[PC-TICK] #${pcEv.tick} sfl=${st.sfl} myship=${st.myship} emap=${st.emap} queue=${st.multiQueueDepth ?? "-"} emapTab=${pcEv.emap.tabId ?? "none"}`); } catch { /* */ }
@@ -804,6 +935,7 @@ try {
       multi: null, multiQueueDepth: null, multiLastAt: null,
       lastStoreReason: "", lastPhoneReason: "", lastStoreAt: null, lastPhoneAt: null,
       lastCheckAt: null, lastCount: 0, lastError: "", lastStoreVerdictAt: null, lastPhoneVerdictAt: null,
+      inMaintenanceWindow: false, lastGiveUpAt: null,
     });
     console.log(`[PC-BOOT] parcel-checker worker started v${v} — status reset`);
   } catch (e) { console.log(`[PC-BOOT] parcel-checker worker started v${v} (status reset skipped: ${e && e.message ? e.message : e})`); }
