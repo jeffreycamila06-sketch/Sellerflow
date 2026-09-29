@@ -21,7 +21,9 @@ afterEach(() => { vi.clearAllMocks(); vi.unstubAllEnvs(); });
 
 describe("analytics — no-op when no PostHog key", () => {
   it("init / identify / track / reset never touch posthog", () => {
-    // no VITE_PUBLIC_POSTHOG_KEY stubbed → enabled() is false
+    // Force "no key" — a developer's local .env may set VITE_PUBLIC_POSTHOG_KEY, and
+    // Vite loads it into import.meta.env for tests too. Empty string = disabled.
+    vi.stubEnv("VITE_PUBLIC_POSTHOG_KEY", "");
     initAnalytics();
     identifySeller(profile());
     track("connect_attempt", { platform: "TikTok" });

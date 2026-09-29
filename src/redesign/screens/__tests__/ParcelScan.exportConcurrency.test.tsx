@@ -134,8 +134,15 @@ const mount = async (device: "phone" | "laptop", ready = 3) => {
   const u = render(<TProvider lang="en"><ParcelScan cur="NT$" /></TProvider>);
   const w = within(u.container);
   if (device === "phone") { // per-device "Export on this phone" switch → ON
-    fireEvent.click(await w.findByTestId("ps-export-switch-toggle"));
-    fireEvent.click(screen.getByTestId("ps-confirm-enablephone"));
+    // The switch is remembered per device (localStorage). Two "phone" screens mounted in
+    // this one jsdom share that storage, so the second one is already ON — tapping it
+    // again would turn it OFF (no confirm dialog). Only enable it when it's off.
+    const toggle = await w.findByTestId("ps-export-switch-toggle");
+    if (toggle.getAttribute("aria-pressed") !== "true") {
+      fireEvent.click(toggle);
+      fireEvent.click(screen.getByTestId("ps-confirm-enablephone"));
+    }
+    expect(w.getByTestId("ps-export-switch-toggle").getAttribute("aria-pressed")).toBe("true");
   }
   await w.findByTestId("ps-export-btn");
   await waitFor(() => expect(w.getByTestId("ps-export-btn").textContent).toContain(String(ready))); // stale screens both show 3 ready
