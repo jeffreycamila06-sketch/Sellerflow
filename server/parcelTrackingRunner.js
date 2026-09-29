@@ -186,22 +186,55 @@ export async function submitQuery(fetchImpl, { paymentNos, captchaId, captcha, t
   return { finalUrl: res.url || QUERY_URL, html, status: res.status };
 }
 
-// ── Daily-cap circuit breaker (per Taipei day, in the running process) ─────────
-// The cron hits the LONG-RUNNING socket server (not a fresh process), so a
-// module-level counter that resets on the Taipei date change is a real
-// cross-invocation daily cap. A Render restart resets it (acceptable — a restart
-// is rare and re-arms the cap generously).
-let dailyCounter = { day: "", queries: 0 };
-export function __resetDailyCounter() { dailyCounter = { day: "", queries: 0 }; }
-function taipeiDay(now) {
+// ── Daily REQUEST cap, persisted per Asia/Taipei day (sql/61 parcel_tracking_daily) ──
+// Counts every SHOPMORE HTTP request (GET /, captcha GET, query POST) — not batches.
+// Stored in the DB so a Render restart can never re-arm it; a new Taipei day = a new
+// row = a fresh count at 00:00 Taipei. Checked BEFORE each batch against the worst
+// case a batch can send, so the cap is never exceeded mid-batch.
+export const DAILY_REQUEST_CAP = 4500;
+export const MAX_REQUESTS_PER_BATCH = 1 + 2 * MAX_CAPTCHA_RETRIES; // GET / + (captcha + POST) × retries
+
+export function taipeiDay(now) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
-// Returns true while under the cap (and counts this query); false once the cap is hit.
-function underDailyCap(now, cap) {
-  const d = taipeiDay(now);
-  if (d !== dailyCounter.day) dailyCounter = { day: d, queries: 0 };
-  dailyCounter.queries += 1;
-  return dailyCounter.queries <= cap;
+
+// PURE — may another batch start without risking the cap?
+export function underRequestCap(requestsSoFar, cap = DAILY_REQUEST_CAP) {
+  return requestsSoFar + MAX_REQUESTS_PER_BATCH <= cap;
+}
+
+async function readDailyRequests(serviceSb, day) {
+  const { data, error } = await serviceSb.from("parcel_tracking_daily").select("requests").eq("day", day).maybeSingle();
+  if (error) return { error };
+  return { requests: Number(data?.requests) || 0 };
+}
+
+async function writeDailyRequests(serviceSb, day, requests, logger) {
+  const { error } = await serviceSb.from("parcel_tracking_daily")
+    .upsert({ day, requests, updated_at: new Date().toISOString() }, { onConflict: "day" });
+  if (error) logger.error("[PARCEL-POLL] daily counter write failed:", error.code || "error");
+}
+
+// ── S8: retire rows that never resolve ─────────────────────────────────────────
+// A not_found / unknown row that has shown the SAME status for RETIRE_AFTER_POLLS
+// consecutive polls AND is older than RETIRE_MIN_AGE_DAYS becomes terminal (status
+// unchanged) so it is never polled again. Keeps them from eating the daily cap forever.
+export const RETIRE_AFTER_POLLS = 5;
+export const RETIRE_MIN_AGE_DAYS = 14;
+const RETIRABLE = new Set(["not_found", "unknown"]);
+
+// PURE — the next unchanged-poll count for a row, given its previous and new status.
+export function nextUnchangedPolls(prevStatus, newStatus, prevCount) {
+  return prevStatus === newStatus ? (Number(prevCount) || 0) + 1 : 0;
+}
+
+// PURE — retire this row now?
+export function shouldRetire({ status, unchangedPolls, createdAt, now }) {
+  if (!RETIRABLE.has(status)) return false;
+  if ((Number(unchangedPolls) || 0) < RETIRE_AFTER_POLLS) return false;
+  const created = Date.parse(createdAt || "");
+  if (!Number.isFinite(created)) return false;
+  return now.getTime() - created >= RETIRE_MIN_AGE_DAYS * 24 * 60 * 60 * 1000;
 }
 
 // ── Stage-1 gates: kill switch + circuit-breaker cooldown (app_settings) ───────
@@ -260,7 +293,7 @@ async function selectLiveRows(serviceSb, ids, pageSize = PAGE_SIZE) {
   const out = [];
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await serviceSb.from("parcel_tracking")
-      .select("id,user_id,tracking_no,arrived_at,status")
+      .select("id,user_id,tracking_no,arrived_at,status,unchanged_polls,created_at")
       .eq("terminal", false)
       .in("user_id", ids)
       .order("last_polled_at", { ascending: true, nullsFirst: true })
@@ -288,7 +321,7 @@ export async function runPoll(opts) {
   } = opts;
   const {
     minGapMs = 4000, jitterMs = 3000, maxBatchesPerRun = 300,
-    dailyCap = 1500, baseBackoffMs = 4000, maxBackoffMs = 60000,
+    dailyRequestCap = DAILY_REQUEST_CAP, baseBackoffMs = 4000, maxBackoffMs = 60000,
     perSellerCap = PER_SELLER_LIVE_CAP, pageSize = PAGE_SIZE,
   } = limits;
   const startedAt = now();
@@ -299,6 +332,8 @@ export async function runPoll(opts) {
       ran_at: startedAt.toISOString(), ok: !!summary.ok, reason: summary.reason || null,
       queries: summary.batchesRun || 0, updated: summary.updated || 0,
       errors: summary.failures || 0, duration_ms: durationMs,
+      sellers: summary.sellers || 0, skipped_cap: summary.capped || 0,
+      retired: summary.retired || 0, requests: summary.requests || 0,
     }, logger);
     const out = { ...summary, durationMs };
     logger.log("[PARCEL-POLL] done", JSON.stringify(out));
@@ -313,6 +348,15 @@ export async function runPoll(opts) {
     else logger.error("[PARCEL-POLL] settings read failed — not running");
     return finish({ ok: gate.reason !== "settings_read_failed", skipped: true, reason: gate.reason });
   }
+
+  // Daily request counter for today (Taipei). Unreadable → do not run (never blind).
+  const daily = { day: taipeiDay(startedAt), requests: 0, sentThisRun: 0 };
+  {
+    const r = await readDailyRequests(serviceSb, daily.day);
+    if (r.error) { logger.error("[PARCEL-POLL] daily counter read failed:", r.error.code || "error"); return finish({ ok: false, reason: "daily_read_failed" }); }
+    daily.requests = r.requests;
+  }
+  const countingFetch = (...args) => { daily.requests += 1; daily.sentThisRun += 1; return fetchImpl(...args); };
 
   // 1) WHO — override or allowlist. 2) WHAT — every non-terminal row, stalest first.
   const who = await pollUserIds(serviceSb, userId);
@@ -339,14 +383,22 @@ export async function runPoll(opts) {
   }
   const groups = batch([...byCode.keys()], MAX_BATCH);
 
-  let batchesRun = 0, updated = 0, unknowns = 0, notFound = 0, captchaFails = 0, failures = 0, backoff = 0;
+  let batchesRun = 0, updated = 0, unknowns = 0, notFound = 0, captchaFails = 0, failures = 0, retired = 0, backoff = 0;
   let consecutive = 0, tripped = false, stopReason = null;
   const failReasons = [];
   let ocr = givenOcr;
   try {
     for (const group of groups) {
       if (batchesRun >= maxBatchesPerRun) { logger.warn("[PARCEL-POLL] per-run batch cap hit"); stopReason = "run_cap"; break; }
-      if (!underDailyCap(now(), dailyCap)) { logger.warn("[PARCEL-POLL] daily cap hit — stopping"); stopReason = "daily_cap"; break; }
+      // A run that crosses 00:00 Taipei rolls onto the new day's counter.
+      const today = taipeiDay(now());
+      if (today !== daily.day) {
+        await writeDailyRequests(serviceSb, daily.day, daily.requests, logger);
+        const r = await readDailyRequests(serviceSb, today);
+        daily.day = today;
+        daily.requests = r.error ? 0 : r.requests;
+      }
+      if (!underRequestCap(daily.requests, dailyRequestCap)) { logger.warn(`[PARCEL-POLL] daily request cap hit (${daily.requests}/${dailyRequestCap}) — stopping`); stopReason = "daily_cap"; break; }
 
       // Gentle pacing: gap + jitter (+ any backoff) BETWEEN batches, never before the first.
       if (batchesRun > 0) await sleep(minGapMs + Math.floor(Math.random() * jitterMs) + backoff);
@@ -354,10 +406,10 @@ export async function runPoll(opts) {
 
       const jar = makeCookieJar(); // fresh session per batch (search GET → captcha GET → POST)
       const deps = {
-        getPageToken: () => fetchPageToken(fetchImpl, jar),
-        getCaptcha: () => fetchCaptcha(fetchImpl, jar),
+        getPageToken: () => fetchPageToken(countingFetch, jar),
+        getCaptcha: () => fetchCaptcha(countingFetch, jar),
         solveCaptcha: (image) => ocr.solve(image),
-        submitQuery: (args) => submitQuery(fetchImpl, args, jar),
+        submitQuery: (args) => submitQuery(countingFetch, args, jar),
         onUnknownStatus: (m) => { unknowns += 1; logger.warn("[PARCEL-POLL] UNKNOWN status:", JSON.stringify(m)); },
       };
 
@@ -368,6 +420,7 @@ export async function runPoll(opts) {
         res = { ok: false, updates: [], error: (e && (e.code || (e.name === "AbortError" ? "timeout" : ""))) || "threw" };
       }
       batchesRun += 1;
+      await writeDailyRequests(serviceSb, daily.day, daily.requests, logger); // persist after every batch
 
       if (!res.ok) {
         failures += 1;
@@ -402,6 +455,8 @@ export async function runPoll(opts) {
         const targets = byCode.get(String(u.tracking_no));
         if (!targets) continue; // a code we didn't ask for — ignore
         for (const row of targets) {
+          const unchangedPolls = nextUnchangedPolls(row.status, u.status, row.unchanged_polls);
+          const retire = shouldRetire({ status: u.status, unchangedPolls, createdAt: row.created_at, now: now() });
           const patch = {
             status: u.status,
             status_message: u.status_message,
@@ -410,8 +465,9 @@ export async function runPoll(opts) {
             special_type: u.special_type,
             order_amount: u.order_amount,
             pickup_deadline: u.pickup_deadline,
-            terminal: u.terminal,
+            terminal: u.terminal || retire, // S8: a never-resolving row is retired (status unchanged)
             last_polled_at: u.last_polled_at,
+            unchanged_polls: unchangedPolls,
           };
           // arrived_at is SET ONCE — only when the row has none yet and we now see at_store.
           if (u.arrived_at && !row.arrived_at) patch.arrived_at = u.arrived_at;
@@ -423,12 +479,14 @@ export async function runPoll(opts) {
           if (upErr) { logger.error("[PARCEL-POLL] update failed", row.id, upErr.code || "error"); continue; }
           updated += 1;
           if (u.status === "not_found") notFound += 1;
+          if (retire) retired += 1;
         }
       }
     }
   } finally {
     if (!givenOcr && ocr) { try { await ocr.terminate(); } catch { /* worker already gone */ } }
   }
+  if (retired > 0) logger.log(`[PARCEL-POLL] retired ${retired} never-resolving row(s) (not_found/unknown, ${RETIRE_AFTER_POLLS}+ unchanged polls, ${RETIRE_MIN_AGE_DAYS}+ days old)`);
 
   // 3) RETENTION — DELETE terminal parcels past their per-status window (picked_up 7d,
   //    returned 365d — see the constants), scoped to the SAME sellers this run polls.
@@ -450,7 +508,8 @@ export async function runPoll(opts) {
   }
 
   return finish({
-    ok: !tripped, reason: stopReason, sellers: who.ids.length, rows: live.length, capped,
-    batchesRun, updated, unknowns, notFound, captchaFails, failures, tripped, purged,
+    ok: !tripped, reason: stopReason, sellers: new Set(live.map((r) => String(r.user_id))).size, rows: live.length, capped,
+    batchesRun, updated, unknowns, notFound, captchaFails, failures, tripped, purged, retired,
+    requests: daily.sentThisRun, requestsToday: daily.requests,
   });
 }
