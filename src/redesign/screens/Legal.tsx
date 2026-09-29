@@ -18,6 +18,8 @@ export default function Legal() {
         <p style={p}>{t.lg_collect_p}</p>
         <div style={h}>{t.lg_use_h}</div>
         <p style={p}>{t.lg_use_p}</p>
+        <div style={h}>{t.lg_keep_h}</div>
+        <p style={p}>{t.lg_keep_p}</p>
         <div style={h}>{t.lg_rights_h}</div>
         <p style={p}>{t.lg_rights_p}</p>
         <div style={h}>{t.lg_contact_h}</div>
