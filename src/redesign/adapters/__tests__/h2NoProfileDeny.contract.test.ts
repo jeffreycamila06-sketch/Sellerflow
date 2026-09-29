@@ -9,8 +9,10 @@
 // server.js has no vitest harness — source-contract pins + pure-module behavior.
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { concurrencyCap, capDecision } from "../../../../server/concurrencyCap.js";
+import { concurrencyCap, capDecision as _capDecision } from "../../../../server/concurrencyCap.js";
 import { accountCapVerdict } from "../../../../server/accountCap.js";
+// capDecision's JS destructuring default `= {}` makes TS drop `max` from the inferred param type.
+const capDecision = _capDecision as (a: { realFresh?: { key: string; startedAt: number }[]; reservedCount?: number; max: number | null }) => ReturnType<typeof _capDecision>;
 
 const server = readFileSync("server.js", "utf8");
 

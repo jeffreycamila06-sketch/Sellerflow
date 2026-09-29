@@ -8,8 +8,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 
 const signUp = vi.fn();
-const createMyProfile = vi.fn(async () => {});
-const getMyProfile = vi.fn(async () => null);
+const createMyProfile = vi.fn(async (..._a: unknown[]) => {});
+const getMyProfile = vi.fn(async (..._a: unknown[]) => null);
 
 vi.mock("../../../supabase", () => ({
   isSupabaseConfigured: true,

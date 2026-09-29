@@ -26,7 +26,7 @@ describe("translateBroadcast (client)", () => {
   });
 
   it("success → i18n map; sends Bearer token + text to the admin endpoint", async () => {
-    const f = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ success: true, i18n: full }) }));
+    const f = vi.fn(async (_url: string, _init: RequestInit) => ({ ok: true, status: 200, json: async () => ({ success: true, i18n: full }) }));
     globalThis.fetch = f as unknown as typeof fetch;
     const r = await translateBroadcast("  Big sale  ");
     expect(r.ok).toBe(true);

@@ -11,7 +11,7 @@ import { TProvider } from "../../i18n";
 
 const { loadRows, updateParcelScan } = vi.hoisted(() => ({
   loadRows: { current: [] as ParcelScanRow[] },
-  updateParcelScan: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
+  updateParcelScan: vi.fn(async (..._a: unknown[]) => ({ ok: true }) as { ok: boolean; error?: string }),
 }));
 
 vi.mock("../../adapters/parcelScan", async (importOriginal) => {

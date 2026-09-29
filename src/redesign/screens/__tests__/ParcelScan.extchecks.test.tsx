@@ -13,7 +13,7 @@ import type { ParcelScanRow } from "../../adapters/parcelScan";
 const { loadRows, resetExtensionChecks, updateParcelScan } = vi.hoisted(() => ({
   loadRows: { current: [] as ParcelScanRow[] },
   resetExtensionChecks: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
-  updateParcelScan: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
+  updateParcelScan: vi.fn(async (..._a: unknown[]) => ({ ok: true }) as { ok: boolean; error?: string }),
 }));
 
 vi.mock("../../adapters/parcelScan", () => ({

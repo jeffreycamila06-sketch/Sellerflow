@@ -5,13 +5,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 
 const updateContactMock = vi.fn(async () => {});
-const saveAuditLogMock = vi.fn(async () => {});
+const saveAuditLogMock = vi.fn(async (_entry: unknown) => {});
 vi.mock("../../../supabase", () => ({ supabase: null }));
 vi.mock("../../../accountDb", () => ({
   adminUpdatePlan: vi.fn(async () => {}),
   adminUpdateContactNote: (...a: unknown[]) => updateContactMock(...(a as [])),
   deleteUser: vi.fn(async () => {}),
-  saveAuditLog: (...a: unknown[]) => saveAuditLogMock(...(a as [])),
+  saveAuditLog: (...a: unknown[]) => saveAuditLogMock(...(a as [unknown])),
   upsertUser: vi.fn(async () => {}),
 }));
 

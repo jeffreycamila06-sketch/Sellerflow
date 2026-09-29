@@ -10,7 +10,7 @@ import { renderHook, waitFor, act } from "@testing-library/react";
 
 vi.mock("../../../supabase", () => ({ isSupabaseConfigured: true, supabase: {} }));
 
-const { dayMock } = vi.hoisted(() => ({ dayMock: vi.fn(async (): Promise<unknown> => []) }));
+const { dayMock } = vi.hoisted(() => ({ dayMock: vi.fn(async (..._a: unknown[]): Promise<unknown> => []) }));
 vi.mock("../useSessionWindow", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../useSessionWindow")>();
   return { ...actual, loadLiveSessionDay: (...a: unknown[]) => dayMock(...(a as [string])), loadLiveSessionWindow: dayMock };

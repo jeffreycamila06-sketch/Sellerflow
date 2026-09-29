@@ -3,7 +3,7 @@
 // handlers. (The real connect/disconnect wiring lives in RedesignApp; here we assert
 // the chip UI contract.)
 import { describe, it, expect, vi, beforeAll } from "vitest";
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import Dashboard from "../Dashboard";
 import { TProvider } from "../../i18n";
 
@@ -19,7 +19,7 @@ const base = {
   ttAccounts: ["maria_shops"], fbAccounts: [] as string[],
   printed: {}, entId: null, entPrice: "", onOneClick: noop, onOpenEnt: noop, onEntPrice: noop, onEntKey: noop,
 };
-const renderDash = (over: Partial<typeof base> = {}) =>
+const renderDash = (over: Partial<typeof base & { refreshing: boolean }> = {}) =>
   render(<TProvider lang="en"><Dashboard {...base} {...over} /></TProvider>);
 
 describe("Dashboard channel chip footer (surface B)", () => {

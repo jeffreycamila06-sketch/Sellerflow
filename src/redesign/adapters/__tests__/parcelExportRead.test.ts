@@ -6,9 +6,7 @@
 // pins cover the MAIN-world hook, the manifest wiring, and the handle-only background upsert
 // (the extension has no DOM/vitest harness — the server.js-structural convention).
 import { describe, it, expect } from "vitest";
-// @ts-expect-error node types not in the tests tsconfig (present at runtime)
 import { readFileSync } from "node:fs";
-// @ts-expect-error node types not in the tests tsconfig (present at runtime)
 import { createRequire } from "node:module";
 
 type Reader = {
@@ -144,7 +142,6 @@ describe("matchExportUrl — pull the same-origin temp export URL out of a candi
     expect(reader.matchExportUrl("/seller/order?tab=pending")).toBeNull();
     expect(reader.matchExportUrl("/some/other/report.xlsx")).toBeNull();
     expect(reader.matchExportUrl("")).toBeNull();
-    // @ts-expect-error guard non-strings
     expect(reader.matchExportUrl(null)).toBeNull();
   });
 });

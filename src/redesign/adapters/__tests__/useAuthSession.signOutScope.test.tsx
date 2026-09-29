@@ -26,7 +26,7 @@ vi.mock("../../../supabase", () => ({
 const PROFILE = { email: "seller@x.com", plan: "pro", role: "seller", planStatus: "active", planExpiry: "", trialStartedAt: "", authUserId: "user-1", connectedAccounts: [], profile: { fullName: "S", storeName: "", phone: "", tiktok: "", facebook: "", adminContactNote: "" } };
 vi.mock("../../../accountDb", () => ({ getMyProfile: vi.fn(async () => PROFILE), createMyProfile: vi.fn() }));
 // deleteAccount → selfDeleteAccount succeeds, then signs out GLOBAL.
-const selfDeleteAccount = vi.fn(async () => ({ ok: true }));
+const selfDeleteAccount = vi.fn(async (..._a: unknown[]) => ({ ok: true }));
 vi.mock("../adminDelete", () => ({ selfDeleteAccount: (...a: unknown[]) => selfDeleteAccount(...a) }));
 
 import { useAuthSession } from "../useAuthSession";

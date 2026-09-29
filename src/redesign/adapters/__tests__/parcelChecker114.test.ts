@@ -62,7 +62,7 @@ describe("B · evidence-based emap state + auto-recovery (evidence recency test)
     await sb.pcTick();
     expect(status().emap).toBe("ok");
     // now silence the tab: its guid vanished (session died) → keepalive fails → recovery ladder
-    sb.chrome.tabs.sendMessage = ((id: number, msg: { type: string }, cb: (r: unknown) => void) => {
+    sb.chrome.tabs.sendMessage = ((_id: number, msg: { type: string }, cb: (r: unknown) => void) => {
       if (msg.type === "PC_EMAP_PROBE") return cb({ ok: true, guidFound: false, url: "https://emap.unipcsc.com.tw/ecmap/default.aspx" });
       if (msg.type === "PC_CHECK_STORE") return cb({ ok: true, store_full_status: "unknown", store_reason: "eshopGuid not found on emap page", guidFound: false });
       if (msg.type === "SFL_GET_TOKEN") return cb({ ok: true, token: "x.y.z" }); // valid (non-expiring) token — keep the SFL lane green
@@ -83,7 +83,7 @@ describe("B · evidence-based emap state + auto-recovery (evidence recency test)
 
   const reopens = (calls: { update: unknown[] }) => calls.update.filter((u) => (u as { props: { url?: string } }).props.url).map((u) => (u as { id: number }).id);
   const noGuid = (sb: Record<string, unknown>, reason = "eshopGuid not found on emap page", transient = false) => {
-    (sb.chrome as { tabs: { sendMessage: unknown } }).tabs.sendMessage = ((id: number, msg: { type: string }, cb: (r: unknown) => void) => {
+    (sb.chrome as { tabs: { sendMessage: unknown } }).tabs.sendMessage = ((_id: number, msg: { type: string }, cb: (r: unknown) => void) => {
       if (msg.type === "PC_EMAP_PROBE") return cb({ ok: true, guidFound: transient, url: "https://emap.unipcsc.com.tw/ecmap/default.aspx" });
       if (msg.type === "PC_CHECK_STORE") return cb({ ok: true, store_full_status: "unknown", store_reason: reason, guidFound: transient, transient });
       if (msg.type === "SFL_GET_TOKEN") return cb({ ok: true, token: "x.y.z" });
@@ -91,7 +91,7 @@ describe("B · evidence-based emap state + auto-recovery (evidence recency test)
     });
   };
   const withGuid = (sb: Record<string, unknown>, verdict = "full") => {
-    (sb.chrome as { tabs: { sendMessage: unknown } }).tabs.sendMessage = ((id: number, msg: { type: string }, cb: (r: unknown) => void) => {
+    (sb.chrome as { tabs: { sendMessage: unknown } }).tabs.sendMessage = ((_id: number, msg: { type: string }, cb: (r: unknown) => void) => {
       if (msg.type === "PC_EMAP_PROBE") return cb({ ok: true, guidFound: true, url: "https://emap.unipcsc.com.tw/ecmap/default.aspx" });
       if (msg.type === "PC_CHECK_STORE") return cb({ ok: true, store_full_status: verdict, store_reason: "", guidFound: true, transient: false });
       if (msg.type === "SFL_GET_TOKEN") return cb({ ok: true, token: "x.y.z" });

@@ -439,7 +439,7 @@ describe("stickerDrawOps — QR keep-out: comment wraps, never crosses the QR", 
     const p = qrPayload("150");
     const qr = stickerQrPlacement(p, 640, 480, 60)!;
     const { ops } = stickerDrawOps(p, 80, 60, "extended", qr);
-    const lines = commentOps(ops);
+    const lines = commentOps(ops) as Extract<typeof ops[number], { k: "txt" }>[];
     expect(lines).toHaveLength(1);
     expect(lines[0].s).toBe("150");
   });

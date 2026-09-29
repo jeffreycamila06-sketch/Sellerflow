@@ -7,7 +7,7 @@ const { selectChain, upsert, getSession } = vi.hoisted(() => {
   const selectChain = { rows: [] as unknown[], error: null as unknown };
   return {
     selectChain,
-    upsert: vi.fn(async () => ({ error: null })),
+    upsert: vi.fn(async (_row: unknown, _opts: unknown) => ({ error: null })),
     getSession: vi.fn(async () => ({ data: { session: { user: { id: "u1" } } } })),
   };
 });

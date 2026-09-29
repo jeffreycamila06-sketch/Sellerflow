@@ -134,7 +134,7 @@ describe("scanParcelImage (injected fetch)", () => {
   });
 
   it("happy path: sends image block + text, default model, headers; returns fields+confidence", async () => {
-    const f = vi.fn(async () => okResp(goodObj()));
+    const f = vi.fn(async (_url: string, _init: { headers: Record<string, string>; body: string }) => okResp(goodObj()));
     const r = await scanParcelImage("aGVsbG8=", "image/jpeg", { apiKey: "sk-test", fetchImpl: f });
     expect(r.ok).toBe(true);
     expect(r.fields?.phone).toBe("0912345678");
@@ -151,7 +151,7 @@ describe("scanParcelImage (injected fetch)", () => {
   });
 
   it("PARCEL_SCAN_MODEL override reaches the request body", async () => {
-    const f = vi.fn(async () => okResp(goodObj()));
+    const f = vi.fn(async (_url: string, _init: { headers: Record<string, string>; body: string }) => okResp(goodObj()));
     await scanParcelImage("aGk=", "image/jpeg", { apiKey: "k", model: "claude-opus-5", fetchImpl: f });
     expect(JSON.parse(f.mock.calls[0][1].body).model).toBe("claude-opus-5");
   });
@@ -223,7 +223,7 @@ describe("scanParcelImage (injected fetch)", () => {
   });
 
   it("request forces JSON via output_config.format structured outputs — and NEVER via assistant prefill (400 on Sonnet 4.6+/5)", async () => {
-    const f = vi.fn(async () => okResp(goodObj()));
+    const f = vi.fn(async (_url: string, _init: { headers: Record<string, string>; body: string }) => okResp(goodObj()));
     await scanParcelImage("aGk=", "image/jpeg", { apiKey: "k", fetchImpl: f });
     const body = JSON.parse(f.mock.calls[0][1].body);
     expect(body.output_config).toEqual({ format: { type: "json_schema", schema: SCAN_OUTPUT_SCHEMA } });

@@ -8,7 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const { insertMock, getSession } = vi.hoisted(() => ({
-  insertMock: vi.fn(async () => ({ error: null })),
+  insertMock: vi.fn(async (_row: unknown) => ({ error: null })),
   getSession: vi.fn(async () => ({ data: { session: { user: { id: "u1" } } } })),
 }));
 vi.mock("../../../supabase", () => ({

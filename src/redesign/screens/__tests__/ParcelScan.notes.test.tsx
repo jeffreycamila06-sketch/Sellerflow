@@ -8,7 +8,7 @@ import type { ParcelScanRow } from "../../adapters/parcelScan";
 import { TProvider } from "../../i18n";
 
 const { saveParcelScan, loadRows } = vi.hoisted(() => ({
-  saveParcelScan: vi.fn(async () => ({ ok: true, id: "new-1" }) as { ok: boolean; id?: string; error?: string }),
+  saveParcelScan: vi.fn(async (..._a: unknown[]) => ({ ok: true, id: "new-1" }) as { ok: boolean; id?: string; error?: string }),
   loadRows: { current: [] as ParcelScanRow[] },
 }));
 

@@ -8,7 +8,7 @@ import type { ParcelScanRow } from "../../adapters/parcelScan";
 
 const { loadRows, updateParcelScan, scanParcel, checkEmapStore, saveStoreCheck, loadParcelScans } = vi.hoisted(() => ({
   loadRows: { current: [] as ParcelScanRow[] },
-  updateParcelScan: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
+  updateParcelScan: vi.fn(async (..._a: unknown[]) => ({ ok: true }) as { ok: boolean; error?: string }),
   scanParcel: vi.fn(),
   checkEmapStore: vi.fn(async () => ({ status: "valid" as const })),
   saveStoreCheck: vi.fn(async () => ({ ok: true })),

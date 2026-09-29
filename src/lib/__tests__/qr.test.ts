@@ -29,7 +29,6 @@ describe("qrMatrix", () => {
   it("blank / whitespace → null (no QR for a handle-less parcel)", () => {
     expect(qrMatrix("")).toBeNull();
     expect(qrMatrix("   ")).toBeNull();
-    // @ts-expect-error non-string guard
     expect(qrMatrix(null)).toBeNull();
   });
   it("different handles → different matrices (payload is actually encoded)", () => {

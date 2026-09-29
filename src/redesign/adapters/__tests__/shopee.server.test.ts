@@ -31,7 +31,8 @@ describe("shopeeConfig — FAIL-CLOSED env gate", () => {
 });
 
 describe("shopeeSign — HMAC-SHA256 (base-string order is the UNVERIFIED pin)", () => {
-  const args = { partnerId: "123456", partnerKey: "shhh", path: "/api/v2/livestream/get_latest_comment_list", timestamp: 1700000000 };
+  // JS destructuring without defaults marks accessToken/shopId required; public calls omit them.
+  const args = { partnerId: "123456", partnerKey: "shhh", path: "/api/v2/livestream/get_latest_comment_list", timestamp: 1700000000 } as Parameters<typeof sign>[0];
 
   it("PUBLIC base string = partner_id + path + timestamp (exact order)", () => {
     expect(baseString(args)).toBe("123456/api/v2/livestream/get_latest_comment_list1700000000");

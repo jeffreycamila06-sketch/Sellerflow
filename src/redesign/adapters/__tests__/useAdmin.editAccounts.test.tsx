@@ -7,12 +7,12 @@ import type { AccountUser } from "../../../accountDb";
 
 // Mock the DB boundary; keep connect.ts (maxAcc/accountList/accountText) REAL.
 const upsertUserMock = vi.fn(async (u: AccountUser) => u);
-const saveAuditLogMock = vi.fn(async () => {});
+const saveAuditLogMock = vi.fn(async (_entry: unknown) => {});
 vi.mock("../../../supabase", () => ({ supabase: null }));
 vi.mock("../../../accountDb", () => ({
   adminUpdatePlan: vi.fn(async () => {}),
   deleteUser: vi.fn(async () => {}),
-  saveAuditLog: (...a: unknown[]) => saveAuditLogMock(...(a as [])),
+  saveAuditLog: (...a: unknown[]) => saveAuditLogMock(...(a as [unknown])),
   upsertUser: (...a: unknown[]) => upsertUserMock(...(a as [AccountUser])),
 }));
 

@@ -91,7 +91,7 @@ describe("checkEmapStore (injected fetch)", () => {
   });
 
   it("DEFAULT 'id' variant → sends ID=<code> with the full blank param set (NOT StoreName=<code>)", async () => {
-    const f = vi.fn(async () => okResp(storeXml("982063", "德民門市")));
+    const f = vi.fn(async (_url: string, _init: RequestInit) => okResp(storeXml("982063", "德民門市")));
     const r = await checkEmapStore("982063", { fetchImpl: f, confirmed: true }); // no variant → EMAP_LOOKUP_VARIANT default "id"
     expect(r.status).toBe("valid");
     expect(r.storeName).toBe("德民門市");
@@ -108,7 +108,7 @@ describe("checkEmapStore (injected fetch)", () => {
   });
 
   it("'storename' variant → the old single-field shape (StoreName=<code>), the documented fallback", async () => {
-    const f = vi.fn(async () => okResp(storeXml("982063")));
+    const f = vi.fn(async (_url: string, _init: RequestInit) => okResp(storeXml("982063")));
     const r = await checkEmapStore("982063", { fetchImpl: f, confirmed: true, variant: "storename" });
     expect(r.status).toBe("valid");
     expect(r.variant).toBe("storename");
@@ -167,7 +167,7 @@ describe("checkEmapStore (injected fetch)", () => {
   });
 
   it("command/param are env-overridable via opts (safety valve; storename variant puts the code in ANY field)", async () => {
-    const f = vi.fn(async () => okResp(storeXml("982063")));
+    const f = vi.fn(async (_url: string, _init: RequestInit) => okResp(storeXml("982063")));
     await checkEmapStore("982063", { fetchImpl: f, variant: "storename", command: "SearchStoreId", param: "StoreID" });
     expect(String((f.mock.calls[0][1] as RequestInit).body)).toBe("commandid=SearchStoreId&StoreID=982063");
   });

@@ -6,9 +6,9 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 
 const { limitFn, updateEq, insert, deleteEq, getSession } = vi.hoisted(() => ({
   limitFn: vi.fn(async (): Promise<{ data: unknown[]; error: unknown }> => ({ data: [], error: null })),
-  updateEq: vi.fn(async () => ({ error: null })),
+  updateEq: vi.fn(async (_col: unknown, _val: unknown) => ({ error: null })),
   insert: vi.fn(async () => ({ error: null })),
-  deleteEq: vi.fn(async (): Promise<{ error: unknown }> => ({ error: null })),
+  deleteEq: vi.fn(async (_col: unknown, _val: unknown): Promise<{ error: unknown }> => ({ error: null })),
   getSession: vi.fn(async () => ({ data: { session: { user: { id: "admin1" } } } })),
 }));
 vi.mock("../../../supabase", () => ({

@@ -191,7 +191,7 @@ describe("shouldResetOnDayChange — window-aware live reset on Taipei day rollo
 // error (null) → null = load FAILED (Batch D #8 — was [], indistinguishable from
 // a fresh day). NEVER partial — partial would recreate the duplicate-buyer# bug.
 import { fetchAllSessionPages, SESSION_PAGE_SIZE } from "../useSessionWindow";
-import type { LiveSessionRow } from "../../../db";
+import type { LiveSessionRow } from "../../../lib/orderLogic";
 
 const mkRows = (start: number, n: number): LiveSessionRow[] =>
   Array.from({ length: n }, (_, i) => ({

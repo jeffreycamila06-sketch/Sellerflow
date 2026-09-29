@@ -106,7 +106,7 @@ describe("translateBroadcast (injected fetch)", () => {
   });
 
   it("success → full 7-lang map; sends model + x-api-key + version + generous max_tokens", async () => {
-    const f = vi.fn(async () => okResp(full()));
+    const f = vi.fn(async (_url: string, _init: { headers: Record<string, string>; body: string }) => okResp(full()));
     const r = await translateBroadcast("Big sale NT$500 🎉", { apiKey: "sk-test", fetchImpl: f });
     expect(r.ok).toBe(true);
     expect(Object.keys(r.i18n || {}).sort()).toEqual([...TARGET_LANGS].sort());

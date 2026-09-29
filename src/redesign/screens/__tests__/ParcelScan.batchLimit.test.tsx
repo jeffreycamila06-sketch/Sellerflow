@@ -13,7 +13,7 @@ import type { ParcelScanRow } from "../../adapters/parcelScan";
 
 const { loadRows, updateParcelScan, deleteParcelScan, markScansExported } = vi.hoisted(() => ({
   loadRows: { current: [] as ParcelScanRow[] },
-  updateParcelScan: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
+  updateParcelScan: vi.fn(async (..._a: unknown[]) => ({ ok: true }) as { ok: boolean; error?: string }),
   deleteParcelScan: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
   markScansExported: vi.fn(async (ids: string[]) => ({ ok: true, batchId: "batch-1", claimed: ids }) as { ok: boolean; batchId?: string; claimed: string[] }),
 }));
@@ -77,7 +77,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   if (hadMedia) Object.defineProperty(navigator, "mediaDevices", { value: prevMedia, configurable: true });
-  else { try { delete (navigator as Record<string, unknown>).mediaDevices; } catch { /* ignore */ } }
+  else { try { delete (navigator as unknown as Record<string, unknown>).mediaDevices; } catch { /* ignore */ } }
   hadMedia = false;
 });
 

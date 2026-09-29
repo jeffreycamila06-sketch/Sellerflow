@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import ManageChannels from "../ManageChannels";
 import { TProvider } from "../../i18n";
-import type { AccountUser } from "../../../accountDb";
+import type { AccountUser, Role } from "../../../accountDb";
 
 const fetchMock = vi.fn();
 const touchMock = vi.fn();
@@ -14,7 +14,7 @@ vi.mock("../../adapters/tiktokCooldown", async (importActual) => {
   return { ...actual, fetchSlotCooldowns: (...a: unknown[]) => fetchMock(...a), touchSlot: (...a: unknown[]) => touchMock(...a) };
 });
 
-const acct = (role = "seller"): AccountUser => ({
+const acct = (role: Role = "seller"): AccountUser => ({
   authUserId: "u", email: "g@x.com",
   profile: { fullName: "O", storeName: "S", phone: "", tiktok: "saved_tt", facebook: "fbpage", adminContactNote: "" },
   plan: "pro", planStatus: "active", planExpiry: "", connectedAccounts: [], role,
