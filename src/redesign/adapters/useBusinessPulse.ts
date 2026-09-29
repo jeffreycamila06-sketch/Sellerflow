@@ -91,7 +91,7 @@ export function useBusinessPulse(enabled: boolean): {
     if (!enabled || !isSupabaseConfigured || !supabase) { setState("idle"); return () => {}; }
     let active = true;
     setState("loading");
-    supabase.rpc("admin_business_pulse")
+    (supabase.rpc("admin_business_pulse")
       .then(({ data: raw, error }: { data: unknown; error: unknown }) => {
         if (!active) return;
         if (error) { setData(null); setState("error"); return; }
@@ -99,7 +99,7 @@ export function useBusinessPulse(enabled: boolean): {
         if (!parsed) { setData(null); setState("error"); return; } // not_admin / malformed
         setData(parsed);
         setState(pulseHasActivity(parsed) ? "live" : "empty");
-      })
+      }) as Promise<void>) // PostgrestBuilder.then returns a real Promise; its type is only PromiseLike
       .catch(() => { if (active) { setData(null); setState("error"); } });
     return () => { active = false; };
   }, [enabled, reloadKey]);

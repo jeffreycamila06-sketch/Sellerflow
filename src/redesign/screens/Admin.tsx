@@ -63,7 +63,7 @@ function Ctrl({ icon, label, onClick }: { icon: ReactNode; label: string; onClic
   return <div onClick={onClick} style={ctrlTile}><span style={ctrlChip}>{icon}</span><span style={ctrlLbl}>{label}</span></div>;
 }
 
-export default function Admin({ onOpenPanel, cur, counts, live = false, userBase, mrr = null, owner = null, viewAs = "all", onSetViewAs }: { onOpenPanel: (k: AdminPanelKind) => void; cur: string; counts?: { active: number; expiring: number; expired: number; free: number }; live?: boolean; userBase?: { paying: number; free: number; total: number }; mrr?: number | null; owner?: { name: string; email: string } | null; viewAs?: ViewAs; onSetViewAs?: (v: ViewAs) => void }) {
+export default function Admin({ onOpenPanel, counts, live = false, userBase, mrr = null, owner = null, viewAs = "all", onSetViewAs }: { onOpenPanel: (k: AdminPanelKind) => void; cur: string; counts?: { active: number; expiring: number; expired: number; free: number }; live?: boolean; userBase?: { paying: number; free: number; total: number }; mrr?: number | null; owner?: { name: string; email: string } | null; viewAs?: ViewAs; onSetViewAs?: (v: ViewAs) => void }) {
   const t = useT();
   const subCount = (k: "active" | "expiring" | "expired" | "free", sample: string) => (live && counts ? String(counts[k]) : sample);
   // Batch B #2 — the owner card shows the REAL signed-in admin (was the

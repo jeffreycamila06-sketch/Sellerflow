@@ -32,7 +32,6 @@ import { effectiveMarket, marketHides, marketHidesShipping, marketFor, type View
 import { buildPinComment, isActionablePin, shouldSkipPin, pinPrintAllowed, type PinPayload } from "./adapters/pinToPrint";
 import { parcelCheckAllowed } from "./adapters/parcelCheck";
 import { MyshipScanGate } from "./components/MyshipSetup";
-import { useGeoCountry } from "./adapters/useGeoCountry";
 import { parcelTrackingVisible, loadParcelTrackingAccess } from "./adapters/parcelTracking";
 import CustomerData from "./screens/CustomerData";
 import Legal from "./screens/Legal";

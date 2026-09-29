@@ -540,12 +540,12 @@ export function useFreeUsers(enabled: boolean): { freeUsers: FreeUserRow[]; stat
     if (!enabled || !isSupabaseConfigured || !supabase) { setState("sample"); setFreeUsers([]); return () => {}; }
     let active = true;
     setState("loading");
-    supabase.rpc("list_free_users_status")
+    (supabase.rpc("list_free_users_status")
       .then(({ data }: { data: unknown }) => {
         if (!active) return;
         const rows = (data as FreeUserRow[]) || [];
         setFreeUsers(rows); setState(rows.length ? "live" : "empty");
-      })
+      }) as Promise<void>) // PostgrestBuilder.then returns a real Promise; its type is only PromiseLike
       .catch(() => { if (active) { setFreeUsers([]); setState("sample"); } });
     return () => { active = false; };
   }, [enabled]);

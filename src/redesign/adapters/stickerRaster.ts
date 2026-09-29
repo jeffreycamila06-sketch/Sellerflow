@@ -431,6 +431,10 @@ class Bitmap {
   }
 }
 
+// Buffer only runs under node (tests); both uses are typeof-guarded. Declared here so the
+// browser project needs no @types/node.
+declare const Buffer: { from(data: string | Uint8Array, enc?: string): { toString(enc: string): string } };
+
 const b64ToBytes = (b64: string): Uint8Array => {
   const bin = typeof atob === "function" ? atob(b64) : Buffer.from(b64, "base64").toString("binary");
   const out = new Uint8Array(bin.length);

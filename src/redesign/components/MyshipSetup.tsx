@@ -4,7 +4,7 @@
 // shop_name/verified_at (audit MEDIUM-3) → Render validate (verify-optional)
 // → re-save stamping the shop name ✓.
 import { useEffect, useState } from "react";
-import type { T } from "../../translations";
+import type { RedesignT as T } from "../i18n";
 import { parseGmId, loadMyshipConfig, saveMyshipConfig, validateGm } from "../adapters/parcelCheck";
 
 // onSaved fires once a config row EXISTS (saved-verified OR saved-unverified) —
@@ -39,7 +39,7 @@ export function MyshipConfigForm({ t, onSaved }: { t: T; onSaved?: () => void })
       await saveMyshipConfig(gmId, v.shopName); // stamp shop_name + verified_at
       setShopName(v.shopName); setState("saved");
       onSaved?.();
-    } else if (v.invalid) {
+    } else if ("invalid" in v && v.invalid) {
       setState("error"); setErr(t.rd_mc_invalid); // config kept; seller can re-check the id
     } else {
       setState("unverified"); // saved; honest "couldn't verify" note
