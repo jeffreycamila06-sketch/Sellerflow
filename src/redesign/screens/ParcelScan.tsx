@@ -752,7 +752,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // stop being checked once exported. Ask first — "Wait" (default) or "Export anyway".
   // NEVER a hard block (the checker may be down); only while the checks feature is on.
   const askExport = () => {
-    const pending = checkOn ? splitScansForExport(rows).ready.filter(rowAwaitsVerdict).length : 0;
+    const pending = checkOn ? splitScansForExport(rows, fee).ready.filter(rowAwaitsVerdict).length : 0;
     if (pending > 0) { setDeleteErr(""); setConfirm({ kind: "pending", n: pending }); return; }
     openExportDialog();
   };

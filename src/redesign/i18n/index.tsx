@@ -604,7 +604,6 @@ const RAW: Record<string, Row> = {
   // ════ Sales report ════
   rd_sal_title: { en: "Sales report", fil: "Ulat ng benta", zh: "销售报表", "zh-TW": "銷售報表", vi: "Báo cáo doanh số", th: "รายงานยอดขาย", id: "Laporan penjualan", bg: "Отчет за продажбите" },
   rd_sal_this_session: { en: "This live session", fil: "Ngayong live session", zh: "本场直播", "zh-TW": "本場直播", vi: "Phiên live này", th: "ไลฟ์รอบนี้", id: "Sesi live ini", bg: "Тази лайв сесия" },
-  rd_sal_empty: { en: "No sales yet this session.", fil: "Wala pang benta ngayong session.", zh: "本场还没有销售。", "zh-TW": "本場還沒有銷售。", vi: "Chưa có doanh số phiên này.", th: "ยังไม่มียอดขายในรอบนี้", id: "Belum ada penjualan sesi ini.", bg: "Още няма продажби тази сесия." },
   rd_sal_revenue: { en: "Revenue", fil: "Kita", zh: "营收", "zh-TW": "營收", vi: "Doanh thu", th: "รายได้", id: "Pendapatan", bg: "Приход" },
   rd_sal_avg: { en: "avg", fil: "avg", zh: "平均", "zh-TW": "平均", vi: "TB", th: "เฉลี่ย", id: "rata-rata", bg: "средно" },
   rd_sal_buyers: { en: "Buyers", fil: "Mamimili", zh: "买家", "zh-TW": "買家", vi: "Người mua", th: "ผู้ซื้อ", id: "Pembeli", bg: "Купувачи" },
@@ -642,7 +641,6 @@ const RAW: Record<string, Row> = {
   rd_sal_rev_platform: { en: "Revenue by platform", fil: "Kita kada platform", zh: "各平台营收", "zh-TW": "各平台營收", vi: "Doanh thu theo nền tảng", th: "รายได้ตามแพลตฟอร์ม", id: "Pendapatan per platform", bg: "Приходи по платформа" },
 
   // ════ Customer data (admin export) ════
-  rd_cd_title: { en: "Customer data", fil: "Datos ng customer", zh: "客户数据", "zh-TW": "客戶資料", vi: "Dữ liệu khách hàng", th: "ข้อมูลลูกค้า", id: "Data pelanggan", bg: "Клиентски данни" },
   rd_cd_admin_export: { en: "Admin export", fil: "Admin export", zh: "管理员导出", "zh-TW": "管理員匯出", vi: "Xuất quản trị", th: "ส่งออกสำหรับแอดมิน", id: "Ekspor admin", bg: "Админ експорт" },
   rd_cd_export_csv: { en: "Export CSV", fil: "I-export ang CSV", zh: "导出 CSV", "zh-TW": "匯出 CSV", vi: "Xuất CSV", th: "ส่งออก CSV", id: "Ekspor CSV", bg: "Експорт CSV" },
   rd_cd_col_customer: { en: "CUSTOMER", fil: "CUSTOMER", zh: "客户", "zh-TW": "客戶", vi: "KHÁCH HÀNG", th: "ลูกค้า", id: "PELANGGAN", bg: "КЛИЕНТ" },
