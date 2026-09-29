@@ -58,19 +58,22 @@ describe("buildT — merged dictionary per language", () => {
 });
 
 describe("Legal screen keys (Step 3) — behavior identical for en", () => {
-  it("en values exactly match the previously-hardcoded English", () => {
+  it("en values match the Sep 29, 2026 privacy policy", () => {
     const t = buildT("en");
     expect(t.lg_pt_title).toBe("Privacy & Terms");
-    expect(t.lg_updated).toBe("Last updated Jun 1, 2026");
-    expect(t.lg_collect_h).toBe("1. Data we collect");
+    expect(t.lg_updated).toBe("Last updated Sep 29, 2026");
+    expect(t.lg_collect_h).toBe("1. What we collect");
     expect(t.lg_use_h).toBe("2. How we use it");
-    expect(t.lg_rights_h).toBe("3. Your rights");
-    expect(t.lg_contact_h).toBe("4. Contact");
+    expect(t.lg_keep_h).toBe("3. How long we keep it");
+    expect(t.lg_rights_h).toBe("4. Your rights");
+    expect(t.lg_contact_h).toBe("5. Contact");
     expect(t.lg_contact_pre).toBe("Questions? Reach us on Telegram ");
-    expect(t.lg_contact_post).toBe(" or email privacy@sellerflowlive.app.");
-    expect(t.lg_collect_p).toContain("public live-stream comments");
+    expect(t.lg_contact_post).toBe(" or email jeffreycamila06@gmail.com.");
+    expect(t.lg_collect_p).toContain("comment on your live session");
+    expect(t.lg_keep_p).toBe("Live comments: 10 days. Order history: 3 months. Parcel status: 7 days after pickup, 365 days after return. Your account, customer list and settings: until you delete your account.");
+    expect(t.lg_rights_p).toContain("takes effect immediately");
   });
-  it("zh-tw resolves the new legal keys (native-verified) — non-empty, not falling back blank", () => {
+  it("zh-tw resolves the legal keys — non-empty, not falling back blank", () => {
     const t = buildT("zh-tw");
     expect(t.lg_pt_title).toBe("隱私與條款");
     expect(t.lg_collect_h).toBeTruthy();
