@@ -38,7 +38,7 @@ vi.mock("../../adapters/shippingSettings", () => ({ loadGlobalShippingFee: async
 
 import ParcelScan from "../ParcelScan";
 
-const view = () => render(<TProvider><ParcelScan cur="NT$" /></TProvider>);
+const view = () => render(<TProvider lang="en"><ParcelScan cur="NT$" /></TProvider>);
 
 beforeEach(() => {
   getCreditBalance.mockResolvedValue({ ok: true, balance: 5 });

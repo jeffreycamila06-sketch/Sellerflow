@@ -26,7 +26,7 @@ vi.mock("../../adapters/shippingSettings", () => ({ loadGlobalShippingFee: async
 
 import ParcelScan from "../ParcelScan";
 
-const view = () => render(<TProvider><ParcelScan cur="NT$" /></TProvider>);
+const view = () => render(<TProvider lang="en"><ParcelScan cur="NT$" /></TProvider>);
 const win = window as unknown as { Capacitor?: unknown; matchMedia?: unknown };
 let hadMM = false; let prevMM: unknown;
 const setNarrow = (matches: boolean) => {

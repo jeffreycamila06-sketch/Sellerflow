@@ -8,9 +8,9 @@ import { renderHook, waitFor } from "@testing-library/react";
 vi.mock("../../../supabase", () => ({ isSupabaseConfigured: true, supabase: {} }));
 
 const { dayMock, windowMock, byIdMock } = vi.hoisted(() => ({
-  dayMock: vi.fn(async (): Promise<unknown> => []),
-  windowMock: vi.fn(async (): Promise<unknown> => []),
-  byIdMock: vi.fn(async (): Promise<unknown> => []),
+  dayMock: vi.fn(async (..._a: unknown[]): Promise<unknown> => []),
+  windowMock: vi.fn(async (..._a: unknown[]): Promise<unknown> => []),
+  byIdMock: vi.fn(async (..._a: unknown[]): Promise<unknown> => []),
 }));
 vi.mock("../useSessionWindow", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../useSessionWindow")>();

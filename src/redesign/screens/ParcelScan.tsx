@@ -62,7 +62,7 @@ function storeBadge(status: string | null): { icon: string; color: string; key: 
 // the render): ⚠️ full → orange, 🚫 restricted / wrong store code → red (red
 // wins). No per-verdict text badge, no positive "ok" label. FAIL-SAFE unchanged:
 // only explicit 'full'/'restricted' flag a row; null/'unknown' stay clean.
-const extNeedsRecheck = (r: { storeFullStatus: string | null; phoneCheckStatus: string | null }): boolean =>
+const extNeedsRecheck = (r: { storeFullStatus?: string | null; phoneCheckStatus?: string | null }): boolean =>
   r.storeFullStatus === "full" || r.phoneCheckStatus === "restricted";
 // 'YYYY-MM-DD' → locale short date (e.g. "Dec 4"); safe on bad input.
 function untilDate(iso: string | null): string {
@@ -752,7 +752,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // stop being checked once exported. Ask first — "Wait" (default) or "Export anyway".
   // NEVER a hard block (the checker may be down); only while the checks feature is on.
   const askExport = () => {
-    const pending = checkOn ? splitScansForExport(rows).ready.filter(rowAwaitsVerdict).length : 0;
+    const pending = checkOn ? splitScansForExport(rows, fee).ready.filter(rowAwaitsVerdict).length : 0;
     if (pending > 0) { setDeleteErr(""); setConfirm({ kind: "pending", n: pending }); return; }
     openExportDialog();
   };

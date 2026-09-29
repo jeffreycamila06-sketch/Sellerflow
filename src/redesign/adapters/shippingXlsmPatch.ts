@@ -81,7 +81,7 @@ async function inflateRaw(data: Uint8Array): Promise<Uint8Array> {
   // ReadableStream directly (jsdom's Blob lacks .stream(); this path works in
   // real browsers AND node/vitest — DecompressionStream is global in both).
   const src = new ReadableStream<Uint8Array>({ start(c) { c.enqueue(data.slice()); c.close(); } });
-  const resp = new Response(src.pipeThrough(new DecompressionStream("deflate-raw")));
+  const resp = new Response(src.pipeThrough(new DecompressionStream("deflate-raw") as ReadableWritablePair<Uint8Array, Uint8Array>));
   return new Uint8Array(await resp.arrayBuffer());
 }
 export async function readEntryText(b: Uint8Array, e: ZipEntry): Promise<string> {

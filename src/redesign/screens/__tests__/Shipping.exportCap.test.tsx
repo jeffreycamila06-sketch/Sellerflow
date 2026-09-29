@@ -11,7 +11,7 @@ import { SHIP_MAX, type ShippingEntry } from "../../adapters/shipping";
 
 vi.mock("../../../supabase", () => ({ isSupabaseConfigured: false, supabase: null }));
 const { rpcMock, entriesMock } = vi.hoisted(() => ({
-  rpcMock: vi.fn(async (): Promise<unknown> => ({ ok: false, error: "boom" })),
+  rpcMock: vi.fn(async (_ids: string[]): Promise<unknown> => ({ ok: false, error: "boom" })),
   entriesMock: { rows: [] as unknown[] },
 }));
 vi.mock("../../adapters/shippingDb", () => ({

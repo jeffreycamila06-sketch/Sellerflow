@@ -3,7 +3,7 @@
 // db-write payloads as production (App.tsx:4334-4372). No Supabase/React.
 import { describe, it, expect } from "vitest";
 import { buildOrderFromComment } from "../../../lib/orderLogic";
-import type { Comment as ProdComment, Buyer } from "../../../lib/orderTypes";
+import type { Comment as ProdComment } from "../../../lib/orderTypes";
 import { orderDbPayload, liveSessionPayload, customerDbPayload } from "../useOrders";
 
 const mk = (over: Partial<ProdComment> = {}): ProdComment => ({

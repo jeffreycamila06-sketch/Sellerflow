@@ -7,6 +7,9 @@ import { parcelScanVisible, canUseStickerQr } from "../parcelScan";
 import { parcelTrackingVisible } from "../parcelTracking";
 import { curSymbol } from "../../data";
 
+// `email` is no longer a parcelTrackingVisible input (ignored at runtime).
+type TrackingAccount = Parameters<typeof parcelTrackingVisible>[0];
+
 const future = "2027-01-01T00:00:00Z";
 
 describe("marketFor", () => {
@@ -86,8 +89,8 @@ describe("gates honor marketHidden (admin bypass baked into the flag)", () => {
     expect(parcelScanVisible({ role: "seller", plan: "basic", planStatus: "active", planExpiry: future, manualEnabled: true, marketHidden: false }).locked).toBe(true);
   });
   it("parcelTrackingVisible: marketHidden hides even an admin (view-as preview)", () => {
-    expect(parcelTrackingVisible({ role: "admin", email: "x@y.com", plan: "master", marketHidden: true })).toBe(false);
-    expect(parcelTrackingVisible({ role: "admin", email: "x@y.com", plan: "master", marketHidden: false })).toBe(true);
+    expect(parcelTrackingVisible({ role: "admin", email: "x@y.com", plan: "master", marketHidden: true } as TrackingAccount)).toBe(false);
+    expect(parcelTrackingVisible({ role: "admin", email: "x@y.com", plan: "master", marketHidden: false } as TrackingAccount)).toBe(true);
   });
   it("canUseStickerQr: marketHidden → false; in-market → true on every plan", () => {
     expect(canUseStickerQr(true)).toBe(false);

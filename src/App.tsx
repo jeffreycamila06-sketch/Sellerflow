@@ -1036,7 +1036,7 @@ function ResetPasswordPage({onDone}:{onDone:()=>void}){
   async function submit(e:React.FormEvent){
     e.preventDefault();
     setErr("");
-    if(!supabase){setErr(t.err_service_unavailable);return;}
+    if(!supabase){setErr("Service is temporarily unavailable. Please try again later.");return;}
     if(tooShort){setErr(`Password must be at least ${MIN_PW} characters.`);return;}
     if(pw!==cpw){setErr("Passwords do not match.");return;}
     setBusy(true);
@@ -3238,6 +3238,7 @@ function AdminPage({currentUser,onApprove,orders,t}:{currentUser:User;onApprove:
         phone:editSeller.phone.trim(),
         tiktok:accountText(editTikTok),
         facebook:accountText(editFacebook),
+        adminContactNote:current.profile.adminContactNote, // keep the admin note (never wiped by a profile edit)
       },
     };
     try{

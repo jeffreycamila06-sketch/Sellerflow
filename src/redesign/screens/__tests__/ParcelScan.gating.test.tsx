@@ -45,12 +45,12 @@ const enableCamera = () => {
 beforeEach(() => { hadMedia = false; getCreditBalance.mockClear(); });
 afterEach(() => {
   if (hadMedia) Object.defineProperty(navigator, "mediaDevices", { value: prevMedia, configurable: true });
-  else { try { delete (navigator as Record<string, unknown>).mediaDevices; } catch { /* ignore */ } }
+  else { try { delete (navigator as unknown as Record<string, unknown>).mediaDevices; } catch { /* ignore */ } }
   hadMedia = false;
 });
 
 describe("ParcelScan — paying seller (manualOnly)", () => {
-  const seller = () => render(<TProvider><ParcelScan cur="NT$" manualOnly /></TProvider>);
+  const seller = () => render(<TProvider lang="en"><ParcelScan cur="NT$" manualOnly /></TProvider>);
 
   it("shows manual encode + the 'AI coming soon' line", async () => {
     const { findByTestId, getByTestId } = seller();
@@ -100,7 +100,7 @@ describe("ParcelScan — paying seller (manualOnly)", () => {
 });
 
 describe("ParcelScan — admin (full scan surface)", () => {
-  const admin = () => render(<TProvider><ParcelScan cur="NT$" /></TProvider>); // manualOnly defaults false
+  const admin = () => render(<TProvider lang="en"><ParcelScan cur="NT$" /></TProvider>); // manualOnly defaults false
 
   it("with a camera available, shows the camera card and NO 'coming soon' line", async () => {
     enableCamera();

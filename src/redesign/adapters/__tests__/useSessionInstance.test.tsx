@@ -8,7 +8,7 @@ import { statusFallback } from "../useSessionInstance";
 
 const { rpcMock, maybeSingleMock } = vi.hoisted(() => ({
   rpcMock: vi.fn(),
-  maybeSingleMock: vi.fn(async () => ({ data: { current_session_id: null }, error: null })),
+  maybeSingleMock: vi.fn(async (): Promise<{ data: Record<string, unknown> | null; error: unknown }> => ({ data: { current_session_id: null }, error: null })),
 }));
 vi.mock("../../../supabase", () => ({
   isSupabaseConfigured: true,

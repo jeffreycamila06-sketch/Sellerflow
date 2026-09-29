@@ -8,7 +8,7 @@ import type { ParcelScanRow } from "../../adapters/parcelScan";
 import { TProvider } from "../../i18n";
 
 const { saveParcelScan, loadRows } = vi.hoisted(() => ({
-  saveParcelScan: vi.fn(async () => ({ ok: true, id: "new-1" }) as { ok: boolean; id?: string; error?: string }),
+  saveParcelScan: vi.fn(async (..._a: unknown[]) => ({ ok: true, id: "new-1" }) as { ok: boolean; id?: string; error?: string }),
   loadRows: { current: [] as ParcelScanRow[] },
 }));
 
@@ -30,7 +30,7 @@ vi.mock("../../adapters/shippingSettings", () => ({ loadGlobalShippingFee: async
 
 import ParcelScan from "../ParcelScan";
 
-const view = () => render(<TProvider><ParcelScan cur="NT$" /></TProvider>);
+const view = () => render(<TProvider lang="en"><ParcelScan cur="NT$" /></TProvider>);
 const fillValid = (r: ReturnType<typeof view>) => {
   fireEvent.change(r.getByTestId("ps-name"), { target: { value: "Juan" } });
   fireEvent.change(r.getByTestId("ps-store"), { target: { value: "266402" } });

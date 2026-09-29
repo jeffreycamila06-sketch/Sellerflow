@@ -16,7 +16,15 @@
 // only 1; second refund of the same debit → no_refundable_debit; grant by a
 // non-admin → RAISED 42501 forbidden).
 import { describe, it, expect, vi } from "vitest";
-import { runScanWithCredit, isTechnicalFailure, CREDIT_DEBIT_AMOUNT } from "../../../../server/parcelCredits.js";
+import { runScanWithCredit as _runScanWithCredit, isTechnicalFailure, CREDIT_DEBIT_AMOUNT } from "../../../../server/parcelCredits.js";
+
+// The JS defaults (`setOutcome = async () => {}`, `log = () => {}`) make TS infer
+// zero-arg signatures; restate the real injected shapes.
+type RunOpts = Omit<Parameters<typeof _runScanWithCredit>[0], "setOutcome" | "log"> & {
+  setOutcome?: (debitId: string, outcome: string) => Promise<unknown>;
+  log?: (msg: string) => unknown;
+};
+const runScanWithCredit = _runScanWithCredit as (opts: RunOpts) => ReturnType<typeof _runScanWithCredit>;
 
 const ok = { ok: true, fields: { name: "A" }, confidence: {} };
 

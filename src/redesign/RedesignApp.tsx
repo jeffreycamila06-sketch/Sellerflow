@@ -32,7 +32,6 @@ import { effectiveMarket, marketHides, marketHidesShipping, marketFor, type View
 import { buildPinComment, isActionablePin, shouldSkipPin, pinPrintAllowed, type PinPayload } from "./adapters/pinToPrint";
 import { parcelCheckAllowed } from "./adapters/parcelCheck";
 import { MyshipScanGate } from "./components/MyshipSetup";
-import { useGeoCountry } from "./adapters/useGeoCountry";
 import { parcelTrackingVisible, loadParcelTrackingAccess } from "./adapters/parcelTracking";
 import CustomerData from "./screens/CustomerData";
 import Legal from "./screens/Legal";
@@ -187,7 +186,11 @@ export default function RedesignApp() {
   // previewing a market via the Admin "View as" switch (per-session, never writes the
   // profile). marketHides() bakes the admin bypass in, so each hide-flag is the final say.
   const [adminViewAs, setAdminViewAs] = useState<ViewAs>("all");
-  const market = effectiveMarket({ role: auth.profile?.role, country: auth.profile?.country, viewAs: adminViewAs });
+  // The seller's market country lives on the PROFILE (AccountUser.profile.country,
+  // accountDb rowToUser) — reading it one level up was always undefined, which
+  // silently treated every seller as TW (fixed 2026-09-29).
+  const profileCountry = auth.profile?.profile?.country ?? null;
+  const market = effectiveMarket({ role: auth.profile?.role, country: profileCountry, viewAs: adminViewAs });
   const hideParcelScan = marketHides("parcelScan", market);
   const hidePickup = marketHides("pickupStatus", market);
   const hideStickerQr = marketHides("stickerQr", market);
@@ -903,9 +906,9 @@ export default function RedesignApp() {
     if (auth.status !== "authed") return;
     let explicit = false;
     try { explicit = !!localStorage.getItem(LS.currencySet); } catch { explicit = false; }
-    { const mc = marketFor(auth.profile?.country).currency; if (!explicit && mc) setCurrency(mc); }
+    { const mc = marketFor(profileCountry).currency; if (!explicit && mc) setCurrency(mc); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auth.status, auth.profile?.country]);
+  }, [auth.status, profileCountry]);
   const setCurrencyExplicit = (c: string) => {
     setCurrency(c);
     try { localStorage.setItem(LS.currencySet, "1"); } catch { /* ignore */ }
@@ -1613,7 +1616,7 @@ export default function RedesignApp() {
         currencyPinnedRef.current = true;
         let explicit = false;
         try { explicit = !!localStorage.getItem(LS.currencySet); } catch { explicit = false; }
-        { const mc = marketFor(auth.profile?.country).currency; if (!explicit && mc) setCurrency(mc); }
+        { const mc = marketFor(profileCountry).currency; if (!explicit && mc) setCurrency(mc); }
       }
     } else if (auth.status === "anon") {
       setScreen(anonScreen());

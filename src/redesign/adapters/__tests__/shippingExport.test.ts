@@ -152,7 +152,7 @@ describe("deliverXlsmMobile — synchronous Web Share + honest failure", () => {
   afterEach(() => { try { delete win.Capacitor; } catch { /* ignore */ } restore(); });
 
   it("calls navigator.share() SYNCHRONOUSLY (before the returned promise settles)", () => {
-    const share = vi.fn(() => new Promise<void>(() => { /* never settles */ }));
+    const share = vi.fn((_data: unknown) => new Promise<void>(() => { /* never settles */ }));
     nav.share = share; nav.canShare = () => true;
     void deliverXlsmMobile(bytes, "x.xlsm"); // NOT awaited
     expect(share).toHaveBeenCalledTimes(1); // fired in the gesture, synchronously

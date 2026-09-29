@@ -19,7 +19,7 @@ const dbMocks = vi.hoisted(() => ({
 vi.mock("../../../db", () => dbMocks);
 const stockMock = vi.hoisted(() => ({ decrementStockAndTouch: vi.fn() }));
 vi.mock("../productsDb", () => stockMock);
-const printSlipMock = vi.hoisted(() => vi.fn(() => ({ ok: true, via: "bluetooth" as const })));
+const printSlipMock = vi.hoisted(() => vi.fn((..._a: unknown[]) => ({ ok: true, via: "bluetooth" as const })));
 vi.mock("../printing", async (orig) => ({ ...(await orig() as object), printSlip: (...a: unknown[]) => printSlipMock(...a) }));
 
 import { snapshotFromCreate, reprintBuyer, performReprint, type ReprintRow } from "../reprint";

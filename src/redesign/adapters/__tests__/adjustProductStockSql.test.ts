@@ -10,7 +10,6 @@
 //      Auto-mode's product↔order link / the Part-2 stale purge),
 //   6. authenticated-only EXECUTE (revoked from public/anon).
 import { describe, it, expect } from "vitest";
-// @ts-expect-error node:fs types not in the tests tsconfig (present at runtime)
 import { readFileSync } from "node:fs";
 
 const sql = readFileSync("sql/41_adjust_product_stock.sql", "utf8");

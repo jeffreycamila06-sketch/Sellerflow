@@ -41,7 +41,7 @@ describe("analytics — when VITE_PUBLIC_POSTHOG_KEY is set", () => {
   });
   it("role falls back to 'seller' when empty", () => {
     vi.stubEnv("VITE_PUBLIC_POSTHOG_KEY", "phc_test");
-    identifySeller({ ...profile(), role: "" } as AccountUser);
+    identifySeller({ ...profile(), role: "" } as unknown as AccountUser);
     expect(identify).toHaveBeenCalledWith("Seller@X.com", expect.objectContaining({ role: "seller" }));
   });
   it("identifySeller no-ops when the profile has no email", () => {

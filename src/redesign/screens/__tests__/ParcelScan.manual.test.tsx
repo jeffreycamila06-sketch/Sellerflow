@@ -11,7 +11,7 @@ import { TProvider, buildT } from "../../i18n";
 
 const { scanParcel, saveParcelScan, checkEmapStore } = vi.hoisted(() => ({
   scanParcel: vi.fn(),
-  saveParcelScan: vi.fn(async () => ({ ok: true, id: "srv-1" }) as { ok: boolean; id?: string; error?: string }),
+  saveParcelScan: vi.fn(async (..._a: unknown[]) => ({ ok: true, id: "srv-1" }) as { ok: boolean; id?: string; error?: string }),
   checkEmapStore: vi.fn(async () => ({ status: "valid" as const })),
 }));
 
@@ -47,7 +47,7 @@ vi.mock("../../adapters/shippingSettings", () => ({ loadGlobalShippingFee: async
 
 import ParcelScan from "../ParcelScan";
 
-const view = () => render(<TProvider><ParcelScan cur="NT$" /></TProvider>);
+const view = () => render(<TProvider lang="en"><ParcelScan cur="NT$" /></TProvider>);
 
 beforeEach(() => {
   scanParcel.mockClear(); saveParcelScan.mockClear(); checkEmapStore.mockClear();

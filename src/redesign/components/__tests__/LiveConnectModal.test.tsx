@@ -20,7 +20,7 @@ const base = {
   shopeeEligible: true, onAuthorizeShopee: vi.fn(), onConnectShopee: vi.fn(), onUpsell: vi.fn(),
 };
 const view = (over: Partial<Parameters<typeof LiveConnectModal>[0]>) =>
-  render(<TProvider><LiveConnectModal platform="TikTok" {...base} {...over} /></TProvider>);
+  render(<TProvider lang="en"><LiveConnectModal platform="TikTok" {...base} {...over} /></TProvider>);
 
 describe("LiveConnectModal — TikTok (connect mode)", () => {
   it("no inline add field — the add path is a 'Manage / add accounts' link (one place to add/edit)", () => {
@@ -80,7 +80,7 @@ describe("LiveConnectModal — TikTok (connect mode)", () => {
 
 describe("LiveConnectModal — Facebook & Shopee", () => {
   it("Facebook → Telegram gate, never a connect", () => {
-    const { getByTestId } = render(<TProvider><LiveConnectModal platform="Facebook" {...base} /></TProvider>);
+    const { getByTestId } = render(<TProvider lang="en"><LiveConnectModal platform="Facebook" {...base} /></TProvider>);
     const a = getByTestId("lc-fb-telegram") as HTMLAnchorElement;
     expect(a.tagName).toBe("A");
     expect(a.getAttribute("href")).toContain("t.me");
@@ -88,15 +88,15 @@ describe("LiveConnectModal — Facebook & Shopee", () => {
 
   it("Shopee, no shops → Authorize; not eligible → upsell", () => {
     const onAuthorizeShopee = vi.fn(), onUpsell = vi.fn();
-    const a = render(<TProvider><LiveConnectModal platform="Shopee" {...base} shopeeShops={[]} onAuthorizeShopee={onAuthorizeShopee} /></TProvider>);
+    const a = render(<TProvider lang="en"><LiveConnectModal platform="Shopee" {...base} shopeeShops={[]} onAuthorizeShopee={onAuthorizeShopee} /></TProvider>);
     fireEvent.click(a.getByTestId("lc-shopee-authorize")); expect(onAuthorizeShopee).toHaveBeenCalled();
-    const b = render(<TProvider><LiveConnectModal platform="Shopee" {...base} shopeeEligible={false} onUpsell={onUpsell} /></TProvider>);
+    const b = render(<TProvider lang="en"><LiveConnectModal platform="Shopee" {...base} shopeeEligible={false} onUpsell={onUpsell} /></TProvider>);
     fireEvent.click(b.getByTestId("lc-shopee-upsell")); expect(onUpsell).toHaveBeenCalled();
   });
 
   it("Shopee, has shop → session id + Connect fires onConnectShopee(shopId, session)", () => {
     const onConnectShopee = vi.fn();
-    const { getByTestId } = render(<TProvider><LiveConnectModal platform="Shopee" {...base} shopeeShops={[{ shopId: 77, shopName: "Shop A" }]} onConnectShopee={onConnectShopee} /></TProvider>);
+    const { getByTestId } = render(<TProvider lang="en"><LiveConnectModal platform="Shopee" {...base} shopeeShops={[{ shopId: 77, shopName: "Shop A" }]} onConnectShopee={onConnectShopee} /></TProvider>);
     fireEvent.change(getByTestId("lc-shopee-session"), { target: { value: "sess-1" } });
     fireEvent.click(getByTestId("lc-shopee-connect"));
     expect(onConnectShopee).toHaveBeenCalledWith(77, "sess-1");
@@ -109,7 +109,7 @@ describe("LiveConnectModal — Facebook & Shopee", () => {
 describe("LiveConnectModal — manage mode", () => {
   it("TikTok → renders ALL registered accounts (stale-fix reflects the profile), no Connect UI, header = Manage", () => {
     const { getAllByTestId, queryByTestId, getByTestId, baseElement } = render(
-      <TProvider><LiveConnectModal platform="TikTok" {...base} mode="manage" account={acct("a\nb\nc")} onSaveChannels={vi.fn()} /></TProvider>);
+      <TProvider lang="en"><LiveConnectModal platform="TikTok" {...base} mode="manage" account={acct("a\nb\nc")} onSaveChannels={vi.fn()} /></TProvider>);
     expect(getByTestId("cm-body")).toBeTruthy();
     expect(getAllByTestId("cm-row")).toHaveLength(3);          // all 3 accounts shown
     expect(queryByTestId("lc-tt-connect")).toBeNull();          // connect flow NOT rendered
@@ -119,7 +119,7 @@ describe("LiveConnectModal — manage mode", () => {
 
   it("Bug 1 / locked-agad — saved slots are LOCKED (non-editable, 🔒) when cooldowns are unknown (fail-closed); no Change; ● Live still shows", () => {
     const { getByTestId, getAllByTestId, queryByTestId } = render(
-      <TProvider><LiveConnectModal platform="TikTok" {...base} mode="manage" ttLiveName="a" account={acct("a\nb")} onSaveChannels={vi.fn()} /></TProvider>);
+      <TProvider lang="en"><LiveConnectModal platform="TikTok" {...base} mode="manage" ttLiveName="a" account={acct("a\nb")} onSaveChannels={vi.fn()} /></TProvider>);
     expect(getByTestId("cm-live")).toBeTruthy();                 // "a" is live
     expect(getAllByTestId("cm-locked").length).toBeGreaterThan(0); // fail-closed 🔒 lock badge
     expect(queryByTestId("cm-edit")).toBeNull();                 // NOT freely editable when locked
@@ -128,7 +128,7 @@ describe("LiveConnectModal — manage mode", () => {
 
   it("Option B — at the plan cap: exactly N slots (all filled, no empty inputs) + the Multi-Account button opens the Telegram popup", () => {
     const { getAllByTestId, queryAllByTestId, getByTestId } = render(
-      <TProvider><LiveConnectModal platform="TikTok" {...base} mode="manage" account={acct("a\nb", "", "plus")} onSaveChannels={vi.fn()} /></TProvider>);
+      <TProvider lang="en"><LiveConnectModal platform="TikTok" {...base} mode="manage" account={acct("a\nb", "", "plus")} onSaveChannels={vi.fn()} /></TProvider>);
     expect(getAllByTestId("cm-row")).toHaveLength(2);        // Plus = exactly 2 slots (no teaser)
     expect(queryAllByTestId("cm-empty")).toHaveLength(0);    // both filled → no empty input
     fireEvent.click(getByTestId("cm-multi"));                // "Add — Multi Account" (all plans)
@@ -139,7 +139,7 @@ describe("LiveConnectModal — manage mode", () => {
 
   it("Option B — under cap: empty slots are directly-typeable (no reveal button)", () => {
     const { getAllByTestId, queryByTestId } = render(
-      <TProvider><LiveConnectModal platform="TikTok" {...base} mode="manage" account={acct("a", "", "master")} onSaveChannels={vi.fn()} /></TProvider>);
+      <TProvider lang="en"><LiveConnectModal platform="TikTok" {...base} mode="manage" account={acct("a", "", "master")} onSaveChannels={vi.fn()} /></TProvider>);
     expect(getAllByTestId("cm-row")).toHaveLength(5);        // Master = 5 slots
     expect(getAllByTestId("cm-empty")).toHaveLength(4);      // 1 saved + 4 directly-typeable empties
     expect(queryByTestId("cm-add")).toBeNull();              // no progressive-reveal button
@@ -149,7 +149,7 @@ describe("LiveConnectModal — manage mode", () => {
     const onSaveChannels = vi.fn().mockResolvedValue({ ok: true });
     const onSaved = vi.fn();
     const { getAllByTestId, getByTestId } = render(
-      <TProvider><LiveConnectModal platform="TikTok" {...base} mode="manage" account={acct("a", "", "master")} onSaveChannels={onSaveChannels} onClose={onSaved} /></TProvider>);
+      <TProvider lang="en"><LiveConnectModal platform="TikTok" {...base} mode="manage" account={acct("a", "", "master")} onSaveChannels={onSaveChannels} onClose={onSaved} /></TProvider>);
     fireEvent.change(getAllByTestId("cm-empty")[0], { target: { value: "newacct" } });
     fireEvent.click(getByTestId("cm-save"));
     await waitFor(() => expect(onSaveChannels).toHaveBeenCalled());
@@ -160,7 +160,7 @@ describe("LiveConnectModal — manage mode", () => {
   it("Shopee → shop list + Authorize another (no session/connect UI)", () => {
     const onAuthorizeShopee = vi.fn();
     const { getByTestId, queryByTestId } = render(
-      <TProvider><LiveConnectModal platform="Shopee" {...base} mode="manage" shopeeShops={[{ shopId: 5, shopName: "MyShop" }]} shopeeLiveId={5} onAuthorizeShopee={onAuthorizeShopee} /></TProvider>);
+      <TProvider lang="en"><LiveConnectModal platform="Shopee" {...base} mode="manage" shopeeShops={[{ shopId: 5, shopName: "MyShop" }]} shopeeLiveId={5} onAuthorizeShopee={onAuthorizeShopee} /></TProvider>);
     expect(getByTestId("cm-shopee-row")).toBeTruthy();
     expect(getByTestId("cm-shopee-live")).toBeTruthy();
     expect(queryByTestId("lc-shopee-session")).toBeNull();      // no connect in manage mode
@@ -169,7 +169,7 @@ describe("LiveConnectModal — manage mode", () => {
   });
 
   it("Instagram → coming soon", () => {
-    const { getByTestId } = render(<TProvider><LiveConnectModal platform="Instagram" {...base} mode="manage" /></TProvider>);
+    const { getByTestId } = render(<TProvider lang="en"><LiveConnectModal platform="Instagram" {...base} mode="manage" /></TProvider>);
     expect(getByTestId("cm-soon")).toBeTruthy();
   });
 });

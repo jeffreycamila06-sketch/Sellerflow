@@ -5,7 +5,7 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 
 const { maybeSingle, upsert, getSession } = vi.hoisted(() => ({
   maybeSingle: vi.fn(async (): Promise<{ data: unknown; error: unknown }> => ({ data: null, error: null })),
-  upsert: vi.fn(async () => ({ error: null })),
+  upsert: vi.fn(async (..._a: unknown[]) => ({ error: null })),
   getSession: vi.fn(async () => ({ data: { session: { user: { id: "u1" } } } })),
 }));
 vi.mock("../../../supabase", () => ({

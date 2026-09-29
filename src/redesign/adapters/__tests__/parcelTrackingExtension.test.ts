@@ -4,7 +4,6 @@
 // (the server.js-structural convention). Reads are cwd-relative (vitest cwd = repo
 // root) to avoid node:path/__dirname.
 import { describe, it, expect } from "vitest";
-// @ts-expect-error node:fs types not in the tests tsconfig (present at runtime)
 import { readFileSync } from "node:fs";
 
 const scraper = readFileSync("chrome-extension/myship-order-711.js", "utf8");

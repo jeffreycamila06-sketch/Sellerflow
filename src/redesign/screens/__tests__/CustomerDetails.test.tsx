@@ -11,7 +11,7 @@ import type { ParcelCustomer } from "../../adapters/parcelCustomers";
 const { recent, search, saveParcelScan, updateParcelCustomer, deleteParcelCustomer, countPending, countTotal } = vi.hoisted(() => ({
   recent: { current: { ok: true, rows: [] as ParcelCustomer[] } as { ok: boolean; rows: ParcelCustomer[]; error?: string } },
   search: { current: { ok: true, rows: [] as ParcelCustomer[] } as { ok: boolean; rows: ParcelCustomer[]; error?: string } },
-  saveParcelScan: vi.fn(async () => ({ ok: true, id: "new-1" }) as { ok: boolean; id?: string; error?: string }),
+  saveParcelScan: vi.fn(async (_fields: unknown, _raw: unknown) => ({ ok: true, id: "new-1" }) as { ok: boolean; id?: string; error?: string }),
   updateParcelCustomer: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
   deleteParcelCustomer: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
   countPending: vi.fn(async () => ({ ok: true, count: 0 }) as { ok: boolean; count: number; error?: string }),
@@ -28,7 +28,7 @@ vi.mock("../../adapters/parcelCustomers", () => ({
 }));
 vi.mock("../../adapters/parcelScan", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../adapters/parcelScan")>();
-  return { ...actual, saveParcelScan: (...a: unknown[]) => saveParcelScan(...(a as [])) };
+  return { ...actual, saveParcelScan: (...a: unknown[]) => saveParcelScan(...(a as [unknown, unknown])) };
 });
 vi.mock("../../adapters/shippingSettings", () => ({ loadGlobalShippingFee: async () => 38 }));
 
@@ -38,7 +38,7 @@ const mk = (over: Partial<ParcelCustomer> = {}): ParcelCustomer => ({
   id: "c1", phone: "0912345678", name: "Maria", storeId: "266402", notes: "@maria",
   createdAt: "2026-09-08T00:00:00Z", updatedAt: "2026-09-08T00:00:00Z", ...over,
 });
-const view = () => render(<TProvider><CustomerDetails cur="NT$" /></TProvider>);
+const view = () => render(<TProvider lang="en"><CustomerDetails cur="NT$" /></TProvider>);
 
 beforeEach(() => {
   recent.current = { ok: true, rows: [] };

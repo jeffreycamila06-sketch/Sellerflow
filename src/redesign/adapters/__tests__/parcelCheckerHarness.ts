@@ -97,7 +97,7 @@ export function bootWorker(opts: BootOpts = {}) {
   const setTimeout = (fn: () => void, ms: number) => { if (ms > 0 && ms <= 2000) fn(); else calls.scheduled.push(ms); return 1; };
   const now = opts.now;
   const DateCtor = now
-    ? new Proxy(Date, { get: (t, k) => (k === "now" ? now : Reflect.get(t, k)), construct: (t, args) => new t(...(args.length ? (args as [number]) : [now()])) })
+    ? new Proxy(Date, { get: (t, k) => (k === "now" ? now : Reflect.get(t, k)), construct: (t, args) => new t(...(args.length ? (args as [number]) : [now()] as [number])) })
     : Date;
   const sandbox: Record<string, unknown> = {
     chrome, fetch, setTimeout, clearTimeout: () => {},

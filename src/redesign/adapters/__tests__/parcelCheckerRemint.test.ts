@@ -109,7 +109,7 @@ function loadMyship(html: string, url: string) {
   let handler: Handler | null = null;
   const sandbox: Record<string, unknown> = {
     window: win, document: win.document, location: win.location, setTimeout: win.setTimeout.bind(win), clearTimeout: win.clearTimeout.bind(win),
-    fetch: vi.fn(), AbortController: win.AbortController, URLSearchParams: win.URLSearchParams, Promise, Date, Math, String, Number, Boolean, Object, Array, RegExp, Error, JSON, console: { log: () => {}, warn: () => {}, error: () => {} },
+    fetch: vi.fn(), AbortController: (win as unknown as typeof globalThis).AbortController, URLSearchParams: (win as unknown as typeof globalThis).URLSearchParams, Promise, Date, Math, String, Number, Boolean, Object, Array, RegExp, Error, JSON, console: { log: () => {}, warn: () => {}, error: () => {} },
     chrome: { runtime: { onMessage: { addListener: (h: Handler) => { handler = h; } } } },
   };
   vm.createContext(sandbox);

@@ -17,13 +17,7 @@
 //      shipping_entries,
 //   6. status enum carries the 7 states; terminal defaults false.
 import { describe, it, expect } from "vitest";
-// tsconfig.app excludes @types/node from the tests; these modules + __dirname are
-// provided by vitest at runtime. Suppress the missing-type errors so this
-// file-reading contract test stays at the typecheck baseline (same idiom the
-// other SQL contract tests would otherwise add node:fs/__dirname errors for).
-// @ts-expect-error node:fs types not in the tests tsconfig (present at runtime)
 import { readFileSync } from "node:fs";
-// @ts-expect-error node:path types not in the tests tsconfig (present at runtime)
 import { resolve } from "node:path";
 declare const __dirname: string;
 

@@ -13,7 +13,7 @@ import { normalizeSamePrice, canEnableSamePrice } from "../adapters/useSamePrice
 import LiveSettingModal from "../components/LiveSettingModal";
 import CountryPhoneField from "../components/CountryPhoneField";
 import type { AccountUser } from "../../accountDb";
-import { useT, tpl } from "../i18n";
+import { useT, tpl, type RedesignT } from "../i18n";
 import { accountList } from "../adapters/connect";
 import ChannelsList, { type ManageChan } from "../components/ChannelsList";
 
@@ -59,7 +59,7 @@ function LsToggle({ on, title, testId, onClick }: { on: boolean; title: string; 
 // parse GM (link or bare id) → validate phone → upsert config → THEN try the
 // Render GM validation (verify-OPTIONAL: unreachable saves anyway with an
 // honest unverified note — a 7-11/Render hiccup never blocks dogfood).
-function MyshipCheckCard({ t }: { t: T }) {
+function MyshipCheckCard({ t }: { t: RedesignT }) {
   return (
     <div style={{ marginTop: 14 }}>
       <div className="sfl-anim-textglow" style={sectionLabel}>{t.rd_mc_title}</div>

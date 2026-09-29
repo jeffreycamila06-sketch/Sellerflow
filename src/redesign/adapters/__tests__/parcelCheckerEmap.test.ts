@@ -46,7 +46,8 @@ function loadEmap(html: string, url: string, opts: { mainGuid?: string | null; b
   });
   const sandbox: Record<string, unknown> = {
     window: win, document: win.document, location: win.location,
-    CustomEvent: win.CustomEvent, URLSearchParams: win.URLSearchParams, AbortController: win.AbortController,
+    // jsdom-realm constructors (Window type lacks them; typed via globalThis shape).
+    CustomEvent: (win as unknown as typeof globalThis).CustomEvent, URLSearchParams: (win as unknown as typeof globalThis).URLSearchParams, AbortController: (win as unknown as typeof globalThis).AbortController,
     setTimeout: win.setTimeout.bind(win), clearTimeout: win.clearTimeout.bind(win),
     fetch, Promise, Date, Math, String, Number, Boolean, Object, Array, RegExp, Error, JSON,
     console: { log: (...a: unknown[]) => calls.logs.push(a.join(" ")), warn: () => {}, error: () => {} },

@@ -8,12 +8,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 
 const rpcMock = vi.fn(async () => ({ data: { ok: true, email: "s@x.com", balance: 12 }, error: null } as { data: unknown; error: unknown }));
-const saveAuditLogMock = vi.fn(async () => {});
+const saveAuditLogMock = vi.fn(async (_entry: unknown) => {});
 vi.mock("../../../supabase", () => ({ supabase: { rpc: (...a: unknown[]) => rpcMock(...(a as [])) } }));
 vi.mock("../../../accountDb", () => ({
   adminUpdatePlan: vi.fn(async () => {}),
   adminUpdateContactNote: vi.fn(async () => {}),
-  saveAuditLog: (...a: unknown[]) => saveAuditLogMock(...(a as [])),
+  saveAuditLog: (...a: unknown[]) => saveAuditLogMock(...(a as [unknown])),
   upsertUser: vi.fn(async () => {}),
 }));
 

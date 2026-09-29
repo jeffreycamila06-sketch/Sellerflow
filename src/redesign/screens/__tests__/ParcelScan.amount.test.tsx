@@ -11,7 +11,7 @@ import { TProvider } from "../../i18n";
 
 const { loadRows, updateParcelScan } = vi.hoisted(() => ({
   loadRows: { current: [] as ParcelScanRow[] },
-  updateParcelScan: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
+  updateParcelScan: vi.fn(async (..._a: unknown[]) => ({ ok: true }) as { ok: boolean; error?: string }),
 }));
 
 vi.mock("../../adapters/parcelScan", async (importOriginal) => {
@@ -37,7 +37,7 @@ const mk = (over: Partial<ParcelScanRow> = {}): ParcelScanRow => ({
   id: "r1", customerName: "Old", phone: "0912345678", storeId: "266402", amount: 550,
   notes: "", status: "confirmed", storeCheckStatus: "valid", createdAt: "2026-09-08T00:00:00Z", ...over,
 });
-const view = () => render(<TProvider><ParcelScan cur="NT$" /></TProvider>);
+const view = () => render(<TProvider lang="en"><ParcelScan cur="NT$" /></TProvider>);
 const save = (r: ReturnType<typeof view>) => r.getByTestId("ps-save") as HTMLButtonElement;
 
 beforeEach(() => { updateParcelScan.mockClear(); updateParcelScan.mockResolvedValue({ ok: true }); loadRows.current = []; });

@@ -20,7 +20,7 @@ beforeAll(() => { (HTMLElement.prototype as unknown as { scrollTo: () => void })
 const H = vi.hoisted(() => ({
   onComment: { fn: null as ((c: ProdComment) => void) | null },
   stock: { v: 2 },
-  createOrder: { fn: null as ReturnType<typeof vi.fn> | null },
+  createOrder: { fn: null as Mock<(...args: unknown[]) => unknown> | null },
   sessionState: { v: "empty" as "idle" | "loading" | "live" | "empty" }, // F-DEDUP-RACE gate
 }));
 

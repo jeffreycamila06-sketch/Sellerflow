@@ -3,8 +3,10 @@
 // single-device A→B switch works, admin unlimited, unknown-plan no-cap, TOCTOU parallel
 // connects capped, Pro allows 3 / kicks on the 4th, crashed device self-clears (fresh gate).
 import { describe, it, expect } from "vitest";
-import { concurrencyCap, freshLiveKeysForSeller, capDecision, isFreshEntry } from "../../../../server/concurrencyCap.js";
+import { concurrencyCap, freshLiveKeysForSeller, capDecision as _capDecision, isFreshEntry } from "../../../../server/concurrencyCap.js";
 import { CONNECT_REUSE_FRESH_MS } from "../../../../server/connectionHealth.js";
+// capDecision's JS destructuring default `= {}` makes TS drop `max` from the inferred param type.
+const capDecision = _capDecision as (a: { realFresh?: { key: string; startedAt: number }[]; reservedCount?: number; max: number | null }) => ReturnType<typeof _capDecision>;
 
 const NOW = 1_000_000_000_000;
 const entry = (key: string, sellerId: string, startedAt: number, ageMs = 0) => ({ key, sellerId, startedAt, lastEventAt: NOW - ageMs });

@@ -392,7 +392,7 @@ describe("poller — #200 feature gate is NOT an auth failure", () => {
     await rt.pollOnce(entry);                       // gated
     const r = await rt.pollOnce(entry);             // approved → data
     expect(r).toMatchObject({ hadNew: true, stop: false });
-    expect(entry.featureGated).toBe(false);
+    expect((entry as { featureGated?: boolean }).featureGated).toBe(false);
     expect(emitComment.mock.calls[0][2].initial).toBe(true); // F1 intact: first REAL poll = display-only
     expect(log.mock.calls.some((c) => String(c[0]).includes("comments unblocked"))).toBe(true);
   });

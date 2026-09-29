@@ -45,7 +45,7 @@ const mk = (over: Partial<ParcelScanRow> = {}): ParcelScanRow => ({
   notes: "", status: "confirmed", storeCheckStatus: "valid", createdAt: "2026-09-08T00:00:00Z", ...over,
 });
 
-const view = () => render(<TProvider><ParcelScan cur="NT$" /></TProvider>);
+const view = () => render(<TProvider lang="en"><ParcelScan cur="NT$" /></TProvider>);
 
 beforeEach(() => {
   deleteParcelScan.mockClear(); deleteExportedParcels.mockClear();

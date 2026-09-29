@@ -22,7 +22,7 @@ const build = (num: number, w: number, h: number, scale = 1) =>
     storeName: "Shop", sessionDate: "07/22/2026", currency: "NT$",
     buyer: { num, name: "Ann", handle: "annc", totalSpent: 0, orders: [] },
     settings: { printBuyerNumberScale: scale },
-  }, w, h));
+  }, w, h, (): number[] => { throw new Error("gbk unused: ASCII-only payload"); }));
 
 describe("(a) TS reference — split Buyer line, exact positions, 4-digit fit", () => {
   it("two TEXT commands, same y and ym, bare number at x=280, no '#', across sizes and numbers", () => {

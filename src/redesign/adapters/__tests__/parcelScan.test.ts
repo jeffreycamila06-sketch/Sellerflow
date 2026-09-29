@@ -202,7 +202,7 @@ describe("scanParcel (client POST)", () => {
   const fields = { name: "陳小美", phone: "0912345678", store_id: "123456", amount: 550, notes: null };
 
   it("success → fields + confidence; sends Bearer token + image body", async () => {
-    const f = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ success: true, fields, confidence: { name: "high", phone: "high", store_id: "high", amount: "high", notes: "low" } }) }));
+    const f = vi.fn(async (_url: string, _init: RequestInit) => ({ ok: true, status: 200, json: async () => ({ success: true, fields, confidence: { name: "high", phone: "high", store_id: "high", amount: "high", notes: "low" } }) }));
     globalThis.fetch = f as unknown as typeof fetch;
     const r = await scanParcel("aGVsbG8=", "image/jpeg");
     expect(r.ok).toBe(true);
@@ -243,7 +243,7 @@ describe("scanParcel (client POST)", () => {
 
 describe("checkEmapStore (client POST) — best-effort, never blocks", () => {
   it("valid store → verdict + name; sends Bearer + { storeId }", async () => {
-    const f = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ success: true, storeId: "982063", status: "valid", storeName: "德民門市" }) }));
+    const f = vi.fn(async (_url: string, _init: RequestInit) => ({ ok: true, status: 200, json: async () => ({ success: true, storeId: "982063", status: "valid", storeName: "德民門市" }) }));
     globalThis.fetch = f as unknown as typeof fetch;
     const r = await checkEmapStore("982063");
     expect(r.status).toBe("valid");

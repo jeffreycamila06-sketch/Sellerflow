@@ -15,11 +15,11 @@ const base = {
   onPickTikTok: vi.fn(), onPickShopee: vi.fn(),
 };
 const view = (over: Partial<Parameters<typeof LiveSourceSheet>[0]> = {}) =>
-  render(<TProvider><LiveSourceSheet {...base} showShopee {...over} /></TProvider>);
+  render(<TProvider lang="en"><LiveSourceSheet {...base} showShopee {...over} /></TProvider>);
 
 describe("LiveSourceSheet", () => {
   it("open=false → renders nothing", () => {
-    const { container } = render(<TProvider><LiveSourceSheet {...base} showShopee={false} open={false} /></TProvider>);
+    const { container } = render(<TProvider lang="en"><LiveSourceSheet {...base} showShopee={false} open={false} /></TProvider>);
     expect(container.querySelector("[data-testid=livesource-sheet]")).toBeNull();
   });
 

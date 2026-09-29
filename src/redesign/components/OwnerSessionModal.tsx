@@ -6,7 +6,6 @@
 // mirrors SessionPickerModal's shell.
 import { type CSSProperties } from "react";
 import { useT } from "../i18n";
-import { SESSION_V2_DAYS } from "../adapters/sessionV2";
 
 export default function OwnerSessionModal({
   onStart, onCancel,

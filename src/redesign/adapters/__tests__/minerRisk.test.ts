@@ -8,7 +8,7 @@ import {
   RISK_WATCH_MAX,
   type RiskLevel,
 } from "../minerRisk";
-import type { Comment } from "../data";
+import type { Comment } from "../../data";
 
 // Minimal Comment factory — only the risk-relevant fields matter here.
 const mk = (over: Partial<Comment>): Comment =>

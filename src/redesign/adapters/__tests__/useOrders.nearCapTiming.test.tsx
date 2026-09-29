@@ -12,7 +12,7 @@ import type { Comment as ProdComment } from "../../../lib/orderTypes";
 
 // Deferred saveOrderToDatabase (the write that fires check_and_increment_free_order) so
 // we can observe the exact moment afterWrite fires relative to the write settling.
-const h = vi.hoisted(() => ({ resolveOrder: () => {} }));
+const h = vi.hoisted(() => ({ resolveOrder: (() => {}) as (value?: unknown) => void }));
 vi.mock("../../../db", () => ({
   saveOrderToDatabase: vi.fn(() => new Promise((res) => { h.resolveOrder = res; })),
   saveLiveSessionOrder: vi.fn(async () => {}),

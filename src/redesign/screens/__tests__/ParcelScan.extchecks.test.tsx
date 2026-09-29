@@ -13,7 +13,7 @@ import type { ParcelScanRow } from "../../adapters/parcelScan";
 const { loadRows, resetExtensionChecks, updateParcelScan } = vi.hoisted(() => ({
   loadRows: { current: [] as ParcelScanRow[] },
   resetExtensionChecks: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
-  updateParcelScan: vi.fn(async () => ({ ok: true }) as { ok: boolean; error?: string }),
+  updateParcelScan: vi.fn(async (..._a: unknown[]) => ({ ok: true }) as { ok: boolean; error?: string }),
 }));
 
 vi.mock("../../adapters/parcelScan", () => ({
@@ -58,8 +58,8 @@ const mk = (over: Partial<ParcelScanRow> = {}): ParcelScanRow => ({
   storeFullStatus: null, phoneCheckStatus: null, phoneRestrictedUntil: null,
   createdAt: "2026-09-08T00:00:00Z", ...over,
 });
-const view = () => render(<TProvider><ParcelScan cur="NT$" /></TProvider>);
-const viewOn = () => render(<TProvider><ParcelScan cur="NT$" checkOn /></TProvider>);
+const view = () => render(<TProvider lang="en"><ParcelScan cur="NT$" /></TProvider>);
+const viewOn = () => render(<TProvider lang="en"><ParcelScan cur="NT$" checkOn /></TProvider>);
 
 beforeEach(() => {
   resetExtensionChecks.mockClear(); resetExtensionChecks.mockResolvedValue({ ok: true });

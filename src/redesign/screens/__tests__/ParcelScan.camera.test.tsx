@@ -53,11 +53,11 @@ const enableCamera = () => {
 beforeEach(() => { hadMedia = false; getCreditBalance.mockResolvedValue({ ok: true, balance: 5 }); });
 afterEach(() => {
   if (hadMedia) Object.defineProperty(navigator, "mediaDevices", { value: prevMedia, configurable: true });
-  else { try { delete (navigator as Record<string, unknown>).mediaDevices; } catch { /* ignore */ } }
+  else { try { delete (navigator as unknown as Record<string, unknown>).mediaDevices; } catch { /* ignore */ } }
   hadMedia = false;
 });
 
-const view = () => render(<TProvider><ParcelScan cur="NT$" /></TProvider>);
+const view = () => render(<TProvider lang="en"><ParcelScan cur="NT$" /></TProvider>);
 
 describe("ParcelScan in-app camera", () => {
   it("no getUserMedia (jsdom) → the file-picker fallback renders (safety net)", async () => {

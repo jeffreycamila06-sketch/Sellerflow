@@ -9,6 +9,9 @@ import { quotaForPlan } from "../shippingExport";
 import { rowToUser } from "../../../accountDb";
 import type { AccountUser } from "../../../accountDb";
 
+// JS signature has no defaults, so TS marks every field (incl. the omitted `facebook`) required.
+type CapInput = Parameters<typeof accountCapVerdict>[0];
+
 // ── B. Cap parity: client === server, both = 2 for Plus ──────────────────────
 describe("Plus account cap = 2 (client/server parity)", () => {
   it("client maxAcc('plus') === 2, unchanged basic/pro/master", () => {
@@ -46,9 +49,9 @@ describe("Plus enforcement — 2 allowed, 3rd blocked", () => {
   });
   it("server accountCapVerdict: 2nd registered account allowed, unregistered 3rd blocked", () => {
     // Two accounts registered; connecting one of them = within cap 2 → allowed.
-    expect(accountCapVerdict({ plan: "plus", role: "seller", tiktok: "a,b", platform: "TikTok", username: "b" }).allowed).toBe(true);
+    expect(accountCapVerdict({ plan: "plus", role: "seller", tiktok: "a,b", platform: "TikTok", username: "b" } as CapInput).allowed).toBe(true);
     // A 3rd account not in the registered list → blocked (reason account_limit, max 2).
-    const v = accountCapVerdict({ plan: "plus", role: "seller", tiktok: "a,b", platform: "TikTok", username: "c" });
+    const v = accountCapVerdict({ plan: "plus", role: "seller", tiktok: "a,b", platform: "TikTok", username: "c" } as CapInput);
     expect(v.allowed).toBe(false);
     expect(v.max).toBe(2);
   });

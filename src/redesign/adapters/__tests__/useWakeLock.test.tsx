@@ -15,7 +15,7 @@ const makeSentinel = (): Sentinel => ({ release: vi.fn(() => Promise.resolve()),
 
 let sentinels: Sentinel[] = [];
 const requestMock = vi.fn(() => { const s = makeSentinel(); sentinels.push(s); return Promise.resolve(s); });
-const nav = navigator as Navigator & { wakeLock?: { request: typeof requestMock } };
+const nav = navigator as unknown as { wakeLock?: { request: typeof requestMock } };
 
 const flush = () => act(async () => { await Promise.resolve(); });
 const setVisibility = (v: "visible" | "hidden") => {
