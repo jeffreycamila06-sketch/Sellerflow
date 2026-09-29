@@ -116,7 +116,7 @@ describe("tabRows / tabCounts", () => {
 describe("2026-09-27 Returned-tab starvation fix — exact totals + three disjoint queries", () => {
   const adapter = readFileSync("src/redesign/adapters/parcelTracking.ts", "utf8");
 
-  it("tabCounts: exact totals override all/picked/returned; waiting/transit stay derived", () => {
+  it("tabCounts: exact totals override every tab they cover; without totals everything is derived", () => {
     const groups = {
       waitingPickup: [{}, {}] as never[], inTransit: [{}] as never[],
       pickedUp: [{}, {}, {}] as never[], returned: [] as never[], other: [{}] as never[],
@@ -126,6 +126,9 @@ describe("2026-09-27 Returned-tab starvation fix — exact totals + three disjoi
     // exact DB totals → the page cap can no longer lie on all/picked/returned
     expect(tabCounts(groups as never, { all: 903, picked: 513, returned: 2 }))
       .toEqual({ all: 903, waiting: 2, transit: 1, picked: 513, returned: 2 });
+    // S7: with exact waiting/transit totals (paged list) those win too
+    expect(tabCounts(groups as never, { all: 903, picked: 513, returned: 2, waiting: 650, transit: 40 }))
+      .toEqual({ all: 903, waiting: 650, transit: 40, picked: 513, returned: 2 });
   });
 
   it("load = three DISJOINT bounded queries (non-terminal / returned / picked_up), each count:exact", () => {
@@ -136,7 +139,14 @@ describe("2026-09-27 Returned-tab starvation fix — exact totals + three disjoi
     // recency ordering: returned/picked can never be starved by old deadlines again
     expect(adapter).toContain('.order("returned_at", { ascending: false');
     expect(adapter).toContain('.order("picked_up_at", { ascending: false');
-    // never-partial (the S1 rule): any query error fails the WHOLE load
-    expect(adapter).toContain("const err = live.error || returned.error || picked.error;");
+    // never-partial (the S1 rule): any query error — incl. the S7 exact-count queries — fails the WHOLE load
+    expect(adapter).toContain("const err = live.error || returned.error || picked.error || atStore.error || unchecked.error || transit.error;");
+  });
+  it("S7: the unfinished list is PAGED in a stable order (deadline, then id) and Load more continues from the offset", () => {
+    expect(adapter).toMatch(/\.order\("pickup_deadline", \{ ascending: true, nullsFirst: false \}\)\s*\.order\("id", \{ ascending: true \}\)\s*\.range\(from, from \+ PARCEL_TRACKING_PAGE - 1\)/);
+    expect(adapter).toContain("const { data, error } = await livePage(me, Math.max(0, offset));");
+    // exact waiting = chaseable at_store + not-checked-yet; transit = chaseable in_transit
+    expect(adapter).toContain('.or("special_type.is.null,special_type.eq.")');
+    expect(adapter).toContain("waiting: (atStore.count ?? 0) + (unchecked.count ?? 0),");
   });
 });

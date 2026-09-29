@@ -20,9 +20,9 @@ import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT, tpl } from "../i18n";
 import { taipeiDayId } from "../../lib/dateHelpers";
 import { copyText } from "../components/inviteShare";
-import { syncFromExport } from "../adapters/parcelExportRead";
+import { syncFromExport, type SyncResult } from "../adapters/parcelExportRead";
 import {
-  loadParcelTracking, type ParcelTotals, groupParcels, chaseTarget, chaseCopyValue, rowTab, leftCell, isUnchecked, tabRows, tabCounts,
+  loadParcelTracking, loadMoreLive, type ParcelTotals, groupParcels, chaseTarget, chaseCopyValue, rowTab, leftCell, isUnchecked, tabRows, tabCounts,
   PICKUP_TABS, PICKUP_STATUS_TABS,
   type ParcelTrackingRow, type ParcelGroups, type PickupTab,
 } from "../adapters/parcelTracking";
@@ -84,9 +84,9 @@ function LeftText({ row, today, t }: { row: ParcelTrackingRow; today: string; t:
   );
 }
 
-// Waiting → "Chase" (the EXISTING behaviour: handle-shaped → open the TikTok profile, with
-// the iOS copy-on-open; otherwise copy the username; no username → nothing). Every other
-// status → no action. The old button captions become tooltips.
+// Waiting → "Chase" ONLY for a plain TikTok handle (opens the profile, with the iOS
+// copy-on-open). Any other username → "Copy" (copies it). No username → "Copy" copies the
+// tracking number (S6). Not checked yet / every other status → no action.
 function ChaseAction({ row, t, onCopy }: { row: ParcelTrackingRow; t: T; onCopy: (handle: string) => void }) {
   if (rowTab(row) !== "waiting" || isUnchecked(row)) return null; // not checked yet → no chase
   const target = chaseTarget(row.buyerUsername);
@@ -104,13 +104,19 @@ function ChaseAction({ row, t, onCopy }: { row: ParcelTrackingRow; t: T; onCopy:
     );
   }
   if (target.kind === "copy") {
+    // not a plain TikTok handle (IG/LINE/FB-tagged, a name, CJK) → Copy only, never a link
     return (
       <button style={chaseBtn} onClick={() => onCopy(target.handle)} data-testid="pt-copy-username" title={t.rd_pt_copy_username}>
-        {t.rd_pt_chase}
+        {t.rd_pt_copy}
       </button>
     );
   }
-  return null;
+  // S6 — no username: still listed; Copy the tracking number so the seller can look it up
+  return (
+    <button style={chaseBtn} onClick={() => onCopy(row.trackingNo)} data-testid="pt-copy-code" title={t.rd_pt_copy_code}>
+      {t.rd_pt_copy}
+    </button>
+  );
 }
 
 function Buyer({ row, t }: { row: ParcelTrackingRow; t: T }) {
@@ -218,6 +224,21 @@ function CompactList({ rows, today, t, onCopy }: { rows: ParcelTrackingRow[]; to
   );
 }
 
+// S4 — one plain-words message per upload failure cause (never "couldn't read the file"
+// for a save/permission/session problem).
+function syncErrorText(res: SyncResult, t: T): string {
+  switch (res.error) {
+    case "signed_out": return t.rd_pt_err_signed_out;
+    case "permission": return t.rd_pt_err_permission;
+    case "partial": return tpl(t.rd_pt_err_partial, { n: res.saved ?? 0, m: res.attempted ?? res.total });
+    case "no_codes": return t.rd_pt_err_no_codes;
+    case "not_export": return t.rd_pt_err_not_export;
+    case "empty": return t.rd_pt_sync_empty;
+    case "foreign": return tpl(t.rd_pt_err_foreign, { n: res.foreign ?? 0 });
+    default: return t.rd_pt_err_network;
+  }
+}
+
 export default function ParcelTracking() {
   const t = useT();
   const today = taipeiDayId();
@@ -228,17 +249,35 @@ export default function ParcelTracking() {
   const [totals, setTotals] = useState<ParcelTotals | undefined>(undefined); // exact DB counts (survive the page cap)
   const [toast, setToast] = useState("");
   const [syncing, setSyncing] = useState(false);
+  const [syncErr, setSyncErr] = useState(""); // S4: a persistent, plain-words upload error
   const [showHow, setShowHow] = useState(false);
+  const [rows, setRows] = useState<ParcelTrackingRow[]>([]);
+  const [loadingMore, setLoadingMore] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const apply = (next: ParcelTrackingRow[], nextTotals: ParcelTotals | undefined) => {
+    setRows(next);
+    setGroups(groupParcels(next, today));
+    setTotals(nextTotals);
+  };
   async function load() {
     setState("loading");
     const res = await loadParcelTracking();
     if (!res.ok) { setState("error"); return; }
-    setGroups(groupParcels(res.rows, today));
-    setTotals(res.totals);
+    apply(res.rows, res.totals);
     setState("ready");
   }
+  // S7 — the unfinished list is paged (500 at a time); counts stay exact (totals).
+  const liveLoaded = rows.filter((r) => !r.terminal).length;
+  const liveRemaining = Math.max(0, (totals?.live ?? liveLoaded) - liveLoaded);
+  const onLoadMore = async () => {
+    setLoadingMore(true);
+    const res = await loadMoreLive(liveLoaded);
+    setLoadingMore(false);
+    if (!res.ok) { showToast(t.rd_pt_err_network); return; }
+    const have = new Set(rows.map((r) => r.id));
+    apply([...rows, ...res.rows.filter((r) => !have.has(r.id))], totals);
+  };
   // Read-on-open ONLY (zero poll) — a refresh is a manual tap. setState lives in
   // the .then callback (not synchronously in the effect body); initial state is
   // already "loading" so mount needs no extra set. (CustomerDetails pattern.)
@@ -247,6 +286,7 @@ export default function ParcelTracking() {
     void loadParcelTracking().then((res) => {
       if (!live) return;
       if (!res.ok) { setState("error"); return; }
+      setRows(res.rows);
       setGroups(groupParcels(res.rows, today));
       setTotals(res.totals);
       setState("ready");
@@ -262,37 +302,53 @@ export default function ParcelTracking() {
 
   const showToast = (msg: string, ms = 4000) => { setToast(msg); setTimeout(() => setToast(""), ms); };
 
-  // "Sync from 賣貨便" — read the uploaded 匯出報表 .xlsx and upsert the buyer handles
-  // under the seller's own JWT. Client-side parse; poller columns are never written.
+  // "Sync from 賣貨便" — read the uploaded 匯出報表 .xlsx and sync it under the seller's own
+  // JWT. Client-side parse; poller columns are never written. Every failure cause gets its
+  // own plain-words message (S4) that stays on screen until the next upload or ✕.
   const onSyncPick = async (files: FileList | null) => {
     const file = files && files[0];
     if (fileRef.current) fileRef.current.value = ""; // re-picking the same file works
     if (!file) return;
     setSyncing(true);
+    setSyncErr("");
+    let res: SyncResult;
     try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const res = await syncFromExport(bytes);
-      if (!res.ok) { showToast(t.rd_pt_sync_err); return; }
-      if (res.empty) { showToast(t.rd_pt_sync_empty); return; }
-      showToast(tpl(t.rd_pt_sync_done, { n: res.synced, m: res.totalRows, k: res.without }));
-      await load(); // re-read so the new @handles show immediately
-    } catch { showToast(t.rd_pt_sync_err); }
-    finally { setSyncing(false); }
+      res = await syncFromExport(new Uint8Array(await file.arrayBuffer()));
+    } catch {
+      res = { ok: false, error: "network", total: 0, fresh: 0, updated: 0, same: 0, withoutHandle: 0 };
+    }
+    setSyncing(false);
+    if (!res.ok) {
+      setSyncErr(syncErrorText(res, t));
+      if (res.error === "partial") await load(); // show what did save
+      return;
+    }
+    if (res.fresh + res.updated === 0) { showToast(tpl(t.rd_pt_sync_noop, { n: res.same })); return; }
+    showToast(tpl(t.rd_pt_sync_done2, { new: res.fresh, updated: res.updated, same: res.same }));
+    await load(); // re-read so the new parcels + @handles show immediately
   };
 
-  const empty = groups && !groups.waitingPickup.length && !groups.inTransit.length && !groups.pickedUp.length && !groups.returned.length && !groups.other.length;
+  const empty = state === "ready" && (totals ? totals.all === 0
+    : !!groups && !groups.waitingPickup.length && !groups.inTransit.length && !groups.pickedUp.length && !groups.returned.length && !groups.other.length);
+  const syncButton = (onHeader: boolean) => (
+    <button onClick={() => fileRef.current?.click()} disabled={syncing} data-testid={onHeader ? "pt-sync" : "pt-empty-sync"}
+      style={onHeader
+        ? { ...btn, background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.35)", color: "var(--on-header)", opacity: syncing ? 0.6 : 1 }
+        : { ...btn, background: "var(--accent)", border: "1px solid var(--accent)", color: "var(--accent-text)", opacity: syncing ? 0.6 : 1, marginTop: 12 }}>
+      {syncing ? t.rd_pt_sync_ing : t.rd_pt_sync}
+    </button>
+  );
 
   return (
     <div>
-      <div style={{ ...headerBar, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <div>
-          <div style={headerTitle}>{t.rd_pt_title}</div>
-          <div style={{ fontSize: 11.5, color: "var(--on-header)", opacity: 0.85, marginTop: 2 }}>{t.rd_pt_sub}</div>
+      {/* 375px-safe (N1): the title block may shrink + wrap, the buttons wrap under it. */}
+      <div style={{ ...headerBar, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }} data-testid="pt-header">
+        <div style={{ minWidth: 0, flex: "1 1 160px" }}>
+          <div style={{ ...headerTitle, overflowWrap: "anywhere" }}>{t.rd_pt_title}</div>
+          <div style={{ fontSize: 11.5, color: "var(--on-header)", opacity: 0.85, marginTop: 2, overflowWrap: "anywhere" }}>{t.rd_pt_sub}</div>
         </div>
-        <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-          <button onClick={() => fileRef.current?.click()} disabled={syncing} style={{ ...btn, background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.35)", color: "var(--on-header)", opacity: syncing ? 0.6 : 1 }} data-testid="pt-sync">
-            {syncing ? t.rd_pt_sync_ing : t.rd_pt_sync}
-          </button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", minWidth: 0, maxWidth: "100%" }}>
+          {syncButton(true)}
           <button onClick={() => void load()} style={{ ...btn, background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.35)", color: "var(--on-header)" }} data-testid="pt-refresh">
             {t.rd_pt_refresh}
           </button>
@@ -301,8 +357,16 @@ export default function ParcelTracking() {
       <input ref={fileRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden data-testid="pt-sync-file" onChange={(e) => void onSyncPick(e.target.files)} />
 
       <div style={{ padding: 16, maxWidth: narrow ? 620 : 960, margin: "0 auto" }}>
-        {/* Sync-from-賣貨便 hint + collapsible how-to (laptop-first). */}
-        <div style={{ ...card, padding: 12, marginBottom: 14 }} data-testid="pt-sync-card">
+        {/* S4 — upload error: plain words, one message per cause, stays until ✕ / next upload. */}
+        {syncErr && (
+          <div role="alert" style={{ ...card, padding: "10px 12px", marginBottom: 14, border: "1px solid var(--danger)", background: "var(--danger-soft)", display: "flex", gap: 10, alignItems: "flex-start" }} data-testid="pt-sync-error">
+            <div style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 600, color: "var(--danger)", lineHeight: 1.45 }}>{syncErr}</div>
+            <button onClick={() => setSyncErr("")} aria-label={t.rd_pt_dismiss} style={{ background: "none", border: "none", color: "var(--danger)", fontSize: 16, lineHeight: 1, cursor: "pointer", padding: 0 }}>×</button>
+          </div>
+        )}
+        {/* Sync-from-賣貨便 hint + collapsible how-to (laptop-first). Hidden on the empty
+            state, which carries its own 3 steps + Sync button (N2). */}
+        {!empty && <div style={{ ...card, padding: 12, marginBottom: 14 }} data-testid="pt-sync-card">
           <div style={{ fontSize: 12.5, color: "var(--text-dim)" }}>{t.rd_pt_sync_hint}</div>
           <button onClick={() => setShowHow((v) => !v)} style={{ marginTop: 6, background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--accent)", fontSize: 12, fontWeight: 700 }} data-testid="pt-sync-how-toggle">
             {showHow ? t.rd_pt_sync_how_hide : t.rd_pt_sync_how}
@@ -315,32 +379,48 @@ export default function ParcelTracking() {
               <li>{t.rd_pt_sync_s4}</li>
             </ol>
           )}
-        </div>
+        </div>}
 
         {state === "loading" && <div style={{ fontSize: 13, color: "var(--text-dim)", textAlign: "center", padding: 30 }}>{t.rd_pt_loading}</div>}
         {state === "error" && <div style={{ ...card, fontSize: 13, color: "var(--danger)", textAlign: "center" }} data-testid="pt-error">{t.rd_pt_error}</div>}
         {state === "ready" && groups && (
           empty
-            ? <div style={{ ...card, fontSize: 13, color: "var(--text-dim)", textAlign: "center" }} data-testid="pt-empty">{t.rd_pt_empty}</div>
+            ? <div style={{ ...card, padding: 16 }} data-testid="pt-empty">
+                <div style={{ fontSize: 14, fontWeight: 800, color: "var(--text)" }}>{t.rd_pt_empty_title}</div>
+                <ol style={{ margin: "10px 0 0", paddingLeft: 20, fontSize: 13, color: "var(--text-dim)", lineHeight: 1.7 }} data-testid="pt-empty-steps">
+                  <li>{t.rd_pt_empty_s1}</li>
+                  <li>{t.rd_pt_empty_s2}</li>
+                  <li>{t.rd_pt_empty_s3}</li>
+                </ol>
+                {syncButton(false)}
+              </div>
             : (() => {
                 const counts = tabCounts(groups, totals);
-                const rows = tabRows(groups, tab, today);
+                const tabList = tabRows(groups, tab, today);
+                // S7 — more unfinished parcels than the first page: offer the next page.
+                const more = liveRemaining > 0 && tab !== "picked" && tab !== "returned"
+                  ? <button onClick={() => void onLoadMore()} disabled={loadingMore} style={{ ...btn, width: "100%", marginTop: 10, opacity: loadingMore ? 0.6 : 1 }} data-testid="pt-load-more">
+                      {loadingMore ? t.rd_pt_loading : tpl(t.rd_pt_load_more, { n: liveRemaining })}
+                    </button>
+                  : null;
                 const emptyTab = <div style={{ ...card, fontSize: 12.5, color: "var(--text-dim)", textAlign: "center", padding: 16, ...(narrow ? {} : { borderTopLeftRadius: 0, borderTopRightRadius: 0 }) }} data-testid="pt-tab-empty">{t.rd_pt_tab_empty}</div>;
                 return narrow
                   ? <div data-testid="pt-mobile">
                       <Cards tab={tab} counts={counts} onPick={setTab} t={t} />
-                      {rows.length ? <CompactList rows={rows} today={today} t={t} onCopy={onCopy} /> : emptyTab}
+                      {tabList.length ? <CompactList rows={tabList} today={today} t={t} onCopy={onCopy} /> : emptyTab}
+                      {more}
                     </div>
                   : <div data-testid="pt-web">
                       <Tabs tab={tab} counts={counts} onPick={setTab} t={t} />
-                      {rows.length ? <Table rows={rows} today={today} t={t} onCopy={onCopy} /> : emptyTab}
+                      {tabList.length ? <Table rows={tabList} today={today} t={t} onCopy={onCopy} /> : emptyTab}
+                      {more}
                     </div>;
               })()
         )}
       </div>
 
       {toast && (
-        <div style={{ position: "fixed", left: "50%", bottom: 30, transform: "translateX(-50%)", background: "var(--text)", color: "var(--surface)", padding: "9px 16px", borderRadius: 10, fontSize: 12.5, fontWeight: 700, zIndex: 60 }} data-testid="pt-toast">
+        <div style={{ position: "fixed", left: "50%", bottom: 30, transform: "translateX(-50%)", width: "max-content", maxWidth: "calc(100vw - 32px)", textAlign: "center", background: "var(--text)", color: "var(--surface)", padding: "9px 16px", borderRadius: 10, fontSize: 12.5, fontWeight: 700, zIndex: 60 }} data-testid="pt-toast">
           {toast}
         </div>
       )}
