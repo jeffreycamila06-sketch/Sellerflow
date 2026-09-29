@@ -130,7 +130,7 @@ describe("self-heal v1.7.0 — statuses recover without manual tab refreshes", (
   const bg = readFileSync("chrome-extension/background.js", "utf8");
 
   it("manifest 1.7.0 + the scripting permission (re-injection needs it)", () => {
-    expect(manifest.version).toBe("1.14.5"); // 1.14.5 = SFL token auto-refresh (in-place via the app's client → GET re-nav fallback → signed_out)
+    expect(manifest.version).toBe("1.14.6"); // 1.14.6 = E-Map store-check resilience (backoff, give-up, re-queue, 1–5 AM maintenance window)
     expect(manifest.permissions).toContain("scripting");
   });
 

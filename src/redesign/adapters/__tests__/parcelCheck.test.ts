@@ -223,16 +223,26 @@ describe("extension wiring pins (background.js multi-seller path)", () => {
   it("consumes the two admin RPCs and honors need_phone/need_store (nulls for skipped halves)", () => {
     expect(multi).toContain("/rest/v1/rpc/admin_parcel_checks_pending");
     expect(multi).toContain("/rest/v1/rpc/admin_parcel_check_verdict");
-    expect(multi).toContain("if (row.need_store && emapTabId)");
-    expect(multi).toContain("if (row.need_phone && myshipTabId)");
+    // 1.14.6: each half runs only when needed AND not in per-row backoff
+    expect(multi).toContain("const doStore = Boolean(row.need_store) && (!bo || now >= bo.storeNextAt);");
+    expect(multi).toContain("const doPhone = Boolean(row.need_phone) && (!bo || now >= bo.phoneNextAt);");
+    expect(multi).toContain("if (doStore && emapTabId)");
+    expect(multi).toContain("if (doPhone && myshipTabId)");
     expect(multi).toContain("let storeStatus = null;");
     expect(multi).toContain("let phoneStatus = null");
   });
 
   it("MISSING TAB never stamps 'unknown' (audit MEDIUM-2): halves stay null and a no-learning row skips the verdict write", () => {
     // one closed-tab night must not burn the cross-seller queue — 'unknown'
-    // may only come from a content-script RESPONSE, never our own tab absence
-    expect(multi).not.toContain('storeStatus = "unknown"');
+    // may only come from a content-script RESPONSE, never our own tab absence.
+    // 1.14.6: the ONLY store 'unknown' is the give-up after PC_STORE_GIVE_UP real
+    // attempts, inside the branch that ran with a live E-Map tab; the phone half never.
+    expect(multi.split('storeStatus = "unknown"').length - 1).toBe(1);
+    const tabBranch = multi.indexOf("if (doStore && emapTabId)");
+    const giveUp = multi.indexOf('storeStatus = "unknown"');
+    expect(tabBranch).toBeGreaterThan(-1);
+    expect(giveUp).toBeGreaterThan(tabBranch);
+    expect(multi.slice(tabBranch, giveUp)).toContain("if (b.storeFails >= PC_STORE_GIVE_UP) {");
     expect(multi).not.toContain('phoneStatus = "unknown"');
     expect(multi).toContain("if (storeStatus !== null || phoneStatus !== null)");
   });

@@ -40,6 +40,7 @@ const PC_STATUS_LABEL = {
   degraded: ["warn", "Last check failed — recovering…"],     // 1.14.4: a recent verdict never hides a fresh failure
   reminting: ["warn", "Re-opening via 賣貨便 選擇取貨門市…"],  // 1.14.3 unattended re-mint in flight
   dead: ["bad", "Re-open via 賣貨便 → 選擇門市"],            // 2 recoveries didn't help = real expiry
+  maintenance: ["warn", "7-ELEVEN maintenance (1–5 AM)"],     // 1.14.6: nightly window, checks slowed, nothing counted
 };
 function pcBadge(el, status) {
   const [cls, label] = PC_STATUS_LABEL[status] || ["off", status || "—"];
@@ -54,7 +55,7 @@ async function pcRenderStatus() {
   const st = (await pcOne(PC_STATUS_KEY, {})) || {};
   pcBadge(pcEls.sfl, st.sfl);
   pcBadge(pcEls.myship, st.myship);
-  pcBadge(pcEls.emap, st.emap);
+  pcBadge(pcEls.emap, st.inMaintenanceWindow ? "maintenance" : st.emap);
   // TRUE emap session state (never "all green" when broken): red = a reload landed
   // on error.aspx (real expiry); amber = no emap tab; green = a store check /
   // keepalive actually resolved; grey = tab present, awaiting a verdict.
@@ -63,7 +64,8 @@ async function pcRenderStatus() {
     const tab = st.emapTabId != null ? ` (tab ${st.emapTabId})` : "";
     const lastV = st.lastStoreVerdictAt ? ` — last store check ${new Date(st.lastStoreVerdictAt).toLocaleTimeString()}` : "";
     const s = st.emapSession;
-    const m = s === "expired" ? ["#e5484d", `⚠️ E-Map landed on error.aspx (session expired) — re-open via 賣貨便 → 選擇門市${dom}${tab}`]
+    const m = st.inMaintenanceWindow ? ["#b45309", "7-ELEVEN maintenance window (1–5 AM) — store checks resume at 5:00"]
+      : s === "expired" ? ["#e5484d", `⚠️ E-Map landed on error.aspx (session expired) — re-open via 賣貨便 → 選擇門市${dom}${tab}`]
       : s === "dead" ? ["#e5484d", st.emapDeadReason === "no_cart_detail"
           ? `⚠️ E-Map session expired — re-open via 賣貨便 → 選擇門市 (or park 賣貨便 on /cart/detail for auto re-mint)${dom}${tab}`
           : st.emapDeadReason === "timeout"
