@@ -12,7 +12,7 @@ const base = {
   onCustomerData: noop, onLegal: noop, onDelete: noop, onLogout: noop,
 };
 const view = (extra: Record<string, unknown> = {}) =>
-  render(<TProvider><SettingsHub {...base} {...extra} /></TProvider>);
+  render(<TProvider lang="en"><SettingsHub {...base} {...extra} /></TProvider>);
 
 describe("SettingsHub — Customer Details tile", () => {
   it("hidden when onCustomerDetails is not passed", () => {

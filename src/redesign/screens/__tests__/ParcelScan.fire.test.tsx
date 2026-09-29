@@ -52,7 +52,7 @@ beforeEach(() => { checkEmapStore.mockClear(); saveStoreCheck.mockClear(); });
 describe("ParcelScan store-check wiring", () => {
   it("Re-check on a flagged row calls checkEmapStore exactly once with the storeId (runStoreCheck fires)", async () => {
     const { findByTestId } = render(
-      <TProvider><ParcelScan cur="NT$" /></TProvider>,
+      <TProvider lang="en"><ParcelScan cur="NT$" /></TProvider>,
     );
     const btn = await findByTestId("ps-recheck"); // renders only when the wiring's guard allows
     fireEvent.click(btn);

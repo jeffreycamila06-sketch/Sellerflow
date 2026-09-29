@@ -51,7 +51,7 @@ vi.mock("../../adapters/shippingSettings", () => ({ loadGlobalShippingFee: async
 
 import ParcelScan from "../ParcelScan";
 
-const view = (checkOn = true) => render(<TProvider><ParcelScan cur="NT$" checkOn={checkOn} /></TProvider>);
+const view = (checkOn = true) => render(<TProvider lang="en"><ParcelScan cur="NT$" checkOn={checkOn} /></TProvider>);
 
 beforeEach(() => { deliverXlsm.mockClear(); markScansExported.mockClear(); });
 

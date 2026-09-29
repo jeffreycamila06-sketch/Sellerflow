@@ -131,7 +131,7 @@ const row = (id: string): Row => ({
 
 const mount = async (device: "phone" | "laptop", ready = 3) => {
   DB.narrow = device === "phone";
-  const u = render(<TProvider><ParcelScan cur="NT$" /></TProvider>);
+  const u = render(<TProvider lang="en"><ParcelScan cur="NT$" /></TProvider>);
   const w = within(u.container);
   if (device === "phone") { // per-device "Export on this phone" switch → ON
     fireEvent.click(await w.findByTestId("ps-export-switch-toggle"));

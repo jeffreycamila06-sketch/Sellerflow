@@ -83,7 +83,7 @@ describe("WHO reaches phone Export = exactly who can open Parcel Scan (parcelSca
 describe("a PAYING NON-ADMIN seller (manualOnly) on a phone gets the switch — default OFF", () => {
   it("app shell + manualOnly → switch shown, OFF, Export card hidden", async () => {
     win.Capacitor = {};
-    const r = render(<TProvider><ParcelScan cur="NT$" manualOnly /></TProvider>);
+    const r = render(<TProvider lang="en"><ParcelScan cur="NT$" manualOnly /></TProvider>);
     expect(r.getByTestId("ps-export-switch")).toBeTruthy();
     expect(r.getByTestId("ps-export-switch-toggle").getAttribute("aria-pressed")).toBe("false");
     expect(r.queryByTestId("ps-export-card")).toBeNull();
@@ -104,7 +104,7 @@ describe("per-DEVICE isolation (2c)", () => {
 
   it("the switch lives ONLY in this browser's localStorage — no DB/network write", async () => {
     win.Capacitor = {};
-    const r = render(<TProvider><ParcelScan cur="NT$" manualOnly /></TProvider>);
+    const r = render(<TProvider lang="en"><ParcelScan cur="NT$" manualOnly /></TProvider>);
     fireEvent.click(r.getByTestId("ps-export-switch-toggle"));
     fireEvent.click(r.getByTestId("ps-confirm-enablephone"));
     expect(localStorage.getItem(LS_KEY)).toBe("1");
@@ -114,7 +114,7 @@ describe("per-DEVICE isolation (2c)", () => {
   it("another device (fresh storage) for the SAME account starts OFF", async () => {
     localStorage.setItem(LS_KEY, "1"); localStorage.clear();    // a different device = its own empty storage
     win.Capacitor = {};
-    const r = render(<TProvider><ParcelScan cur="NT$" manualOnly /></TProvider>);
+    const r = render(<TProvider lang="en"><ParcelScan cur="NT$" manualOnly /></TProvider>);
     expect(r.getByTestId("ps-export-switch-toggle").getAttribute("aria-pressed")).toBe("false");
     expect(r.queryByTestId("ps-export-card")).toBeNull();
   });
@@ -122,7 +122,7 @@ describe("per-DEVICE isolation (2c)", () => {
     setNarrow(false);
     for (const stored of ["1", null]) {
       if (stored) localStorage.setItem(LS_KEY, stored); else localStorage.removeItem(LS_KEY);
-      const r = render(<TProvider><ParcelScan cur="NT$" manualOnly /></TProvider>);
+      const r = render(<TProvider lang="en"><ParcelScan cur="NT$" manualOnly /></TProvider>);
       expect(r.getByTestId("ps-export-card")).toBeTruthy();
       expect(r.queryByTestId("ps-export-switch")).toBeNull();
       r.unmount();

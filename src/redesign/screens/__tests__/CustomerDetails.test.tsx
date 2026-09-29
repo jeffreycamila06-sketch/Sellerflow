@@ -38,7 +38,7 @@ const mk = (over: Partial<ParcelCustomer> = {}): ParcelCustomer => ({
   id: "c1", phone: "0912345678", name: "Maria", storeId: "266402", notes: "@maria",
   createdAt: "2026-09-08T00:00:00Z", updatedAt: "2026-09-08T00:00:00Z", ...over,
 });
-const view = () => render(<TProvider><CustomerDetails cur="NT$" /></TProvider>);
+const view = () => render(<TProvider lang="en"><CustomerDetails cur="NT$" /></TProvider>);
 
 beforeEach(() => {
   recent.current = { ok: true, rows: [] };

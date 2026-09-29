@@ -18,13 +18,13 @@ const noop = () => {};
 
 describe("preview shows the seller's real Shop name", () => {
   it("renders the passed shop name in the center; the SellerFlowLive brand stays top-left", () => {
-    render(<TProvider><PrintPattern onBack={noop} pp={DEFAULT_PP} shopName={SHOP} onToggle={noop} onStep={noop} /></TProvider>);
+    render(<TProvider lang="en"><PrintPattern onBack={noop} pp={DEFAULT_PP} shopName={SHOP} onToggle={noop} onStep={noop} /></TProvider>);
     expect(screen.getByTestId("pp-preview-shop").textContent).toBe(SHOP);
     expect(screen.getByText("SellerFlowLive")).toBeTruthy();
     expect(screen.queryByText("Maria's Live Shop")).toBeNull();
   });
   it("the row label reads 'Comment / Price'", () => {
-    render(<TProvider><PrintPattern onBack={noop} pp={DEFAULT_PP} shopName={SHOP} onToggle={noop} onStep={noop} /></TProvider>);
+    render(<TProvider lang="en"><PrintPattern onBack={noop} pp={DEFAULT_PP} shopName={SHOP} onToggle={noop} onStep={noop} /></TProvider>);
     expect(screen.getByText("Comment / Price")).toBeTruthy();
     expect(screen.queryByText("Comment (center)")).toBeNull();
   });

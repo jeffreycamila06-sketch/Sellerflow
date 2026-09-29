@@ -30,7 +30,7 @@ vi.mock("../../adapters/shippingSettings", () => ({ loadGlobalShippingFee: async
 
 import ParcelScan from "../ParcelScan";
 
-const view = () => render(<TProvider><ParcelScan cur="NT$" /></TProvider>);
+const view = () => render(<TProvider lang="en"><ParcelScan cur="NT$" /></TProvider>);
 const fillValid = (r: ReturnType<typeof view>) => {
   fireEvent.change(r.getByTestId("ps-name"), { target: { value: "Juan" } });
   fireEvent.change(r.getByTestId("ps-store"), { target: { value: "266402" } });

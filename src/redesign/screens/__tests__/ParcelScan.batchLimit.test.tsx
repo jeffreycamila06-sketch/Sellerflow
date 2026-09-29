@@ -55,7 +55,7 @@ const many = (n: number, status: ParcelScanRow["status"] = "confirmed") =>
   Array.from({ length: n }, (_, i) => mk(i + 1, { status }));
 
 const view = (props: { manualOnly?: boolean } = {}) =>
-  render(<TProvider><ParcelScan cur="NT$" manualOnly={props.manualOnly} /></TProvider>);
+  render(<TProvider lang="en"><ParcelScan cur="NT$" manualOnly={props.manualOnly} /></TProvider>);
 
 const nav = navigator as unknown as Record<string, unknown>;
 let hadMedia = false;

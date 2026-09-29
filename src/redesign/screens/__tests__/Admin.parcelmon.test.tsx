@@ -40,7 +40,7 @@ beforeEach(() => { getParcelScanOverview.mockClear(); getParcelScanOverview.mock
 describe("Change 1 — dead Controls tiles removed", () => {
   it("Controls grid has Parcel Scan; the System tile and the User Base tile are gone", () => {
     const { getByText, queryByText, getAllByText } = render(
-      <TProvider><Admin onOpenPanel={() => {}} cur="NT$" /></TProvider>,
+      <TProvider lang="en"><Admin onOpenPanel={() => {}} cur="NT$" /></TProvider>,
     );
     expect(getByText("Parcel Scan")).toBeTruthy();      // new tile
     expect(queryByText("System")).toBeNull();           // system tile fully gone (no other "System" text)
@@ -52,7 +52,7 @@ describe("Change 1 — dead Controls tiles removed", () => {
 });
 
 describe("Change 2 — Parcel Scan monitoring view", () => {
-  const view = () => render(<TProvider><AdminPanel panel="parcelmon" onClose={() => {}} cur="NT$" /></TProvider>);
+  const view = () => render(<TProvider lang="en"><AdminPanel panel="parcelmon" onClose={() => {}} cur="NT$" /></TProvider>);
 
   it("renders all three sections with the RPC data + client money math", async () => {
     const { findByTestId, getByTestId, getAllByTestId } = view();

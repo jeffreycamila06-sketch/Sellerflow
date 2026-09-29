@@ -57,7 +57,7 @@ afterEach(() => {
   hadMedia = false;
 });
 
-const view = () => render(<TProvider><ParcelScan cur="NT$" /></TProvider>);
+const view = () => render(<TProvider lang="en"><ParcelScan cur="NT$" /></TProvider>);
 
 describe("ParcelScan in-app camera", () => {
   it("no getUserMedia (jsdom) → the file-picker fallback renders (safety net)", async () => {

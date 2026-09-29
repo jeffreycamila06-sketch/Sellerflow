@@ -28,7 +28,7 @@ vi.mock("../../adapters/shippingSettings", () => ({ loadGlobalShippingFee: async
 
 import ParcelScan from "../ParcelScan";
 
-const view = () => render(<TProvider><ParcelScan cur="NT$" /></TProvider>);
+const view = () => render(<TProvider lang="en"><ParcelScan cur="NT$" /></TProvider>);
 const pickQr = (r: ReturnType<typeof view>) =>
   fireEvent.change(r.getByTestId("ps-qr-file"), { target: { files: [new File([new Uint8Array([1])], "label.jpg", { type: "image/jpeg" })] } });
 

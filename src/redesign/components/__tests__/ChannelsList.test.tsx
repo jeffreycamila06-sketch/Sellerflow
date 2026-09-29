@@ -11,7 +11,7 @@ const acct = (tiktok: string, facebook = "") =>
   ({ email: "x@y.com", plan: "pro", role: "seller", connectedAccounts: [], profile: { tiktok, facebook, fullName: "", storeName: "", phone: "", country: "" } } as unknown as AccountUser);
 
 const view = (over: Partial<Parameters<typeof ChannelsList>[0]> = {}) =>
-  render(<TProvider><ChannelsList account={acct("a\nb")} ttLive={null} showShopee onOpen={vi.fn()} {...over} /></TProvider>);
+  render(<TProvider lang="en"><ChannelsList account={acct("a\nb")} ttLive={null} showShopee onOpen={vi.fn()} {...over} /></TProvider>);
 
 describe("ChannelsList", () => {
   it("renders all four platform rows (TikTok, Facebook, Shopee, Instagram) when TW/showShopee", () => {
