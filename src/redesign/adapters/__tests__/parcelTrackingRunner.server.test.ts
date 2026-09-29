@@ -365,9 +365,9 @@ describe("Stage 1 — kill switch + cooldown (read at the start of every run)", 
   });
 
   it("pollGateFrom is exact: only 'true' runs", () => {
-    expect(pollGateFrom({ enabled: "true" }, FIXED_NOW).run).toBe(true);
-    expect(pollGateFrom({ enabled: " TRUE " }, FIXED_NOW).run).toBe(true);
-    for (const v of ["false", "", "1", "yes", undefined, null]) expect(pollGateFrom({ enabled: v as string }, FIXED_NOW).run).toBe(false);
+    expect(pollGateFrom({ enabled: "true", cooldownUntil: undefined }, FIXED_NOW).run).toBe(true);
+    expect(pollGateFrom({ enabled: " TRUE ", cooldownUntil: undefined }, FIXED_NOW).run).toBe(true);
+    for (const v of ["false", "", "1", "yes", undefined, null]) expect(pollGateFrom({ enabled: v as string, cooldownUntil: undefined }, FIXED_NOW).run).toBe(false);
   });
 });
 

@@ -8,13 +8,15 @@ import { TProvider } from "../../i18n";
 import type { ParcelTrackingRow } from "../../adapters/parcelTracking";
 
 const M = vi.hoisted(() => ({ narrow: false, rows: [] as unknown[] }));
-const { loadParcelTracking, copyText } = vi.hoisted(() => ({
-  loadParcelTracking: vi.fn(async () => ({ ok: true, rows: [] as unknown[] })),
+type LoadRes = { ok: boolean; rows: unknown[]; totals?: Record<string, number>; error?: string };
+const { loadParcelTracking, loadMoreLive, copyText } = vi.hoisted(() => ({
+  loadParcelTracking: vi.fn(async (): Promise<LoadRes> => ({ ok: true, rows: [] })),
+  loadMoreLive: vi.fn(async (offset?: number): Promise<LoadRes> => ({ ok: offset !== undefined, rows: [] })),
   copyText: vi.fn(async () => true),
 }));
 vi.mock("../../adapters/parcelTracking", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../adapters/parcelTracking")>();
-  return { ...actual, loadParcelTracking };
+  return { ...actual, loadParcelTracking, loadMoreLive };
 });
 vi.mock("../../adapters/parcelExportRead", () => ({ syncFromExport: vi.fn() }));
 vi.mock("../../components/inviteShare", () => ({ copyText }));
@@ -44,10 +46,11 @@ const ROWS = [
   mk({ status: "created", shipType: null, buyerUsername: "fresh" }),                             // uploaded, not checked yet → Waiting (B2)
 ];
 
-const view = () => render(<TProvider><ParcelTracking /></TProvider>);
+const view = () => render(<TProvider lang="en"><ParcelTracking /></TProvider>);
 beforeEach(() => {
   M.narrow = false;
   loadParcelTracking.mockReset(); loadParcelTracking.mockResolvedValue({ ok: true, rows: ROWS });
+  loadMoreLive.mockReset(); loadMoreLive.mockResolvedValue({ ok: true, rows: [] });
   copyText.mockClear();
 });
 
@@ -85,17 +88,25 @@ describe("WEB — boxed status tabs + aligned table", () => {
     expect(rows.some((x) => /no username/i.test(x.textContent || ""))).toBe(true);
   });
 
-  it("Chase = the existing behaviour: handle → open the TikTok profile; non-handle → copy; no username → nothing", async () => {
+  it("plain handle → Chase (opens TikTok); other username → Copy it; no username → Copy the tracking number (S6); not checked yet → nothing", async () => {
     const r = view();
     await waitFor(() => expect(r.getAllByTestId("pt-row")).toHaveLength(5));
     const open = r.getAllByTestId("pt-open-profile");
     expect(open.map((a) => a.getAttribute("href"))).toEqual(expect.arrayContaining(["https://www.tiktok.com/@urgent_buyer", "https://www.tiktok.com/@maria_shop"]));
     open.forEach((a) => expect(a.textContent).toBe("Chase"));
     const copy = r.getByTestId("pt-copy-username");
-    expect(copy.textContent).toBe("Chase");
+    expect(copy.textContent).toBe("Copy");                    // not a TikTok handle → never "Chase"
     fireEvent.click(copy);
     await waitFor(() => expect(copyText).toHaveBeenCalledWith("陳小美"));
-    expect(r.getAllByTestId("pt-open-profile").length + r.getAllByTestId("pt-copy-username").length).toBe(3); // no-username + not-checked rows: no action
+    // S6: the no-username parcel stays listed, labelled, with Copy (tracking number) and no Chase
+    const noName = r.getAllByTestId("pt-row").find((x) => /no username/i.test(x.textContent || ""))!;
+    expect(within(noName).queryByTestId("pt-open-profile")).toBeNull();
+    const copyCode = within(noName).getByTestId("pt-copy-code");
+    expect(copyCode.textContent).toBe("Copy");
+    fireEvent.click(copyCode);
+    await waitFor(() => expect(copyText).toHaveBeenCalledWith(ROWS[2].trackingNo));
+    // actions: 2 Chase + 1 Copy username + 1 Copy code; the not-checked-yet row has none
+    expect(open.length + r.getAllByTestId("pt-copy-username").length + r.getAllByTestId("pt-copy-code").length).toBe(4);
   });
 
   it("other tabs: In transit '—' + no action; Picked up 'Done'; Returned 'Returned'; All keeps the other bucket", async () => {
@@ -190,5 +201,56 @@ describe("gating (Stage 1): admin, or Plus/Pro/Master WITH an enabled allowlist 
     expect(parcelTrackingVisible({ role: "seller", plan: "master", access: false })).toBe(false);
     expect(parcelTrackingVisible({ role: "seller", plan: "master" })).toBe(false);
     expect(parcelTrackingVisible({ role: "seller", plan: "basic", access: true })).toBe(false);
+  });
+});
+
+describe("S7 — Load more past the first 500 unfinished parcels; counts stay exact", () => {
+  const page = (from: number, n: number) => Array.from({ length: n }, (_, i) =>
+    mk({ id: `L${from + i}`, buyerUsername: `live${from + i}`, pickupDeadline: "2026-09-29" }));
+  const TOTALS = { all: 650, picked: 0, returned: 0, live: 650, waiting: 650, transit: 0 };
+
+  it("shows 'Load more (150 more)', fetches from offset 500, appends, then hides; tab count stays the exact 650", async () => {
+    loadParcelTracking.mockResolvedValue({ ok: true, rows: page(0, 500), totals: TOTALS });
+    loadMoreLive.mockResolvedValue({ ok: true, rows: page(500, 150) });
+    const r = view();
+    await waitFor(() => expect(r.getByTestId("pt-load-more")).toBeTruthy());
+    expect(r.getByTestId("pt-tab-waiting").textContent).toContain("650");   // exact, not the 500 loaded
+    expect(r.getByTestId("pt-load-more").textContent).toBe("Load more (150 more)");
+    expect(r.getAllByTestId("pt-row")).toHaveLength(500);
+    fireEvent.click(r.getByTestId("pt-load-more"));
+    await waitFor(() => expect(r.getAllByTestId("pt-row")).toHaveLength(650));
+    expect(loadMoreLive).toHaveBeenCalledWith(500);
+    expect(r.queryByTestId("pt-load-more")).toBeNull();
+    expect(r.getByTestId("pt-tab-waiting").textContent).toContain("650");
+  });
+
+  it("everything already loaded → no Load more", async () => {
+    loadParcelTracking.mockResolvedValue({ ok: true, rows: ROWS, totals: { all: 8, picked: 1, returned: 1, live: 6, waiting: 5, transit: 1 } });
+    const r = view();
+    await waitFor(() => expect(r.getByTestId("pt-tabs")).toBeTruthy());
+    expect(r.queryByTestId("pt-load-more")).toBeNull();
+  });
+
+  it("a failed page load keeps what's shown and says so (network message)", async () => {
+    loadParcelTracking.mockResolvedValue({ ok: true, rows: page(0, 500), totals: TOTALS });
+    loadMoreLive.mockResolvedValue({ ok: false, rows: [], error: "boom" });
+    const r = view();
+    await waitFor(() => expect(r.getByTestId("pt-load-more")).toBeTruthy());
+    fireEvent.click(r.getByTestId("pt-load-more"));
+    await waitFor(() => expect(r.getByTestId("pt-toast").textContent).toContain("Couldn't save"));
+    expect(r.getAllByTestId("pt-row")).toHaveLength(500);
+  });
+});
+
+describe("N1 — header never overflows at 375px (title shrinks, buttons wrap)", () => {
+  it("the header wraps and its title block may shrink to 0", async () => {
+    const r = view();
+    await waitFor(() => expect(r.getByTestId("pt-header")).toBeTruthy());
+    const header = r.getByTestId("pt-header");
+    expect(header.style.flexWrap).toBe("wrap");
+    const [title, buttons] = Array.from(header.children) as HTMLElement[];
+    expect(["0", "0px"]).toContain(title.style.minWidth);
+    expect(buttons.style.flexWrap).toBe("wrap");
+    expect(buttons.style.flexShrink).not.toBe("0");
   });
 });

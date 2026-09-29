@@ -283,15 +283,15 @@ export function tabRows(groups: ParcelGroups, tab: PickupTab, today: string): Pa
   return sortByDaysLeft(list, today);
 }
 
-// totals (exact DB counts) override the derived numbers for the tabs the page
-// cap can distort: all/picked/returned. waiting/transit stay derived — their
-// source set (non-terminal) is loaded complete.
+// totals (exact DB counts) override the derived numbers whenever present — all /
+// picked / returned (their lists are capped) and, since S7 paging, waiting / transit
+// too. Without totals every count is derived from the loaded rows.
 export function tabCounts(groups: ParcelGroups, totals?: ParcelTotals): Record<PickupTab, number> {
   const derivedAll = groups.waitingPickup.length + groups.inTransit.length + groups.pickedUp.length + groups.returned.length + groups.other.length;
   return {
     all: totals?.all ?? derivedAll,
-    waiting: groups.waitingPickup.length,
-    transit: groups.inTransit.length,
+    waiting: totals?.waiting ?? groups.waitingPickup.length,
+    transit: totals?.transit ?? groups.inTransit.length,
     picked: totals?.picked ?? groups.pickedUp.length,
     returned: totals?.returned ?? groups.returned.length,
   };
@@ -351,7 +351,9 @@ export const PARCEL_TRACKING_PAGE = 500;
 export const PT_SELECT = "id, tracking_no, cm_order_no, buyer_username, recipient_name, store_id, rec_store, status, status_message, pickup_deadline, arrived_at, ship_type, special_type, terminal";
 
 // Exact per-tab totals that survive the page cap (see the starvation note below).
-export interface ParcelTotals { all: number; picked: number; returned: number }
+// live = every non-terminal row (drives "Load more"); waiting / transit = exact counts
+// for those two tabs (S7), so a seller with >500 unfinished parcels sees true numbers.
+export interface ParcelTotals { all: number; picked: number; returned: number; live?: number; waiting?: number; transit?: number }
 
 // 2026-09-27 STARVATION FIX — the old single query (deadline ASC nulls-last,
 // LIMIT 500) let hundreds of old picked_up rows (past deadlines sort FIRST)
@@ -365,23 +367,41 @@ export interface ParcelTotals { all: number; picked: number; returned: number }
 // totals: all/picked/returned are exact DB counts (count:"exact" rides the
 // same requests — no extra round trips); waiting/transit stay derived from the
 // complete non-terminal set.
+// The unfinished (non-terminal) list is PAGED (S7): deadline ASC nulls-last, then id —
+// a stable order, so "Load more" (liveOffset) never repeats or skips a row.
+function livePage(me: string, from: number) {
+  return supabase!.from("parcel_tracking").select(PT_SELECT, { count: "exact" }).eq("user_id", me).eq("terminal", false)
+    .order("pickup_deadline", { ascending: true, nullsFirst: false })
+    .order("id", { ascending: true })
+    .range(from, from + PARCEL_TRACKING_PAGE - 1);
+}
+
+// Exact counts for the two tabs built from the (paged) unfinished list. Mirrors
+// groupParcels: waiting = chaseable at_store + not-checked-yet ('created'); transit =
+// chaseable in_transit. Chaseable = ship_type C2C with no special_type.
+function headCount(me: string) {
+  return supabase!.from("parcel_tracking").select("id", { count: "exact", head: true }).eq("user_id", me);
+}
+
 export async function loadParcelTracking(): Promise<{ ok: boolean; rows: ParcelTrackingRow[]; totals?: ParcelTotals; error?: string }> {
   if (!isSupabaseConfigured || !supabase) return { ok: false, rows: [], error: "not configured" };
   const me = await uid();
   if (!me) return { ok: false, rows: [], error: "not signed in" };
   const base = () => supabase!.from("parcel_tracking").select(PT_SELECT, { count: "exact" }).eq("user_id", me);
-  const [live, returned, picked] = await Promise.all([
-    base().eq("terminal", false)
-      .order("pickup_deadline", { ascending: true, nullsFirst: false })
-      .limit(PARCEL_TRACKING_PAGE),
+  const chaseable = (q: ReturnType<typeof headCount>) => q.eq("ship_type", "C2C").or("special_type.is.null,special_type.eq.");
+  const [live, returned, picked, atStore, unchecked, transit] = await Promise.all([
+    livePage(me, 0),
     base().eq("status", "returned")
       .order("returned_at", { ascending: false, nullsFirst: false })
       .limit(PARCEL_TRACKING_PAGE),
     base().eq("status", "picked_up")
       .order("picked_up_at", { ascending: false, nullsFirst: false })
       .limit(PARCEL_TRACKING_PAGE),
+    chaseable(headCount(me).eq("terminal", false).eq("status", "at_store")),
+    headCount(me).eq("terminal", false).eq("status", "created"),
+    chaseable(headCount(me).eq("terminal", false).eq("status", "in_transit")),
   ]);
-  const err = live.error || returned.error || picked.error;
+  const err = live.error || returned.error || picked.error || atStore.error || unchecked.error || transit.error;
   if (err) return { ok: false, rows: [], error: err.message }; // never partial (the S1 rule)
   const rows = [...(live.data ?? []), ...(returned.data ?? []), ...(picked.data ?? [])]
     .map((r) => rowToTracking(r as Record<string, unknown>));
@@ -389,6 +409,19 @@ export async function loadParcelTracking(): Promise<{ ok: boolean; rows: ParcelT
     all: (live.count ?? 0) + (returned.count ?? 0) + (picked.count ?? 0),
     picked: picked.count ?? 0,
     returned: returned.count ?? 0,
+    live: live.count ?? 0,
+    waiting: (atStore.count ?? 0) + (unchecked.count ?? 0),
+    transit: transit.count ?? 0,
   };
   return { ok: true, rows, totals };
+}
+
+// S7 — the next page of the unfinished list, starting at `offset` (= how many are loaded).
+export async function loadMoreLive(offset: number): Promise<{ ok: boolean; rows: ParcelTrackingRow[]; error?: string }> {
+  if (!isSupabaseConfigured || !supabase) return { ok: false, rows: [], error: "not configured" };
+  const me = await uid();
+  if (!me) return { ok: false, rows: [], error: "not signed in" };
+  const { data, error } = await livePage(me, Math.max(0, offset));
+  if (error) return { ok: false, rows: [], error: error.message };
+  return { ok: true, rows: (data ?? []).map((r) => rowToTracking(r as Record<string, unknown>)) };
 }
