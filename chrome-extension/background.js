@@ -810,7 +810,10 @@ async function pcPollMulti() {
             b.storeFails += 1;
             if (b.storeFails >= PC_STORE_GIVE_UP) {
               storeStatus = "unknown"; // give up the STORE half only — the phone half is never auto-stamped
-              pcEv.lastGiveUpAt = now; b.storeNextAt = 0;
+              // wait the max backoff before touching it again: a 'full' store's hourly
+              // recheck row (sql/66) stays queued after a give-up, since 'unknown'
+              // never overwrites 'full'
+              pcEv.lastGiveUpAt = now; b.storeNextAt = now + PC_BACKOFF_MS[PC_BACKOFF_MS.length - 1];
               console.log(`[PC-BACKOFF] row=${row.id} store attempt=${b.storeFails} gave up → unknown`);
             } else {
               b.storeNextAt = now + pcBackoffDelay(b.storeFails);

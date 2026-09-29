@@ -247,15 +247,87 @@ describe("maintenance window 01:00–05:00 Asia/Taipei", () => {
   });
 });
 
+describe("store cache: hourly recheck rows", () => {
+  it("a need_store row that already holds 'full' is checked, not skipped", async () => {
+    const clock = { t: DAY_T0 };
+    const { sb, calls, booted } = bootWorker({ now: () => clock.t,
+      rows: [row("full1", "666666", { need_store: true, need_phone: false, store_full_status: "full" })], storeVerdict: () => "full" });
+    await booted;
+    await sb.pcTick();
+    expect(storeChecks(calls, "full1")).toBe(1);
+    expect(verdictBodies(calls).find((b) => b.p_id === "full1")).toMatchObject({ p_store_full_status: "full", p_phone_check_status: null });
+  });
+
+  it("after a give-up, a row the queue keeps returning (unanswered full-store recheck) is retried every 2 min, not every 5 s", async () => {
+    const clock = { t: DAY_T0 };
+    const { sb, calls, booted } = bootWorker({ now: () => clock.t,
+      rows: [row("full2", "777777", { need_store: true, need_phone: false, store_full_status: "full" })], storeVerdict: () => "unknown" });
+    await booted;
+    await run(sb, clock, DAY_T0 + 4 * MIN);          // 5 attempts → give up at ~3:45
+    const atGiveUp = storeChecks(calls, "full2");
+    expect(atGiveUp).toBe(5);
+    await run(sb, clock, clock.t + 5 * MIN);
+    expect(storeChecks(calls, "full2") - atGiveUp).toBeLessThanOrEqual(3); // ~every 2 min, not ~60 times
+  });
+});
+
 describe("sql/66 admin_parcel_check_requeue (contract)", () => {
   const sql = readFileSync("sql/66_parcel_check_requeue.sql", "utf8");
   it("admin-only, store half only, 'unknown' rows, not exported, never older than 6 hours", () => {
     expect(sql).toContain("if not public.is_admin() then raise exception 'forbidden'; end if;");
     expect(sql).toContain("set store_full_status = null, store_full_at = null");
-    expect(sql).not.toMatch(/phone_check_status\s*=/);
+    const requeue = sql.slice(sql.indexOf("function public.admin_parcel_check_requeue("), sql.indexOf("$$;", sql.indexOf("function public.admin_parcel_check_requeue(")));
+    expect(requeue).not.toMatch(/phone_check_status\s*=/);         // the requeue never touches the phone half
     expect(sql).toContain("where store_full_status = 'unknown'");
     expect(sql).toContain("and status <> 'exported'");
     expect(sql).toContain("greatest(coalesce(p_since, now() - interval '6 hours'), now() - interval '6 hours')");
     expect(sql).toContain("revoke all on function public.admin_parcel_check_requeue(timestamptz) from public, anon;");
+  });
+
+  const fnSrc = (name: string) => { const i = sql.indexOf(`function public.${name}(`); return sql.slice(i, sql.indexOf("$$;", i)); };
+  const pending = fnSrc("admin_parcel_checks_pending");
+  const verdict = fnSrc("admin_parcel_check_verdict");
+
+  it("phone 'ok' reuse is 6 h; store cache reuse is 1 h for full and 10 min for open", () => {
+    expect(pending).toContain("v_ok_ttl constant interval := interval '6 hours';");
+    expect(pending).toContain("v_store_full_ttl constant interval := interval '1 hour';");
+    expect(pending).toContain("v_store_open_ttl constant interval := interval '10 minutes';");
+    expect(pending).toMatch(/\(c\.status = 'full' and c\.checked_at > now\(\) - v_store_full_ttl\)\s*or \(c\.status = 'open' and c\.checked_at > now\(\) - v_store_open_ttl\)/);
+    expect(pending).toContain("(ps.store_full_status is null or ps.store_full_at is null or ps.store_full_at < c.checked_at)");
+    // the store step runs after the phone step and before the queue is read
+    expect(pending.indexOf("from phone_check_cache c")).toBeLessThan(pending.indexOf("from store_check_cache c"));
+    expect(pending.indexOf("from store_check_cache c")).toBeLessThan(pending.indexOf("return query"));
+  });
+
+  it("one live recheck per 'full' store per hour (the oldest row), need_store=true", () => {
+    expect(pending).toContain("select distinct on (ps.store_id) ps.id");
+    expect(pending).toContain("order by ps.store_id, ps.created_at asc");
+    expect(pending).toContain("and ps.store_full_at < now() - v_store_full_ttl");
+    expect(pending).toContain("and (c.checked_at is null or c.checked_at < now() - v_store_full_ttl)");
+    expect(pending).toContain("(ps.store_full_status is null or r.id is not null) as need_store");
+    expect(pending).toContain("(ps.phone_check_status is null) as need_phone");
+  });
+
+  it("every open/full verdict upserts the cache and appends the log; 'unknown' does neither and never overwrites open/full", () => {
+    expect(verdict).toContain("if p_store_full_status in ('open','full') and coalesce(v_store, '') <> '' then");
+    expect(verdict).toContain("on conflict (store_id) do update set status = excluded.status, checked_at = excluded.checked_at;");
+    expect(verdict).toContain("insert into store_check_log(store_id, status, checked_at) values (v_store, p_store_full_status, now());");
+    expect(verdict).toContain("when p_store_full_status = 'unknown' and store_full_status in ('open','full')");
+    expect(sql).toMatch(/store_check_cache \([\s\S]*?check \(status in \('open','full'\)\)/);
+  });
+
+  it("a seller's Recheck clears that store's cache entry; the 'unknown' requeue does not", () => {
+    const trig = fnSrc("parcel_scans_recheck_clears_store_cache");
+    expect(trig).toContain("if old.store_full_status in ('open','full') and new.store_full_status is null");
+    expect(trig).toContain("new.store_id is not distinct from old.store_id");
+    expect(trig).toContain("delete from public.store_check_cache where store_id = new.store_id;");
+    expect(sql).toMatch(/after update of store_full_status on public\.parcel_scans\s+for each row execute function public\.parcel_scans_recheck_clears_store_cache\(\)/);
+  });
+
+  it("sellers never read the cache or the log", () => {
+    expect(sql).toContain("revoke all on public.store_check_cache from anon, authenticated;");
+    expect(sql).toContain("revoke all on public.store_check_log   from anon, authenticated;");
+    expect(sql).toContain("alter table public.store_check_cache enable row level security;");
+    expect(sql).toContain("alter table public.store_check_log   enable row level security;");
   });
 });
