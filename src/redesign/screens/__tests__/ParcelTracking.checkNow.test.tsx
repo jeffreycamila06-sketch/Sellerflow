@@ -5,6 +5,7 @@
 // Stale chip marks rows not checked for 24h+; Sync with new parcels says they're being checked.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, waitFor } from "@testing-library/react";
+import { readFileSync } from "node:fs";
 import { TProvider } from "../../i18n";
 import {
   checkButtonState, isStale, urgentEligible, formatTaipei,
@@ -189,6 +190,34 @@ describe("check card", () => {
     fireEvent.change(r.getByTestId("pt-sync-file"), { target: { files: [new File([new Uint8Array([1])], "x.xlsx")] } });
     await waitFor(() => expect(r.getByTestId("pt-toast").textContent).toContain("New parcels are being checked now."));
     await waitFor(() => expect(r.getByTestId("pt-check-now").textContent).toBe("Checking…"));
+  });
+
+  it("hourglass only while a job is active; the button still reads exactly \"Checking…\"", async () => {
+    const later = new Date(NOW + 3600_000).toISOString();
+    for (const [status, state] of [[st(), "ready"], [st({ used_today: true, next_available_at: later }), "locked"]] as const) {
+      loadTrackingStatus.mockResolvedValue(status);
+      const r = view();
+      await waitFor(() => expect(r.getByTestId("pt-check-now").getAttribute("data-state")).toBe(state));
+      expect(r.queryByTestId("pt-hourglass")).toBeNull();
+      r.unmount();
+    }
+    loadTrackingStatus.mockResolvedValue(st({ active_job: { id: "j", kind: "manual", status: "running" } }));
+    const r = view();
+    await waitFor(() => expect(r.getByTestId("pt-check-now").getAttribute("data-state")).toBe("busy"));
+    const b = r.getByTestId("pt-check-now");
+    expect(r.getByTestId("pt-hourglass").getAttribute("aria-hidden")).toBe("true");
+    expect(b.getAttribute("aria-live")).toBe("polite");
+    expect(b.textContent).toBe("Checking…");                                   // only the visually-hidden i18n string
+    expect(b.querySelector(".rd-pt-hg-label")!.getAttribute("data-label")).toBe("Checking");
+    expect(b.querySelectorAll(".rd-pt-hg-dots > i")).toHaveLength(3);
+  });
+
+  it("the hourglass + dots stop under prefers-reduced-motion and the motion kill switch", () => {
+    const css = readFileSync("src/redesign/redesign.css", "utf8");
+    expect(css).toMatch(/@keyframes rdPtHgFlip \{ 0% \{ transform: rotate\(0\); \} 40% \{ transform: rotate\(180deg\); \} 55% \{ transform: rotate\(180deg\); \} 95% \{ transform: rotate\(360deg\); \} 100% \{ transform: rotate\(360deg\); \} \}/);
+    expect(css).toContain("animation: rdPtHgFlip 1.4s linear infinite;");
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\[data-redesign\] \.rd-pt-hg,\s*\[data-redesign\] \.rd-pt-hg-dots > i \{ animation: none; opacity: 1; \}/);
+    expect(css).toMatch(/\[data-redesign\]\[data-motion="off"\] \.rd-pt-hg,\s*\[data-redesign\]\[data-motion="off"\] \.rd-pt-hg-dots > i \{ animation: none; opacity: 1; \}/);
   });
 
   it("the card wraps on a phone (375px-safe)", async () => {

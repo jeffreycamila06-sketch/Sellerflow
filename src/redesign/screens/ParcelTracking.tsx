@@ -248,6 +248,29 @@ function syncErrorText(res: SyncResult, t: T): string {
   }
 }
 
+// Same width in ready / checking / locked (fits the longest locale + the hourglass).
+const CHECK_BTN_MIN_W = 150;
+
+// "Checking…" while a job is active: a flipping hourglass + "Checking" with three
+// pulsing dots (redesign.css .rd-pt-hg*, static under reduced motion). The visible
+// label and dots are CSS-drawn inside aria-hidden spans, so the only text in the
+// button is the visually-hidden i18n string — screen readers and tests read "Checking…".
+function CheckingLabel({ text }: { text: string }) {
+  return (
+    <>
+      <svg className="rd-pt-hg" data-testid="pt-hourglass" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M6 3h12M6 21h12M8 3v3.5a4 4 0 0 0 1.6 3.2L12 12l-2.4 2.3A4 4 0 0 0 8 17.5V21M16 3v3.5a4 4 0 0 1-1.6 3.2L12 12l2.4 2.3a4 4 0 0 1 1.6 3.2V21" />
+        <path d="M9.5 18.5h5" strokeWidth="3" />
+      </svg>
+      <span aria-hidden="true" style={{ display: "inline-flex", alignItems: "baseline" }}>
+        <span className="rd-pt-hg-label" data-label={text.replace(/(…|\.{3})$/, "")} />
+        <span className="rd-pt-hg-dots"><i /><i /><i /></span>
+      </span>
+      <span className="rd-pt-sr">{text}</span>
+    </>
+  );
+}
+
 // Plain words for a refused Check now / urgent request.
 function checkErrorText(res: CheckResult, t: T): string {
   switch (res.reason) {
@@ -438,7 +461,7 @@ export default function ParcelTracking() {
           const showUrgent = !busy && !!status && !status.urgent_used_today && urgentEligible(rows, today);
           return (
             <div style={{ ...card, padding: 12, marginBottom: 14, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }} data-testid="pt-check-card">
-              <div style={{ flex: "1 1 180px", minWidth: 0 }}>
+              <div style={{ flex: "1 1 150px", minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text)", overflowWrap: "anywhere" }} data-testid="pt-last-checked">
                   {status?.last_completed_at ? tpl(t.rd_pt_last_checked, { time: formatTaipei(status.last_completed_at) }) : t.rd_pt_never_checked}
                 </div>
@@ -452,9 +475,9 @@ export default function ParcelTracking() {
                   </button>
                 )}
               </div>
-              <button onClick={() => void onCheck("manual")} disabled={b.kind !== "ready" || requesting} data-testid="pt-check-now" data-state={b.kind}
-                style={{ ...btn, background: b.kind === "ready" ? "var(--accent)" : "var(--surface-2)", border: `1px solid ${b.kind === "ready" ? "var(--accent)" : "var(--border-strong)"}`, color: b.kind === "ready" ? "var(--accent-text)" : "var(--text-muted)", cursor: b.kind === "ready" ? "pointer" : "default", opacity: requesting ? 0.6 : 1 }}>
-                {b.kind === "busy" ? t.rd_pt_checking : t.rd_pt_check_now}
+              <button onClick={() => void onCheck("manual")} disabled={b.kind !== "ready" || requesting} data-testid="pt-check-now" data-state={b.kind} aria-live="polite"
+                style={{ ...btn, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8, minWidth: CHECK_BTN_MIN_W, background: b.kind === "ready" ? "var(--accent)" : "var(--surface-2)", border: `1px solid ${b.kind === "ready" ? "var(--accent)" : "var(--border-strong)"}`, color: b.kind === "ready" ? "var(--accent-text)" : "var(--text-muted)", cursor: b.kind === "ready" ? "pointer" : "default", opacity: requesting ? 0.6 : 1 }}>
+                {b.kind === "busy" ? <CheckingLabel text={t.rd_pt_checking} /> : t.rd_pt_check_now}
               </button>
             </div>
           );
