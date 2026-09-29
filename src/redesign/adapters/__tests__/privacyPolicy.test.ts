@@ -6,6 +6,7 @@ import { readFileSync, existsSync } from "node:fs";
 
 const privacy = readFileSync("public/privacy/index.html", "utf8");
 const deletion = readFileSync("public/data-deletion/index.html", "utf8");
+const account = readFileSync("public/delete-account/index.html", "utf8");
 const sql = readFileSync("sql/65_privacy_retention_purge.sql", "utf8");
 
 describe("public privacy pages", () => {
@@ -34,6 +35,29 @@ describe("public privacy pages", () => {
     expect(deletion).toContain("within <strong>30 days</strong>");
     expect(deletion).not.toMatch(/backup/i);
     expect(deletion + privacy).not.toContain("privacy@sellerflowlive");
+  });
+});
+
+describe("/delete-account/ (Google Play account deletion URL)", () => {
+  it("is a real page (no redirect) at the same path, linking the other two", () => {
+    expect(existsSync("public/delete-account/index.html")).toBe(true);
+    expect(account).not.toMatch(/http-equiv="refresh"|location\.(href|replace)/i);
+    expect(account).toContain('href="/privacy/"');
+    expect(account).toContain('href="/data-deletion/"');
+  });
+  it("names the app and the developer, and has no phone number", () => {
+    expect(account).toContain("<strong>SellerFlowLive</strong>");
+    expect(account).toContain("Developer: SELLERFLOWLIVE PRINTER TRADING");
+    expect(account).not.toMatch(/09\d{8}|phone/i);
+    expect(account).not.toMatch(/Profile menu|90 days/);
+  });
+  it("shows both deletion routes and what is deleted / kept", () => {
+    expect(account).toContain("Tap <strong>Delete Account</strong> and confirm.");
+    expect(account).toContain("(deleted immediately)");
+    expect(account).toContain('subject <strong>"Delete my account"</strong>');
+    expect(account).toContain("within <strong>30 days</strong>");
+    expect(account).toContain("your account, orders, customers, products, shipping and parcel data, and your connected-platform access.");
+    expect(account).toContain("We keep only a record that the deletion happened (your email and the date)");
   });
 });
 
