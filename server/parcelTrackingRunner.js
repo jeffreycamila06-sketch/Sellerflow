@@ -203,7 +203,7 @@ export function underRequestCap(requestsSoFar, cap = DAILY_REQUEST_CAP) {
   return requestsSoFar + MAX_REQUESTS_PER_BATCH <= cap;
 }
 
-async function readDailyRequests(serviceSb, day) {
+export async function readDailyRequests(serviceSb, day) {
   const { data, error } = await serviceSb.from("parcel_tracking_daily").select("requests").eq("day", day).maybeSingle();
   if (error) return { error };
   return { requests: Number(data?.requests) || 0 };
@@ -289,11 +289,11 @@ async function pollUserIds(serviceSb, userId) {
 // Page through ALL non-terminal rows for the given sellers, stalest first ACROSS
 // sellers (last_polled_at ASC NULLS FIRST, id tiebreak for stable pages). Never relies
 // on the PostgREST default row cap. Any page error → error (never a partial set).
-async function selectLiveRows(serviceSb, ids, pageSize = PAGE_SIZE) {
+export async function selectLiveRows(serviceSb, ids, pageSize = PAGE_SIZE) {
   const out = [];
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await serviceSb.from("parcel_tracking")
-      .select("id,user_id,tracking_no,arrived_at,status,unchanged_polls,created_at")
+      .select("id,user_id,tracking_no,arrived_at,status,unchanged_polls,created_at,last_polled_at,pickup_deadline")
       .eq("terminal", false)
       .in("user_id", ids)
       .order("last_polled_at", { ascending: true, nullsFirst: true })
@@ -356,8 +356,6 @@ export async function runPoll(opts) {
     if (r.error) { logger.error("[PARCEL-POLL] daily counter read failed:", r.error.code || "error"); return finish({ ok: false, reason: "daily_read_failed" }); }
     daily.requests = r.requests;
   }
-  const countingFetch = (...args) => { daily.requests += 1; daily.sentThisRun += 1; return fetchImpl(...args); };
-
   // 1) WHO — override or allowlist. 2) WHAT — every non-terminal row, stalest first.
   const who = await pollUserIds(serviceSb, userId);
   if (who.error) { logger.error("[PARCEL-POLL] access select failed:", who.error.code || "error"); return finish({ ok: false, reason: "select_failed", error: "select_failed" }); }
@@ -373,10 +371,64 @@ export async function runPoll(opts) {
   const live = capLiveRowsPerSeller(liveAll, perSellerCap);
   const capped = liveAll.length - live.length;
   if (capped > 0) logger.warn(`[PARCEL-POLL] per-seller cap: skipped ${capped} row(s) over ${perSellerCap}/seller`);
+  const r = await checkRows({
+    serviceSb, rows: live, daily, fetchImpl, ocr: givenOcr, makeOcr, now, logger,
+    limits: { minGapMs, jitterMs, maxBatchesPerRun, dailyRequestCap, baseBackoffMs, maxBackoffMs },
+  });
+
+  // 3) RETENTION — scoped to the SAME sellers this run polls (skipped when nobody is
+  //    on the allowlist).
+  const purged = who.ids.length ? await purgeRetention(serviceSb, userId ? [userId] : who.ids, now(), logger) : 0;
+
+  return finish({
+    ok: !r.tripped, reason: r.stopReason, sellers: new Set(live.map((x) => String(x.user_id))).size, rows: live.length, capped,
+    batchesRun: r.batchesRun, updated: r.updated, unknowns: r.unknowns, notFound: r.notFound,
+    captchaFails: r.captchaFails, failures: r.failures, tripped: r.tripped, purged, retired: r.retired,
+    requests: daily.sentThisRun, requestsToday: daily.requests,
+  });
+}
+
+// Pickup Status retention: DELETE terminal parcels past their per-status window
+// (picked_up 7d, returned 365d). The OR filter references ONLY the two terminal
+// states, so a non-terminal row can NEVER match; a NULL picked_up_at/returned_at never
+// matches `.lt`. Scoped to the given sellers. Returns the number deleted (0 on error).
+export async function purgeRetention(serviceSb, ids, nowDate, logger = console, tag = "[PARCEL-POLL]") {
+  const cutoffPicked = new Date(nowDate.getTime() - PICKUP_RETENTION_MS).toISOString();
+  const cutoffReturned = new Date(nowDate.getTime() - RETURNED_RETENTION_MS).toISOString();
+  let delQ = serviceSb.from("parcel_tracking").delete()
+    .or(`and(status.eq.picked_up,picked_up_at.lt.${cutoffPicked}),and(status.eq.returned,returned_at.lt.${cutoffReturned})`)
+    .select("id");
+  delQ = ids.length === 1 ? delQ.eq("user_id", ids[0]) : delQ.in("user_id", ids);
+  const { data, error } = await delQ;
+  if (error) { logger.error(`${tag} retention delete failed:`, error.code || "error"); return 0; }
+  return (data || []).length;
+}
+
+// ── The batch loop (shared by runPoll and the on-demand worker) ────────────────
+// Queries `rows` (non-terminal parcel_tracking rows, already in the order to check)
+// in batches of MAX_BATCH and writes each result back by id + user_id. Enforces the
+// global daily request cap (`daily` = { day, requests, sentThisRun }, persisted after
+// every batch), the circuit breaker, an optional wall-clock `deadlineAt` (ms epoch →
+// stopReason "time_limit") and an optional `requestBudget` for THIS call (→
+// "seller_cap"). Owns the OCR worker when given `makeOcr` (created lazily, always
+// terminated). Never throws for a single-row/DB fault.
+export async function checkRows({
+  serviceSb, rows, daily, fetchImpl = fetch, ocr: givenOcr = null, makeOcr = null,
+  now = () => new Date(), logger = console, limits = {}, tag = "[PARCEL-POLL]",
+  deadlineAt = null, requestBudget = Infinity,
+}) {
+  const {
+    minGapMs = 4000, jitterMs = 3000, maxBatchesPerRun = 300,
+    dailyRequestCap = DAILY_REQUEST_CAP, baseBackoffMs = 4000, maxBackoffMs = 60000,
+  } = limits;
+  let sent = 0;
+  const countingFetch = (...args) => { daily.requests += 1; daily.sentThisRun += 1; sent += 1; return fetchImpl(...args); };
+
   // A code can belong to more than one seller (a shared/duplicated upload): query it
   // ONCE, update EVERY row that carries it.
   const byCode = new Map();
-  for (const r of live) {
+  for (const r of rows) {
+    if (!r || !r.tracking_no) continue;
     const k = String(r.tracking_no);
     if (!byCode.has(k)) byCode.set(k, []);
     byCode.get(k).push(r);
@@ -389,7 +441,9 @@ export async function runPoll(opts) {
   let ocr = givenOcr;
   try {
     for (const group of groups) {
-      if (batchesRun >= maxBatchesPerRun) { logger.warn("[PARCEL-POLL] per-run batch cap hit"); stopReason = "run_cap"; break; }
+      if (batchesRun >= maxBatchesPerRun) { logger.warn(`${tag} per-run batch cap hit`); stopReason = "run_cap"; break; }
+      if (deadlineAt != null && now().getTime() >= deadlineAt) { logger.warn(`${tag} time limit hit — stopping`); stopReason = "time_limit"; break; }
+      if (sent + MAX_REQUESTS_PER_BATCH > requestBudget) { logger.warn(`${tag} seller request budget hit — stopping`); stopReason = "seller_cap"; break; }
       // A run that crosses 00:00 Taipei rolls onto the new day's counter.
       const today = taipeiDay(now());
       if (today !== daily.day) {
@@ -398,7 +452,7 @@ export async function runPoll(opts) {
         daily.day = today;
         daily.requests = r.error ? 0 : r.requests;
       }
-      if (!underRequestCap(daily.requests, dailyRequestCap)) { logger.warn(`[PARCEL-POLL] daily request cap hit (${daily.requests}/${dailyRequestCap}) — stopping`); stopReason = "daily_cap"; break; }
+      if (!underRequestCap(daily.requests, dailyRequestCap)) { logger.warn(`${tag} daily request cap hit (${daily.requests}/${dailyRequestCap}) — stopping`); stopReason = "daily_cap"; break; }
 
       // Gentle pacing: gap + jitter (+ any backoff) BETWEEN batches, never before the first.
       if (batchesRun > 0) await sleep(minGapMs + Math.floor(Math.random() * jitterMs) + backoff);
@@ -410,7 +464,7 @@ export async function runPoll(opts) {
         getCaptcha: () => fetchCaptcha(countingFetch, jar),
         solveCaptcha: (image) => ocr.solve(image),
         submitQuery: (args) => submitQuery(countingFetch, args, jar),
-        onUnknownStatus: (m) => { unknowns += 1; logger.warn("[PARCEL-POLL] UNKNOWN status:", JSON.stringify(m)); },
+        onUnknownStatus: (m) => { unknowns += 1; logger.warn(`${tag} UNKNOWN status:`, JSON.stringify(m)); },
       };
 
       let res;
@@ -428,7 +482,7 @@ export async function runPoll(opts) {
         if (res.error === "captcha_failed") captchaFails += 1;
         failReasons.push(res.error);
         backoff = Math.min(maxBackoffMs, backoff ? backoff * 2 : baseBackoffMs);
-        logger.warn(`[PARCEL-POLL] batch failed: ${res.error} (${consecutive} in a row)`);
+        logger.warn(`${tag} batch failed: ${res.error} (${consecutive} in a row)`);
         // Rotate: stamp the attempt so this batch doesn't lead every run (the next
         // run starts with other sellers' stalest rows). Status fields untouched.
         const attemptIso = now().toISOString();
@@ -443,7 +497,7 @@ export async function runPoll(opts) {
           const until = new Date(now().getTime() + BREAKER_COOLDOWN_MS).toISOString();
           const { error: cErr } = await serviceSb.from("app_settings")
             .upsert({ key: SETTING_COOLDOWN, value: until, updated_at: now().toISOString() }, { onConflict: "key" });
-          logger.error(`[PARCEL-POLL] 🔴 CIRCUIT OPEN — ${BREAKER_FAILURES} consecutive failures (${failReasons.slice(-BREAKER_FAILURES).join(", ")}) — run aborted, no runs until ${until}${cErr ? " (cooldown write FAILED)" : ""}`);
+          logger.error(`${tag} 🔴 CIRCUIT OPEN — ${BREAKER_FAILURES} consecutive failures (${failReasons.slice(-BREAKER_FAILURES).join(", ")}) — run aborted, no runs until ${until}${cErr ? " (cooldown write FAILED)" : ""}`);
           break;
         }
         continue;
@@ -472,11 +526,11 @@ export async function runPoll(opts) {
           // arrived_at is SET ONCE — only when the row has none yet and we now see at_store.
           if (u.arrived_at && !row.arrived_at) patch.arrived_at = u.arrived_at;
           // Stamp the terminal transition (once — terminal rows are never re-polled) so the
-          // retention pass below can age them out. u.last_polled_at = this poll's time.
+          // retention pass can age them out. u.last_polled_at = this poll's time.
           if (u.status === "picked_up") patch.picked_up_at = u.last_polled_at;
           else if (u.status === "returned") patch.returned_at = u.last_polled_at;
           const { error: upErr } = await serviceSb.from("parcel_tracking").update(patch).eq("id", row.id).eq("user_id", row.user_id);
-          if (upErr) { logger.error("[PARCEL-POLL] update failed", row.id, upErr.code || "error"); continue; }
+          if (upErr) { logger.error(`${tag} update failed`, row.id, upErr.code || "error"); continue; }
           updated += 1;
           if (u.status === "not_found") notFound += 1;
           if (retire) retired += 1;
@@ -486,30 +540,6 @@ export async function runPoll(opts) {
   } finally {
     if (!givenOcr && ocr) { try { await ocr.terminate(); } catch { /* worker already gone */ } }
   }
-  if (retired > 0) logger.log(`[PARCEL-POLL] retired ${retired} never-resolving row(s) (not_found/unknown, ${RETIRE_AFTER_POLLS}+ unchanged polls, ${RETIRE_MIN_AGE_DAYS}+ days old)`);
-
-  // 3) RETENTION — DELETE terminal parcels past their per-status window (picked_up 7d,
-  //    returned 365d — see the constants), scoped to the SAME sellers this run polls.
-  //    The OR filter references ONLY the two terminal states, so a non-terminal row
-  //    (in_transit / at_store / created / not_found / unknown) can NEVER match; a NULL
-  //    picked_up_at/returned_at never matches `.lt`. Runs every poll regardless of how
-  //    the poll loop went (skipped only when nobody is on the allowlist).
-  let purged = 0;
-  if (who.ids.length) {
-    const cutoffPicked = new Date(now().getTime() - PICKUP_RETENTION_MS).toISOString();
-    const cutoffReturned = new Date(now().getTime() - RETURNED_RETENTION_MS).toISOString();
-    let delQ = serviceSb.from("parcel_tracking").delete()
-      .or(`and(status.eq.picked_up,picked_up_at.lt.${cutoffPicked}),and(status.eq.returned,returned_at.lt.${cutoffReturned})`)
-      .select("id");
-    delQ = userId ? delQ.eq("user_id", userId) : delQ.in("user_id", who.ids);
-    const { data: purgedRows, error: delErr } = await delQ;
-    if (delErr) logger.error("[PARCEL-POLL] retention delete failed:", delErr.code || "error");
-    else purged = (purgedRows || []).length;
-  }
-
-  return finish({
-    ok: !tripped, reason: stopReason, sellers: new Set(live.map((r) => String(r.user_id))).size, rows: live.length, capped,
-    batchesRun, updated, unknowns, notFound, captchaFails, failures, tripped, purged, retired,
-    requests: daily.sentThisRun, requestsToday: daily.requests,
-  });
+  if (retired > 0) logger.log(`${tag} retired ${retired} never-resolving row(s) (not_found/unknown, ${RETIRE_AFTER_POLLS}+ unchanged polls, ${RETIRE_MIN_AGE_DAYS}+ days old)`);
+  return { batchesRun, updated, unknowns, notFound, captchaFails, failures, retired, tripped, stopReason, sent };
 }

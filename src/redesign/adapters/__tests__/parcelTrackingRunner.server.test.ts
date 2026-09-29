@@ -603,7 +603,7 @@ describe("Stage 1b — S8: retire not_found / unknown rows that never resolve", 
 
   it("the poll select reads the counter + age it needs", async () => {
     const src = readFileSync("server/parcelTrackingRunner.js", "utf8");
-    expect(src).toContain('.select("id,user_id,tracking_no,arrived_at,status,unchanged_polls,created_at")');
+    expect(src).toContain('.select("id,user_id,tracking_no,arrived_at,status,unchanged_polls,created_at,last_polled_at,pickup_deadline")');
   });
 });
 

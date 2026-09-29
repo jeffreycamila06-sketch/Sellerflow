@@ -60,6 +60,7 @@ export interface ParcelTrackingRow {
   shipType: string | null;
   specialType: string | null;
   terminal: boolean;
+  lastPolledAt?: string | null; // last SHOPMORE check of this row (drives the Stale chip)
 }
 
 export function rowToTracking(row: Record<string, unknown>): ParcelTrackingRow {
@@ -79,6 +80,7 @@ export function rowToTracking(row: Record<string, unknown>): ParcelTrackingRow {
     shipType: s(row.ship_type),
     specialType: s(row.special_type),
     terminal: row.terminal === true,
+    lastPolledAt: s(row.last_polled_at),
   };
 }
 
@@ -348,7 +350,7 @@ async function uid(): Promise<string | null> {
 }
 
 export const PARCEL_TRACKING_PAGE = 500;
-export const PT_SELECT = "id, tracking_no, cm_order_no, buyer_username, recipient_name, store_id, rec_store, status, status_message, pickup_deadline, arrived_at, ship_type, special_type, terminal";
+export const PT_SELECT = "id, tracking_no, cm_order_no, buyer_username, recipient_name, store_id, rec_store, status, status_message, pickup_deadline, arrived_at, ship_type, special_type, terminal, last_polled_at";
 
 // Exact per-tab totals that survive the page cap (see the starvation note below).
 // live = every non-terminal row (drives "Load more"); waiting / transit = exact counts
@@ -424,4 +426,87 @@ export async function loadMoreLive(offset: number): Promise<{ ok: boolean; rows:
   const { data, error } = await livePage(me, Math.max(0, offset));
   if (error) return { ok: false, rows: [], error: error.message };
   return { ok: true, rows: (data ?? []).map((r) => rowToTracking(r as Record<string, unknown>)) };
+}
+
+// ── Stage 2: on-demand "Check now" (sql/63) ─────────────────────────────────────
+// The seller presses Check now (once per Taipei day, never twice within 12h); the
+// server worker runs it as a job. While a job is active the screen re-reads the tiny
+// status RPC every 15 s (CHECK_POLL_MS) — only then, never otherwise.
+export const CHECK_POLL_MS = 15_000;
+export const STALE_MS = 24 * 60 * 60 * 1000;
+
+export interface TrackingJob {
+  id: string; kind: string; status: string; error?: string | null;
+  parcels_checked?: number | null; parcels_total?: number | null; finished_at?: string | null; requested_at?: string;
+}
+export interface TrackingStatus {
+  last_completed_at: string | null;   // the ONLY source of "Last checked" (a finished manual check)
+  next_available_at: string | null;
+  used_today: boolean;
+  urgent_used_today: boolean;
+  active_job: TrackingJob | null;
+  last_job: TrackingJob | null;
+}
+export type CheckReason =
+  | "queued" | "disabled" | "not_allowed" | "used_today" | "too_soon" | "already_queued"
+  | "not_eligible" | "urgent_used_today" | "bad_kind" | "error";
+export interface CheckResult { ok: boolean; reason: CheckReason; next_available_at?: string | null }
+
+export async function loadTrackingStatus(): Promise<TrackingStatus | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+  try {
+    const { data, error } = await supabase.rpc("parcel_tracking_status");
+    return error || !data ? null : (data as TrackingStatus);
+  } catch {
+    return null;
+  }
+}
+
+export async function requestCheck(kind: "manual" | "urgent"): Promise<CheckResult> {
+  if (!isSupabaseConfigured || !supabase) return { ok: false, reason: "error" };
+  try {
+    const { data, error } = await supabase.rpc("parcel_tracking_request_check", { p_kind: kind });
+    if (error || !data) return { ok: false, reason: "error" };
+    return data as CheckResult;
+  } catch {
+    return { ok: false, reason: "error" };
+  }
+}
+
+// PURE — the Check now button: busy while a job is queued/running, locked until
+// next_available_at, otherwise ready. Unknown status (RPC failed) → ready: the server
+// still enforces every rule and answers with a plain reason.
+export type CheckButton = { kind: "ready" } | { kind: "busy" } | { kind: "locked"; nextAt: string };
+export function checkButtonState(status: TrackingStatus | null, nowMs: number): CheckButton {
+  if (!status) return { kind: "ready" };
+  if (status.active_job) return { kind: "busy" };
+  const next = status.next_available_at ? Date.parse(status.next_available_at) : NaN;
+  if (Number.isFinite(next) && next > nowMs) return { kind: "locked", nextAt: status.next_available_at! };
+  return { kind: "ready" };
+}
+
+// PURE — a live parcel whose last SHOPMORE check is more than 24h old.
+export function isStale(row: Pick<ParcelTrackingRow, "terminal" | "status" | "lastPolledAt">, nowMs: number): boolean {
+  if (row.terminal || isUnchecked(row) || !row.lastPolledAt) return false;
+  const t = Date.parse(row.lastPolledAt);
+  return Number.isFinite(t) && nowMs - t > STALE_MS;
+}
+
+// PURE — mirrors the server's urgent rule: an at-store live parcel due today or tomorrow.
+export function urgentEligible(rows: ParcelTrackingRow[], today: string): boolean {
+  return rows.some((r) => {
+    if (r.terminal || r.status !== "at_store") return false;
+    const d = daysUntilDate(r.pickupDeadline, today);
+    return d !== null && d <= 1;
+  });
+}
+
+// PURE — "MM/DD HH:mm" in Taipei time (numeric, language-neutral).
+export function formatTaipei(iso: string | null | undefined): string {
+  const t = iso ? Date.parse(iso) : NaN;
+  if (!Number.isFinite(t)) return "";
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Taipei", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(new Date(t)).map((x) => [x.type, x.value]));
+  return `${p.month}/${p.day} ${p.hour}:${p.minute}`;
 }

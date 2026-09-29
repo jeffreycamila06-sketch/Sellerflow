@@ -80,7 +80,7 @@ describe("WEB — boxed status tabs + aligned table", () => {
     expect(within(rows[3]).getByTestId("pt-left").getAttribute("data-urgent")).toBe("0"); // 5 days → gray
     // not-checked-yet row sinks last, honest label, NO chase action
     expect(rows[4].textContent).toContain("@fresh");
-    expect(within(rows[4]).getByTestId("pt-left").textContent).toBe("Not checked yet — next check within 4h");
+    expect(within(rows[4]).getByTestId("pt-left").textContent).toBe("Not checked yet");
     expect(within(rows[4]).queryByTestId("pt-open-profile")).toBeNull();
     expect(within(rows[4]).queryByTestId("pt-copy-username")).toBeNull();
     expect(r.getAllByTestId("pt-code")).toHaveLength(5);

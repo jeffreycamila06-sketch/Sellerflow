@@ -292,27 +292,29 @@ describe("server.js /admin/parcel-tracking-poll (structural — secret-gated cro
     expect(route).toMatch(/!PARCEL_POLL_TOKEN/);
   });
 
-  // The run body lives in runParcelPollOnce (called by the route); slice it too.
-  const runner = (() => {
-    const i = src.indexOf("async function runParcelPollOnce()");
-    return src.slice(i, i + src.slice(i).indexOf("\n}\n") + 3);
-  })();
-
-  it("checks the token BEFORE touching the DB / OCR (no work for a bad caller)", () => {
+  it("checks the token BEFORE touching the DB (no work for a bad caller); never touches SHOPMORE/OCR itself", () => {
     const tokenAt = route.indexOf("timingSafeTokenEqual(token, PARCEL_POLL_TOKEN");
     expect(tokenAt).toBeGreaterThan(-1);
-    expect(tokenAt).toBeLessThan(route.indexOf("readPollGate("));        // first DB touch
-    expect(tokenAt).toBeLessThan(route.indexOf("runParcelPollOnce("));   // → runPoll + OCR
-    expect(route).not.toContain("createOcr(");                           // OCR only inside the run
+    expect(tokenAt).toBeLessThan(route.indexOf("readPollGate("));                 // first DB touch
+    expect(tokenAt).toBeLessThan(route.indexOf("parcel_tracking_enqueue_job"));
+    expect(route).not.toContain("createOcr(");
+    expect(route).not.toContain("runPoll(");
   });
 
-  it("kill switch answers 200 before scheduling anything; the run is service-role, allowlist-scoped (override optional), single-flight, and runPoll owns the OCR lifecycle", () => {
+  it("kill switch answers 200 before queueing; otherwise enqueues one manual job per allowlisted seller (override optional) → 202", () => {
     expect(route).toMatch(/gate\.reason === "disabled"[\s\S]*status\(200\)\.json\(\{ ok: true, disabled: true \}\)/);
-    expect(route.indexOf("readPollGate(")).toBeLessThan(route.indexOf("parcelPollRunning = true")); // no guard claimed for a disabled poller
-    expect(runner).toMatch(/runPoll\(\{ serviceSb, userId: PARCEL_POLL_USER_ID \|\| null, makeOcr: createOcr \}\)/);
-    expect(route).toContain("parcelPollRunning"); // single-flight guard
-    expect(route).toMatch(/status\(409\)/);        // rejects an overlapping run
-    expect(runner).toMatch(/finally \{[\s\S]*parcelPollRunning = false/); // guard always released
+    expect(route.indexOf("readPollGate(")).toBeLessThan(route.indexOf("parcel_tracking_enqueue_job"));
+    expect(route).toMatch(/if \(PARCEL_POLL_USER_ID\) ids = \[PARCEL_POLL_USER_ID\]/);
+    expect(route).toMatch(/from\("parcel_tracking_access"\)\.select\("user_id"\)\.eq\("enabled", true\)/);
+    expect(route).toMatch(/rpc\("parcel_tracking_enqueue_job", \{ p_user_id: id, p_kind: "manual", p_created_by: "admin" \}\)/);
+    expect(route).toMatch(/status\(202\)\.json\(\{ ok: true, scheduled: true, enqueued \}\)/);
+    expect(src).not.toContain("parcelPollRunning");
+  });
+
+  it("the job worker starts only with a service-role client and emits job-done to the seller room", () => {
+    expect(src).toMatch(/if \(serviceSb\) \{\s*createParcelWorker\(\{/);
+    expect(src).toContain('io.to(sellerRoom(userId)).emit("parcel-tracking:job-done", payload)');
+    expect(src).toContain("makeOcr: createOcr");
   });
 });
 
