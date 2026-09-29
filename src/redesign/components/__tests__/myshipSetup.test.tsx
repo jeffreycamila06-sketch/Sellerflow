@@ -47,7 +47,10 @@ describe("MyshipScanGate", () => {
 
   it("HARD GATE while loading AND on load failure: the blocking overlay is up before the config read resolves, and a failed read fails CLOSED (modal)", async () => {
     let rej: (e: Error) => void = () => {};
-    mocks.load.mockReturnValue(new Promise((_res, reject) => { rej = reject; }));
+    // Only the GATE's config read fails. Once the gate shows the setup modal, the form
+    // inside it does its own read — give that one a normal (empty) answer instead of
+    // re-handing it the same rejected promise, which the form doesn't expect.
+    mocks.load.mockReturnValueOnce(new Promise((_res, reject) => { rej = reject; })).mockResolvedValue(null);
     render(<MyshipScanGate t={T} enabled onExit={() => {}}><div data-testid="scan" /></MyshipScanGate>);
     expect(screen.getByTestId("mc-gate")).toBeTruthy(); // blocking from the first frame
     rej(new Error("db down"));
