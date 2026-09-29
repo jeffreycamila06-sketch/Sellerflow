@@ -31,6 +31,8 @@ import CustomerDetails from "./CustomerDetails";
 const input: CSSProperties = { width: "100%", padding: "10px 12px", border: "1px solid var(--border-strong)", borderRadius: 10, background: "var(--surface-2)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 13, fontWeight: 600, outline: "none", boxSizing: "border-box" };
 const lbl: CSSProperties = { fontSize: 11, fontWeight: 600, color: "var(--text-dim)", display: "block", marginBottom: 4 };
 const errTxt: CSSProperties = { fontSize: 10.5, fontWeight: 600, color: "var(--danger)", marginTop: 3 };
+// After this long still "Checking…", the row shows "Still checking — you can export" instead.
+export const STILL_CHECKING_MS = 3 * 60 * 1000;
 const warnTxt: CSSProperties = { fontSize: 10.5, fontWeight: 600, color: "var(--warn, #b45309)", marginTop: 3 };
 const lowConfBorder = "1.5px solid var(--warn, #f59e0b)";
 
@@ -248,6 +250,8 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // visibilitychange effect drives this, and it re-acquires on return. retryTick
   // re-runs the acquire effect when the OS ends a track (e.g. a phone call).
   const [pageVisible, setPageVisible] = useState(() => typeof document === "undefined" || document.visibilityState !== "hidden");
+  // Clock for the 3-min "Still checking" line; ticks only while a row is still unresolved.
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const [retryTick, setRetryTick] = useState(0);
   // FIX 1 — synchronous single-flight guard on the scan pipeline (mirrors
   // RedesignApp's entSubmittedRef): set at the top of beginScan BEFORE any
@@ -331,6 +335,12 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     return () => { live = false; clearInterval(id); };
   }, [awaitingVerdicts, pageVisible]);
   const attnCount = checkOn ? attentionCount(rows) : 0;
+  const anyUnresolved = checkOn && rows.some((r) => r.status !== "exported" && !(r.phoneCheckStatus === "ok" && r.storeFullStatus === "open"));
+  useEffect(() => {
+    if (!anyUnresolved || !pageVisible) return;
+    const id = setInterval(() => setNowMs(Date.now()), 15000);
+    return () => clearInterval(id);
+  }, [anyUnresolved, pageVisible]);
 
   // FIX 2/3 — release the camera when the tab/app is backgrounded, re-acquire on
   // return, and clear a prior denial so a grant-in-Settings-then-return recovers
@@ -1342,7 +1352,11 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                       'unknown' both count as unresolved: the worker re-queues them. Gated
                       on checkOn so a non-feature seller's all-null rows never show it. */}
                   {checkOn && r.status !== "exported" && !rowRed && !rowOrange && !(r.phoneCheckStatus === "ok" && r.storeFullStatus === "open") && (
-                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--text-muted)" }} data-testid="ps-ext-checking">⏳ {t.rd_ps2_checking.replace(/…$/, "")}<span className="sfl-anim-ellip" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span></div>
+                    // Waiting > 3 min → reassure instead of spin: the checker keeps retrying on
+                    // its own and export is never blocked, so nobody needs to delete the row.
+                    nowMs - Date.parse(r.createdAt) > STILL_CHECKING_MS
+                      ? <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--warn, #b45309)", overflowWrap: "anywhere" }} data-testid="ps-ext-still-checking">⚠️ {t.rd_ps2_still_checking}</div>
+                      : <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--text-muted)" }} data-testid="ps-ext-checking">⏳ {t.rd_ps2_checking.replace(/…$/, "")}<span className="sfl-anim-ellip" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span></div>
                   )}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
