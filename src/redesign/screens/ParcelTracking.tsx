@@ -264,6 +264,7 @@ function checkErrorText(res: CheckResult, t: T): string {
 function jobDoneText(job: TrackingJob | null, t: T): string {
   if (!job) return "";
   const n = job.parcels_checked ?? 0, m = job.parcels_total ?? 0;
+  if (job.status === "done" && m === 0) return t.rd_pt_job_nothing;
   if (job.status === "done") return tpl(job.error ? t.rd_pt_job_partial : t.rd_pt_job_done, { n, m });
   return t.rd_pt_job_failed;
 }

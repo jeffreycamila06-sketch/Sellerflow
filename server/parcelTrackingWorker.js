@@ -64,6 +64,14 @@ export function jobOutcome({ stopReason, tripped, checked, capped }) {
   return { status: "done", error: capped ? "capped" : null };
 }
 
+// PURE — refund the seller's daily press? Only for a seller-pressed manual job that
+// checked nothing (0 parcels in scope) or failed. Admin/cron manual, new_parcels,
+// urgent and health jobs never consumed a press.
+export function shouldRefundPress(job, status, total) {
+  if (job.kind !== "manual" || job.created_by !== "seller") return false;
+  return status === "failed" || (status === "done" && total === 0);
+}
+
 // PURE — Taipei hour (0–23).
 export function taipeiHour(nowDate) {
   return Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Taipei", hour: "2-digit", hourCycle: "h23" }).format(nowDate));
@@ -101,6 +109,13 @@ export function createWorker(opts) {
       status, error, finished_at: t.toISOString(), parcels_total: total, parcels_checked: checked, requests_used: requests,
     }).eq("id", job.id);
     if (jErr) logger.error(`${TAG} job update failed job=${job.id}:`, jErr.code || "error");
+    // Give the daily press back when a seller's check did nothing or crashed (sql/64 also
+    // checks kind/created_by itself). A skipped daily_cap job keeps the press.
+    if (shouldRefundPress(job, status, total)) {
+      const { error: rErr } = await serviceSb.rpc("parcel_tracking_refund_press", { p_job_id: job.id });
+      if (rErr) logger.error(`${TAG} press refund failed user=${job.user_id}:`, rErr.code || "error");
+      else logger.log(`${TAG} press refunded user=${job.user_id}`);
+    }
     // "Last checked" = a FINISHED manual check that actually checked something.
     if (job.kind === "manual" && checked > 0) {
       const { error: aErr } = await serviceSb.from("parcel_tracking_access").update({ last_completed_at: t.toISOString() }).eq("user_id", job.user_id);
