@@ -25,6 +25,8 @@ import {
   loadParcelTracking, loadMoreLive, type ParcelTotals, groupParcels, chaseTarget, chaseCopyValue, rowTab, leftCell, isUnchecked, tabRows, tabCounts,
   PICKUP_TABS, PICKUP_STATUS_TABS,
   type ParcelTrackingRow, type ParcelGroups, type PickupTab,
+  loadTrackingStatus, requestCheck, checkButtonState, isStale, urgentEligible, formatTaipei, CHECK_POLL_MS,
+  type TrackingStatus, type TrackingJob, type CheckResult,
 } from "../adapters/parcelTracking";
 import { isIOS } from "../adapters/platform";
 import { isAppShell, isNarrowViewport } from "../adapters/appShell";
@@ -119,11 +121,18 @@ function ChaseAction({ row, t, onCopy }: { row: ParcelTrackingRow; t: T; onCopy:
   );
 }
 
-function Buyer({ row, t }: { row: ParcelTrackingRow; t: T }) {
+function Buyer({ row, t, nowMs }: { row: ParcelTrackingRow; t: T; nowMs: number }) {
   const name = String(row.buyerUsername ?? "").trim();
-  return name
+  const label = name
     ? <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", ...ellipsis, display: "block" }} title={`@${name.replace(/^@+/, "")}`}>@{name.replace(/^@+/, "")}</span>
     : <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-muted)", fontStyle: "italic", ...ellipsis, display: "block" }}>{t.rd_pt_no_username}</span>;
+  if (!isStale(row, nowMs)) return label;
+  return (
+    <>
+      {label}
+      <span data-testid="pt-stale" style={{ display: "inline-block", marginTop: 3, padding: "1px 7px", borderRadius: 999, border: "1px solid var(--border-strong)", fontSize: 10.5, fontWeight: 700, color: "var(--text-muted)", whiteSpace: "nowrap" }}>{t.rd_pt_stale}</span>
+    </>
+  );
 }
 const storeOf = (row: ParcelTrackingRow) => row.recStore || row.storeId || "—";
 
@@ -151,7 +160,7 @@ function Tabs({ tab, counts, onPick, t }: { tab: PickupTab; counts: Record<Picku
 }
 
 // WEB — aligned table (table-layout: fixed). Buyer · Store · Parcel (mono, muted) · Left · action.
-function Table({ rows, today, t, onCopy }: { rows: ParcelTrackingRow[]; today: string; t: T; onCopy: (h: string) => void }) {
+function Table({ rows, today, t, onCopy, nowMs }: { rows: ParcelTrackingRow[]; today: string; t: T; onCopy: (h: string) => void; nowMs: number }) {
   const th: CSSProperties = { textAlign: "left", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", padding: "10px 10px 8px", textTransform: "uppercase", letterSpacing: ".04em", ...ellipsis };
   const td: CSSProperties = { padding: "10px", borderTop: "1px solid var(--border)", verticalAlign: "middle", overflow: "hidden" };
   return (
@@ -172,7 +181,7 @@ function Table({ rows, today, t, onCopy }: { rows: ParcelTrackingRow[]; today: s
         <tbody>
           {rows.map((r) => (
             <tr key={r.id} data-testid="pt-row">
-              <td style={td}><Buyer row={r} t={t} /></td>
+              <td style={td}><Buyer row={r} t={t} nowMs={nowMs} /></td>
               <td style={td}><span style={{ fontSize: 12.5, color: "var(--text)", ...ellipsis, display: "block" }} title={storeOf(r)}>{storeOf(r)}</span></td>
               <td style={td}><span style={{ fontFamily: mono, fontSize: 12, color: "var(--text-muted)", ...ellipsis, display: "block" }} title={r.trackingNo} data-testid="pt-code">{r.trackingNo}</span></td>
               <td style={td}><LeftText row={r} today={today} t={t} /></td>
@@ -207,13 +216,13 @@ function Cards({ tab, counts, onPick, t }: { tab: PickupTab; counts: Record<Pick
 }
 
 // MOBILE — compact rows: Buyer + Store (two lines) · Left · action. No parcel code.
-function CompactList({ rows, today, t, onCopy }: { rows: ParcelTrackingRow[]; today: string; t: T; onCopy: (h: string) => void }) {
+function CompactList({ rows, today, t, onCopy, nowMs }: { rows: ParcelTrackingRow[]; today: string; t: T; onCopy: (h: string) => void; nowMs: number }) {
   return (
     <div style={{ ...card, padding: 0, overflow: "hidden" }} data-testid="pt-list">
       {rows.map((r, i) => (
         <div key={r.id} data-testid="pt-row" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderTop: i ? "1px solid var(--border)" : "none" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <Buyer row={r} t={t} />
+            <Buyer row={r} t={t} nowMs={nowMs} />
             <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 2, ...ellipsis }}>{storeOf(r)}</div>
           </div>
           <div style={{ flexShrink: 0, maxWidth: "34%", textAlign: "right" }}><LeftText row={r} today={today} t={t} /></div>
@@ -239,6 +248,26 @@ function syncErrorText(res: SyncResult, t: T): string {
   }
 }
 
+// Plain words for a refused Check now / urgent request.
+function checkErrorText(res: CheckResult, t: T): string {
+  switch (res.reason) {
+    case "used_today": case "too_soon": return res.next_available_at ? tpl(t.rd_pt_next_at, { time: formatTaipei(res.next_available_at) }) : t.rd_pt_err_check;
+    case "already_queued": return t.rd_pt_err_queued;
+    case "disabled": return t.rd_pt_err_paused;
+    case "not_eligible": return t.rd_pt_err_not_eligible;
+    case "urgent_used_today": return t.rd_pt_err_urgent_used;
+    default: return t.rd_pt_err_check;
+  }
+}
+
+// The toast when a job finishes — real counts from the job row, never invented.
+function jobDoneText(job: TrackingJob | null, t: T): string {
+  if (!job) return "";
+  const n = job.parcels_checked ?? 0, m = job.parcels_total ?? 0;
+  if (job.status === "done") return tpl(job.error ? t.rd_pt_job_partial : t.rd_pt_job_done, { n, m });
+  return t.rd_pt_job_failed;
+}
+
 export default function ParcelTracking() {
   const t = useT();
   const today = taipeiDayId();
@@ -254,8 +283,14 @@ export default function ParcelTracking() {
   const [rows, setRows] = useState<ParcelTrackingRow[]>([]);
   const [loadingMore, setLoadingMore] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [status, setStatus] = useState<TrackingStatus | null>(null);
+  const [requesting, setRequesting] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const busy = !!status?.active_job;
+  const showToast = (msg: string, ms = 4000) => { setToast(msg); setTimeout(() => setToast(""), ms); };
 
   const apply = (next: ParcelTrackingRow[], nextTotals: ParcelTotals | undefined) => {
+    setNowMs(Date.now());
     setRows(next);
     setGroups(groupParcels(next, today));
     setTotals(nextTotals);
@@ -291,16 +326,45 @@ export default function ParcelTracking() {
       setTotals(res.totals);
       setState("ready");
     });
+    void loadTrackingStatus().then((st) => { if (live) setStatus(st); });
     return () => { live = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // While a check is queued/running: re-read the small status every 15 s. When the job
+  // is gone, show its real result and re-read the parcels. Nothing polls otherwise.
+  useEffect(() => {
+    if (!busy) return;
+    const id = setInterval(() => {
+      void loadTrackingStatus().then((st) => {
+        if (!st) return;
+        setStatus(st);
+        setNowMs(Date.now());
+        if (!st.active_job) {
+          const msg = jobDoneText(st.last_job, t);
+          if (msg) showToast(msg, 5000);
+          void load();
+        }
+      });
+    }, CHECK_POLL_MS);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busy]);
+
+  const onCheck = async (kind: "manual" | "urgent") => {
+    setRequesting(true);
+    const res = await requestCheck(kind);
+    const st = await loadTrackingStatus();
+    setRequesting(false);
+    if (st) { setStatus(st); setNowMs(Date.now()); }
+    if (!res.ok) showToast(checkErrorText(res, t), 5000);
+  };
 
   const onCopy = async (handle: string) => {
     const ok = await copyText(handle);
     if (ok) { setToast(t.rd_pt_copied); setTimeout(() => setToast(""), 1500); }
   };
 
-  const showToast = (msg: string, ms = 4000) => { setToast(msg); setTimeout(() => setToast(""), ms); };
 
   // "Sync from 賣貨便" — read the uploaded 匯出報表 .xlsx and sync it under the seller's own
   // JWT. Client-side parse; poller columns are never written. Every failure cause gets its
@@ -324,8 +388,11 @@ export default function ParcelTracking() {
       return;
     }
     if (res.fresh + res.updated === 0) { showToast(tpl(t.rd_pt_sync_noop, { n: res.same })); return; }
-    showToast(tpl(t.rd_pt_sync_done2, { new: res.fresh, updated: res.updated, same: res.same }));
+    const done = tpl(t.rd_pt_sync_done2, { new: res.fresh, updated: res.updated, same: res.same });
+    // New rows queue an automatic check server-side (trigger) — say so, and show it running.
+    showToast(res.fresh > 0 ? `${done} ${t.rd_pt_autocheck}` : done, 5000);
     await load(); // re-read so the new parcels + @handles show immediately
+    if (res.fresh > 0) { const st = await loadTrackingStatus(); if (st) setStatus(st); }
   };
 
   const empty = state === "ready" && (totals ? totals.all === 0
@@ -364,6 +431,33 @@ export default function ParcelTracking() {
             <button onClick={() => setSyncErr("")} aria-label={t.rd_pt_dismiss} style={{ background: "none", border: "none", color: "var(--danger)", fontSize: 16, lineHeight: 1, cursor: "pointer", padding: 0 }}>×</button>
           </div>
         )}
+        {/* Stage 2 — on-demand check. "Last checked" comes ONLY from last_completed_at. */}
+        {state === "ready" && !empty && (() => {
+          const b = checkButtonState(status, nowMs);
+          const showUrgent = !busy && !!status && !status.urgent_used_today && urgentEligible(rows, today);
+          return (
+            <div style={{ ...card, padding: 12, marginBottom: 14, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }} data-testid="pt-check-card">
+              <div style={{ flex: "1 1 180px", minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 800, color: "var(--text)", overflowWrap: "anywhere" }} data-testid="pt-last-checked">
+                  {status?.last_completed_at ? tpl(t.rd_pt_last_checked, { time: formatTaipei(status.last_completed_at) }) : t.rd_pt_never_checked}
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 3, overflowWrap: "anywhere" }} data-testid="pt-check-sub">
+                  {b.kind === "locked" ? tpl(t.rd_pt_next_at, { time: formatTaipei(b.nextAt) }) : t.rd_pt_check_note}
+                </div>
+                {showUrgent && (
+                  <button onClick={() => void onCheck("urgent")} disabled={requesting} data-testid="pt-urgent"
+                    style={{ marginTop: 6, background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--danger)", fontSize: 12, fontWeight: 700, textAlign: "left" }}>
+                    {t.rd_pt_urgent_link}
+                  </button>
+                )}
+              </div>
+              <button onClick={() => void onCheck("manual")} disabled={b.kind !== "ready" || requesting} data-testid="pt-check-now" data-state={b.kind}
+                style={{ ...btn, background: b.kind === "ready" ? "var(--accent)" : "var(--surface-2)", border: `1px solid ${b.kind === "ready" ? "var(--accent)" : "var(--border-strong)"}`, color: b.kind === "ready" ? "var(--accent-text)" : "var(--text-muted)", cursor: b.kind === "ready" ? "pointer" : "default", opacity: requesting ? 0.6 : 1 }}>
+                {b.kind === "busy" ? t.rd_pt_checking : t.rd_pt_check_now}
+              </button>
+            </div>
+          );
+        })()}
         {/* Sync-from-賣貨便 hint + collapsible how-to (laptop-first). Hidden on the empty
             state, which carries its own 3 steps + Sync button (N2). */}
         {!empty && <div style={{ ...card, padding: 12, marginBottom: 14 }} data-testid="pt-sync-card">
@@ -407,12 +501,12 @@ export default function ParcelTracking() {
                 return narrow
                   ? <div data-testid="pt-mobile">
                       <Cards tab={tab} counts={counts} onPick={setTab} t={t} />
-                      {tabList.length ? <CompactList rows={tabList} today={today} t={t} onCopy={onCopy} /> : emptyTab}
+                      {tabList.length ? <CompactList rows={tabList} today={today} t={t} onCopy={onCopy} nowMs={nowMs} /> : emptyTab}
                       {more}
                     </div>
                   : <div data-testid="pt-web">
                       <Tabs tab={tab} counts={counts} onPick={setTab} t={t} />
-                      {tabList.length ? <Table rows={tabList} today={today} t={t} onCopy={onCopy} /> : emptyTab}
+                      {tabList.length ? <Table rows={tabList} today={today} t={t} onCopy={onCopy} nowMs={nowMs} /> : emptyTab}
                       {more}
                     </div>;
               })()

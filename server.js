@@ -8,7 +8,8 @@ import { translateBroadcast } from "./server/broadcastTranslate.js";
 import { scanParcelImage, SCAN_MEDIA_TYPES, describeRawReply } from "./server/parcelScan.js";
 import { runScanWithCredit } from "./server/parcelCredits.js";
 import { checkEmapStore } from "./server/emapCheck.js";
-import { createOcr, runPoll, readPollGate, writePollHealth } from "./server/parcelTrackingRunner.js";
+import { createOcr, readPollGate, writePollHealth } from "./server/parcelTrackingRunner.js";
+import { createWorker as createParcelWorker } from "./server/parcelTrackingWorker.js";
 import { shouldForceFreshConnect, shouldSkipQueuedReconnect, LIVENESS_EVENTS, reuseVerdict, singleFlight, REUSE_VERIFY_TIMEOUT_MS, shouldRelayViewers, resolveRateLimitCooldownMs, checkConnectRate, CONNECT_RATE_WINDOW_MS, isOwningConnection, relaySessionId } from "./server/connectionHealth.js";
 import { buildInitialCommentPayloads, pushRecent, reuseReEmitPayload, RECENT_RING_CAP } from "./server/initialComments.js";
 import { timingSafeTokenEqual, makeFailureThrottle } from "./server/pollAuth.js";
@@ -35,14 +36,16 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
 // Parcel Scan (admin-only dogfood) vision model — overridable on Render without
 // a deploy; empty → the core's DEFAULT_SCAN_MODEL.
 const PARCEL_SCAN_MODEL = process.env.PARCEL_SCAN_MODEL || "";
-// Parcel pickup-tracking poller (SHOPMORE). Triggered by cron-job.org, which cannot
-// present a Supabase JWT → gated by a SHARED SECRET (NOT requireAdmin). WHO is polled =
-// the parcel_tracking_access allowlist (sql/60, service role only). PARCEL_POLL_USER_ID
-// is an optional EMERGENCY OVERRIDE: set → poll only that one user, ignoring the list.
-// On/off = app_settings.parcel_tracking_enabled (no restart needed — see runPoll).
+// Parcel pickup tracking (SHOPMORE). Stage 2 (sql/63): checks run as queued JOBS
+// (parcel_tracking_jobs) processed one at a time by the in-process worker
+// (server/parcelTrackingWorker.js). The cron route below only ENQUEUES manual jobs for
+// the allowlist — gated by a SHARED SECRET (cron-job.org can't present a JWT).
+// PARCEL_POLL_USER_ID = optional override: enqueue only that one user.
+// PARCEL_HEALTH_USER_ID = optional: one health-check job for that user per Taipei day.
+// On/off = app_settings.parcel_tracking_enabled (read every worker tick).
 const PARCEL_POLL_TOKEN = process.env.PARCEL_POLL_TOKEN || "";
 const PARCEL_POLL_USER_ID = process.env.PARCEL_POLL_USER_ID || "";
-let parcelPollRunning = false; // single-flight: never overlap two poll runs (RAM + anti-block)
+const PARCEL_HEALTH_USER_ID = process.env.PARCEL_HEALTH_USER_ID || "";
 const sb = (SUPABASE_URL && SUPABASE_KEY)
   ? createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { persistSession: false, autoRefreshToken: false } })
   : null;
@@ -1001,36 +1004,11 @@ app.post("/admin/parcel-emap-check", requireAuth, async (req, res) => {
   return res.json({ success: true, storeId: result.storeId, status: result.status, storeName: result.storeName, address: result.address });
 });
 
-// ── SHOPMORE pickup-tracking poll (cron-triggered) ──────────────────────────────
+// ── SHOPMORE pickup-tracking: cron route ENQUEUES manual jobs (Stage 2) ─────────
 // SECRET-gated (cron-job.org can't present a JWT): PARCEL_POLL_TOKEN via the
-// X-Poll-Token HEADER ONLY (M5 2026-09-26 — ?token= removed: query strings land in
-// Render/cron/proxy logs), compared timing-safe with a failed-attempt lockout
-// (server/pollAuth.js), checked BEFORE any body handling. Runs the impure runner
-// as SERVICE ROLE (allowlist scope, sql/60). Single-flight so two cron pings can
-// never overlap (RAM + anti-block). runPoll creates ONE tesseract worker only when
-// it has a batch to send and TERMINATES it in its finally (never kept warm).
-// Off-peak jitter: cron-job.org fires at a FIXED minute, so the server spreads the
-// actual SHOPMORE query time across a window (0–20 min) → not the same minute daily.
-const PARCEL_POLL_MAX_JITTER_MS = 20 * 60 * 1000;
-
-// The actual poll (background after jitter, or synchronous via ?now). Owns the
-// tesseract worker (created once, terminated in finally — never kept warm). Returns
-// the summary (or { ok:false, error:"run_failed" }) so the ?now path can send it
-// inline; the background path ignores the return. ALWAYS releases the single-flight
-// guard in finally so a crashed run can't wedge the endpoint.
-// runPoll owns the OCR worker via makeOcr: created only once a batch is actually
-// sent (never for a disabled/cooldown/empty run) and ALWAYS terminated in its finally.
-async function runParcelPollOnce() {
-  try {
-    return await runPoll({ serviceSb, userId: PARCEL_POLL_USER_ID || null, makeOcr: createOcr });
-  } catch (e) {
-    console.error("[PARCEL-POLL] run failed:", (e && e.code) || "threw");
-    return { ok: false, error: "run_failed" };
-  } finally {
-    parcelPollRunning = false;
-  }
-}
-
+// X-Poll-Token HEADER ONLY (M5 — never ?token=), compared timing-safe with a
+// failed-attempt lockout (server/pollAuth.js), checked BEFORE any body handling.
+// The worker does the SHOPMORE work; this route never touches SHOPMORE itself.
 const parcelPollAuthThrottle = makeFailureThrottle({ max: 5, windowMs: 15 * 60 * 1000 });
 
 app.post("/admin/parcel-tracking-poll", async (req, res) => {
@@ -1050,31 +1028,30 @@ app.post("/admin/parcel-tracking-poll", async (req, res) => {
   if (!serviceSb) return res.status(503).json({ ok: false, error: "no_service_role" });
   // KILL SWITCH (app_settings.parcel_tracking_enabled) — checked here too so a
   // disabled poller answers 200 immediately (cron history shows it) without
-  // scheduling anything. runPoll re-checks at the start of the actual run.
+  // queueing anything. The worker re-checks it every tick.
   const gate = await readPollGate(serviceSb, new Date());
   if (!gate.run && gate.reason === "disabled") {
     console.log("[PARCEL-POLL] disabled");
     await writePollHealth(serviceSb, { ran_at: new Date().toISOString(), ok: true, reason: "disabled" });
     return res.status(200).json({ ok: true, disabled: true });
   }
-  // Single-flight over the WHOLE scheduled+running window: claim it NOW (synchronously,
-  // before responding) so a second trigger during the jitter delay OR the run itself
-  // gets 409 — never a double-run. Released in runParcelPollOnce's finally (and reset
-  // by an in-memory restart, which also drops any pending timer — safe: next cron runs).
-  if (parcelPollRunning) return res.status(409).json({ ok: false, error: "already_running" });
-  parcelPollRunning = true;
-  // ?now=1 — MANUAL TESTING ONLY: skip the jitter + run SYNCHRONOUSLY so the caller
-  // gets the summary inline (the pre-async behaviour). cron-job.org never sends ?now,
-  // so it still gets the fast 202 + background jitter below. Guard released in finally.
-  if (req.query.now) {
-    const result = await runParcelPollOnce();
-    return res.status(result && result.ok ? 200 : 500).json(result);
+  // WHO: the override, else every enabled allowlist row. One manual job each; a seller
+  // with a job already queued/running is skipped (the RPC returns null).
+  let ids = [];
+  if (PARCEL_POLL_USER_ID) ids = [PARCEL_POLL_USER_ID];
+  else {
+    const { data, error } = await serviceSb.from("parcel_tracking_access").select("user_id").eq("enabled", true);
+    if (error) return res.status(500).json({ ok: false, error: "select_failed" });
+    ids = (data || []).map((r) => String(r.user_id)).filter(Boolean);
   }
-  const delayMs = Math.floor(Math.random() * (PARCEL_POLL_MAX_JITTER_MS + 1)); // 0–20 min
-  setTimeout(() => { void runParcelPollOnce(); }, delayMs);
-  // 202 Accepted: scheduled, not done. cron-job.org gets a fast response (no ~30s
-  // timeout on the slow OCR poll); the real run happens after delayMs in the background.
-  return res.status(202).json({ ok: true, scheduled: true, delayMs });
+  let enqueued = 0;
+  for (const id of ids) {
+    const { data, error } = await serviceSb.rpc("parcel_tracking_enqueue_job", { p_user_id: id, p_kind: "manual", p_created_by: "admin" });
+    if (!error && data) enqueued += 1;
+  }
+  console.log(`[PARCEL-JOB] cron enqueued ${enqueued}/${ids.length} manual job(s)`);
+  // 202 Accepted: queued, not done — the worker runs them one at a time.
+  return res.status(202).json({ ok: true, scheduled: true, enqueued });
 });
 
 function emitTikTokStatus({ sellerId, username, sessionId, connected, reconnecting = false, reason = "", nextRetryMs = 0 }) {
@@ -2064,6 +2041,16 @@ const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`SellerFlow TikTok LIVE server running on port ${PORT}`);
 });
+
+// Parcel tracking job worker (Stage 2) — needs the service role; one job at a time.
+if (serviceSb) {
+  createParcelWorker({
+    serviceSb,
+    makeOcr: createOcr,
+    healthUserId: PARCEL_HEALTH_USER_ID,
+    emit: (userId, payload) => io.to(sellerRoom(userId)).emit("parcel-tracking:job-done", payload),
+  }).start();
+}
 
 // ── Memory observability (5-min heartbeat + threshold warning) ────────────────
 // One greppable line every 5 min: rss, heapUsed, active relays, % of 512 MB.
