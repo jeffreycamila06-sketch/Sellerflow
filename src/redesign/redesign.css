@@ -619,3 +619,23 @@ html.sfl-ios-shell [data-redesign] .sfl-basket-badge { font-size: 10px; gap: 2px
   .sfl-toast-in { animation: none; }
 }
 
+
+/* Pickup Status — "Checking…" on the Check now button while a job is active.
+   Hourglass flips (1.4s), dots pulse in sequence (1.2s, .2s apart). transform/opacity
+   only; static hourglass + dots under prefers-reduced-motion and [data-motion=off]. */
+@keyframes rdPtHgFlip { 0% { transform: rotate(0); } 40% { transform: rotate(180deg); } 55% { transform: rotate(180deg); } 95% { transform: rotate(360deg); } 100% { transform: rotate(360deg); } }
+@keyframes rdPtHgDot { 0%, 100% { opacity: .15; } 50% { opacity: 1; } }
+[data-redesign] .rd-pt-hg { flex-shrink: 0; transform-origin: center; animation: rdPtHgFlip 1.4s linear infinite; }
+[data-redesign] .rd-pt-hg-label::before { content: attr(data-label); }
+[data-redesign] .rd-pt-hg-dots { display: inline-flex; width: 1.1em; }
+[data-redesign] .rd-pt-hg-dots > i { font-style: normal; opacity: .15; animation: rdPtHgDot 1.2s infinite; }
+[data-redesign] .rd-pt-hg-dots > i::before { content: "."; }
+[data-redesign] .rd-pt-hg-dots > i:nth-child(2) { animation-delay: .2s; }
+[data-redesign] .rd-pt-hg-dots > i:nth-child(3) { animation-delay: .4s; }
+[data-redesign] .rd-pt-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+[data-redesign][data-motion="off"] .rd-pt-hg,
+[data-redesign][data-motion="off"] .rd-pt-hg-dots > i { animation: none; opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  [data-redesign] .rd-pt-hg,
+  [data-redesign] .rd-pt-hg-dots > i { animation: none; opacity: 1; }
+}
