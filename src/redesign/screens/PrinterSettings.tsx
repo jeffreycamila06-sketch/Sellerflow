@@ -25,7 +25,7 @@ const tab = (active: boolean): CSSProperties => ({ flex: 1, padding: "13px 0", b
 export default function PrinterSettings({
   onBack, psType, psOut, onSetPsOut, psSize, psSizeOpen, onTogglePsSize, onPickPsSize,
   cur = "NT$", storeName = "SellerFlowLive", settings, showClassicToggle = false, stickerQrAllowed = false,
-  stickerQrMoved = false,
+  stickerQrMoved = false, testComment,
 }: {
   onBack: () => void;
   psType: "wifi" | "bt";
@@ -35,9 +35,11 @@ export default function PrinterSettings({
   showClassicToggle?: boolean; // admin/test-account only (canUseClassicText) — default HIDDEN
   stickerQrAllowed?: boolean; // all plans; hidden only off-market (canUseStickerQr) — default HIDDEN
   stickerQrMoved?: boolean; // admins (LIVE layout v2 gate): the toggle lives in LIVE print pattern instead
+  testComment?: string; // LIVE layout v2 users: the test sticker's comment ("COMMENT / PRICE"); others keep buildTestBuyer's "PRICE"
 }) {
   const t = useT();
   const wifi = psType === "wifi";
+  const testBuyer = () => { const b = buildTestBuyer(); return testComment ? { ...b, orders: [{ ...b.orders[0], item: testComment }] } : b; };
   const nativeReady = hasNativePrinter();
   // PHONE APP only: sticker QR is excluded on 60×40 (too small to scan fast). On WEB
   // (no native bridge) the browser-print QR follows the seller's own paper/driver
@@ -92,7 +94,7 @@ export default function PrinterSettings({
     setBtMsg(t.rd_ps_sending_test);
     // Routed like a real order: bitmap SDK stream by default, TEXT only when
     // Classic mode is ON / the bitmap method is missing (printStickerBtRouted).
-    const r = await printStickerBtRouted(buildTestBuyer(), cur, storeName, settings);
+    const r = await printStickerBtRouted(testBuyer(), cur, storeName, settings);
     if (r.ok) { setBtMsg(t.rd_ps_test_sent); return; }
     setBtMsg(isPrinterNotSetup(r.code, r.message) ? t.rd_prn_title : t.rd_ps_test_failed);
   }
