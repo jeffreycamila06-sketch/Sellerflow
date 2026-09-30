@@ -87,7 +87,7 @@ import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePr
 import { prefetchCjkAtlas } from "./adapters/cjkAtlasLoader";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
 import { useOrdersHistory, resolveReprintRow } from "./adapters/ordersSearch";
-import { hasBtBridge, buildTestBuyer } from "./adapters/printerBridge";
+import { hasBtBridge, hasNativePrinter, buildTestBuyer } from "./adapters/printerBridge";
 import { registeredAccountsFor, appendAccount, maxAcc, composeChannelSave, type Platform } from "./adapters/connect";
 import { useConnectToastGate } from "./adapters/connectToastGate";
 import { useWakeLock, shouldHoldWakeLock } from "./adapters/useWakeLock";
@@ -1910,11 +1910,14 @@ export default function RedesignApp() {
               cur={cur} storeName={printShopName} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })}
               showClassicToggle={classicAllowed}
               stickerQrAllowed={stickerQrAllowed}
+              stickerQrMoved={stickerV2On}
             />
           )}
           {screen === "printpattern" && (
             <PrintPattern onBack={() => setScreen("settings")} pp={pp} shopName={printShopName} onToggle={togglePp} onStep={stepPp} onTestPrint={() => void onTestPrint()}
-              layoutV2={stickerV2On} onTestPrintSample={stickerV2On ? (item) => void onTestPrint(testBuyerWithComment(item)) : undefined} />
+              layoutV2={stickerV2On} onTestPrintSample={stickerV2On ? (item) => void onTestPrint(testBuyerWithComment(item)) : undefined}
+              stickerQrAllowed={stickerQrAllowed} psSize={psSize} appShell={hasNativePrinter()} cur={cur}
+              previewSettings={stickerV2On ? buildSettingsFromRedesign({ pp, psType, psOut, psSize }) : undefined} />
           )}
         </div>
 

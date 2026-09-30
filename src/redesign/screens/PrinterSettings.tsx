@@ -25,6 +25,7 @@ const tab = (active: boolean): CSSProperties => ({ flex: 1, padding: "13px 0", b
 export default function PrinterSettings({
   onBack, psType, psOut, onSetPsOut, psSize, psSizeOpen, onTogglePsSize, onPickPsSize,
   cur = "NT$", storeName = "SellerFlowLive", settings, showClassicToggle = false, stickerQrAllowed = false,
+  stickerQrMoved = false,
 }: {
   onBack: () => void;
   psType: "wifi" | "bt";
@@ -33,6 +34,7 @@ export default function PrinterSettings({
   cur?: string; storeName?: string; settings?: Settings;
   showClassicToggle?: boolean; // admin/test-account only (canUseClassicText) — default HIDDEN
   stickerQrAllowed?: boolean; // all plans; hidden only off-market (canUseStickerQr) — default HIDDEN
+  stickerQrMoved?: boolean; // admins (LIVE layout v2 gate): the toggle lives in LIVE print pattern instead
 }) {
   const t = useT();
   const wifi = psType === "wifi";
@@ -216,7 +218,7 @@ export default function PrinterSettings({
                 bitmap sticker path, web via the browser-print sticker (printSlip SVG).
                 The print-time gate (setStickerQrEntitled) is the authority regardless of
                 a stored toggle. Nothing changes until turned on. */}
-            {stickerQrAllowed && (
+            {stickerQrAllowed && !stickerQrMoved && (
             <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 16, padding: 15, boxShadow: "var(--shadow)", marginTop: 12, display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_ps_sticker_qr}</div>
