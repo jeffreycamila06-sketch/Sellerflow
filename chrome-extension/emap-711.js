@@ -123,12 +123,23 @@
   }
 
   // ── byIDData ───────────────────────────────────────────────────────────────
-  // Expected: "OK;198002+德民+addr+disable+0++門市" → field index 3 = enable|disable.
+  // Expected: "OK;198002+德民+addr+disable+0++門市" → field index 3:
+  //   enable  → open · disable → full
+  //   close   → company (1.14.8) — a closed-area store inside a factory/park
+  //             (正常配送(限公司員工取貨)); a valid store that carries NO open/full info
+  // The whole answer "NO2" → not_found (1.14.8) — no such store (wrong code / closed).
+  // Real captures (Jeff, /ecmap/, 2026-09-30):
+  //   "OK;180849+明月+高雄市楠梓區楠梓加工區第二園區創意北路1號+close+0++門市"
+  //   "NO2" (277895)
+  // Anything else → null → 'unknown' (fail-safe, unchanged).
   function parseByIdData(text) {
-    const rec = String(text).split(";")[1];
+    const raw = String(text).trim();
+    if (raw === "NO2") return { store_full_status: "not_found", store_reason: "" };
+    const rec = raw.split(";")[1];
     const field = rec ? rec.split("+")[3] : "";
     if (field === "enable") return { store_full_status: "open", store_reason: "" };
     if (field === "disable") return { store_full_status: "full", store_reason: "" };
+    if (field === "close") return { store_full_status: "company", store_reason: "" };
     return null;
   }
   async function postByIdData(endpoint, storeId, guid) {

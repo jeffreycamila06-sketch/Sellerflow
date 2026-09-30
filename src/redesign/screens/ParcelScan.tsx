@@ -13,7 +13,7 @@ import {
   fileToScanBase64, scanParcel, saveParcelScan, loadParcelScans, formErrors, amountWarns, amountTooHigh, MIN_PARCEL_AMOUNT, MAX_PARCEL_TOTAL, MAX_PENDING_PARCELS,
   checkEmapStore, saveStoreCheck, scanToXlsRow, splitScansForExport, markScansExported, unmarkScansExported, undoExportBatch, loadLastExportBatch, loadUndeliveredExports, confirmExportDelivered,
   deleteParcelScan, deleteExportedParcels, updateParcelScan, resetExtensionChecks, getCreditBalance,
-  rowCheckUnresolved, verdictPollMs, mergeExtensionVerdicts,
+  rowCheckUnresolved, verdictPollMs, mergeExtensionVerdicts, storeClear, wrongStoreCode,
   type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState, type StoreCheckStatus, type ExportReason, type UndeliveredExport,
 } from "../adapters/parcelScan";
 import { newlyFlagged, attentionCount, playChime, unlockAudio, type VerdictLite } from "../adapters/parcelAlert";
@@ -65,7 +65,7 @@ function storeBadge(status: string | null): { icon: string; color: string; key: 
 // wins). No per-verdict text badge, no positive "ok" label. FAIL-SAFE unchanged:
 // only explicit 'full'/'restricted' flag a row; null/'unknown' stay clean.
 const extNeedsRecheck = (r: { storeFullStatus?: string | null; phoneCheckStatus?: string | null }): boolean =>
-  r.storeFullStatus === "full" || r.phoneCheckStatus === "restricted";
+  r.storeFullStatus === "full" || r.storeFullStatus === "not_found" || r.phoneCheckStatus === "restricted";
 // 'YYYY-MM-DD' → locale short date (e.g. "Dec 4"); safe on bad input.
 function untilDate(iso: string | null): string {
   if (!iso) return "";
@@ -174,7 +174,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // Saved list — ONE read on screen open; saves append locally (no refetch).
   const [rows, setRows] = useState<ParcelScanRow[]>([]);
   const [listLoaded, setListLoaded] = useState(false);
-  // Saved-list tab (Change 2): "all" (default) | "wrong" (not_found only) |
+  // Saved-list tab (Change 2): "all" (default) | "wrong" (not_found only — either check) |
   // "full" | "restricted" (extension verdicts — the last two only surface when
   // there ARE such rows; see tabDefs).
   const [tab, setTab] = useState<"all" | "wrong" | "full" | "restricted">("all");
@@ -337,7 +337,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
     return () => { live = false; clearInterval(id); };
   }, [pollMs, pageVisible]);
   const attnCount = checkOn ? attentionCount(rows) : 0;
-  const anyUnresolved = checkOn && rows.some((r) => r.status !== "exported" && !(r.phoneCheckStatus === "ok" && r.storeFullStatus === "open"));
+  const anyUnresolved = checkOn && rows.some((r) => r.status !== "exported" && !(r.phoneCheckStatus === "ok" && storeClear(r.storeFullStatus)));
   useEffect(() => {
     if (!anyUnresolved || !pageVisible) return;
     const id = setInterval(() => setNowMs(Date.now()), 15000);
@@ -924,7 +924,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // otherwise the original file-picker fallback renders (and it also shows the
   // disabled button when out of credits).
   const useCameraUI = !manualOnly && cameraOn && cameraSupported() && !cameraErr && !outOfCredits;
-  const flaggedCount = rows.filter((r) => r.storeCheckStatus === "not_found").length;
+  const flaggedCount = rows.filter(wrongStoreCode).length;
   const fullCount = rows.filter((r) => r.storeFullStatus === "full").length;
   const restrictedCount = rows.filter((r) => r.phoneCheckStatus === "restricted").length;
   // Tab set: All + Wrong code always; Full / Restricted ONLY when they have rows
@@ -940,7 +940,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   const activeTab = tabDefs.some(([k]) => k === tab) ? tab : "all";
   // Change 2: the saved list re-renders by active tab (in-memory filter of the
   // already-loaded rows — zero-poll, no refetch/timers).
-  const shown = activeTab === "wrong" ? rows.filter((r) => r.storeCheckStatus === "not_found")
+  const shown = activeTab === "wrong" ? rows.filter(wrongStoreCode)
     : activeTab === "full" ? rows.filter((r) => r.storeFullStatus === "full")
       : activeTab === "restricted" ? rows.filter((r) => r.phoneCheckStatus === "restricted")
         : rows;
@@ -1305,13 +1305,18 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
           {listLoaded && rows.length === 0 && <div style={{ fontSize: 12, color: "var(--text-dim)" }} data-testid="ps-empty">{t.rd_ps2_empty}</div>}
           {listLoaded && activeTab === "wrong" && rows.length > 0 && flaggedCount === 0 && <div style={{ fontSize: 12, color: "var(--text-dim)" }} data-testid="ps-wrong-empty">{t.rd_ps2_wrong_empty}</div>}
           {shown.map((r) => {
-            const badge = storeBadge(r.storeCheckStatus);
-            const canRecheck = !r.id.startsWith("local-") && /^\d{6}$/.test(r.storeId) && (r.storeCheckStatus === "not_found" || r.storeCheckStatus === "unknown");
+            // the extension's E-Map "NO2" (store_full_status 'not_found') shows the SAME
+            // red wrong-store-code badge as the encode-time check (sql/68)
+            const badgeStatus = r.storeFullStatus === "not_found" ? "not_found" : r.storeCheckStatus;
+            const badge = storeBadge(badgeStatus);
+            // inline Recheck = the encode-time server check; an extension "NO2" is cleared
+            // by the ⟳ button instead (that re-runs the extension check)
+            const canRecheck = !r.id.startsWith("local-") && r.storeFullStatus !== "not_found" && /^\d{6}$/.test(r.storeId) && (r.storeCheckStatus === "not_found" || r.storeCheckStatus === "unknown");
             const needsExtRecheck = extNeedsRecheck(r) && !r.id.startsWith("local-");
             // DISPLAY-ONLY row highlight (2026-09-27): a passing check needs no label;
             // a problem shows as a glowing border. RED (more serious, wins) = restricted
             // buyer OR wrong/invalid store code; ORANGE = store full. Clean = no border.
-            const rowRed = r.phoneCheckStatus === "restricted" || r.storeCheckStatus === "not_found";
+            const rowRed = r.phoneCheckStatus === "restricted" || wrongStoreCode(r);
             const rowOrange = !rowRed && r.storeFullStatus === "full";
             const rowFlag = rowRed ? "var(--danger, #dc2626)" : rowOrange ? "var(--warn, #b45309)" : null;
             return (
@@ -1324,7 +1329,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                   </div>
                   <div style={{ fontSize: 11, color: "var(--text-dim)", fontFamily: mono }}>{[r.phone, r.storeId].filter(Boolean).join(" · ") || "—"}</div>
                   {badge && (
-                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: badge.color }} data-testid="ps-store-badge" data-status={r.storeCheckStatus || ""}>
+                    <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: badge.color }} data-testid="ps-store-badge" data-status={badgeStatus || ""}>
                       {badge.icon} {t[badge.key]}
                       {canRecheck && <button onClick={() => runStoreCheck(r.id, r.storeId)} style={{ marginLeft: 8, padding: "1px 7px", borderRadius: 7, border: "1px solid var(--border-strong)", background: "var(--surface-2)", color: "var(--text)", fontSize: 10, fontWeight: 700, cursor: "pointer" }} data-testid="ps-recheck">{t.rd_ps2_recheck}</button>}
                     </div>
@@ -1345,7 +1350,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                       Phone ok but store null/unknown → an AMBER pending line — it must
                       never read as all-clear. (Red restricted / orange full still surface
                       immediately above, independent of the other half.) */}
-                  {r.phoneCheckStatus === "ok" && r.storeFullStatus === "open" && (
+                  {r.phoneCheckStatus === "ok" && storeClear(r.storeFullStatus) && (
                     <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 3, color: "var(--ok, #16a34a)" }} data-testid="ps-ext-clear" title={t.rd_ps2_phone_ok}>✅ {t.rd_ps2_phone_ok}</div>
                   )}
                   {/* ONE pending line: ⏳ Checking (animated dots) until BOTH halves resolve,
@@ -1354,7 +1359,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
                       while pending (no "Buyer OK", no "store not checked"). null and
                       'unknown' both count as unresolved: the worker re-queues them. Gated
                       on checkOn so a non-feature seller's all-null rows never show it. */}
-                  {checkOn && r.status !== "exported" && !rowRed && !rowOrange && !(r.phoneCheckStatus === "ok" && r.storeFullStatus === "open") && (
+                  {checkOn && r.status !== "exported" && !rowRed && !rowOrange && !(r.phoneCheckStatus === "ok" && storeClear(r.storeFullStatus)) && (
                     // Waiting > 3 min → reassure instead of spin: the checker keeps retrying on
                     // its own and export is never blocked, so nobody needs to delete the row.
                     nowMs - Date.parse(r.createdAt) > STILL_CHECKING_MS

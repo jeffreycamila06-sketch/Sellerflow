@@ -23,6 +23,7 @@ vi.mock("../../adapters/parcelScan", async () => {
   const real = await vi.importActual<typeof import("../../adapters/parcelScan")>("../../adapters/parcelScan");
   return {
   verdictPollMs: real.verdictPollMs, rowCheckUnresolved: real.rowCheckUnresolved,
+  storeClear: real.storeClear, wrongStoreCode: real.wrongStoreCode,
   loadLastExportBatch: vi.fn(async () => ({ ok: true, batch: null })),
   loadUndeliveredExports: vi.fn(async () => ({ ok: true, batches: [] })),
   confirmExportDelivered: vi.fn(async () => ({ ok: true, n: 1 })),
@@ -116,6 +117,17 @@ describe("Parcel Scan — export-time guard for parcels still being checked", ()
     const { findByTestId, getByTestId } = view();
     fireEvent.click(await findByTestId("ps-export-btn"));
     expect(getByTestId("ps-pending-msg").textContent).toContain("3 parcel(s)");
+  });
+
+  it("sql/68: a 'company' store (closed-area) is resolved like 'open' — no Wait/Export prompt", async () => {
+    loadParcelScans.mockResolvedValue({ ok: true, rows: [
+      row("r1", { phoneCheckStatus: "ok", storeFullStatus: "company" }),
+      row("r2", { phoneCheckStatus: "ok", storeFullStatus: "open" }),
+    ] });
+    const { findByTestId, getByTestId, queryByTestId } = view();
+    fireEvent.click(await findByTestId("ps-export-btn"));
+    expect(queryByTestId("ps-pending-msg")).toBeNull();
+    expect(getByTestId("ps-confirm-export")).toBeTruthy();
   });
 
   it("checks feature OFF (all-null rows are normal there) → never asks", async () => {

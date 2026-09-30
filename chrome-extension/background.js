@@ -15,6 +15,11 @@ const PC_KEEPALIVE_MIN = 0.5;        // chrome.alarms floor (~30s) — only revi
 const PC_POLL_MS = 5000;             // ~5s cadence via a self-scheduling loop (alarms can't go this fast)
 const PC_ROW_GAP_MS = 2000;          // 2s between parcels (no bulk)
 const PC_LIMIT = 5;
+// 1.14.8: every DEFINITIVE store answer E-Map can give. company = closed-area
+// (factory/park) store, a valid store with no open/full info; not_found = "NO2",
+// no such store. All four are real verdicts (the session resolved), 'unknown' is not.
+const PC_STORE_VERDICTS = ["open", "full", "company", "not_found"];
+function pcIsStoreVerdict(s) { return PC_STORE_VERDICTS.includes(s); }
 const PC_CONFIG_KEY = "pc_config";   // { supabaseUrl, supabaseAnonKey, cgdmId, ordMobile, paused }
 const PC_STATUS_KEY = "pc_status";   // { sfl, myship, lastCheckAt, lastCount, lastError }
 const PC_DEFAULT_URL = "https://sqeuyuktdpidmlfpqgoc.supabase.co";
@@ -348,7 +353,7 @@ async function pcPoll() {
           ? { store_full_status: sResp.store_full_status, store_reason: sResp.store_reason || "" }
           : { store_full_status: "unknown", store_reason: "emap tab not responding (reload emap page)" };
         // 1.14.0 evidence (legacy lane too): a resolved verdict = tab healthy
-        if (store.store_full_status === "open" || store.store_full_status === "full") pcEmapVerdict(Date.now());
+        if (pcIsStoreVerdict(store.store_full_status)) pcEmapVerdict(Date.now());
         else pcEmapMiss(Date.now(), store.store_reason, Boolean(sResp && sResp.transient));
       }
       // Phone check → myship tab.
@@ -610,7 +615,9 @@ async function pcEmapKeepalive() {
   pcLastKeepaliveAt = now;
   const resp = await pcSendTab(e.tabId, { type: "PC_CHECK_STORE", row: { store_id: PC_KEEPALIVE_STORE } });
   const verdict = resp && resp.store_full_status;
-  const alive = verdict === "open" || verdict === "full";
+  // 1.14.8: the keepalive store is known to EXIST, so "NO2"/not_found for it says the
+  // session is answering wrongly — a miss, never proof of life. company would be alive.
+  const alive = pcIsStoreVerdict(verdict) && verdict !== "not_found";
   if (alive) pcEmapVerdict(now); else pcEmapMiss(now, `keepalive: ${(resp && resp.store_reason) || "no response"}`, Boolean(resp && resp.transient));
   console.log(`[PC-KEEPALIVE] tab=${e.tabId} store=${PC_KEEPALIVE_STORE} verdict=${verdict ?? "none"} guidFound=${Boolean(resp && resp.guidFound)} sessionAlive=${alive} endpoint=${(resp && resp.endpoint) || "none"}${resp && resp.store_reason ? ` reason="${resp.store_reason}"` : ""}`);
 }
@@ -819,7 +826,7 @@ async function pcPollMulti() {
       let storeStatus = null;
       if (doStore && emapTabId) {
         const sResp = await pcSendTab(emapTabId, { type: "PC_CHECK_STORE", row });
-        if (sResp && (sResp.store_full_status === "open" || sResp.store_full_status === "full")) storeStatus = sResp.store_full_status;
+        if (sResp && pcIsStoreVerdict(sResp.store_full_status)) storeStatus = sResp.store_full_status;
         // evidence for the per-tab status (single writer in pcTick) + the exact reason
         if (storeStatus !== null) {
           pcEmapVerdict(Date.now()); pcEv.lastStoreReason = "";
