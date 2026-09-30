@@ -115,6 +115,16 @@ export function isStickerQrEntitled(): boolean { return stickerQrEntitled; }
 // is entitled (Plus/Pro/Master+admin). This is the single gate the sticker path reads.
 export function stickerQrEffective(): boolean { return isStickerQrOn() && stickerQrEntitled; }
 
+// ── LIVE sticker layout v2 (order time up top, full-width comment) ───────────
+// Bitmap sticker path only (stickerRaster.ts). ADMIN-ONLY for now: RedesignApp sets the
+// allowed flag from the admin role. ⚠️ TURN ON FOR EVERYONE = flip this one line to true.
+// Off → the raster payload carries no flag at all → byte-identical to before. Classic
+// text / LAN / old binaries never see it (native payload unchanged) and keep today's layout.
+export const STICKER_LAYOUT_V2_PUBLIC = false;
+let stickerLayoutV2Allowed = false;
+export function setStickerLayoutV2Allowed(on: boolean): void { stickerLayoutV2Allowed = on === true; }
+export function stickerLayoutV2Effective(): boolean { return STICKER_LAYOUT_V2_PUBLIC || stickerLayoutV2Allowed; }
+
 // ── buildSlipPayload — the NativePrinterPayload from App.tsx:658-659 ──────────
 export function buildSlipPayload(buyer: Buyer, cur: string, storeName: string, cfg: Settings): NativePrinterPayload {
   const sess = new Date().toLocaleDateString("en-PH", { timeZone: "Asia/Taipei", month: "long", day: "numeric", year: "numeric" });
@@ -354,7 +364,7 @@ async function printStickerViaBitmap(fn: BitmapBridgeFn, payload: NativeStickerP
   // only when the payload actually contains CJK).
   // QR is a bitmap-only concern (the native TSPL text builders can't render it), so
   // the "Print QR on sticker" toggle enters HERE, not in the byte-parity native payload.
-  const qrPayload = { ...payload, settings: { ...payload.settings, printStickerQr: stickerQrEffective() } };
+  const qrPayload = { ...payload, settings: { ...payload.settings, printStickerQr: stickerQrEffective(), ...(stickerLayoutV2Effective() ? { printCommentFullWidth: true } : {}) } };
   const raster = rasterizeToSdkBitmapTspl(qrPayload, payload.labelWidthMm, payload.labelHeightMm, { latin: LATIN_ATLAS, cjk });
   const data = bytesToBase64(raster.bytes);
   const t1 = nowMs();
