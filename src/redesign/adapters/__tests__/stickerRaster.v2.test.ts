@@ -24,6 +24,10 @@ import { printStickerBtRouted, setStickerLayoutV2Allowed, stickerLayoutV2Effecti
 
 const LATIN_SAMPLE = "ako   si  jeff pa reserve po yung black na dress size M thank you po";
 const CJK_SAMPLE = "+1 我要這件黑色 size M 2件 pls reserve 老闆娘 thank you so much";
+const LATIN_SAMPLE_2 = "ako si jeff pa reserve po yung black na size M";
+const CJK_SAMPLE_2 = "+1 我要這件黑色 size M 2件 pls reserve 老闆娘";
+const isCjk = (ch: string) => /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/.test(ch);
+const charW = (ch: string) => (isCjk(ch) ? 48 : 32);
 const SIZES: [number, number][] = [[60, 40], [70, 50], [80, 50], [80, 60]];
 const AT: RasterAtlases = { latin: LATIN_ATLAS, cjk: CJK_ATLAS };
 const GOLDENS = join(process.cwd(), "src/redesign/adapters/__tests__/stickerRasterV2Goldens.json");
@@ -40,7 +44,7 @@ const payload = (item: string, o: { qr?: boolean; v2?: boolean; store?: string; 
   },
 });
 const fixtures = () => SIZES.flatMap(([w, h]) => [false, true].flatMap((qr) => (
-  [["latin", LATIN_SAMPLE], ["cjk", CJK_SAMPLE]] as const).map(([k, c]) => ({ key: `v2_${k}_${w}x${h}${qr ? "_qr" : ""}`, w, h, qr, item: c }))));
+  [["latin", LATIN_SAMPLE], ["cjk", CJK_SAMPLE], ["latin2", LATIN_SAMPLE_2], ["cjk2", CJK_SAMPLE_2]] as const).map(([k, c]) => ({ key: `v2_${k}_${w}x${h}${qr ? "_qr" : ""}`, w, h, qr, item: c }))));
 
 // ── 1. goldens ───────────────────────────────────────────────────────────────
 describe("v2 goldens (flag ON, sha256 of the production SDK stream)", () => {
@@ -107,20 +111,32 @@ describe("v2 layout rules", () => {
       expect(times).toEqual([{ k: "txt", x: V2_TIME_X, y: V2_TIME_Y, font: "2", s: "14:05", xm: 1, ym: 1 }]);
     }
   });
-  it("comment starts at the left margin, runs full width, collapses whitespace, never splits a word, no ellipsis", () => {
-    for (const [w, h] of SIZES) {
-      const { ops } = opsOf(payload(LATIN_SAMPLE), w, h);
-      const lines = commentOps(ops);
-      expect(lines.length).toBeGreaterThan(1);
-      expect(lines.every((o) => o.k === "txt" && o.font === "4" && o.xm === 2 && o.ym === 1 && o.x === 16)).toBe(true);
-      const text = lines.map((o) => (o as { s: string }).s);
-      // the lines, joined, are exactly the start of the whitespace-collapsed comment (nothing reordered or lost)
-      expect(LATIN_SAMPLE.replace(/\s+/g, " ").startsWith(text.join(" "))).toBe(true);
-      expect(text.join(" ")).not.toMatch(/ {2}/);
-      const words = new Set(LATIN_SAMPLE.split(/\s+/));
-      for (const l of text) { for (const wd of l.split(" ")) expect(words.has(wd)).toBe(true); expect(l).not.toMatch(/…|\.\.\./); }
+  it("comment starts at the left margin, runs full width, normal glyph shapes (Latin font 3 / CJK at 2×pm both ways), whitespace collapsed, no word split, no ellipsis", () => {
+    for (const [w, h] of SIZES) for (const sample of [LATIN_SAMPLE, CJK_SAMPLE, LATIN_SAMPLE_2, CJK_SAMPLE_2]) {
+      const { ops } = opsOf(payload(sample), w, h);
+      const runs = commentOps(ops);
+      expect(runs.length).toBeGreaterThan(0);
+      for (const o of runs) {
+        if (o.k === "txt") { expect(o.font).toBe("3"); expect([o.xm, o.ym]).toEqual([2, 2]); expect([...o.s].some(isCjk)).toBe(false); }
+        else if (o.k === "cjk") { expect([o.xm, o.ym]).toEqual([2, 2]); expect([...o.s].every(isCjk)).toBe(true); }
+      }
       const c = STICKER_LAYOUTS[`${w}x${h}`];
-      for (const o of lines) expect(o.x + cellW(o)).toBeLessThanOrEqual(c.rightEdge);
+      for (const o of runs) expect(o.x + cellW(o)).toBeLessThanOrEqual(c.rightEdge);
+      // each line starts at the left margin; runs sit back to back at the per-char widths
+      const byLine = new Map<number, DrawOp[]>();
+      for (const o of runs) byLine.set(o.y, [...(byLine.get(o.y) ?? []), o]);
+      const lines: string[] = [];
+      for (const lineOps of byLine.values()) {
+        lineOps.sort((x, y) => x.x - y.x);
+        expect(lineOps[0].x).toBe(16);
+        let text = "", x = 16;
+        for (const o of lineOps) { const t = (o as { s: string }).s; text += " ".repeat(Math.round((o.x - x) / 32)) + t; x = o.x + cellW(o); }
+        lines.push(text.trim());
+      }
+      // in order, nothing lost or reordered (a Chinese word may break across lines, so compare without spaces)
+      expect(sample.replace(/\s+/g, "").startsWith(lines.join("").replace(/\s+/g, ""))).toBe(true);
+      for (const l of lines) expect(l).not.toMatch(/ {2}|…|\.\.\./);
+      if (!/[\u4e00-\u9fff]/.test(sample)) { const words = new Set(sample.split(/\s+/)); for (const l of lines) for (const wd of l.split(" ")) expect(words.has(wd)).toBe(true); }
     }
   });
   it("more text than today: every sample fits more characters than today's single 12-char row", () => {
@@ -130,17 +146,19 @@ describe("v2 layout rules", () => {
       expect(v2).toBeGreaterThan(today);
     }
   });
-  it("a CJK comment is CJK on every line (one font like today), same 2x width", () => {
-    const lines = commentOps(opsOf(payload(CJK_SAMPLE), 80, 50).ops);
-    expect(lines.length).toBeGreaterThan(1);
-    expect(lines.every((o) => o.k === "cjk" && o.xm === 2 && o.ym === 1)).toBe(true);
+  it("mixed Chinese + English on one line: separate runs, each at the right x (CJK 48, Latin 32 per char)", () => {
+    const { ops } = opsOf(payload("我要 size M 黑色"), 80, 60);
+    const runs = commentOps(ops).filter((o) => o.y === commentOps(ops)[0].y).sort((a, b) => a.x - b.x);
+    expect(runs.map((o) => [o.k, (o as { s: string }).s, o.x])).toEqual([
+      ["cjk", "我要", 16], ["txt", " size M ", 16 + 2 * 48], ["cjk", "黑色", 16 + 2 * 48 + 8 * 32],
+    ]);
   });
   it("never below the label bottom (4-dot margin); line steps are 38 (Latin) / 32 (CJK)", () => {
     for (const [w, h] of SIZES) for (const s of [LATIN_SAMPLE, CJK_SAMPLE]) for (const qr of [false, true]) {
       const lines = commentOps(opsOf(payload(s + " " + s + " " + s, { qr }), w, h).ops);
       for (const o of lines) expect(o.y + cellH(o)).toBeLessThanOrEqual(h * 8 - V2_BOTTOM_MARGIN);
       const steps = lines.slice(1).map((o, i) => o.y - lines[i].y);
-      expect(new Set(steps)).toEqual(new Set([s === LATIN_SAMPLE ? 38 : 32]));
+      expect(steps.every((d) => d === 0 || d === 54)).toBe(true); // 48×pm + 6 (runs on one line share y)
     }
   });
   it("QR: same size/position; only rows meeting the QR (incl. keep-out) stop left of it, rows above use full width", () => {
@@ -153,8 +171,10 @@ describe("v2 layout rules", () => {
         if (meets) expect(o.x + cellW(o)).toBeLessThanOrEqual(qr!.x0 - QR_TEXT_KEEPOUT_GAP);
       }
     }
-    const { ops, qr } = opsOf(payload(LATIN_SAMPLE + " " + LATIN_SAMPLE, { qr: true }), 80, 60);
+    // shop name off → the comment starts higher, so a row sits fully above the QR and must use the full width
+    const { ops, qr } = opsOf(payload(LATIN_SAMPLE + " " + LATIN_SAMPLE, { qr: true, store: "" }), 80, 60);
     const above = commentOps(ops).filter((o) => o.y + cellH(o) <= qr!.y0 - QR_TEXT_KEEPOUT_GAP);
+    expect(above.length).toBeGreaterThan(0);
     expect(above.some((o) => o.x + cellW(o) > qr!.x0)).toBe(true); // a row above the QR really uses the full width
   });
   it("Total (when a size shows it): comment rows stop above it", () => {
@@ -175,12 +195,14 @@ describe("v2 layout rules", () => {
 });
 
 describe("wrapCommentV2", () => {
-  it("collapses whitespace, wraps on spaces, hard-splits a word longer than a line, CJK breaks anywhere, cuts at maxLines", () => {
-    expect(wrapCommentV2("ako   si  jeff", () => 20, 5)).toEqual(["ako si jeff"]);
-    expect(wrapCommentV2("ako si jeff pa", () => 7, 5)).toEqual(["ako si", "jeff pa"]);
-    expect(wrapCommentV2("abcdefghij kl", () => 4, 5)).toEqual(["abcd", "efgh", "ij", "kl"]);
-    expect(wrapCommentV2("我要這件黑色", () => 4, 5)).toEqual(["我要這件", "黑色"]);
-    expect(wrapCommentV2("one two three four", () => 5, 2)).toEqual(["one", "two"]);
+  it("measures per-char widths (CJK 48 / Latin 32), collapses whitespace, never starts a line with a space, hard-splits long words, cuts at maxLines", () => {
+    expect(wrapCommentV2("ako   si  jeff", () => 1000, 5, charW)).toEqual(["ako si jeff"]);
+    expect(wrapCommentV2("ako si jeff pa", () => 7 * 32, 5, charW)).toEqual(["ako si", "jeff pa"]);
+    expect(wrapCommentV2("abcdefghij kl", () => 4 * 32, 5, charW)).toEqual(["abcd", "efgh", "ij", "kl"]);
+    expect(wrapCommentV2("我要這件黑色", () => 4 * 48, 5, charW)).toEqual(["我要這件", "黑色"]);
+    expect(wrapCommentV2("我要 size M", () => 2 * 48 + 5 * 32, 5, charW)).toEqual(["我要 size", "M"]);
+    expect(wrapCommentV2("one two three four", () => 5 * 32, 2, charW)).toEqual(["one", "two"]);
+    expect(wrapCommentV2("ab cd", () => 3 * 32, 5, charW)).toEqual(["ab", "cd"]); // "cd" never gets the leading space
   });
 });
 
