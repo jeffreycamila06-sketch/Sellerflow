@@ -116,14 +116,29 @@ export function isStickerQrEntitled(): boolean { return stickerQrEntitled; }
 export function stickerQrEffective(): boolean { return isStickerQrOn() && stickerQrEntitled; }
 
 // ── LIVE sticker layout v2 (order time up top, full-width comment) ───────────
-// Bitmap sticker path only (stickerRaster.ts). ADMIN-ONLY for now: RedesignApp sets the
-// allowed flag from the admin role. ⚠️ TURN ON FOR EVERYONE = flip this one line to true.
+// Bitmap sticker path only (stickerRaster.ts). Admins + the allowlist below for now:
+// RedesignApp sets the allowed flag from stickerV2Allowed(). ⚠️ TURN ON FOR EVERYONE = flip this one line to true.
 // Off → the raster payload carries no flag at all → byte-identical to before. Classic
 // text / LAN / old binaries never see it (native payload unchanged) and keep today's layout.
 export const STICKER_LAYOUT_V2_PUBLIC = false;
 let stickerLayoutV2Allowed = false;
 export function setStickerLayoutV2Allowed(on: boolean): void { stickerLayoutV2Allowed = on === true; }
 export function stickerLayoutV2Effective(): boolean { return STICKER_LAYOUT_V2_PUBLIC || stickerLayoutV2Allowed; }
+// Allowlist (the pinToPrint pattern): these sellers get exactly what admins get for v2 —
+// the new sticker layout, "Print QR on sticker" in LIVE print pattern, the exact
+// preview. Exact emails only (trimmed, case-insensitive) — no prefix rules.
+export const STICKER_V2_PREVIEW_EMAILS: string[] = [
+  "cristycabanas34@gmail.com",
+  "ronaldgantiga77@gmail.com",
+  "tincabanas13@gmail.com",
+  "googletest@gmail.com",
+];
+export function stickerV2Allowed(email: string | undefined | null, role: string | undefined | null, publicFlag: boolean = STICKER_LAYOUT_V2_PUBLIC): boolean {
+  if (publicFlag) return true;
+  if (isAdminRole(role)) return true;
+  const e = String(email || "").trim().toLowerCase();
+  return e !== "" && STICKER_V2_PREVIEW_EMAILS.includes(e);
+}
 
 // ── buildSlipPayload — the NativePrinterPayload from App.tsx:658-659 ──────────
 export function buildSlipPayload(buyer: Buyer, cur: string, storeName: string, cfg: Settings): NativePrinterPayload {

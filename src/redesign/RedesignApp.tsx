@@ -82,7 +82,7 @@ import { useAdmin } from "./adapters/useAdmin";
 import { upsertUser } from "../accountDb";
 import { csvDL, dayStamp } from "./adapters/csv";
 import { sessionKeyFor } from "./adapters/shipping";
-import { setStickerLayoutV2Allowed, STICKER_LAYOUT_V2_PUBLIC } from "./adapters/printing";
+import { setStickerLayoutV2Allowed, stickerV2Allowed } from "./adapters/printing";
 import { printSlip, printStickerBtRouted, buildSettingsFromRedesign, setNativePrintAlertText, setNativePrintFailureHandler, setWebPrintOutcomeHandler, setNativePrintOutcomeHandler, setWebPrintKioskHintHandler, isPrinterNotSetup, canUseClassicText, setClassicTextAllowed, setStickerQrEntitled, hasBitmapStickerMethod, type Settings as PrintSettings, type PrintVia } from "./adapters/printing";
 import { prefetchCjkAtlas } from "./adapters/cjkAtlasLoader";
 import { snapshotFromCreate, performReprint, type ReprintRow } from "./adapters/reprint";
@@ -182,9 +182,10 @@ export default function RedesignApp() {
   // the print router honors a stray sfl_rd_classic_text flag on this device.
   const classicAllowed = canUseClassicText(auth.profile?.role, auth.profile?.email);
   useEffect(() => { setClassicTextAllowed(classicAllowed); }, [classicAllowed]);
-  // LIVE sticker layout v2 — admins only until STICKER_LAYOUT_V2_PUBLIC flips (printing.ts).
-  const stickerV2On = isAdmin || STICKER_LAYOUT_V2_PUBLIC;
-  useEffect(() => { setStickerLayoutV2Allowed(isAdmin); }, [isAdmin]);
+  // LIVE sticker layout v2 — admins + STICKER_V2_PREVIEW_EMAILS until STICKER_LAYOUT_V2_PUBLIC
+  // flips (printing.ts). The long-comment test buttons stay admin-only.
+  const stickerV2On = stickerV2Allowed(auth.profile?.email, auth.profile?.role);
+  useEffect(() => { setStickerLayoutV2Allowed(stickerV2On); }, [stickerV2On]);
   // MARKET (PH/TW split). Effective market for THIS user: non-admin → their profile
   // country's market (NULL = TW = unchanged); admin → the UNION (sees everything) UNLESS
   // previewing a market via the Admin "View as" switch (per-session, never writes the
@@ -1915,7 +1916,7 @@ export default function RedesignApp() {
           )}
           {screen === "printpattern" && (
             <PrintPattern onBack={() => setScreen("settings")} pp={pp} shopName={printShopName} onToggle={togglePp} onStep={stepPp} onTestPrint={() => void onTestPrint()}
-              layoutV2={stickerV2On} onTestPrintSample={stickerV2On ? (item) => void onTestPrint(testBuyerWithComment(item)) : undefined}
+              layoutV2={stickerV2On} onTestPrintSample={stickerV2On && isAdmin ? (item) => void onTestPrint(testBuyerWithComment(item)) : undefined}
               stickerQrAllowed={stickerQrAllowed} psSize={psSize} appShell={hasNativePrinter()} cur={cur}
               previewSettings={stickerV2On ? buildSettingsFromRedesign({ pp, psType, psOut, psSize }) : undefined} />
           )}
