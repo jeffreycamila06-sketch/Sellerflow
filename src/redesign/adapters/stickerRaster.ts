@@ -393,11 +393,14 @@ export function stickerDrawOps(payload: RasterPayload, labelWidthMm: number, lab
 // Time: under the header bar at the session date's x (same font/scale as today's row
 // time). Comment: from the left margin, the full width to rightEdge, wrapping down into
 // every row until the label bottom (4-dot margin) — rows that meet the QR (incl. its
-// keep-out gap) stop left of it. One font for the whole comment, like today: any CJK →
-// CJK op on every line, else Latin font "4"; same 2× width and scale as today. Cut
-// without "…" when it doesn't fit. If the time slot would overlap anything already
-// drawn (e.g. a long shop name, or the Buyer # when the shop name is off), the time
-// stays inline at the start of the first comment line instead (today's row position).
+// keep-out gap) stop left of it. Glyphs keep their NORMAL shape (no 2× horizontal
+// stretch): Chinese = CJK cell at 2×pm both ways (48×48 at 1×); English/numbers/
+// symbols = font "3" at 2×pm both ways (32×48 at 1×) — the same height, so mixed lines
+// are drawn as runs (CJK run / Latin run), each its own op. Cut without "…" when it
+// doesn't fit. If the time slot would overlap anything already drawn (e.g. a long shop
+// name, or the Buyer # when the shop name is off), the time stays inline at the start
+// of the first comment line instead (today's row position).
+
 export const V2_TIME_X = 290;
 export const V2_TIME_Y = 56;
 export const V2_BOTTOM_MARGIN = 4;
@@ -411,8 +414,10 @@ const boxesOverlap = (a: { x: number; y: number; w: number; h: number }, b: { x:
   a.w > 0 && b.w > 0 && a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 
 // Tokens for wrapping: a single space, one CJK ideograph (may break anywhere), or a run
-// of other characters (a word — kept whole unless longer than a line). PURE.
-export function wrapCommentV2(text: string, lineChars: (lineIndex: number) => number, maxLines: number): string[] {
+// of other characters (a word — kept whole unless longer than a line, then hard-split).
+// Widths are measured per character with `charW` (dots); `lineWidth(i)` is the room on
+// line i. Whitespace collapses to one space; a new line never starts with a space. PURE.
+export function wrapCommentV2(text: string, lineWidth: (lineIndex: number) => number, maxLines: number, charW: (ch: string) => number): string[] {
   const s = String(text || "").replace(/\s+/g, " ").trim();
   const tokens: string[] = [];
   let word = "";
@@ -422,20 +427,29 @@ export function wrapCommentV2(text: string, lineChars: (lineIndex: number) => nu
     else word += ch;
   }
   if (word) tokens.push(word);
+  const widthOf = (t: string) => { let w = 0; for (const ch of t) w += charW(ch); return w; };
   const lines: string[] = [];
-  const len = (x: string) => [...x].length;
   while (tokens.length && lines.length < maxLines) {
-    const max = Math.max(0, Math.floor(lineChars(lines.length)));
-    let line = "";
+    const max = lineWidth(lines.length);
+    let line = "", used = 0;
     while (tokens.length) {
       const t = tokens[0];
-      if (t === " ") { tokens.shift(); if (!line) continue; if (len(line) + 1 > max) break; line += " "; continue; }
-      if (len(line) + len(t) <= max) { line += t; tokens.shift(); continue; }
-      if (!line && max > 0) { const cps = [...t]; line = cps.slice(0, max).join(""); tokens[0] = cps.slice(max).join(""); }
+      if (t === " ") {
+        tokens.shift();
+        if (!line) continue;                      // never start a line with a space
+        if (used + charW(" ") > max) break;
+        line += " "; used += charW(" "); continue;
+      }
+      const tw = widthOf(t);
+      if (used + tw <= max) { line += t; used += tw; tokens.shift(); continue; }
+      if (!line && !isCjkIdeograph(t.codePointAt(0) ?? 0)) {  // a word longer than the line → hard split
+        let head = "", hw = 0;
+        for (const ch of t) { const cw = charW(ch); if (hw + cw > max) break; head += ch; hw += cw; }
+        if (head) { line = head; tokens[0] = [...t].slice([...head].length).join(""); }
+      }
       break;
     }
-    lines.push(line.replace(/ $/, ""));
-    if (max === 0) continue; // a line with no room (never at the sizes we ship) — try the next
+    lines.push(line.replace(/ +$/, ""));
   }
   return lines;
 }
@@ -454,10 +468,10 @@ function layoutV2Order(
   const content = narrow(safe(stripEmoji(order.item ?? ""))).replace(/\s+/g, " ").trim();
   ops.push({ k: "bar", x: 16, y: yStart, w: c.sepWidth, h: 2 }); // the separator, exactly as today
   const top = yStart + c.sepGap;
-  const cjk = hasCjkChar(content);
-  const glyphH = cjk ? 24 * pm : 32 * pm;
-  const step = cjk ? 24 * pm + 8 : 32 * pm + 6;
-  const perChar = 48; // font "4" at xm=2 and the CJK cell at xm=2 are both 48 dots wide
+  const m = 2 * pm;                          // both scripts at 2×pm in BOTH directions (normal shape)
+  const glyphH = 24 * m;                     // CJK 24-cell and font "3" 24-row cell → 48×pm tall
+  const step = glyphH + 6;
+  const charW = (ch: string) => (isCjkIdeograph(ch.codePointAt(0) ?? 0) ? 24 * m : 16 * m); // 48×pm / 32×pm
   let bottom = hDots - V2_BOTTOM_MARGIN;
   if (totalShown) bottom = Math.min(bottom, c.totalY + extra - V2_BOTTOM_MARGIN); // never run into "Total:"
   const inlineTimeX = timeOp && !timeUp ? 16 + (truncate(order.time ?? "", 10).length + 2) * 12 * tm : 16;
@@ -466,11 +480,22 @@ function layoutV2Order(
   let maxLines = 0;
   while (lineY(maxLines) + glyphH <= bottom) maxLines++;
   if (timeOp && !timeUp && maxLines > 0) ops.push({ ...timeOp, x: 16, y: top });
-  const lines = wrapCommentV2(content, (i) => (limitX(lineY(i)) - (i === 0 ? inlineTimeX : 16)) / perChar, maxLines);
+  const lines = wrapCommentV2(content, (i) => limitX(lineY(i)) - (i === 0 ? inlineTimeX : 16), maxLines, charW);
   lines.forEach((line, i) => {
-    if (!line) return;
-    const x = i === 0 ? inlineTimeX : 16;
-    ops.push(cjk ? { k: "cjk", x, y: lineY(i), s: line, xm: 2, ym: pm } : { k: "txt", x, y: lineY(i), font: "4", s: line, xm: 2, ym: pm });
+    // split the line into runs of one script; each run is its own op at its x
+    let x = i === 0 ? inlineTimeX : 16;
+    let run = "", runCjk = false, runX = x;
+    const flush = () => {
+      if (run.trim()) ops.push(runCjk ? { k: "cjk", x: runX, y: lineY(i), s: run, xm: m, ym: m } : { k: "txt", x: runX, y: lineY(i), font: "3", s: run, xm: m, ym: m });
+      run = "";
+    };
+    for (const ch of line) {
+      const cjk = isCjkIdeograph(ch.codePointAt(0) ?? 0);
+      if (run && cjk !== runCjk) flush();
+      if (!run) { runCjk = cjk; runX = x; }
+      run += ch; x += charW(ch);
+    }
+    flush();
   });
 }
 
