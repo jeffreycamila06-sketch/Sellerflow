@@ -13,7 +13,7 @@ import {
   fileToScanBase64, scanParcel, saveParcelScan, loadParcelScans, formErrors, amountWarns, amountTooHigh, MIN_PARCEL_AMOUNT, MAX_PARCEL_TOTAL, MAX_PENDING_PARCELS,
   checkEmapStore, saveStoreCheck, scanToXlsRow, splitScansForExport, markScansExported, unmarkScansExported, undoExportBatch, loadLastExportBatch, loadUndeliveredExports, confirmExportDelivered,
   deleteParcelScan, deleteExportedParcels, updateParcelScan, resetExtensionChecks, getCreditBalance,
-  rowAwaitsVerdict, mergeExtensionVerdicts,
+  rowCheckUnresolved, verdictPollMs, mergeExtensionVerdicts,
   type ScanFields, type ScanConfidence, type ParcelScanRow, type ScanFormState, type StoreCheckStatus, type ExportReason, type UndeliveredExport,
 } from "../adapters/parcelScan";
 import { newlyFlagged, attentionCount, playChime, unlockAudio, type VerdictLite } from "../adapters/parcelAlert";
@@ -121,7 +121,7 @@ type ExportClaim = {
 // manualOnly = a paying (non-admin) seller: hide the camera / AI-scan / credits
 // surface entirely (not just disable) and show manual encode + an "AI … coming
 // soon" line. Admins (manualOnly=false) get the full scan surface, no soon line.
-export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = false, checkOn = false }: { cur?: string; storeName?: string; manualOnly?: boolean; checkOn?: boolean }) {
+export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = false, checkOn = false, banner = null }: { cur?: string; storeName?: string; manualOnly?: boolean; checkOn?: boolean; banner?: React.ReactNode }) {
   const t = useT();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const qrRef = useRef<HTMLInputElement | null>(null);   // "Scan QR" photo input (decodes the buyer @username off the SFL sticker)
@@ -317,9 +317,11 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // re-seeding each merge would erase the prev/fresh delta and silence the chime).
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { verdictSnapRef.current = rows.map((r) => ({ id: r.id, storeFullStatus: r.storeFullStatus, phoneCheckStatus: r.phoneCheckStatus })); }, [listLoaded]);
-  const awaitingVerdicts = checkOn && rows.some(rowAwaitsVerdict);
+  // M3: 3 s while a fresh (<3 min) row awaits, 30 s when only older rows do
+  // (checker slow/down — watch cheaply), off when none await.
+  const pollMs = checkOn ? verdictPollMs(rows, nowMs, STILL_CHECKING_MS) : null;
   useEffect(() => {
-    if (!awaitingVerdicts || !pageVisible) return;
+    if (pollMs === null || !pageVisible) return;
     let live = true;
     const id = setInterval(() => {
       loadParcelScans().then((res) => {
@@ -331,9 +333,9 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
         else if (nf.full > 0) { playChime("full"); setAttnAck(false); }
         setRows((prev) => mergeExtensionVerdicts(prev, res.rows));
       });
-    }, 3000);
+    }, pollMs);
     return () => { live = false; clearInterval(id); };
-  }, [awaitingVerdicts, pageVisible]);
+  }, [pollMs, pageVisible]);
   const attnCount = checkOn ? attentionCount(rows) : 0;
   const anyUnresolved = checkOn && rows.some((r) => r.status !== "exported" && !(r.phoneCheckStatus === "ok" && r.storeFullStatus === "open"));
   useEffect(() => {
@@ -762,7 +764,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // stop being checked once exported. Ask first — "Wait" (default) or "Export anyway".
   // NEVER a hard block (the checker may be down); only while the checks feature is on.
   const askExport = () => {
-    const pending = checkOn ? splitScansForExport(rows, fee).ready.filter(rowAwaitsVerdict).length : 0;
+    const pending = checkOn ? splitScansForExport(rows, fee).ready.filter(rowCheckUnresolved).length : 0;
     if (pending > 0) { setDeleteErr(""); setConfirm({ kind: "pending", n: pending }); return; }
     openExportDialog();
   };
@@ -956,6 +958,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
         <div style={{ fontSize: 12, opacity: 0.85, marginTop: 1 }}>{t.rd_ps2_sub}</div>
       </div>
       <div style={{ padding: "16px 14px calc(28px + env(safe-area-inset-bottom))", display: "grid", gap: 12 }}>
+        {banner}
         {toast && <div style={{ ...card, padding: 10, textAlign: "center", fontSize: 12.5, fontWeight: 700, color: "var(--ok, #16a34a)" }} data-testid="ps-toast">{toast}</div>}
 
         {/* Compact stats row — Scan Credits + this-session counter + the batch

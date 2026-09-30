@@ -70,6 +70,21 @@ export async function loadMyshipConfig(): Promise<MyshipConfig | null> {
   };
 }
 
+// H4 (Oct 1 audit): the Parcel Scan banner needs to tell "no row" apart from
+// "couldn't read" — loadMyshipConfig folds both into null. A read error is
+// FAIL-OPEN at the caller (no banner, checks assumed on): a flaky read must
+// never nag a configured seller, and it never blocks Parcel Scan either way.
+export async function probeMyshipConfig(): Promise<"configured" | "missing" | "error"> {
+  if (!isSupabaseConfigured || !supabase) return "error";
+  try {
+    const { data, error } = await supabase.from("seller_myship_config").select("gm_id").maybeSingle();
+    if (error) return "error";
+    return data && (data as { gm_id?: unknown }).gm_id ? "configured" : "missing";
+  } catch {
+    return "error";
+  }
+}
+
 // GM-only now: the check uses the shared CHECK_SENDER_PHONE, never a per-seller
 // phone, so ord_mobile is always written NULL (column kept, unused; eligibility
 // is gm_id-only). shopName undefined = don't touch shop_name/verified_at.

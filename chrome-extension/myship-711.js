@@ -13,6 +13,10 @@
   if (window.__sflPcMyshipInjected) return;
   window.__sflPcMyshipInjected = true;
   const TIMEOUT_MS = 10000;
+  // Real 賣貨便 restriction messages (seen in production, Sep 2026):
+  //   "此手機號碼因多次未取紀錄，已被限制使用取貨付款功能，預計YYYY年MM月DD日 才能再次使用取貨付款功能"
+  //   "您因多次未取紀錄遭檢舉，暫無法於平台成立訂單，如需了解更多資訊，請瀏覽幫助中心"
+  const RESTRICTION_RE = /多次未取|限制使用取貨付款|無法於平台成立訂單/;
 
   // creds: "include" (legacy single-config lane — runs in the seller's own
   // logged-in cart) or "omit" (MULTI-SELLER lane — the check must be ANONYMOUS
@@ -107,6 +111,12 @@
       if (j && j.Status === true) return { phone_check_status: "ok", phone_reason: "", _tokenSource: source, tokenMs, postMs };
       if (j && j.Status === false) {
         const msg = String(j.Message || "");
+        // 1.14.7: only 7-11's no-pickup restriction wording counts as 'restricted';
+        // any other validation failure (store, name, GM, cart…) is 'unknown' so it is
+        // never shown red and never cached for other sellers.
+        if (!RESTRICTION_RE.test(msg)) {
+          return { phone_check_status: "unknown", phone_reason: `CheckoutValidation rejected: ${msg.slice(0, 40)}`, tokenMs, postMs };
+        }
         const m = msg.match(/(\d{4})年(\d{2})月(\d{2})日/);
         return {
           phone_check_status: "restricted",

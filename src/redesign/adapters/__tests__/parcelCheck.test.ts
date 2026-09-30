@@ -223,9 +223,10 @@ describe("extension wiring pins (background.js multi-seller path)", () => {
   it("consumes the two admin RPCs and honors need_phone/need_store (nulls for skipped halves)", () => {
     expect(multi).toContain("/rest/v1/rpc/admin_parcel_checks_pending");
     expect(multi).toContain("/rest/v1/rpc/admin_parcel_check_verdict");
-    // 1.14.6: each half runs only when needed AND not in per-row backoff
-    expect(multi).toContain("const doStore = Boolean(row.need_store) && (!bo || now >= bo.storeNextAt);");
-    expect(multi).toContain("const doPhone = Boolean(row.need_phone) && (!bo || now >= bo.phoneNextAt);");
+    // 1.14.6: each half runs only when needed AND not in per-row backoff;
+    // 1.14.7 (H2): AND only when its tab exists (a missing tab never eats a slot)
+    expect(multi).toContain("const doStore = Boolean(row.need_store) && Boolean(emapTabId) && (!bo || now >= bo.storeNextAt);");
+    expect(multi).toContain("const doPhone = Boolean(row.need_phone) && Boolean(myshipTabId) && (!bo || now >= bo.phoneNextAt);");
     expect(multi).toContain("if (doStore && emapTabId)");
     expect(multi).toContain("if (doPhone && myshipTabId)");
     expect(multi).toContain("let storeStatus = null;");
@@ -292,20 +293,25 @@ describe("app wiring pins", () => {
     expect(app).toContain("parcelCheckAllowed(auth.profile?.email, auth.profile?.role) && !hideParcelScan");
     const gs = readFileSync("src/redesign/screens/GeneralSettings.tsx", "utf8");
     expect(gs).toContain("{parcelCheckOn && <MyshipCheckCard t={t} />}");
+    // M5: the card shows only to sellers who can actually open Parcel Scan
+    expect(app).toContain("parcelCheckOn={parcelCheckOn && parcelAllowed}");
   });
 
-  it("ONE save-flow source: Settings card + Parcel Scan gate both render the shared MyshipConfigForm; the flow lives only in MyshipSetup.tsx", () => {
+  it("ONE save-flow source: Settings card + Parcel Scan banner both render the shared MyshipConfigForm; the flow lives only in MyshipSetup.tsx", () => {
     const shared = readFileSync("src/redesign/components/MyshipSetup.tsx", "utf8");
-    // audit MEDIUM-3 pin (moved here with the form): the pre-validation save
-    // must CLEAR shop_name/verified_at so a changed GM never keeps the old badge
-    expect(shared).toContain("saveMyshipConfig(gmId, null)"); // GM-only save (no per-seller phone)
+    // audit MEDIUM-3 pin (moved here with the form): a save that isn't verified
+    // must CLEAR shop_name/verified_at so a changed GM never keeps the old badge;
+    // M6: validation runs BEFORE any save
+    expect(shared).toContain("saveMyshipConfig(gmId, v.ok ? v.shopName : null)");
+    expect(shared.indexOf("await validateGm(gmId)")).toBeLessThan(shared.indexOf("await saveMyshipConfig("));
     const gs = readFileSync("src/redesign/screens/GeneralSettings.tsx", "utf8");
     expect(gs).toContain("<MyshipConfigCard t={t} />"); // Settings-only collapse wrapper (renders the shared form)
     expect(gs).not.toContain("validateGm("); // no second copy of the flow
-    // HARD GATE wiring: ParcelScan mounts inside the gate, enabled by the same
-    // allowlist+market flag as the Settings card
+    // BANNER wiring (H4): ParcelScan mounts inside the gate (render-prop), enabled
+    // by the same allowlist+market flag; its checkOn comes FROM the gate
     const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
-    expect(app).toContain("<MyshipScanGate t={tApp} enabled={parcelCheckOn}");
+    expect(app).toContain("<MyshipScanGate t={tApp} enabled={parcelCheckOn}>");
+    expect(app).toContain("checkOn={checkOn} banner={banner}");
     expect(app.indexOf("<MyshipScanGate")).toBeLessThan(app.indexOf("<ParcelScan cur={cur}"));
   });
 });

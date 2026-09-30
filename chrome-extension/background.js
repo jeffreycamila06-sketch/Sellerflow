@@ -401,7 +401,10 @@ async function pcPoll() {
 // restricted, the RPC pauses the whole lane (no mass-flagging real buyers).
 const PC_HEALTH_INTERVAL_MS = 5 * 60 * 1000; // sender health-check cadence
 const PC_HEALTH_STORE_ID = "195965";          // any valid 6-digit store — the probe checks the PHONE, not this store
+const PC_HEALTH_CONFIRM_MS = 60 * 1000;       // 1.14.7: re-probe 1 min after a first 'restricted' (2 in a row pause)
 let pcLastHealthAt = 0;
+let pcSenderStrikes = 0;                      // 1.14.7: consecutive 'restricted' probes
+let pcSenderHealthy = null;                   // 1.14.7: last-known DB flag (null = not read yet)
 
 // ══ 1.14.0 — EVIDENCE-BASED STATUS · E-MAP TAB PICK · KEEPALIVE · RECOVERY ═══
 // Spec: hands-off (session never idle-expires, tabs never sleep, auto re-
@@ -632,7 +635,11 @@ async function pcRefreshTabStatus() {
   // 選擇取貨門市 button; nothing is stored). Then 20 s to see a guid-bearing E-Map
   // tab appear (adopted in pcPickEmapTab); otherwise red with the exact reason.
   const inMaint = pcInMaintenance(now);
-  if (emapState === "dead" && e.remint && !e.remint.tried && !inMaint) {
+  // 1.14.7: a truly expired session lands on error.aspx ('expired') and a closed tab is
+  // 'no_tab' — both now get the same one-per-episode re-mint as 'dead', but only when a
+  // 賣貨便 tab is parked on /cart/detail (otherwise they keep their honest label).
+  const remintable = emapState === "dead" || ((emapState === "expired" || emapState === "no_tab") && await pcCartDetailParked());
+  if (remintable && e.remint && !e.remint.tried && !inMaint) {
     try { emapState = await pcTryRemint(now); } catch (err) { e.remint.tried = true; e.remint.result = `remint threw: ${err && err.message ? err.message : err}`; }
   }
   if (emapState === "dead" && e.remint && e.remint.until && now >= e.remint.until) { e.remint.until = 0; if (!e.remint.result) e.remint.result = "timeout"; }
@@ -652,6 +659,10 @@ async function pcRefreshTabStatus() {
   });
 }
 const PC_CART_DETAIL_PATTERN = "https://myship.7-11.com.tw/cart/detail*";
+async function pcCartDetailParked() {
+  const tabs = await new Promise((res) => { try { chrome.tabs.query({ url: PC_CART_DETAIL_PATTERN }, (t) => res(t || [])); } catch { res([]); } });
+  return tabs.some((t) => !/\/error/i.test(String(t.url || "")));
+}
 const PC_REMINT_WINDOW_MS = 20 * 1000;
 async function pcTryRemint(now) {
   const e = pcEv.emap;
@@ -704,6 +715,7 @@ async function pcSenderHealthCheck(cfg, rpcHeaders) {
     if (!r.ok) return;
     conf = await r.json();
   } catch { return; }
+  if (conf) pcSenderHealthy = conf.healthy !== "false";
   if (!conf || !conf.sender_phone || !conf.probe_buyer || !conf.sample_gm) return;
   const myshipTabId = await pcFindTab(["https://myship.7-11.com.tw/*"]);
   if (!myshipTabId) return; // can't probe without a myship tab — try next cycle
@@ -716,12 +728,25 @@ async function pcSenderHealthCheck(cfg, rpcHeaders) {
   if (st === "ok" || st === "restricted") pcEv.myship.lastVerdictAt = Date.now(); // the probe is myship evidence when idle
   const setHealth = (ok) => fetch(`${cfg.supabaseUrl}/rest/v1/rpc/admin_set_parcel_sender_health`, { method: "POST", headers: rpcHeaders, body: JSON.stringify({ p_ok: ok }) }).catch(() => {});
   if (st === "restricted") {
+    // 1.14.7: pause only on TWO consecutive restricted probes (one flaky answer must
+    // not stop every seller); the confirming probe runs 1 min later, not in 5.
+    pcSenderStrikes += 1;
+    if (pcSenderStrikes < 2) {
+      pcLastHealthAt = Date.now() - PC_HEALTH_INTERVAL_MS + PC_HEALTH_CONFIRM_MS;
+      console.warn(`[PC-SENDER] probe returned 'restricted' (1/2) — confirming in ${PC_HEALTH_CONFIRM_MS / 1000}s before pausing`);
+      return;
+    }
     await setHealth(false);
+    pcSenderHealthy = false;
     await pcStatus({ multi: "sender_poisoned" });
     console.warn(`[PC-SENDER] POISONED: sender ${conf.sender_phone} returns 'restricted' for a known-clean buyer — verdicts PAUSED. Swap parcel_check_sender_phone to a clean account.`);
-  } else if (st === "ok" && conf.healthy !== "true") {
-    await setHealth(true);
-    console.log(`[PC-SENDER] recovered: sender ${conf.sender_phone} healthy again — resuming.`);
+  } else if (st === "ok") {
+    pcSenderStrikes = 0;
+    if (conf.healthy !== "true") {
+      await setHealth(true);
+      pcSenderHealthy = true;
+      console.log(`[PC-SENDER] recovered: sender ${conf.sender_phone} healthy again — resuming.`);
+    }
   }
 }
 
@@ -750,7 +775,9 @@ async function pcPollMulti() {
     if (!Array.isArray(rows)) rows = [];
   } catch { pcEv.sfl.fetchInFlight = false; await pcStatus({ multi: "rpc_error" }); return; }
   pcEv.sfl.fetchInFlight = false;
-  await pcStatus({ multi: "ok", multiQueueDepth: rows.length ? Number(rows[0].queue_depth) || 0 : 0, multiLastAt: new Date().toISOString() });
+  // 1.14.7: while the sender is paused the pending RPC returns nothing — keep saying so
+  // instead of a reassuring "OK, queue 0".
+  await pcStatus({ multi: pcSenderHealthy === false ? "sender_poisoned" : "ok", multiQueueDepth: rows.length ? Number(rows[0].queue_depth) || 0 : 0, multiLastAt: new Date().toISOString() });
   // 1.14.0: the keepalive runs from pcTick (independent of this lane, the token
   // and the RPC); here we only record whether any pending row needs the store
   // half, and stash the admin RPC context for the Admin-card mirror.
@@ -770,8 +797,10 @@ async function pcPollMulti() {
     // 1.14.6: a half in backoff is skipped (no request) so rows behind it get their turn
     const bo = pcBackoff.get(row.id);
     if (bo) bo.seenAt = now;
-    const doStore = Boolean(row.need_store) && (!bo || now >= bo.storeNextAt);
-    const doPhone = Boolean(row.need_phone) && (!bo || now >= bo.phoneNextAt);
+    // 1.14.7: a half runs only when its tab exists — a missing/expired E-Map or myship
+    // tab must not let untouchable rows use up every slot (that froze all sellers)
+    const doStore = Boolean(row.need_store) && Boolean(emapTabId) && (!bo || now >= bo.storeNextAt);
+    const doPhone = Boolean(row.need_phone) && Boolean(myshipTabId) && (!bo || now >= bo.phoneNextAt);
     if (!doStore && !doPhone) continue;
     processed += 1;
     pcInFlight.add(row.id);
@@ -857,6 +886,10 @@ async function pcPollMulti() {
           method: "POST", headers: rpcHeaders,
           body: JSON.stringify({
             p_id: row.id,
+            // 1.14.7: the values that were CHECKED — the RPC only applies a half if the
+            // row still has them, and fills the shared caches from them (sql/67)
+            p_expected_phone: row.phone ?? null,
+            p_expected_store: row.store_id ?? null,
             p_store_full_status: storeStatus,
             p_phone_check_status: phoneStatus,
             p_phone_check_message: phoneMessage,

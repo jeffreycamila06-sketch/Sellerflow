@@ -1857,7 +1857,7 @@ export default function RedesignApp() {
               cur={cur} samePriceEnabled={samePriceCfg.enabled} samePrice={samePriceCfg.price} onSetSamePriceEnabled={(on, draft) => void samePriceCfg.setEnabled(on, draft)} samePriceError={samePriceCfg.saveErrors}
               /* Live-session toggles turned OFF → bottom toast. */
               onToast={(msg) => setToast({ msg, kind: "ok" })}
-              parcelCheckOn={parcelCheckOn}
+              parcelCheckOn={parcelCheckOn && parcelAllowed}
               motionOn={motionOn} onToggleMotion={toggleMotion}
             />
           )}
@@ -1885,8 +1885,8 @@ export default function RedesignApp() {
           {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} buyers={liveSession.session.buyers} storeName={printShopName} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
           {screen === "shipping" && !hideShipping && <Shipping cur={cur} buyers={liveSession.session.buyers} sessionKey={sessionKeyFor(liveSession.dayId, sessionWindow.windowStart, sessionWindow.windowDays)} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}
           {screen === "parcelscan" && parcelAllowed && (
-            <MyshipScanGate t={tApp} enabled={parcelCheckOn} onExit={() => setScreen("menu")}>
-              <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} checkOn={parcelCheckOn} />
+            <MyshipScanGate t={tApp} enabled={parcelCheckOn}>
+              {(checkOn, banner) => <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} checkOn={checkOn} banner={banner} />}
             </MyshipScanGate>
           )}
           {screen === "customerdetails" && parcelAllowed && <CustomerDetails cur={cur} />}

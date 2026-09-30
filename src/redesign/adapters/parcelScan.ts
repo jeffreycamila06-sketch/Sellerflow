@@ -11,6 +11,7 @@
 // is NEVER stored — it exists only inside the one scan request.
 import { SERVER } from "./serverIdentity";
 import { isSupabaseConfigured, supabase } from "../../supabase";
+import { fetchAllPages } from "../../lib/fetchAllPages";
 import { getAppSetting, setAppSetting } from "./appSettings";
 import { isAdminRole } from "../../lib/roles";
 import { isActivePaid, planDaysLeft } from "../../lib/planWindow";
@@ -349,20 +350,48 @@ export function rowToScan(row: Record<string, unknown>): ParcelScanRow {
   };
 }
 
-export const SCANS_PAGE = 50; // recent rows on screen open — A2 brings the full queue UX
+export const SCANS_PAGE = 50; // latest EXPORTED rows shown on screen open (history tail)
+const SCANS_COLS = "id, customer_name, phone, store_id, amount, notes, status, store_check_status, store_full_status, phone_check_status, phone_restricted_until, created_at";
 
+// M4 (Oct 1 audit): EVERY not-yet-exported row (the working queue — a flat
+// newest-50 used to push older unexported parcels off screen, so they were
+// never shown, polled or exported) + the latest SCANS_PAGE exported rows,
+// merged newest-first. The unexported read is paged (never partial).
 export async function loadParcelScans(): Promise<{ ok: boolean; rows: ParcelScanRow[]; error?: string }> {
   if (!isSupabaseConfigured || !supabase) return { ok: false, rows: [], error: "not configured" };
   const me = await uid();
   if (!me) return { ok: false, rows: [], error: "not signed in" };
-  const { data, error } = await supabase
-    .from("parcel_scans")
-    .select("id, customer_name, phone, store_id, amount, notes, status, store_check_status, store_full_status, phone_check_status, phone_restricted_until, created_at")
-    .eq("user_id", me)
+  const sb = supabase;
+  let pageErr = "";
+  const open = await fetchAllPages<Record<string, unknown>>(async (page) => {
+    const { data, error } = await sb.from("parcel_scans").select(SCANS_COLS)
+      .eq("user_id", me).neq("status", "exported")
+      .order("created_at", { ascending: false }).order("id", { ascending: true })
+      .range(page * 1000, page * 1000 + 999);
+    if (error) { pageErr = error.message; return null; }
+    return (data ?? []) as Record<string, unknown>[];
+  }, 1000);
+  if (open === null) return { ok: false, rows: [], error: pageErr || "load failed" };
+  const { data, error } = await sb.from("parcel_scans").select(SCANS_COLS)
+    .eq("user_id", me).eq("status", "exported")
     .order("created_at", { ascending: false })
     .limit(SCANS_PAGE);
   if (error) return { ok: false, rows: [], error: error.message };
-  return { ok: true, rows: (data ?? []).map((r) => rowToScan(r as Record<string, unknown>)) };
+  return { ok: true, rows: mergeScanLists(open, (data ?? []) as Record<string, unknown>[]) };
+}
+
+// Pure: both lists → one newest-first list, de-duplicated by id (a row that
+// flipped to exported between the two reads appears once). Unit-tested.
+export function mergeScanLists(open: Record<string, unknown>[], exported: Record<string, unknown>[]): ParcelScanRow[] {
+  const seen = new Set<string>();
+  const out: ParcelScanRow[] = [];
+  for (const r of [...open, ...exported]) {
+    const row = rowToScan(r);
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
+    out.push(row);
+  }
+  return out.sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0));
 }
 
 const newParcelId = (): string =>
@@ -504,6 +533,27 @@ export function splitScansForExport(rows: ParcelScanRow[], fee: number): ScanExp
 // awaits (and the screen is visible), then stops.
 export const rowAwaitsVerdict = (r: ParcelScanRow): boolean =>
   r.status !== "exported" && (r.storeFullStatus == null || r.phoneCheckStatus == null);
+
+// M7: the "Wait / Export anyway" prompt counts rows still checking AND rows
+// whose check gave up ('unknown' — the checker couldn't decide).
+export const rowCheckUnresolved = (r: ParcelScanRow): boolean =>
+  rowAwaitsVerdict(r) || (r.status !== "exported" && (r.storeFullStatus === "unknown" || r.phoneCheckStatus === "unknown"));
+
+// M3: badge-poll cadence. 3 s while any awaiting row is younger than freshMs
+// (the checker normally answers within a minute); 30 s once only older rows
+// still await (checker slow/down — keep watching cheaply); null = no poll.
+export const VERDICT_POLL_FAST_MS = 3000;
+export const VERDICT_POLL_SLOW_MS = 30000;
+export function verdictPollMs(rows: ParcelScanRow[], now: number, freshMs: number): number | null {
+  let any = false;
+  for (const r of rows) {
+    if (!rowAwaitsVerdict(r)) continue;
+    any = true;
+    const t = Date.parse(r.createdAt);
+    if (!Number.isFinite(t) || now - t < freshMs) return VERDICT_POLL_FAST_MS;
+  }
+  return any ? VERDICT_POLL_SLOW_MS : null;
+}
 
 // Merge ONLY the three extension-written verdict fields from freshly-loaded rows
 // into the current rows (by id). Everything else — name/phone/store/amount,
