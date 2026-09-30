@@ -89,8 +89,12 @@ export const previewDateFontPx = (v: number, honest: boolean = HONEST_SIZE_STEPS
   honest ? 11 : Math.round(11 * v);
 const stepBtn: CSSProperties = { width: 28, height: 28, borderRadius: "50%", border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--accent-fg)", fontSize: 16, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 };
 
+// LIVE layout v2 samples (admin preview + test print). Same strings as the v2 goldens.
+export const V2_SAMPLE_LATIN = "ako   si  jeff pa reserve po yung black na dress size M thank you po";
+export const V2_SAMPLE_CJK = "+1 我要這件黑色 size M 2件 pls reserve 老闆娘 thank you so much";
+
 export default function PrintPattern({
-  onBack, pp, onToggle, onStep, onTestPrint, shopName = "Maria's Live Shop",
+  onBack, pp, onToggle, onStep, onTestPrint, shopName = "Maria's Live Shop", layoutV2 = false, onTestPrintSample,
 }: {
   onBack: () => void;
   pp: PrintPatternState;
@@ -102,6 +106,10 @@ export default function PrintPattern({
   // Printer Test — real BT test-sticker (wired in RedesignApp). Optional so the
   // screen still renders standalone; the button is a no-op only when unwired.
   onTestPrint?: () => void;
+  // LIVE layout v2 (admin-only until it goes public): preview shows the order time under
+  // the date and the comment across the full width; two sample test prints.
+  layoutV2?: boolean;
+  onTestPrintSample?: (comment: string) => void;
 }) {
   const t = useT();
   const ROWS = rowsFor(t);
@@ -121,13 +129,17 @@ export default function PrintPattern({
               {/* Date & time prints at a FIXED size (no scale in the print path) — honest preview mirrors that. */}
               {pp.dateTime && <span style={{ fontSize: previewDateFontPx(pp.dateTimeSize), color: "#9795ad", whiteSpace: "nowrap" }}>Session: 05/22/2026 12:21PM</span>}
             </div>
+            {layoutV2 && pp.comment && <div style={{ textAlign: "right", fontSize: 11, color: "#9795ad", marginTop: 1 }} data-testid="pp-v2-time">14:05</div>}
             {/* Preview sizes route through previewFontPx ONLY (kill-switch-gated; honest = base × printScaleLevel = print). */}
             {pp.shopName && <div style={{ fontSize: previewFontPx(16, pp.shopNameSize), fontWeight: 700, color: "#1c1a35", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} data-testid="pp-preview-shop">{shopName}</div>}
             {/* Buyer line matches the new paper layout: "Buyer" + bare number, small gap, no "#". */}
             {pp.buyerNum && <div style={{ fontSize: previewFontPx(14, pp.buyerNumSize), fontWeight: 700, color: "#1c1a35", marginTop: 3 }}>Buyer 12</div>}
             {pp.tiktokName && <div style={{ fontSize: previewFontPx(14, pp.tiktokNameSize), fontWeight: 700, color: "#1c1a35", marginTop: 3 }}>Maria Santos</div>}
             {pp.tiktokUser && <div style={{ fontSize: previewFontPx(12, pp.tiktokUserSize), fontWeight: 600, color: "#7c3aed", marginTop: 3 }}>@maria_live</div>}
-            {pp.comment && <div style={{ fontFamily: "var(--font-mono)", fontSize: previewFontPx(12, pp.commentSize), color: "#5a5872", marginTop: 7 }}>Comment</div>}
+            {pp.comment && !layoutV2 && <div style={{ fontFamily: "var(--font-mono)", fontSize: previewFontPx(12, pp.commentSize), color: "#5a5872", marginTop: 7 }}>Comment</div>}
+            {pp.comment && layoutV2 && (
+              <div style={{ borderTop: "1.5px solid #1c1a35", marginTop: 7, paddingTop: 4, textAlign: "left", fontFamily: "var(--font-mono)", fontSize: previewFontPx(12, pp.commentSize), letterSpacing: ".35em", lineHeight: 1.35, color: "#5a5872", wordBreak: "break-word" }} data-testid="pp-v2-comment">{V2_SAMPLE_CJK}</div>
+            )}
           </div>
         </div>
 
@@ -135,6 +147,13 @@ export default function PrintPattern({
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="6" y="3" width="12" height="6" stroke="currentColor" strokeWidth="1.8" /><rect x="4" y="9" width="16" height="8" rx="2" stroke="currentColor" strokeWidth="1.8" /><rect x="7" y="14" width="10" height="7" stroke="currentColor" strokeWidth="1.8" /></svg>
           {t.rd_pp_printer_test}
         </button>
+
+        {layoutV2 && onTestPrintSample && (
+          <div style={{ display: "flex", gap: 8, marginTop: 8 }} data-testid="pp-v2-tests">
+            <button onClick={() => onTestPrintSample(V2_SAMPLE_LATIN)} style={{ flex: 1, padding: "10px 0", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }} data-testid="pp-v2-test-latin">{t.rd_pp_v2_test_latin}</button>
+            <button onClick={() => onTestPrintSample(V2_SAMPLE_CJK)} style={{ flex: 1, padding: "10px 0", border: "1px solid var(--border-strong)", borderRadius: 11, background: "var(--surface)", color: "var(--text)", fontFamily: "var(--font-ui)", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }} data-testid="pp-v2-test-cjk">{t.rd_pp_v2_test_cjk}</button>
+          </div>
+        )}
 
         <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 14, boxShadow: "var(--shadow)", overflow: "hidden", marginTop: 12 }}>
           {ROWS.map((r) => {

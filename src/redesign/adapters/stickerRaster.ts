@@ -204,6 +204,7 @@ export interface RasterSettings {
   printStoreScale?: number; printBuyerNumberScale?: number; printBuyerNameScale?: number; printUsernameScale?: number;
   printOrderScale?: number; printCommentScale?: number; printTotalScale?: number;
   printStickerQr?: boolean; // per-device "Print QR on sticker" toggle (default OFF)
+  printCommentFullWidth?: boolean; // LIVE layout v2 (full-width comment) — bitmap/extended only, default OFF
 }
 export interface RasterPayload { storeName?: string; sessionDate?: string; currency?: string; buyer?: RasterBuyer; settings?: RasterSettings | null }
 
@@ -321,7 +322,14 @@ export function stickerDrawOps(payload: RasterPayload, labelWidthMm: number, lab
     textSmart(16, y, "3", "@" + safe(truncate(cleanBuyerHandle, 30)), m, m, m, m);
     const d = (m - 1) * F3; y += c.usernameGap + d; extra += d;
   }
-  if (printOrderItems && orders.length > 0 && y < c.orderEntryGuard + extra) {
+  // LIVE layout v2 (full-width comment) — ADDITIVE. Bitmap "extended" mode only, and only
+  // for a ONE-order sticker (multi-order stickers from the Print screen keep today's
+  // layout). Absent/false flag → the original branch below runs, byte-identical.
+  const layoutV2 = !legacy && settings?.printCommentFullWidth === true && printOrderItems && orders.length === 1;
+  if (layoutV2) {
+    layoutV2Order(ops, c, orders[0], y, extra, labelHeightMm * 8, lvlOrder, lvlComment, qr, narrow,
+      printTotal && totalSpent > 0 && c.showTotal);
+  } else if (printOrderItems && orders.length > 0 && y < c.orderEntryGuard + extra) {
     ops.push({ k: "bar", x: 16, y, w: c.sepWidth, h: 2 });
     y += c.sepGap;
     const maxOrders = 2;
@@ -379,6 +387,91 @@ export function stickerDrawOps(payload: RasterPayload, labelWidthMm: number, lab
   }
 
   return { ops, wDots: c.wDots, hDots: labelHeightMm * 8, wMm: labelWidthMm, hMm: labelHeightMm };
+}
+
+// ── LIVE layout v2 — order time up top, comment full width (bitmap only) ────────
+// Time: under the header bar at the session date's x (same font/scale as today's row
+// time). Comment: from the left margin, the full width to rightEdge, wrapping down into
+// every row until the label bottom (4-dot margin) — rows that meet the QR (incl. its
+// keep-out gap) stop left of it. One font for the whole comment, like today: any CJK →
+// CJK op on every line, else Latin font "4"; same 2× width and scale as today. Cut
+// without "…" when it doesn't fit. If the time slot would overlap anything already
+// drawn (e.g. a long shop name, or the Buyer # when the shop name is off), the time
+// stays inline at the start of the first comment line instead (today's row position).
+export const V2_TIME_X = 290;
+export const V2_TIME_Y = 56;
+export const V2_BOTTOM_MARGIN = 4;
+const CELL_OF: Record<"2" | "3" | "4", [number, number]> = { "2": [12, 20], "3": [16, 24], "4": [24, 32] };
+function opBox(op: DrawOp): { x: number; y: number; w: number; h: number } {
+  if (op.k === "bar") return { x: op.x, y: op.y, w: op.w, h: op.h };
+  if (op.k === "txt") { const [cw, ch] = CELL_OF[op.font]; return { x: op.x, y: op.y, w: [...op.s].length * cw * op.xm, h: ch * op.ym }; }
+  return { x: op.x, y: op.y, w: [...op.s].length * 24 * op.xm, h: 24 * op.ym };
+}
+const boxesOverlap = (a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) =>
+  a.w > 0 && b.w > 0 && a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+
+// Tokens for wrapping: a single space, one CJK ideograph (may break anywhere), or a run
+// of other characters (a word — kept whole unless longer than a line). PURE.
+export function wrapCommentV2(text: string, lineChars: (lineIndex: number) => number, maxLines: number): string[] {
+  const s = String(text || "").replace(/\s+/g, " ").trim();
+  const tokens: string[] = [];
+  let word = "";
+  for (const ch of s) {
+    const cp = ch.codePointAt(0) ?? 0;
+    if (ch === " " || isCjkIdeograph(cp)) { if (word) { tokens.push(word); word = ""; } tokens.push(ch); }
+    else word += ch;
+  }
+  if (word) tokens.push(word);
+  const lines: string[] = [];
+  const len = (x: string) => [...x].length;
+  while (tokens.length && lines.length < maxLines) {
+    const max = Math.max(0, Math.floor(lineChars(lines.length)));
+    let line = "";
+    while (tokens.length) {
+      const t = tokens[0];
+      if (t === " ") { tokens.shift(); if (!line) continue; if (len(line) + 1 > max) break; line += " "; continue; }
+      if (len(line) + len(t) <= max) { line += t; tokens.shift(); continue; }
+      if (!line && max > 0) { const cps = [...t]; line = cps.slice(0, max).join(""); tokens[0] = cps.slice(max).join(""); }
+      break;
+    }
+    lines.push(line.replace(/ $/, ""));
+    if (max === 0) continue; // a line with no room (never at the sizes we ship) — try the next
+  }
+  return lines;
+}
+
+function layoutV2Order(
+  ops: DrawOp[], c: SizeConfig, order: RasterOrder, yStart: number, extra: number, hDots: number,
+  lvlOrder: number, lvlComment: number, qr: QrPlacement | null, narrow: (s: string) => string, totalShown: boolean,
+): void {
+  const cmul = (m: number) => Math.max(1, Math.min(8, m));
+  const tm = cmul(lvlOrder), pm = cmul(lvlComment);
+  const timeStr = order.time ? safe(truncate(order.time, 10)) : "";
+  const timeOp: DrawOp | null = timeStr ? { k: "txt", x: V2_TIME_X, y: V2_TIME_Y, font: "2", s: timeStr, xm: tm, ym: tm } : null;
+  const timeUp = !!timeOp && opBox(timeOp).x + opBox(timeOp).w <= c.wDots && !ops.some((op) => boxesOverlap(opBox(op), opBox(timeOp)));
+  if (timeOp && timeUp) ops.push(timeOp);
+
+  const content = narrow(safe(stripEmoji(order.item ?? ""))).replace(/\s+/g, " ").trim();
+  ops.push({ k: "bar", x: 16, y: yStart, w: c.sepWidth, h: 2 }); // the separator, exactly as today
+  const top = yStart + c.sepGap;
+  const cjk = hasCjkChar(content);
+  const glyphH = cjk ? 24 * pm : 32 * pm;
+  const step = cjk ? 24 * pm + 8 : 32 * pm + 6;
+  const perChar = 48; // font "4" at xm=2 and the CJK cell at xm=2 are both 48 dots wide
+  let bottom = hDots - V2_BOTTOM_MARGIN;
+  if (totalShown) bottom = Math.min(bottom, c.totalY + extra - V2_BOTTOM_MARGIN); // never run into "Total:"
+  const inlineTimeX = timeOp && !timeUp ? 16 + (truncate(order.time ?? "", 10).length + 2) * 12 * tm : 16;
+  const lineY = (i: number) => top + i * step;
+  const limitX = (y: number) => (qr && y + glyphH > qr.y0 - QR_TEXT_KEEPOUT_GAP ? qr.x0 - QR_TEXT_KEEPOUT_GAP : c.rightEdge);
+  let maxLines = 0;
+  while (lineY(maxLines) + glyphH <= bottom) maxLines++;
+  if (timeOp && !timeUp && maxLines > 0) ops.push({ ...timeOp, x: 16, y: top });
+  const lines = wrapCommentV2(content, (i) => (limitX(lineY(i)) - (i === 0 ? inlineTimeX : 16)) / perChar, maxLines);
+  lines.forEach((line, i) => {
+    if (!line) return;
+    const x = i === 0 ? inlineTimeX : 16;
+    ops.push(cjk ? { k: "cjk", x, y: lineY(i), s: line, xm: 2, ym: pm } : { k: "txt", x, y: lineY(i), font: "4", s: line, xm: 2, ym: pm });
+  });
 }
 
 // ── TEST-ONLY backend: ops → the exact TEXT/BAR TSPL stream (parity proof) ────
