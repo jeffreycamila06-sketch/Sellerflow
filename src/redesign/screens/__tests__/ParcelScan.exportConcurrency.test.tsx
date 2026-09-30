@@ -99,6 +99,8 @@ const { deliverXlsm, deliverXlsmMobile, markScansExported, unmarkScansExported, 
 
 vi.mock("../../adapters/parcelScan", () => ({
   rowAwaitsVerdict: () => false, mergeExtensionVerdicts: (p: unknown) => p,
+  storeClear: (s: string | null | undefined) => s === "open" || s === "company",
+  wrongStoreCode: (r: { storeCheckStatus?: string | null; storeFullStatus?: string | null }) => r.storeCheckStatus === "not_found" || r.storeFullStatus === "not_found",
   MAX_PENDING_PARCELS: 40,
   fileToScanBase64: vi.fn(), scanParcel: vi.fn(), saveParcelScan: vi.fn(),
   loadParcelScans: vi.fn(async () => ({ ok: true, rows: DB.rows.map((r) => ({ ...r })) })),

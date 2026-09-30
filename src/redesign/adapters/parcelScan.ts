@@ -505,13 +505,22 @@ export interface ScanExportSplit {
   ready: ParcelScanRow[];
   attention: { row: ParcelScanRow; reason: ExportReason }[];
 }
+// E-Map store answers from the extension (sql/68, 1.14.8): 'company' is a
+// closed-area store inside a factory/park — a valid store with no open/full
+// info, so it counts exactly like 'open'. 'not_found' (E-Map "NO2") means the
+// code doesn't exist — the same wrong-store-code case as the encode-time
+// check's store_check_status 'not_found'.
+export const storeClear = (s: string | null | undefined): boolean => s === "open" || s === "company";
+export const wrongStoreCode = (r: { storeCheckStatus?: string | null; storeFullStatus?: string | null }): boolean =>
+  r.storeCheckStatus === "not_found" || r.storeFullStatus === "not_found";
+
 export function splitScansForExport(rows: ParcelScanRow[], fee: number): ScanExportSplit {
   const ready: ParcelScanRow[] = [];
   const attention: { row: ParcelScanRow; reason: ExportReason }[] = [];
   for (const row of rows) {
     if (row.status === "exported") continue; // already done — don't re-include
     let reason: ExportReason | null = null;
-    if (row.storeCheckStatus === "not_found") reason = "wrong_store";           // E-Map: wrong code
+    if (wrongStoreCode(row)) reason = "wrong_store";                            // E-Map: wrong code (either check)
     // Extension checks (sql/33) — EXPLICIT problem verdicts only exclude. null/
     // 'unknown' (unchecked / can't verify) do NOT exclude (unchecked ≠ problem),
     // matching store_check_status's own unknown/null → READY behaviour.

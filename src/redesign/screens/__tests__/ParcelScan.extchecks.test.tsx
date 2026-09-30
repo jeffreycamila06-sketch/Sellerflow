@@ -21,6 +21,7 @@ vi.mock("../../adapters/parcelScan", async () => {
   const real = await vi.importActual<typeof import("../../adapters/parcelScan")>("../../adapters/parcelScan");
   return {
   verdictPollMs: real.verdictPollMs, rowCheckUnresolved: real.rowCheckUnresolved,
+  storeClear: real.storeClear, wrongStoreCode: real.wrongStoreCode,
   loadLastExportBatch: vi.fn(async () => ({ ok: true, batch: null })), // 2b: no prior batch (inert)
   loadUndeliveredExports: vi.fn(async () => ({ ok: true, batches: [] })), // sql/51: no orphans (inert)
   confirmExportDelivered: vi.fn(async () => ({ ok: true, n: 1 })), // sql/51: delivery recorded (inert)
@@ -37,7 +38,7 @@ vi.mock("../../adapters/parcelScan", async () => {
     const ready: ParcelScanRow[] = []; const attention: { row: ParcelScanRow; reason: string }[] = [];
     for (const r of rows) {
       if (r.status === "exported") continue;
-      if (r.storeCheckStatus === "not_found") attention.push({ row: r, reason: "wrong_store" });
+      if (r.storeCheckStatus === "not_found" || r.storeFullStatus === "not_found") attention.push({ row: r, reason: "wrong_store" });
       else if (r.storeFullStatus === "full") attention.push({ row: r, reason: "store_full" });
       else if (r.phoneCheckStatus === "restricted") attention.push({ row: r, reason: "restricted_number" });
       else ready.push(r);
@@ -260,5 +261,58 @@ describe("Parcel Scan — editing resets the matching verdict", () => {
     const [, , reset] = updateParcelScan.mock.calls[0] as [string, unknown, { storeFull?: boolean; phoneCheck?: boolean }];
     expect(reset.phoneCheck).toBe(true);
     expect(reset.storeFull).toBe(false); // store unchanged
+  });
+});
+
+// sql/68 · extension 1.14.8 — E-Map's two other store answers.
+// 'company' ("close": a closed-area store inside a factory/park) looks EXACTLY like
+// 'open'; 'not_found' ("NO2") looks EXACTLY like the existing wrong-store-code row.
+describe("Parcel Scan — E-Map 'company' and 'not_found' store answers", () => {
+  const flag = (el: HTMLElement) => el.getAttribute("data-flag");
+
+  it("phone ok + store 'company' → ✅ Buyer OK, no border, no wording, not pending", async () => {
+    loadRows.current = [mk({ phoneCheckStatus: "ok", storeFullStatus: "company" })];
+    const { findByTestId, getByTestId, queryByTestId, container } = viewOn();
+    expect(flag(await findByTestId("ps-row"))).toBe("");
+    expect(getByTestId("ps-ext-clear").textContent).toContain("Buyer OK");
+    expect(queryByTestId("ps-ext-checking")).toBeNull();
+    expect(queryByTestId("ps-ext-still-checking")).toBeNull();
+    expect(queryByTestId("ps-store-badge")).toBeNull();
+    expect(queryByTestId("ps-ext-recheck")).toBeNull();
+    expect(container.textContent).not.toMatch(/company/i); // no new wording anywhere
+  });
+
+  it("'company' renders the SAME row as 'open' (byte-identical markup)", async () => {
+    loadRows.current = [mk({ phoneCheckStatus: "ok", storeFullStatus: "open" })];
+    const a = viewOn();
+    await a.findByTestId("ps-ext-clear");
+    const open = a.getByTestId("ps-row").outerHTML;
+    a.unmount();
+    loadRows.current = [mk({ phoneCheckStatus: "ok", storeFullStatus: "company" })];
+    const b = viewOn();
+    await b.findByTestId("ps-ext-clear");
+    expect(b.getByTestId("ps-row").outerHTML).toBe(open);
+  });
+
+  it("store 'not_found' → RED row + the existing ❌ Wrong store code badge + ⟳ recheck; counted in the Wrong code tab", async () => {
+    loadRows.current = [mk({ phoneCheckStatus: "ok", storeFullStatus: "not_found" })];
+    const { findByTestId, getByTestId, queryByTestId } = viewOn();
+    expect(flag(await findByTestId("ps-row"))).toBe("red");
+    const badge = getByTestId("ps-store-badge");
+    expect(badge.getAttribute("data-status")).toBe("not_found");
+    expect(badge.textContent).toContain("Wrong store code");
+    expect(getByTestId("ps-ext-recheck")).toBeTruthy();       // ⟳ re-runs the extension check
+    expect(queryByTestId("ps-recheck")).toBeNull();           // not the encode-time server re-check
+    expect(queryByTestId("ps-ext-clear")).toBeNull();         // never "Buyer OK"
+    expect(queryByTestId("ps-ext-checking")).toBeNull();
+    expect(getByTestId("ps-tab-wrong").textContent).toContain("1");
+  });
+
+  it("⟳ on a 'not_found' row asks, then clears the extension checks (the DB trigger drops the cache)", async () => {
+    loadRows.current = [mk({ storeFullStatus: "not_found" })];
+    const { findByTestId, getByTestId } = viewOn();
+    fireEvent.click(await findByTestId("ps-ext-recheck"));
+    fireEvent.click(getByTestId("ps-confirm-recheck"));
+    await waitFor(() => expect(resetExtensionChecks).toHaveBeenCalledWith("r1"));
   });
 });

@@ -189,3 +189,49 @@ describe("emap-711 1.14.1 — guid without page-context execution", () => {
     expect(src).toContain('document.addEventListener("__sfl_emap_guid_req"');
   });
 });
+
+// 1.14.8 — the two E-Map answers the parser never knew. Exact strings captured by
+// Jeff on the /ecmap/ tab, 2026-09-30 (the /mobilemap/ endpoint 500s from an
+// /ecmap/ tab — the /ecmap/ answer is taken first, so it's never reached here).
+describe("emap-711 1.14.8 — byIDData 'close' and 'NO2'", () => {
+  const ECMAP_URL = "https://emap.unipcsc.com.tw/ecmap/default.aspx";
+  const answer = async (text: string, storeId = "180849") => {
+    const { send, calls } = loadEmap(ECMAP_HTML, ECMAP_URL, { byId: () => ({ url: "https://emap.unipcsc.com.tw/ecmap/byIDData.aspx", ok: true, status: 200, text }) });
+    const res = await send({ type: "PC_CHECK_STORE", row: { store_id: storeId } });
+    return { res, fetches: calls.fetch.length };
+  };
+
+  it("198002 'disable' → full (unchanged)", async () => {
+    const { res } = await answer("OK;198002+德民+高雄市楠梓區海專路400號+disable+0++門市", "198002");
+    expect(res.store_full_status).toBe("full");
+  });
+
+  it.each([
+    ["180849", "OK;180849+明月+高雄市楠梓區楠梓加工區第二園區創意北路1號+close+0++門市"],
+    ["922555", "OK;922555+龍潭友達+桃園市龍潭區三和里新和路1號+close+0++門市"],
+    ["234715", "OK;234715+南茂+台南市新市區南科七路5號3樓+close+0++門市"],
+  ])("%s 'close' (closed-area company store) → company, a definitive verdict on the first endpoint", async (id, text) => {
+    const { res, fetches } = await answer(text, id);
+    expect(res.store_full_status).toBe("company");
+    expect(res.store_reason).toBe("");
+    expect(res.transient).toBe(false);
+    expect(fetches).toBe(1); // no fallback to the other endpoint
+  });
+
+  it("277895 'NO2' → not_found (definitive); surrounding whitespace is tolerated", async () => {
+    for (const text of ["NO2", " NO2\r\n"]) {
+      const { res, fetches } = await answer(text, "277895");
+      expect(res.store_full_status).toBe("not_found");
+      expect(res.transient).toBe(false);
+      expect(fetches).toBe(1);
+    }
+  });
+
+  it("anything else stays 'unknown' exactly as before (fail-safe)", async () => {
+    for (const text of ["NO1", "NO2x", "NO", "OK;123456+x+y+weird+0++門市", "OK;", "訊息:I0100;驗證失敗", ""]) {
+      const { res } = await answer(text);
+      expect(res.store_full_status).toBe("unknown");
+      expect(String(res.store_reason)).toContain("unexpected response");
+    }
+  });
+});

@@ -25,6 +25,8 @@ vi.mock("../../adapters/parcelScan", () => ({
   confirmExportDelivered: vi.fn(async () => ({ ok: true, n: 1 })), // sql/51: delivery recorded (inert)
   undoExportBatch: vi.fn(async () => ({ ok: true, result: "undone" })), // 2b undo (inert unless asserted)
   rowAwaitsVerdict: () => false, mergeExtensionVerdicts: (p: unknown) => p,
+  storeClear: (s: string | null | undefined) => s === "open" || s === "company",
+  wrongStoreCode: (r: { storeCheckStatus?: string | null; storeFullStatus?: string | null }) => r.storeCheckStatus === "not_found" || r.storeFullStatus === "not_found",
   MAX_PENDING_PARCELS: 40,
   fileToScanBase64: vi.fn(), scanParcel: vi.fn(), saveParcelScan: vi.fn(),
   loadParcelScans,
