@@ -25,8 +25,10 @@
 // PrintPattern.honestSteps.test.tsx source contract), so the const governs
 // everything. The false branch is behaviorally tested against the verbatim
 // old formulas. Print output is identical either way (printing.ts quantizes).
-import type { CSSProperties } from "react";
-import { printScaleLevel } from "../adapters/printing";
+import { Fragment, useState, type CSSProperties } from "react";
+import { printScaleLevel, isStickerQrOn, setStickerQrOn, type Settings } from "../adapters/printing";
+import { stickerQrSupported } from "../adapters/stickerRaster";
+import ExactStickerPreview from "../components/ExactStickerPreview";
 import { useT, type RedesignT } from "../i18n";
 
 // ⚠️ ROLLBACK = flip to false (one-line change, Vercel-only). Do not delete
@@ -95,6 +97,7 @@ export const V2_SAMPLE_CJK = "+1 我要這件黑色 size M 2件 pls reserve 老�
 
 export default function PrintPattern({
   onBack, pp, onToggle, onStep, onTestPrint, shopName = "Maria's Live Shop", layoutV2 = false, onTestPrintSample,
+  stickerQrAllowed = false, psSize = "100x60mm (Standard)", appShell = false, previewSettings, cur = "NT$",
 }: {
   onBack: () => void;
   pp: PrintPatternState;
@@ -110,9 +113,23 @@ export default function PrintPattern({
   // the date and the comment across the full width; two sample test prints.
   layoutV2?: boolean;
   onTestPrintSample?: (comment: string) => void;
+  // "Print QR on sticker" lives here for admins (same gate as layoutV2); everyone else
+  // keeps it in Printer settings. stickerQrAllowed = the unchanged market gate.
+  stickerQrAllowed?: boolean;
+  psSize?: string;           // the chosen sticker size (Printer settings)
+  appShell?: boolean;        // phone app: QR is not available on 60×40 (same rule as Printer settings)
+  previewSettings?: Settings; // the print settings the exact preview renders with
+  cur?: string;
 }) {
   const t = useT();
   const ROWS = rowsFor(t);
+  const showQrRow = layoutV2 && stickerQrAllowed;
+  const qrSizeBlocked = appShell && /^60x40/.test(psSize);
+  const [stickerQr, setStickerQr] = useState(() => isStickerQrOn());
+  const toggleQr = () => { if (qrSizeBlocked) return; const next = !stickerQr; setStickerQrOn(next); setStickerQr(next); };
+  // exact preview: QR on, a size that prints a QR (50 mm+ tall), and the @username on (QR follows it)
+  const hMm = Number(psSize.match(/\d+x(\d+)/)?.[1] ?? 60);
+  const showExact = showQrRow && stickerQr && !qrSizeBlocked && stickerQrSupported(hMm) && pp.tiktokUser && !!previewSettings;
   return (
     <div>
       <div style={{ position: "sticky", top: 0, zIndex: 5, background: "var(--header-bg)", backdropFilter: "saturate(1.5) blur(14px)", color: "var(--on-header)", padding: "14px 16px", display: "flex", alignItems: "center", gap: 12 }}>
@@ -123,6 +140,11 @@ export default function PrintPattern({
       <div style={{ padding: "12px 14px 16px" }}>
         {/* Live slip preview (paper — literal colors) */}
         <div style={{ background: "var(--accent)", borderRadius: 16, padding: 11, boxShadow: "0 8px 22px var(--accent-soft)" }}>
+          {showExact && previewSettings ? (
+            <div style={{ background: "#fff", borderRadius: 11, padding: 8 }}>
+              <ExactStickerPreview settings={previewSettings} cur={cur} shopName={shopName} v2={layoutV2} />
+            </div>
+          ) : (
           <div style={{ background: "#fff", borderRadius: 11, padding: "12px 14px", textAlign: "center" }}>
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8 }}>
               <span style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 16, color: "#1c1a35" }}>SellerFlowLive</span>
@@ -141,6 +163,7 @@ export default function PrintPattern({
               <div style={{ borderTop: "1.5px solid #1c1a35", marginTop: 7, paddingTop: 4, textAlign: "left", fontFamily: "var(--font-mono)", fontSize: previewFontPx(12, pp.commentSize), letterSpacing: ".35em", lineHeight: 1.35, color: "#5a5872", wordBreak: "break-word" }} data-testid="pp-v2-comment">{V2_SAMPLE_CJK}</div>
             )}
           </div>
+          )}
         </div>
 
         <button onClick={onTestPrint} style={{ width: "100%", marginTop: 11, padding: "12px 0", border: "none", borderRadius: 12, background: "var(--accent)", color: "var(--accent-text)", fontFamily: "var(--font-ui)", fontSize: 13.5, fontWeight: 700, cursor: "pointer", boxShadow: "0 5px 14px var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
@@ -159,7 +182,8 @@ export default function PrintPattern({
           {ROWS.map((r) => {
             const on = pp[r.key];
             return (
-              <div key={r.key} style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 13px", borderBottom: "1px solid var(--border)" }}>
+              <Fragment key={r.key}>
+              <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 13px", borderBottom: "1px solid var(--border)" }}>
                 <span style={{ flex: 1, fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{r.label}</span>
                 {r.fixedSize ? (
                   <span style={{ fontSize: 11.5, fontStyle: "italic", color: "var(--text-muted)" }}>{t.rd_pp_fixed_size}</span>
@@ -176,6 +200,20 @@ export default function PrintPattern({
                   </span>
                 </button>
               </div>
+              {r.key === "tiktokUser" && showQrRow && (
+                <div style={{ display: "flex", alignItems: "center", gap: 9, padding: "9px 13px", borderBottom: "1px solid var(--border)" }} data-testid="pp-sticker-qr-row">
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 700, color: "var(--text)" }}>{t.rd_ps_sticker_qr}</div>
+                    <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2, lineHeight: 1.4 }} data-testid="pp-sticker-qr-hint">{qrSizeBlocked ? t.rd_ps_sticker_qr_unavail : t.rd_ps_sticker_qr_desc}</div>
+                  </div>
+                  <button onClick={toggleQr} disabled={qrSizeBlocked} aria-pressed={qrSizeBlocked ? false : stickerQr} data-testid="pp-sticker-qr-toggle" style={{ background: "none", border: "none", cursor: qrSizeBlocked ? "not-allowed" : "pointer", padding: 0, flexShrink: 0, marginLeft: 3, opacity: qrSizeBlocked ? 0.4 : 1 }}>
+                    <span style={{ width: 40, height: 23, borderRadius: 12, background: !qrSizeBlocked && stickerQr ? "var(--accent)" : "var(--border-strong)", position: "relative", display: "block", transition: "background .15s" }}>
+                      <span style={{ position: "absolute", top: 3, left: !qrSizeBlocked && stickerQr ? 21 : 3, width: 17, height: 17, borderRadius: "50%", background: "#fff", boxShadow: "0 1px 3px rgba(0,0,0,.3)", transition: "left .15s" }} />
+                    </span>
+                  </button>
+                </div>
+              )}
+              </Fragment>
             );
           })}
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 13px" }}>
