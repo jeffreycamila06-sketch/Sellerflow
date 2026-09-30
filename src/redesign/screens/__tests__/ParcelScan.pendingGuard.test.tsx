@@ -18,7 +18,11 @@ const row = (id: string, extra: Partial<ParcelScanRow>): ParcelScanRow => ({
   ...extra,
 } as ParcelScanRow);
 
-vi.mock("../../adapters/parcelScan", () => ({
+vi.mock("../../adapters/parcelScan", async () => {
+  // the REAL pure poll-cadence + export-count helpers (M3/M7)
+  const real = await vi.importActual<typeof import("../../adapters/parcelScan")>("../../adapters/parcelScan");
+  return {
+  verdictPollMs: real.verdictPollMs, rowCheckUnresolved: real.rowCheckUnresolved,
   loadLastExportBatch: vi.fn(async () => ({ ok: true, batch: null })),
   loadUndeliveredExports: vi.fn(async () => ({ ok: true, batches: [] })),
   confirmExportDelivered: vi.fn(async () => ({ ok: true, n: 1 })),
@@ -39,7 +43,8 @@ vi.mock("../../adapters/parcelScan", () => ({
   deleteParcelScan: vi.fn(), deleteExportedParcels: vi.fn(),
   updateParcelScan: vi.fn(async () => ({ ok: true })),
   getCreditBalance: vi.fn(async () => ({ ok: true, balance: 5 })),
-}));
+  };
+});
 vi.mock("../../adapters/shippingExport", () => ({
   fetchShipTemplate: vi.fn(async () => new Uint8Array()),
   buildXlsmFromTemplate: vi.fn(async () => new Uint8Array()),
@@ -99,6 +104,18 @@ describe("Parcel Scan — export-time guard for parcels still being checked", ()
     await waitFor(() => expect(deliverXlsm).toHaveBeenCalledTimes(1));
     expect(markScansExported).toHaveBeenCalledTimes(1);
     expect(markScansExported.mock.calls[0][0]).toEqual(["r1", "r2"]); // never a hard block — pending rows export too
+  });
+
+  it("M7: rows whose check gave up ('unknown' phone OR store) are counted too", async () => {
+    loadParcelScans.mockResolvedValue({ ok: true, rows: [
+      row("r1", { phoneCheckStatus: "unknown", storeFullStatus: "open" }),
+      row("r2", { phoneCheckStatus: "ok", storeFullStatus: "unknown" }),
+      row("r3", { phoneCheckStatus: null, storeFullStatus: "open" }),
+      row("r4", { phoneCheckStatus: "ok", storeFullStatus: "open" }),
+    ] });
+    const { findByTestId, getByTestId } = view();
+    fireEvent.click(await findByTestId("ps-export-btn"));
+    expect(getByTestId("ps-pending-msg").textContent).toContain("3 parcel(s)");
   });
 
   it("checks feature OFF (all-null rows are normal there) → never asks", async () => {

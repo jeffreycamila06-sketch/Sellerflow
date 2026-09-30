@@ -41,7 +41,8 @@ describe("A · one E-Map tab choice per tick (multi-emap-tab test)", () => {
   });
 
   it("only error.aspx tabs → the pick is flagged and the status reads 'expired' (red) — not 'no_tab'", async () => {
-    const { sb, status, booted } = bootWorker({ emapTabs: [{ id: 5, url: "https://emap.unipcsc.com.tw/ecmap/error.aspx", guid: false }] });
+    // no parked /cart/detail tab → no auto re-mint (1.14.7), so the honest label stays
+    const { sb, status, booted } = bootWorker({ cartDetailTab: false, emapTabs: [{ id: 5, url: "https://emap.unipcsc.com.tw/ecmap/error.aspx", guid: false }] });
     await booted;
     await sb.pcTick();
     expect(status().emap).toBe("expired");

@@ -16,7 +16,11 @@ const { loadRows, resetExtensionChecks, updateParcelScan } = vi.hoisted(() => ({
   updateParcelScan: vi.fn(async (..._a: unknown[]) => ({ ok: true }) as { ok: boolean; error?: string }),
 }));
 
-vi.mock("../../adapters/parcelScan", () => ({
+vi.mock("../../adapters/parcelScan", async () => {
+  // the REAL pure poll-cadence + export-count helpers (M3/M7)
+  const real = await vi.importActual<typeof import("../../adapters/parcelScan")>("../../adapters/parcelScan");
+  return {
+  verdictPollMs: real.verdictPollMs, rowCheckUnresolved: real.rowCheckUnresolved,
   loadLastExportBatch: vi.fn(async () => ({ ok: true, batch: null })), // 2b: no prior batch (inert)
   loadUndeliveredExports: vi.fn(async () => ({ ok: true, batches: [] })), // sql/51: no orphans (inert)
   confirmExportDelivered: vi.fn(async () => ({ ok: true, n: 1 })), // sql/51: delivery recorded (inert)
@@ -47,7 +51,8 @@ vi.mock("../../adapters/parcelScan", () => ({
   rowAwaitsVerdict: (r: ParcelScanRow) => r.status !== "exported" && (r.storeFullStatus == null || r.phoneCheckStatus == null),
   mergeExtensionVerdicts: (prev: ParcelScanRow[]) => prev,
   getCreditBalance: vi.fn(async () => ({ ok: true, balance: 99 })),
-}));
+  };
+});
 vi.mock("../../adapters/shippingSettings", () => ({ loadGlobalShippingFee: async () => 38 }));
 
 import ParcelScan, { STILL_CHECKING_MS } from "../ParcelScan";

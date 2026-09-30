@@ -73,10 +73,10 @@ describe("parcel-checker worker BOOT smoke (the test 1.12.0 was missing)", () =>
   });
 
   it("robustness: no emap tab at all → the tick still completes; emap reads no_tab, myship still earns green", async () => {
-    const { sb, status, booted } = bootWorker({ multiSeller: true, emapTab: false, rows: [] });
+    const { sb, status, booted } = bootWorker({ multiSeller: true, emapTab: false, cartDetailTab: false, rows: [] });
     await booted;
     await expect(sb.pcTick()).resolves.not.toThrow();
-    expect(status().emap).toBe("no_tab");
+    expect(status().emap).toBe("no_tab"); // nothing parked on /cart/detail → no re-mint (1.14.7)
     expect(status().sfl).toBe("connected");
   });
 
