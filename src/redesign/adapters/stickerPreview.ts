@@ -4,7 +4,9 @@ import { buildNativeStickerPayload, type Settings } from "./printing";
 import type { RasterPayload } from "./stickerRaster";
 import type { Buyer } from "../../lib/orderTypes";
 
-export const PREVIEW_COMMENT = "+1 我要這件黑色 size M 2件 pls reserve 老闆娘 thank you so much";
+// The sample comment v2 users see in the LIVE print pattern preview and on their test
+// sticker (Printer settings + LIVE print pattern). Non-v2 sellers keep "PRICE".
+export const PREVIEW_COMMENT = "COMMENT / PRICE";
 const previewBuyer = (): Buyer => ({
   handle: "maria_live", name: "Maria Santos", platform: "TikTok", num: 12, totalSpent: 350, totalOrders: 1,
   orders: [{ orderNum: 1, item: PREVIEW_COMMENT, qty: 1, price: 350, total: 350, time: "14:05", handle: "maria_live", name: "Maria Santos", bNum: 12, platform: "TikTok", status: "New", date: "2026-09-30" }],

@@ -93,8 +93,12 @@ describe("preview", () => {
       expect(qr).not.toBeNull();
       expect(qr.x0 + qr.foot).toBe(STICKER_LAYOUTS[size].wDots - 8); // bottom-right, 1 mm from the edge
       const ops = stickerDrawOps(payload, w, h, "extended", qr).ops;
-      for (const o of ops.filter((x) => x.k === "cjk")) {
-        if (o.y + 24 * o.ym > qr.y0 - QR_TEXT_KEEPOUT_GAP) expect(o.x + [...o.s].length * 24 * o.xm).toBeLessThanOrEqual(qr.x0 - QR_TEXT_KEEPOUT_GAP);
+      const sep = ops.find((x) => x.k === "bar" && x.x === 16 && x.h === 2)!;
+      const comment = ops.filter((x) => (x.k === "cjk" || (x.k === "txt" && x.font === "3")) && x.y > sep.y);
+      expect(comment.map((x) => (x as { s: string }).s).join("").replace(/\s+/g, "")).toBe("COMMENT/PRICE"); // may wrap after the slash
+      for (const o of comment) {
+        const cw = o.k === "cjk" ? 24 : 16;
+        if (o.y + 24 * (o as { ym: number }).ym > qr.y0 - QR_TEXT_KEEPOUT_GAP) expect(o.x + [...(o as { s: string }).s].length * cw * (o as { xm: number }).xm).toBeLessThanOrEqual(qr.x0 - QR_TEXT_KEEPOUT_GAP);
       }
     }
     expect(DEF_SETTINGS.printBuyerUsername).toBe(true);

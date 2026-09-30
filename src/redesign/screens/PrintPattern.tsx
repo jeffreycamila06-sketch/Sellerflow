@@ -29,6 +29,7 @@ import { Fragment, useState, type CSSProperties } from "react";
 import { printScaleLevel, isStickerQrOn, setStickerQrOn, type Settings } from "../adapters/printing";
 import { stickerQrSupported } from "../adapters/stickerRaster";
 import ExactStickerPreview from "../components/ExactStickerPreview";
+import { PREVIEW_COMMENT } from "../adapters/stickerPreview";
 import { useT, type RedesignT } from "../i18n";
 
 // ⚠️ ROLLBACK = flip to false (one-line change, Vercel-only). Do not delete
@@ -160,7 +161,7 @@ export default function PrintPattern({
             {pp.tiktokUser && <div style={{ fontSize: previewFontPx(12, pp.tiktokUserSize), fontWeight: 600, color: "#7c3aed", marginTop: 3 }}>@maria_live</div>}
             {pp.comment && !layoutV2 && <div style={{ fontFamily: "var(--font-mono)", fontSize: previewFontPx(12, pp.commentSize), color: "#5a5872", marginTop: 7 }}>Comment</div>}
             {pp.comment && layoutV2 && (
-              <div style={{ borderTop: "1.5px solid #1c1a35", marginTop: 7, paddingTop: 4, textAlign: "left", fontFamily: "var(--font-mono)", fontSize: previewFontPx(12, pp.commentSize), letterSpacing: ".35em", lineHeight: 1.35, color: "#5a5872", wordBreak: "break-word" }} data-testid="pp-v2-comment">{V2_SAMPLE_CJK}</div>
+              <div style={{ borderTop: "1.5px solid #1c1a35", marginTop: 7, paddingTop: 4, textAlign: "left", fontFamily: "var(--font-mono)", fontSize: previewFontPx(12, pp.commentSize), letterSpacing: ".35em", lineHeight: 1.35, color: "#5a5872", wordBreak: "break-word" }} data-testid="pp-v2-comment">{PREVIEW_COMMENT}</div>
             )}
           </div>
           )}
