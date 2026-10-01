@@ -31,7 +31,8 @@ import { parcelScanVisible, loadParcelManualEnabled, canUseStickerQr } from "./a
 import { effectiveMarket, marketHides, marketHidesShipping, marketFor, type ViewAs } from "./adapters/market";
 import { buildPinComment, isActionablePin, shouldSkipPin, pinPrintAllowed, type PinPayload } from "./adapters/pinToPrint";
 import { parcelCheckAllowed } from "./adapters/parcelCheck";
-import { MyshipScanGate } from "./components/MyshipSetup";
+import { MyshipSetupModal } from "./components/MyshipSetup";
+import { useMyshipStatus, mustSetupBeforeScan } from "./adapters/myshipStatus";
 import { parcelTrackingVisible, loadParcelTrackingAccess } from "./adapters/parcelTracking";
 import CustomerData from "./screens/CustomerData";
 import Legal from "./screens/Legal";
@@ -208,6 +209,15 @@ export default function RedesignApp() {
   // MULTI-SELLER 賣貨便 CHECK (2026-09-27): the Settings config card — dogfood
   // allowlist + admins, TW market only (rides the parcelScan market gate).
   const parcelCheckOn = parcelCheckAllowed(auth.profile?.email, auth.profile?.role) && !hideParcelScan;
+  // MANDATORY 賣貨便 setup before Parcel Scan (2026-10-01): probed once per user;
+  // only a definite "missing" blocks (loading/error fail OPEN). openParcelScan is
+  // the ONE entry into the screen (test-pinned), so every route gets the rule.
+  const myshipStatus = useMyshipStatus(parcelCheckOn, auth.profile?.authUserId);
+  const [myshipSetupOpen, setMyshipSetupOpen] = useState(false);
+  const openParcelScan = () => {
+    if (mustSetupBeforeScan(parcelCheckOn, myshipStatus)) setMyshipSetupOpen(true);
+    else setScreen("parcelscan");
+  };
   // "Print QR on sticker" is on ALL plans; only the market gate applies. This gates BOTH
   // the Printer Settings toggle visibility AND (via setStickerQrEntitled) the PRINT-TIME
   // stamp — so a stored toggle off-market never prints a QR. Default is fail-closed.
@@ -1833,7 +1843,7 @@ export default function RedesignApp() {
               onDelete={() => setScreen("delete")}
               onLogout={() => { resetAnalytics(); void auth.signOut(); setScreen("login"); }}
               isAdmin={isAdmin}
-              onParcelScan={parcelAllowed ? () => setScreen("parcelscan") : undefined}
+              onParcelScan={parcelAllowed ? openParcelScan : undefined}
               onCustomerDetails={parcelAllowed ? () => setScreen("customerdetails") : undefined}
               onParcelTracking={parcelTrackingAllowed ? () => setScreen("parceltracking") : undefined}
               parcelLocked={parcelLocked}
@@ -1902,9 +1912,7 @@ export default function RedesignApp() {
           {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} buyers={liveSession.session.buyers} storeName={printShopName} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
           {screen === "shipping" && !hideShipping && <Shipping cur={cur} buyers={liveSession.session.buyers} sessionKey={sessionKeyFor(liveSession.dayId, sessionWindow.windowStart, sessionWindow.windowDays)} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}
           {screen === "parcelscan" && parcelAllowed && (
-            <MyshipScanGate t={tApp} enabled={parcelCheckOn}>
-              {(checkOn, banner) => <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} checkOn={checkOn} banner={banner} />}
-            </MyshipScanGate>
+            <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} checkOn={parcelCheckOn && myshipStatus !== "missing"} />
           )}
           {screen === "customerdetails" && parcelAllowed && <CustomerDetails cur={cur} />}
           {screen === "parceltracking" && parcelTrackingAllowed && <ParcelTracking />}
@@ -2102,6 +2110,13 @@ export default function RedesignApp() {
         {/* "No printer connected" — order saved, but nothing printed (no printer
             set up yet). Primary button = the verified deep-link straight to the
             printer setup screen (right tab pre-selected by the failing path). */}
+        {myshipSetupOpen && (
+          <MyshipSetupModal
+            t={tApp}
+            onSaved={() => { setMyshipSetupOpen(false); setScreen("parcelscan"); }}
+            onBack={() => setMyshipSetupOpen(false)}
+          />
+        )}
         {printerModal && (
           <PrinterModal
             /* Land on the CHOICE (Settings with the printer picker open), NOT on a

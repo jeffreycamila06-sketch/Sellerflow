@@ -1,12 +1,13 @@
 // MULTI-SELLER CHECK (2026-09-27) — the ONE 賣貨便 config form, shared by the
-// Settings card AND the Parcel Scan setup banner (single save-flow source, no
+// Settings card AND the mandatory Parcel Scan setup modal (single save-flow source, no
 // drift). Flow (Oct 1 audit M6): parse GM (shop link or bare id) → Render
 // validate FIRST → ok: save stamping the shop name ✓ · invalid: NOTHING saved
 // (the old config, if any, stays) · unreachable: save with CLEARED
 // shop_name/verified_at (audit MEDIUM-3) + the honest unverified note.
 import { useEffect, useState } from "react";
 import type { RedesignT as T } from "../i18n";
-import { parseGmId, loadMyshipConfig, saveMyshipConfig, validateGm, probeMyshipConfig } from "../adapters/parcelCheck";
+import { parseGmId, loadMyshipConfig, saveMyshipConfig, validateGm } from "../adapters/parcelCheck";
+import { notifyConfigured } from "../adapters/myshipStatus";
 
 // onSaved fires once a config row EXISTS (saved-verified OR saved-unverified) —
 // that is the gate's open condition.
@@ -45,6 +46,7 @@ export function MyshipConfigForm({ t, onSaved }: { t: T; onSaved?: () => void })
     setGm(gmId);
     if (v.ok) { setShopName(v.shopName); setState("saved"); }
     else setState("unverified");
+    notifyConfigured();
     onSaved?.();
   };
   const inp: React.CSSProperties = { width: "100%", boxSizing: "border-box", padding: "9px 11px", borderRadius: 10, border: "1px solid var(--border)", background: "var(--surface)", color: "var(--text)", fontSize: 13, fontFamily: "var(--font-ui)" };
@@ -66,8 +68,8 @@ export function MyshipConfigForm({ t, onSaved }: { t: T; onSaved?: () => void })
 // SETTINGS-ONLY collapse: once a GM is saved, show a compact one-liner
 // "賣貨便: GM260909… ✓ · Change" instead of the full form; Change expands the
 // SAME MyshipConfigForm inline (saving collapses back). No GM yet → full form,
-// as today. Used ONLY by the Settings card — the Parcel Scan banner embeds the
-// raw form.
+// as today. Used ONLY by the Settings card — the Parcel Scan setup modal embeds
+// the raw form.
 export function MyshipConfigCard({ t }: { t: T }) {
   const [gm, setGm] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -93,55 +95,27 @@ export function MyshipConfigCard({ t }: { t: T }) {
   return <MyshipConfigForm t={t} onSaved={() => { setChanging(false); void reload(); }} />;
 }
 
-// PARCEL SCAN SETUP BANNER (Oct 1 audit H4 — replaces the blocking modal).
-// Parcel Scan is ALWAYS usable; a seller without a 賣貨便 GM just has no
-// store/phone checks (the pending RPC's INNER JOIN on seller_myship_config
-// already skips their rows), so the screen's checkOn is off for them and a
-// dismissible banner offers the setup. States:
-//   enabled=false  → pass-through, config never loaded, no banner, checkOn off
-//   loading        → checkOn on (most allowlisted sellers are configured), no banner
-//   configured     → checkOn on, no banner
-//   missing        → checkOn OFF, banner (unless dismissed this session)
-//   error          → FAIL-OPEN: checkOn on, no banner, nothing blocked
-// Children is a render-prop: (checkOn, banner) → the screen.
-const BANNER_DISMISS_KEY = "sfl_rd_mc_banner_dismissed";
-const readDismissed = (): boolean => {
-  try { return sessionStorage.getItem(BANNER_DISMISS_KEY) === "1"; } catch { return false; }
-};
-export function MyshipScanGate({ t, enabled, children }: {
-  t: T; enabled: boolean; children: (checkOn: boolean, banner: React.ReactNode) => React.ReactNode;
-}) {
-  const [status, setStatus] = useState<"loading" | "missing" | "configured" | "error">("loading");
-  const [dismissed, setDismissed] = useState(readDismissed);
-  const [open, setOpen] = useState(false);
-  useEffect(() => {
-    if (!enabled) return;
-    let live = true;
-    void probeMyshipConfig().then(
-      (s) => { if (live) setStatus(s); },
-      () => { if (live) setStatus("error"); }, // fail-OPEN
-    );
-    return () => { live = false; };
-  }, [enabled]);
-  if (!enabled) return <>{children(false, null)}</>;
-  const checkOn = status !== "missing";
-  const dismiss = () => {
-    setDismissed(true); setOpen(false);
-    try { sessionStorage.setItem(BANNER_DISMISS_KEY, "1"); } catch { /* per-session nicety only */ }
-  };
-  const banner = status === "missing" && !dismissed ? (
-    <div data-testid="mc-banner" role="status" style={{ border: "1px solid var(--border)", background: "var(--surface-2)", borderRadius: 12, padding: "10px 12px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <div style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: "var(--text)" }}>{t.rd_mc_banner}</div>
-        {!open && (
-          <button type="button" data-testid="mc-banner-setup" onClick={() => setOpen(true)} style={{ flexShrink: 0, padding: "6px 12px", borderRadius: 9, border: "none", background: "var(--accent)", color: "#fff", fontWeight: 800, fontSize: 12, cursor: "pointer", fontFamily: "var(--font-ui)" }}>
-            {t.rd_mc_banner_setup}
-          </button>
-        )}
-        <button type="button" data-testid="mc-banner-close" aria-label={t.rd_mc_banner_close} onClick={dismiss} style={{ flexShrink: 0, background: "none", border: "none", color: "var(--text-muted)", fontSize: 16, lineHeight: 1, cursor: "pointer", padding: 4 }}>×</button>
+// MANDATORY SETUP before Parcel Scan (2026-10-01 — replaces the Oct 1 H4
+// dismissible banner). A parcel-check seller with NO seller_myship_config row
+// ("missing") gets a blocking modal BEFORE Parcel Scan opens: no ×, no
+// tap-outside, no Escape — the only exits are a successful save (verified OR
+// unverified → Parcel Scan opens) and Back (stays where they were). FAIL-OPEN:
+// "loading"/"error" never block (Parcel Scan opens as before). The status hook +
+// pure decision live in adapters/myshipStatus.ts.
+export function MyshipSetupModal({ t, onSaved, onBack }: { t: T; onSaved: () => void; onBack: () => void }) {
+  const overlay: React.CSSProperties = { position: "fixed", inset: 0, zIndex: 1300, background: "rgba(9,7,24,.45)", display: "flex", alignItems: "flex-end", justifyContent: "center", padding: 16 };
+  const card: React.CSSProperties = { width: "100%", maxWidth: 440, maxHeight: "calc(100dvh - 32px)", overflowY: "auto", boxSizing: "border-box", background: "var(--surface)", borderRadius: 22, padding: "22px 20px 18px", boxShadow: "0 24px 60px rgba(9,7,24,.5)", fontFamily: "var(--font-ui)", marginBottom: "max(8px, env(safe-area-inset-bottom))" };
+  // NO onClick on the overlay and NO close button — not dismissable into Parcel Scan.
+  return (
+    <div style={overlay} role="dialog" aria-modal="true" aria-label={t.rd_mc_gate_title} data-testid="mc-gate">
+      <div style={card}>
+        <div style={{ fontFamily: "var(--font-display)", fontSize: 19, fontWeight: 700, color: "var(--text)", letterSpacing: "-.01em" }}>{t.rd_mc_gate_title}</div>
+        <p style={{ fontSize: 13.5, color: "var(--text-dim)", margin: "8px 0 16px", lineHeight: 1.5 }}>{t.rd_mc_gate_body}</p>
+        <MyshipConfigForm t={t} onSaved={onSaved} />
+        <button type="button" data-testid="mc-gate-back" onClick={onBack} style={{ display: "block", width: "100%", marginTop: 8, padding: "11px 0", borderRadius: 11, border: "none", background: "transparent", color: "var(--text-dim)", fontWeight: 700, fontSize: 13.5, cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+          {t.rd_mc_gate_back}
+        </button>
       </div>
-      {open && <div style={{ marginTop: 10 }}><MyshipConfigForm t={t} onSaved={() => { setStatus("configured"); setOpen(false); }} /></div>}
     </div>
-  ) : null;
-  return <>{children(checkOn, banner)}</>;
+  );
 }
