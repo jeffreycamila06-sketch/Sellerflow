@@ -54,8 +54,8 @@ const mk = (i: number, over: Partial<ParcelScanRow> = {}): ParcelScanRow => ({
 const many = (n: number, status: ParcelScanRow["status"] = "confirmed") =>
   Array.from({ length: n }, (_, i) => mk(i + 1, { status }));
 
-const view = (props: { manualOnly?: boolean } = {}) =>
-  render(<TProvider lang="en"><ParcelScan cur="NT$" manualOnly={props.manualOnly} /></TProvider>);
+const view = (props: { manualOnly?: boolean; pendingCap?: number } = {}) =>
+  render(<TProvider lang="en"><ParcelScan cur="NT$" manualOnly={props.manualOnly} pendingCap={props.pendingCap} /></TProvider>);
 
 const nav = navigator as unknown as Record<string, unknown>;
 let hadMedia = false;
@@ -174,5 +174,25 @@ describe("Parcel Scan — batch limit (40 pending)", () => {
     expect(norm(getByTestId("ps-batch-n").textContent)).toBe("40/40");
     expect((getByTestId("ps-manual") as HTMLButtonElement).disabled).toBe(true);
     expect(getByTestId("ps-batch-full")).toBeTruthy();
+  });
+});
+
+describe("Parcel Scan — tester cap (pendingCap = 50 for admin + googletest)", () => {
+  it("pendingCap 50 + 40 pending → NOT full: pill 40/50, picker + manual enabled, no banner", async () => {
+    loadRows.current = many(40);
+    const { findByTestId, getByTestId, queryByTestId } = view({ pendingCap: 50 });
+    await findByTestId("ps-batch");
+    expect(norm(getByTestId("ps-batch-n").textContent)).toBe("40/50");
+    expect(queryByTestId("ps-batch-full")).toBeNull();
+    expect((getByTestId("ps-pick") as HTMLButtonElement).disabled).toBe(false);
+    expect((getByTestId("ps-manual") as HTMLButtonElement).disabled).toBe(false);
+  });
+  it("pendingCap 50 + 50 pending → full: pill 50/50, banner names 50", async () => {
+    loadRows.current = many(50);
+    const { findByTestId, getByTestId } = view({ pendingCap: 50 });
+    await findByTestId("ps-batch");
+    expect(norm(getByTestId("ps-batch-n").textContent)).toBe("50/50");
+    expect(getByTestId("ps-batch-full").textContent).toContain("50");
+    expect((getByTestId("ps-manual") as HTMLButtonElement).disabled).toBe(true);
   });
 });

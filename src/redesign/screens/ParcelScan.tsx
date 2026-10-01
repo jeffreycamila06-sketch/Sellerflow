@@ -121,7 +121,9 @@ type ExportClaim = {
 // manualOnly = a paying (non-admin) seller: hide the camera / AI-scan / credits
 // surface entirely (not just disable) and show manual encode + an "AI … coming
 // soon" line. Admins (manualOnly=false) get the full scan surface, no soon line.
-export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = false, checkOn = false, banner = null }: { cur?: string; storeName?: string; manualOnly?: boolean; checkOn?: boolean; banner?: React.ReactNode }) {
+// pendingCap = maxPendingParcels(email, role), computed in RedesignApp (the screen has
+// no auth); defaults to the everyone-cap so standalone renders keep 40.
+export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = false, checkOn = false, banner = null, pendingCap = MAX_PENDING_PARCELS }: { cur?: string; storeName?: string; manualOnly?: boolean; checkOn?: boolean; banner?: React.ReactNode; pendingCap?: number }) {
   const t = useT();
   const fileRef = useRef<HTMLInputElement | null>(null);
   const qrRef = useRef<HTMLInputElement | null>(null);   // "Scan QR" photo input (decodes the buyer @username off the SFL sticker)
@@ -369,7 +371,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
   // new-row Save); EDIT + DELETE stay open. An export clears the queue → gates
   // reopen. exported rows never count.
   const pendingCount = rows.filter((r) => r.status !== "exported").length;
-  const batchFull = pendingCount >= MAX_PENDING_PARCELS;
+  const batchFull = pendingCount >= pendingCap;
   const camActive = !manualOnly && cameraOn && cameraSupported() && !cameraErr && !editing && !manual && !snapshot && phase === "idle" && credits !== 0 && pageVisible && !batchFull;
   useEffect(() => {
     if (!camActive) return;
@@ -983,7 +985,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
             {/* Batch counter — pending / MAX; turns danger at the cap. */}
             <div style={{ flex: 1, padding: "7px 10px", borderRadius: 9, border: `1px solid ${batchFull ? "var(--danger)" : "var(--border-strong)"}`, background: "var(--surface-2)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, minWidth: 0 }} data-testid="ps-batch">
               <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-dim)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.rd_ps2_batch}</span>
-              <span style={{ fontSize: 13, fontWeight: 900, color: batchFull ? "var(--danger)" : "var(--text)", fontFamily: mono, flexShrink: 0 }} data-testid="ps-batch-n">{pendingCount} / {MAX_PENDING_PARCELS}</span>
+              <span style={{ fontSize: 13, fontWeight: 900, color: batchFull ? "var(--danger)" : "var(--text)", fontFamily: mono, flexShrink: 0 }} data-testid="ps-batch-n">{pendingCount} / {pendingCap}</span>
             </div>
           </div>
         )}
@@ -993,7 +995,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
             delete of existing rows stay open. */}
         {batchFull && (
           <div style={{ ...card, borderColor: "var(--danger)", background: "var(--danger-soft, rgba(220,38,38,.08))" }} data-testid="ps-batch-full">
-            <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--danger)" }}>{tpl(t.rd_ps2_batch_full, { max: String(MAX_PENDING_PARCELS) })}</div>
+            <div style={{ fontSize: 12.5, fontWeight: 800, color: "var(--danger)" }}>{tpl(t.rd_ps2_batch_full, { max: String(pendingCap) })}</div>
           </div>
         )}
 
@@ -1451,7 +1453,7 @@ export default function ParcelScan({ cur = "NT$", storeName = "", manualOnly = f
               style={{ position: "absolute", top: 10, right: 10, zIndex: 6, width: 32, height: 32, borderRadius: 8, border: "none", background: "rgba(0,0,0,.28)", color: "#fff", fontSize: 17, fontWeight: 800, cursor: "pointer", lineHeight: 1 }}
               data-testid="ps-customers-close"
             >✕</button>
-            <CustomerDetails cur={cur} onImported={() => { setCustOpen(false); reloadSaved(); }} />
+            <CustomerDetails cur={cur} pendingCap={pendingCap} onImported={() => { setCustOpen(false); reloadSaved(); }} />
           </div>
         </div>,
         (typeof document !== "undefined" && document.querySelector("[data-redesign]")) || document.body,

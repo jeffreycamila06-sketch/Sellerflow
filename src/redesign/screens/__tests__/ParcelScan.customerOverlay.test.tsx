@@ -54,7 +54,7 @@ const mkCust = (over: Partial<ParcelCustomer> = {}): ParcelCustomer => ({
   id: "c1", phone: "0912345678", name: "Maria", storeId: "266402", notes: "@maria",
   createdAt: "2026-09-08T00:00:00Z", updatedAt: "2026-09-08T00:00:00Z", ...over,
 });
-const view = () => render(<TProvider lang="en"><ParcelScan cur="NT$" /></TProvider>);
+const view = (pendingCap?: number) => render(<TProvider lang="en"><ParcelScan cur="NT$" pendingCap={pendingCap} /></TProvider>);
 const norm = (s: string | null) => (s || "").replace(/\s/g, "");
 
 beforeEach(() => {
@@ -131,6 +131,27 @@ describe("Parcel Scan — Customer Details overlay", () => {
     await waitFor(() => expect(r.getByTestId("cd-import-err").textContent).toContain("Batch full"));
     expect(saveParcelScan).not.toHaveBeenCalled();
     expect(r.getByTestId("ps-customers-overlay")).toBeTruthy(); // stays open
+  });
+
+  it("tester cap flows into the overlay Import: pendingCap 50 + count 40 → imports; count 50 → blocked", async () => {
+    countPending.mockResolvedValue({ ok: true, count: 40 });
+    const r = view(50);
+    await openOverlay(r);
+    fireEvent.click(await r.findByTestId("cd-row-main"));
+    await waitFor(() => expect(r.getByTestId("cd-price")).toBeTruthy());
+    fireEvent.change(r.getByTestId("cd-price"), { target: { value: "100" } });
+    fireEvent.click(r.getByTestId("cd-import"));
+    await waitFor(() => expect(saveParcelScan).toHaveBeenCalledTimes(1));
+    r.unmount(); saveParcelScan.mockClear();
+    countPending.mockResolvedValue({ ok: true, count: 50 });
+    const r2 = view(50);
+    await openOverlay(r2);
+    fireEvent.click(await r2.findByTestId("cd-row-main"));
+    await waitFor(() => expect(r2.getByTestId("cd-price")).toBeTruthy());
+    fireEvent.change(r2.getByTestId("cd-price"), { target: { value: "100" } });
+    fireEvent.click(r2.getByTestId("cd-import"));
+    await waitFor(() => expect(r2.getByTestId("cd-import-err").textContent).toContain("50"));
+    expect(saveParcelScan).not.toHaveBeenCalled();
   });
 
   it("below-minimum price is rejected in the overlay too (no bypass, no save)", async () => {

@@ -241,6 +241,14 @@ export const MAX_PARCEL_TOTAL = SHIP_MAX_TOTAL;
 // clears the queue; EDIT and DELETE of existing rows stay open so wrong store
 // codes / prices can still be fixed. Pending = rows whose status !== "exported".
 export const MAX_PENDING_PARCELS = 40;
+// Testers (admin + googletest) get a bigger batch; everyone else stays at 40.
+export const MAX_PENDING_PARCELS_TESTER = 50;
+const PARCEL_CAP_TESTER_EMAILS = ["googletest@gmail.com", "googletest@sellerflowlive.com"];
+export function maxPendingParcels(email?: string | null, role?: string | null): number {
+  if (String(role || "").trim().toLowerCase() === "admin") return MAX_PENDING_PARCELS_TESTER;
+  const e = String(email || "").trim().toLowerCase();
+  return PARCEL_CAP_TESTER_EMAILS.includes(e) ? MAX_PENDING_PARCELS_TESTER : MAX_PENDING_PARCELS;
+}
 
 export interface ScanFormState { name: string; phone: string; store: string; amount: string; notes: string }
 
