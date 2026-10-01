@@ -30,7 +30,8 @@ type EditForm = { name: string; phone: string; store: string; notes: string };
 // shows a toast + resets, staying on the screen). When Parcel Scan embeds this
 // as an overlay it passes onImported so a successful import can close the overlay
 // and refresh the parent's Saved list + Batch count. Absent → byte-identical.
-export default function CustomerDetails({ cur = "NT$", onImported }: { cur?: string; onImported?: () => void }) {
+// pendingCap = maxPendingParcels(email, role) from RedesignApp / ParcelScan; default 40.
+export default function CustomerDetails({ cur = "NT$", onImported, pendingCap = MAX_PENDING_PARCELS }: { cur?: string; onImported?: () => void; pendingCap?: number }) {
   const t = useT();
 
   const [query, setQuery] = useState("");
@@ -139,7 +140,7 @@ export default function CustomerDetails({ cur = "NT$", onImported }: { cur?: str
     try {
       const cnt = await countPendingParcels();
       if (!cnt.ok) { setImportErr(t.rd_cd_import_err); return; }
-      if (cnt.count >= MAX_PENDING_PARCELS) { setImportErr(tpl(t.rd_ps2_batch_full, { max: String(MAX_PENDING_PARCELS) })); return; }
+      if (cnt.count >= pendingCap) { setImportErr(tpl(t.rd_ps2_batch_full, { max: String(pendingCap) })); return; }
       const r = await saveParcelScan(
         { name: c.name || null, phone: c.phone || null, store_id: c.storeId || null, amount: Number(price), notes: noHandle ? "" : handle.trim() },
         null,

@@ -27,7 +27,7 @@ import Shipping from "./screens/Shipping";
 import ParcelScan from "./screens/ParcelScan";
 import CustomerDetails from "./screens/CustomerDetails";
 import ParcelTracking from "./screens/ParcelTracking";
-import { parcelScanVisible, loadParcelManualEnabled, canUseStickerQr } from "./adapters/parcelScan";
+import { parcelScanVisible, loadParcelManualEnabled, canUseStickerQr, maxPendingParcels } from "./adapters/parcelScan";
 import { effectiveMarket, marketHides, marketHidesShipping, marketFor, type ViewAs } from "./adapters/market";
 import { buildPinComment, isActionablePin, shouldSkipPin, pinPrintAllowed, type PinPayload } from "./adapters/pinToPrint";
 import { parcelCheckAllowed } from "./adapters/parcelCheck";
@@ -211,6 +211,8 @@ export default function RedesignApp() {
   // MULTI-SELLER 賣貨便 CHECK (2026-09-27): the Settings config card — dogfood
   // allowlist + admins, TW market only (rides the parcelScan market gate).
   const parcelCheckOn = parcelCheckAllowed(auth.profile?.email, auth.profile?.role) && !hideParcelScan;
+  // Parcel Scan pending-batch cap: 50 for admin + googletest, 40 for everyone else.
+  const parcelPendingCap = maxPendingParcels(auth.profile?.email, auth.profile?.role);
   // MANDATORY 賣貨便 setup before Parcel Scan (2026-10-01): probed once per user;
   // only a definite "missing" blocks (loading/error fail OPEN). openParcelScan is
   // the ONE entry into the screen (test-pinned), so every route gets the rule.
@@ -1919,9 +1921,9 @@ export default function RedesignApp() {
           {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} buyers={liveSession.session.buyers} storeName={printShopName} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
           {screen === "shipping" && !hideShipping && <Shipping cur={cur} buyers={liveSession.session.buyers} sessionKey={sessionKeyFor(liveSession.dayId, sessionWindow.windowStart, sessionWindow.windowDays)} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}
           {screen === "parcelscan" && parcelAllowed && (
-            <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} checkOn={parcelCheckOn && myshipStatus !== "missing"} />
+            <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} checkOn={parcelCheckOn && myshipStatus !== "missing"} pendingCap={parcelPendingCap} />
           )}
-          {screen === "customerdetails" && parcelAllowed && <CustomerDetails cur={cur} />}
+          {screen === "customerdetails" && parcelAllowed && <CustomerDetails cur={cur} pendingCap={parcelPendingCap} />}
           {screen === "parceltracking" && parcelTrackingAllowed && <ParcelTracking />}
           {screen === "customerdata" && <CustomerData onLegal={() => setScreen("legal")} cur={cur} customers={customersData.state === "live" ? customersData.customers : []} onExport={customersData.state === "live" ? exportCustomers : undefined} />}
           {screen === "legal" && <Legal />}
