@@ -24,8 +24,8 @@ beforeEach(() => {
 });
 
 describe("pure status helpers", () => {
-  it("btStatusFrom: connected only when bridge + saved printer", () => {
-    expect(btStatusFrom(true, { address: "x" })).toBe("connected");
+  it("btStatusFrom: 'saved' (never 'connected') when bridge + saved printer — a saved printer is not a live link", () => {
+    expect(btStatusFrom(true, { address: "x" })).toBe("saved");
     expect(btStatusFrom(true, null)).toBe("disconnected");
     expect(btStatusFrom(false, { address: "x" })).toBe("disconnected"); // no bridge
   });
@@ -48,11 +48,11 @@ describe("usePrinterStatus — read-on-open", () => {
     expect(H.lan).not.toHaveBeenCalled();
   });
 
-  it("BT saved/bonded → connected", async () => {
+  it("BT saved/bonded → saved (not connected)", async () => {
     H.hasBt = true;
     H.bt.mockResolvedValue({ savedPrinter: { address: "AA:BB", name: "AIMO D520BT" } });
     const { result } = renderHook(() => usePrinterStatus(true));
-    await waitFor(() => expect(result.current.bt).toBe("connected"));
+    await waitFor(() => expect(result.current.bt).toBe("saved"));
   });
 
   it("BT bridge but no saved printer → disconnected", async () => {

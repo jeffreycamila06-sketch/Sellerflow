@@ -104,6 +104,8 @@ import { isAdminRole } from "../lib/roles";
 import UpdateModal from "./components/UpdateModal";
 import ExpiryModal from "./components/ExpiryModal";
 import PrinterModal from "./components/PrinterModal";
+import BtOffModal from "./components/BtOffModal";
+import { useBtOffModal } from "./adapters/btOff";
 import PrinterGuideModal from "./components/PrinterGuideModal";
 import { currentNativePlatform, readBinaryBuild, shouldShowUpdate, wasDismissed, markDismissed, storeUrlFor, bridgeBuildNumber, isUpdatePreview, IOS_BLE_BUILD, type NativePlatform, type NativeVersionConfig } from "./adapters/nativeVersion";
 import { computeExpiryTier, wasExpiryDismissed, markExpiryDismissed, previewExpiryTier, type ExpiryTier } from "./adapters/planExpiryModal";
@@ -755,8 +757,13 @@ export default function RedesignApp() {
   }, [authed, auth.profile?.authUserId]);
   const screenRef = useRef(screen);
   useEffect(() => { screenRef.current = screen; }, [screen]); // ref write in an effect (react-hooks/refs)
+  const btOff = useBtOffModal();
+  const reportBtOff = btOff.report; // stable (refs only) — safe in the once-registered handler
   useEffect(() => {
     setNativePrintFailureHandler(({ code, message, via }) => {
+      // Phone Bluetooth OFF (order sticker / reprint / Test Print) → ONE simple
+      // modal per burst, on every screen. Display-only: the order is already saved.
+      if (reportBtOff(code, message)) return true;
       if (!isPrinterNotSetup(code, message)) return false; // other codes keep their legacy path
       // Consume (suppress the legacy alert) but don't nag while they're setting up.
       if (screenRef.current === "printersettings" || screenRef.current === "printpattern") return true;
@@ -764,7 +771,7 @@ export default function RedesignApp() {
       return true;
     });
     return () => setNativePrintFailureHandler(null);
-  }, []);
+  }, [reportBtOff]);
 
   // WEB print queue outcomes (laptop). A failed job → badge its order row (mapped
   // via orderNum → comment id). Kiosk hint → a one-time, dismissible setup notice
@@ -2117,6 +2124,7 @@ export default function RedesignApp() {
             onBack={() => setMyshipSetupOpen(false)}
           />
         )}
+        {btOff.open && <BtOffModal onClose={btOff.close} />}
         {printerModal && (
           <PrinterModal
             /* Land on the CHOICE (Settings with the printer picker open), NOT on a

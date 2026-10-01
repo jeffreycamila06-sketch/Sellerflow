@@ -261,8 +261,8 @@ export default function GeneralSettings({
   const printerSlotIdx = Math.min(Math.max(printerIdx, 0), printerSlots.length - 1);
   const printer = printerSlots[printerSlotIdx];
   const slotState = (i: number): PrinterConnState => (i === 0 ? printerStatus.lan : printerStatus.bt);
-  const stateLabel = (s: PrinterConnState): string => (s === "connected" ? t.rd_ps_connected : s === "checking" ? t.rd_ps_checking : t.rd_ps_disconnected);
-  const stateColor = (s: PrinterConnState): string => (s === "connected" ? "var(--ok)" : s === "checking" ? "var(--warn)" : "var(--text-muted)");
+  const stateLabel = (s: PrinterConnState): string => (s === "connected" ? t.rd_ps_connected : s === "saved" ? t.rd_ps_bt_saved_state : s === "checking" ? t.rd_ps_checking : t.rd_ps_disconnected);
+  const stateColor = (s: PrinterConnState): string => (s === "connected" || s === "saved" ? "var(--ok)" : s === "checking" ? "var(--warn)" : "var(--text-muted)");
 
   // ── Channels card = clean DISPLAY (A). Each row shows the platform, first saved
   // account handle, and live connection status; tapping opens the Manage screen (C),
