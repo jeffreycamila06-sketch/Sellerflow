@@ -49,7 +49,13 @@ describe("DOGFOOD GATE — exact allowlist (NO budgetukay* prefix this time, del
       "sanggalanglhea@gmail.com", // Lhey — added 2026-09-28
       "h0kmming@yahoo.com.tw", // added 2026-09-28 (h + zero, not letter O)
       "details2ndserve@gmail.com", // added 2026-09-29
+      "chungmaychilleann@gmail.com", "choletrada1022@gmail.com", // added 2026-10-01
+      "bertongpatag@gmail.com", "jaszhu127@gmail.com",           // added 2026-10-01
     ]);
+    for (const e of ["chungmaychilleann@gmail.com", "choletrada1022@gmail.com", "bertongpatag@gmail.com", "jaszhu127@gmail.com"]) {
+      expect(parcelCheckAllowed(e, "seller"), e).toBe(true);
+      expect(parcelCheckAllowed(`  ${e.toUpperCase()} `, "seller"), e).toBe(true); // case/space-insensitive
+    }
     // Still allowlist-only (not public). budgetukay5 remains OFF; ukaydaily1 +
     // sanggalanglhea (Lhey) are ON. Non-allowlisted sellers = byte-unchanged Parcel Scan.
     expect(parcelCheckAllowed("sanggalanglhea@gmail.com", "seller")).toBe(true); // now allowed
@@ -299,7 +305,7 @@ describe("app wiring pins", () => {
     expect(app).toContain("parcelCheckOn={parcelCheckOn && parcelAllowed}");
   });
 
-  it("ONE save-flow source: Settings card + Parcel Scan banner both render the shared MyshipConfigForm; the flow lives only in MyshipSetup.tsx", () => {
+  it("ONE save-flow source: Settings card + Parcel Scan setup modal both render the shared MyshipConfigForm; the flow lives only in MyshipSetup.tsx", () => {
     const shared = readFileSync("src/redesign/components/MyshipSetup.tsx", "utf8");
     // audit MEDIUM-3 pin (moved here with the form): a save that isn't verified
     // must CLEAR shop_name/verified_at so a changed GM never keeps the old badge;
@@ -309,11 +315,12 @@ describe("app wiring pins", () => {
     const gs = readFileSync("src/redesign/screens/GeneralSettings.tsx", "utf8");
     expect(gs).toContain("<MyshipConfigCard t={t} />"); // Settings-only collapse wrapper (renders the shared form)
     expect(gs).not.toContain("validateGm("); // no second copy of the flow
-    // BANNER wiring (H4): ParcelScan mounts inside the gate (render-prop), enabled
-    // by the same allowlist+market flag; its checkOn comes FROM the gate
+    // MANDATORY SETUP wiring (2026-10-01): the status hook is enabled by the same
+    // allowlist+market flag; ParcelScan's checkOn derives from it; the setup modal
+    // embeds the shared form
     const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
-    expect(app).toContain("<MyshipScanGate t={tApp} enabled={parcelCheckOn}>");
-    expect(app).toContain("checkOn={checkOn} banner={banner}");
-    expect(app.indexOf("<MyshipScanGate")).toBeLessThan(app.indexOf("<ParcelScan cur={cur}"));
+    expect(app).toContain("useMyshipStatus(parcelCheckOn, auth.profile?.authUserId)");
+    expect(app).toContain('checkOn={parcelCheckOn && myshipStatus !== "missing"}');
+    expect(shared).toContain("<MyshipConfigForm t={t} onSaved={onSaved} />");
   });
 });

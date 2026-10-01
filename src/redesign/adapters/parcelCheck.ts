@@ -19,6 +19,10 @@ export const PARCEL_CHECK_PREVIEW_EMAILS: string[] = [
   "sanggalanglhea@gmail.com",      // Lhey — added 2026-09-28
   "h0kmming@yahoo.com.tw",         // added 2026-09-28 (h + zero, not letter O)
   "details2ndserve@gmail.com",     // added 2026-09-29
+  "chungmaychilleann@gmail.com",   // added 2026-10-01
+  "choletrada1022@gmail.com",      // added 2026-10-01
+  "bertongpatag@gmail.com",        // added 2026-10-01
+  "jaszhu127@gmail.com",           // added 2026-10-01
 ];
 export function parcelCheckAllowed(email: string | undefined | null, role?: string | null): boolean {
   if (PARCEL_CHECK_PUBLIC) return true;
