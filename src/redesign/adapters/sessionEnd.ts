@@ -37,3 +37,12 @@ export function sessionEndLabel(startedAtIso: string, windowDays: number, lang: 
   try { return new Intl.DateTimeFormat(lang, opts).format(ms); }
   catch { try { return new Intl.DateTimeFormat("en", opts).format(ms); } catch { return ""; } }
 }
+
+// "Session ended" idle state: the SERVER says the session's window has passed
+// (session_status().running = false → UseSessionInstance.ended) AND the seller is not
+// connected to any live. Then the dashboard shows "Session ended" + an empty board
+// (orders are never touched — the Orders/Sales tabs still show them). While connected,
+// an ended session keeps today's "Session continues …" board until disconnect/reopen.
+export function sessionEndedIdle(ended: boolean, live: boolean): boolean {
+  return ended && !live;
+}

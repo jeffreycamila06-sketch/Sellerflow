@@ -152,6 +152,7 @@ export function useSessionInstance(enabled: boolean): UseSessionInstance {
       if (error || !data) return null;
       const id = String(data);
       setId(id);
+      setEnded(false); // a session the server just started/returned is running, by definition
       // Populate the header-indicator fields NOW so "Session ends: {date}" renders
       // immediately, without waiting for a refresh (bug fix). Read the SERVER values
       // back — start_session stamped session_started_at with server now() and
@@ -207,6 +208,11 @@ export function useSessionInstance(enabled: boolean): UseSessionInstance {
   // ended; it never touches numbering or the feed load. Skips until a session exists.
   const dayId = useTaipeiDayId();
   useEffect(() => { if (idRef.current) void checkStatus(); }, [dayId, checkStatus]);
+  // App open: once the mount read has a session id, ask the SERVER whether it is still
+  // running (never the device clock) so an already-ended session shows as ended right
+  // away instead of only after the next Taipei day rollover. Read-only; an RPC error
+  // keeps ended=false (statusFallback) → nothing is hidden on a failed read.
+  useEffect(() => { if (loaded && idRef.current) void checkStatus(); }, [loaded, checkStatus]);
 
   return { currentSessionId, sessionStartedAt, sessionWindowDays, ended, loaded, ensureLoaded, checkStatus, startSession, endSession };
 }

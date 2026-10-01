@@ -138,7 +138,7 @@ export default function Dashboard({
   printed, entId, entPrice, onOneClick, onOpenEnt, onEntPrice, onEntKey,
   onEntSubmit,
   viewers = null,
-  sessionEndsAt = null, sessionEnded = false, sessionV2Owner = false, onEndSession,
+  sessionEndsAt = null, sessionEnded = false, sessionEndedIdle = false, sessionV2Owner = false, onEndSession,
   historyReady = false,
   notPrinted = {},
   onReprint,
@@ -228,6 +228,9 @@ export default function Dashboard({
   // server-Taipei end label ("Aug 22, 11:59 PM") or null (no session → nothing);
   // sessionEnded = server says the window passed while still live → "continues …".
   sessionEndsAt?: string | null; sessionEnded?: boolean;
+  // Server says the session has ended AND the seller isn't connected → "Session ended"
+  // pill + an empty board with a "tap Connect" note (the parent passes an empty session).
+  sessionEndedIdle?: boolean;
   // Session V2 (owner-only): render the "End Session" control next to the indicator.
   // Default false / undefined → nothing extra renders (every other seller unchanged).
   sessionV2Owner?: boolean; onEndSession?: () => void;
@@ -373,7 +376,11 @@ export default function Dashboard({
               button (same pill size/radius). Every other seller keeps the unchanged
               "Session ends {date}" / "continues …" indicator. */}
           {sessionEndsAt && (
-            sessionV2Owner && onEndSession ? (
+            sessionEndedIdle ? (
+              <span data-testid="session-ended" style={{ background: "rgba(255,255,255,.18)", padding: "6px 10px", borderRadius: 9, fontSize: 12, fontWeight: 700, color: "var(--on-header)", whiteSpace: "nowrap", flexShrink: 0 }}>
+                {t.rd_ses_ended}
+              </span>
+            ) : sessionV2Owner && onEndSession ? (
               <button data-testid="session-end-btn" onClick={onEndSession} className="sfl-anim-endpulse" style={{ background: "#D64545", border: "none", padding: "6px 10px", borderRadius: 9, fontSize: 12, fontWeight: 800, color: "#fff", whiteSpace: "nowrap", flexShrink: 0, cursor: "pointer" }}>
                 {t.rd_os_end}
               </button>
@@ -571,7 +578,17 @@ export default function Dashboard({
         {sessionState === "loading" && (
           <div style={{ fontSize: 12, color: "var(--text-muted)", padding: "0 2px 9px" }}>{t.rd_dash_loading_session}</div>
         )}
-        {summary.orders > 0 && (
+        {sessionEndedIdle && (
+          <div data-testid="session-ended-empty" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 13, padding: "10px 13px", marginBottom: 11, boxShadow: "var(--shadow)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".04em", color: "var(--text-muted)", background: "var(--surface-2)", padding: "4px 9px", borderRadius: 7 }}>{t.rd_ses_ended}</span>
+              <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{summary.buyers} {t.rd_dash_buyers} · {summary.orders} {t.rd_cus_orders_suffix}</span>
+              <span style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 14, fontWeight: 700, color: "var(--text)" }}>{cur}{summary.total.toLocaleString("en-US")}</span>
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6, lineHeight: 1.45 }}>{t.rd_ses_ended_empty}</div>
+          </div>
+        )}
+        {!sessionEndedIdle && summary.orders > 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: 10, background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 13, padding: "10px 13px", marginBottom: 11, boxShadow: "var(--shadow)" }}>
             <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: ".04em", color: "var(--accent-fg)", background: "var(--accent-soft)", padding: "4px 9px", borderRadius: 7 }}>{t.rd_dash_today_badge}</span>
             <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)" }}>{summary.buyers} {t.rd_dash_buyers} · {summary.orders} {t.rd_cus_orders_suffix}</span>
