@@ -479,6 +479,21 @@ const pcBackoff = new Map(); // parcel_scans id → { storeFails, storeNextAt, p
 function pcBackoffDelay(fails) {
   return PC_BACKOFF_MS[Math.min(Math.max(1, fails), PC_BACKOFF_MS.length) - 1];
 }
+// 1.14.9 — PHONE half only: a token-GET TIMEOUT / NETWORK error (no answer from
+// 7-11 at all — the anon GET hung until our abort) retries on a faster ladder,
+// counted from the END of the failed attempt. Any real 7-11 answer that isn't
+// ok/restricted (rejected / html / redirect / http / bad_json), a POST timeout
+// (7-11 may have processed it), a missing tab or a config problem keeps the slow
+// ladder above. Store / E-Map timing is untouched.
+const PC_PHONE_FAST_BACKOFF_MS = [5 * 1000, 10 * 1000, 20 * 1000, 60 * 1000, 2 * 60 * 1000]; // after failure 1 / 2 / 3 / 4 / 5+ (cap = the old max)
+const PC_PHONE_TOKEN_RETRY_FAILS = 2; // the in-attempt immediate token retry only while phoneFails < 2
+function pcPhoneFastKind(kind) { return kind === "timeout" || kind === "network"; }
+// no answer at all (GET or POST) → pause that shop's other rows for this pass
+function pcPhoneNoAnswer(kind) { return pcPhoneFastKind(kind) || kind === "post_timeout" || kind === "post_network"; }
+function pcPhoneBackoffDelay(fails, kind) {
+  if (!pcPhoneFastKind(kind)) return pcBackoffDelay(fails);
+  return PC_PHONE_FAST_BACKOFF_MS[Math.min(Math.max(1, fails), PC_PHONE_FAST_BACKOFF_MS.length) - 1];
+}
 // PURE: hour of day in Asia/Taipei (UTC+8, no daylight saving) — independent of
 // the laptop's own time zone.
 function pcTaipeiHour(nowMs) {
@@ -798,6 +813,11 @@ async function pcPollMulti() {
   const now = Date.now(); const inMaint = pcInMaintenance(now);
   for (const [id, b] of pcBackoff) if (now - b.seenAt > PC_REQUEUE_SINCE_MS) pcBackoff.delete(id); // forget rows gone for 6 h
   let processed = 0;
+  // 1.14.9: after a phone check gets NO answer this pass, that shop's (GM's) other
+  // rows wait for the next pass; once TWO different shops got no answer, 7-11 itself
+  // looks stalled → every remaining phone half waits. Bounds a stall to ≤ 2 hung
+  // attempts per pass without one stuck shop holding up the other sellers.
+  const stalledGms = new Set();
   for (const row of rows) {
     if (processed >= PC_LIMIT) break;
     if (!row || !row.id || pcInFlight.has(row.id)) continue;
@@ -807,7 +827,8 @@ async function pcPollMulti() {
     // 1.14.7: a half runs only when its tab exists — a missing/expired E-Map or myship
     // tab must not let untouchable rows use up every slot (that froze all sellers)
     const doStore = Boolean(row.need_store) && Boolean(emapTabId) && (!bo || now >= bo.storeNextAt);
-    const doPhone = Boolean(row.need_phone) && Boolean(myshipTabId) && (!bo || now >= bo.phoneNextAt);
+    const phoneStalled = stalledGms.size >= 2 || stalledGms.has(String(row.gm_id || ""));
+    const doPhone = Boolean(row.need_phone) && Boolean(myshipTabId) && !phoneStalled && (!bo || Date.now() >= bo.phoneNextAt);
     if (!doStore && !doPhone) continue;
     processed += 1;
     pcInFlight.add(row.id);
@@ -864,8 +885,11 @@ async function pcPollMulti() {
       // the core multi-seller fix (2026-09-27).
       let phoneStatus = null, phoneMessage = null, phoneUntil = null, pTokenMs = null, pPostMs = null;
       if (doPhone && myshipTabId) {
+        const bPrev = pcBackoff.get(row.id);
         const pResp = await pcSendTab(myshipTabId, {
           type: "PC_CHECK_PHONE", row, anon: true,
+          // 1.14.9: one immediate token-GET retry on a timeout — early attempts only, never in maintenance
+          tokenRetry: !inMaint && (!bPrev || bPrev.phoneFails < PC_PHONE_TOKEN_RETRY_FAILS),
           config: { cgdmId: row.gm_id, ordMobile: row.sender_phone },
         });
         if (pResp) { pTokenMs = pResp.tokenMs ?? null; pPostMs = pResp.postMs ?? null; }
@@ -879,12 +903,16 @@ async function pcPollMulti() {
           if (b && b.phoneFails) { b.phoneFails = 0; b.phoneNextAt = 0; console.log(`[PC-BACKOFF] row=${row.id} phone resolved`); }
         } else {
           pcEv.lastPhoneReason = (pResp && pResp.phone_reason) || "myship tab not responding";
+          // kind: timeout / network (no answer) vs rejected / html / redirect / http /
+          // bad_json / config (a real answer or our setup) vs no_tab (tab didn't reply)
+          const kind = pResp ? (pResp.phone_fail_kind || "other") : "no_tab";
+          if (pcPhoneNoAnswer(kind)) stalledGms.add(String(row.gm_id || ""));
           // same backoff, but NEVER given up (audit M1: a missed restricted number must not look checked)
           const b = pcBackoffEntry(row.id, now);
           if (!inMaint) b.phoneFails += 1;
-          const wait = inMaint ? PC_MAINT_RETRY_MS : pcBackoffDelay(b.phoneFails);
-          b.phoneNextAt = now + wait;
-          console.log(`[PC-BACKOFF] row=${row.id} phone attempt=${b.phoneFails}${inMaint ? " maintenance" : ""} next=${wait / 1000}s`);
+          const wait = inMaint ? PC_MAINT_RETRY_MS : pcPhoneBackoffDelay(b.phoneFails, kind);
+          b.phoneNextAt = Date.now() + wait; // from the END of this attempt (a 10 s hang can't eat a 5 s wait)
+          console.log(`[PC-BACKOFF] row=${row.id} phone attempt=${b.phoneFails} reason=${kind} (${pcEv.lastPhoneReason})${inMaint ? " maintenance" : ""} next=${wait / 1000}s`);
         }
       }
       // nothing learned (both halves null) → no verdict write, row retries later

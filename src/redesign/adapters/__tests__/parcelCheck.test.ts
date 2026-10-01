@@ -232,7 +232,7 @@ describe("extension wiring pins (background.js multi-seller path)", () => {
     // 1.14.6: each half runs only when needed AND not in per-row backoff;
     // 1.14.7 (H2): AND only when its tab exists (a missing tab never eats a slot)
     expect(multi).toContain("const doStore = Boolean(row.need_store) && Boolean(emapTabId) && (!bo || now >= bo.storeNextAt);");
-    expect(multi).toContain("const doPhone = Boolean(row.need_phone) && Boolean(myshipTabId) && (!bo || now >= bo.phoneNextAt);");
+    expect(multi).toContain("const doPhone = Boolean(row.need_phone) && Boolean(myshipTabId) && !phoneStalled && (!bo || Date.now() >= bo.phoneNextAt);");
     expect(multi).toContain("if (doStore && emapTabId)");
     expect(multi).toContain("if (doPhone && myshipTabId)");
     expect(multi).toContain("let storeStatus = null;");
@@ -265,9 +265,9 @@ describe("extension wiring pins (background.js multi-seller path)", () => {
     // and the content script honors it end-to-end: omit credentials for BOTH
     // the per-GM token GET and the CheckoutValidation POST
     const ms = readFileSync("chrome-extension/myship-711.js", "utf8");
-    expect(ms).toContain("checkRestricted(message.row, message.config || {}, message.anon === true)");
+    expect(ms).toContain("checkRestricted(message.row, message.config || {}, message.anon === true, message.tokenRetry === true)");
     expect(ms).toContain("const creds = anon ? \"omit\" : \"include\";");
-    expect(ms).toContain("}, \"omit\");"); // anon token GET
+    expect(ms).toContain("}, \"omit\", TOKEN_TIMEOUT_MS);"); // anon token GET (1.14.9: 5 s abort)
     // legacy path stays credentialed (byte-unchanged): the parametrized default
     expect(ms).toContain("credentials: creds || \"include\"");
   });

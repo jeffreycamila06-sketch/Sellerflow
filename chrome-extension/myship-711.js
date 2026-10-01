@@ -13,6 +13,10 @@
   if (window.__sflPcMyshipInjected) return;
   window.__sflPcMyshipInjected = true;
   const TIMEOUT_MS = 10000;
+  // 1.14.9: the ANON token GET is a tiny page (~0.1 s when healthy). Failures in the
+  // field were hangs that only ended at our abort (tokenMs ≈ 10.3 s), so a shorter
+  // abort + ONE immediate retry (timeout/network only) recovers in the same pass.
+  const TOKEN_TIMEOUT_MS = 5000;
   // Real 賣貨便 restriction messages (seen in production, Sep 2026):
   //   "此手機號碼因多次未取紀錄，已被限制使用取貨付款功能，預計YYYY年MM月DD日 才能再次使用取貨付款功能"
   //   "您因多次未取紀錄遭檢舉，暫無法於平台成立訂單，如需了解更多資訊，請瀏覽幫助中心"
@@ -22,9 +26,9 @@
   // logged-in cart) or "omit" (MULTI-SELLER lane — the check must be ANONYMOUS
   // so 7-11 keys the sender restriction on the body ordMobile, NOT whatever
   // account the owner's tab happens to be logged into; probe-proven 2026-09-27).
-  function fetchWithTimeout(url, opts, creds) {
+  function fetchWithTimeout(url, opts, creds, timeoutMs) {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+    const t = setTimeout(() => ctrl.abort(), timeoutMs || TIMEOUT_MS);
     return fetch(url, { credentials: creds || "include", ...opts, signal: ctrl.signal }).finally(() => clearTimeout(t));
   }
 
@@ -41,21 +45,37 @@
     const m = String(html).match(/var\s+tokenID\s*=\s*'([^']+)'/);
     return m ? m[1] : null;
   }
-  async function getVerificationToken(cgdmId, anon) {
+  async function getVerificationToken(cgdmId, anon, retry) {
     // ANON (multi lane): NEVER reuse the on-page token — it was minted under the
     // logged-in session/another GM and, paired with an omit POST, would fail
     // antiforgery. Always GET the ROW's own GM page anonymously to mint a fresh
     // token matched to the anonymous POST that follows (probe-proven).
     if (anon) {
-      if (!cgdmId) return { token: null, source: null, tokenMs: 0 };
+      if (!cgdmId) return { token: null, source: null, tokenMs: 0, failKind: "config" };
       const t0 = Date.now();
-      try {
-        const r = await fetchWithTimeout(`/cart/easy/${encodeURIComponent(cgdmId)}`, { method: "GET" }, "omit");
+      let failKind = "";
+      // at most TWO GETs, and the second only after a timeout / network error —
+      // a real answer (any HTTP status / page) is never retried here
+      // the retry is the worker's call (`retry`): early attempts only — a sustained
+      // stall falls back to one GET per attempt
+      const maxAttempts = retry ? 2 : 1;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        let r;
+        try {
+          r = await fetchWithTimeout(`/cart/easy/${encodeURIComponent(cgdmId)}`, { method: "GET" }, "omit", TOKEN_TIMEOUT_MS);
+        } catch (e) {
+          // ONLY an error from fetch() itself = no answer (timeout / network)
+          failKind = e && e.name === "AbortError" ? "timeout" : "network";
+          continue;
+        }
         const tokenMs = Date.now() - t0;
-        if (!r.ok) return { token: null, source: null, tokenMs };
-        const t = tokenFromHtml(await r.text());
-        return { token: t, source: t ? `anon GET /cart/easy/${cgdmId}` : null, tokenMs };
-      } catch { return { token: null, source: null, tokenMs: Date.now() - t0 }; }
+        if (!r.ok) return { token: null, source: null, tokenMs, failKind: "http", tokenAttempts: attempt };
+        let html = "";
+        try { html = await r.text(); } catch { return { token: null, source: null, tokenMs, failKind: "html", tokenAttempts: attempt }; }
+        const t = tokenFromHtml(html);
+        return { token: t, source: t ? `anon GET /cart/easy/${cgdmId}` : null, tokenMs, failKind: t ? "" : "html", tokenAttempts: attempt };
+      }
+      return { token: null, source: null, tokenMs: Date.now() - t0, failKind, tokenAttempts: maxAttempts };
     }
     const onPage = tokenFromHtml(document.documentElement.innerHTML);
     if (onPage) return { token: onPage, source: "current page", tokenMs: 0 };
@@ -78,15 +98,22 @@
   // Returns { phone_check_status, phone_check_message, phone_restricted_until, phone_reason, tokenMs, postMs }.
   // anon=true (multi lane) → token GET + POST both credential-less; the body
   // ordMobile is then the authoritative sender (login irrelevant).
-  async function checkRestricted(row, config, anon) {
-    if (!/^\d{6}$/.test(String(row.store_id || ""))) return { phone_check_status: "unknown", phone_reason: "store id not 6 digits" };
+  async function checkRestricted(row, config, anon, tokenRetry) {
+    if (!/^\d{6}$/.test(String(row.store_id || ""))) return { phone_check_status: "unknown", phone_reason: "store id not 6 digits", fail_kind: "config" };
     // Cgdm_Id: popup config first; bonus fallback = the hidden input on the cart page.
     const cgdmId = config.cgdmId || (document.getElementById("Cgdm_Id") && document.getElementById("Cgdm_Id").value) || "";
-    if (!cgdmId || !config.ordMobile) return { phone_check_status: "unknown", phone_reason: "Cgdm_Id / seller phone not set in popup config" };
-    const { token, source, tokenMs } = await getVerificationToken(cgdmId, anon);
-    if (!token) return { phone_check_status: "unknown", phone_reason: "tokenID not found — open the 賣場 cart page (/cart/easy/GM...)", tokenMs };
+    if (!cgdmId || !config.ordMobile) return { phone_check_status: "unknown", phone_reason: "Cgdm_Id / seller phone not set in popup config", fail_kind: "config" };
+    const { token, source, tokenMs, failKind, tokenAttempts } = await getVerificationToken(cgdmId, anon, tokenRetry === true);
+    if (!token) {
+      const why = failKind === "timeout" ? `token GET timeout (${TOKEN_TIMEOUT_MS / 1000}s ×${tokenAttempts})`
+        : failKind === "network" ? `token GET network error (×${tokenAttempts})`
+        : failKind === "http" ? "token GET returned an HTTP error"
+        : "tokenID not found — open the 賣場 cart page (/cart/easy/GM...)";
+      return { phone_check_status: "unknown", phone_reason: why, tokenMs, fail_kind: failKind || "html" };
+    }
     const creds = anon ? "omit" : "include";
     const t0 = Date.now();
+    let answered = false; // a response arrived → any later error is a bad answer, not "no answer"
     try {
       const body = new URLSearchParams({
         rcvName: String(row.customer_name || ""), revPhone: "", revMobile: String(row.phone || ""),
@@ -102,11 +129,12 @@
         },
         body,
       }, creds);
+      answered = true;
       const postMs = Date.now() - t0;
-      if (r.status === 302 || r.redirected) return { phone_check_status: "unknown", phone_reason: "CheckoutValidation redirected (session expired?)", tokenMs, postMs };
-      if (!r.ok) return { phone_check_status: "unknown", phone_reason: `CheckoutValidation returned HTTP ${r.status}`, tokenMs, postMs };
+      if (r.status === 302 || r.redirected) return { phone_check_status: "unknown", phone_reason: "CheckoutValidation redirected (session expired?)", tokenMs, postMs, fail_kind: "redirect" };
+      if (!r.ok) return { phone_check_status: "unknown", phone_reason: `CheckoutValidation returned HTTP ${r.status}`, tokenMs, postMs, fail_kind: "http" };
       const ct = r.headers.get("content-type") || "";
-      if (!ct.includes("json")) return { phone_check_status: "unknown", phone_reason: "CheckoutValidation returned HTML, expected JSON (session/token?)", tokenMs, postMs };
+      if (!ct.includes("json")) return { phone_check_status: "unknown", phone_reason: "CheckoutValidation returned HTML, expected JSON (session/token?)", tokenMs, postMs, fail_kind: "html" };
       const j = await r.json();
       if (j && j.Status === true) return { phone_check_status: "ok", phone_reason: "", _tokenSource: source, tokenMs, postMs };
       if (j && j.Status === false) {
@@ -115,7 +143,7 @@
         // any other validation failure (store, name, GM, cart…) is 'unknown' so it is
         // never shown red and never cached for other sellers.
         if (!RESTRICTION_RE.test(msg)) {
-          return { phone_check_status: "unknown", phone_reason: `CheckoutValidation rejected: ${msg.slice(0, 40)}`, tokenMs, postMs };
+          return { phone_check_status: "unknown", phone_reason: `CheckoutValidation rejected: ${msg.slice(0, 40)}`, tokenMs, postMs, fail_kind: "rejected" };
         }
         const m = msg.match(/(\d{4})年(\d{2})月(\d{2})日/);
         return {
@@ -125,10 +153,13 @@
           phone_reason: "", _tokenSource: source, tokenMs, postMs,
         };
       }
-      return { phone_check_status: "unknown", phone_reason: "CheckoutValidation JSON had no Status boolean", tokenMs, postMs };
+      return { phone_check_status: "unknown", phone_reason: "CheckoutValidation JSON had no Status boolean", tokenMs, postMs, fail_kind: "bad_json" };
     } catch (e) {
       const aborted = e && e.name === "AbortError";
-      return { phone_check_status: "unknown", phone_reason: aborted ? "CheckoutValidation timeout (10s)" : "CheckoutValidation network error", tokenMs, postMs: Date.now() - t0 };
+      if (answered) return { phone_check_status: "unknown", phone_reason: "CheckoutValidation returned unreadable JSON", tokenMs, postMs: Date.now() - t0, fail_kind: "bad_json" };
+      // the POST is the real validation hit — never retried here (10 s, unchanged) and,
+      // since 7-11 may have processed it, a POST timeout keeps the SLOW ladder
+      return { phone_check_status: "unknown", phone_reason: aborted ? "CheckoutValidation timeout (10s)" : "CheckoutValidation network error", tokenMs, postMs: Date.now() - t0, fail_kind: aborted ? "post_timeout" : "post_network" };
     }
   }
 
@@ -175,16 +206,17 @@
     if (message?.type === "PC_CLICK_PICK_STORE") { sendResponse(pcClickPickStore()); return true; }
     if (message?.type !== "PC_CHECK_PHONE" || !message.row) return false;
     (async () => {
-      const res = await checkRestricted(message.row, message.config || {}, message.anon === true);
+      const res = await checkRestricted(message.row, message.config || {}, message.anon === true, message.tokenRetry === true);
       sendResponse({
         ok: true,
         phone_check_status: res.phone_check_status,
         phone_check_message: res.phone_check_message ?? null,
         phone_restricted_until: res.phone_restricted_until ?? null,
         phone_reason: res.phone_reason || "",
+        phone_fail_kind: res.fail_kind || "",
         tokenMs: res.tokenMs ?? null, postMs: res.postMs ?? null,
       });
-    })().catch(() => sendResponse({ ok: true, phone_check_status: "unknown", phone_check_message: null, phone_restricted_until: null, phone_reason: "phone check threw" }));
+    })().catch(() => sendResponse({ ok: true, phone_check_status: "unknown", phone_check_message: null, phone_restricted_until: null, phone_reason: "phone check threw", phone_fail_kind: "other" }));
     return true;
   });
 })();

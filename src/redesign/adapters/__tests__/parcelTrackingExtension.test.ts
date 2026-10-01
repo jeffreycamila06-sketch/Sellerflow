@@ -130,7 +130,7 @@ describe("self-heal v1.7.0 — statuses recover without manual tab refreshes", (
   const bg = readFileSync("chrome-extension/background.js", "utf8");
 
   it("manifest 1.7.0 + the scripting permission (re-injection needs it)", () => {
-    expect(manifest.version).toBe("1.14.8"); // 1.14.8 = E-Map "close" → company, "NO2" → not_found (1.14.7 = Oct 1 blockers)
+    expect(manifest.version).toBe("1.14.9"); // 1.14.9 = faster phone retry on token-GET timeouts; 1.14.8 = E-Map "close" → company, "NO2" → not_found (1.14.7 = Oct 1 blockers)
     expect(manifest.permissions).toContain("scripting");
   });
 
