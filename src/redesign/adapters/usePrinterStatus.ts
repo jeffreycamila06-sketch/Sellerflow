@@ -12,12 +12,15 @@ import {
   type BluetoothScanResult,
 } from "./printerBridge";
 
-export type PrinterConnState = "checking" | "connected" | "disconnected";
+// "saved" = a BT printer is saved; NOT a live link (BT connects only at print
+// time, so "connected" claimed a connection that was never checked — e.g. with
+// the phone's Bluetooth OFF). LAN keeps "connected" from its real ping.
+export type PrinterConnState = "checking" | "connected" | "saved" | "disconnected";
 
-// PURE — BT is "connected" when the BT bridge exists AND a printer is saved/bonded
-// (BT Classic/SPP connects at print time, so saved+bonded is the right proxy).
+// PURE — BT is "saved" when the BT bridge exists AND a printer is saved (never
+// "connected": the link is only made at print time).
 export function btStatusFrom(hasBridge: boolean, savedPrinter: unknown): PrinterConnState {
-  return hasBridge && !!savedPrinter ? "connected" : "disconnected";
+  return hasBridge && !!savedPrinter ? "saved" : "disconnected";
 }
 
 // PURE — LAN is "connected" only when the native bridge exists, a host is saved,
