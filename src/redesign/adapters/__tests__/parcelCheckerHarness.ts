@@ -24,6 +24,9 @@ export type BootOpts = {
   emapTabs?: EmapTab[];           // explicit emap tab set (overrides emapTab)
   storeVerdict?: (row?: { id?: string; store_id?: string }) => string; // PC_CHECK_STORE reply (default "open"); gets the checked row
   phoneVerdict?: () => string;    // PC_CHECK_PHONE reply (default "ok")
+  // 1.14.9: full PC_CHECK_PHONE reply — status + fail kind (timeout/network/rejected/…);
+  // null = the myship tab didn't answer. Takes precedence over phoneVerdict.
+  phoneReply?: (row?: { id?: string; gm_id?: string }, msg?: { tokenRetry?: boolean }) => { status: string; kind?: string } | null;
   sflToken?: () => string | null; // SFL_GET_TOKEN reply (default a fresh JWT)
   onSflRefresh?: () => { token?: string | null; hadSession?: boolean | null }; // SFL_REFRESH_TOKEN reply
   now?: () => number;             // injectable clock for Date.now()
@@ -37,7 +40,7 @@ export type BootOpts = {
 
 export function bootWorker(opts: BootOpts = {}) {
   const src = readFileSync("chrome-extension/background.js", "utf8");
-  const calls = { sendMessage: [] as { type: string; tabId: number; rowId?: string }[], fetch: [] as string[], fetchBodies: [] as string[], update: [] as unknown[], reload: [] as number[], removed: [] as number[], logs: [] as string[], scheduled: [] as number[] };
+  const calls = { sendMessage: [] as { type: string; tabId: number; rowId?: string; tokenRetry?: boolean }[], fetch: [] as string[], fetchBodies: [] as string[], update: [] as unknown[], reload: [] as number[], removed: [] as number[], logs: [] as string[], scheduled: [] as number[] };
   const storage: Record<string, unknown> = {
     pc_config: { supabaseUrl: "https://x.supabase.co", supabaseAnonKey: "anon", multiSeller: opts.multiSeller ?? true, maintenanceWindow: opts.maintenance ?? false },
     ...(opts.initialStatus ? { pc_status: opts.initialStatus } : {}),
@@ -59,8 +62,8 @@ export function bootWorker(opts: BootOpts = {}) {
     } },
     tabs: {
       query: (q: { url: string[] | string }, cb: (t: unknown[]) => void) => cb(tabFor(q.url)),
-      sendMessage: (id: number, msg: { type: string; row?: { id?: string; store_id?: string } }, cb: (r: unknown) => void) => {
-        calls.sendMessage.push({ type: msg.type, tabId: id, rowId: msg.row?.id });
+      sendMessage: (id: number, msg: { type: string; row?: { id?: string; store_id?: string; gm_id?: string }; tokenRetry?: boolean }, cb: (r: unknown) => void) => {
+        calls.sendMessage.push({ type: msg.type, tabId: id, rowId: msg.row?.id, tokenRetry: msg.tokenRetry });
         const emap = emapTabs.find((t) => t.id === id);
         if (msg.type === "SFL_GET_TOKEN") return cb({ ok: true, token: opts.sflToken ? opts.sflToken() : fakeJwt() });
         if (msg.type === "SFL_REFRESH_TOKEN") { const r = opts.onSflRefresh ? opts.onSflRefresh() : { token: fakeJwt(), hadSession: true }; return cb({ ok: true, token: r.token ?? null, hadSession: r.hadSession === undefined ? null : r.hadSession }); }
@@ -73,6 +76,11 @@ export function bootWorker(opts: BootOpts = {}) {
         if (msg.type === "PC_CHECK_STORE") {
           const v = emap && emap.guid ? (opts.storeVerdict ? opts.storeVerdict(msg.row) : "open") : "unknown";
           return cb({ ok: true, store_full_status: v, store_reason: v === "unknown" ? "eshopGuid not found on emap page" : "", guidFound: Boolean(emap && emap.guid), transient: Boolean(opts.storeTransient) && v === "unknown" });
+        }
+        if (msg.type === "PC_CHECK_PHONE" && opts.phoneReply) {
+          const r = opts.phoneReply(msg.row, msg);
+          if (!r) return cb(null);
+          return cb({ ok: true, phone_check_status: r.status, phone_check_message: null, phone_restricted_until: null, phone_reason: r.status === "unknown" ? `sim ${r.kind}` : "", phone_fail_kind: r.kind || "", tokenMs: 100, postMs: 90 });
         }
         if (msg.type === "PC_CHECK_PHONE") {
           const v = opts.phoneVerdict ? opts.phoneVerdict() : "ok";
