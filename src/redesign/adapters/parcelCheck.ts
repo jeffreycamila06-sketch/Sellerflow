@@ -23,6 +23,7 @@ export const PARCEL_CHECK_PREVIEW_EMAILS: string[] = [
   "choletrada1022@gmail.com",      // added 2026-10-01
   "bertongpatag@gmail.com",        // added 2026-10-01
   "jaszhu127@gmail.com",           // added 2026-10-01
+  "ganggang0958@yahoo.com",        // Now & Wow Closet — added 2026-10-01
 ];
 export function parcelCheckAllowed(email: string | undefined | null, role?: string | null): boolean {
   if (PARCEL_CHECK_PUBLIC) return true;
