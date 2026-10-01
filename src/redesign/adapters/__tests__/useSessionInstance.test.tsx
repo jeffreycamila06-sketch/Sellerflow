@@ -114,6 +114,7 @@ describe("useSessionInstance", () => {
 describe("endSession (E2 — owner-gated caller)", () => {
   it("calls end_session() and clears currentSessionId (next Start → #1)", async () => {
     maybeSingleMock.mockResolvedValueOnce({ data: { current_session_id: "sid-live" }, error: null });
+    rpcMock.mockResolvedValueOnce({ data: [{ running: true, session_id: "sid-live" }], error: null }); // app-open session_status
     rpcMock.mockResolvedValueOnce({ error: null }); // end_session ok
     const { result } = renderHook(() => useSessionInstance(true));
     await waitFor(() => expect(result.current.currentSessionId).toBe("sid-live"));
@@ -127,7 +128,8 @@ describe("endSession (E2 — owner-gated caller)", () => {
 
   it("RPC error → false, session id preserved (no partial clear)", async () => {
     maybeSingleMock.mockResolvedValueOnce({ data: { current_session_id: "sid-live" }, error: null });
-    rpcMock.mockResolvedValueOnce({ error: { message: "network" } });
+    rpcMock.mockResolvedValueOnce({ data: [{ running: true, session_id: "sid-live" }], error: null }); // app-open session_status
+    rpcMock.mockResolvedValueOnce({ error: { message: "network" } }); // end_session fails
     const { result } = renderHook(() => useSessionInstance(true));
     await waitFor(() => expect(result.current.currentSessionId).toBe("sid-live"));
     let ok: boolean | undefined;
@@ -238,5 +240,48 @@ describe("startSession populates the indicator fields immediately (bug fix — n
     expect(result.current.currentSessionId).toBe("sid-new2");
     // Indicator fields simply stay null (wait for the next mount read) — no crash, no reset.
     expect(result.current.sessionStartedAt).toBeNull();
+  });
+});
+
+// "Session ended" on app open — the server is asked once the mount read has an id.
+describe("app-open ended check (server-authoritative)", () => {
+  it("mount with a session id → asks session_status once; running=false → ended=true", async () => {
+    maybeSingleMock.mockResolvedValueOnce({ data: { current_session_id: "sid-old", session_started_at: "2026-09-26T02:00:00Z", session_window_days: 1 }, error: null });
+    rpcMock.mockResolvedValueOnce({ data: [{ running: false, session_id: "sid-old" }], error: null });
+    const { result } = renderHook(() => useSessionInstance(true));
+    await waitFor(() => expect(result.current.ended).toBe(true));
+    expect(rpcMock).toHaveBeenCalledTimes(1);
+    expect(rpcMock).toHaveBeenCalledWith("session_status");
+    expect(result.current.currentSessionId).toBe("sid-old"); // nothing cleared or rewritten
+  });
+  it("running session → ended stays false", async () => {
+    maybeSingleMock.mockResolvedValueOnce({ data: { current_session_id: "sid-live" }, error: null });
+    rpcMock.mockResolvedValueOnce({ data: [{ running: true, session_id: "sid-live" }], error: null });
+    const { result } = renderHook(() => useSessionInstance(true));
+    await waitFor(() => expect(rpcMock).toHaveBeenCalledTimes(1));
+    expect(result.current.ended).toBe(false);
+  });
+  it("RPC error → statusFallback: ended stays false (no wipe on a failed read)", async () => {
+    maybeSingleMock.mockResolvedValueOnce({ data: { current_session_id: "sid-old" }, error: null });
+    rpcMock.mockResolvedValueOnce({ data: null, error: { message: "network" } });
+    const { result } = renderHook(() => useSessionInstance(true));
+    await waitFor(() => expect(rpcMock).toHaveBeenCalledTimes(1));
+    expect(result.current.ended).toBe(false);
+    expect(result.current.currentSessionId).toBe("sid-old");
+  });
+  it("no session id → no RPC at all", async () => {
+    const { result } = renderHook(() => useSessionInstance(true));
+    await waitFor(() => expect(result.current.loaded).toBe(true));
+    expect(rpcMock).not.toHaveBeenCalled();
+  });
+  it("Connect after an ended session: startSession clears ended (the new session is running)", async () => {
+    maybeSingleMock.mockResolvedValueOnce({ data: { current_session_id: "sid-old" }, error: null });
+    rpcMock.mockResolvedValueOnce({ data: [{ running: false, session_id: "sid-old" }], error: null });
+    const { result } = renderHook(() => useSessionInstance(true));
+    await waitFor(() => expect(result.current.ended).toBe(true));
+    rpcMock.mockResolvedValueOnce({ data: "sid-new", error: null });
+    await act(async () => { await result.current.startSession(1, "TikTok"); });
+    expect(result.current.currentSessionId).toBe("sid-new");
+    expect(result.current.ended).toBe(false);
   });
 });

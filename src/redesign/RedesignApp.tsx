@@ -56,7 +56,8 @@ import { useBusinessPulse } from "./adapters/useBusinessPulse";
 import { useAnnouncements } from "./adapters/useAnnouncements";
 import { useLiveSession } from "./adapters/useLiveSession";
 import { useSessionInstance } from "./adapters/useSessionInstance";
-import { sessionEndLabel } from "./adapters/sessionEnd";
+import { sessionEndLabel, sessionEndedIdle } from "./adapters/sessionEnd";
+import type { RebuiltSession } from "../lib/orderLogic";
 import SessionPickerModal from "./components/SessionPickerModal";
 import OwnerSessionModal from "./components/OwnerSessionModal";
 import EndSessionConfirm from "./components/EndSessionConfirm";
@@ -163,6 +164,9 @@ function readJSON<T>(k: string, fallback: T): T {
 }
 const ACCENT_KEYS: AccentKey[] = ["indigo", "violet", "emerald", "rose", "sky", "amber"];
 const safeAccent = (v: string): AccentKey => (ACCENT_KEYS.includes(v as AccentKey) ? (v as AccentKey) : "indigo");
+
+// Empty board for the "Session ended" idle dashboard (display-only; nothing is deleted).
+const ENDED_EMPTY_SESSION: RebuiltSession = { buyers: [], orders: [] };
 
 export default function RedesignApp() {
   // Phase 5a — REAL auth (adapter composes the supabase singleton + getMyProfile).
@@ -1009,6 +1013,10 @@ export default function RedesignApp() {
   const ttEff = ttConnected && !ttOff;
   const fbEff = fbConnected && !fbOff;
   const shopeeEff = liveFeed.shopeeConnected && !shopeeOff;
+  // Ended session + not connected → the dashboard shows "Session ended" and an empty
+  // board (display-only: the session's orders stay loaded for the Orders tab, never
+  // modified). Connected → today's behavior ("Session continues …").
+  const sessionIdleEnded = sessionEndedIdle(sessionInstance.ended, ttEff || fbEff || shopeeEff);
   // ── Option E — Live Source (owner-gated). ONE active source at a time. The new
   // single "Live source" button + sheet REPLACE the 3 chips for the owner only;
   // everyone else keeps the classic 3-chip header (liveSourceMode false → unchanged).
@@ -1786,7 +1794,8 @@ export default function RedesignApp() {
               onReprint={onReprint}
               onOneClick={onOneClick} onOpenEnt={onOpenEnt}
               onEntPrice={(v) => setEntPrice(v.replace(/[^0-9]/g, ""))} onEntKey={onEntKey} onEntSubmit={submitEnt}
-              session={liveSession.session} sessionState={liveSession.state}
+              session={sessionIdleEnded ? ENDED_EMPTY_SESSION : liveSession.session} sessionState={sessionIdleEnded ? "empty" : liveSession.state}
+              sessionEndedIdle={sessionIdleEnded}
               canInject={liveFeed.canInject} onInjectSynthetic={liveFeed.injectSynthetic}
               announcement={ann.latest} annDismissedId={ann.dismissedId} onDismissAnn={ann.dismiss}
               annUnread={ann.unread} onOpenAnn={() => { setAnnOpen(true); if (ann.list[0]) ann.markSeen(ann.list[0].id); }}
