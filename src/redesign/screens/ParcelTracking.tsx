@@ -15,7 +15,7 @@
 // action otherwise (no SHOPMORE tracking link exists, so there is no Track button).
 // "no username" parcels stay visible in their tab. "All" also keeps the non-chaseable
 // / not-yet-updated rows (the old "Other" bucket) so nothing disappears.
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { headerBar, headerTitle, card, mono } from "../ui";
 import { useT, tpl } from "../i18n";
 import { taipeiDayId } from "../../lib/dateHelpers";
@@ -27,6 +27,7 @@ import {
   type ParcelTrackingRow, type ParcelGroups, type PickupTab,
   loadTrackingStatus, requestCheck, checkButtonState, isStale, urgentEligible, formatTaipei, CHECK_POLL_MS,
   type TrackingStatus, type TrackingJob, type CheckResult,
+  loadBuyerNamesByHandle, normHandle,
 } from "../adapters/parcelTracking";
 import { isIOS } from "../adapters/platform";
 import { isAppShell, isNarrowViewport } from "../adapters/appShell";
@@ -121,9 +122,18 @@ function ChaseAction({ row, t, onCopy }: { row: ParcelTrackingRow; t: T; onCopy:
   );
 }
 
-function Buyer({ row, t, nowMs }: { row: ParcelTrackingRow; t: T; nowMs: number }) {
+// buyerName (from Customer Details, matched on the handle) is DISPLAY ONLY: name on
+// top, @handle under it. No match → exactly the @handle-only rendering. Chase / Copy /
+// Open profile never see it (they read buyerUsername).
+function Buyer({ row, t, nowMs, buyerName }: { row: ParcelTrackingRow; t: T; nowMs: number; buyerName?: string }) {
   const name = String(row.buyerUsername ?? "").trim();
-  const label = name
+  const handle = name.replace(/^@+/, "");
+  const label = name && buyerName
+    ? <>
+        <span data-testid="pt-buyer-name" style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", ...ellipsis, display: "block" }} title={buyerName}>{buyerName}</span>
+        <span style={{ fontSize: 11.5, fontWeight: 600, color: "var(--text-muted)", ...ellipsis, display: "block" }} title={`@${handle}`}>@{handle}</span>
+      </>
+    : name
     ? <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", ...ellipsis, display: "block" }} title={`@${name.replace(/^@+/, "")}`}>@{name.replace(/^@+/, "")}</span>
     : <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-muted)", fontStyle: "italic", ...ellipsis, display: "block" }}>{t.rd_pt_no_username}</span>;
   if (!isStale(row, nowMs)) return label;
@@ -160,7 +170,7 @@ function Tabs({ tab, counts, onPick, t }: { tab: PickupTab; counts: Record<Picku
 }
 
 // WEB — aligned table (table-layout: fixed). Buyer · Store · Parcel (mono, muted) · Left · action.
-function Table({ rows, today, t, onCopy, nowMs }: { rows: ParcelTrackingRow[]; today: string; t: T; onCopy: (h: string) => void; nowMs: number }) {
+function Table({ rows, today, t, onCopy, nowMs, names }: { rows: ParcelTrackingRow[]; today: string; t: T; onCopy: (h: string) => void; nowMs: number; names: Map<string, string> }) {
   const th: CSSProperties = { textAlign: "left", fontSize: 11, fontWeight: 700, color: "var(--text-muted)", padding: "10px 10px 8px", textTransform: "uppercase", letterSpacing: ".04em", ...ellipsis };
   const td: CSSProperties = { padding: "10px", borderTop: "1px solid var(--border)", verticalAlign: "middle", overflow: "hidden" };
   return (
@@ -181,7 +191,7 @@ function Table({ rows, today, t, onCopy, nowMs }: { rows: ParcelTrackingRow[]; t
         <tbody>
           {rows.map((r) => (
             <tr key={r.id} data-testid="pt-row">
-              <td style={td}><Buyer row={r} t={t} nowMs={nowMs} /></td>
+              <td style={td}><Buyer row={r} t={t} nowMs={nowMs} buyerName={names.get(normHandle(r.buyerUsername))} /></td>
               <td style={td}><span style={{ fontSize: 12.5, color: "var(--text)", ...ellipsis, display: "block" }} title={storeOf(r)}>{storeOf(r)}</span></td>
               <td style={td}><span style={{ fontFamily: mono, fontSize: 12, color: "var(--text-muted)", ...ellipsis, display: "block" }} title={r.trackingNo} data-testid="pt-code">{r.trackingNo}</span></td>
               <td style={td}><LeftText row={r} today={today} t={t} /></td>
@@ -216,13 +226,13 @@ function Cards({ tab, counts, onPick, t }: { tab: PickupTab; counts: Record<Pick
 }
 
 // MOBILE — compact rows: Buyer + Store (two lines) · Left · action. No parcel code.
-function CompactList({ rows, today, t, onCopy, nowMs }: { rows: ParcelTrackingRow[]; today: string; t: T; onCopy: (h: string) => void; nowMs: number }) {
+function CompactList({ rows, today, t, onCopy, nowMs, names }: { rows: ParcelTrackingRow[]; today: string; t: T; onCopy: (h: string) => void; nowMs: number; names: Map<string, string> }) {
   return (
     <div style={{ ...card, padding: 0, overflow: "hidden" }} data-testid="pt-list">
       {rows.map((r, i) => (
         <div key={r.id} data-testid="pt-row" style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderTop: i ? "1px solid var(--border)" : "none" }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <Buyer row={r} t={t} nowMs={nowMs} />
+            <Buyer row={r} t={t} nowMs={nowMs} buyerName={names.get(normHandle(r.buyerUsername))} />
             <div style={{ fontSize: 11.5, color: "var(--text-dim)", marginTop: 2, ...ellipsis }}>{storeOf(r)}</div>
           </div>
           <div style={{ flexShrink: 0, maxWidth: "34%", textAlign: "right" }}><LeftText row={r} today={today} t={t} /></div>
@@ -319,7 +329,19 @@ export default function ParcelTracking() {
     setGroups(groupParcels(next, today));
     setTotals(nextTotals);
   };
+  // Buyer NAMES from Customer Details — fetched AFTER the rows (never blocks them),
+  // re-read whenever the visible handles change and on every refresh / Sync (load()).
+  const [names, setNames] = useState<Map<string, string>>(() => new Map());
+  const [namesNonce, setNamesNonce] = useState(0);
+  const handlesKey = useMemo(() => [...new Set(rows.map((r) => normHandle(r.buyerUsername)).filter(Boolean))].sort().join("\n"), [rows]);
+  useEffect(() => {
+    if (!handlesKey) return;
+    let live = true;
+    void loadBuyerNamesByHandle(handlesKey.split("\n")).then((m) => { if (live) setNames(m); }, () => { /* fail open: no names */ });
+    return () => { live = false; };
+  }, [handlesKey, namesNonce]);
   async function load() {
+    setNamesNonce((x) => x + 1);
     setState("loading");
     const res = await loadParcelTracking();
     if (!res.ok) { setState("error"); return; }
@@ -525,12 +547,12 @@ export default function ParcelTracking() {
                 return narrow
                   ? <div data-testid="pt-mobile">
                       <Cards tab={tab} counts={counts} onPick={setTab} t={t} />
-                      {tabList.length ? <CompactList rows={tabList} today={today} t={t} onCopy={onCopy} nowMs={nowMs} /> : emptyTab}
+                      {tabList.length ? <CompactList rows={tabList} today={today} t={t} onCopy={onCopy} nowMs={nowMs} names={names} /> : emptyTab}
                       {more}
                     </div>
                   : <div data-testid="pt-web">
                       <Tabs tab={tab} counts={counts} onPick={setTab} t={t} />
-                      {tabList.length ? <Table rows={tabList} today={today} t={t} onCopy={onCopy} nowMs={nowMs} /> : emptyTab}
+                      {tabList.length ? <Table rows={tabList} today={today} t={t} onCopy={onCopy} nowMs={nowMs} names={names} /> : emptyTab}
                       {more}
                     </div>;
               })()

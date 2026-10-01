@@ -349,6 +349,50 @@ async function uid(): Promise<string | null> {
   return data.session?.user?.id ?? null;
 }
 
+// ── Buyer NAME from Customer Details (display only) ──────────────────────────
+// Pickup Status shows only the @handle; the same seller's Customer Details
+// (parcel_customers) already holds the buyer's name under the same handle (notes).
+// Match client-side. PURE key: zero-width chars dropped, trimmed, leading @(s)
+// stripped, lower-cased — the handle half of chaseTarget's cleaning, nothing more
+// (no IG/LINE/FB tag stripping). "" = no key.
+export function normHandle(handle: string | null | undefined): string {
+  return String(handle ?? "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .trim()
+    .replace(/^@+/, "")
+    .toLowerCase();
+}
+export const BUYER_NAMES_CHUNK = 500;
+export const BUYER_NAMES_MAX = 2000;
+let buyerNamesCapLogged = false;
+// The seller's own parcel_customers rows that have notes (500 per page, stop at
+// 2,000) → Map<normHandle, name> for the requested handles. ANY error → an empty
+// Map (fail open: the screen renders exactly as without names). Never written to.
+export async function loadBuyerNamesByHandle(handles: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  const wanted = new Set(handles.map(normHandle).filter(Boolean));
+  if (!wanted.size || !isSupabaseConfigured || !supabase) return out;
+  try {
+    const me = await uid();
+    if (!me) return out;
+    for (let off = 0; off < BUYER_NAMES_MAX; off += BUYER_NAMES_CHUNK) {
+      const { data, error } = await supabase.from("parcel_customers").select("notes, name")
+        .eq("user_id", me).not("notes", "is", null).neq("notes", "")
+        .order("id", { ascending: true }).range(off, off + BUYER_NAMES_CHUNK - 1);
+      if (error) return new Map();
+      const page = (data ?? []) as { notes?: string | null; name?: string | null }[];
+      for (const c of page) {
+        const k = normHandle(c.notes);
+        const name = String(c.name ?? "").trim();
+        if (k && name && wanted.has(k) && !out.has(k)) out.set(k, name); // first non-empty name wins
+      }
+      if (page.length < BUYER_NAMES_CHUNK) return out;
+    }
+    if (!buyerNamesCapLogged) { buyerNamesCapLogged = true; console.warn(`[pickup] buyer names: stopped at ${BUYER_NAMES_MAX} customer rows`); }
+    return out;
+  } catch { return new Map(); }
+}
+
 export const PARCEL_TRACKING_PAGE = 500;
 export const PT_SELECT = "id, tracking_no, cm_order_no, buyer_username, recipient_name, store_id, rec_store, status, status_message, pickup_deadline, arrived_at, ship_type, special_type, terminal, last_polled_at";
 
