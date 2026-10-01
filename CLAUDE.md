@@ -4381,3 +4381,92 @@ Full audit (D1–D10) → ONE clean version. Worker (`chrome-extension/backgroun
   (tiles/trend/ranking/search/buyer-tap/loading/empty/error/3-month note). ONE merge —
   nav swap + real data together; the static mockup on `claude/sales-tab-mockup` was
   never shipped.
+
+## SESSION 2026-09-29 → 10-01 — PRIVACY/RETENTION · STICKER V2 (gated) · PARCEL CHECK 1.14.6→1.14.9 · PICKUP STATUS ACCESS · BT-OFF · BATCH CAP 50
+- **Privacy Policy rewrite** (merge `8090f99`, Sep 29): Flive-length policy (~250 words),
+  zero "how it works" wording, contact = jeffreycamila06@gmail.com everywhere (the old
+  privacy@sellerflowlive.app never existed). `/delete-account/` cleaned (no phone, steps =
+  Sign in → Settings → Delete Account → confirm) and `/data-deletion/` live. Retention
+  made TRUE by `sql/65_privacy_retention_purge.sql` (APPLIED; pg_cron daily 01:10 Taipei):
+  orders 3-month purge, parcel_scans 90d after export, parcel_tracking 7d picked_up /
+  365d returned. No "encrypted backups" claim (free tier, no backups).
+- **Session ended + not connected** (merge `a0eb572`, Oct 1): `sessionEndedIdle(ended,
+  live)` — when the session has ended and no platform is connected, the Live screen shows
+  the "Session ended" pill and an EMPTY board (fleet-wide; Jeff: "mawala total").
+- **Sticker v2 — GATED** (merge `2efc0ca` Sep 30 + `6e7d98a` Oct 1): new LIVE sticker
+  layout (C+: CJK 2×pm, Latin font "3" at 2×pm, normal-shape comment glyphs, mixed-script
+  runs). Gate `stickerV2Allowed(email, role)` in adapters/printing.ts = admin +
+  `STICKER_V2_PREVIEW_EMAILS` (cristycabanas34, ronaldgantiga77, tincabanas13,
+  googletest@gmail.com); `STICKER_LAYOUT_V2_PUBLIC=false`. v2 users see a "COMMENT / PRICE"
+  placeholder in preview + test sticker; everyone else keeps "PRICE" byte-identical.
+  Chinese sample removed from the LIVE print pattern. Public flip = one constant.
+- **Parcel Check (multi-seller 賣貨便 check) — allowlist + mandatory shop link** (merge
+  `14a1d7c` Oct 1, `cf93a9d` Oct 1): `PARCEL_CHECK_PREVIEW_EMAILS` in
+  adapters/parcelCheck.ts now = googletest ×2, ukaydaily1, sanggalanglhea, h0kmming,
+  details2ndserve, chungmaychilleann, choletrada1022, bertongpatag, jaszhu127,
+  ganggang0958@yahoo.com; `PARCEL_CHECK_PUBLIC=false`. ⚠️ The test
+  `__tests__/parcelCheck.test.ts` pins the EXACT list — adding an email = edit both.
+  NEW `MyshipSetupModal` (components/MyshipSetup.tsx) + `useMyshipStatus` /
+  `mustSetupBeforeScan` (adapters/myshipStatus.ts): a Parcel Check seller with NO
+  seller_myship_config gm_id gets a blocking setup modal on Parcel Scan tap (paste the
+  myship.7-11.com.tw/cart/easy/GM… link); loading/error FAIL OPEN, only a definite
+  "missing" blocks. `openParcelScan` is the single entry (test-pinned).
+- **Extension 1.14.6 → 1.14.9** (merges incl. `35da1ef` Oct 1; sql/66, 67, 68 APPLIED):
+  1.14.6 = E-Map backoff/give-up + 01:00–05:00 Taipei maintenance window + shared
+  `store_check_cache`; 1.14.7/1.14.8 = pre-opening fixes + E-Map "company not found"
+  verdicts; **1.14.9 = phone-check latency fix** — root cause was the SFL token GET
+  hanging to its 10s timeout then a slow backoff (NOT 7-11 rejecting us). Now: token GET
+  5s timeout + one immediate retry (first 2 attempts); timeout/network retry ladder
+  5/10/20/60/120s; real 7-11 answers keep 15/30/60/120s; `stalledGms` guard so one stalled
+  shop can't block other sellers; `[PC-BACKOFF]` logs the reason. VERIFIED Oct 1 (DB
+  `phone_check_at - created_at`, 161 parcels, 4 sellers): median ~3s, p95 <20s, worst
+  111s; store check ~2s. Heartbeat lives in `app_settings.parcel_check_worker_state`
+  (v, bootAt, queue, lastPhoneVerdictAt…). Extension zip: `cd ~/Sellerflow && zip -r
+  ~/Desktop/chrome-extension.zip chrome-extension` → USB → Windows → chrome://extensions
+  Reload. ONE extension (Jeff's laptop) checks for ALL sellers — single point of failure.
+  OPEN: prove the 01–05 requeue (bertongpatag's 01:04 parcels were checked ~12:35 = 11.5h);
+  `store_full_at` sometimes NEGATIVE vs created_at (stamp overwritten on recheck?) — read-only
+  question, not urgent.
+- **Pickup Status (Parcel Tracking) access = DB table, no deploy**: `parcel_tracking_access`
+  (user_id, enabled, note, last_manual_check_at, last_manual_check_day, last_completed_at).
+  Add a seller = one INSERT … ON CONFLICT (user_id) DO UPDATE SET enabled=true. Also needs
+  Plus/Pro/Master active + TW market. Seller must FULL-CLOSE + reopen the app to see it
+  (Oct 1 lesson: "ok na pala, di lang nila nirerefresh"). Allowlist Oct 1: camilajeffrey1,
+  googletest, details2ndserve, bertongpatag, choletrada1022, ganggang0958 (Plus until
+  Oct 31). Admin "renew Check now" for a tester = `UPDATE parcel_tracking_access SET
+  last_manual_check_at=NULL, last_manual_check_day=NULL WHERE user_id=…` (same as the
+  `parcel_tracking_refund_press` RPC). `parcel_tracking_request_check` enforces once/day
+  manual + urgent-only-when-deadline≤tomorrow.
+- **Bluetooth-off modal** (merge `f52bf3b` Oct 1): printer label says "Saved" not
+  "Connected" (a saved pairing ≠ a live link); `BtOffModal` + `useBtOffModal` /
+  `isBluetoothOff` — ONE simple modal per 15s burst when prints fail with Bluetooth off,
+  Bluetooth icon, instruction only (NO deep link to Settings — Jeff: "instruction lang").
+- **Parcel Scan pending-batch cap 50 for testers** (merge `60152b5` Oct 1):
+  `MAX_PENDING_PARCELS=40` unchanged (everyone); `MAX_PENDING_PARCELS_TESTER=50` +
+  `maxPendingParcels(email, role)` (admin or googletest ×2 → 50). RedesignApp computes
+  `parcelPendingCap` once and passes `pendingCap` to ParcelScan + CustomerDetails (and the
+  CustomerDetails overlay inside ParcelScan). Screens default to 40 when no prop. Cap is
+  FRONTEND-ONLY (no DB/RPC enforcement).
+- **Session V2 (owner trial, Sep 21, merge `b3938d9`; sql/43+44 APPLIED)**: Start/End
+  7-day session UI gated to `SESSION_V2_EMAILS` (camilajeffrey1 only; adapters/sessionV2.ts);
+  `seller_session_config.session_ended_at` + `end_session()` RPC; `session_status()` gained
+  "and session_ended_at is null" (proven no-op fleet-wide). Side effect accepted:
+  live_session_orders retention 8→10 days GLOBALLY (pg_cron job 1). Fleet rollout BLOCKED
+  on the shipping re-key (sessionKeyFor still keys on the Taipei day) + Jeff's video.
+- 🐛 **KNOWN (not fixed, Oct 1)**: (1) **Disconnect is phone-only** — both Disconnect
+  paths in RedesignApp are `setTtOff(true)` (code comment: "the redesign has no server
+  unbind"); server.js has NO TikTok disconnect route (only /fb/disconnect, /shopee/
+  disconnect), so the server keeps the TikTok connection until streamEnd/re-Connect/kick,
+  the socket keeps delivering comments, and the Auto Mode handler (`autoCommentRef`) gates
+  only on `autoDetect`, not `ttOff` → with Auto Mode ON, orders can still be created after
+  Disconnect while the TikTok live is still running. Fix plan (NOT built, Jeff wants a
+  controlled test first): A) frontend — skip auto-orders when `ttOff`; B) server — new
+  POST /api/tiktok/disconnect calling `disconnectTikTokConnection(key, {manual:true})`,
+  Render deploy in the 04:30–06:00 window + comment-delivery audit. (2) Cherry's order
+  NT$12,000,120 (Sep 24 09:42) needs correcting. (3) Outdated copy: in-app guide (NT$500,
+  Wise, 100 orders that reset, old FB token flow, no Plus), landing ("returns to free tier",
+  "connect once"), raw error codes (plan_expired…) on Android/web.
+- **Cleanup Oct 1**: 7 merged branches deleted on GitHub + ~130 merged local branches on
+  the Mac; 60+ squash-merged `claude/*` remotes still on GitHub (not provably merged by
+  git — delete only after a per-branch check). CANCELLED by Jeff Oct 1: Flive-style
+  "Session History" (comment replay) — do not re-raise.
