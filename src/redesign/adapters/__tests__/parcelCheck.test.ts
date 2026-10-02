@@ -52,8 +52,9 @@ describe("DOGFOOD GATE — exact allowlist (NO budgetukay* prefix this time, del
       "chungmaychilleann@gmail.com", "choletrada1022@gmail.com", // added 2026-10-01
       "bertongpatag@gmail.com", "jaszhu127@gmail.com",           // added 2026-10-01
       "ganggang0958@yahoo.com", // added 2026-10-01
+      "jinkyrosepenana@gmail.com", "karenbaltazar040789@gmail.com", "basaomenchie6@gmail.com", // added 2026-10-02
     ]);
-    for (const e of ["chungmaychilleann@gmail.com", "choletrada1022@gmail.com", "bertongpatag@gmail.com", "jaszhu127@gmail.com", "ganggang0958@yahoo.com"]) {
+    for (const e of ["chungmaychilleann@gmail.com", "choletrada1022@gmail.com", "bertongpatag@gmail.com", "jaszhu127@gmail.com", "ganggang0958@yahoo.com", "jinkyrosepenana@gmail.com", "karenbaltazar040789@gmail.com", "basaomenchie6@gmail.com"]) {
       expect(parcelCheckAllowed(e, "seller"), e).toBe(true);
       expect(parcelCheckAllowed(`  ${e.toUpperCase()} `, "seller"), e).toBe(true); // case/space-insensitive
     }
