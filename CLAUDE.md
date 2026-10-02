@@ -4470,3 +4470,15 @@ Full audit (D1–D10) → ONE clean version. Worker (`chrome-extension/backgroun
   the Mac; 60+ squash-merged `claude/*` remotes still on GitHub (not provably merged by
   git — delete only after a per-branch check). CANCELLED by Jeff Oct 1: Flive-style
   "Session History" (comment replay) — do not re-raise.
+
+## 2026-10-03 — PARCEL CHECK ACCESS = SQL-ONLY (no shop link from sellers)
+- Sellers no longer paste a 賣貨便 shop link. The mandatory setup modal, the Settings shop-link
+  card and the client config helpers were removed (branch `parcel-check-no-shop-link`).
+- Access = the DB table `parcel_check_access` (RPC `parcel_check_can_use()`, admins always true)
+  OR the hardcoded `PARCEL_CHECK_PREVIEW_EMAILS` allowlist (kept as-is), TW market only.
+  **Add a seller = one INSERT into `parcel_check_access` — no deploy.** Seller must full-close
+  + reopen the app to see it.
+- Every phone check runs on one of the OWNER's shops from the shared pool
+  `app_settings.parcel_check_shared_gms` (sql/70, applied live 2026-10-03; repo mirror only).
+- **Rollback:** `update app_settings set value='[]' where key='parcel_check_shared_gms';` →
+  the worker falls back to each seller's own saved link (only sellers who saved one get checked).

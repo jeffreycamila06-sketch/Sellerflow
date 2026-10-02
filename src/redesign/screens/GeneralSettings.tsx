@@ -6,14 +6,13 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { ACCENT_ORDER, ACCENTS, LANGS, CURRENCIES, CURRENCY_ORDER, type ThemeMode, type AccentKey, type AutoControls } from "../data";
 import { headerBar, headerTitle, card, sectionLabel } from "../ui";
-import { MyshipConfigCard } from "../components/MyshipSetup";
 import { profileToDisplay, planLabel, renewLabel } from "../adapters/useAuthSession";
 import { validatePhone, DEFAULT_COUNTRY } from "../adapters/phone";
 import { normalizeSamePrice, canEnableSamePrice } from "../adapters/useSamePrice";
 import LiveSettingModal from "../components/LiveSettingModal";
 import CountryPhoneField from "../components/CountryPhoneField";
 import type { AccountUser } from "../../accountDb";
-import { useT, tpl, type RedesignT } from "../i18n";
+import { useT, tpl } from "../i18n";
 import { accountList } from "../adapters/connect";
 import ChannelsList, { type ManageChan } from "../components/ChannelsList";
 
@@ -54,20 +53,6 @@ function LsToggle({ on, title, testId, onClick }: { on: boolean; title: string; 
   );
 }
 
-// MULTI-SELLER CHECK (2026-09-27) — the seller's own 賣貨便 GM id + phone.
-// Mounted only for allowlisted TW sellers (parcelCheckOn prop). Save flow:
-// parse GM (link or bare id) → validate phone → upsert config → THEN try the
-// Render GM validation (verify-OPTIONAL: unreachable saves anyway with an
-// honest unverified note — a 7-11/Render hiccup never blocks dogfood).
-function MyshipCheckCard({ t }: { t: RedesignT }) {
-  return (
-    <div style={{ marginTop: 14 }}>
-      <div className="sfl-anim-textglow" style={sectionLabel}>{t.rd_mc_title}</div>
-      <div style={card}><MyshipConfigCard t={t} /></div>
-    </div>
-  );
-}
-
 export default function GeneralSettings({
   theme, accent, onSetTheme, onSetAccent,
   auto, lang, onSetLang, currency, onSetCurrency,
@@ -76,7 +61,7 @@ export default function GeneralSettings({
   onSubscription, onSupport, onDelete,
   account = null, onSaveProfile, onManageChannel,
   channelsV2 = false, onOpenChannel, channelsInfo,
-  keepAwake = true, onToggleKeepAwake, pinPrint = false, onTogglePinPrint, parcelCheckOn = false,
+  keepAwake = true, onToggleKeepAwake, pinPrint = false, onTogglePinPrint,
   liveSessionOpen, onToggleLiveSession,
   cur = "NT$", samePriceEnabled = false, samePrice = null, onSetSamePriceEnabled, samePriceError = 0,
   onToast,
@@ -112,7 +97,6 @@ export default function GeneralSettings({
   // Live-session toggles turned OFF show a bottom toast (RedesignApp's global toast).
   onToast?: (msg: string) => void;
   pinPrint?: boolean; onTogglePinPrint?: () => void; // PIN-TO-PRINT — per-device, default OFF
-  parcelCheckOn?: boolean; // multi-seller 賣貨便 check config card (allowlist + TW market, from RedesignApp)
   // Motion kill switch — pause looping animations (display toggle; RedesignApp
   // sets [data-motion] on the root). One-shot entrances stay.
   motionOn?: boolean; onToggleMotion?: () => void;
@@ -416,9 +400,6 @@ export default function GeneralSettings({
             </LiveSettingModal>
           )}
         </div>
-
-        {/* MULTI-SELLER 賣貨便 CHECK — allowlisted TW sellers only (dogfood; PARCEL_CHECK_PUBLIC flips it public) */}
-        {parcelCheckOn && <MyshipCheckCard t={t} />}
 
         {/* APPEARANCE — real theme + accent control */}
         <div>

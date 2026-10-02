@@ -30,9 +30,7 @@ import ParcelTracking from "./screens/ParcelTracking";
 import { parcelScanVisible, loadParcelManualEnabled, canUseStickerQr, maxPendingParcels } from "./adapters/parcelScan";
 import { effectiveMarket, marketHides, marketHidesShipping, marketFor, type ViewAs } from "./adapters/market";
 import { buildPinComment, isActionablePin, shouldSkipPin, pinPrintAllowed, type PinPayload } from "./adapters/pinToPrint";
-import { parcelCheckAllowed } from "./adapters/parcelCheck";
-import { MyshipSetupModal } from "./components/MyshipSetup";
-import { useMyshipStatus, mustSetupBeforeScan } from "./adapters/myshipStatus";
+import { parcelCheckGate, loadParcelCheckAccess } from "./adapters/parcelCheck";
 import { parcelTrackingVisible, loadParcelTrackingAccess } from "./adapters/parcelTracking";
 import CustomerData from "./screens/CustomerData";
 import Legal from "./screens/Legal";
@@ -208,20 +206,26 @@ export default function RedesignApp() {
   const hidePickup = marketHides("pickupStatus", market);
   const hideStickerQr = marketHides("stickerQr", market);
   const hideShipping = marketHidesShipping(market); // gates the SettingsHub tile, the Orders 🚚 button AND the screen render
-  // MULTI-SELLER 賣貨便 CHECK (2026-09-27): the Settings config card — dogfood
-  // allowlist + admins, TW market only (rides the parcelScan market gate).
-  const parcelCheckOn = parcelCheckAllowed(auth.profile?.email, auth.profile?.role) && !hideParcelScan;
+  // MULTI-SELLER 賣貨便 CHECK — access = hardcoded allowlist OR the DB list
+  // (parcel_check_access via parcel_check_can_use, sql/70), TW market only. No shop
+  // link from the seller anymore (shared owner pool). The DB answer is loaded once per
+  // signed-in user and KEYED by authUserId, so a sign-in switch never reuses the
+  // previous user's answer; fail-closed (false until it loads true).
+  const pcUserId = auth.profile?.authUserId ?? "";
+  const [pcAccess, setPcAccess] = useState<{ uid: string; on: boolean } | null>(null);
+  useEffect(() => {
+    if (!authed || !pcUserId) return;
+    let alive = true;
+    void loadParcelCheckAccess().then((on) => { if (alive) setPcAccess({ uid: pcUserId, on }); });
+    return () => { alive = false; };
+  }, [authed, pcUserId]);
+  const dbParcelCheckAccess = authed && !!pcUserId && pcAccess?.uid === pcUserId && pcAccess.on;
+  const parcelCheckOn = parcelCheckGate(auth.profile?.email, auth.profile?.role, dbParcelCheckAccess, hideParcelScan);
   // Parcel Scan pending-batch cap: 50 for admin + googletest, 40 for everyone else.
   const parcelPendingCap = maxPendingParcels(auth.profile?.email, auth.profile?.role);
-  // MANDATORY 賣貨便 setup before Parcel Scan (2026-10-01): probed once per user;
-  // only a definite "missing" blocks (loading/error fail OPEN). openParcelScan is
-  // the ONE entry into the screen (test-pinned), so every route gets the rule.
-  const myshipStatus = useMyshipStatus(parcelCheckOn, auth.profile?.authUserId);
-  const [myshipSetupOpen, setMyshipSetupOpen] = useState(false);
-  const openParcelScan = () => {
-    if (mustSetupBeforeScan(parcelCheckOn, myshipStatus)) setMyshipSetupOpen(true);
-    else setScreen("parcelscan");
-  };
+  // The ONE entry into the Parcel Scan screen (test-pinned). No shop-link setup gate
+  // anymore (sql/70 — the checks run on the owner's shared shop pool).
+  const openParcelScan = () => { setScreen("parcelscan"); };
   // "Print QR on sticker" is on ALL plans; only the market gate applies. This gates BOTH
   // the Printer Settings toggle visibility AND (via setStickerQrEntitled) the PRINT-TIME
   // stamp — so a stored toggle off-market never prints a QR. Default is fail-closed.
@@ -1893,7 +1897,6 @@ export default function RedesignApp() {
               cur={cur} samePriceEnabled={samePriceCfg.enabled} samePrice={samePriceCfg.price} onSetSamePriceEnabled={(on, draft) => void samePriceCfg.setEnabled(on, draft)} samePriceError={samePriceCfg.saveErrors}
               /* Live-session toggles turned OFF → bottom toast. */
               onToast={(msg) => setToast({ msg, kind: "ok" })}
-              parcelCheckOn={parcelCheckOn && parcelAllowed}
               motionOn={motionOn} onToggleMotion={toggleMotion}
             />
           )}
@@ -1921,7 +1924,7 @@ export default function RedesignApp() {
           {screen === "print" && <Print onBack={() => setScreen("orders")} cur={cur} buyers={liveSession.session.buyers} storeName={printShopName} settings={buildSettingsFromRedesign({ pp, psType, psOut, psSize })} />}
           {screen === "shipping" && !hideShipping && <Shipping cur={cur} buyers={liveSession.session.buyers} sessionKey={sessionKeyFor(liveSession.dayId, sessionWindow.windowStart, sessionWindow.windowDays)} windowDays={sessionWindow.windowDays} plan={auth.profile?.plan} onUpgrade={ios ? undefined : () => setScreen("subscription")} />}
           {screen === "parcelscan" && parcelAllowed && (
-            <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} checkOn={parcelCheckOn && myshipStatus !== "missing"} pendingCap={parcelPendingCap} />
+            <ParcelScan cur={cur} storeName={auth.profile?.profile.storeName || ""} manualOnly={parcelManualOnly} checkOn={parcelCheckOn} pendingCap={parcelPendingCap} />
           )}
           {screen === "customerdetails" && parcelAllowed && <CustomerDetails cur={cur} pendingCap={parcelPendingCap} />}
           {screen === "parceltracking" && parcelTrackingAllowed && <ParcelTracking />}
@@ -2116,17 +2119,10 @@ export default function RedesignApp() {
           <UpdateModal messageKey={update.messageKey} force={update.force} href={storeUrlFor(update.platform).web} onDismiss={dismissUpdate} onAction={onUpdateTap} />
         )}
 
+        {btOff.open && <BtOffModal onClose={btOff.close} />}
         {/* "No printer connected" — order saved, but nothing printed (no printer
             set up yet). Primary button = the verified deep-link straight to the
             printer setup screen (right tab pre-selected by the failing path). */}
-        {myshipSetupOpen && (
-          <MyshipSetupModal
-            t={tApp}
-            onSaved={() => { setMyshipSetupOpen(false); setScreen("parcelscan"); }}
-            onBack={() => setMyshipSetupOpen(false)}
-          />
-        )}
-        {btOff.open && <BtOffModal onClose={btOff.close} />}
         {printerModal && (
           <PrinterModal
             /* Land on the CHOICE (Settings with the printer picker open), NOT on a

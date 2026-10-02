@@ -2,43 +2,13 @@
 // contract tests. The safety property that anchors everything: EVERY check
 // uses the parcel OWNER's own GM (attribution), enforced structurally in the
 // pending RPC's INNER JOIN and pinned here at every layer.
+// ⚠️ 2026-10-03 (sql/70): superseded — sellers no longer save a shop link; the
+// live pending RPC uses the owner's shared pool + parcel_check_access. The sql/53
+// pins below guard that historical file as committed.
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { parseGmId, validOrdMobile, parcelCheckAllowed, PARCEL_CHECK_PUBLIC, PARCEL_CHECK_PREVIEW_EMAILS } from "../parcelCheck";
+import { parcelCheckAllowed, PARCEL_CHECK_PUBLIC, PARCEL_CHECK_PREVIEW_EMAILS } from "../parcelCheck";
 import { parseGmPage, validGmShape } from "../../../../server/myshipValidate.js";
-
-describe("parseGmId — shop link OR bare id", () => {
-  it("accepts the real link shapes and bare ids, canonical uppercase", () => {
-    for (const inp of [
-      "https://myship.7-11.com.tw/cart/easy/GM2609096099718",
-      "http://myship.7-11.com.tw/cart/easy/GM2609096099718#",
-      "myship.7-11.com.tw/cart/easy/GM2609096099718?x=1",
-      "GM2609096099718", "gm2609096099718", "  GM2609096099718  ",
-    ]) expect(parseGmId(inp), inp).toBe("GM2609096099718");
-  });
-  it("rejects garbage, non-myship URLs carrying a GM-shaped id, and empties", () => {
-    expect(parseGmId("")).toBeNull();
-    expect(parseGmId(null)).toBeNull();
-    expect(parseGmId("hello")).toBeNull();
-    expect(parseGmId("GM123")).toBeNull(); // too short
-    expect(parseGmId("https://evil.example.com/GM2609096099718")).toBeNull(); // wrong host
-    // audit MEDIUM-1: host text inside another site's PATH must not pass —
-    // the hostname itself must be myship, and the GM comes from the path only
-    expect(parseGmId("https://evil.example/myship.7-11.com.tw/cart/easy/GM2609096099718")).toBeNull();
-    expect(parseGmId("https://myship.7-11.com.tw.evil.example/cart/easy/GM2609096099718")).toBeNull();
-    expect(parseGmId("https://myship.7-11.com.tw/other/GM2609096099718")).toBeNull(); // wrong path
-  });
-});
-
-describe("validOrdMobile — the 7-11 shipping phone rule", () => {
-  it("09 + 8 digits only", () => {
-    expect(validOrdMobile("0917827508")).toBe(true);
-    expect(validOrdMobile("0912345678")).toBe(true);
-    expect(validOrdMobile("917827508")).toBe(false);
-    expect(validOrdMobile("09178275081")).toBe(false);
-    expect(validOrdMobile("")).toBe(false);
-  });
-});
 
 describe("DOGFOOD GATE — exact allowlist (NO budgetukay* prefix this time, deliberate)", () => {
   it("flip is OFF; the allowlisted emails + admins pass; everyone else fails", () => {
@@ -298,32 +268,24 @@ describe("extension wiring pins (background.js multi-seller path)", () => {
   });
 });
 
-describe("app wiring pins", () => {
-  it("RedesignApp gates the Settings card on allowlist + TW market; GeneralSettings mounts it conditionally", () => {
-    const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
-    expect(app).toContain("parcelCheckAllowed(auth.profile?.email, auth.profile?.role) && !hideParcelScan");
-    const gs = readFileSync("src/redesign/screens/GeneralSettings.tsx", "utf8");
-    expect(gs).toContain("{parcelCheckOn && <MyshipCheckCard t={t} />}");
-    // M5: the card shows only to sellers who can actually open Parcel Scan
-    expect(app).toContain("parcelCheckOn={parcelCheckOn && parcelAllowed}");
+describe("app wiring pins (2026-10-03 — no shop link from sellers, sql/70)", () => {
+  const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
+  it("gate = hardcoded allowlist OR the DB list (keyed per signed-in user), TW market only", () => {
+    expect(app).toContain("const parcelCheckOn = parcelCheckGate(auth.profile?.email, auth.profile?.role, dbParcelCheckAccess, hideParcelScan);");
+    expect(app).toContain("void loadParcelCheckAccess().then((on) => { if (alive) setPcAccess({ uid: pcUserId, on }); });");
+    expect(app).toContain("const dbParcelCheckAccess = authed && !!pcUserId && pcAccess?.uid === pcUserId && pcAccess.on;");
   });
-
-  it("ONE save-flow source: Settings card + Parcel Scan setup modal both render the shared MyshipConfigForm; the flow lives only in MyshipSetup.tsx", () => {
-    const shared = readFileSync("src/redesign/components/MyshipSetup.tsx", "utf8");
-    // audit MEDIUM-3 pin (moved here with the form): a save that isn't verified
-    // must CLEAR shop_name/verified_at so a changed GM never keeps the old badge;
-    // M6: validation runs BEFORE any save
-    expect(shared).toContain("saveMyshipConfig(gmId, v.ok ? v.shopName : null)");
-    expect(shared.indexOf("await validateGm(gmId)")).toBeLessThan(shared.indexOf("await saveMyshipConfig("));
+  it("openParcelScan always opens the screen (single entry, no setup modal); ParcelScan checks follow the gate", () => {
+    expect(app).toContain('const openParcelScan = () => { setScreen("parcelscan"); };');
+    expect((app.match(/setScreen\("parcelscan"\)/g) ?? []).length).toBe(1);
+    expect(app).toContain("onParcelScan={parcelAllowed ? openParcelScan : undefined}");
+    expect(app).toContain("checkOn={parcelCheckOn}");
+    expect(app).not.toMatch(/MyshipSetupModal|useMyshipStatus|mustSetupBeforeScan|myshipStatus/);
+  });
+  it("no shop-link setup left anywhere seller-facing", () => {
     const gs = readFileSync("src/redesign/screens/GeneralSettings.tsx", "utf8");
-    expect(gs).toContain("<MyshipConfigCard t={t} />"); // Settings-only collapse wrapper (renders the shared form)
-    expect(gs).not.toContain("validateGm("); // no second copy of the flow
-    // MANDATORY SETUP wiring (2026-10-01): the status hook is enabled by the same
-    // allowlist+market flag; ParcelScan's checkOn derives from it; the setup modal
-    // embeds the shared form
-    const app = readFileSync("src/redesign/RedesignApp.tsx", "utf8");
-    expect(app).toContain("useMyshipStatus(parcelCheckOn, auth.profile?.authUserId)");
-    expect(app).toContain('checkOn={parcelCheckOn && myshipStatus !== "missing"}');
-    expect(shared).toContain("<MyshipConfigForm t={t} onSaved={onSaved} />");
+    expect(gs).not.toMatch(/Myship|parcelCheckOn/);
+    const i18n = readFileSync("src/redesign/i18n/index.tsx", "utf8");
+    expect(i18n).not.toMatch(/\brd_mc_/);
   });
 });
