@@ -208,7 +208,7 @@ describe("wrapCommentV2", () => {
 
 // ── 4. router gate ───────────────────────────────────────────────────────────
 type W = { SellerFlowPrinter?: unknown };
-describe("router: the flag reaches the raster only when allowed", () => {
+describe("router: the v2 flag reaches the raster (public since 2026-10-02)", () => {
   afterEach(() => { delete (window as W).SellerFlowPrinter; setStickerLayoutV2Allowed(false); });
   const longBuyer = () => ({ handle: "maria_live", name: "Maria Santos", platform: "TikTok", num: 12, totalSpent: 350, totalOrders: 1,
     orders: [{ orderNum: 1, item: LATIN_SAMPLE, qty: 1, price: 350, total: 350, time: "14:05", handle: "maria_live", name: "Maria Santos", bNum: 12, platform: "TikTok", status: "New", date: "2026-09-30" }] }) as never;
@@ -223,13 +223,23 @@ describe("router: the flag reaches the raster only when allowed", () => {
     const rp = { ...np, settings: { ...np.settings, printStickerQr: stickerQrEffective(), ...(v2 ? { printCommentFullWidth: true } : {}) } };
     return Buffer.from(rasterizeToSdkBitmapTspl(rp as RasterPayload, 80, 50, { latin: LATIN_ATLAS }).bytes).toString("base64");
   };
-  it("public switch is OFF; not allowed → today's image; allowed (admin) → the v2 image", async () => {
-    expect(STICKER_LAYOUT_V2_PUBLIC).toBe(false);
-    expect(stickerLayoutV2Effective()).toBe(false);
-    expect(await sent()).toBe(expected(false));
-    setStickerLayoutV2Allowed(true);
+  it("public switch is ON (2026-10-02): with NO allowlist flag set, every seller's sticker is the v2 image", async () => {
+    expect(STICKER_LAYOUT_V2_PUBLIC).toBe(true);
+    setStickerLayoutV2Allowed(false);
+    expect(stickerLayoutV2Effective()).toBe(true);
     expect(await sent()).toBe(expected(true));
-    expect(expected(true)).not.toBe(expected(false));
+    setStickerLayoutV2Allowed(true);          // the allowlist flag no longer changes anything
+    expect(await sent()).toBe(expected(true));
+  });
+  it("revert path stays tested: a payload WITHOUT the v2 flag still renders today's image, byte-for-byte distinct from v2", () => {
+    // expected(false) = the raster of the unchanged native payload with no printCommentFullWidth —
+    // exactly what the router sends again if STICKER_LAYOUT_V2_PUBLIC is flipped back to false.
+    const off = expected(false);
+    expect(off).not.toBe(expected(true));
+    const np = buildNativeStickerPayload(longBuyer(), "NT$", "S", { ...DEF_SETTINGS, printerType: "bluetooth", stickerSize: "80x50" });
+    expect("printCommentFullWidth" in np.settings).toBe(false); // the native (classic/LAN/old-binary) payload never carries the v2 flag
+    const rp = { ...np, settings: { ...np.settings, printStickerQr: stickerQrEffective() } };
+    expect(Buffer.from(rasterizeToSdkBitmapTspl(rp as RasterPayload, 80, 50, { latin: LATIN_ATLAS }).bytes).toString("base64")).toBe(off);
   });
 });
 

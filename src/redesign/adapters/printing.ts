@@ -116,11 +116,11 @@ export function isStickerQrEntitled(): boolean { return stickerQrEntitled; }
 export function stickerQrEffective(): boolean { return isStickerQrOn() && stickerQrEntitled; }
 
 // ── LIVE sticker layout v2 (order time up top, full-width comment) ───────────
-// Bitmap sticker path only (stickerRaster.ts). Admins + the allowlist below for now:
-// RedesignApp sets the allowed flag from stickerV2Allowed(). ⚠️ TURN ON FOR EVERYONE = flip this one line to true.
-// Off → the raster payload carries no flag at all → byte-identical to before. Classic
+// Bitmap sticker path only (stickerRaster.ts). PUBLIC since 2026-10-02 — every seller gets
+// v2 (the allowlist below only matters when this is false). ⚠️ REVERT = flip this one line
+// back to false: the raster payload then carries no flag → byte-identical to before. Classic
 // text / LAN / old binaries never see it (native payload unchanged) and keep today's layout.
-export const STICKER_LAYOUT_V2_PUBLIC = false;
+export const STICKER_LAYOUT_V2_PUBLIC = true;
 let stickerLayoutV2Allowed = false;
 export function setStickerLayoutV2Allowed(on: boolean): void { stickerLayoutV2Allowed = on === true; }
 export function stickerLayoutV2Effective(): boolean { return STICKER_LAYOUT_V2_PUBLIC || stickerLayoutV2Allowed; }
