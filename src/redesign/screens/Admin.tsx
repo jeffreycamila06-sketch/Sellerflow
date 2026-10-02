@@ -267,6 +267,35 @@ function WorkerStateLine({ worker, now }: { worker: unknown; now: number }) {
   );
 }
 
+// 1.15.0 two-machine failover (sql/71): who is on duty + the standby. Ages use the
+// SERVER clock (stats.server_now) — never this browser's. Standby red when its last
+// lease call is older than 3 min (it would not be ready to take over).
+function leaseAgo(s: number | null): string {
+  if (s == null) return "?";
+  return s < 90 ? `${s}s ago` : s < 90 * 60 ? `${Math.round(s / 60)}m ago` : `${Math.round(s / 3600)}h ago`;
+}
+function LeaseLine({ lease, serverNow }: { lease: unknown; serverNow: unknown }) {
+  if (!lease || typeof lease !== "object") return null;
+  const l = lease as Record<string, unknown>;
+  const now = Date.parse(String(serverNow ?? ""));
+  const ageS = (iso: unknown): number | null => {
+    const t = Date.parse(String(iso ?? ""));
+    return Number.isFinite(t) && Number.isFinite(now) ? Math.max(0, Math.round((now - t) / 1000)) : null;
+  };
+  const sinceT = Date.parse(String(l.leader_since ?? ""));
+  const since = Number.isFinite(sinceT) ? new Date(sinceT).toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : null;
+  const standbyAge = ageS(l.standby_at);
+  const standbyStale = standbyAge != null && standbyAge > 180;
+  return (
+    <div data-testid="pm-lease" style={{ fontSize: 11, marginTop: 4, fontFamily: mono, color: "var(--text-muted)" }}>
+      on duty: {String(l.leader_label ?? "—")}{since ? ` (since ${since})` : ""} ·{" "}
+      {l.standby_id
+        ? <span data-testid="pm-lease-standby" style={{ color: standbyStale ? "var(--danger, #dc2626)" : undefined }}>standby: {String(l.standby_label ?? "?")} seen {leaseAgo(standbyAge)}</span>
+        : <span data-testid="pm-lease-standby">no standby</span>}
+    </div>
+  );
+}
+
 function CheckQueueBlock() {
   const [st, setSt] = useState<Record<string, unknown> | null | "err">(null);
   useEffect(() => {
@@ -298,6 +327,7 @@ function CheckQueueBlock() {
         queue {n("queue_depth")} · oldest {n("oldest_pending_min")}m · awaiting setup {n("awaiting_setup")} · cache {n("cache_size")} · sender {String(st.sender_phone ?? "—")}
       </div>
       <WorkerStateLine worker={st.worker} now={Number(st.fetchedAt) || 0} />
+      <LeaseLine lease={st.lease} serverNow={st.server_now} />
       {top.length > 0 && (
         <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3 }}>
           {top.map((r) => `${r.email ?? "?"} (${r.pending ?? 0})`).join(" · ")}

@@ -36,14 +36,21 @@ export type BootOpts = {
   maintenance?: boolean;          // 1.14.6: honour the 01:00–05:00 Taipei window (default OFF so suites are clock-independent)
   storeTransient?: boolean;       // PC_CHECK_STORE misses are flagged transient (timeout / network)
   requeueOk?: boolean;            // admin_parcel_check_requeue answers 200 (default true)
+  // 1.15.0: the lease RPC (admin_parcel_worker_lease). Gets the parsed body; returns the
+  // JSON to answer with (+ optional HTTP status), or "throw" for a network error.
+  // Absent → the generic {} answer (= a bad lease answer → pre-1.15 behaviour).
+  lease?: (body: { p_worker_id: string; p_label: string; p_state: Record<string, unknown> }) => { status?: number; json?: unknown } | "throw";
+  initialStorage?: Record<string, unknown>; // extra chrome.storage.local keys (e.g. a persisted pc_worker)
+  config?: Record<string, unknown>;         // extra pc_config fields (e.g. deviceName)
 };
 
 export function bootWorker(opts: BootOpts = {}) {
   const src = readFileSync("chrome-extension/background.js", "utf8");
   const calls = { sendMessage: [] as { type: string; tabId: number; rowId?: string; tokenRetry?: boolean }[], fetch: [] as string[], fetchBodies: [] as string[], update: [] as unknown[], reload: [] as number[], removed: [] as number[], logs: [] as string[], scheduled: [] as number[] };
   const storage: Record<string, unknown> = {
-    pc_config: { supabaseUrl: "https://x.supabase.co", supabaseAnonKey: "anon", multiSeller: opts.multiSeller ?? true, maintenanceWindow: opts.maintenance ?? false },
+    pc_config: { supabaseUrl: "https://x.supabase.co", supabaseAnonKey: "anon", multiSeller: opts.multiSeller ?? true, maintenanceWindow: opts.maintenance ?? false, ...(opts.config ?? {}) },
     ...(opts.initialStatus ? { pc_status: opts.initialStatus } : {}),
+    ...(opts.initialStorage ?? {}),
   };
   const emapTabs: EmapTab[] = opts.emapTabs ?? (opts.emapTab === false ? [] : [{ id: 3, url: "https://emap.unipcsc.com.tw/ecmap/default.aspx", guid: true }]);
   const tabFor = (patterns: string[] | string) => {
@@ -97,6 +104,12 @@ export function bootWorker(opts: BootOpts = {}) {
   const fetch = async (url: string, init?: { body?: string }) => {
     calls.fetch.push(url); calls.fetchBodies.push(String(init?.body ?? ""));
     const rows = opts.rows ?? [PENDING_ROW];
+    if (/admin_parcel_worker_lease/.test(url) && opts.lease) {
+      const r = opts.lease(JSON.parse(String(init?.body ?? "{}")));
+      if (r === "throw") throw new Error("network down");
+      const st = r.status ?? 200;
+      return { ok: st >= 200 && st < 300, status: st, json: async () => r.json, text: async () => JSON.stringify(r.json), headers: { get: () => "application/json" } };
+    }
     if (/admin_parcel_check_requeue/.test(url) && opts.requeueOk === false) return { ok: false, status: 404, json: async () => ({}), text: async () => "", headers: { get: () => "application/json" } };
     const body = /admin_parcel_checks_pending/.test(url) ? rows
       : /admin_parcel_check_requeue/.test(url) ? 2

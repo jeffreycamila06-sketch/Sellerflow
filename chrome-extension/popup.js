@@ -13,6 +13,7 @@ const pcEls = {
   multi: document.getElementById("pcMulti"), multiRow: document.getElementById("pcMultiRow"), multiQueue: document.getElementById("pcMultiQueue"),
   emapSessionRow: document.getElementById("pcEmapSessionRow"),
   perSellerCfg: document.getElementById("pcPerSellerCfg"),
+  role: document.getElementById("pcRole"), device: document.getElementById("pcDevice"),
 };
 
 function pcOne(key, fallback) {
@@ -51,8 +52,25 @@ function pcReasonRow(rowEl, valEl, reason, at) {
   rowEl.style.display = show ? "" : "none";
   valEl.textContent = show ? `${reason}${at ? ` (${new Date(at).toLocaleTimeString()})` : ""}` : "";
 }
+// 1.15.0 — two-machine failover: which machine is on duty. Labels come from the
+// lease (another machine's Device name) → always set as TEXT, never as HTML.
+function pcRenderRole(st) {
+  if (!pcEls.role) return;
+  const me = st.workerLabel ? ` · this: ${st.workerLabel}` : "";
+  let cls = "off", text = `Starting…${me}`;
+  if (st.leaseRole === "leader") { cls = "ok"; text = `On duty (LEADER)${me}`; }
+  else if (st.leaseRole === "standby") {
+    const age = typeof st.leaseLeaderAgeS === "number"
+      ? st.leaseLeaderAgeS + (st.leaseAt ? Math.max(0, Math.round((Date.now() - st.leaseAt) / 1000)) : 0) : null;
+    cls = "warn"; text = `STANDBY — leader: ${st.leaseLeaderLabel || "?"}${age != null ? `, seen ${age}s ago` : ""}${me}`;
+  } else if (st.leaseFailing) { cls = "warn"; text = `Lease not reachable — acting as leader${me}`; }
+  pcEls.role.textContent = "";
+  const dot = document.createElement("span"); dot.className = `dot ${cls}`;
+  pcEls.role.append(dot, text);
+}
 async function pcRenderStatus() {
   const st = (await pcOne(PC_STATUS_KEY, {})) || {};
+  pcRenderRole(st);
   pcBadge(pcEls.sfl, st.sfl);
   pcBadge(pcEls.myship, st.myship);
   pcBadge(pcEls.emap, st.inMaintenanceWindow ? "maintenance" : st.emap);
@@ -101,6 +119,7 @@ async function pcRenderStatus() {
 async function pcRenderConfig() {
   const c = (await pcOne(PC_CONFIG_KEY, {})) || {};
   pcEls.url.value = c.supabaseUrl || PC_DEFAULT_URL;
+  if (pcEls.device) pcEls.device.value = c.deviceName || "";
   pcEls.key.value = c.supabaseAnonKey || "";
   pcEls.cgdm.value = c.cgdmId || "";
   pcEls.ord.value = c.ordMobile || "";
@@ -117,6 +136,7 @@ pcEls.save.addEventListener("click", async () => {
     cgdmId: pcEls.cgdm.value.trim(),
     ordMobile: pcEls.ord.value.trim(),
     multiSeller: pcEls.multi.checked === true,
+    deviceName: pcEls.device ? pcEls.device.value.trim().slice(0, 40) : (c.deviceName || ""),
   } });
   pcEls.save.textContent = "Saved ✓";
   setTimeout(() => { pcEls.save.textContent = "Save config"; }, 1500);

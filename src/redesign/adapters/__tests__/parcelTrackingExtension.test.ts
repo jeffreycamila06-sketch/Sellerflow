@@ -61,7 +61,7 @@ describe("background — token path + parcel_tracking upsert", () => {
   it("handles PC_ORDER_ROWS via the SAME single-refresher token bridge (SFL tab → pcGetToken)", () => {
     const i = background.indexOf('"PC_ORDER_ROWS"');
     expect(i).toBeGreaterThan(-1);
-    const handler = background.slice(i, i + 700);
+    const handler = background.slice(i, i + 900); // 1.15.0: +1 line (the standby guard) before the upsert
     expect(handler).toContain("pcGetToken(sflTabId)");   // reuse the existing bridge (sf_supabase_auth), not a new refresher
     expect(handler).toContain("pcUpsertTracking");
   });
@@ -130,7 +130,7 @@ describe("self-heal v1.7.0 — statuses recover without manual tab refreshes", (
   const bg = readFileSync("chrome-extension/background.js", "utf8");
 
   it("manifest 1.7.0 + the scripting permission (re-injection needs it)", () => {
-    expect(manifest.version).toBe("1.14.9"); // 1.14.9 = faster phone retry on token-GET timeouts; 1.14.8 = E-Map "close" → company, "NO2" → not_found (1.14.7 = Oct 1 blockers)
+    expect(manifest.version).toBe("1.15.0"); // 1.15.0 = two-machine failover (lease, sql/71); 1.14.9 = faster phone retry on token-GET timeouts; 1.14.8 = E-Map "close" → company, "NO2" → not_found (1.14.7 = Oct 1 blockers)
     expect(manifest.permissions).toContain("scripting");
   });
 

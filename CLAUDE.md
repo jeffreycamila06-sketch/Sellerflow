@@ -4482,3 +4482,17 @@ Full audit (D1–D10) → ONE clean version. Worker (`chrome-extension/backgroun
   `app_settings.parcel_check_shared_gms` (sql/70, applied live 2026-10-03; repo mirror only).
 - **Rollback:** `update app_settings set value='[]' where key='parcel_check_shared_gms';` →
   the worker falls back to each seller's own saved link (only sellers who saved one get checked).
+
+## 2026-10-03 — PARCEL CHECKER 1.15.0: TWO-MACHINE FAILOVER (lease, sql/71)
+- The extension can run on TWO machines (Windows laptop + Mac). Exactly one is on duty
+  ("LEADER") and does all the work; the other ("STANDBY") only keeps its tabs ready
+  (tab healing, E-Map pick + keepalive, local status) and takes over automatically when the
+  leader has been silent for **120 s** (server time; RPC `admin_parcel_worker_lease` — calling
+  it IS the renewal). No preferred machine: a returning machine stays standby while the other
+  is alive. Popup shows "On duty (LEADER)" / "STANDBY — leader: …"; Admin check-queue card
+  shows who is on duty + the standby (red if not seen for 3 min).
+- **Upgrade order:** update the machine currently ON DUTY first. Expect up to ~2.5 min with
+  no checks at that upgrade (the RPC's legacy guard keeps the lease free while a pre-1.15
+  heartbeat is < 150 s old), then install 1.15.0 on the second machine.
+- **Rollback:** reinstall 1.14.9 on ONE machine only (1.14.9 never calls the lease RPC; two
+  1.14.9 machines would double-check).

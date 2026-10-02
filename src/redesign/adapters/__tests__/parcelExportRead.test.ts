@@ -195,7 +195,7 @@ describe("background — handle-only upsert (never clobbers poller/scraper colum
   it("PC_EXPORT_HANDLES reuses the SFL-tab token bridge + pcUpsertHandles", () => {
     const i = background.indexOf('"PC_EXPORT_HANDLES"');
     expect(i).toBeGreaterThan(-1);
-    const handler = background.slice(i, i + 700);
+    const handler = background.slice(i, i + 900); // 1.15.0: +1 line (the standby guard) before the upsert
     expect(handler).toContain("pcGetToken(sflTabId)");
     expect(handler).toContain("pcUpsertHandles");
   });
