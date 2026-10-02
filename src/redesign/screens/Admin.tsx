@@ -21,7 +21,7 @@ import SoonBadge from "../components/SoonBadge";
 import ContactChip from "../components/ContactChip";
 import { useT, tpl, type RedesignT } from "../i18n";
 import { isIOS } from "../adapters/platform";
-import { isAppShell } from "../adapters/appShell";
+import { isAppShell, isNarrowViewport } from "../adapters/appShell";
 import { relativeTime } from "../adapters/useReadData";
 import { maxHourlyOrders, hourLabel, type PulseData, type PulseState } from "../adapters/useBusinessPulse";
 import { pickLatestActive, type Announcement } from "../adapters/useAnnouncements";
@@ -307,6 +307,115 @@ function CheckQueueBlock() {
   );
 }
 
+// EXPORTS PER SELLER (sql/69): Parcel Scan export counts from the parcel_export_daily
+// counter (survives sellers deleting exported rows). One is_admin()-guarded RPC on
+// panel open + a manual Refresh; zero poll. Months = Asia/Taipei calendar months.
+// Self-contained and quiet on failure: the rest of the panel always renders.
+type ExportMonitorRow = {
+  seller_id: string; seller_email: string | null; seller_store: string | null; seller_plan: string | null;
+  seller_plan_status: string | null; this_month: number; last_month: number; last_7d: number; today: number;
+  total: number; last_export_day: string | null; pickup_status: boolean; has_shop_link: boolean;
+};
+const exportNum = (n: unknown): string => (Number(n) || 0).toLocaleString("en-US");
+const exportDay = (d: string | null): string => { const m = /^\d{4}-(\d{2})-(\d{2})/.exec(d ?? ""); return m ? `${m[1]}/${m[2]}` : "—"; };
+function ExportMonitorBlock() {
+  const [st, setSt] = useState<ExportMonitorRow[] | "loading" | "err">("loading");
+  const [nonce, setNonce] = useState(0);
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      try {
+        if (!supabase) { if (live) setSt("err"); return; }
+        const { data, error } = await supabase.rpc("admin_parcel_export_monitor");
+        if (!live) return;
+        setSt(error || !Array.isArray(data) ? "err" : (data as ExportMonitorRow[]));
+      } catch { if (live) setSt("err"); }
+    })();
+    return () => { live = false; };
+  }, [nonce]);
+  const narrow = isAppShell() || isNarrowViewport();
+  const muted: CSSProperties = { fontSize: 11.5, color: "var(--text-muted)", marginTop: 6 };
+  const ell: CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+  const numCell: CSSProperties = { fontFamily: mono, fontSize: 11.5, textAlign: "right", padding: "6px 6px", whiteSpace: "nowrap" };
+  const hcell: CSSProperties = { fontSize: 10, color: "var(--text-muted)", fontWeight: 700, textAlign: "right", padding: "0 6px 6px", whiteSpace: "nowrap" };
+  const rows = Array.isArray(st) ? st : [];
+  const storeOf = (r: ExportMonitorRow) => r.seller_store || r.seller_email || "—";
+  const noLink = <span style={{ marginLeft: 6, fontSize: 9.5, fontWeight: 700, color: "var(--text-muted)", border: "1px solid var(--border-strong)", borderRadius: 999, padding: "0 6px" }}>no shop link</span>;
+  return (
+    <div data-testid="pm-exports" style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 13, padding: "11px 12px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ flex: 1, fontSize: 11, fontWeight: 700, color: "var(--text)" }}>Exports per seller</div>
+        <button type="button" data-testid="pm-exports-refresh" onClick={() => { setSt("loading"); setNonce((n) => n + 1); }}
+          style={{ fontSize: 10.5, fontWeight: 700, padding: "3px 9px", borderRadius: 8, border: "1px solid var(--border-strong)", background: "var(--surface)", color: "var(--text)", cursor: "pointer", fontFamily: "var(--font-ui)" }}>Refresh</button>
+      </div>
+      {st === "loading" ? <div style={muted}>Loading…</div>
+        : st === "err" ? <div style={muted}>Couldn't load exports</div>
+        : !rows.length ? <div style={muted}>No exports yet</div>
+        : (
+          <>
+            <div data-testid="pm-exports-summary" style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4, fontFamily: mono }}>
+              This month {exportNum(rows.reduce((a, r) => a + (Number(r.this_month) || 0), 0))} · Last month {exportNum(rows.reduce((a, r) => a + (Number(r.last_month) || 0), 0))} · {rows.length} sellers
+            </div>
+            {narrow ? (
+              <div style={{ marginTop: 6 }}>
+                {rows.map((r) => (
+                  <div key={r.seller_id} data-testid="pm-exports-row" style={{ padding: "7px 0", borderTop: "1px solid var(--border)" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center" }}>
+                        <span style={{ fontSize: 12.5, fontWeight: 700, color: "var(--text)", ...ell }}>{storeOf(r)}</span>
+                        {!r.has_shop_link && noLink}
+                      </div>
+                      <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 800, color: "var(--text)" }}>{exportNum(r.this_month)}</span>
+                    </div>
+                    <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 2, ...ell }}>
+                      {r.seller_plan || "—"} · last month {exportNum(r.last_month)} · 7d {exportNum(r.last_7d)} · last {exportDay(r.last_export_day)} · Pickup {r.pickup_status ? "✓" : "—"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <table style={{ width: "100%", tableLayout: "fixed", borderCollapse: "collapse", marginTop: 8 }}>
+                <colgroup>
+                  <col style={{ width: "34%" }} /><col style={{ width: "11%" }} /><col style={{ width: "12%" }} /><col style={{ width: "12%" }} /><col style={{ width: "10%" }} /><col style={{ width: "12%" }} /><col style={{ width: "9%" }} />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th style={{ ...hcell, textAlign: "left" }}>Seller</th>
+                    <th style={{ ...hcell, textAlign: "left" }}>Plan</th>
+                    <th style={hcell}>This month</th>
+                    <th style={hcell}>Last month</th>
+                    <th style={hcell}>7 days</th>
+                    <th style={hcell}>Last export</th>
+                    <th style={hcell}>Pickup</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.seller_id} data-testid="pm-exports-row" style={{ borderTop: "1px solid var(--border)" }}>
+                      <td style={{ padding: "6px 6px", overflow: "hidden" }}>
+                        <div style={{ display: "flex", alignItems: "center", minWidth: 0 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", ...ell }} title={storeOf(r)}>{storeOf(r)}</span>
+                          {!r.has_shop_link && noLink}
+                        </div>
+                        <div style={{ fontSize: 11, color: "var(--text-muted)", ...ell }} title={r.seller_email ?? ""}>{r.seller_email ?? ""}</div>
+                      </td>
+                      <td style={{ fontSize: 11.5, color: "var(--text)", padding: "6px 6px", ...ell }}>{r.seller_plan || "—"}</td>
+                      <td style={{ ...numCell, fontWeight: 800 }}>{exportNum(r.this_month)}</td>
+                      <td style={numCell}>{exportNum(r.last_month)}</td>
+                      <td style={numCell}>{exportNum(r.last_7d)}</td>
+                      <td style={numCell}>{exportDay(r.last_export_day)}</td>
+                      <td style={numCell}>{r.pickup_status ? "✓" : "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
+        )}
+    </div>
+  );
+}
+
 function ParcelMonPanel() {
   const t = useT();
   const [data, setData] = useState<ParcelScanOverview | null>(null);
@@ -343,6 +452,7 @@ function ParcelMonPanel() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }} data-testid="pm-panel">
       <CheckQueueBlock />
+      <ExportMonitorBlock />
       {/* Adjustable API-cost lever (client-only what-if; re-flows cost/profit live). */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 11, padding: "9px 12px" }}>
         <div style={{ flex: 1, minWidth: 0 }}>
