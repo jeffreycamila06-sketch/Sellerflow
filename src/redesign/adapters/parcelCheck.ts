@@ -27,6 +27,7 @@ export const PARCEL_CHECK_PREVIEW_EMAILS: string[] = [
   "jinkyrosepenana@gmail.com",     // Jinky's shop — added 2026-10-02
   "karenbaltazar040789@gmail.com", // Cutchicutz — added 2026-10-02
   "basaomenchie6@gmail.com",       // URBAN 99 — added 2026-10-02
+  "lailinehsu@gmail.com",          // Lhaigandaukay — added 2026-10-02
 ];
 export function parcelCheckAllowed(email: string | undefined | null, role?: string | null): boolean {
   if (PARCEL_CHECK_PUBLIC) return true;
