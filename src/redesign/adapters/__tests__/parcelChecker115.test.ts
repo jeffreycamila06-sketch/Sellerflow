@@ -29,9 +29,11 @@ function leaseServer(clock: { t: number }) {
 }
 
 type Calls = ReturnType<typeof bootWorker>["calls"];
-// Every network / DB side effect the STANDBY must never make.
+// Every network / DB side effect of DUTY work the STANDBY must never make. (The
+// parcel_tracking upserts are NOT duty work — they follow Jeff's own open 賣貨便 pages,
+// on whichever machine — so a standby still makes them; see the test below.)
 const FORBIDDEN = [/admin_parcel_checks_pending/, /admin_parcel_check_config/, /admin_set_parcel_sender_health/, /admin_parcel_check_verdict/,
-  /admin_parcel_check_requeue/, /admin_set_parcel_worker_state/, /rest\/v1\/parcel_scans/, /rest\/v1\/parcel_tracking/];
+  /admin_parcel_check_requeue/, /admin_set_parcel_worker_state/, /rest\/v1\/parcel_scans/];
 const forbiddenFetches = (c: Calls) => c.fetch.filter((u) => FORBIDDEN.some((re) => re.test(u)));
 const rowChecks = (c: Calls) => c.sendMessage.filter((m) => (m.type === "PC_CHECK_PHONE") || (m.type === "PC_CHECK_STORE" && m.rowId));
 const pendingReads = (c: Calls) => c.fetch.filter((u) => /admin_parcel_checks_pending/.test(u)).length;
@@ -190,15 +192,17 @@ describe("identity, worker-state blob, writes outside a pass", () => {
     expect(labels[0]).toBe(`Device ${saved.id.slice(0, 4)}`); // no Device name, no platform API in the harness
   });
 
-  it("standby never upserts tracking / handles (PC_ORDER_ROWS, PC_EXPORT_HANDLES)", async () => {
+  it("a STANDBY still syncs its own Pickup Status: PC_ORDER_ROWS + PC_EXPORT_HANDLES upsert (not duty work)", async () => {
     const { a, b } = await twoWorkers();
     await a.sb.pcTick(); await b.sb.pcTick();
+    expect(b.status().leaseRole).toBe("standby");
     const listeners = (b.sb.chrome.runtime.onMessage.addListener as unknown as { mock: { calls: [(m: unknown, s: unknown, r: (x: unknown) => void) => boolean][] } }).mock.calls.map((c) => c[0]);
+    const before = b.calls.fetch.filter((u) => /rest\/v1\/parcel_tracking/.test(u)).length;
     for (const type of ["PC_ORDER_ROWS", "PC_EXPORT_HANDLES"]) {
       const reply = await new Promise((resolve) => { for (const l of listeners) l({ type, rows: [{ tracking_no: "F1", buyer_username: "x" }] }, {}, resolve); });
-      expect(reply).toEqual({ ok: false, reason: "standby" });
+      expect(reply).toMatchObject({ ok: true, upserted: 1 });
     }
-    expect(b.calls.fetch.some((u) => /parcel_tracking/.test(u))).toBe(false);
+    expect(b.calls.fetch.filter((u) => /rest\/v1\/parcel_tracking/.test(u)).length).toBe(before + 2);
   });
 
   it("[PC-TICK] carries the role; role changes log exactly one [PC-LEASE] line (no per-tick spam)", async () => {

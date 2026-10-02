@@ -1156,7 +1156,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type !== "PC_ORDER_ROWS") return false;
   (async () => {
-    if (!pcPassLeader(null)) { sendResponse({ ok: false, reason: "standby" }); return; } // 1.15.0: only the machine on duty writes
     const cfg = await pcConfig();
     if (!cfg.supabaseUrl || !cfg.supabaseAnonKey) { sendResponse({ ok: false, reason: "no_config" }); return; }
     const sflTabId = await pcFindTab(["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*", "http://localhost:5173/*"]);
@@ -1204,7 +1203,6 @@ async function pcUpsertHandles(cfg, token, rows) {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type !== "PC_EXPORT_HANDLES") return false;
   (async () => {
-    if (!pcPassLeader(null)) { sendResponse({ ok: false, reason: "standby" }); return; } // 1.15.0: only the machine on duty writes
     const cfg = await pcConfig();
     if (!cfg.supabaseUrl || !cfg.supabaseAnonKey) { sendResponse({ ok: false, reason: "no_config" }); return; }
     const sflTabId = await pcFindTab(["https://www.sellerflowlive.com/*", "https://sellerflowlive.com/*", "http://localhost:5173/*"]);

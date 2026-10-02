@@ -274,6 +274,19 @@ function leaseAgo(s: number | null): string {
   if (s == null) return "?";
   return s < 90 ? `${s}s ago` : s < 90 * 60 ? `${Math.round(s / 60)}m ago` : `${Math.round(s / 3600)}h ago`;
 }
+// Could the standby really take over? Its last reported state (lease.standby_state):
+// sfl must be 'connected', emap 'ok', myship 'ok' or 'stale' ('stale' is normal on a
+// standby — it never runs phone checks). Anything else names the tab that isn't ready.
+function standbyReadiness(state: unknown): { ready: boolean; why: string } {
+  if (!state || typeof state !== "object") return { ready: false, why: "no state reported" };
+  const st = state as Record<string, unknown>;
+  const s = (k: string) => (typeof st[k] === "string" && st[k] ? String(st[k]) : "missing");
+  const bad: string[] = [];
+  if (s("sfl") !== "connected") bad.push(`sfl: ${s("sfl")}`);
+  if (s("myship") !== "ok" && s("myship") !== "stale") bad.push(`myship: ${s("myship")}`);
+  if (s("emap") !== "ok") bad.push(`emap: ${s("emap")}`);
+  return bad.length ? { ready: false, why: bad.join(", ") } : { ready: true, why: "" };
+}
 function LeaseLine({ lease, serverNow }: { lease: unknown; serverNow: unknown }) {
   if (!lease || typeof lease !== "object") return null;
   const l = lease as Record<string, unknown>;
@@ -286,11 +299,15 @@ function LeaseLine({ lease, serverNow }: { lease: unknown; serverNow: unknown })
   const since = Number.isFinite(sinceT) ? new Date(sinceT).toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : null;
   const standbyAge = ageS(l.standby_at);
   const standbyStale = standbyAge != null && standbyAge > 180;
+  const readiness = standbyReadiness(l.standby_state);
   return (
     <div data-testid="pm-lease" style={{ fontSize: 11, marginTop: 4, fontFamily: mono, color: "var(--text-muted)" }}>
       on duty: {String(l.leader_label ?? "—")}{since ? ` (since ${since})` : ""} ·{" "}
       {l.standby_id
-        ? <span data-testid="pm-lease-standby" style={{ color: standbyStale ? "var(--danger, #dc2626)" : undefined }}>standby: {String(l.standby_label ?? "?")} seen {leaseAgo(standbyAge)}</span>
+        ? <>
+            <span data-testid="pm-lease-standby" style={{ color: standbyStale ? "var(--danger, #dc2626)" : undefined }}>standby: {String(l.standby_label ?? "?")} seen {leaseAgo(standbyAge)}</span>
+            <span data-testid="pm-lease-ready" style={{ color: readiness.ready ? undefined : "var(--danger, #dc2626)" }}>{readiness.ready ? " · ready" : ` · NOT READY (${readiness.why})`}</span>
+          </>
         : <span data-testid="pm-lease-standby">no standby</span>}
     </div>
   );

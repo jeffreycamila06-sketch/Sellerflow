@@ -61,7 +61,7 @@ describe("background — token path + parcel_tracking upsert", () => {
   it("handles PC_ORDER_ROWS via the SAME single-refresher token bridge (SFL tab → pcGetToken)", () => {
     const i = background.indexOf('"PC_ORDER_ROWS"');
     expect(i).toBeGreaterThan(-1);
-    const handler = background.slice(i, i + 900); // 1.15.0: +1 line (the standby guard) before the upsert
+    const handler = background.slice(i, i + 700);
     expect(handler).toContain("pcGetToken(sflTabId)");   // reuse the existing bridge (sf_supabase_auth), not a new refresher
     expect(handler).toContain("pcUpsertTracking");
   });
