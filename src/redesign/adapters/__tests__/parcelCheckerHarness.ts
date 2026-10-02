@@ -39,14 +39,15 @@ export type BootOpts = {
   // 1.15.0: the lease RPC (admin_parcel_worker_lease). Gets the parsed body; returns the
   // JSON to answer with (+ optional HTTP status), or "throw" for a network error.
   // Absent → the generic {} answer (= a bad lease answer → pre-1.15 behaviour).
-  lease?: (body: { p_worker_id: string; p_label: string; p_state: Record<string, unknown> }) => { status?: number; json?: unknown } | "throw";
+  lease?: (body: { p_worker_id: string; p_label: string; p_state: Record<string, unknown> }) => { status?: number; json?: unknown } | "throw" | "hang";
+  legacyRows?: unknown[];                   // rows the legacy lane's GET parcel_scans returns (default [])
   initialStorage?: Record<string, unknown>; // extra chrome.storage.local keys (e.g. a persisted pc_worker)
   config?: Record<string, unknown>;         // extra pc_config fields (e.g. deviceName)
 };
 
 export function bootWorker(opts: BootOpts = {}) {
   const src = readFileSync("chrome-extension/background.js", "utf8");
-  const calls = { sendMessage: [] as { type: string; tabId: number; rowId?: string; tokenRetry?: boolean }[], fetch: [] as string[], fetchBodies: [] as string[], update: [] as unknown[], reload: [] as number[], removed: [] as number[], logs: [] as string[], scheduled: [] as number[] };
+  const calls = { sendMessage: [] as { type: string; tabId: number; rowId?: string; tokenRetry?: boolean }[], fetch: [] as string[], fetchBodies: [] as string[], update: [] as unknown[], reload: [] as number[], removed: [] as number[], logs: [] as string[], scheduled: [] as number[], timers: [] as { ms: number; fn: () => void }[] };
   const storage: Record<string, unknown> = {
     pc_config: { supabaseUrl: "https://x.supabase.co", supabaseAnonKey: "anon", multiSeller: opts.multiSeller ?? true, maintenanceWindow: opts.maintenance ?? false, ...(opts.config ?? {}) },
     ...(opts.initialStatus ? { pc_status: opts.initialStatus } : {}),
@@ -107,6 +108,7 @@ export function bootWorker(opts: BootOpts = {}) {
     if (/admin_parcel_worker_lease/.test(url) && opts.lease) {
       const r = opts.lease(JSON.parse(String(init?.body ?? "{}")));
       if (r === "throw") throw new Error("network down");
+      if (r === "hang") return new Promise(() => {});
       const st = r.status ?? 200;
       return { ok: st >= 200 && st < 300, status: st, json: async () => r.json, text: async () => JSON.stringify(r.json), headers: { get: () => "application/json" } };
     }
@@ -114,13 +116,13 @@ export function bootWorker(opts: BootOpts = {}) {
     const body = /admin_parcel_checks_pending/.test(url) ? rows
       : /admin_parcel_check_requeue/.test(url) ? 2
       : /admin_parcel_check_config/.test(url) ? { enabled: "true", healthy: "true", sender_phone: "0979593026", probe_buyer: "0919342192", sample_gm: "GM1" }
-      : /rest\/v1\/parcel_scans/.test(url) ? []
+      : /rest\/v1\/parcel_scans/.test(url) ? (opts.legacyRows ?? [])
       : {};
     return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body), headers: { get: () => "application/json" } };
   };
   // setTimeout: the row-gap/health sleeps (<=2s) resolve immediately; the boot
   // schedule (0) and the ~5s re-arm are recorded, NOT run — the test drives ticks.
-  const setTimeout = (fn: () => void, ms: number) => { if (ms > 0 && ms <= 2000) fn(); else calls.scheduled.push(ms); return 1; };
+  const setTimeout = (fn: () => void, ms: number) => { if (ms > 0 && ms <= 2000) fn(); else { calls.scheduled.push(ms); calls.timers.push({ ms, fn }); } return 1; };
   const now = opts.now;
   const DateCtor = now
     ? new Proxy(Date, { get: (t, k) => (k === "now" ? now : Reflect.get(t, k)), construct: (t, args) => new t(...(args.length ? (args as [number]) : [now()] as [number])) })

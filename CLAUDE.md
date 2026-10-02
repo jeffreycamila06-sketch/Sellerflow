@@ -4483,16 +4483,28 @@ Full audit (D1–D10) → ONE clean version. Worker (`chrome-extension/backgroun
 - **Rollback:** `update app_settings set value='[]' where key='parcel_check_shared_gms';` →
   the worker falls back to each seller's own saved link (only sellers who saved one get checked).
 
-## 2026-10-03 — PARCEL CHECKER 1.15.0: TWO-MACHINE FAILOVER (lease, sql/71)
+## 2026-10-03 — PARCEL CHECKER 1.15.0: TWO-MACHINE FAILOVER (lease, sql/71 v2)
 - The extension can run on TWO machines (Windows laptop + Mac). Exactly one is on duty
   ("LEADER") and does all the work; the other ("STANDBY") only keeps its tabs ready
   (tab healing, E-Map pick + keepalive, local status) and takes over automatically when the
   leader has been silent for **120 s** (server time; RPC `admin_parcel_worker_lease` — calling
-  it IS the renewal). No preferred machine: a returning machine stays standby while the other
-  is alive. Popup shows "On duty (LEADER)" / "STANDBY — leader: …"; Admin check-queue card
-  shows who is on duty + the standby (red if not seen for 3 min).
+  it IS the renewal), or when the leader reports itself **DEGRADED** (its 7-11 tabs dead 10+ min
+  outside 01:00–05:00) while a ready standby waits — the SERVER decides that yield. No
+  preferred machine: a returning machine stays standby while the other is alive. The
+  standby still syncs Pickup Status from its own open 賣貨便 pages (not duty work).
+- Lease unreachable for 3+ min → BOTH machines act as leader until it answers (a double
+  check is safe — the verdict RPC never lets 'unknown' overwrite a real verdict).
+- Popup "Duty" row; Admin check-queue card shows who is on duty (seen N ago, DEGRADED) +
+  the standby (ready / NOT READY with the cause; red if not seen for 3 min).
+- **Operating rules:**
+  - Tick **Multi-seller mode on BOTH machines** (off = the machine cannot serve the sellers;
+    the popup says so and Admin shows NOT READY).
+  - **Pause on the leader hands duty to the other machine** — pause BOTH to stop everything.
+  - **Never copy a Chrome profile between the two machines** (same worker id = both lead).
+    A reload keeps the id; a reinstall makes a new one (a ~2 min pause at most).
 - **Upgrade order:** update the machine currently ON DUTY first. Expect up to ~2.5 min with
-  no checks at that upgrade (the RPC's legacy guard keeps the lease free while a pre-1.15
+  no checks at that upgrade (the RPC's legacy guard holds the lease while a pre-1.15
   heartbeat is < 150 s old), then install 1.15.0 on the second machine.
-- **Rollback:** reinstall 1.14.9 on ONE machine only (1.14.9 never calls the lease RPC; two
-  1.14.9 machines would double-check).
+- **Rollback:** 1.14.9 on ONE machine **AND the extension disabled on the other** (1.14.9
+  never calls the lease RPC; the v2 legacy guard makes a 1.15 machine stand down while the
+  1.14.9 heartbeat is fresh, but disabling the other one is the clean rollback).

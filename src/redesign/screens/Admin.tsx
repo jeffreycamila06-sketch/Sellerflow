@@ -274,18 +274,26 @@ function leaseAgo(s: number | null): string {
   if (s == null) return "?";
   return s < 90 ? `${s}s ago` : s < 90 * 60 ? `${Math.round(s / 60)}m ago` : `${Math.round(s / 3600)}h ago`;
 }
-// Could the standby really take over? Its last reported state (lease.standby_state):
-// sfl must be 'connected', emap 'ok', myship 'ok' or 'stale' ('stale' is normal on a
-// standby — it never runs phone checks). Anything else names the tab that isn't ready.
+// Could the standby really take over? Its last reported state (lease.standby_state).
+// NOT READY (red) only for a HARD problem: no state, sfl not 'connected', Multi-seller off,
+// or emap/myship in a hard-bad state (named). Soft states (stale, degraded, recovering,
+// reminting, guid_missing, starting…) are a passing blip → "ready (emap: <state>)" in the
+// normal colour. myship 'stale' is the normal standby state (it never runs phone checks)
+// → plain "ready".
+const STANDBY_HARD_BAD = ["no_tab", "expired", "dead", "dead_script", "signed_out", "no_token", "no_config"];
 function standbyReadiness(state: unknown): { ready: boolean; why: string } {
   if (!state || typeof state !== "object") return { ready: false, why: "no state reported" };
   const st = state as Record<string, unknown>;
   const s = (k: string) => (typeof st[k] === "string" && st[k] ? String(st[k]) : "missing");
   const bad: string[] = [];
   if (s("sfl") !== "connected") bad.push(`sfl: ${s("sfl")}`);
-  if (s("myship") !== "ok" && s("myship") !== "stale") bad.push(`myship: ${s("myship")}`);
-  if (s("emap") !== "ok") bad.push(`emap: ${s("emap")}`);
-  return bad.length ? { ready: false, why: bad.join(", ") } : { ready: true, why: "" };
+  if (st.multi !== true) bad.push("Multi-seller mode off");
+  for (const k of ["myship", "emap"]) if (s(k) === "missing" || STANDBY_HARD_BAD.includes(s(k))) bad.push(`${k}: ${s(k)}`);
+  if (bad.length) return { ready: false, why: bad.join(", ") };
+  const soft: string[] = [];
+  if (s("emap") !== "ok") soft.push(`emap: ${s("emap")}`);
+  if (s("myship") !== "ok" && s("myship") !== "stale") soft.push(`myship: ${s("myship")}`);
+  return { ready: true, why: soft.join(", ") };
 }
 function LeaseLine({ lease, serverNow }: { lease: unknown; serverNow: unknown }) {
   if (!lease || typeof lease !== "object") return null;
@@ -295,18 +303,25 @@ function LeaseLine({ lease, serverNow }: { lease: unknown; serverNow: unknown })
     const t = Date.parse(String(iso ?? ""));
     return Number.isFinite(t) && Number.isFinite(now) ? Math.max(0, Math.round((now - t) / 1000)) : null;
   };
+  const red = "var(--danger, #dc2626)";
   const sinceT = Date.parse(String(l.leader_since ?? ""));
   const since = Number.isFinite(sinceT) ? new Date(sinceT).toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : null;
+  const leaderAge = ageS(l.leader_at);
+  const leaderState = l.leader_state && typeof l.leader_state === "object" ? (l.leader_state as Record<string, unknown>) : null;
+  const leaderDegraded = leaderState?.degraded === true;
   const standbyAge = ageS(l.standby_at);
   const standbyStale = standbyAge != null && standbyAge > 180;
   const readiness = standbyReadiness(l.standby_state);
   return (
     <div data-testid="pm-lease" style={{ fontSize: 11, marginTop: 4, fontFamily: mono, color: "var(--text-muted)" }}>
-      on duty: {String(l.leader_label ?? "—")}{since ? ` (since ${since})` : ""} ·{" "}
+      on duty: {String(l.leader_label ?? "—")}{since ? ` (since ${since})` : ""}
+      {l.leader_id ? <span data-testid="pm-lease-leader-seen" style={{ color: leaderAge != null && leaderAge > 180 ? red : undefined }}> seen {leaseAgo(leaderAge)}</span> : null}
+      {leaderDegraded ? <span data-testid="pm-lease-degraded" style={{ color: red, fontWeight: 800 }}> DEGRADED</span> : null}
+      {" · "}
       {l.standby_id
         ? <>
-            <span data-testid="pm-lease-standby" style={{ color: standbyStale ? "var(--danger, #dc2626)" : undefined }}>standby: {String(l.standby_label ?? "?")} seen {leaseAgo(standbyAge)}</span>
-            <span data-testid="pm-lease-ready" style={{ color: readiness.ready ? undefined : "var(--danger, #dc2626)" }}>{readiness.ready ? " · ready" : ` · NOT READY (${readiness.why})`}</span>
+            <span data-testid="pm-lease-standby" style={{ color: standbyStale ? red : undefined }}>standby: {String(l.standby_label ?? "?")} seen {leaseAgo(standbyAge)}</span>
+            <span data-testid="pm-lease-ready" style={{ color: readiness.ready ? undefined : red }}>{readiness.ready ? ` · ready${readiness.why ? ` (${readiness.why})` : ""}` : ` · NOT READY (${readiness.why})`}</span>
           </>
         : <span data-testid="pm-lease-standby">no standby</span>}
     </div>

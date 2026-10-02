@@ -54,23 +54,28 @@ function pcReasonRow(rowEl, valEl, reason, at) {
 }
 // 1.15.0 — two-machine failover: which machine is on duty. Labels come from the
 // lease (another machine's Device name) → always set as TEXT, never as HTML.
-function pcRenderRole(st) {
+// Order matters: a config problem first (Multi-seller off = cannot serve the sellers),
+// then a lease failure (the role shown below it would be stale), then the role.
+function pcRenderRole(st, cfg) {
   if (!pcEls.role) return;
   const me = st.workerLabel ? ` · this: ${st.workerLabel}` : "";
   let cls = "off", text = `Starting…${me}`;
-  if (st.leaseRole === "leader") { cls = "ok"; text = `On duty (LEADER)${me}`; }
+  if (cfg && cfg.multiSeller !== true) { cls = "bad"; text = `Multi-seller mode is OFF — this machine cannot serve the sellers${me}`; }
+  else if (st.leaseFailing && st.leaseFailOpen) { cls = "warn"; text = `Lease unreachable 3+ min — acting as leader (may double-check)${me}`; }
+  else if (st.leaseFailing) { cls = "warn"; text = `Lease not reachable — ${st.leaseRole ? `keeping ${String(st.leaseRole).toUpperCase()} for now` : "acting as leader"}${me}`; }
+  else if (st.leaseRole === "leader") { cls = "ok"; text = `On duty (LEADER)${st.degraded ? " — DEGRADED (7-11 tabs dead 10+ min)" : ""}${me}`; }
   else if (st.leaseRole === "standby") {
     const age = typeof st.leaseLeaderAgeS === "number"
       ? st.leaseLeaderAgeS + (st.leaseAt ? Math.max(0, Math.round((Date.now() - st.leaseAt) / 1000)) : 0) : null;
     cls = "warn"; text = `STANDBY — leader: ${st.leaseLeaderLabel || "?"}${age != null ? `, seen ${age}s ago` : ""}${me}`;
-  } else if (st.leaseFailing) { cls = "warn"; text = `Lease not reachable — acting as leader${me}`; }
+  }
   pcEls.role.textContent = "";
   const dot = document.createElement("span"); dot.className = `dot ${cls}`;
   pcEls.role.append(dot, text);
 }
 async function pcRenderStatus() {
   const st = (await pcOne(PC_STATUS_KEY, {})) || {};
-  pcRenderRole(st);
+  pcRenderRole(st, (await pcOne(PC_CONFIG_KEY, {})) || {});
   pcBadge(pcEls.sfl, st.sfl);
   pcBadge(pcEls.myship, st.myship);
   pcBadge(pcEls.emap, st.inMaintenanceWindow ? "maintenance" : st.emap);

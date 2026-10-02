@@ -48,7 +48,7 @@ describe("check-queue card — on duty / standby line", () => {
     expect(r.getByTestId("pm-lease-standby").textContent).toBe("no standby");
   });
   const RED = "var(--danger, #dc2626)";
-  const READY = { sfl: "connected", myship: "ok", emap: "ok" };
+  const READY = { sfl: "connected", myship: "ok", emap: "ok", multi: true };
   const withStandby = (standby_state: unknown, standby_at = "2026-10-03T07:59:50Z") => ({ ...base, lease: {
     leader_id: "a", leader_label: "Windows laptop", leader_since: NOW, standby_id: "b", standby_label: "Mac", standby_at, standby_state } });
   const readyEl = async (standby_state: unknown, standby_at?: string) => {
@@ -74,13 +74,32 @@ describe("check-queue card — on duty / standby line", () => {
       [{ ...READY, myship: "dead_script" }, "myship: dead_script"],
       [{ ...READY, emap: "dead" }, "emap: dead"],
       [{ ...READY, emap: "expired" }, "emap: expired"],
-      [{ ...READY, emap: "guid_missing" }, "emap: guid_missing"],
-      [{ sfl: "connected", myship: "ok" }, "emap: missing"],
-      [{ sfl: "asleep", myship: "no_tab", emap: "dead" }, "sfl: asleep, myship: no_tab, emap: dead"],
+      [{ ...READY, emap: "no_tab" }, "emap: no_tab"],
+      [{ ...READY, sfl: "no_token" }, "sfl: no_token"],
+      [{ ...READY, myship: "no_config" }, "myship: no_config"],
+      [{ sfl: "connected", myship: "ok", multi: true }, "emap: missing"],
+      [{ ...READY, multi: false }, "Multi-seller mode off"],
+      [{ sfl: "connected", myship: "ok", emap: "ok" }, "Multi-seller mode off"],
+      [{ sfl: "asleep", myship: "no_tab", emap: "dead", multi: true }, "sfl: asleep, myship: no_tab, emap: dead"],
     ] as const) {
       const { r, el } = await readyEl(state);
       expect(el.textContent).toBe(` · NOT READY (${why})`);
       expect(el.style.color).toBe(RED);
+      r.unmount();
+    }
+  });
+  it("soft states are a passing blip → 'ready (<tab>: <state>)' in the normal colour", async () => {
+    for (const [state, text] of [
+      [{ ...READY, emap: "stale" }, " · ready (emap: stale)"],
+      [{ ...READY, emap: "degraded" }, " · ready (emap: degraded)"],
+      [{ ...READY, emap: "recovering" }, " · ready (emap: recovering)"],
+      [{ ...READY, emap: "reminting" }, " · ready (emap: reminting)"],
+      [{ ...READY, emap: "guid_missing" }, " · ready (emap: guid_missing)"],
+      [{ ...READY, myship: "healing" }, " · ready (myship: healing)"],
+    ] as const) {
+      const { r, el } = await readyEl(state);
+      expect(el.textContent).toBe(text);
+      expect(el.style.color).toBe("");
       r.unmount();
     }
   });
@@ -93,6 +112,31 @@ describe("check-queue card — on duty / standby line", () => {
     const { r, el } = await readyEl(READY, "2026-10-03T07:55:00Z");
     expect((r.getByTestId("pm-lease-standby") as HTMLElement).style.color).toBe(RED);
     expect(el.textContent).toBe(" · ready");
+  });
+  it("leader last seen (server clock): normal under 3 min, red after", async () => {
+    M.stats = { ...base, lease: { leader_id: "a", leader_label: "Mac", leader_since: NOW, leader_at: "2026-10-03T07:59:40Z" } };
+    let r = view();
+    await waitFor(() => expect(r.getByTestId("pm-lease-leader-seen")).toBeTruthy());
+    expect(r.getByTestId("pm-lease-leader-seen").textContent).toBe(" seen 20s ago");
+    expect((r.getByTestId("pm-lease-leader-seen") as HTMLElement).style.color).toBe("");
+    r.unmount();
+    M.stats = { ...base, lease: { leader_id: "a", leader_label: "Mac", leader_since: NOW, leader_at: "2026-10-03T07:56:00Z" } };
+    r = view();
+    await waitFor(() => expect(r.getByTestId("pm-lease-leader-seen")).toBeTruthy());
+    expect(r.getByTestId("pm-lease-leader-seen").textContent).toBe(" seen 4m ago");
+    expect((r.getByTestId("pm-lease-leader-seen") as HTMLElement).style.color).toBe(RED);
+  });
+  it("DEGRADED in red when the leader reports leader_state.degraded; absent otherwise", async () => {
+    M.stats = { ...base, lease: { leader_id: "a", leader_label: "Mac", leader_since: NOW, leader_at: NOW, leader_state: { degraded: true } } };
+    let r = view();
+    await waitFor(() => expect(r.getByTestId("pm-lease-degraded")).toBeTruthy());
+    expect(r.getByTestId("pm-lease-degraded").textContent).toBe(" DEGRADED");
+    expect((r.getByTestId("pm-lease-degraded") as HTMLElement).style.color).toBe(RED);
+    r.unmount();
+    M.stats = { ...base, lease: { leader_id: "a", leader_label: "Mac", leader_since: NOW, leader_at: NOW, leader_state: { degraded: false } } };
+    r = view();
+    await waitFor(() => expect(r.getByTestId("pm-lease")).toBeTruthy());
+    expect(r.queryByTestId("pm-lease-degraded")).toBeNull();
   });
   it("no lease yet (pre-1.15 worker) → no line at all", async () => {
     const r = view();
