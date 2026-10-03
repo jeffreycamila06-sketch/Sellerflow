@@ -4488,8 +4488,8 @@ Full audit (D1–D10) → ONE clean version. Worker (`chrome-extension/backgroun
   ("LEADER") and does all the work; the other ("STANDBY") only keeps its tabs ready
   (tab healing, E-Map pick + keepalive, local status) and takes over automatically when the
   leader has been silent for **120 s** (server time; RPC `admin_parcel_worker_lease` — calling
-  it IS the renewal), or when the leader reports itself **DEGRADED** (its 7-11 tabs dead 10+ min
-  outside 01:00–05:00) while a ready standby waits — the SERVER decides that yield. No
+  it IS the renewal), or when the leader reports itself **DEGRADED** (a 7-11 tab missing 60 s, or
+  dead — expired / dead / dead_script — 120 s, outside 01:00–05:00; 1.15.1, was 10 min) while a ready standby waits — the SERVER decides that yield. No
   preferred machine: a returning machine stays standby while the other is alive. The
   standby still syncs Pickup Status from its own open 賣貨便 pages (not duty work).
 - Lease unreachable for 3+ min of CONTINUOUS failure (attempts ≤ 60 s apart; a longer gap —

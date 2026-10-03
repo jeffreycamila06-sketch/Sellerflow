@@ -60,7 +60,7 @@ describe("popup Duty row", () => {
 
   it("then the role: leader (+ DEGRADED), standby with the leader's label", async () => {
     expect((await duty({ leaseRole: "leader", workerLabel: "Mac" })).text).toBe("On duty (LEADER) · this: Mac");
-    expect((await duty({ leaseRole: "leader", degraded: true })).text).toBe("On duty (LEADER) — DEGRADED (7-11 tabs dead 10+ min)");
+    expect((await duty({ leaseRole: "leader", degraded: true })).text).toBe("On duty (LEADER) — DEGRADED (7-11 tab missing 1+ min / dead 2+ min)");
     const sb = await duty({ leaseRole: "standby", leaseLeaderLabel: "Windows laptop", leaseLeaderAgeS: 12 });
     expect(sb.text).toBe("STANDBY — leader: Windows laptop, seen 12s ago");
     expect(sb.dot).toBe("dot warn");
