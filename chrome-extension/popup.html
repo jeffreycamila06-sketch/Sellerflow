@@ -39,6 +39,7 @@
 
     <h4>Parcel checker (賣貨便)</h4>
     <div class="pc-card">
+      <div class="pc-row"><span class="k">Duty</span><span class="v" id="pcRole"><span class="dot off"></span>—</span></div>
       <div class="pc-row"><span class="k">SellerFlowLive</span><span class="v" id="pcSfl"><span class="dot off"></span>—</span></div>
       <div class="pc-row"><span class="k">賣貨便 (myship)</span><span class="v" id="pcMyship"><span class="dot off"></span>—</span></div>
       <div class="pc-row"><span class="k">E-Map (emap)</span><span class="v" id="pcEmap"><span class="dot off"></span>—</span></div>
@@ -51,6 +52,7 @@
       </div>
 
       <div class="pc-cfg">
+        <div><label>Device name (shown when two machines run the checker)</label><input id="pcDevice" placeholder="e.g. Office laptop" /></div>
         <div><label>Supabase URL</label><input id="pcUrl" placeholder="https://….supabase.co" /></div>
         <div><label>Supabase anon key (public — from the web app)</label><input id="pcKey" placeholder="eyJ…" /></div>
         <div id="pcPerSellerCfg">

@@ -13,6 +13,7 @@ const pcEls = {
   multi: document.getElementById("pcMulti"), multiRow: document.getElementById("pcMultiRow"), multiQueue: document.getElementById("pcMultiQueue"),
   emapSessionRow: document.getElementById("pcEmapSessionRow"),
   perSellerCfg: document.getElementById("pcPerSellerCfg"),
+  role: document.getElementById("pcRole"), device: document.getElementById("pcDevice"),
 };
 
 function pcOne(key, fallback) {
@@ -51,8 +52,36 @@ function pcReasonRow(rowEl, valEl, reason, at) {
   rowEl.style.display = show ? "" : "none";
   valEl.textContent = show ? `${reason}${at ? ` (${new Date(at).toLocaleTimeString()})` : ""}` : "";
 }
+// 1.15.0 — two-machine failover: which machine is on duty. Labels come from the
+// lease (another machine's Device name) → always set as TEXT, never as HTML.
+// Order matters: a config problem first (Multi-seller off = cannot serve the sellers),
+// then a lease failure (the role shown below it would be stale), then the role.
+function pcRenderRole(st, cfg) {
+  if (!pcEls.role) return;
+  const me = st.workerLabel ? ` · this: ${st.workerLabel}` : "";
+  let cls = "off", text = `Starting…${me}`;
+  if (cfg && cfg.multiSeller !== true) { cls = "bad"; text = `Multi-seller mode is OFF — this machine cannot serve the sellers${me}`; }
+  else if (st.leaseFailing && st.leaseFailOpen) { cls = "warn"; text = `Lease unreachable 3+ min — working (may double-check)${me}`; }
+  // While the lease fails the text says what this machine is ACTUALLY doing (leaseWorking
+  // is decided by the worker on every attempt) — never "leader" while no work is done.
+  else if (st.leaseFailing && st.leaseRole === "leader" && st.leaseLone) { cls = "warn"; text = `Lease not reachable — lone leader, still working${me}`; }
+  else if (st.leaseFailing && st.leaseRole === "leader" && st.leaseWorking !== false) { cls = "warn"; text = `Lease not reachable — still working (pauses 60 s after the last answer)${me}`; }
+  else if (st.leaseFailing && st.leaseRole === "leader") { cls = "bad"; text = `Lease not reachable — PAUSED (another machine was seen) until the lease answers or 3 min of failure${me}`; }
+  else if (st.leaseFailing && st.leaseRole === "standby") { cls = "warn"; text = `Lease not reachable — staying STANDBY (works after 3 min of failure)${me}`; }
+  else if (st.leaseFailing) { cls = "warn"; text = `Lease not reachable — working (no answer since start)${me}`; }
+  else if (st.leaseRole === "leader") { cls = "ok"; text = `On duty (LEADER)${st.degraded ? " — DEGRADED (7-11 tabs dead 10+ min)" : ""}${me}`; }
+  else if (st.leaseRole === "standby") {
+    const age = typeof st.leaseLeaderAgeS === "number"
+      ? st.leaseLeaderAgeS + (st.leaseAt ? Math.max(0, Math.round((Date.now() - st.leaseAt) / 1000)) : 0) : null;
+    cls = "warn"; text = `STANDBY — leader: ${st.leaseLeaderLabel || "?"}${age != null ? `, seen ${age}s ago` : ""}${me}`;
+  }
+  pcEls.role.textContent = "";
+  const dot = document.createElement("span"); dot.className = `dot ${cls}`;
+  pcEls.role.append(dot, text);
+}
 async function pcRenderStatus() {
   const st = (await pcOne(PC_STATUS_KEY, {})) || {};
+  pcRenderRole(st, (await pcOne(PC_CONFIG_KEY, {})) || {});
   pcBadge(pcEls.sfl, st.sfl);
   pcBadge(pcEls.myship, st.myship);
   pcBadge(pcEls.emap, st.inMaintenanceWindow ? "maintenance" : st.emap);
@@ -101,6 +130,7 @@ async function pcRenderStatus() {
 async function pcRenderConfig() {
   const c = (await pcOne(PC_CONFIG_KEY, {})) || {};
   pcEls.url.value = c.supabaseUrl || PC_DEFAULT_URL;
+  if (pcEls.device) pcEls.device.value = c.deviceName || "";
   pcEls.key.value = c.supabaseAnonKey || "";
   pcEls.cgdm.value = c.cgdmId || "";
   pcEls.ord.value = c.ordMobile || "";
@@ -117,6 +147,7 @@ pcEls.save.addEventListener("click", async () => {
     cgdmId: pcEls.cgdm.value.trim(),
     ordMobile: pcEls.ord.value.trim(),
     multiSeller: pcEls.multi.checked === true,
+    deviceName: pcEls.device ? pcEls.device.value.trim().slice(0, 40) : (c.deviceName || ""),
   } });
   pcEls.save.textContent = "Saved ✓";
   setTimeout(() => { pcEls.save.textContent = "Save config"; }, 1500);

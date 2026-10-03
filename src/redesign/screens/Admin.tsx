@@ -267,6 +267,67 @@ function WorkerStateLine({ worker, now }: { worker: unknown; now: number }) {
   );
 }
 
+// 1.15.0 two-machine failover (sql/71): who is on duty + the standby. Ages use the
+// SERVER clock (stats.server_now) — never this browser's. Standby red when its last
+// lease call is older than 3 min (it would not be ready to take over).
+function leaseAgo(s: number | null): string {
+  if (s == null) return "?";
+  return s < 90 ? `${s}s ago` : s < 90 * 60 ? `${Math.round(s / 60)}m ago` : `${Math.round(s / 3600)}h ago`;
+}
+// Could the standby really take over? Its last reported state (lease.standby_state).
+// NOT READY (red) only for a HARD problem: no state, sfl not 'connected', Multi-seller off,
+// or emap/myship in a hard-bad state (named). Soft states (stale, degraded, recovering,
+// reminting, guid_missing, starting…) are a passing blip → "ready (emap: <state>)" in the
+// normal colour. myship 'stale' is the normal standby state (it never runs phone checks)
+// → plain "ready".
+const STANDBY_HARD_BAD = ["no_tab", "expired", "dead", "dead_script", "signed_out", "no_token", "no_config"];
+function standbyReadiness(state: unknown): { ready: boolean; why: string } {
+  if (!state || typeof state !== "object") return { ready: false, why: "no state reported" };
+  const st = state as Record<string, unknown>;
+  const s = (k: string) => (typeof st[k] === "string" && st[k] ? String(st[k]) : "missing");
+  const bad: string[] = [];
+  if (s("sfl") !== "connected") bad.push(`sfl: ${s("sfl")}`);
+  if (st.multi !== true) bad.push("Multi-seller mode off");
+  for (const k of ["myship", "emap"]) if (s(k) === "missing" || STANDBY_HARD_BAD.includes(s(k))) bad.push(`${k}: ${s(k)}`);
+  if (bad.length) return { ready: false, why: bad.join(", ") };
+  const soft: string[] = [];
+  if (s("emap") !== "ok") soft.push(`emap: ${s("emap")}`);
+  if (s("myship") !== "ok" && s("myship") !== "stale") soft.push(`myship: ${s("myship")}`);
+  return { ready: true, why: soft.join(", ") };
+}
+function LeaseLine({ lease, serverNow }: { lease: unknown; serverNow: unknown }) {
+  if (!lease || typeof lease !== "object") return null;
+  const l = lease as Record<string, unknown>;
+  const now = Date.parse(String(serverNow ?? ""));
+  const ageS = (iso: unknown): number | null => {
+    const t = Date.parse(String(iso ?? ""));
+    return Number.isFinite(t) && Number.isFinite(now) ? Math.max(0, Math.round((now - t) / 1000)) : null;
+  };
+  const red = "var(--danger, #dc2626)";
+  const sinceT = Date.parse(String(l.leader_since ?? ""));
+  const since = Number.isFinite(sinceT) ? new Date(sinceT).toLocaleString([], { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : null;
+  const leaderAge = ageS(l.leader_at);
+  const leaderState = l.leader_state && typeof l.leader_state === "object" ? (l.leader_state as Record<string, unknown>) : null;
+  const leaderDegraded = leaderState?.degraded === true;
+  const standbyAge = ageS(l.standby_at);
+  const standbyStale = standbyAge != null && standbyAge > 180;
+  const readiness = standbyReadiness(l.standby_state);
+  return (
+    <div data-testid="pm-lease" style={{ fontSize: 11, marginTop: 4, fontFamily: mono, color: "var(--text-muted)" }}>
+      on duty: {String(l.leader_label ?? "—")}{since ? ` (since ${since})` : ""}
+      {l.leader_id ? <span data-testid="pm-lease-leader-seen" style={{ color: leaderAge != null && leaderAge > 180 ? red : undefined }}> seen {leaseAgo(leaderAge)}</span> : null}
+      {leaderDegraded ? <span data-testid="pm-lease-degraded" style={{ color: red, fontWeight: 800 }}> DEGRADED</span> : null}
+      {" · "}
+      {l.standby_id
+        ? <>
+            <span data-testid="pm-lease-standby" style={{ color: standbyStale ? red : undefined }}>standby: {String(l.standby_label ?? "?")} seen {leaseAgo(standbyAge)}</span>
+            <span data-testid="pm-lease-ready" style={{ color: readiness.ready ? undefined : red }}>{readiness.ready ? ` · ready${readiness.why ? ` (${readiness.why})` : ""}` : ` · NOT READY (${readiness.why})`}</span>
+          </>
+        : <span data-testid="pm-lease-standby">no standby</span>}
+    </div>
+  );
+}
+
 function CheckQueueBlock() {
   const [st, setSt] = useState<Record<string, unknown> | null | "err">(null);
   useEffect(() => {
@@ -298,6 +359,7 @@ function CheckQueueBlock() {
         queue {n("queue_depth")} · oldest {n("oldest_pending_min")}m · awaiting setup {n("awaiting_setup")} · cache {n("cache_size")} · sender {String(st.sender_phone ?? "—")}
       </div>
       <WorkerStateLine worker={st.worker} now={Number(st.fetchedAt) || 0} />
+      <LeaseLine lease={st.lease} serverNow={st.server_now} />
       {top.length > 0 && (
         <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 3 }}>
           {top.map((r) => `${r.email ?? "?"} (${r.pending ?? 0})`).join(" · ")}
